@@ -1,5 +1,7 @@
 //! Stores durable evidence, revisions and deliveries without interpreting results or resending machine orders.
 #![forbid(unsafe_code)]
+mod errors;
+pub use errors::{IntakeError, StorageError};
 mod operator;
 use operator::{alerts, parked, query};
 mod upkeep;
@@ -70,6 +72,9 @@ use std::{
 /// Recovery decisions remain distinct from ordinary database failures.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// SQLite corruption retains the original cause from shared primitives.
+    #[error("stored evidence is corrupt: {0}")]
+    StorageCorruption(#[source] rusqlite::Error),
     /// Analyzer cancellation requires visible reconciliation before any new cancel admission.
     #[error("AWOS is analyzer-cancelled; app cancellation intent requires reconciliation")]
     AnalyzerCancelled,
@@ -229,26 +234,7 @@ pub enum Error {
 
 impl From<rusqlite::Error> for Error {
     fn from(error: rusqlite::Error) -> Self {
-        if let rusqlite::Error::SqliteFailure(code, _) = &error {
-            #[expect(
-                clippy::wildcard_enum_match_arm,
-                reason = "SQLite error codes are external and non-exhaustive; unknown failures retain their cause"
-            )]
-            match code.code {
-                rusqlite::ErrorCode::DiskFull => return Self::DiskFull(error),
-                rusqlite::ErrorCode::DatabaseCorrupt | rusqlite::ErrorCode::NotADatabase => {
-                    return Self::Corruption;
-                }
-                rusqlite::ErrorCode::ConstraintViolation => {
-                    return Self::ConstraintViolation(error);
-                }
-                rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked => {
-                    return Self::Busy(error);
-                }
-                _ => {} // Other SQLite errors retain their diagnostic cause.
-            }
-        }
-        Self::Sqlite(error)
+        StorageError::from(error).into()
     }
 }
 
@@ -299,7 +285,7 @@ pub struct Store {
     space: Box<dyn FreeSpace>,
 }
 
-fn document<T: Serialize>(value: &T) -> Result<String, Error> {
+fn document<T: Serialize>(value: &T) -> Result<String, StorageError> {
     Ok(serde_json::to_string(value)?)
 }
 
@@ -329,13 +315,14 @@ impl std::io::Write for BoundedJson {
 }
 
 impl Store {
-    fn encode<T: Serialize>(&self, value: &T) -> Result<String, Error> {
+    fn encode<T: Serialize>(&self, value: &T) -> Result<String, StorageError> {
         let mut writer = BoundedJson {
             bytes: Vec::new(),
             limit: self.limits.record_bytes,
         };
         serde_json::to_writer(&mut writer, value)?;
-        String::from_utf8(writer.bytes).map_err(|_| Error::Corruption)
+        String::from_utf8(writer.bytes)
+            .map_err(|cause| std::io::Error::new(std::io::ErrorKind::InvalidData, cause).into())
     }
 }
 

@@ -25,19 +25,25 @@ fn rule7_worker_roundtrip_expired_requests_and_shutdown_joins() -> TestResult {
         let id = metadata.id;
         handle
             .request(deadline, move |store| {
-                store.receive(&metadata, b"raw", b"config")
+                Ok(store.receive(&metadata, b"raw", b"config")?)
             })
             .await?;
         assert_eq!(
-            handle.request(deadline, move |store| store.raw(id)).await?,
+            handle
+                .request(deadline, move |store| Ok(store.raw(id)?))
+                .await?,
             Some(b"raw".to_vec())
         );
         let expired = Instant::now();
-        let error = handle.request(expired, move |store| store.raw(id)).await;
+        let error = handle
+            .request(expired, move |store| Ok(store.raw(id)?))
+            .await;
         assert!(matches!(error, Err(Error::Timeout) | Err(Error::Closed)));
         handle.shutdown(deadline).await?;
         assert!(matches!(
-            handle.request(deadline, move |store| store.raw(id)).await,
+            handle
+                .request(deadline, move |store| Ok(store.raw(id)?))
+                .await,
             Err(Error::Closed)
         ));
         Ok::<_, Error>(id)

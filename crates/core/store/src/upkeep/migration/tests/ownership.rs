@@ -69,7 +69,7 @@ fn adr0003_v7_to_v8_keeps_frames_sequence_activity_and_immutability_with_caller_
     assert_constraint(store.db.execute("DELETE FROM frames", []));
     assert!(matches!(
         FrameSequence::new(32, 31),
-        Err(Error::InvalidReceiptInput)
+        Err(IntakeError::InvalidReceiptInput)
     ));
     let transfer = Identifier::new("legacy")?;
     assert_eq!(
@@ -104,7 +104,7 @@ fn adr0003_v7_to_v8_keeps_frames_sequence_activity_and_immutability_with_caller_
     );
     assert!(matches!(
         store.journal_frame(&transfer, FrameSequence::new(0, 0)?, b"late", &provenance),
-        Err(Error::Conflict)
+        Err(IntakeError::Conflict)
     ));
     let another = Identifier::new("byte-sequence")?;
     store.journal_frame(

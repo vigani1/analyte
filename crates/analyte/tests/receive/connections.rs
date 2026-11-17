@@ -418,7 +418,7 @@ async fn plan11_native_capacity_probe_is_bounded_and_file_pickup_keeps_original(
             std::time::Instant::now()
                 .checked_add(Duration::from_secs(5))
                 .ok_or("deadline overflow")?,
-            |s| s.admission(1),
+            |s| Ok(s.admission(1)?),
         )
         .await?;
     store

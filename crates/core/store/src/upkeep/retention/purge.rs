@@ -329,5 +329,5 @@ fn audit_evidence(run: &PurgeRun) -> Result<String, Error> {
         .as_object_mut()
         .ok_or(Error::InvalidMaintenanceInput)?
         .insert("retention".into(), serde_json::to_value(run)?);
-    crate::document(&evidence)
+    Ok(crate::document(&evidence)?)
 }

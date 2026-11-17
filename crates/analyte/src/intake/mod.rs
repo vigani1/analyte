@@ -74,7 +74,7 @@ pub(crate) async fn receive(
     };
     store
         .request(deadline()?, move |store| {
-            store.receive(&metadata, &raw, &config)
+            Ok(store.receive(&metadata, &raw, &config)?)
         })
         .await?;
     Ok(received_at)

@@ -29,7 +29,7 @@ fn plan11_restore_refuses_corrupt_and_newer_backup_without_changing_current() ->
             &audit,
             Instant::now() + HANG_GUARD
         ),
-        Err(Error::Corruption)
+        Err(Error::StorageCorruption(_))
     ));
     std::fs::remove_file(&source)?;
     Connection::open(&source)?.execute_batch("PRAGMA user_version=999")?;
@@ -254,7 +254,10 @@ fn mutation_plan11_rule7_restore_refuses_exhausted_reserve_before_publishing() -
     drop(current);
     // No available bytes can admit even one byte above the configured disk reserve.
     let probe = Store::open(&temp.path().join("probe.db"), limits(), Box::new(Space(0)))?;
-    assert!(matches!(probe.admission(1), Err(Error::Capacity)));
+    assert!(matches!(
+        probe.admission(1),
+        Err(IntakeError::Storage(StorageError::Capacity))
+    ));
     drop(probe);
     let audit = Audit {
         actor: Identifier::new("operator")?,
@@ -380,7 +383,7 @@ fn mutation_plan11_rule7_restore_capacity_includes_the_copy_and_refuses_equality
             if free_ok && size_ok {
                 result?;
             } else {
-                assert!(matches!(result, Err(Error::Capacity)));
+                assert!(matches!(result, Err(StorageError::Capacity)));
             }
         }
     }
@@ -388,7 +391,7 @@ fn mutation_plan11_rule7_restore_capacity_includes_the_copy_and_refuses_equality
     bounds.reserve_bytes = u64::MAX;
     assert!(matches!(
         Store::restore_capacity(&store.db, &path, &bounds, &Space(u64::MAX)),
-        Err(Error::Capacity)
+        Err(StorageError::Capacity)
     ));
     Ok(())
 }

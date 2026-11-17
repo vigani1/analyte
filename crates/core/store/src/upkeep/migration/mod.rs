@@ -171,7 +171,7 @@ fn parking(encoded: &str) -> Result<String, Error> {
     let value: serde_json::Value = serde_json::from_str(encoded)?;
     if value.is_object() {
         let evidence: ParkingEvidence = serde_json::from_value(value)?;
-        return crate::document(&evidence);
+        return Ok(crate::document(&evidence)?);
     }
     let kind: LegacyParkingKind =
         serde_json::from_value(value.get(0).ok_or(Error::Corruption)?.clone())?;
@@ -217,7 +217,7 @@ fn parking(encoded: &str) -> Result<String, Error> {
             ("incomplete_transfer", string(2)?.to_owned(), None)
         }
     };
-    crate::parked::evidence(name, &target, &reason, context)
+    Ok(crate::parked::evidence(name, &target, &reason, context)?)
 }
 
 #[cfg(test)]

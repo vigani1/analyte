@@ -57,13 +57,13 @@ pub(crate) fn audit_evidence(
     if let Some(parked) = action.parked {
         targets.push(Identifier::new(&format!("parked:{parked}")).map_err(Error::Text)?);
     }
-    crate::document(&Audit {
+    Ok(crate::document(&Audit {
         actor: action.audit.actor.clone(),
         action: action.audit.action.clone(),
         targets,
         time: action.audit.time,
         reason: action.audit.reason.clone(),
-    })
+    })?)
 }
 
 #[cfg(test)]

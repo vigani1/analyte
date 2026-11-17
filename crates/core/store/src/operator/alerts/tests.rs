@@ -324,7 +324,7 @@ mod existing {
         let temp = tempfile::tempdir()?;
         let mut store = open(&temp.path().join("disk.db"))?;
         store.space = Box::new(Space(1));
-        assert!(matches!(store.capacity(1), Err(Error::Capacity)));
+        assert!(matches!(store.capacity(1), Err(StorageError::Capacity)));
         assert!(
             store
                 .evaluate_alert(&AlertKey::DiskReserve, "duty officer", true, Some(1), 10)?

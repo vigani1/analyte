@@ -250,7 +250,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
                 .checked_add(machine.snapshot.canonical().len())
                 .ok_or_else(|| Error::AstmAdmissionSizeOverflow)?;
             let capacity = store
-                .request(deadline()?, move |s| s.admission(expected))
+                .request(deadline()?, move |s| Ok(s.admission(expected)?))
                 .await;
             if let Err(error) = &capacity {
                 tracing::error!(machine = machine.id.as_str(), error_kind = %error, "storage admission refused");
@@ -359,11 +359,12 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
         let sequence = analyte_store::FrameSequence::new(
             number.value(),
             analyte_framing::astm::FrameNumber::MAX.value(),
-        )?;
+        )
+        .map_err(analyte_store::Error::from)?;
         let committed = super::custody::store_before_ack(
             machine,
             store.request(deadline()?, move |s| {
-                s.journal_frame(&transfer_id, sequence, &bytes, &provenance)
+                Ok(s.journal_frame(&transfer_id, sequence, &bytes, &provenance)?)
             }),
         )
         .await;
@@ -423,10 +424,10 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
                 }
                 store
                     .request(deadline()?, move |s| {
-                        s.finish_transfer(
+                        Ok(s.finish_transfer(
                             &transfer_id,
                             analyte_store::TransferOutcome::Complete(id),
-                        )
+                        )?)
                     })
                     .await?;
             } else {
@@ -490,10 +491,10 @@ async fn finish_incomplete(store: &Handle, transfer: Identifier) -> Result<(), E
         analyte_model::Reason::new("ASTM transfer ended before a complete receipt was retained")?;
     store
         .request(deadline()?, move |store| {
-            store.finish_transfer(
+            Ok(store.finish_transfer(
                 &transfer,
                 analyte_store::TransferOutcome::Incomplete(reason),
-            )
+            )?)
         })
         .await?;
     Ok(())
