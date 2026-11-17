@@ -184,7 +184,7 @@ pub enum OrderError {
         effect: Box<Self>,
     },
 }
-impl crate::runtime::service::cleanup::CleanupFailure for OrderError {
+impl crate::cleanup::CleanupFailure for OrderError {
     fn with_effect(original: Self, effect: Self) -> Self {
         Self::Cleanup {
             original: Box::new(original),

@@ -63,7 +63,7 @@ pub(crate) enum Refusal<E: std::error::Error + 'static> {
     Custody(Box<StoreWaitError<E>>),
 }
 
-pub(crate) use crate::runtime::service::cleanup::{CleanupFailure, effect_failure, retain_cleanup};
+pub(crate) use crate::cleanup::{CleanupFailure, effect_failure, retain_cleanup};
 
 /// Uses the validated transport operation timeout as the complete custody budget.
 /// Cancelling the wait does not prove rollback: callers must refuse positive effects.

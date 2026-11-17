@@ -309,7 +309,7 @@ pub(crate) async fn settle_owned(
             })
             .await
             .map_err(Into::into);
-        crate::runtime::service::cleanup::retain_cleanup(&mut result, cleanup);
+        crate::cleanup::retain_cleanup(&mut result, cleanup);
     }
     result
 }

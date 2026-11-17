@@ -126,10 +126,7 @@ impl LawOrderLink {
                         .close(store, Code::LawSendPreparationFailed.as_str())
                         .await
                     {
-                        return Err(crate::runtime::service::cleanup::effect_failure(
-                            Some(error),
-                            cleanup,
-                        ));
+                        return Err(crate::cleanup::effect_failure(Some(error), cleanup));
                     }
                     if matches!(
                         &error,
