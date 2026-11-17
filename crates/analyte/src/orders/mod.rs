@@ -125,14 +125,16 @@ enum EventError {
     #[error(transparent)]
     Document(#[from] analyte_contract::DocumentError),
     #[error(transparent)]
-    Sink(#[from] analyte_sink::Error),
+    SinkDeliveryError(#[from] analyte_sink::DeliveryError),
 }
 impl EventError {
     fn into_store(self) -> analyte_store::OrderError {
         match self {
             Self::Timestamp(source) => analyte_store::OrderError::DeliveryBuild(Box::new(source)),
             Self::Document(source) => analyte_store::OrderError::DeliveryBuild(Box::new(source)),
-            Self::Sink(source) => analyte_store::OrderError::DeliveryBuild(Box::new(source)),
+            Self::SinkDeliveryError(source) => {
+                analyte_store::OrderError::DeliveryBuild(Box::new(source))
+            }
         }
     }
 }

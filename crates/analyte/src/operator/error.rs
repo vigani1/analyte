@@ -49,7 +49,13 @@ pub enum Error {
     Json(#[from] serde_json::Error),
     /// Preserves the original operator dependency failure.
     #[error(transparent)]
-    Sink(#[from] analyte_sink::Error),
+    SinkDestinationError(#[from] analyte_sink::DestinationError),
+    /// Preserves the owning sink API boundary.
+    #[error(transparent)]
+    SinkDeliveryError(#[from] analyte_sink::DeliveryError),
+    /// Preserves the owning sink API boundary.
+    #[error(transparent)]
+    SinkPollError(#[from] analyte_sink::PollError),
 }
 #[cfg(all(test, feature = "test-hooks"))]
 impl Error {

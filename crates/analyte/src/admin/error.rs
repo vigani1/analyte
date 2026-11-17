@@ -73,7 +73,13 @@ pub enum Error {
     Token(#[from] super::TokenError),
     /// Preserves the original admin dependency failure.
     #[error(transparent)]
-    Sink(#[from] analyte_sink::Error),
+    SinkDestinationError(#[from] analyte_sink::DestinationError),
+    /// Preserves the owning sink API boundary.
+    #[error(transparent)]
+    SinkDeliveryError(#[from] analyte_sink::DeliveryError),
+    /// Preserves the owning sink API boundary.
+    #[error(transparent)]
+    SinkPollError(#[from] analyte_sink::PollError),
     /// Preserves the original admin dependency failure.
     #[error(transparent)]
     Io(#[from] std::io::Error),

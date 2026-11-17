@@ -82,7 +82,13 @@ pub enum Error {
     Store(#[from] analyte_store::Error),
     /// Preserves the original runtime dependency failure.
     #[error(transparent)]
-    Sink(#[from] analyte_sink::Error),
+    SinkDestinationError(#[from] analyte_sink::DestinationError),
+    /// Preserves the owning sink API boundary.
+    #[error(transparent)]
+    SinkDeliveryError(#[from] analyte_sink::DeliveryError),
+    /// Preserves the owning sink API boundary.
+    #[error(transparent)]
+    SinkPollError(#[from] analyte_sink::PollError),
     /// Preserves the original runtime dependency failure.
     #[error(transparent)]
     Secrets(#[from] crate::installation::secrets::SecretError),

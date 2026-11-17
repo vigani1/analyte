@@ -82,7 +82,7 @@ pub enum Error {
     Text(#[from] analyte_model::TextError),
     /// Preserves the original loading or validation failure.
     #[error(transparent)]
-    Sink(#[from] analyte_sink::Error),
+    SinkDestinationError(#[from] analyte_sink::DestinationError),
     /// Preserves the original loading or validation failure.
     #[error(transparent)]
     Alerts(#[from] super::AlertConfigError),
@@ -107,7 +107,7 @@ impl Error {
             Self::Parse(cause) => cause,
             Self::Config(cause) => cause,
             Self::Text(cause) => cause,
-            Self::Sink(cause) => cause,
+            Self::SinkDestinationError(cause) => cause,
             Self::Alerts(cause) => cause,
             Self::Webhooks(cause) => cause,
             Self::Address(cause) => cause,

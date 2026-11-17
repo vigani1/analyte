@@ -128,9 +128,6 @@ pub enum OrderError {
     /// The cached app order violated the app contract.
     #[error(transparent)]
     Document(#[from] analyte_contract::DocumentError),
-    /// Polling the lab app order feed failed.
-    #[error(transparent)]
-    Sink(#[from] analyte_sink::Error),
     /// An order event timestamp could not be represented.
     #[error(transparent)]
     Timestamp(#[from] jiff::Error),

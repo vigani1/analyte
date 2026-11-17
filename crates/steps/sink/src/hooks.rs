@@ -1,5 +1,5 @@
 //! Constructs literal-loopback test destinations without changing production URL policy.
-use crate::{Destination, Error, Limits, WebhookSender};
+use crate::{Destination, DestinationError, Limits, WebhookSender};
 use analyte_model::Identifier;
 
 impl Destination {
@@ -12,14 +12,14 @@ impl Destination {
         base: &str,
         secrets: Identifier,
         limits: Limits,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self, DestinationError> {
         let base = if base.starts_with("https://") {
             analyte_config::HttpsUrl::parse(base)
-                .map_err(Error::UrlPolicy)?
+                .map_err(DestinationError::UrlPolicy)?
                 .url()
                 .clone()
         } else {
-            analyte_config::loopback_test_url(base).map_err(Error::UrlPolicy)?
+            analyte_config::loopback_test_url(base).map_err(DestinationError::UrlPolicy)?
         };
         Self::from_parsed(id, base, secrets, limits)
     }
@@ -29,10 +29,13 @@ impl WebhookSender {
     /// Creates an HTTP sender for a literal loopback synthetic receiver only.
     /// # Errors
     /// Refuses non-loopback hosts, credentials, queries and fragments.
-    pub fn for_loopback_test(url: &str, timeout: std::time::Duration) -> Result<Self, Error> {
-        let url = analyte_config::loopback_test_url(url).map_err(Error::UrlPolicy)?;
+    pub fn for_loopback_test(
+        url: &str,
+        timeout: std::time::Duration,
+    ) -> Result<Self, DestinationError> {
+        let url = analyte_config::loopback_test_url(url).map_err(DestinationError::UrlPolicy)?;
         if timeout.is_zero() || timeout > std::time::Duration::from_secs(300) {
-            return Err(Error::Configuration);
+            return Err(DestinationError::Configuration);
         }
         Ok(Self {
             client: crate::http_client(timeout)?,

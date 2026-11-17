@@ -14,10 +14,33 @@ use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _};
 use analyte_fixtures::SECRET;
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
+/// Mixed operations used only by synthetic fixture setup.
+#[derive(Debug, thiserror::Error)]
+enum TestStoreError {
+    #[error("alert attempt does not exist")]
+    MissingAlertAttempt,
+    #[error(transparent)]
+    IntakeError(#[from] analyte_store::IntakeError),
+    #[error(transparent)]
+    ReconciliationError(#[from] analyte_store::ReconciliationError),
+    #[error(transparent)]
+    DeliveryError(#[from] analyte_store::DeliveryError),
+    #[error(transparent)]
+    OperatorError(#[from] analyte_store::OperatorError),
+    #[error(transparent)]
+    OrderError(#[from] analyte_store::OrderError),
+    #[error(transparent)]
+    WorkerError(#[from] analyte_store::WorkerError),
+    #[error(transparent)]
+    WorkerStartError(#[from] analyte_store::WorkerStartError),
+    #[error(transparent)]
+    Text(#[from] TextError),
+}
+
 struct Secrets(&'static str);
 
 impl SecretsSource for Secrets {
-    fn credentials(&self, _: &Identifier) -> Result<Credentials, Error> {
+    fn credentials(&self, _: &Identifier) -> Result<Credentials, DestinationError> {
         Ok(Credentials {
             api_key: self.0.into(),
             signing_secrets: vec![analyte_contract::SigningSecret::parse(SECRET)?],
@@ -28,7 +51,7 @@ impl SecretsSource for Secrets {
 struct RotatingSecrets;
 
 impl SecretsSource for RotatingSecrets {
-    fn credentials(&self, _: &Identifier) -> Result<Credentials, Error> {
+    fn credentials(&self, _: &Identifier) -> Result<Credentials, DestinationError> {
         Ok(Credentials {
             api_key: "key".into(),
             signing_secrets: vec![
@@ -45,8 +68,11 @@ use analyte_fixtures::UnlimitedSpace as Space;
 
 /// Storage deadline for test requests. CI machines with `synchronous=FULL`
 /// can be slow; the behavior under test never depends on this budget.
-fn until() -> Result<Instant, Error> {
-    deadline(Duration::from_secs(30))
+fn until() -> Result<Instant, std::io::Error> {
+    deadline(
+        Duration::from_secs(30),
+        std::io::Error::other("test deadline overflow"),
+    )
 }
 
 fn limits() -> Limits {
@@ -62,7 +88,7 @@ fn limits() -> Limits {
     }
 }
 
-async fn store(path: &Path) -> Result<Handle, Error> {
+async fn store(path: &Path) -> Result<Handle, Box<dyn std::error::Error>> {
     Ok(Handle::start(
         path.to_owned(),
         {
@@ -156,9 +182,9 @@ async fn enqueue(
     metadata: ReceiptMetadata,
     result: ResultContent,
     delivery: analyte_store::Delivery,
-) -> Result<(), Error> {
+) -> Result<(), Box<dyn std::error::Error>> {
     store
-        .request::<_, analyte_store::Error>(until()?, move |s| {
+        .request::<_, TestStoreError>(until()?, move |s| {
             s.receive(&metadata, b"raw", b"config")?;
             let is_correction = result
                 .parts
@@ -177,7 +203,7 @@ async fn enqueue(
                 analyte_store::ReconcileInput::standard(&[is_correction], &[]),
                 |_, _| Ok(vec![delivery]),
             )?;
-            Ok::<_, analyte_store::Error>(())
+            Ok::<_, TestStoreError>(())
         })
         .await?;
     Ok(())
@@ -239,13 +265,13 @@ impl Peer {
     }
 }
 
-fn destination(url: &str) -> Result<Destination, Error> {
-    Destination::for_loopback_test(
-        Identifier::new("app").map_err(Error::OrderId)?,
+fn destination(url: &str) -> Result<Destination, Box<dyn std::error::Error>> {
+    Ok(Destination::for_loopback_test(
+        Identifier::new("app").map_err(DeliveryError::OrderId)?,
         url,
-        Identifier::new("secrets").map_err(Error::OrderId)?,
+        Identifier::new("secrets").map_err(DeliveryError::OrderId)?,
         limits(),
-    )
+    )?)
 }
 
 async fn post(
@@ -270,7 +296,7 @@ async fn post(
         .body(payload.to_vec())
         .send()
         .await?;
-    let bytes = body(response).await?;
+    let bytes = body(response, DeliveryError::ResponseTooLarge).await?;
     let status: analyte_contract::StatusBody = analyte_contract::decode(&bytes)?;
     Ok(status.status)
 }
@@ -390,8 +416,8 @@ async fn check_cache_changes(
     poller: &Poller<'_>,
 ) -> TestResult {
     let first = store
-        .request::<_, analyte_store::Error>(until()?, |s| {
-            Ok(s.cursor(&Identifier::new("app").map_err(analyte_store::Error::Text)?)?)
+        .request::<_, TestStoreError>(until()?, |s| {
+            Ok(s.cursor(&Identifier::new("app").map_err(TestStoreError::Text)?)?)
         })
         .await?;
     let mut receiver = analyte_receiver::Receiver::open(
@@ -413,10 +439,10 @@ async fn check_cache_changes(
         .map_err(|_| "receiver seed thread failed")?;
     poller.poll_once().await?;
     let cached = store
-        .request::<_, analyte_store::Error>(until()?, |s| {
+        .request::<_, TestStoreError>(until()?, |s| {
             Ok(s.orders(
-                &Identifier::new("app").map_err(analyte_store::Error::Text)?,
-                &SampleId::new("000Ab12").map_err(analyte_store::Error::Text)?,
+                &Identifier::new("app").map_err(TestStoreError::Text)?,
+                &SampleId::new("000Ab12").map_err(TestStoreError::Text)?,
                 jiff::Timestamp::now().as_second(),
                 30,
             )?)
@@ -433,16 +459,16 @@ async fn check_cache_changes(
         analyte_contract::document::OrderState::CancelRequested
     );
     let next = store
-        .request::<_, analyte_store::Error>(until()?, |s| {
-            Ok(s.cursor(&Identifier::new("app").map_err(analyte_store::Error::Text)?)?)
+        .request::<_, TestStoreError>(until()?, |s| {
+            Ok(s.cursor(&Identifier::new("app").map_err(TestStoreError::Text)?)?)
         })
         .await?;
     assert_ne!(first, next);
     store
-        .request::<_, analyte_store::Error>(until()?, |s| {
+        .request::<_, TestStoreError>(until()?, |s| {
             Ok(s.order_page(&analyte_store::OrderPage {
-                destination: Identifier::new("app").map_err(analyte_store::Error::Text)?,
-                cursor: Identifier::new("invalid-cursor").map_err(analyte_store::Error::Text)?,
+                destination: Identifier::new("app").map_err(TestStoreError::Text)?,
+                cursor: Identifier::new("invalid-cursor").map_err(TestStoreError::Text)?,
                 complete: true,
                 polled: jiff::Timestamp::now().as_second(),
                 orders: vec![],
@@ -451,7 +477,7 @@ async fn check_cache_changes(
         .await?;
     assert!(matches!(
         poller.poll_once().await,
-        Err(Error::PollStatus(410))
+        Err(PollError::PollStatus(410))
     ));
     assert!(
         !destination
@@ -661,7 +687,7 @@ async fn relay(
             }
             let response = request.send().await?;
             let status = response.status().as_u16();
-            let body = body(response).await?;
+            let body = body(response, DeliveryError::ResponseTooLarge).await?;
             if first && lose_response {
                 // The upstream committed. Close without returning its response:
                 // a lost answer, independent of the client's wall-clock deadline.
