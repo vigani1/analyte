@@ -55,7 +55,10 @@ impl<'a, 'm> Host<'a, 'm> {
         store: &'a Handle,
     ) -> Result<Self, Error> {
         let (options, config) = settings::dialog(settings)?;
-        let mut dialog = Dialog::new(config, 0);
+        let mut dialog = Dialog::new(
+            config,
+            analyte_dialog::Epoch(uuid::Uuid::now_v7().as_u128()),
+        );
         let start = Instant::now();
         let wake = None;
         let pending = BTreeMap::new();

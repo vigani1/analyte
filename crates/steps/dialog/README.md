@@ -73,3 +73,13 @@ incarnation separately. Hosts echo the whole token unchanged. `Write::until`
 is an absolute connection-clock issuance deadline when supplied; otherwise the
 host's transport budget applies. LAW reports typed `Parked` failures, and HL7
 uses `AckChoice` to distinguish rejection from a content error.
+
+## Construction and completion correlation
+
+A dialog that accepts a host incarnation uses `new(config, Epoch)`; ASTM and
+HL7 share the same 128-bit `Epoch`, allowing a fresh UUID without truncation.
+Constructors without a host incarnation take only the protocol inputs they
+need: LAW link and timer budgets, POCT's wire session control ID, VIDAS framing
+and policy, and Autolyser configuration. A wire session ID is not a host epoch.
+Hosts call their per-connection monotonic time base `start`.
+

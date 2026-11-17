@@ -288,7 +288,7 @@ impl Dialog {
             out.push(Action::Parked(raw.to_vec(), Error::Exhausted));
             return true;
         };
-        let id = ExchangeId(self.epoch, self.next);
+        let id = ExchangeId(self.epoch.0, self.next);
         self.next = next;
         orders.pending = Some((
             id,

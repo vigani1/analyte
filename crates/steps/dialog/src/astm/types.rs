@@ -117,9 +117,7 @@ impl Default for Config {
     }
 }
 
-/// Host-supplied identity namespace; use a fresh value after every restart.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Epoch(pub u128);
+pub use crate::Epoch;
 
 /// Correlates a durable write with exactly one frame request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

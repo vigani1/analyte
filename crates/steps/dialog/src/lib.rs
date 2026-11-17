@@ -20,7 +20,7 @@ pub use clock::Clock;
 pub use clock::Error as ClockError;
 
 mod exchange;
-pub use exchange::ExchangeId;
+pub use exchange::{Epoch, ExchangeId};
 
 mod mllp;
 pub use mllp::Write;

@@ -10,7 +10,7 @@ type TestResult = Result<(), Box<dyn std::error::Error>>;
 fn dialog() -> Result<Dialog, Error> {
     Ok(Dialog::new(
         Config::new(Options::default(), Duration::from_secs(5), 1)?,
-        42,
+        Epoch(42),
     ))
 }
 fn message(mode: &str) -> Vec<u8> {

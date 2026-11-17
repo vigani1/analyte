@@ -14,7 +14,7 @@ mod evidence;
 mod state;
 use state::State;
 
-pub use crate::ExchangeId;
+pub use crate::{Epoch, ExchangeId};
 
 /// Validated resource and deadline configuration.
 #[derive(Debug, Clone, Copy)]
@@ -295,7 +295,7 @@ struct Pending {
 #[derive(Debug)]
 pub struct Dialog {
     config: Config,
-    epoch: u64,
+    epoch: Epoch,
     next: u64,
     decoder: mllp::Decoder,
     state: State,
@@ -308,7 +308,7 @@ pub struct Dialog {
 impl Dialog {
     /// Starts an idle connection with a host-selected unique incarnation.
     #[must_use]
-    pub fn new(config: Config, epoch: u64) -> Self {
+    pub fn new(config: Config, epoch: Epoch) -> Self {
         Self {
             config,
             epoch,
@@ -634,7 +634,7 @@ impl Dialog {
                     return;
                 }
                 if let Some(next) = self.next.checked_add(1) {
-                    let id = ExchangeId(self.epoch, self.next);
+                    let id = ExchangeId(self.epoch.0, self.next);
                     self.next = next;
                     self.state = State::Awaiting(Pending {
                         id,
@@ -652,7 +652,7 @@ impl Dialog {
             }
             Err(error) => {
                 if let Some(next) = self.next.checked_add(1) {
-                    let id = ExchangeId(self.epoch, self.next);
+                    let id = ExchangeId(self.epoch.0, self.next);
                     self.next = next;
                     out.push(Action::Store(id, raw.clone()));
                     self.state = State::Malformed(id, raw, error);
