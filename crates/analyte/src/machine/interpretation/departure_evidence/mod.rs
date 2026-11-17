@@ -1,4 +1,6 @@
 //! Records enabled declarations and wire applications even when syntax or mapping is parked.
+#[cfg(test)]
+mod tests;
 use crate::installation::config::Machine;
 use crate::intake::{Mapping, ParkReason};
 use EvidenceError as Error;
@@ -260,6 +262,3 @@ pub enum EvidenceError {
     #[error(transparent)]
     Astm(#[from] analyte_framing::astm::Error),
 }
-
-#[cfg(test)]
-mod tests;
