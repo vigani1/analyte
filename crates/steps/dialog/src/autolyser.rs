@@ -65,9 +65,12 @@ pub enum Error {
     /// Operation conflicts with the current phase.
     #[error("connection busy or recovery required")]
     Busy,
-    /// Clock regressed or deadline overflowed.
-    #[error("invalid monotonic time")]
-    Time,
+    /// Connection time moved backwards.
+    #[error("dialog time moved backwards")]
+    TimeReversed,
+    /// A deadline or storage token cannot be represented.
+    #[error("dialog deadline or token exhausted")]
+    Exhausted,
     /// Response did not complete within its bound.
     #[error("response incomplete or overlong")]
     Incomplete,
@@ -312,7 +315,9 @@ impl Dialog {
     }
 
     fn after(&self, wait: Duration) -> Result<Duration, Error> {
-        self.clock.after(wait).map_err(|_| Error::Time)
+        self.clock
+            .after(wait)
+            .map_err(|error| error.into_dialog(Error::TimeReversed, Error::Exhausted))
     }
 
     fn begin(&mut self, operation: Operation) -> Result<Vec<Action>, Error> {
@@ -334,7 +339,7 @@ impl Dialog {
     }
 
     fn store(&mut self, frame: Frame, insertion: bool) -> Result<Vec<Action>, Error> {
-        let token = self.next_token.checked_add(1).ok_or(Error::Time)?;
+        let token = self.next_token.checked_add(1).ok_or(Error::Exhausted)?;
         self.next_token = token;
         self.deadline = self.after(self.config.storage)?;
         let action = Action::Store(token, frame.raw().to_vec());
@@ -354,9 +359,9 @@ impl Dialog {
     /// # Errors
     /// Rejects reversed time before mutating the conversation.
     pub fn step(&mut self, now: Duration, event: Event<'_>) -> Result<Vec<Action>, Error> {
-        if self.clock.advance(now, Duration::ZERO).is_err() {
-            return Err(Error::Time);
-        }
+        self.clock
+            .advance(now, Duration::ZERO)
+            .map_err(|error| error.into_dialog(Error::TimeReversed, Error::Exhausted))?;
         Ok(match self.apply(event) {
             Ok(actions) => actions,
             Err(error) => vec![Action::Refused(error)],
@@ -486,7 +491,7 @@ impl Dialog {
                         self.clock
                             .now()
                             .checked_add(self.config.inter_byte)
-                            .ok_or(Error::Time)?,
+                            .ok_or(Error::Exhausted)?,
                     );
                     Ok(vec![Action::Deadline(self.deadline)])
                 }
@@ -545,5 +550,31 @@ impl Dialog {
                 }
             };
         Ok(vec![action, Action::Deadline(self.deadline)])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn adr_0001_exhausted_token_is_distinct_from_reversed_time() {
+        let config = Config {
+            poll: Duration::from_secs(1),
+            ack: Duration::from_secs(1),
+            response: Duration::from_secs(1),
+            inter_byte: Duration::from_secs(1),
+            storage: Duration::from_secs(1),
+            max_bytes: 11038,
+            controls: false,
+            recovery: Recovery::ManualLast,
+        };
+        let mut dialog = Dialog::new(config).unwrap();
+        dialog.next_token = u64::MAX;
+        let mut decoder = Decoder::new(Mode::Report, 11038).unwrap();
+        assert!(matches!(
+            dialog.store(decoder.finish(), false),
+            Err(Error::Exhausted)
+        ));
     }
 }

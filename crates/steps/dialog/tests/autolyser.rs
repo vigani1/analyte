@@ -550,7 +550,7 @@ fn adr0001_autolyser_step_rejects_reversed_time_before_mutation() {
     dialog.step(Duration::from_secs(2), Event::Tick).unwrap();
     assert!(matches!(
         dialog.step(Duration::from_secs(1), Event::Poll(Request::Next)),
-        Err(DialogError::Time)
+        Err(DialogError::TimeReversed)
     ));
     assert!(matches!(
         dialog
@@ -558,5 +558,17 @@ fn adr0001_autolyser_step_rejects_reversed_time_before_mutation() {
             .unwrap()
             .first(),
         Some(Action::Write(_))
+    ));
+}
+
+#[test]
+fn adr0001_autolyser_deadline_overflow_is_exhausted() {
+    let mut dialog = Dialog::new(config()).unwrap();
+    let actions = dialog
+        .step(Duration::MAX, Event::Poll(Request::Next))
+        .unwrap();
+    assert!(matches!(
+        actions.as_slice(),
+        [Action::Refused(DialogError::Exhausted)]
     ));
 }
