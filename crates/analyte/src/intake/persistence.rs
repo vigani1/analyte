@@ -10,7 +10,7 @@ pub(super) struct PreparedMapping {
     pub(super) interpretation: Interpretation,
     pub(super) destination: Identifier,
     pub(super) conflict: Option<Interpretation>,
-    pub(super) custody: Option<analyte_store::LawCustody>,
+    pub(super) custody: Option<analyte_store::law::Custody>,
     pub(super) action: Option<analyte_store::Reprocess>,
     pub(super) lifecycle: Option<analyte_store::StatusLifecycle<'static>>,
     pub(super) atomic: bool,
@@ -133,16 +133,16 @@ fn reject_batch(
     store: &mut analyte_store::Store,
     id: ReceiptId,
     conflict: Option<Interpretation>,
-    custody: Option<&analyte_store::LawCustody>,
+    custody: Option<&analyte_store::law::Custody>,
     action: Option<&analyte_store::Reprocess>,
     findings: &[analyte_store::Parked],
     lifecycle: Option<analyte_store::StatusLifecycle<'_>>,
 ) -> Result<analyte_store::InterpretationCommit, analyte_store::Error> {
     let rejected_evidence = conflict.ok_or(analyte_store::Error::InvalidHostInput)?;
     let rejected = if let Some(mut custody) = custody.cloned() {
-        custody.rejection = Some(analyte_store::LawRejection {
+        custody.rejection = Some(analyte_store::law::Rejection {
             occurrence: 1,
-            reason: analyte_store::LawConflict::Progression,
+            reason: analyte_store::law::Conflict::Progression,
         });
         store.reconcile(
             action.map_or(

@@ -1,7 +1,7 @@
 //! Writes stable revision and LAW disposition evidence independently of Debug output.
 use super::{
     RevisionOutcome,
-    law::{LawConflict, LawDisposition},
+    law::{Conflict, Disposition},
 };
 use std::fmt;
 impl fmt::Display for RevisionOutcome {
@@ -15,7 +15,7 @@ impl fmt::Display for RevisionOutcome {
         }
     }
 }
-impl fmt::Display for LawConflict {
+impl fmt::Display for Conflict {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Self::UnknownWork => "UnknownWork",
@@ -26,7 +26,7 @@ impl fmt::Display for LawConflict {
         })
     }
 }
-impl fmt::Display for LawDisposition {
+impl fmt::Display for Disposition {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Accepted => f.write_str("Accepted"),
@@ -56,17 +56,17 @@ fn revision_and_law_spellings_are_compatible() {
     ] {
         assert_eq!(value.to_string(), expected);
     }
-    assert_eq!(LawDisposition::Accepted.to_string(), "Accepted");
+    assert_eq!(Disposition::Accepted.to_string(), "Accepted");
     for (value, expected) in [
-        (LawConflict::UnknownWork, "UnknownWork"),
-        (LawConflict::Context, "Context"),
-        (LawConflict::Progression, "Progression"),
-        (LawConflict::Identity, "Identity"),
-        (LawConflict::Processing, "Processing"),
+        (Conflict::UnknownWork, "UnknownWork"),
+        (Conflict::Context, "Context"),
+        (Conflict::Progression, "Progression"),
+        (Conflict::Identity, "Identity"),
+        (Conflict::Processing, "Processing"),
     ] {
         assert_eq!(value.to_string(), expected);
         assert_eq!(
-            LawDisposition::Rejected(super::law::LawRejection {
+            Disposition::Rejected(super::law::Rejection {
                 occurrence: 2,
                 reason: value
             })
@@ -74,4 +74,17 @@ fn revision_and_law_spellings_are_compatible() {
             format!("Rejected(LawRejection {{ occurrence: 2, reason: {expected} }})")
         );
     }
+}
+
+#[test]
+fn adr0016_scoped_disposition_keeps_stored_json() -> Result<(), serde_json::Error> {
+    let disposition = Disposition::Rejected(super::law::Rejection {
+        occurrence: 2,
+        reason: Conflict::Context,
+    });
+    let original = r#"{"Rejected":{"occurrence":2,"reason":"Context"}}"#;
+    assert_eq!(serde_json::to_string(&disposition)?, original);
+    let restored: Disposition = serde_json::from_str(original)?;
+    assert_eq!(restored.to_string(), disposition.to_string());
+    Ok(())
 }

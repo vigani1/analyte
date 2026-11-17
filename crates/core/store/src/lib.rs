@@ -35,10 +35,8 @@ pub use machine_orders::{
     OrderItems, OrderReservation, ReservationPreflight, ReserveOptions, SendRefusal,
 };
 
-pub use revisions::law::{
-    AnalyzerCancelledItem, LawConflict, LawCustody, LawDisposition, LawRejection, LawWork,
-    LawWorkEvidence,
-};
+/// LAW execution custody and retained message dispositions.
+pub use revisions::law;
 pub use revisions::{
     InterpretationCommit, ReconcileAction, ReconcileInput, ReconcileMode, RevisionOutcome,
     StatusLifecycle,

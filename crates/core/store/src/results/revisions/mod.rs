@@ -3,7 +3,7 @@ mod admission;
 mod assignment;
 pub(crate) mod content;
 mod history;
-pub(crate) mod law;
+pub mod law;
 mod outbox;
 mod parking;
 mod progression;
@@ -36,7 +36,7 @@ pub enum RevisionOutcome {
 /// Durable interpretation version and decisions for its results.
 pub struct InterpretationCommit {
     /// Durable LAW disposition when this is a LAB-29 custody transaction.
-    pub law: Option<law::LawDisposition>,
+    pub law: Option<law::Disposition>,
     /// Append-only interpretation version within the receipt.
     pub version: i64,
     /// One decision per input result.
@@ -56,7 +56,7 @@ pub enum ReconcileMode<'a> {
         /// Explicit LAW progression policy.
         lifecycle: StatusLifecycle<'a>,
         /// Retained work and message identity evidence.
-        custody: &'a law::LawCustody,
+        custody: &'a law::Custody,
     },
 }
 
@@ -168,7 +168,7 @@ impl Store {
             })
             .transpose()?;
         if let Some(admission) = &admission {
-            if let law::LawDisposition::Rejected(reason) = admission.disposition {
+            if let law::Disposition::Rejected(reason) = admission.disposition {
                 evidence.outcome = Reading::Failed(
                     analyte_model::Reason::new(&format!(
                         "LAW {} at OBR occurrence {}",
@@ -202,7 +202,7 @@ impl Store {
         }
         let successful = admission
             .as_ref()
-            .is_some_and(|a| matches!(a.disposition, law::LawDisposition::Accepted))
+            .is_some_and(|a| matches!(a.disposition, law::Disposition::Accepted))
             || reconciliation_succeeded(&evidence, &batch.outcomes, findings.is_empty());
         let audit = action
             .map(|action| crate::reprocess::audit_evidence(action, version, successful))
@@ -240,7 +240,7 @@ impl Store {
         )?;
         if !admission.as_ref().is_some_and(|a| {
             a.replay
-                || (matches!(a.disposition, law::LawDisposition::Accepted)
+                || (matches!(a.disposition, law::Disposition::Accepted)
                     && matches!(&evidence.outcome, Reading::Results(results) if results.is_empty()))
         }) {
             park_outcomes(

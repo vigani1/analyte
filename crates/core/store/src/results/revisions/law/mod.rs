@@ -6,15 +6,15 @@ use serde::{Deserialize, Serialize};
 
 /// Located whole-message rejection, retained so a retransmission reproduces AR.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct LawRejection {
+pub struct Rejection {
     /// One-based OBR occurrence in the original message.
     pub occurrence: u16,
     /// Fixed reason, without patient data.
-    pub reason: LawConflict,
+    pub reason: Conflict,
 }
 /// Specific correlation and execution conflicts.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum LawConflict {
+pub enum Conflict {
     /// No single authorized retained work item matches.
     UnknownWork,
     /// Retained work and returned context differ.
@@ -28,15 +28,15 @@ pub enum LawConflict {
 }
 /// Durable semantic disposition; execution notices never become command outcomes.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum LawDisposition {
+pub enum Disposition {
     /// All outcomes committed atomically.
     Accepted,
     /// Whole message rejected without applying any work/result outcome.
-    Rejected(LawRejection),
+    Rejected(Rejection),
 }
 /// One exact retained item and its original source context.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LawWork {
+pub struct Work {
     /// Retained machine-order identity.
     pub order: i64,
     /// Immutable one-based item index.
@@ -56,28 +56,28 @@ pub struct LawWork {
 }
 /// Bounded, host-correlated LAW input; the transaction rechecks retained ownership and progress.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LawCustody {
+pub struct Custody {
     /// Installed-machine and sender scope, encoded without concatenation ambiguity.
     pub scope: SourceText,
     /// Trusted MSH-10 identity.
     pub message: Identifier,
     /// Exact retained item coverage, including result-bearing groups in mixed messages.
-    pub work: Vec<LawWork>,
+    pub work: Vec<Work>,
     /// Whole-message validation refusal, before execution admission.
-    pub rejection: Option<LawRejection>,
+    pub rejection: Option<Rejection>,
     /// Host interpretation time, separate from analyzer times.
     pub recorded_at: i64,
 }
 
 pub(super) struct Admission {
-    pub(super) disposition: LawDisposition,
+    pub(super) disposition: Disposition,
     pub(super) replay: bool,
 }
 
 pub(super) fn admit(
     tx: &Transaction<'_>,
     receipt: &Receipt,
-    custody: &LawCustody,
+    custody: &Custody,
     rows: usize,
     reprocessing: bool,
 ) -> Result<Admission, Error> {
@@ -99,9 +99,9 @@ pub(super) fn admit(
         )?;
         if conflict {
             return Ok(Admission {
-                disposition: LawDisposition::Rejected(LawRejection {
+                disposition: Disposition::Rejected(Rejection {
                     occurrence: 1,
-                    reason: LawConflict::Identity,
+                    reason: Conflict::Identity,
                 }),
                 replay: false,
             });
@@ -109,21 +109,21 @@ pub(super) fn admit(
     }
     if let Some(rejection) = custody.rejection {
         return Ok(Admission {
-            disposition: LawDisposition::Rejected(rejection),
+            disposition: Disposition::Rejected(rejection),
             replay: false,
         });
     }
     let mut seen = std::collections::HashSet::new();
     for work in &custody.work {
         let rejection = |reason| Admission {
-            disposition: LawDisposition::Rejected(LawRejection {
+            disposition: Disposition::Rejected(Rejection {
                 occurrence: work.occurrence,
                 reason,
             }),
             replay: false,
         };
         if !seen.insert((work.order, work.item)) {
-            return Ok(rejection(LawConflict::Context));
+            return Ok(rejection(Conflict::Context));
         }
         let order = crate::machine_orders::load(tx, work.order)?;
         let Some(item) = order
@@ -131,7 +131,7 @@ pub(super) fn admit(
             .iter()
             .find(|i| i.index == work.item && i.placer == work.placer.as_str())
         else {
-            return Ok(rejection(LawConflict::UnknownWork));
+            return Ok(rejection(Conflict::UnknownWork));
         };
         if order.key.machine != receipt.metadata.machine
             || !item.coverage_known
@@ -140,7 +140,7 @@ pub(super) fn admit(
                 .original_command()
                 .is_none_or(|bytes| crate::digest(bytes) != work.command)
         {
-            return Ok(rejection(LawConflict::UnknownWork));
+            return Ok(rejection(Conflict::UnknownWork));
         }
         if let Some(incoming) = work.execution {
             if item
@@ -152,24 +152,24 @@ pub(super) fn admit(
                     OrderState::Done | OrderState::Rejected | OrderState::CancelConfirmed
                 )
             {
-                return Ok(rejection(LawConflict::Progression));
+                return Ok(rejection(Conflict::Progression));
             }
             let result_seen: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM interpretations i JOIN receipts r ON r.id=i.receipt,json_each(i.evidence,'$.outcome.Results') result WHERE json_extract(r.metadata,'$.machine')=?1 AND json_extract(result.value,'$.processing')='Production' AND json_extract(result.value,'$.identity.Resolved.observation.order.value')=?2 AND (?3 OR EXISTS(SELECT 1 FROM json_each(result.value,'$.parts') part WHERE json_extract(part.value,'$.source_status') IN ('F','C','X'))))",params![receipt.metadata.machine.as_str(),work.placer.as_str(),incoming != AwosExecution::InProgress],|r|r.get(0))?;
             let work_seen: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM law_work_history WHERE machine_order=?1 AND item_index=?2 AND json_extract(evidence,'$.execution') IS NULL AND (?3 OR json_extract(evidence,'$.complete')=1))",params![work.order,work.item,incoming != AwosExecution::InProgress],|r|r.get(0))?;
             let command_later: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM machine_order_item_history WHERE machine_order=?1 AND item_index=?2 AND (json_extract(evidence,'$.source_code') LIKE '%:CM' OR (?3!='InProgress' AND json_extract(evidence,'$.source_code') LIKE '%:IP')))",params![work.order,work.item,match incoming { AwosExecution::Scheduled => "Scheduled", AwosExecution::InProgress => "InProgress", AwosExecution::AnalyzerCancelled => "AnalyzerCancelled" }],|r|r.get(0))?;
             if result_seen || work_seen || command_later {
-                return Ok(rejection(LawConflict::Progression));
+                return Ok(rejection(Conflict::Progression));
             }
         } else if item
             .execution
             .as_ref()
             .is_some_and(|p| p.state == AwosExecution::AnalyzerCancelled)
         {
-            return Ok(rejection(LawConflict::Progression));
+            return Ok(rejection(Conflict::Progression));
         }
     }
     Ok(Admission {
-        disposition: LawDisposition::Accepted,
+        disposition: Disposition::Accepted,
         replay: false,
     })
 }
@@ -178,7 +178,7 @@ pub(super) fn write(
     tx: &Transaction<'_>,
     receipt: &Receipt,
     version: i64,
-    custody: &LawCustody,
+    custody: &Custody,
     admission: &Admission,
 ) -> Result<(), Error> {
     let receipt_key = key(&receipt.metadata.id)?;
@@ -194,7 +194,7 @@ pub(super) fn write(
             crate::document(custody)?
         ],
     )?;
-    if admission.replay || matches!(admission.disposition, LawDisposition::Rejected(_)) {
+    if admission.replay || matches!(admission.disposition, Disposition::Rejected(_)) {
         return Ok(());
     }
     for work in &custody.work {
@@ -218,4 +218,4 @@ pub(super) fn write(
 }
 
 mod listing;
-pub use listing::{AnalyzerCancelledItem, LawWorkEvidence};
+pub use listing::{AnalyzerCancelledItem, WorkEvidence};

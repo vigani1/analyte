@@ -1,5 +1,5 @@
 //! Lists protected LAW execution conditions and receipt-linked interpretation history.
-use super::{Error, LawCustody, LawDisposition, SourceText, params};
+use super::{Custody, Disposition, Error, SourceText, params};
 use crate::{MachineOrder, MachineOrderItem, Store};
 
 /// One actionable condition per AWOS; later CA receipts keep the same pagination identity.
@@ -12,7 +12,7 @@ pub struct AnalyzerCancelledItem {
     pub item: MachineOrderItem,
 }
 /// Protected source evidence for one retained AWOS.
-pub struct LawWorkEvidence {
+pub struct WorkEvidence {
     /// Stable pagination sequence from the physical receipt and interpretation.
     pub cursor: i64,
     /// Physical receipt identity.
@@ -22,9 +22,9 @@ pub struct LawWorkEvidence {
     /// Time received by the host.
     pub received_at: SourceText,
     /// Supplied interpretation and commit-order evidence.
-    pub custody: LawCustody,
+    pub custody: Custody,
     /// Committed whole-message outcome.
-    pub disposition: LawDisposition,
+    pub disposition: Disposition,
 }
 
 impl Store {
@@ -94,7 +94,7 @@ impl Store {
         order: i64,
         item: u16,
         after: i64,
-    ) -> Result<Vec<LawWorkEvidence>, Error> {
+    ) -> Result<Vec<WorkEvidence>, Error> {
         let mut query=self.db.prepare("SELECT m.rowid,m.receipt,m.version,m.evidence,m.disposition,r.metadata FROM law_messages m JOIN receipts r ON r.id=m.receipt WHERE m.rowid>?3 AND EXISTS(SELECT 1 FROM json_each(m.evidence,'$.work') w WHERE json_extract(w.value,'$.order')=?1 AND json_extract(w.value,'$.item')=?2) ORDER BY m.rowid LIMIT ?4")?;
         let rows = query.query_map(
             params![
@@ -123,7 +123,7 @@ impl Store {
                 return Err(Error::Corruption);
             }
             let metadata: analyte_model::ReceiptMetadata = serde_json::from_str(&metadata)?;
-            Ok(LawWorkEvidence {
+            Ok(WorkEvidence {
                 cursor,
                 receipt: serde_json::from_str(&receipt)?,
                 version,

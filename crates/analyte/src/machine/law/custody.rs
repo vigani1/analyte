@@ -1,19 +1,21 @@
 //! Prepares immutable LAW work references; the store admits execution inside its transaction.
-use super::{Digest, Error, Handle, Identifier, Machine, deadline};
+use crate::{deadline, installation::config::Machine};
 use analyte_hl7::law;
-use analyte_store::{LawConflict, LawCustody, LawRejection, LawWork};
+use analyte_model::{Digest, Identifier};
+use analyte_store::Handle;
+use analyte_store::law::{Conflict, Custody, Rejection, Work};
 
-pub(super) async fn plan(
+pub(crate) async fn plan(
     store: &Handle,
     machine: &Machine,
     results: Option<&law::Results<'_>>,
     rejection: Option<crate::orders::law::validation::Mismatch>,
-) -> Result<Option<LawCustody>, Error> {
+) -> Result<Option<Custody>, Error> {
     let Some(results) = results else {
         return Ok(None);
     };
     let message = results.message();
-    let header = law::CustodyHeader::new(message).ok_or(Error::LawHeader)?;
+    let header = law::CustodyHeader::new(message).ok_or(Error::Header)?;
     let mut custody = new_custody(machine, &header, rejection)?;
 
     if rejection.is_some() {
@@ -46,16 +48,16 @@ pub(super) async fn plan(
     for record in law::custody_records(message) {
         match record {
             law::CustodyRecord::Work { placer } => {
-                occurrence = occurrence.checked_add(1).ok_or(Error::LawObrOccurrence)?;
+                occurrence = occurrence.checked_add(1).ok_or(Error::ObrOccurrence)?;
                 let Some(placer) = placer else {
                     work = None;
                     continue;
                 };
                 work = retained_work(store, machine, placer, occurrence).await?;
                 if work.is_none() {
-                    custody.rejection = Some(LawRejection {
+                    custody.rejection = Some(Rejection {
                         occurrence,
-                        reason: LawConflict::UnknownWork,
+                        reason: Conflict::UnknownWork,
                     });
                     break;
                 }
@@ -73,9 +75,9 @@ pub(super) async fn plan(
                     .iter()
                     .any(|n| n.control().raw().as_ptr().addr() == segment.raw().as_ptr().addr())
                 {
-                    custody.rejection = Some(LawRejection {
+                    custody.rejection = Some(Rejection {
                         occurrence,
-                        reason: LawConflict::UnknownWork,
+                        reason: Conflict::UnknownWork,
                     });
                     break;
                 }
@@ -87,15 +89,15 @@ pub(super) async fn plan(
         custody.work.clear();
     }
     if !production && !results.status_notices().is_empty() {
-        custody.rejection = Some(LawRejection {
+        custody.rejection = Some(Rejection {
             occurrence: 1,
-            reason: LawConflict::Processing,
+            reason: Conflict::Processing,
         });
     }
     Ok(Some(custody))
 }
 
-pub(super) async fn work_conflict(
+pub(crate) async fn work_conflict(
     store: &Handle,
     machine: &Machine,
     results: Option<&law::Results<'_>>,
@@ -121,7 +123,7 @@ async fn retained_work(
     machine: &Machine,
     placer: &[u8],
     occurrence: u16,
-) -> Result<Option<LawWork>, Error> {
+) -> Result<Option<Work>, Error> {
     let placer = std::str::from_utf8(placer)?.to_owned();
     let target = machine.id.clone();
     let lookup = placer.clone();
@@ -140,11 +142,11 @@ async fn retained_work(
         .items
         .iter()
         .find(|i| i.placer == placer)
-        .ok_or(Error::RetainedLawItem)?;
+        .ok_or(Error::RetainedItem)?;
     let Some(command) = record.original_command() else {
         return Ok(None);
     };
-    Ok(Some(LawWork {
+    Ok(Some(Work {
         order: record.id,
         item: item.index,
         placer: Identifier::new(&placer)?,
@@ -160,23 +162,23 @@ fn new_custody(
     machine: &Machine,
     header: &law::CustodyHeader<'_>,
     rejection: Option<crate::orders::law::validation::Mismatch>,
-) -> Result<LawCustody, Error> {
+) -> Result<Custody, Error> {
     let scope = analyte_model::SourceText::new(&serde_json::to_string(&(
         machine.id.as_str(),
         header.application(),
         header.facility(),
     ))?)?;
     let message_id = Identifier::new(std::str::from_utf8(header.message_id())?)?;
-    Ok(LawCustody {
+    Ok(Custody {
         scope,
         message: message_id,
         work: Vec::new(),
-        rejection: rejection.map(|r| LawRejection {
+        rejection: rejection.map(|r| Rejection {
             occurrence: r.occurrence,
             reason: if r.segment == b"OBR" && r.field == 2 {
-                LawConflict::UnknownWork
+                Conflict::UnknownWork
             } else {
-                LawConflict::Context
+                Conflict::Context
             },
         }),
         recorded_at: jiff::Timestamp::now().as_second(),
@@ -189,4 +191,33 @@ fn execution_status(status: &law::ExecutionStatus) -> analyte_model::AwosExecuti
         law::ExecutionStatus::InProgress => analyte_model::AwosExecution::InProgress,
         law::ExecutionStatus::AnalyzerCancelled => analyte_model::AwosExecution::AnalyzerCancelled,
     }
+}
+
+/// LAW context and retained-work failures; none authorize a positive acknowledgement.
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    /// The source message lacks a valid custody header.
+    #[error("LAW header")]
+    Header,
+    /// The source contains more OBR records than custody can represent.
+    #[error("LAW OBR occurrence")]
+    ObrOccurrence,
+    /// Retained work has no matching authorized item.
+    #[error("retained LAW item")]
+    RetainedItem,
+    /// Retained-work comparison could not complete.
+    #[error(transparent)]
+    Validation(#[from] crate::orders::law::validation::ValidationError),
+    /// Storage could not establish durable custody.
+    #[error(transparent)]
+    Store(#[from] analyte_store::Error),
+    /// Source text exceeds a model bound.
+    #[error(transparent)]
+    Text(#[from] analyte_model::TextError),
+    /// Original source encoding is invalid.
+    #[error(transparent)]
+    Encoding(#[from] std::str::Utf8Error),
+    /// Protected evidence could not be encoded.
+    #[error(transparent)]
+    Json(#[from] serde_json::Error),
 }

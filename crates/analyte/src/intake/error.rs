@@ -2,21 +2,9 @@
 /// Operational failures while retaining or interpreting an already received message.
 #[derive(Debug, thiserror::Error)]
 pub enum IntakeError {
-    /// Required retained LAW context is unavailable or exceeds its bound.
-    #[error("LAW header")]
-    LawHeader,
-    /// Required retained LAW context is unavailable or exceeds its bound.
-    #[error("LAW component delimiter")]
-    LawComponentDelimiter,
-    /// Required retained LAW context is unavailable or exceeds its bound.
-    #[error("LAW OBR occurrence")]
-    LawObrOccurrence,
-    /// Required retained LAW context is unavailable or exceeds its bound.
-    #[error("retained LAW item")]
-    RetainedLawItem,
-    /// Retained work comparison failed operationally.
+    /// Protocol-specific intake failed before durable acceptance.
     #[error(transparent)]
-    Validation(#[from] crate::orders::law::validation::ValidationError),
+    Protocol(#[from] crate::machine::law::custody::Error),
     /// Durable custody or reconciliation failed; do not acknowledge success.
     #[error(transparent)]
     Store(#[from] analyte_store::Error),

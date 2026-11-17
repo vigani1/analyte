@@ -2,12 +2,12 @@
 use crate::{deadline, installation::config::Machine};
 mod bytes;
 mod error;
+use crate::machine::law::custody as law;
 use analyte_model::{Digest, Identifier, NamespacedId, ReceiptId, ReceiptMetadata};
 use analyte_store::{Handle, Interpretation, Reading, RevisionOutcome};
 pub(crate) use bytes::ByteReason;
 pub use error::IntakeError as Error;
 use std::fmt::Write;
-mod law;
 mod parking;
 mod reading;
 pub(crate) mod retained;
@@ -203,8 +203,8 @@ async fn persist_prepared(
         .await?;
     let (result, successful) = result;
     let successful = match result.law {
-        Some(analyte_store::LawDisposition::Accepted) => InterpretationOutcome::Accepted,
-        Some(analyte_store::LawDisposition::Rejected(rejection)) => {
+        Some(analyte_store::law::Disposition::Accepted) => InterpretationOutcome::Accepted,
+        Some(analyte_store::law::Disposition::Rejected(rejection)) => {
             InterpretationOutcome::WorkConflict(work_conflict.unwrap_or(
                 crate::orders::law::validation::Mismatch {
                     segment: b"OBR",
