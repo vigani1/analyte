@@ -1,6 +1,6 @@
 //! Drives ASTM connections and journals each data frame before ACK (ADR 0003).
 use super::connection_input::{self, Input};
-use super::driver::{Context, Effects, Failures, Flow};
+use super::driver::{self, Context, Effects, Flow, Run};
 use crate::intake::ByteReason;
 use crate::machine::hooks::Pause;
 mod error;
@@ -201,42 +201,24 @@ impl<'a, 'm> Host<'a, 'm> {
             );
         }
         actions.extend(self.dialog.step(self.start.elapsed(), event)?);
-        self.apply(actions.into(), conn, stop).await
+        driver::drain(self, actions, conn, stop).await
     }
-    async fn apply(
-        &mut self,
-        actions: Vec<Action>,
-        conn: &mut analyte_transport::Connection,
-        stop: &mut watch::Receiver<bool>,
-    ) -> Result<Flow, Error> {
-        let mut actions: VecDeque<_> = actions.into();
-        let mut failures = Failures::new();
-        let result = async {
-            while let Some(action) = actions.pop_front() {
-                self.effect(action, conn, stop, &mut actions, &mut failures)
-                    .await?;
-            }
-            Ok(Flow::Continue)
-        }
-        .await;
-        failures.finish(result)
-    }
+}
+
+impl driver::Drain for Host<'_, '_> {
+    type Action = Action;
     async fn effect(
         &mut self,
         action: Action,
-        conn: &mut analyte_transport::Connection,
-        stop: &mut watch::Receiver<bool>,
-        actions: &mut VecDeque<Action>,
-        failures: &mut Failures<Error>,
-    ) -> Result<(), Error> {
+        run: &mut Run<'_, Action, Error>,
+    ) -> Result<Flow, Error> {
         let settings = self.settings;
         match action {
             Action::Write(bytes) => {
-                conn.write(bytes).await?;
+                run.conn.write(bytes).await?;
             }
             Action::Store(id, number, bytes) => {
-                self.commit_frame(id, number, bytes, stop, actions, failures)
-                    .await?;
+                self.commit_frame(id, number, bytes, run).await?;
             }
             Action::Record(record) => {
                 if analyte_astm::starts_query(&record)
@@ -277,7 +259,7 @@ impl<'a, 'm> Host<'a, 'm> {
                 .await?;
             }
             Action::StoreFailed(_) => {
-                return Err(failures.take().unwrap_or(Error::CommitDeadline));
+                return Err(run.failures.take().unwrap_or(Error::CommitDeadline));
             }
             Action::LimitReached => return Err(Error::ResourceLimitRefusedTransfer),
             Action::Sent(end) => {
@@ -287,16 +269,17 @@ impl<'a, 'm> Host<'a, 'm> {
                 }
             }
         }
-        Ok(())
+        Ok(Flow::Continue)
     }
+}
+
+impl Host<'_, '_> {
     async fn commit_frame(
         &mut self,
         id: analyte_dialog::astm::CommitId,
         number: analyte_framing::astm::FrameNumber,
         bytes: Vec<u8>,
-        stop: &mut watch::Receiver<bool>,
-        actions: &mut VecDeque<Action>,
-        failures: &mut Failures<Error>,
+        run: &mut Run<'_, Action, Error>,
     ) -> Result<(), Error> {
         let settings = self.settings;
 
@@ -338,18 +321,19 @@ impl<'a, 'm> Host<'a, 'm> {
             self.machine
                 .machine()
                 .hooks
-                .pause(Pause::AstmCommitted, stop)
+                .pause(Pause::AstmCommitted, run.stop)
                 .await
                 .map_err(Error::from)?;
         }
         let event = match committed {
             Ok(_) => Event::Stored(id),
             Err(error) => {
-                failures.keep(Error::CommitRefused(error));
+                run.failures.keep(Error::CommitRefused(error));
                 Event::StoreFailed(id)
             }
         };
-        actions.extend(self.dialog.step(self.start.elapsed(), event)?);
+        run.actions
+            .extend(self.dialog.step(self.start.elapsed(), event)?);
 
         Ok(())
     }

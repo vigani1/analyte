@@ -2,7 +2,7 @@
 use crate::intake::ByteReason;
 use crate::machine::hooks::Pause;
 mod custody;
-use super::driver::{self, Context, Effects, Failures, Flow, Trigger};
+use super::driver::{self, Context, Effects, Flow, Run, Trigger};
 use crate::intake;
 use crate::machine::connection_input::Input;
 use crate::machine::receive;
@@ -14,7 +14,7 @@ use analyte_dialog::autolyser::{Action, Dialog, Event, Request};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
 pub(crate) use error::Error;
-use std::{collections::VecDeque, time::Instant};
+use std::time::Instant;
 use tokio::sync::watch;
 
 /// Where the host is between machine exchanges; recovery ends only with a completed report.
@@ -102,10 +102,10 @@ impl driver::ByteEffects for Host<'_, '_> {
         &mut self,
         byte: u8,
         conn: &mut analyte_transport::Connection,
-        _stop: &watch::Receiver<bool>,
+        stop: &mut watch::Receiver<bool>,
     ) -> Result<Flow, Error> {
         let actions = self.dialog.step(self.start.elapsed(), Event::Byte(byte))?;
-        self.apply(actions, conn).await
+        driver::drain(self, actions, conn, stop).await
     }
 }
 
@@ -151,7 +151,7 @@ impl Effects for Host<'_, '_> {
                         let actions = self
                             .dialog
                             .step(self.start.elapsed(), Event::Download(&worklist))?;
-                        if self.apply(actions, conn).await? == Flow::Stop {
+                        if driver::drain(self, actions, conn, stop).await? == Flow::Stop {
                             return Ok(Flow::Stop);
                         }
                         Vec::new()
@@ -159,7 +159,7 @@ impl Effects for Host<'_, '_> {
                         vec![Event::Poll(Request::Next)]
                     }
                 } else {
-                    if self.apply(actions, conn).await? == Flow::Stop {
+                    if driver::drain(self, actions, conn, stop).await? == Flow::Stop {
                         return Ok(Flow::Stop);
                     }
                     Vec::new()
@@ -174,7 +174,7 @@ impl Effects for Host<'_, '_> {
                 self.guard = Some(custody::reserve(store, machine.machine()).await?);
             }
             let actions = self.dialog.step(self.start.elapsed(), event)?;
-            if self.apply(actions, conn).await? == Flow::Stop {
+            if driver::drain(self, actions, conn, stop).await? == Flow::Stop {
                 return Ok(Flow::Stop);
             }
         }
@@ -212,8 +212,7 @@ impl<'a, 'm> Host<'a, 'm> {
         &mut self,
         token: analyte_dialog::autolyser::StoreId,
         raw: Vec<u8>,
-        actions: &mut VecDeque<Action>,
-        failures: &mut Failures<Error>,
+        run: &mut Run<'_, Action, Error>,
     ) -> Result<(), Error> {
         let id = ReceiptId::new();
         let stored = receive::custody::store_before_ack(
@@ -227,11 +226,12 @@ impl<'a, 'm> Host<'a, 'm> {
                 Event::Stored(token)
             }
             Err(error) => {
-                failures.keep(error.into());
+                run.failures.keep(error.into());
                 Event::StoreFailed(token)
             }
         };
-        actions.extend(self.dialog.step(self.start.elapsed(), event)?);
+        run.actions
+            .extend(self.dialog.step(self.start.elapsed(), event)?);
         Ok(())
     }
     async fn interpret_report(
@@ -251,87 +251,80 @@ impl<'a, 'm> Host<'a, 'm> {
     }
 }
 
-impl Host<'_, '_> {
-    async fn apply(
+impl driver::Drain for Host<'_, '_> {
+    type Action = Action;
+    async fn effect(
         &mut self,
-        actions: Vec<Action>,
-        conn: &mut analyte_transport::Connection,
+        action: Action,
+        run: &mut Run<'_, Action, Error>,
     ) -> Result<Flow, Error> {
         let machine = self.machine;
         let store = self.store;
-        let policy = self.settings.policy();
-        let mut actions: VecDeque<_> = actions.into();
-        let mut failures = Failures::new();
-        let result = async {
-            let mut close = false;
-            while let Some(action) = actions.pop_front() {
-                match action {
-                    Action::Write(bytes) => {
-                        receive::custody::write(conn, &bytes, ms(policy.acknowledgment_ms)).await?;
+        match action {
+            Action::Write(bytes) => {
+                let budget = ms(self.settings.policy().acknowledgment_ms);
+                receive::custody::write(run.conn, &bytes, budget).await?;
+            }
+            Action::Store(token, raw) => {
+                self.store_report(token, raw, run).await?;
+            }
+            Action::Report(_) => {
+                self.interpret_report(machine, store).await?;
+            }
+            Action::Park(error) => {
+                if self.work.is_active() {
+                    let code = outcome::parked(self.trigger, &error);
+                    self.work.refuse(store, code).await?;
+                    run.stop_when_drained();
+                }
+                self.phase = Phase::Recovering;
+                let reason = format!("Autolyser: {error}");
+                let parked = match self.receipt.take() {
+                    Some((id, _)) => {
+                        intake::failed_reading(store, machine.machine(), id, &reason).await
                     }
-                    Action::Store(token, raw) => {
-                        self.store_report(token, raw, &mut actions, &mut failures)
-                            .await?;
-                    }
-                    Action::Report(_) => {
-                        self.interpret_report(machine, store).await?;
-                    }
-                    Action::Park(error) => {
-                        if self.work.is_active() {
-                            let code = outcome::parked(self.trigger, &error);
-                            self.work.refuse(store, code).await?;
-                            close = true;
-                        }
-                        self.phase = Phase::Recovering;
-                        let reason = format!("Autolyser: {error}");
-                        let parked = match self.receipt.take() {
-                            Some((id, _)) => {
-                                intake::failed_reading(store, machine.machine(), id, &reason).await
-                            }
-                            None => {
-                                intake::park_bytes(
-                                    store,
-                                    machine,
-                                    Vec::new(),
-                                    ByteReason::Autolyser(&error),
-                                )
-                                .await
-                            }
-                        };
-                        parked?;
-                        custody::uncertain(store, self.guard, machine.machine(), &reason).await?;
-                    }
-                    Action::Empty => {
-                        self.receipt.take();
-                        if self.phase != Phase::Recovering {
-                            self.phase = Phase::Ready;
-                            custody::complete(store, &mut self.guard, machine.machine()).await?;
-                        }
-                    }
-                    Action::Insertion(reception) => {
-                        self.receipt.take();
-                        let ready = self.work.insertion(reception, store).await?;
-                        self.phase.after_insertion(ready);
-                        close |= !ready;
-                    }
-                    Action::Uncertain => {
-                        self.phase.busy();
-                        custody::uncertain(
+                    None => {
+                        intake::park_bytes(
                             store,
-                            self.guard,
-                            machine.machine(),
-                            "Autolyser poll response outcome uncertain",
+                            machine,
+                            Vec::new(),
+                            ByteReason::Autolyser(&error),
                         )
-                        .await?;
+                        .await
                     }
-                    Action::Refused(error) => return Err(error.into()),
-                    Action::Close => close = true,
-                    Action::Deadline(_) => {}
+                };
+                parked?;
+                custody::uncertain(store, self.guard, machine.machine(), &reason).await?;
+            }
+            Action::Empty => {
+                self.receipt.take();
+                if self.phase != Phase::Recovering {
+                    self.phase = Phase::Ready;
+                    custody::complete(store, &mut self.guard, machine.machine()).await?;
                 }
             }
-            Ok(if close { Flow::Stop } else { Flow::Continue })
+            Action::Insertion(reception) => {
+                self.receipt.take();
+                let ready = self.work.insertion(reception, store).await?;
+                self.phase.after_insertion(ready);
+                if !ready {
+                    run.stop_when_drained();
+                }
+            }
+            Action::Uncertain => {
+                self.phase.busy();
+                custody::uncertain(
+                    store,
+                    self.guard,
+                    machine.machine(),
+                    "Autolyser poll response outcome uncertain",
+                )
+                .await?;
+            }
+            Action::Refused(error) => return Err(error.into()),
+            Action::Close => run.stop_when_drained(),
+            Action::Deadline(_) => {}
         }
-        .await;
-        failures.finish(result)
+        Ok(Flow::Continue)
     }
 }
