@@ -1,5 +1,5 @@
 //! Controls test-only service startup and crash points.
-use crate::{Error, invalid};
+
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -39,17 +39,17 @@ impl Committed {
         self.reached.notify_one();
         let mut decision = self.decision.clone();
         tokio::select! {
-            () = crate::machine::stopping(stop) => Err(invalid("test commit hook stopped connection")),
+            () = crate::machine::stopping(stop) => Err(Error::Stopped),
             result = tokio::time::timeout(std::time::Duration::from_secs(5), async {
                 loop {
                     match *decision.borrow_and_update() {
                         Some(true) => return Ok(()),
-                        Some(false) => return Err(invalid("test commit hook stopped connection")),
+                        Some(false) => return Err(Error::Stopped),
                         None => (),
                     }
-                    decision.changed().await.map_err(|_| invalid("test commit hook control dropped"))?;
+                    decision.changed().await.map_err(|_| Error::ControlDropped)?;
                 }
-            }) => result.map_err(|_| invalid("test commit hook deadline"))?,
+            }) => result.map_err(|_| Error::Deadline)?,
         }
     }
 }
@@ -63,7 +63,7 @@ impl Control {
             self.hook.reached.notified(),
         )
         .await
-        .map_err(|_| invalid("test commit hook not reached"))
+        .map_err(|_| Error::NotReached)
     }
     /// Continues normal processing; this never directly writes an ACK.
     pub fn resume(&self) {
@@ -118,10 +118,7 @@ pub struct StoreProbe {
 }
 impl StoreProbe {
     pub(crate) fn publish(&self, store: &Arc<analyte_store::Handle>) -> Result<(), Error> {
-        *self
-            .store
-            .lock()
-            .map_err(|_| invalid("test probe poisoned"))? = Arc::downgrade(store);
+        *self.store.lock().map_err(|_| Error::ProbePoisoned)? = Arc::downgrade(store);
         self.ready.notify_one();
         Ok(())
     }
@@ -132,9 +129,9 @@ impl StoreProbe {
         tokio::time::timeout(std::time::Duration::from_secs(5), self.ready.notified()).await?;
         self.store
             .lock()
-            .map_err(|_| invalid("test probe poisoned"))?
+            .map_err(|_| Error::ProbePoisoned)?
             .upgrade()
-            .ok_or_else(|| invalid("test store closed"))
+            .ok_or(Error::StoreClosed)
     }
 }
 /// One-shot bounded pause on the dedicated store thread, never a runtime thread.
@@ -200,4 +197,30 @@ pub(crate) fn publish_store_probes(
         }
     }
     Ok(())
+}
+
+/// Specific failures of bounded synthetic test gates.
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    /// test commit hook stopped connection.
+    #[error("test commit hook stopped connection")]
+    Stopped,
+    /// test commit hook control dropped.
+    #[error("test commit hook control dropped")]
+    ControlDropped,
+    /// test commit hook deadline.
+    #[error("test commit hook deadline")]
+    Deadline,
+    /// test commit hook not reached.
+    #[error("test commit hook not reached")]
+    NotReached,
+    /// test probe poisoned.
+    #[error("test probe poisoned")]
+    ProbePoisoned,
+    /// test store closed.
+    #[error("test store closed")]
+    StoreClosed,
+    /// A gate wait exceeded its bounded timeout.
+    #[error(transparent)]
+    Wait(#[from] tokio::time::error::Elapsed),
 }

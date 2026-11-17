@@ -38,7 +38,7 @@ async fn rule7_service_close_waits_for_store_destruction() -> Result<(), Error> 
             release: released,
         }),
         1,
-        deadline()?,
+        crate::test_startup_deadline()?,
     )
     .await?;
     let close = close_store(Arc::new(store));

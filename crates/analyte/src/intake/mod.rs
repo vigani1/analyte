@@ -1,8 +1,10 @@
 //! Stores receipts, maps results, commits interpretations, revisions and deliveries, and parks failures.
 use crate::{deadline, installation::config::Machine};
+mod bytes;
 mod error;
 use analyte_model::{Digest, Identifier, NamespacedId, ReceiptId, ReceiptMetadata};
 use analyte_store::{Handle, Interpretation, Reading, RevisionOutcome};
+pub(crate) use bytes::ByteReason;
 pub use error::IntakeError as Error;
 use std::fmt::Write;
 mod law;
@@ -102,7 +104,7 @@ pub(crate) async fn interpret_with_location(
 ) -> Result<
     (
         InterpretationOutcome,
-        Option<crate::machine::error_location::Location>,
+        Option<crate::machine::hl7::error_location::Location>,
     ),
     Error,
 > {
@@ -118,11 +120,28 @@ pub(crate) async fn interpret_with_location(
         .hl7_options()
         .and_then(|options| {
             let payload = analyte_mapping::read::payload(&machine.snapshot, &receipt.raw).ok()?;
-            crate::machine::error_location::mapping_location(&mapping, &payload, options.terminator)
+            crate::machine::hl7::error_location::mapping_location(
+                &mapping,
+                &payload,
+                options.terminator,
+            )
         });
-    let accepted = persist_mapping(store, machine, id, mapping.into(), None)
-        .await?
-        .0;
+    // Preserve the vendor diagnostics historically retained for unreadable input.
+    let mapping = match mapping {
+        Ok(output) => Mapping::Mapped(output),
+        Err(error) => {
+            let reason = match machine.snapshot.effective().stack() {
+                analyte_config::Stack::Vidas(_) => format!("VIDAS interpretation: {error}"),
+                analyte_config::Stack::Autolyser(_) => format!("Autolyser interpretation: {error}"),
+                analyte_config::Stack::Poct(_) => format!("POCT interpretation: {error}"),
+                analyte_config::Stack::Astm(_)
+                | analyte_config::Stack::Hl7(_)
+                | analyte_config::Stack::Law(_) => error.to_string(),
+            };
+            Mapping::Parked(ParkReason::Diagnostic(reason))
+        }
+    };
+    let accepted = persist_mapping(store, machine, id, mapping, None).await?.0;
     Ok((accepted, location))
 }
 
@@ -442,7 +461,7 @@ pub(crate) async fn park_bytes(
     store: &Handle,
     machine: &Connection<'_>,
     bytes: Vec<u8>,
-    reason: &str,
+    reason: ByteReason<'_>,
 ) -> Result<(), Error> {
     let id = ReceiptId::new();
     let departures =
@@ -453,7 +472,7 @@ pub(crate) async fn park_bytes(
         driver: driver(machine)?,
         config_version: config_version(machine)?,
         config: machine.snapshot.canonical().as_bytes().to_vec(),
-        outcome: Reading::Failed(analyte_model::Reason::new(reason)?),
+        outcome: Reading::Failed(analyte_model::Reason::new(&reason.to_string())?),
     };
     store
         .request(deadline()?, move |s| {
@@ -463,15 +482,20 @@ pub(crate) async fn park_bytes(
     Ok(())
 }
 
-/// Saves vendor model evidence through the same revision and delivery transaction.
-/// Cancellation may leave a committed interpretation; never infer failure from timeout.
-pub(crate) async fn vendor_reading(
+/// Retains a parsed POCT Hello as connection context, never as a result transfer.
+pub(crate) async fn remember_hello(
     store: &Handle,
     machine: &Machine,
     id: ReceiptId,
-    output: analyte_mapping::Output,
 ) -> Result<(), Error> {
-    persist_mapping(store, machine, id, Mapping::Mapped(output), None).await?;
+    persist_mapping(
+        store,
+        machine,
+        id,
+        Mapping::Mapped(analyte_mapping::Output::default()),
+        None,
+    )
+    .await?;
     Ok(())
 }
 

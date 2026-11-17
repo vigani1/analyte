@@ -1,33 +1,37 @@
 //! Receives VIDAS uploads using configured checksum, suffix and timer rules.
+use crate::intake::ByteReason;
+mod orders;
+mod transfer_end;
+use self::transfer_end::VidasEnd;
 use super::connection_input::Input;
 use super::custody::{self, ms};
-use super::transfer_end::VidasEnd;
 use crate::intake;
-use crate::machine::error::SessionError as Error;
+mod error;
 use analyte_dialog::vidas::{Action, Config as DialogConfig, Dialog, Event, Timer};
 use analyte_framing::vidas::{Config, Decoder};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
 use analyte_vidas::syntax::Message;
+pub(crate) use error::Error;
 use std::{collections::VecDeque, time::Instant};
 use tokio::sync::watch;
 
 /// Dialog, decoder and timers cannot outlive their owning transport connection.
-pub(crate) struct ConnectionState {
-    pub(crate) dialog: Dialog,
-    pub(crate) decoder: Option<Decoder>,
-    pub(crate) suffix: Option<(u8, usize)>,
-    pub(crate) start: Instant,
-    pub(crate) actions: VecDeque<Action>,
-    pub(crate) active: Option<analyte_store::MachineOrder>,
-    pub(crate) requests: VecDeque<Message>,
-    pub(crate) idle: bool,
-    pub(crate) opened: bool,
-    pub(crate) end_code: VidasEnd,
-    pub(crate) cursor: String,
-    pub(crate) next_poll: Instant,
-    pub(crate) config: Config,
-    pub(crate) policy: DialogConfig,
+struct ConnectionState {
+    dialog: Dialog,
+    decoder: Option<Decoder>,
+    suffix: Option<(u8, usize)>,
+    start: Instant,
+    actions: VecDeque<Action>,
+    active: Option<analyte_store::MachineOrder>,
+    requests: VecDeque<Message>,
+    idle: bool,
+    opened: bool,
+    end_code: VidasEnd,
+    cursor: String,
+    next_poll: Instant,
+    config: Config,
+    policy: DialogConfig,
 }
 
 pub(super) async fn session(
@@ -169,7 +173,7 @@ impl ConnectionState {
                             store,
                             machine,
                             vec![byte],
-                            &format!("VIDAS framing: {error}"),
+                            ByteReason::VidasFrame(&error),
                         )
                         .await?;
                         return Err(error.into());
@@ -178,8 +182,7 @@ impl ConnectionState {
             } else if let Some((control, index)) = self.suffix {
                 if installed.suffix.get(index) != Some(&byte) {
                     self.end_code = VidasEnd::ControlSuffixMismatch;
-                    intake::park_bytes(store, machine, vec![byte], "VIDAS control suffix mismatch")
-                        .await?;
+                    intake::park_bytes(store, machine, vec![byte], ByteReason::VidasSuffix).await?;
                     return Err(Error::VidasControlSuffixMismatch);
                 }
                 if index.saturating_add(1) == installed.suffix.len() {
@@ -244,7 +247,7 @@ async fn process(
             Action::Store(packet) => {
                 let id = ReceiptId::new();
                 let operation = store_upload(store, machine, id, &packet.raw);
-                match custody::store_within(custody::budget(machine), operation).await {
+                match custody::store_before_ack(machine, operation).await {
                     Ok(()) => {
                         // The dialog expired its own commit deadline before accepting completion.
                         state
@@ -272,7 +275,9 @@ async fn process(
                         None => VidasEnd::TransferRefusedOrUnexpected,
                     };
                 }
-                let parked = intake::park_bytes(store, machine, Vec::new(), "VIDAS transfer incomplete or refused; retained transport journal requires reconciliation").await;
+                let parked =
+                    intake::park_bytes(store, machine, Vec::new(), ByteReason::VidasIncomplete)
+                        .await;
                 if let Err(error) = parked {
                     return Err(custody::effect_failure(failure, error.into()));
                 }
@@ -283,7 +288,7 @@ async fn process(
             Action::Complete => {
                 if let Some(order) = state.active.as_ref() {
                     if !state.requests.is_empty() {
-                        crate::orders::vidas::start_download(state)?;
+                        orders::start_download(state)?;
                     } else {
                         crate::orders::sending::complete(
                             store,
@@ -316,21 +321,7 @@ async fn store_upload(
     id: ReceiptId,
     raw: &[u8],
 ) -> Result<(), intake::Error> {
-    let time = intake::receive(store, machine, id, raw.to_vec()).await?;
-    let reading = super::interpretation::map(machine, id, time, raw);
-    match reading {
-        Ok(reading) => {
-            intake::vendor_reading(store, machine, id, reading).await?;
-        }
-        Err(error) => {
-            intake::failed_reading(
-                store,
-                machine,
-                id,
-                &format!("VIDAS interpretation: {error}"),
-            )
-            .await?;
-        }
-    }
-    Ok::<_, intake::Error>(())
+    intake::receive(store, machine, id, raw.to_vec()).await?;
+    intake::interpret(store, machine, id).await?;
+    Ok(())
 }

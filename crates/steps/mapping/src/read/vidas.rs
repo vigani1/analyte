@@ -38,7 +38,7 @@ pub fn framing(
         | Stack::Autolyser(_)
         | Stack::Astm(analyte_config::RecordTransport::Folder(_))
         | Stack::Hl7(analyte_config::RecordTransport::Folder(_)) => {
-            return Err(Error::Context("VIDAS settings missing"));
+            return Err(Error::Context(super::Context::VidasSettingsMissing));
         }
     };
     let installed = &settings.policy();

@@ -1,5 +1,5 @@
 //! Records Autolyser poll custody and blocks R while its outcome is uncertain.
-use crate::machine::error::SessionError as Error;
+use super::Error;
 use crate::{deadline, installation::config::Machine};
 use analyte_model::{Identifier, Reason};
 use analyte_store::{Audit, Handle, PollIntentId, PollIntentState, PollOutcome};

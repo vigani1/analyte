@@ -2,11 +2,13 @@
 use super::connection_input::Input;
 use super::custody::{self, ms};
 use crate::intake;
-use crate::machine::error::SessionError as Error;
+use crate::intake::ByteReason;
+mod error;
 use analyte_dialog::poct::{CommitOutcome, Dialog, DialogAction, DialogConfig, DialogEvent};
 use analyte_model::ReceiptId;
 use analyte_poct::{Body, ControlId, Header, Message, Timestamp};
 use analyte_store::Handle;
+pub(crate) use error::Error;
 use std::{collections::VecDeque, time::Instant};
 use tokio::sync::watch;
 
@@ -170,13 +172,8 @@ impl ConnectionState {
         } = self;
         for byte in bytes {
             if raw.len() >= limits.message_bytes {
-                intake::park_bytes(
-                    store,
-                    machine,
-                    std::mem::take(raw),
-                    "POCT XML message byte limit exceeded",
-                )
-                .await?;
+                intake::park_bytes(store, machine, std::mem::take(raw), ByteReason::PoctLimit)
+                    .await?;
                 return Err(Error::PoctMessageLimitExceeded);
             }
             raw.push(byte);
@@ -185,7 +182,7 @@ impl ConnectionState {
                     store,
                     machine,
                     std::mem::take(raw),
-                    "POCT partial XML on cancellation",
+                    ByteReason::PoctCancelled,
                 )
                 .await?;
                 return Ok(true);
@@ -199,7 +196,7 @@ impl ConnectionState {
                     store,
                     machine,
                     std::mem::take(raw),
-                    "POCT partial XML exceeded dialog deadline",
+                    ByteReason::PoctDeadline,
                 )
                 .await?;
                 return Ok(true);
@@ -234,13 +231,7 @@ impl ConnectionState {
     async fn close(self, machine: &intake::Connection<'_>, store: &Handle) -> Result<(), Error> {
         let raw = self.raw;
         if !raw.is_empty() {
-            intake::park_bytes(
-                store,
-                machine,
-                raw,
-                "POCT incomplete XML on timeout or disconnect",
-            )
-            .await?;
+            intake::park_bytes(store, machine, raw, ByteReason::PoctIncomplete).await?;
         }
         Ok(())
     }
@@ -261,7 +252,7 @@ async fn parse_message(
         Err(error) => {
             let reference = analyte_poct::hello_error_reference(&wire, limits);
             let ack_error = error.acknowledgement_error();
-            intake::park_bytes(store, machine, wire, &format!("POCT syntax: {error}")).await?;
+            intake::park_bytes(store, machine, wire, ByteReason::PoctSyntax(&error)).await?;
             if let Some(reference) = reference {
                 let actions = dialog.step(
                     start.elapsed(),
@@ -292,75 +283,96 @@ async fn process(
     let limits = super::interpretation::poct_limits(settings);
     let send_timeout_ms = settings.timeouts().send_timeout_ms();
     let mut actions: VecDeque<_> = actions.into();
-    while let Some(action) = actions.pop_front() {
-        match action {
-            DialogAction::InspectHello {
-                device_id: _,
-                capabilities: _,
-            } => {
-                actions.extend(dialog.step(start.elapsed(), DialogEvent::HelloDecision(true))?);
-            }
-            DialogAction::Store { ticket, message } => {
-                let operation = store_message(store, machine, &message);
-                let outcome = match custody::store_within(custody::budget(machine), operation).await
-                {
-                    Ok(outcome) => outcome,
-                    Err(error) => {
-                        tracing::error!(machine = machine.id.as_str(), error_kind = %error, "POCT custody failed");
-                        CommitOutcome::Failed
-                    }
-                };
-                actions.extend(
-                    dialog.step(start.elapsed(), DialogEvent::Committed { ticket, outcome })?,
-                );
-            }
-            DialogAction::Park { message, reason } => {
-                intake::park_bytes(store, machine, message.document().raw().to_vec(), reason)
-                    .await?;
-            }
-            DialogAction::Send { control_id, body } => {
-                let mut limits = limits;
-                limits.message_bytes = limits.message_bytes.min(dialog.outbound_message_limit());
-                let message = analyte_poct::encode(
-                    &Header {
-                        control_id,
-                        created: Timestamp::parse(
-                            &jiff::Timestamp::now()
-                                .strftime("%Y-%m-%dT%H:%M:%S+00:00")
-                                .to_string(),
-                        )?,
-                    },
-                    &body,
-                    limits,
-                )?;
-                custody::write(conn, message.document().raw(), ms(send_timeout_ms)).await?;
-            }
-            DialogAction::ReadEnabled(_) => {}
-            DialogAction::Deferred(message) => {
-                intake::park_bytes(
-                    store,
-                    machine,
-                    message.document().raw().to_vec(),
-                    "POCT message deferred by bounded custody queue",
-                )
-                .await?;
-                return Err(Error::PoctBackpressureViolated);
-            }
-            DialogAction::TopicComplete => {
-                actions.extend(dialog.step(start.elapsed(), DialogEvent::Finish)?);
-            }
-            DialogAction::Close { normal, unresolved } => {
-                if !normal || !unresolved.is_empty() {
-                    let unresolved = analyte_dialog::poct::ticket_evidence(&unresolved);
-                    intake::park_bytes(store, machine, Vec::new(), &format!(
-                        "POCT dialog closure: normal={normal}; unresolved custody tickets: {unresolved}; inspect retained transport journal"
-                    )).await?;
+    let mut failure = None;
+    let result = async {
+        while let Some(action) = actions.pop_front() {
+            match action {
+                DialogAction::InspectHello {
+                    device_id: _,
+                    capabilities: _,
+                } => {
+                    actions.extend(dialog.step(start.elapsed(), DialogEvent::HelloDecision(true))?);
                 }
-                return Ok(true);
+                DialogAction::Store { ticket, message } => {
+                    let operation = store_message(store, machine, &message);
+                    let outcome = match custody::store_before_ack(machine, operation).await {
+                        Ok(outcome) => outcome,
+                        Err(error) => {
+                            failure = Some(Error::from(error));
+                            CommitOutcome::Failed
+                        }
+                    };
+                    actions.extend(
+                        dialog.step(start.elapsed(), DialogEvent::Committed { ticket, outcome })?,
+                    );
+                }
+                DialogAction::Park { message, reason } => {
+                    intake::park_bytes(
+                        store,
+                        machine,
+                        message.document().raw().to_vec(),
+                        ByteReason::PoctDialog(reason),
+                    )
+                    .await?;
+                }
+                DialogAction::Send { control_id, body } => {
+                    let mut limits = limits;
+                    limits.message_bytes =
+                        limits.message_bytes.min(dialog.outbound_message_limit());
+                    let message = analyte_poct::encode(
+                        &Header {
+                            control_id,
+                            created: Timestamp::parse(
+                                &jiff::Timestamp::now()
+                                    .strftime("%Y-%m-%dT%H:%M:%S+00:00")
+                                    .to_string(),
+                            )?,
+                        },
+                        &body,
+                        limits,
+                    )?;
+                    custody::write(conn, message.document().raw(), ms(send_timeout_ms)).await?;
+                }
+                DialogAction::ReadEnabled(_) => {}
+                DialogAction::Deferred(message) => {
+                    intake::park_bytes(
+                        store,
+                        machine,
+                        message.document().raw().to_vec(),
+                        ByteReason::PoctDeferred,
+                    )
+                    .await?;
+                    return Err(Error::PoctBackpressureViolated);
+                }
+                DialogAction::TopicComplete => {
+                    actions.extend(dialog.step(start.elapsed(), DialogEvent::Finish)?);
+                }
+                DialogAction::Close { normal, unresolved } => {
+                    if !normal || !unresolved.is_empty() {
+                        let unresolved = analyte_dialog::poct::ticket_evidence(&unresolved);
+                        intake::park_bytes(
+                            store,
+                            machine,
+                            Vec::new(),
+                            ByteReason::PoctClosure {
+                                normal,
+                                unresolved: &unresolved,
+                            },
+                        )
+                        .await?;
+                    }
+                    return Ok(true);
+                }
             }
         }
+        Ok(false)
     }
-    Ok(false)
+    .await;
+    match (failure, result) {
+        (Some(error), Ok(_)) => Err(error),
+        (Some(error), Err(effect)) => Err(custody::effect_failure(Some(error), effect)),
+        (None, result) => result,
+    }
 }
 
 async fn store_message(
@@ -372,33 +384,30 @@ async fn store_message(
     intake::receive(store, machine, id, message.document().raw().to_vec()).await?;
     match message.body() {
         Body::PatientObservations(_) | Body::NonPatientObservations(_) => {
-            let receipt = store
+            intake::interpret(store, machine, id).await?;
+            // This fresh receipt has exactly one interpretation. POCT promises
+            // readable custody even when mapped findings require operator review.
+            let readable = store
                 .request(crate::deadline()?, move |s| {
-                    s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
+                    let evidence = s
+                        .interpretation(id, 1)?
+                        .ok_or(analyte_store::Error::Corruption)?;
+                    Ok(matches!(
+                        evidence.outcome,
+                        analyte_store::Reading::Results(_)
+                    ))
                 })
                 .await?;
-            match super::interpretation::map_retained(store, machine, &receipt).await {
-                Ok(reading) => {
-                    intake::vendor_reading(store, machine, id, reading).await?;
-                }
-                Err(error) => {
-                    intake::failed_reading(
-                        store,
-                        machine,
-                        id,
-                        &format!("POCT interpretation: {error}"),
-                    )
-                    .await?;
-                    return Ok(CommitOutcome::ApplicationError(
-                        analyte_poct::ApplicationError::UnsupportedValue,
-                    ));
-                }
+            if !readable {
+                return Ok(CommitOutcome::ApplicationError(
+                    analyte_poct::ApplicationError::UnsupportedValue,
+                ));
             }
         }
         Body::Hello { .. } => {
             // Mark the complete, parsed Hello as connection context. Transport
             // journal fragments are also receipts, but are not interpreted Hellos.
-            intake::vendor_reading(store, machine, id, analyte_mapping::Output::default()).await?;
+            intake::remember_hello(store, machine, id).await?;
         }
         Body::Status { .. }
         | Body::EndTopic(_)

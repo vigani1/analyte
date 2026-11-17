@@ -1,9 +1,11 @@
 //! Turns POCT reviewer events into ordered host actions without I/O.
 //! Kept whole: The POCT conversation state transitions and timeout decisions form one protocol dialog.
+mod parking;
 use analyte_poct::{
     AckKind, ApplicationError, Body, Capabilities, ControlId, EscapeReason, Message, Nullable,
     Outbound, TerminationReason,
 };
+pub use parking::ParkReason;
 use std::{
     collections::{BTreeSet, VecDeque},
     time::Duration,
@@ -133,7 +135,7 @@ pub enum DialogAction {
         /// Exact rejected message, never processed as an accepted result.
         message: Box<Message>,
         /// Protocol reason without payloads.
-        reason: &'static str,
+        reason: ParkReason,
     },
     /// Build and issue this message in action order; host supplies creation time.
     Send {
@@ -362,7 +364,7 @@ impl Dialog {
         if self.received_ids.contains(&reference) {
             return self.refuse_protocol(
                 message,
-                "POCT reused incoming control ID",
+                ParkReason::ReusedControlId,
                 EscapeReason::Other,
                 actions,
             );
@@ -379,7 +381,7 @@ impl Dialog {
             else {
                 return self.refuse_protocol(
                     message,
-                    "POCT conversation control-ID budget exhausted",
+                    ParkReason::ControlIdBudget,
                     EscapeReason::CannotComplete,
                     actions,
                 );
@@ -481,7 +483,7 @@ impl Dialog {
             Body::KeepAlive => {
                 actions.push(DialogAction::Park {
                     message,
-                    reason: "POCT unsupported Keep Alive",
+                    reason: ParkReason::KeepAlive,
                 });
                 return self.unexpected(reference, actions);
             }
@@ -550,9 +552,9 @@ impl Dialog {
             actions.push(DialogAction::Park {
                 message,
                 reason: if supported {
-                    "POCT Hello rejected by host policy"
+                    ParkReason::HelloPolicy
                 } else {
-                    "POCT Hello capabilities could not be interpreted"
+                    ParkReason::HelloCapabilities
                 },
             });
             self.send(
@@ -681,7 +683,7 @@ impl Dialog {
     fn refuse_protocol(
         &mut self,
         message: Box<Message>,
-        reason: &'static str,
+        reason: ParkReason,
         detail: EscapeReason,
         actions: &mut Vec<DialogAction>,
     ) -> Result<(), Error> {

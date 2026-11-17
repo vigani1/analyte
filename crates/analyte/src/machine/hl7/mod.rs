@@ -1,11 +1,14 @@
 //! Drives HL7 connections and chooses ACKs after durable interpretation.
+use crate::intake::ByteReason;
+pub(crate) mod error_location;
 use super::connection_input::{self, Input};
 use crate::intake;
-use crate::machine::error::SessionError as Error;
+mod error;
 use crate::orders::outcome::Code;
 use analyte_dialog::hl7::{Action, Config, Dialog, Event};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
+pub(crate) use error::Error;
 use std::{
     collections::{BTreeMap, VecDeque},
     time::{Duration, Instant},
@@ -46,6 +49,7 @@ struct ConnectionState {
     queries: Option<crate::orders::hl7::Connection>,
     input_evidence: connection_input::Custody,
     write_error: Option<analyte_transport::Error>,
+    commit_error: Option<Error>,
 }
 
 impl ConnectionState {
@@ -83,6 +87,7 @@ impl ConnectionState {
             queries,
             input_evidence,
             write_error,
+            commit_error: None,
         })
     }
     async fn receive_loop(
@@ -175,13 +180,26 @@ impl ConnectionState {
         stop: &mut watch::Receiver<bool>,
     ) -> Result<bool, Error> {
         let mut actions: VecDeque<_> = self.dialog.step(self.start.elapsed(), event)?.into();
-        while let Some(action) = actions.pop_front() {
-            if self
-                .effect(action, machine, store, conn, stop, &mut actions)
-                .await?
-            {
-                return Ok(true);
+        let result = async {
+            while let Some(action) = actions.pop_front() {
+                if self
+                    .effect(action, machine, store, conn, stop, &mut actions)
+                    .await?
+                {
+                    return Ok(true);
+                }
             }
+            Ok(false)
+        }
+        .await;
+        if let Some(error) = self.commit_error.take() {
+            return Err(match result {
+                Ok(_) => error,
+                Err(effect) => super::custody::effect_failure(Some(error), effect),
+            });
+        }
+        if result? {
+            return Ok(true);
         }
         if let Some(error) = self.write_error.take() {
             return Err(error.into());
@@ -272,11 +290,11 @@ impl ConnectionState {
             }
             Action::Deadline(next) => self.wake = next,
             Action::Rejected(error, bytes) => {
-                intake::park_bytes(store, machine, bytes, &error.to_string()).await?;
+                intake::park_bytes(store, machine, bytes, ByteReason::Mllp(&error)).await?;
             }
             Action::Parked(bytes, error) => {
                 self.pending.clear();
-                intake::park_bytes(store, machine, bytes, &error.to_string()).await?;
+                intake::park_bytes(store, machine, bytes, ByteReason::Hl7Dialog(&error)).await?;
             }
             Action::QueueFull(bytes) | Action::Unmatched(bytes) => {
                 return self.refuse_message(machine, store, bytes).await;
@@ -341,11 +359,8 @@ impl ConnectionState {
         actions: &mut VecDeque<Action>,
     ) -> Result<(), Error> {
         let id = ReceiptId::new();
-        match super::custody::store_within(
-            super::custody::budget(machine),
-            intake::receive(store, machine, id, raw),
-        )
-        .await
+        match super::custody::store_before_ack(machine, intake::receive(store, machine, id, raw))
+            .await
         {
             Ok(_) => {
                 if self.pending.len() >= 2 {
@@ -358,11 +373,7 @@ impl ConnectionState {
                 );
             }
             Err(error) => {
-                tracing::error!(
-                    machine = machine.id.as_str(),
-                    error_kind = %error,
-                    "HL7 durable commit refused"
-                );
+                self.commit_error = Some(error.into());
                 actions.extend(
                     self.dialog
                         .step(self.start.elapsed(), Event::CommitFailed(token))?,
@@ -389,7 +400,7 @@ impl ConnectionState {
         } else {
             Event::NotInterpretable(
                 token,
-                super::error_location::build(location.as_ref(), b"207", b"operator-review"),
+                error_location::build(location.as_ref(), b"207", b"operator-review"),
                 false,
             )
         };
@@ -499,13 +510,7 @@ impl ConnectionState {
         store: &Handle,
         bytes: Vec<u8>,
     ) -> Result<bool, Error> {
-        intake::park_bytes(
-            store,
-            machine,
-            bytes,
-            "HL7 unsolicited message or queue overflow",
-        )
-        .await?;
+        intake::park_bytes(store, machine, bytes, ByteReason::Hl7Unsolicited).await?;
         Err(Error::Hl7MessageRefused)
     }
     async fn close(
@@ -515,7 +520,7 @@ impl ConnectionState {
         mut result: Result<(), Error>,
     ) -> Result<(), Error> {
         let cleanup = self.input_evidence.retain(store, machine).await;
-        super::custody::retain_cleanup(&mut result, cleanup);
+        super::custody::retain_cleanup(&mut result, cleanup.map_err(Into::into));
         // A cancelled or failed host operation must expose partial input as well.
         let actions = match self.dialog.step(self.start.elapsed(), Event::Disconnect) {
             Ok(actions) => actions,
@@ -526,7 +531,8 @@ impl ConnectionState {
         };
         for action in actions {
             if let Action::Rejected(error, bytes) = action {
-                let cleanup = intake::park_bytes(store, machine, bytes, &error.to_string()).await;
+                let cleanup =
+                    intake::park_bytes(store, machine, bytes, ByteReason::Mllp(&error)).await;
                 super::custody::retain_cleanup(&mut result, cleanup.map_err(Into::into));
             }
         }
