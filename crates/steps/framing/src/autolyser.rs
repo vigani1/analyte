@@ -63,7 +63,7 @@ pub fn verified(raw: &[u8]) -> Result<&[u8], Error> {
 pub const STX: u8 = 0x02;
 /// Positive initialization acknowledgment (Rev18 p.175).
 pub const ACK: u8 = 0x06;
-/// End of a poll or report (Rev18 pp.177?179).
+/// End of a poll or report (Rev18 pp.177-179).
 pub const EOT: u8 = 0x04;
 /// Empty report queue (Rev18 p.177).
 pub const NAK: u8 = 0x15;
