@@ -119,6 +119,14 @@ impl ConnectionState {
                     {
                         return Ok(());
                     }
+                    #[cfg(feature = "test-hooks")]
+                    if self.ready
+                        && self.guard.is_none()
+                        && self.active.is_none()
+                        && let Some(hook) = &machine.hooks.autolyser_quiescent
+                    {
+                        hook.pause(stop).await.map_err(Error::TestHook)?;
+                    }
                     Vec::new()
                 }
                 Input::Tick => {
