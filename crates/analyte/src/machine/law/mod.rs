@@ -10,7 +10,7 @@ use crate::orders::outcome::Code;
 pub(crate) use error::Error;
 pub(super) mod independent;
 use crate::intake;
-use crate::orders::law::{Connection, Reply};
+use crate::orders::law::{LawOrderLink, Reply};
 use analyte_dialog::law::{self as protocol, Action, Dialog, Event, Interpretation, Link};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
@@ -21,7 +21,7 @@ use std::{
 use tokio::sync::{oneshot, watch};
 
 pub(super) async fn session(
-    machine: &intake::Connection<'_>,
+    machine: &intake::ConnectionEvidence<'_>,
     settings: &analyte_config::LawStack,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
@@ -30,14 +30,14 @@ pub(super) async fn session(
     session_with_outbound(machine, settings, store, conn, stop, None).await
 }
 async fn session_with_outbound(
-    machine: &intake::Connection<'_>,
+    machine: &intake::ConnectionEvidence<'_>,
     settings: &analyte_config::LawStack,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
     stop: watch::Receiver<bool>,
     outbound: Option<&tokio::sync::mpsc::Sender<independent::Work>>,
 ) -> Result<(), Error> {
-    let mut orders = Connection::new()?;
+    let mut orders = LawOrderLink::new()?;
     driver::run(
         || {
             let mut host = Host::new(machine, settings, store, &mut orders, Mode::inbound())?;
@@ -58,11 +58,11 @@ async fn session_with_outbound(
 /// Owns side effects and reservation cleanup. A cancelled store request may still commit;
 /// the dialog cannot accept it or issue an ACK until its completion is driven explicitly.
 struct Host<'a, 'm> {
-    machine: &'a intake::Connection<'m>,
+    machine: &'a intake::ConnectionEvidence<'m>,
     settings: &'a analyte_config::LawStack,
     link: Link,
     store: &'a Handle,
-    orders: &'a mut Connection,
+    orders: &'a mut LawOrderLink,
     dialog: Dialog,
     mode: Mode<'a>,
     clock: Instant,
@@ -76,10 +76,10 @@ struct Host<'a, 'm> {
 }
 impl<'a, 'm> Host<'a, 'm> {
     fn new(
-        machine: &'a intake::Connection<'m>,
+        machine: &'a intake::ConnectionEvidence<'m>,
         settings: &'a analyte_config::LawStack,
         store: &'a Handle,
-        orders: &'a mut Connection,
+        orders: &'a mut LawOrderLink,
         mode: Mode<'a>,
     ) -> Result<Self, Error> {
         let link = match mode {
@@ -332,7 +332,7 @@ impl<'a, 'm> Host<'a, 'm> {
         if let (Reply::Followup { response, work }, Some(sender)) = (&reply, self.outbound) {
             let (notify, wait) = oneshot::channel();
             let pending = independent::Work {
-                orders: std::mem::replace(self.orders, Connection::new()?),
+                orders: std::mem::replace(self.orders, LawOrderLink::new()?),
                 message: work.clone(),
                 ready: wait,
             };

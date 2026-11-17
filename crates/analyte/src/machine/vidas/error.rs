@@ -7,15 +7,6 @@ pub(crate) enum Error {
     /// VIDAS control suffix mismatch.
     #[error("VIDAS control suffix mismatch")]
     ControlSuffixMismatch,
-    /// VIDAS mapped request missing.
-    #[error("VIDAS mapped request missing")]
-    MappedRequestMissing,
-    /// VIDAS order poll deadline overflow.
-    #[error("VIDAS order poll deadline overflow")]
-    OrderPollDeadlineOverflow,
-    /// VIDAS received another stack's order.
-    #[error("VIDAS received another stack's order")]
-    ForeignStackOrder,
     /// VIDAS transfer parked; reconcile before reconnect.
     #[error("VIDAS transfer parked; reconcile before reconnect")]
     TransferParkedReconcileBeforeReconnect,

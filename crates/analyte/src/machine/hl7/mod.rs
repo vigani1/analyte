@@ -18,7 +18,7 @@ use std::{
 use tokio::sync::watch;
 
 pub(super) async fn session(
-    machine: &intake::Connection<'_>,
+    machine: &intake::ConnectionEvidence<'_>,
     settings: &analyte_config::Hl7Stack,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
@@ -56,7 +56,7 @@ struct ConnectionState {
     start: Instant,
     wake: Option<Duration>,
     pending: BTreeMap<(u64, u64), ReceiptId>,
-    queries: Option<crate::orders::hl7::Connection>,
+    queries: Option<crate::orders::hl7::Hl7OrderLink>,
     input_evidence: connection_input::Custody,
     write_error: Option<analyte_transport::Error>,
     commit_error: Option<Error>,
@@ -85,7 +85,7 @@ impl ConnectionState {
             .as_ref()
             .is_some_and(|o| o.query().is_some() || o.send().is_some());
         let queries = if enabled {
-            Some(crate::orders::hl7::Connection::new(options)?)
+            Some(crate::orders::hl7::Hl7OrderLink::new(options)?)
         } else {
             None
         };
@@ -108,7 +108,7 @@ impl ConnectionState {
     async fn receive_bytes(
         &mut self,
         bytes: Vec<u8>,
-        machine: &intake::Connection<'_>,
+        machine: &intake::ConnectionEvidence<'_>,
         store: &Handle,
         conn: &mut analyte_transport::Connection,
         stop: &mut watch::Receiver<bool>,
@@ -132,7 +132,7 @@ impl ConnectionState {
     async fn process(
         &mut self,
         event: Event<'_>,
-        machine: &intake::Connection<'_>,
+        machine: &intake::ConnectionEvidence<'_>,
         store: &Handle,
         conn: &mut analyte_transport::Connection,
         stop: &mut watch::Receiver<bool>,
@@ -167,7 +167,7 @@ impl ConnectionState {
     async fn effect(
         &mut self,
         action: Action,
-        machine: &intake::Connection<'_>,
+        machine: &intake::ConnectionEvidence<'_>,
         store: &Handle,
         conn: &mut analyte_transport::Connection,
         stop: &mut watch::Receiver<bool>,
@@ -270,7 +270,7 @@ impl ConnectionState {
     async fn answer_query(
         &mut self,
         request: QueryRequest,
-        machine: &intake::Connection<'_>,
+        machine: &intake::ConnectionEvidence<'_>,
         store: &Handle,
         stop: &mut watch::Receiver<bool>,
         actions: &mut VecDeque<Action>,
@@ -324,7 +324,7 @@ impl ConnectionState {
         &mut self,
         token: analyte_dialog::hl7::ReceiptId,
         raw: Vec<u8>,
-        machine: &intake::Connection<'_>,
+        machine: &intake::ConnectionEvidence<'_>,
         store: &Handle,
         actions: &mut VecDeque<Action>,
     ) -> Result<(), Error> {
@@ -359,7 +359,7 @@ impl ConnectionState {
     async fn interpret(
         &mut self,
         token: analyte_dialog::hl7::ReceiptId,
-        machine: &intake::Connection<'_>,
+        machine: &intake::ConnectionEvidence<'_>,
         store: &Handle,
         actions: &mut VecDeque<Action>,
     ) -> Result<(), Error> {
@@ -385,7 +385,7 @@ impl ConnectionState {
     async fn display_outcome(
         &mut self,
         outcome: DisplayOutcome,
-        machine: &intake::Connection<'_>,
+        machine: &intake::ConnectionEvidence<'_>,
         store: &Handle,
     ) -> Result<(), Error> {
         let DisplayOutcome {
@@ -480,7 +480,7 @@ impl ConnectionState {
     }
     async fn refuse_message(
         &self,
-        machine: &intake::Connection<'_>,
+        machine: &intake::ConnectionEvidence<'_>,
         store: &Handle,
         bytes: Vec<u8>,
     ) -> Result<bool, Error> {

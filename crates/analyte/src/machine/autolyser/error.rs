@@ -7,15 +7,9 @@ pub(crate) enum Error {
     /// Autolyser previous poll requires operator reconciliation before R can advance.
     #[error("Autolyser previous poll requires operator reconciliation before R can advance")]
     PreviousPollRequiresOperatorReconciliationBeforeRCanAdvance,
-    /// Autolyser received another stack's order.
-    #[error("Autolyser received another stack's order")]
-    ForeignStackOrder,
     /// Autolyser report receipt missing.
     #[error("Autolyser report receipt missing")]
     ReportReceiptMissing,
-    /// Unexpected Autolyser insertion outcome.
-    #[error("unexpected Autolyser insertion outcome")]
-    UnexpectedAutolyserInsertionOutcome,
     /// An outbound command could not represent the mapped order.
     #[error(transparent)]
     OrderMapping(#[from] analyte_mapping::OrderMappingError),

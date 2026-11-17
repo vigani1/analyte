@@ -17,7 +17,7 @@ use std::{
 use tokio::sync::watch;
 
 pub(super) async fn session(
-    machine: &intake::Connection<'_>,
+    machine: &intake::ConnectionEvidence<'_>,
     settings: &analyte_config::AstmStack,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
@@ -37,7 +37,7 @@ pub(super) async fn session(
 }
 
 struct ConnectionState<'a, 'm> {
-    machine: &'a intake::Connection<'m>,
+    machine: &'a intake::ConnectionEvidence<'m>,
     settings: &'a analyte_config::AstmStack,
     store: &'a Handle,
     config: Config,
@@ -60,7 +60,7 @@ struct ConnectionState<'a, 'm> {
 
 impl<'a, 'm> ConnectionState<'a, 'm> {
     fn open(
-        machine: &'a intake::Connection<'m>,
+        machine: &'a intake::ConnectionEvidence<'m>,
         settings: &'a analyte_config::AstmStack,
         store: &'a Handle,
     ) -> Result<Self, Error> {
@@ -140,8 +140,21 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             self.next_order_poll = Instant::now()
                 .checked_add(Duration::from_secs(1))
                 .ok_or_else(|| Error::OrderPollDeadlineOverflow)?;
-            crate::orders::sending::next(self.store, self.machine.machine(), &mut self.order_cursor)
-                .await?
+            crate::orders::sending::next(
+                self.store,
+                self.machine.machine(),
+                &mut self.order_cursor,
+                |order| {
+                    analyte_mapping::astm::map_order(
+                        order,
+                        self.settings.settings().syntax().limits(),
+                        self.settings
+                            .orders()
+                            .ok_or(analyte_mapping::OrderMappingError::Disabled)?,
+                    )
+                },
+            )
+            .await?
         } else {
             None
         };
@@ -149,7 +162,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             self.active_orders.push(reserved.order);
             vec![Event::Send(crate::orders::astm::envelope(
                 self.machine.machine(),
-                vec![reserved.payload.record()?.to_vec()],
+                vec![reserved.payload.encode()],
                 analyte_astm::OrderTermination::Normal,
             ))]
         } else if bytes.is_empty()
@@ -427,7 +440,7 @@ impl Effects for ConnectionState<'_, '_> {
     }
     async fn background(
         &mut self,
-        _machine: &intake::Connection<'_>,
+        _machine: &intake::ConnectionEvidence<'_>,
         _store: &Handle,
     ) -> Result<(), Error> {
         let answer = match self.pending.as_mut() {
@@ -498,7 +511,7 @@ impl Effects for ConnectionState<'_, '_> {
             let cleanup = crate::orders::sending::uncertain(
                 self.store,
                 &order,
-                "connection-ended-before-transfer-confirmation",
+                crate::orders::outcome::Code::ConnectionEndedBeforeConfirmation.into(),
             )
             .await;
             super::custody::retain_cleanup(result, cleanup.map_err(Into::into));

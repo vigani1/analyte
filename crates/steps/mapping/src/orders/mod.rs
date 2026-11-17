@@ -186,17 +186,21 @@ pub fn map_order(
             order,
             s.settings().syntax().limits(),
             s.orders().ok_or(OrderMappingError::Disabled)?,
-        ),
+        )
+        .map(MachineOrder::Astm),
         Stack::Astm(analyte_config::RecordTransport::Folder(s)) => crate::astm::map_order(
             order,
             s.settings().syntax().limits(),
             s.orders().ok_or(OrderMappingError::Disabled)?,
-        ),
+        )
+        .map(MachineOrder::Astm),
         Stack::Vidas(s) => {
             crate::vidas::map_order(order, s, s.orders().ok_or(OrderMappingError::Disabled)?)
+                .map(MachineOrder::Vidas)
         }
         Stack::Autolyser(s) => {
             crate::autolyser::map_order(order, s, s.orders().ok_or(OrderMappingError::Disabled)?)
+                .map(MachineOrder::Autolyser)
         }
         Stack::Hl7(analyte_config::RecordTransport::Stream(_))
         | Stack::Hl7(analyte_config::RecordTransport::Folder(_))

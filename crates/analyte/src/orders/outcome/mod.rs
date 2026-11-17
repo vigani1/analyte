@@ -1,28 +1,14 @@
 //! Defines stable stored order and transfer outcome codes independently of variant names.
+pub(super) mod autolyser;
+mod vidas;
+pub(crate) use autolyser::AutolyserEnd;
+pub(crate) use vidas::VidasEnd;
+
 /// Compatibility spellings retained in stored evidence and operator records.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Code {
-    VidasAcknowledgmentTimeout,
-    VidasCommitTimeout,
-    VidasControlSuffixMismatch,
-    VidasFramingError,
-    VidasInputFailed,
-    VidasInterbyteTimeout,
-    VidasSessionTimeout,
-    VidasTransferCancelled,
-    VidasTransferConfirmed,
-    VidasTransferDisconnected,
-    VidasTransferError,
-    VidasTransferRefusedOrUnexpected,
-    VidasWriteFailed,
-    AutolyserInputFailed,
-    AutolyserStorageFailed,
-    AutolyserStorageTimeout,
-    AutolyserTransferCancelled,
-    AutolyserTransferDisconnected,
-    AutolyserTransferError,
-    AutolyserTransferTimeout,
-    AutolyserWriteFailed,
+    Autolyser(AutolyserEnd),
+    Vidas(VidasEnd),
 
     QueryReservationRefused,
     QueryDeadlineBeforeSend,
@@ -32,6 +18,7 @@ pub(crate) enum Code {
     AstmTransferTimeout,
     AstmTransferInterrupted,
     AstmTransferIncomplete,
+    ConnectionEndedBeforeConfirmation,
 
     AutolyserParkedAck,
     AutolyserParkedBusy,
@@ -74,27 +61,8 @@ impl Code {
     /// Returns the explicit historical spelling; never derive evidence from Debug.
     pub(crate) const fn as_str(self) -> &'static str {
         match self {
-            Self::VidasAcknowledgmentTimeout => "VIDAS-acknowledgment-timeout",
-            Self::VidasCommitTimeout => "VIDAS-commit-timeout",
-            Self::VidasControlSuffixMismatch => "VIDAS-control-suffix-mismatch",
-            Self::VidasFramingError => "VIDAS-framing-error",
-            Self::VidasInputFailed => "VIDAS-input-failed",
-            Self::VidasInterbyteTimeout => "VIDAS-interbyte-timeout",
-            Self::VidasSessionTimeout => "VIDAS-session-timeout",
-            Self::VidasTransferCancelled => "VIDAS-transfer-cancelled",
-            Self::VidasTransferConfirmed => "VIDAS-transfer-confirmed",
-            Self::VidasTransferDisconnected => "VIDAS-transfer-disconnected",
-            Self::VidasTransferError => "VIDAS-transfer-error",
-            Self::VidasTransferRefusedOrUnexpected => "VIDAS-transfer-refused-or-unexpected",
-            Self::VidasWriteFailed => "VIDAS-write-failed",
-            Self::AutolyserInputFailed => "Autolyser-input-failed",
-            Self::AutolyserStorageFailed => "Autolyser-storage-failed",
-            Self::AutolyserStorageTimeout => "Autolyser-storage-timeout",
-            Self::AutolyserTransferCancelled => "Autolyser-transfer-cancelled",
-            Self::AutolyserTransferDisconnected => "Autolyser-transfer-disconnected",
-            Self::AutolyserTransferError => "Autolyser-transfer-error",
-            Self::AutolyserTransferTimeout => "Autolyser-transfer-timeout",
-            Self::AutolyserWriteFailed => "Autolyser-write-failed",
+            Self::Autolyser(code) => code.as_str(),
+            Self::Vidas(code) => code.as_str(),
 
             Self::QueryReservationRefused => "query-reservation-refused",
             Self::QueryDeadlineBeforeSend => "query-deadline-before-send",
@@ -103,6 +71,9 @@ impl Code {
             Self::AstmTransferAborted => "ASTM-transfer-aborted",
             Self::AstmTransferTimeout => "ASTM-transfer-timeout",
             Self::AstmTransferInterrupted => "ASTM-transfer-interrupted",
+            Self::ConnectionEndedBeforeConfirmation => {
+                "connection-ended-before-transfer-confirmation"
+            }
             Self::AstmTransferIncomplete => "ASTM-transfer-incomplete",
 
             Self::AutolyserParkedAck => "Autolyser-parked-ack",
@@ -315,5 +286,56 @@ fn detailed_outcome_spellings_are_compatible() {
         (analyte_hl7::AckCode::Cr, "LAW-ORL-application-Cr"),
     ] {
         assert_eq!(Detail::LawApplication(code).to_string(), expected);
+    }
+}
+
+/// A closed transfer outcome; diagnostic text is bounded before durable storage.
+pub(crate) enum Transfer {
+    Code(Code),
+    AutolyserInsertion(analyte_dialog::autolyser::Reception),
+    AutolyserIncomplete(AutolyserEnd),
+    AutolyserParked(analyte_dialog::autolyser::Error),
+}
+impl From<Code> for Transfer {
+    fn from(code: Code) -> Self {
+        Self::Code(code)
+    }
+}
+impl From<VidasEnd> for Transfer {
+    fn from(code: VidasEnd) -> Self {
+        Self::Code(Code::Vidas(code))
+    }
+}
+impl From<AutolyserEnd> for Transfer {
+    fn from(code: AutolyserEnd) -> Self {
+        Self::Code(Code::Autolyser(code))
+    }
+}
+impl std::fmt::Display for Transfer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Code(code) => f.write_str(code.as_str()),
+            Self::AutolyserInsertion(reception) => f.write_str(&autolyser::insertion(*reception)),
+            Self::AutolyserIncomplete(code) => f.write_str(&code.incomplete()),
+            Self::AutolyserParked(error) => {
+                use analyte_dialog::autolyser::Error;
+                let code = match error {
+                    Error::Configuration => Code::AutolyserParkedConfig,
+                    Error::Busy => Code::AutolyserParkedBusy,
+                    Error::TimeReversed | Error::Exhausted => Code::AutolyserParkedTime,
+                    Error::Incomplete => Code::AutolyserParkedIncomplete,
+                    Error::Storage => Code::AutolyserParkedStorage,
+                    Error::Stale => Code::AutolyserParkedStale,
+                    Error::Ack => Code::AutolyserParkedAck,
+                    Error::Framing(cause) => {
+                        return write!(f, "{}", Detail::AutolyserFraming(cause.to_string()));
+                    }
+                    Error::Record(cause) => {
+                        return write!(f, "{}", Detail::AutolyserRecord(cause.to_string()));
+                    }
+                };
+                f.write_str(code.as_str())
+            }
+        }
     }
 }

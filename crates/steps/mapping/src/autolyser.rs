@@ -1,7 +1,7 @@
 //! Maps Autolyser results and outgoing work lists.
 use crate::inbound::evidence::{Error, map_part, map_result, map_test, map_units, push_result};
 use crate::orders::codes::{map_priority as outbound_priority, map_test as outbound_test};
-use crate::orders::{AppOrder, MachineOrder, OrderMappingError, map_patient, map_specimen};
+use crate::orders::{AppOrder, OrderMappingError, map_patient, map_specimen};
 use crate::{Output, Position};
 
 use analyte_model::{
@@ -64,7 +64,7 @@ pub fn map_order(
     order: &AppOrder,
     machine: &analyte_config::AutolyserStack,
     settings: &analyte_config::AutolyserOrders,
-) -> Result<MachineOrder, OrderMappingError> {
+) -> Result<analyte_autolyser::syntax::Worklist, OrderMappingError> {
     use analyte_autolyser::syntax::{Field, List, PatientCode, Sample, Worklist};
     if !machine.policy().download {
         return Err(OrderMappingError::Disabled);
@@ -133,5 +133,5 @@ pub fn map_order(
     if worklist.encode().len() > machine.settings().limits().bytes() {
         return Err(OrderMappingError::AutolyserMessageLimit);
     }
-    Ok(MachineOrder::Autolyser(worklist))
+    Ok(worklist)
 }

@@ -1,59 +1,48 @@
 //! Reserves VIDAS work and records confirmed or uncertain transfer outcomes.
 use crate::{
     intake,
-    machine::vidas::{Error, transfer_end::VidasEnd},
+    orders::{OrderError as Error, outcome::VidasEnd, sending::Work},
 };
-use analyte_store::{Handle, MachineOrder};
+use analyte_store::Handle;
 use analyte_vidas::syntax::Message;
-use std::{
-    collections::VecDeque,
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
+
+// Preserve the existing VIDAS idle polling cadence independently of dialog timers.
+const ORDER_POLL_INTERVAL: Duration = Duration::from_secs(1);
 
 pub(crate) enum Progress {
     UploadFinished,
     DownloadNext(Message),
     DownloadFinished,
 }
-pub(crate) struct Work {
-    active: Option<MachineOrder>,
-    requests: VecDeque<Message>,
-    cursor: String,
-    next_poll: Instant,
-}
-impl Work {
-    pub(crate) fn new() -> Self {
-        Self {
-            active: None,
-            requests: VecDeque::new(),
-            cursor: String::new(),
-            next_poll: Instant::now(),
-        }
-    }
-    pub(crate) fn next_poll(&self) -> Instant {
-        self.next_poll
-    }
+impl Work<Message> {
     pub(crate) async fn poll(
         &mut self,
-        machine: &intake::Connection<'_>,
+        machine: &intake::ConnectionEvidence<'_>,
         store: &Handle,
+        settings: &analyte_config::VidasStack,
     ) -> Result<Option<Message>, Error> {
         if Instant::now() < self.next_poll {
             return Ok(None);
         }
         self.next_poll = Instant::now()
-            .checked_add(Duration::from_secs(1))
+            .checked_add(ORDER_POLL_INTERVAL)
             .ok_or(Error::OrderPollDeadlineOverflow)?;
-        let Some(reserved) =
-            super::sending::next(store, machine.machine(), &mut self.cursor).await?
-        else {
+        if !self
+            .reserve(store, machine.machine(), |order| {
+                let requests = analyte_mapping::vidas::map_order(
+                    order,
+                    settings,
+                    settings
+                        .orders()
+                        .ok_or(analyte_mapping::OrderMappingError::Disabled)?,
+                )?;
+                Ok(requests.into())
+            })
+            .await?
+        {
             return Ok(None);
-        };
-        self.active = Some(reserved.order);
-        let analyte_mapping::MachineOrder::Vidas(requests) = reserved.payload else {
-            return Err(Error::ForeignStackOrder);
-        };
-        self.requests = requests.into();
+        }
         Ok(Some(
             self.requests
                 .pop_front()
@@ -71,16 +60,10 @@ impl Work {
             store,
             order,
             analyte_model::OrderState::Sent,
-            VidasEnd::TransferConfirmed.as_str(),
+            VidasEnd::TransferConfirmed.into(),
         )
         .await?;
         self.active = None;
         Ok(Progress::DownloadFinished)
-    }
-    pub(crate) async fn close(&self, store: &Handle, reason: &str) -> Result<(), Error> {
-        if let Some(order) = &self.active {
-            super::sending::uncertain(store, order, reason).await?;
-        }
-        Ok(())
     }
 }
