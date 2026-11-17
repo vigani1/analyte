@@ -18,9 +18,13 @@ impl Work<analyte_autolyser::syntax::Worklist> {
                     settings,
                     settings
                         .orders()
-                        .ok_or(analyte_mapping::OrderMappingError::Disabled)?,
+                        .ok_or(analyte_mapping::autolyser::OrderError::Shared(
+                            analyte_mapping::OrderMappingError::Disabled,
+                        ))?,
                 )?;
-                Ok(std::collections::VecDeque::from([requests]))
+                Ok::<_, analyte_mapping::autolyser::OrderError>(std::collections::VecDeque::from([
+                    requests,
+                ]))
             })
             .await?
         {

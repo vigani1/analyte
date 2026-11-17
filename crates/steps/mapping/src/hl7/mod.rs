@@ -111,3 +111,73 @@ fn map_checked(
     departures::apply(message, declarations, &mut output)?;
     Ok(output)
 }
+
+/// Specific outgoing HL7 mapping refusals.
+#[derive(Debug, thiserror::Error)]
+pub enum OrderError {
+    /// HL7 display assay mapping has no component.
+    #[error("HL7 display assay mapping has no component")]
+    DisplayAssayComponents,
+    /// HL7 display line violates repertoire, width or record limits.
+    #[error("HL7 display line violates repertoire, width or record limits")]
+    DisplayLineBounds,
+    /// HL7 display contains no lines.
+    #[error("HL7 display contains no lines")]
+    DisplayEmpty,
+    /// Shared order evidence is unavailable or unmapped.
+    #[error(transparent)]
+    Shared(#[from] crate::OrderMappingError),
+}
+
+/// Specific outgoing HL7 wire mapping failures.
+#[derive(Debug, thiserror::Error)]
+pub enum WireError {
+    /// Requested priority has no supported wire representation.
+    #[error("HL7-unsupported-priority")]
+    PriorityUnsupported,
+    /// Test components cannot be represented by the configured grammar.
+    #[error("HL7-test-components")]
+    TestComponents,
+    /// HL7-patient-name-required-but-not-carried-by-contract.
+    #[error("HL7-patient-name-required-but-not-carried-by-contract")]
+    PatientNameRequired,
+    /// HL7 send config absent.
+    #[error("HL7 send config absent")]
+    SendSettingsAbsent,
+    /// HL7-app-order-id-too-long-for-ORC-4.
+    #[error("HL7-app-order-id-too-long-for-ORC-4")]
+    GroupIdTooLong,
+    /// HL7-item-has-no-placer-namespace.
+    #[error("HL7-item-has-no-placer-namespace")]
+    PlacerNamespaceMissing,
+    /// HL7-send-item-must-cover-one-test.
+    #[error("HL7-send-item-must-cover-one-test")]
+    ItemTestCount,
+    /// HL7-patient-namespace-mismatch.
+    #[error("HL7-patient-namespace-mismatch")]
+    PatientNamespaceMismatch,
+    /// HL7-order-edition-rules-not-implemented.
+    #[error("HL7-order-edition-rules-not-implemented")]
+    EditionUnsupported,
+    /// HL7-missing-specimen-type.
+    #[error("HL7-missing-specimen-type")]
+    SpecimenTypeMissing,
+    /// HL7-unmapped-test.
+    #[error("HL7-unmapped-test")]
+    UnmappedTest(#[source] crate::OrderMappingError),
+    /// HL7-unmapped-specimen-type.
+    #[error("HL7-unmapped-specimen-type")]
+    UnmappedSpecimenType(#[source] crate::OrderMappingError),
+    /// HL7-unmapped-priority.
+    #[error("HL7-unmapped-priority")]
+    UnmappedPriority(#[source] crate::OrderMappingError),
+    /// App evidence violates a common-model text bound.
+    #[error(transparent)]
+    Text(#[from] analyte_model::TextError),
+    /// HL7 syntax rejected mapped content.
+    #[error(transparent)]
+    Syntax(#[from] analyte_hl7::Error),
+    /// HL7 order builder rejected mapped content.
+    #[error(transparent)]
+    Order(#[from] analyte_hl7::order::Error),
+}

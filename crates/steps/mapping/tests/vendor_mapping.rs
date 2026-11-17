@@ -66,7 +66,14 @@ fn autolyser_rev18_p186_rule5_explicit_patient_code_and_download_context_are_pre
         if accepted {
             assert!(mapped.is_ok());
         } else {
-            assert!(matches!(mapped, Err(OrderMappingError::PatientIdTooLong)));
+            assert!(matches!(
+                mapped,
+                Err(analyte_mapping::DispatchError::Autolyser(
+                    analyte_mapping::autolyser::OrderError::Shared(
+                        OrderMappingError::PatientIdTooLong
+                    )
+                ))
+            ));
         }
     }
     Ok(())
@@ -82,7 +89,9 @@ fn rule7_autolyser_download_refuses_missing_context_and_bounds_before_output() -
         input.position.as_mut().ok_or("position")?.slot = Identifier::new(slot)?;
         assert!(matches!(
             map_order(&input, cfg.effective().stack()),
-            Err(OrderMappingError::InvalidCupPosition)
+            Err(analyte_mapping::DispatchError::Autolyser(
+                analyte_mapping::autolyser::OrderError::InvalidCupPosition
+            ))
         ));
     }
     let mut one_digit = positioned_order()?;
@@ -112,7 +121,12 @@ fn rule7_autolyser_download_refuses_missing_context_and_bounds_before_output() -
         let mapped = map_order(&input, cfg.effective().stack());
         assert_eq!(mapped.is_ok(), accepted, "count {count}");
         if !accepted {
-            assert!(matches!(mapped, Err(OrderMappingError::AutolyserTestCount)));
+            assert!(matches!(
+                mapped,
+                Err(analyte_mapping::DispatchError::Autolyser(
+                    analyte_mapping::autolyser::OrderError::TestCount
+                ))
+            ));
         }
     }
     let input = positioned_order()?;
@@ -159,13 +173,17 @@ fn adr0004_rule5_vendor_download_keeps_exact_explicit_patient_and_sample() -> Te
     missing.patient = None;
     assert!(matches!(
         map_order(&missing, cfg.effective().stack()),
-        Err(OrderMappingError::MissingPatient)
+        Err(analyte_mapping::DispatchError::Vidas(
+            analyte_mapping::vidas::OrderError::Shared(OrderMappingError::MissingPatient)
+        ))
     ));
     let mut wrong = order()?;
     wrong.patient.as_mut().ok_or("patient")?.namespace = Identifier::new("other")?;
     assert!(matches!(
         map_order(&wrong, cfg.effective().stack()),
-        Err(OrderMappingError::PatientNamespace)
+        Err(analyte_mapping::DispatchError::Vidas(
+            analyte_mapping::vidas::OrderError::Shared(OrderMappingError::PatientNamespace)
+        ))
     ));
     Ok(())
 }
@@ -180,7 +198,12 @@ fn rule7_vendor_download_reports_exact_host_identity_bounds() -> TestResult {
         if accepted {
             assert!(result.is_ok());
         } else {
-            assert!(matches!(result, Err(OrderMappingError::PatientIdTooLong)));
+            assert!(matches!(
+                result,
+                Err(analyte_mapping::DispatchError::Vidas(
+                    analyte_mapping::vidas::OrderError::Shared(OrderMappingError::PatientIdTooLong)
+                ))
+            ));
         }
     }
     for (length, accepted) in [(11, true), (12, true), (13, false)] {
@@ -190,7 +213,12 @@ fn rule7_vendor_download_reports_exact_host_identity_bounds() -> TestResult {
         if accepted {
             assert!(result.is_ok());
         } else {
-            assert!(matches!(result, Err(OrderMappingError::SampleIdTooLong)));
+            assert!(matches!(
+                result,
+                Err(analyte_mapping::DispatchError::Vidas(
+                    analyte_mapping::vidas::OrderError::SampleIdTooLong
+                ))
+            ));
         }
     }
     Ok(())

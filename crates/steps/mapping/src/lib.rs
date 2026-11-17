@@ -29,8 +29,8 @@ mod inbound;
 mod orders;
 
 pub use orders::{
-    AppOrder, AppOrderPriority, Hl7Command, LawCommand, MachineOrder, OrderMappingError,
-    OutboundItem, WireMappingError, app_order, law_address, map_display, map_hl7_order,
+    AppOrder, AppOrderPriority, DispatchError, Hl7Command, LawCommand, MachineOrder,
+    OrderMappingError, OutboundItem, app_order, law_address, map_display, map_hl7_order,
     map_law_order, map_law_work, map_order,
 };
 
@@ -124,15 +124,6 @@ pub enum Error {
     /// A departure application selected a declaration with another meaning.
     #[error("departure declaration does not describe a missing final status")]
     DepartureKind,
-    /// A validated LAW message lacks its header.
-    #[error("LAW message header missing")]
-    MissingHeader,
-    /// A LAW notice references an order outside its original message.
-    #[error("LAW notice order is not in the original message")]
-    NoticeOrder,
-    /// A one-based LAW notice position cannot identify a source record.
-    #[error("LAW notice position is zero")]
-    NoticePosition,
     /// A bound was reached before producing a partial success.
     #[error("{position}: {resource} limit exceeded")]
     Limit {
