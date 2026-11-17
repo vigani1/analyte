@@ -339,8 +339,19 @@ async fn law_tf2b_3_29_4_adr0003_storage_failures_never_send_aa() -> Result<(), 
         assert_eq!(read, 0, "storage failure must close without AA");
         assert_eq!(
             count(&path, "receipts")?,
-            i64::from(table == "interpretations")
+            2 * i64::from(table == "interpretations"),
+            "failed interpretation retains both the original receipt and shared input-prefix evidence"
         );
+        if table == "interpretations" {
+            // The trigger also refuses the prefix's parking interpretation, but
+            // both raw receipts must already be durable (ADR 0003 rules 1–2).
+            let retained: i64 = database(&path)?.query_row(
+                "SELECT count(*) FROM receipts WHERE raw=?1",
+                [&wire],
+                |row| row.get(0),
+            )?;
+            assert_eq!(retained, 2);
+        }
         assert_eq!(count(&path, "interpretations")?, 0);
         assert_eq!(count(&path, "outbox")?, 0);
         running.stop().await?;
