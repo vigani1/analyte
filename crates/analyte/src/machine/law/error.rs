@@ -22,9 +22,6 @@ pub(crate) enum Error {
     /// LAW independent transaction deadline.
     #[error("LAW independent transaction deadline")]
     IndependentTransactionDeadline(#[source] tokio::time::error::Elapsed),
-    /// LAW input still awaits custody.
-    #[error("LAW input still awaits custody")]
-    InputStillAwaitsCustody,
     /// LAW outbound connect deadline.
     #[error("LAW outbound connect deadline")]
     OutboundConnectDeadline(#[source] tokio::time::error::Elapsed),

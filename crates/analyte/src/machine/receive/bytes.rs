@@ -9,8 +9,6 @@ pub(crate) enum ByteReason<'a> {
     Hl7Unsolicited,
     /// LAW receipt processing interrupted before commit confirmation.
     LawInterrupted,
-    /// LAW unprocessed input when session ended.
-    LawTail,
     /// Interrupted input: ownership uncertain; possible duplicates.
     InputUncertain,
     /// Interrupted input: fed prefix; possible duplicate of dialog receipts.
@@ -58,7 +56,6 @@ impl std::fmt::Display for ByteReason<'_> {
             Self::AstmUnsolicited => f.write_str("unsolicited ASTM frame"),
             Self::Hl7Unsolicited => f.write_str("HL7 unsolicited message or queue overflow"),
             Self::LawInterrupted => f.write_str("LAW receipt processing interrupted before commit confirmation"),
-            Self::LawTail => f.write_str("LAW unprocessed input when session ended"),
             Self::InputUncertain => f.write_str("Interrupted input: ownership uncertain; possible duplicates"),
             Self::InputPrefix => f.write_str("Interrupted input: fed prefix; possible duplicate of dialog receipts"),
             Self::InputTail => f.write_str("Interrupted input: untouched transport tail"),
@@ -99,10 +96,6 @@ fn byte_reason_spellings_are_pinned() {
     assert_eq!(
         ByteReason::LawInterrupted.to_string(),
         "LAW receipt processing interrupted before commit confirmation"
-    );
-    assert_eq!(
-        ByteReason::LawTail.to_string(),
-        "LAW unprocessed input when session ended"
     );
     assert_eq!(
         ByteReason::InputUncertain.to_string(),
