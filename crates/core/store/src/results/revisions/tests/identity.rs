@@ -58,9 +58,12 @@ fn adr0003_revision_builder_failure_rolls_back_interpretation_and_history() -> T
     let mut evidence = interpretation()?;
     evidence.outcome = Reading::Results(vec![production_result(metadata.id)?]);
     assert!(matches!(
-        store.interpret_reconciled(metadata.id, evidence, &[false], &[], |_, _| Err(
-            Error::InvalidInterpretationInput
-        )),
+        store.reconcile(
+            ReconcileAction::Interpret(metadata.id),
+            evidence,
+            ReconcileInput::standard(&[false], &[]),
+            |_, _| Err(Error::InvalidInterpretationInput)
+        ),
         Err(Error::InvalidInterpretationInput)
     ));
     assert!(store.interpretation(metadata.id, 1)?.is_none());
@@ -135,11 +138,15 @@ fn adr0003_legacy_offset_digest_reconciles_after_restart_without_rewriting_evide
         }])?;
     result.parts = NonEmptyEvidenceList::new(EvidenceList::new(parts)?)?;
     evidence.outcome = Reading::Results(vec![result]);
-    let commit =
-        store.interpret_reconciled(second.id, evidence, &[false], &[], |_, outcomes| {
+    let commit = store.reconcile(
+        ReconcileAction::Interpret(second.id),
+        evidence,
+        ReconcileInput::standard(&[false], &[]),
+        |_, outcomes| {
             assert_eq!(outcomes, &[RevisionOutcome::Retransmission(Revision(0))]);
             Ok(vec![])
-        })?;
+        },
+    )?;
     assert_eq!(
         commit.outcomes,
         vec![RevisionOutcome::Retransmission(Revision(0))]
@@ -174,7 +181,12 @@ fn mutation_adr0003_reconciliation_rejects_each_provenance_mismatch_without_inte
             _ => unreachable!("fixed field cases"),
         }
         assert!(matches!(
-            store.interpret_reconciled(metadata.id, evidence, &[], &[], |_, _| Ok(vec![])),
+            store.reconcile(
+                ReconcileAction::Interpret(metadata.id),
+                evidence,
+                ReconcileInput::standard(&[], &[]),
+                |_, _| Ok(vec![])
+            ),
             Err(Error::InvalidInterpretationInput)
         ));
         assert!(store.interpretation(metadata.id, 1)?.is_none());
@@ -195,7 +207,12 @@ fn mutation_adr0003_reconciliation_refuses_wrong_result_receipt_and_correction_c
         let mut evidence = interpretation()?;
         evidence.outcome = Reading::Results(vec![production_result(owner)?]);
         assert!(matches!(
-            store.interpret_reconciled(metadata.id, evidence, &corrections, &[], |_, _| Ok(vec![])),
+            store.reconcile(
+                ReconcileAction::Interpret(metadata.id),
+                evidence,
+                ReconcileInput::standard(&corrections, &[]),
+                |_, _| Ok(vec![])
+            ),
             Err(Error::InvalidInterpretationInput)
         ));
         assert!(store.interpretation(metadata.id, 1)?.is_none());
@@ -222,9 +239,16 @@ fn mutation_adr0003_rule7_reconciliation_bounds_results_and_findings_independent
     let mut evidence = interpretation()?;
     evidence.outcome = Reading::Results(vec![result.clone(), result.clone()]);
     assert!(matches!(
-        store.interpret_reconciled(metadata.id, evidence, &[false, false], &[], |_, _| Ok(
-            vec![]
-        )),
+        store.reconcile(
+            ReconcileAction::Interpret(metadata.id),
+            evidence,
+            ReconcileInput {
+                corrections: &[false, false],
+                findings: &[],
+                mode: ReconcileMode::Standard
+            },
+            |_, _| Ok(vec![])
+        ),
         Err(Error::InvalidInterpretationInput)
     ));
     assert!(store.interpretation(metadata.id, 1)?.is_none());
@@ -236,11 +260,14 @@ fn mutation_adr0003_rule7_reconciliation_bounds_results_and_findings_independent
         )?)?)?],
     };
     assert!(matches!(
-        store.interpret_reconciled(
-            metadata.id,
+        store.reconcile(
+            ReconcileAction::Interpret(metadata.id),
             interpretation()?,
-            &[],
-            &[finding.clone(), finding.clone()],
+            ReconcileInput {
+                corrections: &[],
+                findings: &[finding.clone(), finding.clone()],
+                mode: ReconcileMode::Standard
+            },
             |_, _| Ok(vec![])
         ),
         Err(Error::InvalidInterpretationInput)
@@ -249,10 +276,12 @@ fn mutation_adr0003_rule7_reconciliation_bounds_results_and_findings_independent
     assert!(store.parked(0)?.is_empty());
     let mut evidence = interpretation()?;
     evidence.outcome = Reading::Results(vec![result]);
-    let commit =
-        store.interpret_reconciled(metadata.id, evidence, &[false], &[finding], |_, _| {
-            Ok(vec![])
-        })?;
+    let commit = store.reconcile(
+        ReconcileAction::Interpret(metadata.id),
+        evidence,
+        ReconcileInput::standard(&[false], &[finding]),
+        |_, _| Ok(vec![]),
+    )?;
     assert_eq!(
         commit.outcomes,
         vec![RevisionOutcome::New(analyte_model::Revision(0))]
@@ -285,11 +314,14 @@ fn mutation_adr0003_batch_duplicates_reuse_the_matching_revision_and_keep_runs_d
         original,
         rerun,
     ]);
-    let commit = store.interpret_reconciled(
-        metadata.id,
+    let commit = store.reconcile(
+        ReconcileAction::Interpret(metadata.id),
         evidence,
-        &[false, false, true, false, false],
-        &[],
+        ReconcileInput {
+            corrections: &[false, false, true, false, false],
+            findings: &[],
+            mode: ReconcileMode::Standard,
+        },
         |_, _| Ok(vec![]),
     )?;
     assert_eq!(
@@ -322,7 +354,12 @@ fn mutation_adr0003_rule7_interpretation_and_audit_byte_limits_are_inclusive() -
     let mut evidence = interpretation()?;
     evidence.outcome = Reading::Results(vec![production_result(metadata.id)?]);
     store.limits.record_bytes = document(&evidence)?.len();
-    store.interpret_reconciled(metadata.id, evidence, &[false], &[], |_, _| Ok(vec![]))?;
+    store.reconcile(
+        ReconcileAction::Interpret(metadata.id),
+        evidence,
+        ReconcileInput::standard(&[false], &[]),
+        |_, _| Ok(vec![]),
+    )?;
     for delta in [0, 1] {
         let action = Reprocess {
             receipt: metadata.id,
@@ -337,8 +374,12 @@ fn mutation_adr0003_rule7_interpretation_and_audit_byte_limits_are_inclusive() -
         };
         let size = reprocess::audit_evidence(&action, 2, false)?.len();
         store.limits.record_bytes = size.checked_sub(delta).ok_or("bound")?;
-        let result =
-            store.reprocess_reconciled(&action, interpretation()?, &[], &[], |_, _| Ok(vec![]));
+        let result = store.reconcile(
+            ReconcileAction::Reprocess(&action),
+            interpretation()?,
+            ReconcileInput::standard(&[], &[]),
+            |_, _| Ok(vec![]),
+        );
         if delta == 0 {
             assert_eq!(result?.version, 2);
         } else {
@@ -370,8 +411,11 @@ fn mutation_adr0003_delivery_bounds_and_machine_owner_refuse_atomically() -> Tes
         let mut evidence = interpretation()?;
         evidence.outcome = Reading::Results(vec![production_result(metadata.id)?]);
         let id = DeliveryId::try_from(uuid::Uuid::now_v7())?;
-        let result =
-            store.interpret_reconciled(metadata.id, evidence, &[false], &[], |evidence, _| {
+        let result = store.reconcile(
+            ReconcileAction::Interpret(metadata.id),
+            evidence,
+            ReconcileInput::standard(&[false], &[]),
+            |evidence, _| {
                 let Reading::Results(results) = &evidence.outcome else {
                     return Err(Error::InvalidInterpretationInput);
                 };
@@ -394,7 +438,8 @@ fn mutation_adr0003_delivery_bounds_and_machine_owner_refuse_atomically() -> Tes
                     payload: vec![b'x'; length],
                     contract_version: 1,
                 }])
-            });
+            },
+        );
         if succeeds {
             assert_eq!(result?.version, 1);
             let claim = store.claim(0)?.ok_or("missing delivery")?;

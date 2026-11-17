@@ -12,11 +12,10 @@ fn rule2_parse_failure_parks_and_resolution_is_audited_once() -> TestResult {
     let mut reading = interpretation()?;
     reading.outcome = Reading::Failed(Reason::new("invalid syntax")?);
     store
-        .interpret_reconciled(
-            metadata.id,
+        .reconcile(
+            ReconcileAction::Interpret(metadata.id),
             reading.clone(),
-            &[],
-            &[],
+            ReconcileInput::standard(&[], &[]),
             |_, _| Ok(Vec::new()),
         )
         .map(|commit| commit.version)?;

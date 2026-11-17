@@ -33,7 +33,7 @@ pub(crate) async fn run(program: &Program, store: &Handle) -> Result<(), Error> 
                     store.request(deadline()?,move |s| {
                         let receipt=s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)?;
                         let evidence=Interpretation {driver:metadata.driver,config_version:metadata.config_version,config:receipt.config,outcome:Reading::Failed(analyte_model::Reason::new("pending LAW receipt has a different retained configuration; explicit audited reprocessing required").map_err(|_|analyte_store::Error::InvalidHostInput)?),departures:None};
-                        s.interpret_reconciled(id,evidence,&[],&[],|_,_|Ok(Vec::new()))
+                        s.reconcile(analyte_store::ReconcileAction::Interpret(id), evidence, analyte_store::ReconcileInput::standard(&[], &[]), |_,_|Ok(Vec::new()))
                     }).await?;
                 }
             }

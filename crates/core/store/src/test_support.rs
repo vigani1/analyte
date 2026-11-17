@@ -133,10 +133,12 @@ pub(crate) fn revised_receipt(
     }
     let mut evidence = interpretation()?;
     evidence.outcome = Reading::Results(vec![result]);
-    let commit =
-        store.interpret_reconciled(metadata.id, evidence, &[correction], &[], |_, _| {
-            Ok(Vec::new())
-        })?;
+    let commit = store.reconcile(
+        ReconcileAction::Interpret(metadata.id),
+        evidence,
+        ReconcileInput::standard(&[correction], &[]),
+        |_, _| Ok(Vec::new()),
+    )?;
     Ok(*commit.outcomes.first().ok_or(Error::Corruption)?)
 }
 

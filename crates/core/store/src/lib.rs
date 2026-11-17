@@ -33,7 +33,10 @@ pub const SCHEMA_VERSION: i64 = 14;
 pub use machine_orders::*;
 
 pub use revisions::law::*;
-pub use revisions::{InterpretationCommit, RevisionOutcome, StatusLifecycle};
+pub use revisions::{
+    InterpretationCommit, ReconcileAction, ReconcileInput, ReconcileMode, RevisionOutcome,
+    StatusLifecycle,
+};
 
 pub use query::{Frame, ParkedItem, Receipt};
 

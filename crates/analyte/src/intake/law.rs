@@ -3,10 +3,6 @@ use super::*;
 use analyte_hl7::law;
 use analyte_store::{LawConflict, LawCustody, LawRejection, LawWork};
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "Keep the validated LAW group walk and immutable correlation checks together"
-)]
 pub(super) async fn plan(
     store: &Handle,
     machine: &Machine,
@@ -18,26 +14,8 @@ pub(super) async fn plan(
     };
     let message = results.message();
     let header = law::CustodyHeader::new(message).ok_or(Error::LawHeader)?;
-    let scope = analyte_model::SourceText::new(&serde_json::to_string(&(
-        machine.id.as_str(),
-        header.application(),
-        header.facility(),
-    ))?)?;
-    let message_id = Identifier::new(std::str::from_utf8(header.message_id())?)?;
-    let mut custody = LawCustody {
-        scope,
-        message: message_id,
-        work: Vec::new(),
-        rejection: rejection.map(|r| LawRejection {
-            occurrence: r.occurrence,
-            reason: if r.segment == b"OBR" && r.field == 2 {
-                LawConflict::UnknownWork
-            } else {
-                LawConflict::Context
-            },
-        }),
-        recorded_at: jiff::Timestamp::now().as_second(),
-    };
+    let mut custody = new_custody(machine, &header, rejection)?;
+
     if rejection.is_some() {
         return Ok(Some(custody));
     }
@@ -73,63 +51,20 @@ pub(super) async fn plan(
                     work = None;
                     continue;
                 };
-                let placer = std::str::from_utf8(placer)?.to_owned();
-                let target = machine.id.clone();
-                let lookup = placer.clone();
-                let record = store
-                    .request(deadline()?, move |s| {
-                        match s.machine_order_by_placer(&target, &lookup) {
-                            Err(analyte_store::Error::Conflict) => Ok(None),
-                            other => other,
-                        }
-                    })
-                    .await?;
-                let Some(record) = record else {
+                work = retained_work(store, machine, placer, occurrence).await?;
+                if work.is_none() {
                     custody.rejection = Some(LawRejection {
                         occurrence,
                         reason: LawConflict::UnknownWork,
                     });
                     break;
-                };
-                let item = record
-                    .items
-                    .iter()
-                    .find(|i| i.placer == placer)
-                    .ok_or(Error::RetainedLawItem)?;
-                let Some(command) = record.original_command() else {
-                    custody.rejection = Some(LawRejection {
-                        occurrence,
-                        reason: LawConflict::UnknownWork,
-                    });
-                    break;
-                };
-                work = Some(LawWork {
-                    order: record.id,
-                    item: item.index,
-                    placer: Identifier::new(&placer)?,
-                    command: Digest(analyte_contract::content_digest(command)),
-                    occurrence,
-                    execution: None,
-                    complete: false,
-                    source: analyte_model::SourceText::new("")?,
-                });
+                }
             }
             law::CustodyRecord::Control { segment, complete } => {
                 if let Some(mut item) = work.take() {
-                    item.execution =
-                        notices
-                            .get(&segment.raw().as_ptr().addr())
-                            .map(|status| match status {
-                                law::ExecutionStatus::Scheduled => {
-                                    analyte_model::AwosExecution::Scheduled
-                                }
-                                law::ExecutionStatus::InProgress => {
-                                    analyte_model::AwosExecution::InProgress
-                                }
-                                law::ExecutionStatus::AnalyzerCancelled => {
-                                    analyte_model::AwosExecution::AnalyzerCancelled
-                                }
-                            });
+                    item.execution = notices
+                        .get(&segment.raw().as_ptr().addr())
+                        .map(execution_status);
                     item.complete = complete;
                     item.source = analyte_model::SourceText::new(&serde_json::json!({"header_time":std::str::from_utf8(header.timestamp())?,"estimate_zone_source":"MSH-7","notes":controls.get(&segment.raw().as_ptr().addr()).and_then(|parent| notes.get(parent)),"control":std::str::from_utf8(segment.raw())?}).to_string())?;
                     custody.work.push(item);
@@ -179,4 +114,79 @@ pub(super) async fn work_conflict(
         )
         .await?,
     )
+}
+
+async fn retained_work(
+    store: &Handle,
+    machine: &Machine,
+    placer: &[u8],
+    occurrence: u16,
+) -> Result<Option<LawWork>, Error> {
+    let placer = std::str::from_utf8(placer)?.to_owned();
+    let target = machine.id.clone();
+    let lookup = placer.clone();
+    let record = store
+        .request(deadline()?, move |s| {
+            match s.machine_order_by_placer(&target, &lookup) {
+                Err(analyte_store::Error::Conflict) => Ok(None),
+                other => other,
+            }
+        })
+        .await?;
+    let Some(record) = record else {
+        return Ok(None);
+    };
+    let item = record
+        .items
+        .iter()
+        .find(|i| i.placer == placer)
+        .ok_or(Error::RetainedLawItem)?;
+    let Some(command) = record.original_command() else {
+        return Ok(None);
+    };
+    Ok(Some(LawWork {
+        order: record.id,
+        item: item.index,
+        placer: Identifier::new(&placer)?,
+        command: Digest(analyte_contract::content_digest(command)),
+        occurrence,
+        execution: None,
+        complete: false,
+        source: analyte_model::SourceText::new("")?,
+    }))
+}
+
+fn new_custody(
+    machine: &Machine,
+    header: &law::CustodyHeader<'_>,
+    rejection: Option<crate::orders::law::validation::Mismatch>,
+) -> Result<LawCustody, Error> {
+    let scope = analyte_model::SourceText::new(&serde_json::to_string(&(
+        machine.id.as_str(),
+        header.application(),
+        header.facility(),
+    ))?)?;
+    let message_id = Identifier::new(std::str::from_utf8(header.message_id())?)?;
+    Ok(LawCustody {
+        scope,
+        message: message_id,
+        work: Vec::new(),
+        rejection: rejection.map(|r| LawRejection {
+            occurrence: r.occurrence,
+            reason: if r.segment == b"OBR" && r.field == 2 {
+                LawConflict::UnknownWork
+            } else {
+                LawConflict::Context
+            },
+        }),
+        recorded_at: jiff::Timestamp::now().as_second(),
+    })
+}
+
+fn execution_status(status: &law::ExecutionStatus) -> analyte_model::AwosExecution {
+    match status {
+        law::ExecutionStatus::Scheduled => analyte_model::AwosExecution::Scheduled,
+        law::ExecutionStatus::InProgress => analyte_model::AwosExecution::InProgress,
+        law::ExecutionStatus::AnalyzerCancelled => analyte_model::AwosExecution::AnalyzerCancelled,
+    }
 }

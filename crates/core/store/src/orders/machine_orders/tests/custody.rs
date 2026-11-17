@@ -48,12 +48,20 @@ fn commit(
     let mut metadata = test_support::receipt(raw)?;
     metadata.machine = identity()?.machine;
     store.receive(&metadata, raw, b"config")?;
-    Ok(store.interpret_law(
-        metadata.id,
+    Ok(store.reconcile(
+        None.map_or(
+            ReconcileAction::Interpret(metadata.id),
+            ReconcileAction::Reprocess,
+        ),
         test_support::interpretation()?,
-        (&[], &[]),
-        policy(),
-        (custody, None),
+        ReconcileInput {
+            corrections: &[],
+            findings: &[],
+            mode: ReconcileMode::Law {
+                lifecycle: policy(),
+                custody,
+            },
+        },
         |_, _| Ok(Vec::new()),
     )?)
 }

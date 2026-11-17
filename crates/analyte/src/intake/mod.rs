@@ -13,6 +13,8 @@ mod reading;
 pub(crate) mod retained;
 pub(crate) use parking::{Mapping, ParkReason};
 use reading::{map_reading, mapping_outcome};
+mod persistence;
+use persistence::{LawBatchConflict, PreparedMapping};
 
 /// Binds all evidence from one host connection to its immutable configuration.
 pub(crate) struct Connection<'a> {
@@ -136,10 +138,6 @@ fn reading_evidence(
     })
 }
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "Keep mixed-message acceptance and rejected-batch rollback together"
-)]
 async fn persist_prepared(
     store: &Handle,
     machine: &Machine,
@@ -186,95 +184,22 @@ async fn persist_prepared(
     } else {
         None
     };
+    let prepared = PreparedMapping {
+        id,
+        findings,
+        corrections,
+        interpretation,
+        destination,
+        conflict,
+        custody,
+        action,
+        lifecycle,
+        atomic,
+        accepted,
+        poct_edit_guard,
+    };
     let result = store
-        .request(deadline()?, move |store| {
-            let findings = park_findings(id, findings)?;
-            let receipt = store
-                .receipt(id)?
-                .ok_or(analyte_store::Error::Conflict)?
-                .metadata;
-            let build = |assigned: &Interpretation, outcomes: &[RevisionOutcome]| {
-                if atomic
-                    && outcomes.iter().any(|outcome| {
-                        matches!(
-                            outcome,
-                            RevisionOutcome::Conflict | RevisionOutcome::Unresolved
-                        )
-                    })
-                {
-                    return Err(analyte_store::Error::DeliveryBuild(Box::new(
-                        LawBatchConflict,
-                    )));
-                }
-                if !accepted {
-                    return Ok(Vec::new());
-                }
-                build_deliveries(assigned, outcomes, &receipt, &destination, lifecycle)
-            };
-            let commit = if let Some(custody) = &custody {
-                store.interpret_law(
-                    id,
-                    interpretation.clone(),
-                    (&corrections, &findings),
-                    lifecycle.ok_or(analyte_store::Error::InvalidHostInput)?,
-                    (custody, action.as_ref()),
-                    build,
-                )
-            } else {
-                reconcile(
-                    store,
-                    id,
-                    action.as_ref(),
-                    interpretation,
-                    (&corrections, &findings, lifecycle, poct_edit_guard),
-                    build,
-                )
-            };
-            match commit {
-                // The builder refusal rolls back revisions, audit and deliveries together.
-                // Keep a failed version (and its audit for operator actions) afterwards.
-                Err(analyte_store::Error::DeliveryBuild(error))
-                    if error.is::<LawBatchConflict>() =>
-                {
-                    let rejected_evidence =
-                        conflict.ok_or(analyte_store::Error::InvalidHostInput)?;
-                    let rejected = if let Some(mut custody) = custody.clone() {
-                        custody.rejection = Some(analyte_store::LawRejection {
-                            occurrence: 1,
-                            reason: analyte_store::LawConflict::Progression,
-                        });
-                        store.interpret_law(
-                            id,
-                            rejected_evidence,
-                            (&[], &findings),
-                            lifecycle.ok_or(analyte_store::Error::InvalidHostInput)?,
-                            (&custody, action.as_ref()),
-                            |_, _| Ok(Vec::new()),
-                        )?
-                    } else {
-                        reconcile(
-                            store,
-                            id,
-                            action.as_ref(),
-                            rejected_evidence,
-                            (&[], &findings, lifecycle, false),
-                            |_, _| Ok(Vec::new()),
-                        )?
-                    };
-                    Ok((rejected, InterpretationOutcome::Conflict))
-                }
-                result => result.map(|commit| {
-                    (
-                        commit,
-                        if accepted {
-                            InterpretationOutcome::Accepted
-                        } else {
-                            InterpretationOutcome::Failed
-                        },
-                    )
-                }),
-            }
-        })
+        .request(deadline()?, move |store| prepared.commit(store))
         .await?;
     let (result, successful) = result;
     let successful = match result.law {
@@ -343,96 +268,6 @@ fn park_findings(
         .collect::<Result<Vec<_>, analyte_store::Error>>()
 }
 
-// One audit dispatch for normal and rejected-batch commits; recovery never bypasses it.
-fn reconcile(
-    store: &mut analyte_store::Store,
-    id: ReceiptId,
-    action: Option<&analyte_store::Reprocess>,
-    interpretation: Interpretation,
-    mapping: (
-        &[bool],
-        &[analyte_store::Parked],
-        Option<analyte_store::StatusLifecycle<'_>>,
-        bool,
-    ),
-    build: impl FnOnce(
-        &Interpretation,
-        &[RevisionOutcome],
-    ) -> Result<Vec<analyte_store::Delivery>, analyte_store::Error>,
-) -> Result<analyte_store::InterpretationCommit, analyte_store::Error> {
-    let (corrections, findings, lifecycle, edit_guard) = mapping;
-    if edit_guard {
-        return store.interpret_with_edit_guard(id, interpretation,
-            (corrections, findings, "edited POCT observation with no detectable common-content change; source context may have changed"), action, build);
-    }
-    match (action, lifecycle) {
-        (Some(action), Some(policy)) => store.reprocess_with_lifecycle(
-            action,
-            interpretation,
-            (corrections, findings),
-            policy,
-            build,
-        ),
-        (None, Some(policy)) => store.interpret_with_lifecycle(
-            id,
-            interpretation,
-            (corrections, findings),
-            policy,
-            build,
-        ),
-        (Some(action), None) => {
-            store.reprocess_reconciled(action, interpretation, corrections, findings, build)
-        }
-        (None, None) => {
-            store.interpret_reconciled(id, interpretation, corrections, findings, build)
-        }
-    }
-}
-
-#[derive(Debug, thiserror::Error)]
-#[error(
-    "LAW result batch conflicts with retained observation history; no result revisions committed"
-)]
-struct LawBatchConflict;
-
-// The store assigns revisions before this callback freezes bytes. Only new and
-// corrected production results can cross this boundary; replay never enqueues.
-fn build_deliveries(
-    assigned: &Interpretation,
-    outcomes: &[RevisionOutcome],
-    receipt: &ReceiptMetadata,
-    destination: &Identifier,
-    lifecycle: Option<analyte_store::StatusLifecycle<'_>>,
-) -> Result<Vec<analyte_store::Delivery>, analyte_store::Error> {
-    let mut deliveries = Vec::new();
-    if let Reading::Results(results) = &assigned.outcome {
-        for (result, outcome) in results.iter().zip(outcomes) {
-            let fresh = match outcome {
-                RevisionOutcome::New(_) | RevisionOutcome::Correction(_) => true,
-                RevisionOutcome::Retransmission(_)
-                | RevisionOutcome::Conflict
-                | RevisionOutcome::Unresolved => false,
-            };
-            if fresh
-                && lifecycle.is_none_or(|policy| policy.may_deliver(result))
-                && result.processing.may_deliver_to_production()
-                && !result.requires_parking()
-            {
-                deliveries.push(
-                    analyte_sink::encode_delivery(
-                        result,
-                        receipt,
-                        destination.clone(),
-                        jiff::Timestamp::now(),
-                    )
-                    .map_err(|error| analyte_store::Error::DeliveryBuild(Box::new(error)))?,
-                );
-            }
-        }
-    }
-    Ok(deliveries)
-}
-
 pub(crate) async fn park_bytes(
     store: &Handle,
     machine: &Connection<'_>,
@@ -452,7 +287,12 @@ pub(crate) async fn park_bytes(
     };
     store
         .request(deadline()?, move |s| {
-            s.interpret_reconciled(id, evidence, &[], &[], |_, _| Ok(Vec::new()))
+            s.reconcile(
+                analyte_store::ReconcileAction::Interpret(id),
+                evidence,
+                analyte_store::ReconcileInput::standard(&[], &[]),
+                |_, _| Ok(Vec::new()),
+            )
         })
         .await?;
     Ok(())
