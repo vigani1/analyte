@@ -4,6 +4,12 @@ use analyte_contract::{ResponseAction, classify_response};
 use analyte_model::{DeliveryId, Identifier, IdentityStatus, ReceiptMetadata, ResultContent};
 use analyte_store::{Attempt, DeliveryKind, Handle};
 use std::time::Duration;
+/// Bounds idle outbox query frequency; cancellation wakes immediately.
+const IDLE_CLAIM_INTERVAL: Duration = Duration::from_millis(100);
+
+/// Bounds claims by legacy workers with no configured destinations.
+const EMPTY_STORE_BUDGET: Duration = Duration::from_secs(30);
+
 use tokio::sync::watch;
 
 /// Builds immutable production bytes and creates their delivery ID exactly once.
@@ -127,7 +133,7 @@ impl<'a> Worker<'a> {
             .iter()
             .map(|d| d.limits.store_timeout)
             .max()
-            .unwrap_or(Duration::from_secs(30))
+            .unwrap_or(EMPTY_STORE_BUDGET)
     }
 
     /// Claims, sends and records one attempt. Cancellation can leave it in flight;
@@ -314,7 +320,7 @@ impl<'a> Worker<'a> {
                 tokio::select! {
                     biased;
                     () = cancelled(&mut stop) => return Ok(()),
-                    () = tokio::time::sleep(Duration::from_millis(100)) => {}
+                    () = tokio::time::sleep(IDLE_CLAIM_INTERVAL) => {}
                 }
             }
         }
@@ -328,7 +334,7 @@ impl<'a> Worker<'a> {
         loop {
             let outcome = tokio::select! {biased; ()=cancelled(&mut stop)=>return Ok(()), result=self.deliver_once()=>result?};
             if outcome == DeliveryOutcome::Idle {
-                tokio::select! {biased; ()=cancelled(&mut stop)=>return Ok(()), ()=tokio::time::sleep(Duration::from_millis(100))=>{}}
+                tokio::select! {biased; ()=cancelled(&mut stop)=>return Ok(()), ()=tokio::time::sleep(IDLE_CLAIM_INTERVAL)=>{}}
             }
         }
     }

@@ -47,7 +47,6 @@ async fn rule7_service_close_waits_for_store_destruction() -> Result<(), Error> 
         result = &mut close => panic!("close returned before store destruction: {result:?}"),
         result = observed => result?,
     }
-    use std::future::Future as _;
     assert!(
         std::future::poll_fn(|cx| std::task::Poll::Ready(close.as_mut().poll(cx)))
             .await

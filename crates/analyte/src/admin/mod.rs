@@ -10,7 +10,7 @@ mod server;
 mod sessions;
 mod token;
 
-pub(crate) use server::prepare;
+pub(crate) use server::{Server, prepare};
 
 pub use token::{Token, TokenError, rotate_token};
 

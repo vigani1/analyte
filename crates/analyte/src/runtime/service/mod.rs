@@ -9,6 +9,27 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::{sync::watch, task::JoinSet};
+/// Bounds pending storage work while allowing machine and operator requests.
+const STORE_QUEUE_CAPACITY: usize = 32;
+
+/// Default minimum process budget covers all ordered shutdown stages.
+const SHUTDOWN_MIN: Duration = Duration::from_secs(30);
+
+/// Upper bound prevents an installation from waiting indefinitely on exit.
+const SHUTDOWN_MAX: Duration = Duration::from_secs(300);
+
+/// Bounds each local owner drain after admission stops.
+const OWNER_SHUTDOWN_BUDGET: Duration = Duration::from_secs(5);
+
+/// Allows admitted durable receive commits to finish before transports close.
+const RECEIVE_COMMIT_BUDGET: Duration = Duration::from_secs(15);
+
+/// Bounds offline restore and verification on the blocking owner.
+const RESTORE_BUDGET: Duration = Duration::from_secs(30);
+
+/// Shortens only the explicit child-process stuck-store test.
+#[cfg(feature = "test-hooks")]
+const STALLED_STORE_TEST_BUDGET: Duration = Duration::from_millis(500);
 
 // Dropping the task also marks it stopped on panic or cancellation.
 struct AdminOwner(Option<Arc<std::sync::atomic::AtomicBool>>);
@@ -61,7 +82,7 @@ pub(crate) async fn open_store_with_deadline(
         program.data_directory.join("analyte.db"),
         limits,
         space,
-        32,
+        STORE_QUEUE_CAPACITY,
         until,
     )
     .await?;
@@ -103,7 +124,7 @@ pub(crate) async fn serve_bounded(
     bound: Duration,
     watchdog: Option<Arc<crate::runtime::shutdown::Watchdog>>,
 ) -> Result<(), Error> {
-    if !(Duration::from_secs(30)..=Duration::from_secs(300)).contains(&bound) {
+    if !(SHUTDOWN_MIN..=SHUTDOWN_MAX).contains(&bound) {
         return Err(Failure::ShutdownBoundMustBe30Through300Seconds.into());
     }
     serve_with(
@@ -140,7 +161,7 @@ pub async fn serve(
         secrets,
         Supervision {
             loopback: false,
-            shutdown_bound: Duration::from_secs(30),
+            shutdown_bound: SHUTDOWN_MIN,
             watchdog: None,
             ready: None,
         },
@@ -167,7 +188,7 @@ pub async fn serve_loopback_test(
         secrets,
         Supervision {
             loopback: true,
-            shutdown_bound: Duration::from_secs(30),
+            shutdown_bound: SHUTDOWN_MIN,
             watchdog: None,
             ready,
         },
@@ -200,7 +221,7 @@ async fn serve_with(
         if !loopback || watchdog.is_some() {
             return Err(Failure::StuckShutdownHookRequiresTheLoopbackTestService.into());
         }
-        Duration::from_millis(500)
+        STALLED_STORE_TEST_BUDGET
     } else {
         shutdown_bound
     };
@@ -214,31 +235,7 @@ async fn serve_with(
     let store_component = watchdog.component("store".into());
     let destinations = crate::runtime::delivery::destinations(&program, loopback)?;
     let secrets = Arc::new(secrets);
-    let store = open_service_store(&program, space).await?;
-    #[cfg(feature = "test-hooks")]
-    super::test_hooks::publish_store_probes(&program, &store)?;
-    let startup = async {
-        let paused = store
-            .request(deadline(), |store| store.restore_unreconciled())
-            .await?;
-        tracing::info!(
-            order_sending_paused_after_restore = paused,
-            "store restore reconciliation status"
-        );
-        crate::runtime::delivery::recover(&store).await?;
-        super::law_recovery::run(&program, &store).await?;
-        crate::admin::prepare(&program, store.clone(), loopback)
-            .await
-            .map_err(admin_startup_error)
-    }
-    .await;
-    let admin = match startup {
-        Ok(admin) => admin,
-        Err(error) => {
-            close_store(store).await?;
-            return Err(error);
-        }
-    };
+    let (store, admin) = prepare_service(&program, space, loopback).await?;
     let admin_states = admin
         .as_ref()
         .map(|server| server.owners.clone())
@@ -296,6 +293,40 @@ async fn serve_with(
     .finish(store, store_component)
     .await?;
     result
+}
+
+// Startup owns the store until all fallible preparations have completed.
+async fn prepare_service(
+    program: &Program,
+    space: Box<dyn FreeSpace>,
+    loopback: bool,
+) -> Result<(Arc<Handle>, Option<crate::admin::Server>), Error> {
+    let store = open_service_store(program, space).await?;
+    #[cfg(feature = "test-hooks")]
+    super::test_hooks::publish_store_probes(program, &store)?;
+    let startup = async {
+        let paused = store
+            .request(deadline(), |store| store.restore_unreconciled())
+            .await?;
+        tracing::info!(
+            order_sending_paused_after_restore = paused,
+            "store restore reconciliation status"
+        );
+        crate::runtime::delivery::recover(&store).await?;
+        super::law_recovery::run(program, &store).await?;
+        crate::admin::prepare(program, store.clone(), loopback)
+            .await
+            .map_err(admin_startup_error)
+    }
+    .await;
+    let admin = match startup {
+        Ok(admin) => admin,
+        Err(error) => {
+            close_store(store).await?;
+            return Err(error);
+        }
+    };
+    Ok((store, admin))
 }
 
 struct Machines {
@@ -388,18 +419,18 @@ impl Draining {
             captures,
         } = self;
         let until = tokio::time::Instant::now()
-            .checked_add(Duration::from_secs(15))
+            .checked_add(RECEIVE_COMMIT_BUDGET)
             .unwrap_or(tokio::time::Instant::now());
         // Admin reads drain alongside machine commits, without adding a new stage
         // to the process shutdown budget or delaying machine admission shutdown.
         let (alerts_drained, admin_drained, commits_drained) = tokio::join!(
-            tokio::time::timeout(Duration::from_secs(5), async {
+            tokio::time::timeout(OWNER_SHUTDOWN_BUDGET, async {
                 while let Some(owner) = alert_owners.join_next().await {
                     owner??;
                 }
                 Ok::<_, Error>(())
             }),
-            tokio::time::timeout(Duration::from_secs(5), async {
+            tokio::time::timeout(OWNER_SHUTDOWN_BUDGET, async {
                 while let Some(owner) = admin_owners.join_next().await {
                     owner??;
                 }
@@ -433,7 +464,7 @@ impl Draining {
             while delivery_owners.join_next().await.is_some() {}
         }
         close_transports.send_replace(true);
-        let drained = tokio::time::timeout(Duration::from_secs(5), async {
+        let drained = tokio::time::timeout(OWNER_SHUTDOWN_BUDGET, async {
             while let Some(owner) = owners.join_next().await {
                 owner?;
             }
@@ -468,7 +499,7 @@ async fn close_store(store: Arc<Handle>) -> Result<(), Error> {
     store
         .shutdown(
             Instant::now()
-                .checked_add(Duration::from_secs(5))
+                .checked_add(OWNER_SHUTDOWN_BUDGET)
                 .unwrap_or(Instant::now()),
         )
         .await?;
@@ -679,7 +710,7 @@ pub async fn restore(
             Box::new(Volume),
             &audit,
             Instant::now()
-                .checked_add(Duration::from_secs(30))
+                .checked_add(RESTORE_BUDGET)
                 .unwrap_or(Instant::now()),
         )
     })
