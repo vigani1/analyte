@@ -34,6 +34,9 @@ struct QueryRequest {
     edition_matches: bool,
 }
 
+/// Bounds receipts awaiting durable completion within a connection.
+const MAX_PENDING_RECEIPTS: usize = 2;
+
 pub(super) struct Host<'a, 'm> {
     machine: &'a intake::ConnectionEvidence<'m>,
     settings: &'a analyte_config::Hl7Stack,
@@ -127,15 +130,10 @@ impl<'a, 'm> Host<'a, 'm> {
         conn: &mut analyte_transport::Connection,
         stop: &mut watch::Receiver<bool>,
     ) -> Result<bool, Error> {
-        let machine = self.machine;
-        let store = self.store;
         let mut actions: VecDeque<_> = actions.into();
         let result = async {
             while let Some(action) = actions.pop_front() {
-                if self
-                    .effect(action, machine, store, conn, stop, &mut actions)
-                    .await?
-                {
+                if self.effect(action, conn, stop, &mut actions).await? {
                     return Ok(true);
                 }
             }
@@ -161,12 +159,12 @@ impl<'a, 'm> Host<'a, 'm> {
     async fn effect(
         &mut self,
         action: Action,
-        machine: &intake::ConnectionEvidence<'_>,
-        store: &Handle,
         conn: &mut analyte_transport::Connection,
         stop: &mut watch::Receiver<bool>,
         actions: &mut VecDeque<Action>,
     ) -> Result<bool, Error> {
+        let machine = self.machine;
+        let store = self.store;
         match action {
             Action::ReceiptRetained(token) => {
                 self.pending
@@ -330,7 +328,7 @@ impl<'a, 'm> Host<'a, 'm> {
         .await
         {
             Ok(_) => {
-                if self.pending.len() >= 2 {
+                if self.pending.len() >= MAX_PENDING_RECEIPTS {
                     return Err(Error::PendingReceiptLimitExceeded);
                 }
                 self.pending.insert(token, id);
@@ -490,9 +488,10 @@ impl<'a, 'm> Host<'a, 'm> {
 impl Effects for Host<'_, '_> {
     type Error = Error;
     fn wait(&self) -> Result<Option<Duration>, Error> {
-        Ok(Some(self.wake.map_or(Duration::from_secs(1), |deadline| {
-            deadline.saturating_sub(self.start.elapsed())
-        })))
+        Ok(Some(self.wake.map_or(
+            crate::orders::sending::ORDER_POLL_INTERVAL,
+            |deadline| deadline.saturating_sub(self.start.elapsed()),
+        )))
     }
     async fn input(&mut self, host: &mut Context<'_, '_>, input: Input) -> Result<Flow, Error> {
         let machine = self.machine;

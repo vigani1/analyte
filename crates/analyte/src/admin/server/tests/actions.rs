@@ -44,7 +44,7 @@ async fn plan11_admin_reprocess_resend_confirmation_csrf_actor_and_audit_failure
     std::fs::create_dir(root.join("other"))?;
     std::fs::write(
         &config_path,
-        original_program.rewrite("data_directory='data'", "data_directory='other'"),
+        original_program.rewrite("data_directory = 'data'", "data_directory = 'other'"),
     )?;
     let wrong_store = request(&host, &path, &post_auth, Some(&form)).await?;
     assert!(wrong_store.starts_with("HTTP/1.1 409"));
@@ -127,7 +127,16 @@ async fn seed_parked_receipt(
     let config_path = root.join("program.toml");
     std::fs::write(
         &config_path,
-        "schema_version=1\ndata_directory='data'\n[[machines]]\nid='synthetic'\ndefinition='machine.toml'\nsite='site.toml'\n[store]\nreserve_bytes=1\ndatabase_bytes=100000000\nrecord_bytes=2097152\npage_rows=100\nbusy_timeout_ms=100\n",
+        analyte_fixtures::program_with_limits(
+            "[[machines]]\nid='synthetic'\ndefinition='machine.toml'\nsite='site.toml'\n",
+            &analyte_store::Limits {
+                reserve_bytes: 1,
+                database_bytes: 100000000,
+                record_bytes: 2097152,
+                page_rows: 100,
+                busy_timeout: Duration::from_millis(100),
+            },
+        ),
     )?;
     let program = Program::load(&config_path)?;
     let store = Arc::new(

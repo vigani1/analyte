@@ -1,5 +1,5 @@
 # Synthetic teaching configuration. DOCUMENTED ONLY; not qualified for clinical use.
-schema_version = 1
+schema_version = 2
 protocol = "law"
 name = "generic-synthetic"
 deviations = []
@@ -8,16 +8,13 @@ kind = "tcp_server"
 operation_timeout_ms = 10000
 
 [framing]
-kind = "mllp"
 limit = 1048576
 
 [dialog]
-kind = "law_manager"
 receive_timeout_ms = 30000
 send_timeout_ms = 15000
 acknowledgment = "store_and_forward"
 [syntax]
-kind = "hl7_v2"
 encoding = "utf8"
 edition = "v251"
 terminator = "cr"

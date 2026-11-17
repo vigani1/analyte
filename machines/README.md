@@ -121,3 +121,5 @@ prevents delivery; a legacy absent ledger means unrecorded, not empty. The admin
 machine list links to receipt interpretation versions and shows active digests.
 Elevated departure evidence also requires a tested config digest, driver and
 platform in the matching capability, never `untested` or `unknown` placeholders.
+
+Machine definitions use [schema 2 and its schema 1 migration rule](../docs/config-migration.md).

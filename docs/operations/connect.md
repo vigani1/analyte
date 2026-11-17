@@ -116,3 +116,5 @@ so those results stay parked rather than reaching the app. A successful serial
 exchange does not remove this blocker. iFlash also needs evidence-backed code
 support for its status semantics and OBR-only QC arrays; config cannot supply
 that behavior today.
+
+Machine definitions use [schema 2 and its schema 1 migration rule](../config-migration.md).

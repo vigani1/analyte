@@ -48,8 +48,22 @@ impl<T: Send + 'static> analyte_store::FreeSpace for ObservedSpace<T> {
 /// Builds a synthetic program with explicit machine entries and fixed test storage budgets.
 #[must_use]
 pub fn program(machines: &str) -> String {
+    let mut limits = store_limits();
+    limits.record_bytes = 2_097_152;
+    limits.busy_timeout = std::time::Duration::from_secs(1);
+    program_with_limits(machines, &limits)
+}
+
+/// Builds a synthetic program with explicit test storage budgets and machine entries.
+#[must_use]
+pub fn program_with_limits(machines: &str, limits: &analyte_store::Limits) -> String {
     format!(
-        "schema_version = 1\ndata_directory = 'data'\n{machines}[store]\nreserve_bytes = 1024\ndatabase_bytes = 100000000\nrecord_bytes = 2097152\npage_rows = 100\nbusy_timeout_ms = 1000\n"
+        "schema_version = 1\ndata_directory = 'data'\n{machines}[store]\nreserve_bytes = {}\ndatabase_bytes = {}\nrecord_bytes = {}\npage_rows = {}\nbusy_timeout_ms = {}\n",
+        limits.reserve_bytes,
+        limits.database_bytes,
+        limits.record_bytes,
+        limits.page_rows,
+        limits.busy_timeout.as_millis(),
     )
 }
 

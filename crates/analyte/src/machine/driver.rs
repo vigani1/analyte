@@ -48,11 +48,7 @@ pub(super) trait Effects {
         Ok(Flow::Continue)
     }
     /// Protocol-specific pending host work races input; dropping it never proves rollback.
-    async fn background(
-        &mut self,
-        _machine: &intake::ConnectionEvidence<'_>,
-        _store: &Handle,
-    ) -> Result<(), Self::Error> {
+    async fn background(&mut self) -> Result<(), Self::Error> {
         std::future::pending().await
     }
     async fn input(
@@ -100,7 +96,7 @@ async fn drive<P: Effects>(protocol: &mut P, host: &mut Context<'_, '_>) -> Resu
                 Ok(input) => input,
                 Err(error) => protocol.receive_error(error)?,
             },
-            result = protocol.background(host.machine, host.store) => {
+            result = protocol.background() => {
                 result?;
                 Input::Tick
             },
@@ -216,11 +212,7 @@ mod tests {
         fn wait(&self) -> Result<Option<Duration>, Error> {
             Ok(Some(Duration::ZERO))
         }
-        async fn background(
-            &mut self,
-            _: &intake::ConnectionEvidence<'_>,
-            _: &Handle,
-        ) -> Result<(), Error> {
+        async fn background(&mut self) -> Result<(), Error> {
             self.trace.borrow_mut().push("background");
             Err(Error::UnexpectedInput)
         }

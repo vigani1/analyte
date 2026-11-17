@@ -26,6 +26,7 @@ impl ExecutionStatus {
 /// Original segments for one empty AWOS group; validation has checked the entire LAB-29.
 #[derive(Debug, Clone, Copy)]
 pub struct StatusNotice<'a> {
+    pub(super) order_index: usize,
     pub(super) status: ExecutionStatus,
     pub(super) order: Segment<'a>,
     pub(super) control: Segment<'a>,
@@ -34,6 +35,12 @@ pub struct StatusNotice<'a> {
 }
 
 impl<'a> StatusNotice<'a> {
+    /// Returns the zero-based OBR occurrence in the original message.
+    #[must_use]
+    pub fn order_index(self) -> usize {
+        self.order_index
+    }
+
     /// Execution evidence, independent of command and observation statuses.
     #[must_use]
     pub fn status(self) -> ExecutionStatus {

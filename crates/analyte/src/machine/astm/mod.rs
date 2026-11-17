@@ -438,11 +438,7 @@ impl Effects for Host<'_, '_> {
             |deadline| deadline.saturating_sub(self.start.elapsed()),
         )))
     }
-    async fn background(
-        &mut self,
-        _machine: &intake::ConnectionEvidence<'_>,
-        _store: &Handle,
-    ) -> Result<(), Error> {
+    async fn background(&mut self) -> Result<(), Error> {
         let Query::LookingUp { pending } = &mut self.query else {
             return std::future::pending().await;
         };

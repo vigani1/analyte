@@ -148,6 +148,17 @@ impl<'a> ResultGroups<'a> {
         self.order_status = Some(law::OrderStatus::parse(raw(segment, 5))?);
         if let Some(status) = ExecutionStatus::from_order(self.order_status) {
             self.notices.push(StatusNotice {
+                order_index: match self.parent {
+                    Some(Parent::Order(index)) => index,
+                    Some(
+                        Parent::Patient(_)
+                        | Parent::Specimen(_)
+                        | Parent::Container(_)
+                        | Parent::Observation(_)
+                        | Parent::SpecimenObservation(_),
+                    )
+                    | None => return Err(content("OBR", 0)),
+                },
                 status,
                 order: self.order.ok_or(content("OBR", 0))?,
                 control: segment,
@@ -205,6 +216,7 @@ impl<'a> ResultGroups<'a> {
             return Err(content("OBX", 1));
         }
         let observation = Observation {
+            segment_index: ordinal,
             order_ordinal: self.order_count,
             segment,
             order: self.order.ok_or(content("OBR", 0))?,
