@@ -80,6 +80,50 @@ pub fn custody_records(message: &Message) -> impl Iterator<Item = CustodyRecord<
     })
 }
 
+/// Read-only fields from an original ORC retained as protected custody evidence.
+pub struct RetainedControl<'a> {
+    estimate: &'a str,
+    event_time: &'a str,
+}
+impl<'a> RetainedControl<'a> {
+    /// Reads the source field delimiter, with no fallback or normalization.
+    ///
+    /// # Errors
+    /// Rejects a missing ORC identifier/delimiter or evidence beyond the field limit.
+    pub fn parse(source: &'a str) -> Result<Self, crate::Error> {
+        let invalid = || crate::Error::Control {
+            segment: "ORC",
+            field: 0,
+        };
+        if source.len() > 65_536 || !source.starts_with("ORC") {
+            return Err(invalid());
+        }
+        let delimiter = source
+            .as_bytes()
+            .get(3)
+            .copied()
+            .filter(|b| b.is_ascii_graphic() && !b.is_ascii_alphanumeric())
+            .ok_or_else(invalid)?;
+        let mut fields = source.split(char::from(delimiter));
+        let event_time = fields.nth(9).unwrap_or("");
+        let estimate = fields.nth(17).unwrap_or("");
+        Ok(Self {
+            estimate,
+            event_time,
+        })
+    }
+    /// Returns ORC-27 exactly, including empty or explicit null.
+    #[must_use]
+    pub fn estimate(&self) -> &'a str {
+        self.estimate
+    }
+    /// Returns ORC-9 exactly, including absence.
+    #[must_use]
+    pub fn event_time(&self) -> &'a str {
+        self.event_time
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -133,4 +177,24 @@ mod tests {
             assert_eq!(status.as_bytes().escape_ascii().to_string(), old);
         }
     }
+}
+
+#[test]
+fn law_tf2b_b7_6_orc9_orc27_retained_evidence_matches_original_fields() -> Result<(), crate::Error>
+{
+    for delimiter in ['|', '$'] {
+        for estimate in ["", "\"\"", "202611171230+0100"] {
+            let mut fields = vec![""; 28];
+            fields[0] = "ORC";
+            fields[9] = "202611171200+0100";
+            fields[27] = estimate;
+            let raw = fields.join(&delimiter.to_string());
+            let view = RetainedControl::parse(&raw)?;
+            assert_eq!(view.event_time(), raw.split(delimiter).nth(9).unwrap_or(""));
+            assert_eq!(view.estimate(), raw.split(delimiter).nth(27).unwrap_or(""));
+        }
+    }
+    assert!(RetainedControl::parse("ORC").is_err());
+    assert!(RetainedControl::parse("garbage").is_err());
+    Ok(())
 }

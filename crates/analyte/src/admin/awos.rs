@@ -85,8 +85,10 @@ fn source_evidence(source: &str) -> String {
         .get("control")
         .and_then(serde_json::Value::as_str)
         .unwrap_or("");
-    let delimiter = control.chars().nth(3).unwrap_or('|');
-    let estimate = control.split(delimiter).nth(27).unwrap_or("");
+    let Ok(control) = analyte_hl7::law::RetainedControl::parse(control) else {
+        return format!("<pre>{}</pre>", escape(source));
+    };
+    let estimate = control.estimate();
     let estimate = match estimate {
         "" => "Absent ? earlier estimate evidence is retained",
         "\"\"" => "Explicit source null",
@@ -96,11 +98,10 @@ fn source_evidence(source: &str) -> String {
         .get("header_time")
         .and_then(serde_json::Value::as_str)
         .unwrap_or("unknown");
-    let event = control
-        .split(delimiter)
-        .nth(9)
-        .filter(|s| !s.is_empty())
-        .unwrap_or("not supplied");
+    let event = match control.event_time() {
+        "" => "not supplied",
+        supplied => supplied,
+    };
     let mut html = format!(
         "<dl><dt>Availability estimate as supplied</dt><dd>{}</dd><dt>Zone evidence (MSH-7)</dt><dd>{}</dd><dt>Source event time (ORC-9), as supplied</dt><dd>{}</dd></dl><ul>",
         escape(estimate),

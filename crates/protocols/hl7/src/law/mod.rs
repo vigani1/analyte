@@ -552,4 +552,4 @@ mod retained;
 pub use retained::{Mismatch, ReturnedWork, compare_retained, returned_work};
 
 mod custody;
-pub use custody::{CustodyHeader, CustodyRecord, custody_records};
+pub use custody::{CustodyHeader, CustodyRecord, RetainedControl, custody_records};

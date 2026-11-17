@@ -3,6 +3,9 @@
 #![forbid(unsafe_code)]
 use libfuzzer_sys::fuzz_target;
 fuzz_target!(|data: &[u8]| {
+    if let Ok(text) = std::str::from_utf8(data) {
+        let _ = analyte_hl7::law::RetainedControl::parse(text);
+    }
     if let Ok(message) = analyte_hl7::law::parse_message(
         data,
         analyte_hl7::Options {
