@@ -1,5 +1,5 @@
 //! Delivers results while preserving delivery identities across retries.
-use crate::{DeliveryError, Destination, SecretsSource, body, deadline, stopped};
+use crate::{DeliveryError, Destination, SecretsSource, body, deadline};
 use analyte_contract::{ResponseAction, classify_response};
 use analyte_model::{DeliveryId, Identifier, IdentityStatus, ReceiptMetadata, ResultContent};
 use analyte_store::{Attempt, DeliveryKind, Handle};
@@ -279,7 +279,7 @@ impl<'a> Worker<'a> {
             tokio::pin!(attempt);
             let outcome = tokio::select! {
                 biased;
-                () = stopped(&mut stop) => {
+                _ = async { let _ = stop.wait_for(|&stopped| stopped).await; } => {
                     if !started.load(std::sync::atomic::Ordering::Relaxed) { return Ok(()); }
                     tokio::time::timeout(budget, &mut attempt).await.map_err(|_| DeliveryError::Timeout)??;
                     return Ok(());
@@ -289,7 +289,7 @@ impl<'a> Worker<'a> {
             if outcome == DeliveryOutcome::Idle {
                 tokio::select! {
                     biased;
-                    () = stopped(&mut stop) => return Ok(()),
+                    _ = async { let _ = stop.wait_for(|&stopped| stopped).await; } => return Ok(()),
                     () = tokio::time::sleep(IDLE_CLAIM_INTERVAL) => {}
                 }
             }
@@ -302,9 +302,9 @@ impl<'a> Worker<'a> {
     /// Stops visibly on errors requiring host intervention.
     pub async fn run(&self, mut stop: watch::Receiver<bool>) -> Result<(), DeliveryError> {
         loop {
-            let outcome = tokio::select! {biased; ()=stopped(&mut stop)=>return Ok(()), result=self.deliver_once()=>result?};
+            let outcome = tokio::select! {biased; _=async { let _ = stop.wait_for(|&stopped| stopped).await; }=>return Ok(()), result=self.deliver_once()=>result?};
             if outcome == DeliveryOutcome::Idle {
-                tokio::select! {biased; ()=stopped(&mut stop)=>return Ok(()), ()=tokio::time::sleep(IDLE_CLAIM_INTERVAL)=>{}}
+                tokio::select! {biased; _=async { let _ = stop.wait_for(|&stopped| stopped).await; }=>return Ok(()), ()=tokio::time::sleep(IDLE_CLAIM_INTERVAL)=>{}}
             }
         }
     }

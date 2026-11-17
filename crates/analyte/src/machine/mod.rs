@@ -48,9 +48,9 @@ pub(crate) struct Closing {
 impl Closing {
     pub(crate) async fn after_commits(&mut self) -> Result<(), link::error::Error> {
         self.ready.send_replace(true);
-        tokio::time::timeout(
+        let _ = tokio::time::timeout(
             TRANSPORT_CLOSE_BUDGET,
-            crate::runtime::stopped(&mut self.close),
+            self.close.wait_for(|&stopped| stopped),
         )
         .await
         .map_err(link::error::Error::TransportCloseStageExceeded)?;
@@ -153,7 +153,7 @@ pub(crate) async fn run(
             }
             // Reconnect backoff is cancellable; this is not polling for completion.
             tokio::select! {
-                () = crate::runtime::stopped(&mut stop) => return Ok(()),
+                _ = async { let _ = stop.wait_for(|&stopped| stopped).await; } => return Ok(()),
                 () = tokio::time::sleep(RECONNECT_MIN) => {}
             }
         },

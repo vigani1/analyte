@@ -106,7 +106,7 @@ pub(in crate::machine) async fn session(
         loop {
             let mut item = tokio::select! {
                 biased;
-                () = crate::runtime::stopped(&mut stop) => break,
+                _ = async { let _ = stop.wait_for(|&stopped| stopped).await; } => break,
                 item = files.recv() => item.ok_or_else(|| Error::FileOwnerStopped)?,
             };
             let Some(raw) = receive(&mut item.connection, bytes, &mut stop).await? else {
@@ -148,7 +148,7 @@ async fn receive(
     loop {
         let event = tokio::select! {
             biased;
-            () = crate::runtime::stopped(stop) => return Ok(None),
+            _ = async { let _ = stop.wait_for(|&stopped| stopped).await; } => return Ok(None),
             event = connection.receive() => event?,
         }
         .ok_or_else(|| Error::CompletionInterrupted)?;

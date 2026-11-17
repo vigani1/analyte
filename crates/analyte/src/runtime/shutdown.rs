@@ -96,19 +96,6 @@ impl Drop for Watchdog {
     }
 }
 
-/// Waits until shutdown is requested or its owner disappears, ignoring false updates.
-/// Cancellation leaves the receiver owned by the caller.
-pub(crate) async fn stopped(stop: &mut tokio::sync::watch::Receiver<bool>) {
-    loop {
-        if *stop.borrow() {
-            return;
-        }
-        if stop.changed().await.is_err() {
-            return;
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

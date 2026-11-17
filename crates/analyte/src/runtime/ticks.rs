@@ -9,7 +9,7 @@ pub(crate) async fn until_stop(ticks: &mut Interval, stop: &mut watch::Receiver<
     }
     tokio::select! {
         biased;
-        _ = crate::runtime::stopped(stop) => false,
+        _ = async { let _ = stop.wait_for(|&stopped| stopped).await; } => false,
         _ = ticks.tick() => true,
     }
 }
