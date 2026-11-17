@@ -9,6 +9,32 @@ use std::{
     time::{Duration, Instant},
 };
 
+/// Failures of the parked-evidence command, including its host input refusals.
+#[derive(Debug, thiserror::Error)]
+enum ParkedCommandError {
+    #[error(transparent)]
+    Evidence(#[from] analyte_store::OperatorError),
+    #[error(transparent)]
+    Audit(#[from] analyte_store::StorageError),
+    #[error(transparent)]
+    Worker(#[from] analyte_store::WorkerError),
+    #[error("reprocessing requires the interpretation route")]
+    ReprocessRequiresInterpretation,
+    #[error("operator sequence cursor overflow")]
+    OperatorCursorOverflow,
+}
+
+/// Boundaries combined by the audited delivery listing command.
+#[derive(Debug, thiserror::Error)]
+enum DeliveryCommandError {
+    #[error(transparent)]
+    Delivery(#[from] analyte_store::DeliveryError),
+    #[error(transparent)]
+    Audit(#[from] analyte_store::StorageError),
+    #[error(transparent)]
+    Worker(#[from] analyte_store::WorkerError),
+}
+
 /// Allows backup execution plus queue and response overhead.
 const BACKUP_REQUEST_BUDGET: Duration = Duration::from_secs(30);
 /// Leaves five seconds of the request budget for host overhead.
@@ -349,9 +375,9 @@ async fn operator(
             reason: Reason::new(&reason)?,
         };
         let rows = store
-            .request::<_, analyte_store::Error>(analyte::deadline()?, move |store| match command {
+            .request::<_, ParkedCommandError>(analyte::deadline()?, move |store| match command {
                 Parked::Reprocess { .. } => {
-                    Err(analyte_store::Error::ReprocessRequiresInterpretation)
+                    Err(ParkedCommandError::ReprocessRequiresInterpretation)
                 }
                 Parked::Resolve { id, .. } => {
                     store.resolve(id, &audit)?;
@@ -365,12 +391,11 @@ async fn operator(
                     store.audit(&audit)?;
                     let after = id
                         .checked_sub(1)
-                        .ok_or(analyte_store::Error::OperatorCursorOverflow)?;
+                        .ok_or(ParkedCommandError::OperatorCursorOverflow)?;
                     let rows = store.parked(after)?;
-                    let row = rows
-                        .into_iter()
-                        .find(|r| r.id == id)
-                        .ok_or(analyte_store::Error::Conflict)?;
+                    let row = rows.into_iter().find(|r| r.id == id).ok_or(
+                        ParkedCommandError::Evidence(analyte_store::OperatorError::Conflict),
+                    )?;
                     Ok(vec![row])
                 }
             })
@@ -428,7 +453,7 @@ async fn deliveries(
                     reason: Reason::new(&reason)?,
                 };
                 let rows = store
-                    .request::<_, analyte_store::Error>(analyte::deadline()?, move |s| {
+                    .request::<_, DeliveryCommandError>(analyte::deadline()?, move |s| {
                         let rows = s.deliveries(after)?;
                         s.audit(&audit)?;
                         Ok(rows)
@@ -484,17 +509,17 @@ async fn backup(config: &std::path::Path, target: PathBuf) -> Result<(), Error> 
     let program = Program::load(config)?;
     let mut store = analyte::open_system_store(&program).await?;
     let result = store
-        .request::<_, analyte_store::Error>(
+        .request::<_, analyte_store::MaintenanceError>(
             Instant::now()
                 .checked_add(BACKUP_REQUEST_BUDGET)
                 .unwrap_or(Instant::now()),
             move |store| {
-                Ok(store.backup(
+                store.backup(
                     &target,
                     Instant::now()
                         .checked_add(BACKUP_WORK_BUDGET)
                         .unwrap_or(Instant::now()),
-                )?)
+                )
             },
         )
         .await;
