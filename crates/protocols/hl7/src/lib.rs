@@ -60,3 +60,6 @@ pub fn is_safe_field(value: &[u8], maximum: usize, syntax: FieldSyntax) -> bool 
             }
         }
 }
+
+/// Application internal error from HL7 2.5.1 ?2.15.5, table 0357 (ERR-3).
+pub const APPLICATION_INTERNAL_ERROR: &[u8] = b"207";

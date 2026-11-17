@@ -95,7 +95,11 @@ mod tests {
                 },
                 AckCode::Ae,
                 Responsibility::Stored,
-                Some(build(location.as_ref(), b"207", b"operator-review")),
+                Some(build(
+                    location.as_ref(),
+                    analyte_hl7::APPLICATION_INTERNAL_ERROR,
+                    b"operator-review",
+                )),
                 Options::default(),
             )
             .unwrap()

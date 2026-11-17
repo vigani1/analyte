@@ -365,7 +365,11 @@ impl<'a, 'm> Host<'a, 'm> {
         } else {
             Event::NotInterpretable(
                 token,
-                error_location::build(location.as_ref(), b"207", b"operator-review"),
+                error_location::build(
+                    location.as_ref(),
+                    analyte_hl7::APPLICATION_INTERNAL_ERROR,
+                    b"operator-review",
+                ),
                 analyte_dialog::hl7::AckChoice::ContentError,
             )
         };
