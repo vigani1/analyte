@@ -1,6 +1,6 @@
 //! Checks LAW query and send-ahead reservations and cancellation eligibility (TF-2b 3.28.4).
 use super::{
-    Connection, Exchange,
+    Exchange, LawOrderLink,
     work::{Command, render},
 };
 use crate::installation::config::Machine;
@@ -11,7 +11,7 @@ use analyte_hl7::{Message, Options, law};
 use analyte_model::SourceText;
 use analyte_store::{Handle, MachineOrder};
 use std::time::{Duration, Instant};
-impl Connection {
+impl LawOrderLink {
     /// Admits at most one idle exchange. Once reserved, only an outcome may change it;
     /// connection cancellation recovers owned in-flight store calls through `close`.
     pub(crate) async fn idle(

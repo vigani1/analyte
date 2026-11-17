@@ -187,7 +187,7 @@ async fn session(
     conn: &mut analyte_transport::Connection,
     stop: watch::Receiver<bool>,
 ) -> Result<(), Error> {
-    let context = crate::intake::Connection::new(machine)?;
+    let context = crate::intake::ConnectionEvidence::new(machine)?;
     let machine = &context;
     match selected {
         analyte_config::Stack::Astm(analyte_config::RecordTransport::Stream(settings)) => {

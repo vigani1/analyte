@@ -14,7 +14,7 @@ use std::{collections::VecDeque, time::Instant};
 use tokio::sync::watch;
 
 pub(super) async fn session(
-    machine: &intake::Connection<'_>,
+    machine: &intake::ConnectionEvidence<'_>,
     settings: &analyte_config::PoctStack,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
@@ -59,7 +59,7 @@ impl ConnectionState {
     async fn receive_bytes(
         &mut self,
         bytes: Vec<u8>,
-        machine: &intake::Connection<'_>,
+        machine: &intake::ConnectionEvidence<'_>,
         settings: &analyte_config::PoctStack,
         store: &Handle,
         conn: &mut analyte_transport::Connection,
@@ -210,7 +210,7 @@ async fn interpret_input(
     wire: Vec<u8>,
     dialog: &mut Dialog,
     start: Instant,
-    machine: &intake::Connection<'_>,
+    machine: &intake::ConnectionEvidence<'_>,
     store: &Handle,
     limits: analyte_poct::Limits,
 ) -> Result<Vec<Action>, Error> {
@@ -260,7 +260,7 @@ async fn process(
     actions: Vec<Action>,
     dialog: &mut Dialog,
     start: Instant,
-    machine: &intake::Connection<'_>,
+    machine: &intake::ConnectionEvidence<'_>,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
     settings: &analyte_config::PoctStack,
@@ -363,7 +363,7 @@ async fn process(
 
 async fn store_message(
     store: &Handle,
-    machine: &intake::Connection<'_>,
+    machine: &intake::ConnectionEvidence<'_>,
     message: &Message,
 ) -> Result<CommitOutcome, Error> {
     let id = ReceiptId::new();

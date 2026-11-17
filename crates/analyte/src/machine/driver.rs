@@ -23,7 +23,7 @@ pub(super) enum Flow {
 
 /// Shared host ownership; cancellation never cancels a queued durable-store request.
 pub(super) struct Context<'a, 'm, S> {
-    pub machine: &'a intake::Connection<'m>,
+    pub machine: &'a intake::ConnectionEvidence<'m>,
     pub settings: &'a S,
     pub store: &'a Handle,
     pub conn: &'a mut analyte_transport::Connection,
@@ -57,7 +57,7 @@ pub(super) trait Effects {
     /// Protocol-specific pending host work races input; dropping it never proves rollback.
     async fn background(
         &mut self,
-        _machine: &intake::Connection<'_>,
+        _machine: &intake::ConnectionEvidence<'_>,
         _store: &Handle,
     ) -> Result<(), Self::Error> {
         std::future::pending().await
@@ -167,7 +167,7 @@ mod tests {
         }
         async fn background(
             &mut self,
-            _: &intake::Connection<'_>,
+            _: &intake::ConnectionEvidence<'_>,
             _: &Handle,
         ) -> Result<(), Error> {
             self.trace.borrow_mut().push("background");
@@ -214,7 +214,7 @@ mod tests {
         )?;
         let program = crate::installation::config::Program::load(&path)?;
         let machine = program.machines().first().ok_or("synthetic machine")?;
-        let connection = intake::Connection::new(machine)?;
+        let connection = intake::ConnectionEvidence::new(machine)?;
         let mut store = Handle::start(
             temp.path().join("store.db"),
             analyte_fixtures::store_limits(),

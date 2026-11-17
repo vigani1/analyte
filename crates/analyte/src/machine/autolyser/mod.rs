@@ -30,7 +30,7 @@ struct ConnectionState {
 }
 
 pub(super) async fn session(
-    machine: &intake::Connection<'_>,
+    machine: &intake::ConnectionEvidence<'_>,
     settings: &analyte_config::AutolyserStack,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
@@ -82,7 +82,7 @@ impl ConnectionState {
     async fn receive_bytes(
         &mut self,
         bytes: Vec<u8>,
-        machine: &intake::Connection<'_>,
+        machine: &intake::ConnectionEvidence<'_>,
         store: &Handle,
         conn: &mut analyte_transport::Connection,
         policy: &analyte_config::Autolyser,
@@ -236,7 +236,7 @@ impl ConnectionState {
         token: u64,
         raw: Vec<u8>,
         actions: &mut VecDeque<Action>,
-        machine: &intake::Connection<'_>,
+        machine: &intake::ConnectionEvidence<'_>,
         store: &Handle,
     ) -> Option<Error> {
         let prior_code = self.end_code;
@@ -280,7 +280,7 @@ impl ConnectionState {
     }
     async fn interpret_report(
         &mut self,
-        machine: &intake::Connection<'_>,
+        machine: &intake::ConnectionEvidence<'_>,
         store: &Handle,
     ) -> Result<(), Error> {
         let (id, _) = self
@@ -299,7 +299,7 @@ impl ConnectionState {
 async fn process(
     actions: Vec<Action>,
     state: &mut ConnectionState,
-    machine: &intake::Connection<'_>,
+    machine: &intake::ConnectionEvidence<'_>,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
     policy: &analyte_config::Autolyser,

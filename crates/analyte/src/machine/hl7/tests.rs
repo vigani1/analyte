@@ -36,7 +36,7 @@ async fn adr0003_mllp_r1_s1_2_coalesced_read_survives_ack_write_failure_and_canc
             }
             let program = program(temp.path(), &definition, "127.0.0.1:5600")?;
             let machine = program.machines().first().ok_or("machine")?;
-            let connection = intake::Connection::new(machine)?;
+            let connection = intake::ConnectionEvidence::new(machine)?;
             let analyte_config::Stack::Hl7(analyte_config::RecordTransport::Stream(settings)) =
                 machine.snapshot.effective().stack()
             else {

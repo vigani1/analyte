@@ -16,7 +16,7 @@ impl Work {
     pub(crate) async fn poll(
         &mut self,
         store: &Handle,
-        machine: &intake::Connection<'_>,
+        machine: &intake::ConnectionEvidence<'_>,
     ) -> Result<Option<analyte_autolyser::syntax::Worklist>, Error> {
         let Some(reserved) =
             super::sending::next(store, machine.machine(), &mut self.cursor).await?

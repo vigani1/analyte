@@ -17,7 +17,7 @@ use std::{
 use tokio::sync::watch;
 
 pub(super) async fn session(
-    machine: &intake::Connection<'_>,
+    machine: &intake::ConnectionEvidence<'_>,
     settings: &analyte_config::AstmStack,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
@@ -37,7 +37,7 @@ pub(super) async fn session(
 }
 
 struct ConnectionState<'a, 'm> {
-    machine: &'a intake::Connection<'m>,
+    machine: &'a intake::ConnectionEvidence<'m>,
     settings: &'a analyte_config::AstmStack,
     store: &'a Handle,
     config: Config,
@@ -60,7 +60,7 @@ struct ConnectionState<'a, 'm> {
 
 impl<'a, 'm> ConnectionState<'a, 'm> {
     fn open(
-        machine: &'a intake::Connection<'m>,
+        machine: &'a intake::ConnectionEvidence<'m>,
         settings: &'a analyte_config::AstmStack,
         store: &'a Handle,
     ) -> Result<Self, Error> {
@@ -427,7 +427,7 @@ impl Effects for ConnectionState<'_, '_> {
     }
     async fn background(
         &mut self,
-        _machine: &intake::Connection<'_>,
+        _machine: &intake::ConnectionEvidence<'_>,
         _store: &Handle,
     ) -> Result<(), Error> {
         let answer = match self.pending.as_mut() {

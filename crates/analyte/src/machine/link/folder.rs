@@ -91,7 +91,7 @@ pub(in crate::machine) async fn session(
     mut closing: crate::machine::Closing,
     capture: Option<&crate::machine::capture::Capture>,
 ) -> Result<(), Error> {
-    let context = intake::Connection::new(machine)?;
+    let context = intake::ConnectionEvidence::new(machine)?;
     let machine = &context;
     let (owner, mut files) = Owner::start(
         PathBuf::from(&machine.machine().snapshot.effective().site().endpoint),

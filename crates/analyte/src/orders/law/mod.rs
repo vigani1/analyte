@@ -18,7 +18,7 @@ use std::{
 };
 use work::{address, render};
 
-pub(crate) struct Connection {
+pub(crate) struct LawOrderLink {
     owner: Identifier,
     reserving: Vec<MachineOrderKey>,
     exchange: Option<Exchange>,
@@ -34,7 +34,7 @@ struct Exchange {
     query: Option<ReceiptId>,
 }
 
-impl Connection {
+impl LawOrderLink {
     pub(crate) fn new() -> Result<Self, Error> {
         Ok(Self {
             owner: Identifier::new(&uuid::Uuid::now_v7().to_string())?,

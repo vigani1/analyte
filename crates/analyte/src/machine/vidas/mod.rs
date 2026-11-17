@@ -29,7 +29,7 @@ struct ConnectionState {
 }
 
 pub(super) async fn session(
-    machine: &intake::Connection<'_>,
+    machine: &intake::ConnectionEvidence<'_>,
     settings: &analyte_config::VidasStack,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
@@ -50,7 +50,7 @@ pub(super) async fn session(
 
 impl ConnectionState {
     fn open(
-        machine: &intake::Connection<'_>,
+        machine: &intake::ConnectionEvidence<'_>,
         settings: &analyte_config::VidasStack,
     ) -> Result<Self, Error> {
         let installed = &settings.policy();
@@ -88,7 +88,7 @@ impl ConnectionState {
     async fn receive_bytes(
         &mut self,
         bytes: Vec<u8>,
-        machine: &intake::Connection<'_>,
+        machine: &intake::ConnectionEvidence<'_>,
         store: &Handle,
         conn: &mut analyte_transport::Connection,
         installed: &analyte_config::Vidas,
@@ -222,7 +222,7 @@ impl Effects for ConnectionState {
 
 async fn process(
     state: &mut ConnectionState,
-    machine: &intake::Connection<'_>,
+    machine: &intake::ConnectionEvidence<'_>,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
     installed: &analyte_config::Vidas,
@@ -299,7 +299,7 @@ async fn process(
 
 async fn store_upload(
     store: &Handle,
-    machine: &intake::Connection<'_>,
+    machine: &intake::ConnectionEvidence<'_>,
     id: ReceiptId,
     raw: &[u8],
 ) -> Result<(), intake::Error> {

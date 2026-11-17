@@ -19,7 +19,7 @@ use std::time::{Duration, Instant};
 /// Owns order reservations; framing, DSR correlation and reply waits belong to the dialog.
 /// Cancellation leaves reservations owned here for disconnect cleanup; restart
 /// recovery owns any store call whose completion was lost during cancellation.
-pub(crate) struct Connection {
+pub(crate) struct Hl7OrderLink {
     options: Options,
     active: Vec<MachineOrder>,
     reserving: Vec<analyte_store::MachineOrderKey>,
@@ -32,7 +32,7 @@ pub(crate) struct Request<'a> {
     pub(crate) started: Instant,
     pub(crate) receipt: ReceiptId,
 }
-impl Connection {
+impl Hl7OrderLink {
     pub(crate) fn new(options: Options) -> Result<Self, Error> {
         Ok(Self {
             options,
@@ -46,7 +46,7 @@ impl Connection {
     pub(crate) async fn idle(
         &mut self,
         store: &Handle,
-        machine: &intake::Connection<'_>,
+        machine: &intake::ConnectionEvidence<'_>,
         conn: &mut analyte_transport::Connection,
         dialog: &mut analyte_dialog::hl7::Dialog,
         clock: Instant,
@@ -105,7 +105,7 @@ impl Connection {
     pub(crate) async fn close(
         &mut self,
         store: &Handle,
-        _machine: &intake::Connection<'_>,
+        _machine: &intake::ConnectionEvidence<'_>,
         code: &str,
     ) -> Result<(), Error> {
         let mut result = Ok(());
@@ -543,7 +543,7 @@ mod tests {
             .effective()
             .hl7_options()
             .ok_or("options")?;
-        let mut connection = Connection::new(options)?;
+        let mut connection = Hl7OrderLink::new(options)?;
         connection.owner = owner;
         connection.active = vec![failed, good];
         let mut result = Err(crate::invalid("original wire failure"));
@@ -552,7 +552,7 @@ mod tests {
             connection
                 .close(
                     &store,
-                    &intake::Connection::new(&machine)?,
+                    &intake::ConnectionEvidence::new(&machine)?,
                     Code::Hl7DsrSessionError.as_str(),
                 )
                 .await
@@ -607,12 +607,12 @@ mod tests {
             .effective()
             .hl7_options()
             .ok_or("options")?;
-        let mut other = Connection::new(options)?;
+        let mut other = Hl7OrderLink::new(options)?;
         other.reserving.push(key.clone());
         other
             .close(
                 &store,
-                &intake::Connection::new(&machine)?,
+                &intake::ConnectionEvidence::new(&machine)?,
                 Code::Hl7DsrDisconnect.as_str(),
             )
             .await?;
@@ -623,13 +623,13 @@ mod tests {
             .ok_or("reservation")?;
         assert_eq!(current.state, analyte_model::OrderState::Sending);
         assert!(current.reserved_by(&owner));
-        let mut original = Connection::new(options)?;
+        let mut original = Hl7OrderLink::new(options)?;
         original.owner = owner;
         original.reserving.push(key.clone());
         original
             .close(
                 &store,
-                &intake::Connection::new(&machine)?,
+                &intake::ConnectionEvidence::new(&machine)?,
                 Code::Hl7DsrDisconnect.as_str(),
             )
             .await?;

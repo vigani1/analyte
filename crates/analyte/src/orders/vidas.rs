@@ -35,7 +35,7 @@ impl Work {
     }
     pub(crate) async fn poll(
         &mut self,
-        machine: &intake::Connection<'_>,
+        machine: &intake::ConnectionEvidence<'_>,
         store: &Handle,
     ) -> Result<Option<Message>, Error> {
         if Instant::now() < self.next_poll {
