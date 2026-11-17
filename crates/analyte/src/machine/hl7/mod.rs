@@ -7,6 +7,7 @@ use super::driver::{Context, Effects, Failures, Flow};
 use crate::intake;
 mod error;
 pub(crate) mod settings;
+use crate::machine::receive::custody::{self, WriteDeadline};
 use crate::orders::outcome::Code;
 use analyte_dialog::hl7::{Action, Dialog, Event, Expect};
 use analyte_model::ReceiptId;
@@ -308,11 +309,8 @@ impl<'a, 'm> Host<'a, 'm> {
         let machine = self.machine;
         let store = self.store;
         let id = ReceiptId::new();
-        match crate::machine::receive::custody::store_before_ack(
-            machine.machine(),
-            intake::receive(store, machine, id, raw),
-        )
-        .await
+        match custody::store_before_ack(machine.machine(), intake::receive(store, machine, id, raw))
+            .await
         {
             Ok(_) => {
                 if self.pending.len() >= MAX_PENDING_RECEIPTS {
@@ -401,16 +399,12 @@ impl<'a, 'm> Host<'a, 'm> {
         write: &analyte_dialog::Write,
         conn: &mut analyte_transport::Connection,
     ) -> Result<(), Error> {
-        let until = write
-            .until
-            .map(|until| {
-                self.start
-                    .checked_add(until)
-                    .map(tokio::time::Instant::from_std)
-                    .ok_or(Error::WriteDeadlineOverflow)
-            })
-            .transpose()?;
-        conn.write_all(&write.bytes, until).await?;
+        custody::write(
+            conn,
+            &write.bytes,
+            WriteDeadline::dialog(self.start, write.until)?,
+        )
+        .await?;
         Ok(())
     }
     async fn write_query(
@@ -422,17 +416,8 @@ impl<'a, 'm> Host<'a, 'm> {
         actions: &mut VecDeque<Action>,
         failures: &mut Failures<Error>,
     ) -> Result<(), Error> {
-        match conn
-            .write_all(
-                bytes,
-                Some(tokio::time::Instant::from_std(
-                    self.start
-                        .checked_add(until)
-                        .ok_or(Error::QueryWriteDeadlineOverflow)?,
-                )),
-            )
-            .await
-        {
+        let deadline = WriteDeadline::dialog(self.start, Some(until))?;
+        match custody::write(conn, bytes, deadline).await {
             Ok(()) => actions.extend(
                 self.dialog
                     .step(self.start.elapsed(), Event::QueryWritten(part))?,
@@ -573,12 +558,12 @@ impl Effects for Host<'_, '_> {
         let machine = self.machine;
         let store = self.store;
         let cleanup = self.input_evidence.retain(store, machine).await;
-        crate::machine::receive::custody::retain_cleanup(result, cleanup.map_err(Into::into));
+        custody::retain_cleanup(result, cleanup.map_err(Into::into));
         // A cancelled or failed host operation must expose partial input as well.
         let actions = match self.dialog.step(self.start.elapsed(), Event::Disconnected) {
             Ok(actions) => actions,
             Err(error) => {
-                crate::machine::receive::custody::retain_cleanup(result, Err(error.into()));
+                custody::retain_cleanup(result, Err(error.into()));
                 Vec::new()
             }
         };
@@ -586,10 +571,7 @@ impl Effects for Host<'_, '_> {
             if let Action::Rejected(error, bytes) = action {
                 let cleanup =
                     intake::park_bytes(store, machine, bytes, ByteReason::Mllp(&error)).await;
-                crate::machine::receive::custody::retain_cleanup(
-                    result,
-                    cleanup.map_err(Into::into),
-                );
+                custody::retain_cleanup(result, cleanup.map_err(Into::into));
             }
         }
         if let Some(query) = &mut self.queries {
@@ -604,7 +586,7 @@ impl Effects for Host<'_, '_> {
                     },
                 )
                 .await;
-            crate::machine::receive::custody::retain_cleanup(result, cleanup.map_err(Into::into));
+            custody::retain_cleanup(result, cleanup.map_err(Into::into));
         }
         Ok(())
     }

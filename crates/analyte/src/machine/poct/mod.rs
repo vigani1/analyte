@@ -237,7 +237,12 @@ impl Host<'_, '_> {
                             limits,
                             dialog.outbound_message_limit(),
                         )?;
-                        custody::write(conn, message.document().raw(), ms(send_timeout_ms)).await?;
+                        custody::write(
+                            conn,
+                            message.document().raw(),
+                            custody::WriteDeadline::Within(ms(send_timeout_ms)),
+                        )
+                        .await?;
                     }
                     Action::ReadEnabled(_) => {}
                     Action::Deferred(message) => {

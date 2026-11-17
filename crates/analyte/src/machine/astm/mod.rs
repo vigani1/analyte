@@ -232,7 +232,12 @@ impl<'a, 'm> Host<'a, 'm> {
         let settings = self.settings;
         match action {
             Action::Write(bytes) => {
-                conn.write(bytes).await?;
+                crate::machine::receive::custody::write(
+                    conn,
+                    &bytes,
+                    crate::machine::receive::custody::WriteDeadline::Transport,
+                )
+                .await?;
             }
             Action::Store(id, number, bytes) => {
                 self.commit_frame(id, number, bytes, stop, actions, failures)

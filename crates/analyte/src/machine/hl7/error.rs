@@ -37,12 +37,6 @@ pub(crate) enum Error {
     /// Query receipt absent.
     #[error("query receipt absent")]
     QueryReceiptAbsent,
-    /// Query write deadline overflow.
-    #[error("query write deadline overflow")]
-    QueryWriteDeadlineOverflow,
-    /// A dialog write deadline could not be represented on the host clock.
-    #[error("HL7 write deadline overflow")]
-    WriteDeadlineOverflow,
     /// Unexpected outgoing HL7 outcome.
     #[error("unexpected outgoing HL7 outcome")]
     UnexpectedOutgoingHl7Outcome,
