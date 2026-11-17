@@ -2,6 +2,7 @@
 //! Kept whole: shared service fixture and durable identity assertions stay together.
 use analyte::{Error, installation::config::Program, runtime::service};
 use analyte_fixtures as guard;
+use analyte_fixtures::AdjustableSpace;
 use analyte_fixtures::ConfigEdit as _;
 use analyte_fixtures::poct as poct_peer;
 use guard::HANG_GUARD;
@@ -36,8 +37,6 @@ async fn count_results(
     }
     next.run(request).await
 }
-
-use analyte_fixtures::AdjustableSpace;
 
 struct Running {
     directory: tempfile::TempDir,
