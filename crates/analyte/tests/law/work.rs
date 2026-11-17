@@ -39,10 +39,7 @@ async fn law_tf2b_3_28_send_ahead_accepted_rejected_and_mixed_awos() -> Result<(
         orl(&mut peer, &sent, &codes, false).await?;
         state(&path, expected).await?;
         wait_state(&path, "done", 1).await?;
-        let states = database(&path)?
-            .prepare("SELECT state FROM machine_order_items ORDER BY item_index")?
-            .query_map([], |r| r.get::<_, String>(0))?
-            .collect::<Result<Vec<_>, _>>()?;
+        let states = item_states(&path)?;
         for (state, code) in states.iter().zip(codes) {
             assert_eq!(
                 state.as_str(),
@@ -141,10 +138,7 @@ async fn law_tf2b_3_28_c8_cancel_confirmed_refused_and_mixed_keep_each_awos() ->
         orl(&mut peer, &cancel, &codes, false).await?;
         state(&path, expected).await?;
         wait_state(&path, "done", 3).await?;
-        let states = database(&path)?
-            .prepare("SELECT state FROM machine_order_items ORDER BY item_index")?
-            .query_map([], |r| r.get::<_, String>(0))?
-            .collect::<Result<Vec<_>, _>>()?;
+        let states = item_states(&path)?;
         for (state, code) in states.iter().zip(codes) {
             assert_eq!(
                 state.as_str(),
@@ -558,4 +552,11 @@ fn seed_pending_raw(path: &Path, raw: &[u8]) -> Result<analyte_model::ReceiptId,
         ],
     )?;
     Ok(metadata.id)
+}
+
+fn item_states(path: &Path) -> Result<Vec<String>, Error> {
+    Ok(database(path)?
+        .prepare("SELECT state FROM machine_order_items ORDER BY item_index")?
+        .query_map([], |r| r.get::<_, String>(0))?
+        .collect::<Result<Vec<_>, _>>()?)
 }

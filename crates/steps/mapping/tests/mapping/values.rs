@@ -9,15 +9,7 @@ fn hl7_2_9_1_s2_4_5_2_truncated_input_never_reaches_result_mapping() -> TestResu
     let raw = b"MSH|^~\\&#|SYN||||202611161200||ORU^R01^ORU_R01|MSG|P|2.9.1\rOBR|1||001\rOBX|1|ST|SYN||partial#||||||F\r";
     let message = analyte_hl7::Message::parse(raw, analyte_hl7::Options::default())?;
     assert!(matches!(
-        map_hl7(
-            &analyte_mapping::hl7::Settings {
-                syntax: settings::hl7(&config).0,
-                mappings: settings::hl7(&config).1,
-                declarations: &config.effective().machine().deviations
-            },
-            &message,
-            input()
-        ),
+        map_hl7(&settings::hl7_mapping(&config), &message, input()),
         Err(analyte_mapping::Error::Hl7 {
             source: analyte_hl7::Error::Truncated {
                 segment: 3,

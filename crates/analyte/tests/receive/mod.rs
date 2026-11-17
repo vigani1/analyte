@@ -97,3 +97,18 @@ async fn serve(
     })?;
     service::serve_loopback_test(program, space, stop, secrets, None).await
 }
+
+type ServiceTask = tokio::task::JoinHandle<Result<(), Error>>;
+
+fn start_service(path: &Path) -> Result<(oneshot::Sender<()>, ServiceTask), Error> {
+    let (shutdown, stop) = oneshot::channel();
+    let service = tokio::spawn(serve(
+        Program::load(path)?,
+        Box::new(Space(u64::MAX)),
+        async {
+            stop.await?;
+            Ok(())
+        },
+    ));
+    Ok((shutdown, service))
+}

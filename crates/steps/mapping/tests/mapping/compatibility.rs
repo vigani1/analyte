@@ -67,18 +67,7 @@ fn hl7_2_6_s2_a_6_77_and_s7_4_2_22_unsafe_results_never_map() -> TestResult {
             raw.as_bytes(),
             config.effective().hl7_options().ok_or("options")?,
         )?;
-        assert!(
-            map_hl7(
-                &analyte_mapping::hl7::Settings {
-                    syntax: settings::hl7(&config).0,
-                    mappings: settings::hl7(&config).1,
-                    declarations: &config.effective().machine().deviations
-                },
-                &message,
-                input()
-            )
-            .is_err()
-        );
+        assert!(map_hl7(&settings::hl7_mapping(&config), &message, input()).is_err());
         assert_eq!(message.raw(), raw.as_bytes());
     }
     Ok(())
@@ -124,15 +113,7 @@ fn hl7_2_5_1_s2_8_1_legacy_extension_groups_are_not_assigned_later_specimen_mean
         );
         let message = analyte_hl7::Message::parse(raw.as_bytes(), analyte_hl7::Options::default())?;
         assert!(matches!(
-            map_hl7(
-                &analyte_mapping::hl7::Settings {
-                    syntax: settings::hl7(&config).0,
-                    mappings: settings::hl7(&config).1,
-                    declarations: &config.effective().machine().deviations
-                },
-                &message,
-                input()
-            ),
+            map_hl7(&settings::hl7_mapping(&config), &message, input()),
             Err(analyte_mapping::Error::Structure {
                 position: analyte_mapping::Position {
                     record: 3,

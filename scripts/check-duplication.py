@@ -126,7 +126,7 @@ def prepare(root, output):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--test-threshold', type=float, default=3.6)
+    parser.add_argument('--test-threshold', type=float, default=2.95)
     args = parser.parse_args()
     root = pathlib.Path(__file__).resolve().parent.parent
     runner = shutil.which('npx.cmd') or shutil.which('npx')
