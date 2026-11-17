@@ -3,6 +3,22 @@ use super::*;
 use crate::support::HANG_GUARD;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+#[derive(Debug, thiserror::Error)]
+enum FixtureError {
+    #[error(transparent)]
+    Operator(#[from] analyte_store::OperatorError),
+    #[error(transparent)]
+    Delivery(#[from] analyte_store::DeliveryError),
+    #[error(transparent)]
+    Json(#[from] serde_json::Error),
+    #[error(transparent)]
+    Worker(#[from] analyte_store::WorkerError),
+    #[error("stored evidence is corrupt")]
+    Corruption,
+    #[error("receipt does not exist")]
+    UnknownReceipt,
+}
+
 fn definition() -> String {
     include_str!("../../../../core/config/examples/law.toml").to_owned()
 }
@@ -102,17 +118,11 @@ async fn assert_repaired_mapping_preserves_receipt(
     id: analyte_model::ReceiptId,
 ) -> Result<(), Error> {
     let (parked, original, version1) = store
-        .request::<_, analyte_store::Error>(reprocess_deadline()?, move |s| {
-            let parked = s
-                .parked(0)?
-                .first()
-                .ok_or(analyte_store::Error::Corruption)?
-                .id;
-            let original = s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)?;
-            let version1 = serde_json::to_string(
-                &s.interpretation(id, 1)?
-                    .ok_or(analyte_store::Error::Corruption)?,
-            )?;
+        .request::<_, FixtureError>(reprocess_deadline()?, move |s| {
+            let parked = s.parked(0)?.first().ok_or(FixtureError::Corruption)?.id;
+            let original = s.receipt(id)?.ok_or(FixtureError::UnknownReceipt)?;
+            let version1 =
+                serde_json::to_string(&s.interpretation(id, 1)?.ok_or(FixtureError::Corruption)?)?;
             Ok((parked, original, version1))
         })
         .await?;
@@ -143,8 +153,8 @@ async fn assert_repaired_mapping_preserves_receipt(
         [analyte_store::RevisionOutcome::Retransmission(_)]
     ));
     store
-        .request::<_, analyte_store::Error>(reprocess_deadline()?, move |s| {
-            let retained = s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)?;
+        .request::<_, FixtureError>(reprocess_deadline()?, move |s| {
+            let retained = s.receipt(id)?.ok_or(FixtureError::UnknownReceipt)?;
             assert_eq!(retained.raw, original.raw);
             assert_eq!(retained.config, original.config);
             assert_eq!(
@@ -152,15 +162,12 @@ async fn assert_repaired_mapping_preserves_receipt(
                 serde_json::to_string(&original.metadata)?
             );
             assert_eq!(
-                serde_json::to_string(
-                    &s.interpretation(id, 1)?
-                        .ok_or(analyte_store::Error::Corruption)?
-                )?,
+                serde_json::to_string(&s.interpretation(id, 1)?.ok_or(FixtureError::Corruption)?)?,
                 version1
             );
             assert!(
                 s.parked_item(parked)?
-                    .ok_or(analyte_store::Error::Corruption)?
+                    .ok_or(FixtureError::Corruption)?
                     .resolution
                     .is_some()
             );
@@ -214,9 +221,9 @@ mod text;
 fn assert_conflict_audit(
     s: &analyte_store::Store,
     conflict_id: analyte_model::ReceiptId,
-) -> Result<(), analyte_store::Error> {
+) -> Result<(), FixtureError> {
     let audits = s.audits(0)?;
-    let audit = &audits.last().ok_or(analyte_store::Error::Corruption)?.1;
+    let audit = &audits.last().ok_or(FixtureError::Corruption)?.1;
     let receipt: String = serde_json::from_str(&serde_json::to_string(&conflict_id)?)?;
     assert_eq!(audit.action.as_str(), "receipt-reprocess");
     assert_eq!(audit.actor.as_str(), "synthetic-operator");

@@ -545,10 +545,10 @@ async fn law_tf2b_3_29_4_adr0003_parked_result_reprocesses_original_after_mappin
     assert_eq!(rejected.version, 2);
     assert!(rejected.outcomes.is_empty());
     store
-        .request::<_, analyte_store::Error>(reprocess_deadline()?, move |s| {
+        .request::<_, FixtureError>(reprocess_deadline()?, move |s| {
             assert!(matches!(
                 s.interpretation(conflict_id, 2)?
-                    .ok_or(analyte_store::Error::Corruption)?
+                    .ok_or(FixtureError::Corruption)?
                     .outcome,
                 analyte_store::Reading::Failed(_)
             ));
