@@ -1,5 +1,5 @@
 # Synthetic teaching configuration. DOCUMENTED ONLY; not qualified for clinical use.
-schema_version = 1
+schema_version = 2
 protocol = "astm"
 name = "generic-synthetic"
 deviations = []
@@ -13,16 +13,13 @@ parity = "none"
 stop_bits = 1
 flow_control = "none"
 [framing]
-kind = "astm_lis01"
 limit = 64000
 checksum_hex = "strict"
 [dialog]
-kind = "astm_link"
 receive_timeout_ms = 30000
 send_timeout_ms = 15000
 contention_priority = "instrument"
 [syntax]
-kind = "astm_lis02"
 encoding = "ascii"
 
 bytes = 1048576

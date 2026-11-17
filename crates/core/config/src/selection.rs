@@ -1,40 +1,25 @@
-//! Parses the legacy TOML layer names into one supported stack choice.
+//! Derives a supported stack from the protocol key and physical transport.
 use crate::{Error, MachineDocument, invalid};
 
-// Each choice and its legacy spellings are declared together. The macro makes
-// the lookup exhaustive without a parallel enum or an index-coupled table.
-macro_rules! stacks {
-    ($( $(#[$doc:meta])* $choice:ident => $names:expr),+ $(,)?) => {
-        /// One compatible protocol stack, including stream versus complete-file pickup.
-        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-        pub enum StackChoice { $( $(#[$doc])* $choice, )+ }
-        impl StackChoice {
-            pub(crate) fn layer_names(self) -> [&'static str; 4] {
-                match self { $( Self::$choice => $names, )+ }
-            }
-        }
-        const LAYOUTS: [(StackChoice, [&str; 4]); 8] = [
-            $( (StackChoice::$choice, $names), )+
-        ];
-    };
-}
-stacks! {
+/// One compatible protocol stack, including stream versus complete-file pickup.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StackChoice {
     /// ASTM LIS01 and LIS02 over serial or TCP.
-    AstmLis02 => ["astm", "astm_lis01", "astm_link", "astm_lis02"],
+    AstmLis02,
     /// HL7 v2 over MLLP and TCP.
-    Hl7V2 => ["hl7", "mllp", "hl7_receiver", "hl7_v2"],
+    Hl7V2,
     /// ASTM LIS02 complete files.
-    FileAstm => ["astm", "none", "file_pickup", "astm_lis02"],
+    FileAstm,
     /// HL7 complete files.
-    FileHl7 => ["hl7", "none", "file_pickup", "hl7_v2"],
+    FileHl7,
     /// IHE LAW manager over MLLP and TCP.
-    LawManager => ["law", "mllp", "law_manager", "hl7_v2"],
+    LawManager,
     /// POCT reviewer over TCP.
-    Poct => ["poct", "poct", "poct", "poct"],
+    Poct,
     /// VIDAS Literal stream.
-    VidasLiteral => ["vidas", "vidas_literal", "vidas_literal", "vidas_literal"],
+    VidasLiteral,
     /// Autolyser polling stream.
-    Autolyser => ["autolyser", "autolyser", "autolyser", "autolyser"],
+    Autolyser,
 }
 
 pub(crate) struct ParsedMachine<'a> {
@@ -54,75 +39,49 @@ impl<'a> ParsedMachine<'a> {
 
     pub(crate) fn parse(document: &'a MachineDocument, path: &str) -> Result<Self, Error> {
         let t = document.transport.kind;
-        let Some((choice, names)) = LAYOUTS.iter().find(|(_, names)| {
-            names[1] == document.framing.kind
-                && names[2] == document.dialog.kind
-                && names[3] == document.syntax.kind
-        }) else {
-            return Err(Error::IncompatibleStack {
-                path: path.into(),
-                reason: "select a supported framing, dialog and syntax combination",
-            });
-        };
-        let supported_transport = choice.supports_transport(t);
-        if !supported_transport {
+        let choice = derive(&document.protocol, t, path)?;
+        if !choice.supports_transport(t) {
             return Err(Error::IncompatibleStack {
                 path: path.into(),
                 reason: "selected stack does not support this transport",
             });
         }
-        let protocol = names[0];
-        if document.protocol != protocol {
-            return Err(invalid(
-                path,
-                "protocol",
-                "selected protocol does not match syntax and dialog",
-            ));
-        }
-        Ok(Self {
-            choice: *choice,
-            document,
-        })
+
+        Ok(Self { choice, document })
     }
 }
 
-fn wire_name<'de, D: serde::Deserializer<'de>>(
-    deserializer: D,
-    column: usize,
-) -> Result<String, D::Error> {
-    let value = <String as serde::Deserialize>::deserialize(deserializer)?;
-    if LAYOUTS
-        .iter()
-        .any(|(_, names)| names.get(column) == Some(&value.as_str()))
-    {
-        Ok(value)
-    } else {
-        let mut allowed = Vec::new();
-        for (_, names) in LAYOUTS {
-            if let Some(name) = names.get(column)
-                && !allowed.contains(name)
-            {
-                allowed.push(*name);
-            }
-        }
-        let value = quoted_layer(&value);
-        Err(serde::de::Error::custom(format!(
-            "unknown layer name {value}; expected one of {}",
-            allowed.join(", ")
-        )))
-    }
+pub(crate) fn derive(
+    protocol: &str,
+    transport: crate::TransportKind,
+    path: &str,
+) -> Result<StackChoice, Error> {
+    let choice = match (protocol, transport) {
+        ("astm", crate::TransportKind::WatchedFolder) => StackChoice::FileAstm,
+        ("hl7", crate::TransportKind::WatchedFolder) => StackChoice::FileHl7,
+        ("astm", _) => StackChoice::AstmLis02,
+        ("hl7", _) => StackChoice::Hl7V2,
+        ("law", _) => StackChoice::LawManager,
+        ("poct", _) => StackChoice::Poct,
+        ("vidas", _) => StackChoice::VidasLiteral,
+        ("autolyser", _) => StackChoice::Autolyser,
+        _ => return Err(invalid(path, "protocol", "unknown protocol key")),
+    };
+    Ok(choice)
 }
 pub(crate) fn protocol<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
-    wire_name(d, 0)
-}
-pub(crate) fn framing<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
-    wire_name(d, 1)
-}
-pub(crate) fn dialog<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
-    wire_name(d, 2)
-}
-pub(crate) fn syntax<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
-    wire_name(d, 3)
+    let value = <String as serde::Deserialize>::deserialize(d)?;
+    if matches!(
+        value.as_str(),
+        "astm" | "hl7" | "law" | "poct" | "vidas" | "autolyser"
+    ) {
+        Ok(value)
+    } else {
+        Err(serde::de::Error::custom(format!(
+            "unknown protocol key {}",
+            quoted_layer(&value)
+        )))
+    }
 }
 
 // Display preserves historical evidence names, independently of the TOML keys.

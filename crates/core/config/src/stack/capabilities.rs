@@ -78,99 +78,6 @@ impl Stack {
     }
 }
 
-impl crate::StackChoice {
-    /// Returns whether this stack uses ASTM records.
-    #[must_use]
-    pub const fn has_astm_records(self) -> bool {
-        match self {
-            Self::AstmLis02 | Self::FileAstm => true,
-            Self::Hl7V2
-            | Self::FileHl7
-            | Self::LawManager
-            | Self::Poct
-            | Self::VidasLiteral
-            | Self::Autolyser => false,
-        }
-    }
-    /// Returns whether this stack uses HL7 segments.
-    #[must_use]
-    pub const fn has_hl7_records(self) -> bool {
-        match self {
-            Self::Hl7V2 | Self::FileHl7 | Self::LawManager => true,
-            Self::AstmLis02
-            | Self::FileAstm
-            | Self::Poct
-            | Self::VidasLiteral
-            | Self::Autolyser => false,
-        }
-    }
-    /// Returns whether this stack requires field mappings.
-    #[must_use]
-    pub const fn has_field_mappings(self) -> bool {
-        match self {
-            Self::AstmLis02 | Self::Hl7V2 | Self::FileAstm | Self::FileHl7 | Self::LawManager => {
-                true
-            }
-            Self::Poct | Self::VidasLiteral | Self::Autolyser => false,
-        }
-    }
-    /// Returns whether this stack requires a LAW section.
-    #[must_use]
-    pub const fn allows_law_section(self) -> bool {
-        match self {
-            Self::LawManager => true,
-            Self::AstmLis02
-            | Self::Hl7V2
-            | Self::FileAstm
-            | Self::FileHl7
-            | Self::Poct
-            | Self::VidasLiteral
-            | Self::Autolyser => false,
-        }
-    }
-    /// Returns whether this stack uses the HL7 stream acknowledgment policy.
-    #[must_use]
-    pub const fn has_hl7_acknowledgment(self) -> bool {
-        match self {
-            Self::Hl7V2 | Self::LawManager => true,
-            Self::AstmLis02
-            | Self::FileAstm
-            | Self::FileHl7
-            | Self::Poct
-            | Self::VidasLiteral
-            | Self::Autolyser => false,
-        }
-    }
-    /// Returns whether this stack uses the LIS01 link.
-    #[must_use]
-    pub const fn has_astm_link(self) -> bool {
-        match self {
-            Self::AstmLis02 => true,
-            Self::Hl7V2
-            | Self::FileAstm
-            | Self::FileHl7
-            | Self::LawManager
-            | Self::Poct
-            | Self::VidasLiteral
-            | Self::Autolyser => false,
-        }
-    }
-    /// Returns whether this stack uses VIDAS assay codes.
-    #[must_use]
-    pub const fn has_vidas_assay_codes(self) -> bool {
-        match self {
-            Self::VidasLiteral => true,
-            Self::AstmLis02
-            | Self::Hl7V2
-            | Self::FileAstm
-            | Self::FileHl7
-            | Self::LawManager
-            | Self::Poct
-            | Self::Autolyser => false,
-        }
-    }
-}
-
 /// Grammar family used for field selectors and specimen code validation.
 #[derive(Clone, Copy)]
 pub(crate) enum RecordKind {
@@ -178,47 +85,227 @@ pub(crate) enum RecordKind {
     Hl7,
     Vendor,
 }
+
+// Each row owns all static capability facts for one stack choice.
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "Independent protocol facts form one explicit capability row."
+)]
+struct Capabilities {
+    has_astm_records: bool,
+    has_hl7_records: bool,
+    has_field_mappings: bool,
+    allows_law_section: bool,
+    has_hl7_acknowledgment: bool,
+    has_astm_link: bool,
+    has_vidas_assay_codes: bool,
+    has_hl7_departures: bool,
+    connection_context: bool,
+    has_autolyser_orders: bool,
+    record_kind: RecordKind,
+    file_record_kind: Option<RecordKind>,
+    transports: TransportSupport,
+}
+enum TransportSupport {
+    Stream,
+    Tcp,
+    Folder,
+}
+const ASTM_LIS02: Capabilities = Capabilities {
+    has_astm_records: true,
+    has_hl7_records: false,
+    has_field_mappings: true,
+    allows_law_section: false,
+    has_hl7_acknowledgment: false,
+    has_astm_link: true,
+    has_vidas_assay_codes: false,
+    has_hl7_departures: false,
+    connection_context: false,
+    record_kind: RecordKind::Astm,
+    file_record_kind: None,
+    transports: TransportSupport::Stream,
+    has_autolyser_orders: false,
+};
+const HL7_V2: Capabilities = Capabilities {
+    has_astm_records: false,
+    has_hl7_records: true,
+    has_field_mappings: true,
+    allows_law_section: false,
+    has_hl7_acknowledgment: true,
+    has_astm_link: false,
+    has_vidas_assay_codes: false,
+    has_hl7_departures: true,
+    connection_context: false,
+    record_kind: RecordKind::Hl7,
+    file_record_kind: None,
+    transports: TransportSupport::Tcp,
+    has_autolyser_orders: false,
+};
+const FILE_ASTM: Capabilities = Capabilities {
+    has_astm_records: true,
+    has_hl7_records: false,
+    has_field_mappings: true,
+    allows_law_section: false,
+    has_hl7_acknowledgment: false,
+    has_astm_link: false,
+    has_vidas_assay_codes: false,
+    has_hl7_departures: false,
+    connection_context: false,
+    record_kind: RecordKind::Astm,
+    file_record_kind: Some(RecordKind::Astm),
+    transports: TransportSupport::Folder,
+    has_autolyser_orders: false,
+};
+const FILE_HL7: Capabilities = Capabilities {
+    has_astm_records: false,
+    has_hl7_records: true,
+    has_field_mappings: true,
+    allows_law_section: false,
+    has_hl7_acknowledgment: false,
+    has_astm_link: false,
+    has_vidas_assay_codes: false,
+    has_hl7_departures: true,
+    connection_context: false,
+    record_kind: RecordKind::Hl7,
+    file_record_kind: Some(RecordKind::Hl7),
+    transports: TransportSupport::Folder,
+    has_autolyser_orders: false,
+};
+const LAW_MANAGER: Capabilities = Capabilities {
+    has_astm_records: false,
+    has_hl7_records: true,
+    has_field_mappings: true,
+    allows_law_section: true,
+    has_hl7_acknowledgment: true,
+    has_astm_link: false,
+    has_vidas_assay_codes: false,
+    has_hl7_departures: false,
+    connection_context: false,
+    record_kind: RecordKind::Hl7,
+    file_record_kind: None,
+    transports: TransportSupport::Tcp,
+    has_autolyser_orders: false,
+};
+const POCT: Capabilities = Capabilities {
+    has_astm_records: false,
+    has_hl7_records: false,
+    has_field_mappings: false,
+    allows_law_section: false,
+    has_hl7_acknowledgment: false,
+    has_astm_link: false,
+    has_vidas_assay_codes: false,
+    has_hl7_departures: false,
+    connection_context: true,
+    record_kind: RecordKind::Vendor,
+    file_record_kind: None,
+    transports: TransportSupport::Tcp,
+    has_autolyser_orders: false,
+};
+const VIDAS_LITERAL: Capabilities = Capabilities {
+    has_astm_records: false,
+    has_hl7_records: false,
+    has_field_mappings: false,
+    allows_law_section: false,
+    has_hl7_acknowledgment: false,
+    has_astm_link: false,
+    has_vidas_assay_codes: true,
+    has_hl7_departures: false,
+    connection_context: false,
+    record_kind: RecordKind::Vendor,
+    file_record_kind: None,
+    transports: TransportSupport::Stream,
+    has_autolyser_orders: false,
+};
+const AUTOLYSER: Capabilities = Capabilities {
+    has_astm_records: false,
+    has_hl7_records: false,
+    has_field_mappings: false,
+    allows_law_section: false,
+    has_hl7_acknowledgment: false,
+    has_astm_link: false,
+    has_vidas_assay_codes: false,
+    has_hl7_departures: false,
+    connection_context: false,
+    record_kind: RecordKind::Vendor,
+    file_record_kind: None,
+    transports: TransportSupport::Stream,
+    has_autolyser_orders: true,
+};
 impl crate::StackChoice {
-    pub(crate) const fn file_record_kind(self) -> Option<RecordKind> {
+    const fn capabilities(self) -> &'static Capabilities {
         match self {
-            Self::FileAstm => Some(RecordKind::Astm),
-            Self::FileHl7 => Some(RecordKind::Hl7),
-            Self::AstmLis02
-            | Self::Hl7V2
-            | Self::LawManager
-            | Self::Poct
-            | Self::VidasLiteral
-            | Self::Autolyser => None,
+            Self::AstmLis02 => &ASTM_LIS02,
+            Self::Hl7V2 => &HL7_V2,
+            Self::FileAstm => &FILE_ASTM,
+            Self::FileHl7 => &FILE_HL7,
+            Self::LawManager => &LAW_MANAGER,
+            Self::Poct => &POCT,
+            Self::VidasLiteral => &VIDAS_LITERAL,
+            Self::Autolyser => &AUTOLYSER,
         }
+    }
+    /// Returns the stack capability for has astm records.
+    #[must_use]
+    pub const fn has_astm_records(self) -> bool {
+        self.capabilities().has_astm_records
+    }
+    /// Returns the stack capability for has hl7 records.
+    #[must_use]
+    pub const fn has_hl7_records(self) -> bool {
+        self.capabilities().has_hl7_records
+    }
+    /// Returns the stack capability for has field mappings.
+    #[must_use]
+    pub const fn has_field_mappings(self) -> bool {
+        self.capabilities().has_field_mappings
+    }
+    /// Returns the stack capability for allows law section.
+    #[must_use]
+    pub const fn allows_law_section(self) -> bool {
+        self.capabilities().allows_law_section
+    }
+    /// Returns the stack capability for has hl7 acknowledgment.
+    #[must_use]
+    pub const fn has_hl7_acknowledgment(self) -> bool {
+        self.capabilities().has_hl7_acknowledgment
+    }
+    /// Returns the stack capability for has astm link.
+    #[must_use]
+    pub const fn has_astm_link(self) -> bool {
+        self.capabilities().has_astm_link
+    }
+    /// Returns the stack capability for has vidas assay codes.
+    #[must_use]
+    pub const fn has_vidas_assay_codes(self) -> bool {
+        self.capabilities().has_vidas_assay_codes
+    }
+    /// Returns the stack capability for has hl7 departures.
+    #[must_use]
+    pub(crate) const fn has_hl7_departures(self) -> bool {
+        self.capabilities().has_hl7_departures
+    }
+    /// Returns the stack capability for connection context.
+    #[must_use]
+    pub const fn connection_context(self) -> bool {
+        self.capabilities().connection_context
+    }
+    pub(crate) const fn has_autolyser_orders(self) -> bool {
+        self.capabilities().has_autolyser_orders
     }
     pub(crate) const fn record_kind(self) -> RecordKind {
-        match self {
-            Self::AstmLis02 | Self::FileAstm => RecordKind::Astm,
-            Self::Hl7V2 | Self::FileHl7 | Self::LawManager => RecordKind::Hl7,
-            Self::Poct | Self::VidasLiteral | Self::Autolyser => RecordKind::Vendor,
-        }
+        self.capabilities().record_kind
     }
-    pub(crate) const fn has_hl7_departures(self) -> bool {
-        match self {
-            Self::Hl7V2 | Self::FileHl7 => true,
-            Self::AstmLis02
-            | Self::FileAstm
-            | Self::LawManager
-            | Self::Poct
-            | Self::VidasLiteral
-            | Self::Autolyser => false,
-        }
+    pub(crate) const fn file_record_kind(self) -> Option<RecordKind> {
+        self.capabilities().file_record_kind
     }
     pub(crate) const fn supports_transport(self, kind: crate::TransportKind) -> bool {
         use crate::TransportKind;
-        match self {
-            Self::AstmLis02 | Self::VidasLiteral | Self::Autolyser => {
-                !matches!(kind, TransportKind::WatchedFolder)
-            }
-            Self::Hl7V2 | Self::LawManager | Self::Poct => {
+        match self.capabilities().transports {
+            TransportSupport::Stream => !matches!(kind, TransportKind::WatchedFolder),
+            TransportSupport::Tcp => {
                 matches!(kind, TransportKind::TcpClient | TransportKind::TcpServer)
             }
-            Self::FileAstm | Self::FileHl7 => matches!(kind, TransportKind::WatchedFolder),
+            TransportSupport::Folder => matches!(kind, TransportKind::WatchedFolder),
         }
     }
 }
@@ -289,6 +376,37 @@ impl Stack {
             Self::Autolyser(_) => "Autolyser interpretation: ",
             Self::Poct(_) => "POCT interpretation: ",
             Self::Astm(_) | Self::Hl7(_) | Self::Law(_) => "",
+        }
+    }
+}
+
+impl Stack {
+    /// Returns the capability row selected by this validated stack.
+    #[must_use]
+    pub const fn choice(&self) -> crate::StackChoice {
+        use crate::StackChoice;
+        match self {
+            Self::Astm(RecordTransport::Stream(_)) => StackChoice::AstmLis02,
+            Self::Astm(RecordTransport::Folder(_)) => StackChoice::FileAstm,
+            Self::Hl7(RecordTransport::Stream(_)) => StackChoice::Hl7V2,
+            Self::Hl7(RecordTransport::Folder(_)) => StackChoice::FileHl7,
+            Self::Law(_) => StackChoice::LawManager,
+            Self::Poct(_) => StackChoice::Poct,
+            Self::Vidas(_) => StackChoice::VidasLiteral,
+            Self::Autolyser(_) => StackChoice::Autolyser,
+        }
+    }
+    /// Borrows stream ASTM settings for frame departure evidence.
+    #[must_use]
+    pub fn astm_link(&self) -> Option<&super::AstmStack> {
+        match self {
+            Self::Astm(RecordTransport::Stream(settings)) => Some(settings),
+            Self::Astm(RecordTransport::Folder(_))
+            | Self::Hl7(_)
+            | Self::Law(_)
+            | Self::Poct(_)
+            | Self::Vidas(_)
+            | Self::Autolyser(_) => None,
         }
     }
 }
