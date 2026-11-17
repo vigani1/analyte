@@ -635,12 +635,25 @@ impl Dialog {
             Interpretation::WorkConflict(location) => (
                 AckCode::Ar,
                 Responsibility::Stored,
-                Some(location.detail(b"207", b"LAW-inconsistent-work").into()),
+                Some(
+                    location
+                        .detail(
+                            analyte_hl7::APPLICATION_INTERNAL_ERROR,
+                            b"LAW-inconsistent-work",
+                        )
+                        .into(),
+                ),
             ),
             Interpretation::Conflict => (
                 AckCode::Ar,
                 Responsibility::Stored,
-                Some(AckError::unlocated(b"207", b"operator-review").into()),
+                Some(
+                    AckError::unlocated(
+                        analyte_hl7::APPLICATION_INTERNAL_ERROR,
+                        b"operator-review",
+                    )
+                    .into(),
+                ),
             ),
             Interpretation::Failed(location) => (
                 AckCode::Ae,
@@ -649,8 +662,16 @@ impl Dialog {
                     location
                         .as_ref()
                         .map_or(
-                            AckError::unlocated(b"207", b"operator-review"),
-                            |location| location.detail(b"207", b"operator-review"),
+                            AckError::unlocated(
+                                analyte_hl7::APPLICATION_INTERNAL_ERROR,
+                                b"operator-review",
+                            ),
+                            |location| {
+                                location.detail(
+                                    analyte_hl7::APPLICATION_INTERNAL_ERROR,
+                                    b"operator-review",
+                                )
+                            },
                         )
                         .into(),
                 ),
