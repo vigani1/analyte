@@ -101,7 +101,10 @@ closes the dialog without a fabricated response. Late replies are refused.
 The interpreter must distinguish generic ACK transactions from functional
 order/query exchanges: the `hl7/orders` state machine routes deferred QRY/QCK/DSR
 exchanges and outgoing order response waits separately from generic Interpreted
-ACK handling. The host supplies lookup outcomes, durably reserved work and
+ACK handling. Every outgoing message enters through `Send` with the reply it
+expects: `Expect::Acknowledgment` for MSH-15/16 acknowledgments, or
+`Expect::OrderResponse` for an order, whose response budget also bounds the
+`Write` that issues it. The host supplies lookup outcomes, durably reserved work and
 functional reply bytes. The dialog does not implement deferred MCF, restart
 replay, durable duplicate detection or clinical order lifecycle. A
 received MSA is reported without generating another ACK. Sender outcomes retain

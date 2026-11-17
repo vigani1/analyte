@@ -6,7 +6,7 @@ use super::driver::{self, Context, Effects, Flow, Run, Trigger};
 use crate::intake;
 use crate::machine::connection_input::Input;
 use crate::machine::receive;
-use crate::machine::receive::custody::ms;
+use crate::machine::receive::custody::{WriteDeadline, ms};
 mod error;
 mod outcome;
 pub(crate) mod settings;
@@ -262,8 +262,8 @@ impl driver::Drain for Host<'_, '_> {
         let store = self.store;
         match action {
             Action::Write(bytes) => {
-                let budget = ms(self.settings.policy().acknowledgment_ms);
-                receive::custody::write(run.conn, &bytes, budget).await?;
+                let deadline = WriteDeadline::Within(ms(self.settings.policy().acknowledgment_ms));
+                receive::custody::write(run.conn, &bytes, deadline).await?;
             }
             Action::Store(token, raw) => {
                 self.store_report(token, raw, run).await?;

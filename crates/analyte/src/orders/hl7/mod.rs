@@ -7,7 +7,6 @@ mod send;
 use crate::orders::OrderError as Error;
 use crate::orders::outcome::Hl7End;
 use crate::{deadline, installation::config::Machine, intake};
-use analyte_framing::hl7 as mllp;
 use analyte_hl7::{
     Message, Options,
     query::{self, CacheAnswer},
@@ -16,8 +15,8 @@ use analyte_model::{ReceiptId, SampleId};
 use analyte_store::{Handle, Lookup, MachineOrder};
 use std::time::{Duration, Instant};
 
-/// Owns order reservations; framing, DSR correlation and reply waits belong to the dialog.
-/// Cancellation leaves reservations owned here for disconnect cleanup; restart
+/// Owns order reservations; framing, issuance, DSR correlation and reply waits belong to
+/// the dialog. Cancellation leaves reservations owned here for disconnect cleanup; restart
 /// recovery owns any store call whose completion was lost during cancellation.
 pub(crate) struct Hl7OrderLink {
     options: Options,
@@ -32,6 +31,11 @@ pub(crate) struct Request<'a> {
     pub(crate) started: Instant,
     pub(crate) receipt: ReceiptId,
 }
+/// One reserved order for the dialog's `Send` event, with its response budget.
+pub(crate) struct Outbound<'a> {
+    pub(crate) message: &'a [u8],
+    pub(crate) wait: Duration,
+}
 impl Hl7OrderLink {
     pub(crate) fn new(options: Options) -> Result<Self, Error> {
         Ok(Self {
@@ -43,19 +47,19 @@ impl Hl7OrderLink {
             cursor: String::new(),
         })
     }
-    pub(crate) async fn idle(
+    /// Reserves the next order while the dialog is idle. The returned message is sent
+    /// once; the exchange stays owned here until its response, timeout or disconnect.
+    pub(crate) async fn next(
         &mut self,
         store: &Handle,
         machine: &intake::ConnectionEvidence<'_>,
-        conn: &mut analyte_transport::Connection,
-        dialog: &mut analyte_dialog::hl7::Dialog,
-        clock: Instant,
+        dialog: &analyte_dialog::hl7::Dialog,
         stack: &analyte_config::Hl7Stack,
-    ) -> Result<(), Error> {
+    ) -> Result<Option<Outbound<'_>>, Error> {
         if dialog.orders_busy() {
-            return Ok(());
+            return Ok(None);
         }
-        if let Some(exchange) = send::next(
+        let Some(exchange) = send::next(
             store,
             machine.machine(),
             stack,
@@ -65,28 +69,21 @@ impl Hl7OrderLink {
             &mut self.reserving,
         )
         .await?
-        {
-            let wait = stack
-                .orders()
-                .and_then(|orders| orders.send())
-                .ok_or(Error::Hl7SendSettingsMissing)?
-                .settings()
-                .response_ms;
-            let until = Instant::now()
-                .checked_add(Duration::from_millis(u64::from(wait)))
-                .ok_or(Error::Hl7ResponseDeadlineOverflow)?;
-            self.exchange = Some(exchange);
-            dialog.await_order_response(clock.elapsed(), Duration::from_millis(u64::from(wait)))?;
-            self.reserving.clear();
-            let message = self
-                .exchange
-                .as_ref()
-                .ok_or(Error::Hl7ExchangeAbsent)?
-                .message
-                .message();
-            write(conn, message.raw(), self.options, until).await?;
-        }
-        Ok(())
+        else {
+            return Ok(None);
+        };
+        let wait = stack
+            .orders()
+            .and_then(|orders| orders.send())
+            .ok_or(Error::Hl7SendSettingsMissing)?
+            .settings()
+            .response_ms;
+        self.reserving.clear();
+        let exchange = self.exchange.insert(exchange);
+        Ok(Some(Outbound {
+            message: exchange.message.message().raw(),
+            wait: Duration::from_millis(u64::from(wait)),
+        }))
     }
     pub(crate) async fn order_response(
         &mut self,
@@ -388,18 +385,6 @@ fn sample(
     .transpose()
     .map_err(Into::into)
 }
-async fn write(
-    conn: &mut analyte_transport::Connection,
-    payload: &[u8],
-    options: Options,
-    until: Instant,
-) -> Result<(), Error> {
-    let wire = mllp::encode(payload, mllp::Limit::new(options.limits.message_bytes)?)?;
-    conn.write_all(&wire, Some(tokio::time::Instant::from_std(until)))
-        .await?;
-    Ok(())
-}
-
 async fn select_sample(
     store: &Handle,
     machine: &Machine,

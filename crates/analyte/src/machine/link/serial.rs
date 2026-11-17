@@ -161,16 +161,6 @@ async fn serve(
 }
 
 fn settings(machine: &Machine, serial: &analyte_config::Serial) -> Result<Settings, Error> {
-    let parity = match serial.parity {
-        analyte_config::Parity::None => serialport::Parity::None,
-        analyte_config::Parity::Odd => serialport::Parity::Odd,
-        analyte_config::Parity::Even => serialport::Parity::Even,
-    };
-    let flow = match serial.flow_control {
-        analyte_config::FlowControl::None => serialport::FlowControl::None,
-        analyte_config::FlowControl::Hardware => serialport::FlowControl::Hardware,
-        analyte_config::FlowControl::Software => serialport::FlowControl::Software,
-    };
     Ok(Settings::new(
         machine.snapshot.effective().site().endpoint.clone(),
         serial.baud,
@@ -178,12 +168,12 @@ fn settings(machine: &Machine, serial: &analyte_config::Serial) -> Result<Settin
             .data_bits
             .try_into()
             .map_err(|()| LinkError::InvalidSerialDataBits)?,
-        parity,
+        serial.parity.into(),
         serial
             .stop_bits
             .try_into()
             .map_err(|()| LinkError::InvalidSerialStopBits)?,
-        flow,
+        serial.flow_control.into(),
         Duration::from_millis(100),
     )?)
 }
@@ -258,10 +248,10 @@ mod tests {
         Ok(Settings::new(
             name.into(),
             9600,
-            serialport::DataBits::Eight,
-            serialport::Parity::None,
-            serialport::StopBits::One,
-            serialport::FlowControl::None,
+            analyte_transport::serial::DataBits::Eight,
+            analyte_transport::serial::Parity::None,
+            analyte_transport::serial::StopBits::One,
+            analyte_transport::serial::FlowControl::None,
             Duration::from_millis(10),
         )?)
     }

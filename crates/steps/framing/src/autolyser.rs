@@ -20,6 +20,11 @@ pub enum Error {
     Count,
 }
 
+/// Largest checksum envelope in bytes: the 11034-byte controls-enabled report with
+/// its largest result count (Rev18 §23.2, p.178), then three checksum digits and EOT
+/// (Rev18 §23.3, p.179). Every Autolyser byte ceiling is bounded by this value.
+pub const MAX_ENVELOPE: usize = 11_038;
+
 /// Sum modulo 256, excluding framing and the checksum digits (Rev18 p.179).
 #[must_use]
 pub fn checksum(payload: &[u8]) -> u8 {
@@ -28,7 +33,7 @@ pub fn checksum(payload: &[u8]) -> u8 {
 
 /// Appends the decimal checksum and EOT to an encoded record payload.
 #[must_use]
-pub fn finish(mut payload: Vec<u8>) -> Vec<u8> {
+pub fn encode(mut payload: Vec<u8>) -> Vec<u8> {
     payload.extend_from_slice(format!("{:03}", checksum(&payload)).as_bytes());
     payload.push(EOT);
     payload
@@ -37,8 +42,8 @@ pub fn finish(mut payload: Vec<u8>) -> Vec<u8> {
 /// Returns the payload after checking the bounded checksum envelope.
 /// # Errors
 /// Rejects invalid lengths, decimal digits and checksums.
-pub fn verified(raw: &[u8]) -> Result<&[u8], Error> {
-    if raw.len() > 11038 || raw.last() != Some(&EOT) {
+pub fn decode(raw: &[u8]) -> Result<&[u8], Error> {
+    if raw.len() > MAX_ENVELOPE || raw.last() != Some(&EOT) {
         return Err(Error::Length);
     }
     let end = raw.len().checked_sub(4).ok_or(Error::Length)?;
@@ -101,7 +106,7 @@ impl Frame {
         if !self.complete {
             return Err(Error::Length);
         }
-        verified(&self.raw)
+        decode(&self.raw)
     }
 }
 
@@ -118,7 +123,7 @@ impl Decoder {
     /// # Errors
     /// Rejects ceilings outside the protocol's supported range.
     pub fn new(mode: Mode, maximum: usize) -> Result<Self, Error> {
-        if !(2..=11038).contains(&maximum) {
+        if !(2..=MAX_ENVELOPE).contains(&maximum) {
             return Err(Error::Length);
         }
         Ok(Self {
@@ -177,7 +182,7 @@ mod tests {
     }
     #[test]
     fn autolyser_rev18_p177_179_boundaries_checksum_and_partial_evidence() {
-        let raw = finish(b"synthetic".to_vec());
+        let raw = encode(b"synthetic".to_vec());
         let mut decoder = Decoder::new(Mode::Report, 100).unwrap();
         for byte in raw.iter().take(raw.len() - 1) {
             assert!(decoder.push(*byte).unwrap().is_none());
@@ -200,19 +205,19 @@ mod tests {
 
     #[test]
     fn autolyser_rev18_p179_decimal_checksum_malformed_envelopes_and_size_limits() {
-        assert_eq!(finish(b"A".to_vec()), [b'A', b'0', b'6', b'5', EOT]);
+        assert_eq!(encode(b"A".to_vec()), [b'A', b'0', b'6', b'5', EOT]);
         for raw in [
             &b"A066\x04"[..],
             &b"A0x5\x04"[..],
             &b"A065"[..],
             &b"065"[..],
         ] {
-            assert!(verified(raw).is_err());
+            assert!(decode(raw).is_err());
         }
-        let raw = finish(vec![b'A'; 11034]);
+        let raw = encode(vec![b'A'; 11034]);
         assert_eq!(raw.len(), 11038);
-        assert_eq!(verified(&raw).unwrap().len(), 11034);
-        assert_eq!(verified(&finish(vec![b'A'; 11035])), Err(Error::Length));
+        assert_eq!(decode(&raw).unwrap().len(), 11034);
+        assert_eq!(decode(&encode(vec![b'A'; 11035])), Err(Error::Length));
         for maximum in [0, 1, 11039] {
             assert!(Decoder::new(Mode::Report, maximum).is_err());
         }
@@ -221,7 +226,7 @@ mod tests {
     proptest! {
         #[test]
         fn autolyser_rev18_p177_179_property_report_roundtrip_and_fragment_boundaries(body in prop::collection::vec(32u8..127,0..11035), split in 0usize..11039) {
-            let raw = finish(body.clone());
+            let raw = encode(body.clone());
             let mut decoder = Decoder::new(Mode::Report,11038).unwrap();
             let split = split.min(raw.len());
             let mut output = Vec::new();

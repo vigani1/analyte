@@ -7,8 +7,9 @@ use super::driver::{self, Context, Effects, Failures, Flow, Run};
 use crate::intake;
 mod error;
 pub(crate) mod settings;
+use crate::machine::receive::custody::{self, WriteDeadline};
 use crate::orders::outcome::Hl7End;
-use analyte_dialog::hl7::{Action, Dialog, Event};
+use analyte_dialog::hl7::{Action, Dialog, Event, Expect};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
 pub(crate) use error::Error;
@@ -203,9 +204,7 @@ impl driver::Drain for Host<'_, '_> {
                 self.write_query(&bytes, until, part, run.conn, actions, failures)
                     .await?;
             }
-            Action::Write(write) => {
-                run.conn.write_all(&write.bytes, None).await?;
-            }
+            Action::Write(write) => self.write(&write, run.conn).await?,
             Action::Deadline(next) => self.wake = next,
             Action::Rejected(error, bytes) => {
                 intake::park_bytes(store, machine, bytes, ByteReason::Mllp(&error)).await?;
@@ -292,11 +291,8 @@ impl Host<'_, '_> {
         let machine = self.machine;
         let store = self.store;
         let id = ReceiptId::new();
-        match crate::machine::receive::custody::store_before_ack(
-            machine.machine(),
-            intake::receive(store, machine, id, raw),
-        )
-        .await
+        match custody::store_before_ack(machine.machine(), intake::receive(store, machine, id, raw))
+            .await
         {
             Ok(_) => {
                 if self.pending.len() >= MAX_PENDING_RECEIPTS {
@@ -379,6 +375,20 @@ impl Host<'_, '_> {
 
         Ok(())
     }
+    /// Issues dialog bytes by the dialog's absolute deadline, or the transport budget.
+    async fn write(
+        &self,
+        write: &analyte_dialog::Write,
+        conn: &mut analyte_transport::Connection,
+    ) -> Result<(), Error> {
+        custody::write(
+            conn,
+            &write.bytes,
+            WriteDeadline::dialog(self.start, write.until)?,
+        )
+        .await?;
+        Ok(())
+    }
     async fn write_query(
         &mut self,
         bytes: &[u8],
@@ -388,17 +398,8 @@ impl Host<'_, '_> {
         actions: &mut VecDeque<Action>,
         failures: &mut Failures<Error>,
     ) -> Result<(), Error> {
-        match conn
-            .write_all(
-                bytes,
-                Some(tokio::time::Instant::from_std(
-                    self.start
-                        .checked_add(until)
-                        .ok_or(Error::QueryWriteDeadlineOverflow)?,
-                )),
-            )
-            .await
-        {
+        let deadline = WriteDeadline::dialog(self.start, Some(until))?;
+        match custody::write(conn, bytes, deadline).await {
             Ok(()) => actions.extend(
                 self.dialog
                     .step(self.start.elapsed(), Event::QueryWritten(part))?,
@@ -413,6 +414,35 @@ impl Host<'_, '_> {
         }
 
         Ok(())
+    }
+    /// Sends at most one reserved order through the dialog's `Send` event. Stopping
+    /// during the write leaves its outcome to the exchange cleanup; it is never resent.
+    async fn send_order(
+        &mut self,
+        conn: &mut analyte_transport::Connection,
+        stop: &mut watch::Receiver<bool>,
+    ) -> Result<Flow, Error> {
+        let Some(query) = &mut self.queries else {
+            return Ok(Flow::Continue);
+        };
+        let next = tokio::select! {
+            biased;
+            _ = async { let _ = stop.wait_for(|&stopped| stopped).await; } => return Ok(Flow::Stop),
+            result = query.next(self.store, self.machine, &self.dialog, self.settings) => result?,
+        };
+        let Some(order) = next else {
+            return Ok(Flow::Continue);
+        };
+        let actions = self.dialog.step(
+            self.start.elapsed(),
+            Event::Send(order.message, Expect::OrderResponse(order.wait)),
+        )?;
+        let mut stopped = stop.clone();
+        tokio::select! {
+            biased;
+            _ = async { let _ = stopped.wait_for(|&stopped| stopped).await; } => Ok(Flow::Stop),
+            flow = driver::drain(self, actions, conn, stop) => flow,
+        }
     }
     async fn order_response(
         &mut self,
@@ -467,7 +497,6 @@ impl Effects for Host<'_, '_> {
     }
     async fn input(&mut self, host: &mut Context<'_, '_>, input: Input) -> Result<Flow, Error> {
         let machine = self.machine;
-        let store = self.store;
         let conn = &mut *host.conn;
         let stop = &mut host.stop;
         let bytes = match input {
@@ -497,12 +526,8 @@ impl Effects for Host<'_, '_> {
                 .await
                 .map_err(Error::from)?;
         }
-        if let Some(query) = &mut self.queries {
-            tokio::select! {
-                biased;
-                _ = async { let _ = stop.wait_for(|&stopped| stopped).await; } => return Ok(Flow::Stop),
-                result = query.idle(store, machine, conn, &mut self.dialog, self.start, self.settings) => result?,
-            }
+        if self.send_order(conn, stop).await? == Flow::Stop {
+            return Ok(Flow::Stop);
         }
         self.wake = self.dialog.next_deadline();
         Ok(Flow::Continue)
@@ -515,12 +540,12 @@ impl Effects for Host<'_, '_> {
         let machine = self.machine;
         let store = self.store;
         let cleanup = self.input_evidence.retain(store, machine).await;
-        crate::machine::receive::custody::retain_cleanup(result, cleanup.map_err(Into::into));
+        custody::retain_cleanup(result, cleanup.map_err(Into::into));
         // A cancelled or failed host operation must expose partial input as well.
         let actions = match self.dialog.step(self.start.elapsed(), Event::Disconnected) {
             Ok(actions) => actions,
             Err(error) => {
-                crate::machine::receive::custody::retain_cleanup(result, Err(error.into()));
+                custody::retain_cleanup(result, Err(error.into()));
                 Vec::new()
             }
         };
@@ -528,10 +553,7 @@ impl Effects for Host<'_, '_> {
             if let Action::Rejected(error, bytes) = action {
                 let cleanup =
                     intake::park_bytes(store, machine, bytes, ByteReason::Mllp(&error)).await;
-                crate::machine::receive::custody::retain_cleanup(
-                    result,
-                    cleanup.map_err(Into::into),
-                );
+                custody::retain_cleanup(result, cleanup.map_err(Into::into));
             }
         }
         if let Some(query) = &mut self.queries {
@@ -546,7 +568,7 @@ impl Effects for Host<'_, '_> {
                     },
                 )
                 .await;
-            crate::machine::receive::custody::retain_cleanup(result, cleanup.map_err(Into::into));
+            custody::retain_cleanup(result, cleanup.map_err(Into::into));
         }
         Ok(())
     }

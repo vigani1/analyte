@@ -229,7 +229,8 @@ impl driver::Drain for Host<'_, '_> {
                 let message =
                     outbound_message(control_id, &body, limits, dialog.outbound_message_limit())?;
                 let send_timeout_ms = self.settings.settings().timeouts().send_timeout_ms();
-                custody::write(conn, message.document().raw(), ms(send_timeout_ms)).await?;
+                let deadline = custody::WriteDeadline::Within(ms(send_timeout_ms));
+                custody::write(conn, message.document().raw(), deadline).await?;
             }
             Action::ReadEnabled(_) => {}
             Action::Deferred(message) => {

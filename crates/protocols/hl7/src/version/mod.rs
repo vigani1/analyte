@@ -264,6 +264,9 @@ const V291_RULES: EditionRules = EditionRules {
     grammar: Some(&GRAMMAR_291),
     ..V23_RULES
 };
+// The one list of supported editions: parsing, config keys and result editions all
+// read it. `entry` maps each edition to its row; a test checks every edition is
+// listed exactly once.
 const EDITIONS: [&EditionRules; 8] = [
     &V23_RULES,
     &V231_RULES,
@@ -306,17 +309,10 @@ impl Version {
     /// Recognizes exact machine-config keys without version fallback.
     #[must_use]
     pub fn from_config_key(key: &str) -> Option<Self> {
-        match key {
-            "v23" => Some(Self::V23),
-            "v231" => Some(Self::V231),
-            "v24" => Some(Self::V24),
-            "v25" => Some(Self::V25),
-            "v251" => Some(Self::V251),
-            "v26" => Some(Self::V26),
-            "v282" => Some(Self::V282),
-            "v291" => Some(Self::V291),
-            _ => None,
-        }
+        EDITIONS
+            .iter()
+            .map(|row| row.edition)
+            .find(|edition| edition.config_key() == key)
     }
 
     /// Named 2.3.1 UTF-8 receiving departure (ADR 0002).

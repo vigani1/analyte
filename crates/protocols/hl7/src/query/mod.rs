@@ -17,6 +17,43 @@ pub(crate) fn raw(segment: Segment<'_>, field: usize) -> &[u8] {
     segment.field(field).map_or(b"", Field::raw)
 }
 
+/// Checks the header rules shared by every legacy query exchange message: the edition
+/// still defines original queries (2.8.2 §5.10.2 and 2.9.1 §5.9.2 withdraw them), MSH-9 is the
+/// expected code, event and optional structure, and the edition's SFT segments after
+/// MSH are skipped. Returns the header and the segments that follow.
+fn legacy_header<'a>(
+    message: &'a Message,
+    [code, event, structure]: [&[u8]; 3],
+) -> Result<
+    (
+        Msh<'a>,
+        std::iter::Peekable<impl Iterator<Item = Segment<'a>>>,
+    ),
+    crate::Error,
+> {
+    let msh = Msh::new(message)?;
+    if let Some(section) = msh.version().legacy_query_withdrawal() {
+        return Err(crate::Error::WithdrawnQuery {
+            edition: msh.version().as_str(),
+            section,
+        });
+    }
+    let mut kind = msh.message_type();
+    if kind.next() != Some(code)
+        || kind.next() != Some(event)
+        || kind.next().is_some_and(|v| v != structure)
+    {
+        return Err(invalid("MSH", 9));
+    }
+    let mut segments = message.segments().skip(1).peekable();
+    if msh.version().legacy_query_structure() {
+        while segments.peek().is_some_and(|s| s.id() == b"SFT") {
+            segments.next();
+        }
+    }
+    Ok((msh, segments))
+}
+
 /// A validated legacy deferred display query, retaining every original filter.
 #[derive(Debug, Clone, Copy)]
 pub struct Request<'a> {
@@ -33,26 +70,7 @@ impl<'a> Request<'a> {
     /// QRD/QRF validation preserves local filter values; the host must interpret
     /// every filter before claiming that a cache answer is trusted.
     pub fn new(message: &'a Message) -> Result<Self, crate::Error> {
-        let msh = Msh::new(message)?;
-        if let Some(section) = msh.version().legacy_query_withdrawal() {
-            return Err(crate::Error::WithdrawnQuery {
-                edition: msh.version().as_str(),
-                section,
-            });
-        }
-        let mut kind = msh.message_type();
-        if kind.next() != Some(b"QRY")
-            || kind.next() != Some(b"Q02")
-            || kind.next().is_some_and(|v| v != b"QRY_Q02")
-        {
-            return Err(invalid("MSH", 9));
-        }
-        let mut segments = message.segments().skip(1).peekable();
-        if msh.version().legacy_query_structure() {
-            while segments.peek().is_some_and(|s| s.id() == b"SFT") {
-                segments.next();
-            }
-        }
+        let (msh, mut segments) = legacy_header(message, [b"QRY", b"Q02", b"QRY_Q02"])?;
         let definition = segments
             .next()
             .filter(|s| s.id() == b"QRD")
@@ -127,26 +145,7 @@ impl<'a> DisplayAck<'a> {
     /// # Errors
     /// Rejects mismatched correlation, invalid acknowledgments or extra segments.
     pub fn new(message: &'a Message, expected: crate::ControlId<'_>) -> Result<Self, crate::Error> {
-        let msh = Msh::new(message)?;
-        if let Some(section) = msh.version().legacy_query_withdrawal() {
-            return Err(crate::Error::WithdrawnQuery {
-                edition: msh.version().as_str(),
-                section,
-            });
-        }
-        let mut kind = msh.message_type();
-        if kind.next() != Some(b"ACK")
-            || kind.next() != Some(b"Q03")
-            || kind.next().is_some_and(|v| v != b"ACK")
-        {
-            return Err(invalid("MSH", 9));
-        }
-        let mut segments = message.segments().skip(1).peekable();
-        if msh.version().legacy_query_structure() {
-            while segments.peek().is_some_and(|s| s.id() == b"SFT") {
-                segments.next();
-            }
-        }
+        let (msh, mut segments) = legacy_header(message, [b"ACK", b"Q03", b"ACK"])?;
         let msa = Msa::for_version(segments.next().ok_or(invalid("MSA", 0))?, msh.version())?;
         if msa.control_id() != expected.raw() {
             return Err(invalid("MSA", 2));

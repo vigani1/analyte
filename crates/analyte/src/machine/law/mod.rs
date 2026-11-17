@@ -422,19 +422,12 @@ impl<'a, 'm> Host<'a, 'm> {
         host: &mut Context<'_, '_>,
     ) -> Result<Event<'static>, Error> {
         let until = write.until.ok_or(protocol::Error::Stale)?;
-        host.conn
-            .write_all(&write.bytes, Some(self.absolute(until)?.into()))
-            .await
-            .map_err(|error| {
-                if matches!(
-                    error,
-                    analyte_transport::Error::Deadline(analyte_transport::DeadlineKind::WriteAll)
-                ) {
-                    Error::ResponseSendDeadlineExpired(error)
-                } else {
-                    error.into()
-                }
-            })?;
+        crate::machine::receive::custody::write(
+            host.conn,
+            &write.bytes,
+            crate::machine::receive::custody::WriteDeadline::At(self.absolute(until)?),
+        )
+        .await?;
         Ok(Event::Written)
     }
     async fn feed(&mut self, bytes: Vec<u8>, host: &mut Context<'_, '_>) -> Result<(), Error> {

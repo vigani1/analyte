@@ -12,6 +12,16 @@ pub enum ReplyPart {
     Dsr,
 }
 
+/// The reply an outgoing message waits for. Neither reply authorizes a resend.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Expect {
+    /// The acknowledgment that MSH-15 and MSH-16 request (HL7 2.5.1 §2.9.2 and §2.9.3).
+    Acknowledgment,
+    /// An ORR or ORL order response within this budget, which also bounds issuance.
+    /// The response is stored before it is reported (HL7 2.3.1 §4.2.2 and 2.5.1 §4.4.2).
+    OrderResponse(Duration),
+}
+
 /// Host-prepared reply after cache lookup and durable order reservation.
 #[derive(Debug)]
 pub struct DisplayReply {
@@ -145,12 +155,23 @@ impl Dialog {
         };
         Ok(())
     }
-    /// Registers an unsolicited-order response wait before transport issuance.
-    /// # Errors
-    /// Rejects a busy/disabled exchange or an unrepresentable deadline.
-    pub fn await_order_response(&mut self, now: Duration, wait: Duration) -> Result<(), Error> {
-        let (orders, until) = self.prepare_wait(now, wait)?;
+    /// Registers the order-response wait, then issues the order within that same budget.
+    /// A partial inbound block keeps the link busy. A failed or uncertain issuance never
+    /// authorizes a resend.
+    pub(super) fn send_order(
+        &mut self,
+        raw: &[u8],
+        wait: Duration,
+        out: &mut Vec<Action>,
+    ) -> Result<(), Error> {
+        if !self.decoder.pending().is_empty() {
+            return Err(Error::Busy);
+        }
+        let limit = self.config.limit;
+        let (orders, until) = self.prepare_wait(self.clock.now(), wait)?;
+        let write = crate::Write::encode(raw, limit, Some(until))?;
         orders.waiting = Waiting::Order { until };
+        out.push(Action::Write(write));
         Ok(())
     }
     // Validate both outbound waits in the same order before changing state.

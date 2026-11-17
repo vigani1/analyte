@@ -250,7 +250,7 @@ async fn plan11_rule3_vendor_receipts_use_live_interpretation_and_rule8_stay_par
         }],
     )?
     .raw;
-    let report = analyte_framing::autolyser::finish(report);
+    let report = analyte_framing::autolyser::encode(report);
     let poct = poct_peer::observation("observation", true, "<OBS.value V=\"12.30\" U=\"mg/L\"/>");
     analyte_poct::Message::parse(poct.as_bytes(), poct_peer::limits())?;
     let cases = [

@@ -215,7 +215,8 @@ impl driver::Drain for Host<'_, '_> {
         let settings = self.settings;
         match action {
             Action::Write(bytes) => {
-                run.conn.write(bytes).await?;
+                let deadline = crate::machine::receive::custody::WriteDeadline::Transport;
+                crate::machine::receive::custody::write(run.conn, &bytes, deadline).await?;
             }
             Action::Store(id, number, bytes) => {
                 self.commit_frame(id, number, bytes, run).await?;

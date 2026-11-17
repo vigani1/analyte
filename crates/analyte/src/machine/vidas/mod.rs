@@ -231,7 +231,7 @@ impl driver::Drain for Host<'_, '_> {
         match action {
             Action::Write(bytes) => {
                 let budget = ms(self.settings.policy().acknowledgment_ms);
-                custody::write(run.conn, &bytes, budget).await?;
+                custody::write(run.conn, &bytes, custody::WriteDeadline::Within(budget)).await?;
             }
             Action::Store(packet) => self.store_packet(&packet.raw, run).await?,
             Action::TimerArmed(_, _) | Action::TimerCancelled(_) => {}

@@ -12,11 +12,11 @@ fuzz_target!(|data: &[u8]| {
         response: Duration::from_secs(10),
         inter_byte: Duration::from_secs(1),
         storage: Duration::from_secs(1),
-        max_bytes: 11_038,
+        max_bytes: analyte_framing::autolyser::MAX_ENVELOPE,
         controls: false,
         recovery: Recovery::ManualLast,
     };
-    // Dialog::new requires nonzero deadlines and 2..=11038 response bytes.
+    // Dialog::new requires nonzero deadlines and 2..=MAX_ENVELOPE response bytes.
     let Ok(mut dialog) = Dialog::new(CONFIG) else {
         unreachable!("fuzz target bug: constant Autolyser configuration is invalid");
     };
@@ -29,12 +29,18 @@ fuzz_target!(|data: &[u8]| {
         analyte_framing::autolyser::Mode::Report,
         analyte_framing::autolyser::Mode::Insertion,
     ] {
-        let mut decoder = analyte_framing::autolyser::Decoder::new(mode, 11_038)
-            .expect("constant byte ceiling is valid");
-        for &byte in data.iter().take(11_039) {
+        let mut decoder = analyte_framing::autolyser::Decoder::new(
+            mode,
+            analyte_framing::autolyser::MAX_ENVELOPE,
+        )
+        .expect("constant byte ceiling is valid");
+        for &byte in data
+            .iter()
+            .take(analyte_framing::autolyser::MAX_ENVELOPE + 1)
+        {
             match decoder.push(byte) {
                 Ok(Some(frame)) => {
-                    assert!(frame.raw().len() <= 11_038);
+                    assert!(frame.raw().len() <= analyte_framing::autolyser::MAX_ENVELOPE);
                     let _ = frame.body();
                     break;
                 }
@@ -47,13 +53,13 @@ fuzz_target!(|data: &[u8]| {
     if let Ok(worklist) = Worklist::parse(data) {
         assert_eq!(worklist.encode(), data);
     }
-    if let Ok(body) = analyte_framing::autolyser::verified(data) {
+    if let Ok(body) = analyte_framing::autolyser::decode(data) {
         if let Ok(worklist) = Worklist::parse(body) {
-            assert_eq!(analyte_framing::autolyser::finish(worklist.encode()), data);
+            assert_eq!(analyte_framing::autolyser::encode(worklist.encode()), data);
         }
         for controls in [false, true] {
             if let Ok(report) = Report::parse(body, controls) {
-                assert_eq!(analyte_framing::autolyser::finish(report.raw), data);
+                assert_eq!(analyte_framing::autolyser::encode(report.raw), data);
             }
         }
     }

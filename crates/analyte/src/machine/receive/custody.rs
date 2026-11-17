@@ -1,5 +1,5 @@
-//! Stores machine receipts and interpretation outcomes independently of vendor dialogs.
-use std::time::Duration;
+//! Stores machine receipts and interpretation outcomes and writes vendor bytes for every dialog.
+use std::time::{Duration, Instant};
 
 /// Distinguishes an unstarted write, an uncertain deadline and a transport failure.
 #[derive(Debug, thiserror::Error)]
@@ -12,17 +12,47 @@ pub(crate) enum WriteError {
     Transport(#[from] analyte_transport::Error),
 }
 
+/// When a vendor write must be fully queued. Only an expired overall deadline leaves
+/// the outcome uncertain; a per-chunk queue deadline is an ordinary transport failure.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum WriteDeadline {
+    /// No overall deadline; the transport's per-chunk queue budget applies.
+    Transport,
+    /// An overall budget that starts with the write.
+    Within(Duration),
+    /// An overall absolute deadline.
+    At(Instant),
+}
+impl WriteDeadline {
+    /// A dialog's `Write` deadline on the connection clock that began at `start`;
+    /// none means the transport budget.
+    pub(crate) fn dialog(start: Instant, until: Option<Duration>) -> Result<Self, WriteError> {
+        until.map_or(Ok(Self::Transport), |until| {
+            start
+                .checked_add(until)
+                .map(Self::At)
+                .ok_or(WriteError::DeadlineOverflow)
+        })
+    }
+}
+
+/// The one path by which a protocol host writes to its connection. Success means
+/// queued, not acknowledged; a failed or uncertain write is never retried here.
 pub(crate) async fn write(
     conn: &mut analyte_transport::Connection,
     bytes: &[u8],
-    budget: Duration,
+    deadline: WriteDeadline,
 ) -> Result<(), WriteError> {
-    let until = tokio::time::Instant::now()
-        .checked_add(budget)
-        .ok_or(WriteError::DeadlineOverflow)?;
-    conn.write_all(bytes, Some(until))
-        .await
-        .map_err(classify_write)
+    let until = match deadline {
+        WriteDeadline::Transport => None,
+        WriteDeadline::Within(budget) => Some(
+            tokio::time::Instant::now()
+                .checked_add(budget)
+                .ok_or(WriteError::DeadlineOverflow)?,
+        ),
+        WriteDeadline::At(until) => Some(tokio::time::Instant::from_std(until)),
+    };
+    conn.write_all(bytes, until).await.map_err(classify_write)
 }
 
 fn classify_write(error: analyte_transport::Error) -> WriteError {
@@ -219,6 +249,23 @@ mod tests {
                 kind == DeadlineKind::WriteAll
             );
         }
+    }
+
+    #[test]
+    fn dialog_write_deadlines_use_the_connection_clock_or_the_transport_budget() {
+        let start = Instant::now();
+        assert!(matches!(
+            WriteDeadline::dialog(start, None),
+            Ok(WriteDeadline::Transport)
+        ));
+        assert!(matches!(
+            WriteDeadline::dialog(start, Some(Duration::from_millis(1_500))),
+            Ok(WriteDeadline::At(until)) if Some(until) == start.checked_add(Duration::from_millis(1_500))
+        ));
+        assert!(matches!(
+            WriteDeadline::dialog(start, Some(Duration::MAX)),
+            Err(WriteError::DeadlineOverflow)
+        ));
     }
 
     #[test]

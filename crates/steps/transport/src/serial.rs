@@ -1,7 +1,9 @@
 //! Validates serial settings and supplies a replaceable blocking port.
 
 use crate::Error;
-use serialport::{DataBits, FlowControl, Parity, StopBits};
+/// Character width and stop bits, converted from their configured counts by the
+/// serial library's own checked conversions.
+pub use serialport::{DataBits, StopBits};
 use std::{
     io::{self, Read, Write},
     time::Duration,
@@ -12,6 +14,48 @@ use std::{
 pub trait Port: Read + Write + Send {}
 
 impl<T: Read + Write + Send> Port for T {}
+
+/// Parity bit on each character.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Parity {
+    /// No parity bit.
+    None,
+    /// An odd count of one bits.
+    Odd,
+    /// An even count of one bits.
+    Even,
+}
+
+/// Flow control on the line.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FlowControl {
+    /// No flow control.
+    None,
+    /// Hardware handshake lines.
+    Hardware,
+    /// XON/XOFF bytes.
+    Software,
+}
+
+// The one mapping from line settings to the serial library.
+impl From<Parity> for serialport::Parity {
+    fn from(parity: Parity) -> Self {
+        match parity {
+            Parity::None => Self::None,
+            Parity::Odd => Self::Odd,
+            Parity::Even => Self::Even,
+        }
+    }
+}
+impl From<FlowControl> for serialport::FlowControl {
+    fn from(flow: FlowControl) -> Self {
+        match flow {
+            FlowControl::None => Self::None,
+            FlowControl::Hardware => Self::Hardware,
+            FlowControl::Software => Self::Software,
+        }
+    }
+}
 
 /// Serial settings that never search for or substitute another device name.
 #[derive(Clone, Debug)]
@@ -165,9 +209,9 @@ impl Settings {
     pub fn open(&self) -> Result<Box<dyn serialport::SerialPort>, Error> {
         serialport::new(&self.name, self.baud)
             .data_bits(self.bits)
-            .parity(self.parity)
+            .parity(self.parity.into())
             .stop_bits(self.stops)
-            .flow_control(self.flow)
+            .flow_control(self.flow.into())
             .timeout(self.timeout)
             .open()
             .map_err(|source| Error::Io {

@@ -180,7 +180,7 @@ fn hl7_251_2_9_2_sender_correlation_and_uncertainty() -> TestResult {
         let mut d = dialog()?;
         let raw = message("");
         let payload = raw.get(1..raw.len().saturating_sub(2)).ok_or("payload")?;
-        d.step(Duration::ZERO, Event::Send(payload))?;
+        d.step(Duration::ZERO, Event::Send(payload, Expect::Acknowledgment))?;
         let out = if disconnect {
             d.step(Duration::ZERO, Event::Disconnected)?
         } else {
@@ -227,7 +227,10 @@ fn hl7_251_2_15_8_all_codes_and_mismatched_ack() -> TestResult {
         let raw = message("");
         d.step(
             Duration::ZERO,
-            Event::Send(raw.get(1..raw.len().saturating_sub(2)).ok_or("payload")?),
+            Event::Send(
+                raw.get(1..raw.len().saturating_sub(2)).ok_or("payload")?,
+                Expect::Acknowledgment,
+            ),
         )?;
         let wrong = format!(
             "\x0bMSH|^~\\&|C|D|A|B|20261115||ACK^R01^ACK|reply|P|2.5.1\rMSA|{code}|other\r\x1c\r"
@@ -357,7 +360,10 @@ fn hl7_251_2_9_2_2_9_3_sender_preserves_ack_phases() -> TestResult {
     let raw = message("AL|AL");
     d.step(
         Duration::ZERO,
-        Event::Send(raw.get(1..raw.len().saturating_sub(2)).ok_or("payload")?),
+        Event::Send(
+            raw.get(1..raw.len().saturating_sub(2)).ok_or("payload")?,
+            Expect::Acknowledgment,
+        ),
     )?;
     let reply = |code: &str| {
         format!("\x0bMSH|^~\\&|C|D|A|B|20261115||ACK^R01^ACK|reply|P|2.5.1\rMSA|{code}|001\r\x1c\r")
@@ -405,7 +411,10 @@ fn sending(mode: &str) -> Result<(Dialog, Vec<Action>), Box<dyn std::error::Erro
     let wire = message(mode);
     let actions = dialog.step(
         Duration::ZERO,
-        Event::Send(wire.get(1..wire.len().saturating_sub(2)).ok_or("payload")?),
+        Event::Send(
+            wire.get(1..wire.len().saturating_sub(2)).ok_or("payload")?,
+            Expect::Acknowledgment,
+        ),
     )?;
     Ok((dialog, actions))
 }
