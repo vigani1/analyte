@@ -75,16 +75,12 @@ pub(super) fn map(
         Some(b"D") => ProcessingMode::Debug,
         Some(_) | None => ProcessingMode::Unknown,
     };
-    let positions = message
-        .segments()
-        .enumerate()
-        .map(|(i, s)| (s.raw().as_ptr(), i.saturating_add(1)))
-        .collect::<std::collections::BTreeMap<_, _>>();
     for notice in results.status_notices() {
         let position = Position {
-            record: *positions
-                .get(&notice.order().raw().as_ptr())
-                .ok_or(Error::NoticeOrder)?,
+            record: notice
+                .order_index()
+                .checked_add(1)
+                .ok_or(Error::NoticePosition)?,
             field: 2,
         };
         crate::reserve_evidence(

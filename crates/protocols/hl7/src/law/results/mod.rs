@@ -186,6 +186,7 @@ pub struct Attached<'a> {
 /// Observation with AWOS/specimen/container context, without invented identities.
 #[derive(Debug)]
 pub struct Observation<'a> {
+    segment_index: usize,
     order_ordinal: usize,
     segment: Segment<'a>,
     order: Segment<'a>,
@@ -197,6 +198,12 @@ pub struct Observation<'a> {
 }
 
 impl<'a> Observation<'a> {
+    /// Returns the zero-based segment occurrence in the original message.
+    #[must_use]
+    pub fn segment_index(&self) -> usize {
+        self.segment_index
+    }
+
     /// Returns validated TCD data with original dilution spelling and adjustment knowledge.
     #[must_use]
     pub fn test_detail(&self) -> Option<super::TestDetail<'a>> {
@@ -360,8 +367,8 @@ impl<'a> Results<'a> {
             )) {
                 let occurrence = message
                     .segments()
+                    .take(observation.segment_index)
                     .filter(|s| s.id() == b"OBX")
-                    .take_while(|s| s.raw().as_ptr() != observation.segment.raw().as_ptr())
                     .count()
                     .saturating_add(1);
                 return Err(content("OBX", 4).at_segment(observation.segment, occurrence));
