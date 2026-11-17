@@ -30,11 +30,11 @@ impl Sessions {
     pub(super) fn lookup(
         &self,
         cookie: Option<&str>,
-    ) -> Result<Option<Arc<Session>>, crate::Error> {
+    ) -> Result<Option<Arc<Session>>, super::Error> {
         let mut entries = self
             .entries
             .lock()
-            .map_err(|_| crate::invalid("admin session lock poisoned"))?;
+            .map_err(|_| super::Error::AdminSessionLockPoisoned)?;
         entries.retain(|s| {
             s.created.elapsed() < Duration::from_secs(if s.authenticated { 3600 } else { 300 })
         });
@@ -45,7 +45,7 @@ impl Sessions {
         &self,
         authenticated: bool,
         replace: Option<&Session>,
-    ) -> Result<Arc<Session>, crate::Error> {
+    ) -> Result<Arc<Session>, super::Error> {
         let session = Arc::new(Session {
             id: Token::session()?,
             csrf: Token::session()?,
@@ -56,7 +56,7 @@ impl Sessions {
         let mut entries = self
             .entries
             .lock()
-            .map_err(|_| crate::invalid("admin session lock poisoned"))?;
+            .map_err(|_| super::Error::AdminSessionLockPoisoned)?;
         entries.retain(|s| {
             s.created.elapsed() < Duration::from_secs(if s.authenticated { 3600 } else { 300 })
                 && replace.is_none_or(|old| !s.id.matches(old.id.form_value()))
@@ -65,9 +65,7 @@ impl Sessions {
             if let Some(index) = entries.iter().position(|s| !s.authenticated) {
                 entries.remove(index);
             } else {
-                return Err(crate::invalid(
-                    "admin session capacity reached; restart or wait for expiry",
-                ));
+                return Err(super::Error::AdminSessionCapacityReachedRestartOrWaitForExpiry);
             }
         }
         entries.push(session.clone());

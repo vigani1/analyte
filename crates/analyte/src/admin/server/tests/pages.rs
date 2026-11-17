@@ -139,7 +139,7 @@ async fn start_pages_server(
     (
         Arc<Context>,
         watch::Sender<bool>,
-        tokio::task::JoinHandle<Result<(), Error>>,
+        tokio::task::JoinHandle<Result<(), crate::admin::Error>>,
         String,
     ),
     Error,

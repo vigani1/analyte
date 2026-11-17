@@ -1,5 +1,6 @@
 //! Tests server behavior with synthetic fixtures.
 use super::*;
+use crate::Error;
 use analyte_model::{OrderState, Reason};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
@@ -535,7 +536,7 @@ async fn start_overview_server(
     (
         Arc<Context>,
         watch::Sender<bool>,
-        tokio::task::JoinHandle<Result<(), Error>>,
+        tokio::task::JoinHandle<Result<(), crate::admin::Error>>,
         String,
     ),
     Error,

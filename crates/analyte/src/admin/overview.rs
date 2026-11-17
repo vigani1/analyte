@@ -1,6 +1,7 @@
 //! Renders a read-only HTML overview of alerts, disk reserve, uncertain orders, destinations and machines.
 use super::{escape, server::Context};
-use crate::{Error, deadline};
+use crate::admin::Error;
+use crate::deadline;
 use analyte_model::OrderState;
 use analyte_store::MachineOrderFilter;
 use axum::{
@@ -133,7 +134,7 @@ async fn render_uncertain_orders(
         after = last.id;
         uncertain = uncertain
             .checked_add(u64::try_from(page.len())?)
-            .ok_or_else(|| crate::invalid("uncertain order count overflow"))?;
+            .ok_or_else(|| Error::UncertainOrderCountOverflow)?;
     }
     row(html, "Uncertain orders", &uncertain.to_string());
     Ok(())
@@ -258,6 +259,7 @@ async fn render_alert_endpoints(
 #[cfg(test)]
 mod webhook_tests {
     use super::*;
+    use crate::Error;
     #[tokio::test]
     async fn adr0014_overview_exposes_failed_and_full_webhook_queue() -> Result<(), Error> {
         let temp = tempfile::tempdir()?;

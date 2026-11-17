@@ -4,7 +4,8 @@ use super::{
     pages::{finish, start},
     server::Context,
 };
-use crate::{Error, deadline};
+use crate::admin::Error;
+use crate::deadline;
 use analyte_model::{DepartureEvidence, DepartureMeaning, ReceiptId};
 use axum::{
     extract::{Path, Query, State},
@@ -136,6 +137,7 @@ fn render(html: &mut String, evidence: &DepartureEvidence) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Error;
     use analyte_model::{
         AppliedDeparture, DepartureEvidence, DepartureMeaning, EvidenceList, Identifier, SourceText,
     };

@@ -222,7 +222,9 @@ async fn serve_with(
     );
     crate::runtime::delivery::recover(&store).await?;
     super::law_recovery::run(&program, &store).await?;
-    let admin = crate::admin::prepare(&program, store.clone(), loopback).await?;
+    let admin = crate::admin::prepare(&program, store.clone(), loopback)
+        .await
+        .map_err(admin_startup_error)?;
     let admin_states = admin
         .as_ref()
         .map(|server| server.owners.clone())
@@ -233,7 +235,7 @@ async fn serve_with(
         let component = watchdog.component("admin-server".into());
         admin_owners.spawn(async move {
             let _component = component;
-            admin.run(admin_stopped).await
+            admin.run(admin_stopped).await.map_err(Into::into)
         });
     }
     let (delivery_stop, mut delivery_owners) =
@@ -681,6 +683,38 @@ pub async fn prepare_retention(program: Program) -> Result<(), Error> {
         )
     })
     .await??)
+}
+
+// The service's existing startup API exposes original dependency causes to recovery callers.
+fn admin_startup_error(error: crate::admin::Error) -> Error {
+    match error {
+        crate::admin::Error::Join(source) => Error::from(source),
+        crate::admin::Error::MachineConfig(source) => Error::from(source),
+        crate::admin::Error::Operator(source) => source,
+        crate::admin::Error::Runtime(source) => Error::from(source),
+        crate::admin::Error::Store(source) => Error::from(source),
+        crate::admin::Error::Intake(source) => Error::from(source),
+        crate::admin::Error::Config(source) => Error::from(source),
+        crate::admin::Error::Text(source) => Error::from(source),
+        crate::admin::Error::Identity(source) => Error::from(source),
+        crate::admin::Error::Uuid(source) => Error::from(source),
+        crate::admin::Error::Integer(source) => Error::from(source),
+        crate::admin::Error::ParseInteger(source) => Error::from(source),
+        crate::admin::Error::Json(source) => Error::from(source),
+        crate::admin::Error::Token(source) => Error::from(source),
+        crate::admin::Error::Sink(source) => Error::from(source),
+        crate::admin::Error::Io(source) => Error::from(source),
+        crate::admin::Error::Secret(source) => Error::from(source),
+        other @ (crate::admin::Error::AwosItemNotRetained
+        | crate::admin::Error::AdminSessionCapacityReachedRestartOrWaitForExpiry
+        | crate::admin::Error::AdminSessionLockPoisoned
+        | crate::admin::Error::ChoosePlaceOrRelease
+        | crate::admin::Error::ChooseReceiptOrOrder
+        | crate::admin::Error::CurrentConfigurationPointsToADifferentStore
+        | crate::admin::Error::MachineCursorOverflow
+        | crate::admin::Error::ParkedTargetCursorOverflow
+        | crate::admin::Error::UncertainOrderCountOverflow) => Error::from(other),
+    }
 }
 
 #[cfg(test)]

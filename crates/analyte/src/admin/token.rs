@@ -109,7 +109,7 @@ fn generate(
 /// retrying. A failed installation retains the previous token when present.
 /// # Errors
 /// Reports protected-directory, entropy, staging, flush or rename failures.
-pub fn rotate_token(directory: &Path) -> Result<String, crate::Error> {
+pub fn rotate_token(directory: &Path) -> Result<String, super::Error> {
     crate::runtime::service::create_data_directory(directory)?;
     let token = generate(getrandom::fill)?;
     let pending = directory.join("admin-token.pending");
