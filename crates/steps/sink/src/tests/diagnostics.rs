@@ -15,7 +15,7 @@ async fn adr0008_app_diagnostics_park_and_worker_continues() -> TestResult {
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
             let destinations = [destination(&format!("http://{}", listener.local_addr()?))?];
             let secrets = Secrets("key");
-            let worker = Worker::new(&store, &destinations, &secrets);
+            let worker = Worker::for_destination(&store, &destinations[0], &secrets);
             for run in ["rejected", "next"] {
                 let metadata = receipt()?;
                 let result = make_result(metadata.id, run)?;

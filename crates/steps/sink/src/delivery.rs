@@ -1,14 +1,11 @@
 //! Delivers results while preserving delivery identities across retries.
-use crate::{DeliveryError, Destination, SecretsSource, body, cancelled, deadline};
+use crate::{DeliveryError, Destination, SecretsSource, body, deadline, cancelled};
 use analyte_contract::{ResponseAction, classify_response};
 use analyte_model::{DeliveryId, Identifier, IdentityStatus, ReceiptMetadata, ResultContent};
 use analyte_store::{Attempt, DeliveryKind, Handle};
 use std::time::Duration;
 /// Bounds idle outbox query frequency; cancellation wakes immediately.
 const IDLE_CLAIM_INTERVAL: Duration = Duration::from_millis(100);
-
-/// Bounds claims by legacy workers with no configured destinations.
-const EMPTY_STORE_BUDGET: Duration = Duration::from_secs(30);
 
 use tokio::sync::watch;
 
@@ -87,27 +84,11 @@ pub enum DeliveryOutcome {
 /// Use one `for_destination` worker per destination to isolate slow HTTP peers.
 pub struct Worker<'a> {
     store: &'a Handle,
-    destinations: &'a [Destination],
+    destination: &'a Destination,
     secrets: &'a dyn SecretsSource,
-    destination: Option<&'a Identifier>,
 }
 
 impl<'a> Worker<'a> {
-    /// Borrows the store and host configuration for the worker's entire lifetime.
-    #[must_use]
-    pub fn new(
-        store: &'a Handle,
-        destinations: &'a [Destination],
-        secrets: &'a dyn SecretsSource,
-    ) -> Self {
-        Self {
-            store,
-            destinations,
-            secrets,
-            destination: None,
-        }
-    }
-
     /// Restricts claims to one destination; other owners cannot steal its deliveries.
     #[must_use]
     pub fn for_destination(
@@ -117,20 +98,9 @@ impl<'a> Worker<'a> {
     ) -> Self {
         Self {
             store,
-            destinations: std::slice::from_ref(destination),
+            destination,
             secrets,
-            destination: Some(destination.id()),
         }
-    }
-
-    /// The claim runs before the destination is known, so it uses the largest
-    /// store budget among the configured destinations.
-    fn claim_timeout(&self) -> Duration {
-        self.destinations
-            .iter()
-            .map(|d| d.limits.store_timeout)
-            .max()
-            .unwrap_or(EMPTY_STORE_BUDGET)
     }
 
     /// Claims, sends and records one attempt. Cancellation can leave it in flight;
@@ -149,25 +119,21 @@ impl<'a> Worker<'a> {
         now: &(dyn Fn() -> i64 + Sync),
     ) -> Result<DeliveryOutcome, DeliveryError> {
         let claim_time = now();
-        let destination = self.destination.cloned();
+        let destination = self.destination.id().clone();
         let claim = self
             .store
             .request(
-                deadline(self.claim_timeout(), DeliveryError::Timeout)?,
-                move |s| match destination {
-                    Some(destination) => s.claim_destination(claim_time, &destination),
-                    None => s.claim(claim_time),
-                },
+                deadline(
+                    self.destination.limits.store_timeout,
+                    DeliveryError::Timeout,
+                )?,
+                move |s| s.claim_destination(claim_time, &destination),
             )
             .await?;
         let Some(claim) = claim else {
             return Ok(DeliveryOutcome::Idle);
         };
-        let destination = self
-            .destinations
-            .iter()
-            .find(|d| d.id == claim.destination)
-            .ok_or(DeliveryError::UnknownDestination)?;
+        let destination = self.destination;
         let (action, conflict_detail) = match tokio::time::timeout(
             destination.limits.request_timeout,
             self.send(destination, &claim),

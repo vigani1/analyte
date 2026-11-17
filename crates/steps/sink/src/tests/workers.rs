@@ -26,7 +26,7 @@ async fn rule7_active_delivery_and_order_poll_cancel_without_waiting_for_http_de
             enqueue(&store, metadata, result, delivery).await?;
         }
         let (stop, stopped) = watch::channel(false);
-        let worker = Worker::new(&store, &destinations, &secrets);
+        let worker = Worker::for_destination(&store, &destinations[0], &secrets);
         let poller = Poller::new(&store, destination, &secrets);
         let run = async {
             if polling {
@@ -88,7 +88,8 @@ async fn mutation_rule7_draining_closed_or_set_stop_does_not_claim() -> TestResu
     let mut store = store(&directory.path().join("store.db")).await?;
     store.shutdown(until()?).await?;
     let secrets = Secrets("key");
-    let worker = Worker::new(&store, &[], &secrets);
+    let destination = destination("http://127.0.0.1:1")?;
+    let worker = Worker::for_destination(&store, &destination, &secrets);
     for closed in [false, true] {
         let (sender, receiver) = watch::channel(!closed);
         if closed {
@@ -116,7 +117,8 @@ async fn mutation_rule7_idle_workers_wait_before_claiming_again() -> TestResult 
             metadata.received_at,
         )?;
         let secrets = Secrets("key");
-        let worker = Worker::new(&store, &[], &secrets);
+        let destination = destination("http://127.0.0.1:1")?;
+        let worker = Worker::for_destination(&store, &destination, &secrets);
         let (_sender, receiver) = watch::channel(false);
         {
             let run = async {
