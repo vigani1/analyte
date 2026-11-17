@@ -87,3 +87,5 @@ impl From<crate::operator::Error> for Error {
         Self::Operator(Box::new(error))
     }
 }
+
+analyte_store::forward_command_errors!(Error);

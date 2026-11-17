@@ -35,9 +35,10 @@ fn page(
     })
 }
 
-fn event(order: &MachineOrder) -> Result<OrderEventDelivery, Error> {
+fn event(order: &MachineOrder) -> Result<OrderEventDelivery, OrderError> {
     Ok(OrderEventDelivery {
-        id: DeliveryId::try_from(uuid::Uuid::now_v7()).map_err(|_| Error::InvalidOrderInput)?,
+        id: DeliveryId::try_from(uuid::Uuid::now_v7())
+            .map_err(|_| OrderError::InvalidOrderInput)?,
         destination: order.key.destination.clone(),
         order_id: order.key.order.clone(),
         payload: serde_json::to_vec(order)?,
@@ -244,7 +245,7 @@ fn verify_adr0003_invalid_groups_and_identity_budget(
                     ..Default::default()
                 }
             ),
-            Err(Error::InvalidOrderInput)
+            Err(OrderError::InvalidOrderInput)
         ));
     }
     let one_per_test = test_groups(&["c", "a", "b"])?;
@@ -268,7 +269,7 @@ fn verify_adr0003_invalid_groups_and_identity_budget(
                 ..Default::default()
             }
         ),
-        Err(Error::ItemIdentityTooLong)
+        Err(OrderError::ItemIdentityTooLong)
     ));
     for table in [
         "machine_orders",

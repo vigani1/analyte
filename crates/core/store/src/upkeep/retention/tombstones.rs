@@ -1,6 +1,6 @@
 //! Replaces eligible protected receipt content with nonclinical tombstones inside its purge transaction.
 use super::DigestKey;
-use crate::{Error, Interpretation, Reading, key};
+use crate::{Interpretation, MaintenanceError as Error, Reading, key};
 use analyte_model::{IdentityStatus, ReceiptId, ReceiptMetadata};
 use rusqlite::{Connection, params};
 

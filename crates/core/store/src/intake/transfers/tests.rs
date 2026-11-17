@@ -55,7 +55,7 @@ fn adr0003_complete_and_aborted_transfers_keep_all_evidence() -> TestResult {
     );
     assert!(matches!(
         store.frame(&complete, FrameSequence::new(2, 7)?, b"late"),
-        Err(Error::Conflict)
+        Err(IntakeError::Conflict)
     ));
     assert_eq!(
         store.receipt(metadata.id)?.ok_or(Error::Corruption)?.config,
@@ -88,7 +88,7 @@ fn mutation_adr0003_transfer_provenance_conflicts_preserve_original_frames_and_c
     };
     assert!(matches!(
         store.journal_frame(&transfer, FrameSequence::new(0, 0)?, b"refused", &changed),
-        Err(Error::Conflict)
+        Err(IntakeError::Conflict)
     ));
     drop(store);
     let store = open(&path)?;

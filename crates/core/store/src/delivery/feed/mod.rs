@@ -1,5 +1,5 @@
 //! Stores and pages order-change feed entries.
-use crate::{Error, Lookup, OrderPage, OrderTrust, Store};
+use crate::{Lookup, OrderError as Error, OrderPage, OrderTrust, Store};
 use analyte_model::{Identifier, SampleId};
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -9,7 +9,7 @@ impl Store {
     /// Rejects oversized pages and database failures.
     pub fn order_page(&mut self, page: &OrderPage) -> Result<(), Error> {
         if page.orders.len() > self.limits.page_rows {
-            return Err(Error::InvalidDeliveryInput);
+            return Err(Error::InvalidOrderInput);
         }
         self.bound(self.encode(page)?.as_bytes())?;
         let tx = self.db.transaction()?;
@@ -50,14 +50,14 @@ impl Store {
             .limits
             .page_rows
             .checked_add(1)
-            .ok_or(Error::InvalidDeliveryInput)?;
+            .ok_or(Error::InvalidOrderInput)?;
         let encoded = stmt
             .query_map(
                 params![
                     destination.as_str(),
                     sample.as_str(),
                     now,
-                    i64::try_from(limit).map_err(|_| Error::InvalidDeliveryInput)?
+                    i64::try_from(limit).map_err(|_| Error::InvalidOrderInput)?
                 ],
                 |r| r.get::<_, String>(0),
             )?

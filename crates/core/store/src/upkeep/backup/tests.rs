@@ -33,6 +33,6 @@ fn mutation_plan11_backup_refuses_a_locked_source_without_reporting_corruption()
         Instant::now() + HANG_GUARD,
     );
     store.db.execute_batch("ROLLBACK")?;
-    assert!(matches!(result, Err(Error::Timeout)));
+    assert!(matches!(result, Err(MaintenanceError::Timeout)));
     Ok(())
 }

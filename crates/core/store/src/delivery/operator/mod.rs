@@ -1,5 +1,5 @@
 //! Lists delivery states and bounded operator metadata, and resends deliveries with the same ID and bytes (ADR 0008).
-use crate::{Audit, DeliveryKind, Error, OrderingKey, Store, key};
+use crate::{Audit, DeliveryError as Error, DeliveryKind, OrderingKey, Store, key};
 use analyte_model::{DeliveryId, Identifier};
 use rusqlite::{OptionalExtension, params};
 

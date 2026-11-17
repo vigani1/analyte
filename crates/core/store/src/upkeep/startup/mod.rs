@@ -1,5 +1,5 @@
 //! Tracks startup progress and cancels SQLite operations cooperatively.
-use crate::Error;
+use crate::MaintenanceError as Error;
 use std::{
     sync::{
         Arc,

@@ -61,12 +61,12 @@ fn plan11_adr0008_resend_preserves_identity_bytes_and_atomic_audit() -> TestResu
     };
     assert!(matches!(
         store.resend_delivery(delivery.id, false, &audit),
-        Err(Error::ResendState)
+        Err(DeliveryError::ResendState)
     ));
     let first = store.claim(0)?.ok_or("missing claim")?;
     assert!(matches!(
         store.resend_delivery(delivery.id, false, &audit),
-        Err(Error::ResendState)
+        Err(DeliveryError::ResendState)
     ));
     store.attempted(delivery.id, &Attempt::Done, 0)?;
     // An audit write failure must roll back the requeue, not just the audit.
@@ -77,7 +77,7 @@ fn plan11_adr0008_resend_preserves_identity_bytes_and_atomic_audit() -> TestResu
             .map(|_| ())
             .expect_err("input must be refused");
         assert!(
-            matches!(&refusal, Error::ConstraintViolation(_)),
+            matches!(&refusal, DeliveryError::ConstraintViolation(_)),
             "unexpected refusal: {refusal:?}"
         );
     }
@@ -130,7 +130,7 @@ fn verify_unknown_resend_keeps_audit_count(store: &mut Store, mut audit: Audit) 
     ))?];
     assert!(matches!(
         store.resend_delivery(unknown, false, &audit),
-        Err(Error::UnknownDelivery)
+        Err(DeliveryError::UnknownDelivery)
     ));
     assert_eq!(store.audits(0)?.len(), 3);
     Ok(())
@@ -209,7 +209,7 @@ fn plan11_adr0003_superseded_resend_requires_explicit_delivery() -> TestResult {
     };
     assert!(matches!(
         store.resend_delivery(delivery.id, false, &audit),
-        Err(Error::SupersededDelivery)
+        Err(DeliveryError::SupersededDelivery)
     ));
     assert!(store.audits(0)?.is_empty());
     store.resend_delivery(delivery.id, true, &audit)?;
@@ -252,7 +252,7 @@ fn mutation_adr0008_resend_requires_both_action_and_exact_delivery_target() -> T
         };
         assert!(matches!(
             store.resend_delivery(id, false, &audit),
-            Err(Error::AuditMismatch)
+            Err(DeliveryError::AuditMismatch)
         ));
         assert_eq!(
             store

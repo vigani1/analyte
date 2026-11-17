@@ -120,7 +120,7 @@ fn adr0004_failed_page_never_advances_its_cursor() -> TestResult {
             .map(|_| ())
             .expect_err("input must be refused");
         assert!(
-            matches!(&refusal, Error::ConstraintViolation(_)),
+            matches!(&refusal, OrderError::ConstraintViolation(_)),
             "unexpected refusal: {refusal:?}"
         );
     }
@@ -182,7 +182,7 @@ fn mutation_adr0008_adr0004_feed_page_bounds_and_lookup_trust_are_independent() 
     });
     assert!(matches!(
         store.order_page(&page),
-        Err(Error::InvalidDeliveryInput)
+        Err(OrderError::InvalidOrderInput)
     ));
     store.reset_orders(&destination)?;
     assert!(matches!(

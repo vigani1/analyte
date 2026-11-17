@@ -1,5 +1,5 @@
 //! Reads the latest immutable AWOS projection without altering command lifecycle evidence.
-use crate::Error;
+use crate::OrderError as Error;
 use analyte_model::{AwosExecution, AwosExecutionProjection};
 use rusqlite::{Connection, OptionalExtension, params};
 

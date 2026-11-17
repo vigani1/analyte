@@ -1,5 +1,5 @@
 //! Parks failed processing outcomes with retained reasons.
-use crate::{Audit, Error, Parked, Store};
+use crate::{Audit, OperatorError as Error, Parked, Store};
 use analyte_model::{Identifier, Reason};
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
@@ -22,11 +22,11 @@ pub(crate) fn evidence(
     target: &str,
     reason: &str,
     context: Option<ParkingContext>,
-) -> Result<String, Error> {
+) -> Result<String, crate::StorageError> {
     let details = Parked {
-        kind: Identifier::new(kind).map_err(Error::Text)?,
-        reason: Reason::new(reason).map_err(Error::Text)?,
-        targets: vec![Identifier::new(target).map_err(Error::Text)?],
+        kind: Identifier::new(kind).map_err(crate::StorageError::Text)?,
+        reason: Reason::new(reason).map_err(crate::StorageError::Text)?,
+        targets: vec![Identifier::new(target).map_err(crate::StorageError::Text)?],
     };
     crate::document(&ParkingEvidence { details, context })
 }
@@ -76,7 +76,7 @@ impl Store {
     /// Appends an audit entry permanently.
     /// # Errors
     /// Refuses oversized entries or database failures.
-    pub fn audit(&mut self, entry: &Audit) -> Result<(), Error> {
+    pub fn audit(&mut self, entry: &Audit) -> Result<(), crate::StorageError> {
         let encoded = self.encode(entry)?;
         self.bound(encoded.as_bytes())?;
         self.db

@@ -102,7 +102,7 @@ async fn assert_repaired_mapping_preserves_receipt(
     id: analyte_model::ReceiptId,
 ) -> Result<(), Error> {
     let (parked, original, version1) = store
-        .request(reprocess_deadline()?, move |s| {
+        .request::<_, analyte_store::Error>(reprocess_deadline()?, move |s| {
             let parked = s
                 .parked(0)?
                 .first()
@@ -143,7 +143,7 @@ async fn assert_repaired_mapping_preserves_receipt(
         [analyte_store::RevisionOutcome::Retransmission(_)]
     ));
     store
-        .request(reprocess_deadline()?, move |s| {
+        .request::<_, analyte_store::Error>(reprocess_deadline()?, move |s| {
             let retained = s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)?;
             assert_eq!(retained.raw, original.raw);
             assert_eq!(retained.config, original.config);

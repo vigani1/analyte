@@ -146,14 +146,14 @@ mod tests {
         let temp = tempfile::tempdir()?;
         let mut store = open(temp.path().join("store.db")).await?;
         store
-            .request(deadline()?, |s| {
-                s.evaluate_alert(
+            .request::<_, analyte_store::Error>(deadline()?, |s| {
+                Ok::<_, analyte_store::Error>(s.evaluate_alert(
                     &analyte_store::AlertKey::ParkedItems,
                     "Duty officer",
                     true,
                     Some(1),
                     100,
-                )
+                )?)
             })
             .await?;
         let policy = AlertDelivery::for_test("queue_capacity=1\nmax_attempts=1")?;
@@ -205,14 +205,14 @@ mod tests {
         let temp = tempfile::tempdir()?;
         let mut store = open(temp.path().join("store.db")).await?;
         store
-            .request(deadline()?, |s| {
-                s.evaluate_alert(
+            .request::<_, analyte_store::Error>(deadline()?, |s| {
+                Ok::<_, analyte_store::Error>(s.evaluate_alert(
                     &analyte_store::AlertKey::ParkedItems,
                     "Duty officer",
                     true,
                     Some(1),
                     100,
-                )
+                )?)
             })
             .await?;
         let policy = AlertDelivery::for_test("")?;

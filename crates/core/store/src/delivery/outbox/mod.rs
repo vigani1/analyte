@@ -1,5 +1,7 @@
 //! Claims queued deliveries in per-key order, records attempt outcomes and requeues interrupted in-flight items.
-use crate::{Attempt, Audit, Claim, DeliveryKind, DeliveryState, Error, Store, key};
+use crate::{
+    Attempt, Audit, Claim, DeliveryError as Error, DeliveryKind, DeliveryState, Store, key,
+};
 use analyte_model::{DeliveryId, Identifier};
 use rusqlite::{OptionalExtension, params};
 

@@ -95,18 +95,18 @@ pub async fn run(program: &Program, actor: Identifier, command: Command) -> Resu
         )?;
     }
     let result = store
-        .request(deadline()?, move |store| match command {
+        .request::<_, analyte_store::Error>(deadline()?, move |store| match command {
             Command::ResumeAfterRestore { .. } => {
                 store.resume_after_restore(&audit)?;
                 Ok(Vec::new())
             }
             Command::List { after, machine } => {
                 store.audit(&audit)?;
-                store.machine_orders(&MachineOrderFilter {
+                Ok(store.machine_orders(&MachineOrderFilter {
                     after,
                     machine,
                     state: None,
-                })
+                })?)
             }
             Command::Reconcile { id, outcome, .. } => {
                 let reason = audit.reason.as_str().to_owned();

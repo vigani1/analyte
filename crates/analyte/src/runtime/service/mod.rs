@@ -87,7 +87,7 @@ pub(crate) async fn open_store_with_deadline(
     )
     .await?;
     let result = handle
-        .request(until, move |store| {
+        .request::<_, analyte_store::Error>(until, move |store| {
             store.configure_retention_key(key, finite)?;
             if finite {
                 store.retention_space_ready()?;
@@ -273,7 +273,7 @@ async fn serve_with(
         // Deliberately emulate a stuck OS flush without changing the store worker.
         // Only child-process tests enable this; no protocol or storage bytes change.
         store
-            .request::<()>(deadline()?, |_| {
+            .request::<(), analyte_store::Error>(deadline()?, |_| {
                 loop {
                     std::thread::park();
                 }
@@ -729,7 +729,7 @@ pub async fn prepare_retention(program: Program) -> Result<(), Error> {
             Box::new(Volume),
             Instant::now()
                 .checked_add(analyte_store::DEFAULT_STARTUP_TIMEOUT)
-                .ok_or(analyte_store::Error::InvalidHostInput)?,
+                .ok_or(analyte_store::MaintenanceError::DeadlineOverflow)?,
         )
     })
     .await??)

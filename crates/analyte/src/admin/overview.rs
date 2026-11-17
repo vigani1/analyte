@@ -48,8 +48,8 @@ async fn render(state: &Context) -> Result<Markup, Error> {
     let directory = state.directory.clone();
     let (paused, free) = state
         .store
-        .request(until, move |store| {
-            Ok((
+        .request::<_, analyte_store::Error>(until, move |store| {
+            Ok::<_, analyte_store::Error>((
                 store.restore_unreconciled()?,
                 fs4::available_space(&directory)?,
             ))
@@ -148,12 +148,12 @@ async fn render_uncertain_orders(
     loop {
         let page = state
             .store
-            .request(until, move |store| {
-                store.machine_orders(&MachineOrderFilter {
+            .request::<_, analyte_store::Error>(until, move |store| {
+                Ok::<_, analyte_store::Error>(store.machine_orders(&MachineOrderFilter {
                     after,
                     machine: None,
                     state: Some(OrderState::Uncertain),
-                })
+                })?)
             })
             .await?;
         let Some(last) = page.last() else {
@@ -306,7 +306,7 @@ mod webhook_tests {
         )
         .await?;
         store
-            .request(deadline()?, |s| {
+            .request::<_, analyte_store::Error>(deadline()?, |s| {
                 let endpoint =
                     analyte_model::Identifier::new("relay").map_err(analyte_store::Error::Text)?;
                 s.register_alert_endpoint(&endpoint)?;
@@ -322,7 +322,7 @@ mod webhook_tests {
                 let event = s
                     .claim_alert_attempt(&endpoint, 100, 1, 5, 10)?
                     .ok_or(analyte_store::Error::Corruption)?;
-                s.fail_alert_attempt(event.id(), analyte_store::AlertFailure::Network)
+                Ok(s.fail_alert_attempt(event.id(), analyte_store::AlertFailure::Network)?)
             })
             .await?;
         let mut html = Markup::new();

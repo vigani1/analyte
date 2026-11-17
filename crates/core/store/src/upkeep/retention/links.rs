@@ -1,5 +1,5 @@
 //! Establishes receipt links from retained order and sample evidence, preserving uncertainty.
-use crate::{Error, Interpretation, Reading, key};
+use crate::{Interpretation, MaintenanceError as Error, Reading, key};
 use analyte_model::{IdentityStatus, ReceiptId};
 use rusqlite::{Connection, OptionalExtension, params};
 

@@ -62,9 +62,9 @@ fn adr0003_revision_builder_failure_rolls_back_interpretation_and_history() -> T
             ReconcileAction::Interpret(metadata.id),
             evidence,
             ReconcileInput::standard(&[false], &[]),
-            |_, _| Err(Error::InvalidInterpretationInput)
+            |_, _| Err(ReconciliationError::InvalidInterpretationInput)
         ),
-        Err(Error::InvalidInterpretationInput)
+        Err(ReconciliationError::InvalidInterpretationInput)
     ));
     assert!(store.interpretation(metadata.id, 1)?.is_none());
     assert_eq!(
@@ -187,7 +187,7 @@ fn mutation_adr0003_reconciliation_rejects_each_provenance_mismatch_without_inte
                 ReconcileInput::standard(&[], &[]),
                 |_, _| Ok(vec![])
             ),
-            Err(Error::InvalidInterpretationInput)
+            Err(ReconciliationError::InvalidInterpretationInput)
         ));
         assert!(store.interpretation(metadata.id, 1)?.is_none());
         assert!(store.parked(0)?.is_empty());
@@ -213,7 +213,7 @@ fn mutation_adr0003_reconciliation_refuses_wrong_result_receipt_and_correction_c
                 ReconcileInput::standard(&corrections, &[]),
                 |_, _| Ok(vec![])
             ),
-            Err(Error::InvalidInterpretationInput)
+            Err(ReconciliationError::InvalidInterpretationInput)
         ));
         assert!(store.interpretation(metadata.id, 1)?.is_none());
         assert_eq!(
@@ -249,7 +249,7 @@ fn mutation_adr0003_rule7_reconciliation_bounds_results_and_findings_independent
             },
             |_, _| Ok(vec![])
         ),
-        Err(Error::InvalidInterpretationInput)
+        Err(ReconciliationError::InvalidInterpretationInput)
     ));
     assert!(store.interpretation(metadata.id, 1)?.is_none());
     let finding = Parked {
@@ -270,7 +270,7 @@ fn mutation_adr0003_rule7_reconciliation_bounds_results_and_findings_independent
             },
             |_, _| Ok(vec![])
         ),
-        Err(Error::InvalidInterpretationInput)
+        Err(ReconciliationError::InvalidInterpretationInput)
     ));
     assert!(store.interpretation(metadata.id, 1)?.is_none());
     assert!(store.parked(0)?.is_empty());
@@ -383,7 +383,10 @@ fn mutation_adr0003_rule7_interpretation_and_audit_byte_limits_are_inclusive() -
         if delta == 0 {
             assert_eq!(result?.version, 2);
         } else {
-            assert!(matches!(result, Err(Error::InvalidInterpretationInput)));
+            assert!(matches!(
+                result,
+                Err(ReconciliationError::InvalidInterpretationInput)
+            ));
         }
     }
     Ok(())
@@ -418,19 +421,19 @@ fn mutation_adr0003_delivery_bounds_and_machine_owner_refuse_atomically() -> Tes
             ReconcileInput::standard(&[false], &[]),
             |evidence, _| {
                 let Reading::Results(results) = &evidence.outcome else {
-                    return Err(Error::InvalidInterpretationInput);
+                    return Err(ReconciliationError::InvalidInterpretationInput);
                 };
                 let Some(analyte_model::IdentityStatus::Resolved(identity)) =
                     results.first().map(|r| &r.identity)
                 else {
-                    return Err(Error::InvalidInterpretationInput);
+                    return Err(ReconciliationError::InvalidInterpretationInput);
                 };
                 Ok(vec![Delivery {
                     id,
-                    destination: Identifier::new("app").map_err(Error::Text)?,
+                    destination: Identifier::new("app").map_err(ReconciliationError::Text)?,
                     ordering_key: OrderingKey {
                         machine: if wrong_machine {
-                            Identifier::new("wrong-machine").map_err(Error::Text)?
+                            Identifier::new("wrong-machine").map_err(ReconciliationError::Text)?
                         } else {
                             metadata.machine.clone()
                         },
@@ -447,7 +450,10 @@ fn mutation_adr0003_delivery_bounds_and_machine_owner_refuse_atomically() -> Tes
             assert_eq!(claim.id, id);
             assert_eq!(claim.payload, vec![b'x'; length]);
         } else {
-            assert!(matches!(result, Err(Error::InvalidInterpretationInput)));
+            assert!(matches!(
+                result,
+                Err(ReconciliationError::InvalidInterpretationInput)
+            ));
             assert!(store.interpretation(metadata.id, 1)?.is_none());
             assert!(store.claim(0)?.is_none());
             assert_eq!(

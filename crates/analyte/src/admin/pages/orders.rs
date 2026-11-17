@@ -24,7 +24,7 @@ async fn orders_page(state: &Context, cursor: Cursor) -> Result<Markup, Error> {
     let after = i64::try_from(cursor.after)?;
     let (rows, last) = state
         .store
-        .request(deadline()?, move |s| {
+        .request::<_, analyte_store::Error>(deadline()?, move |s| {
             let mut html = Markup::new();
             let mut last = None;
             for order in s
@@ -107,7 +107,7 @@ async fn orders_page(state: &Context, cursor: Cursor) -> Result<Markup, Error> {
                 html.push_markup("</section>");
                 last = Some(order.id);
             }
-            Ok((html, last))
+            Ok::<_, analyte_store::Error>((html, last))
         })
         .await?;
     let mut html = start("Machine orders");

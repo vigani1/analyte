@@ -1,5 +1,5 @@
 //! Builds alert events exclusively from operational state and persisted identities.
-use crate::{AlertKey, AlertState, Error};
+use crate::{AlertKey, AlertState, OperatorError as Error};
 use serde::Serialize;
 
 #[derive(Clone, Copy, Serialize)]

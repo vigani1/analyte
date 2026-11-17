@@ -1,5 +1,5 @@
 //! Checks every receipt retention condition in one fail-closed store rule.
-use crate::{Error, Store, key};
+use crate::{MaintenanceError as Error, Store, key};
 use analyte_model::ReceiptId;
 use rusqlite::params;
 

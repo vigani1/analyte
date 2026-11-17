@@ -1,20 +1,20 @@
 //! Purges finished order bundles while retaining keyed identities that forbid machine replay.
 use super::{DigestKey, PurgeRun, links};
-use crate::{Error, MachineOrderKey, key};
+use crate::{MachineOrderKey, MaintenanceError as Error, key};
 use rusqlite::{Connection, OptionalExtension, params};
 
 pub(crate) fn was_purged(
     db: &Connection,
     credential: Option<&DigestKey>,
     identity: &MachineOrderKey,
-) -> Result<bool, Error> {
+) -> Result<bool, crate::OrderError> {
     let Some(credential) = credential else {
         let exists: bool =
             db.query_row("SELECT EXISTS(SELECT 1 FROM retention_orders)", [], |r| {
                 r.get(0)
             })?;
         return if exists {
-            Err(Error::RetentionKeyRequired)
+            Err(crate::OrderError::RetentionKeyRequired)
         } else {
             Ok(false)
         };

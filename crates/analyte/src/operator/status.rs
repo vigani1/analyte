@@ -144,7 +144,7 @@ mod tests {
         )
         .await?;
         store
-            .request(deadline()?, |store| {
+            .request::<_, analyte_store::Error>(deadline()?, |store| {
                 store.evaluate_alert(
                     &analyte_store::AlertKey::RestorePaused,
                     "lab duty officer",
@@ -176,7 +176,7 @@ mod tests {
                     Some(0),
                     101,
                 )?;
-                Ok(())
+                Ok::<_, analyte_store::Error>(())
             })
             .await?;
         let program = Program::load(

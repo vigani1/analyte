@@ -1,5 +1,5 @@
 //! Restores offline stores while retaining the displaced database and pausing machine commands.
-use crate::{Audit, Error, FreeSpace, Limits, Store};
+use crate::{Audit, FreeSpace, Limits, MaintenanceError as Error, Store};
 use rusqlite::{Connection, OptionalExtension};
 use std::{
     fs::{File, OpenOptions},
@@ -142,11 +142,11 @@ impl Store {
     /// Reports whether the most recent restore still needs operator reconciliation.
     /// # Errors
     /// Reports database failures; unknown evidence never authorizes a command.
-    pub fn restore_unreconciled(&self) -> Result<bool, Error> {
+    pub fn restore_unreconciled(&self) -> Result<bool, crate::StorageError> {
         Self::restore_paused(&self.db)
     }
 
-    pub(crate) fn restore_paused(db: &Connection) -> Result<bool, Error> {
+    pub(crate) fn restore_paused(db: &Connection) -> Result<bool, crate::StorageError> {
         let action: Option<String> = db.query_row("SELECT json_extract(evidence,'$.action') FROM audit WHERE json_extract(evidence,'$.action') IN ('store-restore','orders-resume-after-restore') ORDER BY sequence DESC LIMIT 1", [], |r| r.get(0)).optional()?;
         Ok(action.as_deref() == Some("store-restore"))
     }

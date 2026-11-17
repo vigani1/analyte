@@ -159,3 +159,5 @@ impl crate::machine::custody::CleanupFailure for OrderError {
         }
     }
 }
+
+analyte_store::forward_command_errors!(OrderError);
