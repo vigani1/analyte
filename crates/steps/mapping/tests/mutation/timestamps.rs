@@ -257,14 +257,7 @@ fn rule7_astm_mapping_rechecks_independent_limits_inclusively() -> TestResult {
             let definition =
                 ASTM_CONFIG.rewrite(&format!("{key} = {old}"), &format!("{key} = {limit}"));
             let cfg = config(&definition)?;
-            let mapped = map_astm(
-                &analyte_mapping::astm::Settings {
-                    syntax: settings::astm(&cfg).0,
-                    mappings: settings::astm(&cfg).1,
-                },
-                message,
-                input(),
-            );
+            let mapped = map_astm(&settings::astm_mapping(&cfg), message, input());
             assert_eq!(mapped.is_ok(), accepted, "{key}={limit}: {mapped:?}");
             if !accepted {
                 assert!(matches!(mapped, Err(analyte_mapping::Error::Limit { .. })));
@@ -286,15 +279,7 @@ fn rule7_hl7_mapping_rechecks_independent_limits_inclusively() -> TestResult {
             let cfg = config(
                 &HL7_CONFIG.rewrite(&format!("{key} = {old}"), &format!("{key} = {limit}")),
             )?;
-            let mapped = map_hl7(
-                &analyte_mapping::hl7::Settings {
-                    syntax: settings::hl7(&cfg).0,
-                    mappings: settings::hl7(&cfg).1,
-                    declarations: &cfg.effective().machine().deviations,
-                },
-                &message,
-                input(),
-            );
+            let mapped = map_hl7(&settings::hl7_mapping(&cfg), &message, input());
             assert_eq!(mapped.is_ok(), accepted, "{key}={limit}: {mapped:?}");
             if !accepted {
                 assert!(matches!(mapped, Err(analyte_mapping::Error::Limit { .. })));

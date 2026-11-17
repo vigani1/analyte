@@ -26,15 +26,7 @@ fn hl7_2_6_s7_3_1_s7_4_2_3_5_19_21_receiving_keeps_values_times_and_raw_identity
             raw.as_bytes(),
             config.effective().hl7_options().ok_or("options")?,
         )?;
-        let output = map_hl7(
-            &analyte_mapping::hl7::Settings {
-                syntax: settings::hl7(&config).0,
-                mappings: settings::hl7(&config).1,
-                declarations: &config.effective().machine().deviations,
-            },
-            &message,
-            input(),
-        )?;
+        let output = map_hl7(&settings::hl7_mapping(&config), &message, input())?;
         assert!(output.requires_parking(), "{output:?}");
         let part = first(&output)?;
         assert_eq!(
@@ -184,15 +176,7 @@ fn hl7_2_5_1_s2_8_1_2_legacy_results_map_stable_fields_and_keep_uncertain_extens
             raw.as_bytes(),
             config.effective().hl7_options().ok_or("options")?,
         )?;
-        let output = map_hl7(
-            &analyte_mapping::hl7::Settings {
-                syntax: settings::hl7(&config).0,
-                mappings: settings::hl7(&config).1,
-                declarations: &config.effective().machine().deviations,
-            },
-            &message,
-            input(),
-        )?;
+        let output = map_hl7(&settings::hl7_mapping(&config), &message, input())?;
         let part = first(&output)?;
         assert_eq!(
             part.values
@@ -229,15 +213,7 @@ fn hl7_2_5_1_s2_8_1_new_datatype_availability_is_not_guessed_for_legacy_cwe() ->
             "MSH|^~\\&|SYN||||20261116||ORU^R01^ORU_R01|MSG|P|{version}\rOBR|1||000AbC\rOBX|1|CWE|SYN^Synthetic^synthetic||code^text^local||||||F\r"
         );
         let message = analyte_hl7::Message::parse(raw.as_bytes(), analyte_hl7::Options::default())?;
-        let output = map_hl7(
-            &analyte_mapping::hl7::Settings {
-                syntax: settings::hl7(&config).0,
-                mappings: settings::hl7(&config).1,
-                declarations: &config.effective().machine().deviations,
-            },
-            &message,
-            input(),
-        )?;
+        let output = map_hl7(&settings::hl7_mapping(&config), &message, input())?;
         let value = first(&output)?.values.as_slice().first().ok_or("value")?;
         assert_eq!(value.original.as_str(), "code^text^local");
         assert!(value.parsed().is_unsupported());
@@ -272,15 +248,7 @@ fn hl7_231_s7_2_1_s7_3_2_later_fields_do_not_gain_meaning() -> TestResult {
             raw.as_bytes(),
             config.effective().hl7_options().ok_or("options")?,
         )?;
-        let result = map_hl7(
-            &analyte_mapping::hl7::Settings {
-                syntax: settings::hl7(&config).0,
-                mappings: settings::hl7(&config).1,
-                declarations: &config.effective().machine().deviations,
-            },
-            &message,
-            input(),
-        );
+        let result = map_hl7(&settings::hl7_mapping(&config), &message, input());
         if extra.is_empty() {
             assert!(
                 !first(&result?)?

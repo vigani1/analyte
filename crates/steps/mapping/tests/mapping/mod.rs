@@ -35,15 +35,7 @@ fn hl7(body: &str, definition: &str) -> Result<Output, Box<dyn std::error::Error
     let raw = format!("MSH|^~\\&|SYN||||202611151200||ORU^R01^ORU_R01|MSG|P|2.5.1\r{body}");
     let options = config.effective().hl7_options().ok_or("missing options")?;
     let message = analyte_hl7::Message::parse(raw.as_bytes(), options)?;
-    Ok(map_hl7(
-        &analyte_mapping::hl7::Settings {
-            syntax: settings::hl7(&config).0,
-            mappings: settings::hl7(&config).1,
-            declarations: &config.effective().machine().deviations,
-        },
-        &message,
-        input(),
-    )?)
+    Ok(map_hl7(&settings::hl7_mapping(&config), &message, input())?)
 }
 
 fn astm(body: &str, mode: &str) -> Result<Output, Box<dyn std::error::Error>> {
@@ -53,10 +45,7 @@ fn astm(body: &str, mode: &str) -> Result<Output, Box<dyn std::error::Error>> {
     let messages = analyte_astm::parse(raw.as_bytes(), analyte_astm::Limits::default())?;
     let message = messages.first().ok_or("missing parsed message")?;
     Ok(map_astm(
-        &analyte_mapping::astm::Settings {
-            syntax: settings::astm(&config).0,
-            mappings: settings::astm(&config).1,
-        },
+        &settings::astm_mapping(&config),
         message,
         input(),
     )?)
@@ -77,10 +66,7 @@ fn with_parts(component: &str, definition: &str) -> Result<Output, Box<dyn std::
     );
     let messages = analyte_astm::parse(raw.as_bytes(), analyte_astm::Limits::default())?;
     Ok(map_astm(
-        &analyte_mapping::astm::Settings {
-            syntax: settings::astm(&config).0,
-            mappings: settings::astm(&config).1,
-        },
+        &settings::astm_mapping(&config),
         messages.first().ok_or("missing message")?,
         input(),
     )?)

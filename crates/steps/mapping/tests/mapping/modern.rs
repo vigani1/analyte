@@ -21,15 +21,7 @@ fn hl7_2_8_2_s7_3_1_and_2_9_1_s7_3_1_modern_incomplete_reports_keep_exact_values
                 raw.as_bytes(),
                 config.effective().hl7_options().ok_or("options")?,
             )?;
-            let output = map_hl7(
-                &analyte_mapping::hl7::Settings {
-                    syntax: settings::hl7(&config).0,
-                    mappings: settings::hl7(&config).1,
-                    declarations: &config.effective().machine().deviations,
-                },
-                &message,
-                input(),
-            )?;
+            let output = map_hl7(&settings::hl7_mapping(&config), &message, input())?;
             assert!(output.requires_parking(), "{output:?}");
             let value_out = first(&output)?.values.as_slice().first().ok_or("value")?;
             assert_eq!(value_out.original.as_str(), value);
@@ -64,15 +56,7 @@ fn hl7_2_9_1_s2a_2_22_utc_without_known_civil_offset_remains_raw() -> TestResult
                 raw.as_bytes(),
                 config.effective().hl7_options().ok_or("options")?,
             )?;
-            let output = map_hl7(
-                &analyte_mapping::hl7::Settings {
-                    syntax: settings::hl7(&config).0,
-                    mappings: settings::hl7(&config).1,
-                    declarations: &config.effective().machine().deviations,
-                },
-                &message,
-                input(),
-            )?;
+            let output = map_hl7(&settings::hl7_mapping(&config), &message, input())?;
             let time = first(&output)?
                 .times
                 .as_slice()

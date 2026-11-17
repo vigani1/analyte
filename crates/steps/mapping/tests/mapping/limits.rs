@@ -62,15 +62,7 @@ fn hl7_231_oru_and_declared_ts_precision_are_kept() -> TestResult {
     let raw = b"MSH|^~\\&|SYN||||202611151200||ORU^R01|MSG|P|2.3.1\rOBR|1||001\rOBX|1|NM|SYN^^synthetic||1||||||F|||20261115123000^D\r";
     let message =
         analyte_hl7::Message::parse(raw, config.effective().hl7_options().ok_or("options")?)?;
-    let output = map_hl7(
-        &analyte_mapping::hl7::Settings {
-            syntax: settings::hl7(&config).0,
-            mappings: settings::hl7(&config).1,
-            declarations: &config.effective().machine().deviations,
-        },
-        &message,
-        input(),
-    )?;
+    let output = map_hl7(&settings::hl7_mapping(&config), &message, input())?;
     let time = first(&output)?
         .times
         .as_slice()
@@ -302,10 +294,7 @@ fn lis02_9_4_and_hl7_7_4_2_value_expectations_preserve_originals() -> TestResult
                 let messages =
                     analyte_astm::parse(message.as_bytes(), analyte_astm::Limits::default())?;
                 map_astm(
-                    &analyte_mapping::astm::Settings {
-                        syntax: settings::astm(&config).0,
-                        mappings: settings::astm(&config).1,
-                    },
+                    &settings::astm_mapping(&config),
                     messages.first().ok_or("missing message")?,
                     input(),
                 )?
@@ -455,14 +444,7 @@ fn lis02_5_4_5_8_4_3_escaped_specimen_matches_decoded_identity() -> TestResult {
             "H|\\^&||||||||||P|LIS2-A2\rP|1\rO|1|{raw_id}\rR|1|^^^SYN|1|mg/L||||F\rL|1|N\r"
         );
         let messages = analyte_astm::parse(raw.as_bytes(), analyte_astm::Limits::default())?;
-        let output = map_astm(
-            &analyte_mapping::astm::Settings {
-                syntax: settings::astm(&definition).0,
-                mappings: settings::astm(&definition).1,
-            },
-            &messages[0],
-            input(),
-        )?;
+        let output = map_astm(&settings::astm_mapping(&definition), &messages[0], input())?;
         let sample = output.results[0].content.sample.as_ref().ok_or("sample")?;
         assert_eq!(sample.id.as_str(), decoded);
         assert_eq!(messages[0].encode(), raw.as_bytes());

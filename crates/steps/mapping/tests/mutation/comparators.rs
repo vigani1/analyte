@@ -260,15 +260,7 @@ fn hl7_251_ch7_oul_test_detail_and_notes_belong_to_observation_group() -> TestRe
         "{header}OBX|1|NM|SYN^^synthetic||1||||||F\rTCD|SYN^^synthetic\rSID|lot\rNTE|1||observation note\r"
     );
     let message = analyte_hl7::Message::parse(raw.as_bytes(), analyte_hl7::Options::default())?;
-    let mapped = map_hl7(
-        &analyte_mapping::hl7::Settings {
-            syntax: settings::hl7(&cfg).0,
-            mappings: settings::hl7(&cfg).1,
-            declarations: &cfg.effective().machine().deviations,
-        },
-        &message,
-        input(),
-    )?;
+    let mapped = map_hl7(&settings::hl7_mapping(&cfg), &message, input())?;
     assert_eq!(
         first(&mapped)?
             .comments
@@ -457,15 +449,7 @@ fn rule3_hl7_source_path_keeps_statuses_sequences_and_specimen_times() -> TestRe
     )?);
     raw.push_str("ORC|SC||||CM\rOBX|1|NM|SYN^^synthetic||1||||||F\r");
     let message = analyte_hl7::Message::parse(raw.as_bytes(), analyte_hl7::Options::default())?;
-    let mapped = map_hl7(
-        &analyte_mapping::hl7::Settings {
-            syntax: settings::hl7(&cfg).0,
-            mappings: settings::hl7(&cfg).1,
-            declarations: &cfg.effective().machine().deviations,
-        },
-        &message,
-        input(),
-    )?;
+    let mapped = map_hl7(&settings::hl7_mapping(&cfg), &message, input())?;
     let part = first(&mapped)?;
     let path = part.source_path.as_slice();
     for (kind, status, sequence) in [

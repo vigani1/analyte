@@ -46,15 +46,7 @@ fn hl7_251_2_7_4_decoding_retains_negotiated_characters() -> TestResult {
         raw.extend_from_slice(b"||||||F\r");
         let message =
             analyte_hl7::Message::parse(&raw, config.effective().hl7_options().ok_or("options")?)?;
-        let output = map_hl7(
-            &analyte_mapping::hl7::Settings {
-                syntax: settings::hl7(&config).0,
-                mappings: settings::hl7(&config).1,
-                declarations: &config.effective().machine().deviations,
-            },
-            &message,
-            input(),
-        )?;
+        let output = map_hl7(&settings::hl7_mapping(&config), &message, input())?;
         let value = first(&output)?.values.as_slice().first().ok_or("value")?;
         assert_eq!(value.original.as_str(), "caf\u{e9}\\F\\end");
         assert_eq!(
@@ -76,15 +68,7 @@ fn hl7_251_2_7_4_decodes_selected_identifiers_and_values_keeps_wire_originals() 
         "MSH|^~\\&|SYN||||202611151200||ORU^R01^ORU_R01|MSG|P|2.5.1\rOBR|1||{escaped}\rOBX|1|TX|{escaped}^Label^synthetic||{escaped}~other||||||F\rOBX|2|CE|{escaped}^Label^synthetic||{escaped}^{escaped}^synthetic||||||F\r"
     );
     let message = analyte_hl7::Message::parse(raw.as_bytes(), analyte_hl7::Options::default())?;
-    let output = map_hl7(
-        &analyte_mapping::hl7::Settings {
-            syntax: settings::hl7(&config).0,
-            mappings: settings::hl7(&config).1,
-            declarations: &config.effective().machine().deviations,
-        },
-        &message,
-        input(),
-    )?;
+    let output = map_hl7(&settings::hl7_mapping(&config), &message, input())?;
     assert!(output.requires_parking());
     let result = output.results.first().ok_or("result")?;
     assert_eq!(
@@ -127,15 +111,7 @@ fn hl7_251_2_7_4_decoding_uses_message_delimiters_and_is_not_recursive() -> Test
     let config = config(HL7_CONFIG)?;
     let raw = b"MSH*$%!@*SYN****202611151200**ORU$R01$ORU_R01*MSG*P*2.5.1\rOBR*1**000!F!Ab\rOBX*1*ST*SYN$Label$synthetic**!F!!S!!R!!T!!E!%literal!E!H!E!******F\r";
     let message = analyte_hl7::Message::parse(raw, analyte_hl7::Options::default())?;
-    let output = map_hl7(
-        &analyte_mapping::hl7::Settings {
-            syntax: settings::hl7(&config).0,
-            mappings: settings::hl7(&config).1,
-            declarations: &config.effective().machine().deviations,
-        },
-        &message,
-        input(),
-    )?;
+    let output = map_hl7(&settings::hl7_mapping(&config), &message, input())?;
     let values = first(&output)?.values.as_slice();
     assert_eq!(values.len(), 2);
     assert_eq!(
@@ -323,15 +299,7 @@ fn plan6_training_and_debug_never_deliver_for_both_protocols() -> TestResult {
             raw.as_bytes(),
             config.effective().hl7_options().ok_or("options")?,
         )?;
-        let b = map_hl7(
-            &analyte_mapping::hl7::Settings {
-                syntax: settings::hl7(&config).0,
-                mappings: settings::hl7(&config).1,
-                declarations: &config.effective().machine().deviations,
-            },
-            &message,
-            input(),
-        )?;
+        let b = map_hl7(&settings::hl7_mapping(&config), &message, input())?;
         for output in [a, b] {
             let result = output.results.first().ok_or("result")?;
             assert_eq!(result.content.processing, expected);
@@ -492,15 +460,7 @@ fn hl7_7_3_7_oul_specimen_order_orc_and_result_ownership() -> TestResult {
     let raw = b"MSH|^~\\&|SYN||||202611151200||OUL^R22^OUL_R22|MSG|P|2.5.1\rPID|1\rSPM|1|specimen\rSAC|||container\rOBR|1||001\rORC|RE\rOBX|1|NM|SYN^^synthetic||1||||||F\r";
     let message =
         analyte_hl7::Message::parse(raw, config.effective().hl7_options().ok_or("options")?)?;
-    let output = map_hl7(
-        &analyte_mapping::hl7::Settings {
-            syntax: settings::hl7(&config).0,
-            mappings: settings::hl7(&config).1,
-            declarations: &config.effective().machine().deviations,
-        },
-        &message,
-        input(),
-    )?;
+    let output = map_hl7(&settings::hl7_mapping(&config), &message, input())?;
     assert_eq!(
         first(&output)?
             .source_path
