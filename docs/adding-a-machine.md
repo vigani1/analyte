@@ -8,6 +8,9 @@ decisions. Unknown information is a reason to stop and investigate.
 Read the [plan](plan.md), [config reference](../crates/core/config/README.md) and
 [config-first decision](adr/0002-config-first.md) alongside this guide.
 
+For an interface requiring new protocol code, follow
+[adding a vendor protocol](adding-a-vendor-protocol.md).
+
 ## Choose the stack
 
 A stack is the connection, wire framing, conversation and message layout.

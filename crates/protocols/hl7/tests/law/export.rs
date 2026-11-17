@@ -1,5 +1,5 @@
 //! Tests synthetic LAW message exports.
-#[path = "../examples/law_messages.rs"]
+#[path = "../../examples/law_messages.rs"]
 mod law_messages;
 
 #[test]
