@@ -107,7 +107,7 @@ async fn cancelled_page(state: &Context, cursor: Cursor) -> Result<Markup, Error
     let after = i64::try_from(cursor.after)?;
     let rows = state
         .store
-        .request(deadline()?, move |s| s.analyzer_cancelled_items(after))
+        .request(deadline()?, move |s| Ok(s.analyzer_cancelled_items(after)?))
         .await?;
     let mut html = start("Analyzer-cancelled AWOSs — reconciliation required");
     html.push_markup(concat!(

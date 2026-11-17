@@ -1,5 +1,5 @@
 //! Records atomic operator reprocessing outcomes and audits.
-use crate::{Audit, Error, key};
+use crate::{Audit, ReconciliationError as Error, key};
 use analyte_model::{Identifier, ReceiptId};
 use rusqlite::{OptionalExtension, Transaction};
 

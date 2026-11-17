@@ -8,7 +8,7 @@ mod outbox;
 mod parking;
 mod progression;
 mod status_policy;
-use crate::{Delivery, Error, Interpretation, Reading, Store, digest, key};
+use crate::{Delivery, Interpretation, Reading, ReconciliationError as Error, Store, digest, key};
 use admission::required_capacity;
 use analyte_model::{IdentityStatus, ReceiptId, ResultContent, ResultStatus, Revision};
 use assignment::{AssignedRevision, Reconciliation};

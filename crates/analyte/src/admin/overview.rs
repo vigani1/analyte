@@ -90,7 +90,7 @@ async fn render(state: &Context) -> Result<Markup, Error> {
     );
     let cancelled = state
         .store
-        .request(until, |s| s.analyzer_cancelled_count())
+        .request(until, |s| Ok(s.analyzer_cancelled_count()?))
         .await?;
     html.push_fragment(
         &Markup::new()

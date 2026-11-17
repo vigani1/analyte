@@ -1,5 +1,5 @@
 //! Commits LAW execution and message dispositions within the interpretation transaction.
-use crate::{Error, Receipt, key};
+use crate::{Receipt, ReconciliationError as Error, key};
 use analyte_model::{AwosExecution, Digest, Identifier, OrderState, SourceText};
 use rusqlite::{OptionalExtension, Transaction, params};
 use serde::{Deserialize, Serialize};

@@ -287,12 +287,12 @@ pub(crate) async fn park_bytes(
     };
     store
         .request(deadline()?, move |s| {
-            s.reconcile(
+            Ok(s.reconcile(
                 analyte_store::ReconcileAction::Interpret(id),
                 evidence,
                 analyte_store::ReconcileInput::standard(&[], &[]),
                 |_, _| Ok(Vec::new()),
-            )
+            )?)
         })
         .await?;
     Ok(())

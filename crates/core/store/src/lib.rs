@@ -2,7 +2,8 @@
 #![forbid(unsafe_code)]
 mod errors;
 pub use errors::{
-    DeliveryError, IntakeError, MaintenanceError, OperatorError, OrderError, StorageError,
+    DeliveryError, IntakeError, MaintenanceError, OperatorError, OrderError, ReconciliationError,
+    StorageError,
 };
 mod operator;
 use operator::{alerts, parked, query};

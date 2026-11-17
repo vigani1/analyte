@@ -84,3 +84,6 @@ pub use maintenance::MaintenanceError;
 
 mod operator;
 pub use operator::OperatorError;
+
+mod reconciliation;
+pub use reconciliation::ReconciliationError;
