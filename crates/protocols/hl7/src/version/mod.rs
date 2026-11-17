@@ -38,8 +38,11 @@ pub enum Version {
 struct EditionRules {
     // HL7 2.5.1 §2.15.5: structured ERR and MSG.
     modern_error_layout: bool,
+    // HL7 2.5.1 §2.8.1-2: receiving compatibility only.
     compatibility_contract: bool,
+    // HL7 2.5.1 §2.15.9.18, table 0211: standard character sets.
     standard_utf8: bool,
+    // HL7 2.5.1 §2.8: receiving compatibility does not qualify writers.
     order_sending_blocker: Option<&'static str>,
     // HL7 2.5.1 §2.A.44: ACK message structure component.
     ack_structure: bool,
@@ -83,12 +86,18 @@ struct EditionRules {
     query_person_bytes: Option<usize>,
     // HL7 2.3.1 §5.4 / 2.5.1 §5.5: QRF trailing quantity field.
     query_filter_fields: Option<usize>,
+    // HL7 2.5.1 §2.15.9.12: exact version identity.
     edition: Version,
+    // HL7 2.5.1 §2.15.9.12: MSH-12 version spelling.
     wire: &'static str,
+    // HL7 2.8.2 §2.5.4: truncation character in encoding characters.
     truncation: bool,
+    // HL7 2.5.1 §2.15.9.7: MSH-7 required since 2.4.
     required_timestamp: bool,
+    // HL7 2.8.2 §5.10.2 / 2.9.1 §5.9.2: original query withdrawal.
     legacy_query_withdrawal: Option<&'static str>,
     // None refuses typed interpretation until the edition's field rules exist.
+    // ADR 0007; HL7 2.5.1 §2.8: only qualified field rules permit interpretation.
     grammar: Option<&'static Rules>,
 }
 
@@ -131,16 +140,7 @@ const V23_RULES: EditionRules = EditionRules {
 // HL7 2.3.1 sections 2.24.1.2/.7/.12, pp.2-94-95, 2-107.
 const V231_RULES: EditionRules = EditionRules {
     compatibility_contract: false,
-    standard_utf8: false,
     order_sending_blocker: None,
-    modern_error_layout: false,
-    ack_structure: false,
-    fatal_error_severity: false,
-    enhanced_result_identity: false,
-    report_status_time: false,
-    unknown_key_error: false,
-    paired_application_ack: false,
-    legacy_query_structure: false,
     orm_patient_name_required: true,
     orm_writer: true,
     utf8_departure: true,
@@ -148,91 +148,33 @@ const V231_RULES: EditionRules = EditionRules {
     specimen_code_version: false,
     short_patient_identifier: true,
     single_order_error: true,
-    oml_writer: false,
-    legacy_cwe: false,
-    oul_reception: false,
-    analysis_time: false,
-    law_edition: false,
-    query_person_bytes: Some(60),
-    query_filter_fields: Some(9),
     edition: Version::V231,
     wire: "2.3.1",
-    truncation: false,
-    required_timestamp: false,
-    legacy_query_withdrawal: None,
-    grammar: Some(&GRAMMARS[0]),
+    ..V23_RULES
 };
 // HL7 2.5.1 sections 2.8, 2.15.9.7: MSH-7 became required in 2.4.
 const V24_RULES: EditionRules = EditionRules {
-    compatibility_contract: true,
-    standard_utf8: false,
     order_sending_blocker: Some(
         "2.4 order writers are not yet implemented: original 2.4 order field definitions are unavailable; 2.5.1 section 2.8 only establishes receiving compatibility",
     ),
-    modern_error_layout: false,
-    ack_structure: false,
-    fatal_error_severity: false,
-    enhanced_result_identity: false,
-    report_status_time: false,
-    unknown_key_error: false,
-    paired_application_ack: false,
-    legacy_query_structure: false,
-    orm_patient_name_required: false,
-    orm_writer: false,
-    utf8_departure: false,
-    placer_position: false,
-    specimen_code_version: true,
-    short_patient_identifier: false,
-    single_order_error: false,
-    oml_writer: false,
-    legacy_cwe: false,
-    oul_reception: false,
-    analysis_time: false,
-    law_edition: false,
-    query_person_bytes: Some(60),
-    query_filter_fields: Some(9),
     edition: Version::V24,
     wire: "2.4",
-    truncation: false,
     required_timestamp: true,
-    legacy_query_withdrawal: None,
-    grammar: Some(&GRAMMARS[0]),
+    ..V23_RULES
 };
 // HL7 2.5.1 sections 2.8, 2.A.44 and 2.15.5.1: common prefix plus 2.5 control changes.
 const V25_RULES: EditionRules = EditionRules {
-    compatibility_contract: true,
-    standard_utf8: false,
     order_sending_blocker: Some(
         "2.5 order writers are not yet implemented: original 2.5 order field definitions are unavailable; 2.5.1 section 2.8 only establishes receiving compatibility",
     ),
     modern_error_layout: true,
     ack_structure: true,
-    fatal_error_severity: false,
-    enhanced_result_identity: false,
-    report_status_time: false,
-    unknown_key_error: false,
-    paired_application_ack: false,
     legacy_query_structure: true,
-    orm_patient_name_required: false,
-    orm_writer: false,
-    utf8_departure: false,
-    placer_position: false,
-    specimen_code_version: true,
-    short_patient_identifier: false,
-    single_order_error: false,
-    oml_writer: false,
-    legacy_cwe: false,
-    oul_reception: false,
-    analysis_time: false,
-    law_edition: false,
-    query_person_bytes: Some(60),
-    query_filter_fields: Some(9),
     edition: Version::V25,
     wire: "2.5",
-    truncation: false,
     required_timestamp: true,
-    legacy_query_withdrawal: None,
     grammar: Some(&COMPATIBILITY_25),
+    ..V23_RULES
 };
 // HL7 2.5.1 sections 2.15.9.2/.7/.12, pp.2-74-77.
 const V251_RULES: EditionRules = EditionRules {
@@ -241,19 +183,7 @@ const V251_RULES: EditionRules = EditionRules {
     order_sending_blocker: None,
     modern_error_layout: true,
     ack_structure: true,
-    fatal_error_severity: false,
-    enhanced_result_identity: false,
-    report_status_time: false,
-    unknown_key_error: false,
-    paired_application_ack: false,
     legacy_query_structure: true,
-    orm_patient_name_required: false,
-    orm_writer: false,
-    utf8_departure: false,
-    placer_position: false,
-    specimen_code_version: true,
-    short_patient_identifier: false,
-    single_order_error: false,
     oml_writer: true,
     legacy_cwe: true,
     oul_reception: true,
@@ -263,10 +193,9 @@ const V251_RULES: EditionRules = EditionRules {
     query_filter_fields: Some(10),
     edition: Version::V251,
     wire: "2.5.1",
-    truncation: false,
     required_timestamp: true,
-    legacy_query_withdrawal: None,
     grammar: Some(&GRAMMARS[1]),
+    ..V23_RULES
 };
 // section 5.10.2, pp.95-96 retains original queries for backward compatibility.
 const V26_RULES: EditionRules = EditionRules {
@@ -276,31 +205,16 @@ const V26_RULES: EditionRules = EditionRules {
     modern_error_layout: true,
     ack_structure: true,
     fatal_error_severity: true,
-    enhanced_result_identity: false,
-    report_status_time: false,
-    unknown_key_error: false,
-    paired_application_ack: false,
     legacy_query_structure: true,
-    orm_patient_name_required: false,
-    orm_writer: false,
-    utf8_departure: false,
-    placer_position: false,
-    specimen_code_version: true,
-    short_patient_identifier: false,
-    single_order_error: false,
     oml_writer: true,
-    legacy_cwe: false,
-    oul_reception: false,
     analysis_time: true,
-    law_edition: false,
     query_person_bytes: Some(250),
     query_filter_fields: Some(10),
     edition: Version::V26,
     wire: "2.6",
-    truncation: false,
     required_timestamp: true,
-    legacy_query_withdrawal: None,
     grammar: Some(&GRAMMAR_26),
+    ..V23_RULES
 };
 // HL7 2.8.2 sections 2.14.9.2/.7/.12, pp.59-61.
 const V282_RULES: EditionRules = EditionRules {
@@ -313,29 +227,17 @@ const V282_RULES: EditionRules = EditionRules {
     enhanced_result_identity: true,
     report_status_time: true,
     unknown_key_error: true,
-    paired_application_ack: false,
-    legacy_query_structure: false,
-    orm_patient_name_required: false,
-    orm_writer: false,
-    utf8_departure: false,
-    placer_position: false,
-    specimen_code_version: true,
-    short_patient_identifier: false,
-    single_order_error: false,
     oml_writer: true,
-    legacy_cwe: false,
-    oul_reception: false,
     analysis_time: true,
-    law_edition: false,
     query_person_bytes: None,
     query_filter_fields: None,
     edition: Version::V282,
     wire: "2.8.2",
     truncation: true,
     required_timestamp: true,
-    // HL7 2.8.2 chapter 5 section 5.10.2: withdrawn since 2.7.
     legacy_query_withdrawal: Some("5.10.2"),
     grammar: Some(&GRAMMAR_282),
+    ..V23_RULES
 };
 // HL7 2.9.1 sections 2.13.9.2/.7/.12, pp.69-71.
 const V291_RULES: EditionRules = EditionRules {
@@ -351,28 +253,16 @@ const V291_RULES: EditionRules = EditionRules {
     report_status_time: true,
     unknown_key_error: true,
     paired_application_ack: true,
-    legacy_query_structure: false,
-    orm_patient_name_required: false,
-    orm_writer: false,
-    utf8_departure: false,
-    placer_position: false,
-    specimen_code_version: true,
-    short_patient_identifier: false,
-    single_order_error: false,
-    oml_writer: false,
-    legacy_cwe: false,
-    oul_reception: false,
     analysis_time: true,
-    law_edition: false,
     query_person_bytes: None,
     query_filter_fields: None,
     edition: Version::V291,
     wire: "2.9.1",
     truncation: true,
     required_timestamp: true,
-    // HL7 2.9.1 chapter 5 section 5.9.2: withdrawn since 2.7.
     legacy_query_withdrawal: Some("5.9.2"),
     grammar: Some(&GRAMMAR_291),
+    ..V23_RULES
 };
 const EDITIONS: [&EditionRules; 8] = [
     &V23_RULES,
@@ -389,6 +279,14 @@ impl Version {
     /// Lists every supported machine-config key from the edition rules.
     pub fn config_keys() -> impl Iterator<Item = &'static str> {
         EDITIONS.iter().map(|row| row.edition.config_key())
+    }
+
+    /// Lists, in table order, the editions whose result-processing rules exist.
+    pub fn result_editions() -> impl Iterator<Item = Self> {
+        EDITIONS
+            .iter()
+            .map(|row| row.edition)
+            .filter(|edition| edition.supports_result_reception())
     }
 
     /// Returns the stable machine-config key, independently of the wire spelling.

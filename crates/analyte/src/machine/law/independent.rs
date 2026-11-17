@@ -96,25 +96,33 @@ async fn server(
 ) -> Result<(), Error> {
     let mut sessions = JoinSet::new();
     let (sessions_stop, sessions_rx) = watch::channel(false);
-    let mut result=async {
+    let mut result = async {
         loop {
             tokio::select! {
                 biased;
-                ()=crate::machine::stopping(&mut stop)=>break,
-                completed=sessions.join_next(),if !sessions.is_empty()=>{
-                    if let Some(completed)=completed { report(&machine,completed.map_err(task_failure)?); }
+                () = crate::machine::stopping(&mut stop) => break,
+                completed = sessions.join_next(), if !sessions.is_empty() => {
+                    if let Some(completed) = completed {
+                        report(&machine, completed.map_err(task_failure)?);
+                    }
                 },
-                accepted=listener.accept(),if sessions.len()<SESSION_LIMIT=>{
-                    let (stream,_)=accepted?;
+                accepted = listener.accept(), if sessions.len() < SESSION_LIMIT => {
+                    let (stream, _) = accepted?;
                     sessions.spawn(accepted_connection(
-                        stream, machine.clone(), store.clone(), settings.clone(),
-                        outbound.clone(), sessions_rx.clone(), capture.clone(),
+                        stream,
+                        machine.clone(),
+                        store.clone(),
+                        settings.clone(),
+                        outbound.clone(),
+                        sessions_rx.clone(),
+                        capture.clone(),
                     ));
                 }
             }
         }
-        Ok::<_,Error>(())
-    }.await;
+        Ok::<_, Error>(())
+    }
+    .await;
     sessions_stop.send_replace(true);
     while let Some(completed) = sessions.join_next().await {
         match completed {
@@ -203,55 +211,83 @@ async fn worker(
     let mut idle_orders = LawOrderLink::new()?;
     let mut tick = tokio::time::interval(Duration::from_millis(100));
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-    let result=async {
+    let result = async {
         loop {
             tokio::select! {
                 biased;
-                ()=crate::machine::stopping(&mut stop)=>break,
-                job=queue.recv()=>{
-                    let Some(mut job)=job else {break;};
+                () = crate::machine::stopping(&mut stop) => break,
+                job = queue.recv() => {
+                    let Some(mut job) = job else { break; };
 
                     if machine.hooks.enabled(Pause::LawQueued)
                         && let Err(error) = machine.hooks.pause(Pause::LawQueued, &mut stop).await {
                             job.orders.close(&store, "LAW-test-queue-gate-stopped").await?;
                             return Err(Error::from(error));
                     }
-                    let until=job.orders.due().ok_or(Error::QueuedWorkHasNoDeadline)?;
+                    let until = job.orders.due().ok_or(Error::QueuedWorkHasNoDeadline)?;
                     let until = machine.hooks.queued_deadline(until);
-                    let ready=tokio::select! {
+                    let ready = tokio::select! {
                         biased;
-                        ()=crate::machine::stopping(&mut stop)=>Err(Code::LawIndependentShutdownBeforeResponse.as_str()),
-                        ready=tokio::time::timeout_at(until.into(),&mut job.ready)=>match ready {
-                            Ok(Ok(()))=>Ok(()),
-                            Ok(Err(_))=>Err(Code::LawQueryIssuanceUncertain.as_str()),
-                            Err(_)=>Err(Code::LawIndependentQueueDeadline.as_str()),
+                        () = crate::machine::stopping(&mut stop) => {
+                            Err(Code::LawIndependentShutdownBeforeResponse.as_str())
+                        },
+                        ready = tokio::time::timeout_at(until.into(), &mut job.ready) => match ready {
+                            Ok(Ok(())) => Ok(()),
+                            Ok(Err(_)) => Err(Code::LawQueryIssuanceUncertain.as_str()),
+                            Err(_) => Err(Code::LawIndependentQueueDeadline.as_str()),
                         },
                     };
                     match ready {
-                        Ok(())=>{
-                            let result=exchange(&machine,&store,&settings,&mut job.orders,&job.message,stop.clone(),capture.as_deref()).await;
-                            settle(&machine,&store,&mut job.orders,result).await?;
+                        Ok(()) => {
+                            let result = exchange(
+                                &machine,
+                                &store,
+                                &settings,
+                                &mut job.orders,
+                                &job.message,
+                                stop.clone(),
+                                capture.as_deref(),
+                            ).await;
+                            settle(&machine, &store, &mut job.orders, result).await?;
                         }
-                        Err(reason)=>job.orders.close(&store,reason).await?,
+                        Err(reason) => job.orders.close(&store, reason).await?,
                     }
                 },
-                _=tick.tick()=>{
-                    let context=intake::ConnectionEvidence::new(&machine)?;
+                _ = tick.tick() => {
+                    let context = intake::ConnectionEvidence::new(&machine)?;
                     let outgoing = tokio::select! {
                         biased;
                         () = crate::machine::stopping(&mut stop) => break,
                         result = idle_orders.idle(&store, context.machine(), settings.options()) => result,
                     };
                     match outgoing {
-                        Ok(Some(message))=>{let result=exchange(&machine,&store,&settings,&mut idle_orders,&message,stop.clone(),capture.as_deref()).await;settle(&machine,&store,&mut idle_orders,result).await?;},
-                        Ok(None)=>{},
-                        Err(error)=>{idle_orders.close(&store,Code::LawIndependentAdmissionFailed.as_str()).await?;report(&machine,Err(error.into()));},
+                        Ok(Some(message)) => {
+                            let result = exchange(
+                                &machine,
+                                &store,
+                                &settings,
+                                &mut idle_orders,
+                                &message,
+                                stop.clone(),
+                                capture.as_deref(),
+                            ).await;
+                            settle(&machine, &store, &mut idle_orders, result).await?;
+                        }
+                        Ok(None) => {}
+                        Err(error) => {
+                            idle_orders.close(
+                                &store,
+                                Code::LawIndependentAdmissionFailed.as_str(),
+                            ).await?;
+                            report(&machine, Err(error.into()));
+                        }
                     }
                 }
             }
         }
-        Ok::<_,Error>(())
-    }.await;
+        Ok::<_, Error>(())
+    }
+    .await;
     queue.close();
     while let Ok(mut job) = queue.try_recv() {
         job.orders
