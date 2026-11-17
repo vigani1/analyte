@@ -227,7 +227,7 @@ impl Command {
         Ok(match (&cfg.specimen_system, &self.app.specimen_type) {
             (Some(system), Some(specimen)) => {
                 let mapped = crate::orders::codes::map_specimen(
-                    self.settings.tables().specimen_types().as_deref(),
+                    self.settings.tables().specimen_types(),
                     specimen,
                 )
                 .map_err(Error::Hl7UnmappedSpecimenType)?;

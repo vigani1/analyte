@@ -225,11 +225,9 @@ pub(super) fn map_specimen<'a>(
         .specimen_type
         .as_ref()
         .ok_or(OrderMappingError::MissingSpecimenType)?;
-    Ok(
-        outbound_specimen(settings.specimen_types().as_deref(), requested)?
-            .machine
-            .as_str(),
-    )
+    Ok(outbound_specimen(settings.specimen_types(), requested)?
+        .machine
+        .as_str())
 }
 /// Borrowed reservation identities and requested app codes; storage remains host-owned.
 pub struct OutboundItem<'a> {

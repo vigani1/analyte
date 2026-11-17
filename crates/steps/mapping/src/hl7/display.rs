@@ -41,11 +41,9 @@ pub fn map(
                 },
                 DsrLine::SpecimenType => match &order.specimen_type {
                     None => "",
-                    Some(source) => {
-                        outbound_specimen(settings.specimen_types().as_deref(), source)?
-                            .machine
-                            .as_str()
-                    }
+                    Some(source) => outbound_specimen(settings.specimen_types(), source)?
+                        .machine
+                        .as_str(),
                 },
                 DsrLine::Literal { value } => value,
             };
