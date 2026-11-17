@@ -616,7 +616,7 @@ impl Host<'_, '_> {
                                     tracing::error!(machine=self.machine.machine().id.as_str(),
                                         error_kind=%error,
                                         "LAW idle admission stopped; no command retried");
-                                                                            None
+                                    None
                                 }
                             },
                         };
