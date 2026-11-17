@@ -41,7 +41,7 @@ pub(super) struct Host<'a, 'm> {
     dialog: Dialog,
     start: Instant,
     wake: Option<Duration>,
-    pending: BTreeMap<(u64, u64), ReceiptId>,
+    pending: BTreeMap<analyte_dialog::ExchangeId, ReceiptId>,
     queries: Option<crate::orders::hl7::Hl7OrderLink>,
     input_evidence: connection_input::Custody,
     write_error: Option<analyte_transport::Error>,
@@ -170,7 +170,7 @@ impl<'a, 'm> Host<'a, 'm> {
         match action {
             Action::ReceiptRetained(token) => {
                 self.pending
-                    .remove(&(token.epoch(), token.ordinal()))
+                    .remove(&token)
                     .ok_or(Error::LateReceiptAbsent)?;
             }
             Action::Query {
@@ -278,7 +278,7 @@ impl<'a, 'm> Host<'a, 'm> {
 
         let id = self
             .pending
-            .remove(&(token.epoch(), token.ordinal()))
+            .remove(&token)
             .ok_or(Error::QueryReceiptAbsent)?;
         if !edition_matches {
             intake::failed_reading(
@@ -333,7 +333,7 @@ impl<'a, 'm> Host<'a, 'm> {
                 if self.pending.len() >= 2 {
                     return Err(Error::PendingReceiptLimitExceeded);
                 }
-                self.pending.insert((token.epoch(), token.ordinal()), id);
+                self.pending.insert(token, id);
                 actions.extend(
                     self.dialog
                         .step(self.start.elapsed(), Event::Stored(token))?,
@@ -359,7 +359,7 @@ impl<'a, 'm> Host<'a, 'm> {
     ) -> Result<(), Error> {
         let id = self
             .pending
-            .remove(&(token.epoch(), token.ordinal()))
+            .remove(&token)
             .ok_or_else(|| Error::ReceiptCorrelationMissing)?;
         let (outcome, location) =
             intake::interpret_with_location(store, machine.machine(), id).await?;
@@ -396,7 +396,7 @@ impl<'a, 'm> Host<'a, 'm> {
         if let Some(token) = receipt {
             let id = self
                 .pending
-                .remove(&(token.epoch(), token.ordinal()))
+                .remove(&token)
                 .ok_or(Error::DisplayReceiptAbsent)?;
             if let Some(detail) = detail {
                 intake::failed_reading(store, machine.machine(), id, &detail).await?;
@@ -451,7 +451,7 @@ impl<'a, 'm> Host<'a, 'm> {
         store: &Handle,
     ) -> Result<(), Error> {
         self.pending
-            .remove(&(token.epoch(), token.ordinal()))
+            .remove(&token)
             .ok_or(Error::OrderResponseReceiptAbsent)?;
         self.queries
             .as_mut()

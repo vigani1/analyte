@@ -1,6 +1,6 @@
 //! Correlates host completions with connection-local dialog exchanges.
 /// Connection-scoped host request identity. The host must supply a unique epoch after restart.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ExchangeId(pub(crate) u128, pub(crate) u64);
 impl ExchangeId {
     /// Returns the host-selected connection incarnation for journaling.
