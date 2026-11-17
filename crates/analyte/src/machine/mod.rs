@@ -14,6 +14,7 @@ pub(crate) mod poct;
 pub(crate) mod receive;
 mod settings;
 pub(crate) use receive::connection_input;
+mod tcp;
 pub(crate) mod vidas;
 mod worker;
 use crate::installation::config::Machine;
@@ -88,10 +89,11 @@ pub(crate) async fn run(
                 None => analyte_transport::tcp::bind(endpoint.parse()?).await?,
             };
             loop {
-                let accepted = tokio::select! {
-                    biased;
-                    () = analyte_sink::stopped(&mut stop) => { closing.after_commits().await?; return Ok(()); },
-                    accepted = listener.accept() => accepted?,
+                let Some(accepted) =
+                    tcp::accept(|| listener.accept(), machine.id.as_str(), &mut stop).await?
+                else {
+                    closing.after_commits().await?;
+                    return Ok(());
                 };
                 let (conn, side) = recorded_connection(limits, capture.as_deref());
                 let cancel = conn.cancellation();
@@ -100,11 +102,19 @@ pub(crate) async fn run(
                 // Drain ordered received/closed events even if the I/O owner finishes first.
                 let (result, transport) = tokio::join!(processing, transport);
                 cancel.cancel();
-                transport?;
+                let transport_failed = transport.is_err();
+                if let Err(error) = transport {
+                    tracing::error!(machine = machine.id.as_str(), error_kind = %error,
+                        "TCP session transport stopped");
+                }
                 if let Err(error) = result {
                     tracing::error!(machine = machine.id.as_str(), error_kind = %error, "machine session stopped");
                 }
                 if *stop.borrow() {
+                    return Ok(());
+                }
+                if transport_failed && !tcp::backoff(&mut stop).await {
+                    closing.after_commits().await?;
                     return Ok(());
                 }
             }
