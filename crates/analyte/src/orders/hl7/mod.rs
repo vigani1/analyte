@@ -64,7 +64,7 @@ impl Connection {
         {
             let wait = crate::orders::settings::hl7(machine)
                 .and_then(|orders| orders.send().as_ref())
-                .ok_or(Error::SendSettings)?
+                .ok_or(Error::Hl7SendSettingsMissing)?
                 .settings()
                 .response_ms;
             let until = Instant::now()
@@ -76,7 +76,7 @@ impl Connection {
             let message = self
                 .exchange
                 .as_ref()
-                .ok_or(Error::ExchangeAbsent)?
+                .ok_or(Error::Hl7ExchangeAbsent)?
                 .message
                 .message();
             write(conn, message.raw(), self.options, until).await?;

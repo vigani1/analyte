@@ -81,12 +81,12 @@ impl<'a> Pending<'a> {
     ) -> Result<Self, Error> {
         let query = super::settings::astm(machine)
             .and_then(|o| o.query().as_ref())
-            .ok_or_else(|| Error::QueryCapabilityAbsent)?;
+            .ok_or_else(|| Error::AstmQueryCapabilityAbsent)?;
         let until = started
             .checked_add(std::time::Duration::from_millis(u64::from(
                 query.deadline_ms,
             )))
-            .ok_or_else(|| Error::QueryDeadlineOverflow)?;
+            .ok_or_else(|| Error::AstmQueryDeadlineOverflow)?;
         let future = Box::pin(answer(store, machine, samples, until));
         Ok(Self { future, until })
     }
@@ -124,7 +124,7 @@ async fn answer(
                     bytes = bytes
                         .checked_add(cached.document.len())
                         .filter(|n| *n <= limits.bytes())
-                        .ok_or_else(|| Error::QueryResponseByteLimitExceeded)?;
+                        .ok_or_else(|| Error::AstmQueryResponseByteLimitExceeded)?;
                     let order: analyte_contract::Order =
                         analyte_contract::decode(cached.document.as_bytes())?;
                     let fields = order.fields();

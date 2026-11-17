@@ -378,7 +378,7 @@ fn reject_query(message: &Message, error: &law::Failure, options: Options) -> Re
                 response,
                 error
                     .acknowledgment_code()
-                    .ok_or(Error::QueryFailureHasNoAckOutcome)?,
+                    .ok_or(Error::LawQueryFailureHasNoAckOutcome)?,
                 detail,
                 options,
             )?
