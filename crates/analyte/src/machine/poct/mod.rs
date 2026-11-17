@@ -83,19 +83,14 @@ impl Effects for Host<'_, '_> {
     async fn input(&mut self, host: &mut Context<'_, '_>, input: Input) -> Result<Flow, Error> {
         let conn = &mut *host.conn;
         let stop = &mut host.stop;
-        // Incoming fragments must not postpone the absolute dialog deadline.
+        // Every input first applies due time, so incoming fragments never
+        // postpone the absolute dialog deadline; a tick needs nothing more.
         let actions = self.dialog.step(self.start.elapsed(), Event::Tick)?;
         if self.apply(actions, conn).await? == Flow::Stop {
             return Ok(Flow::Stop);
         }
         match input {
-            Input::Opened { .. } => {}
-            Input::Tick => {
-                let actions = self.dialog.step(self.start.elapsed(), Event::Tick)?;
-                if self.apply(actions, conn).await? == Flow::Stop {
-                    return Ok(Flow::Stop);
-                }
-            }
+            Input::Opened { .. } | Input::Tick => {}
             Input::Closed(_) | Input::Failed(_) => {
                 let actions = self
                     .dialog
