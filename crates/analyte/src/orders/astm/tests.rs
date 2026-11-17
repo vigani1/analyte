@@ -59,6 +59,18 @@ async fn lis02_section11_adr0004_missed_deadline_is_query_error_or_silence_never
             .checked_sub(Duration::from_secs(2))
             .ok_or("clock")?;
         let mut pending = Pending::new(&store, &machine, vec![SampleId::new("001a")?], started)?;
+        assert_eq!(
+            pending.deadline(),
+            started
+                + Duration::from_millis(u64::from(
+                    super::super::settings::astm(&machine)
+                        .unwrap()
+                        .query()
+                        .unwrap()
+                        .deadline_ms
+                )),
+            "ADR 0004: admission and journaling consume the real query budget"
+        );
         let response = pending.finish(&machine).await?;
         if policy == "error" {
             assert!(
