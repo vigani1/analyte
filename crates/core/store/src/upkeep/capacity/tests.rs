@@ -39,7 +39,10 @@ fn plan11_corruption_and_database_size_limit_refuse_visibly() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("invalid.db");
     std::fs::write(&path, b"this is not SQLite")?;
-    assert!(matches!(open(&path), Err(Error::StorageCorruption(_))));
+    assert!(matches!(
+        open(&path),
+        Err(MaintenanceError::StorageCorruption(_))
+    ));
     let mut small = limits();
     small.database_bytes = 1;
     let mut store = Store::open(

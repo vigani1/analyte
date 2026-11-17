@@ -11,23 +11,3 @@ storage_boundary! {
         Conflict,
     }
 }
-impl From<IntakeError> for crate::Error {
-    fn from(error: IntakeError) -> Self {
-        match error {
-            IntakeError::Worker(cause) => Self::Worker(cause),
-            IntakeError::StorageCorruption(cause) => Self::StorageCorruption(cause),
-            IntakeError::Capacity => Self::Capacity,
-            IntakeError::Corruption => Self::Corruption,
-            IntakeError::DiskFull(cause) => Self::DiskFull(cause),
-            IntakeError::LimitExceeded { what } => Self::LimitExceeded { what },
-            IntakeError::Busy(cause) => Self::Busy(cause),
-            IntakeError::ConstraintViolation(cause) => Self::ConstraintViolation(cause),
-            IntakeError::Text(cause) => Self::Text(cause),
-            IntakeError::Io(cause) => Self::Io(cause),
-            IntakeError::Sqlite(cause) => Self::Sqlite(cause),
-            IntakeError::Json(cause) => Self::Json(cause),
-            IntakeError::InvalidReceiptInput => Self::InvalidReceiptInput,
-            IntakeError::Conflict => Self::Conflict,
-        }
-    }
-}

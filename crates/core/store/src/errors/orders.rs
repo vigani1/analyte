@@ -50,36 +50,3 @@ storage_boundary! {
         DigestKey(#[from] hmac::digest::InvalidLength),
     }
 }
-impl From<OrderError> for crate::Error {
-    fn from(error: OrderError) -> Self {
-        match error {
-            OrderError::Worker(cause) => Self::Worker(cause),
-            OrderError::Identity(cause) => Self::DeliveryBuild(Box::new(cause)),
-            OrderError::PreflightConsumed => Self::PreflightConsumed,
-            OrderError::PreflightMissing => Self::PreflightMissing,
-            OrderError::StorageCorruption(cause) => Self::StorageCorruption(cause),
-            OrderError::Capacity => Self::Capacity,
-            OrderError::Corruption => Self::Corruption,
-            OrderError::DiskFull(cause) => Self::DiskFull(cause),
-            OrderError::LimitExceeded { what } => Self::LimitExceeded { what },
-            OrderError::Busy(cause) => Self::Busy(cause),
-            OrderError::ConstraintViolation(cause) => Self::ConstraintViolation(cause),
-            OrderError::Text(cause) => Self::Text(cause),
-            OrderError::Io(cause) => Self::Io(cause),
-            OrderError::Sqlite(cause) => Self::Sqlite(cause),
-            OrderError::Json(cause) => Self::Json(cause),
-            OrderError::Conflict => Self::Conflict,
-            OrderError::InvalidOrderInput => Self::InvalidOrderInput,
-            OrderError::Purged => Self::Purged,
-            OrderError::AuditMismatch => Self::AuditMismatch,
-            OrderError::AnalyzerCancelled => Self::AnalyzerCancelled,
-            OrderError::OrderTransition(cause) => Self::OrderTransition(cause),
-            OrderError::PollIntentUnresolved => Self::PollIntentUnresolved,
-            OrderError::UnknownPollIntent => Self::UnknownPollIntent,
-            OrderError::ItemIdentityTooLong => Self::ItemIdentityTooLong,
-            OrderError::RetentionKeyRequired => Self::RetentionKeyRequired,
-            OrderError::DeliveryBuild(cause) => Self::DeliveryBuild(cause),
-            OrderError::DigestKey(cause) => Self::DigestKey(cause),
-        }
-    }
-}

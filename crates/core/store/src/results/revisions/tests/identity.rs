@@ -88,18 +88,23 @@ fn adr0003_legacy_offset_digest_reconciles_after_restart_without_rewriting_evide
     store.receive(&first, b"original", b"config")?;
     let mut result = production_result(first.id)?;
     let mut parts = result.parts.as_slice().to_vec();
-    parts.first_mut().ok_or(Error::Corruption)?.source_path =
-        EvidenceList::new(vec![SourceNode {
-            occurrence: 5,
-            kind: Identifier::new("OBS")?,
-            sequence: None,
-            status: None,
-        }])?;
+    parts
+        .first_mut()
+        .ok_or(ReconciliationError::Corruption)?
+        .source_path = EvidenceList::new(vec![SourceNode {
+        occurrence: 5,
+        kind: Identifier::new("OBS")?,
+        sequence: None,
+        status: None,
+    }])?;
     result.parts = NonEmptyEvidenceList::new(EvidenceList::new(parts)?)?;
     let mut old_parts = serde_json::to_value(&result.parts)?;
-    for part in old_parts.as_array_mut().ok_or(Error::Corruption)? {
+    for part in old_parts
+        .as_array_mut()
+        .ok_or(ReconciliationError::Corruption)?
+    {
         part.as_object_mut()
-            .ok_or(Error::Corruption)?
+            .ok_or(ReconciliationError::Corruption)?
             .remove("received_at");
     }
     // Construct the previous released algorithm's digest, including source offsets.
@@ -111,7 +116,7 @@ fn adr0003_legacy_offset_digest_reconciles_after_restart_without_rewriting_evide
     let mut evidence = interpretation()?;
     evidence.outcome = Reading::Results(vec![result.clone()]);
     let analyte_model::IdentityStatus::Resolved(identity) = &result.identity else {
-        return Err(Error::Corruption.into());
+        return Err(ReconciliationError::Corruption.into());
     };
     let receipt_key = key(&first.id)?;
     let identity_key = key(&(&first.machine, &identity.observation))?;
@@ -129,13 +134,15 @@ fn adr0003_legacy_offset_digest_reconciles_after_restart_without_rewriting_evide
     store.receive(&second, b"resent", b"config")?;
     result.receipt = second.id;
     let mut parts = result.parts.as_slice().to_vec();
-    parts.first_mut().ok_or(Error::Corruption)?.source_path =
-        EvidenceList::new(vec![SourceNode {
-            occurrence: 6,
-            kind: Identifier::new("OBS")?,
-            sequence: None,
-            status: None,
-        }])?;
+    parts
+        .first_mut()
+        .ok_or(ReconciliationError::Corruption)?
+        .source_path = EvidenceList::new(vec![SourceNode {
+        occurrence: 6,
+        kind: Identifier::new("OBS")?,
+        sequence: None,
+        status: None,
+    }])?;
     result.parts = NonEmptyEvidenceList::new(EvidenceList::new(parts)?)?;
     evidence.outcome = Reading::Results(vec![result]);
     let commit = store.reconcile(
@@ -152,7 +159,10 @@ fn adr0003_legacy_offset_digest_reconciles_after_restart_without_rewriting_evide
         vec![RevisionOutcome::Retransmission(Revision(0))]
     );
     assert_eq!(
-        store.receipt(first.id)?.ok_or(Error::Corruption)?.raw,
+        store
+            .receipt(first.id)?
+            .ok_or(ReconciliationError::Corruption)?
+            .raw,
         b"original"
     );
     assert_eq!(

@@ -13,7 +13,7 @@ fn plan11_online_backup_copy_reopens_with_exact_receipt_bytes() -> TestResult {
         &target,
         Instant::now()
             .checked_add(HANG_GUARD)
-            .ok_or(Error::Timeout)?,
+            .ok_or(MaintenanceError::DeadlineOverflow)?,
     )?;
     let restored = open(&target)?;
     assert_eq!(

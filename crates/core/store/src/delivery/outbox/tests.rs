@@ -61,7 +61,7 @@ fn adr0008_parked_head_blocks_correction_but_not_other_machine() -> TestResult {
     seed_delivery(&store, metadata.id, first, "machine-a/observation")?;
     seed_delivery(&store, metadata.id, correction, "machine-a/observation")?;
     seed_delivery(&store, metadata.id, other, "machine-b/observation")?;
-    let claim = store.claim(0)?.ok_or(Error::Corruption)?;
+    let claim = store.claim(0)?.ok_or(DeliveryError::Corruption)?;
     assert_eq!(claim.id, first);
     assert_eq!(claim.payload, vec![0, 17, 34]);
     store.attempted(
@@ -69,7 +69,7 @@ fn adr0008_parked_head_blocks_correction_but_not_other_machine() -> TestResult {
         &Attempt::Parked(Reason::new("synthetic rejection")?),
         0,
     )?;
-    assert_eq!(store.claim(0)?.ok_or(Error::Corruption)?.id, other);
+    assert_eq!(store.claim(0)?.ok_or(DeliveryError::Corruption)?.id, other);
     assert!(store.claim(0)?.is_none());
     Ok(())
 }
@@ -90,7 +90,7 @@ fn adr0008_public_enqueue_is_atomic_and_retry_keeps_id_and_bytes() -> TestResult
             observation: match production_result(metadata.id)?.identity {
                 analyte_model::IdentityStatus::Resolved(id) => id.observation,
                 analyte_model::IdentityStatus::Unresolved(_) => {
-                    return Err(Error::InvalidDeliveryInput.into());
+                    return Err(DeliveryError::InvalidDeliveryInput.into());
                 }
             },
         },
@@ -146,10 +146,10 @@ fn adr0008_public_enqueue_is_atomic_and_retry_keeps_id_and_bytes() -> TestResult
         );
     }
     assert!(store.interpretation(metadata.id, 2)?.is_none());
-    let first = store.claim(0)?.ok_or(Error::Corruption)?;
+    let first = store.claim(0)?.ok_or(DeliveryError::Corruption)?;
     store.attempted(id, &Attempt::RetryAt(10), 0)?;
     assert!(store.claim(9)?.is_none());
-    let retry = store.claim(10)?.ok_or(Error::Corruption)?;
+    let retry = store.claim(10)?.ok_or(DeliveryError::Corruption)?;
     assert_eq!(first.id, retry.id);
     assert_eq!(first.payload, retry.payload);
     assert_constraint(store.db.execute("UPDATE outbox SET payload=x'00'", []));
@@ -193,11 +193,14 @@ fn adr0008_event_provenance_health_ordering_and_restart_attempts() -> TestResult
         ..second
     };
     store.enqueue_order_event(&other, 12)?;
-    let claim = store.claim(12)?.ok_or(Error::Corruption)?;
+    let claim = store.claim(12)?.ok_or(DeliveryError::Corruption)?;
     assert_eq!(claim.kind, DeliveryKind::OrderEvent);
     assert_eq!(claim.earlier_attempts, 0);
     store.attempted(claim.id, &Attempt::RetryAt(20), 12)?;
-    assert_eq!(store.claim(12)?.ok_or(Error::Corruption)?.id, other.id);
+    assert_eq!(
+        store.claim(12)?.ok_or(DeliveryError::Corruption)?.id,
+        other.id
+    );
     let health = store.health(&destination, 15, 30)?;
     assert_eq!(
         (
@@ -233,7 +236,7 @@ fn adr0008_event_provenance_health_ordering_and_restart_attempts() -> TestResult
 
     drop(store);
     let mut store = open(&path)?;
-    let retry = store.claim(20)?.ok_or(Error::Corruption)?;
+    let retry = store.claim(20)?.ok_or(DeliveryError::Corruption)?;
     assert_eq!(retry.id, event.id);
     assert_eq!(retry.earlier_attempts, 1);
     store.attempted(retry.id, &Attempt::Paused(Reason::new("credentials")?), 20)?;

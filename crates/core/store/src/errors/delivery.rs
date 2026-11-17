@@ -26,28 +26,3 @@ storage_boundary! {
         SupersededDelivery,
     }
 }
-impl From<DeliveryError> for crate::Error {
-    fn from(error: DeliveryError) -> Self {
-        match error {
-            DeliveryError::Worker(cause) => Self::Worker(cause),
-            DeliveryError::StorageCorruption(cause) => Self::StorageCorruption(cause),
-            DeliveryError::Capacity => Self::Capacity,
-            DeliveryError::Corruption => Self::Corruption,
-            DeliveryError::DiskFull(cause) => Self::DiskFull(cause),
-            DeliveryError::LimitExceeded { what } => Self::LimitExceeded { what },
-            DeliveryError::Busy(cause) => Self::Busy(cause),
-            DeliveryError::ConstraintViolation(cause) => Self::ConstraintViolation(cause),
-            DeliveryError::Text(cause) => Self::Text(cause),
-            DeliveryError::Io(cause) => Self::Io(cause),
-            DeliveryError::Sqlite(cause) => Self::Sqlite(cause),
-            DeliveryError::Json(cause) => Self::Json(cause),
-            DeliveryError::Conflict => Self::Conflict,
-            DeliveryError::InvalidDeliveryInput => Self::InvalidDeliveryInput,
-            DeliveryError::Purged => Self::Purged,
-            DeliveryError::AuditMismatch => Self::AuditMismatch,
-            DeliveryError::UnknownDelivery => Self::UnknownDelivery,
-            DeliveryError::ResendState => Self::ResendState,
-            DeliveryError::SupersededDelivery => Self::SupersededDelivery,
-        }
-    }
-}

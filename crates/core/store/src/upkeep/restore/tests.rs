@@ -54,7 +54,7 @@ fn plan11_interrupted_restore_staging_refuses_startup_without_deleting_evidence(
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("store.db");
     std::fs::write(path.with_extension("restore-pending"), b"interrupted stage")?;
-    assert!(matches!(open(&path), Err(Error::Conflict)));
+    assert!(matches!(open(&path), Err(MaintenanceError::Conflict)));
     assert!(!path.exists());
     assert_eq!(
         std::fs::read(path.with_extension("restore-pending"))?,

@@ -23,7 +23,7 @@ fn verify_plan11_v1_evidence(
     assert_eq!(migrated.raw(receipt_id)?, Some(b"raw".to_vec()));
     assert_eq!(migrated.frames(&Identifier::new("transfer")?, 0)?.len(), 1);
     assert!(migrated.interpretation(receipt_id, 1)?.is_some());
-    let claim = migrated.claim(10)?.ok_or(Error::Corruption)?;
+    let claim = migrated.claim(10)?.ok_or(MaintenanceError::Corruption)?;
     assert_eq!(claim.id, id);
     assert_eq!(claim.payload, vec![0, 17, 34]);
     assert_eq!(claim.earlier_attempts, 1);
@@ -63,7 +63,7 @@ use analyte_model::{Identifier, OrderState};
 use rusqlite::{Connection, params, types::Value};
 use std::{collections::BTreeMap, num::NonZeroU64, path::Path};
 
-fn legacy(path: &Path) -> Result<Connection, Error> {
+fn legacy(path: &Path) -> Result<Connection, MaintenanceError> {
     let mut db = Connection::open(path)?;
     let tx = db.transaction()?;
     tx.execute_batch(include_str!("../../schema.sql"))?;
@@ -80,7 +80,7 @@ fn legacy(path: &Path) -> Result<Connection, Error> {
 
 type Snapshot = BTreeMap<String, Vec<Vec<Value>>>;
 
-fn snapshot(db: &Connection) -> Result<Snapshot, Error> {
+fn snapshot(db: &Connection) -> Result<Snapshot, MaintenanceError> {
     let names = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")?
         .query_map([], |row| row.get::<_, String>(0))?
         .collect::<Result<Vec<_>, _>>()?;
@@ -103,7 +103,7 @@ fn snapshot(db: &Connection) -> Result<Snapshot, Error> {
         .collect()
 }
 
-fn version8(path: &Path) -> Result<Connection, Error> {
+fn version8(path: &Path) -> Result<Connection, MaintenanceError> {
     let mut db = legacy(path)?;
     Store::migrate_v7(&mut db, 65_536)?;
     db.execute_batch(include_str!("../../migration_v8.sql"))?;

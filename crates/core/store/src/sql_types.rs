@@ -6,6 +6,11 @@ use rusqlite::{
     types::{FromSql, FromSqlError, FromSqlResult, ToSqlOutput, ValueRef},
 };
 
+// Unknown stored enum text is corruption, never a guessed lifecycle state.
+#[derive(Debug, thiserror::Error)]
+#[error("stored evidence is corrupt")]
+struct UnknownState;
+
 macro_rules! text_sql {
     ($ty:ty, $( $variant:pat => $text:literal => $value:expr ),+ $(,)?) => {
         impl ToSql for $ty {
@@ -18,7 +23,7 @@ macro_rules! text_sql {
             fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
                 match value.as_str()? {
                     $( $text => Ok($value), )+
-                    _ => Err(FromSqlError::Other(Box::new(crate::Error::Corruption))),
+                    _ => Err(FromSqlError::Other(Box::new(UnknownState))),
                 }
             }
         }
