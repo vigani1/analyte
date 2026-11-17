@@ -1,6 +1,7 @@
 //! Tests bounded synthetic peers and local test fixtures.
 use analyte_fixtures::ConfigEdit as _;
 pub mod deadline;
+pub mod peer;
 use analyte_fixtures as guard;
 pub use deadline::step;
 pub use guard::HANG_GUARD;
@@ -242,7 +243,7 @@ pub async fn hl7(peer: &mut TcpStream, message: &[u8]) -> Result<String, Error> 
             if ack.len() >= 65536 {
                 return Err("oversized ACK".into());
             }
-            ack.push(peer.read_u8().await?);
+            ack.push(peer::byte(peer).await?);
         }
         Ok::<_, Error>(String::from_utf8(ack)?)
     })
@@ -384,12 +385,12 @@ pub async fn read_mllp_packet(
     oversized: &'static str,
 ) -> Result<Vec<u8>, Error> {
     tokio::time::timeout(HANG_GUARD, async {
-        assert_eq!(peer.read_u8().await?, 11);
+        assert_eq!(peer::byte(peer).await?, 11);
         let mut bytes = Vec::new();
         loop {
-            let byte = peer.read_u8().await?;
+            let byte = peer::byte(peer).await?;
             if byte == 28 {
-                assert_eq!(peer.read_u8().await?, 13);
+                assert_eq!(peer::byte(peer).await?, 13);
                 return Ok::<_, Error>(bytes);
             }
             if bytes.len() >= 1048576 {

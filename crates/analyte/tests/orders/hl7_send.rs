@@ -189,7 +189,11 @@ async fn hl7_231_251_26_282_s4_4_7_send_ahead_accepted_rejected_and_mixed_items(
             (["OK", "UA"], "Uncertain"),
         ] {
             let (_temp, path, reference, service, mut peer) = setup(edition).await?;
-            let bytes = read_mllp_packet(&mut peer, "oversized packet").await?;
+            let bytes = step(
+                "receive send-ahead packet",
+                read_mllp_packet(&mut peer, "oversized packet"),
+            )
+            .await?;
             let message = analyte_hl7::Message::parse(&bytes, analyte_hl7::Options::default())?;
             assert_eq!(
                 analyte_hl7::Msh::new(&message)?.message_type().next(),
@@ -224,8 +228,16 @@ async fn hl7_231_251_26_282_s4_4_7_send_ahead_accepted_rejected_and_mixed_items(
                     .query_row("SELECT count(*) FROM outbox", [], |r| r.get::<_, i64>(0))?,
                 0
             );
-            reply(&mut peer, &bytes, &codes, version).await?;
-            outcome(&path, expected).await?;
+            step(
+                "reply to send-ahead packet",
+                reply(&mut peer, &bytes, &codes, version),
+            )
+            .await?;
+            step(
+                "commit and deliver send-ahead outcome",
+                outcome(&path, expected),
+            )
+            .await?;
             assert_eq!(
                 database(&path)?.query_row(
                     "SELECT count(*) FROM machine_order_items",
