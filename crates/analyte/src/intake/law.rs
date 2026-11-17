@@ -21,7 +21,7 @@ pub(super) async fn plan(
             s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
         })
         .await?;
-    let Ok(payload) = analyte_mapping::read::payload(&machine.snapshot, &receipt.raw) else {
+    let Ok(payload) = crate::reading::payload(&machine.snapshot, &receipt.raw) else {
         // The ordinary mapping failure still needs a durable interpretation and parking.
         return Ok(None);
     };
@@ -186,7 +186,7 @@ pub(super) async fn work_conflict(
                     s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
                 })
                 .await?;
-            let payload = analyte_mapping::read::payload(&machine.snapshot, &receipt.raw);
+            let payload = crate::reading::payload(&machine.snapshot, &receipt.raw);
             match payload
                 .ok()
                 .and_then(|bytes| law::parse_message(&bytes, settings.options()).ok())

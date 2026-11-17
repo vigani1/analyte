@@ -54,7 +54,7 @@ pub(crate) async fn map_retained(
     } else {
         None
     };
-    Ok(analyte_mapping::read::read(
+    Ok(crate::reading::read(
         &machine.snapshot,
         analyte_mapping::Input {
             receipt: receipt.metadata.id,
@@ -66,11 +66,11 @@ pub(crate) async fn map_retained(
     )?)
 }
 
-pub(super) use analyte_mapping::read::poct_limits;
+pub(super) use crate::reading::poct_limits;
 
 #[cfg(test)]
 fn vidas_config(machine: &Machine) -> Result<analyte_framing::vidas::Config, ReadError> {
-    Ok(analyte_mapping::read::vidas_config(&machine.snapshot)?)
+    Ok(crate::reading::vidas_config(&machine.snapshot)?)
 }
 pub(crate) mod departure_evidence;
 #[cfg(test)]
@@ -84,5 +84,5 @@ pub(crate) enum ReadError {
     #[error(transparent)]
     Store(#[from] analyte_store::Error),
     #[error(transparent)]
-    Mapping(#[from] analyte_mapping::read::Error),
+    Mapping(#[from] crate::reading::Error),
 }

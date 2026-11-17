@@ -2,11 +2,11 @@
 use super::Error;
 pub(super) fn read(
     config: &analyte_config::Validated,
-    input: crate::Input,
+    input: analyte_mapping::Input,
     raw: &[u8],
     settings: &analyte_config::LawStack,
-) -> Result<crate::Output, Error> {
+) -> Result<analyte_mapping::Output, Error> {
     let message = analyte_hl7::law::parse_message(raw, settings.options())?;
     let results = analyte_hl7::law::receive_results(&message)?;
-    Ok(crate::map_law(&results, config, input)?)
+    Ok(analyte_mapping::map_law(&results, config, input)?)
 }

@@ -5,7 +5,7 @@ use std::borrow::Cow;
 /// Returns exact syntax bytes from the configured stored receipt envelope.
 /// # Errors
 /// Returns framing and assembly defects without parsing a partial message.
-pub fn payload<'a>(config: &Validated, raw: &'a [u8]) -> Result<Cow<'a, [u8]>, Error> {
+pub(crate) fn payload<'a>(config: &Validated, raw: &'a [u8]) -> Result<Cow<'a, [u8]>, Error> {
     match config.effective().stack() {
         Stack::Astm(RecordTransport::Folder(_))
         | Stack::Hl7(RecordTransport::Folder(_))

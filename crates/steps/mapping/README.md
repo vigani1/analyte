@@ -18,3 +18,8 @@
 - `orders`: Outgoing mappings, separate from incoming code tables.
 
 [Technical details and safety guidance](DETAILS.md).
+
+Receipt reading is composed by the program (`analyte::reading`), which depends
+on framing, config, protocol syntax and mapping. Mapping depends on config,
+model and the five protocol grammars for their parsed input and outgoing
+structures; contract supplies app order types. It does not depend on framing.

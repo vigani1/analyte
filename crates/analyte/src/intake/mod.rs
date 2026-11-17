@@ -119,7 +119,7 @@ pub(crate) async fn interpret_with_location(
         .effective()
         .hl7_options()
         .and_then(|options| {
-            let payload = analyte_mapping::read::payload(&machine.snapshot, &receipt.raw).ok()?;
+            let payload = crate::reading::payload(&machine.snapshot, &receipt.raw).ok()?;
             crate::machine::hl7::error_location::mapping_location(
                 &mapping,
                 &payload,

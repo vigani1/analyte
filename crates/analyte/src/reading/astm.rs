@@ -2,10 +2,10 @@
 use super::Error;
 pub(super) fn read(
     config: &analyte_config::Validated,
-    input: crate::Input,
+    input: analyte_mapping::Input,
     payload: &[u8],
     syntax: &analyte_config::AstmSyntax,
-) -> Result<crate::Output, Error> {
+) -> Result<analyte_mapping::Output, Error> {
     let messages = analyte_astm::parse_with(payload, syntax.parser_limits(), |bytes| match syntax
         .encoding()
     {
@@ -19,7 +19,7 @@ pub(super) fn read(
     if messages.len() != 1 {
         return Err(Error::Context(super::Context::AstmMessageCount));
     }
-    Ok(crate::map_astm(
+    Ok(analyte_mapping::map_astm(
         messages
             .first()
             .ok_or_else(|| Error::Context(super::Context::AstmMessageMissing))?,

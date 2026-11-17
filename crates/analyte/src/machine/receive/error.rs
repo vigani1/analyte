@@ -30,7 +30,7 @@ pub(crate) enum Error {
     Timestamp(#[from] jiff::Error),
     /// A retained receipt failed framing, syntax or mapping.
     #[error(transparent)]
-    MappingRead(Box<analyte_mapping::read::Error>),
+    MappingRead(Box<crate::reading::Error>),
     /// A bounded vendor write failed or has uncertain completion.
     #[error(transparent)]
     Write(#[from] crate::machine::custody::WriteError),
@@ -48,8 +48,8 @@ impl From<crate::IntakeError> for Error {
     }
 }
 
-impl From<analyte_mapping::read::Error> for Error {
-    fn from(error: analyte_mapping::read::Error) -> Self {
+impl From<crate::reading::Error> for Error {
+    fn from(error: crate::reading::Error) -> Self {
         Self::MappingRead(Box::new(error))
     }
 }
@@ -108,8 +108,8 @@ macro_rules! forward {
                 ($wrap)(crate::machine::receive::error::Error::from(error))
             }
         }
-        impl From<analyte_mapping::read::Error> for $target {
-            fn from(error: analyte_mapping::read::Error) -> Self {
+        impl From<crate::reading::Error> for $target {
+            fn from(error: crate::reading::Error) -> Self {
                 ($wrap)(crate::machine::receive::error::Error::from(error))
             }
         }

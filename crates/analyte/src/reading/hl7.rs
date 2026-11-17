@@ -2,10 +2,10 @@
 use super::Error;
 pub(super) fn read(
     config: &analyte_config::Validated,
-    input: crate::Input,
+    input: analyte_mapping::Input,
     payload: &[u8],
     syntax: &analyte_config::Hl7Syntax,
-) -> Result<crate::Output, Error> {
+) -> Result<analyte_mapping::Output, Error> {
     let message = analyte_hl7::Message::parse(payload, syntax.options())?;
-    Ok(crate::map_hl7(&message, config, input)?)
+    Ok(analyte_mapping::map_hl7(&message, config, input)?)
 }

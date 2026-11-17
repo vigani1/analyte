@@ -165,7 +165,7 @@ fn compatibility(
 ) -> Result<(), Error> {
     let effective = machine.snapshot.effective();
     let hl7 = if effective.hl7_options().is_some() {
-        analyte_mapping::read::payload(&machine.snapshot, raw)
+        crate::reading::payload(&machine.snapshot, raw)
             .ok()
             .and_then(|bytes| {
                 analyte_hl7::Message::parse(&bytes, effective.hl7_options()?)

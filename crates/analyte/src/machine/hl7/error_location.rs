@@ -14,7 +14,7 @@ pub(crate) fn mapping_location(
     let position = match mapping {
         Ok(output) => output.findings.first()?.position,
         Err(crate::machine::interpretation::ReadError::Mapping(error)) => {
-            use analyte_mapping::read::Error as Read;
+            use crate::reading::Error as Read;
             let error = match error {
                 Read::Hl7(error) => return syntax_location(error, raw, ending),
                 Read::Mapping(error) => error,
@@ -61,12 +61,12 @@ mod tests {
         use analyte_hl7::{AckCode, ControlId, Message, Options, Response, Responsibility};
         let raw = b"MSH|^~\\&|SYN|LAB|HOST|LAB|202611151200||ORU^R01^ORU_R01|message1|P|2.5.1\rOBX|1|NM|SYN||12\r";
         for error in [
-            analyte_mapping::read::Error::Hl7(analyte_hl7::Error::Escape {
+            crate::reading::Error::Hl7(analyte_hl7::Error::Escape {
                 segment: 2,
                 field: 5,
                 offset: 0,
             }),
-            analyte_mapping::read::Error::Mapping(analyte_mapping::Error::Limit {
+            crate::reading::Error::Mapping(analyte_mapping::Error::Limit {
                 position: analyte_mapping::Position {
                     record: 2,
                     field: 5,
