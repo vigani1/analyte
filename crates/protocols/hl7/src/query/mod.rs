@@ -4,7 +4,9 @@
 //! Unsupported filters remain available to the host; they must never be ignored.
 use crate::{AckCode, Field, Message, Msa, Msh, Segment, Version};
 
+mod specimen;
 mod validation;
+pub use specimen::{SpecimenSelector, specimen};
 
 fn invalid(segment: &'static str, field: usize) -> crate::Error {
     crate::Error::Control { segment, field }
