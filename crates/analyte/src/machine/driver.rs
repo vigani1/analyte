@@ -44,9 +44,6 @@ impl<E: CleanupFailure> Failures<E> {
     pub(super) fn keep(&mut self, error: E) {
         self.0 = Some(custody::effect_failure(self.0.take(), error));
     }
-    pub(super) fn is_empty(&self) -> bool {
-        self.0.is_none()
-    }
     /// Hands a kept failure to the action that reports it inside the queue.
     pub(super) fn take(&mut self) -> Option<E> {
         self.0.take()
@@ -58,6 +55,38 @@ impl<E: CleanupFailure> Failures<E> {
             (Some(kept), Ok(_)) => Err(kept),
             (Some(kept), Err(effect)) => Err(E::with_effect(kept, effect)),
             (None, result) => result,
+        }
+    }
+}
+
+/// The input a host was handling when its session ended. A vendor host sets it
+/// once per input and works out its stored order outcome from it and the
+/// session result when it closes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Trigger {
+    /// The connection opened or the machine sent bytes.
+    Exchange,
+    /// A dialog deadline was due.
+    Deadline,
+    /// The connection closed or failed while the service kept running.
+    Disconnected,
+    /// The connection closed because the service is stopping.
+    Cancelled,
+}
+
+impl Trigger {
+    /// Names the trigger of one input; a closed connection during shutdown is cancelled.
+    pub(super) fn of(input: &Input, stop: &watch::Receiver<bool>) -> Self {
+        match input {
+            Input::Opened { .. } | Input::Bytes { .. } => Self::Exchange,
+            Input::Tick => Self::Deadline,
+            Input::Closed(_) | Input::Failed(_) => {
+                if *stop.borrow() {
+                    Self::Cancelled
+                } else {
+                    Self::Disconnected
+                }
+            }
         }
     }
 }
@@ -285,13 +314,11 @@ mod tests {
     #[test]
     fn adr0012_apply_failures_outrank_stop_and_keep_every_cause() {
         let mut failures = Failures::new();
-        assert!(failures.is_empty());
         assert!(matches!(
             Failures::<Error>::new().finish(Ok(Flow::Stop)),
             Ok(Flow::Stop)
         ));
         failures.keep(Error::Deadline);
-        assert!(!failures.is_empty());
         assert!(matches!(
             failures.finish(Ok(Flow::Stop)),
             Err(Error::Deadline)

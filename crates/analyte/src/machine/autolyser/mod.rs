@@ -2,13 +2,13 @@
 use crate::intake::ByteReason;
 use crate::machine::hooks::Pause;
 mod custody;
-use super::driver::{self, Context, Effects, Failures, Flow};
+use super::driver::{self, Context, Effects, Failures, Flow, Trigger};
 use crate::intake;
 use crate::machine::connection_input::Input;
 use crate::machine::receive;
 use crate::machine::receive::custody::ms;
-use crate::orders::outcome::AutolyserEnd;
 mod error;
+mod outcome;
 pub(crate) mod settings;
 use analyte_dialog::autolyser::{Action, Dialog, Event, Request};
 use analyte_model::ReceiptId;
@@ -52,7 +52,7 @@ struct Host<'a, 'm> {
     receipt: Option<(ReceiptId, jiff::Timestamp)>,
     phase: Phase,
     guard: Option<analyte_store::PollIntentId>,
-    end_code: AutolyserEnd,
+    trigger: Trigger,
 }
 
 pub(super) async fn session(
@@ -92,7 +92,7 @@ impl<'a, 'm> Host<'a, 'm> {
             receipt: None,
             phase: Phase::Busy,
             guard: None,
-            end_code: AutolyserEnd::TransferError,
+            trigger: Trigger::Exchange,
         })
     }
 }
@@ -111,27 +111,13 @@ impl driver::ByteEffects for Host<'_, '_> {
 
 impl Effects for Host<'_, '_> {
     driver::chunk_effects!(Error);
-    async fn prepare(&mut self, _host: &mut Context<'_, '_>) -> Result<Flow, Error> {
-        self.end_code = AutolyserEnd::InputFailed;
-        Ok(Flow::Continue)
-    }
     async fn input(&mut self, host: &mut Context<'_, '_>, input: Input) -> Result<Flow, Error> {
         let machine = self.machine;
         let store = self.store;
         let conn = &mut *host.conn;
         let stop = &mut host.stop;
         let ended = matches!(input, Input::Closed(_) | Input::Failed(_));
-        self.end_code = match &input {
-            Input::Closed(_) | Input::Failed(_) => {
-                if *stop.borrow() {
-                    AutolyserEnd::TransferCancelled
-                } else {
-                    AutolyserEnd::TransferDisconnected
-                }
-            }
-            Input::Tick => AutolyserEnd::TransferTimeout,
-            Input::Opened { .. } | Input::Bytes { .. } => AutolyserEnd::TransferError,
-        };
+        self.trigger = Trigger::of(&input, stop);
         let events = match input {
             Input::Opened { .. } => {
                 self.phase.busy();
@@ -203,16 +189,17 @@ impl Effects for Host<'_, '_> {
         _host: &mut Context<'_, '_>,
         result: &mut Result<(), Error>,
     ) -> Result<(), Error> {
+        let code = outcome::end_code(self.trigger, result);
         let cleanup = custody::uncertain(
             self.store,
             self.guard,
             self.machine.machine(),
-            self.end_code.as_str(),
+            code.as_str(),
         )
         .await;
         receive::custody::retain_cleanup(result, cleanup);
         self.work
-            .close(self.store, self.end_code.into())
+            .close(self.store, code.into())
             .await
             .map_err(Into::into)
     }
@@ -227,8 +214,6 @@ impl<'a, 'm> Host<'a, 'm> {
         machine: &intake::ConnectionEvidence<'_>,
         store: &Handle,
     ) -> Option<Error> {
-        let prior_code = self.end_code;
-        self.end_code = AutolyserEnd::StorageFailed;
         let id = ReceiptId::new();
         let stored = receive::custody::store_before_ack(
             machine.machine(),
@@ -237,7 +222,6 @@ impl<'a, 'm> Host<'a, 'm> {
         .await;
         match stored {
             Ok(time) => {
-                self.end_code = prior_code;
                 self.receipt = Some((id, time));
                 match self.dialog.step(self.start.elapsed(), Event::Stored(token)) {
                     Ok(next) => actions.extend(next),
@@ -245,9 +229,6 @@ impl<'a, 'm> Host<'a, 'm> {
                 }
             }
             Err(error) => {
-                if matches!(error, receive::custody::StoreWaitError::Timeout(_)) {
-                    self.end_code = AutolyserEnd::StorageTimeout;
-                }
                 match self
                     .dialog
                     .step(self.start.elapsed(), Event::StoreFailed(token))
@@ -299,9 +280,7 @@ impl Host<'_, '_> {
             while let Some(action) = actions.pop_front() {
                 match action {
                     Action::Write(bytes) => {
-                        self.end_code = AutolyserEnd::WriteFailed;
                         receive::custody::write(conn, &bytes, ms(policy.acknowledgment_ms)).await?;
-                        self.end_code = AutolyserEnd::TransferError;
                     }
                     Action::Store(token, raw) => {
                         if let Some(error) = self
@@ -316,21 +295,7 @@ impl Host<'_, '_> {
                     }
                     Action::Park(error) => {
                         if self.work.is_active() {
-                            let code =
-                                if matches!(error, analyte_dialog::autolyser::Error::Incomplete)
-                                    && matches!(
-                                        self.end_code,
-                                        AutolyserEnd::TransferTimeout
-                                            | AutolyserEnd::TransferDisconnected
-                                            | AutolyserEnd::TransferCancelled
-                                    )
-                                {
-                                    crate::orders::outcome::Transfer::AutolyserIncomplete(
-                                        self.end_code,
-                                    )
-                                } else {
-                                    crate::orders::outcome::Transfer::AutolyserParked(error.clone())
-                                };
+                            let code = outcome::parked(self.trigger, &error);
                             self.work.refuse(store, code).await?;
                             close = true;
                         }

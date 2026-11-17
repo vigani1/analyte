@@ -1,13 +1,13 @@
 //! Receives VIDAS uploads using configured checksum, suffix and timer rules.
 use super::connection_input::Input;
-use super::driver::{self, Context, Effects, Failures, Flow};
+use super::driver::{self, Context, Effects, Failures, Flow, Trigger};
 use crate::intake;
 use crate::intake::ByteReason;
 use crate::machine::receive::custody::{self, ms};
-use crate::orders::outcome::VidasEnd;
 mod error;
+mod outcome;
 pub(crate) mod settings;
-use analyte_dialog::vidas::{Action, Config as DialogConfig, Dialog, Event, Timer};
+use analyte_dialog::vidas::{Action, Config as DialogConfig, Dialog, Event};
 use analyte_framing::vidas::Config;
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
@@ -31,7 +31,7 @@ pub(super) struct Host<'a, 'm> {
     start: Instant,
     actions: VecDeque<Action>,
     phase: Phase,
-    end_code: VidasEnd,
+    trigger: Trigger,
     config: Config,
     policy: DialogConfig,
 }
@@ -55,7 +55,7 @@ impl<'a, 'm> Host<'a, 'm> {
             start: Instant::now(),
             actions,
             phase: Phase::Opening,
-            end_code: VidasEnd::TransferError,
+            trigger: Trigger::Exchange,
             config,
             policy,
         })
@@ -64,7 +64,6 @@ impl<'a, 'm> Host<'a, 'm> {
         self.dialog = Dialog::download(self.config.clone(), self.policy.clone(), request)?;
         self.start = Instant::now();
         self.phase = Phase::Transferring;
-        self.end_code = VidasEnd::TransferError;
         self.actions.extend(self.dialog.start());
         Ok(())
     }
@@ -80,18 +79,22 @@ impl<'a, 'm> Host<'a, 'm> {
             match self.dialog.step(self.start.elapsed(), Event::Byte(byte)) {
                 Ok(actions) => self.actions.extend(actions),
                 Err(analyte_dialog::vidas::Error::Framing(error)) => {
-                    let reason = if error == analyte_framing::vidas::Error::ControlSuffix {
-                        self.end_code = VidasEnd::ControlSuffixMismatch;
+                    let suffix = error == analyte_framing::vidas::Error::ControlSuffix;
+                    let reason = if suffix {
                         ByteReason::VidasSuffix
                     } else {
-                        self.end_code = VidasEnd::FramingError;
                         ByteReason::VidasFrame(&error)
                     };
-                    intake::park_bytes(store, machine, vec![byte], reason).await?;
-                    return Err(if error == analyte_framing::vidas::Error::ControlSuffix {
+                    let parked = intake::park_bytes(store, machine, vec![byte], reason).await;
+                    let cause = if suffix {
                         Error::ControlSuffixMismatch
                     } else {
                         error.into()
+                    };
+                    // A failed park keeps the framing failure as the session's cause.
+                    return Err(match parked {
+                        Ok(()) => cause,
+                        Err(effect) => custody::effect_failure(Some(cause), effect.into()),
                     });
                 }
                 Err(error) => return Err(error.into()),
@@ -136,13 +139,11 @@ impl Effects for Host<'_, '_> {
         if self.apply(Vec::new(), host.conn).await? == Flow::Stop {
             return Ok(Flow::Stop);
         }
-        self.end_code = VidasEnd::InputFailed;
         Ok(Flow::Continue)
     }
     async fn input(&mut self, host: &mut Context<'_, '_>, input: Input) -> Result<Flow, Error> {
         let conn = &mut *host.conn;
-        let stop = &mut host.stop;
-        self.end_code = VidasEnd::TransferError;
+        self.trigger = Trigger::of(&input, &host.stop);
         match input {
             Input::Opened { .. } => self.phase = Phase::Idle,
             Input::Tick => {
@@ -150,11 +151,6 @@ impl Effects for Host<'_, '_> {
                     .extend(self.dialog.step(self.start.elapsed(), Event::Tick)?);
             }
             Input::Closed(_) | Input::Failed(_) => {
-                self.end_code = if *stop.borrow() {
-                    VidasEnd::TransferCancelled
-                } else {
-                    VidasEnd::TransferDisconnected
-                };
                 self.actions.extend(
                     self.dialog
                         .step(self.start.elapsed(), Event::Disconnected)?,
@@ -174,10 +170,10 @@ impl Effects for Host<'_, '_> {
     async fn close(
         &mut self,
         _host: &mut Context<'_, '_>,
-        _result: &mut Result<(), Error>,
+        result: &mut Result<(), Error>,
     ) -> Result<(), Error> {
         self.work
-            .close(self.store, self.end_code.into())
+            .close(self.store, outcome::end_code(self.trigger, result).into())
             .await
             .map_err(Into::into)
     }
@@ -199,9 +195,7 @@ impl Host<'_, '_> {
             while let Some(action) = self.actions.pop_front() {
                 match action {
                     Action::Write(bytes) => {
-                        self.end_code = VidasEnd::WriteFailed;
                         custody::write(conn, &bytes, ms(installed.acknowledgment_ms)).await?;
-                        self.end_code = VidasEnd::TransferError;
                     }
                     Action::Store(packet) => {
                         let id = ReceiptId::new();
@@ -222,15 +216,11 @@ impl Host<'_, '_> {
                     }
                     Action::TimerArmed(_, _) | Action::TimerCancelled(_) => {}
                     Action::Park => {
-                        if self.end_code == VidasEnd::TransferError {
-                            self.end_code = match self.dialog.expired_timer() {
-                                Some(Timer::Acknowledgment) => VidasEnd::AcknowledgmentTimeout,
-                                Some(Timer::Interbyte) => VidasEnd::InterbyteTimeout,
-                                Some(Timer::Session) => VidasEnd::SessionTimeout,
-                                Some(Timer::Commit) => VidasEnd::CommitTimeout,
-                                None => VidasEnd::TransferRefusedOrUnexpected,
-                            };
-                        }
+                        // Kept before parking, so the park and its deadline stay
+                        // in the session's cause even when parking itself fails.
+                        failures.keep(Error::TransferUnreconciled {
+                            expired: self.dialog.expired_timer(),
+                        });
                         let parked = intake::park_bytes(
                             store,
                             machine,
@@ -239,9 +229,6 @@ impl Host<'_, '_> {
                         )
                         .await;
                         parked?;
-                        if failures.is_empty() {
-                            failures.keep(Error::TransferUnreconciled);
-                        }
                     }
                     Action::Close => match self.work.confirmed(store).await? {
                         crate::orders::vidas::Progress::DownloadNext(request) => {
