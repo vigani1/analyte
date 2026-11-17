@@ -1,6 +1,4 @@
 //! Records enabled declarations and wire applications even when syntax or mapping is parked.
-const WIRE_COMPATIBILITY_SOURCE: &str =
-    "Declared wire compatibility exercised; original bytes and semantic values retained";
 use crate::installation::config::Machine;
 use crate::intake::{Mapping, ParkReason};
 use EvidenceError as Error;
@@ -9,6 +7,10 @@ use analyte_model::{
     AppliedDeparture, DepartureEvidence, DepartureMeaning, DepartureSpan, EvidenceList, Identifier,
     SourceText,
 };
+
+/// Source note stored when a declared wire compatibility is exercised.
+const WIRE_COMPATIBILITY_SOURCE: &str =
+    "Declared wire compatibility exercised; original bytes and semantic values retained";
 
 pub(crate) fn for_receipt(
     machine: &Machine,

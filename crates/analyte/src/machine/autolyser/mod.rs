@@ -15,6 +15,7 @@ pub(crate) use error::Error;
 use std::{collections::VecDeque, time::Instant};
 use tokio::sync::watch;
 
+/// Where the host is between machine exchanges; recovery ends only with a completed report.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Phase {
     Busy,
@@ -23,9 +24,17 @@ enum Phase {
 }
 
 impl Phase {
+    /// Leaves `Ready` without ending an L recovery in progress.
     fn busy(&mut self) {
         if *self != Self::Recovering {
             *self = Self::Busy;
+        }
+    }
+
+    /// An insertion never ends L recovery; only a completed report does.
+    fn after_insertion(&mut self, ready: bool) {
+        if *self != Self::Recovering {
+            *self = if ready { Self::Ready } else { Self::Busy };
         }
     }
 }
@@ -370,7 +379,7 @@ impl Host<'_, '_> {
                 Action::Insertion(reception) => {
                     self.receipt.take();
                     let ready = self.work.insertion(reception, store).await?;
-                    self.phase = if ready { Phase::Ready } else { Phase::Busy };
+                    self.phase.after_insertion(ready);
                     close |= !ready;
                 }
                 Action::Uncertain => {
