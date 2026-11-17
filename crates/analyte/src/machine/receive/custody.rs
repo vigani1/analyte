@@ -30,7 +30,12 @@ fn classify_write(error: analyte_transport::Error) -> WriteError {
         analyte_transport::Error::Deadline(analyte_transport::DeadlineKind::WriteAll) => {
             WriteError::Deadline(error)
         }
-        error => WriteError::Transport(error),
+        error @ (analyte_transport::Error::InvalidLimits
+        | analyte_transport::Error::OversizedWrite
+        | analyte_transport::Error::ConsumerClosed
+        | analyte_transport::Error::Offline
+        | analyte_transport::Error::Deadline(_)
+        | analyte_transport::Error::Io { .. }) => WriteError::Transport(error),
     }
 }
 
