@@ -42,7 +42,7 @@ pub(crate) enum ByteReason<'a> {
     /// POCT syntax rejection diagnostic.
     PoctSyntax(&'a analyte_poct::MessageError),
     /// POCT conversation refusal.
-    PoctDialog(analyte_dialog::poct::ParkReason),
+    PoctDialog(analyte_dialog::poct::RefusalCode),
     /// POCT closure evidence, including bounded unresolved ticket details.
     PoctClosure { normal: bool, unresolved: &'a str },
     /// Autolyser conversation refusal.
@@ -178,7 +178,7 @@ fn diagnostic_reason_spellings_are_pinned() {
         "POCT syntax: invalid message structure"
     );
     assert_eq!(
-        ByteReason::PoctDialog(analyte_dialog::poct::ParkReason::KeepAlive).to_string(),
+        ByteReason::PoctDialog(analyte_dialog::poct::RefusalCode::KeepAlive).to_string(),
         "POCT unsupported Keep Alive"
     );
     assert_eq!(

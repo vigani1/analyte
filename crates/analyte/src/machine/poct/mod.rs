@@ -4,7 +4,7 @@ use super::custody::{self, ms};
 use crate::intake;
 use crate::intake::ByteReason;
 mod error;
-use analyte_dialog::poct::{CommitOutcome, Dialog, DialogAction, DialogConfig, DialogEvent};
+use analyte_dialog::poct::{Action, CommitOutcome, Config, Dialog, Event};
 use analyte_model::ReceiptId;
 use analyte_poct::{Body, ControlId, Header, Message, Timestamp};
 use analyte_store::Handle;
@@ -52,7 +52,7 @@ impl ConnectionState {
         let policy = &settings.policy();
         let limits = super::interpretation::poct_limits(settings);
         let dialog = Dialog::new(
-            DialogConfig {
+            Config {
                 pending_messages: policy.pending_messages,
                 message_bytes: limits.message_bytes,
                 response_timeout: ms(policy.response_ms),
@@ -93,7 +93,7 @@ impl ConnectionState {
             )
             .await?;
             // Incoming fragments must not postpone the absolute dialog deadline.
-            let actions = self.dialog.step(self.start.elapsed(), DialogEvent::Tick)?;
+            let actions = self.dialog.step(self.start.elapsed(), Event::Tick)?;
             if process(
                 actions,
                 &mut self.dialog,
@@ -110,7 +110,7 @@ impl ConnectionState {
             match input {
                 Input::Opened { .. } => {}
                 Input::Tick => {
-                    let actions = self.dialog.step(self.start.elapsed(), DialogEvent::Tick)?;
+                    let actions = self.dialog.step(self.start.elapsed(), Event::Tick)?;
                     if process(
                         actions,
                         &mut self.dialog,
@@ -128,7 +128,7 @@ impl ConnectionState {
                 Input::Closed(_) | Input::Failed(_) | Input::RecordingFailed(_) => {
                     let actions = self
                         .dialog
-                        .step(self.start.elapsed(), DialogEvent::Disconnected)?;
+                        .step(self.start.elapsed(), Event::Disconnected)?;
                     process(
                         actions,
                         &mut self.dialog,
@@ -190,7 +190,7 @@ impl ConnectionState {
             if byte != b'>' {
                 continue;
             }
-            let actions = dialog.step(start.elapsed(), DialogEvent::Tick)?;
+            let actions = dialog.step(start.elapsed(), Event::Tick)?;
             if process(actions, dialog, start, machine, store, conn, settings).await? {
                 intake::park_bytes(
                     store,
@@ -220,7 +220,7 @@ impl ConnectionState {
                     Parsed::Skip => continue,
                     Parsed::Close => return Ok(true),
                 };
-            let actions = dialog.step(start.elapsed(), DialogEvent::Received(message))?;
+            let actions = dialog.step(start.elapsed(), Event::Received(message))?;
             if process(actions, dialog, start, machine, store, conn, settings).await? {
                 return Ok(true);
             }
@@ -256,7 +256,7 @@ async fn parse_message(
             if let Some(reference) = reference {
                 let actions = dialog.step(
                     start.elapsed(),
-                    DialogEvent::InvalidHello {
+                    Event::InvalidHello {
                         reference,
                         error: ack_error,
                     },
@@ -272,7 +272,7 @@ async fn parse_message(
 }
 
 async fn process(
-    actions: Vec<DialogAction>,
+    actions: Vec<Action>,
     dialog: &mut Dialog,
     start: Instant,
     machine: &intake::Connection<'_>,
@@ -287,13 +287,13 @@ async fn process(
     let result = async {
         while let Some(action) = actions.pop_front() {
             match action {
-                DialogAction::InspectHello {
+                Action::InspectHello {
                     device_id: _,
                     capabilities: _,
                 } => {
-                    actions.extend(dialog.step(start.elapsed(), DialogEvent::HelloDecision(true))?);
+                    actions.extend(dialog.step(start.elapsed(), Event::HelloDecision(true))?);
                 }
-                DialogAction::Store { ticket, message } => {
+                Action::Store { ticket, message } => {
                     let operation = store_message(store, machine, &message);
                     let outcome = match custody::store_before_ack(machine, operation).await {
                         Ok(outcome) => outcome,
@@ -303,10 +303,10 @@ async fn process(
                         }
                     };
                     actions.extend(
-                        dialog.step(start.elapsed(), DialogEvent::Committed { ticket, outcome })?,
+                        dialog.step(start.elapsed(), Event::Committed { ticket, outcome })?,
                     );
                 }
-                DialogAction::Park { message, reason } => {
+                Action::Park { message, reason } => {
                     intake::park_bytes(
                         store,
                         machine,
@@ -315,7 +315,7 @@ async fn process(
                     )
                     .await?;
                 }
-                DialogAction::Send { control_id, body } => {
+                Action::Send { control_id, body } => {
                     let mut limits = limits;
                     limits.message_bytes =
                         limits.message_bytes.min(dialog.outbound_message_limit());
@@ -333,8 +333,8 @@ async fn process(
                     )?;
                     custody::write(conn, message.document().raw(), ms(send_timeout_ms)).await?;
                 }
-                DialogAction::ReadEnabled(_) => {}
-                DialogAction::Deferred(message) => {
+                Action::ReadEnabled(_) => {}
+                Action::Deferred(message) => {
                     intake::park_bytes(
                         store,
                         machine,
@@ -344,10 +344,10 @@ async fn process(
                     .await?;
                     return Err(Error::PoctBackpressureViolated);
                 }
-                DialogAction::TopicComplete => {
-                    actions.extend(dialog.step(start.elapsed(), DialogEvent::Finish)?);
+                Action::TopicComplete => {
+                    actions.extend(dialog.step(start.elapsed(), Event::Finish)?);
                 }
-                DialogAction::Close { normal, unresolved } => {
+                Action::Close { normal, unresolved } => {
                     if !normal || !unresolved.is_empty() {
                         let unresolved = analyte_dialog::poct::ticket_evidence(&unresolved);
                         intake::park_bytes(
