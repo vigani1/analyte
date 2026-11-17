@@ -101,6 +101,7 @@ impl Running {
         let space = Arc::new(AtomicU64::new(u64::MAX));
         let probe = Space(space.clone());
         let (stop, stopped) = oneshot::channel();
+        let (ready, started) = oneshot::channel();
         let task = tokio::spawn(service::serve_loopback_test(
             program,
             Box::new(probe),
@@ -109,8 +110,9 @@ impl Running {
                 Ok(())
             },
             secrets,
-            None,
+            Some(ready),
         ));
+        tokio::time::timeout(HANG_GUARD, started).await??;
         let peer = TcpStream::connect(address).await?;
         Ok(Self {
             directory,
@@ -599,3 +601,5 @@ mod custody;
 
 mod edits;
 mod identity;
+
+mod recordings;

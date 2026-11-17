@@ -189,7 +189,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             vec![Event::Send(crate::orders::astm::envelope(
                 machine,
                 vec![reserved.payload.record()?.to_vec()],
-                b'N',
+                analyte_astm::OrderTermination::Normal,
             ))]
         } else if bytes.is_empty()
             && self.response.is_some()
@@ -282,7 +282,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
                 self.commit_frame(id, number, bytes, stop, actions).await?;
             }
             Action::Record(record) => {
-                if record.first() == Some(&b'Q') && self.query_started.is_none() {
+                if analyte_astm::starts_query(&record) && self.query_started.is_none() {
                     self.query_started = Some(Instant::now());
                 }
                 if self

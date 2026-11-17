@@ -83,7 +83,12 @@ fn lis02_section11_cancel_is_distinct_and_unsupported_filters_are_not_empty_orde
     let machine = machine("error")?;
     // LIS02-A2 section 6.13 p.13: the edition is LIS2-A2, not a legacy numeric version.
     assert!(
-        envelope(&machine, Vec::new(), b'Q')[0].starts_with(b"H|\\^&|||Analyte|||||||P|LIS2-A2|")
+        envelope(
+            &machine,
+            Vec::new(),
+            analyte_astm::OrderTermination::QueryError
+        )[0]
+        .starts_with(b"H|\\^&|||Analyte|||||||P|LIS2-A2|")
     );
     assert!(matches!(
         request(
@@ -181,7 +186,7 @@ async fn rule9_astm_all_untrusted_states_and_destination_freshness() -> Result<(
 fn lis02_6_14_p13_generated_header_time() -> Result<(), Error> {
     let machine = machine("error")?;
     let before = jiff::Timestamp::now().strftime("%Y%m%d%H%M%S").to_string();
-    let records = envelope(&machine, Vec::new(), b'N');
+    let records = envelope(&machine, Vec::new(), analyte_astm::OrderTermination::Normal);
     let header = std::str::from_utf8(&records[0])?;
     let timestamp = header
         .trim_end_matches('\r')
@@ -220,7 +225,7 @@ fn lis02_6_10_generated_header_identifies_receiver() -> Result<(), Error> {
             )?
             .validate()?;
         }
-        let records = envelope(&machine, Vec::new(), b'N');
+        let records = envelope(&machine, Vec::new(), analyte_astm::OrderTermination::Normal);
         let messages = analyte_astm::parse(&records.concat(), analyte_astm::Limits::default())?;
         let header = analyte_astm::Header::new(&messages[0].records()[0]).ok_or("header")?;
         assert_eq!(

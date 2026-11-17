@@ -517,15 +517,7 @@ fn item_outcomes(
                 .iter()
                 .find(|d| d.id.raw() == expected.as_bytes())
                 .map_or(code.clone(), |d| {
-                    format!(
-                        "{code}:{}",
-                        match d.status {
-                            law::OrderStatus::Scheduled => "SC",
-                            law::OrderStatus::InProgress => "IP",
-                            law::OrderStatus::Complete => "CM",
-                            law::OrderStatus::Cancelled => "CA",
-                        }
-                    )
+                    format!("{code}:{}", d.status.as_bytes().escape_ascii())
                 })
         } else {
             code
