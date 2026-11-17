@@ -30,19 +30,23 @@ pub(crate) async fn lookup(
     let destination = destination(machine);
     match store
         .request(until, move |store| {
-            Ok(store.orders(
+            store.orders(
                 &destination,
                 &sample,
                 jiff::Timestamp::now().as_second(),
                 freshness,
-            )?)
+            )
         })
         .await
     {
         Ok(answer) => Ok(answer),
-        Err(analyte_store::Error::Timeout | analyte_store::Error::Busy(_)) => {
-            Ok(analyte_store::Lookup::NotTrusted)
-        }
+        Err(
+            analyte_store::OrderError::Busy(_)
+            | analyte_store::OrderError::Worker(
+                analyte_store::WorkerError::AdmissionTimeout { .. }
+                | analyte_store::WorkerError::ResponseTimeout(_),
+            ),
+        ) => Ok(analyte_store::Lookup::NotTrusted),
         Err(error) => Err(error.into()),
     }
 }

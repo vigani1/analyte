@@ -61,8 +61,8 @@ async fn rule7_active_delivery_and_order_poll_cancel_without_waiting_for_http_de
     }
     // Cancellation after claim preserves uncertain evidence for audited reconciliation.
     let health = store
-        .request(until()?, |s| {
-            Ok(s.health(
+        .request::<_, analyte_store::Error>(until()?, |s| {
+            Ok::<_, analyte_store::Error>(s.health(
                 &Identifier::new("app").map_err(analyte_store::Error::Text)?,
                 jiff::Timestamp::now().as_second(),
                 30,
@@ -72,7 +72,7 @@ async fn rule7_active_delivery_and_order_poll_cancel_without_waiting_for_http_de
     assert_eq!(health.pending_count, 1);
     assert!(
         store
-            .request(until()?, |s| Ok(
+            .request::<_, analyte_store::Error>(until()?, |s| Ok::<_, analyte_store::Error>(
                 s.claim(jiff::Timestamp::now().as_second())?
             ))
             .await?
@@ -132,7 +132,9 @@ async fn mutation_rule7_idle_workers_wait_before_claiming_again() -> TestResult 
                     .await
                     .is_pending()
             );
-            store.request(until()?, |_| Ok(())).await?;
+            store
+                .request(until()?, |_| Ok::<_, analyte_store::Error>(()))
+                .await?;
             tokio::time::pause();
             assert!(
                 std::future::poll_fn(|cx| Poll::Ready(run.as_mut().poll(cx)))
@@ -145,10 +147,10 @@ async fn mutation_rule7_idle_workers_wait_before_claiming_again() -> TestResult 
                     .await
                     .is_pending()
             );
-            fixed_time(store.request(until()?, |_| Ok(()))).await?;
-            let claim = fixed_time(store.request(until()?, |s| {
-                Ok(s.claim(jiff::Timestamp::now().as_second())?)
-            }))
+            fixed_time(store.request(until()?, |_| Ok::<_, analyte_store::Error>(()))).await?;
+            let claim = fixed_time(
+                store.request(until()?, |s| s.claim(jiff::Timestamp::now().as_second())),
+            )
             .await?;
             assert!(claim.is_some(), "idle worker claimed before its 100ms wait");
             tokio::time::resume();
@@ -269,9 +271,7 @@ async fn adr0008_slow_destination_does_not_delay_another_owned_worker() -> TestR
     })
     .await??;
     drop(slow_attempt);
-    let rows = store
-        .request(until()?, |store| Ok(store.deliveries(0)?))
-        .await?;
+    let rows = store.request(until()?, |store| store.deliveries(0)).await?;
     assert!(
         rows.iter().any(|row| Some(&row.id) == ids.first()
             && row.state == analyte_store::DeliveryState::InFlight)

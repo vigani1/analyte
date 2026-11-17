@@ -95,7 +95,7 @@ pub(super) fn next(html: &mut Markup, route: &str, after: impl std::fmt::Display
 async fn pause(state: &Context, html: &mut Markup) -> Result<(), Error> {
     let paused = state
         .store
-        .request(deadline()?, |s| Ok(s.restore_unreconciled()?))
+        .request(deadline()?, |s| s.restore_unreconciled())
         .await?;
     html.push_markup(if paused {
         concat!(
@@ -139,7 +139,7 @@ pub(super) async fn machines(
                 loop {
                     let rows = state
                         .store
-                        .request(until, move |s| Ok(s.receipts(&cursor)?))
+                        .request(until, move |s| s.receipts(&cursor))
                         .await?;
                     let Some(end) = rows.last() else {
                         break;
@@ -246,7 +246,7 @@ pub(super) async fn detail(
     };
     let result = state
         .store
-        .request(until, move |s| {
+        .request::<_, analyte_store::Error>(until, move |s| {
             let Some(row) = s.parked_item(id)? else {
                 return Ok(None);
             };
@@ -313,7 +313,7 @@ async fn parked_page(state: &Context, cursor: Cursor) -> Result<Markup, Error> {
     let after = i64::try_from(cursor.after)?;
     let (rows, last) = state
         .store
-        .request(deadline()?, move |s| {
+        .request::<_, analyte_store::Error>(deadline()?, move |s| {
             let mut html = Markup::new();
             let mut last = None;
             for row in s.parked(after)?.into_iter().take(PAGE) {
@@ -338,7 +338,7 @@ async fn parked_page(state: &Context, cursor: Cursor) -> Result<Markup, Error> {
                 });
                 last = Some(row.id);
             }
-            Ok((html, last))
+            Ok::<_, analyte_store::Error>((html, last))
         })
         .await?;
     let mut html = start("Parked items");

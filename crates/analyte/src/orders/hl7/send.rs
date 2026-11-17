@@ -300,7 +300,7 @@ pub(super) async fn finish(
     }
     let identity = exchange.record.key.clone();
     store
-        .request(deadline()?, move |store| {
+        .request::<_, analyte_store::Error>(deadline()?, move |store| {
             let current = store
                 .machine_order(&identity)?
                 .ok_or(analyte_store::Error::Corruption)?;
@@ -315,7 +315,7 @@ pub(super) async fn finish(
                     crate::orders::event,
                 )?;
             }
-            Ok(())
+            Ok::<_, analyte_store::Error>(())
         })
         .await?;
     Ok(())

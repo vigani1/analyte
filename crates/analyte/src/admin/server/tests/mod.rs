@@ -251,7 +251,7 @@ async fn wait_for_service_listener(host: &str) -> Result<(), Error> {
 
 async fn seed_overview(store: &analyte_store::Handle) -> Result<(), Error> {
     store
-        .request(fixture_deadline()?, move |store| {
+        .request::<_, analyte_store::Error>(fixture_deadline()?, move |store| {
             store.evaluate_alert(
                 &analyte_store::AlertKey::RestorePaused,
                 "<script>responder('duty')&</script>",
@@ -295,7 +295,7 @@ async fn seed_overview(store: &analyte_store::Handle) -> Result<(), Error> {
                 time: 103,
                 reason: Reason::new("synthetic restore").map_err(analyte_store::Error::Text)?,
             })?;
-            Ok(())
+            Ok::<_, analyte_store::Error>(())
         })
         .await?;
     Ok(())

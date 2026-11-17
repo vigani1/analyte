@@ -76,7 +76,7 @@ pub(super) async fn receipt(
     };
     let result = state
         .store
-        .request(until, move |s| Ok(s.interpretation(id, version.version)?))
+        .request(until, move |s| s.interpretation(id, version.version))
         .await;
     let interpretation = match result {
         Ok(Some(value)) => value,

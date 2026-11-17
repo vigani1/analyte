@@ -263,3 +263,5 @@ pub enum EvidenceError {
     #[error(transparent)]
     Astm(#[from] analyte_framing::astm::Error),
 }
+
+analyte_store::forward_command_errors!(EvidenceError);

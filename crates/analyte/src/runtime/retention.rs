@@ -46,14 +46,14 @@ pub(crate) async fn run(
                 .ok_or_else(|| Error::RetentionDeadlineOverflow)?;
             let outcome = store
                 .request(crate::deadline()?, move |store| {
-                    Ok(store.purge_batch(&machine, days, after, now, batch_deadline)?)
+                    store.purge_batch(&machine, days, after, now, batch_deadline)
                 })
                 .await;
             match outcome {
                 Ok(run) => {
                     cursor.0 = run.after;
                 }
-                Err(analyte_store::Error::Timeout) => {
+                Err(analyte_store::MaintenanceError::Timeout) => {
                     tracing::warn!(
                         error_kind = "retention_deadline",
                         "retention batch rolled back; retrying on next interval"
@@ -64,7 +64,7 @@ pub(crate) async fn run(
             if days.is_some() {
                 let order_after = cursor.1;
                 let run = store
-                    .request(crate::deadline()?, move |store| {
+                    .request::<_, analyte_store::Error>(crate::deadline()?, move |store| {
                         let until = Instant::now()
                             .checked_add(Duration::from_millis(250))
                             .ok_or(analyte_store::Error::DeadlineOverflow)?;
@@ -83,7 +83,7 @@ pub(crate) async fn run(
                     Err(error) => return Err(error.into()),
                 }
                 store
-                    .request(crate::deadline()?, |store| {
+                    .request::<_, analyte_store::Error>(crate::deadline()?, |store| {
                         let until = Instant::now()
                             .checked_add(Duration::from_millis(250))
                             .ok_or(analyte_store::Error::DeadlineOverflow)?;
@@ -135,9 +135,13 @@ mod tests {
             .await?,
         );
         store
-            .request(crate::deadline()?, |store| {
-                Ok(store
-                    .configure_retention_key(Some(analyte_store::DigestKey::new([1; 32])), true)?)
+            .request::<_, analyte_store::Error>(crate::deadline()?, |store| {
+                Ok::<_, analyte_store::Error>(
+                    store.configure_retention_key(
+                        Some(analyte_store::DigestKey::new([1; 32])),
+                        true,
+                    )?,
+                )
             })
             .await?;
         let (stop, stopped) = watch::channel(false);
@@ -149,7 +153,7 @@ mod tests {
         tokio::time::timeout(Duration::from_secs(5), async {
             loop {
                 if store
-                    .request(crate::deadline()?, |store| Ok(store.last_purge_run()?))
+                    .request(crate::deadline()?, |store| store.last_purge_run())
                     .await?
                     .is_some()
                 {

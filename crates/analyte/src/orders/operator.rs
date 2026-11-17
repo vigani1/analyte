@@ -87,7 +87,7 @@ pub async fn run(program: &Program, actor: Identifier, command: Command) -> Resu
     };
     let mut store = crate::open_system_store(program).await?;
     let paused = store
-        .request(deadline()?, |store| Ok(store.restore_unreconciled()?))
+        .request(deadline()?, |store| store.restore_unreconciled())
         .await?;
     if paused {
         crate::operator::output::line(
@@ -95,7 +95,7 @@ pub async fn run(program: &Program, actor: Identifier, command: Command) -> Resu
         )?;
     }
     let result = store
-        .request(deadline()?, move |store| match command {
+        .request::<_, analyte_store::Error>(deadline()?, move |store| match command {
             Command::ResumeAfterRestore { .. } => {
                 store.resume_after_restore(&audit)?;
                 Ok(Vec::new())

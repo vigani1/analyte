@@ -98,3 +98,5 @@ fn http_client(timeout: Duration) -> Result<reqwest::Client, reqwest::Error> {
         .timeout(timeout)
         .build()
 }
+
+analyte_store::forward_command_errors!(Error);

@@ -2,6 +2,9 @@
 /// Failures of bounded persistence primitives, independent of application operations.
 #[derive(Debug, thiserror::Error)]
 pub enum StorageError {
+    /// The worker could not establish completion of the persistence operation.
+    #[error(transparent)]
+    Worker(#[from] crate::WorkerError),
     /// The host reserve or database size limit refused admission.
     #[error("storage capacity reserve reached")]
     Capacity,
@@ -64,6 +67,7 @@ impl From<rusqlite::Error> for StorageError {
 impl From<StorageError> for crate::Error {
     fn from(error: StorageError) -> Self {
         match error {
+            StorageError::Worker(cause) => Self::Worker(cause),
             StorageError::Capacity => Self::Capacity,
             StorageError::LimitExceeded { what } => Self::LimitExceeded { what },
             StorageError::Busy(cause) => Self::Busy(cause),

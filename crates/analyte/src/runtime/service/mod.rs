@@ -87,7 +87,7 @@ pub(crate) async fn open_store_with_deadline(
     )
     .await?;
     let result = handle
-        .request(until, move |store| {
+        .request::<_, analyte_store::Error>(until, move |store| {
             store.configure_retention_key(key, finite)?;
             if finite {
                 store.retention_space_ready()?;
@@ -273,7 +273,7 @@ async fn serve_with(
         // Deliberately emulate a stuck OS flush without changing the store worker.
         // Only child-process tests enable this; no protocol or storage bytes change.
         store
-            .request::<()>(deadline()?, |_| {
+            .request::<(), analyte_store::Error>(deadline()?, |_| {
                 loop {
                     std::thread::park();
                 }
@@ -307,7 +307,7 @@ async fn prepare_service(
         #[cfg(feature = "test-hooks")]
         super::test_hooks::publish_store_probes(program, &store)?;
         let paused = store
-            .request(deadline()?, |store| Ok(store.restore_unreconciled()?))
+            .request(deadline()?, |store| store.restore_unreconciled())
             .await?;
         tracing::info!(
             order_sending_paused_after_restore = paused,

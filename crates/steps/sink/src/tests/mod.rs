@@ -158,7 +158,7 @@ async fn enqueue(
     delivery: analyte_store::Delivery,
 ) -> Result<(), Error> {
     store
-        .request(until()?, move |s| {
+        .request::<_, analyte_store::Error>(until()?, move |s| {
             s.receive(&metadata, b"raw", b"config")?;
             let is_correction = result
                 .parts
@@ -177,7 +177,7 @@ async fn enqueue(
                 analyte_store::ReconcileInput::standard(&[is_correction], &[]),
                 |_, _| Ok(vec![delivery]),
             )?;
-            Ok(())
+            Ok::<_, analyte_store::Error>(())
         })
         .await?;
     Ok(())
@@ -313,7 +313,7 @@ async fn check_delivery_conflicts(store: &Handle, worker: &Worker<'_>, peer: &Pe
     conflicting.payload.push(b' ');
     enqueue(store, metadata, original, conflicting).await?;
     assert_eq!(worker.deliver_once().await?, DeliveryOutcome::Parked);
-    let parked = store.request(until()?, |s| Ok(s.parked(0)?)).await?;
+    let parked = store.request(until()?, |s| s.parked(0)).await?;
     assert!(parked.iter().any(|p| p.evidence.contains("conflict")));
     assert!(parked.iter().any(|p| p.evidence.contains("\"conflict\"")));
 
@@ -371,7 +371,7 @@ async fn check_order_events(store: &Handle, destinations: &[Destination]) -> Tes
         )?;
         store
             .request(until()?, move |s| {
-                Ok(s.enqueue_order_event(&delivery, jiff::Timestamp::now().as_second())?)
+                s.enqueue_order_event(&delivery, jiff::Timestamp::now().as_second())
             })
             .await?;
         assert_eq!(
@@ -390,7 +390,7 @@ async fn check_cache_changes(
     poller: &Poller<'_>,
 ) -> TestResult {
     let first = store
-        .request(until()?, |s| {
+        .request::<_, analyte_store::Error>(until()?, |s| {
             Ok(s.cursor(&Identifier::new("app").map_err(analyte_store::Error::Text)?)?)
         })
         .await?;
@@ -413,7 +413,7 @@ async fn check_cache_changes(
         .map_err(|_| "receiver seed thread failed")?;
     poller.poll_once().await?;
     let cached = store
-        .request(until()?, |s| {
+        .request::<_, analyte_store::Error>(until()?, |s| {
             Ok(s.orders(
                 &Identifier::new("app").map_err(analyte_store::Error::Text)?,
                 &SampleId::new("000Ab12").map_err(analyte_store::Error::Text)?,
@@ -433,13 +433,13 @@ async fn check_cache_changes(
         analyte_contract::document::OrderState::CancelRequested
     );
     let next = store
-        .request(until()?, |s| {
+        .request::<_, analyte_store::Error>(until()?, |s| {
             Ok(s.cursor(&Identifier::new("app").map_err(analyte_store::Error::Text)?)?)
         })
         .await?;
     assert_ne!(first, next);
     store
-        .request(until()?, |s| {
+        .request::<_, analyte_store::Error>(until()?, |s| {
             Ok(s.order_page(&analyte_store::OrderPage {
                 destination: Identifier::new("app").map_err(analyte_store::Error::Text)?,
                 cursor: Identifier::new("invalid-cursor").map_err(analyte_store::Error::Text)?,
@@ -513,7 +513,7 @@ async fn check_pause_and_resume(
     ))?];
     store
         .request(until()?, move |s| {
-            Ok(s.resend_delivery(pause_id, false, &release)?)
+            s.resend_delivery(pause_id, false, &release)
         })
         .await?;
     assert!(

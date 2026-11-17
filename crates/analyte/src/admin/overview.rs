@@ -48,8 +48,8 @@ async fn render(state: &Context) -> Result<Markup, Error> {
     let directory = state.directory.clone();
     let (paused, free) = state
         .store
-        .request(until, move |store| {
-            Ok((
+        .request::<_, analyte_store::Error>(until, move |store| {
+            Ok::<_, analyte_store::Error>((
                 store.restore_unreconciled()?,
                 fs4::available_space(&directory)?,
             ))
@@ -90,7 +90,7 @@ async fn render(state: &Context) -> Result<Markup, Error> {
     );
     let cancelled = state
         .store
-        .request(until, |s| Ok(s.analyzer_cancelled_count()?))
+        .request(until, |s| s.analyzer_cancelled_count())
         .await?;
     html.push_fragment(
         &Markup::new()
@@ -148,8 +148,8 @@ async fn render_uncertain_orders(
     loop {
         let page = state
             .store
-            .request(until, move |store| {
-                Ok(store.machine_orders(&MachineOrderFilter {
+            .request::<_, analyte_store::Error>(until, move |store| {
+                Ok::<_, analyte_store::Error>(store.machine_orders(&MachineOrderFilter {
                     after,
                     machine: None,
                     state: Some(OrderState::Uncertain),
@@ -226,7 +226,7 @@ async fn render_machines(
     loop {
         let page = state
             .store
-            .request(until, move |store| Ok(store.receipts(&cursor)?))
+            .request(until, move |store| store.receipts(&cursor))
             .await?;
         let Some(last) = page.last() else {
             break;
@@ -306,7 +306,7 @@ mod webhook_tests {
         )
         .await?;
         store
-            .request(deadline()?, |s| {
+            .request::<_, analyte_store::Error>(deadline()?, |s| {
                 let endpoint =
                     analyte_model::Identifier::new("relay").map_err(analyte_store::Error::Text)?;
                 s.register_alert_endpoint(&endpoint)?;

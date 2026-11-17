@@ -28,8 +28,8 @@ pub(super) async fn reject(
     reason: analyte_model::SourceText,
 ) -> Result<Result<MachineOrder, SendRefusal>, Error> {
     Ok(store
-        .request(until, move |store| {
-            Ok(store.reject_unsent(
+        .request::<_, analyte_store::Error>(until, move |store| {
+            Ok::<_, analyte_store::Error>(store.reject_unsent(
                 &candidate(&identity, version, freshness),
                 reason,
                 super::event,
@@ -49,7 +49,7 @@ pub(super) async fn cancel(
     freshness: u64,
 ) -> Result<MachineOrder, analyte_store::Error> {
     store
-        .request(until, move |store| {
+        .request::<_, analyte_store::Error>(until, move |store| {
             Ok(store.request_order_cancel(
                 id,
                 version,
@@ -82,7 +82,7 @@ pub(super) async fn admit<T: Send + 'static>(
     encode: impl FnOnce(&MachineOrder) -> Result<T, analyte_store::OrderError> + Send + 'static,
 ) -> Result<Result<(MachineOrder, T), SendRefusal>, analyte_store::Error> {
     store
-        .request(until, move |store| {
+        .request::<_, analyte_store::Error>(until, move |store| {
             let mut rendered = None;
             let mut encode = Some(encode);
             let reserved = store.reserve_send(
@@ -133,7 +133,7 @@ pub(super) async fn cancellations(
     let target = machine.id.clone();
     let freshness = machine.destination_limits.freshness.as_secs();
     Ok(store
-        .request(until, move |store| {
+        .request::<_, analyte_store::Error>(until, move |store| {
             let now = jiff::Timestamp::now().as_second();
             if !store
                 .order_trust(&destination, now, freshness)?

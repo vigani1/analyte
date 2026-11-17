@@ -107,3 +107,5 @@ pub enum Error {
 #[derive(Debug, thiserror::Error)]
 #[error("{0}")]
 pub struct DispatchCause(pub &'static str);
+
+analyte_store::forward_command_errors!(Error);

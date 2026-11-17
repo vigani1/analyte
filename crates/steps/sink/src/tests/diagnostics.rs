@@ -61,7 +61,7 @@ async fn adr0008_app_diagnostics_park_and_worker_continues() -> TestResult {
             let client =
                 async {
                     assert_eq!(worker.deliver_once().await?, DeliveryOutcome::Parked);
-                    let parked = store.request(until()?, |s| Ok(s.parked(0)?)).await?;
+                    let parked = store.request(until()?, |s| s.parked(0)).await?;
                     let expected = crate::delivery::reason(&detail);
                     assert!(parked.iter().any(|p| p.evidence.contains(
                         &serde_json::to_string(expected.as_str()).expect("string JSON")

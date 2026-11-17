@@ -191,7 +191,7 @@ pub(in crate::admin) async fn raw(
         Ok::<_, Error>(
             state
                 .store
-                .request(deadline()?, move |s| {
+                .request::<_, analyte_store::Error>(deadline()?, move |s| {
                     let Some(row) = s.parked_item(id)? else {
                         return Ok(None);
                     };

@@ -35,7 +35,7 @@ struct ConnectionState<'a, 'm> {
     start: Instant,
     transfer: Option<Identifier>,
     // Keep the failure until the dialog's NAK and refusal actions have run.
-    commit_failure: Option<super::custody::StoreWaitError<analyte_store::Error>>,
+    commit_failure: Option<super::custody::StoreWaitError<analyte_store::IntakeError>>,
     raw: Vec<u8>,
     payload: Vec<u8>,
     input_evidence: connection_input::Custody,
@@ -250,7 +250,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
                 .checked_add(machine.snapshot.canonical().len())
                 .ok_or_else(|| Error::AstmAdmissionSizeOverflow)?;
             let capacity = store
-                .request(deadline()?, move |s| Ok(s.admission(expected)?))
+                .request(deadline()?, move |s| s.admission(expected))
                 .await;
             if let Err(error) = &capacity {
                 tracing::error!(machine = machine.id.as_str(), error_kind = %error, "storage admission refused");
@@ -364,7 +364,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
         let committed = super::custody::store_before_ack(
             machine,
             store.request(deadline()?, move |s| {
-                Ok(s.journal_frame(&transfer_id, sequence, &bytes, &provenance)?)
+                s.journal_frame(&transfer_id, sequence, &bytes, &provenance)
             }),
         )
         .await;
@@ -423,8 +423,8 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
                     }
                 }
                 store
-                    .request(deadline()?, move |s| {
-                        Ok(s.finish_transfer(
+                    .request::<_, analyte_store::Error>(deadline()?, move |s| {
+                        Ok::<_, analyte_store::Error>(s.finish_transfer(
                             &transfer_id,
                             analyte_store::TransferOutcome::Complete(id),
                         )?)
@@ -490,8 +490,8 @@ async fn finish_incomplete(store: &Handle, transfer: Identifier) -> Result<(), E
     let reason =
         analyte_model::Reason::new("ASTM transfer ended before a complete receipt was retained")?;
     store
-        .request(deadline()?, move |store| {
-            Ok(store.finish_transfer(
+        .request::<_, analyte_store::Error>(deadline()?, move |store| {
+            Ok::<_, analyte_store::Error>(store.finish_transfer(
                 &transfer,
                 analyte_store::TransferOutcome::Incomplete(reason),
             )?)

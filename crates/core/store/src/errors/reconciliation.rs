@@ -47,6 +47,7 @@ storage_boundary! {
 impl From<ReconciliationError> for crate::Error {
     fn from(error: ReconciliationError) -> Self {
         match error {
+            ReconciliationError::Worker(cause) => Self::Worker(cause),
             ReconciliationError::Identity(cause) => Self::Identity(cause),
             ReconciliationError::Receipt(cause) => cause.into(),
             ReconciliationError::Work(cause) => cause.into(),

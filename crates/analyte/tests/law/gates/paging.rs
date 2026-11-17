@@ -24,7 +24,7 @@ async fn law_tf2b_3_27_4_competing_feed_during_pages_refuses_instead_of_mixing()
     assert_eq!(count(&path, "machine_order_items")?, 0);
     quiet(&mut peer).await?;
     {
-        let update = store.request(std::time::Instant::now() + HANG_GUARD, |s| {
+        let update = store.request::<_, analyte_store::Error>(std::time::Instant::now() + HANG_GUARD, |s| {
         let destination = analyte_model::Identifier::new("demo").map_err(analyte_store::Error::Text)?;
         let now = jiff::Timestamp::now().as_second();
         s.reset_orders(&destination)?;

@@ -4,7 +4,7 @@ use analyte_store::{AlertFailure, AlertKey, PendingAlert};
 
 async fn alert(store: &Handle, now: i64) -> Result<PendingAlert, Box<dyn std::error::Error>> {
     Ok(store
-        .request(until()?, move |s| {
+        .request::<_, analyte_store::Error>(until()?, move |s| {
             let endpoint = Identifier::new("relay").map_err(analyte_store::Error::Text)?;
             s.register_alert_endpoint(&endpoint)?;
             s.evaluate_alert(&AlertKey::ParkedItems, "Duty officer", true, Some(1), now)?;
@@ -40,8 +40,8 @@ async fn adr0014_receiver_lifecycle_and_crash_after_accept_reuses_bytes() -> Tes
     store.shutdown(until()?).await?;
     let mut store = super::store(&temp.path().join("store.db")).await?;
     let retry = store
-        .request(until()?, |s| {
-            Ok(s.claim_alert_attempt(
+        .request::<_, analyte_store::Error>(until()?, |s| {
+            Ok::<_, analyte_store::Error>(s.claim_alert_attempt(
                 &Identifier::new("relay").map_err(analyte_store::Error::Text)?,
                 105,
                 3,
@@ -58,13 +58,11 @@ async fn adr0014_receiver_lifecycle_and_crash_after_accept_reuses_bytes() -> Tes
         .await
         .map_err(|_| "duplicate rejected")?;
     store
-        .request(until()?, move |s| {
-            Ok(s.complete_alert_attempt(retry.id(), 105)?)
-        })
+        .request(until()?, move |s| s.complete_alert_attempt(retry.id(), 105))
         .await?;
     for (now, active, event_kind) in [(160, true, "reminder"), (161, false, "resolved")] {
         let event = store
-            .request(until()?, move |s| {
+            .request::<_, analyte_store::Error>(until()?, move |s| {
                 let endpoint = Identifier::new("relay").map_err(analyte_store::Error::Text)?;
                 s.evaluate_alert(
                     &AlertKey::ParkedItems,
@@ -85,9 +83,7 @@ async fn adr0014_receiver_lifecycle_and_crash_after_accept_reuses_bytes() -> Tes
             .await
             .map_err(|_| "lifecycle rejected")?;
         store
-            .request(until()?, move |s| {
-                Ok(s.complete_alert_attempt(event.id(), now)?)
-            })
+            .request(until()?, move |s| s.complete_alert_attempt(event.id(), now))
             .await?;
     }
     stop.send_replace(true);
@@ -114,18 +110,20 @@ async fn adr0014_endpoint_down_then_up_backoff_is_durable_and_bounded() -> TestR
     let id = first.id().clone();
     store
         .request(until()?, move |s| {
-            Ok(s.fail_alert_attempt(&id, AlertFailure::Network)?)
+            s.fail_alert_attempt(&id, AlertFailure::Network)
         })
         .await?;
     assert!(
         store
-            .request(until()?, |s| Ok(s.claim_alert_attempt(
-                &Identifier::new("relay").map_err(analyte_store::Error::Text)?,
-                104,
-                3,
-                5,
-                20
-            )?))
+            .request::<_, analyte_store::Error>(until()?, |s| Ok::<_, analyte_store::Error>(
+                s.claim_alert_attempt(
+                    &Identifier::new("relay").map_err(analyte_store::Error::Text)?,
+                    104,
+                    3,
+                    5,
+                    20
+                )?
+            ))
             .await?
             .is_none()
     );
@@ -144,8 +142,8 @@ async fn adr0014_endpoint_down_then_up_backoff_is_durable_and_bounded() -> TestR
     let (stop, stopped) = watch::channel(false);
     let server = tokio::spawn(receiver.serve_until(listener, stopped));
     let retry = store
-        .request(until()?, |s| {
-            Ok(s.claim_alert_attempt(
+        .request::<_, analyte_store::Error>(until()?, |s| {
+            Ok::<_, analyte_store::Error>(s.claim_alert_attempt(
                 &Identifier::new("relay").map_err(analyte_store::Error::Text)?,
                 105,
                 3,
@@ -162,13 +160,11 @@ async fn adr0014_endpoint_down_then_up_backoff_is_durable_and_bounded() -> TestR
         .await
         .map_err(|_| "recovery rejected")?;
     store
-        .request(until()?, move |s| {
-            Ok(s.complete_alert_attempt(retry.id(), 105)?)
-        })
+        .request(until()?, move |s| s.complete_alert_attempt(retry.id(), 105))
         .await?;
     assert_eq!(
         store
-            .request(until()?, |s| Ok(s.alert_endpoint_status()?))
+            .request(until()?, |s| s.alert_endpoint_status())
             .await?[0]
             .pending,
         0
@@ -227,11 +223,13 @@ async fn adr0014_slow_endpoint_never_holds_store_or_clinical_intake() -> TestRes
         enqueue(&store, metadata, content, delivery).await?;
         assert_eq!(
             store
-                .request(until()?, |s| Ok(s.health(
-                    &Identifier::new("app").map_err(analyte_store::Error::Text)?,
-                    100,
-                    30
-                )?))
+                .request::<_, analyte_store::Error>(until()?, |s| Ok::<_, analyte_store::Error>(
+                    s.health(
+                        &Identifier::new("app").map_err(analyte_store::Error::Text)?,
+                        100,
+                        30
+                    )?
+                ))
                 .await?
                 .pending_count,
             1

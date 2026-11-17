@@ -25,7 +25,7 @@ fn audit(
 pub(super) async fn ensure_reconciled(store: &Handle, machine: &Machine) -> Result<(), Error> {
     let machine_id = machine.id.clone();
     let blocked = store
-        .request(deadline()?, move |store| {
+        .request::<_, analyte_store::Error>(deadline()?, move |store| {
             let Some(intent) = store.unconfirmed_poll_intent(&machine_id)? else {
                 return Ok(false);
             };
@@ -58,7 +58,7 @@ pub(super) async fn reserve(store: &Handle, machine: &Machine) -> Result<PollInt
     )?;
     Ok(store
         .request(deadline()?, move |store| {
-            Ok(store.begin_poll_intent(&machine, &reason)?)
+            store.begin_poll_intent(&machine, &reason)
         })
         .await?)
 }
@@ -77,10 +77,12 @@ pub(super) async fn uncertain(
             Reason::new(reason)?,
         )?;
         store
-            .request(deadline()?, move |store| {
-                Ok(store
-                    .record_poll_outcome(id, PollOutcome::Uncertain, &audit)
-                    .map(|_| ())?)
+            .request::<_, analyte_store::Error>(deadline()?, move |store| {
+                Ok::<_, analyte_store::Error>(
+                    store
+                        .record_poll_outcome(id, PollOutcome::Uncertain, &audit)
+                        .map(|_| ())?,
+                )
             })
             .await?;
     }
@@ -100,10 +102,12 @@ pub(super) async fn complete(
             Reason::new("Complete Autolyser response durably stored; R cursor custody reconciled")?,
         )?;
         let state = store
-            .request(deadline()?, move |store| {
-                Ok(store
-                    .record_poll_outcome(id, PollOutcome::Confirmed, &audit)
-                    .map(|intent| intent.state)?)
+            .request::<_, analyte_store::Error>(deadline()?, move |store| {
+                Ok::<_, analyte_store::Error>(
+                    store
+                        .record_poll_outcome(id, PollOutcome::Confirmed, &audit)
+                        .map(|intent| intent.state)?,
+                )
             })
             .await?;
         match state {

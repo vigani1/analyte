@@ -53,6 +53,7 @@ storage_boundary! {
 impl From<OrderError> for crate::Error {
     fn from(error: OrderError) -> Self {
         match error {
+            OrderError::Worker(cause) => Self::Worker(cause),
             OrderError::Identity(cause) => Self::DeliveryBuild(Box::new(cause)),
             OrderError::PreflightConsumed => Self::PreflightConsumed,
             OrderError::PreflightMissing => Self::PreflightMissing,

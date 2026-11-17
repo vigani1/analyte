@@ -43,6 +43,9 @@ macro_rules! storage_boundary {
             /// Typed evidence could not be encoded or decoded.
             #[error("evidence encoding failed: {0}")]
             Json(#[from] serde_json::Error),
+            /// The worker could not establish completion of this boundary's operation.
+            #[error("{0}")]
+            Worker(#[from] crate::WorkerError),
             $($variants)*
         }
         impl From<rusqlite::Error> for $name {
@@ -53,6 +56,7 @@ macro_rules! storage_boundary {
         impl From<crate::StorageError> for $name {
             fn from(error: crate::StorageError) -> Self {
                 match error {
+                    crate::StorageError::Worker(cause) => Self::Worker(cause),
                     crate::StorageError::Corruption(cause) => Self::StorageCorruption(cause),
                     crate::StorageError::Capacity => Self::Capacity,
                     crate::StorageError::DiskFull(cause) => Self::DiskFull(cause),
@@ -87,3 +91,8 @@ pub use operator::OperatorError;
 
 mod reconciliation;
 pub use reconciliation::ReconciliationError;
+
+mod worker;
+pub use worker::{WorkerError, WorkerStartError};
+
+mod command;

@@ -27,3 +27,5 @@ pub enum IntakeError {
     #[error("receipt belongs to a different machine")]
     WrongMachine,
 }
+
+analyte_store::forward_command_errors!(IntakeError);

@@ -26,6 +26,7 @@ storage_boundary! {
 impl From<OperatorError> for crate::Error {
     fn from(error: OperatorError) -> Self {
         match error {
+            OperatorError::Worker(cause) => Self::Worker(cause),
             OperatorError::PollResolution(cause) => cause.into(),
             OperatorError::StorageCorruption(cause) => Self::StorageCorruption(cause),
             OperatorError::Capacity => Self::Capacity,

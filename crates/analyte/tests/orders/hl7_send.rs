@@ -87,7 +87,7 @@ async fn setup_with_patient_requirement(
         let program = program(&path, &reference.url)?;
         let mut store = analyte::open_system_store(&program).await?;
         store
-            .request(
+            .request::<_, analyte_store::Error>(
                 std::time::Instant::now()
                     .checked_add(Duration::from_secs(5))
                     .ok_or("deadline")?,

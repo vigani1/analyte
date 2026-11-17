@@ -11,10 +11,10 @@ use std::collections::BTreeMap;
 pub async fn snapshot(program: &Program, store: &Handle) -> Result<Vec<String>, Error> {
     let now = jiff::Timestamp::now().as_second();
     let paused = store
-        .request(deadline()?, |store| Ok(store.restore_unreconciled()?))
+        .request(deadline()?, |store| store.restore_unreconciled())
         .await?;
     let cancelled = store
-        .request(deadline()?, |s| Ok(s.analyzer_cancelled_count()?))
+        .request(deadline()?, |s| s.analyzer_cancelled_count())
         .await?;
     let mut lines = vec![
         format!("order_sending_paused_after_restore={paused}"),
@@ -48,7 +48,7 @@ pub async fn snapshot(program: &Program, store: &Handle) -> Result<Vec<String>, 
     let mut last = BTreeMap::new();
     loop {
         let page = store
-            .request(until, move |store| Ok(store.receipts(&after)?))
+            .request(until, move |store| store.receipts(&after))
             .await?;
         if page.is_empty() {
             break;
@@ -144,7 +144,7 @@ mod tests {
         )
         .await?;
         store
-            .request(deadline()?, |store| {
+            .request::<_, analyte_store::Error>(deadline()?, |store| {
                 store.evaluate_alert(
                     &analyte_store::AlertKey::RestorePaused,
                     "lab duty officer",
@@ -176,7 +176,7 @@ mod tests {
                     Some(0),
                     101,
                 )?;
-                Ok(())
+                Ok::<_, analyte_store::Error>(())
             })
             .await?;
         let program = Program::load(
@@ -206,7 +206,7 @@ mod tests {
         assert!(!lines.iter().any(|line| line.contains("cleared officer")));
         let state = store
             .request(deadline()?, |store| {
-                Ok(store.alert_state(&analyte_store::AlertKey::RestorePaused)?)
+                store.alert_state(&analyte_store::AlertKey::RestorePaused)
             })
             .await?
             .ok_or("alert disappeared")?;

@@ -107,7 +107,7 @@ async fn cancelled_page(state: &Context, cursor: Cursor) -> Result<Markup, Error
     let after = i64::try_from(cursor.after)?;
     let rows = state
         .store
-        .request(deadline()?, move |s| Ok(s.analyzer_cancelled_items(after)?))
+        .request(deadline()?, move |s| s.analyzer_cancelled_items(after))
         .await?;
     let mut html = start("Analyzer-cancelled AWOSs — reconciliation required");
     html.push_markup(concat!(
@@ -144,9 +144,7 @@ async fn cancelled_page(state: &Context, cursor: Cursor) -> Result<Markup, Error
         let order = row.order.key.order.clone();
         let cached = state
             .store
-            .request(deadline()?, move |s| {
-                Ok(s.cached_order(&destination, &order)?)
-            })
+            .request(deadline()?, move |s| s.cached_order(&destination, &order))
             .await?;
         if let Some(cached) = cached {
             let document: serde_json::Value = serde_json::from_str(&cached.document)?;
@@ -182,8 +180,8 @@ async fn detail_page(
     let after = i64::try_from(cursor.after)?;
     let (retained, rows) = state
         .store
-        .request(deadline()?, move |s| {
-            Ok((
+        .request::<_, analyte_store::Error>(deadline()?, move |s| {
+            Ok::<_, analyte_store::Error>((
                 s.machine_order_by_id(order)?,
                 s.law_work_evidence(order, item, after)?,
             ))

@@ -29,6 +29,7 @@ storage_boundary! {
 impl From<DeliveryError> for crate::Error {
     fn from(error: DeliveryError) -> Self {
         match error {
+            DeliveryError::Worker(cause) => Self::Worker(cause),
             DeliveryError::StorageCorruption(cause) => Self::StorageCorruption(cause),
             DeliveryError::Capacity => Self::Capacity,
             DeliveryError::Corruption => Self::Corruption,

@@ -1,5 +1,5 @@
 //! Runs blocking storage requests on an owned worker thread.
-use crate::{Error, FreeSpace, Limits, Store};
+use crate::{FreeSpace, Limits, Store, WorkerError, WorkerStartError};
 use std::{path::PathBuf, thread, time::Instant};
 use tokio::sync::{mpsc, oneshot};
 
@@ -60,9 +60,9 @@ impl Handle {
         space: Box<dyn FreeSpace>,
         capacity: usize,
         deadline: Instant,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self, WorkerStartError> {
         if capacity == 0 || capacity > 1024 {
-            return Err(Error::QueueCapacity { capacity });
+            return Err(WorkerStartError::QueueCapacity { capacity });
         }
         let (sender, mut receiver) = mpsc::channel::<Request>(capacity);
         let (ready, opened) = oneshot::channel();
@@ -101,10 +101,10 @@ impl Handle {
             .await
             .map_err(|_| {
                 startup.cancel();
-                Error::from(startup.error())
+                WorkerStartError::Open(startup.error())
             })
-            .and_then(|result| result.map_err(|_| Error::Closed))
-            .and_then(|result| result.map_err(Error::from));
+            .and_then(|result| result.map_err(WorkerStartError::Closed))
+            .and_then(|result| result.map_err(WorkerStartError::Open));
         if let Err(error) = result {
             startup.cancel();
             // Startup still owns cleanup on an opening error. Cancellation is
@@ -120,15 +120,15 @@ impl Handle {
     /// Reconcile uncertain writes using their original IDs rather than inventing new ones.
     /// # Errors
     /// Reports queue/response timeout, worker closure or the operation's specific error.
-    pub async fn request<T: Send + 'static>(
+    pub async fn request<T: Send + 'static, E: From<WorkerError> + Send + 'static>(
         &self,
         deadline: Instant,
-        operation: impl FnOnce(&mut Store) -> Result<T, Error> + Send + 'static,
-    ) -> Result<T, Error> {
+        operation: impl FnOnce(&mut Store) -> Result<T, E> + Send + 'static,
+    ) -> Result<T, E> {
         if Instant::now() >= deadline {
-            return Err(Error::Timeout);
+            return Err(WorkerError::AdmissionTimeout { cause: None }.into());
         }
-        let sender = self.sender.as_ref().ok_or(Error::Closed)?;
+        let sender = self.sender.as_ref().ok_or(WorkerError::Closed)?;
         let (reply, response) = oneshot::channel();
         let request = Request {
             deadline,
@@ -141,18 +141,18 @@ impl Handle {
         let until = tokio::time::Instant::from_std(deadline);
         tokio::time::timeout_at(until, sender.send(request))
             .await
-            .map_err(|_| Error::Timeout)?
-            .map_err(|_| Error::Closed)?;
+            .map_err(|cause| WorkerError::AdmissionTimeout { cause: Some(cause) })?
+            .map_err(|_| WorkerError::Closed)?;
         tokio::time::timeout_at(until, response)
             .await
-            .map_err(|_| Error::Timeout)?
-            .map_err(|_| Error::Closed)?
+            .map_err(WorkerError::ResponseTimeout)?
+            .map_err(WorkerError::ResponseClosed)?
     }
 
     /// Closes admission, drains the bounded queue and joins the owner thread.
     /// # Errors
     /// Reports expiration; the handle still owns the worker and can be shut down again.
-    pub async fn shutdown(&mut self, deadline: Instant) -> Result<(), Error> {
+    pub async fn shutdown(&mut self, deadline: Instant) -> Result<(), WorkerError> {
         self.sender.take();
         if self
             .thread
@@ -161,11 +161,11 @@ impl Handle {
         {
             tokio::time::timeout_at(tokio::time::Instant::from_std(deadline), &mut self.finished)
                 .await
-                .map_err(|_| Error::Timeout)?
-                .map_err(|_| Error::Closed)?;
+                .map_err(WorkerError::ShutdownTimeout)?
+                .map_err(WorkerError::ResponseClosed)?;
         }
         if let Some(thread) = self.thread.take() {
-            thread.join().map_err(|_| Error::Closed)?;
+            thread.join().map_err(|_| WorkerError::Panicked)?;
         }
         Ok(())
     }

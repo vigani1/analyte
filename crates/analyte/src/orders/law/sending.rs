@@ -235,7 +235,7 @@ impl Connection {
             let owner = self.owner.clone();
             store
                 .request(until, move |store| {
-                    Ok(store.retain_order_command(&identity, &owner, bytes)?)
+                    store.retain_order_command(&identity, &owner, bytes)
                 })
                 .await?;
             prepared.push((reserved.1, reserved.0));

@@ -25,7 +25,7 @@ pub(crate) async fn snapshot(
     now: i64,
 ) -> Result<Vec<String>, Error> {
     let statuses = store
-        .request(crate::deadline()?, |s| Ok(s.alert_endpoint_status()?))
+        .request(crate::deadline()?, |s| s.alert_endpoint_status())
         .await?;
     let mut lines: Vec<_> = statuses
         .iter()

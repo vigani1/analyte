@@ -356,7 +356,7 @@ async fn operator(
             reason: Reason::new(&reason)?,
         };
         let rows = store
-            .request(
+            .request::<_, analyte_store::Error>(
                 Instant::now()
                     .checked_add(STORE_OPERATION_BUDGET)
                     .unwrap_or(Instant::now()),
@@ -446,7 +446,7 @@ async fn deliveries(
                     reason: Reason::new(&reason)?,
                 };
                 let rows = store
-                    .request(until(), move |s| {
+                    .request::<_, analyte_store::Error>(until(), move |s| {
                         let rows = s.deliveries(after)?;
                         s.audit(&audit)?;
                         Ok(rows)
@@ -502,7 +502,7 @@ async fn backup(config: &std::path::Path, target: PathBuf) -> Result<(), Error> 
     let program = Program::load(config)?;
     let mut store = analyte::open_system_store(&program).await?;
     let result = store
-        .request(
+        .request::<_, analyte_store::Error>(
             Instant::now()
                 .checked_add(BACKUP_REQUEST_BUDGET)
                 .unwrap_or(Instant::now()),

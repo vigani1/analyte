@@ -74,7 +74,7 @@ pub(crate) async fn receive(
     };
     store
         .request(deadline()?, move |store| {
-            Ok(store.receive(&metadata, &raw, &config)?)
+            store.receive(&metadata, &raw, &config)
         })
         .await?;
     Ok(received_at)
@@ -286,8 +286,8 @@ pub(crate) async fn park_bytes(
         outcome: Reading::Failed(analyte_model::Reason::new(&reason.to_string())?),
     };
     store
-        .request(deadline()?, move |s| {
-            Ok(s.reconcile(
+        .request::<_, analyte_store::Error>(deadline()?, move |s| {
+            Ok::<_, analyte_store::Error>(s.reconcile(
                 analyte_store::ReconcileAction::Interpret(id),
                 evidence,
                 analyte_store::ReconcileInput::standard(&[], &[]),

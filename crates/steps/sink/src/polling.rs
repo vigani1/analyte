@@ -36,7 +36,7 @@ impl<'a> Poller<'a> {
         let mut cursor = self
             .store
             .request(deadline(self.destination.limits.store_timeout)?, move |s| {
-                Ok(s.cursor(&id)?)
+                s.cursor(&id)
             })
             .await?;
         for _ in 0..self.destination.limits.max_pages {
@@ -50,7 +50,7 @@ impl<'a> Poller<'a> {
                 let id = self.destination.id.clone();
                 self.store
                     .request(deadline(self.destination.limits.store_timeout)?, move |s| {
-                        Ok(s.reset_orders(&id)?)
+                        s.reset_orders(&id)
                     })
                     .await?;
                 return Err(Error::PollStatus(410));
@@ -76,7 +76,7 @@ impl<'a> Poller<'a> {
             };
             self.store
                 .request(deadline(self.destination.limits.store_timeout)?, move |s| {
-                    Ok(s.order_page(&page)?)
+                    s.order_page(&page)
                 })
                 .await?;
             if complete {

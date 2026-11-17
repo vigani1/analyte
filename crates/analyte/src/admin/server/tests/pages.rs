@@ -108,7 +108,7 @@ struct RawPage {
 }
 
 async fn seed_pages(store: &analyte_store::Handle) -> Result<(ReceiptId, i64, ReceiptId), Error> {
-    let (receipt_id, parked_id, other_receipt) = store.request(fixture_deadline()?, |store| {
+    let (receipt_id, parked_id, other_receipt) = store.request::<_, analyte_store::Error>(fixture_deadline()?, |store| {
         let id = |text: &str| Identifier::new(text).map_err(analyte_store::Error::Text);
         let mut first = None;
         for name in ["first", "second"] {
@@ -302,7 +302,9 @@ async fn assert_raw_views_audited(
         ..
     } = view;
     let count = store
-        .request(fixture_deadline()?, |s| Ok(s.audits(1)?.len()))
+        .request::<_, analyte_store::Error>(fixture_deadline()?, |s| {
+            Ok::<_, analyte_store::Error>(s.audits(1)?.len())
+        })
         .await?;
     assert_eq!(count, 0);
     for _ in 0..2 {
@@ -323,9 +325,7 @@ async fn assert_raw_views_audited(
     .await?;
     assert!(tail.starts_with("HTTP/1.1 200"));
     assert!(tail.contains("TAIL"));
-    let first_audit = store
-        .request(fixture_deadline()?, |s| Ok(s.audits(1)?))
-        .await?;
+    let first_audit = store.request(fixture_deadline()?, |s| s.audits(1)).await?;
     let (sequence, audit) = first_audit.first().ok_or("raw audit absent")?;
     assert_eq!(audit.action.as_str(), "admin-raw-view");
     assert_eq!(audit.reason.as_str(), "review");
@@ -338,13 +338,15 @@ async fn assert_raw_views_audited(
     );
     let sequence = *sequence;
     let second = store
-        .request(fixture_deadline()?, move |s| Ok(s.audits(sequence)?))
+        .request(fixture_deadline()?, move |s| s.audits(sequence))
         .await?;
     assert_eq!(second.len(), 1);
     let sequence = second.first().ok_or("second audit missing")?.0;
     assert_eq!(
         store
-            .request(fixture_deadline()?, move |s| Ok(s.audits(sequence)?.len()))
+            .request::<_, analyte_store::Error>(fixture_deadline()?, move |s| Ok(s
+                .audits(sequence)?
+                .len()))
             .await?,
         1
     );
@@ -366,7 +368,7 @@ async fn assert_cache_version_stays_distinct(
     // Current cache evidence is explicitly distinguished from a reservation's
     // historical version; operator reads never resend or reconcile an order.
     store
-        .request(fixture_deadline()?, |s| {
+        .request::<_, analyte_store::Error>(fixture_deadline()?, |s| {
             let destination = Identifier::new("app").map_err(analyte_store::Error::Text)?;
             let key = Identifier::new("first").map_err(analyte_store::Error::Text)?;
             let mut cached = s
@@ -382,7 +384,7 @@ async fn assert_cache_version_stays_distinct(
                 .ok_or(analyte_store::Error::MissingOrderField { field: "tests" })? =
                 serde_json::json!([{"namespace":"local","value":"<newtest>"}]);
             cached.document = serde_json::to_string(&document)?;
-            Ok(s.order_page(&OrderPage {
+            Ok::<_, analyte_store::Error>(s.order_page(&OrderPage {
                 destination,
                 cursor: Identifier::new("new").map_err(analyte_store::Error::Text)?,
                 complete: true,
@@ -408,7 +410,7 @@ async fn assert_frame_pagination(
         csrf, post_auth, ..
     } = view;
     let frame_park = store
-        .request(fixture_deadline()?, |s| {
+        .request::<_, analyte_store::Error>(fixture_deadline()?, |s| {
             let transfer = Identifier::new("transfer").map_err(analyte_store::Error::Text)?;
             let mut bytes = b"<frame>".to_vec();
             bytes.extend(vec![b'B'; 4100]);
@@ -427,7 +429,7 @@ async fn assert_frame_pagination(
                     config: b"synthetic config".to_vec(),
                 },
             )?;
-            Ok(s.park(&Parked {
+            Ok::<_, analyte_store::Error>(s.park(&Parked {
                 kind: Identifier::new("transfer").map_err(analyte_store::Error::Text)?,
                 reason: Reason::new("incomplete transfer").map_err(analyte_store::Error::Text)?,
                 targets: vec![transfer],

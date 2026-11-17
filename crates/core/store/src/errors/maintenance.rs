@@ -4,6 +4,9 @@ storage_boundary! {
     /// Failures of store maintenance, preserving migration and timeout causes.
     #[derive(Debug, thiserror::Error)]
     pub enum MaintenanceError {
+        /// Protected receipt evidence could not be read for a maintenance decision.
+        #[error(transparent)]
+        Receipt(#[from] crate::OperatorError),
         /// The host cannot represent a storage operation deadline.
         #[error("storage operation deadline overflow")]
         DeadlineOverflow,
@@ -63,7 +66,7 @@ storage_boundary! {
         /// A keyed retention digest could not be initialized.
         #[error("retention digest key rejected")]
         DigestKey(#[from] hmac::digest::InvalidLength),
-        /// Migration could not decode legacy machine-order ownership evidence.
+        /// Retained order evidence could not be decoded for a maintenance decision.
         #[error(transparent)]
         OrderEvidence(#[from] crate::OrderError),
     }
@@ -71,6 +74,8 @@ storage_boundary! {
 impl From<MaintenanceError> for crate::Error {
     fn from(error: MaintenanceError) -> Self {
         match error {
+            MaintenanceError::Receipt(cause) => cause.into(),
+            MaintenanceError::Worker(cause) => Self::Worker(cause),
             MaintenanceError::DeadlineOverflow => Self::DeadlineOverflow,
             MaintenanceError::StorageCorruption(cause) => Self::StorageCorruption(cause),
             MaintenanceError::Capacity => Self::Capacity,

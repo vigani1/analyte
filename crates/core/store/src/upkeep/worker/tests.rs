@@ -25,26 +25,25 @@ fn rule7_worker_roundtrip_expired_requests_and_shutdown_joins() -> TestResult {
         let id = metadata.id;
         handle
             .request(deadline, move |store| {
-                Ok(store.receive(&metadata, b"raw", b"config")?)
+                store.receive(&metadata, b"raw", b"config")
             })
             .await?;
         assert_eq!(
-            handle
-                .request(deadline, move |store| Ok(store.raw(id)?))
-                .await?,
+            handle.request(deadline, move |store| store.raw(id)).await?,
             Some(b"raw".to_vec())
         );
         let expired = Instant::now();
-        let error = handle
-            .request(expired, move |store| Ok(store.raw(id)?))
-            .await;
-        assert!(matches!(error, Err(Error::Timeout) | Err(Error::Closed)));
+        let error = handle.request(expired, move |store| store.raw(id)).await;
+        assert!(matches!(
+            error,
+            Err(IntakeError::Worker(WorkerError::AdmissionTimeout {
+                cause: None
+            }))
+        ));
         handle.shutdown(deadline).await?;
         assert!(matches!(
-            handle
-                .request(deadline, move |store| Ok(store.raw(id)?))
-                .await,
-            Err(Error::Closed)
+            handle.request(deadline, move |store| store.raw(id)).await,
+            Err(IntakeError::Worker(WorkerError::Closed))
         ));
         Ok::<_, Error>(id)
     })?;
@@ -70,7 +69,10 @@ fn plan11_worker_open_reports_newer_schema_specifically() -> TestResult {
         1,
         deadline,
     ));
-    assert!(matches!(result, Err(Error::SchemaTooNew(99))));
+    assert!(matches!(
+        result,
+        Err(WorkerStartError::Open(MaintenanceError::SchemaTooNew(99)))
+    ));
     Ok(())
 }
 
@@ -95,7 +97,7 @@ fn mutation_rule7_worker_capacity_bounds_are_inclusive() -> TestResult {
                 let mut handle = result?;
                 handle.shutdown(deadline).await?;
             } else {
-                assert!(matches!(result, Err(Error::QueueCapacity { capacity: rejected }) if rejected == capacity));
+                assert!(matches!(result, Err(WorkerStartError::QueueCapacity { capacity: rejected }) if rejected == capacity));
             }
         }
         Ok::<_, Error>(())
@@ -139,6 +141,7 @@ fn mutation_rule7_worker_drop_joins_the_store_owner_before_returning() -> TestRe
 mod mutation_tests {
 
     use super::*;
+    use crate::Error;
     use crate::test_support::{HANG_GUARD, Space, TestResult, limits};
 
     #[test]
@@ -245,7 +248,7 @@ fn rule7_shutdown_timeout_retains_owner_and_can_resume_after_notification() -> T
     runtime.block_on(async {
         assert!(matches!(
             handle.shutdown(Instant::now()).await,
-            Err(Error::Timeout)
+            Err(WorkerError::ShutdownTimeout(_))
         ));
         assert!(handle.thread.is_some());
         release.send(()).map_err(|_| Error::Closed)?;
@@ -302,9 +305,69 @@ async fn rule7_worker_rejects_queue_capacity_before_opening_store() -> TestResul
         )
         .await;
         assert!(
-            matches!(result, Err(Error::QueueCapacity { capacity: rejected }) if rejected == capacity)
+            matches!(result, Err(WorkerStartError::QueueCapacity { capacity: rejected }) if rejected == capacity)
         );
         assert!(!path.exists());
     }
+    Ok(())
+}
+
+#[tokio::test]
+async fn adr0003_rule1_response_timeout_keeps_typed_cause_and_may_commit() -> TestResult {
+    use std::sync::Arc;
+    let temp = tempfile::tempdir()?;
+    let mut until = Instant::now() + HANG_GUARD;
+    let handle = Arc::new(
+        Handle::start(
+            temp.path().join("uncertain.db"),
+            limits(),
+            Box::new(Space(u64::MAX)),
+            1,
+            until,
+        )
+        .await?,
+    );
+    let metadata = receipt(b"uncertain raw")?;
+    let id = metadata.id;
+    let (entered, waiting) = tokio::sync::oneshot::channel();
+    let (release, released) = std::sync::mpsc::channel();
+    let owner = handle.clone();
+    let request = tokio::spawn(async move {
+        owner
+            .request::<_, IntakeError>(Instant::now() + Duration::from_secs(1), move |store| {
+                let _ = entered.send(());
+                released
+                    .recv_timeout(HANG_GUARD)
+                    .map_err(|cause| StorageError::Io(std::io::Error::other(cause)))?;
+                store.receive(&metadata, b"uncertain raw", b"config")
+            })
+            .await
+    });
+    waiting.await?;
+    let result = request.await?;
+    assert!(matches!(
+        result,
+        Err(IntakeError::Worker(WorkerError::ResponseTimeout(_)))
+    ));
+    release.send(())?;
+    until = Instant::now() + HANG_GUARD;
+    assert_eq!(
+        handle.request(until, move |store| store.raw(id)).await?,
+        Some(b"uncertain raw".to_vec())
+    );
+    let busy = handle
+        .request::<(), DeliveryError>(until, |_| {
+            Err(rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(5),
+                Some("synthetic lock".into()),
+            )
+            .into())
+        })
+        .await;
+    assert!(
+        matches!(busy, Err(DeliveryError::Busy(rusqlite::Error::SqliteFailure(code, Some(message)))) if code.extended_code == 5 && message == "synthetic lock")
+    );
+    let mut owner = Arc::try_unwrap(handle).map_err(|_| "request retained its store owner")?;
+    owner.shutdown(until).await?;
     Ok(())
 }

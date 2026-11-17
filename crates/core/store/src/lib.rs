@@ -3,7 +3,7 @@
 mod errors;
 pub use errors::{
     DeliveryError, IntakeError, MaintenanceError, OperatorError, OrderError, ReconciliationError,
-    StorageError,
+    StorageError, WorkerError, WorkerStartError,
 };
 mod operator;
 use operator::{alerts, parked, query};
@@ -72,9 +72,17 @@ use std::{
     time::Duration,
 };
 
-/// Recovery decisions remain distinct from ordinary database failures.
+/// Compatibility error for host commands that combine several store boundaries.
+/// Store operations return their own boundary errors; worker requests accept any
+/// caller error that preserves `WorkerError` through `From`.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// A host command's worker failure, preserving admission versus uncertain completion.
+    #[error(transparent)]
+    Worker(#[from] WorkerError),
+    /// A host command could not start its store owner.
+    #[error(transparent)]
+    WorkerStart(#[from] WorkerStartError),
     /// A host UUID cannot represent the required receipt or delivery identity.
     #[error(transparent)]
     Identity(#[from] analyte_model::InvalidUuid),

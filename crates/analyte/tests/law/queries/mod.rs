@@ -115,7 +115,7 @@ async fn pause(path: &Fixture, url: &str) -> Result<(), Error> {
     let loaded = program(path, url)?;
     let mut store = analyte::open_system_store(&loaded).await?;
     store
-        .request(
+        .request::<_, analyte_store::Error>(
             std::time::Instant::now()
                 .checked_add(Duration::from_secs(5))
                 .ok_or("deadline")?,

@@ -98,7 +98,7 @@ pub(super) async fn deliveries(
 ) -> Response {
     let result = state
         .store
-        .request(
+        .request::<_, analyte_store::Error>(
             {
                 match deadline() {
                     Ok(until) => until,
@@ -164,7 +164,7 @@ pub(super) async fn confirm_reprocess(
     };
     match state
         .store
-        .request(
+        .request::<_, analyte_store::Error>(
             {
                 match deadline() {
                     Ok(until) => until,
@@ -212,7 +212,7 @@ pub(super) async fn confirm_resend(
     };
     match state
         .store
-        .request(
+        .request::<_, analyte_store::Error>(
             {
                 match deadline() {
                     Ok(until) => until,

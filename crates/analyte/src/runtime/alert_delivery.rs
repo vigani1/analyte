@@ -53,14 +53,14 @@ async fn cycle(
 ) -> Result<(), Error> {
     let id = endpoint.clone();
     store
-        .request(deadline()?, move |s| Ok(s.register_alert_endpoint(&id)?))
+        .request(deadline()?, move |s| s.register_alert_endpoint(&id))
         .await?;
     let id = endpoint.clone();
     let reminder = policy.reminder().as_secs();
     let capacity = policy.capacity();
     store
         .request(deadline()?, move |s| {
-            Ok(s.prepare_alert_event(&id, now, reminder, capacity)?)
+            s.prepare_alert_event(&id, now, reminder, capacity)
         })
         .await?;
     let id = endpoint.clone();
@@ -69,7 +69,7 @@ async fn cycle(
     let max = policy.backoff_max().as_secs();
     let Some(event) = store
         .request(deadline()?, move |s| {
-            Ok(s.claim_alert_attempt(&id, now, attempts, min, max)?)
+            s.claim_alert_attempt(&id, now, attempts, min, max)
         })
         .await?
     else {
@@ -84,14 +84,14 @@ async fn cycle(
         Ok(()) => {
             store
                 .request(deadline()?, move |s| {
-                    Ok(s.complete_alert_attempt(event.id(), now)?)
+                    s.complete_alert_attempt(event.id(), now)
                 })
                 .await?;
         }
         Err(failure) => {
             store
                 .request(deadline()?, move |s| {
-                    Ok(s.fail_alert_attempt(event.id(), failure)?)
+                    s.fail_alert_attempt(event.id(), failure)
                 })
                 .await?;
         }
@@ -146,8 +146,8 @@ mod tests {
         let temp = tempfile::tempdir()?;
         let mut store = open(temp.path().join("store.db")).await?;
         store
-            .request(deadline()?, |s| {
-                Ok(s.evaluate_alert(
+            .request::<_, analyte_store::Error>(deadline()?, |s| {
+                Ok::<_, analyte_store::Error>(s.evaluate_alert(
                     &analyte_store::AlertKey::ParkedItems,
                     "Duty officer",
                     true,
@@ -178,7 +178,7 @@ mod tests {
         .with_subscriber(subscriber)
         .await?;
         let status = store
-            .request(deadline()?, |s| Ok(s.alert_endpoint_status()?))
+            .request(deadline()?, |s| s.alert_endpoint_status())
             .await?;
         assert_eq!(status[0].failed, 1);
         assert_eq!(status[0].exhausted, 1);
@@ -205,8 +205,8 @@ mod tests {
         let temp = tempfile::tempdir()?;
         let mut store = open(temp.path().join("store.db")).await?;
         store
-            .request(deadline()?, |s| {
-                Ok(s.evaluate_alert(
+            .request::<_, analyte_store::Error>(deadline()?, |s| {
+                Ok::<_, analyte_store::Error>(s.evaluate_alert(
                     &analyte_store::AlertKey::ParkedItems,
                     "Duty officer",
                     true,
@@ -241,13 +241,13 @@ mod tests {
         // Dropping the owned future models the service's cancellation select.
         drop(pending);
         let status = store
-            .request(deadline()?, |s| Ok(s.alert_endpoint_status()?))
+            .request(deadline()?, |s| s.alert_endpoint_status())
             .await?;
         assert_eq!(status[0].pending, 1);
         assert_eq!(status[0].next_attempt, Some(105));
         let retry = store
             .request(deadline()?, move |s| {
-                Ok(s.claim_alert_attempt(&endpoint, 105, 10, 5, 300)?)
+                s.claim_alert_attempt(&endpoint, 105, 10, 5, 300)
             })
             .await?
             .ok_or("cancelled event lost")?;

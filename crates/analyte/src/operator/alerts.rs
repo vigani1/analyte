@@ -69,7 +69,7 @@ pub(crate) async fn active(store: &Handle) -> Result<Vec<AlertState>, Error> {
     let mut alerts = Vec::new();
     loop {
         let page = store
-            .request(until, move |store| Ok(store.active_alerts(&cursor)?))
+            .request(until, move |store| store.active_alerts(&cursor))
             .await?;
         let Some(last) = page.last() else {
             return Ok(alerts);
@@ -105,14 +105,14 @@ async fn evaluate(
         let destinations = destinations.to_vec();
         let value = store
             .request(deadline()?, move |store| {
-                Ok(store.alert_value(&read_key, now, &destinations)?)
+                store.alert_value(&read_key, now, &destinations)
             })
             .await?;
         let active = raised(policy, value);
         let responder = policy.responder().to_owned();
         let transition = store
             .request(deadline()?, move |store| {
-                Ok(store.evaluate_alert(&key, &responder, active, value, now)?)
+                store.evaluate_alert(&key, &responder, active, value, now)
             })
             .await?;
         if let Some(transition) = transition {
@@ -230,9 +230,7 @@ mod tests {
         assert!(!raised(&policies[2], Some(1034)));
         space.store(1033, Ordering::SeqCst);
         evaluate(&store, &policies, &destinations, 100).await?;
-        let history = store
-            .request(deadline()?, |s| Ok(s.alert_history(0)?))
-            .await?;
+        let history = store.request(deadline()?, |s| s.alert_history(0)).await?;
         assert_eq!(history.len(), 7);
         assert!(
             history
@@ -252,7 +250,7 @@ mod tests {
         evaluate(&store, &policies, &destinations, 101).await?;
         assert_eq!(
             store
-                .request(deadline()?, |s| Ok(s.alert_history(0)?))
+                .request(deadline()?, |s| s.alert_history(0))
                 .await?
                 .len(),
             7
@@ -269,9 +267,7 @@ mod tests {
         space.store(1034, Ordering::SeqCst);
         evaluate(&store, &policies, &destinations, 101).await?;
         evaluate(&store, &policies, &destinations, 102).await?;
-        let history = store
-            .request(deadline()?, |s| Ok(s.alert_history(0)?))
-            .await?;
+        let history = store.request(deadline()?, |s| s.alert_history(0)).await?;
         assert_eq!(history.len(), 14);
         assert!(
             history
@@ -369,7 +365,7 @@ mod tests {
         let owner = store.clone();
         let blocking = tokio::spawn(async move {
             owner
-                .request(deadline()?, move |_| {
+                .request::<_, analyte_store::Error>(deadline()?, move |_| {
                     let _ = entered.send(());
                     released
                         .recv_timeout(Duration::from_secs(2))
@@ -408,7 +404,7 @@ mod tests {
         let blocking = tokio::spawn(async move {
             let until = std::time::Instant::now() + Duration::from_secs(8);
             owner
-                .request(until, move |_| {
+                .request::<_, analyte_store::Error>(until, move |_| {
                     let _ = entered.send(());
                     released
                         .recv_timeout(Duration::from_secs(8))
@@ -430,11 +426,13 @@ mod tests {
             .ok_or("queued read succeeded without store access")?;
         assert!(matches!(
             error.downcast_ref::<analyte_store::Error>(),
-            Some(analyte_store::Error::Timeout)
+            Some(analyte_store::Error::Worker(
+                analyte_store::WorkerError::ResponseTimeout(_)
+            ))
         ));
         assert!(
             store
-                .request(deadline()?, |s| Ok(s.alert_history(0)?))
+                .request(deadline()?, |s| s.alert_history(0))
                 .await?
                 .is_empty()
         );

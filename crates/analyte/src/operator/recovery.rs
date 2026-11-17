@@ -30,7 +30,7 @@ pub async fn reprocess(
         ReprocessTarget::Receipt(id) => (id, None),
         ReprocessTarget::Parked(id) => (
             store
-                .request(deadline()?, move |s| Ok(s.parked_receipt(id)?))
+                .request(deadline()?, move |s| s.parked_receipt(id))
                 .await?,
             Some(id),
         ),
@@ -89,7 +89,7 @@ pub async fn resend(
     };
     store
         .request(deadline()?, move |s| {
-            Ok(s.resend_delivery(id, acknowledge_superseded, &audit)?)
+            s.resend_delivery(id, acknowledge_superseded, &audit)
         })
         .await?;
     Ok(())

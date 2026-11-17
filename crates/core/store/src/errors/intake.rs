@@ -3,6 +3,9 @@ use super::StorageError;
 /// Failures admitting raw receipts and transfer frames before acknowledgment.
 #[derive(Debug, thiserror::Error)]
 pub enum IntakeError {
+    /// The worker could not establish receipt custody completion.
+    #[error(transparent)]
+    Worker(#[from] crate::WorkerError),
     /// Bounded persistence failed; no positive acknowledgment is authorized.
     #[error(transparent)]
     Storage(#[from] StorageError),
@@ -23,6 +26,7 @@ impl From<rusqlite::Error> for IntakeError {
 impl From<IntakeError> for crate::Error {
     fn from(error: IntakeError) -> Self {
         match error {
+            IntakeError::Worker(cause) => Self::Worker(cause),
             IntakeError::Storage(cause) => cause.into(),
             IntakeError::InvalidReceiptInput => Self::InvalidReceiptInput,
             IntakeError::Conflict => Self::Conflict,

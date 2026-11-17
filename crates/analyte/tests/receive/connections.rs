@@ -309,7 +309,7 @@ async fn plan11_operator_list_show_resolve_are_audited_and_backup_is_readable() 
     let program = Program::load(&path)?;
     let mut handle = service::open_store(&program, Box::new(Space(u64::MAX))).await?;
     let id = handle
-        .request(
+        .request::<_, analyte_store::Error>(
             std::time::Instant::now()
                 .checked_add(Duration::from_secs(2))
                 .ok_or("deadline overflow")?,
@@ -418,7 +418,7 @@ async fn plan11_native_capacity_probe_is_bounded_and_file_pickup_keeps_original(
             std::time::Instant::now()
                 .checked_add(Duration::from_secs(5))
                 .ok_or("deadline overflow")?,
-            |s| Ok(s.admission(1)?),
+            |s| s.admission(1),
         )
         .await?;
     store
