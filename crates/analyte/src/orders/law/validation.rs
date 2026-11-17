@@ -6,6 +6,27 @@ use analyte_store::Handle;
 
 pub(crate) use law::Mismatch;
 
+/// Returns no match for missing or ambiguous placer identity; storage failures remain errors.
+pub(crate) async fn retained(
+    store: &Handle,
+    machine: &Machine,
+    placer: &str,
+    until: std::time::Instant,
+) -> Result<Option<analyte_store::MachineOrder>, analyte_store::OrderError> {
+    let target = machine.id.clone();
+    let lookup = placer.to_owned();
+    store
+        .request(until, move |s| {
+            match s.machine_order_by_placer(&target, &lookup) {
+                Err(analyte_store::OrderError::Conflict) => {
+                    Ok::<_, analyte_store::OrderError>(None)
+                }
+                other => other,
+            }
+        })
+        .await
+}
+
 pub(crate) async fn check(
     store: &Handle,
     machine: &Machine,
@@ -17,18 +38,7 @@ pub(crate) async fn check(
             continue;
         };
         let placer = std::str::from_utf8(placer)?.to_owned();
-        let target = machine.id.clone();
-        let lookup = placer.clone();
-        let record = store
-            .request::<_, analyte_store::OrderError>(deadline()?, move |s| {
-                match s.machine_order_by_placer(&target, &lookup) {
-                    Err(analyte_store::OrderError::Conflict) => {
-                        Ok::<_, analyte_store::OrderError>(None)
-                    }
-                    other => Ok(other?),
-                }
-            })
-            .await?;
+        let record = retained(store, machine, &placer, deadline()?).await?;
         let unknown = returned.unknown();
         let Some(record) = record else {
             return Ok(Some(unknown));

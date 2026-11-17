@@ -125,18 +125,8 @@ async fn retained_work(
     occurrence: u16,
 ) -> Result<Option<Work>, Error> {
     let placer = std::str::from_utf8(placer)?.to_owned();
-    let target = machine.id.clone();
-    let lookup = placer.clone();
-    let record = store
-        .request::<_, analyte_store::OrderError>(deadline()?, move |s| {
-            match s.machine_order_by_placer(&target, &lookup) {
-                Err(analyte_store::OrderError::Conflict) => {
-                    Ok::<_, analyte_store::OrderError>(None)
-                }
-                other => Ok(other?),
-            }
-        })
-        .await?;
+    let record =
+        crate::orders::law::validation::retained(store, machine, &placer, deadline()?).await?;
     let Some(record) = record else {
         return Ok(None);
     };

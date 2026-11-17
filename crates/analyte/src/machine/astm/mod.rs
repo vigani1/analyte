@@ -1,6 +1,6 @@
 //! Drives ASTM connections and journals each data frame before ACK (ADR 0003).
 use super::connection_input::{self, Input};
-use super::driver::{self, Context, Effects, Flow};
+use super::driver::{Context, Effects, Flow};
 use crate::intake::ByteReason;
 use crate::machine::hooks::Pause;
 mod error;
@@ -16,27 +16,7 @@ use std::{
 };
 use tokio::sync::watch;
 
-pub(super) async fn session(
-    machine: &intake::ConnectionEvidence<'_>,
-    settings: &analyte_config::AstmStack,
-    store: &Handle,
-    conn: &mut analyte_transport::Connection,
-    stop: watch::Receiver<bool>,
-) -> Result<(), Error> {
-    driver::run(
-        || ConnectionState::open(machine, settings, store),
-        Context {
-            machine,
-            settings,
-            store,
-            conn,
-            stop,
-        },
-    )
-    .await
-}
-
-struct ConnectionState<'a, 'm> {
+pub(super) struct Host<'a, 'm> {
     machine: &'a intake::ConnectionEvidence<'m>,
     settings: &'a analyte_config::AstmStack,
     store: &'a Handle,
@@ -58,8 +38,8 @@ struct ConnectionState<'a, 'm> {
     next_order_poll: Instant,
 }
 
-impl<'a, 'm> ConnectionState<'a, 'm> {
-    fn open(
+impl<'a, 'm> Host<'a, 'm> {
+    pub(super) fn open(
         machine: &'a intake::ConnectionEvidence<'m>,
         settings: &'a analyte_config::AstmStack,
         store: &'a Handle,
@@ -125,7 +105,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             if let Event::Byte(_) = &event {
                 self.input_evidence.fed();
             }
-            self.process(event, conn, stop).await?;
+            self.transition(event, conn, stop).await?;
         }
         self.input_evidence.complete();
         Ok(())
@@ -197,7 +177,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
         };
         Ok(events)
     }
-    async fn process(
+    async fn transition(
         &mut self,
         event: Event,
         conn: &mut analyte_transport::Connection,
@@ -233,6 +213,15 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             );
         }
         actions.extend(self.dialog.step(self.start.elapsed(), event)?);
+        self.apply(actions.into(), conn, stop).await
+    }
+    async fn apply(
+        &mut self,
+        actions: Vec<Action>,
+        conn: &mut analyte_transport::Connection,
+        stop: &mut watch::Receiver<bool>,
+    ) -> Result<(), Error> {
+        let mut actions: VecDeque<_> = actions.into();
         while let Some(action) = actions.pop_front() {
             self.effect(action, conn, stop, &mut actions).await?;
         }
@@ -354,7 +343,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
                 .hooks
                 .pause(Pause::AstmCommitted, stop)
                 .await
-                .map_err(Error::TestHook)?;
+                .map_err(Error::from)?;
         }
         let event = match committed {
             Ok(_) => Event::Stored(id),
@@ -422,8 +411,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
     }
 }
 
-impl Effects for ConnectionState<'_, '_> {
-    type Settings = analyte_config::AstmStack;
+impl Effects for Host<'_, '_> {
     type Error = Error;
     fn wait(&self) -> Result<Option<Duration>, Error> {
         if self.response.is_some() && self.dialog.next_deadline().is_none() {
@@ -451,11 +439,7 @@ impl Effects for ConnectionState<'_, '_> {
         self.response = answer?;
         Ok(())
     }
-    async fn input(
-        &mut self,
-        host: &mut Context<'_, '_, Self::Settings>,
-        input: Input,
-    ) -> Result<Flow, Error> {
+    async fn input(&mut self, host: &mut Context<'_, '_>, input: Input) -> Result<Flow, Error> {
         let bytes = match input {
             Input::Opened { session } => {
                 tracing::info!(
@@ -476,7 +460,7 @@ impl Effects for ConnectionState<'_, '_> {
     }
     async fn close(
         &mut self,
-        _host: &mut Context<'_, '_, Self::Settings>,
+        _host: &mut Context<'_, '_>,
         result: &mut Result<(), Error>,
     ) -> Result<(), Error> {
         // A failed NAK write can interrupt the action queue before CommitFailed.

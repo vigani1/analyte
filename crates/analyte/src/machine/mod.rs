@@ -189,34 +189,40 @@ async fn session(
 ) -> Result<(), Error> {
     let context = crate::intake::ConnectionEvidence::new(machine)?;
     let machine = &context;
+    let host = driver::Context {
+        machine,
+        store,
+        conn,
+        stop,
+    };
     match selected {
         settings::StreamSession::Astm(settings) => {
-            astm::session(machine, settings, store, conn, stop)
+            driver::run(|| astm::Host::open(machine, settings, store), host)
                 .await
                 .map_err(Into::into)
         }
         settings::StreamSession::Hl7(settings) => {
-            hl7::session(machine, settings, store, conn, stop)
+            driver::run(|| hl7::Host::open(machine, settings, store), host)
                 .await
                 .map_err(Into::into)
         }
         settings::StreamSession::Law(settings) => {
-            law::session(machine, settings, store, conn, stop)
+            law::session(machine, settings, store, host.conn, host.stop)
                 .await
                 .map_err(Into::into)
         }
         settings::StreamSession::Poct(settings) => {
-            poct::session(machine, settings, store, conn, stop)
+            driver::run(|| poct::Host::open(machine, settings, store), host)
                 .await
                 .map_err(Into::into)
         }
         settings::StreamSession::Vidas(settings) => {
-            vidas::session(machine, settings, store, conn, stop)
+            driver::run(|| vidas::Host::open(machine, settings, store), host)
                 .await
                 .map_err(Into::into)
         }
         settings::StreamSession::Autolyser(settings) => {
-            autolyser::session(machine, settings, store, conn, stop)
+            autolyser::session(machine, settings, store, host.conn, host.stop)
                 .await
                 .map_err(Into::into)
         }

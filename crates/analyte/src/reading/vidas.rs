@@ -1,13 +1,11 @@
 //! Reads VIDAS packets using the installed framing and sample identity policy.
 use super::Error;
-use analyte_config::Stack;
 pub(super) fn read(
-    config: &analyte_config::Validated,
     input: analyte_mapping::Input<'_>,
     raw: &[u8],
     settings: &analyte_config::VidasStack,
 ) -> Result<analyte_mapping::Output, Error> {
-    let packet = analyte_framing::vidas::decode(raw, framing(config)?)?;
+    let packet = analyte_framing::vidas::decode(raw, framing(settings)?)?;
     let limit = match settings.policy().sample_limit {
         analyte_config::VidasSampleLimit::Twelve => analyte_vidas::syntax::SampleLimit::Twelve,
         analyte_config::VidasSampleLimit::Seventeen => {
@@ -19,23 +17,11 @@ pub(super) fn read(
 }
 /// Translates installed VIDAS framing choices once for live and retained input.
 /// # Errors
-/// Rejects another stack or invalid framing settings.
+/// Rejects invalid framing settings.
 pub(crate) fn framing(
-    config: &analyte_config::Validated,
+    settings: &analyte_config::VidasStack,
 ) -> Result<analyte_framing::vidas::Config, Error> {
     use analyte_framing::vidas::{Checksum, Config, Mode};
-    let settings = match config.effective().stack() {
-        Stack::Vidas(settings) => settings,
-        Stack::Astm(analyte_config::RecordTransport::Stream(_))
-        | Stack::Hl7(analyte_config::RecordTransport::Stream(_))
-        | Stack::Law(_)
-        | Stack::Poct(_)
-        | Stack::Autolyser(_)
-        | Stack::Astm(analyte_config::RecordTransport::Folder(_))
-        | Stack::Hl7(analyte_config::RecordTransport::Folder(_)) => {
-            return Err(Error::Context(super::Context::VidasSettingsMissing));
-        }
-    };
     let installed = &settings.policy();
     Ok(Config::new(
         if installed.ack_point == analyte_config::AckPoint::Etx {

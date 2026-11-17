@@ -69,8 +69,11 @@ pub(crate) async fn map_retained(
 pub(super) use crate::reading::poct_limits;
 
 #[cfg(test)]
-fn vidas_config(machine: &Machine) -> Result<analyte_framing::vidas::Config, ReadError> {
-    Ok(crate::reading::vidas_config(&machine.snapshot)?)
+fn vidas_config(machine: &Machine) -> Result<analyte_framing::vidas::Config, Error> {
+    let Stack::Vidas(settings) = machine.snapshot.effective().stack() else {
+        return Err("test requires VIDAS settings".into());
+    };
+    Ok(crate::reading::vidas_config(settings)?)
 }
 pub(crate) mod departure_evidence;
 #[cfg(test)]
@@ -90,8 +93,4 @@ pub(crate) enum ReadError {
     Mapping(#[from] crate::reading::Error),
 }
 
-impl From<analyte_store::WorkerError> for ReadError {
-    fn from(error: analyte_store::WorkerError) -> Self {
-        Self::Store(error.into())
-    }
-}
+crate::runtime::service::conversions::causes!(ReadError; worker analyte_store::OperatorError);

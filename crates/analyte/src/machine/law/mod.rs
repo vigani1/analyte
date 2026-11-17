@@ -1,9 +1,9 @@
 //! Drives LAW connections using dialog actions and durable store calls.
-use super::driver::{self, Context};
-use crate::machine::hooks::Pause;
-mod connection;
+//! Kept whole: Keeps connection modes, ordered effects and reservation cleanup together.
+use super::connection_input::Input;
+use super::driver::{self, Context, Effects, Flow};
 use crate::intake::ByteReason;
-use connection::Mode;
+use crate::machine::hooks::Pause;
 pub(crate) mod custody;
 mod error;
 use crate::orders::outcome::Code;
@@ -40,13 +40,12 @@ async fn session_with_outbound(
     let mut orders = LawOrderLink::new()?;
     driver::run(
         || {
-            let mut host = Host::new(machine, settings, store, &mut orders, Mode::inbound())?;
+            let mut host = Host::open(machine, settings, store, &mut orders, Mode::inbound())?;
             host.outbound = outbound;
             Ok(host)
         },
         Context {
             machine,
-            settings,
             store,
             conn,
             stop,
@@ -75,7 +74,7 @@ struct Host<'a, 'm> {
     pending_input: VecDeque<u8>,
 }
 impl<'a, 'm> Host<'a, 'm> {
-    fn new(
+    fn open(
         machine: &'a intake::ConnectionEvidence<'m>,
         settings: &'a analyte_config::LawStack,
         store: &'a Handle,
@@ -127,12 +126,20 @@ impl<'a, 'm> Host<'a, 'm> {
             .map(|(_, id)| id)
             .ok_or_else(|| Error::ReceiptCorrelationMissing)
     }
-    async fn drive(
+    async fn transition(
         &mut self,
         event: Event<'_>,
-        host: &mut Context<'_, '_, analyte_config::LawStack>,
+        host: &mut Context<'_, '_>,
     ) -> Result<(), Error> {
-        let mut actions: VecDeque<_> = self.dialog.step(self.clock.elapsed(), event)?.into();
+        let actions = self.dialog.step(self.clock.elapsed(), event)?;
+        self.apply(actions, host).await
+    }
+    async fn apply(
+        &mut self,
+        actions: Vec<Action>,
+        host: &mut Context<'_, '_>,
+    ) -> Result<(), Error> {
+        let mut actions: VecDeque<_> = actions.into();
         while let Some(action) = actions.pop_front() {
             let end = self
                 .dialog
@@ -186,7 +193,7 @@ impl<'a, 'm> Host<'a, 'm> {
     async fn effect(
         &mut self,
         action: Action,
-        host: &mut Context<'_, '_, analyte_config::LawStack>,
+        host: &mut Context<'_, '_>,
     ) -> Result<Vec<Action>, Error> {
         let machine = self.machine.machine();
         let event = match action {
@@ -199,7 +206,7 @@ impl<'a, 'm> Host<'a, 'm> {
                     .hooks
                     .pause(Pause::LawPrecommit, &mut host.stop)
                     .await
-                    .map_err(Error::TestHook)?;
+                    .map_err(Error::from)?;
 
                 super::custody::store_before_ack(
                     machine,
@@ -216,7 +223,7 @@ impl<'a, 'm> Host<'a, 'm> {
                                 self.stopped = true;
                                 return Ok(Vec::new());
                             },
-                            result = machine.hooks.pause(Pause::LawCommitted, &mut host.stop) => result.map_err(Error::TestHook)?,
+                            result = machine.hooks.pause(Pause::LawCommitted, &mut host.stop) => result.map_err(Error::from)?,
                         }
                 }
                 Event::Stored(token)
@@ -287,10 +294,7 @@ impl<'a, 'm> Host<'a, 'm> {
         };
         Ok(self.dialog.step(self.clock.elapsed(), event)?)
     }
-    async fn complete_response(
-        &mut self,
-        host: &mut Context<'_, '_, analyte_config::LawStack>,
-    ) -> Result<(), Error> {
+    async fn complete_response(&mut self, host: &mut Context<'_, '_>) -> Result<(), Error> {
         self.completed = true;
         self.receipt = None;
         self.stored = false;
@@ -300,7 +304,7 @@ impl<'a, 'm> Host<'a, 'm> {
                 .hooks
                 .pause(Pause::LawRsp, &mut host.stop)
                 .await
-                .map_err(Error::TestHook)?;
+                .map_err(Error::from)?;
         }
         if let Some(ready) = self.ready.take() {
             let _ = ready.send(());
@@ -312,7 +316,7 @@ impl<'a, 'm> Host<'a, 'm> {
         token: protocol::ReceiptId,
         message: analyte_hl7::Message,
         started: Duration,
-        host: &mut Context<'_, '_, analyte_config::LawStack>,
+        host: &mut Context<'_, '_>,
     ) -> Result<Vec<Action>, Error> {
         let mut reply = self
             .orders
@@ -347,7 +351,7 @@ impl<'a, 'm> Host<'a, 'm> {
                 .hooks
                 .pause(Pause::LawHandover, &mut host.stop)
                 .await
-                .map_err(Error::TestHook)?;
+                .map_err(Error::from)?;
 
             reply = Reply::Response(response.clone());
         }
@@ -391,7 +395,7 @@ impl<'a, 'm> Host<'a, 'm> {
         &mut self,
         bytes: Vec<u8>,
         until: Duration,
-        host: &mut Context<'_, '_, analyte_config::LawStack>,
+        host: &mut Context<'_, '_>,
     ) -> Result<Event<'static>, Error> {
         host.conn
             .write_all(&bytes, Some(self.absolute(until)?.into()))
@@ -405,18 +409,14 @@ impl<'a, 'm> Host<'a, 'm> {
             })?;
         Ok(Event::Written)
     }
-    async fn feed(
-        &mut self,
-        bytes: Vec<u8>,
-        host: &mut Context<'_, '_, analyte_config::LawStack>,
-    ) -> Result<(), Error> {
+    async fn feed(&mut self, bytes: Vec<u8>, host: &mut Context<'_, '_>) -> Result<(), Error> {
         if !self.pending_input.is_empty() {
             return Err(Error::InputStillAwaitsCustody);
         }
         self.pending_input = bytes.into();
         while let Some(byte) = self.pending_input.front().copied() {
             self.pending_input.pop_front();
-            self.drive(Event::Byte(byte), host).await?;
+            self.transition(Event::Byte(byte), host).await?;
             if self.stopped {
                 return Ok(());
             }
@@ -427,7 +427,7 @@ impl<'a, 'm> Host<'a, 'm> {
             .hooks
             .pause(Pause::InputProcessed, &mut host.stop)
             .await
-            .map_err(Error::TestHook)?;
+            .map_err(Error::from)?;
 
         Ok(())
     }
@@ -468,6 +468,161 @@ impl<'a, 'm> Host<'a, 'm> {
                 ByteReason::LawTail,
             )
             .await?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum Mode<'a> {
+    Inbound { opened: bool, next_idle: Instant },
+    Outbound(&'a analyte_hl7::Message),
+}
+impl Mode<'_> {
+    pub(super) fn inbound() -> Self {
+        Self::Inbound {
+            opened: false,
+            next_idle: Instant::now(),
+        }
+    }
+}
+impl Effects for Host<'_, '_> {
+    type Error = Error;
+    fn wait(&self) -> Result<Option<Duration>, Error> {
+        let until = match self.mode {
+            Mode::Outbound(_) => self.orders.due().ok_or(Error::OutboundDeadlineAbsent)?,
+            Mode::Inbound { next_idle, .. } => {
+                let dialog = self
+                    .dialog
+                    .next_deadline()
+                    .map(|until| self.absolute(until))
+                    .transpose()?;
+                [Some(next_idle), self.orders.due(), dialog]
+                    .into_iter()
+                    .flatten()
+                    .min()
+                    .ok_or(Error::ConnectionDeadlineOverflow)?
+            }
+        };
+        Ok(Some(until.saturating_duration_since(Instant::now())))
+    }
+    fn receive_error(&self, error: analyte_transport::Error) -> Result<Input, Error> {
+        match (self.mode, error) {
+            (Mode::Inbound { .. }, analyte_transport::Error::Deadline(_)) => Ok(Input::Tick),
+            (Mode::Inbound { .. } | Mode::Outbound(_), error) => Err(error.into()),
+        }
+    }
+    async fn input(&mut self, host: &mut Context<'_, '_>, input: Input) -> Result<Flow, Error> {
+        match input {
+            Input::Tick => self.tick(host).await?,
+            Input::Opened { .. } => match &mut self.mode {
+                Mode::Inbound { opened, .. } => *opened = true,
+                Mode::Outbound(message) => {
+                    let message = *message;
+                    let until = self
+                        .orders
+                        .due()
+                        .ok_or(Error::OutboundDeadlineAbsent)?
+                        .saturating_duration_since(self.clock);
+                    self.transition(Event::Send(message, until), host).await?;
+                }
+            },
+            Input::Bytes { bytes } => self.feed(bytes, host).await?,
+            Input::Closed(reason) => match (self.mode, reason) {
+                (Mode::Inbound { .. }, _) => return Ok(Flow::Stop),
+                (Mode::Outbound(_), None) => return Err(Error::PeerClosedBeforeOrl),
+                (Mode::Outbound(_), Some(_)) => return Err(Error::IndependentPeerDisconnected),
+            },
+            Input::Failed(reason) => match self.mode {
+                Mode::Inbound { .. } => {
+                    tracing::warn!(machine=self.machine.machine().id.as_str(),error_kind=?reason,"LAW transport attempt failed");
+                }
+                Mode::Outbound(_) => return Err(Error::TransportFailed(reason)),
+            },
+            Input::RecordingFailed(_failure) => {}
+        }
+        Ok(
+            if self.stopped || matches!(self.mode, Mode::Outbound(_)) && self.completed {
+                Flow::Stop
+            } else {
+                Flow::Continue
+            },
+        )
+    }
+    async fn close(
+        &mut self,
+        _host: &mut Context<'_, '_>,
+        result: &mut Result<(), Error>,
+    ) -> Result<(), Error> {
+        let finished = self.finish().await;
+        let cleanup = match self.mode {
+            Mode::Inbound { .. } => self
+                .orders
+                .close(
+                    self.store,
+                    if result.is_err() {
+                        Code::LawSessionError.as_str()
+                    } else {
+                        Code::LawDisconnect.as_str()
+                    },
+                )
+                .await
+                .map_err(Into::into),
+            Mode::Outbound(_) => Ok(()),
+        };
+        crate::machine::custody::retain_cleanup(result, finished);
+        cleanup
+    }
+}
+impl Host<'_, '_> {
+    async fn tick(&mut self, host: &mut Context<'_, '_>) -> Result<(), Error> {
+        let now = Instant::now();
+        match self.mode {
+            Mode::Outbound(_) => {
+                let until = self.orders.due().ok_or(Error::OutboundDeadlineAbsent)?;
+                tokio::time::timeout_at(until.into(), std::future::pending::<()>())
+                    .await
+                    .map_err(Error::IndependentTransactionDeadline)?;
+            }
+            Mode::Inbound { opened, next_idle } => {
+                if self.orders.due().is_some_and(|due| now >= due) {
+                    self.orders.tick(self.store).await?;
+                } else if self
+                    .dialog
+                    .next_deadline()
+                    .is_some_and(|due| self.clock.elapsed() >= due)
+                {
+                    self.transition(Event::Tick, host).await?;
+                } else if now >= next_idle {
+                    let next_idle = now
+                        .checked_add(Duration::from_millis(100))
+                        .ok_or(Error::ConnectionDeadlineOverflow)?;
+                    self.mode = Mode::Inbound { opened, next_idle };
+                    if self.outbound.is_none() && opened && !self.dialog.receiving() {
+                        let mut stop = host.stop.clone();
+                        let outgoing = tokio::select! {
+                            biased;
+                            () = crate::machine::stopping(&mut stop) => { self.stopped = true; return Ok(()); },
+                            result = self.orders.idle(self.store, self.machine.machine(), self.settings.options()) => match result {
+                                Ok(message) => message,
+                                Err(error) => {
+                                    self.orders.close(self.store, Code::LawIdleAdmissionFailed.as_str()).await?;
+                                    tracing::error!(machine=self.machine.machine().id.as_str(),error_kind=%error,"LAW idle admission stopped; no command retried");
+                                    None
+                                }
+                            },
+                        };
+                        if let Some(message) = outgoing {
+                            let until = self
+                                .orders
+                                .due()
+                                .ok_or(Error::OutgoingDeadlineAbsent)?
+                                .saturating_duration_since(self.clock);
+                            self.transition(Event::Send(&message, until), host).await?;
+                        }
+                    }
+                }
+            }
         }
         Ok(())
     }

@@ -22,9 +22,8 @@ pub(super) enum Flow {
 }
 
 /// Shared host ownership; cancellation never cancels a queued durable-store request.
-pub(super) struct Context<'a, 'm, S> {
+pub(super) struct Context<'a, 'm> {
     pub machine: &'a intake::ConnectionEvidence<'m>,
-    pub settings: &'a S,
     pub store: &'a Handle,
     pub conn: &'a mut analyte_transport::Connection,
     pub stop: watch::Receiver<bool>,
@@ -32,10 +31,10 @@ pub(super) struct Context<'a, 'm, S> {
 
 /// A protocol supplies dialog transitions and effects, never its own receive loop.
 pub(super) trait Effects {
-    type Settings;
+    const CUSTODY: Custody = Custody::Dialog;
     type Error: CleanupFailure + From<super::link::error::Error> + From<analyte_transport::Error>;
     fn custody(&self) -> Custody {
-        Custody::Dialog
+        Self::CUSTODY
     }
     fn wait(&self) -> Result<Option<Duration>, Self::Error>;
     fn receive_error(&self, error: analyte_transport::Error) -> Result<Input, Self::Error> {
@@ -48,10 +47,7 @@ pub(super) trait Effects {
             | analyte_transport::Error::Io { .. }) => Err(error.into()),
         }
     }
-    async fn prepare(
-        &mut self,
-        _host: &mut Context<'_, '_, Self::Settings>,
-    ) -> Result<Flow, Self::Error> {
+    async fn prepare(&mut self, _host: &mut Context<'_, '_>) -> Result<Flow, Self::Error> {
         Ok(Flow::Continue)
     }
     /// Protocol-specific pending host work races input; dropping it never proves rollback.
@@ -64,13 +60,13 @@ pub(super) trait Effects {
     }
     async fn input(
         &mut self,
-        host: &mut Context<'_, '_, Self::Settings>,
+        host: &mut Context<'_, '_>,
         input: Input,
     ) -> Result<Flow, Self::Error>;
     /// Retains every owned effect even when another cleanup operation already failed.
     async fn close(
         &mut self,
-        host: &mut Context<'_, '_, Self::Settings>,
+        host: &mut Context<'_, '_>,
         result: &mut Result<(), Self::Error>,
     ) -> Result<(), Self::Error>;
 }
@@ -79,7 +75,7 @@ pub(super) trait Effects {
 /// A cancelled store or write can still have happened; protocol effects retain its identity.
 pub(super) async fn run<P: Effects>(
     open: impl FnOnce() -> Result<P, P::Error>,
-    mut host: Context<'_, '_, P::Settings>,
+    mut host: Context<'_, '_>,
 ) -> Result<(), P::Error> {
     let mut protocol = open()?;
     let mut result = drive(&mut protocol, &mut host).await;
@@ -87,10 +83,7 @@ pub(super) async fn run<P: Effects>(
     custody::retain_cleanup(&mut result, cleanup);
     result
 }
-async fn drive<P: Effects>(
-    protocol: &mut P,
-    host: &mut Context<'_, '_, P::Settings>,
-) -> Result<(), P::Error> {
+async fn drive<P: Effects>(protocol: &mut P, host: &mut Context<'_, '_>) -> Result<(), P::Error> {
     loop {
         if matches!(protocol.prepare(host).await?, Flow::Stop) {
             return Ok(());
@@ -130,6 +123,50 @@ async fn drive<P: Effects>(
         }
     }
 }
+/// A byte transition includes all ordered effects before another byte may be fed.
+pub(super) trait ByteEffects: Effects + Send {
+    fn apply_byte(
+        &mut self,
+        byte: u8,
+        conn: &mut analyte_transport::Connection,
+        stop: &watch::Receiver<bool>,
+    ) -> impl Future<Output = Result<bool, Self::Error>> + Send;
+}
+
+/// Completes every byte's effects before advancing a merged input chunk.
+/// A stop or failure leaves subsequent bytes in the caller's retained input
+/// custody; cancellation can leave the current durable operation pending.
+pub(super) async fn feed<H: ByteEffects>(
+    host: &mut H,
+    bytes: Vec<u8>,
+    conn: &mut analyte_transport::Connection,
+    stop: &watch::Receiver<bool>,
+) -> Result<bool, H::Error> {
+    for byte in bytes {
+        if host.apply_byte(byte, conn, stop).await? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// Supplies the common input-journal and monotonic-wait policy for chunk hosts.
+/// Hosts keep their protocol transitions and effects explicit; this only shares
+/// the Effects boilerplate for a dialog with a connection `start` epoch.
+macro_rules! chunk_effects {
+    ($error:ty) => {
+        type Error = $error;
+        const CUSTODY: $crate::machine::driver::Custody = $crate::machine::driver::Custody::Chunks;
+        fn wait(&self) -> Result<Option<std::time::Duration>, $error> {
+            Ok(self
+                .dialog
+                .next_deadline()
+                .map(|deadline| deadline.saturating_sub(self.start.elapsed())))
+        }
+    };
+}
+pub(super) use chunk_effects;
+
 async fn wait_for(wait: Option<Duration>) {
     match wait {
         Some(wait) if wait.is_zero() => {}
@@ -154,7 +191,6 @@ mod tests {
         trace: Rc<RefCell<Vec<&'static str>>>,
     }
     impl Effects for Probe {
-        type Settings = ();
         type Error = Error;
         fn custody(&self) -> Custody {
             match self.scenario {
@@ -173,11 +209,7 @@ mod tests {
             self.trace.borrow_mut().push("background");
             Err(Error::ActiveDialogHasNoDeadline)
         }
-        async fn input(
-            &mut self,
-            _: &mut Context<'_, '_, ()>,
-            input: Input,
-        ) -> Result<Flow, Error> {
+        async fn input(&mut self, _: &mut Context<'_, '_>, input: Input) -> Result<Flow, Error> {
             match input {
                 Input::Tick => {
                     self.trace.borrow_mut().push("deadline");
@@ -196,7 +228,7 @@ mod tests {
         }
         async fn close(
             &mut self,
-            _: &mut Context<'_, '_, ()>,
+            _: &mut Context<'_, '_>,
             _: &mut Result<(), Error>,
         ) -> Result<(), Error> {
             self.trace.borrow_mut().push("close");
@@ -247,7 +279,6 @@ mod tests {
                 },
                 Context {
                     machine: &connection,
-                    settings: &(),
                     store: &store,
                     conn: &mut conn,
                     stop,

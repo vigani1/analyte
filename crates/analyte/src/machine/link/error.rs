@@ -73,37 +73,11 @@ impl Error {
     }
 }
 
-impl From<crate::machine::receive::error::Error> for Error {
-    fn from(error: crate::machine::receive::error::Error) -> Self {
-        Self::Custody(Box::new(error))
+impl<C> From<C> for Error
+where
+    crate::machine::receive::error::Error: From<C>,
+{
+    fn from(cause: C) -> Self {
+        Self::Custody(Box::new(crate::machine::receive::error::Error::from(cause)))
     }
 }
-
-crate::machine::receive::error::forward!(Error, |cause| Self::Custody(Box::new(cause)));
-
-// Preserve the source classification when a protocol wraps a shared link error.
-macro_rules! forward {
-    ($target:ty, $wrap:expr) => {
-        impl From<std::io::Error> for $target {
-            fn from(error: std::io::Error) -> Self {
-                ($wrap)(crate::machine::link::error::Error::from(error))
-            }
-        }
-        impl From<analyte_transport::Error> for $target {
-            fn from(error: analyte_transport::Error) -> Self {
-                ($wrap)(crate::machine::link::error::Error::from(error))
-            }
-        }
-        impl From<std::net::AddrParseError> for $target {
-            fn from(error: std::net::AddrParseError) -> Self {
-                ($wrap)(crate::machine::link::error::Error::from(error))
-            }
-        }
-        impl From<analyte_transport::folder::WatchError> for $target {
-            fn from(error: analyte_transport::folder::WatchError) -> Self {
-                ($wrap)(crate::machine::link::error::Error::from(error))
-            }
-        }
-    };
-}
-pub(crate) use forward;

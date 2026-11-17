@@ -189,3 +189,20 @@ and trait-owned buffering on one decoder instance. Timers stay in the dialog.
 Every dialog has one event entry: `step(now, event) -> Result<Vec<Action>, Error>`.
 Invalid monotonic time is rejected before mutation; protocol refusals and host
 effects remain ordered actions. VIDAS's event transition method is private.
+
+### Program connection hosts
+
+Every protocol uses `Host<'a, 'm>` in `machine/<key>/mod.rs`. It owns its
+conversation state and borrows the connection's immutable evidence, concrete
+protocol settings and store handle. The caller owns those resources through
+shutdown; no host copies settings or opens its own transport. Protocol-specific
+borrows, such as a pending ASTM lookup or a LAW order exchange, stay with that
+host and cannot outlive the session.
+
+The `Effects` implementation stays in the same front module. The shared driver
+owns receive priority, input journaling and the final cleanup attempt; its
+`Context` supplies transport and cancellation. Each host feeds dialog events,
+then drains the resulting actions in one `apply` method. Actions produced by
+storage completion join that same ordered queue before the next input byte is
+fed. A single-action method may handle a large match, but never owns a separate
+receive loop. Protocol-specific deadlines and refusal rules remain explicit.
