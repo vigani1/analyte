@@ -287,19 +287,33 @@ async fn wait_count(path: &Path, table: &str, expected: i64) -> Result<i64, Erro
     })
     .await?
 }
+/// Waits for the negative-query ORL audit row, then requires exactly one.
+/// A duplicate fails at once with its count, and a missing row reports what was seen.
 async fn wait_audit(path: &Path) -> Result<(), Error> {
-    tokio::time::timeout(HANG_GUARD, async {
+    let mut found = 0_i64;
+    let waited = tokio::time::timeout(HANG_GUARD, async {
         loop {
-            let found: i64 = database(path)?.query_row(
+            found = database(path)?.query_row(
                 "SELECT count(*) FROM audit WHERE json_extract(evidence,'$.action')='LAW-negative-query-ORL'",
                 [],
                 |r| r.get(0),
             )?;
-            if found == 1 {
+            if found >= 1 {
                 return Ok::<_, Error>(());
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
     })
-    .await?
+    .await;
+    match waited {
+        Ok(result) => result?,
+        Err(_) => {
+            return Err(format!("no LAW-negative-query-ORL audit row; last count {found}").into());
+        }
+    }
+    assert_eq!(
+        found, 1,
+        "LAW-negative-query-ORL must be audited exactly once"
+    );
+    Ok(())
 }
