@@ -3,7 +3,7 @@
 pub(crate) enum Error {
     /// Autolyser poll confirmation did not reconcile custody.
     #[error("Autolyser poll confirmation did not reconcile custody")]
-    PollConfirmationDidNotReconcileCustody,
+    PollCustodyUnreconciled,
     /// Autolyser previous poll requires operator reconciliation before R can advance.
     #[error("Autolyser previous poll requires operator reconciliation before R can advance")]
     PollUnreconciled,

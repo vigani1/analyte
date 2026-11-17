@@ -352,7 +352,7 @@ fn append_result(
                             | Problem::UnsupportedLawStatusOnly
                             | Problem::UnqualifiedHl7Report
                             | Problem::DepartureConflict
-                            | Problem::DepartureDerivedStatusRequiresContract => None,
+                            | Problem::DerivedStatusContract => None,
                         })
                         .unwrap_or_else(|| "unknown test mapping".into()),
                 )

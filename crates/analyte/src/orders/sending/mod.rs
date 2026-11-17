@@ -7,6 +7,9 @@ use analyte_store::{Handle, MachineOrder, MachineOrderKey};
 mod work;
 pub(crate) use work::Work;
 
+/// Idle send-ahead candidate polling cadence.
+pub(crate) const ORDER_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(1);
+
 #[cfg(test)]
 mod tests;
 

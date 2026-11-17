@@ -142,13 +142,12 @@ pub(crate) fn validate(document: &Document) -> Result<Vec<Option<Value>>, Messag
         }
     }
     // The prose tightens the DTD: exactly one result representation per OBS.
-    for (i, e) in document
+    for i in document
         .elements()
         .iter()
         .enumerate()
-        .filter(|(_, e)| e.name() == "OBS")
+        .filter_map(|(i, e)| (e.name() == "OBS").then_some(i))
     {
-        let _ = e;
         let count = children(document, i)
             .filter(|(_, e)| matches!(e.name(), "OBS.value" | "OBS.qualitative_value"))
             .count();

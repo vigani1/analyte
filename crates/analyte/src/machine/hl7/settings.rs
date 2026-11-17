@@ -1,5 +1,5 @@
 //! Translates installed HL7 syntax settings into parser options.
-use analyte_config::{Encoding, Escapes, RecordTransport, Stack, SyntaxLimits, Terminator};
+use analyte_config::{Encoding, Escapes, Hl7OptionsSource, SyntaxLimits, Terminator};
 use analyte_dialog::hl7::Config;
 use std::time::Duration;
 pub(crate) fn options_from_values(
@@ -47,12 +47,13 @@ pub(crate) fn options(syntax: &analyte_config::Hl7Syntax) -> analyte_hl7::Option
 pub(crate) fn effective_options(
     effective: &analyte_config::Effective,
 ) -> Option<analyte_hl7::Options> {
-    match effective.stack() {
-        Stack::Hl7(RecordTransport::Stream(s)) => Some(options(s.settings().syntax())),
-        Stack::Hl7(RecordTransport::Folder(s)) => Some(options(s.settings().syntax())),
-        Stack::Law(s) => Some(crate::machine::law::settings::options(s)),
-        Stack::Astm(_) | Stack::Poct(_) | Stack::Vidas(_) | Stack::Autolyser(_) => None,
-    }
+    effective
+        .stack()
+        .hl7_options_source()
+        .map(|source| match source {
+            Hl7OptionsSource::Syntax(syntax) => options(syntax),
+            Hl7OptionsSource::Law(settings) => crate::machine::law::settings::options(settings),
+        })
 }
 
 pub(crate) fn dialog(

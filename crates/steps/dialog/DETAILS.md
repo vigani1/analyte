@@ -46,7 +46,7 @@ when a later action refuses the host event.
 
 ## Checklist evidence
 
-Synthetic tests in `tests/link.rs` cover these serial sections; the paired TCP
+Synthetic tests in `tests/astm.rs` cover these serial sections; the paired TCP
 rules in section 8 use exactly the same machine.
 
 | LIS01 checklist sections | Test suffix / behavior |

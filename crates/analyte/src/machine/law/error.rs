@@ -9,7 +9,7 @@ pub(crate) enum Error {
     ConnectionDeadlineOverflow,
     /// LAW inbound task panicked; machine owner stopped.
     #[error("LAW inbound task panicked; machine owner stopped")]
-    InboundTaskPanickedMachineOwnerStopped(#[source] tokio::task::JoinError),
+    InboundTaskPanicked(#[source] tokio::task::JoinError),
     /// LAW inbound task was cancelled before returning its outcome.
     #[error("LAW inbound task was cancelled before returning its outcome")]
     InboundTaskCancelled(#[source] tokio::task::JoinError),
@@ -36,7 +36,7 @@ pub(crate) enum Error {
     OutboundQueueUnavailable,
     /// LAW outbound work expired before connection.
     #[error("LAW outbound work expired before connection")]
-    OutboundWorkExpiredBeforeConnection,
+    OutboundWorkExpired,
     /// LAW outgoing deadline absent.
     #[error("LAW outgoing deadline absent")]
     OutgoingDeadlineAbsent,
@@ -48,7 +48,7 @@ pub(crate) enum Error {
     ReceiptCorrelationMissing,
     /// LAW response deadline absent after issuance.
     #[error("LAW response deadline absent after issuance")]
-    ResponseDeadlineAbsentAfterIssuance,
+    MissingResponseDeadline,
     /// LAW response send deadline expired.
     #[error("LAW response send deadline expired")]
     ResponseSendDeadlineExpired(#[source] analyte_transport::Error),

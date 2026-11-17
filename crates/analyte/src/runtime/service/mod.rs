@@ -127,7 +127,7 @@ pub(crate) async fn serve_bounded(
     watchdog: Option<Arc<crate::runtime::shutdown::Watchdog>>,
 ) -> Result<(), Error> {
     if !(SHUTDOWN_MIN..=SHUTDOWN_MAX).contains(&bound) {
-        return Err(Failure::ShutdownBoundMustBe30Through300Seconds);
+        return Err(Failure::InvalidShutdownBound);
     }
     serve_with(
         program,
@@ -438,7 +438,7 @@ impl Draining {
         }
         close_store(store).await?;
         drop(store_component);
-        alerts_drained.map_err(Failure::AlertEvaluatorShutdownExceeded5Seconds)??;
+        alerts_drained.map_err(Failure::AlertShutdownTimeout)??;
         admin_drained.map_err(Failure::AdminShutdownExceeded5Seconds)??;
         commits_drained.map_err(Failure::ReceiveCommitsExceeded15Seconds)?;
         drained.map_err(Failure::TransportShutdownExceeded5Seconds)??;
@@ -637,7 +637,7 @@ pub(crate) fn create_data_directory(path: &std::path::Path) -> Result<(), Failur
             .mode(0o700)
             .create(path)?;
         if std::fs::metadata(path)?.permissions().mode() & 0o077 != 0 {
-            return Err(Failure::DataDirectoryMustDenyGroupAndOtherAccess);
+            return Err(Failure::InsecureDataDirectory);
         }
     }
     #[cfg(windows)]

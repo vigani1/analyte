@@ -9,7 +9,7 @@ pub(crate) enum Error {
     ControlSuffixMismatch,
     /// VIDAS transfer parked; reconcile before reconnect.
     #[error("VIDAS transfer parked; reconcile before reconnect")]
-    TransferParkedReconcileBeforeReconnect,
+    TransferUnreconciled,
     /// An outbound command could not represent the mapped order.
     #[error(transparent)]
     OrderMapping(#[from] analyte_mapping::OrderMappingError),
