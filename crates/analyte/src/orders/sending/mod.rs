@@ -3,7 +3,7 @@ use crate::orders::OrderError as Error;
 use crate::orders::outcome::Code;
 use crate::{deadline, installation::config::Machine};
 use analyte_model::{OrderState, SourceText};
-use analyte_store::{Handle, MachineOrder, MachineOrderKey, OrderReservation};
+use analyte_store::{Handle, MachineOrder, MachineOrderKey};
 #[cfg(test)]
 mod tests;
 
@@ -45,12 +45,11 @@ pub(crate) async fn reserve_candidates(
         let reserved = store
             .request(until, move |store| {
                 store.reserve_send(
-                    &OrderReservation {
-                        identity: &candidate.identity,
-                        version: candidate.version,
-                        now: jiff::Timestamp::now().as_second(),
+                    &super::reservation::candidate(
+                        &candidate.identity,
+                        candidate.version,
                         freshness,
-                    },
+                    ),
                     analyte_store::ReserveOptions {
                         owner: owner.as_ref(),
                         ..Default::default()
@@ -104,11 +103,7 @@ pub(crate) async fn next(
         if !super::eligible(&order, machine) {
             continue;
         }
-        let identity = MachineOrderKey {
-            destination: super::destination(machine),
-            order: cached.id,
-            machine: machine.id.clone(),
-        };
+        let identity = crate::orders::reservation::key(machine, cached.id);
         let version = fields.version;
         let mapped = super::app_order(&order)
             .map_err(Error::from)
@@ -117,20 +112,15 @@ pub(crate) async fn next(
             Ok(mapped) => mapped,
             Err(error) => {
                 let reason = SourceText::new(&format!("rejected: {error}"))?;
-                let rejected = store
-                    .request(deadline()?, move |store| {
-                        store.reject_unsent(
-                            &OrderReservation {
-                                identity: &identity,
-                                version,
-                                now: jiff::Timestamp::now().as_second(),
-                                freshness,
-                            },
-                            reason,
-                            super::event,
-                        )
-                    })
-                    .await?;
+                let rejected = super::reservation::reject(
+                    store,
+                    deadline()?,
+                    identity,
+                    version,
+                    freshness,
+                    reason,
+                )
+                .await?;
                 if let Err(refusal) = rejected {
                     tracing::info!(reason = %refusal, "mapping rejection was superseded before recording");
                 }
@@ -140,12 +130,7 @@ pub(crate) async fn next(
         let reserved = store
             .request(deadline()?, move |store| {
                 store.reserve_send(
-                    &OrderReservation {
-                        identity: &identity,
-                        version,
-                        now: jiff::Timestamp::now().as_second(),
-                        freshness,
-                    },
+                    &super::reservation::candidate(&identity, version, freshness),
                     analyte_store::ReserveOptions::default(),
                 )
             })

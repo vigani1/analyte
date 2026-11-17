@@ -412,11 +412,11 @@ async fn query_orders(
                 match store.orders(&destination, &sample, now, freshness)? {
                     Lookup::Orders(orders) => {
                         for order in orders {
-                            let key = MachineOrderKey {
-                                destination: destination.clone(),
-                                order: order.id.clone(),
-                                machine: target.clone(),
-                            };
+                            let key = crate::orders::reservation::key_parts(
+                                destination.clone(),
+                                order.id.clone(),
+                                target.clone(),
+                            );
                             if store.machine_order(&key)?.is_none() {
                                 found.push(order);
                             }

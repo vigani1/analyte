@@ -138,11 +138,7 @@ async fn answer(
                         Err(error) => {
                             let reason =
                                 analyte_model::SourceText::new(&format!("rejected: {error}"))?;
-                            let identity = analyte_store::MachineOrderKey {
-                                destination: super::destination(machine),
-                                order: cached.id,
-                                machine: machine.id.clone(),
-                            };
+                            let identity = crate::orders::reservation::key(machine, cached.id);
                             let version = fields.version;
                             let rejected = super::reservation::reject(
                                 store, until, identity, version, freshness, reason,
@@ -155,11 +151,7 @@ async fn answer(
                         }
                     };
                     candidates.push(Candidate {
-                        identity: analyte_store::MachineOrderKey {
-                            destination: super::destination(machine),
-                            order: cached.id,
-                            machine: machine.id.clone(),
-                        },
+                        identity: crate::orders::reservation::key(machine, cached.id),
                         version: fields.version,
                     });
                     records.push(mapped.record()?.to_vec());
