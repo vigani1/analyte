@@ -6,38 +6,38 @@ const EDIT_REASON: &str = "edited POCT observation with no detectable common-con
 #[tokio::test]
 async fn poct01_b_5_21_table49_patient_and_metadata_edits_are_not_retransmissions()
 -> Result<(), Error> {
-    let definition = include_str!("../../../core/config/examples/poct.toml").replace(
+    let definition = include_str!("../../../core/config/examples/poct.toml").rewrite(
         "[poct]",
         "[poct]\nidentity = { sequence_number = true, processing = \"Production\" }",
     );
     let mut run = Running::start(&definition).await?;
     poct_start(&mut run, &poct_peer::hello("hello")).await?;
     let original = poct_peer::observation("original", true, "<OBS.value V=\"12.30\" U=\"mg/L\"/>")
-        .replace("</OBS>", "<OBS.normal_lo-hi_limit V=\"[1;20]\" U=\"mg/L\"/><OBS.critical_lo-hi_limit V=\"[0;30]\" U=\"mg/L\"/></OBS>")
-        .replace("</PT>", "</PT><SPC><SPC.specimen_id V=\"000xyz\" SN=\"local\"/><SPC.specimen_dttm NULL=\"UNK\"/><SPC.source_cd NULL=\"UNK\"/><SPC.type_cd NULL=\"UNK\"/></SPC>");
+        .rewrite("</OBS>", "<OBS.normal_lo-hi_limit V=\"[1;20]\" U=\"mg/L\"/><OBS.critical_lo-hi_limit V=\"[0;30]\" U=\"mg/L\"/></OBS>")
+        .rewrite("</PT>", "</PT><SPC><SPC.specimen_id V=\"000xyz\" SN=\"local\"/><SPC.specimen_dttm NULL=\"UNK\"/><SPC.source_cd NULL=\"UNK\"/><SPC.type_cd NULL=\"UNK\"/></SPC>");
     run.peer.write_all(original.as_bytes()).await?;
     xml(&mut run.peer).await?;
     poct_deliveries(&run, 1).await?;
     for (i, changed) in [
-        original.replace(
+        original.rewrite(
             "PT.patient_id V=\"000xyz\"",
             "PT.patient_id V=\"other-patient\"",
         ),
-        original.replace("OBS.method_cd V=\"M\"", "OBS.method_cd V=\"C\""),
-        original.replace("[0;30]", "[0;40]"),
-        original.replace("[1;20]\" U=\"mg/L", "[1;20]\" U=\"g/L"),
-        original.replace(
+        original.rewrite("OBS.method_cd V=\"M\"", "OBS.method_cd V=\"C\""),
+        original.rewrite("[0;30]", "[0;40]"),
+        original.rewrite("[1;20]\" U=\"mg/L", "[1;20]\" U=\"g/L"),
+        original.rewrite(
             "SN=\"synthetic-system\"",
             "SN=\"synthetic-system\" SV=\"changed\"",
         ),
-        original.replace("SN=\"local\"", "SN=\"other-local\""),
+        original.rewrite("SN=\"local\"", "SN=\"other-local\""),
     ]
     .into_iter()
     .enumerate()
     {
         let raw = changed
-            .replace("V=\"original\"", &format!("V=\"edit-{i}\""))
-            .replace(
+            .rewrite("V=\"original\"", &format!("V=\"edit-{i}\""))
+            .rewrite(
                 "<SVC.sequence_nbr",
                 "<SVC.reason_cd V=\"EDT\"/><SVC.sequence_nbr",
             );
@@ -47,8 +47,8 @@ async fn poct01_b_5_21_table49_patient_and_metadata_edits_are_not_retransmission
     }
     for reason in ["NEW", "RES"] {
         let raw = original
-            .replace("V=\"original\"", &format!("V=\"repeat-{reason}\""))
-            .replace(
+            .rewrite("V=\"original\"", &format!("V=\"repeat-{reason}\""))
+            .rewrite(
                 "<SVC.sequence_nbr",
                 &format!("<SVC.reason_cd V=\"{reason}\"/><SVC.sequence_nbr"),
             );
@@ -61,9 +61,9 @@ async fn poct01_b_5_21_table49_patient_and_metadata_edits_are_not_retransmission
     }
     // The changed-value EDT is delivered once. Its ACK is deliberately unread.
     let edited = original
-        .replace("12.30", "13.30")
-        .replace("V=\"original\"", "V=\"value-edit\"")
-        .replace(
+        .rewrite("12.30", "13.30")
+        .rewrite("V=\"original\"", "V=\"value-edit\"")
+        .rewrite(
             "<SVC.sequence_nbr",
             "<SVC.reason_cd V=\"EDT\"/><SVC.sequence_nbr",
         );

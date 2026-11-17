@@ -8,12 +8,10 @@ use std::{path::Path, time::Duration};
 use analyte_fixtures::UnlimitedSpace as Space;
 
 async fn open(path: &Path) -> Result<Handle, Error> {
-    let limits = analyte_store::Limits {
-        reserve_bytes: 1024,
-        database_bytes: 100_000_000,
-        record_bytes: 65_536,
-        page_rows: 100,
-        busy_timeout: Duration::from_millis(20),
+    let limits = {
+        let mut limits = analyte_fixtures::store_limits();
+        limits.busy_timeout = Duration::from_millis(20);
+        limits
     };
     Ok(Handle::start(
         path.to_owned(),

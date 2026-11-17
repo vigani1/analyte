@@ -1,5 +1,6 @@
 //! Tests machine receipt storage and acknowledgment ordering.
 use super::*;
+use analyte_fixtures::ConfigEdit as _;
 
 #[test]
 fn law_tf2b_b6_single_persistent_manager_accepts_client_and_server_without_startup_io()
@@ -26,7 +27,7 @@ fn law_tf2b_b6_single_persistent_manager_accepts_client_and_server_without_start
     std::fs::write(
         temp.path().join("machine.toml"),
         include_str!("../../../core/config/examples/law.toml")
-            .replace("kind = \"tcp_server\"", "kind = \"tcp_client\""),
+            .rewrite("kind = \"tcp_server\"", "kind = \"tcp_client\""),
     )?;
     let loaded = Program::load(&path)?;
     assert_eq!(
@@ -83,7 +84,7 @@ async fn hl7_251_2_15_5_2_adr0003_ae_reports_actual_mapping_location() -> Result
         1
     );
     drop(store);
-    let mut bad = String::from_utf8(ORU.to_vec())?.replace("message1", "message2");
+    let mut bad = String::from_utf8(ORU.to_vec())?.rewrite("message1", "message2");
     bad.push_str("OBX|2|NM|UNKNOWN^Synthetic^synthetic||12.30|mg/L|||||F\r");
     peer.write_all(&analyte_framing::hl7::encode(
         bad.as_bytes(),
@@ -105,8 +106,8 @@ async fn hl7_251_2_15_5_2_adr0003_ae_reports_actual_mapping_location() -> Result
         1
     );
     let conflict = String::from_utf8(ORU.to_vec())?
-        .replace("message1", "message3")
-        .replace("12.30", "99.10");
+        .rewrite("message1", "message3")
+        .rewrite("12.30", "99.10");
     peer.write_all(&analyte_framing::hl7::encode(
         conflict.as_bytes(),
         analyte_framing::hl7::Limit::new(1048576)?,
@@ -271,7 +272,7 @@ async fn plan5_machine_bind_failure_does_not_stop_another_machine() -> Result<()
     std::fs::write(
         temp.path().join("occupied-site.toml"),
         include_str!("../../../core/config/examples/site.toml")
-            .replace("127.0.0.1:5600", &occupied.local_addr()?.to_string()),
+            .rewrite("127.0.0.1:5600", &occupied.local_addr()?.to_string()),
     )?;
     let mut file = std::fs::read_to_string(&path)?;
     file.push_str(
@@ -400,10 +401,10 @@ async fn plan11_native_capacity_probe_is_bounded_and_file_pickup_keeps_original(
     let incoming = temp.path().join("incoming");
     std::fs::create_dir(&incoming)?;
     let definition = std::fs::read_to_string(temp.path().join("machine.toml"))?
-        .replace("tcp_server", "watched_folder")
-        .replace("kind = \"mllp\"", "kind = \"none\"")
-        .replace("hl7_receiver", "file_pickup")
-        .replace("acknowledgment = \"store_and_forward\"\n", "");
+        .rewrite("tcp_server", "watched_folder")
+        .rewrite("kind = \"mllp\"", "kind = \"none\"")
+        .rewrite("hl7_receiver", "file_pickup")
+        .rewrite("acknowledgment = \"store_and_forward\"\n", "");
     std::fs::write(temp.path().join("machine.toml"), definition)?;
     let site = format!(
         "schema_version=1\nretention='keep'\nendpoint={}\n[destination]\nname='demo'\nbase_url='https://lab.example.invalid'\napi_key_name='demo-api'\nsigning_key_name='demo-signing'\n",

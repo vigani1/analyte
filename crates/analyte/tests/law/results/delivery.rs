@@ -1,5 +1,6 @@
 //! Tests LAW result receipt and durable delivery.
 use super::*;
+use analyte_fixtures::ConfigEdit as _;
 
 #[tokio::test]
 async fn law_tf2b_c1_b7_second_obx_error_reports_actual_occurrence() -> Result<(), Error> {
@@ -18,7 +19,7 @@ async fn law_tf2b_c1_b7_second_obx_error_reports_actual_occurrence() -> Result<(
     let second = format!("OBX|{}", obx.replacen("1|NM|", "2|NM|", 1));
     for (payload, location) in [
         (
-            format!("{first}{}", second.replace("|F|", "|D|")),
+            format!("{first}{}", second.rewrite("|F|", "|D|")),
             "OBX^2^11",
         ),
         (
@@ -26,7 +27,7 @@ async fn law_tf2b_c1_b7_second_obx_error_reports_actual_occurrence() -> Result<(
             "OBX^2^1",
         ),
         (
-            format!("{}{second}", first.replace("|F|", "|D|")),
+            format!("{}{second}", first.rewrite("|F|", "|D|")),
             "OBX^1^11",
         ),
     ] {
@@ -138,9 +139,9 @@ async fn law_adr0011_c7_only_one_final_run_in_history_or_batch() -> Result<(), E
         let running = Running::start(&path, &reference.url, "synthetic-api").await?;
         let mut peer = connect(&path, "law").await?;
         let first = result("run-one", "\"\"", "order^ANALYZER", "1.0", "F")
-            .replace("^99LAB|1|1.0", "^99LAB|1^1^1|1.0");
+            .rewrite("^99LAB|1|1.0", "^99LAB|1^1^1|1.0");
         let second = result("run-two", "\"\"", "order^ANALYZER", "2.0", "F")
-            .replace("^99LAB|1|2.0", "^99LAB|2^1^1|2.0");
+            .rewrite("^99LAB|1|2.0", "^99LAB|2^1^1|2.0");
         if batch {
             let (_, body) = second.split_once('\r').ok_or("header")?;
             let mixed = format!("{first}{}", body.replacen("SPM|1|", "SPM|2|", 1));
@@ -167,7 +168,7 @@ async fn law_adr0011_c7_only_one_final_run_in_history_or_batch() -> Result<(), E
                     .contains("MSA|AR|run-two")
             );
             assert!(
-                hl7(&mut peer, second.replace("|F|", "|C|").as_bytes())
+                hl7(&mut peer, second.rewrite("|F|", "|C|").as_bytes())
                     .await?
                     .contains("MSA|AR|run-two")
             );

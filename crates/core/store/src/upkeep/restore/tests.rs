@@ -80,17 +80,19 @@ fn plan11_rule7_restore_refuses_zero_page_limit_before_publishing() -> TestResul
         time: 0,
         reason: Reason::new("synthetic recovery")?,
     };
-    let invalid = Limits {
-        page_rows: 0,
-        ..limits()
+    let invalid = {
+        let mut policy = limits();
+        policy.page_rows = 0;
+        policy
     };
     // The same public limits are refused by normal open. Restore must not bypass admission.
     assert!(matches!(
         Store::open(
             &temp.path().join("invalid.db"),
-            Limits {
-                page_rows: 0,
-                ..limits()
+            {
+                let mut policy = limits();
+                policy.page_rows = 0;
+                policy
             },
             Box::new(Space(u64::MAX))
         ),
@@ -319,9 +321,10 @@ fn mutation_plan11_restore_upgrade_refuses_a_database_that_grows_past_its_limit(
     let result = Store::restore(
         &path,
         &source,
-        Limits {
-            database_bytes: u64::try_from(limit)?,
-            ..limits()
+        {
+            let mut policy = limits();
+            policy.database_bytes = u64::try_from(limit)?;
+            policy
         },
         Box::new(Space(u64::MAX)),
         &audit,

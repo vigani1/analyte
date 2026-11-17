@@ -34,7 +34,7 @@ pub(super) async fn client_with_setup(
     let path = vendor_config(
         temp.path(),
         "law",
-        &settings.replace("kind = \"tcp_server\"", "kind = \"tcp_client\""),
+        &settings.rewrite("kind = \"tcp_server\"", "kind = \"tcp_client\""),
     )?;
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let loaded = Program::load(&path)?;
@@ -49,7 +49,7 @@ pub(super) async fn client_with_setup(
     let site = temp.path().join("hl7-site.toml");
     std::fs::write(
         &site,
-        std::fs::read_to_string(&site)?.replace(old, &listener.local_addr()?.to_string()),
+        std::fs::read_to_string(&site)?.rewrite(old, &listener.local_addr()?.to_string()),
     )?;
     let reference = Reference::start(
         &temp.path().join("receiver.db"),

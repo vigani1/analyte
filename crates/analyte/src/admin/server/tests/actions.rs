@@ -25,8 +25,8 @@ async fn plan11_admin_reprocess_resend_confirmation_csrf_actor_and_audit_failure
     );
     for body in [
         "confirm=yes&reason=missing".to_owned(),
-        form.replace(&encode(&token), "wrong"),
-        form.replace("confirm=yes", "confirm=no"),
+        form.rewrite(&encode(&token), "wrong"),
+        form.rewrite("confirm=yes", "confirm=no"),
     ] {
         assert!(
             request(&host, &path, &post_auth, Some(&body))
@@ -44,7 +44,7 @@ async fn plan11_admin_reprocess_resend_confirmation_csrf_actor_and_audit_failure
     std::fs::create_dir(root.join("other"))?;
     std::fs::write(
         &config_path,
-        original_program.replace("data_directory='data'", "data_directory='other'"),
+        original_program.rewrite("data_directory='data'", "data_directory='other'"),
     )?;
     let wrong_store = request(&host, &path, &post_auth, Some(&form)).await?;
     assert!(wrong_store.starts_with("HTTP/1.1 409"));
@@ -118,7 +118,7 @@ async fn seed_parked_receipt(
     let definition = include_str!("../../../../../core/config/examples/hl7.toml");
     std::fs::write(
         root.join("machine.toml"),
-        definition.replace("machine_code=\"SYN\"", "machine_code=\"OTHER\""),
+        definition.rewrite("machine_code=\"SYN\"", "machine_code=\"OTHER\""),
     )?;
     std::fs::write(
         root.join("site.toml"),
@@ -339,7 +339,7 @@ async fn adr0013_items4_7_retention_page_and_receipt_hold_csrf_audit() -> Result
         &host,
         "/retention",
         &post_auth,
-        Some(&form.replace("confirm=yes", "confirm=no")),
+        Some(&form.rewrite("confirm=yes", "confirm=no")),
     )
     .await?;
     assert!(refused.starts_with("HTTP/1.1 403"));
@@ -367,7 +367,7 @@ async fn adr0013_items4_7_retention_page_and_receipt_hold_csrf_audit() -> Result
             Ok(())
         })
         .await?;
-    let release = form.replace("operation=place", "operation=release");
+    let release = form.rewrite("operation=place", "operation=release");
     assert!(
         request(&host, "/retention", &post_auth, Some(&release))
             .await?

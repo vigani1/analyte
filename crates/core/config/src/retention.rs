@@ -1,4 +1,6 @@
 //! Parses the required site retention period without a fallback policy.
+#[cfg(test)]
+use analyte_fixtures::ConfigEdit as _;
 use serde::{Deserialize, Serialize};
 
 /// Validated retention policy (ADR 0013 item 1).
@@ -70,11 +72,11 @@ mod tests {
     {
         let site = include_str!("../examples/site.toml");
         for period in ["1", "90", "3650", "\"keep\""] {
-            load_site("site", &site.replace("\"keep\"", period))?;
+            load_site("site", &site.rewrite("\"keep\"", period))?;
         }
         for period in ["0", "3651", "-1", "\"forever\""] {
             {
-                let Err(refusal) = load_site("site", &site.replace("\"keep\"", period)) else {
+                let Err(refusal) = load_site("site", &site.rewrite("\"keep\"", period)) else {
                     panic!("input must be refused")
                 };
                 assert!(
@@ -83,7 +85,7 @@ mod tests {
                 );
             }
         }
-        let missing = site.replace("retention = \"keep\"", "");
+        let missing = site.rewrite("retention = \"keep\"", "");
         assert!(
             matches!(load_site("site", &missing), Err(crate::Error::Invalid { key, .. }) if key == "retention")
         );

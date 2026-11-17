@@ -1,4 +1,5 @@
 //! Tests the bounded modern result profile against the later editions' rules.
+use analyte_fixtures::ConfigEdit as _;
 use analyte_hl7::*;
 
 fn message(edition: &str, encoding: &str, body: &str) -> Result<Message, Error> {
@@ -364,7 +365,7 @@ fn hl7_2_8_2_and_2_9_1_s7_4_2_12_range_date_requires_reference_range() -> Result
     for edition in ["2.8.2", "2.9.1"] {
         let body = observation(12, "20261116")?;
         validate_result_fields(&message(edition, "^~\\&", &body)?)?;
-        let invalid = body.replace("reference", "");
+        let invalid = body.rewrite("reference", "");
         assert_eq!(
             validate_result_fields(&message(edition, "^~\\&", &invalid)?),
             Err(Error::Control {
@@ -433,7 +434,7 @@ fn hl7_2_8_2_s2_14_9_18_and_2_9_1_s2_13_9_18_utf8_and_literal_p() -> Result<(), 
             Message::parse(raw.as_bytes(), Options::default()),
             Err(Error::CharsetMismatch)
         );
-        let mixed = raw.replace("UNICODE UTF-8", "UNICODE UTF-8~ASCII");
+        let mixed = raw.rewrite("UNICODE UTF-8", "UNICODE UTF-8~ASCII");
         assert_eq!(
             Message::parse(mixed.as_bytes(), options),
             Err(Error::UnsupportedCharset)

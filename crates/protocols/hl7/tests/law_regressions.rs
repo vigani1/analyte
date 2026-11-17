@@ -1,4 +1,5 @@
 //! LAW transaction regression cases traced to TF-2b sections 3.27 and C.4-6.
+use analyte_fixtures::ConfigEdit as _;
 use analyte_hl7::{
     Message, Options,
     law::{Error, Query},
@@ -54,7 +55,7 @@ fn law_tf2b_3_27_4_1_2_4_rcp_immediate_realtime_and_excluded_fields() {
 #[test]
 fn law_tf2b_3_27_4_1_2_3_query_name_fixed_tuples_and_profile_limits() {
     let m = message(
-        &format!("{}\r{RCP}", QPD.replace("Work Order Step", "wrong")),
+        &format!("{}\r{RCP}", QPD.rewrite("Work Order Step", "wrong")),
         "20260101120000+0000",
     );
     assert!(matches!(

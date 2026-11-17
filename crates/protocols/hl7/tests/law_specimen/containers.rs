@@ -1,5 +1,6 @@
 //! Tests LAW specimen and container segments.
 use super::*;
+use analyte_fixtures::ConfigEdit as _;
 
 #[test]
 fn law_tf2b_c11_sac_24_re_ce_units_identifier_system_predicate() -> TestResult {
@@ -321,7 +322,7 @@ fn law_tf2b_3_28_4_1_2_1_negative_query_echoes_all_sac_identity_values() -> Test
             .find(|segment| segment.id() == b"SPM")
             .ok_or("fixture")?;
         assert_eq!(spm.field(4).map(Field::raw), Some(b"\"\"".as_slice()));
-        let malformed = std::str::from_utf8(output.raw())?.replace("ORC|DC", "ORC|NW");
+        let malformed = std::str::from_utf8(output.raw())?.rewrite("ORC|DC", "ORC|NW");
         let parsed = law::parse_message(malformed.as_bytes(), options())?;
         assert!(
             Profile::receive()
@@ -343,12 +344,12 @@ fn law_tf2b_c11_c12_results_receive_preserves_x_and_rejects_bad_supported_identi
         ("SAC|||tube", "SAC|||"),
         ("SPM|1|", "SPM|2|"),
     ] {
-        let invalid = law::parse_message(wire.replace(needle, value).as_bytes(), options())?;
+        let invalid = law::parse_message(wire.rewrite(needle, value).as_bytes(), options())?;
         let bytes = invalid.encode();
         assert!(law::Results::new(&invalid).is_err());
         assert_eq!(invalid.raw(), bytes);
     }
-    let appended = wire.replace(
+    let appended = wire.rewrite(
         "SAC|||tube",
         "SAC|||tube||||||ignored||||||||||||not-numeric",
     );

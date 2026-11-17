@@ -1,4 +1,5 @@
 //! Tests POCT reviewer conversations and timeouts.
+use analyte_fixtures::ConfigEdit as _;
 #[path = "messages.rs"]
 mod messages;
 use analyte_mapping::poct::map_observations;
@@ -93,7 +94,7 @@ fn poct01_b_6_10_nonpatient_qc_and_null_are_never_patient_or_zero() -> TestResul
 
 #[test]
 fn poct01_b_5_22_specimen_id_preserves_case_and_leading_zeroes() -> TestResult {
-    let raw = messages::observation("o",true,"<OBS.qualitative_value V=\"positive\" SN=\"source-system\" SV=\"v2\" DN=\"Source label\"/>").replace("</SVC>","<SPC><SPC.specimen_id V=\"000AbC\" SN=\"tube-system\"/><SPC.specimen_dttm V=\"2026-03-12T09:30:00+01:00\"/></SPC></SVC>");
+    let raw = messages::observation("o",true,"<OBS.qualitative_value V=\"positive\" SN=\"source-system\" SV=\"v2\" DN=\"Source label\"/>").rewrite("</SVC>","<SPC><SPC.specimen_id V=\"000AbC\" SN=\"tube-system\"/><SPC.specimen_dttm V=\"2026-03-12T09:30:00+01:00\"/></SPC></SVC>");
     let message = Message::parse(raw.as_bytes(), messages::limits())?;
     let mapped = map_observations(&message, "2026-03-12T09:50:00Z".parse()?)?;
     let item = mapped.first().ok_or("missing mapped result")?;
@@ -126,7 +127,7 @@ fn poct01_b_6_10_source_paths_keep_distinct_real_element_positions() -> TestResu
     let service = service
         .strip_suffix("</OBS.R01>")
         .ok_or("missing synthetic root close")?;
-    let repeated = raw.replace("</OBS.R01>", &format!("<SVC>{service}</OBS.R01>"));
+    let repeated = raw.rewrite("</OBS.R01>", &format!("<SVC>{service}</OBS.R01>"));
     let message = Message::parse(repeated.as_bytes(), messages::limits())?;
     let mapped = map_observations(&message, "2026-03-12T09:50:00Z".parse()?)?;
     assert_eq!(mapped.len(), 2);
@@ -169,7 +170,7 @@ fn poct01_b_8_11_clarification_p287_utc_z_preserves_original_and_precision() -> 
         ] {
             let written = format!("{local}{suffix}");
             let raw = messages::observation("o", true, "<OBS.value V=\"1.20\" U=\"mg/L\"/>")
-                .replace("2026-03-12T09:35:00+01:00", &written);
+                .rewrite("2026-03-12T09:35:00+01:00", &written);
             let message = Message::parse(raw.as_bytes(), messages::limits())?;
             let mapped = map_observations(&message, "2026-03-12T09:50:00Z".parse()?)?;
             let time = &mapped

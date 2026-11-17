@@ -2,6 +2,7 @@
 //! Kept whole: shared service fixture and durable identity assertions stay together.
 use analyte::{Error, installation::config::Program, runtime::service};
 use analyte_fixtures as guard;
+use analyte_fixtures::ConfigEdit as _;
 use analyte_fixtures::poct as poct_peer;
 use analyte_store::FreeSpace;
 use guard::HANG_GUARD;
@@ -20,7 +21,7 @@ use tokio::{
     task::JoinHandle,
 };
 
-const SECRET: &str = "whsec_AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=";
+use analyte_fixtures::SECRET;
 
 async fn count_results(
     axum::extract::State(count): axum::extract::State<Arc<AtomicU64>>,
@@ -486,7 +487,7 @@ async fn assert_missing_identity_and_conflict_retained(
     resent: &str,
     original: &str,
 ) -> Result<(), Error> {
-    let missing_time = resent.replace("resent", "missing-time").replace(
+    let missing_time = resent.rewrite("resent", "missing-time").rewrite(
         "<SVC.observation_dttm V=\"2026-03-12T09:35:00+01:00\"/>",
         "<SVC.observation_dttm NULL=\"UNK\"/>",
     );
@@ -495,13 +496,13 @@ async fn assert_missing_identity_and_conflict_retained(
 
     run.stored(missing_time.as_bytes(), "analyte-poct")?;
     let missing_sequence = resent
-        .replace("resent", "missing-sequence")
-        .replace("<SVC.sequence_nbr V=\"0007\"/>", "");
+        .rewrite("resent", "missing-sequence")
+        .rewrite("<SVC.sequence_nbr V=\"0007\"/>", "");
     run.peer.write_all(missing_sequence.as_bytes()).await?;
     xml(&mut run.peer).await?;
     let conflict = original
-        .replace("12.30", "99.30")
-        .replace("first", "conflict");
+        .rewrite("12.30", "99.30")
+        .rewrite("first", "conflict");
     run.peer.write_all(conflict.as_bytes()).await?;
     xml(&mut run.peer).await?;
     let db = run.database()?;
@@ -563,7 +564,7 @@ async fn assert_missing_identity_and_conflict_retained(
 
 async fn assert_missing_device_retained(run: &mut Running, hello: &str) -> Result<(), Error> {
     run.peer = TcpStream::connect(run.listener.local_addr()?).await?;
-    let missing_device = hello.replace("<DEV.device_id V=\"A1-B2-C3-D4-E5-F6-07-08\"/>", "");
+    let missing_device = hello.rewrite("<DEV.device_id V=\"A1-B2-C3-D4-E5-F6-07-08\"/>", "");
     run.peer.write_all(missing_device.as_bytes()).await?;
     tokio::time::timeout(HANG_GUARD, async {
         loop {

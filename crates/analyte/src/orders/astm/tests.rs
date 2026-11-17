@@ -1,13 +1,14 @@
 //! Tests astm behavior with synthetic fixtures.
 use super::*;
 use crate::Error;
+use analyte_fixtures::ConfigEdit as _;
 use analyte_model::Identifier;
 use std::time::Duration;
 
 use analyte_fixtures::UnlimitedSpace as Space;
 
 fn machine(policy: &str) -> Result<Machine, Error> {
-    let section = include_str!("../../../../core/config/examples/orders.toml").replace(
+    let section = include_str!("../../../../core/config/examples/orders.toml").rewrite(
         "when_untrusted = \"error\"",
         &format!("when_untrusted = \"{policy}\""),
     );
@@ -39,12 +40,10 @@ fn machine(policy: &str) -> Result<Machine, Error> {
 async fn lis02_section11_adr0004_missed_deadline_is_query_error_or_silence_never_no_information()
 -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
-    let limits = analyte_store::Limits {
-        reserve_bytes: 1024,
-        database_bytes: 100_000_000,
-        record_bytes: 65_536,
-        page_rows: 100,
-        busy_timeout: Duration::from_millis(20),
+    let limits = {
+        let mut limits = analyte_fixtures::store_limits();
+        limits.busy_timeout = Duration::from_millis(20);
+        limits
     };
     let mut store = Handle::start(
         temp.path().join("orders.db"),
@@ -117,12 +116,10 @@ async fn rule9_astm_all_untrusted_states_and_destination_freshness() -> Result<(
             Duration::from_secs(if case == "long" { 120 } else { 10 });
         let mut store = Handle::start(
             temp.path().join(format!("{case}.db")),
-            analyte_store::Limits {
-                reserve_bytes: 1024,
-                database_bytes: 100_000_000,
-                record_bytes: 65_536,
-                page_rows: 100,
-                busy_timeout: Duration::from_millis(20),
+            {
+                let mut limits = analyte_fixtures::store_limits();
+                limits.busy_timeout = Duration::from_millis(20);
+                limits
             },
             Box::new(Space),
             4,
@@ -207,7 +204,7 @@ fn lis02_6_10_generated_header_identifies_receiver() -> Result<(), Error> {
     for receiver in [None, Some("Peer|A")] {
         let mut machine = machine("error")?;
         if let Some(receiver) = receiver {
-            let section = include_str!("../../../../core/config/examples/orders.toml").replace(
+            let section = include_str!("../../../../core/config/examples/orders.toml").rewrite(
                 "[orders.astm]",
                 &format!("[orders.astm]\nreceiver={receiver:?}"),
             );

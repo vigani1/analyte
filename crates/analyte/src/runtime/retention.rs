@@ -117,12 +117,10 @@ mod tests {
         let store = Arc::new(
             Handle::start(
                 temp.path().join("store.db"),
-                analyte_store::Limits {
-                    reserve_bytes: 1024,
-                    database_bytes: 100_000_000,
-                    record_bytes: 65536,
-                    page_rows: 100,
-                    busy_timeout: Duration::from_millis(20),
+                {
+                    let mut limits = analyte_fixtures::store_limits();
+                    limits.busy_timeout = Duration::from_millis(20);
+                    limits
                 },
                 Box::new(Space),
                 2,

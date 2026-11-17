@@ -3,6 +3,7 @@
 use analyte_dialog::poct::{
     CommitId, CommitOutcome, Dialog, DialogAction, DialogConfig, DialogEvent, Error as DialogError,
 };
+use analyte_fixtures::ConfigEdit as _;
 use analyte_fixtures::poct as peer_messages;
 use analyte_poct::{ApplicationError, ControlId, Message, Outbound};
 use std::time::Duration;
@@ -234,7 +235,7 @@ fn poct01_b_4_1_3_zero_observations_repeated_topic_and_normal_termination()
         [Outbound::RequestObservations]
     ));
     // Each repeated topic has its own message ID (B 5.13), even when empty.
-    let repeated_eot = eot().replace("HDR.control_id V=\"eot\"", "HDR.control_id V=\"eot-again\"");
+    let repeated_eot = eot().rewrite("HDR.control_id V=\"eot\"", "HDR.control_id V=\"eot-again\"");
     assert!(
         step(&mut dialog, received(&repeated_eot)?)?
             .iter()
@@ -427,7 +428,7 @@ fn poct01_project_disconnect_wrong_session_and_reversed_time_do_not_ack() -> Res
 fn poct01_b4_1_2_invalid_capabilities_are_retained_and_termination_has_deadline()
 -> Result<(), DialogError> {
     let mut dialog = dialog(2)?;
-    let raw = peer_messages::hello("bad").replace(
+    let raw = peer_messages::hello("bad").rewrite(
         "<DSC.max_message_sz NULL=\"PINF\"/>",
         "<DSC.max_message_sz V=\"0\"/>",
     );
@@ -458,7 +459,7 @@ fn poct01_b5_13_reused_id_before_commit_is_retained_not_accepted() -> Result<(),
     let mut dialog = dialog(2)?;
     startup(&mut dialog)?;
     let first = step(&mut dialog, received(&observation("same"))?)?;
-    let repeated = observation("same").replace("7.20", "9.20");
+    let repeated = observation("same").rewrite("7.20", "9.20");
     let actions = step(&mut dialog, received(&repeated)?)?;
     assert!(
         matches!(actions.first(), Some(DialogAction::Park { message, .. }) if message.document().raw() == repeated.as_bytes())

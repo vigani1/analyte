@@ -1,6 +1,7 @@
 //! Tests LAW result receipt and durable delivery.
 use super::*;
 use crate::support::step;
+use analyte_fixtures::ConfigEdit as _;
 
 #[tokio::test]
 async fn law_tf2b_3_29_4_b3_results_deliver_once_retransmit_and_correct_only_c() -> Result<(), Error>
@@ -34,7 +35,7 @@ async fn law_tf2b_3_29_4_b3_results_deliver_once_retransmit_and_correct_only_c()
     assert!(
         hl7(
             &mut peer,
-            first.replace("|first|", "|retransmit|").as_bytes()
+            first.rewrite("|first|", "|retransmit|").as_bytes()
         )
         .await?
         .contains("MSA|AA|retransmit")
@@ -139,7 +140,7 @@ async fn law_tf2b_3_29_4_b7_uninterpretable_is_parked_with_error_ack_and_no_deli
     for (message, code) in [
         (
             result("unknown-test", "\"\"", "awos-1^LAB", "12.30", "F")
-                .replace("SYN^Synthetic^99LAB", "UNKNOWN^Unknown^99LAB"),
+                .rewrite("SYN^Synthetic^99LAB", "UNKNOWN^Unknown^99LAB"),
             "AE",
         ),
         (
@@ -198,7 +199,7 @@ async fn law_tf2b_3_29_4_b3_b7_conflict_rejects_batch_and_complete_og_distinguis
         "12.30",
         "F",
     )
-    .replace("^99LAB|1|12.30", "^99LAB|1^1^1|12.30");
+    .rewrite("^99LAB|1|12.30", "^99LAB|1^1^1|12.30");
     assert!(
         hl7(&mut peer, first.as_bytes())
             .await?
@@ -208,8 +209,8 @@ async fn law_tf2b_3_29_4_b3_b7_conflict_rejects_batch_and_complete_og_distinguis
     // C.7 pp.102-103: OG.1 stays 1; changing OG.3 distinguishes another
     // observation within the same run, not a second final run.
     let rerun = first
-        .replace("control-id-longer-than-generic-hl7-twenty", "rerun")
-        .replace("|1^1^1|", "|1^1^2|");
+        .rewrite("control-id-longer-than-generic-hl7-twenty", "rerun")
+        .rewrite("|1^1^1|", "|1^1^2|");
     assert!(
         hl7(&mut peer, rerun.as_bytes())
             .await?
@@ -217,8 +218,8 @@ async fn law_tf2b_3_29_4_b3_b7_conflict_rejects_batch_and_complete_og_distinguis
     );
     check(&reference.event().await?, "awos-1", "LAB", 0, "12.30")?;
     let conflict = first
-        .replace("control-id-longer-than-generic-hl7-twenty", "mixed")
-        .replace("12.30", "99.9");
+        .rewrite("control-id-longer-than-generic-hl7-twenty", "mixed")
+        .rewrite("12.30", "99.9");
     let new = result("new", "\"\"", "awos-2^LAB", "10.10", "F");
     let (_, new_body) = new.split_once('\r').ok_or("synthetic header absent")?;
     let mixed = format!("{conflict}{}", new_body.replacen("SPM|1|", "SPM|2|", 1));
@@ -238,7 +239,7 @@ async fn law_tf2b_3_29_4_b3_b7_conflict_rejects_batch_and_complete_og_distinguis
     check(&reference.event().await?, "awos-2", "LAB", 0, "10.10")?;
     let valid = result("mixed-mapping", "\"\"", "awos-3^LAB", "10.10", "F");
     let unknown = result("unknown", "\"\"", "awos-4^LAB", "10.10", "F")
-        .replace("SYN^Synthetic^99LAB", "UNKNOWN^Unknown^99LAB");
+        .rewrite("SYN^Synthetic^99LAB", "UNKNOWN^Unknown^99LAB");
     let (_, unknown_body) = unknown.split_once('\r').ok_or("synthetic header absent")?;
     let mixed_mapping = format!("{valid}{}", unknown_body.replacen("SPM|1|", "SPM|2|", 1));
     // HL7 2.5.1 section 2.15.5.2: the second OBX, not the first, has the unknown code.
@@ -405,7 +406,7 @@ async fn law_tf2b_3_29_4_mllp_partial_block_deadline_parks_original_without_aa()
     let path = vendor_config(
         temp.path(),
         "law",
-        &definition().replace("receive_timeout_ms = 30000", "receive_timeout_ms = 100"),
+        &definition().rewrite("receive_timeout_ms = 30000", "receive_timeout_ms = 100"),
     )?;
     let reference = Reference::start(
         &temp.path().join("reference.db"),
@@ -453,8 +454,8 @@ async fn law_tf2b_3_27_3_28_disabled_query_and_work_cannot_issue_work_or_accepta
     );
     assert!(!ack.contains("OML"));
     let work = result("work1", "\"\"", "awos-1^LAB", "12.30", "F")
-        .replace("OUL^R22^OUL_R22", "OML^O33^OML_O33")
-        .replace("LAB-29", "LAB-28");
+        .rewrite("OUL^R22^OUL_R22", "OML^O33^OML_O33")
+        .rewrite("LAB-29", "LAB-28");
     // B.7.2 pp.80-81: unsupported trigger is rejected with correlated AR.
     let rejected = hl7(&mut peer, work.as_bytes()).await?;
     assert!(rejected.contains("MSA|AR|work1"), "{rejected}");
@@ -472,7 +473,7 @@ async fn law_tf2b_3_27_3_28_disabled_query_and_work_cannot_issue_work_or_accepta
 async fn law_tf2b_3_29_4_adr0003_parked_result_reprocesses_original_after_mapping_fix()
 -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
-    let missing = definition().replace("machine_code=\"SYN\"", "machine_code=\"MISSING\"");
+    let missing = definition().rewrite("machine_code=\"SYN\"", "machine_code=\"MISSING\"");
     let path = vendor_config(temp.path(), "law", &missing)?;
     let receiver_path = temp.path().join("receiver.db");
     let mut reference = Reference::start(

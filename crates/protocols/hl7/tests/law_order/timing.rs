@@ -1,5 +1,6 @@
 //! Tests LAW order, timing and test-detail segments.
 use super::*;
+use analyte_fixtures::ConfigEdit as _;
 
 #[test]
 fn law_tf2b_c14_tq1_9_r_priority_cwe_subset_and_option() -> TestResult {
@@ -545,7 +546,7 @@ fn law_tf2b_c13_c14_selected_options_require_details_and_priority_in_received_re
     law::Results::with_profile(&present, Profile::receive().with_dilution(true))?;
     assert!(law::Results::with_profile(&present, Profile::receive().with_priority(true)).is_err());
     let source = std::str::from_utf8(present.raw())?
-        .replace("ORC|SC||||CM\r", "ORC|SC||||CM\rTQ1|||||||||S^^HL70485\r");
+        .rewrite("ORC|SC||||CM\r", "ORC|SC||||CM\rTQ1|||||||||S^^HL70485\r");
     let priority = law::parse_message(source.as_bytes(), options())?;
     law::Results::with_profile(
         &priority,
@@ -553,7 +554,7 @@ fn law_tf2b_c13_c14_selected_options_require_details_and_priority_in_received_re
     )?;
     let inconsistent = law::parse_message(
         source
-            .replace(&format!("TCD|{TEST}"), "TCD|other^Synthetic^99LAB")
+            .rewrite(&format!("TCD|{TEST}"), "TCD|other^Synthetic^99LAB")
             .as_bytes(),
         options(),
     )?;

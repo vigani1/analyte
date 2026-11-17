@@ -1,5 +1,6 @@
 //! Tests HL7 O21 and O22 laboratory orders.
 //! Kept whole: Laboratory order validation cases form one message-family conformance matrix.
+use analyte_fixtures::ConfigEdit as _;
 use analyte_hl7::order::{
     self, Code, Error, Header, Order, OrderId, OrderMessage, OrderResponse, Outcome, Patient,
     Priority, Processing, SampleField, SampleId, Specimen, Subject, Timestamp, Timing,
@@ -374,7 +375,7 @@ fn hl7_251_4_4_6_7_rejects_wrong_version_and_transaction_family() -> Result<(), 
         "ORL^O22^ORL_O42",
     ] {
         let message = Message::parse(
-            raw.replace("ORL^O22^ORL_O22", kind).as_bytes(),
+            raw.rewrite("ORL^O22^ORL_O22", kind).as_bytes(),
             Options::default(),
         )?;
         if kind == "ORL^O22" {
@@ -413,7 +414,7 @@ fn hl7_251_4_4_7_response_patient_group_and_2_9_correlation() -> Result<(), Erro
     let response = orders_reply(b"AA", b"ORC|OK|001^LAB\r")?;
     let text = String::from_utf8(response.raw().to_vec()).map_err(|_| Error::Limit)?;
     let wrong = Message::parse(
-        text.replace("MSA|AA|oml1", "MSA|AA|other").as_bytes(),
+        text.rewrite("MSA|AA|oml1", "MSA|AA|other").as_bytes(),
         Options::default(),
     )?;
     assert!(matches!(

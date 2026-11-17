@@ -1,5 +1,6 @@
 //! Tests LAW OBX, NTE and INV segment validation.
 use super::*;
+use analyte_fixtures::ConfigEdit as _;
 
 #[test]
 fn law_tf2b_c7_obx_11_closed_status_and_explicit_correction_only() -> TestResult {
@@ -459,14 +460,14 @@ fn law_tf2b_c2_control_inventory_co_predicate_and_result_ownership() -> TestResu
     law::Results::new(&result)?;
     let base = std::str::from_utf8(result.raw())?;
     let source = base
-        .replace(&inventory, "")
-        .replace("SER^^HL70487", "\"\"")
-        .replace("P^^HL70369", "Q^^HL70369")
-        .replace("SAC|||tube\r", &format!("SAC|||tube\r{inventory}"));
+        .rewrite(&inventory, "")
+        .rewrite("SER^^HL70487", "\"\"")
+        .rewrite("P^^HL70369", "Q^^HL70369")
+        .rewrite("SAC|||tube\r", &format!("SAC|||tube\r{inventory}"));
     let good = law::parse_message(source.as_bytes(), options())?;
     law::Results::new(&good)?;
     let bad = law::parse_message(
-        source.replace("CO^^HL70384", "MR^^HL70384").as_bytes(),
+        source.rewrite("CO^^HL70384", "MR^^HL70384").as_bytes(),
         options(),
     )?;
     let failure = law::Results::new(&bad)
@@ -476,7 +477,7 @@ fn law_tf2b_c2_control_inventory_co_predicate_and_result_ownership() -> TestResu
         matches!(failure, Error::AtSegment {occurrence:1,source} if matches!(*source,Error::Content {segment:"INV",field:3}))
     );
     let bad = law::parse_message(
-        source.replace("Q^^HL70369", "Q^^99LAB").as_bytes(),
+        source.rewrite("Q^^HL70369", "Q^^99LAB").as_bytes(),
         options(),
     )?;
     assert!(law::Results::new(&bad).is_err());

@@ -15,7 +15,7 @@ async fn state(path: &Path, expected: &str) -> Result<(), Error> {
 }
 
 fn send_ahead() -> String {
-    definition().replace("send_ahead = false", "send_ahead = true")
+    definition().rewrite("send_ahead = false", "send_ahead = true")
 }
 
 #[tokio::test]
@@ -177,7 +177,7 @@ async fn law_tf2b_3_28_adr0003_no_reply_and_disconnect_are_uncertain_never_repla
             // Cancellation first needs a real acceptance round trip. Only the
             // no-reply-only case can use a short timer without racing that reply.
             let response_ms = if cancelling || disconnect { 10000 } else { 250 };
-            let settings = send_ahead().replace(
+            let settings = send_ahead().rewrite(
                 "response_ms = 30000",
                 &format!("response_ms = {response_ms}"),
             );
@@ -466,7 +466,7 @@ async fn palm_tf2b_b7_6_c8_adr0003_0011_status_custody_repeats_restart_and_confl
         );
     }
     assert_eq!(count(&path, "awos_execution_history")?, 4);
-    let conflict = progress.replace("|IP\r", "|CA\r");
+    let conflict = progress.rewrite("|IP\r", "|CA\r");
     assert!(
         hl7(&mut peer, conflict.as_bytes())
             .await?
@@ -504,7 +504,7 @@ async fn palm_tf2b_b7_6_adr0003_0011_mixed_status_result_accepts_or_rejects_as_o
         "{notice}{}\rORC|SC||||CM\rOBX|{obx}",
         std::str::from_utf8(second.raw())?
     );
-    let invalid = mixed.replace("|mixed|", "|unknown-mixed|")
+    let invalid = mixed.rewrite("|mixed|", "|unknown-mixed|")
         + "OBR||unknown-awos||SYN^Synthetic^99LAB\rORC|SC||||IP\r";
     let ack = hl7(&mut peer, invalid.as_bytes()).await?;
     assert!(ack.contains("MSA|AR|unknown-mixed"), "{ack}");

@@ -1,4 +1,5 @@
 //! Tests the bounded 2.6 receiving and backward-compatible query profile.
+use analyte_fixtures::ConfigEdit as _;
 use analyte_hl7::{
     AckCode, AckError, ControlId, ErrView, Error, Message, Msa, Msh, Options, Response,
     Responsibility, Version, acknowledgment, query, validate_result_fields,
@@ -388,13 +389,13 @@ fn hl7_2_6_s5_10_4_1_2_qrd_qrf_dtm_cwe_and_deprecated_tq() -> Result<(), Error> 
     assert_eq!(query::Request::new(&input)?.query_id(), b"tag");
     for (bad_qrd, bad_qrf, segment, field) in [
         (
-            qrd.replace("20261116", "20261116^D"),
+            qrd.rewrite("20261116", "20261116^D"),
             "".to_owned(),
             "QRD",
             1,
         ),
         (
-            qrd.replace("LOCAL|LOCAL", "SYN^Text^LOCAL|LOCAL"),
+            qrd.rewrite("LOCAL|LOCAL", "SYN^Text^LOCAL|LOCAL"),
             "".to_owned(),
             "QRD",
             9,
@@ -406,7 +407,7 @@ fn hl7_2_6_s5_10_4_1_2_qrd_qrf_dtm_cwe_and_deprecated_tq() -> Result<(), Error> 
             matches!(query::Request::new(&request(&bad_qrd, &bad_qrf)?), Err(Error::Control {segment: s, field: f}) if s == segment && f == field)
         );
     }
-    let cwe = qrd.replace("LOCAL|LOCAL", "SYN^Text^LOCAL^^^^v1|LOCAL");
+    let cwe = qrd.rewrite("LOCAL|LOCAL", "SYN^Text^LOCAL^^^^v1|LOCAL");
     query::Request::new(&request(&cwe, "")?)?;
     Ok(())
 }

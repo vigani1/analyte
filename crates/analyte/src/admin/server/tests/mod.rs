@@ -2,6 +2,7 @@
 use super::*;
 use crate::Error;
 use crate::admin::markup::Markup;
+use analyte_fixtures::ConfigEdit as _;
 use analyte_model::{OrderState, Reason};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
@@ -31,7 +32,7 @@ async fn plan11_service_admin_missing_token_and_owned_lifecycle() -> Result<(), 
     std::fs::write(
         directory.path().join("site.toml"),
         include_str!("../../../../../core/config/examples/site.toml")
-            .replace("127.0.0.1:5600", &analyzer_address),
+            .rewrite("127.0.0.1:5600", &analyzer_address),
     )?;
     let reserved = std::net::TcpListener::bind("127.0.0.1:0")?;
     let address = reserved.local_addr()?;
@@ -164,12 +165,12 @@ async fn plan11_plan12_overview_auth_headers_escaping_and_shutdown() -> Result<(
         std::fs::set_permissions(directory.path(), std::fs::Permissions::from_mode(0o700))?;
     }
     let bearer = super::super::rotate_token(directory.path())?;
-    let limits = analyte_store::Limits {
-        reserve_bytes: 1,
-        database_bytes: 100_000_000,
-        record_bytes: 65536,
-        page_rows: 1,
-        busy_timeout: Duration::from_millis(100),
+    let limits = {
+        let mut limits = analyte_fixtures::store_limits();
+        limits.reserve_bytes = 1;
+        limits.page_rows = 1;
+        limits.busy_timeout = Duration::from_millis(100);
+        limits
     };
     let store = Arc::new(
         analyte_store::Handle::start(

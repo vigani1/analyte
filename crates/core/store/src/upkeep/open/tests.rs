@@ -194,9 +194,10 @@ fn startup_timing_two_gib_synthetic_store() -> TestResult {
     let started = Instant::now();
     let store = Store::open(
         &path,
-        Limits {
-            database_bytes: 16_000_000_000,
-            ..limits()
+        {
+            let mut policy = limits();
+            policy.database_bytes = 16_000_000_000;
+            policy
         },
         Box::new(Space(u64::MAX)),
     )?;
@@ -216,9 +217,10 @@ fn startup_timing_two_gib_synthetic_store() -> TestResult {
         let started = Instant::now();
         drop(Store::open(
             &path,
-            Limits {
-                database_bytes: 16_000_000_000,
-                ..limits()
+            {
+                let mut policy = limits();
+                policy.database_bytes = 16_000_000_000;
+                policy
             },
             Box::new(Space(u64::MAX)),
         )?);

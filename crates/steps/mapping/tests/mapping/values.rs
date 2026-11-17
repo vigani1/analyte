@@ -1,6 +1,7 @@
 //! Tests machine field mapping and exact value retention.
 //! Kept whole: Value interpretation regressions share the same synthetic field-mapping fixtures and source helpers.
 use super::*;
+use analyte_fixtures::ConfigEdit as _;
 
 #[test]
 fn hl7_2_9_1_s2_4_5_2_truncated_input_never_reaches_result_mapping() -> TestResult {
@@ -33,7 +34,7 @@ fn hl7_251_2_7_4_decoding_retains_negotiated_characters() -> TestResult {
         ("8859/1", "latin1", b"caf\xe9\\F\\end".as_slice()),
         ("UNICODE UTF-8", "utf8", "caf\u{e9}\\F\\end".as_bytes()),
     ] {
-        let definition = HL7_CONFIG.replace(
+        let definition = HL7_CONFIG.rewrite(
             "encoding = \"ascii\"",
             &format!("encoding = \"{encoding}\""),
         );
@@ -64,7 +65,7 @@ fn hl7_251_2_7_4_decoding_retains_negotiated_characters() -> TestResult {
 // HL7 2.5.1 section 2.7.4 p.2-18: extract structure before decoding delimiters.
 #[test]
 fn hl7_251_2_7_4_decodes_selected_identifiers_and_values_keeps_wire_originals() -> TestResult {
-    let definition = HL7_CONFIG.replace("machine_code=\"SYN\"", r"machine_code='A|B^C~D&E\F'");
+    let definition = HL7_CONFIG.rewrite("machine_code=\"SYN\"", r"machine_code='A|B^C~D&E\F'");
     let config = config(&definition)?;
     let escaped = r"A\F\B\S\C\R\D\T\E\E\F";
     let raw = format!(
@@ -431,7 +432,7 @@ fn hl7_7_4_2_11_source_statuses_are_never_replaced_by_summaries() -> TestResult 
 
 #[test]
 fn adr0003_run_subid_namespace_selectors_and_missing_evidence() -> TestResult {
-    let definition = HL7_CONFIG.replace("sub_id = \"none\"", "sub_id = {group='observation',record='OBX',field=4,component=1,repetition=1}").replace("run = []", "run = [{group='observation',record='OBX',field=14,component=1,repetition=1}]").replace("order_namespace = {fixed=\"synthetic-orders\"}", "order_namespace = {field={group='order',record='OBR',field=3,component=2,repetition=1}}");
+    let definition = HL7_CONFIG.rewrite("sub_id = \"none\"", "sub_id = {group='observation',record='OBX',field=4,component=1,repetition=1}").rewrite("run = []", "run = [{group='observation',record='OBX',field=14,component=1,repetition=1}]").rewrite("order_namespace = {fixed=\"synthetic-orders\"}", "order_namespace = {field={group='order',record='OBR',field=3,component=2,repetition=1}}");
     let output = hl7(
         "OBR|1||001^orders\rOBX|1|NM|SYN^^synthetic|a|1||||||F|||20261115123000\rOBX|2|NM|SYN^^synthetic|a|1||||||F|||20261115123100\r",
         &definition,
@@ -503,7 +504,7 @@ fn hl7_7_3_7_oul_specimen_order_orc_and_result_ownership() -> TestResult {
 
 #[test]
 fn rule8_qc_comes_only_from_config_rules() -> TestResult {
-    let definition = HL7_CONFIG.replace("qc = []", "qc = [{field={group='order',record='OBR',field=3,component=1,repetition=1},value='QC001',classification='control'}]");
+    let definition = HL7_CONFIG.rewrite("qc = []", "qc = [{field={group='order',record='OBR',field=3,component=1,repetition=1},value='QC001',classification='control'}]");
     let output = hl7(
         "OBR|1||QC001\rOBX|1|NM|SYN^^synthetic||1||||||F\r",
         &definition,

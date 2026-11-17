@@ -2,6 +2,7 @@
 use super::vendor_support::{event, no_event, state};
 use super::*;
 use crate::support::HANG_GUARD;
+use analyte_fixtures::ConfigEdit as _;
 use tokio::{io::AsyncWriteExt, net::TcpStream};
 
 async fn setup(
@@ -38,18 +39,18 @@ async fn setup_observed(
     )?;
     let file = temp.path().join("hl7.toml");
     let definition = std::fs::read_to_string(&file)?
-        .replace(r#"edition = "v251""#, &format!(r#"edition = "{edition}""#));
+        .rewrite(r#"edition = "v251""#, &format!(r#"edition = "{edition}""#));
     std::fs::write(
         file,
         format!(
             "{definition}
 {}",
             include_str!("../../../core/config/examples/hl7_orders.toml")
-                .replace(
+                .rewrite(
                     "acknowledgment_ms = 500",
                     &format!("acknowledgment_ms = {ack_ms}")
                 )
-                .replace("deadline_ms = 1000", &format!("deadline_ms = {query_ms}"))
+                .rewrite("deadline_ms = 1000", &format!("deadline_ms = {query_ms}"))
         ),
     )?;
     let reference = Reference::start(
@@ -191,7 +192,7 @@ async fn hl7_251_qck_trusted_empty_nf_untrusted_stale_and_unknown_filter_ae() ->
     send(
         &mut peer,
         &String::from_utf8(query("000Ab12", "2.5.1"))?
-            .replace("|ORD|TEST", "|RES|TEST")
+            .rewrite("|ORD|TEST", "|RES|TEST")
             .into_bytes(),
     )
     .await?;
@@ -318,7 +319,7 @@ async fn hl7_251_order_query_connection_still_delivers_oru_results() -> Result<(
 async fn hl7_251_section5_10_quantity_limit_refuses_partial_dsr_before_reservation()
 -> Result<(), Error> {
     let (_temp, path, reference, service, mut peer) = setup("v251", 30000, 30000).await?;
-    let bytes = String::from_utf8(query("000Ab12", "2.5.1"))?.replace("100^LI", "1^LI");
+    let bytes = String::from_utf8(query("000Ab12", "2.5.1"))?.rewrite("100^LI", "1^LI");
     send(&mut peer, bytes.as_bytes()).await?;
     assert!(
         text(&read_mllp_packet(&mut peer, "oversized HL7 response").await?)?.contains("QAK||AE\r")

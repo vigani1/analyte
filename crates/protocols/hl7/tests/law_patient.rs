@@ -1,4 +1,5 @@
 //! Tests LAW patient and visit segments.
+use analyte_fixtures::ConfigEdit as _;
 use analyte_hl7::{
     Charset, Message, Options,
     law::{self, AuthorityBinding, Capabilities, ControlDirection, Error, Profile},
@@ -549,7 +550,7 @@ fn validate_patient_builder_cases(
     assert!(law::Results::new(&incoming).is_err());
     law::Results::with_profile(&incoming, profile)?;
     let bad = law::parse_message(
-        source.replace("Family^^^^^^L", "Family^^^^^^A").as_bytes(),
+        source.rewrite("Family^^^^^^L", "Family^^^^^^A").as_bytes(),
         options(),
     )?;
     assert!(law::Results::with_profile(&bad, profile).is_err());

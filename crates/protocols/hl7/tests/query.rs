@@ -1,4 +1,5 @@
 //! Tests protected evidence queries.
+use analyte_fixtures::ConfigEdit as _;
 use analyte_hl7::{ControlId, Message, Options, Response, query};
 
 fn request(version: &str) -> Result<Message, analyte_hl7::Error> {
@@ -176,7 +177,7 @@ fn hl7_251_5_10_legacy_query_scope_rejects_modern_and_undeclared_events()
         "QCN^J01^QCN_J01",
         "QSX^J02^QCN_J01",
     ] {
-        let bytes = text.replace("QRY^Q02^QRY_Q02", kind);
+        let bytes = text.rewrite("QRY^Q02^QRY_Q02", kind);
         let message = Message::parse(bytes.as_bytes(), Options::default())?;
         assert!(matches!(
             query::Request::new(&message),
@@ -196,7 +197,7 @@ fn hl7_231_2_19_2_20_undeclared_enhanced_query_forms_are_rejected() -> Result<()
     let source = request("2.3.1")?;
     let text = std::str::from_utf8(source.raw()).map_err(|_| analyte_hl7::Error::Encoding)?;
     for kind in ["EQQ^Q04", "VQQ^Q07", "SPQ^Q08", "ERP^R09"] {
-        let bytes = text.replace("QRY^Q02^QRY_Q02", kind);
+        let bytes = text.rewrite("QRY^Q02^QRY_Q02", kind);
         let message = Message::parse(bytes.as_bytes(), Options::default())?;
         assert!(matches!(
             query::Request::new(&message),

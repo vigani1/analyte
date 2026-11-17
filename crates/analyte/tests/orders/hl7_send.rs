@@ -2,6 +2,7 @@
 use super::vendor_support::state;
 use super::*;
 use crate::support::HANG_GUARD;
+use analyte_fixtures::ConfigEdit as _;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
@@ -30,17 +31,17 @@ async fn setup_with_patient_requirement(
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), false)?;
     let definition = std::fs::read_to_string(temp.path().join("hl7.toml"))?
-        .replace(r#"edition = "v251""#, &format!(r#"edition = "{edition}""#));
+        .rewrite(r#"edition = "v251""#, &format!(r#"edition = "{edition}""#));
     std::fs::write(
         temp.path().join("hl7.toml"),
         format!(
             "{definition}\n{}",
             include_str!("../../../core/config/examples/hl7_send.toml")
-                .replace(
+                .rewrite(
                     "require_patient_identification = false",
                     &format!("require_patient_identification = {require_patient}")
                 )
-                .replace(
+                .rewrite(
                     "response_ms = 1500",
                     &format!("response_ms = {response_ms}")
                 )
@@ -49,7 +50,7 @@ async fn setup_with_patient_requirement(
     if matches!(edition, "v26" | "v282") {
         let file = temp.path().join("hl7.toml");
         let configured = std::fs::read_to_string(&file)?
-            .replace(r#"["SYN","","L"]"#, r#"["SYN","","L","","","","test-r1"]"#);
+            .rewrite(r#"["SYN","","L"]"#, r#"["SYN","","L","","","","test-r1"]"#);
         std::fs::write(
             file,
             format!("{configured}\npriority_version = \"priority1\"\n"),

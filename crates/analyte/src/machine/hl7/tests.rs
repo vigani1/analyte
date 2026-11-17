@@ -2,6 +2,7 @@
 use super::*;
 use crate::Error;
 use crate::installation::config::Program;
+use analyte_fixtures::ConfigEdit as _;
 use analyte_fixtures::UnlimitedSpace as Space;
 use std::path::Path;
 
@@ -10,7 +11,7 @@ fn program(root: &Path, definition: &str, endpoint: &str) -> Result<Program, Err
     std::fs::write(
         root.join("site.toml"),
         include_str!("../../../../core/config/examples/site.toml")
-            .replace("127.0.0.1:5600", endpoint),
+            .rewrite("127.0.0.1:5600", endpoint),
     )?;
     let path = root.join("program.toml");
     std::fs::write(

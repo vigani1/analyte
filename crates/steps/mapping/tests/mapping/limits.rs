@@ -1,11 +1,12 @@
 //! Tests machine field mapping and exact value retention.
 use super::*;
+use analyte_fixtures::ConfigEdit as _;
 
 #[test]
 fn rule7_overlimit_repetitions_and_parts_fail_before_partial_success() -> TestResult {
     let repetitions = std::iter::repeat_n("1", 257).collect::<Vec<_>>().join("~");
     // The parser's configured limit also owns this boundary.
-    let config = config(&HL7_CONFIG.replace("repetitions = 128", "repetitions = 512"))?;
+    let config = config(&HL7_CONFIG.rewrite("repetitions = 128", "repetitions = 512"))?;
     let raw = format!(
         "MSH|^~\\&|SYN||||202611151200||ORU^R01^ORU_R01|MSG|P|2.5.1\rOBR|1||001\rOBX|1|NM|SYN^^synthetic||{repetitions}||||||F\r"
     );
@@ -53,7 +54,7 @@ fn rule7_overlimit_repetitions_and_parts_fail_before_partial_success() -> TestRe
 
 #[test]
 fn hl7_231_oru_and_declared_ts_precision_are_kept() -> TestResult {
-    let config = config(&HL7_CONFIG.replace("v251", "v231"))?;
+    let config = config(&HL7_CONFIG.rewrite("v251", "v231"))?;
     let raw = b"MSH|^~\\&|SYN||||202611151200||ORU^R01|MSG|P|2.3.1\rOBR|1||001\rOBX|1|NM|SYN^^synthetic||1||||||F|||20261115123000^D\r";
     let message =
         analyte_hl7::Message::parse(raw, config.effective().hl7_options().ok_or("options")?)?;
@@ -105,7 +106,7 @@ proptest! {
 
 #[test]
 fn hl7_optional_orc_does_not_leak_into_the_following_order() -> TestResult {
-    let definition = HL7_CONFIG.replace(
+    let definition = HL7_CONFIG.rewrite(
         "order_id = {group=\"order\",record=\"OBR\",field=3,component=1,repetition=1}",
         "order_id = {group='order',record='ORC',field=2,component=1,repetition=1}",
     );
@@ -277,7 +278,7 @@ fn lis02_9_4_and_hl7_7_4_2_value_expectations_preserve_originals() -> TestResult
         ("either", "12", false),
     ] {
         for (definition, astm_source) in [(ASTM_CONFIG, true), (HL7_CONFIG, false)] {
-            let definition = definition.replace(
+            let definition = definition.rewrite(
                 "machine_code=",
                 &format!("value_kind='{kind}', machine_code="),
             );

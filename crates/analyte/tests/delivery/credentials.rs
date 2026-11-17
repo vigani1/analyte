@@ -1,5 +1,6 @@
 //! Tests HTTP delivery retries and stable delivery identities.
 use super::*;
+use analyte_fixtures::ConfigEdit as _;
 
 #[tokio::test]
 async fn plan13_adr0008_astm_and_hl7_deliver_once_retransmission_and_correction()
@@ -36,9 +37,9 @@ async fn plan13_adr0008_astm_and_hl7_deliver_once_retransmission_and_correction(
     wait_state(&path, "done", 2).await?;
     astm(&mut astm_peer, ASTM).await?;
     let correction = String::from_utf8(ORU.to_vec())?
-        .replace("12.30", "<0.1")
-        .replace("|||||F", "|||||C")
-        .replace("message1", "message2");
+        .rewrite("12.30", "<0.1")
+        .rewrite("|||||F", "|||||C")
+        .rewrite("message1", "message2");
     assert!(
         hl7(&mut hl7_peer, correction.as_bytes())
             .await?
@@ -49,15 +50,15 @@ async fn plan13_adr0008_astm_and_hl7_deliver_once_retransmission_and_correction(
     wait_state(&path, "done", 3).await?;
     for mode in ["T", "D"] {
         let message = String::from_utf8(ORU.to_vec())?
-            .replace("|P|2.5.1", &format!("|{mode}|2.5.1"))
-            .replace("00012a", &format!("synthetic-{mode}"));
+            .rewrite("|P|2.5.1", &format!("|{mode}|2.5.1"))
+            .rewrite("00012a", &format!("synthetic-{mode}"));
         assert!(
             hl7(&mut hl7_peer, message.as_bytes())
                 .await?
                 .contains("MSA|AA")
         );
     }
-    let conflict = String::from_utf8(ORU.to_vec())?.replace("12.30", "99.9");
+    let conflict = String::from_utf8(ORU.to_vec())?.rewrite("12.30", "99.9");
     assert!(
         hl7(&mut hl7_peer, conflict.as_bytes())
             .await?

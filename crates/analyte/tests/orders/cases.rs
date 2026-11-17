@@ -2,6 +2,7 @@
 //! Kept whole: ASTM order context cases share one query and send-ahead exchange fixture.
 use super::*;
 use crate::support::HANG_GUARD;
+use analyte_fixtures::ConfigEdit as _;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
@@ -12,9 +13,9 @@ pub(super) fn configure_orders(root: &Path, send: bool) -> Result<(), Error> {
     let text = std::fs::read_to_string(&path)?;
     // Normal query outcomes must not depend on a loaded runner meeting the teaching deadline.
     let section = include_str!("../../../core/config/examples/orders.toml")
-        .replace("deadline_ms = 1000", "deadline_ms = 30000")
-        .replace("send_ahead = true", &format!("send_ahead = {send}"))
-        .replace(
+        .rewrite("deadline_ms = 1000", "deadline_ms = 30000")
+        .rewrite("send_ahead = true", &format!("send_ahead = {send}"))
+        .rewrite(
             "namespace=\"demo\",value=\"DEMO\"",
             "namespace=\"synthetic\",value=\"TEST\"",
         );
@@ -197,11 +198,11 @@ async fn adr0004_unmapped_and_cancelled_orders_are_never_sent_and_rejection_reac
     )
     .await?;
     let source = include_str!("../../../../docs/contract/vectors/order.json");
-    let unmapped = analyte_contract::decode(source.replace("TEST", "UNKNOWN").as_bytes())?;
+    let unmapped = analyte_contract::decode(source.rewrite("TEST", "UNKNOWN").as_bytes())?;
     let cancelled = analyte_contract::decode(
         source
-            .replace("order-1", "cancelled")
-            .replace("requested", "cancel_requested")
+            .rewrite("order-1", "cancelled")
+            .rewrite("requested", "cancel_requested")
             .as_bytes(),
     )?;
     reference.receiver.seed(vec![unmapped, cancelled]).await?;
@@ -273,7 +274,7 @@ async fn lis02_section11_deadline_includes_transfer_time_and_cancel_gets_no_orde
     let definition = temp.path().join("astm.toml");
     std::fs::write(
         &definition,
-        std::fs::read_to_string(&definition)?.replace("deadline_ms = 30000", "deadline_ms = 20"),
+        std::fs::read_to_string(&definition)?.rewrite("deadline_ms = 30000", "deadline_ms = 20"),
     )?;
     let reference = Reference::start(
         &temp.path().join("receiver.db"),
@@ -402,7 +403,7 @@ async fn astm_context_exchange(
     let path = config(temp.path(), true)?;
     configure_orders(temp.path(), send)?;
     let definition = temp.path().join("astm.toml");
-    let mut text=std::fs::read_to_string(&definition)?.replace("[orders.query]","specimen_types=[{app={namespace='synthetic',value='SERUM'},machine='SER'}]\n[orders.query]");
+    let mut text=std::fs::read_to_string(&definition)?.rewrite("[orders.query]","specimen_types=[{app={namespace='synthetic',value='SERUM'},machine='SER'}]\n[orders.query]");
     if destinations {
         text.push_str("\nposition={group='order',record='O',field=4,component=2,repetition=1}\nspecimen_type={group='order',record='O',field=16,component=1,repetition=1}\n");
     }

@@ -1,5 +1,6 @@
 //! Tests ADR 0015 load-time refusals and exact declaration provenance.
 use analyte_config::{DepartureRefusal as R, Draft, Error};
+use analyte_fixtures::ConfigEdit as _;
 use sha2::{Digest, Sha256};
 use toml::Value;
 
@@ -14,8 +15,8 @@ const DECLARATION: &str = include_str!("fixtures/departure.toml");
 fn machine() -> Value {
     toml::from_str(
         &BASE
-            .replace("deviations = []", DECLARATION)
-            .replace("limit = 64000", "limit = 247"),
+            .rewrite("deviations = []", DECLARATION)
+            .rewrite("limit = 64000", "limit = 247"),
     )
     .expect("valid synthetic TOML")
 }
@@ -59,7 +60,7 @@ fn change_scope(value: &mut Value, key: &str, replacement: Value) {
 
 #[test]
 fn adr0015_validate_once_rejects_legacy_unknown_tags_and_fields() {
-    let legacy = BASE.replace(
+    let legacy = BASE.rewrite(
         "deviations = []",
         "deviations=[{name='old',key='framing.limit',reason='not evidence'}]",
     );
@@ -78,7 +79,7 @@ fn adr0015_validate_once_rejects_legacy_unknown_tags_and_fields() {
         ("astm_frame_limit", "ignore_validation"),
         ("revision=", "typo="),
     ] {
-        let invalid = BASE.replace("deviations = []", &DECLARATION.replace(old, new));
+        let invalid = BASE.rewrite("deviations = []", &DECLARATION.rewrite(old, new));
         assert!(matches!(
             Draft::load(
                 ("machine", &invalid),
@@ -167,11 +168,11 @@ fn adr0015_existing_settings_require_active_evidenced_declarations() {
 )]
 fn hl7() -> Value {
     let fixture = DECLARATION
-        .replace("astm_frame_limit", "hl7_absent_obr25_means_final")
-        .replace("protocol=\"astm\"", "protocol=\"hl7\",edition=\"v251\"")
-        .replace("astm_results", "oru_r01_patient")
-        .replace("compatibility", "absent_obr25_final");
-    toml::from_str(&include_str!("../examples/hl7.toml").replace("deviations = []", &fixture))
+        .rewrite("astm_frame_limit", "hl7_absent_obr25_means_final")
+        .rewrite("protocol=\"astm\"", "protocol=\"hl7\",edition=\"v251\"")
+        .rewrite("astm_results", "oru_r01_patient")
+        .rewrite("compatibility", "absent_obr25_final");
+    toml::from_str(&include_str!("../examples/hl7.toml").rewrite("deviations = []", &fixture))
         .expect("fixture")
 }
 

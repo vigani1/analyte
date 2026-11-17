@@ -49,12 +49,12 @@ pub(super) async fn login(host: &str, bearer: &str) -> Result<String, Error> {
 async fn plan11_raw_audit_csrf_pagination_orders_and_restore_pause() -> Result<(), Error> {
     let directory = crate::admin::private_tempdir()?;
     let bearer = crate::admin::rotate_token(directory.path())?;
-    let limits = analyte_store::Limits {
-        reserve_bytes: 1,
-        database_bytes: 100_000_000,
-        record_bytes: 65_536,
-        page_rows: 1,
-        busy_timeout: Duration::from_millis(100),
+    let limits = {
+        let mut limits = analyte_fixtures::store_limits();
+        limits.reserve_bytes = 1;
+        limits.page_rows = 1;
+        limits.busy_timeout = Duration::from_millis(100);
+        limits
     };
     let store = Arc::new(
         analyte_store::Handle::start(
@@ -251,8 +251,8 @@ async fn assert_raw_authorization(
     let get = request(host, &raw_path, auth, None).await?;
     assert!(get.starts_with("HTTP/1.1 405"));
     for rejected in [
-        form.replace(&encode(&csrf), "wrong"),
-        form.replace(&format!("csrf={}&", encode(&csrf)), ""),
+        form.rewrite(&encode(&csrf), "wrong"),
+        form.rewrite(&format!("csrf={}&", encode(&csrf)), ""),
     ] {
         let response = request(host, &raw_path, &post_auth, Some(&rejected)).await?;
         assert!(response.starts_with("HTTP/1.1 403"));
@@ -271,7 +271,7 @@ async fn assert_raw_authorization(
         host,
         &raw_path,
         &post_auth,
-        Some(&form.replace(
+        Some(&form.rewrite(
             &encode(&uuid::Uuid::from(receipt_id).to_string()),
             &encode(&uuid::Uuid::from(other_receipt).to_string()),
         )),
@@ -318,7 +318,7 @@ async fn assert_raw_views_audited(
         host,
         raw_path,
         post_auth,
-        Some(&form.replace("after=0", "after=4096")),
+        Some(&form.rewrite("after=0", "after=4096")),
     )
     .await?;
     assert!(tail.starts_with("HTTP/1.1 200"));
@@ -444,7 +444,7 @@ async fn assert_frame_pagination(
         host,
         &frame_path,
         post_auth,
-        Some(&frame_form.replace("offset=0", "offset=4096")),
+        Some(&frame_form.rewrite("offset=0", "offset=4096")),
     )
     .await?;
     assert!(frame_tail.starts_with("HTTP/1.1 200"));

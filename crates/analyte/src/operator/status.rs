@@ -130,12 +130,13 @@ mod tests {
         let directory = tempfile::tempdir()?;
         let mut store = Handle::start(
             directory.path().join("alerts.db"),
-            analyte_store::Limits {
-                reserve_bytes: 1,
-                database_bytes: 100_000_000,
-                record_bytes: 2_097_152,
-                page_rows: 1,
-                busy_timeout: std::time::Duration::from_millis(100),
+            {
+                let mut limits = analyte_fixtures::store_limits();
+                limits.reserve_bytes = 1;
+                limits.record_bytes = 2_097_152;
+                limits.page_rows = 1;
+                limits.busy_timeout = std::time::Duration::from_millis(100);
+                limits
             },
             Box::new(Space),
             4,

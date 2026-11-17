@@ -1,5 +1,6 @@
 //! Tests configuration loading and validation.
 use analyte_config::{Draft, Error, EvidenceLevel};
+use analyte_fixtures::ConfigEdit as _;
 use sha2::{Digest, Sha256};
 const ASTM: &str = include_str!("../examples/astm.toml");
 const HL7: &str = include_str!("../examples/hl7.toml");
@@ -46,9 +47,9 @@ fn adr_0002_and_0005_examples_validate_without_promoting_evidence() -> Result<()
 #[test]
 fn adr_0002_schema_rejects_versions_unknown_keys_and_secrets() {
     for bad in [
-        ASTM.replace("schema_version = 1", "schema_version = 2"),
-        ASTM.replace("name =", "unknown ="),
-        ASTM.replace("baud = 9600", "baud = 9600\npassword = 'secret'"),
+        ASTM.rewrite("schema_version = 1", "schema_version = 2"),
+        ASTM.rewrite("name =", "unknown ="),
+        ASTM.rewrite("baud = 9600", "baud = 9600\npassword = 'secret'"),
     ] {
         {
             let Err(refusal) = draft(&bad, OVERRIDES) else {
@@ -74,12 +75,12 @@ fn adr_0002_schema_rejects_versions_unknown_keys_and_secrets() {
 #[test]
 fn plan_5_rejects_incompatible_stacks_and_invalid_serial_settings() -> Result<(), Error> {
     for bad in [
-        ASTM.replace("astm_lis01", "mllp"),
-        ASTM.replace("kind = \"serial\"", "kind = \"watched_folder\""),
-        ASTM.replace("baud = 9600", "baud = 0"),
-        ASTM.replace("data_bits = 8", "data_bits = 9"),
-        ASTM.replace("limit = 64000", "limit = 64001"),
-        HL7.replace("hl7_receiver", "astm_link"),
+        ASTM.rewrite("astm_lis01", "mllp"),
+        ASTM.rewrite("kind = \"serial\"", "kind = \"watched_folder\""),
+        ASTM.rewrite("baud = 9600", "baud = 0"),
+        ASTM.rewrite("data_bits = 8", "data_bits = 9"),
+        ASTM.rewrite("limit = 64000", "limit = 64001"),
+        HL7.rewrite("hl7_receiver", "astm_link"),
     ] {
         {
             let Err(refusal) = draft(&bad, OVERRIDES)?.validate() else {
@@ -154,9 +155,9 @@ fn adr_0002_bounds_and_duplicate_tables_fail_visibly() -> Result<(), Error> {
         Err(Error::FileSize { .. })
     ));
     for bad in [
-        ASTM.replace("fields = 128", "fields = 0"),
-        ASTM.replace("field = 3", "field = 0"),
-        ASTM.replace(
+        ASTM.rewrite("fields = 128", "fields = 0"),
+        ASTM.rewrite("field = 3", "field = 0"),
+        ASTM.rewrite(
             "units = [{original=\"mg/L\", ucum=\"mg/L\"}]",
             "units = [{original='mg/L',ucum='mg/L'},{original='mg/L',ucum='g/L'}]",
         ),
@@ -178,7 +179,7 @@ fn adr_0002_bounds_and_duplicate_tables_fail_visibly() -> Result<(), Error> {
 fn adr_0005_claims_require_capability_evidence() -> Result<(), Error> {
     {
         let Err(refusal) = draft(
-            &ASTM.replace("level = \"documented\"", "level = \"proven\""),
+            &ASTM.rewrite("level = \"documented\"", "level = \"proven\""),
             OVERRIDES,
         )?
         .validate() else {
@@ -194,7 +195,7 @@ fn adr_0005_claims_require_capability_evidence() -> Result<(), Error> {
 
 #[test]
 fn adr_0007_vendor_departures_need_named_reasons() -> Result<(), Error> {
-    let smaller = ASTM.replace("limit = 64000", "limit = 247");
+    let smaller = ASTM.rewrite("limit = 64000", "limit = 247");
     {
         let Err(refusal) = draft(&smaller, OVERRIDES)?.validate() else {
             panic!("input must be refused")
@@ -204,7 +205,7 @@ fn adr_0007_vendor_departures_need_named_reasons() -> Result<(), Error> {
             "unexpected refusal: {refusal:?}"
         );
     }
-    let declared = smaller.replace("deviations = []", include_str!("fixtures/departure.toml"));
+    let declared = smaller.rewrite("deviations = []", include_str!("fixtures/departure.toml"));
     assert_eq!(
         astm_frame_limit(&draft(&declared, OVERRIDES)?.validate()?)?,
         247
@@ -233,11 +234,11 @@ fn adr0003_identity_settings_are_required_and_unknown_keys_are_rejected() {
             matches!(draft(&missing, OVERRIDES), Err(Error::MissingIdentitySetting { setting: actual, .. }) if actual == setting)
         );
     }
-    let unknown = ASTM.replace("run = []", "rerun = []");
+    let unknown = ASTM.rewrite("run = []", "rerun = []");
     assert!(
         matches!(draft(&unknown, OVERRIDES), Err(Error::Schema { source, .. }) if source.message().contains("unknown field `rerun`"))
     );
-    let ambiguous = ASTM.replace(
+    let ambiguous = ASTM.rewrite(
         "{fixed=\"synthetic-orders\"}",
         "{fixed='orders', field={group='order',record='O',field=3,component=1,repetition=1}}",
     );
@@ -249,21 +250,21 @@ fn adr0003_identity_settings_are_required_and_unknown_keys_are_rejected() {
 
 #[test]
 fn adr0003_identity_selectors_are_validated() -> Result<(), Error> {
-    let bad = ASTM.replace(
+    let bad = ASTM.rewrite(
         "order_id = {group=\"order\",record=\"O\",field=3",
         "order_id = {group=\"order\",record=\"O\",field=0",
     );
     assert!(
         matches!(draft(&bad, OVERRIDES)?.validate(), Err(Error::Invalid { key, .. }) if key == "mappings.identity.order_id")
     );
-    let bad = ASTM.replace(
+    let bad = ASTM.rewrite(
         "run = []",
         "run = [{group='observation',record='R',field=0,component=1,repetition=1}]",
     );
     assert!(
         matches!(draft(&bad, OVERRIDES)?.validate(), Err(Error::Invalid { key, .. }) if key == "mappings.identity.run")
     );
-    let bad = ASTM.replace(
+    let bad = ASTM.rewrite(
         "correction_status_codes = [\"C\"]",
         "correction_status_codes = ['C','C']",
     );
@@ -344,7 +345,7 @@ fn adr0002_vendor_policy_bounds_and_transports_are_specific() -> Result<(), Erro
             "autolyser",
         ),
     ] {
-        let invalid = example.replace(
+        let invalid = example.rewrite(
             key,
             &format!(
                 "{} = 0",
@@ -354,12 +355,12 @@ fn adr0002_vendor_policy_bounds_and_transports_are_specific() -> Result<(), Erro
         assert!(
             matches!(draft(&invalid, OVERRIDES)?.validate(), Err(Error::ProtocolSettings { protocol: found, .. }) if found == protocol)
         );
-        let missing = example.replace(key, "");
+        let missing = example.rewrite(key, "");
         assert!(matches!(
             draft(&missing, OVERRIDES),
             Err(Error::Schema { .. })
         ));
-        let folder = example.replace("kind = \"tcp_server\"", "kind = \"watched_folder\"");
+        let folder = example.rewrite("kind = \"tcp_server\"", "kind = \"watched_folder\"");
         assert!(matches!(
             draft(&folder, OVERRIDES)?.validate(),
             Err(Error::IncompatibleStack { .. })
@@ -399,7 +400,7 @@ fn adr_0002_vidas_installed_sample_limit_preserves_numeric_toml() -> Result<(), 
         (17, VidasSampleLimit::Seventeen),
     ] {
         let definition =
-            definition.replace("sample_limit = 12", &format!("sample_limit = {number}"));
+            definition.rewrite("sample_limit = 12", &format!("sample_limit = {number}"));
         let valid = draft(&definition, OVERRIDES)?.validate()?;
         assert_eq!(vidas(&valid)?.sample_limit, expected);
         assert!(
@@ -410,7 +411,7 @@ fn adr_0002_vidas_installed_sample_limit_preserves_numeric_toml() -> Result<(), 
     }
     for number in [0, 11, 13, 16, 18, 255] {
         let definition =
-            definition.replace("sample_limit = 12", &format!("sample_limit = {number}"));
+            definition.rewrite("sample_limit = 12", &format!("sample_limit = {number}"));
         {
             let Err(refusal) = draft(&definition, OVERRIDES) else {
                 panic!("input must be refused")
@@ -448,9 +449,9 @@ fn astm_frame_limit(config: &analyte_config::Validated) -> Result<usize, Error> 
 #[test]
 fn hl7_231_2_24_1_18_utf8_requires_named_vendor_departure() -> Result<(), Error> {
     let base = HL7
-        .replace("edition = \"v251\"", "edition = \"v231\"")
-        .replace("encoding = \"ascii\"", "encoding = \"utf8\"");
-    let selected = base.replace(
+        .rewrite("edition = \"v251\"", "edition = \"v231\"")
+        .rewrite("encoding = \"ascii\"", "encoding = \"utf8\"");
+    let selected = base.rewrite(
         "escapes = \"reject\"",
         "escapes = \"reject\"\nallow_utf8_in_v231 = true",
     );
@@ -463,12 +464,12 @@ fn hl7_231_2_24_1_18_utf8_requires_named_vendor_departure() -> Result<(), Error>
             "unexpected refusal: {refusal:?}"
         );
     }
-    let declared = selected.replace(
+    let declared = selected.rewrite(
         "deviations = []",
         &include_str!("fixtures/departure.toml")
-            .replace("astm_frame_limit", "hl7_utf8_in_v231")
-            .replace("protocol=\"astm\"", "protocol=\"hl7\",edition=\"v231\"")
-            .replace("astm_results", "oru_r01_patient"),
+            .rewrite("astm_frame_limit", "hl7_utf8_in_v231")
+            .rewrite("protocol=\"astm\"", "protocol=\"hl7\",edition=\"v231\"")
+            .rewrite("astm_results", "oru_r01_patient"),
     );
     let config = draft(&declared, OVERRIDES)?.validate()?;
     let analyte_config::Stack::Hl7(analyte_config::RecordTransport::Stream(stack)) =
@@ -481,8 +482,8 @@ fn hl7_231_2_24_1_18_utf8_requires_named_vendor_departure() -> Result<(), Error>
     };
     assert!(stack.syntax().options().allow_utf8_in_v231);
     for invalid in [
-        declared.replace("edition = \"v231\"", "edition = \"v251\""),
-        declared.replace("encoding = \"utf8\"", "encoding = \"ascii\""),
+        declared.rewrite("edition = \"v231\"", "edition = \"v251\""),
+        declared.rewrite("encoding = \"utf8\"", "encoding = \"ascii\""),
     ] {
         {
             let Err(refusal) = draft(&invalid, OVERRIDES)?.validate() else {

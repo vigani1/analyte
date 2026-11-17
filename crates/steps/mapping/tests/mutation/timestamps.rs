@@ -1,5 +1,6 @@
 //! Tests rejection of malformed inputs without losing evidence.
 use super::*;
+use analyte_fixtures::ConfigEdit as _;
 
 #[test]
 fn hl7_251_2a22_partial_times_and_invalid_times_preserve_evidence_without_guessing() -> TestResult {
@@ -103,7 +104,7 @@ fn lis02_6_14_8_4_7_9_10_9_12_9_13_timestamps_keep_role_and_original() -> TestRe
 #[test]
 fn rule2_conflicting_explicit_qc_classification_is_unknown_and_parked() -> TestResult {
     for (second, conflict) in [("patient", false), ("control", true)] {
-        let definition=HL7_CONFIG.replace("qc = []",&format!("qc = [{{field={{group='order',record='OBR',field=3,component=1,repetition=1}},value='001',classification='patient'}},{{field={{group='order',record='OBR',field=3,component=1,repetition=1}},value='001',classification='{second}'}}]"));
+        let definition=HL7_CONFIG.rewrite("qc = []",&format!("qc = [{{field={{group='order',record='OBR',field=3,component=1,repetition=1}},value='001',classification='patient'}},{{field={{group='order',record='OBR',field=3,component=1,repetition=1}},value='001',classification='{second}'}}]"));
         let mapped = qualified_hl7(
             "OBR|1||001\rOBX|1|NM|SYN^^synthetic||1||||||F\r",
             &definition,
@@ -198,7 +199,7 @@ fn rule7_identity_run_accepts_exact_source_text_ceiling_and_rejects_larger() -> 
 
 #[test]
 fn law_tf2b_3_29_4_b3_mapping_preserves_awos_og_and_refuses_generic_entry() -> TestResult {
-    let definition = include_str!("../../../../core/config/examples/law.toml").replace(
+    let definition = include_str!("../../../../core/config/examples/law.toml").rewrite(
         "order_namespace = {fixed=\"LAB\"}",
         "order_namespace = {fixed=\"manager\"}",
     );
@@ -252,7 +253,7 @@ fn rule7_astm_mapping_rechecks_independent_limits_inclusively() -> TestResult {
     ] {
         for (limit, accepted) in [(ceiling - 1, false), (ceiling, true), (ceiling + 1, true)] {
             let definition =
-                ASTM_CONFIG.replace(&format!("{key} = {old}"), &format!("{key} = {limit}"));
+                ASTM_CONFIG.rewrite(&format!("{key} = {old}"), &format!("{key} = {limit}"));
             let cfg = config(&definition)?;
             let mapped = map_astm(
                 message,
@@ -279,7 +280,7 @@ fn rule7_hl7_mapping_rechecks_independent_limits_inclusively() -> TestResult {
     ] {
         for (limit, accepted) in [(ceiling - 1, false), (ceiling, true), (ceiling + 1, true)] {
             let cfg = config(
-                &HL7_CONFIG.replace(&format!("{key} = {old}"), &format!("{key} = {limit}")),
+                &HL7_CONFIG.rewrite(&format!("{key} = {old}"), &format!("{key} = {limit}")),
             )?;
             let mapped = map_hl7(
                 &message,
@@ -315,7 +316,7 @@ fn law_tf2b_3_29_4_1_2_1_status_only_ip_sc_ca_is_typed_without_results() -> Test
     let original = std::str::from_utf8(LAW_RESULT)?;
     let prefix = original.split("OBX|").next().ok_or("fixture")?;
     for status in ["IP", "SC", "CA"] {
-        let wire = prefix.replace("ORC|SC||||CM", &format!("ORC|SC||||{status}"));
+        let wire = prefix.rewrite("ORC|SC||||CM", &format!("ORC|SC||||{status}"));
         let message = analyte_hl7::Message::parse(
             wire.as_bytes(),
             cfg.effective().hl7_options().ok_or("options")?,
@@ -440,7 +441,7 @@ fn law_tf2b_c8_table_c8_9_estimate_zone_is_only_from_msh7_and_ip_results_are_not
         .split("ORC|")
         .next()
         .ok_or("ORC")?
-        .replace("+0000", "-0330");
+        .rewrite("+0000", "-0330");
     let wire = format!(
         "{before_orc}{}",
         segment("ORC", 27, &[(1, "SC"), (5, "IP"), (27, "20260101123000")])?
@@ -462,7 +463,7 @@ fn law_tf2b_c8_table_c8_9_estimate_zone_is_only_from_msh7_and_ip_results_are_not
     assert_eq!(original.as_str(), "20260101123000");
     assert!(header_time.as_str().ends_with("-0330"));
     assert_eq!(*offset_from_header, Some(UtcOffset::try_from(-12600)?));
-    let wire = std::str::from_utf8(LAW_RESULT)?.replace("ORC|SC||||CM", "ORC|SC||||IP");
+    let wire = std::str::from_utf8(LAW_RESULT)?.rewrite("ORC|SC||||CM", "ORC|SC||||IP");
     let message = analyte_hl7::Message::parse(
         wire.as_bytes(),
         cfg.effective().hl7_options().ok_or("options")?,

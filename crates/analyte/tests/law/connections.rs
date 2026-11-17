@@ -36,7 +36,7 @@ async fn law_tf2b_b5_b6_declared_single_persistent_link_carries_all_transactions
         wait_state(&path, "done", 1).await?;
         let awos = std::str::from_utf8(field(&work, b"OBR", 2)?)?;
         let result = law_results::result("role-result", &format!("{awos}^LAB"), "", "12.30", "F")
-            .replace("00012a^LAB", "000Ab12^LAB");
+            .rewrite("00012a^LAB", "000Ab12^LAB");
         send(&mut peer, result.as_bytes()).await?;
         let ack = packet(&mut peer).await?;
         assert_eq!(field(&ack, b"MSH", 9)?, b"ACK^R22^ACK");
@@ -82,8 +82,8 @@ async fn law_tf2b_b5_b6_declared_single_persistent_link_carries_all_transactions
 async fn law_tf2b_b6_adr0003_client_partial_deadline_retains_exact_bytes_across_reconnect()
 -> Result<(), Error> {
     let settings = definition()
-        .replace("send_ahead = false", "send_ahead = true")
-        .replace("receive_timeout_ms = 30000", "receive_timeout_ms = 100");
+        .rewrite("send_ahead = false", "send_ahead = true")
+        .rewrite("receive_timeout_ms = 30000", "receive_timeout_ms = 100");
     let (_temp, path, reference, running, mut peer, listener) = client(&settings).await?;
     packet(&mut peer).await?;
     vendor_support::state(&path, "Sending").await?;
@@ -174,9 +174,9 @@ async fn law_tf2b_b6_adr0003_client_partial_deadline_retains_exact_bytes_across_
 async fn law_tf2b_3_27_3_28_single_client_uses_configured_query_and_orl_deadlines()
 -> Result<(), Error> {
     let settings = definition()
-        .replace("send_ahead = false", "send_ahead = true")
-        .replace("response_ms = 30000", "response_ms = 150")
-        .replace("query_deadline_ms = 30000", "query_deadline_ms = 50");
+        .rewrite("send_ahead = false", "send_ahead = true")
+        .rewrite("response_ms = 30000", "response_ms = 150")
+        .rewrite("query_deadline_ms = 30000", "query_deadline_ms = 50");
     let (_temp, path, reference, running, mut peer, _listener) = client(&settings).await?;
     packet(&mut peer).await?;
     // A missing ORL uses response_ms, not the much longer transport timeout.
@@ -208,7 +208,7 @@ async fn law_tf2b_3_27_3_28_single_client_uses_configured_query_and_orl_deadline
 }
 
 fn independent(settings: &str, endpoint: std::net::SocketAddr) -> String {
-    settings.replace(
+    settings.rewrite(
         "connection_mode = \"persistent\"",
         &format!(
             "connection_mode = \"independent_per_transaction\"\noutbound_endpoint = \"{endpoint}\""
@@ -239,7 +239,7 @@ async fn law_tf2b_b6_independent_query_followup_survives_inbound_close_and_resta
     let rsp = packet(&mut peer).await?;
     assert_eq!(field(&rsp, b"QAK", 2)?, b"OK");
     let mut other = connect(&path, "law").await?;
-    let malformed = query(CONTAINER, "parallel").replace("QPD|", "QPD|BROKEN");
+    let malformed = query(CONTAINER, "parallel").rewrite("QPD|", "QPD|BROKEN");
     send(&mut other, malformed.as_bytes()).await?;
     assert_eq!(field(&packet(&mut other).await?, b"MSA", 1)?, b"AE");
     drop(other);
@@ -269,7 +269,7 @@ async fn law_tf2b_b6_independent_query_followup_survives_inbound_close_and_resta
         "12.30",
         "F",
     )
-    .replace("00012a^LAB", "000Ab12^LAB");
+    .rewrite("00012a^LAB", "000Ab12^LAB");
     send(&mut result_peer, result.as_bytes()).await?;
     assert_eq!(field(&packet(&mut result_peer).await?, b"MSA", 1)?, b"AA");
     reference.event().await?;
@@ -327,7 +327,7 @@ async fn law_tf2b_b6_independent_failed_link_or_lost_orl_never_replays_on_restar
         };
         let settings = independent(&definition(), endpoint);
         let settings = if failure == "timeout" {
-            settings.replace("response_ms = 30000", "response_ms = 100")
+            settings.rewrite("response_ms = 30000", "response_ms = 100")
         } else {
             settings
         };
@@ -372,7 +372,7 @@ async fn law_tf2b_b6_independent_failed_link_or_lost_orl_never_replays_on_restar
         };
         std::fs::write(
             temp.path().join("hl7.toml"),
-            settings.replace("send_ahead = false", "send_ahead = true"),
+            settings.rewrite("send_ahead = false", "send_ahead = true"),
         )?;
         let running = Running::start(&path, &reference.url, "synthetic-api").await?;
         assert!(
@@ -394,7 +394,7 @@ async fn law_tf2b_b6_independent_failed_link_or_lost_orl_never_replays_on_restar
 async fn law_tf2b_b6_adr0003_independent_restore_pause_sends_no_work() -> Result<(), Error> {
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let settings = independent(
-        &definition().replace("send_ahead = false", "send_ahead = true"),
+        &definition().rewrite("send_ahead = false", "send_ahead = true"),
         listener.local_addr()?,
     );
     let (_temp, path, reference, running, mut peer) = setup(
@@ -424,7 +424,7 @@ async fn law_tf2b_b6_adr0003_independent_restore_pause_sends_no_work() -> Result
 async fn law_tf2b_b6_independent_send_ahead_and_cancel_keep_original_awos() -> Result<(), Error> {
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let settings = independent(
-        &definition().replace("send_ahead = false", "send_ahead = true"),
+        &definition().rewrite("send_ahead = false", "send_ahead = true"),
         listener.local_addr()?,
     );
     let temp = tempfile::tempdir()?;
@@ -477,7 +477,7 @@ async fn law_tf2b_b6_independent_crash_awaiting_orl_recovers_uncertain_without_r
 -> Result<(), Error> {
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let settings = independent(
-        &definition().replace("send_ahead = false", "send_ahead = true"),
+        &definition().rewrite("send_ahead = false", "send_ahead = true"),
         listener.local_addr()?,
     );
     let (_temp, path, reference, running, peer) = setup(
@@ -524,7 +524,7 @@ async fn law_tf2b_b6_independent_crash_awaiting_orl_recovers_uncertain_without_r
 #[cfg(feature = "test-hooks")]
 #[tokio::test]
 async fn ihe_palm_tf2b_b6_rule8_reconnect_waits_for_previous_dialog_owner() -> Result<(), Error> {
-    let settings = definition().replace("send_ahead = false", "send_ahead = true");
+    let settings = definition().rewrite("send_ahead = false", "send_ahead = true");
     let (hook, control) = analyte::runtime::test_hooks::Committed::new();
     let (_temp, path, reference, running, mut peer, listener) =
         client_with_setup(&settings, |program| {

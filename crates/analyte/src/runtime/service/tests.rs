@@ -26,12 +26,12 @@ async fn rule7_service_close_waits_for_store_destruction() -> Result<(), Error> 
     let (release, released) = std::sync::mpsc::channel();
     let store = Handle::start(
         temp.path().join("close.db"),
-        analyte_store::Limits {
-            reserve_bytes: 1,
-            database_bytes: 100_000_000,
-            record_bytes: 1_048_576,
-            page_rows: 100,
-            busy_timeout: Duration::from_millis(100),
+        {
+            let mut limits = analyte_fixtures::store_limits();
+            limits.reserve_bytes = 1;
+            limits.record_bytes = 1_048_576;
+            limits.busy_timeout = Duration::from_millis(100);
+            limits
         },
         Box::new(Space {
             entered: Some(entered),

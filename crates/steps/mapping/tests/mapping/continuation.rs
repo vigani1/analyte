@@ -1,5 +1,6 @@
 //! Refuses incomplete logical messages without changing protected source bytes.
 use super::*;
+use analyte_fixtures::ConfigEdit as _;
 
 // HL7 2.5.1 section 2.10.2.2; 2.6/2.8.2 section 2.10.2; 2.9.1 section 2.9.2.
 #[test]
@@ -11,7 +12,7 @@ fn hl7_251_s2_10_2_2_final_fragment_with_msh14_is_never_a_complete_result() -> T
         ("v291", "2.9.1"),
     ] {
         let config =
-            config(&HL7_CONFIG.replace("edition = \"v251\"", &format!("edition = \"{edition}\"")))?;
+            config(&HL7_CONFIG.rewrite("edition = \"v251\"", &format!("edition = \"{edition}\"")))?;
         // Each fragment is independently refused, including after reconnect/restart.
         for (pointer, tail) in [("", "DSC|next\r"), ("next", ""), ("next", "DSC|last\r")] {
             let raw = format!(
@@ -117,7 +118,7 @@ fn hl7_s7_4_2_11_s7_4_1_25_missing_or_unknown_report_context_parks() -> TestResu
         ("v291", "2.9.1"),
     ] {
         let cfg =
-            config(&HL7_CONFIG.replace("edition = \"v251\"", &format!("edition = \"{edition}\"")))?;
+            config(&HL7_CONFIG.rewrite("edition = \"v251\"", &format!("edition = \"{edition}\"")))?;
         for (segment, field, value) in [
             ("OBX", 11, "F"),
             ("OBX", 11, ""),

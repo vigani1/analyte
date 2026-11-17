@@ -1,5 +1,6 @@
 //! Tests HL7 order messages and acknowledgments.
 use super::*;
+use analyte_fixtures::ConfigEdit as _;
 
 #[test]
 fn hl7_231_4_2_1_and_251_4_4_1_build_new_and_cancel_groups() -> Result<(), Error> {
@@ -297,7 +298,7 @@ fn hl7_231_2_12_and_251_2_9_msa_correlates_sent_orm() -> Result<(), Error> {
             ("MSA|AA|sent1", "MSA|AA|wrong", "MSA", 2),
             ("|reply1|", "|sent1|", "MSH", 10),
         ] {
-            let changed = Message::parse(bytes.replace(from, to).as_bytes(), Options::default())?;
+            let changed = Message::parse(bytes.rewrite(from, to).as_bytes(), Options::default())?;
             assert!(
                 matches!(OrderResponse::new(&changed,&sent),Err(Error::Correlation {segment:s,field:f}) if s==segment && f==field)
             );

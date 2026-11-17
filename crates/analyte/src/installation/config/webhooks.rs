@@ -1,4 +1,6 @@
 //! Validates external alert endpoint references and bounded delivery policies.
+#[cfg(test)]
+use analyte_fixtures::ConfigEdit as _;
 use analyte_model::Identifier;
 use serde::Deserialize;
 use std::time::Duration;
@@ -246,7 +248,7 @@ mod tests {
         for (text, expected) in [
             (endpoint.repeat(2), WebhookConfigError::Duplicate),
             (endpoint.repeat(9), WebhookConfigError::TooMany),
-            (endpoint.replace("https:", "http:"), WebhookConfigError::Url),
+            (endpoint.rewrite("https:", "http:"), WebhookConfigError::Url),
         ] {
             assert_eq!(
                 parse(&text)
@@ -257,10 +259,10 @@ mod tests {
             );
         }
         for text in [
-            endpoint.replace("id='relay'", "id=''"),
-            endpoint.replace("secret='alert-key'", "secret=''"),
-            endpoint.replace("secret='alert-key'", ""),
-            endpoint.replace("url='https://example.com/hook'", ""),
+            endpoint.rewrite("id='relay'", "id=''"),
+            endpoint.rewrite("secret='alert-key'", "secret=''"),
+            endpoint.rewrite("secret='alert-key'", ""),
+            endpoint.rewrite("url='https://example.com/hook'", ""),
             format!("{endpoint}password='forbidden'"),
             "typo=1".into(),
         ] {
