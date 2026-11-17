@@ -294,7 +294,7 @@ impl Dialog {
             self.frame_started.unwrap_or(self.clock.now()),
         ));
         self.deadline = None;
-        out.push(Action::Commit(id, raw.to_vec()));
+        out.push(Action::Store(id, raw.to_vec()));
         true
     }
     pub(super) fn complete_order_commit(

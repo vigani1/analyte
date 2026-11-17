@@ -2,6 +2,7 @@
 //! Kept whole: The POCT conversation state transitions and timeout decisions form one protocol dialog.
 mod input;
 mod parking;
+mod storage;
 use analyte_poct::{
     AckKind, ApplicationError, Body, Capabilities, ControlId, EscapeReason, Message, Nullable,
     Outbound, TerminationReason,
@@ -33,7 +34,7 @@ pub struct Config {
 pub enum Error {
     /// Limits and timeout budgets must be positive.
     #[error("invalid dialog configuration")]
-    Config,
+    Configuration,
     /// Logical time moved backwards.
     #[error("dialog time moved backwards")]
     TimeReversed,
@@ -74,13 +75,11 @@ impl CommitId {
 
 /// Storage completion is explicit: failure never produces an acceptance ACK.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CommitOutcome {
+pub enum StoreOutcome {
     /// Raw bytes and interpreted observations are durably in custody.
     Stored,
     /// Raw bytes are parked durably, but semantic processing failed.
     ApplicationError(ApplicationError),
-    /// Storage failed or reserve capacity is unavailable.
-    Failed,
 }
 
 /// Events supplied by the host in source order, using monotonic elapsed time.
@@ -100,12 +99,14 @@ pub enum Event {
     /// Host policy accepts or rejects the inspected device.
     HelloDecision(bool),
     /// A specific durable storage request completed, possibly out of order.
-    Committed {
+    Stored {
         /// Ticket emitted with the store request.
         ticket: CommitId,
         /// Durable outcome, never inferred from a timeout.
-        outcome: CommitOutcome,
+        outcome: StoreOutcome,
     },
+    /// Storage failed or reserve capacity is unavailable.
+    StoreFailed(CommitId),
     /// Request observations again after the previous topic has ended.
     RequestObservations,
     /// End an idle conversation normally.
@@ -122,11 +123,11 @@ pub enum Event {
 #[derive(Debug)]
 pub enum Action {
     /// Complete or malformed root retained for host syntax interpretation.
-    Input(Vec<u8>),
+    Parse(Vec<u8>),
     /// Exact pending bytes rejected at the message byte ceiling.
-    InputLimit(Vec<u8>),
+    ParseLimit(Vec<u8>),
     /// Exact pending bytes received when the absolute deadline expired.
-    InputDeadline(Vec<u8>),
+    ParseDeadline(Vec<u8>),
     /// Ask host policy about the device; no acceptance has been sent yet.
     InspectHello {
         /// Source device identity.
@@ -149,7 +150,7 @@ pub enum Action {
         reason: RefusalCode,
     },
     /// Build and issue this message in action order; host supplies creation time.
-    Send {
+    Write {
         /// Unique conversation-local identity for the outgoing message.
         control_id: ControlId,
         /// Typed reviewer body.
@@ -199,7 +200,7 @@ struct Pending {
     reference: ControlId,
     purpose: Purpose,
     deadline: Duration,
-    outcome: Option<CommitOutcome>,
+    outcome: Option<Result<StoreOutcome, ()>>,
 }
 
 /// One deterministic reviewer conversation. Dropping it never cancels a store.
@@ -238,7 +239,7 @@ impl Dialog {
             || config.unannounced_ack_timeout.is_zero()
             || session.as_str().len() > 200
         {
-            return Err(Error::Config);
+            return Err(Error::Configuration);
         }
         Ok(Self {
             input: analyte_framing::poct::Decoder::new(config.message_bytes, config.depth),
@@ -325,19 +326,11 @@ impl Dialog {
                 }
             }
             Event::HelloDecision(accepted) => self.decide_hello(accepted, &mut actions)?,
-            Event::Committed { ticket, outcome } => {
-                let pending = self
-                    .pending
-                    .iter_mut()
-                    .find(|p| p.ticket == ticket)
-                    .ok_or(Error::Commit)?;
-                if pending.outcome.is_some() {
-                    return Err(Error::Commit);
-                }
-                pending.outcome = Some(outcome);
-                if !matches!(self.phase, Phase::Ending(_)) {
-                    self.drain(&mut actions)?;
-                }
+            Event::Stored { ticket, outcome } => {
+                self.store_completed(&ticket, Ok(outcome), &mut actions)?;
+            }
+            Event::StoreFailed(ticket) => {
+                self.store_completed(&ticket, Err(()), &mut actions)?;
             }
             Event::RequestObservations => {
                 if !matches!(self.phase, Phase::Ready) {
@@ -581,93 +574,6 @@ impl Dialog {
         Ok(())
     }
 
-    fn store(
-        &mut self,
-        message: Box<Message>,
-        purpose: Purpose,
-        actions: &mut Vec<Action>,
-    ) -> Result<(), Error> {
-        let sequence = self.next()?;
-        let ticket = CommitId {
-            session: self.session.clone(),
-            sequence,
-        };
-        let received = if matches!(purpose, Purpose::Hello) {
-            self.hello_received
-        } else {
-            self.clock.now()
-        };
-        let deadline = received
-            .checked_add(self.ack_timeout)
-            .ok_or(Error::Exhausted)?;
-        self.pending.push_back(Pending {
-            ticket: ticket.clone(),
-            reference: message.header().control_id.clone(),
-            purpose,
-            deadline,
-            outcome: None,
-        });
-        actions.push(Action::Store { ticket, message });
-        Ok(())
-    }
-
-    fn drain(&mut self, actions: &mut Vec<Action>) -> Result<(), Error> {
-        while self.pending.front().is_some_and(|p| p.outcome.is_some()) {
-            let pending = self.pending.pop_front().ok_or(Error::Commit)?;
-            match pending.outcome.ok_or(Error::Commit)? {
-                CommitOutcome::Stored => {
-                    self.send(Outbound::Accept(pending.reference), actions)?;
-                    match pending.purpose {
-                        Purpose::Hello => {
-                            if !matches!(self.phase, Phase::RemoteEnd) {
-                                self.phase = Phase::Status;
-                            }
-                        }
-                        Purpose::Status => {
-                            if !matches!(self.phase, Phase::RemoteEnd) {
-                                self.request(actions)?;
-                            }
-                        }
-                        Purpose::Observation => {}
-                        Purpose::Termination => {
-                            self.close(true, actions);
-                            break;
-                        }
-                    }
-                }
-                CommitOutcome::ApplicationError(error) => {
-                    self.send(
-                        Outbound::ApplicationError {
-                            reference: pending.reference,
-                            error,
-                        },
-                        actions,
-                    )?;
-                    match pending.purpose {
-                        Purpose::Observation => {}
-                        Purpose::Hello | Purpose::Status | Purpose::Termination => {
-                            self.close(false, actions);
-                            break;
-                        }
-                    }
-                }
-                CommitOutcome::Failed => {
-                    self.send(
-                        Outbound::Escape {
-                            reference: pending.reference,
-                            reason: EscapeReason::CannotComplete,
-                        },
-                        actions,
-                    )?;
-                    self.terminate(TerminationReason::Abnormal, actions)?;
-                    break;
-                }
-            }
-        }
-        self.complete_topic(actions);
-        Ok(())
-    }
-
     fn complete_topic(&mut self, actions: &mut Vec<Action>) {
         if matches!(self.phase, Phase::DrainTopic) && self.pending.is_empty() {
             self.phase = Phase::Ready;
@@ -747,7 +653,7 @@ impl Dialog {
             .checked_add(self.config.response_timeout)
             .ok_or(Error::Exhausted)?;
         self.last_sent = Some(id.clone());
-        actions.push(Action::Send {
+        actions.push(Action::Write {
             control_id: id.clone(),
             body,
         });

@@ -25,7 +25,7 @@ fn hl7_2_5_1_s2_8_and_2_6_2_8_2_2_9_1_s2_9_2_original_ack_requires_store_and_int
         let (receipt, stored) = actions
             .iter()
             .find_map(|action| {
-                if let Action::Commit(receipt, bytes) = action {
+                if let Action::Store(receipt, bytes) = action {
                     Some((*receipt, bytes))
                 } else {
                     None
@@ -44,7 +44,7 @@ fn hl7_2_5_1_s2_8_and_2_6_2_8_2_2_9_1_s2_9_2_original_ack_requires_store_and_int
                 .iter()
                 .any(|action| matches!(action, Action::Write(_)))
         );
-        let committed = dialog.step(Duration::ZERO, Event::Committed(receipt))?;
+        let committed = dialog.step(Duration::ZERO, Event::Stored(receipt))?;
         assert!(
             committed
                 .iter()

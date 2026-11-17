@@ -1,7 +1,7 @@
 //! Reads ASTM syntax with installed policy and maps its exact fields.
 use super::Error;
 pub(super) fn read(
-    input: analyte_mapping::Input,
+    input: analyte_mapping::Input<'_>,
     payload: &[u8],
     syntax: &analyte_config::AstmSyntax,
     mappings: &analyte_config::Mappings,
@@ -17,12 +17,11 @@ pub(super) fn read(
     if messages.len() != 1 {
         return Err(Error::Context(super::Context::AstmMessageCount));
     }
-    Ok(analyte_mapping::map_astm(
+    Ok(analyte_mapping::astm::map(
+        &analyte_mapping::astm::Settings { syntax, mappings },
         messages
             .first()
             .ok_or_else(|| Error::Context(super::Context::AstmMessageMissing))?,
-        syntax,
-        mappings,
         input,
     )?)
 }

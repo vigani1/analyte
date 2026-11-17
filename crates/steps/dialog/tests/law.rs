@@ -31,7 +31,7 @@ fn receipt(actions: &[Action]) -> Result<ReceiptId, Box<dyn std::error::Error>> 
     actions
         .iter()
         .find_map(|action| {
-            if let Action::Commit(id, _) = action {
+            if let Action::Store(id, _) = action {
                 Some(*id)
             } else {
                 None
@@ -96,7 +96,7 @@ fn law_tf2b_3_29_adr0003_ack_choice_follows_durable_interpretation() -> TestResu
                 .iter()
                 .any(|a| matches!(a, Action::Write(..) | Action::Interpret(_)))
         );
-        let actions = d.step(Duration::ZERO, Event::Committed(id))?;
+        let actions = d.step(Duration::ZERO, Event::Stored(id))?;
         assert!(
             actions
                 .iter()
@@ -154,9 +154,9 @@ fn law_tf2b_b7_adr0003_failed_or_late_store_never_produces_acceptance() -> TestR
         )?;
         let id = receipt(&actions)?;
         let actions = if late {
-            d.step(Duration::from_secs(5), Event::Committed(id))?
+            d.step(Duration::from_secs(5), Event::Stored(id))?
         } else {
-            d.step(Duration::ZERO, Event::CommitFailed(id))?
+            d.step(Duration::ZERO, Event::StoreFailed(id))?
         };
         assert!(actions.iter().any(|a| matches!(a, Action::Refused(_))));
         assert!(!actions.iter().any(|a| matches!(
@@ -174,7 +174,7 @@ fn law_tf2b_b6_independent_link_does_not_ack_unrelated_transactions() -> TestRes
         &wire(result("r1", "\"\"", "run^ANALYZER", "12.30", "F").as_bytes())?,
     )?;
     let id = receipt(&actions)?;
-    let actions = d.step(Duration::ZERO, Event::Committed(id))?;
+    let actions = d.step(Duration::ZERO, Event::Stored(id))?;
     assert!(actions.iter().any(|a| matches!(a, Action::Failed(_, _))));
     assert!(
         actions
@@ -202,7 +202,7 @@ fn mllp_r1_1_2_law_first_byte_budget_and_disconnect_preserve_pending_bytes() -> 
     let mut d = dialog(Link::Inbound)?;
     let raw = wire(result("r1", "\"\"", "run^ANALYZER", "12.30", "F").as_bytes())?;
     feed(&mut d, &raw)?;
-    let actions = d.step(Duration::ZERO, Event::Disconnect)?;
+    let actions = d.step(Duration::ZERO, Event::Disconnected)?;
     assert!(
         actions
             .iter()
@@ -288,7 +288,7 @@ fn law_tf2b_3_27_3_28_availability_precedes_same_link_followup() -> TestResult {
     let mut d = dialog(Link::Inbound)?;
     let actions = feed(&mut d, &wire(raw)?)?;
     let id = receipt(&actions)?;
-    let actions = d.step(Duration::ZERO, Event::Committed(id))?;
+    let actions = d.step(Duration::ZERO, Event::Stored(id))?;
     assert!(actions.iter().any(|a| matches!(a, Action::Query(..))));
     let actions = d.step(
         Duration::ZERO,

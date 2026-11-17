@@ -55,7 +55,7 @@ fn processing(source: &Source<'_>, output: &mut Output) -> Result<ProcessingMode
 pub(crate) fn message(
     source: &Source<'_>,
     config: &RecordSettings<'_>,
-    input: Input,
+    input: Input<'_>,
     law: Option<&analyte_hl7::law::Results<'_>>,
 ) -> Result<Output, Error> {
     if source.nodes.len() > config.limits.records() {
@@ -275,7 +275,7 @@ struct MappedPart {
 fn append_result(
     output: &mut Output,
     groups: &mut Vec<(usize, Option<ObservationIdentity>)>,
-    input: Input,
+    input: Input<'_>,
     mode: ProcessingMode,
     mapped: MappedPart,
 ) -> Result<(), Error> {

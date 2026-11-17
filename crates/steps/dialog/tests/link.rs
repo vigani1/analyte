@@ -37,7 +37,7 @@ fn commit(d: &mut Dialog, actions: &[Action], ok: bool) -> Vec<Action> {
     actions
         .iter()
         .filter_map(|a| {
-            if let Action::Commit(id, _, _) = a {
+            if let Action::Store(id, _, _) = a {
                 Some(*id)
             } else {
                 None
@@ -48,9 +48,9 @@ fn commit(d: &mut Dialog, actions: &[Action], ok: bool) -> Vec<Action> {
                 d,
                 0,
                 if ok {
-                    Event::Committed(id)
+                    Event::Stored(id)
                 } else {
-                    Event::CommitFailed(id)
+                    Event::StoreFailed(id)
                 },
             )
         })
@@ -72,7 +72,7 @@ fn adr0003_lis01_6_3_2_6_5_1_commit_duplicate_and_conflict() -> TestResult {
     let frames = wire(b"R|synthetic\r", FrameNumber::FIRST, Limit::default())?;
     let frame = frames.first().ok_or("missing frame")?;
     let a = feed(&mut d, 0, frame);
-    assert!(a.iter().any(|action| matches!(action, Action::Commit(_, number, bytes) if *number == FrameNumber::FIRST && bytes == frame)));
+    assert!(a.iter().any(|action| matches!(action, Action::Store(_, number, bytes) if *number == FrameNumber::FIRST && bytes == frame)));
     assert!(!a.contains(&Action::Write(vec![ACK])));
     let committed = commit(&mut d, &a, true);
     assert!(committed.contains(&Action::Write(vec![ACK])));
@@ -82,7 +82,7 @@ fn adr0003_lis01_6_3_2_6_5_1_commit_duplicate_and_conflict() -> TestResult {
     assert!(
         !duplicate
             .iter()
-            .any(|a| matches!(a, Action::Commit(..) | Action::Record(..)))
+            .any(|a| matches!(a, Action::Store(..) | Action::Record(..)))
     );
     let other = wire(b"different\r", FrameNumber::FIRST, Limit::default())?;
     let conflict = feed(&mut d, 0, other.first().ok_or("missing frame")?);
@@ -104,7 +104,7 @@ fn adr0003_lis01_6_5_2_5_failed_and_unanswered_commit_never_ack() -> TestResult 
         };
         assert!(reply.contains(&Action::Write(vec![NAK])));
         assert!(!reply.contains(&Action::Write(vec![ACK])));
-        assert!(reply.iter().any(|a| matches!(a, Action::CommitFailed(_))));
+        assert!(reply.iter().any(|a| matches!(a, Action::StoreFailed(_))));
     }
     Ok(())
 }
@@ -131,7 +131,7 @@ fn lis01_6_3_1_2_6_5_2_4_etb_timeout_and_split_merge() -> TestResult {
         assert_eq!(
             outputs
                 .iter()
-                .filter(|a| matches!(a, Action::Commit(..)))
+                .filter(|a| matches!(a, Action::Store(..)))
                 .count(),
             1
         );
@@ -326,7 +326,7 @@ fn adr0003_late_commit_and_failed_retry_have_distinct_identity() -> TestResult {
     let old = a
         .iter()
         .find_map(|a| {
-            if let Action::Commit(id, _, _) = a {
+            if let Action::Store(id, _, _) = a {
                 Some(*id)
             } else {
                 None
@@ -335,20 +335,20 @@ fn adr0003_late_commit_and_failed_retry_have_distinct_identity() -> TestResult {
         .ok_or("no commit")?;
     commit(&mut d, &a, false);
     let b = feed(&mut d, 0, frame);
-    assert!(!b.contains(&Action::Commit(old, FrameNumber::FIRST, frame.clone())));
-    assert!(step(&mut d, 0, Event::Committed(old)).contains(&Action::Refused(Error::StaleCommit)));
+    assert!(!b.contains(&Action::Store(old, FrameNumber::FIRST, frame.clone())));
+    assert!(step(&mut d, 0, Event::Stored(old)).contains(&Action::Refused(Error::StaleCommit)));
     let id = b
         .iter()
         .find_map(|a| {
-            if let Action::Commit(id, _, _) = a {
+            if let Action::Store(id, _, _) = a {
                 Some(*id)
             } else {
                 None
             }
         })
         .ok_or("no retry commit")?;
-    let late = step(&mut d, 15, Event::Committed(id));
-    assert!(late.contains(&Action::CommitFailed(id)));
+    let late = step(&mut d, 15, Event::Stored(id));
+    assert!(late.contains(&Action::StoreFailed(id)));
     assert!(late.contains(&Action::Write(vec![NAK])));
     assert!(late.contains(&Action::Refused(Error::StaleCommit)));
     assert!(!late.contains(&Action::Write(vec![ACK])));
@@ -430,18 +430,18 @@ fn adr0003_commit_timeout_keeps_transfer_open_for_retransmission() -> TestResult
     assert!(!timeout.iter().any(|a| matches!(a, Action::Ended(_))));
     // The sender retransmits the same frame; it is committed again and ACKed.
     let again = feed(&mut d, 16, frame);
-    assert!(again.iter().any(|a| matches!(a, Action::Commit(..))));
+    assert!(again.iter().any(|a| matches!(a, Action::Store(..))));
     let id = again
         .iter()
         .find_map(|a| {
-            if let Action::Commit(id, _, _) = a {
+            if let Action::Store(id, _, _) = a {
                 Some(*id)
             } else {
                 None
             }
         })
         .ok_or("missing commit")?;
-    let acked = step(&mut d, 16, Event::Committed(id));
+    let acked = step(&mut d, 16, Event::Stored(id));
     assert!(acked.contains(&Action::Write(vec![ACK])));
     Ok(())
 }
@@ -482,7 +482,7 @@ fn lis01_6_3_1_1_8_3_1_1_separate_records_never_share_strict_frame() -> TestResu
         let frames = wire(payload, FrameNumber::FIRST, Limit::default())?;
         let actions = feed(&mut d, 0, &frames[0]);
         assert!(actions.contains(&Action::Write(vec![NAK])));
-        assert!(!actions.iter().any(|a| matches!(a, Action::Commit(..))));
+        assert!(!actions.iter().any(|a| matches!(a, Action::Store(..))));
         assert!(
             actions
                 .iter()
@@ -496,7 +496,7 @@ fn lis01_6_3_1_1_8_3_1_1_separate_records_never_share_strict_frame() -> TestResu
 fn adr0001_0003_disconnect_returns_partial_frame_and_never_writes_or_reopens() -> TestResult {
     let mut dialog = receiver();
     feed(&mut dialog, 0, b"\x021R|partial");
-    let actions = step(&mut dialog, 1, Event::Disconnect);
+    let actions = step(&mut dialog, 1, Event::Disconnected);
     assert!(actions.iter().any(|action| matches!(action,
         Action::Rejected(astm::Error::Incomplete, raw) if raw == b"\x021R|partial")));
     assert!(actions.contains(&Action::Ended(End::Incomplete)));
@@ -512,7 +512,7 @@ fn adr0001_0003_disconnect_returns_partial_frame_and_never_writes_or_reopens() -
             .any(|action| matches!(action, Action::Write(_)))
     );
     assert!(
-        !step(&mut dialog, 2, Event::Disconnect)
+        !step(&mut dialog, 2, Event::Disconnected)
             .iter()
             .any(|action| matches!(action, Action::Rejected(_, _)))
     );
@@ -528,7 +528,7 @@ fn adr0003_rule2_unsolicited_partial_frame_is_owned_and_bounded_without_ack() {
             .any(|a| matches!(a, Action::Write(_)))
     );
     assert_eq!(dialog.next_deadline(), Some(Duration::from_secs(30)));
-    let actions = step(&mut dialog, 1, Event::Disconnect);
+    let actions = step(&mut dialog, 1, Event::Disconnected);
     assert!(actions.iter().any(|a| matches!(a, Action::Rejected(astm::Error::Incomplete, raw) if raw == b"\x021R|unsolicited")));
     assert!(!actions.iter().any(|a| matches!(a, Action::Write(_))));
 }

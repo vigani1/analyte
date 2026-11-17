@@ -5,7 +5,7 @@ use crate::{MappedResult, Output, Position};
 
 use analyte_model::{
     EvidenceList, Identifier, IdentityStatus, NamespacedId, ObservationIdentity, ProcessingMode,
-    Reason, ReceiptId, ResultIdentity, ResultPart, Revision, SourceText,
+    Reason, ResultIdentity, ResultPart, Revision, SourceText,
 };
 pub use observations::{MappedObservation, MappingError, map as map_observations};
 /// Applies explicit POCT code tables and identity policy to faithfully mapped observations.
@@ -13,11 +13,12 @@ pub use observations::{MappedObservation, MappingError, map as map_observations}
 /// Preserves syntax, model, identity and mapping failures.
 pub fn map(
     machine: &analyte_config::PoctStack,
-    receipt: ReceiptId,
     message: &analyte_poct::Message,
-    time: jiff::Timestamp,
-    device: Option<&str>,
+    input: crate::Input<'_>,
 ) -> Result<Output, Error> {
+    let receipt = input.receipt;
+    let time = input.received_at;
+    let device = input.device;
     let observations = map_observations(message, time)?;
     if observations.is_empty() {
         return Err(Error::Context(

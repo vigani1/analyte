@@ -123,17 +123,20 @@ async fn map_parsed(
 ) -> Result<Outcome, Error> {
     let receipt = context.receipt;
     let input = analyte_mapping::Input {
+        device: None,
         receipt: receipt.metadata.id,
         received_at: receipt.metadata.received_at,
         revision: analyte_model::Revision(0),
     };
     match profile {
         Profile::Hl7(syntax, mappings) => {
-            let mapped = analyte_mapping::map_hl7(
+            let mapped = analyte_mapping::hl7::map(
+                &analyte_mapping::hl7::Settings {
+                    syntax,
+                    mappings,
+                    declarations: &machine.snapshot.effective().machine().deviations,
+                },
                 message,
-                syntax,
-                mappings,
-                &machine.snapshot.effective().machine().deviations,
                 input,
             )
             .map_err(crate::reading::Error::from)
@@ -159,7 +162,7 @@ async fn map_parsed(
                 results: Some(&results),
                 ..context
             };
-            let mapped = analyte_mapping::map_law(&results, settings, input)
+            let mapped = analyte_mapping::law::map(settings, &results, input)
                 .map_err(crate::reading::Error::from)
                 .map_err(ReadError::from);
             finish(store, machine, context, mapped, supplied, action).await
