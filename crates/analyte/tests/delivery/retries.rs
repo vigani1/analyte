@@ -23,7 +23,10 @@ async fn plan11_adr0008_restored_outbox_retries_same_id_bytes_as_duplicate() -> 
             .request(
                 std::time::Instant::now() + Duration::from_secs(5),
                 move |store| {
-                    store.backup(&target, std::time::Instant::now() + Duration::from_secs(5))
+                    Ok(
+                        store
+                            .backup(&target, std::time::Instant::now() + Duration::from_secs(5))?,
+                    )
                 },
             )
             .await?;

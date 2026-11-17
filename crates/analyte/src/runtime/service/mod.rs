@@ -307,7 +307,7 @@ async fn prepare_service(
         #[cfg(feature = "test-hooks")]
         super::test_hooks::publish_store_probes(program, &store)?;
         let paused = store
-            .request(deadline()?, |store| store.restore_unreconciled())
+            .request(deadline()?, |store| Ok(store.restore_unreconciled()?))
             .await?;
         tracing::info!(
             order_sending_paused_after_restore = paused,
@@ -729,7 +729,7 @@ pub async fn prepare_retention(program: Program) -> Result<(), Error> {
             Box::new(Volume),
             Instant::now()
                 .checked_add(analyte_store::DEFAULT_STARTUP_TIMEOUT)
-                .ok_or(analyte_store::Error::InvalidHostInput)?,
+                .ok_or(analyte_store::MaintenanceError::DeadlineOverflow)?,
         )
     })
     .await??)

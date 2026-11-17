@@ -247,7 +247,7 @@ fn mutation_adr0003_migration_canonical_parking_limit_is_inclusive_and_refusal_r
             assert_eq!(retained, original);
         } else {
             assert!(
-                matches!(result,Err(Error::MigrationEvidence{table:"parked",row:1,cause}) if matches!(*cause,Error::InvalidMaintenanceInput))
+                matches!(result,Err(MaintenanceError::MigrationEvidence{table:"parked",row:1,cause}) if matches!(*cause,MaintenanceError::InvalidMaintenanceInput))
             );
             assert_eq!(
                 db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,

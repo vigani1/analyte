@@ -505,12 +505,12 @@ async fn backup(config: &std::path::Path, target: PathBuf) -> Result<(), Error> 
                 .checked_add(BACKUP_REQUEST_BUDGET)
                 .unwrap_or(Instant::now()),
             move |store| {
-                store.backup(
+                Ok(store.backup(
                     &target,
                     Instant::now()
                         .checked_add(BACKUP_WORK_BUDGET)
                         .unwrap_or(Instant::now()),
-                )
+                )?)
             },
         )
         .await;

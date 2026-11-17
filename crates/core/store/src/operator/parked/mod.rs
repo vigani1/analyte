@@ -76,7 +76,7 @@ impl Store {
     /// Appends an audit entry permanently.
     /// # Errors
     /// Refuses oversized entries or database failures.
-    pub fn audit(&mut self, entry: &Audit) -> Result<(), Error> {
+    pub fn audit(&mut self, entry: &Audit) -> Result<(), crate::StorageError> {
         let encoded = self.encode(entry)?;
         self.bound(encoded.as_bytes())?;
         self.db

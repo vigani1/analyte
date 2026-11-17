@@ -1,6 +1,6 @@
 //! Opens the store under its lock, checks integrity and applies forward-only migrations.
 use crate::{
-    Error, FreeSpace, Limits, SCHEMA_VERSION, Store,
+    FreeSpace, Limits, MaintenanceError as Error, SCHEMA_VERSION, Store,
     startup::{Startup, StartupStep},
 };
 use rusqlite::Connection;

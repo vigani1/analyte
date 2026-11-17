@@ -9,3 +9,6 @@ pub use delivery::DeliveryError;
 
 mod orders;
 pub use orders::OrderError;
+
+mod maintenance;
+pub use maintenance::MaintenanceError;

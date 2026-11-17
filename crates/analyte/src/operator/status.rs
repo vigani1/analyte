@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 pub async fn snapshot(program: &Program, store: &Handle) -> Result<Vec<String>, Error> {
     let now = jiff::Timestamp::now().as_second();
     let paused = store
-        .request(deadline()?, |store| store.restore_unreconciled())
+        .request(deadline()?, |store| Ok(store.restore_unreconciled()?))
         .await?;
     let cancelled = store
         .request(deadline()?, |s| s.analyzer_cancelled_count())

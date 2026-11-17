@@ -29,7 +29,7 @@ fn plan11_restore_refuses_corrupt_and_newer_backup_without_changing_current() ->
             &audit,
             Instant::now() + HANG_GUARD
         ),
-        Err(Error::StorageCorruption(_))
+        Err(MaintenanceError::StorageCorruption(_))
     ));
     std::fs::remove_file(&source)?;
     Connection::open(&source)?.execute_batch("PRAGMA user_version=999")?;
@@ -42,7 +42,7 @@ fn plan11_restore_refuses_corrupt_and_newer_backup_without_changing_current() ->
             &audit,
             Instant::now() + HANG_GUARD
         ),
-        Err(Error::SchemaTooNew(999))
+        Err(MaintenanceError::SchemaTooNew(999))
     ));
     assert_eq!(open(&path)?.raw(metadata.id)?, Some(b"retained".to_vec()));
     assert!(!path.with_extension("before-restore").exists());
@@ -96,7 +96,7 @@ fn plan11_rule7_restore_refuses_zero_page_limit_before_publishing() -> TestResul
             },
             Box::new(Space(u64::MAX))
         ),
-        Err(Error::InvalidLimits)
+        Err(MaintenanceError::InvalidLimits)
     ));
     let result = Store::restore(
         &path,
@@ -107,7 +107,7 @@ fn plan11_rule7_restore_refuses_zero_page_limit_before_publishing() -> TestResul
         Instant::now() + HANG_GUARD,
     );
     assert!(
-        matches!(result, Err(Error::InvalidLimits)),
+        matches!(result, Err(MaintenanceError::InvalidLimits)),
         "restore accepted invalid zero page limit: {result:?}"
     );
     assert_eq!(
@@ -195,7 +195,7 @@ fn mutation_plan11_restore_refuses_each_existing_recovery_file_before_staging() 
                 &audit,
                 Instant::now() + HANG_GUARD
             ),
-            Err(Error::Conflict)
+            Err(MaintenanceError::Conflict)
         ));
         assert_eq!(std::fs::read(&sentinel)?, b"retained recovery evidence");
         if extension == "before-restore" {
@@ -235,7 +235,7 @@ fn mutation_plan11_restore_accepts_schema_one_and_refuses_nonpositive_schema() -
             result?;
             assert!(open(&path)?.restore_unreconciled()?);
         } else {
-            assert!(matches!(result, Err(Error::Corruption)));
+            assert!(matches!(result, Err(MaintenanceError::Corruption)));
             assert!(!path.with_extension("restore-pending").exists());
         }
     }
@@ -275,7 +275,7 @@ fn mutation_plan11_rule7_restore_refuses_exhausted_reserve_before_publishing() -
         Instant::now() + HANG_GUARD,
     );
     assert!(
-        matches!(result, Err(Error::Capacity)),
+        matches!(result, Err(MaintenanceError::Capacity)),
         "restore published despite exhausted disk reserve: {result:?}"
     );
     assert_eq!(
@@ -338,7 +338,7 @@ fn mutation_plan11_restore_upgrade_refuses_a_database_that_grows_past_its_limit(
     let page: i64 = db.query_row("PRAGMA page_size", [], |r| r.get(0))?;
     let actual = pages.checked_mul(page).ok_or("restored size")?;
     assert!(
-        matches!(result, Err(Error::Capacity)),
+        matches!(result, Err(MaintenanceError::Capacity)),
         "restore result {result:?}; published size {actual} exceeds configured limit {limit}"
     );
     assert_eq!(
@@ -452,7 +452,7 @@ fn mutation_plan11_restore_busy_copy_refuses_with_timeout_and_preserves_both_sto
         Instant::now() + HANG_GUARD,
     );
     assert!(
-        matches!(result, Err(Error::Timeout)),
+        matches!(result, Err(MaintenanceError::Timeout)),
         "busy copy must be a timeout: {result:?}"
     );
     assert_eq!(std::fs::read(&source)?, original);

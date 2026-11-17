@@ -101,10 +101,10 @@ impl Handle {
             .await
             .map_err(|_| {
                 startup.cancel();
-                startup.error()
+                Error::from(startup.error())
             })
             .and_then(|result| result.map_err(|_| Error::Closed))
-            .and_then(|result| result);
+            .and_then(|result| result.map_err(Error::from));
         if let Err(error) = result {
             startup.cancel();
             // Startup still owns cleanup on an opening error. Cancellation is

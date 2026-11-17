@@ -95,7 +95,7 @@ pub(super) fn next(html: &mut Markup, route: &str, after: impl std::fmt::Display
 async fn pause(state: &Context, html: &mut Markup) -> Result<(), Error> {
     let paused = state
         .store
-        .request(deadline()?, |s| s.restore_unreconciled())
+        .request(deadline()?, |s| Ok(s.restore_unreconciled()?))
         .await?;
     html.push_markup(if paused {
         concat!(

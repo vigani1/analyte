@@ -25,7 +25,7 @@ pub(crate) fn limits() -> Limits {
 }
 
 pub(crate) fn open(path: &Path) -> Result<Store, Error> {
-    Store::open(path, limits(), Box::new(Space(u64::MAX)))
+    Ok(Store::open(path, limits(), Box::new(Space(u64::MAX)))?)
 }
 
 pub(crate) fn receipt(raw: &[u8]) -> Result<ReceiptMetadata, Box<dyn std::error::Error>> {

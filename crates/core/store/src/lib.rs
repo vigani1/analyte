@@ -1,7 +1,7 @@
 //! Stores durable evidence, revisions and deliveries without interpreting results or resending machine orders.
 #![forbid(unsafe_code)]
 mod errors;
-pub use errors::{DeliveryError, IntakeError, OrderError, StorageError};
+pub use errors::{DeliveryError, IntakeError, MaintenanceError, OrderError, StorageError};
 mod operator;
 use operator::{alerts, parked, query};
 mod upkeep;
@@ -72,6 +72,9 @@ use std::{
 /// Recovery decisions remain distinct from ordinary database failures.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// A migration refused legacy machine-order evidence.
+    #[error(transparent)]
+    MaintenanceOrderEvidence(Box<OrderError>),
     /// The host invoked a single-use rendering callback more than once.
     #[error("order preflight callback already consumed")]
     PreflightConsumed,
@@ -273,13 +276,13 @@ pub struct Limits {
 impl Limits {
     /// The one admission rule for limits, shared by open and restore so neither
     /// can publish a store with bounds the other refuses.
-    pub(crate) fn validate(&self) -> Result<(), Error> {
+    pub(crate) fn validate(&self) -> Result<(), MaintenanceError> {
         if self.record_bytes == 0
             || self.page_rows == 0
             || self.busy_timeout.is_zero()
             || self.busy_timeout > Duration::from_secs(30)
         {
-            return Err(Error::InvalidLimits);
+            return Err(MaintenanceError::InvalidLimits);
         }
         Ok(())
     }

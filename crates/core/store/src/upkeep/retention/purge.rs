@@ -5,7 +5,7 @@ enum Scope {
     Receipts(Option<ReceiptId>),
     Orders(Option<i64>),
 }
-use crate::{Error, Store, key};
+use crate::{MaintenanceError as Error, Store, key};
 use analyte_model::{Identifier, ReceiptId};
 use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};

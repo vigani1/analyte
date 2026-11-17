@@ -108,7 +108,7 @@ fn plan11_rule2_restore_keeps_current_and_rule8_requires_audited_resume() -> Tes
             &audit,
             Instant::now() + test_support::HANG_GUARD
         ),
-        Err(crate::Error::InUse)
+        Err(MaintenanceError::InUse)
     ));
     drop(store);
     let kept = Store::restore(

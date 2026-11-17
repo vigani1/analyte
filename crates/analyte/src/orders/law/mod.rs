@@ -300,7 +300,7 @@ impl Connection {
             let actor = machine.id.clone();
             store
                 .request(deadline()?, move |store| {
-                    store.audit(&analyte_store::Audit {
+                    Ok(store.audit(&analyte_store::Audit {
                         actor,
                         action: Identifier::new(Code::LawNegativeQueryOrl.as_str())
                             .map_err(analyte_store::Error::Text)?,
@@ -315,7 +315,7 @@ impl Connection {
                             "negative followup ORL correlated={correlated} acceptance={code}"
                         ))
                         .map_err(analyte_store::Error::Text)?,
-                    })
+                    })?)
                 })
                 .await?;
         }

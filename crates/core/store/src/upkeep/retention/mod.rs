@@ -8,7 +8,7 @@ mod vacuum;
 pub use purge::PurgeRun;
 pub(crate) use purge::maintenance;
 mod holds;
-use crate::{Error, Store};
+use crate::{MaintenanceError as Error, Store};
 use hmac::{Hmac, KeyInit, Mac};
 pub use holds::{HoldTarget, RetentionHold};
 use rusqlite::OptionalExtension;
@@ -83,7 +83,7 @@ impl Store {
     pub(crate) fn receipt_was_purged(
         &self,
         receipt: analyte_model::ReceiptId,
-    ) -> Result<bool, Error> {
+    ) -> Result<bool, crate::StorageError> {
         Ok(self.db.query_row(
             "SELECT EXISTS(SELECT 1 FROM retention_tombstones WHERE receipt=?1)",
             [crate::key(&receipt)?],

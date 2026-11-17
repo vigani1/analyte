@@ -1,5 +1,5 @@
 //! Creates protected database backups.
-use crate::{Error, Store};
+use crate::{MaintenanceError as Error, Store};
 use rusqlite::Connection;
 use std::{path::Path, time::Instant};
 

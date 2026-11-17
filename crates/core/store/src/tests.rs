@@ -57,7 +57,7 @@ fn mutation_rule7_lib_limits_validate_each_field_and_include_thirty_seconds() ->
         if valid {
             result?;
         } else {
-            assert!(matches!(result, Err(Error::InvalidLimits)));
+            assert!(matches!(result, Err(MaintenanceError::InvalidLimits)));
         }
     }
     Ok(())

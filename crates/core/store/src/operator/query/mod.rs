@@ -37,7 +37,7 @@ impl ParkedItem {
     /// Decodes the canonical protected parking record.
     /// # Errors
     /// Refuses corrupt evidence instead of inventing receipt links.
-    pub fn details(&self) -> Result<crate::Parked, Error> {
+    pub fn details(&self) -> Result<crate::Parked, serde_json::Error> {
         Ok(serde_json::from_str::<crate::parked::ParkingEvidence>(&self.evidence)?.details)
     }
 }

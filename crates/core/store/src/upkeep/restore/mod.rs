@@ -1,5 +1,5 @@
 //! Restores offline stores while retaining the displaced database and pausing machine commands.
-use crate::{Audit, Error, FreeSpace, Limits, Store};
+use crate::{Audit, FreeSpace, Limits, MaintenanceError as Error, Store};
 use rusqlite::{Connection, OptionalExtension};
 use std::{
     fs::{File, OpenOptions},

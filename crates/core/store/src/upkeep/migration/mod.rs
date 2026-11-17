@@ -1,5 +1,5 @@
 //! Migrates stored schemas while retaining existing evidence.
-use crate::{Error, Store};
+use crate::{MaintenanceError as Error, Store};
 use rusqlite::Connection;
 mod revisions;
 

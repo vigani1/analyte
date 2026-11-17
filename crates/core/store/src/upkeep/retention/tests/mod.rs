@@ -292,8 +292,11 @@ fn adr0013_items3_4_5_6_real_purge_audit_refusals_and_late_duplicate() -> TestRe
     assert_eq!(run.first, Some(id));
     assert_eq!(run.last, Some(id));
     assert_eq!(store.last_purge_run()?.ok_or("audit")?.purged, 1);
-    assert!(matches!(store.receipt_metadata(id), Err(Error::Purged)));
-    assert!(matches!(store.receipt(id), Err(Error::Purged)));
+    assert!(matches!(
+        store.receipt_metadata(id),
+        Err(crate::Error::Purged)
+    ));
+    assert!(matches!(store.receipt(id), Err(crate::Error::Purged)));
     assert!(matches!(
         store.resend_delivery(delivery, false, &audit()?),
         Err(crate::DeliveryError::Purged)
