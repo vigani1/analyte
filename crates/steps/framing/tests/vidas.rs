@@ -71,3 +71,25 @@ fn vidas_bci_a_3_bad_checksum_and_bounds_stop() -> Result<(), Box<dyn std::error
     assert!(c.encode(&vec![b'A'; 1921]).is_err());
     Ok(())
 }
+
+#[test]
+fn vidas_bci_a3_retained_packet_uses_live_decoder_and_requires_exact_boundary()
+-> Result<(), Box<dyn std::error::Error>> {
+    use analyte_framing::vidas::{Error, decode};
+    for mode in [Mode::Literal, Mode::Alternate] {
+        let c = config(mode, b"\r\n", true)?;
+        let raw = c.encode(b"synthetic")?;
+        assert_eq!(decode(&raw, c.clone())?.body, b"synthetic");
+        assert!(matches!(
+            decode(
+                raw.get(..raw.len().saturating_sub(1)).ok_or("fixture")?,
+                c.clone()
+            ),
+            Err(Error::Incomplete)
+        ));
+        let mut trailing = raw.clone();
+        trailing.push(4);
+        assert!(matches!(decode(&trailing, c), Err(Error::Trailing)));
+    }
+    Ok(())
+}
