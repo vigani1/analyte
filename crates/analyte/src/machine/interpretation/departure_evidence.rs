@@ -184,33 +184,25 @@ fn compatibility(
             .and_then(|bytes| {
                 analyte_hl7::Message::parse(&bytes, effective.hl7_options()?)
                     .ok()
-                    .map(|message| {
-                        let utf8 = message
-                            .segments()
-                            .next()
-                            .and_then(|msh| msh.field(18))
-                            .is_some_and(|f| f.raw() == b"UNICODE UTF-8");
-                        (
-                            message.raw().windows(2).any(|bytes| bytes == b"\r\n"),
-                            message.raw().contains(&b'\n'),
-                            utf8,
-                        )
-                    })
+                    .map(|message| analyte_hl7::wire_compatibility(&message))
             })
     } else {
         None
     };
     for declaration in &effective.machine().deviations {
         let (exercised, standard) = match declaration {
-            MachineDeparture::Hl7CrLfTerminators(_) => {
-                (hl7.is_some_and(|v| v.0), "HL7 §2.4 segment boundaries")
-            }
-            MachineDeparture::Hl7LfTerminators(_) => {
-                (hl7.is_some_and(|v| v.1), "HL7 §2.4 segment boundaries")
-            }
-            MachineDeparture::Hl7Utf8InV231(_) => {
-                (hl7.is_some_and(|v| v.2), "HL7 2.3.1 §2.24.1.18")
-            }
+            MachineDeparture::Hl7CrLfTerminators(_) => (
+                hl7.as_ref().is_some_and(|v| v.crlf),
+                "HL7 §2.4 segment boundaries",
+            ),
+            MachineDeparture::Hl7LfTerminators(_) => (
+                hl7.as_ref().is_some_and(|v| v.lf),
+                "HL7 §2.4 segment boundaries",
+            ),
+            MachineDeparture::Hl7Utf8InV231(_) => (
+                hl7.as_ref().is_some_and(|v| v.legacy_utf8),
+                "HL7 2.3.1 §2.24.1.18",
+            ),
             MachineDeparture::Hl7PreserveUnsupportedEscapes(_) => {
                 (preserved_escape, "HL7 §2.7 escape sequences")
             }
