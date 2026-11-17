@@ -586,6 +586,6 @@ pub(crate) fn error_code(code: &[u8], version: Version) -> bool {
                 | b"204"
                 | b"205"
                 | b"206"
-                | b"207"
+                | crate::APPLICATION_INTERNAL_ERROR
         )
 }

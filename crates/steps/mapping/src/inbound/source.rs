@@ -24,7 +24,7 @@ pub(crate) struct Source<'a> {
     pub nodes: Vec<Node<'a>>,
     pub syntax: FieldSyntax,
     pub component_separator: u8,
-    pub charset: analyte_hl7::Charset,
+    pub charset: analyte_config::Encoding,
 }
 
 impl Source<'_> {
@@ -162,11 +162,19 @@ impl Source<'_> {
         }
         let decoded = match self.syntax {
             FieldSyntax::AstmLis02 => match self.charset {
-                analyte_hl7::Charset::Ascii => analyte_astm::ascii(raw),
-                analyte_hl7::Charset::Latin1 => analyte_astm::latin1(raw),
-                analyte_hl7::Charset::Utf8 => analyte_astm::utf8(raw),
+                analyte_config::Encoding::Ascii => analyte_astm::ascii(raw),
+                analyte_config::Encoding::Latin1 => analyte_astm::latin1(raw),
+                analyte_config::Encoding::Utf8 => analyte_astm::utf8(raw),
             },
-            FieldSyntax::Hl7V2 => analyte_hl7::decode_characters(raw, self.charset).ok(),
+            FieldSyntax::Hl7V2 => analyte_hl7::decode_characters(
+                raw,
+                match self.charset {
+                    analyte_config::Encoding::Ascii => analyte_hl7::Charset::Ascii,
+                    analyte_config::Encoding::Latin1 => analyte_hl7::Charset::Latin1,
+                    analyte_config::Encoding::Utf8 => analyte_hl7::Charset::Utf8,
+                },
+            )
+            .ok(),
         };
         decoded.ok_or(Error::Encoding {
             position: self.position(index, field),
@@ -386,7 +394,7 @@ pub(crate) fn astm(message: &analyte_astm::Message) -> Source<'_> {
         nodes,
         syntax: FieldSyntax::AstmLis02,
         component_separator: message.delimiters().bytes().get(2).copied().unwrap_or(b'^'),
-        charset: analyte_hl7::Charset::Latin1,
+        charset: analyte_config::Encoding::Latin1,
     }
 }
 
@@ -489,7 +497,11 @@ fn hl7_segments(
         nodes: Vec::new(),
         syntax: FieldSyntax::Hl7V2,
         component_separator: message.delimiters().bytes().get(1).copied().unwrap_or(b'^'),
-        charset: message.charset(),
+        charset: match message.charset() {
+            analyte_hl7::Charset::Ascii => analyte_config::Encoding::Ascii,
+            analyte_hl7::Charset::Latin1 => analyte_config::Encoding::Latin1,
+            analyte_hl7::Charset::Utf8 => analyte_config::Encoding::Utf8,
+        },
     };
     let mut hierarchy = Hierarchy {
         patient: Some(0),
@@ -671,7 +683,7 @@ mod tests {
             nodes: Vec::new(),
             syntax: FieldSyntax::AstmLis02,
             component_separator: b'^',
-            charset: analyte_hl7::Charset::Ascii,
+            charset: analyte_config::Encoding::Ascii,
         };
         assert_eq!(source.present(Some("\"\"".into())), Some("\"\"".into()));
         assert_eq!(source.present(Some(String::new())), None);
@@ -686,7 +698,7 @@ mod tests {
             nodes: Vec::new(),
             syntax: FieldSyntax::AstmLis02,
             component_separator: b'^',
-            charset: analyte_hl7::Charset::Ascii,
+            charset: analyte_config::Encoding::Ascii,
         };
         assert!(matches!(
             source.original_text("\u{e9}".as_bytes(), 0, 1),
@@ -697,7 +709,7 @@ mod tests {
             source.original_text("\u{e9}".as_bytes(), 0, 1),
             Err(Error::Encoding { .. })
         ));
-        source.charset = analyte_hl7::Charset::Utf8;
+        source.charset = analyte_config::Encoding::Utf8;
         assert_eq!(
             source.original_text("\u{e9}".as_bytes(), 0, 1).unwrap(),
             "\u{e9}"

@@ -54,11 +54,7 @@ pub fn map(
         }
     }
     let mut source = source::astm(message);
-    source.charset = match syntax.encoding() {
-        analyte_config::Encoding::Ascii => analyte_hl7::Charset::Ascii,
-        analyte_config::Encoding::Latin1 => analyte_hl7::Charset::Latin1,
-        analyte_config::Encoding::Utf8 => analyte_hl7::Charset::Utf8,
-    };
+    source.charset = syntax.encoding();
     source.attach_comments()?;
     grouping::message(
         &source,
