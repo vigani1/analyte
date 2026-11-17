@@ -16,13 +16,13 @@ impl ConnectionState {
         if self.idle && self.opened && Instant::now() >= self.next_poll {
             self.next_poll = Instant::now()
                 .checked_add(ms(1000))
-                .ok_or_else(|| Error::VidasOrderPollDeadlineOverflow)?;
+                .ok_or_else(|| Error::OrderPollDeadlineOverflow)?;
             if let Some(reserved) =
                 crate::orders::sending::next(store, machine, &mut self.cursor).await?
             {
                 self.active = Some(reserved.order);
                 let analyte_mapping::MachineOrder::Vidas(requests) = reserved.payload else {
-                    return Err(Error::VidasReceivedAnotherStackSOrder);
+                    return Err(Error::ForeignStackOrder);
                 };
                 self.requests = requests.into();
                 start_download(self)?;
@@ -35,7 +35,7 @@ pub(crate) fn start_download(state: &mut ConnectionState) -> Result<(), Error> {
     let request = state
         .requests
         .pop_front()
-        .ok_or_else(|| Error::VidasMappedRequestMissing)?;
+        .ok_or_else(|| Error::MappedRequestMissing)?;
     state.dialog = Dialog::download(state.config.clone(), state.policy.clone(), &request)?;
     state.start = Instant::now();
     state.idle = false;

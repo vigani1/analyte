@@ -46,7 +46,7 @@ pub(super) async fn ensure_reconciled(store: &Handle, machine: &Machine) -> Resu
         })
         .await?;
     if blocked {
-        return Err(Error::AutolyserPreviousPollRequiresOperatorReconciliationBeforeRCanAdvance);
+        return Err(Error::PreviousPollRequiresOperatorReconciliationBeforeRCanAdvance);
     }
     Ok(())
 }
@@ -113,7 +113,7 @@ pub(super) async fn complete(
         match state {
             PollIntentState::Confirmed => *guard = None,
             PollIntentState::Pending | PollIntentState::Uncertain => {
-                return Err(Error::AutolyserPollConfirmationDidNotReconcileCustody);
+                return Err(Error::PollConfirmationDidNotReconcileCustody);
             }
         }
     }

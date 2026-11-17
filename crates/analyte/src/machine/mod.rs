@@ -46,7 +46,7 @@ impl Closing {
         self.ready.send_replace(true);
         tokio::time::timeout(TRANSPORT_CLOSE_BUDGET, stopping(&mut self.close))
             .await
-            .map_err(link::error::Error::TransportCloseStageExceeded25Seconds)?;
+            .map_err(link::error::Error::TransportCloseStageExceeded)?;
         Ok(())
     }
 }

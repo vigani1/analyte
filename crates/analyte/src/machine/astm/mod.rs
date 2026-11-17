@@ -76,36 +76,25 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
         .with_checksum_hex(settings.checksum_policy());
         let epoch = Epoch(uuid::Uuid::now_v7().as_u128());
         let dialog = Dialog::new(config.clone(), epoch);
-        let start = Instant::now();
-        let transfer: Option<Identifier> = None;
-        let raw = Vec::new();
-        let payload = Vec::new();
-        let pending: Option<Pending<'_>> = None;
-        let response: Option<crate::orders::astm::Reply> = None;
-        let response_deadline = None;
-        let query_started = None;
-        let active_orders = Vec::new();
-        let order_cursor = String::new();
-        let next_order_poll = Instant::now();
         Ok(Self {
             machine,
             settings,
             store,
             config,
             dialog,
-            start,
-            transfer,
+            start: Instant::now(),
+            transfer: None,
             commit_failure: None,
-            raw,
-            payload,
+            raw: Vec::new(),
+            payload: Vec::new(),
             input_evidence: connection_input::Custody::default(),
-            pending,
-            response,
-            response_deadline,
-            query_started,
-            active_orders,
-            order_cursor,
-            next_order_poll,
+            pending: None,
+            response: None,
+            response_deadline: None,
+            query_started: None,
+            active_orders: Vec::new(),
+            order_cursor: String::new(),
+            next_order_poll: Instant::now(),
         })
     }
     async fn receive_loop(
@@ -113,7 +102,6 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
         conn: &mut analyte_transport::Connection,
         stop: &mut watch::Receiver<bool>,
     ) -> Result<(), Error> {
-        let machine = self.machine;
         loop {
             let event = tokio::select! {
                 biased;
@@ -125,7 +113,12 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
                     Err(analyte_transport::Error::Deadline(_)) => None,
                     Err(error) => return Err(error.into()),
                 },
-                answer = async { match self.pending.as_mut() { Some(query) => query.finish(machine).await, None => std::future::pending().await } }, if self.pending.is_some() => {
+                answer = async {
+                    match self.pending.as_mut() {
+                        Some(query) => query.finish(self.machine).await,
+                        None => std::future::pending().await,
+                    }
+                }, if self.pending.is_some() => {
                     self.response_deadline = self.pending.as_ref().map(Pending::deadline);
                     self.pending = None;
                     self.response = answer?;
@@ -135,7 +128,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             let bytes = match event {
                 Some(Input::Opened { session }) => {
                     tracing::info!(
-                        machine = machine.id.as_str(),
+                        machine = self.machine.id.as_str(),
                         session,
                         "ASTM connection opened"
                     );
@@ -171,8 +164,6 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
         Ok(())
     }
     async fn outgoing_events(&mut self, bytes: Vec<u8>) -> Result<Vec<Event>, Error> {
-        let machine = self.machine;
-        let store = self.store;
         let outgoing = if bytes.is_empty()
             && self.dialog.next_deadline().is_none()
             && self.response.is_none()
@@ -182,14 +173,14 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             self.next_order_poll = Instant::now()
                 .checked_add(Duration::from_secs(1))
                 .ok_or_else(|| Error::OrderPollDeadlineOverflow)?;
-            crate::orders::sending::next(store, machine, &mut self.order_cursor).await?
+            crate::orders::sending::next(self.store, self.machine, &mut self.order_cursor).await?
         } else {
             None
         };
         let events = if let Some(reserved) = outgoing {
             self.active_orders.push(reserved.order);
             vec![Event::Send(crate::orders::astm::envelope(
-                machine,
+                self.machine,
                 vec![reserved.payload.record()?.to_vec()],
                 analyte_astm::OrderTermination::Normal,
             ))]
@@ -201,12 +192,12 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
                 .response_deadline
                 .is_some_and(|until| Instant::now() >= until)
             {
-                self.response = crate::orders::astm::failure(machine);
+                self.response = crate::orders::astm::failure(self.machine);
             }
             match self.response.take() {
                 Some(reply) => match crate::orders::astm::reserve_query(
-                    store,
-                    machine,
+                    self.store,
+                    self.machine,
                     reply,
                     self.response_deadline.unwrap_or_else(Instant::now),
                     &mut self.active_orders,
@@ -231,9 +222,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
         conn: &mut analyte_transport::Connection,
         stop: &mut watch::Receiver<bool>,
     ) -> Result<(), Error> {
-        let machine = self.machine;
         let settings = self.settings;
-        let store = self.store;
         let mut actions = VecDeque::new();
         if matches!(event, Event::Byte(analyte_framing::astm::ENQ)) {
             // Start the query budget before admission and journaling.
@@ -242,18 +231,19 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             self.query_started = Some(Instant::now());
             if self.pending.is_some() || self.response.is_some() {
                 self.pending = None;
-                self.response = crate::orders::astm::failure(machine);
+                self.response = crate::orders::astm::failure(self.machine);
                 self.response_deadline = None;
             }
             let expected = settings
                 .frame_limit()
-                .checked_add(machine.snapshot.canonical().len())
-                .ok_or_else(|| Error::AstmAdmissionSizeOverflow)?;
-            let capacity = store
+                .checked_add(self.machine.snapshot.canonical().len())
+                .ok_or_else(|| Error::AdmissionSizeOverflow)?;
+            let capacity = self
+                .store
                 .request(deadline()?, move |s| s.admission(expected))
                 .await;
             if let Err(error) = &capacity {
-                tracing::error!(machine = machine.id.as_str(), error_kind = %error, "storage admission refused");
+                tracing::error!(machine = self.machine.id.as_str(), error_kind = %error, "storage admission refused");
             }
             actions.extend(
                 self.dialog
@@ -273,9 +263,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
         stop: &mut watch::Receiver<bool>,
         actions: &mut VecDeque<Action>,
     ) -> Result<(), Error> {
-        let machine = self.machine;
         let settings = self.settings;
-        let store = self.store;
         match action {
             Action::Write(bytes) => {
                 conn.write(bytes).await?;
@@ -293,7 +281,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
                     .checked_add(record.len())
                     .is_none_or(|n| n > settings.syntax().limits().bytes())
                 {
-                    return Err(Error::AstmMessageBoundExceeded);
+                    return Err(Error::MessageBoundExceeded);
                 }
                 self.payload.extend_from_slice(&record);
             }
@@ -303,24 +291,32 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             Action::Deadline(_) => {}
             Action::Refused(error) => return Err(error.into()),
             Action::Conflict(bytes) => {
-                intake::park_bytes(store, machine, bytes, ByteReason::AstmConflict).await?;
+                intake::park_bytes(self.store, self.machine, bytes, ByteReason::AstmConflict)
+                    .await?;
             }
             Action::UnexpectedFrame(bytes) => {
-                intake::park_bytes(store, machine, bytes, ByteReason::AstmUnsolicited).await?;
+                intake::park_bytes(self.store, self.machine, bytes, ByteReason::AstmUnsolicited)
+                    .await?;
             }
             Action::Rejected(error, bytes) => {
-                intake::park_bytes(store, machine, bytes, ByteReason::AstmFrame(&error)).await?;
+                intake::park_bytes(
+                    self.store,
+                    self.machine,
+                    bytes,
+                    ByteReason::AstmFrame(&error),
+                )
+                .await?;
             }
             Action::CommitFailed(_) => {
                 return Err(self
                     .commit_failure
                     .take()
-                    .map_or(Error::AstmCommitDeadline, Error::AstmCommitRefused));
+                    .map_or(Error::CommitDeadline, Error::CommitRefused));
             }
-            Action::LimitReached => return Err(Error::AstmResourceLimitRefusedTransfer),
+            Action::LimitReached => return Err(Error::ResourceLimitRefusedTransfer),
             Action::Sent(end) => {
                 for order in self.active_orders.drain(..) {
-                    crate::orders::sending::finished(store, &order, end).await?;
+                    crate::orders::sending::finished(self.store, &order, end).await?;
                 }
             }
         }
@@ -336,8 +332,6 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
     ) -> Result<(), Error> {
         #[cfg(not(feature = "test-hooks"))]
         let _ = stop;
-        let machine = self.machine;
-        let store = self.store;
         let settings = self.settings;
 
         let transfer_id = Identifier::new(&format!("{:032x}-{}", id.epoch().0, id.transfer()))?;
@@ -348,13 +342,13 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             .checked_add(bytes.len())
             .is_none_or(|n| n > settings.syntax().limits().bytes())
         {
-            return Err(Error::AstmTransferWireByteBoundExceeded);
+            return Err(Error::TransferWireByteBoundExceeded);
         }
         self.raw.extend_from_slice(&bytes);
         let provenance = analyte_store::FrameProvenance {
-            machine: machine.id.clone(),
-            driver: intake::driver(machine)?,
-            config: machine.snapshot.canonical().as_bytes().to_vec(),
+            machine: self.machine.id.clone(),
+            driver: intake::driver(self.machine)?,
+            config: self.machine.snapshot.canonical().as_bytes().to_vec(),
         };
         let sequence = analyte_store::FrameSequence::new(
             number.value(),
@@ -362,15 +356,15 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
         )
         .map_err(analyte_store::Error::from)?;
         let committed = super::custody::store_before_ack(
-            machine,
-            store.request(deadline()?, move |s| {
+            self.machine,
+            self.store.request(deadline()?, move |s| {
                 s.journal_frame(&transfer_id, sequence, &bytes, &provenance)
             }),
         )
         .await;
         #[cfg(feature = "test-hooks")]
         if committed.is_ok()
-            && let Some(hook) = &machine.hooks.astm_committed
+            && let Some(hook) = &self.machine.hooks.astm_committed
         {
             hook.pause(stop).await.map_err(Error::TestHook)?;
         }
@@ -386,16 +380,14 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
         Ok(())
     }
     async fn end_transfer(&mut self, end: End) -> Result<(), Error> {
-        let machine = self.machine;
-        let store = self.store;
-
         if let Some(transfer_id) = self.transfer.take() {
             if end == End::Normal {
                 let id = ReceiptId::new();
-                intake::receive(store, machine, id, std::mem::take(&mut self.raw)).await?;
-                match crate::orders::astm::request(machine, &self.payload)? {
+                intake::receive(self.store, self.machine, id, std::mem::take(&mut self.raw))
+                    .await?;
+                match crate::orders::astm::request(self.machine, &self.payload)? {
                     None => {
-                        intake::interpret(store, machine, id).await?;
+                        intake::interpret(self.store, self.machine, id).await?;
                     }
                     Some(Request::Cancel) => {
                         self.pending = None;
@@ -404,25 +396,25 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
                     }
                     Some(Request::Unsupported) => {
                         self.pending = None;
-                        self.response = crate::orders::astm::failure(machine);
+                        self.response = crate::orders::astm::failure(self.machine);
                         self.response_deadline = None;
                     }
                     Some(Request::Orders(samples)) => {
                         if self.pending.is_some() || self.response.is_some() {
                             self.pending = None;
-                            self.response = crate::orders::astm::failure(machine);
+                            self.response = crate::orders::astm::failure(self.machine);
                             self.response_deadline = None;
                         } else {
                             self.pending = Some(Pending::new(
-                                store,
-                                machine,
+                                self.store,
+                                self.machine,
                                 samples,
                                 self.query_started.unwrap_or_else(Instant::now),
                             )?);
                         }
                     }
                 }
-                store
+                self.store
                     .request::<_, analyte_store::Error>(deadline()?, move |s| {
                         Ok::<_, analyte_store::Error>(s.finish_transfer(
                             &transfer_id,
@@ -431,7 +423,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
                     })
                     .await?;
             } else {
-                finish_incomplete(store, transfer_id).await?;
+                finish_incomplete(self.store, transfer_id).await?;
             }
         }
         self.raw.clear();
@@ -444,7 +436,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
         // A failed NAK write can interrupt the action queue before CommitFailed.
         // Keep that transport failure and the original custody cause together.
         if let Some(error) = self.commit_failure.take() {
-            super::custody::retain_cleanup(&mut result, Err(Error::AstmCommitRefused(error)));
+            super::custody::retain_cleanup(&mut result, Err(Error::CommitRefused(error)));
         }
         // Disconnect drains the dialog-owned decoder on every exit, including failed
         // host effects. Transfer and order identities are reconciled below even if

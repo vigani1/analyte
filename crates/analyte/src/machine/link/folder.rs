@@ -146,7 +146,8 @@ async fn receive(
     let mut opened = false;
     let mut raw = Vec::new();
     loop {
-        let event = tokio::select! { biased;
+        let event = tokio::select! {
+            biased;
             () = crate::machine::stopping(stop) => return Ok(None),
             event = connection.receive() => event?,
         }

@@ -1,7 +1,7 @@
 //! Defines stable POCT refusal evidence spellings.
 /// Closed refusal evidence retained with an incoming POCT message.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ParkReason {
+pub enum RefusalCode {
     /// POCT reused incoming control ID.
     ReusedControlId,
     /// POCT conversation control-ID budget exhausted.
@@ -13,7 +13,7 @@ pub enum ParkReason {
     /// POCT Hello capabilities could not be interpreted.
     HelloCapabilities,
 }
-impl ParkReason {
+impl RefusalCode {
     /// Returns the historical protected-store spelling.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
@@ -29,23 +29,23 @@ impl ParkReason {
 #[test]
 fn park_reason_spellings_are_pinned() {
     assert_eq!(
-        ParkReason::ReusedControlId.as_str(),
+        RefusalCode::ReusedControlId.as_str(),
         "POCT reused incoming control ID"
     );
     assert_eq!(
-        ParkReason::ControlIdBudget.as_str(),
+        RefusalCode::ControlIdBudget.as_str(),
         "POCT conversation control-ID budget exhausted"
     );
     assert_eq!(
-        ParkReason::KeepAlive.as_str(),
+        RefusalCode::KeepAlive.as_str(),
         "POCT unsupported Keep Alive"
     );
     assert_eq!(
-        ParkReason::HelloPolicy.as_str(),
+        RefusalCode::HelloPolicy.as_str(),
         "POCT Hello rejected by host policy"
     );
     assert_eq!(
-        ParkReason::HelloCapabilities.as_str(),
+        RefusalCode::HelloCapabilities.as_str(),
         "POCT Hello capabilities could not be interpreted"
     );
 }

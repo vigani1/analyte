@@ -3,61 +3,61 @@
 pub(crate) enum Error {
     /// LAW independent peer closed before ORL.
     #[error("LAW independent peer closed before ORL")]
-    LawPeerClosedBeforeOrl,
+    PeerClosedBeforeOrl,
     /// LAW connection deadline overflow.
     #[error("LAW connection deadline overflow")]
-    LawConnectionDeadlineOverflow,
+    ConnectionDeadlineOverflow,
     /// LAW inbound task panicked; machine owner stopped.
     #[error("LAW inbound task panicked; machine owner stopped")]
-    LawInboundTaskPanickedMachineOwnerStopped(#[source] tokio::task::JoinError),
+    InboundTaskPanickedMachineOwnerStopped(#[source] tokio::task::JoinError),
     /// LAW inbound task was cancelled before returning its outcome.
     #[error("LAW inbound task was cancelled before returning its outcome")]
-    LawInboundTaskWasCancelledBeforeReturningItsOutcome(#[source] tokio::task::JoinError),
+    InboundTaskWasCancelledBeforeReturningItsOutcome(#[source] tokio::task::JoinError),
     /// LAW independent destination absent.
     #[error("LAW independent destination absent")]
-    LawIndependentDestinationAbsent,
+    IndependentDestinationAbsent,
     /// LAW independent peer disconnected.
     #[error("LAW independent peer disconnected")]
-    LawIndependentPeerDisconnected,
+    IndependentPeerDisconnected,
     /// LAW independent transaction deadline.
     #[error("LAW independent transaction deadline")]
-    LawIndependentTransactionDeadline(#[source] tokio::time::error::Elapsed),
+    IndependentTransactionDeadline(#[source] tokio::time::error::Elapsed),
     /// LAW input still awaits custody.
     #[error("LAW input still awaits custody")]
-    LawInputStillAwaitsCustody,
+    InputStillAwaitsCustody,
     /// LAW outbound connect deadline.
     #[error("LAW outbound connect deadline")]
-    LawOutboundConnectDeadline(#[source] tokio::time::error::Elapsed),
+    OutboundConnectDeadline(#[source] tokio::time::error::Elapsed),
     /// LAW outbound deadline absent.
     #[error("LAW outbound deadline absent")]
-    LawOutboundDeadlineAbsent,
+    OutboundDeadlineAbsent,
     /// LAW outbound queue unavailable; reserved work not issued.
     #[error("LAW outbound queue unavailable; reserved work not issued")]
-    LawOutboundQueueUnavailableReservedWorkNotIssued,
+    OutboundQueueUnavailableReservedWorkNotIssued,
     /// LAW outbound work expired before connection.
     #[error("LAW outbound work expired before connection")]
-    LawOutboundWorkExpiredBeforeConnection,
+    OutboundWorkExpiredBeforeConnection,
     /// LAW outgoing deadline absent.
     #[error("LAW outgoing deadline absent")]
-    LawOutgoingDeadlineAbsent,
+    OutgoingDeadlineAbsent,
     /// LAW queued work has no deadline.
     #[error("LAW queued work has no deadline")]
-    LawQueuedWorkHasNoDeadline,
+    QueuedWorkHasNoDeadline,
     /// LAW receipt correlation missing.
     #[error("LAW receipt correlation missing")]
-    LawReceiptCorrelationMissing,
+    ReceiptCorrelationMissing,
     /// LAW response deadline absent after issuance.
     #[error("LAW response deadline absent after issuance")]
-    LawResponseDeadlineAbsentAfterIssuance,
+    ResponseDeadlineAbsentAfterIssuance,
     /// LAW response send deadline expired.
     #[error("LAW response send deadline expired")]
-    LawResponseSendDeadlineExpired(#[source] analyte_transport::Error),
+    ResponseSendDeadlineExpired(#[source] analyte_transport::Error),
     /// Independent LAW stack absent.
     #[error("independent LAW stack absent")]
     IndependentLawStackAbsent,
     /// The independent LAW transport ended before confirmed completion.
     #[error("LAW independent transport failed: {0}")]
-    LawTransportFailed(analyte_transport::Reason),
+    TransportFailed(analyte_transport::Reason),
     /// Preserves the `Deadline` failure and its original cause.
     #[error("{reason}")]
     Deadline {
@@ -73,13 +73,13 @@ pub(crate) enum Error {
     Orders(#[from] crate::orders::OrderError),
     /// The LAW transaction could not advance its phase.
     #[error(transparent)]
-    LawDialog(#[from] analyte_dialog::law::Error),
+    Dialog(#[from] analyte_dialog::law::Error),
     /// HL7 segment syntax or acknowledgment fields were invalid.
     #[error(transparent)]
     Hl7(#[from] analyte_hl7::Error),
     /// LAW message grammar or profile validation failed.
     #[error(transparent)]
-    Law(#[from] analyte_hl7::law::Error),
+    Syntax(#[from] analyte_hl7::law::Error),
     /// The HL7 transport envelope failed MLLP framing.
     #[error(transparent)]
     Mllp(#[from] analyte_framing::hl7::Error),

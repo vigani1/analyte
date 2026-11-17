@@ -86,29 +86,29 @@ mod tests {
     use super::*;
     #[test]
     fn protocol_errors_remain_distinct_at_worker_boundary() {
-        let astm = Error::from(super::super::astm::Error::AstmMessageBoundExceeded);
+        let astm = Error::from(super::super::astm::Error::MessageBoundExceeded);
         assert!(
-            matches!(astm, Error::Astm(error) if matches!(*error, super::super::astm::Error::AstmMessageBoundExceeded))
+            matches!(astm, Error::Astm(error) if matches!(*error, super::super::astm::Error::MessageBoundExceeded))
         );
-        let hl7 = Error::from(super::super::hl7::Error::Hl7MessageRefused);
+        let hl7 = Error::from(super::super::hl7::Error::MessageRefused);
         assert!(
-            matches!(hl7, Error::Hl7(error) if matches!(*error, super::super::hl7::Error::Hl7MessageRefused))
+            matches!(hl7, Error::Hl7(error) if matches!(*error, super::super::hl7::Error::MessageRefused))
         );
-        let law = Error::from(super::super::law::Error::LawInputStillAwaitsCustody);
+        let law = Error::from(super::super::law::Error::InputStillAwaitsCustody);
         assert!(
-            matches!(law, Error::Law(error) if matches!(*error, super::super::law::Error::LawInputStillAwaitsCustody))
+            matches!(law, Error::Law(error) if matches!(*error, super::super::law::Error::InputStillAwaitsCustody))
         );
-        let poct = Error::from(super::super::poct::Error::PoctMessageLimitExceeded);
+        let poct = Error::from(super::super::poct::Error::MessageLimitExceeded);
         assert!(
-            matches!(poct, Error::Poct(error) if matches!(*error, super::super::poct::Error::PoctMessageLimitExceeded))
+            matches!(poct, Error::Poct(error) if matches!(*error, super::super::poct::Error::MessageLimitExceeded))
         );
-        let vidas = Error::from(super::super::vidas::Error::VidasControlSuffixMismatch);
+        let vidas = Error::from(super::super::vidas::Error::ControlSuffixMismatch);
         assert!(
-            matches!(vidas, Error::Vidas(error) if matches!(*error, super::super::vidas::Error::VidasControlSuffixMismatch))
+            matches!(vidas, Error::Vidas(error) if matches!(*error, super::super::vidas::Error::ControlSuffixMismatch))
         );
-        let autolyser = Error::from(super::super::autolyser::Error::AutolyserReportReceiptMissing);
+        let autolyser = Error::from(super::super::autolyser::Error::ReportReceiptMissing);
         assert!(
-            matches!(autolyser, Error::Autolyser(error) if matches!(*error, super::super::autolyser::Error::AutolyserReportReceiptMissing))
+            matches!(autolyser, Error::Autolyser(error) if matches!(*error, super::super::autolyser::Error::ReportReceiptMissing))
         );
     }
     #[test]

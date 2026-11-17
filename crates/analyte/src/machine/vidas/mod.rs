@@ -100,7 +100,7 @@ impl ConnectionState {
             let mut next = self
                 .dialog
                 .next_deadline()
-                .ok_or_else(|| Error::VidasActiveDialogHasNoDeadline)?;
+                .ok_or_else(|| Error::ActiveDialogHasNoDeadline)?;
             if self.idle && self.opened {
                 next = next.min(
                     self.start
@@ -183,7 +183,7 @@ impl ConnectionState {
                 if installed.suffix.get(index) != Some(&byte) {
                     self.end_code = VidasEnd::ControlSuffixMismatch;
                     intake::park_bytes(store, machine, vec![byte], ByteReason::VidasSuffix).await?;
-                    return Err(Error::VidasControlSuffixMismatch);
+                    return Err(Error::ControlSuffixMismatch);
                 }
                 if index.saturating_add(1) == installed.suffix.len() {
                     self.suffix = None;
@@ -282,7 +282,7 @@ async fn process(
                     return Err(custody::effect_failure(failure, error.into()));
                 }
                 if failure.is_none() {
-                    failure = Some(Error::VidasTransferParkedReconcileBeforeReconnect);
+                    failure = Some(Error::TransferParkedReconcileBeforeReconnect);
                 }
             }
             Action::Complete => {

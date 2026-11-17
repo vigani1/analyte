@@ -122,13 +122,13 @@ impl<'a, 'm> Host<'a, 'm> {
     fn absolute(&self, until: Duration) -> Result<Instant, Error> {
         self.clock
             .checked_add(until)
-            .ok_or_else(|| Error::LawConnectionDeadlineOverflow)
+            .ok_or_else(|| Error::ConnectionDeadlineOverflow)
     }
     fn receipt(&self, token: protocol::ReceiptId) -> Result<ReceiptId, Error> {
         self.receipt
             .filter(|(expected, _)| *expected == token)
             .map(|(_, id)| id)
-            .ok_or_else(|| Error::LawReceiptCorrelationMissing)
+            .ok_or_else(|| Error::ReceiptCorrelationMissing)
     }
     async fn drive(&mut self, event: Event<'_>) -> Result<(), Error> {
         let mut actions: VecDeque<_> = self.dialog.step(self.clock.elapsed(), event)?.into();
@@ -169,8 +169,12 @@ impl<'a, 'm> Host<'a, 'm> {
             let effects = if protects_raw {
                 operation.await?
             } else {
-                tokio::select! { biased;
-                    () = super::stopping(&mut stop) => { self.stopped = true; return Ok(()); },
+                tokio::select! {
+                biased;
+                    () = super::stopping(&mut stop) => {
+                        self.stopped = true;
+                        return Ok(());
+                    },
                     result = operation => result?,
                 }
             };
@@ -197,10 +201,14 @@ impl<'a, 'm> Host<'a, 'm> {
                 #[cfg(feature = "test-hooks")]
                 if let Some(hook) = &self.machine.hooks.law_committed {
                     let mut stop = self.stop.clone();
-                    tokio::select! { biased;
-                        () = super::stopping(&mut stop) => { self.stopped = true; return Ok(Vec::new()); },
-                        result = hook.pause(&mut self.stop) => result.map_err(Error::TestHook)?,
-                    }
+                    tokio::select! {
+                    biased;
+                            () = super::stopping(&mut stop) => {
+                                self.stopped = true;
+                                return Ok(Vec::new());
+                            },
+                            result = hook.pause(&mut self.stop) => result.map_err(Error::TestHook)?,
+                        }
                 }
                 Event::Committed(token)
             }
@@ -239,7 +247,7 @@ impl<'a, 'm> Host<'a, 'm> {
                     let until = self
                         .orders
                         .due()
-                        .ok_or(Error::LawResponseDeadlineAbsentAfterIssuance)?
+                        .ok_or(Error::ResponseDeadlineAbsentAfterIssuance)?
                         .saturating_duration_since(self.clock);
                     return Ok(self
                         .dialog
@@ -316,7 +324,7 @@ impl<'a, 'm> Host<'a, 'm> {
             };
             if let Err(error) = sender.try_send(pending) {
                 *self.orders = error.into_inner().orders;
-                return Err(Error::LawOutboundQueueUnavailableReservedWorkNotIssued);
+                return Err(Error::OutboundQueueUnavailableReservedWorkNotIssued);
             }
             self.ready = Some(notify);
             #[cfg(feature = "test-hooks")]
@@ -367,7 +375,7 @@ impl<'a, 'm> Host<'a, 'm> {
             .await
             .map_err(|error| {
                 if matches!(error, analyte_transport::Error::Deadline("write all")) {
-                    Error::LawResponseSendDeadlineExpired(error)
+                    Error::ResponseSendDeadlineExpired(error)
                 } else {
                     error.into()
                 }
@@ -376,7 +384,7 @@ impl<'a, 'm> Host<'a, 'm> {
     }
     async fn input(&mut self, bytes: Vec<u8>) -> Result<(), Error> {
         if !self.pending_input.is_empty() {
-            return Err(Error::LawInputStillAwaitsCustody);
+            return Err(Error::InputStillAwaitsCustody);
         }
         self.pending_input = bytes.into();
         while let Some(byte) = self.pending_input.front().copied() {
@@ -466,7 +474,7 @@ impl<'a, 'm> Host<'a, 'm> {
                             },
                         };
                         if let Some(message) = outgoing {
-                            let until = self.orders.due().ok_or(Error::LawOutgoingDeadlineAbsent)?.saturating_duration_since(self.clock);
+                            let until = self.orders.due().ok_or(Error::OutgoingDeadlineAbsent)?.saturating_duration_since(self.clock);
                             self.drive(Event::Send(&message, until)).await?;
                             if self.stopped { break; }
                         }
@@ -499,11 +507,11 @@ impl<'a, 'm> Host<'a, 'm> {
     }
     async fn outbound(&mut self, message: &analyte_hl7::Message) -> Result<(), Error> {
         loop {
-            let until = self.orders.due().ok_or(Error::LawOutboundDeadlineAbsent)?;
+            let until = self.orders.due().ok_or(Error::OutboundDeadlineAbsent)?;
             let event = tokio::select! {
                 biased;
                 () = super::stopping(&mut self.stop) => return Ok(()),
-                event = tokio::time::timeout_at(until.into(), connection_input::receive(self.conn)) => event.map_err(Error::LawIndependentTransactionDeadline)??,
+                event = tokio::time::timeout_at(until.into(), connection_input::receive(self.conn)) => event.map_err(Error::IndependentTransactionDeadline)??,
             };
             match event {
                 Input::Opened { .. } => {
@@ -522,12 +530,12 @@ impl<'a, 'm> Host<'a, 'm> {
                         return Ok(());
                     }
                 }
-                Input::Closed(None) => return Err(Error::LawPeerClosedBeforeOrl),
+                Input::Closed(None) => return Err(Error::PeerClosedBeforeOrl),
                 Input::Closed(Some(_)) => {
-                    return Err(Error::LawIndependentPeerDisconnected);
+                    return Err(Error::IndependentPeerDisconnected);
                 }
                 Input::Failed(reason) => {
-                    return Err(Error::LawTransportFailed(reason));
+                    return Err(Error::TransportFailed(reason));
                 }
                 Input::RecordingFailed(_failure) => {}
                 Input::Tick => {}
