@@ -177,51 +177,6 @@ async fn wait_for(wait: Option<Duration>) {
 
 /// Exercises each concrete host without opening a real analyzer connection.
 #[cfg(test)]
-macro_rules! recorder_failure_test {
-    ($file:literal, $pattern:pat, $machine:ident, $store:ident, $settings:ident, $($orders:ident)?; $($setup:tt)*) => {
-        #[tokio::test]
-        async fn adr0009_optional_recorder_failure_keeps_host_active() -> Result<(), crate::Error> {
-            let temp = tempfile::tempdir()?;
-            let path = analyte_fixtures::write_machine(
-                temp.path(),
-                include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../core/config/examples/", $file)),
-                "127.0.0.1:5600",
-            )?;
-            let program = crate::installation::config::Program::load(&path)?;
-            let machine = program.machines().first().ok_or("machine")?;
-            let $machine = crate::intake::ConnectionEvidence::new(machine)?;
-            let $pattern = machine.snapshot.effective().stack() else {
-                return Err("unexpected stack".into());
-            };
-            let mut $store = crate::runtime::service::open_store(
-                &program, Box::new(analyte_fixtures::UnlimitedSpace),
-            ).await?;
-            $(let mut $orders = crate::orders::law::LawOrderLink::new()?;)?
-            let mut protocol = { $($setup)* };
-            let (mut conn, _side) = analyte_transport::connection(
-                analyte_transport::Limits::new(4, std::time::Duration::from_secs(1))?,
-            );
-            let (_signal, stop) = tokio::sync::watch::channel(false);
-            let before = protocol.dialog.next_deadline();
-            for failure in [analyte_transport::recording::Failure::QueueFull,
-                            analyte_transport::recording::Failure::Closed,
-                            analyte_transport::recording::Failure::Oversized] {
-                assert!(matches!(protocol.input(&mut $crate::machine::driver::Context {
-                    machine: &$machine, store: &$store, conn: &mut conn, stop: stop.clone(),
-                }, $crate::machine::connection_input::Input::RecordingFailed(failure)).await?,
-                    $crate::machine::driver::Flow::Continue));
-                assert_eq!(protocol.dialog.next_deadline(), before);
-            }
-            drop(protocol);
-            $store.shutdown(crate::deadline()?).await?;
-            Ok(())
-        }
-    };
-}
-#[cfg(test)]
-pub(super) use recorder_failure_test;
-
-#[cfg(test)]
 mod tests {
     use super::*;
     use crate::machine::vidas::Error;
@@ -268,8 +223,7 @@ mod tests {
                 Input::Closed(Some(_))
                 | Input::Opened { .. }
                 | Input::Bytes { .. }
-                | Input::Failed(_)
-                | Input::RecordingFailed(_) => Err(Error::ActiveDialogHasNoDeadline),
+                | Input::Failed(_) => Err(Error::ActiveDialogHasNoDeadline),
             }
         }
         async fn close(

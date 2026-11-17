@@ -174,7 +174,9 @@ async fn receive(
             Event::Closed(reason) | Event::Failed(reason) => {
                 return Err(Error::FileInterrupted(reason));
             }
-            Event::RecordingFailed(_) => {}
+            Event::RecordingFailed(failure) => {
+                tracing::warn!(error_kind = %failure, "optional recorder stopped; transport continues");
+            }
         }
     }
 }

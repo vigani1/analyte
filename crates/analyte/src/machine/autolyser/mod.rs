@@ -131,13 +131,8 @@ impl Effects for Host<'_, '_> {
             }
             Input::Tick => AutolyserEnd::TransferTimeout,
             Input::Opened { .. } | Input::Bytes { .. } => AutolyserEnd::TransferError,
-            Input::RecordingFailed(failure) => {
-                tracing::warn!(error_kind = %failure, "optional recorder stopped; transport continues");
-                return Ok(Flow::Continue);
-            }
         };
         let events = match input {
-            Input::RecordingFailed(_) => return Ok(Flow::Continue),
             Input::Opened { .. } => {
                 self.phase.busy();
                 vec![Event::Poll(Request::Next)]
@@ -393,13 +388,3 @@ impl Host<'_, '_> {
         }
     }
 }
-
-#[cfg(test)]
-super::driver::recorder_failure_test!(
-    "autolyser.toml",
-    analyte_config::Stack::Autolyser(settings),
-    evidence,
-    store,
-    settings,;
-    Host::open(&evidence, settings, &store)?
-);

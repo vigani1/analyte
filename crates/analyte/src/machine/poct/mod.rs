@@ -89,10 +89,6 @@ impl Effects for Host<'_, '_> {
             return Ok(Flow::Stop);
         }
         match input {
-            Input::RecordingFailed(failure) => {
-                tracing::warn!(error_kind = %failure, "optional recorder stopped; transport continues");
-                return Ok(Flow::Continue);
-            }
             Input::Opened { .. } => {}
             Input::Tick => {
                 let actions = self.dialog.step(self.start.elapsed(), Event::Tick)?;
@@ -341,13 +337,3 @@ async fn retain_closure(
     }
     Ok(())
 }
-
-#[cfg(test)]
-super::driver::recorder_failure_test!(
-    "poct.toml",
-    analyte_config::Stack::Poct(settings),
-    evidence,
-    store,
-    settings,;
-    Host::open(&evidence, settings, &store)?
-);

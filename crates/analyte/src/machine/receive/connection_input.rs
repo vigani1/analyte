@@ -6,7 +6,7 @@
 //! commits (ADR 0010). Cancelling a receive does not cancel queued store work.
 use crate::intake::ByteReason;
 use crate::machine::link::error::Error;
-use analyte_transport::{Connection, Event, Reason, recording};
+use analyte_transport::{Connection, Event, Reason};
 
 pub(crate) enum Input {
     Opened { session: u64 },
@@ -14,16 +14,29 @@ pub(crate) enum Input {
     Tick,
     Closed(Option<Reason>),
     Failed(Reason),
-    RecordingFailed(recording::Failure),
 }
 
+/// Waits for the next event a protocol host must handle.
 pub(crate) async fn receive(conn: &mut Connection) -> Result<Input, analyte_transport::Error> {
-    Ok(match conn.receive().await? {
+    loop {
+        if let Some(input) = host_input(conn.receive().await?) {
+            return Ok(input);
+        }
+    }
+}
+
+/// The recorder is an optional tap (ADR 0009): when it stops, the transport keeps the
+/// session, so its failure is logged without payload and never reaches a protocol host.
+fn host_input(event: Option<Event>) -> Option<Input> {
+    Some(match event {
         Some(Event::Opened { session }) => Input::Opened { session },
         Some(Event::Received { bytes, .. }) => Input::Bytes { bytes },
         Some(Event::Closed(reason)) => Input::Closed(Some(reason)),
         Some(Event::Failed(reason)) => Input::Failed(reason),
-        Some(Event::RecordingFailed(reason)) => Input::RecordingFailed(reason),
+        Some(Event::RecordingFailed(failure)) => {
+            tracing::warn!(error_kind = %failure, "optional recorder stopped; transport continues");
+            return None;
+        }
         None => Input::Closed(None),
     })
 }
@@ -76,5 +89,23 @@ impl Custody {
         }
         self.complete();
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use analyte_transport::recording::Failure;
+
+    #[test]
+    fn adr0009_recorder_failure_never_reaches_a_protocol_host() {
+        for failure in [Failure::QueueFull, Failure::Closed, Failure::Oversized] {
+            assert!(host_input(Some(Event::RecordingFailed(failure))).is_none());
+        }
+        assert!(matches!(
+            host_input(Some(Event::Opened { session: 7 })),
+            Some(Input::Opened { session: 7 })
+        ));
+        assert!(matches!(host_input(None), Some(Input::Closed(None))));
     }
 }
