@@ -11,3 +11,4 @@
 **Main parts:**
 
 - `lib.rs`: Shared synthetic fixtures and test probes.
+- `poct`: Synthetic POCT messages shared by protocol tests.
