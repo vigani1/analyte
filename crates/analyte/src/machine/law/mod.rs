@@ -182,7 +182,7 @@ impl<'a, 'm> Host<'a, 'm> {
                 self.receipt = Some((token, id));
                 self.stored = false;
                 #[cfg(feature = "test-hooks")]
-                if let Some(hook) = &self.machine.law_precommit {
+                if let Some(hook) = &self.machine.hooks.law_precommit {
                     hook.pause(&mut self.stop).await.map_err(Error::TestHook)?;
                 }
                 super::custody::store_within(
@@ -192,7 +192,7 @@ impl<'a, 'm> Host<'a, 'm> {
                 .await?;
                 self.stored = true;
                 #[cfg(feature = "test-hooks")]
-                if let Some(hook) = &self.machine.law_committed {
+                if let Some(hook) = &self.machine.hooks.law_committed {
                     let mut stop = self.stop.clone();
                     tokio::select! { biased;
                         () = super::stopping(&mut stop) => { self.stopped = true; return Ok(Vec::new()); },
@@ -279,7 +279,7 @@ impl<'a, 'm> Host<'a, 'm> {
         self.stored = false;
         if self.ready.is_some() {
             #[cfg(feature = "test-hooks")]
-            if let Some(gate) = &self.machine.law_gates.rsp {
+            if let Some(gate) = &self.machine.hooks.law_gates.rsp {
                 gate.pause(&mut self.stop).await.map_err(Error::TestHook)?;
             }
         }
@@ -322,7 +322,7 @@ impl<'a, 'm> Host<'a, 'm> {
             }
             self.ready = Some(notify);
             #[cfg(feature = "test-hooks")]
-            if let Some(gate) = &self.machine.law_gates.handover {
+            if let Some(gate) = &self.machine.hooks.law_gates.handover {
                 gate.pause(&mut self.stop).await.map_err(Error::TestHook)?;
             }
             reply = Reply::Response(response.clone());

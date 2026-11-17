@@ -1,0 +1,16 @@
+[package]
+name = "analyte-fixtures"
+description = "Synthetic peer messages and controlled storage probes for workspace tests."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+analyte-poct.workspace = true
+analyte-store.workspace = true
+quick-xml.workspace = true
+
+[lints]
+workspace = true

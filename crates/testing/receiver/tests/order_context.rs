@@ -1,7 +1,6 @@
 //! Tests optional order context without normalization.
-#[path = "../../../analyte/tests/support/guard.rs"]
-mod guard;
 use analyte_contract::{Order, SigningSecret, decode};
+use analyte_fixtures as guard;
 use analyte_receiver::Receiver;
 use guard::HANG_GUARD;
 

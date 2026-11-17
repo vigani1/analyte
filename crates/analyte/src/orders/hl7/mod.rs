@@ -463,13 +463,8 @@ async fn select_sample(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use analyte_fixtures::UnlimitedSpace as Space;
     use analyte_model::Identifier;
-    struct Space;
-    impl analyte_store::FreeSpace for Space {
-        fn available(&self, _: &std::path::Path) -> std::io::Result<u64> {
-            Ok(u64::MAX)
-        }
-    }
 
     #[tokio::test]
     async fn adr0003_shared_cleanup_settles_later_key_after_store_failure()
@@ -690,18 +685,10 @@ mod tests {
             capture: false,
             destination_limits: crate::runtime::delivery::limits(30),
             #[cfg(feature = "test-hooks")]
-            law_committed: None,
-            #[cfg(feature = "test-hooks")]
-            law_precommit: None,
-            #[cfg(feature = "test-hooks")]
-            law_gates: crate::runtime::test_hooks::LawGates::default(),
+            hooks: crate::installation::config::MachineHooks::default(),
             id: Identifier::new("synthetic")?,
             snapshot,
             listener: None,
-            #[cfg(feature = "test-hooks")]
-            astm_committed: None,
-            #[cfg(feature = "test-hooks")]
-            connection_closing: None,
         })
     }
 

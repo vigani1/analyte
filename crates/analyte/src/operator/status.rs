@@ -122,12 +122,7 @@ pub async fn print(program: &Program) -> Result<(), Error> {
 mod tests {
     use super::*;
     use crate::Error;
-    struct Space;
-    impl analyte_store::FreeSpace for Space {
-        fn available(&self, _: &std::path::Path) -> std::io::Result<u64> {
-            Ok(u64::MAX)
-        }
-    }
+    use analyte_fixtures::UnlimitedSpace as Space;
 
     // Plan section 11: status shows every active page, names responders and omits cleared alerts.
     #[tokio::test]

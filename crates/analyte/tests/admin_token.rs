@@ -17,7 +17,9 @@ fn plan11_plan12_cli_prints_rotated_token_once_without_logging_it() -> Result<()
     let config = directory.path().join("program.toml");
     std::fs::write(
         &config,
-        "schema_version = 1\ndata_directory = 'data'\n[[machines]]\nid = 'synthetic'\ndefinition = 'machine.toml'\nsite = 'site.toml'\n[store]\nreserve_bytes = 1024\ndatabase_bytes = 100000000\nrecord_bytes = 2097152\npage_rows = 100\nbusy_timeout_ms = 1000\n",
+        analyte_fixtures::program(
+            "[[machines]]\nid = 'synthetic'\ndefinition = 'machine.toml'\nsite = 'site.toml'\n",
+        ),
     )?;
     let run = |rotate: bool| {
         let mut command = Command::new(env!("CARGO_BIN_EXE_analyte"));

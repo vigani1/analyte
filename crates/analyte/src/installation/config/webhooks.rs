@@ -69,7 +69,7 @@ pub struct AlertDelivery {
     attempts: u32,
 }
 impl AlertDelivery {
-    #[cfg(test)]
+    #[cfg(all(test, feature = "test-hooks"))]
     pub(crate) fn for_test(text: &str) -> Result<Self, crate::Error> {
         Ok(toml::from_str::<DraftDelivery>(text)?.validate()?)
     }

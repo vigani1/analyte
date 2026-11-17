@@ -1,5 +1,5 @@
 //! Tests POCT reviewer XML message output.
-mod peer_messages;
+use analyte_fixtures::poct as peer_messages;
 use analyte_poct::{
     AckKind, ApplicationError, Body, ControlId, EscapeReason, Header, Message, MessageError,
     Nullable, Outbound, TerminationReason, Timestamp, encode,

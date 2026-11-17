@@ -212,7 +212,7 @@ impl Connection {
         let cached = query_orders(store, machine, sample, until, options).await?;
         let prepared = self.reserve(store, machine, cached, until, options).await?;
         #[cfg(feature = "test-hooks")]
-        if let Some(gate) = &machine.law_gates.reserved {
+        if let Some(gate) = &machine.hooks.law_gates.reserved {
             gate.operation().await.map_err(Error::TestHook)?;
         }
         if Instant::now() >= until {
@@ -399,11 +399,11 @@ async fn query_orders(
     let target = machine.id.clone();
     let bound = options.limits.segments;
     #[cfg(feature = "test-hooks")]
-    if let Some(gate) = &machine.law_gates.lookup {
+    if let Some(gate) = &machine.hooks.law_gates.lookup {
         gate.operation().await.map_err(Error::TestHook)?;
     }
     #[cfg(feature = "test-hooks")]
-    let pages_gate = machine.law_gates.pages.clone();
+    let pages_gate = machine.hooks.law_gates.pages.clone();
     let cached = store
         .request(until, move |store| {
             let now = jiff::Timestamp::now().as_second();

@@ -56,6 +56,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Production libraries exclude test hooks
+        run: cargo check -p analyte -p analyte-sink --lib --no-default-features --locked
       - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
   test-shard:

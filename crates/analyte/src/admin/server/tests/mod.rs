@@ -7,12 +7,7 @@ use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 mod actions;
 mod pages;
 
-struct Space;
-impl analyte_store::FreeSpace for Space {
-    fn available(&self, _: &std::path::Path) -> std::io::Result<u64> {
-        Ok(u64::MAX)
-    }
-}
+use analyte_fixtures::UnlimitedSpace as Space;
 
 // Fixture migration/seeding is not an assertion about production latency.
 fn fixture_deadline() -> Result<std::time::Instant, Error> {

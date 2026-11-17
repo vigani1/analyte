@@ -2,14 +2,9 @@
 use super::*;
 use crate::Error;
 use analyte_model::Identifier;
-use std::{path::Path, time::Duration};
+use std::time::Duration;
 
-struct Space;
-impl analyte_store::FreeSpace for Space {
-    fn available(&self, _: &Path) -> std::io::Result<u64> {
-        Ok(u64::MAX)
-    }
-}
+use analyte_fixtures::UnlimitedSpace as Space;
 
 fn machine(policy: &str) -> Result<Machine, Error> {
     let section = include_str!("../../../../core/config/examples/orders.toml").replace(
@@ -33,15 +28,7 @@ fn machine(policy: &str) -> Result<Machine, Error> {
         capture: false,
         destination_limits: crate::runtime::delivery::limits(30),
         #[cfg(feature = "test-hooks")]
-        law_committed: None,
-        #[cfg(feature = "test-hooks")]
-        law_precommit: None,
-        #[cfg(feature = "test-hooks")]
-        law_gates: crate::runtime::test_hooks::LawGates::default(),
-        #[cfg(feature = "test-hooks")]
-        astm_committed: None,
-        #[cfg(feature = "test-hooks")]
-        connection_closing: None,
+        hooks: crate::installation::config::MachineHooks::default(),
         id: Identifier::new("synthetic")?,
         snapshot,
         listener: None,

@@ -137,12 +137,7 @@ mod tests {
         }
     }
 
-    struct Space;
-    impl analyte_store::FreeSpace for Space {
-        fn available(&self, _: &std::path::Path) -> std::io::Result<u64> {
-            Ok(u64::MAX)
-        }
-    }
+    use analyte_fixtures::UnlimitedSpace as Space;
     struct Port {
         input: std::sync::mpsc::Receiver<std::io::Result<Vec<u8>>>,
         output: tokio::sync::mpsc::Sender<Vec<u8>>,

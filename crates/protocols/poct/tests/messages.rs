@@ -1,5 +1,5 @@
 //! Tests typed POCT Basic Profile messages.
-mod peer_messages;
+use analyte_fixtures::poct as peer_messages;
 use analyte_poct::{Body, DataError, Message, MessageError, Nullable, Timestamp, Value};
 use peer_messages::{field, hello, limits, message, observation, status};
 use proptest::prelude::*;

@@ -208,14 +208,14 @@ async fn worker(
                 job=queue.recv()=>{
                     let Some(mut job)=job else {break;};
                     #[cfg(feature = "test-hooks")]
-                    if let Some(gate) = &machine.law_gates.queued
+                    if let Some(gate) = &machine.hooks.law_gates.queued
                         && let Err(error) = gate.pause(&mut stop).await {
                             job.orders.close(&store, "LAW-test-queue-gate-stopped").await?;
                             return Err(Error::TestHook(error));
                     }
                     let until=job.orders.due().ok_or(Error::LawQueuedWorkHasNoDeadline)?;
                     #[cfg(feature = "test-hooks")]
-                    let until = if machine.law_gates.expire_queued { std::time::Instant::now() } else { until };
+                    let until = if machine.hooks.law_gates.expire_queued { std::time::Instant::now() } else { until };
                     let ready=tokio::select! {
                         biased;
                         ()=crate::machine::stopping(&mut stop)=>Err(Code::LawIndependentShutdownBeforeResponse.as_str()),

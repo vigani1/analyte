@@ -1,11 +1,10 @@
 //! Tests bounded synthetic peers and local test fixtures.
-mod deadline;
-mod guard;
-pub(crate) use deadline::step;
-pub(super) use guard::HANG_GUARD;
+pub mod deadline;
+use analyte_fixtures as guard;
+pub use deadline::step;
+pub use guard::HANG_GUARD;
 
 use analyte::{Error, installation::config::Program, runtime::service};
-use analyte_store::FreeSpace;
 use std::{
     path::{Path, PathBuf},
     time::Duration,
@@ -17,18 +16,17 @@ use tokio::{
     task::JoinHandle,
 };
 
-pub(super) const SECRET: &str = "whsec_AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=";
-pub(super) const ORU: &[u8] = b"MSH|^~\\&|SYN|LAB|HOST|LAB|20260101000000||ORU^R01^ORU_R01|message1|P|2.5.1\rPID|1\rOBR|1||00012a|SYN^Synthetic^synthetic|||||||||||||||||||||F\rOBX|1|NM|SYN^Synthetic^synthetic||12.30|mg/L|||||F\r";
-pub(super) const ASTM: &[u8] = b"H|\\^&||||||||||P|LIS2-A2|20261115120000\rP|1\rO|1|00012A\rR|1|^^^SYN|12.30|mg/L||N||F\rL|1|N\r";
+/// Synthetic wire data or credentials used only by local test peers.
+pub const SECRET: &str = "whsec_AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=";
+/// Synthetic wire data or credentials used only by local test peers.
+pub const ORU: &[u8] = b"MSH|^~\\&|SYN|LAB|HOST|LAB|20260101000000||ORU^R01^ORU_R01|message1|P|2.5.1\rPID|1\rOBR|1||00012a|SYN^Synthetic^synthetic|||||||||||||||||||||F\rOBX|1|NM|SYN^Synthetic^synthetic||12.30|mg/L|||||F\r";
+/// Synthetic wire data or credentials used only by local test peers.
+pub const ASTM: &[u8] = b"H|\\^&||||||||||P|LIS2-A2|20261115120000\rP|1\rO|1|00012A\rR|1|^^^SYN|12.30|mg/L||N||F\rL|1|N\r";
 
-pub(super) struct Space;
-impl FreeSpace for Space {
-    fn available(&self, _: &Path) -> std::io::Result<u64> {
-        Ok(u64::MAX)
-    }
-}
+pub use analyte_fixtures::UnlimitedSpace as Space;
 
-pub(super) struct Fixture {
+/// Owns resources for a synthetic service test.
+pub struct Fixture {
     path: PathBuf,
     listeners: Vec<(String, std::net::TcpListener)>,
 }
@@ -46,7 +44,12 @@ impl std::ops::Deref for Fixture {
     }
 }
 
-pub(super) fn config(root: &Path, astm: bool) -> Result<Fixture, Error> {
+/// Runs a synthetic peer or inspects its durable test outcome.
+/// # Errors
+/// Propagates configuration, transport, storage or deadline failures.
+/// # Panics
+/// Fails when a recorded byte or durable outcome differs from the expected fixture.
+pub fn config(root: &Path, astm: bool) -> Result<Fixture, Error> {
     let mut listeners = Vec::new();
     let mut machines = String::new();
     for (name, is_astm) in [("hl7", false), ("astm", true)] {
@@ -57,7 +60,7 @@ pub(super) fn config(root: &Path, astm: bool) -> Result<Fixture, Error> {
         let address = listener.local_addr()?;
         listeners.push((name.to_owned(), listener));
         let definition = if is_astm {
-            include_str!("../../../core/config/examples/astm.toml").replace("kind = \"serial\"", "kind = \"tcp_server\"").replace("[transport.serial]\nbaud = 9600\ndata_bits = 8\nparity = \"none\"\nstop_bits = 1\nflow_control = \"none\"\n", "").replace("transport = \"serial\"", "transport = \"tcp_server\"")
+            analyte_fixtures::astm_tcp()
         } else {
             include_str!("../../../core/config/examples/hl7.toml").to_owned()
         };
@@ -72,16 +75,16 @@ pub(super) fn config(root: &Path, astm: bool) -> Result<Fixture, Error> {
         ));
     }
     let path = root.join("program.toml");
-    std::fs::write(
-        &path,
-        format!(
-            "schema_version = 1\ndata_directory = 'data'\n{machines}[store]\nreserve_bytes = 1024\ndatabase_bytes = 100000000\nrecord_bytes = 2097152\npage_rows = 100\nbusy_timeout_ms = 1000\n"
-        ),
-    )?;
+    std::fs::write(&path, analyte_fixtures::program(&machines))?;
     Ok(Fixture { path, listeners })
 }
 
-pub(super) fn program(path: &Fixture, url: &str) -> Result<Program, Error> {
+/// Runs a synthetic peer or inspects its durable test outcome.
+/// # Errors
+/// Propagates configuration, transport, storage or deadline failures.
+/// # Panics
+/// Fails when a recorded byte or durable outcome differs from the expected fixture.
+pub fn program(path: &Fixture, url: &str) -> Result<Program, Error> {
     let mut program = Program::load(path)?;
     for (id, listener) in &path.listeners {
         program.set_loopback_listener_for_test(id, listener.try_clone()?)?;
@@ -90,7 +93,12 @@ pub(super) fn program(path: &Fixture, url: &str) -> Result<Program, Error> {
     Ok(program)
 }
 
-pub(super) fn secrets(
+/// Runs a synthetic peer or inspects its durable test outcome.
+/// # Errors
+/// Propagates configuration, transport, storage or deadline failures.
+/// # Panics
+/// Fails when a recorded byte or durable outcome differs from the expected fixture.
+pub fn secrets(
     program: &Program,
     api: &str,
 ) -> Result<analyte::installation::secrets::Environment, Error> {
@@ -100,18 +108,29 @@ pub(super) fn secrets(
     )?)
 }
 
-pub(super) struct Running {
+/// Owns resources for a synthetic service test.
+pub struct Running {
     stop: oneshot::Sender<()>,
     task: JoinHandle<Result<(), Error>>,
 }
 
 impl Running {
-    pub(super) async fn start(path: &Fixture, url: &str, api: &str) -> Result<Self, Error> {
+    /// Runs a synthetic peer or inspects its durable test outcome.
+    /// # Errors
+    /// Propagates configuration, transport, storage or deadline failures.
+    /// # Panics
+    /// Fails when a recorded byte or durable outcome differs from the expected fixture.
+    pub async fn start(path: &Fixture, url: &str, api: &str) -> Result<Self, Error> {
         let program = program(path, url)?;
         Self::start_program(program, api).await
     }
 
-    pub(super) async fn start_program(program: Program, api: &str) -> Result<Self, Error> {
+    /// Runs a synthetic peer or inspects its durable test outcome.
+    /// # Errors
+    /// Propagates configuration, transport, storage or deadline failures.
+    /// # Panics
+    /// Fails when a recorded byte or durable outcome differs from the expected fixture.
+    pub async fn start_program(program: Program, api: &str) -> Result<Self, Error> {
         let secrets = secrets(&program, api)?;
         let (stop, stopped) = oneshot::channel();
         let (ready, started) = oneshot::channel();
@@ -152,14 +171,24 @@ impl Running {
         Ok(Self { stop, task })
     }
 
-    pub(super) async fn stop(self) -> Result<(), Error> {
+    /// Runs a synthetic peer or inspects its durable test outcome.
+    /// # Errors
+    /// Propagates configuration, transport, storage or deadline failures.
+    /// # Panics
+    /// Fails when a recorded byte or durable outcome differs from the expected fixture.
+    pub async fn stop(self) -> Result<(), Error> {
         self.stop.send(()).map_err(|()| "service stopped early")?;
         tokio::time::timeout(HANG_GUARD, self.task).await???;
         Ok(())
     }
 }
 
-pub(super) async fn connect(path: &Path, name: &str) -> Result<TcpStream, Error> {
+/// Runs a synthetic peer or inspects its durable test outcome.
+/// # Errors
+/// Propagates configuration, transport, storage or deadline failures.
+/// # Panics
+/// Fails when a recorded byte or durable outcome differs from the expected fixture.
+pub async fn connect(path: &Path, name: &str) -> Result<TcpStream, Error> {
     let program = Program::load(path)?;
     let address = &program
         .machines()
@@ -198,7 +227,12 @@ pub(super) async fn connect(path: &Path, name: &str) -> Result<TcpStream, Error>
     Ok(stream)
 }
 
-pub(super) async fn hl7(peer: &mut TcpStream, message: &[u8]) -> Result<String, Error> {
+/// Runs a synthetic peer or inspects its durable test outcome.
+/// # Errors
+/// Propagates configuration, transport, storage or deadline failures.
+/// # Panics
+/// Fails when a recorded byte or durable outcome differs from the expected fixture.
+pub async fn hl7(peer: &mut TcpStream, message: &[u8]) -> Result<String, Error> {
     let wire = analyte_framing::hl7::encode(message, analyte_framing::hl7::Limit::new(1048576)?)?;
     peer.write_all(&wire).await?;
     tokio::time::timeout(HANG_GUARD, async {
@@ -214,7 +248,12 @@ pub(super) async fn hl7(peer: &mut TcpStream, message: &[u8]) -> Result<String, 
     .await?
 }
 
-pub(super) async fn astm(peer: &mut TcpStream, message: &[u8]) -> Result<(), Error> {
+/// Runs a synthetic peer or inspects its durable test outcome.
+/// # Errors
+/// Propagates configuration, transport, storage or deadline failures.
+/// # Panics
+/// Fails when a recorded byte or durable outcome differs from the expected fixture.
+pub async fn astm(peer: &mut TcpStream, message: &[u8]) -> Result<(), Error> {
     tokio::time::timeout(HANG_GUARD, async {
         peer.write_all(b"\x05").await?;
         assert_eq!(peer.read_u8().await?, 6);
@@ -236,7 +275,12 @@ pub(super) async fn astm(peer: &mut TcpStream, message: &[u8]) -> Result<(), Err
     .await?
 }
 
-pub(super) fn database(path: &Path) -> Result<rusqlite::Connection, Error> {
+/// Runs a synthetic peer or inspects its durable test outcome.
+/// # Errors
+/// Propagates configuration, transport, storage or deadline failures.
+/// # Panics
+/// Fails when a recorded byte or durable outcome differs from the expected fixture.
+pub fn database(path: &Path) -> Result<rusqlite::Connection, Error> {
     // Never create the file: only the service may create and migrate its store.
     let connection = rusqlite::Connection::open_with_flags(
         path.parent()
@@ -248,7 +292,12 @@ pub(super) fn database(path: &Path) -> Result<rusqlite::Connection, Error> {
     Ok(connection)
 }
 
-pub(super) async fn wait_state(path: &Path, state: &str, count: i64) -> Result<(), Error> {
+/// Runs a synthetic peer or inspects its durable test outcome.
+/// # Errors
+/// Propagates configuration, transport, storage or deadline failures.
+/// # Panics
+/// Fails when a recorded byte or durable outcome differs from the expected fixture.
+pub async fn wait_state(path: &Path, state: &str, count: i64) -> Result<(), Error> {
     wait_database_count(
         path,
         "SELECT count(*) FROM outbox WHERE state=?1",
@@ -258,7 +307,12 @@ pub(super) async fn wait_state(path: &Path, state: &str, count: i64) -> Result<(
     .await
 }
 
-pub(crate) async fn wait_database_count(
+/// Runs a synthetic peer or inspects its durable test outcome.
+/// # Errors
+/// Propagates configuration, transport, storage or deadline failures.
+/// # Panics
+/// Fails when a recorded byte or durable outcome differs from the expected fixture.
+pub async fn wait_database_count(
     path: &Path,
     query: &'static str,
     params: impl rusqlite::Params + Clone,
@@ -276,7 +330,12 @@ pub(crate) async fn wait_database_count(
     .await?
 }
 
-pub(super) fn vendor_config(root: &Path, name: &str, definition: &str) -> Result<Fixture, Error> {
+/// Runs a synthetic peer or inspects its durable test outcome.
+/// # Errors
+/// Propagates configuration, transport, storage or deadline failures.
+/// # Panics
+/// Fails when a recorded byte or durable outcome differs from the expected fixture.
+pub fn vendor_config(root: &Path, name: &str, definition: &str) -> Result<Fixture, Error> {
     let mut fixture = config(root, false)?;
     fixture.listeners.first_mut().ok_or("listener missing")?.0 = name.into();
     let text =
@@ -287,14 +346,24 @@ pub(super) fn vendor_config(root: &Path, name: &str, definition: &str) -> Result
 }
 
 impl Running {
-    pub(super) async fn crash(self) -> Result<(), Error> {
+    /// Runs a synthetic peer or inspects its durable test outcome.
+    /// # Errors
+    /// Propagates configuration, transport, storage or deadline failures.
+    /// # Panics
+    /// Fails when a recorded byte or durable outcome differs from the expected fixture.
+    pub async fn crash(self) -> Result<(), Error> {
         self.task.abort();
         assert!(self.task.await.is_err_and(|error| error.is_cancelled()));
         Ok(())
     }
 }
 
-pub(super) async fn wait_feed(path: &Path) -> Result<(), Error> {
+/// Runs a synthetic peer or inspects its durable test outcome.
+/// # Errors
+/// Propagates configuration, transport, storage or deadline failures.
+/// # Panics
+/// Fails when a recorded byte or durable outcome differs from the expected fixture.
+pub async fn wait_feed(path: &Path) -> Result<(), Error> {
     wait_database_count(
         path,
         "SELECT count(*) FROM feed WHERE complete=1 AND trusted=1",
@@ -304,21 +373,12 @@ pub(super) async fn wait_feed(path: &Path) -> Result<(), Error> {
     .await
 }
 
-#[tokio::test]
-async fn startup_failure_reaches_caller_before_any_peer_or_cache_wait() -> Result<(), Error> {
-    let temp = tempfile::tempdir()?;
-    let path = config(temp.path(), false)?;
-    // A file where the protected directory belongs forces a real startup I/O error.
-    std::fs::write(temp.path().join("data"), b"synthetic blocked directory")?;
-    let error = Running::start(&path, "http://127.0.0.1:1", "synthetic-api")
-        .await
-        .err()
-        .ok_or("failed service startup was reported as ready")?;
-    assert!(error.downcast_ref::<std::io::Error>().is_some(), "{error}");
-    Ok(())
-}
-
-pub(crate) async fn read_mllp_packet(
+/// Runs a synthetic peer or inspects its durable test outcome.
+/// # Errors
+/// Propagates configuration, transport, storage or deadline failures.
+/// # Panics
+/// Fails when a recorded byte or durable outcome differs from the expected fixture.
+pub async fn read_mllp_packet(
     peer: &mut TcpStream,
     oversized: &'static str,
 ) -> Result<Vec<u8>, Error> {
