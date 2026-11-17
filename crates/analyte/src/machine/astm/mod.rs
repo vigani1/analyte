@@ -1,6 +1,6 @@
 //! Drives ASTM connections and journals each data frame before ACK (ADR 0003).
 use super::connection_input::{self, Input};
-use super::driver::{self, Context, Effects, Flow};
+use super::driver::{Context, Effects, Flow};
 use crate::intake::ByteReason;
 use crate::machine::hooks::Pause;
 mod error;
@@ -16,26 +16,7 @@ use std::{
 };
 use tokio::sync::watch;
 
-pub(super) async fn session(
-    machine: &intake::ConnectionEvidence<'_>,
-    settings: &analyte_config::AstmStack,
-    store: &Handle,
-    conn: &mut analyte_transport::Connection,
-    stop: watch::Receiver<bool>,
-) -> Result<(), Error> {
-    driver::run(
-        || Host::open(machine, settings, store),
-        Context {
-            machine,
-            store,
-            conn,
-            stop,
-        },
-    )
-    .await
-}
-
-struct Host<'a, 'm> {
+pub(super) struct Host<'a, 'm> {
     machine: &'a intake::ConnectionEvidence<'m>,
     settings: &'a analyte_config::AstmStack,
     store: &'a Handle,
@@ -58,7 +39,7 @@ struct Host<'a, 'm> {
 }
 
 impl<'a, 'm> Host<'a, 'm> {
-    fn open(
+    pub(super) fn open(
         machine: &'a intake::ConnectionEvidence<'m>,
         settings: &'a analyte_config::AstmStack,
         store: &'a Handle,
@@ -363,7 +344,7 @@ impl<'a, 'm> Host<'a, 'm> {
                 .hooks
                 .pause(Pause::AstmCommitted, stop)
                 .await
-                .map_err(Error::TestHook)?;
+                .map_err(Error::from)?;
         }
         let event = match committed {
             Ok(_) => Event::Stored(id),

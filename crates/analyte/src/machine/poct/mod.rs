@@ -13,26 +13,7 @@ pub(crate) use error::Error;
 use std::{collections::VecDeque, time::Instant};
 use tokio::sync::watch;
 
-pub(super) async fn session(
-    machine: &intake::ConnectionEvidence<'_>,
-    settings: &analyte_config::PoctStack,
-    store: &Handle,
-    conn: &mut analyte_transport::Connection,
-    stop: watch::Receiver<bool>,
-) -> Result<(), Error> {
-    driver::run(
-        || Host::open(machine, settings, store),
-        Context {
-            machine,
-            store,
-            conn,
-            stop,
-        },
-    )
-    .await
-}
-
-struct Host<'a, 'm> {
+pub(super) struct Host<'a, 'm> {
     machine: &'a intake::ConnectionEvidence<'m>,
     settings: &'a analyte_config::PoctStack,
     store: &'a Handle,
@@ -41,7 +22,7 @@ struct Host<'a, 'm> {
 }
 
 impl<'a, 'm> Host<'a, 'm> {
-    fn open(
+    pub(super) fn open(
         machine: &'a intake::ConnectionEvidence<'m>,
         settings: &'a analyte_config::PoctStack,
         store: &'a Handle,
@@ -67,43 +48,38 @@ impl<'a, 'm> Host<'a, 'm> {
             start,
         })
     }
+}
 
-    async fn receive_bytes(
+impl driver::ByteEffects for Host<'_, '_> {
+    async fn apply_byte(
         &mut self,
-        bytes: Vec<u8>,
+        byte: u8,
         conn: &mut analyte_transport::Connection,
         stop: &watch::Receiver<bool>,
     ) -> Result<bool, Error> {
         let machine = self.machine;
         let store = self.store;
-        for byte in bytes {
-            let actions = self.dialog.step(self.start.elapsed(), Event::Byte(byte))?;
-            if *stop.borrow() {
-                let mut raw = self.dialog.take_input();
-                for action in actions {
-                    if let Action::Parse(wire)
-                    | Action::ParseLimit(wire)
-                    | Action::ParseDeadline(wire) = action
-                    {
-                        raw.extend(wire);
-                    }
+        let actions = self.dialog.step(self.start.elapsed(), Event::Byte(byte))?;
+        if *stop.borrow() {
+            let mut raw = self.dialog.take_input();
+            for action in actions {
+                if let Action::Parse(wire)
+                | Action::ParseLimit(wire)
+                | Action::ParseDeadline(wire) = action
+                {
+                    raw.extend(wire);
                 }
-                intake::park_bytes(store, machine, raw, ByteReason::PoctCancelled).await?;
-                return Ok(true);
             }
-            if self.apply(actions, conn).await? {
-                return Ok(true);
-            }
+            intake::park_bytes(store, machine, raw, ByteReason::PoctCancelled).await?;
+            return Ok(true);
         }
-        Ok(false)
+        self.apply(actions, conn).await
     }
 }
 
 impl Effects for Host<'_, '_> {
     type Error = Error;
-    fn custody(&self) -> driver::Custody {
-        driver::Custody::Chunks
-    }
+    const CUSTODY: driver::Custody = driver::Custody::Chunks;
     fn wait(&self) -> Result<Option<std::time::Duration>, Error> {
         Ok(self
             .dialog
@@ -141,7 +117,7 @@ impl Effects for Host<'_, '_> {
                 return Ok(Flow::Stop);
             }
             Input::Bytes { bytes } => {
-                if self.receive_bytes(bytes, conn, stop).await? {
+                if driver::feed(self, bytes, conn, stop).await? {
                     return Ok(Flow::Stop);
                 }
             }

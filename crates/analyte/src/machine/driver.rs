@@ -31,9 +31,10 @@ pub(super) struct Context<'a, 'm> {
 
 /// A protocol supplies dialog transitions and effects, never its own receive loop.
 pub(super) trait Effects {
+    const CUSTODY: Custody = Custody::Dialog;
     type Error: CleanupFailure + From<super::link::error::Error> + From<analyte_transport::Error>;
     fn custody(&self) -> Custody {
-        Custody::Dialog
+        Self::CUSTODY
     }
     fn wait(&self) -> Result<Option<Duration>, Self::Error>;
     fn receive_error(&self, error: analyte_transport::Error) -> Result<Input, Self::Error> {
@@ -122,6 +123,33 @@ async fn drive<P: Effects>(protocol: &mut P, host: &mut Context<'_, '_>) -> Resu
         }
     }
 }
+/// A byte transition includes all ordered effects before another byte may be fed.
+pub(super) trait ByteEffects: Effects + Send {
+    fn apply_byte(
+        &mut self,
+        byte: u8,
+        conn: &mut analyte_transport::Connection,
+        stop: &watch::Receiver<bool>,
+    ) -> impl Future<Output = Result<bool, Self::Error>> + Send;
+}
+
+/// Completes every byte's effects before advancing a merged input chunk.
+/// A stop or failure leaves subsequent bytes in the caller's retained input
+/// custody; cancellation can leave the current durable operation pending.
+pub(super) async fn feed<H: ByteEffects>(
+    host: &mut H,
+    bytes: Vec<u8>,
+    conn: &mut analyte_transport::Connection,
+    stop: &watch::Receiver<bool>,
+) -> Result<bool, H::Error> {
+    for byte in bytes {
+        if host.apply_byte(byte, conn, stop).await? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 async fn wait_for(wait: Option<Duration>) {
     match wait {
         Some(wait) if wait.is_zero() => {}

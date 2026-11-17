@@ -1,5 +1,5 @@
 //! Prepares immutable LAW work references; the store admits execution inside its transaction.
-use crate::{deadline, installation::config::Machine};
+use crate::installation::config::Machine;
 use analyte_hl7::law;
 use analyte_model::{Digest, Identifier};
 use analyte_store::Handle;
@@ -125,16 +125,7 @@ async fn retained_work(
     occurrence: u16,
 ) -> Result<Option<Work>, Error> {
     let placer = std::str::from_utf8(placer)?.to_owned();
-    let target = machine.id.clone();
-    let lookup = placer.clone();
-    let record = store
-        .request::<_, analyte_store::Error>(deadline()?, move |s| {
-            match s.machine_order_by_placer(&target, &lookup) {
-                Err(analyte_store::OrderError::Conflict) => Ok::<_, analyte_store::Error>(None),
-                other => Ok(other?),
-            }
-        })
-        .await?;
+    let record = crate::orders::law::validation::retained(store, machine, &placer).await?;
     let Some(record) = record else {
         return Ok(None);
     };
@@ -222,16 +213,4 @@ pub enum Error {
     Json(#[from] serde_json::Error),
 }
 
-crate::runtime::service::conversions::causes!(Error;
-    analyte_store::Error => [
-        analyte_store::WorkerError,
-        analyte_store::WorkerStartError,
-        analyte_store::IntakeError,
-        analyte_store::DeliveryError,
-        analyte_store::OrderError,
-        analyte_store::MaintenanceError,
-        analyte_store::OperatorError,
-        analyte_store::ReconciliationError,
-        analyte_store::StorageError,
-    ],
-);
+crate::runtime::service::conversions::causes!(Error; store);

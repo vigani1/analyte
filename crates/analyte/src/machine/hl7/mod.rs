@@ -3,7 +3,7 @@ use crate::intake::ByteReason;
 use crate::machine::hooks::Pause;
 pub(crate) mod error_location;
 use super::connection_input::{self, Input};
-use super::driver::{self, Context, Effects, Flow};
+use super::driver::{Context, Effects, Flow};
 use crate::intake;
 mod error;
 use crate::orders::outcome::Code;
@@ -16,25 +16,6 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::sync::watch;
-
-pub(super) async fn session(
-    machine: &intake::ConnectionEvidence<'_>,
-    settings: &analyte_config::Hl7Stack,
-    store: &Handle,
-    conn: &mut analyte_transport::Connection,
-    stop: watch::Receiver<bool>,
-) -> Result<(), Error> {
-    driver::run(
-        || Host::open(machine, settings, store),
-        Context {
-            machine,
-            store,
-            conn,
-            stop,
-        },
-    )
-    .await
-}
 
 struct DisplayOutcome {
     receipt: Option<analyte_dialog::hl7::ReceiptId>,
@@ -50,7 +31,7 @@ struct QueryRequest {
     edition_matches: bool,
 }
 
-struct Host<'a, 'm> {
+pub(super) struct Host<'a, 'm> {
     machine: &'a intake::ConnectionEvidence<'m>,
     settings: &'a analyte_config::Hl7Stack,
     store: &'a Handle,
@@ -65,7 +46,7 @@ struct Host<'a, 'm> {
 }
 
 impl<'a, 'm> Host<'a, 'm> {
-    fn open(
+    pub(super) fn open(
         machine: &'a intake::ConnectionEvidence<'m>,
         settings: &'a analyte_config::Hl7Stack,
         store: &'a Handle,
@@ -542,7 +523,7 @@ impl Effects for Host<'_, '_> {
                 .hooks
                 .pause(Pause::InputProcessed, stop)
                 .await
-                .map_err(Error::TestHook)?;
+                .map_err(Error::from)?;
         }
         if let Some(query) = &mut self.queries {
             tokio::select! {

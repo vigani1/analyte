@@ -12,10 +12,9 @@ use analyte_model::ReceiptId;
 use analyte_store::Handle;
 pub(crate) use error::Error;
 use std::{collections::VecDeque, time::Instant};
-use tokio::sync::watch;
 
 /// Dialog, decoder and timers cannot outlive their owning transport connection.
-struct Host<'a, 'm> {
+pub(super) struct Host<'a, 'm> {
     machine: &'a intake::ConnectionEvidence<'m>,
     settings: &'a analyte_config::VidasStack,
     store: &'a Handle,
@@ -30,27 +29,8 @@ struct Host<'a, 'm> {
     policy: DialogConfig,
 }
 
-pub(super) async fn session(
-    machine: &intake::ConnectionEvidence<'_>,
-    settings: &analyte_config::VidasStack,
-    store: &Handle,
-    conn: &mut analyte_transport::Connection,
-    stop: watch::Receiver<bool>,
-) -> Result<(), Error> {
-    driver::run(
-        || Host::open(machine, settings, store),
-        Context {
-            machine,
-            store,
-            conn,
-            stop,
-        },
-    )
-    .await
-}
-
 impl<'a, 'm> Host<'a, 'm> {
-    fn open(
+    pub(super) fn open(
         machine: &'a intake::ConnectionEvidence<'m>,
         settings: &'a analyte_config::VidasStack,
         store: &'a Handle,
@@ -129,9 +109,7 @@ impl<'a, 'm> Host<'a, 'm> {
 
 impl Effects for Host<'_, '_> {
     type Error = Error;
-    fn custody(&self) -> driver::Custody {
-        driver::Custody::Chunks
-    }
+    const CUSTODY: driver::Custody = driver::Custody::Chunks;
     fn wait(&self) -> Result<Option<std::time::Duration>, Error> {
         let mut next = self
             .dialog

@@ -21,10 +21,10 @@ pub(crate) enum Error {
     Autolyser(Box<super::autolyser::Error>),
     /// A transport owner or shutdown operation failed.
     #[error(transparent)]
-    Link(#[from] super::link::error::Error),
+    Link(super::link::error::Error),
     /// Connection custody or retained evidence failed.
     #[error(transparent)]
-    Evidence(#[from] super::receive::error::Error),
+    Evidence(super::receive::error::Error),
     /// A bounded synthetic gate stopped or could not resume the connection.
     #[error(transparent)]
     TestHook(crate::runtime::test_hooks::Error),
@@ -77,6 +77,18 @@ impl From<super::autolyser::Error> for Error {
     }
 }
 
+impl<C> From<C> for Error
+where
+    super::receive::shared::Shared: From<C>,
+{
+    fn from(cause: C) -> Self {
+        match super::receive::shared::Shared::from(cause) {
+            super::receive::shared::Shared::Link(cause) => Self::Link(cause),
+            super::receive::shared::Shared::Evidence(cause) => Self::Evidence(cause),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -126,38 +138,3 @@ mod tests {
         assert_eq!(source.to_string(), "synthetic owner failure");
     }
 }
-
-crate::runtime::service::conversions::causes!(Error;
-    crate::machine::link::error::Error => [
-        std::io::Error,
-        analyte_transport::Error,
-        std::net::AddrParseError,
-        analyte_transport::folder::WatchError,
-    ],
-    crate::machine::receive::error::Error => [
-        analyte_store::Error,
-        crate::IntakeError,
-        crate::machine::interpretation::ReadError,
-        analyte_model::TextError,
-        analyte_model::ListError,
-        analyte_config::Error,
-        std::num::TryFromIntError,
-        serde_json::Error,
-        jiff::Error,
-        crate::reading::Error,
-        crate::machine::custody::WriteError,
-        crate::machine::custody::StoreWaitError<crate::IntakeError>,
-        crate::machine::custody::StoreWaitError<analyte_store::Error>,
-    ],
-    analyte_store::Error => [
-        analyte_store::WorkerError,
-        analyte_store::WorkerStartError,
-        analyte_store::IntakeError,
-        analyte_store::DeliveryError,
-        analyte_store::OrderError,
-        analyte_store::MaintenanceError,
-        analyte_store::OperatorError,
-        analyte_store::ReconciliationError,
-        analyte_store::StorageError,
-    ],
-);

@@ -6,6 +6,24 @@ use analyte_store::Handle;
 
 pub(crate) use law::Mismatch;
 
+/// Returns no match for missing or ambiguous placer identity; storage failures remain errors.
+pub(crate) async fn retained(
+    store: &Handle,
+    machine: &Machine,
+    placer: &str,
+) -> Result<Option<analyte_store::MachineOrder>, analyte_store::Error> {
+    let target = machine.id.clone();
+    let lookup = placer.to_owned();
+    store
+        .request(deadline()?, move |s| {
+            match s.machine_order_by_placer(&target, &lookup) {
+                Err(analyte_store::OrderError::Conflict) => Ok::<_, analyte_store::Error>(None),
+                other => Ok(other?),
+            }
+        })
+        .await
+}
+
 pub(crate) async fn check(
     store: &Handle,
     machine: &Machine,
@@ -17,16 +35,7 @@ pub(crate) async fn check(
             continue;
         };
         let placer = std::str::from_utf8(placer)?.to_owned();
-        let target = machine.id.clone();
-        let lookup = placer.clone();
-        let record = store
-            .request::<_, analyte_store::Error>(deadline()?, move |s| {
-                match s.machine_order_by_placer(&target, &lookup) {
-                    Err(analyte_store::OrderError::Conflict) => Ok::<_, analyte_store::Error>(None),
-                    other => Ok(other?),
-                }
-            })
-            .await?;
+        let record = retained(store, machine, &placer).await?;
         let unknown = returned.unknown();
         let Some(record) = record else {
             return Ok(Some(unknown));
@@ -74,16 +83,4 @@ pub enum ValidationError {
     Hl7(#[from] analyte_hl7::Error),
 }
 
-crate::runtime::service::conversions::causes!(ValidationError;
-    analyte_store::Error => [
-        analyte_store::WorkerError,
-        analyte_store::WorkerStartError,
-        analyte_store::IntakeError,
-        analyte_store::DeliveryError,
-        analyte_store::OrderError,
-        analyte_store::MaintenanceError,
-        analyte_store::OperatorError,
-        analyte_store::ReconciliationError,
-        analyte_store::StorageError,
-    ],
-);
+crate::runtime::service::conversions::causes!(ValidationError; store);

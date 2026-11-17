@@ -206,7 +206,7 @@ impl<'a, 'm> Host<'a, 'm> {
                     .hooks
                     .pause(Pause::LawPrecommit, &mut host.stop)
                     .await
-                    .map_err(Error::TestHook)?;
+                    .map_err(Error::from)?;
 
                 super::custody::store_before_ack(
                     machine,
@@ -223,7 +223,7 @@ impl<'a, 'm> Host<'a, 'm> {
                                 self.stopped = true;
                                 return Ok(Vec::new());
                             },
-                            result = machine.hooks.pause(Pause::LawCommitted, &mut host.stop) => result.map_err(Error::TestHook)?,
+                            result = machine.hooks.pause(Pause::LawCommitted, &mut host.stop) => result.map_err(Error::from)?,
                         }
                 }
                 Event::Stored(token)
@@ -304,7 +304,7 @@ impl<'a, 'm> Host<'a, 'm> {
                 .hooks
                 .pause(Pause::LawRsp, &mut host.stop)
                 .await
-                .map_err(Error::TestHook)?;
+                .map_err(Error::from)?;
         }
         if let Some(ready) = self.ready.take() {
             let _ = ready.send(());
@@ -351,7 +351,7 @@ impl<'a, 'm> Host<'a, 'm> {
                 .hooks
                 .pause(Pause::LawHandover, &mut host.stop)
                 .await
-                .map_err(Error::TestHook)?;
+                .map_err(Error::from)?;
 
             reply = Reply::Response(response.clone());
         }
@@ -427,7 +427,7 @@ impl<'a, 'm> Host<'a, 'm> {
             .hooks
             .pause(Pause::InputProcessed, &mut host.stop)
             .await
-            .map_err(Error::TestHook)?;
+            .map_err(Error::from)?;
 
         Ok(())
     }

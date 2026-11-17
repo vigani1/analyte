@@ -214,7 +214,7 @@ async fn worker(
                     if machine.hooks.enabled(Pause::LawQueued)
                         && let Err(error) = machine.hooks.pause(Pause::LawQueued, &mut stop).await {
                             job.orders.close(&store, "LAW-test-queue-gate-stopped").await?;
-                            return Err(Error::TestHook(error));
+                            return Err(Error::from(error));
                     }
                     let until=job.orders.due().ok_or(Error::QueuedWorkHasNoDeadline)?;
                     let until = machine.hooks.queued_deadline(until);

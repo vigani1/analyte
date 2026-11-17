@@ -1,6 +1,9 @@
 //! Classifies shared durable-store, interpretation and evidence failures.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
+    /// A bounded synthetic gate stopped or could not resume the connection.
+    #[error(transparent)]
+    TestHook(#[from] crate::runtime::test_hooks::Error),
     /// A durable store operation failed before its promised completion.
     #[error(transparent)]
     Store(#[from] analyte_store::Error),
@@ -60,16 +63,4 @@ impl From<crate::machine::interpretation::ReadError> for Error {
     }
 }
 
-crate::runtime::service::conversions::causes!(Error;
-    analyte_store::Error => [
-        analyte_store::WorkerError,
-        analyte_store::WorkerStartError,
-        analyte_store::IntakeError,
-        analyte_store::DeliveryError,
-        analyte_store::OrderError,
-        analyte_store::MaintenanceError,
-        analyte_store::OperatorError,
-        analyte_store::ReconciliationError,
-        analyte_store::StorageError,
-    ],
-);
+crate::runtime::service::conversions::causes!(Error; store);

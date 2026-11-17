@@ -2,3 +2,5 @@
 pub(crate) mod connection_input;
 pub(crate) mod custody;
 pub(crate) mod error;
+
+pub(crate) mod shared;

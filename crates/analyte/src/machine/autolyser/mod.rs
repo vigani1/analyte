@@ -85,27 +85,23 @@ impl<'a, 'm> Host<'a, 'm> {
             end_code: AutolyserEnd::TransferError,
         })
     }
+}
 
-    async fn receive_bytes(
+impl driver::ByteEffects for Host<'_, '_> {
+    async fn apply_byte(
         &mut self,
-        bytes: Vec<u8>,
+        byte: u8,
         conn: &mut analyte_transport::Connection,
+        _stop: &watch::Receiver<bool>,
     ) -> Result<bool, Error> {
-        for byte in bytes {
-            let actions = self.dialog.step(self.start.elapsed(), Event::Byte(byte))?;
-            if self.apply(actions, conn).await? {
-                return Ok(true);
-            }
-        }
-        Ok(false)
+        let actions = self.dialog.step(self.start.elapsed(), Event::Byte(byte))?;
+        self.apply(actions, conn).await
     }
 }
 
 impl Effects for Host<'_, '_> {
     type Error = Error;
-    fn custody(&self) -> driver::Custody {
-        driver::Custody::Chunks
-    }
+    const CUSTODY: driver::Custody = driver::Custody::Chunks;
     fn wait(&self) -> Result<Option<std::time::Duration>, Error> {
         Ok(self
             .dialog
@@ -142,7 +138,7 @@ impl Effects for Host<'_, '_> {
                 vec![Event::Poll(Request::Next)]
             }
             Input::Bytes { bytes } => {
-                if self.receive_bytes(bytes, conn).await? {
+                if driver::feed(self, bytes, conn, stop).await? {
                     return Ok(Flow::Stop);
                 }
 
@@ -156,7 +152,7 @@ impl Effects for Host<'_, '_> {
                         .hooks
                         .pause(Pause::AutolyserQuiescent, stop)
                         .await
-                        .map_err(Error::TestHook)?;
+                        .map_err(Error::from)?;
                 }
                 Vec::new()
             }

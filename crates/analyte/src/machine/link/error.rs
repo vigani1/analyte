@@ -73,37 +73,11 @@ impl Error {
     }
 }
 
-impl From<crate::machine::receive::error::Error> for Error {
-    fn from(error: crate::machine::receive::error::Error) -> Self {
-        Self::Custody(Box::new(error))
+impl<C> From<C> for Error
+where
+    crate::machine::receive::error::Error: From<C>,
+{
+    fn from(cause: C) -> Self {
+        Self::Custody(Box::new(crate::machine::receive::error::Error::from(cause)))
     }
 }
-
-crate::runtime::service::conversions::causes!(Error;
-    crate::machine::receive::error::Error => [
-        analyte_store::Error,
-        crate::IntakeError,
-        crate::machine::interpretation::ReadError,
-        analyte_model::TextError,
-        analyte_model::ListError,
-        analyte_config::Error,
-        std::num::TryFromIntError,
-        serde_json::Error,
-        jiff::Error,
-        crate::reading::Error,
-        crate::machine::custody::WriteError,
-        crate::machine::custody::StoreWaitError<crate::IntakeError>,
-        crate::machine::custody::StoreWaitError<analyte_store::Error>,
-    ],
-    analyte_store::Error => [
-        analyte_store::WorkerError,
-        analyte_store::WorkerStartError,
-        analyte_store::IntakeError,
-        analyte_store::DeliveryError,
-        analyte_store::OrderError,
-        analyte_store::MaintenanceError,
-        analyte_store::OperatorError,
-        analyte_store::ReconciliationError,
-        analyte_store::StorageError,
-    ],
-);
