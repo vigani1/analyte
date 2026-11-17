@@ -1,6 +1,9 @@
 //! Classifies ASTM session refusals with shared link and custody causes.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
+    /// A query arrived without its transfer start evidence.
+    #[error("ASTM query transfer start is missing")]
+    QueryStartMissing,
     /// ASTM admission size overflow.
     #[error("ASTM admission size overflow")]
     AdmissionSizeOverflow,
@@ -11,19 +14,16 @@ pub(crate) enum Error {
     #[error("ASTM storage or resource limit refused transfer")]
     ResourceLimitRefusedTransfer,
     /// A frame commit failed; retains the storage failure or elapsed custody budget.
-    #[error("ASTM storage or resource limit refused transfer")]
+    #[error("ASTM frame commit refused: {0}")]
     CommitRefused(
         #[source] crate::machine::receive::custody::StoreWaitError<analyte_store::IntakeError>,
     ),
     /// The dialog expired before receiving a durable frame-commit completion.
-    #[error("ASTM storage or resource limit refused transfer")]
+    #[error("ASTM frame commit completion deadline expired")]
     CommitDeadline,
     /// ASTM transfer wire-byte bound exceeded.
     #[error("ASTM transfer wire-byte bound exceeded")]
     TransferWireByteBoundExceeded,
-    /// Order poll deadline overflow.
-    #[error("order poll deadline overflow")]
-    OrderPollDeadlineOverflow,
     /// An outbound command could not represent the mapped order.
     #[error(transparent)]
     OrderMapping(#[from] analyte_mapping::OrderMappingError),
@@ -77,16 +77,24 @@ mod tests {
         ));
         assert!(storage.source().is_some());
         assert!(timeout.source().is_some());
-        for error in [
-            storage,
-            timeout,
-            Error::CommitDeadline,
-            Error::ResourceLimitRefusedTransfer,
-        ] {
-            assert_eq!(
-                error.to_string(),
-                "ASTM storage or resource limit refused transfer"
-            );
-        }
+        assert!(
+            storage
+                .to_string()
+                .starts_with("ASTM frame commit refused: ")
+        );
+        assert!(
+            timeout
+                .to_string()
+                .starts_with("ASTM frame commit refused: ")
+        );
+        assert_ne!(storage.to_string(), timeout.to_string());
+        assert_eq!(
+            Error::CommitDeadline.to_string(),
+            "ASTM frame commit completion deadline expired"
+        );
+        assert_eq!(
+            Error::ResourceLimitRefusedTransfer.to_string(),
+            "ASTM storage or resource limit refused transfer"
+        );
     }
 }
