@@ -3,13 +3,13 @@ use crate::inbound::evidence::{Error, map_part, map_result, map_test, map_units,
 use crate::orders::codes::{map_priority as outbound_priority, map_test as outbound_test};
 use crate::orders::{AppOrder, MachineOrder, OrderMappingError, map_patient, map_specimen};
 use crate::{Output, Position};
-use analyte_config::Validated;
+
 use analyte_model::*;
 /// Maps Autolyser results without inferring a specimen or immutable run.
 /// # Errors
 /// Preserves source encoding, model and mapping failures.
 pub fn map(
-    machine: &Validated,
+    machine: &analyte_config::AutolyserStack,
     receipt: ReceiptId,
     report: &analyte_autolyser::syntax::Report,
     time: jiff::Timestamp,
@@ -21,7 +21,7 @@ pub fn map(
             SourceText::new(std::str::from_utf8(value.text.bytes())?)?,
             ValueInterpretation::Text,
         );
-        let Some(test) = map_test(machine, code, None) else {
+        let Some(test) = map_test(machine.codes(), code, None) else {
             output.unmapped_test(
                 Position {
                     record: index.saturating_add(1),
@@ -35,7 +35,7 @@ pub fn map(
         if report.control.as_ref().is_some_and(|c| c.is_control) {
             source.qc_class = QcClass::Control;
         }
-        map_units(machine, &mut source)?;
+        map_units(machine.codes(), &mut source)?;
         push_result(
             &mut output,
             map_result(

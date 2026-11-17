@@ -48,7 +48,7 @@ pub(super) fn map(
     output: &mut Output,
 ) -> Result<(), Error> {
     let message = results.message();
-    let header = message.segments().next().ok_or(Error::Syntax)?;
+    let header = message.segments().next().ok_or(Error::MissingHeader)?;
     let header_time = decode(
         header.field(7).map_or(b"", |f| f.raw()),
         Position {
@@ -83,13 +83,16 @@ pub(super) fn map(
         let position = Position {
             record: *positions
                 .get(&notice.order().raw().as_ptr())
-                .ok_or(Error::Syntax)?,
+                .ok_or(Error::NoticeOrder)?,
             field: 2,
         };
         crate::reserve_evidence(
             output,
             source,
-            position.record.checked_sub(1).ok_or(Error::Syntax)?,
+            position
+                .record
+                .checked_sub(1)
+                .ok_or(Error::NoticePosition)?,
         )?;
         let original = notice
             .control()
@@ -124,7 +127,7 @@ pub(super) fn map(
 
 fn decode(raw: &[u8], position: Position) -> Result<SourceText, Error> {
     text(
-        std::str::from_utf8(raw).map_err(|_| Error::Syntax)?,
+        std::str::from_utf8(raw).map_err(|_| Error::Encoding { position })?,
         position,
     )
 }

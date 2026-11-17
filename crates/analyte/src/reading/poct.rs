@@ -1,7 +1,6 @@
 //! Reads POCT observations with durable source Hello context and installed bounds.
 use super::Error;
 pub(super) fn read(
-    config: &analyte_config::Validated,
     input: analyte_mapping::Input,
     raw: &[u8],
     settings: &analyte_config::PoctStack,
@@ -24,7 +23,7 @@ pub(super) fn read(
     });
     let message = analyte_poct::Message::parse(raw, limits(settings))?;
     Ok(analyte_mapping::map_poct(
-        config,
+        settings,
         input.receipt,
         &message,
         input.received_at,

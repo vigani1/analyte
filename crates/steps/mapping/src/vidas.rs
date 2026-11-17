@@ -3,20 +3,20 @@ use crate::inbound::evidence::{Error, map_part, map_result, map_test, map_units,
 use crate::orders::codes::{map_priority as outbound_priority, map_test as outbound_test};
 use crate::orders::{AppOrder, MachineOrder, OrderMappingError, map_patient};
 use crate::{Output, Position};
-use analyte_config::Validated;
+
 use analyte_model::*;
 /// Maps VIDAS values conservatively, preserving unresolved identity and exact text.
 /// # Errors
 /// Preserves syntax, model and mapping failures.
 pub fn map(
-    machine: &Validated,
+    machine: &analyte_config::VidasStack,
     receipt: ReceiptId,
     message: &analyte_vidas::syntax::Message,
     time: jiff::Timestamp,
 ) -> Result<Output, Error> {
     let evidence = map_evidence(message)?;
     let mut output = Output::default();
-    let Some(test) = map_test(machine, evidence.assay.as_str(), None) else {
+    let Some(test) = map_test(machine.codes(), evidence.assay.as_str(), None) else {
         output.unmapped_test(
             Position {
                 record: 1,
@@ -37,7 +37,7 @@ pub fn map(
             applied: DilutionApplied::Unknown,
         });
     }
-    map_units(machine, &mut source)?;
+    map_units(machine.codes(), &mut source)?;
     push_result(
         &mut output,
         map_result(

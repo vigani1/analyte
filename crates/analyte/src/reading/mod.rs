@@ -77,17 +77,23 @@ pub(crate) fn read(
 ) -> Result<Output, Error> {
     match config.effective().stack() {
         Stack::Astm(RecordTransport::Stream(s)) => {
-            astm::read(config, input, &payload(config, raw)?, s.syntax())
+            astm::read(input, &payload(config, raw)?, s.syntax(), s.mappings())
         }
-        Stack::Astm(RecordTransport::Folder(s)) => astm::read(config, input, raw, s.syntax()),
-        Stack::Hl7(RecordTransport::Stream(s)) => {
-            hl7::read(config, input, &payload(config, raw)?, s.syntax())
+        Stack::Astm(RecordTransport::Folder(s)) => astm::read(input, raw, s.syntax(), s.mappings()),
+        Stack::Hl7(RecordTransport::Stream(s)) => hl7::read(
+            config,
+            input,
+            &payload(config, raw)?,
+            s.syntax(),
+            s.mappings(),
+        ),
+        Stack::Hl7(RecordTransport::Folder(s)) => {
+            hl7::read(config, input, raw, s.syntax(), s.mappings())
         }
-        Stack::Hl7(RecordTransport::Folder(s)) => hl7::read(config, input, raw, s.syntax()),
-        Stack::Law(s) => law::read(config, input, &payload(config, raw)?, s),
-        Stack::Poct(s) => poct::read(config, input, raw, s, hello),
+        Stack::Law(s) => law::read(input, &payload(config, raw)?, s),
+        Stack::Poct(s) => poct::read(input, raw, s, hello),
         Stack::Vidas(s) => vidas::read(config, input, raw, s),
-        Stack::Autolyser(s) => autolyser::read(config, input, raw, s),
+        Stack::Autolyser(s) => autolyser::read(input, raw, s),
     }
 }
 

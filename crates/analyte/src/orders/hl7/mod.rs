@@ -329,7 +329,8 @@ impl Connection {
                                 Ok(analyte_mapping::map_display(
                                     &app,
                                     fields.id.as_str(),
-                                    &machine.snapshot,
+                                    settings,
+                                    machine.snapshot.effective().stack().limits(),
                                 )?)
                             });
                         match mapped {

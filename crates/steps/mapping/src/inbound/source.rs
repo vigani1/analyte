@@ -40,36 +40,25 @@ impl Source<'_> {
 
     // Source constructors already validate their control profile. Inspect only the
     // edition here; LAW's negotiated VID compatibility is a different contract.
-    pub(crate) fn uses_compatibility_contract(&self, config: &analyte_config::Validated) -> bool {
-        self.base_version(config)
+    pub(crate) fn uses_compatibility_contract(&self) -> bool {
+        self.version
             .is_some_and(analyte_hl7::Version::uses_compatibility_contract)
     }
 
-    pub(crate) fn has_analysis_time(&self, config: &analyte_config::Validated) -> bool {
-        crate::is_law(config)
+    pub(crate) fn has_analysis_time(&self) -> bool {
+        (self.syntax == FieldSyntax::Hl7V2 && self.version.is_none())
             || self
-                .base_version(config)
+                .version
                 .is_some_and(analyte_hl7::Version::analysis_time)
     }
 
-    pub(crate) fn uses_dtm(&self, config: &analyte_config::Validated) -> bool {
-        self.base_version(config)
-            .is_some_and(analyte_hl7::Version::uses_dtm)
+    pub(crate) fn uses_dtm(&self) -> bool {
+        self.version.is_some_and(analyte_hl7::Version::uses_dtm)
     }
 
-    pub(crate) fn keeps_utc_without_civil_offset_raw(
-        &self,
-        config: &analyte_config::Validated,
-    ) -> bool {
-        self.base_version(config)
-            .is_some_and(analyte_hl7::Version::keeps_utc_without_civil_offset_raw)
-    }
-
-    fn base_version(&self, config: &analyte_config::Validated) -> Option<analyte_hl7::Version> {
-        if crate::is_law(config) {
-            return None;
-        }
+    pub(crate) fn keeps_utc_without_civil_offset_raw(&self) -> bool {
         self.version
+            .is_some_and(analyte_hl7::Version::keeps_utc_without_civil_offset_raw)
     }
 
     pub(crate) fn text_problem(&self, raw: &str) -> Option<crate::Problem> {

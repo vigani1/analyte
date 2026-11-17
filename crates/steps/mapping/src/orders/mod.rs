@@ -7,7 +7,6 @@ pub use crate::law::{Command as LawCommand, address as law_address, map_order as
 use crate::orders::codes::map_specimen as outbound_specimen;
 pub use app::map as app_order;
 
-use analyte_config::Validated;
 use analyte_model::{NamespacedId, SampleId, SamplePosition};
 
 /// Explicit app priority, translated only by the outbound priority table.
@@ -174,9 +173,12 @@ pub enum OrderMappingError {
 /// No wire output is returned for partial or ambiguous mappings.
 /// # Errors
 /// Refuses disabled capability, unmapped values, missing required context and wire bounds.
-pub fn map_order(order: &AppOrder, config: &Validated) -> Result<MachineOrder, OrderMappingError> {
+pub fn map_order(
+    order: &AppOrder,
+    stack: &analyte_config::Stack,
+) -> Result<MachineOrder, OrderMappingError> {
     use analyte_config::Stack;
-    match config.effective().stack() {
+    match stack {
         Stack::Astm(analyte_config::RecordTransport::Stream(s)) => crate::astm::map_order(
             order,
             s.syntax().limits(),

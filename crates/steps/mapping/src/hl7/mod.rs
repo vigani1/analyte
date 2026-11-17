@@ -1,7 +1,7 @@
 //! Maps HL7 laboratory results and outgoing orders without clocks, storage or transport.
 use crate::inbound::{grouping, source};
-use crate::{Error, Input, Output, Position, hl7_edition, is_law};
-use analyte_config::Validated;
+use crate::{Error, Input, Output, Position};
+
 mod departures;
 mod display;
 mod orders;
@@ -11,21 +11,27 @@ pub use orders::Command;
 /// Maps ORU R01 or OUL R22 (2.5.1 only), with group-relative selectors.
 /// # Errors
 /// Rejects unsupported/misplaced segments rather than guessing group ownership.
+/// A different protocol's selected settings cannot be passed here.
+/// ```compile_fail
+/// fn wrong(message: &analyte_hl7::Message, settings: &analyte_config::LawStack, mappings: &analyte_config::Mappings, input: analyte_mapping::Input) {
+///     analyte_mapping::map_hl7(message, settings, mappings, &[], input);
+/// }
+/// ```
 pub fn map(
     message: &analyte_hl7::Message,
-    config: &Validated,
+    syntax: &analyte_config::Hl7Syntax,
+    mappings: &analyte_config::Mappings,
+    declarations: &[analyte_config::MachineDeparture],
     input: Input,
 ) -> Result<Output, Error> {
-    if is_law(config) {
-        return Err(Error::Syntax);
-    }
-    validate_message(message, config)?;
-    map_checked(message, config, input)
+    validate_message(message, syntax.options(), syntax.limits())?;
+    map_checked(message, syntax, mappings, declarations, input)
 }
 
 pub(crate) fn validate_message(
     message: &analyte_hl7::Message,
-    config: &Validated,
+    options: analyte_hl7::Options,
+    settings: &analyte_config::SyntaxLimits,
 ) -> Result<(), Error> {
     message
         .require_complete_values()
@@ -36,14 +42,9 @@ pub(crate) fn validate_message(
             },
             source,
         })?;
-    if config
-        .effective()
-        .hl7_options()
-        .is_none_or(|o| o.charset != message.charset())
-    {
-        return Err(Error::Syntax);
+    if options.charset != message.charset() {
+        return Err(Error::CharsetMismatch);
     }
-    let settings = config.effective().stack().limits();
     if message.raw().len() > settings.bytes() || message.segments().count() > settings.records() {
         return Err(Error::Limit {
             position: Position {
@@ -58,10 +59,12 @@ pub(crate) fn validate_message(
 
 fn map_checked(
     message: &analyte_hl7::Message,
-    config: &Validated,
+    syntax: &analyte_config::Hl7Syntax,
+    mappings: &analyte_config::Mappings,
+    declarations: &[analyte_config::MachineDeparture],
     input: Input,
 ) -> Result<Output, Error> {
-    let edition = hl7_edition(config)?;
+    let edition = syntax.edition();
     let mut source = source::hl7(message)?;
     let version = analyte_hl7::Msh::new(message)
         .map_err(|source| Error::Hl7 {
@@ -82,8 +85,16 @@ fn map_checked(
         });
     }
     source.attach_comments()?;
-    let mut output = grouping::message(&source, config, input, None)?;
+    let mut output = grouping::message(
+        &source,
+        &crate::RecordSettings {
+            mappings,
+            limits: syntax.limits(),
+        },
+        input,
+        None,
+    )?;
     report::qualify(message, &mut output)?;
-    departures::apply(message, config, &mut output)?;
+    departures::apply(message, declarations, &mut output)?;
     Ok(output)
 }

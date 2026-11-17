@@ -1,16 +1,16 @@
 //! Preserves source evidence for each observation without clinical decisions.
 use crate::FieldSyntax;
+use crate::RecordSettings;
 use crate::inbound::source::Source;
 use crate::inbound::time;
 use crate::{Error, Input, Output, Problem, finding, identifier, list, text};
 use analyte_config::Classification;
-use analyte_config::Validated;
 use analyte_model::*;
 
 pub(crate) fn part(
     source: &Source<'_>,
     index: usize,
-    config: &Validated,
+    config: &RecordSettings<'_>,
     input: Input,
     test: NamespacedId,
     values: EvidenceList<ResultValue>,
@@ -26,7 +26,7 @@ pub(crate) fn part(
         .present(source.raw(index, units_field)?)
         .map(|value| {
             let original = text(&value, source.position(index, units_field))?;
-            match crate::unit_translation(config.effective().machine().units(), &value) {
+            match crate::unit_translation(&config.mappings.units, &value) {
                 Some(entry) => Units::mapped(
                     original.clone(),
                     UnitMapping {
@@ -45,7 +45,7 @@ pub(crate) fn part(
     let qc_class = classify(source, index, config, output)?;
     let ancestors = source.ancestors(index)?;
     let path = source_path(source, index)?;
-    let times = source_times(source, config, &ancestors, position, output)?;
+    let times = source_times(source, &ancestors, position, output)?;
     let mut comments = Vec::new();
     for ancestor in &ancestors {
         let Some(node) = source.nodes.get(*ancestor) else {
@@ -155,13 +155,13 @@ fn status(code: &str, astm: bool) -> ResultStatus {
 fn classify(
     source: &Source<'_>,
     index: usize,
-    config: &Validated,
+    config: &RecordSettings<'_>,
     output: &mut Output,
 ) -> Result<QcClass, Error> {
     let position = source.position(index, 0);
     let mut qc_class = QcClass::Unknown;
     let mut classified = false;
-    for rule in &crate::field_mappings(config)?.qc {
+    for rule in &config.mappings.qc {
         if source.selected(index, &rule.field)?.as_deref() == Some(rule.value.as_str()) {
             let selected = match rule.classification {
                 Classification::Patient => QcClass::Patient,
@@ -183,7 +183,6 @@ fn classify(
 
 fn source_times(
     source: &Source<'_>,
-    config: &Validated,
     ancestors: &[usize],
     position: crate::Position,
     output: &mut Output,
@@ -225,14 +224,14 @@ fn source_times(
                     reason: "SPM-17 collection range or nested precision is unsupported; retain interval for review",
                 });
             }
-            if node.name == "OBX" && *field == 19 && !source.has_analysis_time(config) {
+            if node.name == "OBX" && *field == 19 && !source.has_analysis_time() {
                 continue;
             }
             if let Some(raw) = source.present(source.component(*ancestor, *field, 1, 1)?) {
                 let mut time = time::parse(&raw, source.position(*ancestor, *field))?;
                 // 2.9.1 section 2A.2.22: UTC does not establish a known civil offset.
                 // Keep the exact spelling without claiming a parsed local date/time.
-                if source.keeps_utc_without_civil_offset_raw(config) && raw.ends_with("-0000") {
+                if source.keeps_utc_without_civil_offset_raw() && raw.ends_with("-0000") {
                     time.parsed = None;
                     time.offset = None;
                 }

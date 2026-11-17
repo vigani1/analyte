@@ -16,7 +16,7 @@ pub(super) fn read(
     };
     let message = analyte_vidas::syntax::Message::parse(std::str::from_utf8(&packet.body)?, limit)?;
     Ok(analyte_mapping::map_vidas(
-        config,
+        settings,
         input.receipt,
         &message,
         input.received_at,

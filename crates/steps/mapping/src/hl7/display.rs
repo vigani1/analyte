@@ -3,7 +3,7 @@ use crate::orders::codes::{
     map_priority as outbound_priority, map_specimen as outbound_specimen, map_test as outbound_test,
 };
 use crate::orders::{AppOrder, OrderMappingError};
-use analyte_config::{DsrLine, Validated};
+use analyte_config::{DsrLine, Hl7Orders, SyntaxLimits};
 
 /// Maps explicitly configured DSP text, preserving values and leaving absent context empty.
 /// Line order repeats for every test; no machine-specific positions are implicit.
@@ -12,13 +12,9 @@ use analyte_config::{DsrLine, Validated};
 pub fn map(
     order: &AppOrder,
     order_id: &str,
-    config: &Validated,
+    orders: &Hl7Orders,
+    limits: &SyntaxLimits,
 ) -> Result<Vec<Vec<u8>>, OrderMappingError> {
-    let orders = config
-        .effective()
-        .stack()
-        .hl7_orders()
-        .ok_or(OrderMappingError::Disabled)?;
     let layout = &orders
         .query()
         .as_ref()
@@ -64,7 +60,7 @@ pub fn map(
                 || value
                     .bytes()
                     .any(|b| b.is_ascii_control() || b"|^~\\&".contains(&b))
-                || lines.len() >= config.effective().stack().limits().records()
+                || lines.len() >= limits.records()
             {
                 return Err(OrderMappingError::DisplayLineBounds);
             }

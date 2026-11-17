@@ -132,7 +132,12 @@ async fn answer(
                         continue;
                     }
                     let mapped = match super::app_order(&order).map_err(Error::from).and_then(
-                        |order| Ok(analyte_mapping::map_order(&order, &machine.snapshot)?),
+                        |order| {
+                            Ok(analyte_mapping::map_order(
+                                &order,
+                                machine.snapshot.effective().stack(),
+                            )?)
+                        },
                     ) {
                         Ok(mapped) => mapped,
                         Err(error) => {

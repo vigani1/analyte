@@ -1,6 +1,6 @@
 //! Applies only evidenced missing-status interpretations after strict report diagnostics exist.
 use crate::{Error, Output, Position, Problem, finding, identifier, text};
-use analyte_config::{MachineDeparture, Validated};
+use analyte_config::MachineDeparture;
 use analyte_hl7::{Message, Msh};
 use analyte_model::{
     AppliedDeparture, DepartureMeaning, DepartureSpan, EvidenceList, Identifier, QcClass,
@@ -9,7 +9,7 @@ use analyte_model::{
 
 pub(super) fn apply(
     message: &Message,
-    config: &Validated,
+    declarations: &[MachineDeparture],
     output: &mut Output,
 ) -> Result<(), Error> {
     let msh = Msh::new(message).map_err(|source| Error::Hl7 {
@@ -26,7 +26,6 @@ pub(super) fn apply(
     {
         return Ok(());
     }
-    let declarations = &config.effective().machine().deviations;
     let obr = declarations
         .iter()
         .find(|d| matches!(d, MachineDeparture::Hl7AbsentObr25MeansFinal(_)));
@@ -153,7 +152,7 @@ fn discharge(
         | MachineDeparture::AstmReceiveTimeout(_)
         | MachineDeparture::AstmSendTimeout(_)
         | MachineDeparture::AstmHostContentionPriority(_)
-        | MachineDeparture::AstmLowercaseChecksumHex(_) => return Err(Error::Syntax),
+        | MachineDeparture::AstmLowercaseChecksumHex(_) => return Err(Error::DepartureKind),
     };
     let spans = EvidenceList::new(vec![
         DepartureSpan::try_from(span).map_err(|reason| Error::Structure { position, reason })?,

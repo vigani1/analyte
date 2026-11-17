@@ -18,18 +18,13 @@ impl Command {
     /// # Errors
     /// Preserves disabled capability, patient requirements and group-length refusals.
     pub fn new(
-        config: &analyte_config::Validated,
+        syntax: &analyte_config::Hl7Syntax,
+        settings: &analyte_config::Hl7Orders,
         app: &analyte_contract::Order,
         options: Options,
     ) -> Result<Self, Error> {
-        let stack = config.effective().stack();
-        let edition = stack
-            .hl7_edition()
-            .ok_or(Error::Context("HL7 orders absent"))?;
-        let settings = stack
-            .hl7_orders()
-            .ok_or(Error::Context("HL7 orders absent"))?
-            .clone();
+        let edition = syntax.edition();
+        let settings = settings.clone();
         if settings
             .send()
             .as_ref()

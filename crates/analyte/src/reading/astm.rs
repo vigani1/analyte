@@ -1,10 +1,10 @@
 //! Reads ASTM syntax with installed policy and maps its exact fields.
 use super::Error;
 pub(super) fn read(
-    config: &analyte_config::Validated,
     input: analyte_mapping::Input,
     payload: &[u8],
     syntax: &analyte_config::AstmSyntax,
+    mappings: &analyte_config::Mappings,
 ) -> Result<analyte_mapping::Output, Error> {
     let messages = analyte_astm::parse_with(payload, syntax.parser_limits(), |bytes| match syntax
         .encoding()
@@ -21,7 +21,8 @@ pub(super) fn read(
         messages
             .first()
             .ok_or_else(|| Error::Context(super::Context::AstmMessageMissing))?,
-        config,
+        syntax,
+        mappings,
         input,
     )?)
 }

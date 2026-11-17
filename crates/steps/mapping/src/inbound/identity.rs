@@ -1,17 +1,17 @@
 //! Resolves result identities using configured sample and source evidence only.
+use crate::RecordSettings;
 use crate::inbound::source::Source;
 use crate::{Error, Output, Problem, finding, identifier, text};
-use analyte_config::Validated;
 use analyte_config::{NoSubId, OrderNamespace, SubId};
 use analyte_model::*;
 
 pub(crate) fn sample(
     source: &Source<'_>,
     index: usize,
-    config: &Validated,
+    config: &RecordSettings<'_>,
     output: &mut Output,
 ) -> Result<Option<SampleIdentity>, Error> {
-    let selection = &crate::field_mappings(config)?.sample;
+    let selection = &config.mappings.sample;
     let position = source.selection_position(index, &selection.field)?;
     let Some(value) = source.present(source.selected(index, &selection.field)?) else {
         finding(output, position, Problem::MissingSample)?;
@@ -33,7 +33,7 @@ pub(crate) fn sample(
 pub(crate) fn observation(
     source: &Source<'_>,
     index: usize,
-    config: &Validated,
+    config: &RecordSettings<'_>,
     code: NamespacedId,
     output: &mut Output,
     law: Option<&std::collections::BTreeMap<*const u8, &analyte_hl7::law::Observation<'_>>>,
@@ -57,7 +57,7 @@ pub(crate) fn observation(
         };
         return law_observation(source, index, config, code, output, observation);
     }
-    let settings = &crate::field_mappings(config)?.identity;
+    let settings = &config.mappings.identity;
     let mut missing = false;
     let mut required = |field: &analyte_config::Field, setting| -> Result<String, Error> {
         match source.present(source.selected(index, field)?) {
@@ -110,7 +110,7 @@ pub(crate) fn observation(
 fn law_observation(
     source: &Source<'_>,
     index: usize,
-    config: &Validated,
+    config: &RecordSettings<'_>,
     code: NamespacedId,
     output: &mut Output,
     observation: &analyte_hl7::law::Observation<'_>,
@@ -137,7 +137,7 @@ fn law_observation(
     let kind = source.present(source.component(order, field, 1, 4)?);
     let namespace = if field == 2 {
         // TF-2b C.6-2: received EI.2+ are X, never assigning authority.
-        match &crate::field_mappings(config)?.identity.order_namespace {
+        match &config.mappings.identity.order_namespace {
             OrderNamespace::Fixed { fixed } => Some(fixed.as_str().to_owned()),
             OrderNamespace::Field { .. } => None,
         }

@@ -41,7 +41,12 @@ pub(crate) fn mapping_location(
                 analyte_mapping::Error::Hl7 { source, .. } => {
                     return syntax_location(source, raw, ending);
                 }
-                analyte_mapping::Error::Syntax | analyte_mapping::Error::DepartureEvidence(_) => {
+                analyte_mapping::Error::CharsetMismatch
+                | analyte_mapping::Error::DepartureKind
+                | analyte_mapping::Error::MissingHeader
+                | analyte_mapping::Error::NoticeOrder
+                | analyte_mapping::Error::NoticePosition
+                | analyte_mapping::Error::DepartureEvidence(_) => {
                     return None;
                 }
             }
