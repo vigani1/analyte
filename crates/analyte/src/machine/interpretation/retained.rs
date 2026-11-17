@@ -2,7 +2,7 @@
 use crate::installation::config::Machine;
 use crate::intake::{Error, InterpretationOutcome, Mapping, ParkReason};
 use crate::machine::interpretation::ReadError;
-use analyte_config::Stack;
+
 use analyte_hl7::{Message, WireCompatibility, law};
 use analyte_store::{Handle, InterpretationCommit, Receipt, Reprocess};
 
@@ -25,7 +25,7 @@ impl Context<'_> {
             Ok(Policy::Execution(
                 crate::machine::law::policy::Policy::prepare(store, machine, self.results).await?,
             ))
-        } else if matches!(stack, Stack::Poct(_)) {
+        } else if stack.choice().connection_context() {
             Ok(crate::machine::poct::policy::policy())
         } else {
             Ok(Policy::standard())

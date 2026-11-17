@@ -41,7 +41,7 @@ fn adr_0002_and_0005_examples_validate_without_promoting_evidence() -> Result<()
 #[test]
 fn adr_0002_schema_rejects_versions_unknown_keys_and_secrets() {
     for bad in [
-        ASTM.rewrite("schema_version = 1", "schema_version = 2"),
+        ASTM.rewrite("schema_version = 2", "schema_version = 3"),
         ASTM.rewrite("name =", "unknown ="),
         ASTM.rewrite("baud = 9600", "baud = 9600\npassword = 'secret'"),
     ] {
@@ -69,15 +69,15 @@ fn adr_0002_schema_rejects_versions_unknown_keys_and_secrets() {
 #[test]
 fn plan_5_rejects_incompatible_stacks_and_invalid_serial_settings() -> Result<(), Error> {
     for bad in [
-        ASTM.rewrite("astm_lis01", "mllp"),
+        ASTM.rewrite("[framing]", "[framing]\nkind = 'mllp'"),
         ASTM.rewrite("kind = \"serial\"", "kind = \"watched_folder\""),
         ASTM.rewrite("baud = 9600", "baud = 0"),
         ASTM.rewrite("data_bits = 8", "data_bits = 9"),
         ASTM.rewrite("limit = 64000", "limit = 64001"),
-        HL7.rewrite("hl7_receiver", "astm_link"),
+        HL7.rewrite("[dialog]", "[dialog]\nkind = 'astm_link'"),
     ] {
         {
-            let Err(refusal) = draft(&bad, OVERRIDES)?.validate() else {
+            let Err(refusal) = draft(&bad, OVERRIDES).and_then(Draft::validate) else {
                 panic!("input must be refused")
             };
             assert!(
@@ -157,7 +157,7 @@ fn adr_0002_bounds_and_duplicate_tables_fail_visibly() -> Result<(), Error> {
         ),
     ] {
         {
-            let Err(refusal) = draft(&bad, OVERRIDES)?.validate() else {
+            let Err(refusal) = draft(&bad, OVERRIDES).and_then(Draft::validate) else {
                 panic!("input must be refused")
             };
             assert!(
@@ -249,21 +249,21 @@ fn adr0003_identity_selectors_are_validated() -> Result<(), Error> {
         "order_id = {group=\"order\",record=\"O\",field=0",
     );
     assert!(
-        matches!(draft(&bad, OVERRIDES)?.validate(), Err(Error::Invalid { key, .. }) if key == "mappings.identity.order_id")
+        matches!(draft(&bad, OVERRIDES).and_then(Draft::validate), Err(Error::Invalid { key, .. }) if key == "mappings.identity.order_id")
     );
     let bad = ASTM.rewrite(
         "run = []",
         "run = [{group='observation',record='R',field=0,component=1,repetition=1}]",
     );
     assert!(
-        matches!(draft(&bad, OVERRIDES)?.validate(), Err(Error::Invalid { key, .. }) if key == "mappings.identity.run")
+        matches!(draft(&bad, OVERRIDES).and_then(Draft::validate), Err(Error::Invalid { key, .. }) if key == "mappings.identity.run")
     );
     let bad = ASTM.rewrite(
         "correction_status_codes = [\"C\"]",
         "correction_status_codes = ['C','C']",
     );
     assert!(
-        matches!(draft(&bad, OVERRIDES)?.validate(), Err(Error::Invalid { key, .. }) if key == "mappings.identity.correction_status_codes")
+        matches!(draft(&bad, OVERRIDES).and_then(Draft::validate), Err(Error::Invalid { key, .. }) if key == "mappings.identity.correction_status_codes")
     );
     Ok(())
 }
@@ -290,32 +290,13 @@ fn adr0002_0005_vendor_layers_require_explicit_policy_and_documented_evidence() 
         })?];
         let bad = format!("{example}\n{fields}");
         assert!(matches!(
-            draft(&bad, OVERRIDES)?.validate(),
+            draft(&bad, OVERRIDES).and_then(Draft::validate),
             Err(Error::VendorFieldMappings { .. })
         ));
-        let bad = example.replacen(
-            &format!(
-                "kind = \"{}\"",
-                match config.effective().stack() {
-                    analyte_config::Stack::Poct(_) => "poct",
-                    analyte_config::Stack::Vidas(_) => "vidas_literal",
-                    analyte_config::Stack::Autolyser(_) => "autolyser",
-                    analyte_config::Stack::Astm(analyte_config::RecordTransport::Stream(_))
-                    | analyte_config::Stack::Astm(analyte_config::RecordTransport::Folder(_)) =>
-                        "astm_lis02",
-                    analyte_config::Stack::Hl7(analyte_config::RecordTransport::Stream(_))
-                    | analyte_config::Stack::Law(_)
-                    | analyte_config::Stack::Hl7(analyte_config::RecordTransport::Folder(_)) =>
-                        "hl7_v2",
-                }
-            ),
-            "kind = \"mllp\"",
-            1,
+        let bad = example.rewrite("[framing]", "[framing]\nkind = 'mllp'");
+        assert!(
+            matches!(draft(&bad, OVERRIDES), Err(Error::Invalid { key, .. }) if key == "framing.kind")
         );
-        assert!(matches!(
-            draft(&bad, OVERRIDES)?.validate(),
-            Err(Error::IncompatibleStack { .. })
-        ));
     }
     Ok(())
 }

@@ -386,8 +386,6 @@ async fn plan11_native_capacity_probe_is_bounded_and_file_pickup_keeps_original(
     std::fs::create_dir(&incoming)?;
     let definition = std::fs::read_to_string(temp.path().join("machine.toml"))?
         .rewrite("tcp_server", "watched_folder")
-        .rewrite("kind = \"mllp\"", "kind = \"none\"")
-        .rewrite("hl7_receiver", "file_pickup")
         .rewrite("acknowledgment = \"store_and_forward\"\n", "");
     std::fs::write(temp.path().join("machine.toml"), definition)?;
     let site = format!(

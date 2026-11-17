@@ -245,9 +245,6 @@ pub struct Transport {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Framing {
-    /// Envelope.
-    #[serde(deserialize_with = "crate::selection::framing")]
-    pub kind: String,
     /// Frame bytes including ASTM overhead, or payload bytes otherwise.
     pub limit: usize,
     /// Required only for LIS01.
@@ -258,9 +255,6 @@ pub struct Framing {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Dialog {
-    /// State machine.
-    #[serde(deserialize_with = "crate::selection::dialog")]
-    pub kind: String,
     /// Receive deadline.
     pub receive_timeout_ms: u32,
     /// Send deadline.
@@ -277,9 +271,6 @@ pub struct Dialog {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Syntax {
-    /// Syntax family.
-    #[serde(deserialize_with = "crate::selection::syntax")]
-    pub kind: String,
     /// Negotiated encoding.
     pub encoding: Encoding,
     /// Required only for HL7.

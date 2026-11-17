@@ -75,16 +75,16 @@ fn law_tf2b_2_2_config_selects_mllp_251_manager_and_explicit_peer_options() -> R
 #[test]
 fn law_tf2b_2_2_config_rejects_impossible_stack_combinations() {
     for bad in [
-        LAW.rewrite("law_manager", "hl7_receiver"),
+        LAW.rewrite("[dialog]", "[dialog]\nkind = 'hl7_receiver'"),
         LAW.split("[law]").next().expect("prefix").to_owned(),
         LAW.rewrite("v251", "v231"),
         LAW.rewrite("encoding = \"utf8\"", "encoding = \"ascii\""),
         LAW.rewrite("terminator = \"cr\"", "terminator = \"lf\""),
         LAW.rewrite("escapes = \"reject\"", "escapes = \"preserve\""),
-        LAW.rewrite("kind = \"mllp\"", "kind = \"none\""),
+        LAW.rewrite("[framing]", "[framing]\nkind = 'none'"),
         LAW.rewrite("kind = \"tcp_server\"", "kind = \"watched_folder\""),
         LAW.rewrite("acknowledgment = \"store_and_forward\"", ""),
-        LAW.rewrite("kind = \"hl7_v2\"", "kind = \"astm_lis02\""),
+        LAW.rewrite("[syntax]", "[syntax]\nkind = 'astm_lis02'"),
     ] {
         assert!(
             matches!(

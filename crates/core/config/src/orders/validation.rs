@@ -1,6 +1,6 @@
 //! Validates outbound capabilities and code translations.
 use super::{Error, Field, Group, MachinePriority, Orders, PriorityCode, invalid};
-use crate::{ParsedMachine, StackChoice};
+use crate::ParsedMachine;
 use std::collections::HashSet;
 
 impl Orders {
@@ -28,7 +28,7 @@ impl Orders {
             None
         } else if machine.choice().has_vidas_assay_codes() {
             Some(machine.vidas.as_ref().is_some_and(|v| v.download))
-        } else if matches!(machine.choice(), StackChoice::Autolyser) {
+        } else if machine.choice().has_autolyser_orders() {
             Some(machine.autolyser.as_ref().is_some_and(|a| a.download))
         } else if machine.choice().has_hl7_records() {
             self.validate_hl7(machine, path)?;
@@ -76,7 +76,7 @@ impl Orders {
                 "this outbound layout has no patient field",
             ));
         }
-        if matches!(machine.choice(), StackChoice::Autolyser) {
+        if machine.choice().has_autolyser_orders() {
             if self.clone.is_none() {
                 return Err(invalid(
                     path,
@@ -171,7 +171,7 @@ impl Orders {
                                 .bytes()
                                 .any(|b| !(32..127).contains(&b) || b"|^~\\&".contains(&b)),
                             crate::stack::RecordKind::Vendor => {
-                                !matches!(machine.choice(), StackChoice::Autolyser)
+                                !machine.choice().has_autolyser_orders()
                                     || !matches!(t.machine.as_str(), "S" | "U")
                             }
                         }
@@ -192,7 +192,7 @@ impl Orders {
         machine: &ParsedMachine<'_>,
         path: &str,
     ) -> Result<(), Error> {
-        if matches!(machine.choice(), StackChoice::Autolyser)
+        if machine.choice().has_autolyser_orders()
             && self.tests.iter().any(|test| {
                 let [code] = test.machine_components.as_slice() else {
                     return true;
@@ -206,7 +206,7 @@ impl Orders {
                 "Autolyser requires one exact four-byte printable analysis code",
             ));
         }
-        if matches!(machine.choice(), StackChoice::Autolyser)
+        if machine.choice().has_autolyser_orders()
             && self.priorities.iter().any(|p| {
                 !matches!(
                     p.machine,
