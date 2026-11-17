@@ -282,6 +282,8 @@ impl<'a, 'm> Host<'a, 'm> {
         &mut self,
         host: &mut Context<'_, '_, analyte_config::LawStack>,
     ) -> Result<(), Error> {
+        #[cfg(not(feature = "test-hooks"))]
+        let _ = host;
         self.completed = true;
         self.receipt = None;
         self.stored = false;
@@ -303,6 +305,8 @@ impl<'a, 'm> Host<'a, 'm> {
         started: Duration,
         host: &mut Context<'_, '_, analyte_config::LawStack>,
     ) -> Result<Vec<Action>, Error> {
+        #[cfg(not(feature = "test-hooks"))]
+        let _ = host;
         let mut reply = self
             .orders
             .answer(
