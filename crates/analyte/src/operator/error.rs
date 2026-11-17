@@ -25,7 +25,25 @@ pub enum Error {
     Runtime(#[from] crate::runtime::Error),
     /// Preserves the original operator dependency failure.
     #[error(transparent)]
-    Store(#[from] analyte_store::Error),
+    Store(#[from] analyte_store::OperatorError),
+    /// Reading restored-store state failed.
+    #[error(transparent)]
+    Storage(#[from] analyte_store::StorageError),
+    /// Retention or restored-store reconciliation failed.
+    #[error(transparent)]
+    Maintenance(#[from] analyte_store::MaintenanceError),
+    /// Analyzer execution evidence could not be queried.
+    #[error(transparent)]
+    Reconciliation(#[from] analyte_store::ReconciliationError),
+    /// A delivery recovery operation failed.
+    #[error(transparent)]
+    Delivery(#[from] analyte_store::DeliveryError),
+    /// Worker admission, completion or shutdown failed.
+    #[error(transparent)]
+    Worker(#[from] analyte_store::WorkerError),
+    /// The selected retained receipt does not exist.
+    #[error("receipt does not exist")]
+    UnknownReceipt,
     /// Preserves the original operator dependency failure.
     #[error(transparent)]
     Intake(#[from] crate::IntakeError),
@@ -63,15 +81,3 @@ pub enum Error {
     #[error(transparent)]
     SinkPollError(#[from] analyte_sink::PollError),
 }
-#[cfg(all(test, feature = "test-hooks"))]
-impl Error {
-    pub(super) fn downcast_ref<T: std::error::Error + 'static>(&self) -> Option<&T> {
-        if let Self::Store(cause) = self {
-            let cause: &(dyn std::error::Error + 'static) = cause;
-            return cause.downcast_ref();
-        }
-        None
-    }
-}
-
-analyte_store::forward_command_errors!(Error);

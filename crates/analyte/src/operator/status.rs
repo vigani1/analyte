@@ -144,7 +144,7 @@ mod tests {
         )
         .await?;
         store
-            .request::<_, analyte_store::Error>(deadline()?, |store| {
+            .request::<_, analyte_store::OperatorError>(deadline()?, |store| {
                 store.evaluate_alert(
                     &analyte_store::AlertKey::RestorePaused,
                     "lab duty officer",
@@ -155,7 +155,7 @@ mod tests {
                 store.evaluate_alert(
                     &analyte_store::AlertKey::MachineSilent(
                         analyte_model::Identifier::new("busy")
-                            .map_err(analyte_store::Error::Text)?,
+                            .map_err(analyte_store::OperatorError::Text)?,
                     ),
                     "analyzer operator",
                     true,
@@ -176,7 +176,7 @@ mod tests {
                     Some(0),
                     101,
                 )?;
-                Ok::<_, analyte_store::Error>(())
+                Ok::<_, analyte_store::OperatorError>(())
             })
             .await?;
         let program = Program::load(

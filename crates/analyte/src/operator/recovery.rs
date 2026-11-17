@@ -37,8 +37,7 @@ pub async fn reprocess(
     };
     let metadata = store
         .request(deadline()?, move |s| {
-            s.receipt_metadata(receipt)?
-                .ok_or(analyte_store::Error::UnknownReceipt)
+            s.receipt_metadata(receipt)?.ok_or(Error::UnknownReceipt)
         })
         .await?;
     let machine = program
