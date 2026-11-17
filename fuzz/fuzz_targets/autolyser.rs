@@ -25,7 +25,10 @@ fuzz_target!(|data: &[u8]| {
     for &byte in data {
         let _ = dialog.step(Duration::ZERO, Event::Byte(byte));
     }
-    for mode in [analyte_framing::autolyser::Mode::Report, analyte_framing::autolyser::Mode::Insertion] {
+    for mode in [
+        analyte_framing::autolyser::Mode::Report,
+        analyte_framing::autolyser::Mode::Insertion,
+    ] {
         let mut decoder = analyte_framing::autolyser::Decoder::new(mode, 11_038)
             .expect("constant byte ceiling is valid");
         for &byte in data.iter().take(11_039) {
