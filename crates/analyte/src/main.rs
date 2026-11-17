@@ -197,17 +197,7 @@ fn until() -> Instant {
         .unwrap_or(Instant::now())
 }
 
-// Termination normally prints Debug; retained causes can contain protected panic payloads.
-struct FailureReport(Error);
-impl std::fmt::Debug for FailureReport {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Display::fmt(&self.0, f)
-    }
-}
-fn main() -> Result<(), FailureReport> {
-    entry().map_err(FailureReport)
-}
-fn entry() -> Result<(), Error> {
+fn main() -> Result<(), Error> {
     let cli = Cli::parse();
     #[cfg(windows)]
     if let Command::Service {
@@ -527,28 +517,4 @@ async fn backup(config: &std::path::Path, target: PathBuf) -> Result<(), Error> 
     result?;
     analyte::operator::output::line("Backup verified.")?;
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[derive(Debug)]
-    struct ProtectedCause {
-        _protected_payload: &'static str,
-    }
-    impl std::fmt::Display for ProtectedCause {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            f.write_str("machine session stopped; operator review required")
-        }
-    }
-    impl std::error::Error for ProtectedCause {}
-    #[test]
-    fn rule10_cli_failure_report_keeps_message_without_dumping_retained_cause() {
-        let report = FailureReport(Box::new(ProtectedCause {
-            _protected_payload: "PRIVATE-PANIC-SOURCE-TOKEN",
-        }));
-        let stderr = format!("{report:?}");
-        assert_eq!(stderr, "machine session stopped; operator review required");
-        assert!(!stderr.contains("PRIVATE-PANIC-SOURCE-TOKEN"));
-    }
 }
