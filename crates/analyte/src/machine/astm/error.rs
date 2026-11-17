@@ -1,6 +1,9 @@
 //! Classifies ASTM session refusals with shared link and custody causes.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
+    /// A query arrived without its transfer start evidence.
+    #[error("ASTM query transfer start is missing")]
+    QueryStartMissing,
     /// ASTM admission size overflow.
     #[error("ASTM admission size overflow")]
     AdmissionSizeOverflow,
