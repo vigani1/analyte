@@ -13,6 +13,13 @@ use analyte_store::Handle;
 pub(crate) use error::Error;
 use std::{collections::VecDeque, time::Instant};
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Phase {
+    Opening,
+    Idle,
+    Transferring,
+}
+
 /// Dialog, decoder and timers cannot outlive their owning transport connection.
 pub(super) struct Host<'a, 'm> {
     machine: &'a intake::ConnectionEvidence<'m>,
@@ -22,8 +29,7 @@ pub(super) struct Host<'a, 'm> {
     dialog: Dialog,
     start: Instant,
     actions: VecDeque<Action>,
-    idle: bool,
-    opened: bool,
+    phase: Phase,
     end_code: VidasEnd,
     config: Config,
     policy: DialogConfig,
@@ -55,8 +61,7 @@ impl<'a, 'm> Host<'a, 'm> {
             dialog,
             start: Instant::now(),
             actions,
-            idle: true,
-            opened: false,
+            phase: Phase::Opening,
             end_code: VidasEnd::TransferError,
             config,
             policy,
@@ -65,7 +70,7 @@ impl<'a, 'm> Host<'a, 'm> {
     fn start_download(&mut self, request: &analyte_vidas::syntax::Message) -> Result<(), Error> {
         self.dialog = Dialog::download(self.config.clone(), self.policy.clone(), request)?;
         self.start = Instant::now();
-        self.idle = false;
+        self.phase = Phase::Transferring;
         self.end_code = VidasEnd::TransferError;
         self.actions.extend(self.dialog.start());
         Ok(())
@@ -77,7 +82,7 @@ impl<'a, 'm> Host<'a, 'm> {
     ) -> Result<bool, Error> {
         let machine = self.machine;
         let store = self.store;
-        self.idle = false;
+        self.phase = Phase::Transferring;
         for byte in bytes {
             match self.dialog.step(self.start.elapsed(), Event::Byte(byte)) {
                 Ok(actions) => self.actions.extend(actions),
@@ -115,7 +120,7 @@ impl Effects for Host<'_, '_> {
             .dialog
             .next_deadline()
             .ok_or(Error::ActiveDialogHasNoDeadline)?;
-        if self.idle && self.opened {
+        if self.phase == Phase::Idle {
             next = next.min(
                 self.start.elapsed().saturating_add(
                     self.work
@@ -127,8 +132,7 @@ impl Effects for Host<'_, '_> {
         Ok(Some(next.saturating_sub(self.start.elapsed())))
     }
     async fn prepare(&mut self, host: &mut Context<'_, '_>) -> Result<Flow, Error> {
-        if self.idle
-            && self.opened
+        if self.phase == Phase::Idle
             && let Some(request) = self
                 .work
                 .poll(self.machine, self.store, self.settings)
@@ -147,7 +151,7 @@ impl Effects for Host<'_, '_> {
         let stop = &mut host.stop;
         self.end_code = VidasEnd::TransferError;
         match input {
-            Input::Opened { .. } => self.opened = true,
+            Input::Opened { .. } => self.phase = Phase::Idle,
             Input::Tick => {
                 self.actions
                     .extend(self.dialog.step(self.start.elapsed(), Event::Tick)?);
@@ -251,7 +255,7 @@ impl Host<'_, '_> {
                         self.dialog = Dialog::upload(self.config.clone(), self.policy.clone())?;
                         self.start = Instant::now();
                         self.actions.extend(self.dialog.start());
-                        self.idle = true;
+                        self.phase = Phase::Idle;
                     }
                     crate::orders::vidas::Progress::UploadFinished => complete = true,
                 },
