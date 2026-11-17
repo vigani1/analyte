@@ -23,6 +23,8 @@ Every backticked test name in a `checklist.md` is a test reference, and
 `scripts/check-protocol-tests.py` fails CI when the test does not exist. Future
 work is written as `Planned test: ` followed by one backticked name, once per
 name; only that name is skipped, and it must not name an existing test.
+A referenced test must run in CI: an `#[ignore]` test backs a row only when
+written as `Manual test: ` followed by its name, and then it must be ignored.
 
 ## Durable custody boundaries
 
