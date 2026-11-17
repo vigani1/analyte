@@ -18,7 +18,7 @@ fn adr0008_build_refuses_nonproduction_and_parked_evidence() -> TestResult {
                 Identifier::new("app")?,
                 jiff::Timestamp::now()
             ),
-            Err(Error::ProcessingMode)
+            Err(DeliveryError::ProcessingMode)
         ));
     }
     result.processing = ProcessingMode::Production;
@@ -30,7 +30,7 @@ fn adr0008_build_refuses_nonproduction_and_parked_evidence() -> TestResult {
             Identifier::new("app")?,
             jiff::Timestamp::now()
         ),
-        Err(Error::RequiresParking)
+        Err(DeliveryError::RequiresParking)
     ));
     Ok(())
 }
@@ -72,11 +72,11 @@ async fn mutation_contract_v1_rule7_response_body_ceiling_is_inclusive() -> Test
                 .get(format!("http://{address}"))
                 .send()
                 .await?;
-            let result = body(response).await;
+            let result = body(response, DeliveryError::ResponseTooLarge).await;
             if length == analyte_contract::MAX_DOCUMENT_BYTES {
                 assert_eq!(result?.len(), length);
             } else {
-                assert!(matches!(result, Err(Error::ResponseTooLarge)));
+                assert!(matches!(result, Err(DeliveryError::ResponseTooLarge)));
             }
             Ok::<_, Box<dyn std::error::Error>>(())
         };
@@ -120,17 +120,17 @@ fn mutation_rule7_contract_v1_destination_limits_validate_each_independent_bound
                 5 => l.poll_interval = value,
                 _ => unreachable!("fixed test fields"),
             };
-            assert!(matches!(construct(l), Err(Error::Configuration)));
+            assert!(matches!(construct(l), Err(DestinationError::Configuration)));
         }
     }
     for size in [0, 101] {
         let mut l = limits();
         l.page_size = size;
-        assert!(matches!(construct(l), Err(Error::Configuration)));
+        assert!(matches!(construct(l), Err(DestinationError::Configuration)));
     }
     let mut l = limits();
     l.max_pages = 0;
-    assert!(matches!(construct(l), Err(Error::Configuration)));
+    assert!(matches!(construct(l), Err(DestinationError::Configuration)));
     let mut l = limits();
     l.request_timeout = Duration::from_secs(300);
     l.store_timeout = Duration::from_secs(300);
@@ -151,7 +151,7 @@ fn mutation_contract_v1_rule7_credentials_reject_each_invalid_component() -> Tes
         count: usize,
     }
     impl SecretsSource for Supplied {
-        fn credentials(&self, _: &Identifier) -> Result<Credentials, Error> {
+        fn credentials(&self, _: &Identifier) -> Result<Credentials, DestinationError> {
             Ok(Credentials {
                 api_key: self.key.clone(),
                 signing_secrets: vec![analyte_contract::SigningSecret::parse(SECRET)?; self.count],
@@ -169,7 +169,7 @@ fn mutation_contract_v1_rule7_credentials_reject_each_invalid_component() -> Tes
     ] {
         assert!(matches!(
             d.credentials(&Supplied { key, count }),
-            Err(Error::Secrets)
+            Err(DestinationError::Secrets)
         ));
     }
     for count in [1, 8] {
@@ -212,7 +212,7 @@ fn mutation_rule7_destination_url_byte_ceiling_is_inclusive() -> TestResult {
                 Identifier::new("key")?,
                 limits()
             ),
-            Err(Error::UrlPolicy(_))
+            Err(DestinationError::UrlPolicy(_))
         ));
     }
     Ok(())
@@ -274,7 +274,7 @@ async fn mutation_adr0004_contract_v1_pagination_progress_and_page_bounds() -> T
         if case == 1 {
             result?;
         } else {
-            assert!(matches!(result, Err(Error::FeedProgress)));
+            assert!(matches!(result, Err(PollError::FeedProgress)));
         }
         let health = destination
             .health(&store, jiff::Timestamp::now().as_second())
@@ -296,7 +296,7 @@ fn adr0004_order_event_rejects_store_identity_with_original_cause() -> TestResul
     let error = encode_order_event(&event, Identifier::new("app")?)
         .err()
         .ok_or("store identity must be bounded")?;
-    assert!(matches!(error, Error::OrderId(_)));
+    assert!(matches!(error, DeliveryError::OrderId(_)));
     assert!(error.source().is_some());
     Ok(())
 }

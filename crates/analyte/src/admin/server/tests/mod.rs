@@ -1,4 +1,7 @@
 //! Tests server behavior with synthetic fixtures.
+mod error;
+use error::FixtureError;
+
 use super::*;
 use crate::Error;
 use crate::admin::markup::Markup;
@@ -251,7 +254,7 @@ async fn wait_for_service_listener(host: &str) -> Result<(), Error> {
 
 async fn seed_overview(store: &analyte_store::Handle) -> Result<(), Error> {
     store
-        .request::<_, analyte_store::Error>(fixture_deadline()?, move |store| {
+        .request::<_, FixtureError>(fixture_deadline()?, move |store| {
             store.evaluate_alert(
                 &analyte_store::AlertKey::RestorePaused,
                 "<script>responder('duty')&</script>",
@@ -261,7 +264,7 @@ async fn seed_overview(store: &analyte_store::Handle) -> Result<(), Error> {
             )?;
             store.evaluate_alert(
                 &analyte_store::AlertKey::MachineSilent(
-                    Identifier::new("<busy&machine>").map_err(analyte_store::Error::Text)?,
+                    Identifier::new("<busy&machine>").map_err(FixtureError::Text)?,
                 ),
                 "analyzer operator",
                 true,
@@ -287,31 +290,28 @@ async fn seed_overview(store: &analyte_store::Handle) -> Result<(), Error> {
             for order in ["first", "second"] {
                 seed_overview_order(store, order)?;
             }
-            let id = |value| Identifier::new(value).map_err(analyte_store::Error::Text);
+            let id = |value| Identifier::new(value).map_err(FixtureError::Text);
             store.audit(&analyte_store::Audit {
                 actor: id("operator")?,
                 action: id("store-restore")?,
                 targets: Vec::new(),
                 time: 103,
-                reason: Reason::new("synthetic restore").map_err(analyte_store::Error::Text)?,
+                reason: Reason::new("synthetic restore").map_err(FixtureError::Text)?,
             })?;
-            Ok::<_, analyte_store::Error>(())
+            Ok::<_, FixtureError>(())
         })
         .await?;
     Ok(())
 }
 
-fn seed_overview_order(
-    store: &mut analyte_store::Store,
-    order: &str,
-) -> Result<(), analyte_store::Error> {
-    let id = |value| Identifier::new(value).map_err(analyte_store::Error::Text);
+fn seed_overview_order(store: &mut analyte_store::Store, order: &str) -> Result<(), FixtureError> {
+    let id = |value| Identifier::new(value).map_err(FixtureError::Text);
     let raw = b"protected-raw-never-log";
     let config = b"synthetic-config";
     store.receive(
         &analyte_model::ReceiptMetadata {
             id: analyte_model::ReceiptId::try_from(uuid::Uuid::now_v7())
-                .map_err(analyte_store::Error::Identity)?,
+                .map_err(FixtureError::Identity)?,
             raw_digest: analyte_model::Digest(analyte_contract::content_digest(raw)),
             connection: id("synthetic")?,
             machine: id("<script>alert('hostile')&\"</script>")?,
@@ -322,7 +322,7 @@ fn seed_overview_order(
             config_version: id("1")?,
             config_digest: analyte_model::Digest(analyte_contract::content_digest(config)),
             received_at: jiff::Timestamp::from_second(if order == "first" { 100 } else { 200 })
-                .map_err(|cause| analyte_store::Error::EvidenceTimestamp(Box::new(cause)))?,
+                .map_err(FixtureError::EvidenceTimestamp)?,
         },
         raw,
         config,
@@ -335,7 +335,7 @@ fn seed_overview_order(
                     orders: vec![analyte_store::CachedOrder {
                         id: id(order)?,
                         sample: analyte_model::SampleId::new("<script>sample</script>")
-                            .map_err(analyte_store::Error::Text)?,
+                            .map_err(FixtureError::Text)?,
                         document: "{\"version\":1,\"state\":\"requested\",\"tombstone\":false,\"tests\":[{\"namespace\":\"local\",\"value\":\"test\"}]}"
                             .into(),
                         tombstone: false,
@@ -357,11 +357,11 @@ fn seed_overview_order(
             },
             analyte_store::ReserveOptions::default(),
         )?
-        .map_err(|_| analyte_store::Error::Conflict)?;
+        .map_err(|_| FixtureError::Conflict)?;
     store.transition_order(
         reserved.id,
         OrderState::Uncertain,
-        analyte_model::SourceText::new("timeout").map_err(analyte_store::Error::Text)?,
+        analyte_model::SourceText::new("timeout").map_err(FixtureError::Text)?,
         102,
         |order| {
             Ok(analyte_store::OrderEventDelivery {

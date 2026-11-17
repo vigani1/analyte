@@ -87,11 +87,14 @@ impl Environment {
 }
 
 impl SecretsSource for Environment {
-    fn credentials(&self, name: &Identifier) -> Result<Credentials, analyte_sink::Error> {
+    fn credentials(
+        &self,
+        name: &Identifier,
+    ) -> Result<Credentials, analyte_sink::DestinationError> {
         let stored = self
             .0
             .get(name.as_str())
-            .ok_or(analyte_sink::Error::Secrets)?;
+            .ok_or(analyte_sink::DestinationError::Secrets)?;
         Ok(Credentials {
             api_key: stored.api_key.clone(),
             signing_secrets: stored.signing_secrets.clone(),

@@ -25,8 +25,10 @@ fn adr0011_caller_status_table_is_generic_and_correction_cannot_bypass_it() -> T
         store.receive(&metadata, b"synthetic", b"config")?;
         let mut result = production_result(metadata.id)?;
         let mut parts = result.parts.as_slice().to_vec();
-        parts.first_mut().ok_or(Error::Corruption)?.source_status =
-            analyte_model::SourceText::new(status)?;
+        parts
+            .first_mut()
+            .ok_or(ReconciliationError::Corruption)?
+            .source_status = analyte_model::SourceText::new(status)?;
         result.parts =
             analyte_model::NonEmptyEvidenceList::new(analyte_model::EvidenceList::new(parts)?)?;
         if let Some(sample) = &mut result.sample {
@@ -65,8 +67,10 @@ fn adr0011_latest_status_uses_exact_revision_when_one_batch_advances_twice() -> 
      -> Result<analyte_model::ResultContent, Box<dyn std::error::Error>> {
         let mut result = production_result(receipt)?;
         let mut parts = result.parts.as_slice().to_vec();
-        parts.first_mut().ok_or(Error::Corruption)?.source_status =
-            analyte_model::SourceText::new(status)?;
+        parts
+            .first_mut()
+            .ok_or(ReconciliationError::Corruption)?
+            .source_status = analyte_model::SourceText::new(status)?;
         result.parts =
             analyte_model::NonEmptyEvidenceList::new(analyte_model::EvidenceList::new(parts)?)?;
         Ok(result)
@@ -95,7 +99,11 @@ fn adr0011_latest_status_uses_exact_revision_when_one_batch_advances_twice() -> 
     let second = receipt(b"synthetic")?;
     store.receive(&second, b"synthetic", b"config")?;
     let mut result = make(second.id, "draft")?;
-    result.sample.as_mut().ok_or(Error::Corruption)?.id = SampleId::new("changed")?;
+    result
+        .sample
+        .as_mut()
+        .ok_or(ReconciliationError::Corruption)?
+        .id = SampleId::new("changed")?;
     let mut evidence = interpretation()?;
     evidence.outcome = Reading::Results(vec![result]);
     let commit = store.reconcile(

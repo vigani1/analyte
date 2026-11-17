@@ -88,7 +88,7 @@ impl LawOrderLink {
                     });
                     return Ok(Some(sent));
                 }
-                Err(analyte_store::Error::Conflict) => {
+                Err(analyte_store::OrderError::Conflict) => {
                     self.reserving.clear();
                 }
                 Err(error) => return Err(error.into()),
@@ -134,8 +134,8 @@ impl LawOrderLink {
                     if matches!(
                         &error,
                         Error::Store(
-                            analyte_store::Error::DeliveryBuild(_)
-                                | analyte_store::Error::ItemIdentityTooLong
+                            analyte_store::OrderError::DeliveryBuild(_)
+                                | analyte_store::OrderError::ItemIdentityTooLong
                         )
                     ) {
                         let reason = SourceText::new(

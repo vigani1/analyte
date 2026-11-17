@@ -1,5 +1,5 @@
 //! Delivers results while preserving delivery identities across retries.
-use crate::{Destination, Error, SecretsSource, body, cancelled, deadline};
+use crate::{DeliveryError, Destination, SecretsSource, body, cancelled, deadline};
 use analyte_contract::{ResponseAction, classify_response};
 use analyte_model::{DeliveryId, Identifier, IdentityStatus, ReceiptMetadata, ResultContent};
 use analyte_store::{Attempt, DeliveryKind, Handle};
@@ -21,17 +21,17 @@ pub fn encode_delivery(
     receipt: &ReceiptMetadata,
     destination: Identifier,
     created_at: jiff::Timestamp,
-) -> Result<analyte_store::Delivery, Error> {
+) -> Result<analyte_store::Delivery, DeliveryError> {
     if !result.processing.may_deliver_to_production() {
-        return Err(Error::ProcessingMode);
+        return Err(DeliveryError::ProcessingMode);
     }
     if result.requires_parking() {
-        return Err(Error::RequiresParking);
+        return Err(DeliveryError::RequiresParking);
     }
     let IdentityStatus::Resolved(identity) = &result.identity else {
-        return Err(Error::RequiresParking);
+        return Err(DeliveryError::RequiresParking);
     };
-    let id = DeliveryId::try_from(uuid::Uuid::now_v7()).map_err(Error::Identity)?;
+    let id = DeliveryId::try_from(uuid::Uuid::now_v7()).map_err(DeliveryError::Identity)?;
     let document = analyte_contract::Delivery::from_result(result, receipt, id, created_at)?;
     Ok(analyte_store::Delivery {
         id,
@@ -51,10 +51,10 @@ pub fn encode_delivery(
 pub fn encode_order_event(
     event: &analyte_contract::OrderEvent,
     destination: Identifier,
-) -> Result<analyte_store::OrderEventDelivery, Error> {
+) -> Result<analyte_store::OrderEventDelivery, DeliveryError> {
     let payload = serde_json::to_vec(event)?;
     if payload.len() > analyte_contract::MAX_DOCUMENT_BYTES {
-        return Err(Error::PayloadTooLarge);
+        return Err(DeliveryError::PayloadTooLarge);
     }
     let fields = event.fields();
     let id = DeliveryId::try_from(uuid::Uuid::parse_str(fields.delivery_id.as_str())?)?;
@@ -137,7 +137,7 @@ impl<'a> Worker<'a> {
     /// the host must reconcile and explicitly release that same ID after restart.
     /// # Errors
     /// Returns store/configuration failures; an uncertain write is never assumed undone.
-    pub async fn deliver_once(&self) -> Result<DeliveryOutcome, Error> {
+    pub async fn deliver_once(&self) -> Result<DeliveryOutcome, DeliveryError> {
         self.deliver_once_with_clock(&|| jiff::Timestamp::now().as_second())
             .await
     }
@@ -147,13 +147,13 @@ impl<'a> Worker<'a> {
     pub(super) async fn deliver_once_with_clock(
         &self,
         now: &(dyn Fn() -> i64 + Sync),
-    ) -> Result<DeliveryOutcome, Error> {
+    ) -> Result<DeliveryOutcome, DeliveryError> {
         let claim_time = now();
         let destination = self.destination.cloned();
         let claim = self
             .store
             .request(
-                deadline(self.claim_timeout())?,
+                deadline(self.claim_timeout(), DeliveryError::Timeout)?,
                 move |s| match destination {
                     Some(destination) => s.claim_destination(claim_time, &destination),
                     None => s.claim(claim_time),
@@ -167,7 +167,7 @@ impl<'a> Worker<'a> {
             .destinations
             .iter()
             .find(|d| d.id == claim.destination)
-            .ok_or(Error::UnknownDestination)?;
+            .ok_or(DeliveryError::UnknownDestination)?;
         let (action, conflict_detail) = match tokio::time::timeout(
             destination.limits.request_timeout,
             self.send(destination, &claim),
@@ -175,10 +175,16 @@ impl<'a> Worker<'a> {
         .await
         {
             Ok(Ok(action)) => action,
-            Ok(Err(Error::Secrets | Error::Signature(_))) => (ResponseAction::PauseForSetup, None),
-            Ok(Err(Error::Http(_) | Error::ResponseTooLarge | Error::Timeout)) | Err(_) => {
-                (ResponseAction::Retry { after: None }, None)
-            }
+            Ok(Err(
+                DeliveryError::Destination(
+                    crate::DestinationError::Secrets | crate::DestinationError::Signature(_),
+                )
+                | DeliveryError::Signature(_),
+            )) => (ResponseAction::PauseForSetup, None),
+            Ok(Err(
+                DeliveryError::Http(_) | DeliveryError::ResponseTooLarge | DeliveryError::Timeout,
+            ))
+            | Err(_) => (ResponseAction::Retry { after: None }, None),
             Ok(Err(error)) => return Err(error),
         };
         let now = now();
@@ -203,15 +209,16 @@ impl<'a> Worker<'a> {
                 let delay = i64::try_from(backoff(destination, claim.earlier_attempts, after))?;
                 let next = now
                     .checked_add(delay)
-                    .ok_or(Error::RetryOverflow { now, delay })?;
+                    .ok_or(DeliveryError::RetryOverflow { now, delay })?;
                 (Attempt::RetryAt(next), DeliveryOutcome::RetryAt(next))
             }
         };
         let id = claim.id;
         self.store
-            .request(deadline(destination.limits.store_timeout)?, move |s| {
-                s.attempted(id, &attempt, now)
-            })
+            .request(
+                deadline(destination.limits.store_timeout, DeliveryError::Timeout)?,
+                move |s| s.attempted(id, &attempt, now),
+            )
             .await?;
         tracing::debug!(delivery_id=%uuid::Uuid::from(id),destination=%destination.id.as_str(),"delivery attempt recorded");
         Ok(outcome)
@@ -221,7 +228,7 @@ impl<'a> Worker<'a> {
         &self,
         destination: &Destination,
         claim: &analyte_store::Claim,
-    ) -> Result<(ResponseAction, Option<String>), Error> {
+    ) -> Result<(ResponseAction, Option<String>), DeliveryError> {
         if claim.contract_version != 1 {
             return Ok((
                 ResponseAction::Parked {
@@ -266,9 +273,9 @@ impl<'a> Worker<'a> {
         if matches!(status, 401 | 403 | 408 | 429 | 500..=599) {
             return Ok((classify_response(status, &[], retry.as_deref()), None));
         }
-        let bytes = match body(response).await {
+        let bytes = match body(response, DeliveryError::ResponseTooLarge).await {
             Ok(bytes) => bytes,
-            Err(Error::ResponseTooLarge) => {
+            Err(DeliveryError::ResponseTooLarge) => {
                 return Ok((classify_response(status, &[], retry.as_deref()), None));
             }
             Err(error) => return Err(error),
@@ -293,7 +300,7 @@ impl<'a> Worker<'a> {
         &self,
         mut stop: watch::Receiver<bool>,
         budget: Duration,
-    ) -> Result<(), Error> {
+    ) -> Result<(), DeliveryError> {
         loop {
             if *stop.borrow() || stop.has_changed().is_err() {
                 return Ok(());
@@ -308,7 +315,7 @@ impl<'a> Worker<'a> {
                 biased;
                 () = cancelled(&mut stop) => {
                     if !started.load(std::sync::atomic::Ordering::Relaxed) { return Ok(()); }
-                    tokio::time::timeout(budget, &mut attempt).await.map_err(|_| Error::Timeout)??;
+                    tokio::time::timeout(budget, &mut attempt).await.map_err(|_| DeliveryError::Timeout)??;
                     return Ok(());
                 }
                 result = &mut attempt => result?,
@@ -327,7 +334,7 @@ impl<'a> Worker<'a> {
     /// Dropping this future has the same uncertain-claim semantics as `deliver_once`.
     /// # Errors
     /// Stops visibly on errors requiring host intervention.
-    pub async fn run(&self, mut stop: watch::Receiver<bool>) -> Result<(), Error> {
+    pub async fn run(&self, mut stop: watch::Receiver<bool>) -> Result<(), DeliveryError> {
         loop {
             let outcome = tokio::select! {biased; ()=cancelled(&mut stop)=>return Ok(()), result=self.deliver_once()=>result?};
             if outcome == DeliveryOutcome::Idle {

@@ -128,11 +128,11 @@ async fn rule9_astm_all_untrusted_states_and_destination_freshness() -> Result<(
         .await?;
         let destination = crate::orders::destination(&machine);
         store
-            .request::<_, analyte_store::Error>(crate::deadline()?, move |s| {
+            .request::<_, analyte_store::OrderError>(crate::deadline()?, move |s| {
                 if case != "unknown" {
                     s.order_page(&analyte_store::OrderPage {
                         destination,
-                        cursor: Identifier::new("c").map_err(analyte_store::Error::Text)?,
+                        cursor: Identifier::new("c").map_err(analyte_store::OrderError::Text)?,
                         complete: case != "incomplete",
                         polled: jiff::Timestamp::now().as_second()
                             - if case == "paused" { 0 } else { 50 },
@@ -141,16 +141,17 @@ async fn rule9_astm_all_untrusted_states_and_destination_freshness() -> Result<(
                 }
                 if case == "paused" {
                     s.audit(&analyte_store::Audit {
-                        actor: Identifier::new("operator").map_err(analyte_store::Error::Text)?,
+                        actor: Identifier::new("operator")
+                            .map_err(analyte_store::OrderError::Text)?,
                         action: Identifier::new("store-restore")
-                            .map_err(analyte_store::Error::Text)?,
+                            .map_err(analyte_store::OrderError::Text)?,
                         targets: Vec::new(),
                         time: 0,
                         reason: analyte_model::Reason::new("synthetic restore")
-                            .map_err(analyte_store::Error::Text)?,
+                            .map_err(analyte_store::OrderError::Text)?,
                     })?;
                 }
-                Ok::<_, analyte_store::Error>(())
+                Ok::<_, analyte_store::OrderError>(())
             })
             .await?;
         let mut pending = Pending::new(

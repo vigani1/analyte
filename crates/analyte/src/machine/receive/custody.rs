@@ -146,7 +146,7 @@ mod tests {
         assert!(matches!(error, StoreWaitError::Operation(DiskFull)));
         assert_eq!(error.to_string(), "disk full");
         let custody = crate::machine::poct::Error::from(StoreWaitError::Operation(
-            crate::IntakeError::from(analyte_store::Error::UnknownReceipt),
+            crate::IntakeError::UnknownReceipt,
         ));
         let mut result = Err(custody);
         retain_cleanup(

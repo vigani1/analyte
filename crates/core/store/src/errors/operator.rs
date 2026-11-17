@@ -23,27 +23,3 @@ storage_boundary! {
         PollResolution(#[from] crate::OrderError),
     }
 }
-impl From<OperatorError> for crate::Error {
-    fn from(error: OperatorError) -> Self {
-        match error {
-            OperatorError::Worker(cause) => Self::Worker(cause),
-            OperatorError::PollResolution(cause) => cause.into(),
-            OperatorError::StorageCorruption(cause) => Self::StorageCorruption(cause),
-            OperatorError::Capacity => Self::Capacity,
-            OperatorError::Corruption => Self::Corruption,
-            OperatorError::DiskFull(cause) => Self::DiskFull(cause),
-            OperatorError::LimitExceeded { what } => Self::LimitExceeded { what },
-            OperatorError::Busy(cause) => Self::Busy(cause),
-            OperatorError::ConstraintViolation(cause) => Self::ConstraintViolation(cause),
-            OperatorError::Text(cause) => Self::Text(cause),
-            OperatorError::Io(cause) => Self::Io(cause),
-            OperatorError::Sqlite(cause) => Self::Sqlite(cause),
-            OperatorError::Json(cause) => Self::Json(cause),
-            OperatorError::ReprocessParked => Self::ReprocessParked,
-            OperatorError::Purged => Self::Purged,
-            OperatorError::Conflict => Self::Conflict,
-            OperatorError::InvalidOperatorInput => Self::InvalidOperatorInput,
-            OperatorError::AuditMismatch => Self::AuditMismatch,
-        }
-    }
-}

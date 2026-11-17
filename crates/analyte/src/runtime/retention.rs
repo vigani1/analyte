@@ -64,36 +64,33 @@ pub(crate) async fn run(
             if days.is_some() {
                 let order_after = cursor.1;
                 let run = store
-                    .request::<_, analyte_store::Error>(crate::deadline()?, move |store| {
-                        let until = Instant::now()
-                            .checked_add(Duration::from_millis(250))
-                            .ok_or(analyte_store::Error::DeadlineOverflow)?;
-                        Ok(store.purge_order_batch(
-                            &order_machine,
-                            days,
-                            order_after,
-                            now,
-                            until,
-                        )?)
-                    })
+                    .request::<_, analyte_store::MaintenanceError>(
+                        crate::deadline()?,
+                        move |store| {
+                            let until = Instant::now()
+                                .checked_add(Duration::from_millis(250))
+                                .ok_or(analyte_store::MaintenanceError::DeadlineOverflow)?;
+                            store.purge_order_batch(&order_machine, days, order_after, now, until)
+                        },
+                    )
                     .await;
                 match run {
                     Ok(run) => cursor.1 = run.order_after,
-                    Err(analyte_store::Error::Timeout) => {}
+                    Err(analyte_store::MaintenanceError::Timeout) => {}
                     Err(error) => return Err(error.into()),
                 }
                 store
-                    .request::<_, analyte_store::Error>(crate::deadline()?, |store| {
+                    .request::<_, analyte_store::MaintenanceError>(crate::deadline()?, |store| {
                         let until = Instant::now()
                             .checked_add(Duration::from_millis(250))
-                            .ok_or(analyte_store::Error::DeadlineOverflow)?;
+                            .ok_or(analyte_store::MaintenanceError::DeadlineOverflow)?;
                         match store.reclaim_retention_space(until) {
                             Ok(())
                             | Err(
                                 analyte_store::MaintenanceError::MaintenanceBusy
                                 | analyte_store::MaintenanceError::Timeout,
                             ) => Ok(()),
-                            Err(error) => Err(error.into()),
+                            Err(error) => Err(error),
                         }
                     })
                     .await?;
@@ -135,13 +132,8 @@ mod tests {
             .await?,
         );
         store
-            .request::<_, analyte_store::Error>(crate::deadline()?, |store| {
-                Ok::<_, analyte_store::Error>(
-                    store.configure_retention_key(
-                        Some(analyte_store::DigestKey::new([1; 32])),
-                        true,
-                    )?,
-                )
+            .request::<_, analyte_store::MaintenanceError>(crate::deadline()?, |store| {
+                store.configure_retention_key(Some(analyte_store::DigestKey::new([1; 32])), true)
             })
             .await?;
         let (stop, stopped) = watch::channel(false);

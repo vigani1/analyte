@@ -5,7 +5,7 @@ pub mod admin;
 pub mod installation;
 mod intake;
 /// Operational failures retaining and interpreting machine receipts.
-pub use intake::Error as IntakeError;
+pub use intake::{CommitError as IntakeCommitError, Error as IntakeError};
 /// Failures constructing complete departure evidence.
 pub use machine::interpretation::departure_evidence::EvidenceError as DepartureEvidenceError;
 /// Failures comparing returned LAW work with retained immutable commands.
@@ -28,19 +28,23 @@ pub(crate) fn invalid(message: &str) -> Error {
     std::io::Error::new(std::io::ErrorKind::InvalidInput, message).into()
 }
 
+/// The host cannot represent its bounded store operation deadline.
+#[derive(Debug, thiserror::Error)]
+#[error("storage operation deadline overflow")]
+pub struct DeadlineError;
+
 /// Bounds a store operation by the shared five-second budget.
 /// # Errors
 /// Reports deadline overflow rather than submitting an expired request.
-pub fn deadline() -> Result<std::time::Instant, analyte_store::Error> {
+pub fn deadline() -> Result<std::time::Instant, DeadlineError> {
     storage_deadline(std::time::Instant::now(), STORE_OPERATION_BUDGET)
 }
 
 fn storage_deadline(
     now: std::time::Instant,
     budget: std::time::Duration,
-) -> Result<std::time::Instant, analyte_store::Error> {
-    now.checked_add(budget)
-        .ok_or(analyte_store::Error::DeadlineOverflow)
+) -> Result<std::time::Instant, DeadlineError> {
+    now.checked_add(budget).ok_or(DeadlineError)
 }
 
 /// Opens the store using the operating system volume probe.
@@ -69,7 +73,7 @@ mod deadline_tests {
     fn overflowing_store_deadline_is_specific() {
         assert!(matches!(
             super::storage_deadline(std::time::Instant::now(), std::time::Duration::MAX),
-            Err(analyte_store::Error::DeadlineOverflow)
+            Err(super::DeadlineError)
         ));
     }
 }

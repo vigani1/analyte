@@ -192,7 +192,7 @@ fn receipt_id(target: &Identifier) -> Option<ReceiptId> {
         .and_then(|id| ReceiptId::try_from(id).ok())
 }
 
-fn metadata(store: &Store, parked: &Parked) -> Result<Markup, analyte_store::Error> {
+fn metadata(store: &Store, parked: &Parked) -> Result<Markup, analyte_store::OperatorError> {
     let mut html = Markup::new();
     for target in parked.targets.iter().take(PAGE) {
         let receipt = receipt_id(target)
@@ -244,17 +244,21 @@ pub(super) async fn detail(
             return (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response();
         }
     };
+    let after = match usize::try_from(cursor.after) {
+        Ok(after) => after,
+        Err(error) => return finish(Err(error.into())),
+    };
     let result = state
         .store
-        .request::<_, analyte_store::Error>(until, move |s| {
+        .request::<_, crate::admin::error::CommandError>(until, move |s| {
             let Some(row) = s.parked_item(id)? else {
                 return Ok(None);
             };
-            let mut evidence = row.details()?;
+            let mut evidence = row.details().map_err(analyte_store::OperatorError::from)?;
             evidence.targets = evidence
                 .targets
                 .into_iter()
-                .skip(usize::try_from(cursor.after).map_err(analyte_store::Error::Integer)?)
+                .skip(after)
                 .take(PAGE)
                 .collect();
             Ok(Some((metadata(s, &evidence)?, evidence, row.resolution)))
@@ -313,11 +317,11 @@ async fn parked_page(state: &Context, cursor: Cursor) -> Result<Markup, Error> {
     let after = i64::try_from(cursor.after)?;
     let (rows, last) = state
         .store
-        .request::<_, analyte_store::Error>(deadline()?, move |s| {
+        .request::<_, crate::admin::error::CommandError>(deadline()?, move |s| {
             let mut html = Markup::new();
             let mut last = None;
             for row in s.parked(after)?.into_iter().take(PAGE) {
-                let evidence = row.details()?;
+                let evidence = row.details().map_err(analyte_store::OperatorError::from)?;
                 html.push_fragment(
                     &Markup::new()
                         .markup("<section><h2><a href=\"/parked/")
@@ -338,7 +342,7 @@ async fn parked_page(state: &Context, cursor: Cursor) -> Result<Markup, Error> {
                 });
                 last = Some(row.id);
             }
-            Ok::<_, analyte_store::Error>((html, last))
+            Ok::<_, crate::admin::error::CommandError>((html, last))
         })
         .await?;
     let mut html = start("Parked items");
@@ -360,5 +364,6 @@ mod orders;
 pub(super) use orders::orders;
 
 mod raw;
+pub(super) use raw::RawError;
 pub(super) use raw::raw;
 use raw::raw_links;

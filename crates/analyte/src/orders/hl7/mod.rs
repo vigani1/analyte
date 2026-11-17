@@ -148,10 +148,10 @@ impl Hl7OrderLink {
             let identity = order.key.clone();
             let code = analyte_model::SourceText::new(code)?;
             let cleanup = store
-                .request::<_, analyte_store::Error>(deadline()?, move |store| {
+                .request::<_, analyte_store::OrderError>(deadline()?, move |store| {
                     let current = store
                         .machine_order(&identity)?
-                        .ok_or(analyte_store::Error::Corruption)?;
+                        .ok_or(analyte_store::OrderError::Corruption)?;
                     // A cancelled wait may have committed its outcome. Do not emit a
                     // second event or turn an already confirmed Sent back into uncertainty.
                     if current.state == analyte_model::OrderState::CancelRequested {
@@ -183,7 +183,7 @@ impl Hl7OrderLink {
                             crate::orders::event,
                         )?;
                     }
-                    Ok::<_, analyte_store::Error>(())
+                    Ok::<_, analyte_store::OrderError>(())
                 })
                 .await
                 .map_err(Into::into);
@@ -479,8 +479,8 @@ mod tests {
         .await;
         assert!(result.is_err());
         let (first, second) = store
-            .request::<_, analyte_store::Error>(deadline()?, move |store| {
-                Ok::<_, analyte_store::Error>((
+            .request::<_, analyte_store::OrderError>(deadline()?, move |store| {
+                Ok::<_, analyte_store::OrderError>((
                     store.machine_order(&first)?,
                     store.machine_order(&second)?,
                 ))
@@ -676,22 +676,23 @@ mod tests {
         let identity = key.clone();
         let original_owner = owner.clone();
         store
-            .request::<_, analyte_store::Error>(deadline()?, move |store| {
+            .request::<_, analyte_store::OrderError>(deadline()?, move |store| {
                 let now = jiff::Timestamp::now().as_second();
                 store.order_page(&analyte_store::OrderPage {
                     destination: identity.destination.clone(),
-                    cursor: Identifier::new("page").map_err(analyte_store::Error::Text)?,
+                    cursor: Identifier::new("page").map_err(analyte_store::OrderError::Text)?,
                     complete: true,
                     polled: now,
                     orders: vec![analyte_store::CachedOrder {
                         id: identity.order.clone(),
-                        sample: SampleId::new("000Ab12").map_err(analyte_store::Error::Text)?,
+                        sample: SampleId::new("000Ab12")
+                            .map_err(analyte_store::OrderError::Text)?,
                         document: include_str!("../../../../../docs/contract/vectors/order.json")
                             .rewrite("order-1", identity.order.as_str()),
                         tombstone: false,
-                        expiry: now
-                            .checked_add(100)
-                            .ok_or(analyte_store::Error::OrderExpiryOverflow)?,
+                        expiry: now.checked_add(100).ok_or_else(|| {
+                            std::io::Error::other("order expiry timestamp overflow")
+                        })?,
                     }],
                 })?;
                 store
@@ -707,7 +708,7 @@ mod tests {
                             ..Default::default()
                         },
                     )?
-                    .map_err(|_| analyte_store::Error::Conflict)
+                    .map_err(|_| analyte_store::OrderError::Conflict)
             })
             .await?;
         Ok(())

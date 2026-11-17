@@ -3,6 +3,24 @@ use super::{
     Identifier, Interpretation, InterpretationOutcome, Reading, ReceiptId, ReceiptMetadata,
     RevisionOutcome, park_findings,
 };
+/// Boundaries combined while committing prepared mapping evidence.
+#[derive(Debug, thiserror::Error)]
+pub enum CommitError {
+    /// Reading the retained receipt failed.
+    #[error(transparent)]
+    Receipt(#[from] analyte_store::OperatorError),
+    /// Atomic interpretation and outbox reconciliation failed.
+    #[error(transparent)]
+    Reconciliation(#[from] analyte_store::ReconciliationError),
+    /// Finding evidence could not fit the model bounds.
+    #[error(transparent)]
+    Text(#[from] analyte_model::TextError),
+}
+impl From<analyte_store::WorkerError> for CommitError {
+    fn from(error: analyte_store::WorkerError) -> Self {
+        Self::Reconciliation(error.into())
+    }
+}
 pub(super) struct PreparedMapping {
     pub(super) id: ReceiptId,
     pub(super) findings: Vec<String>,
@@ -22,8 +40,7 @@ impl PreparedMapping {
     pub(super) fn commit(
         self,
         store: &mut analyte_store::Store,
-    ) -> Result<(analyte_store::InterpretationCommit, InterpretationOutcome), analyte_store::Error>
-    {
+    ) -> Result<(analyte_store::InterpretationCommit, InterpretationOutcome), CommitError> {
         let Self {
             id,
             findings,
@@ -41,7 +58,7 @@ impl PreparedMapping {
         let findings = park_findings(id, findings)?;
         let receipt = store
             .receipt(id)?
-            .ok_or(analyte_store::Error::Conflict)?
+            .ok_or(analyte_store::ReconciliationError::Conflict)?
             .metadata;
         let build = |assigned: &Interpretation, outcomes: &[RevisionOutcome]| {
             if atomic
@@ -73,7 +90,7 @@ impl PreparedMapping {
                     findings: &findings,
                     mode: analyte_store::ReconcileMode::Law {
                         lifecycle: lifecycle
-                            .ok_or(analyte_store::Error::LifecyclePolicyRequired)?,
+                            .ok_or(analyte_store::ReconciliationError::LifecyclePolicyRequired)?,
                         custody,
                     },
                 },
@@ -140,8 +157,9 @@ fn reject_batch(
     action: Option<&analyte_store::Reprocess>,
     findings: &[analyte_store::Parked],
     lifecycle: Option<analyte_store::StatusLifecycle<'_>>,
-) -> Result<analyte_store::InterpretationCommit, analyte_store::Error> {
-    let rejected_evidence = conflict.ok_or(analyte_store::Error::ConflictEvidenceRequired)?;
+) -> Result<analyte_store::InterpretationCommit, analyte_store::ReconciliationError> {
+    let rejected_evidence =
+        conflict.ok_or(analyte_store::ReconciliationError::ConflictEvidenceRequired)?;
     let rejected = if let Some(mut custody) = custody.cloned() {
         custody.rejection = Some(analyte_store::law::Rejection {
             occurrence: 1,
@@ -157,7 +175,8 @@ fn reject_batch(
                 corrections: &[],
                 findings,
                 mode: analyte_store::ReconcileMode::Law {
-                    lifecycle: lifecycle.ok_or(analyte_store::Error::LifecyclePolicyRequired)?,
+                    lifecycle: lifecycle
+                        .ok_or(analyte_store::ReconciliationError::LifecyclePolicyRequired)?,
                     custody: &custody,
                 },
             },

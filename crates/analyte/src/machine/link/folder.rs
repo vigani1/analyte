@@ -336,8 +336,8 @@ mod tests {
                 result
                     .as_ref()
                     .err()
-                    .and_then(|error| error.downcast_ref::<analyte_store::Error>()),
-                Some(analyte_store::Error::Capacity)
+                    .and_then(|error| error.downcast_ref::<analyte_store::IntakeError>()),
+                Some(analyte_store::IntakeError::Capacity)
             ));
             assert_eq!(std::fs::read_dir(root.join("archive"))?.count(), 0);
             assert_eq!(std::fs::read_dir(root.join("quarantine"))?.count(), 0);

@@ -96,20 +96,20 @@ pub(super) async fn deliveries(
     State(state): State<Arc<Context>>,
     Query(cursor): Query<super::pages::Cursor>,
 ) -> Response {
+    let after = match i64::try_from(cursor.after) {
+        Ok(after) => after,
+        Err(error) => return failure(&error),
+    };
     let result = state
         .store
-        .request::<_, analyte_store::Error>(
+        .request::<_, crate::admin::error::CommandError>(
             {
                 match deadline() {
                     Ok(until) => until,
                     Err(error) => return failure(&error),
                 }
             },
-            move |s| {
-                Ok(s.deliveries(
-                    i64::try_from(cursor.after).map_err(analyte_store::Error::Integer)?,
-                )?)
-            },
+            move |s| Ok(s.deliveries(after)?),
         )
         .await;
     match result {
@@ -164,7 +164,7 @@ pub(super) async fn confirm_reprocess(
     };
     match state
         .store
-        .request::<_, analyte_store::Error>(
+        .request::<_, crate::admin::error::CommandError>(
             {
                 match deadline() {
                     Ok(until) => until,
@@ -212,7 +212,7 @@ pub(super) async fn confirm_resend(
     };
     match state
         .store
-        .request::<_, analyte_store::Error>(
+        .request::<_, crate::admin::error::CommandError>(
             {
                 match deadline() {
                     Ok(until) => until,
@@ -221,7 +221,9 @@ pub(super) async fn confirm_resend(
             },
             move |s| {
                 s.delivery(delivery)?
-                    .ok_or(analyte_store::Error::UnknownDelivery)
+                    .ok_or(crate::admin::error::CommandError::from(
+                        analyte_store::DeliveryError::UnknownDelivery,
+                    ))
             },
         )
         .await

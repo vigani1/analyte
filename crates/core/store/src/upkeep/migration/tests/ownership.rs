@@ -143,7 +143,7 @@ fn adr0003_v7_unrecognized_evidence_rolls_back_without_dropping_any_legacy_row()
     drop(db);
     assert!(matches!(
         open(&path),
-        Err(Error::MigrationEvidence {
+        Err(MaintenanceError::MigrationEvidence {
             table: "parked",
             row: 2,
             ..
@@ -172,7 +172,7 @@ fn adr0003_v7_bad_owner_rolls_back_and_unknown_sql_values_are_never_defaulted() 
     drop(db);
     assert!(matches!(
         open(&path),
-        Err(Error::MigrationEvidence {
+        Err(MaintenanceError::MigrationEvidence {
             table: "machine_order_history",
             row: 1,
             ..

@@ -339,8 +339,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
         let sequence = analyte_store::FrameSequence::new(
             number.value(),
             analyte_framing::astm::FrameNumber::MAX.value(),
-        )
-        .map_err(analyte_store::Error::from)?;
+        )?;
         let committed = super::custody::store_before_ack(
             self.machine.machine(),
             self.store.request(deadline()?, move |s| {
@@ -404,11 +403,11 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
                     }
                 }
                 self.store
-                    .request::<_, analyte_store::Error>(deadline()?, move |s| {
-                        Ok::<_, analyte_store::Error>(s.finish_transfer(
+                    .request::<_, analyte_store::IntakeError>(deadline()?, move |s| {
+                        s.finish_transfer(
                             &transfer_id,
                             analyte_store::TransferOutcome::Complete(id),
-                        )?)
+                        )
                     })
                     .await?;
             } else {
@@ -529,11 +528,11 @@ async fn finish_incomplete(store: &Handle, transfer: Identifier) -> Result<(), E
     let reason =
         analyte_model::Reason::new("ASTM transfer ended before a complete receipt was retained")?;
     store
-        .request::<_, analyte_store::Error>(deadline()?, move |store| {
-            Ok::<_, analyte_store::Error>(store.finish_transfer(
+        .request::<_, analyte_store::IntakeError>(deadline()?, move |store| {
+            store.finish_transfer(
                 &transfer,
                 analyte_store::TransferOutcome::Incomplete(reason),
-            )?)
+            )
         })
         .await?;
     Ok(())

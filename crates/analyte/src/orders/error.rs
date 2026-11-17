@@ -2,6 +2,9 @@
 /// Failures looking up, reserving, rendering or settling machine orders.
 #[derive(Debug, thiserror::Error)]
 pub enum OrderError {
+    /// Cache collection exceeded the query deadline.
+    #[error("operation deadline expired")]
+    LookupDeadline,
     /// VIDAS mapped request missing.
     #[error("VIDAS mapped request missing")]
     MappedRequestMissing,
@@ -110,7 +113,13 @@ pub enum OrderError {
     UnsupportedLawQueryScope,
     /// Durable order lookup or lifecycle persistence failed.
     #[error(transparent)]
-    Store(#[from] analyte_store::Error),
+    Store(#[from] analyte_store::OrderError),
+    /// The host could not represent the storage request deadline.
+    #[error(transparent)]
+    Deadline(#[from] crate::DeadlineError),
+    /// Retained operator evidence could not be read.
+    #[error(transparent)]
+    Evidence(#[from] analyte_store::OperatorError),
     /// Retaining or interpreting the machine response failed.
     #[error(transparent)]
     Intake(#[from] crate::IntakeError),
@@ -138,9 +147,6 @@ pub enum OrderError {
     /// The cached app order violated the app contract.
     #[error(transparent)]
     Document(#[from] analyte_contract::DocumentError),
-    /// Polling the lab app order feed failed.
-    #[error(transparent)]
-    Sink(#[from] analyte_sink::Error),
     /// An order event timestamp could not be represented.
     #[error(transparent)]
     Timestamp(#[from] jiff::Error),
@@ -169,4 +175,8 @@ impl crate::runtime::service::cleanup::CleanupFailure for OrderError {
     }
 }
 
-analyte_store::forward_command_errors!(OrderError);
+impl From<analyte_store::WorkerError> for OrderError {
+    fn from(error: analyte_store::WorkerError) -> Self {
+        Self::Store(error.into())
+    }
+}

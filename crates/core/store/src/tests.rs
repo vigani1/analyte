@@ -7,7 +7,7 @@ fn adr0003_rule7_sqlite_lock_failures_remain_specific_busy_failures() -> TestRes
     // SQLite result codes 5 and 6 are BUSY and LOCKED. No wall-clock wait is needed.
     for code in [5, 6] {
         let error = rusqlite::Error::SqliteFailure(rusqlite::ffi::Error::new(code), None);
-        assert!(matches!(Error::from(error), Error::Busy(_)));
+        assert!(matches!(StorageError::from(error), StorageError::Busy(_)));
     }
     Ok(())
 }
@@ -21,21 +21,21 @@ fn adr0003_storage_failures_distinguish_full_corrupt_conflict_and_unknown() -> T
         (26, "corrupt"),
         (19, "conflict"),
     ] {
-        let error = Error::from(rusqlite::Error::SqliteFailure(
+        let error = StorageError::from(rusqlite::Error::SqliteFailure(
             rusqlite::ffi::Error::new(code),
             None,
         ));
         match expected {
-            "full" => assert!(matches!(error, Error::DiskFull(_))),
-            "corrupt" => assert!(matches!(error, Error::StorageCorruption(_))),
-            "conflict" => assert!(matches!(error, Error::ConstraintViolation(_))),
+            "full" => assert!(matches!(error, StorageError::DiskFull(_))),
+            "corrupt" => assert!(matches!(error, StorageError::Corruption(_))),
+            "conflict" => assert!(matches!(error, StorageError::ConstraintViolation(_))),
             _ => unreachable!("fixed test cases"),
         }
     }
     let original = rusqlite::Error::InvalidQuery;
     assert!(matches!(
-        Error::from(original),
-        Error::Sqlite(rusqlite::Error::InvalidQuery)
+        StorageError::from(original),
+        StorageError::Sqlite(rusqlite::Error::InvalidQuery)
     ));
     Ok(())
 }
@@ -75,24 +75,24 @@ fn mutation_adr0003_rule1_lib_sqlite_errors_keep_specific_recovery_actions() -> 
         ffi::SQLITE_LOCKED,
         ffi::SQLITE_IOERR,
     ] {
-        let error = Error::from(rusqlite::Error::SqliteFailure(
+        let error = StorageError::from(rusqlite::Error::SqliteFailure(
             ffi::Error::new(code),
             Some("synthetic failure".into()),
         ));
         assert!(match code {
-            ffi::SQLITE_FULL => matches!(error, Error::DiskFull(_)),
+            ffi::SQLITE_FULL => matches!(error, StorageError::DiskFull(_)),
             ffi::SQLITE_CORRUPT | ffi::SQLITE_NOTADB =>
-                matches!(error, Error::StorageCorruption(rusqlite::Error::SqliteFailure(cause, Some(message))) if cause.extended_code == code && message == "synthetic failure"),
-            ffi::SQLITE_CONSTRAINT => matches!(error, Error::ConstraintViolation(_)),
-            ffi::SQLITE_BUSY | ffi::SQLITE_LOCKED => matches!(error, Error::Busy(_)),
+                matches!(error, StorageError::Corruption(rusqlite::Error::SqliteFailure(cause, Some(message))) if cause.extended_code == code && message == "synthetic failure"),
+            ffi::SQLITE_CONSTRAINT => matches!(error, StorageError::ConstraintViolation(_)),
+            ffi::SQLITE_BUSY | ffi::SQLITE_LOCKED => matches!(error, StorageError::Busy(_)),
             ffi::SQLITE_IOERR =>
-                matches!(error,Error::Sqlite(rusqlite::Error::SqliteFailure(cause,Some(message))) if cause.extended_code==code && message=="synthetic failure"),
+                matches!(error,StorageError::Sqlite(rusqlite::Error::SqliteFailure(cause,Some(message))) if cause.extended_code==code && message=="synthetic failure"),
             _ => unreachable!(),
         });
     }
     assert!(matches!(
-        Error::from(rusqlite::Error::QueryReturnedNoRows),
-        Error::Sqlite(rusqlite::Error::QueryReturnedNoRows)
+        StorageError::from(rusqlite::Error::QueryReturnedNoRows),
+        StorageError::Sqlite(rusqlite::Error::QueryReturnedNoRows)
     ));
     Ok(())
 }
@@ -165,7 +165,7 @@ fn sqlite_result_codes_preserve_lock_and_constraint_causes() {
         rusqlite::ffi::SQLITE_LOCKED,
         rusqlite::ffi::SQLITE_CONSTRAINT_UNIQUE,
     ] {
-        let error = Error::from(rusqlite::Error::SqliteFailure(
+        let error = StorageError::from(rusqlite::Error::SqliteFailure(
             rusqlite::ffi::Error::new(code),
             Some("synthetic diagnostic".into()),
         ));

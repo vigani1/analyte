@@ -94,5 +94,3 @@ pub use reconciliation::ReconciliationError;
 
 mod worker;
 pub use worker::{WorkerError, WorkerStartError};
-
-mod command;

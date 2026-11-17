@@ -71,7 +71,7 @@ impl MachineHooks {
 }
 pub(crate) struct Pages(Option<std::sync::Arc<crate::runtime::test_hooks::StoreGate>>);
 impl Pages {
-    pub(crate) fn pause(&self) -> Result<(), analyte_store::Error> {
+    pub(crate) fn pause(&self) -> Result<(), Error> {
         if let Some(gate) = &self.0 {
             gate.pause()?;
         }

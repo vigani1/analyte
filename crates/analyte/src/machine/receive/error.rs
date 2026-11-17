@@ -1,9 +1,21 @@
 //! Classifies shared durable-store, interpretation and evidence failures.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
+    /// The host could not represent the storage request deadline.
+    #[error(transparent)]
+    Deadline(#[from] crate::DeadlineError),
     /// A durable store operation failed before its promised completion.
     #[error(transparent)]
-    Store(#[from] analyte_store::Error),
+    Store(#[from] analyte_store::IntakeError),
+    /// Order or poll lifecycle storage failed.
+    #[error(transparent)]
+    Order(#[from] analyte_store::OrderError),
+    /// Protected evidence lookup failed.
+    #[error(transparent)]
+    Evidence(#[from] analyte_store::OperatorError),
+    /// Stored interpretations could not be reconciled.
+    #[error(transparent)]
+    Reconciliation(#[from] analyte_store::ReconciliationError),
     /// Receipt retention or interpretation failed at the intake boundary.
     #[error(transparent)]
     Intake(Box<crate::IntakeError>),
@@ -39,7 +51,7 @@ pub(crate) enum Error {
     IntakeWait(#[from] crate::machine::custody::StoreWaitError<crate::IntakeError>),
     /// A durable store request failed or exceeded its custody budget.
     #[error(transparent)]
-    StoreWait(#[from] crate::machine::custody::StoreWaitError<analyte_store::Error>),
+    StoreWait(#[from] crate::machine::custody::StoreWaitError<analyte_store::IntakeError>),
 }
 
 impl From<crate::IntakeError> for Error {
@@ -63,10 +75,33 @@ impl From<crate::machine::interpretation::ReadError> for Error {
 // Rust does not chain From conversions through an enum's typed custody field.
 macro_rules! forward {
     ($target:ty, $wrap:expr) => {
-        analyte_store::forward_command_errors!($target);
-
-        impl From<analyte_store::Error> for $target {
-            fn from(error: analyte_store::Error) -> Self {
+        impl From<crate::DeadlineError> for $target {
+            fn from(error: crate::DeadlineError) -> Self {
+                ($wrap)(crate::machine::receive::error::Error::from(error))
+            }
+        }
+        impl From<analyte_store::IntakeError> for $target {
+            fn from(error: analyte_store::IntakeError) -> Self {
+                ($wrap)(crate::machine::receive::error::Error::from(error))
+            }
+        }
+        impl From<analyte_store::OrderError> for $target {
+            fn from(error: analyte_store::OrderError) -> Self {
+                ($wrap)(crate::machine::receive::error::Error::from(error))
+            }
+        }
+        impl From<analyte_store::OperatorError> for $target {
+            fn from(error: analyte_store::OperatorError) -> Self {
+                ($wrap)(crate::machine::receive::error::Error::from(error))
+            }
+        }
+        impl From<analyte_store::ReconciliationError> for $target {
+            fn from(error: analyte_store::ReconciliationError) -> Self {
+                ($wrap)(crate::machine::receive::error::Error::from(error))
+            }
+        }
+        impl From<analyte_store::WorkerError> for $target {
+            fn from(error: analyte_store::WorkerError) -> Self {
                 ($wrap)(crate::machine::receive::error::Error::from(error))
             }
         }
@@ -125,8 +160,10 @@ macro_rules! forward {
                 ($wrap)(crate::machine::receive::error::Error::from(error))
             }
         }
-        impl From<crate::machine::custody::StoreWaitError<analyte_store::Error>> for $target {
-            fn from(error: crate::machine::custody::StoreWaitError<analyte_store::Error>) -> Self {
+        impl From<crate::machine::custody::StoreWaitError<analyte_store::IntakeError>> for $target {
+            fn from(
+                error: crate::machine::custody::StoreWaitError<analyte_store::IntakeError>,
+            ) -> Self {
                 ($wrap)(crate::machine::receive::error::Error::from(error))
             }
         }
@@ -178,4 +215,8 @@ macro_rules! session_boundary {
 }
 pub(crate) use session_boundary;
 
-analyte_store::forward_command_errors!(Error);
+impl From<analyte_store::WorkerError> for Error {
+    fn from(error: analyte_store::WorkerError) -> Self {
+        Self::Store(error.into())
+    }
+}

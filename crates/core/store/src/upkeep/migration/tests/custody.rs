@@ -201,7 +201,7 @@ fn adr0003_v9_missing_custody_machine_refuses_migration_without_guessing_or_drop
     drop(db);
     assert!(matches!(
         open(&path),
-        Err(Error::MigrationEvidence {
+        Err(MaintenanceError::MigrationEvidence {
             table: "parked",
             row: 1,
             ..

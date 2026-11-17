@@ -35,7 +35,7 @@ fn plan11_empty_database_migrates_and_newer_schema_is_refused() -> TestResult {
         .pragma_update(None, "user_version", SCHEMA_VERSION + 1)?;
     drop(store);
     assert!(
-        matches!(open(&path), Err(Error::SchemaTooNew(version)) if version == SCHEMA_VERSION + 1)
+        matches!(open(&path), Err(MaintenanceError::SchemaTooNew(version)) if version == SCHEMA_VERSION + 1)
     );
     Ok(())
 }
