@@ -28,7 +28,7 @@ fn mutation_adr0003_rule8_order_clock_allows_equal_time_and_refuses_regression_a
             event,
         );
         if now == 100 {
-            assert!(matches!(result, Err(Error::Conflict)));
+            assert!(matches!(result, Err(OrderError::Conflict)));
             let retained = store.machine_order(&key)?.ok_or("missing reservation")?;
             assert_eq!(retained.state, OrderState::Sending);
             assert_eq!(retained.updated_at, 101);
@@ -114,7 +114,7 @@ fn mutation_adr0003_rule8_order_reconciliation_checks_target_and_outcome_indepen
         };
         assert!(matches!(
             store.reconcile_order(record.id, outcome, &audit, event),
-            Err(Error::InvalidOrderInput)
+            Err(OrderError::InvalidOrderInput)
         ));
         assert_eq!(
             store.machine_order(&key)?.ok_or("missing order")?.state,
@@ -206,7 +206,7 @@ fn mutation_adr0003_rule8_order_history_and_operator_audit_bounds_are_inclusive(
                 ReserveOptions::default(),
             )?
             .map_err(std::io::Error::other)?;
-        let build = |order: &MachineOrder| -> Result<OrderEventDelivery, Error> {
+        let build = |order: &MachineOrder| -> Result<OrderEventDelivery, OrderError> {
             let mut value = event(order)?;
             value.payload = b"small event".to_vec();
             Ok(value)
@@ -237,7 +237,7 @@ fn mutation_adr0003_rule8_order_history_and_operator_audit_bounds_are_inclusive(
             } else {
                 assert!(matches!(
                     result,
-                    Err(Error::LimitExceeded {
+                    Err(OrderError::LimitExceeded {
                         what: "record_bytes"
                     })
                 ));
@@ -272,7 +272,7 @@ fn mutation_adr0003_rule8_order_history_and_operator_audit_bounds_are_inclusive(
             } else {
                 assert!(matches!(
                     result,
-                    Err(Error::LimitExceeded {
+                    Err(OrderError::LimitExceeded {
                         what: "record_bytes"
                     })
                 ));
@@ -332,10 +332,10 @@ fn mutation_adr0003_rule8_order_event_checks_each_bound_and_provenance_field_ato
                 ];
                 match case {
                     "destination" => {
-                        value.destination = Identifier::new("wrong").map_err(Error::Text)?;
+                        value.destination = Identifier::new("wrong").map_err(OrderError::Text)?;
                     }
                     "order" => {
-                        value.order_id = Identifier::new("wrong").map_err(Error::Text)?;
+                        value.order_id = Identifier::new("wrong").map_err(OrderError::Text)?;
                     }
                     "version" => value.contract_version = 2,
                     "valid" | "large-one" | "large-two" => {}
@@ -352,7 +352,7 @@ fn mutation_adr0003_rule8_order_event_checks_each_bound_and_provenance_field_ato
             );
         } else {
             assert!(
-                matches!(result, Err(Error::InvalidOrderInput)),
+                matches!(result, Err(OrderError::InvalidOrderInput)),
                 "case {case}"
             );
             let retained = store.machine_order(&key)?.ok_or("missing order")?;
@@ -399,7 +399,7 @@ fn mutation_adr0003_rule8_order_command_refuses_empty_bytes_and_keeps_original_a
         .map_err(std::io::Error::other)?;
     assert!(matches!(
         store.retain_order_command(&key, &owner, vec![]),
-        Err(Error::InvalidOrderInput)
+        Err(OrderError::InvalidOrderInput)
     ));
     assert!(
         store
@@ -411,7 +411,7 @@ fn mutation_adr0003_rule8_order_command_refuses_empty_bytes_and_keeps_original_a
     store.retain_order_command(&key, &owner, b"exact command\0bytes".to_vec())?;
     assert!(matches!(
         store.retain_order_command(&key, &owner, b"different".to_vec()),
-        Err(Error::Conflict)
+        Err(OrderError::Conflict)
     ));
     drop(store);
     let mut store = open(&path)?;

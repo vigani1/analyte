@@ -221,7 +221,7 @@ impl Connection {
                 },
                 move |record| {
                     render(&[(&command, record)], law::WorkAction::New, options)
-                        .map_err(|error| analyte_store::Error::DeliveryBuild(error.into()))?;
+                        .map_err(|error| analyte_store::OrderError::DeliveryBuild(error.into()))?;
                     Ok(command)
                 },
             )
@@ -235,7 +235,7 @@ impl Connection {
             let owner = self.owner.clone();
             store
                 .request(until, move |store| {
-                    store.retain_order_command(&identity, &owner, bytes)
+                    Ok(store.retain_order_command(&identity, &owner, bytes)?)
                 })
                 .await?;
             prepared.push((reserved.1, reserved.0));

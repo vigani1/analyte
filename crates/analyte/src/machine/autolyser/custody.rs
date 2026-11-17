@@ -58,7 +58,7 @@ pub(super) async fn reserve(store: &Handle, machine: &Machine) -> Result<PollInt
     )?;
     Ok(store
         .request(deadline()?, move |store| {
-            store.begin_poll_intent(&machine, &reason)
+            Ok(store.begin_poll_intent(&machine, &reason)?)
         })
         .await?)
 }
@@ -78,9 +78,9 @@ pub(super) async fn uncertain(
         )?;
         store
             .request(deadline()?, move |store| {
-                store
+                Ok(store
                     .record_poll_outcome(id, PollOutcome::Uncertain, &audit)
-                    .map(|_| ())
+                    .map(|_| ())?)
             })
             .await?;
     }
@@ -101,9 +101,9 @@ pub(super) async fn complete(
         )?;
         let state = store
             .request(deadline()?, move |store| {
-                store
+                Ok(store
                     .record_poll_outcome(id, PollOutcome::Confirmed, &audit)
-                    .map(|intent| intent.state)
+                    .map(|intent| intent.state)?)
             })
             .await?;
         match state {

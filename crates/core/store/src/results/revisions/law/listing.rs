@@ -32,7 +32,7 @@ impl Store {
     /// # Errors
     /// Reports missing, corrupt or purged retained work.
     pub fn machine_order_by_id(&self, id: i64) -> Result<MachineOrder, Error> {
-        crate::machine_orders::load(&self.db, id)
+        Ok(crate::machine_orders::load(&self.db, id)?)
     }
 
     /// Counts distinct analyzer-cancelled AWOSs without exposing source text.

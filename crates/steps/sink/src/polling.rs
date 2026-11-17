@@ -50,7 +50,7 @@ impl<'a> Poller<'a> {
                 let id = self.destination.id.clone();
                 self.store
                     .request(deadline(self.destination.limits.store_timeout)?, move |s| {
-                        s.reset_orders(&id)
+                        Ok(s.reset_orders(&id)?)
                     })
                     .await?;
                 return Err(Error::PollStatus(410));
@@ -76,7 +76,7 @@ impl<'a> Poller<'a> {
             };
             self.store
                 .request(deadline(self.destination.limits.store_timeout)?, move |s| {
-                    s.order_page(&page)
+                    Ok(s.order_page(&page)?)
                 })
                 .await?;
             if complete {

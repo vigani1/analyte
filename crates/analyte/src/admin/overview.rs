@@ -149,11 +149,11 @@ async fn render_uncertain_orders(
         let page = state
             .store
             .request(until, move |store| {
-                store.machine_orders(&MachineOrderFilter {
+                Ok(store.machine_orders(&MachineOrderFilter {
                     after,
                     machine: None,
                     state: Some(OrderState::Uncertain),
-                })
+                })?)
             })
             .await?;
         let Some(last) = page.last() else {

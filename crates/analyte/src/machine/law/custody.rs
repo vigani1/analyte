@@ -130,8 +130,8 @@ async fn retained_work(
     let record = store
         .request(deadline()?, move |s| {
             match s.machine_order_by_placer(&target, &lookup) {
-                Err(analyte_store::Error::Conflict) => Ok(None),
-                other => other,
+                Err(analyte_store::OrderError::Conflict) => Ok(None),
+                other => Ok(other?),
             }
         })
         .await?;

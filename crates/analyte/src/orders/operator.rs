@@ -102,11 +102,11 @@ pub async fn run(program: &Program, actor: Identifier, command: Command) -> Resu
             }
             Command::List { after, machine } => {
                 store.audit(&audit)?;
-                store.machine_orders(&MachineOrderFilter {
+                Ok(store.machine_orders(&MachineOrderFilter {
                     after,
                     machine,
                     state: None,
-                })
+                })?)
             }
             Command::Reconcile { id, outcome, .. } => {
                 let reason = audit.reason.as_str().to_owned();

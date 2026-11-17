@@ -74,7 +74,7 @@ fn adr0003_typed_ownership_ignores_reason_prefixes_and_cancel_replay_keeps_full_
     );
     assert!(matches!(
         store.request_order_cancel(record.id, version, 104, &owner, 30, event),
-        Err(Error::Conflict)
+        Err(OrderError::Conflict)
     ));
     drop(store);
     let store = open(&path)?;
@@ -126,12 +126,12 @@ fn adr0004_cancel_expiry_version_trust_and_builder_failure_never_reserve() -> Te
                     freshness: 30,
                 },
                 SourceText::new("mapping rejected")?,
-                |_| Err(Error::InvalidOrderInput),
+                |_| Err(OrderError::InvalidOrderInput),
             )
             .map(|_| ())
             .expect_err("input must be refused");
         assert!(
-            matches!(&refusal, Error::InvalidOrderInput),
+            matches!(&refusal, OrderError::InvalidOrderInput),
             "unexpected refusal: {refusal:?}"
         );
     }
@@ -417,7 +417,7 @@ fn mutation_adr0003_rule8_order_cancel_version_and_phase_are_rechecked_independe
                 30,
                 event
             ),
-            Err(Error::Conflict)
+            Err(OrderError::Conflict)
         ));
         let retained = store.machine_order(&key)?.ok_or("missing order")?;
         assert_eq!(retained.state, OrderState::Accepted);

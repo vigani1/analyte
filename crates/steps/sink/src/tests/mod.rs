@@ -414,12 +414,12 @@ async fn check_cache_changes(
     poller.poll_once().await?;
     let cached = store
         .request(until()?, |s| {
-            s.orders(
+            Ok(s.orders(
                 &Identifier::new("app").map_err(analyte_store::Error::Text)?,
                 &SampleId::new("000Ab12").map_err(|_| analyte_store::Error::InvalidHostInput)?,
                 jiff::Timestamp::now().as_second(),
                 30,
-            )
+            )?)
         })
         .await?;
     let analyte_store::Lookup::Orders(orders) = cached else {
@@ -440,13 +440,13 @@ async fn check_cache_changes(
     assert_ne!(first, next);
     store
         .request(until()?, |s| {
-            s.order_page(&analyte_store::OrderPage {
+            Ok(s.order_page(&analyte_store::OrderPage {
                 destination: Identifier::new("app").map_err(analyte_store::Error::Text)?,
                 cursor: Identifier::new("invalid-cursor").map_err(analyte_store::Error::Text)?,
                 complete: true,
                 polled: jiff::Timestamp::now().as_second(),
                 orders: vec![],
-            })
+            })?)
         })
         .await?;
     assert!(matches!(

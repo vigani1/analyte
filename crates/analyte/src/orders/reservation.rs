@@ -29,11 +29,11 @@ pub(super) async fn reject(
 ) -> Result<Result<MachineOrder, SendRefusal>, Error> {
     Ok(store
         .request(until, move |store| {
-            store.reject_unsent(
+            Ok(store.reject_unsent(
                 &candidate(&identity, version, freshness),
                 reason,
                 super::event,
-            )
+            )?)
         })
         .await?)
 }
@@ -50,14 +50,14 @@ pub(super) async fn cancel(
 ) -> Result<MachineOrder, analyte_store::Error> {
     store
         .request(until, move |store| {
-            store.request_order_cancel(
+            Ok(store.request_order_cancel(
                 id,
                 version,
                 jiff::Timestamp::now().as_second(),
                 &owner,
                 freshness,
                 super::event,
-            )
+            )?)
         })
         .await
 }
@@ -79,7 +79,7 @@ pub(super) async fn admit<T: Send + 'static>(
     store: &Handle,
     until: Instant,
     admission: Admission,
-    encode: impl FnOnce(&MachineOrder) -> Result<T, analyte_store::Error> + Send + 'static,
+    encode: impl FnOnce(&MachineOrder) -> Result<T, analyte_store::OrderError> + Send + 'static,
 ) -> Result<Result<(MachineOrder, T), SendRefusal>, analyte_store::Error> {
     store
         .request(until, move |store| {
@@ -97,7 +97,7 @@ pub(super) async fn admit<T: Send + 'static>(
                     prepare: Some(&mut |record| {
                         rendered = Some(encode
                             .take()
-                            .ok_or(analyte_store::Error::InvalidHostInput)?(
+                            .ok_or(analyte_store::OrderError::PreflightConsumed)?(
                             record
                         )?);
                         Ok(())
@@ -107,7 +107,7 @@ pub(super) async fn admit<T: Send + 'static>(
             match reserved {
                 Ok(record) => Ok(Ok((
                     record,
-                    rendered.ok_or(analyte_store::Error::InvalidHostInput)?,
+                    rendered.ok_or(analyte_store::OrderError::PreflightMissing)?,
                 ))),
                 Err(refusal) => Ok(Err(refusal)),
             }
@@ -141,7 +141,7 @@ pub(super) async fn cancellations(
             {
                 return Ok(Vec::new());
             }
-            store.cancel_candidates(&destination, &target, now, freshness)
+            Ok(store.cancel_candidates(&destination, &target, now, freshness)?)
         })
         .await?)
 }

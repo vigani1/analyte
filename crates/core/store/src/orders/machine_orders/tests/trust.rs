@@ -1,5 +1,6 @@
 //! Tests machine order provenance and ownership checks.
 use super::*;
+use crate::OrderError as Error;
 
 #[test]
 fn law_tf2b_3_27_4_sample_and_pending_share_freshness_generation_and_restore_trust() -> TestResult {
@@ -107,7 +108,7 @@ fn plan11_rule2_restore_keeps_current_and_rule8_requires_audited_resume() -> Tes
             &audit,
             Instant::now() + test_support::HANG_GUARD
         ),
-        Err(Error::InUse)
+        Err(crate::Error::InUse)
     ));
     drop(store);
     let kept = Store::restore(
@@ -262,7 +263,7 @@ fn adr0003_hl7_item_preflight_failure_is_atomic_and_restore_guard_runs_first() -
                 }),
             }
         ),
-        Err(Error::InvalidOrderInput)
+        Err(OrderError::InvalidOrderInput)
     ));
     for table in [
         "machine_orders",
@@ -296,7 +297,9 @@ fn adr0003_hl7_item_preflight_failure_is_atomic_and_restore_guard_runs_first() -
                     max_identity_bytes: 18
                 },
                 owner: Some(&owner),
-                prepare: Some(&mut |_| -> Result<(), Error> { Err(Error::InvalidOrderInput) }),
+                prepare: Some(&mut |_| -> Result<(), OrderError> {
+                    Err(OrderError::InvalidOrderInput)
+                }),
             }
         )?,
         Err(SendRefusal::RestoreUnreconciled)

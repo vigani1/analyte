@@ -129,7 +129,7 @@ fn adr0004_reserve_transition_outbox_and_restart_never_resend() -> TestResult {
             .map(|_| ())
             .expect_err("input must be refused");
         assert!(
-            matches!(&refusal, Error::OrderTransition(_)),
+            matches!(&refusal, OrderError::OrderTransition(_)),
             "unexpected refusal: {refusal:?}"
         );
     }
@@ -322,7 +322,7 @@ fn adr0003_identity_overflow_duplicate_unknown_and_illegal_outcomes_roll_back() 
                     ..Default::default()
                 }
             ),
-            Err(Error::ItemIdentityTooLong)
+            Err(OrderError::ItemIdentityTooLong)
         ));
         assert_eq!(
             store
@@ -345,7 +345,7 @@ fn adr0003_identity_overflow_duplicate_unknown_and_illegal_outcomes_roll_back() 
                 .map(|_| ())
                 .expect_err("input must be refused");
             assert!(
-                matches!(&refusal, Error::InvalidOrderInput),
+                matches!(&refusal, OrderError::InvalidOrderInput),
                 "unexpected refusal: {refusal:?}"
             );
         }
@@ -365,7 +365,7 @@ fn adr0003_identity_overflow_duplicate_unknown_and_illegal_outcomes_roll_back() 
             .map(|_| ())
             .expect_err("input must be refused");
         assert!(
-            matches!(&refusal, Error::OrderTransition(_)),
+            matches!(&refusal, OrderError::OrderTransition(_)),
             "unexpected refusal: {refusal:?}"
         );
     }
@@ -489,7 +489,7 @@ fn law_tf2b_b7_6_original_command_is_owned_immutable_and_survives_restart() -> T
             .map(|_| ())
             .expect_err("input must be refused");
         assert!(
-            matches!(&refusal, Error::Conflict),
+            matches!(&refusal, OrderError::Conflict),
             "unexpected refusal: {refusal:?}"
         );
     }
@@ -500,7 +500,7 @@ fn law_tf2b_b7_6_original_command_is_owned_immutable_and_survives_restart() -> T
             .map(|_| ())
             .expect_err("input must be refused");
         assert!(
-            matches!(&refusal, Error::Conflict),
+            matches!(&refusal, OrderError::Conflict),
             "unexpected refusal: {refusal:?}"
         );
     }

@@ -106,11 +106,13 @@ fn adr0008_every_item_aggregation_row_is_atomic_and_emits_one_event() -> TestRes
             .collect::<Result<Vec<_>, analyte_model::TextError>>()?;
         {
             let refusal = store
-                .finish_order_items(record.id, &outcomes, 102, |_| Err(Error::InvalidOrderInput))
+                .finish_order_items(record.id, &outcomes, 102, |_| {
+                    Err(OrderError::InvalidOrderInput)
+                })
                 .map(|_| ())
                 .expect_err("input must be refused");
             assert!(
-                matches!(&refusal, Error::InvalidOrderInput),
+                matches!(&refusal, OrderError::InvalidOrderInput),
                 "unexpected refusal: {refusal:?}"
             );
         }
@@ -188,10 +190,12 @@ fn adr0003_rule8_operator_reconciliation_checks_items_and_rolls_back() -> TestRe
     };
     assert!(matches!(
         store.reconcile_order(record.id, OrderState::Accepted, &audit, event),
-        Err(Error::OrderTransition(analyte_model::TransitionError {
-            from: OrderState::Rejected,
-            to: OrderState::Accepted
-        }))
+        Err(OrderError::OrderTransition(
+            analyte_model::TransitionError {
+                from: OrderState::Rejected,
+                to: OrderState::Accepted
+            }
+        ))
     ));
     let retained = store.machine_order(&record.key)?.ok_or("missing order")?;
     assert_eq!(
@@ -300,7 +304,7 @@ fn mutation_adr0003_rule8_order_item_limits_keep_exact_coverage_and_accept_the_h
             ));
         } else {
             assert!(
-                matches!(result, Err(Error::InvalidOrderInput)),
+                matches!(result, Err(OrderError::InvalidOrderInput)),
                 "case {count}/{shape}"
             );
             assert!(store.machine_order(&key)?.is_none());
@@ -338,7 +342,7 @@ fn mutation_adr0003_rule8_order_item_completion_has_its_own_clock_and_exchange_s
                 102,
                 event
             ),
-            Err(Error::Conflict)
+            Err(OrderError::Conflict)
         ));
         let outcomes = [1, 2]
             .into_iter()
@@ -352,7 +356,7 @@ fn mutation_adr0003_rule8_order_item_completion_has_its_own_clock_and_exchange_s
             .collect::<Result<Vec<_>, analyte_model::TextError>>()?;
         let result = store.finish_order_items(record.id, &outcomes, now, event);
         if now == 100 {
-            assert!(matches!(result, Err(Error::InvalidOrderInput)));
+            assert!(matches!(result, Err(OrderError::InvalidOrderInput)));
             assert_eq!(
                 store
                     .machine_order(&record.key)?
@@ -382,7 +386,7 @@ fn mutation_adr0003_rule8_order_item_completion_has_its_own_clock_and_exchange_s
             }];
             assert!(matches!(
                 store.finish_order_items(record.id, &late, 103, event),
-                Err(Error::InvalidOrderInput)
+                Err(OrderError::InvalidOrderInput)
             ));
             assert_eq!(
                 store
@@ -421,7 +425,7 @@ fn mutation_adr0003_rule8_order_item_outcomes_remain_bound_to_their_exact_index(
             .collect::<Result<Vec<_>, analyte_model::TextError>>()?;
         assert!(matches!(
             store.finish_order_items(record.id, &outcomes, 102, event),
-            Err(Error::InvalidOrderInput)
+            Err(OrderError::InvalidOrderInput)
         ));
         assert_eq!(
             store

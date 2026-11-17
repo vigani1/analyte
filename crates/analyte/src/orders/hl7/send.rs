@@ -162,7 +162,7 @@ async fn next_work(
             },
             move |record| {
                 build(&command, record, false)
-                    .map_err(|error| analyte_store::Error::DeliveryBuild(error.into()))
+                    .map_err(|error| analyte_store::OrderError::DeliveryBuild(error.into()))
             },
         )
         .await;

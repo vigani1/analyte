@@ -143,10 +143,10 @@ impl Store {
     /// # Errors
     /// Reports database failures; unknown evidence never authorizes a command.
     pub fn restore_unreconciled(&self) -> Result<bool, Error> {
-        Self::restore_paused(&self.db)
+        Ok(Self::restore_paused(&self.db)?)
     }
 
-    pub(crate) fn restore_paused(db: &Connection) -> Result<bool, Error> {
+    pub(crate) fn restore_paused(db: &Connection) -> Result<bool, crate::StorageError> {
         let action: Option<String> = db.query_row("SELECT json_extract(evidence,'$.action') FROM audit WHERE json_extract(evidence,'$.action') IN ('store-restore','orders-resume-after-restore') ORDER BY sequence DESC LIMIT 1", [], |r| r.get(0)).optional()?;
         Ok(action.as_deref() == Some("store-restore"))
     }

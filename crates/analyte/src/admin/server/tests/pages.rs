@@ -121,7 +121,7 @@ async fn seed_pages(store: &analyte_store::Handle) -> Result<(ReceiptId, i64, Re
             store.order_page(&OrderPage {destination: id("app")?, cursor: id(name)?, complete: true, polled: 100, orders: vec![CachedOrder {id: id(name)?, sample: SampleId::new("<script>sample</script>").map_err(|_| analyte_store::Error::InvalidHostInput)?, document: serde_json::json!({"id": name,"version":1,"state":"requested","sample_id":"<script>sample</script>","tests":[{"namespace":"local","value":"<test>"}],"priority":"routine","target_analyzers":null,"expires_at":null,"tombstone":false}).to_string(), tombstone: false, expiry: 200}]})?;
             let key = analyte_store::MachineOrderKey {destination: id("app")?, order: id(name)?, machine: id("machine")?};
             let record = store.reserve_send(&analyte_store::OrderReservation { identity: &key, version: std::num::NonZeroU64::MIN, now: 101, freshness: 30 }, analyte_store::ReserveOptions::default())?.map_err(|_| analyte_store::Error::Conflict)?;
-            store.transition_order(record.id, OrderState::Uncertain, analyte_model::SourceText::new("timeout").map_err(analyte_store::Error::Text)?, 102, |order| Ok(analyte_store::OrderEventDelivery {id: analyte_model::DeliveryId::try_from(uuid::Uuid::now_v7()).map_err(|_| analyte_store::Error::InvalidHostInput)?, destination: order.key.destination.clone(), order_id: order.key.order.clone(), payload: b"not a raw view".to_vec(), contract_version: 1}))?;
+            store.transition_order(record.id, OrderState::Uncertain, analyte_model::SourceText::new("timeout").map_err(analyte_store::Error::Text)?, 102, |order| Ok(analyte_store::OrderEventDelivery {id: analyte_model::DeliveryId::try_from(uuid::Uuid::now_v7()).map_err(analyte_store::OrderError::Identity)?, destination: order.key.destination.clone(), order_id: order.key.order.clone(), payload: b"not a raw view".to_vec(), contract_version: 1}))?;
             if let Some((receipt, parked)) = first {
                 store.audit(&Audit {actor: id("operator")?, action: id("store-restore")?, targets: Vec::new(), time: 103, reason: Reason::new("synthetic restore").map_err(analyte_store::Error::Text)?})?;
                 return Ok((receipt, parked, receipt_id));
@@ -379,13 +379,13 @@ async fn assert_cache_version_stays_distinct(
                 .ok_or(analyte_store::Error::InvalidHostInput)? =
                 serde_json::json!([{"namespace":"local","value":"<newtest>"}]);
             cached.document = serde_json::to_string(&document)?;
-            s.order_page(&OrderPage {
+            Ok(s.order_page(&OrderPage {
                 destination,
                 cursor: Identifier::new("new").map_err(analyte_store::Error::Text)?,
                 complete: true,
                 polled: 200,
                 orders: vec![cached],
-            })
+            })?)
         })
         .await?;
     let mismatch = request(host, "/orders", auth, None).await?;

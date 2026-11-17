@@ -6,3 +6,6 @@ pub use storage::StorageError;
 
 mod delivery;
 pub use delivery::DeliveryError;
+
+mod orders;
+pub use orders::OrderError;

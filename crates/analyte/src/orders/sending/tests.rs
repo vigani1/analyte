@@ -88,7 +88,7 @@ async fn rule8_sending_is_internal_and_only_interrupted_transfer_recovers_uncert
     assert_eq!(completed.state, OrderState::Sending);
     assert_eq!(interrupted.state, OrderState::Sending);
     assert!(
-        matches!(super::super::event(&interrupted),Err(analyte_store::Error::DeliveryBuild(error)) if matches!(error.downcast_ref::<analyte_contract::DocumentError>(),Some(analyte_contract::DocumentError::InternalOrderState)))
+        matches!(super::super::event(&interrupted),Err(analyte_store::OrderError::DeliveryBuild(error)) if matches!(error.downcast_ref::<analyte_contract::DocumentError>(),Some(analyte_contract::DocumentError::InternalOrderState)))
     );
     finished(&store, &completed, analyte_dialog::astm::End::Normal).await?;
     store.shutdown(deadline()?).await?;

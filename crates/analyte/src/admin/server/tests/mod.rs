@@ -366,7 +366,7 @@ fn seed_overview_order(
         |order| {
             Ok(analyte_store::OrderEventDelivery {
                 id: analyte_model::DeliveryId::try_from(uuid::Uuid::now_v7())
-                    .map_err(|_| analyte_store::Error::InvalidHostInput)?,
+                    .map_err(analyte_store::OrderError::Identity)?,
                 destination: order.key.destination.clone(),
                 order_id: order.key.order.clone(),
                 payload: b"protected-payload-never-log".to_vec(),

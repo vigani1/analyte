@@ -269,7 +269,7 @@ fn palm_tf2b_c8_adr0003_analyzer_ca_blocks_new_cancel_without_clearing_app_inten
             30,
             event
         ),
-        Err(Error::AnalyzerCancelled)
+        Err(OrderError::AnalyzerCancelled)
     ));
     assert!(
         store

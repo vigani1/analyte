@@ -211,7 +211,7 @@ fn adr0003_poll_admission_outcome_and_operator_resolution_roll_back_all_evidence
             .map(|_| ())
             .expect_err("input must be refused");
         assert!(
-            matches!(&refusal, Error::ConstraintViolation(_)),
+            matches!(&refusal, crate::Error::ConstraintViolation(_)),
             "unexpected refusal: {refusal:?}"
         );
     }
@@ -242,7 +242,7 @@ fn adr0003_poll_admission_outcome_and_operator_resolution_roll_back_all_evidence
     assert_eq!(store.audits(0)?.len(), 1);
     assert!(matches!(
         store.resolve(parked, &evidence),
-        Err(Error::Conflict)
+        Err(crate::Error::Conflict)
     ));
     Ok(())
 }
@@ -286,7 +286,7 @@ fn adr0003_poll_capacity_refusal_never_admits_or_reconciles_a_cursor_movement() 
     }
     assert!(matches!(
         store.resolve(parked, &audit),
-        Err(Error::Capacity)
+        Err(crate::Error::Capacity)
     ));
     assert_eq!(
         store
@@ -393,7 +393,7 @@ fn mutation_adr0003_poll_reconciliation_preserves_the_disk_reserve_for_its_audit
     }
     assert!(matches!(
         store.resolve(parked, &evidence),
-        Err(Error::Capacity)
+        Err(crate::Error::Capacity)
     ));
     assert_eq!(
         store

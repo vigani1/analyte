@@ -20,7 +20,7 @@ pub(crate) async fn reserve_candidates(
         let owner = owner.clone();
         let reserved = store
             .request(until, move |store| {
-                store.reserve_send(
+                Ok(store.reserve_send(
                     &super::reservation::candidate(
                         &candidate.identity,
                         candidate.version,
@@ -30,7 +30,7 @@ pub(crate) async fn reserve_candidates(
                         owner: owner.as_ref(),
                         ..Default::default()
                     },
-                )
+                )?)
             })
             .await?;
         match reserved {
@@ -110,10 +110,10 @@ pub(crate) async fn next(
         };
         let reserved = store
             .request(deadline()?, move |store| {
-                store.reserve_send(
+                Ok(store.reserve_send(
                     &super::reservation::candidate(&identity, version, freshness),
                     analyte_store::ReserveOptions::default(),
-                )
+                )?)
             })
             .await?;
         if let Ok(order) = reserved {
@@ -144,13 +144,13 @@ pub(crate) async fn candidate_page(
             {
                 return Ok(Vec::new());
             }
-            store.order_candidates(
+            Ok(store.order_candidates(
                 &destination,
                 &machine_id,
                 &cursor,
                 jiff::Timestamp::now().as_second(),
                 freshness,
-            )
+            )?)
         })
         .await?;
     if candidates.is_empty() {
@@ -203,13 +203,13 @@ pub(crate) async fn complete(
     let code = SourceText::new(code)?;
     store
         .request(deadline()?, move |store| {
-            store.transition_order(
+            Ok(store.transition_order(
                 id,
                 state,
                 code,
                 jiff::Timestamp::now().as_second(),
                 super::event,
-            )
+            )?)
         })
         .await?;
     Ok(())
@@ -224,11 +224,11 @@ pub(crate) async fn recover(store: &Handle) -> Result<(), Error> {
         loop {
             let orders = store
                 .request(until, move |store| {
-                    store.machine_orders(&analyte_store::MachineOrderFilter {
+                    Ok(store.machine_orders(&analyte_store::MachineOrderFilter {
                         after,
                         machine: None,
                         state: Some(state),
-                    })
+                    })?)
                 })
                 .await?;
             if orders.is_empty() {
@@ -239,14 +239,14 @@ pub(crate) async fn recover(store: &Handle) -> Result<(), Error> {
                 let id = order.id;
                 store
                     .request(until, move |store| {
-                        store.transition_order(
+                        Ok(store.transition_order(
                             id,
                             OrderState::Uncertain,
                             SourceText::new(Code::HostRestart.as_str())
                                 .map_err(analyte_store::Error::Text)?,
                             jiff::Timestamp::now().as_second(),
                             super::event,
-                        )
+                        )?)
                     })
                     .await?;
             }

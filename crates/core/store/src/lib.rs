@@ -1,7 +1,7 @@
 //! Stores durable evidence, revisions and deliveries without interpreting results or resending machine orders.
 #![forbid(unsafe_code)]
 mod errors;
-pub use errors::{DeliveryError, IntakeError, StorageError};
+pub use errors::{DeliveryError, IntakeError, OrderError, StorageError};
 mod operator;
 use operator::{alerts, parked, query};
 mod upkeep;
@@ -72,6 +72,16 @@ use std::{
 /// Recovery decisions remain distinct from ordinary database failures.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// The host invoked a single-use rendering callback more than once.
+    #[error("order preflight callback already consumed")]
+    PreflightConsumed,
+    /// Reservation completed without the required rendered command.
+    #[error("order preflight output missing")]
+    PreflightMissing,
+
+    /// The retention credential could not initialize its keyed digest.
+    #[error("retention digest key rejected")]
+    DigestKey(#[from] hmac::digest::InvalidLength),
     /// SQLite corruption retains the original cause from shared primitives.
     #[error("stored evidence is corrupt: {0}")]
     StorageCorruption(#[source] rusqlite::Error),
