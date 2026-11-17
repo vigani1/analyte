@@ -75,7 +75,7 @@ pub enum OrderError {
     /// HL7 query policy missing.
     #[error("HL7 query policy missing")]
     Hl7QueryPolicyMissing,
-    /// LAW container assigning authority outside configured SampleId binding.
+    /// LAW container assigning authority outside configured `SampleId` binding.
     #[error("LAW container assigning authority outside configured SampleId binding")]
     LawContainerAssigningAuthorityOutsideConfiguredSampleidBinding,
     /// LAW malformed query lacks recoverable correlation.

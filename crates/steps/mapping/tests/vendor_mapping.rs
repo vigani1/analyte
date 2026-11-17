@@ -64,10 +64,7 @@ fn autolyser_rev18_p186_rule5_explicit_patient_code_and_download_context_are_pre
         if accepted {
             assert!(mapped.is_ok());
         } else {
-            assert!(matches!(
-                mapped,
-                Err(OrderMappingError::Overlong("patient-id"))
-            ));
+            assert!(matches!(mapped, Err(OrderMappingError::PatientIdTooLong)));
         }
     }
     Ok(())
@@ -109,7 +106,7 @@ fn rule7_autolyser_download_refuses_missing_context_and_bounds_before_output() -
         let mapped = map_order(&input, &cfg);
         assert_eq!(mapped.is_ok(), accepted, "count {count}");
         if !accepted {
-            assert!(matches!(mapped, Err(OrderMappingError::Representation)));
+            assert!(matches!(mapped, Err(OrderMappingError::AutolyserTestCount)));
         }
     }
     let input = positioned_order()?;
@@ -177,10 +174,7 @@ fn rule7_vendor_download_reports_exact_host_identity_bounds() -> TestResult {
         if accepted {
             assert!(result.is_ok());
         } else {
-            assert!(matches!(
-                result,
-                Err(OrderMappingError::Overlong("patient-id"))
-            ));
+            assert!(matches!(result, Err(OrderMappingError::PatientIdTooLong)));
         }
     }
     for (length, accepted) in [(11, true), (12, true), (13, false)] {
@@ -190,10 +184,7 @@ fn rule7_vendor_download_reports_exact_host_identity_bounds() -> TestResult {
         if accepted {
             assert!(result.is_ok());
         } else {
-            assert!(matches!(
-                result,
-                Err(OrderMappingError::Overlong("sample-id"))
-            ));
+            assert!(matches!(result, Err(OrderMappingError::SampleIdTooLong)));
         }
     }
     Ok(())
