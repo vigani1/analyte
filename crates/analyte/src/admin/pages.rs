@@ -66,7 +66,7 @@ pub(super) fn next(html: &mut String, route: &str, after: impl std::fmt::Display
 async fn pause(state: &Context, html: &mut String) -> Result<(), Error> {
     let paused = state
         .store
-        .request(deadline(), |s| s.restore_unreconciled())
+        .request(deadline()?, |s| s.restore_unreconciled())
         .await?;
     html.push_str(if paused {
         "<p>Order sending paused after restore: true. CLI reconciliation required.</p>"
@@ -98,7 +98,7 @@ pub(super) async fn machines(
                 ));
                 html.push_str(&machine.departure_html);
                 let mut cursor = String::new();
-                let until = deadline();
+                let until = deadline()?;
                 let mut last = None;
                 let mut evidence_links = 0usize;
                 loop {
@@ -179,7 +179,7 @@ pub(super) async fn parked(
 ) -> Response {
     finish(async {
         let after = i64::try_from(cursor.after)?;
-        let (rows, last) = state.store.request(deadline(), move |s| {
+        let (rows, last) = state.store.request(deadline()?, move |s| {
             let mut html = String::new();
             let mut last = None;
             for row in s.parked(after)?.into_iter().take(PAGE) {
@@ -217,9 +217,15 @@ pub(super) async fn detail(
     Query(cursor): Query<Cursor>,
     session: Option<Extension<Arc<Session>>>,
 ) -> Response {
+    let until = match deadline() {
+        Ok(until) => until,
+        Err(error) => {
+            return (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response();
+        }
+    };
     let result = state
         .store
-        .request(deadline(), move |s| {
+        .request(until, move |s| {
             let Some(row) = s.parked_item(id)? else {
                 return Ok(None);
             };
@@ -434,7 +440,7 @@ pub(super) async fn raw(
         Ok::<_, Error>(
             state
                 .store
-                .request(deadline(), move |s| {
+                .request(deadline()?, move |s| {
                     let Some(row) = s.parked_item(id)? else {
                         return Ok(None);
                     };
@@ -509,7 +515,7 @@ pub(super) async fn orders(
 ) -> Response {
     finish(async {
         let after = i64::try_from(cursor.after)?;
-        let (rows, last) = state.store.request(deadline(), move |s| {
+        let (rows, last) = state.store.request(deadline()?, move |s| {
             let mut html = String::new();
             let mut last = None;
             for order in s.machine_orders(&MachineOrderFilter {after, machine: None, state: None})?.into_iter().take(PAGE) {

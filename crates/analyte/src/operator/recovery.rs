@@ -30,13 +30,13 @@ pub async fn reprocess(
         ReprocessTarget::Receipt(id) => (id, None),
         ReprocessTarget::Parked(id) => (
             store
-                .request(deadline(), move |s| s.parked_receipt(id))
+                .request(deadline()?, move |s| s.parked_receipt(id))
                 .await?,
             Some(id),
         ),
     };
     let metadata = store
-        .request(deadline(), move |s| {
+        .request(deadline()?, move |s| {
             s.receipt_metadata(receipt)?
                 .ok_or(analyte_store::Error::UnknownReceipt)
         })
@@ -88,7 +88,7 @@ pub async fn resend(
         reason,
     };
     store
-        .request(deadline(), move |s| {
+        .request(deadline()?, move |s| {
             s.resend_delivery(id, acknowledge_superseded, &audit)
         })
         .await?;

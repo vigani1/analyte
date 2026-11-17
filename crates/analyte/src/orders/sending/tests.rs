@@ -55,7 +55,7 @@ async fn rule8_sending_is_internal_and_only_interrupted_transfer_recovers_uncert
     let completed = completed_key.clone();
     let interrupted = interrupted_key.clone();
     let (completed, interrupted) = store
-        .request(deadline(), move |store| {
+        .request(deadline()?, move |store| {
             store.order_page(&page)?;
             let completed = store
                 .reserve_send(
@@ -92,12 +92,12 @@ async fn rule8_sending_is_internal_and_only_interrupted_transfer_recovers_uncert
         matches!(super::super::event(&interrupted),Err(analyte_store::Error::DeliveryBuild(error)) if matches!(error.downcast_ref::<analyte_contract::DocumentError>(),Some(analyte_contract::DocumentError::InternalOrderState)))
     );
     finished(&store, &completed, analyte_dialog::astm::End::Normal).await?;
-    store.shutdown(deadline()).await?;
+    store.shutdown(deadline()?).await?;
     let mut store = open(&path).await?;
     recover(&store).await?;
     recover(&store).await?;
     assert_recovered_outcomes(&store, completed_key, interrupted_key).await?;
-    store.shutdown(deadline()).await?;
+    store.shutdown(deadline()?).await?;
     Ok(())
 }
 
@@ -107,7 +107,7 @@ async fn assert_recovered_outcomes(
     interrupted_key: MachineOrderKey,
 ) -> Result<(), Error> {
     store
-        .request(deadline(), move |store| {
+        .request(deadline()?, move |store| {
             let rows = store.machine_orders(&analyte_store::MachineOrderFilter {
                 after: 0,
                 machine: None,
@@ -155,7 +155,7 @@ async fn assert_recovered_outcomes(
 async fn adr0003_cleanup_attempts_every_key_and_retains_every_failure() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("closed.db")).await?;
-    store.shutdown(deadline()).await?;
+    store.shutdown(deadline()?).await?;
     let key = MachineOrderKey {
         destination: Identifier::new("demo")?,
         order: Identifier::new("order")?,

@@ -73,7 +73,7 @@ async fn lis02_section11_adr0004_missed_deadline_is_query_error_or_silence_never
             assert!(response.is_none());
         }
     }
-    store.shutdown(crate::deadline()).await?;
+    store.shutdown(crate::deadline()?).await?;
     Ok(())
 }
 
@@ -131,7 +131,7 @@ async fn rule9_astm_all_untrusted_states_and_destination_freshness() -> Result<(
         .await?;
         let destination = crate::orders::destination(&machine);
         store
-            .request(crate::deadline(), move |s| {
+            .request(crate::deadline()?, move |s| {
                 if case != "unknown" {
                     s.order_page(&analyte_store::OrderPage {
                         destination,
@@ -176,7 +176,7 @@ async fn rule9_astm_all_untrusted_states_and_destination_freshness() -> Result<(
             "{case}"
         );
         drop(pending);
-        store.shutdown(crate::deadline()).await?;
+        store.shutdown(crate::deadline()?).await?;
     }
     Ok(())
 }

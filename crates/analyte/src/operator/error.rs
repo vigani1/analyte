@@ -51,7 +51,7 @@ pub enum Error {
     #[error(transparent)]
     Sink(#[from] analyte_sink::Error),
 }
-#[cfg(test)]
+#[cfg(all(test, feature = "test-hooks"))]
 impl Error {
     pub(super) fn downcast_ref<T: std::error::Error + 'static>(&self) -> Option<&T> {
         if let Self::Store(cause) = self {

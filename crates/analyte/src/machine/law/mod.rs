@@ -388,6 +388,10 @@ impl<'a, 'm> Host<'a, 'm> {
                 return Ok(());
             }
         }
+        #[cfg(feature = "test-hooks")]
+        if let Some(hook) = &self.machine.hooks.input_processed {
+            hook.pause(&mut self.stop).await.map_err(Error::TestHook)?;
+        }
         Ok(())
     }
     async fn finish(&mut self) -> Result<(), Error> {

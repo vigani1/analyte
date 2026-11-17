@@ -15,7 +15,6 @@ dependencies = [
 name = "analyte"
 version = "0.1.0"
 dependencies = [
- "analyte",
  "analyte-astm",
  "analyte-autolyser",
  "analyte-config",
@@ -223,8 +222,8 @@ dependencies = [
  "analyte-fixtures",
  "analyte-model",
  "analyte-receiver",
- "analyte-sink",
  "analyte-store",
+ "axum",
  "jiff",
  "proptest",
  "reqwest",

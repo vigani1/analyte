@@ -20,7 +20,7 @@ pub(crate) async fn check(
         let target = machine.id.clone();
         let lookup = placer.clone();
         let record = store
-            .request(deadline(), move |s| {
+            .request(deadline()?, move |s| {
                 match s.machine_order_by_placer(&target, &lookup) {
                     Err(analyte_store::Error::Conflict) => Ok(None),
                     other => other,

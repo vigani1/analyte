@@ -75,7 +75,7 @@ async fn exercise(definition: &str, raw: Vec<u8>) -> Result<(), Error> {
     intake::receive(&store, &intake::Connection::new(machine)?, id, raw.clone()).await?;
     assert!(!intake::interpret(&store, machine, id).await?);
     let (parked, original) = store
-        .request(deadline(), move |s| {
+        .request(deadline()?, move |s| {
             assert!(s.deliveries(0)?.is_empty());
             let parked = s
                 .parked(0)?
@@ -115,7 +115,7 @@ async fn exercise(definition: &str, raw: Vec<u8>) -> Result<(), Error> {
             .await
             .is_err()
     );
-    store.shutdown(deadline()).await?;
+    store.shutdown(deadline()?).await?;
     Ok(())
 }
 
@@ -128,7 +128,7 @@ async fn assert_repeated_failure_stays_parked(
     // Repeated failure appends a version and new reason, leaving the original item open.
     reprocess(store, machine, action(id, Some(parked))?).await?;
     store
-        .request(deadline(), move |s| {
+        .request(deadline()?, move |s| {
             assert!(
                 s.parked_item(parked)?
                     .ok_or(analyte_store::Error::Corruption)?
@@ -151,7 +151,7 @@ async fn assert_repair_resolves_original(
 ) -> Result<(), Error> {
     let original_check = original;
     store
-        .request(deadline(), move |s| {
+        .request(deadline()?, move |s| {
             assert_eq!(
                 serde_json::to_string(
                     &s.interpretation(id, 1)?
@@ -197,7 +197,7 @@ async fn assert_retransmission_and_conflict(
     let commit = reprocess(store, machine, action(id, None)?).await?;
     assert_eq!(commit.outcomes, vec![RevisionOutcome::Conflict]);
     store
-        .request(deadline(), move |s| {
+        .request(deadline()?, move |s| {
             let receipt = s.receipt(id)?.ok_or(analyte_store::Error::Corruption)?;
             assert_eq!(receipt.raw, raw);
             assert_eq!(
@@ -295,7 +295,7 @@ async fn adr0003_rule3_effective_configs_have_distinct_recorded_versions() -> Re
     let old_digest = original.snapshot.digest();
     let new_digest = current.snapshot.digest();
     store
-        .request(deadline(), move |s| {
+        .request(deadline()?, move |s| {
             let receipt = s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)?;
             let first = s
                 .interpretation(id, 1)?
@@ -334,7 +334,7 @@ async fn adr0003_rule3_effective_configs_have_distinct_recorded_versions() -> Re
             Ok(())
         })
         .await?;
-    store.shutdown(deadline()).await?;
+    store.shutdown(deadline()?).await?;
     Ok(())
 }
 
@@ -391,7 +391,7 @@ async fn assert_vendor_receipt_stays_parked(
     let id = ReceiptId::new();
     intake::receive(&store, &intake::Connection::new(machine)?, id, raw.clone()).await?;
     assert!(!intake::interpret(&store, machine, id).await?);
-    let parked = store.request(deadline(), move |s| {
+    let parked = store.request(deadline()?, move |s| {
         let version = s.interpretation(id, 1)?.ok_or(analyte_store::Error::Corruption)?;
         assert!(matches!(version.outcome, analyte_store::Reading::Results(results) if !results.is_empty()));
         Ok(s.parked(0)?.first().ok_or(analyte_store::Error::Corruption)?.id)
@@ -399,7 +399,7 @@ async fn assert_vendor_receipt_stays_parked(
     let commit = reprocess(&store, machine, action(id, Some(parked))?).await?;
     assert_eq!(commit.outcomes, vec![RevisionOutcome::Unresolved]);
     store
-        .request(deadline(), move |s| {
+        .request(deadline()?, move |s| {
             assert_eq!(
                 s.receipt(id)?.ok_or(analyte_store::Error::Corruption)?.raw,
                 raw
@@ -423,7 +423,7 @@ async fn assert_vendor_receipt_stays_parked(
             .await
             .is_err()
     );
-    store.shutdown(deadline()).await?;
+    store.shutdown(deadline()?).await?;
     Ok(())
 }
 
@@ -442,7 +442,7 @@ async fn assert_poct_controls_stay_failed(store: &Handle, machine: &Machine) -> 
             .await?;
             reprocess(store, machine, action(id, None)?).await?;
             store
-                .request(deadline(), move |s| {
+                .request(deadline()?, move |s| {
                     assert!(matches!(
                         s.interpretation(id, 1)?
                             .ok_or(analyte_store::Error::Corruption)?

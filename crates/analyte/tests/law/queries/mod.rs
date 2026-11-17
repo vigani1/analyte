@@ -66,6 +66,15 @@ async fn setup_with_freshness(
     paused: bool,
     freshness: u64,
 ) -> Result<(tempfile::TempDir, Fixture, Reference, Running, TcpStream), Error> {
+    setup_observed(orders, settings, paused, freshness, None).await
+}
+async fn setup_observed(
+    orders: Vec<analyte_contract::Order>,
+    settings: &str,
+    paused: bool,
+    freshness: u64,
+    hook: Option<Arc<analyte::runtime::test_hooks::Committed>>,
+) -> Result<(tempfile::TempDir, Fixture, Reference, Running, TcpStream), Error> {
     let temp = tempfile::tempdir()?;
     let path = vendor_config(temp.path(), "law", settings)?;
     let site = temp.path().join("hl7-site.toml");
@@ -92,6 +101,9 @@ async fn setup_with_freshness(
     if settings.contains("send_ahead = true") {
         // Unsolicited lifecycle cases do not specify the app feed poll interval.
         program.set_loopback_poll_interval_for_test("demo", Duration::from_millis(100))?;
+    }
+    if let Some(hook) = hook {
+        program.pause_input_processed_for_test("law", hook)?;
     }
     let running = Running::start_program(program, "synthetic-api").await?;
     let peer = connect(&path, "law").await?;

@@ -96,7 +96,7 @@ pub(crate) async fn open_store_with_deadline(
         })
         .await;
     if let Err(error) = result {
-        handle.shutdown(deadline()).await?;
+        handle.shutdown(deadline()?).await?;
         return Err(error.into());
     }
     Ok(handle)
@@ -273,7 +273,7 @@ async fn serve_with(
         // Deliberately emulate a stuck OS flush without changing the store worker.
         // Only child-process tests enable this; no protocol or storage bytes change.
         store
-            .request::<()>(deadline(), |_| {
+            .request::<()>(deadline()?, |_| {
                 loop {
                     std::thread::park();
                 }
@@ -307,7 +307,7 @@ async fn prepare_service(
         #[cfg(feature = "test-hooks")]
         super::test_hooks::publish_store_probes(program, &store)?;
         let paused = store
-            .request(deadline(), |store| store.restore_unreconciled())
+            .request(deadline()?, |store| store.restore_unreconciled())
             .await?;
         tracing::info!(
             order_sending_paused_after_restore = paused,

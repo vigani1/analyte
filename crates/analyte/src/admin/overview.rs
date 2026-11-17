@@ -38,7 +38,7 @@ pub(super) async fn show(State(state): State<Arc<Context>>) -> Response {
 }
 
 async fn render(state: &Context) -> Result<String, Error> {
-    let until = deadline();
+    let until = deadline()?;
     let directory = state.directory.clone();
     let (paused, free) = state
         .store
@@ -278,7 +278,7 @@ mod webhook_tests {
         )
         .await?;
         store
-            .request(deadline(), |s| {
+            .request(deadline()?, |s| {
                 let endpoint =
                     analyte_model::Identifier::new("relay").map_err(analyte_store::Error::Text)?;
                 s.register_alert_endpoint(&endpoint)?;
@@ -326,7 +326,7 @@ mod webhook_tests {
                     && line.contains("queue_full=true")
                     && line.contains("exhausted=1"))
         );
-        store.shutdown(deadline()).await?;
+        store.shutdown(deadline()?).await?;
         Ok(())
     }
 }

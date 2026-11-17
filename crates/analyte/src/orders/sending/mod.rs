@@ -118,7 +118,7 @@ pub(crate) async fn next(
             Err(error) => {
                 let reason = SourceText::new(&format!("rejected: {error}"))?;
                 let rejected = store
-                    .request(deadline(), move |store| {
+                    .request(deadline()?, move |store| {
                         store.reject_unsent(
                             &OrderReservation {
                                 identity: &identity,
@@ -138,7 +138,7 @@ pub(crate) async fn next(
             }
         };
         let reserved = store
-            .request(deadline(), move |store| {
+            .request(deadline()?, move |store| {
                 store.reserve_send(
                     &OrderReservation {
                         identity: &identity,
@@ -171,7 +171,7 @@ pub(crate) async fn candidate_page(
     let machine_id = machine.id.clone();
     let cursor = after.clone();
     let candidates = store
-        .request(deadline(), move |store| {
+        .request(deadline()?, move |store| {
             if !store
                 .order_trust(&destination, jiff::Timestamp::now().as_second(), freshness)?
                 .is_trusted()
@@ -236,7 +236,7 @@ pub(crate) async fn complete(
     let id = order.id;
     let code = SourceText::new(code)?;
     store
-        .request(deadline(), move |store| {
+        .request(deadline()?, move |store| {
             store.transition_order(
                 id,
                 state,
@@ -252,7 +252,7 @@ pub(crate) async fn complete(
 /// Recovers interrupted sends and admitted cancellations without issuing commands.
 /// A lost cancel reply is uncertainty too; it never grants permission to repeat CA.
 pub(crate) async fn recover(store: &Handle) -> Result<(), Error> {
-    let until = deadline();
+    let until = deadline()?;
     for state in [OrderState::Sending, OrderState::CancelRequested] {
         let mut after = 0;
         loop {
@@ -303,7 +303,7 @@ pub(crate) async fn settle_owned(
         let owner = owner.clone();
         let code = code.clone();
         let cleanup = store
-            .request(deadline(), move |store| {
+            .request(deadline()?, move |store| {
                 if let Some(record) = store.machine_order(&key)?
                     && (record.reserved_by(&owner) || record.cancel_requested_by(&owner))
                 {

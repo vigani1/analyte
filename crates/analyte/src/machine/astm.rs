@@ -248,7 +248,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
                 .checked_add(machine.snapshot.canonical().len())
                 .ok_or_else(|| Error::AstmAdmissionSizeOverflow)?;
             let capacity = store
-                .request(deadline(), move |s| s.admission(expected))
+                .request(deadline()?, move |s| s.admission(expected))
                 .await;
             if let Err(error) = &capacity {
                 tracing::error!(machine = machine.id.as_str(), error_kind = %error, "storage admission refused");
@@ -366,7 +366,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
         )?;
         let committed = super::custody::store_within(
             super::custody::budget(machine),
-            store.request(deadline(), move |s| {
+            store.request(deadline()?, move |s| {
                 s.journal_frame(&transfer_id, sequence, &bytes, &provenance)
             }),
         )
@@ -429,7 +429,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
                     }
                 }
                 store
-                    .request(deadline(), move |s| {
+                    .request(deadline()?, move |s| {
                         s.finish_transfer(
                             &transfer_id,
                             analyte_store::TransferOutcome::Complete(id),
@@ -492,7 +492,7 @@ async fn finish_incomplete(store: &Handle, transfer: Identifier) -> Result<(), E
     let reason =
         analyte_model::Reason::new("ASTM transfer ended before a complete receipt was retained")?;
     store
-        .request(deadline(), move |store| {
+        .request(deadline()?, move |store| {
             store.finish_transfer(
                 &transfer,
                 analyte_store::TransferOutcome::Incomplete(reason),

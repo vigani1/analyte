@@ -18,6 +18,7 @@ pub use webhooks::{AlertDelivery, AlertEndpoint, WebhookConfigError};
 #[cfg(feature = "test-hooks")]
 #[derive(Default)]
 pub(crate) struct MachineHooks {
+    pub(crate) input_processed: Option<std::sync::Arc<crate::runtime::test_hooks::Committed>>,
     pub(crate) law_gates: crate::runtime::test_hooks::LawGates,
     pub(crate) law_precommit: Option<std::sync::Arc<crate::runtime::test_hooks::Committed>>,
     pub(crate) law_committed: Option<std::sync::Arc<crate::runtime::test_hooks::Committed>>,
@@ -512,6 +513,7 @@ mod admin_tests {
     use crate::Error;
 
     #[test]
+    #[cfg(feature = "test-hooks")]
     fn plan11_loopback_poll_override_keeps_production_defaults_and_refuses_unbounded_waits()
     -> Result<(), Error> {
         let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/analyte.toml");
@@ -725,4 +727,23 @@ fn load_machine(entry: Entry, base: &Path, record_bytes: usize) -> Result<Machin
         snapshot,
         listener: None,
     })
+}
+
+#[cfg(feature = "test-hooks")]
+impl Program {
+    /// Pauses after one input chunk has entered the protocol dialog.
+    /// # Errors
+    /// Rejects unknown machines and non-injected listeners.
+    pub fn pause_input_processed_for_test(
+        &mut self,
+        id: &str,
+        hook: std::sync::Arc<crate::runtime::test_hooks::Committed>,
+    ) -> Result<(), Error> {
+        let machine = self.test_machine_mut(id)?;
+        if machine.listener.is_none() {
+            return Err(Error::TestListenerDoesNotMatchConfiguredLoopbackServer);
+        }
+        machine.hooks.input_processed = Some(hook);
+        Ok(())
+    }
 }

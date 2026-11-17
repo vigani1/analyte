@@ -299,7 +299,7 @@ impl Connection {
                 .unwrap_or_else(|_| "invalid".into());
             let actor = machine.id.clone();
             store
-                .request(deadline(), move |store| {
+                .request(deadline()?, move |store| {
                     store.audit(&analyte_store::Audit {
                         actor,
                         action: Identifier::new(Code::LawNegativeQueryOrl.as_str())
@@ -324,7 +324,7 @@ impl Connection {
             let id = record.id;
             let key = record.key.clone();
             store
-                .request(deadline(), move |store| {
+                .request(deadline()?, move |store| {
                     if store.machine_order(&key)?.is_some_and(|current| {
                         matches!(
                             current.state,

@@ -351,5 +351,5 @@ async fn login(
     response
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "test-hooks"))]
 mod tests;

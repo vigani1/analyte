@@ -53,13 +53,13 @@ async fn cycle(
 ) -> Result<(), Error> {
     let id = endpoint.clone();
     store
-        .request(deadline(), move |s| s.register_alert_endpoint(&id))
+        .request(deadline()?, move |s| s.register_alert_endpoint(&id))
         .await?;
     let id = endpoint.clone();
     let reminder = policy.reminder().as_secs();
     let capacity = policy.capacity();
     store
-        .request(deadline(), move |s| {
+        .request(deadline()?, move |s| {
             s.prepare_alert_event(&id, now, reminder, capacity)
         })
         .await?;
@@ -68,7 +68,7 @@ async fn cycle(
     let min = policy.backoff_min().as_secs();
     let max = policy.backoff_max().as_secs();
     let Some(event) = store
-        .request(deadline(), move |s| {
+        .request(deadline()?, move |s| {
             s.claim_alert_attempt(&id, now, attempts, min, max)
         })
         .await?
@@ -83,14 +83,14 @@ async fn cycle(
     match outcome {
         Ok(()) => {
             store
-                .request(deadline(), move |s| {
+                .request(deadline()?, move |s| {
                     s.complete_alert_attempt(event.id(), now)
                 })
                 .await?;
         }
         Err(failure) => {
             store
-                .request(deadline(), move |s| {
+                .request(deadline()?, move |s| {
                     s.fail_alert_attempt(event.id(), failure)
                 })
                 .await?;
@@ -99,7 +99,7 @@ async fn cycle(
     Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "test-hooks"))]
 mod tests {
     use super::*;
     use crate::Error;
@@ -109,7 +109,10 @@ mod tests {
     struct Log(Arc<Mutex<Vec<u8>>>);
     impl std::io::Write for Log {
         fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-            self.0.lock().expect("test log").extend_from_slice(bytes);
+            self.0
+                .lock()
+                .map_err(|_| std::io::Error::other("test log poisoned"))?
+                .extend_from_slice(bytes);
             Ok(bytes.len())
         }
         fn flush(&mut self) -> std::io::Result<()> {
@@ -143,7 +146,7 @@ mod tests {
         let temp = tempfile::tempdir()?;
         let mut store = open(temp.path().join("store.db")).await?;
         store
-            .request(deadline(), |s| {
+            .request(deadline()?, |s| {
                 s.evaluate_alert(
                     &analyte_store::AlertKey::ParkedItems,
                     "Duty officer",
@@ -175,11 +178,16 @@ mod tests {
         .with_subscriber(subscriber)
         .await?;
         let status = store
-            .request(deadline(), |s| s.alert_endpoint_status())
+            .request(deadline()?, |s| s.alert_endpoint_status())
             .await?;
         assert_eq!(status[0].failed, 1);
         assert_eq!(status[0].exhausted, 1);
-        let output = String::from_utf8(log.0.lock().expect("test log").clone())?;
+        let output = String::from_utf8(
+            log.0
+                .lock()
+                .map_err(|_| std::io::Error::other("test log poisoned"))?
+                .clone(),
+        )?;
         for forbidden in [
             "SECRET-CREDENTIAL",
             "PATIENT-SENTINEL",
@@ -188,7 +196,7 @@ mod tests {
         ] {
             assert!(!output.contains(forbidden));
         }
-        store.shutdown(deadline()).await?;
+        store.shutdown(deadline()?).await?;
         Ok(())
     }
     #[tokio::test]
@@ -197,7 +205,7 @@ mod tests {
         let temp = tempfile::tempdir()?;
         let mut store = open(temp.path().join("store.db")).await?;
         store
-            .request(deadline(), |s| {
+            .request(deadline()?, |s| {
                 s.evaluate_alert(
                     &analyte_store::AlertKey::ParkedItems,
                     "Duty officer",
@@ -233,19 +241,19 @@ mod tests {
         // Dropping the owned future models the service's cancellation select.
         drop(pending);
         let status = store
-            .request(deadline(), |s| s.alert_endpoint_status())
+            .request(deadline()?, |s| s.alert_endpoint_status())
             .await?;
         assert_eq!(status[0].pending, 1);
         assert_eq!(status[0].next_attempt, Some(105));
         let retry = store
-            .request(deadline(), move |s| {
+            .request(deadline()?, move |s| {
                 s.claim_alert_attempt(&endpoint, 105, 10, 5, 300)
             })
             .await?
             .ok_or("cancelled event lost")?;
         assert_eq!(retry.attempts(), 2);
         drop(peer);
-        store.shutdown(deadline()).await?;
+        store.shutdown(deadline()?).await?;
         Ok(())
     }
 }

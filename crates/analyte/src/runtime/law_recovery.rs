@@ -16,7 +16,7 @@ pub(crate) async fn run(program: &Program, store: &Handle) -> Result<(), Error> 
         for _ in 0..128 {
             let target = machine.id.clone();
             let pending = store
-                .request(deadline(), move |s| {
+                .request(deadline()?, move |s| {
                     s.pending_interpretations(&target, after)
                 })
                 .await?;
@@ -30,7 +30,7 @@ pub(crate) async fn run(program: &Program, store: &Handle) -> Result<(), Error> 
                     crate::intake::interpret_with_location(store, machine, metadata.id).await?;
                 } else {
                     let id = metadata.id;
-                    store.request(deadline(),move |s| {
+                    store.request(deadline()?,move |s| {
                         let receipt=s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)?;
                         let evidence=Interpretation {driver:metadata.driver,config_version:metadata.config_version,config:receipt.config,outcome:Reading::Failed(analyte_model::Reason::new("pending LAW receipt has a different retained configuration; explicit audited reprocessing required").map_err(|_|analyte_store::Error::InvalidHostInput)?),departures:None};
                         s.interpret_reconciled(id,evidence,&[],&[],|_,_|Ok(Vec::new()))

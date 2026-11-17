@@ -196,77 +196,47 @@ fn audit() -> Result<analyte_store::Audit, TextError> {
 }
 
 struct Peer {
-    child: tokio::process::Child,
+    receiver: analyte_receiver::Receiver,
+    stop: tokio::sync::oneshot::Sender<()>,
+    task: tokio::task::JoinHandle<std::io::Result<()>>,
     url: String,
 }
 
 impl Peer {
     async fn start(directory: &Path) -> Result<Self, Box<dyn std::error::Error>> {
-        // Build the real reference server instead of depending on its HTTP framework.
-        let mut build = tokio::process::Command::new(env!("CARGO"));
-        build
-            .args(["build", "-p", "analyte-receiver", "--message-format=json"])
-            .kill_on_drop(true)
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null());
-        let output = tokio::time::timeout(HANG_GUARD, build.output()).await??;
-        if !output.status.success() {
-            return Err("reference receiver build failed".into());
-        }
-        let executable = String::from_utf8(output.stdout)?
-            .lines()
-            .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
-            .find_map(|value| {
-                if value.get("target")?.get("name")?.as_str()? != "analyte-receiver" {
-                    return None;
-                }
-                value.get("executable")?.as_str().map(str::to_owned)
-            })
-            .ok_or("receiver artifact missing")?;
-        let seed = directory.join("seed.json");
-        std::fs::write(
-            &seed,
-            format!(
-                "[{}]",
-                include_str!("../../../../../docs/contract/vectors/order.json")
-            ),
+        let receiver = analyte_receiver::Receiver::open(
+            &directory.join("receiver.db"),
+            "key".into(),
+            analyte_contract::SigningSecret::parse(SECRET)?,
         )?;
-        let mut child = tokio::process::Command::new(executable)
-            .args(["--listen", "127.0.0.1:0", "--database"])
-            .arg(directory.join("receiver.db"))
-            .arg("--seed")
-            .arg(seed)
-            .env("ANALYTE_API_KEY", "key")
-            .env("ANALYTE_SIGNING_SECRET", SECRET)
-            .kill_on_drop(true)
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null())
-            .spawn()?;
-        // This address comes from our child after it has seeded and bound its own
-        // socket. Another process cannot satisfy readiness on a released port.
-
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or("receiver startup output missing")?;
-        let mut output = tokio::io::BufReader::new(stdout.take(128));
-        let mut line = String::new();
-        if tokio::time::timeout(HANG_GUARD, output.read_line(&mut line)).await?? == 0 {
-            return Err("receiver exited before reporting its bound address".into());
-        }
-        let address: std::net::SocketAddr = line.trim().parse()?;
-        if !address.ip().is_loopback() || address.port() == 0 {
-            return Err("receiver did not report a bound loopback address".into());
-        }
+        receiver
+            .seed(vec![analyte_contract::decode(include_bytes!(
+                "../../../../../docs/contract/vectors/order.json"
+            ))?])
+            .await?;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        let url = format!("http://{}", listener.local_addr()?);
+        let router = receiver.router();
+        let (stop, stopped) = tokio::sync::oneshot::channel();
+        let task = tokio::spawn(async move {
+            axum::serve(listener, router)
+                .with_graceful_shutdown(async {
+                    let _ = stopped.await;
+                })
+                .await
+        });
         Ok(Self {
-            child,
-            url: format!("http://{address}"),
+            receiver,
+            stop,
+            task,
+            url,
         })
     }
 
     async fn stop(mut self) -> TestResult {
-        self.child.kill().await?;
-        tokio::time::timeout(HANG_GUARD, self.child.wait()).await??;
+        let _ = self.stop.send(());
+        tokio::time::timeout(HANG_GUARD, self.task).await???;
+        self.receiver.shutdown().await?;
         Ok(())
     }
 }

@@ -20,7 +20,7 @@ pub async fn reprocess(
 ) -> Result<InterpretationCommit, intake::Error> {
     let id = action.receipt;
     let receipt = store
-        .request(deadline(), move |s| {
+        .request(deadline()?, move |s| {
             s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
         })
         .await?;
@@ -45,7 +45,7 @@ pub(crate) async fn map_retained(
         let machine_id = receipt.metadata.machine.clone();
         let connection = receipt.metadata.connection.clone();
         store
-            .request(deadline(), move |s| {
+            .request(deadline()?, move |s| {
                 s.first_interpreted_connection_receipt(&machine_id, &connection)
             })
             .await?

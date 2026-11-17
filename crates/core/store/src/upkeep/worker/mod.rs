@@ -62,7 +62,7 @@ impl Handle {
         deadline: Instant,
     ) -> Result<Self, Error> {
         if capacity == 0 || capacity > 1024 {
-            return Err(Error::InvalidMaintenanceInput);
+            return Err(Error::QueueCapacity { capacity });
         }
         let (sender, mut receiver) = mpsc::channel::<Request>(capacity);
         let (ready, opened) = oneshot::channel();

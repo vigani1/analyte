@@ -62,7 +62,7 @@ pub(crate) fn destinations(program: &Program, loopback: bool) -> Result<Vec<Dest
 
 pub(crate) async fn recover(store: &Handle) -> Result<(), Error> {
     crate::orders::sending::recover(store).await?;
-    let until = deadline();
+    let until = deadline()?;
     loop {
         let count = store.request(until, |store| {
             let now = jiff::Timestamp::now().as_second();

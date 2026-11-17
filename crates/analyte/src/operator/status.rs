@@ -11,10 +11,10 @@ use std::collections::BTreeMap;
 pub async fn snapshot(program: &Program, store: &Handle) -> Result<Vec<String>, Error> {
     let now = jiff::Timestamp::now().as_second();
     let paused = store
-        .request(deadline(), |store| store.restore_unreconciled())
+        .request(deadline()?, |store| store.restore_unreconciled())
         .await?;
     let cancelled = store
-        .request(deadline(), |s| s.analyzer_cancelled_count())
+        .request(deadline()?, |s| s.analyzer_cancelled_count())
         .await?;
     let mut lines = vec![
         format!("order_sending_paused_after_restore={paused}"),
@@ -43,7 +43,7 @@ pub async fn snapshot(program: &Program, store: &Handle) -> Result<Vec<String>, 
             destination.id().as_str(), health.pending_count, health.pending_bytes, super::display::optional(health.oldest_pending_age),
             health.paused, super::display::optional(health.last_successful_poll), health.cache_trusted));
     }
-    let until = deadline();
+    let until = deadline()?;
     let mut after = String::new();
     let mut last = BTreeMap::new();
     loop {
@@ -111,7 +111,7 @@ pub async fn snapshot(program: &Program, store: &Handle) -> Result<Vec<String>, 
 pub async fn print(program: &Program) -> Result<(), Error> {
     let mut store = crate::open_system_store(program).await?;
     let result = snapshot(program, &store).await;
-    store.shutdown(deadline()).await?;
+    store.shutdown(deadline()?).await?;
     for line in result? {
         crate::operator::output::line(&line)?;
     }
@@ -143,7 +143,7 @@ mod tests {
         )
         .await?;
         store
-            .request(deadline(), |store| {
+            .request(deadline()?, |store| {
                 store.evaluate_alert(
                     &analyte_store::AlertKey::RestorePaused,
                     "lab duty officer",
@@ -204,14 +204,14 @@ mod tests {
         );
         assert!(!lines.iter().any(|line| line.contains("cleared officer")));
         let state = store
-            .request(deadline(), |store| {
+            .request(deadline()?, |store| {
                 store.alert_state(&analyte_store::AlertKey::RestorePaused)
             })
             .await?
             .ok_or("alert disappeared")?;
         assert_eq!(state.evaluated_at, 100);
         assert_eq!(state.raised_at, Some(100));
-        store.shutdown(deadline()).await?;
+        store.shutdown(deadline()?).await?;
         Ok(())
     }
 }

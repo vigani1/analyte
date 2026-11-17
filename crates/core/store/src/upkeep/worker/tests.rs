@@ -89,7 +89,7 @@ fn mutation_rule7_worker_capacity_bounds_are_inclusive() -> TestResult {
                 let mut handle = result?;
                 handle.shutdown(deadline).await?;
             } else {
-                assert!(matches!(result, Err(Error::InvalidMaintenanceInput)));
+                assert!(matches!(result, Err(Error::QueueCapacity { capacity: rejected }) if rejected == capacity));
             }
         }
         Ok::<_, Error>(())
@@ -279,5 +279,26 @@ fn rule7_async_drop_reports_missing_close_without_waiting_for_worker() -> TestRe
         release.send(())?;
         Ok::<_, Box<dyn std::error::Error>>(())
     })?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn rule7_worker_rejects_queue_capacity_before_opening_store() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    for capacity in [0, 1025, usize::MAX] {
+        let path = temp.path().join("must-not-open.db");
+        let result = Handle::start(
+            path.clone(),
+            limits(),
+            Box::new(Space(u64::MAX)),
+            capacity,
+            Instant::now(),
+        )
+        .await;
+        assert!(
+            matches!(result, Err(Error::QueueCapacity { capacity: rejected }) if rejected == capacity)
+        );
+        assert!(!path.exists());
+    }
     Ok(())
 }
