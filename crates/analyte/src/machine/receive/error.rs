@@ -61,6 +61,54 @@ pub(crate) enum Error {
     StoreWait(#[from] crate::machine::receive::custody::StoreWaitError<analyte_store::IntakeError>),
 }
 
+/// The host step a shared cause comes from. Vendor hosts name this step in
+/// the order outcome they store when a session ends.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Step {
+    /// A bounded write to the machine failed or its completion is uncertain.
+    Write,
+    /// The driver could not receive or journal connection input. Hosts never
+    /// use the link themselves; their writes have their own [`Step::Write`].
+    Input,
+    /// Durable custody of received bytes failed or exceeded its budget.
+    Store {
+        /// The budget expired, so the store may still complete.
+        timed_out: bool,
+    },
+    /// Any other cause; the protocol's own rule decides its outcome.
+    Other,
+}
+
+impl Error {
+    /// Names the host step this cause comes from.
+    pub(crate) const fn step(&self) -> Step {
+        use crate::machine::receive::custody::StoreWaitError;
+        match self {
+            Self::Write(_) => Step::Write,
+            Self::Link(_) => Step::Input,
+            Self::IntakeWait(StoreWaitError::Timeout(_))
+            | Self::StoreWait(StoreWaitError::Timeout(_)) => Step::Store { timed_out: true },
+            Self::IntakeWait(StoreWaitError::Operation(_))
+            | Self::StoreWait(StoreWaitError::Operation(_)) => Step::Store { timed_out: false },
+            Self::TestHook(_)
+            | Self::Deadline(_)
+            | Self::Store(_)
+            | Self::Order(_)
+            | Self::Evidence(_)
+            | Self::Reconciliation(_)
+            | Self::Intake(_)
+            | Self::Reading(_)
+            | Self::Text(_)
+            | Self::List(_)
+            | Self::Config(_)
+            | Self::Integer(_)
+            | Self::Json(_)
+            | Self::Timestamp(_)
+            | Self::MappingRead(_) => Step::Other,
+        }
+    }
+}
+
 impl From<crate::IntakeError> for Error {
     fn from(error: crate::IntakeError) -> Self {
         Self::Intake(Box::new(error))

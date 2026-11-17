@@ -1,6 +1,6 @@
 //! Sends unsolicited HL7 work and cancellations (HL7 ch.4).
 use crate::orders::OrderError as Error;
-use crate::orders::outcome::Code;
+use crate::orders::outcome::Hl7End;
 use crate::{deadline, installation::config::Machine};
 use analyte_hl7::{
     Options,
@@ -176,7 +176,7 @@ async fn next_work(
                         identity: key,
                         version,
                     },
-                    Code::Hl7PlacerIdentityTooLong.as_str(),
+                    Hl7End::PlacerIdentityTooLong.as_str(),
                 )
                 .await?;
             }
@@ -189,7 +189,7 @@ async fn next_work(
                         identity: key,
                         version,
                     },
-                    &crate::orders::outcome::Detail::Hl7OrderPreflight(error.to_string())
+                    &crate::orders::outcome::Hl7Detail::OrderPreflight(error.to_string())
                         .to_string(),
                 )
                 .await?;
@@ -221,16 +221,16 @@ pub(super) async fn finish(
                     let (decision, code) = if response.acceptance() != analyte_hl7::AckCode::Aa {
                         (
                             ItemDecision::Uncertain,
-                            Code::Hl7ApplicationNegative.as_str().to_owned(),
+                            Hl7End::ApplicationNegative.as_str().to_owned(),
                         )
                     } else {
                         match decision.outcome() {
                             Outcome::Accepted => {
-                                (ItemDecision::Accepted, Code::Hl7Ok.as_str().to_owned())
+                                (ItemDecision::Accepted, Hl7End::Ok.as_str().to_owned())
                             }
                             Outcome::Rejected { reason } => (
                                 ItemDecision::Rejected,
-                                crate::orders::outcome::Detail::Hl7Ua(
+                                crate::orders::outcome::Hl7Detail::Ua(
                                     reason
                                         .map_or(b"".as_slice(), |field| field.raw())
                                         .escape_ascii()
@@ -240,11 +240,11 @@ pub(super) async fn finish(
                             ),
                             Outcome::CancelAccepted => (
                                 ItemDecision::CancelConfirmed,
-                                Code::Hl7Cr.as_str().to_owned(),
+                                Hl7End::Cr.as_str().to_owned(),
                             ),
                             Outcome::UnableToCancel { reason } => (
                                 ItemDecision::CancelRefused,
-                                crate::orders::outcome::Detail::Hl7Uc(
+                                crate::orders::outcome::Hl7Detail::Uc(
                                     reason
                                         .map_or(b"".as_slice(), |field| field.raw())
                                         .escape_ascii()
@@ -254,7 +254,7 @@ pub(super) async fn finish(
                             ),
                             Outcome::NotReported => (
                                 ItemDecision::Uncertain,
-                                Code::Hl7OrderNotReported.as_str().to_owned(),
+                                Hl7End::OrderNotReported.as_str().to_owned(),
                             ),
                         }
                     };
@@ -271,7 +271,7 @@ pub(super) async fn finish(
                         index: item.index,
                         decision: ItemDecision::Uncertain,
                         code: SourceText::new(
-                            &crate::orders::outcome::Detail::Hl7InvalidOrderResponse(
+                            &crate::orders::outcome::Hl7Detail::InvalidOrderResponse(
                                 error.to_string(),
                             )
                             .to_string(),

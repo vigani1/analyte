@@ -5,7 +5,7 @@ use super::{
 };
 use crate::installation::config::Machine;
 use crate::orders::OrderError as Error;
-use crate::orders::outcome::Code;
+use crate::orders::outcome::LawEnd;
 use crate::runtime::hooks::Operation;
 use analyte_hl7::{Message, Options, law};
 use analyte_store::{Handle, MachineOrder};
@@ -114,7 +114,7 @@ impl LawOrderLink {
                 Ok(prepared) => prepared,
                 Err(error) => {
                     if let Err(cleanup) = self
-                        .close(store, Code::LawSendPreparationFailed.as_str())
+                        .close(store, LawEnd::SendPreparationFailed.as_str())
                         .await
                     {
                         return Err(crate::cleanup::effect_failure(Some(error), cleanup));
@@ -237,7 +237,7 @@ impl LawOrderLink {
                             identity: key,
                             version,
                         },
-                        &crate::orders::outcome::Detail::LawOrderPreflight(error.to_string())
+                        &crate::orders::outcome::LawDetail::OrderPreflight(error.to_string())
                             .to_string(),
                     )
                     .await?;
