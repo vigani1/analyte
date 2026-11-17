@@ -125,10 +125,10 @@ pub fn map_order(
     }
     let patient = map_patient(order, settings.patient_namespace())?;
     if patient.len() > 17 {
-        return Err(OrderMappingError::Overlong("patient-id"));
+        return Err(OrderMappingError::PatientIdTooLong);
     }
     if order.sample.as_str().len() > usize::from(u8::from(installed.sample_limit)) {
-        return Err(OrderMappingError::Overlong("sample-id"));
+        return Err(OrderMappingError::SampleIdTooLong);
     }
     // BCI A section 4 has no specimen-type destination; so is origin and si is empty.
     if order.specimen_type.is_some() {
@@ -139,7 +139,7 @@ pub fn map_order(
         || order.tests.len() > machine.limits().records()
         || order.tests.len() > machine.limits().repetitions()
     {
-        return Err(OrderMappingError::Representation);
+        return Err(OrderMappingError::VidasTestCount);
     }
     outbound_priority(settings.priorities(), order.priority)?;
     let limit = match installed.sample_limit {
@@ -153,7 +153,7 @@ pub fn map_order(
     for test in &order.tests {
         let mapped = outbound_test(settings.tests(), test)?;
         let [code] = mapped.machine_components.as_slice() else {
-            return Err(OrderMappingError::Representation);
+            return Err(OrderMappingError::VidasAssayComponents);
         };
         let request = analyte_vidas::syntax::Message::new(
             &[
@@ -166,13 +166,13 @@ pub fn map_order(
             limit,
         )?;
         if request.text().len() > machine.frame_limit() {
-            return Err(OrderMappingError::Representation);
+            return Err(OrderMappingError::VidasFrameLimit);
         }
         total_bytes = total_bytes
             .checked_add(request.text().len())
-            .ok_or(OrderMappingError::Representation)?;
+            .ok_or(OrderMappingError::VidasByteCountOverflow)?;
         if total_bytes > machine.limits().bytes() {
-            return Err(OrderMappingError::Representation);
+            return Err(OrderMappingError::VidasMessageLimit);
         }
         requests.push(request);
     }

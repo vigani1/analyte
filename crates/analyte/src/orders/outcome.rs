@@ -2,6 +2,9 @@
 /// Compatibility spellings retained in stored evidence and operator records.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Code {
+    QueryReservationRefused,
+    QueryDeadlineBeforeSend,
+    HostRestart,
     AstmTransferConfirmed,
     AstmTransferAborted,
     AstmTransferTimeout,
@@ -49,6 +52,9 @@ impl Code {
     /// Returns the explicit historical spelling; never derive evidence from Debug.
     pub(crate) const fn as_str(self) -> &'static str {
         match self {
+            Self::QueryReservationRefused => "query-reservation-refused",
+            Self::QueryDeadlineBeforeSend => "query-deadline-before-send",
+            Self::HostRestart => "host-restart",
             Self::AstmTransferConfirmed => "ASTM-transfer-confirmed",
             Self::AstmTransferAborted => "ASTM-transfer-aborted",
             Self::AstmTransferTimeout => "ASTM-transfer-timeout",
@@ -102,6 +108,9 @@ impl Code {
 #[test]
 fn outcome_spellings_are_compatible() {
     for (code, expected) in [
+        (Code::QueryReservationRefused, "query-reservation-refused"),
+        (Code::QueryDeadlineBeforeSend, "query-deadline-before-send"),
+        (Code::HostRestart, "host-restart"),
         (Code::AstmTransferConfirmed, "ASTM-transfer-confirmed"),
         (Code::AstmTransferAborted, "ASTM-transfer-aborted"),
         (Code::AstmTransferTimeout, "ASTM-transfer-timeout"),

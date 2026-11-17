@@ -62,7 +62,7 @@ pub(crate) async fn reserve_candidates(
             Err(refusal) => {
                 tracing::info!(reason=%refusal,"query order reservation refused");
                 for order in active.drain(..) {
-                    uncertain(store, &order, "query-reservation-refused").await?;
+                    uncertain(store, &order, Code::QueryReservationRefused.as_str()).await?;
                 }
                 return Ok(false);
             }
@@ -70,7 +70,7 @@ pub(crate) async fn reserve_candidates(
     }
     if std::time::Instant::now() >= until && !active.is_empty() {
         for order in active.drain(..) {
-            uncertain(store, &order, "query-deadline-before-send").await?;
+            uncertain(store, &order, Code::QueryDeadlineBeforeSend.as_str()).await?;
         }
         return Ok(false);
     }
@@ -261,7 +261,8 @@ pub(crate) async fn recover(store: &Handle) -> Result<(), Error> {
                         store.transition_order(
                             id,
                             OrderState::Uncertain,
-                            SourceText::new("host-restart").map_err(analyte_store::Error::Text)?,
+                            SourceText::new(Code::HostRestart.as_str())
+                                .map_err(analyte_store::Error::Text)?,
                             jiff::Timestamp::now().as_second(),
                             super::event,
                         )

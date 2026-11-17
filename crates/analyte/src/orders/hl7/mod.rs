@@ -552,7 +552,7 @@ mod tests {
                 .close(
                     &store,
                     &intake::Connection::new(&machine)?,
-                    "HL7-DSR-session-error",
+                    Code::Hl7DsrSessionError.as_str(),
                 )
                 .await
                 .map_err(Into::into),
@@ -614,7 +614,7 @@ mod tests {
             .close(
                 &store,
                 &intake::Connection::new(&machine)?,
-                "HL7-DSR-disconnect",
+                Code::Hl7DsrDisconnect.as_str(),
             )
             .await?;
         let identity = key.clone();
@@ -631,7 +631,7 @@ mod tests {
             .close(
                 &store,
                 &intake::Connection::new(&machine)?,
-                "HL7-DSR-disconnect",
+                Code::Hl7DsrDisconnect.as_str(),
             )
             .await?;
         let current = store
