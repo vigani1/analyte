@@ -18,9 +18,9 @@ pub(crate) fn shutdown_bound(
     _: ServiceMode,
     _: Option<&crate::runtime::shutdown::Watchdog>,
     bound: Duration,
-) -> Result<Duration, crate::Error> {
+) -> Result<Duration, Error> {
     Ok(bound)
 }
-pub(crate) async fn stall(_: &Program, _: &Arc<analyte_store::Handle>) -> Result<(), crate::Error> {
+pub(crate) async fn stall(_: &Program, _: &Arc<analyte_store::Handle>) -> Result<(), Error> {
     std::future::ready(Ok(())).await
 }

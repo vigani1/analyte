@@ -5,7 +5,8 @@ pub(crate) mod conversions;
 #[cfg(feature = "test-hooks")]
 pub use super::hooks::serve_loopback_test;
 use crate::runtime::Error as Failure;
-use crate::{Error, deadline, installation::config::Program, machine, runtime::space::Volume};
+use crate::runtime::Error;
+use crate::{deadline, installation::config::Program, machine, runtime::space::Volume};
 use analyte_store::{FreeSpace, Handle};
 use std::{
     future::Future,
@@ -127,7 +128,7 @@ pub(crate) async fn serve_bounded(
     watchdog: Option<Arc<crate::runtime::shutdown::Watchdog>>,
 ) -> Result<(), Error> {
     if !(SHUTDOWN_MIN..=SHUTDOWN_MAX).contains(&bound) {
-        return Err(Failure::ShutdownBoundMustBe30Through300Seconds.into());
+        return Err(Failure::ShutdownBoundMustBe30Through300Seconds);
     }
     serve_with(
         program,
@@ -523,9 +524,7 @@ fn start_alerts(
         let component = watchdog.component(format!("alert-endpoint-{}", endpoint.id().as_str()));
         alert_owners.spawn(async move {
             let _component = component;
-            crate::runtime::alert_delivery::run(store, endpoint, policy, stop)
-                .await
-                .map_err(Into::into)
+            crate::runtime::alert_delivery::run(store, endpoint, policy, stop).await
         });
     }
 
@@ -540,9 +539,7 @@ fn start_alerts(
         if !policies.is_empty() {
             alert_owners.spawn(async move {
                 let _component = component;
-                crate::runtime::retention::run(store, policies, stop)
-                    .await
-                    .map_err(Into::into)
+                crate::runtime::retention::run(store, policies, stop).await
             });
         }
     }
@@ -587,21 +584,21 @@ async fn supervise(
                 break match owner {
                     Some(Ok(Err(error))) => Err(error),
                     Some(Err(error)) => Err(error.into()),
-                    Some(Ok(Ok(()))) | None => Err(Failure::AlertEvaluatorStoppedUnexpectedly.into()),
+                    Some(Ok(Ok(()))) | None => Err(Failure::AlertEvaluatorStoppedUnexpectedly),
                 }
             }
             owner = admin_owners.join_next(), if !admin_owners.is_empty() => {
                 break match owner {
                     Some(Ok(Err(error))) => Err(error),
                     Some(Err(error)) => Err(error.into()),
-                    Some(Ok(Ok(()))) | None => Err(Failure::AdminOwnerStoppedUnexpectedly.into()),
+                    Some(Ok(Ok(()))) | None => Err(Failure::AdminOwnerStoppedUnexpectedly),
                 }
             }
             owner = delivery_owners.join_next(), if !delivery_owners.is_empty() => {
                 break match owner {
                     Some(Ok(Err(error))) => Err(error.into()),
                     Some(Err(error)) => Err(error.into()),
-                    Some(Ok(Ok(()))) | None => Err(Failure::DeliveryOwnerStoppedUnexpectedly.into()),
+                    Some(Ok(Ok(()))) | None => Err(Failure::DeliveryOwnerStoppedUnexpectedly),
                 }
             }
             owner = owners.join_next(), if !owners.is_empty() => {
@@ -700,49 +697,20 @@ async fn open_service_store(
     program: &Program,
     space: Box<dyn FreeSpace>,
 ) -> Result<Arc<Handle>, Error> {
-    let store = open_store(program, space).await.map_err(|error| {
-        if let Failure::Io(source) = error {
-            Error::from(source)
-        } else {
-            Error::from(error)
-        }
-    })?;
+    let store = open_store(program, space).await?;
     Ok(Arc::new(store))
 }
 
 // The service's existing startup API exposes original dependency causes to recovery callers.
 fn admin_startup_error(error: crate::admin::Error) -> Error {
-    match error {
-        crate::admin::Error::Raw(source) => Error::from(source),
-        crate::admin::Error::Reconciliation(source) => Error::from(source),
-        crate::admin::Error::Deadline(source) => Error::from(source),
-        crate::admin::Error::Join(source) => Error::from(source),
-        crate::admin::Error::MachineConfig(source) => Error::from(source),
-        crate::admin::Error::Operator(source) => Error::from(*source),
-        crate::admin::Error::Runtime(source) => Error::from(source),
-        crate::admin::Error::Store(source) => Error::from(source),
-        crate::admin::Error::Intake(source) => Error::from(source),
-        crate::admin::Error::Config(source) => Error::from(source),
-        crate::admin::Error::Text(source) => Error::from(source),
-        crate::admin::Error::Identity(source) => Error::from(source),
-        crate::admin::Error::Uuid(source) => Error::from(source),
-        crate::admin::Error::Integer(source) => Error::from(source),
-        crate::admin::Error::ParseInteger(source) => Error::from(source),
-        crate::admin::Error::Json(source) => Error::from(source),
-        crate::admin::Error::Token(source) => Error::from(source),
-        crate::admin::Error::SinkDestinationError(source) => Error::from(source),
-        crate::admin::Error::SinkDeliveryError(source) => Error::from(source),
-        crate::admin::Error::SinkPollError(source) => Error::from(source),
-        crate::admin::Error::Io(source) => Error::from(source),
-        crate::admin::Error::Secret(source) => Error::from(source),
-        other @ (crate::admin::Error::AwosItemNotRetained
-        | crate::admin::Error::SessionCapacity
-        | crate::admin::Error::AdminSessionLockPoisoned
-        | crate::admin::Error::ChoosePlaceOrRelease
-        | crate::admin::Error::ChooseReceiptOrOrder
-        | crate::admin::Error::StoreMismatch
-        | crate::admin::Error::MachineCursorOverflow
-        | crate::admin::Error::ParkedTargetCursorOverflow
-        | crate::admin::Error::UncertainOrderCountOverflow) => Error::from(other),
+    Error::from(error)
+}
+
+impl From<DeliveryOwnerError> for Error {
+    fn from(error: DeliveryOwnerError) -> Self {
+        match error {
+            DeliveryOwnerError::Poll(error) => Self::SinkPollError(error),
+            DeliveryOwnerError::Delivery(error) => Self::SinkDeliveryError(error),
+        }
     }
 }

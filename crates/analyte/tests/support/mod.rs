@@ -6,7 +6,8 @@ use analyte_fixtures as guard;
 pub use deadline::step;
 pub use guard::HANG_GUARD;
 
-use analyte::{Error, installation::config::Program, runtime::service};
+type Error = Box<dyn std::error::Error + Send + Sync>;
+use analyte::{installation::config::Program, runtime::service};
 use std::{
     path::{Path, PathBuf},
     time::Duration,
@@ -113,7 +114,7 @@ pub fn secrets(
 /// Owns resources for a synthetic service test.
 pub struct Running {
     stop: oneshot::Sender<()>,
-    task: JoinHandle<Result<(), Error>>,
+    task: JoinHandle<Result<(), analyte::runtime::Error>>,
 }
 
 impl Running {
@@ -149,13 +150,13 @@ impl Running {
         let startup = tokio::time::timeout(HANG_GUARD, async {
             tokio::select! { biased;
                 result = &mut task => match result? {
-                    Err(error) => Err(error),
+                    Err(error) => Err::<(), Error>(error.into()),
                     Ok(()) => Err("test service ended before readiness".into()),
                 },
                 result = started => match result {
                     Ok(()) => Ok(()),
                     Err(_) => match (&mut task).await? {
-                        Err(error) => Err(error),
+                        Err(error) => Err::<(), Error>(error.into()),
                         Ok(()) => Err("test service ended without readiness".into()),
                     },
                 },

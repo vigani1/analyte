@@ -1,6 +1,8 @@
 //! Runs synthetic HTTP receivers and recording assertions for integration tests.
 pub use super::support::*;
-pub use analyte::{Error, installation::config::Program, runtime::service};
+/// Retains arbitrary synthetic fixture failures.
+pub type Error = Box<dyn std::error::Error + Send + Sync>;
+pub use analyte::{installation::config::Program, runtime::service};
 pub use axum::{
     body::{Body, to_bytes},
     extract::{Request, State},

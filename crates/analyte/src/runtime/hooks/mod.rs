@@ -16,7 +16,7 @@ pub(crate) use disabled::{destination, shutdown_bound, stall};
 pub(crate) fn publish_store_probes(
     program: &Program,
     store: &Arc<analyte_store::Handle>,
-) -> Result<(), crate::Error> {
+) -> Result<(), Error> {
     for machine in program.machines() {
         machine.hooks.publish(store)?;
     }

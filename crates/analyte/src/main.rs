@@ -1,6 +1,7 @@
 //! Runs the foreground service and protected operator command line.
 #![forbid(unsafe_code)]
-use analyte::{Error, installation::config::Program, runtime::service};
+use analyte::runtime::Error;
+use analyte::{installation::config::Program, runtime::service};
 use analyte_model::{Identifier, Reason};
 use analyte_store::Audit;
 use clap::{Parser, Subcommand};
@@ -9,31 +10,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-/// Failures of the parked-evidence command, including its host input refusals.
-#[derive(Debug, thiserror::Error)]
-enum ParkedCommandError {
-    #[error(transparent)]
-    Evidence(#[from] analyte_store::OperatorError),
-    #[error(transparent)]
-    Audit(#[from] analyte_store::StorageError),
-    #[error(transparent)]
-    Worker(#[from] analyte_store::WorkerError),
-    #[error("reprocessing requires the interpretation route")]
-    ReprocessRequiresInterpretation,
-    #[error("operator sequence cursor overflow")]
-    OperatorCursorOverflow,
-}
-
-/// Boundaries combined by the audited delivery listing command.
-#[derive(Debug, thiserror::Error)]
-enum DeliveryCommandError {
-    #[error(transparent)]
-    Delivery(#[from] analyte_store::DeliveryError),
-    #[error(transparent)]
-    Audit(#[from] analyte_store::StorageError),
-    #[error(transparent)]
-    Worker(#[from] analyte_store::WorkerError),
-}
+use analyte::runtime::command::{DeliveryCommandError, ParkedCommandError};
 
 /// Allows backup execution plus queue and response overhead.
 const BACKUP_REQUEST_BUDGET: Duration = Duration::from_secs(30);
@@ -240,7 +217,8 @@ fn main() -> Result<(), Error> {
     tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .try_init()?;
+        .try_init()
+        .map_err(Error::Tracing)?;
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?

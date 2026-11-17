@@ -1,5 +1,5 @@
 //! Tests administrator credential provisioning.
-use analyte::Error;
+type Error = Box<dyn std::error::Error + Send + Sync>;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use std::process::Command;
 

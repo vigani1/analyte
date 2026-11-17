@@ -3,7 +3,7 @@
 use super::*;
 
 #[tokio::test]
-async fn rule7_service_close_waits_for_store_destruction() -> Result<(), Error> {
+async fn rule7_service_close_waits_for_store_destruction() -> Result<(), crate::Error> {
     struct Space {
         entered: Option<tokio::sync::oneshot::Sender<()>>,
         release: std::sync::mpsc::Receiver<()>,
@@ -64,7 +64,11 @@ async fn plan11_supervision_preserves_stop_failure_and_refuses_unexpected_admin_
     let mut deliveries = JoinSet::new();
     let mut machines = JoinSet::new();
     let result = supervise(
-        async { Err(crate::invalid("synthetic stop signal failure")) },
+        async {
+            Err(Error::Io(std::io::Error::other(
+                "synthetic stop signal failure",
+            )))
+        },
         &mut alerts,
         &mut admin,
         &mut deliveries,

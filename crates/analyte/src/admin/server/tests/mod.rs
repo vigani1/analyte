@@ -88,8 +88,8 @@ async fn plan11_service_admin_missing_token_and_owned_lifecycle() -> Result<(), 
     .ok_or("missing credential unexpectedly admitted")?;
     assert!(
         matches!(
-            failure.downcast_ref::<super::super::TokenError>(),
-            Some(super::super::TokenError::Missing)
+            &failure,
+            crate::runtime::Error::Admin(error) if matches!(error.as_ref(), crate::admin::Error::Token(super::super::TokenError::Missing))
         ),
         "expected missing token after fixture migration, received: {failure}"
     );
