@@ -335,16 +335,23 @@ async fn transaction(
     conn: &mut analyte_transport::Connection,
     stop: &mut watch::Receiver<bool>,
 ) -> Result<(), Error> {
-    let mut host = super::Host::new(
-        machine,
-        settings,
-        store,
-        conn,
-        stop.clone(),
-        orders,
-        analyte_dialog::law::Link::WorkResponse,
-    )?;
-    let result = host.outbound(message).await;
-    host.finish().await?;
-    result
+    super::driver::run(
+        || {
+            super::Host::new(
+                machine,
+                settings,
+                store,
+                orders,
+                super::Mode::Outbound(message),
+            )
+        },
+        super::Context {
+            machine,
+            settings,
+            store,
+            conn,
+            stop: stop.clone(),
+        },
+    )
+    .await
 }

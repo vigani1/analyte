@@ -37,7 +37,7 @@ pub(super) async fn session(
 ) -> Result<(), Error> {
     custody::ensure_reconciled(store, machine.machine()).await?;
     driver::run(
-        ConnectionState::open(settings),
+        || ConnectionState::open(settings),
         Context {
             machine,
             settings,

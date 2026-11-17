@@ -36,7 +36,7 @@ pub(super) async fn session(
     stop: watch::Receiver<bool>,
 ) -> Result<(), Error> {
     driver::run(
-        ConnectionState::open(machine, settings),
+        || ConnectionState::open(machine, settings),
         Context {
             machine,
             settings,

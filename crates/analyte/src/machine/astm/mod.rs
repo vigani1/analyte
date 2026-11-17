@@ -23,7 +23,7 @@ pub(super) async fn session(
     stop: watch::Receiver<bool>,
 ) -> Result<(), Error> {
     driver::run(
-        ConnectionState::open(machine, settings, store),
+        || ConnectionState::open(machine, settings, store),
         Context {
             machine,
             settings,
