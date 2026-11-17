@@ -1,6 +1,7 @@
 //! Runs deterministic LAW exchanges and deadlines (TF-2b 3.27-3.29, B.6/B.7).
 //! Kept whole: The LAW conversation state transitions and their deadline decisions are reviewed together.
 use analyte_framing::hl7 as mllp;
+use analyte_hl7::OwnedAckError as Detail;
 use analyte_hl7::{AckCode, AckError, Message, Options, Response, Responsibility, law};
 use std::{collections::VecDeque, time::Duration};
 use thiserror::Error;
@@ -164,36 +165,6 @@ pub enum Error {
     NoOutcome,
 }
 #[derive(Debug)]
-struct Detail {
-    segment: Vec<u8>,
-    occurrence: u16,
-    field: u16,
-    code: Vec<u8>,
-    application: Vec<u8>,
-}
-impl From<AckError<'_>> for Detail {
-    fn from(e: AckError<'_>) -> Self {
-        Self {
-            segment: e.segment.to_vec(),
-            occurrence: e.occurrence,
-            field: e.field,
-            code: e.code.to_vec(),
-            application: e.application_code.to_vec(),
-        }
-    }
-}
-impl Detail {
-    fn view(&self) -> AckError<'_> {
-        AckError {
-            segment: &self.segment,
-            occurrence: self.occurrence,
-            field: self.field,
-            code: &self.code,
-            application_code: &self.application,
-        }
-    }
-}
-#[derive(Debug)]
 enum Plan {
     Reject(Vec<u8>, AckCode, Detail),
     Result(Message, AckCode, Responsibility, Option<Detail>),
@@ -294,10 +265,7 @@ impl Dialog {
             .ok_or(Error::Exhausted)?;
         self.clock
             .advance(now, headroom)
-            .map_err(|error| match error {
-                crate::ClockError::Reversed => Error::TimeReversed,
-                crate::ClockError::Exhausted => Error::Exhausted,
-            })?;
+            .map_err(|error| error.into_dialog(Error::TimeReversed, Error::Exhausted))?;
         let mut out = Vec::new();
         if self.deadline().is_some_and(|until| now >= until) && !matches!(event, Event::Disconnect)
         {

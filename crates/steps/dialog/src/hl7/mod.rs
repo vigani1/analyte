@@ -1,6 +1,7 @@
 //! Runs HL7 acknowledgment conversations over MLLP with documented evidence (HL7 2.5.1 2.9.2/2.9.3).
 //! Kept whole: The HL7 conversation state transitions share connection ownership and deadline invariants.
 use analyte_framing::hl7 as mllp;
+use analyte_hl7::OwnedAckError as OwnedError;
 use analyte_hl7::{
     AckCode, AckError, AckMode, Condition, Message, Msa, Msh, Options, Response, Responsibility,
 };
@@ -346,10 +347,7 @@ impl Dialog {
     pub fn step(&mut self, now: Duration, event: Event<'_>) -> Result<Vec<Action>, Error> {
         self.clock
             .advance(now, self.config.wait)
-            .map_err(|error| match error {
-                crate::ClockError::Reversed => Error::TimeReversed,
-                crate::ClockError::Exhausted => Error::Exhausted,
-            })?;
+            .map_err(|error| error.into_dialog(Error::TimeReversed, Error::Exhausted))?;
         let end = now.checked_add(self.config.wait).ok_or(Error::Exhausted)?;
         let mut out = Vec::new();
         if let Some(orders) = &mut self.orders {
@@ -754,37 +752,6 @@ impl Dialog {
             self.wire(event, out);
         }
         self.frame_started = None;
-    }
-}
-
-#[derive(Debug)]
-struct OwnedError {
-    segment: Vec<u8>,
-    occurrence: u16,
-    field: u16,
-    code: Vec<u8>,
-    application: Vec<u8>,
-}
-impl From<AckError<'_>> for OwnedError {
-    fn from(e: AckError<'_>) -> Self {
-        Self {
-            segment: e.segment.to_vec(),
-            occurrence: e.occurrence,
-            field: e.field,
-            code: e.code.to_vec(),
-            application: e.application_code.to_vec(),
-        }
-    }
-}
-impl OwnedError {
-    fn view(&self) -> AckError<'_> {
-        AckError {
-            segment: &self.segment,
-            occurrence: self.occurrence,
-            field: self.field,
-            code: &self.code,
-            application_code: &self.application,
-        }
     }
 }
 

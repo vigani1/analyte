@@ -204,10 +204,7 @@ impl Dialog {
             .max(self.policy.ack);
         self.clock
             .advance(now, headroom)
-            .map_err(|error| match error {
-                crate::ClockError::Reversed => Error::TimeReversed,
-                crate::ClockError::Exhausted => Error::Exhausted,
-            })?;
+            .map_err(|error| error.into_dialog(Error::TimeReversed, Error::Exhausted))?;
         if !matches!(event, Event::Disconnected) {
             for timer in [
                 Timer::Session,

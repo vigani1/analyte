@@ -43,19 +43,15 @@ pub fn verified(raw: &[u8]) -> Result<&[u8], Error> {
     let digits = raw
         .get(end..raw.len().saturating_sub(1))
         .ok_or(Error::Length)?;
-    if number(digits)? != usize::from(checksum(payload)) {
+    if !digits.iter().all(u8::is_ascii_digit) {
+        return Err(Error::Field("decimal"));
+    }
+    let value = std::str::from_utf8(digits)
+        .map_err(|_| Error::Field("decimal"))?
+        .parse::<u16>()
+        .map_err(|_| Error::Count)?;
+    if value != u16::from(checksum(payload)) {
         return Err(Error::Checksum);
     }
     Ok(payload)
-}
-
-fn number(bytes: &[u8]) -> Result<usize, Error> {
-    bytes.iter().try_fold(0usize, |n, b| {
-        if !b.is_ascii_digit() {
-            return Err(Error::Field("decimal"));
-        }
-        n.checked_mul(10)
-            .and_then(|v| v.checked_add(usize::from(b.saturating_sub(b'0'))))
-            .ok_or(Error::Count)
-    })
 }

@@ -311,7 +311,7 @@ impl Dialog {
     }
 
     fn after(&self, wait: Duration) -> Result<Duration, Error> {
-        self.clock.now().checked_add(wait).ok_or(Error::Time)
+        self.clock.after(wait).map_err(|_| Error::Time)
     }
 
     fn begin(&mut self, operation: Operation) -> Result<Vec<Action>, Error> {

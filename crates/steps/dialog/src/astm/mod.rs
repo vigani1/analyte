@@ -92,10 +92,7 @@ impl Dialog {
         .unwrap_or(Duration::ZERO);
         self.clock
             .advance(now, headroom)
-            .map_err(|error| match error {
-                crate::ClockError::Reversed => Error::TimeReversed,
-                crate::ClockError::Exhausted => Error::Exhausted,
-            })?;
+            .map_err(|error| error.into_dialog(Error::TimeReversed, Error::Exhausted))?;
         let mut out = Vec::new();
         if matches!(event, Event::Disconnect) {
             self.disconnect(&mut out);
