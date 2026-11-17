@@ -1,5 +1,7 @@
 //! Runs program workers, host I/O, custody and operator actions without interpreting clinical results.
 #![forbid(unsafe_code)]
+/// Failures retaining returned work and execution custody.
+pub use machine::law::custody::Error as WorkPolicyError;
 
 pub mod admin;
 pub mod installation;

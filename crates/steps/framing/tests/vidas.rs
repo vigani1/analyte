@@ -71,4 +71,3 @@ fn vidas_bci_a_3_bad_checksum_and_bounds_stop() -> Result<(), Box<dyn std::error
     assert!(c.encode(&vec![b'A'; 1921]).is_err());
     Ok(())
 }
-

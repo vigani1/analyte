@@ -1,4 +1,7 @@
 //! Maps stored receipts without transport handles, orders or acknowledgments.
+mod mapping_reading;
+pub(crate) mod policy;
+pub(crate) mod retained;
 #[cfg(test)]
 use crate::Error;
 pub(super) use crate::reading::poct_limits;
@@ -8,6 +11,7 @@ use analyte_config::Stack;
 use analyte_model::ReceiptId;
 use analyte_model::Revision;
 use analyte_store::{Handle, InterpretationCommit, Reprocess};
+pub(crate) use mapping_reading::map_reading;
 pub(crate) mod departure_evidence;
 #[cfg(test)]
 mod tests;
@@ -34,7 +38,7 @@ pub async fn reprocess(
         return Err(intake::Error::WrongMachine);
     }
     Ok(
-        intake::retained::process(store, machine, &receipt, None, Some(action))
+        retained::process(store, machine, &receipt, None, Some(action))
             .await?
             .1,
     )

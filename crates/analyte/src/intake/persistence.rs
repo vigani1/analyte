@@ -1,7 +1,7 @@
-//! Commits prepared mapping evidence and retains rejected LAW batches after rollback.
+//! Commits prepared mapping evidence and retains rejected atomic batches after rollback.
 use super::{
-    Identifier, Interpretation, InterpretationOutcome, Reading, ReceiptId, ReceiptMetadata,
-    RevisionOutcome, park_findings,
+    BatchConflict, Identifier, Interpretation, InterpretationOutcome, Policy, Reading, ReceiptId,
+    ReceiptMetadata, RevisionOutcome, park_findings,
 };
 /// Boundaries combined while committing prepared mapping evidence.
 #[derive(Debug, thiserror::Error)]
@@ -28,12 +28,9 @@ pub(super) struct PreparedMapping {
     pub(super) interpretation: Interpretation,
     pub(super) destination: Identifier,
     pub(super) conflict: Option<Interpretation>,
-    pub(super) custody: Option<analyte_store::law::Custody>,
+    pub(super) policy: Policy,
     pub(super) action: Option<analyte_store::Reprocess>,
-    pub(super) lifecycle: Option<analyte_store::StatusLifecycle<'static>>,
-    pub(super) atomic: bool,
     pub(super) accepted: bool,
-    pub(super) poct_edit_guard: bool,
 }
 
 impl PreparedMapping {
@@ -48,13 +45,12 @@ impl PreparedMapping {
             interpretation,
             destination,
             conflict,
-            custody,
+            policy,
             action,
-            lifecycle,
-            atomic,
             accepted,
-            poct_edit_guard,
         } = self;
+        let atomic = policy.atomic();
+        let lifecycle = policy.lifecycle();
         let findings = park_findings(id, findings)?;
         let receipt = store
             .receipt(id)?
@@ -70,7 +66,7 @@ impl PreparedMapping {
                 })
             {
                 return Err(analyte_store::ReconciliationError::DeliveryBuild(Box::new(
-                    LawBatchConflict,
+                    BatchConflict,
                 )));
             }
             if !accepted {
@@ -78,64 +74,38 @@ impl PreparedMapping {
             }
             build_deliveries(assigned, outcomes, &receipt, &destination, lifecycle)
         };
-        let commit = if let Some(custody) = &custody {
-            store.reconcile(
-                action.as_ref().map_or(
-                    analyte_store::ReconcileAction::Interpret(id),
-                    analyte_store::ReconcileAction::Reprocess,
-                ),
-                interpretation.clone(),
-                analyte_store::ReconcileInput {
-                    corrections: &corrections,
-                    findings: &findings,
-                    mode: analyte_store::ReconcileMode::Law {
-                        lifecycle: lifecycle
-                            .ok_or(analyte_store::ReconciliationError::LifecyclePolicyRequired)?,
-                        custody,
-                    },
-                },
-                build,
-            )
-        } else {
-            store.reconcile(
-                reconciliation_action(id, action.as_ref()),
-                interpretation,
-                analyte_store::ReconcileInput {
-                    corrections: &corrections,
-                    findings: &findings,
-                    mode: reconciliation_mode(lifecycle, poct_edit_guard),
-                },
-                build,
-            )
-        };
-        match commit {
-            // The builder refusal rolls back revisions, audit and deliveries together.
-            // Keep a failed version (and its audit for operator actions) afterwards.
+        let commit = store.reconcile(
+            reconciliation_action(id, action.as_ref()),
+            interpretation,
+            analyte_store::ReconcileInput {
+                corrections: &corrections,
+                findings: &findings,
+                mode: policy.mode(),
+            },
+            build,
+        );
+        let (commit, successful) = match commit {
+            // Builder refusal rolls back revisions, audit and deliveries together.
+            // Retain a failed version and its operator audit in a separate transaction.
             Err(analyte_store::ReconciliationError::DeliveryBuild(error))
-                if error.is::<LawBatchConflict>() =>
+                if error.is::<BatchConflict>() =>
             {
-                let rejected = reject_batch(
-                    store,
-                    id,
-                    conflict,
-                    custody.as_ref(),
-                    action.as_ref(),
-                    &findings,
-                    lifecycle,
-                )?;
-                Ok((rejected, InterpretationOutcome::Conflict))
-            }
-            result => Ok(result.map(|commit| {
                 (
-                    commit,
-                    if accepted {
-                        InterpretationOutcome::Accepted
-                    } else {
-                        InterpretationOutcome::Failed
-                    },
+                    reject_batch(store, id, conflict, &policy, action.as_ref(), &findings)?,
+                    InterpretationOutcome::Conflict,
                 )
-            })?),
-        }
+            }
+            result => (
+                result?,
+                if accepted {
+                    InterpretationOutcome::Accepted
+                } else {
+                    InterpretationOutcome::Failed
+                },
+            ),
+        };
+        let successful = policy.outcome(&commit, successful);
+        Ok((commit, successful))
     }
 }
 
@@ -153,72 +123,24 @@ fn reject_batch(
     store: &mut analyte_store::Store,
     id: ReceiptId,
     conflict: Option<Interpretation>,
-    custody: Option<&analyte_store::law::Custody>,
+    policy: &Policy,
     action: Option<&analyte_store::Reprocess>,
     findings: &[analyte_store::Parked],
-    lifecycle: Option<analyte_store::StatusLifecycle<'_>>,
 ) -> Result<analyte_store::InterpretationCommit, analyte_store::ReconciliationError> {
     let rejected_evidence =
         conflict.ok_or(analyte_store::ReconciliationError::ConflictEvidenceRequired)?;
-    let rejected = if let Some(mut custody) = custody.cloned() {
-        custody.rejection = Some(analyte_store::law::Rejection {
-            occurrence: 1,
-            reason: analyte_store::law::Conflict::Progression,
-        });
-        store.reconcile(
-            action.map_or(
-                analyte_store::ReconcileAction::Interpret(id),
-                analyte_store::ReconcileAction::Reprocess,
-            ),
-            rejected_evidence,
-            analyte_store::ReconcileInput {
-                corrections: &[],
-                findings,
-                mode: analyte_store::ReconcileMode::Law {
-                    lifecycle: lifecycle
-                        .ok_or(analyte_store::ReconciliationError::LifecyclePolicyRequired)?,
-                    custody: &custody,
-                },
-            },
-            |_, _| Ok(Vec::new()),
-        )?
-    } else {
-        store.reconcile(
-            reconciliation_action(id, action),
-            rejected_evidence,
-            analyte_store::ReconcileInput {
-                corrections: &[],
-                findings,
-                mode: reconciliation_mode(lifecycle, false),
-            },
-            |_, _| Ok(Vec::new()),
-        )?
-    };
-
-    Ok(rejected)
+    let rejected_policy = policy.rejected();
+    store.reconcile(
+        reconciliation_action(id, action),
+        rejected_evidence,
+        analyte_store::ReconcileInput {
+            corrections: &[],
+            findings,
+            mode: rejected_policy.mode(),
+        },
+        |_, _| Ok(Vec::new()),
+    )
 }
-
-fn reconciliation_mode(
-    lifecycle: Option<analyte_store::StatusLifecycle<'_>>,
-    edit_guard: bool,
-) -> analyte_store::ReconcileMode<'_> {
-    if edit_guard {
-        analyte_store::ReconcileMode::EditGuard(
-            "edited POCT observation with no detectable common-content change; source context may have changed",
-        )
-    } else {
-        lifecycle.map_or(
-            analyte_store::ReconcileMode::Standard,
-            analyte_store::ReconcileMode::Lifecycle,
-        )
-    }
-}
-
-#[derive(Debug, thiserror::Error)]
-#[error(
-    "LAW result batch conflicts with retained observation history; no result revisions committed"
-)]
-pub(super) struct LawBatchConflict;
 
 // The store assigns revisions before this callback freezes bytes. Only new and
 // corrected production results can cross this boundary; replay never enqueues.

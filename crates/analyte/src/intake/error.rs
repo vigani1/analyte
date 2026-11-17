@@ -7,7 +7,7 @@ pub enum IntakeError {
     Deadline(#[from] crate::DeadlineError),
     /// Protocol-specific intake failed before durable acceptance.
     #[error(transparent)]
-    Protocol(#[from] crate::machine::law::custody::Error),
+    Protocol(#[from] crate::WorkPolicyError),
     /// Durable custody or reconciliation failed; do not acknowledge success.
     #[error(transparent)]
     Store(#[from] analyte_store::IntakeError),
