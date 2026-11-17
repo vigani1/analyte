@@ -83,7 +83,7 @@ pub(crate) async fn open_store_with_deadline(
     )
     .await?;
     let result = handle
-        .request::<_, analyte_store::Error>(until, move |store| {
+        .request::<_, analyte_store::MaintenanceError>(until, move |store| {
             store.configure_retention_key(key, finite)?;
             if finite {
                 store.retention_space_ready()?;

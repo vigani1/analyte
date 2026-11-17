@@ -80,9 +80,24 @@ pub enum Error {
     /// Preserves the original runtime dependency failure.
     #[error(transparent)]
     Io(#[from] std::io::Error),
-    /// Preserves the original runtime dependency failure.
+    /// Preserves the Maintenance store boundary.
     #[error(transparent)]
-    Store(#[from] analyte_store::Error),
+    Maintenance(#[from] analyte_store::MaintenanceError),
+    /// Preserves the Evidence store boundary.
+    #[error(transparent)]
+    Evidence(#[from] analyte_store::OperatorError),
+    /// Preserves the Delivery store boundary.
+    #[error(transparent)]
+    Delivery(#[from] analyte_store::DeliveryError),
+    /// Preserves the Worker store boundary.
+    #[error(transparent)]
+    Worker(#[from] analyte_store::WorkerError),
+    /// Preserves the `WorkerStart` store boundary.
+    #[error(transparent)]
+    WorkerStart(#[from] analyte_store::WorkerStartError),
+    /// Startup LAW recovery combined retained evidence with reconciliation.
+    #[error(transparent)]
+    LawRecovery(#[from] super::law_recovery::RecoveryError),
     /// Preserves the original runtime dependency failure.
     #[error(transparent)]
     SinkDestinationError(#[from] analyte_sink::DestinationError),
@@ -116,5 +131,3 @@ pub enum Error {
 #[derive(Debug, thiserror::Error)]
 #[error("{0}")]
 pub struct DispatchCause(pub &'static str);
-
-analyte_store::forward_command_errors!(Error);
