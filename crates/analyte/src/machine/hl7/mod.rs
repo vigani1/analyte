@@ -543,7 +543,7 @@ impl Effects for ConnectionState {
             tokio::select! {
                 biased;
                 () = super::stopping(stop) => return Ok(Flow::Stop),
-                result = query.idle(store, machine, conn, &mut self.dialog, self.start) => result?,
+                result = query.idle(store, machine, conn, &mut self.dialog, self.start, host.settings) => result?,
             }
         }
         self.wake = self.dialog.next_deadline();

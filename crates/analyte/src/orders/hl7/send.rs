@@ -15,26 +15,13 @@ pub(super) struct Exchange {
 }
 type Command = analyte_mapping::Hl7Command;
 fn command(
-    machine: &Machine,
+    stack: &analyte_config::Hl7Stack,
     app: &analyte_contract::Order,
     options: Options,
 ) -> Result<Command, Error> {
-    let (syntax, settings) = match machine.snapshot.effective().stack() {
-        analyte_config::Stack::Hl7(analyte_config::RecordTransport::Stream(s)) => {
-            (s.settings().syntax(), s.orders())
-        }
-        analyte_config::Stack::Hl7(analyte_config::RecordTransport::Folder(s)) => {
-            (s.settings().syntax(), s.orders())
-        }
-        analyte_config::Stack::Astm(_)
-        | analyte_config::Stack::Law(_)
-        | analyte_config::Stack::Poct(_)
-        | analyte_config::Stack::Vidas(_)
-        | analyte_config::Stack::Autolyser(_) => return Err(Error::Hl7OrdersMissing),
-    };
     Ok(analyte_mapping::map_hl7_order(
-        syntax,
-        settings.as_ref().ok_or(Error::Hl7OrdersMissing)?,
+        stack.settings().syntax(),
+        stack.orders().ok_or(Error::Hl7OrdersMissing)?,
         app,
         options,
     )?)
@@ -57,24 +44,26 @@ fn build(command: &Command, record: &MachineOrder, cancel: bool) -> Result<Order
 pub(super) async fn next(
     store: &Handle,
     machine: &Machine,
+    stack: &analyte_config::Hl7Stack,
     owner: &Identifier,
     options: Options,
     after: &mut String,
     reserving: &mut Vec<MachineOrderKey>,
 ) -> Result<Option<Exchange>, Error> {
-    let settings = crate::orders::settings::hl7(machine).ok_or(Error::Hl7SettingsMissing)?;
+    let settings = stack.orders().ok_or(Error::Hl7SettingsMissing)?;
     let Some(_) = &settings.send() else {
         return Ok(None);
     };
-    if let Some(exchange) = next_cancel(store, machine, owner, options, reserving).await? {
+    if let Some(exchange) = next_cancel(store, machine, stack, owner, options, reserving).await? {
         return Ok(Some(exchange));
     }
-    next_work(store, machine, owner, options, after, reserving).await
+    next_work(store, machine, stack, owner, options, after, reserving).await
 }
 
 async fn next_cancel(
     store: &Handle,
     machine: &Machine,
+    stack: &analyte_config::Hl7Stack,
     owner: &Identifier,
     options: Options,
     reserving: &mut Vec<MachineOrderKey>,
@@ -83,7 +72,7 @@ async fn next_cancel(
     let cancels = crate::orders::reservation::cancellations(store, machine, deadline()?).await?;
     for (record, cached) in cancels {
         let app: analyte_contract::Order = analyte_contract::decode(cached.document.as_bytes())?;
-        let command = command(machine, &app, options)?;
+        let command = command(stack, &app, options)?;
         let message = build(&command, &record, true)?;
         let id = record.id;
         reserving.push(record.key.clone());
@@ -112,13 +101,14 @@ async fn next_cancel(
 async fn next_work(
     store: &Handle,
     machine: &Machine,
+    stack: &analyte_config::Hl7Stack,
     owner: &Identifier,
     options: Options,
     after: &mut String,
     reserving: &mut Vec<MachineOrderKey>,
 ) -> Result<Option<Exchange>, Error> {
     let freshness = machine.destination_limits.freshness.as_secs();
-    let settings = crate::orders::settings::hl7(machine).ok_or(Error::Hl7SettingsMissing)?;
+    let settings = stack.orders().ok_or(Error::Hl7SettingsMissing)?;
     let Some(send) = &settings.send() else {
         return Ok(None);
     };
@@ -131,7 +121,8 @@ async fn next_work(
         }
         let key = crate::orders::reservation::key(machine, cached.id);
         let version = app.fields().version;
-        let Some(command) = prepare_command(store, machine, &app, options, key.clone()).await?
+        let Some(command) =
+            prepare_command(store, machine, stack, &app, options, key.clone()).await?
         else {
             continue;
         };
@@ -324,11 +315,12 @@ pub(super) async fn finish(
 async fn prepare_command(
     store: &Handle,
     machine: &Machine,
+    stack: &analyte_config::Hl7Stack,
     app: &analyte_contract::Order,
     options: Options,
     key: MachineOrderKey,
 ) -> Result<Option<Command>, Error> {
-    match command(machine, app, options) {
+    match command(stack, app, options) {
         Ok(command) => Ok(Some(command)),
         Err(error) => {
             reject(

@@ -50,6 +50,7 @@ impl Hl7OrderLink {
         conn: &mut analyte_transport::Connection,
         dialog: &mut analyte_dialog::hl7::Dialog,
         clock: Instant,
+        stack: &analyte_config::Hl7Stack,
     ) -> Result<(), Error> {
         if dialog.orders_busy() {
             return Ok(());
@@ -57,6 +58,7 @@ impl Hl7OrderLink {
         if let Some(exchange) = send::next(
             store,
             machine.machine(),
+            stack,
             &self.owner,
             self.options,
             &mut self.cursor,
@@ -64,7 +66,8 @@ impl Hl7OrderLink {
         )
         .await?
         {
-            let wait = crate::orders::settings::hl7(machine.machine())
+            let wait = stack
+                .orders()
                 .and_then(|orders| orders.send())
                 .ok_or(Error::Hl7SendSettingsMissing)?
                 .settings()

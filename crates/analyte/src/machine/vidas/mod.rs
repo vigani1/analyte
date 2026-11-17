@@ -35,7 +35,7 @@ pub(super) async fn session(
     stop: watch::Receiver<bool>,
 ) -> Result<(), Error> {
     driver::run(
-        || ConnectionState::open(machine, settings),
+        || ConnectionState::open(settings),
         Context {
             machine,
             settings,
@@ -48,12 +48,9 @@ pub(super) async fn session(
 }
 
 impl ConnectionState {
-    fn open(
-        machine: &intake::ConnectionEvidence<'_>,
-        settings: &analyte_config::VidasStack,
-    ) -> Result<Self, Error> {
+    fn open(settings: &analyte_config::VidasStack) -> Result<Self, Error> {
         let installed = &settings.policy();
-        let config = crate::reading::vidas_config(&machine.machine().snapshot)?;
+        let config = crate::reading::vidas_config(settings)?;
         let policy = DialogConfig {
             ack: ms(installed.acknowledgment_ms),
             inter_byte: ms(installed.interbyte_ms),
