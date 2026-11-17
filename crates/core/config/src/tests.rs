@@ -64,3 +64,16 @@ fn adr0002_stack_conversion_returns_missing_setting_without_validation() -> Resu
     );
     Ok(())
 }
+
+#[test]
+fn hl7_2_5_1_section_2_15_9_12_unsupported_edition_lists_qualified_result_editions() {
+    let error = Error::UnsupportedHl7Edition {
+        path: "machine.toml".into(),
+        edition: "2.7",
+    };
+    assert!(
+        error
+            .to_string()
+            .ends_with("supported: 2.3, 2.3.1, 2.4, 2.5, 2.5.1, 2.6, 2.8.2, 2.9.1")
+    );
+}

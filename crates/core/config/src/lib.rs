@@ -45,6 +45,14 @@ mod tests;
 /// Maximum bytes accepted per TOML layer, before parsing or allocation.
 pub const MAX_FILE_BYTES: usize = 1_048_576;
 
+/// Lists the HL7 editions with result-processing rules, from the edition table.
+fn hl7_result_editions() -> String {
+    analyte_hl7::Version::result_editions()
+        .map(analyte_hl7::Version::as_str)
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 /// A config failure names its source file and actionable key.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -75,7 +83,8 @@ pub enum Error {
     },
     /// A recognized HL7 edition has no implemented result-processing profile.
     #[error(
-        "{path}: syntax.edition: HL7 {edition} is recognized but not yet supported for result processing; supported: {}", analyte_hl7::Version::config_keys().filter_map(analyte_hl7::Version::from_config_key).filter(|edition| edition.supports_result_reception()).map(analyte_hl7::Version::as_str).collect::<Vec<_>>().join(", ")
+        "{path}: syntax.edition: HL7 {edition} is recognized but not yet supported for result processing; supported: {}",
+        hl7_result_editions()
     )]
     UnsupportedHl7Edition {
         /// Source configuration layer.

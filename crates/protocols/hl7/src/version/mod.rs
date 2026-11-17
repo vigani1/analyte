@@ -38,11 +38,11 @@ pub enum Version {
 struct EditionRules {
     // HL7 2.5.1 §2.15.5: structured ERR and MSG.
     modern_error_layout: bool,
-    // HL7 2.5.1 sections 2.8.1-2: receiving compatibility only.
+    // HL7 2.5.1 §2.8.1-2: receiving compatibility only.
     compatibility_contract: bool,
-    // HL7 2.5.1 section 2.15.9.18, table 0211: standard character sets.
+    // HL7 2.5.1 §2.15.9.18, table 0211: standard character sets.
     standard_utf8: bool,
-    // HL7 2.5.1 section 2.8: receiving compatibility does not qualify writers.
+    // HL7 2.5.1 §2.8: receiving compatibility does not qualify writers.
     order_sending_blocker: Option<&'static str>,
     // HL7 2.5.1 §2.A.44: ACK message structure component.
     ack_structure: bool,
@@ -86,18 +86,18 @@ struct EditionRules {
     query_person_bytes: Option<usize>,
     // HL7 2.3.1 §5.4 / 2.5.1 §5.5: QRF trailing quantity field.
     query_filter_fields: Option<usize>,
-    // HL7 2.5.1 section 2.15.9.12: exact version identity.
+    // HL7 2.5.1 §2.15.9.12: exact version identity.
     edition: Version,
-    // HL7 2.5.1 section 2.15.9.12: MSH-12 version spelling.
+    // HL7 2.5.1 §2.15.9.12: MSH-12 version spelling.
     wire: &'static str,
-    // HL7 2.8.2 section 2.5.4: truncation character in encoding characters.
+    // HL7 2.8.2 §2.5.4: truncation character in encoding characters.
     truncation: bool,
-    // HL7 2.5.1 section 2.15.9.7: MSH-7 required since 2.4.
+    // HL7 2.5.1 §2.15.9.7: MSH-7 required since 2.4.
     required_timestamp: bool,
-    // HL7 2.8.2 section 5.10.2 / 2.9.1 section 5.9.2: original query withdrawal.
+    // HL7 2.8.2 §5.10.2 / 2.9.1 §5.9.2: original query withdrawal.
     legacy_query_withdrawal: Option<&'static str>,
     // None refuses typed interpretation until the edition's field rules exist.
-    // ADR 0007; HL7 2.5.1 section 2.8: only qualified field rules permit interpretation.
+    // ADR 0007; HL7 2.5.1 §2.8: only qualified field rules permit interpretation.
     grammar: Option<&'static Rules>,
 }
 
@@ -279,6 +279,14 @@ impl Version {
     /// Lists every supported machine-config key from the edition rules.
     pub fn config_keys() -> impl Iterator<Item = &'static str> {
         EDITIONS.iter().map(|row| row.edition.config_key())
+    }
+
+    /// Lists, in table order, the editions whose result-processing rules exist.
+    pub fn result_editions() -> impl Iterator<Item = Self> {
+        EDITIONS
+            .iter()
+            .map(|row| row.edition)
+            .filter(|edition| edition.supports_result_reception())
     }
 
     /// Returns the stable machine-config key, independently of the wire spelling.
