@@ -177,6 +177,8 @@ impl crate::Decode for Decoder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Decode;
+    use proptest::prelude::*;
     #[test]
     fn autolyser_rev18_p175_binary_insertion_reply_has_two_bytes() {
         for detail in [STX, EOT, ACK, NAK] {
@@ -209,5 +211,62 @@ mod tests {
         assert_eq!(decoder.finish().raw(), b"x");
         let mut decoder = Decoder::new(Mode::Report, 10).unwrap();
         assert_eq!(decoder.push(NAK).unwrap().unwrap().raw(), [NAK]);
+    }
+
+    #[test]
+    fn autolyser_rev18_p179_decimal_checksum_malformed_envelopes_and_size_limits() {
+        assert_eq!(finish(b"A".to_vec()), [b'A', b'0', b'6', b'5', EOT]);
+        for raw in [
+            &b"A066\x04"[..],
+            &b"A0x5\x04"[..],
+            &b"A065"[..],
+            &b"065"[..],
+        ] {
+            assert!(verified(raw).is_err());
+        }
+        let raw = finish(vec![b'A'; 11034]);
+        assert_eq!(raw.len(), 11038);
+        assert_eq!(verified(&raw).unwrap().len(), 11034);
+        assert_eq!(verified(&finish(vec![b'A'; 11035])), Err(Error::Length));
+        for maximum in [0, 1, 11039] {
+            assert!(Decoder::new(Mode::Report, maximum).is_err());
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn autolyser_rev18_p177_179_property_report_roundtrip_and_fragment_boundaries(body in prop::collection::vec(32u8..127,0..11035), split in 0usize..11039) {
+            let raw = finish(body.clone());
+            let mut decoder = Decoder::new(Mode::Report,11038).unwrap();
+            let split = split.min(raw.len());
+            let mut output = Vec::new();
+            for fragment in [&raw[..split], &raw[split..]] {
+                for byte in fragment { if let Some(frame) = decoder.push_byte(*byte).unwrap() { output.push(frame); } }
+            }
+            prop_assert_eq!(output.len(),1);
+            prop_assert!(output[0].complete());
+            prop_assert_eq!(output[0].raw(), raw.as_slice());
+            prop_assert_eq!(output[0].body().unwrap(), body);
+            prop_assert!(decoder.finish_stream().unwrap().is_none());
+        }
+        #[test]
+        fn autolyser_rev18_p175_property_binary_insertion_and_stopped_decoder(prefix in any::<u8>(), detail in any::<u8>()) {
+            let mut decoder = Decoder::new(Mode::Insertion,2).unwrap();
+            prop_assert!(decoder.push_byte(prefix).unwrap().is_none());
+            let frame = decoder.push_byte(detail).unwrap().unwrap();
+            prop_assert_eq!(frame.raw(), &[prefix,detail]);
+            prop_assert!(frame.complete());
+            prop_assert_eq!(decoder.push_byte(prefix).unwrap_err(), Error::Stopped);
+        }
+        #[test]
+        fn autolyser_rev18_p177_property_partial_evidence_is_exact_and_bounded(body in prop::collection::vec(32u8..127,0..1024), maximum in 2usize..1024) {
+            let mut decoder = Decoder::new(Mode::Report,maximum).unwrap();
+            let kept = body.len().min(maximum);
+            let mut output = None;
+            for byte in body.iter().take(kept) { output = decoder.push_byte(*byte).unwrap(); }
+            let frame = output.unwrap_or_else(|| decoder.finish());
+            prop_assert!(!frame.complete());
+            prop_assert_eq!(frame.raw(), &body[..kept]);
+        }
     }
 }

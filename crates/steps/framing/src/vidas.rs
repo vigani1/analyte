@@ -362,3 +362,126 @@ impl crate::Decode for Decoder {
         Err(Error::Incomplete)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Decode;
+    use proptest::prelude::*;
+
+    fn config(
+        mode: Mode,
+        suffix: &[u8],
+        include_stx: bool,
+        include_suffix: bool,
+        uppercase: bool,
+        chunk: usize,
+    ) -> Config {
+        Config::new(
+            mode,
+            chunk,
+            1920,
+            suffix,
+            Checksum {
+                include_stx,
+                include_suffix,
+                hex: HexOptions {
+                    uppercase,
+                    accept_either_case: false,
+                },
+            },
+        )
+        .unwrap_or_else(|error| panic!("synthetic configuration: {error}"))
+    }
+
+    #[test]
+    fn vidas_bci_appendix_a_ch3_checksum_span_case_suffix_and_packet_boundaries() {
+        for mode in [Mode::Literal, Mode::Alternate] {
+            let c = config(mode, &[], false, false, false, 80);
+            let mut expected = vec![STX, RS, b'A', GS, b'7', b'c'];
+            if mode == Mode::Alternate {
+                expected.push(ETX);
+            }
+            assert_eq!(c.encode(b"A").unwrap(), expected);
+            assert_eq!(decode(&expected, c).unwrap().body, b"A");
+        }
+        for (stx, suffix, expected) in [
+            (false, false, "7c"),
+            (true, false, "7e"),
+            (false, true, "96"),
+            (true, true, "a5"),
+        ] {
+            let c = config(Mode::Literal, &[CR], stx, suffix, false, 80);
+            let raw = c.encode(b"A").unwrap();
+            assert!(raw.ends_with(expected.as_bytes()));
+            assert_eq!(decode(&raw, c).unwrap().raw, raw);
+        }
+        let mut c = config(Mode::Literal, &[], false, false, true, 80);
+        let lower = config(Mode::Literal, &[], false, false, false, 80)
+            .encode(b"A")
+            .unwrap();
+        assert_eq!(decode(&lower, c.clone()).unwrap_err(), Error::Checksum);
+        c.checksum.hex.accept_either_case = true;
+        assert_eq!(decode(&lower, c).unwrap().body, b"A");
+    }
+
+    #[test]
+    fn vidas_bci_appendix_a_ch3_malformed_packets_truncation_and_limits() {
+        let c = config(Mode::Alternate, &[CR, LF], false, false, false, 1);
+        let raw = c.encode(&vec![b'A'; 1920]).unwrap();
+        assert_eq!(decode(&raw, c.clone()).unwrap().body.len(), 1920);
+        assert_eq!(c.encode(&vec![b'A'; 1921]), Err(Error::Payload));
+        assert_eq!(c.encode(b""), Err(Error::Payload));
+        assert_eq!(c.encode(&[NAK]), Err(Error::Payload));
+        let c = config(Mode::Alternate, &[], false, false, false, 80);
+        let raw = c.encode(b"A").unwrap();
+        for length in 0..raw.len() {
+            assert!(decode(&raw[..length], c.clone()).is_err());
+        }
+        for (offset, byte) in [(0, EOT), (2, NAK), (5, b'0')] {
+            let mut damaged = raw.clone();
+            damaged[offset] = byte;
+            let mut decoder = Decoder::new(c.clone());
+            let mut failed = false;
+            for byte in damaged {
+                if decoder.push_byte(byte).is_err() {
+                    failed = true;
+                    break;
+                }
+            }
+            assert!(failed);
+            assert_eq!(decoder.push_byte(b'A').unwrap_err(), Error::Stopped);
+        }
+        let mut trailing = raw;
+        trailing.push(EOT);
+        assert_eq!(decode(&trailing, c.clone()).unwrap_err(), Error::Trailing);
+        for (chunk, maximum, suffix) in [
+            (0, 1920, &[][..]),
+            (81, 1920, &[][..]),
+            (80, 0, &[][..]),
+            (80, 1921, &[][..]),
+            (80, 1920, &[EOT][..]),
+        ] {
+            assert!(Config::new(Mode::Literal, chunk, maximum, suffix, c.checksum).is_err());
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn vidas_bci_appendix_a_ch3_property_roundtrip_both_modes_and_all_checksum_options(body in "[ -~]{1,1920}", alternate in any::<bool>(), suffix in 0usize..4, stx in any::<bool>(), include_suffix in any::<bool>(), uppercase in any::<bool>(), chunk in 1usize..81, split in 0usize..9000) {
+            let suffixes = [&[][..], &[CR][..], &[LF][..], &[CR,LF][..]];
+            let c = config(if alternate {Mode::Alternate} else {Mode::Literal}, suffixes[suffix], stx, include_suffix, uppercase, chunk);
+            let raw = c.encode(body.as_bytes()).unwrap();
+            let mut decoder = Decoder::new(c);
+            let split = split.min(raw.len());
+            let mut output = Vec::new();
+            for fragment in [&raw[..split], &raw[split..]] {
+                for byte in fragment { if let Some(packet) = decoder.push_byte(*byte).unwrap() { output.push(packet); } }
+            }
+            prop_assert_eq!(output.len(), 1);
+            prop_assert_eq!(&output[0].body, body.as_bytes());
+            prop_assert_eq!(&output[0].raw, &raw);
+            prop_assert!(decoder.finish_stream().unwrap().is_none());
+        }
+    }
+}
