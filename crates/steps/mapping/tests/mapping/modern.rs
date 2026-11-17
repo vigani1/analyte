@@ -19,7 +19,7 @@ fn hl7_2_8_2_s7_3_1_and_2_9_1_s7_3_1_modern_incomplete_reports_keep_exact_values
             );
             let message = analyte_hl7::Message::parse(
                 raw.as_bytes(),
-                config.effective().hl7_options().ok_or("options")?,
+                effective_options(config.effective()).ok_or("options")?,
             )?;
             let output = map_hl7(&settings::hl7_mapping(&config), &message, input())?;
             assert!(output.requires_parking(), "{output:?}");
@@ -54,7 +54,7 @@ fn hl7_2_9_1_s2a_2_22_utc_without_known_civil_offset_remains_raw() -> TestResult
             );
             let message = analyte_hl7::Message::parse(
                 raw.as_bytes(),
-                config.effective().hl7_options().ok_or("options")?,
+                effective_options(config.effective()).ok_or("options")?,
             )?;
             let output = map_hl7(&settings::hl7_mapping(&config), &message, input())?;
             let time = first(&output)?
@@ -91,7 +91,7 @@ fn hl7_2_8_2_and_2_9_1_s7_3_1_unselected_groups_and_withdrawn_fields_do_not_map(
             );
             let message = analyte_hl7::Message::parse(
                 raw.as_bytes(),
-                config.effective().hl7_options().ok_or("options")?,
+                effective_options(config.effective()).ok_or("options")?,
             )?;
             assert!(map_hl7(&settings::hl7_mapping(&config), &message, input()).is_err());
             assert_eq!(message.raw(), raw.as_bytes());
@@ -110,7 +110,7 @@ fn hl7_2_8_2_s2_5_5_2_and_2_9_1_s2_4_5_2_truncated_results_remain_parked() -> Te
         );
         let message = analyte_hl7::Message::parse(
             raw.as_bytes(),
-            config.effective().hl7_options().ok_or("options")?,
+            effective_options(config.effective()).ok_or("options")?,
         )?;
         assert!(map_hl7(&settings::hl7_mapping(&config), &message, input()).is_err());
         assert_eq!(message.raw(), raw.as_bytes());
@@ -133,7 +133,7 @@ fn hl7_2_8_2_s2_a_13_and_2_9_1_s2a_2_13_oid_authority_never_uses_code_only_fallb
         );
         let message = analyte_hl7::Message::parse(
             raw.as_bytes(),
-            config.effective().hl7_options().ok_or("options")?,
+            effective_options(config.effective()).ok_or("options")?,
         )?;
         assert!(matches!(
             map_hl7(&settings::hl7_mapping(&config), &message, input()),

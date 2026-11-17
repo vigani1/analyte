@@ -5,7 +5,8 @@ use crate::intake;
 use crate::intake::ByteReason;
 use crate::machine::receive::custody::{self, ms};
 mod error;
-use analyte_dialog::poct::{Action, Config, Dialog, Event, StoreOutcome};
+pub(crate) mod settings;
+use analyte_dialog::poct::{Action, Dialog, Event, StoreOutcome};
 use analyte_model::ReceiptId;
 use analyte_poct::{Body, ControlId, Header, Message, Timestamp};
 use analyte_store::Handle;
@@ -27,16 +28,8 @@ impl<'a, 'm> Host<'a, 'm> {
         settings: &'a analyte_config::PoctStack,
         store: &'a Handle,
     ) -> Result<Self, Error> {
-        let policy = &settings.policy();
-        let limits = super::interpretation::poct_limits(settings);
         let dialog = Dialog::new(
-            Config {
-                depth: policy.depth,
-                pending_messages: policy.pending_messages,
-                message_bytes: limits.message_bytes,
-                response_timeout: ms(policy.response_ms),
-                unannounced_ack_timeout: ms(policy.acknowledgment_ms),
-            },
+            settings::dialog(settings),
             ControlId::new(&uuid::Uuid::now_v7().simple().to_string())?,
         )?;
         let start = Instant::now();

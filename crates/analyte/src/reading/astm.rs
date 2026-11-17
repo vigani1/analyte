@@ -6,19 +6,21 @@ pub(super) fn read(
     syntax: &analyte_config::AstmSyntax,
     mappings: &analyte_config::Mappings,
 ) -> Result<analyte_mapping::Output, Error> {
-    let messages = analyte_astm::parse_with(payload, syntax.parser_limits(), |bytes| match syntax
-        .encoding()
-    {
-        analyte_config::Encoding::Ascii => analyte_astm::ascii(bytes),
-        analyte_config::Encoding::Latin1 => analyte_astm::latin1(bytes),
-        analyte_config::Encoding::Utf8 => analyte_astm::utf8(bytes),
-    })?;
+    let messages = analyte_astm::parse_with(
+        payload,
+        crate::machine::astm::settings::parser_limits(syntax),
+        |bytes| match syntax.encoding() {
+            analyte_config::Encoding::Ascii => analyte_astm::ascii(bytes),
+            analyte_config::Encoding::Latin1 => analyte_astm::latin1(bytes),
+            analyte_config::Encoding::Utf8 => analyte_astm::utf8(bytes),
+        },
+    )?;
     // A transfer may contain multiple messages; the host must retain every one.
     if messages.len() != 1 {
         return Err(Error::Context(super::Context::AstmMessageCount));
     }
     Ok(analyte_mapping::astm::map(
-        &analyte_mapping::astm::Settings { syntax, mappings },
+        &crate::machine::astm::settings::mapping(syntax, mappings),
         messages
             .first()
             .ok_or_else(|| Error::Context(super::Context::AstmMessageMissing))?,

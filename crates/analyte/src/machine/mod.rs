@@ -1,6 +1,6 @@
 //! Owns machine workers and transport sessions without replaying queued writes.
 use crate::machine::error::Error;
-mod astm;
+pub(crate) mod astm;
 pub(crate) mod autolyser;
 mod driver;
 pub(crate) mod link;
@@ -10,7 +10,7 @@ pub(crate) mod hl7;
 pub(crate) mod interpretation;
 pub use interpretation::reprocess;
 pub(crate) mod law;
-mod poct;
+pub(crate) mod poct;
 pub(crate) mod receive;
 mod settings;
 pub(crate) use receive::connection_input;

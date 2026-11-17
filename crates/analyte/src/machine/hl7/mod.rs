@@ -6,8 +6,9 @@ use super::connection_input::{self, Input};
 use super::driver::{Context, Effects, Flow};
 use crate::intake;
 mod error;
+pub(crate) mod settings;
 use crate::orders::outcome::Code;
-use analyte_dialog::hl7::{Action, Config, Dialog, Event};
+use analyte_dialog::hl7::{Action, Dialog, Event};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
 pub(crate) use error::Error;
@@ -53,18 +54,7 @@ impl<'a, 'm> Host<'a, 'm> {
         settings: &'a analyte_config::Hl7Stack,
         store: &'a Handle,
     ) -> Result<Self, Error> {
-        let mut options = settings.settings().syntax().options();
-        options.limits.message_bytes = options
-            .limits
-            .message_bytes
-            .min(settings.settings().frame_limit());
-        let config = Config::new(
-            options,
-            Duration::from_millis(u64::from(
-                settings.settings().timeouts().receive_timeout_ms(),
-            )),
-            1,
-        )?;
+        let (options, config) = settings::dialog(settings)?;
         let mut dialog = Dialog::new(config, 0);
         let start = Instant::now();
         let wake = None;

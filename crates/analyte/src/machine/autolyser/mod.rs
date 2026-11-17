@@ -9,7 +9,8 @@ use crate::machine::receive;
 use crate::machine::receive::custody::ms;
 use crate::orders::outcome::AutolyserEnd;
 mod error;
-use analyte_dialog::autolyser::{Action, Config, Dialog, Event, Recovery, Request};
+pub(crate) mod settings;
+use analyte_dialog::autolyser::{Action, Dialog, Event, Request};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
 pub(crate) use error::Error;
@@ -80,21 +81,7 @@ impl<'a, 'm> Host<'a, 'm> {
         settings: &'a analyte_config::AutolyserStack,
         store: &'a Handle,
     ) -> Result<Self, Error> {
-        let policy = settings.policy();
-        let dialog = Dialog::new(Config {
-            poll: ms(policy.poll_ms),
-            ack: ms(policy.acknowledgment_ms),
-            response: ms(policy.response_ms),
-            inter_byte: ms(policy.interbyte_ms),
-            storage: ms(policy.storage_ms),
-            max_bytes: settings.settings().frame_limit(),
-            controls: policy.controls,
-            recovery: if policy.recover_last_on_poll {
-                Recovery::LastOnPoll
-            } else {
-                Recovery::ManualLast
-            },
-        })?;
+        let dialog = Dialog::new(settings::dialog(settings))?;
         Ok(Self {
             machine,
             settings,

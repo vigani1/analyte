@@ -452,35 +452,3 @@ impl Effective {
         &self.site
     }
 }
-
-impl Effective {
-    /// Returns LIS02 parser limits only for ASTM record stacks.
-    #[must_use]
-    pub fn astm_limits(&self) -> Option<analyte_astm::Limits> {
-        match &self.machine.stack {
-            Stack::Astm(RecordTransport::Stream(s)) => Some(s.settings().syntax().parser_limits()),
-            Stack::Astm(RecordTransport::Folder(s)) => Some(s.settings().syntax().parser_limits()),
-            Stack::Hl7(RecordTransport::Stream(_))
-            | Stack::Law(_)
-            | Stack::Poct(_)
-            | Stack::Vidas(_)
-            | Stack::Autolyser(_)
-            | Stack::Hl7(RecordTransport::Folder(_)) => None,
-        }
-    }
-
-    /// Returns negotiated HL7 options, including LAW's fixed policy, only for HL7 stacks.
-    #[must_use]
-    pub fn hl7_options(&self) -> Option<analyte_hl7::Options> {
-        match &self.machine.stack {
-            Stack::Hl7(RecordTransport::Stream(s)) => Some(s.settings().syntax().options()),
-            Stack::Hl7(RecordTransport::Folder(s)) => Some(s.settings().syntax().options()),
-            Stack::Law(s) => Some(s.options()),
-            Stack::Astm(RecordTransport::Stream(_))
-            | Stack::Astm(RecordTransport::Folder(_))
-            | Stack::Poct(_)
-            | Stack::Vidas(_)
-            | Stack::Autolyser(_) => None,
-        }
-    }
-}

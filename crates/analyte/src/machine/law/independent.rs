@@ -258,7 +258,7 @@ async fn worker(
                     let outgoing = tokio::select! {
                         biased;
                         () = analyte_sink::stopped(&mut stop) => break,
-                        result = idle_orders.idle(&store, context.machine(), settings.options()) => result,
+                        result = idle_orders.idle(&store, context.machine(), crate::machine::law::settings::options(&settings)) => result,
                     };
                     match outgoing {
                         Ok(Some(message)) => {

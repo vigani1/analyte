@@ -37,13 +37,13 @@ pub fn map(
         mappings,
         declarations,
     } = settings;
-    validate_message(message, syntax.options(), syntax.limits())?;
+    validate_message(message, syntax.encoding(), syntax.limits())?;
     map_checked(message, syntax, mappings, declarations, input)
 }
 
 pub(crate) fn validate_message(
     message: &analyte_hl7::Message,
-    options: analyte_hl7::Options,
+    encoding: analyte_config::Encoding,
     settings: &analyte_config::SyntaxLimits,
 ) -> Result<(), Error> {
     message
@@ -55,7 +55,15 @@ pub(crate) fn validate_message(
             },
             source,
         })?;
-    if options.charset != message.charset() {
+    if !matches!(
+        (encoding, message.charset()),
+        (analyte_config::Encoding::Ascii, analyte_hl7::Charset::Ascii)
+            | (
+                analyte_config::Encoding::Latin1,
+                analyte_hl7::Charset::Latin1
+            )
+            | (analyte_config::Encoding::Utf8, analyte_hl7::Charset::Utf8)
+    ) {
         return Err(Error::CharsetMismatch);
     }
     if message.raw().len() > settings.bytes() || message.segments().count() > settings.records() {
