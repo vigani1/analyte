@@ -12,7 +12,7 @@ fn adr0003_rule7_startup_budget_is_inclusive_and_cancellation_is_sticky() -> Tes
     assert!(startup.expired());
     assert!(matches!(
         startup.check(),
-        Err(Error::StartupTimeout {
+        Err(MaintenanceError::StartupTimeout {
             step: StartupStep::Opening
         })
     ));
@@ -32,7 +32,7 @@ fn adr0003_rule7_startup_budget_is_inclusive_and_cancellation_is_sticky() -> Tes
         assert!(
             matches!(
                 &refusal,
-                Error::StartupTimeout {
+                MaintenanceError::StartupTimeout {
                     step: StartupStep::Opening
                 }
             ),

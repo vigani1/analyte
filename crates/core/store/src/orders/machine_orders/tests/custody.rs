@@ -1,5 +1,6 @@
 //! Tests atomic LAW custody without sending machine commands or allocating status results.
 use super::*;
+use crate::law::{Custody, Disposition, Rejection, Work};
 use analyte_model::AwosExecution;
 
 fn policy() -> StatusLifecycle<'static> {
@@ -22,11 +23,11 @@ fn notice(
     order: &MachineOrder,
     state: AwosExecution,
     message: &str,
-) -> Result<LawCustody, Box<dyn std::error::Error>> {
-    Ok(LawCustody {
+) -> Result<Custody, Box<dyn std::error::Error>> {
+    Ok(Custody {
         scope: SourceText::new("machine/sender")?,
         message: Identifier::new(message)?,
-        work: vec![LawWork {
+        work: vec![Work {
             order: order.id,
             item: 1,
             placer: Identifier::new(&format!("{}-1", order.id))?,
@@ -42,7 +43,7 @@ fn notice(
 }
 fn commit(
     store: &mut Store,
-    custody: &LawCustody,
+    custody: &Custody,
     raw: &[u8],
 ) -> Result<InterpretationCommit, Box<dyn std::error::Error>> {
     let mut metadata = test_support::receipt(raw)?;
@@ -75,32 +76,32 @@ fn palm_tf2b_c8_figure_c8_1_adr0003_0011_notices_commit_once_across_restart() ->
     let sc = notice(&order, AwosExecution::Scheduled, "scheduled")?;
     assert!(matches!(
         commit(&mut store, &sc, b"scheduled")?.law,
-        Some(LawDisposition::Accepted)
+        Some(Disposition::Accepted)
     ));
     let ip = notice(&order, AwosExecution::InProgress, "processing")?;
     assert!(matches!(
         commit(&mut store, &ip, b"processing")?.law,
-        Some(LawDisposition::Accepted)
+        Some(Disposition::Accepted)
     ));
     drop(store);
     let mut store = open(&path)?;
     assert!(matches!(
         commit(&mut store, &sc, b"scheduled")?.law,
-        Some(LawDisposition::Accepted)
+        Some(Disposition::Accepted)
     ));
     let late = notice(&order, AwosExecution::Scheduled, "ambiguous-late")?;
     assert!(matches!(
         commit(&mut store, &late, b"late")?.law,
-        Some(LawDisposition::Rejected(_))
+        Some(Disposition::Rejected(_))
     ));
     let ca = notice(&order, AwosExecution::AnalyzerCancelled, "cancel-after-ip")?;
     assert!(matches!(
         commit(&mut store, &ca, b"ca")?.law,
-        Some(LawDisposition::Rejected(_))
+        Some(Disposition::Rejected(_))
     ));
     assert!(matches!(
         commit(&mut store, &ip, b"different bytes")?.law,
-        Some(LawDisposition::Rejected(_))
+        Some(Disposition::Rejected(_))
     ));
     let restored = store.machine_order(&identity()?)?.ok_or("order")?;
     assert_eq!(
@@ -147,7 +148,7 @@ fn palm_tf2b_b7_6_adr0003_conflicting_second_awos_rejects_whole_notice() -> Test
     let result = commit(&mut store, &custody, b"mixed valid and unknown")?;
     assert!(matches!(
         result.law,
-        Some(LawDisposition::Rejected(LawRejection { occurrence: 2, .. }))
+        Some(Disposition::Rejected(Rejection { occurrence: 2, .. }))
     ));
     assert_eq!(
         store
@@ -192,8 +193,8 @@ fn adr0003_0010_law_projection_commit_failure_leaves_raw_pending_and_retry_safe(
             .expect_err("input must be refused");
         assert!(
             matches!(
-                refusal.downcast_ref::<Error>(),
-                Some(Error::ConstraintViolation(_))
+                refusal.downcast_ref::<ReconciliationError>(),
+                Some(ReconciliationError::ConstraintViolation(_))
             ),
             "unexpected refusal: {refusal:?}"
         );
@@ -223,7 +224,7 @@ fn adr0003_0010_law_projection_commit_failure_leaves_raw_pending_and_retry_safe(
     store.db.execute_batch("DROP TRIGGER fail_execution")?;
     assert!(matches!(
         commit(&mut store, &custody, b"ca")?.law,
-        Some(LawDisposition::Accepted)
+        Some(Disposition::Accepted)
     ));
     Ok(())
 }
@@ -268,7 +269,7 @@ fn palm_tf2b_c8_adr0003_analyzer_ca_blocks_new_cancel_without_clearing_app_inten
             30,
             event
         ),
-        Err(Error::AnalyzerCancelled)
+        Err(OrderError::AnalyzerCancelled)
     ));
     assert!(
         store

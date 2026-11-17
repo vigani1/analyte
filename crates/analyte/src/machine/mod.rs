@@ -8,7 +8,7 @@ use link::{folder, serial};
 pub(crate) mod hl7;
 pub(crate) mod interpretation;
 pub use interpretation::reprocess;
-mod law;
+pub(crate) mod law;
 mod poct;
 pub(crate) mod receive;
 mod settings;

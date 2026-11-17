@@ -136,17 +136,17 @@ fn adr0011_withheld_delivery_builder_is_refused_atomically() -> TestResult {
         },
         |evidence, _| {
             let Reading::Results(results) = &evidence.outcome else {
-                return Err(Error::InvalidInterpretationInput);
+                return Err(ReconciliationError::InvalidInterpretationInput);
             };
             let Some(analyte_model::IdentityStatus::Resolved(identity)) =
                 results.first().map(|r| &r.identity)
             else {
-                return Err(Error::InvalidInterpretationInput);
+                return Err(ReconciliationError::InvalidInterpretationInput);
             };
             Ok(vec![Delivery {
                 id: DeliveryId::try_from(uuid::Uuid::now_v7())
-                    .map_err(|_| Error::InvalidInterpretationInput)?,
-                destination: Identifier::new("app").map_err(Error::Text)?,
+                    .map_err(ReconciliationError::Identity)?,
+                destination: Identifier::new("app").map_err(ReconciliationError::Text)?,
                 ordering_key: OrderingKey {
                     machine: metadata.machine.clone(),
                     observation: identity.observation.clone(),
@@ -156,7 +156,10 @@ fn adr0011_withheld_delivery_builder_is_refused_atomically() -> TestResult {
             }])
         },
     );
-    assert!(matches!(result, Err(Error::InvalidInterpretationInput)));
+    assert!(matches!(
+        result,
+        Err(ReconciliationError::InvalidInterpretationInput)
+    ));
     for table in ["interpretations", "observation_revisions", "outbox"] {
         assert_eq!(
             store
@@ -326,7 +329,7 @@ fn mutation_adr0003_adr0011_retained_interpretation_byte_bound_is_inclusive() ->
             };
             assert_eq!(result?.outcomes, vec![expected]);
         } else {
-            assert!(matches!(result, Err(Error::Corruption)));
+            assert!(matches!(result, Err(ReconciliationError::Corruption)));
             assert!(store.interpretation(second.id, 1)?.is_none());
         }
         assert_eq!(

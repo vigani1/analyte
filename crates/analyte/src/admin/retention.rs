@@ -61,8 +61,8 @@ async fn render(state: &Context, session: Option<&Session>, after: u64) -> Resul
     let after = i64::try_from(after)?;
     let (last, oldest, holds) = state
         .store
-        .request(deadline()?, move |store| {
-            Ok((
+        .request::<_, analyte_store::Error>(deadline()?, move |store| {
+            Ok::<_, analyte_store::Error>((
                 store.last_purge_run()?,
                 store.oldest_retained_receipt()?,
                 store.retention_holds(after)?,

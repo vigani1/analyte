@@ -389,11 +389,11 @@ async fn store_message(
             // This fresh receipt has exactly one interpretation. POCT promises
             // readable custody even when mapped findings require operator review.
             let readable = store
-                .request(crate::deadline()?, move |s| {
+                .request::<_, analyte_store::Error>(crate::deadline()?, move |s| {
                     let evidence = s
                         .interpretation(id, 1)?
                         .ok_or(analyte_store::Error::Corruption)?;
-                    Ok(matches!(
+                    Ok::<_, analyte_store::Error>(matches!(
                         evidence.outcome,
                         analyte_store::Reading::Results(_)
                     ))

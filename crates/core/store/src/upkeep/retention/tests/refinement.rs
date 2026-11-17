@@ -105,7 +105,10 @@ fn adr0013_item2_final_orders_purge_only_after_period_and_keep_replay_guard() ->
             order: Identifier::new("order")?,
             machine: Identifier::new("synthetic-machine")?,
         };
-        assert!(matches!(store.machine_order(&identity), Err(Error::Purged)));
+        assert!(matches!(
+            store.machine_order(&identity),
+            Err(crate::OrderError::Purged)
+        ));
         cached(&mut store, "order", "sample")?;
         let result = store.reserve_send(
             &crate::OrderReservation {
@@ -116,7 +119,7 @@ fn adr0013_item2_final_orders_purge_only_after_period_and_keep_replay_guard() ->
             },
             crate::ReserveOptions::default(),
         );
-        assert!(matches!(result, Err(Error::Purged)));
+        assert!(matches!(result, Err(crate::OrderError::Purged)));
         assert_constraint(store.db.execute("DELETE FROM retention_orders", []));
         Store::integrity(&store.db)?;
     }

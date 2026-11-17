@@ -1,6 +1,6 @@
 //! Admits retained transitions and due reminders without losing progress at capacity.
 use super::event::{self, EventKind};
-use crate::{AlertKey, AlertState, Error, Store};
+use crate::{AlertKey, AlertState, OperatorError as Error, Store};
 use analyte_model::Identifier;
 use rusqlite::{OptionalExtension, Transaction, params};
 

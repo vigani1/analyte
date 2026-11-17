@@ -20,10 +20,13 @@ async fn plan11_adr0008_restored_outbox_retries_same_id_bytes_as_duplicate() -> 
         let backup = directory.path().join("backup.db");
         let target = backup.clone();
         store
-            .request(
+            .request::<_, analyte_store::Error>(
                 std::time::Instant::now() + Duration::from_secs(5),
                 move |store| {
-                    store.backup(&target, std::time::Instant::now() + Duration::from_secs(5))
+                    Ok(
+                        store
+                            .backup(&target, std::time::Instant::now() + Duration::from_secs(5))?,
+                    )
                 },
             )
             .await?;

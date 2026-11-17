@@ -63,6 +63,8 @@ impl From<crate::machine::interpretation::ReadError> for Error {
 // Rust does not chain From conversions through an enum's typed custody field.
 macro_rules! forward {
     ($target:ty, $wrap:expr) => {
+        analyte_store::forward_command_errors!($target);
+
         impl From<analyte_store::Error> for $target {
             fn from(error: analyte_store::Error) -> Self {
                 ($wrap)(crate::machine::receive::error::Error::from(error))
@@ -175,3 +177,5 @@ macro_rules! session_boundary {
     };
 }
 pub(crate) use session_boundary;
+
+analyte_store::forward_command_errors!(Error);

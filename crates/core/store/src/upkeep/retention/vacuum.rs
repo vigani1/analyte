@@ -1,5 +1,5 @@
 //! Prepares incremental vacuum offline and returns a bounded number of free pages online.
-use crate::{Error, FreeSpace, Limits, Store, startup::Startup};
+use crate::{FreeSpace, Limits, MaintenanceError as Error, Store, startup::Startup};
 use std::{path::Path, time::Instant};
 impl Store {
     /// Refuses finite retention until the file supports incremental vacuum.

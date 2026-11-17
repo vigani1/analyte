@@ -365,7 +365,7 @@ mod tests {
         let owner = store.clone();
         let blocking = tokio::spawn(async move {
             owner
-                .request(deadline()?, move |_| {
+                .request::<_, analyte_store::Error>(deadline()?, move |_| {
                     let _ = entered.send(());
                     released
                         .recv_timeout(Duration::from_secs(2))
@@ -404,7 +404,7 @@ mod tests {
         let blocking = tokio::spawn(async move {
             let until = std::time::Instant::now() + Duration::from_secs(8);
             owner
-                .request(until, move |_| {
+                .request::<_, analyte_store::Error>(until, move |_| {
                     let _ = entered.send(());
                     released
                         .recv_timeout(Duration::from_secs(8))
@@ -426,7 +426,9 @@ mod tests {
             .ok_or("queued read succeeded without store access")?;
         assert!(matches!(
             error.downcast_ref::<analyte_store::Error>(),
-            Some(analyte_store::Error::Timeout)
+            Some(analyte_store::Error::Worker(
+                analyte_store::WorkerError::ResponseTimeout(_)
+            ))
         ));
         assert!(
             store

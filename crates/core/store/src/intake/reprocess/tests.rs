@@ -51,7 +51,7 @@ fn plan11_adr0003_reprocess_provenance_resolution_failure_and_audit_rollback() -
             .map(|_| ())
             .expect_err("input must be refused");
         assert!(
-            matches!(&refusal, Error::ConstraintViolation(_)),
+            matches!(&refusal, ReconciliationError::ConstraintViolation(_)),
             "unexpected refusal: {refusal:?}"
         );
     }
@@ -153,7 +153,7 @@ fn verify_reprocessed_provenance_and_resolution(
             ReconcileInput::standard(&[false], &[]),
             |_, _| Ok(vec![])
         ),
-        Err(Error::ReprocessParked)
+        Err(ReconciliationError::ReprocessParked)
     ));
     let other = store.park(&Parked {
         kind: Identifier::new("unrelated")?,
@@ -169,7 +169,7 @@ fn verify_reprocessed_provenance_and_resolution(
             ReconcileInput::standard(&[false], &[]),
             |_, _| Ok(vec![])
         ),
-        Err(Error::ReprocessParked)
+        Err(ReconciliationError::ReprocessParked)
     ));
     action.parked = None;
     current.outcome = Reading::Results(vec![]);
@@ -238,7 +238,7 @@ fn mutation_adr0003_adr0011_lifecycle_reprocessing_requires_audit_and_keeps_orig
             },
             |_, _| Ok(vec![])
         ),
-        Err(Error::AuditMismatch)
+        Err(ReconciliationError::AuditMismatch)
     ));
     assert!(store.interpretation(metadata.id, 2)?.is_none());
     assert!(store.audits(0)?.is_empty());

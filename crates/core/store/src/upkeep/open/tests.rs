@@ -247,9 +247,11 @@ fn adr0003_rule7_worker_reports_opening_deadline_instead_of_generic_timeout() ->
     ));
     assert!(matches!(
         result,
-        Err(Error::StartupTimeout {
-            step: StartupStep::Opening
-        })
+        Err(crate::WorkerStartError::Open(
+            crate::MaintenanceError::StartupTimeout {
+                step: StartupStep::Opening
+            }
+        ))
     ));
     Ok(())
 }

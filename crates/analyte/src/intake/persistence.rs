@@ -10,7 +10,7 @@ pub(super) struct PreparedMapping {
     pub(super) interpretation: Interpretation,
     pub(super) destination: Identifier,
     pub(super) conflict: Option<Interpretation>,
-    pub(super) custody: Option<analyte_store::LawCustody>,
+    pub(super) custody: Option<analyte_store::law::Custody>,
     pub(super) action: Option<analyte_store::Reprocess>,
     pub(super) lifecycle: Option<analyte_store::StatusLifecycle<'static>>,
     pub(super) atomic: bool,
@@ -52,7 +52,7 @@ impl PreparedMapping {
                     )
                 })
             {
-                return Err(analyte_store::Error::DeliveryBuild(Box::new(
+                return Err(analyte_store::ReconciliationError::DeliveryBuild(Box::new(
                     LawBatchConflict,
                 )));
             }
@@ -72,7 +72,8 @@ impl PreparedMapping {
                     corrections: &corrections,
                     findings: &findings,
                     mode: analyte_store::ReconcileMode::Law {
-                        lifecycle: lifecycle.ok_or(analyte_store::Error::InvalidHostInput)?,
+                        lifecycle: lifecycle
+                            .ok_or(analyte_store::Error::LifecyclePolicyRequired)?,
                         custody,
                     },
                 },
@@ -93,7 +94,9 @@ impl PreparedMapping {
         match commit {
             // The builder refusal rolls back revisions, audit and deliveries together.
             // Keep a failed version (and its audit for operator actions) afterwards.
-            Err(analyte_store::Error::DeliveryBuild(error)) if error.is::<LawBatchConflict>() => {
+            Err(analyte_store::ReconciliationError::DeliveryBuild(error))
+                if error.is::<LawBatchConflict>() =>
+            {
                 let rejected = reject_batch(
                     store,
                     id,
@@ -105,7 +108,7 @@ impl PreparedMapping {
                 )?;
                 Ok((rejected, InterpretationOutcome::Conflict))
             }
-            result => result.map(|commit| {
+            result => Ok(result.map(|commit| {
                 (
                     commit,
                     if accepted {
@@ -114,7 +117,7 @@ impl PreparedMapping {
                         InterpretationOutcome::Failed
                     },
                 )
-            }),
+            })?),
         }
     }
 }
@@ -133,16 +136,16 @@ fn reject_batch(
     store: &mut analyte_store::Store,
     id: ReceiptId,
     conflict: Option<Interpretation>,
-    custody: Option<&analyte_store::LawCustody>,
+    custody: Option<&analyte_store::law::Custody>,
     action: Option<&analyte_store::Reprocess>,
     findings: &[analyte_store::Parked],
     lifecycle: Option<analyte_store::StatusLifecycle<'_>>,
 ) -> Result<analyte_store::InterpretationCommit, analyte_store::Error> {
-    let rejected_evidence = conflict.ok_or(analyte_store::Error::InvalidHostInput)?;
+    let rejected_evidence = conflict.ok_or(analyte_store::Error::ConflictEvidenceRequired)?;
     let rejected = if let Some(mut custody) = custody.cloned() {
-        custody.rejection = Some(analyte_store::LawRejection {
+        custody.rejection = Some(analyte_store::law::Rejection {
             occurrence: 1,
-            reason: analyte_store::LawConflict::Progression,
+            reason: analyte_store::law::Conflict::Progression,
         });
         store.reconcile(
             action.map_or(
@@ -154,7 +157,7 @@ fn reject_batch(
                 corrections: &[],
                 findings,
                 mode: analyte_store::ReconcileMode::Law {
-                    lifecycle: lifecycle.ok_or(analyte_store::Error::InvalidHostInput)?,
+                    lifecycle: lifecycle.ok_or(analyte_store::Error::LifecyclePolicyRequired)?,
                     custody: &custody,
                 },
             },
@@ -206,7 +209,7 @@ fn build_deliveries(
     receipt: &ReceiptMetadata,
     destination: &Identifier,
     lifecycle: Option<analyte_store::StatusLifecycle<'_>>,
-) -> Result<Vec<analyte_store::Delivery>, analyte_store::Error> {
+) -> Result<Vec<analyte_store::Delivery>, analyte_store::ReconciliationError> {
     let mut deliveries = Vec::new();
     if let Reading::Results(results) = &assigned.outcome {
         for (result, outcome) in results.iter().zip(outcomes) {
@@ -228,7 +231,9 @@ fn build_deliveries(
                         destination.clone(),
                         jiff::Timestamp::now(),
                     )
-                    .map_err(|error| analyte_store::Error::DeliveryBuild(Box::new(error)))?,
+                    .map_err(|error| {
+                        analyte_store::ReconciliationError::DeliveryBuild(Box::new(error))
+                    })?,
                 );
             }
         }

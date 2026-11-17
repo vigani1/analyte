@@ -158,7 +158,7 @@ async fn enqueue(
     delivery: analyte_store::Delivery,
 ) -> Result<(), Error> {
     store
-        .request(until()?, move |s| {
+        .request::<_, analyte_store::Error>(until()?, move |s| {
             s.receive(&metadata, b"raw", b"config")?;
             let is_correction = result
                 .parts
@@ -177,7 +177,7 @@ async fn enqueue(
                 analyte_store::ReconcileInput::standard(&[is_correction], &[]),
                 |_, _| Ok(vec![delivery]),
             )?;
-            Ok(())
+            Ok::<_, analyte_store::Error>(())
         })
         .await?;
     Ok(())
@@ -390,8 +390,8 @@ async fn check_cache_changes(
     poller: &Poller<'_>,
 ) -> TestResult {
     let first = store
-        .request(until()?, |s| {
-            s.cursor(&Identifier::new("app").map_err(analyte_store::Error::Text)?)
+        .request::<_, analyte_store::Error>(until()?, |s| {
+            Ok(s.cursor(&Identifier::new("app").map_err(analyte_store::Error::Text)?)?)
         })
         .await?;
     let mut receiver = analyte_receiver::Receiver::open(
@@ -413,13 +413,13 @@ async fn check_cache_changes(
         .map_err(|_| "receiver seed thread failed")?;
     poller.poll_once().await?;
     let cached = store
-        .request(until()?, |s| {
-            s.orders(
+        .request::<_, analyte_store::Error>(until()?, |s| {
+            Ok(s.orders(
                 &Identifier::new("app").map_err(analyte_store::Error::Text)?,
-                &SampleId::new("000Ab12").map_err(|_| analyte_store::Error::InvalidHostInput)?,
+                &SampleId::new("000Ab12").map_err(analyte_store::Error::Text)?,
                 jiff::Timestamp::now().as_second(),
                 30,
-            )
+            )?)
         })
         .await?;
     let analyte_store::Lookup::Orders(orders) = cached else {
@@ -433,20 +433,20 @@ async fn check_cache_changes(
         analyte_contract::document::OrderState::CancelRequested
     );
     let next = store
-        .request(until()?, |s| {
-            s.cursor(&Identifier::new("app").map_err(analyte_store::Error::Text)?)
+        .request::<_, analyte_store::Error>(until()?, |s| {
+            Ok(s.cursor(&Identifier::new("app").map_err(analyte_store::Error::Text)?)?)
         })
         .await?;
     assert_ne!(first, next);
     store
-        .request(until()?, |s| {
-            s.order_page(&analyte_store::OrderPage {
+        .request::<_, analyte_store::Error>(until()?, |s| {
+            Ok(s.order_page(&analyte_store::OrderPage {
                 destination: Identifier::new("app").map_err(analyte_store::Error::Text)?,
                 cursor: Identifier::new("invalid-cursor").map_err(analyte_store::Error::Text)?,
                 complete: true,
                 polled: jiff::Timestamp::now().as_second(),
                 orders: vec![],
-            })
+            })?)
         })
         .await?;
     assert!(matches!(

@@ -1,6 +1,7 @@
 //! Drives LAW connections using dialog actions and durable store calls.
 use super::connection_input::{self, Input};
 use crate::intake::ByteReason;
+pub(crate) mod custody;
 mod error;
 use crate::orders::outcome::Code;
 pub(crate) use error::Error;

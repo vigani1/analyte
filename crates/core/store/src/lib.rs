@@ -1,5 +1,10 @@
 //! Stores durable evidence, revisions and deliveries without interpreting results or resending machine orders.
 #![forbid(unsafe_code)]
+mod errors;
+pub use errors::{
+    DeliveryError, IntakeError, MaintenanceError, OperatorError, OrderError, ReconciliationError,
+    StorageError, WorkerError, WorkerStartError,
+};
 mod operator;
 use operator::{alerts, parked, query};
 mod upkeep;
@@ -35,10 +40,8 @@ pub use machine_orders::{
     OrderItems, OrderReservation, ReservationPreflight, ReserveOptions, SendRefusal,
 };
 
-pub use revisions::law::{
-    AnalyzerCancelledItem, LawConflict, LawCustody, LawDisposition, LawRejection, LawWork,
-    LawWorkEvidence,
-};
+/// LAW execution custody and retained message dispositions.
+pub use revisions::law;
 pub use revisions::{
     InterpretationCommit, ReconcileAction, ReconcileInput, ReconcileMode, RevisionOutcome,
     StatusLifecycle,
@@ -69,9 +72,79 @@ use std::{
     time::Duration,
 };
 
-/// Recovery decisions remain distinct from ordinary database failures.
+/// Compatibility error for host commands that combine several store boundaries.
+/// Store operations return their own boundary errors; worker requests accept any
+/// caller error that preserves `WorkerError` through `From`.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// A host command's worker failure, preserving admission versus uncertain completion.
+    #[error(transparent)]
+    Worker(#[from] WorkerError),
+    /// A host command could not start its store owner.
+    #[error(transparent)]
+    WorkerStart(#[from] WorkerStartError),
+    /// A host UUID cannot represent the required receipt or delivery identity.
+    #[error(transparent)]
+    Identity(#[from] analyte_model::InvalidUuid),
+    /// An operator cursor cannot fit its target integer representation.
+    #[error(transparent)]
+    Integer(#[from] std::num::TryFromIntError),
+    /// A host timestamp could not be constructed; the precise cause is retained.
+    #[error("evidence timestamp construction failed")]
+    EvidenceTimestamp(#[source] Box<dyn std::error::Error + Send + Sync>),
+    /// A required LAW lifecycle policy was not supplied with custody.
+    #[error("custody lifecycle policy required")]
+    LifecyclePolicyRequired,
+    /// An atomic result conflict has no retained rejection interpretation.
+    #[error("atomic conflict evidence required")]
+    ConflictEvidenceRequired,
+    /// A receipt cursor incorrectly supplied a frame offset.
+    #[error("receipt raw view does not accept a frame offset")]
+    ReceiptOffsetNotAllowed,
+    /// A raw view cursor lies past the retained bytes.
+    #[error("raw view cursor is outside retained evidence")]
+    RawCursorOutsideEvidence,
+    /// Advancing a raw view cursor overflowed its representation.
+    #[error("raw view cursor overflow")]
+    RawCursorOverflow,
+    /// Reprocessing was dispatched through the parked-item metadata route.
+    #[error("reprocessing requires the interpretation route")]
+    ReprocessRequiresInterpretation,
+    /// The predecessor of a parked-item sequence cannot be represented.
+    #[error("operator sequence cursor overflow")]
+    OperatorCursorOverflow,
+    /// An expected protected audit record does not exist.
+    #[error("audit evidence does not exist")]
+    UnknownAudit,
+    /// No alert attempt was available for the requested endpoint and time.
+    #[error("alert attempt does not exist")]
+    UnknownAlertAttempt,
+    /// A retained order document lacks a required field.
+    #[error("order document lacks {field}")]
+    MissingOrderField {
+        /// Exact required field.
+        field: &'static str,
+    },
+    /// The requested expiry cannot be represented.
+    #[error("order expiry timestamp overflow")]
+    OrderExpiryOverflow,
+
+    /// A migration refused legacy machine-order evidence.
+    #[error(transparent)]
+    MaintenanceOrderEvidence(Box<OrderError>),
+    /// The host invoked a single-use rendering callback more than once.
+    #[error("order preflight callback already consumed")]
+    PreflightConsumed,
+    /// Reservation completed without the required rendered command.
+    #[error("order preflight output missing")]
+    PreflightMissing,
+
+    /// The retention credential could not initialize its keyed digest.
+    #[error("retention digest key rejected")]
+    DigestKey(#[from] hmac::digest::InvalidLength),
+    /// SQLite corruption retains the original cause from shared primitives.
+    #[error("stored evidence is corrupt: {0}")]
+    StorageCorruption(#[source] rusqlite::Error),
     /// Analyzer cancellation requires visible reconciliation before any new cancel admission.
     #[error("AWOS is analyzer-cancelled; app cancellation intent requires reconciliation")]
     AnalyzerCancelled,
@@ -193,9 +266,6 @@ pub enum Error {
     /// The host cannot represent a storage operation deadline.
     #[error("storage operation deadline overflow")]
     DeadlineOverflow,
-    /// The host could not construct its submitted store command.
-    #[error("invalid host command input")]
-    InvalidHostInput,
     /// An operator action or target does not match the operation being authorized.
     #[error("audit action or target mismatch")]
     AuditMismatch,
@@ -231,26 +301,7 @@ pub enum Error {
 
 impl From<rusqlite::Error> for Error {
     fn from(error: rusqlite::Error) -> Self {
-        if let rusqlite::Error::SqliteFailure(code, _) = &error {
-            #[expect(
-                clippy::wildcard_enum_match_arm,
-                reason = "SQLite error codes are external and non-exhaustive; unknown failures retain their cause"
-            )]
-            match code.code {
-                rusqlite::ErrorCode::DiskFull => return Self::DiskFull(error),
-                rusqlite::ErrorCode::DatabaseCorrupt | rusqlite::ErrorCode::NotADatabase => {
-                    return Self::Corruption;
-                }
-                rusqlite::ErrorCode::ConstraintViolation => {
-                    return Self::ConstraintViolation(error);
-                }
-                rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked => {
-                    return Self::Busy(error);
-                }
-                _ => {} // Other SQLite errors retain their diagnostic cause.
-            }
-        }
-        Self::Sqlite(error)
+        StorageError::from(error).into()
     }
 }
 
@@ -279,13 +330,13 @@ pub struct Limits {
 impl Limits {
     /// The one admission rule for limits, shared by open and restore so neither
     /// can publish a store with bounds the other refuses.
-    pub(crate) fn validate(&self) -> Result<(), Error> {
+    pub(crate) fn validate(&self) -> Result<(), MaintenanceError> {
         if self.record_bytes == 0
             || self.page_rows == 0
             || self.busy_timeout.is_zero()
             || self.busy_timeout > Duration::from_secs(30)
         {
-            return Err(Error::InvalidLimits);
+            return Err(MaintenanceError::InvalidLimits);
         }
         Ok(())
     }
@@ -301,7 +352,7 @@ pub struct Store {
     space: Box<dyn FreeSpace>,
 }
 
-fn document<T: Serialize>(value: &T) -> Result<String, Error> {
+fn document<T: Serialize>(value: &T) -> Result<String, StorageError> {
     Ok(serde_json::to_string(value)?)
 }
 
@@ -331,13 +382,14 @@ impl std::io::Write for BoundedJson {
 }
 
 impl Store {
-    fn encode<T: Serialize>(&self, value: &T) -> Result<String, Error> {
+    fn encode<T: Serialize>(&self, value: &T) -> Result<String, StorageError> {
         let mut writer = BoundedJson {
             bytes: Vec::new(),
             limit: self.limits.record_bytes,
         };
         serde_json::to_writer(&mut writer, value)?;
-        String::from_utf8(writer.bytes).map_err(|_| Error::Corruption)
+        String::from_utf8(writer.bytes)
+            .map_err(|cause| std::io::Error::new(std::io::ErrorKind::InvalidData, cause).into())
     }
 }
 

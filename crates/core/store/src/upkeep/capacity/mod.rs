@@ -1,5 +1,5 @@
 //! Checks disk reserve and store capacity before accepting writes.
-use crate::{Error, FreeSpace, Limits, Store};
+use crate::{FreeSpace, Limits, StorageError as Error, Store};
 use rusqlite::Connection;
 use std::path::Path;
 
@@ -76,8 +76,8 @@ impl Store {
     /// # Errors
     /// Returns `Error::Capacity` when admission would cross a limit, or the
     /// specific error of a failed free-space probe.
-    pub fn admission(&self, expected_bytes: usize) -> Result<(), Error> {
-        self.capacity(expected_bytes)
+    pub fn admission(&self, expected_bytes: usize) -> Result<(), crate::IntakeError> {
+        Ok(self.capacity(expected_bytes)?)
     }
 }
 

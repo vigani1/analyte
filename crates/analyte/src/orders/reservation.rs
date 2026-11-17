@@ -28,12 +28,12 @@ pub(super) async fn reject(
     reason: analyte_model::SourceText,
 ) -> Result<Result<MachineOrder, SendRefusal>, Error> {
     Ok(store
-        .request(until, move |store| {
-            store.reject_unsent(
+        .request::<_, analyte_store::Error>(until, move |store| {
+            Ok::<_, analyte_store::Error>(store.reject_unsent(
                 &candidate(&identity, version, freshness),
                 reason,
                 super::event,
-            )
+            )?)
         })
         .await?)
 }
@@ -49,15 +49,15 @@ pub(super) async fn cancel(
     freshness: u64,
 ) -> Result<MachineOrder, analyte_store::Error> {
     store
-        .request(until, move |store| {
-            store.request_order_cancel(
+        .request::<_, analyte_store::Error>(until, move |store| {
+            Ok(store.request_order_cancel(
                 id,
                 version,
                 jiff::Timestamp::now().as_second(),
                 &owner,
                 freshness,
                 super::event,
-            )
+            )?)
         })
         .await
 }
@@ -79,10 +79,10 @@ pub(super) async fn admit<T: Send + 'static>(
     store: &Handle,
     until: Instant,
     admission: Admission,
-    encode: impl FnOnce(&MachineOrder) -> Result<T, analyte_store::Error> + Send + 'static,
+    encode: impl FnOnce(&MachineOrder) -> Result<T, analyte_store::OrderError> + Send + 'static,
 ) -> Result<Result<(MachineOrder, T), SendRefusal>, analyte_store::Error> {
     store
-        .request(until, move |store| {
+        .request::<_, analyte_store::Error>(until, move |store| {
             let mut rendered = None;
             let mut encode = Some(encode);
             let reserved = store.reserve_send(
@@ -97,7 +97,7 @@ pub(super) async fn admit<T: Send + 'static>(
                     prepare: Some(&mut |record| {
                         rendered = Some(encode
                             .take()
-                            .ok_or(analyte_store::Error::InvalidHostInput)?(
+                            .ok_or(analyte_store::OrderError::PreflightConsumed)?(
                             record
                         )?);
                         Ok(())
@@ -107,7 +107,7 @@ pub(super) async fn admit<T: Send + 'static>(
             match reserved {
                 Ok(record) => Ok(Ok((
                     record,
-                    rendered.ok_or(analyte_store::Error::InvalidHostInput)?,
+                    rendered.ok_or(analyte_store::OrderError::PreflightMissing)?,
                 ))),
                 Err(refusal) => Ok(Err(refusal)),
             }
@@ -133,7 +133,7 @@ pub(super) async fn cancellations(
     let target = machine.id.clone();
     let freshness = machine.destination_limits.freshness.as_secs();
     Ok(store
-        .request(until, move |store| {
+        .request::<_, analyte_store::Error>(until, move |store| {
             let now = jiff::Timestamp::now().as_second();
             if !store
                 .order_trust(&destination, now, freshness)?
@@ -141,7 +141,7 @@ pub(super) async fn cancellations(
             {
                 return Ok(Vec::new());
             }
-            store.cancel_candidates(&destination, &target, now, freshness)
+            Ok(store.cancel_candidates(&destination, &target, now, freshness)?)
         })
         .await?)
 }

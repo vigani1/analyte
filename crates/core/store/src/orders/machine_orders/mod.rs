@@ -9,7 +9,7 @@ mod execution;
 mod items;
 mod listing;
 mod reserve;
-use crate::{Audit, CachedOrder, Error, OrderEventDelivery, Store, digest, key};
+use crate::{Audit, CachedOrder, OrderError as Error, OrderEventDelivery, Store, digest, key};
 use analyte_model::{Identifier, NamespacedId, OrderState, OrderTransition, SourceText};
 use rusqlite::{Transaction, TransactionBehavior, params};
 use serde::{Deserialize, Serialize};

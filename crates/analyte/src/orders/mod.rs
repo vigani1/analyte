@@ -40,9 +40,13 @@ pub(crate) async fn lookup(
         .await
     {
         Ok(answer) => Ok(answer),
-        Err(analyte_store::Error::Timeout | analyte_store::Error::Busy(_)) => {
-            Ok(analyte_store::Lookup::NotTrusted)
-        }
+        Err(
+            analyte_store::OrderError::Busy(_)
+            | analyte_store::OrderError::Worker(
+                analyte_store::WorkerError::AdmissionTimeout { .. }
+                | analyte_store::WorkerError::ResponseTimeout(_),
+            ),
+        ) => Ok(analyte_store::Lookup::NotTrusted),
         Err(error) => Err(error.into()),
     }
 }
@@ -68,7 +72,7 @@ use analyte_mapping::app_order;
 /// Builds an immutable contract event from a committed lifecycle snapshot.
 /// # Errors
 /// Refuses invalid timestamps or contract fields.
-pub fn event(record: &MachineOrder) -> Result<OrderEventDelivery, analyte_store::Error> {
+pub fn event(record: &MachineOrder) -> Result<OrderEventDelivery, analyte_store::OrderError> {
     build_event(record, None).map_err(EventError::into_store)
 }
 
@@ -122,11 +126,11 @@ enum EventError {
     Sink(#[from] analyte_sink::Error),
 }
 impl EventError {
-    fn into_store(self) -> analyte_store::Error {
+    fn into_store(self) -> analyte_store::OrderError {
         match self {
-            Self::Timestamp(source) => analyte_store::Error::DeliveryBuild(Box::new(source)),
-            Self::Document(source) => analyte_store::Error::DeliveryBuild(Box::new(source)),
-            Self::Sink(source) => analyte_store::Error::DeliveryBuild(Box::new(source)),
+            Self::Timestamp(source) => analyte_store::OrderError::DeliveryBuild(Box::new(source)),
+            Self::Document(source) => analyte_store::OrderError::DeliveryBuild(Box::new(source)),
+            Self::Sink(source) => analyte_store::OrderError::DeliveryBuild(Box::new(source)),
         }
     }
 }

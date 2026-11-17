@@ -246,7 +246,7 @@ pub(super) async fn detail(
     };
     let result = state
         .store
-        .request(until, move |s| {
+        .request::<_, analyte_store::Error>(until, move |s| {
             let Some(row) = s.parked_item(id)? else {
                 return Ok(None);
             };
@@ -254,10 +254,7 @@ pub(super) async fn detail(
             evidence.targets = evidence
                 .targets
                 .into_iter()
-                .skip(
-                    usize::try_from(cursor.after)
-                        .map_err(|_| analyte_store::Error::InvalidHostInput)?,
-                )
+                .skip(usize::try_from(cursor.after).map_err(analyte_store::Error::Integer)?)
                 .take(PAGE)
                 .collect();
             Ok(Some((metadata(s, &evidence)?, evidence, row.resolution)))
@@ -316,7 +313,7 @@ async fn parked_page(state: &Context, cursor: Cursor) -> Result<Markup, Error> {
     let after = i64::try_from(cursor.after)?;
     let (rows, last) = state
         .store
-        .request(deadline()?, move |s| {
+        .request::<_, analyte_store::Error>(deadline()?, move |s| {
             let mut html = Markup::new();
             let mut last = None;
             for row in s.parked(after)?.into_iter().take(PAGE) {
@@ -341,7 +338,7 @@ async fn parked_page(state: &Context, cursor: Cursor) -> Result<Markup, Error> {
                 });
                 last = Some(row.id);
             }
-            Ok((html, last))
+            Ok::<_, analyte_store::Error>((html, last))
         })
         .await?;
     let mut html = start("Parked items");

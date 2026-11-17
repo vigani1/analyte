@@ -27,7 +27,7 @@ fn adr0003_storage_failures_distinguish_full_corrupt_conflict_and_unknown() -> T
         ));
         match expected {
             "full" => assert!(matches!(error, Error::DiskFull(_))),
-            "corrupt" => assert!(matches!(error, Error::Corruption)),
+            "corrupt" => assert!(matches!(error, Error::StorageCorruption(_))),
             "conflict" => assert!(matches!(error, Error::ConstraintViolation(_))),
             _ => unreachable!("fixed test cases"),
         }
@@ -57,7 +57,7 @@ fn mutation_rule7_lib_limits_validate_each_field_and_include_thirty_seconds() ->
         if valid {
             result?;
         } else {
-            assert!(matches!(result, Err(Error::InvalidLimits)));
+            assert!(matches!(result, Err(MaintenanceError::InvalidLimits)));
         }
     }
     Ok(())
@@ -81,7 +81,8 @@ fn mutation_adr0003_rule1_lib_sqlite_errors_keep_specific_recovery_actions() -> 
         ));
         assert!(match code {
             ffi::SQLITE_FULL => matches!(error, Error::DiskFull(_)),
-            ffi::SQLITE_CORRUPT | ffi::SQLITE_NOTADB => matches!(error, Error::Corruption),
+            ffi::SQLITE_CORRUPT | ffi::SQLITE_NOTADB =>
+                matches!(error, Error::StorageCorruption(rusqlite::Error::SqliteFailure(cause, Some(message))) if cause.extended_code == code && message == "synthetic failure"),
             ffi::SQLITE_CONSTRAINT => matches!(error, Error::ConstraintViolation(_)),
             ffi::SQLITE_BUSY | ffi::SQLITE_LOCKED => matches!(error, Error::Busy(_)),
             ffi::SQLITE_IOERR =>
@@ -140,7 +141,7 @@ fn mutation_rule7_lib_encoding_digest_and_trust_keep_their_contracts() -> TestRe
             .map(|_| ())
             .expect_err("input must be refused");
         assert!(
-            matches!(&refusal, Error::Json(_)),
+            matches!(&refusal, StorageError::Json(_)),
             "unexpected refusal: {refusal:?}"
         );
     }

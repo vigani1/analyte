@@ -204,14 +204,14 @@ fn adr0014_backoff_doubles_then_caps_and_limits_refuse_invalid_input() -> TestRe
     for (reminder, capacity) in [(0, 1), (59, 1), (86401, 1), (60, 0), (60, 4097)] {
         assert!(matches!(
             store.prepare_alert_event(&endpoint, 100, reminder, capacity),
-            Err(Error::InvalidOperatorInput)
+            Err(OperatorError::InvalidOperatorInput)
         ));
     }
     store.prepare_alert_event(&endpoint, 100, 60, 1)?;
     for (attempts, min, max) in [(0, 1, 1), (101, 1, 1), (1, 0, 1), (1, 2, 1), (1, 1, 86401)] {
         assert!(matches!(
             store.claim_alert_attempt(&endpoint, 100, attempts, min, max),
-            Err(Error::InvalidOperatorInput)
+            Err(OperatorError::InvalidOperatorInput)
         ));
     }
     for (now, due) in [(100, 105), (105, 115), (115, 125)] {
@@ -256,7 +256,7 @@ fn adr0014_operator_retry_is_audited_and_preserves_original_event() -> TestResul
             .map(|_| ())
             .expect_err("input must be refused");
         assert!(
-            matches!(&refusal, Error::InvalidOperatorInput),
+            matches!(&refusal, OperatorError::InvalidOperatorInput),
             "unexpected refusal: {refusal:?}"
         );
     }
