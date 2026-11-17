@@ -49,10 +49,10 @@ fn adr0012_lis01_mllp_poct_bci_rev18_all_six_stacks_share_decode()
     assert!(decoder.finish().is_none());
     let mut decoder = poct::Decoder::new(100, 10);
     assert_eq!(
-        collect(b"<x/><y/>", |byte| decoder.push_byte(byte))?,
+        collect(b"<x/><y/>", |byte| decoder.push(byte))?,
         [b"<x/>".to_vec(), b"<y/>".to_vec()]
     );
-    assert!(decoder.finish_stream()?.is_none());
+    assert!(decoder.finish()?.is_none());
     let config = vidas::Config::new(
         vidas::Mode::Alternate,
         80,
@@ -72,7 +72,7 @@ fn adr0012_lis01_mllp_poct_bci_rev18_all_six_stacks_share_decode()
         {
             let mut decoder = vidas::Decoder::new(config);
             let events = collect(&raw, |byte| decoder.push(byte))?;
-            assert!(decoder.finish_stream()?.is_none());
+            assert!(decoder.finish()?.is_none());
             events
         }[0]
         .body,
@@ -82,7 +82,7 @@ fn adr0012_lis01_mllp_poct_bci_rev18_all_six_stacks_share_decode()
     let frames = {
         let mut decoder = autolyser::Decoder::new(autolyser::Mode::Report, 100)?;
         let events = collect(&raw, |byte| decoder.push(byte))?;
-        assert!(decoder.finish_stream()?.is_none());
+        assert!(decoder.finish().raw().is_empty());
         events
     };
     assert_eq!(frames[0].body()?, b"synthetic");

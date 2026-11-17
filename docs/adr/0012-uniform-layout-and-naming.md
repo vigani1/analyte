@@ -179,9 +179,10 @@ A new crate joins one kind, or the plan gets a new kind through this ADR.
 
 All six stacks decode one byte at a time and consume events immediately, so
 one call never accumulates an unbounded list. Concrete decoders expose one byte
-entry point: `push` for ASTM, MLLP and vendor packets, and `push_byte` for POCT
-and the VIDAS stream decoder. ASTM/MLLP return `Option<Event>` and `finish()`;
-fallible decoders return `Result<Option<Event>, Error>` and `finish_stream()`.
+entry point, `push(byte)`, and one end-of-stream operation, `finish()`.
+ASTM/MLLP return `Option<Event>`; fallible decoders return
+`Result<Option<Event>, Error>`. Autolyser `finish()` always returns the partial
+frame so its bytes can be stored.
 Rejected evidence can be an event or a refusal; hosts journal bytes before
 feeding either. LAW uses HL7 MLLP directly. A forwarding trait adds no generic
 production boundary, so these concrete operations are the integration contract.

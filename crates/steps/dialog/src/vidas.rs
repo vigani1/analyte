@@ -238,7 +238,7 @@ impl Dialog {
             if self.timers.inter_byte.is_some() {
                 self.timers.inter_byte = now.checked_add(self.policy.inter_byte);
             }
-            match self.decoder.push_byte(byte)? {
+            match self.decoder.push(byte)? {
                 Some(analyte_framing::vidas::Event::Packet(packet)) => Event::Packet(packet),
                 Some(analyte_framing::vidas::Event::Control(control)) => Event::Control(control),
                 None => return Ok(Vec::new()),

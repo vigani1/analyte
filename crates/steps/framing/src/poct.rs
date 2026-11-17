@@ -147,7 +147,7 @@ impl Decoder {
     /// Consumes one byte, returning a complete frame or a specific refusal.
     /// # Errors
     /// Reports invalid or overlong input.
-    pub fn push_byte(&mut self, byte: u8) -> Result<Option<Vec<u8>>, Error> {
+    pub fn push(&mut self, byte: u8) -> Result<Option<Vec<u8>>, Error> {
         if self.stream.len() >= self.maximum {
             return Err(Error::Limit);
         }
@@ -175,7 +175,7 @@ impl Decoder {
     /// Ends decoding and refuses incomplete evidence.
     /// # Errors
     /// Returns the protocol-specific incomplete-frame error.
-    pub fn finish_stream(&mut self) -> Result<Option<Vec<u8>>, Error> {
+    pub fn finish(&mut self) -> Result<Option<Vec<u8>>, Error> {
         if self.stream.is_empty() {
             Ok(None)
         } else {

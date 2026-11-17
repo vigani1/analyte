@@ -360,7 +360,7 @@ impl StreamDecoder {
     /// Consumes one byte, returning a complete frame or a specific refusal.
     /// # Errors
     /// Reports invalid or overlong input.
-    pub fn push_byte(&mut self, byte: u8) -> Result<Option<Event>, Error> {
+    pub fn push(&mut self, byte: u8) -> Result<Option<Event>, Error> {
         if let Some(decoder) = &mut self.packet {
             return match decoder.push(byte)? {
                 Some(packet) => {
@@ -397,7 +397,7 @@ impl StreamDecoder {
     /// Ends decoding and refuses incomplete evidence.
     /// # Errors
     /// Returns the protocol-specific incomplete-frame error.
-    pub fn finish_stream(&mut self) -> Result<Option<Event>, Error> {
+    pub fn finish(&mut self) -> Result<Option<Event>, Error> {
         if self.packet.is_some() || self.suffix.is_some() {
             return Err(Error::Incomplete);
         }
@@ -430,7 +430,7 @@ impl Decoder {
     /// Ends decoding and refuses incomplete evidence.
     /// # Errors
     /// Returns the protocol-specific incomplete-frame error.
-    pub fn finish_stream(&mut self) -> Result<Option<Packet>, Error> {
+    pub fn finish(&mut self) -> Result<Option<Packet>, Error> {
         if self.raw.is_empty() || matches!(self.state, State::Done) && self.suffix == usize::MAX {
             return Ok(None);
         }
@@ -556,7 +556,7 @@ mod tests {
             prop_assert_eq!(output.len(), 1);
             prop_assert_eq!(&output[0].body, body.as_bytes());
             prop_assert_eq!(&output[0].raw, &raw);
-            prop_assert!(decoder.finish_stream().unwrap().is_none());
+            prop_assert!(decoder.finish().unwrap().is_none());
         }
     }
 }

@@ -7,7 +7,7 @@ impl Dialog {
         self.input.take_pending()
     }
     pub(super) fn input_byte(&mut self, now: Duration, byte: u8) -> Result<Vec<Action>, Error> {
-        let wire = match self.input.push_byte(byte) {
+        let wire = match self.input.push(byte) {
             Ok(Some(wire)) => wire,
             Ok(None) => {
                 if byte != b'>' {

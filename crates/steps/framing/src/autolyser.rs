@@ -160,18 +160,6 @@ impl Decoder {
     }
 }
 
-impl Decoder {
-    /// Ends decoding and refuses incomplete evidence.
-    /// # Errors
-    /// Returns the protocol-specific incomplete-frame error.
-    pub fn finish_stream(&mut self) -> Result<Option<Frame>, Error> {
-        if self.raw.is_empty() {
-            return Ok(None);
-        }
-        Ok(Some(self.finish()))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -244,7 +232,7 @@ mod tests {
             prop_assert!(output[0].complete());
             prop_assert_eq!(output[0].raw(), raw.as_slice());
             prop_assert_eq!(output[0].body().unwrap(), body);
-            prop_assert!(decoder.finish_stream().unwrap().is_none());
+            prop_assert!(decoder.finish().raw().is_empty());
         }
         #[test]
         fn autolyser_rev18_p175_property_binary_insertion_and_stopped_decoder(prefix in any::<u8>(), detail in any::<u8>()) {
