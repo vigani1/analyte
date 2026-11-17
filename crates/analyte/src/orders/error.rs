@@ -6,139 +6,139 @@ pub enum OrderError {
     #[cfg(feature = "test-hooks")]
     #[error(transparent)]
     TestHook(crate::Error),
-    /// Preserves the original boundary failure.
+    /// The store refused admission of this order version or lifecycle state.
     #[error(transparent)]
     Refused(#[from] analyte_store::SendRefusal),
-    /// Preserves the original boundary failure.
+    /// ASTM query bytes failed syntax parsing.
     #[error(transparent)]
     Astm(#[from] analyte_astm::Error),
-    /// Preserves the original boundary failure.
+    /// The machine link failed while sending order bytes.
     #[error(transparent)]
     Transport(#[from] analyte_transport::Error),
-    /// Preserves the original boundary failure.
+    /// Order bytes could not be framed for MLLP transmission.
     #[error(transparent)]
     Mllp(#[from] analyte_framing::hl7::Error),
-    /// Preserves the original boundary failure.
+    /// The LAW work exchange rejected an event or deadline.
     #[error(transparent)]
     DialogLaw(#[from] analyte_dialog::law::Error),
-    /// Preserves the original boundary failure.
+    /// The HL7 order response exchange rejected an event or deadline.
     #[error(transparent)]
     DialogHl7(#[from] analyte_dialog::hl7::Error),
-    /// A required order state or deadline is unavailable.
+    /// LAW preparation deadline overflow.
     #[error("LAW preparation deadline overflow")]
     LawPreparationDeadlineOverflow,
-    /// A required order state or deadline is unavailable.
+    /// HL7 settings missing.
     #[error("HL7 settings missing")]
     Hl7SettingsMissing,
-    /// A required order state or deadline is unavailable.
+    /// HL7 response deadline overflow.
     #[error("HL7 response deadline overflow")]
     Hl7ResponseDeadlineOverflow,
-    /// A required order state or deadline is unavailable.
-    #[error("exchange absent")]
-    ExchangeAbsent,
-    /// A required order state or deadline is unavailable.
-    #[error("send settings")]
-    SendSettings,
-    /// Required order state, input or deadline is unavailable.
+    /// HL7 order exchange absent before transmission.
+    #[error("HL7 order exchange absent before transmission")]
+    Hl7ExchangeAbsent,
+    /// HL7 send settings missing after order admission.
+    #[error("HL7 send settings missing after order admission")]
+    Hl7SendSettingsMissing,
+    /// LAW query deadline overflow.
     #[error("LAW query deadline overflow")]
     LawQueryDeadlineOverflow,
-    /// Required order state, input or deadline is unavailable.
+    /// LAW work layout absent.
     #[error("LAW work layout absent")]
     LawWorkLayoutAbsent,
-    /// Required order state, input or deadline is unavailable.
-    #[error("query failure has no ACK outcome")]
-    QueryFailureHasNoAckOutcome,
-    /// Required order state, input or deadline is unavailable.
-    #[error("query capability absent")]
-    QueryCapabilityAbsent,
-    /// Required order state, input or deadline is unavailable.
-    #[error("query deadline overflow")]
-    QueryDeadlineOverflow,
-    /// Required order state, input or deadline is unavailable.
+    /// LAW query failure has no recoverable acknowledgment outcome.
+    #[error("LAW query failure has no recoverable acknowledgment outcome")]
+    LawQueryFailureHasNoAckOutcome,
+    /// ASTM query capability absent.
+    #[error("ASTM query capability absent")]
+    AstmQueryCapabilityAbsent,
+    /// ASTM query deadline overflow.
+    #[error("ASTM query deadline overflow")]
+    AstmQueryDeadlineOverflow,
+    /// ASTM specimen selector contains unsupported escapes.
     #[error("ASTM specimen selector contains unsupported escapes")]
     AstmSpecimenSelectorContainsUnsupportedEscapes,
-    /// Required order state, input or deadline is unavailable.
+    /// ASTM limits missing.
     #[error("ASTM limits missing")]
     AstmLimitsMissing,
-    /// Required order state, input or deadline is unavailable.
-    #[error("query response byte limit exceeded")]
-    QueryResponseByteLimitExceeded,
+    /// ASTM query response byte limit exceeded.
+    #[error("ASTM query response byte limit exceeded")]
+    AstmQueryResponseByteLimitExceeded,
     /// Original wire mapping failure.
     #[error(transparent)]
     WireMapping(#[from] analyte_mapping::WireMappingError),
-    /// The order operation cannot proceed under its current input, state or deadline.
+    /// HL7 orders missing.
     #[error("HL7 orders missing")]
     Hl7OrdersMissing,
-    /// The order operation cannot proceed under its current input, state or deadline.
+    /// HL7 query deadline overflow.
     #[error("HL7 query deadline overflow")]
     Hl7QueryDeadlineOverflow,
-    /// The order operation cannot proceed under its current input, state or deadline.
+    /// HL7 query policy missing.
     #[error("HL7 query policy missing")]
     Hl7QueryPolicyMissing,
-    /// The order operation cannot proceed under its current input, state or deadline.
+    /// LAW container assigning authority outside configured `SampleId` binding.
     #[error("LAW container assigning authority outside configured SampleId binding")]
     LawContainerAssigningAuthorityOutsideConfiguredSampleidBinding,
-    /// The order operation cannot proceed under its current input, state or deadline.
+    /// LAW malformed query lacks recoverable correlation.
     #[error("LAW malformed query lacks recoverable correlation")]
     LawMalformedQueryLacksRecoverableCorrelation,
-    /// The order operation cannot proceed under its current input, state or deadline.
+    /// LAW query deadline after reservation.
     #[error("LAW query deadline after reservation")]
     LawQueryDeadlineAfterReservation,
-    /// The order operation cannot proceed under its current input, state or deadline.
+    /// LAW query deadline before reservation.
     #[error("LAW query deadline before reservation")]
     LawQueryDeadlineBeforeReservation,
-    /// The order operation cannot proceed under its current input, state or deadline.
+    /// LAW query deadline during rendering.
     #[error("LAW query deadline during rendering")]
     LawQueryDeadlineDuringRendering,
-    /// The order operation cannot proceed under its current input, state or deadline.
+    /// LAW settings absent.
     #[error("LAW settings absent")]
     LawSettingsAbsent,
-    /// The order operation cannot proceed under its current input, state or deadline.
+    /// unexpected nested LAW followup.
     #[error("unexpected nested LAW followup")]
     UnexpectedNestedLawFollowup,
-    /// The order operation cannot proceed under its current input, state or deadline.
+    /// unsupported LAW query scope.
     #[error("unsupported LAW query scope")]
     UnsupportedLawQueryScope,
-    /// Preserves the original boundary failure.
+    /// Durable order lookup or lifecycle persistence failed.
     #[error(transparent)]
     Store(#[from] analyte_store::Error),
-    /// Preserves the original boundary failure.
+    /// Retaining or interpreting the machine response failed.
     #[error(transparent)]
     Intake(#[from] crate::IntakeError),
-    /// Preserves the original boundary failure.
+    /// An order identity or retained outcome violated model text bounds.
     #[error(transparent)]
     Text(#[from] analyte_model::TextError),
-    /// Preserves the original boundary failure.
+    /// An app order list violated the model collection bounds.
     #[error(transparent)]
     List(#[from] analyte_model::ListError),
-    /// Preserves the original boundary failure.
+    /// Reading typed outbound configuration failed.
     #[error(transparent)]
     Config(#[from] analyte_config::Error),
-    /// Preserves the original boundary failure.
+    /// HL7 order or response syntax was invalid.
     #[error(transparent)]
     Hl7(#[from] analyte_hl7::Error),
-    /// Preserves the original boundary failure.
+    /// LAW work or query syntax was invalid.
     #[error(transparent)]
     Law(#[from] analyte_hl7::law::Error),
-    /// Preserves the original boundary failure.
+    /// LAW query semantics prevented a valid work response.
     #[error(transparent)]
     LawFailure(#[from] analyte_hl7::law::Failure),
-    /// Preserves the original boundary failure.
+    /// App work could not be mapped into the machine order repertoire.
     #[error(transparent)]
     Mapping(#[from] analyte_mapping::OrderMappingError),
-    /// Preserves the original boundary failure.
+    /// The cached app order violated the app contract.
     #[error(transparent)]
     Document(#[from] analyte_contract::DocumentError),
-    /// Preserves the original boundary failure.
+    /// Polling the lab app order feed failed.
     #[error(transparent)]
     Sink(#[from] analyte_sink::Error),
-    /// Preserves the original boundary failure.
+    /// An order event timestamp could not be represented.
     #[error(transparent)]
     Timestamp(#[from] jiff::Error),
-    /// Preserves the original boundary failure.
+    /// Order response text was not valid UTF-8.
     #[error(transparent)]
     Encoding(#[from] std::str::Utf8Error),
-    /// Preserves the original boundary failure.
+    /// Retained order evidence could not be serialized as JSON.
     #[error(transparent)]
     Json(#[from] serde_json::Error),
     /// Retains both the triggering failure and a later independent settlement failure.

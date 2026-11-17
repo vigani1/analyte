@@ -81,12 +81,12 @@ impl<'a> Pending<'a> {
     ) -> Result<Self, Error> {
         let query = super::settings::astm(machine)
             .and_then(|o| o.query().as_ref())
-            .ok_or_else(|| Error::QueryCapabilityAbsent)?;
+            .ok_or_else(|| Error::AstmQueryCapabilityAbsent)?;
         let until = started
             .checked_add(std::time::Duration::from_millis(u64::from(
                 query.deadline_ms,
             )))
-            .ok_or_else(|| Error::QueryDeadlineOverflow)?;
+            .ok_or_else(|| Error::AstmQueryDeadlineOverflow)?;
         let future = Box::pin(answer(store, machine, samples, until));
         Ok(Self { future, until })
     }
@@ -124,7 +124,7 @@ async fn answer(
                     bytes = bytes
                         .checked_add(cached.document.len())
                         .filter(|n| *n <= limits.bytes())
-                        .ok_or_else(|| Error::QueryResponseByteLimitExceeded)?;
+                        .ok_or_else(|| Error::AstmQueryResponseByteLimitExceeded)?;
                     let order: analyte_contract::Order =
                         analyte_contract::decode(cached.document.as_bytes())?;
                     let fields = order.fields();
@@ -138,11 +138,7 @@ async fn answer(
                         Err(error) => {
                             let reason =
                                 analyte_model::SourceText::new(&format!("rejected: {error}"))?;
-                            let identity = analyte_store::MachineOrderKey {
-                                destination: super::destination(machine),
-                                order: cached.id,
-                                machine: machine.id.clone(),
-                            };
+                            let identity = crate::orders::reservation::key(machine, cached.id);
                             let version = fields.version;
                             let rejected = super::reservation::reject(
                                 store, until, identity, version, freshness, reason,
@@ -154,14 +150,11 @@ async fn answer(
                             return Ok(failure(machine));
                         }
                     };
-                    candidates.push(Candidate {
-                        identity: analyte_store::MachineOrderKey {
-                            destination: super::destination(machine),
-                            order: cached.id,
-                            machine: machine.id.clone(),
-                        },
-                        version: fields.version,
-                    });
+                    candidates.push(super::reservation::pending(
+                        machine,
+                        cached.id,
+                        fields.version,
+                    ));
                     records.push(mapped.record()?.to_vec());
                     if records
                         .len()

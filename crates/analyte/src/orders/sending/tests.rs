@@ -2,6 +2,7 @@
 use super::*;
 use crate::Error;
 use analyte_model::{Identifier, SampleId};
+use analyte_store::OrderReservation;
 use std::{path::Path, time::Duration};
 
 use analyte_fixtures::UnlimitedSpace as Space;

@@ -120,11 +120,7 @@ pub(super) fn key(
     machine: &crate::installation::config::Machine,
     order: analyte_model::Identifier,
 ) -> MachineOrderKey {
-    MachineOrderKey {
-        destination: super::destination(machine),
-        order,
-        machine: machine.id.clone(),
-    }
+    key_parts(super::destination(machine), order, machine.id.clone())
 }
 
 /// Lists cancellation candidates only while the cached order feed is trusted.
@@ -148,4 +144,29 @@ pub(super) async fn cancellations(
             store.cancel_candidates(&destination, &target, now, freshness)
         })
         .await?)
+}
+
+/// Builds an identity from already owned routing fields inside store operations.
+pub(super) fn key_parts(
+    destination: analyte_model::Identifier,
+    order: analyte_model::Identifier,
+    machine: analyte_model::Identifier,
+) -> MachineOrderKey {
+    MachineOrderKey {
+        destination,
+        order,
+        machine,
+    }
+}
+
+/// Couples a cached version to its configured machine identity before admission.
+pub(super) fn pending(
+    machine: &crate::installation::config::Machine,
+    order: analyte_model::Identifier,
+    version: NonZeroU64,
+) -> super::Candidate {
+    super::Candidate {
+        identity: key(machine, order),
+        version,
+    }
 }
