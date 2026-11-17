@@ -503,7 +503,11 @@ impl Effects for Host<'_, '_> {
             }
             Input::Bytes { bytes } => bytes,
             Input::Closed(_) => return Ok(Flow::Stop),
-            Input::Failed(_) | Input::RecordingFailed(_) | Input::Tick => Vec::new(),
+            Input::Failed(_) | Input::Tick => Vec::new(),
+            Input::RecordingFailed(failure) => {
+                tracing::warn!(error_kind = %failure, "optional recorder stopped; transport continues");
+                return Ok(Flow::Continue);
+            }
         };
         let has_bytes = !bytes.is_empty();
         if self.receive_bytes(bytes, conn, stop).await? {
@@ -573,3 +577,13 @@ impl Effects for Host<'_, '_> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+super::driver::recorder_failure_test!(
+    "hl7.toml",
+    analyte_config::Stack::Hl7(analyte_config::RecordTransport::Stream(settings)),
+    evidence,
+    store,
+    settings,;
+    Host::open(&evidence, settings, &store)?
+);

@@ -540,7 +540,10 @@ impl Effects for Host<'_, '_> {
                 }
                 Mode::Outbound(_) => return Err(Error::TransportFailed(reason)),
             },
-            Input::RecordingFailed(_failure) => {}
+            Input::RecordingFailed(failure) => {
+                tracing::warn!(error_kind = %failure, "optional recorder stopped; transport continues");
+                return Ok(Flow::Continue);
+            }
         }
         Ok(
             if self.stopped || matches!(self.mode, Mode::Outbound(_)) && self.completed {
@@ -628,3 +631,13 @@ impl Host<'_, '_> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+super::driver::recorder_failure_test!(
+    "law.toml",
+    analyte_config::Stack::Law(settings),
+    evidence,
+    store,
+    settings, orders;
+    Host::open(&evidence, settings, &store, &mut orders, Mode::inbound())?
+);

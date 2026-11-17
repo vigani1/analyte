@@ -435,7 +435,11 @@ impl Effects for Host<'_, '_> {
             }
             Input::Bytes { bytes } => bytes,
             Input::Closed(_) => return Ok(Flow::Stop),
-            Input::Failed(_) | Input::RecordingFailed(_) | Input::Tick => Vec::new(),
+            Input::Failed(_) | Input::Tick => Vec::new(),
+            Input::RecordingFailed(failure) => {
+                tracing::warn!(error_kind = %failure, "optional recorder stopped; transport continues");
+                return Ok(Flow::Continue);
+            }
         };
         self.receive_bytes(bytes, host.conn, &mut host.stop).await?;
         Ok(Flow::Continue)
@@ -511,3 +515,13 @@ async fn finish_incomplete(store: &Handle, transfer: Identifier) -> Result<(), E
         .await?;
     Ok(())
 }
+
+#[cfg(test)]
+super::driver::recorder_failure_test!(
+    "astm.toml",
+    analyte_config::Stack::Astm(analyte_config::RecordTransport::Stream(settings)),
+    evidence,
+    store,
+    settings,;
+    Host::open(&evidence, settings, &store)?
+);

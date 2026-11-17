@@ -144,12 +144,16 @@ impl Effects for Host<'_, '_> {
         let stop = &mut host.stop;
         self.end_code = VidasEnd::TransferError;
         match input {
+            Input::RecordingFailed(failure) => {
+                tracing::warn!(error_kind = %failure, "optional recorder stopped; transport continues");
+                return Ok(Flow::Continue);
+            }
             Input::Opened { .. } => self.phase = Phase::Idle,
             Input::Tick => {
                 self.actions
                     .extend(self.dialog.step(self.start.elapsed(), Event::Tick)?);
             }
-            Input::Closed(_) | Input::Failed(_) | Input::RecordingFailed(_) => {
+            Input::Closed(_) | Input::Failed(_) => {
                 self.end_code = if *stop.borrow() {
                     VidasEnd::TransferCancelled
                 } else {
@@ -271,3 +275,13 @@ async fn store_upload(
     intake::interpret(store, machine.machine(), id).await?;
     Ok(())
 }
+
+#[cfg(test)]
+super::driver::recorder_failure_test!(
+    "vidas_literal.toml",
+    analyte_config::Stack::Vidas(settings),
+    evidence,
+    store,
+    settings,;
+    Host::open(&evidence, settings, &store)?
+);

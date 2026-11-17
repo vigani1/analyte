@@ -120,12 +120,9 @@ impl Effects for Host<'_, '_> {
         let store = self.store;
         let conn = &mut *host.conn;
         let stop = &mut host.stop;
-        let ended = matches!(
-            input,
-            Input::Closed(_) | Input::Failed(_) | Input::RecordingFailed(_)
-        );
+        let ended = matches!(input, Input::Closed(_) | Input::Failed(_));
         self.end_code = match &input {
-            Input::Closed(_) | Input::Failed(_) | Input::RecordingFailed(_) => {
+            Input::Closed(_) | Input::Failed(_) => {
                 if *stop.borrow() {
                     AutolyserEnd::TransferCancelled
                 } else {
@@ -134,8 +131,13 @@ impl Effects for Host<'_, '_> {
             }
             Input::Tick => AutolyserEnd::TransferTimeout,
             Input::Opened { .. } | Input::Bytes { .. } => AutolyserEnd::TransferError,
+            Input::RecordingFailed(failure) => {
+                tracing::warn!(error_kind = %failure, "optional recorder stopped; transport continues");
+                return Ok(Flow::Continue);
+            }
         };
         let events = match input {
+            Input::RecordingFailed(_) => return Ok(Flow::Continue),
             Input::Opened { .. } => {
                 self.phase.busy();
                 vec![Event::Poll(Request::Next)]
@@ -182,7 +184,7 @@ impl Effects for Host<'_, '_> {
                     Vec::new()
                 }
             }
-            Input::Closed(_) | Input::Failed(_) | Input::RecordingFailed(_) => {
+            Input::Closed(_) | Input::Failed(_) => {
                 vec![Event::Disconnected]
             }
         };
@@ -391,3 +393,13 @@ impl Host<'_, '_> {
         }
     }
 }
+
+#[cfg(test)]
+super::driver::recorder_failure_test!(
+    "autolyser.toml",
+    analyte_config::Stack::Autolyser(settings),
+    evidence,
+    store,
+    settings,;
+    Host::open(&evidence, settings, &store)?
+);
