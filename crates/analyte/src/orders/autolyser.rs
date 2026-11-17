@@ -28,3 +28,27 @@ impl ConnectionState {
         Ok(!self.ready)
     }
 }
+
+impl ConnectionState {
+    pub(crate) async fn next_download(
+        &mut self,
+        store: &Handle,
+        machine: &crate::intake::Connection<'_>,
+    ) -> Result<Option<Vec<analyte_dialog::autolyser::Action>>, Error> {
+        if let Some(reserved) =
+            crate::orders::sending::next(store, machine, &mut self.cursor).await?
+        {
+            self.active = Some(reserved.order);
+            let analyte_mapping::MachineOrder::Autolyser(worklist) = reserved.payload else {
+                return Err(Error::AutolyserReceivedAnotherStackSOrder);
+            };
+            let actions = self.dialog.step(
+                self.start.elapsed(),
+                analyte_dialog::autolyser::Event::Download(&worklist),
+            );
+            Ok(Some(actions))
+        } else {
+            Ok(None)
+        }
+    }
+}

@@ -126,18 +126,7 @@ impl ConnectionState {
                     // Tick alone can initiate L recovery. Never interleave R with it.
                     if actions.is_empty() && self.ready && !self.recovering {
                         self.ready = false;
-                        if let Some(reserved) =
-                            crate::orders::sending::next(store, machine, &mut self.cursor).await?
-                        {
-                            self.active = Some(reserved.order);
-                            let analyte_mapping::MachineOrder::Autolyser(worklist) =
-                                reserved.payload
-                            else {
-                                return Err(Error::AutolyserReceivedAnotherStackSOrder);
-                            };
-                            let actions = self
-                                .dialog
-                                .step(self.start.elapsed(), Event::Download(&worklist));
+                        if let Some(actions) = self.next_download(store, machine).await? {
                             if process(actions, self, machine, store, conn, policy).await? {
                                 return Ok(());
                             }
