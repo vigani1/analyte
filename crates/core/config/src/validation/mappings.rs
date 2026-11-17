@@ -12,7 +12,7 @@ pub(super) fn field(
 ) -> Result<(), Error> {
     let record = field.record.as_str();
     let valid_record = if syntax.has_astm_records() {
-        matches!(record, "H" | "P" | "O" | "R" | "C" | "Q" | "L" | "M" | "S")
+        matches!(record.as_bytes(), [byte] if byte.is_ascii_uppercase() && analyte_astm::Kind::parse(*byte).is_some())
     } else if syntax.has_hl7_records() {
         record.len() == 3
             && record

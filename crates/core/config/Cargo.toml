@@ -9,6 +9,7 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+analyte-astm.workspace = true
 reqwest = { workspace = true }
 analyte-model = { workspace = true }
 analyte-framing = { workspace = true }
