@@ -53,7 +53,7 @@ impl Custody {
     pub(crate) async fn retain(
         &mut self,
         store: &Handle,
-        machine: &intake::Connection<'_>,
+        machine: &intake::ConnectionEvidence<'_>,
     ) -> Result<(), Error> {
         let Some((prefix, tail)) = self.bytes.split_at_checked(self.fed) else {
             intake::park_bytes(

@@ -1,5 +1,5 @@
 //! Drives independent LAW connections with host-owned I/O (TF-2b B.6).
-use super::{Connection, Error, intake};
+use super::{Error, LawOrderLink, intake};
 use crate::machine::hooks::Pause;
 use crate::orders::outcome::Code;
 use crate::{installation::config::Machine, machine::Closing};
@@ -15,7 +15,7 @@ use tokio::{
 
 // Bounded handoff transfers reservation ownership; it never grants resend permission.
 pub(super) struct Work {
-    pub(super) orders: Connection,
+    pub(super) orders: LawOrderLink,
     pub(super) message: Message,
     pub(super) ready: oneshot::Receiver<()>,
 }
@@ -158,7 +158,7 @@ async fn accepted_connection(
         Some(capture) => capture.attach(side),
         None => side,
     };
-    let context = intake::Connection::new(&machine)?;
+    let context = intake::ConnectionEvidence::new(&machine)?;
     let dialog = async move {
         let result = super::session_with_outbound(
             &context,
@@ -200,7 +200,7 @@ async fn worker(
     mut stop: watch::Receiver<bool>,
     capture: Option<Arc<crate::machine::capture::Capture>>,
 ) -> Result<(), Error> {
-    let mut idle_orders = Connection::new()?;
+    let mut idle_orders = LawOrderLink::new()?;
     let mut tick = tokio::time::interval(Duration::from_millis(100));
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     let result=async {
@@ -236,7 +236,7 @@ async fn worker(
                     }
                 },
                 _=tick.tick()=>{
-                    let context=intake::Connection::new(&machine)?;
+                    let context=intake::ConnectionEvidence::new(&machine)?;
                     let outgoing = tokio::select! {
                         biased;
                         () = crate::machine::stopping(&mut stop) => break,
@@ -268,7 +268,7 @@ async fn worker(
 async fn settle(
     machine: &Machine,
     store: &Handle,
-    orders: &mut Connection,
+    orders: &mut LawOrderLink,
     result: Result<(), Error>,
 ) -> Result<(), Error> {
     let reason = result.as_ref().err().map_or_else(
@@ -287,7 +287,7 @@ async fn exchange(
     machine: &Machine,
     store: &Handle,
     settings: &LawStack,
-    orders: &mut Connection,
+    orders: &mut LawOrderLink,
     message: &Message,
     mut stop: watch::Receiver<bool>,
     capture: Option<&crate::machine::capture::Capture>,
@@ -315,7 +315,7 @@ async fn exchange(
         Some(capture) => capture.attach(side),
         None => side,
     };
-    let context = intake::Connection::new(machine)?;
+    let context = intake::ConnectionEvidence::new(machine)?;
     let dialog = async move {
         let result = transaction(
             &context, store, settings, orders, message, &mut conn, &mut stop,
@@ -331,10 +331,10 @@ async fn exchange(
 }
 
 async fn transaction(
-    machine: &intake::Connection<'_>,
+    machine: &intake::ConnectionEvidence<'_>,
     store: &Handle,
     settings: &LawStack,
-    orders: &mut Connection,
+    orders: &mut LawOrderLink,
     message: &Message,
     conn: &mut analyte_transport::Connection,
     stop: &mut watch::Receiver<bool>,

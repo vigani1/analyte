@@ -22,10 +22,4 @@ pub(crate) enum Pause {
     LawHandover,
     LawQueued,
 }
-#[derive(Clone, Copy)]
-pub(crate) enum Operation {
-    Lookup,
-    Reserved,
-    Cancel,
-    CancelResult,
-}
+use crate::runtime::hooks::Operation;

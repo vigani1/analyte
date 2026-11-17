@@ -1,11 +1,10 @@
 //! Receives VIDAS uploads using configured checksum, suffix and timer rules.
-use crate::intake::ByteReason;
-pub(crate) mod transfer_end;
-use self::transfer_end::VidasEnd;
 use super::connection_input::Input;
 use super::custody::{self, ms};
 use super::driver::{self, Context, Effects, Flow};
 use crate::intake;
+use crate::intake::ByteReason;
+use crate::orders::outcome::VidasEnd;
 mod error;
 use analyte_dialog::vidas::{Action, Config as DialogConfig, Dialog, Event, Timer};
 use analyte_framing::vidas::Config;
@@ -17,7 +16,7 @@ use tokio::sync::watch;
 
 /// Dialog, decoder and timers cannot outlive their owning transport connection.
 struct ConnectionState {
-    work: crate::orders::vidas::Work,
+    work: crate::orders::sending::Work<analyte_vidas::syntax::Message>,
     dialog: Dialog,
     start: Instant,
     actions: VecDeque<Action>,
@@ -29,7 +28,7 @@ struct ConnectionState {
 }
 
 pub(super) async fn session(
-    machine: &intake::Connection<'_>,
+    machine: &intake::ConnectionEvidence<'_>,
     settings: &analyte_config::VidasStack,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
@@ -50,7 +49,7 @@ pub(super) async fn session(
 
 impl ConnectionState {
     fn open(
-        machine: &intake::Connection<'_>,
+        machine: &intake::ConnectionEvidence<'_>,
         settings: &analyte_config::VidasStack,
     ) -> Result<Self, Error> {
         let installed = &settings.policy();
@@ -66,7 +65,7 @@ impl ConnectionState {
         let mut dialog = Dialog::upload(config.clone(), policy.clone())?;
         let actions = dialog.start().into();
         Ok(Self {
-            work: crate::orders::vidas::Work::new(),
+            work: crate::orders::sending::Work::default(),
             dialog,
             start: Instant::now(),
             actions,
@@ -88,7 +87,7 @@ impl ConnectionState {
     async fn receive_bytes(
         &mut self,
         bytes: Vec<u8>,
-        machine: &intake::Connection<'_>,
+        machine: &intake::ConnectionEvidence<'_>,
         store: &Handle,
         conn: &mut analyte_transport::Connection,
         installed: &analyte_config::Vidas,
@@ -148,7 +147,10 @@ impl Effects for ConnectionState {
     async fn prepare(&mut self, host: &mut Context<'_, '_, Self::Settings>) -> Result<Flow, Error> {
         if self.idle
             && self.opened
-            && let Some(request) = self.work.poll(host.machine, host.store).await?
+            && let Some(request) = self
+                .work
+                .poll(host.machine, host.store, host.settings)
+                .await?
         {
             self.start_download(&request)?;
         }
@@ -216,13 +218,16 @@ impl Effects for ConnectionState {
         host: &mut Context<'_, '_, Self::Settings>,
         _result: &mut Result<(), Error>,
     ) -> Result<(), Error> {
-        self.work.close(host.store, self.end_code.as_str()).await
+        self.work
+            .close(host.store, self.end_code.into())
+            .await
+            .map_err(Into::into)
     }
 }
 
 async fn process(
     state: &mut ConnectionState,
-    machine: &intake::Connection<'_>,
+    machine: &intake::ConnectionEvidence<'_>,
     store: &Handle,
     conn: &mut analyte_transport::Connection,
     installed: &analyte_config::Vidas,
@@ -299,7 +304,7 @@ async fn process(
 
 async fn store_upload(
     store: &Handle,
-    machine: &intake::Connection<'_>,
+    machine: &intake::ConnectionEvidence<'_>,
     id: ReceiptId,
     raw: &[u8],
 ) -> Result<(), intake::Error> {

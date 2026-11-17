@@ -1,16 +1,27 @@
 //! Checks supported transport settings before opening machine connections.
 use analyte_config::{Serial, Stack, StreamKind, StreamTransport, TcpRole};
 
+/// Only stream protocols can be passed to a stream session.
+#[derive(Clone, Copy)]
+pub(super) enum StreamSession<'a> {
+    Astm(&'a analyte_config::AstmStack),
+    Hl7(&'a analyte_config::Hl7Stack),
+    Law(&'a analyte_config::LawStack),
+    Poct(&'a analyte_config::PoctStack),
+    Vidas(&'a analyte_config::VidasStack),
+    Autolyser(&'a analyte_config::AutolyserStack),
+}
+
 pub(super) struct SerialLink<'a> {
     pub(super) settings: &'a Serial,
-    pub(super) session: &'a Stack,
+    pub(super) session: StreamSession<'a>,
     timeout_ms: u32,
 }
 
 pub(super) enum Link<'a> {
     Serial(SerialLink<'a>),
     Tcp {
-        session: &'a Stack,
+        session: StreamSession<'a>,
         role: TcpRole,
         timeout_ms: u32,
     },
@@ -32,22 +43,22 @@ impl Link<'_> {
 pub(super) fn transport(stack: &Stack) -> Link<'_> {
     match stack {
         Stack::Astm(analyte_config::RecordTransport::Stream(s)) => {
-            stream(s.settings().transport(), stack)
+            stream(s.settings().transport(), StreamSession::Astm(s))
         }
-        Stack::Vidas(s) => stream(s.settings().transport(), stack),
-        Stack::Autolyser(s) => stream(s.settings().transport(), stack),
+        Stack::Vidas(s) => stream(s.settings().transport(), StreamSession::Vidas(s)),
+        Stack::Autolyser(s) => stream(s.settings().transport(), StreamSession::Autolyser(s)),
         Stack::Hl7(analyte_config::RecordTransport::Stream(s)) => Link::Tcp {
-            session: stack,
+            session: StreamSession::Hl7(s),
             role: s.settings().transport().role(),
             timeout_ms: s.settings().transport().operation_timeout_ms(),
         },
         Stack::Law(s) => Link::Tcp {
-            session: stack,
+            session: StreamSession::Law(s),
             role: s.settings().transport().role(),
             timeout_ms: s.settings().transport().operation_timeout_ms(),
         },
         Stack::Poct(s) => Link::Tcp {
-            session: stack,
+            session: StreamSession::Poct(s),
             role: s.settings().transport().role(),
             timeout_ms: s.settings().transport().operation_timeout_ms(),
         },
@@ -62,7 +73,7 @@ pub(super) fn transport(stack: &Stack) -> Link<'_> {
     }
 }
 
-fn stream<'a>(transport: &'a StreamTransport, session: &'a Stack) -> Link<'a> {
+fn stream<'a>(transport: &'a StreamTransport, session: StreamSession<'a>) -> Link<'a> {
     match transport.kind() {
         StreamKind::Serial(settings) => Link::Serial(SerialLink {
             settings,

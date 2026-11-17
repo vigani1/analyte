@@ -17,12 +17,12 @@ mod persistence;
 use persistence::{LawBatchConflict, PreparedMapping};
 
 /// Binds all evidence from one host connection to its immutable configuration.
-pub(crate) struct Connection<'a> {
+pub(crate) struct ConnectionEvidence<'a> {
     machine: &'a Machine,
     connection_id: Identifier,
 }
 
-impl<'a> Connection<'a> {
+impl<'a> ConnectionEvidence<'a> {
     pub(crate) fn new(machine: &'a Machine) -> Result<Self, Error> {
         Ok(Self {
             machine,
@@ -31,7 +31,7 @@ impl<'a> Connection<'a> {
     }
 }
 
-impl Connection<'_> {
+impl ConnectionEvidence<'_> {
     pub(crate) fn machine(&self) -> &Machine {
         self.machine
     }
@@ -55,7 +55,7 @@ pub(crate) fn driver(machine: &Machine) -> Result<NamespacedId, Error> {
 
 pub(crate) async fn receive(
     store: &Handle,
-    machine: &Connection<'_>,
+    machine: &ConnectionEvidence<'_>,
     id: ReceiptId,
     raw: Vec<u8>,
 ) -> Result<jiff::Timestamp, Error> {
@@ -269,7 +269,7 @@ fn park_findings(
 
 pub(crate) async fn park_bytes(
     store: &Handle,
-    machine: &Connection<'_>,
+    machine: &ConnectionEvidence<'_>,
     bytes: Vec<u8>,
     reason: ByteReason<'_>,
 ) -> Result<(), Error> {

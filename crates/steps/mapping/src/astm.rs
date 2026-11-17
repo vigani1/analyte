@@ -1,7 +1,7 @@
 //! Maps received ASTM messages to model results and app orders to ASTM fields without I/O (LIS02-A2).
 use crate::inbound::{grouping, source};
 use crate::orders::codes::{map_priority as outbound_priority, map_test as outbound_test};
-use crate::orders::{AppOrder, MachineOrder, OrderMappingError, map_specimen};
+use crate::orders::{AppOrder, OrderMappingError, map_specimen};
 use crate::{Error, Input, Output, Position};
 
 /// Maps one parsed LIS02 message, retaining hierarchy and original value text.
@@ -70,7 +70,7 @@ pub fn map_order(
     order: &AppOrder,
     limits: &analyte_config::SyntaxLimits,
     settings: &analyte_config::AstmOrders,
-) -> Result<MachineOrder, OrderMappingError> {
+) -> Result<Vec<u8>, OrderMappingError> {
     let astm = &settings.layout();
     let settings = &settings.tables();
     if order.tests.is_empty() || order.tests.len() > limits.repetitions() {
@@ -154,7 +154,7 @@ pub fn map_order(
         return Err(OrderMappingError::AstmRecordLimit);
     }
     record.push(b'\r');
-    Ok(MachineOrder::Astm(record))
+    Ok(record)
 }
 
 fn set(
