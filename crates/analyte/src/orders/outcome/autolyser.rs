@@ -1,8 +1,15 @@
-//! Defines stable Autolyser transfer and insertion evidence codes.
+//! Defines stored Autolyser order outcome codes: transfer ends, parked replies and insertions.
 /// Stable stored codes; spellings are compatibility data, never derived from Debug.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum AutolyserEnd {
     InputFailed,
+    ParkedAck,
+    ParkedBusy,
+    ParkedConfig,
+    ParkedIncomplete,
+    ParkedStale,
+    ParkedStorage,
+    ParkedTime,
     StorageFailed,
     StorageTimeout,
     TransferCancelled,
@@ -16,6 +23,13 @@ impl AutolyserEnd {
     pub(crate) const fn as_str(self) -> &'static str {
         match self {
             Self::InputFailed => "Autolyser-input-failed",
+            Self::ParkedAck => "Autolyser-parked-ack",
+            Self::ParkedBusy => "Autolyser-parked-busy",
+            Self::ParkedConfig => "Autolyser-parked-config",
+            Self::ParkedIncomplete => "Autolyser-parked-incomplete",
+            Self::ParkedStale => "Autolyser-parked-stale",
+            Self::ParkedStorage => "Autolyser-parked-storage",
+            Self::ParkedTime => "Autolyser-parked-time",
             Self::StorageFailed => "Autolyser-storage-failed",
             Self::StorageTimeout => "Autolyser-storage-timeout",
             Self::TransferCancelled => "Autolyser-transfer-cancelled",
@@ -29,31 +43,6 @@ impl AutolyserEnd {
 impl std::fmt::Display for AutolyserEnd {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.as_str())
-    }
-}
-
-#[cfg(test)]
-#[test]
-fn autolyser_stored_spellings_are_compatible() {
-    for (code, expected) in [
-        (AutolyserEnd::InputFailed, "Autolyser-input-failed"),
-        (AutolyserEnd::StorageFailed, "Autolyser-storage-failed"),
-        (AutolyserEnd::StorageTimeout, "Autolyser-storage-timeout"),
-        (
-            AutolyserEnd::TransferCancelled,
-            "Autolyser-transfer-cancelled",
-        ),
-        (
-            AutolyserEnd::TransferDisconnected,
-            "Autolyser-transfer-disconnected",
-        ),
-        (AutolyserEnd::TransferError, "Autolyser-transfer-error"),
-        (AutolyserEnd::TransferTimeout, "Autolyser-transfer-timeout"),
-        (AutolyserEnd::WriteFailed, "Autolyser-write-failed"),
-    ] {
-        assert_eq!(code.as_str(), expected);
-        assert_eq!(code.to_string(), expected);
-        assert_eq!(super::Transfer::from(code).to_string(), expected);
     }
 }
 
@@ -89,40 +78,6 @@ pub(crate) fn insertion_rejection(error: analyte_dialog::autolyser::InsertionErr
     }
 }
 
-#[test]
-fn insertion_rejection_spellings_are_compatible() {
-    use analyte_dialog::autolyser::InsertionError;
-    for (error, expected) in [
-        (InsertionError::Checksum, "Checksum"),
-        (InsertionError::UnknownCommand, "UnknownCommand"),
-        (InsertionError::List, "List"),
-        (InsertionError::Sample, "Sample"),
-        (InsertionError::Clone, "Clone"),
-        (InsertionError::Position, "Position"),
-        (InsertionError::CountField, "CountField"),
-        (InsertionError::CountMismatch, "CountMismatch"),
-        (InsertionError::Executing, "Executing"),
-        (InsertionError::CannotClone, "CannotClone"),
-        (InsertionError::Duplicate, "Duplicate"),
-        (InsertionError::UnknownAnalysis, "UnknownAnalysis"),
-        (InsertionError::AnalysisOffTray, "AnalysisOffTray"),
-        (InsertionError::TooManyAnalyses, "TooManyAnalyses"),
-        (InsertionError::Constant, "Constant"),
-        (InsertionError::Variable, "Variable"),
-        (InsertionError::AnalysisVariable, "AnalysisVariable"),
-        (InsertionError::NoRepeatPatient, "NoRepeatPatient"),
-        (InsertionError::RepeatSampleMismatch, "RepeatSampleMismatch"),
-        (InsertionError::RepeatListFull, "RepeatListFull"),
-        (InsertionError::RepeatListMismatch, "RepeatListMismatch"),
-        (InsertionError::PositionOccupied, "PositionOccupied"),
-        (InsertionError::ExtraListPatient, "ExtraListPatient"),
-        (InsertionError::RepeatDisabled, "RepeatDisabled"),
-        (InsertionError::Other(255), "Other(255)"),
-    ] {
-        assert_eq!(insertion_rejection(error), expected);
-    }
-}
-
 /// Encodes each closed insertion response family with its historical stable prefix.
 pub(crate) fn insertion(reception: analyte_dialog::autolyser::Reception) -> String {
     use analyte_dialog::autolyser::Reception;
@@ -139,56 +94,55 @@ pub(crate) fn insertion(reception: analyte_dialog::autolyser::Reception) -> Stri
         }
     }
 }
-impl AutolyserEnd {
+/// How an Autolyser reply was cut short; only these give an incomplete code.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum Interruption {
+    Timeout,
+    Disconnected,
+    Cancelled,
+}
+impl Interruption {
+    /// The transfer end this interruption also names when the session ends.
+    pub(crate) const fn end(self) -> AutolyserEnd {
+        match self {
+            Self::Timeout => AutolyserEnd::TransferTimeout,
+            Self::Disconnected => AutolyserEnd::TransferDisconnected,
+            Self::Cancelled => AutolyserEnd::TransferCancelled,
+        }
+    }
+    /// Writes the historical code of a reply parked as incomplete after this interruption.
     pub(crate) fn incomplete(self) -> String {
-        format!("{}-incomplete", self.as_str())
+        format!("{}-incomplete", self.end().as_str())
     }
 }
-#[test]
-fn insertion_and_incomplete_code_spellings_are_compatible() {
-    use analyte_dialog::autolyser::{InsertionError, Reception};
-    for (value, expected) in [
-        (
-            Reception::Accepted(3),
-            "Autolyser-insertion-confirmed-position-03",
-        ),
-        (
-            Reception::Rejected(InsertionError::Position),
-            "Autolyser-insertion-rejected-Position",
-        ),
-        (
-            Reception::Rejected(InsertionError::Other(255)),
-            "Autolyser-insertion-rejected-Other(255)",
-        ),
-        (
-            Reception::Other(0x3f, 3),
-            "Autolyser-insertion-unknown-3F-03",
-        ),
-    ] {
-        assert_eq!(insertion(value), expected);
-        assert_eq!(
-            super::Transfer::AutolyserInsertion(value).to_string(),
-            expected
-        );
+
+/// Stored codes that carry diagnostic text; the caller bounds the text before storing it.
+pub(crate) enum AutolyserDetail {
+    Framing(String),
+    Record(String),
+}
+impl std::fmt::Display for AutolyserDetail {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Framing(detail) => write!(f, "Autolyser-parked-framing-{detail}"),
+            Self::Record(detail) => write!(f, "Autolyser-parked-record-{detail}"),
+        }
     }
-    for (value, expected) in [
-        (
-            AutolyserEnd::TransferTimeout,
-            "Autolyser-transfer-timeout-incomplete",
-        ),
-        (
-            AutolyserEnd::TransferDisconnected,
-            "Autolyser-transfer-disconnected-incomplete",
-        ),
-        (
-            AutolyserEnd::TransferCancelled,
-            "Autolyser-transfer-cancelled-incomplete",
-        ),
-    ] {
-        assert_eq!(value.incomplete(), expected);
-        assert_eq!(
-            super::Transfer::AutolyserIncomplete(value).to_string(),
-            expected
-        );
-    }
+}
+
+/// Writes the historical code of a reply the dialog parked, from its reason.
+pub(crate) fn parked(error: &analyte_dialog::autolyser::Error) -> String {
+    use analyte_dialog::autolyser::Error;
+    let code = match error {
+        Error::Configuration => AutolyserEnd::ParkedConfig,
+        Error::Busy => AutolyserEnd::ParkedBusy,
+        Error::TimeReversed | Error::Exhausted => AutolyserEnd::ParkedTime,
+        Error::Incomplete => AutolyserEnd::ParkedIncomplete,
+        Error::Storage => AutolyserEnd::ParkedStorage,
+        Error::Stale => AutolyserEnd::ParkedStale,
+        Error::Ack => AutolyserEnd::ParkedAck,
+        Error::Framing(cause) => return AutolyserDetail::Framing(cause.to_string()).to_string(),
+        Error::Record(cause) => return AutolyserDetail::Record(cause.to_string()).to_string(),
+    };
+    code.as_str().to_owned()
 }

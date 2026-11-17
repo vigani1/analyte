@@ -1,7 +1,7 @@
 //! Drives POCT DML reviewer connections with durable custody before acceptance.
 pub(crate) mod policy;
 use super::connection_input::Input;
-use super::driver::{self, Context, Effects, Failures, Flow};
+use super::driver::{self, Context, Effects, Flow, Run};
 use crate::intake;
 use crate::intake::ByteReason;
 use crate::machine::receive::custody::{self, ms};
@@ -12,7 +12,7 @@ use analyte_model::ReceiptId;
 use analyte_poct::{Body, ControlId, Header, Message, Timestamp};
 use analyte_store::Handle;
 pub(crate) use error::Error;
-use std::{collections::VecDeque, time::Instant};
+use std::time::Instant;
 use tokio::sync::watch;
 
 pub(super) struct Host<'a, 'm> {
@@ -49,7 +49,7 @@ impl driver::ByteEffects for Host<'_, '_> {
         &mut self,
         byte: u8,
         conn: &mut analyte_transport::Connection,
-        stop: &watch::Receiver<bool>,
+        stop: &mut watch::Receiver<bool>,
     ) -> Result<Flow, Error> {
         let machine = self.machine;
         let store = self.store;
@@ -67,7 +67,7 @@ impl driver::ByteEffects for Host<'_, '_> {
             intake::park_bytes(store, machine, raw, ByteReason::PoctCancelled).await?;
             return Ok(Flow::Stop);
         }
-        self.apply(actions, conn).await
+        driver::drain(self, actions, conn, stop).await
     }
 }
 
@@ -83,24 +83,19 @@ impl Effects for Host<'_, '_> {
     async fn input(&mut self, host: &mut Context<'_, '_>, input: Input) -> Result<Flow, Error> {
         let conn = &mut *host.conn;
         let stop = &mut host.stop;
-        // Incoming fragments must not postpone the absolute dialog deadline.
+        // Every input first applies due time, so incoming fragments never
+        // postpone the absolute dialog deadline; a tick needs nothing more.
         let actions = self.dialog.step(self.start.elapsed(), Event::Tick)?;
-        if self.apply(actions, conn).await? == Flow::Stop {
+        if driver::drain(self, actions, conn, stop).await? == Flow::Stop {
             return Ok(Flow::Stop);
         }
         match input {
-            Input::Opened { .. } => {}
-            Input::Tick => {
-                let actions = self.dialog.step(self.start.elapsed(), Event::Tick)?;
-                if self.apply(actions, conn).await? == Flow::Stop {
-                    return Ok(Flow::Stop);
-                }
-            }
+            Input::Opened { .. } | Input::Tick => {}
             Input::Closed(_) | Input::Failed(_) => {
                 let actions = self
                     .dialog
                     .step(self.start.elapsed(), Event::Disconnected)?;
-                self.apply(actions, conn).await?;
+                driver::drain(self, actions, conn, stop).await?;
                 return Ok(Flow::Stop);
             }
             Input::Bytes { bytes } => {
@@ -175,99 +170,88 @@ fn outbound_message(
     )?)
 }
 
-impl Host<'_, '_> {
-    async fn apply(
+impl driver::Drain for Host<'_, '_> {
+    type Action = Action;
+    async fn effect(
         &mut self,
-        actions: Vec<Action>,
-        conn: &mut analyte_transport::Connection,
+        action: Action,
+        run: &mut Run<'_, Action, Error>,
     ) -> Result<Flow, Error> {
         let machine = self.machine;
         let store = self.store;
         let start = self.start;
-        let settings = self.settings;
+        let limits = super::interpretation::poct_limits(self.settings);
         let dialog = &mut self.dialog;
-        let limits = super::interpretation::poct_limits(settings);
-        let send_timeout_ms = settings.settings().timeouts().send_timeout_ms();
-        let mut actions: VecDeque<_> = actions.into();
-        let mut failures = Failures::new();
-        let result = async {
-            while let Some(action) = actions.pop_front() {
-                match action {
-                    Action::Parse(wire) => actions.extend(
-                        interpret_input(wire, dialog, start, machine, store, limits).await?,
-                    ),
-                    Action::ParseLimit(wire) => {
-                        intake::park_bytes(store, machine, wire, ByteReason::PoctLimit).await?;
-                        return Err(Error::MessageLimitExceeded);
-                    }
-                    Action::ParseDeadline(wire) => {
-                        intake::park_bytes(store, machine, wire, ByteReason::PoctDeadline).await?;
-                    }
-                    Action::InspectHello {
-                        device_id: _,
-                        capabilities: _,
-                    } => {
-                        actions.extend(dialog.step(start.elapsed(), Event::HelloDecision(true))?);
-                    }
-                    Action::Store { ticket, message } => {
-                        let operation = store_message(store, machine, &message);
-                        let event =
-                            match custody::store_before_ack(machine.machine(), operation).await {
-                                Ok(outcome) => Event::Stored { ticket, outcome },
-                                Err(error) => {
-                                    failures.keep(Error::from(error));
-                                    Event::StoreFailed(ticket)
-                                }
-                            };
-                        actions.extend(dialog.step(start.elapsed(), event)?);
-                    }
-                    Action::Park { message, reason } => {
-                        intake::park_bytes(
-                            store,
-                            machine,
-                            message.document().raw().to_vec(),
-                            ByteReason::PoctDialog(reason),
-                        )
-                        .await?;
-                    }
-                    Action::Write { control_id, body } => {
-                        let message = outbound_message(
-                            control_id,
-                            &body,
-                            limits,
-                            dialog.outbound_message_limit(),
-                        )?;
-                        custody::write(
-                            conn,
-                            message.document().raw(),
-                            custody::WriteDeadline::Within(ms(send_timeout_ms)),
-                        )
-                        .await?;
-                    }
-                    Action::ReadEnabled(_) => {}
-                    Action::Deferred(message) => {
-                        intake::park_bytes(
-                            store,
-                            machine,
-                            message.document().raw().to_vec(),
-                            ByteReason::PoctDeferred,
-                        )
-                        .await?;
-                        return Err(Error::BackpressureViolated);
-                    }
-                    Action::TopicComplete => {
-                        actions.extend(dialog.step(start.elapsed(), Event::Finish)?);
-                    }
-                    Action::Close { normal, unresolved } => {
-                        retain_closure(store, machine, normal, &unresolved).await?;
-                        return Ok(Flow::Stop);
-                    }
-                }
+        let Run {
+            actions,
+            failures,
+            conn,
+            ..
+        } = run;
+        match action {
+            Action::Parse(wire) => {
+                actions.extend(interpret_input(wire, dialog, start, machine, store, limits).await?);
             }
-            Ok(Flow::Continue)
+            Action::ParseLimit(wire) => {
+                intake::park_bytes(store, machine, wire, ByteReason::PoctLimit).await?;
+                return Err(Error::MessageLimitExceeded);
+            }
+            Action::ParseDeadline(wire) => {
+                intake::park_bytes(store, machine, wire, ByteReason::PoctDeadline).await?;
+            }
+            Action::InspectHello {
+                device_id: _,
+                capabilities: _,
+            } => {
+                actions.extend(dialog.step(start.elapsed(), Event::HelloDecision(true))?);
+            }
+            Action::Store { ticket, message } => {
+                let operation = store_message(store, machine, &message);
+                let event = match custody::store_before_ack(machine.machine(), operation).await {
+                    Ok(outcome) => Event::Stored { ticket, outcome },
+                    Err(error) => {
+                        failures.keep(Error::from(error));
+                        Event::StoreFailed(ticket)
+                    }
+                };
+                actions.extend(dialog.step(start.elapsed(), event)?);
+            }
+            Action::Park { message, reason } => {
+                intake::park_bytes(
+                    store,
+                    machine,
+                    message.document().raw().to_vec(),
+                    ByteReason::PoctDialog(reason),
+                )
+                .await?;
+            }
+            Action::Write { control_id, body } => {
+                let message =
+                    outbound_message(control_id, &body, limits, dialog.outbound_message_limit())?;
+                let send_timeout_ms = self.settings.settings().timeouts().send_timeout_ms();
+                let deadline = custody::WriteDeadline::Within(ms(send_timeout_ms));
+                custody::write(conn, message.document().raw(), deadline).await?;
+            }
+            Action::ReadEnabled(_) => {}
+            Action::Deferred(message) => {
+                intake::park_bytes(
+                    store,
+                    machine,
+                    message.document().raw().to_vec(),
+                    ByteReason::PoctDeferred,
+                )
+                .await?;
+                return Err(Error::BackpressureViolated);
+            }
+            Action::TopicComplete => {
+                actions.extend(dialog.step(start.elapsed(), Event::Finish)?);
+            }
+            Action::Close { normal, unresolved } => {
+                retain_closure(store, machine, normal, &unresolved).await?;
+                return Ok(Flow::Stop);
+            }
         }
-        .await;
-        failures.finish(result)
+        Ok(Flow::Continue)
     }
 }
 

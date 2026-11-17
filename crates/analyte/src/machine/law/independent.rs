@@ -2,7 +2,7 @@
 use super::{Error, LawOrderLink, intake};
 use crate::machine::hooks::Pause;
 use crate::machine::link::{self, Kind, Next, session_ended};
-use crate::orders::outcome::Code;
+use crate::orders::outcome::LawEnd;
 use crate::{installation::config::Machine, machine::Closing};
 use analyte_config::{LawLinks, LawStack};
 use analyte_hl7::Message;
@@ -246,12 +246,12 @@ async fn worker(
                     let ready = tokio::select! {
                         biased;
                         _ = async { let _ = stop.wait_for(|&stopped| stopped).await; } => {
-                            Err(Code::LawResponseShutdown.as_str())
+                            Err(LawEnd::ResponseShutdown.as_str())
                         },
                         ready = tokio::time::timeout_at(until.into(), &mut job.ready) => match ready {
                             Ok(Ok(())) => Ok(()),
-                            Ok(Err(_)) => Err(Code::LawQueryIssuanceUncertain.as_str()),
-                            Err(_) => Err(Code::LawIndependentQueueDeadline.as_str()),
+                            Ok(Err(_)) => Err(LawEnd::QueryIssuanceUncertain.as_str()),
+                            Err(_) => Err(LawEnd::IndependentQueueDeadline.as_str()),
                         },
                     };
                     match ready {
@@ -294,7 +294,7 @@ async fn worker(
                         Err(error) => {
                             idle_orders.close(
                                 &store,
-                                Code::LawIndependentAdmissionFailed.as_str(),
+                                LawEnd::IndependentAdmissionFailed.as_str(),
                             ).await?;
                             report(&machine, Err(error.into()));
                         }
@@ -308,11 +308,11 @@ async fn worker(
     queue.close();
     while let Ok(mut job) = queue.try_recv() {
         job.orders
-            .close(&store, Code::LawIndependentShutdown.as_str())
+            .close(&store, LawEnd::IndependentShutdown.as_str())
             .await?;
     }
     idle_orders
-        .close(&store, Code::LawIndependentShutdown.as_str())
+        .close(&store, LawEnd::IndependentShutdown.as_str())
         .await?;
     result
 }
@@ -325,9 +325,9 @@ async fn settle(
     result: Result<(), Error>,
 ) -> Result<(), Error> {
     let reason = result.as_ref().err().map_or_else(
-        || Code::LawIndependentExchangeEnded.as_str().to_owned(),
+        || LawEnd::IndependentExchangeEnded.as_str().to_owned(),
         |error| {
-            crate::orders::outcome::Detail::LawIndependentFailure(error.to_string()).to_string()
+            crate::orders::outcome::LawDetail::IndependentFailure(error.to_string()).to_string()
         },
     );
     orders.close(store, &reason).await?;

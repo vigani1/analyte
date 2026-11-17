@@ -5,7 +5,7 @@ use super::{
 };
 use crate::intake;
 use analyte_store::Handle;
-use std::time::Duration;
+use std::{collections::VecDeque, time::Duration};
 use tokio::sync::watch;
 
 /// Transport input custody follows the protocol's existing durable boundary.
@@ -16,13 +16,14 @@ pub(super) enum Custody {
     /// Vendor and POCT input chunks additionally commit before dialog input.
     Chunks,
 }
-/// The one result shape of every driver step and every host's `apply`.
+/// The one result shape of every driver step and every host effect.
 ///
-/// Each host drains its dialog actions in one `apply` returning
-/// `Result<Flow, Error>`: `Stop` ends the session without an error and an
-/// error ends it with that cause. A failure that must wait until the dialog's
-/// own queued replies (NAK, refusal, park) have run is kept in one
-/// [`Failures`] for that queue and reported when the queue ends.
+/// Each host runs its dialog actions through one [`drain`] (LAW keeps its own
+/// deadline-bounded loop) returning `Result<Flow, Error>`: `Stop` ends the
+/// session without an error and an error ends it with that cause. A failure
+/// that must wait until the dialog's own queued replies (NAK, refusal, park)
+/// have run is kept in the run's one [`Failures`] and reported when the
+/// run ends.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Flow {
     /// Keep serving this connection.
@@ -31,7 +32,7 @@ pub(super) enum Flow {
     Stop,
 }
 
-/// Holds the failures one `apply` defers until its queued actions have run.
+/// Holds the failures one run defers until its actions have run.
 /// Nothing kept is dropped: a second failure, or an effect error that ends the
 /// queue early, joins the first one as its effect.
 pub(super) struct Failures<E>(Option<E>);
@@ -44,20 +45,112 @@ impl<E: CleanupFailure> Failures<E> {
     pub(super) fn keep(&mut self, error: E) {
         self.0 = Some(custody::effect_failure(self.0.take(), error));
     }
-    pub(super) fn is_empty(&self) -> bool {
-        self.0.is_none()
-    }
     /// Hands a kept failure to the action that reports it inside the queue.
     pub(super) fn take(&mut self) -> Option<E> {
         self.0.take()
     }
-    /// Ends one `apply`: a kept failure outranks the flow, and an error that
+    /// Ends one run: a kept failure outranks the flow, and an error that
     /// ended the queue early is retained beside it.
     pub(super) fn finish(self, result: Result<Flow, E>) -> Result<Flow, E> {
         match (self.0, result) {
             (Some(kept), Ok(_)) => Err(kept),
             (Some(kept), Err(effect)) => Err(E::with_effect(kept, effect)),
             (None, result) => result,
+        }
+    }
+}
+
+/// One [`drain`] run: the actions still to run, the failures that wait for
+/// them, and the connection and stop signal its effects use.
+pub(super) struct Run<'a, A, E> {
+    /// Actions still to run; an effect appends the dialog's follow-up actions.
+    pub actions: VecDeque<A>,
+    /// Failures reported once the run ends.
+    pub failures: Failures<E>,
+    pub conn: &'a mut analyte_transport::Connection,
+    pub stop: &'a mut watch::Receiver<bool>,
+    stop_when_drained: bool,
+}
+
+impl<A, E> Run<'_, A, E> {
+    /// Ends the session normally once every queued action has run.
+    pub(super) const fn stop_when_drained(&mut self) {
+        self.stop_when_drained = true;
+    }
+}
+
+/// A host runs one dialog action at a time; [`drain`] owns the queue loop.
+pub(super) trait Drain: Effects {
+    type Action;
+    /// Runs one action. `Stop` ends the run at once; follow-up actions and
+    /// deferred failures join `run`.
+    async fn effect(
+        &mut self,
+        action: Self::Action,
+        run: &mut Run<'_, Self::Action, Self::Error>,
+    ) -> Result<Flow, Self::Error>;
+}
+
+/// Runs a host's actions in order until none is left, an effect stops the run
+/// or an effect fails. A kept failure outranks the flow, and an error that
+/// ended the run early is retained beside it.
+pub(super) async fn drain<H: Drain>(
+    host: &mut H,
+    actions: impl IntoIterator<Item = H::Action>,
+    conn: &mut analyte_transport::Connection,
+    stop: &mut watch::Receiver<bool>,
+) -> Result<Flow, H::Error> {
+    let mut run = Run {
+        actions: actions.into_iter().collect(),
+        failures: Failures::new(),
+        conn,
+        stop,
+        stop_when_drained: false,
+    };
+    let result = async {
+        while let Some(action) = run.actions.pop_front() {
+            if host.effect(action, &mut run).await? == Flow::Stop {
+                return Ok(Flow::Stop);
+            }
+        }
+        Ok(if run.stop_when_drained {
+            Flow::Stop
+        } else {
+            Flow::Continue
+        })
+    }
+    .await;
+    run.failures.finish(result)
+}
+
+/// The input a host was handling when its session ended. A vendor host sets it
+/// once per input and works out its stored order outcome from it and the
+/// session result when it closes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Trigger {
+    /// The connection opened or the machine sent bytes.
+    Exchange,
+    /// A dialog deadline was due.
+    Deadline,
+    /// The connection closed or failed while the service kept running.
+    Disconnected,
+    /// The connection closed because the service is stopping.
+    Cancelled,
+}
+
+impl Trigger {
+    /// Names the trigger of one input; a closed connection during shutdown is cancelled.
+    pub(super) fn of(input: &Input, stop: &watch::Receiver<bool>) -> Self {
+        match input {
+            Input::Opened { .. } | Input::Bytes { .. } => Self::Exchange,
+            Input::Tick => Self::Deadline,
+            Input::Closed(_) | Input::Failed(_) => {
+                if *stop.borrow() {
+                    Self::Cancelled
+                } else {
+                    Self::Disconnected
+                }
+            }
         }
     }
 }
@@ -163,7 +256,7 @@ pub(super) trait ByteEffects: Effects + Send {
         &mut self,
         byte: u8,
         conn: &mut analyte_transport::Connection,
-        stop: &watch::Receiver<bool>,
+        stop: &mut watch::Receiver<bool>,
     ) -> impl Future<Output = Result<Flow, Self::Error>> + Send;
 }
 
@@ -174,7 +267,7 @@ pub(super) async fn feed<H: ByteEffects>(
     host: &mut H,
     bytes: Vec<u8>,
     conn: &mut analyte_transport::Connection,
-    stop: &watch::Receiver<bool>,
+    stop: &mut watch::Receiver<bool>,
 ) -> Result<Flow, H::Error> {
     for byte in bytes {
         if host.apply_byte(byte, conn, stop).await? == Flow::Stop {
@@ -285,13 +378,11 @@ mod tests {
     #[test]
     fn adr0012_apply_failures_outrank_stop_and_keep_every_cause() {
         let mut failures = Failures::new();
-        assert!(failures.is_empty());
         assert!(matches!(
             Failures::<Error>::new().finish(Ok(Flow::Stop)),
             Ok(Flow::Stop)
         ));
         failures.keep(Error::Deadline);
-        assert!(!failures.is_empty());
         assert!(matches!(
             failures.finish(Ok(Flow::Stop)),
             Err(Error::Deadline)

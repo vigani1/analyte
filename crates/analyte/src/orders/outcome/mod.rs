@@ -1,287 +1,45 @@
 //! Defines stable stored order and transfer outcome codes independently of variant names.
-pub(super) mod autolyser;
+//!
+//! Each protocol keeps its codes in its own file with one shape: a `<Key>End`
+//! enum of fixed codes and, where the protocol stores diagnostic text, a
+//! `<Key>Detail` enum. Codes the host writes for any protocol live in `host`.
+//! This front file only dispatches.
+mod astm;
+mod autolyser;
+mod hl7;
+mod host;
+mod law;
+#[cfg(test)]
+mod tests;
 mod vidas;
-pub(crate) use autolyser::AutolyserEnd;
+pub(crate) use astm::AstmEnd;
+pub(crate) use autolyser::{AutolyserEnd, Interruption};
+pub(crate) use hl7::{Hl7Detail, Hl7End};
+pub(crate) use host::HostEnd;
+pub(crate) use law::{LawDetail, LawEnd};
 pub(crate) use vidas::VidasEnd;
 
-/// Compatibility spellings retained in stored evidence and operator records.
+/// One fixed stored code of any protocol.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Code {
+    Host(HostEnd),
+    Astm(AstmEnd),
     Autolyser(AutolyserEnd),
+    Hl7(Hl7End),
+    Law(LawEnd),
     Vidas(VidasEnd),
-
-    QueryReservationRefused,
-    QueryDeadlineBeforeSend,
-    HostRestart,
-    AstmTransferConfirmed,
-    AstmTransferAborted,
-    AstmTransferTimeout,
-    AstmTransferInterrupted,
-    AstmTransferIncomplete,
-    ConnectionEndedBeforeConfirmation,
-
-    AutolyserParkedAck,
-    AutolyserParkedBusy,
-    AutolyserParkedConfig,
-    AutolyserParkedIncomplete,
-    AutolyserParkedStale,
-    AutolyserParkedStorage,
-    AutolyserParkedTime,
-    Hl7Cr,
-    Hl7DsrDisconnect,
-    Hl7DsrSessionError,
-    Hl7Ok,
-    Hl7ApplicationNegative,
-    Hl7OrderDisconnect,
-    Hl7OrderNotReported,
-    Hl7OrderResponseTimeout,
-    Hl7OrderSessionError,
-    Hl7PlacerIdentityTooLong,
-    LawCr,
-    LawOk,
-    LawOrlItemMissing,
-    LawOrlLate,
-    LawOrlTimeout,
-    LawUa,
-    LawUc,
-    LawDisconnect,
-    LawIdleAdmissionFailed,
-    LawIndependentAdmissionFailed,
-    LawIndependentExchangeEnded,
-    LawQueryIssuanceUncertain,
-    LawIndependentQueueDeadline,
-    LawIndependentShutdown,
-    LawResponseShutdown,
-    LawNegativeQueryOrl,
-    LawQueryPreparationFailed,
-    LawSendPreparationFailed,
-    LawSessionError,
 }
 impl Code {
     /// Returns the explicit historical spelling; never derive evidence from Debug.
     pub(crate) const fn as_str(self) -> &'static str {
         match self {
+            Self::Host(code) => code.as_str(),
+            Self::Astm(code) => code.as_str(),
             Self::Autolyser(code) => code.as_str(),
+            Self::Hl7(code) => code.as_str(),
+            Self::Law(code) => code.as_str(),
             Self::Vidas(code) => code.as_str(),
-
-            Self::QueryReservationRefused => "query-reservation-refused",
-            Self::QueryDeadlineBeforeSend => "query-deadline-before-send",
-            Self::HostRestart => "host-restart",
-            Self::AstmTransferConfirmed => "ASTM-transfer-confirmed",
-            Self::AstmTransferAborted => "ASTM-transfer-aborted",
-            Self::AstmTransferTimeout => "ASTM-transfer-timeout",
-            Self::AstmTransferInterrupted => "ASTM-transfer-interrupted",
-            Self::ConnectionEndedBeforeConfirmation => {
-                "connection-ended-before-transfer-confirmation"
-            }
-            Self::AstmTransferIncomplete => "ASTM-transfer-incomplete",
-
-            Self::AutolyserParkedAck => "Autolyser-parked-ack",
-            Self::AutolyserParkedBusy => "Autolyser-parked-busy",
-            Self::AutolyserParkedConfig => "Autolyser-parked-config",
-            Self::AutolyserParkedIncomplete => "Autolyser-parked-incomplete",
-            Self::AutolyserParkedStale => "Autolyser-parked-stale",
-            Self::AutolyserParkedStorage => "Autolyser-parked-storage",
-            Self::AutolyserParkedTime => "Autolyser-parked-time",
-            Self::Hl7Cr => "HL7-CR",
-            Self::Hl7DsrDisconnect => "HL7-DSR-disconnect",
-            Self::Hl7DsrSessionError => "HL7-DSR-session-error",
-            Self::Hl7Ok => "HL7-OK",
-            Self::Hl7ApplicationNegative => "HL7-application-negative",
-            Self::Hl7OrderDisconnect => "HL7-order-disconnect",
-            Self::Hl7OrderNotReported => "HL7-order-not-reported",
-            Self::Hl7OrderResponseTimeout => "HL7-order-response-timeout",
-            Self::Hl7OrderSessionError => "HL7-order-session-error",
-            Self::Hl7PlacerIdentityTooLong => "HL7-placer-identity-too-long",
-            Self::LawCr => "LAW-CR",
-            Self::LawOk => "LAW-OK",
-            Self::LawOrlItemMissing => "LAW-ORL-item-missing",
-            Self::LawOrlLate => "LAW-ORL-late",
-            Self::LawOrlTimeout => "LAW-ORL-timeout",
-            Self::LawUa => "LAW-UA",
-            Self::LawUc => "LAW-UC",
-            Self::LawDisconnect => "LAW-disconnect",
-            Self::LawIdleAdmissionFailed => "LAW-idle-admission-failed",
-            Self::LawIndependentAdmissionFailed => "LAW-independent-admission-failed",
-            Self::LawIndependentExchangeEnded => "LAW-independent-exchange-ended",
-            Self::LawQueryIssuanceUncertain => "LAW-independent-query-response-issuance-uncertain",
-            Self::LawIndependentQueueDeadline => "LAW-independent-queue-deadline",
-            Self::LawIndependentShutdown => "LAW-independent-shutdown",
-            Self::LawResponseShutdown => "LAW-independent-shutdown-before-response",
-            Self::LawNegativeQueryOrl => "LAW-negative-query-ORL",
-            Self::LawQueryPreparationFailed => "LAW-query-preparation-failed",
-            Self::LawSendPreparationFailed => "LAW-send-preparation-failed",
-            Self::LawSessionError => "LAW-session-error",
         }
-    }
-}
-
-#[test]
-fn outcome_spellings_are_compatible() {
-    for (code, expected) in [
-        (Code::QueryReservationRefused, "query-reservation-refused"),
-        (Code::QueryDeadlineBeforeSend, "query-deadline-before-send"),
-        (Code::HostRestart, "host-restart"),
-        (Code::AstmTransferConfirmed, "ASTM-transfer-confirmed"),
-        (Code::AstmTransferAborted, "ASTM-transfer-aborted"),
-        (Code::AstmTransferTimeout, "ASTM-transfer-timeout"),
-        (Code::AstmTransferInterrupted, "ASTM-transfer-interrupted"),
-        (Code::AstmTransferIncomplete, "ASTM-transfer-incomplete"),
-        (Code::AutolyserParkedAck, "Autolyser-parked-ack"),
-        (Code::AutolyserParkedBusy, "Autolyser-parked-busy"),
-        (Code::AutolyserParkedConfig, "Autolyser-parked-config"),
-        (
-            Code::AutolyserParkedIncomplete,
-            "Autolyser-parked-incomplete",
-        ),
-        (Code::AutolyserParkedStale, "Autolyser-parked-stale"),
-        (Code::AutolyserParkedStorage, "Autolyser-parked-storage"),
-        (Code::AutolyserParkedTime, "Autolyser-parked-time"),
-        (Code::Hl7Cr, "HL7-CR"),
-        (Code::Hl7DsrDisconnect, "HL7-DSR-disconnect"),
-        (Code::Hl7DsrSessionError, "HL7-DSR-session-error"),
-        (Code::Hl7Ok, "HL7-OK"),
-        (Code::Hl7ApplicationNegative, "HL7-application-negative"),
-        (Code::Hl7OrderDisconnect, "HL7-order-disconnect"),
-        (Code::Hl7OrderNotReported, "HL7-order-not-reported"),
-        (Code::Hl7OrderResponseTimeout, "HL7-order-response-timeout"),
-        (Code::Hl7OrderSessionError, "HL7-order-session-error"),
-        (
-            Code::Hl7PlacerIdentityTooLong,
-            "HL7-placer-identity-too-long",
-        ),
-        (Code::LawCr, "LAW-CR"),
-        (Code::LawOk, "LAW-OK"),
-        (Code::LawOrlItemMissing, "LAW-ORL-item-missing"),
-        (Code::LawOrlLate, "LAW-ORL-late"),
-        (Code::LawOrlTimeout, "LAW-ORL-timeout"),
-        (Code::LawUa, "LAW-UA"),
-        (Code::LawUc, "LAW-UC"),
-        (Code::LawDisconnect, "LAW-disconnect"),
-        (Code::LawIdleAdmissionFailed, "LAW-idle-admission-failed"),
-        (
-            Code::LawIndependentAdmissionFailed,
-            "LAW-independent-admission-failed",
-        ),
-        (
-            Code::LawIndependentExchangeEnded,
-            "LAW-independent-exchange-ended",
-        ),
-        (
-            Code::LawQueryIssuanceUncertain,
-            "LAW-independent-query-response-issuance-uncertain",
-        ),
-        (
-            Code::LawIndependentQueueDeadline,
-            "LAW-independent-queue-deadline",
-        ),
-        (Code::LawIndependentShutdown, "LAW-independent-shutdown"),
-        (
-            Code::LawResponseShutdown,
-            "LAW-independent-shutdown-before-response",
-        ),
-        (Code::LawNegativeQueryOrl, "LAW-negative-query-ORL"),
-        (
-            Code::LawQueryPreparationFailed,
-            "LAW-query-preparation-failed",
-        ),
-        (
-            Code::LawSendPreparationFailed,
-            "LAW-send-preparation-failed",
-        ),
-        (Code::LawSessionError, "LAW-session-error"),
-    ] {
-        assert_eq!(code.as_str(), expected);
-    }
-}
-
-/// Closed families of outcome codes carrying retained diagnostic details.
-pub(crate) enum Detail {
-    AutolyserFraming(String),
-    AutolyserRecord(String),
-    Hl7OrderPreflight(String),
-    Hl7InvalidOrderResponse(String),
-    Hl7Ua(String),
-    Hl7Uc(String),
-    Hl7DisplayMapping(String),
-    LawInvalidOrl(String),
-    LawOrderPreflight(String),
-    LawIndependentFailure(String),
-    LawApplication(analyte_hl7::AckCode),
-}
-impl std::fmt::Display for Detail {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::AutolyserFraming(detail) => write!(f, "Autolyser-parked-framing-{detail}"),
-            Self::AutolyserRecord(detail) => write!(f, "Autolyser-parked-record-{detail}"),
-            Self::Hl7OrderPreflight(detail) => write!(f, "HL7-order-preflight:{detail}"),
-            Self::Hl7InvalidOrderResponse(detail) => {
-                write!(f, "HL7-invalid-order-response:{detail}")
-            }
-            Self::Hl7Ua(detail) => write!(f, "HL7-UA:{detail}"),
-            Self::Hl7Uc(detail) => write!(f, "HL7-UC:{detail}"),
-            Self::Hl7DisplayMapping(detail) => write!(f, "HL7-display-mapping: {detail}"),
-            Self::LawInvalidOrl(detail) => write!(f, "LAW-invalid-ORL:{detail}"),
-            Self::LawOrderPreflight(detail) => write!(f, "LAW-order-preflight:{detail}"),
-            Self::LawIndependentFailure(detail) => write!(f, "LAW-independent-failure:{detail}"),
-            Self::LawApplication(code) => write!(
-                f,
-                "LAW-ORL-application-{}",
-                super::acceptance::acceptance(*code)
-            ),
-        }
-    }
-}
-
-#[test]
-fn detailed_outcome_spellings_are_compatible() {
-    for (value, expected) in [
-        (
-            Detail::AutolyserFraming("detail".into()),
-            "Autolyser-parked-framing-detail",
-        ),
-        (
-            Detail::AutolyserRecord("detail".into()),
-            "Autolyser-parked-record-detail",
-        ),
-        (
-            Detail::Hl7OrderPreflight("detail".into()),
-            "HL7-order-preflight:detail",
-        ),
-        (
-            Detail::Hl7InvalidOrderResponse("detail".into()),
-            "HL7-invalid-order-response:detail",
-        ),
-        (Detail::Hl7Ua("detail".into()), "HL7-UA:detail"),
-        (Detail::Hl7Uc("detail".into()), "HL7-UC:detail"),
-        (
-            Detail::Hl7DisplayMapping("detail".into()),
-            "HL7-display-mapping: detail",
-        ),
-        (
-            Detail::LawInvalidOrl("detail".into()),
-            "LAW-invalid-ORL:detail",
-        ),
-        (
-            Detail::LawOrderPreflight("detail".into()),
-            "LAW-order-preflight:detail",
-        ),
-        (
-            Detail::LawIndependentFailure("detail".into()),
-            "LAW-independent-failure:detail",
-        ),
-    ] {
-        assert_eq!(value.to_string(), expected);
-    }
-    for (code, expected) in [
-        (analyte_hl7::AckCode::Aa, "LAW-ORL-application-Aa"),
-        (analyte_hl7::AckCode::Ae, "LAW-ORL-application-Ae"),
-        (analyte_hl7::AckCode::Ar, "LAW-ORL-application-Ar"),
-        (analyte_hl7::AckCode::Ca, "LAW-ORL-application-Ca"),
-        (analyte_hl7::AckCode::Ce, "LAW-ORL-application-Ce"),
-        (analyte_hl7::AckCode::Cr, "LAW-ORL-application-Cr"),
-    ] {
-        assert_eq!(Detail::LawApplication(code).to_string(), expected);
     }
 }
 
@@ -289,7 +47,7 @@ fn detailed_outcome_spellings_are_compatible() {
 pub(crate) enum Transfer {
     Code(Code),
     AutolyserInsertion(analyte_dialog::autolyser::Reception),
-    AutolyserIncomplete(AutolyserEnd),
+    AutolyserIncomplete(Interruption),
     AutolyserParked(analyte_dialog::autolyser::Error),
 }
 impl From<Code> for Transfer {
@@ -297,41 +55,36 @@ impl From<Code> for Transfer {
         Self::Code(code)
     }
 }
-impl From<VidasEnd> for Transfer {
-    fn from(code: VidasEnd) -> Self {
-        Self::Code(Code::Vidas(code))
-    }
+/// Lets each protocol's fixed code stand for a [`Code`] and a [`Transfer`].
+macro_rules! protocol_code {
+    ($($variant:ident($code:ty)),+ $(,)?) => {$(
+        impl From<$code> for Code {
+            fn from(code: $code) -> Self {
+                Self::$variant(code)
+            }
+        }
+        impl From<$code> for Transfer {
+            fn from(code: $code) -> Self {
+                Self::Code(Code::$variant(code))
+            }
+        }
+    )+};
 }
-impl From<AutolyserEnd> for Transfer {
-    fn from(code: AutolyserEnd) -> Self {
-        Self::Code(Code::Autolyser(code))
-    }
-}
+protocol_code!(
+    Host(HostEnd),
+    Astm(AstmEnd),
+    Autolyser(AutolyserEnd),
+    Hl7(Hl7End),
+    Law(LawEnd),
+    Vidas(VidasEnd),
+);
 impl std::fmt::Display for Transfer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Code(code) => f.write_str(code.as_str()),
             Self::AutolyserInsertion(reception) => f.write_str(&autolyser::insertion(*reception)),
-            Self::AutolyserIncomplete(code) => f.write_str(&code.incomplete()),
-            Self::AutolyserParked(error) => {
-                use analyte_dialog::autolyser::Error;
-                let code = match error {
-                    Error::Configuration => Code::AutolyserParkedConfig,
-                    Error::Busy => Code::AutolyserParkedBusy,
-                    Error::TimeReversed | Error::Exhausted => Code::AutolyserParkedTime,
-                    Error::Incomplete => Code::AutolyserParkedIncomplete,
-                    Error::Storage => Code::AutolyserParkedStorage,
-                    Error::Stale => Code::AutolyserParkedStale,
-                    Error::Ack => Code::AutolyserParkedAck,
-                    Error::Framing(cause) => {
-                        return write!(f, "{}", Detail::AutolyserFraming(cause.to_string()));
-                    }
-                    Error::Record(cause) => {
-                        return write!(f, "{}", Detail::AutolyserRecord(cause.to_string()));
-                    }
-                };
-                f.write_str(code.as_str())
-            }
+            Self::AutolyserIncomplete(interruption) => f.write_str(&interruption.incomplete()),
+            Self::AutolyserParked(error) => f.write_str(&autolyser::parked(error)),
         }
     }
 }

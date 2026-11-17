@@ -9,7 +9,10 @@ pub(crate) enum Error {
     ControlSuffixMismatch,
     /// VIDAS transfer parked; reconcile before reconnect.
     #[error("VIDAS transfer parked; reconcile before reconnect")]
-    TransferUnreconciled,
+    TransferUnreconciled {
+        /// The dialog deadline that ended the transfer; none for a refused or unexpected event.
+        expired: Option<analyte_dialog::vidas::Timer>,
+    },
     /// An outbound command could not represent the mapped order.
     #[error(transparent)]
     OrderMapping(#[from] analyte_mapping::OrderMappingError),

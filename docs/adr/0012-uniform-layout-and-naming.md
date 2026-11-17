@@ -213,15 +213,21 @@ host and cannot outlive the session.
 The `Effects` implementation stays in the same front module. The shared driver
 owns receive priority, input journaling and the final cleanup attempt; its
 `Context` supplies transport and cancellation. Each host feeds dialog events,
-then drains the resulting actions in one `apply` method. Actions produced by
-storage completion join that same ordered queue before the next input byte is
-fed. A single-action method may handle a large match, but never owns a separate
-receive loop. Protocol-specific deadlines and refusal rules remain explicit.
+then runs the resulting actions through the driver's one `drain` loop, which
+calls the host's `Drain::effect` once per action. Actions produced by storage
+completion join that same ordered queue before the next input byte is fed. A
+single-action method may handle a large match, but never owns a separate
+receive loop. Protocol-specific deadlines and refusal rules remain explicit;
+LAW keeps its own loop because each of its effects has its own deadline.
 
-Every `apply` returns `Result<Flow, Error>` with the shared driver's `Flow`:
-`Stop` ends the session without an error. A failure that must wait until the
-dialog's own queued replies have run (a store failure before its NAK, a failed
-reply write) is kept in the driver's one `Failures` value for that queue and
-reported when the queue ends; the driver documents the rule beside `Flow`.
+Every `drain` and `effect` returns `Result<Flow, Error>` with the shared
+driver's `Flow`. `Stop` from an effect ends the queue at once. An effect that
+ends the session only after the queued actions have run calls
+`Queue::stop_when_drained`. A failure that must wait until the dialog's own
+queued replies have run (a store failure before its NAK, a failed reply write)
+is kept in the queue's one `Failures` value and reported when the queue ends;
+the driver documents the rule beside `Flow`.
 (Added on 2026-11-17 after the eighth review, finding Y5: the hosts returned
-`bool`, `()` or a state field and kept failures in fields or locals.)
+`bool`, `()` or a state field and kept failures in fields or locals. Changed on
+2026-11-18 after the ninth review, finding Z10: every host copied the queue
+loop, so `drain` now owns it.)

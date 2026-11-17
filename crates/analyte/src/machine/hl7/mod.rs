@@ -3,12 +3,12 @@ use crate::intake::ByteReason;
 use crate::machine::hooks::Pause;
 pub(crate) mod error_location;
 use super::connection_input::{self, Input};
-use super::driver::{Context, Effects, Failures, Flow};
+use super::driver::{self, Context, Effects, Failures, Flow, Run};
 use crate::intake;
 mod error;
 pub(crate) mod settings;
 use crate::machine::receive::custody::{self, WriteDeadline};
-use crate::orders::outcome::Code;
+use crate::orders::outcome::Hl7End;
 use analyte_dialog::hl7::{Action, Dialog, Event, Expect};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
@@ -118,38 +118,16 @@ impl<'a, 'm> Host<'a, 'm> {
         stop: &mut watch::Receiver<bool>,
     ) -> Result<Flow, Error> {
         let actions = self.dialog.step(self.start.elapsed(), event)?;
-        self.apply(actions, conn, stop).await
+        driver::drain(self, actions, conn, stop).await
     }
-    async fn apply(
-        &mut self,
-        actions: Vec<Action>,
-        conn: &mut analyte_transport::Connection,
-        stop: &mut watch::Receiver<bool>,
-    ) -> Result<Flow, Error> {
-        let mut actions: VecDeque<_> = actions.into();
-        let mut failures = Failures::new();
-        let result = async {
-            while let Some(action) = actions.pop_front() {
-                if self
-                    .effect(action, conn, stop, &mut actions, &mut failures)
-                    .await?
-                    == Flow::Stop
-                {
-                    return Ok(Flow::Stop);
-                }
-            }
-            Ok(Flow::Continue)
-        }
-        .await;
-        failures.finish(result)
-    }
+}
+
+impl driver::Drain for Host<'_, '_> {
+    type Action = Action;
     async fn effect(
         &mut self,
         action: Action,
-        conn: &mut analyte_transport::Connection,
-        stop: &mut watch::Receiver<bool>,
-        actions: &mut VecDeque<Action>,
-        failures: &mut Failures<Error>,
+        run: &mut Run<'_, Action, Error>,
     ) -> Result<Flow, Error> {
         let machine = self.machine;
         let store = self.store;
@@ -175,8 +153,8 @@ impl<'a, 'm> Host<'a, 'm> {
                         },
                         machine,
                         store,
-                        stop,
-                        actions,
+                        run.stop,
+                        &mut run.actions,
                     )
                     .await;
             }
@@ -212,19 +190,21 @@ impl<'a, 'm> Host<'a, 'm> {
                 .await?;
             }
             Action::Store(token, raw) => {
-                self.commit(token, raw, actions, failures).await?;
+                self.commit(token, raw, run).await?;
             }
             Action::Interpret(token, _payload) => {
-                self.interpret(token, machine, store, actions).await?;
-            }
-            Action::ResponseNeeded(token, _) => {
-                self.respond(token, actions)?;
-            }
-            Action::QueryWrite { bytes, until, part } => {
-                self.write_query(&bytes, until, part, conn, actions, failures)
+                self.interpret(token, machine, store, &mut run.actions)
                     .await?;
             }
-            Action::Write(write) => self.write(&write, conn).await?,
+            Action::ResponseNeeded(token, _) => {
+                self.respond(token, &mut run.actions)?;
+            }
+            Action::QueryWrite { bytes, until, part } => {
+                let (actions, failures) = (&mut run.actions, &mut run.failures);
+                self.write_query(&bytes, until, part, run.conn, actions, failures)
+                    .await?;
+            }
+            Action::Write(write) => self.write(&write, run.conn).await?,
             Action::Deadline(next) => self.wake = next,
             Action::Rejected(error, bytes) => {
                 intake::park_bytes(store, machine, bytes, ByteReason::Mllp(&error)).await?;
@@ -246,6 +226,9 @@ impl<'a, 'm> Host<'a, 'm> {
         }
         Ok(Flow::Continue)
     }
+}
+
+impl Host<'_, '_> {
     async fn answer_query(
         &mut self,
         request: QueryRequest,
@@ -303,8 +286,7 @@ impl<'a, 'm> Host<'a, 'm> {
         &mut self,
         token: analyte_dialog::hl7::ExchangeId,
         raw: Vec<u8>,
-        actions: &mut VecDeque<Action>,
-        failures: &mut Failures<Error>,
+        run: &mut Run<'_, Action, Error>,
     ) -> Result<(), Error> {
         let machine = self.machine;
         let store = self.store;
@@ -317,14 +299,14 @@ impl<'a, 'm> Host<'a, 'm> {
                     return Err(Error::PendingReceiptLimitExceeded);
                 }
                 self.pending.insert(token, id);
-                actions.extend(
+                run.actions.extend(
                     self.dialog
                         .step(self.start.elapsed(), Event::Stored(token))?,
                 );
             }
             Err(error) => {
-                failures.keep(error.into());
-                actions.extend(
+                run.failures.keep(error.into());
+                run.actions.extend(
                     self.dialog
                         .step(self.start.elapsed(), Event::StoreFailed(token))?,
                 );
@@ -459,7 +441,7 @@ impl<'a, 'm> Host<'a, 'm> {
         tokio::select! {
             biased;
             _ = async { let _ = stopped.wait_for(|&stopped| stopped).await; } => Ok(Flow::Stop),
-            flow = self.apply(actions, conn, stop) => flow,
+            flow = driver::drain(self, actions, conn, stop) => flow,
         }
     }
     async fn order_response(
@@ -580,9 +562,9 @@ impl Effects for Host<'_, '_> {
                     store,
                     machine,
                     if result.is_err() {
-                        Code::Hl7DsrSessionError.as_str()
+                        Hl7End::DsrSessionError.as_str()
                     } else {
-                        Code::Hl7DsrDisconnect.as_str()
+                        Hl7End::DsrDisconnect.as_str()
                     },
                 )
                 .await;
