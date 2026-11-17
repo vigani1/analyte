@@ -124,7 +124,8 @@ impl ConnectionState {
                 Some(Input::Bytes { bytes }) => bytes,
                 Some(Input::Closed(_)) => break,
                 Some(Input::Failed(_) | Input::RecordingFailed(_)) | Some(Input::Tick) | None => {
-                    transport_failure_as_empty_input()
+                    // A failed attempt advances time without implying EOF or acceptance.
+                    Vec::new()
                 }
             };
             #[cfg(feature = "test-hooks")]
@@ -552,12 +553,6 @@ impl ConnectionState {
         }
         result
     }
-}
-
-// Compatibility: a failed transport attempt advances the dialog with empty input.
-// It does not imply EOF or durable acceptance of a message.
-fn transport_failure_as_empty_input() -> Vec<u8> {
-    Vec::new()
 }
 
 #[cfg(test)]
