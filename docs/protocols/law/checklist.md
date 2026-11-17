@@ -195,7 +195,7 @@ Send-ahead and cancellation reuse that path. Both link topologies have local tes
 - [x] Fresh trusted empty builds the existing restricted negative LAB-28 without items; its ORL is correlated/retained and audited, with no order changes. Tests: `law_tf2b_3_27_4_trusted_empty_uses_restricted_negative_and_correlated_orl_without_items`, `law_tf2b_3_27_3_28_negative_followup_bad_orl_is_retained_without_order_effects`.
 - [x] Cache failure, staleness, absent/incomplete snapshot, unreachable app, restore pause and elapsed query budget are errors, not empty. Tests: `law_tf2b_3_27_4_untrusted_read_failure_and_restore_pause_are_errors_not_no_work`, `law_tf2b_3_27_4_unreachable_app_without_snapshot_never_answers_no_work`, `law_tf2b_3_27_4_stale_and_incomplete_cache_with_retained_orders_are_not_empty`, `law_tf2b_3_27_4_late_query_budget_includes_first_byte_and_raw_storage`.
 - [x] Included work is preflighted and reserved through shared per-test items before positive RSP/work output; one item is one AWOS. Preparation failure is not a partial positive response. Tests: `law_tf2b_3_27_3_28_preflight_and_reservation_failure_cannot_emit_positive_rsp_or_work`, `law_tf2b_3_27_3_28_found_query_reserves_per_awos_and_finishes_each_orl_outcome`.
-- [x] ORL bytes are durable before per-AWOS OK/UA reaches `finish_order_items`. Matching uses AWOS IDs, including reordered replies; no reply/disconnect/invalid correlation becomes Uncertain, with no resend. Tests: `law_tf2b_3_27_3_28_found_query_reserves_per_awos_and_finishes_each_orl_outcome`, `law_tf2b_3_28_query_followup_timeout_disconnect_and_bad_correlation_are_uncertain`.
+- [x] ORL bytes are durable before per-AWOS OK/UA reaches finish_order_items. Matching uses AWOS IDs, including reordered replies; no reply/disconnect/invalid correlation becomes Uncertain, with no resend. Tests: `law_tf2b_3_27_3_28_found_query_reserves_per_awos_and_finishes_each_orl_outcome`, `law_tf2b_3_28_query_followup_timeout_disconnect_and_bad_correlation_are_uncertain`.
 - [x] Supplied specimen/priority work content is intersected with explicit peer support; repeat/reflex permissions are never generated. Test: `law_tf2b_2_2_4_query_work_intersects_supplied_specimen_priority_with_peer_support`.
 
 These tests live in `crates/analyte/tests/law/queries/`, compiled in
@@ -203,7 +203,7 @@ These tests live in `crates/analyte/tests/law/queries/`, compiled in
 receiver. The store read has its own two tests in `crates/core/store/src/order_tests.rs`:
 `law_tf2b_3_27_4_pending_pages_filter_targets_without_false_empty_and_never_replay`
 and `law_tf2b_3_27_4_sample_and_pending_share_freshness_generation_and_restore_trust`.
-The one new public read, `pending_orders`, shares the existing age predicate with
+The one new public read, pending_orders, shares the existing age predicate with
 SampleId lookup and reservations, and shares the restore-aware lookup gate.
 No schema or contract changed.
 
@@ -228,7 +228,7 @@ Evidence remains **documented**. These tests use synthetic peers, not Gazelle or
 live in `crates/analyte/tests/law/work.rs`, compiled under `tests/delivery.rs`, and
 run the program with temporary stores and the reference receiver.
 
-- [x] Reserve one shared item per AWOS before unsolicited OML; match ORL by retained AWOS ID through the same `finish_order_items` handler as queries (TF-2b 3.28.4, C.8). Test: `law_tf2b_3_28_send_ahead_accepted_rejected_and_mixed_awos` (OK/UA/mixed, including reversed replies and restart without resend).
+- [x] Reserve one shared item per AWOS before unsolicited OML; match ORL by retained AWOS ID through the same finish_order_items handler as queries (TF-2b 3.28.4, C.8). Test: `law_tf2b_3_28_send_ahead_accepted_rejected_and_mixed_awos` (OK/UA/mixed, including reversed replies and restart without resend).
 - [x] Use LAW CA control and original stored AWOS IDs for app-requested cancellation; CR confirms per item and UC reports refusal, preserving prior item state (TF-2b 3.28.4, C.8). Test: `law_tf2b_3_28_c8_cancel_confirmed_refused_and_mixed_keep_each_awos` (CR/UC/mixed; each version admitted once, including after refusal and restart).
 - [x] Query-triggered and unsolicited work reuse reservation, rendering, writing, exchange and ORL handling; queried work can be cancelled with send-ahead disabled (TF-2b 3.27/3.28). Test: `law_tf2b_3_27_3_28_queried_work_uses_the_same_cancel_exchange_without_send_ahead`.
 - [x] Missing ORL or disconnect produces Uncertain for original work and cancellation, with no replay (TF-2b 3.28.4/B.7; ADR 0003 rule 8). Test: `law_tf2b_3_28_adr0003_no_reply_and_disconnect_are_uncertain_never_replayed`.

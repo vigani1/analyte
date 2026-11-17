@@ -102,11 +102,15 @@ pub(in crate::machine) async fn session(
                 as Box<dyn FnMut() -> Option<analyte_transport::recording::Tap> + Send>
         }),
     )?;
+    // Files are not sessions under the shared failed-session rule: a failed file drops
+    // its reply, the watcher then ends with the claim retained, and only restart
+    // recovery re-offers it. Restarting the watcher here would re-receive the same
+    // claim as a new receipt on every attempt, so a failed file ends this owner.
     let result = async {
         loop {
             let mut item = tokio::select! {
                 biased;
-                () = analyte_sink::stopped(&mut stop) => break,
+                _ = async { let _ = stop.wait_for(|&stopped| stopped).await; } => break,
                 item = files.recv() => item.ok_or_else(|| Error::FileOwnerStopped)?,
             };
             let Some(raw) = receive(&mut item.connection, bytes, &mut stop).await? else {
@@ -148,7 +152,7 @@ async fn receive(
     loop {
         let event = tokio::select! {
             biased;
-            () = analyte_sink::stopped(stop) => return Ok(None),
+            _ = async { let _ = stop.wait_for(|&stopped| stopped).await; } => return Ok(None),
             event = connection.receive() => event?,
         }
         .ok_or_else(|| Error::CompletionInterrupted)?;

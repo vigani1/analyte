@@ -4,12 +4,21 @@ import pathlib
 import re
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-sources = [p.read_text(encoding="utf-8") for p in (ROOT / "crates").rglob("*.rs")]
-functions = set()
-for source in sources:
-    functions.update(re.findall(r"\bfn\s+(\w+)\s*\(", source))
-    # These test-table macros expand their first identifier into a test function.
+def test_functions(source):
+    """Collect attributed tests and the repository's explicit test-table macros."""
+    functions = set()
+    for match in re.finditer(
+        r"((?:#\[[^\]]*\]\s*)+)(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+(\w+)\s*\(",
+        source,
+    ):
+        if re.search(r"#\[(?:tokio::)?test(?:\s*\([^]]*\))?\s*\]", match[1]):
+            functions.add(match[2])
     functions.update(re.findall(r"\b(?:negative|bad_order_reply|row)!\s*\(\s*(\w+)", source))
+    return functions
+
+
+sources = [p.read_text(encoding="utf-8") for p in (ROOT / "crates").rglob("*.rs")]
+functions = set().union(*(test_functions(source) for source in sources))
 missing = []
 references = set()
 for path in sorted((ROOT / "docs/protocols").rglob("checklist.md")):

@@ -169,7 +169,7 @@ async fn mutation_rule7_owner_loops_and_cancellation_wait_for_their_signal() -> 
     use std::{future::Future as _, task::Poll};
     let (sender, mut receiver) = watch::channel(false);
     {
-        let wait = stopped(&mut receiver);
+        let wait = receiver.wait_for(|&stopped| stopped);
         tokio::pin!(wait);
         assert!(
             std::future::poll_fn(|cx| Poll::Ready(wait.as_mut().poll(cx)))
