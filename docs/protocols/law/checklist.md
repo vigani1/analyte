@@ -146,9 +146,9 @@ These are optional Analyzer capabilities, but relevant manager enhanced-content 
   Tests: `law_tf2b_c12_spm_3_13_pooling_outside_r_x_count_and_role`, `law_tf2b_c11_c12_remaining_location_lengths_and_pool_receive_predicates`.
   Outside-pooling field/receive predicates only; no complete pooling workflow.
 - [ ] **O** Declare any security/cross-profile groupings separately; LAW itself lists no required actor grouping (TF-1 §§5.3,5.5–5.6, pp.41,54).
-  Planned test (not implemented): `law_tf1_5_3_security_grouping_declaration`. No LAW security/grouping declaration is claimed.
+  Planned test: `law_tf1_5_3_security_grouping_declaration` (not implemented). No LAW security/grouping declaration is claimed.
 - [ ] **R, project gate** Trace requirements/field predicates to tests and qualified simulator evidence; include lost ACK, restart, storage failure, cancellation race and selected-option cases.
-  Planned test (not implemented): `law_gazelle_rev11_manager_recorded_scenarios`. No qualified simulator run or full cancellation-race recording exists. Local program tests now cover restart, storage failures and cancellation outcomes in the matrix below; those tests do not close this simulator/recording gate.
+  Planned test: `law_gazelle_rev11_manager_recorded_scenarios` (not implemented). No qualified simulator run or full cancellation-race recording exists. Local program tests now cover restart, storage failures and cancellation outcomes in the matrix below; those tests do not close this simulator/recording gate.
 
 ## Extra acceptance cases
 
@@ -168,11 +168,12 @@ simulator conversation; see [validation evidence](../../conformance/gazelle/READ
   negotiation remains. Planned test: `law_negotiated_options_and_default_query_mode`.
 - Full cancellation-race qualification remains. Work outcomes, restart, cancellation, durable receiving, duplicate/C
   delivery, deadlines and storage failures now have the named program matrix below.
-  Planned broader qualification: `law_host_durable_lifecycle_recovery`.
+  Planned test: `law_host_durable_lifecycle_recovery` (broader qualification).
 - Related-observation sending/reference resolution, full pooling workflows and
-  external-object retention/access/recovery: absent. Planned tests:
-  `law_related_observation_work_roundtrip`, `law_pooling_workflow_roundtrip` and
-  `law_external_object_custody_before_ack`.
+  external-object retention/access/recovery: absent.
+  Planned test: `law_related_observation_work_roundtrip`.
+  Planned test: `law_pooling_workflow_roundtrip`.
+  Planned test: `law_external_object_custody_before_ack`.
 
 These are planned names, not executable tests. Existing generic transport/store
 checks do not close these LAW acceptance gaps. No row claims real-analyzer proof.

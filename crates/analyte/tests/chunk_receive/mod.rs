@@ -1,4 +1,4 @@
-//! Tests vendor receipt custody.
+//! Tests custody for protocols whose bytes are journaled as chunks (POCT, VIDAS, Autolyser).
 //! Kept whole: shared service fixture and durable identity assertions stay together.
 type Error = Box<dyn std::error::Error + Send + Sync>;
 use analyte::{installation::config::Program, runtime::service};

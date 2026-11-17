@@ -16,6 +16,10 @@ analyte-hl7 = { workspace = true }
 analyte-framing = { workspace = true }
 thiserror = { workspace = true }
 
+[[test]]
+name = "hl7"
+path = "tests/hl7/mod.rs"
+
 [dev-dependencies]
 analyte-fixtures.workspace = true
 quick-xml.workspace = true

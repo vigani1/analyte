@@ -36,7 +36,7 @@ async fn setup_with_patient_requirement(
         temp.path().join("hl7.toml"),
         format!(
             "{definition}\n{}",
-            include_str!("../../../core/config/examples/hl7_send.toml")
+            include_str!("../../../../core/config/examples/hl7_send.toml")
                 .rewrite(
                     "require_patient_identification = false",
                     &format!("require_patient_identification = {require_patient}")
@@ -63,7 +63,7 @@ async fn setup_with_patient_requirement(
     )
     .await?;
     let mut value: serde_json::Value = serde_json::from_slice(include_bytes!(
-        "../../../../docs/contract/vectors/order.json"
+        "../../../../../docs/contract/vectors/order.json"
     ))?;
     if id == "known-patient" {
         value.as_object_mut().ok_or("order")?.insert(
@@ -459,7 +459,7 @@ async fn hl7_ei_actual_store_id_overflow_rejects_before_sending_reservation() ->
         [],
     )?;
     let mut value: serde_json::Value = serde_json::from_slice(include_bytes!(
-        "../../../../docs/contract/vectors/order.json"
+        "../../../../../docs/contract/vectors/order.json"
     ))?;
     *value.get_mut("id").ok_or("id")? = serde_json::json!("order-2");
     value.as_object_mut().ok_or("object")?.insert(

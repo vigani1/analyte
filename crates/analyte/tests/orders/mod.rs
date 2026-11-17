@@ -7,9 +7,9 @@ use capture::*;
 
 #[path = "autolyser.rs"]
 mod autolyser_cases;
-#[path = "hl7.rs"]
+#[path = "hl7/query.rs"]
 mod hl7_order_cases;
-#[path = "hl7_send.rs"]
+#[path = "hl7/send.rs"]
 mod hl7_send_cases;
 #[path = "cases.rs"]
 mod order_cases;
