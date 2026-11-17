@@ -208,7 +208,7 @@ impl<'a, 'm> Host<'a, 'm> {
                     .await
                     .map_err(Error::from)?;
 
-                super::custody::store_before_ack(
+                crate::machine::receive::custody::store_before_ack(
                     machine,
                     intake::receive(self.store, self.machine, id, raw),
                 )
@@ -570,7 +570,7 @@ impl Effects for Host<'_, '_> {
                 .map_err(Into::into),
             Mode::Outbound(_) => Ok(()),
         };
-        crate::machine::custody::retain_cleanup(result, finished);
+        crate::machine::receive::custody::retain_cleanup(result, finished);
         cleanup
     }
 }

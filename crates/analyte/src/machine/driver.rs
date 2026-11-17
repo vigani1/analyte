@@ -1,7 +1,7 @@
 //! Owns connection receive waits, input custody and ordered protocol cleanup.
 use super::{
     connection_input::{self, Input},
-    custody::{self, CleanupFailure},
+    receive::custody::{self, CleanupFailure},
 };
 use crate::intake;
 use analyte_store::Handle;

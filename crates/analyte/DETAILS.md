@@ -185,7 +185,7 @@ An upgrade imports old custody guards without deleting their evidence.
 ## Test-only boundary hooks
 
 The non-default `test-hooks` Cargo feature exposes one one-shot ASTM hook:
-`AstmCommitted`, after durable frame storage and before ACK generation. Tests
+`Committed`, after durable frame storage and before ACK generation. Tests
 install it only on an explicitly injected loopback listener. It can pause,
 resume normal processing, or stop that connection; it cannot modify wire bytes
 or bypass storage. Pauses stop on cancellation, dropped control or a five-second

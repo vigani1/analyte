@@ -70,17 +70,17 @@ pub(in crate::machine) async fn run(
         Finished::Stop => {
             let (inbound, outbound) = tokio::join!(&mut inbound, &mut outbound);
             let mut result = inbound;
-            super::super::custody::retain_cleanup(&mut result, outbound);
+            crate::machine::receive::custody::retain_cleanup(&mut result, outbound);
             result
         }
         Finished::Inbound => outbound.await,
         Finished::Outbound => inbound.await,
     };
     let mut result = result;
-    super::super::custody::retain_cleanup(&mut result, cleanup);
+    crate::machine::receive::custody::retain_cleanup(&mut result, cleanup);
     if *stop.borrow() {
         let retained = closing.after_commits().await;
-        super::super::custody::retain_cleanup(&mut result, retained.map_err(Into::into));
+        crate::machine::receive::custody::retain_cleanup(&mut result, retained.map_err(Into::into));
     }
     result
 }

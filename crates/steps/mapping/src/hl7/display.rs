@@ -1,7 +1,5 @@
 //! Maps app orders to legacy HL7 display responses.
-use crate::orders::codes::{
-    map_priority as outbound_priority, map_specimen as outbound_specimen, map_test as outbound_test,
-};
+use crate::orders::codes::{map_priority, map_specimen, map_test};
 use crate::orders::{AppOrder, OrderMappingError};
 use analyte_config::{DsrLine, Hl7Orders, SyntaxLimits};
 
@@ -19,7 +17,7 @@ pub fn map(
     let settings = &orders.tables();
     let mut lines = Vec::new();
     for test in &order.tests {
-        let mapped = outbound_test(settings.tests(), test)?;
+        let mapped = map_test(settings.tests(), test)?;
         let Some(code) = mapped.machine_components.first() else {
             return Err(OrderMappingError::DisplayAssayComponents);
         };
@@ -28,7 +26,7 @@ pub fn map(
                 DsrLine::SampleId => order.sample.as_str(),
                 DsrLine::OrderId => order_id,
                 DsrLine::TestCode => code,
-                DsrLine::Priority => outbound_priority(settings.priorities(), order.priority)?
+                DsrLine::Priority => map_priority(settings.priorities(), order.priority)?
                     .machine
                     .as_str(),
                 DsrLine::Position => order.position.as_ref().map_or("", |p| p.slot.as_str()),
@@ -41,7 +39,7 @@ pub fn map(
                 },
                 DsrLine::SpecimenType => match &order.specimen_type {
                     None => "",
-                    Some(source) => outbound_specimen(settings.specimen_types(), source)?
+                    Some(source) => map_specimen(settings.specimen_types(), source)?
                         .machine
                         .as_str(),
                 },

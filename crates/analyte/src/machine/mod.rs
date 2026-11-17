@@ -13,7 +13,7 @@ pub(crate) mod law;
 mod poct;
 pub(crate) mod receive;
 mod settings;
-pub(crate) use receive::{connection_input, custody};
+pub(crate) use receive::connection_input;
 pub(crate) mod vidas;
 mod worker;
 use crate::installation::config::Machine;

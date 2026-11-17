@@ -30,11 +30,11 @@ pub(crate) enum Error {
     TestHook(crate::runtime::test_hooks::Error),
     /// Retains both the triggering failure and an independent cleanup failure.
     #[error(transparent)]
-    Cleanup(Box<crate::machine::custody::Cleanup<Self>>),
+    Cleanup(Box<crate::machine::receive::custody::Cleanup<Self>>),
 }
-impl crate::machine::custody::CleanupFailure for Error {
+impl crate::machine::receive::custody::CleanupFailure for Error {
     fn with_effect(original: Self, effect: Self) -> Self {
-        Self::Cleanup(Box::new(crate::machine::custody::Cleanup {
+        Self::Cleanup(Box::new(crate::machine::receive::custody::Cleanup {
             original,
             effect,
         }))

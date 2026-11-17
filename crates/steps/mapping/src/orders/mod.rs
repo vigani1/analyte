@@ -7,7 +7,7 @@ pub use crate::law::{
     Command as LawCommand, address as law_address, map_order as map_law_order,
     map_work as map_law_work,
 };
-use crate::orders::codes::map_specimen as outbound_specimen;
+
 pub use app::map as app_order;
 
 use analyte_model::{NamespacedId, SampleId, SamplePosition};
@@ -232,7 +232,7 @@ pub(super) fn map_specimen<'a>(
         .specimen_type
         .as_ref()
         .ok_or(OrderMappingError::MissingSpecimenType)?;
-    Ok(outbound_specimen(settings.specimen_types(), requested)?
+    Ok(codes::map_specimen(settings.specimen_types(), requested)?
         .machine
         .as_str())
 }

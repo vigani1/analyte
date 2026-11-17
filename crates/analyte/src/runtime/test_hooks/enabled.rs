@@ -19,7 +19,6 @@ pub struct Control {
     decision: watch::Sender<Option<bool>>,
 }
 /// Compatibility name for the ASTM durable-frame boundary.
-pub type AstmCommitted = Committed;
 
 impl Committed {
     /// Creates an armed hook and its control without starting a task.
