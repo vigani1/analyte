@@ -97,14 +97,7 @@ pub(crate) enum StoreWaitError<E> {
 }
 
 pub(crate) fn budget(machine: &crate::installation::config::Machine) -> Duration {
-    use analyte_config::Stack;
-    let stack = machine.snapshot.effective().stack();
-    let operation = ms(stack.operation_timeout_ms());
-    match stack {
-        Stack::Vidas(settings) => operation.min(ms(settings.policy().commit_ms)),
-        Stack::Autolyser(settings) => operation.min(ms(settings.policy().storage_ms)),
-        Stack::Astm(_) | Stack::Hl7(_) | Stack::Law(_) | Stack::Poct(_) => operation,
-    }
+    ms(machine.snapshot.effective().stack().commit_budget_ms())
 }
 
 /// Gives one protocol host error, which must have a `Refusal(Refusal<Self>)` variant,

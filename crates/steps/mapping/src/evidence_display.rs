@@ -18,9 +18,7 @@ impl fmt::Display for Problem {
         match self {
             Self::UnqualifiedHl7Report => f.write_str("UnqualifiedHl7Report"),
             Self::DepartureConflict => f.write_str("DepartureConflict"),
-            Self::DepartureDerivedStatusRequiresContract => {
-                f.write_str("DepartureDerivedStatusRequiresContract")
-            }
+            Self::DerivedStatusContract => f.write_str("DerivedStatusContract"),
             Self::ComponentParts => f.write_str("ComponentParts"),
             Self::MissingSample => f.write_str("MissingSample"),
             Self::UnknownTest => f.write_str("UnknownTest"),
@@ -65,10 +63,7 @@ mod tests {
         for (problem, expected) in [
             (Problem::UnqualifiedHl7Report, "UnqualifiedHl7Report"),
             (Problem::DepartureConflict, "DepartureConflict"),
-            (
-                Problem::DepartureDerivedStatusRequiresContract,
-                "DepartureDerivedStatusRequiresContract",
-            ),
+            (Problem::DerivedStatusContract, "DerivedStatusContract"),
             (Problem::ComponentParts, "ComponentParts"),
             (Problem::MissingSample, "MissingSample"),
             (Problem::UnknownTest, "UnknownTest"),

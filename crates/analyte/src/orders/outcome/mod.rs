@@ -51,7 +51,7 @@ pub(crate) enum Code {
     LawQueryIssuanceUncertain,
     LawIndependentQueueDeadline,
     LawIndependentShutdown,
-    LawIndependentShutdownBeforeResponse,
+    LawResponseShutdown,
     LawNegativeQueryOrl,
     LawQueryPreparationFailed,
     LawSendPreparationFailed,
@@ -107,9 +107,7 @@ impl Code {
             Self::LawQueryIssuanceUncertain => "LAW-independent-query-response-issuance-uncertain",
             Self::LawIndependentQueueDeadline => "LAW-independent-queue-deadline",
             Self::LawIndependentShutdown => "LAW-independent-shutdown",
-            Self::LawIndependentShutdownBeforeResponse => {
-                "LAW-independent-shutdown-before-response"
-            }
+            Self::LawResponseShutdown => "LAW-independent-shutdown-before-response",
             Self::LawNegativeQueryOrl => "LAW-negative-query-ORL",
             Self::LawQueryPreparationFailed => "LAW-query-preparation-failed",
             Self::LawSendPreparationFailed => "LAW-send-preparation-failed",
@@ -179,7 +177,7 @@ fn outcome_spellings_are_compatible() {
         ),
         (Code::LawIndependentShutdown, "LAW-independent-shutdown"),
         (
-            Code::LawIndependentShutdownBeforeResponse,
+            Code::LawResponseShutdown,
             "LAW-independent-shutdown-before-response",
         ),
         (Code::LawNegativeQueryOrl, "LAW-negative-query-ORL"),

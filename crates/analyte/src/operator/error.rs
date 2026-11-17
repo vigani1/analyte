@@ -10,7 +10,7 @@ pub enum Error {
     OrderCommand(#[from] crate::orders::CommandError),
     /// The operator action or snapshot cannot proceed.
     #[error("active alert snapshot exceeds 4096 rows")]
-    ActiveAlertSnapshotExceeds4096Rows,
+    AlertSnapshotTooLarge,
     /// The operator action or snapshot cannot proceed.
     #[error("alert retry endpoint is not configured")]
     AlertRetryEndpointIsNotConfigured,

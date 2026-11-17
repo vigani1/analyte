@@ -3,7 +3,7 @@ use crate::ParsedMachine;
 use crate::{
     ChecksumHex, DepartureDirection, DepartureEdition, DepartureGuarantee, DepartureMessage,
     DepartureReference, DepartureScope, Encoding, Error, Escapes, EvidenceLevel, MachineDeparture,
-    Priority, StackChoice, Terminator,
+    Priority, Terminator,
 };
 
 use crate::DepartureRefusal as Refusal;
@@ -58,7 +58,7 @@ pub(super) fn validate_departures(
 
 fn selected_settings(m: &ParsedMachine<'_>) -> [(&'static str, bool); 9] {
     let s = &m.syntax;
-    let astm = matches!(m.choice(), StackChoice::AstmLis02);
+    let astm = m.choice().has_astm_link();
     [
         ("hl7_utf8_in_v231", s.allow_utf8_in_v231),
         (
@@ -122,9 +122,7 @@ fn validate_scope(m: &ParsedMachine<'_>, departure: &MachineDeparture) -> Result
         | MachineDeparture::AstmHostContentionPriority(_)
         | MachineDeparture::AstmLowercaseChecksumHex(_) => false,
     };
-    if (hl7 && !matches!(m.choice(), StackChoice::Hl7V2 | StackChoice::FileHl7))
-        || (!hl7 && !matches!(m.choice(), StackChoice::AstmLis02 | StackChoice::FileAstm))
-    {
+    if (hl7 && !m.choice().has_hl7_departures()) || (!hl7 && !m.choice().has_astm_records()) {
         return Err(Refusal::ProtocolMismatch);
     }
     match scope.edition {
@@ -152,7 +150,7 @@ fn validate_scope(m: &ParsedMachine<'_>, departure: &MachineDeparture) -> Result
         MachineDeparture::Hl7AbsentObr25MeansFinal(_)
         | MachineDeparture::Hl7AbsentObx11MeansFinal(_) => {}
         MachineDeparture::AstmPackedRecordsInFrame(_) => {
-            if !matches!(m.choice(), StackChoice::AstmLis02) {
+            if !m.choice().has_astm_link() {
                 return Err(Refusal::ProtocolMismatch);
             }
             if scope.direction != DepartureDirection::MachineToHost {

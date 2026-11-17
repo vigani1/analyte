@@ -431,7 +431,7 @@ ERR-3 uses table 0357; zero requires informational severity (2.5.1 §2.15.5.3–
 The error-only ACK renderer refuses zero. Fatal severity starts with the selected
 2.6 profile; code 104 starts with the selected 2.8.2 profile. Unknown codes are
 refused, with local application codes carried separately. Tests are in
-[standards_pass2.rs](../../../crates/protocols/hl7/tests/standards_pass2.rs).
+[control_boundaries.rs](../../../crates/protocols/hl7/tests/control_boundaries.rs).
 
 The strict modern withdrawal profile refuses explicit null as well as other
 nonempty encodings in withdrawn MSA/ERR fields (2.8.2 §2.14.8 and 2.9.1 §2.13.8).

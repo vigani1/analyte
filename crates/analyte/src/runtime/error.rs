@@ -60,7 +60,7 @@ pub enum Error {
     AdminShutdownExceeded5Seconds(#[source] tokio::time::error::Elapsed),
     /// The runtime cannot safely continue the requested operation.
     #[error("alert evaluator shutdown exceeded 5 seconds")]
-    AlertEvaluatorShutdownExceeded5Seconds(#[source] tokio::time::error::Elapsed),
+    AlertShutdownTimeout(#[source] tokio::time::error::Elapsed),
     /// The runtime cannot safely continue the requested operation.
     #[error("alert evaluator stopped unexpectedly")]
     AlertEvaluatorStoppedUnexpectedly,
@@ -69,7 +69,7 @@ pub enum Error {
     CaptureOwnershipRetained,
     /// The runtime cannot safely continue the requested operation.
     #[error("data directory must deny group and other access")]
-    DataDirectoryMustDenyGroupAndOtherAccess,
+    InsecureDataDirectory,
     /// The runtime cannot safely continue the requested operation.
     #[error("delivery owner stopped unexpectedly")]
     DeliveryOwnerStoppedUnexpectedly,
@@ -93,7 +93,7 @@ pub enum Error {
     RetentionDeadlineOverflow,
     /// The runtime cannot safely continue the requested operation.
     #[error("shutdown bound must be 30 through 300 seconds")]
-    ShutdownBoundMustBe30Through300Seconds,
+    InvalidShutdownBound,
     /// The runtime cannot safely continue the requested operation.
     #[error("store startup deadline overflow")]
     StoreStartupDeadlineOverflow,

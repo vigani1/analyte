@@ -24,7 +24,7 @@ enum Event {
 /// Reports dispatcher, startup, worker and graceful shutdown errors.
 pub fn run(config: PathBuf, bound: Duration) -> Result<(), Error> {
     if !(Duration::from_secs(30)..=Duration::from_secs(300)).contains(&bound) {
-        return Err(Failure::ShutdownBoundMustBe30Through300Seconds);
+        return Err(Failure::InvalidShutdownBound);
     }
     let (start, started) = mpsc::sync_channel(1);
     let (stop, stopped) = tokio::sync::oneshot::channel();

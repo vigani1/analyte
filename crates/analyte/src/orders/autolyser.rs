@@ -40,7 +40,7 @@ impl Work<analyte_autolyser::syntax::Worklist> {
         let order = self
             .active
             .as_ref()
-            .ok_or(Error::UnexpectedAutolyserInsertionOutcome)?;
+            .ok_or(Error::UnexpectedInsertionOutcome)?;
         let code = super::outcome::Transfer::AutolyserInsertion(reception);
         let outcome = match reception {
             analyte_dialog::autolyser::Reception::Accepted(_) => analyte_model::OrderState::Sent,

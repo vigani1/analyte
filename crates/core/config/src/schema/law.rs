@@ -1,5 +1,5 @@
 //! Selects LAW options explicitly (TF-1 §5.2 and TF-2b 2.2/3.27).
-use crate::{Encoding, Error, Escapes, ParsedMachine, StackChoice, Terminator, invalid};
+use crate::{Encoding, Error, Escapes, ParsedMachine, Terminator, invalid};
 use serde::{Deserialize, Serialize};
 
 /// Supported host lookup scopes. Other LAW scopes must receive an error response.
@@ -198,35 +198,12 @@ pub(crate) fn validate_orders(
 }
 
 pub(crate) fn validate(machine: &ParsedMachine<'_>, path: &str) -> Result<(), Error> {
-    match (machine.choice(), &machine.law) {
-        (StackChoice::LawManager, Some(_))
-        | (
-            StackChoice::AstmLis02
-            | StackChoice::Hl7V2
-            | StackChoice::FileAstm
-            | StackChoice::FileHl7
-            | StackChoice::Poct
-            | StackChoice::VidasLiteral
-            | StackChoice::Autolyser,
-            None,
-        ) => {}
-        (StackChoice::LawManager, None)
-        | (
-            StackChoice::AstmLis02
-            | StackChoice::Hl7V2
-            | StackChoice::FileAstm
-            | StackChoice::FileHl7
-            | StackChoice::Poct
-            | StackChoice::VidasLiteral
-            | StackChoice::Autolyser,
-            Some(_),
-        ) => {
-            return Err(invalid(
-                path,
-                "law",
-                "supply LAW settings only for the law_manager dialog",
-            ));
-        }
+    if machine.choice().allows_law_section() != machine.law.is_some() {
+        return Err(invalid(
+            path,
+            "law",
+            "supply LAW settings only for the law_manager dialog",
+        ));
     }
     let Some(law) = &machine.law else {
         return Ok(());

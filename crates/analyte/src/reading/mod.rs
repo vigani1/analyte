@@ -128,3 +128,35 @@ fn context_spellings_are_pinned() {
         "ASTM message missing"
     );
 }
+
+impl Error {
+    pub(crate) fn hl7_mapping_error(
+        &self,
+    ) -> Option<Result<&analyte_hl7::Error, &analyte_mapping::Error>> {
+        use Error as Read;
+        match self {
+            Read::Hl7(error) => Some(Ok(error)),
+            Read::Mapping(error) => Some(Err(error)),
+            Read::LawMapping(error) => match error {
+                analyte_mapping::law::Error::Mapping(error) => Some(Err(error)),
+                analyte_mapping::law::Error::MissingHeader
+                | analyte_mapping::law::Error::NoticeOrder
+                | analyte_mapping::law::Error::NoticePosition => None,
+            },
+            Read::Astm(_)
+            | Read::Law(_)
+            | Read::Poct(_)
+            | Read::Vidas(_)
+            | Read::Autolyser(_)
+            | Read::AstmFrame(_)
+            | Read::AstmReceipt(_)
+            | Read::MllpFrame(_)
+            | Read::MllpReceipt(_)
+            | Read::VidasFrame(_)
+            | Read::AutolyserFrame(_)
+            | Read::Encoding(_)
+            | Read::Evidence(_)
+            | Read::Context(_) => None,
+        }
+    }
+}

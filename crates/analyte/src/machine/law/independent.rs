@@ -189,7 +189,7 @@ async fn accepted_connection(
 // Join diagnostics must not expose a panic payload from a source transaction.
 fn task_failure(error: tokio::task::JoinError) -> Error {
     if error.is_panic() {
-        Error::InboundTaskPanickedMachineOwnerStopped(error)
+        Error::InboundTaskPanicked(error)
     } else {
         Error::InboundTaskCancelled(error)
     }
@@ -229,7 +229,7 @@ async fn worker(
                     let ready = tokio::select! {
                         biased;
                         () = analyte_sink::stopped(&mut stop) => {
-                            Err(Code::LawIndependentShutdownBeforeResponse.as_str())
+                            Err(Code::LawResponseShutdown.as_str())
                         },
                         ready = tokio::time::timeout_at(until.into(), &mut job.ready) => match ready {
                             Ok(Ok(())) => Ok(()),
@@ -333,7 +333,7 @@ async fn exchange(
     };
     let until = orders.due().ok_or(Error::OutboundDeadlineAbsent)?;
     if std::time::Instant::now() >= until {
-        return Err(Error::OutboundWorkExpiredBeforeConnection);
+        return Err(Error::OutboundWorkExpired);
     }
     let stream = tokio::select! {
         biased;

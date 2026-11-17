@@ -140,24 +140,6 @@ pub enum Escapes {
 #[serde(try_from = "String", into = "String")]
 pub struct Edition(analyte_hl7::Version);
 
-impl Edition {
-    /// Explicit HL7 23 selection.
-    pub const V23: Self = Self(analyte_hl7::Version::V23);
-    /// Explicit HL7 231 selection.
-    pub const V231: Self = Self(analyte_hl7::Version::V231);
-    /// Explicit HL7 24 selection.
-    pub const V24: Self = Self(analyte_hl7::Version::V24);
-    /// Explicit HL7 25 selection.
-    pub const V25: Self = Self(analyte_hl7::Version::V25);
-    /// Explicit HL7 251 selection.
-    pub const V251: Self = Self(analyte_hl7::Version::V251);
-    /// Explicit HL7 26 selection.
-    pub const V26: Self = Self(analyte_hl7::Version::V26);
-    /// Explicit HL7 282 selection.
-    pub const V282: Self = Self(analyte_hl7::Version::V282);
-    /// Explicit HL7 291 selection.
-    pub const V291: Self = Self(analyte_hl7::Version::V291);
-}
 impl TryFrom<String> for Edition {
     type Error = String;
     fn try_from(key: String) -> Result<Self, Self::Error> {
@@ -171,6 +153,11 @@ impl TryFrom<String> for Edition {
                         .join(", ")
                 )
             })
+    }
+}
+impl From<analyte_hl7::Version> for Edition {
+    fn from(version: analyte_hl7::Version) -> Self {
+        Self(version)
     }
 }
 impl From<Edition> for String {
