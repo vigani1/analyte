@@ -177,6 +177,32 @@ pub struct Frame {
 }
 
 impl Frame {
+    /// Reports packed or prematurely ended records under the standard frame policy.
+    #[must_use]
+    pub fn has_packed_records(&self) -> bool {
+        !RecordBoundaries::Separate.accepts(self.text(), self.is_final())
+    }
+    /// Reports lowercase hexadecimal digits from the verified checksum trailer.
+    #[must_use]
+    pub fn has_lowercase_checksum(&self) -> bool {
+        self.raw
+            .get(self.raw.len().saturating_sub(4)..self.raw.len().saturating_sub(2))
+            .is_some_and(|digits| digits.iter().any(|b| matches!(*b, b'a'..=b'f')))
+    }
+    /// Returns record fragment spans relative to the original frame and their CR ending.
+    /// The verified frame bounds every offset; partial records remain visible.
+    pub fn record_fragments(&self) -> impl Iterator<Item = (std::ops::Range<usize>, bool)> + '_ {
+        self.text()
+            .split_inclusive(|b| *b == CR)
+            .scan(2_usize, |offset, fragment| {
+                // A verified frame caps the sum at its raw length.
+                let end = offset.saturating_add(fragment.len());
+                let range = *offset..end;
+                *offset = end;
+                Some((range, fragment.last() == Some(&CR)))
+            })
+    }
+
     /// Exact wire bytes, including checksum case and trailer.
     #[must_use]
     pub fn raw(&self) -> &[u8] {
@@ -505,4 +531,47 @@ pub fn decode(
         return Err(ReceiptError::Incomplete);
     }
     Ok(payload)
+}
+
+#[cfg(test)]
+mod evidence_tests {
+    use super::*;
+    #[test]
+    fn lis01_a2_3_3_2_6_3_1_1_8_3_1_1_record_fragment_spans_keep_original_bytes()
+    -> Result<(), Error> {
+        for text in [b"H|x\r".as_slice(), b"H|x\rP|1\r", b"H|x", b"H|x\rP|"] {
+            let wires = encode(text, FrameNumber::FIRST, Limit::default())?;
+            for wire in wires {
+                let mut decoder = Decoder::new(Limit::default(), HexPolicy::Strict);
+                let frame = wire
+                    .iter()
+                    .filter_map(|b| decoder.push(*b))
+                    .find_map(|e| match e {
+                        Event::Frame(frame) => Some(frame),
+                        Event::Outside(_) | Event::Rejected { .. } => None,
+                    })
+                    .ok_or(Error::RecordBoundary)?;
+                let fragments = frame.record_fragments().collect::<Vec<_>>();
+                let recovered = fragments
+                    .iter()
+                    .flat_map(|(span, _)| frame.raw().get(span.clone()).unwrap_or_default())
+                    .copied()
+                    .collect::<Vec<_>>();
+                assert_eq!(recovered, text);
+                let crs = text.iter().filter(|b| **b == CR).count();
+                assert_eq!(
+                    frame.has_packed_records(),
+                    crs > 1 || (crs > 0 && (!frame.is_final() || text.last() != Some(&CR)))
+                );
+                for (span, ended) in fragments {
+                    assert_eq!(
+                        ended,
+                        frame.raw().get(span).is_some_and(|s| s.last() == Some(&CR))
+                    );
+                }
+                assert!(!frame.has_lowercase_checksum());
+            }
+        }
+        Ok(())
+    }
 }
