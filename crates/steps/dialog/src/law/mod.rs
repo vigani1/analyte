@@ -1,5 +1,13 @@
 //! Runs deterministic LAW exchanges and deadlines (TF-2b 3.27-3.29, B.6/B.7).
 //! Kept whole: The LAW conversation state transitions and their deadline decisions are reviewed together.
+use analyte_framing::hl7 as mllp;
+use analyte_hl7::OwnedAckError as Detail;
+use analyte_hl7::{AckCode, AckError, Message, Options, Response, Responsibility, law};
+use std::{collections::VecDeque, time::Duration};
+use thiserror::Error;
+
+mod failure;
+pub use crate::ExchangeId;
 /// Operation whose deadline elapsed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DeadlineKind {
@@ -36,14 +44,6 @@ impl std::fmt::Display for DeadlineKind {
     }
 }
 
-use analyte_framing::hl7 as mllp;
-use analyte_hl7::OwnedAckError as Detail;
-use analyte_hl7::{AckCode, AckError, Message, Options, Response, Responsibility, law};
-use std::{collections::VecDeque, time::Duration};
-use thiserror::Error;
-
-mod failure;
-pub use crate::ExchangeId;
 /// Link role; independent outbound links accept only the correlated ORL transaction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Link {
