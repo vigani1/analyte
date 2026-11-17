@@ -23,7 +23,7 @@ pub async fn reprocess(
     let id = action.receipt;
     let receipt = store
         .request(deadline()?, move |s| {
-            s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
+            s.receipt(id)?.ok_or(intake::Error::UnknownReceipt)
         })
         .await?;
     if receipt.metadata.machine != *machine.id() {
@@ -84,9 +84,13 @@ pub(crate) enum ReadError {
     #[error(transparent)]
     Deadline(#[from] crate::DeadlineError),
     #[error(transparent)]
-    Store(#[from] analyte_store::Error),
+    Store(#[from] analyte_store::OperatorError),
     #[error(transparent)]
     Mapping(#[from] crate::reading::Error),
 }
 
-analyte_store::forward_command_errors!(ReadError);
+impl From<analyte_store::WorkerError> for ReadError {
+    fn from(error: analyte_store::WorkerError) -> Self {
+        Self::Store(error.into())
+    }
+}

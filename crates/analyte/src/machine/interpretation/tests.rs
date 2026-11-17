@@ -7,6 +7,24 @@ use analyte_model::{Identifier, Reason};
 use analyte_store::{Attempt, Audit, RevisionOutcome};
 use std::path::Path;
 
+#[derive(Debug, thiserror::Error)]
+pub(super) enum FixtureError {
+    #[error(transparent)]
+    Json(#[from] serde_json::Error),
+    #[error(transparent)]
+    Intake(#[from] analyte_store::IntakeError),
+    #[error(transparent)]
+    Operator(#[from] analyte_store::OperatorError),
+    #[error(transparent)]
+    Delivery(#[from] analyte_store::DeliveryError),
+    #[error(transparent)]
+    Worker(#[from] analyte_store::WorkerError),
+    #[error("stored evidence is corrupt")]
+    Corruption,
+    #[error("receipt does not exist")]
+    UnknownReceipt,
+}
+
 pub(super) use analyte_fixtures::UnlimitedSpace as Space;
 
 fn action(receipt: ReceiptId, parked: Option<i64>) -> Result<Reprocess, Error> {
@@ -77,18 +95,12 @@ async fn exercise(definition: &str, raw: Vec<u8>) -> Result<(), Error> {
     intake::receive(&store, &intake::Connection::new(machine)?, id, raw.clone()).await?;
     assert!(!intake::interpret(&store, machine, id).await?);
     let (parked, original) = store
-        .request::<_, analyte_store::Error>(deadline()?, move |s| {
+        .request::<_, FixtureError>(deadline()?, move |s| {
             assert!(s.deliveries(0)?.is_empty());
-            let parked = s
-                .parked(0)?
-                .first()
-                .ok_or(analyte_store::Error::Corruption)?
-                .id;
-            let original = serde_json::to_string(
-                &s.interpretation(id, 1)?
-                    .ok_or(analyte_store::Error::Corruption)?,
-            )?;
-            Ok::<_, analyte_store::Error>((parked, original))
+            let parked = s.parked(0)?.first().ok_or(FixtureError::Corruption)?.id;
+            let original =
+                serde_json::to_string(&s.interpretation(id, 1)?.ok_or(FixtureError::Corruption)?)?;
+            Ok::<_, FixtureError>((parked, original))
         })
         .await?;
     assert_repeated_failure_stays_parked(&store, machine, id, parked).await?;
@@ -130,16 +142,16 @@ async fn assert_repeated_failure_stays_parked(
     // Repeated failure appends a version and new reason, leaving the original item open.
     reprocess(store, machine, action(id, Some(parked))?).await?;
     store
-        .request::<_, analyte_store::Error>(deadline()?, move |s| {
+        .request::<_, FixtureError>(deadline()?, move |s| {
             assert!(
                 s.parked_item(parked)?
-                    .ok_or(analyte_store::Error::Corruption)?
+                    .ok_or(FixtureError::Corruption)?
                     .resolution
                     .is_none()
             );
             assert!(s.parked(0)?.len() >= 2);
             assert_eq!(s.audits(0)?.len(), 1);
-            Ok::<_, analyte_store::Error>(())
+            Ok::<_, FixtureError>(())
         })
         .await?;
     Ok(())
@@ -153,23 +165,20 @@ async fn assert_repair_resolves_original(
 ) -> Result<(), Error> {
     let original_check = original;
     store
-        .request::<_, analyte_store::Error>(deadline()?, move |s| {
+        .request::<_, FixtureError>(deadline()?, move |s| {
             assert_eq!(
-                serde_json::to_string(
-                    &s.interpretation(id, 1)?
-                        .ok_or(analyte_store::Error::Corruption)?
-                )?,
+                serde_json::to_string(&s.interpretation(id, 1)?.ok_or(FixtureError::Corruption)?)?,
                 original_check
             );
             let resolved = s
                 .parked_item(parked)?
-                .ok_or(analyte_store::Error::Corruption)?
+                .ok_or(FixtureError::Corruption)?
                 .resolution
-                .ok_or(analyte_store::Error::Corruption)?;
+                .ok_or(FixtureError::Corruption)?;
             assert!(resolved.contains("interpretation:"));
             assert!(resolved.contains(":3"));
             assert_eq!(s.deliveries(0)?.len(), 1);
-            let claim = s.claim(50)?.ok_or(analyte_store::Error::Corruption)?;
+            let claim = s.claim(50)?.ok_or(FixtureError::Corruption)?;
             Ok(s.attempted(claim.id, &Attempt::Done, 50)?)
         })
         .await?;
@@ -199,18 +208,16 @@ async fn assert_retransmission_and_conflict(
     let commit = reprocess(store, machine, action(id, None)?).await?;
     assert_eq!(commit.outcomes, vec![RevisionOutcome::Conflict]);
     store
-        .request::<_, analyte_store::Error>(deadline()?, move |s| {
-            let receipt = s.receipt(id)?.ok_or(analyte_store::Error::Corruption)?;
+        .request::<_, FixtureError>(deadline()?, move |s| {
+            let receipt = s.receipt(id)?.ok_or(FixtureError::Corruption)?;
             assert_eq!(receipt.raw, raw);
             assert_eq!(
                 receipt.config,
                 s.interpretation(id, 1)?
-                    .ok_or(analyte_store::Error::Corruption)?
+                    .ok_or(FixtureError::Corruption)?
                     .config
             );
-            let current = s
-                .interpretation(id, 5)?
-                .ok_or(analyte_store::Error::Corruption)?;
+            let current = s.interpretation(id, 5)?.ok_or(FixtureError::Corruption)?;
             let json = serde_json::to_value(&current)?;
             assert_eq!(
                 json["config_digest"],
@@ -223,7 +230,7 @@ async fn assert_retransmission_and_conflict(
             assert!(s.claim(50)?.is_none());
             assert_eq!(s.audits(0)?.len(), 4);
             assert!(s.parked(0)?.iter().any(|p| p.evidence.contains("Conflict")));
-            Ok::<_, analyte_store::Error>(())
+            Ok::<_, FixtureError>(())
         })
         .await?;
     Ok(())
@@ -297,14 +304,14 @@ async fn adr0003_rule3_effective_configs_have_distinct_recorded_versions() -> Re
     let old_digest = original.snapshot.digest();
     let new_digest = current.snapshot.digest();
     store
-        .request::<_, analyte_store::Error>(deadline()?, move |s| {
-            let receipt = s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)?;
+        .request::<_, FixtureError>(deadline()?, move |s| {
+            let receipt = s.receipt(id)?.ok_or(FixtureError::UnknownReceipt)?;
             let first = s
                 .interpretation(id, 1)?
-                .ok_or(analyte_store::Error::UnknownReceipt)?;
+                .ok_or(FixtureError::UnknownReceipt)?;
             let second = s
                 .interpretation(id, 2)?
-                .ok_or(analyte_store::Error::UnknownReceipt)?;
+                .ok_or(FixtureError::UnknownReceipt)?;
             assert_eq!(receipt.config, old_config);
             assert_eq!(receipt.metadata.config_digest.0, old_digest);
             assert_eq!(first.config_version, receipt.metadata.config_version);
@@ -319,21 +326,19 @@ async fn adr0003_rule3_effective_configs_have_distinct_recorded_versions() -> Re
                     .collect::<String>()
             );
             for summary in s.receipts("")? {
-                let parked = s
-                    .receipt(summary.id)?
-                    .ok_or(analyte_store::Error::UnknownReceipt)?;
+                let parked = s.receipt(summary.id)?.ok_or(FixtureError::UnknownReceipt)?;
                 if parked.raw == b"unparseable changed" {
                     assert_eq!(parked.metadata.config_version, second.config_version);
                     assert_eq!(parked.metadata.config_digest.0, new_digest);
                     assert_eq!(
                         s.interpretation(summary.id, 1)?
-                            .ok_or(analyte_store::Error::UnknownReceipt)?
+                            .ok_or(FixtureError::UnknownReceipt)?
                             .config_version,
                         second.config_version
                     );
                 }
             }
-            Ok::<_, analyte_store::Error>(())
+            Ok::<_, FixtureError>(())
         })
         .await?;
     store.shutdown(deadline()?).await?;
@@ -393,24 +398,21 @@ async fn assert_vendor_receipt_stays_parked(
     let id = ReceiptId::new();
     intake::receive(&store, &intake::Connection::new(machine)?, id, raw.clone()).await?;
     assert!(!intake::interpret(&store, machine, id).await?);
-    let parked = store.request::<_, analyte_store::Error>(deadline()?, move |s| {
-        let version = s.interpretation(id, 1)?.ok_or(analyte_store::Error::Corruption)?;
+    let parked = store.request::<_, FixtureError>(deadline()?, move |s| {
+        let version = s.interpretation(id, 1)?.ok_or(FixtureError::Corruption)?;
         assert!(matches!(version.outcome, analyte_store::Reading::Results(results) if !results.is_empty()));
-        Ok::<_, analyte_store::Error>(s.parked(0)?.first().ok_or(analyte_store::Error::Corruption)?.id)
+        Ok::<_, FixtureError>(s.parked(0)?.first().ok_or(FixtureError::Corruption)?.id)
     }).await?;
     let commit = reprocess(&store, machine, action(id, Some(parked))?).await?;
     assert_eq!(commit.outcomes, vec![RevisionOutcome::Unresolved]);
     store
-        .request::<_, analyte_store::Error>(deadline()?, move |s| {
-            assert_eq!(
-                s.receipt(id)?.ok_or(analyte_store::Error::Corruption)?.raw,
-                raw
-            );
+        .request::<_, FixtureError>(deadline()?, move |s| {
+            assert_eq!(s.receipt(id)?.ok_or(FixtureError::Corruption)?.raw, raw);
             assert!(s.interpretation(id, 1)?.is_some());
             assert!(s.interpretation(id, 2)?.is_some());
             assert!(
                 s.parked_item(parked)?
-                    .ok_or(analyte_store::Error::Corruption)?
+                    .ok_or(FixtureError::Corruption)?
                     .resolution
                     .is_none()
             );
@@ -444,14 +446,14 @@ async fn assert_poct_controls_stay_failed(store: &Handle, machine: &Machine) -> 
             .await?;
             reprocess(store, machine, action(id, None)?).await?;
             store
-                .request::<_, analyte_store::Error>(deadline()?, move |s| {
+                .request::<_, FixtureError>(deadline()?, move |s| {
                     assert!(matches!(
                         s.interpretation(id, 1)?
-                            .ok_or(analyte_store::Error::Corruption)?
+                            .ok_or(FixtureError::Corruption)?
                             .outcome,
                         analyte_store::Reading::Failed(_)
                     ));
-                    Ok::<_, analyte_store::Error>(())
+                    Ok::<_, FixtureError>(())
                 })
                 .await?;
         }

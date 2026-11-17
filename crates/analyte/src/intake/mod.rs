@@ -14,6 +14,7 @@ pub(crate) mod retained;
 pub(crate) use parking::{Mapping, ParkReason};
 use reading::{map_reading, mapping_outcome};
 mod persistence;
+pub use persistence::CommitError;
 use persistence::{LawBatchConflict, PreparedMapping};
 
 /// Binds all evidence from one host connection to its immutable configuration.
@@ -112,7 +113,7 @@ pub(crate) async fn interpret_with_location(
 > {
     let receipt = store
         .request(deadline()?, move |s| {
-            s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
+            s.receipt(id)?.ok_or(Error::UnknownReceipt)
         })
         .await?;
     let (outcome, _, location) = retained::process(store, machine, &receipt, None, None).await?;
@@ -251,20 +252,17 @@ fn atomic_batch(machine: &Machine) -> bool {
 fn park_findings(
     id: ReceiptId,
     findings: Vec<String>,
-) -> Result<Vec<analyte_store::Parked>, analyte_store::Error> {
+) -> Result<Vec<analyte_store::Parked>, analyte_model::TextError> {
     findings
         .into_iter()
         .map(|finding| {
             Ok(analyte_store::Parked {
-                kind: Identifier::new("mapping_finding").map_err(analyte_store::Error::Text)?,
-                reason: analyte_model::Reason::new(&finding).map_err(analyte_store::Error::Text)?,
-                targets: vec![
-                    Identifier::new(&uuid::Uuid::from(id).to_string())
-                        .map_err(analyte_store::Error::Text)?,
-                ],
+                kind: Identifier::new("mapping_finding")?,
+                reason: analyte_model::Reason::new(&finding)?,
+                targets: vec![Identifier::new(&uuid::Uuid::from(id).to_string())?],
             })
         })
-        .collect::<Result<Vec<_>, analyte_store::Error>>()
+        .collect::<Result<Vec<_>, analyte_model::TextError>>()
 }
 
 pub(crate) async fn park_bytes(
@@ -288,13 +286,13 @@ pub(crate) async fn park_bytes(
         outcome: Reading::Failed(analyte_model::Reason::new(&reason.to_string())?),
     };
     store
-        .request::<_, analyte_store::Error>(deadline()?, move |s| {
-            Ok::<_, analyte_store::Error>(s.reconcile(
+        .request::<_, analyte_store::ReconciliationError>(deadline()?, move |s| {
+            s.reconcile(
                 analyte_store::ReconcileAction::Interpret(id),
                 evidence,
                 analyte_store::ReconcileInput::standard(&[], &[]),
                 |_, _| Ok(Vec::new()),
-            )?)
+            )
         })
         .await?;
     Ok(())
@@ -309,7 +307,7 @@ async fn persist_mapping(
 ) -> Result<(), Error> {
     let receipt = store
         .request(deadline()?, move |s| {
-            s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
+            s.receipt(id)?.ok_or(Error::UnknownReceipt)
         })
         .await?;
     retained::process(store, machine, &receipt, Some(mapping), action).await?;

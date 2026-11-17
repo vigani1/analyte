@@ -10,7 +10,19 @@ pub enum IntakeError {
     Protocol(#[from] crate::machine::law::custody::Error),
     /// Durable custody or reconciliation failed; do not acknowledge success.
     #[error(transparent)]
-    Store(#[from] analyte_store::Error),
+    Store(#[from] analyte_store::IntakeError),
+    /// The retained receipt needed by the host does not exist.
+    #[error("receipt does not exist")]
+    UnknownReceipt,
+    /// Prepared mapping could not be committed.
+    #[error(transparent)]
+    Commit(#[from] super::CommitError),
+    /// Protected receipt lookup failed.
+    #[error(transparent)]
+    Receipt(#[from] analyte_store::OperatorError),
+    /// Interpretation reconciliation failed.
+    #[error(transparent)]
+    Reconciliation(#[from] analyte_store::ReconciliationError),
     /// Bounded model text refused source evidence.
     #[error(transparent)]
     Text(#[from] analyte_model::TextError),
@@ -31,4 +43,8 @@ pub enum IntakeError {
     WrongMachine,
 }
 
-analyte_store::forward_command_errors!(IntakeError);
+impl From<analyte_store::WorkerError> for IntakeError {
+    fn from(error: analyte_store::WorkerError) -> Self {
+        Self::Store(error.into())
+    }
+}

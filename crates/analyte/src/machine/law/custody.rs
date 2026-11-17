@@ -128,9 +128,11 @@ async fn retained_work(
     let target = machine.id.clone();
     let lookup = placer.clone();
     let record = store
-        .request::<_, analyte_store::Error>(deadline()?, move |s| {
+        .request::<_, analyte_store::OrderError>(deadline()?, move |s| {
             match s.machine_order_by_placer(&target, &lookup) {
-                Err(analyte_store::OrderError::Conflict) => Ok::<_, analyte_store::Error>(None),
+                Err(analyte_store::OrderError::Conflict) => {
+                    Ok::<_, analyte_store::OrderError>(None)
+                }
                 other => Ok(other?),
             }
         })
@@ -213,7 +215,7 @@ pub enum Error {
     Validation(#[from] crate::orders::law::validation::ValidationError),
     /// Storage could not establish durable custody.
     #[error(transparent)]
-    Store(#[from] analyte_store::Error),
+    Store(#[from] analyte_store::OrderError),
     /// Source text exceeds a model bound.
     #[error(transparent)]
     Text(#[from] analyte_model::TextError),
@@ -224,5 +226,3 @@ pub enum Error {
     #[error(transparent)]
     Json(#[from] serde_json::Error),
 }
-
-analyte_store::forward_command_errors!(Error);

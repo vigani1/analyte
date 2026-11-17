@@ -25,7 +25,7 @@ fn audit(
 pub(super) async fn ensure_reconciled(store: &Handle, machine: &Machine) -> Result<(), Error> {
     let machine_id = machine.id.clone();
     let blocked = store
-        .request::<_, analyte_store::Error>(deadline()?, move |store| {
+        .request::<_, analyte_store::OrderError>(deadline()?, move |store| {
             let Some(intent) = store.unconfirmed_poll_intent(&machine_id)? else {
                 return Ok(false);
             };
@@ -34,13 +34,15 @@ pub(super) async fn ensure_reconciled(store: &Handle, machine: &Machine) -> Resu
                     let reason = Reason::new(
                         "Autolyser previous session left a poll without confirmed cursor custody",
                     )
-                    .map_err(analyte_store::Error::Text)?;
+                    .map_err(analyte_store::OrderError::Text)?;
                     let audit = audit(intent.id, &machine_id, PollOutcome::Uncertain, reason)
-                        .map_err(|error| analyte_store::Error::DeliveryBuild(Box::new(error)))?;
+                        .map_err(|error| {
+                            analyte_store::OrderError::DeliveryBuild(Box::new(error))
+                        })?;
                     store.record_poll_outcome(intent.id, PollOutcome::Uncertain, &audit)?;
                 }
                 PollIntentState::Uncertain => {}
-                PollIntentState::Confirmed => return Err(analyte_store::Error::Corruption),
+                PollIntentState::Confirmed => return Err(analyte_store::OrderError::Corruption),
             }
             Ok(true)
         })
@@ -77,12 +79,10 @@ pub(super) async fn uncertain(
             Reason::new(reason)?,
         )?;
         store
-            .request::<_, analyte_store::Error>(deadline()?, move |store| {
-                Ok::<_, analyte_store::Error>(
-                    store
-                        .record_poll_outcome(id, PollOutcome::Uncertain, &audit)
-                        .map(|_| ())?,
-                )
+            .request::<_, analyte_store::OrderError>(deadline()?, move |store| {
+                store
+                    .record_poll_outcome(id, PollOutcome::Uncertain, &audit)
+                    .map(|_| ())
             })
             .await?;
     }
@@ -102,12 +102,10 @@ pub(super) async fn complete(
             Reason::new("Complete Autolyser response durably stored; R cursor custody reconciled")?,
         )?;
         let state = store
-            .request::<_, analyte_store::Error>(deadline()?, move |store| {
-                Ok::<_, analyte_store::Error>(
-                    store
-                        .record_poll_outcome(id, PollOutcome::Confirmed, &audit)
-                        .map(|intent| intent.state)?,
-                )
+            .request::<_, analyte_store::OrderError>(deadline()?, move |store| {
+                store
+                    .record_poll_outcome(id, PollOutcome::Confirmed, &audit)
+                    .map(|intent| intent.state)
             })
             .await?;
         match state {

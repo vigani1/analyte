@@ -5,7 +5,7 @@ pub mod admin;
 pub mod installation;
 mod intake;
 /// Operational failures retaining and interpreting machine receipts.
-pub use intake::Error as IntakeError;
+pub use intake::{CommitError as IntakeCommitError, Error as IntakeError};
 /// Failures constructing complete departure evidence.
 pub use machine::interpretation::departure_evidence::EvidenceError as DepartureEvidenceError;
 /// Failures comparing returned LAW work with retained immutable commands.

@@ -120,10 +120,11 @@ mod tests {
                 "write all"
             ))
         ));
-        let custody = super::super::receive::error::Error::from(analyte_store::Error::Capacity);
+        let custody =
+            super::super::receive::error::Error::from(analyte_store::IntakeError::Capacity);
         assert!(matches!(
             custody,
-            super::super::receive::error::Error::Store(analyte_store::Error::Capacity)
+            super::super::receive::error::Error::Store(analyte_store::IntakeError::Capacity)
         ));
         let source = Error::from(std::io::Error::other("synthetic owner failure"));
         assert_eq!(source.to_string(), "synthetic owner failure");
