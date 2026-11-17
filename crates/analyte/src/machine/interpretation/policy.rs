@@ -40,7 +40,7 @@ impl Policy {
     pub(crate) fn work_conflict(&self) -> bool {
         match self {
             Self::Standard { .. } => false,
-            Self::Execution(policy) => policy.work_conflict.is_some(),
+            Self::Execution(policy) => policy.has_work_conflict(),
         }
     }
     pub(crate) fn conflict_reason(
@@ -49,7 +49,7 @@ impl Policy {
         match self {
             Self::Standard { .. } => Ok(None),
             Self::Execution(policy) => {
-                if policy.work_conflict.is_some() {
+                if policy.has_work_conflict() {
                     Ok(Some(crate::machine::law::policy::conflict_reason()?))
                 } else {
                     Ok(None)
@@ -60,7 +60,7 @@ impl Policy {
     pub(crate) fn discard_custody(&mut self) {
         match self {
             Self::Standard { .. } => {}
-            Self::Execution(policy) => policy.custody = None,
+            Self::Execution(policy) => policy.discard_custody(),
         }
     }
     pub(crate) fn rejected(&self) -> Self {

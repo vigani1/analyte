@@ -9,8 +9,8 @@ use analyte_store::{Handle, ReconcileMode, StatusLifecycle};
 
 #[derive(Clone)]
 pub(crate) struct Policy {
-    pub(crate) custody: Option<analyte_store::law::Custody>,
-    pub(crate) work_conflict: Option<Mismatch>,
+    custody: Option<analyte_store::law::Custody>,
+    work_conflict: Option<Mismatch>,
 }
 impl Policy {
     pub(crate) async fn prepare(
@@ -24,6 +24,15 @@ impl Policy {
             custody,
             work_conflict,
         })
+    }
+    pub(crate) fn has_work_conflict(&self) -> bool {
+        self.work_conflict.is_some()
+    }
+    pub(crate) fn discard_custody(&mut self) {
+        // A work refusal must retain its rejection evidence even when mapping failed.
+        if self.work_conflict.is_none() {
+            self.custody = None;
+        }
     }
     pub(crate) fn mode(&self) -> ReconcileMode<'_> {
         match &self.custody {
