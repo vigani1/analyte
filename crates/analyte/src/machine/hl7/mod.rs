@@ -3,11 +3,12 @@ use crate::intake::ByteReason;
 pub(crate) mod error_location;
 use super::connection_input::{self, Input};
 use crate::intake;
-use crate::machine::error::SessionError as Error;
+mod error;
 use crate::orders::outcome::Code;
 use analyte_dialog::hl7::{Action, Config, Dialog, Event};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
+pub(crate) use error::Error;
 use std::{
     collections::{BTreeMap, VecDeque},
     time::{Duration, Instant},
@@ -519,7 +520,7 @@ impl ConnectionState {
         mut result: Result<(), Error>,
     ) -> Result<(), Error> {
         let cleanup = self.input_evidence.retain(store, machine).await;
-        super::custody::retain_cleanup(&mut result, cleanup);
+        super::custody::retain_cleanup(&mut result, cleanup.map_err(Into::into));
         // A cancelled or failed host operation must expose partial input as well.
         let actions = match self.dialog.step(self.start.elapsed(), Event::Disconnect) {
             Ok(actions) => actions,

@@ -7,11 +7,12 @@ use self::transfer_end::AutolyserEnd;
 use crate::intake;
 use crate::machine::connection_input::Input;
 use crate::machine::custody::{self as receive_custody, ms};
-use crate::machine::error::SessionError as Error;
+mod error;
 use crate::orders::outcome::Code;
 use analyte_dialog::autolyser::{Action, Config, Dialog, Event, Recovery, Request};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
+pub(crate) use error::Error;
 use std::{collections::VecDeque, time::Instant};
 use tokio::sync::watch;
 

@@ -1,6 +1,6 @@
 //! Sends AUTOLYSER work through the owning machine dialog.
 use super::ConnectionState;
-use crate::machine::error::SessionError as Error;
+use super::Error;
 use analyte_store::Handle;
 impl ConnectionState {
     pub(crate) async fn complete_insertion(

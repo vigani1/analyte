@@ -1,5 +1,5 @@
 //! Owns machine workers and transport sessions without replaying queued writes.
-use crate::machine::error::SessionError as Error;
+use crate::machine::error::Error;
 mod astm;
 pub(crate) mod autolyser;
 pub(crate) mod link;
@@ -42,11 +42,11 @@ pub(crate) struct Closing {
 }
 
 impl Closing {
-    pub(crate) async fn after_commits(&mut self) -> Result<(), Error> {
+    pub(crate) async fn after_commits(&mut self) -> Result<(), link::error::Error> {
         self.ready.send_replace(true);
         tokio::time::timeout(TRANSPORT_CLOSE_BUDGET, stopping(&mut self.close))
             .await
-            .map_err(Error::TransportCloseStageExceeded25Seconds)?;
+            .map_err(link::error::Error::TransportCloseStageExceeded25Seconds)?;
         Ok(())
     }
 }
@@ -65,7 +65,7 @@ pub(crate) async fn run(
             analyte_config::LawLinks::Independent { .. }
         )
     {
-        return law::independent::run(machine, store, stop, closing, capture).await;
+        return Ok(law::independent::run(machine, store, stop, closing, capture).await?);
     }
     let link = settings::transport(machine.snapshot.effective().stack());
     let timeout = Duration::from_millis(u64::from(link.timeout_ms()));
@@ -149,18 +149,17 @@ pub(crate) async fn run(
             )
             .await
         }
-        Link::Folder { bytes, .. } => {
-            folder::session(
-                &machine,
-                &store,
-                bytes,
-                file_root,
-                stop,
-                closing,
-                capture.as_deref(),
-            )
-            .await
-        }
+        Link::Folder { bytes, .. } => folder::session(
+            &machine,
+            &store,
+            bytes,
+            file_root,
+            stop,
+            closing,
+            capture.as_deref(),
+        )
+        .await
+        .map_err(Into::into),
     }
 }
 
@@ -190,14 +189,24 @@ async fn session(
     let context = crate::intake::Connection::new(machine)?;
     let machine = &context;
     match selected {
-        Session::Astm(settings) => astm::session(machine, settings, store, conn, stop).await,
-        Session::Hl7(settings) => hl7::session(machine, settings, store, conn, stop).await,
-        Session::Law(settings) => law::session(machine, settings, store, conn, stop).await,
-        Session::Poct(settings) => poct::session(machine, settings, store, conn, stop).await,
-        Session::Vidas(settings) => vidas::session(machine, settings, store, conn, stop).await,
-        Session::Autolyser(settings) => {
-            autolyser::session(machine, settings, store, conn, stop).await
-        }
+        Session::Astm(settings) => astm::session(machine, settings, store, conn, stop)
+            .await
+            .map_err(Into::into),
+        Session::Hl7(settings) => hl7::session(machine, settings, store, conn, stop)
+            .await
+            .map_err(Into::into),
+        Session::Law(settings) => law::session(machine, settings, store, conn, stop)
+            .await
+            .map_err(Into::into),
+        Session::Poct(settings) => poct::session(machine, settings, store, conn, stop)
+            .await
+            .map_err(Into::into),
+        Session::Vidas(settings) => vidas::session(machine, settings, store, conn, stop)
+            .await
+            .map_err(Into::into),
+        Session::Autolyser(settings) => autolyser::session(machine, settings, store, conn, stop)
+            .await
+            .map_err(Into::into),
     }
 }
 

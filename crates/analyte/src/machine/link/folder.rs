@@ -1,5 +1,5 @@
 //! Receives claimed files and retains the claim until receipt and interpretation are durable.
-use crate::machine::error::SessionError as Error;
+use super::error::Error;
 use crate::{deadline, installation::config::Machine, intake};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
@@ -190,7 +190,7 @@ mod tests {
                 if panic {
                     std::panic::panic_any("protected-panic-token");
                 }
-                Err(super::Error::Fixture(crate::invalid(
+                Err(super::Error::Io(std::io::Error::other(
                     "protected-error-token",
                 )))
             });

@@ -155,17 +155,17 @@ mod tests {
             .unwrap_err();
         assert!(matches!(error, StoreWaitError::Operation(DiskFull)));
         assert_eq!(error.to_string(), "disk full");
-        let custody = crate::machine::error::SessionError::from(StoreWaitError::Operation(
+        let custody = crate::machine::poct::Error::from(StoreWaitError::Operation(
             crate::IntakeError::from(analyte_store::Error::UnknownReceipt),
         ));
         let mut result = Err(custody);
         retain_cleanup(
             &mut result,
-            Err(crate::machine::error::SessionError::PoctBackpressureViolated),
+            Err(crate::machine::poct::Error::PoctBackpressureViolated),
         );
         let error = result.unwrap_err();
         assert!(
-            matches!(&error, crate::machine::error::SessionError::Cleanup { original, .. } if matches!(original.as_ref(), crate::machine::error::SessionError::IntakeWait(StoreWaitError::Operation(_))))
+            matches!(&error, crate::machine::poct::Error::Cleanup { original, .. } if matches!(original.as_ref(), crate::machine::poct::Error::Evidence(crate::machine::receive::error::Error::IntakeWait(StoreWaitError::Operation(_)))))
         );
         assert!(error.source().is_some());
         Ok(())

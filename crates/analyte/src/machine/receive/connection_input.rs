@@ -5,7 +5,7 @@
 //! Their positive steps remain guarded by their own complete receipt/transfer/poll
 //! commits (ADR 0010). Cancelling a receive does not cancel queued store work.
 use crate::intake::ByteReason;
-use crate::machine::error::SessionError as Error;
+use crate::machine::link::error::Error;
 use analyte_transport::{Connection, Event, Reason, recording};
 
 pub(crate) enum Input {

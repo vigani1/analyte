@@ -1,8 +1,9 @@
 //! Drives LAW connections using dialog actions and durable store calls.
 use super::connection_input::{self, Input};
 use crate::intake::ByteReason;
-use crate::machine::error::SessionError as Error;
+mod error;
 use crate::orders::outcome::Code;
+pub(crate) use error::Error;
 pub(super) mod independent;
 use crate::intake;
 use crate::orders::law::{Connection, Reply};
@@ -146,9 +147,9 @@ impl<'a, 'm> Host<'a, 'm> {
                 Action::Commit(..) | Action::Rejected(..) | Action::Uncommitted(..)
             );
             let timeout_reason = if matches!(&action, Action::Write(..)) {
-                super::error::DeadlineReason::Write
+                error::DeadlineReason::Write
             } else {
-                super::error::DeadlineReason::Effect
+                error::DeadlineReason::Effect
             };
             let operation = async {
                 match end {

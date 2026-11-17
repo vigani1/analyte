@@ -6,12 +6,13 @@ use self::transfer_end::VidasEnd;
 use super::connection_input::Input;
 use super::custody::{self, ms};
 use crate::intake;
-use crate::machine::error::SessionError as Error;
+mod error;
 use analyte_dialog::vidas::{Action, Config as DialogConfig, Dialog, Event, Timer};
 use analyte_framing::vidas::{Config, Decoder};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
 use analyte_vidas::syntax::Message;
+pub(crate) use error::Error;
 use std::{collections::VecDeque, time::Instant};
 use tokio::sync::watch;
 

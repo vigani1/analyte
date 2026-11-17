@@ -1,12 +1,13 @@
 //! Drives ASTM connections and journals each data frame before ACK (ADR 0003).
 use super::connection_input::{self, Input};
 use crate::intake::ByteReason;
-use crate::machine::error::SessionError as Error;
+mod error;
 use crate::orders::astm::{Pending, Request};
 use crate::{deadline, intake};
 use analyte_dialog::astm::{Action, Config, Dialog, End, Epoch, Event, Role, Timers};
 use analyte_model::{Identifier, ReceiptId};
 use analyte_store::Handle;
+pub(crate) use error::Error;
 use std::{
     collections::VecDeque,
     time::{Duration, Instant},
@@ -465,7 +466,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             Err(error) => super::custody::retain_cleanup(&mut result, Err(error.into())),
         }
         let cleanup = self.input_evidence.retain(self.store, self.machine).await;
-        super::custody::retain_cleanup(&mut result, cleanup);
+        super::custody::retain_cleanup(&mut result, cleanup.map_err(Into::into));
         for order in self.active_orders.drain(..) {
             let cleanup = crate::orders::sending::uncertain(
                 self.store,

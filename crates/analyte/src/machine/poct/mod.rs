@@ -3,11 +3,12 @@ use super::connection_input::Input;
 use super::custody::{self, ms};
 use crate::intake;
 use crate::intake::ByteReason;
-use crate::machine::error::SessionError as Error;
+mod error;
 use analyte_dialog::poct::{CommitOutcome, Dialog, DialogAction, DialogConfig, DialogEvent};
 use analyte_model::ReceiptId;
 use analyte_poct::{Body, ControlId, Header, Message, Timestamp};
 use analyte_store::Handle;
+pub(crate) use error::Error;
 use std::{collections::VecDeque, time::Instant};
 use tokio::sync::watch;
 

@@ -5,7 +5,7 @@ pub enum OrderError {
     /// Failure injected only by the optional test harness.
     #[cfg(feature = "test-hooks")]
     #[error(transparent)]
-    TestHook(crate::Error),
+    TestHook(crate::runtime::test_hooks::Error),
     /// Preserves the original boundary failure.
     #[error(transparent)]
     Refused(#[from] analyte_store::SendRefusal),

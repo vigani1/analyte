@@ -79,7 +79,7 @@ pub(in crate::machine) async fn run(
     super::super::custody::retain_cleanup(&mut result, cleanup);
     if *stop.borrow() {
         let retained = closing.after_commits().await;
-        super::super::custody::retain_cleanup(&mut result, retained);
+        super::super::custody::retain_cleanup(&mut result, retained.map_err(Into::into));
     }
     result
 }
