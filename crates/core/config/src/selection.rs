@@ -1,5 +1,5 @@
 //! Parses the legacy TOML layer names into one supported stack choice.
-use crate::{Error, MachineDocument, TransportKind, invalid};
+use crate::{Error, MachineDocument, invalid};
 
 // Each choice and its legacy spellings are declared together. The macro makes
 // the lookup exhaustive without a parallel enum or an index-coupled table.
@@ -54,9 +54,6 @@ impl<'a> ParsedMachine<'a> {
 
     pub(crate) fn parse(document: &'a MachineDocument, path: &str) -> Result<Self, Error> {
         let t = document.transport.kind;
-        let stream = t != TransportKind::WatchedFolder;
-        let tcp = matches!(t, TransportKind::TcpClient | TransportKind::TcpServer);
-        let folder = t == TransportKind::WatchedFolder;
         let Some((choice, names)) = LAYOUTS.iter().find(|(_, names)| {
             names[1] == document.framing.kind
                 && names[2] == document.dialog.kind
@@ -67,11 +64,7 @@ impl<'a> ParsedMachine<'a> {
                 reason: "select a supported framing, dialog and syntax combination",
             });
         };
-        let supported_transport = match choice {
-            StackChoice::AstmLis02 | StackChoice::VidasLiteral | StackChoice::Autolyser => stream,
-            StackChoice::Hl7V2 | StackChoice::LawManager | StackChoice::Poct => tcp,
-            StackChoice::FileAstm | StackChoice::FileHl7 => folder,
-        };
+        let supported_transport = choice.supports_transport(t);
         if !supported_transport {
             return Err(Error::IncompatibleStack {
                 path: path.into(),

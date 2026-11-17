@@ -168,7 +168,7 @@ impl Program {
                     .any(|m| m.snapshot.effective().site().destination.name.as_str() == name)
             })
         {
-            return Err(Error::InvalidSigningRotationReferencesOrCount);
+            return Err(Error::InvalidSigningRotation);
         }
         for machine in &machines {
             let destination = &machine.snapshot.effective().site().destination;
@@ -480,12 +480,13 @@ fn load_machine(entry: Entry, base: &Path, record_bytes: usize) -> Result<Machin
     .validate()?;
     if matches!(
         snapshot.effective().stack(),
-        analyte_config::Stack::Astm(analyte_config::RecordTransport::Stream(settings)) if settings.checksum_hex() == analyte_config::ChecksumHex::AcceptLowercase
+        analyte_config::Stack::Astm(analyte_config::RecordTransport::Stream(settings)) if settings.checksum_hex()
+            == analyte_config::ChecksumHex::AcceptLowercase
     ) {
         return Err(Error::UnsupportedChecksumMode);
     }
     if snapshot.effective().stack().operation_timeout_ms() > 60_000 {
-        return Err(Error::ReceiveTransportOperationTimeoutCannotExceed60000Ms);
+        return Err(Error::ReceiveTimeoutTooLong);
     }
     if snapshot.canonical().len() > record_bytes
         || snapshot.effective().stack().limits().bytes() > record_bytes

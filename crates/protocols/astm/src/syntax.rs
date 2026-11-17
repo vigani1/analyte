@@ -154,7 +154,9 @@ pub enum Kind {
     Manufacturer,
 }
 impl Kind {
-    fn parse(byte: u8) -> Option<Self> {
+    /// Parses a standard record identifier, accepting either ASCII case.
+    #[must_use]
+    pub fn parse(byte: u8) -> Option<Self> {
         match byte.to_ascii_uppercase() {
             b'H' => Some(Self::Header),
             b'P' => Some(Self::Patient),

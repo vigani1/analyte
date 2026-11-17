@@ -311,7 +311,7 @@ fn send(side: &crate::IoSide, mut event: crate::Event) -> Result<(), Error> {
             Err(tokio::sync::mpsc::error::TrySendError::Full(returned)) => event = returned,
         }
         if start.elapsed() >= side.limits.deadline {
-            return Err(Error::Deadline("serial event backpressure"));
+            return Err(Error::Deadline(crate::DeadlineKind::SerialBackpressure));
         }
         std::thread::park_timeout(Duration::from_millis(1));
     }
@@ -343,7 +343,7 @@ fn transfer(
                         return Ok(crate::Reason::Cancelled);
                     }
                     if start.elapsed() >= side.limits.deadline {
-                        return Err(Error::Deadline("serial write (outcome uncertain)"));
+                        return Err(Error::Deadline(crate::DeadlineKind::SerialWrite));
                     }
                     let count = port.write(remaining).map_err(|source| Error::Io {
                         operation: "serial write",

@@ -87,7 +87,8 @@ async fn exercise(definition: &str, raw: Vec<u8>) -> Result<(), Error> {
     let temp = crate::admin::private_tempdir()?;
     let receiver = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let endpoint = receiver.local_addr()?.to_string();
-    let missing = definition.rewrite("tests = [{machine_code=\"SYN\", machine_system=\"synthetic\", app_code=\"DEMO\", app_system=\"demo\"}]", "tests = []");
+    let missing = definition.rewrite("tests = [{machine_code=\"SYN\", machine_system=\"synthetic\", app_code=\"DEMO\", app_system=\"demo\"}]",
+        "tests = []");
     let old = program(temp.path(), &missing, &endpoint)?;
     let mut store = crate::runtime::service::open_store(&old, Box::new(Space)).await?;
     let machine = old.machines().first().ok_or("missing machine")?;

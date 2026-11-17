@@ -149,7 +149,7 @@ impl Effects for Host<'_, '_> {
                 self.actions
                     .extend(self.dialog.step(self.start.elapsed(), Event::Tick)?);
             }
-            Input::Closed(_) | Input::Failed(_) | Input::RecordingFailed(_) => {
+            Input::Closed(_) | Input::Failed(_) => {
                 self.end_code = if *stop.borrow() {
                     VidasEnd::TransferCancelled
                 } else {
@@ -237,7 +237,7 @@ impl Host<'_, '_> {
                         return Err(custody::effect_failure(failure, error.into()));
                     }
                     if failure.is_none() {
-                        failure = Some(Error::TransferParkedReconcileBeforeReconnect);
+                        failure = Some(Error::TransferUnreconciled);
                     }
                 }
                 Action::Close => match self.work.confirmed(store).await? {

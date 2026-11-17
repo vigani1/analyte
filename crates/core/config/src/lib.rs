@@ -33,10 +33,10 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 pub use stack::{
     AstmOrders, AstmStack, AstmSyntax, AutolyserOrders, AutolyserStack, DialogTimeouts,
-    FileAstmStack, FileHl7Stack, Hl7Orders, Hl7Query, Hl7SendOrders, Hl7Stack, Hl7Syntax, LawLinks,
-    LawOrders, LawPolicy, LawStack, OrderTables, PoctStack, RecordTransport, Stack, StackSettings,
-    StreamKind, StreamTransport, SyntaxBounds, SyntaxLimits, TcpRole, TcpTransport, VidasOrders,
-    VidasStack,
+    FileAstmStack, FileHl7Stack, Hl7OptionsSource, Hl7Orders, Hl7Query, Hl7SendOrders, Hl7Stack,
+    Hl7Syntax, LawLinks, LawOrders, LawPolicy, LawStack, OrderTables, PoctStack, RecordTransport,
+    Stack, StackSettings, StreamKind, StreamTransport, SyntaxBounds, SyntaxLimits, TcpRole,
+    TcpTransport, VidasOrders, VidasStack,
 };
 use validation::{validate_machine, validate_site};
 #[cfg(test)]

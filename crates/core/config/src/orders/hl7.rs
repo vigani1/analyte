@@ -68,7 +68,10 @@ impl Orders {
                 "use 1 to 60000 milliseconds",
             ));
         }
-        if layout.lines.is_empty() || layout.lines.len()>128 || !layout.lines.iter().any(|l|matches!(l,DsrLine::SampleId)) || !layout.lines.iter().any(|l|matches!(l,DsrLine::TestCode)) || layout.lines.iter().any(|line| matches!(line,DsrLine::Literal{value} if value.len()>300 || !value.is_ascii() || value.bytes().any(|b|b.is_ascii_control() || b"|^~\\&".contains(&b)))) {
+        if layout.lines.is_empty() || layout.lines.len()>128 || !layout.lines.iter().any(|l|matches!(l,
+            DsrLine::SampleId)) || !layout.lines.iter().any(|l|matches!(l,
+            DsrLine::TestCode)) || layout.lines.iter().any(|line| matches!(line,
+            DsrLine::Literal{value} if value.len()>300 || !value.is_ascii() || value.bytes().any(|b|b.is_ascii_control() || b"|^~\\&".contains(&b)))) {
             return Err(invalid(path,"orders.hl7.lines","supply 1 to 128 plain DSP lines including sample_id and test_code"));
         }
         if layout.lines.iter().any(|l| matches!(l, DsrLine::PatientId))

@@ -90,7 +90,7 @@ pub(crate) async fn run(
             loop {
                 let accepted = tokio::select! {
                     biased;
-                    _ = stop.changed() => { closing.after_commits().await?; return Ok(()); },
+                    () = analyte_sink::stopped(&mut stop) => { closing.after_commits().await?; return Ok(()); },
                     accepted = listener.accept() => accepted?,
                 };
                 let (conn, side) = recorded_connection(limits, capture.as_deref());

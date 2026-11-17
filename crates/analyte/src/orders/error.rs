@@ -28,7 +28,7 @@ pub enum OrderError {
     OrderPollDeadlineOverflow,
     /// Unexpected Autolyser insertion outcome.
     #[error("unexpected Autolyser insertion outcome")]
-    UnexpectedAutolyserInsertionOutcome,
+    UnexpectedInsertionOutcome,
 
     /// Failure injected only by the optional test harness.
     #[error(transparent)]
@@ -89,7 +89,7 @@ pub enum OrderError {
     AstmLimitsMissing,
     /// ASTM query response byte limit exceeded.
     #[error("ASTM query response byte limit exceeded")]
-    AstmQueryResponseByteLimitExceeded,
+    AstmQueryResponseTooLarge,
     /// Original wire mapping failure.
     #[error(transparent)]
     Hl7WireMapping(#[from] analyte_mapping::hl7::WireError),
@@ -184,7 +184,7 @@ pub enum OrderError {
         effect: Box<Self>,
     },
 }
-impl crate::runtime::service::cleanup::CleanupFailure for OrderError {
+impl crate::cleanup::CleanupFailure for OrderError {
     fn with_effect(original: Self, effect: Self) -> Self {
         Self::Cleanup {
             original: Box::new(original),

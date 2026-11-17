@@ -96,7 +96,7 @@ impl Effects for Host<'_, '_> {
                     return Ok(Flow::Stop);
                 }
             }
-            Input::Closed(_) | Input::Failed(_) | Input::RecordingFailed(_) => {
+            Input::Closed(_) | Input::Failed(_) => {
                 let actions = self
                     .dialog
                     .step(self.start.elapsed(), Event::Disconnected)?;

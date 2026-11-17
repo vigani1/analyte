@@ -203,9 +203,5 @@ fn discharge(
         .findings
         .retain(|f| !(f.position == position && f.problem == Problem::UnqualifiedHl7Report));
     output.applied_departures.push(evidence);
-    finding(
-        output,
-        position,
-        Problem::DepartureDerivedStatusRequiresContract,
-    )
+    finding(output, position, Problem::DerivedStatusContract)
 }

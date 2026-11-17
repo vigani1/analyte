@@ -10,7 +10,7 @@ pub enum Error {
     UnsupportedChecksumMode,
     /// A required installation setting or relationship is refused.
     #[error("LAW gates require injected loopback listener")]
-    LawGatesRequireInjectedLoopbackListener,
+    MissingLawGateListener,
     /// A required installation setting or relationship is refused.
     #[error("admin address must be 127.0.0.1")]
     AdminAddressNotLoopback,
@@ -22,7 +22,7 @@ pub enum Error {
     InvalidCaptureMachineId,
     /// A required installation setting or relationship is refused.
     #[error("closing hook requires a loopback TCP client")]
-    ClosingHookRequiresALoopbackTcpClient,
+    InvalidClosingHookTransport,
     /// A required installation setting or relationship is refused.
     #[error("commit hook requires injected ASTM loopback listener")]
     MissingAstmCommitListener,
@@ -46,10 +46,10 @@ pub enum Error {
     InvalidProgramLimits,
     /// A required installation setting or relationship is refused.
     #[error("invalid signing rotation references or count")]
-    InvalidSigningRotationReferencesOrCount,
+    InvalidSigningRotation,
     /// A required installation setting or relationship is refused.
     #[error("receive transport operation timeout cannot exceed 60000 ms")]
-    ReceiveTransportOperationTimeoutCannotExceed60000Ms,
+    ReceiveTimeoutTooLong,
     /// A required installation setting or relationship is refused.
     #[error("store record limit is smaller than machine message or effective config")]
     StoreRecordLimitTooSmall,
@@ -113,11 +113,11 @@ impl Error {
             Self::Address(cause) => cause,
             Self::Integer(cause) => cause,
             Self::UnsupportedChecksumMode
-            | Self::LawGatesRequireInjectedLoopbackListener
+            | Self::MissingLawGateListener
             | Self::AdminAddressNotLoopback
             | Self::AdminPortOutOfRange
             | Self::InvalidCaptureMachineId
-            | Self::ClosingHookRequiresALoopbackTcpClient
+            | Self::InvalidClosingHookTransport
             | Self::MissingAstmCommitListener
             | Self::MissingLawCommitListener
             | Self::ConfigurationTooLarge
@@ -125,8 +125,8 @@ impl Error {
             | Self::DuplicateMachineIdentity
             | Self::InconsistentSharedDestination
             | Self::InvalidProgramLimits
-            | Self::InvalidSigningRotationReferencesOrCount
-            | Self::ReceiveTransportOperationTimeoutCannotExceed60000Ms
+            | Self::InvalidSigningRotation
+            | Self::ReceiveTimeoutTooLong
             | Self::StoreRecordLimitTooSmall
             | Self::MissingShutdownListeners
             | Self::TestListenerMismatch

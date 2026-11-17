@@ -29,7 +29,7 @@ pub(crate) async fn run(
         .ok();
         tokio::select! {
             biased;
-            _ = stop.changed() => return Ok(()),
+            () = analyte_sink::stopped(&mut stop) => return Ok(()),
             result = cycle(
                 &store,
                 endpoint.id(),

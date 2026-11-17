@@ -115,12 +115,13 @@ mod tests {
     }
     #[test]
     fn shared_link_and_custody_keep_concrete_recovery_causes() {
-        let link =
-            super::super::link::error::Error::from(analyte_transport::Error::Deadline("write all"));
+        let link = super::super::link::error::Error::from(analyte_transport::Error::Deadline(
+            analyte_transport::DeadlineKind::WriteAll,
+        ));
         assert!(matches!(
             link,
             super::super::link::error::Error::Transport(analyte_transport::Error::Deadline(
-                "write all"
+                analyte_transport::DeadlineKind::WriteAll
             ))
         ));
         let custody = super::super::receive::error::Error::from(
