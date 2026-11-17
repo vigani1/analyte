@@ -9,3 +9,9 @@ pub use views::*;
 
 mod codes;
 pub use codes::*;
+
+mod query;
+pub use query::{QueryIntent, QuerySelectorError, query_intent};
+
+mod encode;
+pub use encode::{OrderTermination, encode_order_envelope};

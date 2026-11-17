@@ -189,7 +189,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             vec![Event::Send(crate::orders::astm::envelope(
                 machine,
                 vec![reserved.payload.record()?.to_vec()],
-                b'N',
+                analyte_astm::OrderTermination::Normal,
             ))]
         } else if bytes.is_empty()
             && self.response.is_some()

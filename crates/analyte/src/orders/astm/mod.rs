@@ -1,7 +1,7 @@
 //! Answers bounded ASTM specimen order queries without returning historical results (LIS02-A2 §11).
 use crate::installation::config::Machine;
 use crate::orders::OrderError as Error;
-use analyte_astm::{Kind, Message, Query};
+
 use analyte_config::WhenUntrusted;
 use analyte_model::SampleId;
 use analyte_store::{Handle, Lookup};
@@ -50,75 +50,21 @@ pub(crate) fn request(machine: &Machine, payload: &[u8]) -> Result<Option<Reques
         .astm_limits()
         .ok_or_else(|| Error::AstmLimitsMissing)?;
     let messages = analyte_astm::parse(payload, limits)?;
-    let queries: Vec<_> = messages
-        .iter()
-        .flat_map(Message::records)
-        .filter_map(Query::new)
-        .collect();
-    if queries.is_empty() {
-        return Ok(None);
-    }
-    // LIS02-A2 section 6.12 p.12: only production may reach the real order cache.
-    // section 12.3 pp.27-28 permits a query error, never a fabricated empty answer.
-    if messages
-        .iter()
-        .flat_map(Message::records)
-        .filter_map(analyte_astm::Header::new)
-        .any(|header| header.processing_id().is_none_or(|id| id.raw() != b"P"))
-    {
-        return Ok(Some(Request::Unsupported));
-    }
-    if queries.len() != 1
-        || messages
-            .iter()
-            .flat_map(Message::records)
-            .any(|r| !matches!(r.kind(), Kind::Header | Kind::Query | Kind::Terminator))
-    {
-        return Ok(Some(Request::Unsupported));
-    }
-    let Some(query) = queries.first() else {
-        return Ok(Some(Request::Unsupported));
-    };
-    if query.field(13).is_some_and(|f| f.raw() == b"A") {
-        return Ok(Some(Request::Cancel));
-    }
-    if query.field(13).is_none_or(|f| f.raw() != b"O")
-        || (4..=12)
-            .filter(|f| *f != 5)
-            .any(|f| query.field(f).is_some_and(|f| !f.raw().is_empty()))
-        || query
-            .test_id()
-            .is_some_and(|f| !matches!(f.raw(), b"" | b"ALL"))
-    {
-        return Ok(Some(Request::Unsupported));
-    }
-    let Some(ids) = query.range_start() else {
-        return Ok(Some(Request::Unsupported));
-    };
-    let mut samples = Vec::new();
-    for repetition in ids.repeats() {
-        if repetition
-            .iter()
-            .enumerate()
-            .any(|(index, part)| index != 1 && !part.raw().is_empty())
+    Ok(
+        match analyte_astm::query_intent(&messages)
+            .map_err(|_| Error::AstmSpecimenSelectorContainsUnsupportedEscapes)?
         {
-            return Ok(Some(Request::Unsupported));
-        }
-        let Some(sample) = repetition.get(1) else {
-            return Ok(Some(Request::Unsupported));
-        };
-        if sample.raw() == b"ALL" || sample.raw().is_empty() {
-            return Ok(Some(Request::Unsupported));
-        }
-        if sample.has_unsupported_escape() {
-            return Err(Error::AstmSpecimenSelectorContainsUnsupportedEscapes);
-        }
-        samples.push(SampleId::new(sample.text())?);
-    }
-    if samples.is_empty() {
-        return Ok(Some(Request::Unsupported));
-    }
-    Ok(Some(Request::Orders(samples)))
+            analyte_astm::QueryIntent::Absent => None,
+            analyte_astm::QueryIntent::Unsupported => Some(Request::Unsupported),
+            analyte_astm::QueryIntent::Cancel => Some(Request::Cancel),
+            analyte_astm::QueryIntent::Orders(samples) => Some(Request::Orders(
+                samples
+                    .iter()
+                    .map(|sample| SampleId::new(sample))
+                    .collect::<Result<_, _>>()?,
+            )),
+        },
+    )
 }
 
 impl<'a> Pending<'a> {
@@ -232,7 +178,11 @@ async fn answer(
     if Instant::now() >= until {
         return Ok(failure(machine));
     }
-    let code = if records.is_empty() { b'I' } else { b'N' };
+    let code = if records.is_empty() {
+        analyte_astm::OrderTermination::NoInformation
+    } else {
+        analyte_astm::OrderTermination::Normal
+    };
     Ok(Some(Reply {
         records: envelope(machine, records, code),
         candidates,
@@ -246,7 +196,11 @@ pub(crate) fn failure(machine: &Machine) -> Option<Reply> {
         .when_untrusted
     {
         WhenUntrusted::Error => Some(Reply {
-            records: envelope(machine, Vec::new(), b'Q'),
+            records: envelope(
+                machine,
+                Vec::new(),
+                analyte_astm::OrderTermination::QueryError,
+            ),
             candidates: Vec::new(),
         }),
         WhenUntrusted::NoAnswer => None,
@@ -256,26 +210,14 @@ pub(crate) fn failure(machine: &Machine) -> Option<Reply> {
 /// Wraps mapped orders with independent patient groups and explicit termination.
 pub(crate) fn envelope(
     machine: &Machine,
-    mut orders: Vec<Vec<u8>>,
-    termination: u8,
+    orders: Vec<Vec<u8>>,
+    termination: analyte_astm::OrderTermination,
 ) -> Vec<Vec<u8>> {
     let receiver = super::settings::astm(machine)
         .and_then(|s| s.layout().receiver.as_ref())
         .map_or("", |id| id.as_str());
-    let receiver = receiver
-        .replace('&', "&E&")
-        .replace('|', "&F&")
-        .replace('^', "&S&")
-        .replace('\\', "&R&");
     let timestamp = jiff::Timestamp::now()
         .strftime("%Y%m%d%H%M%S%z")
         .to_string();
-    let mut records =
-        vec![format!("H|\\^&|||Analyte|||||{receiver}||P|LIS2-A2|{timestamp}\r").into_bytes()];
-    for (index, order) in orders.drain(..).enumerate() {
-        records.push(format!("P|{}\r", index.saturating_add(1)).into_bytes());
-        records.push(order);
-    }
-    records.push(vec![b'L', b'|', b'1', b'|', termination, b'\r']);
-    records
+    analyte_astm::encode_order_envelope(receiver, &timestamp, orders, termination)
 }
