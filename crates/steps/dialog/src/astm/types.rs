@@ -67,7 +67,7 @@ impl Config {
 
     /// Validates timers and resource ceilings before a connection starts.
     /// # Errors
-    /// Returns `InvalidConfig` for zero budgets or ceilings.
+    /// Returns `Configuration` for zero budgets or ceilings.
     pub fn new(
         limit: Limit,
         timers: Timers,
