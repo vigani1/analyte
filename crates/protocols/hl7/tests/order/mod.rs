@@ -7,6 +7,8 @@ use analyte_hl7::order::{
 };
 use analyte_hl7::{AckCode, ControlId, Message, Options, Version, decode_text};
 mod commands;
+mod editions;
+mod laboratory;
 mod responses;
 
 fn header(version: Version) -> Result<Header<'static>, Error> {
