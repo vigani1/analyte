@@ -1,5 +1,5 @@
 //! Runs deferred HL7 display query exchanges (2.3.1 §2.18 and 2.5.1 §5.9).
-use super::{Action, Dialog, Error, Message, Msh, ReceiptId};
+use super::{Action, Dialog, Error, ExchangeId, Message, Msh};
 use analyte_hl7::{AckCode, ControlId, Version, query};
 use std::time::Duration;
 
@@ -49,7 +49,7 @@ enum Kind {
 pub(super) struct Orders {
     version: Version,
     waiting: Waiting,
-    pending: Option<(ReceiptId, Message, Kind, Duration)>,
+    pending: Option<(ExchangeId, Message, Kind, Duration)>,
     issuance: Option<Issuance>,
 }
 impl Orders {
@@ -77,7 +77,7 @@ impl Orders {
             }
         }
     }
-    pub(super) fn failed_commit(&mut self, id: ReceiptId) -> bool {
+    pub(super) fn failed_commit(&mut self, id: ExchangeId) -> bool {
         if self
             .pending
             .as_ref()
@@ -285,7 +285,7 @@ impl Dialog {
             out.push(Action::Parked(raw.to_vec(), Error::Exhausted));
             return true;
         };
-        let id = ReceiptId(self.epoch, self.next);
+        let id = ExchangeId(self.epoch, self.next);
         self.next = next;
         orders.pending = Some((
             id,
@@ -299,7 +299,7 @@ impl Dialog {
     }
     pub(super) fn complete_order_commit(
         &mut self,
-        id: ReceiptId,
+        id: ExchangeId,
         out: &mut Vec<Action>,
     ) -> Result<bool, Error> {
         let Some(orders) = &mut self.orders else {

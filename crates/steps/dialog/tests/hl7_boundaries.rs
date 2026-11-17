@@ -2,7 +2,7 @@
 //! HL7 2.5.1 §§2.9.2–2.9.3 define response responsibility. Receipt ordinals,
 //! callback phases, a non-extending timeout and diagnostic byte ceilings are
 //! Analyte host policies; MLLP R1 does not prescribe a timeout duration.
-use analyte_dialog::hl7::{Action, Config, Dialog, Error, Event, ReceiptId};
+use analyte_dialog::hl7::{Action, Config, Dialog, Error, Event, ExchangeId};
 use analyte_hl7::{AckCode, AckError, ControlId, Options, Response};
 use std::time::Duration;
 
@@ -23,7 +23,7 @@ fn feed(d: &mut Dialog, bytes: &[u8]) -> Result<Vec<Action>, Error> {
     }
     Ok(out)
 }
-fn receive(d: &mut Dialog, payload: &[u8]) -> Result<ReceiptId, Box<dyn std::error::Error>> {
+fn receive(d: &mut Dialog, payload: &[u8]) -> Result<ExchangeId, Box<dyn std::error::Error>> {
     let raw = [b"\x0b".as_slice(), payload, b"\x1c\r"].concat();
     feed(d, &raw)?
         .iter()
@@ -37,7 +37,7 @@ fn receive(d: &mut Dialog, payload: &[u8]) -> Result<ReceiptId, Box<dyn std::err
         })
         .ok_or_else(|| "expected commit".into())
 }
-fn response(d: &mut Dialog, id: ReceiptId) -> Result<Vec<Action>, Box<dyn std::error::Error>> {
+fn response(d: &mut Dialog, id: ExchangeId) -> Result<Vec<Action>, Box<dyn std::error::Error>> {
     Ok(d.step(
         Duration::ZERO,
         Event::Respond(
@@ -170,9 +170,11 @@ fn adr0003_0010_hl7_251_2_9_callbacks_require_matching_receipt_and_phase() -> Te
                     "committed" => Event::Stored(reply),
                     "failed" => Event::StoreFailed(reply),
                     "interpreted" => Event::Interpreted(reply),
-                    "invalid" => {
-                        Event::NotInterpretable(reply, diagnostic(b"OBX", b"102", b""), false)
-                    }
+                    "invalid" => Event::NotInterpretable(
+                        reply,
+                        diagnostic(b"OBX", b"102", b""),
+                        analyte_dialog::hl7::AckChoice::ContentError,
+                    ),
                     "respond" => Event::Respond(
                         reply,
                         Response {
@@ -232,7 +234,11 @@ fn rule7_host_error_metadata_bounds_refuse_without_losing_pending_receipt() -> T
         d.step(Duration::ZERO, Event::Stored(id))?;
         let out = d.step(
             Duration::ZERO,
-            Event::NotInterpretable(id, diagnostic(segment, code, app), false),
+            Event::NotInterpretable(
+                id,
+                diagnostic(segment, code, app),
+                analyte_dialog::hl7::AckChoice::ContentError,
+            ),
         )?;
         assert_eq!(
             out.iter()

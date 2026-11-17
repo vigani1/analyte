@@ -24,7 +24,7 @@ fn feed(d: &mut Dialog, bytes: &[u8]) -> Result<Vec<Action>, Error> {
     }
     Ok(out)
 }
-fn receipt(actions: &[Action]) -> Result<ReceiptId, Box<dyn std::error::Error>> {
+fn receipt(actions: &[Action]) -> Result<ExchangeId, Box<dyn std::error::Error>> {
     actions
         .iter()
         .find_map(|a| {
@@ -38,7 +38,7 @@ fn receipt(actions: &[Action]) -> Result<ReceiptId, Box<dyn std::error::Error>> 
 }
 fn respond(
     d: &mut Dialog,
-    id: ReceiptId,
+    id: ExchangeId,
     control: &[u8],
 ) -> Result<Vec<Action>, Box<dyn std::error::Error>> {
     Ok(d.step(
@@ -55,7 +55,7 @@ fn respond(
 fn has_code(actions: &[Action], code: &[u8]) -> bool {
     actions
         .iter()
-        .any(|a| matches!(a, Action::Write(bytes) if bytes.windows(code.len()).any(|w| w == code)))
+        .any(|a| matches!(a, Action::Write(analyte_dialog::Write { bytes, .. }) if bytes.windows(code.len()).any(|w| w == code)))
 }
 
 #[test]
@@ -97,7 +97,7 @@ fn hl7_251_2_9_2_failed_store_and_interpretation() -> TestResult {
                         code: b"102",
                         application_code: b"",
                     },
-                    false,
+                    AckChoice::ContentError,
                 ),
             )?;
         } else {

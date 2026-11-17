@@ -131,7 +131,9 @@ impl<'a, 'm> Host<'a, 'm> {
                         self.settings.settings().syntax().limits(),
                         self.settings
                             .orders()
-                            .ok_or(analyte_mapping::OrderMappingError::Disabled)?,
+                            .ok_or(analyte_mapping::astm::OrderError::Shared(
+                                analyte_mapping::OrderMappingError::Disabled,
+                            ))?,
                     )
                 },
             )

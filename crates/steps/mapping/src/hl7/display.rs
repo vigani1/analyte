@@ -1,6 +1,7 @@
 //! Maps app orders to legacy HL7 display responses.
+use super::OrderError;
+use crate::orders::AppOrder;
 use crate::orders::codes::{map_priority, map_specimen, map_test};
-use crate::orders::{AppOrder, OrderMappingError};
 use analyte_config::{DsrLine, Hl7Orders, SyntaxLimits};
 
 /// Maps explicitly configured DSP text, preserving values and leaving absent context empty.
@@ -12,14 +13,17 @@ pub fn map(
     order_id: &str,
     orders: &Hl7Orders,
     limits: &SyntaxLimits,
-) -> Result<Vec<Vec<u8>>, OrderMappingError> {
-    let layout = &orders.query().ok_or(OrderMappingError::Disabled)?.layout();
+) -> Result<Vec<Vec<u8>>, OrderError> {
+    let layout = &orders
+        .query()
+        .ok_or(crate::OrderMappingError::Disabled)?
+        .layout();
     let settings = &orders.tables();
     let mut lines = Vec::new();
     for test in &order.tests {
         let mapped = map_test(settings.tests(), test)?;
         let Some(code) = mapped.machine_components.first() else {
-            return Err(OrderMappingError::DisplayAssayComponents);
+            return Err(OrderError::DisplayAssayComponents);
         };
         for line in &layout.lines {
             let value = match line {
@@ -35,7 +39,7 @@ pub fn map(
                     Some(patient) if orders.patient_namespace() == Some(&patient.namespace) => {
                         patient.value.as_str()
                     }
-                    Some(_) => return Err(OrderMappingError::PatientNamespace),
+                    Some(_) => return Err(crate::OrderMappingError::PatientNamespace.into()),
                 },
                 DsrLine::SpecimenType => match &order.specimen_type {
                     None => "",
@@ -52,13 +56,13 @@ pub fn map(
                     .any(|b| b.is_ascii_control() || b"|^~\\&".contains(&b))
                 || lines.len() >= limits.records()
             {
-                return Err(OrderMappingError::DisplayLineBounds);
+                return Err(OrderError::DisplayLineBounds);
             }
             lines.push(value.as_bytes().to_vec());
         }
     }
     if lines.is_empty() {
-        return Err(OrderMappingError::DisplayEmpty);
+        return Err(OrderError::DisplayEmpty);
     }
     Ok(lines)
 }
