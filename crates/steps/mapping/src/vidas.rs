@@ -1,7 +1,7 @@
 //! Maps VIDAS codes, original values and outgoing work.
 use crate::inbound::evidence::{Error, map_part, map_result, map_test, map_units, push_result};
-use crate::orders::codes::{map_priority as outbound_priority, map_test as outbound_test};
-use crate::orders::{AppOrder, OrderMappingError, map_patient};
+use crate::orders::codes::{self, map_priority};
+use crate::orders::{AppOrder, map_patient};
 use crate::{Output, Position};
 
 use analyte_model::{
@@ -122,30 +122,30 @@ pub fn map_order(
     order: &AppOrder,
     machine: &analyte_config::VidasStack,
     settings: &analyte_config::VidasOrders,
-) -> Result<Vec<analyte_vidas::syntax::Message>, OrderMappingError> {
+) -> Result<Vec<analyte_vidas::syntax::Message>, OrderError> {
     let installed = &machine.policy();
     if !installed.download {
-        return Err(OrderMappingError::Disabled);
+        return Err(crate::OrderMappingError::Disabled.into());
     }
     let patient = map_patient(order, settings.patient_namespace())?;
     if patient.len() > 17 {
-        return Err(OrderMappingError::PatientIdTooLong);
+        return Err(crate::OrderMappingError::PatientIdTooLong.into());
     }
     if order.sample.as_str().len() > usize::from(u8::from(installed.sample_limit)) {
-        return Err(OrderMappingError::SampleIdTooLong);
+        return Err(OrderError::SampleIdTooLong);
     }
     // BCI A section 4 has no specimen-type destination; so is origin and si is empty.
     if order.specimen_type.is_some() {
-        return Err(OrderMappingError::UnmappedSpecimenType);
+        return Err(crate::OrderMappingError::UnmappedSpecimenType.into());
     }
     if order.tests.is_empty()
         || order.tests.len() > 100
         || order.tests.len() > machine.settings().limits().records()
         || order.tests.len() > machine.settings().limits().repetitions()
     {
-        return Err(OrderMappingError::VidasTestCount);
+        return Err(OrderError::TestCount);
     }
-    outbound_priority(settings.priorities(), order.priority)?;
+    map_priority(settings.priorities(), order.priority)?;
     let limit = match installed.sample_limit {
         analyte_config::VidasSampleLimit::Twelve => analyte_vidas::syntax::SampleLimit::Twelve,
         analyte_config::VidasSampleLimit::Seventeen => {
@@ -155,9 +155,9 @@ pub fn map_order(
     let mut requests = Vec::new();
     let mut total_bytes = 0usize;
     for test in &order.tests {
-        let mapped = outbound_test(settings.tests(), test)?;
+        let mapped = codes::map_test(settings.tests(), test)?;
         let [code] = mapped.machine_components.as_slice() else {
-            return Err(OrderMappingError::VidasAssayComponents);
+            return Err(OrderError::AssayComponents);
         };
         let request = analyte_vidas::syntax::Message::new(
             &[
@@ -170,15 +170,44 @@ pub fn map_order(
             limit,
         )?;
         if request.text().len() > machine.settings().frame_limit() {
-            return Err(OrderMappingError::VidasFrameLimit);
+            return Err(OrderError::FrameLimit);
         }
         total_bytes = total_bytes
             .checked_add(request.text().len())
-            .ok_or(OrderMappingError::VidasByteCountOverflow)?;
+            .ok_or(OrderError::ByteCountOverflow)?;
         if total_bytes > machine.settings().limits().bytes() {
-            return Err(OrderMappingError::VidasMessageLimit);
+            return Err(OrderError::MessageLimit);
         }
         requests.push(request);
     }
     Ok(requests)
+}
+
+/// Specific outgoing VIDAS mapping refusals.
+#[derive(Debug, thiserror::Error)]
+pub enum OrderError {
+    /// Sample identity exceeds the vendor field width.
+    #[error("overlong-sample-id")]
+    SampleIdTooLong,
+    /// Vendor syntax refuses the mapped request, without exposing patient content.
+    #[error("VIDAS request is not representable: {0}")]
+    Syntax(#[from] analyte_vidas::syntax::Error),
+    /// VIDAS test count is empty or exceeds configured bounds.
+    #[error("VIDAS test count is empty or exceeds configured bounds")]
+    TestCount,
+    /// VIDAS assay mapping must contain exactly one component.
+    #[error("VIDAS assay mapping must contain exactly one component")]
+    AssayComponents,
+    /// VIDAS request exceeds the frame limit.
+    #[error("VIDAS request exceeds the frame limit")]
+    FrameLimit,
+    /// VIDAS request byte count overflow.
+    #[error("VIDAS request byte count overflow")]
+    ByteCountOverflow,
+    /// VIDAS requests exceed the message byte limit.
+    #[error("VIDAS requests exceed the message byte limit")]
+    MessageLimit,
+    /// Shared order evidence is unavailable or unmapped.
+    #[error(transparent)]
+    Shared(#[from] crate::OrderMappingError),
 }

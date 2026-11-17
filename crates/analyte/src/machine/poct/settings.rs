@@ -1,5 +1,5 @@
 //! Translates installed POCT syntax and dialog bounds.
-use super::super::custody::ms;
+use crate::machine::receive::custody::ms;
 /// Translates installed POCT bounds for both live syntax checks and retained receipts.
 #[must_use]
 pub(crate) fn limits(settings: &analyte_config::PoctStack) -> analyte_poct::Limits {

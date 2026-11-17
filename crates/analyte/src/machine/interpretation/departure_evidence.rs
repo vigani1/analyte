@@ -8,6 +8,10 @@ use analyte_model::{
     SourceText,
 };
 
+/// Source note stored when a declared wire compatibility is exercised.
+const WIRE_COMPATIBILITY_SOURCE: &str =
+    "Declared wire compatibility exercised; original bytes and semantic values retained";
+
 pub(crate) fn for_receipt(
     machine: &Machine,
     receipt: &analyte_store::Receipt,
@@ -126,7 +130,7 @@ fn packed(
                 );
                 if ends_record {
                     if nonstandard || continued_packing {
-                        if entries.len() == 256 {
+                        if entries.len() == EvidenceList::<AppliedDeparture>::MAX_ENTRIES {
                             return Err(Error::AppliedDepartureEvidenceLimit);
                         }
                         entries.push(AppliedDeparture {
@@ -189,14 +193,21 @@ fn compatibility(
             | MachineDeparture::AstmHostContentionPriority(_) => (false, ""),
         };
         if exercised {
-            if entries.len() == 256 {
+            if entries.len() == EvidenceList::<AppliedDeparture>::MAX_ENTRIES {
                 return Err(Error::AppliedDepartureEvidenceLimit);
             }
             entries.push(AppliedDeparture {
-                rule:Identifier::new(declaration.tag())?,declaration:declaration.evidence_snapshot()?,standard:Identifier::new(standard)?,
-                record:0,field:0,source:SourceText::new("Declared wire compatibility exercised; original bytes and semantic values retained")?,
-                meaning:DepartureMeaning::WireCompatibility,coordinates:Identifier::new("receipt_bytes")?,
-                spans:EvidenceList::new(vec![DepartureSpan::try_from(0..raw.len()).map_err(|_| Error::ReversedSpan)?])?,
+                rule: Identifier::new(declaration.tag())?,
+                declaration: declaration.evidence_snapshot()?,
+                standard: Identifier::new(standard)?,
+                record: 0,
+                field: 0,
+                source: SourceText::new(WIRE_COMPATIBILITY_SOURCE)?,
+                meaning: DepartureMeaning::WireCompatibility,
+                coordinates: Identifier::new("receipt_bytes")?,
+                spans: EvidenceList::new(vec![
+                    DepartureSpan::try_from(0..raw.len()).map_err(|_| Error::ReversedSpan)?,
+                ])?,
             });
         }
     }

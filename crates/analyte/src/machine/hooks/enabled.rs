@@ -7,7 +7,7 @@ pub(crate) struct MachineHooks {
     pub(crate) law_gates: crate::runtime::test_hooks::LawGates,
     pub(crate) law_precommit: Option<std::sync::Arc<crate::runtime::test_hooks::Committed>>,
     pub(crate) law_committed: Option<std::sync::Arc<crate::runtime::test_hooks::Committed>>,
-    pub(crate) astm_committed: Option<std::sync::Arc<crate::runtime::test_hooks::AstmCommitted>>,
+    pub(crate) astm_committed: Option<std::sync::Arc<crate::runtime::test_hooks::Committed>>,
     pub(crate) connection_closing: Option<std::sync::Arc<crate::runtime::test_hooks::Committed>>,
 }
 impl MachineHooks {

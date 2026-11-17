@@ -69,7 +69,7 @@ fn hl7_2_5_1_s2_8_and_2_6_2_8_2_2_9_1_s2_9_2_original_ack_requires_store_and_int
         let wire = reply
             .iter()
             .find_map(|action| {
-                if let Action::Write(wire) = action {
+                if let Action::Write(analyte_dialog::Write { bytes: wire, .. }) = action {
                     Some(wire)
                 } else {
                     None

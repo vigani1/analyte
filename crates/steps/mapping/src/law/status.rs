@@ -1,5 +1,6 @@
 //! Maps status-only LAW groups as execution evidence, never clinical observations.
-use crate::{Error, Output, Position, text};
+use super::Error;
+use crate::{Output, Position, text};
 use analyte_hl7::law::{ExecutionStatus, Results};
 use analyte_model::{AwosExecution, ProcessingMode, SourceText, UtcOffset};
 
@@ -126,8 +127,8 @@ pub(super) fn map(
 }
 
 fn decode(raw: &[u8], position: Position) -> Result<SourceText, Error> {
-    text(
-        std::str::from_utf8(raw).map_err(|_| Error::Encoding { position })?,
+    Ok(text(
+        std::str::from_utf8(raw).map_err(|_| crate::Error::Encoding { position })?,
         position,
-    )
+    )?)
 }

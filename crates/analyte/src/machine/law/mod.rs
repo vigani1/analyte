@@ -66,7 +66,7 @@ struct Host<'a, 'm> {
     dialog: Dialog,
     mode: Mode<'a>,
     clock: Instant,
-    receipt: Option<(protocol::ReceiptId, ReceiptId)>,
+    receipt: Option<(protocol::ExchangeId, ReceiptId)>,
     ready: Option<oneshot::Sender<()>>,
     stored: bool,
     outbound: Option<&'a tokio::sync::mpsc::Sender<independent::Work>>,
@@ -109,7 +109,7 @@ impl<'a, 'm> Host<'a, 'm> {
             .checked_add(until)
             .ok_or_else(|| Error::ConnectionDeadlineOverflow)
     }
-    fn receipt(&self, token: protocol::ReceiptId) -> Result<ReceiptId, Error> {
+    fn receipt(&self, token: protocol::ExchangeId) -> Result<ReceiptId, Error> {
         self.receipt
             .filter(|(expected, _)| *expected == token)
             .map(|(_, id)| id)
@@ -168,7 +168,7 @@ impl<'a, 'm> Host<'a, 'm> {
             } else {
                 tokio::select! {
                 biased;
-                    () = super::stopping(&mut stop) => {
+                    () = analyte_sink::stopped(&mut stop) => {
                         self.stopped = true;
                         return Ok(());
                     },
@@ -197,7 +197,7 @@ impl<'a, 'm> Host<'a, 'm> {
                     .await
                     .map_err(Error::from)?;
 
-                super::custody::store_before_ack(
+                crate::machine::receive::custody::store_before_ack(
                     machine,
                     intake::receive(self.store, self.machine, id, raw),
                 )
@@ -208,7 +208,7 @@ impl<'a, 'm> Host<'a, 'm> {
                     let mut stop = host.stop.clone();
                     tokio::select! {
                     biased;
-                            () = super::stopping(&mut stop) => {
+                            () = analyte_sink::stopped(&mut stop) => {
                                 self.stopped = true;
                                 return Ok(Vec::new());
                             },
@@ -229,10 +229,7 @@ impl<'a, 'm> Host<'a, 'm> {
             Action::Interpret(token) => {
                 return self.interpret_receipt(token).await;
             }
-            Action::Failed(token, reason) => {
-                intake::failed_reading(self.store, machine, self.receipt(token)?, &reason).await?;
-                return Ok(Vec::new());
-            }
+            Action::Parked(token, reason) => return self.park_failure(token, reason).await,
             Action::ResponseNeeded(token) => {
                 let metadata = crate::orders::hl7::response::response_metadata(
                     crate::orders::hl7::response::Profile::Law,
@@ -242,7 +239,7 @@ impl<'a, 'm> Host<'a, 'm> {
                     Event::Respond(token, metadata.response()?),
                 )?);
             }
-            Action::Write(bytes, until) => self.write_response(bytes, until, host).await?,
+            Action::Write(write) => self.write_response(write, host).await?,
             Action::WorkIssued => {
                 self.orders.issued(Duration::from_millis(u64::from(
                     self.settings.policy().response_ms(),
@@ -302,7 +299,7 @@ impl<'a, 'm> Host<'a, 'm> {
     }
     async fn answer_query(
         &mut self,
-        token: protocol::ReceiptId,
+        token: protocol::ExchangeId,
         message: analyte_hl7::Message,
         started: Duration,
         host: &mut Context<'_, '_>,
@@ -350,7 +347,7 @@ impl<'a, 'm> Host<'a, 'm> {
     }
     async fn interpret_receipt(
         &mut self,
-        token: protocol::ReceiptId,
+        token: protocol::ExchangeId,
     ) -> Result<Vec<Action>, Error> {
         let (outcome, location) = intake::interpret_with_location(
             self.store,
@@ -380,14 +377,28 @@ impl<'a, 'm> Host<'a, 'm> {
             .dialog
             .step(self.clock.elapsed(), Event::Interpreted(token, interpreted))?)
     }
+    async fn park_failure(
+        &self,
+        token: protocol::ExchangeId,
+        reason: protocol::Failure,
+    ) -> Result<Vec<Action>, Error> {
+        intake::failed_reading(
+            self.store,
+            self.machine.machine(),
+            self.receipt(token)?,
+            &reason.to_string(),
+        )
+        .await?;
+        Ok(Vec::new())
+    }
     async fn write_response(
         &mut self,
-        bytes: Vec<u8>,
-        until: Duration,
+        write: analyte_dialog::Write,
         host: &mut Context<'_, '_>,
     ) -> Result<Event<'static>, Error> {
+        let until = write.until.ok_or(protocol::Error::Stale)?;
         host.conn
-            .write_all(&bytes, Some(self.absolute(until)?.into()))
+            .write_all(&write.bytes, Some(self.absolute(until)?.into()))
             .await
             .map_err(|error| {
                 if matches!(error, analyte_transport::Error::Deadline("write all")) {
@@ -438,7 +449,7 @@ impl<'a, 'm> Host<'a, 'm> {
                 | Action::Query(..)
                 | Action::WorkResponse(..)
                 | Action::Interpret(..)
-                | Action::Failed(..)
+                | Action::Parked(..)
                 | Action::ResponseNeeded(..)
                 | Action::Write(..)
                 | Action::WorkIssued
@@ -559,7 +570,7 @@ impl Effects for Host<'_, '_> {
                 .map_err(Into::into),
             Mode::Outbound(_) => Ok(()),
         };
-        crate::machine::custody::retain_cleanup(result, finished);
+        crate::machine::receive::custody::retain_cleanup(result, finished);
         cleanup
     }
 }
@@ -591,7 +602,7 @@ impl Host<'_, '_> {
                         let mut stop = host.stop.clone();
                         let outgoing = tokio::select! {
                             biased;
-                            () = crate::machine::stopping(&mut stop) => { self.stopped = true; return Ok(()); },
+                            () = analyte_sink::stopped(&mut stop) => { self.stopped = true; return Ok(()); },
                             result = self.orders.idle(self.store, self.machine.machine(), settings::options(self.settings)) => match result {
                                 Ok(message) => message,
                                 Err(error) => {

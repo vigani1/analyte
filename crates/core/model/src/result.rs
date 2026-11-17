@@ -137,11 +137,14 @@ impl<T> Default for EvidenceList<T> {
 #[error("evidence list exceeds 256 entries")]
 pub struct ListError;
 impl<T> EvidenceList<T> {
+    /// Maximum retained entries, enforced by construction and deserialization.
+    pub const MAX_ENTRIES: usize = 256;
+
     /// Accepts at most 256 entries.
     /// # Errors
     /// Rejects a longer list.
     pub fn new(entries: Vec<T>) -> Result<Self, ListError> {
-        if entries.len() > 256 {
+        if entries.len() > Self::MAX_ENTRIES {
             return Err(ListError);
         }
         Ok(Self(entries))
@@ -168,7 +171,7 @@ impl<'de, T: Deserialize<'de>> Deserialize<'de> for EvidenceList<T> {
             ) -> Result<Self::Value, A::Error> {
                 let mut entries = Vec::new();
                 while let Some(entry) = seq.next_element()? {
-                    if entries.len() == 256 {
+                    if entries.len() == EvidenceList::<T>::MAX_ENTRIES {
                         return Err(serde::de::Error::custom(ListError));
                     }
                     entries.push(entry);

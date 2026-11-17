@@ -26,7 +26,8 @@ pub(super) struct Host<'a, 'm> {
     start: Instant,
     transfer: Option<Identifier>,
     // Keep the failure until the dialog's NAK and refusal actions have run.
-    commit_failure: Option<super::custody::StoreWaitError<analyte_store::IntakeError>>,
+    commit_failure:
+        Option<crate::machine::receive::custody::StoreWaitError<analyte_store::IntakeError>>,
     raw: Vec<u8>,
     payload: Vec<u8>,
     input_evidence: connection_input::Custody,
@@ -45,7 +46,10 @@ impl<'a, 'm> Host<'a, 'm> {
         settings: &'a analyte_config::AstmStack,
         store: &'a Handle,
     ) -> Result<Self, Error> {
-        let config = settings::dialog(settings, super::custody::budget(machine.machine()))?;
+        let config = settings::dialog(
+            settings,
+            crate::machine::receive::custody::budget(machine.machine()),
+        )?;
         let epoch = Epoch(uuid::Uuid::now_v7().as_u128());
         let dialog = Dialog::new(config.clone(), epoch);
         Ok(Self {
@@ -106,7 +110,9 @@ impl<'a, 'm> Host<'a, 'm> {
                         self.settings.settings().syntax().limits(),
                         self.settings
                             .orders()
-                            .ok_or(analyte_mapping::OrderMappingError::Disabled)?,
+                            .ok_or(analyte_mapping::astm::OrderError::Shared(
+                                analyte_mapping::OrderMappingError::Disabled,
+                            ))?,
                     )
                 },
             )
@@ -305,7 +311,7 @@ impl<'a, 'm> Host<'a, 'm> {
             number.value(),
             analyte_framing::astm::FrameNumber::MAX.value(),
         )?;
-        let committed = super::custody::store_before_ack(
+        let committed = crate::machine::receive::custody::store_before_ack(
             self.machine.machine(),
             self.store.request(deadline()?, move |s| {
                 s.journal_frame(&transfer_id, sequence, &bytes, &provenance)
@@ -442,7 +448,10 @@ impl Effects for Host<'_, '_> {
         // A failed NAK write can interrupt the action queue before CommitFailed.
         // Keep that transport failure and the original custody cause together.
         if let Some(error) = self.commit_failure.take() {
-            super::custody::retain_cleanup(result, Err(Error::CommitRefused(error)));
+            crate::machine::receive::custody::retain_cleanup(
+                result,
+                Err(Error::CommitRefused(error)),
+            );
         }
         // Disconnect drains the dialog-owned decoder on every exit, including failed
         // host effects. Transfer and order identities are reconciled below even if
@@ -458,14 +467,19 @@ impl Effects for Host<'_, '_> {
                             ByteReason::AstmFrame(&error),
                         )
                         .await;
-                        super::custody::retain_cleanup(result, cleanup.map_err(Into::into));
+                        crate::machine::receive::custody::retain_cleanup(
+                            result,
+                            cleanup.map_err(Into::into),
+                        );
                     }
                 }
             }
-            Err(error) => super::custody::retain_cleanup(result, Err(error.into())),
+            Err(error) => {
+                crate::machine::receive::custody::retain_cleanup(result, Err(error.into()));
+            }
         }
         let cleanup = self.input_evidence.retain(self.store, self.machine).await;
-        super::custody::retain_cleanup(result, cleanup.map_err(Into::into));
+        crate::machine::receive::custody::retain_cleanup(result, cleanup.map_err(Into::into));
         for order in self.active_orders.drain(..) {
             let cleanup = crate::orders::sending::uncertain(
                 self.store,
@@ -473,11 +487,11 @@ impl Effects for Host<'_, '_> {
                 crate::orders::outcome::Code::ConnectionEndedBeforeConfirmation.into(),
             )
             .await;
-            super::custody::retain_cleanup(result, cleanup.map_err(Into::into));
+            crate::machine::receive::custody::retain_cleanup(result, cleanup.map_err(Into::into));
         }
         if let Some(transfer) = self.transfer.take() {
             let cleanup = finish_incomplete(self.store, transfer).await;
-            super::custody::retain_cleanup(result, cleanup);
+            crate::machine::receive::custody::retain_cleanup(result, cleanup);
         }
 
         Ok(())

@@ -1,14 +1,16 @@
 //! Verifies the shared decoding contract for all six protocol stacks.
-use analyte_framing::{Decode, astm, autolyser, hl7, law, poct, vidas};
+use analyte_framing::{astm, autolyser, hl7, poct, vidas};
 
-fn collect<D: Decode>(mut decoder: D, raw: &[u8]) -> Result<Vec<D::Event>, D::Error> {
+fn collect<E, X>(
+    raw: &[u8],
+    mut push: impl FnMut(u8) -> Result<Option<E>, X>,
+) -> Result<Vec<E>, X> {
     let mut events = Vec::new();
     for byte in raw {
-        if let Some(event) = decoder.push_byte(*byte)? {
+        if let Some(event) = push(*byte)? {
             events.push(event);
         }
     }
-    assert!(decoder.finish_stream()?.is_none());
     Ok(events)
 }
 
@@ -23,27 +25,34 @@ fn adr0012_lis01_mllp_poct_bci_rev18_all_six_stacks_share_decode()
     .flatten()
     .collect();
     assert!(matches!(
-        collect(
-            astm::Decoder::new(astm::Limit::default(), astm::HexPolicy::Strict),
-            &raw
-        )?
+        {
+            let mut decoder = astm::Decoder::new(astm::Limit::default(), astm::HexPolicy::Strict);
+            let events = collect(&raw, |byte| {
+                Ok::<_, std::convert::Infallible>(decoder.push(byte))
+            })?;
+            assert!(decoder.finish().is_none());
+            events
+        }
         .as_slice(),
         [astm::Event::Frame(_)]
     ));
     let limit = hl7::Limit::new(100)?;
     let raw = hl7::encode(b"synthetic", limit)?;
+    let mut decoder = hl7::Decoder::new(limit);
     assert!(matches!(
-        collect(hl7::Decoder::new(limit), &raw)?.as_slice(),
+        collect(&raw, |byte| Ok::<_, std::convert::Infallible>(
+            decoder.push(byte)
+        ))?
+        .as_slice(),
         [hl7::Event::Block(_)]
     ));
-    assert!(matches!(
-        collect(law::Decoder::new(limit), &raw)?.as_slice(),
-        [law::Event::Block(_)]
-    ));
+    assert!(decoder.finish().is_none());
+    let mut decoder = poct::Decoder::new(100, 10);
     assert_eq!(
-        collect(poct::Decoder::new(100, 10), b"<x/><y/>")?,
+        collect(b"<x/><y/>", |byte| decoder.push(byte))?,
         [b"<x/>".to_vec(), b"<y/>".to_vec()]
     );
+    assert!(decoder.finish()?.is_none());
     let config = vidas::Config::new(
         vidas::Mode::Alternate,
         80,
@@ -60,11 +69,22 @@ fn adr0012_lis01_mllp_poct_bci_rev18_all_six_stacks_share_decode()
     )?;
     let raw = config.encode(b"synthetic")?;
     assert_eq!(
-        collect(vidas::Decoder::new(config), &raw)?[0].body,
+        {
+            let mut decoder = vidas::Decoder::new(config);
+            let events = collect(&raw, |byte| decoder.push(byte))?;
+            assert!(decoder.finish()?.is_none());
+            events
+        }[0]
+        .body,
         b"synthetic"
     );
     let raw = autolyser::finish(b"synthetic".to_vec());
-    let frames = collect(autolyser::Decoder::new(autolyser::Mode::Report, 100)?, &raw)?;
+    let frames = {
+        let mut decoder = autolyser::Decoder::new(autolyser::Mode::Report, 100)?;
+        let events = collect(&raw, |byte| decoder.push(byte))?;
+        assert!(decoder.finish().raw().is_empty());
+        events
+    };
     assert_eq!(frames[0].body()?, b"synthetic");
     Ok(())
 }

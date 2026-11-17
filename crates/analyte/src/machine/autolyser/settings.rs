@@ -1,5 +1,5 @@
 //! Translates installed autolyser dialog settings.
-use super::super::custody::ms;
+use crate::machine::receive::custody::ms;
 
 pub(crate) fn dialog(
     settings: &analyte_config::AutolyserStack,

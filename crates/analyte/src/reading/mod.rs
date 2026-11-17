@@ -13,6 +13,9 @@ pub(crate) use envelope::payload;
 /// Specific failures from each owned reading layer; callers retain and park the receipt.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// LAW result mapping refused retained evidence.
+    #[error(transparent)]
+    LawMapping(#[from] analyte_mapping::law::Error),
     /// ASTM record syntax was rejected.
     #[error(transparent)]
     Astm(#[from] analyte_astm::Error),

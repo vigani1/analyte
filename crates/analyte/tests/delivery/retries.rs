@@ -46,7 +46,7 @@ async fn plan11_adr0008_restored_outbox_retries_same_id_bytes_as_duplicate() -> 
         // A prior refusal may have scheduled a future retry. Wait under a deadline
         // until the real worker claims it; cancel only after the receiver commits.
         let original = tokio::time::timeout(HANG_GUARD, async {
-        let worker = analyte_sink::Worker::new(&store, &destinations, &secrets);
+        let worker = analyte_sink::Worker::for_destination(&store, &destinations[0], &secrets);
         loop {
             let attempt = worker.deliver_once();
             tokio::pin!(attempt);

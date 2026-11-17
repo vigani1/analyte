@@ -35,9 +35,11 @@ impl Work<Message> {
                     settings,
                     settings
                         .orders()
-                        .ok_or(analyte_mapping::OrderMappingError::Disabled)?,
+                        .ok_or(analyte_mapping::vidas::OrderError::Shared(
+                            analyte_mapping::OrderMappingError::Disabled,
+                        ))?,
                 )?;
-                Ok(requests.into())
+                Ok::<_, analyte_mapping::vidas::OrderError>(requests.into())
             })
             .await?
         {

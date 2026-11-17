@@ -8,7 +8,7 @@ fn vidas_bci_a_4_exact_identity_unknown_tags_and_values() -> Result<(), Box<dyn 
     let message = Message::parse(text, SampleLimit::Twelve)?;
     assert_eq!(message.text(), text);
     assert_eq!(message.get("zz"), Some("extension"));
-    let result = analyte_mapping::vidas_evidence(&message)?;
+    let result = analyte_mapping::map_evidence(&message)?;
     assert_eq!(result.sample.as_str(), "000a");
     assert_eq!(result.value.original.as_str(), "<1,234mUI/ml");
     assert_eq!(result.call.as_str(), "Equivoque");

@@ -97,7 +97,7 @@ pub(crate) async fn run(
             }
         }
         tokio::select! {
-            _ = crate::machine::stopping(&mut stop) => return Ok(()),
+            _ = analyte_sink::stopped(&mut stop) => return Ok(()),
             () = tokio::time::sleep(Duration::from_secs(60)) => {}
         }
     }
@@ -107,12 +107,6 @@ pub(crate) async fn run(
 mod tests {
     use super::*;
     use crate::Error;
-    struct Space;
-    impl analyte_store::FreeSpace for Space {
-        fn available(&self, _: &std::path::Path) -> std::io::Result<u64> {
-            Ok(u64::MAX)
-        }
-    }
     #[tokio::test]
     async fn adr0013_item4_background_run_is_audited_and_shutdown_is_bounded() -> Result<(), Error>
     {
@@ -125,7 +119,7 @@ mod tests {
                     limits.busy_timeout = Duration::from_millis(20);
                     limits
                 },
-                Box::new(Space),
+                Box::new(analyte_fixtures::Space(u64::MAX)),
                 2,
                 crate::test_startup_deadline()?,
             )

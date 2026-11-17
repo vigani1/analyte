@@ -1,5 +1,5 @@
 //! Maps outgoing LAW codes with supplied identities (TF-2b C.6/C.7/C.9).
-use crate::orders::WireMappingError as Error;
+use super::WireError as Error;
 use analyte_hl7::{Message, Options, law};
 use std::sync::Arc;
 /// Pure mapper for one app-authorized LAW command.
@@ -19,7 +19,7 @@ pub fn map_order(
     let peer = law.policy().peer().capabilities();
     Ok(Command {
         app: crate::orders::app_order(app)?,
-        settings: Arc::new(law.orders().ok_or(Error::LawMappingsAbsent)?.clone()),
+        settings: Arc::new(law.orders().ok_or(Error::MappingsAbsent)?.clone()),
         priority: peer.instructions.priority,
         specimen: peer.content.specimen,
     })
@@ -48,7 +48,7 @@ fn validate_field(value: &str) -> Result<&str, Error> {
         usize::MAX,
         analyte_hl7::FieldSyntax::Plain,
     ) {
-        return Err(Error::LawUnrepresentableIdentity);
+        return Err(Error::UnrepresentableIdentity);
     }
     Ok(value)
 }
@@ -62,7 +62,7 @@ pub fn map_work(
     options: Options,
     response: analyte_hl7::Response<'_>,
 ) -> Result<Message, Error> {
-    let (first, _) = commands.first().ok_or(Error::LawEmptyWork)?;
+    let (first, _) = commands.first().ok_or(Error::EmptyWork)?;
     let mut wire = Vec::new();
     for (command, items) in commands {
         let sample = validate_field(command.app.sample.as_str())?;
@@ -70,17 +70,17 @@ pub fn map_work(
             .app
             .specimen_type
             .as_ref()
-            .ok_or(Error::LawSpecimenTypeMissing)?;
+            .ok_or(Error::SpecimenTypeMissing)?;
         let mapped =
             crate::orders::codes::map_specimen(Some(command.settings.specimen_types()), specimen)
-                .map_err(Error::LawUnmappedSpecimenType)?;
+                .map_err(Error::UnmappedSpecimenType)?;
         let priority = if command.priority && action == law::WorkAction::New {
             Some(validate_field(
                 crate::orders::codes::map_priority(
                     command.settings.priorities(),
                     command.app.priority,
                 )
-                .map_err(Error::LawUnmappedPriority)?
+                .map_err(Error::UnmappedPriority)?
                 .machine
                 .as_str(),
             )?)
@@ -89,13 +89,13 @@ pub fn map_work(
         };
         for item in *items {
             if wire.len() >= options.limits.segments {
-                return Err(Error::LawQueryLimitExceeded);
+                return Err(Error::QueryLimitExceeded);
             }
             let [requested] = item.tests else {
-                return Err(Error::LawItemTestCount);
+                return Err(Error::ItemTestCount);
             };
             let mapped_test = crate::orders::codes::map_test(command.settings.tests(), requested)
-                .map_err(Error::LawUnmappedTest)?;
+                .map_err(Error::UnmappedTest)?;
             wire.push(WireAwos {
                 // C.6 manager-authored AWOS supports EI.1 only. The shared store
                 // still retains the explicit logical namespace beside this identity.
@@ -103,7 +103,7 @@ pub fn map_work(
                 container: sample.to_owned(),
                 fields: {
                     let [code, text, system] = mapped_test.machine_components.as_slice() else {
-                        return Err(Error::LawTestComponents);
+                        return Err(Error::TestComponents);
                     };
                     law::WorkFields::new(
                         sample,

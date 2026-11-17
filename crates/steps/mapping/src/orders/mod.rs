@@ -7,7 +7,7 @@ pub use crate::law::{
     Command as LawCommand, address as law_address, map_order as map_law_order,
     map_work as map_law_work,
 };
-use crate::orders::codes::map_specimen as outbound_specimen;
+
 pub use app::map as app_order;
 
 use analyte_model::{NamespacedId, SampleId, SamplePosition};
@@ -89,24 +89,9 @@ pub enum OrderMappingError {
     /// The machine requires a specimen medium supplied by the app.
     #[error("missing-specimen-type")]
     MissingSpecimenType,
-    /// No explicitly addressed cup can be encoded; zero is never invented.
-    #[error("invalid-cup-position")]
-    InvalidCupPosition,
-    /// Autolyser requires an explicit addressed cup.
-    #[error("missing-cup-position")]
-    MissingCupPosition,
-    /// An Autolyser field fails the documented fixed-width rules.
-    #[error("Autolyser request is not representable: {0}")]
-    Autolyser(#[from] analyte_autolyser::syntax::Error),
     /// Patient identity exceeds the vendor field width.
     #[error("overlong-patient-id")]
     PatientIdTooLong,
-    /// Sample identity exceeds the vendor field width.
-    #[error("overlong-sample-id")]
-    SampleIdTooLong,
-    /// Vendor syntax refuses the mapped request, without exposing patient content.
-    #[error("VIDAS request is not representable: {0}")]
-    Vidas(#[from] analyte_vidas::syntax::Error),
     /// No exact app-system and code match exists.
     #[error("unmapped test {0}")]
     UnmappedTest(NamespacedId),
@@ -116,60 +101,26 @@ pub enum OrderMappingError {
     /// Priority has no explicit translation.
     #[error("unmapped order priority")]
     UnmappedPriority,
-    /// VIDAS test count is empty or exceeds configured bounds.
-    #[error("VIDAS test count is empty or exceeds configured bounds")]
-    VidasTestCount,
-    /// VIDAS assay mapping must contain exactly one component.
-    #[error("VIDAS assay mapping must contain exactly one component")]
-    VidasAssayComponents,
-    /// VIDAS request exceeds the frame limit.
-    #[error("VIDAS request exceeds the frame limit")]
-    VidasFrameLimit,
-    /// VIDAS request byte count overflow.
-    #[error("VIDAS request byte count overflow")]
-    VidasByteCountOverflow,
-    /// VIDAS requests exceed the message byte limit.
-    #[error("VIDAS requests exceed the message byte limit")]
-    VidasMessageLimit,
-    /// Autolyser test count is empty or exceeds protocol or configured bounds.
-    #[error("Autolyser test count is empty or exceeds protocol or configured bounds")]
-    AutolyserTestCount,
-    /// Autolyser assay mapping must contain exactly one component.
-    #[error("Autolyser assay mapping must contain exactly one component")]
-    AutolyserAssayComponents,
-    /// Autolyser worklist exceeds the message byte limit.
-    #[error("Autolyser worklist exceeds the message byte limit")]
-    AutolyserMessageLimit,
-    /// ASTM test count is empty or exceeds the repetition limit.
-    #[error("ASTM test count is empty or exceeds the repetition limit")]
-    AstmTestCount,
-    /// ASTM test components exceed the configured limit.
-    #[error("ASTM test components exceed the configured limit")]
-    AstmTestComponents,
-    /// ASTM order fields do not cover the selected record layout.
-    #[error("ASTM order fields do not cover the selected record layout")]
-    AstmRecordLayout,
-    /// ASTM order exceeds record or byte limits.
-    #[error("ASTM order exceeds record or byte limits")]
-    AstmRecordLimit,
-    /// ASTM selector component is zero or exceeds the configured limit.
-    #[error("ASTM selector component is zero or exceeds the configured limit")]
-    AstmSelectorComponent,
-    /// ASTM selector field is outside the order record.
-    #[error("ASTM selector field is outside the order record")]
-    AstmSelectorField,
-    /// ASTM text is empty or contains unsupported bytes or delimiters.
-    #[error("ASTM text is empty or contains unsupported bytes or delimiters")]
-    AstmTextRepertoire,
-    /// HL7 display assay mapping has no component.
-    #[error("HL7 display assay mapping has no component")]
-    DisplayAssayComponents,
-    /// HL7 display line violates repertoire, width or record limits.
-    #[error("HL7 display line violates repertoire, width or record limits")]
-    DisplayLineBounds,
-    /// HL7 display contains no lines.
-    #[error("HL7 display contains no lines")]
-    DisplayEmpty,
+}
+
+/// Protocol-specific refusal from dispatching an outgoing order.
+#[derive(Debug, thiserror::Error)]
+pub enum DispatchError {
+    /// ASTM mapping refused the order.
+    #[error(transparent)]
+    Astm(#[from] crate::astm::OrderError),
+    /// VIDAS mapping refused the order.
+    #[error(transparent)]
+    Vidas(#[from] crate::vidas::OrderError),
+    /// AUTOLYSER mapping refused the order.
+    #[error(transparent)]
+    Autolyser(#[from] crate::autolyser::OrderError),
+    /// HL7 mapping refused the order.
+    #[error(transparent)]
+    Hl7(#[from] crate::hl7::OrderError),
+    /// Shared order evidence is unavailable.
+    #[error(transparent)]
+    Shared(#[from] OrderMappingError),
 }
 
 /// Maps every requested test before constructing complete protocol commands.
@@ -179,7 +130,7 @@ pub enum OrderMappingError {
 pub fn map_order(
     order: &AppOrder,
     stack: &analyte_config::Stack,
-) -> Result<MachineOrder, OrderMappingError> {
+) -> Result<MachineOrder, DispatchError> {
     use analyte_config::Stack;
     match stack {
         Stack::Astm(analyte_config::RecordTransport::Stream(s)) => crate::astm::map_order(
@@ -187,25 +138,29 @@ pub fn map_order(
             s.settings().syntax().limits(),
             s.orders().ok_or(OrderMappingError::Disabled)?,
         )
-        .map(MachineOrder::Astm),
+        .map(MachineOrder::Astm)
+        .map_err(Into::into),
         Stack::Astm(analyte_config::RecordTransport::Folder(s)) => crate::astm::map_order(
             order,
             s.settings().syntax().limits(),
             s.orders().ok_or(OrderMappingError::Disabled)?,
         )
-        .map(MachineOrder::Astm),
+        .map(MachineOrder::Astm)
+        .map_err(Into::into),
         Stack::Vidas(s) => {
             crate::vidas::map_order(order, s, s.orders().ok_or(OrderMappingError::Disabled)?)
                 .map(MachineOrder::Vidas)
+                .map_err(Into::into)
         }
         Stack::Autolyser(s) => {
             crate::autolyser::map_order(order, s, s.orders().ok_or(OrderMappingError::Disabled)?)
                 .map(MachineOrder::Autolyser)
+                .map_err(Into::into)
         }
         Stack::Hl7(analyte_config::RecordTransport::Stream(_))
         | Stack::Hl7(analyte_config::RecordTransport::Folder(_))
         | Stack::Law(_)
-        | Stack::Poct(_) => Err(OrderMappingError::Disabled),
+        | Stack::Poct(_) => Err(OrderMappingError::Disabled.into()),
     }
 }
 
@@ -232,7 +187,7 @@ pub(super) fn map_specimen<'a>(
         .specimen_type
         .as_ref()
         .ok_or(OrderMappingError::MissingSpecimenType)?;
-    Ok(outbound_specimen(settings.specimen_types(), requested)?
+    Ok(codes::map_specimen(settings.specimen_types(), requested)?
         .machine
         .as_str())
 }
@@ -244,89 +199,4 @@ pub struct OutboundItem<'a> {
     pub namespace: Option<&'a analyte_model::Identifier>,
     /// Tests covered by this immutable reservation item.
     pub tests: &'a [NamespacedId],
-}
-/// Mapping errors for initiating HL7/LAW work, retaining protocol-specific diagnostics.
-#[derive(Debug, thiserror::Error)]
-pub enum WireMappingError {
-    /// Requested priority has no supported wire representation.
-    #[error("HL7-unsupported-priority")]
-    Hl7PriorityUnsupported,
-    /// Test components cannot be represented by the configured grammar.
-    #[error("HL7-test-components")]
-    Hl7TestComponents,
-    /// HL7-patient-name-required-but-not-carried-by-contract.
-    #[error("HL7-patient-name-required-but-not-carried-by-contract")]
-    Hl7PatientNameRequired,
-    /// HL7 send config absent.
-    #[error("HL7 send config absent")]
-    Hl7SendSettingsAbsent,
-    /// HL7-app-order-id-too-long-for-ORC-4.
-    #[error("HL7-app-order-id-too-long-for-ORC-4")]
-    Hl7GroupIdTooLong,
-    /// HL7-item-has-no-placer-namespace.
-    #[error("HL7-item-has-no-placer-namespace")]
-    Hl7PlacerNamespaceMissing,
-    /// HL7-send-item-must-cover-one-test.
-    #[error("HL7-send-item-must-cover-one-test")]
-    Hl7ItemTestCount,
-    /// HL7-patient-namespace-mismatch.
-    #[error("HL7-patient-namespace-mismatch")]
-    Hl7PatientNamespaceMismatch,
-    /// HL7-order-edition-rules-not-implemented.
-    #[error("HL7-order-edition-rules-not-implemented")]
-    Hl7EditionUnsupported,
-    /// HL7-missing-specimen-type.
-    #[error("HL7-missing-specimen-type")]
-    Hl7SpecimenTypeMissing,
-    /// LAW order mappings absent.
-    #[error("LAW order mappings absent")]
-    LawMappingsAbsent,
-    /// LAW outbound value cannot be represented without changing its identity.
-    #[error("LAW outbound value cannot be represented without changing its identity")]
-    LawUnrepresentableIdentity,
-    /// LAW work empty.
-    #[error("LAW work empty")]
-    LawEmptyWork,
-    /// LAW specimen type missing.
-    #[error("LAW specimen type missing")]
-    LawSpecimenTypeMissing,
-    /// LAW query AWOS limit exceeded.
-    #[error("LAW query AWOS limit exceeded")]
-    LawQueryLimitExceeded,
-    /// LAW item must cover one AWOS test.
-    #[error("LAW item must cover one AWOS test")]
-    LawItemTestCount,
-    /// LAW test components.
-    #[error("LAW test components")]
-    LawTestComponents,
-    /// HL7-unmapped-test.
-    #[error("HL7-unmapped-test")]
-    Hl7UnmappedTest(#[source] OrderMappingError),
-    /// HL7-unmapped-specimen-type.
-    #[error("HL7-unmapped-specimen-type")]
-    Hl7UnmappedSpecimenType(#[source] OrderMappingError),
-    /// HL7-unmapped-priority.
-    #[error("HL7-unmapped-priority")]
-    Hl7UnmappedPriority(#[source] OrderMappingError),
-    /// LAW specimen type unmapped.
-    #[error("LAW specimen type unmapped")]
-    LawUnmappedSpecimenType(#[source] OrderMappingError),
-    /// LAW priority unmapped.
-    #[error("LAW priority unmapped")]
-    LawUnmappedPriority(#[source] OrderMappingError),
-    /// LAW test unmapped.
-    #[error("LAW test unmapped")]
-    LawUnmappedTest(#[source] OrderMappingError),
-    /// App evidence violates a common-model text bound.
-    #[error(transparent)]
-    Text(#[from] analyte_model::TextError),
-    /// HL7 syntax rejected mapped content.
-    #[error(transparent)]
-    Hl7(#[from] analyte_hl7::Error),
-    /// HL7 order builder rejected mapped content.
-    #[error(transparent)]
-    Order(#[from] analyte_hl7::order::Error),
-    /// LAW profile rejected mapped content.
-    #[error(transparent)]
-    Law(#[from] analyte_hl7::law::Error),
 }

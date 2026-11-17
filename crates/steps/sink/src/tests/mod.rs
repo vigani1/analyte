@@ -381,7 +381,7 @@ async fn check_delivery_conflicts(store: &Handle, worker: &Worker<'_>, peer: &Pe
 
 async fn check_order_events(store: &Handle, destinations: &[Destination]) -> TestResult {
     let rotating = RotatingSecrets;
-    let event_worker = Worker::new(store, destinations, &rotating);
+    let event_worker = Worker::for_destination(store, &destinations[0], &rotating);
     let mut event: analyte_contract::EventFields = serde_json::from_slice(include_bytes!(
         "../../../../../docs/contract/vectors/event.json"
     ))?;
@@ -522,7 +522,7 @@ async fn check_pause_and_resume(
     metadata.machine = Identifier::new("pause-machine")?;
     enqueue(store, metadata, original, delivery).await?;
     assert_eq!(
-        Worker::new(store, destinations, &wrong)
+        Worker::for_destination(store, &destinations[0], &wrong)
             .deliver_once()
             .await?,
         DeliveryOutcome::Paused

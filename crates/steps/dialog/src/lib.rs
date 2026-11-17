@@ -18,3 +18,9 @@ mod clock;
 pub use clock::Clock;
 /// Failures applying connection time.
 pub use clock::Error as ClockError;
+
+mod exchange;
+pub use exchange::ExchangeId;
+
+mod mllp;
+pub use mllp::Write;

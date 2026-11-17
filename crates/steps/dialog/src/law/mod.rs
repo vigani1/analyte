@@ -1,6 +1,5 @@
 //! Runs deterministic LAW exchanges and deadlines (TF-2b 3.27-3.29, B.6/B.7).
 //! Kept whole: The LAW conversation state transitions and their deadline decisions are reviewed together.
-use analyte_framing::Decode as _;
 use analyte_framing::hl7 as mllp;
 use analyte_hl7::OwnedAckError as Detail;
 use analyte_hl7::{AckCode, AckError, Message, Options, Response, Responsibility, law};
@@ -8,6 +7,7 @@ use std::{collections::VecDeque, time::Duration};
 use thiserror::Error;
 
 mod failure;
+pub use crate::ExchangeId;
 /// Link role; independent outbound links accept only the correlated ORL transaction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Link {
@@ -29,9 +29,6 @@ pub enum Reply {
         work: Message,
     },
 }
-/// Connection-local durable request ordinal; never a clinical result identity.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ReceiptId(u64);
 /// Source location supplied by the host's interpretation, without choosing an ACK.
 #[derive(Debug, Clone, Copy)]
 pub struct Location<'a> {
@@ -73,17 +70,17 @@ pub enum Event<'a> {
     /// Advance deadlines before accepting another event.
     Tick,
     /// Exact raw receipt is durably stored.
-    Stored(ReceiptId),
+    Stored(ExchangeId),
     /// Durable custody failed; no positive reply is permitted.
-    StoreFailed(ReceiptId),
+    StoreFailed(ExchangeId),
     /// Host completed a transaction that does not need a response.
-    Complete(ReceiptId),
+    Complete(ExchangeId),
     /// Host finished durable interpretation.
-    Interpreted(ReceiptId, Interpretation<'a>),
+    Interpreted(ExchangeId, Interpretation<'a>),
     /// Fresh host-generated response metadata.
-    Respond(ReceiptId, Response<'a>),
+    Respond(ExchangeId, Response<'a>),
     /// Query service supplied its response and a reservation deadline.
-    Reply(ReceiptId, &'a Reply, Option<Duration>),
+    Reply(ExchangeId, &'a Reply, Option<Duration>),
     /// Explicit manager-initiated work and its admission deadline.
     Send(&'a Message, Duration),
     /// Installs the retained work exchange's post-issuance deadline on an independent link.
@@ -97,19 +94,19 @@ pub enum Event<'a> {
 #[derive(Debug)]
 pub enum Action {
     /// Commit exact framed bytes before sending `Stored`.
-    Store(ReceiptId, Vec<u8>),
+    Store(ExchangeId, Vec<u8>),
     /// Query cache lookup may now run, using the retained first-byte time.
-    Query(ReceiptId, Message, Duration),
+    Query(ExchangeId, Message, Duration),
     /// Reconcile this durable ORL against retained work; never acknowledge a response.
-    WorkResponse(ReceiptId, Message),
+    WorkResponse(ExchangeId, Message),
     /// Interpret the durable receipt before selecting a result ACK.
-    Interpret(ReceiptId),
+    Interpret(ExchangeId),
     /// Retain a specific interpretation/syntax failure before any reply.
-    Failed(ReceiptId, String),
+    Parked(ExchangeId, Failure),
     /// Supply metadata for the dialog-selected ACK.
-    ResponseNeeded(ReceiptId),
+    ResponseNeeded(ExchangeId),
     /// Exact framed bytes and absolute connection-clock deadline.
-    Write(Vec<u8>, Duration),
+    Write(crate::Write),
     /// All work bytes were issued; the host must retain its reservation until ORL.
     WorkIssued,
     /// The current received transaction is finished.
@@ -117,7 +114,7 @@ pub enum Action {
     /// Rejected or incomplete wire evidence.
     Rejected(mllp::Error, Vec<u8>),
     /// A complete block whose commit confirmation was not driven before interruption.
-    Uncommitted(ReceiptId, Vec<u8>),
+    Uncommitted(ExchangeId, Vec<u8>),
     /// Deadline expiry preceded this byte; retain it with the unread transport tail.
     Unconsumed(u8),
     /// Fatal refusal; earlier effects must still be consumed.
@@ -157,7 +154,7 @@ pub enum Error {
     Framing(#[from] mllp::Error),
     /// HL7 wire syntax failure.
     #[error(transparent)]
-    Syntax(#[from] analyte_hl7::Error),
+    Syntax(std::sync::Arc<analyte_hl7::Error>),
     /// LAW profile validation failure.
     #[error(transparent)]
     Profile(#[from] law::Error),
@@ -178,11 +175,11 @@ enum Completion {
 #[derive(Debug)]
 enum State {
     Idle,
-    Store(ReceiptId, Vec<u8>),
-    Query(ReceiptId),
-    WorkResponse(ReceiptId),
-    Interpret(ReceiptId, Message),
-    Respond(ReceiptId, Plan),
+    Store(ExchangeId, Vec<u8>),
+    Query(ExchangeId),
+    WorkResponse(ExchangeId),
+    Interpret(ExchangeId, Message),
+    Respond(ExchangeId, Plan),
     Writing {
         remaining: VecDeque<Message>,
         until: Duration,
@@ -314,18 +311,14 @@ impl Dialog {
                     .ok_or(Error::Exhausted)?,
             );
         }
-        if let Some(event) = self
-            .decoder
-            .push_byte(byte)
-            .unwrap_or_else(|never| match never {})
-        {
+        if let Some(event) = self.decoder.push(byte) {
             match event {
                 mllp::Event::Rejected { raw, error } => {
                     out.push(Action::Rejected(error.clone(), raw));
                     return Err(error.into());
                 }
                 mllp::Event::Block(raw) => {
-                    let id = ReceiptId(self.next);
+                    let id = ExchangeId(0, self.next);
                     let Some(next) = self.next.checked_add(1) else {
                         out.push(Action::Uncommitted(id, raw));
                         return Err(Error::Exhausted);
@@ -341,7 +334,7 @@ impl Dialog {
 
     fn reply(
         &mut self,
-        id: ReceiptId,
+        id: ExchangeId,
         reply: &Reply,
         reserved_until: Option<Duration>,
         out: &mut Vec<Action>,
@@ -447,11 +440,7 @@ impl Dialog {
         if let State::Store(id, raw) = &self.state {
             out.push(Action::Uncommitted(*id, raw.clone()));
         }
-        if let Some(mllp::Event::Rejected { raw, error }) = self
-            .decoder
-            .finish_stream()
-            .unwrap_or_else(|never| match never {})
-        {
+        if let Some(mllp::Event::Rejected { raw, error }) = self.decoder.finish() {
             out.push(Action::Rejected(error, raw));
         }
     }
@@ -472,10 +461,11 @@ impl Dialog {
                         .ok_or(Error::Exhausted)?,
                 ),
             };
-            out.push(Action::Write(
-                mllp::encode(message.raw(), self.limit)?,
-                send_until,
-            ));
+            out.push(Action::Write(crate::Write::encode(
+                message.raw(),
+                self.limit,
+                Some(send_until),
+            )?));
             self.state = State::Writing {
                 remaining,
                 until,
@@ -503,7 +493,7 @@ impl Dialog {
         }
         Ok(())
     }
-    fn committed(&mut self, id: ReceiptId, out: &mut Vec<Action>) -> Result<(), Error> {
+    fn committed(&mut self, id: ExchangeId, out: &mut Vec<Action>) -> Result<(), Error> {
         let state = std::mem::replace(&mut self.state, State::Idle);
         let State::Store(expected, raw) = state else {
             self.state = state;
@@ -522,10 +512,7 @@ impl Dialog {
         };
         let kind: Vec<_> = law::message_type(&message).take(4).collect();
         if self.link == Link::WorkResponse && kind != [b"ORL".as_slice(), b"O34", b"ORL_O42"] {
-            out.push(Action::Failed(
-                id,
-                "LAW outbound link received a non-ORL message".into(),
-            ));
+            out.push(Action::Parked(id, Failure::NotOrl));
             return Err(Error::NotOrl);
         }
         if kind == [b"QBP".as_slice(), b"Q11", b"QBP_Q11"] {
@@ -539,10 +526,7 @@ impl Dialog {
             self.state = State::WorkResponse(id);
             out.push(Action::WorkResponse(id, message));
         } else if kind != [b"OUL".as_slice(), b"R22", b"OUL_R22"] {
-            out.push(Action::Failed(
-                id,
-                "LAW transaction disabled: unsolicited work/response traffic is not enabled".into(),
-            ));
+            out.push(Action::Parked(id, Failure::DisabledTransaction));
             self.state = State::Respond(
                 id,
                 Plan::Reject(
@@ -559,7 +543,6 @@ impl Dialog {
                     out.push(Action::Interpret(id));
                 }
                 Err(failure) => {
-                    out.push(Action::Failed(id, failure.to_string()));
                     let code = failure.acknowledgment_code().ok_or(Error::NoOutcome)?;
                     let plan = if law::validate_control(&message, law::ControlDirection::Receive)
                         .is_err()
@@ -577,6 +560,7 @@ impl Dialog {
                             .into();
                         Plan::Result(message, code, Responsibility::Stored, Some(detail))
                     };
+                    out.push(Action::Parked(id, Failure::Profile(failure)));
                     self.state = State::Respond(id, plan);
                     out.push(Action::ResponseNeeded(id));
                 }
@@ -586,7 +570,7 @@ impl Dialog {
     }
     fn interpreted(
         &mut self,
-        id: ReceiptId,
+        id: ExchangeId,
         outcome: Interpretation<'_>,
         out: &mut Vec<Action>,
     ) -> Result<(), Error> {
@@ -642,7 +626,7 @@ impl Dialog {
     }
     fn respond(
         &mut self,
-        id: ReceiptId,
+        id: ExchangeId,
         response: Response<'_>,
         out: &mut Vec<Action>,
     ) -> Result<(), Error> {
@@ -744,5 +728,28 @@ impl WorkExchange {
         message: &'a Message,
     ) -> Result<law::WorkResponse<'a>, law::Failure> {
         law::receive_work_response(message, &self.sent)
+    }
+}
+
+/// Specific retained failure from a complete LAW exchange.
+#[derive(Debug, Error)]
+pub enum Failure {
+    /// Syntax could not be interpreted.
+    #[error(transparent)]
+    Syntax(std::sync::Arc<analyte_hl7::Error>),
+    /// The LAW transaction violated its profile.
+    #[error(transparent)]
+    Profile(#[from] law::Failure),
+    /// An outbound link accepts only its correlated response.
+    #[error("LAW outbound link received a non-ORL message")]
+    NotOrl,
+    /// Unsolicited work is not enabled on this link.
+    #[error("LAW transaction disabled: unsolicited work/response traffic is not enabled")]
+    DisabledTransaction,
+}
+
+impl From<analyte_hl7::Error> for Error {
+    fn from(error: analyte_hl7::Error) -> Self {
+        Self::Syntax(std::sync::Arc::new(error))
     }
 }

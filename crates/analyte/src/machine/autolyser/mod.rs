@@ -5,7 +5,8 @@ mod custody;
 use super::driver::{self, Context, Effects, Flow};
 use crate::intake;
 use crate::machine::connection_input::Input;
-use crate::machine::custody::{self as receive_custody, ms};
+use crate::machine::receive;
+use crate::machine::receive::custody::ms;
 use crate::orders::outcome::AutolyserEnd;
 mod error;
 pub(crate) mod settings;
@@ -16,6 +17,30 @@ pub(crate) use error::Error;
 use std::{collections::VecDeque, time::Instant};
 use tokio::sync::watch;
 
+/// Where the host is between machine exchanges; recovery ends only with a completed report.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Phase {
+    Busy,
+    Ready,
+    Recovering,
+}
+
+impl Phase {
+    /// Leaves `Ready` without ending an L recovery in progress.
+    fn busy(&mut self) {
+        if *self != Self::Recovering {
+            *self = Self::Busy;
+        }
+    }
+
+    /// An insertion never ends L recovery; only a completed report does.
+    fn after_insertion(&mut self, ready: bool) {
+        if *self != Self::Recovering {
+            *self = if ready { Self::Ready } else { Self::Busy };
+        }
+    }
+}
+
 /// Mutable conversation state has one owner for the entire connection.
 struct Host<'a, 'm> {
     machine: &'a intake::ConnectionEvidence<'m>,
@@ -25,8 +50,7 @@ struct Host<'a, 'm> {
     dialog: Dialog,
     start: Instant,
     receipt: Option<(ReceiptId, jiff::Timestamp)>,
-    ready: bool,
-    recovering: bool,
+    phase: Phase,
     guard: Option<analyte_store::PollIntentId>,
     end_code: AutolyserEnd,
 }
@@ -66,8 +90,7 @@ impl<'a, 'm> Host<'a, 'm> {
             dialog,
             start: Instant::now(),
             receipt: None,
-            ready: false,
-            recovering: false,
+            phase: Phase::Busy,
             guard: None,
             end_code: AutolyserEnd::TransferError,
         })
@@ -114,7 +137,7 @@ impl Effects for Host<'_, '_> {
         };
         let events = match input {
             Input::Opened { .. } => {
-                self.ready = false;
+                self.phase.busy();
                 vec![Event::Poll(Request::Next)]
             }
             Input::Bytes { bytes } => {
@@ -122,7 +145,7 @@ impl Effects for Host<'_, '_> {
                     return Ok(Flow::Stop);
                 }
 
-                if self.ready
+                if self.phase == Phase::Ready
                     && self.guard.is_none()
                     && !self.work.is_active()
                     && machine.machine().hooks.enabled(Pause::AutolyserQuiescent)
@@ -139,8 +162,8 @@ impl Effects for Host<'_, '_> {
             Input::Tick => {
                 let actions = self.dialog.step(self.start.elapsed(), Event::Tick)?;
                 // Tick alone can initiate L recovery. Never interleave R with it.
-                if actions.is_empty() && self.ready && !self.recovering {
-                    self.ready = false;
+                if actions.is_empty() && self.phase == Phase::Ready {
+                    self.phase = Phase::Busy;
                     if let Some(worklist) = self.work.poll(store, machine, self.settings).await? {
                         let actions = self
                             .dialog
@@ -190,7 +213,7 @@ impl Effects for Host<'_, '_> {
             self.end_code.as_str(),
         )
         .await;
-        receive_custody::retain_cleanup(result, cleanup);
+        receive::custody::retain_cleanup(result, cleanup);
         self.work
             .close(self.store, self.end_code.into())
             .await
@@ -210,7 +233,7 @@ impl<'a, 'm> Host<'a, 'm> {
         let prior_code = self.end_code;
         self.end_code = AutolyserEnd::StorageFailed;
         let id = ReceiptId::new();
-        let stored = receive_custody::store_before_ack(
+        let stored = receive::custody::store_before_ack(
             machine.machine(),
             intake::receive(store, machine, id, raw),
         )
@@ -225,7 +248,7 @@ impl<'a, 'm> Host<'a, 'm> {
                 }
             }
             Err(error) => {
-                if matches!(error, receive_custody::StoreWaitError::Timeout(_)) {
+                if matches!(error, receive::custody::StoreWaitError::Timeout(_)) {
                     self.end_code = AutolyserEnd::StorageTimeout;
                 }
                 match self
@@ -234,7 +257,7 @@ impl<'a, 'm> Host<'a, 'm> {
                 {
                     Ok(next) => actions.extend(next),
                     Err(dialog_error) => {
-                        return Some(receive_custody::effect_failure(
+                        return Some(receive::custody::effect_failure(
                             Some(error.into()),
                             dialog_error.into(),
                         ));
@@ -256,8 +279,7 @@ impl<'a, 'm> Host<'a, 'm> {
             .take()
             .ok_or_else(|| Error::ReportReceiptMissing)?;
         intake::interpret(store, machine.machine(), id).await?;
-        self.ready = true;
-        self.recovering = false;
+        self.phase = Phase::Ready;
         custody::complete(store, &mut self.guard, machine.machine()).await?;
 
         Ok(())
@@ -280,7 +302,7 @@ impl Host<'_, '_> {
             match action {
                 Action::Write(bytes) => {
                     self.end_code = AutolyserEnd::WriteFailed;
-                    receive_custody::write(conn, &bytes, ms(policy.acknowledgment_ms)).await?;
+                    receive::custody::write(conn, &bytes, ms(policy.acknowledgment_ms)).await?;
                     self.end_code = AutolyserEnd::TransferError;
                 }
                 Action::Store(token, raw) => {
@@ -310,8 +332,7 @@ impl Host<'_, '_> {
                         self.work.refuse(store, code).await?;
                         close = true;
                     }
-                    self.ready = false;
-                    self.recovering = true;
+                    self.phase = Phase::Recovering;
                     let reason = format!("Autolyser: {error}");
                     let parked = match self.receipt.take() {
                         Some((id, _)) => {
@@ -328,28 +349,29 @@ impl Host<'_, '_> {
                         }
                     };
                     if let Err(error) = parked {
-                        return Err(receive_custody::effect_failure(failure, error.into()));
+                        return Err(receive::custody::effect_failure(failure, error.into()));
                     }
                     if let Err(error) =
                         custody::uncertain(store, self.guard, machine.machine(), &reason).await
                     {
-                        return Err(receive_custody::effect_failure(failure, error));
+                        return Err(receive::custody::effect_failure(failure, error));
                     }
                 }
                 Action::Empty => {
                     self.receipt.take();
-                    self.ready = !self.recovering;
-                    if !self.recovering {
+                    if self.phase != Phase::Recovering {
+                        self.phase = Phase::Ready;
                         custody::complete(store, &mut self.guard, machine.machine()).await?;
                     }
                 }
                 Action::Insertion(reception) => {
                     self.receipt.take();
-                    self.ready = self.work.insertion(reception, store).await?;
-                    close |= !self.ready;
+                    let ready = self.work.insertion(reception, store).await?;
+                    self.phase.after_insertion(ready);
+                    close |= !ready;
                 }
                 Action::Uncertain => {
-                    self.ready = false;
+                    self.phase.busy();
                     custody::uncertain(
                         store,
                         self.guard,

@@ -1,5 +1,5 @@
 //! Translates installed VIDAS framing, sample identity and dialog settings.
-use super::super::custody::ms;
+use crate::machine::receive::custody::ms;
 use crate::reading::Error;
 /// Translates installed VIDAS framing choices once for live and retained input.
 /// # Errors

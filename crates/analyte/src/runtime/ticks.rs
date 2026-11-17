@@ -9,7 +9,7 @@ pub(crate) async fn until_stop(ticks: &mut Interval, stop: &mut watch::Receiver<
     }
     tokio::select! {
         biased;
-        _ = stop.changed() => false,
+        _ = analyte_sink::stopped(stop) => false,
         _ = ticks.tick() => true,
     }
 }
