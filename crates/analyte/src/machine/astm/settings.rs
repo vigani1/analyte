@@ -42,7 +42,7 @@ pub(crate) fn dialog(
         },
         settings.settings().syntax().limits().bytes(),
         settings.settings().syntax().limits().records(),
-        true,
+        analyte_dialog::astm::Interrupt::Honor,
     )?
     .with_record_boundaries(record_boundaries(settings))
     .with_checksum_hex(checksum_policy(settings));
