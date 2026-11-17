@@ -246,7 +246,7 @@ async fn process(
             Action::Store(packet) => {
                 let id = ReceiptId::new();
                 let operation = store_upload(store, machine, id, &packet.raw);
-                match custody::store_within(custody::budget(machine), operation).await {
+                match custody::store_before_ack(machine, operation).await {
                     Ok(()) => {
                         // The dialog expired its own commit deadline before accepting completion.
                         state

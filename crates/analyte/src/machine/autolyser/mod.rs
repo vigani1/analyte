@@ -213,11 +213,9 @@ impl ConnectionState {
         let prior_code = self.end_code;
         self.end_code = AutolyserEnd::StorageFailed;
         let id = ReceiptId::new();
-        let stored = receive_custody::store_within(
-            receive_custody::budget(machine),
-            intake::receive(store, machine, id, raw),
-        )
-        .await;
+        let stored =
+            receive_custody::store_before_ack(machine, intake::receive(store, machine, id, raw))
+                .await;
         match stored {
             Ok(time) => {
                 self.end_code = prior_code;

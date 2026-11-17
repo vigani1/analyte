@@ -364,16 +364,13 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             number.value(),
             analyte_framing::astm::FrameNumber::MAX.value(),
         )?;
-        let committed = super::custody::store_within(
-            super::custody::budget(machine),
+        let committed = super::custody::store_before_ack(
+            machine,
             store.request(deadline()?, move |s| {
                 s.journal_frame(&transfer_id, sequence, &bytes, &provenance)
             }),
         )
         .await;
-        if let Err(error) = &committed {
-            tracing::error!(machine = machine.id.as_str(), error_kind = %error, "ASTM frame commit refused");
-        }
         #[cfg(feature = "test-hooks")]
         if committed.is_ok()
             && let Some(hook) = &machine.hooks.astm_committed

@@ -47,6 +47,7 @@ struct ConnectionState {
     queries: Option<crate::orders::hl7::Connection>,
     input_evidence: connection_input::Custody,
     write_error: Option<analyte_transport::Error>,
+    commit_error: Option<Error>,
 }
 
 impl ConnectionState {
@@ -84,6 +85,7 @@ impl ConnectionState {
             queries,
             input_evidence,
             write_error,
+            commit_error: None,
         })
     }
     async fn receive_loop(
@@ -176,13 +178,26 @@ impl ConnectionState {
         stop: &mut watch::Receiver<bool>,
     ) -> Result<bool, Error> {
         let mut actions: VecDeque<_> = self.dialog.step(self.start.elapsed(), event)?.into();
-        while let Some(action) = actions.pop_front() {
-            if self
-                .effect(action, machine, store, conn, stop, &mut actions)
-                .await?
-            {
-                return Ok(true);
+        let result = async {
+            while let Some(action) = actions.pop_front() {
+                if self
+                    .effect(action, machine, store, conn, stop, &mut actions)
+                    .await?
+                {
+                    return Ok(true);
+                }
             }
+            Ok(false)
+        }
+        .await;
+        if let Some(error) = self.commit_error.take() {
+            return Err(match result {
+                Ok(_) => error,
+                Err(effect) => super::custody::effect_failure(Some(error), effect),
+            });
+        }
+        if result? {
+            return Ok(true);
         }
         if let Some(error) = self.write_error.take() {
             return Err(error.into());
@@ -342,11 +357,8 @@ impl ConnectionState {
         actions: &mut VecDeque<Action>,
     ) -> Result<(), Error> {
         let id = ReceiptId::new();
-        match super::custody::store_within(
-            super::custody::budget(machine),
-            intake::receive(store, machine, id, raw),
-        )
-        .await
+        match super::custody::store_before_ack(machine, intake::receive(store, machine, id, raw))
+            .await
         {
             Ok(_) => {
                 if self.pending.len() >= 2 {
@@ -359,11 +371,7 @@ impl ConnectionState {
                 );
             }
             Err(error) => {
-                tracing::error!(
-                    machine = machine.id.as_str(),
-                    error_kind = %error,
-                    "HL7 durable commit refused"
-                );
+                self.commit_error = Some(error.into());
                 actions.extend(
                     self.dialog
                         .step(self.start.elapsed(), Event::CommitFailed(token))?,

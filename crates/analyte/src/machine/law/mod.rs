@@ -185,8 +185,8 @@ impl<'a, 'm> Host<'a, 'm> {
                 if let Some(hook) = &self.machine.hooks.law_precommit {
                     hook.pause(&mut self.stop).await.map_err(Error::TestHook)?;
                 }
-                super::custody::store_within(
-                    super::custody::budget(self.machine),
+                super::custody::store_before_ack(
+                    self.machine,
                     intake::receive(self.store, self.machine, id, raw),
                 )
                 .await?;
