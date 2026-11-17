@@ -41,17 +41,17 @@ pub enum Timer {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
     /// Send exact protocol bytes.
-    Send(Vec<u8>),
+    Write(Vec<u8>),
     /// Durably save packet with driver/config identity before reporting Stored.
     Store(Packet),
     /// Reports a deadline arm for observers; the dialog schedules it internally.
-    Arm(Timer, Duration),
+    TimerArmed(Timer, Duration),
     /// Reports a cancelled deadline; the dialog cancels it internally.
-    Cancel(Timer),
+    TimerCancelled(Timer),
     /// Keep receipt/order unresolved for operator reconciliation.
     Park,
     /// Transport session completed; this does not mean clinical acceptance.
-    Complete,
+    Close,
 }
 
 /// Events are supplied only after their stated host operation completes.
@@ -66,7 +66,7 @@ pub enum Event {
     /// Matching outstanding packet has durably committed.
     Stored,
     /// Storage unavailable or disk nearly full.
-    StorageFailed,
+    StoreFailed,
     /// A current named deadline expired.
     Expired(Timer),
     /// Advance deadlines without input.
@@ -94,7 +94,7 @@ enum State {
 pub enum Error {
     /// Deadlines must all be positive.
     #[error("zero conversation deadline")]
-    Config,
+    Configuration,
     /// Connection time moved backwards.
     #[error("dialog time moved backwards")]
     TimeReversed,
@@ -148,7 +148,7 @@ impl Dialog {
     ) -> Result<Self, Error> {
         if [policy.ack, policy.inter_byte, policy.session, policy.commit].contains(&Duration::ZERO)
         {
-            return Err(Error::Config);
+            return Err(Error::Configuration);
         }
         Ok(Self {
             decoder: analyte_framing::vidas::StreamDecoder::new(config.clone()),
@@ -166,12 +166,12 @@ impl Dialog {
     #[must_use]
     pub fn start(&mut self) -> Vec<Action> {
         let mut actions = vec![
-            Action::Arm(Timer::Session, self.policy.session),
-            Action::Arm(Timer::Interbyte, self.policy.inter_byte),
+            Action::TimerArmed(Timer::Session, self.policy.session),
+            Action::TimerArmed(Timer::Interbyte, self.policy.inter_byte),
         ];
         if matches!(self.state, State::DownloadReady) {
-            actions.push(Action::Send(self.config.control(ENQ)));
-            actions.push(Action::Arm(Timer::Acknowledgment, self.policy.ack));
+            actions.push(Action::Write(self.config.control(ENQ)));
+            actions.push(Action::TimerArmed(Timer::Acknowledgment, self.policy.ack));
         }
         self.schedule(&actions);
         actions
@@ -253,11 +253,11 @@ impl Dialog {
     fn schedule(&mut self, actions: &[Action]) {
         for action in actions {
             match action {
-                Action::Arm(timer, wait) => {
+                Action::TimerArmed(timer, wait) => {
                     *self.timers.get_mut(*timer) = self.clock.now().checked_add(*wait);
                 }
-                Action::Cancel(timer) => *self.timers.get_mut(*timer) = None,
-                Action::Send(_) | Action::Store(_) | Action::Park | Action::Complete => {}
+                Action::TimerCancelled(timer) => *self.timers.get_mut(*timer) = None,
+                Action::Write(_) | Action::Store(_) | Action::Park | Action::Close => {}
             }
         }
     }
@@ -274,22 +274,22 @@ impl Dialog {
             self.expired = Some(timer);
         }
         let mut actions = vec![
-            Action::Cancel(Timer::Interbyte),
-            Action::Arm(Timer::Interbyte, self.policy.inter_byte),
+            Action::TimerCancelled(Timer::Interbyte),
+            Action::TimerArmed(Timer::Interbyte, self.policy.inter_byte),
         ];
         match (self.state, event) {
             (State::UploadReady, Event::Control(ENQ)) => {
                 self.state = State::UploadPacket;
-                actions.push(Action::Send(self.config.control(ACK)));
+                actions.push(Action::Write(self.config.control(ACK)));
             }
             (State::UploadPacket, Event::Packet(packet)) => {
                 self.state = State::Commit;
                 actions.push(Action::Store(packet));
-                actions.push(Action::Arm(Timer::Commit, self.policy.commit));
+                actions.push(Action::TimerArmed(Timer::Commit, self.policy.commit));
             }
             (State::Commit, Event::Stored) => {
-                actions.push(Action::Cancel(Timer::Commit));
-                actions.push(Action::Send(self.config.control(ACK)));
+                actions.push(Action::TimerCancelled(Timer::Commit));
+                actions.push(Action::Write(self.config.control(ACK)));
                 self.state = if self.config.mode() == Mode::Literal {
                     State::UploadEtx
                 } else {
@@ -299,23 +299,23 @@ impl Dialog {
             (State::UploadEtx, Event::Control(ETX)) => self.state = State::UploadEot,
             (State::UploadEot, Event::Control(EOT)) => {
                 self.state = State::Finished;
-                actions.push(Action::Complete);
+                actions.push(Action::Close);
             }
             (State::DownloadReady, Event::Control(ACK)) => {
                 self.state = State::DownloadAck;
-                actions.push(Action::Cancel(Timer::Acknowledgment));
+                actions.push(Action::TimerCancelled(Timer::Acknowledgment));
                 if let Some(bytes) = self.outbound.take() {
-                    actions.push(Action::Send(bytes));
+                    actions.push(Action::Write(bytes));
                 }
-                actions.push(Action::Arm(Timer::Acknowledgment, self.policy.ack));
+                actions.push(Action::TimerArmed(Timer::Acknowledgment, self.policy.ack));
             }
             (State::DownloadAck, Event::Control(ACK)) => {
-                actions.push(Action::Cancel(Timer::Acknowledgment));
+                actions.push(Action::TimerCancelled(Timer::Acknowledgment));
                 if self.config.mode() == Mode::Literal {
-                    actions.push(Action::Send(self.config.control(ETX)));
+                    actions.push(Action::Write(self.config.control(ETX)));
                 }
-                actions.push(Action::Send(self.config.control(EOT)));
-                actions.push(Action::Complete);
+                actions.push(Action::Write(self.config.control(EOT)));
+                actions.push(Action::Close);
                 self.state = State::Finished;
             }
             (
@@ -324,7 +324,7 @@ impl Dialog {
                 | Event::Control(_)
                 | Event::Packet(_)
                 | Event::Stored
-                | Event::StorageFailed
+                | Event::StoreFailed
                 | Event::Expired(_)
                 | Event::Disconnected
                 | Event::Tick
@@ -342,7 +342,7 @@ impl Dialog {
                 | Event::Control(_)
                 | Event::Packet(_)
                 | Event::Stored
-                | Event::StorageFailed
+                | Event::StoreFailed
                 | Event::Expired(_)
                 | Event::Disconnected
                 | Event::Tick
@@ -359,7 +359,7 @@ impl Dialog {
                 Timer::Commit,
                 Timer::Acknowledgment,
             ] {
-                actions.push(Action::Cancel(timer));
+                actions.push(Action::TimerCancelled(timer));
             }
         }
         self.schedule(&actions);

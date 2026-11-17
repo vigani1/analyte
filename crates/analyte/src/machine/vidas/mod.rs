@@ -222,7 +222,7 @@ impl Host<'_, '_> {
         let mut complete = false;
         while let Some(action) = self.actions.pop_front() {
             match action {
-                Action::Send(bytes) => {
+                Action::Write(bytes) => {
                     self.end_code = VidasEnd::WriteFailed;
                     custody::write(conn, &bytes, ms(installed.acknowledgment_ms)).await?;
                     self.end_code = VidasEnd::TransferError;
@@ -238,14 +238,13 @@ impl Host<'_, '_> {
                         }
                         Err(error) => {
                             self.actions.extend(
-                                self.dialog
-                                    .step(self.start.elapsed(), Event::StorageFailed)?,
+                                self.dialog.step(self.start.elapsed(), Event::StoreFailed)?,
                             );
                             failure = Some(error.into());
                         }
                     }
                 }
-                Action::Arm(_, _) | Action::Cancel(_) => {}
+                Action::TimerArmed(_, _) | Action::TimerCancelled(_) => {}
                 Action::Park => {
                     if self.end_code == VidasEnd::TransferError {
                         self.end_code = match self.dialog.expired_timer() {
@@ -266,7 +265,7 @@ impl Host<'_, '_> {
                         failure = Some(Error::TransferParkedReconcileBeforeReconnect);
                     }
                 }
-                Action::Complete => match self.work.confirmed(store).await? {
+                Action::Close => match self.work.confirmed(store).await? {
                     crate::orders::vidas::Progress::DownloadNext(request) => {
                         self.start_download(&request)?;
                     }

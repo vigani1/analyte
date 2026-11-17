@@ -17,7 +17,7 @@ fn hl7_251_2_7_6_law_c5_ft_line_markers_preserve_layout_evidence_in_mapping() ->
             cfg.effective().hl7_options().ok_or("options")?,
         )?;
         let results = analyte_hl7::law::Results::new(&message)?;
-        let output = analyte_mapping::map_law(&results, settings::law(&cfg), input())?;
+        let output = analyte_mapping::law::map(settings::law(&cfg), &results, input())?;
         assert!(output.requires_parking());
         assert!(
             output

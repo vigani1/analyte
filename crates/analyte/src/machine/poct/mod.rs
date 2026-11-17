@@ -5,7 +5,7 @@ use super::driver::{self, Context, Effects, Flow};
 use crate::intake;
 use crate::intake::ByteReason;
 mod error;
-use analyte_dialog::poct::{Action, CommitOutcome, Config, Dialog, Event};
+use analyte_dialog::poct::{Action, Config, Dialog, Event, StoreOutcome};
 use analyte_model::ReceiptId;
 use analyte_poct::{Body, ControlId, Header, Message, Timestamp};
 use analyte_store::Handle;
@@ -81,9 +81,9 @@ impl<'a, 'm> Host<'a, 'm> {
             if *stop.borrow() {
                 let mut raw = self.dialog.take_input();
                 for action in actions {
-                    if let Action::Input(wire)
-                    | Action::InputLimit(wire)
-                    | Action::InputDeadline(wire) = action
+                    if let Action::Parse(wire)
+                    | Action::ParseLimit(wire)
+                    | Action::ParseDeadline(wire) = action
                     {
                         raw.extend(wire);
                     }
@@ -230,14 +230,14 @@ impl Host<'_, '_> {
         let result = async {
             while let Some(action) = actions.pop_front() {
                 match action {
-                    Action::Input(wire) => actions.extend(
+                    Action::Parse(wire) => actions.extend(
                         interpret_input(wire, dialog, start, machine, store, limits).await?,
                     ),
-                    Action::InputLimit(wire) => {
+                    Action::ParseLimit(wire) => {
                         intake::park_bytes(store, machine, wire, ByteReason::PoctLimit).await?;
                         return Err(Error::MessageLimitExceeded);
                     }
-                    Action::InputDeadline(wire) => {
+                    Action::ParseDeadline(wire) => {
                         intake::park_bytes(store, machine, wire, ByteReason::PoctDeadline).await?;
                     }
                     Action::InspectHello {
@@ -248,17 +248,15 @@ impl Host<'_, '_> {
                     }
                     Action::Store { ticket, message } => {
                         let operation = store_message(store, machine, &message);
-                        let outcome =
+                        let event =
                             match custody::store_before_ack(machine.machine(), operation).await {
-                                Ok(outcome) => outcome,
+                                Ok(outcome) => Event::Stored { ticket, outcome },
                                 Err(error) => {
                                     failure = Some(Error::from(error));
-                                    CommitOutcome::Failed
+                                    Event::StoreFailed(ticket)
                                 }
                             };
-                        actions.extend(
-                            dialog.step(start.elapsed(), Event::Committed { ticket, outcome })?,
-                        );
+                        actions.extend(dialog.step(start.elapsed(), event)?);
                     }
                     Action::Park { message, reason } => {
                         intake::park_bytes(
@@ -269,7 +267,7 @@ impl Host<'_, '_> {
                         )
                         .await?;
                     }
-                    Action::Send { control_id, body } => {
+                    Action::Write { control_id, body } => {
                         let message = outbound_message(
                             control_id,
                             &body,
@@ -313,7 +311,7 @@ async fn store_message(
     store: &Handle,
     machine: &intake::ConnectionEvidence<'_>,
     message: &Message,
-) -> Result<CommitOutcome, Error> {
+) -> Result<StoreOutcome, Error> {
     let id = ReceiptId::new();
     intake::receive(store, machine, id, message.document().raw().to_vec()).await?;
     match message.body() {
@@ -333,7 +331,7 @@ async fn store_message(
                 })
                 .await?;
             if !readable {
-                return Ok(CommitOutcome::ApplicationError(
+                return Ok(StoreOutcome::ApplicationError(
                     analyte_poct::ApplicationError::UnsupportedValue,
                 ));
             }
@@ -351,7 +349,7 @@ async fn store_message(
         | Body::KeepAlive
         | Body::Request(_) => {}
     }
-    Ok::<_, Error>(CommitOutcome::Stored)
+    Ok::<_, Error>(StoreOutcome::Stored)
 }
 
 /// Retains unresolved commit identities even when the peer closes normally.

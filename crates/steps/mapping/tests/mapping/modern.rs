@@ -21,13 +21,7 @@ fn hl7_2_8_2_s7_3_1_and_2_9_1_s7_3_1_modern_incomplete_reports_keep_exact_values
                 raw.as_bytes(),
                 config.effective().hl7_options().ok_or("options")?,
             )?;
-            let output = map_hl7(
-                &message,
-                settings::hl7(&config).0,
-                settings::hl7(&config).1,
-                &config.effective().machine().deviations,
-                input(),
-            )?;
+            let output = map_hl7(&settings::hl7_mapping(&config), &message, input())?;
             assert!(output.requires_parking(), "{output:?}");
             let value_out = first(&output)?.values.as_slice().first().ok_or("value")?;
             assert_eq!(value_out.original.as_str(), value);
@@ -62,13 +56,7 @@ fn hl7_2_9_1_s2a_2_22_utc_without_known_civil_offset_remains_raw() -> TestResult
                 raw.as_bytes(),
                 config.effective().hl7_options().ok_or("options")?,
             )?;
-            let output = map_hl7(
-                &message,
-                settings::hl7(&config).0,
-                settings::hl7(&config).1,
-                &config.effective().machine().deviations,
-                input(),
-            )?;
+            let output = map_hl7(&settings::hl7_mapping(&config), &message, input())?;
             let time = first(&output)?
                 .times
                 .as_slice()
@@ -107,10 +95,12 @@ fn hl7_2_8_2_and_2_9_1_s7_3_1_unselected_groups_and_withdrawn_fields_do_not_map(
             )?;
             assert!(
                 map_hl7(
+                    &analyte_mapping::hl7::Settings {
+                        syntax: settings::hl7(&config).0,
+                        mappings: settings::hl7(&config).1,
+                        declarations: &config.effective().machine().deviations
+                    },
                     &message,
-                    settings::hl7(&config).0,
-                    settings::hl7(&config).1,
-                    &config.effective().machine().deviations,
                     input()
                 )
                 .is_err()
@@ -135,10 +125,12 @@ fn hl7_2_8_2_s2_5_5_2_and_2_9_1_s2_4_5_2_truncated_results_remain_parked() -> Te
         )?;
         assert!(
             map_hl7(
+                &analyte_mapping::hl7::Settings {
+                    syntax: settings::hl7(&config).0,
+                    mappings: settings::hl7(&config).1,
+                    declarations: &config.effective().machine().deviations
+                },
                 &message,
-                settings::hl7(&config).0,
-                settings::hl7(&config).1,
-                &config.effective().machine().deviations,
                 input()
             )
             .is_err()
@@ -167,10 +159,12 @@ fn hl7_2_8_2_s2_a_13_and_2_9_1_s2a_2_13_oid_authority_never_uses_code_only_fallb
         )?;
         assert!(matches!(
             map_hl7(
+                &analyte_mapping::hl7::Settings {
+                    syntax: settings::hl7(&config).0,
+                    mappings: settings::hl7(&config).1,
+                    declarations: &config.effective().machine().deviations
+                },
                 &message,
-                settings::hl7(&config).0,
-                settings::hl7(&config).1,
-                &config.effective().machine().deviations,
                 input()
             ),
             Err(analyte_mapping::Error::Hl7 {

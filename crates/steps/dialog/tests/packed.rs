@@ -34,7 +34,7 @@ fn adr0015_lis01_s6311_packing_requires_declaration_and_one_frame_custody() -> R
     let ids: Vec<_> = actions
         .iter()
         .filter_map(|a| {
-            if let Action::Commit(id, _, raw) = a {
+            if let Action::Store(id, _, raw) = a {
                 assert_eq!(raw, frame);
                 Some(*id)
             } else {
@@ -44,7 +44,7 @@ fn adr0015_lis01_s6311_packing_requires_declaration_and_one_frame_custody() -> R
         .collect();
     assert_eq!(ids.len(), 1);
     let id = *ids.first().ok_or("commit")?;
-    let actions = packed.step(Duration::ZERO, Event::Committed(id))?;
+    let actions = packed.step(Duration::ZERO, Event::Stored(id))?;
     assert_eq!(
         actions
             .iter()
@@ -59,7 +59,7 @@ fn adr0015_lis01_s6311_packing_requires_declaration_and_one_frame_custody() -> R
     assert!(
         !retry
             .iter()
-            .any(|a| matches!(a, Action::Commit(..) | Action::Record(_)))
+            .any(|a| matches!(a, Action::Store(..) | Action::Record(_)))
     );
     Ok(())
 }
@@ -74,19 +74,19 @@ fn adr0015_lis01_s632_packing_checksum_and_failed_custody_remain_strict() -> Res
     let mut dialog = receiver(RecordBoundaries::Packed)?;
     let actions = feed(&mut dialog, &wrong)?;
     assert!(actions.contains(&Action::Write(vec![NAK])));
-    assert!(!actions.iter().any(|a| matches!(a, Action::Commit(..))));
+    assert!(!actions.iter().any(|a| matches!(a, Action::Store(..))));
     let actions = feed(&mut dialog, frame)?;
     let id = actions
         .iter()
         .find_map(|a| {
-            if let Action::Commit(id, ..) = a {
+            if let Action::Store(id, ..) = a {
                 Some(*id)
             } else {
                 None
             }
         })
         .ok_or("commit")?;
-    let failed = dialog.step(Duration::ZERO, Event::CommitFailed(id))?;
+    let failed = dialog.step(Duration::ZERO, Event::StoreFailed(id))?;
     assert!(failed.contains(&Action::Write(vec![NAK])));
     assert!(!failed.iter().any(|a| matches!(a, Action::Record(_))));
     Ok(())
@@ -103,14 +103,14 @@ fn adr0015_lis01_s6311_packed_cr_boundaries_survive_etb_and_split_reads() -> Res
         let id = actions
             .iter()
             .find_map(|a| {
-                if let Action::Commit(id, ..) = a {
+                if let Action::Store(id, ..) = a {
                     Some(*id)
                 } else {
                     None
                 }
             })
             .ok_or("commit")?;
-        for action in dialog.step(Duration::ZERO, Event::Committed(id))? {
+        for action in dialog.step(Duration::ZERO, Event::Stored(id))? {
             if let Action::Record(record) = action {
                 records.push(record);
             }

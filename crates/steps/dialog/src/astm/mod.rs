@@ -95,7 +95,7 @@ impl Dialog {
             .advance(now, headroom)
             .map_err(|error| error.into_dialog(Error::TimeReversed, Error::Exhausted))?;
         let mut out = Vec::new();
-        if matches!(event, Event::Disconnect) {
+        if matches!(event, Event::Disconnected) {
             self.disconnect(&mut out);
             out.push(Action::Deadline(None));
             return Ok(out);
@@ -108,7 +108,7 @@ impl Dialog {
         }
         let result = (|| {
             match event {
-                Event::Tick | Event::Disconnect => {}
+                Event::Tick | Event::Disconnected => {}
                 Event::Capacity(value) => self.capacity = value,
                 Event::Interrupt(value) => self.interrupt = value,
                 Event::Byte(byte) => {
@@ -129,8 +129,8 @@ impl Dialog {
                         }
                     }
                 }
-                Event::Committed(id) => self.commit(id, true, &mut out)?,
-                Event::CommitFailed(id) => self.commit(id, false, &mut out)?,
+                Event::Stored(id) => self.commit(id, true, &mut out)?,
+                Event::StoreFailed(id) => self.commit(id, false, &mut out)?,
                 Event::Send(records) => {
                     if !matches!(self.state, State::Neutral) {
                         return Err(Error::Busy);
@@ -250,7 +250,7 @@ impl Dialog {
                 // Storage did not answer in time: refuse the frame but stay in the
                 // transfer, so the sender's retransmission can be committed again
                 // (LIS01-A2 §6.5.1.2 bounds the retries on the sender's side).
-                out.extend([Action::Write(vec![NAK]), Action::CommitFailed(id)]);
+                out.extend([Action::Write(vec![NAK]), Action::StoreFailed(id)]);
                 self.state = State::Receiving(receive);
                 self.set_timer(self.config.timers.receive);
             }
@@ -379,7 +379,7 @@ impl Dialog {
                         frame: self.request,
                     };
                     self.request = self.request.checked_add(1).ok_or(Error::Exhausted)?;
-                    out.push(Action::Commit(id, frame.number(), frame.raw().to_vec()));
+                    out.push(Action::Store(id, frame.number(), frame.raw().to_vec()));
                     self.state = State::Commit { receive, frame, id };
                     self.set_timer(self.config.timers.commit);
                 }
@@ -448,7 +448,7 @@ impl Dialog {
                 receive.previous = Some(frame);
                 out.push(Action::Write(vec![if self.interrupt { EOT } else { ACK }]));
             } else {
-                out.extend([Action::Write(vec![NAK]), Action::CommitFailed(id)]);
+                out.extend([Action::Write(vec![NAK]), Action::StoreFailed(id)]);
             }
             self.state = State::Receiving(receive);
             self.set_timer(self.config.timers.receive);
@@ -546,7 +546,7 @@ impl Dialog {
             State::Commit { receive, frame, id } => {
                 if byte == EOT {
                     self.deadline = None;
-                    out.extend([Action::CommitFailed(id), Action::Ended(End::Incomplete)]);
+                    out.extend([Action::StoreFailed(id), Action::Ended(End::Incomplete)]);
                 } else {
                     self.state = State::Commit { receive, frame, id };
                 }

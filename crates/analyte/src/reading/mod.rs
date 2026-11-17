@@ -71,7 +71,7 @@ pub enum Error {
 /// Returns the original layer failure; never supplies a partial mapping on failure.
 pub(crate) fn read(
     config: &Validated,
-    input: Input,
+    input: Input<'_>,
     raw: &[u8],
     hello: Option<&[u8]>,
 ) -> Result<Output, Error> {

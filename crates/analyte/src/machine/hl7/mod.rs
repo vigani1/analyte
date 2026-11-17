@@ -247,7 +247,7 @@ impl<'a, 'm> Host<'a, 'm> {
                 )
                 .await?;
             }
-            Action::Commit(token, raw) => {
+            Action::Store(token, raw) => {
                 self.commit(token, raw, machine, store, actions).await?;
             }
             Action::Interpret(token, _payload) => {
@@ -358,14 +358,14 @@ impl<'a, 'm> Host<'a, 'm> {
                 self.pending.insert((token.epoch(), token.ordinal()), id);
                 actions.extend(
                     self.dialog
-                        .step(self.start.elapsed(), Event::Committed(token))?,
+                        .step(self.start.elapsed(), Event::Stored(token))?,
                 );
             }
             Err(error) => {
                 self.commit_error = Some(error.into());
                 actions.extend(
                     self.dialog
-                        .step(self.start.elapsed(), Event::CommitFailed(token))?,
+                        .step(self.start.elapsed(), Event::StoreFailed(token))?,
                 );
             }
         }
@@ -564,7 +564,7 @@ impl Effects for Host<'_, '_> {
         let cleanup = self.input_evidence.retain(store, machine).await;
         super::custody::retain_cleanup(result, cleanup.map_err(Into::into));
         // A cancelled or failed host operation must expose partial input as well.
-        let actions = match self.dialog.step(self.start.elapsed(), Event::Disconnect) {
+        let actions = match self.dialog.step(self.start.elapsed(), Event::Disconnected) {
             Ok(actions) => actions,
             Err(error) => {
                 super::custody::retain_cleanup(result, Err(error.into()));

@@ -184,7 +184,7 @@ impl Effects for Host<'_, '_> {
                 }
             }
             Input::Closed(_) | Input::Failed(_) | Input::RecordingFailed(_) => {
-                vec![Event::Disconnect]
+                vec![Event::Disconnected]
             }
         };
         for event in events {
@@ -225,7 +225,7 @@ impl Effects for Host<'_, '_> {
 impl<'a, 'm> Host<'a, 'm> {
     async fn store_report(
         &mut self,
-        token: u64,
+        token: analyte_dialog::autolyser::StoreId,
         raw: Vec<u8>,
         actions: &mut VecDeque<Action>,
         machine: &intake::ConnectionEvidence<'_>,

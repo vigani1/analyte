@@ -1,7 +1,7 @@
 //! Reads VIDAS packets using the installed framing and sample identity policy.
 use super::Error;
 pub(super) fn read(
-    input: analyte_mapping::Input,
+    input: analyte_mapping::Input<'_>,
     raw: &[u8],
     settings: &analyte_config::VidasStack,
 ) -> Result<analyte_mapping::Output, Error> {
@@ -13,12 +13,7 @@ pub(super) fn read(
         }
     };
     let message = analyte_vidas::syntax::Message::parse(std::str::from_utf8(&packet.body)?, limit)?;
-    Ok(analyte_mapping::map_vidas(
-        settings,
-        input.receipt,
-        &message,
-        input.received_at,
-    )?)
+    Ok(analyte_mapping::vidas::map(settings, &message, input)?)
 }
 /// Translates installed VIDAS framing choices once for live and retained input.
 /// # Errors

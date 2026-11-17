@@ -50,3 +50,17 @@ pub(crate) fn orders(config: &Validated) -> &Hl7Orders {
 pub(crate) fn law(config: &Validated) -> &LawStack {
     config.effective().stack().law().expect("LAW fixture")
 }
+
+pub(crate) fn astm_mapping(config: &Validated) -> analyte_mapping::astm::Settings<'_> {
+    let (syntax, mappings) = astm(config);
+    analyte_mapping::astm::Settings { syntax, mappings }
+}
+
+pub(crate) fn hl7_mapping(config: &Validated) -> analyte_mapping::hl7::Settings<'_> {
+    let (syntax, mappings) = hl7(config);
+    analyte_mapping::hl7::Settings {
+        syntax,
+        mappings,
+        declarations: &config.effective().machine().deviations,
+    }
+}

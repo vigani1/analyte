@@ -1,7 +1,7 @@
 //! Reads POCT observations with durable source Hello context and installed bounds.
 use super::Error;
 pub(super) fn read(
-    input: analyte_mapping::Input,
+    input: analyte_mapping::Input<'_>,
     raw: &[u8],
     settings: &analyte_config::PoctStack,
     hello: Option<&[u8]>,
@@ -22,12 +22,10 @@ pub(super) fn read(
         | analyte_poct::Body::Request(_) => None,
     });
     let message = analyte_poct::Message::parse(raw, limits(settings))?;
-    Ok(analyte_mapping::map_poct(
+    Ok(analyte_mapping::poct::map(
         settings,
-        input.receipt,
         &message,
-        input.received_at,
-        device,
+        analyte_mapping::Input { device, ..input },
     )?)
 }
 /// Translates installed POCT bounds for both live syntax checks and retained receipts.
