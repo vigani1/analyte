@@ -30,7 +30,10 @@ fn law_tf2b_2_2_config_selects_mllp_251_manager_and_explicit_peer_options() -> R
     );
     assert_eq!(policy.query_deadline_ms(), 1500);
     assert_eq!(policy.response_ms(), 1500);
-    assert!(config.effective().hl7_options().is_some());
+    assert!(matches!(
+        config.effective().stack(),
+        analyte_config::Stack::Law(_) | analyte_config::Stack::Hl7(_)
+    ));
     // Each peer flag is independently declared; omission is never a default.
     for flag in [
         "patient",

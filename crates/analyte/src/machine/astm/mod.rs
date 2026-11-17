@@ -4,9 +4,10 @@ use super::driver::{Context, Effects, Flow};
 use crate::intake::ByteReason;
 use crate::machine::hooks::Pause;
 mod error;
+pub(crate) mod settings;
 use crate::orders::astm::{Pending, Request};
 use crate::{deadline, intake};
-use analyte_dialog::astm::{Action, Config, Dialog, End, Epoch, Event, Role, Timers};
+use analyte_dialog::astm::{Action, Config, Dialog, End, Epoch, Event};
 use analyte_model::{Identifier, ReceiptId};
 use analyte_store::Handle;
 pub(crate) use error::Error;
@@ -44,32 +45,7 @@ impl<'a, 'm> Host<'a, 'm> {
         settings: &'a analyte_config::AstmStack,
         store: &'a Handle,
     ) -> Result<Self, Error> {
-        let timers = Timers {
-            establish: Duration::from_millis(u64::from(
-                settings.settings().timeouts().send_timeout_ms(),
-            )),
-            frame: Duration::from_millis(u64::from(
-                settings.settings().timeouts().send_timeout_ms(),
-            )),
-            receive: Duration::from_millis(u64::from(
-                settings.settings().timeouts().receive_timeout_ms(),
-            )),
-            commit: super::custody::budget(machine.machine()),
-            ..Timers::default()
-        };
-        let config = Config::new(
-            analyte_framing::astm::Limit::new(settings.settings().frame_limit())?,
-            timers,
-            match settings.contention_priority() {
-                analyte_config::Priority::Host => Role::Instrument,
-                analyte_config::Priority::Instrument => Role::Computer,
-            },
-            settings.settings().syntax().limits().bytes(),
-            settings.settings().syntax().limits().records(),
-            true,
-        )?
-        .with_record_boundaries(settings.record_boundaries())
-        .with_checksum_hex(settings.checksum_policy());
+        let config = settings::dialog(settings, super::custody::budget(machine.machine()))?;
         let epoch = Epoch(uuid::Uuid::now_v7().as_u128());
         let dialog = Dialog::new(config.clone(), epoch);
         Ok(Self {

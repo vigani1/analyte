@@ -23,7 +23,7 @@ pub fn map(
 ) -> Result<Output, Error> {
     crate::hl7::validate_message(
         results.message(),
-        settings.options(),
+        analyte_config::Encoding::Utf8,
         settings.settings().limits(),
     )?;
     let mut source = source::law(results)?;

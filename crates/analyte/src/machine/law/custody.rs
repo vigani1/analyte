@@ -107,15 +107,13 @@ pub(crate) async fn work_conflict(
     else {
         return Ok(None);
     };
-    Ok(
-        crate::orders::law::validation::check(
-            store,
-            machine,
-            results.message(),
-            settings.options(),
-        )
-        .await?,
+    Ok(crate::orders::law::validation::check(
+        store,
+        machine,
+        results.message(),
+        crate::machine::law::settings::options(settings),
     )
+    .await?)
 }
 
 async fn retained_work(

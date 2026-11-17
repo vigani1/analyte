@@ -14,7 +14,7 @@ fn hl7_251_2_7_6_law_c5_ft_line_markers_preserve_layout_evidence_in_mapping() ->
         let raw = format!("{}NTE|1|Z|{note}\r", std::str::from_utf8(LAW_RESULT)?);
         let message = analyte_hl7::law::parse_message(
             raw.as_bytes(),
-            cfg.effective().hl7_options().ok_or("options")?,
+            effective_options(cfg.effective()).ok_or("options")?,
         )?;
         let results = analyte_hl7::law::Results::new(&message)?;
         let output = analyte_mapping::law::map(settings::law(&cfg), &results, input())?;

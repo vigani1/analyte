@@ -6,6 +6,7 @@ use crate::intake::ByteReason;
 use crate::machine::hooks::Pause;
 pub(crate) mod custody;
 mod error;
+pub(crate) mod settings;
 use crate::orders::outcome::Code;
 pub(crate) use error::Error;
 pub(super) mod independent;
@@ -85,11 +86,6 @@ impl<'a, 'm> Host<'a, 'm> {
             Mode::Inbound { .. } => Link::Inbound,
             Mode::Outbound(_) => Link::WorkResponse,
         };
-        let mut options = settings.options();
-        options.limits.message_bytes = options
-            .limits
-            .message_bytes
-            .min(settings.settings().frame_limit());
         Ok(Self {
             machine,
             settings,
@@ -97,14 +93,7 @@ impl<'a, 'm> Host<'a, 'm> {
             store,
             orders,
             mode,
-            dialog: Dialog::new(
-                options,
-                Duration::from_millis(u64::from(
-                    settings.settings().timeouts().receive_timeout_ms(),
-                )),
-                Duration::from_millis(u64::from(settings.settings().timeouts().send_timeout_ms())),
-                link,
-            )?,
+            dialog: settings::dialog(settings, link)?,
             clock: Instant::now(),
             receipt: None,
             ready: None,
@@ -326,7 +315,7 @@ impl<'a, 'm> Host<'a, 'm> {
                 &message,
                 self.receipt(token)?,
                 self.absolute(started)?,
-                self.settings.options(),
+                settings::options(self.settings),
             )
             .await?;
         let due = self
@@ -603,7 +592,7 @@ impl Host<'_, '_> {
                         let outgoing = tokio::select! {
                             biased;
                             () = crate::machine::stopping(&mut stop) => { self.stopped = true; return Ok(()); },
-                            result = self.orders.idle(self.store, self.machine.machine(), self.settings.options()) => match result {
+                            result = self.orders.idle(self.store, self.machine.machine(), settings::options(self.settings)) => match result {
                                 Ok(message) => message,
                                 Err(error) => {
                                     self.orders.close(self.store, Code::LawIdleAdmissionFailed.as_str()).await?;

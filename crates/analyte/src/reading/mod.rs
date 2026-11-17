@@ -9,8 +9,6 @@ mod law;
 mod poct;
 mod vidas;
 pub(crate) use envelope::payload;
-pub(crate) use poct::limits as poct_limits;
-pub(crate) use vidas::framing as vidas_config;
 
 /// Specific failures from each owned reading layer; callers retain and park the receipt.
 #[derive(Debug, thiserror::Error)]

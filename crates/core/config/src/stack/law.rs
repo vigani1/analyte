@@ -1,8 +1,8 @@
 //! Constructs validated LAW protocol settings.
 use super::{
-    DialogTimeouts, Encoding, Error, Escapes, LawConnectionMode, LawPeer, LawQueryForm, LawWork,
-    Mappings, OrderPriority, OutboundSpecimen, OutboundTest, Responsibility, SyntaxLimits,
-    TcpTransport, Terminator, hl7_options, invalid, limits, tcp,
+    DialogTimeouts, Error, LawConnectionMode, LawPeer, LawQueryForm, LawWork, Mappings,
+    OrderPriority, OutboundSpecimen, OutboundTest, Responsibility, SyntaxLimits, TcpTransport,
+    invalid, limits, tcp,
 };
 use crate::ParsedMachine;
 use analyte_model::Identifier;
@@ -138,19 +138,6 @@ pub(super) fn law_stack(
             })
             .transpose()?,
     })
-}
-
-impl LawStack {
-    /// Supplies LAW's fixed HL7 2.5.1 syntax policy and configured resource ceilings.
-    #[must_use]
-    pub fn options(&self) -> analyte_hl7::Options {
-        hl7_options(
-            Encoding::Utf8,
-            Terminator::Cr,
-            Escapes::Reject,
-            self.settings.limits(),
-        )
-    }
 }
 
 impl LawPolicy {

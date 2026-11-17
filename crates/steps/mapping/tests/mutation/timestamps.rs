@@ -208,7 +208,7 @@ fn law_tf2b_3_29_4_b3_mapping_preserves_awos_og_and_refuses_generic_entry() -> T
     let cfg = config(&definition)?;
     let raw = LAW_RESULT;
     let message =
-        analyte_hl7::Message::parse(raw, cfg.effective().hl7_options().ok_or("options")?)?;
+        analyte_hl7::Message::parse(raw, effective_options(cfg.effective()).ok_or("options")?)?;
     let results = analyte_hl7::law::Results::new(&message)?;
     let mapped = analyte_mapping::law::map(settings::law(&cfg), &results, input())?;
     assert!(!mapped.requires_parking(), "{mapped:?}");
@@ -310,7 +310,7 @@ fn law_tf2b_3_29_4_1_2_1_status_only_ip_sc_ca_is_typed_without_results() -> Test
         let wire = prefix.rewrite("ORC|SC||||CM", &format!("ORC|SC||||{status}"));
         let message = analyte_hl7::Message::parse(
             wire.as_bytes(),
-            cfg.effective().hl7_options().ok_or("options")?,
+            effective_options(cfg.effective()).ok_or("options")?,
         )?;
         let results = analyte_hl7::law::Results::new(&message)?;
         let output = analyte_mapping::law::map(settings::law(&cfg), &results, input())?;
@@ -350,7 +350,7 @@ fn law_tf2b_c8_table_c8_9_estimate_preserves_spelling_null_and_header_zone() -> 
         );
         let message = analyte_hl7::Message::parse(
             wire.as_bytes(),
-            cfg.effective().hl7_options().ok_or("options")?,
+            effective_options(cfg.effective()).ok_or("options")?,
         )?;
         let results = analyte_hl7::law::Results::new(&message)?;
         let output = analyte_mapping::law::map(settings::law(&cfg), &results, input())?;
@@ -386,7 +386,7 @@ fn law_tf2b_c8_table_c8_9_estimate_preserves_spelling_null_and_header_zone() -> 
         );
         let message = analyte_hl7::Message::parse(
             wire.as_bytes(),
-            cfg.effective().hl7_options().ok_or("options")?,
+            effective_options(cfg.effective()).ok_or("options")?,
         )?;
         assert!(
             analyte_hl7::law::Results::new(&message).is_err(),
@@ -410,7 +410,7 @@ fn law_tf2b_3_29_4_1_2_1_mixed_status_groups_do_not_hide_result_groups() -> Test
     let wire = format!("{original}OBR|{order}ORC|SC||||IP\r");
     let message = analyte_hl7::Message::parse(
         wire.as_bytes(),
-        cfg.effective().hl7_options().ok_or("options")?,
+        effective_options(cfg.effective()).ok_or("options")?,
     )?;
     let results = analyte_hl7::law::Results::new(&message)?;
     assert_eq!(results.status_notices().len(), 1);
@@ -439,7 +439,7 @@ fn law_tf2b_c8_table_c8_9_estimate_zone_is_only_from_msh7_and_ip_results_are_not
     );
     let message = analyte_hl7::Message::parse(
         wire.as_bytes(),
-        cfg.effective().hl7_options().ok_or("options")?,
+        effective_options(cfg.effective()).ok_or("options")?,
     )?;
     let results = analyte_hl7::law::Results::new(&message)?;
     let output = analyte_mapping::law::map(settings::law(&cfg), &results, input())?;
@@ -457,7 +457,7 @@ fn law_tf2b_c8_table_c8_9_estimate_zone_is_only_from_msh7_and_ip_results_are_not
     let wire = std::str::from_utf8(LAW_RESULT)?.rewrite("ORC|SC||||CM", "ORC|SC||||IP");
     let message = analyte_hl7::Message::parse(
         wire.as_bytes(),
-        cfg.effective().hl7_options().ok_or("options")?,
+        effective_options(cfg.effective()).ok_or("options")?,
     )?;
     let results = analyte_hl7::law::Results::new(&message)?;
     assert!(results.status_notices().is_empty());

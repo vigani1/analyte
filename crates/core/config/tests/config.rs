@@ -27,20 +27,14 @@ fn adr_0002_and_0005_examples_validate_without_promoting_evidence() -> Result<()
         assert_eq!(config.digest(), digest);
         assert_eq!(config.activate().snapshot().digest(), digest);
     }
-    assert!(
-        draft(ASTM, OVERRIDES)?
-            .validate()?
-            .effective()
-            .astm_limits()
-            .is_some()
-    );
-    assert!(
-        draft(HL7, OVERRIDES)?
-            .validate()?
-            .effective()
-            .hl7_options()
-            .is_some()
-    );
+    assert!(matches!(
+        draft(ASTM, OVERRIDES)?.validate()?.effective().stack(),
+        analyte_config::Stack::Astm(_)
+    ));
+    assert!(matches!(
+        draft(HL7, OVERRIDES)?.validate()?.effective().stack(),
+        analyte_config::Stack::Hl7(_)
+    ));
     Ok(())
 }
 
@@ -480,7 +474,7 @@ fn hl7_231_2_24_1_18_utf8_requires_named_vendor_departure() -> Result<(), Error>
             protocol: "hl7",
         });
     };
-    assert!(stack.settings().syntax().options().allow_utf8_in_v231);
+    assert!(stack.settings().syntax().allow_utf8_in_v231());
     for invalid in [
         declared.rewrite("edition = \"v231\"", "edition = \"v251\""),
         declared.rewrite("encoding = \"utf8\"", "encoding = \"ascii\""),
@@ -504,6 +498,6 @@ fn hl7_231_2_24_1_18_utf8_requires_named_vendor_departure() -> Result<(), Error>
             protocol: "hl7",
         });
     };
-    assert!(!stack.settings().syntax().options().allow_utf8_in_v231);
+    assert!(!stack.settings().syntax().allow_utf8_in_v231());
     Ok(())
 }

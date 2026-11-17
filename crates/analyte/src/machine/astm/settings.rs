@@ -1,0 +1,91 @@
+//! Translates installed ASTM syntax and dialog settings.
+use analyte_config::{RecordTransport, Stack};
+use analyte_dialog::astm::{Config, Role, Timers};
+use std::time::Duration;
+/// Supplies the LIS02 parser with the configured resource ceilings.
+#[must_use]
+pub(crate) fn parser_limits(syntax: &analyte_config::AstmSyntax) -> analyte_astm::Limits {
+    analyte_astm::Limits {
+        bytes: syntax.limits().bytes(),
+        record: syntax.limits().record_bytes(),
+        fields: syntax.limits().fields(),
+        repeats: syntax.limits().repetitions(),
+        components: syntax.limits().components(),
+    }
+}
+/// Returns LIS02 parser limits only for ASTM record stacks.
+#[must_use]
+pub(crate) fn limits(effective: &analyte_config::Effective) -> Option<analyte_astm::Limits> {
+    match effective.stack() {
+        Stack::Astm(RecordTransport::Stream(s)) => Some(parser_limits(s.settings().syntax())),
+        Stack::Astm(RecordTransport::Folder(s)) => Some(parser_limits(s.settings().syntax())),
+        Stack::Hl7(RecordTransport::Stream(_))
+        | Stack::Law(_)
+        | Stack::Poct(_)
+        | Stack::Vidas(_)
+        | Stack::Autolyser(_)
+        | Stack::Hl7(RecordTransport::Folder(_)) => None,
+    }
+}
+
+pub(crate) fn dialog(
+    settings: &analyte_config::AstmStack,
+    commit: Duration,
+) -> Result<Config, super::Error> {
+    let timers = Timers {
+        establish: Duration::from_millis(u64::from(
+            settings.settings().timeouts().send_timeout_ms(),
+        )),
+        frame: Duration::from_millis(u64::from(settings.settings().timeouts().send_timeout_ms())),
+        receive: Duration::from_millis(u64::from(
+            settings.settings().timeouts().receive_timeout_ms(),
+        )),
+        commit,
+        ..Timers::default()
+    };
+    let config = Config::new(
+        frame_limit(settings)?,
+        timers,
+        match settings.contention_priority() {
+            analyte_config::Priority::Host => Role::Instrument,
+            analyte_config::Priority::Instrument => Role::Computer,
+        },
+        settings.settings().syntax().limits().bytes(),
+        settings.settings().syntax().limits().records(),
+        true,
+    )?
+    .with_record_boundaries(record_boundaries(settings))
+    .with_checksum_hex(checksum_policy(settings));
+    Ok(config)
+}
+
+pub(crate) fn record_boundaries(
+    settings: &analyte_config::AstmStack,
+) -> analyte_framing::astm::RecordBoundaries {
+    if settings.packed_records() {
+        analyte_framing::astm::RecordBoundaries::Packed
+    } else {
+        analyte_framing::astm::RecordBoundaries::Separate
+    }
+}
+pub(crate) fn checksum_policy(
+    settings: &analyte_config::AstmStack,
+) -> analyte_framing::astm::HexPolicy {
+    match settings.checksum_hex() {
+        analyte_config::ChecksumHex::Strict => analyte_framing::astm::HexPolicy::Strict,
+        analyte_config::ChecksumHex::AcceptLowercase => {
+            analyte_framing::astm::HexPolicy::AcceptLowercase
+        }
+    }
+}
+pub(crate) fn frame_limit(
+    settings: &analyte_config::AstmStack,
+) -> Result<analyte_framing::astm::Limit, analyte_framing::astm::Error> {
+    analyte_framing::astm::Limit::new(settings.settings().frame_limit())
+}
+pub(crate) fn mapping<'a>(
+    syntax: &'a analyte_config::AstmSyntax,
+    mappings: &'a analyte_config::Mappings,
+) -> analyte_mapping::astm::Settings<'a> {
+    analyte_mapping::astm::Settings { syntax, mappings }
+}
