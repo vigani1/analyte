@@ -172,6 +172,7 @@ async fn wait_for(wait: Option<Duration>) {
     }
 }
 
+/// Exercises each concrete host without opening a real analyzer connection.
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -236,8 +237,7 @@ mod tests {
                 Input::Closed(Some(_))
                 | Input::Opened { .. }
                 | Input::Bytes { .. }
-                | Input::Failed(_)
-                | Input::RecordingFailed(_) => Err(Error::UnexpectedInput),
+                | Input::Failed(_) => Err(Error::UnexpectedInput),
             }
         }
         async fn close(

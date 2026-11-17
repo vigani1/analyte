@@ -503,7 +503,7 @@ impl Effects for Host<'_, '_> {
             }
             Input::Bytes { bytes } => bytes,
             Input::Closed(_) => return Ok(Flow::Stop),
-            Input::Failed(_) | Input::RecordingFailed(_) | Input::Tick => Vec::new(),
+            Input::Failed(_) | Input::Tick => Vec::new(),
         };
         let has_bytes = !bytes.is_empty();
         if self.receive_bytes(bytes, conn, stop).await? {

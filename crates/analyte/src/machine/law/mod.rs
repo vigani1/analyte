@@ -543,7 +543,6 @@ impl Effects for Host<'_, '_> {
                 }
                 Mode::Outbound(_) => return Err(Error::TransportFailed(reason)),
             },
-            Input::RecordingFailed(_failure) => {}
         }
         Ok(
             if self.stopped || matches!(self.mode, Mode::Outbound(_)) && self.completed {

@@ -471,7 +471,7 @@ impl Effects for Host<'_, '_> {
             }
             Input::Bytes { bytes } => bytes,
             Input::Closed(_) => return Ok(Flow::Stop),
-            Input::Failed(_) | Input::RecordingFailed(_) | Input::Tick => Vec::new(),
+            Input::Failed(_) | Input::Tick => Vec::new(),
         };
         self.receive_bytes(bytes, host.conn, &mut host.stop).await?;
         Ok(Flow::Continue)

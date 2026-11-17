@@ -120,12 +120,9 @@ impl Effects for Host<'_, '_> {
         let store = self.store;
         let conn = &mut *host.conn;
         let stop = &mut host.stop;
-        let ended = matches!(
-            input,
-            Input::Closed(_) | Input::Failed(_) | Input::RecordingFailed(_)
-        );
+        let ended = matches!(input, Input::Closed(_) | Input::Failed(_));
         self.end_code = match &input {
-            Input::Closed(_) | Input::Failed(_) | Input::RecordingFailed(_) => {
+            Input::Closed(_) | Input::Failed(_) => {
                 if *stop.borrow() {
                     AutolyserEnd::TransferCancelled
                 } else {
@@ -182,7 +179,7 @@ impl Effects for Host<'_, '_> {
                     Vec::new()
                 }
             }
-            Input::Closed(_) | Input::Failed(_) | Input::RecordingFailed(_) => {
+            Input::Closed(_) | Input::Failed(_) => {
                 vec![Event::Disconnected]
             }
         };

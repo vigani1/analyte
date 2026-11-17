@@ -149,7 +149,7 @@ impl Effects for Host<'_, '_> {
                 self.actions
                     .extend(self.dialog.step(self.start.elapsed(), Event::Tick)?);
             }
-            Input::Closed(_) | Input::Failed(_) | Input::RecordingFailed(_) => {
+            Input::Closed(_) | Input::Failed(_) => {
                 self.end_code = if *stop.borrow() {
                     VidasEnd::TransferCancelled
                 } else {
