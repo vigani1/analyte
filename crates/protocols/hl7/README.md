@@ -1,6 +1,6 @@
 # hl7
 
-**Kind: protocol.** Separates message parsing, typed field access and version rules into named files.
+**Kind: protocol.** Separates message grammar, named field access, edition rules and message builders.
 
 **What it does:** Reads and writes HL7 messages, including the IHE LAW laboratory profile.
 

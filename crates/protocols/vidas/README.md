@@ -1,6 +1,6 @@
 # vidas
 
-**Kind: protocol.** Separates message parsing, typed field access and version rules into named files.
+**Kind: protocol.** Reads and writes tagged message fields in the syntax module.
 
 **What it does:** Reads and writes tagged messages for the VIDAS PC Literal format.
 

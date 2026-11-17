@@ -1,6 +1,6 @@
 # autolyser
 
-**Kind: protocol.** Separates message parsing, typed field access and version rules into named files.
+**Kind: protocol.** Reads and writes fixed-width records in the syntax module.
 
 **What it does:** Reads and writes Autolyser fixed-width message records.
 
