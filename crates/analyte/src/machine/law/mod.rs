@@ -56,6 +56,23 @@ async fn session_with_outbound(
     .await
 }
 
+#[derive(Clone, Copy)]
+enum Custody {
+    Idle,
+    Storing(protocol::ExchangeId, ReceiptId),
+    Stored(protocol::ExchangeId, ReceiptId),
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Run {
+    Active,
+    Stopped,
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Completion {
+    Pending,
+    Complete,
+}
+
 /// Owns side effects and reservation cleanup. A cancelled store request may still commit;
 /// the dialog cannot accept it or issue an ACK until its completion is driven explicitly.
 struct Host<'a, 'm> {
@@ -67,12 +84,11 @@ struct Host<'a, 'm> {
     dialog: Dialog,
     mode: Mode<'a>,
     clock: Instant,
-    receipt: Option<(protocol::ExchangeId, ReceiptId)>,
+    custody: Custody,
     ready: Option<oneshot::Sender<()>>,
-    stored: bool,
     outbound: Option<&'a tokio::sync::mpsc::Sender<independent::Work>>,
-    stopped: bool,
-    completed: bool,
+    run: Run,
+    completion: Completion,
     pending_input: VecDeque<u8>,
 }
 impl<'a, 'm> Host<'a, 'm> {
@@ -96,12 +112,11 @@ impl<'a, 'm> Host<'a, 'm> {
             mode,
             dialog: settings::dialog(settings, link)?,
             clock: Instant::now(),
-            receipt: None,
+            custody: Custody::Idle,
             ready: None,
-            stored: false,
             outbound: None,
-            stopped: false,
-            completed: false,
+            run: Run::Active,
+            completion: Completion::Pending,
             pending_input: VecDeque::new(),
         })
     }
@@ -111,10 +126,14 @@ impl<'a, 'm> Host<'a, 'm> {
             .ok_or_else(|| Error::ConnectionDeadlineOverflow)
     }
     fn receipt(&self, token: protocol::ExchangeId) -> Result<ReceiptId, Error> {
-        self.receipt
-            .filter(|(expected, _)| *expected == token)
-            .map(|(_, id)| id)
-            .ok_or_else(|| Error::ReceiptCorrelationMissing)
+        match self.custody {
+            Custody::Storing(expected, id) | Custody::Stored(expected, id) if expected == token => {
+                Ok(id)
+            }
+            Custody::Idle | Custody::Storing(..) | Custody::Stored(..) => {
+                Err(Error::ReceiptCorrelationMissing)
+            }
+        }
     }
     async fn transition(
         &mut self,
@@ -170,7 +189,7 @@ impl<'a, 'm> Host<'a, 'm> {
                 tokio::select! {
                 biased;
                     () = analyte_sink::stopped(&mut stop) => {
-                        self.stopped = true;
+                        self.run = Run::Stopped;
                         return Ok(());
                     },
                     result = operation => result?,
@@ -189,8 +208,7 @@ impl<'a, 'm> Host<'a, 'm> {
         let event = match action {
             Action::Store(token, raw) => {
                 let id = ReceiptId::new();
-                self.receipt = Some((token, id));
-                self.stored = false;
+                self.custody = Custody::Storing(token, id);
 
                 machine
                     .hooks
@@ -203,14 +221,14 @@ impl<'a, 'm> Host<'a, 'm> {
                     intake::receive(self.store, self.machine, id, raw),
                 )
                 .await?;
-                self.stored = true;
+                self.custody = Custody::Stored(token, id);
 
                 if machine.hooks.enabled(Pause::LawCommitted) {
                     let mut stop = host.stop.clone();
                     tokio::select! {
                     biased;
                             () = analyte_sink::stopped(&mut stop) => {
-                                self.stopped = true;
+                                self.run = Run::Stopped;
                                 return Ok(Vec::new());
                             },
                             result = machine.hooks.pause(Pause::LawCommitted, &mut host.stop) => result.map_err(Error::from)?,
@@ -266,7 +284,7 @@ impl<'a, 'm> Host<'a, 'm> {
                 return Ok(Vec::new());
             }
             Action::Uncommitted(_, raw) => {
-                if !self.stored {
+                if !matches!(self.custody, Custody::Stored(..)) {
                     intake::park_bytes(self.store, self.machine, raw, ByteReason::LawInterrupted)
                         .await?;
                 }
@@ -282,9 +300,8 @@ impl<'a, 'm> Host<'a, 'm> {
         Ok(self.dialog.step(self.clock.elapsed(), event)?)
     }
     async fn complete_response(&mut self, host: &mut Context<'_, '_>) -> Result<(), Error> {
-        self.completed = true;
-        self.receipt = None;
-        self.stored = false;
+        self.completion = Completion::Complete;
+        self.custody = Custody::Idle;
         if self.ready.is_some() {
             self.machine
                 .machine()
@@ -418,7 +435,7 @@ impl<'a, 'm> Host<'a, 'm> {
         while let Some(byte) = self.pending_input.front().copied() {
             self.pending_input.pop_front();
             self.transition(Event::Byte(byte), host).await?;
-            if self.stopped {
+            if self.run == Run::Stopped {
                 return Ok(());
             }
         }
@@ -442,7 +459,7 @@ impl<'a, 'm> Host<'a, 'm> {
                     intake::park_bytes(self.store, self.machine, raw, ByteReason::Mllp(&error))
                         .await?;
                 }
-                Action::Uncommitted(_, raw) if !self.stored => {
+                Action::Uncommitted(_, raw) if !matches!(self.custody, Custody::Stored(..)) => {
                     intake::park_bytes(self.store, self.machine, raw, ByteReason::LawInterrupted)
                         .await?;
                 }
@@ -543,7 +560,9 @@ impl Effects for Host<'_, '_> {
             Input::RecordingFailed(_failure) => {}
         }
         Ok(
-            if self.stopped || matches!(self.mode, Mode::Outbound(_)) && self.completed {
+            if self.run == Run::Stopped
+                || matches!(self.mode, Mode::Outbound(_)) && self.completion == Completion::Complete
+            {
                 Flow::Stop
             } else {
                 Flow::Continue
@@ -603,7 +622,7 @@ impl Host<'_, '_> {
                         let mut stop = host.stop.clone();
                         let outgoing = tokio::select! {
                             biased;
-                            () = analyte_sink::stopped(&mut stop) => { self.stopped = true; return Ok(()); },
+                            () = analyte_sink::stopped(&mut stop) => { self.run = Run::Stopped; return Ok(()); },
                             result = self.orders.idle(self.store, self.machine.machine(), settings::options(self.settings)) => match result {
                                 Ok(message) => message,
                                 Err(error) => {
