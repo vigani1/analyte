@@ -35,6 +35,13 @@ async fn setup_with_definition(
     value: serde_json::Value,
     definition: &str,
 ) -> Result<(tempfile::TempDir, Fixture, Reference, Running, TcpStream), Error> {
+    setup_with_gate(value, definition, None).await
+}
+async fn setup_with_gate(
+    value: serde_json::Value,
+    definition: &str,
+    hook: Option<Arc<analyte::runtime::test_hooks::Committed>>,
+) -> Result<(tempfile::TempDir, Fixture, Reference, Running, TcpStream), Error> {
     let temp = tempfile::tempdir()?;
     let path = vendor_config(temp.path(), "autolyser", definition)?;
     let reference = Reference::start(
@@ -49,7 +56,11 @@ async fn setup_with_definition(
             &value,
         )?)?])
         .await?;
-    let service = Running::start(&path, &reference.url, "synthetic-api").await?;
+    let mut configured = program(&path, &reference.url)?;
+    if let Some(hook) = hook {
+        configured.pause_autolyser_quiescent_for_test("autolyser", hook)?;
+    }
+    let service = Running::start_program(configured, "synthetic-api").await?;
     let peer = connect(&path, "autolyser").await?;
     Ok((temp, path, reference, service, peer))
 }
@@ -113,8 +124,26 @@ async fn closed(peer: &mut TcpStream) -> Result<(), Error> {
 async fn autolyser_rev18_ch23_confirmed_insertion_carries_explicit_clone_and_stays_sent_on_restart()
 -> Result<(), Error> {
     for clone in [true, false] {
-        let (temp, path, reference, service, mut peer) = setup(order()?, clone).await?;
-        insertion(&mut peer, &path, clone).await?;
+        let (hook, control) = analyte::runtime::test_hooks::Committed::new();
+        let (temp, path, reference, service, mut peer) =
+            setup_with_gate(order()?, &definition(clone), Some(hook)).await?;
+        empty_poll(&mut peer).await?;
+        step("initial empty poll committed", control.reached()).await?;
+        control.resume();
+        // Reading the insertion start proves the initial pause has finished.
+        assert_eq!(byte(&mut peer).await?, 2);
+        control.arm_next();
+        state(&path, "Sending").await?;
+        no_event(&path).await?;
+        peer.write_all(b"\x06").await?;
+        let expected = if clone {
+            b"000PatA        TSY0301SYN 212\x04"
+        } else {
+            b"000PatA        TSN0301SYN 201\x04"
+        };
+        let mut bytes = vec![0; expected.len()];
+        step("explicit clone insertion", peer.read_exact(&mut bytes)).await?;
+        assert_eq!(bytes, expected);
         peer.write_all(b"Y").await?;
         state(&path, "Sending").await?;
         no_event(&path).await?;
@@ -126,8 +155,12 @@ async fn autolyser_rev18_ch23_confirmed_insertion_carries_explicit_clone_and_sta
             "Autolyser-insertion-confirmed-position-03",
         )
         .await?;
-        // Clear the next poll's custody guard before shutting down.
-        empty_poll(&mut peer).await?;
+        // Hold the owner after confirmed insertion, with no next poll in flight.
+        step(
+            "confirmed insertion committed before shutdown",
+            control.reached(),
+        )
+        .await?;
         wait_count(
             &path,
             "SELECT count(*) FROM poll_intents WHERE state IN ('pending','uncertain')",
@@ -138,7 +171,7 @@ async fn autolyser_rev18_ch23_confirmed_insertion_carries_explicit_clone_and_sta
         drop(peer);
         let service = Running::start(&path, &reference.url, "synthetic-api").await?;
         let mut peer = connect(&path, "autolyser").await?;
-        only_polls(&mut peer).await?;
+        step("restart polls", only_polls(&mut peer)).await?;
         event(
             &path,
             &temp.path().join("receiver.db"),

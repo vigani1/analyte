@@ -28,6 +28,10 @@ pub(crate) enum Error {
     /// Autolyser report records failed grammar validation.
     #[error(transparent)]
     Autolyser(#[from] analyte_autolyser::syntax::Error),
+    /// A bounded synthetic gate stopped or could not resume the connection.
+    #[cfg(feature = "test-hooks")]
+    #[error(transparent)]
+    TestHook(crate::runtime::test_hooks::Error),
     /// The Autolyser response envelope failed validation.
     #[error(transparent)]
     AutolyserFrame(#[from] analyte_framing::autolyser::Error),
