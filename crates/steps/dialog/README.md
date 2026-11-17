@@ -64,3 +64,12 @@ work and transfer outcomes retain their protocol names.
 Storage identities remain distinct from clinical result and delivery identities.
 Autolyser uses `StoreId` rather than a bare integer; its ordinal is meaningful
 only with the host's unique connection incarnation. Hosts echo tokens unchanged.
+
+HL7 and LAW share `ExchangeId` for host correlation and `Write` for bounded
+MLLP output. Its epoch and ordinal identify a dialog exchange, never a stored
+clinical receipt. HL7 receives the host's unique connection epoch; LAW uses
+zero because its host owns one outstanding exchange and retains the connection
+incarnation separately. Hosts echo the whole token unchanged. `Write::until`
+is an absolute connection-clock issuance deadline when supplied; otherwise the
+host's transport budget applies. LAW reports typed `Parked` failures, and HL7
+uses `AckChoice` to distinguish rejection from a content error.

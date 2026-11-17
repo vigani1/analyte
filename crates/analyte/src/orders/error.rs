@@ -2,6 +2,21 @@
 /// Failures looking up, reserving, rendering or settling machine orders.
 #[derive(Debug, thiserror::Error)]
 pub enum OrderError {
+    /// Dispatch retained a specific protocol refusal.
+    #[error(transparent)]
+    Dispatch(#[from] analyte_mapping::DispatchError),
+    /// AUTOLYSER order mapping failed.
+    #[error(transparent)]
+    AutolyserMapping(#[from] analyte_mapping::autolyser::OrderError),
+    /// VIDAS order mapping failed.
+    #[error(transparent)]
+    VidasMapping(#[from] analyte_mapping::vidas::OrderError),
+    /// HL7 order mapping failed.
+    #[error(transparent)]
+    Hl7Mapping(#[from] analyte_mapping::hl7::OrderError),
+    /// ASTM order mapping failed.
+    #[error(transparent)]
+    AstmMapping(#[from] analyte_mapping::astm::OrderError),
     /// Cache collection exceeded the query deadline.
     #[error("operation deadline expired")]
     LookupDeadline,
@@ -77,7 +92,10 @@ pub enum OrderError {
     AstmQueryResponseByteLimitExceeded,
     /// Original wire mapping failure.
     #[error(transparent)]
-    WireMapping(#[from] analyte_mapping::WireMappingError),
+    Hl7WireMapping(#[from] analyte_mapping::hl7::WireError),
+    /// LAW work mapping failed.
+    #[error(transparent)]
+    LawMapping(#[from] analyte_mapping::law::WireError),
     /// HL7 orders missing.
     #[error("HL7 orders missing")]
     Hl7OrdersMissing,

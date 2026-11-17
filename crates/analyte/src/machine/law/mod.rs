@@ -66,7 +66,7 @@ struct Host<'a, 'm> {
     dialog: Dialog,
     mode: Mode<'a>,
     clock: Instant,
-    receipt: Option<(protocol::ReceiptId, ReceiptId)>,
+    receipt: Option<(protocol::ExchangeId, ReceiptId)>,
     ready: Option<oneshot::Sender<()>>,
     stored: bool,
     outbound: Option<&'a tokio::sync::mpsc::Sender<independent::Work>>,
@@ -121,7 +121,7 @@ impl<'a, 'm> Host<'a, 'm> {
             .checked_add(until)
             .ok_or_else(|| Error::ConnectionDeadlineOverflow)
     }
-    fn receipt(&self, token: protocol::ReceiptId) -> Result<ReceiptId, Error> {
+    fn receipt(&self, token: protocol::ExchangeId) -> Result<ReceiptId, Error> {
         self.receipt
             .filter(|(expected, _)| *expected == token)
             .map(|(_, id)| id)
@@ -241,10 +241,7 @@ impl<'a, 'm> Host<'a, 'm> {
             Action::Interpret(token) => {
                 return self.interpret_receipt(token).await;
             }
-            Action::Failed(token, reason) => {
-                intake::failed_reading(self.store, machine, self.receipt(token)?, &reason).await?;
-                return Ok(Vec::new());
-            }
+            Action::Parked(token, reason) => return self.park_failure(token, reason).await,
             Action::ResponseNeeded(token) => {
                 let metadata = crate::orders::hl7::response::response_metadata(
                     crate::orders::hl7::response::Profile::Law,
@@ -254,7 +251,7 @@ impl<'a, 'm> Host<'a, 'm> {
                     Event::Respond(token, metadata.response()?),
                 )?);
             }
-            Action::Write(bytes, until) => self.write_response(bytes, until, host).await?,
+            Action::Write(write) => self.write_response(write, host).await?,
             Action::WorkIssued => {
                 self.orders.issued(Duration::from_millis(u64::from(
                     self.settings.policy().response_ms(),
@@ -314,7 +311,7 @@ impl<'a, 'm> Host<'a, 'm> {
     }
     async fn answer_query(
         &mut self,
-        token: protocol::ReceiptId,
+        token: protocol::ExchangeId,
         message: analyte_hl7::Message,
         started: Duration,
         host: &mut Context<'_, '_>,
@@ -362,7 +359,7 @@ impl<'a, 'm> Host<'a, 'm> {
     }
     async fn interpret_receipt(
         &mut self,
-        token: protocol::ReceiptId,
+        token: protocol::ExchangeId,
     ) -> Result<Vec<Action>, Error> {
         let (outcome, location) = intake::interpret_with_location(
             self.store,
@@ -392,14 +389,28 @@ impl<'a, 'm> Host<'a, 'm> {
             .dialog
             .step(self.clock.elapsed(), Event::Interpreted(token, interpreted))?)
     }
+    async fn park_failure(
+        &self,
+        token: protocol::ExchangeId,
+        reason: protocol::Failure,
+    ) -> Result<Vec<Action>, Error> {
+        intake::failed_reading(
+            self.store,
+            self.machine.machine(),
+            self.receipt(token)?,
+            &reason.to_string(),
+        )
+        .await?;
+        Ok(Vec::new())
+    }
     async fn write_response(
         &mut self,
-        bytes: Vec<u8>,
-        until: Duration,
+        write: analyte_dialog::Write,
         host: &mut Context<'_, '_>,
     ) -> Result<Event<'static>, Error> {
+        let until = write.until.ok_or(protocol::Error::Stale)?;
         host.conn
-            .write_all(&bytes, Some(self.absolute(until)?.into()))
+            .write_all(&write.bytes, Some(self.absolute(until)?.into()))
             .await
             .map_err(|error| {
                 if matches!(error, analyte_transport::Error::Deadline("write all")) {
@@ -450,7 +461,7 @@ impl<'a, 'm> Host<'a, 'm> {
                 | Action::Query(..)
                 | Action::WorkResponse(..)
                 | Action::Interpret(..)
-                | Action::Failed(..)
+                | Action::Parked(..)
                 | Action::ResponseNeeded(..)
                 | Action::Write(..)
                 | Action::WorkIssued

@@ -18,6 +18,12 @@ pub(crate) fn mapping_location(
             let error = match error {
                 Read::Hl7(error) => return syntax_location(error, raw, ending),
                 Read::Mapping(error) => error,
+                Read::LawMapping(error) => match error {
+                    analyte_mapping::law::Error::Mapping(error) => error,
+                    analyte_mapping::law::Error::MissingHeader
+                    | analyte_mapping::law::Error::NoticeOrder
+                    | analyte_mapping::law::Error::NoticePosition => return None,
+                },
                 Read::Astm(_)
                 | Read::Law(_)
                 | Read::Poct(_)
@@ -43,9 +49,6 @@ pub(crate) fn mapping_location(
                 }
                 analyte_mapping::Error::CharsetMismatch
                 | analyte_mapping::Error::DepartureKind
-                | analyte_mapping::Error::MissingHeader
-                | analyte_mapping::Error::NoticeOrder
-                | analyte_mapping::Error::NoticePosition
                 | analyte_mapping::Error::DepartureEvidence(_) => {
                     return None;
                 }

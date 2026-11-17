@@ -65,12 +65,15 @@ pub(crate) struct Reserved<T> {
 }
 
 /// One bounded candidate page per idle interval; the cursor prevents starvation.
-pub(crate) async fn next<T>(
+pub(crate) async fn next<T, E>(
     store: &Handle,
     machine: &Machine,
     after: &mut String,
-    map: impl Fn(&analyte_mapping::AppOrder) -> Result<T, analyte_mapping::OrderMappingError>,
-) -> Result<Option<Reserved<T>>, Error> {
+    map: impl Fn(&analyte_mapping::AppOrder) -> Result<T, E>,
+) -> Result<Option<Reserved<T>>, Error>
+where
+    Error: From<E>,
+{
     let freshness = machine.destination_limits.freshness.as_secs();
     if !super::settings::send_ahead(machine) {
         return Ok(None);
@@ -86,7 +89,7 @@ pub(crate) async fn next<T>(
         let identity = crate::orders::reservation::key(machine, cached.id);
         let version = fields.version;
         let mapped = super::app_order(&order)
-            .map_err(Error::from)
+            .map_err(Error::Text)
             .and_then(|order| map(&order).map_err(Error::from));
         let mapped = match mapped {
             Ok(mapped) => mapped,

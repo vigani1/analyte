@@ -1,7 +1,7 @@
 //! Maps Autolyser results and outgoing work lists.
 use crate::inbound::evidence::{Error, map_part, map_result, map_test, map_units, push_result};
 use crate::orders::codes::{map_priority as outbound_priority, map_test as outbound_test};
-use crate::orders::{AppOrder, OrderMappingError, map_patient, map_specimen};
+use crate::orders::{AppOrder, map_patient, map_specimen};
 use crate::{Output, Position};
 
 use analyte_model::{
@@ -64,27 +64,27 @@ pub fn map_order(
     order: &AppOrder,
     machine: &analyte_config::AutolyserStack,
     settings: &analyte_config::AutolyserOrders,
-) -> Result<analyte_autolyser::syntax::Worklist, OrderMappingError> {
+) -> Result<analyte_autolyser::syntax::Worklist, OrderError> {
     use analyte_autolyser::syntax::{Field, List, PatientCode, Sample, Worklist};
     if !machine.policy().download {
-        return Err(OrderMappingError::Disabled);
+        return Err(crate::OrderMappingError::Disabled.into());
     }
     let patient = map_patient(order, settings.patient_namespace())?;
     let clone = settings.clone_enabled();
     let settings = &settings.tables();
     if patient.len() > 15 {
-        return Err(OrderMappingError::PatientIdTooLong);
+        return Err(crate::OrderMappingError::PatientIdTooLong.into());
     }
     let mut padded = [b' '; 15];
     padded
         .get_mut(..patient.len())
-        .ok_or(OrderMappingError::PatientIdTooLong)?
+        .ok_or(crate::OrderMappingError::PatientIdTooLong)?
         .copy_from_slice(patient.as_bytes());
     let patient = PatientCode::new(&padded)?;
     let sample = match map_specimen(order, settings)? {
         "S" => Sample::Serum,
         "U" => Sample::Urine,
-        _ => return Err(OrderMappingError::UnmappedSpecimenType),
+        _ => return Err(crate::OrderMappingError::UnmappedSpecimenType.into()),
     };
     let priority = outbound_priority(settings.priorities(), order.priority)?;
     let list = match &priority.machine {
@@ -98,40 +98,66 @@ pub fn map_order(
             | analyte_config::PriorityCode::Prn,
         )
         | analyte_config::MachinePriority::Custom(_) => {
-            return Err(OrderMappingError::UnmappedPriority);
+            return Err(crate::OrderMappingError::UnmappedPriority.into());
         }
     };
     let position = order
         .position
         .as_ref()
-        .ok_or(OrderMappingError::MissingCupPosition)?;
+        .ok_or(OrderError::MissingCupPosition)?;
     let slot = position.slot.as_str();
     if slot.is_empty() || slot.len() > 2 || !slot.bytes().all(|b| b.is_ascii_digit()) {
-        return Err(OrderMappingError::InvalidCupPosition);
+        return Err(OrderError::InvalidCupPosition);
     }
     let position = slot
         .parse::<u8>()
-        .map_err(|_| OrderMappingError::InvalidCupPosition)?;
+        .map_err(|_| OrderError::InvalidCupPosition)?;
     if !(1..=99).contains(&position) {
-        return Err(OrderMappingError::InvalidCupPosition);
+        return Err(OrderError::InvalidCupPosition);
     }
     if order.tests.is_empty()
         || order.tests.len() > 99
         || order.tests.len() > machine.settings().limits().repetitions()
     {
-        return Err(OrderMappingError::AutolyserTestCount);
+        return Err(OrderError::TestCount);
     }
     let mut tests = Vec::new();
     for test in &order.tests {
         let mapped = outbound_test(settings.tests(), test)?;
         let [code] = mapped.machine_components.as_slice() else {
-            return Err(OrderMappingError::AutolyserAssayComponents);
+            return Err(OrderError::AssayComponents);
         };
         tests.push(Field::<4>::new(code.as_bytes())?);
     }
     let worklist = Worklist::new(patient, list, sample, clone, position, tests)?;
     if worklist.encode().len() > machine.settings().limits().bytes() {
-        return Err(OrderMappingError::AutolyserMessageLimit);
+        return Err(OrderError::MessageLimit);
     }
     Ok(worklist)
+}
+
+/// Specific outgoing AUTOLYSER mapping refusals.
+#[derive(Debug, thiserror::Error)]
+pub enum OrderError {
+    /// No explicitly addressed cup can be encoded; zero is never invented.
+    #[error("invalid-cup-position")]
+    InvalidCupPosition,
+    /// Autolyser requires an explicit addressed cup.
+    #[error("missing-cup-position")]
+    MissingCupPosition,
+    /// An Autolyser field fails the documented fixed-width rules.
+    #[error("Autolyser request is not representable: {0}")]
+    Syntax(#[from] analyte_autolyser::syntax::Error),
+    /// Autolyser test count is empty or exceeds protocol or configured bounds.
+    #[error("Autolyser test count is empty or exceeds protocol or configured bounds")]
+    TestCount,
+    /// Autolyser assay mapping must contain exactly one component.
+    #[error("Autolyser assay mapping must contain exactly one component")]
+    AssayComponents,
+    /// Autolyser worklist exceeds the message byte limit.
+    #[error("Autolyser worklist exceeds the message byte limit")]
+    MessageLimit,
+    /// Shared order evidence is unavailable or unmapped.
+    #[error(transparent)]
+    Shared(#[from] crate::OrderMappingError),
 }
