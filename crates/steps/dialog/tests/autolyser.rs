@@ -1,4 +1,5 @@
 //! Tests Autolyser polling, checksums and order exchanges.
+//! Kept whole: The polling and download cases share recorded fixtures and storage completion helpers.
 use analyte_autolyser::syntax::*;
 use analyte_dialog::autolyser::{
     Action, Config, Dialog, Error as DialogError, Event, InsertionError, Reception, Recovery,
@@ -128,9 +129,9 @@ fn autolyser_rev18_p177_raw_first_and_l_recovery_before_next_r() -> TestResult {
     let corrupt = b"TEST0042       TS002ALB 0004.21CRE 00087.5190\x04";
     let actions = receive(&mut dialog, corrupt, 0).unwrap();
     assert!(
-        actions
-            .iter()
-            .any(|a| matches!(a, Action::Store(1, bytes) if bytes == corrupt))
+        actions.iter().any(
+            |a| matches!(a, Action::Store(id, bytes) if id.ordinal() == 1 && bytes == corrupt)
+        )
     );
     assert!(
         !actions
@@ -139,7 +140,7 @@ fn autolyser_rev18_p177_raw_first_and_l_recovery_before_next_r() -> TestResult {
     );
     assert!(matches!(
         dialog
-            .step(Duration::ZERO, Event::Stored(1))
+            .step(Duration::ZERO, Event::Stored(store_id(1)?))
             .unwrap()
             .first(),
         Some(Action::Park(DialogError::Framing(
@@ -165,11 +166,11 @@ fn autolyser_rev18_p177_raw_first_and_l_recovery_before_next_r() -> TestResult {
     assert!(
         actions
             .iter()
-            .any(|a| matches!(a, Action::Store(2, bytes) if bytes == RESULT))
+            .any(|a| matches!(a, Action::Store(id, bytes) if id.ordinal() == 2 && bytes == RESULT))
     );
     assert!(matches!(
         dialog
-            .step(Duration::from_secs(1), Event::Stored(2))
+            .step(Duration::from_secs(1), Event::Stored(store_id(2)?))
             .unwrap()
             .first(),
         Some(Action::Report(_))
@@ -186,12 +187,12 @@ fn autolyser_rev18_p177_empty_queue_still_requires_storage() -> TestResult {
     assert!(
         actions
             .iter()
-            .any(|a| matches!(a, Action::Store(1, bytes) if bytes == &[21]))
+            .any(|a| matches!(a, Action::Store(id, bytes) if id.ordinal() == 1 && bytes == &[21]))
     );
     assert!(!actions.iter().any(|a| matches!(a, Action::Empty)));
     assert!(matches!(
         dialog
-            .step(Duration::ZERO, Event::Stored(1))
+            .step(Duration::ZERO, Event::Stored(store_id(1)?))
             .unwrap()
             .first(),
         Some(Action::Empty)
@@ -220,7 +221,7 @@ fn autolyser_rev18_p175_download_serializes_and_preserves_binary_reply() -> Test
     assert!(!actions.iter().any(|a| matches!(a, Action::Insertion(_))));
     assert!(matches!(
         dialog
-            .step(Duration::ZERO, Event::Stored(1))
+            .step(Duration::ZERO, Event::Stored(store_id(1)?))
             .unwrap()
             .first(),
         Some(Action::Insertion(Reception::Rejected(
@@ -233,15 +234,13 @@ fn autolyser_rev18_p175_download_serializes_and_preserves_binary_reply() -> Test
         .unwrap();
     let _ = dialog.step(Duration::from_secs(1), Event::Byte(6)).unwrap();
     let actions = receive(&mut dialog, &[b'Y', 3], 1).unwrap();
-    assert!(
-        actions
-            .iter()
-            .any(|a| matches!(a, Action::Store(2, bytes) if bytes == &[b'Y', 3]))
-    );
+    assert!(actions.iter().any(
+        |a| matches!(a, Action::Store(id, bytes) if id.ordinal() == 2 && bytes == &[b'Y', 3])
+    ));
     assert!(!actions.iter().any(|a| matches!(a, Action::Insertion(_))));
     assert!(matches!(
         dialog
-            .step(Duration::from_secs(1), Event::Stored(2))
+            .step(Duration::from_secs(1), Event::Stored(store_id(2)?))
             .unwrap()
             .first(),
         Some(Action::Insertion(Reception::Accepted(3)))
@@ -258,12 +257,12 @@ fn autolyser_rev18_p177_partial_timeout_and_storage_failure_never_resend() -> Te
     assert!(
         actions
             .iter()
-            .any(|a| matches!(a, Action::Store(1, raw) if raw == b"TEST"))
+            .any(|a| matches!(a, Action::Store(id, raw) if id.ordinal() == 1 && raw == b"TEST"))
     );
     assert!(actions.iter().any(|a| matches!(a, Action::Close)));
     assert!(
         dialog
-            .step(Duration::from_secs(2), Event::StoreFailed(1))
+            .step(Duration::from_secs(2), Event::StoreFailed(store_id(1)?))
             .unwrap()
             .iter()
             .any(|a| matches!(a, Action::Close))
@@ -302,16 +301,16 @@ fn autolyser_rev18_p177_overlong_and_short_reports_are_stored_before_rejection()
         start(&mut dialog, Request::Next, 0).unwrap();
         let actions = receive(&mut dialog, raw, 0).unwrap();
         assert!(
-            actions
-                .iter()
-                .any(|a| matches!(a, Action::Store(1, bytes) if bytes == raw))
+            actions.iter().any(
+                |a| matches!(a, Action::Store(id, bytes) if id.ordinal() == 1 && bytes == raw)
+            )
         );
         if !raw.ends_with(&[4]) {
             assert!(actions.iter().any(|a| matches!(a, Action::Close)));
         }
         assert!(
             dialog
-                .step(Duration::ZERO, Event::Stored(1))
+                .step(Duration::ZERO, Event::Stored(store_id(1)?))
                 .unwrap()
                 .iter()
                 .any(|a| matches!(a, Action::Park(_)))
@@ -327,14 +326,14 @@ fn autolyser_rev18_p175_disconnect_during_commit_cannot_reopen_connection() -> T
     receive(&mut dialog, RESULT, 0).unwrap();
     assert!(
         dialog
-            .step(Duration::ZERO, Event::Disconnect)
+            .step(Duration::ZERO, Event::Disconnected)
             .unwrap()
             .iter()
             .any(|a| matches!(a, Action::Close))
     );
     assert!(
         dialog
-            .step(Duration::ZERO, Event::Stored(1))
+            .step(Duration::ZERO, Event::Stored(store_id(1)?))
             .unwrap()
             .iter()
             .any(|a| matches!(a, Action::Report(_)))
@@ -356,7 +355,9 @@ fn autolyser_rev18_p177_l_empty_does_not_resolve_corruption() -> TestResult {
     let mut dialog = Dialog::new(policy)?;
     start(&mut dialog, Request::Next, 0).unwrap();
     receive(&mut dialog, b"X\x04", 0).unwrap();
-    let _ = dialog.step(Duration::ZERO, Event::Stored(1)).unwrap();
+    let _ = dialog
+        .step(Duration::ZERO, Event::Stored(store_id(1)?))
+        .unwrap();
     assert!(
         dialog
             .step(Duration::from_secs(1), Event::Tick)
@@ -373,7 +374,7 @@ fn autolyser_rev18_p177_l_empty_does_not_resolve_corruption() -> TestResult {
     );
     receive(&mut dialog, &[21], 1).unwrap();
     let _ = dialog
-        .step(Duration::from_secs(1), Event::Stored(2))
+        .step(Duration::from_secs(1), Event::Stored(store_id(2)?))
         .unwrap();
     assert!(matches!(
         dialog
@@ -402,12 +403,12 @@ fn autolyser_rev18_p175_lost_download_reply_is_uncertain_without_retry() -> Test
     let _ = dialog.step(Duration::ZERO, Event::Byte(6)).unwrap();
     let actions = dialog.step(Duration::from_secs(2), Event::Tick).unwrap();
     assert!(
-        actions
-            .iter()
-            .any(|a| matches!(a, Action::Store(1, bytes) if bytes.is_empty()))
+        actions.iter().any(
+            |a| matches!(a, Action::Store(id, bytes) if id.ordinal() == 1 && bytes.is_empty())
+        )
     );
     let actions = dialog
-        .step(Duration::from_secs(2), Event::Stored(1))
+        .step(Duration::from_secs(2), Event::Stored(store_id(1)?))
         .unwrap();
     assert!(actions.iter().any(|a| matches!(a, Action::Uncertain)));
     assert!(!actions.iter().any(|a| matches!(a, Action::Write(_))));
@@ -465,12 +466,18 @@ fn autolyser_rev18_section23_2_p177_required_bounds_and_independent_deadlines() 
             4 => policy.storage = Duration::ZERO,
             _ => unreachable!(),
         }
-        assert!(matches!(Dialog::new(policy), Err(DialogError::Config)));
+        assert!(matches!(
+            Dialog::new(policy),
+            Err(DialogError::Configuration)
+        ));
     }
     for max_bytes in [0, 1, 11039] {
         let mut policy = config();
         policy.max_bytes = max_bytes;
-        assert!(matches!(Dialog::new(policy), Err(DialogError::Config)));
+        assert!(matches!(
+            Dialog::new(policy),
+            Err(DialogError::Configuration)
+        ));
     }
     for total in [false, true] {
         let mut policy = config();
@@ -499,13 +506,13 @@ fn autolyser_rev18_section23_2_p177_required_bounds_and_independent_deadlines() 
         };
         let actions = dialog.step(Duration::from_secs(time), Event::Tick).unwrap();
         assert!(
-            actions
-                .iter()
-                .any(|a| matches!(a, Action::Store(1, raw) if raw == expected))
+            actions.iter().any(
+                |a| matches!(a, Action::Store(id, raw) if id.ordinal() == 1 && raw == expected)
+            )
         );
         assert!(actions.iter().any(|a| matches!(a, Action::Close)));
         let _ = dialog
-            .step(Duration::from_secs(time), Event::Stored(1))
+            .step(Duration::from_secs(time), Event::Stored(store_id(1)?))
             .unwrap();
         assert!(
             !dialog
@@ -531,7 +538,9 @@ fn adr0001_autolyser_manual_recovery_has_no_polling_wake() -> TestResult {
         0,
     )
     .unwrap();
-    let actions = dialog.step(Duration::ZERO, Event::Stored(1)).unwrap();
+    let actions = dialog
+        .step(Duration::ZERO, Event::Stored(store_id(1)?))
+        .unwrap();
     assert!(matches!(actions.first(), Some(Action::Park(_))));
     assert_eq!(dialog.next_deadline(), None);
     assert!(
@@ -571,4 +580,35 @@ fn adr0001_autolyser_deadline_overflow_is_exhausted() {
         actions.as_slice(),
         [Action::Refused(DialogError::Exhausted)]
     ));
+}
+
+fn store_id(
+    ordinal: u64,
+) -> Result<analyte_dialog::autolyser::StoreId, Box<dyn std::error::Error>> {
+    let mut dialog = Dialog::new(config())?;
+    for index in 1..=ordinal {
+        let time = index.saturating_sub(1);
+        start(&mut dialog, Request::Next, time)?;
+        let actions = receive(&mut dialog, &[analyte_framing::autolyser::NAK], time)?;
+        let id = actions
+            .into_iter()
+            .find_map(|action| match action {
+                Action::Store(id, _) => Some(id),
+                Action::Write(_)
+                | Action::Report(_)
+                | Action::Park(_)
+                | Action::Empty
+                | Action::Insertion(_)
+                | Action::Uncertain
+                | Action::Refused(_)
+                | Action::Close
+                | Action::Deadline(_) => None,
+            })
+            .ok_or("fixture did not emit storage request")?;
+        if index == ordinal {
+            return Ok(id);
+        }
+        dialog.step(Duration::from_secs(time), Event::Stored(id))?;
+    }
+    Err("fixture ordinal must be positive".into())
 }

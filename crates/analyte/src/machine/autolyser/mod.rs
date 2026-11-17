@@ -195,7 +195,7 @@ impl Effects for ConnectionState {
                 }
             }
             Input::Closed(_) | Input::Failed(_) | Input::RecordingFailed(_) => {
-                vec![Event::Disconnect]
+                vec![Event::Disconnected]
             }
         };
         for event in events {
@@ -233,7 +233,7 @@ impl Effects for ConnectionState {
 impl ConnectionState {
     async fn store_report(
         &mut self,
-        token: u64,
+        token: analyte_dialog::autolyser::StoreId,
         raw: Vec<u8>,
         actions: &mut VecDeque<Action>,
         machine: &intake::Connection<'_>,
@@ -403,7 +403,7 @@ async fn process(
 fn park_code(error: &analyte_dialog::autolyser::Error) -> String {
     use analyte_dialog::autolyser::Error;
     match error {
-        Error::Config => Code::AutolyserParkedConfig.as_str().into(),
+        Error::Configuration => Code::AutolyserParkedConfig.as_str().into(),
         Error::Busy => Code::AutolyserParkedBusy.as_str().into(),
         Error::TimeReversed | Error::Exhausted => Code::AutolyserParkedTime.as_str().into(),
         Error::Incomplete => Code::AutolyserParkedIncomplete.as_str().into(),

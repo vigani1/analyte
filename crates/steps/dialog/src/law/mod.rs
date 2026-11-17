@@ -73,9 +73,9 @@ pub enum Event<'a> {
     /// Advance deadlines before accepting another event.
     Tick,
     /// Exact raw receipt is durably stored.
-    Committed(ReceiptId),
+    Stored(ReceiptId),
     /// Durable custody failed; no positive reply is permitted.
-    CommitFailed(ReceiptId),
+    StoreFailed(ReceiptId),
     /// Host completed a transaction that does not need a response.
     Complete(ReceiptId),
     /// Host finished durable interpretation.
@@ -91,13 +91,13 @@ pub enum Event<'a> {
     /// Transport queued the requested write; not proof of peer acceptance.
     Written,
     /// Connection ended; preserve all pending evidence.
-    Disconnect,
+    Disconnected,
 }
 /// Ordered effects. Payloads belong only in the protected store or transport.
 #[derive(Debug)]
 pub enum Action {
-    /// Commit exact framed bytes before sending `Committed`.
-    Commit(ReceiptId, Vec<u8>),
+    /// Commit exact framed bytes before sending `Stored`.
+    Store(ReceiptId, Vec<u8>),
     /// Query cache lookup may now run, using the retained first-byte time.
     Query(ReceiptId, Message, Duration),
     /// Reconcile this durable ORL against retained work; never acknowledge a response.
@@ -178,7 +178,7 @@ enum Completion {
 #[derive(Debug)]
 enum State {
     Idle,
-    Commit(ReceiptId, Vec<u8>),
+    Store(ReceiptId, Vec<u8>),
     Query(ReceiptId),
     WorkResponse(ReceiptId),
     Interpret(ReceiptId, Message),
@@ -268,7 +268,8 @@ impl Dialog {
             .advance(now, headroom)
             .map_err(|error| error.into_dialog(Error::TimeReversed, Error::Exhausted))?;
         let mut out = Vec::new();
-        if self.deadline().is_some_and(|until| now >= until) && !matches!(event, Event::Disconnect)
+        if self.deadline().is_some_and(|until| now >= until)
+            && !matches!(event, Event::Disconnected)
         {
             let reason = match self.state {
                 State::Idle => {
@@ -279,7 +280,7 @@ impl Dialog {
                     }
                 }
                 State::Writing { .. } => "LAW response send deadline expired",
-                State::Commit(..)
+                State::Store(..)
                 | State::Query(_)
                 | State::WorkResponse(_)
                 | State::Interpret(..)
@@ -330,8 +331,8 @@ impl Dialog {
                         return Err(Error::Exhausted);
                     };
                     self.next = next;
-                    self.state = State::Commit(id, raw.clone());
-                    out.push(Action::Commit(id, raw));
+                    self.state = State::Store(id, raw.clone());
+                    out.push(Action::Store(id, raw));
                 }
             }
         }
@@ -368,7 +369,7 @@ impl Dialog {
     fn input(&mut self, event: Event<'_>, out: &mut Vec<Action>) -> Result<(), Error> {
         match event {
             Event::Tick => {}
-            Event::Disconnect => {
+            Event::Disconnected => {
                 self.finish_wire(out);
                 self.state = State::Closed;
                 self.until = None;
@@ -376,9 +377,9 @@ impl Dialog {
             Event::Byte(byte) => {
                 self.receive_byte(byte, out)?;
             }
-            Event::Committed(id) => self.committed(id, out)?,
-            Event::CommitFailed(id) => {
-                if !matches!(self.state, State::Commit(expected, _) if expected == id) {
+            Event::Stored(id) => self.committed(id, out)?,
+            Event::StoreFailed(id) => {
+                if !matches!(self.state, State::Store(expected, _) if expected == id) {
                     return Err(Error::Stale);
                 }
                 self.state = State::Closed;
@@ -443,7 +444,7 @@ impl Dialog {
         out.push(Action::Done);
     }
     fn finish_wire(&mut self, out: &mut Vec<Action>) {
-        if let State::Commit(id, raw) = &self.state {
+        if let State::Store(id, raw) = &self.state {
             out.push(Action::Uncommitted(*id, raw.clone()));
         }
         if let Some(mllp::Event::Rejected { raw, error }) = self
@@ -504,12 +505,12 @@ impl Dialog {
     }
     fn committed(&mut self, id: ReceiptId, out: &mut Vec<Action>) -> Result<(), Error> {
         let state = std::mem::replace(&mut self.state, State::Idle);
-        let State::Commit(expected, raw) = state else {
+        let State::Store(expected, raw) = state else {
             self.state = state;
             return Err(Error::Stale);
         };
         if id != expected {
-            self.state = State::Commit(expected, raw);
+            self.state = State::Store(expected, raw);
             return Err(Error::Stale);
         }
         let payload = mllp::payload(&raw).ok_or(mllp::Error::Incomplete)?;

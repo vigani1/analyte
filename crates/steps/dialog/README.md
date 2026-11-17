@@ -28,6 +28,39 @@ the protocol. Order-cache polling remains a separate host operation.
 
 ASTM returns its decoder's partial bytes on disconnect. VIDAS schedules its
 session, byte-gap, acknowledgment and commit timers internally; byte activity
-cannot extend the session or commit budget. Its `on` and arm/cancel reports
-remain available for existing untimed event consumers and observers; live hosts
-use `step` and `next_deadline`, and do not schedule those reports themselves.
+cannot extend the session or commit budget. Its named timer arm/cancel reports
+are observer effects; hosts use `step` and `next_deadline`, and do not schedule
+those reports themselves.
+
+## Shared dialog vocabulary
+
+All six dialogs use `step(now, event)`. These names describe the same host
+concept wherever that concept occurs; payload shapes remain protocol-specific.
+
+| Concept | Name | Host contract |
+| --- | --- | --- |
+| Durable storage request | `Action::Store` | Retain exact evidence and driver/config versions before reporting completion. |
+| Successful storage completion | `Event::Stored` | Echo the outstanding request identity; VIDAS has one implicit outstanding packet. POCT also reports the durably retained interpretation outcome. |
+| Storage failure | `Event::StoreFailed` | Never permits a positive acknowledgment. ASTM also reports `Action::StoreFailed` on failure or expiry. |
+| Transport output | `Action::Write` | Issue exact bytes, or encode the typed POCT message through its protocol grammar. |
+| Transport ended | `Event::Disconnected` | Preserve partial evidence; never grants permission to replay orders. |
+| Close transport | `Action::Close` | Stop the transfer; host retains unresolved work. |
+| Wake without input | `Event::Tick` | Evaluate dialog-owned deadlines with fresh monotonic time. |
+| Next wake | `next_deadline()`, `Action::Deadline` where emitted | Absolute elapsed time; `None` waits for input or cancellation. |
+| Refuse host input | `Action::Refused` | Preserve earlier ordered effects and report the specific error. |
+| Reject wire input | `Action::Rejected` where emitted | Retain framing evidence and its specific reason. |
+| Invalid settings | `Error::Configuration` | Construction fails before starting a session. |
+| Reversed time | `Error::TimeReversed` | Reject before mutating the conversation. |
+| Deadline or token overflow | `Error::Exhausted` | Stop rather than wrap a deadline or identity. |
+
+POCT's `Parse`, `ParseLimit` and `ParseDeadline` actions ask the host to
+interpret framed bytes; they are not storage requests or confirmations. Its
+`StoreOutcome` describes successful durable custody, including parked semantic
+errors; failed custody uses `StoreFailed`. VIDAS's `TimerArmed` and
+`TimerCancelled` observer effects name its protocol timers and report relative
+budgets, not a host wake schedule. Protocol-specific ACK, query, polling,
+work and transfer outcomes retain their protocol names.
+
+Storage identities remain distinct from clinical result and delivery identities.
+Autolyser uses `StoreId` rather than a bare integer; its ordinal is meaningful
+only with the host's unique connection incarnation. Hosts echo tokens unchanged.

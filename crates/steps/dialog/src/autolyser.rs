@@ -61,7 +61,7 @@ impl Request {
 pub enum Error {
     /// Required bound or deadline is invalid.
     #[error("invalid configuration")]
-    Config,
+    Configuration,
     /// Operation conflicts with the current phase.
     #[error("connection busy or recovery required")]
     Busy,
@@ -91,6 +91,18 @@ pub enum Error {
     Record(#[from] records::Error),
 }
 
+/// Connection-scoped storage request ordinal; never a clinical result identity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StoreId(u64);
+
+impl StoreId {
+    /// Returns the ordinal for host evidence within this connection incarnation.
+    #[must_use]
+    pub const fn ordinal(self) -> u64 {
+        self.0
+    }
+}
+
 /// Host input, processed without consulting a clock or performing I/O.
 #[derive(Clone, Copy)]
 pub enum Event<'a> {
@@ -101,13 +113,13 @@ pub enum Event<'a> {
     /// Next received byte, independent of transport read boundaries.
     Byte(u8),
     /// Durable commit completion for the emitted token.
-    Stored(u64),
+    Stored(StoreId),
     /// Commit failed; preserve emitted evidence and close the connection.
-    StoreFailed(u64),
+    StoreFailed(StoreId),
     /// Evaluate deadlines; may initiate configured L recovery only.
     Tick,
     /// End the connection, retaining any partial response for storage.
-    Disconnect,
+    Disconnected,
 }
 
 /// Ordered effects; byte-bearing actions belong only in protected storage.
@@ -116,7 +128,7 @@ pub enum Action {
     /// Write exactly these bytes.
     Write(Vec<u8>),
     /// Durably store token and exact raw bytes with driver/config versions.
-    Store(u64, Vec<u8>),
+    Store(StoreId, Vec<u8>),
     /// Stored response is valid; identity remains unresolved until mapping qualifies it.
     Report(Report),
     /// Stored response is corrupt or incomplete and needs reconciliation.
@@ -249,7 +261,7 @@ enum State {
         total: Duration,
     },
     Store {
-        token: u64,
+        token: StoreId,
         frame: Frame,
         insertion: bool,
     },
@@ -286,7 +298,7 @@ impl Dialog {
         .any(Duration::is_zero)
             || !(2..=11038).contains(&config.max_bytes)
         {
-            return Err(Error::Config);
+            return Err(Error::Configuration);
         }
         Ok(Self {
             config,
@@ -339,8 +351,9 @@ impl Dialog {
     }
 
     fn store(&mut self, frame: Frame, insertion: bool) -> Result<Vec<Action>, Error> {
-        let token = self.next_token.checked_add(1).ok_or(Error::Exhausted)?;
-        self.next_token = token;
+        let ordinal = self.next_token.checked_add(1).ok_or(Error::Exhausted)?;
+        self.next_token = ordinal;
+        let token = StoreId(ordinal);
         self.deadline = self.after(self.config.storage)?;
         let action = Action::Store(token, frame.raw().to_vec());
         self.state = State::Store {
@@ -390,7 +403,7 @@ impl Dialog {
                     Action::Close,
                 ])
             }
-            Event::Disconnect => self.interrupt(),
+            Event::Disconnected => self.interrupt(),
             Event::Tick => {
                 if self.recovery
                     && self.config.recovery == Recovery::LastOnPoll
@@ -500,7 +513,7 @@ impl Dialog {
         }
     }
 
-    fn stored(&mut self, token: u64) -> Result<Vec<Action>, Error> {
+    fn stored(&mut self, token: StoreId) -> Result<Vec<Action>, Error> {
         if !matches!(self.state, State::Store { token: pending, .. } if pending == token) {
             return Err(Error::Stale);
         }

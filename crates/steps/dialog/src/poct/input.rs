@@ -19,12 +19,12 @@ impl Dialog {
                     .iter()
                     .any(|action| matches!(action, Action::Close { .. }))
                 {
-                    actions.insert(0, Action::InputDeadline(self.take_input()));
+                    actions.insert(0, Action::ParseDeadline(self.take_input()));
                 }
                 return Ok(actions);
             }
             Err(analyte_framing::poct::Error::Limit) => {
-                return Ok(vec![Action::InputLimit(self.take_input())]);
+                return Ok(vec![Action::ParseLimit(self.take_input())]);
             }
             Err(
                 analyte_framing::poct::Error::Incomplete
@@ -38,9 +38,9 @@ impl Dialog {
             .iter()
             .any(|action| matches!(action, Action::Close { .. }))
         {
-            actions.insert(0, Action::InputDeadline(wire));
+            actions.insert(0, Action::ParseDeadline(wire));
         } else {
-            actions.push(Action::Input(wire));
+            actions.push(Action::Parse(wire));
         }
         Ok(actions)
     }

@@ -87,7 +87,7 @@ impl Config {
             ]
             .contains(&Duration::ZERO)
         {
-            return Err(Error::InvalidConfig);
+            return Err(Error::Configuration);
         }
         Ok(Self {
             limit,
@@ -151,8 +151,8 @@ pub enum End {
 pub enum Action {
     /// Write bytes in order before supplying another event.
     Write(Vec<u8>),
-    /// Store exact bytes and identity durably before replying `Committed`.
-    Commit(CommitId, astm::FrameNumber, Vec<u8>),
+    /// Store exact bytes and identity durably before replying `Stored`.
+    Store(CommitId, astm::FrameNumber, Vec<u8>),
     /// One complete ETX-terminated record, assembled only from committed frames.
     Record(Vec<u8>),
     /// Receive or send transfer ended; incomplete assembly is discarded.
@@ -160,7 +160,7 @@ pub enum Action {
     /// Send attempt finished; failure leaves repetition to the host's explicit decision.
     Sent(End),
     /// Commit failed or exceeded its budget; never positively acknowledged.
-    CommitFailed(CommitId),
+    StoreFailed(CommitId),
     /// Same previous number carried different bytes.
     Conflict(Vec<u8>),
     /// Rejected wire bytes and specific framing cause.
@@ -181,15 +181,15 @@ pub enum Event {
     /// Next wire byte; TCP packet boundaries have no meaning.
     Byte(u8),
     /// Transport ended or was cancelled; return partial framing evidence without writing.
-    Disconnect,
+    Disconnected,
     /// Wakeup without input.
     Tick,
     /// Host has reserved capacity for accepting ENQ.
     Capacity(bool),
     /// Durable response; stale identities are rejected.
-    Committed(CommitId),
+    Stored(CommitId),
     /// Failed durable response.
-    CommitFailed(CommitId),
+    StoreFailed(CommitId),
     /// Explicit new outgoing message; each vector is a separate record.
     Send(Vec<Vec<u8>>),
     /// Request EOT instead of ACK for subsequent committed frames.
@@ -201,7 +201,7 @@ pub enum Event {
 pub enum Error {
     /// Configuration has an unusable bound.
     #[error("zero timer or resource bound")]
-    InvalidConfig,
+    Configuration,
     /// Host time must never go backwards.
     #[error("nonmonotonic time")]
     TimeReversed,

@@ -146,7 +146,7 @@ impl<'a, 'm> Host<'a, 'm> {
             }
             let protects_raw = matches!(
                 &action,
-                Action::Commit(..) | Action::Rejected(..) | Action::Uncommitted(..)
+                Action::Store(..) | Action::Rejected(..) | Action::Uncommitted(..)
             );
             let timeout_reason = if matches!(&action, Action::Write(..)) {
                 error::DeadlineReason::Write
@@ -190,7 +190,7 @@ impl<'a, 'm> Host<'a, 'm> {
     ) -> Result<Vec<Action>, Error> {
         let machine = self.machine.machine();
         let event = match action {
-            Action::Commit(token, raw) => {
+            Action::Store(token, raw) => {
                 let id = ReceiptId::new();
                 self.receipt = Some((token, id));
                 self.stored = false;
@@ -219,7 +219,7 @@ impl<'a, 'm> Host<'a, 'm> {
                             result = machine.hooks.pause(Pause::LawCommitted, &mut host.stop) => result.map_err(Error::TestHook)?,
                         }
                 }
-                Event::Committed(token)
+                Event::Stored(token)
             }
             Action::Query(token, message, started) => {
                 return self.answer_query(token, message, started, host).await;
@@ -432,7 +432,10 @@ impl<'a, 'm> Host<'a, 'm> {
         Ok(())
     }
     async fn finish(&mut self) -> Result<(), Error> {
-        for action in self.dialog.step(self.clock.elapsed(), Event::Disconnect)? {
+        for action in self
+            .dialog
+            .step(self.clock.elapsed(), Event::Disconnected)?
+        {
             match action {
                 Action::Rejected(error, raw) => {
                     intake::park_bytes(self.store, self.machine, raw, ByteReason::Mllp(&error))
@@ -442,7 +445,7 @@ impl<'a, 'm> Host<'a, 'm> {
                     intake::park_bytes(self.store, self.machine, raw, ByteReason::LawInterrupted)
                         .await?;
                 }
-                Action::Commit(..)
+                Action::Store(..)
                 | Action::Query(..)
                 | Action::WorkResponse(..)
                 | Action::Interpret(..)

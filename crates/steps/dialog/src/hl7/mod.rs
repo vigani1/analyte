@@ -109,9 +109,9 @@ pub enum Event<'a> {
     /// Next received byte.
     Byte(u8),
     /// Durable commit succeeded.
-    Committed(ReceiptId),
+    Stored(ReceiptId),
     /// Durable commit failed; responsibility was not accepted.
-    CommitFailed(ReceiptId),
+    StoreFailed(ReceiptId),
     /// Interpretation succeeded under the agreed profile.
     Interpreted(ReceiptId),
     /// Interpretation failed, with structured location and a rejection/content-error choice.
@@ -127,14 +127,14 @@ pub enum Event<'a> {
     /// Issuance failed or became uncertain; never retry implicitly.
     QueryWriteFailed(ReplyPart),
     /// Connection ended. Drop this dialog after consuming returned evidence.
-    Disconnect,
+    Disconnected,
 }
 
 /// Ordered host effects. Raw bytes belong only in protected storage.
 #[derive(Debug)]
 pub enum Action {
     /// Commit exact MLLP block, including framing, with driver/config versions.
-    Commit(ReceiptId, Vec<u8>),
+    Store(ReceiptId, Vec<u8>),
     /// Interpret exact payload only after durable commit.
     Interpret(ReceiptId, Vec<u8>),
     /// Supply fresh response metadata; code identifies the exchange phase.
@@ -527,10 +527,10 @@ impl Dialog {
             Event::Send(raw) => {
                 self.send(raw, out)?;
             }
-            Event::Committed(id) => {
+            Event::Stored(id) => {
                 self.committed(id, out)?;
             }
-            Event::CommitFailed(id) => {
+            Event::StoreFailed(id) => {
                 self.commit_failed(id, out)?;
             }
             Event::Interpreted(id) => self.finish_host(id, true, false, None, out)?,
@@ -547,7 +547,7 @@ impl Dialog {
             Event::Respond(id, response) => {
                 self.respond(id, response, out)?;
             }
-            Event::Disconnect => {
+            Event::Disconnected => {
                 if let Some(sending) = self.sending.take() {
                     out.push(Action::Sent(sending.id, Outcome::Uncertain));
                 }
@@ -665,7 +665,7 @@ impl Dialog {
                         codes: VecDeque::new(),
                     });
                     self.deadline = None;
-                    out.push(Action::Commit(id, raw));
+                    out.push(Action::Store(id, raw));
                 } else {
                     out.push(Action::Parked(raw, Error::Exhausted));
                 }
@@ -674,7 +674,7 @@ impl Dialog {
                 if let Some(next) = self.next.checked_add(1) {
                     let id = ReceiptId(self.epoch, self.next);
                     self.next = next;
-                    out.push(Action::Commit(id, raw.clone()));
+                    out.push(Action::Store(id, raw.clone()));
                     self.malformed = Some((id, raw, error));
                     self.deadline = None;
                 } else {
