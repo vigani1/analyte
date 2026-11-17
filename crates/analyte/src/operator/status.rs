@@ -1,5 +1,6 @@
 //! Reads nonclinical operator health snapshots.
-use crate::{Error, deadline, installation::config::Program};
+use crate::operator::Error;
+use crate::{deadline, installation::config::Program};
 use analyte_store::Handle;
 use std::collections::BTreeMap;
 
@@ -68,11 +69,7 @@ pub async fn snapshot(program: &Program, store: &Handle) -> Result<Vec<String>, 
         // The store's cursor is its JSON UUID key; reconstruct it without a payload read.
         after = format!(
             "\"{}\"",
-            uuid::Uuid::from(
-                page.last()
-                    .ok_or_else(|| crate::invalid("receipt page lost cursor"))?
-                    .id
-            )
+            uuid::Uuid::from(page.last().ok_or_else(|| Error::ReceiptPageLostCursor)?.id)
         );
     }
     for machine in program.machines() {
@@ -124,6 +121,7 @@ pub async fn print(program: &Program) -> Result<(), Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Error;
     struct Space;
     impl analyte_store::FreeSpace for Space {
         fn available(&self, _: &std::path::Path) -> std::io::Result<u64> {

@@ -18,6 +18,7 @@ pub mod runtime;
 /// The orchestration boundary retains concrete errors as their original causes.
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 
+#[cfg(any(test, feature = "test-hooks"))]
 pub(crate) fn invalid(message: &str) -> Error {
     std::io::Error::new(std::io::ErrorKind::InvalidInput, message).into()
 }

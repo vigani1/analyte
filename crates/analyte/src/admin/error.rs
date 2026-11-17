@@ -37,7 +37,7 @@ pub enum Error {
     UncertainOrderCountOverflow,
     /// Preserves the original admin dependency failure.
     #[error(transparent)]
-    Operator(#[from] crate::Error),
+    Operator(Box<crate::operator::Error>),
     /// Preserves the original admin dependency failure.
     #[error(transparent)]
     Runtime(#[from] crate::runtime::Error),
@@ -80,4 +80,10 @@ pub enum Error {
     /// Preserves the original admin dependency failure.
     #[error(transparent)]
     Secret(#[from] crate::installation::secrets::SecretError),
+}
+
+impl From<crate::operator::Error> for Error {
+    fn from(error: crate::operator::Error) -> Self {
+        Self::Operator(Box::new(error))
+    }
 }

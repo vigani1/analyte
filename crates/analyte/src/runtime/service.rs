@@ -556,7 +556,9 @@ fn start_alerts(
         let component = watchdog.component("alert-evaluator".into());
         alert_owners.spawn(async move {
             let _component = component;
-            crate::operator::alerts::run(store, policies, destinations, interval, stop).await
+            crate::operator::alerts::run(store, policies, destinations, interval, stop)
+                .await
+                .map_err(Into::into)
         });
     }
     alert_owners
@@ -690,7 +692,7 @@ fn admin_startup_error(error: crate::admin::Error) -> Error {
     match error {
         crate::admin::Error::Join(source) => Error::from(source),
         crate::admin::Error::MachineConfig(source) => Error::from(source),
-        crate::admin::Error::Operator(source) => source,
+        crate::admin::Error::Operator(source) => Error::from(*source),
         crate::admin::Error::Runtime(source) => Error::from(source),
         crate::admin::Error::Store(source) => Error::from(source),
         crate::admin::Error::Intake(source) => Error::from(source),

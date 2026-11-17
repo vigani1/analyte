@@ -196,7 +196,7 @@ pub(super) async fn reprocess(
             reason,
         )
         .await
-        .map_err(Error::Operator)
+        .map_err(Error::from)
     }
     .await;
     match result {
@@ -230,7 +230,7 @@ pub(super) async fn resend(
             Reason::new(&form.reason)?,
         )
         .await
-        .map_err(Error::Operator)
+        .map_err(Error::from)
     }
     .await;
     match result {

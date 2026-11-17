@@ -1,4 +1,5 @@
 //! Formats operational webhook health without payloads, endpoint URLs or credentials.
+use crate::operator::Error;
 use analyte_store::AlertEndpointStatus;
 
 pub(crate) fn describe(status: &AlertEndpointStatus, now: i64) -> String {
@@ -22,7 +23,7 @@ pub(crate) async fn snapshot(
     store: &analyte_store::Handle,
     configured: &[analyte_model::Identifier],
     now: i64,
-) -> Result<Vec<String>, crate::Error> {
+) -> Result<Vec<String>, Error> {
     let statuses = store
         .request(crate::deadline(), |s| s.alert_endpoint_status())
         .await?;

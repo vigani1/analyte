@@ -1,5 +1,6 @@
 //! Records operator order decisions and app events without issuing machine commands.
-use crate::{Error, deadline, installation::config::Program};
+use crate::operator::Error;
+use crate::{deadline, installation::config::Program};
 use analyte_model::{Identifier, OrderState, Reason};
 use analyte_store::{Audit, MachineOrderFilter};
 use clap::{Subcommand, ValueEnum};

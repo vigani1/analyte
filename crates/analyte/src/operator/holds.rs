@@ -1,5 +1,6 @@
 //! Runs audited placement and release of indefinite retention holds.
-use crate::{Error, deadline, installation::config::Program};
+use crate::operator::Error;
+use crate::{deadline, installation::config::Program};
 use analyte_model::{Identifier, Reason};
 use analyte_store::{Audit, HoldTarget};
 use clap::Subcommand;
