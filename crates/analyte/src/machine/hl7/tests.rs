@@ -68,7 +68,20 @@ async fn adr0003_mllp_r1_s1_2_coalesced_read_survives_ack_write_failure_and_canc
                 );
             }
             assert_eq!(state.input_evidence.fed, first.len());
-            state.close(&connection, &store, Ok(())).await?;
+            let mut result = Ok(());
+            state
+                .close(
+                    &mut Context {
+                        machine: &connection,
+                        settings,
+                        store: &store,
+                        conn: &mut conn,
+                        stop: stop.clone(),
+                    },
+                    &mut result,
+                )
+                .await?;
+            result?;
             let expected = second.to_vec();
             store
                 .request::<_, analyte_store::Error>(crate::deadline()?, move |s| {
