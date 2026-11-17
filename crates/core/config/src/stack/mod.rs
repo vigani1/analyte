@@ -159,20 +159,18 @@ impl Stack {
             TransportKind::TcpServer => "tcp_server",
             TransportKind::WatchedFolder => "watched_folder",
         };
-        match self {
-            Self::Astm(RecordTransport::Stream(_)) => {
-                [transport, "astm_lis01", "astm_link", "astm_lis02"]
-            }
-            Self::Hl7(RecordTransport::Stream(_)) => [transport, "mllp", "hl7_receiver", "hl7_v2"],
-            Self::Law(_) => [transport, "mllp", "law_manager", "hl7_v2"],
-            Self::Poct(_) => [transport, "poct", "poct", "poct"],
-            Self::Vidas(_) => [transport, "vidas_literal", "vidas_literal", "vidas_literal"],
-            Self::Autolyser(_) => [transport, "autolyser", "autolyser", "autolyser"],
-            Self::Astm(RecordTransport::Folder(_)) => {
-                [transport, "none", "file_pickup", "astm_lis02"]
-            }
-            Self::Hl7(RecordTransport::Folder(_)) => [transport, "none", "file_pickup", "hl7_v2"],
-        }
+        let choice = match self {
+            Self::Astm(RecordTransport::Stream(_)) => StackChoice::AstmLis02,
+            Self::Hl7(RecordTransport::Stream(_)) => StackChoice::Hl7V2,
+            Self::Law(_) => StackChoice::LawManager,
+            Self::Poct(_) => StackChoice::Poct,
+            Self::Vidas(_) => StackChoice::VidasLiteral,
+            Self::Autolyser(_) => StackChoice::Autolyser,
+            Self::Astm(RecordTransport::Folder(_)) => StackChoice::FileAstm,
+            Self::Hl7(RecordTransport::Folder(_)) => StackChoice::FileHl7,
+        };
+        let [_, framing, dialog, syntax] = choice.layer_names();
+        [transport, framing, dialog, syntax]
     }
 }
 

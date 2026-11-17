@@ -37,7 +37,7 @@ mod orders;
 
 pub use orders::*;
 
-use analyte_config::{SyntaxKind, Validated};
+use analyte_config::{StackChoice, Validated};
 use analyte_model::*;
 
 /// Record syntaxes supported by field-position mapping.
@@ -52,16 +52,16 @@ pub enum FieldSyntax {
 /// Vendor syntax must use its own parser and model mapping.
 #[derive(Debug, thiserror::Error)]
 #[error("{0} is not a field-position syntax")]
-pub struct UnsupportedFieldSyntax(pub SyntaxKind);
+pub struct UnsupportedFieldSyntax(pub StackChoice);
 
-impl TryFrom<SyntaxKind> for FieldSyntax {
+impl TryFrom<StackChoice> for FieldSyntax {
     type Error = UnsupportedFieldSyntax;
 
-    fn try_from(syntax: SyntaxKind) -> Result<Self, Self::Error> {
+    fn try_from(syntax: StackChoice) -> Result<Self, Self::Error> {
         match syntax {
-            SyntaxKind::AstmLis02 | SyntaxKind::FileAstm => Ok(Self::AstmLis02),
-            SyntaxKind::Hl7V2 | SyntaxKind::FileHl7 | SyntaxKind::LawManager => Ok(Self::Hl7V2),
-            SyntaxKind::Poct | SyntaxKind::VidasLiteral | SyntaxKind::Autolyser => {
+            StackChoice::AstmLis02 | StackChoice::FileAstm => Ok(Self::AstmLis02),
+            StackChoice::Hl7V2 | StackChoice::FileHl7 | StackChoice::LawManager => Ok(Self::Hl7V2),
+            StackChoice::Poct | StackChoice::VidasLiteral | StackChoice::Autolyser => {
                 Err(UnsupportedFieldSyntax(syntax))
             }
         }

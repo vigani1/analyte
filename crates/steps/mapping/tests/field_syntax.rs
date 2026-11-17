@@ -1,21 +1,21 @@
 //! Tests configured field selectors and vendor syntax rejection.
-use analyte_config::SyntaxKind;
+use analyte_config::StackChoice;
 use analyte_mapping::{FieldSyntax, UnsupportedFieldSyntax};
 
 #[test]
 fn adr0002_field_syntax_rejects_every_vendor_family() -> Result<(), UnsupportedFieldSyntax> {
     assert_eq!(
-        FieldSyntax::try_from(SyntaxKind::AstmLis02)?,
+        FieldSyntax::try_from(StackChoice::AstmLis02)?,
         FieldSyntax::AstmLis02
     );
     assert_eq!(
-        FieldSyntax::try_from(SyntaxKind::Hl7V2)?,
+        FieldSyntax::try_from(StackChoice::Hl7V2)?,
         FieldSyntax::Hl7V2
     );
     for syntax in [
-        SyntaxKind::Poct,
-        SyntaxKind::VidasLiteral,
-        SyntaxKind::Autolyser,
+        StackChoice::Poct,
+        StackChoice::VidasLiteral,
+        StackChoice::Autolyser,
     ] {
         assert!(
             matches!(FieldSyntax::try_from(syntax), Err(UnsupportedFieldSyntax(found)) if found == syntax)
