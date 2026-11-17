@@ -1,8 +1,5 @@
 //! Reserves VIDAS work and records confirmed or uncertain transfer outcomes.
-use crate::{
-    intake,
-    machine::vidas::{Error, transfer_end::VidasEnd},
-};
+use crate::{intake, machine::vidas::Error, orders::outcome::VidasEnd};
 use analyte_store::{Handle, MachineOrder};
 use analyte_vidas::syntax::Message;
 use std::{
@@ -71,13 +68,17 @@ impl Work {
             store,
             order,
             analyte_model::OrderState::Sent,
-            VidasEnd::TransferConfirmed.as_str(),
+            VidasEnd::TransferConfirmed.into(),
         )
         .await?;
         self.active = None;
         Ok(Progress::DownloadFinished)
     }
-    pub(crate) async fn close(&self, store: &Handle, reason: &str) -> Result<(), Error> {
+    pub(crate) async fn close(
+        &self,
+        store: &Handle,
+        reason: super::outcome::Transfer,
+    ) -> Result<(), Error> {
         if let Some(order) = &self.active {
             super::sending::uncertain(store, order, reason).await?;
         }

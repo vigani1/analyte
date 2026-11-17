@@ -1,11 +1,10 @@
 //! Receives VIDAS uploads using configured checksum, suffix and timer rules.
-use crate::intake::ByteReason;
-pub(crate) mod transfer_end;
-use self::transfer_end::VidasEnd;
 use super::connection_input::Input;
 use super::custody::{self, ms};
 use super::driver::{self, Context, Effects, Flow};
 use crate::intake;
+use crate::intake::ByteReason;
+use crate::orders::outcome::VidasEnd;
 mod error;
 use analyte_dialog::vidas::{Action, Config as DialogConfig, Dialog, Event, Timer};
 use analyte_framing::vidas::Config;
@@ -216,7 +215,7 @@ impl Effects for ConnectionState {
         host: &mut Context<'_, '_, Self::Settings>,
         _result: &mut Result<(), Error>,
     ) -> Result<(), Error> {
-        self.work.close(host.store, self.end_code.as_str()).await
+        self.work.close(host.store, self.end_code.into()).await
     }
 }
 

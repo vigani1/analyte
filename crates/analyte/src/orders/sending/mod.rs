@@ -38,7 +38,7 @@ pub(crate) async fn reserve_candidates(
             Err(refusal) => {
                 tracing::info!(reason=%refusal,"query order reservation refused");
                 for order in active.drain(..) {
-                    uncertain(store, &order, Code::QueryReservationRefused.as_str()).await?;
+                    uncertain(store, &order, Code::QueryReservationRefused.into()).await?;
                 }
                 return Ok(false);
             }
@@ -46,7 +46,7 @@ pub(crate) async fn reserve_candidates(
     }
     if std::time::Instant::now() >= until && !active.is_empty() {
         for order in active.drain(..) {
-            uncertain(store, &order, Code::QueryDeadlineBeforeSend.as_str()).await?;
+            uncertain(store, &order, Code::QueryDeadlineBeforeSend.into()).await?;
         }
         return Ok(false);
     }
@@ -164,7 +164,7 @@ pub(crate) async fn candidate_page(
 pub(crate) async fn uncertain(
     store: &Handle,
     order: &MachineOrder,
-    code: &str,
+    code: super::outcome::Transfer,
 ) -> Result<(), Error> {
     complete(store, order, OrderState::Uncertain, code).await
 }
@@ -178,18 +178,18 @@ pub(crate) async fn finished(
     // LIS01 confirms transfer, not the analyzer application's acceptance.
     // Only explicit application evidence may advance Sent to Accepted.
     let code = match end {
-        analyte_dialog::astm::End::Normal => Code::AstmTransferConfirmed.as_str(),
-        analyte_dialog::astm::End::Abort => Code::AstmTransferAborted.as_str(),
-        analyte_dialog::astm::End::Timeout => Code::AstmTransferTimeout.as_str(),
-        analyte_dialog::astm::End::Interrupt => Code::AstmTransferInterrupted.as_str(),
-        analyte_dialog::astm::End::Incomplete => Code::AstmTransferIncomplete.as_str(),
+        analyte_dialog::astm::End::Normal => Code::AstmTransferConfirmed,
+        analyte_dialog::astm::End::Abort => Code::AstmTransferAborted,
+        analyte_dialog::astm::End::Timeout => Code::AstmTransferTimeout,
+        analyte_dialog::astm::End::Interrupt => Code::AstmTransferInterrupted,
+        analyte_dialog::astm::End::Incomplete => Code::AstmTransferIncomplete,
     };
     let state = if end == analyte_dialog::astm::End::Normal {
         OrderState::Sent
     } else {
         OrderState::Uncertain
     };
-    complete(store, order, state, code).await
+    complete(store, order, state, code.into()).await
 }
 
 /// Commits a protocol's definitive transport outcome with exactly one app event.
@@ -197,10 +197,10 @@ pub(crate) async fn complete(
     store: &Handle,
     order: &MachineOrder,
     state: OrderState,
-    code: &str,
+    code: super::outcome::Transfer,
 ) -> Result<(), Error> {
     let id = order.id;
-    let code = SourceText::new(code)?;
+    let code = SourceText::new(&code.to_string())?;
     store
         .request::<_, analyte_store::Error>(deadline()?, move |store| {
             Ok::<_, analyte_store::Error>(store.transition_order(

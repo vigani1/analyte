@@ -2,14 +2,12 @@
 use crate::intake::ByteReason;
 use crate::machine::hooks::Pause;
 mod custody;
-pub(crate) mod transfer_end;
-use self::transfer_end::AutolyserEnd;
 use super::driver::{self, Context, Effects, Flow};
 use crate::intake;
 use crate::machine::connection_input::Input;
 use crate::machine::custody::{self as receive_custody, ms};
+use crate::orders::outcome::AutolyserEnd;
 mod error;
-use crate::orders::outcome::Code;
 use analyte_dialog::autolyser::{Action, Config, Dialog, Event, Recovery, Request};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
@@ -226,7 +224,7 @@ impl Effects for ConnectionState {
         )
         .await;
         receive_custody::retain_cleanup(result, cleanup);
-        self.work.close(host.store, self.end_code.as_str()).await
+        self.work.close(host.store, self.end_code.into()).await
     }
 }
 
@@ -334,11 +332,11 @@ async fn process(
                                 | AutolyserEnd::TransferDisconnected
                                 | AutolyserEnd::TransferCancelled
                         ) {
-                        state.end_code.incomplete()
+                        crate::orders::outcome::Transfer::AutolyserIncomplete(state.end_code)
                     } else {
-                        park_code(&error)
+                        crate::orders::outcome::Transfer::AutolyserParked(error.clone())
                     };
-                    state.work.refuse(store, &code).await?;
+                    state.work.refuse(store, code).await?;
                     close = true;
                 }
                 state.ready = false;
@@ -397,24 +395,5 @@ async fn process(
     match failure {
         Some(error) => Err(error),
         None => Ok(close),
-    }
-}
-
-fn park_code(error: &analyte_dialog::autolyser::Error) -> String {
-    use analyte_dialog::autolyser::Error;
-    match error {
-        Error::Config => Code::AutolyserParkedConfig.as_str().into(),
-        Error::Busy => Code::AutolyserParkedBusy.as_str().into(),
-        Error::Time => Code::AutolyserParkedTime.as_str().into(),
-        Error::Incomplete => Code::AutolyserParkedIncomplete.as_str().into(),
-        Error::Storage => Code::AutolyserParkedStorage.as_str().into(),
-        Error::Stale => Code::AutolyserParkedStale.as_str().into(),
-        Error::Ack => Code::AutolyserParkedAck.as_str().into(),
-        Error::Framing(cause) => {
-            crate::orders::outcome::Detail::AutolyserFraming(cause.to_string()).to_string()
-        }
-        Error::Record(cause) => {
-            crate::orders::outcome::Detail::AutolyserRecord(cause.to_string()).to_string()
-        }
     }
 }

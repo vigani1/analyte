@@ -498,7 +498,7 @@ impl Effects for ConnectionState<'_, '_> {
             let cleanup = crate::orders::sending::uncertain(
                 self.store,
                 &order,
-                "connection-ended-before-transfer-confirmation",
+                crate::orders::outcome::Code::ConnectionEndedBeforeConfirmation.into(),
             )
             .await;
             super::custody::retain_cleanup(result, cleanup.map_err(Into::into));

@@ -1,8 +1,5 @@
 //! Reserves Autolyser work and reconciles insertion replies without automatic replay.
-use crate::{
-    intake,
-    machine::autolyser::{Error, transfer_end},
-};
+use crate::{intake, machine::autolyser::Error};
 use analyte_store::{Handle, MachineOrder};
 #[derive(Default)]
 pub(crate) struct Work {
@@ -38,7 +35,7 @@ impl Work {
             .active
             .as_ref()
             .ok_or(Error::UnexpectedAutolyserInsertionOutcome)?;
-        let code = transfer_end::insertion(reception);
+        let code = super::outcome::Transfer::AutolyserInsertion(reception);
         let outcome = match reception {
             analyte_dialog::autolyser::Reception::Accepted(_) => analyte_model::OrderState::Sent,
             analyte_dialog::autolyser::Reception::Rejected(_)
@@ -46,17 +43,25 @@ impl Work {
                 analyte_model::OrderState::Uncertain
             }
         };
-        super::sending::complete(store, order, outcome, &code).await?;
+        super::sending::complete(store, order, outcome, code).await?;
         self.active = None;
         Ok(outcome == analyte_model::OrderState::Sent)
     }
-    pub(crate) async fn close(&self, store: &Handle, reason: &str) -> Result<(), Error> {
+    pub(crate) async fn close(
+        &self,
+        store: &Handle,
+        reason: super::outcome::Transfer,
+    ) -> Result<(), Error> {
         if let Some(order) = &self.active {
             super::sending::uncertain(store, order, reason).await?;
         }
         Ok(())
     }
-    pub(crate) async fn refuse(&mut self, store: &Handle, reason: &str) -> Result<(), Error> {
+    pub(crate) async fn refuse(
+        &mut self,
+        store: &Handle,
+        reason: super::outcome::Transfer,
+    ) -> Result<(), Error> {
         self.close(store, reason).await?;
         self.active = None;
         Ok(())
