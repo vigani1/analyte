@@ -72,14 +72,14 @@ fn draft(edition: &str) -> Result<Draft, Error> {
 #[test]
 fn adr0012_s3_typed_supported_config_editions_preserve_exact_wire_identity() -> Result<(), Error> {
     for (config_id, edition, wire) in [
-        ("v23", Edition::V23, "2.3"),
-        ("v231", Edition::V231, "2.3.1"),
-        ("v24", Edition::V24, "2.4"),
-        ("v25", Edition::V25, "2.5"),
-        ("v251", Edition::V251, "2.5.1"),
-        ("v26", Edition::V26, "2.6"),
-        ("v282", Edition::V282, "2.8.2"),
-        ("v291", Edition::V291, "2.9.1"),
+        ("v23", Edition::from(Version::V23), "2.3"),
+        ("v231", Edition::from(Version::V231), "2.3.1"),
+        ("v24", Edition::from(Version::V24), "2.4"),
+        ("v25", Edition::from(Version::V25), "2.5"),
+        ("v251", Edition::from(Version::V251), "2.5.1"),
+        ("v26", Edition::from(Version::V26), "2.6"),
+        ("v282", Edition::from(Version::V282), "2.8.2"),
+        ("v291", Edition::from(Version::V291), "2.9.1"),
     ] {
         let config = draft(config_id)?.validate()?;
         let analyte_config::Stack::Hl7(analyte_config::RecordTransport::Stream(stack)) =
