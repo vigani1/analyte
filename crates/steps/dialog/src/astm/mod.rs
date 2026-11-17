@@ -3,7 +3,7 @@ use analyte_framing::astm::{self, ACK, Decoder, ENQ, EOT, Frame, FrameNumber, NA
 use std::{collections::VecDeque, time::Duration};
 
 mod control;
-pub use control::{Action, CommitId, Config, End, Epoch, Error, Event, Role, Timers};
+pub use control::{Action, CommitId, Config, End, Epoch, Error, Event, Interrupt, Role, Timers};
 
 #[derive(Debug)]
 struct Receive {
@@ -452,7 +452,7 @@ impl Dialog {
         out: &mut Vec<Action>,
     ) {
         if byte == ACK || byte == EOT {
-            if byte == EOT && self.config.honor_interrupt {
+            if byte == EOT && self.config.honor_interrupt == Interrupt::Honor {
                 self.end_send(End::Interrupt, out);
                 self.state = State::Holdoff;
                 self.set_timer(Duration::from_secs(15));
