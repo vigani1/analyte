@@ -5,7 +5,10 @@ use crate::inbound::source::Source;
 use crate::inbound::time;
 use crate::{Error, Input, Output, Problem, finding, identifier, list, text};
 use analyte_config::Classification;
-use analyte_model::*;
+use analyte_model::{
+    EvidenceList, NamedSourceTime, NamespacedId, QcClass, ResultPart, ResultStatus, ResultValue,
+    SourceNode, TimePrecision, UnitMapping, Units,
+};
 
 pub(crate) fn part(
     source: &Source<'_>,

@@ -1,5 +1,8 @@
 //! Encodes new-order timing, specimens and OBR segments within a bounded buffer.
-use super::*;
+use super::{
+    BuildContext, Code, CodeForm, Control, Error, Family, SampleField, Version, code, escape,
+    invalid, scalar, segment,
+};
 use crate::order;
 #[derive(Clone, Copy)]
 pub(super) struct NewRequest<'a> {

@@ -1,5 +1,5 @@
 //! Holds validated outbound order translation tables.
-use super::*;
+use super::{OrderPriority, Orders, OutboundSpecimen, OutboundTest};
 
 /// Outbound field-based translations shared by ASTM and HL7.
 #[derive(Debug, Clone)]

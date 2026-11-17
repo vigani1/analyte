@@ -1,5 +1,7 @@
 //! Writes stable lifecycle and identity evidence independently of derived Debug output.
-use crate::*;
+use crate::{AwosExecution, DepartureMeaning, NamespacedId, OrderState, ResultStatus};
+#[cfg(test)]
+use crate::{Identifier, TextError};
 use std::fmt::{self, Write};
 
 impl fmt::Display for OrderState {

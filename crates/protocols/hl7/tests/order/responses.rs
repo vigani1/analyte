@@ -1,5 +1,6 @@
 //! Tests HL7 order messages and acknowledgments.
 use super::*;
+use analyte_fixtures::ConfigEdit as _;
 
 #[test]
 fn hl7_231_2_7_and_251_2_5_4_response_delimiters_are_independent() -> Result<(), Error> {
@@ -80,7 +81,7 @@ fn hl7_231_4_2_2_and_251_4_4_2_requires_orr_and_msa() -> Result<(), Error> {
         let response = reply(version, b"AA", b"ORC|OK|001^LAB\r")?;
         let text = String::from_utf8(response.raw().to_vec()).map_err(|_| Error::Limit)?;
         let changed = Message::parse(
-            text.replace("ORR^O02^ORR_O02", "ACK^O01^ACK").as_bytes(),
+            text.rewrite("ORR^O02^ORR_O02", "ACK^O01^ACK").as_bytes(),
             Options::default(),
         )?;
         assert!(matches!(
@@ -88,7 +89,7 @@ fn hl7_231_4_2_2_and_251_4_4_2_requires_orr_and_msa() -> Result<(), Error> {
             Err(Error::Content { field: 9, .. })
         ));
         let changed = Message::parse(
-            text.replace("MSA|AA|sent1\r", "").as_bytes(),
+            text.rewrite("MSA|AA|sent1\r", "").as_bytes(),
             Options::default(),
         )?;
         assert!(matches!(
@@ -315,7 +316,7 @@ fn hl7_231_4_2_3_and_251_4_4_3_unsupported_order_families_are_located_errors() -
         };
         for family in families {
             let wrong = Message::parse(
-                text.replace("ORR^O02^ORR_O02", family).as_bytes(),
+                text.rewrite("ORR^O02^ORR_O02", family).as_bytes(),
                 Options::default(),
             )?;
             assert!(matches!(
@@ -324,7 +325,7 @@ fn hl7_231_4_2_3_and_251_4_4_3_unsupported_order_families_are_located_errors() -
             ));
             assert_eq!(
                 wrong.raw(),
-                text.replace("ORR^O02^ORR_O02", family).as_bytes()
+                text.rewrite("ORR^O02^ORR_O02", family).as_bytes()
             );
         }
     }

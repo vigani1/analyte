@@ -1,5 +1,7 @@
 //! Loads bounded program TOML and machine snapshots without secret values.
 //! Kept whole: Program configuration types and boundary validation express one installation contract.
+#[cfg(test)]
+use analyte_fixtures::ConfigEdit as _;
 mod alerts;
 mod error;
 mod webhooks;
@@ -614,11 +616,11 @@ mod alert_program_tests {
             .join("../core/config/examples/site.toml")
             .canonicalize()?;
         let original = include_str!("../../../examples/analyte.toml")
-            .replace(
+            .rewrite(
                 "../../core/config/examples/hl7.toml",
                 &definition.to_string_lossy().replace('\\', "/"),
             )
-            .replace(
+            .rewrite(
                 "../../core/config/examples/site.toml",
                 &site.to_string_lossy().replace('\\', "/"),
             );

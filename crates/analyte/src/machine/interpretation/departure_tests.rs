@@ -1,15 +1,16 @@
 //! Tests ADR 0015 durable provenance, contract-v1 parking and strict source retention.
 use super::tests::{Space, program};
 use super::*;
+use analyte_fixtures::ConfigEdit as _;
 
 fn declaration(rule: &str, guarantee: &str, hl7: bool) -> String {
     let mut text = include_str!("../../../../core/config/tests/fixtures/departure.toml")
-        .replace("astm_frame_limit", rule)
-        .replace("compatibility", guarantee);
+        .rewrite("astm_frame_limit", rule)
+        .rewrite("compatibility", guarantee);
     if hl7 {
         text = text
-            .replace("protocol=\"astm\"", "protocol=\"hl7\",edition=\"v251\"")
-            .replace("astm_results", "oru_r01_patient");
+            .rewrite("protocol=\"astm\"", "protocol=\"hl7\",edition=\"v251\"")
+            .rewrite("astm_results", "oru_r01_patient");
     }
     text
 }
@@ -17,9 +18,9 @@ fn declaration(rule: &str, guarantee: &str, hl7: bool) -> String {
 async fn adr0015_hl7_s74125_v1_parks_with_ledger_original_and_no_outbox() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let declaration = declaration("hl7_absent_obr25_means_final", "absent_obr25_final", true);
-    let definition=include_str!("../../../../core/config/examples/hl7.toml").replace("tcp_server","tcp_client")
-        .replace("deviations = []",&declaration)
-        .replace("qc = []","qc = [{field={group='order',record='OBR',field=3,component=1,repetition=1},value='00012',classification='patient'}]");
+    let definition=include_str!("../../../../core/config/examples/hl7.toml").rewrite("tcp_server","tcp_client")
+        .rewrite("deviations = []",&declaration)
+        .rewrite("qc = []","qc = [{field={group='order',record='OBR',field=3,component=1,repetition=1},value='00012',classification='patient'}]");
     let program = program(temp.path(), &definition, "127.0.0.1:5600")?;
     let machine = program.machines().first().ok_or("machine")?;
     let mut store = crate::runtime::service::open_store(&program, Box::new(Space)).await?;
@@ -47,9 +48,9 @@ async fn adr0015_hl7_s74125_v1_parks_with_ledger_original_and_no_outbox() -> Res
 async fn adr0015_lis01_s6311_packing_provenance_survives_lis02_failure() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let definition=include_str!("../../../../core/config/examples/astm.toml")
-        .replace("kind = \"serial\"","kind = \"tcp_client\"")
-        .replace("[transport.serial]\nbaud = 9600\ndata_bits = 8\nparity = \"none\"\nstop_bits = 1\nflow_control = \"none\"\n","")
-        .replace("deviations = []",&declaration("astm_packed_records_in_frame","packed_records",false));
+        .rewrite("kind = \"serial\"","kind = \"tcp_client\"")
+        .rewrite("[transport.serial]\nbaud = 9600\ndata_bits = 8\nparity = \"none\"\nstop_bits = 1\nflow_control = \"none\"\n","")
+        .rewrite("deviations = []",&declaration("astm_packed_records_in_frame","packed_records",false));
     let program = program(temp.path(), &definition, "127.0.0.1:5600")?;
     let machine = program.machines().first().ok_or("machine")?;
     let mut store = crate::runtime::service::open_store(&program, Box::new(Space)).await?;
@@ -98,9 +99,9 @@ async fn adr0015_lis01_s6311_packed_results_use_v1_without_changing_source_meani
 -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let definition=include_str!("../../../../core/config/examples/astm.toml")
-        .replace("kind = \"serial\"","kind = \"tcp_client\"")
-        .replace("[transport.serial]\nbaud = 9600\ndata_bits = 8\nparity = \"none\"\nstop_bits = 1\nflow_control = \"none\"\n","")
-        .replace("deviations = []",&declaration("astm_packed_records_in_frame","packed_records",false));
+        .rewrite("kind = \"serial\"","kind = \"tcp_client\"")
+        .rewrite("[transport.serial]\nbaud = 9600\ndata_bits = 8\nparity = \"none\"\nstop_bits = 1\nflow_control = \"none\"\n","")
+        .rewrite("deviations = []",&declaration("astm_packed_records_in_frame","packed_records",false));
     let program = program(temp.path(), &definition, "127.0.0.1:5600")?;
     let machine = program.machines().first().ok_or("machine")?;
     let mut store = crate::runtime::service::open_store(&program, Box::new(Space)).await?;

@@ -1,6 +1,6 @@
 //! Holds raw TOML configuration types.
 pub(crate) mod law;
-pub use law::*;
+pub use law::{Law, LawConnectionMode, LawPeer, LawQueryForm, LawWork, PeerSupport};
 mod vidas;
 pub use vidas::{AckPoint, ChecksumAcceptance, ChecksumInclusion, HexCase, Settings as Vidas};
 
@@ -522,16 +522,22 @@ pub struct PoctIdentity {
 }
 
 mod mappings;
-pub use mappings::*;
+pub use mappings::{
+    ComponentParts, Field, IdentityEvidence, Mappings, NoSubId, OrderNamespace, QcRule,
+    SampleSelection, SubId, TestMapping, UnitMapping,
+};
 
 mod poct;
-pub use poct::*;
+pub use poct::Poct;
 
 mod autolyser;
-pub use autolyser::*;
+pub use autolyser::Autolyser;
 
 mod departures;
-pub use departures::*;
+pub use departures::{
+    DepartureDeclaration, DepartureDirection, DepartureEdition, DepartureGuarantee,
+    DepartureMessage, DepartureReference, DepartureScope, MachineDeparture,
+};
 
 mod refusal;
 pub use refusal::DepartureRefusal;

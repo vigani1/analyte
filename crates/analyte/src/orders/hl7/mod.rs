@@ -1,5 +1,7 @@
 //! Drives HL7 order lookups, reservations and delivery outcomes (HL7 2.3.1 §2.18 and 2.5.1 §5.10).
 //! Kept whole: HL7 order exchange driving keeps cancellation, peer replies and durable transitions together.
+#[cfg(test)]
+use analyte_fixtures::ConfigEdit as _;
 pub(crate) mod response;
 mod send;
 use crate::orders::OrderError as Error;
@@ -452,12 +454,10 @@ mod tests {
         let temp = tempfile::tempdir()?;
         let mut store = Handle::start(
             temp.path().join("owned-cleanup.db"),
-            analyte_store::Limits {
-                reserve_bytes: 1024,
-                database_bytes: 100_000_000,
-                record_bytes: 65_536,
-                page_rows: 100,
-                busy_timeout: Duration::from_millis(20),
+            {
+                let mut limits = analyte_fixtures::store_limits();
+                limits.busy_timeout = Duration::from_millis(20);
+                limits
             },
             Box::new(Space),
             4,
@@ -505,12 +505,10 @@ mod tests {
         let temp = tempfile::tempdir()?;
         let mut store = Handle::start(
             temp.path().join("cleanup-failure.db"),
-            analyte_store::Limits {
-                reserve_bytes: 1024,
-                database_bytes: 100_000_000,
-                record_bytes: 65_536,
-                page_rows: 100,
-                busy_timeout: Duration::from_millis(20),
+            {
+                let mut limits = analyte_fixtures::store_limits();
+                limits.busy_timeout = Duration::from_millis(20);
+                limits
             },
             Box::new(Space),
             4,
@@ -586,12 +584,10 @@ mod tests {
         let temp = tempfile::tempdir()?;
         let mut store = Handle::start(
             temp.path().join("cleanup.db"),
-            analyte_store::Limits {
-                reserve_bytes: 1024,
-                database_bytes: 100_000_000,
-                record_bytes: 65_536,
-                page_rows: 100,
-                busy_timeout: Duration::from_millis(20),
+            {
+                let mut limits = analyte_fixtures::store_limits();
+                limits.busy_timeout = Duration::from_millis(20);
+                limits
             },
             Box::new(Space),
             4,
@@ -691,7 +687,7 @@ mod tests {
                         sample: SampleId::new("000Ab12")
                             .map_err(|_| analyte_store::Error::InvalidHostInput)?,
                         document: include_str!("../../../../../docs/contract/vectors/order.json")
-                            .replace("order-1", identity.order.as_str()),
+                            .rewrite("order-1", identity.order.as_str()),
                         tombstone: false,
                         expiry: now
                             .checked_add(100)

@@ -1,7 +1,11 @@
 //! Adapts vendor evidence while retaining unresolved identities and exact values.
 use crate::{MappedResult, Output};
 
-use analyte_model::*;
+use analyte_model::{
+    EmptyEvidence, EvidenceList, IdentityStatus, ListError, NamespacedId, NonEmptyEvidenceList,
+    ProcessingMode, QcClass, ReceiptId, ResultContent, ResultPart, ResultStatus, ResultValue,
+    SampleIdentity, SourceText, TextError, UnitMapping, UnitMappingError, Units,
+};
 
 /// Specific vendor-to-model boundary failures; original receipts must remain protected.
 #[derive(Debug, thiserror::Error)]

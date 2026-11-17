@@ -1,5 +1,6 @@
 //! Tests validated protocol stack construction.
 use analyte_config::{Draft, Stack, StreamKind, TcpRole};
+use analyte_fixtures::ConfigEdit as _;
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 const SITE: &str = include_str!("../examples/site.toml");
@@ -154,7 +155,7 @@ operation_timeout_ms=1234
 #[test]
 fn adr0002_file_pickup_is_a_distinct_stack_for_each_record_syntax() -> TestResult {
     let endpoint = std::env::current_dir()?.to_string_lossy().into_owned();
-    let site = SITE.replace(
+    let site = SITE.rewrite(
         r#"endpoint = "127.0.0.1:5600""#,
         &format!("endpoint = {endpoint:?}"),
     );
@@ -217,7 +218,7 @@ fn adr0012_protocol_and_transport_are_independent_and_invalid_pairs_fail_loading
                 );
             }
         }
-        let wrong = definition.replace(
+        let wrong = definition.rewrite(
             &format!(r#"protocol = "{protocol}""#),
             r#"protocol = "unknown""#,
         );

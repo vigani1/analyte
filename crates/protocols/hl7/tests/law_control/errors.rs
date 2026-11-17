@@ -1,5 +1,6 @@
 //! Tests LAW MSH, MSA and ERR segment validation.
 use super::*;
+use analyte_fixtures::ConfigEdit as _;
 
 #[test]
 fn law_tf2b_c1_query_builder_checks_generated_erl_code_and_mandatory_err() -> TestResult {
@@ -178,7 +179,7 @@ fn law_tf2b_c1_c3_c4_ack_builder_and_receive_correlation_and_err_profiles() -> T
     ] {
         let text = std::str::from_utf8(ack.raw())?;
         assert!(text.contains(needle));
-        let invalid = law::parse_message(text.replace(needle, replacement).as_bytes(), options())?;
+        let invalid = law::parse_message(text.rewrite(needle, replacement).as_bytes(), options())?;
         assert!(law::receive_acknowledgment(&invalid, &message).is_err());
     }
     let invalid = AckError {

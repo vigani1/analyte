@@ -1,5 +1,8 @@
 //! Checks LAW result-group segment ordering and locates failures.
-use super::*;
+use super::{
+    Attached, Error, ExecutionStatus, Observation, Parent, ResultPhase, ResultStatus, Segment,
+    SpecimenObservation, StatusNotice, check_complete, content, raw, values,
+};
 use crate::law;
 
 #[derive(Clone, Copy, PartialEq, Eq)]

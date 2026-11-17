@@ -1,14 +1,15 @@
 //! Verifies unsafe HL7 reports remain durable without delivery or application success.
 use super::*;
+use analyte_fixtures::ConfigEdit as _;
 
 // HL7 2.5.1 sections 2.10.2.2, 7.4.2.11 and 7.4.1.25; ADR 0003.
 #[tokio::test]
 async fn hl7_251_s2_10_2_2_s7_4_2_11_s7_4_1_25_unsafe_reports_are_parked() -> Result<(), Error> {
     let original = String::from_utf8(ORU.to_vec())?;
     for raw in [
-        original.replace("|||||F", "|||||UNKNOWN"),
-        original.replace("|||||F", "|||||"),
-        original.replace("|2.5.1\r", "|2.5.1||fragment\r"),
+        original.rewrite("|||||F", "|||||UNKNOWN"),
+        original.rewrite("|||||F", "|||||"),
+        original.rewrite("|2.5.1\r", "|2.5.1||fragment\r"),
         format!("{original}DSC|fragment\r"),
     ] {
         let temp = tempfile::tempdir()?;

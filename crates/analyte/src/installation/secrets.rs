@@ -129,7 +129,7 @@ mod tests {
                 if name.ends_with("API") {
                     "synthetic-api"
                 } else {
-                    "whsec_AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+                    analyte_fixtures::SECRET
                 }
                 .into(),
             )

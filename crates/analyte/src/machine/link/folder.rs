@@ -1,6 +1,8 @@
 //! Receives claimed files and retains the claim until receipt and interpretation are durable.
 use super::error::Error;
 use crate::{deadline, installation::config::Machine, intake};
+#[cfg(test)]
+use analyte_fixtures::ConfigEdit as _;
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
 use analyte_transport::folder::{Disposition, Item, Watch};
@@ -289,7 +291,7 @@ mod tests {
                 &definition[..start],
                 &definition[end..]
             );
-            let site = include_str!("../../../../core/config/examples/site.toml").replace(
+            let site = include_str!("../../../../core/config/examples/site.toml").rewrite(
                 "\"127.0.0.1:5600\"",
                 &toml::Value::String(incoming.to_string_lossy().into_owned()).to_string(),
             );
@@ -310,12 +312,10 @@ mod tests {
             };
             let mut store = Handle::start(
                 temp.path().join("store.db"),
-                analyte_store::Limits {
-                    reserve_bytes: 1024,
-                    database_bytes: 100_000_000,
-                    record_bytes: 65536,
-                    page_rows: 100,
-                    busy_timeout: Duration::from_millis(20),
+                {
+                    let mut limits = analyte_fixtures::store_limits();
+                    limits.busy_timeout = Duration::from_millis(20);
+                    limits
                 },
                 Box::new(Full),
                 4,

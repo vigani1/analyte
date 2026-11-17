@@ -631,7 +631,8 @@ impl Version {
 }
 
 mod rules;
-pub(crate) use rules::*;
+pub(crate) use rules::{AckPair, CodingVersions, Rules, TimeFormat, ZeroOffset};
+use rules::{COMPATIBILITY_25, GRAMMAR_26, GRAMMAR_282, GRAMMAR_291, GRAMMARS};
 
 mod result;
 pub(crate) use result::{FieldKind, ResultField};

@@ -1,5 +1,5 @@
 //! Checks changed-content statuses using the caller-supplied ADR 0011 policy.
-use super::*;
+use super::{Error, Reconciliation, ResultContent, ResultStatus, status_policy};
 impl Reconciliation<'_, '_> {
     pub(super) fn permits_progression(
         &self,

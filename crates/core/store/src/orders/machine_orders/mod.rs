@@ -11,7 +11,7 @@ mod listing;
 mod reserve;
 use crate::{Audit, CachedOrder, Error, OrderEventDelivery, Store, digest, key};
 use analyte_model::{Identifier, NamespacedId, OrderState, OrderTransition, SourceText};
-use rusqlite::{OptionalExtension, Transaction, TransactionBehavior, params};
+use rusqlite::{Transaction, TransactionBehavior, params};
 use serde::{Deserialize, Serialize};
 use std::num::NonZeroU64;
 

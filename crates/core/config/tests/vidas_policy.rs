@@ -1,5 +1,6 @@
 //! Tests VIDAS acknowledgment and checksum policy settings.
 use analyte_config::{Draft, Stack};
+use analyte_fixtures::ConfigEdit as _;
 
 #[test]
 fn adr0002_vidas_bci_a_ch4_ack_and_checksum_choices_keep_boolean_toml()
@@ -19,7 +20,7 @@ fn adr0002_vidas_bci_a_ch4_ack_and_checksum_choices_keep_boolean_toml()
             let previous = *key == "uppercase";
             let value = selected & (1 << bit) != 0;
             definition =
-                definition.replace(&format!("{key} = {previous}"), &format!("{key} = {value}"));
+                definition.rewrite(&format!("{key} = {previous}"), &format!("{key} = {value}"));
         }
         let validated = Draft::load(
             ("machine", &definition),

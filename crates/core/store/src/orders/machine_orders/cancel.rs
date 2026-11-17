@@ -1,5 +1,8 @@
 //! Cancels eligible durable machine orders.
-use super::*;
+use super::{
+    ChangeEvidence, Error, Identifier, MachineOrder, NonZeroU64, OrderEventDelivery, OrderState,
+    SourceText, Store,
+};
 
 impl Store {
     /// Rechecks an app cancellation and records its version once, before cancel bytes.

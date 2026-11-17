@@ -1,6 +1,6 @@
 //! Tests that the reference receiver joins its storage worker on every exit path.
 use super::*;
-const SECRET: &str = "whsec_AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=";
+use analyte_fixtures::SECRET;
 #[tokio::test]
 async fn rule1_error_after_open_drains_queued_write_with_live_router()
 -> Result<(), Box<dyn std::error::Error>> {

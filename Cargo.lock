@@ -75,6 +75,7 @@ name = "analyte-config"
 version = "0.1.0"
 dependencies = [
  "analyte-astm",
+ "analyte-fixtures",
  "analyte-framing",
  "analyte-hl7",
  "analyte-model",
@@ -90,6 +91,7 @@ dependencies = [
 name = "analyte-contract"
 version = "0.1.0"
 dependencies = [
+ "analyte-fixtures",
  "analyte-model",
  "base64",
  "hmac",
@@ -140,6 +142,7 @@ dependencies = [
 name = "analyte-hl7"
 version = "0.1.0"
 dependencies = [
+ "analyte-fixtures",
  "proptest",
  "thiserror",
 ]
@@ -152,6 +155,7 @@ dependencies = [
  "analyte-autolyser",
  "analyte-config",
  "analyte-contract",
+ "analyte-fixtures",
  "analyte-hl7",
  "analyte-model",
  "analyte-poct",
@@ -272,6 +276,7 @@ dependencies = [
 name = "analyte-vidas"
 version = "0.1.0"
 dependencies = [
+ "analyte-fixtures",
  "analyte-model",
  "proptest",
  "thiserror",

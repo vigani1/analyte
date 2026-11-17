@@ -2,6 +2,7 @@
 use super::order_cases::{configure_orders, machine_state};
 use super::*;
 use crate::support::step;
+use analyte_fixtures::ConfigEdit as _;
 
 #[tokio::test]
 async fn adr0004_rule8_astm_send_timeout_is_uncertain_and_restart_never_resends()
@@ -13,11 +14,11 @@ async fn adr0004_rule8_astm_send_timeout_is_uncertain_and_restart_never_resends(
     std::fs::write(
         &definition,
         std::fs::read_to_string(&definition)?
-            .replace("send_timeout_ms = 15000", "send_timeout_ms = 50")
-            .replace(
+            .rewrite("send_timeout_ms = 15000", "send_timeout_ms = 50")
+            .rewrite(
                 "deviations = []",
                 &include_str!("../../../core/config/tests/fixtures/departure.toml")
-                    .replace("astm_frame_limit", "astm_send_timeout"),
+                    .rewrite("astm_frame_limit", "astm_send_timeout"),
             ),
     )?;
     let receiver_path = temp.path().join("receiver.db");

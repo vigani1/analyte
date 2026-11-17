@@ -35,10 +35,16 @@ mod evidence_display;
 mod inbound;
 mod orders;
 
-pub use orders::*;
+pub use orders::{
+    AppOrder, AppOrderPriority, Hl7Command, LawCommand, MachineOrder, OrderMappingError,
+    OutboundItem, WireMappingError, app_order, law_address, map_display, map_law_work, map_order,
+};
 
 use analyte_config::StackChoice;
-use analyte_model::*;
+use analyte_model::{
+    AppliedDeparture, DepartureMeaning, EvidenceList, Identifier, ReceiptId, ResultContent,
+    ResultValue, Revision, SourceNode, SourceText, TextError,
+};
 
 /// Record syntaxes supported by field-position mapping.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

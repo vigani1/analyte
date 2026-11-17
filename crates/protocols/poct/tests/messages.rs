@@ -1,4 +1,5 @@
 //! Tests typed POCT Basic Profile messages.
+use analyte_fixtures::ConfigEdit as _;
 use analyte_fixtures::poct as peer_messages;
 use analyte_poct::{Body, DataError, Message, MessageError, Nullable, Timestamp, Value};
 use peer_messages::{field, hello, limits, message, observation, status};
@@ -144,20 +145,20 @@ fn poct01_b_8_nulls_quantities_qualitative_codes_and_translation() -> Result<(),
 #[test]
 fn poct01_b_6_12_required_structure_and_order_are_enforced() {
     let raw = hello("h");
-    let missing = raw.replace(&field("DEV.device_id", "A1-B2-C3-D4-E5-F6-07-08"), "");
+    let missing = raw.rewrite(&field("DEV.device_id", "A1-B2-C3-D4-E5-F6-07-08"), "");
     assert!(matches!(
         Message::parse(missing.as_bytes(), limits()),
         Err(MessageError::Missing("DEV.device_id"))
     ));
-    let missing = raw.replace(&field("HDR.control_id", "h"), "");
+    let missing = raw.rewrite(&field("HDR.control_id", "h"), "");
     assert!(matches!(
         Message::parse(missing.as_bytes(), limits()),
         Err(MessageError::Missing("HDR.control_id"))
     ));
     for raw in [
-        raw.replace("POCT01", "later-version"),
-        raw.replace("</DEV>", "<unknown/></DEV>"),
-        raw.replace("</DEV>", "<DEV.device_id V=\"duplicate\"/></DEV>"),
+        raw.rewrite("POCT01", "later-version"),
+        raw.rewrite("</DEV>", "<unknown/></DEV>"),
+        raw.rewrite("</DEV>", "<DEV.device_id V=\"duplicate\"/></DEV>"),
     ] {
         assert!(Message::parse(raw.as_bytes(), limits()).is_err());
     }
@@ -167,7 +168,7 @@ fn poct01_b_6_12_required_structure_and_order_are_enforced() {
         Err(MessageError::ObservationValue)
     ));
     let raw =
-        observation("o", true, "<OBS.value V=\"1\" U=\"u\"/>").replace("V=\"OBS\"", "V=\"LQC\"");
+        observation("o", true, "<OBS.value V=\"1\" U=\"u\"/>").rewrite("V=\"OBS\"", "V=\"LQC\"");
     assert!(matches!(
         Message::parse(raw.as_bytes(), limits()),
         Err(MessageError::Role)
@@ -203,14 +204,14 @@ proptest! {
 
 #[test]
 fn poct01_b_12_auxiliary_metadata_and_encapsulation_are_local_only() -> Result<(), MessageError> {
-    let raw = hello("h").replace("</DCP>","<DCP.vendor_specific ENC=\"B64\" COMPN=\"GZ\" MT=\"application/octet-stream\"><REF V=\"https://invalid.example/never-fetch\"/><THUMBNAIL ENC=\"TXT\">synthetic</THUMBNAIL></DCP.vendor_specific></DCP>");
+    let raw = hello("h").rewrite("</DCP>","<DCP.vendor_specific ENC=\"B64\" COMPN=\"GZ\" MT=\"application/octet-stream\"><REF V=\"https://invalid.example/never-fetch\"/><THUMBNAIL ENC=\"TXT\">synthetic</THUMBNAIL></DCP.vendor_specific></DCP>");
     Message::parse(raw.as_bytes(), limits())?;
-    let raw = observation("o",true,"<OBS.value V=\"1.230\" U=\"unit\" V-T=\"REAL\" U-T=\"CS\" PROB=\"0.9\"><NOTE V=\"synthetic-note\"/><CONFID V=\"synthetic-confidence\" SN=\"synthetic-system\"/></OBS.value>").replace("<PT.patient_id V=\"000xyz\"/>","<PT.patient_id V=\"000xyz\" xml:lang=\"en\"/><PT.name V=\"Synthetic Person\"><GIV T=\"PNXP\" V=\"Synthetic\" QUAL=\"RE\"/><FAM V=\"Person\"/></PT.name>");
+    let raw = observation("o",true,"<OBS.value V=\"1.230\" U=\"unit\" V-T=\"REAL\" U-T=\"CS\" PROB=\"0.9\"><NOTE V=\"synthetic-note\"/><CONFID V=\"synthetic-confidence\" SN=\"synthetic-system\"/></OBS.value>").rewrite("<PT.patient_id V=\"000xyz\"/>","<PT.patient_id V=\"000xyz\" xml:lang=\"en\"/><PT.name V=\"Synthetic Person\"><GIV T=\"PNXP\" V=\"Synthetic\" QUAL=\"RE\"/><FAM V=\"Person\"/></PT.name>");
     Message::parse(raw.as_bytes(), limits())?;
     for corrupted in [
-        raw.replace("V-T=\"REAL\"", "V-T=\"ST\""),
-        raw.replace("U-T=\"CS\"", "U-T=\"REAL\""),
-        raw.replace("T=\"PNXP\"", "T=\"ST\""),
+        raw.rewrite("V-T=\"REAL\"", "V-T=\"ST\""),
+        raw.rewrite("U-T=\"CS\"", "U-T=\"REAL\""),
+        raw.rewrite("T=\"PNXP\"", "T=\"ST\""),
     ] {
         assert!(Message::parse(corrupted.as_bytes(), limits()).is_err());
     }
@@ -220,14 +221,14 @@ fn poct01_b_12_auxiliary_metadata_and_encapsulation_are_local_only() -> Result<(
 #[test]
 fn poct01_b_12_intervals_and_value_choice_are_not_later_hl7_encodings() -> Result<(), MessageError>
 {
-    let raw = observation("o", true, "<OBS.value V=\"1.230\" U=\"unit\"/>").replace(
+    let raw = observation("o", true, "<OBS.value V=\"1.230\" U=\"unit\"/>").rewrite(
         "</OBS>",
         "<OBS.normal_lo-hi_limit V=\"[0.1;+inf[\" U=\"unit\"/></OBS>",
     );
     Message::parse(raw.as_bytes(), limits())?;
     for bad in [
-        raw.replace("[0.1;+inf[", "[missing]"),
-        raw.replace("</OBS>", "<OBS.qualitative_value V=\"positive\"/></OBS>"),
+        raw.rewrite("[0.1;+inf[", "[missing]"),
+        raw.rewrite("</OBS>", "<OBS.qualitative_value V=\"positive\"/></OBS>"),
     ] {
         assert!(Message::parse(bad.as_bytes(), limits()).is_err());
     }
@@ -267,25 +268,25 @@ fn poct01_b_12_probability_accepts_signed_zero_and_endpoints() -> Result<(), Mes
 // POCT01-A2 B 4.1.2 p.78; only a unique, bounded Hello header authorizes a reference.
 #[test]
 fn poct01_b4_1_2_error_reference_is_not_guessed_from_body_or_ambiguous_header() {
-    let raw = hello("header-only").replace("</DEV>", "</broken>");
+    let raw = hello("header-only").rewrite("</DEV>", "</broken>");
     assert_eq!(
         analyte_poct::hello_error_reference(raw.as_bytes(), limits())
             .map(|id| id.as_str().to_owned()),
         Some("header-only".into())
     );
     for raw in [
-        raw.replace("<HDR.control_id V=\"header-only\"/>", ""),
-        raw.replace(
+        raw.rewrite("<HDR.control_id V=\"header-only\"/>", ""),
+        raw.rewrite(
             "<HDR.control_id V=\"header-only\"/>",
             "<HDR.control_id V=\"one\"/><HDR.control_id V=\"two\"/>",
         ),
-        raw.replace(
+        raw.rewrite(
             "<HDR.control_id V=\"header-only\"/>",
             "<HDR.control_id V=\"one\" NULL=\"UNK\"/>",
         ),
-        raw.replace("<HDR>", "<DEV><HDR>"),
-        raw.replace("HEL.R01", "OBS.R01"),
-        raw.replace(
+        raw.rewrite("<HDR>", "<DEV><HDR>"),
+        raw.rewrite("HEL.R01", "OBS.R01"),
+        raw.rewrite(
             "<HDR.control_id V=\"header-only\"/>",
             "<!--<HDR.control_id V=\"forged\"/>-->",
         ),

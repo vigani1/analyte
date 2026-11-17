@@ -1,5 +1,5 @@
 //! Holds raw POCT TOML policy settings.
-use super::*;
+use super::{Deserialize, PoctIdentity, Serialize};
 
 /// POCT DML reviewer resource and time budgets.
 #[derive(Debug, Clone, Serialize, Deserialize)]

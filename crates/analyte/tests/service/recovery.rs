@@ -1,6 +1,7 @@
 //! Tests store recovery after forced process exit.
 use super::*;
 use crate::support::HANG_GUARD;
+use analyte_fixtures::ConfigEdit as _;
 use std::io::Read as _;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -33,9 +34,9 @@ async fn forced_exit_child() -> Result<(), Error> {
     let definition = root.join("astm.toml");
     let orders = include_str!("../../../core/config/examples/orders.toml")
         // This test exercises crash recovery, not query response expiry.
-        .replace("deadline_ms = 1000", "deadline_ms = 30000")
-        .replace("send_ahead = true", "send_ahead = false")
-        .replace(
+        .rewrite("deadline_ms = 1000", "deadline_ms = 30000")
+        .rewrite("send_ahead = true", "send_ahead = false")
+        .rewrite(
             "namespace=\"demo\",value=\"DEMO\"",
             "namespace=\"synthetic\",value=\"TEST\"",
         );

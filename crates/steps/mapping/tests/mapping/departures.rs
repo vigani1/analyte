@@ -1,12 +1,13 @@
 //! Tests ADR 0015 missing-status interpretations against HL7 §§7.4.1.25 and 7.4.2.11.
 use super::*;
+use analyte_fixtures::ConfigEdit as _;
 fn definition(rule: &str, guarantee: &str) -> String {
     let fixture = include_str!("../../../../core/config/tests/fixtures/departure.toml")
-        .replace("astm_frame_limit", rule)
-        .replace("compatibility", guarantee)
-        .replace("protocol=\"astm\"", "protocol=\"hl7\",edition=\"v251\"")
-        .replace("astm_results", "oru_r01_patient");
-    HL7_CONFIG.replace("deviations = []",&fixture).replace("qc = []", "qc = [{field={group='order',record='OBR',field=3,component=1,repetition=1},value='000AbC',classification='patient'}]")
+        .rewrite("astm_frame_limit", rule)
+        .rewrite("compatibility", guarantee)
+        .rewrite("protocol=\"astm\"", "protocol=\"hl7\",edition=\"v251\"")
+        .rewrite("astm_results", "oru_r01_patient");
+    HL7_CONFIG.rewrite("deviations = []",&fixture).rewrite("qc = []", "qc = [{field={group='order',record='OBR',field=3,component=1,repetition=1},value='000AbC',classification='patient'}]")
 }
 fn report(
     report_status: &str,
@@ -78,9 +79,9 @@ fn adr0015_hl7_s74211_derived_summary_preserves_absence_and_identity_units() -> 
             .iter()
             .any(|f| f.problem == Problem::UnqualifiedHl7Report && f.position.field == 25)
     );
-    let qc = definition.replace("classification='patient'", "classification='control'");
+    let qc = definition.rewrite("classification='patient'", "classification='control'");
     assert!(report("F", "", &qc)?.applied_departures.is_empty());
-    let unknown = definition.replace("classification='patient'", "classification='unknown'");
+    let unknown = definition.rewrite("classification='patient'", "classification='unknown'");
     assert!(report("F", "", &unknown)?.applied_departures.is_empty());
     for value in ["P", "R", "C", "X", "D"] {
         let mapped = report("F", value, &definition)?;
@@ -123,11 +124,11 @@ fn adr0015_hl7_two_omissions_require_both_separate_guarantees() -> TestResult {
         .and_then(|line| line.strip_prefix("deviations = ["))
         .and_then(|line| line.strip_suffix(']'))
         .ok_or("declaration fixture")?
-        .replace("astm_frame_limit", "hl7_absent_obx11_means_final")
-        .replace("compatibility", "absent_obx11_final")
-        .replace("protocol=\"astm\"", "protocol=\"hl7\",edition=\"v251\"")
-        .replace("astm_results", "oru_r01_patient");
-    definition = definition.replace("deviations = [", &format!("deviations = [{second},"));
+        .rewrite("astm_frame_limit", "hl7_absent_obx11_means_final")
+        .rewrite("compatibility", "absent_obx11_final")
+        .rewrite("protocol=\"astm\"", "protocol=\"hl7\",edition=\"v251\"")
+        .rewrite("astm_results", "oru_r01_patient");
+    definition = definition.rewrite("deviations = [", &format!("deviations = [{second},"));
     let mapped = report("", "", &definition)?;
     assert_eq!(mapped.applied_departures.len(), 2);
     assert!(

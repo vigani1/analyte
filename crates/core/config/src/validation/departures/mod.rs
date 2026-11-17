@@ -1,7 +1,13 @@
 //! Checks named departures against installed applicability and selected settings.
-use super::super::*;
+use crate::ParsedMachine;
+use crate::{
+    ChecksumHex, DepartureDirection, DepartureEdition, DepartureGuarantee, DepartureMessage,
+    DepartureReference, DepartureScope, Encoding, Error, Escapes, EvidenceLevel, MachineDeparture,
+    Priority, StackChoice, Terminator,
+};
+
 use crate::DepartureRefusal as Refusal;
-use crate::{ParsedMachine, StackChoice};
+
 mod evidence;
 
 fn refusal(path: &str, rule: &str, reason: Refusal) -> Error {

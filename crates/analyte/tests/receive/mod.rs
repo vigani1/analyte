@@ -50,12 +50,11 @@ async fn connect(program: &Program) -> Result<TcpStream, Error> {
 fn stored(program: &Program) -> Result<Store, Error> {
     Ok(Store::open(
         &program.data_directory().join("analyte.db"),
-        analyte_store::Limits {
-            reserve_bytes: 1024,
-            database_bytes: 100000000,
-            record_bytes: 2097152,
-            page_rows: 100,
-            busy_timeout: Duration::from_millis(20),
+        {
+            let mut limits = analyte_fixtures::store_limits();
+            limits.record_bytes = 2097152;
+            limits.busy_timeout = Duration::from_millis(20);
+            limits
         },
         Box::new(Space(u64::MAX)),
     )?)
@@ -88,7 +87,7 @@ async fn serve(
             if name.ends_with("API") {
                 "synthetic-api"
             } else {
-                "whsec_AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+                analyte_fixtures::SECRET
             }
             .into(),
         )

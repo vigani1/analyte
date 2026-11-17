@@ -4,7 +4,10 @@ use crate::orders::codes::{map_priority as outbound_priority, map_test as outbou
 use crate::orders::{AppOrder, MachineOrder, OrderMappingError, map_patient};
 use crate::{Output, Position};
 
-use analyte_model::*;
+use analyte_model::{
+    Dilution, DilutionApplied, EvidenceList, IdentityStatus, Reason, ReceiptId, ResultValue,
+    SampleId, SampleIdentity, SampleSource, SourceText, Units, ValueInterpretation,
+};
 /// Maps VIDAS values conservatively, preserving unresolved identity and exact text.
 /// # Errors
 /// Preserves syntax, model and mapping failures.

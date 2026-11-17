@@ -1,6 +1,7 @@
 //! Tests vendor outgoing orders and configured bounds.
 //! These assertions do not claim vendor conformance; no vendor evidence level changes.
 use analyte_config::{Draft, Validated};
+use analyte_fixtures::ConfigEdit as _;
 use analyte_mapping::{AppOrder, AppOrderPriority, MachineOrder, OrderMappingError, map_order};
 use analyte_model::{Identifier, NamespacedId, SampleId};
 type TestResult = Result<(), Box<dyn std::error::Error>>;
@@ -20,7 +21,7 @@ fn vidas() -> String {
     format!(
         "{}{SECTION}",
         include_str!("../../../core/config/examples/vidas_literal.toml")
-            .replace("download = false", "download = true")
+            .rewrite("download = false", "download = true")
     )
 }
 
@@ -28,7 +29,7 @@ fn autolyser() -> String {
     format!(
         "{}\n[orders]\nsend_ahead=true\npatient_namespace='patients'\nclone=false\ntests=[{{app={{namespace='demo',value='DEMO'}},machine_components=['SYN ']}}]\npriorities=[{{app='routine',machine='T'}}]\nspecimen_types=[{{app={{namespace='types',value='SERUM'}},machine='S'}}]\n",
         include_str!("../../../core/config/examples/autolyser.toml")
-            .replace("download = false", "download = true")
+            .rewrite("download = false", "download = true")
     )
 }
 
@@ -90,13 +91,13 @@ fn rule7_autolyser_download_refuses_missing_context_and_bounds_before_output() -
         return Err("stack".into());
     };
     assert_eq!(one_digit.encode().get(18..20), Some(b"03".as_slice()));
-    let urine = config(&autolyser().replace("machine='S'", "machine='U'"))?;
+    let urine = config(&autolyser().rewrite("machine='S'", "machine='U'"))?;
     let MachineOrder::Autolyser(work) = map_order(&positioned_order()?, urine.effective().stack())?
     else {
         return Err("stack".into());
     };
     assert_eq!(work.encode().get(16), Some(&b'U'));
-    let repeated = config(&autolyser().replace("repetitions = 128", "repetitions = 2"))?;
+    let repeated = config(&autolyser().rewrite("repetitions = 128", "repetitions = 2"))?;
     for (count, accepted) in [(1, true), (2, true), (3, false)] {
         let mut input = positioned_order()?;
         input.tests = vec![input.tests.first().ok_or("test")?.clone(); count];
@@ -120,7 +121,7 @@ fn rule7_autolyser_download_refuses_missing_context_and_bounds_before_output() -
     };
     let size = work.encode().len();
     for (bound, accepted) in [(size - 1, false), (size, true), (size + 1, true)] {
-        let cfg = config(&autolyser().replace("bytes = 1048576", &format!("bytes = {bound}")))?;
+        let cfg = config(&autolyser().rewrite("bytes = 1048576", &format!("bytes = {bound}")))?;
         assert_eq!(map_order(&input, cfg.effective().stack()).is_ok(), accepted);
     }
     Ok(())
@@ -208,7 +209,7 @@ fn rule7_vendor_download_count_and_aggregate_bounds_are_independent() -> TestRes
         );
     }
     for (key, old) in [("records", 4096), ("repetitions", 128)] {
-        let cfg = config(&vidas().replace(&format!("{key} = {old}"), &format!("{key} = 2")))?;
+        let cfg = config(&vidas().rewrite(&format!("{key} = {old}"), &format!("{key} = 2")))?;
         for (count, accepted) in [(0, false), (1, true), (2, true), (3, false)] {
             let mut input = order()?;
             input.tests = vec![input.tests.first().ok_or("test")?.clone(); count];
@@ -228,7 +229,7 @@ fn rule7_vendor_download_count_and_aggregate_bounds_are_independent() -> TestRes
     for (key, old) in [("bytes", 1048576), ("limit", 1920)] {
         for (bound, accepted) in [(size - 1, false), (size, true), (size + 1, true)] {
             let cfg =
-                config(&vidas().replace(&format!("{key} = {old}"), &format!("{key} = {bound}")))?;
+                config(&vidas().rewrite(&format!("{key} = {old}"), &format!("{key} = {bound}")))?;
             assert_eq!(
                 map_order(&input, cfg.effective().stack()).is_ok(),
                 accepted,

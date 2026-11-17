@@ -1,4 +1,5 @@
 //! Qualifies edition-specific O21 encoding and O22 response decisions.
+use analyte_fixtures::ConfigEdit as _;
 use analyte_hl7::order::*;
 use analyte_hl7::{ControlId, Message, Options, Version};
 
@@ -102,9 +103,9 @@ fn hl7_2_6_s4_4_7_s2_14_8_response_outcomes_and_correlation() -> Result<(), Erro
             ));
         }
         for malformed in [
-            bytes.replace("MSA|AA|sent1", "MSA|AA|other"),
-            bytes.replace("MSA|AA|sent1", "MSA|AA|sent1|||D"),
-            bytes.replace("ORL^O22^ORL_O22", "ORL^O53^ORL_O53"),
+            bytes.rewrite("MSA|AA|sent1", "MSA|AA|other"),
+            bytes.rewrite("MSA|AA|sent1", "MSA|AA|sent1|||D"),
+            bytes.rewrite("ORL^O22^ORL_O22", "ORL^O53^ORL_O53"),
         ] {
             let message = Message::parse(malformed.as_bytes(), Options::default())?;
             assert!(OrderResponse::new(&message, &sent).is_err());
@@ -196,12 +197,12 @@ fn hl7_2_8_2_s4_4_6_7_s4_5_1_4_s2_a_14_5_order_qualification() -> Result<(), Err
             _ => matches!(response.decisions()[0].outcome(), Outcome::Rejected { .. }),
         });
         for invalid in [
-            raw.replace("MSA|AA|sent1", "MSA|AA|other"),
-            raw.replace("ORL^O22^ORL_O22", "ORL^O22^ORL_O41"),
-            raw.replace("^LAB^MR", "^LAB"),
-            raw.replace("MSA|AA|sent1", "MSA|AA|sent1|withdrawn"),
-            raw.replace("MSA|AA|sent1", "MSA|AA|sent1|\"\""),
-            raw.replace("MSA|AA|sent1", "MSA|AA|sent1\rERR|\"\"||207|E"),
+            raw.rewrite("MSA|AA|sent1", "MSA|AA|other"),
+            raw.rewrite("ORL^O22^ORL_O22", "ORL^O22^ORL_O41"),
+            raw.rewrite("^LAB^MR", "^LAB"),
+            raw.rewrite("MSA|AA|sent1", "MSA|AA|sent1|withdrawn"),
+            raw.rewrite("MSA|AA|sent1", "MSA|AA|sent1|\"\""),
+            raw.rewrite("MSA|AA|sent1", "MSA|AA|sent1\rERR|\"\"||207|E"),
         ] {
             let message = Message::parse(invalid.as_bytes(), Options::default())?;
             assert!(OrderResponse::new(&message, &sent).is_err());
@@ -221,7 +222,7 @@ fn hl7_2_8_2_s4_4_6_7_s4_5_1_4_s2_a_14_5_order_qualification() -> Result<(), Err
                 }
                 values[*field - 1] = "withdrawn";
                 let invalid = if segment == "ORC" {
-                    raw.replace(
+                    raw.rewrite(
                         &format!("ORC|{control}|001^LAB\r"),
                         &format!("ORC|{}\r", values.join("|")),
                     )
@@ -248,10 +249,10 @@ fn hl7_2_8_2_s2_a_13_s4_5_4_7_reply_datatypes_and_name_bound() -> Result<(), Err
     let message = Message::parse(raw.as_bytes(), Options::default())?;
     OrderResponse::new(&message, &sent)?;
     for invalid in [
-        raw.replace("202611161300||", "202611161300^M||"),
-        raw.replace("L^^^^test-r1", "L"),
-        raw.replace("HL70485^^^^prio-r1", "HL70485"),
-        raw.replace("L^^^^spec-r1", "L"),
+        raw.rewrite("202611161300||", "202611161300^M||"),
+        raw.rewrite("L^^^^test-r1", "L"),
+        raw.rewrite("HL70485^^^^prio-r1", "HL70485"),
+        raw.rewrite("L^^^^spec-r1", "L"),
     ] {
         let message = Message::parse(invalid.as_bytes(), Options::default())?;
         assert!(OrderResponse::new(&message, &sent).is_err());

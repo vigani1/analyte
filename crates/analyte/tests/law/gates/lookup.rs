@@ -62,7 +62,7 @@ async fn law_tf2b_3_28_4_cancel_rechecks_trust_after_candidate_selection() -> Re
         cancel_result: Some(cancel_result),
         ..LawGates::default()
     };
-    let settings = definition().replace("send_ahead = false", "send_ahead = true");
+    let settings = definition().rewrite("send_ahead = false", "send_ahead = true");
     let (_temp, path, reference, running, mut peer) = start(
         &settings,
         vec![order("order-1", "000Ab12", None, 2)?],

@@ -1,6 +1,15 @@
 //! Turns a validated machine document into a `Stack`: one typed settings bundle per supported protocol combination.
-use crate::*;
+#[cfg(test)]
+use crate::MachineDocument;
+use crate::{
+    AstmOrderFields, Autolyser, ChecksumHex, CodeTables, Edition, Encoding, Error, Escapes,
+    Hl7OrderQuery, Hl7Send, LawConnectionMode, LawPeer, LawQueryForm, LawWork, MachineDeparture,
+    Mappings, OrderPriority, OrderQuery, Orders, OutboundSpecimen, OutboundTest, Poct, Priority,
+    Responsibility, Serial, Syntax, Terminator, TestMapping, Transport, TransportKind, UnitMapping,
+    Vidas, invalid,
+};
 use crate::{ParsedMachine, StackChoice};
+
 mod astm;
 pub use astm::{AstmOrders, AstmStack, AstmSyntax};
 mod hl7;

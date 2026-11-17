@@ -1,6 +1,7 @@
 //! Tests HL7 messages, acknowledgments and failure handling.
 //! Kept whole: The HL7 acknowledgment matrix uses one shared dialog fixture and adjacent failure cases.
 use analyte_dialog::hl7::*;
+use analyte_fixtures::ConfigEdit as _;
 use analyte_hl7::{AckCode, AckError, ControlId, Options, Response};
 use proptest::prelude::*;
 use std::time::Duration;
@@ -233,7 +234,7 @@ fn hl7_251_2_15_8_all_codes_and_mismatched_ack() -> TestResult {
                 .iter()
                 .any(|a| matches!(a, Action::Unmatched(_)))
         );
-        let right = wrong.replace("|other", "|001");
+        let right = wrong.rewrite("|other", "|001");
         let out = feed(&mut d, right.as_bytes())?;
 
         if matches!(code, "CA" | "CE" | "CR") {
@@ -248,7 +249,7 @@ fn hl7_251_2_15_8_all_codes_and_mismatched_ack() -> TestResult {
                 )
             )));
             assert!(!out.iter().any(|a| matches!(a, Action::Sent(_, _))));
-            let completion = right.replace(&format!("MSA|{code}|"), "MSA|AA|");
+            let completion = right.rewrite(&format!("MSA|{code}|"), "MSA|AA|");
             assert!(
                 feed(&mut d, completion.as_bytes())?
                     .iter()
@@ -614,7 +615,7 @@ fn mllp_r1_1_2_queries_share_decoder_and_keep_queued_first_byte_time() -> TestRe
     let mut d = dialog()?;
     d.enable_orders(analyte_hl7::Version::V251)?;
     let query = String::from_utf8(message(""))?
-        .replace("ORU^R01^ORU_R01", "QRY^Q02^QRY_Q02")
+        .rewrite("ORU^R01^ORU_R01", "QRY^Q02^QRY_Q02")
         .into_bytes();
     let first = receipt(&feed(&mut d, &query)?)?;
     for byte in &query {
@@ -731,7 +732,7 @@ fn hl7_291_s2_8_3_2_enhanced_application_ack_requires_separate_channel() -> Test
     for mode in ["NE|AL", "AL|AL", "AL|ER", "AL|SU"] {
         let mut dialog = dialog()?;
         let raw = String::from_utf8(message(mode))?
-            .replace("2.5.1", "2.9.1")
+            .rewrite("2.5.1", "2.9.1")
             .into_bytes();
         let actions = feed(&mut dialog, &raw)?;
         let id = receipt(&actions)?;

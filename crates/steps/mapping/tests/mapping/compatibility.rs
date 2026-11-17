@@ -1,9 +1,10 @@
 //! Tests legacy result interpretation without assigning uncertain extension meanings.
 use super::*;
+use analyte_fixtures::ConfigEdit as _;
 
 #[test]
 fn hl7_2_6_s7_3_1_s7_4_2_3_5_19_21_receiving_keeps_values_times_and_raw_identity() -> TestResult {
-    let config = config(&HL7_CONFIG.replace("edition = \"v251\"", "edition = \"v26\""))?;
+    let config = config(&HL7_CONFIG.rewrite("edition = \"v251\"", "edition = \"v26\""))?;
     for (datatype, value) in [
         ("NM", "0.10"),
         ("CWE", "POS^Positive^LOCAL^^^^v1"),
@@ -57,7 +58,7 @@ fn hl7_2_6_s7_3_1_s7_4_2_3_5_19_21_receiving_keeps_values_times_and_raw_identity
 
 #[test]
 fn hl7_2_6_s2_a_6_77_and_s7_4_2_22_unsafe_results_never_map() -> TestResult {
-    let config = config(&HL7_CONFIG.replace("edition = \"v251\"", "edition = \"v26\""))?;
+    let config = config(&HL7_CONFIG.rewrite("edition = \"v251\"", "edition = \"v26\""))?;
     for observation in [
         "OBX|1|CE|SYN||POS||||||F\r",
         "OBX|1|TS|SYN||20261116||||||F\r",
@@ -89,13 +90,13 @@ fn hl7_2_6_s2_a_6_77_and_s7_4_2_22_unsafe_results_never_map() -> TestResult {
 
 #[test]
 fn law_tf2b_c4_and_3_29_4_compatible_vid_keeps_law_analysis_time() -> TestResult {
-    let definition = include_str!("../../../../core/config/examples/law.toml").replace(
+    let definition = include_str!("../../../../core/config/examples/law.toml").rewrite(
         "order_namespace = {fixed=\"LAB\"}",
         "order_namespace = {fixed=\"manager\"}",
     );
     let config = config(&definition)?;
     for version in ["2.5", "2.5.1", "2.5.2"] {
-        let raw = std::str::from_utf8(LAW_RESULT)?.replace("|2.5.1|", &format!("|{version}|"));
+        let raw = std::str::from_utf8(LAW_RESULT)?.rewrite("|2.5.1|", &format!("|{version}|"));
         let message = analyte_hl7::law::parse_message(
             raw.as_bytes(),
             config.effective().hl7_options().ok_or("options")?,
@@ -121,7 +122,7 @@ fn hl7_2_5_1_s2_8_1_legacy_extension_groups_are_not_assigned_later_specimen_mean
 {
     for (edition, version) in [("v23", "2.3"), ("v24", "2.4"), ("v25", "2.5")] {
         let config =
-            config(&HL7_CONFIG.replace("edition = \"v251\"", &format!("edition = \"{edition}\"")))?;
+            config(&HL7_CONFIG.rewrite("edition = \"v251\"", &format!("edition = \"{edition}\"")))?;
         let raw = format!(
             "MSH|^~\\&|SYN||||20261116||ORU^R01^ORU_R01|MSG|P|{version}\rOBR|1||000AbC\rSPM|1|opaque\rOBX|1|NM|SYN||0.10||||||F\r"
         );
@@ -152,7 +153,7 @@ fn hl7_2_5_1_s2_8_1_2_legacy_results_map_stable_fields_and_keep_uncertain_extens
 -> TestResult {
     for (edition, version) in [("v23", "2.3"), ("v24", "2.4"), ("v25", "2.5")] {
         let config =
-            config(&HL7_CONFIG.replace("edition = \"v251\"", &format!("edition = \"{edition}\"")))?;
+            config(&HL7_CONFIG.rewrite("edition = \"v251\"", &format!("edition = \"{edition}\"")))?;
         let mut fields = vec![""; 19];
         for (index, value) in [
             (0, "1"),
@@ -215,7 +216,7 @@ fn hl7_2_5_1_s2_8_1_2_legacy_results_map_stable_fields_and_keep_uncertain_extens
 fn hl7_2_5_1_s2_8_1_new_datatype_availability_is_not_guessed_for_legacy_cwe() -> TestResult {
     for (edition, version) in [("v23", "2.3"), ("v24", "2.4"), ("v25", "2.5")] {
         let config =
-            config(&HL7_CONFIG.replace("edition = \"v251\"", &format!("edition = \"{edition}\"")))?;
+            config(&HL7_CONFIG.rewrite("edition = \"v251\"", &format!("edition = \"{edition}\"")))?;
         let raw = format!(
             "MSH|^~\\&|SYN||||20261116||ORU^R01^ORU_R01|MSG|P|{version}\rOBR|1||000AbC\rOBX|1|CWE|SYN^Synthetic^synthetic||code^text^local||||||F\r"
         );
@@ -244,7 +245,7 @@ fn hl7_2_5_1_s2_8_1_new_datatype_availability_is_not_guessed_for_legacy_cwe() ->
 // HL7 2.3.1 sections 7.2.1 and 7.3.2: no standard SPM/SAC or OBX-19 analysis time.
 #[test]
 fn hl7_231_s7_2_1_s7_3_2_later_fields_do_not_gain_meaning() -> TestResult {
-    let config = config(&HL7_CONFIG.replace("edition = \"v251\"", "edition = \"v231\""))?;
+    let config = config(&HL7_CONFIG.rewrite("edition = \"v251\"", "edition = \"v231\""))?;
     for extra in ["", "SPM|1|later-specimen\r", "SAC|||later-container\r"] {
         let mut fields = [""; 19];
         fields[0] = "1";

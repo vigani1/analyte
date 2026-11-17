@@ -1,5 +1,8 @@
 //! Constructs validated VIDAS protocol settings.
-use super::*;
+use super::{
+    CodeTables, DialogTimeouts, Error, OrderPriority, OutboundTest, StreamTransport, SyntaxLimits,
+    Vidas, code_tables, invalid, limits, stream,
+};
 use crate::ParsedMachine;
 use analyte_model::Identifier;
 

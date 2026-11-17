@@ -2,10 +2,10 @@
 #![forbid(unsafe_code)]
 use analyte_contract::{Order, SigningSecret};
 use analyte_fixtures as guard;
+use analyte_fixtures::SECRET;
 use analyte_receiver::Receiver;
 use guard::HANG_GUARD;
 use serde_json::{Value, json};
-const SECRET: &str = "whsec_AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=";
 async fn post(
     client: &reqwest::Client,
     url: &str,

@@ -7,10 +7,18 @@ mod syntax;
 mod version;
 mod views;
 mod wire;
-pub use ack::*;
-pub use syntax::*;
+pub use ack::{AckError, OwnedAckError, Response, Responsibility, acknowledgment};
+pub use syntax::{
+    Charset, Component, Delimiters, Error, EscapePolicy, Field, Limits, Message, Options,
+    Repetition, Segment, Terminator, TextEscape, decode_characters, decode_text, encode_text,
+    inspect_text_escapes, is_null_text,
+};
 pub use version::Version;
-pub use views::*;
+pub use views::{
+    AckCode, AckMode, Condition, ControlId, ErrView, Location, Msa, Msh, ResultGrammarError,
+    ResultMessage, WireCompatibility, location_error, syntax_location, validate_result_fields,
+    wire_compatibility,
+};
 
 /// Pure IHE LAW query views; see module documentation for current scope.
 pub mod law;

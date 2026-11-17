@@ -1,12 +1,13 @@
 //! Tests exact configured HL7 editions and actionable unsupported-edition diagnostics.
 use analyte_config::{Draft, Edition, Error, EvidenceLevel};
+use analyte_fixtures::ConfigEdit as _;
 use analyte_hl7::Version;
 
 const MACHINE: &str = include_str!("../examples/hl7.toml");
 const SITE: &str = include_str!("../examples/site.toml");
 
 fn query_config(edition: &str) -> Result<analyte_config::Validated, Error> {
-    let base = MACHINE.replace("edition = \"v251\"", &format!("edition = \"{edition}\""));
+    let base = MACHINE.rewrite("edition = \"v251\"", &format!("edition = \"{edition}\""));
     Draft::load(
         (
             "synthetic.toml",
@@ -60,7 +61,7 @@ fn hl7_2_6_s5_10_2_original_queries_retained_for_backward_compatibility() -> Res
 }
 
 fn draft(edition: &str) -> Result<Draft, Error> {
-    let machine = MACHINE.replace("edition = \"v251\"", &format!("edition = \"{edition}\""));
+    let machine = MACHINE.rewrite("edition = \"v251\"", &format!("edition = \"{edition}\""));
     Draft::load(
         ("synthetic.toml", &machine),
         ("site.toml", SITE),
@@ -148,7 +149,7 @@ fn adr0012_s3_missing_config_edition_is_not_defaulted() {
 fn hl7_2_9_1_s4_5_1_4_unresolved_group_encoding_refuses_sending() -> Result<(), Error> {
     {
         let edition = "v291";
-        let base = MACHINE.replace("edition = \"v251\"", &format!("edition = \"{edition}\""));
+        let base = MACHINE.rewrite("edition = \"v251\"", &format!("edition = \"{edition}\""));
         let machine = format!("{base}\n{}", include_str!("../examples/hl7_send.toml"));
         let result = Draft::load(
             ("synthetic.toml", &machine),
@@ -166,7 +167,7 @@ fn hl7_2_9_1_s4_5_1_4_unresolved_group_encoding_refuses_sending() -> Result<(), 
 #[test]
 fn hl7_2_5_1_s2_8_legacy_query_configs_validate_but_unimplemented_order_writers_do_not() {
     for edition in ["v23", "v24", "v25"] {
-        let base = MACHINE.replace("edition = \"v251\"", &format!("edition = \"{edition}\""));
+        let base = MACHINE.rewrite("edition = \"v251\"", &format!("edition = \"{edition}\""));
         for (section, sending) in [
             (include_str!("../examples/hl7_orders.toml"), false),
             (include_str!("../examples/hl7_send.toml"), true),
@@ -197,7 +198,7 @@ fn adr0012_s3_config_reports_the_registry_writer_blocker() {
         ("v25", Version::V25),
         ("v291", Version::V291),
     ] {
-        let base = MACHINE.replace("edition = \"v251\"", &format!("edition = \"{edition}\""));
+        let base = MACHINE.rewrite("edition = \"v251\"", &format!("edition = \"{edition}\""));
         let machine = format!("{base}\n{}", include_str!("../examples/hl7_send.toml"));
         let result = Draft::load(
             ("synthetic.toml", &machine),
@@ -217,16 +218,16 @@ fn adr0012_s3_config_reports_the_registry_writer_blocker() {
 #[test]
 fn hl7_2_6_2_8_2_s4_4_6_s2_a_13_7_config_requires_explicit_revisions() {
     for edition in ["v26", "v282"] {
-        let base = MACHINE.replace("edition = \"v251\"", &format!("edition = \"{edition}\""));
+        let base = MACHINE.rewrite("edition = \"v251\"", &format!("edition = \"{edition}\""));
         let send = include_str!("../examples/hl7_send.toml")
-            .replace(r#"["SYN","","L"]"#, r#"["SYN","","L","","","","test-r1"]"#);
+            .rewrite(r#"["SYN","","L"]"#, r#"["SYN","","L","","","","test-r1"]"#);
         let send = format!("{send}\npriority_version = \"prio-r1\"\n");
         for (settings, accepted) in [
             (send.clone(), true),
-            (send.replace("priority_version = \"prio-r1\"", ""), false),
-            (send.replace("specimen_version = \"1\"", ""), false),
+            (send.rewrite("priority_version = \"prio-r1\"", ""), false),
+            (send.rewrite("specimen_version = \"1\"", ""), false),
             (
-                send.replace(r#"["SYN","","L","","","","test-r1"]"#, r#"["SYN","","L"]"#),
+                send.rewrite(r#"["SYN","","L","","","","test-r1"]"#, r#"["SYN","","L"]"#),
                 false,
             ),
         ] {
@@ -247,7 +248,7 @@ fn hl7_2_6_2_8_2_s4_4_6_s2_a_13_7_config_requires_explicit_revisions() {
 #[test]
 fn hl7_291_s2_8_3_2_separate_application_channel_cannot_be_enabled() -> Result<(), Error> {
     for enabled in [false, true] {
-        let definition=MACHINE.replace("edition = \"v251\"", "edition = \"v291\"").replace("acknowledgment = \"store_and_forward\"", &format!("acknowledgment = \"store_and_forward\"\nenhanced_application_acknowledgments = {enabled}"));
+        let definition=MACHINE.rewrite("edition = \"v251\"", "edition = \"v291\"").rewrite("acknowledgment = \"store_and_forward\"", &format!("acknowledgment = \"store_and_forward\"\nenhanced_application_acknowledgments = {enabled}"));
         let result = Draft::load(
             ("synthetic", &definition),
             ("site", SITE),

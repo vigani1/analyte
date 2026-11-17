@@ -400,9 +400,10 @@ fn mutation_adr0003_delivery_bounds_and_machine_owner_refuse_atomically() -> Tes
         let temp = tempfile::tempdir()?;
         let mut store = Store::open(
             &temp.path().join("delivery-bounds.db"),
-            Limits {
-                record_bytes: 2048,
-                ..limits()
+            {
+                let mut policy = limits();
+                policy.record_bytes = 2048;
+                policy
             },
             Box::new(Space(u64::MAX)),
         )?;

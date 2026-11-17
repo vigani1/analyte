@@ -5,7 +5,7 @@ use super::*;
 async fn law_tf2b_c6_2_x_awos_components_do_not_change_retained_work_match() -> Result<(), Error> {
     let (_temp, path, mut reference, running, mut peer) = setup(
         vec![order("order-1", "000Ab12", Some("law"), 1)?],
-        &definition().replace("specimen = false", "specimen = true"),
+        &definition().rewrite("specimen = false", "specimen = true"),
         false,
     )
     .await?;
@@ -17,15 +17,15 @@ async fn law_tf2b_c6_2_x_awos_components_do_not_change_retained_work_match() -> 
     wait_state(&path, "done", 1).await?;
     let awos = std::str::from_utf8(field(&work, b"OBR", 2)?)?;
     let valid = law_results::result("valid", &format!("{awos}^LAB"), "", "12.30", "F")
-        .replace(
+        .rewrite(
             "sample-01&99LAB",
             std::str::from_utf8(field(&work, b"SPM", 2)?)?,
         )
-        .replace(
+        .rewrite(
             "00012a^LAB",
             &format!("{}^LAB", std::str::from_utf8(field(&work, b"SAC", 3)?)?),
         )
-        .replace(
+        .rewrite(
             "SYN^Synthetic^99LAB",
             std::str::from_utf8(field(&work, b"OBR", 4)?)?,
         );
@@ -36,22 +36,22 @@ async fn law_tf2b_c6_2_x_awos_components_do_not_change_retained_work_match() -> 
     for (id, bad, location) in [
         (
             "unknown",
-            valid.replace(&format!("{awos}^LAB"), "never-downloaded^LAB"),
+            valid.rewrite(&format!("{awos}^LAB"), "never-downloaded^LAB"),
             "OBR^1^2",
         ),
         (
             "specimen",
-            valid.replace("000Ab12&", "different&"),
+            valid.rewrite("000Ab12&", "different&"),
             "SPM^1^2",
         ),
         (
             "specimen-type",
-            valid.replace("SER^Serum^HL70487", "PLAS^Plasma^HL70487"),
+            valid.rewrite("SER^Serum^HL70487", "PLAS^Plasma^HL70487"),
             "SPM^1^4",
         ),
         (
             "container",
-            valid.replace("000Ab12^LAB", "different^LAB"),
+            valid.rewrite("000Ab12^LAB", "different^LAB"),
             "SAC^1^3",
         ),
         (
@@ -64,7 +64,7 @@ async fn law_tf2b_c6_2_x_awos_components_do_not_change_retained_work_match() -> 
             "OBR^1^4",
         ),
     ] {
-        let bad = bad.replace("|valid|", &format!("|{id}|"));
+        let bad = bad.rewrite("|valid|", &format!("|{id}|"));
         let unsolicited =
             law_results::result("unused", "\"\"", "unsolicited-run^ANALYZER", "1.0", "F");
         let (_, body) = unsolicited
@@ -83,8 +83,8 @@ async fn law_tf2b_c6_2_x_awos_components_do_not_change_retained_work_match() -> 
         .enumerate()
     {
         let accepted = valid
-            .replace(&format!("{awos}^LAB"), &format!("{awos}{suffix}"))
-            .replace("|valid|", &format!("|valid-{index}|"));
+            .rewrite(&format!("{awos}^LAB"), &format!("{awos}{suffix}"))
+            .rewrite("|valid|", &format!("|valid-{index}|"));
         send(&mut peer, accepted.as_bytes()).await?;
         let ack = packet(&mut peer).await?;
         assert_eq!(
@@ -109,11 +109,11 @@ async fn law_tf2b_b7_1_b7_2_host_correlates_errors_without_ack_loops() -> Result
     let query = query(CONTAINER, "correlated");
     let result = law_results::result("correlated", "\"\"", "run^ANALYZER", "1.0", "F");
     for (message, code) in [
-        (query.replace("QPD|", "QPD|BROKEN"), b"AE".as_slice()),
-        (query.replace("QBP^Q11^QBP_Q11", "QBP^Q99^QBP_Q11"), b"AR"),
-        (query.replace("|2.5.1|", "|2.4|"), b"AR"),
-        (query.replace("LAB-27^IHE", "OTHER^IHE"), b"AR"),
-        (result.replace("OUL^R22^OUL_R22", "ORU^R01^ORU_R01"), b"AR"),
+        (query.rewrite("QPD|", "QPD|BROKEN"), b"AE".as_slice()),
+        (query.rewrite("QBP^Q11^QBP_Q11", "QBP^Q99^QBP_Q11"), b"AR"),
+        (query.rewrite("|2.5.1|", "|2.4|"), b"AR"),
+        (query.rewrite("LAB-27^IHE", "OTHER^IHE"), b"AR"),
+        (result.rewrite("OUL^R22^OUL_R22", "ORU^R01^ORU_R01"), b"AR"),
         (format!("{query}@@@|bad\r"), b"AE"),
     ] {
         send(&mut peer, message.as_bytes()).await?;
@@ -124,8 +124,8 @@ async fn law_tf2b_b7_1_b7_2_host_correlates_errors_without_ack_loops() -> Result
     }
     for kind in ["ACK^R22^ACK", "ORL^O34^ORL_O42", "RSP^K11^RSP_K11"] {
         let ack = query
-            .replace("QBP^Q11^QBP_Q11", kind)
-            .replace("|2.5.1|", "|2.4|");
+            .rewrite("QBP^Q11^QBP_Q11", kind)
+            .rewrite("|2.5.1|", "|2.4|");
         send(&mut peer, ack.as_bytes()).await?;
         quiet(&mut peer).await?;
     }
@@ -143,7 +143,7 @@ async fn law_tf2b_3_27_4_pending_aggregate_bound_never_returns_partial_work() ->
     let orders = (0..17)
         .map(|i| order(&format!("order-{i:02}"), &format!("tube-{i:02}"), None, 1))
         .collect::<Result<Vec<_>, _>>()?;
-    let settings = definition().replace("records = 4096", "records = 16");
+    let settings = definition().rewrite("records = 4096", "records = 16");
     let (_temp, path, reference, running, mut peer) = setup(orders, &settings, false).await?;
     send(&mut peer, query(ALL, "oversized").as_bytes()).await?;
     let rsp = packet(&mut peer).await?;
@@ -327,7 +327,7 @@ async fn rule9_law_query_freshness_follows_destination_config() -> Result<(), Er
 #[tokio::test]
 async fn law_tf2b_b6_adr0003_wire_deadline_does_not_cancel_raw_custody() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
-    let settings = definition().replace("receive_timeout_ms = 30000", "receive_timeout_ms = 50");
+    let settings = definition().rewrite("receive_timeout_ms = 30000", "receive_timeout_ms = 50");
     let path = vendor_config(temp.path(), "law", &settings)?;
     let reference = Reference::start(
         &temp.path().join("receiver.db"),

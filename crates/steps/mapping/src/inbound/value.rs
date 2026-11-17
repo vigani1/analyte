@@ -1,7 +1,10 @@
 //! Parses typed values while retaining original wire text.
 use crate::inbound::source::Source;
 use crate::{Error, Output, Position, Problem, finding, identifier, list, text};
-use analyte_model::*;
+use analyte_model::{
+    CodedValue, Comparator, Decimal, EvidenceList, NamespacedId, NumericValue, Reason, ResultValue,
+    StructuredNumeric, ValueInterpretation,
+};
 
 pub(crate) fn values(
     source: &Source<'_>,

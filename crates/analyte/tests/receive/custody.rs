@@ -1,5 +1,6 @@
 //! Tests machine receipt storage and acknowledgment ordering.
 use super::*;
+use analyte_fixtures::ConfigEdit as _;
 
 #[tokio::test]
 async fn plan11_status_reports_health_and_last_receipt_without_payloads_or_secrets()
@@ -63,7 +64,7 @@ async fn plan11_cli_reprocess_receipt_parked_and_bounded_delivery_list_require_a
     let definition = std::fs::read_to_string(temp.path().join("machine.toml"))?;
     std::fs::write(
         temp.path().join("machine.toml"),
-        definition.replace("machine_code=\"SYN\"", "machine_code=\"OTHER\""),
+        definition.rewrite("machine_code=\"SYN\"", "machine_code=\"OTHER\""),
     )?;
     let program = Program::load(&path)?;
     let (shutdown, stop) = oneshot::channel();
@@ -162,7 +163,7 @@ async fn adr0003_rule3_connections_have_distinct_provenance() -> Result<(), Erro
     ));
     let mut peer = connect(&program).await?;
     for control in ["message1", "message2"] {
-        let raw = String::from_utf8(ORU.to_vec())?.replace("message1", control);
+        let raw = String::from_utf8(ORU.to_vec())?.rewrite("message1", control);
         peer.write_all(&analyte_framing::hl7::encode(
             raw.as_bytes(),
             analyte_framing::hl7::Limit::new(1048576)?,
@@ -172,7 +173,7 @@ async fn adr0003_rule3_connections_have_distinct_provenance() -> Result<(), Erro
     }
     drop(peer);
     let mut peer = connect(&program).await?;
-    let raw = String::from_utf8(ORU.to_vec())?.replace("message1", "message3");
+    let raw = String::from_utf8(ORU.to_vec())?.rewrite("message1", "message3");
     peer.write_all(&analyte_framing::hl7::encode(
         raw.as_bytes(),
         analyte_framing::hl7::Limit::new(1048576)?,

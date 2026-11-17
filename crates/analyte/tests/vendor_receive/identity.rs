@@ -5,7 +5,7 @@ use super::*;
 #[tokio::test]
 async fn poct01_b_6_10_repeated_analyte_without_distinguishing_identity_is_parked()
 -> Result<(), Error> {
-    let definition = include_str!("../../../core/config/examples/poct.toml").replace(
+    let definition = include_str!("../../../core/config/examples/poct.toml").rewrite(
         "[poct]",
         "[poct]\nidentity = { sequence_number = true, processing = \"Production\" }",
     );
@@ -24,9 +24,9 @@ async fn poct01_b_6_10_repeated_analyte_without_distinguishing_identity_is_parke
             let second = first
                 .get(start..end)
                 .ok_or("OBS bounds")?
-                .replace("12.30", second_value);
-            let raw = first.replace("</PT>", &format!("{second}</PT><SPC><SPC.specimen_id V=\"000xyz\"/><SPC.specimen_dttm NULL=\"UNK\"/><SPC.source_cd NULL=\"UNK\"/><SPC.type_cd NULL=\"UNK\"/></SPC>"))
-                .replace("<SVC.sequence_nbr", &format!("<SVC.reason_cd V=\"{reason}\"/><SVC.sequence_nbr"));
+                .rewrite("12.30", second_value);
+            let raw = first.rewrite("</PT>", &format!("{second}</PT><SPC><SPC.specimen_id V=\"000xyz\"/><SPC.specimen_dttm NULL=\"UNK\"/><SPC.source_cd NULL=\"UNK\"/><SPC.type_cd NULL=\"UNK\"/></SPC>"))
+                .rewrite("<SVC.sequence_nbr", &format!("<SVC.reason_cd V=\"{reason}\"/><SVC.sequence_nbr"));
             run.peer.write_all(raw.as_bytes()).await?;
             let ack = xml(&mut run.peer).await?;
             assert!(

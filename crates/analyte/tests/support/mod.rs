@@ -1,4 +1,5 @@
 //! Tests bounded synthetic peers and local test fixtures.
+use analyte_fixtures::ConfigEdit as _;
 pub mod deadline;
 use analyte_fixtures as guard;
 pub use deadline::step;
@@ -17,7 +18,7 @@ use tokio::{
 };
 
 /// Synthetic wire data or credentials used only by local test peers.
-pub const SECRET: &str = "whsec_AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=";
+pub use analyte_fixtures::SECRET;
 /// Synthetic wire data or credentials used only by local test peers.
 pub const ORU: &[u8] = b"MSH|^~\\&|SYN|LAB|HOST|LAB|20260101000000||ORU^R01^ORU_R01|message1|P|2.5.1\rPID|1\rOBR|1||00012a|SYN^Synthetic^synthetic|||||||||||||||||||||F\rOBX|1|NM|SYN^Synthetic^synthetic||12.30|mg/L|||||F\r";
 /// Synthetic wire data or credentials used only by local test peers.
@@ -68,7 +69,7 @@ pub fn config(root: &Path, astm: bool) -> Result<Fixture, Error> {
         std::fs::write(
             root.join(format!("{name}-site.toml")),
             include_str!("../../../core/config/examples/site.toml")
-                .replace("127.0.0.1:5600", &address.to_string()),
+                .rewrite("127.0.0.1:5600", &address.to_string()),
         )?;
         machines.push_str(&format!(
             "[[machines]]\nid = '{name}'\ndefinition = '{name}.toml'\nsite = '{name}-site.toml'\n"
@@ -339,7 +340,7 @@ pub fn vendor_config(root: &Path, name: &str, definition: &str) -> Result<Fixtur
     let mut fixture = config(root, false)?;
     fixture.listeners.first_mut().ok_or("listener missing")?.0 = name.into();
     let text =
-        std::fs::read_to_string(&fixture.path)?.replace("id = 'hl7'", &format!("id = '{name}'"));
+        std::fs::read_to_string(&fixture.path)?.rewrite("id = 'hl7'", &format!("id = '{name}'"));
     std::fs::write(&fixture.path, text)?;
     std::fs::write(root.join("hl7.toml"), definition)?;
     Ok(fixture)

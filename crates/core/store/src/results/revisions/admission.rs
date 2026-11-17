@@ -1,5 +1,5 @@
 //! Checks provenance, input bounds and byte budgets before writing revisions.
-use super::*;
+use super::{AssignedRevision, Delivery, Error, Interpretation, Reading, Store};
 impl Store {
     pub(super) fn validate_reconciliation(
         &self,

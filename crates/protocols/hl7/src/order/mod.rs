@@ -14,7 +14,10 @@ mod types;
 pub use encode::{context, oml, orm};
 pub use laboratory::SpecimenResponse;
 pub use response::{Decision, OrderResponse, Outcome};
-pub use types::*;
+pub use types::{
+    Code, Header, Order, OrderId, OrderMessage, Patient, Priority, Processing, SampleField,
+    SampleId, Specimen, Subject, Timestamp, Timing,
+};
 
 /// Complete encoded EI field limit for ORC-2, ORC-3 and ORC-4 in both supported editions.
 /// HL7 2.3.1 section 4.3.1 and 2.5.1 section 4.5.1 attribute tables.

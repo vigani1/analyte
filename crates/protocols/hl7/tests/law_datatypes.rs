@@ -1,4 +1,5 @@
 //! Regression tests for HL7 2.5.1 ERL, SN and LAW text-kind boundaries.
+use analyte_fixtures::ConfigEdit as _;
 use analyte_hl7::{
     Charset, Message, Options,
     law::{self, ControlDirection, Error, Profile},
@@ -215,7 +216,7 @@ fn hl7_251_2_7_6_law_c5_ft_line_markers_preserve_layout_evidence() -> TestResult
         r"first^\X1\second",
         r"first^\H",
     ] {
-        let raw = std::str::from_utf8(message.raw())?.replace("first^second", invalid);
+        let raw = std::str::from_utf8(message.raw())?.rewrite("first^second", invalid);
         let preserved = Message::parse(
             raw.as_bytes(),
             Options {

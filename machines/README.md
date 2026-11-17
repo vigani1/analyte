@@ -9,7 +9,9 @@ the example below is not a real machine.
 
 `cargo test --workspace` discovers every `machine.toml`, validates it through
 the real loader, compares the README evidence level, and replays every recording
-through the running service. An empty inventory passes and prints that fact.
+through the running service. A model folder with a README must also contain
+`machine.toml`, unless its README explicitly says "a blocked machine definition,"
+(line wrapping is allowed). This catches accidentally deleted definitions.
 The README uses these sections in this order. In Evidence, write exactly one
 `Level: documented`, `Level: simulated` or `Level: proven` line matching TOML.
 Synthetic recordings never raise the evidence level.

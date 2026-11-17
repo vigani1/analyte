@@ -4,7 +4,10 @@ use crate::orders::codes::{map_priority as outbound_priority, map_test as outbou
 use crate::orders::{AppOrder, MachineOrder, OrderMappingError, map_patient, map_specimen};
 use crate::{Output, Position};
 
-use analyte_model::*;
+use analyte_model::{
+    EvidenceList, IdentityStatus, QcClass, Reason, ReceiptId, ResultValue, SourceText,
+    ValueInterpretation,
+};
 /// Maps Autolyser results without inferring a specimen or immutable run.
 /// # Errors
 /// Preserves source encoding, model and mapping failures.

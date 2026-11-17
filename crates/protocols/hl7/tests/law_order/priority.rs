@@ -1,5 +1,6 @@
 //! Tests exact LAW requested and applied priority preservation.
 use super::*;
+use analyte_fixtures::ConfigEdit as _;
 
 // TF-2b 2.2.4.10 and C.14: requested and applied priorities retain their supplied coding.
 #[test]
@@ -46,7 +47,7 @@ fn law_tf2b_c14_requested_and_applied_priority_preserve_exact_code() -> TestResu
         )?;
         let tq1 = output.segments().find(|s| s.id() == b"TQ1").ok_or("TQ1")?;
         assert_eq!(tq1.field(9).ok_or("priority")?.raw(), code);
-        let wire = result_wire("")?.replace(
+        let wire = result_wire("")?.rewrite(
             "ORC|SC||||CM\r",
             &format!("ORC|SC||||CM\rTQ1|||||||||{}\r", std::str::from_utf8(code)?),
         );

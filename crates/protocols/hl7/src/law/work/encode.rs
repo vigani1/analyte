@@ -1,5 +1,5 @@
 //! Encodes LAW work orders and specimen groups without lifecycle decisions.
-use super::*;
+use super::{Awos, Capabilities, Error, Instructions, PatientInfo, WorkAction, content, safe};
 use crate::law;
 use crate::{Message, Options, Response};
 use law::responses::Wire;

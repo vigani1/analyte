@@ -257,7 +257,7 @@ async fn law_tf2b_3_27_4_untrusted_read_failure_and_restore_pause_are_errors_not
 async fn law_tf2b_3_27_4_late_query_budget_includes_first_byte_and_raw_storage() -> Result<(), Error>
 {
     for form in [CONTAINER, ALL] {
-        let settings = definition().replace("query_deadline_ms = 30000", "query_deadline_ms = 50");
+        let settings = definition().rewrite("query_deadline_ms = 30000", "query_deadline_ms = 50");
         let (hook, control) = analyte::runtime::test_hooks::Committed::new();
         let (_temp, path, reference, running, mut peer) = setup_observed(
             vec![order("order-1", "000Ab12", None, 1)?],
@@ -293,7 +293,7 @@ async fn law_tf2b_3_28_query_followup_timeout_disconnect_and_bad_correlation_are
 -> Result<(), Error> {
     for action in ["timeout", "disconnect", "wrong-correlation"] {
         let settings = if action == "timeout" {
-            definition().replace("response_ms = 30000", "response_ms = 200")
+            definition().rewrite("response_ms = 30000", "response_ms = 200")
         } else {
             definition()
         };
@@ -435,13 +435,13 @@ async fn law_tf2b_2_2_4_query_work_intersects_supplied_specimen_priority_with_pe
 -> Result<(), Error> {
     for selected in [false, true] {
         let settings = definition()
-            .replace("specimen = false", &format!("specimen = {selected}"))
-            .replace("priority = false", &format!("priority = {selected}"))
-            .replace(
+            .rewrite("specimen = false", &format!("specimen = {selected}"))
+            .rewrite("priority = false", &format!("priority = {selected}"))
+            .rewrite(
                 "manager_repeat = false",
                 &format!("manager_repeat = {selected}"),
             )
-            .replace(
+            .rewrite(
                 "repeat_control = false",
                 &format!("repeat_control = {selected}"),
             );

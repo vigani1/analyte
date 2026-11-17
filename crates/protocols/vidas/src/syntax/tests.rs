@@ -1,5 +1,6 @@
 //! Tests vidas field preservation and malformed inputs against vendor source sections.
 use super::*;
+use analyte_fixtures::ConfigEdit as _;
 use proptest::prelude::*;
 
 const RESULT_FIELDS: &[(&str, &str)] = &[
@@ -115,11 +116,11 @@ fn vidas_bci_appendix_a_ch4_rejects_missing_duplicate_reordered_and_malformed_fi
     for malformed in [
         text.trim_end_matches('|').to_owned(),
         format!("{text}ciOTHER|"),
-        text.replace("pir", "piq").replace("rsl", "bad"),
-        text.replace("qn<0.1", "qn\n"),
-        text.replace("piPATIENT|pnSynthetic name", "pnSynthetic name|piPATIENT"),
-        text.replace("mt", "MT"),
-        text.replace("ci000042a", "ci"),
+        text.rewrite("rsl", "bad"),
+        text.rewrite("qn<0.1", "qn\n"),
+        text.rewrite("piPATIENT|pnSynthetic name", "pnSynthetic name|piPATIENT"),
+        text.rewrite("mt", "MT"),
+        text.rewrite("ci000042a", "ci"),
     ] {
         assert!(Message::parse(&malformed, SampleLimit::Seventeen).is_err());
     }
@@ -136,7 +137,7 @@ fn vidas_bci_appendix_a_ch4_total_message_byte_ceiling_is_inclusive() {
         Message::parse(&raw, SampleLimit::Twelve).unwrap().text(),
         raw
     );
-    assert!(Message::parse(&raw.replace("zz", "zzX"), SampleLimit::Twelve).is_err());
+    assert!(Message::parse(&raw.rewrite("zz", "zzX"), SampleLimit::Twelve).is_err());
 }
 
 proptest! {

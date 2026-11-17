@@ -194,7 +194,7 @@ async fn poct01_b6_rule2_unknown_test_is_unmapped_and_operator_visible() -> Resu
     xml(&mut run.peer).await?;
     xml(&mut run.peer).await?;
     let raw = poct_peer::observation("unknown", true, "<OBS.value V=\"12.30\" U=\"mg/L\"/>")
-        .replace("synthetic-analyte", "unknown-analyte");
+        .rewrite("synthetic-analyte", "unknown-analyte");
     run.peer.write_all(raw.as_bytes()).await?;
     xml(&mut run.peer).await?;
     run.parked("UnknownTest").await?;
@@ -285,7 +285,7 @@ async fn adr0003_rule2_autolyser_storage_failure_executes_park_action() -> Resul
 #[tokio::test]
 async fn poct01_b5_7_host_never_sends_beyond_device_capacity() -> Result<(), Error> {
     let mut run = Running::start(include_str!("../../../core/config/examples/poct.toml")).await?;
-    let hello = poct_peer::hello("hello").replace(
+    let hello = poct_peer::hello("hello").rewrite(
         "<DSC.max_message_sz NULL=\"PINF\"/>",
         "<DSC.max_message_sz V=\"1\"/>",
     );
@@ -302,7 +302,7 @@ async fn poct01_b5_7_host_never_sends_beyond_device_capacity() -> Result<(), Err
 
 #[tokio::test]
 async fn poct01_b3_2_program_lost_ack_reconnect_restart_and_correction() -> Result<(), Error> {
-    let definition = include_str!("../../../core/config/examples/poct.toml").replace(
+    let definition = include_str!("../../../core/config/examples/poct.toml").rewrite(
         "[poct]",
         "[poct]\nidentity = { sequence_number = true, processing = \"Production\" }",
     );
@@ -310,11 +310,11 @@ async fn poct01_b3_2_program_lost_ack_reconnect_restart_and_correction() -> Resu
     let hello = poct_peer::hello("hello");
     poct_start(&mut run, &hello).await?;
     let original = poct_peer::observation("first", true, "<OBS.value V=\"12.30\" U=\"mg/L\"/>")
-        .replace("</PT>", "</PT><SPC><SPC.specimen_id V=\"000xyz\"/><SPC.specimen_dttm NULL=\"UNK\"/><SPC.source_cd NULL=\"UNK\"/><SPC.type_cd NULL=\"UNK\"/></SPC>");
+        .rewrite("</PT>", "</PT><SPC><SPC.specimen_id V=\"000xyz\"/><SPC.specimen_dttm NULL=\"UNK\"/><SPC.source_cd NULL=\"UNK\"/><SPC.type_cd NULL=\"UNK\"/></SPC>");
     run.peer.write_all(original.as_bytes()).await?;
     // The peer deliberately does not consume the first ACK before resending.
     poct_deliveries(&run, 1).await?;
-    let resent = original.replace("first", "resent").replace(
+    let resent = original.rewrite("first", "resent").rewrite(
         "<SVC.sequence_nbr",
         "<SVC.reason_cd V=\"RES\"/><SVC.sequence_nbr",
     );
@@ -347,9 +347,9 @@ async fn poct01_b3_2_program_lost_ack_reconnect_restart_and_correction() -> Resu
         "an unchanged resend must be a retransmission, not a parked conflict"
     );
     let edited = resent
-        .replace("12.30", "13.30")
-        .replace("RES", "EDT")
-        .replace("resent", "edited");
+        .rewrite("12.30", "13.30")
+        .rewrite("RES", "EDT")
+        .rewrite("resent", "edited");
     run.peer.write_all(edited.as_bytes()).await?;
     xml(&mut run.peer).await?;
     poct_deliveries(&run, 2).await?;
@@ -399,7 +399,7 @@ async fn poct01_b4_1_2_program_rejected_hello_ack_then_terminate_keeps_raw() -> 
     let base = poct_peer::hello("bad-hello");
     for (raw, code, reason) in [
         (
-            base.replace(
+            base.rewrite(
                 "DSC.connection_profile_cd V=\"SA\"",
                 "DSC.connection_profile_cd V=\"invalid\"",
             ),
@@ -407,13 +407,13 @@ async fn poct01_b4_1_2_program_rejected_hello_ack_then_terminate_keeps_raw() -> 
             "POCT syntax",
         ),
         (
-            base.replace("<DEV.device_id V=\"A1-B2-C3-D4-E5-F6-07-08\"/>", ""),
+            base.rewrite("<DEV.device_id V=\"A1-B2-C3-D4-E5-F6-07-08\"/>", ""),
             "101",
             "POCT syntax",
         ),
-        (base.replace("</DEV>", "</BROKEN>"), "102", "POCT syntax"),
+        (base.rewrite("</DEV>", "</BROKEN>"), "102", "POCT syntax"),
         (
-            base.replace(
+            base.rewrite(
                 "<DSC.max_message_sz NULL=\"PINF\"/>",
                 "<DSC.max_message_sz V=\"0\"/>",
             ),
@@ -421,7 +421,7 @@ async fn poct01_b4_1_2_program_rejected_hello_ack_then_terminate_keeps_raw() -> 
             "POCT Hello capabilities",
         ),
         (
-            base.replace("HDR.version_id V=\"POCT01\"", "HDR.version_id V=\"POCT02\""),
+            base.rewrite("HDR.version_id V=\"POCT01\"", "HDR.version_id V=\"POCT02\""),
             "201",
             "POCT syntax",
         ),
@@ -470,7 +470,7 @@ async fn poct01_b4_1_2_program_rejected_hello_ack_then_terminate_keeps_raw() -> 
 async fn poct01_b4_1_2_program_ambiguous_hello_header_is_parked_without_guessed_ack()
 -> Result<(), Error> {
     let mut run = Running::start(include_str!("../../../core/config/examples/poct.toml")).await?;
-    let raw = poct_peer::hello("one").replace(
+    let raw = poct_peer::hello("one").rewrite(
         "<HDR.control_id V=\"one\"/>",
         "<HDR.control_id V=\"one\"/><HDR.control_id V=\"two\"/>",
     );
@@ -528,9 +528,9 @@ async fn poct01_b5_13_program_reused_control_id_parks_evidence_and_escapes() -> 
 async fn poct01_b_3_5_unsupported_keep_alive_gets_correlated_escape() -> Result<(), Error> {
     for (host, device) in [(2048, 1024), (1024, 2048)] {
         let definition = include_str!("../../../core/config/examples/poct.toml")
-            .replace("bytes = 1048576", &format!("bytes = {host}"));
+            .rewrite("bytes = 1048576", &format!("bytes = {host}"));
         let mut run = Running::start(&definition).await?;
-        let hello = poct_peer::hello("hello").replace(
+        let hello = poct_peer::hello("hello").rewrite(
             "<DSC.max_message_sz NULL=\"PINF\"/>",
             &format!("<DSC.max_message_sz V=\"{device}\"/>"),
         );
@@ -556,7 +556,7 @@ async fn poct01_b_3_5_unsupported_keep_alive_gets_correlated_escape() -> Result<
         assert!(ack.len() <= host.min(device));
         assert_accept(&ack, "obs")?;
         // A syntactically valid null analyte cannot be mapped; it gets a classified error ACK.
-        let invalid = observation.replace("V=\"obs\"", "V=\"bad-map\"").replace(
+        let invalid = observation.rewrite("V=\"obs\"", "V=\"bad-map\"").rewrite(
             "<OBS.observation_id V=\"synthetic-analyte\" SN=\"synthetic-system\"><TRANSLTN V=\"alternate\" SN=\"alternate-system\"/></OBS.observation_id>",
             "<OBS.observation_id NULL=\"UNK\"/>",
         );
@@ -609,12 +609,12 @@ fn assert_accept(raw: &[u8], expected: &str) -> Result<(), Error> {
 #[tokio::test]
 async fn poct01_b_5_7_later_error_ack_cannot_exceed_device_capacity() -> Result<(), Error> {
     let mut run = Running::start(include_str!("../../../core/config/examples/poct.toml")).await?;
-    let hello = poct_peer::hello("hello").replace(
+    let hello = poct_peer::hello("hello").rewrite(
         "<DSC.max_message_sz NULL=\"PINF\"/>",
         "<DSC.max_message_sz V=\"300\"/>",
     );
     poct_start(&mut run, &hello).await?;
-    let raw = poct_peer::observation(&"x".repeat(256), true, "<OBS.value V=\"12.30\" U=\"mg/L\"/>").replace(
+    let raw = poct_peer::observation(&"x".repeat(256), true, "<OBS.value V=\"12.30\" U=\"mg/L\"/>").rewrite(
         "<OBS.observation_id V=\"synthetic-analyte\" SN=\"synthetic-system\"><TRANSLTN V=\"alternate\" SN=\"alternate-system\"/></OBS.observation_id>",
         "<OBS.observation_id NULL=\"UNK\"/>");
     run.peer.write_all(raw.as_bytes()).await?;

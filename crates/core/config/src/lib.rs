@@ -10,13 +10,33 @@ mod selection;
 use selection::ParsedMachine;
 pub use selection::StackChoice;
 mod schema;
+use schema::MachineDocument;
 mod stack;
 mod validation;
-pub use orders::*;
-pub use schema::*;
+pub use orders::{
+    AstmOrderFields, DsrLine, Hl7OrderQuery, Hl7Processing, Hl7QueryFilter, Hl7Send,
+    MachinePriority, OrderPriority, OrderQuery, Orders, OutboundSpecimen, OutboundTest,
+    PriorityCode, WhenUntrusted,
+};
+pub use schema::{
+    AckPoint, Autolyser, Capability, ChecksumAcceptance, ChecksumHex, ChecksumInclusion,
+    Classification, CodeTables, ComponentParts, DepartureDeclaration, DepartureDirection,
+    DepartureEdition, DepartureGuarantee, DepartureMessage, DepartureReference, DepartureRefusal,
+    DepartureScope, Destination, Dialog, DilutionSource, Edition, Encoding, Escapes, Evidence,
+    EvidenceLevel, Field, FlowControl, Framing, Group, HexCase, IdentityEvidence, Law,
+    LawConnectionMode, LawPeer, LawQueryForm, LawWork, MachineDeparture, Mappings, NoSubId,
+    OrderNamespace, Overrides, Parity, PeerSupport, Poct, PoctIdentity, Priority, QcRule,
+    Responsibility, SampleSelection, SampleSource, Serial, Site, SubId, Syntax, Terminator,
+    TestMapping, Transport, TransportKind, UnitMapping, ValueKind, Vidas, VidasSampleLimit,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-pub use stack::*;
+pub use stack::{
+    AstmOrders, AstmStack, AstmSyntax, AutolyserOrders, AutolyserStack, DialogTimeouts,
+    FileAstmStack, FileHl7Stack, Hl7Orders, Hl7Query, Hl7SendOrders, Hl7Stack, Hl7Syntax, LawLinks,
+    LawOrders, LawPolicy, LawStack, OrderTables, PoctStack, RecordTransport, Stack, StreamKind,
+    StreamTransport, SyntaxLimits, TcpRole, TcpTransport, VidasOrders, VidasStack,
+};
 use validation::{validate_machine, validate_site};
 
 /// Maximum bytes accepted per TOML layer, before parsing or allocation.

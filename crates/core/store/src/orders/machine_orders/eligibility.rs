@@ -1,5 +1,7 @@
 //! Checks machine order eligibility and freshness.
-use super::*;
+use super::{
+    CachedFields, CachedOrder, Error, Identifier, MachineOrderKey, OrderState, Store, params,
+};
 
 impl Store {
     /// Reads a trusted, bounded page of pending work targeting this analyzer (LAW TF-2b 3.27.4).

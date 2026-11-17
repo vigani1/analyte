@@ -2,6 +2,7 @@
 use super::vendor_support::*;
 use super::*;
 use crate::support::HANG_GUARD;
+use analyte_fixtures::ConfigEdit as _;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
@@ -11,8 +12,8 @@ fn definition(clone: bool) -> String {
     format!(
         "{}\n[orders]\nsend_ahead=true\npatient_namespace='synthetic'\nclone={clone}\n{}",
         include_str!("../../../core/config/examples/autolyser.toml")
-            .replace("download = false", "download = true")
-            .replace("poll_ms = 1000", "poll_ms = 200"),
+            .rewrite("download = false", "download = true")
+            .rewrite("poll_ms = 1000", "poll_ms = 200"),
         r#"
 tests=[{app={namespace="synthetic",value="TEST"},machine_components=["SYN "]}]
 priorities=[{app="routine",machine="T"}]
@@ -190,7 +191,7 @@ async fn autolyser_rev18_ch23_unanswered_initial_poll_never_reserves_or_sends_or
 -> Result<(), Error> {
     // Exercise the acknowledgment_ms deadline with the peer deliberately withholding input.
     let settings =
-        definition(false).replace("acknowledgment_ms = 5000", "acknowledgment_ms = 1000");
+        definition(false).rewrite("acknowledgment_ms = 5000", "acknowledgment_ms = 1000");
     let (temp, path, reference, service, mut peer) =
         setup_with_definition(order()?, &settings).await?;
     assert_eq!(byte(&mut peer).await?, 2);
@@ -227,7 +228,7 @@ async fn autolyser_rev18_ch23_unanswered_initial_poll_never_reserves_or_sends_or
 async fn autolyser_rev18_ch23_unanswered_insertion_is_uncertain_not_sent() -> Result<(), Error> {
     // Exercise the acknowledgment_ms deadline with the peer deliberately withholding input.
     let settings =
-        definition(false).replace("acknowledgment_ms = 5000", "acknowledgment_ms = 1000");
+        definition(false).rewrite("acknowledgment_ms = 5000", "acknowledgment_ms = 1000");
     let (temp, path, reference, service, mut peer) =
         setup_with_definition(order()?, &settings).await?;
     empty_poll(&mut peer).await?;
@@ -250,7 +251,7 @@ async fn autolyser_rev18_ch23_unanswered_insertion_is_uncertain_not_sent() -> Re
 async fn autolyser_rev18_ch23_parked_partial_reply_is_uncertain_same_round_with_timeout_code()
 -> Result<(), Error> {
     // Exercise the interbyte_ms deadline with the peer deliberately withholding input.
-    let settings = definition(false).replace("interbyte_ms = 5000", "interbyte_ms = 1000");
+    let settings = definition(false).rewrite("interbyte_ms = 5000", "interbyte_ms = 1000");
     let (temp, path, reference, service, mut peer) =
         setup_with_definition(order()?, &settings).await?;
     insertion(&mut peer, &path, false).await?;
@@ -447,7 +448,7 @@ async fn adr0004_autolyser_missing_patient_namespace_prevents_program_start() ->
     let path = vendor_config(
         temp.path(),
         "autolyser",
-        &definition(false).replace("patient_namespace='synthetic'", ""),
+        &definition(false).rewrite("patient_namespace='synthetic'", ""),
     )?;
     let receiver_path = temp.path().join("receiver.db");
     let reference = Reference::start(

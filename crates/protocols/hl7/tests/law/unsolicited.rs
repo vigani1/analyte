@@ -1,5 +1,6 @@
 //! Tests LAW message validation and host exchanges.
 use super::*;
+use analyte_fixtures::ConfigEdit as _;
 
 #[test]
 fn law_tf2b_3_29_4_unsolicited_null_awos_and_external_reference_are_not_invented()
@@ -199,7 +200,7 @@ fn law_tf2b_appendix_c_result_field_predicates_and_required_fields()
         } else {
             utf8_options()
         };
-        let altered = Message::parse(original.replace(needle, replacement).as_bytes(), options)?;
+        let altered = Message::parse(original.rewrite(needle, replacement).as_bytes(), options)?;
         assert!(
             Results::new(&altered).is_err(),
             "accepted alteration {needle}"
@@ -262,7 +263,7 @@ fn law_tf2b_b7_trigger_rejection_and_query_processing_errors_have_distinct_actio
     );
     let original = std::str::from_utf8(request.raw())?;
     let wrong = Message::parse(
-        original.replace("LAB-27^IHE", "LAB-28^IHE").as_bytes(),
+        original.rewrite("LAB-27^IHE", "LAB-28^IHE").as_bytes(),
         utf8_options(),
     )?;
     let failure = receive_query(&wrong)
@@ -438,7 +439,7 @@ fn law_tf2b_3_29_4_specimen_observations_keep_scope_and_reject_orphan_groups()
         "synthetic condition",
         "F",
     );
-    let with_specimen_observation = source.replace(
+    let with_specimen_observation = source.rewrite(
         "SAC|||000tube",
         &format!("{specimen_observation}SAC|||000tube"),
     );
@@ -568,12 +569,12 @@ fn law_tf2b_c4_namespaces_and_profile_identifier_components()
         ("LAB-27^IHE", "LAB-27^IHE~vendor"),
         ("LAB-27^IHE", "LAB-27^IHE~vendor^123456789012345678901"),
     ] {
-        let bytes = original.replace(from, to);
+        let bytes = original.rewrite(from, to);
         let parsed = Message::parse(bytes.as_bytes(), utf8_options())?;
         assert!(Query::new(&parsed).is_err());
         assert_eq!(parsed.raw(), bytes.as_bytes());
     }
-    let bytes = original.replace("LAB-27^IHE", "LAB-27^IHE~vendor^LAB");
+    let bytes = original.rewrite("LAB-27^IHE", "LAB-27^IHE~vendor^LAB");
     let parsed = Message::parse(bytes.as_bytes(), utf8_options())?;
     Query::new(&parsed)?;
     Ok(())

@@ -43,7 +43,7 @@ pub fn write_machine(
     std::fs::write(root.join("machine.toml"), definition)?;
     std::fs::write(
         root.join("site.toml"),
-        include_str!("../../../core/config/examples/site.toml").replace("127.0.0.1:5600", endpoint),
+        include_str!("../../../core/config/examples/site.toml").rewrite("127.0.0.1:5600", endpoint),
     )?;
     let path = root.join("program.toml");
     std::fs::write(
@@ -59,7 +59,61 @@ pub fn write_machine(
 #[must_use]
 pub fn astm_tcp() -> String {
     include_str!("../../../core/config/examples/astm.toml")
-        .replace("kind = \"serial\"", "kind = \"tcp_server\"")
-        .replace("[transport.serial]\nbaud = 9600\ndata_bits = 8\nparity = \"none\"\nstop_bits = 1\nflow_control = \"none\"\n", "")
-        .replace("transport = \"serial\"", "transport = \"tcp_server\"")
+        .rewrite("kind = \"serial\"", "kind = \"tcp_server\"")
+        .rewrite("[transport.serial]\nbaud = 9600\ndata_bits = 8\nparity = \"none\"\nstop_bits = 1\nflow_control = \"none\"\n", "")
+        .rewrite("transport = \"serial\"", "transport = \"tcp_server\"")
+}
+
+/// Synthetic Standard Webhooks credential shared by local test peers.
+pub const SECRET: &str = "whsec_AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=";
+
+/// Returns the common synthetic store admission policy.
+#[must_use]
+pub fn store_limits() -> analyte_store::Limits {
+    analyte_store::Limits {
+        reserve_bytes: 1024,
+        database_bytes: 100_000_000,
+        record_bytes: 65_536,
+        page_rows: 100,
+        busy_timeout: std::time::Duration::from_millis(20),
+    }
+}
+
+/// Edits synthetic text while requiring the old text to exist.
+pub trait ConfigEdit {
+    /// Replaces all occurrences, including repeated settings in a fixture.
+    /// # Panics
+    /// Panics if the target is empty or absent, so stale fixture edits fail visibly.
+    #[must_use]
+    fn rewrite(&self, from: &str, to: &str) -> String;
+}
+
+impl ConfigEdit for str {
+    fn rewrite(&self, from: &str, to: &str) -> String {
+        assert!(!from.is_empty(), "fixture edit target must not be empty");
+        assert!(self.contains(from), "fixture edit target absent: {from:?}");
+        self.replace(from, to)
+    }
+}
+
+#[cfg(test)]
+mod edit_tests {
+    use super::ConfigEdit as _;
+
+    #[test]
+    fn replaces_every_present_target() {
+        assert_eq!("key=1 key=1".rewrite("key=1", "key=2"), "key=2 key=2");
+    }
+
+    #[test]
+    #[should_panic(expected = "fixture edit target absent")]
+    fn rejects_stale_target() {
+        let _ = "key=1".rewrite("renamed=1", "key=2");
+    }
+
+    #[test]
+    #[should_panic(expected = "fixture edit target must not be empty")]
+    fn rejects_empty_target() {
+        let _ = "key=1".rewrite("", "key=2");
+    }
 }

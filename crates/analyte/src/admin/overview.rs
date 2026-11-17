@@ -293,12 +293,12 @@ mod webhook_tests {
         let temp = tempfile::tempdir()?;
         let mut store = analyte_store::Handle::start(
             temp.path().join("status.db"),
-            analyte_store::Limits {
-                reserve_bytes: 0,
-                database_bytes: 100_000_000,
-                record_bytes: 2_097_152,
-                page_rows: 100,
-                busy_timeout: std::time::Duration::from_millis(100),
+            {
+                let mut limits = analyte_fixtures::store_limits();
+                limits.reserve_bytes = 0;
+                limits.record_bytes = 2_097_152;
+                limits.busy_timeout = std::time::Duration::from_millis(100);
+                limits
             },
             Box::new(crate::runtime::space::Volume),
             8,

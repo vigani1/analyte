@@ -20,8 +20,8 @@ pub use polls::{PollIntent, PollIntentId, PollIntentState, PollOutcome};
 
 mod sql_types;
 
-pub use alerts::*;
-pub use operator::notifications::*;
+pub use alerts::{AlertKey, AlertState, AlertTransition};
+pub use operator::notifications::{AlertEndpointStatus, AlertEventId, AlertFailure, PendingAlert};
 pub use transfers::{FrameSequence, TransferOutcome};
 
 pub use reprocess::Reprocess;
@@ -30,9 +30,15 @@ pub use delivery_operator::{DeliveryState, StoredDelivery};
 /// Schema version this build creates and migrates to; readers wait for it
 /// before using tables added by the latest migration.
 pub const SCHEMA_VERSION: i64 = 14;
-pub use machine_orders::*;
+pub use machine_orders::{
+    ItemDecision, ItemOutcome, MachineOrder, MachineOrderFilter, MachineOrderItem, MachineOrderKey,
+    OrderItems, OrderReservation, ReservationPreflight, ReserveOptions, SendRefusal,
+};
 
-pub use revisions::law::*;
+pub use revisions::law::{
+    AnalyzerCancelledItem, LawConflict, LawCustody, LawDisposition, LawRejection, LawWork,
+    LawWorkEvidence,
+};
 pub use revisions::{
     InterpretationCommit, ReconcileAction, ReconcileInput, ReconcileMode, RevisionOutcome,
     StatusLifecycle,
@@ -40,7 +46,11 @@ pub use revisions::{
 
 pub use query::{Frame, ParkedItem, Receipt};
 
-pub use records::*;
+pub use records::{
+    Attempt, Audit, CachedOrder, Claim, Delivery, DeliveryKind, FrameProvenance, Health,
+    Interpretation, Lookup, OrderEventDelivery, OrderPage, OrderingKey, Parked, PendingOrders,
+    Reading,
+};
 
 pub use worker::Handle;
 

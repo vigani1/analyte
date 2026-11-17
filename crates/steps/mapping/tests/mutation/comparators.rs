@@ -1,5 +1,6 @@
 //! Tests rejection of malformed inputs without losing evidence.
 use super::*;
+use analyte_fixtures::ConfigEdit as _;
 
 #[test]
 fn rule2_uninterpreted_numeric_comparator_never_becomes_equality() -> TestResult {
@@ -18,7 +19,7 @@ fn rule2_uninterpreted_numeric_comparator_never_becomes_equality() -> TestResult
 
 #[test]
 fn rule2_configured_coded_kind_refuses_empty_or_numeric_text_without_guessing() -> TestResult {
-    let definition = HL7_CONFIG.replace(
+    let definition = HL7_CONFIG.rewrite(
         "app_system=\"demo\"",
         "app_system=\"demo\",value_kind=\"coded\"",
     );
@@ -305,7 +306,7 @@ fn hl7_251_ch7_oul_test_detail_and_notes_belong_to_observation_group() -> TestRe
 
 #[test]
 fn rule2_hl7_mapping_refuses_unqualified_structure_without_losing_original() -> TestResult {
-    let cfg = config(&HL7_CONFIG.replace("edition = \"v251\"", "edition = \"v231\""))?;
+    let cfg = config(&HL7_CONFIG.rewrite("edition = \"v251\"", "edition = \"v231\""))?;
     let raw=b"MSH|^~\\&|SYN||||202611151200||OUL^R22|MSG|P|2.3.1\rSPM|1\rOBR|1||001\rOBX|1|NM|SYN^^synthetic||1||||||F\r";
     let message = analyte_hl7::Message::parse(raw, analyte_hl7::Options::default())?;
     assert!(

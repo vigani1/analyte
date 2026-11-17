@@ -11,7 +11,7 @@ async fn adr0008_seeded_patient_specimen_and_position_survive_the_feed()
     let mut receiver = Receiver::open(
         &temp.path().join("receiver.db"),
         "synthetic-api".into(),
-        SigningSecret::parse("whsec_AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=")?,
+        SigningSecret::parse(analyte_fixtures::SECRET)?,
     )?;
     let bytes = include_bytes!("../../../../docs/contract/vectors/order-context.json");
     receiver.seed(vec![decode::<Order>(bytes)?]).await?;

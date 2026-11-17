@@ -1,5 +1,5 @@
 //! Tracks machine connection ownership separately from source evidence.
-use super::*;
+use super::{Error, Identifier, NonZeroU64};
 use crate::sql_types::OwnerKind;
 
 #[derive(Debug, Clone, Default)]

@@ -43,7 +43,7 @@ async fn no_dial(listener: &TcpListener) -> Result<(), Error> {
     Ok(())
 }
 fn independent(endpoint: std::net::SocketAddr) -> String {
-    definition().replace(
+    definition().rewrite(
         "connection_mode = \"persistent\"",
         &format!(
             "connection_mode = \"independent_per_transaction\"\noutbound_endpoint = \"{endpoint}\""

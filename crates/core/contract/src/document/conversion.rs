@@ -1,5 +1,11 @@
 //! Converts model result, sample, identity and lifecycle values to contract types.
-use super::*;
+use super::{
+    Attachment, CarrierKind, CodedValue, Comparator, Dilution, DilutionApplied, EvidenceList,
+    IdentityStatus, NamedSourceTime, NamespacedId, NonEmptyEvidenceList, NumericValue,
+    ObservationIdentity, OrderState, ProcessingMode, QcClass, ResultDocument, ResultIdentity,
+    ResultPart, ResultStatus, ResultValue, SampleIdentity, SamplePosition, SampleSource,
+    SourceNode, SourceTime, StructuredNumeric, TimePrecision, UnitMapping, ValueInterpretation,
+};
 
 impl From<&analyte_model::NumericValue> for NumericValue {
     fn from(v: &analyte_model::NumericValue) -> Self {

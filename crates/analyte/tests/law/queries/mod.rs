@@ -1,6 +1,7 @@
 //! Tests LAW order queries and query-triggered work downloads.
 use super::*;
 use crate::support::HANG_GUARD;
+use analyte_fixtures::ConfigEdit as _;
 #[path = "../connections.rs"]
 mod connections;
 #[path = "../work.rs"]
@@ -14,12 +15,12 @@ fn definition() -> String {
     format!(
         "{}\n{}",
         include_str!("../../../../core/config/examples/law.toml")
-            .replace(
+            .rewrite(
                 "operation_timeout_ms = 10000",
                 "operation_timeout_ms = 60000"
             )
-            .replace("response_ms = 1500", "response_ms = 30000")
-            .replace("query_deadline_ms = 1500", "query_deadline_ms = 30000"),
+            .rewrite("response_ms = 1500", "response_ms = 30000")
+            .rewrite("query_deadline_ms = 1500", "query_deadline_ms = 30000"),
         include_str!("../../../../core/config/examples/law_orders.toml")
     )
 }

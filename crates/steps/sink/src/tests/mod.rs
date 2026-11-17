@@ -11,7 +11,7 @@ use std::{
 };
 use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _};
 
-const SECRET: &str = "whsec_AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=";
+use analyte_fixtures::SECRET;
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
 struct Secrets(&'static str);
@@ -65,12 +65,11 @@ fn limits() -> Limits {
 async fn store(path: &Path) -> Result<Handle, Error> {
     Ok(Handle::start(
         path.to_owned(),
-        analyte_store::Limits {
-            reserve_bytes: 1024,
-            database_bytes: 100_000_000,
-            record_bytes: 1_048_576,
-            page_rows: 100,
-            busy_timeout: Duration::from_millis(20),
+        {
+            let mut limits = analyte_fixtures::store_limits();
+            limits.record_bytes = 1_048_576;
+            limits.busy_timeout = Duration::from_millis(20);
+            limits
         },
         Box::new(Space),
         16,

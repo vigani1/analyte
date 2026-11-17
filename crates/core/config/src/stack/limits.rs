@@ -1,5 +1,5 @@
 //! Holds validated size and time limits and converts raw settings.
-use super::*;
+use super::{Encoding, Escapes, Syntax, Terminator};
 
 /// Receive and send deadlines shared by the host dialogs.
 /// Cloning validated settings never grants write access.

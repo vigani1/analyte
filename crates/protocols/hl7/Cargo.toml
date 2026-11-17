@@ -12,6 +12,7 @@ publish.workspace = true
 thiserror = { workspace = true }
 
 [dev-dependencies]
+analyte-fixtures.workspace = true
 proptest = { workspace = true }
 
 [lints]

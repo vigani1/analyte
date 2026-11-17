@@ -1,5 +1,6 @@
 //! Tests configured outgoing orders and code mappings.
 use analyte_config::{Draft, Validated};
+use analyte_fixtures::ConfigEdit as _;
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 fn config(section: &str) -> Result<Validated, analyte_config::Error> {
     let definition = format!("{}\n{section}", include_str!("../examples/astm.toml"));
@@ -13,7 +14,7 @@ fn config(section: &str) -> Result<Validated, analyte_config::Error> {
 #[test]
 fn adr0002_outbound_duplicate_missing_policy_and_unbounded_deadline_are_rejected() -> TestResult {
     let section = include_str!("../examples/orders.toml");
-    for invalid in [section.replace("deadline_ms = 1000", "deadline_ms = 0"), section.replace("when_untrusted = \"error\"", ""), section.replace("send_ahead = true", ""), section.replace("machine_components=[\"\", \"\", \"\", \"SEND\"]}", "machine_components=[\"SEND\"]},{app={namespace=\"demo\",value=\"DEMO\"},machine_components=[\"OTHER\"]}")] {
+    for invalid in [section.rewrite("deadline_ms = 1000", "deadline_ms = 0"), section.rewrite("when_untrusted = \"error\"", ""), section.rewrite("send_ahead = true", ""), section.rewrite("machine_components=[\"\", \"\", \"\", \"SEND\"]}", "machine_components=[\"SEND\"]},{app={namespace=\"demo\",value=\"DEMO\"},machine_components=[\"OTHER\"]}")] {
         { let Err(refusal) = config(&invalid) else { panic!("input must be refused") }; assert!(matches!(&refusal, analyte_config::Error::Schema { .. } | analyte_config::Error::Invalid { .. }), "unexpected refusal: {refusal:?}"); }
     }
     let valid = config(section)?;
@@ -48,7 +49,7 @@ fn adr0002_vendor_patient_namespace_is_required_and_retained_exactly() -> TestRe
         include_str!("../examples/vidas_literal.toml"),
         include_str!("../examples/autolyser.toml"),
     ] {
-        let definition = definition.replace("download = false", "download = true");
+        let definition = definition.rewrite("download = false", "download = true");
         let section = if definition.contains("[autolyser]") {
             format!("{}clone = false\n", autolyser_orders())
         } else {
@@ -63,12 +64,12 @@ fn adr0002_vendor_patient_namespace_is_required_and_retained_exactly() -> TestRe
         invalid_key(
             vendor_config(
                 &definition,
-                &section.replace("patient_namespace = \"synthetic-patients\"", ""),
+                &section.rewrite("patient_namespace = \"synthetic-patients\"", ""),
             ),
             "orders.patient_namespace",
         );
         for namespace in ["", "bad\nnamespace"] {
-            let invalid = section.replace("synthetic-patients", namespace);
+            let invalid = section.rewrite("synthetic-patients", namespace);
             {
                 let Err(refusal) = vendor_config(&definition, &invalid) else {
                     panic!("input must be refused")
@@ -83,7 +84,7 @@ fn adr0002_vendor_patient_namespace_is_required_and_retained_exactly() -> TestRe
                 );
             }
         }
-        let exact = section.replace("synthetic-patients", "000LabA");
+        let exact = section.rewrite("synthetic-patients", "000LabA");
         let valid = vendor_config(&definition, &exact)?;
         assert_eq!(vendor_namespace(&valid)?.as_str(), "000LabA");
     }
@@ -93,7 +94,7 @@ fn adr0002_vendor_patient_namespace_is_required_and_retained_exactly() -> TestRe
 #[test]
 fn autolyser_rev18_ch23_clone_requires_explicit_true_or_false() -> TestResult {
     let definition =
-        include_str!("../examples/autolyser.toml").replace("download = false", "download = true");
+        include_str!("../examples/autolyser.toml").rewrite("download = false", "download = true");
     invalid_key(
         vendor_config(&definition, &autolyser_orders()),
         "orders.clone",
@@ -128,7 +129,7 @@ fn autolyser_rev18_ch23_clone_requires_explicit_true_or_false() -> TestResult {
 #[test]
 fn adr0002_outbound_settings_cannot_silently_apply_to_another_stack() -> TestResult {
     let vidas = include_str!("../examples/vidas_literal.toml")
-        .replace("download = false", "download = true");
+        .rewrite("download = false", "download = true");
     invalid_key(
         vendor_config(&vidas, &format!("{}clone = false\n", autolyser_orders())),
         "orders.clone",
@@ -155,14 +156,14 @@ fn adr0002_outbound_settings_cannot_silently_apply_to_another_stack() -> TestRes
         "orders.astm",
     );
     invalid_key(
-        config(&astm_section.replace(
+        config(&astm_section.rewrite(
             "send_ahead = true",
             "send_ahead = true\npatient_namespace=\"patients\"",
         )),
         "orders.patient_namespace",
     );
     invalid_key(
-        config(&astm_section.replace("send_ahead = true", "send_ahead = true\nclone=false")),
+        config(&astm_section.rewrite("send_ahead = true", "send_ahead = true\nclone=false")),
         "orders.clone",
     );
     invalid_key(
@@ -193,12 +194,12 @@ fn adr0002_outbound_settings_cannot_silently_apply_to_another_stack() -> TestRes
 #[test]
 fn vidas_bci_a_section4_outbound_assay_codes_require_single_bounded_tag_value() -> TestResult {
     let definition = include_str!("../examples/vidas_literal.toml")
-        .replace("download = false", "download = true");
+        .rewrite("download = false", "download = true");
     for components in [r#"["ABCDE"]"#, r#"["A", "B"]"#, r#"["A|B"]"#] {
         invalid_key(
             vendor_config(
                 &definition,
-                &VENDOR_ORDERS.replace(r#"["SYN"]"#, components),
+                &VENDOR_ORDERS.rewrite(r#"["SYN"]"#, components),
             ),
             "orders.tests",
         );
@@ -208,21 +209,21 @@ fn vidas_bci_a_section4_outbound_assay_codes_require_single_bounded_tag_value() 
 
 fn autolyser_orders() -> String {
     VENDOR_ORDERS
-        .replace(r#"["SYN"]"#, r#"["SYN "]"#)
-        .replace(r#"machine="R""#, r#"machine="T""#)
+        .rewrite(r#"["SYN"]"#, r#"["SYN "]"#)
+        .rewrite(r#"machine="R""#, r#"machine="T""#)
 }
 
 #[test]
 fn autolyser_rev18_ch23_outbound_medium_list_and_analysis_tables_are_explicit() -> TestResult {
     let definition =
-        include_str!("../examples/autolyser.toml").replace("download = false", "download = true");
+        include_str!("../examples/autolyser.toml").rewrite("download = false", "download = true");
     let section = format!("{}clone=false\n", autolyser_orders());
     let types = r#"[{app={namespace="synthetic",value="SERUM"},machine="S"}]"#;
     vendor_config(&definition, &format!("{section}specimen_types={types}\n"))?;
     for table in [
         "[]".to_owned(),
-        types.replace(r#"machine="S""#, r#"machine="X""#),
-        types.replace(
+        types.rewrite(r#"machine="S""#, r#"machine="X""#),
+        types.rewrite(
             "]",
             &format!(",{}]", types.trim_start_matches('[').trim_end_matches(']')),
         ),
@@ -233,13 +234,13 @@ fn autolyser_rev18_ch23_outbound_medium_list_and_analysis_tables_are_explicit() 
         );
     }
     invalid_key(
-        vendor_config(&definition, &section.replace(r#"["SYN "]"#, r#"["SYN"]"#)),
+        vendor_config(&definition, &section.rewrite(r#"["SYN "]"#, r#"["SYN"]"#)),
         "orders.tests",
     );
     invalid_key(
         vendor_config(
             &definition,
-            &section.replace(r#"machine="T""#, r#"machine="routine""#),
+            &section.rewrite(r#"machine="T""#, r#"machine="routine""#),
         ),
         "orders.priorities",
     );
@@ -249,15 +250,15 @@ fn autolyser_rev18_ch23_outbound_medium_list_and_analysis_tables_are_explicit() 
 #[test]
 fn lis02_section8_4_16_1_specimen_destination_and_code_table_preserve_field_ownership() -> TestResult
 {
-    let section=include_str!("../examples/orders.toml").replace("[orders.query]", "specimen_types=[{app={namespace='specimens',value='SERUM'},machine='SER'}]\n[orders.query]");
+    let section=include_str!("../examples/orders.toml").rewrite("[orders.query]", "specimen_types=[{app={namespace='specimens',value='SERUM'},machine='SER'}]\n[orders.query]");
     let destination = "specimen_type={group='order',record='O',field=16,component=1,repetition=1}";
     config(&format!("{section}\n{destination}"))?;
     for invalid in [
-        destination.replace("field=16", "field=20"),
-        destination.replace("component=1", "component=2"),
-        destination.replace("record='O'", "record='R'"),
-        destination.replace("group='order'", "group='observation'"),
-        destination.replace("repetition=1", "repetition=2"),
+        destination.rewrite("field=16", "field=20"),
+        destination.rewrite("component=1", "component=2"),
+        destination.rewrite("record='O'", "record='R'"),
+        destination.rewrite("group='order'", "group='observation'"),
+        destination.rewrite("repetition=1", "repetition=2"),
     ] {
         invalid_key(
             config(&format!("{section}\n{invalid}")),
@@ -265,10 +266,10 @@ fn lis02_section8_4_16_1_specimen_destination_and_code_table_preserve_field_owne
         );
     }
     invalid_key(
-        config(&section.replace("machine='SER'", "machine='S^R'")),
+        config(&section.rewrite("machine='SER'", "machine='S^R'")),
         "orders.specimen_types",
     );
-    let duplicated = section.replace(
+    let duplicated = section.rewrite(
         "machine='SER'}]",
         "machine='SER'},{app={namespace='specimens',value='SERUM'},machine='OTHER'}]",
     );
@@ -294,31 +295,31 @@ fn adr0002_hl7_legacy_query_requires_explicit_bounded_layout_and_selectors() -> 
     );
     for (invalid, key) in [
         (
-            section.replace("acknowledgment_ms = 500", "acknowledgment_ms = 0"),
+            section.rewrite("acknowledgment_ms = 500", "acknowledgment_ms = 0"),
             "orders.hl7.acknowledgment_ms",
         ),
         (
-            section.replace("sample_field = 8", "sample_field = 9"),
+            section.rewrite("sample_field = 8", "sample_field = 9"),
             "orders.hl7.sample_field",
         ),
         (
-            section.replace("{field=9,value=\"ORD\"},", ""),
+            section.rewrite("{field=9,value=\"ORD\"},", ""),
             "orders.hl7.filters",
         ),
         (
-            section.replace("{source=\"sample_id\"},", ""),
+            section.rewrite("{source=\"sample_id\"},", ""),
             "orders.hl7.lines",
         ),
         (
-            section.replace("{source=\"test_code\"},", ""),
+            section.rewrite("{source=\"test_code\"},", ""),
             "orders.hl7.lines",
         ),
         (
-            section.replace("send_ahead = false", "send_ahead = true"),
+            section.rewrite("send_ahead = false", "send_ahead = true"),
             "orders",
         ),
         (
-            section.replace(
+            section.rewrite(
                 "value=\"TEST\"}]",
                 "value=\"TEST\"},{field=9,value=\"OTHER\"}]",
             ),
@@ -330,7 +331,7 @@ fn adr0002_hl7_legacy_query_requires_explicit_bounded_layout_and_selectors() -> 
     {
         let Err(refusal) = vendor_config(
             definition,
-            &section.replace("deadline_ms = 1000", "deadline_ms = 60001"),
+            &section.rewrite("deadline_ms = 1000", "deadline_ms = 60001"),
         ) else {
             panic!("input must be refused")
         };
@@ -342,7 +343,7 @@ fn adr0002_hl7_legacy_query_requires_explicit_bounded_layout_and_selectors() -> 
     {
         let Err(refusal) = vendor_config(
             definition,
-            &section.replace("source=\"test_code\"", "source=\"guessed\""),
+            &section.rewrite("source=\"test_code\"", "source=\"guessed\""),
         ) else {
             panic!("input must be refused")
         };
@@ -354,7 +355,7 @@ fn adr0002_hl7_legacy_query_requires_explicit_bounded_layout_and_selectors() -> 
     {
         let Err(refusal) = vendor_config(
             definition,
-            &section.replace("value=\"\"", "value=\"injected|field\""),
+            &section.rewrite("value=\"\"", "value=\"injected|field\""),
         ) else {
             panic!("input must be refused")
         };
@@ -366,7 +367,7 @@ fn adr0002_hl7_legacy_query_requires_explicit_bounded_layout_and_selectors() -> 
     invalid_key(
         vendor_config(
             definition,
-            &section.replace(
+            &section.rewrite(
                 r#"when_untrusted = "error""#,
                 r#"when_untrusted = "no_answer""#,
             ),
@@ -376,7 +377,7 @@ fn adr0002_hl7_legacy_query_requires_explicit_bounded_layout_and_selectors() -> 
     {
         let Err(refusal) = vendor_config(
             definition,
-            &section.replace(r#"sample_suffix = "^^^^^^^LCL""#, r#"sample_suffix = """#),
+            &section.rewrite(r#"sample_suffix = "^^^^^^^LCL""#, r#"sample_suffix = """#),
         ) else {
             panic!("input must be refused")
         };
@@ -404,32 +405,32 @@ fn adr0002_hl7_send_requires_namespace_valid_headers_item_codes_and_deadline() -
     vendor_config(definition, section)?;
     for (invalid, key) in [
         (
-            section.replace(r#"placer_namespace = "LAB""#, ""),
+            section.rewrite(r#"placer_namespace = "LAB""#, ""),
             "orders.placer_namespace",
         ),
         (
-            section.replace("response_ms = 1500", "response_ms = 0"),
+            section.rewrite("response_ms = 1500", "response_ms = 0"),
             "orders.hl7_send",
         ),
         (
-            section.replace("sample_field = 18", "sample_field = 17"),
+            section.rewrite("sample_field = 18", "sample_field = 17"),
             "orders.hl7_send.position_field",
         ),
         (
-            section.replace(
+            section.rewrite(
                 "sample_field = 18",
                 "sample_field = 18\nposition_field = 18",
             ),
             "orders.hl7_send.position_field",
         ),
         (
-            section.replace(r#"["SYN","","L"]"#, r#"["SYN"]"#),
+            section.rewrite(r#"["SYN","","L"]"#, r#"["SYN"]"#),
             "orders.tests",
         ),
     ] {
         invalid_key(vendor_config(definition, &invalid), key);
     }
-    let invalid_processing = section.replace(r#"processing = "T""#, r#"processing = "unknown""#);
+    let invalid_processing = section.rewrite(r#"processing = "T""#, r#"processing = "unknown""#);
     assert!(matches!(
         vendor_config(definition, &invalid_processing),
         Err(analyte_config::Error::Schema { .. })
@@ -456,7 +457,7 @@ fn hl7_ch2_msh11_and_ch4_priority_codes_are_typed_and_preserve_wire_spelling() -
         ("T", Hl7Processing::Training),
         ("D", Hl7Processing::Debugging),
     ] {
-        let section = section.replace(r#"processing = "T""#, &format!("processing = \"{wire}\""));
+        let section = section.rewrite(r#"processing = "T""#, &format!("processing = \"{wire}\""));
         let valid = vendor_config(definition, &section)?;
         assert_eq!(
             hl7(&valid)?
@@ -485,7 +486,7 @@ fn hl7_ch2_msh11_and_ch4_priority_codes_are_typed_and_preserve_wire_spelling() -
         ("T", PriorityCode::T),
         ("PRN", PriorityCode::Prn),
     ] {
-        let section = section.replace(r#"machine="R""#, &format!("machine=\"{wire}\""));
+        let section = section.rewrite(r#"machine="R""#, &format!("machine=\"{wire}\""));
         let valid = vendor_config(definition, &section)?;
         assert!(
             matches!(hl7(&valid)?.orders().as_ref().expect("orders").tables().priorities().first().expect("priority").machine, MachinePriority::Code(code) if code == expected)
@@ -494,13 +495,13 @@ fn hl7_ch2_msh11_and_ch4_priority_codes_are_typed_and_preserve_wire_spelling() -
     invalid_key(
         vendor_config(
             definition,
-            &section.replace(r#"machine="R""#, r#"machine="custom""#),
+            &section.rewrite(r#"machine="R""#, r#"machine="custom""#),
         ),
         "orders.priorities",
     );
     // Configurable ASTM priority text must not be restricted to HL7 table 0485.
     let astm_text =
-        include_str!("../examples/orders.toml").replace(r#"machine="R""#, r#"machine="custom""#);
+        include_str!("../examples/orders.toml").rewrite(r#"machine="R""#, r#"machine="custom""#);
     let valid = config(&astm_text)?;
     assert!(
         matches!(&astm(&valid)?.orders().as_ref().expect("orders").tables().priorities().first().expect("priority").machine, MachinePriority::Custom(value) if value.as_str() == "custom")

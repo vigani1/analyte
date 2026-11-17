@@ -3,6 +3,8 @@
 set -euo pipefail
 python3 scripts/test-code-page.py
 python3 scripts/check-code-page.py
+python3 scripts/test-layout-names.py
+python3 scripts/check-layout-names.py
 failed=0
 while IFS= read -r -d '' file; do
   if [[ "$file" == crates/* || "$file" == fuzz/* ]] && ! head -n 1 "$file" | grep -q '^//!'; then

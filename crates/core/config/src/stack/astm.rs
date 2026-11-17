@@ -1,5 +1,9 @@
 //! Constructs validated ASTM protocol settings.
-use super::*;
+use super::{
+    AstmOrderFields, ChecksumHex, DialogTimeouts, Encoding, Error, MachineDeparture, Mappings,
+    OrderQuery, OrderTables, Orders, Priority, StreamTransport, Syntax, SyntaxLimits, invalid,
+    limits, order_tables, stream,
+};
 use crate::ParsedMachine;
 
 /// LIS02 syntax settings, without HL7-only options.

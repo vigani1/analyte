@@ -2,6 +2,7 @@
 use super::*;
 use crate::installation::config::Program;
 use crate::intake::ByteReason;
+use analyte_fixtures::ConfigEdit as _;
 use analyte_model::{Identifier, Reason};
 use analyte_store::{Attempt, Audit, RevisionOutcome};
 use std::path::Path;
@@ -27,7 +28,7 @@ pub(super) fn program(root: &Path, definition: &str, endpoint: &str) -> Result<P
     std::fs::write(
         root.join("site.toml"),
         include_str!("../../../../core/config/examples/site.toml")
-            .replace("127.0.0.1:5600", endpoint),
+            .rewrite("127.0.0.1:5600", endpoint),
     )?;
     let path = root.join("program.toml");
     std::fs::write(
@@ -41,14 +42,14 @@ pub(super) fn program(root: &Path, definition: &str, endpoint: &str) -> Result<P
 async fn plan11_adr0003_mapping_repaired_once_retransmission_conflict_and_original_retained_rule8_no_machine_io()
 -> Result<(), Error> {
     let hl7 = include_str!("../../../../core/config/examples/hl7.toml")
-        .replace("tcp_server", "tcp_client");
+        .rewrite("tcp_server", "tcp_client");
     let raw = b"MSH|^~\\&|SYN|LAB|HOST|LAB|20260101000000||ORU^R01^ORU_R01|message1|P|2.5.1\rPID|1\rOBR|1||00012|SYN^Synthetic^synthetic|||||||||||||||||||||F\rOBX|1|NM|SYN^Synthetic^synthetic||12.30|mg/L|||||F\r";
     let raw = analyte_framing::hl7::encode(raw, analyte_framing::hl7::Limit::new(1048576)?)?;
     exercise(&hl7, raw).await?;
     let astm = include_str!("../../../../core/config/examples/astm.toml")
-        .replace("kind = \"serial\"", "kind = \"tcp_client\"")
-        .replace("[transport.serial]\nbaud = 9600\ndata_bits = 8\nparity = \"none\"\nstop_bits = 1\nflow_control = \"none\"\n", "")
-        .replace("transport = \"serial\"", "transport = \"tcp_client\"");
+        .rewrite("kind = \"serial\"", "kind = \"tcp_client\"")
+        .rewrite("[transport.serial]\nbaud = 9600\ndata_bits = 8\nparity = \"none\"\nstop_bits = 1\nflow_control = \"none\"\n", "")
+        .rewrite("transport = \"serial\"", "transport = \"tcp_client\"");
     let payload = b"H|\\^&||||||||||P|LIS2-A2|20261115120000\rP|1\rO|1|00012\rR|1|^^^SYN|12.30|mg/L||N||F\rL|1|N\r";
     let mut wire = Vec::new();
     let mut number = analyte_framing::astm::FrameNumber::FIRST;
@@ -68,7 +69,7 @@ async fn exercise(definition: &str, raw: Vec<u8>) -> Result<(), Error> {
     let temp = crate::admin::private_tempdir()?;
     let receiver = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let endpoint = receiver.local_addr()?.to_string();
-    let missing = definition.replace("tests = [{machine_code=\"SYN\", machine_system=\"synthetic\", app_code=\"DEMO\", app_system=\"demo\"}]", "tests = []");
+    let missing = definition.rewrite("tests = [{machine_code=\"SYN\", machine_system=\"synthetic\", app_code=\"DEMO\", app_system=\"demo\"}]", "tests = []");
     let old = program(temp.path(), &missing, &endpoint)?;
     let mut store = crate::runtime::service::open_store(&old, Box::new(Space)).await?;
     let machine = old.machines().first().ok_or("missing machine")?;
@@ -191,7 +192,7 @@ async fn assert_retransmission_and_conflict(
     ));
     let changed = program(
         root,
-        &definition.replace("app_code=\"DEMO\"", "app_code=\"CHANGED\""),
+        &definition.rewrite("app_code=\"DEMO\"", "app_code=\"CHANGED\""),
         endpoint,
     )?;
     let machine = changed.machines().first().ok_or("missing machine")?;
@@ -273,7 +274,7 @@ async fn plan11_rule3_vendor_receipts_use_live_interpretation_and_rule8_stay_par
 async fn adr0003_rule3_effective_configs_have_distinct_recorded_versions() -> Result<(), Error> {
     let temp = crate::admin::private_tempdir()?;
     let definition = include_str!("../../../../core/config/examples/hl7.toml")
-        .replace("tcp_server", "tcp_client");
+        .rewrite("tcp_server", "tcp_client");
     let old = program(temp.path(), &definition, "127.0.0.1:5600")?;
     let mut store = crate::runtime::service::open_store(&old, Box::new(Space)).await?;
     let original = old.machines().first().ok_or("missing machine")?;
@@ -344,7 +345,7 @@ async fn adr0003_rule3_effective_configs_have_distinct_recorded_versions() -> Re
 fn rule9_destination_config_sets_operational_freshness_and_rejects_zero() -> Result<(), Error> {
     let temp = crate::admin::private_tempdir()?;
     let definition = include_str!("../../../../core/config/examples/hl7.toml")
-        .replace("tcp_server", "tcp_client");
+        .rewrite("tcp_server", "tcp_client");
     let loaded = program(temp.path(), &definition, "127.0.0.1:5600")?;
     assert_eq!(
         loaded.machines()[0].destination_limits.freshness.as_secs(),
@@ -379,7 +380,7 @@ async fn assert_vendor_receipt_stays_parked(
     let peer = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let current = program(
         temp.path(),
-        &definition.replace("tcp_server", "tcp_client"),
+        &definition.rewrite("tcp_server", "tcp_client"),
         &peer.local_addr()?.to_string(),
     )?;
     let machine = current.machines().first().ok_or("missing machine")?;

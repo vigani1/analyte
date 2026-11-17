@@ -22,6 +22,7 @@ thiserror.workspace = true
 jiff.workspace = true
 
 [dev-dependencies]
+analyte-fixtures.workspace = true
 quick-xml.workspace = true
 proptest.workspace = true
 

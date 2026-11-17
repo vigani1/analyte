@@ -260,7 +260,7 @@ fn contract_v1_signing_secret_and_metadata_bounds_are_independent() -> TestResul
 }
 #[test]
 fn contract_v1_rule7_signature_header_limit_accepts_exactly_4096_bytes() -> TestResult {
-    let key = SigningSecret::parse("whsec_AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=")?;
+    let key = SigningSecret::parse(analyte_fixtures::SECRET)?;
     let sig = key.sign("id", "1", b"body")?;
     for n in [4096, 4097] {
         let header = format!("{sig}{}", " ".repeat(n - sig.len()));

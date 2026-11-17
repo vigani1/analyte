@@ -1,6 +1,7 @@
 //! Tests protected wire capture and delivery behavior.
 use super::*;
 use crate::support::HANG_GUARD;
+use analyte_fixtures::ConfigEdit as _;
 use analyte_transport::recording::{self, Direction, Evidence};
 use tokio::io::AsyncWriteExt as _;
 
@@ -16,7 +17,7 @@ async fn plan10_adr0009_capture_preserves_tcp_bytes_and_failure_does_not_change_
         let temp = tempfile::tempdir()?;
         let path = config(temp.path(), false)?;
         let text = std::fs::read_to_string(&*path)?
-            .replace("id = 'hl7'", &format!("id = 'hl7'\ncapture = {enabled}"));
+            .rewrite("id = 'hl7'", &format!("id = 'hl7'\ncapture = {enabled}"));
         std::fs::write(&*path, text)?;
         let listener = capture_listener(temp.path(), &path, client).await?;
         let mut reference = Reference::start(
@@ -112,7 +113,7 @@ async fn capture_listener(
         let definition = root.join("hl7.toml");
         std::fs::write(
             &definition,
-            std::fs::read_to_string(&definition)?.replace("tcp_server", "tcp_client"),
+            std::fs::read_to_string(&definition)?.rewrite("tcp_server", "tcp_client"),
         )?;
         let site = root.join("hl7-site.toml");
         let previous = Program::load(path)?
@@ -126,7 +127,7 @@ async fn capture_listener(
             .clone();
         std::fs::write(
             &site,
-            std::fs::read_to_string(&site)?.replace(&previous, &listener.local_addr()?.to_string()),
+            std::fs::read_to_string(&site)?.rewrite(&previous, &listener.local_addr()?.to_string()),
         )?;
         Some(listener)
     } else {

@@ -497,7 +497,7 @@ impl<'a> ErrView<'a> {
 }
 
 mod location;
-pub use location::*;
+pub use location::{Location, location_error, syntax_location};
 mod result;
 pub use result::validate_result_fields;
 

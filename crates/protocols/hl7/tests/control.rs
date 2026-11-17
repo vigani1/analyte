@@ -1,5 +1,6 @@
 //! Tests HL7 control fields and acknowledgments.
 //! Kept whole: Control acknowledgment validation cases share the same synthetic message builders.
+use analyte_fixtures::ConfigEdit as _;
 use analyte_hl7::*;
 use proptest::prelude::*;
 
@@ -402,7 +403,7 @@ fn hl7_251_2_15_control_fields_reject_invalid_codes_and_header_injection() -> Re
         ("|P|", "|Q|", 11),
         ("ORU^R01", "ORU^", 9),
     ] {
-        let changed = String::from_utf8_lossy(&wire("2.5.1", "", "", "", "")).replace(from, to);
+        let changed = String::from_utf8_lossy(&wire("2.5.1", "", "", "", "")).rewrite(from, to);
         let m = parse(changed.as_bytes())?;
         assert!(
             matches!(Msh::new(&m), Err(Error::Control { field: actual, .. }) if actual == field)
@@ -516,7 +517,7 @@ fn hl7_251_2_15_9_7_requires_valid_message_time_but_231_allows_absence() -> Resu
         ] {
             let raw = String::from_utf8(wire(version, "", "", "", ""))
                 .expect("synthetic ASCII")
-                .replace("202601011200", stamp)
+                .rewrite("202601011200", stamp)
                 .into_bytes();
             let m = parse(&raw)?;
             if version == "2.3.1" && stamp.is_empty() {
@@ -544,7 +545,7 @@ fn hl7_251_2_15_9_7_requires_valid_message_time_but_231_allows_absence() -> Resu
         ] {
             let raw = String::from_utf8(wire(version, "", "", "", ""))
                 .expect("synthetic ASCII")
-                .replace("202601011200", stamp)
+                .rewrite("202601011200", stamp)
                 .into_bytes();
             let m = parse(&raw)?;
             assert!(Msh::new(&m).is_ok(), "{version}: {stamp}");
@@ -574,7 +575,7 @@ fn hl7_251_2_a_44_and_231_2_24_1_9_message_type_components() -> Result<(), Error
     ] {
         let raw = String::from_utf8(wire(version, "", "", "", ""))
             .expect("synthetic ASCII")
-            .replace("ORU^R01^ORU_R01", kind)
+            .rewrite("ORU^R01^ORU_R01", kind)
             .into_bytes();
         let message = parse(&raw)?;
         assert_eq!(Msh::new(&message).is_ok(), valid, "{version}: {kind}");

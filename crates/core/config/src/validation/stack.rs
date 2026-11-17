@@ -1,5 +1,5 @@
 //! Checks protocol stack settings and supported combinations.
-use super::*;
+use super::{Encoding, Error, TransportKind, invalid, validate_mapping_family};
 use crate::{ParsedMachine, StackChoice};
 
 pub(super) fn validate_transport(m: &ParsedMachine<'_>, path: &str) -> Result<(), Error> {

@@ -1,5 +1,6 @@
 //! Qualifies patient-related new work without blocking an existing order cancellation.
 
+use analyte_fixtures::ConfigEdit as _;
 // HL7 2.3.1 section 4.2.1.1(d) applies required PID to new patient orders.
 #[test]
 fn hl7_231_s4_2_1_1_d_patient_requiredness_distinguishes_new_and_cancel()
@@ -7,7 +8,7 @@ fn hl7_231_s4_2_1_1_d_patient_requiredness_distinguishes_new_and_cancel()
     let definition = format!(
         "{}\n{}",
         include_str!("../../../../core/config/examples/hl7.toml")
-            .replace("edition = \"v251\"", "edition = \"v231\""),
+            .rewrite("edition = \"v251\"", "edition = \"v231\""),
         include_str!("../../../../core/config/examples/hl7_send.toml")
     );
     let config = analyte_config::Draft::load(

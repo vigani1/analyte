@@ -1,5 +1,8 @@
 //! Assigns result revisions within one transaction and bounded batch state.
-use super::*;
+use super::{
+    Error, IdentityStatus, Interpretation, Reading, ReceiptId, ResultContent, Revision,
+    RevisionOutcome, StatusLifecycle, clinical_digest, key, status_policy,
+};
 pub(super) type AssignedRevision = (String, i64, analyte_model::Digest);
 
 #[derive(Default)]

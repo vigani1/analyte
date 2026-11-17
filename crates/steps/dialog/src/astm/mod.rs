@@ -4,7 +4,7 @@ use analyte_framing::astm::{self, ACK, Decoder, ENQ, EOT, Frame, FrameNumber, NA
 use std::{collections::VecDeque, time::Duration};
 
 mod types;
-pub use types::*;
+pub use types::{Action, CommitId, Config, End, Epoch, Error, Event, Role, Timers};
 
 #[derive(Debug)]
 struct Receive {

@@ -1,5 +1,6 @@
 //! LAW text-kind refusal and FT layout evidence remain protected and undelivered.
 use super::*;
+use analyte_fixtures::ConfigEdit as _;
 #[tokio::test]
 async fn hl7_251_2_7_1_2_7_6_law_text_is_parked_with_specific_reason_and_raw() -> Result<(), Error>
 {
@@ -18,12 +19,12 @@ async fn hl7_251_2_7_1_2_7_6_law_text_is_parked_with_specific_reason_and_raw() -
         (
             "st",
             result("st", "\"\"", "awos-1^LAB", r"before\H\marked\N\after", "F")
-                .replace("|NM|", "|ST|"),
+                .rewrite("|NM|", "|ST|"),
             "escape is not applicable to ST",
         ),
         (
             "tx",
-            result("tx", "\"\"", "awos-1^LAB", r"first\.br\second", "F").replace("|NM|", "|TX|"),
+            result("tx", "\"\"", "awos-1^LAB", r"first\.br\second", "F").rewrite("|NM|", "|TX|"),
             "layout commands require FT",
         ),
         (

@@ -2,6 +2,7 @@
 use super::vendor_support::*;
 use super::*;
 use crate::support::HANG_GUARD;
+use analyte_fixtures::ConfigEdit as _;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
@@ -11,7 +12,7 @@ fn definition() -> String {
     format!(
         "{}\n{}",
         include_str!("../../../core/config/examples/vidas_literal.toml")
-            .replace("download = false", "download = true"),
+            .rewrite("download = false", "download = true"),
         r#"
 [orders]
 send_ahead = true
@@ -307,7 +308,7 @@ async fn adr0004_vidas_missing_patient_namespace_prevents_program_start() -> Res
     let path = vendor_config(
         temp.path(),
         "vidas",
-        &definition().replace("patient_namespace = \"synthetic\"", ""),
+        &definition().rewrite("patient_namespace = \"synthetic\"", ""),
     )?;
     let receiver_path = temp.path().join("receiver.db");
     let reference = Reference::start(

@@ -1,5 +1,6 @@
 //! Tests LAW message validation and host exchanges.
 use super::*;
+use analyte_fixtures::ConfigEdit as _;
 
 #[test]
 fn law_tf2b_3_27_4_container_preserves_leading_zero_and_raw()
@@ -457,8 +458,8 @@ fn law_tf2b_3_28_4_orl_outcomes_are_per_request_not_lifecycle_retractions()
         let parsed = WorkResponse::new(&message, request)?;
         // TF-2b 3.28.4.1.2.2: mandatory container and completed specimen groups.
         for invalid in [
-            incoming.replace("SAC|||tube\r", ""),
-            incoming.replace("SAC|||tube\r", "SAC|||tube\rSAC|||tube\r"),
+            incoming.rewrite("SAC|||tube\r", ""),
+            incoming.rewrite("SAC|||tube\r", "SAC|||tube\rSAC|||tube\r"),
             format!("{incoming}SPM|2|||SER^Serum^HL70487|||||||P^^HL70369\r"),
         ] {
             let reply = Message::parse(invalid.as_bytes(), utf8_options())?;
@@ -467,7 +468,7 @@ fn law_tf2b_3_28_4_orl_outcomes_are_per_request_not_lifecycle_retractions()
         }
         let wrong_container = Message::parse(
             incoming
-                .replace("SAC|||tube", "SAC|||different-tube")
+                .rewrite("SAC|||tube", "SAC|||different-tube")
                 .as_bytes(),
             utf8_options(),
         )?;

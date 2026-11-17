@@ -3,7 +3,10 @@ mod observations;
 use crate::inbound::evidence::{Error, map_result, map_test, map_units};
 use crate::{MappedResult, Output, Position};
 
-use analyte_model::*;
+use analyte_model::{
+    EvidenceList, Identifier, IdentityStatus, NamespacedId, ObservationIdentity, ProcessingMode,
+    Reason, ReceiptId, ResultIdentity, ResultPart, Revision, SourceText,
+};
 pub use observations::{MappedObservation, MappingError, map as map_observations};
 /// Applies explicit POCT code tables and identity policy to faithfully mapped observations.
 /// # Errors

@@ -1,5 +1,6 @@
 //! Tests configured outgoing orders and code mappings.
 use analyte_config::{Draft, Validated};
+use analyte_fixtures::ConfigEdit as _;
 use analyte_mapping::{AppOrder, AppOrderPriority, OrderMappingError, map_order};
 use analyte_model::{Identifier, NamespacedId, SampleId};
 
@@ -8,9 +9,9 @@ type TestResult = Result<(), Box<dyn std::error::Error>>;
 #[test]
 fn rule7_outbound_selected_component_at_configured_ceiling_is_preserved() -> TestResult {
     let base = include_str!("../../../core/config/examples/astm.toml")
-        .replace("components = 128", "components = 4");
+        .rewrite("components = 128", "components = 4");
     let section = include_str!("../../../core/config/examples/orders.toml")
-        .replace("field=3,component=1", "field=3,component=4");
+        .rewrite("field=3,component=1", "field=3,component=4");
     let definition = format!("{base}\n{section}");
     let cfg = Draft::load(
         ("machine", &definition),
@@ -28,7 +29,7 @@ fn rule7_outbound_selected_component_at_configured_ceiling_is_preserved() -> Tes
 
 #[test]
 fn rule7_display_text_bound_is_inclusive_and_refuses_delimiter_injection() -> TestResult {
-    let section = include_str!("../../../core/config/examples/hl7_orders.toml").replace(
+    let section = include_str!("../../../core/config/examples/hl7_orders.toml").rewrite(
         "namespace=\"synthetic\",value=\"TEST\"",
         "namespace=\"demo\",value=\"DEMO\"",
     );
@@ -88,7 +89,7 @@ fn bounded_order_config(key: &str, value: usize) -> Result<Validated, analyte_co
     let section = include_str!("../../../core/config/examples/orders.toml");
     let definition = format!(
         "{}\n{section}",
-        base.replace(&format!("{key} = {old}"), &format!("{key} = {value}"))
+        base.rewrite(&format!("{key} = {old}"), &format!("{key} = {value}"))
     );
     Draft::load(
         ("machine", &definition),
@@ -152,7 +153,7 @@ fn rule7_outbound_test_count_is_nonempty_and_inclusive() -> TestResult {
     let definition = format!(
         "{}\n{}",
         include_str!("../../../core/config/examples/astm.toml")
-            .replace("repetitions = 128", "repetitions = 2"),
+            .rewrite("repetitions = 128", "repetitions = 2"),
         include_str!("../../../core/config/examples/orders.toml")
     );
     let settings = Draft::load(
@@ -246,7 +247,7 @@ fn adr0004_disabled_unmapped_system_priority_and_missing_position_refuse_output(
 }
 
 fn context_section() -> String {
-    include_str!("../../../core/config/examples/orders.toml").replace("[orders.query]", "specimen_types=[{app={namespace='demo-specimens',value='SERUM'},machine='SER'}]\n[orders.query]")
+    include_str!("../../../core/config/examples/orders.toml").rewrite("[orders.query]", "specimen_types=[{app={namespace='demo-specimens',value='SERUM'},machine='SER'}]\n[orders.query]")
 }
 fn context_order() -> Result<AppOrder, analyte_model::TextError> {
     let mut value = order()?;
@@ -316,7 +317,7 @@ fn lis02_section8_4_16_1_unmapped_or_missing_specimen_never_guesses_a_code() -> 
 
 #[test]
 fn hl7_251_section5_10_dsp_layout_is_explicit_and_context_is_never_guessed() -> TestResult {
-    let section = include_str!("../../../core/config/examples/hl7_orders.toml").replace(
+    let section = include_str!("../../../core/config/examples/hl7_orders.toml").rewrite(
         "namespace=\"synthetic\",value=\"TEST\"",
         "namespace=\"demo\",value=\"DEMO\"",
     );
@@ -406,17 +407,17 @@ fn hl7_251_section5_10_dsp_layout_is_explicit_and_context_is_never_guessed() -> 
 fn hl7_251_section5_10_optional_patient_specimen_and_slot_use_only_explicit_sources() -> TestResult
 {
     let section = include_str!("../../../core/config/examples/hl7_orders.toml")
-        .replace(
+        .rewrite(
             "namespace=\"synthetic\",value=\"TEST\"",
             "namespace=\"demo\",value=\"DEMO\"",
         )
-        .replace(
+        .rewrite(
             "[orders.query]",
             r#"patient_namespace = "patients"
 specimen_types = [{app={namespace="types",value="SERUM"},machine="SER"}]
 [orders.query]"#,
         )
-        .replace(
+        .rewrite(
             r#"{source="position"}"#,
             r#"{source="position"},{source="specimen_type"},{source="patient_id"}"#,
         );
