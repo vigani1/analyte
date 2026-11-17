@@ -18,6 +18,7 @@ pub enum DeadlineKind {
 }
 impl DeadlineKind {
     /// Stable operation text for display and retained evidence.
+    #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::IndependentTransaction => "LAW independent transaction deadline",
