@@ -1,9 +1,10 @@
 //! Drives LAW connections using dialog actions and durable store calls.
 use super::connection_input::{self, Input};
+use crate::machine::error::SessionError as Error;
 use crate::orders::outcome::Code;
 pub(super) mod independent;
+use crate::intake;
 use crate::orders::law::{Connection, Reply};
-use crate::{Error, intake, invalid};
 use analyte_dialog::law::{self as protocol, Action, Dialog, Event, Interpretation, Link};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
@@ -118,13 +119,13 @@ impl<'a, 'm> Host<'a, 'm> {
     fn absolute(&self, until: Duration) -> Result<Instant, Error> {
         self.clock
             .checked_add(until)
-            .ok_or_else(|| invalid("LAW connection deadline overflow"))
+            .ok_or_else(|| Error::LawConnectionDeadlineOverflow)
     }
     fn receipt(&self, token: protocol::ReceiptId) -> Result<ReceiptId, Error> {
         self.receipt
             .filter(|(expected, _)| *expected == token)
             .map(|(_, id)| id)
-            .ok_or_else(|| invalid("LAW receipt correlation missing"))
+            .ok_or_else(|| Error::LawReceiptCorrelationMissing)
     }
     async fn drive(&mut self, event: Event<'_>) -> Result<(), Error> {
         let mut actions: VecDeque<_> = self.dialog.step(self.clock.elapsed(), event)?.into();
@@ -144,16 +145,19 @@ impl<'a, 'm> Host<'a, 'm> {
                 Action::Commit(..) | Action::Rejected(..) | Action::Uncommitted(..)
             );
             let timeout_reason = if matches!(&action, Action::Write(..)) {
-                "LAW response send deadline expired"
+                super::error::DeadlineReason::Write
             } else {
-                "LAW processing deadline expired; no acceptance promised"
+                super::error::DeadlineReason::Effect
             };
             let operation = async {
                 match end {
                     Some(end) if !protects_raw => {
                         tokio::time::timeout_at(end.into(), self.effect(action))
                             .await
-                            .map_err(|_| invalid(timeout_reason))?
+                            .map_err(|source| Error::Deadline {
+                                reason: timeout_reason,
+                                source,
+                            })?
                     }
                     // Custody uses bounded store deadlines, even after the wire budget expires.
                     Some(_) | None => self.effect(action).await,
@@ -179,7 +183,7 @@ impl<'a, 'm> Host<'a, 'm> {
                 self.stored = false;
                 #[cfg(feature = "test-hooks")]
                 if let Some(hook) = &self.machine.law_precommit {
-                    hook.pause(&mut self.stop).await?;
+                    hook.pause(&mut self.stop).await.map_err(Error::TestHook)?;
                 }
                 super::custody::store_within(
                     super::custody::budget(self.machine),
@@ -192,7 +196,7 @@ impl<'a, 'm> Host<'a, 'm> {
                     let mut stop = self.stop.clone();
                     tokio::select! { biased;
                         () = super::stopping(&mut stop) => { self.stopped = true; return Ok(Vec::new()); },
-                        result = hook.pause(&mut self.stop) => result?,
+                        result = hook.pause(&mut self.stop) => result.map_err(Error::TestHook)?,
                     }
                 }
                 Event::Committed(token)
@@ -232,7 +236,7 @@ impl<'a, 'm> Host<'a, 'm> {
                     let until = self
                         .orders
                         .due()
-                        .ok_or("LAW response deadline absent after issuance")?
+                        .ok_or(Error::LawResponseDeadlineAbsentAfterIssuance)?
                         .saturating_duration_since(self.clock);
                     return Ok(self
                         .dialog
@@ -276,7 +280,7 @@ impl<'a, 'm> Host<'a, 'm> {
         if self.ready.is_some() {
             #[cfg(feature = "test-hooks")]
             if let Some(gate) = &self.machine.law_gates.rsp {
-                gate.pause(&mut self.stop).await?;
+                gate.pause(&mut self.stop).await.map_err(Error::TestHook)?;
             }
         }
         if let Some(ready) = self.ready.take() {
@@ -314,14 +318,12 @@ impl<'a, 'm> Host<'a, 'm> {
             };
             if let Err(error) = sender.try_send(pending) {
                 *self.orders = error.into_inner().orders;
-                return Err(invalid(
-                    "LAW outbound queue unavailable; reserved work not issued",
-                ));
+                return Err(Error::LawOutboundQueueUnavailableReservedWorkNotIssued);
             }
             self.ready = Some(notify);
             #[cfg(feature = "test-hooks")]
             if let Some(gate) = &self.machine.law_gates.handover {
-                gate.pause(&mut self.stop).await?;
+                gate.pause(&mut self.stop).await.map_err(Error::TestHook)?;
             }
             reply = Reply::Response(response.clone());
         }
@@ -367,7 +369,7 @@ impl<'a, 'm> Host<'a, 'm> {
             .await
             .map_err(|error| {
                 if matches!(error, analyte_transport::Error::Deadline("write all")) {
-                    invalid("LAW response send deadline expired")
+                    Error::LawResponseSendDeadlineExpired(error)
                 } else {
                     error.into()
                 }
@@ -376,7 +378,7 @@ impl<'a, 'm> Host<'a, 'm> {
     }
     async fn input(&mut self, bytes: Vec<u8>) -> Result<(), Error> {
         if !self.pending_input.is_empty() {
-            return Err(invalid("LAW input still awaits custody"));
+            return Err(Error::LawInputStillAwaitsCustody);
         }
         self.pending_input = bytes.into();
         while let Some(byte) = self.pending_input.front().copied() {
@@ -466,7 +468,7 @@ impl<'a, 'm> Host<'a, 'm> {
                             },
                         };
                         if let Some(message) = outgoing {
-                            let until = self.orders.due().ok_or("LAW outgoing deadline absent")?.saturating_duration_since(self.clock);
+                            let until = self.orders.due().ok_or(Error::LawOutgoingDeadlineAbsent)?.saturating_duration_since(self.clock);
                             self.drive(Event::Send(&message, until)).await?;
                             if self.stopped { break; }
                         }
@@ -499,11 +501,11 @@ impl<'a, 'm> Host<'a, 'm> {
     }
     async fn outbound(&mut self, message: &analyte_hl7::Message) -> Result<(), Error> {
         loop {
-            let until = self.orders.due().ok_or("LAW outbound deadline absent")?;
+            let until = self.orders.due().ok_or(Error::LawOutboundDeadlineAbsent)?;
             let event = tokio::select! {
                 biased;
                 () = super::stopping(&mut self.stop) => return Ok(()),
-                event = tokio::time::timeout_at(until.into(), connection_input::receive(self.conn)) => event.map_err(|_| invalid("LAW independent transaction deadline"))??,
+                event = tokio::time::timeout_at(until.into(), connection_input::receive(self.conn)) => event.map_err(Error::LawIndependentTransactionDeadline)??,
             };
             match event {
                 Input::Opened { .. } => {
@@ -522,14 +524,12 @@ impl<'a, 'm> Host<'a, 'm> {
                         return Ok(());
                     }
                 }
-                Input::Closed(None) => return Err("LAW independent peer closed before ORL".into()),
+                Input::Closed(None) => return Err(Error::LawPeerClosedBeforeOrl),
                 Input::Closed(Some(_)) => {
-                    return Err(invalid("LAW independent peer disconnected"));
+                    return Err(Error::LawIndependentPeerDisconnected);
                 }
                 Input::Failed(reason) => {
-                    return Err(invalid(&format!(
-                        "LAW independent transport failed: {reason}"
-                    )));
+                    return Err(Error::LawTransportFailed(reason));
                 }
                 Input::RecordingFailed(_failure) => {}
                 Input::Tick => {}

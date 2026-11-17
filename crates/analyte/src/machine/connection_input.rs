@@ -4,6 +4,7 @@
 //! Autolyser additionally journal chunks before dialog input via `journaled`.
 //! Their positive steps remain guarded by their own complete receipt/transfer/poll
 //! commits (ADR 0010). Cancelling a receive does not cancel queued store work.
+use crate::machine::error::SessionError as Error;
 use analyte_transport::{Connection, Event, Reason, recording};
 
 pub(super) enum Input {
@@ -26,7 +27,7 @@ pub(super) async fn receive(conn: &mut Connection) -> Result<Input, analyte_tran
     })
 }
 
-use crate::{Error, intake};
+use crate::intake;
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
 use std::time::Duration;

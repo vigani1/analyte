@@ -1,7 +1,8 @@
 //! Drives POCT DML reviewer connections with durable custody before acceptance.
 use super::connection_input::Input;
 use super::custody::{self, ms};
-use crate::{Error, intake, invalid};
+use crate::intake;
+use crate::machine::error::SessionError as Error;
 use analyte_dialog::poct::{CommitOutcome, Dialog, DialogAction, DialogConfig, DialogEvent};
 use analyte_model::ReceiptId;
 use analyte_poct::{Body, ControlId, Header, Message, Timestamp};
@@ -176,7 +177,7 @@ impl ConnectionState {
                     "POCT XML message byte limit exceeded",
                 )
                 .await?;
-                return Err(invalid("POCT message limit exceeded"));
+                return Err(Error::PoctMessageLimitExceeded);
             }
             raw.push(byte);
             if *stop.borrow() {
@@ -212,7 +213,7 @@ impl ConnectionState {
             };
             let wire = raw
                 .get(..length)
-                .ok_or_else(|| invalid("POCT framing length"))?
+                .ok_or_else(|| Error::PoctFramingLength)?
                 .to_vec();
             raw.drain(..length);
             framer.reset();
@@ -343,7 +344,7 @@ async fn process(
                     "POCT message deferred by bounded custody queue",
                 )
                 .await?;
-                return Err(invalid("POCT backpressure violated"));
+                return Err(Error::PoctBackpressureViolated);
             }
             DialogAction::TopicComplete => {
                 actions.extend(dialog.step(start.elapsed(), DialogEvent::Finish)?);

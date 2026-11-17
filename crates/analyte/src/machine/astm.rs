@@ -1,7 +1,8 @@
 //! Drives ASTM connections and journals each data frame before ACK (ADR 0003).
 use super::connection_input::{self, Input};
+use crate::machine::error::SessionError as Error;
 use crate::orders::astm::{Pending, Request};
-use crate::{Error, deadline, intake, invalid};
+use crate::{deadline, intake};
 use analyte_dialog::astm::{Action, Config, Dialog, End, Epoch, Event, Role, Timers};
 use analyte_model::{Identifier, ReceiptId};
 use analyte_store::Handle;
@@ -175,7 +176,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
         {
             self.next_order_poll = Instant::now()
                 .checked_add(Duration::from_secs(1))
-                .ok_or_else(|| invalid("order poll deadline overflow"))?;
+                .ok_or_else(|| Error::OrderPollDeadlineOverflow)?;
             crate::orders::sending::next(store, machine, &mut self.order_cursor).await?
         } else {
             None
@@ -242,7 +243,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             let expected = settings
                 .frame_limit()
                 .checked_add(machine.snapshot.canonical().len())
-                .ok_or_else(|| invalid("ASTM admission size overflow"))?;
+                .ok_or_else(|| Error::AstmAdmissionSizeOverflow)?;
             let capacity = store
                 .request(deadline(), move |s| s.admission(expected))
                 .await;
@@ -287,7 +288,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
                     .checked_add(record.len())
                     .is_none_or(|n| n > settings.syntax().limits().bytes())
                 {
-                    return Err(invalid("ASTM message bound exceeded"));
+                    return Err(Error::AstmMessageBoundExceeded);
                 }
                 self.payload.extend_from_slice(&record);
             }
@@ -312,7 +313,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
                 intake::park_bytes(store, machine, bytes, &error.to_string()).await?;
             }
             Action::CommitFailed(_) | Action::LimitReached => {
-                return Err(invalid("ASTM storage or resource limit refused transfer"));
+                return Err(Error::AstmStorageOrResourceLimitRefusedTransfer);
             }
             Action::Sent(end) => {
                 for order in self.active_orders.drain(..) {
@@ -344,7 +345,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
             .checked_add(bytes.len())
             .is_none_or(|n| n > settings.syntax().limits().bytes())
         {
-            return Err(invalid("ASTM transfer wire-byte bound exceeded"));
+            return Err(Error::AstmTransferWireByteBoundExceeded);
         }
         self.raw.extend_from_slice(&bytes);
         let provenance = analyte_store::FrameProvenance {
@@ -370,7 +371,7 @@ impl<'a, 'm> ConnectionState<'a, 'm> {
         if committed.is_ok()
             && let Some(hook) = &machine.astm_committed
         {
-            hook.pause(stop).await?;
+            hook.pause(stop).await.map_err(Error::TestHook)?;
         }
         actions.extend(self.dialog.step(
             self.start.elapsed(),

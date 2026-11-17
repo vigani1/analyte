@@ -2,7 +2,8 @@
 use super::connection_input::Input;
 use super::custody::{self, ms};
 use super::transfer_end::VidasEnd;
-use crate::{Error, intake, invalid};
+use crate::intake;
+use crate::machine::error::SessionError as Error;
 use analyte_dialog::vidas::{Action, Dialog, Event, Policy, Timer};
 use analyte_framing::vidas::{Config, Decoder};
 use analyte_model::ReceiptId;
@@ -95,7 +96,7 @@ impl ConnectionState {
             let mut next = self
                 .dialog
                 .next_deadline()
-                .ok_or_else(|| invalid("VIDAS active dialog has no deadline"))?;
+                .ok_or_else(|| Error::VidasActiveDialogHasNoDeadline)?;
             if self.idle && self.opened {
                 next = next.min(
                     self.start
@@ -179,7 +180,7 @@ impl ConnectionState {
                     self.end_code = VidasEnd::ControlSuffixMismatch;
                     intake::park_bytes(store, machine, vec![byte], "VIDAS control suffix mismatch")
                         .await?;
-                    return Err(invalid("VIDAS control suffix mismatch"));
+                    return Err(Error::VidasControlSuffixMismatch);
                 }
                 if index.saturating_add(1) == installed.suffix.len() {
                     self.suffix = None;
@@ -221,13 +222,13 @@ impl ConnectionState {
         if self.idle && self.opened && Instant::now() >= self.next_poll {
             self.next_poll = Instant::now()
                 .checked_add(ms(1000))
-                .ok_or_else(|| invalid("VIDAS order poll deadline overflow"))?;
+                .ok_or_else(|| Error::VidasOrderPollDeadlineOverflow)?;
             if let Some(reserved) =
                 crate::orders::sending::next(store, machine, &mut self.cursor).await?
             {
                 self.active = Some(reserved.order);
                 let analyte_mapping::MachineOrder::Vidas(requests) = reserved.payload else {
-                    return Err(invalid("VIDAS received another stack's order"));
+                    return Err(Error::VidasReceivedAnotherStackSOrder);
                 };
                 self.requests = requests.into();
                 start_download(self)?;
@@ -249,7 +250,7 @@ fn start_download(state: &mut ConnectionState) -> Result<(), Error> {
     let request = state
         .requests
         .pop_front()
-        .ok_or_else(|| invalid("VIDAS mapped request missing"))?;
+        .ok_or_else(|| Error::VidasMappedRequestMissing)?;
     state.dialog = Dialog::download(state.config.clone(), state.policy.clone(), &request)?;
     state.start = Instant::now();
     state.idle = false;
@@ -310,7 +311,7 @@ async fn process(
                     return Err(custody::effect_failure(failure, error.into()));
                 }
                 if failure.is_none() {
-                    failure = Some(invalid("VIDAS transfer parked; reconcile before reconnect"));
+                    failure = Some(Error::VidasTransferParkedReconcileBeforeReconnect);
                 }
             }
             Action::Complete => {

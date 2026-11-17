@@ -1,5 +1,6 @@
 //! Receives claimed files and retains the claim until receipt and interpretation are durable.
-use crate::{Error, deadline, installation::config::Machine, intake, invalid};
+use crate::machine::error::SessionError as Error;
+use crate::{deadline, installation::config::Machine, intake};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
 use analyte_transport::folder::{Disposition, Item, Watch};
@@ -68,16 +69,12 @@ impl Owner {
         self.stop.store(true, Ordering::Release);
         // Completion also wakes on panic; the retained join below reports its cause.
         // On timeout or cancellation Drop still owns and joins the worker.
-        if tokio::time::timeout_at(deadline().into(), &mut self.finished)
+        let _ = tokio::time::timeout_at(deadline().into(), &mut self.finished)
             .await
-            .is_err()
-        {
-            return Err(invalid("file owner shutdown timed out"));
-        }
+            .map_err(Error::FileOwnerShutdownTimedOut)?;
         if let Some(thread) = self.thread.take() {
-            thread
-                .join()
-                .map_err(|_| invalid("file owner panicked"))??;
+            // Panic payloads may contain protected bytes; retain only the typed panic classification.
+            thread.join().map_err(|_| Error::FileOwnerPanicked)??;
         }
         Ok(())
     }
@@ -108,29 +105,13 @@ pub(super) async fn session(
             let mut item = tokio::select! {
                 biased;
                 () = super::stopping(&mut stop) => break,
-                item = files.recv() => item.ok_or_else(|| invalid("file owner stopped"))?,
+                item = files.recv() => item.ok_or_else(|| Error::FileOwnerStopped)?,
             };
             let Some(raw) = receive(&mut item.connection, bytes, &mut stop).await? else {
                 break;
             };
             let id = ReceiptId::new();
-            intake::receive(store, machine, id, raw)
-                .await
-                .map_err(|error| match error {
-                    // File owners expose storage refusal directly to their existing recovery caller.
-                    intake::Error::Store(source) => Error::from(source),
-                    other @ (intake::Error::LawHeader
-                    | intake::Error::LawComponentDelimiter
-                    | intake::Error::LawObrOccurrence
-                    | intake::Error::RetainedLawItem
-                    | intake::Error::Validation(_)
-                    | intake::Error::Text(_)
-                    | intake::Error::Format(_)
-                    | intake::Error::Encoding(_)
-                    | intake::Error::Json(_)
-                    | intake::Error::Evidence(_)
-                    | intake::Error::WrongMachine) => Error::from(other),
-                })?;
+            intake::receive(store, machine, id, raw).await?;
             let accepted = intake::interpret(store, machine, id).await?;
             item.completed
                 .send(if accepted {
@@ -138,7 +119,7 @@ pub(super) async fn session(
                 } else {
                     Disposition::Quarantine
                 })
-                .map_err(|_| invalid("file completion reply lost; source remains claimed"))?;
+                .map_err(Error::FileCompletionReplyLostSourceRemainsClaimed)?;
         }
         Ok(())
     }
@@ -167,11 +148,11 @@ async fn receive(
             () = super::stopping(stop) => return Ok(None),
             event = connection.receive() => event?,
         }
-        .ok_or_else(|| invalid("file transport ended before completion; source remains claimed"))?;
+        .ok_or_else(|| Error::FileTransportEndedBeforeCompletionSourceRemainsClaimed)?;
         match event {
             Event::Opened { .. } => {
                 if opened {
-                    return Err(invalid("file transport opened twice"));
+                    return Err(Error::FileTransportOpenedTwice);
                 }
                 opened = true;
             }
@@ -182,15 +163,13 @@ async fn receive(
                         .checked_add(bytes.len())
                         .is_none_or(|size| size > bound)
                 {
-                    return Err(invalid("file transport receipt bound exceeded"));
+                    return Err(Error::FileTransportReceiptBoundExceeded);
                 }
                 raw.extend_from_slice(&bytes);
             }
             Event::Closed(Reason::Disconnect) if opened => return Ok(Some(raw)),
             Event::Closed(reason) | Event::Failed(reason) => {
-                return Err(invalid(&format!(
-                    "file transport interrupted; source remains claimed: {reason}"
-                )));
+                return Err(Error::FileInterrupted(reason));
             }
             Event::RecordingFailed(_) => {}
         }
@@ -200,6 +179,7 @@ async fn receive(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Error;
     use std::time::Duration;
 
     // AGENTS.md: keep errors specific; clinical safety rule 10: no payloads in logs.
@@ -210,7 +190,9 @@ mod tests {
                 if panic {
                     std::panic::panic_any("protected-panic-token");
                 }
-                Err(invalid("protected-error-token"))
+                Err(super::Error::Fixture(crate::invalid(
+                    "protected-error-token",
+                )))
             });
             let output = super::super::worker::tests::capture(|| {
                 drop(Owner {
@@ -263,7 +245,7 @@ mod tests {
             if let Some(disposition) = disposition {
                 item.completed
                     .send(disposition)
-                    .map_err(|_| invalid("custody reply lost"))?;
+                    .map_err(|_| crate::invalid("custody reply lost"))?;
             }
             drop(item);
             drop(files);

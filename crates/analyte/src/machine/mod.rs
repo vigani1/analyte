@@ -1,4 +1,5 @@
 //! Owns machine workers and transport sessions without replaying queued writes.
+use crate::machine::error::SessionError as Error;
 mod astm;
 mod autolyser;
 pub(crate) mod capture;
@@ -18,7 +19,7 @@ mod settings;
 mod transfer_end;
 mod vidas;
 mod worker;
-use crate::{Error, installation::config::Machine, invalid};
+use crate::installation::config::Machine;
 use analyte_config::TcpRole;
 use analyte_store::Handle;
 use analyte_transport::{Backoff, Limits, connection};
@@ -37,7 +38,7 @@ impl Closing {
         self.ready.send_replace(true);
         tokio::time::timeout(Duration::from_secs(25), stopping(&mut self.close))
             .await
-            .map_err(|_| invalid("transport close stage exceeded 25 seconds"))?;
+            .map_err(Error::TransportCloseStageExceeded25Seconds)?;
         Ok(())
     }
 }
@@ -213,7 +214,9 @@ async fn drive(
     let result = session(machine, selected, store, &mut conn, stop.clone()).await;
     #[cfg(feature = "test-hooks")]
     if let Some(hook) = &machine.connection_closing {
-        hook.pause(&mut stop.clone()).await?;
+        hook.pause(&mut stop.clone())
+            .await
+            .map_err(Error::TestHook)?;
     }
     if *stop.borrow() {
         closing.after_commits().await?;
@@ -223,3 +226,5 @@ async fn drive(
     // wait behind unread events during shutdown.
     result
 }
+
+mod error;

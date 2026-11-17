@@ -1,5 +1,6 @@
 //! Tests interrupted input custody under ADR 0003 and MLLP R1 section 1.2.
 use super::*;
+use crate::Error;
 use crate::installation::config::Program;
 use analyte_store::FreeSpace;
 use std::path::Path;

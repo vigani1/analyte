@@ -2,8 +2,9 @@
 use super::connection_input::Input;
 use super::custody::{self, ms};
 use super::transfer_end::AutolyserEnd;
+use crate::intake;
+use crate::machine::error::SessionError as Error;
 use crate::orders::outcome::Code;
-use crate::{Error, intake, invalid};
 use analyte_dialog::autolyser::{Action, Config, Dialog, Event, Recovery, Request};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
@@ -131,7 +132,7 @@ impl ConnectionState {
                             let analyte_mapping::MachineOrder::Autolyser(worklist) =
                                 reserved.payload
                             else {
-                                return Err(invalid("Autolyser received another stack's order"));
+                                return Err(Error::AutolyserReceivedAnotherStackSOrder);
                             };
                             let actions = self
                                 .dialog
@@ -253,7 +254,7 @@ impl ConnectionState {
         let (id, _) = self
             .receipt
             .take()
-            .ok_or_else(|| invalid("Autolyser report receipt missing"))?;
+            .ok_or_else(|| Error::AutolyserReportReceiptMissing)?;
         let receipt = store
             .request(crate::deadline(), move |s| {
                 s.receipt(id)?.ok_or(analyte_store::Error::UnknownReceipt)
@@ -286,7 +287,7 @@ impl ConnectionState {
         let order = self
             .active
             .as_ref()
-            .ok_or_else(|| invalid("unexpected Autolyser insertion outcome"))?;
+            .ok_or_else(|| Error::UnexpectedAutolyserInsertionOutcome)?;
         let code = super::transfer_end::insertion(reception);
         let outcome = match reception {
             analyte_dialog::autolyser::Reception::Accepted(_) => analyte_model::OrderState::Sent,

@@ -1,12 +1,9 @@
 //! Stores machine receipts and interpretation outcomes independently of vendor dialogs.
-use crate::Error;
-#[cfg(test)]
-use crate::invalid;
 use std::time::Duration;
 
 /// Distinguishes an unstarted write, an uncertain deadline and a transport failure.
 #[derive(Debug, thiserror::Error)]
-pub(super) enum WriteError {
+pub(crate) enum WriteError {
     #[error("vendor write deadline overflow")]
     DeadlineOverflow,
     #[error("vendor write deadline exceeded; outcome uncertain")]
@@ -37,19 +34,21 @@ pub(super) fn ms(value: u32) -> Duration {
 }
 
 /// Retains both the triggering failure and a failure to save its dialog effects.
+#[cfg(test)]
 #[derive(Debug, thiserror::Error)]
 #[error("{original}; dialog effect failed: {effect}")]
 struct EffectFailure {
     #[source]
-    original: Error,
-    effect: Error,
+    original: crate::Error,
+    effect: crate::Error,
 }
 
 /// A boundary keeps its own error type when retaining independent cleanup failures.
 pub(crate) trait CleanupFailure: Sized {
     fn with_effect(original: Self, effect: Self) -> Self;
 }
-impl CleanupFailure for Error {
+#[cfg(test)]
+impl CleanupFailure for crate::Error {
     fn with_effect(original: Self, effect: Self) -> Self {
         Box::new(EffectFailure { original, effect })
     }
@@ -164,9 +163,9 @@ mod tests {
 
     #[test]
     fn adr0003_cleanup_preserves_session_retention_and_settlement_errors() {
-        let mut result = Err(invalid("session failure"));
-        retain_cleanup(&mut result, Err(invalid("retention failure")));
-        retain_cleanup(&mut result, Err(invalid("settlement failure")));
+        let mut result = Err(crate::invalid("session failure"));
+        retain_cleanup(&mut result, Err(crate::invalid("retention failure")));
+        retain_cleanup(&mut result, Err(crate::invalid("settlement failure")));
         assert_eq!(
             result.unwrap_err().to_string(),
             "session failure; dialog effect failed: retention failure; dialog effect failed: settlement failure"

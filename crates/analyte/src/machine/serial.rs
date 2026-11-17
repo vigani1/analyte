@@ -1,5 +1,5 @@
 //! Owns blocking serial I/O on a dedicated thread and joins it on cancellation.
-use super::{Error, Handle, Limits, Machine, invalid};
+use super::{Error, Handle, Limits, Machine};
 use analyte_transport::{Cancellation, serial::Settings};
 use std::{thread, time::Duration};
 use tokio::sync::watch;
@@ -24,16 +24,12 @@ impl Owner {
         self.cancellation.cancel();
         // Completion also wakes on panic; the retained join below reports its cause.
         // On timeout or cancellation Drop still owns and joins the worker.
-        if tokio::time::timeout_at(crate::deadline().into(), &mut self.finished)
+        let _ = tokio::time::timeout_at(crate::deadline().into(), &mut self.finished)
             .await
-            .is_err()
-        {
-            return Err(invalid("serial owner shutdown timed out"));
-        }
+            .map_err(Error::SerialOwnerShutdownTimedOut)?;
         if let Some(thread) = self.thread.take() {
-            thread
-                .join()
-                .map_err(|_| invalid("serial owner panicked"))??;
+            // Panic payloads may contain protected bytes; retain only the typed panic classification.
+            thread.join().map_err(|_| Error::SerialOwnerPanicked)??;
         }
         Ok(())
     }
@@ -65,12 +61,12 @@ pub(super) async fn run(
         serial
             .data_bits
             .try_into()
-            .map_err(|()| invalid("invalid serial data bits"))?,
+            .map_err(|()| Error::InvalidSerialDataBits)?,
         parity,
         serial
             .stop_bits
             .try_into()
-            .map_err(|()| invalid("invalid serial stop bits"))?,
+            .map_err(|()| Error::InvalidSerialStopBits)?,
         flow,
         Duration::from_millis(100),
     )?;
@@ -111,6 +107,7 @@ pub(super) async fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Error;
 
     // AGENTS.md: keep errors specific; clinical safety rule 10: no payloads in logs.
     #[test]
