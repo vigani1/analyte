@@ -91,7 +91,7 @@ struct Host<'a, 'm> {
     outbound: Option<&'a tokio::sync::mpsc::Sender<independent::Work>>,
     run: Run,
     completion: Completion,
-    pending_input: VecDeque<u8>,
+    input_evidence: super::connection_input::Custody,
 }
 impl<'a, 'm> Host<'a, 'm> {
     fn open(
@@ -119,7 +119,7 @@ impl<'a, 'm> Host<'a, 'm> {
             outbound: None,
             run: Run::Active,
             completion: Completion::Pending,
-            pending_input: VecDeque::new(),
+            input_evidence: super::connection_input::Custody::default(),
         })
     }
     fn absolute(&self, until: Duration) -> Result<Instant, Error> {
@@ -161,8 +161,8 @@ impl<'a, 'm> Host<'a, 'm> {
             let mut stop = host.stop.clone();
             let action = match Effect::try_from(action) {
                 Ok(effect) => effect,
-                Err(byte) => {
-                    self.pending_input.push_front(byte);
+                Err(_byte) => {
+                    self.input_evidence.replay_last();
                     continue;
                 }
             };
@@ -438,12 +438,8 @@ impl<'a, 'm> Host<'a, 'm> {
         Ok(Event::Written)
     }
     async fn feed(&mut self, bytes: Vec<u8>, host: &mut Context<'_, '_>) -> Result<(), Error> {
-        if !self.pending_input.is_empty() {
-            return Err(Error::InputStillAwaitsCustody);
-        }
-        self.pending_input = bytes.into();
-        while let Some(byte) = self.pending_input.front().copied() {
-            self.pending_input.pop_front();
+        self.input_evidence.begin(&bytes);
+        while let Some(byte) = self.input_evidence.next() {
             if self.transition(Event::Byte(byte), host).await? == Flow::Stop {
                 return Ok(());
             }
@@ -456,6 +452,7 @@ impl<'a, 'm> Host<'a, 'm> {
             .await
             .map_err(Error::from)?;
 
+        self.input_evidence.complete();
         Ok(())
     }
     async fn finish(&mut self) -> Result<(), Error> {
@@ -486,15 +483,6 @@ impl<'a, 'm> Host<'a, 'm> {
                 | Action::Refused(_)
                 | Action::Deadline(_) => {}
             }
-        }
-        if !self.pending_input.is_empty() {
-            intake::park_bytes(
-                self.store,
-                self.machine,
-                self.pending_input.drain(..).collect(),
-                ByteReason::LawTail,
-            )
-            .await?;
         }
         Ok(())
     }
@@ -582,6 +570,8 @@ impl Effects for Host<'_, '_> {
         _host: &mut Context<'_, '_>,
         result: &mut Result<(), Error>,
     ) -> Result<(), Error> {
+        let retained = self.input_evidence.retain(self.store, self.machine).await;
+        crate::machine::receive::custody::retain_cleanup(result, retained.map_err(Into::into));
         let finished = self.finish().await;
         let cleanup = match self.mode {
             Mode::Inbound { .. } => self

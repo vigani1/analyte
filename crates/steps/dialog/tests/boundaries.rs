@@ -131,7 +131,7 @@ fn sender(bytes: usize, frames: usize, limit: usize) -> Result<Dialog, Box<dyn s
             Role::Computer,
             bytes,
             frames,
-            true,
+            analyte_dialog::astm::Interrupt::Honor,
         )?,
         Epoch(91),
     ))

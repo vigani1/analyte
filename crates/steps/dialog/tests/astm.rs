@@ -188,7 +188,14 @@ fn lis01_6_2_6_6_5_2_1_3_busy_and_reply_timeouts() {
 #[test]
 fn lis01_6_2_7_1_6_5_2_2_contention_both_roles() -> TestResult {
     for role in [Role::Computer, Role::Instrument] {
-        let config = Config::new(Limit::default(), Timers::default(), role, 1024, 32, true)?;
+        let config = Config::new(
+            Limit::default(),
+            Timers::default(),
+            role,
+            1024,
+            32,
+            analyte_dialog::astm::Interrupt::Honor,
+        )?;
         let mut d = Dialog::new(config, Epoch(1));
         step(&mut d, 0, Event::Send(vec![b"O\r".to_vec()]));
         feed(&mut d, 0, &[ENQ]);
@@ -213,7 +220,11 @@ fn lis01_6_3_5_interrupt_honor_ignore_and_issue() -> TestResult {
             Role::Computer,
             1024,
             32,
-            honor,
+            if honor {
+                analyte_dialog::astm::Interrupt::Honor
+            } else {
+                analyte_dialog::astm::Interrupt::Ignore
+            },
         )?;
         let mut d = Dialog::new(config, Epoch(1));
         step(
@@ -289,7 +300,7 @@ fn lis01_6_3_1_6_3_2_6_3_3_6_6_large_records_rollover_separate_records() -> Test
         Role::Computer,
         1000,
         100,
-        true,
+        analyte_dialog::astm::Interrupt::Honor,
     )?;
     let mut d = Dialog::new(config, Epoch(7));
     step(
@@ -364,7 +375,7 @@ fn lis01_6_5_2_6_one_message_buffer_and_validated_vendor_values() -> TestResult 
             Role::Computer,
             0,
             1,
-            true
+            analyte_dialog::astm::Interrupt::Honor
         )
         .is_err()
     );
@@ -373,7 +384,14 @@ fn lis01_6_5_2_6_one_message_buffer_and_validated_vendor_values() -> TestResult 
         ..Timers::default()
     };
     let mut d = Dialog::new(
-        Config::new(Limit::new(240)?, timers, Role::Computer, 100, 10, true)?,
+        Config::new(
+            Limit::new(240)?,
+            timers,
+            Role::Computer,
+            100,
+            10,
+            analyte_dialog::astm::Interrupt::Honor,
+        )?,
         Epoch(1),
     );
     step(&mut d, 0, Event::Capacity(true));

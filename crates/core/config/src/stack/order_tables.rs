@@ -23,7 +23,7 @@ pub(super) fn order_tables(orders: &Orders) -> OrderTables {
 impl OrderTables {
     /// Explicit application-to-instrument test-code mapping.
     #[must_use]
-    pub fn tests(&self) -> &Vec<OutboundTest> {
+    pub fn tests(&self) -> &[OutboundTest] {
         &self.tests
     }
     /// Explicit specimen-code mappings; unknown specimens remain unresolved.
@@ -33,7 +33,7 @@ impl OrderTables {
     }
     /// Explicit order-priority mapping.
     #[must_use]
-    pub fn priorities(&self) -> &Vec<OrderPriority> {
+    pub fn priorities(&self) -> &[OrderPriority] {
         &self.priorities
     }
 }
