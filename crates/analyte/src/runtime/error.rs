@@ -159,19 +159,19 @@ pub struct DispatchCause(pub &'static str);
 /// Failures of the parked-evidence command, including its host input refusals.
 #[derive(Debug, thiserror::Error)]
 pub enum ParkedCommand {
-    /// Retains the failure of this command operation.
+    /// Protected evidence lookup or resolution failed.
     #[error(transparent)]
     Evidence(#[from] analyte_store::OperatorError),
-    /// Retains the failure of this command operation.
+    /// The protected audit record could not be written.
     #[error(transparent)]
     Audit(#[from] analyte_store::StorageError),
-    /// Retains the failure of this command operation.
+    /// The store worker could not establish command completion.
     #[error(transparent)]
     Worker(#[from] analyte_store::WorkerError),
-    /// Retains the failure of this command operation.
+    /// Reprocessing must use the durable interpretation entry point.
     #[error("reprocessing requires the interpretation route")]
     ReprocessRequiresInterpretation,
-    /// Retains the failure of this command operation.
+    /// The bounded operator sequence cursor could not advance.
     #[error("operator sequence cursor overflow")]
     OperatorCursorOverflow,
 }
@@ -179,13 +179,13 @@ pub enum ParkedCommand {
 /// Boundaries combined by the audited delivery listing command.
 #[derive(Debug, thiserror::Error)]
 pub enum DeliveryCommand {
-    /// Retains the failure of this command operation.
+    /// Delivery listing or lifecycle storage failed.
     #[error(transparent)]
     Delivery(#[from] analyte_store::DeliveryError),
-    /// Retains the failure of this command operation.
+    /// The protected audit record could not be written.
     #[error(transparent)]
     Audit(#[from] analyte_store::StorageError),
-    /// Retains the failure of this command operation.
+    /// The store worker could not establish command completion.
     #[error(transparent)]
     Worker(#[from] analyte_store::WorkerError),
 }
