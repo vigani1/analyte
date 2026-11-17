@@ -1,6 +1,6 @@
 //! Runs host-driven Autolyser conversations with host-owned I/O and dialog-owned deadlines.
 use analyte_autolyser::syntax::{self as records, Report, Worklist};
-use analyte_framing::autolyser::{ACK, Decoder, EOT, Frame, Mode, NAK, STX};
+use analyte_framing::autolyser::{ACK, Decoder, EOT, Frame, MAX_ENVELOPE, Mode, NAK, STX};
 use std::time::Duration;
 use thiserror::Error;
 
@@ -284,7 +284,7 @@ impl Dialog {
     /// Validates bounds and starts idle. Tokens are connection-scoped: the host
     /// must journal a unique connection incarnation alongside each token.
     /// # Errors
-    /// Rejects zero deadlines and limits outside 2–11038 bytes.
+    /// Rejects zero deadlines and limits outside 2 to [`MAX_ENVELOPE`] bytes.
     pub fn new(config: Config) -> Result<Self, Error> {
         if [
             config.poll,
@@ -295,7 +295,7 @@ impl Dialog {
         ]
         .iter()
         .any(Duration::is_zero)
-            || !(2..=11038).contains(&config.max_bytes)
+            || !(2..=MAX_ENVELOPE).contains(&config.max_bytes)
         {
             return Err(Error::Configuration);
         }

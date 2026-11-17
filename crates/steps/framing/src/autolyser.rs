@@ -20,6 +20,11 @@ pub enum Error {
     Count,
 }
 
+/// Largest checksum envelope in bytes: the 11034-byte controls-enabled report with
+/// its largest result count (Rev18 §23.2, p.178), then three checksum digits and EOT
+/// (Rev18 §23.3, p.179). Every Autolyser byte ceiling is bounded by this value.
+pub const MAX_ENVELOPE: usize = 11_038;
+
 /// Sum modulo 256, excluding framing and the checksum digits (Rev18 p.179).
 #[must_use]
 pub fn checksum(payload: &[u8]) -> u8 {
@@ -38,7 +43,7 @@ pub fn encode(mut payload: Vec<u8>) -> Vec<u8> {
 /// # Errors
 /// Rejects invalid lengths, decimal digits and checksums.
 pub fn decode(raw: &[u8]) -> Result<&[u8], Error> {
-    if raw.len() > 11038 || raw.last() != Some(&EOT) {
+    if raw.len() > MAX_ENVELOPE || raw.last() != Some(&EOT) {
         return Err(Error::Length);
     }
     let end = raw.len().checked_sub(4).ok_or(Error::Length)?;
@@ -118,7 +123,7 @@ impl Decoder {
     /// # Errors
     /// Rejects ceilings outside the protocol's supported range.
     pub fn new(mode: Mode, maximum: usize) -> Result<Self, Error> {
-        if !(2..=11038).contains(&maximum) {
+        if !(2..=MAX_ENVELOPE).contains(&maximum) {
             return Err(Error::Length);
         }
         Ok(Self {
