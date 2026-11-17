@@ -105,7 +105,7 @@ impl Command {
                 return Err(Error::Hl7ItemTestCount);
             };
             let mapped = crate::orders::codes::map_test(self.settings.tables().tests(), requested)
-                .map_err(|source| Error::lookup("HL7-unmapped-test", source))?;
+                .map_err(Error::Hl7UnmappedTest)?;
             orders.push(order::Order::New {
                 placer,
                 filler: None,
@@ -236,7 +236,7 @@ impl Command {
                     self.settings.tables().specimen_types().as_deref(),
                     specimen,
                 )
-                .map_err(|source| Error::lookup("HL7-unmapped-specimen-type", source))?;
+                .map_err(Error::Hl7UnmappedSpecimenType)?;
                 let code = order::Code::new(
                     mapped.machine.as_str().as_bytes(),
                     b"",
@@ -262,7 +262,7 @@ impl Command {
             self.settings.tables().priorities(),
             self.app.priority,
         )
-        .map_err(|source| Error::lookup("HL7-unmapped-priority", source))?;
+        .map_err(Error::Hl7UnmappedPriority)?;
         let priority = match &priority.machine {
             analyte_config::MachinePriority::Code(analyte_config::PriorityCode::R) => {
                 order::Priority::Routine

@@ -78,14 +78,14 @@ pub fn map_order(
             .ok_or(Error::LawSpecimenTypeMissing)?;
         let mapped =
             crate::orders::codes::map_specimen(Some(command.settings.specimen_types()), specimen)
-                .map_err(|source| Error::lookup("LAW specimen type unmapped", source))?;
+                .map_err(Error::LawUnmappedSpecimenType)?;
         let priority = if command.priority && action == law::WorkAction::New {
             Some(validate_field(
                 crate::orders::codes::map_priority(
                     command.settings.priorities(),
                     command.app.priority,
                 )
-                .map_err(|source| Error::lookup("LAW priority unmapped", source))?
+                .map_err(Error::LawUnmappedPriority)?
                 .machine
                 .as_str(),
             )?)
@@ -100,7 +100,7 @@ pub fn map_order(
                 return Err(Error::LawItemTestCount);
             };
             let mapped_test = crate::orders::codes::map_test(command.settings.tests(), requested)
-                .map_err(|source| Error::lookup("LAW test unmapped", source))?;
+                .map_err(Error::LawUnmappedTest)?;
             wire.push(WireAwos {
                 // C.6 manager-authored AWOS supports EI.1 only. The shared store
                 // still retains the explicit logical namespace beside this identity.

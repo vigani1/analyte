@@ -298,15 +298,24 @@ pub enum WireMappingError {
     /// LAW test components.
     #[error("LAW test components")]
     LawTestComponents,
-    /// A specific unmapped-code refusal with the shared lookup cause.
-    #[error("{context}")]
-    Lookup {
-        /// Stable protocol-specific diagnostic.
-        context: &'static str,
-        /// Specific shared mapping failure.
-        #[source]
-        source: OrderMappingError,
-    },
+    /// HL7-unmapped-test.
+    #[error("HL7-unmapped-test")]
+    Hl7UnmappedTest(#[source] OrderMappingError),
+    /// HL7-unmapped-specimen-type.
+    #[error("HL7-unmapped-specimen-type")]
+    Hl7UnmappedSpecimenType(#[source] OrderMappingError),
+    /// HL7-unmapped-priority.
+    #[error("HL7-unmapped-priority")]
+    Hl7UnmappedPriority(#[source] OrderMappingError),
+    /// LAW specimen type unmapped.
+    #[error("LAW specimen type unmapped")]
+    LawUnmappedSpecimenType(#[source] OrderMappingError),
+    /// LAW priority unmapped.
+    #[error("LAW priority unmapped")]
+    LawUnmappedPriority(#[source] OrderMappingError),
+    /// LAW test unmapped.
+    #[error("LAW test unmapped")]
+    LawUnmappedTest(#[source] OrderMappingError),
     /// App evidence violates a common-model text bound.
     #[error(transparent)]
     Text(#[from] analyte_model::TextError),
@@ -319,9 +328,4 @@ pub enum WireMappingError {
     /// LAW profile rejected mapped content.
     #[error(transparent)]
     Law(#[from] analyte_hl7::law::Error),
-}
-impl WireMappingError {
-    pub(super) fn lookup(context: &'static str, source: OrderMappingError) -> Self {
-        Self::Lookup { context, source }
-    }
 }
