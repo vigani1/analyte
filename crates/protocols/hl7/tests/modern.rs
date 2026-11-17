@@ -343,7 +343,10 @@ fn hl7_2_8_2_s2_14_9_10_and_2_9_1_s2_13_9_10_control_profile_limits() -> Result<
                     },
                     AckCode::Ae,
                     Responsibility::Stored,
-                    Some(AckError::unlocated(b"207", b"review")),
+                    Some(AckError::unlocated(
+                        analyte_hl7::APPLICATION_INTERNAL_ERROR,
+                        b"review",
+                    )),
                     Options::default(),
                 )?
                 .ok_or(Error::Encoding)?;

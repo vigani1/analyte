@@ -571,5 +571,12 @@ fn map_order(
     stack: &analyte_config::Stack,
 ) -> Result<analyte_astm::OrderRecord, analyte_mapping::astm::OrderError> {
     let settings = stack.astm_orders().ok_or(OrderMappingError::Disabled)?;
-    analyte_mapping::astm::map_order(order, stack.astm_syntax().unwrap().limits(), settings)
+    analyte_mapping::astm::map_order(
+        order,
+        stack
+            .astm_syntax()
+            .ok_or(OrderMappingError::Disabled)?
+            .limits(),
+        settings,
+    )
 }

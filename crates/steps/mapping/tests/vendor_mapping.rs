@@ -253,7 +253,7 @@ fn map_autolyser(
     stack: &analyte_config::Stack,
 ) -> Result<analyte_autolyser::syntax::Worklist, analyte_mapping::autolyser::OrderError> {
     let analyte_config::Stack::Autolyser(settings) = stack else {
-        panic!("fixture protocol");
+        return Err(OrderMappingError::Disabled.into());
     };
     analyte_mapping::autolyser::map_order(
         order,
@@ -267,7 +267,7 @@ fn map_vidas(
     stack: &analyte_config::Stack,
 ) -> Result<Vec<analyte_vidas::syntax::Message>, analyte_mapping::vidas::OrderError> {
     let analyte_config::Stack::Vidas(settings) = stack else {
-        panic!("fixture protocol");
+        return Err(OrderMappingError::Disabled.into());
     };
     analyte_mapping::vidas::map_order(
         order,

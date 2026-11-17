@@ -11,7 +11,7 @@ fn law_tf2b_c1_query_builder_checks_generated_erl_code_and_mandatory_err() -> Te
         segment: b"QPD",
         occurrence: 1,
         field: 3,
-        code: b"207",
+        code: analyte_hl7::APPLICATION_INTERNAL_ERROR,
         application_code: b"synthetic-detail",
     };
     let reply = law::query_response(

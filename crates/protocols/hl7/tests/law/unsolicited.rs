@@ -76,7 +76,7 @@ fn law_tf2b_c1_unknown_error_location_is_omitted_never_invented()
         "awos-1",
         &observation("test^Test^99LAB", "1", "NM", "1.20", "F"),
     )?;
-    let unknown = AckError::unlocated(b"207", b"operator-review");
+    let unknown = AckError::unlocated(analyte_hl7::APPLICATION_INTERNAL_ERROR, b"operator-review");
     let ack = result_acknowledgment(
         &message,
         response_metadata()?,

@@ -17,7 +17,10 @@ fn hl7_251_2_15_5_2_unknown_location_stays_unvalued() -> Result<(), Error> {
             response()?,
             AckCode::Ae,
             Responsibility::Stored,
-            Some(AckError::unlocated(b"207", b"operator-review")),
+            Some(AckError::unlocated(
+                analyte_hl7::APPLICATION_INTERNAL_ERROR,
+                b"operator-review",
+            )),
             Options::default(),
         )?
         .ok_or(Error::AckMode)?;

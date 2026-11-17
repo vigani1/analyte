@@ -300,7 +300,15 @@ fn error(segment: Segment<'_>, direction: ControlDirection) -> Result<(), Error>
         if number == 3 {
             if !matches!(
                 code,
-                b"100" | b"101" | b"102" | b"103" | b"200" | b"201" | b"202" | b"203" | b"207"
+                b"100"
+                    | b"101"
+                    | b"102"
+                    | b"103"
+                    | b"200"
+                    | b"201"
+                    | b"202"
+                    | b"203"
+                    | crate::APPLICATION_INTERNAL_ERROR
             ) {
                 return Err(component_error("ERR", number, 1));
             }

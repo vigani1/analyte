@@ -100,7 +100,10 @@ fn hl7_2_5_1_s2_8_2_and_s2_15_5_1_ack_edition_and_error_shapes() {
             response().unwrap(),
             AckCode::Ae,
             Responsibility::Stored,
-            Some(AckError::unlocated(b"207", b"review")),
+            Some(AckError::unlocated(
+                analyte_hl7::APPLICATION_INTERNAL_ERROR,
+                b"review",
+            )),
             Options::default(),
         )
         .unwrap()
