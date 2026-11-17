@@ -374,7 +374,7 @@ impl<'a, 'm> Host<'a, 'm> {
             self.receipt(token)?,
         )
         .await?;
-        let detail = crate::machine::hl7::error_location::build(location.as_ref(), b"", b"");
+        let detail = analyte_hl7::location_error(location.as_ref(), b"", b"");
         let location = location.as_ref().map(|_| protocol::Location {
             segment: detail.segment,
             occurrence: detail.occurrence,

@@ -1,6 +1,5 @@
 //! Locates HL7 and LAW errors without inventing unknown source positions.
 use analyte_hl7::Terminator;
-pub(crate) use analyte_hl7::location_error as build;
 use analyte_mapping::Output;
 
 pub(crate) use analyte_hl7::Location;
@@ -95,7 +94,7 @@ mod tests {
                 },
                 AckCode::Ae,
                 Responsibility::Stored,
-                Some(build(
+                Some(analyte_hl7::location_error(
                     location.as_ref(),
                     analyte_hl7::APPLICATION_INTERNAL_ERROR,
                     b"operator-review",
