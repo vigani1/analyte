@@ -78,9 +78,11 @@ fn lis02_6_14_8_4_7_9_10_9_12_9_13_timestamps_keep_role_and_original() -> TestRe
     let raw=b"H|\\^&||||||||||P|LIS2-A2|20261115120000\rP|1\rO|1|000AbC||||20261115120100\rR|1|^^^SYN|1|||||F|20261114||20261115120200|20261115120300\rL|1|N\r";
     let messages = analyte_astm::parse(raw, analyte_astm::Limits::default())?;
     let mapped = map_astm(
+        &analyte_mapping::astm::Settings {
+            syntax: settings::astm(&config(ASTM_CONFIG)?).0,
+            mappings: settings::astm(&config(ASTM_CONFIG)?).1,
+        },
         messages.first().ok_or("message")?,
-        settings::astm(&config(ASTM_CONFIG)?).0,
-        settings::astm(&config(ASTM_CONFIG)?).1,
         input(),
     )?;
     assert_eq!(
@@ -208,7 +210,7 @@ fn law_tf2b_3_29_4_b3_mapping_preserves_awos_og_and_refuses_generic_entry() -> T
     let message =
         analyte_hl7::Message::parse(raw, cfg.effective().hl7_options().ok_or("options")?)?;
     let results = analyte_hl7::law::Results::new(&message)?;
-    let mapped = analyte_mapping::map_law(&results, settings::law(&cfg), input())?;
+    let mapped = analyte_mapping::law::map(settings::law(&cfg), &results, input())?;
     assert!(!mapped.requires_parking(), "{mapped:?}");
     assert_eq!(mapped.results.len(), 1);
     let content = &mapped.results.first().ok_or("result")?.content;
@@ -256,9 +258,11 @@ fn rule7_astm_mapping_rechecks_independent_limits_inclusively() -> TestResult {
                 ASTM_CONFIG.rewrite(&format!("{key} = {old}"), &format!("{key} = {limit}"));
             let cfg = config(&definition)?;
             let mapped = map_astm(
+                &analyte_mapping::astm::Settings {
+                    syntax: settings::astm(&cfg).0,
+                    mappings: settings::astm(&cfg).1,
+                },
                 message,
-                settings::astm(&cfg).0,
-                settings::astm(&cfg).1,
                 input(),
             );
             assert_eq!(mapped.is_ok(), accepted, "{key}={limit}: {mapped:?}");
@@ -283,10 +287,12 @@ fn rule7_hl7_mapping_rechecks_independent_limits_inclusively() -> TestResult {
                 &HL7_CONFIG.rewrite(&format!("{key} = {old}"), &format!("{key} = {limit}")),
             )?;
             let mapped = map_hl7(
+                &analyte_mapping::hl7::Settings {
+                    syntax: settings::hl7(&cfg).0,
+                    mappings: settings::hl7(&cfg).1,
+                    declarations: &cfg.effective().machine().deviations,
+                },
                 &message,
-                settings::hl7(&cfg).0,
-                settings::hl7(&cfg).1,
-                &cfg.effective().machine().deviations,
                 input(),
             );
             assert_eq!(mapped.is_ok(), accepted, "{key}={limit}: {mapped:?}");
@@ -322,7 +328,7 @@ fn law_tf2b_3_29_4_1_2_1_status_only_ip_sc_ca_is_typed_without_results() -> Test
             cfg.effective().hl7_options().ok_or("options")?,
         )?;
         let results = analyte_hl7::law::Results::new(&message)?;
-        let output = analyte_mapping::map_law(&results, settings::law(&cfg), input())?;
+        let output = analyte_mapping::law::map(settings::law(&cfg), &results, input())?;
         assert!(!output.requires_parking());
         assert!(output.results.is_empty());
         assert_eq!(output.status_notices.len(), 1);
@@ -362,7 +368,7 @@ fn law_tf2b_c8_table_c8_9_estimate_preserves_spelling_null_and_header_zone() -> 
             cfg.effective().hl7_options().ok_or("options")?,
         )?;
         let results = analyte_hl7::law::Results::new(&message)?;
-        let output = analyte_mapping::map_law(&results, settings::law(&cfg), input())?;
+        let output = analyte_mapping::law::map(settings::law(&cfg), &results, input())?;
         let notice = output.status_notices.first().ok_or("notice")?;
         match (&notice.estimate, estimate) {
             (AvailabilityEstimate::Absent, "") | (AvailabilityEstimate::Null, "\"\"") => {}
@@ -424,7 +430,7 @@ fn law_tf2b_3_29_4_1_2_1_mixed_status_groups_do_not_hide_result_groups() -> Test
     let results = analyte_hl7::law::Results::new(&message)?;
     assert_eq!(results.status_notices().len(), 1);
     assert_eq!(results.observations().len(), 1);
-    let output = analyte_mapping::map_law(&results, settings::law(&cfg), input())?;
+    let output = analyte_mapping::law::map(settings::law(&cfg), &results, input())?;
     assert_eq!(output.status_notices.len(), 1);
     assert_eq!(output.results.len(), 1);
     Ok(())
@@ -451,7 +457,7 @@ fn law_tf2b_c8_table_c8_9_estimate_zone_is_only_from_msh7_and_ip_results_are_not
         cfg.effective().hl7_options().ok_or("options")?,
     )?;
     let results = analyte_hl7::law::Results::new(&message)?;
-    let output = analyte_mapping::map_law(&results, settings::law(&cfg), input())?;
+    let output = analyte_mapping::law::map(settings::law(&cfg), &results, input())?;
     let AvailabilityEstimate::Supplied {
         original,
         header_time,
@@ -470,7 +476,7 @@ fn law_tf2b_c8_table_c8_9_estimate_zone_is_only_from_msh7_and_ip_results_are_not
     )?;
     let results = analyte_hl7::law::Results::new(&message)?;
     assert!(results.status_notices().is_empty());
-    let output = analyte_mapping::map_law(&results, settings::law(&cfg), input())?;
+    let output = analyte_mapping::law::map(settings::law(&cfg), &results, input())?;
     assert!(output.status_notices.is_empty());
     assert_eq!(output.results.len(), 1);
     Ok(())

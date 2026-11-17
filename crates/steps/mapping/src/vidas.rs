@@ -5,18 +5,19 @@ use crate::orders::{AppOrder, MachineOrder, OrderMappingError, map_patient};
 use crate::{Output, Position};
 
 use analyte_model::{
-    Dilution, DilutionApplied, EvidenceList, IdentityStatus, Reason, ReceiptId, ResultValue,
-    SampleId, SampleIdentity, SampleSource, SourceText, Units, ValueInterpretation,
+    Dilution, DilutionApplied, EvidenceList, IdentityStatus, Reason, ResultValue, SampleId,
+    SampleIdentity, SampleSource, SourceText, Units, ValueInterpretation,
 };
 /// Maps VIDAS values conservatively, preserving unresolved identity and exact text.
 /// # Errors
 /// Preserves syntax, model and mapping failures.
 pub fn map(
     machine: &analyte_config::VidasStack,
-    receipt: ReceiptId,
     message: &analyte_vidas::syntax::Message,
-    time: jiff::Timestamp,
+    input: crate::Input<'_>,
 ) -> Result<Output, Error> {
+    let receipt = input.receipt;
+    let time = input.received_at;
     let evidence = map_evidence(message)?;
     let mut output = Output::default();
     let Some(test) = map_test(machine.settings().codes(), evidence.assay.as_str(), None) else {

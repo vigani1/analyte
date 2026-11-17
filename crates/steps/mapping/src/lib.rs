@@ -18,18 +18,11 @@ pub mod poct;
 
 /// VIDAS terms to common evidence and explicit outgoing orders.
 pub mod vidas;
-pub use astm::map as map_astm;
-pub use autolyser::map as map_autolyser;
-pub use hl7::map as map_hl7;
 pub use inbound::evidence::ResultMappingError;
-pub use law::map as map_law;
 pub use orders::codes::{
     map_priority as outbound_priority, map_specimen as outbound_specimen, map_test as outbound_test,
 };
-pub use poct::map as map_poct;
-pub use vidas::{
-    ResultEvidence as VidasResultEvidence, map as map_vidas, map_evidence as vidas_evidence,
-};
+pub use vidas::{ResultEvidence as VidasResultEvidence, map_evidence as vidas_evidence};
 
 mod evidence_display;
 mod inbound;
@@ -182,7 +175,9 @@ pub enum Error {
 
 /// Host-owned identity, receive time and revision; mapping performs no I/O.
 #[derive(Debug, Clone, Copy)]
-pub struct Input {
+pub struct Input<'a> {
+    /// Durable source Hello identity when required by POCT mapping.
+    pub device: Option<&'a str>,
     /// Receipt already retained by the host.
     pub receipt: ReceiptId,
     /// Host receive instant.

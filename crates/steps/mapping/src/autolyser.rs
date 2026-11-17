@@ -5,18 +5,18 @@ use crate::orders::{AppOrder, MachineOrder, OrderMappingError, map_patient, map_
 use crate::{Output, Position};
 
 use analyte_model::{
-    EvidenceList, IdentityStatus, QcClass, Reason, ReceiptId, ResultValue, SourceText,
-    ValueInterpretation,
+    EvidenceList, IdentityStatus, QcClass, Reason, ResultValue, SourceText, ValueInterpretation,
 };
 /// Maps Autolyser results without inferring a specimen or immutable run.
 /// # Errors
 /// Preserves source encoding, model and mapping failures.
 pub fn map(
     machine: &analyte_config::AutolyserStack,
-    receipt: ReceiptId,
     report: &analyte_autolyser::syntax::Report,
-    time: jiff::Timestamp,
+    input: crate::Input<'_>,
 ) -> Result<Output, Error> {
+    let receipt = input.receipt;
+    let time = input.received_at;
     let mut output = Output::default();
     for (index, value) in report.values.iter().enumerate() {
         let code = std::str::from_utf8(value.code.bytes())?;

@@ -2,7 +2,7 @@
 #[path = "../settings.rs"]
 mod settings;
 use analyte_config::{Draft, Validated};
-use analyte_mapping::{Input, Output, Problem, map_astm, map_hl7};
+use analyte_mapping::{Input, Output, Problem, astm::map as map_astm, hl7::map as map_hl7};
 use analyte_model::*;
 use proptest::prelude::*;
 
@@ -21,8 +21,9 @@ fn config(definition: &str) -> Result<Validated, analyte_config::Error> {
     .validate()
 }
 
-fn input() -> Input {
+fn input() -> Input<'static> {
     Input {
+        device: None,
         receipt: ReceiptId::new(),
         received_at: jiff::Timestamp::UNIX_EPOCH,
         revision: Revision(7),
@@ -35,10 +36,12 @@ fn hl7(body: &str, definition: &str) -> Result<Output, Box<dyn std::error::Error
     let options = config.effective().hl7_options().ok_or("missing options")?;
     let message = analyte_hl7::Message::parse(raw.as_bytes(), options)?;
     Ok(map_hl7(
+        &analyte_mapping::hl7::Settings {
+            syntax: settings::hl7(&config).0,
+            mappings: settings::hl7(&config).1,
+            declarations: &config.effective().machine().deviations,
+        },
         &message,
-        settings::hl7(&config).0,
-        settings::hl7(&config).1,
-        &config.effective().machine().deviations,
         input(),
     )?)
 }
@@ -50,9 +53,11 @@ fn astm(body: &str, mode: &str) -> Result<Output, Box<dyn std::error::Error>> {
     let messages = analyte_astm::parse(raw.as_bytes(), analyte_astm::Limits::default())?;
     let message = messages.first().ok_or("missing parsed message")?;
     Ok(map_astm(
+        &analyte_mapping::astm::Settings {
+            syntax: settings::astm(&config).0,
+            mappings: settings::astm(&config).1,
+        },
         message,
-        settings::astm(&config).0,
-        settings::astm(&config).1,
         input(),
     )?)
 }
@@ -72,9 +77,11 @@ fn with_parts(component: &str, definition: &str) -> Result<Output, Box<dyn std::
     );
     let messages = analyte_astm::parse(raw.as_bytes(), analyte_astm::Limits::default())?;
     Ok(map_astm(
+        &analyte_mapping::astm::Settings {
+            syntax: settings::astm(&config).0,
+            mappings: settings::astm(&config).1,
+        },
         messages.first().ok_or("missing message")?,
-        settings::astm(&config).0,
-        settings::astm(&config).1,
         input(),
     )?)
 }

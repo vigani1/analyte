@@ -12,14 +12,14 @@ pub use status::{AvailabilityEstimate, StatusNotice};
 /// Rejects mismatched configuration, unsupported mapping content or resource bounds.
 /// A different protocol's selected settings cannot be passed here.
 /// ```compile_fail
-/// fn wrong(results: &analyte_hl7::law::Results<'_>, settings: &analyte_config::Hl7Syntax, input: analyte_mapping::Input) {
-///     analyte_mapping::map_law(results, settings, input);
+/// fn wrong(results: &analyte_hl7::law::Results<'_>, settings: &analyte_config::Hl7Syntax, input: analyte_mapping::Input<'_>) {
+///     analyte_mapping::law::map(settings, results, input);
 /// }
 /// ```
 pub fn map(
-    results: &analyte_hl7::law::Results<'_>,
     settings: &analyte_config::LawStack,
-    input: Input,
+    results: &analyte_hl7::law::Results<'_>,
+    input: Input<'_>,
 ) -> Result<Output, Error> {
     crate::hl7::validate_message(
         results.message(),

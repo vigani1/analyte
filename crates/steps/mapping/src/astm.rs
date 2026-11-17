@@ -4,15 +4,23 @@ use crate::orders::codes::{map_priority as outbound_priority, map_test as outbou
 use crate::orders::{AppOrder, MachineOrder, OrderMappingError, map_specimen};
 use crate::{Error, Input, Output, Position};
 
+/// Selected ASTM syntax and incoming code mappings.
+pub struct Settings<'a> {
+    /// Validated syntax and bounds.
+    pub syntax: &'a analyte_config::AstmSyntax,
+    /// Explicit incoming translations.
+    pub mappings: &'a analyte_config::Mappings,
+}
+
 /// Maps one parsed LIS02 message, retaining hierarchy and original value text.
 /// # Errors
 /// Rejects a mismatched config, invalid ownership, encoding or model resource bounds.
 pub fn map(
+    settings: &Settings<'_>,
     message: &analyte_astm::Message,
-    syntax: &analyte_config::AstmSyntax,
-    mappings: &analyte_config::Mappings,
-    input: Input,
+    input: Input<'_>,
 ) -> Result<Output, Error> {
+    let Settings { syntax, mappings } = settings;
     let settings = syntax.limits();
     if message.records().len() > settings.records() {
         return Err(Error::Limit {

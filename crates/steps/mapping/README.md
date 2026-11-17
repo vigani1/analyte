@@ -23,3 +23,13 @@ Receipt reading is composed by the program (`analyte::reading`), which depends
 on framing, config, protocol syntax and mapping. Mapping depends on config,
 model and the five protocol grammars for their parsed input and outgoing
 structures; contract supplies app order types. It does not depend on framing.
+
+Every inbound mapper has one entry path and argument order:
+`analyte_mapping::<protocol>::map(&settings, &parsed, input)`.
+ASTM and HL7 use their module's `Settings` to pair validated syntax with
+incoming mappings (and HL7 departure declarations); LAW, POCT, VIDAS and
+Autolyser take their validated protocol settings from config. Parsed input
+always comes from the owning protocol grammar. `Input` carries the retained
+receipt, receive time, revision and optional durable POCT Hello device identity.
+Mapping performs no lookup or I/O to fill missing context. Root-level
+`map_<protocol>` aliases are deliberately absent.
