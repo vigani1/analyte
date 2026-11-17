@@ -309,18 +309,18 @@ async fn plan11_operator_list_show_resolve_are_audited_and_backup_is_readable() 
     let program = Program::load(&path)?;
     let mut handle = service::open_store(&program, Box::new(Space(u64::MAX))).await?;
     let id = handle
-        .request(
+        .request::<_, analyte_store::Error>(
             std::time::Instant::now()
                 .checked_add(Duration::from_secs(2))
                 .ok_or("deadline overflow")?,
             |store| {
-                store.park(&analyte_store::Parked {
+                Ok(store.park(&analyte_store::Parked {
                     kind: analyte_model::Identifier::new("synthetic")
                         .map_err(analyte_store::Error::Text)?,
                     reason: analyte_model::Reason::new("synthetic operator test")
                         .map_err(analyte_store::Error::Text)?,
                     targets: Vec::new(),
-                })
+                })?)
             },
         )
         .await?;

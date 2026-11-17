@@ -87,12 +87,12 @@ async fn setup_with_patient_requirement(
         let program = program(&path, &reference.url)?;
         let mut store = analyte::open_system_store(&program).await?;
         store
-            .request(
+            .request::<_, analyte_store::Error>(
                 std::time::Instant::now()
                     .checked_add(Duration::from_secs(5))
                     .ok_or("deadline")?,
                 |store| {
-                    store.audit(&analyte_store::Audit {
+                    Ok(store.audit(&analyte_store::Audit {
                         actor: analyte_model::Identifier::new("operator")
                             .map_err(analyte_store::Error::Text)?,
                         action: analyte_model::Identifier::new("store-restore")
@@ -101,7 +101,7 @@ async fn setup_with_patient_requirement(
                         time: jiff::Timestamp::now().as_second(),
                         reason: analyte_model::Reason::new("synthetic restore")
                             .map_err(analyte_store::Error::Text)?,
-                    })
+                    })?)
                 },
             )
             .await?;

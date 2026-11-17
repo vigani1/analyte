@@ -148,10 +148,12 @@ async fn adr0008_lost_response_retry_reuses_id_and_bytes_and_503_honours_retry_a
         }
         assert_eq!(
             store
-                .request(until()?, |s| s.health(
-                    &Identifier::new("app").map_err(analyte_store::Error::Text)?,
-                    jiff::Timestamp::now().as_second(),
-                    30
+                .request::<_, analyte_store::Error>(until()?, |s| Ok::<_, analyte_store::Error>(
+                    s.health(
+                        &Identifier::new("app").map_err(analyte_store::Error::Text)?,
+                        jiff::Timestamp::now().as_second(),
+                        30
+                    )?
                 ))
                 .await?
                 .pending_count,
@@ -241,19 +243,21 @@ async fn adr0008_shutdown_drains_active_attempt_or_leaves_same_claim_for_recover
         } else {
             assert!(matches!(outcome, Err(Error::Timeout)));
             store
-                .request(until()?, |s| {
-                    s.recover_in_flight(
-                        jiff::Timestamp::now().as_second(),
-                        &analyte_store::Audit {
-                            actor: Identifier::new("startup")
-                                .map_err(analyte_store::Error::Text)?,
-                            action: Identifier::new("recover")
-                                .map_err(analyte_store::Error::Text)?,
-                            targets: vec![],
-                            time: 0,
-                            reason: Reason::new("ADR 0008 interrupted idempotent delivery")
-                                .map_err(analyte_store::Error::Text)?,
-                        },
+                .request::<_, analyte_store::Error>(until()?, |s| {
+                    Ok::<_, analyte_store::Error>(
+                        s.recover_in_flight(
+                            jiff::Timestamp::now().as_second(),
+                            &analyte_store::Audit {
+                                actor: Identifier::new("startup")
+                                    .map_err(analyte_store::Error::Text)?,
+                                action: Identifier::new("recover")
+                                    .map_err(analyte_store::Error::Text)?,
+                                targets: vec![],
+                                time: 0,
+                                reason: Reason::new("ADR 0008 interrupted idempotent delivery")
+                                    .map_err(analyte_store::Error::Text)?,
+                            },
+                        )?,
                     )
                 })
                 .await?;

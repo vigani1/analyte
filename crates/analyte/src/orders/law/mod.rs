@@ -299,23 +299,25 @@ impl Connection {
                 .unwrap_or_else(|_| "invalid".into());
             let actor = machine.id.clone();
             store
-                .request(deadline()?, move |store| {
-                    store.audit(&analyte_store::Audit {
-                        actor,
-                        action: Identifier::new(Code::LawNegativeQueryOrl.as_str())
+                .request::<_, analyte_store::Error>(deadline()?, move |store| {
+                    Ok::<_, analyte_store::Error>(
+                        store.audit(&analyte_store::Audit {
+                            actor,
+                            action: Identifier::new(Code::LawNegativeQueryOrl.as_str())
+                                .map_err(analyte_store::Error::Text)?,
+                            targets: vec![
+                                Identifier::new(&uuid::Uuid::from(receipt).to_string())
+                                    .map_err(analyte_store::Error::Text)?,
+                                Identifier::new(&uuid::Uuid::from(query).to_string())
+                                    .map_err(analyte_store::Error::Text)?,
+                            ],
+                            time: jiff::Timestamp::now().as_second(),
+                            reason: analyte_model::Reason::new(&format!(
+                                "negative followup ORL correlated={correlated} acceptance={code}"
+                            ))
                             .map_err(analyte_store::Error::Text)?,
-                        targets: vec![
-                            Identifier::new(&uuid::Uuid::from(receipt).to_string())
-                                .map_err(analyte_store::Error::Text)?,
-                            Identifier::new(&uuid::Uuid::from(query).to_string())
-                                .map_err(analyte_store::Error::Text)?,
-                        ],
-                        time: jiff::Timestamp::now().as_second(),
-                        reason: analyte_model::Reason::new(&format!(
-                            "negative followup ORL correlated={correlated} acceptance={code}"
-                        ))
-                        .map_err(analyte_store::Error::Text)?,
-                    })
+                        })?,
+                    )
                 })
                 .await?;
         }
@@ -324,7 +326,7 @@ impl Connection {
             let id = record.id;
             let key = record.key.clone();
             store
-                .request(deadline()?, move |store| {
+                .request::<_, analyte_store::Error>(deadline()?, move |store| {
                     if store.machine_order(&key)?.is_some_and(|current| {
                         matches!(
                             current.state,
@@ -405,7 +407,7 @@ async fn query_orders(
     #[cfg(feature = "test-hooks")]
     let pages_gate = machine.hooks.law_gates.pages.clone();
     let cached = store
-        .request(until, move |store| {
+        .request::<_, analyte_store::Error>(until, move |store| {
             let now = jiff::Timestamp::now().as_second();
             let mut found = Vec::new();
             if let Some(sample) = sample {
@@ -444,7 +446,9 @@ async fn query_orders(
                                 .checked_add(orders.len())
                                 .is_none_or(|count| count > bound)
                             {
-                                return Err(analyte_store::Error::InvalidHostInput);
+                                return Err(analyte_store::Error::LimitExceeded {
+                                    what: "pending_order_rows",
+                                });
                             }
                             found.extend(orders);
                             #[cfg(feature = "test-hooks")]
@@ -458,7 +462,9 @@ async fn query_orders(
                         }
                     }
                     if page.checked_add(1) == Some(bound) {
-                        return Err(analyte_store::Error::InvalidHostInput);
+                        return Err(analyte_store::Error::LimitExceeded {
+                            what: "pending_order_pages",
+                        });
                     }
                 }
             }

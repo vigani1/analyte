@@ -1,5 +1,5 @@
 //! Stores nonclinical alert states and transition history.
-use crate::{Error, Store, key};
+use crate::{OperatorError as Error, Store, key};
 use analyte_model::Identifier;
 use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};

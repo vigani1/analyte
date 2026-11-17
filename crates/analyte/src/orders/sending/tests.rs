@@ -54,7 +54,7 @@ async fn rule8_sending_is_internal_and_only_interrupted_transfer_recovers_uncert
     let completed = completed_key.clone();
     let interrupted = interrupted_key.clone();
     let (completed, interrupted) = store
-        .request(deadline()?, move |store| {
+        .request::<_, analyte_store::Error>(deadline()?, move |store| {
             store.order_page(&page)?;
             let completed = store
                 .reserve_send(
@@ -82,13 +82,13 @@ async fn rule8_sending_is_internal_and_only_interrupted_transfer_recovers_uncert
                 store.claim(101)?.is_none(),
                 "reservation must not enqueue an app event"
             );
-            Ok((completed, interrupted))
+            Ok::<_, analyte_store::Error>((completed, interrupted))
         })
         .await?;
     assert_eq!(completed.state, OrderState::Sending);
     assert_eq!(interrupted.state, OrderState::Sending);
     assert!(
-        matches!(super::super::event(&interrupted),Err(analyte_store::Error::DeliveryBuild(error)) if matches!(error.downcast_ref::<analyte_contract::DocumentError>(),Some(analyte_contract::DocumentError::InternalOrderState)))
+        matches!(super::super::event(&interrupted),Err(analyte_store::OrderError::DeliveryBuild(error)) if matches!(error.downcast_ref::<analyte_contract::DocumentError>(),Some(analyte_contract::DocumentError::InternalOrderState)))
     );
     finished(&store, &completed, analyte_dialog::astm::End::Normal).await?;
     store.shutdown(deadline()?).await?;
@@ -106,7 +106,7 @@ async fn assert_recovered_outcomes(
     interrupted_key: MachineOrderKey,
 ) -> Result<(), Error> {
     store
-        .request(deadline()?, move |store| {
+        .request::<_, analyte_store::Error>(deadline()?, move |store| {
             let rows = store.machine_orders(&analyte_store::MachineOrderFilter {
                 after: 0,
                 machine: None,
@@ -144,7 +144,7 @@ async fn assert_recovered_outcomes(
                 )?;
             }
             assert_eq!(events.len(), 2, "exactly one app event per real outcome");
-            Ok(())
+            Ok::<_, analyte_store::Error>(())
         })
         .await?;
     Ok(())

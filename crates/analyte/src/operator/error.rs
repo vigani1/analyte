@@ -61,3 +61,5 @@ impl Error {
         None
     }
 }
+
+analyte_store::forward_command_errors!(Error);

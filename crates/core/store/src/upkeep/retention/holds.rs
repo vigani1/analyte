@@ -1,5 +1,5 @@
 //! Places and releases indefinite receipt and order holds atomically with audit evidence.
-use crate::{Audit, Error, Store, key};
+use crate::{Audit, MaintenanceError as Error, Store, key};
 use analyte_model::{Identifier, ReceiptId};
 use rusqlite::params;
 use serde::{Deserialize, Serialize};

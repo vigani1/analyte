@@ -98,7 +98,7 @@ pub(super) async fn deliveries(
 ) -> Response {
     let result = state
         .store
-        .request(
+        .request::<_, analyte_store::Error>(
             {
                 match deadline() {
                     Ok(until) => until,
@@ -106,10 +106,9 @@ pub(super) async fn deliveries(
                 }
             },
             move |s| {
-                s.deliveries(
-                    i64::try_from(cursor.after)
-                        .map_err(|_| analyte_store::Error::InvalidHostInput)?,
-                )
+                Ok(s.deliveries(
+                    i64::try_from(cursor.after).map_err(analyte_store::Error::Integer)?,
+                )?)
             },
         )
         .await;
@@ -165,14 +164,14 @@ pub(super) async fn confirm_reprocess(
     };
     match state
         .store
-        .request(
+        .request::<_, analyte_store::Error>(
             {
                 match deadline() {
                     Ok(until) => until,
                     Err(error) => return failure(&error),
                 }
             },
-            move |s| s.parked_receipt(parked),
+            move |s| Ok(s.parked_receipt(parked)?),
         )
         .await
     {
@@ -213,7 +212,7 @@ pub(super) async fn confirm_resend(
     };
     match state
         .store
-        .request(
+        .request::<_, analyte_store::Error>(
             {
                 match deadline() {
                     Ok(until) => until,

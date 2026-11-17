@@ -108,27 +108,27 @@ struct RawPage {
 }
 
 async fn seed_pages(store: &analyte_store::Handle) -> Result<(ReceiptId, i64, ReceiptId), Error> {
-    let (receipt_id, parked_id, other_receipt) = store.request(fixture_deadline()?, |store| {
+    let (receipt_id, parked_id, other_receipt) = store.request::<_, analyte_store::Error>(fixture_deadline()?, |store| {
         let id = |text: &str| Identifier::new(text).map_err(analyte_store::Error::Text);
         let mut first = None;
         for name in ["first", "second"] {
             let mut raw = b"<script>RAW&\"'\x00\xff".to_vec(); raw.extend(vec![b'A'; 4100]); raw.extend(b"TAIL");
             let config = b"config";
-            let receipt_id = ReceiptId::try_from(uuid::Uuid::now_v7()).map_err(|_| analyte_store::Error::InvalidHostInput)?;
+            let receipt_id = ReceiptId::try_from(uuid::Uuid::now_v7()).map_err(analyte_store::Error::Identity)?;
             store.receive(&ReceiptMetadata {id: receipt_id, raw_digest: Digest(analyte_contract::content_digest(&raw)), connection: id("test")?, machine: id("machine")?, driver: NamespacedId {namespace: id("synthetic")?, value: id("1")?}, config_version: id("1")?, config_digest: Digest(analyte_contract::content_digest(config)), received_at: jiff::Timestamp::UNIX_EPOCH}, &raw, config)?;
             let target = id(&uuid::Uuid::from(receipt_id).to_string())?;
             let parked_id = store.park(&Parked {kind: id(name)?, reason: Reason::new("<script>hostile reason</script>").map_err(analyte_store::Error::Text)?, targets: vec![target]})?;
-            store.order_page(&OrderPage {destination: id("app")?, cursor: id(name)?, complete: true, polled: 100, orders: vec![CachedOrder {id: id(name)?, sample: SampleId::new("<script>sample</script>").map_err(|_| analyte_store::Error::InvalidHostInput)?, document: serde_json::json!({"id": name,"version":1,"state":"requested","sample_id":"<script>sample</script>","tests":[{"namespace":"local","value":"<test>"}],"priority":"routine","target_analyzers":null,"expires_at":null,"tombstone":false}).to_string(), tombstone: false, expiry: 200}]})?;
+            store.order_page(&OrderPage {destination: id("app")?, cursor: id(name)?, complete: true, polled: 100, orders: vec![CachedOrder {id: id(name)?, sample: SampleId::new("<script>sample</script>").map_err(analyte_store::Error::Text)?, document: serde_json::json!({"id": name,"version":1,"state":"requested","sample_id":"<script>sample</script>","tests":[{"namespace":"local","value":"<test>"}],"priority":"routine","target_analyzers":null,"expires_at":null,"tombstone":false}).to_string(), tombstone: false, expiry: 200}]})?;
             let key = analyte_store::MachineOrderKey {destination: id("app")?, order: id(name)?, machine: id("machine")?};
             let record = store.reserve_send(&analyte_store::OrderReservation { identity: &key, version: std::num::NonZeroU64::MIN, now: 101, freshness: 30 }, analyte_store::ReserveOptions::default())?.map_err(|_| analyte_store::Error::Conflict)?;
-            store.transition_order(record.id, OrderState::Uncertain, analyte_model::SourceText::new("timeout").map_err(analyte_store::Error::Text)?, 102, |order| Ok(analyte_store::OrderEventDelivery {id: analyte_model::DeliveryId::try_from(uuid::Uuid::now_v7()).map_err(|_| analyte_store::Error::InvalidHostInput)?, destination: order.key.destination.clone(), order_id: order.key.order.clone(), payload: b"not a raw view".to_vec(), contract_version: 1}))?;
+            store.transition_order(record.id, OrderState::Uncertain, analyte_model::SourceText::new("timeout").map_err(analyte_store::Error::Text)?, 102, |order| Ok(analyte_store::OrderEventDelivery {id: analyte_model::DeliveryId::try_from(uuid::Uuid::now_v7()).map_err(analyte_store::OrderError::Identity)?, destination: order.key.destination.clone(), order_id: order.key.order.clone(), payload: b"not a raw view".to_vec(), contract_version: 1}))?;
             if let Some((receipt, parked)) = first {
                 store.audit(&Audit {actor: id("operator")?, action: id("store-restore")?, targets: Vec::new(), time: 103, reason: Reason::new("synthetic restore").map_err(analyte_store::Error::Text)?})?;
                 return Ok((receipt, parked, receipt_id));
             }
             first = Some((receipt_id, parked_id));
         }
-        Err(analyte_store::Error::InvalidHostInput)
+        Err(analyte_store::Error::UnknownReceipt)
     }).await?;
     Ok((receipt_id, parked_id, other_receipt))
 }
@@ -302,7 +302,9 @@ async fn assert_raw_views_audited(
         ..
     } = view;
     let count = store
-        .request(fixture_deadline()?, |s| Ok(s.audits(1)?.len()))
+        .request::<_, analyte_store::Error>(fixture_deadline()?, |s| {
+            Ok::<_, analyte_store::Error>(s.audits(1)?.len())
+        })
         .await?;
     assert_eq!(count, 0);
     for _ in 0..2 {
@@ -342,7 +344,9 @@ async fn assert_raw_views_audited(
     let sequence = second.first().ok_or("second audit missing")?.0;
     assert_eq!(
         store
-            .request(fixture_deadline()?, move |s| Ok(s.audits(sequence)?.len()))
+            .request::<_, analyte_store::Error>(fixture_deadline()?, move |s| Ok(s
+                .audits(sequence)?
+                .len()))
             .await?,
         1
     );
@@ -364,7 +368,7 @@ async fn assert_cache_version_stays_distinct(
     // Current cache evidence is explicitly distinguished from a reservation's
     // historical version; operator reads never resend or reconcile an order.
     store
-        .request(fixture_deadline()?, |s| {
+        .request::<_, analyte_store::Error>(fixture_deadline()?, |s| {
             let destination = Identifier::new("app").map_err(analyte_store::Error::Text)?;
             let key = Identifier::new("first").map_err(analyte_store::Error::Text)?;
             let mut cached = s
@@ -373,19 +377,20 @@ async fn assert_cache_version_stays_distinct(
             let mut document: serde_json::Value = serde_json::from_str(&cached.document)?;
             *document
                 .get_mut("version")
-                .ok_or(analyte_store::Error::InvalidHostInput)? = serde_json::json!(2);
+                .ok_or(analyte_store::Error::MissingOrderField { field: "version" })? =
+                serde_json::json!(2);
             *document
                 .get_mut("tests")
-                .ok_or(analyte_store::Error::InvalidHostInput)? =
+                .ok_or(analyte_store::Error::MissingOrderField { field: "tests" })? =
                 serde_json::json!([{"namespace":"local","value":"<newtest>"}]);
             cached.document = serde_json::to_string(&document)?;
-            s.order_page(&OrderPage {
+            Ok::<_, analyte_store::Error>(s.order_page(&OrderPage {
                 destination,
                 cursor: Identifier::new("new").map_err(analyte_store::Error::Text)?,
                 complete: true,
                 polled: 200,
                 orders: vec![cached],
-            })
+            })?)
         })
         .await?;
     let mismatch = request(host, "/orders", auth, None).await?;
@@ -405,7 +410,7 @@ async fn assert_frame_pagination(
         csrf, post_auth, ..
     } = view;
     let frame_park = store
-        .request(fixture_deadline()?, |s| {
+        .request::<_, analyte_store::Error>(fixture_deadline()?, |s| {
             let transfer = Identifier::new("transfer").map_err(analyte_store::Error::Text)?;
             let mut bytes = b"<frame>".to_vec();
             bytes.extend(vec![b'B'; 4100]);
@@ -424,11 +429,11 @@ async fn assert_frame_pagination(
                     config: b"synthetic config".to_vec(),
                 },
             )?;
-            s.park(&Parked {
+            Ok::<_, analyte_store::Error>(s.park(&Parked {
                 kind: Identifier::new("transfer").map_err(analyte_store::Error::Text)?,
                 reason: Reason::new("incomplete transfer").map_err(analyte_store::Error::Text)?,
                 targets: vec![transfer],
-            })
+            })?)
         })
         .await?;
     let frame_form = format!(

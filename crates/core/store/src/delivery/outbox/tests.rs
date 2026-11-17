@@ -23,7 +23,7 @@ fn adr0008_outbox_and_interpretation_rollback_together() -> TestResult {
             .map(|_| ())
             .expect_err("input must be refused");
         assert!(
-            matches!(&refusal, Error::ConstraintViolation(_)),
+            matches!(&refusal, ReconciliationError::ConstraintViolation(_)),
             "unexpected refusal: {refusal:?}"
         );
     }
@@ -141,7 +141,7 @@ fn adr0008_public_enqueue_is_atomic_and_retry_keeps_id_and_bytes() -> TestResult
             .map(|_| ())
             .expect_err("input must be refused");
         assert!(
-            matches!(&refusal, Error::InvalidInterpretationInput),
+            matches!(&refusal, ReconciliationError::InvalidInterpretationInput),
             "unexpected refusal: {refusal:?}"
         );
     }
@@ -178,7 +178,7 @@ fn adr0008_event_provenance_health_ordering_and_restart_attempts() -> TestResult
             .map(|_| ())
             .expect_err("input must be refused");
         assert!(
-            matches!(&refusal, Error::ConstraintViolation(_)),
+            matches!(&refusal, OperatorError::ConstraintViolation(_)),
             "unexpected refusal: {refusal:?}"
         );
     }
@@ -274,7 +274,7 @@ fn adr0003_withdrawal_assigns_next_revision_and_retransmission_enqueues_nothing(
             ReconcileInput::standard(&[false], &[]),
             |evidence, outcomes| {
                 let Reading::Results(results) = &evidence.outcome else {
-                    return Err(Error::LimitExceeded {
+                    return Err(ReconciliationError::LimitExceeded {
                         what: "record_bytes",
                     });
                 };
@@ -283,14 +283,14 @@ fn adr0003_withdrawal_assigns_next_revision_and_retransmission_enqueues_nothing(
                 }
                 let Some(IdentityStatus::Resolved(identity)) = results.first().map(|r| &r.identity)
                 else {
-                    return Err(Error::LimitExceeded {
+                    return Err(ReconciliationError::LimitExceeded {
                         what: "record_bytes",
                     });
                 };
                 Ok(vec![Delivery {
                     id: DeliveryId::try_from(uuid::Uuid::now_v7())
-                        .map_err(|_| Error::InvalidDeliveryInput)?,
-                    destination: Identifier::new("app").map_err(Error::Text)?,
+                        .map_err(ReconciliationError::Identity)?,
+                    destination: Identifier::new("app").map_err(ReconciliationError::Text)?,
                     ordering_key: OrderingKey {
                         machine: metadata.machine.clone(),
                         observation: identity.observation.clone(),
@@ -427,7 +427,7 @@ fn mutation_adr0008_recovery_audit_bound_is_inclusive_and_refusal_keeps_the_clai
         } else {
             assert!(matches!(
                 result,
-                Err(Error::LimitExceeded {
+                Err(DeliveryError::LimitExceeded {
                     what: "record_bytes"
                 })
             ));

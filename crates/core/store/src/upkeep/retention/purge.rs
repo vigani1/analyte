@@ -5,7 +5,7 @@ enum Scope {
     Receipts(Option<ReceiptId>),
     Orders(Option<i64>),
 }
-use crate::{Error, Store, key};
+use crate::{MaintenanceError as Error, Store, key};
 use analyte_model::{Identifier, ReceiptId};
 use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
@@ -329,5 +329,5 @@ fn audit_evidence(run: &PurgeRun) -> Result<String, Error> {
         .as_object_mut()
         .ok_or(Error::InvalidMaintenanceInput)?
         .insert("retention".into(), serde_json::to_value(run)?);
-    crate::document(&evidence)
+    Ok(crate::document(&evidence)?)
 }

@@ -251,7 +251,7 @@ async fn wait_for_service_listener(host: &str) -> Result<(), Error> {
 
 async fn seed_overview(store: &analyte_store::Handle) -> Result<(), Error> {
     store
-        .request(fixture_deadline()?, move |store| {
+        .request::<_, analyte_store::Error>(fixture_deadline()?, move |store| {
             store.evaluate_alert(
                 &analyte_store::AlertKey::RestorePaused,
                 "<script>responder('duty')&</script>",
@@ -295,7 +295,7 @@ async fn seed_overview(store: &analyte_store::Handle) -> Result<(), Error> {
                 time: 103,
                 reason: Reason::new("synthetic restore").map_err(analyte_store::Error::Text)?,
             })?;
-            Ok(())
+            Ok::<_, analyte_store::Error>(())
         })
         .await?;
     Ok(())
@@ -311,7 +311,7 @@ fn seed_overview_order(
     store.receive(
         &analyte_model::ReceiptMetadata {
             id: analyte_model::ReceiptId::try_from(uuid::Uuid::now_v7())
-                .map_err(|_| analyte_store::Error::InvalidHostInput)?,
+                .map_err(analyte_store::Error::Identity)?,
             raw_digest: analyte_model::Digest(analyte_contract::content_digest(raw)),
             connection: id("synthetic")?,
             machine: id("<script>alert('hostile')&\"</script>")?,
@@ -322,7 +322,7 @@ fn seed_overview_order(
             config_version: id("1")?,
             config_digest: analyte_model::Digest(analyte_contract::content_digest(config)),
             received_at: jiff::Timestamp::from_second(if order == "first" { 100 } else { 200 })
-                .map_err(|_| analyte_store::Error::InvalidHostInput)?,
+                .map_err(|cause| analyte_store::Error::EvidenceTimestamp(Box::new(cause)))?,
         },
         raw,
         config,
@@ -335,7 +335,7 @@ fn seed_overview_order(
                     orders: vec![analyte_store::CachedOrder {
                         id: id(order)?,
                         sample: analyte_model::SampleId::new("<script>sample</script>")
-                            .map_err(|_| analyte_store::Error::InvalidHostInput)?,
+                            .map_err(analyte_store::Error::Text)?,
                         document: "{\"version\":1,\"state\":\"requested\",\"tombstone\":false,\"tests\":[{\"namespace\":\"local\",\"value\":\"test\"}]}"
                             .into(),
                         tombstone: false,
@@ -366,7 +366,7 @@ fn seed_overview_order(
         |order| {
             Ok(analyte_store::OrderEventDelivery {
                 id: analyte_model::DeliveryId::try_from(uuid::Uuid::now_v7())
-                    .map_err(|_| analyte_store::Error::InvalidHostInput)?,
+                    .map_err(analyte_store::OrderError::Identity)?,
                 destination: order.key.destination.clone(),
                 order_id: order.key.order.clone(),
                 payload: b"protected-payload-never-log".to_vec(),

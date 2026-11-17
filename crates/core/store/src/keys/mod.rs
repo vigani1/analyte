@@ -1,7 +1,7 @@
 //! Owns the durable key encoding: compact JSON strings, ordered objects and arrays.
 //! Field order and UUID spelling are storage format, independent of model serde.
 //! This preserves the original bytes; changes require a storage migration.
-use crate::Error;
+use crate::StorageError as Error;
 use analyte_model::{DeliveryId, Identifier, NamespacedId, ObservationIdentity, ReceiptId};
 use serde::Serialize;
 

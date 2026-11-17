@@ -356,25 +356,27 @@ async fn operator(
             reason: Reason::new(&reason)?,
         };
         let rows = store
-            .request(
+            .request::<_, analyte_store::Error>(
                 Instant::now()
                     .checked_add(STORE_OPERATION_BUDGET)
                     .unwrap_or(Instant::now()),
                 move |store| match command {
-                    Parked::Reprocess { .. } => Err(analyte_store::Error::InvalidHostInput),
+                    Parked::Reprocess { .. } => {
+                        Err(analyte_store::Error::ReprocessRequiresInterpretation)
+                    }
                     Parked::Resolve { id, .. } => {
                         store.resolve(id, &audit)?;
                         Ok(Vec::new())
                     }
                     Parked::List { after } => {
                         store.audit(&audit)?;
-                        store.parked(after)
+                        Ok(store.parked(after)?)
                     }
                     Parked::Show { id } => {
                         store.audit(&audit)?;
                         let after = id
                             .checked_sub(1)
-                            .ok_or(analyte_store::Error::InvalidHostInput)?;
+                            .ok_or(analyte_store::Error::OperatorCursorOverflow)?;
                         let rows = store.parked(after)?;
                         let row = rows
                             .into_iter()
@@ -444,7 +446,7 @@ async fn deliveries(
                     reason: Reason::new(&reason)?,
                 };
                 let rows = store
-                    .request(until(), move |s| {
+                    .request::<_, analyte_store::Error>(until(), move |s| {
                         let rows = s.deliveries(after)?;
                         s.audit(&audit)?;
                         Ok(rows)
@@ -500,17 +502,17 @@ async fn backup(config: &std::path::Path, target: PathBuf) -> Result<(), Error> 
     let program = Program::load(config)?;
     let mut store = analyte::open_system_store(&program).await?;
     let result = store
-        .request(
+        .request::<_, analyte_store::Error>(
             Instant::now()
                 .checked_add(BACKUP_REQUEST_BUDGET)
                 .unwrap_or(Instant::now()),
             move |store| {
-                store.backup(
+                Ok(store.backup(
                     &target,
                     Instant::now()
                         .checked_add(BACKUP_WORK_BUDGET)
                         .unwrap_or(Instant::now()),
-                )
+                )?)
             },
         )
         .await;

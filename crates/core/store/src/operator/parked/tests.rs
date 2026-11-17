@@ -27,7 +27,10 @@ fn rule2_parse_failure_parks_and_resolution_is_audited_once() -> TestResult {
         reason: Reason::new("reconciled using synthetic evidence")?,
     };
     store.resolve(1, &audit)?;
-    assert!(matches!(store.resolve(1, &audit), Err(Error::Conflict)));
+    assert!(matches!(
+        store.resolve(1, &audit),
+        Err(OperatorError::Conflict)
+    ));
     assert_eq!(
         store
             .db
@@ -71,7 +74,7 @@ fn mutation_adr0003_park_resolve_and_audit_keep_exact_evidence_once_after_restar
     store.db.execute_batch("CREATE TRIGGER fail_resolution_audit BEFORE INSERT ON audit BEGIN SELECT RAISE(ABORT,'synthetic audit failure'); END;")?;
     assert!(matches!(
         store.resolve(id, &entry),
-        Err(Error::ConstraintViolation(_))
+        Err(OperatorError::ConstraintViolation(_))
     ));
     assert!(
         store
@@ -84,10 +87,13 @@ fn mutation_adr0003_park_resolve_and_audit_keep_exact_evidence_once_after_restar
         .db
         .execute_batch("DROP TRIGGER fail_resolution_audit;")?;
     store.resolve(id, &entry)?;
-    assert!(matches!(store.resolve(id, &entry), Err(Error::Conflict)));
+    assert!(matches!(
+        store.resolve(id, &entry),
+        Err(OperatorError::Conflict)
+    ));
     assert!(matches!(
         store.resolve(i64::MAX, &entry),
-        Err(Error::Conflict)
+        Err(OperatorError::Conflict)
     ));
     drop(store);
     let store = open(&path)?;

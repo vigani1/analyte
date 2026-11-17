@@ -12,7 +12,7 @@ pub(crate) enum Error {
     ResourceLimitRefusedTransfer,
     /// A frame commit failed; retains the storage failure or elapsed custody budget.
     #[error("ASTM storage or resource limit refused transfer")]
-    CommitRefused(#[source] crate::machine::custody::StoreWaitError<analyte_store::Error>),
+    CommitRefused(#[source] crate::machine::custody::StoreWaitError<analyte_store::IntakeError>),
     /// The dialog expired before receiving a durable frame-commit completion.
     #[error("ASTM storage or resource limit refused transfer")]
     CommitDeadline,
@@ -54,18 +54,21 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn adr0003_astm_refusal_preserves_custody_cause_and_operator_text() {
         use crate::machine::custody::{StoreWaitError, store_within};
-        let storage =
-            Error::CommitRefused(StoreWaitError::Operation(analyte_store::Error::Capacity));
+        let storage = Error::CommitRefused(StoreWaitError::Operation(
+            analyte_store::IntakeError::Storage(analyte_store::StorageError::Capacity),
+        ));
         let expired = store_within(
             std::time::Duration::from_millis(1),
-            std::future::pending::<Result<(), analyte_store::Error>>(),
+            std::future::pending::<Result<(), analyte_store::IntakeError>>(),
         )
         .await
         .unwrap_err();
         let timeout = Error::CommitRefused(expired);
         assert!(matches!(
             &storage,
-            Error::CommitRefused(StoreWaitError::Operation(analyte_store::Error::Capacity))
+            Error::CommitRefused(StoreWaitError::Operation(
+                analyte_store::IntakeError::Storage(analyte_store::StorageError::Capacity)
+            ))
         ));
         assert!(matches!(
             &timeout,

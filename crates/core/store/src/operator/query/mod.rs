@@ -1,5 +1,5 @@
 //! Reads protected receipts, records and operator evidence.
-use crate::{Error, Interpretation, Store, key};
+use crate::{Interpretation, OperatorError as Error, Store, key};
 use analyte_model::{Identifier, ReceiptId, ReceiptMetadata};
 use rusqlite::{OptionalExtension, params};
 
@@ -37,7 +37,7 @@ impl ParkedItem {
     /// Decodes the canonical protected parking record.
     /// # Errors
     /// Refuses corrupt evidence instead of inventing receipt links.
-    pub fn details(&self) -> Result<crate::Parked, Error> {
+    pub fn details(&self) -> Result<crate::Parked, serde_json::Error> {
         Ok(serde_json::from_str::<crate::parked::ParkingEvidence>(&self.evidence)?.details)
     }
 }

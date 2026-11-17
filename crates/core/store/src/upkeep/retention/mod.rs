@@ -8,7 +8,7 @@ mod vacuum;
 pub use purge::PurgeRun;
 pub(crate) use purge::maintenance;
 mod holds;
-use crate::{Error, Store};
+use crate::{MaintenanceError as Error, Store};
 use hmac::{Hmac, KeyInit, Mac};
 pub use holds::{HoldTarget, RetentionHold};
 use rusqlite::OptionalExtension;
@@ -26,9 +26,12 @@ impl DigestKey {
     pub(crate) fn fingerprint(&self) -> [u8; 32] {
         crate::digest(&self.0).0
     }
-    pub(crate) fn digest(&self, domain: &str, value: &[u8]) -> Result<[u8; 32], Error> {
-        let mut mac =
-            Hmac::<Sha256>::new_from_slice(&self.0).map_err(|_| Error::InvalidMaintenanceInput)?;
+    pub(crate) fn digest(
+        &self,
+        domain: &str,
+        value: &[u8],
+    ) -> Result<[u8; 32], hmac::digest::InvalidLength> {
+        let mut mac = Hmac::<Sha256>::new_from_slice(&self.0)?;
         mac.update(domain.as_bytes());
         mac.update(&[0]);
         mac.update(value);
@@ -80,7 +83,7 @@ impl Store {
     pub(crate) fn receipt_was_purged(
         &self,
         receipt: analyte_model::ReceiptId,
-    ) -> Result<bool, Error> {
+    ) -> Result<bool, crate::StorageError> {
         Ok(self.db.query_row(
             "SELECT EXISTS(SELECT 1 FROM retention_tombstones WHERE receipt=?1)",
             [crate::key(&receipt)?],
@@ -90,7 +93,7 @@ impl Store {
     pub(crate) fn delivery_was_purged(
         &self,
         delivery: analyte_model::DeliveryId,
-    ) -> Result<bool, Error> {
+    ) -> Result<bool, crate::StorageError> {
         Ok(self.db.query_row(
             "SELECT EXISTS(SELECT 1 FROM retention_deliveries WHERE delivery=?1 UNION SELECT 1 FROM retention_order_deliveries WHERE delivery=?1)",
             [crate::key(&delivery)?],

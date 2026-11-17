@@ -120,7 +120,7 @@ fn verify_adr0003_migrated_custody_reconciliation(store: &mut Store, guards: &[i
     let reason = Reason::new("explicit operator cursor reconciliation")?;
     assert!(matches!(
         store.begin_poll_intent(&machine, &reason),
-        Err(Error::PollIntentUnresolved)
+        Err(OrderError::PollIntentUnresolved)
     ));
     assert!(
         store

@@ -247,7 +247,7 @@ fn mutation_adr0003_migration_bounds_metadata_and_interpretation_independently_a
             assert!(
                 matches!(
                     result,
-                    Err(Error::LimitExceeded {
+                    Err(MaintenanceError::LimitExceeded {
                         what: "record_bytes"
                     })
                 ),
@@ -311,7 +311,7 @@ fn mutation_adr0003_migration_refuses_conflicting_legacy_revision_and_accepts_re
         }
         let result = Store::migrate_v3(&mut db, 65_536);
         if conflicting {
-            assert!(matches!(result, Err(Error::Conflict)));
+            assert!(matches!(result, Err(MaintenanceError::Conflict)));
             assert_eq!(
                 db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
                 2

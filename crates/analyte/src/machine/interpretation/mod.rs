@@ -85,3 +85,5 @@ pub(crate) enum ReadError {
     #[error(transparent)]
     Mapping(#[from] crate::reading::Error),
 }
+
+analyte_store::forward_command_errors!(ReadError);

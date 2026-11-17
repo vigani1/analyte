@@ -1,5 +1,5 @@
 //! Stores inbound transfer chunks and durable acknowledgment evidence.
-use crate::{Error, FrameProvenance, Store, key};
+use crate::{FrameProvenance, IntakeError as Error, Store, key};
 use analyte_model::{Identifier, Reason, ReceiptId};
 use rusqlite::{OptionalExtension, params};
 

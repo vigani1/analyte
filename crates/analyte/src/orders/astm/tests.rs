@@ -128,7 +128,7 @@ async fn rule9_astm_all_untrusted_states_and_destination_freshness() -> Result<(
         .await?;
         let destination = crate::orders::destination(&machine);
         store
-            .request(crate::deadline()?, move |s| {
+            .request::<_, analyte_store::Error>(crate::deadline()?, move |s| {
                 if case != "unknown" {
                     s.order_page(&analyte_store::OrderPage {
                         destination,
@@ -150,7 +150,7 @@ async fn rule9_astm_all_untrusted_states_and_destination_freshness() -> Result<(
                             .map_err(analyte_store::Error::Text)?,
                     })?;
                 }
-                Ok(())
+                Ok::<_, analyte_store::Error>(())
             })
             .await?;
         let mut pending = Pending::new(

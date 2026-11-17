@@ -148,7 +148,7 @@ impl Connection {
             let identity = order.key.clone();
             let code = analyte_model::SourceText::new(code)?;
             let cleanup = store
-                .request(deadline()?, move |store| {
+                .request::<_, analyte_store::Error>(deadline()?, move |store| {
                     let current = store
                         .machine_order(&identity)?
                         .ok_or(analyte_store::Error::Corruption)?;
@@ -183,7 +183,7 @@ impl Connection {
                             crate::orders::event,
                         )?;
                     }
-                    Ok(())
+                    Ok::<_, analyte_store::Error>(())
                 })
                 .await
                 .map_err(Into::into);
@@ -481,8 +481,11 @@ mod tests {
         .await;
         assert!(result.is_err());
         let (first, second) = store
-            .request(deadline()?, move |store| {
-                Ok((store.machine_order(&first)?, store.machine_order(&second)?))
+            .request::<_, analyte_store::Error>(deadline()?, move |store| {
+                Ok::<_, analyte_store::Error>((
+                    store.machine_order(&first)?,
+                    store.machine_order(&second)?,
+                ))
             })
             .await?;
         assert_eq!(
@@ -675,7 +678,7 @@ mod tests {
         let identity = key.clone();
         let original_owner = owner.clone();
         store
-            .request(deadline()?, move |store| {
+            .request::<_, analyte_store::Error>(deadline()?, move |store| {
                 let now = jiff::Timestamp::now().as_second();
                 store.order_page(&analyte_store::OrderPage {
                     destination: identity.destination.clone(),
@@ -684,14 +687,13 @@ mod tests {
                     polled: now,
                     orders: vec![analyte_store::CachedOrder {
                         id: identity.order.clone(),
-                        sample: SampleId::new("000Ab12")
-                            .map_err(|_| analyte_store::Error::InvalidHostInput)?,
+                        sample: SampleId::new("000Ab12").map_err(analyte_store::Error::Text)?,
                         document: include_str!("../../../../../docs/contract/vectors/order.json")
                             .rewrite("order-1", identity.order.as_str()),
                         tombstone: false,
                         expiry: now
                             .checked_add(100)
-                            .ok_or(analyte_store::Error::InvalidHostInput)?,
+                            .ok_or(analyte_store::Error::OrderExpiryOverflow)?,
                     }],
                 })?;
                 store

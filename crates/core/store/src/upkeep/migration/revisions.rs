@@ -1,6 +1,6 @@
 //! Migrates legacy revision history in a separate startup transaction.
 use crate::results::revisions::content::clinical_digest;
-use crate::{Error, Interpretation, Reading, Store, key};
+use crate::{Interpretation, MaintenanceError as Error, Reading, Store, key};
 use analyte_model::IdentityStatus;
 use rusqlite::{OptionalExtension, params};
 impl Store {

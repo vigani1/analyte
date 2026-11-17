@@ -71,7 +71,7 @@ async fn adr0003_mllp_r1_s1_2_coalesced_read_survives_ack_write_failure_and_canc
             state.close(&connection, &store, Ok(())).await?;
             let expected = second.to_vec();
             store
-                .request(crate::deadline()?, move |s| {
+                .request::<_, analyte_store::Error>(crate::deadline()?, move |s| {
                     let parked = s.parked(0)?;
                     assert!(parked.iter().any(|p| {
                         s.parked_receipt(p.id)
@@ -80,7 +80,7 @@ async fn adr0003_mllp_r1_s1_2_coalesced_read_survives_ack_write_failure_and_canc
                             .flatten()
                             .is_some_and(|r| r.raw == expected)
                     }));
-                    Ok(())
+                    Ok::<_, analyte_store::Error>(())
                 })
                 .await?;
             store.shutdown(crate::deadline()?).await?;

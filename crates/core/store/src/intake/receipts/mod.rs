@@ -1,5 +1,5 @@
 //! Stores raw receipts before machine acknowledgment.
-use crate::{Error, Store, digest, key};
+use crate::{IntakeError as Error, Store, digest, key};
 use analyte_model::{ReceiptId, ReceiptMetadata};
 use rusqlite::{OptionalExtension, params};
 
@@ -17,7 +17,11 @@ impl Store {
         self.bound(config)?;
         let encoded = self.encode(metadata)?;
         self.bound(encoded.as_bytes())?;
-        self.capacity(raw.len().checked_add(config.len()).ok_or(Error::Capacity)?)?;
+        self.capacity(
+            raw.len()
+                .checked_add(config.len())
+                .ok_or(crate::StorageError::Capacity)?,
+        )?;
         if digest(raw) != metadata.raw_digest || digest(config) != metadata.config_digest {
             return Err(Error::InvalidReceiptInput);
         }
