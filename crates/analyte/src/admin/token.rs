@@ -73,7 +73,10 @@ impl Token {
             }
         }
         #[cfg(windows)]
-        crate::runtime::service::acl::check(&path)?;
+        crate::runtime::service::acl::check(
+            &path,
+            crate::runtime::service::acl::Readers::Operators,
+        )?;
         let mut bytes = Vec::new();
         std::fs::File::open(path)
             .and_then(|file| file.take(45).read_to_end(&mut bytes))

@@ -21,6 +21,9 @@ lists can only be read and written through Win32 calls, which need `unsafe`.
 - A directory the program creates gets the installer's shape: no inheritance,
   SYSTEM and Administrators full control, the process account modify. An
   existing directory is only checked, never rewritten.
+- The locked credentials folder (`<data>/credentials`) uses a stricter shape of
+  the same code: it grants only SYSTEM and the process account, and its check
+  refuses any other grant, Administrators included (2026-11-18).
 - **The exception:** all `unsafe` lives in
   `crates/analyte/src/runtime/service/acl.rs`, Windows only, behind the safe
   `create_private`, `check` and `process_account`. The workspace lint is

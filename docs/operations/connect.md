@@ -96,7 +96,21 @@ Reprocessing reads current files separately from running receive sessions.
 
 ## Credentials
 
-Destination secrets come from the process environment. A credential name becomes
+Destination keys come from the process environment or from the locked
+credentials file, which the [setup page](operate.md#setup-page) writes. An
+environment variable always wins; a name without one is read from the file.
+
+The locked file is `<data_directory>/credentials/credentials.toml`. The service
+writes it itself (a staging file, protected, flushed, then renamed). On Windows
+its folder grants only SYSTEM and the account the service runs as, not even
+Administrators; on Linux the folder is mode 0700 and the file mode 0600, owned
+by the service user. Analyte refuses to start if anyone else can read either.
+Because only the service can read it, a foreground `analyte run` under another
+account cannot use the file; give that run environment variables instead. The
+database backup does not include the file; keep the keys in the protected
+recovery set.
+
+A credential name becomes
 `ANALYTE_SECRET_` plus uppercase letters/digits, with other characters replaced
 by underscores. The example names read `ANALYTE_SECRET_DEMO_API` and
 `ANALYTE_SECRET_DEMO_SIGNING`. Choose names that do not collide after conversion.

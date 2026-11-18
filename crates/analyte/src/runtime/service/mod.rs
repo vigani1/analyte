@@ -650,10 +650,10 @@ pub(crate) fn create_data_directory(path: &std::path::Path) -> Result<(), Failur
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        acl::create_private(path)?;
+        acl::create_private(path, acl::Readers::Operators)?;
         // Like Unix, an existing non-directory entry is an I/O error.
         std::fs::create_dir_all(path)?;
-        acl::check(path)?;
+        acl::check(path, acl::Readers::Operators)?;
     }
     Ok(())
 }
