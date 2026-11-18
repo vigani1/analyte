@@ -67,6 +67,11 @@ impl Store {
             let mut db = Connection::open(path)?;
             startup.install(&mut db)?;
             db.busy_timeout(limits.busy_timeout)?;
+            // A deferred transaction that reads and then writes gets SQLITE_BUSY
+            // at once, without waiting, when another connection (an operator
+            // command) is writing. Taking the write lock at BEGIN lets busy_timeout
+            // bound every wait instead.
+            db.set_transaction_behavior(rusqlite::TransactionBehavior::Immediate);
             let version: i64 = db.query_row("PRAGMA user_version", [], |r| r.get(0))?;
             if version == 0 {
                 db.execute_batch("PRAGMA auto_vacuum=INCREMENTAL")?;
@@ -82,11 +87,11 @@ impl Store {
         db.progress_handler(0, None::<fn() -> bool>)?;
         Ok(Self {
             retention_key: None,
-            _lock: lock,
             db,
             path: path.into(),
             limits,
             space,
+            _lock: lock,
         })
     }
 

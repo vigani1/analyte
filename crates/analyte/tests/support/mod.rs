@@ -116,6 +116,7 @@ pub fn secrets(
 pub struct Running {
     stop: oneshot::Sender<()>,
     task: JoinHandle<Result<(), analyte::runtime::Error>>,
+    store_lock: PathBuf,
 }
 
 impl Running {
@@ -136,6 +137,7 @@ impl Running {
     /// Fails when a recorded byte or durable outcome differs from the expected fixture.
     pub async fn start_program(program: Program, api: &str) -> Result<Self, Error> {
         let secrets = secrets(&program, api)?;
+        let store_lock = program.data_directory().join("analyte.lock");
         let (stop, stopped) = oneshot::channel();
         let (ready, started) = oneshot::channel();
         let mut task = tokio::spawn(service::serve_loopback_test(
@@ -172,7 +174,17 @@ impl Running {
                 return Err(error.into());
             }
         }
-        Ok(Self { stop, task })
+        Ok(Self {
+            stop,
+            task,
+            store_lock,
+        })
+    }
+
+    /// Reports whether the service task has already ended, for example after a failure.
+    #[must_use]
+    pub fn is_finished(&self) -> bool {
+        self.task.is_finished()
     }
 
     /// Runs a synthetic peer or inspects its durable test outcome.
@@ -181,8 +193,10 @@ impl Running {
     /// # Panics
     /// Fails when a recorded byte or durable outcome differs from the expected fixture.
     pub async fn stop(self) -> Result<(), Error> {
-        self.stop.send(()).map_err(|()| "service stopped early")?;
+        let sent = self.stop.send(());
+        // A service that already ended reports its own failure, not only that it ended.
         tokio::time::timeout(HANG_GUARD, self.task).await???;
+        sent.map_err(|()| "service stopped early")?;
         Ok(())
     }
 }
@@ -358,6 +372,22 @@ impl Running {
     pub async fn crash(self) -> Result<(), Error> {
         self.task.abort();
         assert!(self.task.await.is_err_and(|error| error.is_cancelled()));
+        // A real crash ends the process and closes its store at once. An aborted
+        // task leaves the store thread finishing queued work and then closing its
+        // connection, so wait until it releases the store lock before a restart.
+        let lock = std::fs::File::open(&self.store_lock)?;
+        tokio::time::timeout(HANG_GUARD, async {
+            loop {
+                match lock.try_lock() {
+                    Ok(()) => return Ok::<_, Error>(lock.unlock()?),
+                    Err(std::fs::TryLockError::WouldBlock) => {
+                        tokio::time::sleep(Duration::from_millis(10)).await;
+                    }
+                    Err(std::fs::TryLockError::Error(error)) => return Err(error.into()),
+                }
+            }
+        })
+        .await??;
         Ok(())
     }
 }
