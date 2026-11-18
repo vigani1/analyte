@@ -1,0 +1,74 @@
+[
+  {
+    "name": "wrong-api-key",
+    "request": "POST /results",
+    "change": "Bearer key differs from the destination key",
+    "expected": [
+      401,
+      403
+    ]
+  },
+  {
+    "name": "missing-api-key",
+    "request": "POST /results",
+    "change": "No Authorization header",
+    "expected": [
+      401,
+      403
+    ]
+  },
+  {
+    "name": "invalid-signature",
+    "request": "POST /results",
+    "change": "webhook-signature from invalid-signature.json",
+    "expected": [
+      401,
+      403
+    ]
+  },
+  {
+    "name": "missing-signature",
+    "request": "POST /results",
+    "change": "No webhook-signature header",
+    "expected": [
+      401,
+      403
+    ]
+  },
+  {
+    "name": "stale-timestamp",
+    "request": "POST /results",
+    "change": "Correct signature over a timestamp 600 seconds old",
+    "expected": [
+      401,
+      403
+    ]
+  },
+  {
+    "name": "future-timestamp",
+    "request": "POST /results",
+    "change": "Correct signature over a timestamp 600 seconds ahead",
+    "expected": [
+      401,
+      403
+    ]
+  },
+  {
+    "name": "orders-wrong-api-key",
+    "request": "GET /orders",
+    "change": "Bearer key differs from the destination key",
+    "expected": [
+      401,
+      403
+    ]
+  },
+  {
+    "name": "orders-missing-api-key",
+    "request": "GET /orders",
+    "change": "No Authorization header",
+    "expected": [
+      401,
+      403
+    ]
+  }
+]

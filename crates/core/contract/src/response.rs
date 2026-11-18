@@ -113,4 +113,22 @@ mod tests {
         );
         assert_eq!(super::retry_delay("invalid", 0), None);
     }
+
+    // Contract v1 "Delivery responses and retries", published vector retry-after.json
+    #[test]
+    fn retry_after_vector_parses_or_falls_back() -> Result<(), Box<dyn std::error::Error>> {
+        let vector: serde_json::Value = serde_json::from_slice(include_bytes!(
+            "../../../../docs/contract/vectors/retry-after.json"
+        ))?;
+        let now = vector["now"].as_i64().ok_or("now")?;
+        for case in vector["cases"].as_array().ok_or("cases")? {
+            let value = case["value"].as_str().ok_or("value")?;
+            assert_eq!(
+                super::retry_delay(value, now),
+                case["requested_seconds"].as_u64(),
+                "{value:?}"
+            );
+        }
+        Ok(())
+    }
 }

@@ -386,4 +386,45 @@ mod tests {
             if attempts>=5 { prop_assert_eq!(delay,60); }
         }
     }
+
+    // Contract v1 "Delivery responses and retries", published vector retry-after.json:
+    // the requested delay is honoured up to the 60-second cap, never beyond it.
+    #[test]
+    fn retry_after_vector_is_honoured_up_to_cap() -> Result<(), Box<dyn std::error::Error>> {
+        let vector: serde_json::Value = serde_json::from_slice(include_bytes!(
+            "../../../../docs/contract/vectors/retry-after.json"
+        ))?;
+        let cap = vector["cap_seconds"].as_u64().ok_or("cap")?;
+        let limits = crate::Limits {
+            request_timeout: Duration::from_secs(2),
+            store_timeout: Duration::from_secs(30),
+            backoff_min: Duration::from_secs(1),
+            backoff_max: Duration::from_secs(cap),
+            freshness: Duration::from_secs(30),
+            poll_interval: Duration::from_secs(1),
+            page_size: 100,
+            max_pages: 100,
+        };
+        let destination = Destination::new(
+            Identifier::new("app")?,
+            "https://example.invalid/",
+            Identifier::new("secret")?,
+            limits,
+        )?;
+        for case in vector["cases"].as_array().ok_or("cases")? {
+            let Some(requested) = case["requested_seconds"].as_u64() else {
+                continue;
+            };
+            let least = case["wait_at_least"].as_u64().ok_or("least")?;
+            let most = case["wait_at_most"].as_u64().ok_or("most")?;
+            for attempts in 0..8 {
+                let wait = backoff(&destination, attempts, Some(requested));
+                assert!(
+                    (least..=most).contains(&wait),
+                    "{requested} s gave {wait} s"
+                );
+            }
+        }
+        Ok(())
+    }
 }

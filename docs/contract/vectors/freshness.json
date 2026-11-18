@@ -1,0 +1,46 @@
+{
+  "freshness_seconds": 30,
+  "chains": [
+    {
+      "chain": "snapshot",
+      "started": 1000,
+      "finished": 1004,
+      "pages": [
+        false,
+        true
+      ],
+      "fresh_from": 1000,
+      "trusted_at_finish": true
+    },
+    {
+      "chain": "stops-early",
+      "started": 1100,
+      "finished": 1103,
+      "pages": [
+        false
+      ],
+      "fresh_from": 1000,
+      "trusted_at_finish": false
+    },
+    {
+      "chain": "slow-changes-since",
+      "started": 1200,
+      "finished": 1250,
+      "pages": [
+        true
+      ],
+      "fresh_from": 1200,
+      "trusted_at_finish": false
+    },
+    {
+      "chain": "changes-since",
+      "started": 1300,
+      "finished": 1301,
+      "pages": [
+        true
+      ],
+      "fresh_from": 1300,
+      "trusted_at_finish": true
+    }
+  ]
+}

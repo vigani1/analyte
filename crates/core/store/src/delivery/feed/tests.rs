@@ -319,3 +319,88 @@ fn equal_version_conflict() -> TestResult {
     assert_eq!(store.parked(0)?.len(), 1);
     Ok(())
 }
+
+fn vector(bytes: &[u8]) -> Result<serde_json::Value, serde_json::Error> {
+    serde_json::from_slice(bytes)
+}
+
+// Contract v1 "GET /orders", published vector order-versions.json: an order's version only
+// increases and one version has one content; a refused offer keeps the cache and is parked.
+#[test]
+fn order_version_vector_keeps_newer_and_parks() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("store.db"))?;
+    let steps = vector(include_bytes!(
+        "../../../../../../docs/contract/vectors/order-versions.json"
+    ))?;
+    let mut parked = 0_usize;
+    for (index, step) in steps.as_array().ok_or("steps")?.iter().enumerate() {
+        let offer = step.get("offer").ok_or("offer")?;
+        store.order_page(&OrderPage {
+            destination: Identifier::new("app")?,
+            cursor: Identifier::new(&format!("cursor-{index}"))?,
+            complete: true,
+            polled: 100,
+            orders: vec![CachedOrder {
+                id: Identifier::new(offer["id"].as_str().ok_or("id")?)?,
+                sample: SampleId::new(offer["sample_id"].as_str().ok_or("sample")?)?,
+                document: offer.to_string(),
+                tombstone: false,
+                expiry: i64::MAX,
+            }],
+        })?;
+        let kept: serde_json::Value = serde_json::from_str(
+            &store
+                .cached_order(&Identifier::new("app")?, &Identifier::new("order-1")?)?
+                .ok_or("cache absent")?
+                .document,
+        )?;
+        let name = step["step"].as_str().ok_or("step")?;
+        assert_eq!(kept["version"], step["kept_version"], "{name}");
+        assert_eq!(kept["state"], step["kept_state"], "{name}");
+        if step["parked"].as_bool().ok_or("parked")? {
+            parked = parked.saturating_add(1);
+        }
+        assert_eq!(store.parked(0)?.len(), parked, "{name}");
+    }
+    Ok(())
+}
+
+// Contract v1 "GET /orders" (ADR 0004), published vector freshness.json: only a chain that
+// reaches complete refreshes freshness, counted from when that chain began.
+#[test]
+fn freshness_vector_counts_complete_chains_only() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("store.db"))?;
+    let app = Identifier::new("app")?;
+    let vector = vector(include_bytes!(
+        "../../../../../../docs/contract/vectors/freshness.json"
+    ))?;
+    let freshness = vector["freshness_seconds"].as_u64().ok_or("freshness")?;
+    for chain in vector["chains"].as_array().ok_or("chains")? {
+        let name = chain["chain"].as_str().ok_or("chain")?;
+        let started = chain["started"].as_i64().ok_or("started")?;
+        for (page, complete) in chain["pages"].as_array().ok_or("pages")?.iter().enumerate() {
+            store.order_page(&OrderPage {
+                destination: app.clone(),
+                cursor: Identifier::new(&format!("{name}-{page}"))?,
+                complete: complete.as_bool().ok_or("complete")?,
+                polled: started,
+                orders: Vec::new(),
+            })?;
+        }
+        let finished = chain["finished"].as_i64().ok_or("finished")?;
+        let health = store.health(&app, finished, freshness)?;
+        assert_eq!(
+            health.last_successful_poll,
+            chain["fresh_from"].as_i64(),
+            "{name}"
+        );
+        assert_eq!(
+            Some(health.cache_trusted),
+            chain["trusted_at_finish"].as_bool(),
+            "{name}"
+        );
+    }
+    Ok(())
+}
