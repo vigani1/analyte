@@ -298,7 +298,7 @@ async fn killed_between_store_and_ack_child() -> Result<(), Error> {
 async fn adr0003_killed_process_open_transfer_parked_and_pending_receipt_interpreted()
 -> Result<(), Error> {
     let directory = tempfile::tempdir()?;
-    let reference = Reference::start(
+    let mut reference = Reference::start(
         &directory.path().join("reference.db"),
         TcpListener::bind("127.0.0.1:0").await?,
         true,
@@ -386,7 +386,26 @@ async fn adr0003_killed_process_open_transfer_parked_and_pending_receipt_interpr
         )?,
         1
     );
+    // The killed child's delivery and the recovered receipt both finish before shutdown.
+    release_until_done(&path, &mut reference, 2).await?;
     restarted.stop().await?;
     reference.close().await?;
     Ok(())
+}
+
+/// Releases held app answers until `count` deliveries are done, so no attempt stays in flight.
+async fn release_until_done(
+    path: &Path,
+    reference: &mut Reference,
+    count: i64,
+) -> Result<(), Error> {
+    let release = async {
+        loop {
+            tokio::time::timeout(HANG_GUARD, reference.event()).await??;
+        }
+    };
+    tokio::select! {
+        result = wait_state(path, "done", count) => result,
+        result = release => result,
+    }
 }
