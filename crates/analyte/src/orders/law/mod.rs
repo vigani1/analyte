@@ -166,7 +166,12 @@ impl LawOrderLink {
             .prepare(store, machine, query, receipt, until, options)
             .await
         {
-            Ok(messages) => Ok(messages),
+            Ok(messages) => {
+                // The reservation and rendered reply exist; record the query as handled
+                // before any reply byte so recovery does not read it as a result.
+                intake::mark_handled(store, machine, receipt).await?;
+                Ok(messages)
+            }
             Err(error) => {
                 self.close(store, LawEnd::QueryPreparationFailed.as_str())
                     .await?;
@@ -299,11 +304,11 @@ impl LawOrderLink {
             return Ok(());
         }
         let response = exchange.protocol.response(message);
+        let correlated = response.is_ok();
         if let Err(error) = &response {
             intake::failed_reading(store, machine, receipt, &error.to_string()).await?;
         }
         if let Some(query) = exchange.query {
-            let correlated = response.is_ok();
             let code = response
                 .as_ref()
                 .map(|r| super::acceptance::acceptance(r.acceptance()).to_owned())
@@ -376,6 +381,11 @@ impl LawOrderLink {
         }
         self.exchange = None;
         self.reserving.clear();
+        // An uncorrelated ORL is already parked above. A correlated one is handled
+        // only now that its audit and item outcomes are committed.
+        if correlated {
+            intake::mark_handled(store, machine, receipt).await?;
+        }
         Ok(())
     }
 }

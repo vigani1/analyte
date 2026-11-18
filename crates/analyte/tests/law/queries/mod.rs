@@ -16,6 +16,7 @@ mod downloads;
 mod gates;
 #[cfg(feature = "test-hooks")]
 mod lookup;
+mod recovery;
 
 fn definition() -> String {
     format!(

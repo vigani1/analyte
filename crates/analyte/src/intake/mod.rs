@@ -293,8 +293,11 @@ async fn persist_mapping(
     Ok(())
 }
 
-/// Retains a parsed greeting as connection context, never as a result transfer.
-pub(crate) async fn remember_context(
+/// Records a handled non-result receipt (a POCT greeting kept as connection context,
+/// an answered LAW query or work response) as interpreted with no results, never as a
+/// result transfer. Startup recovery then sees it as done. Call it only after the
+/// handling step commits, so a crash before this call leaves the receipt pending.
+pub(crate) async fn mark_handled(
     store: &Handle,
     machine: &Machine,
     id: ReceiptId,
