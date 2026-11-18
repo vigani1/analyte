@@ -15,7 +15,11 @@ These views expose control fields; they do not establish message/profile
 conformance. Unknown fields and segments remain available. An error never owns
 or logs payloads: callers must retain the original input in the protected store.
 
-Connection encoding must agree with MSH-18 (absent means ASCII). Supported
+Connection encoding must agree with MSH-18 (absent means ASCII). As a noted
+deliberate tolerance, an empty MSH-18 outside LAW takes the connection's
+encoding, so non-ASCII bytes decode with the machine definition's set;
+`wire_compatibility` reports it and an ASCII-only definition refuses with
+`UndeclaredCharset`. Supported
 encodings are ASCII, ISO 8859-1 and UTF-8. Repeated charset declarations and
 MSH-20 schemes are explicitly unsupported. Character-switch escapes remain
 raw; `decode_text` refuses to interpret them. Hex, local and formatting escapes

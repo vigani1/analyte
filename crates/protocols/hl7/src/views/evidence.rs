@@ -61,18 +61,30 @@ pub struct WireCompatibility {
     pub lf: bool,
     /// MSH-18 explicitly declares the compatibility spelling UNICODE UTF-8.
     pub legacy_utf8: bool,
+    /// The character set used when MSH-18 is empty yet non-ASCII bytes were decoded
+    /// with the connection's (machine definition's) set: a deliberate tolerance to note.
+    pub charset_from_definition: Option<crate::Charset>,
+    /// LAW MSH-7 as sent when it had no offset and was read in the site's time
+    /// zone: a deliberate tolerance to note.
+    pub header_time_without_zone: Option<Vec<u8>>,
 }
 /// Reads original boundaries and MSH-18 without normalizing the message.
 #[must_use]
 pub fn wire_compatibility(message: &crate::Message) -> WireCompatibility {
+    let declared = message
+        .segments()
+        .next()
+        .and_then(|msh| msh.field(18))
+        .map_or(b"".as_slice(), crate::Field::raw);
     WireCompatibility {
         crlf: message.raw().windows(2).any(|bytes| bytes == b"\r\n"),
         lf: message.raw().contains(&b'\n'),
-        legacy_utf8: message
-            .segments()
-            .next()
-            .and_then(|msh| msh.field(18))
-            .is_some_and(|f| f.raw() == b"UNICODE UTF-8"),
+        legacy_utf8: declared == b"UNICODE UTF-8",
+        charset_from_definition: (declared.is_empty()
+            && !message.raw().is_ascii()
+            && message.charset() != crate::Charset::Ascii)
+            .then(|| message.charset()),
+        header_time_without_zone: crate::law::site_zone_header_time(message).map(<[u8]>::to_vec),
     }
 }
 // HL7 §2.4 boundaries; HL7 2.3.1 §2.24.1.18
@@ -104,7 +116,9 @@ fn wire_evidence_keeps_original_bytes() -> Result<(), crate::Error> {
             WireCompatibility {
                 crlf,
                 lf,
-                legacy_utf8: true
+                legacy_utf8: true,
+                charset_from_definition: None,
+                header_time_without_zone: None,
             }
         );
         assert_eq!(message.raw(), raw.as_bytes());

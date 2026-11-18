@@ -34,7 +34,7 @@ fn every_example_keeps_legacy_canonical_bytes() -> Result<(), Box<dyn std::error
             (format!("{base}\n{text}"), SITE.to_owned())
         };
         let parsed_machine: MachineDocument = load("machine", &machine)?;
-        let parsed_site: Site = load("site", &site)?;
+        let parsed_site = retention::load_site("site", &site)?;
         let legacy = toml::Value::try_from(Canonical {
             schema_version: 1,
             machine: &parsed_machine,

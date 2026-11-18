@@ -80,6 +80,7 @@ dependencies = [
  "analyte-hl7",
  "analyte-model",
  "analyte-transport",
+ "jiff",
  "serde",
  "sha2",
  "thiserror",

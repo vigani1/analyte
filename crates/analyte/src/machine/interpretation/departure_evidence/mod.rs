@@ -31,7 +31,9 @@ pub(crate) fn for_receipt(
             .any(|f| f.problem == analyte_mapping::Problem::UnsupportedEscape)
     });
     let mut entries = evidence.applied.as_slice().to_vec();
-    if let Err(error) = compatibility(machine, &receipt.raw, wire, preserved, &mut entries) {
+    if let Err(error) = compatibility(machine, &receipt.raw, wire, preserved, &mut entries)
+        .and_then(|()| tolerances(machine, &receipt.raw, wire, &mut entries))
+    {
         evidence.incomplete = Some(analyte_model::Reason::new(&format!(
             "departure-evidence failure: {error}"
         ))?);
@@ -216,6 +218,96 @@ fn compatibility(
     Ok(())
 }
 
+/// Notes the always-on deliberate tolerances seen on the wire; none needs a declaration.
+fn tolerances(
+    machine: &Machine,
+    raw: &[u8],
+    hl7: Option<&analyte_hl7::WireCompatibility>,
+    entries: &mut Vec<AppliedDeparture>,
+) -> Result<(), Error> {
+    if let Some(header) = hl7.and_then(|wire| wire.header_time_without_zone.as_deref()) {
+        let zone = machine
+            .snapshot
+            .effective()
+            .site()
+            .time_zone
+            .as_ref()
+            .ok_or(Error::SiteZoneMissing)?;
+        push(entries, site_zone_note(zone, header, raw)?)?;
+    }
+    if let Some(charset) = hl7.and_then(|wire| wire.charset_from_definition) {
+        // The spelling of the machine definition's `syntax.encoding` setting.
+        let encoding = match charset {
+            analyte_hl7::Charset::Ascii => "ascii",
+            analyte_hl7::Charset::Latin1 => "latin1",
+            analyte_hl7::Charset::Utf8 => "utf8",
+        };
+        push(
+            entries,
+            AppliedDeparture {
+                rule: Identifier::new("hl7_charset_from_definition")?,
+                declaration: SourceText::new(&format!(
+                    "machine definition syntax encoding = \"{encoding}\""
+                ))?,
+                standard: Identifier::new("HL7 2.5.1 §2.15.9.18 (2.3.1 §2.24.1.18) MSH-18")?,
+                record: 1,
+                field: 18,
+                source: SourceText::new(&format!(
+                    "MSH-18 empty; non-ASCII bytes decoded as {encoding} from the machine definition; bytes unchanged"
+                ))?,
+                meaning: DepartureMeaning::CharsetFromDefinition,
+                coordinates: Identifier::new("receipt_bytes")?,
+                spans: EvidenceList::new(vec![
+                    DepartureSpan::try_from(0..raw.len()).map_err(|_| Error::ReversedSpan)?,
+                ])?,
+            },
+        )?;
+    }
+    Ok(())
+}
+
+/// Names the site zone and, when the local time has exactly one, the offset it gives.
+pub(crate) fn site_zone_note(
+    zone: &analyte_config::SiteTimeZone,
+    header: &[u8],
+    raw: &[u8],
+) -> Result<AppliedDeparture, Error> {
+    let original = std::str::from_utf8(header).map_err(|_| Error::HeaderTime)?;
+    let local =
+        jiff::civil::DateTime::strptime("%Y%m%d%H%M%S", original).map_err(|_| Error::HeaderTime)?;
+    let reading = zone.offset_at(local).map_or_else(
+        || "a daylight-saving change skips or repeats this local time, so no single offset is derived".to_owned(),
+        |offset| format!("offset {offset}"),
+    );
+    Ok(AppliedDeparture {
+        rule: Identifier::new(SITE_ZONE_RULE)?,
+        declaration: SourceText::new(&format!("site time_zone = \"{}\"", zone.as_str()))?,
+        standard: Identifier::new("IHE PaLM TF-2b §C.4 MSH-7")?,
+        record: 1,
+        field: 7,
+        source: SourceText::new(&format!(
+            "MSH-7 {original} has no UTC offset; read in the site time zone {}: {reading}; original text kept",
+            zone.as_str()
+        ))?,
+        meaning: DepartureMeaning::ZoneFromSite,
+        coordinates: Identifier::new("receipt_bytes")?,
+        spans: EvidenceList::new(vec![
+            DepartureSpan::try_from(0..raw.len()).map_err(|_| Error::ReversedSpan)?,
+        ])?,
+    })
+}
+
+/// Rule tag of the LAW header-zone tolerance, shared by evidence and audit notes.
+pub(crate) const SITE_ZONE_RULE: &str = "law_header_zone_from_site";
+
+fn push(entries: &mut Vec<AppliedDeparture>, entry: AppliedDeparture) -> Result<(), Error> {
+    if entries.len() == EvidenceList::<AppliedDeparture>::MAX_ENTRIES {
+        return Err(Error::AppliedDepartureEvidenceLimit);
+    }
+    entries.push(entry);
+    Ok(())
+}
+
 fn lowercase_checksum(machine: &Machine, raw: &[u8]) -> Result<bool, Error> {
     use analyte_framing::astm::{Decoder, Event, Limit};
     let Some(settings) = machine.snapshot.effective().stack().astm_link() else {
@@ -262,6 +354,12 @@ pub enum EvidenceError {
     /// Evidence cannot be represented within its declared bounds.
     #[error("applied departure evidence limit")]
     AppliedDepartureEvidenceLimit,
+    /// A zoneless MSH-7 was accepted although the site names no time zone.
+    #[error("MSH-7 without offset accepted but the site has no time_zone")]
+    SiteZoneMissing,
+    /// The accepted zoneless MSH-7 is not a seconds-precision local time.
+    #[error("MSH-7 without offset is not a local date and time")]
+    HeaderTime,
     /// Preserves the original evidence failure.
     #[error(transparent)]
     Text(#[from] analyte_model::TextError),

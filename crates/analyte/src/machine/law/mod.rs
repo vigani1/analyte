@@ -146,7 +146,11 @@ impl<'a, 'm> Host<'a, 'm> {
             store,
             orders,
             mode,
-            dialog: settings::dialog(settings, link)?,
+            dialog: settings::dialog(
+                settings,
+                machine.machine().snapshot.effective().site(),
+                link,
+            )?,
             start: Instant::now(),
             custody: Custody::Idle,
             ready: None,
@@ -281,8 +285,10 @@ impl<'a, 'm> Host<'a, 'm> {
                 return self.answer_query(token, message, started, host).await;
             }
             Effect::WorkResponse(token, message) => {
+                let receipt = self.receipt(token)?;
+                orders::note_site_zone(self.store, machine, &message, receipt).await?;
                 self.orders
-                    .orl(self.store, machine, &message, self.receipt(token)?)
+                    .orl(self.store, machine, &message, receipt)
                     .await?;
                 Event::Complete(token)
             }
@@ -356,6 +362,13 @@ impl<'a, 'm> Host<'a, 'm> {
         started: Duration,
         host: &mut Context<'_>,
     ) -> Result<Vec<Action>, Error> {
+        orders::note_site_zone(
+            self.store,
+            self.machine.machine(),
+            &message,
+            self.receipt(token)?,
+        )
+        .await?;
         let mut reply = self
             .orders
             .answer(

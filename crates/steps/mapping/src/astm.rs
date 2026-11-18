@@ -56,7 +56,7 @@ pub fn map(
     let mut source = source::astm(message);
     source.charset = syntax.encoding();
     source.attach_comments()?;
-    grouping::message(
+    let mut output = grouping::message(
         &source,
         &crate::RecordSettings {
             mappings,
@@ -64,7 +64,77 @@ pub fn map(
         },
         input,
         None,
-    )
+    )?;
+    note_control_characters(message, &mut output)?;
+    Ok(output)
+}
+
+/// Tolerance tag, shown to operators beside the receipt's departure evidence.
+const CONTROL_CHARACTER_TOLERANCE: &str = "astm_control_character_in_text";
+
+/// Adds one visible note per field that kept a literal BEL, HT, VT or FF.
+/// The tolerance is always on: LIS02-A2 §5.1 allows these bytes in a record, values
+/// stay byte for byte, and identifiers still refuse controls at their own boundary.
+fn note_control_characters(
+    message: &analyte_astm::Message,
+    output: &mut Output,
+) -> Result<(), Error> {
+    let mut start = 0usize;
+    for (index, record) in message.records().iter().enumerate() {
+        let number = index.saturating_add(1);
+        let end = start.checked_add(record.raw().len()).ok_or(Error::Limit {
+            position: Position {
+                record: number,
+                field: 0,
+            },
+            resource: "source byte span",
+        })?;
+        for (field_index, field) in record.fields().iter().enumerate() {
+            if !field.has_control_character() {
+                continue;
+            }
+            let position = Position {
+                record: number,
+                field: field_index.saturating_add(1),
+            };
+            if output.applied_departures.len()
+                == analyte_model::EvidenceList::<analyte_model::AppliedDeparture>::MAX_ENTRIES
+            {
+                return Err(Error::Limit {
+                    position,
+                    resource: "applied departures",
+                });
+            }
+            output
+                .applied_departures
+                .push(analyte_model::AppliedDeparture {
+                    rule: crate::identifier(CONTROL_CHARACTER_TOLERANCE, position)?,
+                    declaration: crate::text(
+                        "always on: deliberate tolerance (docs/protocols/astm/decisions.md)",
+                        position,
+                    )?,
+                    standard: crate::identifier("LIS02-A2 §5.1", position)?,
+                    record: position.record,
+                    field: position.field,
+                    source: crate::text(
+                        "Literal BEL, HT, VT or FF in a text field; value kept byte for byte",
+                        position,
+                    )?,
+                    meaning: analyte_model::DepartureMeaning::ControlCharacterKept,
+                    coordinates: crate::identifier("syntax_bytes", position)?,
+                    spans: crate::list(
+                        vec![
+                            analyte_model::DepartureSpan::try_from(start..end)
+                                .map_err(|reason| Error::Structure { position, reason })?,
+                        ],
+                        position,
+                    )?,
+                });
+        }
+        // Each record is followed by its CR in the message's syntax bytes.
+        start = end.saturating_add(1);
+    }
+    Ok(())
 }
 
 /// Maps explicit ASTM order fields without guessing missing codes or context.

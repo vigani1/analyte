@@ -120,6 +120,7 @@ fn options_from_values(
 ) -> analyte_hl7::Options {
     analyte_hl7::Options {
         allow_utf8_in_v231: false,
+        header_zone: analyte_hl7::HeaderZone::Required,
         charset: match encoding {
             Encoding::Ascii => analyte_hl7::Charset::Ascii,
             Encoding::Latin1 => analyte_hl7::Charset::Latin1,

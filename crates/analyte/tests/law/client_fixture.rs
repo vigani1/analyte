@@ -38,14 +38,15 @@ pub(super) async fn client_with_setup(
     )?;
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let loaded = Program::load(&path)?;
-    let old = &loaded
+    let old = loaded
         .machines()
         .first()
         .ok_or("machine")?
         .snapshot()
         .effective()
         .site()
-        .endpoint;
+        .endpoint
+        .fixed()?;
     let site = temp.path().join("hl7-site.toml");
     std::fs::write(
         &site,

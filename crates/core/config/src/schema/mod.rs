@@ -417,17 +417,68 @@ pub struct Destination {
 }
 
 /// Installation-specific values kept apart from protocol rules.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, Serialize)]
+#[serde(into = "SiteFile")]
 pub struct Site {
     /// Explicit retention in days (1 through 3650), or `keep` (ADR 0013 item 1).
     pub retention: crate::Retention,
     /// Must be one.
     pub schema_version: u32,
-    /// Port, numeric socket address, or absolute folder path.
-    pub endpoint: String,
+    /// Where the machine link connects.
+    pub endpoint: crate::Endpoint,
     /// Selected lab app.
     pub destination: Destination,
+    /// The lab's time zone: an IANA name or a fixed `+HH:MM` offset. Only a LAW
+    /// MSH-7 sent without an offset is read in it, with a note; absent keeps
+    /// refusing such a header.
+    pub time_zone: Option<crate::SiteTimeZone>,
+}
+
+/// The site file as written: `endpoint` and `usb_serial` are two keys, and
+/// loading turns them into one [`crate::Endpoint`]. Serializing writes the same
+/// keys back, so canonical bytes of existing site files do not change.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SiteFile {
+    retention: crate::Retention,
+    schema_version: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    endpoint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    usb_serial: Option<crate::UsbSerial>,
+    destination: Destination,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    time_zone: Option<crate::SiteTimeZone>,
+}
+
+impl SiteFile {
+    /// Refuses a site file that sets both endpoint forms or neither.
+    pub(crate) fn into_site(self, path: &str) -> Result<Site, crate::Error> {
+        Ok(Site {
+            retention: self.retention,
+            schema_version: self.schema_version,
+            endpoint: crate::Endpoint::choose(self.endpoint, self.usb_serial, path)?,
+            destination: self.destination,
+            time_zone: self.time_zone,
+        })
+    }
+}
+
+impl From<Site> for SiteFile {
+    fn from(site: Site) -> Self {
+        let (endpoint, usb_serial) = match site.endpoint {
+            crate::Endpoint::Fixed(endpoint) => (Some(endpoint), None),
+            crate::Endpoint::UsbSerial(serial) => (None, Some(serial)),
+        };
+        Self {
+            retention: site.retention,
+            schema_version: site.schema_version,
+            endpoint,
+            usb_serial,
+            destination: site.destination,
+            time_zone: site.time_zone,
+        }
+    }
 }
 
 /// Explicit replacements; omitted sections retain their preceding layer.
@@ -454,8 +505,10 @@ pub struct Overrides {
     pub deviations: Option<Vec<MachineDeparture>>,
     /// Explicit installed applicability replacement.
     pub departure_scope: Option<DepartureScope>,
-    /// Replacement site endpoint.
+    /// Replacement site endpoint; replaces a site `usb_serial` too.
     pub endpoint: Option<String>,
+    /// Replacement USB adapter serial number; replaces a site `endpoint` too.
+    pub usb_serial: Option<crate::UsbSerial>,
     /// Replacement destination.
     pub destination: Option<Destination>,
 }

@@ -51,6 +51,9 @@ pub(crate) enum Error {
     /// The configured network endpoint was not a valid socket address.
     #[error(transparent)]
     Address(#[from] std::net::AddrParseError),
+    /// The site names a USB serial adapter for a link that needs a fixed endpoint.
+    #[error(transparent)]
+    NotFixed(#[from] analyte_config::NotFixed),
     /// The folder watcher failed while retaining a claimed source file.
     #[error(transparent)]
     Watch(#[from] analyte_transport::folder::WatchError),

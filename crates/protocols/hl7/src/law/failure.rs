@@ -80,6 +80,7 @@ impl Failure {
                 | crate::Error::UnsupportedCharset
                 | crate::Error::CharacterEncoding
                 | crate::Error::CharsetMismatch
+                | crate::Error::UndeclaredCharset
                 | crate::Error::NotStored
                 | crate::Error::AckMode,
             ) => None,

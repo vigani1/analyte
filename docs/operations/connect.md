@@ -14,11 +14,16 @@ Use a nonclinical installation ID, never a patient or sample ID.
 | Layer | Contents |
 | --- | --- |
 | Shipped definition | Protocol, mappings, departures and evidence; qualified definitions belong under `machines/`. |
-| Site file | `schema_version = 1`, endpoint, required retention period and destination with credential names. |
+| Site file | `schema_version = 1`, endpoint (or `usb_serial` for a serial port), required retention period, destination with credential names and optional `time_zone`. |
 | Optional local overrides | `schema_version = 1` and explicit replacement sections for this installation. |
 
-Overrides replace whole sections and lists. They do not merge list entries or
+Overrides replace whole sections and lists; an override's `endpoint` or
+`usb_serial` replaces the site's port choice. They do not merge list entries or
 change evidence. Retention belongs in the site file. Unknown keys fail loading.
+`time_zone` (an IANA name such as `"Europe/Berlin"`, or a fixed offset such as
+`"+01:00"`) is optional. It is used only to read an IHE LAW MSH-7 that arrives
+without an offset, with a visible note; leave it out to keep refusing such
+headers.
 Keep all installation files outside the repository. The
 [config examples](../../crates/core/config/examples/) teach syntax only.
 
@@ -27,13 +32,56 @@ A synthetic site file looks like this:
 ```toml
 schema_version = 1
 retention = 90
-endpoint = "COM9"
+endpoint = "COM9"          # the port by name, or instead:
+# usb_serial = "A10K3XYZ"  # the port by its USB adapter's serial number
 [destination]
 name = "demo"
 base_url = "https://lab.example.invalid"
 api_key_name = "demo-api"
 signing_key_name = "demo-signing"
 ```
+
+### Name a serial port
+
+A serial machine's site file names its port in one of two ways. Set exactly
+one of them; setting both or neither fails `check-config`.
+
+| By port name | By USB adapter serial number |
+| --- | --- |
+| `endpoint = "COM9"` (Windows) or `endpoint = "/dev/ttyUSB0"` (Linux) | `usb_serial = "A10K3XYZ"` |
+| Opens exactly that port. If Windows gives the adapter another COM number, edit the file. | Finds the port whose USB adapter reports that serial number, at start and before every reconnect. If the adapter moves from COM9 to COM12, Analyte follows it. |
+
+With `usb_serial`, Analyte never guesses:
+
+- **No adapter has that number:** nothing is opened. The log says
+  `no USB serial adapter with serial number A10K3XYZ is connected`, and Analyte
+  keeps retrying with its usual reconnect delay (up to 5 seconds).
+- **Two or more ports have that number** (a multi-port adapter, or two adapters
+  sold with the same number): nothing is opened. The log names every matching
+  port. Use `endpoint` with the port name instead.
+- **One port has it:** that port is opened and the log names it
+  (`serial port found by USB serial number`, `port="COM12"`).
+
+Each of these is logged once when it changes, not on every retry. Letter case in
+the serial number does not matter. TCP and folder links refuse `usb_serial`;
+they always need `endpoint`.
+
+Find the number on the lab PC:
+
+- **Windows:** Device Manager → Ports (COM & LPT) → the adapter → Properties →
+  Details → Device instance path. The serial number is the last part, after the
+  last `\` (for FTDI adapters, between the last `+` and the next `\`). If that
+  part contains `&`, such as `6&2A9C1F&0&1`, the adapter has no serial number of
+  its own; Windows made that text up and it can change with the USB socket. Use
+  the COM name for such an adapter.
+- **Linux:** `ls /dev/serial/by-id/` lists each adapter with its serial number
+  in the name. Such a `/dev/serial/by-id/...` path also works as a fixed
+  `endpoint`.
+
+The same FTDI adapter can show a slightly different number on Windows (an
+extra letter at the end) than on Linux. Copy the number as the lab PC shows it.
+Lookup by serial number is tested with simulated port lists only; it has not
+yet been tried with a real adapter (evidence level: documented).
 
 Validate the **program file**, not a machine definition alone:
 

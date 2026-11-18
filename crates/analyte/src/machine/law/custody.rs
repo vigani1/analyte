@@ -114,7 +114,7 @@ pub(crate) async fn work_conflict(
         store,
         machine,
         results.message(),
-        crate::machine::law::settings::options(settings),
+        crate::machine::law::settings::options(settings, machine.snapshot.effective().site()),
     )
     .await?)
 }

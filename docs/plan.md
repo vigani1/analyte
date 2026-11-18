@@ -18,7 +18,9 @@ Status on 2026-11-18, in plain words:
   Analyte sends ([reports](conformance/gazelle/README.md)). The live Gazelle
   run was recorded, but the simulator's own reply broke the standard (MSH-7
   without a time zone), so Analyte rightly refused it and LAW stays at
-  documented ([run](conformance/gazelle/law-run/README.md)).
+  documented ([run](conformance/gazelle/law-run/README.md)). A site
+  `time_zone` setting now accepts that header as a noted tolerance, so the
+  run can be repeated.
 - **Just finished:** a bug-fix round and a slim-down round: the store starts
   from one schema instead of unreleased migrations, one runner drives the
   VIDAS, Autolyser and POCT connections, one protocol registry replaces

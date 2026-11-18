@@ -135,8 +135,8 @@ in the [plan](plan.md) status.
 1. From the lab: the settings and recordings listed under "Still needed from
    outside"; then write the machine configs at the documented level (see
    [adding a machine](adding-a-machine.md)).
-2. LAW: repeat the Gazelle run against a simulator build whose reply carries
-   the time zone the standard requires
+2. LAW: repeat the Gazelle run with the site `time_zone` setting, which now
+   reads the simulator's zoneless MSH-7 as a noted tolerance
    ([run report](conformance/gazelle/law-run/README.md)).
 3. Before a pilot: choose the alert relay and named responders, and write down
    the supported outage length, disk reserve, retention, and backup and

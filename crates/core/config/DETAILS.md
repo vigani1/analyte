@@ -10,7 +10,11 @@ bounded local departure recording references through the existing ADR 0009
 reader; it never fetches a remote manual or recording.
 
 The shipped definition owns protocol choices, mappings, vendor departures and
-evidence. Site TOML owns `endpoint` and `destination`. Local overrides contain
+evidence. Site TOML owns the port choice and `destination`. The port choice is
+exactly one of `endpoint` (port name, socket address or folder) or `usb_serial`
+(a USB adapter serial number, serial links only); both or neither is refused,
+and loading turns them into one `Endpoint` value. An override's `endpoint` or
+`usb_serial` replaces the site's choice. Local overrides contain
 `schema_version = 1` plus optional replacement sections. Sections and lists
 replace in full; there is no implicit array merging or expression language.
 All three layers reject unknown keys. Overrides cannot change the machine-wide
@@ -19,7 +23,7 @@ evidence and matching selected settings.
 
 `examples/astm.toml` and `examples/hl7.toml` use `examples/site.toml` and an empty
 local layer (`schema_version = 1`). The serial example may replace the synthetic
-site endpoint with `COM9` or `/dev/ttyUSB0`. TCP endpoints require numeric socket
+site endpoint with `COM9`, `/dev/ttyUSB0` or `usb_serial = "A10K3XYZ"`. TCP endpoints require numeric socket
 addresses, including an explicit bind address for servers.
 
 Resource ceilings: 1 MiB per input layer; 4096 entries per mapping table;
@@ -226,6 +230,14 @@ days, or `retention = "keep"`. Missing retention is a specific validation failur
 there is no default or override-layer fallback. Finite retention requires the
 host `retention-digest` credential. See the program guide for offline conversion,
 holds, backup rotation and key continuity (ADR 0013 items 1, 6 and 7).
+
+## Site time zone
+
+`time_zone` is optional: an IANA name that the time-zone database knows, or a
+fixed `+HH:MM`/`-HH:MM` offset (hours 00–23). Anything else fails loading.
+`SiteTimeZone::offset_at` gives the offset of a local time and returns none in a
+daylight-saving gap or fold. Only a received IHE LAW MSH-7 without an offset
+uses it, as a noted tolerance; absent keeps refusing such headers.
 
 The Rust stack variant is `Stack::Vidas`, matching protocol key `vidas`.
 Named departures retain the TOML field `deviations` for compatibility, as
