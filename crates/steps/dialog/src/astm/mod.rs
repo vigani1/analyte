@@ -306,7 +306,9 @@ impl Dialog {
                     | astm::Error::RecordBoundary => None,
                 };
                 out.push(Action::Rejected(error, raw));
-                if matches!(self.state, State::Receiving(_)) {
+                // An EOT that cuts a frame short releases the link: LIS01-A2 §8.4.1
+                // puts both sides in the neutral state, so no NAK may follow it.
+                if matches!(self.state, State::Receiving(_)) && control != Some(EOT) {
                     out.push(Action::Write(vec![NAK]));
                     self.set_timer(self.config.timers.receive)?;
                 }

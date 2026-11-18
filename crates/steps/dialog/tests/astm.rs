@@ -437,6 +437,16 @@ fn lis01_6_4_eot_before_final_frame_ends_incomplete() -> TestResult {
     Ok(())
 }
 
+// LIS01-A2 §8.4.1: after EOT the link is neutral and the receiver sends nothing.
+#[test]
+fn eot_inside_frame_sends_no_nak() {
+    let mut d = receiver();
+    feed(&mut d, 0, b"\x021R|partial");
+    let ended = feed(&mut d, 0, &[EOT]);
+    assert!(ended.iter().any(|a| matches!(a, Action::Ended(_))));
+    assert!(!ended.iter().any(|a| matches!(a, Action::Write(_))));
+}
+
 #[test]
 fn adr0003_commit_timeout_keeps_transfer_open_for_retransmission() -> TestResult {
     let mut d = receiver();
