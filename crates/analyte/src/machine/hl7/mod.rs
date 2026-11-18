@@ -6,6 +6,7 @@ use super::connection_input::{self, Input};
 use super::driver::{self, Context, Effects, Failures, Flow, Run};
 use crate::intake;
 mod error;
+pub(crate) mod orders;
 pub(crate) mod settings;
 use crate::machine::receive::custody::{self, WriteDeadline};
 use analyte_dialog::hl7::outcome::Code as Hl7End;
@@ -45,7 +46,7 @@ pub(super) struct Host<'a, 'm> {
     start: Instant,
     wake: Option<Duration>,
     pending: BTreeMap<analyte_dialog::ExchangeId, ReceiptId>,
-    queries: Option<crate::orders::hl7::Hl7OrderLink<'a>>,
+    queries: Option<orders::Hl7OrderLink<'a>>,
     input_evidence: connection_input::Custody,
 }
 
@@ -66,9 +67,7 @@ impl<'a, 'm> Host<'a, 'm> {
         let queries = match settings.orders() {
             Some(orders) if orders.query().is_some() || orders.send().is_some() => {
                 dialog.enable_orders(settings.settings().syntax().edition().into())?;
-                Some(crate::orders::hl7::Hl7OrderLink::new(
-                    settings, orders, options,
-                )?)
+                Some(orders::Hl7OrderLink::new(settings, orders, options)?)
             }
             Some(_) | None => None,
         };
@@ -253,7 +252,7 @@ impl Host<'_, '_> {
             .await?;
         } else {
             let query = self.queries.as_mut().ok_or(Error::QueryServicesAbsent)?;
-            let request = crate::orders::hl7::Request {
+            let request = orders::Request {
                 message: &message,
                 started: self
                     .start
@@ -466,9 +465,7 @@ impl Host<'_, '_> {
         token: analyte_dialog::hl7::ExchangeId,
         actions: &mut VecDeque<Action>,
     ) -> Result<(), Error> {
-        let metadata = crate::orders::hl7::response::response_metadata(
-            crate::orders::hl7::response::Profile::Hl7,
-        );
+        let metadata = orders::response::response_metadata(orders::response::Profile::Hl7);
         actions.extend(self.dialog.step(
             self.start.elapsed(),
             Event::Respond(token, metadata.response()?),

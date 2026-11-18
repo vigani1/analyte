@@ -1,8 +1,5 @@
 //! Reserves Autolyser work and reconciles insertion replies without automatic replay.
-use crate::{
-    intake,
-    orders::{OrderError as Error, sending::Work},
-};
+use crate::{intake, machine::autolyser::Error, orders::sending::Work};
 use analyte_store::Handle;
 impl Work<'_, analyte_config::AutolyserOrders, analyte_autolyser::syntax::Worklist> {
     pub(crate) async fn poll(
@@ -14,9 +11,7 @@ impl Work<'_, analyte_config::AutolyserOrders, analyte_autolyser::syntax::Workli
         if !self
             .reserve(store, machine.machine(), |order, orders| {
                 let requests = analyte_mapping::autolyser::map_order(order, settings, orders)?;
-                Ok::<_, analyte_mapping::autolyser::OrderError>(std::collections::VecDeque::from([
-                    requests,
-                ]))
+                Ok::<_, Error>(std::collections::VecDeque::from([requests]))
             })
             .await?
         {
@@ -41,7 +36,7 @@ impl Work<'_, analyte_config::AutolyserOrders, analyte_autolyser::syntax::Workli
                 analyte_model::OrderState::Uncertain
             }
         };
-        super::sending::complete(store, order, outcome, &code).await?;
+        crate::orders::sending::complete(store, order, outcome, &code).await?;
         self.active = None;
         Ok(outcome == analyte_model::OrderState::Sent)
     }

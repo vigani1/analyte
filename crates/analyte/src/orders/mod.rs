@@ -1,24 +1,20 @@
 //! Looks up orders, reserves machine commands and reconciles operator decisions.
 use crate::orders::OrderError as Error;
-pub(crate) mod astm;
-pub(crate) mod autolyser;
-pub(crate) mod hl7;
-pub(crate) mod law;
 mod operator;
 /// Store failures of the audited order operator command.
 pub use operator::CommandError;
-mod admission;
-mod reservation;
+pub(crate) mod admission;
+pub(crate) mod reservation;
 pub(crate) mod sending;
-pub(crate) mod vidas;
 use crate::installation::config::Machine;
 use analyte_contract::{EventFields, OrderEvent, Source, Text};
-use analyte_mapping::app_order;
+pub(crate) use analyte_mapping::app_order;
 use analyte_model::{Identifier, SampleId};
 use analyte_store::{MachineOrder, OrderEventDelivery};
 pub use operator::{Command, Outcome, run};
 mod error;
 pub use error::OrderError;
+pub(crate) use error::shared_conversions;
 
 /// A mapped order version to recheck before issuing any query response bytes.
 pub(crate) struct Candidate {

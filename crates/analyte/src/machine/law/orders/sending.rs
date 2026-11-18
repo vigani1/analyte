@@ -4,7 +4,11 @@ use super::{
     work::{Command, render},
 };
 use crate::installation::config::Machine;
-use crate::orders::OrderError as Error;
+use crate::machine::law::error::OrderError as Error;
+use crate::orders::{
+    admission::{self, Prepared},
+    reservation,
+};
 use crate::runtime::hooks::Operation;
 use analyte_dialog::law::outcome::{Code as LawEnd, Detail as LawDetail};
 use analyte_hl7::{Message, Options, law};
@@ -30,8 +34,8 @@ impl LawOrderLink {
             .checked_add(Duration::from_millis(u64::from(
                 stack.settings().timeouts().send_timeout_ms(),
             )))
-            .ok_or(Error::LawPreparationDeadlineOverflow)?;
-        let cancels = super::super::reservation::cancellations(store, machine, until).await?;
+            .ok_or(Error::PreparationDeadlineOverflow)?;
+        let cancels = reservation::cancellations(store, machine, until).await?;
         if let Some(sent) = self
             .idle_cancel(store, machine, settings, until, cancels)
             .await?
@@ -71,9 +75,7 @@ impl LawOrderLink {
                 .operation(Operation::Cancel)
                 .await
                 .map_err(Error::TestHook)?;
-            let admission =
-                super::super::reservation::cancel(store, until, id, version, owner, freshness)
-                    .await;
+            let admission = reservation::cancel(store, until, id, version, owner, freshness).await;
             machine
                 .hooks
                 .operation(Operation::CancelResult)
@@ -108,7 +110,7 @@ impl LawOrderLink {
         until: Instant,
     ) -> Result<Option<Message>, Error> {
         let candidates =
-            super::super::sending::candidate_page(store, machine, &mut self.cursor).await?;
+            crate::orders::sending::candidate_page(store, machine, &mut self.cursor).await?;
         for cached in candidates {
             self.cursor = cached.id.as_str().to_owned();
             let prepared = match self
@@ -162,9 +164,9 @@ impl LawOrderLink {
         let mut prepared = Vec::new();
         for cached in cached {
             if Instant::now() >= until {
-                return Err(Error::LawQueryDeadlineBeforeReservation);
+                return Err(Error::QueryDeadlineBeforeReservation);
             }
-            let (candidate, command) = match super::super::admission::prepare(
+            let (candidate, command) = match admission::prepare(
                 store,
                 machine,
                 cached,
@@ -174,11 +176,9 @@ impl LawOrderLink {
             )
             .await?
             {
-                super::super::admission::Prepared::Mapped(candidate, command) => {
-                    (candidate, command)
-                }
-                super::super::admission::Prepared::Skipped => continue,
-                super::super::admission::Prepared::Rejected(error) => {
+                Prepared::Mapped(candidate, command) => (candidate, command),
+                Prepared::Skipped => continue,
+                Prepared::Rejected(error) => {
                     if unsolicited {
                         continue;
                     }
@@ -197,10 +197,10 @@ impl LawOrderLink {
                 .saturating_sub(namespace.as_str().len())
                 .saturating_sub(1);
             self.reserving.push(key.clone());
-            let reserved = super::super::reservation::admit(
+            let reserved = reservation::admit(
                 store,
                 until,
-                super::super::reservation::Admission {
+                reservation::Admission {
                     identity,
                     version,
                     freshness,
@@ -234,7 +234,7 @@ impl LawOrderLink {
                     if !unsolicited {
                         return Err(error.into());
                     }
-                    super::super::admission::reject(
+                    admission::reject(
                         store,
                         machine,
                         until,

@@ -7,10 +7,10 @@ use std::{collections::VecDeque, time::Instant};
 pub(crate) struct Work<'a, S, T> {
     /// Send-ahead order settings; without them the connection never reserves work.
     orders: Option<&'a S>,
-    pub(in crate::orders) active: Option<MachineOrder>,
-    pub(in crate::orders) requests: VecDeque<T>,
+    pub(crate) active: Option<MachineOrder>,
+    pub(crate) requests: VecDeque<T>,
     cursor: String,
-    pub(in crate::orders) next_poll: Instant,
+    pub(crate) next_poll: Instant,
 }
 impl<'a, S, T> Work<'a, S, T> {
     /// Takes the settings only when the machine is configured to receive work ahead.
@@ -31,19 +31,16 @@ impl<'a, S, T> Work<'a, S, T> {
         }
         self.next_poll = now
             .checked_add(super::ORDER_POLL_INTERVAL)
-            .ok_or(OrderError::OrderPollDeadlineOverflow)?;
+            .ok_or(OrderError::PollDeadlineOverflow)?;
         Ok(true)
     }
     /// Reserves one complete command, retaining its identity before host I/O.
-    pub(crate) async fn poll_one<E>(
+    pub(crate) async fn poll_one<E: From<OrderError> + std::fmt::Display>(
         &mut self,
         store: &Handle,
         machine: &Machine,
         map: impl Fn(&analyte_mapping::AppOrder, &S) -> Result<T, E>,
-    ) -> Result<Option<T>, OrderError>
-    where
-        OrderError: From<E>,
-    {
+    ) -> Result<Option<T>, E> {
         if !self.poll_due()? {
             return Ok(None);
         }
@@ -63,15 +60,12 @@ impl<'a, S, T> Work<'a, S, T> {
     pub(crate) fn next_poll(&self) -> Instant {
         self.next_poll
     }
-    pub(in crate::orders) async fn reserve<E>(
+    pub(crate) async fn reserve<E: From<OrderError> + std::fmt::Display>(
         &mut self,
         store: &Handle,
         machine: &Machine,
         map: impl Fn(&analyte_mapping::AppOrder, &S) -> Result<VecDeque<T>, E>,
-    ) -> Result<bool, OrderError>
-    where
-        OrderError: From<E>,
-    {
+    ) -> Result<bool, E> {
         let Some(orders) = self.orders else {
             return Ok(false);
         };

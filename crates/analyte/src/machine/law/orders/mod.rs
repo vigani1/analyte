@@ -1,5 +1,7 @@
 //! Drives LAW work exchanges with cached orders, reservations and item outcomes (TF-2b 3.27/3.28).
-use crate::orders::OrderError as Error;
+use crate::machine::hl7::orders::response::{Profile, response_metadata};
+use crate::machine::law::error::OrderError as Error;
+use crate::orders::reservation;
 use crate::runtime::hooks::Operation;
 use analyte_dialog::law::outcome::{self, Code as LawEnd, Detail as LawDetail};
 use std::error::Error as _;
@@ -87,16 +89,16 @@ impl LawOrderLink {
     /// Cancellation can leave an owned reservation committed. Cleanup queries every key
     /// registered before submission; the store owner serializes cleanup after that commit.
     pub(crate) async fn close(&mut self, store: &Handle, code: &str) -> Result<(), Error> {
-        let result = super::sending::settle_owned(
+        let result = crate::orders::sending::settle_owned(
             store,
             std::mem::take(&mut self.reserving),
             &self.owner,
             code,
-            super::sending::Settlement::Items,
+            crate::orders::sending::Settlement::Items,
         )
         .await;
         self.exchange = None;
-        result
+        Ok(result?)
     }
 
     pub(crate) async fn answer(
@@ -177,7 +179,7 @@ impl LawOrderLink {
         }
         let until = started
             .checked_add(Duration::from_millis(u64::from(policy.query_deadline_ms())))
-            .ok_or(Error::LawQueryDeadlineOverflow)?;
+            .ok_or(Error::QueryDeadlineOverflow)?;
         let settings = Settings::new(stack, orders);
         match self
             .prepare(store, machine, settings, query, receipt, until)
@@ -231,7 +233,7 @@ impl LawOrderLink {
             | law::Scope::Tray { .. }
             | law::Scope::Isolate { .. }
             | law::Scope::InformationalRack { .. } => {
-                return Err(Error::UnsupportedLawQueryScope);
+                return Err(Error::UnsupportedQueryScope);
             }
         };
         let cached = query_orders(store, machine, sample, until, options).await?;
@@ -244,13 +246,10 @@ impl LawOrderLink {
             .await
             .map_err(Error::TestHook)?;
         if Instant::now() >= until {
-            return Err(Error::LawQueryDeadlineAfterReservation);
+            return Err(Error::QueryDeadlineAfterReservation);
         }
         let followup = if prepared.is_empty() {
-            crate::orders::hl7::response::response_metadata(
-                crate::orders::hl7::response::Profile::Law,
-            )
-            .build(|response| {
+            response_metadata(Profile::Law).build(|response| {
                 Ok::<_, Error>(law::negative_work(
                     query,
                     address(&work),
@@ -271,10 +270,10 @@ impl LawOrderLink {
             law::CacheAnswer::WorkExists
         };
         let Reply::Response(response) = reply(query, answer, options)? else {
-            return Err(Error::UnexpectedNestedLawFollowup);
+            return Err(Error::UnexpectedNestedFollowup);
         };
         if Instant::now() >= until {
-            return Err(Error::LawQueryDeadlineDuringRendering);
+            return Err(Error::QueryDeadlineDuringRendering);
         }
         let outgoing = Reply::Followup {
             response,
@@ -384,7 +383,7 @@ impl LawOrderLink {
                             id,
                             &outcomes,
                             jiff::Timestamp::now().as_second(),
-                            super::event,
+                            crate::orders::event,
                         )?;
                     }
                     Ok(())
@@ -407,38 +406,36 @@ fn reply(
     answer: law::CacheAnswer<'_>,
     options: Options,
 ) -> Result<Reply, Error> {
-    crate::orders::hl7::response::response_metadata(crate::orders::hl7::response::Profile::Law)
-        .build(|response| {
-            Ok(Reply::Response(
-                law::query_response(
-                    query,
-                    answer,
-                    response,
-                    Responsibility::StoredAndInterpreted,
-                    options,
-                )?
-                .message()
-                .clone(),
-            ))
-        })
+    response_metadata(Profile::Law).build(|response| {
+        Ok(Reply::Response(
+            law::query_response(
+                query,
+                answer,
+                response,
+                Responsibility::StoredAndInterpreted,
+                options,
+            )?
+            .message()
+            .clone(),
+        ))
+    })
 }
 
 fn reject_query(message: &Message, error: &law::Failure, options: Options) -> Result<Reply, Error> {
-    crate::orders::hl7::response::response_metadata(crate::orders::hl7::response::Profile::Law)
-        .build(|response| {
-            let detail = error.acknowledgment_error(message, b"102", b"LAW-invalid-query");
-            law::reject_trigger(
-                message.raw(),
-                response,
-                error
-                    .acknowledgment_code()
-                    .ok_or(Error::LawQueryFailureHasNoAckOutcome)?,
-                detail,
-                options,
-            )?
-            .map(Reply::Response)
-            .ok_or_else(|| Error::QueryCorrelationMissing)
-        })
+    response_metadata(Profile::Law).build(|response| {
+        let detail = error.acknowledgment_error(message, b"102", b"LAW-invalid-query");
+        law::reject_trigger(
+            message.raw(),
+            response,
+            error
+                .acknowledgment_code()
+                .ok_or(Error::QueryFailureHasNoAckOutcome)?,
+            detail,
+            options,
+        )?
+        .map(Reply::Response)
+        .ok_or_else(|| Error::QueryCorrelationMissing)
+    })
 }
 
 async fn query_orders(
@@ -449,7 +446,7 @@ async fn query_orders(
     options: Options,
 ) -> Result<Vec<analyte_store::CachedOrder>, Error> {
     let freshness = machine.destination_limits.freshness.as_secs();
-    let destination = super::destination(machine);
+    let destination = crate::orders::destination(machine);
     let target = machine.id.clone();
     let bound = options.limits.segments;
     machine
@@ -466,7 +463,7 @@ async fn query_orders(
                 match store.orders(&destination, &sample, now, freshness)? {
                     Lookup::Orders(orders) => {
                         for order in orders {
-                            let key = crate::orders::reservation::key_parts(
+                            let key = reservation::key_parts(
                                 destination.clone(),
                                 order.id.clone(),
                                 target.clone(),
@@ -478,7 +475,7 @@ async fn query_orders(
                     }
                     Lookup::NoOrders => {}
                     Lookup::NotTrusted => {
-                        return Err(Error::Store(analyte_store::OrderError::Conflict));
+                        return Err(analyte_store::OrderError::Conflict.into());
                     }
                 }
             } else {
@@ -489,7 +486,7 @@ async fn query_orders(
                     }
                     match store.pending_orders(&destination, &target, &after, now, freshness)? {
                         PendingOrders::NotTrusted => {
-                            return Err(Error::Store(analyte_store::OrderError::Conflict));
+                            return Err(analyte_store::OrderError::Conflict.into());
                         }
                         PendingOrders::Page {
                             orders,

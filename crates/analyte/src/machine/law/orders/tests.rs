@@ -6,14 +6,14 @@ use crate::Error;
 async fn adr0004_law_superseded_mapping_rejection_continues_idle_admission() -> Result<(), Error> {
     let definition = format!(
         "{}\n{}",
-        include_str!("../../../../core/config/examples/law.toml"),
-        include_str!("../../../../core/config/examples/law_orders.toml")
+        include_str!("../../../../../core/config/examples/law.toml"),
+        include_str!("../../../../../core/config/examples/law_orders.toml")
     );
     let snapshot = analyte_config::Draft::load(
         ("machine", &definition),
         (
             "site",
-            include_str!("../../../../core/config/examples/site.toml"),
+            include_str!("../../../../../core/config/examples/site.toml"),
         ),
         ("overrides", "schema_version=1"),
     )?
@@ -38,7 +38,7 @@ async fn adr0004_law_superseded_mapping_rejection_continues_idle_admission() -> 
     )
     .await?;
     let mut document: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../../../docs/contract/vectors/order.json"
+        "../../../../../../docs/contract/vectors/order.json"
     ))?;
     let stale = analyte_store::CachedOrder {
         id: Identifier::new("order-1")?,
@@ -83,7 +83,7 @@ async fn adr0004_law_superseded_mapping_rejection_continues_idle_admission() -> 
         .await?;
     assert!(prepared.is_empty());
     assert!(link.exchange.is_none());
-    let key = crate::orders::reservation::key(&machine, Identifier::new("order-1")?);
+    let key = reservation::key(&machine, Identifier::new("order-1")?);
     assert!(
         store
             .request(deadline()?, move |store| store.machine_order(&key))

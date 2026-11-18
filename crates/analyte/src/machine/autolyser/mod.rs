@@ -8,6 +8,7 @@ use crate::machine::connection_input::Input;
 use crate::machine::receive;
 use crate::machine::receive::custody::{WriteDeadline, ms};
 mod error;
+pub(crate) mod orders;
 mod outcome;
 pub(crate) mod settings;
 use analyte_dialog::autolyser::{Action, Dialog, Event, Request};

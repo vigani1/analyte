@@ -42,11 +42,18 @@ Every protocol, standard or vendor, uses the same places:
 | Version rules | `crates/protocols/<key>/src/version.rs` |
 | Machine terms to the common model and back | `crates/steps/mapping/src/<key>.rs` |
 | Connection driving (I/O, store calls, timers) | `crates/analyte/src/machine/<key>.rs` |
-| Order sending | `crates/analyte/src/orders/<key>.rs` |
+| Order exchange: queries from the machine and work sent ahead | `crates/analyte/src/machine/<key>/orders.rs`, or `orders/` when it has parts; its failures in `machine/<key>/error.rs` |
 
 (Changed on 2026-11-18 to slim the program crate: stored outcome codes are pure
 protocol text, so they moved from `crates/analyte/src/orders/outcome/` to the
-dialog that produces them; the program stores the text it is given.)
+dialog that produces them; the program stores the text it is given. Changed
+again the same day: each protocol's order exchange moved from
+`crates/analyte/src/orders/<key>` to its host, and its failures joined the
+host's `error.rs`, wrapping the shared `orders::OrderError`. HL7 and LAW order
+code raises shared causes directly, so it keeps a separate `OrderError` there;
+otherwise the host error's custody conversions would turn those causes into
+custody refusals. `crates/analyte/src/orders/` keeps only the lookup,
+admission, reservation, sending and operator commands every protocol shares.)
 
 A file grows into a folder of the same name (`law/mod.rs` plus its pieces)
 when it has separate responsibilities. A concern that a protocol lacks has no file.
@@ -165,7 +172,7 @@ the same way, and its `README.md` states the kind first.
 
 | Kind | Folder | Crates | Inside `src/` |
 | --- | --- | --- | --- |
-| Program | `crates/analyte` | analyte | Role folders (`machine`, `orders`, `runtime`, `operator`, `installation`, `admin`, `intake`, `reading`), one file per protocol inside |
+| Program | `crates/analyte` | analyte | Role folders (`machine`, `orders`, `runtime`, `operator`, `installation`, `admin`, `intake`, `reading`); per-protocol code sits in `machine` and `reading`, shared order steps in `orders` |
 | Steps | `crates/steps/` | transport, framing, dialog, mapping, sink | One file or folder per protocol key, plus shared pieces named for what they hold |
 | Protocols | `crates/protocols/` | astm, hl7, poct, vidas, autolyser | One file or folder per job: `syntax` (reading), `encode` (writing), `views`, `version`, plus the extras named in section 2; a profile (LAW) is a folder with the same jobs |
 | Core | `crates/core/` | model, store, config, contract | Role folders named for what they hold |

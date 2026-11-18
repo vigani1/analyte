@@ -1,10 +1,14 @@
 //! Drives HL7 order lookups, reservations and delivery outcomes (HL7 2.3.1 §2.18 and 2.5.1 §5.10).
 //! Kept whole: HL7 order exchange driving keeps cancellation, peer replies and durable transitions together.
+use crate::orders::{
+    admission::{self, Prepared},
+    sending,
+};
 #[cfg(test)]
 use analyte_fixtures::ConfigEdit as _;
 pub(crate) mod response;
 mod send;
-use crate::orders::OrderError as Error;
+use crate::machine::hl7::error::OrderError as Error;
 use crate::{deadline, installation::config::Machine, intake};
 use analyte_dialog::hl7::outcome::{Code as Hl7End, Detail as Hl7Detail};
 use analyte_hl7::{
@@ -126,14 +130,15 @@ impl<'a> Hl7OrderLink<'a> {
         code: &str,
     ) -> Result<(), Error> {
         let mut result = Ok(());
-        let cleanup = crate::orders::sending::settle_owned(
+        let cleanup = sending::settle_owned(
             store,
             std::mem::take(&mut self.reserving),
             &self.owner,
             code,
-            crate::orders::sending::Settlement::Order,
+            sending::Settlement::Order,
         )
-        .await;
+        .await
+        .map_err(Error::from);
         crate::cleanup::retain_cleanup(&mut result, cleanup);
         if let Some(exchange) = &self.exchange {
             let cleanup = send::finish(
@@ -232,10 +237,10 @@ impl<'a> Hl7OrderLink<'a> {
         let query = self
             .orders
             .query()
-            .ok_or_else(|| Error::Hl7QueryPolicyMissing)?;
+            .ok_or_else(|| Error::QueryPolicyMissing)?;
         let until = started
             .checked_add(Duration::from_millis(u64::from(query.policy().deadline_ms)))
-            .ok_or_else(|| Error::Hl7QueryDeadlineOverflow)?;
+            .ok_or_else(|| Error::QueryDeadlineOverflow)?;
         let lookup = DisplayLookup {
             request,
             receipt,
@@ -269,7 +274,7 @@ impl<'a> Hl7OrderLink<'a> {
                 .iter()
                 .map(|candidate| candidate.identity.clone())
                 .collect();
-            if !crate::orders::sending::reserve_candidates(
+            if !sending::reserve_candidates(
                 store,
                 candidates,
                 until,
@@ -328,7 +333,7 @@ impl<'a> Hl7OrderLink<'a> {
                 Lookup::Orders(orders) => {
                     answer = CacheAnswer::Empty;
                     for cached in orders {
-                        match crate::orders::admission::prepare(
+                        match admission::prepare::<_, Error>(
                             store,
                             machine,
                             cached,
@@ -346,8 +351,8 @@ impl<'a> Hl7OrderLink<'a> {
                         )
                         .await?
                         {
-                            crate::orders::admission::Prepared::Skipped => continue,
-                            crate::orders::admission::Prepared::Mapped(candidate, mapped) => {
+                            Prepared::Skipped => continue,
+                            Prepared::Mapped(candidate, mapped) => {
                                 if lines
                                     .len()
                                     .checked_add(mapped.len())
@@ -360,7 +365,7 @@ impl<'a> Hl7OrderLink<'a> {
                                 candidates.push(candidate);
                                 answer = CacheAnswer::Found;
                             }
-                            crate::orders::admission::Prepared::Rejected(_) => {
+                            Prepared::Rejected(_) => {
                                 answer = CacheAnswer::Unavailable;
                                 break;
                             }
@@ -451,12 +456,12 @@ mod tests {
         reserve_original_connection(&store, &second, &owner).await?;
         let database = rusqlite::Connection::open(temp.path().join("owned-cleanup.db"))?;
         database.execute_batch("CREATE TRIGGER synthetic_cleanup_failure BEFORE UPDATE OF state ON machine_orders WHEN OLD.order_id='order-2' BEGIN SELECT RAISE(ABORT,'synthetic cleanup failure'); END;")?;
-        let result = crate::orders::sending::settle_owned(
+        let result = sending::settle_owned(
             &store,
             vec![first.clone(), second.clone()],
             &owner,
             "disconnect",
-            crate::orders::sending::Settlement::Items,
+            sending::Settlement::Items,
         )
         .await;
         assert!(result.is_err());
@@ -630,14 +635,14 @@ mod tests {
     fn query_machine() -> Result<Machine, crate::Error> {
         let definition = format!(
             "{}\n{}",
-            include_str!("../../../../core/config/examples/hl7.toml"),
-            include_str!("../../../../core/config/examples/hl7_orders.toml")
+            include_str!("../../../../../core/config/examples/hl7.toml"),
+            include_str!("../../../../../core/config/examples/hl7_orders.toml")
         );
         let snapshot = analyte_config::Draft::load(
             ("machine", &definition),
             (
                 "site",
-                include_str!("../../../../core/config/examples/site.toml"),
+                include_str!("../../../../../core/config/examples/site.toml"),
             ),
             ("overrides", "schema_version=1"),
         )?
@@ -679,8 +684,10 @@ mod tests {
                                 cause,
                             ))
                         })?,
-                        document: include_str!("../../../../../docs/contract/vectors/order.json")
-                            .rewrite("order-1", identity.order.as_str()),
+                        document: include_str!(
+                            "../../../../../../docs/contract/vectors/order.json"
+                        )
+                        .rewrite("order-1", identity.order.as_str()),
                         tombstone: false,
                         expiry: now.checked_add(100).ok_or_else(|| {
                             std::io::Error::other("order expiry timestamp overflow")

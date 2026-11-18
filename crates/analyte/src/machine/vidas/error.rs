@@ -1,4 +1,4 @@
-//! Classifies VIDAS session refusals with shared link and custody causes.
+//! Classifies VIDAS session refusals and order failures with their shared causes.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
     /// VIDAS active dialog has no deadline.
@@ -13,10 +13,13 @@ pub(crate) enum Error {
         /// The dialog deadline that ended the transfer; none for a refused or unexpected event.
         expired: Option<analyte_dialog::vidas::Timer>,
     },
-    /// An outbound command could not represent the mapped order.
+    /// A reserved VIDAS order produced no mapped request.
+    #[error("VIDAS mapped request missing")]
+    MappedRequestMissing,
+    /// VIDAS order mapping failed.
     #[error(transparent)]
-    OrderMapping(#[from] analyte_mapping::OrderMappingError),
-    /// Order reservation or completion could not be persisted.
+    Mapping(#[from] analyte_mapping::vidas::OrderError),
+    /// Shared order lookup, storage or settlement failed.
     #[error(transparent)]
     Orders(#[from] crate::orders::OrderError),
     /// The VIDAS transfer could not advance its phase.

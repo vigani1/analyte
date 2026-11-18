@@ -5,6 +5,7 @@ use crate::intake;
 use crate::intake::ByteReason;
 use crate::machine::receive::custody::{self, ms};
 mod error;
+pub(crate) mod orders;
 mod outcome;
 pub(crate) mod settings;
 use analyte_dialog::vidas::{Action, Config as DialogConfig, Dialog, Event};
@@ -249,16 +250,16 @@ impl driver::Drain for Host<'_, '_> {
                 intake::park_bytes(self.store, self.machine, Vec::new(), reason).await?;
             }
             Action::Close => match self.work.confirmed(self.store).await? {
-                crate::orders::vidas::Progress::DownloadNext(request) => {
+                orders::Progress::DownloadNext(request) => {
                     run.actions.extend(self.start_download(&request)?);
                 }
-                crate::orders::vidas::Progress::DownloadFinished => {
+                orders::Progress::DownloadFinished => {
                     self.dialog = Dialog::upload(self.config.clone(), self.policy.clone())?;
                     self.start = Instant::now();
                     run.actions.extend(self.dialog.start());
                     self.phase = Phase::Idle;
                 }
-                crate::orders::vidas::Progress::UploadFinished => run.stop_when_drained(),
+                orders::Progress::UploadFinished => run.stop_when_drained(),
             },
         }
         Ok(Flow::Continue)

@@ -4,7 +4,7 @@ use analyte_store::{Handle, MachineOrder, MachineOrderKey, OrderReservation, Sen
 use std::{num::NonZeroU64, time::Instant};
 
 /// Recheck the current version and freshness at the store operation, never at rendering.
-pub(super) fn candidate(
+pub(crate) fn candidate(
     identity: &MachineOrderKey,
     version: NonZeroU64,
     freshness: u64,
@@ -19,7 +19,7 @@ pub(super) fn candidate(
 
 /// Mapping rejection changes only still-unsent, current, trusted work.
 /// A superseding update returns its refusal without overwriting its lifecycle.
-pub(super) async fn reject(
+pub(crate) async fn reject(
     store: &Handle,
     until: Instant,
     identity: MachineOrderKey,
@@ -40,7 +40,7 @@ pub(super) async fn reject(
 
 /// Admit cancellation of the current version without resending the original order.
 /// The caller registers the key before awaiting so disconnect cleanup owns it.
-pub(super) async fn cancel(
+pub(crate) async fn cancel(
     store: &Handle,
     until: Instant,
     id: i64,
@@ -63,19 +63,19 @@ pub(super) async fn cancel(
 }
 
 /// Owns the typed inputs to atomic send admission and protocol preflight.
-pub(super) struct Admission {
-    pub(super) identity: MachineOrderKey,
-    pub(super) version: NonZeroU64,
-    pub(super) freshness: u64,
-    pub(super) owner: analyte_model::Identifier,
-    pub(super) groups: Vec<Vec<analyte_model::NamespacedId>>,
-    pub(super) namespace: analyte_model::Identifier,
-    pub(super) max_identity_bytes: usize,
+pub(crate) struct Admission {
+    pub(crate) identity: MachineOrderKey,
+    pub(crate) version: NonZeroU64,
+    pub(crate) freshness: u64,
+    pub(crate) owner: analyte_model::Identifier,
+    pub(crate) groups: Vec<Vec<analyte_model::NamespacedId>>,
+    pub(crate) namespace: analyte_model::Identifier,
+    pub(crate) max_identity_bytes: usize,
 }
 
 /// Runs protocol rendering inside reservation admission, before any command can be sent.
 /// The store refuses previously sent work; a lost completion stays owned for cleanup.
-pub(super) async fn admit<T: Send + 'static>(
+pub(crate) async fn admit<T: Send + 'static>(
     store: &Handle,
     until: Instant,
     admission: Admission,
@@ -116,7 +116,7 @@ pub(super) async fn admit<T: Send + 'static>(
 }
 
 /// Builds the durable machine-order identity in one place for both HL7 profiles.
-pub(super) fn key(
+pub(crate) fn key(
     machine: &crate::installation::config::Machine,
     order: analyte_model::Identifier,
 ) -> MachineOrderKey {
@@ -124,7 +124,7 @@ pub(super) fn key(
 }
 
 /// Lists cancellation candidates only while the cached order feed is trusted.
-pub(super) async fn cancellations(
+pub(crate) async fn cancellations(
     store: &Handle,
     machine: &crate::installation::config::Machine,
     until: Instant,
@@ -147,7 +147,7 @@ pub(super) async fn cancellations(
 }
 
 /// Builds an identity from already owned routing fields inside store operations.
-pub(super) fn key_parts(
+pub(crate) fn key_parts(
     destination: analyte_model::Identifier,
     order: analyte_model::Identifier,
     machine: analyte_model::Identifier,
@@ -160,7 +160,7 @@ pub(super) fn key_parts(
 }
 
 /// Couples a cached version to its configured machine identity before admission.
-pub(super) fn pending(
+pub(crate) fn pending(
     machine: &crate::installation::config::Machine,
     order: analyte_model::Identifier,
     version: NonZeroU64,

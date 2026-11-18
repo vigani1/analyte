@@ -1,5 +1,5 @@
 //! Settles ASTM transport completion without implying application acceptance.
-use crate::orders::{OrderError as Error, sending::Work};
+use crate::{machine::astm::Error, orders::sending::Work};
 use analyte_dialog::astm::outcome::Code as AstmEnd;
 use analyte_model::OrderState;
 use analyte_store::{Handle, MachineOrder};
@@ -24,7 +24,7 @@ pub(crate) async fn finished(
     } else {
         OrderState::Uncertain
     };
-    super::super::sending::complete(store, order, state, code.as_str()).await
+    Ok(crate::orders::sending::complete(store, order, state, code.as_str()).await?)
 }
 
 impl<S, T> Work<'_, S, T> {

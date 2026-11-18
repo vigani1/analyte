@@ -43,7 +43,8 @@ fn failure_code(error: &Error) -> Option<VidasEnd> {
             failure_code(&pair.effect).or_else(|| failure_code(&pair.original))
         }
         Error::Refusal(Refusal::Custody(_))
-        | Error::OrderMapping(_)
+        | Error::MappedRequestMissing
+        | Error::Mapping(_)
         | Error::Orders(_)
         | Error::Dialog(_)
         | Error::Syntax(_) => None,

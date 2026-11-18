@@ -1,5 +1,10 @@
 //! Sends unsolicited HL7 work and cancellations (HL7 ch.4).
-use crate::orders::OrderError as Error;
+use super::response::{Profile, response_metadata};
+use crate::machine::hl7::error::OrderError as Error;
+use crate::orders::{
+    admission::{self, Prepared},
+    reservation, sending,
+};
 use crate::{deadline, installation::config::Machine};
 use analyte_dialog::hl7::outcome::{Code as Hl7End, Detail as Hl7Detail};
 use analyte_hl7::{
@@ -41,8 +46,7 @@ fn build(command: &Command, record: &MachineOrder, cancel: bool) -> Result<Order
             tests: &item.tests,
         })
         .collect::<Vec<_>>();
-    let metadata =
-        crate::orders::hl7::response::response_metadata(crate::orders::hl7::response::Profile::Hl7);
+    let metadata = response_metadata(Profile::Hl7);
     Ok(command.map(&items, cancel, metadata.response()?)?)
 }
 
@@ -68,7 +72,7 @@ async fn next_cancel(
     reserving: &mut Vec<MachineOrderKey>,
 ) -> Result<Option<Exchange>, Error> {
     let freshness = machine.destination_limits.freshness.as_secs();
-    let cancels = crate::orders::reservation::cancellations(store, machine, deadline()?).await?;
+    let cancels = reservation::cancellations(store, machine, deadline()?).await?;
     for (record, cached) in cancels {
         let app: analyte_contract::Order = analyte_contract::decode(cached.document.as_bytes())?;
         let command = command(settings, &app)?;
@@ -76,16 +80,7 @@ async fn next_cancel(
         let id = record.id;
         reserving.push(record.key.clone());
         let version = app.fields().version;
-        match crate::orders::reservation::cancel(
-            store,
-            deadline()?,
-            id,
-            version,
-            owner.clone(),
-            freshness,
-        )
-        .await
-        {
+        match reservation::cancel(store, deadline()?, id, version, owner.clone(), freshness).await {
             Ok(record) => return Ok(Some(Exchange { record, message })),
             Err(analyte_store::OrderError::Conflict) => {
                 reserving.clear();
@@ -106,19 +101,18 @@ async fn next_work(
     reserving: &mut Vec<MachineOrderKey>,
 ) -> Result<Option<Exchange>, Error> {
     let freshness = machine.destination_limits.freshness.as_secs();
-    let candidates = crate::orders::sending::candidate_page(store, machine, after).await?;
+    let candidates = sending::candidate_page(store, machine, after).await?;
     for cached in candidates {
         *after = cached.id.as_str().to_owned();
-        let crate::orders::admission::Prepared::Mapped(candidate, command) =
-            crate::orders::admission::prepare(
-                store,
-                machine,
-                cached,
-                deadline()?,
-                |error| format!("rejected: {error}"),
-                |app| command(settings, app),
-            )
-            .await?
+        let Prepared::Mapped(candidate, command) = admission::prepare(
+            store,
+            machine,
+            cached,
+            deadline()?,
+            |error| format!("rejected: {error}"),
+            |app| command(settings, app),
+        )
+        .await?
         else {
             continue;
         };
@@ -137,10 +131,10 @@ async fn next_work(
         let identity = key.clone();
         let owner = owner.clone();
         reserving.push(key.clone());
-        let reserved = crate::orders::reservation::admit(
+        let reserved = reservation::admit(
             store,
             deadline()?,
-            crate::orders::reservation::Admission {
+            reservation::Admission {
                 identity,
                 version,
                 freshness,
@@ -198,7 +192,7 @@ async fn reject(
     candidate: crate::orders::Candidate,
     reason: &str,
 ) -> Result<(), Error> {
-    crate::orders::admission::reject(store, machine, deadline()?, candidate, reason).await
+    Ok(admission::reject(store, machine, deadline()?, candidate, reason).await?)
 }
 pub(super) async fn finish(
     store: &Handle,

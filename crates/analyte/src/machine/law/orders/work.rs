@@ -1,5 +1,6 @@
 //! Supplies LAW order reservations and response metadata to the mapper.
-use crate::orders::OrderError as Error;
+use crate::machine::hl7::orders::response::{Profile, response_metadata};
+use crate::machine::law::error::OrderError as Error;
 use analyte_hl7::{Message, Options, law};
 pub(super) use analyte_mapping::{LawCommand as Command, law_address as address};
 use analyte_store::MachineOrder;
@@ -33,10 +34,9 @@ pub(super) fn render(
         .zip(&items)
         .map(|((command, _), items)| (*command, items.as_slice()))
         .collect::<Vec<_>>();
-    crate::orders::hl7::response::response_metadata(crate::orders::hl7::response::Profile::Law)
-        .build(|response| {
-            Ok(analyte_mapping::map_law_work(
-                &refs, action, options, response,
-            )?)
-        })
+    response_metadata(Profile::Law).build(|response| {
+        Ok(analyte_mapping::map_law_work(
+            &refs, action, options, response,
+        )?)
+    })
 }

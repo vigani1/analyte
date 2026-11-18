@@ -13,7 +13,7 @@ pub use intake::{CommitError as IntakeCommitError, Error as IntakeError};
 /// Failures constructing complete departure evidence.
 pub use machine::interpretation::departure_evidence::EvidenceError as DepartureEvidenceError;
 /// Failures comparing returned LAW work with retained immutable commands.
-pub use orders::law::validation::ValidationError as WorkValidationError;
+pub use machine::law::orders::validation::ValidationError as WorkValidationError;
 pub mod machine;
 pub mod operator;
 pub mod orders;

@@ -1,4 +1,4 @@
-//! Classifies AUTOLYSER session refusals with shared link and custody causes.
+//! Classifies AUTOLYSER session refusals and order failures with their shared causes.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
     /// Autolyser poll confirmation did not reconcile custody.
@@ -10,10 +10,13 @@ pub(crate) enum Error {
     /// Autolyser report receipt missing.
     #[error("Autolyser report receipt missing")]
     ReportReceiptMissing,
-    /// An outbound command could not represent the mapped order.
+    /// An insertion reply arrived without a reserved order.
+    #[error("unexpected Autolyser insertion outcome")]
+    UnexpectedInsertionOutcome,
+    /// Autolyser order mapping failed.
     #[error(transparent)]
-    OrderMapping(#[from] analyte_mapping::OrderMappingError),
-    /// Order reservation or completion could not be persisted.
+    Mapping(#[from] analyte_mapping::autolyser::OrderError),
+    /// Shared order lookup, storage or settlement failed.
     #[error(transparent)]
     Orders(#[from] crate::orders::OrderError),
     /// The Autolyser poll or insertion dialog refused an event.
