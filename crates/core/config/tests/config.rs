@@ -482,3 +482,36 @@ fn hl7_231_2_24_1_18_utf8_requires_named_vendor_departure() -> Result<(), Error>
     assert!(!stack.settings().syntax().allow_utf8_in_v231());
     Ok(())
 }
+
+// ADR 0004: the lab-app request deadline is a validated site setting, not a host constant.
+#[test]
+fn adr_0004_site_request_timeout_defaults_bounds_and_refuses_out_of_range() -> Result<(), Error> {
+    let validate = |extra: &str| {
+        Draft::load(
+            ("machine.toml", HL7),
+            ("site.toml", &format!("{SITE}{extra}")),
+            ("local.toml", OVERRIDES),
+        )
+        .and_then(Draft::validate)
+    };
+    let configured = |config: &analyte_config::Validated| {
+        config
+            .effective()
+            .site()
+            .destination
+            .request_timeout_seconds
+    };
+    assert_eq!(configured(&validate("")?), 10);
+    for seconds in [1, 120] {
+        let config = validate(&format!("request_timeout_seconds = {seconds}\n"))?;
+        assert_eq!(configured(&config), seconds);
+    }
+    for seconds in [0, 121] {
+        let refusal = validate(&format!("request_timeout_seconds = {seconds}\n"));
+        let Err(Error::Invalid { key, .. }) = refusal else {
+            panic!("{seconds} seconds must be refused with its key, got {refusal:?}")
+        };
+        assert_eq!(key, "site.destination.request_timeout_seconds");
+    }
+    Ok(())
+}

@@ -83,6 +83,9 @@ pauses delivery; conflicts and rejected content are parked. Fix the cause before
 using an audited resend. Orders need a complete paged snapshot and changes feed.
 Stale or incomplete lookup is an error or silence, never a guessed empty list.
 `destination.freshness_seconds` defaults to 30; agree the offline policy with the lab.
+`destination.request_timeout_seconds` (default 10, 1 through 120) bounds each
+request to the app, including TLS and the app storing; raise it for a slow link
+or app, but keep it well below the freshness setting.
 
 Prove synthetic delivery, duplicate handling, authentication failure, outage
 recovery and order freshness with the app team before clinical connection.
