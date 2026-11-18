@@ -45,17 +45,19 @@ impl ParkedItem {
 }
 
 impl Store {
-    /// Resolves an open parked item to exactly one retained receipt.
+    /// Resolves an open parked item to exactly one retained receipt. An aborted ASTM
+    /// transfer is parked by its transfer identity; its receipt is rebuilt from the
+    /// acknowledged frames the first time it is asked for.
     /// # Errors
     /// Refuses missing/resolved items and absent or ambiguous receipt links.
-    pub fn parked_receipt(&self, id: i64) -> Result<ReceiptId, Error> {
+    pub fn parked_receipt(&mut self, id: i64) -> Result<ReceiptId, Error> {
         let item = self.parked_item(id)?.ok_or(Error::ReprocessParked)?;
         if item.resolution.is_some() {
             return Err(Error::ReprocessParked);
         }
         let details = item.details()?;
         let mut receipt = None;
-        for target in details.targets {
+        for target in &details.targets {
             // IDs share a representation; existence in receipts establishes the link.
             if let Ok(id) = serde_json::from_value::<ReceiptId>(serde_json::Value::String(
                 target.as_str().to_owned(),
@@ -63,6 +65,15 @@ impl Store {
                 && receipt.replace(id).is_some()
             {
                 return Err(Error::ReprocessParked);
+            }
+        }
+        if receipt.is_none() {
+            for target in &details.targets {
+                if let Some(id) = self.transfer_receipt(target.as_str())?
+                    && receipt.replace(id).is_some()
+                {
+                    return Err(Error::ReprocessParked);
+                }
             }
         }
         receipt.ok_or(Error::ReprocessParked)

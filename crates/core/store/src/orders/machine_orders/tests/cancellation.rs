@@ -96,32 +96,43 @@ fn adr0003_typed_ownership_ignores_reason_prefixes_and_cancel_replay_keeps_full_
 fn adr0004_cancel_expiry_version_trust_and_builder_failure_never_reserve() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("orders.db"))?;
-    for (version, state, tombstone, expiry, now, expected) in [
-        (2, "requested", false, 200, 101, SendRefusal::VersionChanged),
+    // Cached versions only move forward, so each case carries a newer one.
+    for (version, reserved, state, tombstone, expiry, now, expected) in [
         (
+            2,
             1,
+            "requested",
+            false,
+            200,
+            101,
+            SendRefusal::VersionChanged,
+        ),
+        (
+            3,
+            3,
             "cancel_requested",
             false,
             200,
             101,
             SendRefusal::NotRequested,
         ),
-        (1, "requested", true, 200, 101, SendRefusal::Withdrawn),
-        (1, "requested", false, 101, 101, SendRefusal::Expired),
-        (1, "requested", false, 200, 130, SendRefusal::Untrusted),
+        (4, 4, "requested", true, 200, 101, SendRefusal::Withdrawn),
+        (5, 5, "requested", false, 101, 101, SendRefusal::Expired),
+        (6, 6, "requested", false, 200, 130, SendRefusal::Untrusted),
     ] {
         store.order_page(&page(version, state, tombstone, expiry)?)?;
+        let version = NonZeroU64::new(reserved).ok_or("version")?;
         assert!(
-            matches!(store.reserve_send(&OrderReservation { identity: &identity()?, version: NonZeroU64::MIN, now, freshness: 30 }, ReserveOptions::default())?,Err(reason) if reason == expected)
+            matches!(store.reserve_send(&OrderReservation { identity: &identity()?, version, now, freshness: 30 }, ReserveOptions::default())?,Err(reason) if reason == expected)
         );
     }
-    store.order_page(&page(1, "requested", false, 200)?)?;
+    store.order_page(&page(7, "requested", false, 200)?)?;
     {
         let refusal = store
             .reject_unsent(
                 &OrderReservation {
                     identity: &identity()?,
-                    version: NonZeroU64::MIN,
+                    version: NonZeroU64::new(7).ok_or("version")?,
                     now: 101,
                     freshness: 30,
                 },
