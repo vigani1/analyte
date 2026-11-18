@@ -1,0 +1,12 @@
+{
+  "max_document_bytes": 1048576,
+  "max_results_per_delivery": 1000,
+  "max_orders_per_page": 100,
+  "default_page_limit": 100,
+  "max_cursor_bytes": 256,
+  "max_tests_per_order": 100,
+  "max_seed_orders": 100,
+  "cursor_lifetime_seconds": 3600,
+  "signature_tolerance_seconds": 300,
+  "retry_after_cap_seconds": 60
+}
