@@ -308,7 +308,15 @@ async fn wait_audit(path: &Path) -> Result<(), Error> {
     match waited {
         Ok(result) => result?,
         Err(_) => {
-            return Err(format!("no LAW-negative-query-ORL audit row; last count {found}").into());
+            // A late or unmatched ORL is parked instead; name why so a hang explains itself.
+            let parked = database(path)?
+                .prepare("SELECT json_extract(evidence,'$.reason') FROM parked ORDER BY rowid")?
+                .query_map([], |r| r.get::<_, Option<String>>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            return Err(format!(
+                "no LAW-negative-query-ORL audit row; last count {found}; parked {parked:?}"
+            )
+            .into());
         }
     }
     assert_eq!(
