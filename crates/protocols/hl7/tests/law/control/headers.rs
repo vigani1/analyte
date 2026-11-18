@@ -47,9 +47,11 @@ fn msh3_to_6_hd_namespace_usage_and_cardinality() -> TestResult {
     Ok(())
 }
 
+// MSH-7 needs seconds, a real date and an offset. Deliberate tolerance: with a
+// site time zone a received MSH-7 may omit the offset; a sent one may not.
 // IHE PaLM TF-2b §C.4, MSH-7
 #[test]
-fn msh7_precision_calendar_timezone_singleton() -> TestResult {
+fn msh7_offset_or_site_zone() -> TestResult {
     for value in ["20240229235959-1200", "20260101000000+0000"] {
         both("query", &[(7, value)], "", true)?;
     }
@@ -72,6 +74,30 @@ fn msh7_precision_calendar_timezone_singleton() -> TestResult {
     ] {
         both("query", &[(7, value)], "", false)?;
     }
+    let site = Options {
+        header_zone: HeaderZone::Site,
+        ..options()
+    };
+    let zoneless = wire("query", &[(7, "20261115133437")], "")?;
+    let message = law::parse_message(zoneless.as_bytes(), site)?;
+    law::validate_control(&message, ControlDirection::Receive)?;
+    assert!(law::validate_control(&message, ControlDirection::Send).is_err());
+    assert_eq!(
+        law::site_zone_header_time(&message),
+        Some(b"20261115133437".as_slice())
+    );
+    assert_eq!(message.raw(), zoneless.as_bytes());
+    let strict = law::parse_message(zoneless.as_bytes(), options())?;
+    assert!(law::validate_control(&strict, ControlDirection::Receive).is_err());
+    assert_eq!(law::site_zone_header_time(&strict), None);
+    // The site zone never excuses a bad time, and a zoned MSH-7 needs no note.
+    for value in ["20260229120000", "202611151334", "20261115133437.5"] {
+        let bad = law::parse_message(wire("query", &[(7, value)], "")?.as_bytes(), site)?;
+        assert!(law::validate_control(&bad, ControlDirection::Receive).is_err());
+    }
+    let zoned = law::parse_message(wire("query", &[], "")?.as_bytes(), site)?;
+    law::validate_control(&zoned, ControlDirection::Receive)?;
+    assert_eq!(law::site_zone_header_time(&zoned), None);
     Ok(())
 }
 

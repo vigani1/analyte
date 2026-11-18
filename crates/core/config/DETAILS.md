@@ -227,6 +227,14 @@ there is no default or override-layer fallback. Finite retention requires the
 host `retention-digest` credential. See the program guide for offline conversion,
 holds, backup rotation and key continuity (ADR 0013 items 1, 6 and 7).
 
+## Site time zone
+
+`time_zone` is optional: an IANA name that the time-zone database knows, or a
+fixed `+HH:MM`/`-HH:MM` offset (hours 00–23). Anything else fails loading.
+`SiteTimeZone::offset_at` gives the offset of a local time and returns none in a
+daylight-saving gap or fold. Only a received IHE LAW MSH-7 without an offset
+uses it, as a noted tolerance; absent keeps refusing such headers.
+
 The Rust stack variant is `Stack::Vidas`, matching protocol key `vidas`.
 Named departures retain the TOML field `deviations` for compatibility, as
 specified by [ADR 0015](../../../docs/adr/0015-named-machine-departures.md).

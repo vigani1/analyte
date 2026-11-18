@@ -137,6 +137,20 @@ What remains: a run against a simulator build that sends MSH-7 with an offset,
 or a separately decided, explicitly configured named deviation (never a default)
 if real analyzers turn out to omit it.
 
+**Update 2026-11-18.** The owner decided to accept this difference as a noted
+tolerance. A site file may now set `time_zone` (an IANA name or a fixed
+`+HH:MM` offset); a received MSH-7 without an offset is then read in that zone,
+kept unchanged and noted (see the LAW [checklist](../../../protocols/law/checklist.md)
+and [decisions](../../../protocols/law/decisions.md)). The default is unchanged:
+without `time_zone` the reply above is still refused. A re-run is now possible
+by adding `time_zone` to a copy of `site.toml`; the recorded MSH-7 is one hour
+ahead of the UTC capture time, consistent with `+01:00`, but confirm the
+simulator's zone first. The run inputs and the recording here are kept as they
+were. The validator now lives in `crates/protocols/hl7/src/law/envelope.rs` and
+the test is `msh7_offset_or_site_zone` in
+`crates/protocols/hl7/tests/law/control/headers.rs`. Evidence stays documented
+until a re-run is recorded.
+
 ## Artifacts and privacy
 
 `analyte.toml`, `machine.toml`, `site.toml`, `seed-orders.json` and

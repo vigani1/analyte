@@ -186,7 +186,9 @@ fn render(html: &mut Markup, evidence: &DepartureEvidence) {
                     "contract v1 is parked.</strong></p>",
                 ));
             }
-            DepartureMeaning::ControlCharacterKept | DepartureMeaning::CharsetFromDefinition => {
+            DepartureMeaning::ControlCharacterKept
+            | DepartureMeaning::CharsetFromDefinition
+            | DepartureMeaning::ZoneFromSite => {
                 html.push_markup(concat!(
                     "<p><strong>Deliberate tolerance — values kept exactly ",
                     "as received.</strong></p>",

@@ -8,9 +8,9 @@ mod version;
 mod views;
 pub use encode::ack::{AckError, OwnedAckError, Response, Responsibility, acknowledgment};
 pub use syntax::{
-    Charset, Component, Delimiters, Error, EscapePolicy, Field, Limits, Message, Options,
-    Repetition, Segment, Terminator, TextEscape, decode_characters, decode_text, encode_text,
-    inspect_text_escapes, is_null_text,
+    Charset, Component, Delimiters, Error, EscapePolicy, Field, HeaderZone, Limits, Message,
+    Options, Repetition, Segment, Terminator, TextEscape, decode_characters, decode_text,
+    encode_text, inspect_text_escapes, is_null_text,
 };
 pub use version::Version;
 pub use views::{

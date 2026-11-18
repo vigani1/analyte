@@ -241,3 +241,89 @@ async fn empty_msh18_uses_definition_charset_with_note() -> Result<(), Error> {
     assert!(evidence.contains("no character set in the machine definition"));
     Ok(())
 }
+
+async fn zoneless_law_result(time_zone: Option<&str>) -> Result<(Vec<u8>, String, String), Error> {
+    let temp = tempfile::tempdir()?;
+    let definition = include_str!("../../../../../core/config/examples/law.toml")
+        .rewrite("tcp_server", "tcp_client");
+    let path = analyte_fixtures::write_machine(temp.path(), &definition, "127.0.0.1:5600")?;
+    if let Some(zone) = time_zone {
+        let site = std::fs::read_to_string(temp.path().join("site.toml"))?;
+        std::fs::write(
+            temp.path().join("site.toml"),
+            site.rewrite(
+                "retention = \"keep\"",
+                &format!("retention = \"keep\"\ntime_zone = \"{zone}\""),
+            ),
+        )?;
+    }
+    let program = crate::installation::config::Program::load(&path)?;
+    let machine = program.machines().first().ok_or("machine")?;
+    let mut store = crate::runtime::service::open_store(&program, Box::new(Space)).await?;
+    // MSH-7 has seconds but no UTC offset, as the IHE Gazelle simulator sends it.
+    let payload = b"MSH|^~\\&|A|AF|M|MF|20261115133437||OUL^R22^OUL_R22|result-1|P|2.5.1|||NE|AL||UNICODE UTF-8|||LAB-29^IHE\rSPM|1|sample-01&99LAB||SER^Serum^HL70487|||||||P^^HL70369\rSAC|||00012a^LAB\rOBR||awos-1||SYN^Synthetic^99LAB\rORC|SC||||CM\rOBX|1|NM|SYN^Synthetic^99LAB|1|1|mg/L^mg/L^UCUM||N^Normal^HL70078|||F|||||operator||instrument^99LAB~module^99LAB|20261115120000||||||||||RSLT\r";
+    let raw = analyte_framing::hl7::encode(payload, analyte_framing::hl7::Limit::new(1048576)?)?;
+    let id = ReceiptId::new();
+    intake::receive(
+        &store,
+        &intake::ConnectionEvidence::new(machine)?,
+        id,
+        raw.clone(),
+    )
+    .await?;
+    intake::interpret(&store, machine, id).await?;
+    let found = store
+        .request::<_, FixtureError>(deadline()?, move |s| {
+            let kept = s.raw(id)?.unwrap_or_default();
+            let interpretation = s.interpretation(id, 1)?.ok_or(FixtureError::Corruption)?;
+            let ledger = interpretation.departures.ok_or(FixtureError::Corruption)?;
+            let notes = ledger
+                .applied
+                .as_slice()
+                .iter()
+                .filter(|e| e.meaning == analyte_model::DepartureMeaning::ZoneFromSite)
+                .map(|e| {
+                    format!(
+                        "{} | {} | {} | {}",
+                        e.rule.as_str(),
+                        e.standard.as_str(),
+                        e.declaration.as_str(),
+                        e.source.as_str()
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            let outcome = match interpretation.outcome {
+                analyte_store::Reading::Failed(reason) => reason.as_str().to_owned(),
+                analyte_store::Reading::Results(_) => "results".to_owned(),
+            };
+            Ok::<_, FixtureError>((kept, notes, outcome))
+        })
+        .await?;
+    store.shutdown(deadline()?).await?;
+    assert_eq!(found.0, raw);
+    Ok(found)
+}
+
+// Deliberate tolerance: a LAW MSH-7 without an offset is read in the site zone.
+// IHE PaLM TF-2b §C.4
+#[tokio::test]
+async fn zoneless_msh7_uses_site_zone_with_note() -> Result<(), Error> {
+    let (_, notes, outcome) = zoneless_law_result(Some("Europe/Berlin")).await?;
+    assert!(!outcome.contains("MSH-7"), "{outcome}");
+    assert!(notes.contains("law_header_zone_from_site"), "{notes}");
+    assert!(
+        notes.contains("site time_zone = \"Europe/Berlin\""),
+        "{notes}"
+    );
+    assert!(
+        notes.contains("MSH-7 20261115133437 has no UTC offset"),
+        "{notes}"
+    );
+    assert!(notes.contains("offset +01"), "{notes}");
+    // Without a site zone the header is still refused, and no note is written.
+    let (_, notes, outcome) = zoneless_law_result(None).await?;
+    assert!(notes.is_empty(), "{notes}");
+    assert!(outcome.contains("MSH-7"), "{outcome}");
+    Ok(())
+}

@@ -67,6 +67,7 @@ impl fmt::Display for DepartureMeaning {
             Self::WireCompatibility => "WireCompatibility",
             Self::ControlCharacterKept => "ControlCharacterKept",
             Self::CharsetFromDefinition => "CharsetFromDefinition",
+            Self::ZoneFromSite => "ZoneFromSite",
         })
     }
 }
@@ -92,6 +93,7 @@ fn departuremeaning_spellings_are_compatible() {
             DepartureMeaning::CharsetFromDefinition,
             "CharsetFromDefinition",
         ),
+        (DepartureMeaning::ZoneFromSite, "ZoneFromSite"),
     ] {
         assert_eq!(value.to_string(), expected);
     }

@@ -202,8 +202,12 @@ impl<'a> Profile<'a> {
         for segment in message.segments() {
             let occurrence = occurrences.entry(segment.id()).or_default();
             *occurrence = occurrence.checked_add(1).ok_or(content("MSH", 0))?;
-            self.validate_segment(segment, direction)
-                .map_err(|error| error.at_segment(segment, *occurrence))?;
+            // `validate_control` above already checked the only MSH under the
+            // message's own header-zone rule; a second MSH was refused there.
+            if segment.id() != b"MSH" {
+                self.validate_segment(segment, direction)
+                    .map_err(|error| error.at_segment(segment, *occurrence))?;
+            }
             if segment.id() == b"NTE" {
                 note_sequence = note_sequence.checked_add(1).ok_or(content("NTE", 1))?;
                 if raw(segment, 1) != note_sequence.to_string().as_bytes() {

@@ -147,5 +147,8 @@ pub(crate) enum OrderError {
     /// Retains both the triggering failure and a later independent settlement failure.
     #[error(transparent)]
     Cleanup(Box<crate::machine::receive::custody::Cleanup<Self>>),
+    /// The note for an MSH-7 read in the site's time zone could not be built.
+    #[error(transparent)]
+    SiteZoneNote(#[from] crate::machine::interpretation::departure_evidence::EvidenceError),
 }
 crate::orders::shared_conversions!(OrderError);

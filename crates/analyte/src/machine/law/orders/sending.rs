@@ -29,7 +29,7 @@ impl LawOrderLink {
         let Some(orders) = stack.orders() else {
             return Ok(None);
         };
-        let settings = Settings::new(stack, orders);
+        let settings = Settings::new(stack, orders, machine.snapshot.effective().site());
         let until = Instant::now()
             .checked_add(Duration::from_millis(u64::from(
                 stack.settings().timeouts().send_timeout_ms(),

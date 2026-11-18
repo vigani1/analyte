@@ -1,6 +1,6 @@
 //! Tests LAW MSH, MSA and ERR segment validation.
 use analyte_hl7::{
-    Charset, Message, Options,
+    Charset, HeaderZone, Message, Options,
     law::{self, ControlDirection},
 };
 mod errors;

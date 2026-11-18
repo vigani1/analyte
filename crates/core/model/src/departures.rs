@@ -18,6 +18,9 @@ pub enum DepartureMeaning {
     /// Deliberate tolerance: text with an empty character-set declaration was decoded
     /// with the character set named in the machine definition.
     CharsetFromDefinition,
+    /// Deliberate tolerance: a header time without an offset was read in the site's
+    /// configured time zone; the original text is kept.
+    ZoneFromSite,
 }
 
 /// A bounded source byte range, with an exclusive end; coordinates are named by the entry.

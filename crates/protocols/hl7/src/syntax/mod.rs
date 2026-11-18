@@ -138,8 +138,19 @@ pub struct Options {
     pub escapes: EscapePolicy,
     /// Explicit vendor departure allowing the later UTF-8 code in HL7 2.3.1.
     pub allow_utf8_in_v231: bool,
+    /// How a received LAW MSH-7 without an offset is treated.
+    pub header_zone: HeaderZone,
     /// Resource limits.
     pub limits: Limits,
+}
+/// Whether a received LAW MSH-7 may omit its UTC offset (IHE `PaLM` TF-2b §C.4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HeaderZone {
+    /// The standard rule: MSH-7 carries an offset.
+    Required,
+    /// Deliberate tolerance: the site has a configured time zone, so a received
+    /// MSH-7 without an offset is accepted and read in it. Sent headers stay strict.
+    Site,
 }
 impl Default for Options {
     fn default() -> Self {
@@ -148,6 +159,7 @@ impl Default for Options {
             terminator: Terminator::Cr,
             escapes: EscapePolicy::Reject,
             allow_utf8_in_v231: false,
+            header_zone: HeaderZone::Required,
             limits: Limits::default(),
         }
     }
@@ -197,6 +209,7 @@ pub struct Message {
     delimiters: Delimiters,
     terminator: Terminator,
     charset: Charset,
+    header_zone: HeaderZone,
 }
 impl Message {
     /// Parses syntax without I/O or clinical interpretation.
@@ -264,6 +277,7 @@ impl Message {
             delimiters,
             terminator: options.terminator,
             charset: Charset::Ascii,
+            header_zone: options.header_zone,
         };
         message.validate_terminators()?;
         message.validate_segments(options)?;
@@ -398,6 +412,11 @@ impl Message {
     #[must_use]
     pub fn charset(&self) -> Charset {
         self.charset
+    }
+    /// The MSH-7 offset rule this message was parsed under.
+    #[must_use]
+    pub fn header_zone(&self) -> HeaderZone {
+        self.header_zone
     }
     /// Iterates segments in order, without allocating a syntax tree.
     pub fn segments(&self) -> impl Iterator<Item = Segment<'_>> {

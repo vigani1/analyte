@@ -302,7 +302,8 @@ impl Output {
                     DepartureMeaning::PackedRecords
                     | DepartureMeaning::WireCompatibility
                     | DepartureMeaning::ControlCharacterKept
-                    | DepartureMeaning::CharsetFromDefinition => false,
+                    | DepartureMeaning::CharsetFromDefinition
+                    | DepartureMeaning::ZoneFromSite => false,
                 })
             || !self.unmapped.is_empty()
             || self.results.iter().any(|r| r.content.requires_parking())

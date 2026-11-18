@@ -39,8 +39,12 @@ struct Settings<'a> {
     options: Options,
 }
 impl<'a> Settings<'a> {
-    fn new(stack: &'a analyte_config::LawStack, orders: &'a analyte_config::LawOrders) -> Self {
-        let options = crate::machine::law::settings::options(stack);
+    fn new(
+        stack: &'a analyte_config::LawStack,
+        orders: &'a analyte_config::LawOrders,
+        site: &analyte_config::Site,
+    ) -> Self {
+        let options = crate::machine::law::settings::options(stack, site);
         Self {
             stack,
             orders,
@@ -110,7 +114,8 @@ impl LawOrderLink {
         receipt: ReceiptId,
         started: Instant,
     ) -> Result<Reply, Error> {
-        let options = crate::machine::law::settings::options(stack);
+        let site = machine.snapshot.effective().site();
+        let options = crate::machine::law::settings::options(stack, site);
         let query = match law::receive_query(message) {
             Ok(query) => query,
             Err(error) => {
@@ -180,7 +185,7 @@ impl LawOrderLink {
         let until = started
             .checked_add(Duration::from_millis(u64::from(policy.query_deadline_ms())))
             .ok_or(Error::QueryDeadlineOverflow)?;
-        let settings = Settings::new(stack, orders);
+        let settings = Settings::new(stack, orders, site);
         match self
             .prepare(store, machine, settings, query, receipt, until)
             .await
@@ -589,4 +594,44 @@ fn item_outcomes(
         });
     }
     Ok(outcomes)
+}
+
+/// Writes an operator-visible audit note when a LAW query or order reply carried
+/// an MSH-7 without an offset and it was read in the site's time zone. These
+/// exchanges have no interpretation record, so the audit names their receipt.
+pub(crate) async fn note_site_zone(
+    store: &Handle,
+    machine: &Machine,
+    message: &Message,
+    receipt: ReceiptId,
+) -> Result<(), Error> {
+    use crate::machine::interpretation::departure_evidence::{EvidenceError, site_zone_note};
+    let Some(header) = law::site_zone_header_time(message) else {
+        return Ok(());
+    };
+    let zone = machine
+        .snapshot
+        .effective()
+        .site()
+        .time_zone
+        .as_ref()
+        .ok_or(EvidenceError::SiteZoneMissing)?;
+    let note = site_zone_note(zone, header, message.raw())?;
+    let audit = analyte_store::Audit {
+        actor: machine.id.clone(),
+        action: note.rule,
+        targets: vec![
+            Identifier::new(&uuid::Uuid::from(receipt).to_string()).map_err(EvidenceError::from)?,
+        ],
+        time: jiff::Timestamp::now().as_second(),
+        reason: analyte_model::Reason::new(note.source.as_str()).map_err(EvidenceError::from)?,
+    };
+    store
+        .request::<_, analyte_store::OrderError>(deadline()?, move |store| {
+            store
+                .audit(&audit)
+                .map_err(analyte_store::OrderError::Storage)
+        })
+        .await?;
+    Ok(())
 }
