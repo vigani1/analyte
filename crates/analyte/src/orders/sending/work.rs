@@ -4,23 +4,25 @@ use analyte_store::{Handle, MachineOrder};
 use std::{collections::VecDeque, time::Instant};
 
 /// Cancellation retains the active reservation for close or restart reconciliation.
-pub(crate) struct Work<T> {
+pub(crate) struct Work<'a, S, T> {
+    /// Send-ahead order settings; without them the connection never reserves work.
+    orders: Option<&'a S>,
     pub(in crate::orders) active: Option<MachineOrder>,
     pub(in crate::orders) requests: VecDeque<T>,
     cursor: String,
     pub(in crate::orders) next_poll: Instant,
 }
-impl<T> Default for Work<T> {
-    fn default() -> Self {
+impl<'a, S, T> Work<'a, S, T> {
+    /// Takes the settings only when the machine is configured to receive work ahead.
+    pub(crate) fn new(orders: Option<&'a S>) -> Self {
         Self {
+            orders,
             active: None,
             requests: VecDeque::new(),
             cursor: String::new(),
             next_poll: Instant::now(),
         }
     }
-}
-impl<T> Work<T> {
     /// Advances the bounded idle poll cadence without changing reservations.
     pub(crate) fn poll_due(&mut self) -> Result<bool, OrderError> {
         let now = Instant::now();
@@ -37,7 +39,7 @@ impl<T> Work<T> {
         &mut self,
         store: &Handle,
         machine: &Machine,
-        map: impl Fn(&analyte_mapping::AppOrder) -> Result<T, E>,
+        map: impl Fn(&analyte_mapping::AppOrder, &S) -> Result<T, E>,
     ) -> Result<Option<T>, OrderError>
     where
         OrderError: From<E>,
@@ -46,8 +48,8 @@ impl<T> Work<T> {
             return Ok(None);
         }
         if !self
-            .reserve(store, machine, |order| {
-                map(order).map(|payload| VecDeque::from([payload]))
+            .reserve(store, machine, |order, orders| {
+                map(order, orders).map(|payload| VecDeque::from([payload]))
             })
             .await?
         {
@@ -65,12 +67,16 @@ impl<T> Work<T> {
         &mut self,
         store: &Handle,
         machine: &Machine,
-        map: impl Fn(&analyte_mapping::AppOrder) -> Result<VecDeque<T>, E>,
+        map: impl Fn(&analyte_mapping::AppOrder, &S) -> Result<VecDeque<T>, E>,
     ) -> Result<bool, OrderError>
     where
         OrderError: From<E>,
     {
-        let Some(reserved) = super::next(store, machine, &mut self.cursor, map).await? else {
+        let Some(orders) = self.orders else {
+            return Ok(false);
+        };
+        let next = super::next(store, machine, &mut self.cursor, |order| map(order, orders));
+        let Some(reserved) = next.await? else {
             return Ok(false);
         };
         self.active = Some(reserved.order);

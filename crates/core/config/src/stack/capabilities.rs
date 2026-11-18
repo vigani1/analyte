@@ -44,20 +44,6 @@ impl Stack {
             | Stack::Hl7(RecordTransport::Folder(_)) => None,
         }
     }
-    /// Whether this stack enables host-initiated work-list delivery.
-    #[must_use]
-    pub fn send_ahead(&self) -> bool {
-        match self {
-            Stack::Astm(RecordTransport::Stream(s)) => s.send_ahead(),
-            Stack::Astm(RecordTransport::Folder(s)) => s.send_ahead(),
-            Stack::Hl7(RecordTransport::Stream(s)) => s.send_ahead(),
-            Stack::Hl7(RecordTransport::Folder(s)) => s.send_ahead(),
-            Stack::Law(s) => s.send_ahead(),
-            Stack::Vidas(s) => s.send_ahead(),
-            Stack::Autolyser(s) => s.send_ahead(),
-            Stack::Poct(s) => s.send_ahead(),
-        }
-    }
 }
 
 impl Stack {

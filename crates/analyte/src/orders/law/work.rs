@@ -1,14 +1,13 @@
 //! Supplies LAW order reservations and response metadata to the mapper.
-use crate::installation::config::Machine;
 use crate::orders::OrderError as Error;
 use analyte_hl7::{Message, Options, law};
 pub(super) use analyte_mapping::{LawCommand as Command, law_address as address};
 use analyte_store::MachineOrder;
-pub(super) fn command(machine: &Machine, app: &analyte_contract::Order) -> Result<Command, Error> {
-    Ok(analyte_mapping::map_law_order(
-        crate::orders::settings::law(machine)?,
-        app,
-    )?)
+pub(super) fn command(
+    settings: super::Settings<'_>,
+    app: &analyte_contract::Order,
+) -> Result<Command, Error> {
+    Ok(analyte_mapping::map_law_order(settings.stack, app)?)
 }
 pub(super) fn render(
     commands: &[(&Command, &MachineOrder)],

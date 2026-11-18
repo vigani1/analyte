@@ -4,7 +4,7 @@ use crate::{
     orders::{OrderError as Error, sending::Work},
 };
 use analyte_store::Handle;
-impl Work<analyte_autolyser::syntax::Worklist> {
+impl Work<'_, analyte_config::AutolyserOrders, analyte_autolyser::syntax::Worklist> {
     pub(crate) async fn poll(
         &mut self,
         store: &Handle,
@@ -12,16 +12,8 @@ impl Work<analyte_autolyser::syntax::Worklist> {
         settings: &analyte_config::AutolyserStack,
     ) -> Result<Option<analyte_autolyser::syntax::Worklist>, Error> {
         if !self
-            .reserve(store, machine.machine(), |order| {
-                let requests = analyte_mapping::autolyser::map_order(
-                    order,
-                    settings,
-                    settings
-                        .orders()
-                        .ok_or(analyte_mapping::autolyser::OrderError::Shared(
-                            analyte_mapping::OrderMappingError::Disabled,
-                        ))?,
-                )?;
+            .reserve(store, machine.machine(), |order, orders| {
+                let requests = analyte_mapping::autolyser::map_order(order, settings, orders)?;
                 Ok::<_, analyte_mapping::autolyser::OrderError>(std::collections::VecDeque::from([
                     requests,
                 ]))

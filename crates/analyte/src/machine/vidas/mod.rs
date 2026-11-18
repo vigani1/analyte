@@ -27,7 +27,11 @@ pub(super) struct Host<'a, 'm> {
     machine: &'a intake::ConnectionEvidence<'m>,
     settings: &'a analyte_config::VidasStack,
     store: &'a Handle,
-    work: crate::orders::sending::Work<analyte_vidas::syntax::Message>,
+    work: crate::orders::sending::Work<
+        'a,
+        analyte_config::VidasOrders,
+        analyte_vidas::syntax::Message,
+    >,
     dialog: Dialog,
     start: Instant,
     /// Actions produced outside a drain wait here for the next one.
@@ -52,7 +56,7 @@ impl<'a, 'm> Host<'a, 'm> {
             machine,
             settings,
             store,
-            work: crate::orders::sending::Work::default(),
+            work: crate::orders::sending::Work::new(settings.orders().filter(|o| o.send_ahead())),
             dialog,
             start: Instant::now(),
             pending,

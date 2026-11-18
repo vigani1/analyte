@@ -27,7 +27,7 @@ pub(crate) async fn finished(
     super::super::sending::complete(store, order, state, code.as_str()).await
 }
 
-impl<T> Work<T> {
+impl<S, T> Work<'_, S, T> {
     /// LIS01 confirms transport only; application acceptance remains separate.
     pub(crate) async fn astm_finished(
         &mut self,

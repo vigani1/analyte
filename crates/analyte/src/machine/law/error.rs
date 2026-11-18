@@ -46,9 +46,6 @@ pub(crate) enum Error {
     /// LAW response deadline absent after issuance.
     #[error("LAW response deadline absent after issuance")]
     MissingResponseDeadline,
-    /// Independent LAW stack absent.
-    #[error("independent LAW stack absent")]
-    IndependentLawStackAbsent,
     /// The independent LAW transport ended before confirmed completion.
     #[error("LAW independent transport failed: {0}")]
     TransportFailed(analyte_transport::Reason),

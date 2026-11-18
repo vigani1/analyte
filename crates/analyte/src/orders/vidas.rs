@@ -10,7 +10,7 @@ pub(crate) enum Progress {
     DownloadNext(Message),
     DownloadFinished,
 }
-impl Work<Message> {
+impl Work<'_, analyte_config::VidasOrders, Message> {
     pub(crate) async fn poll(
         &mut self,
         machine: &intake::ConnectionEvidence<'_>,
@@ -21,16 +21,8 @@ impl Work<Message> {
             return Ok(None);
         }
         if !self
-            .reserve(store, machine.machine(), |order| {
-                let requests = analyte_mapping::vidas::map_order(
-                    order,
-                    settings,
-                    settings
-                        .orders()
-                        .ok_or(analyte_mapping::vidas::OrderError::Shared(
-                            analyte_mapping::OrderMappingError::Disabled,
-                        ))?,
-                )?;
+            .reserve(store, machine.machine(), |order, orders| {
+                let requests = analyte_mapping::vidas::map_order(order, settings, orders)?;
                 Ok::<_, analyte_mapping::vidas::OrderError>(requests.into())
             })
             .await?

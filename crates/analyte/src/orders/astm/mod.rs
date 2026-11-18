@@ -2,7 +2,7 @@
 use crate::installation::config::Machine;
 use crate::orders::OrderError as Error;
 
-use analyte_config::WhenUntrusted;
+use analyte_config::{AstmOrders, AstmStack, OrderQuery, WhenUntrusted};
 use analyte_model::SampleId;
 use analyte_store::{Handle, Lookup};
 use std::{future::Future, pin::Pin, time::Instant};
@@ -26,6 +26,27 @@ pub(crate) struct Reply {
 pub(crate) struct Pending<'a> {
     future: LookupFuture<'a>,
     until: Instant,
+    queries: Queries<'a>,
+}
+
+/// Query settings, present only when the machine is configured to ask for orders.
+#[derive(Clone, Copy)]
+pub(crate) struct Queries<'a> {
+    stack: &'a AstmStack,
+    orders: &'a AstmOrders,
+    policy: &'a OrderQuery,
+}
+
+impl<'a> Queries<'a> {
+    pub(crate) fn new(stack: &'a AstmStack) -> Option<Self> {
+        let orders = stack.orders()?;
+        let policy = orders.query()?;
+        Some(Self {
+            stack,
+            orders,
+            policy,
+        })
+    }
 }
 
 /// Parsed query intent, distinct from a trusted cache answer.
@@ -39,15 +60,8 @@ pub(crate) enum Request {
 }
 
 /// Recognizes supported query intent without normalizing specimen identifiers.
-pub(crate) fn request(machine: &Machine, payload: &[u8]) -> Result<Option<Request>, Error> {
-    if super::settings::astm(machine)
-        .and_then(|o| o.query())
-        .is_none()
-    {
-        return Ok(None);
-    }
-    let limits = crate::machine::astm::settings::limits(machine.snapshot.effective())
-        .ok_or_else(|| Error::AstmLimitsMissing)?;
+pub(crate) fn request(queries: Queries<'_>, payload: &[u8]) -> Result<Option<Request>, Error> {
+    let limits = crate::machine::astm::settings::parser_limits(queries.stack.settings().syntax());
     let messages = analyte_astm::parse(payload, limits)?;
     Ok(
         match analyte_astm::query_intent(&messages)
@@ -75,28 +89,30 @@ impl<'a> Pending<'a> {
     pub(crate) fn new(
         store: &'a Handle,
         machine: &'a Machine,
+        queries: Queries<'a>,
         samples: Vec<SampleId>,
         started: Instant,
     ) -> Result<Self, Error> {
-        let query = super::settings::astm(machine)
-            .and_then(|o| o.query())
-            .ok_or_else(|| Error::AstmQueryCapabilityAbsent)?;
         let until = started
             .checked_add(std::time::Duration::from_millis(u64::from(
-                query.deadline_ms,
+                queries.policy.deadline_ms,
             )))
             .ok_or_else(|| Error::AstmQueryDeadlineOverflow)?;
-        let future = Box::pin(answer(store, machine, samples, until));
-        Ok(Self { future, until })
+        let future = Box::pin(answer(store, machine, queries, samples, until));
+        Ok(Self {
+            future,
+            until,
+            queries,
+        })
     }
 
     /// Polls the same lookup; late answers produce only error or silence.
-    pub(crate) async fn finish(&mut self, machine: &Machine) -> Result<Option<Reply>, Error> {
+    pub(crate) async fn finish(&mut self) -> Result<Option<Reply>, Error> {
         match tokio::time::timeout_at(tokio::time::Instant::from_std(self.until), &mut self.future)
             .await
         {
             Ok(Ok(records)) if Instant::now() < self.until => Ok(records),
-            Ok(Ok(_)) | Err(_) => Ok(failure(machine)),
+            Ok(Ok(_)) | Err(_) => Ok(failure(self.queries)),
             Ok(Err(error)) => Err(error),
         }
     }
@@ -105,6 +121,7 @@ impl<'a> Pending<'a> {
 async fn answer(
     store: &Handle,
     machine: &Machine,
+    queries: Queries<'_>,
     samples: Vec<SampleId>,
     until: Instant,
 ) -> Result<Option<Reply>, Error> {
@@ -115,7 +132,7 @@ async fn answer(
     for sample in samples {
         let answer = super::lookup(store, machine, sample, until).await?;
         match answer {
-            Lookup::NotTrusted => return Ok(failure(machine)),
+            Lookup::NotTrusted => return Ok(failure(queries)),
             Lookup::NoOrders => {}
             Lookup::Orders(orders) => {
                 for cached in orders {
@@ -133,22 +150,15 @@ async fn answer(
                             let order = super::app_order(order)?;
                             Ok(analyte_mapping::astm::map_order(
                                 &order,
-                                machine
-                                    .snapshot
-                                    .effective()
-                                    .stack()
-                                    .astm_syntax()
-                                    .ok_or(Error::AstmLimitsMissing)?
-                                    .limits(),
-                                super::settings::astm(machine)
-                                    .ok_or(Error::AstmQueryCapabilityAbsent)?,
+                                queries.stack.settings().syntax().limits(),
+                                queries.orders,
                             )?)
                         },
                     )
                     .await?
                     {
                         super::admission::Prepared::Skipped => continue,
-                        super::admission::Prepared::Rejected(_) => return Ok(failure(machine)),
+                        super::admission::Prepared::Rejected(_) => return Ok(failure(queries)),
                         super::admission::Prepared::Mapped(candidate, mapped) => {
                             candidates.push(candidate);
                             records.push(mapped.encode());
@@ -160,14 +170,14 @@ async fn answer(
                         .and_then(|n| n.checked_add(2))
                         .is_none_or(|n| n > limits.records())
                     {
-                        return Ok(failure(machine));
+                        return Ok(failure(queries));
                     }
                 }
             }
         }
     }
     if Instant::now() >= until {
-        return Ok(failure(machine));
+        return Ok(failure(queries));
     }
     let code = if records.is_empty() {
         analyte_astm::OrderTermination::NoInformation
@@ -175,16 +185,16 @@ async fn answer(
         analyte_astm::OrderTermination::Normal
     };
     Ok(Some(Reply {
-        records: envelope(machine, records, code),
+        records: envelope(queries.orders, records, code),
         candidates,
     }))
 }
 /// Applies the explicit failure policy without manufacturing an empty answer.
-pub(crate) fn failure(machine: &Machine) -> Option<Reply> {
-    match super::settings::astm(machine)?.query()?.when_untrusted {
+pub(crate) fn failure(queries: Queries<'_>) -> Option<Reply> {
+    match queries.policy.when_untrusted {
         WhenUntrusted::Error => Some(Reply {
             records: envelope(
-                machine,
+                queries.orders,
                 Vec::new(),
                 analyte_astm::OrderTermination::QueryError,
             ),
@@ -196,12 +206,14 @@ pub(crate) fn failure(machine: &Machine) -> Option<Reply> {
 
 /// Wraps mapped orders with independent patient groups and explicit termination.
 pub(crate) fn envelope(
-    machine: &Machine,
+    settings: &AstmOrders,
     orders: Vec<Vec<u8>>,
     termination: analyte_astm::OrderTermination,
 ) -> Vec<Vec<u8>> {
-    let receiver = super::settings::astm(machine)
-        .and_then(|s| s.layout().receiver.as_ref())
+    let receiver = settings
+        .layout()
+        .receiver
+        .as_ref()
         .map_or("", |id| id.as_str());
     let timestamp = jiff::Timestamp::now()
         .strftime("%Y%m%d%H%M%S%z")
@@ -210,6 +222,7 @@ pub(crate) fn envelope(
 }
 
 /// Reserves query orders immediately before link transmission, with no app event.
+/// Returns no records when a reservation is refused, so the caller sends its failure reply.
 /// The connection owns every reservation even if this future fails or is cancelled.
 pub(crate) async fn reserve_query(
     store: &Handle,
@@ -218,7 +231,7 @@ pub(crate) async fn reserve_query(
     until: Instant,
     active: &mut Vec<analyte_store::MachineOrder>,
 ) -> Result<Option<Vec<Vec<u8>>>, Error> {
-    if !super::sending::reserve_candidates(
+    let reserved = super::sending::reserve_candidates(
         store,
         reply.candidates,
         until,
@@ -226,9 +239,6 @@ pub(crate) async fn reserve_query(
         None,
         machine.destination_limits.freshness.as_secs(),
     )
-    .await?
-    {
-        return Ok(failure(machine).map(|reply| reply.records));
-    }
-    Ok(Some(reply.records))
+    .await?;
+    Ok(reserved.then_some(reply.records))
 }

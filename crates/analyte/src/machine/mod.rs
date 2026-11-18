@@ -65,7 +65,8 @@ pub(crate) async fn run(
             analyte_config::LawLinks::Independent { .. }
         )
     {
-        return Ok(law::independent::run(machine, store, stop, closing, capture).await?);
+        let settings = Arc::new(settings.as_ref().clone());
+        return Ok(law::independent::run(machine, settings, store, stop, closing, capture).await?);
     }
     let listener = machine.listener.take();
     let link = settings::transport(machine.snapshot.effective().stack());

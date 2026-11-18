@@ -38,6 +38,15 @@ fn machine(policy: &str) -> Result<Machine, Error> {
     })
 }
 
+fn queries(machine: &Machine) -> Result<Queries<'_>, Error> {
+    let analyte_config::Stack::Astm(analyte_config::RecordTransport::Stream(stack)) =
+        machine.snapshot.effective().stack()
+    else {
+        return Err("ASTM fixture".into());
+    };
+    Ok(Queries::new(stack).ok_or("ASTM query fixture")?)
+}
+
 #[tokio::test]
 async fn lis02_section11_adr0004_missed_deadline_is_query_error_or_silence_never_no_information()
 -> Result<(), Error> {
@@ -60,20 +69,19 @@ async fn lis02_section11_adr0004_missed_deadline_is_query_error_or_silence_never
         let started = Instant::now()
             .checked_sub(Duration::from_secs(2))
             .ok_or("clock")?;
-        let mut pending = Pending::new(&store, &machine, vec![SampleId::new("001a")?], started)?;
+        let mut pending = Pending::new(
+            &store,
+            &machine,
+            queries(&machine)?,
+            vec![SampleId::new("001a")?],
+            started,
+        )?;
         assert_eq!(
             pending.deadline(),
-            started
-                + Duration::from_millis(u64::from(
-                    super::super::settings::astm(&machine)
-                        .unwrap()
-                        .query()
-                        .unwrap()
-                        .deadline_ms
-                )),
+            started + Duration::from_millis(u64::from(queries(&machine)?.policy.deadline_ms)),
             "ADR 0004: admission and journaling consume the real query budget"
         );
-        let response = pending.finish(&machine).await?;
+        let response = pending.finish().await?;
         if policy == "error" {
             assert!(
                 response
@@ -97,7 +105,7 @@ fn lis02_section11_cancel_is_distinct_and_unsupported_filters_are_not_empty_orde
     // LIS02-A2 section 6.13 p.13: the edition is LIS2-A2, not a legacy numeric version.
     assert!(
         envelope(
-            &machine,
+            queries(&machine)?.orders,
             Vec::new(),
             analyte_astm::OrderTermination::QueryError
         )[0]
@@ -105,14 +113,14 @@ fn lis02_section11_cancel_is_distinct_and_unsupported_filters_are_not_empty_orde
     );
     assert!(matches!(
         request(
-            &machine,
+            queries(&machine)?,
             b"H|\\^&|||SYN|||||||P|1\rQ|1|^001a||||||||||A\rL|1|N\r"
         )?,
         Some(Request::Cancel)
     ));
     assert!(matches!(
         request(
-            &machine,
+            queries(&machine)?,
             b"H|\\^&|||SYN|||||||P|1\rQ|1|^001a|^0099|ALL||||||||O\rL|1|N\r"
         )?,
         Some(Request::Unsupported)
@@ -186,13 +194,11 @@ async fn rule9_astm_all_untrusted_states_and_destination_freshness() -> Result<(
         let mut pending = Pending::new(
             &store,
             &machine,
+            queries(&machine)?,
             vec![SampleId::new("001a")?],
             Instant::now(),
         )?;
-        let response = pending
-            .finish(&machine)
-            .await?
-            .ok_or("query response absent")?;
+        let response = pending.finish().await?.ok_or("query response absent")?;
         assert_eq!(
             response.records.last().ok_or("termination absent")?,
             if case == "long" {
@@ -213,7 +219,11 @@ async fn rule9_astm_all_untrusted_states_and_destination_freshness() -> Result<(
 fn lis02_6_14_p13_generated_header_time() -> Result<(), Error> {
     let machine = machine("error")?;
     let before = jiff::Timestamp::now().strftime("%Y%m%d%H%M%S").to_string();
-    let records = envelope(&machine, Vec::new(), analyte_astm::OrderTermination::Normal);
+    let records = envelope(
+        queries(&machine)?.orders,
+        Vec::new(),
+        analyte_astm::OrderTermination::Normal,
+    );
     let header = std::str::from_utf8(&records[0])?;
     let timestamp = header
         .trim_end_matches('\r')
@@ -252,7 +262,11 @@ fn lis02_6_10_generated_header_identifies_receiver() -> Result<(), Error> {
             )?
             .validate()?;
         }
-        let records = envelope(&machine, Vec::new(), analyte_astm::OrderTermination::Normal);
+        let records = envelope(
+            queries(&machine)?.orders,
+            Vec::new(),
+            analyte_astm::OrderTermination::Normal,
+        );
         let messages = analyte_astm::parse(&records.concat(), analyte_astm::Limits::default())?;
         let header = analyte_astm::Header::new(&messages[0].records()[0]).ok_or("header")?;
         assert_eq!(
@@ -274,14 +288,15 @@ fn lis02_5_4_5_8_4_3_query_uses_decoded_specimen_and_refuses_unknown_operations(
         ("A&E&B", "A&B"),
     ] {
         let payload = format!("H|\\^&||||||||||P|LIS2-A2\rQ|1|^{raw}||||||||||O\rL|1|N\r");
-        let Some(Request::Orders(samples)) = request(&machine, payload.as_bytes())? else {
+        let Some(Request::Orders(samples)) = request(queries(&machine)?, payload.as_bytes())?
+        else {
             return Err("query rejected".into());
         };
         assert_eq!(samples[0].as_str(), expected);
     }
     assert!(
         request(
-            &machine,
+            queries(&machine)?,
             b"H|\\^&||||||||||P|LIS2-A2\rQ|1|^A&Zlocal&B||||||||||O\rL|1|N\r"
         )
         .is_err()
