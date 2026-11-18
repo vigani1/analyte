@@ -1,0 +1,118 @@
+{
+  "contract_version": 1,
+  "delivery_id": "019ab000-0000-7000-8000-000000000001",
+  "created_at": "2026-11-15T12:00:00Z",
+  "source": {
+    "analyzer": "synthetic-1",
+    "connection": "bench-1"
+  },
+  "receipt": {
+    "id": "019ab000-0000-7000-8000-000000000010",
+    "received_at": "2026-11-15T11:59:59Z",
+    "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "driver": {
+      "namespace": "synthetic",
+      "value": "1"
+    },
+    "config_version": "1",
+    "config_sha256": "0101010101010101010101010101010101010101010101010101010101010101",
+    "future_receipt_field": "ignored"
+  },
+  "results": [
+    {
+      "receipt": "019ab000-0000-7000-8000-000000000010",
+      "sample": {
+        "id": "000Ab12",
+        "source": "scanned_by_machine",
+        "position": {
+          "kind": "rack",
+          "carrier": "A",
+          "slot": "03"
+        }
+      },
+      "processing": "production",
+      "identity": {
+        "resolved": {
+          "observation": {
+            "code": {
+              "namespace": "synthetic",
+              "value": "TEST"
+            },
+            "sub_id": "",
+            "run": "",
+            "order": {
+              "namespace": "synthetic",
+              "value": "order-1"
+            }
+          },
+          "revision": 0
+        }
+      },
+      "parts": [
+        {
+          "test": {
+            "namespace": "synthetic",
+            "value": "TEST"
+          },
+          "values": [
+            {
+              "original": "<0.10",
+              "parsed": {
+                "numeric": {
+                  "number": "0.10",
+                  "comparator": "less"
+                }
+              }
+            }
+          ],
+          "units": {
+            "original": "mg/L",
+            "mapping": {
+              "source": "mg/L",
+              "target": "mg/L"
+            }
+          },
+          "dilution": {
+            "original": "1",
+            "factor": "1",
+            "applied": "unknown"
+          },
+          "flags": [],
+          "reference_range": "0-1",
+          "comments": [],
+          "qc_class": "patient",
+          "source_status": "F",
+          "status": "final",
+          "source_path": [
+            {
+              "occurrence": 1,
+              "kind": "OBX",
+              "sequence": "1",
+              "status": "F"
+            }
+          ],
+          "times": [
+            {
+              "role": "analysis",
+              "time": {
+                "original": "202611151159",
+                "parsed": "2026-11-15T11:59:00",
+                "offset": null,
+                "precision": "minute"
+              }
+            }
+          ],
+          "received_at": "2026-11-15T11:59:59Z",
+          "future_part_field": null
+        }
+      ],
+      "future_result_field": [
+        1,
+        2
+      ]
+    }
+  ],
+  "future_envelope_field": {
+    "kept": true
+  }
+}

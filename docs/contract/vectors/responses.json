@@ -114,5 +114,73 @@
       "detail": "Synthetic rejection"
     },
     "expected": "parked"
+  },
+  {
+    "status": 301,
+    "body": {
+      "contract_version": 1,
+      "error": "example",
+      "detail": "Synthetic rejection"
+    },
+    "expected": "pause"
+  },
+  {
+    "status": 307,
+    "body": {
+      "contract_version": 1,
+      "error": "example",
+      "detail": "Synthetic rejection"
+    },
+    "expected": "pause"
+  },
+  {
+    "status": 308,
+    "body": {
+      "contract_version": 1,
+      "error": "example",
+      "detail": "Synthetic rejection"
+    },
+    "expected": "pause"
+  },
+  {
+    "status": 204,
+    "body": {
+      "contract_version": 1,
+      "error": "example",
+      "detail": "Synthetic rejection"
+    },
+    "expected": "parked"
+  },
+  {
+    "status": 200,
+    "body": {},
+    "expected": "parked"
+  },
+  {
+    "status": 502,
+    "body": {
+      "contract_version": 1,
+      "error": "example",
+      "detail": "Synthetic rejection"
+    },
+    "expected": "retry"
+  },
+  {
+    "status": 503,
+    "body": {
+      "contract_version": 1,
+      "error": "example",
+      "detail": "Synthetic rejection"
+    },
+    "expected": "retry"
+  },
+  {
+    "status": 504,
+    "body": {
+      "contract_version": 1,
+      "error": "example",
+      "detail": "Synthetic rejection"
+    },
+    "expected": "retry"
   }
 ]

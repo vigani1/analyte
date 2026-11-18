@@ -1,0 +1,78 @@
+{
+  "cap_seconds": 60,
+  "now": 1795003200,
+  "cases": [
+    {
+      "value": "30",
+      "requested_seconds": 30,
+      "wait_at_least": 30,
+      "wait_at_most": 60
+    },
+    {
+      "value": "120",
+      "requested_seconds": 120,
+      "wait_at_least": 60,
+      "wait_at_most": 60
+    },
+    {
+      "value": "0",
+      "requested_seconds": 0,
+      "wait_at_least": 0,
+      "wait_at_most": 60
+    },
+    {
+      "value": "Wed, 18 Nov 2026 12:00:45 GMT",
+      "requested_seconds": 45,
+      "wait_at_least": 45,
+      "wait_at_most": 60
+    },
+    {
+      "value": "Wed, 18 Nov 2026 11:59:00 GMT",
+      "requested_seconds": 0,
+      "wait_at_least": 0,
+      "wait_at_most": 60
+    },
+    {
+      "value": "Wed, 18 Nov 2026 12:05:00 GMT",
+      "requested_seconds": 300,
+      "wait_at_least": 60,
+      "wait_at_most": 60
+    },
+    {
+      "value": "-5",
+      "requested_seconds": null,
+      "wait_at_least": null,
+      "wait_at_most": 60
+    },
+    {
+      "value": "1.5",
+      "requested_seconds": null,
+      "wait_at_least": null,
+      "wait_at_most": 60
+    },
+    {
+      "value": "soon",
+      "requested_seconds": null,
+      "wait_at_least": null,
+      "wait_at_most": 60
+    },
+    {
+      "value": "",
+      "requested_seconds": null,
+      "wait_at_least": null,
+      "wait_at_most": 60
+    },
+    {
+      "value": "18 Nov 2026 12:00:45 GMT",
+      "requested_seconds": null,
+      "wait_at_least": null,
+      "wait_at_most": 60
+    },
+    {
+      "value": "Wed, 18 Nov 2026 12:00:45 UTC",
+      "requested_seconds": null,
+      "wait_at_least": null,
+      "wait_at_most": 60
+    }
+  ]
+}

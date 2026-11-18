@@ -1,0 +1,22 @@
+[
+  {
+    "offset_seconds": -301,
+    "expected": "reject"
+  },
+  {
+    "offset_seconds": -300,
+    "expected": "accept"
+  },
+  {
+    "offset_seconds": 0,
+    "expected": "accept"
+  },
+  {
+    "offset_seconds": 300,
+    "expected": "accept"
+  },
+  {
+    "offset_seconds": 301,
+    "expected": "reject"
+  }
+]
