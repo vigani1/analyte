@@ -100,23 +100,23 @@ impl Store {
         Ok(())
     }
 
-    /// Lists unfinished or aborted transfer IDs in a bounded page after an ID.
+    /// Lists a bounded page of transfers that are still open. While no machine
+    /// connection runs, every one was cut off before its receipt was written.
     /// # Errors
-    /// Reports database failures.
-    #[cfg(test)]
-    pub(crate) fn incomplete(&self, after: &str) -> Result<Vec<String>, Error> {
-        let mut stmt = self.db.prepare(
-            "SELECT id FROM transfers WHERE state!='complete' AND id>?1 ORDER BY id LIMIT ?2",
-        )?;
-        Ok(stmt
+    /// Reports database failures or a corrupt stored identity.
+    pub fn open_transfers(&self) -> Result<Vec<Identifier>, Error> {
+        let mut stmt = self
+            .db
+            .prepare("SELECT id FROM transfers WHERE state='open' ORDER BY id LIMIT ?1")?;
+        let ids = stmt
             .query_map(
-                params![
-                    after,
-                    i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidReceiptInput)?
-                ],
-                |r| r.get(0),
+                [i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidReceiptInput)?],
+                |r| r.get::<_, String>(0),
             )?
-            .collect::<Result<_, _>>()?)
+            .collect::<Result<Vec<_>, _>>()?;
+        ids.iter()
+            .map(|id| Identifier::new(id).map_err(|_| Error::Corruption))
+            .collect()
     }
 
     /// Retains transfer provenance before journaling a frame; success permits its ACK.

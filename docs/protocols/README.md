@@ -40,6 +40,19 @@ decide these boundaries; this table names the test that guards each one.
 | VIDAS Literal | Retain complete transfer before data ACK | [chunk_receive/custody.rs](../../crates/analyte/tests/chunk_receive/custody.rs): `vidas_literal_notes3_adr0003_stored_before_ack_unresolved_parked_no_delivery` |
 | Autolyser | Retain and validate poll response before destructive R; preserve uncertain R for reconciliation | [chunk_receive/custody.rs](../../crates/analyte/tests/chunk_receive/custody.rs): `autolyser_rev18_p175_179_adr0003_corrupt_stored_blocks_r_until_valid_l` |
 
+### Startup recovery
+
+Before any machine connection opens, one sweep finishes work a stop cut off.
+An ASTM transfer still open is closed as incomplete and parked, keeping every
+acknowledged frame. A receipt without an interpretation is interpreted with its
+retained configuration, or parked for audited reprocessing when that
+configuration changed. POCT, VIDAS and Autolyser are skipped: their input chunks
+are receipts that are never interpreted, and they acknowledge a message only
+after interpreting it, so the machine still holds anything unfinished. Answered
+queries, order responses and display acknowledgments are recorded as handled,
+so the sweep leaves them alone. Test:
+`adr0003_killed_process_open_transfer_parked_and_pending_receipt_interpreted`.
+
 
 ### Host custody deadline
 

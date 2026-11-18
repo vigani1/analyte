@@ -254,3 +254,158 @@ fn assert_recovered_order_and_delivery_counts(
     );
     Ok(())
 }
+
+const KILLED_ROOT: &str = "ANALYTE_KILLED_TEST_ROOT";
+const KILLED_URL: &str = "ANALYTE_KILLED_TEST_URL";
+
+#[tokio::test]
+async fn killed_between_store_and_ack_child() -> Result<(), Error> {
+    let Some(root) = std::env::var_os(KILLED_ROOT) else {
+        return Ok(());
+    };
+    let root = std::path::PathBuf::from(root);
+    let path = config(&root, true)?;
+    let (hook, control) = analyte::runtime::test_hooks::Committed::new();
+    let mut loaded = program(&path, &std::env::var(KILLED_URL)?)?;
+    loaded.pause_astm_committed_for_test("astm", hook)?;
+    let _running = Running::start_program(loaded, "synthetic-api").await?;
+    // The HL7 machine's interpreted receipt gives the parent real retained metadata.
+    let mut hl7_peer = connect(&path, "hl7").await?;
+    assert!(hl7(&mut hl7_peer, ORU).await?.contains("MSA|AA"));
+    let mut astm_peer = connect(&path, "astm").await?;
+    astm_peer.write_all(b"\x05").await?;
+    assert_eq!(astm_peer.read_u8().await?, 6);
+    for frame in analyte_framing::astm::encode(
+        b"H|\\^&||||||||||P|LIS2-A2|20261115120000\r",
+        analyte_framing::astm::FrameNumber::FIRST,
+        analyte_framing::astm::Limit::new(64000)?,
+    )? {
+        astm_peer.write_all(&frame).await?;
+    }
+    // The frame is journaled and its ACK withheld; the parent now kills this process.
+    control.reached().await?;
+    std::fs::write(root.join("killed-ready"), b"ready")?;
+    tokio::time::sleep(HANG_GUARD).await;
+    Err("child was not killed".into())
+}
+
+// ADR 0003 rules 1 and 2, LIS01-A2 §6.3 (frame ACK) and HL7 2.5.1 §2.9.3 (commit
+// acknowledgment): a process killed after storing data but before acknowledging or
+// interpreting it leaves an open ASTM transfer and an uninterpreted receipt. Startup
+// must park the transfer for an operator and interpret the receipt before any machine
+// connection opens.
+#[tokio::test]
+async fn adr0003_killed_process_open_transfer_parked_and_pending_receipt_interpreted()
+-> Result<(), Error> {
+    let directory = tempfile::tempdir()?;
+    let mut reference = Reference::start(
+        &directory.path().join("reference.db"),
+        TcpListener::bind("127.0.0.1:0").await?,
+        true,
+    )
+    .await?;
+    let mut child = Child(
+        std::process::Command::new(std::env::current_exe()?)
+            .args([
+                "--exact",
+                "service_recovery::killed_between_store_and_ack_child",
+                "--nocapture",
+            ])
+            .env(KILLED_ROOT, directory.path())
+            .env(KILLED_URL, &reference.url)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()?,
+    );
+    let started = std::time::Instant::now();
+    while !directory.path().join("killed-ready").exists() {
+        if started.elapsed() > HANG_GUARD || child.0.try_wait()?.is_some() {
+            return Err("child did not reach the stored, unacknowledged frame".into());
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    child.0.kill()?;
+    child.0.wait()?;
+    let path = directory.path().join("program.toml");
+    let db = database(&path)?;
+    assert_eq!(
+        db.query_row("SELECT state FROM transfers", [], |r| r.get::<_, String>(0))?,
+        "open"
+    );
+    // A receipt stored before its interpretation, as an HL7 commit ACK (CA) leaves it.
+    let (encoded, config): (String, Vec<u8>) = db.query_row(
+        "SELECT metadata,config FROM receipts WHERE json_extract(metadata,'$.machine')='hl7' LIMIT 1",
+        [],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    )?;
+    let oru = String::from_utf8(ORU.to_vec())?.replace("00012a", "00099a");
+    let raw =
+        analyte_framing::hl7::encode(oru.as_bytes(), analyte_framing::hl7::Limit::new(1_048_576)?)?;
+    let mut metadata: analyte_model::ReceiptMetadata = serde_json::from_str(&encoded)?;
+    metadata.id = analyte_model::ReceiptId::new();
+    metadata.raw_digest = analyte_model::Digest(analyte_contract::content_digest(&raw));
+    let pending = serde_json::to_string(&metadata.id)?;
+    db.execute(
+        "INSERT INTO receipts(id,metadata,raw,config) VALUES (?1,?2,?3,?4)",
+        rusqlite::params![pending, serde_json::to_string(&metadata)?, raw, config],
+    )?;
+    drop(db);
+    let mut loaded = Program::load(&path)?;
+    loaded.set_loopback_destination_for_test("demo", reference.url.clone())?;
+    let restarted = Running::start_program(loaded, "synthetic-api").await?;
+    let db = database(&path)?;
+    assert_eq!(
+        db.query_row("SELECT state FROM transfers", [], |r| r.get::<_, String>(0))?,
+        "aborted"
+    );
+    assert_eq!(
+        db.query_row("SELECT count(*) FROM frames", [], |r| r.get::<_, i64>(0))?,
+        1
+    );
+    assert_eq!(
+        db.query_row(
+            "SELECT count(*) FROM parked WHERE json_extract(evidence,'$.kind')='incomplete_transfer' AND resolution IS NULL",
+            [],
+            |r| r.get::<_, i64>(0)
+        )?,
+        1
+    );
+    assert_eq!(
+        db.query_row(
+            "SELECT count(*) FROM interpretations WHERE receipt=?1",
+            [&pending],
+            |r| r.get::<_, i64>(0)
+        )?,
+        1
+    );
+    assert_eq!(
+        db.query_row(
+            "SELECT count(*) FROM outbox WHERE receipt=?1",
+            [&pending],
+            |r| r.get::<_, i64>(0)
+        )?,
+        1
+    );
+    // The killed child's delivery and the recovered receipt both finish before shutdown.
+    release_until_done(&path, &mut reference, 2).await?;
+    restarted.stop().await?;
+    reference.close().await?;
+    Ok(())
+}
+
+/// Releases held app answers until `count` deliveries are done, so no attempt stays in flight.
+async fn release_until_done(
+    path: &Path,
+    reference: &mut Reference,
+    count: i64,
+) -> Result<(), Error> {
+    let release = async {
+        loop {
+            tokio::time::timeout(HANG_GUARD, reference.event()).await??;
+        }
+    };
+    tokio::select! {
+        result = wait_state(path, "done", count) => result,
+        result = release => result,
+    }
+}

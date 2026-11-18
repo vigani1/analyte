@@ -272,7 +272,7 @@ async fn prepare_service(
             "store restore reconciliation status"
         );
         crate::runtime::delivery::recover(&store).await?;
-        super::law_recovery::run(program, &store).await?;
+        super::recovery::run(program, &store).await?;
         crate::admin::prepare(program, store.clone(), mode)
             .await
             .map_err(admin_startup_error)

@@ -278,6 +278,8 @@ impl Host<'_, '_> {
                 );
             }
         }
+        // The reply is prepared; record the query as handled before any reply byte.
+        intake::mark_handled(store, machine.machine(), id).await?;
         actions.extend(self.dialog.step(self.start.elapsed(), Event::Tick)?);
 
         Ok(Flow::Continue)
@@ -366,6 +368,7 @@ impl Host<'_, '_> {
             if let Some(detail) = detail {
                 intake::failed_reading(store, machine.machine(), id, &detail).await?;
             }
+            intake::mark_handled(store, machine.machine(), id).await?;
         }
         self.queries
             .as_mut()
@@ -450,7 +453,8 @@ impl Host<'_, '_> {
         message: &analyte_hl7::Message,
         store: &Handle,
     ) -> Result<(), Error> {
-        self.pending
+        let id = self
+            .pending
             .remove(&token)
             .ok_or(Error::OrderResponseReceiptAbsent)?;
         self.queries
@@ -458,6 +462,7 @@ impl Host<'_, '_> {
             .ok_or(Error::OrderServicesAbsent)?
             .order_response(store, Some(message))
             .await?;
+        intake::mark_handled(store, self.machine.machine(), id).await?;
 
         Ok(())
     }
