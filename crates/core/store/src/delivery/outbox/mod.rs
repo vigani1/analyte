@@ -8,14 +8,8 @@ use rusqlite::{OptionalExtension, params};
 mod tests;
 
 impl Store {
-    /// Claims an eligible head item; unresolved earlier items block only their own key.
-    /// # Errors
-    /// Reports database failures. In-flight items remain uncertain after restart.
-    pub fn claim(&mut self, now: i64) -> Result<Option<Claim>, Error> {
-        self.claim_scoped(now, None)
-    }
-
-    /// Claims only this destination, preserving the same per-key ordering and pause rules.
+    /// Claims this destination's eligible head item; an unresolved earlier item blocks only its
+    /// own key, and a paused item blocks the whole destination.
     /// # Errors
     /// Reports database failures; cancellation retains the original in-flight identity.
     pub fn claim_destination(
@@ -23,16 +17,8 @@ impl Store {
         now: i64,
         destination: &Identifier,
     ) -> Result<Option<Claim>, Error> {
-        self.claim_scoped(now, Some(destination))
-    }
-
-    fn claim_scoped(
-        &mut self,
-        now: i64,
-        destination: Option<&Identifier>,
-    ) -> Result<Option<Claim>, Error> {
         let tx = self.db.transaction()?;
-        let found = tx.query_row("SELECT id,payload,destination,contract,kind,(SELECT count(*) FROM attempts a WHERE a.delivery=o.id) FROM outbox o WHERE state=?2 AND next_attempt<=?1 AND (?5 IS NULL OR o.destination=?5) AND NOT EXISTS(SELECT 1 FROM outbox older WHERE older.destination=o.destination AND older.kind=o.kind AND older.ordering_key=o.ordering_key AND older.sequence<o.sequence AND older.state!=?3) AND NOT EXISTS(SELECT 1 FROM outbox paused WHERE paused.destination=o.destination AND paused.state=?4) ORDER BY sequence LIMIT 1", params![now, DeliveryState::Pending, DeliveryState::Done, DeliveryState::Paused, destination.map(Identifier::as_str)], |r| Ok((r.get::<_,String>(0)?,r.get::<_,Vec<u8>>(1)?,r.get::<_,String>(2)?,r.get::<_,u32>(3)?,r.get::<_,DeliveryKind>(4)?,r.get::<_,i64>(5)?))).optional()?;
+        let found = tx.query_row("SELECT id,payload,destination,contract,kind,(SELECT count(*) FROM attempts a WHERE a.delivery=o.id) FROM outbox o WHERE state=?2 AND next_attempt<=?1 AND o.destination=?5 AND NOT EXISTS(SELECT 1 FROM outbox older WHERE older.destination=o.destination AND older.kind=o.kind AND older.ordering_key=o.ordering_key AND older.sequence<o.sequence AND older.state!=?3) AND NOT EXISTS(SELECT 1 FROM outbox paused WHERE paused.destination=o.destination AND paused.state=?4) ORDER BY sequence LIMIT 1", params![now, DeliveryState::Pending, DeliveryState::Done, DeliveryState::Paused, destination.as_str()], |r| Ok((r.get::<_,String>(0)?,r.get::<_,Vec<u8>>(1)?,r.get::<_,String>(2)?,r.get::<_,u32>(3)?,r.get::<_,DeliveryKind>(4)?,r.get::<_,i64>(5)?))).optional()?;
         let result =
             if let Some((id, payload, destination, contract_version, kind, earlier_attempts)) =
                 found

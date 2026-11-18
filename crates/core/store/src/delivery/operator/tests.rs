@@ -9,6 +9,7 @@ use analyte_model::Reason;
     reason = "One retained-evidence scenario checks refusals and rollback alongside its successful lifecycle"
 )]
 fn plan11_adr0008_resend_preserves_identity_bytes_and_atomic_audit() -> TestResult {
+    let app = Identifier::new("app")?;
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("resend.db"))?;
     let metadata = receipt(b"raw")?;
@@ -63,7 +64,7 @@ fn plan11_adr0008_resend_preserves_identity_bytes_and_atomic_audit() -> TestResu
         store.resend_delivery(delivery.id, false, &audit),
         Err(DeliveryError::ResendState)
     ));
-    let first = store.claim(0)?.ok_or("missing claim")?;
+    let first = store.claim_destination(0, &app)?.ok_or("missing claim")?;
     assert!(matches!(
         store.resend_delivery(delivery.id, false, &audit),
         Err(DeliveryError::ResendState)
@@ -101,7 +102,7 @@ fn plan11_adr0008_resend_preserves_identity_bytes_and_atomic_audit() -> TestResu
         Attempt::Paused(Reason::new("setup")?),
     ] {
         store.resend_delivery(delivery.id, false, &audit)?;
-        let retry = store.claim(50)?.ok_or("missing retry")?;
+        let retry = store.claim_destination(50, &app)?.ok_or("missing retry")?;
         assert_eq!(retry.id, first.id);
         assert_eq!(retry.payload, first.payload);
         store.attempted(retry.id, &outcome, 50)?;
@@ -141,6 +142,7 @@ fn verify_unknown_resend_keeps_audit_count(store: &mut Store, mut audit: Audit) 
 
 #[test]
 fn plan11_adr0003_superseded_resend_requires_explicit_delivery() -> TestResult {
+    let app = Identifier::new("app")?;
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("superseded.db"))?;
     let metadata = receipt(b"raw")?;
@@ -181,7 +183,7 @@ fn plan11_adr0003_superseded_resend_requires_explicit_delivery() -> TestResult {
             },
         )
         .map(|commit| commit.version)?;
-    store.claim(0)?.ok_or("missing claim")?;
+    store.claim_destination(0, &app)?.ok_or("missing claim")?;
     store.attempted(delivery.id, &Attempt::Done, 0)?;
     store.db.execute(
         "INSERT INTO interpretations VALUES (?1,2,?2)",
@@ -217,7 +219,10 @@ fn plan11_adr0003_superseded_resend_requires_explicit_delivery() -> TestResult {
     assert!(store.audits(0)?.is_empty());
     store.resend_delivery(delivery.id, true, &audit)?;
     assert_eq!(
-        store.claim(50)?.ok_or("missing resend")?.payload,
+        store
+            .claim_destination(50, &app)?
+            .ok_or("missing resend")?
+            .payload,
         delivery.payload
     );
     assert_eq!(store.audits(0)?.len(), 1);
@@ -226,6 +231,7 @@ fn plan11_adr0003_superseded_resend_requires_explicit_delivery() -> TestResult {
 
 #[test]
 fn mutation_adr0008_resend_requires_both_action_and_exact_delivery_target() -> TestResult {
+    let app = Identifier::new("app")?;
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("resend-authorization.db"))?;
     let id = DeliveryId::try_from(uuid::Uuid::now_v7())?;
@@ -239,7 +245,9 @@ fn mutation_adr0008_resend_requires_both_action_and_exact_delivery_target() -> T
         },
         0,
     )?;
-    store.claim(0)?.ok_or("missing initial claim")?;
+    store
+        .claim_destination(0, &app)?
+        .ok_or("missing initial claim")?;
     store.attempted(id, &Attempt::Done, 0)?;
     let target = Identifier::new(&format!("delivery:{}", uuid::Uuid::from(id)))?;
     for (action, target) in [
@@ -274,7 +282,7 @@ fn mutation_adr0008_resend_requires_both_action_and_exact_delivery_target() -> T
         reason: Reason::new("synthetic resend")?,
     };
     store.resend_delivery(id, false, &audit)?;
-    let claim = store.claim(42)?.ok_or("missing resend")?;
+    let claim = store.claim_destination(42, &app)?.ok_or("missing resend")?;
     assert_eq!(claim.id, id);
     assert_eq!(claim.payload, b"immutable bytes");
     assert_eq!(store.audits(0)?.len(), 1);
