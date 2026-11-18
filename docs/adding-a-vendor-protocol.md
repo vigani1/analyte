@@ -84,7 +84,7 @@ Every protocol requirement needs a cited source and a named test; raise the
 evidence level only with the required recordings or simulator evidence.
 
 Run the complete AGENTS.md verification set, the protocol-checklist check and
-the CI layout, hook, line-length and duplication checks. Inspect generated
+the CI Layout and Duplication checks. Inspect generated
 file diffs. A machine definition is a separate step in
 [adding a machine](adding-a-machine.md); protocol support alone does not qualify
 a machine for clinical use.

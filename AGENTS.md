@@ -245,7 +245,7 @@ Run focused checks while iterating. Before handoff run `cargo fmt --check`,
 fuzz/Cargo.toml --bins` (the fuzz workspace is separate, so renames miss it).
 Also run `cargo clippy -p analyte -p analyte-sink --all-targets --no-default-features -- -D warnings`,
 `cargo test -p analyte -p analyte-sink --no-default-features`,
-`bash scripts/check-layout.sh` and `python scripts/check-code-page.py`.
+`bash scripts/check-layout.sh`, which runs every repository check script.
 The all-features test pass includes the six test-hooks suites; the second pass
 checks the production feature set used in CI.
 Report every check that was not run and

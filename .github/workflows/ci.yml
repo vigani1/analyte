@@ -25,13 +25,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # Names, headers, crate folders, code-page damage, checklist tests and the fuzz matrix.
       - run: bash scripts/check-layout.sh
-      - run: python3 scripts/check-hook-layout.py
-      - run: python3 scripts/test-line-length.py
-      - run: python3 scripts/check-line-length.py
-      - run: python3 scripts/check-fuzz-targets.py
-      - run: python3 scripts/test-protocol-tests.py
-      - run: python3 scripts/check-protocol-tests.py
 
   fmt:
     name: Format

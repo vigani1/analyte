@@ -204,6 +204,13 @@ deadline. Without the feature, both the hook and its call site compile out.
 Exercise its restart test with
 `cargo test -p analyte --all-features --test delivery recording`.
 
+Hook code lives only in its owners: `installation/config/hooks/` (program
+setup and loopback destinations), `machine/hooks/` (named session pauses and
+LAW order gates), `runtime/hooks/` (destinations, loopback service and
+shutdown overrides) and `runtime/test_hooks/` (the bounded gate primitives),
+plus `analyte-sink`'s `hooks.rs`. Without the feature each facade is inert and
+holds no state; CI's production Clippy and test passes build without it.
+
 The same feature also exposes `Program::stall_store_on_shutdown_for_test`,
 restricted to the loopback test service with explicitly injected listeners.
 It stalls one store operation at shutdown and sets a 500 ms process deadline;

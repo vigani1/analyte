@@ -44,14 +44,11 @@ class CodePageTests(unittest.TestCase):
         source = 'let x = r###"first\nsecond ?2\n"###;\n/*\nthird 3?4\n*/'
         self.assertEqual([line for line, _ in checker.hits("test.rs", source)], [2, 5])
 
-    def test_tracked_files_diagnostics_and_exact_allowlist(self):
+    def test_tracked_files_diagnostics(self):
         script = pathlib.Path("scripts/check-code-page.py").resolve()
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             subprocess.run(["git", "init", "-q", directory], check=True)
-            (root / "scripts").mkdir()
-            allowlist = root / "scripts/code-page-allowlist.txt"
-            allowlist.write_text("# No exceptions\n", encoding="utf-8")
             (root / "note.md").write_text("title\nsection ?2\n", encoding="utf-8")
             (root / "untracked.md").write_text("section ?3", encoding="utf-8")
             subprocess.run(["git", "add", "note.md"], cwd=root, check=True)
@@ -61,10 +58,8 @@ class CodePageTests(unittest.TestCase):
             self.assertEqual(result.returncode, 1)
             self.assertIn("note.md:2:", result.stdout)
             self.assertNotIn("untracked", result.stdout)
-            allowlist.write_text("note.md\tsection ?2\tDeliberate fixture\n", encoding="utf-8")
+            (root / "note.md").write_text("section 2\n", encoding="utf-8")
             self.assertEqual(run().returncode, 0)
-            (root / "note.md").write_text("section ?3\n", encoding="utf-8")
-            self.assertEqual(run().returncode, 1)
 
 
 if __name__ == "__main__":

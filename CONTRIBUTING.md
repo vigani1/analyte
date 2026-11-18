@@ -26,6 +26,11 @@ these suspicious patterns.
   `cargo clippy -p analyte -p analyte-sink --all-targets --no-default-features -- -D warnings`
   and `cargo test -p analyte -p analyte-sink --no-default-features`.
   See [AGENTS.md Verification](AGENTS.md#verification) for the remaining handoff checks.
+- A clean `bash scripts/check-layout.sh`. It runs only what the standard tools
+  cannot check: file headers, file and folder names, crate folders, text
+  damaged by a Windows code page, test names in protocol checklists and the
+  CI fuzz matrix. CI also runs `python3 scripts/check-duplication.py` (jscpd,
+  with production and test code measured separately).
 - Only synthetic or de-identified data. Never commit patient data, vendor
   manuals, standards documents or text copied from them; write notes in your
   own words.
