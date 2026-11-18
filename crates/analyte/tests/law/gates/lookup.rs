@@ -2,9 +2,9 @@
 use super::*;
 
 // PaLM TF-2b 3.27.4 / 3.28.4; ADR 0003 rules 1 and 8.
+// IHE PaLM TF-2b §3.27.4
 #[tokio::test]
-async fn law_tf2b_3_27_4_lookup_and_reservation_commit_precede_first_response_byte()
--> Result<(), Error> {
+async fn lookup_and_reservation_commit_precede_response() -> Result<(), Error> {
     let (lookup, looked) = Committed::new();
     let (reserved, admitted) = Committed::new();
     let gates = LawGates {
@@ -53,8 +53,9 @@ async fn law_tf2b_3_27_4_lookup_and_reservation_commit_precede_first_response_by
 }
 
 // PaLM TF-2b 3.28.4 / ADR 0004: candidate eligibility is not cancel permission.
+// IHE PaLM TF-2b §3.28.4
 #[tokio::test]
-async fn law_tf2b_3_28_4_cancel_rechecks_trust_after_candidate_selection() -> Result<(), Error> {
+async fn cancel_rechecks_trust_after_candidate_selection() -> Result<(), Error> {
     let (cancel, admission) = Committed::new();
     let (cancel_result, checked) = Committed::new();
     let gates = LawGates {

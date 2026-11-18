@@ -8,8 +8,9 @@ use std::time::Duration;
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
+// ADR 0003, ADR 0010
 #[test]
-fn adr0003_0010_astm_commit_identity_tracks_transfer_and_failed_request_ordinals() -> TestResult {
+fn commit_identity_tracks_transfer_and_ordinals() -> TestResult {
     let mut dialog = sender(100, 10, 64)?;
     dialog.step(Duration::ZERO, Event::Capacity(true))?;
     let mut ordinal = 0;
@@ -53,8 +54,9 @@ fn adr0003_0010_astm_commit_identity_tracks_transfer_and_failed_request_ordinals
     Ok(())
 }
 
+// CLSI LIS01-A2 §6.2.6, §6.2.7, §6.3.5
 #[test]
-fn lis01_6_2_6_6_2_7_6_3_5_peer_enq_can_take_over_waiting_sender() -> TestResult {
+fn peer_enq_takes_over_waiting_sender() -> TestResult {
     for waiting in ["contention", "busy", "holdoff"] {
         let mut dialog = sender(100, 10, 64)?;
         dialog.step(Duration::ZERO, Event::Capacity(true))?;
@@ -85,8 +87,9 @@ fn lis01_6_2_6_6_2_7_6_3_5_peer_enq_can_take_over_waiting_sender() -> TestResult
     Ok(())
 }
 
+// ADR 0003; CLSI LIS01-A2 §6.4
 #[test]
-fn adr0003_lis01_6_4_eot_during_commit_ends_incomplete_and_late_commit_never_acks() -> TestResult {
+fn eot_during_commit_ends_incomplete_without_ack() -> TestResult {
     let mut dialog = sender(100, 10, 64)?;
     dialog.step(Duration::ZERO, Event::Capacity(true))?;
     dialog.step(Duration::ZERO, Event::Byte(ENQ))?;
@@ -137,8 +140,9 @@ fn sender(bytes: usize, frames: usize, limit: usize) -> Result<Dialog, Box<dyn s
     ))
 }
 
+// Safety rule 7 (ADR 0003); CLSI LIS01-A2 §6.3
 #[test]
-fn rule7_lis01_6_3_sender_limits_are_inclusive_and_refuse_before_enq() -> TestResult {
+fn sender_limits_inclusive_and_refuse_before_enq() -> TestResult {
     for (bytes, frames, records, accepted) in [
         (4, 2, vec![b"AB".to_vec(), b"CD".to_vec()], true),
         (4, 2, vec![b"A".to_vec(), b"B".to_vec()], true),
@@ -168,8 +172,9 @@ fn rule7_lis01_6_3_sender_limits_are_inclusive_and_refuse_before_enq() -> TestRe
     Ok(())
 }
 
+// Safety rule 7 (ADR 0003); CLSI LIS01-A2 §6.3
 #[test]
-fn rule7_lis01_6_3_frame_limit_counts_split_frames_before_enq() -> TestResult {
+fn frame_limit_counts_split_frames_before_enq() -> TestResult {
     for (record, accepted) in [(b"AB".as_slice(), true), (b"ABC".as_slice(), false)] {
         let mut dialog = sender(10, 2, 8)?;
         let out = dialog.step(Duration::ZERO, Event::Send(vec![record.to_vec()]))?;
@@ -179,8 +184,9 @@ fn rule7_lis01_6_3_frame_limit_counts_split_frames_before_enq() -> TestResult {
     Ok(())
 }
 
+// ADR 0003 rule 7; CLSI LIS01-A2 §6.3
 #[test]
-fn adr0003_rule7_lis01_6_3_receiver_limits_refuse_without_commit_or_ack() -> TestResult {
+fn receiver_limits_refuse_without_commit_or_ack() -> TestResult {
     for (bytes, frames, texts) in [
         (2, 10, vec![b"AB".as_slice(), b"ABC".as_slice()]),
         (

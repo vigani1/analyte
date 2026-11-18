@@ -7,8 +7,9 @@ use analyte_model::{Comparator, IdentityStatus, QcClass, ResultStatus, ValueInte
 use analyte_poct::{Message, Nullable, Role, Value};
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
+// CLSI POCT01-A2 §B.5.15
 #[test]
-fn poct01_b_5_15_mapping_keeps_written_values_codes_units_and_comparators() -> TestResult {
+fn keeps_written_values_codes_units_and_comparators() -> TestResult {
     let raw = messages::observation("o", true, "<OBS.value V=\"001.2300\" U=\"OriginalUnit\"/>");
     let message = Message::parse(raw.as_bytes(), messages::limits())?;
     let received = "2026-03-12T09:50:00Z".parse()?;
@@ -67,8 +68,9 @@ fn poct01_b_5_15_mapping_keeps_written_values_codes_units_and_comparators() -> T
     Ok(())
 }
 
+// CLSI POCT01-A2 §B.6.10
 #[test]
-fn poct01_b_6_10_nonpatient_qc_and_null_are_never_patient_or_zero() -> TestResult {
+fn qc_and_null_are_never_patient_or_zero() -> TestResult {
     let raw = messages::observation("o", false, "<OBS.value NULL=\"UNK\"/>");
     let message = Message::parse(raw.as_bytes(), messages::limits())?;
     let mapped = map_observations(&message, "2026-03-12T09:50:00Z".parse()?)?;
@@ -92,8 +94,9 @@ fn poct01_b_6_10_nonpatient_qc_and_null_are_never_patient_or_zero() -> TestResul
     Ok(())
 }
 
+// CLSI POCT01-A2 §B.5.22
 #[test]
-fn poct01_b_5_22_specimen_id_preserves_case_and_leading_zeroes() -> TestResult {
+fn specimen_id_keeps_case_and_leading_zeros() -> TestResult {
     let raw = messages::observation("o",true,"<OBS.qualitative_value V=\"positive\" SN=\"source-system\" SV=\"v2\" DN=\"Source label\"/>").rewrite("</SVC>","<SPC><SPC.specimen_id V=\"000AbC\" SN=\"tube-system\"/><SPC.specimen_dttm V=\"2026-03-12T09:30:00+01:00\"/></SPC></SVC>");
     let message = Message::parse(raw.as_bytes(), messages::limits())?;
     let mapped = map_observations(&message, "2026-03-12T09:50:00Z".parse()?)?;
@@ -120,8 +123,9 @@ fn poct01_b_5_22_specimen_id_preserves_case_and_leading_zeroes() -> TestResult {
     Ok(())
 }
 
+// CLSI POCT01-A2 §B.6.10
 #[test]
-fn poct01_b_6_10_source_paths_keep_distinct_real_element_positions() -> TestResult {
+fn source_paths_keep_distinct_element_positions() -> TestResult {
     let raw = messages::observation("o", true, "<OBS.value V=\"1.00\" U=\"unit\"/>");
     let (_, service) = raw.split_once("<SVC>").ok_or("missing synthetic service")?;
     let service = service
@@ -157,8 +161,9 @@ fn poct01_b_6_10_source_paths_keep_distinct_real_element_positions() -> TestResu
 }
 
 // POCT01-A2 Appendix B 8.11 and clarification p.287.
+// CLSI POCT01-A2 §B.8.11, clarification p. 287
 #[test]
-fn poct01_b_8_11_clarification_p287_utc_z_preserves_original_and_precision() -> TestResult {
+fn utc_z_keeps_original_and_precision() -> TestResult {
     for (suffix, offset) in [("Z", Some(0)), ("+00:00", Some(0)), ("", None)] {
         for (local, precision) in [
             ("2026-03-12T09:35", analyte_model::TimePrecision::Minute),
@@ -194,8 +199,9 @@ fn poct01_b_8_11_clarification_p287_utc_z_preserves_original_and_precision() -> 
 }
 
 // POCT01-A2 B 8.9 p.135 and 6.5.2.1 p.116: numeric grammar must retain literal spelling.
+// CLSI POCT01-A2 §B.8.9
 #[test]
-fn poct01_b_8_9_trailing_point_quantity_survives_mapping() -> TestResult {
+fn trailing_point_quantity_survives_mapping() -> TestResult {
     let raw = messages::observation("o", true, "<OBS.value V=\"10.\" U=\"mg/L\"/>");
     let message = Message::parse(raw.as_bytes(), messages::limits())?;
     let mapped = map_observations(&message, "2026-03-12T09:50:00Z".parse()?)?;

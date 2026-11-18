@@ -48,8 +48,8 @@ never guesses an ID from body text or an ambiguous header. Uninterpretable
 capabilities follow the same retained-error-ACK-Terminate order; a plain host
 policy rejection remains distinct. The dialog waits for the correlated final
 ACK or its existing deadline. Program tests:
-`poct01_b4_1_2_program_rejected_hello_ack_then_terminate_keeps_raw` and
-`poct01_b4_1_2_program_ambiguous_hello_header_is_parked_without_guessed_ack`.
+`rejected_hello_acks_terminates_and_keeps_raw` and
+`ambiguous_hello_header_parked_without_guessed_ack`.
 
 Received control IDs are conversation-local protocol identities (Appendix B
 section 5.13, printed p.99). The dialog retains all of them within an aggregate
@@ -59,9 +59,9 @@ before Escape and abnormal Terminate, without mapping a second result. Budget
 exhaustion is separately parked and reports inability to complete the topic.
 A unique correlated terminal ACK remains usable at capacity; bad traffic cannot
 restart termination indefinitely. A new connection has a new index. Tests:
-`poct01_b5_13_program_reused_control_id_parks_evidence_and_escapes`,
-`poct01_b5_13_reused_id_before_commit_is_retained_not_accepted`, and
-`poct01_b5_13_control_id_budget_ends_conversation_without_forgetting_ids`.
+`reused_control_id_parks_evidence_and_escapes`,
+`reused_id_before_commit_is_retained_not_accepted`, and
+`control_id_budget_ends_conversation_keeping_ids`.
 This set does not replace the store's independent result identity history.
 
 ## Identity and mapping
@@ -97,7 +97,7 @@ The program recovers Hello context from complete interpreted receipts, excluding
 transport-journal fragments, for both live receive and operator reprocessing.
 
 Program/reference-receiver regression:
-`poct01_b3_2_program_lost_ack_reconnect_restart_and_correction` in
+`lost_ack_restart_and_correction_deliver_once` in
 `crates/analyte/tests/chunk_receive/` proves a real delivery, lost-ACK resend,
 reconnect, restart, edited revision, changed-original conflict, and missing
 time/declared sequence/device evidence. These program tests cover the behavior (Appendix B section 3.2, pp.71–72; ADR 0003).
@@ -125,17 +125,17 @@ Section references are to Appendix B of POCT01-A2. Tests are in `tests/`.
 
 | Checklist row | Implementation and tests |
 | --- | --- |
-| Mandatory receives and reviewer sends, §4.4 | `messages::poct01_b_6_mandatory_message_bodies_and_control_ids`; `builders::poct01_b_6_reviewer_builders_round_trip_and_correlate` |
-| Hello accept/reject and ordered startup, §4.1.2 | `dialog::poct01_b_4_1_2_startup_and_rejection_in_sequence`; `poct01_b_4_1_2_minimum_capability_peer_and_hello_deadline` |
-| Capabilities and repeated topics, §§4.1.3,5.6–5.7 | `Body::Hello`, `Capabilities`; `dialog::poct01_b_4_1_3_zero_observations_repeated_topic_and_normal_termination` |
-| Patient/nonpatient, zero/multiple observations and EOT, §§4.1.4–4.1.5 | `messages::poct01_b_6_10_patient_and_nonpatient_values_are_explicit`; dialog zero/multiple transfer tests; mapping tests |
-| Custody gate and independent observation identity, §3.2 / ADR 0003 | `dialog::poct01_b_3_2_adr0003_commit_gate_orders_asynchronous_acks`; program `poct01_b3_2_program_lost_ack_reconnect_restart_and_correction` |
-| Error ACK, Escape and termination, §§3.4,4.1.11–4.1.12 | `dialog::poct01_b_3_4_error_ack_keeps_topic_but_storage_failure_escapes`; Escape correlation, remote END and normal termination tests |
-| Application timeout without replay, §3.6 | `dialog::poct01_b_3_6_no_resend_on_application_timeout`; Hello policy latency test |
+| Mandatory receives and reviewer sends, §4.4 | `messages::each_mandatory_body_has_exact_meaning`; `builders::reviewer_builders_round_trip_and_correlate` |
+| Hello accept/reject and ordered startup, §4.1.2 | `dialog::startup_and_rejection_in_sequence`; `minimum_capability_peer_and_hello_deadline` |
+| Capabilities and repeated topics, §§4.1.3,5.6–5.7 | `Body::Hello`, `Capabilities`; `dialog::zero_observations_repeat_topic_and_terminate` |
+| Patient/nonpatient, zero/multiple observations and EOT, §§4.1.4–4.1.5 | `messages::patient_and_nonpatient_values_are_explicit`; dialog zero/multiple transfer tests; mapping tests |
+| Custody gate and independent observation identity, §3.2 / ADR 0003 | `dialog::commit_gate_orders_asynchronous_acks`; program `lost_ack_restart_and_correction_deliver_once` |
+| Error ACK, Escape and termination, §§3.4,4.1.11–4.1.12 | `dialog::error_ack_keeps_topic_but_store_failure_escapes`; Escape correlation, remote END and normal termination tests |
+| Application timeout without replay, §3.6 | `dialog::application_timeout_never_resends`; Hello policy latency test |
 | Required objects, order, cardinality, codes and correlation, §§5–6 | `structure.rs`; missing/duplicate/order/role tests in `messages`; correlation tests in `builders` and `dialog` |
 | POCT coded/quantity/time/null/encapsulated types, §8 | `data.rs`; quantity-spelling property, null/code/translation, offset/precision, interval and encapsulated metadata tests |
 | Local normative structure handling, §12 | Executable rules in `structure.rs` and fixed data-type metadata checks; auxiliary metadata, invalid fixed attributes and interval-choice tests in `messages` |
-| Asynchronous observation order and bounded backpressure, §9 | `dialog::poct01_b_3_2_adr0003_commit_gate_orders_asynchronous_acks`; `poct01_b_9_bounded_backpressure_returns_unconsumed_input` |
+| Asynchronous observation order and bounded backpressure, §9 | `dialog::commit_gate_orders_asynchronous_acks`; `backpressure_returns_unconsumed_input` |
 | Project failure gate | Minimum-capability startup, malformed XML/typed-input properties, backpressure, timeout, store failure, disconnected/unresolved tickets, lost-ACK/restart duplicate restoration and same-ID conflict tests |
 
 The source's message models in §6 define object order/containment; §8 supplies

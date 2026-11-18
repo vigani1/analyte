@@ -14,8 +14,9 @@ fn header() -> Header {
     }
 }
 proptest! {
+    // ADR 0009
     #[test]
-    fn adr0009_round_trip(bytes in prop::collection::vec(any::<u8>(), 0..4097)) {
+    fn recording_round_trips(bytes in prop::collection::vec(any::<u8>(), 0..4097)) {
         let limits = Limits::default();
         let event = Event { direction: Direction::MachineToHost, time_ms: 0, bytes, link: None };
         let mut wire = Vec::new();
@@ -25,13 +26,15 @@ proptest! {
         prop_assert_eq!(got, header());
         prop_assert_eq!(events, vec![event]);
     }
+    // ADR 0009
     #[test]
-    fn adr0009_arbitrary_input_never_panics(bytes in prop::collection::vec(any::<u8>(), 0..32768)) {
+    fn arbitrary_input_never_panics(bytes in prop::collection::vec(any::<u8>(), 0..32768)) {
         let _ = read(bytes.as_slice(), Limits::default());
     }
 }
+// ADR 0009
 #[test]
-fn adr0009_invalid_line_and_each_limit_are_errors() -> Result<(), Box<dyn std::error::Error>> {
+fn invalid_lines_and_limits_are_errors() -> Result<(), Box<dyn std::error::Error>> {
     let mut wire = Vec::new();
     let limits = Limits::default();
     write_header(&mut wire, &header(), limits)?;
@@ -77,9 +80,9 @@ fn adr0009_invalid_line_and_each_limit_are_errors() -> Result<(), Box<dyn std::e
     Ok(())
 }
 
+// ADR 0009
 #[test]
-fn adr0009_guard_refusal_preserves_bytes_and_reports_failure()
--> Result<(), Box<dyn std::error::Error>> {
+fn guard_refusal_keeps_bytes_and_reports_failure() -> Result<(), Box<dyn std::error::Error>> {
     use analyte_transport::recording::{Kind, recording};
     let root = tempfile::tempdir()?;
     let path = root.path().join("guarded.rec.jsonl");

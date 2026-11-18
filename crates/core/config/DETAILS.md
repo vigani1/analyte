@@ -201,9 +201,9 @@ starts after issuance for both work and cancel ORLs. Partial input still uses
 `dialog.receive_timeout_ms`, and queries retain their first-byte budget. Restore
 pause and stale/untrusted feed admission use the shared store checks. A failed
 idle lookup produces no work bytes and retains the receiving connection. Tests:
-`law_tf2b_3_27_3_28_work_requires_explicit_bindings_and_allows_send_ahead` in this
+`work_requires_bindings_and_allows_send_ahead` in this
 crate, and the program's source-named `tests/law/work.rs` matrix. The topology choices and validation are tested by
-`law_tf2b_b6_declared_topologies_require_explicit_direction_and_outbound_endpoint`.
+`topologies_require_direction_and_outbound_endpoint`.
 Persistent mode uses the site TCP client/server endpoint for all transactions.
 Independent mode requires an inbound `tcp_server` site endpoint plus an explicit
 `law.outbound_endpoint` analyzer listener for LAB-28. The host owns bounded queued

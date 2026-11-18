@@ -1,8 +1,9 @@
 //! Tests LAW order queries and query-triggered work downloads.
 use super::*;
 
+// IHE PaLM TF-2b table C.6-2, usage X
 #[tokio::test]
-async fn law_tf2b_c6_2_x_awos_components_do_not_change_retained_work_match() -> Result<(), Error> {
+async fn ignored_awos_components_do_not_change_work_match() -> Result<(), Error> {
     let (_temp, path, mut reference, running, mut peer) = setup(
         vec![order("order-1", "000Ab12", Some("law"), 1)?],
         &definition().rewrite("specimen = false", "specimen = true"),
@@ -103,8 +104,9 @@ async fn law_tf2b_c6_2_x_awos_components_do_not_change_retained_work_match() -> 
 }
 
 // PaLM TF-2b Rev 11 B.7.1-B.7.2 pp.80-81; C.1 pp.84-85.
+// IHE PaLM TF-2b §B.7.1, §B.7.2
 #[tokio::test]
-async fn law_tf2b_b7_1_b7_2_host_correlates_errors_without_ack_loops() -> Result<(), Error> {
+async fn host_correlates_errors_without_ack_loops() -> Result<(), Error> {
     let (_temp, path, reference, running, mut peer) = setup(vec![], &definition(), false).await?;
     let query = query(CONTAINER, "correlated");
     let result = law_results::result("correlated", "\"\"", "run^ANALYZER", "1.0", "F");
@@ -138,8 +140,9 @@ async fn law_tf2b_b7_1_b7_2_host_correlates_errors_without_ack_loops() -> Result
 }
 
 // PaLM TF-2b 3.27.4 and ADR 0003: bound exhaustion cannot issue a subset.
+// IHE PaLM TF-2b §3.27.4
 #[tokio::test]
-async fn law_tf2b_3_27_4_pending_aggregate_bound_never_returns_partial_work() -> Result<(), Error> {
+async fn pending_bound_never_returns_partial_work() -> Result<(), Error> {
     let orders = (0..17)
         .map(|i| order(&format!("order-{i:02}"), &format!("tube-{i:02}"), None, 1))
         .collect::<Result<Vec<_>, _>>()?;
@@ -158,8 +161,9 @@ async fn law_tf2b_3_27_4_pending_aggregate_bound_never_returns_partial_work() ->
 }
 
 // PaLM TF-2b 3.28.4 / ADR 0003: failed raw custody cannot accept any item.
+// IHE PaLM TF-2b §3.28.4; ADR 0003
 #[tokio::test]
-async fn law_tf2b_3_28_4_adr0003_failed_orl_write_never_finishes_items() -> Result<(), Error> {
+async fn failed_orl_write_never_finishes_items() -> Result<(), Error> {
     let (_temp, path, reference, running, mut peer) = setup(
         vec![order("order-1", "000Ab12", None, 2)?],
         &definition(),
@@ -189,9 +193,10 @@ async fn law_tf2b_3_28_4_adr0003_failed_orl_write_never_finishes_items() -> Resu
 }
 
 // PaLM TF-2b 3.28.4 and ADR 0003: raw custody precedes every AWOS decision.
+// IHE PaLM TF-2b §3.28.4; ADR 0003
 #[cfg(feature = "test-hooks")]
 #[tokio::test]
-async fn law_tf2b_3_28_4_adr0003_orl_commit_precedes_each_item_outcome() -> Result<(), Error> {
+async fn orl_commit_precedes_each_item_outcome() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = vendor_config(temp.path(), "law", &definition())?;
     let reference = Reference::start(
@@ -245,10 +250,10 @@ async fn law_tf2b_3_28_4_adr0003_orl_commit_precedes_each_item_outcome() -> Resu
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.27.4; ADR 0003
 #[cfg(feature = "test-hooks")]
 #[tokio::test]
-async fn law_tf2b_3_27_4_adr0003_raw_commit_precedes_query_response_and_reservation()
--> Result<(), Error> {
+async fn raw_commit_precedes_query_response() -> Result<(), Error> {
     for form in [CONTAINER, ALL] {
         let temp = tempfile::tempdir()?;
         let path = vendor_config(temp.path(), "law", &definition())?;
@@ -295,8 +300,9 @@ async fn law_tf2b_3_27_4_adr0003_raw_commit_precedes_query_response_and_reservat
 }
 
 // ADR 0004 / rule 9 / LAW TF-2b 3.27.4: only configured fresh emptiness is a negative work answer.
+// Safety rule 9 (ADR 0003)
 #[tokio::test]
-async fn rule9_law_query_freshness_follows_destination_config() -> Result<(), Error> {
+async fn law_query_freshness_follows_destination_config() -> Result<(), Error> {
     for freshness in [10, 120] {
         let (_temp, path, reference, running, mut peer) =
             setup_with_freshness(Vec::new(), &definition(), false, freshness).await?;
@@ -323,9 +329,10 @@ async fn rule9_law_query_freshness_follows_destination_config() -> Result<(), Er
 // IHE PaLM TF-2b Rev 11 B.3.1 pp.63-64 and B.7.6 p.82.
 
 // PaLM TF-2b B.6 / ADR 0003: wire expiry cannot cancel raw custody.
+// IHE PaLM TF-2b §B.6; ADR 0003
 #[cfg(feature = "test-hooks")]
 #[tokio::test]
-async fn law_tf2b_b6_adr0003_wire_deadline_does_not_cancel_raw_custody() -> Result<(), Error> {
+async fn wire_deadline_does_not_cancel_raw_custody() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let settings = definition().rewrite("receive_timeout_ms = 30000", "receive_timeout_ms = 50");
     let path = vendor_config(temp.path(), "law", &settings)?;

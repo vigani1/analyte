@@ -188,8 +188,9 @@ impl Decoder {
 mod tests {
     use super::*;
 
+    // CLSI POCT01-A2 Appendix B XML
     #[test]
-    fn poct01_b_xml_split_tokens_comments_and_mismatched_roots() -> Result<(), Error> {
+    fn root_found_across_splits_and_comments() -> Result<(), Error> {
         for raw in [
             b"<a><b V=\"x>y\"/></a>".as_slice(),
             b"<!-- > --><a><!-- </a> --></a>",
@@ -205,8 +206,9 @@ mod tests {
         Ok(())
     }
 
+    // CLSI POCT01-A2 Appendix B XML
     #[test]
-    fn poct01_b_xml_definite_errors_are_refused() {
+    fn definite_xml_errors_are_refused() {
         assert!(matches!(
             Decoder::new(1024, 16).scan(b"<a><!invalid>"),
             Err(Error::Malformed(_))
@@ -217,8 +219,9 @@ mod tests {
         ));
     }
 
+    // CLSI POCT01-A2 Appendix B XML
     #[test]
-    fn poct01_b_xml_incomplete_roots_remain_pending() -> Result<(), Error> {
+    fn incomplete_roots_remain_pending() -> Result<(), Error> {
         for raw in [
             b"<a><!-- unfinished".as_slice(),
             b"<a><",
@@ -297,8 +300,9 @@ mod equivalence {
     }
 
     proptest! {
+        // CLSI POCT01-A2 Appendix B XML
         #[test]
-        fn poct01_b_xml_incremental_matches_original_boundary(tokens in prop::collection::vec(prop::sample::select(vec!["<a>","</a>","<b/>","<b",">","<", "<!--", "-->","<![CDATA[", "]]>","&amp;", "text", "</wrong>","<?xml version=\"1.0\"?>"]), 0..40)) {
+        fn incremental_scan_matches_reference_boundary(tokens in prop::collection::vec(prop::sample::select(vec!["<a>","</a>","<b/>","<b",">","<", "<!--", "-->","<![CDATA[", "]]>","&amp;", "text", "</wrong>","<?xml version=\"1.0\"?>"]), 0..40)) {
             let raw = tokens.concat().into_bytes();
             let mut decoder = Decoder::new(4096, 16);
             for (i, byte) in raw.iter().enumerate() {

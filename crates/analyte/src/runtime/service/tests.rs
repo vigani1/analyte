@@ -2,8 +2,9 @@
 
 use super::*;
 
+// Safety rule 7 (ADR 0003)
 #[tokio::test]
-async fn rule7_service_close_waits_for_store_destruction() -> Result<(), crate::Error> {
+async fn close_waits_for_store_destruction() -> Result<(), crate::Error> {
     struct Observer {
         entered: Option<tokio::sync::oneshot::Sender<()>>,
         release: std::sync::mpsc::Receiver<()>,
@@ -55,8 +56,9 @@ async fn rule7_service_close_waits_for_store_destruction() -> Result<(), crate::
     Ok(())
 }
 
+// Plan §11
 #[tokio::test]
-async fn plan11_supervision_preserves_stop_failure_and_refuses_unexpected_admin_exit() {
+async fn supervision_keeps_stop_failure_and_refuses_admin_exit() {
     let mut alerts = JoinSet::new();
     let mut admin = JoinSet::new();
     let mut deliveries = JoinSet::new();

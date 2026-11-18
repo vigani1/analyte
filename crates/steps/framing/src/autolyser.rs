@@ -169,8 +169,9 @@ impl Decoder {
 mod tests {
     use super::*;
     use proptest::prelude::*;
+    // Autolyser manual Rev18 p. 175
     #[test]
-    fn autolyser_rev18_p175_binary_insertion_reply_has_two_bytes() {
+    fn binary_insertion_reply_has_two_bytes() {
         for detail in [STX, EOT, ACK, NAK] {
             let mut decoder = Decoder::new(Mode::Insertion, 2).unwrap();
             assert!(decoder.push(b'Y').unwrap().is_none());
@@ -180,8 +181,9 @@ mod tests {
             assert!(decoder.push(detail).is_err());
         }
     }
+    // Autolyser manual Rev18 pp. 177, 179
     #[test]
-    fn autolyser_rev18_p177_179_boundaries_checksum_and_partial_evidence() {
+    fn report_boundaries_and_partial_evidence() {
         let raw = encode(b"synthetic".to_vec());
         let mut decoder = Decoder::new(Mode::Report, 100).unwrap();
         for byte in raw.iter().take(raw.len() - 1) {
@@ -203,8 +205,9 @@ mod tests {
         assert_eq!(decoder.push(NAK).unwrap().unwrap().raw(), [NAK]);
     }
 
+    // Autolyser manual Rev18 p. 179
     #[test]
-    fn autolyser_rev18_p179_decimal_checksum_malformed_envelopes_and_size_limits() {
+    fn checksum_envelope_and_size_limits_are_enforced() {
         assert_eq!(encode(b"A".to_vec()), [b'A', b'0', b'6', b'5', EOT]);
         for raw in [
             &b"A066\x04"[..],
@@ -224,8 +227,9 @@ mod tests {
     }
 
     proptest! {
+        // Autolyser manual Rev18 pp. 177, 179
         #[test]
-        fn autolyser_rev18_p177_179_property_report_roundtrip_and_fragment_boundaries(body in prop::collection::vec(32u8..127,0..11035), split in 0usize..11039) {
+        fn reports_roundtrip_across_any_split(body in prop::collection::vec(32u8..127,0..11035), split in 0usize..11039) {
             let raw = encode(body.clone());
             let mut decoder = Decoder::new(Mode::Report,11038).unwrap();
             let split = split.min(raw.len());
@@ -239,8 +243,9 @@ mod tests {
             prop_assert_eq!(output[0].body().unwrap(), body);
             prop_assert!(decoder.finish().raw().is_empty());
         }
+        // Autolyser manual Rev18 p. 175
         #[test]
-        fn autolyser_rev18_p175_property_binary_insertion_and_stopped_decoder(prefix in any::<u8>(), detail in any::<u8>()) {
+        fn any_insertion_reply_stops_decoder(prefix in any::<u8>(), detail in any::<u8>()) {
             let mut decoder = Decoder::new(Mode::Insertion,2).unwrap();
             prop_assert!(decoder.push(prefix).unwrap().is_none());
             let frame = decoder.push(detail).unwrap().unwrap();
@@ -248,8 +253,9 @@ mod tests {
             prop_assert!(frame.complete());
             prop_assert_eq!(decoder.push(prefix).unwrap_err(), Error::Stopped);
         }
+        // Autolyser manual Rev18 p. 177
         #[test]
-        fn autolyser_rev18_p177_property_partial_evidence_is_exact_and_bounded(body in prop::collection::vec(32u8..127,0..1024), maximum in 2usize..1024) {
+        fn partial_evidence_is_exact_and_bounded(body in prop::collection::vec(32u8..127,0..1024), maximum in 2usize..1024) {
             let mut decoder = Decoder::new(Mode::Report,maximum).unwrap();
             let kept = body.len().min(maximum);
             let mut output = None;

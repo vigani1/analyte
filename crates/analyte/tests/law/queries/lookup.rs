@@ -1,9 +1,9 @@
 //! Tests LAW order queries and query-triggered work downloads.
 use super::*;
 
+// IHE PaLM TF-2b §3.27, §3.28
 #[tokio::test]
-async fn law_tf2b_3_27_3_28_found_query_reserves_per_awos_and_finishes_each_orl_outcome()
--> Result<(), Error> {
+async fn found_query_reserves_and_finishes_each_awos() -> Result<(), Error> {
     for (codes, expected) in [
         (["OK", "OK"], "Accepted"),
         (["UA", "UA"], "Rejected"),
@@ -98,9 +98,9 @@ async fn law_tf2b_3_27_3_28_found_query_reserves_per_awos_and_finishes_each_orl_
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.27.4
 #[tokio::test]
-async fn law_tf2b_3_27_4_trusted_empty_uses_restricted_negative_and_correlated_orl_without_items()
--> Result<(), Error> {
+async fn trusted_empty_sends_negative_work_without_items() -> Result<(), Error> {
     for form in [CONTAINER, ALL] {
         let (_temp, path, reference, running, mut peer) =
             setup(vec![], &definition(), false).await?;
@@ -159,9 +159,9 @@ async fn law_tf2b_3_27_4_trusted_empty_uses_restricted_negative_and_correlated_o
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.27.4
 #[tokio::test]
-async fn law_tf2b_3_27_4_all_pending_pages_filter_other_analyzers_and_keep_every_awos()
--> Result<(), Error> {
+async fn all_pending_pages_filter_other_analyzers() -> Result<(), Error> {
     let mut orders = (0..100)
         .map(|index| order(&format!("a-{index:03}"), "000other", Some("other"), 1))
         .collect::<Result<Vec<_>, _>>()?;
@@ -187,8 +187,9 @@ async fn law_tf2b_3_27_4_all_pending_pages_filter_other_analyzers_and_keep_every
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.27, §B.7
 #[tokio::test]
-async fn law_tf2b_3_27_b7_unsupported_forms_are_ar_never_negative_work() -> Result<(), Error> {
+async fn unsupported_query_forms_get_ar() -> Result<(), Error> {
     let (_temp, path, reference, running, mut peer) = setup(
         vec![order("order-1", "000Ab12", None, 1)?],
         &definition(),
@@ -222,9 +223,9 @@ async fn law_tf2b_3_27_b7_unsupported_forms_are_ar_never_negative_work() -> Resu
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.27.4
 #[tokio::test]
-async fn law_tf2b_3_27_4_untrusted_read_failure_and_restore_pause_are_errors_not_no_work()
--> Result<(), Error> {
+async fn untrusted_or_paused_lookup_is_an_error() -> Result<(), Error> {
     for paused in [false, true] {
         for form in [CONTAINER, ALL] {
             let (_temp, path, reference, running, mut peer) = setup(
@@ -253,9 +254,9 @@ async fn law_tf2b_3_27_4_untrusted_read_failure_and_restore_pause_are_errors_not
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.27.4
 #[tokio::test]
-async fn law_tf2b_3_27_4_late_query_budget_includes_first_byte_and_raw_storage() -> Result<(), Error>
-{
+async fn query_budget_counts_first_byte_and_storage() -> Result<(), Error> {
     for form in [CONTAINER, ALL] {
         let settings = definition().rewrite("query_deadline_ms = 30000", "query_deadline_ms = 50");
         let (hook, control) = analyte::runtime::test_hooks::Committed::new();
@@ -288,9 +289,9 @@ async fn law_tf2b_3_27_4_late_query_budget_includes_first_byte_and_raw_storage()
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.28
 #[tokio::test]
-async fn law_tf2b_3_28_query_followup_timeout_disconnect_and_bad_correlation_are_uncertain()
--> Result<(), Error> {
+async fn failed_query_followup_is_uncertain() -> Result<(), Error> {
     for action in ["timeout", "disconnect", "wrong-correlation"] {
         eprintln!("LAW followup action={action}");
         let settings = if action == "timeout" {
@@ -361,9 +362,9 @@ async fn law_tf2b_3_28_query_followup_timeout_disconnect_and_bad_correlation_are
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.27.4
 #[tokio::test]
-async fn law_tf2b_3_27_4_unreachable_app_without_snapshot_never_answers_no_work()
--> Result<(), Error> {
+async fn unreachable_app_never_answers_no_work() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = vendor_config(temp.path(), "law", &definition())?;
     let receiver_path = temp.path().join("receiver.db");
@@ -389,9 +390,9 @@ async fn law_tf2b_3_27_4_unreachable_app_without_snapshot_never_answers_no_work(
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.27.4
 #[tokio::test]
-async fn law_tf2b_3_27_4_stale_and_incomplete_cache_with_retained_orders_are_not_empty()
--> Result<(), Error> {
+async fn stale_or_incomplete_cache_is_not_empty() -> Result<(), Error> {
     for change in [
         "UPDATE feed SET polled=0",
         "UPDATE feed SET trusted=0,complete=0",
@@ -421,9 +422,9 @@ async fn law_tf2b_3_27_4_stale_and_incomplete_cache_with_retained_orders_are_not
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.27, §3.28
 #[tokio::test]
-async fn law_tf2b_3_27_3_28_preflight_and_reservation_failure_cannot_emit_positive_rsp_or_work()
--> Result<(), Error> {
+async fn preparation_failure_sends_no_positive_answer() -> Result<(), Error> {
     for failure in ["later-unmapped-test", "later-reservation-storage"] {
         let settings = definition();
         let mut pending: serde_json::Value =
@@ -455,9 +456,9 @@ async fn law_tf2b_3_27_3_28_preflight_and_reservation_failure_cannot_emit_positi
     Ok(())
 }
 
+// IHE PaLM TF-2b §2.2.4
 #[tokio::test]
-async fn law_tf2b_2_2_4_query_work_intersects_supplied_specimen_priority_with_peer_support()
--> Result<(), Error> {
+async fn query_work_limits_content_to_peer_support() -> Result<(), Error> {
     for selected in [false, true] {
         let settings = definition()
             .rewrite("specimen = false", &format!("specimen = {selected}"))
@@ -520,9 +521,9 @@ async fn law_tf2b_2_2_4_query_work_intersects_supplied_specimen_priority_with_pe
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.27, §3.28
 #[tokio::test]
-async fn law_tf2b_3_27_3_28_negative_followup_bad_orl_is_retained_without_order_effects()
--> Result<(), Error> {
+async fn bad_negative_followup_orl_changes_no_orders() -> Result<(), Error> {
     let (_temp, path, reference, running, mut peer) = setup(vec![], &definition(), false).await?;
     send(&mut peer, query(ALL, "negative").as_bytes()).await?;
     packet(&mut peer).await?;
@@ -563,9 +564,9 @@ async fn law_tf2b_3_27_3_28_negative_followup_bad_orl_is_retained_without_order_
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.28
 #[tokio::test]
-async fn law_tf2b_3_28_negative_followup_orl_after_response_deadline_is_parked_not_audited()
--> Result<(), Error> {
+async fn late_negative_followup_orl_is_parked() -> Result<(), Error> {
     let settings = definition().rewrite("response_ms = 30000", "response_ms = 200");
     let (_temp, path, reference, running, mut peer) = setup(vec![], &settings, false).await?;
     send(&mut peer, query(ALL, "late-negative").as_bytes()).await?;
@@ -611,9 +612,9 @@ async fn law_tf2b_3_28_negative_followup_orl_after_response_deadline_is_parked_n
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.27.4.1.2.3
 #[tokio::test]
-async fn law_tf2b_3_27_4_1_2_3_malformed_query_tuple_is_located_never_no_work() -> Result<(), Error>
-{
+async fn malformed_query_tuple_gets_located_error() -> Result<(), Error> {
     let (_temp, path, reference, running, mut peer) = setup(
         vec![order("order-1", "000Ab12", None, 1)?],
         &definition(),

@@ -50,8 +50,9 @@ fn response(d: &mut Dialog, id: ExchangeId) -> Result<Vec<Action>, Box<dyn std::
     )?)
 }
 
+// ADR 0003
 #[test]
-fn adr0003_hl7_receipt_namespace_and_ordinal_survive_valid_and_malformed_input() -> TestResult {
+fn receipt_namespace_and_ordinal_survive_bad_input() -> TestResult {
     for epoch in [42, 99] {
         let mut d = dialog(epoch)?;
         for (ordinal, payload) in [MESSAGE, b"malformed", MESSAGE].iter().enumerate() {
@@ -73,8 +74,9 @@ fn adr0003_hl7_receipt_namespace_and_ordinal_survive_valid_and_malformed_input()
     Ok(())
 }
 
+// Safety rule 7 (ADR 0003); HL7 MLLP R1
 #[test]
-fn rule7_mllp_r1_partial_input_does_not_extend_absolute_deadline() -> TestResult {
+fn partial_input_never_extends_absolute_deadline() -> TestResult {
     let mut d = dialog(42)?;
     let first = d.step(Duration::ZERO, Event::Byte(11))?;
     assert!(
@@ -97,8 +99,9 @@ fn rule7_mllp_r1_partial_input_does_not_extend_absolute_deadline() -> TestResult
     Ok(())
 }
 
+// ADR 0010; HL7 2.5.1 §2.9
 #[test]
-fn adr0010_hl7_251_2_9_send_cannot_replace_active_custody_or_response() -> TestResult {
+fn send_cannot_replace_active_custody_or_response() -> TestResult {
     for phase in [
         "partial",
         "commit",
@@ -206,8 +209,9 @@ fn diagnostic<'a>(segment: &'a [u8], code: &'a [u8], application_code: &'a [u8])
     }
 }
 
+// ADR 0003, ADR 0010; HL7 2.5.1 §2.9
 #[test]
-fn adr0003_0010_hl7_251_2_9_callbacks_require_matching_receipt_and_phase() -> TestResult {
+fn callbacks_require_matching_receipt_and_phase() -> TestResult {
     let wrong = receive(&mut dialog(99)?, MESSAGE)?;
     for phase in ["commit", "interpret", "respond"] {
         for callback in ["committed", "failed", "interpreted", "invalid", "respond"] {
@@ -265,8 +269,9 @@ fn adr0003_0010_hl7_251_2_9_callbacks_require_matching_receipt_and_phase() -> Te
     Ok(())
 }
 
+// Safety rule 7 (ADR 0003)
 #[test]
-fn rule7_host_error_metadata_bounds_refuse_without_losing_pending_receipt() -> TestResult {
+fn oversized_error_metadata_keeps_pending_receipt() -> TestResult {
     let application = [b'X'; 65];
     for (segment, code, app, accepted) in [
         (
@@ -335,8 +340,9 @@ fn writes(actions: &[Action]) -> Vec<&analyte_dialog::Write> {
         .collect()
 }
 
+// HL7 2.5.1 §4.4.2; Safety rule 8 (ADR 0003)
 #[test]
-fn hl7_251_4_4_2_rule8_order_send_issues_once_within_its_response_budget() -> TestResult {
+fn order_send_issues_once_within_budget() -> TestResult {
     let mut d = dialog(42)?;
     d.enable_orders(analyte_hl7::Version::V251)?;
     let wait = Duration::from_secs(2);
@@ -395,8 +401,9 @@ fn hl7_251_4_4_2_rule8_order_send_issues_once_within_its_response_budget() -> Te
     Ok(())
 }
 
+// HL7 2.5.1 §4.4.2; Safety rule 8 (ADR 0003)
 #[test]
-fn hl7_251_4_4_2_rule8_order_response_timeout_never_resends() -> TestResult {
+fn order_response_timeout_never_resends() -> TestResult {
     let mut d = dialog(42)?;
     d.enable_orders(analyte_hl7::Version::V251)?;
     d.step(

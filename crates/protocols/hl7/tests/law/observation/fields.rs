@@ -1,8 +1,9 @@
 //! Tests LAW OBX, NTE and INV segment validation.
 use super::*;
 
+// IHE PaLM TF-2b §C.7, OBX-1, OBX-4
 #[test]
-fn law_tf2b_c7_obx_1_si_and_4_og_lengths_nulls_and_manager_re() -> TestResult {
+fn obx1_and_obx4_lengths_and_nulls() -> TestResult {
     for value in ["1", "9999"] {
         both("OBX", &[(1, value)], true)?;
     }
@@ -43,8 +44,9 @@ fn law_tf2b_c7_obx_1_si_and_4_og_lengths_nulls_and_manager_re() -> TestResult {
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.7, OBX-3
 #[test]
-fn law_tf2b_c7_obx_3_cwe_alternate_predicates_and_namespaces() -> TestResult {
+fn obx3_alternate_codes_and_namespaces() -> TestResult {
     for system in ["LN", "JC10", "99LAB"] {
         both("OBX", &[(3, &format!("id^Synthetic^{system}"))], true)?;
     }
@@ -112,8 +114,9 @@ fn law_tf2b_c7_obx_3_cwe_alternate_predicates_and_namespaces() -> TestResult {
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.7, OBX-2, OBX-5
 #[test]
-fn law_tf2b_c7_obx_2_5_null_and_supplemental_repetition_predicates() -> TestResult {
+fn obx2_obx5_nulls_and_supplemental_repetitions() -> TestResult {
     both("OBX", &[(2, ""), (5, "\"\""), (6, "")], true)?;
     for value in ["", "\"\"~\"\""] {
         both("OBX", &[(5, value)], false)?;
@@ -158,8 +161,9 @@ fn law_tf2b_c7_obx_2_5_null_and_supplemental_repetition_predicates() -> TestResu
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.7, OBX-5
 #[test]
-fn law_tf2b_c7_obx_5_nm_sn_byte_exact_and_invalid_numeric_tokens() -> TestResult {
+fn obx5_numbers_stay_exact_and_bad_tokens_fail() -> TestResult {
     for value in ["+0001.2000", "-.01", "1234567890123456"] {
         both("OBX", &[(5, value)], true)?;
     }
@@ -208,8 +212,9 @@ fn law_tf2b_c7_obx_5_nm_sn_byte_exact_and_invalid_numeric_tokens() -> TestResult
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.7, OBX-5; Safety rule 5 (ADR 0003)
 #[test]
-fn law_tf2b_c7_obx_5_st_tx_and_rule5_original_values_units() -> TestResult {
+fn obx5_text_keeps_original_values_and_units() -> TestResult {
     for value in ["<0.1", "1,234", "positive", "ERR42", " 001.20 "] {
         let message = result_message(&[(2, "ST"), (5, value), (6, "")], "")?;
         let results = law::Results::new(&message)?;
@@ -262,8 +267,9 @@ fn law_tf2b_c7_obx_5_st_tx_and_rule5_original_values_units() -> TestResult {
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.7, OBX-5
 #[test]
-fn law_tf2b_c7_obx_5_ce_ei_na_components_and_lengths() -> TestResult {
+fn obx5_coded_id_and_array_value_limits() -> TestResult {
     both(
         "OBX",
         &[(2, "CE"), (5, "error^Synthetic failure^99LAB"), (6, "")],
@@ -319,8 +325,9 @@ fn law_tf2b_c7_obx_5_ce_ei_na_components_and_lengths() -> TestResult {
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.7, OBX-5
 #[test]
-fn law_tf2b_c7_obx_5_ed_hd_encoding_and_payload_limits() -> TestResult {
+fn obx5_encapsulated_data_encoding_and_limits() -> TestResult {
     for value in [
         "source^IM^JPEG^Base64^YQ==",
         "^IM^^A^synthetic",
@@ -376,8 +383,9 @@ fn law_tf2b_c7_obx_5_ed_hd_encoding_and_payload_limits() -> TestResult {
     Ok(())
 }
 
+// IHE PaLM TF-2b Table C.7-10; IHE PaLM TF-2x §A.4
 #[test]
-fn law_tf2b_c7_10_tf2x_a4_rp_application_hd_profile() -> TestResult {
+fn obx5_reference_pointer_application_rules() -> TestResult {
     for value in [
         "https://synthetic.invalid/result^^IM^JPEG",
         "pointer^Local^^vendor",
@@ -442,8 +450,9 @@ fn law_tf2b_c7_10_tf2x_a4_rp_application_hd_profile() -> TestResult {
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.7, OBX-6
 #[test]
-fn law_tf2b_c7_obx_6_units_identifier_namespace_predicate_and_null() -> TestResult {
+fn obx6_units_namespace_and_null() -> TestResult {
     for value in ["\"\"", "^unit as supplied", "mg/L^unit as supplied^UCUM"] {
         both("OBX", &[(6, value)], true)?;
     }
@@ -504,8 +513,9 @@ fn law_tf2b_c7_obx_6_units_identifier_namespace_predicate_and_null() -> TestResu
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.7, OBX-7, OBX-8
 #[test]
-fn law_tf2b_c7_obx_7_range_and_8_repeated_cwe_or_null() -> TestResult {
+fn obx7_range_and_obx8_flags_or_null() -> TestResult {
     both("OBX", &[(7, &"\u{e9}".repeat(70))], true)?;
     for value in ["\"\"", "range~range", "a^b", &"x".repeat(71)] {
         both("OBX", &[(7, value)], false)?;
@@ -543,8 +553,9 @@ fn law_tf2b_c7_obx_7_range_and_8_repeated_cwe_or_null() -> TestResult {
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.7, OBX-9
 #[test]
-fn law_tf2b_c7_obx_9_mass_spec_probability_exact_range_option_and_manager_x() -> TestResult {
+fn obx9_mass_spec_probability_range_and_option() -> TestResult {
     for value in ["", "0", "1", ".5", "+1.00", "-0.00", "00001"] {
         check(
             "OBX",

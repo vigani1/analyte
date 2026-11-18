@@ -10,7 +10,9 @@ its meaning, and each marks only the one name that follows it:
   purpose. It must exist and be ignored.
 
 Every other reference must name a test that CI runs: an ignored test does not
-back a checklist row unless the checklist says it is manual.
+back a checklist row unless the checklist says it is manual. Test names are
+short behaviour names, so a referenced name must be defined only once in the
+workspace; otherwise another test of the same name could hide a missing one.
 """
 import pathlib
 import re
@@ -46,8 +48,12 @@ def references(text):
                 yield marker or None, name
 
 
-def check(checklists, functions):
-    """Return (checked reference names, errors) for {label: checklist text}."""
+def check(checklists, functions, definitions=None):
+    """Return (checked reference names, errors) for {label: checklist text}.
+
+    ``definitions`` maps a test name to how many files define it.
+    """
+    definitions = definitions or {}
     checked = set()
     errors = []
     for label, text in checklists.items():
@@ -60,6 +66,8 @@ def check(checklists, functions):
             checked.add(name)
             if ignored is None:
                 errors.append(f"{label}: missing test {name}")
+            elif definitions.get(name, 1) > 1:
+                errors.append(f"{label}: test {name} is defined {definitions[name]} times; rename one")
             elif marker == "Manual" and not ignored:
                 errors.append(f"{label}: manual test {name} is not #[ignore]")
             elif marker is None and ignored:
@@ -69,15 +77,16 @@ def check(checklists, functions):
 
 def main():
     functions = {}
+    definitions = {}
     for path in (ROOT / "crates").rglob("*.rs"):
         for name, ignored in test_functions(path.read_text(encoding="utf-8")).items():
-            # A name defined in several test targets runs if any definition runs.
             functions[name] = functions.get(name, True) and ignored
+            definitions[name] = definitions.get(name, 0) + 1
     checklists = {
         path.relative_to(ROOT).as_posix(): path.read_text(encoding="utf-8")
         for path in sorted((ROOT / "docs/protocols").rglob("checklist.md"))
     }
-    checked, errors = check(checklists, functions)
+    checked, errors = check(checklists, functions, definitions)
     if errors:
         print("\n".join(errors))
         return 1

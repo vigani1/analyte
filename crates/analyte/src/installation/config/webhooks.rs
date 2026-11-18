@@ -198,8 +198,9 @@ mod tests {
     fn parse(text: &str) -> Result<AlertDelivery, crate::Error> {
         Ok(toml::from_str::<DraftDelivery>(text)?.validate()?)
     }
+    // ADR 0014
     #[test]
-    fn adr0014_every_delivery_bound_refuses_invalid_values() {
+    fn every_delivery_bound_refuses_invalid_values() {
         for (field, values, expected) in [
             (
                 "reminder_interval_seconds",
@@ -236,9 +237,9 @@ mod tests {
             }
         }
     }
+    // ADR 0014
     #[test]
-    fn adr0014_endpoint_references_cardinality_and_schema_are_checked() -> Result<(), crate::Error>
-    {
+    fn endpoint_references_and_schema_are_checked() -> Result<(), crate::Error> {
         let endpoint =
             "[[endpoints]]\nid='relay'\nurl='https://example.com/hook'\nsecret='alert-key'\n";
         assert!(parse("")?.endpoints().is_empty());

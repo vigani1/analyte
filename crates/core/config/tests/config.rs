@@ -15,8 +15,9 @@ fn draft(machine: &str, overrides: &str) -> Result<Draft, Error> {
     )
 }
 
+// ADR 0002, ADR 0005
 #[test]
-fn adr_0002_and_0005_examples_validate_without_promoting_evidence() -> Result<(), Error> {
+fn examples_validate_without_promoting_evidence() -> Result<(), Error> {
     for example in [ASTM, HL7] {
         let config = draft(example, OVERRIDES)?.validate()?;
         assert_eq!(
@@ -38,8 +39,9 @@ fn adr_0002_and_0005_examples_validate_without_promoting_evidence() -> Result<()
     Ok(())
 }
 
+// ADR 0002
 #[test]
-fn adr_0002_schema_rejects_versions_unknown_keys_and_secrets() {
+fn schema_rejects_versions_unknown_keys_and_secrets() {
     for bad in [
         ASTM.rewrite("schema_version = 2", "schema_version = 3"),
         ASTM.rewrite("name =", "unknown ="),
@@ -66,8 +68,9 @@ fn adr_0002_schema_rejects_versions_unknown_keys_and_secrets() {
     }
 }
 
+// Plan §5
 #[test]
-fn plan_5_rejects_incompatible_stacks_and_invalid_serial_settings() -> Result<(), Error> {
+fn rejects_incompatible_stacks_and_bad_serial_settings() -> Result<(), Error> {
     for bad in [
         ASTM.rewrite("[framing]", "[framing]\nkind = 'mllp'"),
         ASTM.rewrite("kind = \"serial\"", "kind = \"watched_folder\""),
@@ -94,8 +97,9 @@ fn plan_5_rejects_incompatible_stacks_and_invalid_serial_settings() -> Result<()
     Ok(())
 }
 
+// ADR 0002
 #[test]
-fn adr_0002_override_precedence_and_canonical_identity() -> Result<(), Error> {
+fn override_precedence_and_canonical_identity() -> Result<(), Error> {
     let a = draft(ASTM, "schema_version = 1\nendpoint = 'COM9'")?.validate()?;
     let b = draft(
         &format!("# ignored comment\n{ASTM}"),
@@ -108,8 +112,9 @@ fn adr_0002_override_precedence_and_canonical_identity() -> Result<(), Error> {
     Ok(())
 }
 
+// ADR 0003
 #[test]
-fn adr_0003_identity_remains_unresolved_without_evidence() -> Result<(), Error> {
+fn identity_stays_unresolved_without_evidence() -> Result<(), Error> {
     let config = draft(ASTM, OVERRIDES)?.validate()?;
     assert!(
         config
@@ -141,8 +146,9 @@ fn adr_0003_identity_remains_unresolved_without_evidence() -> Result<(), Error> 
     Ok(())
 }
 
+// ADR 0002
 #[test]
-fn adr_0002_bounds_and_duplicate_tables_fail_visibly() -> Result<(), Error> {
+fn bounds_and_duplicate_tables_fail_visibly() -> Result<(), Error> {
     let oversized = " ".repeat(analyte_config::MAX_FILE_BYTES.saturating_add(1));
     assert!(matches!(
         draft(&oversized, OVERRIDES),
@@ -169,8 +175,9 @@ fn adr_0002_bounds_and_duplicate_tables_fail_visibly() -> Result<(), Error> {
     Ok(())
 }
 
+// ADR 0005
 #[test]
-fn adr_0005_claims_require_capability_evidence() -> Result<(), Error> {
+fn claims_require_capability_evidence() -> Result<(), Error> {
     {
         let Err(refusal) = draft(
             &ASTM.rewrite("level = \"documented\"", "level = \"proven\""),
@@ -187,8 +194,9 @@ fn adr_0005_claims_require_capability_evidence() -> Result<(), Error> {
     Ok(())
 }
 
+// ADR 0007
 #[test]
-fn adr_0007_vendor_departures_need_named_reasons() -> Result<(), Error> {
+fn vendor_departures_need_named_reasons() -> Result<(), Error> {
     let smaller = ASTM.rewrite("limit = 64000", "limit = 247");
     {
         let Err(refusal) = draft(&smaller, OVERRIDES)?.validate() else {
@@ -207,8 +215,9 @@ fn adr_0007_vendor_departures_need_named_reasons() -> Result<(), Error> {
     Ok(())
 }
 
+// ADR 0003
 #[test]
-fn adr0003_identity_settings_are_required_and_unknown_keys_are_rejected() {
+fn identity_settings_required_and_unknown_keys_rejected() {
     for (setting, line) in [
         (
             "order_id",
@@ -242,8 +251,9 @@ fn adr0003_identity_settings_are_required_and_unknown_keys_are_rejected() {
     ));
 }
 
+// ADR 0003
 #[test]
-fn adr0003_identity_selectors_are_validated() -> Result<(), Error> {
+fn identity_selectors_are_validated() -> Result<(), Error> {
     let bad = ASTM.rewrite(
         "order_id = {group=\"order\",record=\"O\",field=3",
         "order_id = {group=\"order\",record=\"O\",field=0",
@@ -268,9 +278,9 @@ fn adr0003_identity_selectors_are_validated() -> Result<(), Error> {
     Ok(())
 }
 
+// ADR 0002, ADR 0005
 #[test]
-fn adr0002_0005_vendor_layers_require_explicit_policy_and_documented_evidence() -> Result<(), Error>
-{
+fn vendor_layers_require_policy_and_evidence() -> Result<(), Error> {
     for example in [
         include_str!("../examples/poct.toml"),
         include_str!("../examples/vidas_literal.toml"),
@@ -301,8 +311,9 @@ fn adr0002_0005_vendor_layers_require_explicit_policy_and_documented_evidence() 
     Ok(())
 }
 
+// ADR 0002
 #[test]
-fn adr0002_vendor_policy_bounds_and_transports_are_specific() -> Result<(), Error> {
+fn vendor_policy_bounds_and_transports_are_specific() -> Result<(), Error> {
     for (example, key, protocol) in [
         (
             include_str!("../examples/poct.toml"),
@@ -344,8 +355,9 @@ fn adr0002_vendor_policy_bounds_and_transports_are_specific() -> Result<(), Erro
     Ok(())
 }
 
+// ADR 0002
 #[test]
-fn adr0002_component_parts_invalid_declarations_have_specific_errors() -> Result<(), Error> {
+fn invalid_component_parts_have_specific_errors() -> Result<(), Error> {
     for (declaration, expected) in [
         ("separator='^'\ncount=2\ncode=1\ndilution=2", 0),
         ("separator='/'\ncount=2\ncode=3\ndilution=2", 1),
@@ -366,8 +378,9 @@ fn adr0002_component_parts_invalid_declarations_have_specific_errors() -> Result
     Ok(())
 }
 
+// ADR 0002
 #[test]
-fn adr_0002_vidas_installed_sample_limit_preserves_numeric_toml() -> Result<(), Error> {
+fn vidas_sample_limit_preserves_numeric_toml() -> Result<(), Error> {
     use analyte_config::VidasSampleLimit;
     let definition = include_str!("../examples/vidas_literal.toml");
     for (number, expected) in [
@@ -421,8 +434,9 @@ fn astm_frame_limit(config: &analyte_config::Validated) -> Result<usize, Error> 
     Ok(stack.settings().frame_limit())
 }
 
+// HL7 2.3.1 §2.24.1.18
 #[test]
-fn hl7_231_2_24_1_18_utf8_requires_named_vendor_departure() -> Result<(), Error> {
+fn hl7_utf8_requires_named_vendor_departure() -> Result<(), Error> {
     let base = HL7
         .rewrite("edition = \"v251\"", "edition = \"v231\"")
         .rewrite("encoding = \"ascii\"", "encoding = \"utf8\"");
@@ -484,8 +498,9 @@ fn hl7_231_2_24_1_18_utf8_requires_named_vendor_departure() -> Result<(), Error>
 }
 
 // ADR 0004: the lab-app request deadline is a validated site setting, not a host constant.
+// ADR 0004
 #[test]
-fn adr_0004_site_request_timeout_defaults_bounds_and_refuses_out_of_range() -> Result<(), Error> {
+fn site_request_timeout_defaults_and_bounds() -> Result<(), Error> {
     let validate = |extra: &str| {
         Draft::load(
             ("machine.toml", HL7),

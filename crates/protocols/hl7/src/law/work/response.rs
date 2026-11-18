@@ -323,8 +323,9 @@ impl ResponseGroup {
 #[cfg(test)]
 mod grammar_tests {
     use super::ResponseGroup;
+    // IHE PaLM TF-2b §3.28.4.1.2.2
     #[test]
-    fn law_tf2b_3_28_4_1_2_2_orl_response_group_cardinality_and_error_exclusion() {
+    fn orl_response_group_cardinality_and_error_exclusion() {
         for segments in [
             vec![b"SPM".as_slice(), b"ORC"],
             vec![b"PID", b"PID"],

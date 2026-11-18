@@ -49,9 +49,9 @@
 - **source**: 2.6 §5.10.2 pp.95–96; 2.8.2 §5.10.2 p.104;
   2.9.1 §5.9.2 p.80.
   Result-only scope and no replacement query design were selected by the owner.
-- **tests**: config `hl7_2_8_2_s5_10_2_withdrawn_original_query_fails_config_validation`,
-  `hl7_2_9_1_s5_9_2_withdrawn_original_query_fails_config_validation`, and
-  `hl7_2_6_s5_10_2_original_queries_retained_for_backward_compatibility`.
+- **tests**: config `v282_withdrawn_original_query_is_refused`,
+  `v291_withdrawn_original_query_is_refused`, and
+  `v26_keeps_original_queries`.
 
 ## Bound the 2.6 receiving profile and refuse ambiguous intent
 
@@ -75,8 +75,8 @@
   Bounded scope is Analyte's selection under ADR 0007, rather than a claim
   that the standard forbids all optional structures.
 - **tests**: protocol `receiving.rs`; mapping
-  `hl7_2_6_s7_3_1_s7_4_2_3_5_19_21_receiving_keeps_values_times_and_raw_identity`
-  and `hl7_2_6_s2_a_6_77_and_s7_4_2_22_unsafe_results_never_map`.
+  `receiving_keeps_values_times_and_raw_identity`
+  and `unsafe_results_never_map`.
 - **remaining**: 2.8.2/2.9.1 now have bounded result profiles. Their original queries are withdrawn
   (2.8.2 §5.10.2; 2.9.1 §5.9.2); a modern query contract is not implicitly
   selected. The 2.6 and 2.8.2 bounded order writers are qualified below;
@@ -116,7 +116,7 @@
 - **source**: ADR 0007 and ADR 0012 §3; HL7 2.5.1 §2.8, pp.2-20–22.
 - **test**: the eight edition cases in `version/tests.rs`; existing 2.3.1 and
   2.5.1 conformance tests continue to guard their implemented field rules.
-  `adr0012_s3_typed_supported_config_editions_preserve_exact_wire_identity`
+  `supported_editions_keep_exact_wire_identity`
   now checks all eight qualified receiving editions. The earlier unsupported-profile
   regression was replaced as the final two received their typed paths; modern
   legacy-query and unqualified-writer refusal tests remain active.
@@ -137,7 +137,7 @@
   example does not override its escape requirement or justify guessing.
 - **evidence**: documented. `tests/truncation.rs` checks declarations, exact
   retention, marker flags, escaping and size refusal; mapping regression
-  `hl7_2_9_1_s2_4_5_2_truncated_input_never_reaches_result_mapping` checks that
+  `truncated_input_never_reaches_mapping` checks that
   marked input produces a located error before results can be mapped.
 
 The [checklist](checklist.md) owns conformance requirements; the
@@ -163,7 +163,7 @@ choices within that scope, not additional promises of conformance.
   at its own durable boundary and owns subsequent delivery.
 - **source**: HL7 2.5.1 §2.9.2.2, pp.2-26–2-27;
   [ADR 0003](../../adr/0003-clinical-safety-rules.md), receiving responsibility.
-- **test**: `hl7_251_2_9_2_aa_only_after_store_and_interpret`.
+- **test**: `aa_only_after_store_and_interpret`.
 
 ## 3. Separate enhanced custody from semantic acceptance
 
@@ -174,7 +174,7 @@ choices within that scope, not additional promises of conformance.
   distinction precisely when the sender has already released responsibility.
 - **source**: HL7 2.5.1 §2.9.3–2.9.3.3, pp.2-27–2-28;
   [ADR 0010](../../adr/0010-acknowledgment-boundaries.md), HL7 row.
-- **test**: `hl7_251_2_9_3_independent_conditions`.
+- **test**: `accept_and_application_conditions_independent`.
 
 ## 4. Agree on encoding instead of guessing it from payload bytes
 
@@ -185,7 +185,7 @@ choices within that scope, not additional promises of conformance.
   changing a patient's identifier or a textual result.
 - **source**: HL7 2.3.1 §2.24.1.18, pp.2-108–2-109;
   HL7 2.5.1 §2.15.9.18, pp.2-78–2-80.
-- **test**: `hl7_251_2_15_9_18_charset_is_lossless_and_connection_checked`.
+- **test**: `charset_is_lossless_and_connection_checked`.
 
 ## 5. Require a named departure for legacy UTF-8
 
@@ -197,7 +197,7 @@ choices within that scope, not additional promises of conformance.
 - **source**: HL7 2.3.1 §2.24.1.18, pp.2-108–2-109;
   HL7 2.5.1 §2.15.9.18, pp.2-79–2-80;
   [ADR 0002](../../adr/0002-config-first.md), machine configuration ownership.
-- **test**: `hl7_231_2_24_1_18_utf8_requires_named_vendor_departure`.
+- **test**: `hl7_utf8_requires_named_vendor_departure`.
 
 ## 6. Keep vendor extensions out of the base grammar's meaning
 
@@ -219,7 +219,7 @@ choices within that scope, not additional promises of conformance.
   dialog already reported failure.
 - **source**: [ADR 0003](../../adr/0003-clinical-safety-rules.md), bounded waits;
   [ADR 0001](../../adr/0001-rust-and-layered-architecture.md), dialog deadlines.
-- **test**: `hl7_251_2_9_deadline_precedes_late_commit`.
+- **test**: `deadline_precedes_late_commit`.
 
 ## 8. Do not automatically resend an uncertain machine order
 
@@ -230,7 +230,7 @@ choices within that scope, not additional promises of conformance.
   command succeeded, so delivery-style retries are inappropriate.
 - **source**: HL7 2.5.1 §2.9.2.2, p.2-26;
   [ADR 0003](../../adr/0003-clinical-safety-rules.md), order lifecycle rule.
-- **test**: `hl7_251_2_9_3_sender_application_wait_is_bounded_and_never_resends`.
+- **test**: `sender_application_wait_never_resends`.
 
 ## 9. Retain malformed input before parking
 
@@ -240,7 +240,7 @@ choices within that scope, not additional promises of conformance.
   wrong encoding, repair a mapping or demonstrate what the machine sent.
 - **source**: [ADR 0003](../../adr/0003-clinical-safety-rules.md), Never drop data
   and Keep the original.
-- **test**: `adr_0003_malformed_message_is_committed_before_parking`.
+- **test**: `malformed_message_committed_before_parking`.
 
 ## 10. Assign revisions from trusted identity and history
 
@@ -251,7 +251,7 @@ choices within that scope, not additional promises of conformance.
   identity and history can distinguish those cases from a retransmission.
 - **source**: [ADR 0003](../../adr/0003-clinical-safety-rules.md), Three identities;
   [ADR 0011](../../adr/0011-result-status-progression.md), Decision.
-- **test**: `adr0003_revisions_new_retransmission_correction_conflict_runs_and_restart`.
+- **test**: `revisions_tell_new_retransmission_correction_and_runs`.
 
 ## Report order-writer qualification separately from receiving
 
@@ -261,7 +261,7 @@ Receiving support and receiving compatibility do not imply writing support
 and unfinished modern implementation are different blockers. The modern source
 material remains available for follow-up; no source absence is claimed there.
 The version audit lists the remaining work without enabling any edition.
-Evidence: `adr0012_s3_config_reports_the_registry_writer_blocker`.
+Evidence: `config_reports_registry_writer_blocker`.
 
 ## Qualify 2.6 laboratory sending with explicit coding revisions
 
@@ -271,7 +271,7 @@ for OBR-4 and scalar DTM for timing. A test revision is carried in component 7;
 priority table 0485 and specimen coding revisions are supplied separately.
 Requiring revisions for all named systems avoids guessing table ownership from
 an HL7 prefix. Sources and the field matrix are in versions.md; protocol
-`edition_orders.rs`, config edition tests and program `hl7_231_251_26_282_s4_4_7_send_ahead_accepted_rejected_and_mixed_items` establish
+`edition_orders.rs`, config edition tests and program `send_ahead_accepted_rejected_and_mixed_items` establish
 the bounded behavior. Evidence remains documented; no retransmission is added.
 
 ## Keep the 2.8.2 writer on the patient-required O22 response
@@ -313,8 +313,8 @@ LAW universal IDs currently support ISO OIDs only (section 2.A.33.2); other sche
 - **source**: HL7 2.3.1 section 7.3.2; 2.5.1/2.6/2.8.2/2.9.1 sections
   7.4.1 and 7.4.2, especially 7.4.1.25 and 7.4.2.11; modern 7.4.1.22;
   ADR 0003, retaining and parking unqualified input.
-- **tests**: `hl7_s7_4_2_11_s7_4_1_25_missing_or_unknown_report_context_parks`,
-  `hl7_251_s2_10_2_2_s7_4_2_11_s7_4_1_25_unsafe_reports_are_parked`.
+- **tests**: `missing_or_unknown_report_context_parks`,
+  `unsafe_reports_are_parked`.
 
 ## Refuse continuation and sequence protocols that are not negotiated
 
@@ -327,9 +327,9 @@ LAW universal IDs currently support ISO OIDs only (section 2.A.33.2); other sche
   state that Analyte has not implemented and selected.
 - **source**: HL7 2.5.1 sections 2.10.1 and 2.10.2.2; 2.6/2.8.2 section
   2.10.2; 2.9.1 section 2.9.2; ADR 0003, original evidence and result identity.
-- **tests**: `hl7_251_s2_10_2_2_final_fragment_with_msh14_is_never_a_complete_result`,
-  `hl7_251_s2_10_1_unnegotiated_sequence_number_is_refused`,
-  `hl7_251_s2_10_2_2_s7_4_2_11_s7_4_1_25_unsafe_reports_are_parked`.
+- **tests**: `msh14_fragment_is_never_a_complete_result`,
+  `unnegotiated_sequence_number_is_refused`,
+  `unsafe_reports_are_parked`.
 
 ## Refuse enhanced 2.9.1 application exchanges without a separate channel
 
@@ -342,8 +342,8 @@ LAW universal IDs currently support ISO OIDs only (section 2.A.33.2); other sche
   claim support for a different exchange.
 - **source**: HL7 2.9.1 section 2.8.3.2 and its channel note; ADR 0007,
   explicit supported scope.
-- **tests**: `hl7_291_s2_8_3_2_separate_application_channel_cannot_be_enabled`,
-  `hl7_291_s2_8_3_2_enhanced_application_ack_requires_separate_channel`.
+- **tests**: `separate_application_channel_cannot_be_enabled`,
+  `enhanced_application_ack_needs_separate_channel`.
 
 ## Refuse enhanced observation grouping until its identity contract is selected
 
@@ -354,7 +354,7 @@ LAW universal IDs currently support ISO OIDs only (section 2.A.33.2); other sche
   profile does not select the full enhanced grouping contract.
 - **source**: HL7 2.8.2 sections 2.A.50 and 7.4.2.4; 2.9.1 sections
   2A.2.50 and 7.4.2.4; ADR 0003, result identity.
-- **test**: `hl7_282_s2_a_50_291_s7_4_2_4_enhanced_og_requires_full_grouping_contract`.
+- **test**: `enhanced_observation_group_needs_full_contract`.
 
 ## Keep native 2.3.1 interpretation within its own field inventory
 
@@ -365,8 +365,8 @@ LAW universal IDs currently support ISO OIDs only (section 2.A.33.2); other sche
   meaning from a later edition without an evidenced, named machine departure.
 - **source**: HL7 2.3.1 sections 7.2.1 and 7.3.2; compare 2.5.1 section
   7.4.2.19; ADR 0007, standards before machine departures.
-- **tests**: `hl7_231_s7_2_1_s7_3_2_later_fields_do_not_gain_meaning`,
-  `law_tf2b_c4_and_3_29_4_compatible_vid_keeps_law_analysis_time`.
+- **tests**: `later_edition_fields_gain_no_meaning`,
+  `compatible_law_versions_keep_analysis_time`.
 
 ## Refuse new patient-related ORM when mandatory PID cannot be supplied
 
@@ -379,9 +379,9 @@ LAW universal IDs currently support ISO OIDs only (section 2.A.33.2); other sche
   the missing contract information.
 - **source**: HL7 2.3.1 sections 4.2.1.1(d) and 3.3.2; ADR 0003,
   order lifecycle and no invented data.
-- **tests**: `hl7_231_3_3_2_required_pid_rejects_before_reservation_without_inventing_name`,
-  `hl7_231_s4_2_1_1_d_patient_requiredness_distinguishes_new_and_cancel`,
-  `hl7_231_ch4_explicit_group_position_and_identifier_do_not_invent_context`.
+- **tests**: `required_pid_rejects_without_inventing_name`,
+  `patient_required_for_new_order_not_cancel`,
+  `explicit_group_and_identifier_invent_no_context`.
 
 ## Validate patient content whenever an order reply includes PID
 
@@ -394,8 +394,8 @@ LAW universal IDs currently support ISO OIDs only (section 2.A.33.2); other sche
   receiver must not infer demographics to complete a reply.
 - **source**: HL7 2.5.1/2.6 sections 3.4.2 and 4.4.7; 2.8.2 sections
   3.3.2 and 4.4.7.1; ADR 0003, uncertain order outcomes.
-- **tests**: `hl7_251_26_s4_4_7_required_pid_content_in_order_reply`,
-  `hl7_251_s3_4_2_present_reply_pid_requires_identifier_and_name`.
+- **tests**: `reply_pid_needs_identifier_and_name`,
+  `reply_pid_requires_identifier_and_name`.
 
 ## Refuse collection intervals the selected time mapping cannot represent
 
@@ -405,8 +405,8 @@ LAW universal IDs currently support ISO OIDs only (section 2.A.33.2); other sche
   mapping cannot faithfully represent those interval forms; keeping and parking
   the receipt avoids assigning the end time as the start time's precision.
 - **source**: HL7 2.5.1 sections 7.4.3.17-19; ADR 0003, exact source values.
-- **tests**: `hl7_251_s7_4_3_17_collection_range_is_not_ts_precision`,
-  `rule3_hl7_source_path_keeps_statuses_sequences_and_specimen_times`.
+- **tests**: `collection_range_is_not_ts_precision`,
+  `hl7_source_path_keeps_statuses_and_times`.
 
 ## Validate the selected bounded result grammar before assigning ownership
 
@@ -418,8 +418,8 @@ LAW universal IDs currently support ISO OIDs only (section 2.A.33.2); other sche
   selected profile and does not imply a general HL7 schema engine.
 - **source**: HL7 2.3.1 section 7.2.1; 2.5.1 sections 7.3.1 and 7.3.7;
   later ORU section 7.3.1; ADR 0007, explicit supported scope.
-- **tests**: `hl7_231_s7_2_1_251_s7_3_1_s7_3_7_invalid_known_groups_are_refused`,
-  `plan6_notes_keep_parent_paths_even_without_a_result`.
+- **tests**: `invalid_known_groups_are_refused`,
+  `notes_keep_parent_paths_without_a_result`.
 
 ## Control boundary regressions (standards pass 2)
 

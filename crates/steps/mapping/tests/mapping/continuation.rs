@@ -3,8 +3,9 @@ use super::*;
 use analyte_fixtures::ConfigEdit as _;
 
 // HL7 2.5.1 section 2.10.2.2; 2.6/2.8.2 section 2.10.2; 2.9.1 section 2.9.2.
+// HL7 2.5.1 §2.10.2.2
 #[test]
-fn hl7_251_s2_10_2_2_final_fragment_with_msh14_is_never_a_complete_result() -> TestResult {
+fn msh14_fragment_is_never_a_complete_result() -> TestResult {
     for (edition, wire) in [
         ("v251", "2.5.1"),
         ("v26", "2.6"),
@@ -36,8 +37,9 @@ fn hl7_251_s2_10_2_2_final_fragment_with_msh14_is_never_a_complete_result() -> T
 }
 
 // HL7 2.3.1 section 7.2.1; 2.5.1 sections 7.3.1 and 7.3.7.
+// HL7 2.3.1 §7.2.1; HL7 2.5.1 §7.3.1, §7.3.7
 #[test]
-fn hl7_231_s7_2_1_251_s7_3_1_s7_3_7_invalid_known_groups_are_refused() -> TestResult {
+fn invalid_known_groups_are_refused() -> TestResult {
     let cfg = config(HL7_CONFIG)?;
     for (kind, body) in [
         ("ORU^R01^ORU_R01", "ORC|RE\r"),
@@ -69,8 +71,9 @@ fn hl7_231_s7_2_1_251_s7_3_1_s7_3_7_invalid_known_groups_are_refused() -> TestRe
 }
 
 // HL7 2.5.1 section 7.4.3.17: DR endpoints contain independent TS precision.
+// HL7 2.5.1 §7.4.3.17
 #[test]
-fn hl7_251_s7_4_3_17_collection_range_is_not_ts_precision() -> TestResult {
+fn collection_range_is_not_ts_precision() -> TestResult {
     let cfg = config(HL7_CONFIG)?;
     for range in ["20261116^20261117", "20261116&D", "20261116&D^20261117&D"] {
         let mut spm = [""; 17];
@@ -106,8 +109,9 @@ fn hl7_251_s7_4_3_17_collection_range_is_not_ts_precision() -> TestResult {
 
 // HL7 2.3.1 section 7.3.2.11; 2.5.1+ sections 7.4.2.11 and 7.4.1.25;
 // 2.8.2/2.9.1 section 7.4.1.22 requires report time when report status is populated.
+// HL7 §7.4.2.11, §7.4.1.25
 #[test]
-fn hl7_s7_4_2_11_s7_4_1_25_missing_or_unknown_report_context_parks() -> TestResult {
+fn missing_or_unknown_report_context_parks() -> TestResult {
     for (edition, wire) in [
         ("v231", "2.3.1"),
         ("v251", "2.5.1"),
@@ -168,8 +172,9 @@ fn hl7_s7_4_2_11_s7_4_1_25_missing_or_unknown_report_context_parks() -> TestResu
 }
 
 // HL7 2.5.1 section 2.10.1: a sequence number does not negotiate a sequence protocol.
+// HL7 2.5.1 §2.10.1
 #[test]
-fn hl7_251_s2_10_1_unnegotiated_sequence_number_is_refused() -> TestResult {
+fn unnegotiated_sequence_number_is_refused() -> TestResult {
     let cfg = config(HL7_CONFIG)?;
     let raw=b"MSH|^~\\&|SYN||||20261116||ORU^R01^ORU_R01|MSG|P|2.5.1|1\rOBR|1||001\rOBX|1|NM|SYN^^synthetic||1||||||F\r";
     let message =

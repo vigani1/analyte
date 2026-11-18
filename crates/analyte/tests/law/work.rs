@@ -18,8 +18,9 @@ fn send_ahead() -> String {
     definition().rewrite("send_ahead = false", "send_ahead = true")
 }
 
+// IHE PaLM TF-2b §3.28
 #[tokio::test]
-async fn law_tf2b_3_28_send_ahead_accepted_rejected_and_mixed_awos() -> Result<(), Error> {
+async fn send_ahead_accepted_rejected_and_mixed() -> Result<(), Error> {
     for (codes, expected) in [
         (["OK", "OK"], "Accepted"),
         (["UA", "UA"], "Rejected"),
@@ -106,8 +107,9 @@ fn identities(sent: &analyte_hl7::Message) -> Result<Vec<Vec<u8>>, Error> {
         .map(|s| Ok(s.field(2).ok_or("AWOS")?.raw().to_vec()))
         .collect()
 }
+// IHE PaLM TF-2b §3.28, §C.8
 #[tokio::test]
-async fn law_tf2b_3_28_c8_cancel_confirmed_refused_and_mixed_keep_each_awos() -> Result<(), Error> {
+async fn cancel_confirmed_refused_and_mixed_per_awos() -> Result<(), Error> {
     for (codes, expected) in [
         (["CR", "CR"], "CancelConfirmed"),
         (["UC", "UC"], "Accepted"),
@@ -163,9 +165,9 @@ async fn law_tf2b_3_28_c8_cancel_confirmed_refused_and_mixed_keep_each_awos() ->
     }
     Ok(())
 }
+// IHE PaLM TF-2b §3.28; ADR 0003
 #[tokio::test]
-async fn law_tf2b_3_28_adr0003_no_reply_and_disconnect_are_uncertain_never_replayed()
--> Result<(), Error> {
+async fn no_reply_or_disconnect_is_never_replayed() -> Result<(), Error> {
     for cancelling in [false, true] {
         for disconnect in [false, true] {
             // Cancellation first needs a real acceptance round trip. Only the
@@ -216,9 +218,9 @@ async fn law_tf2b_3_28_adr0003_no_reply_and_disconnect_are_uncertain_never_repla
     }
     Ok(())
 }
+// IHE PaLM TF-2b §3.28; ADR 0003
 #[tokio::test]
-async fn law_tf2b_3_28_adr0003_restart_during_sending_or_cancelling_is_uncertain_without_resend()
--> Result<(), Error> {
+async fn restart_mid_send_or_cancel_never_resends() -> Result<(), Error> {
     for cancelling in [false, true] {
         let (_temp, path, reference, running, mut peer) = setup(
             vec![order("order-1", "000Ab12", Some("law"), 2)?],
@@ -270,9 +272,9 @@ async fn law_tf2b_3_28_adr0003_restart_during_sending_or_cancelling_is_uncertain
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.28; ADR 0003
 #[tokio::test]
-async fn law_tf2b_3_28_adr0003_restore_pause_blocks_send_ahead_and_cancellation()
--> Result<(), Error> {
+async fn restore_pause_blocks_send_ahead_and_cancel() -> Result<(), Error> {
     let (_temp, path, reference, running, mut peer) = setup(
         vec![order("order-1", "000Ab12", Some("law"), 2)?],
         &send_ahead(),
@@ -318,9 +320,9 @@ async fn law_tf2b_3_28_adr0003_restore_pause_blocks_send_ahead_and_cancellation(
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.28; ADR 0003
 #[tokio::test]
-async fn law_tf2b_3_28_adr0003_unmapped_send_is_rejected_before_reservation_or_bytes()
--> Result<(), Error> {
+async fn unmapped_send_is_rejected_before_reservation() -> Result<(), Error> {
     let mut value = serde_json::to_value(order("order-1", "000Ab12", Some("law"), 2)?)?;
     *value.get_mut("tests").ok_or("tests")? =
         serde_json::json!([{"namespace":"unknown","value":"unmapped"}]);
@@ -339,9 +341,9 @@ async fn law_tf2b_3_28_adr0003_unmapped_send_is_rejected_before_reservation_or_b
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.27, §3.28
 #[tokio::test]
-async fn law_tf2b_3_27_3_28_queried_work_uses_the_same_cancel_exchange_without_send_ahead()
--> Result<(), Error> {
+async fn queried_work_cancels_without_send_ahead() -> Result<(), Error> {
     let (_temp, path, reference, running, mut peer) = setup(
         vec![order("order-1", "000Ab12", Some("law"), 2)?],
         &definition(),
@@ -388,9 +390,9 @@ fn execution_notice(
     ))
 }
 
+// IHE PaLM TF-2b §B.7.6, §C.8; ADR 0003, ADR 0011
 #[tokio::test]
-async fn palm_tf2b_b7_6_c8_adr0003_0011_status_custody_repeats_restart_and_conflicts()
--> Result<(), Error> {
+async fn status_notices_handle_repeats_restart_and_conflicts() -> Result<(), Error> {
     let (_temp, path, reference, running, mut peer) = setup(
         vec![order("order-1", "000Ab12", Some("law"), 2)?],
         &send_ahead(),
@@ -473,9 +475,9 @@ async fn palm_tf2b_b7_6_c8_adr0003_0011_status_custody_repeats_restart_and_confl
     Ok(())
 }
 
+// IHE PaLM TF-2b §B.7.6; ADR 0003, ADR 0011
 #[tokio::test]
-async fn palm_tf2b_b7_6_adr0003_0011_mixed_status_result_accepts_or_rejects_as_one_message()
--> Result<(), Error> {
+async fn mixed_status_result_is_judged_whole() -> Result<(), Error> {
     let (_temp, path, reference, running, mut peer) = setup(
         vec![order("order-1", "000Ab12", Some("law"), 2)?],
         &send_ahead(),

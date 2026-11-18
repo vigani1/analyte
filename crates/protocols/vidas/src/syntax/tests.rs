@@ -27,8 +27,9 @@ const RESULT_FIELDS: &[(&str, &str)] = &[
     ("zz", "extension"),
 ];
 
+// VIDAS BCI Link appendix A chapter 4
 #[test]
-fn vidas_bci_appendix_a_ch4_every_result_field_and_unknown_tag_roundtrip() {
+fn result_fields_and_unknown_tags_roundtrip() {
     let message = Message::new(RESULT_FIELDS, SampleLimit::Seventeen).unwrap();
     let parsed = Message::parse(message.text(), SampleLimit::Seventeen).unwrap();
     assert_eq!(parsed.kind(), Kind::Result);
@@ -57,8 +58,9 @@ fn vidas_bci_appendix_a_ch4_every_result_field_and_unknown_tag_roundtrip() {
     );
 }
 
+// VIDAS BCI Link appendix A chapter 4
 #[test]
-fn vidas_bci_appendix_a_ch4_field_widths_and_installed_identity_limits() {
+fn field_widths_and_identity_limits_hold() {
     for (tag, width) in [
         ("pi", 17),
         ("ci", 17),
@@ -98,8 +100,9 @@ fn vidas_bci_appendix_a_ch4_field_widths_and_installed_identity_limits() {
     assert!(Message::new(&fields, SampleLimit::Twelve).is_err());
 }
 
+// VIDAS BCI Link appendix A chapter 4
 #[test]
-fn vidas_bci_appendix_a_ch4_rejects_missing_duplicate_reordered_and_malformed_fields() {
+fn rejects_missing_duplicate_and_reordered_fields() {
     for tag in ["mt", "pi", "si", "ci", "rt", "tt", "td", "ql", "qn"] {
         let fields: Vec<_> = RESULT_FIELDS
             .iter()
@@ -128,8 +131,9 @@ fn vidas_bci_appendix_a_ch4_rejects_missing_duplicate_reordered_and_malformed_fi
     assert!(Message::parse(&"X".repeat(1921), SampleLimit::Seventeen).is_err());
 }
 
+// VIDAS BCI Link appendix A chapter 4
 #[test]
-fn vidas_bci_appendix_a_ch4_total_message_byte_ceiling_is_inclusive() {
+fn message_byte_ceiling_is_inclusive() {
     let base = "mtrsl|pi|si|ci0001|rtTEST|tt|td|ql|qn|zz";
     let raw = format!("{base}{}|", "X".repeat(1920 - base.len() - 1));
     assert_eq!(raw.len(), 1920);
@@ -141,8 +145,9 @@ fn vidas_bci_appendix_a_ch4_total_message_byte_ceiling_is_inclusive() {
 }
 
 proptest! {
+    // VIDAS BCI Link appendix A chapter 4
     #[test]
-    fn vidas_bci_appendix_a_ch4_tagged_text_roundtrip(sample in "[0-9A-Za-z]{1,12}", value in "[0-9A-Za-z <>,.]{0,29}") {
+    fn tagged_text_roundtrips(sample in "[0-9A-Za-z]{1,12}", value in "[0-9A-Za-z <>,.]{0,29}") {
         let fields = [("mt","rsl"),("pi",""),("si",""),("ci",sample.as_str()),
             ("rt","TEST"),("tt","20260101"),("td","120000"),("ql",""),("qn",value.as_str())];
         let message = Message::new(&fields, SampleLimit::Twelve).unwrap();

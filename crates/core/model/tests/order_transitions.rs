@@ -28,43 +28,53 @@ macro_rules! row {
     };
 }
 
+// Safety rule 8 (ADR 0003)
 row!(
-    rule8_requested_moves,
+    requested_state_moves,
     Requested,
     [Sending, CancelRequested, Rejected]
 );
+// Safety rule 8 (ADR 0003)
 row!(
-    rule8_sending_moves,
+    sending_state_moves,
     Sending,
     [Sent, Accepted, Rejected, Uncertain]
 );
+// Safety rule 8 (ADR 0003)
 row!(
-    rule8_sent_moves,
+    sent_state_moves,
     Sent,
     [Accepted, Rejected, CancelRequested, Uncertain]
 );
+// Safety rule 8 (ADR 0003)
 row!(
-    rule8_accepted_moves,
+    accepted_state_moves,
     Accepted,
     [Done, Rejected, CancelRequested, Uncertain]
 );
-row!(rule8_done_is_terminal, Done, []);
-row!(rule8_rejected_is_terminal, Rejected, []);
+// Safety rule 8 (ADR 0003)
+row!(done_state_is_terminal, Done, []);
+// Safety rule 8 (ADR 0003)
+row!(rejected_state_is_terminal, Rejected, []);
+// Safety rule 8 (ADR 0003)
 row!(
-    rule8_cancel_requested_moves,
+    cancel_requested_state_moves,
     CancelRequested,
     [CancelConfirmed, Done, Rejected, Uncertain]
 );
-row!(rule8_cancel_confirmed_is_terminal, CancelConfirmed, []);
+// Safety rule 8 (ADR 0003)
+row!(cancel_confirmed_state_is_terminal, CancelConfirmed, []);
+// Safety rule 8 (ADR 0003)
 row!(
-    rule8_uncertain_never_sends_again,
+    uncertain_state_never_sends_again,
     Uncertain,
     [Accepted, Done, Rejected, CancelRequested, CancelConfirmed]
 );
 
 // ADR 0003 rule 8: explicit refusal restores only the recorded Sent/Accepted state.
+// Safety rule 8 (ADR 0003)
 #[test]
-fn rule8_cancel_refusal_requires_cancellation_and_retained_state() {
+fn cancel_refusal_restores_only_retained_state() {
     for from in STATES {
         for previous in STATES {
             let result = from.transition(OrderTransition::CancelRefused(previous));

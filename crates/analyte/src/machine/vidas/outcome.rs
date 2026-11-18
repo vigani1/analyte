@@ -66,8 +66,9 @@ mod tests {
         crate::IntakeError::UnknownReceipt.into()
     }
 
+    // ADR 0004
     #[test]
-    fn adr0004_vidas_write_failure_stores_write_failed() {
+    fn vidas_write_failure_stores_write_failed() {
         let write = Error::from(WriteError::DeadlineOverflow);
         assert_eq!(
             session_end(Trigger::Exchange, &Err(write)),
@@ -82,8 +83,9 @@ mod tests {
         );
     }
 
+    // ADR 0004
     #[test]
-    fn adr0004_vidas_storage_failure_stores_the_park_outcome() {
+    fn vidas_storage_failure_stores_the_park_outcome() {
         // A failed upload store parks without an expired deadline.
         let failure = effect_failure(Some(store_failure()), parked(None));
         assert_eq!(
@@ -106,8 +108,9 @@ mod tests {
         );
     }
 
+    // ADR 0004
     #[test]
-    fn adr0004_vidas_timeouts_store_the_expired_deadline() {
+    fn vidas_timeouts_store_the_expired_deadline() {
         for (timer, code) in [
             (Timer::Acknowledgment, VidasEnd::AcknowledgmentTimeout),
             (Timer::Interbyte, VidasEnd::InterbyteTimeout),
@@ -124,8 +127,9 @@ mod tests {
         }
     }
 
+    // ADR 0004
     #[test]
-    fn adr0004_vidas_connection_end_outranks_the_session_result() {
+    fn vidas_connection_end_outranks_the_session_result() {
         for result in [Ok(()), Err(parked(Some(Timer::Session)))] {
             assert_eq!(
                 session_end(Trigger::Cancelled, &result),
@@ -138,8 +142,9 @@ mod tests {
         }
     }
 
+    // ADR 0004
     #[test]
-    fn adr0004_vidas_framing_input_and_other_failures_keep_their_codes() {
+    fn vidas_framing_input_and_other_failures_keep_codes() {
         assert_eq!(
             session_end(Trigger::Exchange, &Err(Error::ControlSuffixMismatch)),
             VidasEnd::ControlSuffixMismatch

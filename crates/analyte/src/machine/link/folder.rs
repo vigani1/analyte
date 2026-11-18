@@ -192,8 +192,9 @@ mod tests {
     use std::time::Duration;
 
     // AGENTS.md: keep errors specific; clinical safety rule 10: no payloads in logs.
+    // Safety rule 10 (ADR 0003)
     #[test]
-    fn safety_rule_10_drop_reports_worker_error_and_panic_without_payloads() {
+    fn folder_drop_reports_worker_failure_without_payloads() {
         for panic in [false, true] {
             let worker = thread::spawn(move || {
                 if panic {
@@ -219,9 +220,9 @@ mod tests {
             assert!(!output.contains("protected-"));
         }
     }
+    // ADR 0003
     #[tokio::test]
-    async fn adr0003_folder_transport_waits_for_custody_and_lost_reply_keeps_claim()
-    -> Result<(), Error> {
+    async fn waits_for_custody_and_lost_reply_keeps_claim() -> Result<(), Error> {
         for disposition in [
             Some(Disposition::Archive),
             Some(Disposition::Quarantine),
@@ -273,8 +274,9 @@ mod tests {
         Ok(())
     }
 
+    // ADR 0003
     #[tokio::test]
-    async fn adr0003_file_astm_and_hl7_storage_refusal_never_release_claim() -> Result<(), Error> {
+    async fn storage_refusal_never_releases_file_claim() -> Result<(), Error> {
         for definition in [
             include_str!("../../../../core/config/examples/astm.toml"),
             include_str!("../../../../core/config/examples/hl7.toml"),

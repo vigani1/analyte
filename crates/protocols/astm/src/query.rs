@@ -102,9 +102,9 @@ pub fn starts_query(record: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // CLSI LIS02-A2 §5.4, §11
     #[test]
-    fn lis02_a2_sections_5_4_11_specimen_queries_preserve_escapes_and_refuse_unknowns()
-    -> Result<(), crate::Error> {
+    fn specimen_queries_keep_escapes_refuse_unknowns() -> Result<(), crate::Error> {
         for (selector, expected) in [
             ("001a", "001a"),
             ("A&F&B", "A|B"),
@@ -134,8 +134,9 @@ mod tests {
     }
 }
 
+// CLSI LIS02-A2 §11
 #[test]
-fn lis02_a2_11_query_prefix_starts_budget_without_claiming_validity() {
+fn query_prefix_starts_budget_without_validating() {
     for raw in [b"Q|1|^001\r".as_slice(), b"Q", b"Q|malformed"] {
         assert!(starts_query(raw));
     }

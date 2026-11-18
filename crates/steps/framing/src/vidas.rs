@@ -469,8 +469,9 @@ mod tests {
         .unwrap_or_else(|error| panic!("synthetic configuration: {error}"))
     }
 
+    // VIDAS BCI Link appendix A chapter 3
     #[test]
-    fn vidas_bci_appendix_a_ch3_checksum_span_case_suffix_and_packet_boundaries() {
+    fn checksum_options_and_packet_boundaries() {
         for mode in [Mode::Literal, Mode::Alternate] {
             let c = config(mode, &[], false, false, false, 80);
             let mut expected = vec![STX, RS, b'A', GS, b'7', b'c'];
@@ -500,8 +501,9 @@ mod tests {
         assert_eq!(decode(&lower, c).unwrap().body, b"A");
     }
 
+    // VIDAS BCI Link appendix A chapter 3
     #[test]
-    fn vidas_bci_appendix_a_ch3_malformed_packets_truncation_and_limits() {
+    fn malformed_packets_and_limits_are_refused() {
         let c = config(Mode::Alternate, &[CR, LF], false, false, false, 1);
         let raw = c.encode(&vec![b'A'; 1920]).unwrap();
         assert_eq!(decode(&raw, c.clone()).unwrap().body.len(), 1920);
@@ -542,8 +544,9 @@ mod tests {
     }
 
     proptest! {
+        // VIDAS BCI Link appendix A chapter 3
         #[test]
-        fn vidas_bci_appendix_a_ch3_property_roundtrip_both_modes_and_all_checksum_options(body in "[ -~]{1,1920}", alternate in any::<bool>(), suffix in 0usize..4, stx in any::<bool>(), include_suffix in any::<bool>(), uppercase in any::<bool>(), chunk in 1usize..81, split in 0usize..9000) {
+        fn packets_roundtrip_in_every_mode(body in "[ -~]{1,1920}", alternate in any::<bool>(), suffix in 0usize..4, stx in any::<bool>(), include_suffix in any::<bool>(), uppercase in any::<bool>(), chunk in 1usize..81, split in 0usize..9000) {
             let suffixes = [&[][..], &[CR][..], &[LF][..], &[CR,LF][..]];
             let c = config(if alternate {Mode::Alternate} else {Mode::Literal}, suffixes[suffix], stx, include_suffix, uppercase, chunk);
             let raw = c.encode(body.as_bytes()).unwrap();

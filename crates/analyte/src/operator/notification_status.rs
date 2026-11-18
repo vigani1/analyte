@@ -49,9 +49,9 @@ fn known(value: Option<i64>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // ADR 0014
     #[test]
-    fn adr0014_status_shows_failure_capacity_and_unknown_clock_without_secrets()
-    -> Result<(), crate::Error> {
+    fn status_shows_failure_and_capacity_without_secrets() -> Result<(), crate::Error> {
         let state = AlertEndpointStatus {
             endpoint: analyte_model::Identifier::new("relay")?,
             pending: 2,

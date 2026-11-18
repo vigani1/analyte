@@ -43,8 +43,9 @@ pub(super) fn audit() -> Result<Audit, Box<dyn std::error::Error>> {
         reason: Reason::new("synthetic review")?,
     })
 }
+// ADR 0013 items 1, 6
 #[test]
-fn adr0013_item1_item6_finite_policy_requires_digest_key() -> TestResult {
+fn finite_policy_requires_digest_key() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("store.db"))?;
     assert!(matches!(
@@ -55,8 +56,9 @@ fn adr0013_item1_item6_finite_policy_requires_digest_key() -> TestResult {
     store.configure_retention_key(Some(DigestKey::new([1; 32])), true)?;
     Ok(())
 }
+// ADR 0013 item 6
 #[test]
-fn adr0013_item6_fingerprint_mismatch_and_missing_key_refuse() -> TestResult {
+fn fingerprint_mismatch_or_missing_key_refuses() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("store.db");
     let store = open(&path)?;
@@ -78,8 +80,9 @@ fn adr0013_item6_fingerprint_mismatch_and_missing_key_refuse() -> TestResult {
     store.configure_retention_key(Some(expected), true)?;
     Ok(())
 }
+// ADR 0013 item 2
 #[test]
-fn adr0013_item2_last_acknowledgment_and_every_delivery_required() -> TestResult {
+fn purge_waits_for_last_ack_and_every_delivery() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("store.db"))?;
     let id = finished(&mut store)?;
@@ -89,8 +92,9 @@ fn adr0013_item2_last_acknowledgment_and_every_delivery_required() -> TestResult
     assert!(!store.retention_eligible(id, 1, 86500)?);
     Ok(())
 }
+// ADR 0013 items 2, 7
 #[test]
-fn adr0013_item2_item7_receipt_hold_blocks_until_audited_release() -> TestResult {
+fn receipt_hold_blocks_until_audited_release() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("store.db"))?;
     let id = finished(&mut store)?;
@@ -116,8 +120,9 @@ fn adr0013_item2_item7_receipt_hold_blocks_until_audited_release() -> TestResult
     );
     Ok(())
 }
+// ADR 0013 item 2
 #[test]
-fn adr0013_item2_parking_unresolved_orders_and_polls_prevent_purge() -> TestResult {
+fn parking_unresolved_orders_and_polls_prevent_purge() -> TestResult {
     for guard in ["parking", "unresolved", "order", "poll", "ack"] {
         let temp = tempfile::tempdir()?;
         let mut store = open(&temp.path().join("store.db"))?;
@@ -163,8 +168,9 @@ fn adr0013_item2_parking_unresolved_orders_and_polls_prevent_purge() -> TestResu
     }
     Ok(())
 }
+// ADR 0013 items 3, 6
 #[test]
-fn adr0013_item3_item6_purged_duplicate_is_still_retransmission() -> TestResult {
+fn purged_duplicate_is_still_retransmission() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("store.db"))?;
     let credential = DigestKey::new([3; 32]);
@@ -217,8 +223,9 @@ fn adr0013_item3_item6_purged_duplicate_is_still_retransmission() -> TestResult 
     Ok(())
 }
 
+// ADR 0013 item 7
 #[test]
-fn adr0013_item7_order_hold_blocks_linked_receipt_without_expiry() -> TestResult {
+fn order_hold_blocks_linked_receipt_without_expiry() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("store.db"))?;
     let id = finished(&mut store)?;
@@ -245,8 +252,9 @@ fn adr0013_item7_order_hold_blocks_linked_receipt_without_expiry() -> TestResult
     Ok(())
 }
 
+// ADR 0013 items 3, 4, 5, 6
 #[test]
-fn adr0013_items3_4_5_6_real_purge_audit_refusals_and_late_duplicate() -> TestResult {
+fn real_purge_audits_refusals_and_late_duplicate() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("store.db");
     let mut store = open(&path)?;
@@ -327,8 +335,9 @@ fn adr0013_items3_4_5_6_real_purge_audit_refusals_and_late_duplicate() -> TestRe
     store.configure_retention_key(Some(DigestKey::new([7; 32])), true)?;
     Ok(())
 }
+// ADR 0013 item 4
 #[test]
-fn adr0013_item4_backup_and_restore_pause_purge_and_keep_is_audited() -> TestResult {
+fn backup_and_restore_pause_purge() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("store.db");
     let mut store = open(&path)?;
@@ -355,8 +364,9 @@ fn adr0013_item4_backup_and_restore_pause_purge_and_keep_is_audited() -> TestRes
     assert!(store.receipt(id)?.is_some());
     Ok(())
 }
+// ADR 0013 item 4
 #[test]
-fn adr0013_item4_crash_child() -> TestResult {
+fn purge_crash_child() -> TestResult {
     let Some(path) = std::env::var_os("ANALYTE_RETENTION_CRASH_FIXTURE") else {
         return Ok(());
     };
@@ -371,8 +381,9 @@ fn adr0013_item4_crash_child() -> TestResult {
     // Abrupt termination skips all destructors and SQLite rollback code.
     std::process::exit(99);
 }
+// ADR 0013 item 4
 #[test]
-fn adr0013_item4_crash_mid_batch_rolls_back_data_tombstones_and_guards() -> TestResult {
+fn crash_mid_batch_rolls_back_tombstones_and_guards() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("store.db");
     let mut store = open(&path)?;
@@ -380,7 +391,7 @@ fn adr0013_item4_crash_mid_batch_rolls_back_data_tombstones_and_guards() -> Test
     drop(store);
     let mut child = std::process::Command::new(std::env::current_exe()?)
         .arg("--exact")
-        .arg("upkeep::retention::tests::adr0013_item4_crash_child")
+        .arg("upkeep::retention::tests::purge_crash_child")
         .env("ANALYTE_RETENTION_CRASH_FIXTURE", &path)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
@@ -413,8 +424,9 @@ fn adr0013_item4_crash_mid_batch_rolls_back_data_tombstones_and_guards() -> Test
 }
 proptest::proptest! {
     #![proptest_config(proptest::test_runner::Config::with_cases(64))]
+    // ADR 0013 item 2
     #[test]
-    fn adr0013_item2_random_unfinished_states_never_purge(mask in 0u8..128) {
+    fn random_unfinished_states_never_purge(mask in 0u8..128) {
         let result = property_batch(mask);
         proptest::prop_assert!(result.is_ok(), "{:?}",result.err());
     }
@@ -478,8 +490,9 @@ fn property_batch(mask: u8) -> TestResult {
     Ok(())
 }
 
+// ADR 0013 item 4
 #[test]
-fn adr0013_item4_incremental_vacuum_returns_space_and_other_files_are_refused() -> TestResult {
+fn incremental_vacuum_returns_space_refuses_other_files() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("store.db");
     let mut store = open(&path)?;
@@ -509,8 +522,9 @@ fn adr0013_item4_incremental_vacuum_returns_space_and_other_files_are_refused() 
     Ok(())
 }
 
+// ADR 0013 item 4
 #[test]
-fn adr0013_item4_audit_failure_rolls_back_purge_and_restores_guards() -> TestResult {
+fn audit_failure_rolls_back_purge_and_guards() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("store.db"))?;
     let id = finished(&mut store)?;

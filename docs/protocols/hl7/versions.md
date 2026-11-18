@@ -38,9 +38,9 @@ it does not withdraw them. Analyte keeps its bounded deferred display exchange.
 
 | Original-query capability row | Source | Config test |
 | --- | --- | --- |
-| 2.6 retained; bounded query config accepted | 2.6 §5.10.2 pp.95–96 | `hl7_2_6_s5_10_2_original_queries_retained_for_backward_compatibility` |
-| 2.8.2 withdrawn; legacy query config refused with its section | 2.8.2 §5.10.2 p.104 | `hl7_2_8_2_s5_10_2_withdrawn_original_query_fails_config_validation` |
-| 2.9.1 withdrawn; legacy query config refused with its section | 2.9.1 §5.9.2 p.80 | `hl7_2_9_1_s5_9_2_withdrawn_original_query_fails_config_validation` |
+| 2.6 retained; bounded query config accepted | 2.6 §5.10.2 pp.95–96 | `v26_keeps_original_queries` |
+| 2.8.2 withdrawn; legacy query config refused with its section | 2.8.2 §5.10.2 p.104 | `v282_withdrawn_original_query_is_refused` |
+| 2.9.1 withdrawn; legacy query config refused with its section | 2.9.1 §5.9.2 p.80 | `v291_withdrawn_original_query_is_refused` |
 
 **2.3.1 and 2.5.1** have native typed profiles; **2.3, 2.4 and 2.5** have
 bounded receiving compatibility profiles described below. MLLP Release 1 is the framing
@@ -55,10 +55,10 @@ available. Unselected extension fields stay raw or are explicitly refused.
 
 | Grammar rule | Source | Test |
 | --- | --- | --- |
-| Optional fifth MSH-2 character; distinct separators; earlier editions refuse it | 2.8.2 §2.14.9.2, p.59; 2.9.1 §2.13.9.2, p.69 | `hl7_2_8_2_s2_14_9_2_and_2_9_1_s2_13_9_2_encoding_characters` |
-| Preserve sender-marked primitives and refuse clinical mapping | 2.8.2 §2.5.5.2, pp.12–13; 2.9.1 §2.4.5.2, pp.14–15 | `hl7_2_8_2_s2_5_5_2_and_2_9_1_s2_4_5_2_preserve_and_refuse_marked_values`; mapping regression `hl7_2_9_1_s2_4_5_2_truncated_input_never_reaches_result_mapping` |
-| Literal truncation-character escape; bounded encoding without shortening | 2.8.2 §§2.7.1–2, pp.20–21; 2.9.1 §§2.6.1–2, pp.22–23 | `hl7_2_9_1_s2_6_1_truncation_character_escape` |
-| Undeclared `\P\` retains the existing reject/preserve policy | Same escape sections | `hl7_2_8_2_s2_7_2_undeclared_p_escape_remains_unsupported` |
+| Optional fifth MSH-2 character; distinct separators; earlier editions refuse it | 2.8.2 §2.14.9.2, p.59; 2.9.1 §2.13.9.2, p.69 | `fifth_encoding_character_is_edition_specific` |
+| Preserve sender-marked primitives and refuse clinical mapping | 2.8.2 §2.5.5.2, pp.12–13; 2.9.1 §2.4.5.2, pp.14–15 | `truncated_values_are_kept_and_refused`; mapping regression `truncated_input_never_reaches_mapping` |
+| Literal truncation-character escape; bounded encoding without shortening | 2.8.2 §§2.7.1–2, pp.20–21; 2.9.1 §§2.6.1–2, pp.22–23 | `truncation_character_escape_round_trips` |
+| Undeclared `\P\` retains the existing reject/preserve policy | Same escape sections | `undeclared_truncation_escape_stays_unsupported` |
 
 ### Edition registry and implementation stages
 
@@ -78,24 +78,24 @@ must accompany its implemented typed support and the corresponding tests.
 
 The registry tests retain exact wire identity for all eight editions. Config
 tests in `hl7_editions.rs` cover the eight supported selections and canonical
-snapshots (`adr0012_s3_typed_supported_config_editions_preserve_exact_wire_identity`),
+snapshots (`supported_editions_keep_exact_wire_identity`),
 withdrawn-query refusal and the source-blocked 2.9.1 writer,
 unlisted values and their diagnostics
-(`adr0012_s3_unlisted_config_editions_name_bad_value_and_allowed_values`) and
-missing declarations (`adr0012_s3_missing_config_edition_is_not_defaulted`).
+(`unlisted_edition_names_value_and_allowed_ones`) and
+missing declarations (`missing_edition_is_not_defaulted`).
 
 | Registry entry | MSH-7 | Fifth MSH-2 character | Source | Source-named test in `version/tests.rs` |
 | --- | --- | --- | --- | --- |
-| 2.3 | Optional | Refused | 2.5.1 §§2.8, 2.15.9.7, pp.2-20–22, 2-76 | `hl7_2_5_1_s2_8_recognizes_2_3_without_upgrading` |
-| 2.3.1 | Optional | Refused | 2.3.1 §§2.24.1.2/.7/.12, pp.2-94–95, 2-107 | `hl7_2_3_1_s2_24_1_2_7_12_recognizes_edition` |
-| 2.4 | Required | Refused | 2.5.1 §§2.8, 2.15.9.7, pp.2-20–22, 2-76 | `hl7_2_5_1_s2_8_and_s2_15_9_7_recognizes_2_4` |
-| 2.5 | Required | Refused | Same compatibility and MSH-7 clauses | `hl7_2_5_1_s2_8_recognizes_2_5_without_patch_upgrade` |
-| 2.5.1 | Required | Refused | 2.5.1 §§2.15.9.2/.7/.12, pp.2-74–77 | `hl7_2_5_1_s2_15_9_2_7_12_recognizes_edition` |
-| 2.6 | Required | Refused | 2.6 §§2.14.9.2/.7/.12, pp.56–58 | `hl7_2_6_s2_14_9_2_7_12_recognizes_edition_without_typed_fallback` |
-| 2.8.2 | Required | Accepted | 2.8.2 §§2.14.9.2/.7/.12, pp.59–61 | `hl7_2_8_2_s2_14_9_2_7_12_recognizes_edition_without_typed_fallback` |
-| 2.9.1 | Required | Accepted | 2.9.1 §§2.13.9.2/.7/.12, pp.69–71 | `hl7_2_9_1_s2_13_9_2_7_12_recognizes_edition_without_typed_fallback` |
+| 2.3 | Optional | Refused | 2.5.1 §§2.8, 2.15.9.7, pp.2-20–22, 2-76 | `recognizes_v23_without_upgrading` |
+| 2.3.1 | Optional | Refused | 2.3.1 §§2.24.1.2/.7/.12, pp.2-94–95, 2-107 | `recognizes_v231` |
+| 2.4 | Required | Refused | 2.5.1 §§2.8, 2.15.9.7, pp.2-20–22, 2-76 | `recognizes_v24` |
+| 2.5 | Required | Refused | Same compatibility and MSH-7 clauses | `recognizes_v25_without_patch_upgrade` |
+| 2.5.1 | Required | Refused | 2.5.1 §§2.15.9.2/.7/.12, pp.2-74–77 | `recognizes_v251` |
+| 2.6 | Required | Refused | 2.6 §§2.14.9.2/.7/.12, pp.56–58 | `recognizes_v26_without_typed_fallback` |
+| 2.8.2 | Required | Accepted | 2.8.2 §§2.14.9.2/.7/.12, pp.59–61 | `recognizes_v282_without_typed_fallback` |
+| 2.9.1 | Required | Accepted | 2.9.1 §§2.13.9.2/.7/.12, pp.69–71 | `recognizes_v291_without_typed_fallback` |
 
-`adr0012_s3_no_unlisted_edition_or_prefix_match` checks unlisted versions,
+`unlisted_edition_or_prefix_is_refused` checks unlisted versions,
 patch-prefix lookalikes and whitespace. LAW's separately agreed 2.5-compatible
 VID policy remains confined to LAW and never widens the base registry.
 
@@ -129,20 +129,20 @@ All tests in the next table are in protocol `tests/receiving.rs` unless noted.
 
 | Rule-table difference or bounded policy | Source (2.6) | Source-named test |
 | --- | --- | --- |
-| MSH-7 is required scalar DTM, with digit precision and at most four fractional digits; no TS precision component | §2.14.9.7 p.57; §2.A.22 pp.2-129–131 | `hl7_2_6_s2_14_9_7_and_s2_a_22_dtm_precision_and_scalar_structure` |
-| MSH-10/MSA-2 permit 199 bytes; ACK retains exact edition and ID, uses the expanded ERR shape | §§2.14.8.2, 2.14.9.10 pp.54, 57; §§2.14.5.1–5 pp.48–50 | `hl7_2_6_s2_14_8_2_and_s2_14_9_10_control_lengths_ack_and_err` |
-| CE and TS value-type declarations are withdrawn and refused; CWE and DTM are qualified instead | §§2.A.6, 2.A.77 pp.2-107–108, 2-182 | `hl7_2_6_s2_a_6_77_withdrawn_ce_ts_are_refused` |
-| OBX-3/6 and CWE-valued OBX-5 use nine components and field/component limits; local coding-system versions are supplied, never invented | §§7.4.2.3/.5/.6 pp.7-40–44; §2.A.13 pp.2-115–119 | `hl7_2_6_s7_4_2_3_6_and_s2_a_13_cwe_components_lengths_and_versions`, `hl7_2_6_s2_a_13_all_cwe_component_length_boundaries` |
-| Interpreted OBR-7/8/14/22 and OBX-12/14/19 timestamps use scalar DTM | §§7.4.1.7/.8/.14/.22 pp.7-23–28; §§7.4.2.12/.14/.19 pp.7-46–50 | `hl7_2_6_s7_4_1_7_8_14_22_and_s7_4_2_12_14_19_result_dtm` |
-| QRD/QRF use DTM and CWE, QRD-8 uses 23-component XCN with changed check-digit, name-context and time limits; nonempty XCN-17 is refused | §5.10.4 pp.97–102; §§2.A.20, 2.A.86 pp.2-129, 2-190–193 | `hl7_2_6_s2_a_86_xcn_check_digit_cwe_dtm_and_deprecated_range`, `hl7_2_6_s5_10_4_1_2_qrd_qrf_dtm_cwe_and_deprecated_tq` |
+| MSH-7 is required scalar DTM, with digit precision and at most four fractional digits; no TS precision component | §2.14.9.7 p.57; §2.A.22 pp.2-129–131 | `msh7_dtm_precision_and_scalar_structure` |
+| MSH-10/MSA-2 permit 199 bytes; ACK retains exact edition and ID, uses the expanded ERR shape | §§2.14.8.2, 2.14.9.10 pp.54, 57; §§2.14.5.1–5 pp.48–50 | `control_id_length_ack_and_err_shape` |
+| CE and TS value-type declarations are withdrawn and refused; CWE and DTM are qualified instead | §§2.A.6, 2.A.77 pp.2-107–108, 2-182 | `withdrawn_ce_and_ts_are_refused` |
+| OBX-3/6 and CWE-valued OBX-5 use nine components and field/component limits; local coding-system versions are supplied, never invented | §§7.4.2.3/.5/.6 pp.7-40–44; §2.A.13 pp.2-115–119 | `obx_cwe_components_lengths_and_versions`, `cwe_component_length_boundaries` |
+| Interpreted OBR-7/8/14/22 and OBX-12/14/19 timestamps use scalar DTM | §§7.4.1.7/.8/.14/.22 pp.7-23–28; §§7.4.2.12/.14/.19 pp.7-46–50 | `result_times_use_scalar_dtm` |
+| QRD/QRF use DTM and CWE, QRD-8 uses 23-component XCN with changed check-digit, name-context and time limits; nonempty XCN-17 is refused | §5.10.4 pp.97–102; §§2.A.20, 2.A.86 pp.2-129, 2-190–193 | `xcn_check_digit_cwe_dtm_and_deprecated_range`, `qrd_qrf_use_dtm_cwe_and_refuse_tq` |
 | Nonempty deprecated QRF-9 TQ is refused rather than ignoring its scheduling constraints; QRF-10 remains validated NM | §5.10.4.2.9–10 p.102 | Same QRD/QRF test |
-| OBX-21 EI remains raw and is not a laboratory result identity; nonempty OBX-22 mood is refused | §§7.4.2.21–22 p.7-51 | Same result-DTM test; mapping `hl7_2_6_s7_3_1_s7_4_2_3_5_19_21_receiving_keeps_values_times_and_raw_identity` |
-| Original/enhanced ACK custody rules and exact request edition remain independent of successful parsing | §§2.9.2–3 pp.23–26; §§2.14.9.15–16 pp.58–59 | Dialog `hl7_2_5_1_s2_8_and_2_6_2_8_2_2_9_1_s2_9_2_original_ack_requires_store_and_interpretation` |
+| OBX-21 EI remains raw and is not a laboratory result identity; nonempty OBX-22 mood is refused | §§7.4.2.21–22 p.7-51 | Same result-DTM test; mapping `receiving_keeps_values_times_and_raw_identity` |
+| Original/enhanced ACK custody rules and exact request edition remain independent of successful parsing | §§2.9.2–3 pp.23–26; §§2.14.9.15–16 pp.58–59 | Dialog `every_edition_acks_only_after_store_and_interpret` |
 
 Escape and charset rules are exercised by
-`hl7_2_6_s2_7_1_and_s2_14_9_18_charset_and_literal_escapes`
+`utf8_charset_and_literal_escapes`
 (2.6 §§2.7.1, 2.14.9.18, pp.17, 59–61); enhanced custody conditions by
-`hl7_2_6_s2_9_3_and_s2_14_9_15_16_enhanced_ack_custody`.
+`enhanced_ack_follows_custody`.
 
 The bounded CWE rule requires an explicit version whenever either coding-system
 component is populated. This includes text-only tuples and apparent `HL7nnnn`
@@ -157,7 +157,7 @@ Sources: 2.6 §§7.4.1.5–6/.15/.27/.32–35 pp.7-23–32; §§2.14.8.3/.5/.6
 pp.54–55; §2.14.5.1 p.48. In particular, embedded NDL/CNN names are not
 guessed, deprecated scheduling fields are not executed, and withdrawn delayed
 ACK information never changes the dialog. Evidence:
-`hl7_2_6_s7_4_1_5_6_15_27_32_35_backward_fields_stay_raw` and the MSA/ERR
+`backward_compatible_obr_fields_stay_raw` and the MSA/ERR
 control-length test above. Unknown OBX value types (including
 unselected CNE) remain unsupported and cause parking. Field refusal retains the
 original bytes; it never trims or converts a value to fit.
@@ -192,25 +192,25 @@ per-edition parser or mapping copies.
 
 | Rule / selected behavior | Source | Source-named test |
 | --- | --- | --- |
-| Up to 22 CWE components; named authority or supplied OID for each populated code; explicit named-system revisions; preserve all tuples and metadata | 2.8.2 §2.A.13 pp.24–32; 2.9.1 §2A.2.13 pp.25–33 | `hl7_2_8_2_s2_a_13_and_2_9_1_s2a_2_13_third_tuple_metadata_stays_exact`; `hl7_2_8_2_s2_a_13_3_7_12_and_2_9_1_s2a_2_13_coding_authority_not_guessed` |
-| Coding-system names retain their normative 12-character bound; conformance capacities are not maxima; composite bytes have an explicit 16,384-byte operational cap | Same CWE sections; 2.8.2 §§2.5.5.3–4 pp.13–14; 2.9.1 §§2.4.5.3–4 pp.15–16 | `hl7_2_8_2_s2_5_5_3_and_2_9_1_s2_4_5_3_conformance_is_not_a_maximum` |
-| Scalar DTM remains bounded to 24 bytes; CE/TS declarations remain withdrawn and refused | 2.8.2 §§2.A.6/.22/.79 pp.7, 38–39, 82; 2.9.1 §§2A.2.6/.22/.79 pp.8, 39–40, 84 | `hl7_2_8_2_s2_a_22_and_2_9_1_s2a_2_22_scalar_dtm_and_withdrawn_value_types` |
-| 2.9.1 negative-zero UTC has no known civil offset; retain that time raw instead of claiming parsed local time or an explicit civil offset | 2.9.1 §2A.2.22 pp.39–40; comparison with 2.8.2 §2.A.22 pp.38–39 | Mapping `hl7_2_9_1_s2a_2_22_utc_without_known_civil_offset_remains_raw` |
-| Nonempty withdrawn OBR-5/6/14/15/27 refused in both; 2.9.1 also refuses OBR-16/28/32–35 | 2.8.2 §7.4.1 pp.36–47; 2.9.1 §7.4.1 pp.49–57 | `hl7_2_8_2_and_2_9_1_s7_4_1_withdrawn_obr_fields_are_refused` |
-| Nonempty withdrawn MSA-3/5/6 and ERR-1 refused | 2.8.2 §§2.14.8/.5 pp.53–59; 2.9.1 §§2.13.8/.5 pp.61–68 | `hl7_2_8_2_s2_14_8_and_2_9_1_s2_13_8_withdrawn_msa_err_fields` |
-| 2.9.1 MSH-15/16 must be populated together or both empty; explicit nulls are refused in this profile | 2.9.1 §§2.13.9.15–16 pp.71–72 | `hl7_2_9_1_s2_13_9_15_16_ack_requests_are_paired` |
-| ACK retains edition, delimiter declaration and MSA correlation; 199-byte control bounds; reserved delimiter characters cannot occur literally in control IDs | 2.8.2 §§2.14.8.2/.9.2/.9.10 pp.58–61; 2.9.1 §§2.13.8.2/.9.2/.9.10 pp.67–71; selected control-ID safety bound | `hl7_2_8_2_s2_14_9_and_2_9_1_s2_13_9_ack_preserves_exact_edition`; `hl7_2_8_2_s2_14_9_10_and_2_9_1_s2_13_9_10_control_profile_limits` |
-| An effective reference-range date requires the reference range | Both editions §7.4.2.12; 2.8.2 pp.60–61, 2.9.1 pp.70–71 | `hl7_2_8_2_and_2_9_1_s7_4_2_12_range_date_requires_reference_range` |
-| Original query views remain unavailable even though control views now exist | 2.8.2 §5.10.2 p.104; 2.9.1 §5.9.2 p.80 | `hl7_2_8_2_s5_10_2_and_2_9_1_s5_9_2_no_typed_legacy_query`; config refusal tests above |
-| Observation identifiers use the selected named-primary authority contract; OID-only authority is refused without guessing a configured namespace | 2.8.2 §§7.4.2.3, 2.A.13 pp.53–54, 24–32; 2.9.1 §§7.4.2.3, 2A.2.13 pp.63–64, 25–33; bounded profile decision | Mapping `hl7_2_8_2_s2_a_13_and_2_9_1_s2a_2_13_oid_authority_never_uses_code_only_fallback` |
-| UTF-8 remains a single explicit charset; literal `\P\` data and copied encoded header values stay exact | 2.8.2 §§2.14.9.18, 2.7.1–2 pp.62–63, 20–21; 2.9.1 §§2.13.9.18, 2.6.1–2 pp.72–73, 22–23; chapter 2C table 0211 pp.99–100 and 209–210 respectively | `hl7_2_8_2_s2_14_9_18_and_2_9_1_s2_13_9_18_utf8_and_literal_p` |
-| Extended XCN in unselected 2.8.2 provider fields stays raw, including new security components; no typed XCN or clinician identity is claimed | 2.8.2 §2.A.88 pp.89–94; 2.9.1 §2A.2.88 pp.92–96 (provider fields withdrawn) | `hl7_2_8_2_s2_a_88_and_2_9_1_s2a_2_88_unselected_xcn_extensions_stay_raw` |
+| Up to 22 CWE components; named authority or supplied OID for each populated code; explicit named-system revisions; preserve all tuples and metadata | 2.8.2 §2.A.13 pp.24–32; 2.9.1 §2A.2.13 pp.25–33 | `cwe_third_tuple_metadata_stays_exact`; `cwe_coding_authority_is_not_guessed` |
+| Coding-system names retain their normative 12-character bound; conformance capacities are not maxima; composite bytes have an explicit 16,384-byte operational cap | Same CWE sections; 2.8.2 §§2.5.5.3–4 pp.13–14; 2.9.1 §§2.4.5.3–4 pp.15–16 | `conformance_length_is_not_a_maximum` |
+| Scalar DTM remains bounded to 24 bytes; CE/TS declarations remain withdrawn and refused | 2.8.2 §§2.A.6/.22/.79 pp.7, 38–39, 82; 2.9.1 §§2A.2.6/.22/.79 pp.8, 39–40, 84 | `dtm_is_scalar_and_ce_ts_are_refused` |
+| 2.9.1 negative-zero UTC has no known civil offset; retain that time raw instead of claiming parsed local time or an explicit civil offset | 2.9.1 §2A.2.22 pp.39–40; comparison with 2.8.2 §2.A.22 pp.38–39 | Mapping `utc_without_civil_offset_stays_raw` |
+| Nonempty withdrawn OBR-5/6/14/15/27 refused in both; 2.9.1 also refuses OBR-16/28/32–35 | 2.8.2 §7.4.1 pp.36–47; 2.9.1 §7.4.1 pp.49–57 | `withdrawn_obr_fields_are_refused` |
+| Nonempty withdrawn MSA-3/5/6 and ERR-1 refused | 2.8.2 §§2.14.8/.5 pp.53–59; 2.9.1 §§2.13.8/.5 pp.61–68 | `withdrawn_msa_and_err_fields_are_refused` |
+| 2.9.1 MSH-15/16 must be populated together or both empty; explicit nulls are refused in this profile | 2.9.1 §§2.13.9.15–16 pp.71–72 | `ack_type_requests_must_be_paired` |
+| ACK retains edition, delimiter declaration and MSA correlation; 199-byte control bounds; reserved delimiter characters cannot occur literally in control IDs | 2.8.2 §§2.14.8.2/.9.2/.9.10 pp.58–61; 2.9.1 §§2.13.8.2/.9.2/.9.10 pp.67–71; selected control-ID safety bound | `ack_keeps_exact_edition_and_delimiters`; `control_id_limits_and_reserved_characters` |
+| An effective reference-range date requires the reference range | Both editions §7.4.2.12; 2.8.2 pp.60–61, 2.9.1 pp.70–71 | `range_date_requires_reference_range` |
+| Original query views remain unavailable even though control views now exist | 2.8.2 §5.10.2 p.104; 2.9.1 §5.9.2 p.80 | `withdrawn_legacy_query_has_no_typed_view`; config refusal tests above |
+| Observation identifiers use the selected named-primary authority contract; OID-only authority is refused without guessing a configured namespace | 2.8.2 §§7.4.2.3, 2.A.13 pp.53–54, 24–32; 2.9.1 §§7.4.2.3, 2A.2.13 pp.63–64, 25–33; bounded profile decision | Mapping `oid_authority_never_falls_back_to_code` |
+| UTF-8 remains a single explicit charset; literal `\P\` data and copied encoded header values stay exact | 2.8.2 §§2.14.9.18, 2.7.1–2 pp.62–63, 20–21; 2.9.1 §§2.13.9.18, 2.6.1–2 pp.72–73, 22–23; chapter 2C table 0211 pp.99–100 and 209–210 respectively | `utf8_and_literal_truncation_escape_stay_exact` |
+| Extended XCN in unselected 2.8.2 provider fields stays raw, including new security components; no typed XCN or clinician identity is claimed | 2.8.2 §2.A.88 pp.89–94; 2.9.1 §2A.2.88 pp.92–96 (provider fields withdrawn) | `unselected_xcn_extensions_stay_raw` |
 
 The profile continues to reject unselected SPM/SAC, participation, device,
 access-restriction and software segments rather than attach them to guessed
 owners (both editions §7.3.1). Mapping tests
 `hl7_2_8_2_s7_3_1_and_2_9_1_s7_3_1_modern_results_deliver_exact_values` and
-`hl7_2_8_2_and_2_9_1_s7_3_1_unselected_groups_and_withdrawn_fields_do_not_map`
+`unselected_groups_and_withdrawn_fields_never_map`
 exercise actual mapping and raw retention. Existing store-before-ACK dialog
 tests also exercise both modern editions.
 
@@ -263,9 +263,9 @@ unavailable-versus-empty distinction; no result or order identity is synthesized
 
 | Edition | Admission rule and implemented differences | Regression evidence |
 | --- | --- | --- |
-| 2.3 | §2.8 requires the newer receiver to understand older messages. §§2.8.1–2 preserve earlier constituents and datatype prefixes. Use the established legacy control/query prefix; MSH-7 is optional. No assumption that 2.3.1 internationalization additions or later datatype extensions existed in 2.3. They remain original bytes. | `hl7_2_5_1_s2_8_2_datatype_prefix_preserves_legacy_msh_identity`; `hl7_2_5_1_s2_15_9_7_required_since_2_4_not_retroactive_to_2_3` |
-| 2.4 | Same §2.8 receiving contract; §2.15.9.7 explicitly makes MSH-7 required. MSH-9 retains the CM-compatible shape; ERR uses the legacy combined location/code field. The 2.4 TS and sequencing errata supply the stated corrections; extended XCN-17 is not interpreted. | `hl7_2_5_1_s2_a_44_msg_replaces_cm_as_of_2_5`; `hl7_2_4_20020408_errata_xcn_17_unsettled_nested_range_is_refused_and_raw` |
-| 2.5 | Same §§2.8.1–2 prefix contract, without relabeling the receipt 2.5.1. §2.A.44 dates MSG's three required components to 2.5; §2.15.5.1 dates the expanded ERR representation to 2.5. Other unverified datatype/table extensions do not inherit 2.5.1 semantics. | `hl7_2_5_1_s2_a_44_msg_replaces_cm_as_of_2_5`; `hl7_2_5_1_s2_8_2_and_s2_15_5_1_ack_edition_and_error_shapes` |
+| 2.3 | §2.8 requires the newer receiver to understand older messages. §§2.8.1–2 preserve earlier constituents and datatype prefixes. Use the established legacy control/query prefix; MSH-7 is optional. No assumption that 2.3.1 internationalization additions or later datatype extensions existed in 2.3. They remain original bytes. | `legacy_msh_identity_is_preserved`; `msh7_requirement_is_not_retroactive` |
+| 2.4 | Same §2.8 receiving contract; §2.15.9.7 explicitly makes MSH-7 required. MSH-9 retains the CM-compatible shape; ERR uses the legacy combined location/code field. The 2.4 TS and sequencing errata supply the stated corrections; extended XCN-17 is not interpreted. | `msg_type_replaces_cm_only_in_later_editions`; `xcn17_nested_range_is_refused_and_kept_raw` |
+| 2.5 | Same §§2.8.1–2 prefix contract, without relabeling the receipt 2.5.1. §2.A.44 dates MSG's three required components to 2.5; §2.15.5.1 dates the expanded ERR representation to 2.5. Other unverified datatype/table extensions do not inherit 2.5.1 semantics. | `msg_type_replaces_cm_only_in_later_editions`; `legacy_ack_keeps_edition_and_err_shape` |
 
 The three profiles use the existing shared implementation and a conservative
 common datatype/query prefix: at most fifteen XCN components, two family-name
@@ -277,7 +277,7 @@ control constraints to this common prefix; it does not copy the 2.5.1 profile.
 These restrictions apply only to the base HL7 configuration. LAW uses its own
 negotiated profile even when its compatible MSH-12 is `2.5` or another accepted
 `2.5`-prefixed VID (TF-2b C.4); its known analysis time is still interpreted.
-`law_tf2b_c4_and_3_29_4_compatible_vid_keeps_law_analysis_time` guards that boundary.
+`compatible_law_versions_keep_analysis_time` guards that boundary.
 
 ### Content left raw or refused
 
@@ -285,8 +285,8 @@ negotiated profile even when its compatible MSH-12 is `2.5` or another accepted
   accepted without rewriting. The formal fractional spelling supports up to four
   fractional digits; the errata's inconsistent digit-count description does not
   change the received spelling or supply missing precision. Tests:
-  `hl7_2_3_1_errata_s2_8_44_1_and_2_4_errata_s2_9_47_1_ts_precision` and
-  `hl7_2_3_1_and_2_4_20020408_errata_order_sequencing_component_model`.
+  `legacy_timestamp_precision_is_checked` and
+  `order_sequencing_component_model`.
 - XCN extensions beyond the selected prefix, including the errata's problematic
   XCN-17, are refused by the QRD-8 view while the receipt retains the complete
   field. OBR-32–35 remain raw; they never become typed person names.
@@ -295,9 +295,9 @@ negotiated profile even when its compatible MSH-12 is `2.5` or another accepted
   refuse the unverified UTF-8 declaration and URI universal-ID code. CWE result
   values remain original unsupported values and require parking. ASCII and
   Latin-1 remain the selected supported encodings. Tests:
-  `hl7_2_5_1_s2_8_2_table_changes_do_not_establish_earlier_utf8_code`,
-  `hl7_2_5_1_s2_8_1_2_unsettled_query_extensions_and_uri_codes_are_refused`, and
-  mapping `hl7_2_5_1_s2_8_1_new_datatype_availability_is_not_guessed_for_legacy_cwe`.
+  `utf8_code_is_not_backdated_to_legacy_editions`,
+  `unsettled_query_extensions_and_uri_codes_refused`, and
+  mapping `legacy_cwe_datatype_is_not_guessed`.
 - OBX-19 remains raw instead of acquiring a later analysis-time interpretation.
   SPM/SAC group extensions and OUL message families are refused rather than
   changing legacy result ownership. Tests in mapping `compatibility.rs` check
@@ -306,12 +306,12 @@ negotiated profile even when its compatible MSH-12 is `2.5` or another accepted
 - Outbound machine-order commands remain unimplemented for these three profiles
   until writer integration. Config refuses `orders.hl7_send` for them; a valid
   receiving/query configuration cannot accidentally enable that writer.
-  `hl7_2_5_1_s2_8_legacy_query_configs_validate_but_unimplemented_order_writers_do_not`
+  `legacy_queries_validate_but_unbuilt_writers_fail`
   guards this activation boundary.
 
-`hl7_2_5_1_s2_8_and_s5_10_legacy_query_unavailable_is_not_empty` checks query
+`legacy_query_unavailable_is_not_empty` checks query
 correlation and AE replies. The dialog regression
-`hl7_2_5_1_s2_8_and_2_6_2_8_2_2_9_1_s2_9_2_original_ack_requires_store_and_interpretation`
+`every_edition_acks_only_after_store_and_interpret`
 checks the store-before-ACK boundary for all three editions. Evidence remains
 **documented**, with synthetic tests only.
 
@@ -365,8 +365,8 @@ Evidence stays documented. Config reports edition-specific blockers.
 | 2.8.2 | Enabled | Bounded O21/O22; EIP group identity, required patient identifier type, explicit coding revisions and withdrawn-field refusal. ORL_O41 is unselected. |
 | 2.9.1 | Blocked | ORC-4 encoding is unresolved: the attribute table and 4.5.1.4 declare EI, but the component description uses subcomponent separators. Authoritative clarification is needed before writing a group authority. |
 
-Evidence: protocol `adr0012_s3_writer_qualification_is_separate_from_receiving`
-and config `adr0012_s3_config_reports_the_registry_writer_blocker` test the
+Evidence: protocol `writer_qualification_separate_from_receiving`
+and config `config_reports_registry_writer_blocker` test the
 refusal boundary only. They establish only the remaining blocked-edition refusal boundary. The 2.6
 writer evidence below establishes bytes, decisions and timeout/restart behavior. Existing 2.3.1/2.5.1 writer
 qualification is unchanged. Evidence level remains documented.
@@ -392,10 +392,10 @@ OML uses TQ1 and SPM instead of writing legacy OBR-15/27 and ORC-7 content.
 | ORC-16, returned OBR-4, TQ1-7/8/9, SPM-2/4, SAC identities | Edition-aware CWE/DTM checks; stable order/specimen correlation and the existing bounded group ownership; no scheduling or clinical decisions | 4.5.1.16; 4.5.3.4; 4.5.4; 7.4.3; 13.4.3 |
 | Withdrawn CE/TS and MSA-5 | Writer emits CWE/DTM and no MSA; refuses the unqualified legacy writer; response refuses nonempty MSA-5. Other backward-compatibility fields do not execute scheduling | 2.A.6/.77; 2.14.8.5 |
 
-Tests in `edition_orders.rs` name the source sections and assert exact bytes,
+Tests in `edition_orders.rs` name their source sections in a comment and assert exact bytes,
 missing-revision refusal, reply outcomes and bad control ID / MSA-5 refusal.
-Config `hl7_2_6_2_8_2_s4_4_6_s2_a_13_7_config_requires_explicit_revisions` checks the
-activation boundary. Program `hl7_231_251_26_282_s4_4_7_send_ahead_accepted_rejected_and_mixed_items` includes 2.6 in acceptance,
+Config `send_requires_explicit_table_revisions` checks the
+activation boundary. Program `send_ahead_accepted_rejected_and_mixed_items` includes 2.6 in acceptance,
 rejection, cancellation, timeout/disconnect and restart-during-Sending cases.
 
 For 2.6 outbound tests, `machine_components` is exactly seven entries:
@@ -424,10 +424,10 @@ and access-restriction groups remain unselected and fail visibly in replies.
 | SPM-1/2/4 | SI/EIP/CWE retained; explicit specimen revision; no global specimen flattening | 7.4.3.1-4; 2.A.13 |
 | Nonempty ORC-7; OBR-5/6/14/15/27; MSA-3/5/6 | Withdrawn: never generated, and refused in replies, including explicit null content | 4.5.1.7; 4.5.3; 2.14.8.3/.5/.6 |
 
-Evidence: `hl7_2_8_2_s4_4_6_7_s4_5_1_4_s2_a_14_5_order_qualification`
+Evidence: `v282_order_and_reply_qualification`
 asserts exact bytes, EIP grouping, patient type, revisions, accepted/rejected
 replies, wrong control ID, wrong reply structure and withdrawn-field refusal.
-Config revision tests and program `hl7_231_251_26_282_s4_4_7_send_ahead_accepted_rejected_and_mixed_items` include 2.8.2, including
+Config revision tests and program `send_ahead_accepted_rejected_and_mixed_items` include 2.8.2, including
 timeout/disconnect and crash/restart without retransmission. Evidence remains
 documented; no machine or simulator qualification is claimed.
 
@@ -452,8 +452,8 @@ facts are not a qualified 2.9.1 writer row. No writer or config activation is
 enabled for 2.9.1. An authoritative correction or explicit source-precedence
 resolution is needed for ORC-4 before qualification continues.
 
-Config test `hl7_2_9_1_s4_5_1_4_unresolved_group_encoding_refuses_sending` and
-`adr0012_s3_config_reports_the_registry_writer_blocker` keep the refusal visible.
+Config test `unresolved_group_encoding_refuses_sending` and
+`config_reports_registry_writer_blocker` keep the refusal visible.
 
 Modern OBX-4 accepts only legacy OG.1. Populated enhanced grouping components
 are refused before identity mapping: this profile does not select the complete

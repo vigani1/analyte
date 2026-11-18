@@ -2,8 +2,9 @@
 use crate::test_support::*;
 use crate::*;
 
+// ADR 0011
 #[test]
-fn adr0011_caller_status_table_is_generic_and_correction_cannot_bypass_it() -> TestResult {
+fn correction_cannot_bypass_status_table() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("status-table.db"))?;
     let policy = StatusLifecycle {
@@ -52,8 +53,9 @@ fn adr0011_caller_status_table_is_generic_and_correction_cannot_bypass_it() -> T
     Ok(())
 }
 
+// ADR 0011
 #[test]
-fn adr0011_latest_status_uses_exact_revision_when_one_batch_advances_twice() -> TestResult {
+fn batch_advancing_twice_uses_exact_revision() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("batch-status.db"))?;
     let policy = StatusLifecycle {
@@ -120,8 +122,9 @@ fn adr0011_latest_status_uses_exact_revision_when_one_batch_advances_twice() -> 
     Ok(())
 }
 
+// ADR 0011
 #[test]
-fn adr0011_withheld_delivery_builder_is_refused_atomically() -> TestResult {
+fn withheld_delivery_is_refused_atomically() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("withheld.db"))?;
     let metadata = receipt(b"synthetic")?;
@@ -182,8 +185,9 @@ fn adr0011_withheld_delivery_builder_is_refused_atomically() -> TestResult {
 }
 
 // ADR 0003; POCT01-A2 B 3.2 pp.71-72: provenance offsets must not create results.
+// ADR 0011; mutation-testing regression
 #[test]
-fn mutation_adr0011_single_final_run_is_scoped_by_machine_order_and_test() -> TestResult {
+fn single_final_run_scoped_by_machine_order_test() -> TestResult {
     use analyte_model::{IdentityStatus, Revision, SourceText};
     let policy = StatusLifecycle {
         transitions: &[],
@@ -269,8 +273,9 @@ fn mutation_adr0011_single_final_run_is_scoped_by_machine_order_and_test() -> Te
     Ok(())
 }
 
+// ADR 0003, ADR 0011; mutation-testing regression
 #[test]
-fn mutation_adr0003_adr0011_retained_interpretation_byte_bound_is_inclusive() -> TestResult {
+fn retained_interpretation_byte_bound_is_inclusive() -> TestResult {
     use analyte_model::{IdentityStatus, Revision, SourceText};
     for (exclusive, delta) in [(false, 0), (false, 1), (true, 0), (true, 1)] {
         let temp = tempfile::tempdir()?;
@@ -353,9 +358,9 @@ fn mutation_adr0003_adr0011_retained_interpretation_byte_bound_is_inclusive() ->
     Ok(())
 }
 
+// ADR 0011; mutation-testing regression
 #[test]
-fn mutation_adr0011_progression_uses_the_requested_observation_and_unanimous_source_status()
--> TestResult {
+fn progression_uses_requested_observation_status() -> TestResult {
     use analyte_model::{IdentityStatus, Revision, SourceText};
     for mixed_after in [false, true] {
         let temp = tempfile::tempdir()?;

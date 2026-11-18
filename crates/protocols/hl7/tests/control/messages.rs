@@ -4,8 +4,9 @@ use analyte_hl7::*;
 use proptest::prelude::*;
 
 // HL7 2.5.1 section 2.15.5.2 pp.2-67-68; 2.3.1 section 2.24.3.1.
+// HL7 2.5.1 §2.15.5.2
 #[test]
-fn hl7_251_2_15_5_2_unknown_location_stays_unvalued() -> Result<(), Error> {
+fn unknown_error_location_stays_unvalued() -> Result<(), Error> {
     for (version, expected) in [
         ("2.5.1", "ERR|||207|E|operator-review\r"),
         ("2.3.1", "ERR|^^^207\r"),
@@ -29,8 +30,9 @@ fn hl7_251_2_15_5_2_unknown_location_stays_unvalued() -> Result<(), Error> {
 }
 
 // HL7 2.5.1 section 2.7.6 pp.2-19-20; synthetic command/argument cases.
+// HL7 2.5.1 §2.7.6
 #[test]
-fn hl7_251_2_7_6_formatting_command_grammar() -> Result<(), Error> {
+fn formatting_command_grammar() -> Result<(), Error> {
     for command in [
         ".br", ".fi", ".nf", ".ce", ".sp", ".sp3", ".sp 3", ".in+2", ".in -3", ".ti2", ".ti-2",
         ".sk4",
@@ -83,8 +85,9 @@ fn response() -> Result<Response<'static>, Error> {
     })
 }
 
+// HL7 2.5.1 §2.5.4
 #[test]
-fn hl7_251_2_5_4_alternate_delimiters_and_msh_indexing() -> Result<(), Error> {
+fn alternate_delimiters_and_msh_indexing() -> Result<(), Error> {
     let raw =
         b"MSH*$%!@*SENDER*SF*RECEIVER*RF*202601011200**ORU$R01$ORU_R01*00017*P*2.5.1\rOBX**A$$B@C%%\r";
     let m = parse(raw)?;
@@ -103,8 +106,9 @@ fn hl7_251_2_5_4_alternate_delimiters_and_msh_indexing() -> Result<(), Error> {
     assert_eq!(m.encode(), raw);
     Ok(())
 }
+// HL7 2.5.1 §2.5.3
 #[test]
-fn hl7_251_2_5_3_null_empty_absent_and_trailing_positions() -> Result<(), Error> {
+fn null_empty_absent_and_trailing_positions() -> Result<(), Error> {
     let m = parse(&wire("2.5.1", "", "", "", "OBX|\"\"||A^^B&C|\r"))?;
     let s = m.segments().nth(1).ok_or(Error::Segment(2))?;
     assert!(s.field(1).is_some_and(Field::is_null));
@@ -120,8 +124,9 @@ fn hl7_251_2_5_3_null_empty_absent_and_trailing_positions() -> Result<(), Error>
     assert_eq!(components, vec![&b"A"[..], b"", b"B&C"]);
     Ok(())
 }
+// HL7 2.5.1 §2.7
 #[test]
-fn hl7_251_2_7_escape_sequences_in_text_fields() -> Result<(), Error> {
+fn escape_sequences_in_text_fields() -> Result<(), Error> {
     let body = "NTE|1||a\\F\\b\\S\\c\\R\\d\\T\\e\\E\\f\\X0D\\\\Zlocal\\\\.br\\\\H\\hi\\N\\\r";
     let m = parse(&wire("2.5.1", "", "", "", body))?;
     let f = m
@@ -155,8 +160,9 @@ fn hl7_251_2_7_escape_sequences_in_text_fields() -> Result<(), Error> {
     }
     Ok(())
 }
+// HL7 2.5.1 §2.5.4
 #[test]
-fn hl7_251_2_5_4_terminators_require_explicit_policy() -> Result<(), Error> {
+fn terminators_require_explicit_policy() -> Result<(), Error> {
     let raw = wire("2.5.1", "", "", "", "NTE|1||ok\r");
     for (ending, policy) in [("\n", Terminator::Lf), ("\r\n", Terminator::CrLf)] {
         let altered = String::from_utf8_lossy(&raw)
@@ -177,8 +183,9 @@ fn hl7_251_2_5_4_terminators_require_explicit_policy() -> Result<(), Error> {
     assert!(parse(&empty_segment).is_err());
     Ok(())
 }
+// HL7 2.5.1 §2.15.9.18
 #[test]
-fn hl7_251_2_15_9_18_charset_is_lossless_and_connection_checked() -> Result<(), Error> {
+fn charset_is_lossless_and_connection_checked() -> Result<(), Error> {
     let mut raw = wire("2.5.1", "", "", "8859/1", "NTE|1||");
     raw.extend_from_slice(&[0xe9, b'\r']);
     assert_eq!(parse(&raw), Err(Error::CharsetMismatch));
@@ -217,8 +224,9 @@ fn hl7_251_2_15_9_18_charset_is_lossless_and_connection_checked() -> Result<(), 
     );
     Ok(())
 }
+// HL7 2.5.1 §2.9; HL7 2.3.1 §2.12
 #[test]
-fn hl7_251_2_9_and_231_2_12_acknowledgments_require_explicit_responsibility() -> Result<(), Error> {
+fn acknowledgments_require_explicit_responsibility() -> Result<(), Error> {
     for version in ["2.3.1", "2.5.1"] {
         let m = parse(&wire(version, "", "", "", ""))?;
         for state in [Responsibility::NotStored, Responsibility::Stored] {
@@ -262,8 +270,9 @@ fn hl7_251_2_9_and_231_2_12_acknowledgments_require_explicit_responsibility() ->
     }
     Ok(())
 }
+// HL7 2.5.1 §2.9.3
 #[test]
-fn hl7_251_2_9_3_independent_enhanced_conditions_and_suppression() -> Result<(), Error> {
+fn enhanced_ack_conditions_and_suppression() -> Result<(), Error> {
     for accept in ["AL", "NE", "ER", "SU"] {
         for application in ["AL", "NE", "ER", "SU"] {
             let m = parse(&wire("2.5.1", accept, application, "", ""))?;
@@ -306,8 +315,9 @@ fn hl7_251_2_9_3_independent_enhanced_conditions_and_suppression() -> Result<(),
     }
     Ok(())
 }
+// HL7 2.3.1 §2.24.3; HL7 2.5.1 §2.15.5
 #[test]
-fn hl7_231_2_24_3_and_251_2_15_5_edition_specific_err() -> Result<(), Error> {
+fn err_segment_is_edition_specific() -> Result<(), Error> {
     for version in ["2.3.1", "2.5.1"] {
         let m = parse(&wire(version, "", "", "", ""))?;
         let detail = AckError {
@@ -345,8 +355,9 @@ fn hl7_231_2_24_3_and_251_2_15_5_edition_specific_err() -> Result<(), Error> {
     }
     Ok(())
 }
+// HL7 2.5.1 §2.6
 #[test]
-fn hl7_251_2_6_configured_limits_reject_without_truncation() {
+fn configured_limits_reject_without_truncation() {
     let raw = wire("2.5.1", "", "", "", "NTE|1||A~B\r");
     for limits in [
         Limits {
@@ -379,21 +390,24 @@ fn hl7_251_2_6_configured_limits_reject_without_truncation() {
     }
 }
 proptest! {
+    // HL7 2.5.1 §2.6
     #[test]
-    fn hl7_251_2_6_serialize_parse_identity(value in "[a-zA-Z0-9 ^&~]{0,300}") {
+    fn serialize_parse_identity(value in "[a-zA-Z0-9 ^&~]{0,300}") {
         let raw = wire("2.5.1", "", "", "", &format!("NTE|1||{value}|\r"));
         let first = parse(&raw)?;
         prop_assert_eq!(first.encode(), raw);
         prop_assert_eq!(parse(&first.encode())?, first);
     }
+    // HL7 2.5.1 §2.6
     #[test]
-    fn hl7_251_2_6_arbitrary_bytes_never_panic(bytes in proptest::collection::vec(any::<u8>(), 0..4096)) {
+    fn arbitrary_bytes_never_panic(bytes in proptest::collection::vec(any::<u8>(), 0..4096)) {
         if let Ok(message) = parse(&bytes) { prop_assert_eq!(parse(&message.encode())?, message); }
     }
 }
 
+// HL7 2.5.1 §2.15
 #[test]
-fn hl7_251_2_15_control_fields_reject_invalid_codes_and_header_injection() -> Result<(), Error> {
+fn control_fields_reject_bad_codes_and_injection() -> Result<(), Error> {
     let raw = wire("2.5.1", "BAD", "", "", "");
     let m = parse(&raw)?;
     assert!(matches!(
@@ -421,15 +435,17 @@ fn hl7_251_2_15_control_fields_reject_invalid_codes_and_header_injection() -> Re
     ));
     Ok(())
 }
+// HL7 2.5.1 §2.15.9.2
 #[test]
-fn hl7_251_2_15_9_2_rejects_later_version_truncation() {
+fn later_version_truncation_is_rejected() {
     assert_eq!(
         parse(b"MSH|^~\\&#|A|B|C|D|20260101||ORU^R01^ORU_R01|1|P|2.5.1\r"),
         Err(Error::Truncation)
     );
 }
+// HL7 2.5.1 §2.7.2
 #[test]
-fn hl7_251_2_7_2_character_switches_preserved_but_not_misdecoded() -> Result<(), Error> {
+fn charset_switches_kept_but_not_misdecoded() -> Result<(), Error> {
     let m = parse(&wire("2.5.1", "", "", "", "NTE|1||\\C2D41\\abc\r"))?;
     let f = m
         .segments()
@@ -441,8 +457,9 @@ fn hl7_251_2_7_2_character_switches_preserved_but_not_misdecoded() -> Result<(),
     Ok(())
 }
 proptest! {
+    // HL7 2.5.1 §2.7
     #[test]
-    fn hl7_251_2_7_delimiter_escape_never_adds_a_component(prefix in "[a-z]{0,50}", suffix in "[a-z]{0,50}") {
+    fn delimiter_escape_never_adds_component(prefix in "[a-z]{0,50}", suffix in "[a-z]{0,50}") {
         let raw = wire("2.5.1", "", "", "", &format!("NTE|1||{prefix}\\S\\{suffix}\r"));
         let m = parse(&raw)?;
         let f = m.segments().nth(1).and_then(|s| s.field(3)).ok_or(Error::Segment(2))?;
@@ -451,8 +468,9 @@ proptest! {
     }
 }
 
+// HL7 2.5.1 §2.5.4
 #[test]
-fn hl7_251_2_5_4_crlf_policy_rejects_mixed_line_endings() {
+fn crlf_policy_rejects_mixed_line_endings() {
     let raw = wire("2.5.1", "", "", "", "NTE|1||ok\r\n");
     assert_eq!(
         Message::parse(
@@ -465,8 +483,9 @@ fn hl7_251_2_5_4_crlf_policy_rejects_mixed_line_endings() {
         Err(Error::Terminator)
     );
 }
+// HL7 2.5.1 §2.9
 #[test]
-fn hl7_251_2_9_ack_uses_negotiated_separators() -> Result<(), Error> {
+fn ack_uses_negotiated_separators() -> Result<(), Error> {
     let m = parse(b"MSH*$%!@*S*SF*R*RF*20260101**ORU$R01$ORU_R01*00017*P*2.5.1***AL*AL\r")?;
     let ack = acknowledgment(
         &m,
@@ -484,8 +503,9 @@ fn hl7_251_2_9_ack_uses_negotiated_separators() -> Result<(), Error> {
     );
     Ok(())
 }
+// HL7 2.3.1 §2.24.2.6
 #[test]
-fn hl7_231_2_24_2_6_legacy_msa_fields_preserved() -> Result<(), Error> {
+fn legacy_msa_fields_preserved() -> Result<(), Error> {
     let m = parse(&wire(
         "2.3.1",
         "",
@@ -503,8 +523,9 @@ fn hl7_231_2_24_2_6_legacy_msa_fields_preserved() -> Result<(), Error> {
 
 // HL7 2.5.1 sections 2.15.9, 2.15.9.7 pp.2-74, 2-76;
 // HL7 2.3.1 section 2.24.1.7: timestamp usage remains optional.
+// HL7 2.5.1 §2.15.9.7; HL7 2.3.1
 #[test]
-fn hl7_251_2_15_9_7_requires_valid_message_time_but_231_allows_absence() -> Result<(), Error> {
+fn message_time_required_except_in_v231() -> Result<(), Error> {
     for version in ["2.5.1", "2.3.1"] {
         for stamp in [
             "",
@@ -558,8 +579,9 @@ fn hl7_251_2_15_9_7_requires_valid_message_time_but_231_allows_absence() -> Resu
 }
 
 // HL7 2.5.1 section 2.A.44 pp.2-180-181; 2.3.1 section 2.24.1.9 p.2-95.
+// HL7 2.5.1 §2.A.44; HL7 2.3.1 §2.24.1.9
 #[test]
-fn hl7_251_2_a_44_and_231_2_24_1_9_message_type_components() -> Result<(), Error> {
+fn message_type_components_are_checked() -> Result<(), Error> {
     for (version, kind, valid) in [
         ("2.5.1", "ORU^R01", false),
         ("2.5.1", "ACK", false),
@@ -587,8 +609,9 @@ fn hl7_251_2_a_44_and_231_2_24_1_9_message_type_components() -> Result<(), Error
 }
 
 // HL7 2.3.1 section 2.24.1.18 p.2-108; 2.5.1 section 2.15.9.18 pp.2-78-81.
+// HL7 2.3.1 §2.24.1.18; HL7 2.5.1 §2.15.9.18
 #[test]
-fn hl7_231_2_24_1_18_and_251_2_15_9_18_charset_is_edition_specific() -> Result<(), Error> {
+fn charset_is_edition_specific() -> Result<(), Error> {
     let options = Options {
         charset: Charset::Utf8,
         ..Options::default()

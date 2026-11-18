@@ -60,8 +60,9 @@ fn has_code(actions: &[Action], code: &[u8]) -> bool {
         .any(|a| matches!(a, Action::Write(analyte_dialog::Write { bytes, .. }) if bytes.windows(code.len()).any(|w| w == code)))
 }
 
+// HL7 2.5.1 §2.9.2
 #[test]
-fn hl7_251_2_9_2_aa_only_after_store_and_interpret() -> TestResult {
+fn aa_only_after_store_and_interpret() -> TestResult {
     let mut d = dialog()?;
     let id = receipt(&feed(&mut d, &message(""))?)?;
     assert!(
@@ -81,8 +82,9 @@ fn hl7_251_2_9_2_aa_only_after_store_and_interpret() -> TestResult {
     Ok(())
 }
 
+// HL7 2.5.1 §2.9.2
 #[test]
-fn hl7_251_2_9_2_failed_store_and_interpretation() -> TestResult {
+fn failed_store_ar_and_bad_content_ae() -> TestResult {
     for stored in [false, true] {
         let mut d = dialog()?;
         let id = receipt(&feed(&mut d, &message(""))?)?;
@@ -117,8 +119,9 @@ fn hl7_251_2_9_2_failed_store_and_interpretation() -> TestResult {
     Ok(())
 }
 
+// HL7 2.5.1 §2.9.3
 #[test]
-fn hl7_251_2_9_3_independent_conditions() -> TestResult {
+fn accept_and_application_conditions_independent() -> TestResult {
     for accept in ["AL", "NE", "ER", "SU"] {
         for application in ["AL", "NE", "ER", "SU"] {
             let mut d = dialog()?;
@@ -139,8 +142,9 @@ fn hl7_251_2_9_3_independent_conditions() -> TestResult {
     Ok(())
 }
 
+// HL7 MLLP R1 §1.2
 #[test]
-fn mllp_r1_1_2_split_merged_queue_and_overflow() -> TestResult {
+fn merged_messages_queue_and_overflow_is_reported() -> TestResult {
     let mut d = dialog()?;
     let raw = message("");
     let id = receipt(&feed(&mut d, &raw)?)?;
@@ -160,8 +164,9 @@ fn mllp_r1_1_2_split_merged_queue_and_overflow() -> TestResult {
     Ok(())
 }
 
+// HL7 2.5.1 §2.9
 #[test]
-fn hl7_251_2_9_deadline_precedes_late_commit() -> TestResult {
+fn deadline_precedes_late_commit() -> TestResult {
     let mut d = dialog()?;
     let id = receipt(&feed(&mut d, &message("AL|AL"))?)?;
     let out = d.step(Duration::from_secs(5), Event::Stored(id))?;
@@ -173,8 +178,9 @@ fn hl7_251_2_9_deadline_precedes_late_commit() -> TestResult {
     Ok(())
 }
 
+// HL7 2.5.1 §2.9.2
 #[test]
-fn hl7_251_2_9_2_sender_correlation_and_uncertainty() -> TestResult {
+fn lost_or_late_ack_leaves_send_uncertain() -> TestResult {
     for disconnect in [false, true] {
         let mut d = dialog()?;
         let raw = message("");
@@ -195,8 +201,9 @@ fn hl7_251_2_9_2_sender_correlation_and_uncertainty() -> TestResult {
 }
 
 proptest! {
+    // ADR 0003
     #[test]
-    fn adr_0003_random_bytes_and_uncommitted_events_never_positive(bytes in prop::collection::vec(any::<u8>(), 0..1000), events in prop::collection::vec(any::<u8>(), 0..100)) {
+    fn random_input_never_acks_positively(bytes in prop::collection::vec(any::<u8>(), 0..1000), events in prop::collection::vec(any::<u8>(), 0..100)) {
         let mut d = dialog()?;
         let id = receipt(&feed(&mut d, &message("AL|AL"))?).map_err(|e| TestCaseError::fail(e.to_string()))?;
         for byte in bytes { let out = d.step(Duration::ZERO, Event::Byte(byte))?; prop_assert!(!has_code(&out, b"MSA|AA|") && !has_code(&out, b"MSA|CA|")); }
@@ -212,8 +219,9 @@ proptest! {
     }
 }
 
+// HL7 2.5.1 §2.15.8
 #[test]
-fn hl7_251_2_15_8_all_codes_and_mismatched_ack() -> TestResult {
+fn ack_codes_classified_and_mismatch_unmatched() -> TestResult {
     for (code, accepted) in [
         ("AA", true),
         ("AE", false),
@@ -287,8 +295,9 @@ fn hl7_251_2_15_8_all_codes_and_mismatched_ack() -> TestResult {
     Ok(())
 }
 
+// HL7 MLLP R1 §1.2
 #[test]
-fn mllp_r1_1_2_invalid_trailer_partial_eof_and_timeout() -> TestResult {
+fn invalid_trailer_partial_eof_and_timeout() -> TestResult {
     for eof in [true, false] {
         let mut d = dialog()?;
         feed(&mut d, b"\x0bMSH|")?;
@@ -312,8 +321,9 @@ fn mllp_r1_1_2_invalid_trailer_partial_eof_and_timeout() -> TestResult {
     Ok(())
 }
 
+// HL7 2.5.1 §2.9.3
 #[test]
-fn hl7_251_2_9_3_negative_suppression_and_interpret_timeout() -> TestResult {
+fn negative_suppression_and_interpret_timeout() -> TestResult {
     for mode in ["AL|AL", "NE|NE", "ER|ER", "SU|SU"] {
         let mut d = dialog()?;
         let id = receipt(&feed(&mut d, &message(mode))?)?;
@@ -335,8 +345,9 @@ fn hl7_251_2_9_3_negative_suppression_and_interpret_timeout() -> TestResult {
     Ok(())
 }
 
+// ADR 0003
 #[test]
-fn adr_0003_malformed_message_is_committed_before_parking() -> TestResult {
+fn malformed_message_committed_before_parking() -> TestResult {
     let mut d = dialog()?;
     let raw = b"\x0bmalformed\x1c\r";
     let actions = feed(&mut d, raw)?;
@@ -353,8 +364,9 @@ fn adr_0003_malformed_message_is_committed_before_parking() -> TestResult {
 }
 
 // HL7 2.5.1 sections 2.9.2-2.9.3 pp.2-26-28: CA cannot finish application work.
+// HL7 2.5.1 §2.9.2, §2.9.3
 #[test]
-fn hl7_251_2_9_2_2_9_3_sender_preserves_ack_phases() -> TestResult {
+fn sender_preserves_ack_phases() -> TestResult {
     let mut d = dialog()?;
     let raw = message("AL|AL");
     d.step(
@@ -419,8 +431,9 @@ fn sending(mode: &str) -> Result<(Dialog, Vec<Action>), Box<dyn std::error::Erro
 }
 
 // HL7 2.5.1 sections 2.9.3, 2.15.9.15-16: AL/NE/ER/SU apply separately.
+// HL7 2.5.1 §2.9.3
 #[test]
-fn hl7_251_2_9_3_sender_acceptance_and_application_condition_matrix() -> TestResult {
+fn sender_accept_and_application_condition_matrix() -> TestResult {
     for accept in ["AL", "NE", "ER", "SU"] {
         for application in ["AL", "NE", "ER", "SU"] {
             check_sender_conditions(accept, application)?;
@@ -511,8 +524,9 @@ fn check_sender_conditions(accept: &str, application: &str) -> TestResult {
 }
 
 // HL7 2.5.1 section 2.9.3: commit acceptance is retained, not application completion.
+// HL7 2.5.1 §2.9.3
 #[test]
-fn hl7_251_2_9_3_sender_application_wait_is_bounded_and_never_resends() -> TestResult {
+fn sender_application_wait_never_resends() -> TestResult {
     for disconnect in [false, true] {
         let (mut d, _) = sending("AL|AL")?;
         let mut out = Vec::new();
@@ -547,8 +561,9 @@ fn display_ack(id: &str, code: &str, version: &str) -> Vec<u8> {
         .into_bytes()
 }
 
+// HL7 2.3.1 §2.18; HL7 2.5.1 §5.10
 #[test]
-fn hl7_231_2_18_251_5_10_dsr_decisions_follow_durable_ack_commit() -> TestResult {
+fn dsr_decisions_follow_durable_ack_commit() -> TestResult {
     for (id, code, version, expected, accepted) in [
         ("dsr1", "AA", "2.5.1", "HL7-DSR-ACK-AA", true),
         ("dsr1", "AE", "2.5.1", "HL7-DSR-ACK-AE", false),
@@ -578,8 +593,9 @@ fn hl7_231_2_18_251_5_10_dsr_decisions_follow_durable_ack_commit() -> TestResult
     Ok(())
 }
 
+// HL7 2.3.1 §2.18; ADR 0003
 #[test]
-fn hl7_231_2_18_adr0003_late_dsr_commit_retains_receipt_without_confirming_work() -> TestResult {
+fn late_dsr_commit_keeps_receipt_unconfirmed() -> TestResult {
     let mut d = dialog()?;
     d.enable_orders(analyte_hl7::Version::V251)?;
     d.await_display(
@@ -621,8 +637,9 @@ fn hl7_231_2_18_adr0003_late_dsr_commit_retains_receipt_without_confirming_work(
     Ok(())
 }
 
+// HL7 MLLP R1 §1.2
 #[test]
-fn mllp_r1_1_2_queries_share_decoder_and_keep_queued_first_byte_time() -> TestResult {
+fn queries_share_decoder_and_first_byte_time() -> TestResult {
     let mut d = dialog()?;
     d.enable_orders(analyte_hl7::Version::V251)?;
     let query = String::from_utf8(message(""))?
@@ -647,8 +664,9 @@ fn mllp_r1_1_2_queries_share_decoder_and_keep_queued_first_byte_time() -> TestRe
     assert!(actions.iter().any(|a| matches!(a, Action::Query { receipt, started, .. } if *receipt == second && *started == Duration::from_secs(1))));
     Ok(())
 }
+// HL7 2.3.1 §2.18
 #[test]
-fn hl7_231_2_18_qck_precedes_dsr_and_failed_or_expired_qck_never_issues_work() -> TestResult {
+fn qck_precedes_dsr_and_failed_qck_issues_nothing() -> TestResult {
     for (fail, now, expected) in [
         (true, 1, "HL7-QCK-write-failed"),
         (false, 2, "HL7-query-deadline-before-DSR"),
@@ -698,8 +716,9 @@ fn hl7_231_2_18_qck_precedes_dsr_and_failed_or_expired_qck_never_issues_work() -
     Ok(())
 }
 
+// HL7 2.3.1 §2.18
 #[test]
-fn hl7_231_2_18_dsr_issuance_starts_ack_budget_without_retry() -> TestResult {
+fn dsr_issuance_starts_ack_budget_without_retry() -> TestResult {
     let mut d = dialog()?;
     d.enable_orders(analyte_hl7::Version::V251)?;
     let payload = analyte_framing::hl7::payload(&message(""))
@@ -738,8 +757,9 @@ fn hl7_231_2_18_dsr_issuance_starts_ack_budget_without_retry() -> TestResult {
 }
 
 // HL7 2.9.1 section 2.8.3.2: NE/AL still requires a separate channel.
+// HL7 2.9.1 §2.8.3.2
 #[test]
-fn hl7_291_s2_8_3_2_enhanced_application_ack_requires_separate_channel() -> TestResult {
+fn enhanced_application_ack_needs_separate_channel() -> TestResult {
     for mode in ["NE|AL", "AL|AL", "AL|ER", "AL|SU"] {
         let mut dialog = dialog()?;
         let raw = String::from_utf8(message(mode))?

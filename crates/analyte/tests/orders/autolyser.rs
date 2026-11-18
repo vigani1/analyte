@@ -118,9 +118,9 @@ async fn wait_count(path: &Path, sql: &str, expected: i64) -> Result<(), Error> 
     })
     .await?
 }
+// Autolyser manual Rev18 chapter 23
 #[tokio::test]
-async fn autolyser_rev18_ch23_confirmed_insertion_carries_explicit_clone_and_stays_sent_on_restart()
--> Result<(), Error> {
+async fn confirmed_insertion_sends_clone_and_survives_restart() -> Result<(), Error> {
     for clone in [true, false] {
         let (hook, control) = analyte::runtime::test_hooks::Committed::new();
         let (temp, path, reference, service, mut peer) =
@@ -183,9 +183,9 @@ async fn autolyser_rev18_ch23_confirmed_insertion_carries_explicit_clone_and_sta
     }
     Ok(())
 }
+// Autolyser manual Rev18 chapter 23
 #[tokio::test]
-async fn autolyser_rev18_ch23_unanswered_initial_poll_never_reserves_or_sends_order()
--> Result<(), Error> {
+async fn unanswered_poll_never_reserves_or_sends() -> Result<(), Error> {
     // Exercise the acknowledgment_ms deadline with the peer deliberately withholding input.
     let settings =
         definition(false).rewrite("acknowledgment_ms = 5000", "acknowledgment_ms = 1000");
@@ -221,8 +221,9 @@ async fn autolyser_rev18_ch23_unanswered_initial_poll_never_reserves_or_sends_or
     reference.close().await?;
     Ok(())
 }
+// Autolyser manual Rev18 chapter 23
 #[tokio::test]
-async fn autolyser_rev18_ch23_unanswered_insertion_is_uncertain_not_sent() -> Result<(), Error> {
+async fn unanswered_insertion_is_uncertain() -> Result<(), Error> {
     // Exercise the acknowledgment_ms deadline with the peer deliberately withholding input.
     let settings =
         definition(false).rewrite("acknowledgment_ms = 5000", "acknowledgment_ms = 1000");
@@ -244,9 +245,9 @@ async fn autolyser_rev18_ch23_unanswered_insertion_is_uncertain_not_sent() -> Re
     reference.close().await?;
     Ok(())
 }
+// Autolyser manual Rev18 chapter 23
 #[tokio::test]
-async fn autolyser_rev18_ch23_parked_partial_reply_is_uncertain_same_round_with_timeout_code()
--> Result<(), Error> {
+async fn partial_reply_is_parked_and_uncertain() -> Result<(), Error> {
     // Exercise the interbyte_ms deadline with the peer deliberately withholding input.
     let settings = definition(false).rewrite("interbyte_ms = 5000", "interbyte_ms = 1000");
     let (temp, path, reference, service, mut peer) =
@@ -266,8 +267,9 @@ async fn autolyser_rev18_ch23_parked_partial_reply_is_uncertain_same_round_with_
     reference.close().await?;
     Ok(())
 }
+// Autolyser manual Rev18 chapter 23
 #[tokio::test]
-async fn autolyser_rev18_ch23_parked_bad_ack_is_uncertain_same_round() -> Result<(), Error> {
+async fn bad_ack_is_parked_and_uncertain() -> Result<(), Error> {
     let (temp, path, reference, service, mut peer) = setup(order()?, false).await?;
     empty_poll(&mut peer).await?;
     assert_eq!(byte(&mut peer).await?, 2);
@@ -286,9 +288,9 @@ async fn autolyser_rev18_ch23_parked_bad_ack_is_uncertain_same_round() -> Result
     reference.close().await?;
     Ok(())
 }
+// Autolyser manual Rev18 chapter 23
 #[tokio::test]
-async fn autolyser_rev18_ch23_disconnect_mid_send_retains_partial_reply_and_uncertain_code()
--> Result<(), Error> {
+async fn disconnect_mid_send_keeps_partial_reply() -> Result<(), Error> {
     let (temp, path, reference, service, mut peer) = setup(order()?, false).await?;
     insertion(&mut peer, &path, false).await?;
     peer.write_all(b"Y").await?;
@@ -306,9 +308,9 @@ async fn autolyser_rev18_ch23_disconnect_mid_send_retains_partial_reply_and_unce
     reference.close().await?;
     Ok(())
 }
+// ADR 0004; Safety rule 8 (ADR 0003)
 #[tokio::test]
-async fn adr0004_rule8_autolyser_restart_during_send_recovers_only_sending_never_replays()
--> Result<(), Error> {
+async fn restart_recovers_only_sending_never_replays() -> Result<(), Error> {
     let (temp, path, reference, service, mut peer) = setup(order()?, false).await?;
     insertion(&mut peer, &path, false).await?;
     service.crash().await?;
@@ -359,9 +361,9 @@ async fn rejection(value: serde_json::Value, code: &str) -> Result<(), Error> {
     reference.close().await?;
     Ok(())
 }
+// Autolyser manual Rev18 chapter 23
 #[tokio::test]
-async fn autolyser_rev18_ch23_unmapped_test_rejects_whole_order_before_insertion()
--> Result<(), Error> {
+async fn unmapped_test_rejects_whole_order() -> Result<(), Error> {
     let mut value = order()?;
     value["tests"]
         .as_array_mut()
@@ -369,15 +371,16 @@ async fn autolyser_rev18_ch23_unmapped_test_rejects_whole_order_before_insertion
         .push(serde_json::json!({"namespace":"synthetic","value":"UNKNOWN"}));
     rejection(value,"rejected: unmapped test NamespacedId { namespace: Identifier(\"synthetic\"), value: Identifier(\"UNKNOWN\") }").await
 }
+// Autolyser manual Rev18 chapter 23
 #[tokio::test]
-async fn autolyser_rev18_ch23_unmapped_specimen_type_rejects_before_insertion() -> Result<(), Error>
-{
+async fn unmapped_specimen_type_rejects_before_insertion() -> Result<(), Error> {
     let mut value = order()?;
     value["specimen_type"]["namespace"] = "other".into();
     rejection(value, "rejected: unmapped-specimen-type").await
 }
+// Autolyser manual Rev18 chapter 23
 #[tokio::test]
-async fn autolyser_rev18_ch23_missing_required_specimen_type_has_no_default() -> Result<(), Error> {
+async fn missing_specimen_type_has_no_default() -> Result<(), Error> {
     let mut value = order()?;
     value
         .as_object_mut()
@@ -385,14 +388,16 @@ async fn autolyser_rev18_ch23_missing_required_specimen_type_has_no_default() ->
         .remove("specimen_type");
     rejection(value, "rejected: missing-specimen-type").await
 }
+// Autolyser manual Rev18 chapter 23
 #[tokio::test]
-async fn autolyser_rev18_ch23_missing_cup_position_never_autoassigns_zero() -> Result<(), Error> {
+async fn missing_cup_position_never_becomes_zero() -> Result<(), Error> {
     let mut value = order()?;
     value.as_object_mut().ok_or("order")?.remove("position");
     rejection(value, "rejected: missing-cup-position").await
 }
+// Autolyser manual Rev18 chapter 23
 #[tokio::test]
-async fn autolyser_rev18_ch23_zero_or_invalid_cup_position_is_rejected() -> Result<(), Error> {
+async fn zero_or_invalid_cup_position_is_rejected() -> Result<(), Error> {
     for slot in ["00", "100", "A1"] {
         let mut value = order()?;
         value["position"]["slot"] = slot.into();
@@ -400,27 +405,30 @@ async fn autolyser_rev18_ch23_zero_or_invalid_cup_position_is_rejected() -> Resu
     }
     Ok(())
 }
+// ADR 0004
 #[tokio::test]
-async fn adr0004_autolyser_wrong_patient_namespace_rejects_before_insertion() -> Result<(), Error> {
+async fn wrong_patient_namespace_rejects_before_insertion() -> Result<(), Error> {
     let mut value = order()?;
     value["patient"]["id"]["namespace"] = "other".into();
     rejection(value, "rejected: patient-namespace-mismatch").await
 }
+// Autolyser manual Rev18 chapter 23
 #[tokio::test]
-async fn autolyser_rev18_ch23_missing_patient_never_uses_sample_id() -> Result<(), Error> {
+async fn missing_patient_never_uses_sample_id() -> Result<(), Error> {
     let mut value = order()?;
     value.as_object_mut().ok_or("order")?.remove("patient");
     rejection(value, "rejected: missing-patient").await
 }
+// Autolyser manual Rev18 chapter 23
 #[tokio::test]
-async fn autolyser_rev18_ch23_overlong_patient_id_never_truncated() -> Result<(), Error> {
+async fn overlong_patient_id_is_never_truncated() -> Result<(), Error> {
     let mut value = order()?;
     value["patient"]["id"]["value"] = "1234567890123456".into();
     rejection(value, "rejected: overlong-patient-id").await
 }
+// ADR 0004
 #[tokio::test]
-async fn adr0004_autolyser_cancelled_before_send_has_no_insertion_or_send_event()
--> Result<(), Error> {
+async fn cancelled_before_send_never_inserts() -> Result<(), Error> {
     let mut value = order()?;
     value["state"] = "cancel_requested".into();
     let (temp, path, reference, service, mut peer) = setup(value, false).await?;
@@ -452,8 +460,9 @@ async fn adr0004_autolyser_cancelled_before_send_has_no_insertion_or_send_event(
     reference.close().await?;
     Ok(())
 }
+// ADR 0004
 #[tokio::test]
-async fn adr0004_autolyser_missing_patient_namespace_prevents_program_start() -> Result<(), Error> {
+async fn missing_patient_namespace_blocks_startup() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = vendor_config(
         temp.path(),
@@ -481,9 +490,9 @@ async fn adr0004_autolyser_missing_patient_namespace_prevents_program_start() ->
     reference.close().await?;
     Ok(())
 }
+// Autolyser manual Rev18 chapter 23
 #[tokio::test]
-async fn autolyser_rev18_ch23_negative_or_unknown_insertion_reply_never_claims_sent()
--> Result<(), Error> {
+async fn negative_or_unknown_reply_never_claims_sent() -> Result<(), Error> {
     for (reply, code) in [
         (b"N\x06", "Autolyser-insertion-rejected-Position"),
         (b"?\x03", "Autolyser-insertion-unknown-3F-03"),

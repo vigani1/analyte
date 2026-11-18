@@ -2,9 +2,9 @@
 use super::*;
 use analyte_fixtures::ConfigEdit as _;
 
+// IHE PaLM TF-2b §B.6
 #[test]
-fn law_tf2b_b6_single_persistent_manager_accepts_client_and_server_without_startup_io()
--> Result<(), Error> {
+fn law_roles_validate_without_startup_io() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), false)?;
     std::fs::write(
@@ -45,8 +45,9 @@ fn law_tf2b_b6_single_persistent_manager_accepts_client_and_server_without_start
     Ok(())
 }
 
+// HL7 2.5.1 §2.15.5.2; ADR 0003
 #[tokio::test]
-async fn hl7_251_2_15_5_2_adr0003_ae_reports_actual_mapping_location() -> Result<(), Error> {
+async fn hl7_ae_reports_actual_mapping_location() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), false)?;
     let program = Program::load(&path)?;
@@ -113,9 +114,9 @@ async fn hl7_251_2_15_5_2_adr0003_ae_reports_actual_mapping_location() -> Result
     Ok(())
 }
 
+// CLSI LIS01-A2 §6.3; ADR 0003
 #[tokio::test]
-async fn lis01_6_3_adr0003_astm_journal_precedes_ack_and_message_is_interpreted()
--> Result<(), Error> {
+async fn astm_journal_precedes_ack_and_is_interpreted() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), true)?;
     let program = Program::load(&path)?;
@@ -182,8 +183,9 @@ async fn lis01_6_3_adr0003_astm_journal_precedes_ack_and_message_is_interpreted(
     Ok(())
 }
 
+// ADR 0003
 #[tokio::test]
-async fn adr0003_full_disk_refuses_astm_enq_and_shutdown_is_bounded() -> Result<(), Error> {
+async fn full_disk_refuses_enq_with_bounded_shutdown() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), true)?;
     let program = Program::load(&path)?;
@@ -201,8 +203,9 @@ async fn adr0003_full_disk_refuses_astm_enq_and_shutdown_is_bounded() -> Result<
     Ok(())
 }
 
+// ADR 0002
 #[test]
-fn adr0002_check_config_prints_effective_digest_and_documented_evidence() -> Result<(), Error> {
+fn check_config_prints_digest_and_evidence() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     for astm in [true, false] {
         let path = config(temp.path(), astm)?;
@@ -224,8 +227,9 @@ fn adr0002_check_config_prints_effective_digest_and_documented_evidence() -> Res
     Ok(())
 }
 
+// ADR 0003
 #[tokio::test]
-async fn adr0003_hl7_full_disk_never_returns_positive_ack() -> Result<(), Error> {
+async fn hl7_full_disk_never_acks_positively() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), false)?;
     let program = Program::load(&path)?;
@@ -248,8 +252,9 @@ async fn adr0003_hl7_full_disk_never_returns_positive_ack() -> Result<(), Error>
     Ok(())
 }
 
+// Plan §5
 #[tokio::test]
-async fn plan5_machine_bind_failure_does_not_stop_another_machine() -> Result<(), Error> {
+async fn bind_failure_does_not_stop_other_machines() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), false)?;
     let occupied = std::net::TcpListener::bind("127.0.0.1:0")?;
@@ -277,9 +282,9 @@ async fn plan5_machine_bind_failure_does_not_stop_another_machine() -> Result<()
     Ok(())
 }
 
+// Plan §11
 #[tokio::test]
-async fn plan11_operator_list_show_resolve_are_audited_and_backup_is_readable() -> Result<(), Error>
-{
+async fn operator_commands_are_audited_and_backup_readable() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), false)?;
     let program = Program::load(&path)?;
@@ -377,9 +382,9 @@ async fn plan11_operator_list_show_resolve_are_audited_and_backup_is_readable() 
     Ok(())
 }
 
+// Plan §11
 #[tokio::test]
-async fn plan11_native_capacity_probe_is_bounded_and_file_pickup_keeps_original()
--> Result<(), Error> {
+async fn capacity_probe_bounded_and_pickup_keeps_original() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), false)?;
     let incoming = temp.path().join("incoming");
@@ -446,9 +451,9 @@ async fn plan11_native_capacity_probe_is_bounded_and_file_pickup_keeps_original(
     Ok(())
 }
 
+// ADR 0003
 #[tokio::test]
-async fn adr0003_shutdown_parks_incomplete_astm_frame_and_keeps_journal_provenance()
--> Result<(), Error> {
+async fn shutdown_parks_incomplete_astm_frame() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), true)?;
     let program = Program::load(&path)?;

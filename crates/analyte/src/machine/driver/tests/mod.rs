@@ -94,8 +94,9 @@ impl Protocol for Probe {
         Err(Error::Cleanup)
     }
 }
+// ADR 0012
 #[test]
-fn adr0012_apply_failures_outrank_stop_and_keep_every_cause() {
+fn apply_failures_outrank_stop_and_keep_every_cause() {
     let mut failures = Failures::new();
     assert!(matches!(
         Failures::<Error>::new().finish(Ok(Flow::Stop)),
@@ -143,9 +144,9 @@ async fn synthetic(
 /// outranks all three. An [`Effects`] host ends at a stop without input; a
 /// [`Protocol`] host first sees it as a disconnect so its dialog parks what is
 /// open. Cleanup runs in every case and keeps both causes.
+// ADR 0001, ADR 0003
 #[tokio::test]
-async fn adr0001_0003_stop_deadline_and_cleanup_preserve_priority_and_both_causes()
--> Result<(), crate::Error> {
+async fn stop_outranks_deadline_and_cleanup_keeps_both_causes() -> Result<(), crate::Error> {
     let temp = tempfile::tempdir()?;
     let hl7 = include_str!("../../../../../core/config/examples/hl7.toml");
     let (program, mut store) = synthetic(temp.path(), hl7).await?;
@@ -228,9 +229,9 @@ impl Effects for Refuser {
 /// The current-thread runtime makes the order deterministic: the session and the
 /// TCP pump share one task, so the owner's cancel runs before the pump next looks
 /// at its queue unless `run` waits for the queue to be sent.
+// ADR 0003
 #[tokio::test(flavor = "current_thread")]
-async fn adr0003_refusal_queued_before_an_error_is_sent_before_the_owner_closes()
--> Result<(), crate::Error> {
+async fn queued_refusal_is_sent_before_owner_closes() -> Result<(), crate::Error> {
     use tokio::io::AsyncReadExt as _;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let mut peer = tokio::net::TcpStream::connect(listener.local_addr()?).await?;

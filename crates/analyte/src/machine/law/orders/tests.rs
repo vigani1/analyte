@@ -2,8 +2,9 @@
 use super::*;
 use crate::Error;
 
+// ADR 0004
 #[tokio::test]
-async fn adr0004_law_superseded_mapping_rejection_continues_idle_admission() -> Result<(), Error> {
+async fn superseded_mapping_rejection_continues_idle_admission() -> Result<(), Error> {
     let definition = format!(
         "{}\n{}",
         include_str!("../../../../../core/config/examples/law.toml"),

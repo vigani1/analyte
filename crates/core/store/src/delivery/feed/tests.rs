@@ -2,8 +2,9 @@
 use crate::test_support::*;
 use crate::*;
 
+// ADR 0004
 #[test]
-fn adr0004_order_cache_distinguishes_empty_stale_reset_and_tombstones() -> TestResult {
+fn order_cache_tells_empty_stale_reset_and_tombstones() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("store.db"))?;
     let destination = Identifier::new("app")?;
@@ -60,8 +61,9 @@ fn adr0004_order_cache_distinguishes_empty_stale_reset_and_tombstones() -> TestR
     Ok(())
 }
 
+// ADR 0004
 #[test]
-fn adr0004_reset_snapshot_excludes_orders_absent_from_replacement() -> TestResult {
+fn reset_snapshot_drops_orders_absent_from_replacement() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("store.db"))?;
     let destination = Identifier::new("app")?;
@@ -92,8 +94,9 @@ fn adr0004_reset_snapshot_excludes_orders_absent_from_replacement() -> TestResul
     Ok(())
 }
 
+// ADR 0004
 #[test]
-fn adr0004_failed_page_never_advances_its_cursor() -> TestResult {
+fn failed_page_never_advances_its_cursor() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("store.db"))?;
     let destination = Identifier::new("app")?;
@@ -131,8 +134,9 @@ fn adr0004_failed_page_never_advances_its_cursor() -> TestResult {
     Ok(())
 }
 
+// ADR 0008, ADR 0004; mutation-testing regression
 #[test]
-fn mutation_adr0008_adr0004_feed_page_bounds_and_lookup_trust_are_independent() -> TestResult {
+fn feed_page_bounds_and_lookup_trust_are_independent() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("feed-bounds.db"))?;
     store.limits.page_rows = 1;

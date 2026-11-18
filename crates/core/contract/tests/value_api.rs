@@ -1,6 +1,7 @@
 //! Checks that public value construction preserves readable evidence.
+// Safety rule 5 (ADR 0003)
 #[test]
-fn rule5_public_values_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
+fn public_values_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
     use analyte_contract::document::*;
     let original = SourceText::new("001.20")?;
     let values = [
@@ -24,8 +25,9 @@ fn rule5_public_values_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+// Safety rule 5 (ADR 0003)
 #[test]
-fn rule5_public_model_values_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
+fn public_model_values_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
     use analyte_model::*;
     let original = SourceText::new("001.20")?;
     let values = [

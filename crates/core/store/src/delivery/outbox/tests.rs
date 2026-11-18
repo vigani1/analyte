@@ -3,8 +3,9 @@ use crate::test_support::*;
 use crate::*;
 use analyte_model::Reason;
 
+// ADR 0008
 #[test]
-fn adr0008_outbox_and_interpretation_rollback_together() -> TestResult {
+fn outbox_and_interpretation_roll_back_together() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("store.db"))?;
     let metadata = receipt(b"raw")?;
@@ -46,8 +47,9 @@ fn adr0008_outbox_and_interpretation_rollback_together() -> TestResult {
     Ok(())
 }
 
+// ADR 0008
 #[test]
-fn adr0008_parked_head_blocks_correction_but_not_other_machine() -> TestResult {
+fn parked_head_blocks_correction_not_other_machine() -> TestResult {
     let app = Identifier::new("app")?;
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("store.db"))?;
@@ -86,8 +88,9 @@ fn adr0008_parked_head_blocks_correction_but_not_other_machine() -> TestResult {
     Ok(())
 }
 
+// ADR 0008
 #[test]
-fn adr0008_public_enqueue_is_atomic_and_retry_keeps_id_and_bytes() -> TestResult {
+fn atomic_enqueue_and_retry_keeps_id_and_bytes() -> TestResult {
     let app = Identifier::new("app")?;
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("store.db"))?;
@@ -175,8 +178,9 @@ fn adr0008_public_enqueue_is_atomic_and_retry_keeps_id_and_bytes() -> TestResult
     Ok(())
 }
 
+// ADR 0008
 #[test]
-fn adr0008_event_provenance_health_ordering_and_restart_attempts() -> TestResult {
+fn order_events_keep_provenance_health_and_attempts() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("events.db");
     let mut store = open(&path)?;
@@ -275,8 +279,9 @@ fn adr0008_event_provenance_health_ordering_and_restart_attempts() -> TestResult
     Ok(())
 }
 
+// ADR 0003
 #[test]
-fn adr0003_withdrawal_assigns_next_revision_and_retransmission_enqueues_nothing() -> TestResult {
+fn withdrawal_takes_next_revision_retransmission_enqueues_nothing() -> TestResult {
     use analyte_model::*;
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("withdrawal.db"))?;
@@ -349,8 +354,9 @@ fn adr0003_withdrawal_assigns_next_revision_and_retransmission_enqueues_nothing(
     Ok(())
 }
 
+// ADR 0008
 #[test]
-fn adr0008_recovery_audits_interrupted_attempts_and_preserves_blocked_items() -> TestResult {
+fn recovery_audits_interrupted_attempts_keeps_blocked_items() -> TestResult {
     let app = Identifier::new("app")?;
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("recover.db");
@@ -421,8 +427,9 @@ fn adr0008_recovery_audits_interrupted_attempts_and_preserves_blocked_items() ->
     Ok(())
 }
 
+// ADR 0008; mutation-testing regression
 #[test]
-fn mutation_adr0008_recovery_audit_bound_is_inclusive_and_refusal_keeps_the_claim() -> TestResult {
+fn recovery_audit_bound_inclusive_refusal_keeps_claim() -> TestResult {
     let app = Identifier::new("app")?;
     for delta in [0, 1] {
         let temp = tempfile::tempdir()?;

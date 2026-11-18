@@ -4,9 +4,9 @@
 use analyte_contract::{Delivery, ResultDocument, decode};
 use serde_json::{Value, json};
 
+// Safety rule 5 (ADR 0003)
 #[test]
-fn rule5_decoded_text_preserves_original_and_never_accompanies_unsupported()
--> Result<(), Box<dyn std::error::Error>> {
+fn decoded_text_keeps_original_never_with_unsupported() -> Result<(), Box<dyn std::error::Error>> {
     for bytes in [
         include_bytes!("../../../../docs/contract/vectors/decoded-text.json").as_slice(),
         include_bytes!("../../../../docs/contract/vectors/unsupported-formatting.json").as_slice(),
@@ -137,9 +137,9 @@ fn model_fixture(value: &mut Value) {
     }
 }
 
+// ADR 0008
 #[test]
-fn adr0008_published_result_vectors_convert_without_loss() -> Result<(), Box<dyn std::error::Error>>
-{
+fn published_result_vectors_convert_without_loss() -> Result<(), Box<dyn std::error::Error>> {
     for bytes in [
         include_bytes!("../../../../docs/contract/vectors/delivery.json").as_slice(),
         include_bytes!("../../../../docs/contract/vectors/unresolved-identity.json").as_slice(),
@@ -237,9 +237,9 @@ fn adr0008_published_result_vectors_convert_without_loss() -> Result<(), Box<dyn
     Ok(())
 }
 
+// ADR 0008
 #[test]
-fn adr0008_selected_interpretations_and_source_text_survive()
--> Result<(), Box<dyn std::error::Error>> {
+fn selected_interpretations_and_source_text_survive() -> Result<(), Box<dyn std::error::Error>> {
     let mut document: Value = serde_json::from_slice(include_bytes!(
         "../../../../docs/contract/vectors/delivery.json"
     ))?;
@@ -264,8 +264,9 @@ fn adr0008_selected_interpretations_and_source_text_survive()
     Ok(())
 }
 
+// ADR 0008
 #[test]
-fn adr0008_invalid_evidence_is_rejected() -> Result<(), Box<dyn std::error::Error>> {
+fn invalid_evidence_is_rejected() -> Result<(), Box<dyn std::error::Error>> {
     let base: Value = serde_json::from_slice(include_bytes!(
         "../../../../docs/contract/vectors/delivery.json"
     ))?;
@@ -293,9 +294,9 @@ fn adr0008_invalid_evidence_is_rejected() -> Result<(), Box<dyn std::error::Erro
     Ok(())
 }
 
+// ADR 0008
 #[test]
-fn adr0008_modes_statuses_and_provenance_variants_survive() -> Result<(), Box<dyn std::error::Error>>
-{
+fn modes_statuses_and_provenance_variants_survive() -> Result<(), Box<dyn std::error::Error>> {
     let base: Value = serde_json::from_slice(include_bytes!(
         "../../../../docs/contract/vectors/delivery.json"
     ))?;
@@ -387,8 +388,9 @@ fn adr0008_modes_statuses_and_provenance_variants_survive() -> Result<(), Box<dy
     Ok(())
 }
 
+// Safety rule 8 (ADR 0003)
 #[test]
-fn rule8_internal_sending_has_no_contract_representation() {
+fn internal_sending_state_has_no_wire_form() {
     assert!(matches!(
         analyte_contract::document::OrderState::try_from(&analyte_model::OrderState::Sending),
         Err(analyte_contract::DocumentError::InternalOrderState)
@@ -396,9 +398,9 @@ fn rule8_internal_sending_has_no_contract_representation() {
     assert!(decode::<analyte_contract::document::OrderState>(b"\"sending\"").is_err());
 }
 
+// ADR 0008; Safety rule 6 (ADR 0003)
 #[test]
-fn adr0008_rule6_dilution_original_survives_without_a_guessed_factor()
--> Result<(), Box<dyn std::error::Error>> {
+fn dilution_original_survives_without_guessed_factor() -> Result<(), Box<dyn std::error::Error>> {
     let model = analyte_model::Dilution {
         original: Some(analyte_model::SourceText::new("1:10")?),
         factor: None,

@@ -455,8 +455,9 @@ pub(super) fn timing(value: Repetition<'_>, version: Version) -> bool {
 mod tests {
     use super::*;
 
+    // HL7 2.3.1; HL7 2.4 errata of 2002-04-08
     #[test]
-    fn hl7_2_3_1_and_2_4_20020408_errata_order_sequencing_component_model() {
+    fn order_sequencing_component_model() {
         let valid: &[&[u8]] = &[
             b"S", b"00001", b"LAB", b"00002", b"LAB", b"", b"2", b"1.2.3", b"ISO", b"1.2.4", b"ISO",
         ];
@@ -471,8 +472,9 @@ mod tests {
         }
     }
 
+    // HL7 2.3.1 §4.4; HL7 2.5.1 §2.A.50
     #[test]
-    fn hl7_231_4_4_and_251_2_a_50_order_sequence_required_fields_and_lengths() {
+    fn order_sequence_required_fields_and_lengths() {
         let valid: &[&[u8]] = &[
             b"S", b"placer", b"", b"filler", b"", b"", b"", b"uid1", b"", b"uid2",
         ];
@@ -490,8 +492,9 @@ mod tests {
         }
     }
 
+    // HL7 2.3.1 §2.8.3; HL7 2.5.1 §2.A.6
     #[test]
-    fn hl7_231_2_8_3_and_251_2_a_6_coded_component_lengths() {
+    fn coded_component_length_limits() {
         for (field, maximum) in [(0, 20), (1, 199), (2, 20), (3, 20), (4, 199), (5, 20)] {
             let at_limit = vec![b'A'; maximum];
             let beyond = vec![b'A'; maximum + 1];
@@ -545,8 +548,9 @@ pub(crate) fn universal_id(value: &[u8], kind: &[u8]) -> bool {
 #[cfg(test)]
 mod standards_pass_5 {
     use super::*;
+    // HL7 2.5.1 §2.A.33.2; IHE PaLM TF-2b
     #[test]
-    fn hl7_251_2_a_33_2_law_supported_iso_uids_require_oid_syntax() {
+    fn iso_universal_ids_require_oid_syntax() {
         for value in [b"1.2.3".as_slice(), b"0.0", b"2.999999999999999999999"] {
             assert!(universal_id(value, b"ISO"));
         }
@@ -564,8 +568,9 @@ mod standards_pass_5 {
         }
         assert!(!universal_id(b"1.2.3", b"URI"));
     }
+    // HL7 2.5.1 §2.A.22
     #[test]
-    fn hl7_251_2_a_22_supported_timezone_offsets() {
+    fn supported_timezone_offsets() {
         for value in [
             b"20240229235959-1200".as_slice(),
             b"20260101000000+1400",

@@ -375,8 +375,9 @@ mod tests {
     use proptest::prelude::*;
 
     proptest! {
+        // ADR 0008
         #[test]
-        fn adr0008_backoff_is_capped_and_honours_retry_after(attempts in any::<u64>(), after in any::<u64>()) {
+        fn backoff_is_capped_and_honours_retry_after(attempts in any::<u64>(), after in any::<u64>()) {
             let limits=crate::Limits {request_timeout:Duration::from_secs(2),store_timeout:Duration::from_secs(30),backoff_min:Duration::from_secs(2),backoff_max:Duration::from_secs(60),freshness:Duration::from_secs(30),poll_interval:Duration::from_secs(1),page_size:100,max_pages:100};
             let destination=Destination::new(Identifier::new("app")?,"https://example.invalid/",Identifier::new("secret")?,limits)?;
             let delay=backoff(&destination,attempts,Some(after));

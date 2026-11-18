@@ -570,8 +570,9 @@ impl Dialog {
 mod tests {
     use super::*;
 
+    // ADR 0001
     #[test]
-    fn adr_0001_exhausted_token_is_distinct_from_reversed_time() {
+    fn exhausted_token_differs_from_reversed_time() {
         let config = Config {
             poll: Duration::from_secs(1),
             ack: Duration::from_secs(1),

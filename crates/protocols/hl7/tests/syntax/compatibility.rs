@@ -15,8 +15,9 @@ fn response() -> Result<Response<'static>, Error> {
     })
 }
 
+// HL7 2.5.1 §2.8.2
 #[test]
-fn hl7_2_5_1_s2_8_2_datatype_prefix_preserves_legacy_msh_identity() {
+fn legacy_msh_identity_is_preserved() {
     for version in ["2.3", "2.4", "2.5"] {
         let input = message(version, "20261116", "ORU^R01^ORU_R01", "").unwrap();
         let msh = Msh::new(&input).unwrap();
@@ -26,8 +27,9 @@ fn hl7_2_5_1_s2_8_2_datatype_prefix_preserves_legacy_msh_identity() {
     }
 }
 
+// HL7 2.5.1 §2.15.9.7
 #[test]
-fn hl7_2_5_1_s2_15_9_7_required_since_2_4_not_retroactive_to_2_3() {
+fn msh7_requirement_is_not_retroactive() {
     for (version, required) in [("2.3", false), ("2.4", true), ("2.5", true)] {
         let input = message(version, "", "ORU^R01^ORU_R01", "").unwrap();
         if required {
@@ -44,8 +46,9 @@ fn hl7_2_5_1_s2_15_9_7_required_since_2_4_not_retroactive_to_2_3() {
     }
 }
 
+// HL7 2.5.1 §2.A.44
 #[test]
-fn hl7_2_5_1_s2_a_44_msg_replaces_cm_as_of_2_5() {
+fn msg_type_replaces_cm_only_in_later_editions() {
     for version in ["2.3", "2.4"] {
         assert!(Msh::new(&message(version, "20261116", "ORU^R01", "").unwrap()).is_ok());
     }
@@ -58,8 +61,9 @@ fn hl7_2_5_1_s2_a_44_msg_replaces_cm_as_of_2_5() {
     ));
 }
 
+// HL7 2.3.1 errata §2.8.44.1; HL7 2.4 errata §2.9.47.1
 #[test]
-fn hl7_2_3_1_errata_s2_8_44_1_and_2_4_errata_s2_9_47_1_ts_precision() {
+fn legacy_timestamp_precision_is_checked() {
     for version in ["2.3", "2.4", "2.5"] {
         for time in [
             "2026",
@@ -91,8 +95,9 @@ fn hl7_2_3_1_errata_s2_8_44_1_and_2_4_errata_s2_9_47_1_ts_precision() {
     }
 }
 
+// HL7 2.5.1 §2.8.2, §2.15.5.1
 #[test]
-fn hl7_2_5_1_s2_8_2_and_s2_15_5_1_ack_edition_and_error_shapes() {
+fn legacy_ack_keeps_edition_and_err_shape() {
     for version in ["2.3", "2.4", "2.5"] {
         let input = message(version, "20261116", "ORU^R01^ORU_R01", "").unwrap();
         let ack = acknowledgment(
@@ -145,8 +150,9 @@ fn query(version: &str, who: &str) -> Result<Message, Error> {
     )
 }
 
+// HL7 2.5.1 §2.8, §5.10
 #[test]
-fn hl7_2_5_1_s2_8_and_s5_10_legacy_query_unavailable_is_not_empty() {
+fn legacy_query_unavailable_is_not_empty() {
     for version in ["2.3", "2.4", "2.5"] {
         let input = query(version, "0001^^^^^^^LCL").unwrap();
         let request = query::Request::new(&input).unwrap();
@@ -164,8 +170,9 @@ fn hl7_2_5_1_s2_8_and_s5_10_legacy_query_unavailable_is_not_empty() {
     }
 }
 
+// HL7 2.4 errata of 2002-04-08, XCN-17
 #[test]
-fn hl7_2_4_20020408_errata_xcn_17_unsettled_nested_range_is_refused_and_raw() {
+fn xcn17_nested_range_is_refused_and_kept_raw() {
     let who = format!("0001^^^^^^^LCL{}20261116&20261117", "^".repeat(9));
     let input = query("2.4", &who).unwrap();
     assert!(matches!(
@@ -179,8 +186,9 @@ fn hl7_2_4_20020408_errata_xcn_17_unsettled_nested_range_is_refused_and_raw() {
     assert_eq!(qrd.field(8).unwrap().raw(), who.as_bytes());
 }
 
+// HL7 2.5.1 §2.8.2
 #[test]
-fn hl7_2_5_1_s2_8_2_table_changes_do_not_establish_earlier_utf8_code() {
+fn utf8_code_is_not_backdated_to_legacy_editions() {
     for version in ["2.3", "2.4", "2.5"] {
         let raw = format!(
             "MSH|^~\\&|S|F|R|F|20261116||ORU^R01^ORU_R01|id|P|{version}||||||UNICODE UTF-8\r"
@@ -199,8 +207,9 @@ fn hl7_2_5_1_s2_8_2_table_changes_do_not_establish_earlier_utf8_code() {
     }
 }
 
+// HL7 2.5.1 §2.8.1, §2.8.2
 #[test]
-fn hl7_2_5_1_s2_8_1_2_unsettled_query_extensions_and_uri_codes_are_refused() {
+fn unsettled_query_extensions_and_uri_codes_refused() {
     for version in ["2.3", "2.4", "2.5"] {
         let who = "0001^^^^^^^^NS&https://synthetic.invalid/id&URI";
         let input = query(version, who).unwrap();

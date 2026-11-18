@@ -178,8 +178,9 @@ mod tests {
     }
 
     // Plan section 11: real scalar reads raise/clear all kinds at controlled Unix times.
+    // Plan §11
     #[tokio::test]
-    async fn plan11_each_kind_raises_clears_and_restart_does_not_repeat() -> Result<(), Error> {
+    async fn each_alert_kind_raises_and_clears_once() -> Result<(), Error> {
         let temp = tempfile::tempdir()?;
         let path = temp.path().join("alerts.db");
         let space = Arc::new(AtomicU64::new(1034));
@@ -273,8 +274,9 @@ mod tests {
     use crate::runtime::log_capture::Log;
 
     // Rule 10 and plan section 11: only scalar values and machine IDs reach transition logs.
+    // Safety rule 10 (ADR 0003)
     #[test]
-    fn rule10_alert_logs_exclude_responder_and_sample_ids() -> Result<(), Error> {
+    fn alert_logs_exclude_responder_and_sample_ids() -> Result<(), Error> {
         crate::runtime::log_capture::init();
         let log = Log(Arc::new(Mutex::new(Vec::new())));
         let subscriber = tracing_subscriber::fmt()
@@ -323,9 +325,9 @@ mod tests {
 
     // Plan section 11 and rule 7: cancellation of a queued read releases the evaluator,
     // even while the separately owned storage thread is occupied.
+    // Plan §11
     #[tokio::test]
-    async fn plan11_evaluator_cancels_during_store_read_within_shutdown_bound() -> Result<(), Error>
-    {
+    async fn evaluator_cancels_store_read_within_shutdown_bound() -> Result<(), Error> {
         let temp = tempfile::tempdir()?;
         let store = open_store(temp.path().join("cancel.db")).await?;
         let (entered, waiting) = tokio::sync::oneshot::channel();
@@ -361,8 +363,9 @@ mod tests {
     }
 
     // Plan section 11: an unavailable store read has its own five-second deadline.
+    // Plan §11
     #[tokio::test]
-    async fn plan11_store_read_deadline_is_specific_and_preserves_state() -> Result<(), Error> {
+    async fn store_read_deadline_is_specific_and_keeps_state() -> Result<(), Error> {
         let temp = tempfile::tempdir()?;
         let store = open_store(temp.path().join("deadline.db")).await?;
         let (entered, waiting) = tokio::sync::oneshot::channel();
@@ -407,8 +410,9 @@ mod tests {
     }
 
     // Plan section 11: display ages use the raise, not evaluation time; rollback stays unknown.
+    // Plan §11
     #[test]
-    fn plan11_display_age_uses_raise_and_handles_clock_rollback() {
+    fn display_age_counts_from_raise_and_survives_rollback() {
         let mut state = AlertState {
             key: AlertKey::RestorePaused,
             responder: "officer".into(),
@@ -425,8 +429,9 @@ mod tests {
     }
 
     // Plan section 11: unknown cache or machine history must not silently clear an alert.
+    // Plan §11
     #[test]
-    fn plan11_unknown_ages_remain_raised() -> Result<(), Error> {
+    fn unknown_ages_remain_raised() -> Result<(), Error> {
         for kind in ["machine_silent", "order_cache_stale"] {
             assert!(raised(&policy(kind)?, None));
             assert!(!raised(&policy(kind)?, Some(9)));

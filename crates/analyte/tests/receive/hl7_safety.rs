@@ -3,8 +3,9 @@ use super::*;
 use analyte_fixtures::ConfigEdit as _;
 
 // HL7 2.5.1 sections 2.10.2.2, 7.4.2.11 and 7.4.1.25; ADR 0003.
+// HL7 2.5.1 §2.10.2.2, §7.4.2.11, §7.4.1.25
 #[tokio::test]
-async fn hl7_251_s2_10_2_2_s7_4_2_11_s7_4_1_25_unsafe_reports_are_parked() -> Result<(), Error> {
+async fn unsafe_reports_are_parked() -> Result<(), Error> {
     let original = String::from_utf8(ORU.to_vec())?;
     for raw in [
         original.rewrite("|||||F", "|||||UNKNOWN"),

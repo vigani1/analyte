@@ -1,8 +1,9 @@
 //! Tests HTTP request and response limits.
 use super::*;
 
+// ADR 0008
 #[test]
-fn adr0008_build_refuses_nonproduction_and_parked_evidence() -> TestResult {
+fn build_refuses_nonproduction_and_parked_results() -> TestResult {
     let receipt = receipt()?;
     let mut result = make_result(receipt.id, "build-validation-run")?;
     for mode in [
@@ -35,8 +36,9 @@ fn adr0008_build_refuses_nonproduction_and_parked_evidence() -> TestResult {
     Ok(())
 }
 
+// App contract v1 (ADR 0008); Safety rule 7 (ADR 0003); mutation-testing regression
 #[tokio::test]
-async fn mutation_contract_v1_rule7_response_body_ceiling_is_inclusive() -> TestResult {
+async fn response_body_ceiling_is_inclusive() -> TestResult {
     use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
     for length in [
         analyte_contract::MAX_DOCUMENT_BYTES,
@@ -88,9 +90,9 @@ async fn mutation_contract_v1_rule7_response_body_ceiling_is_inclusive() -> Test
     Ok(())
 }
 
+// Safety rule 7 (ADR 0003); App contract v1 (ADR 0008); mutation-testing regression
 #[test]
-fn mutation_rule7_contract_v1_destination_limits_validate_each_independent_boundary() -> TestResult
-{
+fn destination_limits_check_each_boundary() -> TestResult {
     let app = Identifier::new("app")?;
     let secret = Identifier::new("secret")?;
     let construct = |limits| {
@@ -144,8 +146,9 @@ fn mutation_rule7_contract_v1_destination_limits_validate_each_independent_bound
     Ok(())
 }
 
+// App contract v1 (ADR 0008); Safety rule 7 (ADR 0003); mutation-testing regression
 #[test]
-fn mutation_contract_v1_rule7_credentials_reject_each_invalid_component() -> TestResult {
+fn credentials_reject_each_invalid_component() -> TestResult {
     struct Supplied {
         key: String,
         count: usize,
@@ -184,8 +187,9 @@ fn mutation_contract_v1_rule7_credentials_reject_each_invalid_component() -> Tes
 }
 
 // ADR 0003 retention; contract v1 delivery responses preserve the app's reason.
+// Safety rule 7 (ADR 0003); mutation-testing regression
 #[test]
-fn mutation_rule7_destination_url_byte_ceiling_is_inclusive() -> TestResult {
+fn destination_url_byte_ceiling_is_inclusive() -> TestResult {
     for n in [4096, 4097] {
         let prefix = "https://example.invalid/";
         let url = format!("{prefix}{}", "x".repeat(n - prefix.len()));
@@ -219,8 +223,9 @@ fn mutation_rule7_destination_url_byte_ceiling_is_inclusive() -> TestResult {
 }
 
 // Keep paused Tokio time fixed while the dedicated storage thread completes I/O.
+// ADR 0004; App contract v1 (ADR 0008); mutation-testing regression
 #[tokio::test]
-async fn mutation_adr0004_contract_v1_pagination_progress_and_page_bounds() -> TestResult {
+async fn pagination_needs_progress_within_page_limit() -> TestResult {
     use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
     for case in 0..4 {
         let directory = tempfile::tempdir()?;
@@ -285,8 +290,9 @@ async fn mutation_adr0004_contract_v1_pagination_progress_and_page_bounds() -> T
     Ok(())
 }
 
+// ADR 0004
 #[test]
-fn adr0004_order_event_rejects_store_identity_with_original_cause() -> TestResult {
+fn oversized_order_id_keeps_original_cause() -> TestResult {
     use std::error::Error as _;
     let mut fields: analyte_contract::EventFields = serde_json::from_slice(include_bytes!(
         "../../../../../docs/contract/vectors/event.json"

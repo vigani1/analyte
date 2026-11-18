@@ -3,9 +3,9 @@ use super::*;
 use crate::support::step;
 use analyte_fixtures::ConfigEdit as _;
 
+// IHE PaLM TF-2b §3.29.4, §B.3
 #[tokio::test]
-async fn law_tf2b_3_29_4_b3_results_deliver_once_retransmit_and_correct_only_c() -> Result<(), Error>
-{
+async fn results_deliver_once_and_c_corrects() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = vendor_config(temp.path(), "law", &definition())?;
     let receiver_path = temp.path().join("reference.db");
@@ -71,9 +71,9 @@ async fn law_tf2b_3_29_4_b3_results_deliver_once_retransmit_and_correct_only_c()
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.29.4
 #[tokio::test]
-async fn law_tf2b_3_29_4_unsolicited_uses_explicit_analyzer_order_not_invented_awos()
--> Result<(), Error> {
+async fn unsolicited_result_never_invents_awos() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = vendor_config(temp.path(), "law", &definition())?;
     let receiver_path = temp.path().join("reference.db");
@@ -123,9 +123,9 @@ async fn law_tf2b_3_29_4_unsolicited_uses_explicit_analyzer_order_not_invented_a
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.29.4, §B.7
 #[tokio::test]
-async fn law_tf2b_3_29_4_b7_uninterpretable_is_parked_with_error_ack_and_no_delivery()
--> Result<(), Error> {
+async fn uninterpretable_result_is_parked_with_error_ack() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = vendor_config(temp.path(), "law", &definition())?;
     let receiver_path = temp.path().join("reference.db");
@@ -178,9 +178,9 @@ async fn law_tf2b_3_29_4_b7_uninterpretable_is_parked_with_error_ack_and_no_deli
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.29.4, §B.3, §B.7
 #[tokio::test]
-async fn law_tf2b_3_29_4_b3_b7_conflict_rejects_batch_and_complete_og_distinguishes_runs()
--> Result<(), Error> {
+async fn conflict_rejects_batch_and_og_separates_runs() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = vendor_config(temp.path(), "law", &definition())?;
     let receiver_path = temp.path().join("reference.db");
@@ -262,9 +262,10 @@ async fn law_tf2b_3_29_4_b3_b7_conflict_rejects_batch_and_complete_og_distinguis
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.29.4; ADR 0003
 #[cfg(feature = "test-hooks")]
 #[tokio::test]
-async fn law_tf2b_3_29_4_adr0003_raw_commit_precedes_interpretation_and_ack() -> Result<(), Error> {
+async fn raw_commit_precedes_interpretation_and_ack() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = vendor_config(temp.path(), "law", &definition())?;
     let mut reference = Reference::start(
@@ -314,8 +315,9 @@ async fn law_tf2b_3_29_4_adr0003_raw_commit_precedes_interpretation_and_ack() ->
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.29.4; ADR 0003
 #[tokio::test]
-async fn law_tf2b_3_29_4_adr0003_storage_failures_never_send_aa() -> Result<(), Error> {
+async fn storage_failure_never_sends_aa() -> Result<(), Error> {
     for table in ["receipts", "interpretations"] {
         let temp = tempfile::tempdir()?;
         let path = vendor_config(temp.path(), "law", &definition())?;
@@ -361,8 +363,9 @@ async fn law_tf2b_3_29_4_adr0003_storage_failures_never_send_aa() -> Result<(), 
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.29.4; ADR 0003
 #[tokio::test]
-async fn law_tf2b_3_29_4_adr0003_nearly_full_disk_closes_without_aa() -> Result<(), Error> {
+async fn nearly_full_disk_closes_without_aa() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = vendor_config(temp.path(), "law", &definition())?;
     let receiver_path = temp.path().join("reference.db");
@@ -404,9 +407,9 @@ async fn law_tf2b_3_29_4_adr0003_nearly_full_disk_closes_without_aa() -> Result<
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.29.4
 #[tokio::test]
-async fn law_tf2b_3_29_4_mllp_partial_block_deadline_parks_original_without_aa() -> Result<(), Error>
-{
+async fn mllp_partial_block_deadline_parks_without_aa() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = vendor_config(
         temp.path(),
@@ -436,9 +439,9 @@ async fn law_tf2b_3_29_4_mllp_partial_block_deadline_parks_original_without_aa()
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.27, §3.28
 #[tokio::test]
-async fn law_tf2b_3_27_3_28_disabled_query_and_work_cannot_issue_work_or_acceptance()
--> Result<(), Error> {
+async fn disabled_query_and_work_issue_nothing() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = vendor_config(temp.path(), "law", &definition())?;
     let reference = Reference::start(
@@ -474,9 +477,9 @@ async fn law_tf2b_3_27_3_28_disabled_query_and_work_cannot_issue_work_or_accepta
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.29.4; ADR 0003
 #[tokio::test]
-async fn law_tf2b_3_29_4_adr0003_parked_result_reprocesses_original_after_mapping_fix()
--> Result<(), Error> {
+async fn parked_result_reprocesses_after_mapping_fix() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let missing = definition().rewrite("machine_code=\"SYN\"", "machine_code=\"MISSING\"");
     let path = vendor_config(temp.path(), "law", &missing)?;

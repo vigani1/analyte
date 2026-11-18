@@ -1,9 +1,9 @@
 //! Tests LAW message validation and host exchanges.
 use super::*;
 
+// IHE PaLM TF-2b §C.1
 #[test]
-fn law_tf2b_c1_component_failures_report_precise_locations()
--> Result<(), Box<dyn std::error::Error>> {
+fn component_failures_report_exact_location() -> Result<(), Box<dyn std::error::Error>> {
     for (body, field, component) in [
         ("ERR||OBX^x|100^^HL70357|E", 2, 2),
         ("ERR|||999^^HL70357|E", 3, 1),
@@ -26,8 +26,9 @@ fn law_tf2b_c1_component_failures_report_precise_locations()
     }
     Ok(())
 }
+// IHE PaLM TF-2b §C.6, §C.7, §C.9
 #[test]
-fn law_tf2b_c6_c7_c9_typed_work_fields_preserve_wire() -> Result<(), Box<dyn std::error::Error>> {
+fn typed_work_fields_render_same_bytes() -> Result<(), Box<dyn std::error::Error>> {
     use analyte_hl7::law::{Awos, Instructions, WorkAction, WorkCode, WorkFields, work_order};
     let fields = WorkFields::new(
         "sample-01",

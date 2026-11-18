@@ -1,9 +1,9 @@
 //! Tests VIDAS result uploads and work downloads.
 use analyte_vidas::syntax::{Message, SampleLimit};
 
+// VIDAS BCI Link rev A §4
 #[test]
-fn vidas_bci_a_4_exact_identity_unknown_tags_and_values() -> Result<(), Box<dyn std::error::Error>>
-{
+fn keeps_exact_identity_unknown_tags_and_values() -> Result<(), Box<dyn std::error::Error>> {
     let text = "mtrsl|pi|si|ci000a|rtHCG|tt09:05|td2026/01/02|qlEquivoque|qn<1,234mUI/ml|y3mUI/ml|qd1:1|nccalinc|zzextension|";
     let message = Message::parse(text, SampleLimit::Twelve)?;
     assert_eq!(message.text(), text);

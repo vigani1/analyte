@@ -2,8 +2,9 @@
 use crate::test_support::*;
 use crate::*;
 
+// ADR 0003 rule 7
 #[test]
-fn adr0003_rule7_sqlite_lock_failures_remain_specific_busy_failures() -> TestResult {
+fn sqlite_lock_failures_stay_busy_errors() -> TestResult {
     // SQLite result codes 5 and 6 are BUSY and LOCKED. No wall-clock wait is needed.
     for code in [5, 6] {
         let error = rusqlite::Error::SqliteFailure(rusqlite::ffi::Error::new(code), None);
@@ -12,8 +13,9 @@ fn adr0003_rule7_sqlite_lock_failures_remain_specific_busy_failures() -> TestRes
     Ok(())
 }
 
+// ADR 0003
 #[test]
-fn adr0003_storage_failures_distinguish_full_corrupt_conflict_and_unknown() -> TestResult {
+fn storage_failures_distinguish_full_corrupt_conflict() -> TestResult {
     // SQLite primary result codes; synthetic failures exercise the host recovery boundary.
     for (code, expected) in [
         (13, "full"),
@@ -40,8 +42,9 @@ fn adr0003_storage_failures_distinguish_full_corrupt_conflict_and_unknown() -> T
     Ok(())
 }
 
+// Safety rule 7 (ADR 0003); mutation-testing regression
 #[test]
-fn mutation_rule7_lib_limits_validate_each_field_and_include_thirty_seconds() -> TestResult {
+fn limits_validate_each_field_up_to_thirty_seconds() -> TestResult {
     for (rows, record, busy, valid) in [
         (1, 1, Duration::from_secs(30), true),
         (0, 1, Duration::from_secs(1), false),
@@ -63,8 +66,9 @@ fn mutation_rule7_lib_limits_validate_each_field_and_include_thirty_seconds() ->
     Ok(())
 }
 
+// ADR 0003 rule 1; mutation-testing regression
 #[test]
-fn mutation_adr0003_rule1_lib_sqlite_errors_keep_specific_recovery_actions() -> TestResult {
+fn sqlite_errors_keep_specific_recovery_actions() -> TestResult {
     use rusqlite::ffi;
     for code in [
         ffi::SQLITE_FULL,
@@ -97,8 +101,9 @@ fn mutation_adr0003_rule1_lib_sqlite_errors_keep_specific_recovery_actions() -> 
     Ok(())
 }
 
+// Safety rule 7 (ADR 0003); mutation-testing regression
 #[test]
-fn mutation_rule7_lib_encoding_digest_and_trust_keep_their_contracts() -> TestResult {
+fn encoding_digest_and_trust_keep_contracts() -> TestResult {
     use std::io::Write;
     assert_eq!(
         document(&serde_json::json!({"sample":"001"}))?,
@@ -188,8 +193,9 @@ fn sqlite_result_codes_preserve_lock_and_constraint_causes() {
 // asks to write while another connection writes gets SQLITE_BUSY at once, with
 // no busy-handler wait. An operator command committing on the same store must
 // only delay a service write within busy_timeout (AGENTS rule 7), never fail it.
+// Safety rule 7 (ADR 0003)
 #[test]
-fn rule7_read_then_write_waits_for_another_writer_within_busy_timeout() -> TestResult {
+fn read_then_write_waits_within_busy_timeout() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("store.db");
     let mut bounds = limits();

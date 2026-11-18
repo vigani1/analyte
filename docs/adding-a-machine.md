@@ -347,11 +347,11 @@ stored bytes. Serial break events remain unsupported by the replay library.
 Run the discovery test alone with:
 
 ```text
-cargo test -p analyte --test delivery adr0012_5 -- --nocapture
+cargo test -p analyte --test delivery every_machine_validates_and_replays -- --nocapture
 ```
 
 For additional custody, delivery and failure assertions, follow the existing
-source-named tests in [delivery.rs](../crates/analyte/tests/delivery.rs). A
+tests in [delivery.rs](../crates/analyte/tests/delivery.rs). A
 recording replay does not establish that every clinical workflow is qualified.
 Adding a definition or test also requires the workspace checks.
 

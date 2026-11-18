@@ -33,8 +33,9 @@ fn variant(stack: &Stack) -> &str {
     }
 }
 
+// ADR 0002
 #[test]
-fn adr0002_every_example_maps_to_its_documented_stack() -> TestResult {
+fn every_example_maps_to_its_documented_stack() -> TestResult {
     let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples");
     // Include fragments with their documented base, and the site with a receiver.
     // Comparing the directory inventory makes adding an untested example fail.
@@ -123,8 +124,9 @@ fn adr0002_every_example_maps_to_its_documented_stack() -> TestResult {
     Ok(())
 }
 
+// ADR 0002
 #[test]
-fn adr0002_stack_is_built_after_overrides_and_keeps_serial_settings() -> TestResult {
+fn stack_built_after_overrides_keeps_serial_settings() -> TestResult {
     let original = load(ASTM, SITE, "schema_version=1")?;
     let Stack::Astm(analyte_config::RecordTransport::Stream(stack)) = original.effective().stack()
     else {
@@ -159,8 +161,9 @@ operation_timeout_ms=1234
     Ok(())
 }
 
+// ADR 0002
 #[test]
-fn adr0002_file_pickup_is_a_distinct_stack_for_each_record_syntax() -> TestResult {
+fn file_pickup_has_a_stack_per_record_syntax() -> TestResult {
     let endpoint = std::env::current_dir()?.to_string_lossy().into_owned();
     let site = SITE.rewrite(
         r#"endpoint = "127.0.0.1:5600""#,
@@ -189,8 +192,9 @@ send_timeout_ms=15000
     Ok(())
 }
 
+// ADR 0012
 #[test]
-fn adr0012_protocol_and_transport_are_independent_and_invalid_pairs_fail_loading() -> TestResult {
+fn invalid_protocol_transport_pairs_fail_loading() -> TestResult {
     for (name, protocol, serial) in [
         ("astm", "astm", true),
         ("hl7", "hl7", false),

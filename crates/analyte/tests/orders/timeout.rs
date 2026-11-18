@@ -4,9 +4,9 @@ use super::*;
 use crate::support::step;
 use analyte_fixtures::ConfigEdit as _;
 
+// ADR 0004; Safety rule 8 (ADR 0003)
 #[tokio::test]
-async fn adr0004_rule8_astm_send_timeout_is_uncertain_and_restart_never_resends()
--> Result<(), Error> {
+async fn astm_send_timeout_is_uncertain_never_resent() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), true)?;
     configure_orders(temp.path(), true)?;

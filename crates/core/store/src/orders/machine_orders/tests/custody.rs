@@ -67,8 +67,9 @@ fn commit(
     )?)
 }
 
+// IHE PaLM TF-2b §C.8, Figure C.8-1; ADR 0003, ADR 0011
 #[test]
-fn palm_tf2b_c8_figure_c8_1_adr0003_0011_notices_commit_once_across_restart() -> TestResult {
+fn status_notices_commit_once_across_restart() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("custody.db");
     let mut store = open(&path)?;
@@ -134,8 +135,9 @@ fn palm_tf2b_c8_figure_c8_1_adr0003_0011_notices_commit_once_across_restart() ->
     Ok(())
 }
 
+// IHE PaLM TF-2b §B.7.6; ADR 0003
 #[test]
-fn palm_tf2b_b7_6_adr0003_conflicting_second_awos_rejects_whole_notice() -> TestResult {
+fn conflicting_second_awos_rejects_whole_notice() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("atomic.db"))?;
     let order = setup(&mut store)?;
@@ -180,8 +182,9 @@ fn palm_tf2b_b7_6_adr0003_conflicting_second_awos_rejects_whole_notice() -> Test
     Ok(())
 }
 
+// ADR 0003, ADR 0010
 #[test]
-fn adr0003_0010_law_projection_commit_failure_leaves_raw_pending_and_retry_safe() -> TestResult {
+fn failed_law_projection_keeps_raw_pending_retry_safe() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("rollback.db"))?;
     let order = setup(&mut store)?;
@@ -252,8 +255,9 @@ fn accept(store: &mut Store, order: &MachineOrder) -> TestResult {
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.8; ADR 0003
 #[test]
-fn palm_tf2b_c8_adr0003_analyzer_ca_blocks_new_cancel_without_clearing_app_intent() -> TestResult {
+fn analyzer_ca_blocks_new_cancel_keeps_app_intent() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("admission.db"))?;
     let order = setup(&mut store)?;
@@ -289,8 +293,9 @@ fn palm_tf2b_c8_adr0003_analyzer_ca_blocks_new_cancel_without_clearing_app_inten
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.8; ADR 0003
 #[test]
-fn palm_tf2b_c8_adr0003_ca_during_pending_cancel_needs_correlated_cr_or_uc() -> TestResult {
+fn pending_cancel_ca_needs_correlated_cr_or_uc() -> TestResult {
     for decision in [ItemDecision::CancelConfirmed, ItemDecision::CancelRefused] {
         let temp = tempfile::tempdir()?;
         let mut store = open(&temp.path().join("pending-cancel.db"))?;
@@ -362,8 +367,9 @@ fn palm_tf2b_c8_adr0003_ca_during_pending_cancel_needs_correlated_cr_or_uc() -> 
     Ok(())
 }
 
+// ADR 0016
 #[test]
-fn adr0016_admin_cancellation_is_one_condition_per_awos_with_bounded_full_history() -> TestResult {
+fn admin_cancellation_one_condition_per_awos_bounded_history() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("listing.db"))?;
     let order = setup(&mut store)?;

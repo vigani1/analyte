@@ -75,9 +75,9 @@ pub fn wire_compatibility(message: &crate::Message) -> WireCompatibility {
             .is_some_and(|f| f.raw() == b"UNICODE UTF-8"),
     }
 }
+// HL7 §2.4 boundaries; HL7 2.3.1 §2.24.1.18
 #[test]
-fn hl7_2_4_boundaries_and_231_2_24_1_18_wire_evidence_keeps_original_bytes()
--> Result<(), crate::Error> {
+fn wire_evidence_keeps_original_bytes() -> Result<(), crate::Error> {
     for (ending, crlf, lf) in [
         ("\r", false, false),
         ("\r\n", true, true),

@@ -182,9 +182,9 @@ mod tests {
     #[error("disk full")]
     struct DiskFull;
 
+    // ADR 0010
     #[tokio::test]
-    async fn adr0010_all_protocols_refuse_failed_custody_with_original_cause()
-    -> Result<(), crate::Error> {
+    async fn every_protocol_refuses_failed_custody_with_cause() -> Result<(), crate::Error> {
         let temp = tempfile::tempdir()?;
         std::fs::write(
             temp.path().join("machine.toml"),
@@ -285,8 +285,9 @@ mod tests {
         );
     }
 
+    // ADR 0010
     #[tokio::test(start_paused = true)]
-    async fn adr0010_store_budget_refuses_uncertain_custody() {
+    async fn store_budget_refuses_uncertain_custody() {
         let operation = std::future::pending::<Result<(), DiskFull>>();
         let error = store_within(Duration::from_millis(17), operation)
             .await
@@ -302,8 +303,9 @@ mod tests {
         assert!(cause.is::<tokio::time::error::Elapsed>());
     }
 
+    // ADR 0010
     #[tokio::test]
-    async fn adr0010_store_reports_only_completed_custody_and_keeps_failure() {
+    async fn store_reports_only_completed_custody() {
         assert_eq!(
             store_within(Duration::from_secs(1), async { Ok::<_, DiskFull>(42) })
                 .await
@@ -317,8 +319,9 @@ mod tests {
         assert!(matches!(error, StoreWaitError::Operation(DiskFull)));
     }
 
+    // ADR 0003
     #[test]
-    fn adr0003_cleanup_preserves_session_retention_and_settlement_errors() {
+    fn cleanup_keeps_session_retention_and_settlement_errors() {
         let mut result = Err(crate::invalid("session failure"));
         retain_cleanup(&mut result, Err(crate::invalid("retention failure")));
         retain_cleanup(&mut result, Err(crate::invalid("settlement failure")));

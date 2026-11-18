@@ -29,8 +29,9 @@ fn observation(field: usize, value: &str) -> Result<Message, Error> {
     )
 }
 
+// HL7 2.6 §2.14.9.7, §2.A.22
 #[test]
-fn hl7_2_6_s2_14_9_7_and_s2_a_22_dtm_precision_and_scalar_structure() -> Result<(), Error> {
+fn msh7_dtm_precision_and_scalar_structure() -> Result<(), Error> {
     for time in [
         "2026",
         "202611",
@@ -59,8 +60,9 @@ fn hl7_2_6_s2_14_9_7_and_s2_a_22_dtm_precision_and_scalar_structure() -> Result<
     Ok(())
 }
 
+// HL7 2.6 §2.14.8.2, §2.14.9.10
 #[test]
-fn hl7_2_6_s2_14_8_2_and_s2_14_9_10_control_lengths_ack_and_err() -> Result<(), Error> {
+fn control_id_length_ack_and_err_shape() -> Result<(), Error> {
     let id = "A".repeat(199);
     let input = message("", "20261116", &id)?;
     assert_eq!(Msh::new(&input)?.control_id(), id.as_bytes());
@@ -111,8 +113,9 @@ fn hl7_2_6_s2_14_8_2_and_s2_14_9_10_control_lengths_ack_and_err() -> Result<(), 
     Ok(())
 }
 
+// HL7 2.6 §2.9.3, §2.14.9.15, §2.14.9.16
 #[test]
-fn hl7_2_6_s2_9_3_and_s2_14_9_15_16_enhanced_ack_custody() -> Result<(), Error> {
+fn enhanced_ack_follows_custody() -> Result<(), Error> {
     let input = Message::parse(
         b"MSH|^~\\&|S|F|R|F|20261116||ORU^R01^ORU_R01|id|P|2.6|||AL|ER\r",
         Options::default(),
@@ -172,8 +175,9 @@ fn hl7_2_6_s2_9_3_and_s2_14_9_15_16_enhanced_ack_custody() -> Result<(), Error> 
     Ok(())
 }
 
+// HL7 2.6 §2.7.1, §2.14.9.18
 #[test]
-fn hl7_2_6_s2_7_1_and_s2_14_9_18_charset_and_literal_escapes() -> Result<(), Error> {
+fn utf8_charset_and_literal_escapes() -> Result<(), Error> {
     let raw = "MSH|^~\\&|S|F|R|F|20261116||ORU^R01^ORU_R01|id|P|2.6||||||UNICODE UTF-8\rOBX|1|ST|SYN||Synthetic é\\F\\\\S\\\\T\\\\R\\\\E\\\r";
     let input = Message::parse(
         raw.as_bytes(),
@@ -199,8 +203,9 @@ fn hl7_2_6_s2_7_1_and_s2_14_9_18_charset_and_literal_escapes() -> Result<(), Err
     Ok(())
 }
 
+// HL7 2.6 §7.4.1.5, §7.4.1.6, §7.4.1.15, §7.4.1.27, §7.4.1.32–35
 #[test]
-fn hl7_2_6_s7_4_1_5_6_15_27_32_35_backward_fields_stay_raw() -> Result<(), Error> {
+fn backward_compatible_obr_fields_stay_raw() -> Result<(), Error> {
     for field in [5, 6, 15, 27, 32, 33, 34, 35] {
         let mut fields = vec![""; field];
         fields[field - 1] = "opaque&source";
@@ -220,8 +225,9 @@ fn hl7_2_6_s7_4_1_5_6_15_27_32_35_backward_fields_stay_raw() -> Result<(), Error
     Ok(())
 }
 
+// HL7 2.6 §2.A.6, §2.A.77
 #[test]
-fn hl7_2_6_s2_a_6_77_withdrawn_ce_ts_are_refused() -> Result<(), Error> {
+fn withdrawn_ce_and_ts_are_refused() -> Result<(), Error> {
     for datatype in ["CE", "TS"] {
         let input = observation(2, datatype)?;
         assert_eq!(
@@ -241,8 +247,9 @@ fn hl7_2_6_s2_a_6_77_withdrawn_ce_ts_are_refused() -> Result<(), Error> {
     Ok(())
 }
 
+// HL7 2.6 §7.4.2.3, §7.4.2.6, §2.A.13
 #[test]
-fn hl7_2_6_s7_4_2_3_6_and_s2_a_13_cwe_components_lengths_and_versions() -> Result<(), Error> {
+fn obx_cwe_components_lengths_and_versions() -> Result<(), Error> {
     for field in [3, 6] {
         validate_result_fields(&observation(field, "SYN^Synthetic^LOCAL^^^^v1")?)?;
         for bad in ["SYN^Synthetic^LOCAL", "SYN^Text^HL70001^^^^^^^extra"] {
@@ -270,8 +277,9 @@ fn hl7_2_6_s7_4_2_3_6_and_s2_a_13_cwe_components_lengths_and_versions() -> Resul
     Ok(())
 }
 
+// HL7 2.6 §7.4.1.7, §7.4.1.8, §7.4.1.14, §7.4.1.22, §7.4.2.12, §7.4.2.14, §7.4.2.19
 #[test]
-fn hl7_2_6_s7_4_1_7_8_14_22_and_s7_4_2_12_14_19_result_dtm() -> Result<(), Error> {
+fn result_times_use_scalar_dtm() -> Result<(), Error> {
     for field in [12, 14, 19] {
         validate_result_fields(&observation(field, "20261116123045.1234+0000")?)?;
         assert_eq!(
@@ -322,8 +330,9 @@ fn request(qrd: &str, qrf: &str) -> Result<Message, Error> {
     )
 }
 
+// HL7 2.6 §2.A.13
 #[test]
-fn hl7_2_6_s2_a_13_all_cwe_component_length_boundaries() -> Result<(), Error> {
+fn cwe_component_length_boundaries() -> Result<(), Error> {
     for (offset, maximum) in [20, 199, 20, 20, 199, 20, 10, 10, 199]
         .into_iter()
         .enumerate()
@@ -346,8 +355,9 @@ fn hl7_2_6_s2_a_13_all_cwe_component_length_boundaries() -> Result<(), Error> {
     Ok(())
 }
 
+// HL7 2.6 §2.A.86
 #[test]
-fn hl7_2_6_s2_a_86_xcn_check_digit_cwe_dtm_and_deprecated_range() -> Result<(), Error> {
+fn xcn_check_digit_cwe_dtm_and_deprecated_range() -> Result<(), Error> {
     for (component, value, accepted) in [
         (11, "1234", true),
         (11, "12345", false),
@@ -382,8 +392,9 @@ fn hl7_2_6_s2_a_86_xcn_check_digit_cwe_dtm_and_deprecated_range() -> Result<(), 
     Ok(())
 }
 
+// HL7 2.6 §5.10.4.1, §5.10.4.2
 #[test]
-fn hl7_2_6_s5_10_4_1_2_qrd_qrf_dtm_cwe_and_deprecated_tq() -> Result<(), Error> {
+fn qrd_qrf_use_dtm_cwe_and_refuse_tq() -> Result<(), Error> {
     let qrd = "20261116|D|D|tag|||5^LI|^Synthetic|LOCAL|LOCAL";
     let input = request(qrd, "QRF|LAB|20260101|20261231|||||||0.9\r")?;
     assert_eq!(query::Request::new(&input)?.query_id(), b"tag");

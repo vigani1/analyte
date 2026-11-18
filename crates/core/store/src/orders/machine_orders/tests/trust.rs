@@ -2,8 +2,9 @@
 use super::*;
 use crate::OrderError as Error;
 
+// IHE PaLM TF-2b §3.27.4
 #[test]
-fn law_tf2b_3_27_4_sample_and_pending_share_freshness_generation_and_restore_trust() -> TestResult {
+fn sample_and_pending_queries_share_trust() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("trust.db"))?;
     let key = identity()?;
@@ -72,8 +73,9 @@ fn law_tf2b_3_27_4_sample_and_pending_share_freshness_generation_and_restore_tru
     Ok(())
 }
 
+// Plan §11; Safety rules 2 and 8 (ADR 0003)
 #[test]
-fn plan11_rule2_restore_keeps_current_and_rule8_requires_audited_resume() -> TestResult {
+fn restore_keeps_current_and_needs_audited_resume() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("store.db");
     let backup = temp.path().join("backup.db");
@@ -151,8 +153,9 @@ fn plan11_rule2_restore_keeps_current_and_rule8_requires_audited_resume() -> Tes
     verify_plan11_rule8_audited_resume(&mut store, audit)
 }
 
+// Plan §11
 #[test]
-fn plan11_restore_pause_blocks_hl7_items_and_owned_dsr_in_shared_transaction() -> TestResult {
+fn restore_pause_blocks_hl7_items_and_owned_dsr() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("paused.db"))?;
     store.order_page(&page(1, "requested", false, 200)?)?;
@@ -230,8 +233,9 @@ fn plan11_restore_pause_blocks_hl7_items_and_owned_dsr_in_shared_transaction() -
     Ok(())
 }
 
+// ADR 0003
 #[test]
-fn adr0003_hl7_item_preflight_failure_is_atomic_and_restore_guard_runs_first() -> TestResult {
+fn hl7_preflight_atomic_and_restore_guard_first() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("preflight.db"))?;
     store.order_page(&page(1, "requested", false, 200)?)?;
@@ -307,8 +311,9 @@ fn adr0003_hl7_item_preflight_failure_is_atomic_and_restore_guard_runs_first() -
     Ok(())
 }
 
+// Safety rule 9 (ADR 0003)
 #[test]
-fn rule9_typed_trust_matrix_and_configured_age_boundary() -> TestResult {
+fn trust_matrix_and_configured_age_boundary() -> TestResult {
     for case in [
         "unknown",
         "incomplete",

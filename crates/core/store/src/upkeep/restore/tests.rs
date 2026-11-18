@@ -3,8 +3,9 @@ use crate::test_support::*;
 use crate::*;
 use analyte_model::Reason;
 
+// Plan §11
 #[test]
-fn plan11_restore_refuses_corrupt_and_newer_backup_without_changing_current() -> TestResult {
+fn restore_refuses_corrupt_or_newer_backup() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("store.db");
     let source = temp.path().join("backup.db");
@@ -49,8 +50,9 @@ fn plan11_restore_refuses_corrupt_and_newer_backup_without_changing_current() ->
     Ok(())
 }
 
+// Plan §11
 #[test]
-fn plan11_interrupted_restore_staging_refuses_startup_without_deleting_evidence() -> TestResult {
+fn interrupted_restore_blocks_startup_keeps_evidence() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("store.db");
     std::fs::write(path.with_extension("restore-pending"), b"interrupted stage")?;
@@ -63,8 +65,9 @@ fn plan11_interrupted_restore_staging_refuses_startup_without_deleting_evidence(
     Ok(())
 }
 
+// Plan §11; Safety rule 7 (ADR 0003)
 #[test]
-fn plan11_rule7_restore_refuses_zero_page_limit_before_publishing() -> TestResult {
+fn restore_refuses_zero_page_limit() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("current.db");
     let source = temp.path().join("backup.db");
@@ -118,8 +121,9 @@ fn plan11_rule7_restore_refuses_zero_page_limit_before_publishing() -> TestResul
     Ok(())
 }
 
+// Plan §11; mutation-testing regression
 #[test]
-fn mutation_plan11_backup_and_restore_keep_every_page_and_the_displaced_store() -> TestResult {
+fn restore_keeps_every_page_and_displaced_store() -> TestResult {
     let temp = tempfile::tempdir()?;
     let source = temp.path().join("source.db");
     let backup = temp.path().join("backup.db");
@@ -169,8 +173,9 @@ fn mutation_plan11_backup_and_restore_keep_every_page_and_the_displaced_store() 
     Ok(())
 }
 
+// Plan §11; mutation-testing regression
 #[test]
-fn mutation_plan11_restore_refuses_each_existing_recovery_file_before_staging() -> TestResult {
+fn restore_refuses_each_existing_recovery_file() -> TestResult {
     for extension in ["before-restore", "restore-pending"] {
         let temp = tempfile::tempdir()?;
         let path = temp.path().join("current.db");
@@ -205,8 +210,9 @@ fn mutation_plan11_restore_refuses_each_existing_recovery_file_before_staging() 
     Ok(())
 }
 
+// Plan §11; mutation-testing regression
 #[test]
-fn mutation_plan11_restore_accepts_only_supported_schema_versions() -> TestResult {
+fn restore_accepts_only_supported_schema_versions() -> TestResult {
     let starting = upkeep::migration::STARTING_VERSION;
     for version in [-1, 0, 1, starting - 1, SCHEMA_VERSION] {
         let temp = tempfile::tempdir()?;
@@ -246,8 +252,9 @@ fn mutation_plan11_restore_accepts_only_supported_schema_versions() -> TestResul
     Ok(())
 }
 
+// Plan §11; Safety rule 7 (ADR 0003); mutation-testing regression
 #[test]
-fn mutation_plan11_rule7_restore_refuses_exhausted_reserve_before_publishing() -> TestResult {
+fn restore_refuses_exhausted_reserve() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("current.db");
     let source = temp.path().join("backup.db");
@@ -293,8 +300,9 @@ fn mutation_plan11_rule7_restore_refuses_exhausted_reserve_before_publishing() -
     Ok(())
 }
 
+// Plan §11; Safety rule 7 (ADR 0003); mutation-testing regression
 #[test]
-fn mutation_plan11_rule7_restore_capacity_includes_the_copy_and_refuses_equality() -> TestResult {
+fn restore_capacity_counts_copy_and_refuses_equality() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("source.db");
     let store = open(&path)?;
@@ -327,9 +335,9 @@ fn mutation_plan11_rule7_restore_capacity_includes_the_copy_and_refuses_equality
     Ok(())
 }
 
+// Plan §11; mutation-testing regression
 #[test]
-fn mutation_plan11_restore_busy_copy_refuses_with_timeout_and_preserves_both_stores() -> TestResult
-{
+fn busy_restore_copy_times_out_keeps_both_stores() -> TestResult {
     struct LockSource {
         source: PathBuf,
         held: std::sync::Mutex<Option<Connection>>,

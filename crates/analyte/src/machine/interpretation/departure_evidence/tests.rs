@@ -16,8 +16,9 @@ fn declaration(rule: &str, guarantee: &str, hl7: bool) -> String {
     }
     text
 }
+// ADR 0015; HL7 §7.4.1.25; App contract v1 (ADR 0008)
 #[tokio::test]
-async fn adr0015_hl7_s74125_v1_parks_with_ledger_original_and_no_outbox() -> Result<(), Error> {
+async fn documented_final_parks_with_ledger_and_no_outbox() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let declaration = declaration("hl7_absent_obr25_means_final", "absent_obr25_final", true);
     let definition=include_str!("../../../../../core/config/examples/hl7.toml").rewrite("tcp_server","tcp_client")
@@ -52,8 +53,9 @@ async fn adr0015_hl7_s74125_v1_parks_with_ledger_original_and_no_outbox() -> Res
     Ok(())
 }
 
+// ADR 0015; CLSI LIS01-A2 §6.3.1.1; CLSI LIS02-A2
 #[tokio::test]
-async fn adr0015_lis01_s6311_packing_provenance_survives_lis02_failure() -> Result<(), Error> {
+async fn packing_provenance_survives_record_parse_failure() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let definition=include_str!("../../../../../core/config/examples/astm.toml")
         .rewrite("kind = \"serial\"","kind = \"tcp_client\"")
@@ -104,9 +106,9 @@ async fn adr0015_lis01_s6311_packing_provenance_survives_lis02_failure() -> Resu
     Ok(())
 }
 
+// ADR 0015; CLSI LIS01-A2 §6.3.1.1; App contract v1 (ADR 0008)
 #[tokio::test]
-async fn adr0015_lis01_s6311_packed_results_use_v1_without_changing_source_meaning()
--> Result<(), Error> {
+async fn packed_results_deliver_without_changing_meaning() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let definition=include_str!("../../../../../core/config/examples/astm.toml")
         .rewrite("kind = \"serial\"","kind = \"tcp_client\"")

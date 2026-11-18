@@ -54,7 +54,7 @@ event limits across writes.
 3. Preserve the observed direction and chunk boundaries. Add only justified,
    named exceptions at exact host byte locations. A recording of a fault should
    retain the faulty bytes, not silently repair them.
-4. Add a source-named test in `crates/analyte/tests/delivery.rs`, following its
+4. Add a test with a source comment in `crates/analyte/tests/delivery.rs`, following its
    `recording` helper and existing cases. Use a temporary store, loopback peers
    and the reference receiver. Load the recording through transport's bounded
    reader, then call `analyte_sim::replay` with its events and header exceptions.

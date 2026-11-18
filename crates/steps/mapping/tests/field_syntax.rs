@@ -2,8 +2,9 @@
 use analyte_config::StackChoice;
 use analyte_mapping::{FieldSyntax, UnsupportedFieldSyntax};
 
+// ADR 0002
 #[test]
-fn adr0002_field_syntax_rejects_every_vendor_family() -> Result<(), UnsupportedFieldSyntax> {
+fn field_syntax_rejects_vendor_families() -> Result<(), UnsupportedFieldSyntax> {
     assert_eq!(
         FieldSyntax::try_from(StackChoice::AstmLis02)?,
         FieldSyntax::AstmLis02

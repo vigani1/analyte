@@ -217,7 +217,7 @@ It stalls one store operation at shutdown and sets a 500 ms process deadline;
 it deliberately requires a child process because the real watchdog exits 3.
 It changes no protocol or storage bytes and cannot be enabled by TOML. Run the
 ADR 0003 recovery case with
-`cargo test -p analyte --all-features --test delivery plan11_adr0003_agents_forced_exit`.
+`cargo test -p analyte --all-features --test delivery forced_exit_preserves_receipts_and_orders`.
 The test retains committed raw receipts, confirms identical result retry bytes
 and ID with one result at the receiver, and recovers Sending to Uncertain.
 `tests/packaging.rs` checks the unit's structure, sandbox settings and stop

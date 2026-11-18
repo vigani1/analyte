@@ -158,9 +158,9 @@ async fn listen() -> Result<(tokio::net::TcpListener, Destination), Box<dyn std:
     Ok((listener, destination))
 }
 
+// App contract v1 (ADR 0008), GET orders
 #[tokio::test]
-async fn contract_v1_get_orders_unfinished_chain_never_refreshes_trust_over_a_later_cancel()
--> TestResult {
+async fn unfinished_chain_never_refreshes_trust() -> TestResult {
     let directory = tempfile::tempdir()?;
     let mut store = store(&directory.path().join("store.db")).await?;
     let (listener, destination) = listen().await?;
@@ -211,8 +211,9 @@ async fn contract_v1_get_orders_unfinished_chain_never_refreshes_trust_over_a_la
     Ok(())
 }
 
+// App contract v1 (ADR 0008), GET orders
 #[tokio::test]
-async fn contract_v1_get_orders_exhausted_max_pages_never_refreshes_trust() -> TestResult {
+async fn exhausted_page_limit_never_refreshes_trust() -> TestResult {
     let directory = tempfile::tempdir()?;
     let mut store = store(&directory.path().join("store.db")).await?;
     let (listener, mut destination) = listen().await?;

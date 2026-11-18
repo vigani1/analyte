@@ -49,6 +49,11 @@ class Planned(unittest.TestCase):
         _, errors = check({"list.md": "Planned test: `real_test`."}, {"real_test": False})
         self.assertEqual(errors, ["list.md: planned test real_test exists; reference it as a test"])
 
+    def test_name_defined_twice_is_rejected(self):
+        # Short names can repeat across crates; a twin must not hide a missing test.
+        _, errors = check({"list.md": "Test: `twin`."}, {"twin": False}, {"twin": 2})
+        self.assertEqual(errors, ["list.md: test twin is defined 2 times; rename one"])
+
     def test_other_planned_wording_is_checked(self):
         for text in ("Planned tests: `future_test`.", "Planned broader qualification: `future_test`."):
             _, errors = check({"list.md": text}, {})
@@ -57,7 +62,7 @@ class Planned(unittest.TestCase):
     def test_renamed_law_test_fails_the_gate(self):
         # The LAW enhanced-content paragraph ends in Planned lines; review 9 Z1
         # found the old paragraph-wide skip hid every reference in it.
-        name = "law_tf2b_c14_requested_and_applied_priority_preserve_exact_code"
+        name = "requested_and_applied_priority_keep_exact_code"
         path = ROOT / "docs/protocols/law/checklist.md"
         text = path.read_text(encoding="utf-8")
         self.assertTrue(re.search(rf"`{name}`[^\n]*\n(?:[^\n]+\n)*[^\n]*Planned test: `", text))

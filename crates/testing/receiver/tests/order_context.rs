@@ -4,9 +4,9 @@ use analyte_fixtures as guard;
 use analyte_receiver::Receiver;
 use guard::HANG_GUARD;
 
+// ADR 0008
 #[tokio::test]
-async fn adr0008_seeded_patient_specimen_and_position_survive_the_feed()
--> Result<(), Box<dyn std::error::Error>> {
+async fn seeded_order_context_survives_the_feed() -> Result<(), Box<dyn std::error::Error>> {
     let temp = tempfile::tempdir()?;
     let mut receiver = Receiver::open(
         &temp.path().join("receiver.db"),

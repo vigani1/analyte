@@ -1,9 +1,9 @@
 //! Checks retained receipt decoding against live framing boundaries (ADR 0003).
 use analyte_framing::{astm, hl7};
 
+// CLSI LIS01-A2 §6.3
 #[test]
-fn lis01_a2_6_3_retained_frames_share_live_verification_and_assembly_bounds()
--> Result<(), Box<dyn std::error::Error>> {
+fn retained_frames_share_live_checks_and_bounds() -> Result<(), Box<dyn std::error::Error>> {
     let limit = astm::Limit::new(12)?;
     let text = b"R|synthetic|value\r";
     let frames: Vec<_> = astm::encode(text, astm::FrameNumber::FIRST, limit)?.collect();
@@ -65,9 +65,9 @@ fn lis01_a2_6_3_retained_frames_share_live_verification_and_assembly_bounds()
     Ok(())
 }
 
+// HL7 MLLP R1 §1.2
 #[test]
-fn mllp_r1_1_2_retained_block_requires_the_same_exact_acceptance_boundary()
--> Result<(), Box<dyn std::error::Error>> {
+fn retained_block_uses_same_acceptance_boundary() -> Result<(), Box<dyn std::error::Error>> {
     let raw = b"\x0bMSH|synthetic\r\x1c\r";
     let limit = hl7::Limit::new(64)?;
     assert_eq!(hl7::decode(raw, limit)?, b"MSH|synthetic\r");

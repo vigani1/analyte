@@ -2,8 +2,9 @@
 use super::*;
 use analyte_fixtures::ConfigEdit as _;
 
+// IHE PaLM TF-2b §C.11, SAC-24
 #[test]
-fn law_tf2b_c11_sac_24_re_ce_units_identifier_system_predicate() -> TestResult {
+fn sac24_volume_units_and_coding_system() -> TestResult {
     for value in ["", "mL^Milliliters^UCUM", "^Vendor unit"] {
         send_only("SAC", &[(24, value)], true)?;
     }
@@ -40,8 +41,9 @@ fn law_tf2b_c11_sac_24_re_ce_units_identifier_system_predicate() -> TestResult {
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.11, SAC-29
 #[test]
-fn law_tf2b_c11_sac_29_re_sn_exact_ratio_and_positive_denominator() -> TestResult {
+fn sac29_dilution_ratio_needs_positive_denominator() -> TestResult {
     for value in [
         "",
         "^1^:^1",
@@ -72,8 +74,9 @@ fn law_tf2b_c11_sac_29_re_sn_exact_ratio_and_positive_denominator() -> TestResul
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.11, §C.12, §2.2
 #[test]
-fn law_tf2b_c11_c12_2_2_x_fields_composites_and_option_resolution() -> TestResult {
+fn specimen_x_fields_and_option_resolution() -> TestResult {
     for (id, supported) in [
         ("SPM", vec![1, 2, 3, 4, 7, 8, 9, 11, 13, 16, 17, 18, 27]),
         ("SAC", vec![3, 4, 9, 10, 11, 13, 14, 15, 21, 22, 24, 29]),
@@ -142,8 +145,9 @@ fn law_tf2b_c11_c12_2_2_x_fields_composites_and_option_resolution() -> TestResul
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.11, §C.12
 #[test]
-fn law_tf2b_c11_c12_composite_field_ceiling_including_empty_positions() -> TestResult {
+fn composite_length_counts_empty_positions() -> TestResult {
     for (id, number, value, maximum) in [
         ("SPM", 2, "id&Local", 80),
         ("SPM", 3, "id&Local", 80),
@@ -181,8 +185,9 @@ fn law_tf2b_c11_c12_composite_field_ceiling_including_empty_positions() -> TestR
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.11, §C.12
 #[test]
-fn law_tf2b_c11_c12_work_builder_validates_container_details_and_option_fields() -> TestResult {
+fn work_builder_checks_container_details() -> TestResult {
     use analyte_hl7::Response;
     use law::{Address, Awos, ContainerDetails, SpecimenDetails, WorkAction};
     let awos = Awos::new(
@@ -274,8 +279,9 @@ fn law_tf2b_c11_c12_work_builder_validates_container_details_and_option_fields()
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.28.4.1.2.1
 #[test]
-fn law_tf2b_3_28_4_1_2_1_negative_query_echoes_all_sac_identity_values() -> TestResult {
+fn negative_reply_echoes_sac_identity_values() -> TestResult {
     use analyte_hl7::{Field, Response};
     use law::{Address, Query};
     let address = Address {
@@ -333,8 +339,9 @@ fn law_tf2b_3_28_4_1_2_1_negative_query_echoes_all_sac_identity_values() -> Test
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.11, §C.12
 #[test]
-fn law_tf2b_c11_c12_results_receive_preserves_x_and_rejects_bad_supported_identity() -> TestResult {
+fn results_keep_x_fields_and_reject_bad_identity() -> TestResult {
     let wire = "MSH|^~\\&|A|L|M|L|20260101120000+0000||OUL^R22^OUL_R22|r1|P|2.5.1|||NE|AL||UNICODE UTF-8|||LAB-29^IHE\rSPM|1|sample&Local||SER^^HL70487|||||||P^^HL70369\rSAC|||tube\rOBR||awos-1||test^Synthetic^99LAB\rORC|SC||||IP\r";
     let good = law::parse_message(wire.as_bytes(), options())?;
     law::Results::new(&good)?;
@@ -359,8 +366,9 @@ fn law_tf2b_c11_c12_results_receive_preserves_x_and_rejects_bad_supported_identi
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.11, §C.12
 #[test]
-fn law_tf2b_c11_c12_remaining_location_lengths_and_pool_receive_predicates() -> TestResult {
+fn location_lengths_and_pool_predicates() -> TestResult {
     for (field, value, size, position) in [
         (10, "rack", 80, 11),
         (13, "tray", 80, 14),
@@ -406,8 +414,9 @@ fn law_tf2b_c11_c12_remaining_location_lengths_and_pool_receive_predicates() -> 
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.12
 #[test]
-fn law_tf2b_c12_role_predicates_require_the_standard_coding_system() -> TestResult {
+fn role_predicates_need_standard_coding_system() -> TestResult {
     for code in ["P", "Q", "U", "L"] {
         both("SPM", &[(11, &format!("{code}^^99LAB"))], true)?;
     }
@@ -425,8 +434,9 @@ fn law_tf2b_c12_role_predicates_require_the_standard_coding_system() -> TestResu
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.11, §C.12
 #[test]
-fn law_tf2b_c11_c12_explicit_profile_cannot_enlarge_peer_send_capabilities() -> TestResult {
+fn profile_cannot_widen_peer_send_capabilities() -> TestResult {
     use analyte_hl7::Response;
     use law::{Address, Awos, ContainerDetails, WorkAction};
     let details = ContainerDetails {
@@ -483,8 +493,9 @@ fn law_tf2b_c11_c12_explicit_profile_cannot_enlarge_peer_send_capabilities() -> 
     )?;
     Ok(())
 }
+// IHE PaLM TF-2b §C.11
 #[test]
-fn law_tf2b_c11_am_carrier_tray_only_without_sac3_with_sac4() -> TestResult {
+fn carrier_tray_need_sac4_and_empty_sac3() -> TestResult {
     // Original failing synthetic SAC bytes from the Gazelle export, C.11 M/X.
     let failing = law::parse_message(b"MSH|^~\\&|ANALYTE|ANALYTE-TEST|SYN-ANALYZER|ANALYTE-TEST|20260101120000+0000||OML^O33^OML_O33|SYN-OML1|P|2.5.1|||NE|AL||UNICODE UTF-8|||LAB-28^IHE~LAW_SPECIMEN^IHE\rSPM|1|SYN-0001&ANALYTE-TEST||SER^Serum^HL70487|||||||P^^HL70369\rSAC|||SYN-0001|||||||SYN-RACK1|1||||||||||||||||||\rORC|NW||||||||20260101120000||||||||||||\rOBR||SYN-AWOS1||SYN-TEST^Synthetic test^99SYN|||||||||||||||||||||||||||||||||||||||||||||\r", options())?;
     assert_eq!(

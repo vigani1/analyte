@@ -36,9 +36,9 @@ fn policy() -> DialogConfig {
     }
 }
 
+// VIDAS BCI Link rev A §3; ADR 0003
 #[test]
-fn vidas_bci_a_3_adr0003_store_gate_and_incomplete_transfer()
--> Result<(), Box<dyn std::error::Error>> {
+fn ack_waits_for_store_and_keeps_incomplete_transfer() -> Result<(), Box<dyn std::error::Error>> {
     for mode in [Mode::Literal, Mode::Alternate] {
         let c = config(mode, &[], false)?;
         let mut d = Decoder::new(c.clone());
@@ -74,8 +74,9 @@ fn vidas_bci_a_3_adr0003_store_gate_and_incomplete_transfer()
     Ok(())
 }
 
+// VIDAS BCI Link rev A §5
 #[test]
-fn vidas_bci_a_5_download_never_resends_after_lost_ack() -> Result<(), Box<dyn std::error::Error>> {
+fn download_never_resends_after_lost_ack() -> Result<(), Box<dyn std::error::Error>> {
     let request = Message::parse("mtmpr|piX|si|ci0001|rtHCG|qd1|", SampleLimit::Twelve)?;
     for mode in [Mode::Literal, Mode::Alternate] {
         let c = config(mode, &[], false)?;
@@ -104,8 +105,9 @@ fn vidas_bci_a_5_download_never_resends_after_lost_ack() -> Result<(), Box<dyn s
 }
 
 proptest::proptest! {
+    // VIDAS BCI Link rev A §3
     #[test]
-    fn vidas_bci_a_3_arbitrary_chunk_splits_roundtrip(body in "[ -~]{1,500}") {
+    fn arbitrary_chunk_splits_roundtrip(body in "[ -~]{1,500}") {
         let c = config(Mode::Alternate, &[], false).map_err(|e| proptest::test_runner::TestCaseError::fail(e.to_string()))?;
         let raw = c.encode(body.as_bytes()).map_err(|e| proptest::test_runner::TestCaseError::fail(e.to_string()))?;
         let mut decoder = Decoder::new(c);
@@ -114,17 +116,18 @@ proptest::proptest! {
         proptest::prop_assert_eq!(output.map(|p| (p.body, p.raw)), Some((body.into_bytes(), raw)));
     }
 
+    // VIDAS BCI Link rev A §4
     #[test]
-    fn vidas_bci_a_4_parser_never_panics(text in ".{0,2100}") {
+    fn parser_never_panics(text in ".{0,2100}") {
         if let Ok(message) = Message::parse(&text, SampleLimit::Seventeen) {
             proptest::prop_assert_eq!(message.text(), text);
         }
     }
 }
 
+// VIDAS BCI Link rev A §3
 #[test]
-fn vidas_bci_a_3_storage_failure_and_successful_sessions() -> Result<(), Box<dyn std::error::Error>>
-{
+fn store_failure_parks_and_good_sessions_close() -> Result<(), Box<dyn std::error::Error>> {
     for mode in [Mode::Literal, Mode::Alternate] {
         let c = config(mode, &[], false)?;
         let mut decoder = Decoder::new(c.clone());
@@ -179,9 +182,9 @@ fn vidas_bci_a_3_storage_failure_and_successful_sessions() -> Result<(), Box<dyn
     Ok(())
 }
 
+// ADR 0001, ADR 0010
 #[test]
-fn adr0001_0010_vidas_owns_commit_and_session_deadlines() -> Result<(), Box<dyn std::error::Error>>
-{
+fn dialog_owns_commit_and_session_deadlines() -> Result<(), Box<dyn std::error::Error>> {
     let c = config(Mode::Literal, &[], false)?;
     let mut dialog = Dialog::upload(c.clone(), policy())?;
     let _ = dialog.start();
@@ -232,9 +235,9 @@ fn adr0001_0010_vidas_owns_commit_and_session_deadlines() -> Result<(), Box<dyn 
     Ok(())
 }
 
+// VIDAS BCI Link rev A chapter 3
 #[test]
-fn vidas_bci_a_ch3_journaled_bytes_demultiplex_controls_without_ack_before_store()
--> Result<(), Box<dyn std::error::Error>> {
+fn byte_input_splits_controls_and_acks_after_store() -> Result<(), Box<dyn std::error::Error>> {
     use analyte_framing::vidas::{ACK, CR, ENQ, EOT, ETX, LF};
     for suffix in [&[][..], &[CR][..], &[LF][..], &[CR, LF][..]] {
         let config = config(Mode::Literal, suffix, false)?;

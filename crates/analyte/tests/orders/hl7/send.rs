@@ -174,9 +174,9 @@ async fn outcome(path: &Path, expected: &str) -> Result<(), Error> {
     state(path, expected).await?;
     wait_state(path, "done", 1).await
 }
+// HL7 2.3.1; HL7 2.5.1; HL7 2.6; HL7 2.8.2 §4.4.7
 #[tokio::test]
-async fn hl7_231_251_26_282_s4_4_7_send_ahead_accepted_rejected_and_mixed_items()
--> Result<(), Error> {
+async fn send_ahead_accepted_rejected_and_mixed_items() -> Result<(), Error> {
     for (edition, version) in [
         ("v231", "2.3.1"),
         ("v251", "2.5.1"),
@@ -257,8 +257,9 @@ async fn hl7_231_251_26_282_s4_4_7_send_ahead_accepted_rejected_and_mixed_items(
     }
     Ok(())
 }
+// HL7 2.5.1; HL7 2.6; HL7 2.8.2; Safety rule 8 (ADR 0003)
 #[tokio::test]
-async fn hl7_251_26_282_rule8_no_reply_disconnect_and_restart_never_resend() -> Result<(), Error> {
+async fn no_reply_disconnect_or_restart_never_resends() -> Result<(), Error> {
     for (edition, disconnect) in [
         ("v251", false),
         ("v251", true),
@@ -311,8 +312,9 @@ async fn cancel_cache(path: &Path, reference: &Reference) -> Result<(), Error> {
         .await?;
     Ok(())
 }
+// HL7 2.3.1; HL7 2.5.1
 #[tokio::test]
-async fn hl7_231_251_cancel_accepted_or_refused_restores_prior_state_once() -> Result<(), Error> {
+async fn cancel_accepted_or_refused_restores_state() -> Result<(), Error> {
     for (edition, version) in [
         ("v231", "2.3.1"),
         ("v251", "2.5.1"),
@@ -387,8 +389,9 @@ async fn hl7_231_251_cancel_accepted_or_refused_restores_prior_state_once() -> R
     Ok(())
 }
 
+// HL7 2.3.1 ORC-4
 #[tokio::test]
-async fn hl7_231_orc4_overlong_group_is_rejected_before_any_reservation() -> Result<(), Error> {
+async fn overlong_orc4_group_is_rejected_before_reservation() -> Result<(), Error> {
     let (_temp, path, reference, service, mut peer) =
         setup_with_id("v231", "app-order-identifier-too-long", false, 30000).await?;
     outcome(&path, "Rejected").await?;
@@ -409,9 +412,9 @@ async fn hl7_231_orc4_overlong_group_is_rejected_before_any_reservation() -> Res
     Ok(())
 }
 
+// ADR 0003 rule 8; HL7 2.5.1; HL7 2.6; HL7 2.8.2
 #[tokio::test]
-async fn adr0003_rule8_hl7_251_26_282_restart_during_sending_recovers_items_without_resend()
--> Result<(), Error> {
+async fn restart_during_sending_recovers_without_resend() -> Result<(), Error> {
     for edition in ["v251", "v26", "v282"] {
         let (_temp, path, reference, service, mut peer) = setup(edition).await?;
         read_mllp_packet(&mut peer, "oversized packet").await?;
@@ -491,8 +494,9 @@ async fn hl7_ei_actual_store_id_overflow_rejects_before_sending_reservation() ->
     Ok(())
 }
 
+// Plan §11
 #[tokio::test]
-async fn plan11_hl7_send_ahead_reserves_nothing_while_restore_paused() -> Result<(), Error> {
+async fn send_ahead_reserves_nothing_while_restore_paused() -> Result<(), Error> {
     let (_temp, path, reference, service, mut peer) =
         setup_with_id("v251", "order-1", true, 30000).await?;
     // A completed feed proves orders are available; shutdown joins the machine
@@ -521,9 +525,9 @@ async fn plan11_hl7_send_ahead_reserves_nothing_while_restore_paused() -> Result
 }
 
 // HL7 2.3.1 section 3.3.2 p.3-36: no name is available in contract v1.
+// HL7 2.3.1 §3.3.2
 #[tokio::test]
-async fn hl7_231_3_3_2_required_pid_rejects_before_reservation_without_inventing_name()
--> Result<(), Error> {
+async fn required_pid_rejects_without_inventing_name() -> Result<(), Error> {
     for (edition, required) in [("v231", true), ("v251", true), ("v231", false)] {
         let (_temp, path, reference, service, mut peer) =
             setup_with_patient_requirement(edition, "known-patient", false, 30000, required)
@@ -552,9 +556,9 @@ async fn hl7_231_3_3_2_required_pid_rejects_before_reservation_without_inventing
 
 // HL7 2.3.1 section 4.3.1.4 p.4-17; 2.5.1 section 4.5.1.4 p.4-39.
 // The scalar fits 22 bytes, but the EI including its namespace does not.
+// HL7 2.3.1 §4.3.1.4; HL7 2.5.1 §4.5.1.4
 #[tokio::test]
-async fn hl7_231_4_3_1_4_251_4_5_1_4_full_group_ei_overflow_precedes_reservation()
--> Result<(), Error> {
+async fn full_group_ei_overflow_rejects_before_reservation() -> Result<(), Error> {
     for edition in ["v231", "v251"] {
         let (_temp, path, reference, service, mut peer) =
             setup_with_id(edition, &"g".repeat(19), false, 30000).await?;

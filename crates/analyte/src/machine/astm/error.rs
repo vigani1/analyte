@@ -61,8 +61,9 @@ mod tests {
     use super::*;
     use std::error::Error as _;
 
+    // ADR 0003
     #[tokio::test(start_paused = true)]
-    async fn adr0003_astm_refusal_preserves_custody_cause_and_operator_text() {
+    async fn refusal_keeps_custody_cause_and_operator_text() {
         use crate::machine::receive::custody::{StoreWaitError, store_within};
         let storage = Error::CommitRefused(StoreWaitError::Operation(
             analyte_store::IntakeError::Storage(analyte_store::StorageError::Capacity),

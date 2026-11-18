@@ -1,8 +1,9 @@
 //! Tests untrusted app diagnostics without stopping delivery ownership.
 use super::*;
 
+// ADR 0008
 #[tokio::test]
-async fn adr0008_app_diagnostics_park_and_worker_continues() -> TestResult {
+async fn app_diagnostics_park_and_worker_continues() -> TestResult {
     use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
     for status in [400, 409, 422] {
         for detail in [
@@ -82,8 +83,9 @@ async fn adr0008_app_diagnostics_park_and_worker_continues() -> TestResult {
     Ok(())
 }
 
+// ADR 0008
 #[test]
-fn adr0008_diagnostic_encoding_bounds_utf8_and_preserves_visible_controls() {
+fn diagnostic_text_is_bounded_with_visible_controls() {
     let reason = crate::delivery::reason(&"\u{e9}".repeat(800));
     assert!(reason.as_str().len() <= 1024);
     assert!(reason.as_str().ends_with("\u{2026} [truncated]"));

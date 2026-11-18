@@ -3,8 +3,9 @@ use crate::test_support::*;
 use crate::*;
 use analyte_model::Reason;
 
+// Plan §11; ADR 0003
 #[test]
-fn plan11_adr0003_reprocess_provenance_resolution_failure_and_audit_rollback() -> TestResult {
+fn reprocessing_keeps_provenance_and_rolls_back_atomically() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("reprocess.db"))?;
     let metadata = receipt(b"original")?;
@@ -192,9 +193,9 @@ fn verify_reprocessed_provenance_and_resolution(
     Ok(())
 }
 
+// ADR 0003, ADR 0011; mutation-testing regression
 #[test]
-fn mutation_adr0003_adr0011_lifecycle_reprocessing_requires_audit_and_keeps_original() -> TestResult
-{
+fn lifecycle_reprocessing_requires_audit_keeps_original() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("lifecycle-reprocess.db"))?;
     let metadata = receipt(b"raw")?;
@@ -282,9 +283,9 @@ fn mutation_adr0003_adr0011_lifecycle_reprocessing_requires_audit_and_keeps_orig
     Ok(())
 }
 
+// ADR 0003; mutation-testing regression
 #[test]
-fn mutation_adr0003_reprocessing_never_resolves_failure_empty_unresolved_or_flagged_evidence()
--> TestResult {
+fn reprocessing_never_resolves_failed_or_flagged_evidence() -> TestResult {
     for case in ["failed", "empty", "unresolved", "finding", "missing-sample"] {
         let temp = tempfile::tempdir()?;
         let mut store = open(&temp.path().join("failed-reprocessing.db"))?;
@@ -375,8 +376,9 @@ fn mutation_adr0003_reprocessing_never_resolves_failure_empty_unresolved_or_flag
     Ok(())
 }
 
+// ADR 0015
 #[test]
-fn adr0015_interpretation_ledgers_are_explicit_and_legacy_absence_is_unknown() -> TestResult {
+fn interpretation_ledgers_explicit_legacy_absence_unknown() -> TestResult {
     let mut current = interpretation()?;
     current.departures = Some(analyte_model::DepartureEvidence::default());
     let encoded = serde_json::to_value(&current)?;

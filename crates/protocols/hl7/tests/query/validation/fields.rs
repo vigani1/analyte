@@ -1,8 +1,9 @@
 //! Tests HL7 QRD and QRF field validation.
 use super::*;
 
+// HL7 2.3.1 §2.24.4, §2.24.5; HL7 2.5.1 §5.10.5.3, §5.10.5.4
 #[test]
-fn hl7_231_2_24_4_5_and_251_5_10_5_3_4_field_usage_lengths_and_repetitions() -> Result<(), Error> {
+fn field_usage_lengths_and_repetitions() -> Result<(), Error> {
     for version in ["2.3.1", "2.5.1"] {
         for (segment, last) in [("QRD", 12), ("QRF", 10)] {
             for field in 1..=last {
@@ -44,8 +45,9 @@ fn hl7_231_2_24_4_5_and_251_5_10_5_3_4_field_usage_lengths_and_repetitions() -> 
     Ok(())
 }
 
+// HL7 2.5.1 §5.10.5.4.10
 #[test]
-fn hl7_251_5_10_5_4_10_threshold_nm_and_231_exclusion() -> Result<(), Error> {
+fn qrf10_threshold_numeric_and_refused_in_older_edition() -> Result<(), Error> {
     for (version, value) in [("2.3.1", b"0.5".as_slice()), ("2.5.1", b"not-number")] {
         let message = fixture(version, "QRF", 10, value)?;
         assert!(matches!(
@@ -61,8 +63,9 @@ fn hl7_251_5_10_5_4_10_threshold_nm_and_231_exclusion() -> Result<(), Error> {
     Ok(())
 }
 
+// HL7 2.3.1 §2.24.4, §2.24.5; HL7 2.5.1 §5.10.5.3, §5.10.5.4
 #[test]
-fn hl7_231_2_24_4_5_and_251_5_10_5_3_4_preserve_local_filters() -> Result<(), Error> {
+fn local_filters_are_preserved() -> Result<(), Error> {
     for version in ["2.3.1", "2.5.1"] {
         for (segment, field, value) in [
             ("QRD", 8, b"0001^^^^^^^LCL~^Synthetic".as_slice()),
@@ -94,8 +97,9 @@ fn hl7_231_2_24_4_5_and_251_5_10_5_3_4_preserve_local_filters() -> Result<(), Er
 }
 
 proptest::proptest! {
+    // HL7 2.3.1 §2.24.5.1; HL7 2.5.1 §5.10.5.4.1
     #[test]
-    fn hl7_231_2_24_5_1_251_5_10_5_4_1_unknown_where_is_preserved(value in "[a-zA-Z0-9]{1,20}") {
+    fn unknown_where_subject_is_preserved(value in "[a-zA-Z0-9]{1,20}") {
         for version in ["2.3.1","2.5.1"] {
             let message=fixture(version,"QRF",1,value.as_bytes());
             proptest::prop_assert!(message.is_ok());
@@ -110,8 +114,9 @@ proptest::proptest! {
     }
 }
 
+// HL7 2.5.1 §5.10.5.3.9
 #[test]
-fn hl7_251_5_10_5_3_9_xcn_extended_components_and_lengths() -> Result<(), Error> {
+fn xcn_extended_components_and_lengths() -> Result<(), Error> {
     for (component, value) in [
         (1, b"1234567890123456".as_slice()),
         (2, b"&prefix"),
@@ -170,8 +175,9 @@ fn hl7_251_5_10_5_3_9_xcn_extended_components_and_lengths() -> Result<(), Error>
     Ok(())
 }
 
+// HL7 2.5.1 §5.10.5.4.9
 #[test]
-fn hl7_251_5_10_5_4_9_tq_component_constraints() -> Result<(), Error> {
+fn tq_component_constraints() -> Result<(), Error> {
     for (component, value) in [
         (2, b"123456789012345678901".as_slice()),
         (3, b"INDEFX"),
@@ -202,8 +208,9 @@ fn hl7_251_5_10_5_4_9_tq_component_constraints() -> Result<(), Error> {
     Ok(())
 }
 
+// HL7 2.3.1 §2.24.4.1; HL7 2.5.1 §5.10.5.3.2
 #[test]
-fn hl7_231_2_24_4_1_251_5_10_5_3_2_keeps_timestamp_precision_and_offsets() -> Result<(), Error> {
+fn query_time_keeps_precision_and_offset() -> Result<(), Error> {
     for version in ["2.3.1", "2.5.1"] {
         for value in [
             b"2026".as_slice(),
@@ -226,8 +233,9 @@ fn hl7_231_2_24_4_1_251_5_10_5_3_2_keeps_timestamp_precision_and_offsets() -> Re
     Ok(())
 }
 
+// HL7 2.3.1 §2.24.4.7; HL7 2.5.1 §5.10.5.3.8
 #[test]
-fn hl7_231_2_24_4_7_251_5_10_5_3_8_nm_and_coded_units_are_not_coerced() -> Result<(), Error> {
+fn quantity_number_and_unit_are_not_coerced() -> Result<(), Error> {
     for version in ["2.3.1", "2.5.1"] {
         for value in [
             b".5^LI".as_slice(),
@@ -249,8 +257,9 @@ fn hl7_231_2_24_4_7_251_5_10_5_3_8_nm_and_coded_units_are_not_coerced() -> Resul
     Ok(())
 }
 
+// HL7 2.3.1 §2.24.4.12; HL7 2.5.1 §5.10.5.3.13
 #[test]
-fn hl7_231_2_24_4_12_251_5_10_5_3_13_all_query_levels() -> Result<(), Error> {
+fn all_query_levels_are_accepted() -> Result<(), Error> {
     for version in ["2.3.1", "2.5.1"] {
         for value in [b"O".as_slice(), b"R", b"S", b"T"] {
             let message = fixture(version, "QRD", 12, value)?;
@@ -260,33 +269,23 @@ fn hl7_231_2_24_4_12_251_5_10_5_3_13_all_query_levels() -> Result<(), Error> {
     Ok(())
 }
 
+// HL7 2.3.1 §2.24.4.7; HL7 2.5.1 §5.10.5.3.8
+negative!(quantity_refuses_locale_comma, "QRD", 7, b"1,2^LI");
+// HL7 2.3.1 §2.24.4.7; HL7 2.5.1 §5.10.5.3.8
+negative!(quantity_refuses_exponent, "QRD", 7, b"1e2^LI");
+// HL7 2.3.1 §2.24.4.7; HL7 2.5.1 §5.10.5.3.8
+negative!(quantity_requires_a_digit, "QRD", 7, b".^LI");
+// HL7 2.3.1 §2.24.5.9; HL7 2.5.1 §5.10.5.4.9
 negative!(
-    hl7_231_2_24_4_7_251_5_10_5_3_8_nm_no_locale_comma,
-    "QRD",
-    7,
-    b"1,2^LI"
-);
-negative!(
-    hl7_231_2_24_4_7_251_5_10_5_3_8_nm_no_exponent,
-    "QRD",
-    7,
-    b"1e2^LI"
-);
-negative!(
-    hl7_231_2_24_4_7_251_5_10_5_3_8_nm_requires_digit,
-    "QRD",
-    7,
-    b".^LI"
-);
-negative!(
-    hl7_231_2_24_5_9_251_5_10_5_4_9_tq_quantity_nm_length,
+    tq_quantity_number_length_is_bounded,
     "QRF",
     9,
     b"12345678901234567"
 );
 
+// HL7 2.3.1 §2.24.4.8; HL7 2.5.1 §5.10.5.3.9
 #[test]
-fn hl7_231_2_24_4_8_251_5_10_5_3_9_subject_component_cardinality() -> Result<(), Error> {
+fn subject_component_count_is_bounded() -> Result<(), Error> {
     for (version, count) in [("2.3.1", 16), ("2.5.1", 24)] {
         let message = fixture(version, "QRD", 8, &component_value(count, b"unknown"))?;
         assert!(matches!(
@@ -308,8 +307,9 @@ fn hl7_231_2_24_4_8_251_5_10_5_3_9_subject_component_cardinality() -> Result<(),
     Ok(())
 }
 
+// HL7 2.5.1 §5.10.5.3.10, §5.10.5.3.11
 #[test]
-fn hl7_251_5_10_5_3_10_11_ce_identifier_and_system_lengths() -> Result<(), Error> {
+fn ce_identifier_and_system_lengths() -> Result<(), Error> {
     for field in [9, 10] {
         for value in [
             vec![b'a'; 21],
@@ -324,8 +324,9 @@ fn hl7_251_5_10_5_3_10_11_ce_identifier_and_system_lengths() -> Result<(), Error
     Ok(())
 }
 
+// HL7 2.3.1 §2.24.4, §2.24.5; HL7 2.5.1 §5.10.5.3, §5.10.5.4
 #[test]
-fn hl7_231_2_24_4_5_251_5_10_5_3_4_declared_lengths() -> Result<(), Error> {
+fn declared_field_lengths_are_enforced() -> Result<(), Error> {
     for version in ["2.3.1", "2.5.1"] {
         for (segment, field, maximum) in [
             ("QRD", 4, 10),
@@ -361,8 +362,9 @@ fn hl7_231_2_24_4_5_251_5_10_5_3_4_declared_lengths() -> Result<(), Error> {
     Ok(())
 }
 
+// HL7 2.3.1 §2.24.5.4, §2.24.5.5; HL7 2.5.1 §5.10.5.4.4, §5.10.5.4.5
 #[test]
-fn hl7_231_2_24_5_4_5_251_5_10_5_4_4_5_escaped_local_filters_survive() -> Result<(), Error> {
+fn escaped_local_filters_survive() -> Result<(), Error> {
     for version in ["2.3.1", "2.5.1"] {
         for value in [b"Local\\F\\Filter".as_slice(), b"First~Second\\R\\Part"] {
             let message = fixture(version, "QRF", 4, value)?;
@@ -379,21 +381,19 @@ fn hl7_231_2_24_5_4_5_251_5_10_5_4_4_5_escaped_local_filters_survive() -> Result
     Ok(())
 }
 
+// HL7 2.3.1 §2.24.5.9; HL7 2.5.1 §5.10.5.4.9
+negative!(tq_explicit_time_refuses_bad_clock, "QRF", 9, b"^LOCAL&2460");
+// HL7 2.3.1 §2.24.5.9; HL7 2.5.1 §5.10.5.4.9
 negative!(
-    hl7_231_2_24_5_9_251_5_10_5_4_9_tq_explicit_time_clock,
-    "QRF",
-    9,
-    b"^LOCAL&2460"
-);
-negative!(
-    hl7_231_2_24_5_9_251_5_10_5_4_9_tq_explicit_time_list,
+    tq_explicit_time_refuses_trailing_comma,
     "QRF",
     9,
     b"^LOCAL&0900,"
 );
 
+// HL7 2.3.1 §2.24.5.9; HL7 2.5.1 §5.10.5.4.9
 #[test]
-fn hl7_231_2_24_5_9_251_5_10_5_4_9_tq_explicit_times_preserved() -> Result<(), Error> {
+fn tq_explicit_times_are_preserved() -> Result<(), Error> {
     for version in ["2.3.1", "2.5.1"] {
         let message = fixture(version, "QRF", 9, b"^LOCAL&0900,1700")?;
         let request = Request::new(&message)?;
@@ -408,8 +408,9 @@ fn hl7_231_2_24_5_9_251_5_10_5_4_9_tq_explicit_times_preserved() -> Result<(), E
     Ok(())
 }
 
+// HL7 2.3.1 §2.24.4.8–10; HL7 2.5.1 §5.10.5.3.9–11
 #[test]
-fn hl7_231_2_24_4_8_10_251_5_10_5_3_9_11_filter_length_boundaries() -> Result<(), Error> {
+fn qrd_filter_length_boundaries() -> Result<(), Error> {
     for (version, maximum, family, universal) in [("2.3.1", 60, 30, 17), ("2.5.1", 250, 50, 187)] {
         let mut who = vec![b'^'];
         who.extend(vec![b'N'; family]);
@@ -461,8 +462,9 @@ fn hl7_231_2_24_4_8_10_251_5_10_5_3_9_11_filter_length_boundaries() -> Result<()
     Ok(())
 }
 
+// HL7 2.3.1 §2.8.20; HL7 2.5.1 §2.A.33
 #[test]
-fn hl7_231_2_8_20_and_251_2_a_33_uri_code_is_edition_specific() -> Result<(), Error> {
+fn uri_code_is_edition_specific() -> Result<(), Error> {
     for (edition, accepted) in [("2.3.1", false), ("2.5.1", true)] {
         let message = fixture(edition, "QRD", 8, b"^Name^^^^^^^LAB&urn:synthetic&URI")?;
         assert_eq!(Request::new(&message).is_ok(), accepted);
@@ -470,8 +472,9 @@ fn hl7_231_2_8_20_and_251_2_a_33_uri_code_is_edition_specific() -> Result<(), Er
     Ok(())
 }
 
+// HL7 2.3.1 §2.8.49; HL7 2.5.1 §2.A.86, table 0200
 #[test]
-fn hl7_231_2_8_49_and_251_2_a_86_table_0200_name_codes() -> Result<(), Error> {
+fn name_type_codes_are_edition_specific() -> Result<(), Error> {
     for (edition, code, accepted) in [
         ("2.3.1", b"I", false),
         ("2.5.1", b"I", true),

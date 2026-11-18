@@ -2,8 +2,9 @@
 use super::*;
 use analyte_fixtures::ConfigEdit as _;
 
+// HL7 2.9.1 §2.4.5.2
 #[test]
-fn hl7_2_9_1_s2_4_5_2_truncated_input_never_reaches_result_mapping() -> TestResult {
+fn truncated_input_never_reaches_mapping() -> TestResult {
     let config = config(HL7_CONFIG)?;
     let raw = b"MSH|^~\\&#|SYN||||202611161200||ORU^R01^ORU_R01|MSG|P|2.9.1\rOBR|1||001\rOBX|1|ST|SYN||partial#||||||F\r";
     let message = analyte_hl7::Message::parse(raw, analyte_hl7::Options::default())?;
@@ -21,8 +22,9 @@ fn hl7_2_9_1_s2_4_5_2_truncated_input_never_reaches_result_mapping() -> TestResu
     Ok(())
 }
 
+// HL7 2.5.1 §2.7.4
 #[test]
-fn hl7_251_2_7_4_decoding_retains_negotiated_characters() -> TestResult {
+fn decoding_keeps_negotiated_characters() -> TestResult {
     for (charset, encoding, bytes) in [
         ("8859/1", "latin1", b"caf\xe9\\F\\end".as_slice()),
         ("UNICODE UTF-8", "utf8", "caf\u{e9}\\F\\end".as_bytes()),
@@ -52,8 +54,9 @@ fn hl7_251_2_7_4_decoding_retains_negotiated_characters() -> TestResult {
 }
 
 // HL7 2.5.1 section 2.7.4 p.2-18: extract structure before decoding delimiters.
+// HL7 2.5.1 §2.7.4
 #[test]
-fn hl7_251_2_7_4_decodes_selected_identifiers_and_values_keeps_wire_originals() -> TestResult {
+fn decodes_ids_and_values_keeping_originals() -> TestResult {
     let definition = HL7_CONFIG.rewrite("machine_code=\"SYN\"", r"machine_code='A|B^C~D&E\F'");
     let config = config(&definition)?;
     let escaped = r"A\F\B\S\C\R\D\T\E\E\F";
@@ -99,8 +102,9 @@ fn hl7_251_2_7_4_decodes_selected_identifiers_and_values_keeps_wire_originals() 
 }
 
 // HL7 2.5.1 sections 2.5.4, 2.7.4: use the actual escape and separator characters.
+// HL7 2.5.1 §2.7.4
 #[test]
-fn hl7_251_2_7_4_decoding_uses_message_delimiters_and_is_not_recursive() -> TestResult {
+fn decoding_uses_message_delimiters_once() -> TestResult {
     let config = config(HL7_CONFIG)?;
     let raw = b"MSH*$%!@*SYN****202611151200**ORU$R01$ORU_R01*MSG*P*2.5.1\rOBR*1**000!F!Ab\rOBX*1*ST*SYN$Label$synthetic**!F!!S!!R!!T!!E!%literal!E!H!E!******F\r";
     let message = analyte_hl7::Message::parse(raw, analyte_hl7::Options::default())?;
@@ -130,8 +134,9 @@ fn hl7_251_2_7_4_decoding_uses_message_delimiters_and_is_not_recursive() -> Test
 }
 
 // HL7 2.5.1 sections 2.7.3, 2.7.6 pp.2-18-20.
+// HL7 2.5.1 §2.7.3, §2.7.6
 #[test]
-fn hl7_251_2_7_3_2_7_6_formatting_is_unsupported_evidence_not_clean_text() -> TestResult {
+fn formatting_is_unsupported_not_clean_text() -> TestResult {
     for kind in ["ST", "TX", "FT"] {
         for raw in [
             r"before\H\marked\N\after",
@@ -163,8 +168,9 @@ fn hl7_251_2_7_3_2_7_6_formatting_is_unsupported_evidence_not_clean_text() -> Te
     Ok(())
 }
 
+// Safety rule 5 (ADR 0003); CLSI LIS02-A2 §9.4
 #[test]
-fn rule5_comparator_kept_with_original_text_lis02_9_4() -> TestResult {
+fn comparator_kept_with_original_text() -> TestResult {
     let output = astm("R|1|^^^SYN|<0.10|mg/L|0-1|H||F\r", "P")?;
     let part = first(&output)?;
     let value = part.values.as_slice().first().ok_or("missing value")?;
@@ -194,8 +200,9 @@ fn rule5_comparator_kept_with_original_text_lis02_9_4() -> TestResult {
     Ok(())
 }
 
+// Safety rule 5 (ADR 0003)
 #[test]
-fn rule5_locale_decimal_and_error_tokens_stay_text_for_both_protocols() -> TestResult {
+fn locale_decimals_and_error_tokens_stay_text() -> TestResult {
     for raw in ["1,234", "positive", "ERROR", "1e3", " 12", "NaN"] {
         for output in [
             astm(&format!("R|1|^^^SYN|{raw}|||||F\r"), "P")?,
@@ -216,8 +223,9 @@ fn rule5_locale_decimal_and_error_tokens_stay_text_for_both_protocols() -> TestR
     Ok(())
 }
 
+// Safety rule 6 (ADR 0003)
 #[test]
-fn rule6_units_require_exact_config_match_and_no_dilution_is_guessed() -> TestResult {
+fn units_need_exact_match_and_dilution_unguessed() -> TestResult {
     for (unit, mapped) in [("mg/L", true), ("MG/L", false), ("mg/L ", false)] {
         let output = astm(&format!("R|1|^^^SYN|1|{unit}||||F\r"), "P")?;
         let part = first(&output)?;
@@ -229,8 +237,9 @@ fn rule6_units_require_exact_config_match_and_no_dilution_is_guessed() -> TestRe
     Ok(())
 }
 
+// HL7 §7.4.2.5, §7.4.2.11
 #[test]
-fn hl7_7_4_2_5_and_11_same_key_obxs_form_one_replacement_unit() -> TestResult {
+fn same_key_obxs_form_one_replacement() -> TestResult {
     let output = hl7(
         "PID|1\rOBR|1||001\rNTE|1||order note\rOBX|1|NM|SYN^Name^synthetic||1.20~1.20|mg/L|0-2|H||N|C\rNTE|1||result note\rOBX|2|NM|SYN^Name^synthetic||2.00||||||C\r",
         HL7_CONFIG,
@@ -266,8 +275,9 @@ fn hl7_7_4_2_5_and_11_same_key_obxs_form_one_replacement_unit() -> TestResult {
     Ok(())
 }
 
+// ADR 0003
 #[test]
-fn adr0003_correction_without_original_has_caller_revision() -> TestResult {
+fn correction_without_original_keeps_caller_revision() -> TestResult {
     let output = astm("R|1|^^^SYN|7|||||C\r", "P")?;
     let result = output.results.first().ok_or("missing result")?;
     assert_eq!(result.corrections.as_slice(), &[true]);
@@ -277,8 +287,9 @@ fn adr0003_correction_without_original_has_caller_revision() -> TestResult {
     Ok(())
 }
 
+// Plan §6
 #[test]
-fn plan6_training_and_debug_never_deliver_for_both_protocols() -> TestResult {
+fn training_and_debug_never_deliver() -> TestResult {
     for (mode, expected) in [
         ("T", ProcessingMode::Training),
         ("D", ProcessingMode::Debug),
@@ -302,8 +313,9 @@ fn plan6_training_and_debug_never_deliver_for_both_protocols() -> TestResult {
     Ok(())
 }
 
+// Safety rule 9 (ADR 0003)
 #[test]
-fn rule9_missing_sample_and_unknown_code_are_positioned_findings() -> TestResult {
+fn missing_sample_and_unknown_code_are_located() -> TestResult {
     let output = hl7("OBR|1\rOBX|1|NM|SYN^^synthetic||1||||||F\r", HL7_CONFIG)?;
     assert!(output.requires_parking());
     assert!(
@@ -336,8 +348,9 @@ fn rule9_missing_sample_and_unknown_code_are_positioned_findings() -> TestResult
     Ok(())
 }
 
+// HL7 chapter 2A
 #[test]
-fn hl7_ch2a_coded_structured_and_unknown_types_preserve_originals() -> TestResult {
+fn coded_structured_and_unknown_types_keep_originals() -> TestResult {
     for (kind, raw) in [
         ("CE", "POS^positive^synthetic"),
         ("CWE", "NEG^negative^synthetic"),
@@ -366,8 +379,9 @@ fn hl7_ch2a_coded_structured_and_unknown_types_preserve_originals() -> TestResul
     Ok(())
 }
 
+// HL7 §7.4.2.11
 #[test]
-fn hl7_7_4_2_11_source_statuses_are_never_replaced_by_summaries() -> TestResult {
+fn obx11_statuses_are_never_replaced() -> TestResult {
     for (code, status) in [
         ("C", ResultStatus::Corrected),
         ("D", ResultStatus::Withdrawn),
@@ -401,8 +415,9 @@ fn hl7_7_4_2_11_source_statuses_are_never_replaced_by_summaries() -> TestResult 
     Ok(())
 }
 
+// ADR 0003
 #[test]
-fn adr0003_run_subid_namespace_selectors_and_missing_evidence() -> TestResult {
+fn identity_selectors_resolve_or_stay_unresolved() -> TestResult {
     let definition = HL7_CONFIG.rewrite("sub_id = \"none\"", "sub_id = {group='observation',record='OBX',field=4,component=1,repetition=1}").rewrite("run = []", "run = [{group='observation',record='OBX',field=14,component=1,repetition=1}]").rewrite("order_namespace = {fixed=\"synthetic-orders\"}", "order_namespace = {field={group='order',record='OBR',field=3,component=2,repetition=1}}");
     let output = hl7(
         "OBR|1||001^orders\rOBX|1|NM|SYN^^synthetic|a|1||||||F|||20261115123000\rOBX|2|NM|SYN^^synthetic|a|1||||||F|||20261115123100\r",
@@ -447,8 +462,9 @@ fn hl7_group_selection_never_crosses_orders() -> TestResult {
     Ok(())
 }
 
+// HL7 §7.3.7
 #[test]
-fn hl7_7_3_7_oul_specimen_order_orc_and_result_ownership() -> TestResult {
+fn oul_result_path_keeps_specimen_and_order() -> TestResult {
     let config = config(HL7_CONFIG)?;
     let raw = b"MSH|^~\\&|SYN||||202611151200||OUL^R22^OUL_R22|MSG|P|2.5.1\rPID|1\rSPM|1|specimen\rSAC|||container\rOBR|1||001\rORC|RE\rOBX|1|NM|SYN^^synthetic||1||||||F\r";
     let message =
@@ -467,8 +483,9 @@ fn hl7_7_3_7_oul_specimen_order_orc_and_result_ownership() -> TestResult {
     Ok(())
 }
 
+// Safety rule 8 (ADR 0003)
 #[test]
-fn rule8_qc_comes_only_from_config_rules() -> TestResult {
+fn qc_comes_only_from_config() -> TestResult {
     let definition = HL7_CONFIG.rewrite("qc = []", "qc = [{field={group='order',record='OBR',field=3,component=1,repetition=1},value='QC001',classification='control'}]");
     let output = hl7(
         "OBR|1||QC001\rOBX|1|NM|SYN^^synthetic||1||||||F\r",
@@ -478,8 +495,9 @@ fn rule8_qc_comes_only_from_config_rules() -> TestResult {
     Ok(())
 }
 
+// Plan §6
 #[test]
-fn plan6_source_time_keeps_precision_zone_and_original() -> TestResult {
+fn source_time_keeps_precision_zone_and_original() -> TestResult {
     let output = hl7(
         "OBR|1||001\rOBX|1|NM|SYN^^synthetic||1||||||F|||20261115123000.1200+0130\r",
         HL7_CONFIG,
@@ -498,8 +516,9 @@ fn plan6_source_time_keeps_precision_zone_and_original() -> TestResult {
 }
 
 proptest! {
+    // Safety rule 5 (ADR 0003)
     #[test]
-    fn rule5_arbitrary_parsed_messages_never_panic_or_lose_original(raw in "[a-zA-Z0-9 ,.<>=+-]{0,200}", kind in prop::sample::select(vec!["NM","ST","SN","CE","LOCAL"])) {
+    fn arbitrary_values_never_panic_or_lose_original(raw in "[a-zA-Z0-9 ,.<>=+-]{0,200}", kind in prop::sample::select(vec!["NM","ST","SN","CE","LOCAL"])) {
         let output = hl7(&format!("OBR|1||001\rOBX|1|{kind}|SYN^^synthetic||{raw}||||||F\r"), HL7_CONFIG).map_err(|e| TestCaseError::fail(e.to_string()))?;
         let value = first(&output).map_err(|e| TestCaseError::fail(e.to_string()))?.values.as_slice().first().ok_or_else(|| TestCaseError::fail("missing original"))?;
         prop_assert_eq!(value.original.as_str(), raw.as_str());
@@ -509,8 +528,9 @@ proptest! {
     }
 }
 
+// CLSI LIS02-A2 §5.6.1
 #[test]
-fn lis02_5_6_1_universal_test_id_and_repeated_values_are_retained() -> TestResult {
+fn universal_test_id_and_repeats_are_kept() -> TestResult {
     let output = astm("R|1|SYN|1.0\\1.0|mg/L|low\\high|H\\L||F\r", "P")?;
     let part = first(&output)?;
     assert_eq!(
@@ -536,8 +556,9 @@ fn lis02_5_6_1_universal_test_id_and_repeated_values_are_retained() -> TestResul
     Ok(())
 }
 
+// CLSI LIS02-A2 §9.9
 #[test]
-fn lis02_9_9_all_source_statuses_are_preserved() -> TestResult {
+fn astm_source_statuses_are_all_kept() -> TestResult {
     for code in [
         "C", "P", "F", "X", "I", "S", "M", "R", "N", "Q", "V", "W", "LOCAL",
     ] {
@@ -547,8 +568,9 @@ fn lis02_9_9_all_source_statuses_are_preserved() -> TestResult {
     Ok(())
 }
 
+// HL7 chapter 2
 #[test]
-fn hl7_ch2_escapes_and_empty_subid_declaration_keep_written_evidence() -> TestResult {
+fn escapes_and_empty_subid_keep_written_values() -> TestResult {
     let output = hl7(
         "OBR|1||001\rOBX|1|ST|SYN^^synthetic||a\\F\\b~a\\S\\b||||||F\r",
         HL7_CONFIG,
@@ -564,8 +586,9 @@ fn hl7_ch2_escapes_and_empty_subid_declaration_keep_written_evidence() -> TestRe
     Ok(())
 }
 
+// Plan §6
 #[test]
-fn plan6_notes_keep_parent_paths_even_without_a_result() -> TestResult {
+fn notes_keep_parent_paths_without_a_result() -> TestResult {
     // HL7 2.5.1 section 7.3.1 does not admit an ORU header-level NTE.
     assert!(hl7("NTE|1||message note\rOBR|1||001\r", HL7_CONFIG).is_err());
     let output = hl7(

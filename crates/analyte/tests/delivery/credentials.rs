@@ -2,9 +2,9 @@
 use super::*;
 use analyte_fixtures::ConfigEdit as _;
 
+// Plan §13; ADR 0008
 #[tokio::test]
-async fn plan13_adr0008_astm_and_hl7_deliver_once_retransmission_and_correction()
--> Result<(), Error> {
+async fn retransmission_and_correction_deliver_once() -> Result<(), Error> {
     let directory = tempfile::tempdir()?;
     let path = config(directory.path(), true)?;
     let receiver_path = directory.path().join("reference.db");
@@ -89,8 +89,9 @@ async fn plan13_adr0008_astm_and_hl7_deliver_once_retransmission_and_correction(
     Ok(())
 }
 
+// ADR 0008
 #[tokio::test]
-async fn adr0008_receiver_outage_retries_immutable_delivery_when_it_returns() -> Result<(), Error> {
+async fn receiver_outage_retries_same_delivery_on_return() -> Result<(), Error> {
     let directory = tempfile::tempdir()?;
     let path = config(directory.path(), false)?;
     // A real outage refuses connections; an unserved listener would instead
@@ -131,8 +132,9 @@ async fn adr0008_receiver_outage_retries_immutable_delivery_when_it_returns() ->
     Ok(())
 }
 
+// ADR 0008
 #[tokio::test]
-async fn adr0008_wrong_api_key_pauses_destination_and_status_reports_it() -> Result<(), Error> {
+async fn wrong_api_key_pauses_destination_visibly() -> Result<(), Error> {
     let directory = tempfile::tempdir()?;
     let path = config(directory.path(), false)?;
     let receiver_path = directory.path().join("reference.db");
@@ -161,9 +163,9 @@ async fn adr0008_wrong_api_key_pauses_destination_and_status_reports_it() -> Res
     Ok(())
 }
 
+// ADR 0008
 #[tokio::test]
-async fn adr0008_interrupted_accepted_delivery_recovers_on_program_restart_as_duplicate()
--> Result<(), Error> {
+async fn interrupted_accepted_delivery_recovers_as_duplicate() -> Result<(), Error> {
     for refused in [true, false] {
         let directory = tempfile::tempdir()?;
         let path = config(directory.path(), false)?;
@@ -246,9 +248,9 @@ async fn adr0008_interrupted_accepted_delivery_recovers_on_program_restart_as_du
     Ok(())
 }
 
+// ADR 0008
 #[tokio::test]
-async fn adr0008_shutdown_during_http_wait_is_bounded_and_restart_sends_same_delivery()
--> Result<(), Error> {
+async fn shutdown_during_http_wait_resends_same_delivery() -> Result<(), Error> {
     let directory = tempfile::tempdir()?;
     let path = config(directory.path(), false)?;
     // A 3-second request deadline plus the 2-second store deadline fits the 5-second drain.
@@ -280,9 +282,9 @@ async fn adr0008_shutdown_during_http_wait_is_bounded_and_restart_sends_same_del
     Ok(())
 }
 
+// ADR 0008
 #[test]
-fn adr0008_host_rotation_loads_each_named_key_and_missing_rotation_key_is_specific()
--> Result<(), Error> {
+fn key_rotation_loads_each_named_key() -> Result<(), Error> {
     use analyte_sink::SecretsSource as _;
     let directory = tempfile::tempdir()?;
     let path = config(directory.path(), false)?;
@@ -320,8 +322,9 @@ fn adr0008_host_rotation_loads_each_named_key_and_missing_rotation_key_is_specif
     Ok(())
 }
 
+// CLSI LIS01-A2; HL7 2.5.1; ADR 0003
 #[tokio::test]
-async fn lis01_hl7_251_adr0003_recordings_deliver_once_and_store_before_ack() -> Result<(), Error> {
+async fn recordings_store_before_ack_and_deliver_once() -> Result<(), Error> {
     let directory = tempfile::tempdir()?;
     let path = config(directory.path(), true)?;
     let receiver_path = directory.path().join("reference.db");
@@ -405,31 +408,31 @@ async fn lis01_hl7_251_adr0003_recordings_deliver_once_and_store_before_ack() ->
     Ok(())
 }
 
+// CLSI LIS01-A2 §6.3.3, §6.5.1
 #[tokio::test]
-async fn lis01_6_3_3_6_5_1_recording_broken_checksum_is_retained_nacked_and_not_delivered()
--> Result<(), Error> {
+async fn broken_checksum_is_retained_nacked_and_undelivered() -> Result<(), Error> {
     failure_recording_case("astm-broken-checksum", false).await
 }
+// CLSI LIS01-A2 §8.1, §6.3.1.2
 #[tokio::test]
-async fn lis01_8_1_6_3_1_2_recording_split_and_merged_reads_ack_only_complete_frame()
--> Result<(), Error> {
+async fn split_and_merged_reads_ack_only_complete_frames() -> Result<(), Error> {
     failure_recording_case("astm-split-merged", true).await
 }
+// CLSI LIS01-A2 §6.3.2, §6.3.4
 #[tokio::test]
-async fn lis01_6_3_2_6_3_4_recording_lost_ack_repeats_ack_without_second_delivery()
--> Result<(), Error> {
+async fn lost_ack_repeats_ack_without_second_delivery() -> Result<(), Error> {
     failure_recording_case("astm-lost-ack", true).await
 }
+// ADR 0003; CLSI LIS01-A2 §6.3.1.2
 #[tokio::test]
-async fn adr0003_lis01_6_3_1_2_recording_disconnect_mid_frame_retains_bytes_without_ack_or_delivery()
--> Result<(), Error> {
+async fn disconnect_mid_frame_keeps_bytes_without_ack() -> Result<(), Error> {
     failure_recording_case("astm-disconnect", false).await
 }
 
+// ADR 0003; CLSI LIS01-A2 §6.3.2, §6.3.4
 #[cfg(feature = "test-hooks")]
 #[tokio::test]
-async fn adr0003_lis01_6_3_2_6_3_4_recording_restart_after_store_before_ack_retains_original_and_delivers_once()
--> Result<(), Error> {
+async fn restart_after_store_before_ack_delivers_once() -> Result<(), Error> {
     use tokio::io::AsyncReadExt;
     let directory = tempfile::tempdir()?;
     let path = config(directory.path(), true)?;

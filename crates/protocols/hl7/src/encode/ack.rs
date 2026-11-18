@@ -368,8 +368,9 @@ impl OwnedAckError {
 mod owned_tests {
     use super::*;
 
+    // HL7 2.5.1 §2.15.5
     #[test]
-    fn hl7_251_section_2_15_5_owned_error_preserves_every_field() {
+    fn owned_error_preserves_every_field() {
         let original = AckError {
             segment: b"OBX",
             occurrence: 2,

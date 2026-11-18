@@ -290,8 +290,9 @@ async fn render_alert_endpoints(
 mod webhook_tests {
     use super::*;
     use crate::Error;
+    // ADR 0014
     #[tokio::test]
-    async fn adr0014_overview_exposes_failed_and_full_webhook_queue() -> Result<(), Error> {
+    async fn overview_shows_failed_and_full_webhook_queue() -> Result<(), Error> {
         let temp = tempfile::tempdir()?;
         let mut store = analyte_store::Handle::start(
             temp.path().join("status.db"),

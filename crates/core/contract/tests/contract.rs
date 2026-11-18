@@ -2,8 +2,9 @@
 #![forbid(unsafe_code)]
 use analyte_contract::*;
 use serde_json::Value;
+// Standard Webhooks Rust library test_sign vector
 #[test]
-fn standard_webhooks_published_rust_test_sign_vector() -> Result<(), Box<dyn std::error::Error>> {
+fn signature_matches_published_webhook_vector() -> Result<(), Box<dyn std::error::Error>> {
     // standard-webhooks/libraries/rust/src/lib.rs::tests::test_sign (MIT).
     let key = SigningSecret::parse("whsec_C2FVsBQIhrscChlQIMV+b5sSYspob7oD")?;
     let signature = key.sign(
@@ -14,8 +15,9 @@ fn standard_webhooks_published_rust_test_sign_vector() -> Result<(), Box<dyn std
     assert_eq!(signature, "v1,tZ1I4/hDygAJgO5TYxiSd6Sd0kDW6hPenDe+bTa3Kkw=");
     Ok(())
 }
+// ADR 0008
 #[test]
-fn adr0008_vectors_do_not_drift() -> Result<(), Box<dyn std::error::Error>> {
+fn published_vectors_do_not_drift() -> Result<(), Box<dyn std::error::Error>> {
     let vector: Value = serde_json::from_str(include_str!(
         "../../../../docs/contract/vectors/signature.json"
     ))?;
@@ -102,8 +104,9 @@ fn adr0008_vectors_do_not_drift() -> Result<(), Box<dyn std::error::Error>> {
     ))?;
     Ok(())
 }
+// ADR 0008
 #[test]
-fn adr0008_response_actions() -> Result<(), Box<dyn std::error::Error>> {
+fn response_vectors_map_to_actions() -> Result<(), Box<dyn std::error::Error>> {
     let vectors: Vec<Value> = serde_json::from_str(include_str!(
         "../../../../docs/contract/vectors/responses.json"
     ))?;
@@ -136,17 +139,18 @@ fn adr0008_response_actions() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 proptest::proptest! {
+    // ADR 0008
     #[test]
-    fn adr0008_sample_text_is_preserved(value in "[A-Za-z0-9]{1,100}") {
+    fn sample_text_is_preserved(value in "[A-Za-z0-9]{1,100}") {
         let text=Text::try_from(value.clone()).map_err(|e|proptest::test_runner::TestCaseError::fail(e.to_string()))?;
         let encoded=serde_json::to_vec(&text).map_err(|e|proptest::test_runner::TestCaseError::fail(e.to_string()))?;
         let decoded:Text=decode(&encoded).map_err(|e|proptest::test_runner::TestCaseError::fail(e.to_string()))?;
         proptest::prop_assert_eq!(decoded.as_str(),value);
     }
 }
+// ADR 0008
 #[test]
-fn adr0008_unknown_fields_and_invalid_decimal_are_handled() -> Result<(), Box<dyn std::error::Error>>
-{
+fn unknown_fields_and_invalid_decimal_are_handled() -> Result<(), Box<dyn std::error::Error>> {
     let mut document: Value = serde_json::from_slice(include_bytes!(
         "../../../../docs/contract/vectors/delivery.json"
     ))?;
@@ -160,9 +164,9 @@ fn adr0008_unknown_fields_and_invalid_decimal_are_handled() -> Result<(), Box<dy
     Ok(())
 }
 
+// ADR 0008
 #[test]
-fn adr0008_generated_invalid_request_matches_valid_fixture()
--> Result<(), Box<dyn std::error::Error>> {
+fn generated_invalid_request_matches_valid_fixture() -> Result<(), Box<dyn std::error::Error>> {
     let mut valid: Value = serde_json::from_slice(include_bytes!(
         "../../../../docs/contract/vectors/delivery.json"
     ))?;
@@ -174,16 +178,18 @@ fn adr0008_generated_invalid_request_matches_valid_fixture()
     Ok(())
 }
 proptest::proptest! {
+    // ADR 0008
     #[test]
-    fn adr0008_hostile_bytes_return_errors_without_panics(bytes in proptest::collection::vec(proptest::prelude::any::<u8>(),0..4096)) {
+    fn hostile_bytes_return_errors_without_panics(bytes in proptest::collection::vec(proptest::prelude::any::<u8>(),0..4096)) {
         let _=decode::<Delivery>(&bytes);
         let _=decode::<OrderEvent>(&bytes);
         let _=decode::<OrdersPage>(&bytes);
     }
 }
 
+// ADR 0008
 #[test]
-fn adr0008_invalid_signature_and_status_vectors() -> Result<(), Box<dyn std::error::Error>> {
+fn invalid_signature_fails_and_statuses_classify() -> Result<(), Box<dyn std::error::Error>> {
     let valid: Value = serde_json::from_str(include_str!(
         "../../../../docs/contract/vectors/signature.json"
     ))?;
@@ -227,9 +233,9 @@ fn adr0008_invalid_signature_and_status_vectors() -> Result<(), Box<dyn std::err
     Ok(())
 }
 
+// ADR 0008
 #[test]
-fn adr0008_unknown_processing_stays_unknown_and_cannot_deliver()
--> Result<(), Box<dyn std::error::Error>> {
+fn unknown_processing_stays_unknown_and_cannot_deliver() -> Result<(), Box<dyn std::error::Error>> {
     let wire = document::ProcessingMode::from(&analyte_model::ProcessingMode::Unknown);
     assert_eq!(serde_json::to_string(&wire)?, "\"unknown\"");
     let decoded: document::ProcessingMode = serde_json::from_str("\"unknown\"")?;
@@ -238,9 +244,9 @@ fn adr0008_unknown_processing_stays_unknown_and_cannot_deliver()
     Ok(())
 }
 
+// ADR 0008
 #[test]
-fn adr0008_order_context_reuses_position_and_never_defaults()
--> Result<(), Box<dyn std::error::Error>> {
+fn order_context_reuses_position_and_never_defaults() -> Result<(), Box<dyn std::error::Error>> {
     let minimal: Order = decode(include_bytes!(
         "../../../../docs/contract/vectors/order.json"
     ))?;
@@ -274,9 +280,10 @@ fn adr0008_order_context_reuses_position_and_never_defaults()
     Ok(())
 }
 
+// ADR 0008
 #[test]
-fn adr0008_order_context_null_is_unknown_and_nested_required_fields_are_required()
--> Result<(), Box<dyn std::error::Error>> {
+fn order_context_null_is_unknown_nested_fields_required() -> Result<(), Box<dyn std::error::Error>>
+{
     let bytes = include_bytes!("../../../../docs/contract/vectors/order-context.json");
     let mut nulls: Value = serde_json::from_slice(bytes)?;
     for field in ["position", "patient", "specimen_type"] {

@@ -10,73 +10,73 @@ qualification is claimed. Choices and reasons are in [decisions](decisions.md).
 
 - [x] H7 - Enhanced 2.9.1 application ACK declares NE/NE, while immediate accept
   ACK and original mode retain their own rules. Source: 2.9.1 section 2.8.3.2.
-  Test: `hl7_291_s2_8_3_2_application_ack_declares_ne_without_recursion`.
+  Test: `application_ack_declares_ne_without_recursion`.
 - [x] H8 - Refuse unsupported separate-channel enhanced application exchanges
   in config and retain/park incoming requests without a response on the receiving
   channel. Source: 2.9.1 section 2.8.3.2 and its channel note.
-  Tests: `hl7_291_s2_8_3_2_separate_application_channel_cannot_be_enabled`,
-  `hl7_291_s2_8_3_2_enhanced_application_ack_requires_separate_channel`.
+  Tests: `separate_application_channel_cannot_be_enabled`,
+  `enhanced_application_ack_needs_separate_channel`.
 - [x] H9 - Keep point collection and explicitly refuse DR ranges/nested endpoint
   precision before scalar interpretation. Source: 2.5.1 sections 7.4.3.17-19.
-  Tests: `hl7_251_s7_4_3_17_collection_range_is_not_ts_precision`,
-  `rule3_hl7_source_path_keeps_statuses_sequences_and_specimen_times`.
+  Tests: `collection_range_is_not_ts_precision`,
+  `hl7_source_path_keeps_statuses_and_times`.
 - [x] H10 - Park missing required OBR-4/25, OBX-3/11 or populated-value type,
   unsupported statuses and missing modern report time. Sources: 2.3.1 section
   7.3.2; 2.5.1/2.6/2.8.2/2.9.1 sections 7.4.1 and 7.4.2, especially
   7.4.1.25/7.4.2.11; modern 7.4.1.22.
-  Tests: `hl7_s7_4_2_11_s7_4_1_25_missing_or_unknown_report_context_parks`,
-  `hl7_251_s2_10_2_2_s7_4_2_11_s7_4_1_25_unsafe_reports_are_parked`.
+  Tests: `missing_or_unknown_report_context_parks`,
+  `unsafe_reports_are_parked`.
 - [x] H11 - Validate bounded group transitions, ordering and unfinished groups
   before constructing ownership. Sources: 2.3.1 section 7.2.1;
   2.5.1 sections 7.3.1/7.3.7; later ORU section 7.3.1.
-  Tests: `hl7_231_s7_2_1_251_s7_3_1_s7_3_7_invalid_known_groups_are_refused`,
-  `plan6_notes_keep_parent_paths_even_without_a_result`.
+  Tests: `invalid_known_groups_are_refused`,
+  `notes_keep_parent_paths_without_a_result`.
 - [x] H12 - Refuse enhanced OG components before identity mapping; retain legacy
   OG.1. Sources: 2.8.2 sections 2.A.50/7.4.2.4;
   2.9.1 sections 2A.2.50/7.4.2.4.
-  Test: `hl7_282_s2_a_50_291_s7_4_2_4_enhanced_og_requires_full_grouping_contract`.
+  Test: `enhanced_observation_group_needs_full_contract`.
 - [x] H13 - Native 2.3.1 does not interpret later specimen/container groups or
   OBX-19 analysis time. Keep LAW's separately selected contract.
   Sources: 2.3.1 sections 7.2.1/7.3.2; compare 2.5.1 section 7.4.2.19.
-  Tests: `hl7_231_s7_2_1_s7_3_2_later_fields_do_not_gain_meaning`,
-  `law_tf2b_c4_and_3_29_4_compatible_vid_keeps_law_analysis_time`.
+  Tests: `later_edition_fields_gain_no_meaning`,
+  `compatible_law_versions_keep_analysis_time`.
 - [x] H14 - Patient-related new native ORM requires PID; missing mandatory name
   refuses before reservation regardless of the optional flag. Keep cancellation
   behavior separate. Sources: 2.3.1 sections 4.2.1.1(d)/3.3.2.
-  Tests: `hl7_231_3_3_2_required_pid_rejects_before_reservation_without_inventing_name`,
-  `hl7_231_s4_2_1_1_d_patient_requiredness_distinguishes_new_and_cancel`,
-  `hl7_231_ch4_explicit_group_position_and_identifier_do_not_invent_context`.
+  Tests: `required_pid_rejects_without_inventing_name`,
+  `patient_required_for_new_order_not_cancel`,
+  `explicit_group_and_identifier_invent_no_context`.
 - [x] H15 - Refuse MSH-14/DSC fragments independently and unnegotiated MSH-13;
   keep raw evidence and never deliver a fragment as a complete report.
   Sources: 2.5.1 sections 2.10.1/2.10.2.2; 2.6/2.8.2 section 2.10.2;
   2.9.1 section 2.9.2.
-  Tests: `hl7_251_s2_10_2_2_final_fragment_with_msh14_is_never_a_complete_result`,
-  `hl7_251_s2_10_1_unnegotiated_sequence_number_is_refused`,
-  `hl7_251_s2_10_2_2_s7_4_2_11_s7_4_1_25_unsafe_reports_are_parked`.
+  Tests: `msh14_fragment_is_never_a_complete_result`,
+  `unnegotiated_sequence_number_is_refused`,
+  `unsafe_reports_are_parked`.
 - [x] H16 - Present reply PID requires identifier/name independently of the
   modern identifier-type requirement. Sources: 2.5.1/2.6 sections 3.4.2/4.4.7;
   2.8.2 sections 3.3.2/4.4.7.1.
-  Tests: `hl7_251_26_s4_4_7_required_pid_content_in_order_reply`,
-  `hl7_251_s3_4_2_present_reply_pid_requires_identifier_and_name`.
+  Tests: `reply_pid_needs_identifier_and_name`,
+  `reply_pid_requires_identifier_and_name`.
 
 ### Later-edition truncation groundwork (documented)
 
 - [x] 2.8.2 / 2.9.1 — Preserve the optional fifth encoding character and require
   distinct separators; earlier editions still refuse the declaration.
   Sources: 2.8.2 §2.14.9.2 p.59; 2.9.1 §2.13.9.2 p.69.
-  Evidence: `hl7_2_8_2_s2_14_9_2_and_2_9_1_s2_13_9_2_encoding_characters`.
+  Evidence: `fifth_encoding_character_is_edition_specific`.
 - [x] Preserve marked primitive bytes, expose marker flags and refuse clinical
   mapping. Sources: 2.8.2 §2.5.5.2 pp.12–13; 2.9.1 §2.4.5.2 pp.14–15.
-  Evidence: `hl7_2_8_2_s2_5_5_2_and_2_9_1_s2_4_5_2_preserve_and_refuse_marked_values`
-  and `hl7_2_9_1_s2_4_5_2_truncated_input_never_reaches_result_mapping`.
+  Evidence: `truncated_values_are_kept_and_refused`
+  and `truncated_input_never_reaches_mapping`.
 - [x] Decode and encode literal declared truncation characters; refuse size
   overflow without shortening; retain undeclared-escape rejection/preservation.
   Sources: 2.8.2 §§2.7.1–2 pp.20–21; 2.9.1 §§2.6.1–2 pp.22–23.
-  Evidence: `hl7_2_9_1_s2_6_1_truncation_character_escape` and
-  `hl7_2_8_2_s2_7_2_undeclared_p_escape_remains_unsupported`.
+  Evidence: `truncation_character_escape_round_trips` and
+  `undeclared_truncation_escape_stays_unsupported`.
 - [x] Register all eight exact editions with source-named tests and explicit
   qualification state. `version/tests.rs` covers every registry entry
-  plus `adr0012_s3_no_unlisted_edition_or_prefix_match` (ADR 0012 §3).
+  plus `unlisted_edition_or_prefix_is_refused` (ADR 0012 §3).
 - [x] Accept machine edition selections only for implemented typed profiles
   (all eight declared receiving editions), without defaults or patch upgrades.
   `config/tests/hl7_editions.rs` covers exact identity and canonical snapshots
@@ -149,7 +149,7 @@ qualification is claimed. Choices and reasons are in [decisions](decisions.md).
 
 - [ ] B — Apply edition-specific MSH-18 default and code-table rules; do not guess from local OS settings. 231 ch.2 §2.24.1.18 pp.144–145; 251 ch.2 §2.15.9.18 pp.79–81.
 
-  **Partial evidence:** [control.rs](../../../crates/protocols/hl7/tests/control.rs): `hl7_231_2_24_1_18_and_251_2_15_9_18_charset_is_edition_specific` tests the supported ASCII, Latin-1 and UTF-8 subset by edition, including default rejection and explicit override for legacy UTF-8. [config.rs](../../../crates/core/config/tests/config.rs): `hl7_231_2_24_1_18_utf8_requires_named_vendor_departure` requires a named reason and limits the departure to 2.3.1 with UTF-8 configured. Other table encodings remain unsupported.
+  **Partial evidence:** [control.rs](../../../crates/protocols/hl7/tests/control.rs): `charset_is_edition_specific` tests the supported ASCII, Latin-1 and UTF-8 subset by edition, including default rejection and explicit override for legacy UTF-8. [config.rs](../../../crates/core/config/tests/config.rs): `hl7_utf8_requires_named_vendor_departure` requires a named reason and limits the departure to 2.3.1 with UTF-8 configured. Other table encodings remain unsupported.
 
 - [ ] B — Implement declared alternate-set switching and MSH-20 handling or explicitly reject the unsupported scheme. 231 ch.2 §§2.9.2, 2.24.1.20 pp.102, 145; 251 ch.2 §§2.7.2, 2.15.9.20 pp.17–18, 82.
 - [ ] 251 — Enforce the charset table's UTF-8 restrictions; MLLP's UTF-8 capability does not independently authorize every HL7 header usage. Ch.2 §2.15.9.18 pp.79–81.
@@ -158,27 +158,27 @@ qualification is claimed. Choices and reasons are in [decisions](decisions.md).
 
 - [x] B — Validate MSH-9 component presence by edition: all three in 2.5.1, optional trigger on 2.3.1 responses/acknowledgments. 251 section 2.A.44 pp.2-180–181; 231 section 2.24.1.9 p.2-95.
 
-  **Evidence:** [control.rs](../../../crates/protocols/hl7/tests/control.rs): `hl7_251_2_a_44_and_231_2_24_1_9_message_type_components` checks required components, component lengths, optional legacy response triggers and unchanged source bytes.
+  **Evidence:** [control.rs](../../../crates/protocols/hl7/tests/control.rs): `message_type_components_are_checked` checks required components, component lengths, optional legacy response triggers and unchanged source bytes.
 
 - [x] B — Require a valid MSH-7 in 2.5.1; permit its omission in 2.3.1 and validate supplied timestamps. 251 ch.2 sections 2.15.9, 2.15.9.7 pp.74, 76; 231 ch.2 section 2.24.1.7.
 
-  **Evidence:** [control.rs](../../../crates/protocols/hl7/tests/control.rs): `hl7_251_2_15_9_7_requires_valid_message_time_but_231_allows_absence` checks missing/null, invalid dates, repetition/composite misuse, valid reduced precision and unchanged source bytes.
+  **Evidence:** [control.rs](../../../crates/protocols/hl7/tests/control.rs): `message_time_required_except_in_v231` checks missing/null, invalid dates, repetition/composite misuse, valid reduced precision and unchanged source bytes.
 
 Delimiter escapes are decoded after selecting fields/repetitions/components, never
 before structural extraction. original retains its wire spelling, and decoded
-plain text is separate. `hl7_251_2_7_4_decodes_selected_identifiers_and_values_keeps_wire_originals`
-and `hl7_251_2_7_4_decoding_uses_message_delimiters_and_is_not_recursive`
+plain text is separate. `decodes_ids_and_values_keeping_originals`
+and `decoding_uses_message_delimiters_once`
 (mapping tests) cover identifiers, coded/text values, repeats, alternate delimiters,
 non-recursive decoding and byte-for-byte source retention. Source: 2.5.1 section
 2.7.4, p.2-18. No hexadecimal/local/repertoire agreement is inferred.
 
 Formatting/highlighting in result values is retained and parked, with no clean decoded
-text. `hl7_251_2_7_3_2_7_6_formatting_is_unsupported_evidence_not_clean_text`
+text. `formatting_is_unsupported_not_clean_text`
 (mapping tests) checks ST/TX/FT, original spelling, absent decoded text and the
-specific finding. `hl7_251_2_7_6_formatting_command_grammar` (control tests)
+specific finding. `formatting_command_grammar` (control tests)
 checks command names and argument grammar. Source: 2.5.1 sections 2.7.3, 2.7.6,
 pp.2-18 through 2-20. Hex/local/repertoire escapes require an agreement; none is
-inferred (`hl7_251_2_7_unsupported_escapes_never_become_clean_text`).
+inferred (`unsupported_escapes_never_become_clean_text`).
 
 ### E. Original/enhanced ACK and errors
 
@@ -196,23 +196,23 @@ inferred (`hl7_251_2_7_unsupported_escapes_never_become_clean_text`).
 - [ ] B — Test disk failure, response loss, late/mismatched ACK, duplicate message ID with changed content and restart after commit/before reply. Processing rules above plus project safety policy; timeout does not prove failure (engineering gate).
 
 Sender ACK phases follow 2.5.1 sections 2.9.2-2.9.3 pp.2-26-28.
-`hl7_251_2_9_2_2_9_3_sender_preserves_ack_phases` (dialog tests) checks early
+`sender_preserves_ack_phases` (dialog tests) checks early
 application replies, nonterminal CA and duplicate CA in the application phase.
-`hl7_251_2_15_8_all_codes_and_mismatched_ack` now treats CA/CE/CR in original
+`ack_codes_classified_and_mismatch_unmatched` now treats CA/CE/CR in original
 mode as specific wrong-phase errors rather than completion.
-`hl7_251_2_9_3_sender_acceptance_and_application_condition_matrix` checks the
+`sender_accept_and_application_condition_matrix` checks the
 16 AL/NE/ER/SU combinations and condition violations.
-`hl7_251_2_9_3_sender_application_wait_is_bounded_and_never_resends` checks
+`sender_application_wait_never_resends` checks
 the separate application deadline, timeout/disconnect uncertainty and no resend.
 Both phases disabled reports issuance with no requested response, never acceptance.
 
 ERR locations use the actual source segment occurrence and field when known,
 and remain unvalued when reconciliation cannot identify a source field. HL7 and
 LAW use one host builder. Source: 2.5.1 section 2.15.5.2 pp.2-67-68.
-`hl7_251_2_15_5_2_adr0003_ae_reports_actual_mapping_location` (receive tests)
-covers the second OBX and an unlocated conflict; `hl7_251_2_15_5_2_unknown_location_stays_unvalued`
+`hl7_ae_reports_actual_mapping_location` (receive tests)
+covers the second OBX and an unlocated conflict; `unknown_error_location_stays_unvalued`
 (control tests) checks wire rendering. LAW's
-`law_tf2b_3_29_4_b3_b7_conflict_rejects_batch_and_complete_og_distinguishes_runs`
+`conflict_rejects_batch_and_og_separates_runs`
 (delivery tests) checks the same second-OBX mapping failure.
 
 ### F. Laboratory results, status and identity
@@ -238,11 +238,11 @@ covers the second OBX and an unlocated conflict; `hl7_251_2_15_5_2_unknown_locat
 
 - [x] B — Never emit PID with only a patient ID; omit the optional patient group, or reject a machine requiring patient identification before reservation because contract v1 has no name. 231 section 3.3.2 p.3-36; optional-group structures: 231 section 4.2.1 and 251 section 4.4.6.
 
-  **Evidence:** [order/mod.rs](../../../crates/protocols/hl7/tests/order/responses.rs): `hl7_231_ch4_explicit_group_position_and_identifier_do_not_invent_context` asserts no PID for identifier-only context. [hl7/send.rs](../../../crates/analyte/tests/orders/hl7/send.rs): `hl7_231_3_3_2_required_pid_rejects_before_reservation_without_inventing_name` checks the specific rejection reason, no Sending history and no wire bytes in both editions. Configure `orders.hl7_send.require_patient_identification = true` only when the machine requires PID; such work is refused while contract v1 lacks names.
+  **Evidence:** [order/mod.rs](../../../crates/protocols/hl7/tests/order/responses.rs): `explicit_group_and_identifier_invent_no_context` asserts no PID for identifier-only context. [hl7/send.rs](../../../crates/analyte/tests/orders/hl7/send.rs): `required_pid_rejects_without_inventing_name` checks the specific rejection reason, no Sending history and no wire bytes in both editions. Configure `orders.hl7_send.require_patient_identification = true` only when the machine requires PID; such work is refused while contract v1 lacks names.
 
 - [x] B — Encode ORC-4 as an EI with the exact ORC-2 authority components; reject complete EIs over 22 bytes before reservation. 231 section 4.3.1.4 p.4-17; 251 section 4.5.1.4 p.4-39; each edition's ORC attribute table.
 
-  **Evidence:** [order/mod.rs](../../../crates/protocols/hl7/tests/order/responses.rs): `hl7_231_4_3_1_4_251_4_5_1_4_group_ei_authority_and_complete_field_limit` checks local/universal authorities and exact/overflow limits in both editions. [hl7/send.rs](../../../crates/analyte/tests/orders/hl7/send.rs): `hl7_231_4_3_1_4_251_4_5_1_4_full_group_ei_overflow_precedes_reservation` checks a scalar that fits but whose complete EI overflows, specific refusal, no Sending history and no wire bytes.
+  **Evidence:** [order/mod.rs](../../../crates/protocols/hl7/tests/order/responses.rs): `group_number_keeps_authority_and_field_limit` checks local/universal authorities and exact/overflow limits in both editions. [hl7/send.rs](../../../crates/analyte/tests/orders/hl7/send.rs): `full_group_ei_overflow_rejects_before_reservation` checks a scalar that fits but whose complete EI overflows, specific refusal, no Sending history and no wire bytes.
 
 Audit scope: ORM/O01–ORR/O02 in both editions; non-LAW O21/O22 in 2.5.1;
 O33/O34 only under the LAW profile. Generic work supports new/cancel requests,
@@ -254,31 +254,31 @@ qualification or proof of host durability/recovery.
 
 - [x] B — Implement declared ORM^O01/ORR^O02 grammars and repeat groups, not merely names. 231 ch.4 §§4.2.1–2 pp.288–289; 251 ch.4 §§4.4.1–2 pp.6–9.
 
-  **Evidence:** [order/mod.rs](../../../crates/protocols/hl7/tests/order/commands.rs): `hl7_231_4_2_1_and_251_4_4_1_build_new_and_cancel_groups`, `hl7_231_4_3_1_b_and_251_4_5_1_b_obr_identity_fallback_and_response_order`, `hl7_231_4_2_2_and_251_4_4_2_multiple_details_are_not_flattened`. Declared scope: laboratory OBR detail, one patient context and one test/battery per order; other detail families are rejected.
+  **Evidence:** [order/mod.rs](../../../crates/protocols/hl7/tests/order/commands.rs): `orm_builds_new_and_cancel_groups`, `obr_identity_fallback_and_response_order`, `multiple_order_details_are_not_flattened`. Declared scope: laboratory OBR detail, one patient context and one test/battery per order; other detail families are rejected.
 - [x] B — Model each supported ORC request, response and status explicitly; distinguish requested cancel/change from acknowledgment that it happened. 231 ch.4 §4.3.1 pp.290–307; 251 ch.4 §4.5.1 pp.27–50.
 
-  **Evidence:** [order/mod.rs](../../../crates/protocols/hl7/tests/order/commands.rs): `hl7_231_4_3_1_1_and_251_4_5_1_1_exhaustive_request_reply_pairs`, `hl7_231_4_3_1_5_and_251_4_5_1_5_snapshot_does_not_change_request_outcome`, `hl7_231_4_3_1_5_and_251_4_5_1_5_invalid_status`. Supported controls are NW/CA and OK/UA/CR/UC; status is retained as a peer snapshot. Change/discontinue controls are explicitly unsupported, not aliases for acceptance.
+  **Evidence:** [order/mod.rs](../../../crates/protocols/hl7/tests/order/commands.rs): `only_matching_request_reply_pairs_pass`, `order_status_does_not_change_outcome`, `invalid_order_status_is_refused`. Supported controls are NW/CA and OK/UA/CR/UC; status is retained as a peer snapshot. Change/discontinue controls are explicitly unsupported, not aliases for acceptance.
 - [ ] B — Preserve placer/filler namespaces, parent/group relationships and identity on changes/retries. Same ORC clauses; OBR definitions in each ch.7.
 
-  **Remaining:** parent/placer-group and change relationships in the generic ORM/O21 API, while host recovery is covered in [hl7/send.rs](../../../crates/analyte/tests/orders/hl7/send.rs), `adr0003_rule8_hl7_251_26_282_restart_during_sending_recovers_items_without_resend`. Existing namespace and replay evidence: [order/mod.rs](../../../crates/protocols/hl7/tests/order/commands.rs), `hl7_231_4_3_1_2_3_and_251_4_5_1_2_3_universal_namespaces_preserved` and `hl7_231_4_3_1_and_251_4_5_1_replay_is_pure_and_keeps_identities`. LAW-specific parents/groups have separate [law_order.rs](../../../crates/protocols/hl7/tests/law/order/mod.rs) coverage; that does not establish generic support in both editions.
+  **Remaining:** parent/placer-group and change relationships in the generic ORM/O21 API, while host recovery is covered in [hl7/send.rs](../../../crates/analyte/tests/orders/hl7/send.rs), `restart_during_sending_recovers_without_resend`. Existing namespace and replay evidence: [order/mod.rs](../../../crates/protocols/hl7/tests/order/commands.rs), `universal_namespaces_are_preserved` and `replay_is_pure_and_keeps_identities`. LAW-specific parents/groups have separate [law_order.rs](../../../crates/protocols/hl7/tests/law/order/mod.rs) coverage; that does not establish generic support in both editions.
 - [ ] B — Validate requested timing/priority/specimen and required order detail; retain unsupported order content with a specific rejection. 231 ch.4 §4.3 pp.290–338; 251 ch.4 §§4.5.1–4.5.5 pp.27–80.
 
-  **Remaining:** complete optional order-detail/component predicates ; host rejection and operator behavior exist in [program orders](../../../crates/analyte/ORDERS.md); cross-field timing interpretation stays with the host. The current coded specimen, explicit priority/non-repeating window and rejection subset is covered by [order/mod.rs](../../../crates/protocols/hl7/tests/order/responses.rs), `hl7_231_2_8_and_251_2a_caller_data_rejects_injection_and_oversize`, and [laboratory_order.rs](../../../crates/protocols/hl7/tests/laboratory_order.rs), `hl7_251_4_4_6_builder_is_bounded_and_replay_is_pure`.
+  **Remaining:** complete optional order-detail/component predicates ; host rejection and operator behavior exist in [program orders](../../../crates/analyte/ORDERS.md); cross-field timing interpretation stays with the host. The current coded specimen, explicit priority/non-repeating window and rejection subset is covered by [order/mod.rs](../../../crates/protocols/hl7/tests/order/responses.rs), `caller_data_rejects_injection_and_oversize`, and [laboratory_order.rs](../../../crates/protocols/hl7/tests/laboratory_order.rs), `builder_is_bounded_and_deterministic`.
 - [ ] 251 — Implement OML^O21/ORL^O22, multiple-orders-per-specimen O33/O34, and single-container O35/O36 separately where declared. Ch.4 §§4.4.6–11 pp.14–25.
 
-  **Partial evidence:** [laboratory_order.rs](../../../crates/protocols/hl7/tests/laboratory_order.rs): `hl7_251_4_4_6_builds_order_owned_timing_specimen_and_cancel`, `hl7_251_4_4_7_correlates_typed_decisions_and_specimen_container_groups`, `hl7_251_4_4_6_7_rejects_wrong_version_and_transaction_family`. [law.rs](../../../crates/protocols/hl7/tests/law/mod.rs): `law_tf2b_3_28_4_work_unique_awos_replicates_and_authorized_options`, `law_tf2b_3_28_4_orl_outcomes_are_per_request_not_lifecycle_retractions`. Declared families: non-LAW O21/O22 and LAW O33/O34. This row stays open: the cited tests do not exercise O35/O36. O35/O36 and unprofiled O33/O34 are not selected; they are not routed through another family.
+  **Partial evidence:** [laboratory_order.rs](../../../crates/protocols/hl7/tests/laboratory_order.rs): `builds_oml_with_timing_specimen_and_cancel`, `orl_correlates_decisions_specimens_and_containers`, `rejects_wrong_version_and_message_family`. [law.rs](../../../crates/protocols/hl7/tests/law/mod.rs): `work_needs_unique_awos_and_authorized_options`, `orl_outcomes_are_per_request_not_retractions`. Declared families: non-LAW O21/O22 and LAW O33/O34. This row stays open: the cited tests do not exercise O35/O36. O35/O36 and unprofiled O33/O34 are not selected; they are not routed through another family.
 - [ ] 251 — Handle order groups with SPM/SAC, associated OBX and specimen/container-specific instructions without moving fields between groups. Same OML/ORL definitions; ch.7 §7.4.3; ch.13 §13.4.3.
 
-  **Remaining:** associated OBX groups and specimen/container-specific instructions in the generic O21/O22 API; it currently supports one specimen per new order and preserves returned SAC groups. Evidence for that subset: [laboratory_order.rs](../../../crates/protocols/hl7/tests/laboratory_order.rs), `hl7_251_4_4_6_7_specimens_stay_with_their_own_orders`, `hl7_251_4_4_7_orl_sac_requires_spm`. LAW enhanced-content evidence is separate: [law.rs](../../../crates/protocols/hl7/tests/law/mod.rs), `law_tf2b_2_2_4_app_supplied_patient_specimen_container_and_order_content`.
+  **Remaining:** associated OBX groups and specimen/container-specific instructions in the generic O21/O22 API; it currently supports one specimen per new order and preserves returned SAC groups. Evidence for that subset: [laboratory_order.rs](../../../crates/protocols/hl7/tests/laboratory_order.rs), `specimens_stay_with_their_own_orders`, `orl_container_without_specimen_is_refused`. LAW enhanced-content evidence is separate: [law.rs](../../../crates/protocols/hl7/tests/law/mod.rs), `work_carries_app_supplied_content`.
 - [ ] 251 — Handle TQ1/TQ2 timing/relationships where declared rather than assuming only the legacy TQ field. Ch.4 §§4.5.4–5 pp.71–80.
 
-  **Partial evidence:** [laboratory_order.rs](../../../crates/protocols/hl7/tests/laboratory_order.rs): `hl7_251_4_4_6_builds_order_owned_timing_specimen_and_cancel`, `hl7_251_4_5_4_orl_repeated_window_scope`, `hl7_251_4_5_5_orl_unsupported_timing_relationship`. [law_order.rs](../../../crates/protocols/hl7/tests/law/order/mod.rs): `law_tf2b_c14_tq1_9_r_priority_cwe_subset_and_option`. This row stays open because TQ2 relationships are not implemented. Declared scope is one TQ1 window/priority in O21 and profiled LAW priority; repeated windows and TQ2 are excluded and rejected, not silently read as legacy TQ.
+  **Partial evidence:** [laboratory_order.rs](../../../crates/protocols/hl7/tests/laboratory_order.rs): `builds_oml_with_timing_specimen_and_cancel`, `orl_repeated_timing_window_is_refused`, `orl_timing_relationship_is_refused`. [law_order.rs](../../../crates/protocols/hl7/tests/law/order/mod.rs): `tq1_priority_code_subset_and_option`. This row stays open because TQ2 relationships are not implemented. Declared scope is one TQ1 window/priority in O21 and profiled LAW priority; repeated windows and TQ2 are excluded and rejected, not silently read as legacy TQ.
 - [x] B — Declare order-status-query and unsupported order-family behavior; all-HL7 claims otherwise include more than laboratory ordering. 231 ch.4 order chapter; 251 ch.4 §4.4.3 p.9 and §§4.4.4–5 pp.10–14.
 
-  **Evidence:** [order/mod.rs](../../../crates/protocols/hl7/tests/order/responses.rs): `hl7_231_4_2_3_and_251_4_4_3_unsupported_order_families_are_located_errors`. Status-query replies, dietary/pharmacy/supply and other order families have no builder in this API; a typed order parser rejects an unexpected event/structure at MSH-9 and unsupported controls at ORC-1. This declaration does not claim a host-wide dispatch/rejection dialog.
+  **Evidence:** [order/mod.rs](../../../crates/protocols/hl7/tests/order/responses.rs): `unsupported_order_families_are_located_errors`. Status-query replies, dietary/pharmacy/supply and other order families have no builder in this API; a typed order parser rejects an unexpected event/structure at MSH-9 and unsupported controls at ORC-1. This declaration does not claim a host-wide dispatch/rejection dialog.
 - [ ] B — Test accept/reject/cancel/unable-to-cancel/change and uncertain delivery with stable identities, never issuing new machine orders as a side effect of replay. Same order rules plus project order-lifecycle policy.
 
-  **Remaining:** change workflows and broader cancellation-race qualification. Program send/recovery tests exist in [hl7/send.rs](../../../crates/analyte/tests/orders/hl7/send.rs): `hl7_251_26_282_rule8_no_reply_disconnect_and_restart_never_resend` and `hl7_231_251_cancel_accepted_or_refused_restores_prior_state_once`. Pure acceptance/cancellation and stable replay evidence: [order/mod.rs](../../../crates/protocols/hl7/tests/order/mod.rs), `hl7_231_4_3_1_and_251_4_5_1_reports_each_matching_outcome`, `hl7_231_4_2_2_and_251_4_4_2_message_ack_is_not_order_acceptance`, `hl7_231_4_3_1_and_251_4_5_1_replay_is_pure_and_keeps_identities`. These tests neither send orders nor prove durable host recovery.
+  **Remaining:** change workflows and broader cancellation-race qualification. Program send/recovery tests exist in [hl7/send.rs](../../../crates/analyte/tests/orders/hl7/send.rs): `no_reply_disconnect_or_restart_never_resends` and `cancel_accepted_or_refused_restores_state`. Pure acceptance/cancellation and stable replay evidence: [order/mod.rs](../../../crates/protocols/hl7/tests/order/mod.rs), `reply_reports_each_matching_outcome`, `message_ack_is_not_order_acceptance`, `replay_is_pure_and_keeps_identities`. These tests neither send orders nor prove durable host recovery.
 
 ### H. Queries, responses and continuation
 
@@ -289,46 +289,46 @@ durable responsibility and recovery; unchecked integration rows remain open.
 
 - [ ] 231 — Implement declared immediate QRY/DSR Q01 and deferred QRY/QCK Q02 followed by DSR/ACK Q03. Ch.2 §§2.17–2.18 pp.120–121.
 
-  **Remaining:** immediate Q01. Deferred Q02/Q03 runtime evidence is in [hl7/query.rs](../../../crates/analyte/tests/orders/hl7/query.rs), `hl7_231_251_query_found_reserves_before_dsr_ack_aa_sends_once`. The declared pure Q02/Q03 subset has [query.rs](../../../crates/protocols/hl7/tests/query.rs) evidence: `hl7_231_2_18_and_2_6_s5_10_qck_answers_deferred_query`, `hl7_231_2_18_dsr_echoes_query_and_ack_correlates_dsr`. Q01 is not silently treated as Q02.
+  **Remaining:** immediate Q01. Deferred Q02/Q03 runtime evidence is in [hl7/query.rs](../../../crates/analyte/tests/orders/hl7/query.rs), `found_query_reserves_before_dsr_sends_once`. The declared pure Q02/Q03 subset has [query.rs](../../../crates/protocols/hl7/tests/query.rs) evidence: `qck_answers_deferred_query`, `dsr_echoes_query_and_ack_correlates`. Q01 is not silently treated as Q02.
 - [x] 251 — Treat those older query exchanges as backward-compatible legacy capabilities, not the modern query-by-parameter model. Ch.5 §5.10 pp.113–137.
 
-  **Evidence:** [query.rs](../../../crates/protocols/hl7/tests/query.rs): `hl7_231_2_18_and_2_6_s5_10_qck_answers_deferred_query` (both editions), `hl7_251_5_10_legacy_query_scope_rejects_modern_and_undeclared_events`. Legacy QRD/QRF transactions remain separate from LAW QBP/QPD queries.
+  **Evidence:** [query.rs](../../../crates/protocols/hl7/tests/query.rs): `qck_answers_deferred_query` (both editions), `legacy_query_refuses_modern_and_undeclared_events`. Legacy QRD/QRF transactions remain separate from LAW QBP/QPD queries.
 - [x] B — Validate QRD format/priority/query ID/quantity/filter and QRF fields according to the edition; DSP positions have no generic laboratory meaning. 231 ch.2 §§2.24.4–5/.9 pp.148–153, 156–157; 251 ch.5 §5.10.5 pp.123–137.
 
-  **Evidence:** [query_validation/mod.rs](../../../crates/protocols/hl7/tests/query_validation/fields.rs): `hl7_231_2_24_4_5_and_251_5_10_5_3_4_field_usage_lengths_and_repetitions`, `hl7_231_2_24_4_5_and_251_5_10_5_3_4_preserve_local_filters`, plus its per-field named negative fixtures and boundary/property cases. [query.rs](../../../crates/protocols/hl7/tests/query.rs): `hl7_231_2_18_dsr_echoes_query_and_ack_correlates_dsr` demonstrates caller-supplied display text without a laboratory row interpretation. Valid field syntax does not establish that the host can honor every filter/unit.
+  **Evidence:** [query_validation/mod.rs](../../../crates/protocols/hl7/tests/query_validation/fields.rs): `field_usage_lengths_and_repetitions`, `local_filters_are_preserved`, plus its per-field named negative fixtures and boundary/property cases. [query.rs](../../../crates/protocols/hl7/tests/query.rs): `dsr_echoes_query_and_ack_correlates` demonstrates caller-supplied display text without a laboratory row interpretation. Valid field syntax does not establish that the host can honor every filter/unit.
 - [ ] B — Keep query tag/QRD ID distinct from per-message MSH-10/MSA-2 correlation, especially across continuation. 231 ch.2 §§2.24.4.4, 2.24.22 p.149, 168–169; 251 ch.5 §§5.5.2–4 pp.44–47.
 
-  **Partial evidence:** [query.rs](../../../crates/protocols/hl7/tests/query.rs): `hl7_231_2_24_4_query_id_is_preserved`, `hl7_231_2_18_dsr_echoes_query_and_ack_correlates_dsr`, `hl7_231_2_18_dsr_requires_data_and_distinct_response_ids`. This row stays open: these tests check only the declared non-continuation exchange; continuation identity/lifetime support remains open below.
+  **Partial evidence:** [query.rs](../../../crates/protocols/hl7/tests/query.rs): `query_id_is_preserved`, `dsr_echoes_query_and_ack_correlates`, `dsr_requires_data_and_distinct_ids`. This row stays open: these tests check only the declared non-continuation exchange; continuation identity/lifetime support remains open below.
 - [x] B — Preserve no-data versus application error/rejection; never answer NF on an unknown lookup. 231 ch.2 §2.24.22.2 p.169; 251 ch.5 §§5.5.2, 5.6.5 pp.44–45, 60–61; project rule 9.
 
-  **Evidence:** [query.rs](../../../crates/protocols/hl7/tests/query.rs): `hl7_231_2_18_and_2_6_s5_10_qck_answers_deferred_query`, `hl7_231_2_24_22_and_251_5_5_2_unavailable_is_ae_never_nf` (both editions). [law.rs](../../../crates/protocols/hl7/tests/law/mod.rs): `law_tf2b_3_27_4_rsp_correlates_and_separates_empty_work_from_failed_lookup`. Unavailable lookup is an error, not a trusted empty result; malformed/unsupported requests cannot be constructed into a positive typed response.
+  **Evidence:** [query.rs](../../../crates/protocols/hl7/tests/query.rs): `qck_answers_deferred_query`, `unavailable_lookup_is_ae_never_nf` (both editions). [law.rs](../../../crates/protocols/hl7/tests/law/mod.rs): `rsp_separates_no_work_from_failed_lookup`. Unavailable lookup is an error, not a trusted empty result; malformed/unsupported requests cannot be constructed into a positive typed response.
 - [ ] 251 — Define query parameters and exact response using a query conformance statement; QBP alone does not specify the lab's lookup contract. Ch.5 §§5.3, 5.4.1 pp.14–37.
 
-  **Remaining:** any non-LAW QBP contract requires its own selected query conformance statement before implementation. The only current query-by-parameter contract is IHE LAB-27, documented in [ihe-law.md](../law/README.md) and tested by [law.rs](../../../crates/protocols/hl7/tests/law/mod.rs), `law_tf2b_3_27_4_query_forms_and_conditional_fields`; this is not a general lab-app lookup contract.
+  **Remaining:** any non-LAW QBP contract requires its own selected query conformance statement before implementation. The only current query-by-parameter contract is IHE LAB-27, documented in [ihe-law.md](../law/README.md) and tested by [law.rs](../../../crates/protocols/hl7/tests/law/mod.rs), `query_forms_select_their_scope`; this is not a general lab-app lookup contract.
 - [ ] 251 — Implement selected QBP/RSP, QBP/RTB and QBP/RDY pairs with their own structures and event/structure IDs. Ch.5 §§5.4.1–3 pp.37–40.
 
-  **Partial evidence:** [law.rs](../../../crates/protocols/hl7/tests/law/mod.rs): `law_tf2b_3_27_4_query_forms_and_conditional_fields`, `law_tf2b_3_27_4_rsp_correlates_and_separates_empty_work_from_failed_lookup`. This row stays open: only LAW QBP/Q11–RSP/K11 is selected; RTB and RDY transactions are not declared or implemented. [query.rs](../../../crates/protocols/hl7/tests/query.rs), `hl7_251_5_10_legacy_query_scope_rejects_modern_and_undeclared_events`, prevents legacy fallback.
+  **Partial evidence:** [law.rs](../../../crates/protocols/hl7/tests/law/mod.rs): `query_forms_select_their_scope`, `rsp_separates_no_work_from_failed_lookup`. This row stays open: only LAW QBP/Q11–RSP/K11 is selected; RTB and RDY transactions are not declared or implemented. [query.rs](../../../crates/protocols/hl7/tests/query.rs), `legacy_query_refuses_modern_and_undeclared_events`, prevents legacy fallback.
 - [ ] 251 — Validate QPD query name/tag/parameters, RCP priority/quantity/mode, QAK status/counts and echoed correlation. Ch.5 §§5.5.2–6 pp.44–50.
 
-  **Remaining:** generic QPD/RCP/QAK profiles, quantitative response/count handling and contracts beyond the LAW subset. Existing selected LAW scope/tag/mode and response-echo evidence: [law.rs](../../../crates/protocols/hl7/tests/law/mod.rs), `law_tf2b_3_27_4_forbidden_missing_null_and_repeated_parameters_retain_bytes`, `law_tf2b_3_27_4_rsp_correlates_and_separates_empty_work_from_failed_lookup`. Those cases do not establish arbitrary query/profile conformance.
+  **Remaining:** generic QPD/RCP/QAK profiles, quantitative response/count handling and contracts beyond the LAW subset. Existing selected LAW scope/tag/mode and response-echo evidence: [law.rs](../../../crates/protocols/hl7/tests/law/mod.rs), `bad_query_parameters_fail_and_keep_bytes`, `rsp_separates_no_work_from_failed_lookup`. Those cases do not establish arbitrary query/profile conformance.
 - [ ] 251 — Handle RDF/RDT row schemas and QRI instance/match information if those response forms are supported. Ch.5 §§5.5.5, .7–8 pp.47–52.
 
   **Remaining:** RDF/RDT/QRI schemas and validation if a tabular or match-list response is selected. These response forms are currently unselected and unimplemented; no typed API claims to consume them.
 - [ ] B — Implement declared DSC continuation, cancellation and logical response boundaries without confusing them with TCP reads. 231 ch.2 §§2.15.4–5, 2.24.8 pp.118–119, 156; 251 ch.5 §§5.6.2–3 pp.55–59; ch.2 §2.15.4 pp.65–66.
 
-  **Remaining:** DSC pointer lifetime, continuation/cancellation state and logical batch completion in the host dialog. The current query view rejects continuation and retains the original message: [query.rs](../../../crates/protocols/hl7/tests/query.rs), `hl7_231_2_24_8_2_20_3_and_251_5_6_3_continuation_and_erq_are_located`.
+  **Remaining:** DSC pointer lifetime, continuation/cancellation state and logical batch completion in the host dialog. The current query view rejects continuation and retains the original message: [query.rs](../../../crates/protocols/hl7/tests/query.rs), `continuation_and_erq_are_located_errors`.
 - [ ] 251 — Distinguish fragmentation from interactive continuation and preserve pointer lifetime/correlation. Ch.2 §§2.10.2, 2.15.4 pp.30–34, 65–66; ch.5 §5.6.3 pp.55–59.
 
   **Remaining:** message fragmentation/reassembly and interactive continuation with persisted correlation and pointer expiry. Receiving a complete bounded Message or rejecting DSC is not evidence of this lifecycle.
 - [ ] 251 — Declare subscription/replay and query/subscription cancellation support; implement QSB/QVR/QCN/QSX only with their lifecycle. Ch.5 §§5.4.4–7, 5.7 pp.40–42, 61–66.
 
-  **Partial evidence:** [query.rs](../../../crates/protocols/hl7/tests/query.rs): `hl7_251_5_10_legacy_query_scope_rejects_modern_and_undeclared_events` tests QSB/Q16, QVR/Q17, QCN/J01 and QSX/J02. This row stays open: the tests exercise rejection, not subscription/replay/cancellation lifecycles. These capabilities and subscription/replay lifecycles are explicitly unselected; no typed query handler treats them as legacy lookup or starts work.
+  **Partial evidence:** [query.rs](../../../crates/protocols/hl7/tests/query.rs): `legacy_query_refuses_modern_and_undeclared_events` tests QSB/Q16, QVR/Q17, QCN/J01 and QSX/J02. This row stays open: the tests exercise rejection, not subscription/replay/cancellation lifecycles. These capabilities and subscription/replay lifecycles are explicitly unselected; no typed query handler treats them as legacy lookup or starts work.
 - [x] 231 — Declare EQQ/VQQ/SPQ/ERQ and enhanced query response support separately; these are not QBP/RSP. Ch.2 §§2.19–2.22 pp.121–123.
 
-  **Evidence:** [query.rs](../../../crates/protocols/hl7/tests/query.rs): `hl7_231_2_19_2_20_undeclared_enhanced_query_forms_are_rejected`, `hl7_231_2_24_8_2_20_3_and_251_5_6_3_continuation_and_erq_are_located`. EQQ, VQQ, SPQ and event replay are explicitly unsupported. ERQ is an event-replay segment, not another QBP transaction; ERP/R09 and ERQ content are not accepted by the legacy handler.
+  **Evidence:** [query.rs](../../../crates/protocols/hl7/tests/query.rs): `undeclared_enhanced_query_forms_are_refused`, `continuation_and_erq_are_located_errors`. EQQ, VQQ, SPQ and event replay are explicitly unsupported. ERQ is an event-replay segment, not another QBP transaction; ERP/R09 and ERQ content are not accepted by the legacy handler.
 - [ ] B — Test successful empty/multiple/partial responses, unavailable lookup, late response, cancellation and restart without unintended order retransmission. Query clauses above plus project deadlines/order rules.
 
-  **Remaining:** logical multi-part/partial replies and broader cancellation qualification. Host tests in [hl7/query.rs](../../../crates/analyte/tests/orders/hl7/query.rs) cover `hl7_251_dsr_ack_ae_ar_lost_and_disconnect_are_specific_uncertain` and `hl7_251_adr0004_total_query_deadline_includes_split_block_receive_time`; [hl7/send.rs](../../../crates/analyte/tests/orders/hl7/send.rs) covers restart without resend. Current pure wire evidence is [query.rs](../../../crates/protocols/hl7/tests/query.rs), `hl7_231_2_18_and_2_6_s5_10_qck_answers_deferred_query`, `hl7_231_2_18_dsr_requires_data_and_distinct_response_ids`, `hl7_231_2_24_22_and_251_5_5_2_unavailable_is_ae_never_nf`; it does not exercise a connection state machine or durable recovery.
+  **Remaining:** logical multi-part/partial replies and broader cancellation qualification. Host tests in [hl7/query.rs](../../../crates/analyte/tests/orders/hl7/query.rs) cover `failed_dsr_ack_is_specific_uncertain` and `query_deadline_counts_split_block_receive`; [hl7/send.rs](../../../crates/analyte/tests/orders/hl7/send.rs) covers restart without resend. Current pure wire evidence is [query.rs](../../../crates/protocols/hl7/tests/query.rs), `qck_answers_deferred_query`, `dsr_requires_data_and_distinct_ids`, `unavailable_lookup_is_ae_never_nf`; it does not exercise a connection state machine or durable recovery.
 
 ### I. Special control protocols
 
@@ -385,7 +385,7 @@ These capabilities matter to a literal “complete” claim and to future equipm
 
 - [x] Report specific per-edition blockers from the protocol registry in config
   (ADR 0012 section 3). Evidence:
-  `adr0012_s3_config_reports_the_registry_writer_blocker`.
+  `config_reports_registry_writer_blocker`.
 - [ ] Qualify 2.9.1 order encoding and replies from their own
   chapter 4 and datatype definitions, carry explicit test revisions, and prove
   exact bytes, withdrawn-field refusal, response outcomes and no resend after
@@ -396,15 +396,15 @@ These capabilities matter to a literal “complete” claim and to future equipm
 - [x] 2.6 bounded OML/O21 and ORL/O22 with explicit test/specimen/priority
   revisions, DTM timing, exact bytes and response correlation. Source field
   matrix and tests: versions.md, `edition_orders.rs`, config edition tests.
-  Host evidence includes 2.6 in `hl7_231_251_26_282_s4_4_7_send_ahead_accepted_rejected_and_mixed_items` acceptance/rejection,
+  Host evidence includes 2.6 in `send_ahead_accepted_rejected_and_mixed_items` acceptance/rejection,
   cancellation, timeout/disconnect and restart without resend tests (rule 8).
 
 - [x] 2.8.2 bounded O21/O22 with EIP group identity, supplied CX.5,
   explicit revisions, withdrawn-field refusal and no replay retransmission.
   Sources and per-field evidence: versions.md; `edition_orders.rs`, config
-  edition tests and program `hl7_231_251_26_282_s4_4_7_send_ahead_accepted_rejected_and_mixed_items`.
+  edition tests and program `send_ahead_accepted_rejected_and_mixed_items`.
 
 - [ ] Resolve the 2.9.1 ORC-4 source conflict (4.5.1 attribute table and
   4.5.1.4 component description) before writing group authorities. Sending stays
   blocked with a source-specific reason; see versions.md and
-  `hl7_2_9_1_s4_5_1_4_unresolved_group_encoding_refuses_sending`.
+  `unresolved_group_encoding_refuses_sending`.

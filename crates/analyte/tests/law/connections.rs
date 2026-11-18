@@ -9,9 +9,9 @@ mod client_fixture;
 use client_fixture::client_with_setup;
 use client_fixture::{client, wait_parked_frame};
 
+// IHE PaLM TF-2b §B.5, §B.6
 #[tokio::test]
-async fn law_tf2b_b5_b6_declared_single_persistent_link_carries_all_transactions_in_both_directions()
--> Result<(), Error> {
+async fn single_persistent_link_carries_every_transaction() -> Result<(), Error> {
     for is_client in [false, true] {
         let (_temp, path, mut reference, running, mut peer, listener) = if is_client {
             let (temp, path, reference, running, peer, listener) = client(&definition()).await?;
@@ -78,9 +78,9 @@ async fn law_tf2b_b5_b6_declared_single_persistent_link_carries_all_transactions
     Ok(())
 }
 
+// IHE PaLM TF-2b §B.6; ADR 0003
 #[tokio::test]
-async fn law_tf2b_b6_adr0003_client_partial_deadline_retains_exact_bytes_across_reconnect()
--> Result<(), Error> {
+async fn partial_deadline_keeps_exact_bytes_across_reconnect() -> Result<(), Error> {
     let settings = definition()
         .rewrite("send_ahead = false", "send_ahead = true")
         .rewrite("receive_timeout_ms = 30000", "receive_timeout_ms = 100");
@@ -170,9 +170,9 @@ async fn law_tf2b_b6_adr0003_client_partial_deadline_retains_exact_bytes_across_
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.27, §3.28
 #[tokio::test]
-async fn law_tf2b_3_27_3_28_single_client_uses_configured_query_and_orl_deadlines()
--> Result<(), Error> {
+async fn single_client_uses_configured_query_and_orl_deadlines() -> Result<(), Error> {
     let settings = definition()
         .rewrite("send_ahead = false", "send_ahead = true")
         .rewrite("response_ms = 30000", "response_ms = 150")
@@ -213,9 +213,9 @@ fn independent(settings: &str, endpoint: std::net::SocketAddr) -> String {
 }
 
 // PaLM TF-2b Rev 11 B.6 pp.79-80; ADR 0003 rules 1, 8, 9.
+// IHE PaLM TF-2b §B.6
 #[tokio::test]
-async fn law_tf2b_b6_independent_query_followup_survives_inbound_close_and_restarts()
--> Result<(), Error> {
+async fn independent_query_followup_survives_inbound_close() -> Result<(), Error> {
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let settings = independent(&definition(), listener.local_addr()?);
     let (_temp, path, mut reference, running, mut peer) = setup(
@@ -304,9 +304,9 @@ async fn law_tf2b_b6_independent_query_followup_survives_inbound_close_and_resta
 }
 
 // B.6 pp.79-80; ADR 0003 rule 8: each reservation has only one issuance attempt.
+// IHE PaLM TF-2b §B.6
 #[tokio::test]
-async fn law_tf2b_b6_independent_failed_link_or_lost_orl_never_replays_on_restart()
--> Result<(), Error> {
+async fn independent_failed_link_never_replays_on_restart() -> Result<(), Error> {
     for failure in ["unreachable", "disconnect", "timeout"] {
         let unreachable = failure == "unreachable";
         // A bound, non-listening socket refuses connections while reserving the
@@ -386,8 +386,9 @@ async fn law_tf2b_b6_independent_failed_link_or_lost_orl_never_replays_on_restar
     Ok(())
 }
 
+// IHE PaLM TF-2b §B.6; ADR 0003
 #[tokio::test]
-async fn law_tf2b_b6_adr0003_independent_restore_pause_sends_no_work() -> Result<(), Error> {
+async fn independent_restore_pause_sends_no_work() -> Result<(), Error> {
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let settings = independent(
         &definition().rewrite("send_ahead = false", "send_ahead = true"),
@@ -416,8 +417,9 @@ async fn law_tf2b_b6_adr0003_independent_restore_pause_sends_no_work() -> Result
 }
 
 // B.6 and 3.28.4/C.8: send-ahead/cancel share the same reserved outbound owner.
+// IHE PaLM TF-2b §B.6
 #[tokio::test]
-async fn law_tf2b_b6_independent_send_ahead_and_cancel_keep_original_awos() -> Result<(), Error> {
+async fn independent_send_ahead_and_cancel_keep_awos() -> Result<(), Error> {
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let settings = independent(
         &definition().rewrite("send_ahead = false", "send_ahead = true"),
@@ -468,9 +470,9 @@ async fn law_tf2b_b6_independent_send_ahead_and_cancel_keep_original_awos() -> R
 }
 
 // B.6 pp.79-80; ADR 0003 rule 8: restart cannot reissue an interrupted command.
+// IHE PaLM TF-2b §B.6
 #[tokio::test]
-async fn law_tf2b_b6_independent_crash_awaiting_orl_recovers_uncertain_without_resend()
--> Result<(), Error> {
+async fn independent_crash_awaiting_orl_recovers_uncertain() -> Result<(), Error> {
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let settings = independent(
         &definition().rewrite("send_ahead = false", "send_ahead = true"),
@@ -517,9 +519,10 @@ async fn law_tf2b_b6_independent_crash_awaiting_orl_recovers_uncertain_without_r
 }
 
 /// IHE `PaLM` TF-2b B.6 and clinical rule 8: one dialog owner per physical connection.
+// IHE PaLM TF-2b §B.6; Safety rule 8 (ADR 0003)
 #[cfg(feature = "test-hooks")]
 #[tokio::test]
-async fn ihe_palm_tf2b_b6_rule8_reconnect_waits_for_previous_dialog_owner() -> Result<(), Error> {
+async fn reconnect_waits_for_previous_dialog_owner() -> Result<(), Error> {
     let settings = definition().rewrite("send_ahead = false", "send_ahead = true");
     let (hook, control) = analyte::runtime::test_hooks::Committed::new();
     let (_temp, path, reference, running, mut peer, listener) =

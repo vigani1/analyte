@@ -2,8 +2,9 @@
 use super::*;
 use analyte_fixtures::ConfigEdit as _;
 
+// HL7 2.5.1 §2.A.22
 #[test]
-fn hl7_251_2a22_partial_times_and_invalid_times_preserve_evidence_without_guessing() -> TestResult {
+fn partial_and_invalid_times_keep_evidence() -> TestResult {
     for (raw, precision) in [
         ("2026", TimePrecision::Year),
         ("202611", TimePrecision::Month),
@@ -73,8 +74,9 @@ fn hl7_251_2a22_partial_times_and_invalid_times_preserve_evidence_without_guessi
     Ok(())
 }
 
+// CLSI LIS02-A2 §6.14, §8.4.7, §9.10, §9.12, §9.13
 #[test]
-fn lis02_6_14_8_4_7_9_10_9_12_9_13_timestamps_keep_role_and_original() -> TestResult {
+fn astm_timestamps_keep_role_and_original() -> TestResult {
     let raw=b"H|\\^&||||||||||P|LIS2-A2|20261115120000\rP|1\rO|1|000AbC||||20261115120100\rR|1|^^^SYN|1|||||F|20261114||20261115120200|20261115120300\rL|1|N\r";
     let messages = analyte_astm::parse(raw, analyte_astm::Limits::default())?;
     let mapped = map_astm(
@@ -103,8 +105,9 @@ fn lis02_6_14_8_4_7_9_10_9_12_9_13_timestamps_keep_role_and_original() -> TestRe
     Ok(())
 }
 
+// Safety rule 2 (ADR 0003)
 #[test]
-fn rule2_conflicting_explicit_qc_classification_is_unknown_and_parked() -> TestResult {
+fn conflicting_qc_classification_is_parked() -> TestResult {
     for (second, conflict) in [("patient", false), ("control", true)] {
         let definition=HL7_CONFIG.rewrite("qc = []",&format!("qc = [{{field={{group='order',record='OBR',field=3,component=1,repetition=1}},value='001',classification='patient'}},{{field={{group='order',record='OBR',field=3,component=1,repetition=1}},value='001',classification='{second}'}}]"));
         let mapped = qualified_hl7(
@@ -131,8 +134,9 @@ fn rule2_conflicting_explicit_qc_classification_is_unknown_and_parked() -> TestR
     Ok(())
 }
 
+// ADR 0003 rule 2
 #[test]
-fn adr0003_rule2_unknown_test_with_source_namespace_never_gets_resolved_identity() -> TestResult {
+fn unknown_test_never_gets_resolved_identity() -> TestResult {
     let mapped = hl7(
         "OBR|1||001\rOBX|1|NM|UNKNOWN^^synthetic||1||||||F\r",
         HL7_CONFIG,
@@ -151,8 +155,9 @@ fn adr0003_rule2_unknown_test_with_source_namespace_never_gets_resolved_identity
     Ok(())
 }
 
+// CLSI LIS02-A2 §6.12
 #[test]
-fn lis02_6_12_quality_control_mode_is_retained_and_never_deliverable_as_production() -> TestResult {
+fn qc_mode_is_kept_and_never_production() -> TestResult {
     let mapped = astm("R|1|^^^SYN|1|||||F\r", "Q")?;
     assert_eq!(
         mapped.results.first().ok_or("result")?.content.processing,
@@ -169,8 +174,9 @@ fn lis02_6_12_quality_control_mode_is_retained_and_never_deliverable_as_producti
     Ok(())
 }
 
+// Safety rule 5 (ADR 0003)
 #[test]
-fn rule5_hl7_note_text_and_field_position_are_retained() -> TestResult {
+fn hl7_note_text_and_position_are_kept() -> TestResult {
     let mapped = hl7(
         "OBR|1||001\rNTE|1||order note\rOBX|1|NM|SYN^^synthetic||1||||||F\rNTE|1||result note\r",
         HL7_CONFIG,
@@ -186,8 +192,9 @@ fn rule5_hl7_note_text_and_field_position_are_retained() -> TestResult {
     Ok(())
 }
 
+// Safety rule 7 (ADR 0003)
 #[test]
-fn rule7_identity_run_accepts_exact_source_text_ceiling_and_rejects_larger() -> TestResult {
+fn identity_run_ceiling_is_inclusive() -> TestResult {
     for (length, accepted) in [(16377, true), (16378, true), (16379, false)] {
         let value = "X".repeat(length);
         let mapped = analyte_mapping::identity_run(&[&value]);
@@ -199,8 +206,9 @@ fn rule7_identity_run_accepts_exact_source_text_ceiling_and_rejects_larger() -> 
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.29.4, §B.3
 #[test]
-fn law_tf2b_3_29_4_b3_mapping_preserves_awos_og_and_refuses_generic_entry() -> TestResult {
+fn law_result_keeps_awos_and_observation_group() -> TestResult {
     let definition = include_str!("../../../../core/config/examples/law.toml").rewrite(
         "order_namespace = {fixed=\"LAB\"}",
         "order_namespace = {fixed=\"manager\"}",
@@ -236,8 +244,9 @@ fn law_tf2b_3_29_4_b3_mapping_preserves_awos_og_and_refuses_generic_entry() -> T
     Ok(())
 }
 
+// Safety rule 7 (ADR 0003)
 #[test]
-fn rule7_astm_mapping_rechecks_independent_limits_inclusively() -> TestResult {
+fn astm_mapping_rechecks_limits_inclusively() -> TestResult {
     let raw =
         b"H|\\^&||||||||||P|LIS2-A2|20261115120000\rP|1\rO|1|000AbC\rR|1|^^^SYN|1|||||F\rL|1|N\r";
     let parsed = analyte_astm::parse(raw, analyte_astm::Limits::default())?;
@@ -267,8 +276,9 @@ fn rule7_astm_mapping_rechecks_independent_limits_inclusively() -> TestResult {
     Ok(())
 }
 
+// Safety rule 7 (ADR 0003)
 #[test]
-fn rule7_hl7_mapping_rechecks_independent_limits_inclusively() -> TestResult {
+fn hl7_mapping_rechecks_limits_inclusively() -> TestResult {
     let raw = b"MSH|^~\\&|SYN||||202611151200||ORU^R01^ORU_R01|MSG|P|2.5.1\rOBR|1||001\rOBX|1|NM|SYN^^synthetic||1||||||F\r";
     let message = analyte_hl7::Message::parse(raw, analyte_hl7::Options::default())?;
     for (key, old, ceiling) in [
@@ -289,8 +299,9 @@ fn rule7_hl7_mapping_rechecks_independent_limits_inclusively() -> TestResult {
     Ok(())
 }
 
+// ADR 0003
 #[test]
-fn adr0003_unmapped_evidence_alone_requires_parking() -> TestResult {
+fn unmapped_evidence_alone_requires_parking() -> TestResult {
     let mut output = astm("R|1|^^^UNKNOWN|1|||||F\r", "P")?;
     assert!(!output.unmapped.is_empty());
     // Output is public host-facing evidence; even a host that extracted findings
@@ -301,8 +312,9 @@ fn adr0003_unmapped_evidence_alone_requires_parking() -> TestResult {
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.29.4.1.2.1
 #[test]
-fn law_tf2b_3_29_4_1_2_1_status_only_ip_sc_ca_is_typed_without_results() -> TestResult {
+fn status_only_ip_sc_ca_become_notices() -> TestResult {
     let cfg = config(include_str!("../../../../core/config/examples/law.toml"))?;
     let original = std::str::from_utf8(LAW_RESULT)?;
     let prefix = original.split("OBX|").next().ok_or("fixture")?;
@@ -336,8 +348,9 @@ fn law_tf2b_3_29_4_1_2_1_status_only_ip_sc_ca_is_typed_without_results() -> Test
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.8, table C.8-9
 #[test]
-fn law_tf2b_c8_table_c8_9_estimate_preserves_spelling_null_and_header_zone() -> TestResult {
+fn estimate_keeps_spelling_null_and_header_zone() -> TestResult {
     use analyte_mapping::law::AvailabilityEstimate;
     let cfg = config(include_str!("../../../../core/config/examples/law.toml"))?;
     let original = std::str::from_utf8(LAW_RESULT)?;
@@ -396,8 +409,9 @@ fn law_tf2b_c8_table_c8_9_estimate_preserves_spelling_null_and_header_zone() -> 
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.29.4.1.2.1
 #[test]
-fn law_tf2b_3_29_4_1_2_1_mixed_status_groups_do_not_hide_result_groups() -> TestResult {
+fn status_groups_never_hide_result_groups() -> TestResult {
     let cfg = config(include_str!("../../../../core/config/examples/law.toml"))?;
     let original = std::str::from_utf8(LAW_RESULT)?;
     let order = original
@@ -421,9 +435,9 @@ fn law_tf2b_3_29_4_1_2_1_mixed_status_groups_do_not_hide_result_groups() -> Test
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.8, table C.8-9
 #[test]
-fn law_tf2b_c8_table_c8_9_estimate_zone_is_only_from_msh7_and_ip_results_are_not_empty_notices()
--> TestResult {
+fn estimate_zone_from_msh7_and_ip_results_kept() -> TestResult {
     use analyte_mapping::law::AvailabilityEstimate;
     let cfg = config(include_str!("../../../../core/config/examples/law.toml"))?;
     let original = std::str::from_utf8(LAW_RESULT)?;

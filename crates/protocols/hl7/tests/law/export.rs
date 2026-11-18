@@ -2,8 +2,9 @@
 #[path = "../../examples/law_messages.rs"]
 mod law_messages;
 
+// IHE PaLM TF-2b appendix C
 #[test]
-fn law_tf2b_appendix_c_export_messages_reparse() -> Result<(), Box<dyn std::error::Error>> {
+fn exported_messages_reparse() -> Result<(), Box<dyn std::error::Error>> {
     let directory =
         std::env::temp_dir().join(format!("analyte-law-export-test-{}", std::process::id()));
     std::fs::create_dir(&directory)?;

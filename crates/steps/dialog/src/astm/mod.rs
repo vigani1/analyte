@@ -582,8 +582,9 @@ impl Dialog {
 mod tests {
     use super::*;
 
+    // Safety rule 7 (ADR 0003)
     #[test]
-    fn rule7_timer_overflow_returns_exhausted() -> Result<(), Error> {
+    fn timer_overflow_returns_exhausted() -> Result<(), Error> {
         let mut dialog = Dialog::new(Config::default(), Epoch(1));
         dialog
             .clock

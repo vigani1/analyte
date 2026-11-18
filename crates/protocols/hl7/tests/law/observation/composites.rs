@@ -1,8 +1,9 @@
 //! Tests LAW OBX, NTE and INV segment validation.
 use super::*;
 
+// IHE PaLM TF-2b §C.2, §C.5, §C.7
 #[test]
-fn law_tf2b_c2_c5_c7_x_fields_components_and_composite_send_ceilings() -> TestResult {
+fn x_fields_and_composite_send_ceilings() -> TestResult {
     for (id, supported) in [
         (
             "OBX",
@@ -82,16 +83,18 @@ fn law_tf2b_c2_c5_c7_x_fields_components_and_composite_send_ceilings() -> TestRe
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.5, NTE-4
 #[test]
-fn law_tf2b_c5_nte_4_extended_vendor_namespace_has_12_character_limit() -> TestResult {
+fn nte4_vendor_namespace_has_12_char_limit() -> TestResult {
     both("NTE", &[(4, "note^^99ABCDEFGHIJ")], true)?;
     both("NTE", &[(4, "note^^99ABCDEFGHIJK")], false)?;
     both("NTE", &[(4, "note^^99A!B")], false)?;
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.7
 #[test]
-fn law_tf2b_c7_remaining_component_boundaries_and_located_failures() -> TestResult {
+fn component_boundaries_and_located_failures() -> TestResult {
     for value in [
         format!("{TEST}^alt^{}^LN", "x".repeat(199)),
         format!("{TEST}^^^^^^^alt^{}^LN", "x".repeat(199)),
@@ -142,8 +145,9 @@ fn law_tf2b_c7_remaining_component_boundaries_and_located_failures() -> TestResu
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.2, §C.5, §C.7
 #[test]
-fn law_tf2b_c2_c5_c7_ignored_nested_components_and_remaining_lengths() -> TestResult {
+fn ignored_nested_components_and_lengths() -> TestResult {
     for (number, value) in [(2, "custom^^99LAB"), (3, "custom^^99LAB")] {
         check(
             "INV",
@@ -212,8 +216,9 @@ fn law_tf2b_c2_c5_c7_ignored_nested_components_and_remaining_lengths() -> TestRe
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.5
 #[test]
-fn law_tf2b_c5_work_builder_validates_and_keeps_truncatable_notes() -> TestResult {
+fn work_builder_keeps_truncatable_notes() -> TestResult {
     let text = "x".repeat(300);
     let notes = [text.as_bytes()];
     let work_notes = law::WorkNotes {

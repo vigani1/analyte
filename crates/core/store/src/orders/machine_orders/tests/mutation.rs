@@ -1,9 +1,9 @@
 //! Tests rejection of malformed inputs without losing evidence.
 use super::*;
 
+// ADR 0003 rule 8; mutation-testing regression
 #[test]
-fn mutation_adr0003_rule8_order_clock_allows_equal_time_and_refuses_regression_atomically()
--> TestResult {
+fn order_clock_allows_equal_time_refuses_regression() -> TestResult {
     for now in [100, 101, 102] {
         let temp = tempfile::tempdir()?;
         let mut store = open(&temp.path().join("order-clock.db"))?;
@@ -76,9 +76,9 @@ fn mutation_adr0003_rule8_order_clock_allows_equal_time_and_refuses_regression_a
     Ok(())
 }
 
+// ADR 0003 rule 8; mutation-testing regression
 #[test]
-fn mutation_adr0003_rule8_order_reconciliation_checks_target_and_outcome_independently()
--> TestResult {
+fn reconciliation_checks_target_and_outcome_separately() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("order-operator.db"))?;
     store.order_page(&page(1, "requested", false, 200)?)?;
@@ -146,9 +146,9 @@ fn mutation_adr0003_rule8_order_reconciliation_checks_target_and_outcome_indepen
     Ok(())
 }
 
+// ADR 0003 rule 8; mutation-testing regression
 #[test]
-fn mutation_adr0003_rule8_order_pending_page_accepts_the_exact_limit_and_excludes_reservations()
--> TestResult {
+fn pending_page_takes_exact_limit_skips_reservations() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("pending-bound.db"))?;
     store.limits.page_rows = 1;
@@ -188,8 +188,9 @@ fn mutation_adr0003_rule8_order_pending_page_accepts_the_exact_limit_and_exclude
     Ok(())
 }
 
+// ADR 0003 rule 8; mutation-testing regression
 #[test]
-fn mutation_adr0003_rule8_order_history_and_operator_audit_bounds_are_inclusive() -> TestResult {
+fn history_and_audit_bounds_are_inclusive() -> TestResult {
     for (boundary, delta) in [("history", 0), ("history", 1), ("audit", 0), ("audit", 1)] {
         let temp = tempfile::tempdir()?;
         let mut store = open(&temp.path().join("order-evidence-bounds.db"))?;
@@ -287,9 +288,9 @@ fn mutation_adr0003_rule8_order_history_and_operator_audit_bounds_are_inclusive(
     Ok(())
 }
 
+// ADR 0003 rule 8; mutation-testing regression
 #[test]
-fn mutation_adr0003_rule8_order_event_checks_each_bound_and_provenance_field_atomically()
--> TestResult {
+fn order_event_checks_bounds_and_provenance_atomically() -> TestResult {
     let app = Identifier::new("app")?;
     for case in [
         "valid",
@@ -380,9 +381,9 @@ fn mutation_adr0003_rule8_order_event_checks_each_bound_and_provenance_field_ato
     Ok(())
 }
 
+// ADR 0003 rule 8; mutation-testing regression
 #[test]
-fn mutation_adr0003_rule8_order_command_refuses_empty_bytes_and_keeps_original_after_restart()
--> TestResult {
+fn command_refuses_empty_bytes_keeps_original_after_restart() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("original-command.db");
     let mut store = open(&path)?;

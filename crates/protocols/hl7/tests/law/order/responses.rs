@@ -1,8 +1,9 @@
 //! Tests LAW order, timing and test-detail segments.
 use super::*;
 
+// IHE PaLM TF-2b §C.8
 #[test]
-fn law_tf2b_c8_orl_control_status_matrix_matches_each_request_type_exhaustively() -> TestResult {
+fn orl_control_status_pairs_match_request_type() -> TestResult {
     use law::{Address, Awos, Capabilities, WorkAction};
     let address = Address {
         application: b"M",
@@ -60,8 +61,9 @@ fn law_tf2b_c8_orl_control_status_matrix_matches_each_request_type_exhaustively(
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.8, §C.6, §C.13
 #[test]
-fn law_tf2b_c8_c6_c13_work_builder_preserves_supplied_event_and_validates_details() -> TestResult {
+fn work_builder_keeps_event_time_and_checks_details() -> TestResult {
     use law::{Address, Awos, Capabilities, Instructions, WorkAction};
     let address = Address {
         application: b"M",
@@ -163,8 +165,9 @@ fn law_tf2b_c8_c6_c13_work_builder_preserves_supplied_event_and_validates_detail
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.6, §C.8, §C.13, §C.14
 #[test]
-fn law_tf2b_c6_c8_c13_c14_x_fields_components_and_composite_ceiling() -> TestResult {
+fn order_x_fields_and_composite_length_ceiling() -> TestResult {
     for (id, supported) in [
         ("ORC", vec![1, 2, 4, 5, 8, 9, 21, 27]),
         ("OBR", vec![2, 3, 4, 11, 16, 49]),
@@ -254,8 +257,9 @@ fn law_tf2b_c6_c8_c13_c14_x_fields_components_and_composite_ceiling() -> TestRes
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.13, TCD-8, TCD-9
 #[test]
-fn law_tf2b_c13_tcd_8_required_text_and_9_nested_cq_limits() -> TestResult {
+fn tcd8_status_text_and_tcd9_quantity_limits() -> TestResult {
     let profile = Profile::receive().with_repeat_options(true, false);
     check(
         "TCD",
@@ -310,8 +314,9 @@ fn law_tf2b_c13_tcd_8_required_text_and_9_nested_cq_limits() -> TestResult {
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.13; Safety rule 6 (ADR 0003)
 #[test]
-fn law_tf2b_c13_safety_rule_6_type_only_dilution_has_adjustment_metadata() -> TestResult {
+fn type_only_dilution_keeps_adjustment_metadata() -> TestResult {
     for adjustment in [
         law::ResultAdjustment::AlreadyApplied,
         law::ResultAdjustment::NotApplied,

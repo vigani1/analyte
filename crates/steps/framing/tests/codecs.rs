@@ -6,8 +6,9 @@ fn astm(bytes: &[u8]) -> Vec<a::Event> {
     let mut d = a::Decoder::new(a::Limit::default(), a::HexPolicy::Strict);
     bytes.iter().filter_map(|b| d.push(*b)).collect()
 }
+// CLSI LIS01-A2 §6.3.3
 #[test]
-fn lis01_6_3_3_checksum_sums_raw_digit_through_etx() -> Result<(), a::Error> {
+fn astm_checksum_sums_digit_through_etx() -> Result<(), a::Error> {
     let frames: Vec<_> =
         a::encode(&[0x80, 13], a::FrameNumber::FIRST, a::Limit::default())?.collect();
     assert_eq!(frames, vec![vec![2, b'1', 0x80, 13, 3, b'C', b'1', 13, 10]]);
@@ -17,8 +18,9 @@ fn lis01_6_3_3_checksum_sums_raw_digit_through_etx() -> Result<(), a::Error> {
     ));
     Ok(())
 }
+// CLSI LIS01-A2 §6.3.2
 #[test]
-fn lis01_6_3_2_number_rollover() -> Result<(), a::Error> {
+fn astm_frame_number_rolls_over() -> Result<(), a::Error> {
     let mut n = a::FrameNumber::FIRST;
     for expected in b"123456701" {
         assert_eq!(n.ascii(), *expected);
@@ -34,8 +36,9 @@ fn lis01_6_3_2_number_rollover() -> Result<(), a::Error> {
     }
     Ok(())
 }
+// CLSI LIS01-A2 §6.3, §6.6
 #[test]
-fn lis01_6_3_and_6_6_defects_and_recovery() {
+fn astm_frame_defects_rejected_then_recover() {
     let cases = [
         (b"\x028".as_slice(), a::Error::BadFrameNumber(b'8')),
         (b"\x021\n".as_slice(), a::Error::ControlInText(10)),
@@ -61,8 +64,9 @@ fn lis01_6_3_and_6_6_defects_and_recovery() {
         assert!(matches!(events.last(), Some(a::Event::Frame(_))));
     }
 }
+// CLSI LIS01-A2 §6.3.1
 #[test]
-fn lis01_6_3_1_standard_total_boundary() -> Result<(), a::Error> {
+fn astm_standard_total_size_boundary() -> Result<(), a::Error> {
     let record = vec![b'A'; 63_994];
     let frames: Vec<_> = a::encode(&record, a::FrameNumber::FIRST, a::Limit::default())?.collect();
     assert_eq!(
@@ -74,15 +78,17 @@ fn lis01_6_3_1_standard_total_boundary() -> Result<(), a::Error> {
     assert!(matches!(events.last(), Some(a::Event::Frame(f)) if f.is_final()));
     Ok(())
 }
+// CLSI LIS01-A2 §6.3.3
 #[test]
-fn lis01_6_3_3_lowercase_policy_retains_wire() {
+fn astm_lowercase_checksum_policy_keeps_wire() {
     let bytes = b"\x021z\x03ae\r\n";
     let mut d = a::Decoder::new(a::Limit::default(), a::HexPolicy::AcceptLowercase);
     let events: Vec<_> = bytes.iter().filter_map(|b| d.push(*b)).collect();
     assert!(matches!(events.first(), Some(a::Event::Frame(f)) if f.raw() == bytes));
 }
+// HL7 MLLP R1 §1.2
 #[test]
-fn mllp_r1_1_2_specific_defects_and_restart() -> Result<(), m::Error> {
+fn mllp_specific_defects_and_restart() -> Result<(), m::Error> {
     let mut d = m::Decoder::new(m::Limit::new(2)?);
     for (bytes, expected) in [
         (b"x".as_slice(), m::Error::Outside),
@@ -107,8 +113,9 @@ fn mllp_r1_1_2_specific_defects_and_restart() -> Result<(), m::Error> {
     }
     Ok(())
 }
+// HL7 MLLP R1 §1.2
 #[test]
-fn mllp_r1_1_2_payload_preserves_content_and_requires_envelope() {
+fn mllp_payload_kept_and_envelope_required() {
     assert_eq!(
         m::payload(b"\x0bMSH|synthetic\r\x1c\r"),
         Some(b"MSH|synthetic\r".as_slice())
@@ -127,8 +134,9 @@ fn mllp_r1_1_2_payload_preserves_content_and_requires_envelope() {
 }
 
 proptest! {
+    // CLSI LIS01-A2 §6.3
     #[test]
-    fn lis01_6_3_roundtrip_all_chunk_boundaries(payload in prop::collection::vec(any::<u8>().prop_filter("LIS01 permitted text", |b| !matches!(b, 1..=6 | 10 | 16..=23)), 0..150)) {
+    fn astm_roundtrips_at_every_chunk_boundary(payload in prop::collection::vec(any::<u8>().prop_filter("LIS01 permitted text", |b| !matches!(b, 1..=6 | 10 | 16..=23)), 0..150)) {
         let limit = a::Limit::new(17)?;
         let frames: Vec<_> = a::encode(&payload, a::FrameNumber::FIRST, limit)?.collect();
         let bytes = frames.concat();
@@ -142,8 +150,9 @@ proptest! {
             prop_assert_eq!(&events, &expected);
         }
     }
+    // HL7 MLLP R1 §1.2
     #[test]
-    fn mllp_r1_1_2_roundtrip_chunk_boundaries(payload in prop::collection::vec(any::<u8>().prop_filter("MLLP repertoire", |b| *b > 31 || *b == 13), 0..100)) {
+    fn mllp_roundtrips_at_every_chunk_boundary(payload in prop::collection::vec(any::<u8>().prop_filter("MLLP repertoire", |b| *b > 31 || *b == 13), 0..100)) {
         let limit = m::Limit::new(100)?;
         let raw = m::encode(&payload, limit)?;
         prop_assert_eq!(m::payload(&raw), Some(payload.as_slice()));
@@ -170,8 +179,9 @@ proptest! {
     }
 }
 
+// CLSI LIS01-A2 §6.3.1
 #[test]
-fn lis01_6_3_1_overlong_and_incomplete_evidence() -> Result<(), a::Error> {
+fn astm_overlong_and_incomplete_evidence_kept() -> Result<(), a::Error> {
     let mut d = a::Decoder::new(a::Limit::new(8)?, a::HexPolicy::Strict);
     let wire = b"\x021AAAAAAA";
     let events: Vec<_> = wire.iter().filter_map(|b| d.push(*b)).collect();
@@ -188,8 +198,9 @@ fn lis01_6_3_1_overlong_and_incomplete_evidence() -> Result<(), a::Error> {
     Ok(())
 }
 
+// CLSI LIS01-A2 §6.4
 #[test]
-fn lis01_6_4_link_control_inside_frame_is_reported_not_swallowed() {
+fn astm_link_control_inside_frame_is_reported() {
     for control in [a::ENQ, a::EOT, a::ACK, a::NAK] {
         let wire = [a::STX, b'1', b'A', control];
         let events = astm(&wire);
@@ -201,9 +212,9 @@ fn lis01_6_4_link_control_inside_frame_is_reported_not_swallowed() {
     }
 }
 
+// CLSI LIS01-A2 §6.3.1.2; ADR 0003
 #[test]
-fn lis01_6_3_1_2_adr0003_rejected_frames_retain_stx_through_checksum_cr_lf() -> Result<(), a::Error>
-{
+fn astm_rejected_frames_keep_every_byte() -> Result<(), a::Error> {
     // Different defect locations obey the same envelope rule; no checksum special case.
     for wire in [
         b"\x021A\x0300\r\n".as_slice(),

@@ -30,8 +30,9 @@ fn report(
         definition,
     )
 }
+// ADR 0015; HL7 §7.4.1.25
 #[test]
-fn adr0015_hl7_s74125_only_qualified_absence_is_discharged_and_v1_parks() -> TestResult {
+fn obr25_absence_is_discharged_but_parks() -> TestResult {
     let definition = definition("hl7_absent_obr25_means_final", "absent_obr25_final");
     let mut mapped = report("", "F", &definition)?;
     assert_eq!(mapped.applied_departures.len(), 1);
@@ -64,8 +65,9 @@ fn adr0015_hl7_s74125_only_qualified_absence_is_discharged_and_v1_parks() -> Tes
     assert!(!received.requires_parking());
     Ok(())
 }
+// ADR 0015; HL7 §7.4.2.11
 #[test]
-fn adr0015_hl7_s74211_derived_summary_preserves_absence_and_identity_units() -> TestResult {
+fn obx11_derived_status_keeps_absence_and_units() -> TestResult {
     let definition = definition("hl7_absent_obx11_means_final", "absent_obx11_final");
     let mapped = report("F", "", &definition)?;
     assert_eq!(first(&mapped)?.source_status.as_str(), "");
@@ -97,8 +99,9 @@ fn adr0015_hl7_s74211_derived_summary_preserves_absence_and_identity_units() -> 
     Ok(())
 }
 
+// ADR 0015
 #[test]
-fn adr0015_hl7_report_omission_never_proves_completion_from_partial_observations() -> TestResult {
+fn report_omission_never_completes_partial_results() -> TestResult {
     let definition = definition("hl7_absent_obr25_means_final", "absent_obr25_final");
     for status in ["P", "R", "C", "X", "D", "\"\"", "UNKNOWN", ""] {
         let mapped = report("", status, &definition)?;
@@ -114,8 +117,9 @@ fn adr0015_hl7_report_omission_never_proves_completion_from_partial_observations
     Ok(())
 }
 
+// ADR 0015
 #[test]
-fn adr0015_hl7_two_omissions_require_both_separate_guarantees() -> TestResult {
+fn two_omissions_need_two_guarantees() -> TestResult {
     let mut definition = definition("hl7_absent_obr25_means_final", "absent_obr25_final");
     let fixture = include_str!("../../../../core/config/tests/fixtures/departure.toml");
     let second = fixture

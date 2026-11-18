@@ -18,8 +18,9 @@ these suspicious patterns.
 
 ## What every change needs
 
-- Tests that fail without the change and pass with it. Protocol rules name
-  their source in the test, for example `HL7 2.5.1 §2.7 escape sequences`.
+- Tests that fail without the change and pass with it. Protocol rule tests have
+  a short behaviour name and a comment above them naming the source, for
+  example `// HL7 2.5.1 §2.7`.
 - A clean run of `cargo fmt --check`, `cargo clippy --all-targets
   --all-features -- -D warnings`, `cargo test --workspace --all-features` and
   `cargo deny check`. Run the production feature pass too:

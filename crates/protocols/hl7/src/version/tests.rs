@@ -20,48 +20,57 @@ fn edition(edition: Version, wire: &str, required_time: bool, truncation: bool) 
     }
 }
 
+// HL7 2.5.1 §2.8
 #[test]
-fn hl7_2_5_1_s2_8_recognizes_2_3_without_upgrading() {
+fn recognizes_v23_without_upgrading() {
     edition(Version::V23, "2.3", false, false);
 }
 
+// HL7 2.3.1 §2.24.1.2, §2.24.1.7, §2.24.1.12
 #[test]
-fn hl7_2_3_1_s2_24_1_2_7_12_recognizes_edition() {
+fn recognizes_v231() {
     edition(Version::V231, "2.3.1", false, false);
 }
 
+// HL7 2.5.1 §2.8, §2.15.9.7
 #[test]
-fn hl7_2_5_1_s2_8_and_s2_15_9_7_recognizes_2_4() {
+fn recognizes_v24() {
     edition(Version::V24, "2.4", true, false);
 }
 
+// HL7 2.5.1 §2.8
 #[test]
-fn hl7_2_5_1_s2_8_recognizes_2_5_without_patch_upgrade() {
+fn recognizes_v25_without_patch_upgrade() {
     edition(Version::V25, "2.5", true, false);
 }
 
+// HL7 2.5.1 §2.15.9.2, §2.15.9.7, §2.15.9.12
 #[test]
-fn hl7_2_5_1_s2_15_9_2_7_12_recognizes_edition() {
+fn recognizes_v251() {
     edition(Version::V251, "2.5.1", true, false);
 }
 
+// HL7 2.6 §2.14.9.2, §2.14.9.7, §2.14.9.12
 #[test]
-fn hl7_2_6_s2_14_9_2_7_12_recognizes_edition_without_typed_fallback() {
+fn recognizes_v26_without_typed_fallback() {
     edition(Version::V26, "2.6", true, false);
 }
 
+// HL7 2.8.2 §2.14.9.2, §2.14.9.7, §2.14.9.12
 #[test]
-fn hl7_2_8_2_s2_14_9_2_7_12_recognizes_edition_without_typed_fallback() {
+fn recognizes_v282_without_typed_fallback() {
     edition(Version::V282, "2.8.2", true, true);
 }
 
+// HL7 2.9.1 §2.13.9.2, §2.13.9.7, §2.13.9.12
 #[test]
-fn hl7_2_9_1_s2_13_9_2_7_12_recognizes_edition_without_typed_fallback() {
+fn recognizes_v291_without_typed_fallback() {
     edition(Version::V291, "2.9.1", true, true);
 }
 
+// ADR 0012 §3
 #[test]
-fn adr0012_s3_no_unlisted_edition_or_prefix_match() {
+fn unlisted_edition_or_prefix_is_refused() {
     for raw in [
         "", "2", "2.2", "2.3.0", "2.5.10", "2.7", "2.8", "2.9", "2.9.2", "2.9.1 ",
     ] {
@@ -77,8 +86,9 @@ fn adr0012_s3_no_unlisted_edition_or_prefix_match() {
     }
 }
 
+// ADR 0012 §3
 #[test]
-fn adr0012_s3_writer_qualification_is_separate_from_receiving() {
+fn writer_qualification_separate_from_receiving() {
     for (version, reason) in [
         (
             Version::V23,
@@ -102,8 +112,9 @@ fn adr0012_s3_writer_qualification_is_separate_from_receiving() {
     }
 }
 
+// HL7 chapters 2, 4, 5, 7
 #[test]
-fn hl7_chapters_2_4_5_7_pin_edition_capabilities() {
+fn edition_capabilities_are_pinned() {
     let rows = [
         (
             Version::V23,
@@ -176,8 +187,9 @@ fn hl7_chapters_2_4_5_7_pin_edition_capabilities() {
     }
 }
 
+// HL7 chapters 2, 4, 5, 7
 #[test]
-fn hl7_chapters_2_4_5_7_pin_each_independent_rule() {
+fn each_independent_edition_rule_is_pinned() {
     for (version, modern, legacy_order, later, query) in [
         (Version::V23, false, false, false, Some((60, 9))),
         (Version::V231, false, true, false, Some((60, 9))),

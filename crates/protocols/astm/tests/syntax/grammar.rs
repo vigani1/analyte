@@ -1,8 +1,9 @@
 //! Tests message grammar and input size limits.
 use super::*;
 
+// CLSI LIS02-A2 §6.2, §5.4.6
 #[test]
-fn lis02_6_2_bootstrap_and_5_4_6_message_delimiters() -> Result<(), Error> {
+fn header_bootstraps_message_delimiters() -> Result<(), Error> {
     let messages = parse(
         b"h;~:!;control\rP;1;001Ab\rL;1;N\rH|\\^&|two\rL|1\r",
         Limits::default(),
@@ -29,8 +30,9 @@ fn bare_header_is_accepted() -> Result<(), Error> {
     Ok(())
 }
 
+// CLSI LIS02-A2 §5.4.5
 #[test]
-fn lis02_5_4_5_escapes_never_change_boundaries() -> Result<(), Error> {
+fn escapes_never_change_boundaries() -> Result<(), Error> {
     let wire = b"H|\\^&|\rP|1|&F&&S&&R&&E&&Zx|^\\y&&X0D&&H&bold&N&&unknown&\rL|1\r";
     let messages = parse(wire, Limits::default())?;
     let field = messages
@@ -60,8 +62,9 @@ fn lis02_5_4_5_escapes_never_change_boundaries() -> Result<(), Error> {
     Ok(())
 }
 
+// CLSI LIS02-A2 §5.4.7 to §5.4.9
 #[test]
-fn lis02_5_4_7_through_9_null_positions_and_deletion() -> Result<(), Error> {
+fn null_positions_and_explicit_deletion() -> Result<(), Error> {
     let messages = parse(b"H|\\^&|\rP|1||\"\"|^a^\\b\\|\rL|1\r", Limits::default())?;
     let record = messages.first().and_then(|m| m.records().get(1));
     assert_eq!(
@@ -84,8 +87,9 @@ fn lis02_5_4_7_through_9_null_positions_and_deletion() -> Result<(), Error> {
     Ok(())
 }
 
+// CLSI LIS02-A2 §4.1
 #[test]
-fn lis02_4_1_parents_and_context_closure() -> Result<(), Error> {
+fn record_parents_and_context_closure() -> Result<(), Error> {
     let messages = parse(
         b"H|\\^&|\rP|1\rO|1\rR|1\rC|1|x\rM|1|y\rR|2\rO|2\rR|1\rQ|1\rS|1\rL|1\r",
         Limits::default(),
@@ -126,8 +130,9 @@ fn lis02_4_1_parents_and_context_closure() -> Result<(), Error> {
     Ok(())
 }
 
+// CLSI LIS02-A2 §5.6.7
 #[test]
-fn lis02_5_6_7_sequence_numbers_reset_with_context() {
+fn sequence_numbers_reset_with_context() {
     for wire in [
         b"H|\\^&|\rP|0\rL|1\r".as_slice(),
         b"H|\\^&|\rP|1\rP|1\rL|1\r",
@@ -141,8 +146,9 @@ fn lis02_5_6_7_sequence_numbers_reset_with_context() {
     }
 }
 
+// CLSI LIS02-A2 §5.1
 #[test]
-fn lis02_5_1_latin1_is_not_utf8_or_lossy() -> Result<(), Error> {
+fn latin1_is_not_utf8_or_lossy() -> Result<(), Error> {
     let wire = b"H|\\^&|\rP|1|\xe9\rL|1\r";
     let messages = parse(wire, Limits::default())?;
     assert_eq!(
@@ -173,8 +179,9 @@ fn lis02_5_1_latin1_is_not_utf8_or_lossy() -> Result<(), Error> {
     Ok(())
 }
 
+// CLSI LIS02-A2 §5.2, §5.3
 #[test]
-fn lis02_5_2_5_3_limits_reject_instead_of_truncating() {
+fn limits_reject_instead_of_truncating() {
     let wire = b"H|\\^&|\rP|1|a^b\\c\rL|1\r";
     for limits in [
         Limits {
@@ -202,8 +209,9 @@ fn lis02_5_2_5_3_limits_reject_instead_of_truncating() {
     }
 }
 
+// CLSI LIS02-A2 §9.9
 #[test]
-fn lis02_9_9_all_result_codes_remain_distinct() {
+fn result_status_codes_remain_distinct() {
     let codes = b"CPFXISMRNQVW";
     let statuses: Vec<_> = codes
         .iter()
@@ -218,8 +226,9 @@ fn lis02_9_9_all_result_codes_remain_distinct() {
     );
 }
 
+// CLSI LIS02-A2 §5.4
 #[test]
-fn lis02_5_4_serialize_selected_delimiters() -> Result<(), Error> {
+fn serialize_uses_selected_delimiters() -> Result<(), Error> {
     let messages = parse(b"H|\\^&|\rP|1|a;b&F&c^d\\e\rL|1\r", Limits::default())?;
     let target = Delimiters::new(b';', b'~', b':', b'!')?;
     let serialized = messages
@@ -240,8 +249,9 @@ fn lis02_5_4_serialize_selected_delimiters() -> Result<(), Error> {
 }
 
 proptest! {
+    // CLSI LIS02-A2 §5.7
     #[test]
-    fn lis02_5_7_parse_serialize_identity(value in "[a-zA-Z0-9 ^\\\\]{0,100}") {
+    fn parse_serialize_identity(value in "[a-zA-Z0-9 ^\\\\]{0,100}") {
         let wire = format!("H|\\^&|\rP|1|{value}\rL|1\r");
         let parsed = parse(wire.as_bytes(), Limits::default());
         prop_assert!(parsed.is_ok());
@@ -251,14 +261,16 @@ proptest! {
             prop_assert_eq!(parse(&serialized, Limits::default()), Ok(messages));
         }
     }
+    // CLSI LIS02-A2 §5
     #[test]
-    fn lis02_5_hostile_bytes_are_bounded(bytes in proptest::collection::vec(any::<u8>(), 0..1024)) {
+    fn hostile_bytes_are_bounded(bytes in proptest::collection::vec(any::<u8>(), 0..1024)) {
         let _ = parse(&bytes, Limits { bytes: 1024, ..Limits::default() });
     }
 }
 
+// CLSI LIS02-A2 §6.12, §12.3
 #[test]
-fn lis02_6_12_and_12_3_processing_and_termination_codes() {
+fn processing_and_termination_codes() {
     use analyte_astm::{ProcessingId, TerminationCode};
     for (raw, expected) in [
         (b"P".as_slice(), ProcessingId::Production),
@@ -290,8 +302,9 @@ fn lis02_6_12_and_12_3_processing_and_termination_codes() {
     );
 }
 
+// CLSI LIS02-A2 §6 to §14
 #[test]
-fn lis02_sections_6_through_14_read_only_field_positions() -> Result<(), Error> {
+fn read_only_field_positions() -> Result<(), Error> {
     let messages = parse(b"H|\\^&|3|4|5|6|7|8|9|10|11|12|13|14\rP|1|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|29|30|31|32|33|34|35\rO|1|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|29|30|31\rR|1|3|4|5|6|7|8|9|10|11|12|13|14\rC|1|3|4|5\rM|1|3|4|5|6|7|8\rQ|1|3|4|5|6|7|8|9|10|11|12|13\rS|1|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|21\rL|1|3\r", Limits::default())?;
     let records = messages
         .first()
@@ -310,8 +323,9 @@ fn lis02_sections_6_through_14_read_only_field_positions() -> Result<(), Error> 
 }
 
 // LIS02-A2 sections 4.1 and 5.6.7: contextual level changes reset numbering.
+// CLSI LIS02-A2 §4.1, §5.6.7
 #[test]
-fn lis02_4_1_5_6_7_comment_manufacturer_level_changes_reset_sequence() -> Result<(), Error> {
+fn comment_and_manufacturer_level_changes_reset_sequence() -> Result<(), Error> {
     let wire = b"H|\\^&|\rP|1\rC|1|I|patient\rM|1|vendor\rC|1|I|manufacturer\rL|1\r";
     let messages = parse(wire, Limits::default())?;
     let records = messages
@@ -340,8 +354,9 @@ fn lis02_4_1_5_6_7_comment_manufacturer_level_changes_reset_sequence() -> Result
 }
 
 // LIS02-A2 section 5.1: text components exclude literal control characters.
+// CLSI LIS02-A2 §5.1
 #[test]
-fn lis02_5_1_literal_controls_rejected_in_text_components() {
+fn literal_controls_rejected_in_text() {
     for control in [7, 9, 11, 12] {
         let mut wire = b"H|\\^&|\rP|1|name".to_vec();
         wire.push(control);
@@ -357,8 +372,9 @@ fn lis02_5_1_literal_controls_rejected_in_text_components() {
 }
 
 // LIS02-A2 section 9.9: wire codes carry prescribed meanings.
+// CLSI LIS02-A2 §9.9
 #[test]
-fn lis02_9_9_each_wire_code_has_specified_meaning() -> Result<(), Error> {
+fn each_status_code_has_specified_meaning() -> Result<(), Error> {
     for (code, expected) in [
         ("C", ResultStatus::Correction),
         ("P", ResultStatus::Preliminary),
@@ -389,8 +405,9 @@ fn lis02_9_9_each_wire_code_has_specified_meaning() -> Result<(), Error> {
 }
 
 // LIS02-A2 section 14: manufacturer-defined positions remain opaque and exact.
+// CLSI LIS02-A2 §14
 #[test]
-fn lis02_14_all_manufacturer_positions_are_retained() -> Result<(), Error> {
+fn all_manufacturer_positions_are_retained() -> Result<(), Error> {
     let wire = b"H|\\^&|\rP|1\rM|1|3|4|5|6|7|8\rL|1\r";
     let messages = parse(wire, Limits::default())?;
     let record = messages

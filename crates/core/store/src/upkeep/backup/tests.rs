@@ -2,8 +2,9 @@
 use crate::test_support::*;
 use crate::*;
 
+// Plan §11
 #[test]
-fn plan11_online_backup_copy_reopens_with_exact_receipt_bytes() -> TestResult {
+fn online_backup_reopens_with_exact_receipt_bytes() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("store.db"))?;
     let metadata = receipt(b"protected\0bytes")?;
@@ -23,8 +24,9 @@ fn plan11_online_backup_copy_reopens_with_exact_receipt_bytes() -> TestResult {
     Ok(())
 }
 
+// Plan §11; mutation-testing regression
 #[test]
-fn mutation_plan11_backup_refuses_a_locked_source_without_reporting_corruption() -> TestResult {
+fn locked_backup_source_is_not_reported_corrupt() -> TestResult {
     let temp = tempfile::tempdir()?;
     let store = open(&temp.path().join("source.db"))?;
     store.db.execute_batch("BEGIN IMMEDIATE")?;

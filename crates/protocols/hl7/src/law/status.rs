@@ -22,8 +22,9 @@ pub fn observation_run(sub_id: &str) -> Option<&str> {
 
 #[cfg(test)]
 mod tests {
+    // ADR 0011; IHE PaLM TF-2b §C.7, figure 1
     #[test]
-    fn adr0011_law_c7_figure_1_every_permitted_and_forbidden_move() {
+    fn every_permitted_and_forbidden_status_move() {
         for from in ["P", "R", "F", "C", "X"] {
             for to in ["P", "R", "F", "C", "X"] {
                 let expected = matches!(

@@ -72,8 +72,9 @@ fn result(id: &str, awos: &str, filler: &str, value: &str, status: &str) -> Stri
     )
 }
 
+// IHE PaLM TF-2b §3.29; ADR 0003
 #[test]
-fn law_tf2b_3_29_adr0003_ack_choice_follows_durable_interpretation() -> TestResult {
+fn ack_choice_follows_durable_interpretation() -> TestResult {
     for (outcome, expected) in [
         (Interpretation::Accepted, b"AA".as_slice()),
         (Interpretation::Conflict, b"AR"),
@@ -144,8 +145,9 @@ fn law_tf2b_3_29_adr0003_ack_choice_follows_durable_interpretation() -> TestResu
     }
     Ok(())
 }
+// IHE PaLM TF-2b §B.7; ADR 0003
 #[test]
-fn law_tf2b_b7_adr0003_failed_or_late_store_never_produces_acceptance() -> TestResult {
+fn failed_or_late_store_never_accepts() -> TestResult {
     for late in [false, true] {
         let mut d = dialog(Link::Inbound)?;
         let actions = feed(
@@ -166,8 +168,9 @@ fn law_tf2b_b7_adr0003_failed_or_late_store_never_produces_acceptance() -> TestR
     }
     Ok(())
 }
+// IHE PaLM TF-2b §B.6
 #[test]
-fn law_tf2b_b6_independent_link_does_not_ack_unrelated_transactions() -> TestResult {
+fn link_never_acks_unrelated_transactions() -> TestResult {
     let mut d = dialog(Link::WorkResponse)?;
     let actions = feed(
         &mut d,
@@ -192,8 +195,9 @@ fn law_tf2b_b6_independent_link_does_not_ack_unrelated_transactions() -> TestRes
     );
     Ok(())
 }
+// HL7 MLLP R1 §1.2
 #[test]
-fn mllp_r1_1_2_law_first_byte_budget_and_disconnect_preserve_pending_bytes() -> TestResult {
+fn first_byte_budget_and_disconnect_keep_bytes() -> TestResult {
     let mut d = dialog(Link::Inbound)?;
     d.step(Duration::ZERO, Event::Byte(11))?;
     d.step(Duration::from_secs(4), Event::Byte(b'M'))?;
@@ -239,8 +243,9 @@ fn work() -> Result<analyte_hl7::Message, Box<dyn std::error::Error>> {
     )?)
 }
 
+// IHE PaLM TF-2b §B.6, §3.28
 #[test]
-fn law_tf2b_b6_3_28_work_budget_begins_after_issuance_and_never_resends() -> TestResult {
+fn work_budget_starts_at_issue_and_never_resends() -> TestResult {
     let work = work()?;
     let mut exchange = WorkExchange::new(work.clone(), Duration::from_secs(2));
     assert!(!exchange.expired(Duration::from_secs(1)));
@@ -270,8 +275,9 @@ fn law_tf2b_b6_3_28_work_budget_begins_after_issuance_and_never_resends() -> Tes
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.27, §3.28
 #[test]
-fn law_tf2b_3_27_3_28_availability_precedes_same_link_followup() -> TestResult {
+fn availability_precedes_same_link_followup() -> TestResult {
     let raw = b"MSH|^~\\&|A|AF|M|MF|20260101120000+0000||QBP^Q11^QBP_Q11|q1|P|2.5.1|||NE|AL||UNICODE UTF-8|||LAB-27^IHE\rQPD|WOS^Work Order Step^IHELAW|tag|tube\rRCP|I||R^Real Time^HL70394\r";
     let message = law::parse_message(raw, options())?;
     let query = law::Query::new(&message)?;
@@ -306,8 +312,9 @@ fn law_tf2b_3_27_3_28_availability_precedes_same_link_followup() -> TestResult {
     assert!(actions.iter().any(|a| matches!(a, Action::WorkIssued)));
     Ok(())
 }
+// IHE PaLM TF-2b §B.7
 #[test]
-fn law_tf2b_b7_deadline_exposes_unconsumed_byte_and_rejects_late_work() -> TestResult {
+fn deadline_keeps_unconsumed_byte_and_rejects_late_work() -> TestResult {
     let mut d = dialog(Link::Inbound)?;
     d.step(Duration::ZERO, Event::Byte(11))?;
     let actions = d.step(Duration::from_secs(5), Event::Byte(b'M'))?;

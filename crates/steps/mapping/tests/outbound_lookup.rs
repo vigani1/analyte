@@ -11,8 +11,9 @@ fn id(namespace: &str, value: &str) -> Result<NamespacedId, analyte_model::TextE
         value: Identifier::new(value)?,
     })
 }
+// ADR 0004
 #[test]
-fn adr0004_outbound_test_requires_exact_namespace_case_and_code() -> TestResult {
+fn test_lookup_needs_exact_namespace_and_code() -> TestResult {
     let table = vec![
         OutboundTest {
             app: id("other", "001a")?,
@@ -34,8 +35,9 @@ fn adr0004_outbound_test_requires_exact_namespace_case_and_code() -> TestResult 
     }
     Ok(())
 }
+// ADR 0004
 #[test]
-fn adr0004_outbound_specimen_absent_table_or_code_never_defaults() -> TestResult {
+fn missing_specimen_mapping_never_defaults() -> TestResult {
     let table = vec![OutboundSpecimen {
         app: id("lab", "serum")?,
         machine: Identifier::new("S")?,
@@ -56,9 +58,9 @@ fn adr0004_outbound_specimen_absent_table_or_code_never_defaults() -> TestResult
     ));
     Ok(())
 }
+// ADR 0004
 #[test]
-fn adr0004_outbound_priority_preserves_configured_wire_spelling_without_guessing_meaning()
--> TestResult {
+fn priority_uses_only_configured_spelling() -> TestResult {
     let table = vec![OrderPriority {
         app: Identifier::new("urgent")?,
         machine: MachinePriority::Code(PriorityCode::T),

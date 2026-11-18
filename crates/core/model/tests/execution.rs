@@ -1,8 +1,9 @@
 //! Tests AWOS execution independently of command and observation status.
 use analyte_model::AwosExecution::{AnalyzerCancelled as C, InProgress as I, Scheduled as S};
 
+// IHE PaLM TF-2b §C.8, Figure C.8-1; ADR 0016
 #[test]
-fn palm_tf2b_c8_figure_c8_1_adr0016_execution_transition_table() {
+fn execution_transitions_follow_the_table() {
     for (previous, allowed) in [
         (S, [true, true, true]),
         (I, [false, true, false]),

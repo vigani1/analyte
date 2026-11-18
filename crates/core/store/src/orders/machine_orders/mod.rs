@@ -644,9 +644,9 @@ fn aggregate(states: &[OrderState]) -> OrderState {
 mod item_transition_tests {
     use super::*;
 
+    // ADR 0003 rule 8
     #[test]
-    fn adr0003_rule8_every_illegal_item_decision_is_refused()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn every_illegal_item_decision_is_refused() -> Result<(), Box<dyn std::error::Error>> {
         use OrderState::{
             Accepted as A, CancelConfirmed as C, CancelRequested as Q, Done as D, Rejected as R,
             Requested as N, Sending as G, Sent as S, Uncertain as U,

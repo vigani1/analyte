@@ -2,8 +2,9 @@
 use super::*;
 use proptest::prelude::*;
 
+// Autolyser manual Rev18 §23.1, p. 175
 #[test]
-fn autolyser_rev18_section23_1_p175_every_worklist_field_and_limits() {
+fn every_worklist_field_and_limits() {
     for list in [List::Routine, List::Stat] {
         for sample in [Sample::Serum, Sample::Urine] {
             for clone in [false, true] {
@@ -49,8 +50,9 @@ fn autolyser_rev18_section23_1_p175_every_worklist_field_and_limits() {
     }
 }
 
+// Autolyser manual Rev18 §23.2, pp. 177-178
 #[test]
-fn autolyser_rev18_section23_2_pp177_178_all_report_and_control_fields_roundtrip() {
+fn report_and_control_fields_roundtrip() {
     let patient = PatientCode::from_eight(b"000042aZ").unwrap();
     let values = vec![
         Value {
@@ -120,8 +122,9 @@ fn autolyser_rev18_section23_2_pp177_178_all_report_and_control_fields_roundtrip
     );
 }
 
+// Autolyser manual Rev18 §23, pp. 175-179
 #[test]
-fn autolyser_rev18_section23_pp175_179_malformed_fields_counts_and_lengths() {
+fn malformed_fields_counts_and_lengths_refused() {
     let order = Worklist::new(
         PatientCode::from_eight(b"000042aZ").unwrap(),
         List::Routine,
@@ -176,8 +179,9 @@ fn autolyser_rev18_section23_pp175_179_malformed_fields_counts_and_lengths() {
     assert!(Report::parse(&vec![b' '; 11035], true).is_err());
 }
 
+// Autolyser manual Rev18 §23.2, p. 178
 #[test]
-fn autolyser_rev18_section23_2_p178_control_discriminators_and_ordinary_layout_rules() {
+fn control_discriminators_and_layout_rules() {
     let patient = PatientCode::from_eight(b"000042aZ").unwrap();
     let control = Control {
         is_control: false,
@@ -208,14 +212,16 @@ fn autolyser_rev18_section23_2_p178_control_discriminators_and_ordinary_layout_r
 }
 
 proptest! {
+    // Autolyser manual Rev18 §23.1, p. 175
     #[test]
-    fn autolyser_rev18_section23_1_p175_worklist_roundtrip(patient in "[ -~]{15}", codes in prop::collection::vec("[ -~]{4}",1..100), position in 0u8..100, clone in any::<bool>()) {
+    fn any_worklist_roundtrips(patient in "[ -~]{15}", codes in prop::collection::vec("[ -~]{4}",1..100), position in 0u8..100, clone in any::<bool>()) {
         let tests = codes.iter().map(|code| Field::new(code.as_bytes()).unwrap()).collect();
         let order = Worklist::new(PatientCode::new(patient.as_bytes()).unwrap(), List::Stat, Sample::Urine, clone, position, tests).unwrap();
         prop_assert_eq!(Worklist::parse(&order.encode()).unwrap(), order);
     }
+    // Autolyser manual Rev18 §23.2, p. 178
     #[test]
-    fn autolyser_rev18_section23_2_p178_report_roundtrip(value in "[ -~]{7}") {
+    fn any_report_roundtrips(value in "[ -~]{7}") {
         let patient = PatientCode::from_eight(b"000042aZ").unwrap();
         let report = Report::new(&patient, List::Routine, Sample::Serum, None, &[Value { code: Field::new(b"TEST").unwrap(), text: Field::new(value.as_bytes()).unwrap() }]).unwrap();
         prop_assert_eq!(Report::parse(&report.raw, false).unwrap(), report);

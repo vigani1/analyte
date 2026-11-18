@@ -3,8 +3,9 @@ type Error = Box<dyn std::error::Error + Send + Sync>;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use std::process::Command;
 
+// Plan §11, §12
 #[test]
-fn plan11_plan12_cli_prints_rotated_token_once_without_logging_it() -> Result<(), Error> {
+fn cli_prints_rotated_token_once_without_logging() -> Result<(), Error> {
     let directory = tempfile::tempdir()?;
     std::fs::write(
         directory.path().join("machine.toml"),

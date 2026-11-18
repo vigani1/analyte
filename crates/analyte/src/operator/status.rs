@@ -129,8 +129,9 @@ mod tests {
     use analyte_fixtures::UnlimitedSpace as Space;
 
     // Plan section 11: status shows every active page, names responders and omits cleared alerts.
+    // Plan §11
     #[tokio::test]
-    async fn plan11_status_active_alerts_responder_age_and_read_only() -> Result<(), Error> {
+    async fn status_lists_active_alerts_with_responder_and_age() -> Result<(), Error> {
         let directory = tempfile::tempdir()?;
         let mut store = Handle::start(
             directory.path().join("alerts.db"),

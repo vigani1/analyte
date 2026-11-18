@@ -2,8 +2,9 @@
 use super::*;
 use crate::support::step;
 
+// Plan §11; ADR 0008
 #[tokio::test]
-async fn plan11_adr0008_restored_outbox_retries_same_id_bytes_as_duplicate() -> Result<(), Error> {
+async fn restored_outbox_retries_same_id_and_bytes() -> Result<(), Error> {
     for refused in [true, false] {
         let directory = tempfile::tempdir()?;
         let path = config(directory.path(), false)?;
@@ -100,8 +101,9 @@ async fn plan11_adr0008_restored_outbox_retries_same_id_bytes_as_duplicate() -> 
 
 // Plan section 11: the running evaluator must not gate receive ACKs, app delivery,
 // or the service's existing bounded shutdown path.
+// Plan §11
 #[tokio::test]
-async fn plan11_alert_evaluator_keeps_receive_delivery_and_shutdown_bounded() -> Result<(), Error> {
+async fn alert_evaluator_never_gates_ack_or_delivery() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let fixture = config(temp.path(), false)?;
     let original = std::fs::read_to_string(&fixture)?;
@@ -149,9 +151,9 @@ async fn plan11_alert_evaluator_keeps_receive_delivery_and_shutdown_bounded() ->
 
 // Plan section 11 and ADR 0008: an explicit CLI resend reaches the real reference
 // receiver as a duplicate, with the identical ID and wire body, and one audit.
+// Plan §11; ADR 0008
 #[tokio::test]
-async fn plan11_adr0008_operator_resend_reference_receiver_duplicate_same_id_and_bytes()
--> Result<(), Error> {
+async fn operator_resend_reuses_same_id_and_bytes() -> Result<(), Error> {
     let directory = tempfile::tempdir()?;
     let path = config(directory.path(), false)?;
     let receiver_path = directory.path().join("reference.db");
@@ -240,9 +242,9 @@ async fn plan11_adr0008_operator_resend_reference_receiver_duplicate_same_id_and
 // `deliveries list` commits an audit row on the live store. When that commit
 // overlaps the worker claiming a due retry, the worker waits within
 // busy_timeout: the service keeps running and the delivery is later accepted.
+// Safety rule 7 (ADR 0003)
 #[tokio::test]
-async fn rule7_operator_commit_during_delivery_claim_never_stops_the_service() -> Result<(), Error>
-{
+async fn commit_during_delivery_claim_never_stops_service() -> Result<(), Error> {
     let directory = tempfile::tempdir()?;
     let path = config(directory.path(), false)?;
     let receiver_path = directory.path().join("reference.db");

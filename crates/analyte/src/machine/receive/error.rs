@@ -157,8 +157,9 @@ impl From<analyte_transport::folder::WatchError> for Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // ADR 0003
     #[test]
-    fn adr0003_shared_conversions_retain_typed_link_and_store_causes() {
+    fn conversions_keep_typed_link_and_store_causes() {
         let link = Error::from(analyte_transport::Error::Deadline(
             analyte_transport::DeadlineKind::WriteAll,
         ));

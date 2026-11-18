@@ -68,8 +68,9 @@ fn validate(
     assert_eq!(message.raw(), raw);
     Ok(result)
 }
+// HL7 2.5.1 §2.A.28.4; IHE PaLM TF-2b §C.1, ERR-2
 #[test]
-fn hl7_251_2_a_28_4_law_c1_2_repetition_requires_field_position() -> TestResult {
+fn erl_repetition_requires_field_position() -> TestResult {
     for direction in [ControlDirection::Send, ControlDirection::Receive] {
         assert!(matches!(
             validate("ERR", &[(2, "OBX^1^^2")], direction)?,
@@ -88,8 +89,9 @@ fn hl7_251_2_a_28_4_law_c1_2_repetition_requires_field_position() -> TestResult 
     }
     Ok(())
 }
+// HL7 2.5.1 §2.A.70; IHE PaLM TF-2b §C.7.11
 #[test]
-fn hl7_251_2_a_70_law_c7_11_two_numbers_require_separator() -> TestResult {
+fn sn_two_numbers_require_separator() -> TestResult {
     for direction in [ControlDirection::Send, ControlDirection::Receive] {
         assert!(matches!(
             validate(
@@ -157,8 +159,9 @@ fn text_cases(
     }
     Ok(())
 }
+// HL7 2.5.1 §2.7.1, §2.7.6; IHE PaLM TF-2b
 #[test]
-fn hl7_251_2_7_1_2_7_6_law_text_kinds_have_distinct_escape_rules() -> TestResult {
+fn text_kinds_have_distinct_escape_rules() -> TestResult {
     for direction in [ControlDirection::Send, ControlDirection::Receive] {
         for code in ["F", "S", "R", "T", "E"] {
             text_cases(&format!("a\\{code}\\b"), direction, true, true, true)?;
@@ -183,8 +186,9 @@ fn hl7_251_2_7_1_2_7_6_law_text_kinds_have_distinct_escape_rules() -> TestResult
     }
     Ok(())
 }
+// HL7 2.5.1 §2.7.6; IHE PaLM TF-2b §C.5
 #[test]
-fn hl7_251_2_7_6_law_c5_ft_line_markers_preserve_layout_evidence() -> TestResult {
+fn ft_line_markers_preserve_layout_evidence() -> TestResult {
     for value in [
         "first^second",
         "first^\\.sp\\second",

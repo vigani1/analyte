@@ -212,9 +212,9 @@ mod tests {
         }
     }
 
+    // ADR 0004
     #[test]
-    fn adr0004_https_and_explicit_literal_loopback_only() -> Result<(), Box<dyn std::error::Error>>
-    {
+    fn only_https_or_literal_loopback_is_accepted() -> Result<(), Box<dyn std::error::Error>> {
         for url in [
             "http://example.com",
             "http://127.0.0.1:1234",

@@ -2,9 +2,9 @@
 use analyte_config::{Draft, Stack};
 use analyte_fixtures::ConfigEdit as _;
 
+// ADR 0002; VIDAS BCI Link rev A chapter 4
 #[test]
-fn adr0002_vidas_bci_a_ch4_ack_and_checksum_choices_keep_boolean_toml()
--> Result<(), Box<dyn std::error::Error>> {
+fn vidas_ack_and_checksum_choices_keep_boolean_toml() -> Result<(), Box<dyn std::error::Error>> {
     let original = include_str!("../examples/vidas_literal.toml");
     let site = include_str!("../examples/site.toml");
     let keys = [

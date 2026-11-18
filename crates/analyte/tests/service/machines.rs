@@ -93,8 +93,9 @@ fn readme(path: &Path, level: EvidenceLevel) -> Result<(), Error> {
     Ok(())
 }
 
+// ADR 0012 §5; ADR 0009
 #[tokio::test]
-async fn adr0012_5_adr0009_every_machine_validates_and_replays() -> Result<(), Error> {
+async fn every_machine_validates_and_replays() -> Result<(), Error> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../machines");
     let found = definitions(&root)?;
     if found.is_empty() {
@@ -285,8 +286,9 @@ async fn replay_file(
     Ok(())
 }
 
+// ADR 0012 §5
 #[test]
-fn adr0012_5_missing_definition_requires_blocked_declaration() -> Result<(), Error> {
+fn missing_definition_requires_blocked_declaration() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let model = temp.path().join("vendor/model");
     std::fs::create_dir_all(&model)?;
@@ -300,9 +302,10 @@ fn adr0012_5_missing_definition_requires_blocked_declaration() -> Result<(), Err
     Ok(())
 }
 
+// ADR 0012 §5
 #[test]
 #[should_panic(expected = "missing machine.toml")]
-fn adr0012_5_deleted_definition_is_rejected() {
+fn deleted_definition_is_rejected() {
     let temp = tempfile::tempdir().expect("temporary inventory");
     let model = temp.path().join("vendor/model");
     std::fs::create_dir_all(&model).expect("machine folder");

@@ -21,8 +21,9 @@ mod tests {
     use super::*;
     use analyte_store::FreeSpace as _;
 
+    // ADR 0003 rule 1
     #[test]
-    fn adr0003_rule1_disk_probe_failure_is_not_available_capacity() {
+    fn disk_probe_failure_is_not_available_capacity() {
         let missing = Path::new("\0");
         assert!(Volume.available(missing).is_err());
     }

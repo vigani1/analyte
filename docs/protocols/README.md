@@ -33,12 +33,12 @@ decide these boundaries; this table names the test that guards each one.
 
 | Protocol | Before positive acknowledgment or destructive command | Test evidence |
 | --- | --- | --- |
-| ASTM | Reserve capacity before ENQ ACK; commit each frame before data ACK | [astm.rs](../../crates/steps/dialog/tests/astm.rs): `adr0003_lis01_6_5_2_5_failed_and_unanswered_commit_never_ack` |
-| HL7/MLLP | Commit complete raw block; interpret before AA (enhanced CA gates raw custody) | [hl7/mod.rs](../../crates/steps/dialog/tests/hl7/mod.rs): `hl7_251_2_9_2_aa_only_after_store_and_interpret`; [dialog](../../crates/steps/dialog/tests/hl7/mod.rs) |
-| LAW LAB-29 | Retain raw result and interpretation before AA | [results.rs](../../crates/analyte/tests/law/results.rs): `law_tf2b_3_29_4_adr0003_raw_commit_precedes_interpretation_and_ack` |
-| POCT | Complete raw receipt and semantic outcome before ACK | [chunk_receive/custody.rs](../../crates/analyte/tests/chunk_receive/custody.rs): `poct01_b3_2_adr0003_stored_before_ack_unresolved_parked_no_delivery` |
-| VIDAS Literal | Retain complete transfer before data ACK | [chunk_receive/custody.rs](../../crates/analyte/tests/chunk_receive/custody.rs): `vidas_literal_notes3_adr0003_stored_before_ack_unresolved_parked_no_delivery` |
-| Autolyser | Retain and validate poll response before destructive R; preserve uncertain R for reconciliation | [chunk_receive/custody.rs](../../crates/analyte/tests/chunk_receive/custody.rs): `autolyser_rev18_p175_179_adr0003_corrupt_stored_blocks_r_until_valid_l` |
+| ASTM | Reserve capacity before ENQ ACK; commit each frame before data ACK | [astm.rs](../../crates/steps/dialog/tests/astm.rs): `failed_or_unanswered_commit_never_acks` |
+| HL7/MLLP | Commit complete raw block; interpret before AA (enhanced CA gates raw custody) | [hl7/mod.rs](../../crates/steps/dialog/tests/hl7/mod.rs): `aa_only_after_store_and_interpret`; [dialog](../../crates/steps/dialog/tests/hl7/mod.rs) |
+| LAW LAB-29 | Retain raw result and interpretation before AA | [results.rs](../../crates/analyte/tests/law/results.rs): `raw_commit_precedes_interpretation_and_ack` |
+| POCT | Complete raw receipt and semantic outcome before ACK | [chunk_receive/custody.rs](../../crates/analyte/tests/chunk_receive/custody.rs): `poct_stores_before_ack_and_parks_unresolved` |
+| VIDAS Literal | Retain complete transfer before data ACK | [chunk_receive/custody.rs](../../crates/analyte/tests/chunk_receive/custody.rs): `vidas_stores_before_ack_and_parks_unresolved` |
+| Autolyser | Retain and validate poll response before destructive R; preserve uncertain R for reconciliation | [chunk_receive/custody.rs](../../crates/analyte/tests/chunk_receive/custody.rs): `autolyser_corrupt_reply_blocks_r_until_valid_l` |
 
 ### Startup recovery
 
@@ -51,7 +51,7 @@ are receipts that are never interpreted, and they acknowledge a message only
 after interpreting it, so the machine still holds anything unfinished. Answered
 queries, order responses and display acknowledgments are recorded as handled,
 so the sweep leaves them alone. Test:
-`adr0003_killed_process_open_transfer_parked_and_pending_receipt_interpreted`.
+`killed_process_parks_transfer_and_interprets_receipt`.
 
 
 ### Host custody deadline
@@ -68,5 +68,5 @@ disconnect/restart recovery own that outcome. Store queue requests retain their
 own defensive deadline; the complete operation can finish earlier with a specific
 store error. Protocol reply timers can impose an earlier refusal.
 
-Tests: `adr0010_store_budget_refuses_uncertain_custody` and
-`adr0010_store_reports_only_completed_custody_and_keeps_failure`.
+Tests: `store_budget_refuses_uncertain_custody` and
+`store_reports_only_completed_custody`.

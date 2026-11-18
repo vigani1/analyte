@@ -55,9 +55,9 @@ pub(super) fn program(root: &Path, definition: &str, endpoint: &str) -> Result<P
     Program::load(&path).map_err(Into::into)
 }
 
+// Plan §11; ADR 0003, rule 8
 #[tokio::test]
-async fn plan11_adr0003_mapping_repaired_once_retransmission_conflict_and_original_retained_rule8_no_machine_io()
--> Result<(), Error> {
+async fn repaired_mapping_reprocesses_once_and_keeps_original() -> Result<(), Error> {
     let hl7 = include_str!("../../../../core/config/examples/hl7.toml")
         .rewrite("tcp_server", "tcp_client");
     let raw = b"MSH|^~\\&|SYN|LAB|HOST|LAB|20260101000000||ORU^R01^ORU_R01|message1|P|2.5.1\rPID|1\rOBR|1||00012|SYN^Synthetic^synthetic|||||||||||||||||||||F\rOBX|1|NM|SYN^Synthetic^synthetic||12.30|mg/L|||||F\r";
@@ -249,9 +249,9 @@ async fn assert_retransmission_and_conflict(
 
 use analyte_fixtures::poct as poct_peer;
 
+// Plan §11; Safety rules 3 and 8 (ADR 0003)
 #[tokio::test]
-async fn plan11_rule3_vendor_receipts_use_live_interpretation_and_rule8_stay_parked_without_machine_io()
--> Result<(), Error> {
+async fn vendor_receipts_reinterpret_live_and_stay_parked() -> Result<(), Error> {
     use analyte_autolyser::syntax::{Field, List, PatientCode, Report, Sample, Value};
     let report = Report::new(
         &PatientCode::from_eight(b"00012aBC")?,
@@ -288,8 +288,9 @@ async fn plan11_rule3_vendor_receipts_use_live_interpretation_and_rule8_stay_par
 }
 
 // ADR 0003 / AGENTS.md safety rule 3: original and reprocessed config provenance is retained.
+// ADR 0003 rule 3
 #[tokio::test]
-async fn adr0003_rule3_effective_configs_have_distinct_recorded_versions() -> Result<(), Error> {
+async fn effective_configs_have_distinct_recorded_versions() -> Result<(), Error> {
     let temp = crate::admin::private_tempdir()?;
     let definition = include_str!("../../../../core/config/examples/hl7.toml")
         .rewrite("tcp_server", "tcp_client");
@@ -357,8 +358,9 @@ async fn adr0003_rule3_effective_configs_have_distinct_recorded_versions() -> Re
 }
 
 // ADR 0004: site policy becomes destination Limits, rather than a host constant.
+// Safety rule 9 (ADR 0003)
 #[test]
-fn rule9_destination_config_sets_operational_freshness_and_rejects_zero() -> Result<(), Error> {
+fn destination_freshness_is_configured_and_nonzero() -> Result<(), Error> {
     let temp = crate::admin::private_tempdir()?;
     let definition = include_str!("../../../../core/config/examples/hl7.toml")
         .rewrite("tcp_server", "tcp_client");

@@ -335,8 +335,9 @@ pub(crate) mod tests {
     }
 
     // ADR 0017 / rule 10: a folder inheriting BUILTIN\Users read access is refused by SID.
+    // ADR 0017
     #[test]
-    fn adr0017_inherited_users_read_is_refused() -> Result<(), crate::Error> {
+    fn inherited_users_read_is_refused() -> Result<(), crate::Error> {
         let root = tempfile::tempdir()?;
         icacls(root.path(), &["/grant", &format!("*{USERS}:(OI)(CI)RX")])?;
         let data = root.path().join("data");
@@ -349,8 +350,9 @@ pub(crate) mod tests {
     }
 
     // ADR 0017: a folder the program creates drops broad inherited grants and passes.
+    // ADR 0017
     #[test]
-    fn adr0017_created_directory_is_private() -> Result<(), crate::Error> {
+    fn created_directory_is_private() -> Result<(), crate::Error> {
         let root = tempfile::tempdir()?;
         icacls(root.path(), &["/grant", &format!("*{USERS}:(OI)(CI)RX")])?;
         let data = root.path().join("nested").join("data");
@@ -360,8 +362,9 @@ pub(crate) mod tests {
     }
 
     // ADR 0017 / packaging/windows/install.ps1: the installer's protected shape passes.
+    // ADR 0017
     #[test]
-    fn adr0017_installer_access_list_passes() -> Result<(), crate::Error> {
+    fn installer_access_list_passes() -> Result<(), crate::Error> {
         let root = tempfile::tempdir()?;
         let data = root.path().join("data");
         std::fs::create_dir(&data)?;

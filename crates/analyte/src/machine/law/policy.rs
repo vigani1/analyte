@@ -110,8 +110,9 @@ mod tests {
         );
         Ok(())
     }
+    // ADR 0003, ADR 0010
     #[test]
-    fn adr0003_0010_law_status_maps_for_transactional_custody()
+    fn status_maps_for_transactional_custody()
     -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let mut mapped = analyte_mapping::Output::default();
         mapped.status_notices = vec![analyte_mapping::law::StatusNotice {

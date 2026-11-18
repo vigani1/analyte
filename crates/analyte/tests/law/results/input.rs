@@ -2,8 +2,9 @@
 use super::*;
 
 // ADR 0003 rules 1–2: cancellation during a merged read keeps both custody regions.
+// ADR 0003
 #[tokio::test]
-async fn adr0003_law_mid_read_parks_input_prefix_and_tail() -> Result<(), Error> {
+async fn mid_read_failure_parks_prefix_and_tail() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = vendor_config(temp.path(), "law", &definition())?;
     let reference = Reference::start(

@@ -3,8 +3,9 @@ use crate::test_support::*;
 use crate::*;
 use analyte_model::Reason;
 
+// ADR 0003
 #[test]
-fn adr0003_revisions_new_retransmission_correction_conflict_runs_and_restart() -> TestResult {
+fn revisions_tell_new_retransmission_correction_and_runs() -> TestResult {
     use analyte_model::Revision;
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("revisions.db");
@@ -49,8 +50,9 @@ fn adr0003_revisions_new_retransmission_correction_conflict_runs_and_restart() -
     Ok(())
 }
 
+// ADR 0003
 #[test]
-fn adr0003_revision_builder_failure_rolls_back_interpretation_and_history() -> TestResult {
+fn builder_failure_rolls_back_interpretation_and_history() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("rollback.db"))?;
     let metadata = receipt(b"raw")?;
@@ -77,9 +79,9 @@ fn adr0003_revision_builder_failure_rolls_back_interpretation_and_history() -> T
     Ok(())
 }
 
+// ADR 0003
 #[test]
-fn adr0003_legacy_offset_digest_reconciles_after_restart_without_rewriting_evidence() -> TestResult
-{
+fn legacy_offset_digest_reconciles_without_rewriting() -> TestResult {
     use analyte_model::{EvidenceList, Identifier, NonEmptyEvidenceList, Revision, SourceNode};
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("legacy-offsets.db");
@@ -175,9 +177,9 @@ fn adr0003_legacy_offset_digest_reconciles_after_restart_without_rewriting_evide
     Ok(())
 }
 
+// ADR 0003; mutation-testing regression
 #[test]
-fn mutation_adr0003_reconciliation_rejects_each_provenance_mismatch_without_interpretation()
--> TestResult {
+fn reconciliation_rejects_each_provenance_mismatch() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("provenance.db"))?;
     let metadata = receipt(b"raw")?;
@@ -206,9 +208,9 @@ fn mutation_adr0003_reconciliation_rejects_each_provenance_mismatch_without_inte
     Ok(())
 }
 
+// ADR 0003; mutation-testing regression
 #[test]
-fn mutation_adr0003_reconciliation_refuses_wrong_result_receipt_and_correction_count_atomically()
--> TestResult {
+fn reconciliation_refuses_wrong_receipt_or_correction_count() -> TestResult {
     let app = Identifier::new("app")?;
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("result-owner.db"))?;
@@ -239,8 +241,9 @@ fn mutation_adr0003_reconciliation_refuses_wrong_result_receipt_and_correction_c
     Ok(())
 }
 
+// ADR 0003 rule 7; mutation-testing regression
 #[test]
-fn mutation_adr0003_rule7_reconciliation_bounds_results_and_findings_independently() -> TestResult {
+fn reconciliation_bounds_results_and_findings_separately() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("reconcile-bounds.db"))?;
     let metadata = receipt(b"raw")?;
@@ -301,9 +304,9 @@ fn mutation_adr0003_rule7_reconciliation_bounds_results_and_findings_independent
     Ok(())
 }
 
+// ADR 0003; mutation-testing regression
 #[test]
-fn mutation_adr0003_batch_duplicates_reuse_the_matching_revision_and_keep_runs_distinct()
--> TestResult {
+fn batch_duplicates_reuse_revision_keep_runs_distinct() -> TestResult {
     use analyte_model::Revision;
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("batch-identity.db"))?;
@@ -356,8 +359,9 @@ fn mutation_adr0003_batch_duplicates_reuse_the_matching_revision_and_keep_runs_d
     Ok(())
 }
 
+// ADR 0003 rule 7; mutation-testing regression
 #[test]
-fn mutation_adr0003_rule7_interpretation_and_audit_byte_limits_are_inclusive() -> TestResult {
+fn interpretation_and_audit_byte_limits_are_inclusive() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("encoded-bounds.db"))?;
     let metadata = receipt(b"raw")?;
@@ -403,8 +407,9 @@ fn mutation_adr0003_rule7_interpretation_and_audit_byte_limits_are_inclusive() -
     Ok(())
 }
 
+// ADR 0003; mutation-testing regression
 #[test]
-fn mutation_adr0003_delivery_bounds_and_machine_owner_refuse_atomically() -> TestResult {
+fn delivery_bounds_and_machine_owner_refuse_atomically() -> TestResult {
     let app = Identifier::new("app")?;
     for (length, wrong_machine, succeeds) in [
         (2048, false, true),

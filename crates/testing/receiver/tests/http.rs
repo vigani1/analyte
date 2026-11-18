@@ -26,8 +26,9 @@ async fn post(
         .send()
         .await?)
 }
+// ADR 0008
 #[tokio::test]
-async fn adr0008_durable_retry_conflict_auth_snapshot_tombstone_and_reset()
+async fn durable_retry_conflict_auth_snapshot_tombstone_and_reset()
 -> Result<(), Box<dyn std::error::Error>> {
     let directory = tempfile::tempdir()?;
     let database = directory.path().join("receiver.sqlite");

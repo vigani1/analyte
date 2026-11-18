@@ -96,8 +96,9 @@ fn validate_text(value: &str) -> Result<(), OrderError> {
 mod tests {
     use super::*;
 
+    // CLSI LIS02-A2 §8
     #[test]
-    fn lis02_a2_section8_order_golden_bytes_and_bounds() {
+    fn order_record_golden_bytes_and_bounds() {
         let mut fields = vec![Vec::new(); 10];
         fields[0] = vec![vec!["".into(), "".into(), "".into(), "001a".into()]];
         fields[2] = vec![vec!["".into(), "".into(), "".into(), "SEND".into()]];

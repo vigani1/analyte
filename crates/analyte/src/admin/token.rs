@@ -149,8 +149,9 @@ mod tests {
     use super::*;
 
     // Plan section 11: missing or malformed credentials cannot enable a listener.
+    // Plan §11
     #[test]
-    fn plan11_token_loading_refuses_missing_and_malformed_files() -> Result<(), crate::Error> {
+    fn loading_refuses_missing_and_malformed_files() -> Result<(), crate::Error> {
         let directory = crate::admin::private_tempdir()?;
         assert!(matches!(
             Token::load(directory.path()),
@@ -169,8 +170,9 @@ mod tests {
     }
 
     // Plan section 11: rotation installs a full random credential and replaces it.
+    // Plan §11
     #[test]
-    fn plan11_token_rotation_installs_256_bits() -> Result<(), crate::Error> {
+    fn rotation_installs_256_bit_token() -> Result<(), crate::Error> {
         let directory = crate::admin::private_tempdir()?;
         let first = rotate_token(directory.path())?;
         assert_eq!(STANDARD.decode(&first)?.len(), 32);
@@ -200,9 +202,10 @@ mod tests {
     }
 
     // ADR 0017 / rule 10: a Windows credential other users can read is refused by SID.
+    // ADR 0017
     #[cfg(windows)]
     #[test]
-    fn adr0017_token_readable_by_users_is_refused() -> Result<(), crate::Error> {
+    fn token_readable_by_users_is_refused() -> Result<(), crate::Error> {
         use crate::runtime::service::acl::{Error, tests};
         let directory = crate::admin::private_tempdir()?;
         rotate_token(directory.path())?;
@@ -216,15 +219,17 @@ mod tests {
     }
 
     // Plan section 12: an unavailable OS random source must never cause fallback.
+    // Plan §12
     #[test]
-    fn plan12_entropy_failure_is_specific_without_fallback() {
+    fn entropy_failure_is_specific_without_fallback() {
         let result = generate(|_| Err(getrandom::Error::UNSUPPORTED));
         assert!(matches!(result, Err(TokenError::Random(_))));
     }
 
     // Plan section 12: interrupted provisioning cannot overwrite retained evidence.
+    // Plan §12
     #[test]
-    fn plan12_pending_rotation_preserves_old_token() -> Result<(), crate::Error> {
+    fn pending_rotation_preserves_old_token() -> Result<(), crate::Error> {
         let directory = crate::admin::private_tempdir()?;
         let token = rotate_token(directory.path())?;
         std::fs::write(directory.path().join("admin-token.pending"), b"incomplete")?;

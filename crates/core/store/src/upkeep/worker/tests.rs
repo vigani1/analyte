@@ -2,8 +2,9 @@
 use crate::test_support::*;
 use crate::*;
 
+// Safety rule 7 (ADR 0003)
 #[test]
-fn rule7_worker_roundtrip_expired_requests_and_shutdown_joins() -> TestResult {
+fn worker_roundtrip_expiry_and_shutdown_join() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("store.db");
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -51,8 +52,9 @@ fn rule7_worker_roundtrip_expired_requests_and_shutdown_joins() -> TestResult {
     Ok(())
 }
 
+// Plan §11
 #[test]
-fn plan11_worker_open_reports_newer_schema_specifically() -> TestResult {
+fn worker_open_reports_newer_schema() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("newer.db");
     Connection::open(&path)?.execute_batch("PRAGMA user_version=99")?;
@@ -76,8 +78,9 @@ fn plan11_worker_open_reports_newer_schema_specifically() -> TestResult {
     Ok(())
 }
 
+// Safety rule 7 (ADR 0003); mutation-testing regression
 #[test]
-fn mutation_rule7_worker_capacity_bounds_are_inclusive() -> TestResult {
+fn worker_capacity_bounds_are_inclusive() -> TestResult {
     let temp = tempfile::tempdir()?;
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_time()
@@ -105,8 +108,9 @@ fn mutation_rule7_worker_capacity_bounds_are_inclusive() -> TestResult {
     Ok(())
 }
 
+// Safety rule 7 (ADR 0003); mutation-testing regression
 #[test]
-fn mutation_rule7_worker_drop_joins_the_store_owner_before_returning() -> TestResult {
+fn worker_drop_joins_store_owner() -> TestResult {
     struct DropSpace(std::sync::mpsc::Sender<()>);
     impl FreeSpace for DropSpace {
         fn available(&self, _: &Path) -> std::io::Result<u64> {
@@ -143,8 +147,9 @@ mod mutation_tests {
     use super::*;
     use crate::test_support::{HANG_GUARD, Space, TestResult, limits};
 
+    // Safety rule 7 (ADR 0003); mutation-testing regression
     #[test]
-    fn mutation_rule7_worker_finished_owner_shutdown_does_not_require_more_time() -> TestResult {
+    fn finished_owner_shutdown_needs_no_more_time() -> TestResult {
         let temp = tempfile::tempdir()?;
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_time()
@@ -177,8 +182,9 @@ mod mutation_tests {
     }
 }
 
+// ADR 0003 rule 7
 #[test]
-fn adr0003_rule7_worker_deadline_equality_refuses_execution() -> TestResult {
+fn request_at_deadline_is_refused() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("deadline.db"))?;
     let deadline = Instant::now();
@@ -200,8 +206,9 @@ fn adr0003_rule7_worker_deadline_equality_refuses_execution() -> TestResult {
     Ok(())
 }
 
+// ADR 0003 rule 7
 #[test]
-fn adr0003_rule7_worker_startup_guard_cancels_before_owner_join() -> TestResult {
+fn startup_guard_cancels_before_owner_join() -> TestResult {
     let mut startup = startup::Startup::new(Instant::now() + HANG_GUARD);
     let fixed_now = Instant::now();
     startup.clock = Some(std::sync::Arc::new(move || fixed_now));
@@ -231,8 +238,9 @@ fn adr0003_rule7_worker_startup_guard_cancels_before_owner_join() -> TestResult 
     Ok(())
 }
 
+// Safety rule 7 (ADR 0003)
 #[test]
-fn rule7_shutdown_timeout_retains_owner_and_can_resume_after_notification() -> TestResult {
+fn shutdown_timeout_keeps_owner_and_can_resume() -> TestResult {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_time()
         .build()?;
@@ -263,8 +271,9 @@ fn rule7_shutdown_timeout_retains_owner_and_can_resume_after_notification() -> T
     Ok(())
 }
 
+// Safety rule 7 (ADR 0003)
 #[test]
-fn rule7_async_drop_reports_missing_close_without_waiting_for_worker() -> TestResult {
+fn async_drop_reports_missing_close_without_waiting() -> TestResult {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_time()
         .build()?;
@@ -295,8 +304,9 @@ fn rule7_async_drop_reports_missing_close_without_waiting_for_worker() -> TestRe
     Ok(())
 }
 
+// Safety rule 7 (ADR 0003)
 #[tokio::test]
-async fn rule7_worker_rejects_queue_capacity_before_opening_store() -> TestResult {
+async fn bad_queue_capacity_refused_before_opening() -> TestResult {
     let temp = tempfile::tempdir()?;
     for capacity in [0, 1025, usize::MAX] {
         let path = temp.path().join("must-not-open.db");
@@ -316,8 +326,9 @@ async fn rule7_worker_rejects_queue_capacity_before_opening_store() -> TestResul
     Ok(())
 }
 
+// ADR 0003 rule 1
 #[tokio::test]
-async fn adr0003_rule1_response_timeout_keeps_typed_cause_and_may_commit() -> TestResult {
+async fn response_timeout_keeps_cause_and_may_commit() -> TestResult {
     use std::sync::Arc;
     let temp = tempfile::tempdir()?;
     let mut until = Instant::now() + HANG_GUARD;

@@ -186,9 +186,9 @@ mod tests {
     use crate::Options;
 
     // HL7 2.5.1 §§2.5.4/2.6: each field uses its own message's delimiters.
+    // HL7 2.5.1 §2.5.4, §2.6
     #[test]
-    fn hl7_251_2_5_4_2_6_retained_work_components_use_each_message_delimiters()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn retained_components_use_each_message_delimiters() -> Result<(), Box<dyn std::error::Error>> {
         let default = Message::parse(b"MSH|^~\\&|A|AF|M|MF|20260101120000+0000||OUL^R22^OUL_R22|m1|P|2.5.1\rOBR||awos-01^LAB||SYN^Display^99LAB\r", Options::default())?;
         let changed = Message::parse(b"MSH|$~\\&|A|AF|M|MF|20260101120000+0000||OUL$R22$OUL_R22|m2|P|2.5.1\rOBR||awos-01$LAB||SYN$Other display$99LAB\r", Options::default())?;
         let a = default

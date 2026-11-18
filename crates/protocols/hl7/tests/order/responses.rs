@@ -2,8 +2,9 @@
 use super::*;
 use analyte_fixtures::ConfigEdit as _;
 
+// HL7 2.3.1 §2.7; HL7 2.5.1 §2.5.4
 #[test]
-fn hl7_231_2_7_and_251_2_5_4_response_delimiters_are_independent() -> Result<(), Error> {
+fn reply_delimiters_are_independent_of_request() -> Result<(), Error> {
     for version in [Version::V231, Version::V251] {
         let sent = sent(version)?;
         let edition = match version {
@@ -29,8 +30,9 @@ fn hl7_231_2_7_and_251_2_5_4_response_delimiters_are_independent() -> Result<(),
     Ok(())
 }
 
+// HL7 2.3.1 §4.3.1.5; HL7 2.5.1 §4.5.1.5
 #[test]
-fn hl7_231_4_3_1_5_and_251_4_5_1_5_snapshot_does_not_change_request_outcome() -> Result<(), Error> {
+fn order_status_does_not_change_outcome() -> Result<(), Error> {
     for version in [Version::V231, Version::V251] {
         let sent = sent(version)?;
         let response = reply(version, b"AA", b"ORC|OK|001^LAB|||CM\r")?;
@@ -48,8 +50,9 @@ fn hl7_231_4_3_1_5_and_251_4_5_1_5_snapshot_does_not_change_request_outcome() ->
     Ok(())
 }
 
+// HL7 2.3.1 §4.3.1.16; HL7 2.5.1 §4.5.1.16
 #[test]
-fn hl7_231_4_3_1_16_and_251_4_5_1_16_rejection_reason_validation() -> Result<(), Error> {
+fn rejection_reason_is_validated() -> Result<(), Error> {
     for version in [Version::V231, Version::V251] {
         let sent = sent(version)?;
         for reason in [b"\"\"".as_slice(), b"A~B", b"A^B^C^D^E^F^G", b"A&B"] {
@@ -74,8 +77,9 @@ fn hl7_231_4_3_1_16_and_251_4_5_1_16_rejection_reason_validation() -> Result<(),
     Ok(())
 }
 
+// HL7 2.3.1 §4.2.2; HL7 2.5.1 §4.4.2
 #[test]
-fn hl7_231_4_2_2_and_251_4_4_2_requires_orr_and_msa() -> Result<(), Error> {
+fn reply_requires_orr_and_msa() -> Result<(), Error> {
     for version in [Version::V231, Version::V251] {
         let sent = sent(version)?;
         let response = reply(version, b"AA", b"ORC|OK|001^LAB\r")?;
@@ -100,8 +104,9 @@ fn hl7_231_4_2_2_and_251_4_4_2_requires_orr_and_msa() -> Result<(), Error> {
     Ok(())
 }
 
+// HL7 2.3.1 §2.8; HL7 2.5.1 §2.A
 #[test]
-fn hl7_231_2_8_and_251_2a_caller_data_rejects_injection_and_oversize() -> Result<(), Error> {
+fn caller_data_rejects_injection_and_oversize() -> Result<(), Error> {
     assert!(OrderId::new(b"001|ORC", b"LAB").is_err());
     assert!(OrderId::new(b"001", b"").is_err());
     assert!(OrderId::new(b"1234567890123456789012", b"LAB").is_err());
@@ -139,8 +144,9 @@ fn hl7_231_2_8_and_251_2a_caller_data_rejects_injection_and_oversize() -> Result
 }
 
 proptest::proptest! {
+    // HL7 2.3.1 §4.3.1.1; HL7 2.5.1 §4.5.1.1
     #[test]
-    fn hl7_231_4_3_1_1_and_251_4_5_1_1_arbitrary_control_codes_never_default_to_acceptance(value in "[A-Z]{2}") {
+    fn unknown_control_codes_never_mean_acceptance(value in "[A-Z]{2}") {
         let parsed=Control::parse(value.as_bytes());
         match parsed {
             Ok(control)=>proptest::prop_assert_eq!(control.wire(),value.as_bytes()),
@@ -152,18 +158,21 @@ proptest::proptest! {
     }
 }
 
+// HL7 2.3.1 §4.2.2; HL7 2.5.1 §4.4.2
 bad_order_reply!(
-    hl7_231_4_2_2_and_251_4_4_2_multiple_details_are_not_flattened,
+    multiple_order_details_are_not_flattened,
     b"ORC|OK|001^LAB\rOBR|1|001^LAB||T1^Synthetic^L\rOBR|2|001^LAB||T2^Other^L\r",
     Error::Content { field: 0, .. }
 );
+// HL7 2.3.1 §4.3.1.1; HL7 2.5.1 §4.5.1.1
 bad_order_reply!(
-    hl7_231_4_3_1_1_and_251_4_5_1_1_bad_second_order_rejects_response_atomically,
+    bad_second_order_fails_whole_reply,
     b"ORC|OK|001^LAB\rORC|ZZ|002^LAB\r",
     Error::Control
 );
+// HL7 2.3.1 §4.3.1.2; HL7 2.5.1 §4.5.1.2
 bad_order_reply!(
-    hl7_231_4_3_1_2_and_251_4_5_1_2_no_numeric_placer_normalization,
+    placer_id_is_not_normalized_as_number,
     b"ORC|OK|1^LAB\r",
     Error::Correlation {
         segment: "ORC",
@@ -171,8 +180,9 @@ bad_order_reply!(
     }
 );
 
+// HL7 2.3.1 §4.2.2; HL7 2.5.1 §4.4.2
 #[test]
-fn hl7_231_4_2_2_and_251_4_4_2_header_error_and_patient_context_retained() -> Result<(), Error> {
+fn header_error_and_patient_context_are_kept() -> Result<(), Error> {
     for version in [Version::V231, Version::V251] {
         let sent = sent(version)?;
         let body=match version {
@@ -194,8 +204,9 @@ fn hl7_231_4_2_2_and_251_4_4_2_header_error_and_patient_context_retained() -> Re
     Ok(())
 }
 
+// HL7 2.3.1 §4.2.1; HL7 2.5.1 §4.4.1
 #[test]
-fn hl7_231_4_2_1_and_251_4_4_1_nonpatient_cancel_needs_no_invented_detail() -> Result<(), Error> {
+fn nonpatient_cancel_invents_no_detail() -> Result<(), Error> {
     for version in [Version::V231, Version::V251] {
         let sent = order::orm(
             &[Order::Cancel {
@@ -217,8 +228,9 @@ fn hl7_231_4_2_1_and_251_4_4_1_nonpatient_cancel_needs_no_invented_detail() -> R
     Ok(())
 }
 
+// HL7 2.3.1 §2.24.1.18; HL7 2.5.1 §2.15.9.18
 #[test]
-fn hl7_231_2_24_1_18_and_251_2_15_9_18_utf8_sample_is_retained() -> Result<(), Error> {
+fn utf8_sample_is_kept() -> Result<(), Error> {
     let sample = "000éB".as_bytes();
     let message = order::orm(
         &[new_order(sample, SampleField::Placer1)?],
@@ -239,9 +251,9 @@ fn hl7_231_2_24_1_18_and_251_2_15_9_18_utf8_sample_is_retained() -> Result<(), E
     Ok(())
 }
 
+// HL7 2.3.1 §7.3.1.3; HL7 2.5.1 §7.4.1.3
 #[test]
-fn hl7_231_7_3_1_3_and_251_7_4_1_3_duplicate_new_filler_assignments_rejected() -> Result<(), Error>
-{
+fn duplicate_order_identities_are_refused() -> Result<(), Error> {
     for version in [Version::V231, Version::V251] {
         let orders = [
             Order::Cancel {
@@ -292,9 +304,9 @@ fn hl7_231_7_3_1_3_and_251_7_4_1_3_duplicate_new_filler_assignments_rejected() -
     Ok(())
 }
 
+// HL7 2.3.1 §4.2.3; HL7 2.5.1 §4.4.3
 #[test]
-fn hl7_231_4_2_3_and_251_4_4_3_unsupported_order_families_are_located_errors() -> Result<(), Error>
-{
+fn unsupported_order_families_are_located_errors() -> Result<(), Error> {
     for version in [Version::V231, Version::V251] {
         let sent = sent(version)?;
         let message = reply(version, b"AA", b"ORC|OK|001^LAB\r")?;
@@ -344,8 +356,9 @@ fn hl7_231_4_2_3_and_251_4_4_3_unsupported_order_families_are_located_errors() -
     Ok(())
 }
 
+// HL7 2.3.1 chapter 4
 #[test]
-fn hl7_231_ch4_explicit_group_position_and_identifier_do_not_invent_context() -> Result<(), Error> {
+fn explicit_group_and_identifier_invent_no_context() -> Result<(), Error> {
     let mut request = new_order(b"000aB", SampleField::Placer1)?;
     if let Order::New { specimen, .. } = &mut request {
         specimen.source = None;
@@ -422,8 +435,9 @@ fn hl7_231_ch4_explicit_group_position_and_identifier_do_not_invent_context() ->
 }
 
 // HL7 2.3.1 section 4.3.1.4 and 2.5.1 section 4.5.1.4: same authority as ORC-2.
+// HL7 2.3.1 §4.3.1.4; HL7 2.5.1 §4.5.1.4
 #[test]
-fn hl7_231_4_3_1_4_251_4_5_1_4_group_ei_authority_and_complete_field_limit() -> Result<(), Error> {
+fn group_number_keeps_authority_and_field_limit() -> Result<(), Error> {
     for version in [Version::V231, Version::V251] {
         for universal in [None, Some((b"1.2".as_slice(), b"ISO".as_slice()))] {
             let mut request = new_order(b"sample", SampleField::Placer1)?;
@@ -464,8 +478,9 @@ fn hl7_231_4_3_1_4_251_4_5_1_4_group_ei_authority_and_complete_field_limit() -> 
 }
 
 // HL7 2.5.1 section 3.4.2 and 4.4.2: optional PID has required contents when present.
+// HL7 2.5.1 §3.4.2
 #[test]
-fn hl7_251_s3_4_2_present_reply_pid_requires_identifier_and_name() -> Result<(), Error> {
+fn reply_pid_requires_identifier_and_name() -> Result<(), Error> {
     let sent = sent(Version::V251)?;
     for pid in [
         b"PID\r".as_slice(),

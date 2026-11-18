@@ -11,7 +11,7 @@ rules and their coverage belong only in [checklist.md](checklist.md).
   subtract overhead. Reading it literally could exceed the total ceiling
   stated immediately before it, so the overhead-inclusive rule wins.
 - **source**: LIS01-A2 §6.3.1–6.3.1.2, p.7; §4.4.1, p.2.
-- **test**: `lis01_6_3_1_6_3_2_6_3_3_6_6_large_records_rollover_separate_records`.
+- **test**: `long_records_split_and_numbers_roll_over`.
 
 ## 2. Make the checksum span explicit
 
@@ -20,7 +20,7 @@ rules and their coverage belong only in [checklist.md](checklist.md).
   although the frame layout puts it inside the checked block. An explicit
   span prevents competing readings; decoding first could change checked bytes.
 - **source**: LIS01-A2 §6.3.1.2–6.3.3.1, pp.7–8.
-- **test**: `lis01_6_3_3_checksum_sums_raw_digit_through_etx`.
+- **test**: `astm_checksum_sums_digit_through_etx`.
 
 ## 3. Do not autodetect bare LIS02 over TCP
 
@@ -41,7 +41,7 @@ rules and their coverage belong only in [checklist.md](checklist.md).
   so Analyte rejects it and keeps the original evidence instead.
 - **source**: LIS02-A2 §§5.2–5.3, pp.5–6;
   [ADR 0003](../../adr/0003-clinical-safety-rules.md), values and bounds policy.
-- **test**: `lis02_5_2_5_3_limits_reject_instead_of_truncating`.
+- **test**: `limits_reject_instead_of_truncating`.
 
 ## 5. Configure whether to honor receiver interrupts
 
@@ -50,7 +50,7 @@ rules and their coverage belong only in [checklist.md](checklist.md).
   installation choose that behavior without a vendor special case in the
   shared state machine.
 - **source**: LIS01-A2 §6.3.5.1–6.3.5.3, p.8.
-- **test**: `lis01_6_3_5_interrupt_honor_ignore_and_issue`.
+- **test**: `interrupt_honored_ignored_and_issued`.
 
 ## 6. Keep one outgoing message buffer
 
@@ -60,7 +60,7 @@ rules and their coverage belong only in [checklist.md](checklist.md).
   uncertain sends without adding a needed capability.
 - **source**: LIS01-A2 §6.5.2.6, p.10;
   [ADR 0001](../../adr/0001-rust-and-layered-architecture.md), dialog ownership.
-- **test**: `lis01_6_5_2_6_one_message_buffer_and_validated_vendor_values`.
+- **test**: `one_message_buffer_and_validated_settings`.
 
 ## 7. Refuse unsupported search semantics
 
@@ -70,7 +70,7 @@ rules and their coverage belong only in [checklist.md](checklist.md).
   Ignoring a filter could select a different order set and send tests the
   query did not request.
 - **source**: LIS02-A2 §§11.3–11.8, pp.25–26.
-- **test**: `lis02_section11_cancel_is_distinct_and_unsupported_filters_are_not_empty_orders`.
+- **test**: `cancel_and_unsupported_filters_are_not_empty_orders`.
 
 ## 8. Make acknowledgment depend on durable custody
 
@@ -80,7 +80,7 @@ rules and their coverage belong only in [checklist.md](checklist.md).
   must retain responsibility if the host cannot keep the promised evidence.
 - **source**: [ADR 0010](../../adr/0010-acknowledgment-boundaries.md), ASTM row;
   [ADR 0003](../../adr/0003-clinical-safety-rules.md), Store before acknowledging.
-- **test**: `adr0003_lis01_6_5_2_5_failed_and_unanswered_commit_never_ack`.
+- **test**: `failed_or_unanswered_commit_never_acks`.
 
 ## 9. Detect conflicting retransmitted frames
 
@@ -91,7 +91,7 @@ rules and their coverage belong only in [checklist.md](checklist.md).
   previously stored frame.
 - **source**: [ADR 0003](../../adr/0003-clinical-safety-rules.md), Keep the original
   and Three identities.
-- **test**: `adr0003_lis01_6_3_2_6_5_1_commit_duplicate_and_conflict`.
+- **test**: `committed_duplicate_acks_and_conflict_naks`.
 
 ## 10. Isolate nonproduction queries from real orders
 
@@ -101,7 +101,7 @@ rules and their coverage belong only in [checklist.md](checklist.md).
   retained metadata.
 - **source**: LIS02-A2 §6.12, p.12;
   [ADR 0003](../../adr/0003-clinical-safety-rules.md), order lifecycle policy.
-- **test**: `lis02_6_12_p12_nonproduction_queries_never_reserve_or_send`.
+- **test**: `nonproduction_queries_never_reserve_or_send`.
 
 ## 11. Keep an unknown lookup distinct from an empty lookup
 
@@ -111,7 +111,7 @@ rules and their coverage belong only in [checklist.md](checklist.md).
   Analyte merely failed to learn what work exists.
 - **source**: [ADR 0003](../../adr/0003-clinical-safety-rules.md), Lookup failure
   is not no orders.
-- **test**: `lis02_section11_adr0004_missed_deadline_is_query_error_or_silence_never_no_information`.
+- **test**: `missed_deadline_never_answers_no_information`.
 
 ## 12. Keep result history separate from transfer sequencing
 
@@ -122,13 +122,13 @@ rules and their coverage belong only in [checklist.md](checklist.md).
   Link sequencing cannot decide either question.
 - **source**: [ADR 0003](../../adr/0003-clinical-safety-rules.md), Three identities;
   [ADR 0011](../../adr/0011-result-status-progression.md), Decision.
-- **test**: `adr0003_revisions_new_retransmission_correction_conflict_runs_and_restart`.
+- **test**: `revisions_tell_new_retransmission_correction_and_runs`.
 
 ## Consecutive comments (standards pass 2)
 
 LIS02-A2 sections 10 and 4.1 attach consecutive comments to the first preceding
 noncomment record; manufacturer ownership remains immediate. Regression:
-`lis02_10_consecutive_comments_share_noncomment_owner` checks parser parents
+`consecutive_comments_share_their_owner` checks parser parents
 and delivered result annotations. Previously interpreted receipts containing
 consecutive result comments could have omitted later annotations or retained a
 comment as their parent. Raw receipts are unchanged. No deployed store was
@@ -139,16 +139,16 @@ review prior deliveries for reconciliation rather than overwriting their history
 
 Contextual C/M levels are tracked independently of P/O/R ancestry. Section
 5.6.7 resets the counter when the same type changes level or a lower numbered
-level intervenes. Regression: `lis02_4_1_5_6_7_comment_manufacturer_level_changes_reset_sequence`.
+level intervenes. Regression: `comment_and_manufacturer_level_changes_reset_sequence`.
 
 Section 5.1 text components reject literal controls before escape expansion;
 header-selected delimiters remain syntax. Delimiter escapes and raw bytes are
-unchanged. Test: `lis02_5_1_literal_controls_rejected_in_text_components`.
+unchanged. Test: `literal_controls_rejected_in_text`.
 
 Status evidence now asserts every section 9.9 code against its named meaning
-and parsed result view (`lis02_9_9_each_wire_code_has_specified_meaning`).
+and parsed result view (`each_status_code_has_specified_meaning`).
 Manufacturer evidence checks all eight fixture positions, sequence and exact
-round-trip (`lis02_14_all_manufacturer_positions_are_retained`); this proves
+round-trip (`all_manufacturer_positions_are_retained`); this proves
 retention, not vendor field semantics. Evidence remains documented.
 
 ## Strict records and semantic selectors (standards pass 3)

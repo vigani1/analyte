@@ -71,8 +71,9 @@ mod tests {
     use super::*;
 
     // ADR 0003 rule 8: normalizing a stored version token could invent a replay guard.
+    // ADR 0003
     #[test]
-    fn adr0003_stored_owner_never_normalizes_a_cancellation_version() {
+    fn stored_owner_never_normalizes_cancel_version() {
         for version in ["0001", "+1", "0", "invalid"] {
             let refusal = canonical_version(version).expect_err("input must be refused");
             assert!(

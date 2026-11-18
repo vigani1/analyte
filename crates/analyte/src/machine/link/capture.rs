@@ -297,9 +297,9 @@ mod tests {
     };
 
     // ADR 0009: optional capture admission and machine exit never wait for disk.
+    // ADR 0009
     #[tokio::test]
-    async fn adr0009_failed_admission_and_machine_exit_with_stalled_capture()
-    -> Result<(), crate::Error> {
+    async fn stalled_capture_never_blocks_admission_or_exit() -> Result<(), crate::Error> {
         let (release, gate) = std::sync::mpsc::channel();
         let (started, entered) = tokio::sync::oneshot::channel();
         let worker = thread::spawn(move || {
@@ -373,8 +373,9 @@ mod tests {
     }
 
     // Plan §10 / ADR 0009 / rule 10: program-owned capture using the serial test seam.
+    // Plan §10; ADR 0009
     #[test]
-    fn plan10_adr0009_serial_capture_equals_wire() -> Result<(), crate::Error> {
+    fn serial_capture_equals_wire() -> Result<(), crate::Error> {
         let root = tempfile::tempdir()?;
         create_data_directory(&root.path().join("data"))?;
         std::fs::write(

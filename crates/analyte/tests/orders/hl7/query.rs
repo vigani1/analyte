@@ -116,8 +116,9 @@ fn text(bytes: &[u8]) -> Result<&str, Error> {
     Ok(std::str::from_utf8(bytes)?)
 }
 
+// HL7 2.3.1; HL7 2.5.1
 #[tokio::test]
-async fn hl7_231_251_query_found_reserves_before_dsr_ack_aa_sends_once() -> Result<(), Error> {
+async fn found_query_reserves_before_dsr_sends_once() -> Result<(), Error> {
     for (edition, version) in [("v231", "2.3.1"), ("v251", "2.5.1")] {
         let (_temp, path, reference, service, mut peer) = setup(edition, 30000, 30000).await?;
         let qry = query("000Ab12", version);
@@ -168,8 +169,9 @@ async fn hl7_231_251_query_found_reserves_before_dsr_ack_aa_sends_once() -> Resu
     Ok(())
 }
 
+// HL7 2.5.1
 #[tokio::test]
-async fn hl7_251_qck_trusted_empty_nf_untrusted_stale_and_unknown_filter_ae() -> Result<(), Error> {
+async fn qck_nf_only_for_trusted_empty_result() -> Result<(), Error> {
     let (_temp, path, reference, service, mut peer) = setup("v251", 30000, 30000).await?;
     send(&mut peer, &query("absent", "2.5.1")).await?;
     assert!(
@@ -208,8 +210,9 @@ async fn hl7_251_qck_trusted_empty_nf_untrusted_stale_and_unknown_filter_ae() ->
     Ok(())
 }
 
+// HL7 2.5.1
 #[tokio::test]
-async fn hl7_251_dsr_ack_ae_ar_lost_and_disconnect_are_specific_uncertain() -> Result<(), Error> {
+async fn failed_dsr_ack_is_specific_uncertain() -> Result<(), Error> {
     for (code, reason) in [
         ("AE", "HL7-DSR-ACK-AE"),
         ("AR", "HL7-DSR-ACK-AR"),
@@ -240,9 +243,9 @@ async fn hl7_251_dsr_ack_ae_ar_lost_and_disconnect_are_specific_uncertain() -> R
     Ok(())
 }
 
+// HL7 2.5.1; ADR 0004
 #[tokio::test]
-async fn hl7_251_adr0004_total_query_deadline_includes_split_block_receive_time()
--> Result<(), Error> {
+async fn query_deadline_counts_split_block_receive() -> Result<(), Error> {
     let (hook, control) = analyte::runtime::test_hooks::Committed::new();
     let (_temp, path, reference, service, mut peer) =
         setup_observed("v251", 30000, 1000, 30, Some(hook)).await?;
@@ -269,8 +272,9 @@ async fn hl7_251_adr0004_total_query_deadline_includes_split_block_receive_time(
     Ok(())
 }
 
+// HL7 2.3.1 §2.18; HL7 2.5.1 §5.10
 #[test]
-fn hl7_231_251_synthetic_query_obeys_section_2_18_and_5_10() -> Result<(), Error> {
+fn synthetic_query_parses_in_both_editions() -> Result<(), Error> {
     for edition in ["2.3.1", "2.5.1"] {
         let message = analyte_hl7::Message::parse(
             &query("000Ab12", edition),
@@ -281,8 +285,9 @@ fn hl7_231_251_synthetic_query_obeys_section_2_18_and_5_10() -> Result<(), Error
     Ok(())
 }
 
+// HL7 2.5.1
 #[tokio::test]
-async fn hl7_251_dsr_mismatched_application_ack_is_retained_and_uncertain() -> Result<(), Error> {
+async fn mismatched_dsr_ack_is_retained_and_uncertain() -> Result<(), Error> {
     let (temp, path, reference, service, mut peer) = setup("v251", 30000, 30000).await?;
     send(&mut peer, &query("000Ab12", "2.5.1")).await?;
     read_mllp_packet(&mut peer, "oversized HL7 response").await?;
@@ -304,8 +309,9 @@ async fn hl7_251_dsr_mismatched_application_ack_is_retained_and_uncertain() -> R
     Ok(())
 }
 
+// HL7 2.5.1
 #[tokio::test]
-async fn hl7_251_order_query_connection_still_delivers_oru_results() -> Result<(), Error> {
+async fn query_connection_still_delivers_oru_results() -> Result<(), Error> {
     let (_temp, path, reference, service, mut peer) = setup("v251", 30000, 30000).await?;
     let reply = hl7(&mut peer, ORU).await?;
     assert!(reply.contains("MSA|AA|message1"));
@@ -315,9 +321,9 @@ async fn hl7_251_order_query_connection_still_delivers_oru_results() -> Result<(
     Ok(())
 }
 
+// HL7 2.5.1 §5.10
 #[tokio::test]
-async fn hl7_251_section5_10_quantity_limit_refuses_partial_dsr_before_reservation()
--> Result<(), Error> {
+async fn quantity_limit_refuses_partial_dsr() -> Result<(), Error> {
     let (_temp, path, reference, service, mut peer) = setup("v251", 30000, 30000).await?;
     let bytes = String::from_utf8(query("000Ab12", "2.5.1"))?.rewrite("100^LI", "1^LI");
     send(&mut peer, bytes.as_bytes()).await?;
@@ -335,8 +341,9 @@ async fn hl7_251_section5_10_quantity_limit_refuses_partial_dsr_before_reservati
     Ok(())
 }
 
+// Plan §11
 #[tokio::test]
-async fn plan11_hl7_dsr_answer_reserves_nothing_during_restore_pause() -> Result<(), Error> {
+async fn dsr_reserves_nothing_during_restore_pause() -> Result<(), Error> {
     let (_temp, path, reference, service, mut peer) = setup("v251", 30000, 30000).await?;
     database(&path)?.execute("INSERT INTO audit(evidence) VALUES (?1)",[serde_json::json!({"actor":"operator","action":"store-restore","targets":[],"time":jiff::Timestamp::now().as_second(),"reason":"synthetic restore"}).to_string()])?;
     send(&mut peer, &query("000Ab12", "2.5.1")).await?;
@@ -361,8 +368,9 @@ async fn plan11_hl7_dsr_answer_reserves_nothing_during_restore_pause() -> Result
 }
 
 // ADR 0004 / rule 9 / HL7 2.5.1 section 5.10: the configured age decides NF versus AE.
+// Safety rule 9 (ADR 0003)
 #[tokio::test]
-async fn rule9_hl7_query_freshness_follows_destination_config() -> Result<(), Error> {
+async fn hl7_query_freshness_follows_destination_config() -> Result<(), Error> {
     for (freshness, expected) in [(10, "QAK||AE\r"), (120, "QAK||NF\r")] {
         let (_temp, path, reference, service, mut peer) =
             setup_with_freshness("v251", 30000, 30000, freshness).await?;

@@ -2,9 +2,9 @@
 use super::*;
 use analyte_fixtures::ConfigEdit as _;
 
+// IHE PaLM TF-2b §3.29.4
 #[test]
-fn law_tf2b_3_29_4_unsolicited_null_awos_and_external_reference_are_not_invented()
--> Result<(), Box<dyn std::error::Error>> {
+fn unsolicited_results_invent_no_awos_or_reference() -> Result<(), Box<dyn std::error::Error>> {
     use analyte_hl7::law::{Results, Value};
     let body = observation(
         "plot^Plot^99LAB",
@@ -21,9 +21,9 @@ fn law_tf2b_3_29_4_unsolicited_null_awos_and_external_reference_are_not_invented
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.29.4
 #[test]
-fn law_tf2b_3_29_4_ack_r22_requires_complete_interpretation_and_durability()
--> Result<(), Box<dyn std::error::Error>> {
+fn ack_r22_needs_storage_and_interpretation() -> Result<(), Box<dyn std::error::Error>> {
     use analyte_hl7::{AckCode, Field, Responsibility, law::result_acknowledgment};
     let message = results_message(
         "awos-1",
@@ -68,9 +68,9 @@ fn law_tf2b_3_29_4_ack_r22_requires_complete_interpretation_and_durability()
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.1
 #[test]
-fn law_tf2b_c1_unknown_error_location_is_omitted_never_invented()
--> Result<(), Box<dyn std::error::Error>> {
+fn unknown_error_location_is_omitted() -> Result<(), Box<dyn std::error::Error>> {
     use analyte_hl7::{AckCode, AckError, Responsibility, law::result_acknowledgment};
     let message = results_message(
         "awos-1",
@@ -128,9 +128,9 @@ fn law_tf2b_c1_unknown_error_location_is_omitted_never_invented()
     Ok(())
 }
 
+// IHE PaLM TF-2b §2.2
 #[test]
-fn law_tf2b_2_2_usage_cardinality_length_and_null_rules() -> Result<(), Box<dyn std::error::Error>>
-{
+fn field_rules_check_usage_count_and_length() -> Result<(), Box<dyn std::error::Error>> {
     use analyte_hl7::law::{FieldRule, Usage};
     let message = results_message(
         "awos-1",
@@ -175,9 +175,9 @@ fn law_tf2b_2_2_usage_cardinality_length_and_null_rules() -> Result<(), Box<dyn 
     Ok(())
 }
 
+// IHE PaLM TF-2b Appendix C
 #[test]
-fn law_tf2b_appendix_c_result_field_predicates_and_required_fields()
--> Result<(), Box<dyn std::error::Error>> {
+fn results_missing_required_content_are_rejected() -> Result<(), Box<dyn std::error::Error>> {
     use analyte_hl7::law::Results;
     let good = results_message(
         "awos-1",
@@ -209,8 +209,9 @@ fn law_tf2b_appendix_c_result_field_predicates_and_required_fields()
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.4
 #[test]
-fn law_tf2b_c4_extended_control_id_is_scoped_to_law() -> Result<(), Box<dyn std::error::Error>> {
+fn long_control_id_only_allowed_for_law() -> Result<(), Box<dyn std::error::Error>> {
     use analyte_hl7::{
         Response, Responsibility,
         law::{CacheAnswer, control_id, query_response},
@@ -240,9 +241,9 @@ fn law_tf2b_c4_extended_control_id_is_scoped_to_law() -> Result<(), Box<dyn std:
     Ok(())
 }
 
+// IHE PaLM TF-2b §B.7
 #[test]
-fn law_tf2b_b7_trigger_rejection_and_query_processing_errors_have_distinct_actions()
--> Result<(), Box<dyn std::error::Error>> {
+fn trigger_and_query_errors_get_distinct_acks() -> Result<(), Box<dyn std::error::Error>> {
     use analyte_hl7::{
         AckCode,
         law::{ErrorLocation, Failure, receive_query, receive_results},
@@ -298,9 +299,9 @@ fn law_tf2b_b7_trigger_rejection_and_query_processing_errors_have_distinct_actio
     Ok(())
 }
 
+// IHE PaLM TF-2b §B.7
 #[test]
-fn law_tf2b_b7_invalid_ack_and_inconsistent_orl_fail_without_ack_loop()
--> Result<(), Box<dyn std::error::Error>> {
+fn bad_ack_or_orl_fails_without_ack_loop() -> Result<(), Box<dyn std::error::Error>> {
     use analyte_hl7::law::{Failure, receive_acknowledgment, receive_work_response};
     let sent = results_message(
         "awos-1",
@@ -324,9 +325,9 @@ fn law_tf2b_b7_invalid_ack_and_inconsistent_orl_fail_without_ack_loop()
     Ok(())
 }
 
+// IHE PaLM TF-2b §2.2.4
 #[test]
-fn law_tf2b_2_2_4_app_supplied_patient_specimen_container_and_order_content()
--> Result<(), Box<dyn std::error::Error>> {
+fn work_carries_app_supplied_content() -> Result<(), Box<dyn std::error::Error>> {
     use analyte_hl7::{
         Field,
         law::{
@@ -423,9 +424,9 @@ fn law_tf2b_2_2_4_app_supplied_patient_specimen_container_and_order_content()
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.29.4
 #[test]
-fn law_tf2b_3_29_4_specimen_observations_keep_scope_and_reject_orphan_groups()
--> Result<(), Box<dyn std::error::Error>> {
+fn specimen_observations_keep_scope_reject_orphans() -> Result<(), Box<dyn std::error::Error>> {
     use analyte_hl7::law::{Results, Value};
     let message = results_message(
         "awos-1",
@@ -460,9 +461,9 @@ fn law_tf2b_3_29_4_specimen_observations_keep_scope_and_reject_orphan_groups()
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.7
 #[test]
-fn law_tf2b_c7_repetition_predicate_and_structured_numeric_validation()
--> Result<(), Box<dyn std::error::Error>> {
+fn results_check_repetitions_and_numeric_types() -> Result<(), Box<dyn std::error::Error>> {
     use analyte_hl7::law::Results;
     for (code, kind, value, valid) in [
         ("test^Test^99LAB", "NM", "1~2", false),
@@ -480,9 +481,9 @@ fn law_tf2b_c7_repetition_predicate_and_structured_numeric_validation()
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.12
 #[test]
-fn law_tf2b_c12_control_specimen_uses_explicit_null_type() -> Result<(), Box<dyn std::error::Error>>
-{
+fn control_specimen_uses_explicit_null_type() -> Result<(), Box<dyn std::error::Error>> {
     use analyte_hl7::{
         Field,
         law::{Awos, WorkAction, work_order},
@@ -525,9 +526,9 @@ fn law_tf2b_c12_control_specimen_uses_explicit_null_type() -> Result<(), Box<dyn
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.1
 #[test]
-fn law_tf2b_c1_error_codes_severity_and_available_fields() -> Result<(), Box<dyn std::error::Error>>
-{
+fn err_codes_severity_and_optional_fields() -> Result<(), Box<dyn std::error::Error>> {
     for code in [
         "100", "101", "102", "103", "200", "201", "202", "203", "207",
     ] {
@@ -553,9 +554,9 @@ fn law_tf2b_c1_error_codes_severity_and_available_fields() -> Result<(), Box<dyn
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.4
 #[test]
-fn law_tf2b_c4_namespaces_and_profile_identifier_components()
--> Result<(), Box<dyn std::error::Error>> {
+fn msh_namespaces_and_profile_id_limits() -> Result<(), Box<dyn std::error::Error>> {
     let message = query("QPD|WOS_ALL^Work Order Step All^IHELAW|tag")?;
     let original = std::str::from_utf8(message.raw())?;
     for replacement in ["", "A", "12345678901234567890"] {

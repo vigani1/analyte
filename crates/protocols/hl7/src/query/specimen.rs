@@ -61,8 +61,9 @@ pub fn specimen(
 #[cfg(test)]
 mod tests {
     use super::*;
+    // HL7 2.3.1 §2.18, QRD-8, §2.7
     #[test]
-    fn hl7_231_2_18_qrd8_scalar_scope_and_2_7_escapes() -> Result<(), crate::Error> {
+    fn qrd8_scalar_scope_and_escapes() -> Result<(), crate::Error> {
         let filters = [(9, b"ORD".as_slice()), (10, b"TEST".as_slice())];
         let selector = SpecimenSelector {
             field: 8,

@@ -5,8 +5,9 @@ use analyte_poct::{Body, DataError, Message, MessageError, Nullable, Timestamp, 
 use peer_messages::{field, hello, limits, message, observation, status};
 use proptest::prelude::*;
 
+// CLSI POCT01-A2 §B.4.4
 #[test]
-fn poct01_b_4_4_each_mandatory_body_has_exact_meaning() -> Result<(), MessageError> {
+fn each_mandatory_body_has_exact_meaning() -> Result<(), MessageError> {
     for (kind, body) in [
         (
             "EOT.R01",
@@ -84,8 +85,9 @@ fn poct01_b_4_4_each_mandatory_body_has_exact_meaning() -> Result<(), MessageErr
     Ok(())
 }
 
+// CLSI POCT01-A2 §B.6.10
 #[test]
-fn poct01_b_6_10_patient_and_nonpatient_values_are_explicit() -> Result<(), MessageError> {
+fn patient_and_nonpatient_values_are_explicit() -> Result<(), MessageError> {
     for patient in [true, false] {
         let raw = observation(
             "o",
@@ -123,8 +125,9 @@ fn poct01_b_6_10_patient_and_nonpatient_values_are_explicit() -> Result<(), Mess
     Ok(())
 }
 
+// CLSI POCT01-A2 §B.8
 #[test]
-fn poct01_b_8_nulls_quantities_qualitative_codes_and_translation() -> Result<(), MessageError> {
+fn null_quantity_and_coded_values_are_validated() -> Result<(), MessageError> {
     for value in [
         "<OBS.value NULL=\"UNK\"/>",
         "<OBS.qualitative_value V=\"positive\" SN=\"synthetic\"/>",
@@ -142,8 +145,9 @@ fn poct01_b_8_nulls_quantities_qualitative_codes_and_translation() -> Result<(),
     Ok(())
 }
 
+// CLSI POCT01-A2 §B.6.12
 #[test]
-fn poct01_b_6_12_required_structure_and_order_are_enforced() {
+fn required_structure_and_order_are_enforced() {
     let raw = hello("h");
     let missing = raw.rewrite(&field("DEV.device_id", "A1-B2-C3-D4-E5-F6-07-08"), "");
     assert!(matches!(
@@ -175,8 +179,9 @@ fn poct01_b_6_12_required_structure_and_order_are_enforced() {
     ));
 }
 
+// CLSI POCT01-A2 §B.8.11
 #[test]
-fn poct01_b_8_11_time_keeps_offset_precision_and_null_distinct() -> Result<(), DataError> {
+fn time_keeps_offset_and_precision() -> Result<(), DataError> {
     let time = Timestamp::parse("2024-02-29T12:34:56.000120-03:30")?;
     assert_eq!(time.original(), "2024-02-29T12:34:56.000120-03:30");
     assert_eq!(time.offset_seconds(), Some(-12600));
@@ -194,16 +199,18 @@ fn poct01_b_8_11_time_keeps_offset_precision_and_null_distinct() -> Result<(), D
 }
 
 proptest! {
+    // CLSI POCT01-A2 §B.8.10
     #[test]
-    fn poct01_b_8_10_quantity_spelling_survives(value in "[0-9]{1,6}\\.[0-9]{1,8}") {
+    fn quantity_spelling_survives(value in "[0-9]{1,6}\\.[0-9]{1,8}") {
         let raw = observation("o",true,&format!("<OBS.value V=\"{value}\" U=\"unit\"/>"));
         let parsed = Message::parse(raw.as_bytes(),limits())?;
         prop_assert_eq!(parsed.document().raw(),raw.as_bytes());
     }
 }
 
+// CLSI POCT01-A2 §B.12
 #[test]
-fn poct01_b_12_auxiliary_metadata_and_encapsulation_are_local_only() -> Result<(), MessageError> {
+fn auxiliary_metadata_and_encapsulation_stay_local() -> Result<(), MessageError> {
     let raw = hello("h").rewrite("</DCP>","<DCP.vendor_specific ENC=\"B64\" COMPN=\"GZ\" MT=\"application/octet-stream\"><REF V=\"https://invalid.example/never-fetch\"/><THUMBNAIL ENC=\"TXT\">synthetic</THUMBNAIL></DCP.vendor_specific></DCP>");
     Message::parse(raw.as_bytes(), limits())?;
     let raw = observation("o",true,"<OBS.value V=\"1.230\" U=\"unit\" V-T=\"REAL\" U-T=\"CS\" PROB=\"0.9\"><NOTE V=\"synthetic-note\"/><CONFID V=\"synthetic-confidence\" SN=\"synthetic-system\"/></OBS.value>").rewrite("<PT.patient_id V=\"000xyz\"/>","<PT.patient_id V=\"000xyz\" xml:lang=\"en\"/><PT.name V=\"Synthetic Person\"><GIV T=\"PNXP\" V=\"Synthetic\" QUAL=\"RE\"/><FAM V=\"Person\"/></PT.name>");
@@ -218,9 +225,9 @@ fn poct01_b_12_auxiliary_metadata_and_encapsulation_are_local_only() -> Result<(
     Ok(())
 }
 
+// CLSI POCT01-A2 §B.12
 #[test]
-fn poct01_b_12_intervals_and_value_choice_are_not_later_hl7_encodings() -> Result<(), MessageError>
-{
+fn intervals_and_value_choice_use_poct_forms() -> Result<(), MessageError> {
     let raw = observation("o", true, "<OBS.value V=\"1.230\" U=\"unit\"/>").rewrite(
         "</OBS>",
         "<OBS.normal_lo-hi_limit V=\"[0.1;+inf[\" U=\"unit\"/></OBS>",
@@ -236,14 +243,16 @@ fn poct01_b_12_intervals_and_value_choice_are_not_later_hl7_encodings() -> Resul
 }
 
 proptest! {
+    // CLSI POCT01-A2; project rule
     #[test]
-    fn poct01_project_typed_parser_arbitrary_bytes_are_bounded(raw in prop::collection::vec(any::<u8>(),0..2048)) {
+    fn typed_parser_bounds_arbitrary_bytes(raw in prop::collection::vec(any::<u8>(),0..2048)) {
         let _ = Message::parse(&raw,limits());
     }
 }
 
+// CLSI POCT01-A2 §B.12
 #[test]
-fn poct01_b_12_probability_is_checked_without_binary_rounding() {
+fn probability_checked_without_binary_rounding() {
     let raw = observation(
         "o",
         true,
@@ -252,8 +261,9 @@ fn poct01_b_12_probability_is_checked_without_binary_rounding() {
     assert!(Message::parse(raw.as_bytes(), limits()).is_err());
 }
 
+// CLSI POCT01-A2 §B.12
 #[test]
-fn poct01_b_12_probability_accepts_signed_zero_and_endpoints() -> Result<(), MessageError> {
+fn probability_accepts_signed_zero_and_endpoints() -> Result<(), MessageError> {
     for probability in ["-0.00", "+0", "+1.00", "0.999999999999999999999999"] {
         let raw = observation(
             "o",
@@ -266,8 +276,9 @@ fn poct01_b_12_probability_accepts_signed_zero_and_endpoints() -> Result<(), Mes
 }
 
 // POCT01-A2 B 4.1.2 p.78; only a unique, bounded Hello header authorizes a reference.
+// CLSI POCT01-A2 §B.4.1.2
 #[test]
-fn poct01_b4_1_2_error_reference_is_not_guessed_from_body_or_ambiguous_header() {
+fn error_reference_is_never_guessed() {
     let raw = hello("header-only").rewrite("</DEV>", "</broken>");
     assert_eq!(
         analyte_poct::hello_error_reference(raw.as_bytes(), limits())

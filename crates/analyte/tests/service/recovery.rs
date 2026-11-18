@@ -90,9 +90,9 @@ fn receipts(path: &Path) -> Result<Vec<(String, Vec<u8>)>, Error> {
         .collect::<Result<_, _>>()?)
 }
 
+// Plan §11; ADR 0003; AGENTS.md
 #[tokio::test]
-async fn plan11_adr0003_agents_forced_exit_preserves_receipts_delivery_and_uncertain_orders()
--> Result<(), Error> {
+async fn forced_exit_preserves_receipts_and_orders() -> Result<(), Error> {
     let directory = tempfile::tempdir()?;
     let receiver_path = directory.path().join("reference.db");
     let mut reference = Reference::start(
@@ -294,9 +294,9 @@ async fn killed_between_store_and_ack_child() -> Result<(), Error> {
 // interpreting it leaves an open ASTM transfer and an uninterpreted receipt. Startup
 // must park the transfer for an operator and interpret the receipt before any machine
 // connection opens.
+// ADR 0003
 #[tokio::test]
-async fn adr0003_killed_process_open_transfer_parked_and_pending_receipt_interpreted()
--> Result<(), Error> {
+async fn killed_process_parks_transfer_and_interprets_receipt() -> Result<(), Error> {
     let directory = tempfile::tempdir()?;
     let mut reference = Reference::start(
         &directory.path().join("reference.db"),

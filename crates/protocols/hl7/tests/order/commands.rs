@@ -2,8 +2,9 @@
 use super::*;
 use analyte_fixtures::ConfigEdit as _;
 
+// HL7 2.3.1 §4.2.1; HL7 2.5.1 §4.4.1
 #[test]
-fn hl7_231_4_2_1_and_251_4_4_1_build_new_and_cancel_groups() -> Result<(), Error> {
+fn orm_builds_new_and_cancel_groups() -> Result<(), Error> {
     for version in [Version::V231, Version::V251] {
         let sent = sent(version)?;
         let mut segments = sent.message().segments();
@@ -42,8 +43,9 @@ fn hl7_231_4_2_1_and_251_4_4_1_build_new_and_cancel_groups() -> Result<(), Error
     Ok(())
 }
 
+// HL7 2.3.1 §4.3.1; HL7 2.5.1 §4.5.1
 #[test]
-fn hl7_231_4_3_1_and_251_4_5_1_reports_each_matching_outcome() -> Result<(), Error> {
+fn reply_reports_each_matching_outcome() -> Result<(), Error> {
     for version in [Version::V231, Version::V251] {
         let sent = sent(version)?;
         for (new, cancel, accepted) in [
@@ -108,8 +110,9 @@ fn hl7_231_4_3_1_and_251_4_5_1_reports_each_matching_outcome() -> Result<(), Err
     Ok(())
 }
 
+// HL7 2.3.1 §4.2.2; HL7 2.5.1 §4.4.2
 #[test]
-fn hl7_231_4_2_2_and_251_4_4_2_message_ack_is_not_order_acceptance() -> Result<(), Error> {
+fn message_ack_is_not_order_acceptance() -> Result<(), Error> {
     for version in [Version::V231, Version::V251] {
         let sent = sent(version)?;
         for code in [b"AA".as_slice(), b"AE", b"AR"] {
@@ -137,130 +140,153 @@ fn hl7_231_4_2_2_and_251_4_4_2_message_ack_is_not_order_acceptance() -> Result<(
     Ok(())
 }
 
+// HL7 2.3.1 §4.3.1.1; HL7 2.5.1 §4.5.1.1
 bad_order_reply!(
-    hl7_231_4_3_1_1_and_251_4_5_1_1_unknown_control,
+    unknown_reply_control_is_refused,
     b"ORC|ZZ|001^LAB\r",
     Error::Control
 );
+// HL7 2.3.1 §4.3.1.1; HL7 2.5.1 §4.5.1.1
 bad_order_reply!(
-    hl7_231_4_3_1_1_and_251_4_5_1_1_request_code_in_reply,
+    request_code_in_reply_is_refused,
     b"ORC|NW|001^LAB\r",
     Error::Control
 );
+// HL7 2.3.1 §4.3.1.1; HL7 2.5.1 §4.5.1.1
 bad_order_reply!(
-    hl7_231_4_3_1_1_and_251_4_5_1_1_notification_is_not_acceptance,
+    notification_is_not_acceptance,
     b"ORC|OC|001^LAB\r",
     Error::Control
 );
+// HL7 2.3.1 §4.3.1.1; HL7 2.5.1 §4.5.1.1
 bad_order_reply!(
-    hl7_231_4_3_1_1_and_251_4_5_1_1_received_is_not_accepted,
+    received_is_not_accepted,
     b"ORC|RR|001^LAB\r",
     Error::Control
 );
+// HL7 2.3.1 §4.3.1.1; HL7 2.5.1 §4.5.1.1
 bad_order_reply!(
-    hl7_231_4_3_1_1_and_251_4_5_1_1_cancel_reply_to_new,
+    cancel_reply_to_new_order_is_refused,
     b"ORC|CR|001^LAB\r",
     Error::Control
 );
+// HL7 2.3.1 §4.3.1.1; HL7 2.5.1 §4.5.1.1
 bad_order_reply!(
-    hl7_231_4_3_1_1_and_251_4_5_1_1_new_reply_to_cancel,
+    new_reply_to_cancel_is_refused,
     b"ORC|OK|002^LAB\r",
     Error::Control
 );
+// HL7 2.3.1 §4.3.1.2; HL7 2.5.1 §4.5.1.2
 bad_order_reply!(
-    hl7_231_4_3_1_2_and_251_4_5_1_2_unknown_placer,
+    unknown_placer_is_refused,
     b"ORC|OK|other^LAB\r",
     Error::Correlation {
         segment: "ORC",
         field: 2
     }
 );
+// HL7 2.3.1 §4.3.1.2; HL7 2.5.1 §4.5.1.2
 bad_order_reply!(
-    hl7_231_4_3_1_2_and_251_4_5_1_2_wrong_namespace,
+    wrong_placer_namespace_is_refused,
     b"ORC|OK|001^OTHER\r",
     Error::Correlation {
         segment: "ORC",
         field: 2
     }
 );
+// HL7 2.3.1 §4.3.1.3; HL7 2.5.1 §4.5.1.3
 bad_order_reply!(
-    hl7_231_4_3_1_3_and_251_4_5_1_3_wrong_filler,
+    wrong_filler_is_refused,
     b"ORC|CR|002^LAB|WRONG^M\r",
     Error::Correlation {
         segment: "ORC",
         field: 3
     }
 );
+// HL7 2.3.1 §4.3.1; HL7 2.5.1 §4.5.1
 bad_order_reply!(
-    hl7_231_4_3_1_and_251_4_5_1_duplicate_reply,
+    duplicate_reply_is_refused,
     b"ORC|OK|001^LAB\rORC|OK|001^LAB\r",
     Error::Duplicate { field: 2 }
 );
+// HL7 2.3.1 §4.3.1; HL7 2.5.1 §4.5.1
 bad_order_reply!(
-    hl7_231_4_3_1_and_251_4_5_1_missing_placer,
+    missing_placer_is_refused,
     b"ORC|OK\r",
     Error::Content { field: 2, .. }
 );
+// HL7 2.3.1 §4.3.1; HL7 2.5.1 §4.5.1
 bad_order_reply!(
-    hl7_231_4_3_1_and_251_4_5_1_null_placer,
+    null_placer_is_refused,
     b"ORC|OK|\"\"\r",
     Error::Content { field: 2, .. }
 );
+// HL7 2.3.1 §4.3.1; HL7 2.5.1 §4.5.1
 bad_order_reply!(
-    hl7_231_4_3_1_and_251_4_5_1_repeated_placer,
+    repeated_placer_is_refused,
     b"ORC|OK|001^LAB~001^LAB\r",
     Error::Content { field: 2, .. }
 );
+// HL7 2.3.1 §4.3.1; HL7 2.5.1 §4.5.1
 bad_order_reply!(
-    hl7_231_4_3_1_and_251_4_5_1_malformed_ei,
+    malformed_placer_ei_is_refused,
     b"ORC|OK|001^LAB^uid\r",
     Error::Content { field: 2, .. }
 );
+// HL7 2.3.1 §4.3.1 (b); HL7 2.5.1 §4.5.1 (b)
 bad_order_reply!(
-    hl7_231_4_3_1_b_and_251_4_5_1_b_orc_obr_identity_conflict,
+    orc_obr_identity_conflict_is_refused,
     b"ORC|OK|001^LAB\rOBR|1|other^LAB||T1^Synthetic^L\r",
     Error::Correlation {
         segment: "OBR",
         field: 2
     }
 );
+// HL7 2.3.1 §4.3.1 (b); HL7 2.5.1 §4.5.1 (b)
 bad_order_reply!(
-    hl7_231_4_3_1_b_and_251_4_5_1_b_orc_obr_filler_conflict,
+    orc_obr_filler_conflict_is_refused,
     b"ORC|OK|001^LAB|F1^M\rOBR|1|001^LAB|F2^M|T1^Synthetic^L\r",
     Error::Correlation {
         segment: "OBR",
         field: 3
     }
 );
-bad_order_reply!(hl7_231_4_3_1_b_and_251_4_5_1_b_timing_conflict,b"ORC|OK|001^LAB|||||^^^20261115\rOBR|1|001^LAB||T1^Synthetic^L|||||||||||||||||||||||^^^20261116\r",Error::Correlation {segment:"OBR",field:27});
+// HL7 2.3.1 §4.3.1 (b); HL7 2.5.1 §4.5.1 (b)
+bad_order_reply!(orc_obr_timing_conflict_is_refused,b"ORC|OK|001^LAB|||||^^^20261115\rOBR|1|001^LAB||T1^Synthetic^L|||||||||||||||||||||||^^^20261116\r",Error::Correlation {segment:"OBR",field:27});
+// HL7 2.3.1 §4.2.2; HL7 2.5.1 §4.4.2
 bad_order_reply!(
-    hl7_231_4_2_2_and_251_4_4_2_obr_requires_orc,
+    obr_without_orc_is_refused,
     b"OBR|1|001^LAB||T1^Synthetic^L\r",
     Error::Content { field: 0, .. }
 );
+// HL7 2.3.1 §4.2.2; HL7 2.5.1 §4.4.2
 bad_order_reply!(
-    hl7_231_4_2_2_and_251_4_4_2_obr_requires_service,
+    obr_without_service_is_refused,
     b"ORC|OK|001^LAB\rOBR|1|001^LAB\r",
     Error::Content { field: 4, .. }
 );
+// HL7 2.3.1 §4.2.2; HL7 2.5.1 §4.4.2
 bad_order_reply!(
-    hl7_231_4_2_2_and_251_4_4_2_wrong_segment_owner,
+    wrong_segment_owner_is_refused,
     b"ORC|OK|001^LAB\rPID|1||P1^^^LAB\r",
     Error::Content { field: 0, .. }
 );
+// HL7 2.3.1 §4.2.2; HL7 2.5.1 §4.4.2
 bad_order_reply!(
-    hl7_231_4_2_2_and_251_4_4_2_unsupported_result_content,
+    result_content_in_reply_is_refused,
     b"ORC|OK|001^LAB\rOBX|1|ST|T1||value\r",
     Error::Content { field: 0, .. }
 );
+// HL7 2.3.1 §4.3.1.5; HL7 2.5.1 §4.5.1.5
 bad_order_reply!(
-    hl7_231_4_3_1_5_and_251_4_5_1_5_invalid_status,
+    invalid_order_status_is_refused,
     b"ORC|OK|001^LAB|||ZZ\r",
     Error::Content { field: 5, .. }
 );
 
+// HL7 2.3.1 §4.3.1 (b); HL7 2.5.1 §4.5.1 (b)
 #[test]
-fn hl7_231_4_3_1_b_and_251_4_5_1_b_obr_identity_fallback_and_response_order() -> Result<(), Error> {
+fn obr_identity_fallback_and_response_order() -> Result<(), Error> {
     for version in [Version::V231, Version::V251] {
         let sent = sent(version)?;
         let message = reply(
@@ -288,8 +314,9 @@ fn hl7_231_4_3_1_b_and_251_4_5_1_b_obr_identity_fallback_and_response_order() ->
     Ok(())
 }
 
+// HL7 2.3.1 §2.12; HL7 2.5.1 §2.9
 #[test]
-fn hl7_231_2_12_and_251_2_9_msa_correlates_sent_orm() -> Result<(), Error> {
+fn msa_correlates_sent_orm() -> Result<(), Error> {
     for version in [Version::V231, Version::V251] {
         let sent = sent(version)?;
         let message = reply(version, b"AA", b"ORC|OK|001^LAB\r")?;
@@ -323,8 +350,9 @@ fn hl7_231_2_12_and_251_2_9_msa_correlates_sent_orm() -> Result<(), Error> {
     Ok(())
 }
 
+// HL7 2.3.1 §7.3.1.18, §7.3.1.19; HL7 2.5.1 §7.4.1.18, §7.4.1.19
 #[test]
-fn hl7_231_7_3_1_18_19_and_251_7_4_1_18_19_sample_spelling_and_escaping() -> Result<(), Error> {
+fn sample_ids_keep_spelling_through_escaping() -> Result<(), Error> {
     for version in [Version::V231, Version::V251] {
         for (placement, field) in [(SampleField::Placer1, 18), (SampleField::Placer2, 19)] {
             let sample = b"000aB|^~\\&";
@@ -348,8 +376,9 @@ fn hl7_231_7_3_1_18_19_and_251_7_4_1_18_19_sample_spelling_and_escaping() -> Res
     Ok(())
 }
 
+// HL7 2.3.1 §4.2.1; HL7 2.5.1 §4.4.1
 #[test]
-fn hl7_231_4_2_1_and_251_4_4_1_rejects_empty_duplicate_and_overlimit_orders() -> Result<(), Error> {
+fn rejects_empty_duplicate_and_oversized_orders() -> Result<(), Error> {
     for version in [Version::V231, Version::V251] {
         let input = new_order(b"000aB", SampleField::Placer1)?;
         assert!(
@@ -385,8 +414,9 @@ fn hl7_231_4_2_1_and_251_4_4_1_rejects_empty_duplicate_and_overlimit_orders() ->
     Ok(())
 }
 
+// HL7 2.3.1 §4.3.1; HL7 2.5.1 §4.5.1
 #[test]
-fn hl7_231_4_3_1_and_251_4_5_1_replay_is_pure_and_keeps_identities() -> Result<(), Error> {
+fn replay_is_pure_and_keeps_identities() -> Result<(), Error> {
     for version in [Version::V231, Version::V251] {
         let first = sent(version)?;
         let second = sent(version)?;
@@ -405,8 +435,9 @@ fn hl7_231_4_3_1_and_251_4_5_1_replay_is_pure_and_keeps_identities() -> Result<(
 }
 
 proptest::proptest! {
+    // HL7 2.3.1 §7.3.1.18; HL7 2.5.1 §7.4.1.18
     #[test]
-    fn hl7_231_7_3_1_18_and_251_7_4_1_18_sample_ids_are_strings(value in "0[0-9A-Za-z]{1,15}") {
+    fn sample_ids_are_strings(value in "0[0-9A-Za-z]{1,15}") {
         for version in [Version::V231,Version::V251] {
             let sent=new_order(value.as_bytes(),SampleField::Placer1).and_then(|order|order::orm(&[order],Subject::NonPatient,header(version)?,Options::default()));
             proptest::prop_assert!(sent.is_ok());
@@ -418,8 +449,9 @@ proptest::proptest! {
     }
 }
 
+// HL7 2.3.1 §4.3.1.1; HL7 2.5.1 §4.5.1.1
 #[test]
-fn hl7_231_4_3_1_1_and_251_4_5_1_1_exhaustive_request_reply_pairs() -> Result<(), Error> {
+fn only_matching_request_reply_pairs_pass() -> Result<(), Error> {
     let controls = [
         Control::New,
         Control::Cancel,
@@ -454,8 +486,9 @@ fn hl7_231_4_3_1_1_and_251_4_5_1_1_exhaustive_request_reply_pairs() -> Result<()
     Ok(())
 }
 
+// HL7 2.3.1 §4.3.1.2, §4.3.1.3; HL7 2.5.1 §4.5.1.2, §4.5.1.3
 #[test]
-fn hl7_231_4_3_1_2_3_and_251_4_5_1_2_3_universal_namespaces_preserved() -> Result<(), Error> {
+fn universal_namespaces_are_preserved() -> Result<(), Error> {
     for version in [Version::V231, Version::V251] {
         let id = OrderId::with_universal(b"001", b"LAB", Some((b"U", b"ISO")))?;
         let sent = order::orm(
@@ -509,8 +542,9 @@ fn hl7_231_4_3_1_2_3_and_251_4_5_1_2_3_universal_namespaces_preserved() -> Resul
     Ok(())
 }
 
+// HL7 2.3.1 §7.3.1.3; HL7 2.5.1 §7.4.1.3
 #[test]
-fn hl7_231_7_3_1_3_and_251_7_4_1_3_filler_identifies_one_order() -> Result<(), Error> {
+fn filler_identifies_one_order() -> Result<(), Error> {
     for version in [Version::V231, Version::V251] {
         let shared = Some(OrderId::new(b"F1", b"M")?);
         let orders = [

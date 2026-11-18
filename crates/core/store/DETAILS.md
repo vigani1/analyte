@@ -180,8 +180,8 @@ still have an `after` cursor; only an exhausted trusted scan establishes empty.
 Read all pages in one store-owner request for a coherent answer and cap the
 aggregate work/deadline in the caller. A reservation remains mandatory before I/O.
 
-Tests `law_tf2b_3_27_4_pending_pages_filter_targets_without_false_empty_and_never_replay`
-and `law_tf2b_3_27_4_sample_and_pending_share_freshness_generation_and_restore_trust`
+Tests `pending_pages_filter_without_false_empty_or_replay`
+and `sample_and_pending_queries_share_trust`
 cover paging, targeting, prior reservations, expiry/tombstones, future/stale clocks,
 reset generations and restore pause. No schema or contract change is involved.
 
@@ -330,9 +330,9 @@ never waits for a checkpoint reader. `secure_delete=ON` clears deleted page
 content. See SQLite's
 [auto_vacuum and incremental_vacuum](https://www.sqlite.org/pragma.html#pragma_auto_vacuum).
 
-Tests named `adr0013_items3_4_5_6_real_purge_audit_refusals_and_late_duplicate`,
-`adr0013_item4_crash_mid_batch_rolls_back_data_tombstones_and_guards` and
-`adr0013_item2_random_unfinished_states_never_purge` guard the key safety outcomes.
+Tests named `real_purge_audits_refusals_and_late_duplicate`,
+`crash_mid_batch_rolls_back_tombstones_and_guards` and
+`random_unfinished_states_never_purge` guard the key safety outcomes.
 The crash test terminates a child process before commit without running destructors.
 The space test checks a real file shrink after bounded vacuum.
 

@@ -2,8 +2,9 @@
 use crate::test_support::*;
 use crate::*;
 
+// ADR 0003 rule 7
 #[test]
-fn adr0003_rule7_startup_budget_is_inclusive_and_cancellation_is_sticky() -> TestResult {
+fn startup_budget_inclusive_and_cancellation_sticky() -> TestResult {
     use crate::startup::{Startup, StartupStep};
     use std::sync::Arc;
     let base = Instant::now();

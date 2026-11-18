@@ -2,9 +2,9 @@
 use super::*;
 
 // POCT01-A2 Appendix B 6.10 pp.121-123, 5.21 p.105; ADR 0003 clinical rule 4.
+// CLSI POCT01-A2 §B.6.10
 #[tokio::test]
-async fn poct01_b_6_10_repeated_analyte_without_distinguishing_identity_is_parked()
--> Result<(), Error> {
+async fn repeated_analyte_without_identity_is_parked() -> Result<(), Error> {
     let definition = include_str!("../../../core/config/examples/poct.toml").rewrite(
         "[poct]",
         "[poct]\nidentity = { sequence_number = true, processing = \"Production\" }",

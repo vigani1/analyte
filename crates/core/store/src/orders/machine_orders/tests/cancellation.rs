@@ -1,9 +1,9 @@
 //! Tests machine order cancellation transitions.
 use super::*;
 
+// ADR 0003
 #[test]
-fn adr0003_typed_ownership_ignores_reason_prefixes_and_cancel_replay_keeps_full_version()
--> TestResult {
+fn ownership_ignores_reason_prefix_cancel_replay_keeps_version() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("typed-owners.db");
     let mut store = open(&path)?;
@@ -92,8 +92,9 @@ fn adr0003_typed_ownership_ignores_reason_prefixes_and_cancel_replay_keeps_full_
     Ok(())
 }
 
+// ADR 0004
 #[test]
-fn adr0004_cancel_expiry_version_trust_and_builder_failure_never_reserve() -> TestResult {
+fn cancel_expiry_trust_or_builder_failure_never_reserves() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("orders.db"))?;
     // Cached versions only move forward, so each case carries a newer one.
@@ -164,8 +165,9 @@ fn adr0004_cancel_expiry_version_trust_and_builder_failure_never_reserve() -> Te
     Ok(())
 }
 
+// ADR 0004
 #[test]
-fn adr0004_missing_answers_and_cancel_all_confirm_or_refuse() -> TestResult {
+fn missing_answers_and_cancel_all_confirm_or_refuse() -> TestResult {
     for refused in [false, true] {
         let temp = tempfile::tempdir()?;
         let mut store = open(&temp.path().join("cancel.db"))?;
@@ -236,8 +238,9 @@ fn adr0004_missing_answers_and_cancel_all_confirm_or_refuse() -> TestResult {
     Ok(())
 }
 
+// ADR 0004
 #[test]
-fn adr0004_cancel_refusal_restores_sent_and_missing_cancel_is_uncertain() -> TestResult {
+fn cancel_refusal_restores_sent_missing_cancel_uncertain() -> TestResult {
     for missing in [false, true] {
         let temp = tempfile::tempdir()?;
         let mut store = open(&temp.path().join("cancel-sent.db"))?;
@@ -286,8 +289,9 @@ fn adr0004_cancel_refusal_restores_sent_and_missing_cancel_is_uncertain() -> Tes
     Ok(())
 }
 
+// ADR 0003
 #[test]
-fn adr0003_cancelled_query_wait_can_only_claim_its_retained_reservation_owner() -> TestResult {
+fn cancelled_query_wait_claims_only_its_own_reservation() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("owned.db");
     let mut store = open(&path)?;
@@ -341,8 +345,9 @@ fn adr0003_cancelled_query_wait_can_only_claim_its_retained_reservation_owner() 
     Ok(())
 }
 
+// ADR 0003 rule 8
 #[test]
-fn adr0003_rule8_cancel_refusal_uses_cancel_from_not_history_json() -> TestResult {
+fn cancel_refusal_uses_cancel_from_not_history() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("cancel-from.db"))?;
     let record = reserve_two(&mut store)?;
@@ -391,9 +396,9 @@ fn adr0003_rule8_cancel_refusal_uses_cancel_from_not_history_json() -> TestResul
 }
 
 // ADR 0004 / safety rule 9: all order readers, reservations and alerts share one trust decision.
+// ADR 0003 rule 8; mutation-testing regression
 #[test]
-fn mutation_adr0003_rule8_order_cancel_version_and_phase_are_rechecked_independently() -> TestResult
-{
+fn cancel_version_and_phase_rechecked_independently() -> TestResult {
     for (cached_phase, requested_version) in [("cancel_requested", 1), ("requested", 2)] {
         let temp = tempfile::tempdir()?;
         let mut store = open(&temp.path().join("cancel-recheck.db"))?;
@@ -454,9 +459,9 @@ fn mutation_adr0003_rule8_order_cancel_version_and_phase_are_rechecked_independe
     Ok(())
 }
 
+// ADR 0003 rule 8; mutation-testing regression
 #[test]
-fn mutation_adr0003_rule8_order_cancel_pages_scan_past_unsent_work_and_refuse_expired_work()
--> TestResult {
+fn cancel_pages_skip_unsent_and_refuse_expired_work() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("cancel-page.db"))?;
     store.limits.page_rows = 1;

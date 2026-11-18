@@ -47,9 +47,9 @@ fn positioned_order() -> Result<AppOrder, analyte_model::TextError> {
     Ok(input)
 }
 
+// Autolyser manual Rev18 p. 186; Safety rule 5 (ADR 0003)
 #[test]
-fn autolyser_rev18_p186_rule5_explicit_patient_code_and_download_context_are_preserved()
--> TestResult {
+fn autolyser_download_keeps_patient_and_context() -> TestResult {
     let cfg = config(&autolyser())?;
     let work = map_autolyser(&positioned_order()?, cfg.effective().stack())?;
     let wire = work.encode();
@@ -74,8 +74,9 @@ fn autolyser_rev18_p186_rule5_explicit_patient_code_and_download_context_are_pre
     Ok(())
 }
 
+// Safety rule 7 (ADR 0003)
 #[test]
-fn rule7_autolyser_download_refuses_missing_context_and_bounds_before_output() -> TestResult {
+fn autolyser_download_refuses_missing_context_or_overflow() -> TestResult {
     let cfg = config(&autolyser())?;
     // The manual permits 00 (automatic positioning); its current refusal by
     // Analyte is reported separately rather than asserted as a wire rule here.
@@ -144,8 +145,9 @@ fn order() -> Result<AppOrder, analyte_model::TextError> {
     })
 }
 
+// ADR 0004; Safety rule 5 (ADR 0003)
 #[test]
-fn adr0004_rule5_vendor_download_keeps_exact_explicit_patient_and_sample() -> TestResult {
+fn vidas_download_keeps_exact_patient_and_sample() -> TestResult {
     let cfg = config(&vidas())?;
     let input = order()?;
     let requests = map_vidas(&input, cfg.effective().stack())?;
@@ -173,8 +175,9 @@ fn adr0004_rule5_vendor_download_keeps_exact_explicit_patient_and_sample() -> Te
     Ok(())
 }
 
+// Safety rule 7 (ADR 0003)
 #[test]
-fn rule7_vendor_download_reports_exact_host_identity_bounds() -> TestResult {
+fn vidas_download_reports_exact_identity_bounds() -> TestResult {
     let cfg = config(&vidas())?;
     for (length, accepted) in [(16, true), (17, true), (18, false)] {
         let mut input = order()?;
@@ -207,8 +210,9 @@ fn rule7_vendor_download_reports_exact_host_identity_bounds() -> TestResult {
     Ok(())
 }
 
+// Safety rule 7 (ADR 0003)
 #[test]
-fn rule7_vendor_download_count_and_aggregate_bounds_are_independent() -> TestResult {
+fn vidas_download_count_and_size_bounds_are_independent() -> TestResult {
     let cfg = config(&vidas())?;
     for (count, accepted) in [(99, true), (100, true), (101, false)] {
         let mut input = order()?;

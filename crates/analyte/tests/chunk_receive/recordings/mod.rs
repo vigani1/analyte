@@ -290,9 +290,9 @@ async fn generate_protocol_recordings() -> Result<(), Error> {
     Ok(())
 }
 
+// ADR 0009
 #[tokio::test]
-async fn adr0009_protocol_recordings_replay_exact_host_bytes_and_durable_outcomes()
--> Result<(), Error> {
+async fn recordings_replay_exact_host_bytes_and_outcomes() -> Result<(), Error> {
     for protocol in Protocol::ALL {
         for case in Case::ALL {
             let (header, events) = recording::read(
