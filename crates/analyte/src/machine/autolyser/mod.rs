@@ -2,21 +2,19 @@
 use crate::intake::ByteReason;
 use crate::machine::hooks::Pause;
 mod custody;
-use super::driver::{self, Context, Effects, Flow, Run, Trigger};
+use super::driver::{Flow, HostInput, Protocol, Queue, Session, Trigger};
 use crate::intake;
-use crate::machine::connection_input::Input;
 use crate::machine::receive;
 use crate::machine::receive::custody::{WriteDeadline, ms};
 mod error;
 pub(crate) mod orders;
 mod outcome;
 pub(crate) mod settings;
+use analyte_config::AutolyserStack;
 use analyte_dialog::autolyser::{Action, Dialog, Event, Request};
 use analyte_model::ReceiptId;
-use analyte_store::Handle;
 pub(crate) use error::Error;
-use std::time::Instant;
-use tokio::sync::watch;
+use std::time::Duration;
 
 /// Where the host is between machine exchanges; recovery ends only with a completed report.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -43,186 +41,59 @@ impl Phase {
 }
 
 /// Mutable conversation state has one owner for the entire connection.
-struct Host<'a, 'm> {
-    machine: &'a intake::ConnectionEvidence<'m>,
-    settings: &'a analyte_config::AutolyserStack,
-    store: &'a Handle,
+pub(super) struct Host<'a> {
     work: crate::orders::sending::Work<
         'a,
         analyte_config::AutolyserOrders,
         analyte_autolyser::syntax::Worklist,
     >,
     dialog: Dialog,
-    start: Instant,
     receipt: Option<(ReceiptId, jiff::Timestamp)>,
     phase: Phase,
     guard: Option<analyte_store::PollIntentId>,
-    trigger: Trigger,
 }
 
-pub(super) async fn session(
-    machine: &intake::ConnectionEvidence<'_>,
-    settings: &analyte_config::AutolyserStack,
-    store: &Handle,
-    conn: &mut analyte_transport::Connection,
-    stop: watch::Receiver<bool>,
-) -> Result<(), Error> {
-    custody::ensure_reconciled(store, machine.machine()).await?;
-    driver::run(
-        || Host::open(machine, settings, store),
-        Context {
-            machine,
-            store,
-            conn,
-            stop,
-        },
-    )
-    .await
-}
-
-impl<'a, 'm> Host<'a, 'm> {
-    fn open(
-        machine: &'a intake::ConnectionEvidence<'m>,
-        settings: &'a analyte_config::AutolyserStack,
-        store: &'a Handle,
+impl<'a> Host<'a> {
+    /// Refuses to start while an earlier session left an R poll unreconciled.
+    pub(super) async fn open(
+        machine: &intake::ConnectionEvidence<'_>,
+        settings: &'a AutolyserStack,
+        store: &analyte_store::Handle,
     ) -> Result<Self, Error> {
+        custody::ensure_reconciled(store, machine.machine()).await?;
         let dialog = Dialog::new(settings::dialog(settings))?;
         Ok(Self {
-            machine,
-            settings,
-            store,
             work: crate::orders::sending::Work::new(settings.orders().filter(|o| o.send_ahead())),
             dialog,
-            start: Instant::now(),
             receipt: None,
             phase: Phase::Busy,
             guard: None,
-            trigger: Trigger::Exchange,
         })
     }
-}
-
-impl driver::ByteEffects for Host<'_, '_> {
-    async fn apply_byte(
+    /// Guards the R cursor before the dialog asks for the next report.
+    async fn poll_next(
         &mut self,
-        byte: u8,
-        conn: &mut analyte_transport::Connection,
-        stop: &mut watch::Receiver<bool>,
-    ) -> Result<Flow, Error> {
-        let actions = self.dialog.step(self.start.elapsed(), Event::Byte(byte))?;
-        driver::drain(self, actions, conn, stop).await
-    }
-}
-
-impl Effects for Host<'_, '_> {
-    driver::chunk_effects!(Error);
-    async fn input(&mut self, host: &mut Context<'_, '_>, input: Input) -> Result<Flow, Error> {
-        let machine = self.machine;
-        let store = self.store;
-        let conn = &mut *host.conn;
-        let stop = &mut host.stop;
-        let ended = matches!(input, Input::Closed(_) | Input::Failed(_));
-        self.trigger = Trigger::of(&input, stop);
-        let events = match input {
-            Input::Opened { .. } => {
-                self.phase.busy();
-                vec![Event::Poll(Request::Next)]
-            }
-            Input::Bytes { bytes } => {
-                if driver::feed(self, bytes, conn, stop).await? == Flow::Stop {
-                    return Ok(Flow::Stop);
-                }
-
-                if self.phase == Phase::Ready
-                    && self.guard.is_none()
-                    && !self.work.is_active()
-                    && machine.machine().hooks.enabled(Pause::AutolyserQuiescent)
-                {
-                    machine
-                        .machine()
-                        .hooks
-                        .pause(Pause::AutolyserQuiescent, stop)
-                        .await
-                        .map_err(Error::from)?;
-                }
-                Vec::new()
-            }
-            Input::Tick => {
-                let actions = self.dialog.step(self.start.elapsed(), Event::Tick)?;
-                // Tick alone can initiate L recovery. Never interleave R with it.
-                if actions.is_empty() && self.phase == Phase::Ready {
-                    self.phase = Phase::Busy;
-                    if let Some(worklist) = self.work.poll(store, machine, self.settings).await? {
-                        let actions = self
-                            .dialog
-                            .step(self.start.elapsed(), Event::Download(&worklist))?;
-                        if driver::drain(self, actions, conn, stop).await? == Flow::Stop {
-                            return Ok(Flow::Stop);
-                        }
-                        Vec::new()
-                    } else {
-                        vec![Event::Poll(Request::Next)]
-                    }
-                } else {
-                    if driver::drain(self, actions, conn, stop).await? == Flow::Stop {
-                        return Ok(Flow::Stop);
-                    }
-                    Vec::new()
-                }
-            }
-            Input::Closed(_) | Input::Failed(_) => {
-                vec![Event::Disconnected]
-            }
-        };
-        for event in events {
-            if matches!(event, Event::Poll(Request::Next)) {
-                self.guard = Some(custody::reserve(store, machine.machine()).await?);
-            }
-            let actions = self.dialog.step(self.start.elapsed(), event)?;
-            if driver::drain(self, actions, conn, stop).await? == Flow::Stop {
-                return Ok(Flow::Stop);
-            }
-        }
-        if ended {
-            return Ok(Flow::Stop);
-        }
-
-        Ok(Flow::Continue)
-    }
-    async fn close(
-        &mut self,
-        _host: &mut Context<'_, '_>,
-        result: &mut Result<(), Error>,
+        s: &Session<'_, '_, AutolyserStack>,
+        queue: &mut Queue<Action, Error>,
     ) -> Result<(), Error> {
-        let code = outcome::session_end(self.trigger, result);
-        let cleanup = custody::uncertain(
-            self.store,
-            self.guard,
-            self.machine.machine(),
-            code.as_str(),
-        )
-        .await;
-        receive::custody::retain_cleanup(result, cleanup);
-        self.work
-            .close(self.store, code.as_str())
-            .await
-            .map_err(Into::into)
+        self.guard = Some(custody::reserve(s.store, s.machine.machine()).await?);
+        let actions = self.dialog.step(s.elapsed(), Event::Poll(Request::Next))?;
+        queue.actions.extend(actions);
+        Ok(())
     }
-}
-
-impl<'a, 'm> Host<'a, 'm> {
     /// Stores a report before the dialog may acknowledge it. A failed store is
     /// kept until the dialog's own refusal has run; it never ends the queue early.
     async fn store_report(
         &mut self,
+        s: &Session<'_, '_, AutolyserStack>,
         token: analyte_dialog::autolyser::StoreId,
         raw: Vec<u8>,
-        run: &mut Run<'_, Action, Error>,
+        queue: &mut Queue<Action, Error>,
     ) -> Result<(), Error> {
         let id = ReceiptId::new();
         let stored = receive::custody::store_before_ack(
-            self.machine.machine(),
-            intake::receive(self.store, self.machine, id, raw),
+            s.machine.machine(),
+            intake::receive(s.store, s.machine, id, raw),
         )
         .await;
         let event = match stored {
@@ -231,56 +102,116 @@ impl<'a, 'm> Host<'a, 'm> {
                 Event::Stored(token)
             }
             Err(error) => {
-                run.failures.keep(error.into());
+                queue.failures.keep(error.into());
                 Event::StoreFailed(token)
             }
         };
-        run.actions
-            .extend(self.dialog.step(self.start.elapsed(), event)?);
+        queue.actions.extend(self.dialog.step(s.elapsed(), event)?);
         Ok(())
     }
-    async fn interpret_report(
-        &mut self,
-        machine: &intake::ConnectionEvidence<'_>,
-        store: &Handle,
-    ) -> Result<(), Error> {
+    async fn interpret_report(&mut self, s: &Session<'_, '_, AutolyserStack>) -> Result<(), Error> {
         let (id, _) = self
             .receipt
             .take()
             .ok_or_else(|| Error::ReportReceiptMissing)?;
-        intake::interpret(store, machine.machine(), id).await?;
+        intake::interpret(s.store, s.machine.machine(), id).await?;
         self.phase = Phase::Ready;
-        custody::complete(store, &mut self.guard, machine.machine()).await?;
+        custody::complete(s.store, &mut self.guard, s.machine.machine()).await?;
 
         Ok(())
     }
 }
 
-impl driver::Drain for Host<'_, '_> {
+impl Protocol for Host<'_> {
+    type Settings = AutolyserStack;
     type Action = Action;
+    type Error = Error;
+    fn deadline(&self, _s: &Session<'_, '_, AutolyserStack>) -> Result<Option<Duration>, Error> {
+        Ok(self.dialog.next_deadline())
+    }
+    /// A test may pause here after machine bytes left the host ready and quiet.
+    /// Only bytes leave it ready: an opened connection starts a poll first.
+    async fn idle(
+        &mut self,
+        s: &mut Session<'_, '_, AutolyserStack>,
+        _queue: &mut Queue<Action, Error>,
+    ) -> Result<Flow, Error> {
+        let hooks = &s.machine.machine().hooks;
+        if s.trigger() == Trigger::Exchange
+            && self.phase == Phase::Ready
+            && self.guard.is_none()
+            && !self.work.is_active()
+            && hooks.enabled(Pause::AutolyserQuiescent)
+        {
+            hooks
+                .pause(Pause::AutolyserQuiescent, &mut s.stop)
+                .await
+                .map_err(Error::from)?;
+        }
+        Ok(Flow::Continue)
+    }
+    async fn input(
+        &mut self,
+        s: &mut Session<'_, '_, AutolyserStack>,
+        input: HostInput,
+        queue: &mut Queue<Action, Error>,
+    ) -> Result<Flow, Error> {
+        match input {
+            HostInput::Opened => {
+                self.phase.busy();
+                self.poll_next(s, queue).await?;
+            }
+            HostInput::Chunk => {}
+            HostInput::Byte(byte) => {
+                let actions = self.dialog.step(s.elapsed(), Event::Byte(byte))?;
+                queue.actions.extend(actions);
+            }
+            HostInput::Tick => {
+                let actions = self.dialog.step(s.elapsed(), Event::Tick)?;
+                // Tick alone can initiate L recovery. Never interleave R with it.
+                if actions.is_empty() && self.phase == Phase::Ready {
+                    self.phase = Phase::Busy;
+                    if let Some(worklist) = self.work.poll(s.store, s.machine, s.settings).await? {
+                        let actions = self.dialog.step(s.elapsed(), Event::Download(&worklist))?;
+                        queue.actions.extend(actions);
+                    } else {
+                        self.poll_next(s, queue).await?;
+                    }
+                } else {
+                    queue.actions.extend(actions);
+                }
+            }
+            HostInput::Disconnected => {
+                let actions = self.dialog.step(s.elapsed(), Event::Disconnected)?;
+                queue.actions.extend(actions);
+            }
+        }
+        Ok(Flow::Continue)
+    }
     async fn effect(
         &mut self,
+        s: &mut Session<'_, '_, AutolyserStack>,
         action: Action,
-        run: &mut Run<'_, Action, Error>,
+        queue: &mut Queue<Action, Error>,
     ) -> Result<Flow, Error> {
-        let machine = self.machine;
-        let store = self.store;
+        let machine = s.machine;
+        let store = s.store;
         match action {
             Action::Write(bytes) => {
-                let deadline = WriteDeadline::Within(ms(self.settings.policy().acknowledgment_ms));
-                receive::custody::write(run.conn, &bytes, deadline).await?;
+                let deadline = WriteDeadline::Within(ms(s.settings.policy().acknowledgment_ms));
+                receive::custody::write(s.conn, &bytes, deadline).await?;
             }
             Action::Store(token, raw) => {
-                self.store_report(token, raw, run).await?;
+                self.store_report(s, token, raw, queue).await?;
             }
             Action::Report(_) => {
-                self.interpret_report(machine, store).await?;
+                self.interpret_report(s).await?;
             }
             Action::Park(error) => {
                 if self.work.is_active() {
-                    let code = outcome::parked(self.trigger, &error);
+                    let code = outcome::parked(s.trigger(), &error);
                     self.work.refuse(store, &code).await?;
-                    run.stop_when_drained();
+                    queue.stop_when_drained();
                 }
                 self.phase = Phase::Recovering;
                 let reason = format!("Autolyser: {error}");
@@ -313,7 +244,7 @@ impl driver::Drain for Host<'_, '_> {
                 let ready = self.work.insertion(reception, store).await?;
                 self.phase.after_insertion(ready);
                 if !ready {
-                    run.stop_when_drained();
+                    queue.stop_when_drained();
                 }
             }
             Action::Uncertain => {
@@ -327,9 +258,23 @@ impl driver::Drain for Host<'_, '_> {
                 .await?;
             }
             Action::Refused(error) => return Err(error.into()),
-            Action::Close => run.stop_when_drained(),
+            Action::Close => queue.stop_when_drained(),
             Action::Deadline(_) => {}
         }
         Ok(Flow::Continue)
+    }
+    async fn close(
+        &mut self,
+        s: &mut Session<'_, '_, AutolyserStack>,
+        result: &mut Result<(), Error>,
+    ) -> Result<(), Error> {
+        let code = outcome::session_end(s.trigger(), result);
+        let cleanup =
+            custody::uncertain(s.store, self.guard, s.machine.machine(), code.as_str()).await;
+        receive::custody::retain_cleanup(result, cleanup);
+        self.work
+            .close(s.store, code.as_str())
+            .await
+            .map_err(Into::into)
     }
 }

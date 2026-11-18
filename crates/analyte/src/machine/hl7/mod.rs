@@ -492,7 +492,7 @@ impl Effects for Host<'_, '_> {
             |deadline| deadline.saturating_sub(self.start.elapsed()),
         )))
     }
-    async fn input(&mut self, host: &mut Context<'_, '_>, input: Input) -> Result<Flow, Error> {
+    async fn input(&mut self, host: &mut Context<'_>, input: Input) -> Result<Flow, Error> {
         let machine = self.machine;
         let conn = &mut *host.conn;
         let stop = &mut host.stop;
@@ -531,7 +531,7 @@ impl Effects for Host<'_, '_> {
     }
     async fn close(
         &mut self,
-        _host: &mut Context<'_, '_>,
+        _host: &mut Context<'_>,
         result: &mut Result<(), Error>,
     ) -> Result<(), Error> {
         let machine = self.machine;

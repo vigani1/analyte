@@ -1,5 +1,5 @@
 //! Proves stop handling, parking and store-before-ACK on the real VIDAS and POCT hosts.
-use super::super::{Context, Effects, Flow, feed};
+use super::super::{Flow, Protocol as _, Session, protocol::feed};
 use crate::intake::{self, ByteReason};
 use crate::machine::{poct, settings::StreamSession};
 use analyte_fixtures::poct as peer;
@@ -122,33 +122,20 @@ async fn adr0003_vidas_chunk_before_stop_is_journaled_then_the_stop_parks_the_tr
 
 /// Feeds one transport chunk through the POCT host's byte loop.
 async fn feed_poct(
-    host: &mut poct::Host<'_, '_>,
+    host: &mut poct::Host,
     bytes: &[u8],
-    conn: &mut analyte_transport::Connection,
-    stop: &mut watch::Receiver<bool>,
+    session: &mut Session<'_, '_, analyte_config::PoctStack>,
 ) -> Result<Flow, poct::Error> {
-    feed(host, bytes.to_vec(), conn, stop).await
+    feed(host, session, bytes.to_vec()).await
 }
 
 /// Ends a POCT host the way the runner does after a stop.
 async fn close_poct(
-    host: &mut poct::Host<'_, '_>,
-    machine: &intake::ConnectionEvidence<'_>,
-    store: &Handle,
-    conn: &mut analyte_transport::Connection,
-    stop: watch::Receiver<bool>,
+    host: &mut poct::Host,
+    session: &mut Session<'_, '_, analyte_config::PoctStack>,
 ) -> Result<(), poct::Error> {
     let mut result = Ok(());
-    host.close(
-        &mut Context {
-            machine,
-            store,
-            conn,
-            stop,
-        },
-        &mut result,
-    )
-    .await?;
+    host.close(session, &mut result).await?;
     result
 }
 
@@ -193,18 +180,19 @@ async fn adr0003_poct_stop_mid_chunk_parks_partial_input_and_never_acknowledges(
             4,
             Duration::from_secs(1),
         )?);
-        let (signal, mut stop) = watch::channel(false);
-        let mut host = poct::Host::open(&connection, settings, &store)?;
-        let flow = feed_poct(&mut host, &before, &mut conn, &mut stop).await?;
+        let (signal, stop) = watch::channel(false);
+        let mut host = poct::Host::open(settings)?;
+        let mut session = Session::new(&connection, settings.as_ref(), &store, &mut conn, stop);
+        let flow = feed_poct(&mut host, &before, &mut session).await?;
         assert_eq!(flow, Flow::Continue);
         assert!(
             journal(&store).await?.is_empty(),
             "a partial message is not parked"
         );
         signal.send(true)?;
-        let flow = feed_poct(&mut host, &after, &mut conn, &mut stop).await?;
+        let flow = feed_poct(&mut host, &after, &mut session).await?;
         assert_eq!(flow, Flow::Stop, "the stop ends the chunk without a write");
-        close_poct(&mut host, &connection, &store, &mut conn, stop).await?;
+        close_poct(&mut host, &mut session).await?;
         assert_eq!(
             journal(&store).await?,
             [(parked, Some(ByteReason::PoctCancelled.to_string()))],

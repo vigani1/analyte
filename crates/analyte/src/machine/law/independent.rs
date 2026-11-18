@@ -394,8 +394,6 @@ async fn transaction(
             )
         },
         super::Context {
-            machine,
-            store,
             conn,
             stop: stop.clone(),
         },

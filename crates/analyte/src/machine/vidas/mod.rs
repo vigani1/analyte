@@ -1,6 +1,5 @@
 //! Receives VIDAS uploads using configured checksum, suffix and timer rules.
-use super::connection_input::Input;
-use super::driver::{self, Context, Effects, Flow, Run, Trigger};
+use super::driver::{Flow, HostInput, Protocol, Queue, Session};
 use crate::intake;
 use crate::intake::ByteReason;
 use crate::machine::receive::custody::{self, ms};
@@ -8,13 +7,13 @@ mod error;
 pub(crate) mod orders;
 mod outcome;
 pub(crate) mod settings;
+use analyte_config::VidasStack;
 use analyte_dialog::vidas::{Action, Config as DialogConfig, Dialog, Event};
 use analyte_framing::vidas::Config;
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
 pub(crate) use error::Error;
-use std::{collections::VecDeque, time::Instant};
-use tokio::sync::watch;
+use std::time::{Duration, Instant};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Phase {
@@ -23,46 +22,33 @@ enum Phase {
     Transferring,
 }
 
-/// Dialog, decoder and timers cannot outlive their owning transport connection.
-pub(super) struct Host<'a, 'm> {
-    machine: &'a intake::ConnectionEvidence<'m>,
-    settings: &'a analyte_config::VidasStack,
-    store: &'a Handle,
+/// Dialog, decoder and order work for one connection.
+pub(super) struct Host<'a> {
     work: crate::orders::sending::Work<
         'a,
         analyte_config::VidasOrders,
         analyte_vidas::syntax::Message,
     >,
     dialog: Dialog,
-    start: Instant,
-    /// Actions produced outside a drain wait here for the next one.
-    pending: VecDeque<Action>,
+    /// The opening and tick actions wait here for the next idle step, which
+    /// polls for a due order download first.
+    pending: Vec<Action>,
     phase: Phase,
-    trigger: Trigger,
     config: Config,
     policy: DialogConfig,
 }
 
-impl<'a, 'm> Host<'a, 'm> {
-    pub(super) fn open(
-        machine: &'a intake::ConnectionEvidence<'m>,
-        settings: &'a analyte_config::VidasStack,
-        store: &'a Handle,
-    ) -> Result<Self, Error> {
+impl<'a> Host<'a> {
+    pub(super) fn open(settings: &'a VidasStack) -> Result<Self, Error> {
         let config = settings::framing(settings)?;
         let policy = settings::dialog(settings);
         let mut dialog = Dialog::upload(config.clone(), policy.clone())?;
-        let pending = dialog.start().into();
+        let pending = dialog.start();
         Ok(Self {
-            machine,
-            settings,
-            store,
             work: crate::orders::sending::Work::new(settings.orders().filter(|o| o.send_ahead())),
             dialog,
-            start: Instant::now(),
             pending,
             phase: Phase::Opening,
-            trigger: Trigger::Exchange,
             config,
             policy,
         })
@@ -70,24 +56,22 @@ impl<'a, 'm> Host<'a, 'm> {
     /// Replaces the dialog with a download and returns its opening actions.
     fn start_download(
         &mut self,
+        s: &mut Session<'_, '_, VidasStack>,
         request: &analyte_vidas::syntax::Message,
     ) -> Result<Vec<Action>, Error> {
         self.dialog = Dialog::download(self.config.clone(), self.policy.clone(), request)?;
-        self.start = Instant::now();
+        s.restart_clock();
         self.phase = Phase::Transferring;
         Ok(self.dialog.start())
     }
-}
-
-impl driver::ByteEffects for Host<'_, '_> {
-    async fn apply_byte(
+    /// Steps one byte; a framing failure parks the byte and ends the session.
+    async fn byte(
         &mut self,
+        s: &Session<'_, '_, VidasStack>,
         byte: u8,
-        conn: &mut analyte_transport::Connection,
-        stop: &mut watch::Receiver<bool>,
-    ) -> Result<Flow, Error> {
-        match self.dialog.step(self.start.elapsed(), Event::Byte(byte)) {
-            Ok(actions) => self.pending.extend(actions),
+    ) -> Result<Vec<Action>, Error> {
+        match self.dialog.step(s.elapsed(), Event::Byte(byte)) {
+            Ok(actions) => Ok(actions),
             Err(analyte_dialog::vidas::Error::Framing(error)) => {
                 let suffix = error == analyte_framing::vidas::Error::ControlSuffix;
                 let reason = if suffix {
@@ -95,174 +79,151 @@ impl driver::ByteEffects for Host<'_, '_> {
                 } else {
                     ByteReason::VidasFrame(&error)
                 };
-                let parked = intake::park_bytes(self.store, self.machine, vec![byte], reason).await;
+                let parked = intake::park_bytes(s.store, s.machine, vec![byte], reason).await;
                 let cause = if suffix {
                     Error::ControlSuffixMismatch
                 } else {
                     error.into()
                 };
                 // A failed park keeps the framing failure as the session's cause.
-                return Err(match parked {
+                Err(match parked {
                     Ok(()) => cause,
                     Err(effect) => custody::effect_failure(Some(cause), effect.into()),
-                });
+                })
             }
-            Err(error) => return Err(error.into()),
+            Err(error) => Err(error.into()),
         }
-        // Process Store before consuming a merged ETX/EOT following it.
-        self.drain_pending(conn, stop).await
-    }
-}
-
-impl Effects for Host<'_, '_> {
-    type Error = Error;
-    const CUSTODY: driver::Custody = driver::Custody::Chunks;
-    fn wait(&self) -> Result<Option<std::time::Duration>, Error> {
-        let mut next = self
-            .dialog
-            .next_deadline()
-            .ok_or(Error::ActiveDialogHasNoDeadline)?;
-        if self.phase == Phase::Idle {
-            next = next.min(
-                self.start.elapsed().saturating_add(
-                    self.work
-                        .next_poll()
-                        .saturating_duration_since(Instant::now()),
-                ),
-            );
-        }
-        Ok(Some(next.saturating_sub(self.start.elapsed())))
-    }
-    async fn prepare(&mut self, host: &mut Context<'_, '_>) -> Result<Flow, Error> {
-        if self.phase == Phase::Idle
-            && let Some(request) = self
-                .work
-                .poll(self.machine, self.store, self.settings)
-                .await?
-        {
-            let started = self.start_download(&request)?;
-            self.pending.extend(started);
-        }
-        if self.drain_pending(host.conn, &mut host.stop).await? == Flow::Stop {
-            return Ok(Flow::Stop);
-        }
-        Ok(Flow::Continue)
-    }
-    async fn input(&mut self, host: &mut Context<'_, '_>, input: Input) -> Result<Flow, Error> {
-        let conn = &mut *host.conn;
-        self.trigger = Trigger::of(&input, &host.stop);
-        match input {
-            Input::Opened { .. } => self.phase = Phase::Idle,
-            Input::Tick => {
-                self.pending
-                    .extend(self.dialog.step(self.start.elapsed(), Event::Tick)?);
-            }
-            Input::Closed(_) | Input::Failed(_) => {
-                self.pending.extend(
-                    self.dialog
-                        .step(self.start.elapsed(), Event::Disconnected)?,
-                );
-                self.drain_pending(conn, &mut host.stop).await?;
-                return Ok(Flow::Stop);
-            }
-            Input::Bytes { bytes } => {
-                self.phase = Phase::Transferring;
-                if driver::feed(self, bytes, conn, &mut host.stop).await? == Flow::Stop {
-                    return Ok(Flow::Stop);
-                }
-            }
-        }
-
-        Ok(Flow::Continue)
-    }
-    async fn close(
-        &mut self,
-        _host: &mut Context<'_, '_>,
-        result: &mut Result<(), Error>,
-    ) -> Result<(), Error> {
-        self.work
-            .close(
-                self.store,
-                outcome::session_end(self.trigger, result).as_str(),
-            )
-            .await
-            .map_err(Into::into)
-    }
-}
-
-impl Host<'_, '_> {
-    /// Runs the actions produced outside a drain (start, tick, disconnect,
-    /// byte) before the session waits again.
-    async fn drain_pending(
-        &mut self,
-        conn: &mut analyte_transport::Connection,
-        stop: &mut watch::Receiver<bool>,
-    ) -> Result<Flow, Error> {
-        let pending = std::mem::take(&mut self.pending);
-        driver::drain(self, pending, conn, stop).await
     }
     /// Stores an upload before the dialog may acknowledge it. A failed store
     /// is kept until the dialog's own park has run.
     async fn store_packet(
         &mut self,
+        s: &Session<'_, '_, VidasStack>,
         raw: &[u8],
-        run: &mut Run<'_, Action, Error>,
+        queue: &mut Queue<Action, Error>,
     ) -> Result<(), Error> {
         let id = ReceiptId::new();
-        let operation = store_upload(self.store, self.machine, id, raw);
-        match custody::store_before_ack(self.machine.machine(), operation).await {
+        let operation = store_upload(s.store, s.machine, id, raw);
+        match custody::store_before_ack(s.machine.machine(), operation).await {
             Ok(()) => {
                 // The dialog expired its own commit deadline before accepting completion.
-                run.actions
-                    .extend(self.dialog.step(self.start.elapsed(), Event::Stored)?);
+                queue
+                    .actions
+                    .extend(self.dialog.step(s.elapsed(), Event::Stored)?);
             }
             Err(error) => {
-                run.actions
-                    .extend(self.dialog.step(self.start.elapsed(), Event::StoreFailed)?);
-                run.failures.keep(error.into());
+                queue
+                    .actions
+                    .extend(self.dialog.step(s.elapsed(), Event::StoreFailed)?);
+                queue.failures.keep(error.into());
             }
         }
         Ok(())
     }
 }
 
-impl driver::Drain for Host<'_, '_> {
+impl Protocol for Host<'_> {
+    type Settings = VidasStack;
     type Action = Action;
+    type Error = Error;
+    fn deadline(&self, s: &Session<'_, '_, VidasStack>) -> Result<Option<Duration>, Error> {
+        let mut next = self
+            .dialog
+            .next_deadline()
+            .ok_or(Error::ActiveDialogHasNoDeadline)?;
+        if self.phase == Phase::Idle {
+            next = next.min(
+                s.elapsed().saturating_add(
+                    self.work
+                        .next_poll()
+                        .saturating_duration_since(Instant::now()),
+                ),
+            );
+        }
+        Ok(Some(next))
+    }
+    async fn idle(
+        &mut self,
+        s: &mut Session<'_, '_, VidasStack>,
+        queue: &mut Queue<Action, Error>,
+    ) -> Result<Flow, Error> {
+        if self.phase == Phase::Idle
+            && let Some(request) = self.work.poll(s.machine, s.store, s.settings).await?
+        {
+            let started = self.start_download(s, &request)?;
+            self.pending.extend(started);
+        }
+        queue.actions.extend(self.pending.drain(..));
+        Ok(Flow::Continue)
+    }
+    async fn input(
+        &mut self,
+        s: &mut Session<'_, '_, VidasStack>,
+        input: HostInput,
+        queue: &mut Queue<Action, Error>,
+    ) -> Result<Flow, Error> {
+        match input {
+            HostInput::Opened => self.phase = Phase::Idle,
+            HostInput::Tick => {
+                let actions = self.dialog.step(s.elapsed(), Event::Tick)?;
+                self.pending.extend(actions);
+            }
+            HostInput::Disconnected => {
+                let actions = self.dialog.step(s.elapsed(), Event::Disconnected)?;
+                queue.actions.extend(actions);
+            }
+            HostInput::Chunk => self.phase = Phase::Transferring,
+            // Store runs before a merged ETX/EOT following it is fed.
+            HostInput::Byte(byte) => queue.actions.extend(self.byte(s, byte).await?),
+        }
+        Ok(Flow::Continue)
+    }
     async fn effect(
         &mut self,
+        s: &mut Session<'_, '_, VidasStack>,
         action: Action,
-        run: &mut Run<'_, Action, Error>,
+        queue: &mut Queue<Action, Error>,
     ) -> Result<Flow, Error> {
         match action {
             Action::Write(bytes) => {
-                let budget = ms(self.settings.policy().acknowledgment_ms);
-                custody::write(run.conn, &bytes, custody::WriteDeadline::Within(budget)).await?;
+                let budget = ms(s.settings.policy().acknowledgment_ms);
+                custody::write(s.conn, &bytes, custody::WriteDeadline::Within(budget)).await?;
             }
-            Action::Store(packet) => self.store_packet(&packet.raw, run).await?,
+            Action::Store(packet) => self.store_packet(s, &packet.raw, queue).await?,
             Action::TimerArmed(_, _) | Action::TimerCancelled(_) => {}
             Action::Park => {
                 // Kept before parking, so the park and its deadline stay
                 // in the session's cause even when parking itself fails.
-                run.failures.keep(Error::TransferUnreconciled {
+                queue.failures.keep(Error::TransferUnreconciled {
                     expired: self.dialog.expired_timer(),
                 });
                 let reason = ByteReason::VidasIncomplete;
-                intake::park_bytes(self.store, self.machine, Vec::new(), reason).await?;
+                intake::park_bytes(s.store, s.machine, Vec::new(), reason).await?;
             }
-            Action::Close => match self.work.confirmed(self.store).await? {
+            Action::Close => match self.work.confirmed(s.store).await? {
                 orders::Progress::DownloadNext(request) => {
-                    run.actions.extend(self.start_download(&request)?);
+                    queue.actions.extend(self.start_download(s, &request)?);
                 }
                 orders::Progress::DownloadFinished => {
                     self.dialog = Dialog::upload(self.config.clone(), self.policy.clone())?;
-                    self.start = Instant::now();
-                    run.actions.extend(self.dialog.start());
+                    s.restart_clock();
+                    queue.actions.extend(self.dialog.start());
                     self.phase = Phase::Idle;
                 }
-                orders::Progress::UploadFinished => run.stop_when_drained(),
+                orders::Progress::UploadFinished => queue.stop_when_drained(),
             },
         }
         Ok(Flow::Continue)
+    }
+    async fn close(
+        &mut self,
+        s: &mut Session<'_, '_, VidasStack>,
+        result: &mut Result<(), Error>,
+    ) -> Result<(), Error> {
+        self.work
+            .close(s.store, outcome::session_end(s.trigger(), result).as_str())
+            .await
+            .map_err(Into::into)
     }
 }
 

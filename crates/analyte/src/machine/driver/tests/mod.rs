@@ -1,5 +1,7 @@
 //! Checks the shared driver loop, deferred failures and the close-time flush.
 use super::*;
+use crate::intake;
+use analyte_store::Handle;
 #[derive(Debug, thiserror::Error)]
 enum Error {
     #[error("probe deadline")]
@@ -26,21 +28,11 @@ use std::{cell::RefCell, rc::Rc};
 /// Proves the stop, store-before-ACK and parking rules on the real chunk hosts.
 mod hosts;
 
-#[derive(Clone, Copy)]
-enum Scenario {
-    Deadline,
-    Stop(Custody),
-}
-struct Probe<const CHUNKS: bool> {
+struct Probe {
     trace: Rc<RefCell<Vec<&'static str>>>,
 }
-impl<const CHUNKS: bool> Effects for Probe<CHUNKS> {
+impl Effects for Probe {
     type Error = Error;
-    const CUSTODY: Custody = if CHUNKS {
-        Custody::Chunks
-    } else {
-        Custody::Dialog
-    };
     fn wait(&self) -> Result<Option<Duration>, Error> {
         Ok(Some(Duration::ZERO))
     }
@@ -48,25 +40,60 @@ impl<const CHUNKS: bool> Effects for Probe<CHUNKS> {
         self.trace.borrow_mut().push("background");
         Err(Error::UnexpectedInput)
     }
-    async fn input(&mut self, _: &mut Context<'_, '_>, input: Input) -> Result<Flow, Error> {
+    async fn input(&mut self, _: &mut Context<'_>, input: Input) -> Result<Flow, Error> {
         match input {
             Input::Tick => {
                 self.trace.borrow_mut().push("deadline");
                 Err(Error::Deadline)
             }
-            Input::Closed(None) => {
-                self.trace.borrow_mut().push("disconnect");
-                Ok(Flow::Stop)
+            Input::Closed(_) | Input::Opened { .. } | Input::Bytes { .. } | Input::Failed(_) => {
+                Err(Error::UnexpectedInput)
             }
-            Input::Closed(Some(_))
-            | Input::Opened { .. }
-            | Input::Bytes { .. }
-            | Input::Failed(_) => Err(Error::UnexpectedInput),
         }
+    }
+    async fn close(&mut self, _: &mut Context<'_>, _: &mut Result<(), Error>) -> Result<(), Error> {
+        self.trace.borrow_mut().push("close");
+        Err(Error::Cleanup)
+    }
+}
+impl Protocol for Probe {
+    type Settings = ();
+    type Action = ();
+    type Error = Error;
+    fn deadline(&self, _: &Session<'_, '_, ()>) -> Result<Option<Duration>, Error> {
+        Ok(Some(Duration::ZERO))
+    }
+    async fn input(
+        &mut self,
+        _: &mut Session<'_, '_, ()>,
+        input: HostInput,
+        _: &mut Queue<(), Error>,
+    ) -> Result<Flow, Error> {
+        match input {
+            HostInput::Tick => {
+                self.trace.borrow_mut().push("deadline");
+                Err(Error::Deadline)
+            }
+            HostInput::Disconnected => {
+                self.trace.borrow_mut().push("disconnect");
+                Ok(Flow::Continue)
+            }
+            HostInput::Opened | HostInput::Chunk | HostInput::Byte(_) => {
+                Err(Error::UnexpectedInput)
+            }
+        }
+    }
+    async fn effect(
+        &mut self,
+        _: &mut Session<'_, '_, ()>,
+        (): (),
+        _: &mut Queue<(), Error>,
+    ) -> Result<Flow, Error> {
+        Err(Error::UnexpectedInput)
     }
     async fn close(
         &mut self,
-        _: &mut Context<'_, '_>,
+        _: &mut Session<'_, '_, ()>,
         _: &mut Result<(), Error>,
     ) -> Result<(), Error> {
         self.trace.borrow_mut().push("close");
@@ -127,6 +154,10 @@ async fn synthetic(
     .await?;
     Ok((program, store))
 }
+/// Both runners: a due deadline outranks EOF and background work, and a stop
+/// outranks all three. An [`Effects`] host ends at a stop without input; a
+/// [`Protocol`] host first sees it as a disconnect so its dialog parks what is
+/// open. Cleanup runs in every case and keeps both causes.
 #[tokio::test]
 async fn adr0001_0003_stop_deadline_and_cleanup_preserve_priority_and_both_causes()
 -> Result<(), crate::Error> {
@@ -134,11 +165,7 @@ async fn adr0001_0003_stop_deadline_and_cleanup_preserve_priority_and_both_cause
     let (program, mut store) = synthetic(temp.path()).await?;
     let machine = program.machines().first().ok_or("synthetic machine")?;
     let connection = intake::ConnectionEvidence::new(machine)?;
-    for scenario in [
-        Scenario::Deadline,
-        Scenario::Stop(Custody::Dialog),
-        Scenario::Stop(Custody::Chunks),
-    ] {
+    for (chunks, stopped) in [(false, false), (false, true), (true, false), (true, true)] {
         let trace = Rc::new(RefCell::new(Vec::new()));
         let (mut conn, side) = analyte_transport::connection(analyte_transport::Limits::new(
             4,
@@ -146,50 +173,35 @@ async fn adr0001_0003_stop_deadline_and_cleanup_preserve_priority_and_both_cause
         )?);
         // EOF and background are ready as well: deadline must win, and stop must win both.
         drop(side);
-        let (_signal, stop) = watch::channel(matches!(scenario, Scenario::Stop(_)));
-        let host = Context {
-            machine: &connection,
-            store: &store,
-            conn: &mut conn,
-            stop,
+        let (_signal, stop) = watch::channel(stopped);
+        let probe = || {
+            trace.borrow_mut().push("open");
+            Ok(Probe {
+                trace: trace.clone(),
+            })
         };
-        trace.borrow_mut().push("open");
-        let result = match scenario {
-            Scenario::Stop(Custody::Chunks) => {
-                run(
-                    || {
-                        Ok(Probe::<true> {
-                            trace: trace.clone(),
-                        })
-                    },
-                    host,
-                )
-                .await
-            }
-            Scenario::Deadline | Scenario::Stop(Custody::Dialog) => {
-                run(
-                    || {
-                        Ok(Probe::<false> {
-                            trace: trace.clone(),
-                        })
-                    },
-                    host,
-                )
-                .await
-            }
+        let result = if chunks {
+            let session = Session::new(&connection, &(), &store, &mut conn, stop);
+            serve(async { probe() }, session).await
+        } else {
+            let host = Context {
+                conn: &mut conn,
+                stop,
+            };
+            run(probe, host).await
         };
-        match scenario {
-            Scenario::Deadline => {
+        match (chunks, stopped) {
+            (_, false) => {
                 assert_eq!(*trace.borrow(), ["open", "deadline", "close"]);
                 assert!(
                     matches!(result, Err(Error::CleanupPair(causes)) if matches!(causes.original, Error::Deadline) && matches!(causes.effect, Error::Cleanup))
                 );
             }
-            Scenario::Stop(Custody::Dialog) => {
+            (false, true) => {
                 assert_eq!(*trace.borrow(), ["open", "close"]);
                 assert!(matches!(result, Err(Error::Cleanup)));
             }
-            Scenario::Stop(Custody::Chunks) => {
+            (true, true) => {
                 assert_eq!(*trace.borrow(), ["open", "disconnect", "close"]);
                 assert!(matches!(result, Err(Error::Cleanup)));
             }
@@ -209,7 +221,7 @@ impl Effects for Refuser {
     fn wait(&self) -> Result<Option<Duration>, Error> {
         Ok(None)
     }
-    async fn input(&mut self, host: &mut Context<'_, '_>, input: Input) -> Result<Flow, Error> {
+    async fn input(&mut self, host: &mut Context<'_>, input: Input) -> Result<Flow, Error> {
         match input {
             Input::Opened { .. } => {
                 host.conn.write_all(REFUSAL, None).await?;
@@ -220,11 +232,7 @@ impl Effects for Refuser {
             }
         }
     }
-    async fn close(
-        &mut self,
-        _: &mut Context<'_, '_>,
-        _: &mut Result<(), Error>,
-    ) -> Result<(), Error> {
+    async fn close(&mut self, _: &mut Context<'_>, _: &mut Result<(), Error>) -> Result<(), Error> {
         Ok(())
     }
 }
@@ -238,10 +246,6 @@ impl Effects for Refuser {
 async fn adr0003_refusal_queued_before_an_error_is_sent_before_the_owner_closes()
 -> Result<(), crate::Error> {
     use tokio::io::AsyncReadExt as _;
-    let temp = tempfile::tempdir()?;
-    let (program, mut store) = synthetic(temp.path()).await?;
-    let machine = program.machines().first().ok_or("synthetic machine")?;
-    let connection = intake::ConnectionEvidence::new(machine)?;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let mut peer = tokio::net::TcpStream::connect(listener.local_addr()?).await?;
     let (stream, _) = listener.accept().await?;
@@ -253,8 +257,6 @@ async fn adr0003_refusal_queued_before_an_error_is_sent_before_the_owner_closes(
         let result = run(
             || Ok(Refuser),
             Context {
-                machine: &connection,
-                store: &store,
                 conn: &mut conn,
                 stop,
             },
@@ -277,6 +279,5 @@ async fn adr0003_refusal_queued_before_an_error_is_sent_before_the_owner_closes(
         received, REFUSAL,
         "the peer must see the refusal before the close"
     );
-    store.shutdown(crate::deadline()?).await?;
     Ok(())
 }

@@ -215,22 +215,31 @@ effects remain ordered actions. VIDAS's event transition method is private.
 
 ### Program connection hosts
 
-Every protocol uses `Host<'a, 'm>` in `machine/<key>/mod.rs`. It owns its
+Every protocol uses a `Host` in `machine/<key>/mod.rs`. It owns its
 conversation state and borrows the connection's immutable evidence, concrete
 protocol settings and store handle. The caller owns those resources through
 shutdown; no host copies settings or opens its own transport. Protocol-specific
 borrows, such as a pending ASTM lookup or a LAW order exchange, stay with that
 host and cannot outlive the session.
 
-The `Effects` implementation stays in the same front module. The shared driver
-owns receive priority, input journaling and the final cleanup attempt; its
-`Context` supplies transport and cancellation. Each host feeds dialog events,
-then runs the resulting actions through the driver's one `drain` loop, which
-calls the host's `Drain::effect` once per action. Actions produced by storage
-completion join that same ordered queue before the next input byte is fed. A
-single-action method may handle a large match, but never owns a separate
-receive loop. Protocol-specific deadlines and refusal rules remain explicit;
-LAW keeps its own loop because each of its effects has its own deadline.
+VIDAS, Autolyser and POCT implement the driver's `Protocol` trait in the same
+front module, and the driver's `serve` runs them. Their `Session` holds the
+borrowed evidence, settings, store, connection and stop signal, the connection
+clock and the trigger of the latest input. `serve` owns the receive loop and
+its priority (stop, then deadline, then input), journals each chunk before the
+dialog sees it, feeds it one byte at a time with each byte's actions run before
+the next byte, turns a stop or close into one `Disconnected` input, and always
+attempts `close` and the final flush. A host only answers `idle`, `input` and
+`effect` calls by queueing actions on its `Queue`.
+
+ASTM, HL7 and LAW still use the older `Effects` and `Drain` traits until they
+move to `Protocol`: their driver supplies transport and cancellation through
+`Context`, and each host runs its actions through the driver's one `drain`
+loop, which calls `Drain::effect` once per action. In both shapes, actions
+produced by storage completion join the same ordered queue before the next
+input byte is fed, and no host owns a separate receive loop. Protocol-specific
+deadlines and refusal rules remain explicit; LAW keeps its own loop because
+each of its effects has its own deadline.
 
 Every `drain` and `effect` returns `Result<Flow, Error>` with the shared
 driver's `Flow`. `Stop` from an effect ends the queue at once. An effect that
@@ -242,4 +251,6 @@ the driver documents the rule beside `Flow`.
 (Added on 2026-11-17 after the eighth review, finding Y5: the hosts returned
 `bool`, `()` or a state field and kept failures in fields or locals. Changed on
 2026-11-18 after the ninth review, finding Z10: every host copied the queue
-loop, so `drain` now owns it.)
+loop, so `drain` now owns it. Changed again on 2026-11-18: the three
+chunk-journaled hosts each repeated the receive, byte and store skeleton, so
+`serve` now owns it.)
