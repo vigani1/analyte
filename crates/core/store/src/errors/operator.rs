@@ -32,6 +32,18 @@ pub enum OperatorError {
     PollResolution(#[from] crate::OrderError),
 }
 
+impl From<crate::IntakeError> for OperatorError {
+    fn from(error: crate::IntakeError) -> Self {
+        match error {
+            crate::IntakeError::Storage(cause) => Self::Storage(cause),
+            crate::IntakeError::Worker(cause) => Self::Worker(cause),
+            crate::IntakeError::Conflict => Self::Conflict,
+            crate::IntakeError::Corruption | crate::IntakeError::InvalidReceiptInput => {
+                Self::Corruption
+            }
+        }
+    }
+}
 impl From<rusqlite::Error> for OperatorError {
     fn from(error: rusqlite::Error) -> Self {
         StorageError::from(error).into()

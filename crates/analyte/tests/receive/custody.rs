@@ -193,3 +193,113 @@ async fn adr0003_rule3_connections_have_distinct_provenance() -> Result<(), Erro
     tokio::time::timeout(HANG_GUARD, service).await???;
     Ok(())
 }
+
+// ADR 0003 rules 1 and 2, LIS01-A2 §6.3 (each frame ACKed after its commit): when the
+// disk fills mid-transfer, the ACKed frames are parked by their transfer, and operator
+// reprocessing rebuilds them into a receipt with their exact bytes.
+#[tokio::test]
+async fn adr0003_lis01_6_3_disk_full_mid_transfer_rebuilds_a_reprocessable_receipt()
+-> Result<(), Error> {
+    disk_full_rebuilds(false).await
+}
+
+// ADR 0003 rules 1 and 2, LIS01-A2 §6.3 and §6.4 (EOT): every frame was ACKed, so a
+// receipt write refused at EOT parks the transfer, and operator reprocessing rebuilds
+// the complete receipt and delivers its result.
+#[tokio::test]
+async fn adr0003_lis01_6_4_disk_full_at_eot_rebuilds_and_delivers_the_receipt() -> Result<(), Error>
+{
+    disk_full_rebuilds(true).await
+}
+
+async fn disk_full_rebuilds(at_eot: bool) -> Result<(), Error> {
+    use std::sync::atomic::{AtomicU64, Ordering::SeqCst};
+    const ASTM: &[u8] = b"H|\\^&||||||||||P|LIS2-A2|20261115120000\rP|1\rO|1|00012A\rR|1|^^^SYN|12.30|mg/L||N||F\rL|1|N\r";
+    let temp = tempfile::tempdir()?;
+    let path = config(temp.path(), true)?;
+    let program = Program::load(&path)?;
+    let space = std::sync::Arc::new(AtomicU64::new(u64::MAX));
+    let (shutdown, stop) = oneshot::channel();
+    let owner = tokio::spawn(serve(
+        Program::load(&path)?,
+        Box::new(analyte_fixtures::AdjustableSpace(space.clone())),
+        async {
+            stop.await?;
+            Ok(())
+        },
+    ));
+    let mut peer = connect(&program).await?;
+    peer.write_all(b"\x05").await?;
+    assert_eq!(peer.read_u8().await?, 6);
+    let mut acknowledged = Vec::new();
+    let mut number = analyte_framing::astm::FrameNumber::FIRST;
+    for (index, record) in ASTM.split_inclusive(|b| *b == b'\r').enumerate() {
+        if !at_eot && index == 2 {
+            space.store(0, SeqCst);
+        }
+        let limit = analyte_framing::astm::Limit::new(64000)?;
+        for frame in analyte_framing::astm::encode(record, number, limit)? {
+            number = number.next();
+            peer.write_all(&frame).await?;
+            if !matches!(
+                tokio::time::timeout(HANG_GUARD, peer.read_u8()).await?,
+                Ok(6)
+            ) {
+                break;
+            }
+            acknowledged.extend_from_slice(&frame);
+        }
+        if space.load(SeqCst) == 0 {
+            break;
+        }
+    }
+    if at_eot {
+        space.store(0, SeqCst);
+        peer.write_all(b"\x04").await?;
+    }
+    // The failed store ends the session; the host parks the transfer on close.
+    tokio::time::timeout(HANG_GUARD, peer.read_to_end(&mut Vec::new())).await??;
+    space.store(u64::MAX, SeqCst);
+    shutdown.send(()).map_err(|()| "shutdown lost")?;
+    tokio::time::timeout(HANG_GUARD, owner).await???;
+    let store = stored(&program)?;
+    assert!(
+        store.receipts("")?.is_empty(),
+        "no receipt before reprocess"
+    );
+    let parked = store
+        .parked(0)?
+        .into_iter()
+        .find(|p| {
+            p.details()
+                .is_ok_and(|d| d.kind.as_str() == "incomplete_transfer")
+        })
+        .ok_or("transfer was not parked")?
+        .id;
+    drop(store);
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_analyte"))
+        .arg("--config")
+        .arg(&path)
+        .args(["parked", "reprocess", &parked.to_string()])
+        .args(["--actor", "operator", "--reason", "disk space restored"])
+        .output()?;
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let store = stored(&program)?;
+    let receipts = store.receipts("")?;
+    let [receipt] = receipts.as_slice() else {
+        return Err("one rebuilt receipt expected".into());
+    };
+    assert_eq!(
+        store.receipt(receipt.id)?.ok_or("receipt missing")?.raw,
+        acknowledged
+    );
+    // A transfer cut mid-message cannot be mapped, so it stays parked for review.
+    let item = store.parked_item(parked)?.ok_or("parked missing")?;
+    assert_eq!(item.resolution.is_some(), at_eot);
+    assert_eq!(store.deliveries(0)?.len(), usize::from(at_eot));
+    Ok(())
+}
