@@ -52,7 +52,11 @@ Use an elevated PowerShell window. Paths below are the packaged defaults.
    Analyte refuses to start if the data directory grants anyone else access,
    including inherited BUILTIN\Users read access; the error names the SID.
 4. Grant the service Read/Execute on binaries, Read on config and the required
-   device access. The installer does not grant these. Provision credentials
+   device access. The installer does not grant these. To use the admin
+   [Setup page](operate.md#setup-page), copy the archive's `machines` folder to
+   `C:\ProgramData\Analyte\config\machines` and grant the service Modify on
+   the config folder instead of Read:
+   `icacls C:\ProgramData\Analyte\config /grant "NT SERVICE\Analyte:(OI)(CI)M"`. Provision credentials
    for the service environment, not just the terminal. See [Connect](connect.md).
    If admin is enabled, provision its token as described in [Operate](operate.md).
 5. Start and inspect:
@@ -84,7 +88,12 @@ Data, configuration, backups, credentials and permissions remain.
 ## Linux or foreground operation
 
 Follow the [systemd procedure](../../packaging/linux/README.md), replacing its
-source-build binary path with the extracted binary. It uses `/etc/analyte`
+source-build binary path with the extracted binary. To use the admin
+[Setup page](operate.md#setup-page), copy the archive's `machines` folder to
+`/etc/analyte/machines`, make `/etc/analyte` writable by the `analyte` user, and
+add `ReadWritePaths=/etc/analyte` in a unit drop-in
+(`sudo systemctl edit analyte.service`); the supplied unit otherwise lets the
+service write only under `/var/lib/analyte`. It uses `/etc/analyte`
 for config, `/var/lib/analyte` for data and a dedicated `analyte` account.
 The supplied unit permits persistent writes only under `/var/lib/analyte`.
 Use `sudo systemctl stop analyte.service` for maintenance and

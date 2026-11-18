@@ -11,6 +11,7 @@ use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
 mod actions;
 mod pages;
+mod setup;
 
 use analyte_fixtures::UnlimitedSpace as Space;
 
@@ -697,6 +698,7 @@ async fn start_overview_server(
         )?],
         directory: root.to_owned(),
         reserve: 1,
+        setup: crate::admin::setup::Setup::for_test(root),
         _released: released,
     });
     let server = Server {
@@ -705,6 +707,7 @@ async fn start_overview_server(
             slots: Arc::new(Semaphore::new(32)),
         },
         app: router(state.clone()),
+        restart: watch::channel(false).1,
         released: release,
         owners: BTreeMap::new(),
     };

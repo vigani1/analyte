@@ -58,7 +58,10 @@ pub fn run(config: PathBuf, bound: Duration) -> Result<(), Error> {
             let startup = runtime_watchdog.component("startup".into());
             let result = run_host(&config, bound, stopped, runtime_watchdog, startup);
             if !stopping.load(Ordering::Acquire) {
-                if let Err(error) = &result {
+                if let Err(Failure::RestartRequested) = &result {
+                    // Exiting without an SCM stop runs the installed recovery action.
+                    tracing::info!("restarting to apply settings saved on the setup page");
+                } else if let Err(error) = &result {
                     tracing::error!(%error, "service failed before an SCM stop request");
                 } else {
                     tracing::error!("service stopped unexpectedly before an SCM stop request");

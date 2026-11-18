@@ -26,20 +26,33 @@ use windows_sys::Win32::{
 
 /// The installer's virtual service account (`packaging/windows/install.ps1`).
 const SERVICE_ACCOUNT: &str = "NT SERVICE\\Analyte";
+/// Well-known SID for SYSTEM.
+const SYSTEM: &str = "S-1-5-18";
 /// Well-known SIDs for SYSTEM and BUILTIN\Administrators.
-const ALWAYS_ALLOWED: [&str; 2] = ["S-1-5-18", "S-1-5-32-544"];
+const ALWAYS_ALLOWED: [&str; 2] = [SYSTEM, "S-1-5-32-544"];
 /// ACE types from winnt.h; deny entries only remove access.
 const ALLOWED_ACE: u8 = 0;
 const DENIED_ACE: u8 = 1;
 /// Canonical SID strings are far shorter; bounds the terminator search.
 const SID_TEXT_LIMIT: usize = 256;
 
+/// Who a protected path may grant access to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Readers {
+    /// SYSTEM, Administrators, the process account and the installed service
+    /// account: the data directory and the admin token.
+    Operators,
+    /// SYSTEM, the process account and the installed service account only: the
+    /// locked credentials folder and file. Administrators may own it but get no grant.
+    ServiceOnly,
+}
+
 /// Why a protected path's access list was refused; names principals by SID only.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// An allow entry, explicit or inherited, names another principal.
     #[error(
-        "protected path grants access to {sid}; allow only SYSTEM, Administrators and the Analyte account"
+        "protected path grants access to {sid}; allow only SYSTEM, the Analyte account and, outside the credentials folder, Administrators"
     )]
     Grant {
         /// The offending principal.
@@ -187,23 +200,36 @@ fn service_account() -> Result<Option<String>, Error> {
     }
 }
 
-fn allowed() -> Result<Vec<String>, Error> {
-    let mut sids: Vec<String> = ALWAYS_ALLOWED.map(String::from).into();
-    sids.push(process_account()?);
-    sids.extend(service_account()?);
-    Ok(sids)
+/// The principals an allow entry may name, and those that may own the path.
+fn allowed(readers: Readers) -> Result<(Vec<String>, Vec<String>), Error> {
+    let mut accounts = vec![process_account()?];
+    accounts.extend(service_account()?);
+    let owners: Vec<String> = ALWAYS_ALLOWED
+        .iter()
+        .map(|sid| (*sid).to_owned())
+        .chain(accounts.iter().cloned())
+        .collect();
+    let grants = match readers {
+        Readers::Operators => owners.clone(),
+        Readers::ServiceOnly => [SYSTEM.to_owned()].into_iter().chain(accounts).collect(),
+    };
+    Ok((grants, owners))
 }
 
-/// Creates the final directory, if nothing exists there, with the installer's
-/// protected access list. An existing entry is left for the caller to inspect.
+/// Creates the final directory, if nothing exists there, with a protected access
+/// list for `readers`; files created inside inherit it. An existing entry is left
+/// for the caller to inspect.
 /// # Errors
 /// Reports the failed Windows call.
-pub(crate) fn create_private(path: &Path) -> Result<(), Error> {
+pub(crate) fn create_private(path: &Path, readers: Readers) -> Result<(), Error> {
     // Protected (P): nothing inherited from a broader parent; 0x1301bf is Modify.
     let me = process_account()?;
-    let sddl = wide(format!(
-        "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1301bf;;;{me})"
-    ))?;
+    let sddl = wide(match readers {
+        Readers::Operators => {
+            format!("D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1301bf;;;{me})")
+        }
+        Readers::ServiceOnly => format!("D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;{me})"),
+    })?;
     let mut descriptor = Local(ptr::null_mut());
     // SAFETY: `sddl` is NUL-terminated; the out pointer is a valid local freed by `Local`.
     let ok = unsafe {
@@ -233,13 +259,14 @@ pub(crate) fn create_private(path: &Path) -> Result<(), Error> {
     Ok(())
 }
 
-/// Refuses an owner or any allow entry, inherited or explicit, outside SYSTEM,
-/// Administrators, the process account and the installed service account.
+/// Refuses an owner outside SYSTEM, Administrators, the process account and the
+/// installed service account, and any allow entry, inherited or explicit, naming a
+/// principal outside `readers`.
 /// # Errors
 /// Names the first offending principal, or the failed Windows call.
-pub(crate) fn check(path: &Path) -> Result<(), Error> {
-    let allowed = allowed()?;
-    let judge = |sid: String, refuse: fn(String) -> Error| {
+pub(crate) fn check(path: &Path, readers: Readers) -> Result<(), Error> {
+    let (grants, owners) = allowed(readers)?;
+    let judge = |allowed: &[String], sid: String, refuse: fn(String) -> Error| {
         if allowed.contains(&sid) {
             Ok(())
         } else {
@@ -273,7 +300,9 @@ pub(crate) fn check(path: &Path) -> Result<(), Error> {
         });
     }
     // SAFETY: `owner` points into the live descriptor.
-    judge(unsafe { sid_text(owner) }?, |sid| Error::Owner { sid })?;
+    judge(&owners, unsafe { sid_text(owner) }?, |sid| Error::Owner {
+        sid,
+    })?;
     if dacl.is_null() {
         return Err(Error::NoAccessList);
     }
@@ -297,7 +326,9 @@ pub(crate) fn check(path: &Path) -> Result<(), Error> {
                 let start = std::mem::offset_of!(ACCESS_ALLOWED_ACE, SidStart);
                 let sid = ace.cast::<u8>().wrapping_add(start).cast();
                 // SAFETY: an allow ACE stores its SID at `SidStart`, inside the live access list.
-                judge(unsafe { sid_text(sid) }?, |sid| Error::Grant { sid })?;
+                judge(&grants, unsafe { sid_text(sid) }?, |sid| Error::Grant {
+                    sid,
+                })?;
             }
             other => return Err(Error::UnsupportedEntry(other)),
         }
@@ -307,7 +338,7 @@ pub(crate) fn check(path: &Path) -> Result<(), Error> {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use super::{Error, check, process_account};
+    use super::{Error, Readers, check, process_account};
     use crate::runtime::{Error as Failure, service::create_data_directory};
     use std::path::Path;
 
@@ -357,7 +388,7 @@ pub(crate) mod tests {
         icacls(root.path(), &["/grant", &format!("*{USERS}:(OI)(CI)RX")])?;
         let data = root.path().join("nested").join("data");
         create_data_directory(&data)?;
-        check(&data)?;
+        check(&data, Readers::Operators)?;
         Ok(())
     }
 

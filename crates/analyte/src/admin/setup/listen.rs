@@ -1,0 +1,523 @@
+//! Runs one bounded listen-only connection test that shows bytes but never sends.
+//!
+//! The test opens a serial port, accepts one TCP connection or connects to one
+//! address, and only reads. It keeps at most [`Limits::bytes`] bytes in memory for
+//! at most [`Limits::duration`]; then the bytes are dropped. Nothing is stored,
+//! logged or written to the peer. The bytes may hold patient data, so they live
+//! only in this owner and on the local admin page that shows them.
+use analyte_transport::serial;
+use std::{
+    io,
+    net::SocketAddr,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::{Duration, Instant},
+};
+use tokio::{io::AsyncReadExt as _, sync::Notify};
+
+/// Time and size bounds of one test (AGENTS.md rule 7).
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Limits {
+    /// How long the test runs and its bytes are kept.
+    pub(crate) duration: Duration,
+    /// Most bytes kept; reading stops at this size.
+    pub(crate) bytes: usize,
+}
+
+impl Limits {
+    /// 60 seconds and 64 KiB.
+    pub(crate) const STANDARD: Self = Self {
+        duration: Duration::from_secs(60),
+        bytes: 65_536,
+    };
+}
+
+/// Opens a serial port by name; production passes the operating system's.
+pub(crate) type Open =
+    Arc<dyn Fn(&str, &serial::Settings) -> io::Result<Box<dyn serial::Port>> + Send + Sync>;
+
+/// What the test listens on.
+pub(crate) enum Target {
+    /// A serial port by name, with the definition's line settings.
+    Serial {
+        name: String,
+        settings: serial::Settings,
+        open: Open,
+    },
+    /// Listen on this address and accept one connection.
+    TcpServer(SocketAddr),
+    /// Connect to this address.
+    TcpClient(SocketAddr),
+}
+
+/// Why a test ended; carries no received bytes.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum End {
+    TimeLimit,
+    Stopped,
+    /// The machine closed the connection.
+    Closed,
+    /// Opening or reading failed; the text names the OS error, never data.
+    Failed(String),
+}
+
+/// A view of the test for the page.
+pub(crate) struct View {
+    pub(crate) label: String,
+    pub(crate) remaining: Duration,
+    pub(crate) connected: bool,
+    /// The machine closed the connection; the bytes stay until the test ends.
+    pub(crate) closed: bool,
+    pub(crate) bytes: Vec<u8>,
+    /// Bytes seen so far, including any past the size bound.
+    pub(crate) seen: usize,
+    pub(crate) size_limit_reached: bool,
+    pub(crate) end: Option<End>,
+}
+
+struct Capture {
+    connected: bool,
+    closed: bool,
+    bytes: Vec<u8>,
+    seen: usize,
+    end: Option<End>,
+}
+
+impl Capture {
+    /// Keeps bytes up to the bound; returns false once the bound is reached.
+    fn take(&mut self, chunk: &[u8], limit: usize) -> bool {
+        self.seen = self.seen.saturating_add(chunk.len());
+        let room = limit.saturating_sub(self.bytes.len());
+        self.bytes
+            .extend_from_slice(chunk.get(..room.min(chunk.len())).unwrap_or_default());
+        self.bytes.len() < limit
+    }
+
+    fn finish(&mut self, end: End) {
+        // Discard the bytes when the test ends; only the count remains.
+        self.bytes = Vec::new();
+        self.end.get_or_insert(end);
+    }
+}
+
+/// The one running or finished test. Dropping it stops the test and drops the bytes.
+pub(crate) struct Session {
+    label: String,
+    deadline: Instant,
+    limits: Limits,
+    capture: Arc<Mutex<Capture>>,
+    stop: Arc<Notify>,
+    owner: tokio::task::JoinHandle<()>,
+}
+
+impl Drop for Session {
+    fn drop(&mut self) {
+        // The serial reader sees its stop flag within one read timeout.
+        self.stop.notify_one();
+        self.owner.abort();
+    }
+}
+
+/// Serial reads wait at most this long, so a stop takes effect quickly.
+pub(crate) const SERIAL_READ: Duration = Duration::from_millis(200);
+
+impl Session {
+    /// Starts the test in the background; it ends by itself after `limits.duration`.
+    pub(crate) fn start(label: String, target: Target, limits: Limits) -> Self {
+        let deadline = Instant::now()
+            .checked_add(limits.duration)
+            .unwrap_or_else(Instant::now);
+        let capture = Arc::new(Mutex::new(Capture {
+            connected: false,
+            closed: false,
+            bytes: Vec::new(),
+            seen: 0,
+            end: None,
+        }));
+        let stop = Arc::new(Notify::new());
+        let owner = tokio::spawn(run(
+            target,
+            limits,
+            tokio::time::Instant::from_std(deadline),
+            capture.clone(),
+            stop.clone(),
+        ));
+        Self {
+            label,
+            deadline,
+            limits,
+            capture,
+            stop,
+            owner,
+        }
+    }
+
+    /// Ends the test now and drops its bytes.
+    pub(crate) fn stop(&self) {
+        self.stop.notify_one();
+        if let Ok(mut capture) = self.capture.lock() {
+            capture.finish(End::Stopped);
+        }
+    }
+
+    /// Copies the current state for display.
+    pub(crate) fn view(&self) -> View {
+        let remaining = self.deadline.saturating_duration_since(Instant::now());
+        let (connected, closed, bytes, seen, end) = match self.capture.lock() {
+            Ok(capture) => (
+                capture.connected,
+                capture.closed,
+                capture.bytes.clone(),
+                capture.seen,
+                capture.end.clone(),
+            ),
+            Err(_) => (
+                false,
+                false,
+                Vec::new(),
+                0,
+                Some(End::Failed("test state unavailable".into())),
+            ),
+        };
+        View {
+            label: self.label.clone(),
+            remaining,
+            connected,
+            closed,
+            size_limit_reached: seen >= self.limits.bytes,
+            bytes,
+            seen,
+            end,
+        }
+    }
+}
+
+/// Reads until the deadline or a stop, then drops the bytes. A closed connection
+/// or a full buffer keeps the bytes visible until then; a failure ends at once.
+async fn run(
+    target: Target,
+    limits: Limits,
+    deadline: tokio::time::Instant,
+    capture: Arc<Mutex<Capture>>,
+    stop: Arc<Notify>,
+) {
+    let reading = read(target, limits, deadline, capture.clone());
+    tokio::pin!(reading);
+    let mut reading_done = false;
+    let end = loop {
+        tokio::select! {
+            () = tokio::time::sleep_until(deadline) => break End::TimeLimit,
+            () = stop.notified() => break End::Stopped,
+            early = &mut reading, if !reading_done => {
+                reading_done = true;
+                match early {
+                    Some(End::Closed) => {
+                        if let Ok(mut capture) = capture.lock() {
+                            capture.closed = true;
+                        }
+                    }
+                    Some(end) => break end,
+                    None => {}
+                }
+            }
+        }
+    };
+    if let Ok(mut capture) = capture.lock() {
+        capture.finish(end);
+    }
+}
+
+/// Reads from the target until it closes, fails or the size bound is reached.
+/// Returns `None` when the bound was reached, so the deadline decides the end.
+async fn read(
+    target: Target,
+    limits: Limits,
+    deadline: tokio::time::Instant,
+    capture: Arc<Mutex<Capture>>,
+) -> Option<End> {
+    let failed = |action: &str, error: &io::Error| Some(End::Failed(format!("{action}: {error}")));
+    let mut stream = match target {
+        Target::Serial {
+            name,
+            settings,
+            open,
+        } => return read_serial(name, settings, open, limits, capture).await,
+        Target::TcpServer(address) => {
+            let listener = match tokio::net::TcpListener::bind(address).await {
+                Ok(listener) => listener,
+                Err(error) => return failed("listen", &error),
+            };
+            match tokio::time::timeout_at(deadline, listener.accept()).await {
+                Ok(Ok((stream, _))) => stream,
+                Ok(Err(error)) => return failed("accept", &error),
+                Err(_) => return Some(End::TimeLimit),
+            }
+            // The listener drops here, so a second connection is refused.
+        }
+        Target::TcpClient(address) => {
+            match tokio::time::timeout_at(deadline, tokio::net::TcpStream::connect(address)).await {
+                Ok(Ok(stream)) => stream,
+                Ok(Err(error)) => return failed("connect", &error),
+                Err(_) => return Some(End::TimeLimit),
+            }
+        }
+    };
+    if let Ok(mut capture) = capture.lock() {
+        capture.connected = true;
+    }
+    let mut buffer = [0_u8; 4096];
+    loop {
+        match stream.read(&mut buffer).await {
+            Ok(0) => return Some(End::Closed),
+            Ok(count) => {
+                let chunk = buffer.get(..count).unwrap_or_default();
+                let more = capture
+                    .lock()
+                    .is_ok_and(|mut capture| capture.take(chunk, limits.bytes));
+                if !more {
+                    return None;
+                }
+            }
+            Err(error) => return failed("read", &error),
+        }
+    }
+}
+
+/// Reads a serial port on a blocking thread owned by this test; it never writes.
+async fn read_serial(
+    name: String,
+    settings: serial::Settings,
+    open: Open,
+    limits: Limits,
+    capture: Arc<Mutex<Capture>>,
+) -> Option<End> {
+    // Set when this future is dropped, so the thread ends within one read timeout.
+    struct Halt(Arc<AtomicBool>);
+    impl Drop for Halt {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::Release);
+        }
+    }
+    let halt = Halt(Arc::new(AtomicBool::new(false)));
+    let halted = halt.0.clone();
+    let reader = tokio::task::spawn_blocking(move || {
+        let mut port = match open(&name, &settings) {
+            Ok(port) => port,
+            Err(error) => return Some(End::Failed(format!("open {name}: {error}"))),
+        };
+        if let Ok(mut capture) = capture.lock() {
+            capture.connected = true;
+        }
+        let mut buffer = [0_u8; 4096];
+        while !halted.load(Ordering::Acquire) {
+            match port.read(&mut buffer) {
+                Ok(0) => return Some(End::Closed),
+                Ok(count) => {
+                    let chunk = buffer.get(..count).unwrap_or_default();
+                    let more = capture
+                        .lock()
+                        .is_ok_and(|mut capture| capture.take(chunk, limits.bytes));
+                    if !more {
+                        return None;
+                    }
+                }
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock
+                    ) => {}
+                Err(error) => return Some(End::Failed(format!("read {name}: {error}"))),
+            }
+        }
+        Some(End::Stopped)
+    });
+    let result = reader.await;
+    drop(halt);
+    result.unwrap_or_else(|error| Some(End::Failed(format!("serial reader: {error}"))))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{End, Limits, Session, Target};
+    use std::{
+        io,
+        sync::{Arc, Mutex},
+        time::Duration,
+    };
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+    const SHORT: Limits = Limits {
+        duration: Duration::from_millis(1500),
+        bytes: 16,
+    };
+
+    async fn until(session: &Session, ready: impl Fn(&super::View) -> bool) -> super::View {
+        for _ in 0..200 {
+            let view = session.view();
+            if ready(&view) {
+                return view;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        session.view()
+    }
+
+    /// Reads what the test sent to the peer until it closes or `wait` passes.
+    async fn sent_to_peer(peer: &mut tokio::net::TcpStream, wait: Duration) -> io::Result<usize> {
+        let mut received = Vec::new();
+        if let Ok(result) = tokio::time::timeout(wait, peer.read_to_end(&mut received)).await {
+            result?;
+        }
+        Ok(received.len())
+    }
+
+    // Owner request 2026-11-18 (setup page): the test connects as a client,
+    // shows what the machine sends and writes zero bytes to it.
+    #[tokio::test]
+    async fn client_test_shows_bytes_and_sends_nothing() -> Result<(), crate::Error> {
+        let machine = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        let session = Session::start(
+            "test".into(),
+            Target::TcpClient(machine.local_addr()?),
+            Limits {
+                duration: Duration::from_secs(10),
+                bytes: 1024,
+            },
+        );
+        let (mut peer, _) =
+            tokio::time::timeout(Duration::from_secs(5), machine.accept()).await??;
+        peer.write_all(b"\x05H|\\^&\r").await?;
+        let view = until(&session, |view| view.bytes.len() == 7).await;
+        assert_eq!(view.bytes, b"\x05H|\\^&\r");
+        assert!(view.connected);
+        session.stop();
+        drop(session);
+        assert_eq!(sent_to_peer(&mut peer, Duration::from_secs(5)).await?, 0);
+        Ok(())
+    }
+
+    // Owner request 2026-11-18 (setup page): as a server the test accepts one
+    // connection, reads it and writes zero bytes.
+    #[tokio::test]
+    async fn server_test_accepts_one_connection_and_sends_nothing() -> Result<(), crate::Error> {
+        let reserved = std::net::TcpListener::bind("127.0.0.1:0")?;
+        let address = reserved.local_addr()?;
+        drop(reserved);
+        let session = Session::start("test".into(), Target::TcpServer(address), SHORT);
+        let mut peer = None;
+        for _ in 0..100 {
+            if let Ok(stream) = tokio::net::TcpStream::connect(address).await {
+                peer = Some(stream);
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        let mut peer = peer.ok_or("test listener never opened")?;
+        peer.write_all(b"MSH|^~\\&|").await?;
+        let view = until(&session, |view| view.seen == 9).await;
+        assert_eq!(view.bytes, b"MSH|^~\\&|");
+        assert_eq!(sent_to_peer(&mut peer, Duration::from_secs(5)).await?, 0);
+        Ok(())
+    }
+
+    // AGENTS.md rule 7: the test keeps at most its size bound, stops reading
+    // there, and drops every byte when its time bound passes.
+    #[tokio::test]
+    async fn test_is_bounded_in_size_and_time_and_then_discards() -> Result<(), crate::Error> {
+        let machine = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        let started = std::time::Instant::now();
+        let session = Session::start(
+            "test".into(),
+            Target::TcpClient(machine.local_addr()?),
+            SHORT,
+        );
+        let (mut peer, _) =
+            tokio::time::timeout(Duration::from_secs(5), machine.accept()).await??;
+        peer.write_all(&[b'x'; 100]).await?;
+        let view = until(&session, |view| view.size_limit_reached).await;
+        assert_eq!(view.bytes.len(), SHORT.bytes);
+        assert!(view.size_limit_reached);
+        let ended = until(&session, |view| view.end.is_some()).await;
+        assert_eq!(ended.end, Some(End::TimeLimit));
+        assert!(ended.bytes.is_empty(), "bytes kept after the test ended");
+        assert!(started.elapsed() < Duration::from_secs(5));
+        assert_eq!(sent_to_peer(&mut peer, Duration::from_secs(5)).await?, 0);
+        Ok(())
+    }
+
+    /// A fake serial port: scripted input, recorded writes.
+    struct Port {
+        input: Vec<u8>,
+        written: Arc<Mutex<Vec<u8>>>,
+    }
+
+    impl io::Read for Port {
+        fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+            if self.input.is_empty() {
+                std::thread::sleep(Duration::from_millis(10));
+                return Err(io::ErrorKind::TimedOut.into());
+            }
+            let count = buffer.len().min(self.input.len());
+            buffer
+                .get_mut(..count)
+                .ok_or_else(|| io::Error::other("buffer"))?
+                .copy_from_slice(self.input.drain(..count).as_slice());
+            Ok(count)
+        }
+    }
+
+    impl io::Write for Port {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            self.written
+                .lock()
+                .map_err(|_| io::Error::other("poisoned"))?
+                .extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    // Owner request 2026-11-18 (setup page): on a serial port the test only
+    // reads; the fake port records zero written bytes.
+    #[tokio::test]
+    async fn serial_test_reads_and_never_writes() -> Result<(), crate::Error> {
+        use analyte_transport::serial;
+        let written = Arc::new(Mutex::new(Vec::new()));
+        let recorded = written.clone();
+        let open: super::Open = Arc::new(move |name, _| {
+            assert_eq!(name, "COM9");
+            Ok(Box::new(Port {
+                input: b"\x02ABC\x03".to_vec(),
+                written: recorded.clone(),
+            }) as Box<dyn serial::Port>)
+        });
+        let settings = serial::Settings::new(
+            serial::Device::Named("COM9".into()),
+            9600,
+            serial::DataBits::Eight,
+            serial::Parity::None,
+            serial::StopBits::One,
+            serial::FlowControl::None,
+            super::SERIAL_READ,
+        )?;
+        let session = Session::start(
+            "COM9".into(),
+            Target::Serial {
+                name: "COM9".into(),
+                settings,
+                open,
+            },
+            SHORT,
+        );
+        let view = until(&session, |view| view.bytes.len() == 5).await;
+        assert_eq!(view.bytes, b"\x02ABC\x03");
+        drop(session);
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        assert!(written.lock().map_err(|_| "poisoned")?.is_empty());
+        Ok(())
+    }
+}

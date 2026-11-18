@@ -313,6 +313,7 @@ fn usb(port: &str, serial: Option<&str>) -> serial::Listed {
     serial::Listed {
         name: port.into(),
         usb_serial: serial.map(Into::into),
+        description: None,
     }
 }
 
@@ -563,4 +564,17 @@ fn reconnect_follows_adapter_to_new_port() -> Result<(), Box<dyn Error>> {
     )?;
     assert_eq!(opened, ["COM9", "COM12"]);
     Ok(())
+}
+
+// Plan §11; docs/operations/connect.md "Name a serial port": a Windows-made
+// serial number (with `&`) is not the adapter's own and may change per socket.
+#[test]
+fn only_factory_serial_numbers_identify_an_adapter() {
+    assert_eq!(
+        usb("COM9", Some("A10K3XYZ")).factory_serial(),
+        Some("A10K3XYZ")
+    );
+    assert_eq!(usb("COM9", Some("6&2A9C1F&0&1")).factory_serial(), None);
+    assert_eq!(usb("COM9", Some("")).factory_serial(), None);
+    assert_eq!(usb("COM1", None).factory_serial(), None);
 }

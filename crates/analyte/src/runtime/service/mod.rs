@@ -216,7 +216,13 @@ pub(super) async fn serve_with(
         let component = watchdog.component("admin-server".into());
         admin_owners.spawn(async move {
             let _component = component;
-            admin.run(admin_stopped).await.map_err(Into::into)
+            admin.run(admin_stopped).await.map_err(|error| {
+                if matches!(error, crate::admin::Error::RestartRequested) {
+                    Failure::RestartRequested
+                } else {
+                    error.into()
+                }
+            })
         });
     }
     let (delivery_stop, mut delivery_owners) =
@@ -650,10 +656,10 @@ pub(crate) fn create_data_directory(path: &std::path::Path) -> Result<(), Failur
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        acl::create_private(path)?;
+        acl::create_private(path, acl::Readers::Operators)?;
         // Like Unix, an existing non-directory entry is an I/O error.
         std::fs::create_dir_all(path)?;
-        acl::check(path)?;
+        acl::check(path, acl::Readers::Operators)?;
     }
     Ok(())
 }

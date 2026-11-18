@@ -94,6 +94,8 @@ jobs:
           Copy-Item 'target/${{ matrix.target }}/release/${{ matrix.binary }}' "stage/$name/"
           Copy-Item packaging/${{ matrix.platform }} "stage/$name/packaging/" -Recurse
           Copy-Item LICENSE, README.md "stage/$name/"
+          # The admin setup page lists these definitions from beside the program file.
+          Copy-Item machines "stage/$name/machines" -Recurse
           if ('${{ matrix.platform }}' -eq 'windows') {
             Compress-Archive -Path "stage/$name" -DestinationPath "dist/$name.zip"
           } else {

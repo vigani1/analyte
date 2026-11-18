@@ -1,4 +1,4 @@
-//! Loads host credentials from environment variables.
+//! Loads host credentials from environment variables, then from the locked credentials file.
 use analyte_contract::SigningSecret;
 use analyte_model::Identifier;
 use analyte_sink::{Credentials, SecretsSource};
@@ -13,6 +13,16 @@ pub enum SecretError {
     /// A present credential violates its encoding or length bounds.
     #[error("credential {0} is invalid")]
     Invalid(String),
+    /// The locked credentials file is exposed, malformed or unreadable.
+    #[error(transparent)]
+    File(#[from] super::credentials::CredentialError),
+}
+
+/// Whether an API key value meets the contract's bearer bound: 1 to 4096
+/// printable ASCII characters.
+#[must_use]
+pub fn api_key_valid(value: &str) -> bool {
+    !value.is_empty() && value.len() <= 4096 && value.bytes().all(|b| (32..=126).contains(&b))
 }
 
 /// Preloaded host credentials. Deliberately has no Debug implementation.
@@ -36,10 +46,28 @@ pub fn variable(name: &str) -> String {
 
 impl Environment {
     /// Loads every destination before admission, retaining no values in errors.
+    /// An environment variable wins; a name without one is read from the locked
+    /// credentials file in the data directory.
+    /// # Errors
+    /// Names a missing, empty or malformed credential, or refuses an exposed file.
+    pub fn load(program: &crate::installation::config::Program) -> Result<Self, SecretError> {
+        let stored = super::credentials::Locked::new(program.data_directory()).read()?;
+        Self::load_layered(program, |key| std::env::var(key).ok(), &stored)
+    }
+
+    /// Loads with `environment` first and `stored` for names it lacks or leaves empty.
     /// # Errors
     /// Names a missing, empty or malformed credential.
-    pub fn load(program: &crate::installation::config::Program) -> Result<Self, SecretError> {
-        Self::load_with(program, |key| std::env::var(key).ok())
+    pub fn load_layered(
+        program: &crate::installation::config::Program,
+        environment: impl Fn(&str) -> Option<String>,
+        stored: &super::credentials::Stored,
+    ) -> Result<Self, SecretError> {
+        Self::load_with(program, |key| {
+            environment(key)
+                .filter(|value| !value.is_empty())
+                .or_else(|| stored.by_variable(key))
+        })
     }
 
     /// Loads from a host lookup; tests can inject credentials without mutating the environment.
@@ -58,7 +86,7 @@ impl Environment {
         for machine in program.machines() {
             let destination = &machine.snapshot().effective().site().destination;
             let api_key = read(&destination.api_key_name)?;
-            if api_key.len() > 4096 || !api_key.bytes().all(|b| (32..=126).contains(&b)) {
+            if !api_key_valid(&api_key) {
                 return Err(SecretError::Invalid(
                     destination.api_key_name.as_str().into(),
                 ));
@@ -144,6 +172,50 @@ mod tests {
         )?;
         assert_eq!(credentials.api_key, "synthetic-api");
         assert_eq!(credentials.signing_secrets.len(), 1);
+        Ok(())
+    }
+
+    // Owner decision 2026-11-18 (locked file): an environment variable wins over
+    // the file, and a name without one is read from the file.
+    #[test]
+    fn environment_overrides_the_locked_file() -> Result<(), crate::Error> {
+        use crate::installation::credentials::{Locked, Secret};
+        use analyte_model::Identifier;
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/analyte.toml");
+        let program = crate::installation::config::Program::load(&path)?;
+        let directory = crate::admin::private_tempdir()?;
+        let locked = Locked::new(directory.path());
+        let api = Identifier::new("demo-api")?;
+        let signing = Identifier::new("demo-signing")?;
+        locked.replace(
+            vec![
+                (api.clone(), Secret::new(&api, "file-api-key".into())?),
+                (
+                    signing.clone(),
+                    Secret::new(&signing, analyte_fixtures::SECRET.into())?,
+                ),
+            ],
+            1,
+        )?;
+        let stored = locked.read()?;
+        let demo = Identifier::new("demo")?;
+        let from_file = super::Environment::load_layered(&program, |_| None, &stored)?;
+        let credentials = analyte_sink::SecretsSource::credentials(&from_file, &demo)?;
+        assert_eq!(credentials.api_key, "file-api-key");
+        assert_eq!(credentials.signing_secrets.len(), 1);
+        let environment =
+            |name: &str| (name == "ANALYTE_SECRET_DEMO_API").then(|| "env-api-key".into());
+        let layered = super::Environment::load_layered(&program, environment, &stored)?;
+        let credentials = analyte_sink::SecretsSource::credentials(&layered, &demo)?;
+        assert_eq!(credentials.api_key, "env-api-key");
+        let empty = crate::installation::credentials::Stored::default();
+        let error = super::Environment::load_layered(&program, environment, &empty)
+            .err()
+            .ok_or("missing signing key accepted")?;
+        assert_eq!(
+            error.to_string(),
+            "credential demo-signing is missing or empty"
+        );
         Ok(())
     }
 
