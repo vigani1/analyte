@@ -654,6 +654,9 @@ mod tests {
 
             hooks: crate::installation::config::MachineHooks::default(),
             id: Identifier::new("synthetic")?,
+            status: crate::machine::link::status::Reporter::new(
+                crate::machine::link::status::Link::of(snapshot.effective().stack()),
+            ),
             snapshot,
             listener: None,
         })

@@ -129,11 +129,118 @@ async fn service_refuses_missing_token_and_owns_admin_server() -> Result<(), Err
     .await?;
     assert!(response.starts_with("HTTP/1.1 200"), "{response}");
     assert!(response.contains("Machine owner</dt><dd>running"));
-    assert!(response.contains("Last received activity</dt><dd>unknown"));
+    assert!(response.contains("Last data received</dt><dd>unknown"));
     headers_present(&response);
     stop.send(()).map_err(|_| "service stop receiver lost")?;
     tokio::time::timeout(Duration::from_secs(10), owner).await???;
     assert!(tokio::net::TcpStream::connect(&host).await.is_err());
+    Ok(())
+}
+
+// Plan §11 admin page: the light follows the machine runtime, not receipt age.
+// A TCP server waits, shows a connected peer, reads a partial chunk as last data
+// before any receipt exists, and waits again after the peer leaves.
+// Safety rule 10 (ADR 0003): no payload or sample ID reaches the admin page.
+#[tokio::test(flavor = "multi_thread")]
+async fn tcp_server_light_follows_peer_and_hides_payload() -> Result<(), Error> {
+    const SAMPLE: &str = "SYN-LIGHT-4711";
+    let directory = crate::admin::private_tempdir()?;
+    std::fs::write(
+        directory.path().join("machine.toml"),
+        include_str!("../../../../../core/config/examples/hl7.toml"),
+    )?;
+    let analyzer = std::net::TcpListener::bind("127.0.0.1:0")?;
+    let analyzer_address = analyzer.local_addr()?.to_string();
+    std::fs::write(
+        directory.path().join("site.toml"),
+        include_str!("../../../../../core/config/examples/site.toml")
+            .rewrite("127.0.0.1:5600", &analyzer_address),
+    )?;
+    let reserved = std::net::TcpListener::bind("127.0.0.1:0")?;
+    let address = reserved.local_addr()?;
+    let file = directory.path().join("program.toml");
+    std::fs::write(
+        &file,
+        format!("{}[admin]\nport = {}\n", admin_program(), address.port()),
+    )?;
+    let mut program = Program::load(&file)?;
+    program.set_loopback_listener_for_test("synthetic", analyzer)?;
+    program.set_loopback_destination_for_test("demo", "http://127.0.0.1:1".into())?;
+    let secrets = crate::installation::secrets::Environment::load_with(&program, |name| {
+        Some(if name.ends_with("SIGNING") {
+            "whsec_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=".into()
+        } else {
+            "synthetic-api-key".into()
+        })
+    })?;
+    let token = super::super::rotate_token(&directory.path().join("data"))?;
+    drop(reserved);
+    let (stop, stopped) = tokio::sync::oneshot::channel();
+    let owner = tokio::spawn(crate::runtime::service::serve_loopback_test(
+        program,
+        Box::new(Space),
+        async {
+            stopped.await?;
+            Ok(())
+        },
+        secrets,
+        None,
+    ));
+    let host = address.to_string();
+    let auth = format!("Authorization: Bearer {token}\r\n");
+    wait_for_service_listener(&host).await?;
+    let page = |path: &'static str| {
+        let (host, auth) = (host.clone(), auth.clone());
+        async move { request(&host, path, &auth, None).await }
+    };
+    let until = |wanted: &'static str| {
+        let page = &page;
+        async move {
+            tokio::time::timeout(analyte_fixtures::HANG_GUARD, async {
+                loop {
+                    let overview = page("/").await?;
+                    if overview.contains(wanted) {
+                        return Ok::<_, Error>(overview);
+                    }
+                    // The service has no readiness channel for its light; the timeout bounds polling.
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                }
+            })
+            .await?
+        }
+    };
+    let waiting = until("Connection state</dt><dd>Waiting").await?;
+    assert!(waiting.contains("Link</dt><dd>TCP server"), "{waiting}");
+    assert!(waiting.contains("Last data received</dt><dd>unknown"));
+    let mut peer = tokio::net::TcpStream::connect(&analyzer_address).await?;
+    until("Connection state</dt><dd>Connected").await?;
+    let message = format!(
+        "\x0bMSH|^~\\&|SYN|LAB|HOST|LAB|20260101000000||ORU^R01^ORU_R01|light-1|P|2.5.1\r\
+         PID|1\rOBR|1||{SAMPLE}|SYN^Synthetic^synthetic|||||||||||||||||||||F\r\
+         OBX|1|NM|SYN^Synthetic^synthetic||12.30|mg/L|||||F\r"
+    );
+    peer.write_all(message.as_bytes()).await?;
+    // Only a partial MLLP frame has arrived: no receipt exists, yet the runtime saw data.
+    let received = until(" s ago (").await?;
+    assert!(received.contains("Connection state</dt><dd>Connected"));
+    peer.write_all(b"\x1c\r").await?;
+    let mut reply = [0];
+    peer.read_exact(&mut reply).await?;
+    assert_eq!(reply, [0x0b], "the peer receives an MLLP acknowledgment");
+    for path in ["/", "/machines"] {
+        let shown = page(path).await?;
+        assert!(shown.starts_with("HTTP/1.1 200"), "{shown}");
+        assert!(!shown.contains(SAMPLE), "{path} shows a sample ID");
+        assert!(!shown.contains("MSH|"), "{path} shows payload bytes");
+        assert!(
+            !shown.contains(&analyzer_address),
+            "{path} shows the endpoint"
+        );
+    }
+    drop(peer);
+    until("Connection state</dt><dd>Waiting").await?;
+    stop.send(()).map_err(|_| "service stop receiver lost")?;
+    tokio::time::timeout(Duration::from_secs(10), owner).await???;
     Ok(())
 }
 
@@ -430,7 +537,8 @@ async fn assert_overview_health(host: &str, bearer: &str) -> Result<(), Error> {
     assert!(response.contains("Raised age (seconds)</dt><dd>"));
     assert!(!response.contains("cleared alert responder"));
     assert!(response.contains("Machine owner</dt><dd>stopped"));
-    assert!(response.contains("Last received activity</dt><dd>1970-01-01T00:03:20Z"));
+    assert!(response.contains("Last data received</dt><dd>"));
+    assert!(response.contains(" d ago (1970-01-01T00:03:20Z)</dd>"));
     assert!(response.contains("Pending items</dt><dd>2"));
     assert!(response.contains("Cache fresh and trusted</dt><dd>false"));
     assert!(response.contains("Cache last successful poll (Unix seconds)</dt><dd>100"));
@@ -567,6 +675,10 @@ async fn start_overview_server(
             departure_html: Markup::new(),
             id: Identifier::new("<script>alert('hostile')&\"</script>")?,
             running: Arc::new(AtomicBool::new(false)),
+            status: crate::machine::link::status::Reporter::new(
+                crate::machine::link::status::Link::TcpServer,
+            )
+            .subscribe(),
         }],
         destinations: vec![analyte_sink::Destination::for_loopback_test(
             Identifier::new("app")?,
