@@ -266,7 +266,12 @@ pub(super) async fn index(State(state): State<Arc<Context>>) -> Response {
         "</table><h2>Shipped machine definitions</h2><table><tr><th>Definition",
         "</th><th>Name</th><th>Evidence</th><th>Status</th></tr>"
     ));
-    match definitions(&state) {
+    let worker = state.clone();
+    let listed = tokio::task::spawn_blocking(move || definitions(&worker))
+        .await
+        .map_err(SetupError::from)
+        .and_then(|r| r);
+    match listed {
         Ok(list) => {
             for definition in &list {
                 let name = match &definition.state {
@@ -392,32 +397,39 @@ pub(super) async fn machine(
     let Some(Extension(session)) = session.filter(|Extension(s)| s.authenticated) else {
         return needs_login();
     };
-    let config = state.config_path.clone();
-    let lookup = id.clone();
-    let loaded = tokio::task::spawn_blocking(move || site::installed(&config, &lookup)).await;
-    let (_, installed) = match loaded.map_err(SetupError::from).and_then(|r| r) {
-        Ok(found) => found,
-        Err(error) => return refused(&error),
-    };
+    // Reading files, the port list and the credentials file blocks; keep it off
+    // the async workers.
+    let worker = state.clone();
+    let rendered = tokio::task::spawn_blocking(move || {
+        render_machine(&worker, &session, &id, pick.definition.as_deref())
+    })
+    .await
+    .map_err(SetupError::from)
+    .and_then(|r| r);
+    match rendered {
+        Ok(html) => Html(html).into_response(),
+        Err(error) => refused(&error),
+    }
+}
+
+/// Builds the setup form for one installed machine; reads files and the port list.
+fn render_machine(
+    state: &Context,
+    session: &Session,
+    id: &str,
+    definition: Option<&str>,
+) -> Result<Markup, SetupError> {
+    let (_, installed) = site::installed(&state.config_path, id)?;
     let current_site = crate::installation::config::read(&installed.site)
         .ok()
         .and_then(|text| text.parse::<toml::Table>().ok())
         .unwrap_or_default();
-    let list = match definitions(&state) {
-        Ok(list) => list,
-        Err(error) => return refused(&error),
-    };
-    let (key, path) = match chosen(&list, pick.definition.as_deref(), &installed) {
-        Ok(found) => found,
-        Err(error) => return refused(&error),
-    };
-    let running = match running(&state, &id) {
-        Ok(running) => running,
-        Err(error) => return refused(&error),
-    };
+    let list = definitions(state)?;
+    let (key, path) = chosen(&list, definition, &installed)?;
+    let running = running(state, id)?;
     let mut html = page("Set up a machine")
         .markup("<p>Machine <strong>")
-        .text(&id)
+        .text(id)
         .markup("</strong>. Running configuration digest <code>")
         .text(hex(&running.digest))
         .markup(concat!(
@@ -437,9 +449,9 @@ pub(super) async fn machine(
             .text(&key)
             .markup("\"><h2>2. Connection</h2>"),
     );
-    html.push_fragment(&connection_inputs(&state, &path, &current_site));
-    html.push_fragment(&test_and_lab_app(&state, &id, running, &current_site));
-    Html(html).into_response()
+    html.push_fragment(&connection_inputs(state, &path, &current_site));
+    html.push_fragment(&test_and_lab_app(state, id, running, &current_site));
+    Ok(html)
 }
 
 fn definition_picker(list: &[Definition], key: &str) -> Markup {
@@ -950,37 +962,57 @@ pub(super) async fn restart(
     response
 }
 
+/// Refuses a test on a serial port or network address a running machine uses.
+/// A running machine named by `usb_serial` is looked up in the current port list,
+/// so choosing its port by name is refused too.
 fn in_use(state: &Context, chosen: &Endpoint, port: Option<&str>) -> Result<(), SetupError> {
     for running in &state.setup.running {
-        let same = match (&running.endpoint, chosen) {
-            (Endpoint::UsbSerial(left), Endpoint::UsbSerial(right)) => {
-                left.as_str().eq_ignore_ascii_case(right.as_str())
-            }
-            (Endpoint::Fixed(left), _) if running.link == Link::Serial => {
-                port.is_some_and(|port| port.eq_ignore_ascii_case(left))
-            }
-            (Endpoint::Fixed(left), Endpoint::Fixed(right)) => {
-                match (
-                    left.parse::<std::net::SocketAddr>(),
-                    right.parse::<std::net::SocketAddr>(),
-                ) {
-                    (Ok(left), Ok(right)) => {
-                        left.port() == right.port()
-                            && (left.ip() == right.ip()
-                                || left.ip().is_unspecified()
-                                || right.ip().is_unspecified())
+        let same = if let Some(port) = port {
+            running.link == Link::Serial && {
+                let running_port = match &running.endpoint {
+                    Endpoint::Fixed(name) => Some(name.clone()),
+                    Endpoint::UsbSerial(number) => {
+                        serial::locate(&serial::Device::UsbSerial(number.as_str().into()), || {
+                            (state.setup.seams.ports)()
+                        })
+                        .ok()
                     }
-                    _ => left == right,
-                }
+                };
+                let same_number = matches!(
+                    (&running.endpoint, chosen),
+                    (Endpoint::UsbSerial(left), Endpoint::UsbSerial(right))
+                        if left.as_str().eq_ignore_ascii_case(right.as_str())
+                );
+                same_number || running_port.is_some_and(|name| name.eq_ignore_ascii_case(port))
             }
-            (Endpoint::UsbSerial(_), Endpoint::Fixed(_))
-            | (Endpoint::Fixed(_), Endpoint::UsbSerial(_)) => false,
+        } else {
+            matches!(running.link, Link::TcpServer | Link::TcpClient)
+                && same_address(&running.endpoint, chosen)
         };
         if same {
             return Err(SetupError::InUse(running.id.as_str().into()));
         }
     }
     Ok(())
+}
+
+/// Two socket addresses on the same port, where either listens on every address.
+fn same_address(running: &Endpoint, chosen: &Endpoint) -> bool {
+    let (Endpoint::Fixed(left), Endpoint::Fixed(right)) = (running, chosen) else {
+        return false;
+    };
+    match (
+        left.parse::<std::net::SocketAddr>(),
+        right.parse::<std::net::SocketAddr>(),
+    ) {
+        (Ok(left), Ok(right)) => {
+            left.port() == right.port()
+                && (left.ip() == right.ip()
+                    || left.ip().is_unspecified()
+                    || right.ip().is_unspecified())
+        }
+        (Err(_), _) | (_, Err(_)) => left == right,
+    }
 }
 
 fn listen_target(state: &Context, plan: &Plan) -> Result<(String, listen::Target), SetupError> {

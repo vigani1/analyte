@@ -111,7 +111,7 @@ async fn start() -> Result<Fixture, Error> {
     std::fs::write(
         &site,
         include_str!("../../../../../core/config/examples/site.toml")
-            .rewrite("endpoint = \"127.0.0.1:5600\"", "endpoint = \"COM7\""),
+            .rewrite("endpoint = \"127.0.0.1:5600\"", "usb_serial = \"A10K3XYZ\""),
     )?;
     let config = root.join("program.toml");
     std::fs::write(
@@ -315,7 +315,14 @@ async fn invalid_address_is_refused_before_anything_is_written() -> Result<(), E
 async fn save_writes_checked_site_with_backup_and_locked_keys() -> Result<(), Error> {
     let logs = crate::runtime::log_capture::init();
     let fixture = start().await?;
-    let before = std::fs::read_to_string(&fixture.site)?;
+    // An adapter without its own serial number is saved by port name.
+    let by_name = fixture.form(&[("port", "name:COM3")]).await?;
+    let named = fixture.post("/setup/synthetic", &by_name).await?;
+    assert!(named.starts_with("HTTP/1.1 200"), "{named}");
+    let site = std::fs::read_to_string(&fixture.site)?;
+    assert!(site.contains("endpoint = \"COM3\""), "{site}");
+    assert!(!site.contains("usb_serial"));
+    let before = site;
     let body = fixture
         .form(&[
             ("port", "usb:A10K3XYZ"),
@@ -345,10 +352,11 @@ async fn save_writes_checked_site_with_backup_and_locked_keys() -> Result<(), Er
     assert!(!site.contains("endpoint"));
     assert!(site.contains("retention = \"keep\""));
     let backups = fixture.backups()?;
-    assert_eq!(backups.len(), 1);
-    assert_eq!(
-        std::fs::read_to_string(backups.first().ok_or("backup")?)?,
-        before
+    assert_eq!(backups.len(), 2);
+    assert!(
+        backups
+            .iter()
+            .any(|path| std::fs::read_to_string(path).is_ok_and(|text| text == before))
     );
     let stored = crate::installation::credentials::Locked::new(&fixture.data).read()?;
     assert_eq!(
@@ -383,7 +391,7 @@ async fn save_writes_checked_site_with_backup_and_locked_keys() -> Result<(), Er
             .any(|(_, audit)| audit.action.as_str() == "setup-save")
     );
     let logged = String::from_utf8_lossy(&logs.lock().map_err(|_| "log poisoned")?).into_owned();
-    for page in [&saved, &again] {
+    for page in [&named, &saved, &again] {
         assert!(!page.contains(API_KEY) && !page.contains(SIGNING_KEY));
     }
     for (_, audit) in &audits {
@@ -401,11 +409,15 @@ async fn save_writes_checked_site_with_backup_and_locked_keys() -> Result<(), Er
 async fn listen_test_shows_bytes_only_on_the_page() -> Result<(), Error> {
     let logs = crate::runtime::log_capture::init();
     let fixture = start().await?;
-    let busy = fixture.form(&[("port", "name:COM7")]).await?;
-    let refused = fixture.post("/setup/synthetic/listen", &busy).await?;
-    assert!(refused.starts_with("HTTP/1.1 409"), "{refused}");
-    assert!(refused.contains("machine synthetic is using this connection"));
-    let body = fixture.form(&[("port", "name:COM12")]).await?;
+    // The running machine names its adapter by serial number; the fake listing
+    // puts that adapter on COM12, so COM12 is busy by number and by name.
+    for busy in ["usb:A10K3XYZ", "name:COM12"] {
+        let form = fixture.form(&[("port", busy)]).await?;
+        let refused = fixture.post("/setup/synthetic/listen", &form).await?;
+        assert!(refused.starts_with("HTTP/1.1 409"), "{refused}");
+        assert!(refused.contains("machine synthetic is using this connection"));
+    }
+    let body = fixture.form(&[("port", "name:COM3")]).await?;
     let started = fixture.post("/setup/synthetic/listen", &body).await?;
     assert!(started.starts_with("HTTP/1.1 303"), "{started}");
     let mut view = String::new();
