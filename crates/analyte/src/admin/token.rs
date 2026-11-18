@@ -14,6 +14,10 @@ pub enum TokenError {
     /// The credential file can be read by other users, or is not a regular file.
     #[error("admin token file must be a protected regular file (Unix mode 0600)")]
     Permissions,
+    /// The Windows credential file grants access beyond the allowed principals.
+    #[cfg(windows)]
+    #[error("admin token file: {0}")]
+    Access(#[from] crate::runtime::service::acl::Error),
     /// The OS entropy source failed; no replacement credential was installed.
     #[error("admin token OS random source failed: {0}")]
     Random(getrandom::Error),
@@ -68,6 +72,8 @@ impl Token {
                 return Err(TokenError::Permissions);
             }
         }
+        #[cfg(windows)]
+        crate::runtime::service::acl::check(&path)?;
         let mut bytes = Vec::new();
         std::fs::File::open(path)
             .and_then(|file| file.take(45).read_to_end(&mut bytes))
@@ -103,7 +109,7 @@ fn generate(
 
 /// Atomically replaces the admin token with 256 bits from the OS random source.
 /// Returns its base64 representation for the CLI to print once, never to log.
-/// Unix files are created mode 0600; Windows inherits the protected directory ACL.
+/// Unix files are created mode 0600; Windows inherits the checked directory ACL.
 /// Restart the service after rotation to invalidate its loaded credential.
 /// A crash may leave `admin-token.pending`; preserve and investigate it before
 /// retrying. A failed installation retains the previous token when present.
@@ -190,6 +196,22 @@ mod tests {
                 0o600
             );
         }
+        Ok(())
+    }
+
+    // ADR 0017 / rule 10: a Windows credential other users can read is refused by SID.
+    #[cfg(windows)]
+    #[test]
+    fn adr0017_token_readable_by_users_is_refused() -> Result<(), crate::Error> {
+        use crate::runtime::service::acl::{Error, tests};
+        let directory = crate::admin::private_tempdir()?;
+        rotate_token(directory.path())?;
+        let file = directory.path().join("admin-token");
+        tests::icacls(&file, &["/grant", &format!("*{}:R", tests::USERS)])?;
+        assert!(matches!(
+            Token::load(directory.path()),
+            Err(TokenError::Access(Error::Grant { sid })) if sid == tests::USERS
+        ));
         Ok(())
     }
 
