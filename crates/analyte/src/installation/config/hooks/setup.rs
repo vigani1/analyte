@@ -29,6 +29,11 @@ impl Program {
                 machine.destination_limits.store_timeout = budget;
             }
         }
+        for kept in &mut self.retired {
+            if kept.settings.name.as_str() == name {
+                kept.limits.store_timeout = budget;
+            }
+        }
         Ok(())
     }
 
@@ -238,6 +243,10 @@ impl Program {
             .machines
             .iter()
             .any(|m| m.snapshot.effective().site().destination.name.as_str() == name)
+            && !self
+                .retired
+                .iter()
+                .any(|kept| kept.settings.name.as_str() == name)
         {
             return Err(Error::UnknownTestDestination);
         }
@@ -269,6 +278,13 @@ impl Program {
                 == name
             {
                 machine.destination_limits.poll_interval = interval;
+            }
+        }
+        // A kept destination has no poller; a short interval here makes any poll
+        // that wrongly started for it show up at once in a test.
+        for kept in &mut self.retired {
+            if kept.settings.name.as_str() == name {
+                kept.limits.poll_interval = interval;
             }
         }
         Ok(())

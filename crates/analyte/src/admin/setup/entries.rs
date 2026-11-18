@@ -1,4 +1,4 @@
-//! Adds and removes `[[machines]]` entries in the program file text, keeping every other byte.
+//! Adds and removes `[[machines]]` entries and keeps `[[retired_destinations]]` in the program file text, keeping every other byte.
 //!
 //! Each edit is checked by parsing: the edited file must hold exactly the old
 //! entries plus or minus the one changed. A layout the edit cannot follow (an
@@ -77,7 +77,7 @@ pub(super) fn added(
     site: &str,
 ) -> Result<String, SetupError> {
     let at = match listed.last() {
-        Some(last) => span(program, last.id.span().start)?.end,
+        Some(last) => span(program, last.id.span().start, MACHINES)?.end,
         None => program.len(),
     };
     let (before, after) = (
@@ -120,7 +120,7 @@ pub(super) fn removed(
         .iter()
         .find(|entry| entry.id.get_ref() == id)
         .ok_or_else(|| SetupError::UnknownMachine(id.into()))?;
-    let range = span(program, entry.id.span().start)?;
+    let range = span(program, entry.id.span().start, MACHINES)?;
     let edited = format!(
         "{}{}",
         program.get(..range.start).ok_or_else(layout)?,
@@ -136,6 +136,98 @@ pub(super) fn removed(
     }
     check(&edited, &expected)?;
     Ok(edited)
+}
+
+/// Header of one machine entry.
+const MACHINES: &str = "[[machines]]";
+/// Header of one destination kept after its machine was removed.
+const RETIRED: &str = "[[retired_destinations]]";
+
+/// The names of the kept destinations as written, with their byte positions.
+#[derive(serde::Deserialize)]
+struct RetiredSpans {
+    #[serde(default)]
+    retired_destinations: Vec<RetiredName>,
+}
+
+#[derive(serde::Deserialize)]
+struct RetiredName {
+    name: toml::Spanned<String>,
+}
+
+/// The program text with `destination` kept as a `[[retired_destinations]]` entry,
+/// so results still waiting for it are delivered after machine `machine` is
+/// removed. An identical entry leaves the text unchanged; an entry with the same
+/// name and other settings is replaced, because these are the settings in use.
+pub(super) fn retired(
+    program: &str,
+    destination: &analyte_config::Destination,
+    machine: &str,
+) -> Result<String, SetupError> {
+    let kept_layout = || {
+        SetupError::ProgramFile(
+            "write each kept lab app destination as its own [[retired_destinations]] table".into(),
+        )
+    };
+    let value = toml::Value::try_from(destination)
+        .map_err(|error| SetupError::ProgramFile(error.to_string()))?;
+    let mut expected = parsed(program)?;
+    let toml::Value::Array(kept) = expected
+        .entry("retired_destinations")
+        .or_insert_with(|| toml::Value::Array(Vec::new()))
+    else {
+        return Err(kept_layout());
+    };
+    let name = destination.name.as_str();
+    let same = |entry: &toml::Value| entry.get("name").and_then(toml::Value::as_str) == Some(name);
+    let mut text = program.to_owned();
+    if let Some(index) = kept.iter().position(same) {
+        let existing = kept.remove(index);
+        if existing
+            .clone()
+            .try_into::<analyte_config::Destination>()
+            .ok()
+            .as_ref()
+            == Some(destination)
+        {
+            return Ok(program.to_owned());
+        }
+        let spans: RetiredSpans = toml::from_str(program)
+            .map_err(|error: toml::de::Error| SetupError::ProgramFile(error.to_string()))?;
+        let at = spans
+            .retired_destinations
+            .iter()
+            .find(|entry| entry.name.get_ref() == name)
+            .ok_or_else(kept_layout)?
+            .name
+            .span()
+            .start;
+        let range = span(program, at, RETIRED).map_err(|_| kept_layout())?;
+        text = format!(
+            "{}{}",
+            program.get(..range.start).ok_or_else(kept_layout)?,
+            program.get(range.end..).ok_or_else(kept_layout)?
+        );
+    }
+    kept.push(value);
+    if !text.is_empty() && !text.ends_with('\n') {
+        text.push('\n');
+    }
+    let fields =
+        toml::to_string(destination).map_err(|error| SetupError::ProgramFile(error.to_string()))?;
+    text.push_str(&format!(
+        concat!(
+            "\n{}\n# Kept by the setup page when machine {} was removed: results still waiting\n",
+            "# for this lab app are delivered to it until none are left; its orders are not\n",
+            "# read. Remove this table only when the Overview shows nothing waiting for it.\n{}"
+        ),
+        RETIRED, machine, fields
+    ));
+    if parsed(&text).ok().as_ref() == Some(&expected) {
+        Ok(text)
+    } else {
+        Err(kept_layout())
+    }
 }
 
 fn layout() -> SetupError {
@@ -169,12 +261,12 @@ fn lines(text: &str) -> impl Iterator<Item = (std::ops::Range<usize>, &str)> {
     })
 }
 
-/// From the `[[machines]]` header above the entry whose id value starts at `id`
-/// to the end of its last setting line, before the next table header.
-fn span(text: &str, id: usize) -> Result<std::ops::Range<usize>, SetupError> {
+/// From the `header` line (such as `[[machines]]`) above the entry whose value
+/// starts at `id` to the end of its last setting line, before the next table header.
+fn span(text: &str, id: usize, header: &str) -> Result<std::ops::Range<usize>, SetupError> {
     let header = |line: &str| {
         let content = line.split('#').next().unwrap_or_default().trim();
-        content == "[[machines]]"
+        content == header
     };
     let start = lines(text)
         .take_while(|(range, _)| range.start <= id)
@@ -240,6 +332,42 @@ mod tests {
         let inline = "machines = [{ id = 'a', site = 'a.toml' }]\n";
         assert!(removed(inline, &listed(inline)?, "a").is_err());
         assert!(added(inline, &listed(inline)?, &id, "x.toml").is_err());
+        Ok(())
+    }
+
+    // Owner request 2026-11-19 (results waiting after a removal); safety rule 2:
+    // removing keeps the lab app destination as written in the site file, appended
+    // without touching other bytes; the same settings again change nothing, and
+    // newer settings under the same name replace the old entry.
+    #[test]
+    fn removed_destination_is_kept_once() -> Result<(), crate::Error> {
+        let program = "schema_version = 1\n# about a\n[[machines]]\nid = 'a'\nsite = 'a.toml'\n";
+        let destination: analyte_config::Destination = toml::from_str(concat!(
+            "name = 'demo'\nbase_url = 'https://lab.example.invalid'\n",
+            "api_key_name = 'demo-api'\nsigning_key_name = 'demo-signing'\n"
+        ))?;
+        let kept = retired(program, &destination, "a")?;
+        assert!(kept.starts_with(program), "{kept}");
+        let comment =
+            "[[retired_destinations]]\n# Kept by the setup page when machine a was removed";
+        assert!(kept.contains(comment), "{kept}");
+        let table: toml::Table = kept.parse()?;
+        let listed: Vec<analyte_config::Destination> = table
+            .get("retired_destinations")
+            .ok_or("kept")?
+            .clone()
+            .try_into()?;
+        assert_eq!(listed, std::slice::from_ref(&destination));
+        let again = retired(&kept, &destination, "b")?;
+        assert_eq!(again, kept, "same settings: unchanged");
+        let mut moved = destination.clone();
+        moved.base_url = analyte_config::HttpsUrl::parse("https://new.example.invalid")
+            .map_err(crate::invalid)?;
+        let replaced = retired(&kept, &moved, "b")?;
+        assert_eq!(replaced.matches("[[retired_destinations]]").count(), 1);
+        assert!(replaced.contains("new.example.invalid"), "{replaced}");
+        assert!(!replaced.contains("lab.example.invalid"), "{replaced}");
+        assert!(replaced.starts_with(program));
         Ok(())
     }
 

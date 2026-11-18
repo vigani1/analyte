@@ -330,6 +330,26 @@ pub(super) async fn index(State(state): State<Arc<Context>>) -> Response {
     let mut html = page("Set up a machine").markup(concat!(
         "<p>Choose a machine below to set its connection and lab app. ",
         "Saving writes the machine's site file; Analyte then restarts to use it.</p>",
+    ));
+    match crate::admin::removed::lines(&state).await {
+        Ok(lines) => {
+            for line in lines {
+                html.push_fragment(
+                    &Markup::new()
+                        .markup("<p><strong>")
+                        .text(line)
+                        .markup("</strong></p>"),
+                );
+            }
+        }
+        Err(error) => html.push_fragment(
+            &Markup::new()
+                .markup("<p>Results waiting for removed machines could not be counted: ")
+                .text(error)
+                .markup("</p>"),
+        ),
+    }
+    html.push_markup(concat!(
         "<h2>Installed machines</h2><form method=\"get\" action=\"/setup/add\">",
         "<button>Add machine</button></form><table><tr><th>Machine</th><th>Running ",
         "configuration digest</th><th></th><th></th></tr>"

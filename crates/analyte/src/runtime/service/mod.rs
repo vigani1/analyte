@@ -209,9 +209,9 @@ pub(super) async fn serve_with(
             "machine has no definition yet and does not run; set it up on the setup page"
         );
     }
-    let destinations = crate::runtime::delivery::destinations(&program, mode)?;
+    let destinations = Destinations::new(&program, mode)?;
     let secrets = Arc::new(secrets);
-    let (store, admin) = prepare_service(&program, space, mode).await?;
+    let (store, admin) = prepare_service(&program, space, mode, &destinations).await?;
     let admin_states = admin
         .as_ref()
         .map(|server| server.owners.clone())
@@ -271,6 +271,7 @@ async fn prepare_service(
     program: &Program,
     space: Box<dyn FreeSpace>,
     mode: crate::runtime::hooks::ServiceMode,
+    destinations: &Destinations,
 ) -> Result<(Arc<Handle>, Option<crate::admin::Server>), Error> {
     let store = open_service_store(program, space).await?;
     let startup = async {
@@ -283,8 +284,15 @@ async fn prepare_service(
             "store restore reconciliation status"
         );
         crate::runtime::delivery::recover(&store).await?;
+        let configured: Vec<_> = destinations
+            .served
+            .iter()
+            .chain(&destinations.retired)
+            .map(analyte_sink::Destination::id)
+            .collect();
+        crate::runtime::delivery::report_unconfigured(&store, &configured).await?;
         super::recovery::run(program, &store).await?;
-        crate::admin::prepare(program, store.clone(), mode)
+        crate::admin::prepare(program, store.clone(), mode, &destinations.draining)
             .await
             .map_err(admin_startup_error)
     }
@@ -365,7 +373,7 @@ struct Draining {
     captures: Vec<Arc<machine::capture::Capture>>,
     alert_owners: JoinSet<Result<(), Error>>,
     admin_owners: JoinSet<Result<(), Error>>,
-    delivery_owners: JoinSet<Result<(), DeliveryOwnerError>>,
+    delivery_owners: JoinSet<Result<DeliveryExit, DeliveryOwnerError>>,
     owners: JoinSet<()>,
     ready_to_close: Vec<watch::Receiver<bool>>,
     delivery_stop: watch::Sender<bool>,
@@ -477,6 +485,52 @@ async fn close_store(store: Arc<Handle>) -> Result<(), Error> {
     Ok(())
 }
 
+/// Why a delivery owner ended without an error.
+enum DeliveryExit {
+    /// Shutdown was requested.
+    Stopped,
+    /// A kept destination's worker sent everything; only these end while running.
+    Delivered,
+}
+
+/// Clears a kept destination's "still delivering" flag when its worker ends,
+/// also on an error, a panic or an abort.
+struct Delivering(Arc<std::sync::atomic::AtomicBool>);
+
+impl Drop for Delivering {
+    fn drop(&mut self) {
+        self.0.store(false, std::sync::atomic::Ordering::Release);
+    }
+}
+
+/// The destinations delivery workers run for.
+struct Destinations {
+    /// Used by set-up machines: a delivery worker and an order poller each.
+    served: Vec<analyte_sink::Destination>,
+    /// Kept after their machines were removed: a delivery worker only, until empty.
+    retired: Vec<analyte_sink::Destination>,
+    /// Each retired destination's "still delivering" flag, shown by the admin page.
+    draining: crate::admin::Draining,
+}
+
+impl Destinations {
+    fn new(program: &Program, mode: super::hooks::ServiceMode) -> Result<Self, Error> {
+        let retired = crate::runtime::delivery::retired(program, mode)?;
+        Ok(Self {
+            served: crate::runtime::delivery::destinations(program, mode)?,
+            // Each kept destination's worker clears its flag when nothing is left to send.
+            draining: retired
+                .iter()
+                .map(|d| {
+                    let delivering = Arc::new(std::sync::atomic::AtomicBool::new(true));
+                    (d.id().as_str().to_owned(), delivering)
+                })
+                .collect(),
+            retired,
+        })
+    }
+}
+
 /// Supervised owners combine exactly polling and app delivery boundaries.
 #[derive(Debug, thiserror::Error)]
 enum DeliveryOwnerError {
@@ -487,14 +541,17 @@ enum DeliveryOwnerError {
 }
 
 fn start_delivery(
-    destinations: Vec<analyte_sink::Destination>,
+    destinations: Destinations,
     store: &Arc<Handle>,
     secrets: &Arc<crate::installation::secrets::Environment>,
     watchdog: &crate::runtime::shutdown::Watchdog,
-) -> (watch::Sender<bool>, JoinSet<Result<(), DeliveryOwnerError>>) {
+) -> (
+    watch::Sender<bool>,
+    JoinSet<Result<DeliveryExit, DeliveryOwnerError>>,
+) {
     let (delivery_stop, delivery_stopped) = watch::channel(false);
     let mut delivery_owners = JoinSet::new();
-    for destination in &destinations {
+    for destination in &destinations.served {
         let destination = destination.clone();
         let store = store.clone();
         let secrets = secrets.clone();
@@ -505,10 +562,11 @@ fn start_delivery(
             analyte_sink::Poller::new(&store, &destination, secrets.as_ref())
                 .run(stop)
                 .await
+                .map(|()| DeliveryExit::Stopped)
                 .map_err(DeliveryOwnerError::from)
         });
     }
-    for destination in destinations {
+    for destination in destinations.served {
         let store = store.clone();
         let secrets = secrets.clone();
         let stop = delivery_stopped.clone();
@@ -519,7 +577,40 @@ fn start_delivery(
             analyte_sink::Worker::for_destination(&store, &destination, secrets.as_ref())
                 .run_draining(stop, crate::runtime::delivery::SHUTDOWN_BUDGET)
                 .await
+                .map(|()| DeliveryExit::Stopped)
                 .map_err(DeliveryOwnerError::from)
+        });
+    }
+    for destination in destinations.retired {
+        let store = store.clone();
+        let secrets = secrets.clone();
+        let stop = delivery_stopped.clone();
+        let flag = destinations
+            .draining
+            .get(destination.id().as_str())
+            .cloned()
+            .unwrap_or_default();
+        let component = watchdog.component(format!(
+            "retired-delivery-worker:{}",
+            destination.id().as_str()
+        ));
+        delivery_owners.spawn(async move {
+            let _component = component;
+            let _delivering = Delivering(flag);
+            let stopping = stop.clone();
+            analyte_sink::Worker::for_destination(&store, &destination, secrets.as_ref())
+                .run_until_delivered(stop, crate::runtime::delivery::SHUTDOWN_BUDGET)
+                .await
+                .map_err(DeliveryOwnerError::from)?;
+            Ok(if *stopping.borrow() {
+                DeliveryExit::Stopped
+            } else {
+                tracing::info!(
+                    destination = destination.id().as_str(),
+                    "retired lab app destination has nothing left to deliver; its worker stopped"
+                );
+                DeliveryExit::Delivered
+            })
         });
     }
     (delivery_stop, delivery_owners)
@@ -589,7 +680,7 @@ async fn supervise(
     stop: impl Future<Output = Result<(), Error>>,
     alert_owners: &mut JoinSet<Result<(), Error>>,
     admin_owners: &mut JoinSet<Result<(), Error>>,
-    delivery_owners: &mut JoinSet<Result<(), DeliveryOwnerError>>,
+    delivery_owners: &mut JoinSet<Result<DeliveryExit, DeliveryOwnerError>>,
     owners: &mut JoinSet<()>,
 ) -> Result<(), Error> {
     tokio::pin!(stop);
@@ -612,9 +703,12 @@ async fn supervise(
             }
             owner = delivery_owners.join_next(), if !delivery_owners.is_empty() => {
                 break match owner {
+                    Some(Ok(Ok(DeliveryExit::Delivered))) => continue,
                     Some(Ok(Err(error))) => Err(error.into()),
                     Some(Err(error)) => Err(error.into()),
-                    Some(Ok(Ok(()))) | None => Err(Failure::DeliveryOwnerStoppedUnexpectedly),
+                    Some(Ok(Ok(DeliveryExit::Stopped))) | None => {
+                        Err(Failure::DeliveryOwnerStoppedUnexpectedly)
+                    }
                 }
             }
             owner = owners.join_next(), if !owners.is_empty() => {

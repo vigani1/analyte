@@ -70,6 +70,14 @@ pub enum Error {
     /// A required installation setting or relationship is refused.
     #[error("inconsistent shared destination")]
     InconsistentSharedDestination,
+    /// Two retired destinations share one name, so which address to use is unknown.
+    #[error(
+        "retired destination {0} is listed twice; keep one [[retired_destinations]] table per name"
+    )]
+    DuplicateRetiredDestination(String),
+    /// Too many retired destinations to deliver from.
+    #[error("at most 128 retired destinations are supported")]
+    TooManyRetiredDestinations,
     /// A required installation setting or relationship is refused.
     #[error("invalid program version, machine count or storage limits")]
     InvalidProgramLimits,
@@ -160,6 +168,8 @@ impl Error {
             | Self::SetupNeedsAdmin
             | Self::AwaitingSetupWithSettings
             | Self::InconsistentSharedDestination
+            | Self::DuplicateRetiredDestination(_)
+            | Self::TooManyRetiredDestinations
             | Self::InvalidProgramLimits
             | Self::InvalidSigningRotation
             | Self::ReceiveTimeoutTooLong

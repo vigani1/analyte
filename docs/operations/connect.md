@@ -43,6 +43,27 @@ api_key_name = "demo-api"
 signing_key_name = "demo-signing"
 ```
 
+### Destinations kept after a removal
+
+When the [Setup page](operate.md#setup-page) removes a machine, it copies that
+machine's `[destination]` table into the program file as a
+`[[retired_destinations]]` table with the same keys, so results still waiting for
+that lab app are delivered (and nothing else is done with it). A synthetic
+example:
+
+```toml
+[[retired_destinations]]
+name = "demo"
+base_url = "https://lab.example.invalid"
+api_key_name = "demo-api"
+signing_key_name = "demo-signing"
+```
+
+Each name appears once and follows the same rules as a site file's
+`[destination]`; keys still come from the environment or the locked file. A
+`signing_rotation` entry may name a kept destination. A machine that uses the
+same name wins. `check-config` validates these tables.
+
 ### Name a serial port
 
 A serial machine's site file names its port in one of two ways. Set exactly

@@ -71,47 +71,72 @@ impl Environment {
     }
 
     /// Loads from a host lookup; tests can inject credentials without mutating the environment.
+    /// A destination kept after its machines were removed never stops startup: when
+    /// its keys are missing or invalid it is left out, its deliveries pause with a
+    /// visible "credentials require operator repair" reason, and the key name is logged.
     /// # Errors
-    /// Names a missing, empty or malformed credential.
+    /// Names a missing, empty or malformed credential of a set-up machine's destination.
     pub fn load_with(
         program: &crate::installation::config::Program,
         lookup: impl Fn(&str) -> Option<String>,
     ) -> Result<Self, SecretError> {
-        let read = |name: &Identifier| {
-            lookup(&variable(name.as_str()))
-                .filter(|s| !s.is_empty())
-                .ok_or_else(|| SecretError::Missing(name.as_str().into()))
-        };
         let mut credentials = BTreeMap::new();
         for machine in program.machines() {
             let destination = &machine.snapshot().effective().site().destination;
-            let api_key = read(&destination.api_key_name)?;
-            if !api_key_valid(&api_key) {
-                return Err(SecretError::Invalid(
-                    destination.api_key_name.as_str().into(),
-                ));
-            }
-            let mut names = vec![&destination.signing_key_name];
-            if let Some(rotation) = program.signing_rotation.get(destination.name.as_str()) {
-                names.extend(rotation);
-            }
-            let mut signing_secrets = Vec::new();
-            for name in names {
-                signing_secrets.push(
-                    SigningSecret::parse(&read(name)?)
-                        .map_err(|_| SecretError::Invalid(name.as_str().into()))?,
-                );
-            }
             credentials.insert(
                 destination.name.as_str().into(),
-                Credentials {
-                    api_key,
-                    signing_secrets,
-                },
+                read(program, destination, &lookup)?,
             );
+        }
+        for kept in program.unused_retired() {
+            let destination = kept.settings();
+            match read(program, destination, &lookup) {
+                Ok(read) => {
+                    credentials.insert(destination.name.as_str().into(), read);
+                }
+                Err(error) => tracing::error!(
+                    destination = destination.name.as_str(),
+                    %error,
+                    "retired destination has no usable keys; its deliveries pause until they are set"
+                ),
+            }
         }
         Ok(Self(credentials))
     }
+}
+
+/// Reads one destination's API key and signing keys, rotation included.
+fn read(
+    program: &crate::installation::config::Program,
+    destination: &analyte_config::Destination,
+    lookup: &impl Fn(&str) -> Option<String>,
+) -> Result<Credentials, SecretError> {
+    let read = |name: &Identifier| {
+        lookup(&variable(name.as_str()))
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| SecretError::Missing(name.as_str().into()))
+    };
+    let api_key = read(&destination.api_key_name)?;
+    if !api_key_valid(&api_key) {
+        return Err(SecretError::Invalid(
+            destination.api_key_name.as_str().into(),
+        ));
+    }
+    let mut names = vec![&destination.signing_key_name];
+    if let Some(rotation) = program.signing_rotation.get(destination.name.as_str()) {
+        names.extend(rotation);
+    }
+    let mut signing_secrets = Vec::new();
+    for name in names {
+        signing_secrets.push(
+            SigningSecret::parse(&read(name)?)
+                .map_err(|_| SecretError::Invalid(name.as_str().into()))?,
+        );
+    }
+    Ok(Credentials {
+        api_key,
+        signing_secrets,
+    })
 }
 
 impl SecretsSource for Environment {

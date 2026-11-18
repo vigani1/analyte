@@ -172,6 +172,7 @@ async fn start_pages_server(
         store: store.clone(),
         machines,
         destinations: Vec::new(),
+        retired: crate::admin::Draining::new(),
         directory: root.to_owned(),
         reserve: 1,
         setup: crate::admin::setup::Setup::for_test(root),

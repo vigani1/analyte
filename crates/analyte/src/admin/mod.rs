@@ -5,12 +5,14 @@ mod departures;
 mod listener;
 mod overview;
 mod pages;
+mod removed;
 mod retention;
 mod server;
 mod sessions;
 pub(crate) mod setup;
 mod token;
 
+pub(crate) use removed::Draining;
 pub(crate) use server::{Server, prepare};
 
 pub use token::{Token, TokenError, rotate_token};
