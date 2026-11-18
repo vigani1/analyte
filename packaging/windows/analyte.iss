@@ -129,8 +129,15 @@ end;
 function RunScript(Script, Arguments, Output: String; var Code: Integer): Boolean;
 begin
   Code := -1;
+  { Windows PowerShell gets its own default module path. Setup inherits the
+    caller's environment, and PowerShell 7 puts its module folders first in
+    PSModulePath; Windows PowerShell then fails to load Get-Acl from them
+    (PR #255 run 44410216186: "found in the module
+    'Microsoft.PowerShell.Security', but the module could not be loaded"). }
   Result := Exec(ExpandConstant('{cmd}'),
-    '/c ""' + PowerShell + '" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "'
+    '/c "set "PSModulePath=' + ExpandConstant('{commonpf64}\WindowsPowerShell\Modules;'
+      + '{sys}\WindowsPowerShell\v1.0\Modules') + '" && "' + PowerShell
+      + '" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "'
       + Script + '" ' + Arguments + ' > "' + Output + '" 2>&1"',
     '', SW_HIDE, ewWaitUntilTerminated, Code) and (Code = 0);
   Log(ExtractFileName(Script) + ' exit code ' + IntToStr(Code) + '; output:' + #13#10

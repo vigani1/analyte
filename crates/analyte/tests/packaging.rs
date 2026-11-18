@@ -242,6 +242,10 @@ fn windows_installer_and_scripts_agree() -> Outcome {
         // A script counts as done only when it exits 0, and a failed service
         // setup makes the installer exit 10.
         "'', SW_HIDE, ewWaitUntilTerminated, Code) and (Code = 0);",
+        // Run 44410216186: Windows PowerShell inherited PowerShell 7's module
+        // path and could not load Get-Acl; it gets its own default path.
+        r#"'/c "set "PSModulePath=' + ExpandConstant('{commonpf64}\WindowsPowerShell\Modules;'"#,
+        r#"+ '{sys}\WindowsPowerShell\v1.0\Modules') + '" && "' + PowerShell"#,
         "  if ServiceReady then",
         "function GetCustomSetupExitCode: Integer;",
         "  if InstallError <> '' then\n    Result := 10",
