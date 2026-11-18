@@ -2,6 +2,9 @@
 use super::*;
 use crate::intake;
 use analyte_store::Handle;
+use std::{cell::RefCell, rc::Rc};
+/// Proves the stop, store-before-ACK and parking rules on the real chunk hosts.
+mod hosts;
 #[derive(Debug, thiserror::Error)]
 enum Error {
     #[error("probe deadline")]
@@ -24,9 +27,6 @@ impl CleanupFailure for Error {
         Self::CleanupPair(Box::new(custody::Cleanup { original, effect }))
     }
 }
-use std::{cell::RefCell, rc::Rc};
-/// Proves the stop, store-before-ACK and parking rules on the real chunk hosts.
-mod hosts;
 
 struct Probe {
     trace: Rc<RefCell<Vec<&'static str>>>,
