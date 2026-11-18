@@ -1,5 +1,5 @@
 //! Runs one chunk-journaled protocol host: receive loop, chunk journal, byte loop and close.
-use super::{Failures, Flow, sent, wait_for};
+use super::{Failures, Flow, sent, tick_on_deadline, wait_for};
 use crate::intake;
 use crate::machine::{
     connection_input::{self, Input},
@@ -43,41 +43,42 @@ impl Trigger {
     }
 }
 
-/// One input the runner hands a host. A transport chunk is journaled, then
-/// arrives as `Chunk` followed by one `Byte` per byte; each byte's actions run
-/// before the next byte is fed.
+/// One input the runner hands a host. A journaled transport chunk arrives as
+/// `Chunk`, then one `Byte` per byte.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::machine) enum HostInput {
-    /// The transport opened the connection.
     Opened,
-    /// A journaled chunk; its bytes follow.
     Chunk,
-    /// One byte of the current chunk.
     Byte(u8),
     /// A deadline was due.
     Tick,
-    /// The connection closed or failed, or the service is stopping. The session
-    /// ends once these actions have run.
+    /// The connection closed or failed, or the service is stopping; the
+    /// session ends once these actions have run.
     Disconnected,
 }
 
-/// What a host borrows for one connection, with the connection clock its dialog
-/// deadlines use and the trigger of the latest transport input. The caller owns
-/// every borrowed resource through shutdown.
-pub(in crate::machine) struct Session<'a, 'm, S> {
+/// What a host borrows for one connection, the connection clock its dialog
+/// deadlines use, the trigger of the latest input and the actions of the
+/// current step. The caller owns every borrowed resource through shutdown.
+pub(in crate::machine) struct Session<'a, 'm, P: Protocol> {
     pub(in crate::machine) machine: &'a intake::ConnectionEvidence<'m>,
-    pub(in crate::machine) settings: &'a S,
+    pub(in crate::machine) settings: &'a P::Settings,
     pub(in crate::machine) store: &'a Handle,
     pub(in crate::machine) conn: &'a mut analyte_transport::Connection,
     pub(in crate::machine) stop: watch::Receiver<bool>,
+    /// Actions the current step still runs; an effect appends follow-ups.
+    pub(in crate::machine) actions: VecDeque<P::Action>,
+    /// Failures reported once the current step's actions have run.
+    pub(in crate::machine) failures: Failures<P::Error>,
+    stop_when_drained: bool,
     start: Instant,
     trigger: Trigger,
 }
 
-impl<'a, 'm, S> Session<'a, 'm, S> {
+impl<'a, 'm, P: Protocol> Session<'a, 'm, P> {
     pub(in crate::machine) fn new(
         machine: &'a intake::ConnectionEvidence<'m>,
-        settings: &'a S,
+        settings: &'a P::Settings,
         store: &'a Handle,
         conn: &'a mut analyte_transport::Connection,
         stop: watch::Receiver<bool>,
@@ -88,6 +89,9 @@ impl<'a, 'm, S> Session<'a, 'm, S> {
             store,
             conn,
             stop,
+            actions: VecDeque::new(),
+            failures: Failures::new(),
+            stop_when_drained: false,
             start: Instant::now(),
             trigger: Trigger::Exchange,
         }
@@ -100,66 +104,42 @@ impl<'a, 'm, S> Session<'a, 'm, S> {
     pub(in crate::machine) fn restart_clock(&mut self) {
         self.start = Instant::now();
     }
-    /// The trigger of the latest transport input.
     pub(in crate::machine) const fn trigger(&self) -> Trigger {
         self.trigger
     }
-}
-
-/// The actions one host call queued, and the failures that wait for them.
-pub(in crate::machine) struct Queue<A, E> {
-    /// Actions still to run; an effect appends the dialog's follow-up actions.
-    pub(in crate::machine) actions: VecDeque<A>,
-    /// Failures reported once the queue ends.
-    pub(in crate::machine) failures: Failures<E>,
-    stop_when_drained: bool,
-}
-
-impl<A, E> Queue<A, E> {
-    /// Ends the session normally once every queued action has run.
+    /// Ends the session normally once the current step's actions have run.
     pub(in crate::machine) const fn stop_when_drained(&mut self) {
         self.stop_when_drained = true;
     }
 }
 
 /// A chunk-journaled protocol host: dialog transitions and effects, never its
-/// own receive loop. Every call that returns `Stop` ends the session normally;
-/// an error ends it with that cause. Actions a call queues run in order before
-/// the runner moves on; `Stop` from an effect ends the queue at once.
+/// own receive loop. `idle` runs before every wait, `input` once per input.
+/// Each step's queued actions then run in order through `effect`. `Stop` from
+/// any call ends the session normally and an error ends it with that cause.
 pub(in crate::machine) trait Protocol: Sized {
     type Settings;
     type Action;
     type Error: CleanupFailure + From<link::error::Error> + From<analyte_transport::Error>;
     /// The next deadline on the connection clock; `None` waits for input or stop.
-    fn deadline(
-        &self,
-        s: &Session<'_, '_, Self::Settings>,
-    ) -> Result<Option<Duration>, Self::Error>;
-    /// Runs before every wait for input.
-    async fn idle(
-        &mut self,
-        _s: &mut Session<'_, '_, Self::Settings>,
-        _queue: &mut Queue<Self::Action, Self::Error>,
-    ) -> Result<Flow, Self::Error> {
+    fn deadline(&self, s: &Session<'_, '_, Self>) -> Result<Option<Duration>, Self::Error>;
+    async fn idle(&mut self, _s: &mut Session<'_, '_, Self>) -> Result<Flow, Self::Error> {
         Ok(Flow::Continue)
     }
     async fn input(
         &mut self,
-        s: &mut Session<'_, '_, Self::Settings>,
+        s: &mut Session<'_, '_, Self>,
         input: HostInput,
-        queue: &mut Queue<Self::Action, Self::Error>,
     ) -> Result<Flow, Self::Error>;
-    /// Runs one queued action; follow-up actions and deferred failures join `queue`.
     async fn effect(
         &mut self,
-        s: &mut Session<'_, '_, Self::Settings>,
+        s: &mut Session<'_, '_, Self>,
         action: Self::Action,
-        queue: &mut Queue<Self::Action, Self::Error>,
     ) -> Result<Flow, Self::Error>;
     /// Retains every owned effect even when another cleanup operation already failed.
     async fn close(
         &mut self,
-        s: &mut Session<'_, '_, Self::Settings>,
+        s: &mut Session<'_, '_, Self>,
         result: &mut Result<(), Self::Error>,
     ) -> Result<(), Self::Error>;
 }
@@ -171,7 +151,7 @@ pub(in crate::machine) trait Protocol: Sized {
 /// store or write can still have happened; the host's effects retain its identity.
 pub(in crate::machine) async fn serve<P: Protocol>(
     open: impl Future<Output = Result<P, P::Error>>,
-    mut s: Session<'_, '_, P::Settings>,
+    mut s: Session<'_, '_, P>,
 ) -> Result<(), P::Error> {
     let mut host = open.await?;
     s.restart_clock();
@@ -186,55 +166,38 @@ pub(in crate::machine) async fn serve<P: Protocol>(
 /// deadline and waiting input, and reaches the host as a disconnect so its
 /// dialog parks what is open. Every chunk is durably journaled before the
 /// dialog sees its first byte (ADR 0010).
-async fn receive<P: Protocol>(
-    host: &mut P,
-    s: &mut Session<'_, '_, P::Settings>,
-) -> Result<(), P::Error> {
+async fn receive<P: Protocol>(host: &mut P, s: &mut Session<'_, '_, P>) -> Result<(), P::Error> {
     loop {
-        if call(host, s, Call::Idle).await? == Flow::Stop {
+        if step(host, s, None).await? == Flow::Stop {
             return Ok(());
         }
-        let wait = host
-            .deadline(s)?
-            .map(|deadline| deadline.saturating_sub(s.elapsed()));
+        let wait = host.deadline(s)?.map(|at| at.saturating_sub(s.elapsed()));
         let input = tokio::select! {
             biased;
             _ = async { let _ = s.stop.wait_for(|&stopped| stopped).await; } => Input::Closed(None),
             () = wait_for(wait) => Input::Tick,
             input = connection_input::receive(s.conn) => match input {
                 Ok(input) => input,
-                Err(analyte_transport::Error::Deadline(_)) => Input::Tick,
-                Err(error @ (analyte_transport::Error::InvalidLimits
-                | analyte_transport::Error::OversizedWrite
-                | analyte_transport::Error::ConsumerClosed
-                | analyte_transport::Error::Offline
-                | analyte_transport::Error::Io { .. })) => return Err(error.into()),
+                Err(error) => tick_on_deadline(error)?,
             },
         };
         s.trigger = Trigger::of(&input, &s.stop);
-        let input = match input {
-            Input::Opened { .. } => HostInput::Opened,
-            Input::Tick => HostInput::Tick,
+        let flow = match input {
+            Input::Opened { .. } => step(host, s, Some(HostInput::Opened)).await?,
+            Input::Tick => step(host, s, Some(HostInput::Tick)).await?,
             Input::Closed(_) | Input::Failed(_) => {
-                call(host, s, Call::Input(HostInput::Disconnected)).await?;
-                return Ok(());
+                step(host, s, Some(HostInput::Disconnected)).await?;
+                Flow::Stop
             }
             Input::Bytes { bytes } => {
-                intake::receive(
-                    s.store,
-                    s.machine,
-                    analyte_model::ReceiptId::new(),
-                    bytes.clone(),
-                )
-                .await
-                .map_err(link::error::Error::from)?;
-                if feed(host, s, bytes).await? == Flow::Stop {
-                    return Ok(());
-                }
-                continue;
+                let id = analyte_model::ReceiptId::new();
+                intake::receive(s.store, s.machine, id, bytes.clone())
+                    .await
+                    .map_err(link::error::Error::from)?;
+                feed(host, s, bytes).await?
             }
         };
-        if call(host, s, Call::Input(input)).await? == Flow::Stop {
+        if flow == Flow::Stop {
             return Ok(());
         }
     }
@@ -244,58 +207,47 @@ async fn receive<P: Protocol>(
 /// A stop or failure leaves the rest unfed; the chunk journal keeps them.
 pub(super) async fn feed<P: Protocol>(
     host: &mut P,
-    s: &mut Session<'_, '_, P::Settings>,
+    s: &mut Session<'_, '_, P>,
     bytes: Vec<u8>,
 ) -> Result<Flow, P::Error> {
-    if call(host, s, Call::Input(HostInput::Chunk)).await? == Flow::Stop {
-        return Ok(Flow::Stop);
-    }
-    for byte in bytes {
-        if call(host, s, Call::Input(HostInput::Byte(byte))).await? == Flow::Stop {
+    let inputs = std::iter::once(HostInput::Chunk).chain(bytes.into_iter().map(HostInput::Byte));
+    for input in inputs {
+        if step(host, s, Some(input)).await? == Flow::Stop {
             return Ok(Flow::Stop);
         }
     }
     Ok(Flow::Continue)
 }
 
-/// The host call whose actions one queue runs.
-enum Call {
-    Idle,
-    Input(HostInput),
-}
-
-/// Runs one host call, then its queued actions in order until none is left,
-/// an effect stops or an effect fails. A kept failure outranks the flow, and an
-/// error that ended the queue early is retained beside it.
-async fn call<P: Protocol>(
+/// Runs `idle` (no input) or `input`, then the actions it queued in order until
+/// none is left, an effect stops or an effect fails. A kept failure outranks
+/// the flow, and an error that ended the step early is retained beside it.
+async fn step<P: Protocol>(
     host: &mut P,
-    s: &mut Session<'_, '_, P::Settings>,
-    call: Call,
+    s: &mut Session<'_, '_, P>,
+    input: Option<HostInput>,
 ) -> Result<Flow, P::Error> {
-    let mut queue = Queue {
-        actions: VecDeque::new(),
-        failures: Failures::new(),
-        stop_when_drained: false,
-    };
+    s.actions.clear();
+    s.stop_when_drained = false;
     let result = async {
-        let flow = match call {
-            Call::Idle => host.idle(s, &mut queue).await?,
-            Call::Input(input) => host.input(s, input, &mut queue).await?,
+        let flow = match input {
+            None => host.idle(s).await?,
+            Some(input) => host.input(s, input).await?,
         };
         if flow == Flow::Stop {
             return Ok(Flow::Stop);
         }
-        while let Some(action) = queue.actions.pop_front() {
-            if host.effect(s, action, &mut queue).await? == Flow::Stop {
+        while let Some(action) = s.actions.pop_front() {
+            if host.effect(s, action).await? == Flow::Stop {
                 return Ok(Flow::Stop);
             }
         }
-        Ok(if queue.stop_when_drained {
+        Ok(if s.stop_when_drained {
             Flow::Stop
         } else {
             Flow::Continue
         })
     }
     .await;
-    queue.failures.finish(result)
+    std::mem::replace(&mut s.failures, Failures::new()).finish(result)
 }

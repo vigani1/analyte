@@ -1,6 +1,6 @@
 //! Drives POCT DML reviewer connections with durable custody before acceptance.
 pub(crate) mod policy;
-use super::driver::{Flow, HostInput, Protocol, Queue, Session};
+use super::driver::{Flow, HostInput, Protocol, Session};
 use crate::intake;
 use crate::intake::ByteReason;
 use crate::machine::receive::custody::{self, ms};
@@ -31,7 +31,7 @@ impl Host {
     /// byte finished, instead of storing or acknowledging it.
     async fn cancel(
         &mut self,
-        s: &Session<'_, '_, PoctStack>,
+        s: &Session<'_, '_, Self>,
         actions: Vec<Action>,
     ) -> Result<(), Error> {
         let mut raw = self.dialog.take_input();
@@ -51,15 +51,11 @@ impl Protocol for Host {
     type Settings = PoctStack;
     type Action = Action;
     type Error = Error;
-    fn deadline(&self, _s: &Session<'_, '_, PoctStack>) -> Result<Option<Duration>, Error> {
+    fn deadline(&self, _s: &Session<'_, '_, Self>) -> Result<Option<Duration>, Error> {
         Ok(self.dialog.next_deadline())
     }
     /// A closed dialog has no deadline and nothing more to serve.
-    async fn idle(
-        &mut self,
-        _s: &mut Session<'_, '_, PoctStack>,
-        _queue: &mut Queue<Action, Error>,
-    ) -> Result<Flow, Error> {
+    async fn idle(&mut self, _s: &mut Session<'_, '_, Self>) -> Result<Flow, Error> {
         Ok(if self.dialog.next_deadline().is_some() {
             Flow::Continue
         } else {
@@ -68,9 +64,8 @@ impl Protocol for Host {
     }
     async fn input(
         &mut self,
-        s: &mut Session<'_, '_, PoctStack>,
+        s: &mut Session<'_, '_, Self>,
         input: HostInput,
-        queue: &mut Queue<Action, Error>,
     ) -> Result<Flow, Error> {
         if let HostInput::Byte(byte) = input {
             let actions = self.dialog.step(s.elapsed(), Event::Byte(byte))?;
@@ -78,7 +73,7 @@ impl Protocol for Host {
                 self.cancel(s, actions).await?;
                 return Ok(Flow::Stop);
             }
-            queue.actions.extend(actions);
+            s.actions.extend(actions);
             return Ok(Flow::Continue);
         }
         // Every other input first applies due time, so incoming fragments never
@@ -86,30 +81,27 @@ impl Protocol for Host {
         // dialog, whose Close effect stops the queue before a disconnect's
         // actions, which the closed dialog leaves empty anyway.
         let actions = self.dialog.step(s.elapsed(), Event::Tick)?;
-        queue.actions.extend(actions);
+        s.actions.extend(actions);
         if input == HostInput::Disconnected {
             let actions = self.dialog.step(s.elapsed(), Event::Disconnected)?;
-            queue.actions.extend(actions);
+            s.actions.extend(actions);
         }
         Ok(Flow::Continue)
     }
     async fn effect(
         &mut self,
-        s: &mut Session<'_, '_, PoctStack>,
+        s: &mut Session<'_, '_, Self>,
         action: Action,
-        queue: &mut Queue<Action, Error>,
     ) -> Result<Flow, Error> {
         let machine = s.machine;
         let store = s.store;
         let now = s.elapsed();
         let limits = super::interpretation::poct_limits(s.settings);
         let dialog = &mut self.dialog;
-        let Queue {
-            actions, failures, ..
-        } = queue;
         match action {
             Action::Parse(wire) => {
-                actions.extend(interpret_input(wire, dialog, s, limits).await?);
+                let actions = interpret_input(wire, dialog, s, limits).await?;
+                s.actions.extend(actions);
             }
             Action::ParseLimit(wire) => {
                 intake::park_bytes(store, machine, wire, ByteReason::PoctLimit).await?;
@@ -122,18 +114,19 @@ impl Protocol for Host {
                 device_id: _,
                 capabilities: _,
             } => {
-                actions.extend(dialog.step(now, Event::HelloDecision(true))?);
+                s.actions
+                    .extend(dialog.step(now, Event::HelloDecision(true))?);
             }
             Action::Store { ticket, message } => {
                 let operation = store_message(store, machine, &message);
                 let event = match custody::store_before_ack(machine.machine(), operation).await {
                     Ok(outcome) => Event::Stored { ticket, outcome },
                     Err(error) => {
-                        failures.keep(Error::from(error));
+                        s.failures.keep(Error::from(error));
                         Event::StoreFailed(ticket)
                     }
                 };
-                actions.extend(dialog.step(s.elapsed(), event)?);
+                s.actions.extend(dialog.step(s.elapsed(), event)?);
             }
             Action::Park { message, reason } => {
                 intake::park_bytes(
@@ -163,7 +156,7 @@ impl Protocol for Host {
                 return Err(Error::BackpressureViolated);
             }
             Action::TopicComplete => {
-                actions.extend(dialog.step(now, Event::Finish)?);
+                s.actions.extend(dialog.step(now, Event::Finish)?);
             }
             Action::Close { normal, unresolved } => {
                 retain_closure(store, machine, normal, &unresolved).await?;
@@ -174,7 +167,7 @@ impl Protocol for Host {
     }
     async fn close(
         &mut self,
-        s: &mut Session<'_, '_, PoctStack>,
+        s: &mut Session<'_, '_, Self>,
         _result: &mut Result<(), Error>,
     ) -> Result<(), Error> {
         let raw = self.dialog.take_input();
@@ -188,7 +181,7 @@ impl Protocol for Host {
 async fn interpret_input(
     wire: Vec<u8>,
     dialog: &mut Dialog,
-    s: &Session<'_, '_, PoctStack>,
+    s: &Session<'_, '_, Host>,
     limits: analyte_poct::Limits,
 ) -> Result<Vec<Action>, Error> {
     match Message::parse(&wire, limits) {

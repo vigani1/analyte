@@ -60,14 +60,13 @@ impl Protocol for Probe {
     type Settings = ();
     type Action = ();
     type Error = Error;
-    fn deadline(&self, _: &Session<'_, '_, ()>) -> Result<Option<Duration>, Error> {
+    fn deadline(&self, _: &Session<'_, '_, Self>) -> Result<Option<Duration>, Error> {
         Ok(Some(Duration::ZERO))
     }
     async fn input(
         &mut self,
-        _: &mut Session<'_, '_, ()>,
+        _: &mut Session<'_, '_, Self>,
         input: HostInput,
-        _: &mut Queue<(), Error>,
     ) -> Result<Flow, Error> {
         match input {
             HostInput::Tick => {
@@ -83,17 +82,12 @@ impl Protocol for Probe {
             }
         }
     }
-    async fn effect(
-        &mut self,
-        _: &mut Session<'_, '_, ()>,
-        (): (),
-        _: &mut Queue<(), Error>,
-    ) -> Result<Flow, Error> {
+    async fn effect(&mut self, _: &mut Session<'_, '_, Self>, (): ()) -> Result<Flow, Error> {
         Err(Error::UnexpectedInput)
     }
     async fn close(
         &mut self,
-        _: &mut Session<'_, '_, ()>,
+        _: &mut Session<'_, '_, Self>,
         _: &mut Result<(), Error>,
     ) -> Result<(), Error> {
         self.trace.borrow_mut().push("close");
@@ -134,24 +128,15 @@ fn adr0012_apply_failures_outrank_stop_and_keep_every_cause() {
         Ok(Flow::Continue)
     ));
 }
-/// One synthetic machine and a temporary store for driving probe hosts.
+/// A program with one synthetic machine of `definition` and its open store.
 async fn synthetic(
     temp: &std::path::Path,
+    definition: &str,
 ) -> Result<(crate::installation::config::Program, Handle), crate::Error> {
-    let path = analyte_fixtures::write_machine(
-        temp,
-        include_str!("../../../../../core/config/examples/hl7.toml"),
-        "127.0.0.1:5600",
-    )?;
+    let path = analyte_fixtures::write_machine(temp, definition, "127.0.0.1:5600")?;
     let program = crate::installation::config::Program::load(&path)?;
-    let store = Handle::start(
-        temp.join("store.db"),
-        analyte_fixtures::store_limits(),
-        Box::new(analyte_fixtures::UnlimitedSpace),
-        4,
-        crate::test_startup_deadline()?,
-    )
-    .await?;
+    let space = Box::new(analyte_fixtures::UnlimitedSpace);
+    let store = crate::runtime::service::open_store(&program, space).await?;
     Ok((program, store))
 }
 /// Both runners: a due deadline outranks EOF and background work, and a stop
@@ -162,7 +147,8 @@ async fn synthetic(
 async fn adr0001_0003_stop_deadline_and_cleanup_preserve_priority_and_both_causes()
 -> Result<(), crate::Error> {
     let temp = tempfile::tempdir()?;
-    let (program, mut store) = synthetic(temp.path()).await?;
+    let hl7 = include_str!("../../../../../core/config/examples/hl7.toml");
+    let (program, mut store) = synthetic(temp.path(), hl7).await?;
     let machine = program.machines().first().ok_or("synthetic machine")?;
     let connection = intake::ConnectionEvidence::new(machine)?;
     for (chunks, stopped) in [(false, false), (false, true), (true, false), (true, true)] {

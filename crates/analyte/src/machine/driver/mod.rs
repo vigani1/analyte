@@ -7,7 +7,7 @@ use std::{collections::VecDeque, time::Duration};
 use tokio::sync::watch;
 
 mod protocol;
-pub(super) use protocol::{HostInput, Protocol, Queue, Session, Trigger, serve};
+pub(super) use protocol::{HostInput, Protocol, Session, Trigger, serve};
 /// Exercises each concrete host without opening a real analyzer connection.
 #[cfg(test)]
 mod tests;
@@ -118,14 +118,7 @@ pub(super) trait Effects {
     type Error: CleanupFailure + From<super::link::error::Error> + From<analyte_transport::Error>;
     fn wait(&self) -> Result<Option<Duration>, Self::Error>;
     fn receive_error(&self, error: analyte_transport::Error) -> Result<Input, Self::Error> {
-        match error {
-            analyte_transport::Error::Deadline(_) => Ok(Input::Tick),
-            error @ (analyte_transport::Error::InvalidLimits
-            | analyte_transport::Error::OversizedWrite
-            | analyte_transport::Error::ConsumerClosed
-            | analyte_transport::Error::Offline
-            | analyte_transport::Error::Io { .. }) => Err(error.into()),
-        }
+        Ok(tick_on_deadline(error)?)
     }
     /// Protocol-specific pending host work races input; dropping it never proves rollback.
     async fn background(&mut self) -> Result<(), Self::Error> {
@@ -193,6 +186,17 @@ async fn drive<P: Effects>(protocol: &mut P, host: &mut Context<'_>) -> Result<(
         if matches!(protocol.input(host, input).await?, Flow::Stop) {
             return Ok(());
         }
+    }
+}
+/// A receive deadline is a tick; every other transport failure ends the session.
+fn tick_on_deadline(error: analyte_transport::Error) -> Result<Input, analyte_transport::Error> {
+    match error {
+        analyte_transport::Error::Deadline(_) => Ok(Input::Tick),
+        error @ (analyte_transport::Error::InvalidLimits
+        | analyte_transport::Error::OversizedWrite
+        | analyte_transport::Error::ConsumerClosed
+        | analyte_transport::Error::Offline
+        | analyte_transport::Error::Io { .. }) => Err(error),
     }
 }
 async fn wait_for(wait: Option<Duration>) {

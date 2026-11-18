@@ -225,12 +225,13 @@ host and cannot outlive the session.
 VIDAS, Autolyser and POCT implement the driver's `Protocol` trait in the same
 front module, and the driver's `serve` runs them. Their `Session` holds the
 borrowed evidence, settings, store, connection and stop signal, the connection
-clock and the trigger of the latest input. `serve` owns the receive loop and
-its priority (stop, then deadline, then input), journals each chunk before the
-dialog sees it, feeds it one byte at a time with each byte's actions run before
-the next byte, turns a stop or close into one `Disconnected` input, and always
-attempts `close` and the final flush. A host only answers `idle`, `input` and
-`effect` calls by queueing actions on its `Queue`.
+clock, the trigger of the latest input and the current step's action queue.
+`serve` owns the receive loop and its priority (stop, then deadline, then
+input), journals each chunk before the dialog sees it, feeds it one byte at a
+time with each byte's actions run before the next byte, turns a stop or close
+into one `Disconnected` input, and always attempts `close` and the final
+flush. A host only queues actions from `idle` and `input` and runs one per
+`effect` call.
 
 ASTM, HL7 and LAW still use the older `Effects` and `Drain` traits until they
 move to `Protocol`: their driver supplies transport and cancellation through
@@ -244,7 +245,7 @@ each of its effects has its own deadline.
 Every `drain` and `effect` returns `Result<Flow, Error>` with the shared
 driver's `Flow`. `Stop` from an effect ends the queue at once. An effect that
 ends the session only after the queued actions have run calls
-`Queue::stop_when_drained`. A failure that must wait until the dialog's own
+`Session::stop_when_drained`. A failure that must wait until the dialog's own
 queued replies have run (a store failure before its NAK, a failed reply write)
 is kept in the queue's one `Failures` value and reported when the queue ends;
 the driver documents the rule beside `Flow`.

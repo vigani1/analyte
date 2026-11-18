@@ -2,7 +2,7 @@
 use crate::intake::ByteReason;
 use crate::machine::hooks::Pause;
 mod custody;
-use super::driver::{Flow, HostInput, Protocol, Queue, Session, Trigger};
+use super::driver::{Flow, HostInput, Protocol, Session, Trigger};
 use crate::intake;
 use crate::machine::receive;
 use crate::machine::receive::custody::{WriteDeadline, ms};
@@ -71,24 +71,19 @@ impl<'a> Host<'a> {
         })
     }
     /// Guards the R cursor before the dialog asks for the next report.
-    async fn poll_next(
-        &mut self,
-        s: &Session<'_, '_, AutolyserStack>,
-        queue: &mut Queue<Action, Error>,
-    ) -> Result<(), Error> {
+    async fn poll_next(&mut self, s: &mut Session<'_, '_, Self>) -> Result<(), Error> {
         self.guard = Some(custody::reserve(s.store, s.machine.machine()).await?);
         let actions = self.dialog.step(s.elapsed(), Event::Poll(Request::Next))?;
-        queue.actions.extend(actions);
+        s.actions.extend(actions);
         Ok(())
     }
     /// Stores a report before the dialog may acknowledge it. A failed store is
     /// kept until the dialog's own refusal has run; it never ends the queue early.
     async fn store_report(
         &mut self,
-        s: &Session<'_, '_, AutolyserStack>,
+        s: &mut Session<'_, '_, Self>,
         token: analyte_dialog::autolyser::StoreId,
         raw: Vec<u8>,
-        queue: &mut Queue<Action, Error>,
     ) -> Result<(), Error> {
         let id = ReceiptId::new();
         let stored = receive::custody::store_before_ack(
@@ -102,14 +97,14 @@ impl<'a> Host<'a> {
                 Event::Stored(token)
             }
             Err(error) => {
-                queue.failures.keep(error.into());
+                s.failures.keep(error.into());
                 Event::StoreFailed(token)
             }
         };
-        queue.actions.extend(self.dialog.step(s.elapsed(), event)?);
+        s.actions.extend(self.dialog.step(s.elapsed(), event)?);
         Ok(())
     }
-    async fn interpret_report(&mut self, s: &Session<'_, '_, AutolyserStack>) -> Result<(), Error> {
+    async fn interpret_report(&mut self, s: &Session<'_, '_, Self>) -> Result<(), Error> {
         let (id, _) = self
             .receipt
             .take()
@@ -126,16 +121,12 @@ impl Protocol for Host<'_> {
     type Settings = AutolyserStack;
     type Action = Action;
     type Error = Error;
-    fn deadline(&self, _s: &Session<'_, '_, AutolyserStack>) -> Result<Option<Duration>, Error> {
+    fn deadline(&self, _s: &Session<'_, '_, Self>) -> Result<Option<Duration>, Error> {
         Ok(self.dialog.next_deadline())
     }
     /// A test may pause here after machine bytes left the host ready and quiet.
     /// Only bytes leave it ready: an opened connection starts a poll first.
-    async fn idle(
-        &mut self,
-        s: &mut Session<'_, '_, AutolyserStack>,
-        _queue: &mut Queue<Action, Error>,
-    ) -> Result<Flow, Error> {
+    async fn idle(&mut self, s: &mut Session<'_, '_, Self>) -> Result<Flow, Error> {
         let hooks = &s.machine.machine().hooks;
         if s.trigger() == Trigger::Exchange
             && self.phase == Phase::Ready
@@ -152,19 +143,18 @@ impl Protocol for Host<'_> {
     }
     async fn input(
         &mut self,
-        s: &mut Session<'_, '_, AutolyserStack>,
+        s: &mut Session<'_, '_, Self>,
         input: HostInput,
-        queue: &mut Queue<Action, Error>,
     ) -> Result<Flow, Error> {
         match input {
             HostInput::Opened => {
                 self.phase.busy();
-                self.poll_next(s, queue).await?;
+                self.poll_next(s).await?;
             }
             HostInput::Chunk => {}
             HostInput::Byte(byte) => {
                 let actions = self.dialog.step(s.elapsed(), Event::Byte(byte))?;
-                queue.actions.extend(actions);
+                s.actions.extend(actions);
             }
             HostInput::Tick => {
                 let actions = self.dialog.step(s.elapsed(), Event::Tick)?;
@@ -173,26 +163,25 @@ impl Protocol for Host<'_> {
                     self.phase = Phase::Busy;
                     if let Some(worklist) = self.work.poll(s.store, s.machine, s.settings).await? {
                         let actions = self.dialog.step(s.elapsed(), Event::Download(&worklist))?;
-                        queue.actions.extend(actions);
+                        s.actions.extend(actions);
                     } else {
-                        self.poll_next(s, queue).await?;
+                        self.poll_next(s).await?;
                     }
                 } else {
-                    queue.actions.extend(actions);
+                    s.actions.extend(actions);
                 }
             }
             HostInput::Disconnected => {
                 let actions = self.dialog.step(s.elapsed(), Event::Disconnected)?;
-                queue.actions.extend(actions);
+                s.actions.extend(actions);
             }
         }
         Ok(Flow::Continue)
     }
     async fn effect(
         &mut self,
-        s: &mut Session<'_, '_, AutolyserStack>,
+        s: &mut Session<'_, '_, Self>,
         action: Action,
-        queue: &mut Queue<Action, Error>,
     ) -> Result<Flow, Error> {
         let machine = s.machine;
         let store = s.store;
@@ -202,7 +191,7 @@ impl Protocol for Host<'_> {
                 receive::custody::write(s.conn, &bytes, deadline).await?;
             }
             Action::Store(token, raw) => {
-                self.store_report(s, token, raw, queue).await?;
+                self.store_report(s, token, raw).await?;
             }
             Action::Report(_) => {
                 self.interpret_report(s).await?;
@@ -211,7 +200,7 @@ impl Protocol for Host<'_> {
                 if self.work.is_active() {
                     let code = outcome::parked(s.trigger(), &error);
                     self.work.refuse(store, &code).await?;
-                    queue.stop_when_drained();
+                    s.stop_when_drained();
                 }
                 self.phase = Phase::Recovering;
                 let reason = format!("Autolyser: {error}");
@@ -244,7 +233,7 @@ impl Protocol for Host<'_> {
                 let ready = self.work.insertion(reception, store).await?;
                 self.phase.after_insertion(ready);
                 if !ready {
-                    queue.stop_when_drained();
+                    s.stop_when_drained();
                 }
             }
             Action::Uncertain => {
@@ -258,14 +247,14 @@ impl Protocol for Host<'_> {
                 .await?;
             }
             Action::Refused(error) => return Err(error.into()),
-            Action::Close => queue.stop_when_drained(),
+            Action::Close => s.stop_when_drained(),
             Action::Deadline(_) => {}
         }
         Ok(Flow::Continue)
     }
     async fn close(
         &mut self,
-        s: &mut Session<'_, '_, AutolyserStack>,
+        s: &mut Session<'_, '_, Self>,
         result: &mut Result<(), Error>,
     ) -> Result<(), Error> {
         let code = outcome::session_end(s.trigger(), result);

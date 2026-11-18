@@ -1,5 +1,5 @@
 //! Receives VIDAS uploads using configured checksum, suffix and timer rules.
-use super::driver::{Flow, HostInput, Protocol, Queue, Session};
+use super::driver::{Flow, HostInput, Protocol, Session};
 use crate::intake;
 use crate::intake::ByteReason;
 use crate::machine::receive::custody::{self, ms};
@@ -56,7 +56,7 @@ impl<'a> Host<'a> {
     /// Replaces the dialog with a download and returns its opening actions.
     fn start_download(
         &mut self,
-        s: &mut Session<'_, '_, VidasStack>,
+        s: &mut Session<'_, '_, Self>,
         request: &analyte_vidas::syntax::Message,
     ) -> Result<Vec<Action>, Error> {
         self.dialog = Dialog::download(self.config.clone(), self.policy.clone(), request)?;
@@ -65,11 +65,7 @@ impl<'a> Host<'a> {
         Ok(self.dialog.start())
     }
     /// Steps one byte; a framing failure parks the byte and ends the session.
-    async fn byte(
-        &mut self,
-        s: &Session<'_, '_, VidasStack>,
-        byte: u8,
-    ) -> Result<Vec<Action>, Error> {
+    async fn byte(&mut self, s: &Session<'_, '_, Self>, byte: u8) -> Result<Vec<Action>, Error> {
         match self.dialog.step(s.elapsed(), Event::Byte(byte)) {
             Ok(actions) => Ok(actions),
             Err(analyte_dialog::vidas::Error::Framing(error)) => {
@@ -98,24 +94,21 @@ impl<'a> Host<'a> {
     /// is kept until the dialog's own park has run.
     async fn store_packet(
         &mut self,
-        s: &Session<'_, '_, VidasStack>,
+        s: &mut Session<'_, '_, Self>,
         raw: &[u8],
-        queue: &mut Queue<Action, Error>,
     ) -> Result<(), Error> {
         let id = ReceiptId::new();
         let operation = store_upload(s.store, s.machine, id, raw);
         match custody::store_before_ack(s.machine.machine(), operation).await {
             Ok(()) => {
                 // The dialog expired its own commit deadline before accepting completion.
-                queue
-                    .actions
+                s.actions
                     .extend(self.dialog.step(s.elapsed(), Event::Stored)?);
             }
             Err(error) => {
-                queue
-                    .actions
+                s.actions
                     .extend(self.dialog.step(s.elapsed(), Event::StoreFailed)?);
-                queue.failures.keep(error.into());
+                s.failures.keep(error.into());
             }
         }
         Ok(())
@@ -126,7 +119,7 @@ impl Protocol for Host<'_> {
     type Settings = VidasStack;
     type Action = Action;
     type Error = Error;
-    fn deadline(&self, s: &Session<'_, '_, VidasStack>) -> Result<Option<Duration>, Error> {
+    fn deadline(&self, s: &Session<'_, '_, Self>) -> Result<Option<Duration>, Error> {
         let mut next = self
             .dialog
             .next_deadline()
@@ -142,25 +135,20 @@ impl Protocol for Host<'_> {
         }
         Ok(Some(next))
     }
-    async fn idle(
-        &mut self,
-        s: &mut Session<'_, '_, VidasStack>,
-        queue: &mut Queue<Action, Error>,
-    ) -> Result<Flow, Error> {
+    async fn idle(&mut self, s: &mut Session<'_, '_, Self>) -> Result<Flow, Error> {
         if self.phase == Phase::Idle
             && let Some(request) = self.work.poll(s.machine, s.store, s.settings).await?
         {
             let started = self.start_download(s, &request)?;
             self.pending.extend(started);
         }
-        queue.actions.extend(self.pending.drain(..));
+        s.actions.extend(self.pending.drain(..));
         Ok(Flow::Continue)
     }
     async fn input(
         &mut self,
-        s: &mut Session<'_, '_, VidasStack>,
+        s: &mut Session<'_, '_, Self>,
         input: HostInput,
-        queue: &mut Queue<Action, Error>,
     ) -> Result<Flow, Error> {
         match input {
             HostInput::Opened => self.phase = Phase::Idle,
@@ -170,31 +158,30 @@ impl Protocol for Host<'_> {
             }
             HostInput::Disconnected => {
                 let actions = self.dialog.step(s.elapsed(), Event::Disconnected)?;
-                queue.actions.extend(actions);
+                s.actions.extend(actions);
             }
             HostInput::Chunk => self.phase = Phase::Transferring,
             // Store runs before a merged ETX/EOT following it is fed.
-            HostInput::Byte(byte) => queue.actions.extend(self.byte(s, byte).await?),
+            HostInput::Byte(byte) => s.actions.extend(self.byte(s, byte).await?),
         }
         Ok(Flow::Continue)
     }
     async fn effect(
         &mut self,
-        s: &mut Session<'_, '_, VidasStack>,
+        s: &mut Session<'_, '_, Self>,
         action: Action,
-        queue: &mut Queue<Action, Error>,
     ) -> Result<Flow, Error> {
         match action {
             Action::Write(bytes) => {
                 let budget = ms(s.settings.policy().acknowledgment_ms);
                 custody::write(s.conn, &bytes, custody::WriteDeadline::Within(budget)).await?;
             }
-            Action::Store(packet) => self.store_packet(s, &packet.raw, queue).await?,
+            Action::Store(packet) => self.store_packet(s, &packet.raw).await?,
             Action::TimerArmed(_, _) | Action::TimerCancelled(_) => {}
             Action::Park => {
                 // Kept before parking, so the park and its deadline stay
                 // in the session's cause even when parking itself fails.
-                queue.failures.keep(Error::TransferUnreconciled {
+                s.failures.keep(Error::TransferUnreconciled {
                     expired: self.dialog.expired_timer(),
                 });
                 let reason = ByteReason::VidasIncomplete;
@@ -202,22 +189,23 @@ impl Protocol for Host<'_> {
             }
             Action::Close => match self.work.confirmed(s.store).await? {
                 orders::Progress::DownloadNext(request) => {
-                    queue.actions.extend(self.start_download(s, &request)?);
+                    let started = self.start_download(s, &request)?;
+                    s.actions.extend(started);
                 }
                 orders::Progress::DownloadFinished => {
                     self.dialog = Dialog::upload(self.config.clone(), self.policy.clone())?;
                     s.restart_clock();
-                    queue.actions.extend(self.dialog.start());
+                    s.actions.extend(self.dialog.start());
                     self.phase = Phase::Idle;
                 }
-                orders::Progress::UploadFinished => queue.stop_when_drained(),
+                orders::Progress::UploadFinished => s.stop_when_drained(),
             },
         }
         Ok(Flow::Continue)
     }
     async fn close(
         &mut self,
-        s: &mut Session<'_, '_, VidasStack>,
+        s: &mut Session<'_, '_, Self>,
         result: &mut Result<(), Error>,
     ) -> Result<(), Error> {
         self.work

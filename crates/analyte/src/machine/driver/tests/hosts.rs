@@ -1,5 +1,6 @@
 //! Proves stop handling, parking and store-before-ACK on the real VIDAS and POCT hosts.
 use super::super::{Flow, Protocol as _, Session, protocol::feed};
+use super::synthetic;
 use crate::intake::{self, ByteReason};
 use crate::machine::{poct, settings::StreamSession};
 use analyte_fixtures::poct as peer;
@@ -29,19 +30,6 @@ async fn journal(store: &Handle) -> Result<Vec<(Vec<u8>, Option<String>)>, crate
         .await?)
 }
 
-/// A program with one synthetic machine of `definition` and its open store.
-async fn program(
-    temp: &std::path::Path,
-    definition: &str,
-) -> Result<(crate::installation::config::Program, Handle), crate::Error> {
-    let path = analyte_fixtures::write_machine(temp, definition, "127.0.0.1:5600")?;
-    let program = crate::installation::config::Program::load(&path)?;
-    let store =
-        crate::runtime::service::open_store(&program, Box::new(analyte_fixtures::UnlimitedSpace))
-            .await?;
-    Ok((program, store))
-}
-
 /// Risk 1 of the one-runner step: a chunk that reached the host before a stop
 /// is journaled once before the dialog sees it (so before its ACK), and the stop
 /// then reaches the dialog as a disconnect that parks the open transfer.
@@ -50,7 +38,7 @@ async fn program(
 async fn adr0003_vidas_chunk_before_stop_is_journaled_then_the_stop_parks_the_transfer()
 -> Result<(), crate::Error> {
     let temp = tempfile::tempdir()?;
-    let (program, mut store) = program(
+    let (program, mut store) = synthetic(
         temp.path(),
         include_str!("../../../../../core/config/examples/vidas_literal.toml"),
     )
@@ -120,25 +108,6 @@ async fn adr0003_vidas_chunk_before_stop_is_journaled_then_the_stop_parks_the_tr
     Ok(())
 }
 
-/// Feeds one transport chunk through the POCT host's byte loop.
-async fn feed_poct(
-    host: &mut poct::Host,
-    bytes: &[u8],
-    session: &mut Session<'_, '_, analyte_config::PoctStack>,
-) -> Result<Flow, poct::Error> {
-    feed(host, session, bytes.to_vec()).await
-}
-
-/// Ends a POCT host the way the runner does after a stop.
-async fn close_poct(
-    host: &mut poct::Host,
-    session: &mut Session<'_, '_, analyte_config::PoctStack>,
-) -> Result<(), poct::Error> {
-    let mut result = Ok(());
-    host.close(session, &mut result).await?;
-    result
-}
-
 /// Risks 2 and 3 of the one-runner step: a stop seen between two bytes of one
 /// chunk parks exactly the dialog's partial input with the cancelled reason,
 /// stops before the next byte, and never stores or acknowledges a message whose
@@ -166,7 +135,7 @@ async fn adr0003_poct_stop_mid_chunk_parks_partial_input_and_never_acknowledges(
     ];
     for (before, after, parked) in cases {
         let temp = tempfile::tempdir()?;
-        let (program, mut store) = program(
+        let (program, mut store) = synthetic(
             temp.path(),
             include_str!("../../../../../core/config/examples/poct.toml"),
         )
@@ -183,16 +152,18 @@ async fn adr0003_poct_stop_mid_chunk_parks_partial_input_and_never_acknowledges(
         let (signal, stop) = watch::channel(false);
         let mut host = poct::Host::open(settings)?;
         let mut session = Session::new(&connection, settings.as_ref(), &store, &mut conn, stop);
-        let flow = feed_poct(&mut host, &before, &mut session).await?;
+        let flow = feed(&mut host, &mut session, before).await?;
         assert_eq!(flow, Flow::Continue);
         assert!(
             journal(&store).await?.is_empty(),
             "a partial message is not parked"
         );
         signal.send(true)?;
-        let flow = feed_poct(&mut host, &after, &mut session).await?;
+        let flow = feed(&mut host, &mut session, after).await?;
         assert_eq!(flow, Flow::Stop, "the stop ends the chunk without a write");
-        close_poct(&mut host, &mut session).await?;
+        let mut result = Ok(());
+        host.close(&mut session, &mut result).await?;
+        result?;
         assert_eq!(
             journal(&store).await?,
             [(parked, Some(ByteReason::PoctCancelled.to_string()))],
