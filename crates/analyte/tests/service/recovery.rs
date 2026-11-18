@@ -409,3 +409,168 @@ async fn release_until_done(
         result = release => result,
     }
 }
+
+const PAUSE_MARKER: &str = "ANALYTE_TEST_ASTM_PAUSE_MARKER";
+
+/// Starts the real `analyte run` with synthetic credentials, logging to `log`.
+fn start_program_process(
+    program: &Path,
+    log: &Path,
+    marker: Option<&Path>,
+) -> Result<Child, Error> {
+    let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_analyte"));
+    command
+        .arg("--config")
+        .arg(program)
+        .arg("run")
+        .env("ANALYTE_SECRET_DEMO_API", "synthetic-api")
+        .env("ANALYTE_SECRET_DEMO_SIGNING", SECRET)
+        .env_remove(PAUSE_MARKER)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::fs::File::create(log)?);
+    if let Some(marker) = marker {
+        command.env(PAUSE_MARKER, marker);
+    }
+    Ok(Child(command.spawn()?))
+}
+
+/// Connects as the machine once the program listens; listening starts after startup recovery.
+async fn connect_process(
+    child: &mut Child,
+    endpoint: &str,
+    log: &Path,
+) -> Result<tokio::net::TcpStream, Error> {
+    let started = std::time::Instant::now();
+    loop {
+        if let Ok(stream) = tokio::net::TcpStream::connect(endpoint).await {
+            return Ok(stream);
+        }
+        if let Some(status) = child.0.try_wait()? {
+            let log = std::fs::read_to_string(log)?;
+            return Err(format!("program exited before listening ({status}): {log}").into());
+        }
+        if started.elapsed() > HANG_GUARD {
+            return Err("program did not listen".into());
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+}
+
+fn frames(path: &Path) -> Result<Vec<Vec<u8>>, Error> {
+    Ok(database(path)?
+        .prepare("SELECT raw FROM frames ORDER BY sequence")?
+        .query_map([], |row| row.get(0))?
+        .collect::<Result<_, _>>()?)
+}
+
+// ADR 0003 rules 1 and 2; ADR 0010; LIS01-A2 §6.3 (frame ACK). A power cut gives no
+// graceful stop and no store drain. The real program, hard-killed after journaling a
+// frame and before its ACK, has sent no reply for it; on restart it parks the open
+// transfer as incomplete for an operator and keeps the frame.
+#[tokio::test]
+async fn hard_kill_before_ack_parks_stored_frame() -> Result<(), Error> {
+    let directory = tempfile::tempdir()?;
+    let root = directory.path();
+    let endpoint = std::net::TcpListener::bind("127.0.0.1:0")?
+        .local_addr()?
+        .to_string();
+    let path = analyte_fixtures::write_machine(root, &analyte_fixtures::astm_tcp(), &endpoint)?;
+    let marker = root.join("paused");
+    let log = root.join("killed.log");
+    let mut killed = start_program_process(&path, &log, Some(&marker))?;
+    let mut peer = connect_process(&mut killed, &endpoint, &log).await?;
+    peer.write_all(b"\x05").await?;
+    assert_eq!(tokio::time::timeout(HANG_GUARD, peer.read_u8()).await??, 6);
+    let sent = analyte_framing::astm::encode(
+        b"H|\\^&||||||||||P|LIS2-A2|20261115120000\r",
+        analyte_framing::astm::FrameNumber::FIRST,
+        analyte_framing::astm::Limit::new(64000)?,
+    )?
+    .collect::<Vec<_>>();
+    for frame in &sent {
+        peer.write_all(frame).await?;
+    }
+    let started = std::time::Instant::now();
+    while !marker.exists() {
+        if started.elapsed() > HANG_GUARD || killed.0.try_wait()?.is_some() {
+            return Err("program did not pause after storing the frame".into());
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    // Read what already arrived before killing: a reset from the killed program can
+    // discard unread bytes on Windows. The std socket is non-blocking here.
+    let mut peer = peer.into_std()?;
+    let mut reply = vec![0; 64];
+    let arrived = match std::io::Read::read(&mut peer, &mut reply) {
+        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => 0,
+        read => read?,
+    };
+    reply.truncate(arrived);
+    killed.0.kill()?;
+    killed.0.wait()?;
+    peer.set_nonblocking(false)?;
+    peer.set_read_timeout(Some(HANG_GUARD))?;
+    let mut rest = Vec::new();
+    // Ends at the close or the reset of the killed program's socket.
+    let _ended = std::io::Read::read_to_end(&mut peer, &mut rest);
+    reply.extend(rest);
+    // The machine sees only the connection end: no ACK and no NAK for its frame.
+    assert_eq!(reply, b"");
+    drop(peer);
+    // Still open: the kill, not the program, ended the connection.
+    assert_eq!(
+        database(&path)?.query_row("SELECT state FROM transfers", [], |r| r.get::<_, String>(0))?,
+        "open"
+    );
+    assert_eq!(frames(&path)?, sent);
+
+    let log = root.join("restarted.log");
+    let mut restarted = start_program_process(&path, &log, None)?;
+    let mut peer = connect_process(&mut restarted, &endpoint, &log).await?;
+    let db = database(&path)?;
+    assert_eq!(
+        db.query_row("SELECT state FROM transfers", [], |r| r.get::<_, String>(0))?,
+        "aborted"
+    );
+    assert_eq!(
+        db.query_row(
+            "SELECT count(*) FROM parked WHERE json_extract(evidence,'$.kind')='incomplete_transfer' AND resolution IS NULL",
+            [],
+            |r| r.get::<_, i64>(0)
+        )?,
+        1
+    );
+    // Never treated as a complete message: nothing to interpret or deliver.
+    for table in ["receipts", "outbox"] {
+        assert_eq!(
+            db.query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r
+                .get::<_, i64>(0))?,
+            0
+        );
+    }
+    drop(db);
+    assert_eq!(frames(&path)?, sent);
+    let listed = std::process::Command::new(env!("CARGO_BIN_EXE_analyte"))
+        .arg("--config")
+        .arg(&path)
+        .args(["parked", "list"])
+        .output()?;
+    assert!(
+        listed.status.success(),
+        "{}",
+        String::from_utf8_lossy(&listed.stderr)
+    );
+    assert_eq!(
+        String::from_utf8(listed.stdout)?
+            .matches("incomplete_transfer")
+            .count(),
+        1
+    );
+    // The restarted program serves the machine again.
+    peer.write_all(b"\x05").await?;
+    assert_eq!(tokio::time::timeout(HANG_GUARD, peer.read_u8()).await??, 6);
+    drop(peer);
+    restarted.0.kill()?;
+    restarted.0.wait()?;
+    Ok(())
+}

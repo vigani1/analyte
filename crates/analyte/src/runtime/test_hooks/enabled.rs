@@ -12,6 +12,9 @@ pub struct Committed {
     armed: AtomicBool,
     reached: Notify,
     decision: watch::Receiver<Option<bool>>,
+    /// Written when reached, so a test in another process sees the pause.
+    marker: Option<std::path::PathBuf>,
+    hold: std::time::Duration,
 }
 /// Owns the decision for one bounded pause; drop means stop, never acknowledge.
 pub struct Control {
@@ -23,11 +26,27 @@ impl Committed {
     /// Creates an armed hook and its control without starting a task.
     #[must_use]
     pub fn new() -> (Arc<Self>, Control) {
+        Self::build(None, std::time::Duration::from_secs(5))
+    }
+    /// Creates an armed hook that writes `marker` when reached and holds for at most `hold`.
+    #[must_use]
+    pub fn with_marker(
+        marker: std::path::PathBuf,
+        hold: std::time::Duration,
+    ) -> (Arc<Self>, Control) {
+        Self::build(Some(marker), hold)
+    }
+    fn build(
+        marker: Option<std::path::PathBuf>,
+        hold: std::time::Duration,
+    ) -> (Arc<Self>, Control) {
         let (decision, receiver) = watch::channel(None);
         let hook = Arc::new(Self {
             armed: AtomicBool::new(true),
             reached: Notify::new(),
             decision: receiver,
+            marker,
+            hold,
         });
         (hook.clone(), Control { hook, decision })
     }
@@ -35,11 +54,15 @@ impl Committed {
         if !self.armed.swap(false, Ordering::AcqRel) {
             return Ok(());
         }
+        if let Some(marker) = &self.marker {
+            // A tiny test-only write; this connection is paused here anyway.
+            std::fs::write(marker, b"reached").map_err(Error::Marker)?;
+        }
         self.reached.notify_one();
         let mut decision = self.decision.clone();
         tokio::select! {
             _ = async { let _ = stop.wait_for(|&stopped| stopped).await; } => Err(Error::Stopped),
-            result = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            result = tokio::time::timeout(self.hold, async {
                 loop {
                     match *decision.borrow_and_update() {
                         Some(true) => return Ok(()),

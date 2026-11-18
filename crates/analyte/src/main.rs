@@ -177,6 +177,18 @@ fn required_actor(actor: Option<Identifier>) -> Result<Identifier, Error> {
         .into()
     })
 }
+/// Test builds only: `ANALYTE_TEST_ASTM_PAUSE_MARKER` makes the real program pause after
+/// storing an ASTM frame and before its ACK, so a test can hard-kill it there.
+#[cfg(feature = "test-hooks")]
+fn astm_pause_for_test(
+    mut program: Program,
+) -> Result<(Program, Option<analyte::runtime::test_hooks::Control>), Error> {
+    let pause = std::env::var_os("ANALYTE_TEST_ASTM_PAUSE_MARKER")
+        .map(|marker| program.pause_astm_committed_with_marker(marker.into()))
+        .transpose()?;
+    Ok((program, pause))
+}
+
 async fn recover(
     config: &std::path::Path,
     actor: Identifier,
@@ -274,11 +286,10 @@ async fn execute(cli: Cli) -> Result<(), Error> {
             file,
             shutdown_timeout_secs,
         } => {
-            service::run_bounded(
-                Program::load(&file.unwrap_or(cli.config))?,
-                Duration::from_secs(shutdown_timeout_secs),
-            )
-            .await
+            let program = Program::load(&file.unwrap_or(cli.config))?;
+            #[cfg(feature = "test-hooks")]
+            let (program, _pause) = astm_pause_for_test(program)?;
+            service::run_bounded(program, Duration::from_secs(shutdown_timeout_secs)).await
         }
         Command::Status { file } => analyte::operator::status::print(&Program::load(&file)?)
             .await
