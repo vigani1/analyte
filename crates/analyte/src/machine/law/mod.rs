@@ -4,7 +4,6 @@ use crate::machine::hl7::orders::response::{Profile, response_metadata};
 pub(crate) mod policy;
 use super::connection_input::Input;
 use super::driver::{self, Context, Effects, Flow};
-use crate::intake::ByteReason;
 use crate::machine::hooks::Pause;
 pub(crate) mod custody;
 mod effect;
@@ -14,6 +13,9 @@ use effect::Effect;
 pub(crate) mod settings;
 use analyte_dialog::law::outcome::Code as LawEnd;
 pub(crate) use error::Error;
+// A stored parking reason; `receive::bytes` pins its spelling.
+pub(crate) const INTERRUPTED_REASON: &str =
+    "LAW receipt processing interrupted before commit confirmation";
 pub(super) mod independent;
 use crate::intake;
 use analyte_dialog::law::{self as protocol, Action, Dialog, Event, Interpretation, Link};
@@ -283,13 +285,12 @@ impl<'a, 'm> Host<'a, 'm> {
             }
             Effect::Uncommitted(raw) => {
                 if !matches!(self.custody, Custody::Stored(..)) {
-                    intake::park_bytes(self.store, self.machine, raw, ByteReason::LawInterrupted)
-                        .await?;
+                    intake::park_bytes(self.store, self.machine, raw, INTERRUPTED_REASON).await?;
                 }
                 return Ok(Vec::new());
             }
             Effect::Rejected(error, raw) => {
-                intake::park_bytes(self.store, self.machine, raw, ByteReason::Mllp(&error)).await?;
+                intake::park_bytes(self.store, self.machine, raw, &error.to_string()).await?;
                 return Ok(Vec::new());
             }
             Effect::Refused(error) => return Err(error.into()),
@@ -446,12 +447,10 @@ impl<'a, 'm> Host<'a, 'm> {
         {
             match action {
                 Action::Rejected(error, raw) => {
-                    intake::park_bytes(self.store, self.machine, raw, ByteReason::Mllp(&error))
-                        .await?;
+                    intake::park_bytes(self.store, self.machine, raw, &error.to_string()).await?;
                 }
                 Action::Uncommitted(_, raw) if !matches!(self.custody, Custody::Stored(..)) => {
-                    intake::park_bytes(self.store, self.machine, raw, ByteReason::LawInterrupted)
-                        .await?;
+                    intake::park_bytes(self.store, self.machine, raw, INTERRUPTED_REASON).await?;
                 }
                 Action::Store(..)
                 | Action::Query(..)

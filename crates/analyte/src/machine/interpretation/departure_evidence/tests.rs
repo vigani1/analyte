@@ -1,7 +1,9 @@
 //! Tests ADR 0015 durable provenance, contract-v1 parking and strict source retention.
 use super::super::tests::{FixtureError, Space, program};
 use super::super::*;
+use crate::Error;
 use analyte_fixtures::ConfigEdit as _;
+use analyte_model::ReceiptId;
 
 fn declaration(rule: &str, guarantee: &str, hl7: bool) -> String {
     let mut text = include_str!("../../../../../core/config/tests/fixtures/departure.toml")

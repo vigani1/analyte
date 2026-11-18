@@ -1,6 +1,6 @@
 //! Reads retained LAW results through the configured HL7 grammar and LAW mapper.
 use super::Error;
-pub(super) fn read(
+pub(crate) fn read(
     input: analyte_mapping::Input<'_>,
     raw: &[u8],
     settings: &analyte_config::LawStack,

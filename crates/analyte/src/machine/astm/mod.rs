@@ -1,9 +1,11 @@
 //! Drives ASTM connections and journals each data frame before ACK (ADR 0003).
 use super::connection_input::{self, Input};
 use super::driver::{self, Context, Effects, Flow, Run};
-use crate::intake::ByteReason;
 use crate::machine::hooks::Pause;
 mod error;
+// Parking reasons are stored text; `receive::bytes` pins their spellings.
+pub(crate) const CONFLICT_REASON: &str = "same ASTM frame number carried conflicting bytes";
+pub(crate) const UNSOLICITED_REASON: &str = "unsolicited ASTM frame";
 pub(crate) mod orders;
 pub(crate) mod settings;
 use crate::{deadline, intake};
@@ -235,21 +237,13 @@ impl driver::Drain for Host<'_, '_> {
             Action::Deadline(_) => {}
             Action::Refused(error) => return Err(error.into()),
             Action::Conflict(bytes) => {
-                intake::park_bytes(self.store, self.machine, bytes, ByteReason::AstmConflict)
-                    .await?;
+                intake::park_bytes(self.store, self.machine, bytes, CONFLICT_REASON).await?;
             }
             Action::UnexpectedFrame(bytes) => {
-                intake::park_bytes(self.store, self.machine, bytes, ByteReason::AstmUnsolicited)
-                    .await?;
+                intake::park_bytes(self.store, self.machine, bytes, UNSOLICITED_REASON).await?;
             }
             Action::Rejected(error, bytes) => {
-                intake::park_bytes(
-                    self.store,
-                    self.machine,
-                    bytes,
-                    ByteReason::AstmFrame(&error),
-                )
-                .await?;
+                intake::park_bytes(self.store, self.machine, bytes, &error.to_string()).await?;
             }
             Action::StoreFailed(_) => {
                 return Err(run.failures.take().unwrap_or(Error::CommitDeadline));
@@ -485,13 +479,9 @@ impl Effects for Host<'_, '_> {
             Ok(actions) => {
                 for action in actions {
                     if let Action::Rejected(error, bytes) = action {
-                        let cleanup = intake::park_bytes(
-                            self.store,
-                            self.machine,
-                            bytes,
-                            ByteReason::AstmFrame(&error),
-                        )
-                        .await;
+                        let cleanup =
+                            intake::park_bytes(self.store, self.machine, bytes, &error.to_string())
+                                .await;
                         crate::machine::receive::custody::retain_cleanup(
                             result,
                             cleanup.map_err(Into::into),

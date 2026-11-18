@@ -15,6 +15,9 @@ not literal file totals: entries such as a crate or `syntax/` expand into
 several files, and four protocol documents and a fuzz target are additional.
 A protocol without orders or unique framing needs fewer entries. Exhaustive
 matches deliberately expose integration work; there is no plugin subsystem.
+Since 2026-11-18 the program crate's share is four existing files: the
+protocol registry `machine/protocols.rs`, two module lists and the parking
+reason pins.
 
 ## New files
 
@@ -31,7 +34,8 @@ matches deliberately expose integration work; there is no plugin subsystem.
   `crates/core/config/src/stack/<key>.rs` for validated settings.
 - Add `crates/analyte/src/machine/<key>/{mod,error,settings}.rs` for host
   driving, specific failures and dialog construction. The host owns bounded
-  I/O, durable storage and effect deadlines.
+  I/O, durable storage and effect deadlines. Its `mod.rs` also holds the
+  parking reasons it stores, as constants or small text functions.
 - Add `crates/analyte/src/reading/<key>.rs` for reading stored receipts.
 - If orders are supported, add `crates/analyte/src/machine/<key>/orders.rs`
   with its failures in the host's `error.rs`, and
@@ -58,9 +62,9 @@ concern is absent from the protocol:
 | Workspace | `Cargo.toml`: crate membership and shared dependency registration; `Cargo.lock`: regenerate through Cargo |
 | Config | `src/lib.rs`, `orders/mod.rs`, `orders/validation`, `schema/mod.rs`, `selection`, `stack/mod.rs`, `stack/capabilities.rs`, `validation/stack`: protocol selection, validation, order support and capability row |
 | Steps | `framing/src/lib.rs`, `dialog/src/lib.rs`, `mapping/src/lib.rs`, `mapping/src/inbound/evidence.rs`, `mapping/src/orders/mod.rs`: register owned layers and evidence |
-| Program machine | `machine/mod.rs`, `machine/settings.rs`, `machine/error.rs`, `machine/receive/bytes.rs`, `machine/receive/connection_input.rs`: dispatch, errors and input custody |
-| Program reading | `reading/mod.rs`, `reading/envelope.rs`: receipt dispatch and specific errors |
-| Program orders | `orders/mod.rs`, `orders/error.rs`: admission and sending |
+| Program registry | `machine/protocols.rs`: one arm in each match (stream session, link, chunk-journal rule for startup recovery, host run, worker error, stored envelope, receipt reader) |
+| Program modules | `machine/mod.rs` and `reading/mod.rs`: declare the new modules; `reading/mod.rs` also names the reader's syntax and framing failures |
+| Program tests | `machine/receive/bytes.rs`: pin every new parking reason spelling |
 | Fuzzing and CI | `fuzz/Cargo.toml` and the CI fuzz matrix: register the target and regenerate its lockfile if needed |
 
 Paths in the config row are relative to `crates/core/config/`; steps and

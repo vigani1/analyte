@@ -1,6 +1,6 @@
 //! Reads VIDAS packets using the installed framing and sample identity policy.
 use super::Error;
-pub(super) fn read(
+pub(crate) fn read(
     input: analyte_mapping::Input<'_>,
     raw: &[u8],
     settings: &analyte_config::VidasStack,

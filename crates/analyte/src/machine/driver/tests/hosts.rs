@@ -1,8 +1,8 @@
 //! Proves stop handling, parking and store-before-ACK on the real VIDAS and POCT hosts.
 use super::super::{Flow, Protocol as _, Session, protocol::feed};
 use super::synthetic;
-use crate::intake::{self, ByteReason};
-use crate::machine::{poct, settings::StreamSession};
+use crate::intake;
+use crate::machine::{poct, protocols::StreamSession};
 use analyte_fixtures::poct as peer;
 use analyte_store::{Handle, OperatorError, Reading};
 use std::time::Duration;
@@ -55,7 +55,7 @@ async fn adr0003_vidas_chunk_before_stop_is_journaled_then_the_stop_parks_the_tr
     let cancel = conn.cancellation();
     let (signal, stop) = watch::channel(false);
     let session = async {
-        let result = crate::machine::session(
+        let result = crate::machine::protocols::session(
             machine,
             StreamSession::Vidas(settings),
             &store,
@@ -99,7 +99,10 @@ async fn adr0003_vidas_chunk_before_stop_is_journaled_then_the_stop_parks_the_tr
     assert_eq!(
         receipts,
         [
-            (Vec::new(), Some(ByteReason::VidasIncomplete.to_string())),
+            (
+                Vec::new(),
+                Some(crate::machine::vidas::INCOMPLETE_REASON.to_owned())
+            ),
             (vec![5], None),
         ],
         "the ENQ chunk is journaled once and the stop parks the open transfer"
@@ -166,7 +169,7 @@ async fn adr0003_poct_stop_mid_chunk_parks_partial_input_and_never_acknowledges(
         result?;
         assert_eq!(
             journal(&store).await?,
-            [(parked, Some(ByteReason::PoctCancelled.to_string()))],
+            [(parked, Some(poct::CANCELLED_REASON.to_owned()))],
             "only the fed input is parked, once, and nothing is stored as accepted"
         );
         store.shutdown(crate::deadline()?).await?;

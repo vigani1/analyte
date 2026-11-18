@@ -1,6 +1,6 @@
 //! Owns TCP server and client session loops and keeps listener retries bounded.
 use super::{Kind, Next, backoff, capture, recorded_connection, retry, session_ended};
-use crate::machine::{Closing, Error, Machine, drive, settings::StreamSession};
+use crate::machine::{Closing, Error, Machine, drive, protocols::StreamSession};
 use analyte_store::Handle;
 use analyte_transport::Limits;
 use std::{future::Future, io};

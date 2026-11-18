@@ -43,6 +43,8 @@ Every protocol, standard or vendor, uses the same places:
 | Machine terms to the common model and back | `crates/steps/mapping/src/<key>.rs` |
 | Connection driving (I/O, store calls, timers) | `crates/analyte/src/machine/<key>.rs` |
 | Order exchange: queries from the machine and work sent ahead | `crates/analyte/src/machine/<key>/orders.rs`, or `orders/` when it has parts; its failures in `machine/<key>/error.rs` |
+| Parking reasons the host stores for uninterpreted bytes | Constants or text functions in `crates/analyte/src/machine/<key>/mod.rs`; every spelling pinned in `crates/analyte/src/machine/receive/bytes.rs` |
+| Registration: stream session, link, chunk-journal rule for startup recovery, host run, worker error, stored envelope and receipt reader | One arm per match in `crates/analyte/src/machine/protocols.rs` |
 
 (Changed on 2026-11-18 to slim the program crate: stored outcome codes are pure
 protocol text, so they moved from `crates/analyte/src/orders/outcome/` to the
@@ -54,6 +56,17 @@ code raises shared causes directly, so it keeps a separate `OrderError` there;
 otherwise the host error's custody conversions would turn those causes into
 custody refusals. `crates/analyte/src/orders/` keeps only the lookup,
 admission, reservation, sending and operator commands every protocol shares.)
+
+(Changed again on 2026-11-18: a new protocol edited about ten shared program
+files, each with its own match over protocols. `machine/protocols.rs` now holds
+every such match: the stream session enum and its link, the host each session
+runs, the worker error, the stored envelope and receipt reader dispatch, and
+whether startup recovery leaves a stack's receipts alone because the host
+journals every chunk without interpreting it. Watched-folder stacks have no
+stream session and select `Link::Folder` there. Parking reasons moved from one
+shared enum to the host that stores them, with unchanged spellings, so
+`machine/receive/bytes.rs` keeps only the interrupted-input reasons and the
+tests pinning every spelling.)
 
 A file grows into a folder of the same name (`law/mod.rs` plus its pieces)
 when it has separate responsibilities. A concern that a protocol lacks has no file.

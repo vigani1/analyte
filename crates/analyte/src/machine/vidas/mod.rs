@@ -1,7 +1,6 @@
 //! Receives VIDAS uploads using configured checksum, suffix and timer rules.
 use super::driver::{Flow, HostInput, Protocol, Session};
 use crate::intake;
-use crate::intake::ByteReason;
 use crate::machine::receive::custody::{self, ms};
 mod error;
 pub(crate) mod orders;
@@ -14,6 +13,14 @@ use analyte_model::ReceiptId;
 use analyte_store::Handle;
 pub(crate) use error::Error;
 use std::time::{Duration, Instant};
+
+// Parking reasons are stored text; `receive::bytes` pins their spellings.
+pub(crate) const SUFFIX_REASON: &str = "VIDAS control suffix mismatch";
+pub(crate) const INCOMPLETE_REASON: &str =
+    "VIDAS transfer incomplete or refused; retained transport journal requires reconciliation";
+pub(crate) fn framing_reason(error: &analyte_framing::vidas::Error) -> String {
+    format!("VIDAS framing: {error}")
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Phase {
@@ -71,11 +78,11 @@ impl<'a> Host<'a> {
             Err(analyte_dialog::vidas::Error::Framing(error)) => {
                 let suffix = error == analyte_framing::vidas::Error::ControlSuffix;
                 let reason = if suffix {
-                    ByteReason::VidasSuffix
+                    SUFFIX_REASON.to_owned()
                 } else {
-                    ByteReason::VidasFrame(&error)
+                    framing_reason(&error)
                 };
-                let parked = intake::park_bytes(s.store, s.machine, vec![byte], reason).await;
+                let parked = intake::park_bytes(s.store, s.machine, vec![byte], &reason).await;
                 let cause = if suffix {
                     Error::ControlSuffixMismatch
                 } else {
@@ -184,8 +191,7 @@ impl Protocol for Host<'_> {
                 s.failures.keep(Error::TransferUnreconciled {
                     expired: self.dialog.expired_timer(),
                 });
-                let reason = ByteReason::VidasIncomplete;
-                intake::park_bytes(s.store, s.machine, Vec::new(), reason).await?;
+                intake::park_bytes(s.store, s.machine, Vec::new(), INCOMPLETE_REASON).await?;
             }
             Action::Close => match self.work.confirmed(s.store).await? {
                 orders::Progress::DownloadNext(request) => {

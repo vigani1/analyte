@@ -1,11 +1,20 @@
 //! Tests interpretation behavior with synthetic fixtures.
 use super::*;
+use crate::Error;
 use crate::installation::config::Program;
-use crate::intake::ByteReason;
+use analyte_config::Stack;
 use analyte_fixtures::ConfigEdit as _;
+use analyte_model::ReceiptId;
 use analyte_model::{Identifier, Reason};
 use analyte_store::{Attempt, Audit, RevisionOutcome};
 use std::path::Path;
+
+fn vidas_config(machine: &Machine) -> Result<analyte_framing::vidas::Config, Error> {
+    let Stack::Vidas(settings) = machine.snapshot.effective().stack() else {
+        return Err("test requires VIDAS settings".into());
+    };
+    Ok(crate::machine::vidas::settings::framing(settings)?)
+}
 
 #[derive(Debug, thiserror::Error)]
 pub(super) enum FixtureError {
@@ -297,7 +306,7 @@ async fn adr0003_rule3_effective_configs_have_distinct_recorded_versions() -> Re
         &store,
         &intake::ConnectionEvidence::new(current)?,
         b"unparseable changed".to_vec(),
-        ByteReason::Synthetic,
+        crate::machine::receive::bytes::SYNTHETIC,
     )
     .await?;
     reprocess(&store, current, action(id, None)?).await?;

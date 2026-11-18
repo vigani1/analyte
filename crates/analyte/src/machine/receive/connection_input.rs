@@ -4,8 +4,8 @@
 //! Autolyser additionally journal chunks in the shared driver before dialog input.
 //! Their positive steps remain guarded by their own complete receipt/transfer/poll
 //! commits (ADR 0010). Cancelling a receive does not cancel queued store work.
-use crate::intake::ByteReason;
 use crate::machine::link::error::Error;
+use crate::machine::receive::bytes::{INPUT_PREFIX, INPUT_TAIL, INPUT_UNCERTAIN};
 use analyte_transport::{Connection, Event, Reason};
 
 pub(crate) enum Input {
@@ -86,20 +86,11 @@ impl Custody {
         machine: &intake::ConnectionEvidence<'_>,
     ) -> Result<(), Error> {
         let Some((prefix, tail)) = self.bytes.split_at_checked(self.fed) else {
-            intake::park_bytes(
-                store,
-                machine,
-                self.bytes.clone(),
-                ByteReason::InputUncertain,
-            )
-            .await?;
+            intake::park_bytes(store, machine, self.bytes.clone(), INPUT_UNCERTAIN).await?;
             self.complete();
             return Ok(());
         };
-        for (bytes, reason) in [
-            (prefix, ByteReason::InputPrefix),
-            (tail, ByteReason::InputTail),
-        ] {
+        for (bytes, reason) in [(prefix, INPUT_PREFIX), (tail, INPUT_TAIL)] {
             if !bytes.is_empty() {
                 intake::park_bytes(store, machine, bytes.to_vec(), reason).await?;
             }
