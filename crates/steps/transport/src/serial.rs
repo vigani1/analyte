@@ -74,6 +74,20 @@ pub struct Listed {
     pub name: String,
     /// Serial number the USB adapter reports; `None` for other ports.
     pub usb_serial: Option<String>,
+    /// What the adapter calls itself (product, else maker); `None` when unknown.
+    pub description: Option<String>,
+}
+
+impl Listed {
+    /// The adapter's own factory serial number, which stays the same in every USB
+    /// socket. A Windows-made serial number (it contains `&`, such as
+    /// `6&2A9C1F&0&1`) is not one: it can change with the socket, so it is `None`.
+    #[must_use]
+    pub fn factory_serial(&self) -> Option<&str> {
+        self.usb_serial
+            .as_deref()
+            .filter(|serial| !serial.is_empty() && !serial.contains('&'))
+    }
 }
 
 /// Most listed ports a lookup considers; a longer list is refused, never cut.
@@ -107,14 +121,22 @@ pub fn list() -> io::Result<Vec<Listed>> {
     }
     Ok(ports
         .into_iter()
-        .map(|port| Listed {
-            name: port.port_name,
-            usb_serial: match port.port_type {
-                serialport::SerialPortType::UsbPort(usb) => usb.serial_number,
-                serialport::SerialPortType::PciPort
-                | serialport::SerialPortType::BluetoothPort
-                | serialport::SerialPortType::Unknown => None,
-            },
+        .map(|port| {
+            let (usb_serial, description) = match port.port_type {
+                serialport::SerialPortType::UsbPort(usb) => {
+                    (usb.serial_number, usb.product.or(usb.manufacturer))
+                }
+                serialport::SerialPortType::PciPort => (None, Some("PCI serial port".into())),
+                serialport::SerialPortType::BluetoothPort => {
+                    (None, Some("Bluetooth serial port".into()))
+                }
+                serialport::SerialPortType::Unknown => (None, None),
+            };
+            Listed {
+                name: port.port_name,
+                usb_serial,
+                description,
+            }
         })
         .collect())
 }

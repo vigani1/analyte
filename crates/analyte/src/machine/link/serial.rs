@@ -693,6 +693,7 @@ flow_control = \"none\"
         serial::Listed {
             name: port.into(),
             usb_serial: Some("A10K3XYZ".into()),
+            description: None,
         }
     }
 
