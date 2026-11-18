@@ -80,11 +80,11 @@ dependencies = [
  "analyte-hl7",
  "analyte-model",
  "analyte-transport",
- "reqwest",
  "serde",
  "sha2",
  "thiserror",
  "toml",
+ "url",
 ]
 
 [[package]]
