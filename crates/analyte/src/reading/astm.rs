@@ -1,6 +1,6 @@
 //! Reads ASTM syntax with installed policy and maps its exact fields.
 use super::Error;
-pub(super) fn read(
+pub(crate) fn read(
     input: analyte_mapping::Input<'_>,
     payload: &[u8],
     syntax: &analyte_config::AstmSyntax,

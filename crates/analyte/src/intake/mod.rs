@@ -6,7 +6,6 @@ use crate::machine::interpretation::{
     policy::{BatchConflict, Policy, WorkMismatch},
     retained,
 };
-pub(crate) use crate::machine::receive::bytes::ByteReason;
 use analyte_model::{Digest, Identifier, NamespacedId, ReceiptId, ReceiptMetadata};
 use analyte_store::{Handle, Interpretation, Reading, RevisionOutcome};
 pub use error::IntakeError as Error;
@@ -240,7 +239,7 @@ pub(crate) async fn park_bytes(
     store: &Handle,
     machine: &ConnectionEvidence<'_>,
     bytes: Vec<u8>,
-    reason: ByteReason<'_>,
+    reason: &str,
 ) -> Result<(), Error> {
     let id = ReceiptId::new();
     let departures = super::machine::interpretation::departure_evidence::collect(
@@ -254,7 +253,7 @@ pub(crate) async fn park_bytes(
         driver: driver(machine.machine())?,
         config_version: config_version(machine.machine())?,
         config: machine.machine().snapshot.canonical().as_bytes().to_vec(),
-        outcome: Reading::Failed(analyte_model::Reason::new(&reason.to_string())?),
+        outcome: Reading::Failed(analyte_model::Reason::new(reason)?),
     };
     store
         .request::<_, analyte_store::ReconciliationError>(deadline()?, move |s| {

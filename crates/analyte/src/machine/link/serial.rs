@@ -1,6 +1,7 @@
 //! Owns the serial session loop and its blocking port thread, joined on cancellation.
 use super::error::Error as LinkError;
 use super::{Kind, Next, recorded_connection, retry, session_ended};
+use crate::machine::protocols::{self, SerialLink};
 use crate::machine::{Error, Handle, Limits, Machine};
 use analyte_transport::{Backoff, Cancellation, IoSide, serial::Settings};
 use std::{sync::Arc, thread, time::Duration};
@@ -77,7 +78,7 @@ type Worker =
 pub(in crate::machine) async fn run(
     machine: &Machine,
     store: &Handle,
-    link: crate::machine::settings::SerialLink<'_>,
+    link: SerialLink<'_>,
     limits: Limits,
     stop: watch::Receiver<bool>,
     closing: crate::machine::Closing,
@@ -101,7 +102,7 @@ pub(in crate::machine) async fn run(
 async fn serve(
     machine: &Machine,
     store: &Handle,
-    link: crate::machine::settings::SerialLink<'_>,
+    link: SerialLink<'_>,
     limits: Limits,
     mut stop: watch::Receiver<bool>,
     mut closing: crate::machine::Closing,
@@ -122,8 +123,7 @@ async fn serve(
         // start polling only on Opened and would wait silently on a reused connection.
         let result = loop {
             let result =
-                crate::machine::session(machine, link.session, store, &mut conn, stop.clone())
-                    .await;
+                protocols::session(machine, link.session, store, &mut conn, stop.clone()).await;
             // A finished port thread can neither receive nor write again.
             if result.is_err() || owner.worker_ended() || *stop.borrow() {
                 break result;
@@ -297,8 +297,8 @@ mod tests {
             crate::runtime::service::open_store_with_deadline(&program, Box::new(Space), until())
                 .await?;
         let machine = program.machines().first().ok_or("missing machine")?;
-        let crate::machine::settings::Link::Serial(link) =
-            crate::machine::settings::transport(machine.snapshot.effective().stack())
+        let protocols::Link::Serial(link) =
+            protocols::transport(machine.snapshot.effective().stack())
         else {
             return Err("expected serial".into());
         };
@@ -328,7 +328,7 @@ mod tests {
         });
         let (stop, stopping) = watch::channel(false);
         let processing =
-            crate::machine::session(machine, link.session, &store, &mut connection, stopping);
+            protocols::session(machine, link.session, &store, &mut connection, stopping);
         let conversation = async {
             attempts.recv().await.ok_or("open absent")?;
             input.send(Err(std::io::ErrorKind::TimedOut.into()))?;
@@ -480,8 +480,8 @@ flow_control = \"none\"
         )
         .await?;
         let machine = program.machines().first().ok_or("missing machine")?;
-        let crate::machine::settings::Link::Serial(link) =
-            crate::machine::settings::transport(machine.snapshot.effective().stack())
+        let protocols::Link::Serial(link) =
+            protocols::transport(machine.snapshot.effective().stack())
         else {
             return Err("expected serial".into());
         };

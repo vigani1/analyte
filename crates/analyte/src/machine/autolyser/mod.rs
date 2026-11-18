@@ -1,5 +1,4 @@
 //! Runs an Autolyser session: polls for reports, stores each before acknowledging, downloads worklists between polls, and holds next-report (R) polls during last-report (L) recovery.
-use crate::intake::ByteReason;
 use crate::machine::hooks::Pause;
 mod custody;
 use super::driver::{Flow, HostInput, Protocol, Session, Trigger};
@@ -15,6 +14,11 @@ use analyte_dialog::autolyser::{Action, Dialog, Event, Request};
 use analyte_model::ReceiptId;
 pub(crate) use error::Error;
 use std::time::Duration;
+
+// A stored parking reason; `receive::bytes` pins its spelling.
+pub(crate) fn refusal_reason(error: &analyte_dialog::autolyser::Error) -> String {
+    format!("Autolyser: {error}")
+}
 
 /// Where the host is between machine exchanges; recovery ends only with a completed report.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -203,20 +207,12 @@ impl Protocol for Host<'_> {
                     s.stop_when_drained();
                 }
                 self.phase = Phase::Recovering;
-                let reason = format!("Autolyser: {error}");
+                let reason = refusal_reason(&error);
                 let parked = match self.receipt.take() {
                     Some((id, _)) => {
                         intake::failed_reading(store, machine.machine(), id, &reason).await
                     }
-                    None => {
-                        intake::park_bytes(
-                            store,
-                            machine,
-                            Vec::new(),
-                            ByteReason::Autolyser(&error),
-                        )
-                        .await
-                    }
+                    None => intake::park_bytes(store, machine, Vec::new(), &reason).await,
                 };
                 parked?;
                 custody::uncertain(store, self.guard, machine.machine(), &reason).await?;

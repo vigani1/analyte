@@ -2,14 +2,7 @@
 mod mapping_reading;
 pub(crate) mod policy;
 pub(crate) mod retained;
-#[cfg(test)]
-use crate::Error;
-pub(super) use crate::machine::poct::settings::limits as poct_limits;
 use crate::{deadline, installation::config::Machine, intake};
-#[cfg(test)]
-use analyte_config::Stack;
-#[cfg(test)]
-use analyte_model::ReceiptId;
 use analyte_model::Revision;
 use analyte_store::{Handle, InterpretationCommit, Reprocess};
 pub(crate) use mapping_reading::map_reading;
@@ -68,7 +61,7 @@ pub(crate) async fn map_retained(
     } else {
         None
     };
-    Ok(crate::reading::read(
+    Ok(crate::machine::protocols::read(
         &machine.snapshot,
         analyte_mapping::Input {
             device: None,
@@ -79,14 +72,6 @@ pub(crate) async fn map_retained(
         &receipt.raw,
         hello.as_ref().map(|receipt| receipt.raw.as_slice()),
     )?)
-}
-
-#[cfg(test)]
-fn vidas_config(machine: &Machine) -> Result<analyte_framing::vidas::Config, Error> {
-    let Stack::Vidas(settings) = machine.snapshot.effective().stack() else {
-        return Err("test requires VIDAS settings".into());
-    };
-    Ok(crate::machine::vidas::settings::framing(settings)?)
 }
 
 /// Failures reading retained receipt context, separate from a stored parked interpretation.

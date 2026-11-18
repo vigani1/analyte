@@ -1,11 +1,12 @@
 //! Drives HL7 connections and chooses ACKs after durable interpretation.
-use crate::intake::ByteReason;
 use crate::machine::hooks::Pause;
 pub(crate) mod location;
 use super::connection_input::{self, Input};
 use super::driver::{self, Context, Effects, Failures, Flow, Run};
 use crate::intake;
 mod error;
+// A stored parking reason; `receive::bytes` pins its spelling.
+pub(crate) const UNSOLICITED_REASON: &str = "HL7 unsolicited message or queue overflow";
 pub(crate) mod orders;
 pub(crate) mod settings;
 use crate::machine::receive::custody::{self, WriteDeadline};
@@ -201,11 +202,11 @@ impl driver::Drain for Host<'_, '_> {
             Action::Write(write) => self.write(&write, run.conn).await?,
             Action::Deadline(next) => self.wake = next,
             Action::Rejected(error, bytes) => {
-                intake::park_bytes(store, machine, bytes, ByteReason::Mllp(&error)).await?;
+                intake::park_bytes(store, machine, bytes, &error.to_string()).await?;
             }
             Action::Parked(bytes, error) => {
                 self.pending.clear();
-                intake::park_bytes(store, machine, bytes, ByteReason::Hl7Dialog(&error)).await?;
+                intake::park_bytes(store, machine, bytes, &error.to_string()).await?;
             }
             Action::QueueFull(bytes) | Action::Unmatched(bytes) => {
                 return self.refuse_message(machine, store, bytes).await;
@@ -479,7 +480,7 @@ impl Host<'_, '_> {
         store: &Handle,
         bytes: Vec<u8>,
     ) -> Result<Flow, Error> {
-        intake::park_bytes(store, machine, bytes, ByteReason::Hl7Unsolicited).await?;
+        intake::park_bytes(store, machine, bytes, UNSOLICITED_REASON).await?;
         Err(Error::MessageRefused)
     }
 }
@@ -548,8 +549,7 @@ impl Effects for Host<'_, '_> {
         };
         for action in actions {
             if let Action::Rejected(error, bytes) = action {
-                let cleanup =
-                    intake::park_bytes(store, machine, bytes, ByteReason::Mllp(&error)).await;
+                let cleanup = intake::park_bytes(store, machine, bytes, &error.to_string()).await;
                 custody::retain_cleanup(result, cleanup.map_err(Into::into));
             }
         }

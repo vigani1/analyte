@@ -2,7 +2,6 @@
 pub(crate) mod policy;
 use super::driver::{Flow, HostInput, Protocol, Session};
 use crate::intake;
-use crate::intake::ByteReason;
 use crate::machine::receive::custody::{self, ms};
 mod error;
 pub(crate) mod settings;
@@ -13,6 +12,21 @@ use analyte_poct::{Body, ControlId, Header, Message, Timestamp};
 use analyte_store::Handle;
 pub(crate) use error::Error;
 use std::time::Duration;
+
+// Parking reasons are stored text; `receive::bytes` pins their spellings.
+pub(crate) const LIMIT_REASON: &str = "POCT XML message byte limit exceeded";
+pub(crate) const CANCELLED_REASON: &str = "POCT partial XML on cancellation";
+pub(crate) const DEADLINE_REASON: &str = "POCT partial XML exceeded dialog deadline";
+pub(crate) const INCOMPLETE_REASON: &str = "POCT incomplete XML on timeout or disconnect";
+pub(crate) const DEFERRED_REASON: &str = "POCT message deferred by bounded custody queue";
+pub(crate) fn syntax_reason(error: &analyte_poct::MessageError) -> String {
+    format!("POCT syntax: {error}")
+}
+pub(crate) fn closure_reason(normal: bool, unresolved: &str) -> String {
+    format!(
+        "POCT dialog closure: normal={normal}; unresolved custody tickets: {unresolved}; inspect retained transport journal"
+    )
+}
 
 /// The POCT dialog of one connection.
 pub(super) struct Host {
@@ -42,7 +56,7 @@ impl Host {
                 raw.extend(wire);
             }
         }
-        intake::park_bytes(s.store, s.machine, raw, ByteReason::PoctCancelled).await?;
+        intake::park_bytes(s.store, s.machine, raw, CANCELLED_REASON).await?;
         Ok(())
     }
 }
@@ -96,7 +110,7 @@ impl Protocol for Host {
         let machine = s.machine;
         let store = s.store;
         let now = s.elapsed();
-        let limits = super::interpretation::poct_limits(s.settings);
+        let limits = settings::limits(s.settings);
         let dialog = &mut self.dialog;
         match action {
             Action::Parse(wire) => {
@@ -104,11 +118,11 @@ impl Protocol for Host {
                 s.actions.extend(actions);
             }
             Action::ParseLimit(wire) => {
-                intake::park_bytes(store, machine, wire, ByteReason::PoctLimit).await?;
+                intake::park_bytes(store, machine, wire, LIMIT_REASON).await?;
                 return Err(Error::MessageLimitExceeded);
             }
             Action::ParseDeadline(wire) => {
-                intake::park_bytes(store, machine, wire, ByteReason::PoctDeadline).await?;
+                intake::park_bytes(store, machine, wire, DEADLINE_REASON).await?;
             }
             Action::InspectHello {
                 device_id: _,
@@ -133,7 +147,7 @@ impl Protocol for Host {
                     store,
                     machine,
                     message.document().raw().to_vec(),
-                    ByteReason::PoctDialog(reason),
+                    reason.as_str(),
                 )
                 .await?;
             }
@@ -150,7 +164,7 @@ impl Protocol for Host {
                     store,
                     machine,
                     message.document().raw().to_vec(),
-                    ByteReason::PoctDeferred,
+                    DEFERRED_REASON,
                 )
                 .await?;
                 return Err(Error::BackpressureViolated);
@@ -172,7 +186,7 @@ impl Protocol for Host {
     ) -> Result<(), Error> {
         let raw = self.dialog.take_input();
         if !raw.is_empty() {
-            intake::park_bytes(s.store, s.machine, raw, ByteReason::PoctIncomplete).await?;
+            intake::park_bytes(s.store, s.machine, raw, INCOMPLETE_REASON).await?;
         }
         Ok(())
     }
@@ -189,8 +203,7 @@ async fn interpret_input(
         Err(error) => {
             let reference = analyte_poct::hello_error_reference(&wire, limits);
             let ack_error = error.acknowledgement_error();
-            let reason = ByteReason::PoctSyntax(&error);
-            intake::park_bytes(s.store, s.machine, wire, reason).await?;
+            intake::park_bytes(s.store, s.machine, wire, &syntax_reason(&error)).await?;
             if let Some(reference) = reference {
                 Ok(dialog.step(
                     s.elapsed(),
@@ -281,16 +294,8 @@ async fn retain_closure(
 ) -> Result<(), Error> {
     if !normal || !unresolved.is_empty() {
         let unresolved = analyte_dialog::poct::ticket_evidence(unresolved);
-        intake::park_bytes(
-            store,
-            machine,
-            Vec::new(),
-            ByteReason::PoctClosure {
-                normal,
-                unresolved: &unresolved,
-            },
-        )
-        .await?;
+        let reason = closure_reason(normal, &unresolved);
+        intake::park_bytes(store, machine, Vec::new(), &reason).await?;
     }
     Ok(())
 }

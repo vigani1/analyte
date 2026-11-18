@@ -79,7 +79,7 @@ pub(crate) async fn process(
         )
         .await;
     };
-    let payload = match crate::reading::payload(&machine.snapshot, &receipt.raw) {
+    let payload = match crate::machine::protocols::payload(&machine.snapshot, &receipt.raw) {
         Ok(payload) => payload,
         Err(error) => {
             return finish(

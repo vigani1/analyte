@@ -1,6 +1,6 @@
 //! Reads POCT observations with durable source Hello context and installed bounds.
 use super::Error;
-pub(super) fn read(
+pub(crate) fn read(
     input: analyte_mapping::Input<'_>,
     raw: &[u8],
     settings: &analyte_config::PoctStack,

@@ -1,7 +1,6 @@
 //! Finishes or parks receipts and ASTM transfers left unfinished before any machine connection opens.
 use crate::runtime::Error;
 use crate::{deadline, installation::config::Program};
-use analyte_config::Stack;
 use analyte_store::{Handle, Interpretation, Reading};
 
 /// Store boundaries combined while recovering unfinished intake at startup.
@@ -36,14 +35,7 @@ const PAGES: usize = 128;
 pub(crate) async fn run(program: &Program, store: &Handle) -> Result<(), Error> {
     park_open_transfers(store).await?;
     for machine in program.machines() {
-        // POCT, VIDAS and Autolyser journal every input chunk as a receipt that is
-        // never interpreted, and send their positive step only after interpretation
-        // (ADR 0010). An uninterpreted receipt there was never acknowledged, so the
-        // machine still holds the data and sends it again.
-        if matches!(
-            machine.snapshot.effective().stack(),
-            Stack::Poct(_) | Stack::Vidas(_) | Stack::Autolyser(_)
-        ) {
+        if crate::machine::protocols::journals_chunks(machine.snapshot.effective().stack()) {
             continue;
         }
         let mut after = 0;

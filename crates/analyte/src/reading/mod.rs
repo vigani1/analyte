@@ -1,14 +1,11 @@
-//! Reads retained receipts through the same framing, syntax and mapping policies as live intake.
-use analyte_config::{RecordTransport, Stack, Validated};
-use analyte_mapping::{Input, Output};
-mod astm;
-mod autolyser;
-mod envelope;
-mod hl7;
-mod law;
-mod poct;
-mod vidas;
-pub(crate) use envelope::payload;
+//! Reads retained receipts per protocol and names each reading layer's failures.
+//! `machine::protocols` selects the reader from the installed stack.
+pub(crate) mod astm;
+pub(crate) mod autolyser;
+pub(crate) mod hl7;
+pub(crate) mod law;
+pub(crate) mod poct;
+pub(crate) mod vidas;
 
 /// Specific failures from each owned reading layer; callers retain and park the receipt.
 #[derive(Debug, thiserror::Error)]
@@ -64,47 +61,6 @@ pub enum Error {
     /// Required receipt or configuration context is unavailable.
     #[error("{0}")]
     Context(Context),
-}
-
-/// Reads retained original bytes without I/O, orders, acknowledgments or storage mutations.
-/// `hello` is the original durable POCT connection Hello, when available.
-/// # Errors
-/// Returns the original layer failure; never supplies a partial mapping on failure.
-pub(crate) fn read(
-    config: &Validated,
-    input: Input<'_>,
-    raw: &[u8],
-    hello: Option<&[u8]>,
-) -> Result<Output, Error> {
-    match config.effective().stack() {
-        Stack::Astm(RecordTransport::Stream(s)) => astm::read(
-            input,
-            &payload(config, raw)?,
-            s.settings().syntax(),
-            s.settings().codes(),
-        ),
-        Stack::Astm(RecordTransport::Folder(s)) => {
-            astm::read(input, raw, s.settings().syntax(), s.settings().codes())
-        }
-        Stack::Hl7(RecordTransport::Stream(s)) => hl7::read(
-            config,
-            input,
-            &payload(config, raw)?,
-            s.settings().syntax(),
-            s.settings().codes(),
-        ),
-        Stack::Hl7(RecordTransport::Folder(s)) => hl7::read(
-            config,
-            input,
-            raw,
-            s.settings().syntax(),
-            s.settings().codes(),
-        ),
-        Stack::Law(s) => law::read(input, &payload(config, raw)?, s),
-        Stack::Poct(s) => poct::read(input, raw, s, hello),
-        Stack::Vidas(s) => vidas::read(input, raw, s),
-        Stack::Autolyser(s) => autolyser::read(input, raw, s),
-    }
 }
 
 /// Specific missing or ambiguous retained-receipt context.

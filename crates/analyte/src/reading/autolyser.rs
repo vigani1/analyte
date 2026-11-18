@@ -1,6 +1,6 @@
 //! Verifies Autolyser receipt checksums before syntax and mapping.
 use super::Error;
-pub(super) fn read(
+pub(crate) fn read(
     input: analyte_mapping::Input<'_>,
     raw: &[u8],
     settings: &analyte_config::AutolyserStack,

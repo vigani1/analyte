@@ -1,6 +1,6 @@
 //! Reads HL7 syntax with installed policy and maps its exact fields.
 use super::Error;
-pub(super) fn read(
+pub(crate) fn read(
     config: &analyte_config::Validated,
     input: analyte_mapping::Input<'_>,
     payload: &[u8],
