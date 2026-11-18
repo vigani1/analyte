@@ -30,6 +30,10 @@ fn mutation_adr0003_record_interpretation_roundtrip_keeps_provenance_and_failure
     evidence.outcome = Reading::Failed(Reason::new("unknown synthetic test")?);
     let encoded = serde_json::to_value(&evidence)?;
     assert_eq!(
+        encoded["config"], "config",
+        "config is stored as its own text"
+    );
+    assert_eq!(
         encoded["config_digest"],
         serde_json::to_value(digest(b"config"))?
     );

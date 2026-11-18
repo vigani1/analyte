@@ -11,7 +11,7 @@ pub struct Interpretation {
     pub driver: analyte_model::NamespacedId,
     /// Effective configuration version.
     pub config_version: Identifier,
-    /// Exact effective configuration, excluding secrets.
+    /// Exact effective configuration, excluding secrets; UTF-8 TOML, stored as a JSON string.
     pub config: Vec<u8>,
     /// Typed contents or a specific failure.
     pub outcome: Reading,
@@ -27,7 +27,9 @@ impl Serialize for Interpretation {
         let mut fields = serializer.serialize_struct("Interpretation", 6)?;
         fields.serialize_field("driver", &self.driver)?;
         fields.serialize_field("config_version", &self.config_version)?;
-        fields.serialize_field("config", &self.config)?;
+        // A JSON number array is about four times the bytes the record bound was validated for.
+        let config = std::str::from_utf8(&self.config).map_err(serde::ser::Error::custom)?;
+        fields.serialize_field("config", config)?;
         fields.serialize_field("config_digest", &crate::digest(&self.config))?;
         fields.serialize_field("outcome", &self.outcome)?;
         fields.serialize_field("departures", &self.departures)?;
@@ -41,7 +43,7 @@ impl<'de> Deserialize<'de> for Interpretation {
         struct Evidence {
             driver: analyte_model::NamespacedId,
             config_version: Identifier,
-            config: Vec<u8>,
+            config: String,
             #[serde(default)]
             config_digest: Option<analyte_model::Digest>,
             outcome: Reading,
@@ -51,7 +53,7 @@ impl<'de> Deserialize<'de> for Interpretation {
         let evidence = Evidence::deserialize(deserializer)?;
         if evidence
             .config_digest
-            .is_some_and(|digest| digest != crate::digest(&evidence.config))
+            .is_some_and(|digest| digest != crate::digest(evidence.config.as_bytes()))
         {
             return Err(serde::de::Error::custom(
                 "interpretation configuration digest mismatch",
@@ -60,7 +62,7 @@ impl<'de> Deserialize<'de> for Interpretation {
         Ok(Self {
             driver: evidence.driver,
             config_version: evidence.config_version,
-            config: evidence.config,
+            config: evidence.config.into_bytes(),
             outcome: evidence.outcome,
             departures: evidence.departures,
         })

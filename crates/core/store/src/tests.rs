@@ -124,7 +124,7 @@ fn mutation_rule7_lib_encoding_digest_and_trust_keep_their_contracts() -> TestRe
             .map(|_| ())
             .expect_err("input must be refused");
         assert!(
-            refusal.kind() == std::io::ErrorKind::Other,
+            refusal.kind() == std::io::ErrorKind::FileTooLarge,
             "unexpected refusal: {refusal:?}"
         );
     }
@@ -141,7 +141,12 @@ fn mutation_rule7_lib_encoding_digest_and_trust_keep_their_contracts() -> TestRe
             .map(|_| ())
             .expect_err("input must be refused");
         assert!(
-            matches!(&refusal, StorageError::Json(_)),
+            matches!(
+                &refusal,
+                StorageError::LimitExceeded {
+                    what: "record_bytes"
+                }
+            ),
             "unexpected refusal: {refusal:?}"
         );
     }
