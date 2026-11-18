@@ -1,7 +1,7 @@
 //! Admits send-ahead orders before reserving and writing machine commands.
 use crate::orders::OrderError as Error;
-use crate::orders::outcome::HostEnd;
 use crate::{deadline, installation::config::Machine};
+use analyte_dialog::outcome::Host as HostEnd;
 use analyte_model::{OrderState, SourceText};
 use analyte_store::{Handle, MachineOrder, MachineOrderKey};
 mod work;
@@ -46,7 +46,7 @@ pub(crate) async fn reserve_candidates(
             Err(refusal) => {
                 tracing::info!(reason=%refusal,"query order reservation refused");
                 for order in active.drain(..) {
-                    uncertain(store, &order, HostEnd::QueryReservationRefused.into()).await?;
+                    uncertain(store, &order, HostEnd::QueryReservationRefused.as_str()).await?;
                 }
                 return Ok(false);
             }
@@ -54,7 +54,7 @@ pub(crate) async fn reserve_candidates(
     }
     if std::time::Instant::now() >= until && !active.is_empty() {
         for order in active.drain(..) {
-            uncertain(store, &order, HostEnd::QueryDeadlineBeforeSend.into()).await?;
+            uncertain(store, &order, HostEnd::QueryDeadlineBeforeSend.as_str()).await?;
         }
         return Ok(false);
     }
@@ -162,7 +162,7 @@ pub(crate) async fn candidate_page(
 pub(crate) async fn uncertain(
     store: &Handle,
     order: &MachineOrder,
-    code: super::outcome::Transfer,
+    code: &str,
 ) -> Result<(), Error> {
     complete(store, order, OrderState::Uncertain, code).await
 }
@@ -172,10 +172,10 @@ pub(crate) async fn complete(
     store: &Handle,
     order: &MachineOrder,
     state: OrderState,
-    code: super::outcome::Transfer,
+    code: &str,
 ) -> Result<(), Error> {
     let id = order.id;
-    let code = SourceText::new(&code.to_string())?;
+    let code = SourceText::new(code)?;
     store
         .request::<_, analyte_store::OrderError>(deadline()?, move |store| {
             store.transition_order(

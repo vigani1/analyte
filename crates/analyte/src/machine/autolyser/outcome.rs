@@ -2,7 +2,7 @@
 use super::Error;
 use crate::machine::driver::Trigger;
 use crate::machine::receive::{custody::Refusal, error::Step};
-use crate::orders::outcome::{AutolyserEnd, Interruption, Transfer};
+use analyte_dialog::autolyser::outcome::{Code as AutolyserEnd, Interruption};
 
 /// The cause that ended the session names the outcome; a session without a
 /// named cause takes it from the input it was handling.
@@ -18,12 +18,12 @@ pub(super) fn session_end(trigger: Trigger, result: &Result<(), Error>) -> Autol
 
 /// A parked reply cut short by a deadline or a closed connection keeps that
 /// interruption in its code; any other park keeps the dialog's reason.
-pub(super) fn parked(trigger: Trigger, error: &analyte_dialog::autolyser::Error) -> Transfer {
+pub(super) fn parked(trigger: Trigger, error: &analyte_dialog::autolyser::Error) -> String {
     match interruption(trigger) {
         Some(interruption) if matches!(error, analyte_dialog::autolyser::Error::Incomplete) => {
-            Transfer::AutolyserIncomplete(interruption)
+            interruption.incomplete()
         }
-        Some(_) | None => Transfer::AutolyserParked(error.clone()),
+        Some(_) | None => analyte_dialog::autolyser::outcome::parked(error),
     }
 }
 

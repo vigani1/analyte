@@ -1,7 +1,7 @@
 //! Reserves VIDAS work and records confirmed or uncertain transfer outcomes.
 use crate::{
     intake,
-    orders::{OrderError as Error, outcome::VidasEnd, sending::Work},
+    orders::{OrderError as Error, sending::Work},
 };
 use analyte_store::Handle;
 use analyte_vidas::syntax::Message;
@@ -54,7 +54,7 @@ impl Work<Message> {
             store,
             order,
             analyte_model::OrderState::Sent,
-            VidasEnd::TransferConfirmed.into(),
+            analyte_dialog::vidas::outcome::Code::TransferConfirmed.as_str(),
         )
         .await?;
         self.active = None;

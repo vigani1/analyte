@@ -3,6 +3,7 @@ use analyte_framing::astm::{self, ACK, Decoder, ENQ, EOT, Frame, FrameNumber, NA
 use std::{collections::VecDeque, time::Duration};
 
 mod control;
+pub mod outcome;
 pub use control::{Action, CommitId, Config, End, Epoch, Error, Event, Interrupt, Role, Timers};
 
 /// LIS01-A2 §6.3.5 / §8.3.5: yield after honoring receiver interruption.

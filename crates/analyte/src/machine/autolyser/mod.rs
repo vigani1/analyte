@@ -199,7 +199,7 @@ impl Effects for Host<'_, '_> {
         .await;
         receive::custody::retain_cleanup(result, cleanup);
         self.work
-            .close(self.store, code.into())
+            .close(self.store, code.as_str())
             .await
             .map_err(Into::into)
     }
@@ -274,7 +274,7 @@ impl driver::Drain for Host<'_, '_> {
             Action::Park(error) => {
                 if self.work.is_active() {
                     let code = outcome::parked(self.trigger, &error);
-                    self.work.refuse(store, code).await?;
+                    self.work.refuse(store, &code).await?;
                     run.stop_when_drained();
                 }
                 self.phase = Phase::Recovering;

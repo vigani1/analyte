@@ -1,7 +1,7 @@
 //! Sends unsolicited HL7 work and cancellations (HL7 ch.4).
 use crate::orders::OrderError as Error;
-use crate::orders::outcome::Hl7End;
 use crate::{deadline, installation::config::Machine};
+use analyte_dialog::hl7::outcome::{Code as Hl7End, Detail as Hl7Detail};
 use analyte_hl7::{
     Options,
     order::{self, OrderMessage, OrderResponse, Outcome},
@@ -189,8 +189,7 @@ async fn next_work(
                         identity: key,
                         version,
                     },
-                    &crate::orders::outcome::Hl7Detail::OrderPreflight(error.to_string())
-                        .to_string(),
+                    &Hl7Detail::OrderPreflight(error.to_string()).to_string(),
                 )
                 .await?;
             }
@@ -230,7 +229,7 @@ pub(super) async fn finish(
                             }
                             Outcome::Rejected { reason } => (
                                 ItemDecision::Rejected,
-                                crate::orders::outcome::Hl7Detail::Ua(
+                                Hl7Detail::Ua(
                                     reason
                                         .map_or(b"".as_slice(), |field| field.raw())
                                         .escape_ascii()
@@ -244,7 +243,7 @@ pub(super) async fn finish(
                             ),
                             Outcome::UnableToCancel { reason } => (
                                 ItemDecision::CancelRefused,
-                                crate::orders::outcome::Hl7Detail::Uc(
+                                Hl7Detail::Uc(
                                     reason
                                         .map_or(b"".as_slice(), |field| field.raw())
                                         .escape_ascii()
@@ -271,10 +270,7 @@ pub(super) async fn finish(
                         index: item.index,
                         decision: ItemDecision::Uncertain,
                         code: SourceText::new(
-                            &crate::orders::outcome::Hl7Detail::InvalidOrderResponse(
-                                error.to_string(),
-                            )
-                            .to_string(),
+                            &Hl7Detail::InvalidOrderResponse(error.to_string()).to_string(),
                         )?,
                     });
                 }

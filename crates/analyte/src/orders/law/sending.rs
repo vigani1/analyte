@@ -5,8 +5,8 @@ use super::{
 };
 use crate::installation::config::Machine;
 use crate::orders::OrderError as Error;
-use crate::orders::outcome::LawEnd;
 use crate::runtime::hooks::Operation;
+use analyte_dialog::law::outcome::{Code as LawEnd, Detail as LawDetail};
 use analyte_hl7::{Message, Options, law};
 use analyte_store::{Handle, MachineOrder};
 use std::time::{Duration, Instant};
@@ -237,8 +237,7 @@ impl LawOrderLink {
                             identity: key,
                             version,
                         },
-                        &crate::orders::outcome::LawDetail::OrderPreflight(error.to_string())
-                            .to_string(),
+                        &LawDetail::OrderPreflight(error.to_string()).to_string(),
                     )
                     .await?;
                     continue;

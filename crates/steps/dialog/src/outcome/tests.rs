@@ -1,6 +1,25 @@
 //! Pins every stored order outcome spelling; stored records keep their text.
-use super::autolyser::{insertion, insertion_rejection, parked};
-use super::*;
+use super::Host as HostEnd;
+use crate::astm::outcome::Code as AstmEnd;
+use crate::autolyser::outcome::{
+    Code as AutolyserEnd, Detail as AutolyserDetail, Interruption, insertion, insertion_rejection,
+    parked,
+};
+use crate::hl7::outcome::{Code as Hl7End, Detail as Hl7Detail};
+use crate::law::outcome::{Code as LawEnd, Detail as LawDetail, acceptance};
+use crate::vidas::outcome::Code as VidasEnd;
+use analyte_hl7::AckCode;
+
+/// One fixed stored code of any protocol, so one table pins them all.
+#[derive(Clone, Copy)]
+enum Code {
+    Host(HostEnd),
+    Astm(AstmEnd),
+    Autolyser(AutolyserEnd),
+    Hl7(Hl7End),
+    Law(LawEnd),
+    Vidas(VidasEnd),
+}
 
 /// Exhaustive on purpose: a new fixed code does not compile until its stored
 /// spelling is pinned here, independently of the production table.
@@ -172,12 +191,12 @@ fn every_code() -> Vec<Code> {
         V::WriteFailed,
     ];
     host.into_iter()
-        .map(Code::from)
-        .chain(astm.map(Code::from))
-        .chain(autolyser.map(Code::from))
-        .chain(hl7.map(Code::from))
-        .chain(law.map(Code::from))
-        .chain(vidas.map(Code::from))
+        .map(Code::Host)
+        .chain(astm.map(Code::Astm))
+        .chain(autolyser.map(Code::Autolyser))
+        .chain(hl7.map(Code::Hl7))
+        .chain(law.map(Code::Law))
+        .chain(vidas.map(Code::Vidas))
         .collect()
 }
 
@@ -188,18 +207,17 @@ fn every_fixed_code_keeps_its_stored_spelling() {
     let mut spellings = std::collections::BTreeSet::new();
     for code in codes {
         let expected = pinned(code);
-        assert_eq!(code.as_str(), expected);
-        assert_eq!(Transfer::from(code).to_string(), expected);
         assert!(spellings.insert(expected), "{expected} is stored twice");
-        let protocol = match code {
-            Code::Host(code) => code.to_string(),
-            Code::Astm(code) => code.to_string(),
-            Code::Autolyser(code) => code.to_string(),
-            Code::Hl7(code) => code.to_string(),
-            Code::Law(code) => code.to_string(),
-            Code::Vidas(code) => code.to_string(),
+        let (stored, shown) = match code {
+            Code::Host(code) => (code.as_str(), code.to_string()),
+            Code::Astm(code) => (code.as_str(), code.to_string()),
+            Code::Autolyser(code) => (code.as_str(), code.to_string()),
+            Code::Hl7(code) => (code.as_str(), code.to_string()),
+            Code::Law(code) => (code.as_str(), code.to_string()),
+            Code::Vidas(code) => (code.as_str(), code.to_string()),
         };
-        assert_eq!(protocol, expected);
+        assert_eq!(stored, expected);
+        assert_eq!(shown, expected);
     }
 }
 
@@ -234,23 +252,23 @@ fn detailed_codes_keep_their_stored_spelling() {
             "LAW-independent-failure:detail",
         ),
         (
-            autolyser::AutolyserDetail::Framing(detail()).to_string(),
+            AutolyserDetail::Framing(detail()).to_string(),
             "Autolyser-parked-framing-detail",
         ),
         (
-            autolyser::AutolyserDetail::Record(detail()).to_string(),
+            AutolyserDetail::Record(detail()).to_string(),
             "Autolyser-parked-record-detail",
         ),
     ] {
         assert_eq!(value, expected);
     }
     for (code, expected) in [
-        (analyte_hl7::AckCode::Aa, "LAW-ORL-application-Aa"),
-        (analyte_hl7::AckCode::Ae, "LAW-ORL-application-Ae"),
-        (analyte_hl7::AckCode::Ar, "LAW-ORL-application-Ar"),
-        (analyte_hl7::AckCode::Ca, "LAW-ORL-application-Ca"),
-        (analyte_hl7::AckCode::Ce, "LAW-ORL-application-Ce"),
-        (analyte_hl7::AckCode::Cr, "LAW-ORL-application-Cr"),
+        (AckCode::Aa, "LAW-ORL-application-Aa"),
+        (AckCode::Ae, "LAW-ORL-application-Ae"),
+        (AckCode::Ar, "LAW-ORL-application-Ar"),
+        (AckCode::Ca, "LAW-ORL-application-Ca"),
+        (AckCode::Ce, "LAW-ORL-application-Ce"),
+        (AckCode::Cr, "LAW-ORL-application-Cr"),
     ] {
         assert_eq!(LawDetail::Application(code).to_string(), expected);
     }
@@ -258,7 +276,7 @@ fn detailed_codes_keep_their_stored_spelling() {
 
 #[test]
 fn autolyser_parked_replies_keep_their_stored_spelling() {
-    use analyte_dialog::autolyser::Error;
+    use crate::autolyser::Error;
     let framing = analyte_framing::autolyser::Error::Checksum;
     for (error, expected) in [
         (Error::Configuration, "Autolyser-parked-config".to_owned()),
@@ -275,7 +293,6 @@ fn autolyser_parked_replies_keep_their_stored_spelling() {
         ),
     ] {
         assert_eq!(parked(&error), expected);
-        assert_eq!(Transfer::AutolyserParked(error).to_string(), expected);
     }
     assert_eq!(
         parked(&Error::Framing(framing)),
@@ -285,7 +302,7 @@ fn autolyser_parked_replies_keep_their_stored_spelling() {
 
 #[test]
 fn insertion_rejection_spellings_are_compatible() {
-    use analyte_dialog::autolyser::InsertionError;
+    use crate::autolyser::InsertionError;
     for (error, expected) in [
         (InsertionError::Checksum, "Checksum"),
         (InsertionError::UnknownCommand, "UnknownCommand"),
@@ -319,7 +336,7 @@ fn insertion_rejection_spellings_are_compatible() {
 
 #[test]
 fn insertion_and_incomplete_code_spellings_are_compatible() {
-    use analyte_dialog::autolyser::{InsertionError, Reception};
+    use crate::autolyser::{InsertionError, Reception};
     for (value, expected) in [
         (
             Reception::Accepted(3),
@@ -339,7 +356,6 @@ fn insertion_and_incomplete_code_spellings_are_compatible() {
         ),
     ] {
         assert_eq!(insertion(value), expected);
-        assert_eq!(Transfer::AutolyserInsertion(value).to_string(), expected);
     }
     for (value, expected) in [
         (
@@ -356,6 +372,19 @@ fn insertion_and_incomplete_code_spellings_are_compatible() {
         ),
     ] {
         assert_eq!(value.incomplete(), expected);
-        assert_eq!(Transfer::AutolyserIncomplete(value).to_string(), expected);
+    }
+}
+
+#[test]
+fn acceptance_evidence_spellings_are_compatible() {
+    for (code, expected) in [
+        (AckCode::Aa, "Aa"),
+        (AckCode::Ae, "Ae"),
+        (AckCode::Ar, "Ar"),
+        (AckCode::Ca, "Ca"),
+        (AckCode::Ce, "Ce"),
+        (AckCode::Cr, "Cr"),
+    ] {
+        assert_eq!(acceptance(code), expected);
     }
 }

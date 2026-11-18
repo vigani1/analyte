@@ -1,8 +1,5 @@
 //! Owns send-ahead reservations, queued requests and the candidate cursor until durable completion.
-use crate::{
-    installation::config::Machine,
-    orders::{OrderError, outcome::Transfer},
-};
+use crate::{installation::config::Machine, orders::OrderError};
 use analyte_store::{Handle, MachineOrder};
 use std::{collections::VecDeque, time::Instant};
 
@@ -80,17 +77,13 @@ impl<T> Work<T> {
         self.requests = reserved.payload;
         Ok(true)
     }
-    pub(crate) async fn close(&self, store: &Handle, reason: Transfer) -> Result<(), OrderError> {
+    pub(crate) async fn close(&self, store: &Handle, reason: &str) -> Result<(), OrderError> {
         if let Some(order) = &self.active {
             super::uncertain(store, order, reason).await?;
         }
         Ok(())
     }
-    pub(crate) async fn refuse(
-        &mut self,
-        store: &Handle,
-        reason: Transfer,
-    ) -> Result<(), OrderError> {
+    pub(crate) async fn refuse(&mut self, store: &Handle, reason: &str) -> Result<(), OrderError> {
         self.close(store, reason).await?;
         self.active = None;
         self.requests.clear();
