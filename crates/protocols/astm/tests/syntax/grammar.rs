@@ -16,6 +16,19 @@ fn lis02_6_2_bootstrap_and_5_4_6_message_delimiters() -> Result<(), Error> {
     Ok(())
 }
 
+// LIS02-A2 §5.4.7, §5.7 and §6.2: a header may end right after its delimiters.
+#[test]
+fn bare_header_is_accepted() -> Result<(), Error> {
+    let messages = parse(b"H|\\^&\rP|1\rL|1\r", Limits::default())?;
+    assert_eq!(
+        messages.first().map(|m| m.delimiters().bytes()),
+        Some(*b"|\\^&")
+    );
+    assert!(parse(b"H|\\^&;\rL|1\r", Limits::default()).is_err());
+    assert!(parse(b"H|\\^\rL|1\r", Limits::default()).is_err());
+    Ok(())
+}
+
 #[test]
 fn lis02_5_4_5_escapes_never_change_boundaries() -> Result<(), Error> {
     let wire = b"H|\\^&|\rP|1|&F&&S&&R&&E&&Zx|^\\y&&X0D&&H&bold&N&&unknown&\rL|1\r";

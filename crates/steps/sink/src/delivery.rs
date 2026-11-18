@@ -146,7 +146,12 @@ impl<'a> Worker<'a> {
                     crate::DestinationError::Secrets | crate::DestinationError::Signature(_),
                 )
                 | DeliveryError::Signature(_),
-            )) => (ResponseAction::PauseForSetup, None),
+            )) => (
+                ResponseAction::PauseForSetup {
+                    reason: "destination credentials require operator repair",
+                },
+                None,
+            ),
             Ok(Err(
                 DeliveryError::Http(_) | DeliveryError::ResponseTooLarge | DeliveryError::Timeout,
             ))
@@ -167,10 +172,9 @@ impl<'a> Worker<'a> {
             ResponseAction::Parked { reason: detail } => {
                 (Attempt::Parked(reason(&detail)), DeliveryOutcome::Parked)
             }
-            ResponseAction::PauseForSetup => (
-                Attempt::Paused(reason("destination credentials require operator repair")),
-                DeliveryOutcome::Paused,
-            ),
+            ResponseAction::PauseForSetup { reason: detail } => {
+                (Attempt::Paused(reason(detail)), DeliveryOutcome::Paused)
+            }
             ResponseAction::Retry { after } => {
                 let delay = i64::try_from(backoff(destination, claim.earlier_attempts, after))?;
                 let next = now
@@ -235,8 +239,8 @@ impl<'a> Worker<'a> {
             .filter(|s| s.len() <= 64)
             .map(str::to_owned);
         // These actions need no body. In particular, a stalled error body must
-        // not discard Retry-After or delay a credential pause.
-        if matches!(status, 401 | 403 | 408 | 429 | 500..=599) {
+        // not discard Retry-After or delay a setup pause.
+        if matches!(status, 300..=399 | 401 | 403 | 404 | 408 | 413 | 429 | 500..=599) {
             return Ok((classify_response(status, &[], retry.as_deref()), None));
         }
         let bytes = match body(response, DeliveryError::ResponseTooLarge).await {

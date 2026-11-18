@@ -489,23 +489,15 @@ fn record_parent(
 }
 
 fn parse_delimiters(raw: &[u8], number: usize) -> Result<Delimiters, Error> {
-    let definition = raw.get(1..6).ok_or(Error::Delimiters { record: number })?;
-    let mut chars = definition.iter().copied();
-    let (Some(f), Some(r), Some(c), Some(e), Some(end)) = (
-        chars.next(),
-        chars.next(),
-        chars.next(),
-        chars.next(),
-        chars.next(),
-    ) else {
+    let Some(&[f, r, c, e]) = raw.get(1..5) else {
         return Err(Error::Delimiters { record: number });
     };
-    if f != end {
+    // LIS02-A2 §5.4.7 and §5.7: trailing empty fields may be sent without their
+    // delimiters, so a header may end right after the delimiter definition (§6.2).
+    if raw.get(5).is_some_and(|end| *end != f) {
         return Err(Error::Delimiters { record: number });
     }
-    let delimiters =
-        Delimiters::new(f, r, c, e).map_err(|_| Error::Delimiters { record: number })?;
-    Ok(delimiters)
+    Delimiters::new(f, r, c, e).map_err(|_| Error::Delimiters { record: number })
 }
 
 fn parse_sequence(
