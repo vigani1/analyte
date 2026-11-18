@@ -9,7 +9,6 @@ use thiserror::Error;
 mod orders;
 use orders::Orders;
 pub use orders::{DisplayReply, Expect, ReplyPart};
-mod evidence;
 pub mod outcome;
 mod state;
 use state::State;
@@ -212,6 +211,20 @@ pub enum AckPhase {
     Accept,
     /// Application processing response.
     Application,
+}
+// Stored in sender diagnostics, so the spellings stay fixed.
+impl std::fmt::Display for AckPhase {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Accept => "Accept",
+            Self::Application => "Application",
+        })
+    }
+}
+#[test]
+fn ack_phase_spellings_are_compatible() {
+    assert_eq!(AckPhase::Accept.to_string(), "Accept");
+    assert_eq!(AckPhase::Application.to_string(), "Application");
 }
 
 #[derive(Debug)]

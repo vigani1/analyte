@@ -260,23 +260,23 @@ pub(crate) fn read(
     let payload = payload(config, raw)?;
     match config.effective().stack() {
         Stack::Astm(RecordTransport::Stream(s)) => {
-            reading::astm::read(input, &payload, s.settings().syntax(), s.settings().codes())
+            reading::astm(input, &payload, s.settings().syntax(), s.settings().codes())
         }
         Stack::Astm(RecordTransport::Folder(s)) => {
-            reading::astm::read(input, &payload, s.settings().syntax(), s.settings().codes())
+            reading::astm(input, &payload, s.settings().syntax(), s.settings().codes())
         }
         Stack::Hl7(RecordTransport::Stream(s)) => {
             let settings = s.settings();
-            reading::hl7::read(config, input, &payload, settings.syntax(), settings.codes())
+            reading::hl7(config, input, &payload, settings.syntax(), settings.codes())
         }
         Stack::Hl7(RecordTransport::Folder(s)) => {
             let settings = s.settings();
-            reading::hl7::read(config, input, &payload, settings.syntax(), settings.codes())
+            reading::hl7(config, input, &payload, settings.syntax(), settings.codes())
         }
-        Stack::Law(s) => reading::law::read(input, &payload, s),
-        Stack::Poct(s) => reading::poct::read(input, &payload, s, hello),
-        Stack::Vidas(s) => reading::vidas::read(input, &payload, s),
-        Stack::Autolyser(s) => reading::autolyser::read(input, &payload, s),
+        Stack::Law(s) => reading::law(input, &payload, s),
+        Stack::Poct(s) => reading::poct(input, &payload, s, hello),
+        Stack::Vidas(s) => reading::vidas(input, &payload, s),
+        Stack::Autolyser(s) => reading::autolyser(input, &payload, s),
     }
 }
 

@@ -1,4 +1,4 @@
-//! Starts service workers and coordinates bounded shutdown.
+//! Starts service workers, coordinates bounded shutdown and waits for worker ticks.
 pub(crate) mod delivery;
 #[cfg(test)]
 pub(crate) mod log_capture;
@@ -16,11 +16,22 @@ pub(crate) mod alert_delivery;
 mod recovery;
 
 mod error;
-pub use error::Error;
-
-pub(crate) mod ticks;
+pub use error::{DeliveryCommandError, Error, ParkedCommandError};
 
 pub(crate) mod hooks;
 
-/// Audited command storage and input failures.
-pub mod command;
+/// Returns false on shutdown or sender loss, including an already-requested stop.
+/// Cancellation leaves the interval and watch receiver owned by the caller.
+pub(crate) async fn until_stop(
+    ticks: &mut tokio::time::Interval,
+    stop: &mut tokio::sync::watch::Receiver<bool>,
+) -> bool {
+    if *stop.borrow() {
+        return false;
+    }
+    tokio::select! {
+        biased;
+        _ = async { let _ = stop.wait_for(|&stopped| stopped).await; } => false,
+        _ = ticks.tick() => true,
+    }
+}

@@ -1,4 +1,4 @@
-//! Distinguishes runtime startup, worker, storage and shutdown failures while retaining their causes.
+//! Distinguishes runtime startup, worker, storage, shutdown and audited command failures while retaining their causes.
 /// Failures owned by runtime workers and protected-store startup.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -8,10 +8,10 @@ pub enum Error {
 
     /// An audited parked-evidence command failed.
     #[error(transparent)]
-    ParkedCommand(#[from] super::command::ParkedCommandError),
+    ParkedCommand(#[from] ParkedCommandError),
     /// An audited delivery command failed.
     #[error(transparent)]
-    DeliveryCommand(#[from] super::command::DeliveryCommandError),
+    DeliveryCommand(#[from] DeliveryCommandError),
 
     /// Administration startup or supervision failed.
     #[error(transparent)]
@@ -171,4 +171,38 @@ impl From<crate::operator::Error> for Error {
     fn from(error: crate::operator::Error) -> Self {
         Self::Operator(Box::new(error))
     }
+}
+
+/// Failures of the parked-evidence command, including its host input refusals.
+#[derive(Debug, thiserror::Error)]
+pub enum ParkedCommandError {
+    /// Protected evidence lookup or mutation failed.
+    #[error(transparent)]
+    Evidence(#[from] analyte_store::OperatorError),
+    /// Recording the operator audit failed.
+    #[error(transparent)]
+    Audit(#[from] analyte_store::StorageError),
+    /// The store worker could not establish completion.
+    #[error(transparent)]
+    Worker(#[from] analyte_store::WorkerError),
+    /// Reprocessing was sent to the wrong command route.
+    #[error("reprocessing requires the interpretation route")]
+    ReprocessRequiresInterpretation,
+    /// The next operator cursor cannot be represented.
+    #[error("operator sequence cursor overflow")]
+    OperatorCursorOverflow,
+}
+
+/// Boundaries combined by the audited delivery listing command.
+#[derive(Debug, thiserror::Error)]
+pub enum DeliveryCommandError {
+    /// The delivery store operation failed.
+    #[error(transparent)]
+    Delivery(#[from] analyte_store::DeliveryError),
+    /// Recording the operator audit failed.
+    #[error(transparent)]
+    Audit(#[from] analyte_store::StorageError),
+    /// The store worker could not establish completion.
+    #[error(transparent)]
+    Worker(#[from] analyte_store::WorkerError),
 }

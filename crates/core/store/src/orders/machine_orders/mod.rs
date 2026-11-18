@@ -2,9 +2,7 @@
 pub(crate) mod ownership;
 use crate::sql_types::SqlOrderState;
 use ownership::OrderOwner;
-mod cancel;
 mod eligibility;
-mod execution;
 mod items;
 mod listing;
 mod reserve;
@@ -299,6 +297,30 @@ impl Store {
         )
     }
 
+    /// Rechecks an app cancellation and records its version once, before cancel bytes.
+    /// # Errors
+    /// Refuses stale/paused feeds, repeated cancellation versions and illegal states.
+    pub fn request_order_cancel(
+        &mut self,
+        id: i64,
+        version: NonZeroU64,
+        now: i64,
+        owner: &Identifier,
+        freshness: u64,
+        build: impl FnOnce(&MachineOrder) -> Result<OrderEventDelivery, Error>,
+    ) -> Result<MachineOrder, Error> {
+        let code = SourceText::new(&format!("app-cancel:{version}:{}", owner.as_str()))
+            .map_err(crate::StorageError::Text)?;
+        self.change_order(
+            id,
+            OrderState::CancelRequested,
+            code,
+            now,
+            ChangeEvidence::AppCancel(version, freshness, owner),
+            build,
+        )
+    }
+
     fn change_order(
         &mut self,
         id: i64,
@@ -465,10 +487,44 @@ fn load_items(db: &rusqlite::Connection, id: i64) -> Result<Vec<MachineOrderItem
     rows.iter()
         .map(|row| {
             let mut item: MachineOrderItem = serde_json::from_str(row)?;
-            item.execution = execution::load(db, item.machine_order, item.index)?;
+            item.execution = load_execution(db, item.machine_order, item.index)?;
             Ok(item)
         })
         .collect()
+}
+
+/// Reads the latest immutable AWOS projection without altering command lifecycle evidence.
+fn load_execution(
+    db: &rusqlite::Connection,
+    order: i64,
+    index: u16,
+) -> Result<Option<analyte_model::AwosExecutionProjection>, Error> {
+    use analyte_model::AwosExecution;
+    use rusqlite::OptionalExtension as _;
+    let row = db.query_row(
+        "SELECT state,receipt,interpretation,recorded_at,cancel_outstanding FROM awos_execution_history WHERE machine_order=?1 AND item_index=?2 ORDER BY sequence DESC LIMIT 1",
+        params![order,index],
+        |row| Ok((row.get::<_,String>(0)?,row.get::<_,String>(1)?,row.get::<_,u32>(2)?,row.get::<_,i64>(3)?,row.get::<_,bool>(4)?)),
+    ).optional()?;
+    row.map(
+        |(state, receipt, interpretation, recorded_at, cancel_outstanding)| {
+            let state = match state.as_str() {
+                "Scheduled" => AwosExecution::Scheduled,
+                "InProgress" => AwosExecution::InProgress,
+                "AnalyzerCancelled" => AwosExecution::AnalyzerCancelled,
+                _ => return Err(Error::Corruption),
+            };
+            Ok(analyte_model::AwosExecutionProjection {
+                state,
+                receipt: serde_json::from_str(&receipt)?,
+                interpretation: std::num::NonZeroU32::new(interpretation)
+                    .ok_or(Error::Corruption)?,
+                recorded_at,
+                cancel_outstanding,
+            })
+        },
+    )
+    .transpose()
 }
 
 fn create_items(

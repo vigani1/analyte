@@ -4,14 +4,12 @@ use analyte_sink::{Destination, Limits};
 use std::{sync::Arc, time::Duration};
 #[cfg(feature = "test-hooks")]
 mod enabled;
+#[cfg(not(feature = "test-hooks"))]
+pub(crate) use disabled::{destination, shutdown_bound, stall};
 #[cfg(feature = "test-hooks")]
 pub use enabled::serve_loopback_test;
 #[cfg(feature = "test-hooks")]
 pub(crate) use enabled::{destination, shutdown_bound, stall};
-#[cfg(not(feature = "test-hooks"))]
-mod disabled;
-#[cfg(not(feature = "test-hooks"))]
-pub(crate) use disabled::{destination, shutdown_bound, stall};
 
 pub(crate) fn publish_store_probes(
     program: &Program,
@@ -46,5 +44,35 @@ impl ServiceMode {
             #[cfg(feature = "test-hooks")]
             Self::LoopbackTest => true,
         }
+    }
+}
+
+/// Uses verified HTTPS and normal shutdown budgets without synthetic state.
+#[cfg(not(feature = "test-hooks"))]
+mod disabled {
+    use super::{Arc, Destination, Duration, Error, Limits, Program, ServiceMode};
+    pub(crate) fn destination(
+        _: &crate::installation::config::ProgramHooks,
+        settings: &analyte_config::Destination,
+        limits: Limits,
+        _: ServiceMode,
+    ) -> Result<Destination, Error> {
+        Ok(Destination::from_url(
+            settings.name.clone(),
+            &settings.base_url,
+            settings.name.clone(),
+            limits,
+        )?)
+    }
+    pub(crate) fn shutdown_bound(
+        _: &Program,
+        _: ServiceMode,
+        _: Option<&crate::runtime::shutdown::Watchdog>,
+        bound: Duration,
+    ) -> Result<Duration, Error> {
+        Ok(bound)
+    }
+    pub(crate) async fn stall(_: &Program, _: &Arc<analyte_store::Handle>) -> Result<(), Error> {
+        std::future::ready(Ok(())).await
     }
 }

@@ -189,7 +189,7 @@ the same way, and its `README.md` states the kind first.
 
 | Kind | Folder | Crates | Inside `src/` |
 | --- | --- | --- | --- |
-| Program | `crates/analyte` | analyte | Role folders (`machine`, `orders`, `runtime`, `operator`, `installation`, `admin`, `intake`, `reading`); per-protocol code sits in `machine` and `reading`, shared order steps in `orders` |
+| Program | `crates/analyte` | analyte | Role folders (`machine`, `orders`, `runtime`, `operator`, `installation`, `admin`, `intake`) and `reading.rs`; per-protocol code sits in `machine` and in one reader function per protocol in `reading.rs`, shared order steps in `orders` |
 | Steps | `crates/steps/` | transport, framing, dialog, mapping, sink | One file or folder per protocol key, plus shared pieces named for what they hold |
 | Protocols | `crates/protocols/` | astm, hl7, poct, vidas, autolyser | One file or folder per job: `syntax` (reading), `encode` (writing), `views`, `version`, plus the extras named in section 2; a profile (LAW) is a folder with the same jobs |
 | Core | `crates/core/` | model, store, config, contract | Role folders named for what they hold |

@@ -1,7 +1,6 @@
 //! Parses HL7 segments without transport or mapping.
 use thiserror::Error;
 mod text;
-mod truncation;
 pub(crate) use text::validate_escapes;
 pub use text::{TextEscape, decode_characters, decode_text, encode_text, inspect_text_escapes};
 
@@ -413,6 +412,27 @@ impl Message {
                     delimiters: self.delimiters,
                 }
             })
+    }
+
+    /// Refuses sender-marked incomplete data before typed interpretation or delivery.
+    /// The original bytes remain available through `raw`.
+    /// # Errors
+    /// Returns the first marked field, excluding MSH delimiter declarations.
+    pub fn require_complete_values(&self) -> Result<(), Error> {
+        for (index, segment) in self.segments().enumerate() {
+            for (number, field) in segment.fields().enumerate() {
+                if segment.id() == b"MSH" && number < 2 {
+                    continue;
+                }
+                if field.is_truncated() {
+                    return Err(Error::Truncated {
+                        segment: index.saturating_add(1),
+                        field: number.saturating_add(1),
+                    });
+                }
+            }
+        }
+        Ok(())
     }
 }
 /// Borrowed segment; all positions in this API are one-based.

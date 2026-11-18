@@ -1,5 +1,6 @@
-//! Writes explicit list, optional-value and quoted-text spellings for operator output.
+//! Writes explicit list, optional-value and quoted-text spellings and console lines for operator output.
 use std::fmt::Display;
+use std::io::{self, Write};
 /// Keeps the historical list delimiters while formatting each value through Display.
 pub fn list<T: Display>(values: &[T]) -> String {
     format!(
@@ -41,4 +42,13 @@ fn operator_container_spellings_are_compatible() {
     assert_eq!(optional(Some(12)), "Some(12)");
     assert_eq!(text("a'\"?\n"), "\"a'\\\"?\\n\"");
     assert_eq!(optional_text(Some("x")), "Some(\"x\")");
+}
+
+/// Writes a line to the local operator console, which may contain protected evidence.
+/// # Errors
+/// Reports output errors, including a closed pipe.
+pub fn line(text: &str) -> io::Result<()> {
+    // Use a fallible writer so a closed pipe is an ordinary error, never a panic.
+    let mut output = io::stdout().lock();
+    writeln!(output, "{text}")
 }

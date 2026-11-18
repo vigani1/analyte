@@ -10,7 +10,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use analyte::runtime::command::{DeliveryCommandError, ParkedCommandError};
+use analyte::runtime::{DeliveryCommandError, ParkedCommandError};
 
 /// Allows backup execution plus queue and response overhead.
 const BACKUP_REQUEST_BUDGET: Duration = Duration::from_secs(30);
@@ -190,7 +190,7 @@ async fn recover(
         analyte::operator::recovery::reprocess(&store, &program, target, actor, reason).await;
     store.shutdown(analyte::deadline()?).await?;
     let commit = result?;
-    analyte::operator::output::line(&format!(
+    analyte::operator::display::line(&format!(
         "Interpretation {} recorded; decisions: {}. Inspect parked items for failures.",
         commit.version,
         analyte::operator::display::list(&commit.outcomes)
@@ -252,7 +252,7 @@ async fn execute(cli: Cli) -> Result<(), Error> {
             let token =
                 tokio::task::spawn_blocking(move || analyte::admin::rotate_token(&directory))
                     .await??;
-            analyte::operator::output::line(&token)?;
+            analyte::operator::display::line(&token)?;
             Ok(())
         }
         #[cfg(windows)]
@@ -376,7 +376,7 @@ async fn operator(
             })
             .await?;
         for row in rows {
-            analyte::operator::output::line(&format!(
+            analyte::operator::display::line(&format!(
                 "{} {} resolution={}",
                 row.id,
                 row.evidence,
@@ -404,7 +404,7 @@ fn check_config(file: &std::path::Path) -> Result<(), Error> {
             analyte_config::EvidenceLevel::Simulated => "simulated",
             analyte_config::EvidenceLevel::Proven => "proven",
         };
-        analyte::operator::output::line(&format!("{} {digest} {level}", machine.id().as_str()))?;
+        analyte::operator::display::line(&format!("{} {digest} {level}", machine.id().as_str()))?;
     }
     Ok(())
 }
@@ -435,7 +435,7 @@ async fn deliveries(
                     })
                     .await?;
                 for row in rows {
-                    analyte::operator::output::line(&format!(
+                    analyte::operator::display::line(&format!(
                         "{} {} {} {}",
                         row.sequence,
                         uuid::Uuid::from(row.id),
@@ -448,7 +448,9 @@ async fn deliveries(
             Deliveries::Resend { id, reason } => {
                 analyte::operator::recovery::resend(&store, id, true, actor, Reason::new(&reason)?)
                     .await?;
-                analyte::operator::output::line("Delivery queued with its original ID and bytes.")?;
+                analyte::operator::display::line(
+                    "Delivery queued with its original ID and bytes.",
+                )?;
                 Ok(())
             }
         }
@@ -473,7 +475,7 @@ async fn restore(
         reason: Reason::new(reason)?,
     };
     let kept = service::restore(program, from, audit).await?;
-    analyte::operator::output::line(&format!(
+    analyte::operator::display::line(&format!(
         "Restored; order sending paused pending reconciliation. Previous store: {}",
         kept.display()
     ))?;
@@ -500,6 +502,6 @@ async fn backup(config: &std::path::Path, target: PathBuf) -> Result<(), Error> 
         .await;
     store.shutdown(analyte::deadline()?).await?;
     result?;
-    analyte::operator::output::line("Backup verified.")?;
+    analyte::operator::display::line("Backup verified.")?;
     Ok(())
 }

@@ -1,7 +1,7 @@
-//! Assigns result revisions within one transaction and bounded batch state.
+//! Assigns result revisions within one transaction and bounded batch state, checking status progression.
 use super::{
-    Error, IdentityStatus, Interpretation, Reading, ReceiptId, ResultContent, Revision,
-    RevisionOutcome, StatusLifecycle, clinical_digest, key, status_policy,
+    Error, IdentityStatus, Interpretation, Reading, ReceiptId, ResultContent, ResultStatus,
+    Revision, RevisionOutcome, StatusLifecycle, clinical_digest, key, status_policy,
 };
 pub(super) type AssignedRevision = (String, i64, analyte_model::Digest);
 
@@ -133,5 +133,40 @@ impl Reconciliation<'_, '_> {
         }
         batch.outcomes.push(outcome);
         Ok(())
+    }
+}
+
+impl Reconciliation<'_, '_> {
+    /// Checks changed-content statuses using the caller-supplied ADR 0011 policy.
+    fn permits_progression(
+        &self,
+        identity_key: &str,
+        candidate: &ResultContent,
+        previous: Option<i64>,
+        correction: bool,
+        staged: &[(String, ResultContent)],
+    ) -> Result<bool, Error> {
+        let withdrawn = candidate
+            .parts
+            .as_slice()
+            .iter()
+            .any(|p| p.status == ResultStatus::Withdrawn);
+        let progression = if let Some(policy) = self.lifecycle.filter(|_| previous.is_some()) {
+            let prior = staged
+                .iter()
+                .rev()
+                .find(|(key, _)| key == identity_key)
+                .map(|(_, result)| result.clone())
+                .map(Ok)
+                .unwrap_or_else(|| {
+                    status_policy::latest(self.tx, identity_key, self.limit)
+                        .and_then(|result| result.ok_or(Error::Corruption))
+                })?;
+            policy.permits(&prior, candidate)
+        } else {
+            self.lifecycle.is_none() && (correction || withdrawn)
+        };
+
+        Ok(progression)
     }
 }

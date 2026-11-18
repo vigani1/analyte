@@ -132,7 +132,7 @@ pub(crate) async fn run(
     let mut ticks = tokio::time::interval(interval);
     ticks.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     loop {
-        if !crate::runtime::ticks::until_stop(&mut ticks, &mut stop).await {
+        if !crate::runtime::until_stop(&mut ticks, &mut stop).await {
             return Ok(());
         }
         tokio::select! {

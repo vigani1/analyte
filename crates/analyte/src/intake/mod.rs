@@ -11,11 +11,9 @@ use analyte_store::{Handle, Interpretation, Reading, RevisionOutcome};
 pub use error::IntakeError as Error;
 use std::fmt::Write;
 mod parking;
-mod reading;
 
 pub(crate) use crate::machine::interpretation::map_reading;
 pub(crate) use parking::{Mapping, ParkReason};
-use reading::mapping_outcome;
 mod persistence;
 pub use persistence::CommitError;
 use persistence::PreparedMapping;
@@ -189,6 +187,34 @@ pub(crate) async fn persist_prepared(
         .await?;
     let (result, successful) = result;
     mapping_outcome(result, successful)
+}
+
+/// Classifies a committed revision without changing the protocol outcome.
+fn mapping_outcome(
+    result: analyte_store::InterpretationCommit,
+    successful: InterpretationOutcome,
+) -> Result<(InterpretationOutcome, analyte_store::InterpretationCommit), Error> {
+    let accepted = matches!(successful, InterpretationOutcome::Accepted)
+        && !result
+            .outcomes
+            .iter()
+            .any(|o| matches!(o, RevisionOutcome::Conflict | RevisionOutcome::Unresolved));
+    Ok((
+        if accepted {
+            InterpretationOutcome::Accepted
+        } else {
+            match successful {
+                InterpretationOutcome::Conflict => InterpretationOutcome::Conflict,
+                InterpretationOutcome::WorkConflict(location) => {
+                    InterpretationOutcome::WorkConflict(location)
+                }
+                InterpretationOutcome::Accepted | InterpretationOutcome::Failed => {
+                    InterpretationOutcome::Failed
+                }
+            }
+        },
+        result,
+    ))
 }
 
 fn prepare_reading(mapped: MappedReading, policy: &Policy) -> Result<MappedReading, Error> {

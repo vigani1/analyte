@@ -117,7 +117,7 @@ pub async fn print(program: &Program) -> Result<(), Error> {
     let result = snapshot(program, &store).await;
     store.shutdown(deadline()?).await?;
     for line in result? {
-        crate::operator::output::line(&line)?;
+        crate::operator::display::line(&line)?;
     }
     Ok(())
 }
