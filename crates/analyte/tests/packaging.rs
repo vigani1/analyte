@@ -256,6 +256,12 @@ fn windows_installer_and_scripts_agree() -> Outcome {
         assert!(script.contains("& (Join-Path $PSScriptRoot 'stop.ps1')"));
         assert!(!script.contains("ServiceControllerStatus]::Stopped"));
     }
+    // Run 44411503596: WMI's Win32_Service.Create refuses the virtual account
+    // (code 22); sc.exe registers it without a password.
+    assert!(!install.contains("Invoke-CimMethod"));
+    assert!(install.contains(
+        r#"'{0} Analyte type= own start= auto error= normal binPath= "{1}" obj= "{2}" DisplayName= Analyte'"#
+    ));
     // The printed token is discarded; the installer reads the protected file.
     assert!(install.contains("$null = & $Executable --config $Config admin token --rotate"));
     assert!(install.contains("if (Test-Path -LiteralPath $token)"));

@@ -128,25 +128,23 @@ if ($LASTEXITCODE -ne 0) { throw "Configuration check failed with exit code $LAS
 & (Join-Path $PSScriptRoot 'stop.ps1')
 $existing = Get-CimInstance -ClassName Win32_Service -Filter "Name='Analyte'"
 $binaryPath = '"{0}" service run --config "{1}" --shutdown-timeout-secs {2}' -f $Executable, $Config, $ShutdownTimeoutSecs
-if ($existing) {
-    $result = Invoke-CimMethod -InputObject $existing -MethodName Change -Arguments @{
-        PathName = $binaryPath; StartMode = 'Automatic'; StartName = $account; StartPassword = ''
-    }
-} else {
-    $result = Invoke-CimMethod -ClassName Win32_Service -MethodName Create -Arguments @{
-        Name = 'Analyte'; DisplayName = 'Analyte'; PathName = $binaryPath
-        ServiceType = [byte]16; ErrorControl = [byte]1; StartMode = 'Automatic'
-        DesktopInteract = $false; StartName = $account; StartPassword = ''
-    }
-}
-if ($result.ReturnValue -ne 0) { throw "Service configuration failed (Win32_Service code $($result.ReturnValue))." }
+# sc.exe, not WMI: Win32_Service.Create refuses a virtual account with code 22
+# (invalid service account), because NT SERVICE\Analyte exists only once the
+# service does (PR #255 run 44411503596). sc.exe passes no password, as the
+# Service Control Manager requires for a virtual account. The command line is
+# built here and passed as is, because Windows PowerShell 5.1 does not escape
+# quotes inside native arguments; the paths were checked to hold no quotes.
+$sc = Join-Path $env:windir 'System32\sc.exe'
+$verb = if ($existing) { 'config' } else { 'create' }
+$arguments = '{0} Analyte type= own start= auto error= normal binPath= "{1}" obj= "{2}" DisplayName= Analyte' -f $verb, $binaryPath.Replace('"', '\"'), $account
+$process = Start-Process -FilePath $sc -ArgumentList $arguments -NoNewWindow -Wait -PassThru
+if ($process.ExitCode -ne 0) { throw "Service configuration failed (sc.exe $verb exit code $($process.ExitCode))." }
 
 # No permissions are granted on the executable tree by this script, and none on
 # the configuration tree unless -ConfigWritable asks for it.
 Set-ServiceFolderAcl $DataDirectory
 if ($ConfigWritable) { Set-ServiceFolderAcl $ConfigDirectory }
 
-$sc = Join-Path $env:windir 'System32\sc.exe'
 & $sc failure Analyte reset= 86400 actions= restart/5000/restart/15000/restart/60000
 if ($LASTEXITCODE -ne 0) { throw "Setting service recovery failed with exit code $LASTEXITCODE." }
 & $sc failureflag Analyte 1

@@ -120,5 +120,6 @@ directory, configuration, logs, backups or credentials, and retains their ACLs.
 Uninstall does not authorize replaying uncertain orders or deleting evidence.
 
 References: [virtual accounts](https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/manage/understand-service-accounts),
-[service configuration](https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/change-method-in-class-win32-service),
+[service creation](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/sc-create)
+(virtual accounts need no password),
 and [recovery actions](https://learn.microsoft.com/en-us/windows/win32/api/winsvc/ns-winsvc-service_failure_actionsa).
