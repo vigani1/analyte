@@ -33,7 +33,7 @@ pub enum StorageError {
     #[error("filesystem operation failed")]
     Io(#[from] std::io::Error),
     /// Protected evidence could not be encoded or decoded. The message names
-    /// only the failure category: serde_json's own text can quote stored
+    /// only the failure category: `serde_json`'s own text can quote stored
     /// values, which must stay out of ordinary logs (rule 10).
     #[error("evidence encoding failed: {:?} error", .0.classify())]
     Json(#[from] serde_json::Error),
