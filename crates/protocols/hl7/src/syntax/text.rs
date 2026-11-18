@@ -223,6 +223,10 @@ pub(super) fn declared_charset(
     law: bool,
 ) -> Result<Charset, Error> {
     let charset = match msh.field(18).map(|f| f.raw).unwrap_or_default() {
+        // Deliberate tolerance: an empty MSH-18 means ASCII (HL7 2.5.1 §2.15.9.18), but
+        // the machine definition may name the set its machine really sends. LAW
+        // requires MSH-18 (TF-2b §C.4), so it keeps the standard default.
+        b"" if !law => options.charset,
         b"" | b"ASCII" => Charset::Ascii,
         b"8859/1" => Charset::Latin1,
         b"UNICODE UTF-8"

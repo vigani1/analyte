@@ -273,7 +273,7 @@ pub(crate) fn read(
             let settings = s.settings();
             reading::hl7(config, input, &payload, settings.syntax(), settings.codes())
         }
-        Stack::Law(s) => reading::law(input, &payload, s),
+        Stack::Law(s) => reading::law(input, &payload, s, config.effective().site()),
         Stack::Poct(s) => reading::poct(input, &payload, s, hello),
         Stack::Vidas(s) => reading::vidas(input, &payload, s),
         Stack::Autolyser(s) => reading::autolyser(input, &payload, s),

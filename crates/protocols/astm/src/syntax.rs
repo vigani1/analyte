@@ -197,8 +197,16 @@ pub struct Component {
     raw: Vec<u8>,
     text: String,
     unsupported_escape: bool,
+    control_character: bool,
 }
 impl Component {
+    /// Whether the component holds a literal BEL, HT, VT or FF (LIS02-A2 §5.1).
+    /// These are kept byte for byte as a deliberate tolerance; callers record a note.
+    #[must_use]
+    pub fn has_control_character(&self) -> bool {
+        self.control_character
+    }
+
     /// Whether an operation lacks a supported semantic interpretation.
     #[must_use]
     pub fn has_unsupported_escape(&self) -> bool {
@@ -232,6 +240,14 @@ impl Field {
     #[must_use]
     pub fn repeats(&self) -> &[Vec<Component>] {
         &self.repeats
+    }
+    /// Whether any component keeps a tolerated literal control character.
+    #[must_use]
+    pub fn has_control_character(&self) -> bool {
+        self.repeats
+            .iter()
+            .flatten()
+            .any(Component::has_control_character)
     }
     /// Empty and deletion remain distinct, including for composite fields.
     #[must_use]
@@ -273,6 +289,11 @@ impl Record {
     pub fn sequence(&self) -> Option<usize> {
         self.sequence
     }
+    /// Every field in wire order; index zero is the standard's field 1.
+    #[must_use]
+    pub fn fields(&self) -> &[Field] {
+        &self.fields
+    }
     /// Retrieves a field by the standard's one-based position; omitted trailing fields return None.
     #[must_use]
     pub fn field(&self, position: usize) -> Option<&Field> {
@@ -310,6 +331,11 @@ impl Message {
 
 fn legal(byte: u8) -> bool {
     matches!(byte, 7 | 9 | 11 | 12 | 32..=126 | 128..=254)
+}
+
+/// The controls §5.1 allows in a record but not in text data: BEL, HT, VT and FF.
+fn text_control(byte: u8) -> bool {
+    matches!(byte, 7 | 9 | 11 | 12)
 }
 
 /// Decodes ASCII text, refusing non-ASCII bytes.
@@ -740,6 +766,7 @@ fn parse_fields(
                 raw: part.to_vec(),
                 text: latin1(part).unwrap_or_default(),
                 unsupported_escape: false,
+                control_character: false,
             }]]
         } else {
             let mut repeats = Vec::new();
@@ -753,14 +780,12 @@ fn parse_fields(
                     number,
                     position,
                 )? {
-                    if component.iter().any(|byte| {
-                        !matches!(byte, 32..=126 | 128..=254) && !d.bytes().contains(byte)
-                    }) {
-                        return Err(Error::Decode {
-                            record: number,
-                            field: position,
-                        });
-                    }
+                    // LIS02-A2 §5.1 keeps BEL, HT, VT and FF out of text data. They are
+                    // still record-legal, so a component keeps them byte for byte as a
+                    // deliberate tolerance; every other control was refused per record.
+                    let control_character = component
+                        .iter()
+                        .any(|byte| text_control(*byte) && !d.bytes().contains(byte));
                     let expanded = expand(component, d);
                     let text = decode(&expanded).ok_or(Error::Decode {
                         record: number,
@@ -772,6 +797,7 @@ fn parse_fields(
                             |(i, body)| i % 2 == 1 && !matches!(body, b"F" | b"S" | b"R" | b"E"),
                         ),
                         text,
+                        control_character,
                     });
                 }
                 repeats.push(components);

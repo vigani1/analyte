@@ -14,12 +14,16 @@ Use a nonclinical installation ID, never a patient or sample ID.
 | Layer | Contents |
 | --- | --- |
 | Shipped definition | Protocol, mappings, departures and evidence; qualified definitions belong under `machines/`. |
-| Site file | `schema_version = 1`, endpoint (or `usb_serial` for a serial port), required retention period and destination with credential names. |
+| Site file | `schema_version = 1`, endpoint (or `usb_serial` for a serial port), required retention period, destination with credential names and optional `time_zone`. |
 | Optional local overrides | `schema_version = 1` and explicit replacement sections for this installation. |
 
 Overrides replace whole sections and lists; an override's `endpoint` or
 `usb_serial` replaces the site's port choice. They do not merge list entries or
 change evidence. Retention belongs in the site file. Unknown keys fail loading.
+`time_zone` (an IANA name such as `"Europe/Berlin"`, or a fixed offset such as
+`"+01:00"`) is optional. It is used only to read an IHE LAW MSH-7 that arrives
+without an offset, with a visible note; leave it out to keep refusing such
+headers.
 Keep all installation files outside the repository. The
 [config examples](../../crates/core/config/examples/) teach syntax only.
 

@@ -43,7 +43,7 @@ pub fn message_type(message: &Message) -> impl Iterator<Item = &[u8]> {
 /// segment cardinality. Correlation to a sent message remains the transaction's job.
 pub fn validate_control(message: &Message, direction: ControlDirection) -> Result<(), Error> {
     let msh = message.segments().next().ok_or(content("MSH", 0))?;
-    validate_segment(msh, direction)?;
+    header(msh, direction, message.header_zone())?;
     let kind = part(raw(msh, 9), 1);
     let response = matches!(kind, b"ACK" | b"RSP" | b"ORL");
     let mut msa = None;
@@ -129,7 +129,7 @@ pub(super) fn validate_segment(
     direction: ControlDirection,
 ) -> Result<(), Error> {
     match segment.id() {
-        b"MSH" => header(segment, direction),
+        b"MSH" => header(segment, direction, crate::HeaderZone::Required),
         b"MSA" => {
             excluded_fields(segment, "MSA", &[1, 2], direction)?;
             scalar(segment, "MSA", 1, true, 2)?;
@@ -152,7 +152,12 @@ pub(super) fn received_segment(segment: Segment<'_>) -> Result<(), Error> {
     }
 }
 
-fn header(segment: Segment<'_>, direction: ControlDirection) -> Result<(), Error> {
+/// Checks MSH under the given offset rule; the message's own rule for a received header.
+pub(super) fn header(
+    segment: Segment<'_>,
+    direction: ControlDirection,
+    zone: crate::HeaderZone,
+) -> Result<(), Error> {
     excluded_fields(
         segment,
         "MSH",
@@ -174,7 +179,9 @@ fn header(segment: Segment<'_>, direction: ControlDirection) -> Result<(), Error
     }
     field(segment, "MSH", 7, true, false)?;
     components(raw(segment, 7), "MSH", 7, &[(true, 19)], direction)?;
-    if !super::profile::timestamp(part(raw(segment, 7), 1), true) {
+    if !super::profile::timestamp(part(raw(segment, 7), 1), true)
+        && !site_zone_header(segment, direction, zone)
+    {
         return Err(component_error("MSH", 7, 1));
     }
     field(segment, "MSH", 9, true, false)?;
@@ -234,6 +241,28 @@ fn header(segment: Segment<'_>, direction: ControlDirection) -> Result<(), Error
         }
     }
     Ok(())
+}
+
+/// Deliberate tolerance: C.4 requires MSH-7's offset, but with a configured site
+/// zone a received seconds-precision MSH-7 without one is read in that zone. The
+/// original text is kept; outgoing headers always carry the offset.
+fn site_zone_header(
+    segment: Segment<'_>,
+    direction: ControlDirection,
+    zone: crate::HeaderZone,
+) -> bool {
+    direction == ControlDirection::Receive
+        && zone == crate::HeaderZone::Site
+        && super::profile::timestamp(part(raw(segment, 7), 1), false)
+}
+
+/// Returns MSH-7 as sent when it has no offset and was accepted in the site zone.
+#[must_use]
+pub fn site_zone_header_time(message: &Message) -> Option<&[u8]> {
+    let msh = message.segments().next()?;
+    (!super::profile::timestamp(part(raw(msh, 7), 1), true)
+        && site_zone_header(msh, ControlDirection::Receive, message.header_zone()))
+    .then(|| part(raw(msh, 7), 1))
 }
 
 fn error(segment: Segment<'_>, direction: ControlDirection) -> Result<(), Error> {

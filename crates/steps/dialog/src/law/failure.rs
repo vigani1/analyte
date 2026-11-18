@@ -26,7 +26,9 @@ impl Dialog {
                     .ok()
                     .map(|field| header_error(field, b"102", b"LAW-control")),
             ),
-            analyte_hl7::Error::UnsupportedCharset | analyte_hl7::Error::CharsetMismatch => {
+            analyte_hl7::Error::UnsupportedCharset
+            | analyte_hl7::Error::CharsetMismatch
+            | analyte_hl7::Error::UndeclaredCharset => {
                 (AckCode::Ar, Some(header_error(18, b"102", b"LAW-control")))
             }
             analyte_hl7::Error::EditionRules(_)

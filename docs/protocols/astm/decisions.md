@@ -143,9 +143,19 @@ Contextual C/M levels are tracked independently of P/O/R ancestry. Section
 5.6.7 resets the counter when the same type changes level or a lower numbered
 level intervenes. Regression: `comment_and_manufacturer_level_changes_reset_sequence`.
 
-Section 5.1 text components reject literal controls before escape expansion;
-header-selected delimiters remain syntax. Delimiter escapes and raw bytes are
-unchanged. Test: `literal_controls_rejected_in_text`.
+Section 5.1 keeps BEL, HT, VT and FF out of text data but allows them in a
+record. Deliberate tolerance (owner decision, 2026-11-18): a text or comment
+component keeps them byte for byte instead of refusing the record, and the
+mapping adds one `astm_control_character_in_text` note per field to the
+receipt's departure evidence (`ControlCharacterKept`, shown on the admin
+receipt evidence page). It is always on, not a machine departure: ADR 0015
+covers rules that change how a value or status is read, while this one changes
+nothing but acceptance and every use is recorded. Contract v1 has no field for
+notes or departures, so the delivered document is unchanged, like packed ASTM
+records. Every other control is still refused per record, header-selected
+delimiters remain syntax and identifiers still refuse controls at their own
+boundary. Tests: `text_controls_kept_byte_for_byte`,
+`astm_comment_tab_kept_with_note`.
 
 Status evidence now asserts every section 9.9 code against its named meaning
 and parsed result view (`each_status_code_has_specified_meaning`).
