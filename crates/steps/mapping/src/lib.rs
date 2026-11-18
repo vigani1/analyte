@@ -299,7 +299,9 @@ impl Output {
                 .any(|entry| match entry.meaning {
                     DepartureMeaning::FinalReportFromDocumentation
                     | DepartureMeaning::FinalObservationFromDocumentation => true,
-                    DepartureMeaning::PackedRecords | DepartureMeaning::WireCompatibility => false,
+                    DepartureMeaning::PackedRecords
+                    | DepartureMeaning::WireCompatibility
+                    | DepartureMeaning::ControlCharacterKept => false,
                 })
             || !self.unmapped.is_empty()
             || self.results.iter().any(|r| r.content.requires_parking())

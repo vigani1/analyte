@@ -13,6 +13,8 @@ pub enum DepartureMeaning {
     PackedRecords,
     /// A declared wire compatibility setting was exercised.
     WireCompatibility,
+    /// Deliberate tolerance: a literal control character in text was kept byte for byte.
+    ControlCharacterKept,
 }
 
 /// A bounded source byte range, with an exclusive end; coordinates are named by the entry.
@@ -40,7 +42,9 @@ impl TryFrom<std::ops::Range<usize>> for DepartureSpan {
 pub struct AppliedDeparture {
     /// Stable rule tag.
     pub rule: Identifier,
-    /// Exact declaration in the existing TOML config format, including scope and evidence level.
+    /// Exact declaration in the existing TOML config format, including scope and evidence
+    /// level. A deliberate tolerance has no declaration: it names the setting it used, or
+    /// says that it is always on.
     pub declaration: SourceText,
     /// Standard clause whose diagnostic or boundary rule was relaxed.
     pub standard: Identifier,

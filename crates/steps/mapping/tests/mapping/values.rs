@@ -615,3 +615,30 @@ fn notes_keep_parent_paths_without_a_result() -> TestResult {
     );
     Ok(())
 }
+
+// Deliberate tolerance: a TAB in an ASTM comment is kept with a visible note.
+// CLSI LIS02-A2 §5.1
+#[test]
+fn astm_comment_tab_kept_with_note() -> TestResult {
+    let output = astm("R|1|^^^SYN|1|||||F\rC|1|I|left\tright|G\r", "P")?;
+    assert!(!output.requires_parking());
+    assert_eq!(
+        first(&output)?
+            .comments
+            .as_slice()
+            .iter()
+            .map(SourceText::as_str)
+            .collect::<Vec<_>>(),
+        ["left\tright"]
+    );
+    let [note] = output.applied_departures.as_slice() else {
+        return Err("expected exactly one tolerance note".into());
+    };
+    assert_eq!(note.rule.as_str(), "astm_control_character_in_text");
+    assert_eq!(note.meaning, DepartureMeaning::ControlCharacterKept);
+    assert_eq!(note.standard.as_str(), "LIS02-A2 §5.1");
+    assert_eq!((note.record, note.field), (5, 4));
+    let plain = astm("R|1|^^^SYN|1|||||F\rC|1|I|left right|G\r", "P")?;
+    assert!(plain.applied_departures.is_empty());
+    Ok(())
+}

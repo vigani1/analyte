@@ -170,23 +170,27 @@ fn render(html: &mut Markup, evidence: &DepartureEvidence) {
                 .markup("</pre></li>"),
         );
     }
-    html.push_markup("</ul><h2>Actually applied departures</h2>");
+    html.push_markup("</ul><h2>Actually applied departures and tolerances</h2>");
     if evidence.applied.as_slice().is_empty() {
         html.push_markup("<p>Applied list: empty.</p>");
     }
     for applied in evidence.applied.as_slice() {
-        if matches!(
-            applied.meaning,
+        match applied.meaning {
             DepartureMeaning::FinalReportFromDocumentation
-                | DepartureMeaning::FinalObservationFromDocumentation
-        ) {
-            html.push_markup(concat!(
-                concat!(
-                    "<p><strong>Final from documentation — not a ",
-                    "received final status. Delivery over ",
-                ),
-                "contract v1 is parked.</strong></p>",
-            ));
+            | DepartureMeaning::FinalObservationFromDocumentation => {
+                html.push_markup(concat!(
+                    concat!(
+                        "<p><strong>Final from documentation — not a ",
+                        "received final status. Delivery over ",
+                    ),
+                    "contract v1 is parked.</strong></p>",
+                ));
+            }
+            DepartureMeaning::ControlCharacterKept => html.push_markup(concat!(
+                "<p><strong>Deliberate tolerance — values kept exactly ",
+                "as received.</strong></p>",
+            )),
+            DepartureMeaning::PackedRecords | DepartureMeaning::WireCompatibility => {}
         }
         html.push_fragment(
             &Markup::new()
@@ -263,6 +267,35 @@ mod tests {
         assert!(html.contains("not a received final status"));
         assert!(html.contains("&lt;script&gt;bad&lt;/script&gt;"));
         assert!(!html.contains("<script>"));
+        Ok(())
+    }
+
+    // Deliberate tolerances are listed with their note for operators.
+    // CLSI LIS02-A2 §5.1
+    #[test]
+    fn shows_tolerance_note() -> Result<(), Error> {
+        let note = AppliedDeparture {
+            rule: Identifier::new("astm_control_character_in_text")?,
+            declaration: SourceText::new("always on: deliberate tolerance")?,
+            standard: Identifier::new("LIS02-A2 §5.1")?,
+            record: 5,
+            field: 4,
+            source: SourceText::new("value kept byte for byte")?,
+            meaning: DepartureMeaning::ControlCharacterKept,
+            coordinates: Identifier::new("syntax_bytes")?,
+            spans: EvidenceList::default(),
+        };
+        let ledger = DepartureEvidence {
+            enabled: EvidenceList::default(),
+            incomplete: None,
+            applied: EvidenceList::new(vec![note])?,
+        };
+        let mut html = Markup::new();
+        render(&mut html, &ledger);
+        assert!(html.contains("Deliberate tolerance"));
+        assert!(html.contains("astm_control_character_in_text"));
+        assert!(html.contains("ControlCharacterKept"));
+        assert!(!html.contains("Final from documentation"));
         Ok(())
     }
 }

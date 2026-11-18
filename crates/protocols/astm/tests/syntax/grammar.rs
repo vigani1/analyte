@@ -353,22 +353,47 @@ fn comment_and_manufacturer_level_changes_reset_sequence() -> Result<(), Error> 
     Ok(())
 }
 
-// LIS02-A2 section 5.1: text components exclude literal control characters.
+// LIS02-A2 §5.1 keeps BEL, HT, VT and FF out of text data but allows them in a
+// record. Deliberate tolerance: keep them byte for byte and flag the component.
 // CLSI LIS02-A2 §5.1
 #[test]
-fn literal_controls_rejected_in_text() {
+fn text_controls_kept_byte_for_byte() -> Result<(), Error> {
     for control in [7, 9, 11, 12] {
-        let mut wire = b"H|\\^&|\rP|1|name".to_vec();
+        let mut wire = b"H|\\^&|\rP|1\rC|1|I|name".to_vec();
         wire.push(control);
-        wire.extend_from_slice(b"text\rL|1\r");
-        assert!(matches!(
-            parse(&wire, Limits::default()),
-            Err(Error::Decode {
-                record: 2,
-                field: 3
-            })
-        ));
+        wire.extend_from_slice(b"text|G\rL|1\r");
+        let messages = parse(&wire, Limits::default())?;
+        let comment = messages
+            .first()
+            .and_then(|m| m.records().get(2))
+            .ok_or(Error::MissingCr)?;
+        let field = comment.field(4).ok_or(Error::MissingCr)?;
+        let mut expected = b"name".to_vec();
+        expected.push(control);
+        expected.extend_from_slice(b"text");
+        assert_eq!(field.raw(), expected.as_slice());
+        let component = field.repeats().first().and_then(|r| r.first());
+        assert_eq!(
+            component.map(|c| c.text().as_bytes()),
+            Some(expected.as_slice())
+        );
+        assert!(component.is_some_and(analyte_astm::Component::has_control_character));
+        assert!(field.has_control_character());
+        assert!(
+            !comment
+                .field(3)
+                .is_some_and(analyte_astm::Field::has_control_character)
+        );
+        assert_eq!(
+            messages.first().map(analyte_astm::Message::encode),
+            Some(wire)
+        );
     }
+    // A header-selected delimiter is syntax, never a kept control.
+    let messages = parse(b"H\t\\^&\tx\rP\t1\tname\rL\t1\r", Limits::default())?;
+    let patient = messages.first().and_then(|m| m.records().get(1));
+    assert!(patient.is_some_and(|r| r.fields().iter().all(|f| !f.has_control_character())));
+    Ok(())
 }
 
 // LIS02-A2 section 9.9: wire codes carry prescribed meanings.
