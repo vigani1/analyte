@@ -165,9 +165,12 @@ pub(crate) fn law(
     input: analyte_mapping::Input<'_>,
     raw: &[u8],
     settings: &analyte_config::LawStack,
+    site: &analyte_config::Site,
 ) -> Result<analyte_mapping::Output, Error> {
-    let message =
-        analyte_hl7::law::parse_message(raw, crate::machine::law::settings::options(settings))?;
+    let message = analyte_hl7::law::parse_message(
+        raw,
+        crate::machine::law::settings::options(settings, site),
+    )?;
     let results = analyte_hl7::law::receive_results(&message)?;
     Ok(analyte_mapping::law::map(settings, &results, input)?)
 }

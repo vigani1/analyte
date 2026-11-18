@@ -210,6 +210,18 @@ no comparable trusted ordering evidence are parked, never sorted by MSH-7.
 Pending raw receipts are interpreted before machine connections open; a
 changed configuration requires explicit audited reprocessing instead.
 
+MSH-7 without an offset (owner decision, 2026-11-18): C.4 requires the offset,
+and Analyte still sends it and still requires it by default. A deliberate
+tolerance accepts a received seconds-precision MSH-7 without one when the site
+file names `time_zone`; the time is read in that zone, the original text is
+kept and every use gets a visible note (departure evidence for results, an
+audit entry for queries and order replies). It is a site setting rather than a
+machine departure because the zone belongs to the installation, and it changes
+no value: no time is converted and no offset is added to a stored or delivered
+time. A daylight-saving gap or fold is noted as having no single offset. The
+parser option `HeaderZone::Site` carries the setting; `validate_control` and
+every MSH re-check use the message's own rule. Contract v1 has no notes field.
+
 ORC-27 preserves absence, explicit null and supplied date/date-time distinctly.
 It has no independent offset or precision component (C.8 Table C.8-9). The
 retained MSH-7 supplies zone evidence; availability is an estimate, never

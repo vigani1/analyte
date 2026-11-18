@@ -428,6 +428,11 @@ pub struct Site {
     pub endpoint: String,
     /// Selected lab app.
     pub destination: Destination,
+    /// The lab's time zone: an IANA name or a fixed `+HH:MM` offset. Only a LAW
+    /// MSH-7 sent without an offset is read in it, with a note; absent keeps
+    /// refusing such a header.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub time_zone: Option<crate::SiteTimeZone>,
 }
 
 /// Explicit replacements; omitted sections retain their preceding layer.

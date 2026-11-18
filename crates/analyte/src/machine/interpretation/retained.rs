@@ -99,9 +99,10 @@ pub(crate) async fn process(
         }
     };
     let parsed = match &profile {
-        Profile::Law(settings) => {
-            law::parse_message(&payload, crate::machine::law::settings::options(settings))
-        }
+        Profile::Law(settings) => law::parse_message(
+            &payload,
+            crate::machine::law::settings::options(settings, machine.snapshot.effective().site()),
+        ),
         Profile::Hl7(syntax, _) => {
             Message::parse(&payload, crate::machine::hl7::settings::options(syntax))
         }

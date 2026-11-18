@@ -25,7 +25,9 @@ pub use results::{
 };
 mod envelope;
 mod fields;
-pub use envelope::{ControlDirection, message_type, parse_message, validate_control};
+pub use envelope::{
+    ControlDirection, message_type, parse_message, site_zone_header_time, validate_control,
+};
 mod order;
 mod patient;
 mod specimen;
@@ -404,7 +406,7 @@ impl<'a> Query<'a> {
 
 fn msh(message: &Message) -> Result<Msh<'_>, Error> {
     let segment = message.segments().next().ok_or(content("MSH", 0))?;
-    envelope::validate_segment(segment, ControlDirection::Receive)?;
+    envelope::header(segment, ControlDirection::Receive, message.header_zone())?;
     let kind = raw(segment, 9)
         .split(|b| *b == b'^')
         .next()
