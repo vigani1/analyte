@@ -1,6 +1,8 @@
 //! Stores inbound transfer chunks and durable acknowledgment evidence.
-use crate::{FrameProvenance, IntakeError as Error, Store, key};
-use analyte_model::{Identifier, Reason, ReceiptId};
+use crate::{
+    FrameProvenance, IntakeError as Error, OperatorError, StorageError, Store, digest, key,
+};
+use analyte_model::{Identifier, Reason, ReceiptId, ReceiptMetadata};
 use rusqlite::{OptionalExtension, params};
 #[cfg(test)]
 mod tests;
@@ -100,23 +102,98 @@ impl Store {
         Ok(())
     }
 
-    /// Lists unfinished or aborted transfer IDs in a bounded page after an ID.
+    /// Lists a bounded page of transfers that are still open. While no machine
+    /// connection runs, every one was cut off before its receipt was written.
     /// # Errors
-    /// Reports database failures.
-    #[cfg(test)]
-    pub(crate) fn incomplete(&self, after: &str) -> Result<Vec<String>, Error> {
-        let mut stmt = self.db.prepare(
-            "SELECT id FROM transfers WHERE state!='complete' AND id>?1 ORDER BY id LIMIT ?2",
-        )?;
-        Ok(stmt
+    /// Reports database failures or a corrupt stored identity.
+    pub fn open_transfers(&self) -> Result<Vec<Identifier>, Error> {
+        let mut stmt = self
+            .db
+            .prepare("SELECT id FROM transfers WHERE state='open' ORDER BY id LIMIT ?1")?;
+        let ids = stmt
             .query_map(
-                params![
-                    after,
-                    i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidReceiptInput)?
-                ],
-                |r| r.get(0),
+                [i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidReceiptInput)?],
+                |r| r.get::<_, String>(0),
             )?
-            .collect::<Result<_, _>>()?)
+            .collect::<Result<Vec<_>, _>>()?;
+        ids.iter()
+            .map(|id| Identifier::new(id).map_err(|_| Error::Corruption))
+            .collect()
+    }
+
+    /// Gives an aborted transfer the receipt it never got, once, so an operator can
+    /// reprocess its acknowledged frames. The receipt holds the frames in journal
+    /// order with the provenance retained before the first ACK. Frames carry no time
+    /// or connection, so `received_at` is the rebuild time and `connection` names the
+    /// transfer. Returns `None` for an unknown or still open transfer.
+    /// # Errors
+    /// Refuses missing provenance, bounds, capacity and database failures.
+    pub(crate) fn transfer_receipt(
+        &mut self,
+        transfer: &str,
+    ) -> Result<Option<ReceiptId>, OperatorError> {
+        let row: Option<(String, Option<String>)> = self
+            .db
+            .query_row(
+                "SELECT state,receipt FROM transfers WHERE id=?1",
+                [transfer],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?;
+        match row {
+            Some((_, Some(receipt))) => return Ok(Some(serde_json::from_str(&receipt)?)),
+            Some((state, None)) if state == "aborted" => {}
+            Some(_) | None => return Ok(None),
+        }
+        let provenance: FrameProvenance = serde_json::from_str(&self.db.query_row(
+            "SELECT evidence FROM frame_provenance WHERE transfer=?1",
+            [transfer],
+            |r| r.get::<_, String>(0),
+        )?)?;
+        let mut raw = Vec::new();
+        let mut after = 0;
+        loop {
+            let page = self.frames(
+                &Identifier::new(transfer).map_err(StorageError::Text)?,
+                after,
+            )?;
+            let Some(last) = page.last() else { break };
+            after = last.sequence;
+            for frame in page {
+                raw.extend_from_slice(&frame.raw);
+                self.bound(&raw)?;
+            }
+        }
+        let config_version: String = digest(&provenance.config)
+            .0
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        let metadata = ReceiptMetadata {
+            id: ReceiptId::new(),
+            raw_digest: digest(&raw),
+            connection: Identifier::new(transfer).map_err(StorageError::Text)?,
+            machine: provenance.machine,
+            driver: provenance.driver,
+            config_version: Identifier::new(&config_version).map_err(StorageError::Text)?,
+            config_digest: digest(&provenance.config),
+            received_at: jiff::Timestamp::now(),
+        };
+        // The receipt and its transfer link commit together, so a retry never builds twice.
+        self.db.execute_batch("BEGIN IMMEDIATE")?;
+        let linked = self
+            .receive(&metadata, &raw, &provenance.config)
+            .map_err(OperatorError::from)
+            .and_then(|()| {
+                Ok(self.db.execute(
+                    "UPDATE transfers SET receipt=?2 WHERE id=?1 AND receipt IS NULL",
+                    params![transfer, key(&metadata.id)?],
+                )?)
+            });
+        self.db
+            .execute_batch(if linked.is_ok() { "COMMIT" } else { "ROLLBACK" })?;
+        linked?;
+        Ok(Some(metadata.id))
     }
 
     /// Retains transfer provenance before journaling a frame; success permits its ACK.

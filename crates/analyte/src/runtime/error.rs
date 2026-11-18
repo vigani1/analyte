@@ -70,6 +70,10 @@ pub enum Error {
     /// The runtime cannot safely continue the requested operation.
     #[error("data directory must deny group and other access")]
     InsecureDataDirectory,
+    /// The Windows data directory grants access beyond the allowed principals.
+    #[cfg(windows)]
+    #[error("data directory: {0}")]
+    InsecureWindowsDataDirectory(#[from] super::service::acl::Error),
     /// The runtime cannot safely continue the requested operation.
     #[error("delivery owner stopped unexpectedly")]
     DeliveryOwnerStoppedUnexpectedly,
@@ -83,7 +87,7 @@ pub enum Error {
     #[error("machine retained store ownership after shutdown")]
     StoreOwnershipRetained,
     /// The runtime cannot safely continue the requested operation.
-    #[error("pending LAW recovery page bound exceeded; machine startup refused")]
+    #[error("startup recovery page bound exceeded; machine startup refused")]
     RecoveryPageLimit,
     /// The runtime cannot safely continue the requested operation.
     #[error("receive commits exceeded 15 seconds")]
@@ -121,9 +125,9 @@ pub enum Error {
     /// Preserves the `WorkerStart` store boundary.
     #[error(transparent)]
     WorkerStart(#[from] analyte_store::WorkerStartError),
-    /// Startup LAW recovery combined retained evidence with reconciliation.
+    /// Startup recovery combined retained evidence with reconciliation.
     #[error(transparent)]
-    LawRecovery(#[from] super::law_recovery::RecoveryError),
+    Recovery(#[from] super::recovery::RecoveryError),
     /// Preserves the original runtime dependency failure.
     #[error(transparent)]
     SinkDestinationError(#[from] analyte_sink::DestinationError),

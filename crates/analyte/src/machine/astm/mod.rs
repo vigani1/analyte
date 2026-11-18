@@ -339,12 +339,30 @@ impl Host<'_, '_> {
         Ok(())
     }
     async fn end_transfer(&mut self, end: End) -> Result<(), Error> {
-        if let Some(transfer_id) = self.transfer.take() {
+        if let Some(transfer_id) = self.transfer.clone() {
             if end == End::Normal {
                 let id = ReceiptId::new();
                 intake::receive(self.store, self.machine, id, std::mem::take(&mut self.raw))
                     .await?;
-                match crate::orders::astm::request(self.machine.machine(), &self.payload)? {
+                // Link the receipt before interpreting it. Until then the transfer stays
+                // with this host, so a failed store parks it as incomplete on close and
+                // operator reprocessing rebuilds it from its acknowledged frames.
+                self.store
+                    .request::<_, analyte_store::IntakeError>(deadline()?, move |s| {
+                        s.finish_transfer(
+                            &transfer_id,
+                            analyte_store::TransferOutcome::Complete(id),
+                        )
+                    })
+                    .await?;
+                self.transfer = None;
+                let request = crate::orders::astm::request(self.machine.machine(), &self.payload)?;
+                if request.is_some() {
+                    // A query or cancel carries no results; the order lifecycle, not this
+                    // receipt, records what was answered (LIS02 §11).
+                    intake::mark_handled(self.store, self.machine.machine(), id).await?;
+                }
+                match request {
                     None => {
                         intake::interpret(self.store, self.machine.machine(), id).await?;
                     }
@@ -383,15 +401,8 @@ impl Host<'_, '_> {
                         }
                     }
                 }
-                self.store
-                    .request::<_, analyte_store::IntakeError>(deadline()?, move |s| {
-                        s.finish_transfer(
-                            &transfer_id,
-                            analyte_store::TransferOutcome::Complete(id),
-                        )
-                    })
-                    .await?;
             } else {
+                self.transfer = None;
                 finish_incomplete(self.store, transfer_id).await?;
             }
         }

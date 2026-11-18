@@ -17,10 +17,11 @@ analyte --config analyte.toml admin token --rotate
 ```
 
 This writes `<data_directory>/admin-token` and prints the token once. Treat the
-output as a secret; do not capture it in logs. Windows protection comes from
-the data-directory ACL. Unix requires mode 0600. Preserve and investigate any
-`admin-token.pending` file after an interrupted rotation. Restart after rotation
-to invalidate the loaded token and all sessions.
+output as a secret; do not capture it in logs. On Windows the file and data
+directory may grant only SYSTEM, Administrators, the running account and
+`NT SERVICE\Analyte`; anything else is refused. Unix requires mode 0600.
+Preserve and investigate any `admin-token.pending` file after an interrupted
+rotation. Restart after rotation to invalidate the loaded token and all sessions.
 
 Open `http://127.0.0.1:8080/login` on the host and enter the token. A bearer
 header can also authorize reads. Browser sessions expire after one hour.

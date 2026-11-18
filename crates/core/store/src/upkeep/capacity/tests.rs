@@ -12,7 +12,7 @@ fn adr0003_admission_check_matches_the_write_guard_without_writing() -> TestResu
     ));
     let roomy = open(&temp.path().join("roomy.db"))?;
     roomy.admission(1)?;
-    assert_eq!(roomy.incomplete("")?, Vec::<String>::new());
+    assert!(roomy.open_transfers()?.is_empty());
     Ok(())
 }
 

@@ -14,7 +14,7 @@ fn adr0003_committed_frames_survive_restart() -> TestResult {
         assert!(store.frame(&transfer, FrameSequence::new(2, 7)?, b"frame-two")? > first);
     }
     let store = open(&path)?;
-    assert_eq!(store.incomplete("")?, vec!["transfer-1"]);
+    assert_eq!(store.open_transfers()?, vec![transfer.clone()]);
     let bytes: Vec<u8> = store.db.query_row(
         "SELECT raw FROM frames ORDER BY sequence LIMIT 1",
         [],
@@ -41,7 +41,7 @@ fn adr0003_complete_and_aborted_transfers_keep_all_evidence() -> TestResult {
             "ASTM transfer ended before a complete receipt was retained",
         )?),
     )?;
-    assert_eq!(store.incomplete("")?, vec!["aborted"]);
+    assert!(store.open_transfers()?.is_empty());
     assert_eq!(
         store
             .frames(&complete, 0)?

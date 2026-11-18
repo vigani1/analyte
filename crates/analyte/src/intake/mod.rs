@@ -297,11 +297,19 @@ async fn persist_mapping(
 /// an answered LAW query or work response) as interpreted with no results, never as a
 /// result transfer. Startup recovery then sees it as done. Call it only after the
 /// handling step commits, so a crash before this call leaves the receipt pending.
+/// A receipt an earlier step already parked with its own reason keeps that reason.
 pub(crate) async fn mark_handled(
     store: &Handle,
     machine: &Machine,
     id: ReceiptId,
 ) -> Result<(), Error> {
+    let interpreted = store
+        .request(deadline()?, move |s| s.interpretation(id, 1))
+        .await?
+        .is_some();
+    if interpreted {
+        return Ok(());
+    }
     persist_mapping(
         store,
         machine,
