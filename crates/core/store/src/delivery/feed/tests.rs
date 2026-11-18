@@ -210,7 +210,13 @@ fn versioned(version: u64, state: &str) -> Result<OrderPage, Box<dyn std::error:
         orders: vec![CachedOrder {
             id: Identifier::new("order")?,
             sample: SampleId::new("001a")?,
-            document: serde_json::json!({"version":version,"state":state,"tombstone":false,"tests":[{"namespace":"local","value":"test"}]}).to_string(),
+            document: serde_json::json!({
+                "version": version,
+                "state": state,
+                "tombstone": false,
+                "tests": [{"namespace": "local", "value": "test"}],
+            })
+            .to_string(),
             tombstone: false,
             expiry: 200,
         }],
