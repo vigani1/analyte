@@ -13,17 +13,22 @@ pub(super) struct Exchange {
     pub(super) record: MachineOrder,
     pub(super) message: OrderMessage,
 }
+/// Settings for unsolicited work, built only when sending is configured.
+#[derive(Clone, Copy)]
+pub(super) struct Settings<'a> {
+    pub(super) stack: &'a analyte_config::Hl7Stack,
+    pub(super) orders: &'a analyte_config::Hl7Orders,
+    pub(super) send: &'a analyte_config::Hl7SendOrders,
+    pub(super) options: Options,
+}
 type Command = analyte_mapping::Hl7Command;
-fn command(
-    stack: &analyte_config::Hl7Stack,
-    app: &analyte_contract::Order,
-    options: Options,
-) -> Result<Command, Error> {
+fn command(settings: Settings<'_>, app: &analyte_contract::Order) -> Result<Command, Error> {
+    let syntax = settings.stack.settings().syntax();
     Ok(analyte_mapping::map_hl7_order(
-        stack.settings().syntax(),
-        stack.orders().ok_or(Error::Hl7OrdersMissing)?,
+        syntax,
+        settings.orders,
         app,
-        options,
+        settings.options,
     )?)
 }
 fn build(command: &Command, record: &MachineOrder, cancel: bool) -> Result<OrderMessage, Error> {
@@ -44,35 +49,29 @@ fn build(command: &Command, record: &MachineOrder, cancel: bool) -> Result<Order
 pub(super) async fn next(
     store: &Handle,
     machine: &Machine,
-    stack: &analyte_config::Hl7Stack,
+    settings: Settings<'_>,
     owner: &Identifier,
-    options: Options,
     after: &mut String,
     reserving: &mut Vec<MachineOrderKey>,
 ) -> Result<Option<Exchange>, Error> {
-    let settings = stack.orders().ok_or(Error::Hl7SettingsMissing)?;
-    let Some(_) = &settings.send() else {
-        return Ok(None);
-    };
-    if let Some(exchange) = next_cancel(store, machine, stack, owner, options, reserving).await? {
+    if let Some(exchange) = next_cancel(store, machine, settings, owner, reserving).await? {
         return Ok(Some(exchange));
     }
-    next_work(store, machine, stack, owner, options, after, reserving).await
+    next_work(store, machine, settings, owner, after, reserving).await
 }
 
 async fn next_cancel(
     store: &Handle,
     machine: &Machine,
-    stack: &analyte_config::Hl7Stack,
+    settings: Settings<'_>,
     owner: &Identifier,
-    options: Options,
     reserving: &mut Vec<MachineOrderKey>,
 ) -> Result<Option<Exchange>, Error> {
     let freshness = machine.destination_limits.freshness.as_secs();
     let cancels = crate::orders::reservation::cancellations(store, machine, deadline()?).await?;
     for (record, cached) in cancels {
         let app: analyte_contract::Order = analyte_contract::decode(cached.document.as_bytes())?;
-        let command = command(stack, &app, options)?;
+        let command = command(settings, &app)?;
         let message = build(&command, &record, true)?;
         let id = record.id;
         reserving.push(record.key.clone());
@@ -101,17 +100,12 @@ async fn next_cancel(
 async fn next_work(
     store: &Handle,
     machine: &Machine,
-    stack: &analyte_config::Hl7Stack,
+    settings: Settings<'_>,
     owner: &Identifier,
-    options: Options,
     after: &mut String,
     reserving: &mut Vec<MachineOrderKey>,
 ) -> Result<Option<Exchange>, Error> {
     let freshness = machine.destination_limits.freshness.as_secs();
-    let settings = stack.orders().ok_or(Error::Hl7SettingsMissing)?;
-    let Some(send) = &settings.send() else {
-        return Ok(None);
-    };
     let candidates = crate::orders::sending::candidate_page(store, machine, after).await?;
     for cached in candidates {
         *after = cached.id.as_str().to_owned();
@@ -122,7 +116,7 @@ async fn next_work(
                 cached,
                 deadline()?,
                 |error| format!("rejected: {error}"),
-                |app| command(stack, app, options),
+                |app| command(settings, app),
             )
             .await?
         else {
@@ -130,7 +124,7 @@ async fn next_work(
         };
         let key = candidate.identity;
         let version = candidate.version;
-        let namespace = send.placer_namespace().clone();
+        let namespace = settings.send.placer_namespace().clone();
         let groups = command
             .tests()
             .iter()

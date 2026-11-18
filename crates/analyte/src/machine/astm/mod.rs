@@ -5,7 +5,7 @@ use crate::intake::ByteReason;
 use crate::machine::hooks::Pause;
 mod error;
 pub(crate) mod settings;
-use crate::orders::astm::{Pending, Request};
+use crate::orders::astm::{Pending, Queries, Request};
 use crate::{deadline, intake};
 use analyte_dialog::astm::{Action, Config, Dialog, End, Epoch, Event};
 use analyte_model::{Identifier, ReceiptId};
@@ -54,8 +54,10 @@ pub(super) struct Host<'a, 'm> {
     payload: Vec<u8>,
     input_evidence: connection_input::Custody,
     query: Query<'a>,
+    /// Present only when the machine is configured to ask for orders.
+    queries: Option<Queries<'a>>,
     query_orders: Vec<analyte_store::MachineOrder>,
-    work: crate::orders::sending::Work<Vec<u8>>,
+    work: crate::orders::sending::Work<'a, analyte_config::AstmOrders, Vec<Vec<u8>>>,
 }
 
 impl<'a, 'm> Host<'a, 'm> {
@@ -82,8 +84,9 @@ impl<'a, 'm> Host<'a, 'm> {
             payload: Vec::new(),
             input_evidence: connection_input::Custody::default(),
             query: Query::Idle,
+            queries: Queries::new(settings),
             query_orders: Vec::new(),
-            work: crate::orders::sending::Work::default(),
+            work: crate::orders::sending::Work::new(settings.orders().filter(|o| o.send_ahead())),
         })
     }
     async fn receive_bytes(
@@ -111,28 +114,22 @@ impl<'a, 'm> Host<'a, 'm> {
             && matches!(self.query, Query::Idle | Query::Receiving { .. })
         {
             self.work
-                .poll_one(self.store, self.machine.machine(), |order| {
-                    analyte_mapping::astm::map_order(
-                        order,
-                        self.settings.settings().syntax().limits(),
-                        self.settings
-                            .orders()
-                            .ok_or(analyte_mapping::astm::OrderError::Shared(
-                                analyte_mapping::OrderMappingError::Disabled,
-                            ))?,
-                    )
-                    .map(|record| record.encode())
+                .poll_one(self.store, self.machine.machine(), |order, orders| {
+                    let limits = self.settings.settings().syntax().limits();
+                    let record = analyte_mapping::astm::map_order(order, limits, orders)?.encode();
+                    let normal = analyte_astm::OrderTermination::Normal;
+                    Ok::<_, analyte_mapping::astm::OrderError>(crate::orders::astm::envelope(
+                        orders,
+                        vec![record],
+                        normal,
+                    ))
                 })
                 .await?
         } else {
             None
         };
         let events = if let Some(reserved) = outgoing {
-            vec![Event::Send(crate::orders::astm::envelope(
-                self.machine.machine(),
-                vec![reserved],
-                analyte_astm::OrderTermination::Normal,
-            ))]
+            vec![Event::Send(reserved)]
         } else if bytes.is_empty()
             && matches!(self.query, Query::Answer { .. })
             && self.dialog.next_deadline().is_none()
@@ -143,10 +140,10 @@ impl<'a, 'm> Host<'a, 'm> {
                 return Err(Error::QueryStartMissing);
             };
             if Instant::now() >= until {
-                reply = crate::orders::astm::failure(self.machine.machine());
+                reply = self.failure();
             }
-            match reply {
-                Some(reply) => match crate::orders::astm::reserve_query(
+            let records = match reply {
+                Some(reply) => crate::orders::astm::reserve_query(
                     self.store,
                     self.machine.machine(),
                     reply,
@@ -154,12 +151,10 @@ impl<'a, 'm> Host<'a, 'm> {
                     &mut self.query_orders,
                 )
                 .await?
-                {
-                    Some(records) => vec![Event::Send(records)],
-                    None => vec![Event::Tick],
-                },
-                None => vec![Event::Tick],
-            }
+                .or_else(|| self.failure().map(|reply| reply.records)),
+                None => None,
+            };
+            records.map_or_else(|| vec![Event::Tick], |records| vec![Event::Send(records)])
         } else if bytes.is_empty() {
             vec![Event::Tick]
         } else {
@@ -275,6 +270,10 @@ impl driver::Drain for Host<'_, '_> {
 }
 
 impl Host<'_, '_> {
+    /// The configured failure reply; a machine that cannot query gets silence.
+    fn failure(&self) -> Option<crate::orders::astm::Reply> {
+        self.queries.and_then(crate::orders::astm::failure)
+    }
     async fn commit_frame(
         &mut self,
         id: analyte_dialog::astm::CommitId,
@@ -356,7 +355,11 @@ impl Host<'_, '_> {
                     })
                     .await?;
                 self.transfer = None;
-                let request = crate::orders::astm::request(self.machine.machine(), &self.payload)?;
+                let request = match self.queries {
+                    Some(queries) => crate::orders::astm::request(queries, &self.payload)?
+                        .map(|request| (queries, request)),
+                    None => None,
+                };
                 if request.is_some() {
                     // A query or cancel carries no results; the order lifecycle, not this
                     // receipt, records what was answered (LIS02 §11).
@@ -366,17 +369,17 @@ impl Host<'_, '_> {
                     None => {
                         intake::interpret(self.store, self.machine.machine(), id).await?;
                     }
-                    Some(Request::Cancel) => {
+                    Some((_, Request::Cancel)) => {
                         self.query = Query::Idle;
                     }
-                    Some(Request::Unsupported) => {
+                    Some((_, Request::Unsupported)) => {
                         let started = self.query.started()?;
                         self.query = Query::Answer {
-                            reply: crate::orders::astm::failure(self.machine.machine()),
+                            reply: self.failure(),
                             until: started,
                         };
                     }
-                    Some(Request::Orders(samples)) => {
+                    Some((queries, Request::Orders(samples))) => {
                         let started = self.query.started()?;
                         if matches!(
                             self.query,
@@ -386,7 +389,7 @@ impl Host<'_, '_> {
                             }
                         ) {
                             self.query = Query::Answer {
-                                reply: crate::orders::astm::failure(self.machine.machine()),
+                                reply: self.failure(),
                                 until: started,
                             };
                         } else {
@@ -394,6 +397,7 @@ impl Host<'_, '_> {
                                 pending: Pending::new(
                                     self.store,
                                     self.machine.machine(),
+                                    queries,
                                     samples,
                                     started,
                                 )?,
@@ -415,7 +419,7 @@ impl Host<'_, '_> {
         {
             self.query = if superseded {
                 Query::Answer {
-                    reply: crate::orders::astm::failure(self.machine.machine()),
+                    reply: self.failure(),
                     until: started,
                 }
             } else {
@@ -442,7 +446,7 @@ impl Effects for Host<'_, '_> {
         let Query::LookingUp { pending } = &mut self.query else {
             return std::future::pending().await;
         };
-        let answer = pending.finish(self.machine.machine()).await?;
+        let answer = pending.finish().await?;
         let until = pending.deadline();
         self.query = match answer {
             Some(reply) => Query::Answer {

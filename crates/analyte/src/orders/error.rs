@@ -51,33 +51,18 @@ pub enum OrderError {
     /// LAW preparation deadline overflow.
     #[error("LAW preparation deadline overflow")]
     LawPreparationDeadlineOverflow,
-    /// HL7 settings missing.
-    #[error("HL7 settings missing")]
-    Hl7SettingsMissing,
-    /// HL7 send settings missing after order admission.
-    #[error("HL7 send settings missing after order admission")]
-    Hl7SendSettingsMissing,
     /// LAW query deadline overflow.
     #[error("LAW query deadline overflow")]
     LawQueryDeadlineOverflow,
-    /// LAW work layout absent.
-    #[error("LAW work layout absent")]
-    LawWorkLayoutAbsent,
     /// LAW query failure has no recoverable acknowledgment outcome.
     #[error("LAW query failure has no recoverable acknowledgment outcome")]
     LawQueryFailureHasNoAckOutcome,
-    /// ASTM query capability absent.
-    #[error("ASTM query capability absent")]
-    AstmQueryCapabilityAbsent,
     /// ASTM query deadline overflow.
     #[error("ASTM query deadline overflow")]
     AstmQueryDeadlineOverflow,
     /// ASTM specimen selector contains unsupported escapes.
     #[error("ASTM specimen selector contains unsupported escapes")]
     UnsupportedSpecimenEscapes,
-    /// ASTM limits missing.
-    #[error("ASTM limits missing")]
-    AstmLimitsMissing,
     /// ASTM query response byte limit exceeded.
     #[error("ASTM query response byte limit exceeded")]
     AstmQueryResponseTooLarge,
@@ -87,13 +72,10 @@ pub enum OrderError {
     /// LAW work mapping failed.
     #[error(transparent)]
     LawMapping(#[from] analyte_mapping::law::WireError),
-    /// HL7 orders missing.
-    #[error("HL7 orders missing")]
-    Hl7OrdersMissing,
     /// HL7 query deadline overflow.
     #[error("HL7 query deadline overflow")]
     Hl7QueryDeadlineOverflow,
-    /// HL7 query policy missing.
+    /// The machine sent an HL7 query on a link configured only to send orders.
     #[error("HL7 query policy missing")]
     Hl7QueryPolicyMissing,
     /// LAW container assigning authority outside configured `SampleId` binding.
@@ -111,9 +93,6 @@ pub enum OrderError {
     /// LAW query deadline during rendering.
     #[error("LAW query deadline during rendering")]
     LawQueryDeadlineDuringRendering,
-    /// LAW settings absent.
-    #[error("LAW settings absent")]
-    LawSettingsAbsent,
     /// unexpected nested LAW followup.
     #[error("unexpected nested LAW followup")]
     UnexpectedNestedLawFollowup,

@@ -69,16 +69,17 @@ async fn adr0004_law_superseded_mapping_rejection_continues_idle_admission() -> 
         })
         .await?;
     let mut link = LawOrderLink::new()?;
+    let analyte_config::Stack::Law(stack) = machine.snapshot.effective().stack() else {
+        return Err("LAW fixture".into());
+    };
+    let settings = Settings {
+        stack,
+        orders: stack.orders().ok_or("LAW orders fixture")?,
+        options: Options::default(),
+    };
     // Missing specimen mapping rejects version 1, but version 2 already owns the cache.
     let prepared = link
-        .reserve(
-            &store,
-            &machine,
-            vec![stale],
-            deadline()?,
-            Options::default(),
-            true,
-        )
+        .reserve(&store, &machine, settings, vec![stale], deadline()?, true)
         .await?;
     assert!(prepared.is_empty());
     assert!(link.exchange.is_none());

@@ -12,11 +12,6 @@ pub(crate) fn parser_limits(syntax: &analyte_config::AstmSyntax) -> analyte_astm
         components: syntax.limits().components(),
     }
 }
-/// Returns LIS02 parser limits only for ASTM record stacks.
-#[must_use]
-pub(crate) fn limits(effective: &analyte_config::Effective) -> Option<analyte_astm::Limits> {
-    effective.stack().astm_syntax().map(parser_limits)
-}
 
 pub(crate) fn dialog(
     settings: &analyte_config::AstmStack,

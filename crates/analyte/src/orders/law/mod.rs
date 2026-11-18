@@ -29,6 +29,24 @@ pub(crate) struct LawOrderLink {
     start: Instant,
 }
 
+/// LAW settings an order exchange needs, built only when work orders are configured.
+#[derive(Clone, Copy)]
+struct Settings<'a> {
+    stack: &'a analyte_config::LawStack,
+    orders: &'a analyte_config::LawOrders,
+    options: Options,
+}
+impl<'a> Settings<'a> {
+    fn new(stack: &'a analyte_config::LawStack, orders: &'a analyte_config::LawOrders) -> Self {
+        let options = crate::machine::law::settings::options(stack);
+        Self {
+            stack,
+            orders,
+            options,
+        }
+    }
+}
+
 struct Exchange {
     records: Vec<MachineOrder>,
     protocol: analyte_dialog::law::WorkExchange,
@@ -85,11 +103,12 @@ impl LawOrderLink {
         &mut self,
         store: &Handle,
         machine: &Machine,
+        stack: &analyte_config::LawStack,
         message: &Message,
         receipt: ReceiptId,
         started: Instant,
-        options: Options,
     ) -> Result<Reply, Error> {
+        let options = crate::machine::law::settings::options(stack);
         let query = match law::receive_query(message) {
             Ok(query) => query,
             Err(error) => {
@@ -97,13 +116,12 @@ impl LawOrderLink {
                 return reject_query(message, &error, options);
             }
         };
-        let stack = super::settings::law(machine)?;
-        let settings = &stack.policy();
+        let policy = stack.policy();
         let supported = match query.scope() {
-            law::Scope::Container(_) => settings
+            law::Scope::Container(_) => policy
                 .query_forms()
                 .contains(&analyte_config::LawQueryForm::Container),
-            law::Scope::AllPending => settings
+            law::Scope::AllPending => policy
                 .query_forms()
                 .contains(&analyte_config::LawQueryForm::AllPending),
             law::Scope::Rack { .. }
@@ -128,7 +146,7 @@ impl LawOrderLink {
                 options,
             );
         }
-        if stack.orders().is_none() {
+        let Some(orders) = stack.orders() else {
             intake::failed_reading(store, machine, receipt, "LAW query work layout is disabled")
                 .await?;
             return reply(
@@ -139,7 +157,7 @@ impl LawOrderLink {
                 )),
                 options,
             );
-        }
+        };
         if self.exchange.is_some() {
             intake::failed_reading(
                 store,
@@ -158,12 +176,11 @@ impl LawOrderLink {
             );
         }
         let until = started
-            .checked_add(Duration::from_millis(u64::from(
-                settings.query_deadline_ms(),
-            )))
+            .checked_add(Duration::from_millis(u64::from(policy.query_deadline_ms())))
             .ok_or(Error::LawQueryDeadlineOverflow)?;
+        let settings = Settings::new(stack, orders);
         match self
-            .prepare(store, machine, query, receipt, until, options)
+            .prepare(store, machine, settings, query, receipt, until)
             .await
         {
             Ok(messages) => {
@@ -195,18 +212,13 @@ impl LawOrderLink {
         &mut self,
         store: &Handle,
         machine: &Machine,
+        settings: Settings<'_>,
         query: law::Query<'_>,
         receipt: ReceiptId,
         until: Instant,
-        options: Options,
     ) -> Result<Reply, Error> {
-        let cfg = super::settings::law(machine)?;
-        let work = Arc::new(
-            cfg.orders()
-                .ok_or(Error::LawWorkLayoutAbsent)?
-                .work()
-                .clone(),
-        );
+        let options = settings.options;
+        let work = Arc::new(settings.orders.work().clone());
         let sample = match query.scope() {
             law::Scope::Container(id) => {
                 if !id.is_local_to(work.container_namespace.as_str().as_bytes()) {
@@ -224,7 +236,7 @@ impl LawOrderLink {
         };
         let cached = query_orders(store, machine, sample, until, options).await?;
         let prepared = self
-            .reserve(store, machine, cached, until, options, false)
+            .reserve(store, machine, settings, cached, until, false)
             .await?;
         machine
             .hooks

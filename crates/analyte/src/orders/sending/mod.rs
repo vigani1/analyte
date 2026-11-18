@@ -80,9 +80,6 @@ where
     Error: From<E>,
 {
     let freshness = machine.destination_limits.freshness.as_secs();
-    if !super::settings::send_ahead(machine) {
-        return Ok(None);
-    }
     let candidates = candidate_page(store, machine, after).await?;
     for cached in candidates {
         *after = cached.id.as_str().to_owned();

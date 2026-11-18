@@ -40,13 +40,12 @@ const MAX_PENDING_RECEIPTS: usize = 2;
 
 pub(super) struct Host<'a, 'm> {
     machine: &'a intake::ConnectionEvidence<'m>,
-    settings: &'a analyte_config::Hl7Stack,
     store: &'a Handle,
     dialog: Dialog,
     start: Instant,
     wake: Option<Duration>,
     pending: BTreeMap<analyte_dialog::ExchangeId, ReceiptId>,
-    queries: Option<crate::orders::hl7::Hl7OrderLink>,
+    queries: Option<crate::orders::hl7::Hl7OrderLink<'a>>,
     input_evidence: connection_input::Custody,
 }
 
@@ -64,22 +63,18 @@ impl<'a, 'm> Host<'a, 'm> {
         let start = Instant::now();
         let wake = None;
         let pending = BTreeMap::new();
-        let enabled = settings
-            .orders()
-            .as_ref()
-            .is_some_and(|o| o.query().is_some() || o.send().is_some());
-        let queries = if enabled {
-            Some(crate::orders::hl7::Hl7OrderLink::new(options)?)
-        } else {
-            None
+        let queries = match settings.orders() {
+            Some(orders) if orders.query().is_some() || orders.send().is_some() => {
+                dialog.enable_orders(settings.settings().syntax().edition().into())?;
+                Some(crate::orders::hl7::Hl7OrderLink::new(
+                    settings, orders, options,
+                )?)
+            }
+            Some(_) | None => None,
         };
-        if enabled {
-            dialog.enable_orders(settings.settings().syntax().edition().into())?;
-        }
         let input_evidence = connection_input::Custody::default();
         Ok(Self {
             machine,
-            settings,
             store,
             dialog,
             start,
@@ -431,7 +426,7 @@ impl Host<'_, '_> {
         let next = tokio::select! {
             biased;
             _ = async { let _ = stop.wait_for(|&stopped| stopped).await; } => return Ok(Flow::Stop),
-            result = query.next(self.store, self.machine, &self.dialog, self.settings) => result?,
+            result = query.next(self.store, self.machine, &self.dialog) => result?,
         };
         let Some(order) = next else {
             return Ok(Flow::Continue);

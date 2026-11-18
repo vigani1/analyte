@@ -29,15 +29,12 @@ enum Finished {
 
 pub(in crate::machine) async fn run(
     mut machine: Machine,
+    settings: Arc<LawStack>,
     store: Arc<Handle>,
     mut stop: watch::Receiver<bool>,
     mut closing: Closing,
     capture: Option<Arc<crate::machine::capture::Capture>>,
 ) -> Result<(), Error> {
-    let analyte_config::Stack::Law(settings) = machine.snapshot.effective().stack() else {
-        return Err(Error::IndependentLawStackAbsent);
-    };
-    let settings = Arc::new(settings.as_ref().clone());
     let listener = match machine.listener.take() {
         Some(listener) => TcpListener::from_std(listener)?,
         None => {
@@ -275,7 +272,7 @@ async fn worker(
                     let outgoing = tokio::select! {
                         biased;
                         _ = async { let _ = stop.wait_for(|&stopped| stopped).await; } => break,
-                        result = idle_orders.idle(&store, context.machine(), crate::machine::law::settings::options(&settings)) => result,
+                        result = idle_orders.idle(&store, context.machine(), &settings) => result,
                     };
                     match outgoing {
                         Ok(Some(message)) => {

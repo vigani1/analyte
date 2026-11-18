@@ -43,14 +43,6 @@ pub(super) fn build(
 }
 
 impl PoctStack {
-    /// Returns whether this selected protocol permits unsolicited work.
-    #[must_use]
-    pub fn send_ahead(&self) -> bool {
-        false
-    }
-}
-
-impl PoctStack {
     /// Borrows the shared validated settings without changing protocol-specific types.
     #[must_use]
     pub fn settings(&self) -> &super::StackSettings<TcpTransport, SyntaxLimits, CodeTables> {

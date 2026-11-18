@@ -10,7 +10,6 @@ pub use operator::CommandError;
 mod admission;
 mod reservation;
 pub(crate) mod sending;
-mod settings;
 pub(crate) mod vidas;
 use crate::installation::config::Machine;
 use analyte_contract::{EventFields, OrderEvent, Source, Text};

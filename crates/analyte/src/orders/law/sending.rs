@@ -1,6 +1,6 @@
 //! Checks LAW query and send-ahead reservations and cancellation eligibility (TF-2b 3.28.4).
 use super::{
-    Exchange, LawOrderLink,
+    Exchange, LawOrderLink, Settings,
     work::{Command, render},
 };
 use crate::installation::config::Machine;
@@ -17,38 +17,38 @@ impl LawOrderLink {
         &mut self,
         store: &Handle,
         machine: &Machine,
-        options: Options,
+        stack: &analyte_config::LawStack,
     ) -> Result<Option<Message>, Error> {
         if self.exchange.is_some() {
             return Ok(None);
         }
-        let cfg = super::super::settings::law(machine)?;
-        let Some(settings) = &cfg.orders() else {
+        let Some(orders) = stack.orders() else {
             return Ok(None);
         };
+        let settings = Settings::new(stack, orders);
         let until = Instant::now()
             .checked_add(Duration::from_millis(u64::from(
-                cfg.settings().timeouts().send_timeout_ms(),
+                stack.settings().timeouts().send_timeout_ms(),
             )))
             .ok_or(Error::LawPreparationDeadlineOverflow)?;
         let cancels = super::super::reservation::cancellations(store, machine, until).await?;
         if let Some(sent) = self
-            .idle_cancel(store, machine, options, until, cancels)
+            .idle_cancel(store, machine, settings, until, cancels)
             .await?
         {
             return Ok(Some(sent));
         }
-        if !settings.send_ahead() {
+        if !orders.send_ahead() {
             return Ok(None);
         }
-        self.idle_work(store, machine, options, until).await
+        self.idle_work(store, machine, settings, until).await
     }
 
     async fn idle_cancel(
         &mut self,
         store: &Handle,
         machine: &Machine,
-        options: Options,
+        settings: Settings<'_>,
         until: Instant,
         cancels: Vec<(MachineOrder, analyte_store::CachedOrder)>,
     ) -> Result<Option<Message>, Error> {
@@ -56,8 +56,12 @@ impl LawOrderLink {
         for (record, cached) in cancels {
             let app: analyte_contract::Order =
                 analyte_contract::decode(cached.document.as_bytes())?;
-            let command = super::work::command(machine, &app)?;
-            let sent = render(&[(&command, &record)], law::WorkAction::Cancel, options)?;
+            let command = super::work::command(settings, &app)?;
+            let sent = render(
+                &[(&command, &record)],
+                law::WorkAction::Cancel,
+                settings.options,
+            )?;
             let id = record.id;
             let version = app.fields().version;
             let owner = self.owner.clone();
@@ -100,7 +104,7 @@ impl LawOrderLink {
         &mut self,
         store: &Handle,
         machine: &Machine,
-        options: Options,
+        settings: Settings<'_>,
         until: Instant,
     ) -> Result<Option<Message>, Error> {
         let candidates =
@@ -108,7 +112,7 @@ impl LawOrderLink {
         for cached in candidates {
             self.cursor = cached.id.as_str().to_owned();
             let prepared = match self
-                .reserve(store, machine, vec![cached], until, options, true)
+                .reserve(store, machine, settings, vec![cached], until, true)
                 .await
             {
                 Ok(prepared) => prepared,
@@ -129,7 +133,7 @@ impl LawOrderLink {
                 .iter()
                 .map(|(command, record)| (command, record))
                 .collect::<Vec<_>>();
-            let sent = render(&refs, law::WorkAction::New, options)?;
+            let sent = render(&refs, law::WorkAction::New, settings.options)?;
             self.exchange = Some(Exchange {
                 records: prepared.into_iter().map(|(_, record)| record).collect(),
                 protocol: analyte_dialog::law::WorkExchange::new(
@@ -148,11 +152,12 @@ impl LawOrderLink {
         &mut self,
         store: &Handle,
         machine: &Machine,
+        settings: Settings<'_>,
         cached: Vec<analyte_store::CachedOrder>,
         until: Instant,
-        options: Options,
         unsolicited: bool,
     ) -> Result<Vec<(Command, MachineOrder)>, Error> {
+        let options = settings.options;
         let freshness = machine.destination_limits.freshness.as_secs();
         let mut prepared = Vec::new();
         for cached in cached {
@@ -165,7 +170,7 @@ impl LawOrderLink {
                 cached,
                 until,
                 |error| format!("rejected: {error}"),
-                |app| super::work::command(machine, app),
+                |app| super::work::command(settings, app),
             )
             .await?
             {

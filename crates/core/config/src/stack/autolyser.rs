@@ -111,14 +111,6 @@ pub(super) fn build(
 }
 
 impl AutolyserStack {
-    /// Returns whether this selected protocol permits unsolicited work.
-    #[must_use]
-    pub fn send_ahead(&self) -> bool {
-        self.orders().is_some_and(AutolyserOrders::send_ahead)
-    }
-}
-
-impl AutolyserStack {
     /// Borrows the shared validated settings without changing protocol-specific types.
     #[must_use]
     pub fn settings(&self) -> &super::StackSettings<StreamTransport, SyntaxLimits, CodeTables> {

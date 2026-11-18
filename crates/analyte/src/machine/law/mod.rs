@@ -334,10 +334,10 @@ impl<'a, 'm> Host<'a, 'm> {
             .answer(
                 self.store,
                 self.machine.machine(),
+                self.settings,
                 &message,
                 self.receipt(token)?,
                 self.absolute(started)?,
-                settings::options(self.settings),
             )
             .await?;
         let due = self
@@ -616,7 +616,7 @@ impl Host<'_, '_> {
                             _ = async { let _ = stop.wait_for(|&stopped| stopped).await; } => { self.run = Run::Stopped; return Ok(()); },
                             result = self.orders.idle(self.store,
                                 self.machine.machine(),
-                                settings::options(self.settings)) => match result {
+                                self.settings) => match result {
                                 Ok(message) => message,
                                 Err(error) => {
                                     self.orders.close(self.store, LawEnd::IdleAdmissionFailed.as_str()).await?;

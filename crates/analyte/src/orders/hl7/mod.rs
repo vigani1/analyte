@@ -18,7 +18,9 @@ use std::time::{Duration, Instant};
 /// Owns order reservations; framing, issuance, DSR correlation and reply waits belong to
 /// the dialog. Cancellation leaves reservations owned here for disconnect cleanup; restart
 /// recovery owns any store call whose completion was lost during cancellation.
-pub(crate) struct Hl7OrderLink {
+pub(crate) struct Hl7OrderLink<'a> {
+    stack: &'a analyte_config::Hl7Stack,
+    orders: &'a analyte_config::Hl7Orders,
     options: Options,
     active: Vec<MachineOrder>,
     reserving: Vec<analyte_store::MachineOrderKey>,
@@ -31,14 +33,27 @@ pub(crate) struct Request<'a> {
     pub(crate) started: Instant,
     pub(crate) receipt: ReceiptId,
 }
+/// One parsed display query and the budget its lookup must meet.
+struct DisplayLookup<'q> {
+    request: query::Request<'q>,
+    receipt: ReceiptId,
+    until: Instant,
+    busy: bool,
+}
 /// One reserved order for the dialog's `Send` event, with its response budget.
 pub(crate) struct Outbound<'a> {
     pub(crate) message: &'a [u8],
     pub(crate) wait: Duration,
 }
-impl Hl7OrderLink {
-    pub(crate) fn new(options: Options) -> Result<Self, Error> {
+impl<'a> Hl7OrderLink<'a> {
+    pub(crate) fn new(
+        stack: &'a analyte_config::Hl7Stack,
+        orders: &'a analyte_config::Hl7Orders,
+        options: Options,
+    ) -> Result<Self, Error> {
         Ok(Self {
+            stack,
+            orders,
             options,
             active: Vec::new(),
             reserving: Vec::new(),
@@ -54,17 +69,24 @@ impl Hl7OrderLink {
         store: &Handle,
         machine: &intake::ConnectionEvidence<'_>,
         dialog: &analyte_dialog::hl7::Dialog,
-        stack: &analyte_config::Hl7Stack,
     ) -> Result<Option<Outbound<'_>>, Error> {
+        let Some(send) = self.orders.send() else {
+            return Ok(None);
+        };
         if dialog.orders_busy() {
             return Ok(None);
         }
+        let settings = send::Settings {
+            stack: self.stack,
+            orders: self.orders,
+            send,
+            options: self.options,
+        };
         let Some(exchange) = send::next(
             store,
             machine.machine(),
-            stack,
+            settings,
             &self.owner,
-            self.options,
             &mut self.cursor,
             &mut self.reserving,
         )
@@ -72,12 +94,7 @@ impl Hl7OrderLink {
         else {
             return Ok(None);
         };
-        let wait = stack
-            .orders()
-            .and_then(|orders| orders.send())
-            .ok_or(Error::Hl7SendSettingsMissing)?
-            .settings()
-            .response_ms;
+        let wait = send.settings().response_ms;
         self.reserving.clear();
         let exchange = self.exchange.insert(exchange);
         Ok(Some(Outbound {
@@ -211,26 +228,22 @@ impl Hl7OrderLink {
                 return Ok(None);
             }
         };
-        let settings =
-            crate::orders::settings::hl7(machine).ok_or_else(|| Error::Hl7OrdersMissing)?;
-        let query = settings
+        // The one configuration case: the machine queries a link set up only to send.
+        let query = self
+            .orders
             .query()
             .ok_or_else(|| Error::Hl7QueryPolicyMissing)?;
-        let policy = &query.policy();
-        let layout = &query.layout();
         let until = started
-            .checked_add(Duration::from_millis(u64::from(policy.deadline_ms)))
+            .checked_add(Duration::from_millis(u64::from(query.policy().deadline_ms)))
             .ok_or_else(|| Error::Hl7QueryDeadlineOverflow)?;
-        let (mut answer, lines, candidates) = self
-            .lookup_display(
-                store,
-                machine,
-                request,
-                receipt,
-                until,
-                dialog.orders_busy(),
-            )
-            .await?;
+        let lookup = DisplayLookup {
+            request,
+            receipt,
+            until,
+            busy: dialog.orders_busy(),
+        };
+        let (mut answer, lines, candidates) =
+            self.lookup_display(store, machine, query, lookup).await?;
         if Instant::now() >= until {
             answer = CacheAnswer::Unavailable;
         }
@@ -277,24 +290,23 @@ impl Hl7OrderLink {
             display: dsr,
             query_deadline: until.duration_since(clock),
             failure_deadline: deadline()?.duration_since(clock),
-            acknowledgment_wait: Duration::from_millis(u64::from(layout.acknowledgment_ms)),
+            acknowledgment_wait: Duration::from_millis(u64::from(query.layout().acknowledgment_ms)),
         }))
     }
     async fn lookup_display(
         &self,
         store: &Handle,
         machine: &Machine,
-        request: query::Request<'_>,
-        receipt: ReceiptId,
-        until: Instant,
-        busy: bool,
+        query: &analyte_config::Hl7Query,
+        lookup: DisplayLookup<'_>,
     ) -> Result<(CacheAnswer, Vec<Vec<u8>>, Vec<crate::orders::Candidate>), Error> {
-        let settings =
-            crate::orders::settings::hl7(machine).ok_or_else(|| Error::Hl7OrdersMissing)?;
-        let query = settings
-            .query()
-            .ok_or_else(|| Error::Hl7QueryPolicyMissing)?;
-        let layout = &query.layout();
+        let DisplayLookup {
+            request,
+            receipt,
+            until,
+            busy,
+        } = lookup;
+        let layout = query.layout();
         let mut answer = CacheAnswer::Unavailable;
         let mut lines = Vec::new();
         let mut candidates = Vec::new();
@@ -327,7 +339,7 @@ impl Hl7OrderLink {
                                 Ok(analyte_mapping::map_display(
                                     &app,
                                     order.fields().id.as_str(),
-                                    settings,
+                                    self.orders,
                                     machine.snapshot.effective().stack().limits(),
                                 )?)
                             },
@@ -508,10 +520,7 @@ mod tests {
             .ok_or("second reservation")?;
         let database = rusqlite::Connection::open(temp.path().join("cleanup-failure.db"))?;
         database.execute_batch("CREATE TRIGGER synthetic_cleanup_failure BEFORE UPDATE OF state ON machine_orders WHEN OLD.order_id='order-2' BEGIN SELECT RAISE(ABORT,'synthetic cleanup failure'); END;")?;
-        let options =
-            crate::machine::hl7::settings::effective_options(machine.snapshot.effective())
-                .ok_or("options")?;
-        let mut connection = Hl7OrderLink::new(options)?;
+        let mut connection = link(&machine)?;
         connection.owner = owner;
         connection.active = vec![failed, good];
         let mut result = Err(crate::invalid("original wire failure"));
@@ -570,10 +579,7 @@ mod tests {
         };
         let owner = Identifier::new("original-connection")?;
         reserve_original_connection(&store, &key, &owner).await?;
-        let options =
-            crate::machine::hl7::settings::effective_options(machine.snapshot.effective())
-                .ok_or("options")?;
-        let mut other = Hl7OrderLink::new(options)?;
+        let mut other = link(&machine)?;
         other.reserving.push(key.clone());
         other
             .close(
@@ -589,7 +595,7 @@ mod tests {
             .ok_or("reservation")?;
         assert_eq!(current.state, analyte_model::OrderState::Sending);
         assert!(current.reserved_by(&owner));
-        let mut original = Hl7OrderLink::new(options)?;
+        let mut original = link(&machine)?;
         original.owner = owner;
         original.reserving.push(key.clone());
         original
@@ -607,6 +613,19 @@ mod tests {
         assert_eq!(current.source_code.as_str(), "HL7-DSR-disconnect");
         store.shutdown(deadline()?).await?;
         Ok(())
+    }
+    fn link(machine: &Machine) -> Result<Hl7OrderLink<'_>, crate::Error> {
+        let analyte_config::Stack::Hl7(analyte_config::RecordTransport::Stream(stack)) =
+            machine.snapshot.effective().stack()
+        else {
+            return Err("HL7 fixture".into());
+        };
+        let options = crate::machine::hl7::settings::options(stack.settings().syntax());
+        Ok(Hl7OrderLink::new(
+            stack,
+            stack.orders().ok_or("orders")?,
+            options,
+        )?)
     }
     fn query_machine() -> Result<Machine, crate::Error> {
         let definition = format!(
