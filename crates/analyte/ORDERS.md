@@ -331,7 +331,7 @@ queries enabled. Synthetic peers do not raise the evidence level.
 
 ## Restore and reconciliation
 
-Follow the [operator restore procedure](README.md#restore-and-reconciliation-plan-11-adr-0003-rules-2-4-8).
+Follow the [operator restore procedure](DETAILS.md#restore-and-reconciliation-plan-11-adr-0003-rules-2-4-8).
 
 ## HL7 send-ahead and cancellation
 

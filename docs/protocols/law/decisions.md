@@ -135,6 +135,18 @@ Evidence remains documented; implementation restrictions below do not amend LAW.
 - **source**: [ADR 0011](../../adr/0011-result-status-progression.md), Decision.
 - **test**: `law_adr0011_c7_all_status_moves_and_unverified_delivery`.
 
+## Result status progression
+
+TF-2b Rev 11 Appendix C.7 (Figure C.7-1) lets a result be revised while
+preliminary, move from preliminary or unverified to final, and change after
+final only as a correction. Under [ADR 0011](../../adr/0011-result-status-progression.md)
+the LAW table therefore permits P to P, P to R, P to F, R to R, R to F and C to
+C as normal revisions, and F to C as a correction. Any other move with
+different content (for example F to P) is a conflict, parked. R means "not a
+candidate to be reported upstream": it is stored and shown, never delivered.
+A second run of one order and test reaching final is a conflict, parked.
+Test: `law_adr0011_c7_all_status_moves_and_unverified_delivery`.
+
 ## Complete observation identities
 
 TF-2b C.7 Table C.7-4 requires distinct observations under one OBR. Results
@@ -168,6 +180,18 @@ SC, IP and CA groups (TF-2b §3.29.4.1.2.1) are typed execution evidence.
 They update an optional per-item Scheduled, InProgress or AnalyzerCancelled
 projection without changing command OrderState or creating observations,
 revisions or contract v1 deliveries. CM still requires RESULT content.
+
+| Notice (no RESULT group) | Execution projection | Order state |
+| --- | --- | --- |
+| SC | Unknown to Scheduled; Scheduled stays | Unchanged |
+| IP | Unknown or Scheduled to InProgress; InProgress stays; a missing SC is allowed | Unchanged |
+| CA | Unknown or Scheduled to AnalyzerCancelled, when consistent with all retained evidence; records whether an app cancel was outstanding | Unchanged |
+| Inconsistent with retained later evidence | Kept as is; the interpretation is parked | Unchanged; never rewinds |
+
+The projection is checked against retained LAB-28 status and result-bearing
+LAB-29 history too. CA follows SC under TF-2b C.8 Figure C.8-1; CA after
+evidenced IP, or after completion or results, is parked for reconciliation.
+A missing SC does not prove that processing began.
 
 The host stores the exact message first. It matches manager AWOS identities
 to retained immutable command items, specimen/container/service context and

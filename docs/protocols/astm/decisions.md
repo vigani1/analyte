@@ -74,8 +74,10 @@ rules and their coverage belong only in [checklist.md](checklist.md).
 
 ## 8. Make acknowledgment depend on durable custody
 
-- **what**: Reserve capacity before accepting a transfer and commit each frame
-  before its positive data acknowledgment.
+- **what**: Reserve capacity before accepting a transfer and commit each frame,
+  with its transfer identity, before its positive data acknowledgment.
+  Accepting ENQ only means "ready". A transfer that was acknowledged frame by
+  frame but never completed is kept for recovery.
 - **why**: A valid checksum proves nothing about crash survival. The analyzer
   must retain responsibility if the host cannot keep the promised evidence.
 - **source**: [ADR 0010](../../adr/0010-acknowledgment-boundaries.md), ASTM row;
@@ -195,6 +197,6 @@ therefore remains empty when no peer identity is agreed. Sites may configure
   tests do not qualify any machine.
 - **tests**: [paired strict/packed dialog cases](../../../crates/steps/dialog/tests/packed.rs)
   cover frame custody, checksum failure, retries and ETB continuation.
-  [Stored interpretation cases](../../../crates/analyte/src/machine/interpretation/departure_tests.rs)
+  [Stored interpretation cases](../../../crates/analyte/src/machine/interpretation/departure_evidence/tests.rs)
   cover v1 delivery without semantic changes and evidence retained after bad
   LIS02 hierarchy. Existing link/storage recovery fixtures remain unchanged.

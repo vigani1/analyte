@@ -119,7 +119,7 @@ late replies/store failures; K split and merged framing, bounded queue overflow,
 partial EOF/deadline, invalid trailer, no byte handshake, sender uncertainty.
 The shared framing/syntax crates own repertoire, encoding, full error rendering
 and parser limits. Restart reconciliation and real durability latency tests
-are covered by host tests in [receive.rs](../../analyte/tests/receive.rs) and
+are covered by host tests in [receive](../../analyte/tests/receive/mod.rs) and
 [HL7 orders](../../analyte/tests/orders/hl7/send.rs); no simulator or real machine
 claim is made. The random-event property guards uncommitted positive responses.
 

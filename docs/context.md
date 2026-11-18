@@ -1,7 +1,7 @@
 # Context for new sessions
 
 Read this first, then [plan.md](plan.md) and [../AGENTS.md](../AGENTS.md).
-Last updated 2026-11-15.
+Last updated 2026-11-18.
 
 ## How this project started
 
@@ -91,23 +91,20 @@ What this means:
 
 ### Before machine configs (phase 7)
 
-No machine config is qualified yet. Component decomposition and per-test value
-expectations now cover the cobas mapping prerequisites. `crates/core/config/src/schema/mod.rs`
-provides selectors, QC equality rules and correction-code lists;
-`crates/core/config/src/orders/mod.rs` provides legacy QRY/QCK/DSR layouts and deadlines.
+No machine config is written or qualified yet; each machine folder in
+`machines/` holds a blocked definition listing what is missing. The config
+already offers what the cobas mapping needs (selectors, QC rules, correction
+codes in `crates/core/config/src/schema/mod.rs`) and the legacy HL7 query
+exchange (`crates/core/config/src/orders/mod.rs`).
 
-- cobas e 411: no known remaining mapping expressiveness gap; installed host
-  codes, serial settings and a recording still need confirmation.
-- iFlash 1200: the legacy query exchange exists. Config does not select vendor
-  result-status semantics or turn parallel OBR-only QC groups into observations;
-  those remain gaps rather than guessed mappings.
-- Swelab Lumi: no specific config extension can yet be justified; framing,
-  encoding, edition and sample selectors require the installed protocol evidence.
-- Biolyte 2000: no known config expressiveness gap; confirm serial flow control
-  and a recording before qualifying a config.
+- cobas e 411 and Biolyte 2000: no known config gap; the lab's settings and a
+  recording are still needed.
+- iFlash 1200: config cannot yet choose vendor result-status meanings or turn
+  OBR-only QC groups into observations; these stay open gaps, not guesses.
+- Swelab Lumi: nothing can be added until the installed protocol is known.
 
-Machine-specific behavior must be supported by evidence before adding a named
-deviation. No default sample identities or inferred protocol settings are allowed.
+Machine-specific behavior needs evidence before it becomes a named departure.
+No default sample IDs or guessed protocol settings.
 
 ## Reference receiver
 
@@ -125,16 +122,24 @@ answers "no orders" when unsure, and every result keeps the three identities.
   recovery and the lab sign-off record.
 - [Adding a machine](adding-a-machine.md): settings, configuration, recordings and evidence.
 
+## Where things stand (2026-11-18)
+
+Every standard (ASTM, HL7, IHE LAW, POCT1-A) and both vendor formats (VIDAS,
+Autolyser) are built at the documented level. The LAW Gazelle run was
+recorded, but the simulator's own reply broke the standard, so LAW stays at
+documented. A bug-fix round and a slim-down round just finished. Details are
+in the [plan](plan.md) status.
+
 ## Next steps
 
 1. From the lab: the settings and recordings listed under "Still needed from
-   outside"; then write the four standard machine configs at the documented
-   level (see [adding a machine](adding-a-machine.md)).
-2. A recorded IHE Gazelle simulator conversation for LAW. Message-level validation
-   already passes all eight Analyzer Manager messages and found a SAC-3/SAC-10
-   defect that was fixed; see [reports](conformance/gazelle/README.md). Evidence
-   remains documented.
-3. Before a pilot: choose the alert channel, and write down the supported
-   outage length, disk reserve, retention, and backup and restore targets.
+   outside"; then write the machine configs at the documented level (see
+   [adding a machine](adding-a-machine.md)).
+2. LAW: repeat the Gazelle run against a simulator build whose reply carries
+   the time zone the standard requires
+   ([run report](conformance/gazelle/law-run/README.md)).
+3. Before a pilot: choose the alert relay and named responders, and write down
+   the supported outage length, disk reserve, retention, and backup and
+   restore targets.
 4. Lab pilot: install as a service, rehearse a restore, raise each machine to
    proven with its recordings; then cut the first release.
