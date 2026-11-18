@@ -13,7 +13,7 @@ pub(crate) const ORDER_POLL_INTERVAL: std::time::Duration = std::time::Duration:
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
-use super::astm::finished;
+use crate::machine::astm::orders::finished;
 
 /// Shared query admission. Each reservation is owned by the connection before I/O.
 pub(crate) async fn reserve_candidates(
@@ -70,15 +70,12 @@ pub(crate) struct Reserved<T> {
 }
 
 /// One bounded candidate page per idle interval; the cursor prevents starvation.
-pub(crate) async fn next<T, E>(
+pub(crate) async fn next<T, E: From<Error> + std::fmt::Display>(
     store: &Handle,
     machine: &Machine,
     after: &mut String,
     map: impl Fn(&analyte_mapping::AppOrder) -> Result<T, E>,
-) -> Result<Option<Reserved<T>>, Error>
-where
-    Error: From<E>,
-{
+) -> Result<Option<Reserved<T>>, E> {
     let freshness = machine.destination_limits.freshness.as_secs();
     let candidates = candidate_page(store, machine, after).await?;
     for cached in candidates {
@@ -87,12 +84,9 @@ where
             store,
             machine,
             cached,
-            deadline()?,
+            deadline().map_err(Error::from)?,
             |error| format!("rejected: {error}"),
-            |order| {
-                let order = super::app_order(order)?;
-                map(&order).map_err(Error::from)
-            },
+            |order| map(&super::app_order(order).map_err(Error::from)?),
         )
         .await?
         else {
@@ -101,13 +95,17 @@ where
         let identity = candidate.identity;
         let version = candidate.version;
         let reserved = store
-            .request::<_, analyte_store::OrderError>(deadline()?, move |store| {
-                store.reserve_send(
-                    &super::reservation::candidate(&identity, version, freshness),
-                    analyte_store::ReserveOptions::default(),
-                )
-            })
-            .await?;
+            .request::<_, analyte_store::OrderError>(
+                deadline().map_err(Error::from)?,
+                move |store| {
+                    store.reserve_send(
+                        &super::reservation::candidate(&identity, version, freshness),
+                        analyte_store::ReserveOptions::default(),
+                    )
+                },
+            )
+            .await
+            .map_err(Error::from)?;
         match reserved {
             Ok(order) => {
                 return Ok(Some(Reserved {

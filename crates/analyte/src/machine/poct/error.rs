@@ -7,15 +7,9 @@ pub(crate) enum Error {
     /// POCT message limit exceeded.
     #[error("POCT message limit exceeded")]
     MessageLimitExceeded,
-    /// An outbound command could not represent the mapped order.
-    #[error(transparent)]
-    OrderMapping(#[from] analyte_mapping::OrderMappingError),
     /// A POCT header or value failed its declared data type.
     #[error(transparent)]
     Data(#[from] analyte_poct::DataError),
-    /// Order reservation or completion could not be persisted.
-    #[error(transparent)]
-    Orders(#[from] crate::orders::OrderError),
     /// The POCT conversation rejected a message or deadline.
     #[error(transparent)]
     Dialog(#[from] analyte_dialog::poct::Error),

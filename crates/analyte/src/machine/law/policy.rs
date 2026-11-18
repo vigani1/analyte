@@ -1,6 +1,6 @@
 //! Supplies LAW custody, lifecycle and returned-work conflict policy for intake.
 use super::custody;
-pub(crate) use crate::orders::law::validation::Mismatch;
+pub(crate) use crate::machine::law::orders::validation::Mismatch;
 use crate::{
     installation::config::Machine,
     intake::{InterpretationOutcome, ParkReason},

@@ -1,4 +1,4 @@
-//! Classifies ASTM session refusals with shared link and custody causes.
+//! Classifies ASTM session refusals and order failures with their shared causes.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
     /// A query arrived without its transfer start evidence.
@@ -24,13 +24,22 @@ pub(crate) enum Error {
     /// ASTM transfer wire-byte bound exceeded.
     #[error("ASTM transfer wire-byte bound exceeded")]
     TransferWireByteBoundExceeded,
-    /// An outbound command could not represent the mapped order.
-    #[error(transparent)]
-    OrderMapping(#[from] analyte_mapping::OrderMappingError),
     /// A received ASTM frame failed envelope validation.
     #[error(transparent)]
     Frame(#[from] analyte_framing::astm::Error),
-    /// Order reservation or completion could not be persisted.
+    /// The query deadline could not be represented.
+    #[error("ASTM query deadline overflow")]
+    QueryDeadlineOverflow,
+    /// The specimen selector uses escapes outside the supported subset.
+    #[error("ASTM specimen selector contains unsupported escapes")]
+    UnsupportedSpecimenEscapes,
+    /// The query response exceeded the configured byte limit.
+    #[error("ASTM query response byte limit exceeded")]
+    QueryResponseTooLarge,
+    /// ASTM order mapping failed.
+    #[error(transparent)]
+    Mapping(#[from] analyte_mapping::astm::OrderError),
+    /// Shared order lookup, storage or settlement failed.
     #[error(transparent)]
     Orders(#[from] crate::orders::OrderError),
     /// The ASTM conversation rejected the current event.

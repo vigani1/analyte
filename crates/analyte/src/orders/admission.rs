@@ -4,22 +4,24 @@ use crate::installation::config::Machine;
 use analyte_store::{CachedOrder, Handle};
 use std::time::Instant;
 
-pub(super) enum Prepared<T> {
+pub(crate) enum Prepared<T, E> {
     Skipped,
-    Rejected(Error),
+    Rejected(E),
     Mapped(Candidate, T),
 }
 
 /// Decode and check eligibility before the protocol mapper; retain rejected work.
-pub(super) async fn prepare<T>(
+/// The protocol's own error type carries its mapping failure.
+pub(crate) async fn prepare<T, E: From<Error>>(
     store: &Handle,
     machine: &Machine,
     cached: CachedOrder,
     until: Instant,
-    reason: impl FnOnce(&Error) -> String,
-    map: impl FnOnce(&analyte_contract::Order) -> Result<T, Error>,
-) -> Result<Prepared<T>, Error> {
-    let order: analyte_contract::Order = analyte_contract::decode(cached.document.as_bytes())?;
+    reason: impl FnOnce(&E) -> String,
+    map: impl FnOnce(&analyte_contract::Order) -> Result<T, E>,
+) -> Result<Prepared<T, E>, E> {
+    let order: analyte_contract::Order =
+        analyte_contract::decode(cached.document.as_bytes()).map_err(Error::from)?;
     if !super::eligible(&order, machine) {
         return Ok(Prepared::Skipped);
     }
@@ -34,7 +36,7 @@ pub(super) async fn prepare<T>(
 }
 
 /// A superseding update wins over a stale rejection in every protocol.
-pub(super) async fn reject(
+pub(crate) async fn reject(
     store: &Handle,
     machine: &Machine,
     until: Instant,

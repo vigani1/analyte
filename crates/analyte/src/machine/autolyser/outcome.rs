@@ -55,7 +55,8 @@ fn failure_code(error: &Error) -> Option<AutolyserEnd> {
         | Error::PollCustodyUnreconciled
         | Error::PollUnreconciled
         | Error::ReportReceiptMissing
-        | Error::OrderMapping(_)
+        | Error::UnexpectedInsertionOutcome
+        | Error::Mapping(_)
         | Error::Orders(_)
         | Error::Dialog(_)
         | Error::Syntax(_)

@@ -1,5 +1,6 @@
 //! Drives LAW connections using dialog actions and durable store calls.
 //! Kept whole: Keeps connection modes, ordered effects and reservation cleanup together.
+use crate::machine::hl7::orders::response::{Profile, response_metadata};
 pub(crate) mod policy;
 use super::connection_input::Input;
 use super::driver::{self, Context, Effects, Flow};
@@ -8,16 +9,17 @@ use crate::machine::hooks::Pause;
 pub(crate) mod custody;
 mod effect;
 mod error;
+pub(crate) mod orders;
 use effect::Effect;
 pub(crate) mod settings;
 use analyte_dialog::law::outcome::Code as LawEnd;
 pub(crate) use error::Error;
 pub(super) mod independent;
 use crate::intake;
-use crate::orders::law::{LawOrderLink, Reply};
 use analyte_dialog::law::{self as protocol, Action, Dialog, Event, Interpretation, Link};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;
+use orders::{LawOrderLink, Reply};
 use std::{
     collections::VecDeque,
     time::{Duration, Instant},
@@ -261,9 +263,7 @@ impl<'a, 'm> Host<'a, 'm> {
             }
             Effect::Parked(token, reason) => return self.park_failure(token, reason).await,
             Effect::ResponseNeeded(token) => {
-                let metadata = crate::orders::hl7::response::response_metadata(
-                    crate::orders::hl7::response::Profile::Law,
-                );
+                let metadata = response_metadata(Profile::Law);
                 return Ok(self.dialog.step(
                     self.start.elapsed(),
                     Event::Respond(token, metadata.response()?),

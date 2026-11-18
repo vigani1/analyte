@@ -8,19 +8,19 @@ use std::time::Duration;
 use analyte_fixtures::UnlimitedSpace as Space;
 
 fn machine(policy: &str) -> Result<Machine, Error> {
-    let section = include_str!("../../../../core/config/examples/orders.toml").rewrite(
+    let section = include_str!("../../../../../core/config/examples/orders.toml").rewrite(
         "when_untrusted = \"error\"",
         &format!("when_untrusted = \"{policy}\""),
     );
     let definition = format!(
         "{}\n{section}",
-        include_str!("../../../../core/config/examples/astm.toml")
+        include_str!("../../../../../core/config/examples/astm.toml")
     );
     let snapshot = analyte_config::Draft::load(
         ("machine", &definition),
         (
             "site",
-            include_str!("../../../../core/config/examples/site.toml"),
+            include_str!("../../../../../core/config/examples/site.toml"),
         ),
         ("overrides", "schema_version=1"),
     )?
@@ -244,19 +244,19 @@ fn lis02_6_10_generated_header_identifies_receiver() -> Result<(), Error> {
     for receiver in [None, Some("Peer|A")] {
         let mut machine = machine("error")?;
         if let Some(receiver) = receiver {
-            let section = include_str!("../../../../core/config/examples/orders.toml").rewrite(
+            let section = include_str!("../../../../../core/config/examples/orders.toml").rewrite(
                 "[orders.astm]",
                 &format!("[orders.astm]\nreceiver={receiver:?}"),
             );
             let definition = format!(
                 "{}\n{section}",
-                include_str!("../../../../core/config/examples/astm.toml")
+                include_str!("../../../../../core/config/examples/astm.toml")
             );
             machine.snapshot = analyte_config::Draft::load(
                 ("machine", &definition),
                 (
                     "site",
-                    include_str!("../../../../core/config/examples/site.toml"),
+                    include_str!("../../../../../core/config/examples/site.toml"),
                 ),
                 ("overrides", "schema_version=1"),
             )?

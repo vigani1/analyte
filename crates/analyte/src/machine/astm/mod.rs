@@ -4,13 +4,14 @@ use super::driver::{self, Context, Effects, Flow, Run};
 use crate::intake::ByteReason;
 use crate::machine::hooks::Pause;
 mod error;
+pub(crate) mod orders;
 pub(crate) mod settings;
-use crate::orders::astm::{Pending, Queries, Request};
 use crate::{deadline, intake};
 use analyte_dialog::astm::{Action, Config, Dialog, End, Epoch, Event};
 use analyte_model::{Identifier, ReceiptId};
 use analyte_store::Handle;
 pub(crate) use error::Error;
+use orders::{Pending, Queries, Request};
 use std::{
     collections::VecDeque,
     time::{Duration, Instant},
@@ -27,7 +28,7 @@ enum Query<'a> {
         pending: Pending<'a>,
     },
     Answer {
-        reply: Option<crate::orders::astm::Reply>,
+        reply: Option<orders::Reply>,
         until: Instant,
     },
 }
@@ -118,11 +119,7 @@ impl<'a, 'm> Host<'a, 'm> {
                     let limits = self.settings.settings().syntax().limits();
                     let record = analyte_mapping::astm::map_order(order, limits, orders)?.encode();
                     let normal = analyte_astm::OrderTermination::Normal;
-                    Ok::<_, analyte_mapping::astm::OrderError>(crate::orders::astm::envelope(
-                        orders,
-                        vec![record],
-                        normal,
-                    ))
+                    Ok::<_, Error>(orders::envelope(orders, vec![record], normal))
                 })
                 .await?
         } else {
@@ -143,7 +140,7 @@ impl<'a, 'm> Host<'a, 'm> {
                 reply = self.failure();
             }
             let records = match reply {
-                Some(reply) => crate::orders::astm::reserve_query(
+                Some(reply) => orders::reserve_query(
                     self.store,
                     self.machine.machine(),
                     reply,
@@ -261,7 +258,7 @@ impl driver::Drain for Host<'_, '_> {
             Action::Sent(end) => {
                 self.work.astm_finished(self.store, end).await?;
                 for order in self.query_orders.drain(..) {
-                    crate::orders::astm::finished(self.store, &order, end).await?;
+                    orders::finished(self.store, &order, end).await?;
                 }
             }
         }
@@ -271,8 +268,8 @@ impl driver::Drain for Host<'_, '_> {
 
 impl Host<'_, '_> {
     /// The configured failure reply; a machine that cannot query gets silence.
-    fn failure(&self) -> Option<crate::orders::astm::Reply> {
-        self.queries.and_then(crate::orders::astm::failure)
+    fn failure(&self) -> Option<orders::Reply> {
+        self.queries.and_then(orders::failure)
     }
     async fn commit_frame(
         &mut self,
@@ -356,8 +353,9 @@ impl Host<'_, '_> {
                     .await?;
                 self.transfer = None;
                 let request = match self.queries {
-                    Some(queries) => crate::orders::astm::request(queries, &self.payload)?
-                        .map(|request| (queries, request)),
+                    Some(queries) => {
+                        orders::request(queries, &self.payload)?.map(|request| (queries, request))
+                    }
                     None => None,
                 };
                 if request.is_some() {

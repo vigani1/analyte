@@ -1,6 +1,7 @@
 //! Answers bounded ASTM specimen order queries without returning historical results (LIS02-A2 §11).
 use crate::installation::config::Machine;
-use crate::orders::OrderError as Error;
+use crate::machine::astm::Error;
+use crate::orders::admission::{self, Prepared};
 
 use analyte_config::{AstmOrders, AstmStack, OrderQuery, WhenUntrusted};
 use analyte_model::SampleId;
@@ -13,7 +14,7 @@ pub(crate) use completion::finished;
 
 type LookupFuture<'a> = Pin<Box<dyn Future<Output = Result<Option<Reply>, Error>> + Send + 'a>>;
 
-use super::Candidate;
+use crate::orders::Candidate;
 
 /// A reply is not a send: candidates are reserved only when the link is ready.
 pub(crate) struct Reply {
@@ -74,7 +75,8 @@ pub(crate) fn request(queries: Queries<'_>, payload: &[u8]) -> Result<Option<Req
                 samples
                     .iter()
                     .map(|sample| SampleId::new(sample))
-                    .collect::<Result<_, _>>()?,
+                    .collect::<Result<_, _>>()
+                    .map_err(crate::orders::OrderError::from)?,
             )),
         },
     )
@@ -97,7 +99,7 @@ impl<'a> Pending<'a> {
             .checked_add(std::time::Duration::from_millis(u64::from(
                 queries.policy.deadline_ms,
             )))
-            .ok_or_else(|| Error::AstmQueryDeadlineOverflow)?;
+            .ok_or_else(|| Error::QueryDeadlineOverflow)?;
         let future = Box::pin(answer(store, machine, queries, samples, until));
         Ok(Self {
             future,
@@ -130,7 +132,7 @@ async fn answer(
     let mut bytes = 0usize;
     let limits = machine.snapshot.effective().stack().limits();
     for sample in samples {
-        let answer = super::lookup(store, machine, sample, until).await?;
+        let answer = crate::orders::lookup(store, machine, sample, until).await?;
         match answer {
             Lookup::NotTrusted => return Ok(failure(queries)),
             Lookup::NoOrders => {}
@@ -139,15 +141,16 @@ async fn answer(
                     bytes = bytes
                         .checked_add(cached.document.len())
                         .filter(|n| *n <= limits.bytes())
-                        .ok_or_else(|| Error::AstmQueryResponseTooLarge)?;
-                    match super::admission::prepare(
+                        .ok_or_else(|| Error::QueryResponseTooLarge)?;
+                    match admission::prepare(
                         store,
                         machine,
                         cached,
                         until,
-                        |error| format!("rejected: {error}"),
+                        |error: &Error| format!("rejected: {error}"),
                         |order| {
-                            let order = super::app_order(order)?;
+                            let order = crate::orders::app_order(order)
+                                .map_err(crate::orders::OrderError::from)?;
                             Ok(analyte_mapping::astm::map_order(
                                 &order,
                                 queries.stack.settings().syntax().limits(),
@@ -157,9 +160,11 @@ async fn answer(
                     )
                     .await?
                     {
-                        super::admission::Prepared::Skipped => continue,
-                        super::admission::Prepared::Rejected(_) => return Ok(failure(queries)),
-                        super::admission::Prepared::Mapped(candidate, mapped) => {
+                        Prepared::Skipped => continue,
+                        Prepared::Rejected(_) => {
+                            return Ok(failure(queries));
+                        }
+                        Prepared::Mapped(candidate, mapped) => {
                             candidates.push(candidate);
                             records.push(mapped.encode());
                         }
@@ -231,7 +236,7 @@ pub(crate) async fn reserve_query(
     until: Instant,
     active: &mut Vec<analyte_store::MachineOrder>,
 ) -> Result<Option<Vec<Vec<u8>>>, Error> {
-    let reserved = super::sending::reserve_candidates(
+    let reserved = crate::orders::sending::reserve_candidates(
         store,
         reply.candidates,
         until,

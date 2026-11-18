@@ -33,7 +33,8 @@ matches deliberately expose integration work; there is no plugin subsystem.
   driving, specific failures and dialog construction. The host owns bounded
   I/O, durable storage and effect deadlines.
 - Add `crates/analyte/src/reading/<key>.rs` for reading stored receipts.
-- If orders are supported, add `crates/analyte/src/orders/<key>.rs` and
+- If orders are supported, add `crates/analyte/src/machine/<key>/orders.rs`
+  with its failures in the host's `error.rs`, and
   `crates/steps/dialog/src/<key>/outcome.rs`. The outcome file declares one
   `Code` enum of fixed stored codes with the `codes!` macro and, when
   codes carry text, one `Detail` enum; pin every new spelling in

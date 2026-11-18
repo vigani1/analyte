@@ -9,7 +9,7 @@ pub(crate) async fn plan(
     store: &Handle,
     machine: &Machine,
     results: Option<&law::Results<'_>>,
-    rejection: Option<crate::orders::law::validation::Mismatch>,
+    rejection: Option<super::orders::validation::Mismatch>,
 ) -> Result<Option<Custody>, Error> {
     let Some(results) = results else {
         return Ok(None);
@@ -104,13 +104,13 @@ pub(crate) async fn work_conflict(
     store: &Handle,
     machine: &Machine,
     results: Option<&law::Results<'_>>,
-) -> Result<Option<crate::orders::law::validation::Mismatch>, Error> {
+) -> Result<Option<super::orders::validation::Mismatch>, Error> {
     let (Some(results), analyte_config::Stack::Law(settings)) =
         (results, machine.snapshot.effective().stack())
     else {
         return Ok(None);
     };
-    Ok(crate::orders::law::validation::check(
+    Ok(super::orders::validation::check(
         store,
         machine,
         results.message(),
@@ -126,8 +126,7 @@ async fn retained_work(
     occurrence: u16,
 ) -> Result<Option<Work>, Error> {
     let placer = std::str::from_utf8(placer)?.to_owned();
-    let record =
-        crate::orders::law::validation::retained(store, machine, &placer, deadline()?).await?;
+    let record = super::orders::validation::retained(store, machine, &placer, deadline()?).await?;
     let Some(record) = record else {
         return Ok(None);
     };
@@ -154,7 +153,7 @@ async fn retained_work(
 fn new_custody(
     machine: &Machine,
     header: &law::CustodyHeader<'_>,
-    rejection: Option<crate::orders::law::validation::Mismatch>,
+    rejection: Option<super::orders::validation::Mismatch>,
 ) -> Result<Custody, Error> {
     let scope = analyte_model::SourceText::new(&serde_json::to_string(&(
         machine.id.as_str(),
@@ -203,7 +202,7 @@ pub enum Error {
     RetainedItem,
     /// Retained-work comparison could not complete.
     #[error(transparent)]
-    Validation(#[from] crate::orders::law::validation::ValidationError),
+    Validation(#[from] super::orders::validation::ValidationError),
     /// Storage could not establish durable custody.
     #[error(transparent)]
     Store(#[from] analyte_store::OrderError),

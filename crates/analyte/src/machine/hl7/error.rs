@@ -1,4 +1,4 @@
-//! Classifies HL7 session refusals with shared link and custody causes.
+//! Classifies HL7 session refusals and order failures with their shared causes.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
     /// HL7 display services absent.
@@ -40,21 +40,15 @@ pub(crate) enum Error {
     /// Unexpected outgoing HL7 outcome.
     #[error("unexpected outgoing HL7 outcome")]
     UnexpectedOutgoingHl7Outcome,
-    /// An outbound command could not represent the mapped order.
+    /// Order lookup, mapping, reservation or completion failed.
     #[error(transparent)]
-    OrderMapping(#[from] analyte_mapping::OrderMappingError),
-    /// Order reservation or completion could not be persisted.
-    #[error(transparent)]
-    Orders(#[from] crate::orders::OrderError),
+    Orders(#[from] OrderError),
     /// The HL7 acknowledgment conversation refused an event.
     #[error(transparent)]
     Dialog(#[from] analyte_dialog::hl7::Error),
     /// HL7 segment syntax or acknowledgment fields were invalid.
     #[error(transparent)]
     Syntax(#[from] analyte_hl7::Error),
-    /// The HL7 transport envelope failed MLLP framing.
-    #[error(transparent)]
-    Mllp(#[from] analyte_framing::hl7::Error),
     /// Retains link, store and evidence causes from [`crate::machine::receive::error::Error`],
     /// uncertain custody and independent cleanup failures in their original order.
     #[error(transparent)]
@@ -62,3 +56,30 @@ pub(crate) enum Error {
 }
 
 crate::machine::receive::custody::refusal_conversions!(Error);
+
+/// Failures answering HL7 order queries or sending HL7 orders.
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum OrderError {
+    /// The query deadline could not be represented.
+    #[error("HL7 query deadline overflow")]
+    QueryDeadlineOverflow,
+    /// The machine sent an HL7 query on a link configured only to send orders.
+    #[error("HL7 query policy missing")]
+    QueryPolicyMissing,
+    /// HL7 order mapping failed.
+    #[error(transparent)]
+    Mapping(#[from] analyte_mapping::hl7::OrderError),
+    /// HL7 order wire mapping failed.
+    #[error(transparent)]
+    WireMapping(#[from] analyte_mapping::hl7::WireError),
+    /// HL7 order or response syntax was invalid.
+    #[error(transparent)]
+    Syntax(#[from] analyte_hl7::Error),
+    /// Shared order lookup, storage or settlement failed.
+    #[error(transparent)]
+    Shared(crate::orders::OrderError),
+    /// Retains both the triggering failure and a later independent settlement failure.
+    #[error(transparent)]
+    Cleanup(Box<crate::machine::receive::custody::Cleanup<Self>>),
+}
+crate::orders::shared_conversions!(OrderError);

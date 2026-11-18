@@ -1,8 +1,5 @@
 //! Reserves VIDAS work and records confirmed or uncertain transfer outcomes.
-use crate::{
-    intake,
-    orders::{OrderError as Error, sending::Work},
-};
+use crate::{intake, machine::vidas::Error, orders::sending::Work};
 use analyte_store::Handle;
 use analyte_vidas::syntax::Message;
 pub(crate) enum Progress {
@@ -23,7 +20,7 @@ impl Work<'_, analyte_config::VidasOrders, Message> {
         if !self
             .reserve(store, machine.machine(), |order, orders| {
                 let requests = analyte_mapping::vidas::map_order(order, settings, orders)?;
-                Ok::<_, analyte_mapping::vidas::OrderError>(requests.into())
+                Ok::<_, Error>(requests.into())
             })
             .await?
         {
@@ -42,7 +39,7 @@ impl Work<'_, analyte_config::VidasOrders, Message> {
         if let Some(request) = self.requests.pop_front() {
             return Ok(Progress::DownloadNext(request));
         }
-        super::sending::complete(
+        crate::orders::sending::complete(
             store,
             order,
             analyte_model::OrderState::Sent,
