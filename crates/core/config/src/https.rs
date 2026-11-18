@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 #[serde(try_from = "String", into = "String")]
 pub struct HttpsUrl {
     original: String,
-    parsed: reqwest::Url,
+    parsed: url::Url,
 }
 
 impl HttpsUrl {
@@ -27,7 +27,7 @@ impl HttpsUrl {
 
     /// Borrows the parsed URL for host-owned HTTPS requests.
     #[must_use]
-    pub fn url(&self) -> &reqwest::Url {
+    pub fn url(&self) -> &url::Url {
         &self.parsed
     }
 
@@ -58,18 +58,18 @@ impl std::fmt::Debug for HttpsUrl {
 /// Parses a literal-loopback HTTP URL for synthetic reference peers only.
 /// # Errors
 /// Refuses non-loopback hosts, credentials, query, fragment and oversized input.
-pub fn loopback_test_url(value: &str) -> Result<reqwest::Url, &'static str> {
+pub fn loopback_test_url(value: &str) -> Result<url::Url, &'static str> {
     parse_url(value, 4096, true)
 }
 
-fn parse_url(value: &str, limit: usize, loopback: bool) -> Result<reqwest::Url, &'static str> {
+fn parse_url(value: &str, limit: usize, loopback: bool) -> Result<url::Url, &'static str> {
     if value.len() > limit
         || value.chars().any(|c| c.is_whitespace() || c.is_control())
         || value.contains(['@', '?', '#', '\\'])
     {
         return Err("use a bounded URL without credentials, whitespace, query or fragment");
     }
-    let url = reqwest::Url::parse(value).map_err(|_| "malformed URL")?;
+    let url = url::Url::parse(value).map_err(|_| "malformed URL")?;
     let allowed_scheme = if loopback {
         url.scheme() == "http"
             && url.host_str().is_some_and(|host| {
