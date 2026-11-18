@@ -39,8 +39,6 @@ enum Command {
         #[arg(long)]
         reason: String,
     },
-    /// Converts an existing store for incremental vacuum; stop the service first.
-    PrepareRetention,
     /// Places or releases an indefinite retention hold.
     Holds {
         #[command(subcommand)]
@@ -239,7 +237,6 @@ async fn execute(cli: Cli) -> Result<(), Error> {
         )
         .await
         .map_err(Into::into),
-        Command::PrepareRetention => service::prepare_retention(Program::load(&cli.config)?).await,
         Command::Holds { command } => analyte::operator::holds::run(
             &Program::load(&cli.config)?,
             required_actor(cli.actor)?,

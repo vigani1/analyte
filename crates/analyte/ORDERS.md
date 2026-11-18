@@ -117,8 +117,6 @@ refusal restores the preceding order state with a CancelRefused event/history;
 missing evidence remains Uncertain. Orders list shows item identities, test
 coverage and reasons. Reconciliation stays per order, audited, and never resends.
 
-Migrated v4 orders explicitly mark original test coverage unavailable, because
-v4 did not retain it. Their existing reservations continue to prevent replay.
 The store API, legacy HL7 queries, and ORM/OML send-ahead and cancellation are
 implemented at documented evidence level.
 

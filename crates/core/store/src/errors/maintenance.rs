@@ -1,7 +1,7 @@
 //! Classifies startup, backup, restore and finite-retention failures.
 use crate::StorageError;
 use crate::{SCHEMA_VERSION, StartupStep};
-/// Failures of store maintenance, preserving migration and timeout causes.
+/// Failures of store maintenance, preserving schema and timeout causes.
 #[derive(Debug, thiserror::Error)]
 pub enum MaintenanceError {
     /// A persistence primitive failed; its recovery classification is retained.
@@ -22,8 +22,8 @@ pub enum MaintenanceError {
     /// Another process currently owns a backup or retention maintenance operation.
     #[error("retention maintenance is busy; retry after the active batch or backup")]
     MaintenanceBusy,
-    /// An existing SQLite file needs one offline conversion before finite retention.
-    #[error("retention requires incremental vacuum; stop the service and run prepare-retention")]
+    /// The SQLite file cannot return space incrementally, so finite retention is refused.
+    #[error("retention requires a store created with incremental vacuum")]
     RetentionVacuumRequired,
     /// A finite policy requires the original host credential.
     #[error("retention digest key is required")]
@@ -31,7 +31,7 @@ pub enum MaintenanceError {
     /// Changing the digest key would lose duplicate recognition.
     #[error("retention digest key fingerprint mismatch; key rotation is unsupported")]
     RetentionKeyMismatch,
-    /// Startup exceeded its budget; the active migration transaction is rolled back.
+    /// Startup exceeded its budget; the active schema transaction is rolled back.
     #[error("store startup deadline expired during {step}")]
     StartupTimeout {
         /// The operation active when the deadline expired.
@@ -46,17 +46,12 @@ pub enum MaintenanceError {
     /// The database belongs to a newer implementation.
     #[error("schema version {0} is newer than supported version {SCHEMA_VERSION}")]
     SchemaTooNew(i64),
-    /// A legacy row cannot be converted without guessing; migration is rolled back.
-    #[error("cannot migrate {table} row {row}: {cause}")]
-    MigrationEvidence {
-        /// Table containing the refused legacy record.
-        table: &'static str,
-        /// Stable row identity retained for diagnosis.
-        row: i64,
-        /// Specific decoding, bound or storage failure.
-        #[source]
-        cause: Box<MaintenanceError>,
-    },
+    /// The database predates the starting schema of the first release.
+    #[error(
+        "schema version {0} is unsupported; the oldest supported version is {oldest}",
+        oldest = crate::upkeep::migration::STARTING_VERSION
+    )]
+    SchemaTooOld(i64),
     /// Restore, retention or startup input cannot authorize maintenance.
     #[error("invalid maintenance input")]
     InvalidMaintenanceInput,

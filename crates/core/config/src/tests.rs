@@ -79,36 +79,20 @@ fn hl7_2_5_1_section_2_15_9_12_unsupported_edition_lists_qualified_result_editio
 }
 
 #[test]
-fn adr0002_schema1_migrates_to_identical_schema2_canonical_bytes()
--> Result<(), Box<dyn std::error::Error>> {
-    for (current, names) in [
-        (ASTM, ["astm_lis01", "astm_link", "astm_lis02"]),
-        (HL7, ["mllp", "hl7_receiver", "hl7_v2"]),
-    ] {
-        let mut old = current.replace("schema_version = 2", "schema_version = 1");
-        for (section, name) in ["framing", "dialog", "syntax"].into_iter().zip(names) {
-            old = old.replace(
-                &format!("[{section}]"),
-                &format!("[{section}]\nkind = '{name}'"),
-            );
-        }
-        let canonical = |text: &str| -> Result<String, Error> {
-            Ok(Draft::load(
-                ("machine", text),
-                ("site", SITE),
-                ("overrides", "schema_version=1"),
-            )?
-            .validate()?
-            .canonical()
-            .to_owned())
-        };
-        assert_eq!(canonical(&old)?, canonical(current)?);
-        for (section, name) in ["framing", "dialog", "syntax"].into_iter().zip(names) {
-            let bad = old.replace(&format!("kind = '{name}'"), "kind = 'wrong'");
-            assert!(
-                matches!(canonical(&bad), Err(Error::Invalid { key, .. }) if key == format!("{section}.kind"))
-            );
-        }
+fn adr0002_machine_schema1_is_refused_as_unsupported() -> Result<(), Box<dyn std::error::Error>> {
+    for current in [ASTM, HL7] {
+        let old = current.replace("schema_version = 2", "schema_version = 1");
+        let refusal = Draft::load(
+            ("machine", &old),
+            ("site", SITE),
+            ("overrides", "schema_version=1"),
+        )
+        .expect_err("schema 1 must be refused");
+        assert!(
+            matches!(&refusal, Error::Invalid { key, reason, .. }
+                if key == "schema_version" && reason.starts_with("unsupported schema")),
+            "unexpected refusal: {refusal:?}"
+        );
     }
     Ok(())
 }

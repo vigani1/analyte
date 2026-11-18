@@ -1,8 +1,9 @@
 //! Tests database opening and stored settings.
 use super::*;
+use crate::SCHEMA_VERSION;
 use crate::startup::Progress;
-use crate::test_support::assert_constraint;
 use crate::test_support::{Space, TestResult, limits};
+use crate::upkeep::migration::STARTING_VERSION;
 use std::{
     sync::{
         Arc,
@@ -11,15 +12,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-fn version_seven(path: &Path) -> Result<Connection, Error> {
-    let mut db = Connection::open(path)?;
-    db.execute_batch(include_str!("../schema.sql"))?;
-    Store::migrate_v2(&mut db)?;
-    Store::migrate_v3(&mut db, 65_536)?;
-    db.execute_batch(include_str!("../migration_v4.sql"))?;
-    db.execute_batch(include_str!("../migration_v5.sql"))?;
-    db.execute_batch(include_str!("../migration_v6.sql"))?;
-    Store::migrate_v7(&mut db, 65_536)?;
+fn synthetic_store(path: &Path) -> Result<Connection, Error> {
+    drop(Store::open(path, limits(), Box::new(Space(u64::MAX)))?);
+    let db = Connection::open(path)?;
     db.execute("INSERT INTO transfers VALUES ('synthetic','open',NULL)", [])?;
     Ok(db)
 }
@@ -66,78 +61,33 @@ fn adr0003_rule7_startup_timeout_names_integrity_and_larger_budget_succeeds() ->
 }
 
 #[test]
-fn adr0003_rule7_timeout_during_migration_rolls_back_version_schema_and_raw_frames() -> TestResult {
+fn adr0003_rule7_timeout_while_creating_the_schema_leaves_an_empty_file() -> TestResult {
     let temp = tempfile::tempdir()?;
-    let path = temp.path().join("migration.db");
-    let mut db = version_seven(&path)?;
-    let tx = db.transaction()?;
-    for _ in 0..1000 {
-        tx.execute(
-            "INSERT INTO frames(transfer,number,raw) VALUES ('synthetic',1,x'01020304')",
-            [],
-        )?;
-    }
-    tx.commit()?;
-    let schema: String = db.query_row(
-        "SELECT sql FROM sqlite_schema WHERE name='frames'",
-        [],
-        |r| r.get(0),
-    )?;
-    drop(db);
+    let path = temp.path().join("create.db");
+    let creating = StartupStep::Migration {
+        from: 0,
+        to: STARTING_VERSION,
+    };
     let base = Instant::now();
     let mut startup = Startup::new(
         base.checked_add(Duration::from_millis(500))
             .ok_or("deadline")?,
     );
-    injected_clock(
-        &mut startup,
-        StartupStep::Migration { from: 7, to: 8 },
-        base,
-    );
+    injected_clock(&mut startup, creating, base);
     assert!(matches!(
         Store::open_with_startup(&path, limits(), Box::new(Space(u64::MAX)), &startup),
-        Err(Error::StartupTimeout {
-            step: StartupStep::Migration { from: 7, to: 8 }
-        })
+        Err(Error::StartupTimeout { step }) if step == creating
     ));
     let db = Connection::open(&path)?;
     assert_eq!(
         db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-        7
-    );
-    assert_eq!(
-        db.query_row(
-            "SELECT count(*) FROM frames WHERE raw=x'01020304'",
-            [],
-            |r| r.get::<_, i64>(0)
-        )?,
-        1000
-    );
-    assert_eq!(
-        db.query_row(
-            "SELECT count(*) FROM sqlite_schema WHERE name='frames_v8'",
-            [],
-            |r| r.get::<_, i64>(0)
-        )?,
         0
     );
     assert_eq!(
-        db.query_row(
-            "SELECT sql FROM sqlite_schema WHERE name='frames'",
-            [],
-            |r| r.get::<_, String>(0)
-        )?,
-        schema
+        db.query_row("SELECT count(*) FROM sqlite_schema", [], |r| r
+            .get::<_, i64>(0))?,
+        0
     );
-    assert_eq!(
-        db.query_row(
-            "SELECT seq FROM sqlite_sequence WHERE name='frames'",
-            [],
-            |r| r.get::<_, i64>(0)
-        )?,
-        1000
-    );
-    Store::integrity(&db)?;
     drop(db);
     let store = Store::open(&path, limits(), Box::new(Space(u64::MAX)))?;
     assert_eq!(
@@ -146,19 +96,54 @@ fn adr0003_rule7_timeout_during_migration_rolls_back_version_schema_and_raw_fram
             .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
         SCHEMA_VERSION
     );
-    assert_eq!(
-        store.db.query_row(
-            "SELECT count(*) FROM frames WHERE raw=x'01020304'",
-            [],
-            |r| r.get::<_, i64>(0)
-        )?,
-        1000
-    );
     Ok(())
 }
 
 #[test]
-#[ignore = "manual benchmark: creates and migrates a synthetic store larger than 2 GiB"]
+fn plan11_empty_file_gets_the_current_schema_and_other_versions_are_refused() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("store.db");
+    let store = Store::open(&path, limits(), Box::new(Space(u64::MAX)))?;
+    for (pragma, expected) in [
+        ("user_version", SCHEMA_VERSION.to_string()),
+        ("synchronous", "2".into()),
+        ("journal_mode", "wal".into()),
+        ("foreign_keys", "1".into()),
+        ("auto_vacuum", "2".into()),
+    ] {
+        let value: String = store.db.query_row(
+            &format!("SELECT CAST({pragma} AS TEXT) FROM pragma_{pragma}"),
+            [],
+            |r| r.get(0),
+        )?;
+        assert_eq!(value, expected, "{pragma}");
+    }
+    drop(store);
+    for (version, refused) in [
+        (SCHEMA_VERSION + 1, "newer"),
+        (STARTING_VERSION - 1, "older"),
+        (1, "older"),
+        (-1, "corrupt"),
+    ] {
+        Connection::open(&path)?.pragma_update(None, "user_version", version)?;
+        let result = Store::open(&path, limits(), Box::new(Space(u64::MAX)));
+        match refused {
+            "newer" => assert!(matches!(result, Err(Error::SchemaTooNew(v)) if v == version)),
+            "older" => assert!(matches!(result, Err(Error::SchemaTooOld(v)) if v == version)),
+            _ => assert!(matches!(result, Err(Error::Corruption))),
+        }
+        let db = Connection::open(&path)?;
+        assert_eq!(
+            db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
+            version,
+            "a refused store is left unchanged"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+#[ignore = "manual benchmark: opens a synthetic store larger than 2 GiB"]
 fn startup_timing_two_gib_synthetic_store() -> TestResult {
     let _ = tracing_subscriber::fmt()
         .with_ansi(false)
@@ -166,7 +151,7 @@ fn startup_timing_two_gib_synthetic_store() -> TestResult {
         .try_init();
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("synthetic-large.db");
-    let mut db = version_seven(&path)?;
+    let mut db = synthetic_store(&path)?;
     let started = Instant::now();
     let tx = db.transaction()?;
     for _ in 0..2048 {
@@ -191,28 +176,6 @@ fn startup_timing_two_gib_synthetic_store() -> TestResult {
         );
     }
     drop(db);
-    let started = Instant::now();
-    let store = Store::open(
-        &path,
-        {
-            let mut policy = limits();
-            policy.database_bytes = 16_000_000_000;
-            policy
-        },
-        Box::new(Space(u64::MAX)),
-    )?;
-    println!(
-        "startup_including_v7_to_v9_seconds={:.3}",
-        started.elapsed().as_secs_f64()
-    );
-    assert_eq!(
-        store
-            .db
-            .query_row("SELECT sum(length(raw)) FROM frames", [], |r| r
-                .get::<_, i64>(0))?,
-        2_147_483_648
-    );
-    drop(store);
     for run in 1..=3 {
         let started = Instant::now();
         drop(Store::open(
@@ -283,93 +246,6 @@ fn adr0003_rule7_completed_startup_does_not_expire_later_store_operations() -> T
             .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
         SCHEMA_VERSION
     );
-    Ok(())
-}
-
-#[test]
-fn mutation_adr0003_startup_upgrades_every_schema_without_losing_evidence_or_guards() -> TestResult
-{
-    for version in 0..=9 {
-        let temp = tempfile::tempdir()?;
-        let path = temp.path().join("upgrade.db");
-        let mut db = Connection::open(&path)?;
-        let metadata = crate::test_support::receipt(b"original bytes")?;
-        if version >= 1 {
-            let tx = db.transaction()?;
-            let db = &tx;
-            db.execute_batch(include_str!("../schema.sql"))?;
-            db.execute(
-                "INSERT INTO receipts VALUES (?1,?2,?3,?4)",
-                rusqlite::params![
-                    crate::key(&metadata.id)?,
-                    crate::document(&metadata)?,
-                    b"original bytes",
-                    b"config"
-                ],
-            )?;
-            db.execute(
-                "INSERT INTO transfers VALUES ('original-transfer','open',NULL)",
-                [],
-            )?;
-            db.execute(
-                "INSERT INTO frames(transfer,number,raw) VALUES ('original-transfer',0,x'010203')",
-                [],
-            )?;
-            tx.commit()?;
-        }
-        migrate_fixture_to_version(&mut db, version)?;
-        assert_eq!(
-            db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-            version
-        );
-        drop(db);
-        let mut store = Store::open(&path, limits(), Box::new(Space(u64::MAX)))?;
-        assert_eq!(
-            store
-                .db
-                .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-            SCHEMA_VERSION
-        );
-        assert_eq!(
-            store
-                .db
-                .query_row("PRAGMA foreign_keys", [], |r| r.get::<_, i64>(0))?,
-            1
-        );
-        assert_eq!(
-            store
-                .db
-                .query_row("PRAGMA synchronous", [], |r| r.get::<_, i64>(0))?,
-            2
-        );
-        let _ = store.db.prepare("SELECT original_evidence FROM parked")?;
-        let _ = store
-            .db
-            .prepare("SELECT owner_kind,owner_id,cancel_version FROM machine_order_history")?;
-        if version >= 1 {
-            assert_eq!(store.raw(metadata.id)?, Some(b"original bytes".to_vec()));
-            assert_eq!(
-                store
-                    .frames(&analyte_model::Identifier::new("original-transfer")?, 0)?
-                    .first()
-                    .ok_or("missing frame")?
-                    .raw,
-                vec![1, 2, 3]
-            );
-            assert_constraint(store.db.execute("DELETE FROM receipts", []));
-        }
-        let provenance = crate::FrameProvenance {
-            machine: metadata.machine,
-            driver: metadata.driver,
-            config: b"config".to_vec(),
-        };
-        store.journal_frame(
-            &analyte_model::Identifier::new("new-transfer")?,
-            crate::FrameSequence::new(31, 31)?,
-            b"new frame",
-            &provenance,
-        )?;
-    }
     Ok(())
 }
 
@@ -483,59 +359,5 @@ fn mutation_adr0003_startup_foreign_key_corruption_refuses_without_rewriting_raw
         db.query_row("SELECT raw FROM frames", [], |r| r.get::<_, Vec<u8>>(0))?,
         vec![1, 2, 3]
     );
-    Ok(())
-}
-
-fn migrate_fixture_to_version(db: &mut Connection, version: i64) -> TestResult {
-    if version >= 2 {
-        Store::migrate_v2(db)?;
-    }
-    if version >= 3 {
-        Store::migrate_v3(db, 65_536)?;
-    }
-    if version >= 4 {
-        // Construct the requested old schema in one durable fixture commit.
-        let tx = db.transaction()?;
-        tx.execute_batch(include_str!("../migration_v4.sql"))?;
-        if version >= 5 {
-            tx.execute_batch(include_str!("../migration_v5.sql"))?;
-        }
-        if version >= 6 {
-            tx.execute_batch(include_str!("../migration_v6.sql"))?;
-        }
-        tx.commit()?;
-    }
-    if version >= 7 {
-        Store::migrate_v7(db, 65_536)?;
-    }
-    if version >= 8 {
-        db.execute_batch(include_str!("../migration_v8.sql"))?;
-    }
-    if version >= 9 {
-        Store::migrate_v9(db, 65_536)?;
-    }
-    Ok(())
-}
-
-#[test]
-fn current_schema_v15_matches_fresh_store() -> TestResult {
-    let dir = tempfile::tempdir()?;
-    let store = Store::open(
-        &dir.path().join("schema.db"),
-        limits(),
-        Box::new(Space(u64::MAX)),
-    )?;
-    let mut statement = store.db.prepare("SELECT sql FROM sqlite_schema WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY type,name")?;
-    let actual = statement
-        .query_map([], |row| row.get::<_, String>(0))?
-        .collect::<Result<Vec<_>, _>>()?
-        .into_iter()
-        .map(|sql| format!("{sql};\n"))
-        .collect::<String>();
-    let expected = include_str!("../current-schema.sql")
-        .split_once('\n')
-        .expect("schema header")
-        .1;
-    assert_eq!(actual.replace("\r\n", "\n"), expected.replace("\r\n", "\n"));
     Ok(())
 }

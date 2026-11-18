@@ -100,6 +100,22 @@ impl std::fmt::Display for StackChoice {
     }
 }
 
+// Recording headers keep these historical layer labels for existing evidence.
+impl StackChoice {
+    pub(crate) const fn layer_names(self) -> [&'static str; 4] {
+        match self {
+            Self::AstmLis02 => ["astm", "astm_lis01", "astm_link", "astm_lis02"],
+            Self::Hl7V2 => ["hl7", "mllp", "hl7_receiver", "hl7_v2"],
+            Self::FileAstm => ["astm", "none", "file_pickup", "astm_lis02"],
+            Self::FileHl7 => ["hl7", "none", "file_pickup", "hl7_v2"],
+            Self::LawManager => ["law", "mllp", "law_manager", "hl7_v2"],
+            Self::Poct => ["poct", "poct", "poct", "poct"],
+            Self::VidasLiteral => ["vidas", "vidas_literal", "vidas_literal", "vidas_literal"],
+            Self::Autolyser => ["autolyser", "autolyser", "autolyser", "autolyser"],
+        }
+    }
+}
+
 #[test]
 fn stack_evidence_spellings_are_compatible() {
     for (value, expected) in [

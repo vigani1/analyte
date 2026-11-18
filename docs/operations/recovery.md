@@ -34,8 +34,8 @@ recover, file permissions, key availability, pause and reconciliation evidence.
    analyte --config analyte.toml --actor pilot-it restore --from pilot-backup.db --reason "Synthetic restore rehearsal"
    ```
 
-3. The program checks integrity and supported schema, migrates a staged copy,
-   and retains the previous database as `analyte.before-restore`. Existing
+3. The program checks integrity and refuses a backup with an older or newer
+   schema version. It opens a staged copy and retains the previous database as `analyte.before-restore`. Existing
    recovery files refuse another restore. Archive previous files securely
    before any later restore. Preserve and investigate `analyte.restore-pending`
    after interruption; never delete it merely to bypass startup refusal.
@@ -67,7 +67,7 @@ recover, file permissions, key availability, pause and reconciliation evidence.
 Check duplicate deliveries have one effect in the receiver, uncertain work
 was not resent, and the final report agrees. Sign and retain the rehearsal
 record. In an actual incident use the same procedure with an incident-specific
-reason. Restore supplies a 30-second copy deadline; opening and migrating its
+reason. Restore supplies a 30-second copy deadline; opening its
 staged store uses the storage library's separate default startup budget of
 600 seconds. These are not controlled by the configured store startup setting.
 Escalate a failed restore with files preserved.
@@ -92,26 +92,12 @@ unsupported. Existing tombstones still require their key even after switching
 policy to `keep`. Rehearse restoring with the original key; no CLI fingerprint
 inspection or key recovery command exists.
 
-### Prepare existing stores offline
+### Storage for finite retention
 
-Finite retention requires incremental-vacuum storage. If startup requests
-conversion, stop the service and all operator store owners first. Back up before
-changing from `keep` to a finite policy. While still on `keep`, make the verified
-backup; otherwise normal store opening may already refuse the unconverted file.
-
-```text
-analyte --config analyte.toml prepare-retention
-```
-
-The command converts offline and refuses active owners. It needs **free space
-strictly greater than twice the database page size total plus `reserve_bytes`**,
-in addition to space already occupied. Leave extra room for backup and SQLite
-temporary working files. For a 2 GiB page total and 1 GiB reserve, more than
-5 GiB free is required. The database size budget must also allow the store.
-Conversion currently uses a fixed 600-second budget, not the configured startup
-budget. Interruption preserves the original SQLite contents, though earlier
-schema migrations may have committed. Preserve evidence and investigate errors.
-Restart only after success and verify the retention page.
+Finite retention needs a store that can return free space bit by bit
+(SQLite incremental vacuum). Every store Analyte creates is set up this way.
+Startup refuses a finite policy on any other file; restore a verified backup
+instead of changing the file by hand.
 
 ### What is purged and what stays
 
