@@ -84,26 +84,16 @@ jobs:
           Write-Output $features
       # Keep these flags identical to the feature inspection: no --all-features.
       - run: cargo build --release --locked -p analyte --target ${{ matrix.target }}
-      - name: Package binary and service files
+      # Archive plus installers: the Windows installer (unsigned for now) or the
+      # Linux .deb and .rpm. Tool versions and hashes are pinned in the script.
+      - name: Package archive and installers
         shell: pwsh
         env:
           RELEASE_TAG: ${{ github.ref_name }}
-        run: |
-          $name = "analyte-$env:RELEASE_TAG-${{ matrix.target }}"
-          New-Item -ItemType Directory -Path "stage/$name/packaging", dist -Force | Out-Null
-          Copy-Item 'target/${{ matrix.target }}/release/${{ matrix.binary }}' "stage/$name/"
-          Copy-Item packaging/${{ matrix.platform }} "stage/$name/packaging/" -Recurse
-          Copy-Item LICENSE, README.md "stage/$name/"
-          # The admin setup page lists these definitions from beside the program file.
-          Copy-Item machines "stage/$name/machines" -Recurse
-          if ('${{ matrix.platform }}' -eq 'windows') {
-            Compress-Archive -Path "stage/$name" -DestinationPath "dist/$name.zip"
-          } else {
-            & chmod 755 "stage/$name/analyte"
-            if ($LASTEXITCODE -ne 0) { throw 'chmod failed' }
-            & tar -czf "dist/$name.tar.gz" -C stage $name
-            if ($LASTEXITCODE -ne 0) { throw 'tar failed' }
-          }
+        run: >-
+          ./packaging/build.ps1 -Platform ${{ matrix.platform }} -Target ${{ matrix.target }}
+          -Version ($env:RELEASE_TAG.Substring(1))
+          -Binary 'target/${{ matrix.target }}/release/${{ matrix.binary }}'
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: package-${{ matrix.target }}
@@ -131,7 +121,7 @@ jobs:
         run: cargo metadata --locked --format-version 1 > dist/dependencies.json
       - name: Hash every release asset (except the checksum file itself)
         working-directory: dist
-        run: sha256sum -- *.zip *.tar.gz dependencies.json > SHA256SUMS
+        run: sha256sum -- *.zip *.tar.gz *.exe *.deb *.rpm dependencies.json > SHA256SUMS
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: dist/*
@@ -142,4 +132,4 @@ jobs:
         run: |
           gh release create "$RELEASE_TAG" dist/* --verify-tag --draft \
             --title "Analyte $RELEASE_TAG" \
-            --notes 'Owner review required before publication. See docs/release.md and CHANGELOG.md at this tag. Evidence remains documented; these binaries are not real-machine qualification.'
+            --notes 'Owner review required before publication. See docs/release.md and CHANGELOG.md at this tag. The Windows installer is unsigned for now: SmartScreen warns; choose More info, then Run anyway. Evidence remains documented; these binaries are not real-machine qualification.'

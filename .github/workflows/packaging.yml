@@ -1,0 +1,166 @@
+name: Packaging
+
+# Builds the installers on pull requests that touch packaging, so breakage shows
+# before a release, then installs, upgrades and removes them on the runner.
+# Not a required check. Builds a debug program; releases use release.yml.
+on:
+  pull_request:
+    paths:
+      - 'packaging/**'
+      - 'machines/**'
+      - 'crates/analyte/tests/packaging.rs'
+      - '.github/workflows/packaging.yml'
+      - '.github/workflows/release.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: packaging-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  windows:
+    name: Windows installer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - run: cargo build --locked -p analyte
+      - name: Build archive and installer
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path Cargo.toml -Pattern '^version = "(.+)"$' | Select-Object -First 1).Matches.Groups[1].Value
+          ./packaging/build.ps1 -Platform windows -Target x86_64-pc-windows-msvc -Version $version -Binary target/debug/analyte.exe
+      - name: Install, check the setup page, upgrade and uninstall
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $setup = (Get-ChildItem dist/*-setup.exe).FullName
+          $root = "$env:ProgramData\Analyte"
+          function Install-Analyte {
+            $process = Start-Process -FilePath $setup -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru
+            if ($process.ExitCode -ne 0) { throw "installer exit code $($process.ExitCode)" }
+            $service = Get-CimInstance Win32_Service -Filter "Name='Analyte'"
+            if ($service.State -ne 'Running' -or $service.StartName -ne 'NT SERVICE\Analyte' -or $service.StartMode -ne 'Auto') {
+              throw "service not running as configured: $($service.State) $($service.StartName) $($service.StartMode)"
+            }
+          }
+          function Assert-SetupPage {
+            $token = (Get-Content -LiteralPath "$root\data\admin-token" -Raw).Trim()
+            for ($i = 0; $i -lt 60; $i++) {
+              try {
+                $page = Invoke-WebRequest -UseBasicParsing -Uri http://127.0.0.1:8080/setup -Headers @{ Authorization = "Bearer $token" }
+                if ($page.Content -match 'machine-1</td><td>Not set up yet') { return }
+              } catch { Write-Output "waiting for the admin page: $($_.Exception.Message)" }
+              Start-Sleep -Seconds 1
+            }
+            Get-Content -LiteralPath "$root\data\analyte.log" -Tail 50 -ErrorAction SilentlyContinue
+            throw 'the setup page did not list machine-1 as not set up'
+          }
+          Install-Analyte
+          Assert-SetupPage
+          $rules = (Get-Acl -LiteralPath "$root\config").Access | Where-Object { $_.IdentityReference -eq 'NT SERVICE\Analyte' }
+          if (-not ($rules.FileSystemRights -match 'Modify')) { throw 'the service cannot write the config folder' }
+          if (-not (Get-Acl -LiteralPath "$root\config").AreAccessRulesProtected) { throw 'config folder inherits ProgramData permissions' }
+          # An upgrade keeps the lab's configuration and the token.
+          Add-Content -LiteralPath "$root\config\analyte.toml" -Value '# kept on upgrade'
+          $token = (Get-FileHash -LiteralPath "$root\data\admin-token").Hash
+          Install-Analyte
+          Assert-SetupPage
+          if (-not (Select-String -LiteralPath "$root\config\analyte.toml" -SimpleMatch '# kept on upgrade')) { throw 'upgrade replaced the configuration' }
+          if ((Get-FileHash -LiteralPath "$root\data\admin-token").Hash -ne $token) { throw 'upgrade replaced the token' }
+          # Uninstall removes the service and program, and keeps data and configuration.
+          $process = Start-Process -FilePath "$env:ProgramFiles\Analyte\unins000.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "uninstaller exit code $($process.ExitCode)" }
+          for ($i = 0; $i -lt 60 -and (Test-Path -LiteralPath "$env:ProgramFiles\Analyte\analyte.exe"); $i++) { Start-Sleep -Seconds 1 }
+          if (Get-CimInstance Win32_Service -Filter "Name='Analyte'") { throw 'service still registered' }
+          if (Test-Path -LiteralPath "$env:ProgramFiles\Analyte\analyte.exe") { throw 'program not removed' }
+          foreach ($kept in "$root\config\analyte.toml", "$root\data\analyte.db", "$root\data\admin-token") {
+            if (-not (Test-Path -LiteralPath $kept)) { throw "uninstall removed $kept" }
+          }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: packaging-check-windows
+          path: dist/*
+          retention-days: 7
+          if-no-files-found: error
+
+  linux:
+    name: Linux packages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - run: cargo build --locked -p analyte
+      - name: Build archive, .deb and .rpm
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path Cargo.toml -Pattern '^version = "(.+)"$' | Select-Object -First 1).Matches.Groups[1].Value
+          ./packaging/build.ps1 -Platform linux -Target x86_64-unknown-linux-gnu -Version $version -Binary target/debug/analyte
+      - name: Inspect package metadata
+        run: |
+          dpkg-deb --info dist/*.deb
+          dpkg-deb --contents dist/*.deb
+          if command -v rpm >/dev/null; then rpm -qip dist/*.rpm; rpm -qlvp dist/*.rpm; fi
+      - name: Install the .deb, check the setup page, upgrade, remove and purge
+        run: |
+          set -euo pipefail
+          setup_page() {
+            for _ in $(seq 60); do
+              if curl -fsS -H "Authorization: Bearer $(sudo cat /var/lib/analyte/admin-token)" \
+                  http://127.0.0.1:8080/setup | grep -q 'machine-1</td><td>Not set up yet'; then
+                return 0
+              fi
+              sleep 1
+            done
+            sudo journalctl -u analyte.service --no-pager | tail -50
+            return 1
+          }
+          sudo apt-get install -y "./$(ls dist/*.deb)"
+          systemctl is-active analyte.service
+          systemctl is-enabled analyte.service
+          test "$(stat -c '%U:%G %a' /etc/analyte)" = 'root:analyte 770'
+          test "$(sudo stat -c '%U:%G %a' /var/lib/analyte)" = 'analyte:analyte 700'
+          test "$(sudo stat -c '%U %a' /var/lib/analyte/admin-token)" = 'analyte 600'
+          setup_page
+          # An upgrade keeps the lab's configuration and the token.
+          echo '# kept on upgrade' | sudo tee -a /etc/analyte/analyte.toml >/dev/null
+          token=$(sudo sha256sum /var/lib/analyte/admin-token)
+          sudo dpkg -i --force-confold dist/*.deb
+          sudo grep -q '# kept on upgrade' /etc/analyte/analyte.toml
+          test "$(sudo sha256sum /var/lib/analyte/admin-token)" = "$token"
+          setup_page
+          # Removal stops the service and keeps configuration and data.
+          sudo apt-get remove -y analyte
+          if systemctl is-active --quiet analyte.service; then echo 'still running'; exit 1; fi
+          sudo test -f /etc/analyte/analyte.toml
+          sudo test -f /var/lib/analyte/analyte.db
+          # A purge removes the configuration but never the clinical data.
+          sudo apt-get purge -y analyte
+          test ! -e /etc/analyte
+          sudo test -f /var/lib/analyte/analyte.db
+          sudo test -f /var/lib/analyte/admin-token
+      - name: Install and remove the .rpm in a Fedora container
+        run: |
+          docker run --rm -v "$PWD/dist:/dist:ro" fedora:43 sh -euc '
+            dnf install -y /dist/*.x86_64.rpm
+            test "$(stat -c "%U:%G %a" /etc/analyte)" = "root:analyte 770"
+            test "$(stat -c "%U %a" /var/lib/analyte/admin-token)" = "analyte 600"
+            runuser -u analyte -- analyte check-config /etc/analyte/analyte.toml
+            dnf remove -y analyte
+            test -f /var/lib/analyte/admin-token
+          '
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: packaging-check-linux
+          path: dist/*
+          retention-days: 7
+          if-no-files-found: error
