@@ -113,7 +113,8 @@ impl Setup {
         self.restart.subscribe()
     }
 
-    #[cfg(test)]
+    /// Setup state for admin server tests that do not exercise the setup page.
+    #[cfg(all(test, feature = "test-hooks"))]
     pub(crate) fn for_test(data_directory: &std::path::Path) -> Self {
         Self {
             seams: Seams {
