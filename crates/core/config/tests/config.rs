@@ -107,8 +107,137 @@ fn override_precedence_and_canonical_identity() -> Result<(), Error> {
     )?
     .validate()?;
     assert_eq!(a.canonical(), b.canonical());
-    assert_eq!(a.effective().site().endpoint, "COM9");
+    assert_eq!(a.effective().site().endpoint.fixed(), Ok("COM9"));
     assert_ne!(a.digest(), draft(ASTM, OVERRIDES)?.validate()?.digest());
+    Ok(())
+}
+
+fn serial_site(location: &str) -> Result<analyte_config::Validated, Error> {
+    Draft::load(
+        ("machine.toml", ASTM),
+        (
+            "site.toml",
+            &SITE.rewrite("endpoint = \"127.0.0.1:5600\"", location),
+        ),
+        ("local.toml", OVERRIDES),
+    )?
+    .validate()
+}
+
+// Plan §11
+#[test]
+fn site_names_a_com_port() -> Result<(), Error> {
+    let config = serial_site("endpoint = \"COM9\"")?;
+    assert_eq!(config.effective().site().endpoint.fixed(), Ok("COM9"));
+    assert!(config.canonical().contains("endpoint = \"COM9\""));
+    Ok(())
+}
+
+// Plan §11
+#[test]
+fn site_names_a_usb_serial_number() -> Result<(), Error> {
+    let config = serial_site("usb_serial = \"A10K3XYZ\"")?;
+    let analyte_config::Endpoint::UsbSerial(serial) = &config.effective().site().endpoint else {
+        panic!("expected a USB serial number");
+    };
+    assert_eq!(serial.as_str(), "A10K3XYZ");
+    assert!(config.canonical().contains("usb_serial = \"A10K3XYZ\""));
+    assert!(!config.canonical().contains("endpoint ="));
+    Ok(())
+}
+
+// Plan §11
+#[test]
+fn site_refuses_both_or_neither_port_forms() {
+    let both = serial_site(
+        "endpoint = \"COM9\"
+usb_serial = \"A10K3XYZ\"",
+    );
+    assert!(
+        matches!(&both, Err(Error::Invalid { key, reason, .. })
+            if key == "usb_serial" && reason.contains("not both")),
+        "{both:?}"
+    );
+    let neither = serial_site("");
+    assert!(
+        matches!(&neither, Err(Error::Invalid { key, reason, .. })
+            if key == "endpoint" && reason.contains("usb_serial")),
+        "{neither:?}"
+    );
+}
+
+// Plan §11
+#[test]
+fn usb_serial_number_is_checked_once() {
+    for bad in [
+        "\"\"",
+        "\" A10K3XYZ\"",
+        "\"A10\tK3\"",
+        &format!("{:?}", "9".repeat(129)),
+    ] {
+        let refused = serial_site(&format!("usb_serial = {bad}"));
+        assert!(
+            matches!(&refused, Err(Error::Schema { .. })),
+            "{bad}: {refused:?}"
+        );
+    }
+}
+
+// Plan §11
+#[test]
+fn usb_serial_number_needs_a_serial_link() -> Result<(), Error> {
+    let tcp = ASTM
+        .rewrite("kind = \"serial\"", "kind = \"tcp_client\"")
+        .rewrite(
+            "[transport.serial]
+baud = 9600
+data_bits = 8
+parity = \"none\"
+stop_bits = 1
+flow_control = \"none\"
+",
+            "",
+        );
+    let refused = Draft::load(
+        ("machine.toml", &tcp),
+        (
+            "site.toml",
+            &SITE.rewrite("endpoint = \"127.0.0.1:5600\"", "usb_serial = \"A10K3XYZ\""),
+        ),
+        ("local.toml", OVERRIDES),
+    )?
+    .validate();
+    assert!(
+        matches!(&refused, Err(Error::Invalid { key, .. }) if key == "usb_serial"),
+        "{refused:?}"
+    );
+    Ok(())
+}
+
+// Plan §11
+#[test]
+fn override_switches_between_port_forms() -> Result<(), Error> {
+    let usb = draft(
+        ASTM,
+        "schema_version = 1
+usb_serial = 'A10K3XYZ'",
+    )?
+    .validate()?;
+    assert!(matches!(
+        &usb.effective().site().endpoint,
+        analyte_config::Endpoint::UsbSerial(serial) if serial.as_str() == "A10K3XYZ"
+    ));
+    let both = draft(
+        ASTM,
+        "schema_version = 1
+endpoint = 'COM9'
+usb_serial = 'A10K3XYZ'",
+    )?
+    .validate();
+    assert!(
+        matches!(&both, Err(Error::Invalid { path, key, .. }) if path == "local.toml" && key == "usb_serial"),
+        "{both:?}"
+    );
     Ok(())
 }
 

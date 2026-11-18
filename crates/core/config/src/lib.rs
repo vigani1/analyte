@@ -1,6 +1,8 @@
 //! Loads bounded configuration and validates settings and local evidence without connection I/O.
 #![forbid(unsafe_code)]
 
+mod endpoint;
+pub use endpoint::{Endpoint, NotFixed, UsbSerial};
 mod https;
 pub use https::{HttpsUrl, loopback_test_url};
 mod orders;
@@ -345,6 +347,10 @@ impl Draft {
             self.paths.get(1).map_or("site", String::as_str),
         )?;
         let o = self.overrides;
+        let path = self.paths.get(2).map_or("overrides", String::as_str);
+        if o.endpoint.is_some() || o.usb_serial.is_some() {
+            self.site.endpoint = Endpoint::choose(o.endpoint, o.usb_serial, path)?;
+        }
         if let Some(v) = o.law {
             self.machine.law = Some(v);
         }
@@ -372,13 +378,9 @@ impl Draft {
         if let Some(v) = o.deviations {
             self.machine.deviations = v;
         }
-        if let Some(v) = o.endpoint {
-            self.site.endpoint = v;
-        }
         if let Some(v) = o.destination {
             self.site.destination = v;
         }
-        let path = self.paths.get(2).map_or("overrides", String::as_str);
         let stack = validate_machine(
             &self.machine,
             path,

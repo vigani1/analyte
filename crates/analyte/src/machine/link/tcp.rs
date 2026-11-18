@@ -25,8 +25,16 @@ pub(in crate::machine) async fn server(
     let listener = match listener {
         Some(listener) => tokio::net::TcpListener::from_std(listener)?,
         None => {
-            analyte_transport::tcp::bind(machine.snapshot.effective().site().endpoint.parse()?)
-                .await?
+            analyte_transport::tcp::bind(
+                machine
+                    .snapshot
+                    .effective()
+                    .site()
+                    .endpoint
+                    .fixed()?
+                    .parse()?,
+            )
+            .await?
         }
     };
     loop {
@@ -76,7 +84,13 @@ pub(in crate::machine) async fn client(
     capture: Option<&capture::Capture>,
 ) -> Result<(), Error> {
     // An endpoint that is not a socket address can never be dialled.
-    let endpoint = machine.snapshot.effective().site().endpoint.parse()?;
+    let endpoint = machine
+        .snapshot
+        .effective()
+        .site()
+        .endpoint
+        .fixed()?
+        .parse()?;
     // Fixed bounds; invalid only if the constants are wrong, so no session can start.
     let retry = retry()?;
     loop {

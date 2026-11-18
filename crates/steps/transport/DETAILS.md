@@ -45,13 +45,29 @@ Cancellation never proves that an in-progress write had no effect.
 
 ## Serial
 
-`Settings` validates the exact port name, baud, framing, flow control and read/write
-timeout. `run_system` opens only that name. `run` provides the same supervision
-with a fake factory for tests. A missing device is reported as `PortVanished`;
-reopen attempts use capped backoff. An unrelated operating system I/O failure
-retains its portable error kind. No device discovery or fallback port is used.
+`Settings` validates the device, baud, framing, flow control and read/write
+timeout. The device is either `Device::Named` (an exact port name, opened as
+written) or `Device::UsbSerial` (a USB adapter serial number). `run` asks its
+`locate` function for the port name before every open, so a USB adapter is
+looked up again on each reconnect and followed to a new port name. `locate`
+over `list` finds exactly one port or refuses: no match is
+`UsbSerialNotConnected`, several matches are `UsbSerialAmbiguous` with every
+matching name, and nothing is opened. Serial numbers compare without ASCII
+letter case, which is safe because several matches are always refused.
 
-Call `run` or `run_system` from the host's blocking orchestration thread. It owns
+`list` reads the operating system's ports through the serial library with
+default features off. On Windows the serial number comes from the port's USB
+hardware ID. On Linux it comes from `/sys/class/tty` and the USB device's
+`serial` file, so no system library (`libudev`) is needed; a missing
+`/sys/class/tty` is returned as an error. More than 1024 listed ports is refused,
+never cut short.
+
+A missing device is reported as `PortVanished`; failed lookups and reopen
+attempts use the same capped backoff. An unrelated operating system I/O failure
+retains its portable error kind. No fallback port is ever used. Production passes
+`list` and `Settings::open`; tests pass scripted lists and fake ports.
+
+Call `run` from the host's blocking orchestration thread. It owns
 and joins a scoped dedicated I/O thread. Port implementations and their factories
 must bound their blocking operations; fake ports obey that same contract. During
 normal serial I/O cancellation is observed within the configured port timeout,
@@ -115,7 +131,8 @@ this codec. Recordings never authorize a protocol acknowledgment.
 
 Synthetic tests cover ordered TCP bytes, split/combined writes, disconnect,
 client reconnect and cancellation during backoff, server refusal and shutdown,
-serial vanish/reopen to the same name, jitter bounds, session write isolation,
+serial vanish/reopen to the same name, USB serial lookup (one match, none,
+several, adapter moved to a new port), jitter bounds, session write isolation,
 recording round trips for TCP/serial/folder, recording queue/file failures,
 half-written folder input and claimed-file crash recovery. No test contacts
 hardware, live credentials or remote endpoints.

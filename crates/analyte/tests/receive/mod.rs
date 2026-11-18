@@ -29,14 +29,15 @@ fn config(temp: &Path, astm: bool) -> Result<std::path::PathBuf, Error> {
 }
 
 async fn connect(program: &Program) -> Result<TcpStream, Error> {
-    let endpoint = &program
+    let endpoint = program
         .machines()
         .first()
         .ok_or("missing machine")?
         .snapshot()
         .effective()
         .site()
-        .endpoint;
+        .endpoint
+        .fixed()?;
     let until = tokio::time::Instant::now()
         .checked_add(HANG_GUARD)
         .unwrap_or(tokio::time::Instant::now());

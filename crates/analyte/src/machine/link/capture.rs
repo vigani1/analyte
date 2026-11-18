@@ -404,7 +404,7 @@ mod tests {
             .enable_all()
             .build()?;
         let settings = serial::Settings::new(
-            "synthetic".into(),
+            serial::Device::Named("synthetic".into()),
             9600,
             serial::DataBits::Eight,
             serial::Parity::None,
@@ -420,7 +420,8 @@ mod tests {
                 side,
                 Backoff::new(Duration::from_millis(5), Duration::from_millis(20), 1)
                     .expect("valid backoff"),
-                |_| Ok(Box::new(Echo(VecDeque::new()))),
+                |device| serial::locate(device, || Err(io::ErrorKind::Unsupported.into())),
+                |_, _| Ok(Box::new(Echo(VecDeque::new()))),
             )
         });
         let result = runtime.block_on(async {

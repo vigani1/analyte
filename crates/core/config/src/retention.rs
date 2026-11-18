@@ -61,7 +61,7 @@ pub(crate) fn load_site(path: &str, text: &str) -> Result<crate::Site, crate::Er
             ));
         }
     }
-    crate::load(path, text)
+    crate::load::<crate::schema::SiteFile>(path, text)?.into_site(path)
 }
 
 #[cfg(test)]

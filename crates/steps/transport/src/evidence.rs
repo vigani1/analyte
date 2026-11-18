@@ -83,6 +83,23 @@ impl fmt::Display for Reason {
                 quoted(f, port)?;
                 f.write_char(')')
             }
+            Self::UsbSerialNotConnected(serial) => {
+                f.write_str("UsbSerialNotConnected(")?;
+                quoted(f, serial)?;
+                f.write_char(')')
+            }
+            Self::UsbSerialAmbiguous { serial, ports } => {
+                f.write_str("UsbSerialAmbiguous { serial: ")?;
+                quoted(f, serial)?;
+                f.write_str(", ports: [")?;
+                for (index, port) in ports.iter().enumerate() {
+                    if index > 0 {
+                        f.write_str(", ")?;
+                    }
+                    quoted(f, port)?;
+                }
+                f.write_str("] }")
+            }
             Self::Deadline(operation) => {
                 f.write_str("Deadline(")?;
                 quoted(f, operation.as_str())?;
@@ -169,6 +186,17 @@ mod tests {
             (
                 Reason::PortVanished("a'\n\t\r\0\\\"?".into()),
                 "PortVanished(\"a'\\n\\t\\r\\0\\\\\\\"?\")",
+            ),
+            (
+                Reason::UsbSerialNotConnected("A10K3XYZ".into()),
+                "UsbSerialNotConnected(\"A10K3XYZ\")",
+            ),
+            (
+                Reason::UsbSerialAmbiguous {
+                    serial: "A10K3XYZ".into(),
+                    ports: vec!["COM12".into(), "COM9".into()],
+                },
+                "UsbSerialAmbiguous { serial: \"A10K3XYZ\", ports: [\"COM12\", \"COM9\"] }",
             ),
         ] {
             assert_eq!(reason.to_string(), expected);

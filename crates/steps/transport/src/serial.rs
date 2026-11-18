@@ -1,4 +1,4 @@
-//! Validates serial settings and supplies a replaceable blocking port.
+//! Validates serial settings, finds USB adapters by serial number and supervises a blocking port.
 
 use crate::Error;
 /// Character width and stop bits, converted from their configured counts by the
@@ -57,10 +57,178 @@ impl From<FlowControl> for serialport::FlowControl {
     }
 }
 
-/// Serial settings that never search for or substitute another device name.
+/// Which serial device to open.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Device {
+    /// This exact port name on every open (`COM9`, `/dev/ttyUSB0`).
+    Named(String),
+    /// The one port whose USB adapter reports this serial number, looked up
+    /// again before every open. No match or several matches open nothing.
+    UsbSerial(String),
+}
+
+/// A serial port the operating system lists, with its USB serial number if any.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Listed {
+    /// Port name to open.
+    pub name: String,
+    /// Serial number the USB adapter reports; `None` for other ports.
+    pub usb_serial: Option<String>,
+}
+
+/// Most listed ports a lookup considers; a longer list is refused, never cut.
+pub const LIST_LIMIT: usize = 1024;
+
+/// Lists the serial ports the operating system reports.
+///
+/// Windows reads the serial number from each port's USB hardware ID. Linux reads
+/// `/sys/class/tty` and the USB device's `serial` file, so no system library is
+/// needed. An adapter without its own serial number reports none, or on Windows
+/// a number Windows made up that can change with the USB socket.
+///
+/// # Errors
+/// Returns the listing failure, or `InvalidData` when more than [`LIST_LIMIT`]
+/// ports are listed.
+pub fn list() -> io::Result<Vec<Listed>> {
+    // The serial library panics instead of failing when this folder is missing.
+    #[cfg(target_os = "linux")]
+    if !std::path::Path::new("/sys/class/tty").is_dir() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "/sys/class/tty is missing",
+        ));
+    }
+    let ports = serialport::available_ports().map_err(io_error)?;
+    if ports.len() > LIST_LIMIT {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("more than {LIST_LIMIT} serial ports listed"),
+        ));
+    }
+    Ok(ports
+        .into_iter()
+        .map(|port| Listed {
+            name: port.port_name,
+            usb_serial: match port.port_type {
+                serialport::SerialPortType::UsbPort(usb) => usb.serial_number,
+                serialport::SerialPortType::PciPort
+                | serialport::SerialPortType::BluetoothPort
+                | serialport::SerialPortType::Unknown => None,
+            },
+        })
+        .collect())
+}
+
+/// Keeps the serial library's error with its portable kind; a missing device is `NotFound`.
+fn io_error(source: serialport::Error) -> io::Error {
+    io::Error::new(
+        match source.kind() {
+            serialport::ErrorKind::NoDevice => io::ErrorKind::NotFound,
+            serialport::ErrorKind::Io(kind) => kind,
+            serialport::ErrorKind::InvalidInput => io::ErrorKind::InvalidInput,
+            serialport::ErrorKind::Unknown => io::ErrorKind::Other,
+        },
+        source,
+    )
+}
+
+/// Why a USB serial number named no single port.
+#[derive(Debug, thiserror::Error)]
+pub enum Lookup {
+    /// No listed port reports the serial number.
+    #[error("no USB serial adapter with serial number {serial} is connected")]
+    NotConnected {
+        /// Configured serial number.
+        serial: String,
+    },
+    /// Several listed ports report the serial number; none is opened.
+    #[error(
+        "{} USB serial ports report serial number {serial} ({}); none was opened",
+        ports.len(),
+        ports.join(", ")
+    )]
+    Ambiguous {
+        /// Configured serial number.
+        serial: String,
+        /// Every matching port name.
+        ports: Vec<String>,
+    },
+    /// The operating system could not list its serial ports.
+    #[error("listing serial ports to find USB serial number {serial} failed: {source}")]
+    Listing {
+        /// Configured serial number.
+        serial: String,
+        /// Original listing error.
+        source: io::Error,
+    },
+}
+
+impl Lookup {
+    /// The reason carried on the event stream for this failed lookup.
+    #[must_use]
+    pub fn reason(&self) -> crate::Reason {
+        match self {
+            Self::NotConnected { serial } => crate::Reason::UsbSerialNotConnected(serial.clone()),
+            Self::Ambiguous { serial, ports } => crate::Reason::UsbSerialAmbiguous {
+                serial: serial.clone(),
+                ports: ports.clone(),
+            },
+            Self::Listing { serial, source } => crate::Reason::Io {
+                endpoint: serial.clone(),
+                operation: "list serial ports",
+                kind: source.kind(),
+            },
+        }
+    }
+}
+
+/// Finds the port name to open for `device`; lists ports only for a USB serial number.
+///
+/// Serial numbers compare without ASCII letter case, because Windows reports the
+/// letters of a USB hardware ID in upper case. Several matches are refused, so
+/// this never chooses between two adapters.
+///
+/// # Errors
+/// Returns [`Lookup`] when no port, several ports or no listing is available.
+pub fn locate(
+    device: &Device,
+    list: impl FnOnce() -> io::Result<Vec<Listed>>,
+) -> Result<String, Lookup> {
+    let serial = match device {
+        Device::Named(name) => return Ok(name.clone()),
+        Device::UsbSerial(serial) => serial,
+    };
+    let listed = list().map_err(|source| Lookup::Listing {
+        serial: serial.clone(),
+        source,
+    })?;
+    let mut ports: Vec<String> = listed
+        .into_iter()
+        .filter(|port| {
+            port.usb_serial
+                .as_deref()
+                .is_some_and(|reported| reported.eq_ignore_ascii_case(serial))
+        })
+        .map(|port| port.name)
+        .collect();
+    ports.sort();
+    ports.dedup();
+    match <[String; 1]>::try_from(ports) {
+        Ok([port]) => Ok(port),
+        Err(ports) if ports.is_empty() => Err(Lookup::NotConnected {
+            serial: serial.clone(),
+        }),
+        Err(ports) => Err(Lookup::Ambiguous {
+            serial: serial.clone(),
+            ports,
+        }),
+    }
+}
+
+/// Serial line settings and the device they open.
 #[derive(Clone, Debug)]
 pub struct Settings {
-    name: String,
+    device: Device,
     baud: u32,
     bits: DataBits,
     parity: Parity,
@@ -69,27 +237,37 @@ pub struct Settings {
     timeout: Duration,
 }
 
-// Display is a compatibility format for protected transport-open recordings.
-impl std::fmt::Display for Settings {
+/// The protected transport-open record for one opened port; a compatibility format.
+struct Opened<'a> {
+    settings: &'a Settings,
+    name: &'a str,
+}
+
+impl std::fmt::Display for Opened<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let settings = self.settings;
         f.write_str("Settings { name: ")?;
-        analyte_model::quoted(f, &self.name)?;
-        let bits = match self.bits {
+        analyte_model::quoted(f, self.name)?;
+        if let Device::UsbSerial(serial) = &settings.device {
+            f.write_str(", usb_serial: ")?;
+            analyte_model::quoted(f, serial)?;
+        }
+        let bits = match settings.bits {
             DataBits::Five => "Five",
             DataBits::Six => "Six",
             DataBits::Seven => "Seven",
             DataBits::Eight => "Eight",
         };
-        let parity = match self.parity {
+        let parity = match settings.parity {
             Parity::None => "None",
             Parity::Odd => "Odd",
             Parity::Even => "Even",
         };
-        let stops = match self.stops {
+        let stops = match settings.stops {
             StopBits::One => "One",
             StopBits::Two => "Two",
         };
-        let flow = match self.flow {
+        let flow = match settings.flow {
             FlowControl::None => "None",
             FlowControl::Software => "Software",
             FlowControl::Hardware => "Hardware",
@@ -97,14 +275,14 @@ impl std::fmt::Display for Settings {
         write!(
             f,
             ", baud: {}, bits: {bits}, parity: {parity}, stops: {stops}, flow: {flow}, timeout: ",
-            self.baud
+            settings.baud
         )?;
-        if self.timeout == Duration::from_secs(1) {
+        if settings.timeout == Duration::from_secs(1) {
             f.write_str("1s")?;
         } else {
             // Settings validates 1ms..=1s; retain fractional milliseconds exactly.
-            let millis = self.timeout.as_millis();
-            let fraction = self.timeout.subsec_nanos() % 1_000_000;
+            let millis = settings.timeout.as_millis();
+            let fraction = settings.timeout.subsec_nanos() % 1_000_000;
             if fraction == 0 {
                 write!(f, "{millis}ms")?;
             } else {
@@ -155,21 +333,54 @@ fn serial_recording_spellings_are_compatible() -> Result<(), Error> {
             "Settings { name: \"COM1\", baud: 9600, bits: Eight, parity: None, stops: One, flow: None, timeout: 1s }",
         ),
     ] {
-        assert_eq!(
-            Settings::new("COM1".into(), 9600, bits, parity, stops, flow, timeout)?.to_string(),
-            expected
-        );
+        let settings = Settings::new(
+            Device::Named("COM1".into()),
+            9600,
+            bits,
+            parity,
+            stops,
+            flow,
+            timeout,
+        )?;
+        let opened = Opened {
+            settings: &settings,
+            name: "COM1",
+        };
+        assert_eq!(opened.to_string(), expected);
     }
     Ok(())
 }
 
+// Plan §11
+#[test]
+fn usb_open_record_names_port_and_serial() -> Result<(), Error> {
+    let settings = Settings::new(
+        Device::UsbSerial("A10K3XYZ".into()),
+        9600,
+        DataBits::Eight,
+        Parity::None,
+        StopBits::One,
+        FlowControl::None,
+        Duration::from_secs(1),
+    )?;
+    let opened = Opened {
+        settings: &settings,
+        name: "COM12",
+    };
+    assert_eq!(
+        opened.to_string(),
+        "Settings { name: \"COM12\", usb_serial: \"A10K3XYZ\", baud: 9600, bits: Eight, parity: None, stops: One, flow: None, timeout: 1s }"
+    );
+    Ok(())
+}
+
 impl Settings {
-    /// Validates a fixed port name, nonzero baud rate and 1ms..=1s I/O timeout.
+    /// Validates the device text, a nonzero baud rate and a 1ms..=1s I/O timeout.
     ///
     /// # Errors
-    /// Rejects empty, oversized or NUL-containing names and invalid numeric limits.
+    /// Rejects empty, oversized or NUL-containing device text and invalid numeric limits.
     pub fn new(
-        name: String,
+        device: Device,
         baud: u32,
         bits: DataBits,
         parity: Parity,
@@ -177,16 +388,17 @@ impl Settings {
         flow: FlowControl,
         timeout: Duration,
     ) -> Result<Self, Error> {
-        if name.is_empty()
-            || name.len() > 1024
-            || name.contains('\0')
+        let (Device::Named(text) | Device::UsbSerial(text)) = &device;
+        if text.is_empty()
+            || text.len() > 1024
+            || text.contains('\0')
             || baud == 0
             || !(Duration::from_millis(1)..=Duration::from_secs(1)).contains(&timeout)
         {
             return Err(Error::InvalidLimits);
         }
         Ok(Self {
-            name,
+            device,
             baud,
             bits,
             parity,
@@ -196,101 +408,59 @@ impl Settings {
         })
     }
 
-    /// Returns the fixed device name used for every reopen attempt.
+    /// Returns the device every open attempt looks for.
     #[must_use]
-    pub fn name(&self) -> &str {
-        &self.name
+    pub fn device(&self) -> &Device {
+        &self.device
     }
 
-    /// Opens exactly the configured device with bounded blocking operations.
+    /// Opens the named port with these line settings and bounded blocking operations.
     ///
     /// # Errors
-    /// Preserves the serial library's error with the configured port name.
-    pub fn open(&self) -> Result<Box<dyn serialport::SerialPort>, Error> {
-        serialport::new(&self.name, self.baud)
+    /// Returns the serial library's error with its portable kind; a missing
+    /// device is `NotFound`.
+    pub fn open(&self, name: &str) -> io::Result<Box<dyn Port>> {
+        serialport::new(name, self.baud)
             .data_bits(self.bits)
             .parity(self.parity.into())
             .stop_bits(self.stops)
             .flow_control(self.flow.into())
             .timeout(self.timeout)
             .open()
-            .map_err(|source| Error::Io {
-                operation: "open serial",
-                endpoint: self.name.clone(),
-                source: io::Error::new(
-                    match source.kind() {
-                        serialport::ErrorKind::NoDevice => io::ErrorKind::NotFound,
-                        serialport::ErrorKind::Io(kind) => kind,
-                        serialport::ErrorKind::InvalidInput => io::ErrorKind::InvalidInput,
-                        serialport::ErrorKind::Unknown => io::ErrorKind::Other,
-                    },
-                    source,
-                ),
-            })
+            .map(|port| Box::new(port) as Box<dyn Port>)
+            .map_err(io_error)
     }
 }
 
 /// Runs reconnect supervision on a dedicated, scoped blocking thread.
-/// Only the configured settings reach the factory; no port discovery or substitution occurs.
-/// The factory and fake ports must honor the settings timeout. Drop/cancel the dialog
-/// to stop; no queued write is carried into the next session.
+///
+/// Before every open, `locate` names the port for the configured device: a
+/// named port as written, a USB serial number by a fresh lookup. A failed lookup
+/// is a `Failed` event and waits the same backoff as a failed open. `open` then
+/// opens that port name. Production passes [`locate`] over [`list`] and
+/// [`Settings::open`]; tests pass fakes. Ports must honor the settings timeout.
+/// Drop or cancel the dialog to stop; no queued write is carried into the next
+/// session.
 /// # Errors
 /// Reports event delivery and thread failure; serial failures are ordered events.
-pub fn run<F>(
+pub fn run<L, F>(
     settings: &Settings,
     mut side: crate::IoSide,
     mut retry: crate::Backoff,
+    mut locate: L,
     mut open: F,
 ) -> Result<(), Error>
 where
-    F: FnMut(&Settings) -> Result<Box<dyn Port>, io::Error> + Send,
+    L: FnMut(&Device) -> Result<String, Lookup> + Send,
+    F: FnMut(&str, &Settings) -> io::Result<Box<dyn Port>> + Send,
 {
     std::thread::scope(|scope| {
         scope
             .spawn(move || {
                 while !side.cancel.is_cancelled() {
-                    match open(settings) {
-                        Ok(mut port) => {
-                            retry.reset();
-                            side.start(format!("serial {settings}"))?;
-                            let session = side.generation;
-                            emit(&mut side, crate::Event::Opened { session })?;
-                            let reason = transfer(&mut side, port.as_mut(), &settings.name);
-                            side.stop();
-                            match reason {
-                                Ok(reason) => emit(&mut side, crate::Event::Closed(reason))?,
-                                Err(error) => {
-                                    let reason = if let Error::Io { source, .. } = &error {
-                                        if matches!(
-                                            source.kind(),
-                                            io::ErrorKind::NotFound
-                                                | io::ErrorKind::BrokenPipe
-                                                | io::ErrorKind::NotConnected
-                                        ) {
-                                            crate::Reason::PortVanished(settings.name.clone())
-                                        } else {
-                                            error.reason()
-                                        }
-                                    } else {
-                                        error.reason()
-                                    };
-                                    emit(&mut side, crate::Event::Failed(reason.clone()))?;
-                                    emit(&mut side, crate::Event::Closed(reason))?;
-                                }
-                            }
-                        }
-                        Err(source) => {
-                            let reason = if source.kind() == io::ErrorKind::NotFound {
-                                crate::Reason::PortVanished(settings.name.clone())
-                            } else {
-                                crate::Reason::Io {
-                                    endpoint: settings.name.clone(),
-                                    operation: "open serial",
-                                    kind: source.kind(),
-                                }
-                            };
-                            emit(&mut side, crate::Event::Failed(reason))?;
-                        }
+                    match locate(&settings.device) {
+                        Ok(name) => attempt(&mut side, &mut retry, settings, &name, &mut open)?,
+                        Err(lookup) => emit(&mut side, crate::Event::Failed(lookup.reason()))?,
                     }
                     if side.cancel.is_cancelled() {
                         return Ok(());
@@ -306,33 +476,71 @@ where
             .join()
             .map_err(|_| Error::Io {
                 operation: "join serial owner",
-                endpoint: settings.name.clone(),
+                endpoint: match &settings.device {
+                    Device::Named(text) | Device::UsbSerial(text) => text.clone(),
+                },
                 source: io::Error::other("serial owner thread panicked"),
             })?
     })
 }
 
-/// Opens and supervises the fixed operating system serial device.
-/// # Errors
-/// Reports the same owner and event errors as `run`; device errors are events.
-pub fn run_system(
+/// Opens one located port and serves it until it closes or fails.
+fn attempt<F>(
+    side: &mut crate::IoSide,
+    retry: &mut crate::Backoff,
     settings: &Settings,
-    side: crate::IoSide,
-    retry: crate::Backoff,
-) -> Result<(), Error> {
-    run(settings, side, retry, |settings| {
-        settings
-            .open()
-            .map(|port| Box::new(port) as Box<dyn Port>)
-            .map_err(|error| match error {
-                Error::Io { source, .. } => source,
-                Error::InvalidLimits
+    name: &str,
+    open: &mut F,
+) -> Result<(), Error>
+where
+    F: FnMut(&str, &Settings) -> io::Result<Box<dyn Port>>,
+{
+    let mut port = match open(name, settings) {
+        Ok(port) => port,
+        Err(source) => {
+            let reason = if source.kind() == io::ErrorKind::NotFound {
+                crate::Reason::PortVanished(name.into())
+            } else {
+                crate::Reason::Io {
+                    endpoint: name.into(),
+                    operation: "open serial",
+                    kind: source.kind(),
+                }
+            };
+            return emit(side, crate::Event::Failed(reason));
+        }
+    };
+    retry.reset();
+    side.start(format!("serial {}", Opened { settings, name }))?;
+    let session = side.generation;
+    emit(side, crate::Event::Opened { session })?;
+    let reason = transfer(side, port.as_mut(), name);
+    side.stop();
+    match reason {
+        Ok(reason) => emit(side, crate::Event::Closed(reason)),
+        Err(error) => {
+            let reason = match &error {
+                Error::Io { source, .. }
+                    if matches!(
+                        source.kind(),
+                        io::ErrorKind::NotFound
+                            | io::ErrorKind::BrokenPipe
+                            | io::ErrorKind::NotConnected
+                    ) =>
+                {
+                    crate::Reason::PortVanished(name.into())
+                }
+                Error::Io { .. }
+                | Error::InvalidLimits
                 | Error::OversizedWrite
                 | Error::ConsumerClosed
                 | Error::Offline
-                | Error::Deadline(_) => io::Error::other(error),
-            })
-    })
+                | Error::Deadline(_) => error.reason(),
+            };
+            emit(side, crate::Event::Failed(reason.clone()))?;
+            emit(side, crate::Event::Closed(reason))
+        }
+    }
 }
 
 pub(crate) fn emit(side: &mut crate::IoSide, event: crate::Event) -> Result<(), Error> {

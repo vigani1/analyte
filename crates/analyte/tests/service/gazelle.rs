@@ -59,7 +59,7 @@ async fn gazelle_lab28_live() -> Result<(), Error> {
     let path = artifacts.join("analyte.toml");
     let mut program = Program::load(&path)?;
     let machine = program.machines().first().ok_or("machine")?;
-    if machine.snapshot().effective().site().endpoint != endpoint {
+    if machine.snapshot().effective().site().endpoint.fixed()? != endpoint {
         return Err("configured endpoint differs from explicit authorization".into());
     }
     let data = program.data_directory().to_owned();

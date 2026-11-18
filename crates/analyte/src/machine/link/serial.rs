@@ -3,7 +3,9 @@ use super::error::Error as LinkError;
 use super::{Kind, Next, recorded_connection, retry, session_ended};
 use crate::machine::protocols::{self, SerialLink};
 use crate::machine::{Error, Handle, Limits, Machine};
-use analyte_transport::{Backoff, Cancellation, IoSide, serial::Settings};
+use analyte_config::Endpoint;
+use analyte_transport::serial::{self, Device, Settings};
+use analyte_transport::{Backoff, Cancellation, IoSide};
 use std::{sync::Arc, thread, time::Duration};
 use tokio::sync::watch;
 
@@ -75,6 +77,81 @@ impl Owner {
 type Worker =
     Arc<dyn Fn(Settings, IoSide, Backoff) -> Result<(), analyte_transport::Error> + Send + Sync>;
 
+/// Finds the port for each open attempt and logs the outcome when it changes.
+///
+/// A USB serial number is looked up again before every open, so an adapter that
+/// moves from COM9 to COM12 is followed. The log names the serial number and the
+/// port only, and repeats only when the outcome changes, so a missing adapter
+/// retried every few seconds does not flood the log. Each failed lookup is
+/// still a `Failed` transport event.
+struct Locator {
+    machine: String,
+    last: Option<Result<String, String>>,
+}
+
+impl Locator {
+    fn new(machine: &str) -> Self {
+        Self {
+            machine: machine.to_owned(),
+            last: None,
+        }
+    }
+
+    fn locate(
+        &mut self,
+        device: &Device,
+        list: impl FnOnce() -> std::io::Result<Vec<serial::Listed>>,
+    ) -> Result<String, serial::Lookup> {
+        let found = serial::locate(device, list);
+        let Device::UsbSerial(usb_serial) = device else {
+            return found;
+        };
+        let outcome = found
+            .as_ref()
+            .map(Clone::clone)
+            .map_err(ToString::to_string);
+        if self.last.as_ref() != Some(&outcome) {
+            let machine = self.machine.as_str();
+            match &found {
+                Ok(port) => tracing::info!(
+                    machine,
+                    usb_serial,
+                    port = port.as_str(),
+                    "serial port found by USB serial number"
+                ),
+                Err(error) => tracing::warn!(
+                    machine,
+                    usb_serial,
+                    error_kind = %error,
+                    "serial port not found by USB serial number; retrying"
+                ),
+            }
+            self.last = Some(outcome);
+        }
+        found
+    }
+}
+
+/// Builds the port thread body from a port lister and an opener. Production
+/// passes the operating system's; tests pass scripted ones through the same path.
+fn worker<L, O>(machine: &str, list: L, open: O) -> Worker
+where
+    L: Fn() -> std::io::Result<Vec<serial::Listed>> + Send + Sync + 'static,
+    O: Fn(&str, &Settings) -> std::io::Result<Box<dyn serial::Port>> + Send + Sync + 'static,
+{
+    let machine = machine.to_owned();
+    Arc::new(move |settings, side, retry| {
+        let mut locator = Locator::new(&machine);
+        serial::run(
+            &settings,
+            side,
+            retry,
+            |device| locator.locate(device, &list),
+            &open,
+        )
+    })
+}
+
 pub(in crate::machine) async fn run(
     machine: &Machine,
     store: &Handle,
@@ -84,8 +161,8 @@ pub(in crate::machine) async fn run(
     closing: crate::machine::Closing,
     capture: Option<&crate::machine::capture::Capture>,
 ) -> Result<(), Error> {
-    let worker: Worker = Arc::new(|settings, side, retry| {
-        analyte_transport::serial::run_system(&settings, side, retry)
+    let worker = worker(machine.id.as_str(), serial::list, |name, settings| {
+        settings.open(name)
     });
     serve(
         machine, store, link, limits, stop, closing, capture, &worker,
@@ -161,8 +238,12 @@ async fn serve(
 }
 
 fn settings(machine: &Machine, serial: &analyte_config::Serial) -> Result<Settings, Error> {
+    let device = match &machine.snapshot.effective().site().endpoint {
+        Endpoint::Fixed(name) => Device::Named(name.clone()),
+        Endpoint::UsbSerial(usb_serial) => Device::UsbSerial(usb_serial.as_str().to_owned()),
+    };
     Ok(Settings::new(
-        machine.snapshot.effective().site().endpoint.clone(),
+        device,
         serial.baud,
         serial
             .data_bits
@@ -245,14 +326,21 @@ mod tests {
         }
     }
 
+    /// A named port is opened as written; listing ports for it would be a bug.
+    fn never_listed(device: &Device) -> Result<String, serial::Lookup> {
+        serial::locate(device, || {
+            Err(std::io::Error::other("a named port is never listed"))
+        })
+    }
+
     fn port_settings(name: &str) -> Result<Settings, Error> {
         Ok(Settings::new(
-            name.into(),
+            Device::Named(name.into()),
             9600,
-            analyte_transport::serial::DataBits::Eight,
-            analyte_transport::serial::Parity::None,
-            analyte_transport::serial::StopBits::One,
-            analyte_transport::serial::FlowControl::None,
+            serial::DataBits::Eight,
+            serial::Parity::None,
+            serial::StopBits::One,
+            serial::FlowControl::None,
             Duration::from_millis(10),
         )?)
     }
@@ -315,14 +403,15 @@ mod tests {
                 input: received,
                 output,
             });
-            analyte_transport::serial::run(
+            serial::run(
                 &settings,
                 side,
                 retry().expect("valid retry"),
-                move |_| {
+                never_listed,
+                move |_, _| {
                     opened.blocking_send(()).map_err(std::io::Error::other)?;
                     port.take()
-                        .map(|p| Box::new(p) as Box<dyn analyte_transport::serial::Port>)
+                        .map(|p| Box::new(p) as Box<dyn serial::Port>)
                         .ok_or_else(|| std::io::ErrorKind::PermissionDenied.into())
                 },
             )
@@ -398,12 +487,13 @@ mod tests {
             analyte_transport::connection(Limits::new(16, Duration::from_secs(2))?);
         let cancellation = conn.cancellation();
         let worker = thread::spawn(move || {
-            analyte_transport::serial::run(
+            serial::run(
                 &settings,
                 side,
                 retry().expect("valid retry"),
-                |settings| {
-                    assert_eq!(settings.name(), "synthetic-refused-port");
+                never_listed,
+                |name, _| {
+                    assert_eq!(name, "synthetic-refused-port");
                     Err(std::io::ErrorKind::PermissionDenied.into())
                 },
             )
@@ -505,14 +595,14 @@ flow_control = \"none\"
         let ports = std::sync::Mutex::new(ports);
         let worker: Worker = Arc::new(move |settings, side, retry| {
             let opened = opened.clone();
-            analyte_transport::serial::run(&settings, side, retry, |_| {
+            serial::run(&settings, side, retry, never_listed, |_, _| {
                 let port = ports
                     .lock()
                     .map_err(|_| std::io::Error::other("port lock"))?
                     .pop_front();
                 let port = port.ok_or(std::io::ErrorKind::PermissionDenied)?;
                 opened.blocking_send(()).map_err(std::io::Error::other)?;
-                Ok(Box::new(port) as Box<dyn analyte_transport::serial::Port>)
+                Ok(Box::new(port) as Box<dyn serial::Port>)
             })
         });
         let (stop, stopping) = watch::channel(false);
@@ -564,6 +654,174 @@ flow_control = \"none\"
         assert_eq!(received, 1, "the failed session's input stays stored");
         let parked: i64 = db.query_row("SELECT count(*) FROM parked", [], |r| r.get(0))?;
         assert!(parked >= 1, "the rejected byte is parked with its reason");
+        store.shutdown(crate::deadline()?).await?;
+        Ok(())
+    }
+
+    const ASTM: &str = include_str!("../../../../core/config/examples/astm.toml");
+
+    /// An ASTM serial program whose site file names its port with `location`.
+    fn located_program(
+        root: &std::path::Path,
+        location: &str,
+    ) -> Result<crate::installation::config::Program, Error> {
+        use analyte_fixtures::ConfigEdit as _;
+        serial_program(root, ASTM)?;
+        std::fs::write(
+            root.join("site.toml"),
+            include_str!("../../../../core/config/examples/site.toml")
+                .rewrite("endpoint = \"127.0.0.1:5600\"", location),
+        )?;
+        crate::installation::config::Program::load(&root.join("program.toml")).map_err(Into::into)
+    }
+
+    fn serial_link(machine: &Machine) -> Result<SerialLink<'_>, Error> {
+        let protocols::Link::Serial(link) =
+            protocols::transport(machine.snapshot.effective().stack())
+        else {
+            return Err("expected serial".into());
+        };
+        Ok(link)
+    }
+
+    fn usb(port: &str) -> serial::Listed {
+        serial::Listed {
+            name: port.into(),
+            usb_serial: Some("A10K3XYZ".into()),
+        }
+    }
+
+    // Plan §11
+    #[test]
+    fn site_port_form_reaches_the_serial_link() -> Result<(), Error> {
+        for (location, device) in [
+            ("endpoint = \"COM9\"", Device::Named("COM9".into())),
+            (
+                "usb_serial = \"A10K3XYZ\"",
+                Device::UsbSerial("A10K3XYZ".into()),
+            ),
+        ] {
+            let root = crate::admin::private_tempdir()?;
+            let program = located_program(root.path(), location)?;
+            let machine = program.machines().first().ok_or("missing machine")?;
+            let link = serial_link(machine)?;
+            assert_eq!(settings(machine, link.settings)?.device(), &device);
+        }
+        Ok(())
+    }
+
+    // Plan §11; safety rule 10: the log names the serial number and port, no payload.
+    #[test]
+    fn usb_lookup_logs_each_change_once() {
+        let device = Device::UsbSerial("A10K3XYZ".into());
+        let mut locator = Locator::new("synthetic");
+        let logs = crate::machine::worker::tests::capture(|| {
+            for listed in [
+                vec![],
+                vec![],
+                vec![usb("COM9")],
+                vec![usb("COM9")],
+                vec![usb("COM9"), usb("COM12")],
+                vec![usb("COM12")],
+            ] {
+                let _ = locator.locate(&device, || Ok(listed));
+            }
+        });
+        let lines: Vec<&str> = logs.lines().collect();
+        assert_eq!(lines.len(), 4, "{logs}");
+        assert!(
+            lines[0].contains("no USB serial adapter with serial number A10K3XYZ is connected")
+        );
+        assert!(lines[1].contains("port=\"COM9\""), "{logs}");
+        assert!(
+            lines[2].contains("(COM12, COM9); none was opened"),
+            "{logs}"
+        );
+        assert!(lines[3].contains("port=\"COM12\""), "{logs}");
+        assert!(
+            lines
+                .iter()
+                .all(|line| line.contains("machine=\"synthetic\""))
+        );
+    }
+
+    // Plan §11: the site names the adapter by serial number; the adapter moves
+    // from COM9 to COM12 while the port is open, and the link reopens on COM12.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn link_follows_adapter_to_new_port() -> Result<(), Error> {
+        let root = crate::admin::private_tempdir()?;
+        let program = located_program(root.path(), "usb_serial = \"A10K3XYZ\"")?;
+        let mut store = crate::runtime::service::open_store_with_deadline(
+            &program,
+            Box::new(Space),
+            crate::deadline()?,
+        )
+        .await?;
+        let machine = program.machines().first().ok_or("missing machine")?;
+        let link = serial_link(machine)?;
+        let lists = Arc::new(std::sync::Mutex::new(std::collections::VecDeque::from([
+            vec![usb("COM9")],
+            vec![usb("COM12")],
+        ])));
+        let (vanish, vanished) = std::sync::mpsc::sync_channel(4);
+        let (idle, quiet) = std::sync::mpsc::sync_channel(4);
+        let (first, _first) = tokio::sync::mpsc::channel(4);
+        let (second, _second) = tokio::sync::mpsc::channel(4);
+        let ports = std::sync::Mutex::new(std::collections::VecDeque::from([
+            (vanished, first),
+            (quiet, second),
+        ]));
+        let (opened, mut names) = tokio::sync::mpsc::channel(4);
+        let worker = worker(
+            "synthetic",
+            move || {
+                let mut lists = lists.lock().map_err(|_| std::io::Error::other("lists"))?;
+                // The last list stays connected until the test ends.
+                Ok(if lists.len() > 1 {
+                    lists.pop_front().unwrap_or_default()
+                } else {
+                    lists.front().cloned().unwrap_or_default()
+                })
+            },
+            move |name, _| {
+                let (input, output) = ports
+                    .lock()
+                    .map_err(|_| std::io::Error::other("ports"))?
+                    .pop_front()
+                    .ok_or(std::io::ErrorKind::PermissionDenied)?;
+                opened
+                    .blocking_send(name.to_owned())
+                    .map_err(std::io::Error::other)?;
+                Ok(Box::new(Port { input, output }) as Box<dyn serial::Port>)
+            },
+        );
+        let (stop, stopping) = watch::channel(false);
+        let (ready, _ready) = watch::channel(false);
+        let (_close, close) = watch::channel(true);
+        let owner = serve(
+            machine,
+            &store,
+            link,
+            Limits::new(16, Duration::from_secs(2))?,
+            stopping,
+            crate::machine::Closing { ready, close },
+            None,
+            &worker,
+        );
+        let conversation = async {
+            assert_eq!(names.recv().await.as_deref(), Some("COM9"));
+            vanish.send(Err(std::io::ErrorKind::NotFound.into()))?;
+            assert_eq!(names.recv().await.as_deref(), Some("COM12"));
+            stop.send_replace(true);
+            Ok::<_, Error>(())
+        };
+        let (served, conversation) = tokio::time::timeout(analyte_fixtures::HANG_GUARD, async {
+            tokio::join!(owner, conversation)
+        })
+        .await?;
+        conversation?;
+        served?;
+        drop(idle);
         store.shutdown(crate::deadline()?).await?;
         Ok(())
     }

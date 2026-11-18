@@ -30,7 +30,17 @@ pub(super) fn validate_site(site: &Site, transport: &Transport, path: &str) -> R
             "must be 1 through 120 seconds",
         ));
     }
-    let endpoint = &site.endpoint;
+    let endpoint = match &site.endpoint {
+        crate::Endpoint::Fixed(endpoint) => endpoint,
+        crate::Endpoint::UsbSerial(_) if transport.kind == TransportKind::Serial => return Ok(()),
+        crate::Endpoint::UsbSerial(_) => {
+            return Err(invalid(
+                path,
+                "usb_serial",
+                "a USB serial number selects a serial port; TCP and folder links need endpoint",
+            ));
+        }
+    };
     if endpoint.is_empty() || endpoint.len() > 1024 || endpoint.chars().any(char::is_control) {
         return Err(invalid(
             path,

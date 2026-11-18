@@ -171,7 +171,7 @@ evidence_files = []
 # Synthetic installation; credential names only.
 schema_version = 1
 retention = 90 # recommended; requires the retention-digest host credential
-endpoint = "COM9"
+endpoint = "COM9" # or usb_serial = "A10K3XYZ"; see operations/connect.md
 [destination]
 name = "demo"
 base_url = "https://lab.example.invalid"

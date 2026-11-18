@@ -98,6 +98,15 @@ pub enum Reason {
     },
     /// The fixed serial device is no longer available.
     PortVanished(String),
+    /// No USB serial adapter reports the configured serial number.
+    UsbSerialNotConnected(String),
+    /// Several serial ports report the configured USB serial number; none was opened.
+    UsbSerialAmbiguous {
+        /// Configured serial number.
+        serial: String,
+        /// Every matching port name.
+        ports: Vec<String>,
+    },
     /// Server refused an excess connection.
     LimitReached,
     /// An operation deadline elapsed.
