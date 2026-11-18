@@ -83,8 +83,7 @@ impl Store {
             "JOIN receipts r ON r.id=o.receipt WHERE o.destination=?1 AND o.state!=?2 ",
             "UNION SELECT m.machine FROM outbox o JOIN machine_orders m ",
             "ON m.order_id=o.order_id AND m.destination=o.destination ",
-            "WHERE o.destination=?1 AND o.state!=?2 AND o.kind=?3",
-            ") ORDER BY machine LIMIT ?4"
+            "WHERE o.destination=?1 AND o.state!=?2 AND o.kind=?3) ORDER BY machine LIMIT ?4"
         ))?;
         rows.into_iter()
             .map(|(destination, sending, held)| {
