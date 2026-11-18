@@ -20,3 +20,4 @@ replacement.
 | [0012](0012-uniform-layout-and-naming.md)       | One layout and naming scheme for protocols and machines |
 | [0013](0013-retention-of-delivered-data.md)     | Retention of delivered data (refines ADR 0003)     |
 | [0014](0014-external-alert-delivery.md)         | External alert delivery                |
+| [0017](0017-windows-access-list-unsafe.md)      | Unsafe code for Windows access lists               |

@@ -49,6 +49,8 @@ Use an elevated PowerShell window. Paths below are the packaged defaults.
    `NT SERVICE\Analyte`, and leaves it stopped. It sets automatic startup and
    failure restarts after 5, 15 and 60 seconds. It protects the data directory:
    SYSTEM and Administrators get FullControl; the service gets Modify.
+   Analyte refuses to start if the data directory grants anyone else access,
+   including inherited BUILTIN\Users read access; the error names the SID.
 4. Grant the service Read/Execute on binaries, Read on config and the required
    device access. The installer does not grant these. Provision credentials
    for the service environment, not just the terminal. See [Connect](connect.md).

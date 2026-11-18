@@ -49,6 +49,13 @@ keep them protected. Grant the virtual account read access to configuration
 and serial/device access separately as required by the site's hardware policy.
 Do not run the service as LocalSystem to bypass a permission problem.
 
+Analyte checks this at startup and before loading the admin token
+([ADR 0017](../../docs/adr/0017-windows-access-list-unsafe.md)). It refuses to
+run when the data directory, or the token file, has an owner or any allow
+entry (explicit or inherited) other than SYSTEM, Administrators, the account
+it runs as or `NT SERVICE\Analyte`. The error names the SID to remove. A data
+directory that Analyte creates itself gets the installer's protected ACL.
+
 Provision the host's required `ANALYTE_SECRET_<NAME>` environment variables for
 the service before starting it. A terminal's environment does not configure an
 SCM service. Use your deployment's protected service environment provisioning;
