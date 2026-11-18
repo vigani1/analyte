@@ -111,7 +111,7 @@ pub(crate) async fn interpret_with_location(
 ) -> Result<
     (
         InterpretationOutcome,
-        Option<crate::machine::hl7::error_location::Location>,
+        Option<crate::machine::hl7::location::Location>,
     ),
     Error,
 > {

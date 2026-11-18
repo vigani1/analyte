@@ -110,7 +110,7 @@ async fn cycle(
 mod tests {
     use super::*;
     use crate::Error;
-    use crate::runtime::test_tracing::Log;
+    use crate::runtime::log_capture::Log;
     use std::sync::Mutex;
     use tracing::instrument::WithSubscriber as _;
     async fn open(path: std::path::PathBuf) -> Result<Handle, Error> {

@@ -109,7 +109,7 @@ async fn exercise(definition: &str, raw: Vec<u8>) -> Result<(), Error> {
         commit.outcomes.as_slice(),
         [RevisionOutcome::New(_)]
     ));
-    assert_repair_resolves_original(&store, id, parked, original).await?;
+    assert_repair_resolves_original(&store, machine, id, parked, original).await?;
     assert_retransmission_and_conflict(
         &store,
         machine,
@@ -156,11 +156,13 @@ async fn assert_repeated_failure_stays_parked(
 
 async fn assert_repair_resolves_original(
     store: &Handle,
+    machine: &Machine,
     id: ReceiptId,
     parked: i64,
     original: String,
 ) -> Result<(), Error> {
     let original_check = original;
+    let destination = crate::orders::destination(machine);
     store
         .request::<_, FixtureError>(deadline()?, move |s| {
             assert_eq!(
@@ -175,7 +177,9 @@ async fn assert_repair_resolves_original(
             assert!(resolved.contains("interpretation:"));
             assert!(resolved.contains(":3"));
             assert_eq!(s.deliveries(0)?.len(), 1);
-            let claim = s.claim(50)?.ok_or(FixtureError::Corruption)?;
+            let claim = s
+                .claim_destination(50, &destination)?
+                .ok_or(FixtureError::Corruption)?;
             Ok(s.attempted(claim.id, &Attempt::Done, 50)?)
         })
         .await?;
@@ -204,6 +208,7 @@ async fn assert_retransmission_and_conflict(
     let machine = changed.machines().first().ok_or("missing machine")?;
     let commit = reprocess(store, machine, action(id, None)?).await?;
     assert_eq!(commit.outcomes, vec![RevisionOutcome::Conflict]);
+    let destination = crate::orders::destination(machine);
     store
         .request::<_, FixtureError>(deadline()?, move |s| {
             let receipt = s.receipt(id)?.ok_or(FixtureError::Corruption)?;
@@ -224,7 +229,7 @@ async fn assert_retransmission_and_conflict(
             );
             assert_ne!(current.config, receipt.config);
             assert_eq!(s.deliveries(0)?.len(), 1);
-            assert!(s.claim(50)?.is_none());
+            assert!(s.claim_destination(50, &destination)?.is_none());
             assert_eq!(s.audits(0)?.len(), 4);
             assert!(s.parked(0)?.iter().any(|p| p.evidence.contains("Conflict")));
             Ok::<_, FixtureError>(())

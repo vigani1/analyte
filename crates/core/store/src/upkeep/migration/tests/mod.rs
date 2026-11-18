@@ -19,6 +19,7 @@ fn verify_plan11_v1_evidence(
     rows: Vec<i64>,
     triggers: Vec<String>,
 ) -> TestResult {
+    let app = Identifier::new("app")?;
     for (table, count) in tables.iter().zip(rows) {
         assert_eq!(
             migrated
@@ -31,7 +32,9 @@ fn verify_plan11_v1_evidence(
     assert_eq!(migrated.raw(receipt_id)?, Some(b"raw".to_vec()));
     assert_eq!(migrated.frames(&Identifier::new("transfer")?, 0)?.len(), 1);
     assert!(migrated.interpretation(receipt_id, 1)?.is_some());
-    let claim = migrated.claim(10)?.ok_or(MaintenanceError::Corruption)?;
+    let claim = migrated
+        .claim_destination(10, &app)?
+        .ok_or(MaintenanceError::Corruption)?;
     assert_eq!(claim.id, id);
     assert_eq!(claim.payload, vec![0, 17, 34]);
     assert_eq!(claim.earlier_attempts, 1);

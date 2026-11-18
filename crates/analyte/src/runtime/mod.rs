@@ -1,11 +1,11 @@
 //! Starts service workers and coordinates bounded shutdown.
 pub(crate) mod delivery;
+#[cfg(test)]
+pub(crate) mod log_capture;
 pub mod service;
 pub(crate) mod shutdown;
 pub(crate) mod space;
 pub mod test_hooks;
-#[cfg(test)]
-pub(crate) mod test_tracing;
 #[cfg(windows)]
 pub mod windows_service;
 

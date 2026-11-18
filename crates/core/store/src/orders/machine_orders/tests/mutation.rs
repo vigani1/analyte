@@ -290,6 +290,7 @@ fn mutation_adr0003_rule8_order_history_and_operator_audit_bounds_are_inclusive(
 #[test]
 fn mutation_adr0003_rule8_order_event_checks_each_bound_and_provenance_field_atomically()
 -> TestResult {
+    let app = Identifier::new("app")?;
     for case in [
         "valid",
         "large-one",
@@ -349,7 +350,10 @@ fn mutation_adr0003_rule8_order_event_checks_each_bound_and_provenance_field_ato
         if case == "valid" {
             assert_eq!(result?.state, OrderState::Sent);
             assert_eq!(
-                store.claim(102)?.ok_or("missing event")?.payload,
+                store
+                    .claim_destination(102, &app)?
+                    .ok_or("missing event")?
+                    .payload,
                 vec![b'x'; 2048]
             );
         } else {
@@ -370,7 +374,7 @@ fn mutation_adr0003_rule8_order_event_checks_each_bound_and_provenance_field_ato
                         .get::<_, i64>(0))?,
                 1
             );
-            assert!(store.claim(102)?.is_none());
+            assert!(store.claim_destination(102, &app)?.is_none());
         }
     }
     Ok(())

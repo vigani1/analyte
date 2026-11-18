@@ -209,6 +209,7 @@ fn mutation_adr0003_reconciliation_rejects_each_provenance_mismatch_without_inte
 #[test]
 fn mutation_adr0003_reconciliation_refuses_wrong_result_receipt_and_correction_count_atomically()
 -> TestResult {
+    let app = Identifier::new("app")?;
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("result-owner.db"))?;
     let metadata = receipt(b"raw")?;
@@ -233,7 +234,7 @@ fn mutation_adr0003_reconciliation_refuses_wrong_result_receipt_and_correction_c
                     .get::<_, i64>(0))?,
             0
         );
-        assert!(store.claim(0)?.is_none());
+        assert!(store.claim_destination(0, &app)?.is_none());
     }
     Ok(())
 }
@@ -404,6 +405,7 @@ fn mutation_adr0003_rule7_interpretation_and_audit_byte_limits_are_inclusive() -
 
 #[test]
 fn mutation_adr0003_delivery_bounds_and_machine_owner_refuse_atomically() -> TestResult {
+    let app = Identifier::new("app")?;
     for (length, wrong_machine, succeeds) in [
         (2048, false, true),
         (2049, false, false),
@@ -459,7 +461,9 @@ fn mutation_adr0003_delivery_bounds_and_machine_owner_refuse_atomically() -> Tes
         );
         if succeeds {
             assert_eq!(result?.version, 1);
-            let claim = store.claim(0)?.ok_or("missing delivery")?;
+            let claim = store
+                .claim_destination(0, &app)?
+                .ok_or("missing delivery")?;
             assert_eq!(claim.id, id);
             assert_eq!(claim.payload, vec![b'x'; length]);
         } else {
@@ -468,7 +472,7 @@ fn mutation_adr0003_delivery_bounds_and_machine_owner_refuse_atomically() -> Tes
                 Err(ReconciliationError::InvalidInterpretationInput)
             ));
             assert!(store.interpretation(metadata.id, 1)?.is_none());
-            assert!(store.claim(0)?.is_none());
+            assert!(store.claim_destination(0, &app)?.is_none());
             assert_eq!(
                 store
                     .db

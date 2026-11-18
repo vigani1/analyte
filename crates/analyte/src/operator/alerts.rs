@@ -270,12 +270,12 @@ mod tests {
         Ok(())
     }
 
-    use crate::runtime::test_tracing::Log;
+    use crate::runtime::log_capture::Log;
 
     // Rule 10 and plan section 11: only scalar values and machine IDs reach transition logs.
     #[test]
     fn rule10_alert_logs_exclude_responder_and_sample_ids() -> Result<(), Error> {
-        crate::runtime::test_tracing::init();
+        crate::runtime::log_capture::init();
         let log = Log(Arc::new(Mutex::new(Vec::new())));
         let subscriber = tracing_subscriber::fmt()
             .with_ansi(false)
