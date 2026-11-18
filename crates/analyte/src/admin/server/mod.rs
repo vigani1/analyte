@@ -214,10 +214,18 @@ fn router(state: Arc<Context>) -> Router {
                 .route("/setup/listen", get(super::setup::listen_view))
                 .route("/setup/listen/stop", post(super::setup::listen_stop))
                 .route(
+                    "/setup/add",
+                    get(super::setup::add_form).post(super::setup::add),
+                )
+                .route(
                     "/setup/{id}",
                     get(super::setup::machine).post(super::setup::save),
                 )
                 .route("/setup/{id}/listen", post(super::setup::listen_start))
+                .route(
+                    "/setup/{id}/remove",
+                    get(super::setup::confirm_remove).post(super::setup::remove),
+                )
                 // Runs after the outer limit below, so setup forms get the larger bound.
                 .layer(DefaultBodyLimit::max(super::setup::FORM_LIMIT)),
         )

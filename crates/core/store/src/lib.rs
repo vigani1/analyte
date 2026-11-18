@@ -47,7 +47,7 @@ pub use revisions::{
     StatusLifecycle,
 };
 
-pub use query::{Frame, ParkedItem, Receipt};
+pub use query::{Frame, ParkedItem, Receipt, Unfinished};
 
 pub use records::{
     Attempt, Audit, CachedOrder, Claim, Delivery, DeliveryKind, FrameProvenance, Health,

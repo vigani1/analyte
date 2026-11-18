@@ -49,6 +49,21 @@ pub enum Error {
         "a machine listed without a definition cannot have capture or overrides until it is set up"
     )]
     AwaitingSetupWithSettings,
+    /// No machine is listed and there is no setup page to add one.
+    #[error(
+        "the program lists no machines; enable [admin] so the setup page can add one, or add a [[machines]] entry"
+    )]
+    NoMachines,
+    /// Two machines would open the same port, serial number, address or folder.
+    #[error("machines {first} and {second} both use {what}; give each machine its own connection")]
+    SharedConnection {
+        /// The machine listed first.
+        first: String,
+        /// The machine listed later.
+        second: String,
+        /// The shared connection, for example "serial port COM3".
+        what: String,
+    },
     /// A required installation setting or relationship is refused.
     #[error("duplicate machine identity")]
     DuplicateMachineIdentity,
@@ -140,6 +155,8 @@ impl Error {
             | Self::ConfigurationTooLarge
             | Self::ConfigurationHasNoParentDirectory
             | Self::DuplicateMachineIdentity
+            | Self::NoMachines
+            | Self::SharedConnection { .. }
             | Self::SetupNeedsAdmin
             | Self::AwaitingSetupWithSettings
             | Self::InconsistentSharedDestination

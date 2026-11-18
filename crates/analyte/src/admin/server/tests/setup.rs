@@ -624,3 +624,525 @@ async fn definition_change_edits_program_and_rolls_back_on_refusal() -> Result<(
     );
     Ok(())
 }
+
+/// A program with the setup page, the running serial machine `synthetic` and the
+/// waiting `machine-2`, whose starter site file is written beside it.
+async fn start_two() -> Result<Fixture, Error> {
+    let fixture = start_with(
+        concat!(
+            "[admin]\nport = 8080\n",
+            "[[machines]]\nid = 'synthetic'\ndefinition = 'machines/example/serial-astm/machine.toml'\nsite = 'site.toml'\n",
+            "[[machines]]\nid = 'machine-2'\nsite = 'machine-2.site.toml'\n"
+        ),
+        &include_str!("../../../../../core/config/examples/site.toml")
+            .rewrite("endpoint = \"127.0.0.1:5600\"", "usb_serial = \"A10K3XYZ\""),
+    )
+    .await?;
+    std::fs::write(
+        fixture.root().join("machine-2.site.toml"),
+        include_str!("../../../../../../packaging/linux/starter/machine-1.site.toml"),
+    )?;
+    Ok(fixture)
+}
+
+impl Fixture {
+    fn root(&self) -> &std::path::Path {
+        self.config
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."))
+    }
+
+    /// Posts `fields` with the CSRF value of the page at `page`.
+    async fn submit(
+        &self,
+        page: &str,
+        path: &str,
+        fields: &[(&str, &str)],
+    ) -> Result<String, Error> {
+        let form = self.get(page).await?;
+        let mut body = vec![format!("csrf={}", encode(&csrf(&form)?))];
+        body.extend(
+            fields
+                .iter()
+                .map(|(name, value)| format!("{name}={}", encode(value))),
+        );
+        self.post(path, &body.join("&")).await
+    }
+
+    async fn unfinished(&self, machine: &str) -> Result<analyte_store::Unfinished, Error> {
+        let machine = Identifier::new(machine)?;
+        Ok(self
+            .store
+            .request::<_, FixtureError>(fixture_deadline()?, move |s| Ok(s.unfinished(&machine)?))
+            .await?)
+    }
+
+    async fn audited(&self, action: &str) -> Result<Vec<String>, Error> {
+        let audits = self
+            .store
+            .request::<_, FixtureError>(fixture_deadline()?, |s| Ok(s.audits(0)?))
+            .await?;
+        Ok(audits
+            .into_iter()
+            .filter(|(_, audit)| audit.action.as_str() == action)
+            .map(|(_, audit)| {
+                let targets: Vec<&str> = audit.targets.iter().map(Identifier::as_str).collect();
+                format!(
+                    "{} {} {}",
+                    audit.actor.as_str(),
+                    targets.join(","),
+                    audit.reason.as_str()
+                )
+            })
+            .collect())
+    }
+}
+
+/// Stores, for `machine`, one unread receipt with an unresolved flagged item and
+/// one uncertain machine order with its order event waiting in the outbox.
+async fn seed_unfinished(
+    store: &analyte_store::Handle,
+    machine: &'static str,
+) -> Result<(), Error> {
+    store
+        .request::<_, FixtureError>(fixture_deadline()?, move |store| {
+            let id = |value| Identifier::new(value).map_err(FixtureError::Text);
+            let raw = b"protected-raw-never-log";
+            let receipt = analyte_model::ReceiptId::try_from(uuid::Uuid::now_v7())
+                .map_err(FixtureError::Identity)?;
+            store.receive(
+                &analyte_model::ReceiptMetadata {
+                    id: receipt,
+                    raw_digest: analyte_model::Digest(analyte_contract::content_digest(raw)),
+                    connection: id("synthetic")?,
+                    machine: id(machine)?,
+                    driver: analyte_model::NamespacedId {
+                        namespace: id("synthetic")?,
+                        value: id("1")?,
+                    },
+                    config_version: id("1")?,
+                    config_digest: analyte_model::Digest(analyte_contract::content_digest(b"c")),
+                    received_at: jiff::Timestamp::from_second(100)
+                        .map_err(FixtureError::EvidenceTimestamp)?,
+                },
+                raw,
+                b"c",
+            )?;
+            store.park(&analyte_store::Parked {
+                kind: id("synthetic")?,
+                reason: Reason::new("synthetic flagged item").map_err(FixtureError::Text)?,
+                targets: vec![
+                    Identifier::new(&uuid::Uuid::from(receipt).to_string())
+                        .map_err(FixtureError::Text)?,
+                ],
+            })?;
+            store.order_page(&analyte_store::OrderPage {
+                destination: id("demo")?,
+                cursor: id("cursor")?,
+                complete: true,
+                polled: 100,
+                orders: vec![analyte_store::CachedOrder {
+                    id: id("order-1")?,
+                    sample: analyte_model::SampleId::new("0042").map_err(FixtureError::Text)?,
+                    document: "{\"version\":1,\"state\":\"requested\",\"tombstone\":false,\"tests\":[{\"namespace\":\"local\",\"value\":\"test\"}]}".into(),
+                    tombstone: false,
+                    expiry: 200,
+                }],
+            })?;
+            let key = analyte_store::MachineOrderKey {
+                destination: id("demo")?,
+                order: id("order-1")?,
+                machine: id(machine)?,
+            };
+            let reserved = store
+                .reserve_send(
+                    &analyte_store::OrderReservation {
+                        identity: &key,
+                        version: std::num::NonZeroU64::MIN,
+                        now: 101,
+                        freshness: 30,
+                    },
+                    analyte_store::ReserveOptions::default(),
+                )?
+                .map_err(|_| FixtureError::Conflict)?;
+            store.transition_order(
+                reserved.id,
+                OrderState::Uncertain,
+                analyte_model::SourceText::new("timeout").map_err(FixtureError::Text)?,
+                102,
+                |order| {
+                    Ok(analyte_store::OrderEventDelivery {
+                        id: analyte_model::DeliveryId::try_from(uuid::Uuid::now_v7())
+                            .map_err(analyte_store::OrderError::Identity)?,
+                        destination: order.key.destination.clone(),
+                        order_id: order.key.order.clone(),
+                        payload: b"protected-payload-never-log".to_vec(),
+                        contract_version: 1,
+                    })
+                },
+            )?;
+            Ok::<_, FixtureError>(())
+        })
+        .await?;
+    Ok(())
+}
+
+// Owner request 2026-11-18 (add machines); plan §11; ADR 0003 rule 2: "Add
+// machine" writes one entry and the installers' starter site file (key names
+// only), keeps a copy of the program file, passes check-config, is audited, and
+// the page lists the new machine as not set up yet.
+#[tokio::test(flavor = "multi_thread")]
+async fn add_machine_writes_a_checked_entry_and_starter_site() -> Result<(), Error> {
+    let fixture = start_with(
+        "[admin]\nport = 8080\n[[machines]]\nid = 'machine-1'\nsite = 'site.toml'\n",
+        include_str!("../../../../../../packaging/linux/starter/machine-1.site.toml"),
+    )
+    .await?;
+    let program_before = std::fs::read_to_string(&fixture.config)?;
+    let index = fixture.get("/setup").await?;
+    assert!(
+        index.contains("action=\"/setup/add\"><button>Add machine</button>"),
+        "{index}"
+    );
+    let form = fixture.get("/setup/add").await?;
+    assert!(
+        form.contains("name=\"name\" required maxlength=\"64\" value=\"machine-2\""),
+        "{form}"
+    );
+    assert!(form.contains("joins that stored history"), "{form}");
+    let added = fixture
+        .submit("/setup/add", "/setup/add", &[("name", "machine-2")])
+        .await?;
+    assert!(added.starts_with("HTTP/1.1 200"), "{added}");
+    assert!(added.contains("Restart now"), "{added}");
+    let program = Program::load(&fixture.config)?;
+    let waiting: Vec<&str> = program
+        .awaiting_setup()
+        .iter()
+        .map(Identifier::as_str)
+        .collect();
+    assert_eq!(waiting, ["machine-1", "machine-2"]);
+    let text = std::fs::read_to_string(&fixture.config)?;
+    let head = program_before
+        .get(..program_before.find("[store]").ok_or("store")?)
+        .ok_or("head")?;
+    assert!(text.starts_with(head), "{text}");
+    assert!(
+        text.contains("[[machines]]\nid = \"machine-2\"\nsite = \"machine-2.site.toml\"\n"),
+        "{text}"
+    );
+    let site = std::fs::read_to_string(fixture.root().join("machine-2.site.toml"))?;
+    let starter: toml::Table =
+        include_str!("../../../../../../packaging/linux/starter/machine-1.site.toml").parse()?;
+    assert_eq!(
+        site.parse::<toml::Table>()?,
+        starter,
+        "same settings as the installers' starter"
+    );
+    assert!(
+        fixture
+            .backups()?
+            .iter()
+            .any(|path| std::fs::read_to_string(path).is_ok_and(|t| t == program_before)),
+        "the previous program file is kept"
+    );
+    let index = fixture.get("/setup").await?;
+    assert!(
+        index.contains("<td>machine-2</td><td>Not set up yet</td>"),
+        "{index}"
+    );
+    let page = fixture.get("/setup/machine-2").await?;
+    assert!(page.contains("This machine is not set up yet"), "{page}");
+    let audits = fixture.audited("setup-add").await?;
+    assert_eq!(audits.len(), 1);
+    assert!(
+        audits[0].contains(" machine-2 setup page added machine machine-2"),
+        "{audits:?}"
+    );
+    Ok(())
+}
+
+// Owner request 2026-11-18 (add machines): a duplicate or invalid name is refused
+// before anything is written, and a name with stored history is added only when
+// the operator confirms it is the same analyzer (safety rule 4: never join two
+// analyzers' results by accident).
+#[tokio::test(flavor = "multi_thread")]
+async fn add_refuses_duplicate_and_invalid_names_before_writing() -> Result<(), Error> {
+    let fixture = start_two().await?;
+    let program_before = std::fs::read_to_string(&fixture.config)?;
+    let files_before = std::fs::read_dir(fixture.root())?.count();
+    for (name, expected) in [
+        ("machine-2", "already listed"),
+        ("SYNTHETIC", "already listed"),
+        ("two words", "only letters"),
+        ("../x", "only letters"),
+        ("listen", "setup page uses itself"),
+        ("", "not accepted"),
+    ] {
+        let refused = fixture
+            .submit("/setup/add", "/setup/add", &[("name", name)])
+            .await?;
+        assert!(refused.starts_with("HTTP/1.1 409"), "{name}: {refused}");
+        assert!(refused.contains(expected), "{name}: {refused}");
+    }
+    assert_eq!(std::fs::read_to_string(&fixture.config)?, program_before);
+    assert_eq!(std::fs::read_dir(fixture.root())?.count(), files_before);
+    assert!(fixture.backups()?.is_empty());
+    seed_unfinished(&fixture.store, "old-analyzer").await?;
+    let unconfirmed = fixture
+        .submit("/setup/add", "/setup/add", &[("name", "old-analyzer")])
+        .await?;
+    assert!(unconfirmed.starts_with("HTTP/1.1 409"), "{unconfirmed}");
+    assert!(
+        unconfirmed.contains("has stored results or history"),
+        "{unconfirmed}"
+    );
+    assert_eq!(std::fs::read_to_string(&fixture.config)?, program_before);
+    let confirmed = fixture
+        .submit(
+            "/setup/add",
+            "/setup/add",
+            &[("name", "old-analyzer"), ("same_analyzer", "yes")],
+        )
+        .await?;
+    assert!(confirmed.starts_with("HTTP/1.1 200"), "{confirmed}");
+    assert!(confirmed.contains("joins the stored history"));
+    assert!(fixture.audited("setup-add").await?[0].contains("same analyzer confirmed"));
+    Ok(())
+}
+
+// Owner request 2026-11-18 (remove machines); AGENTS.md safety rules 2 and 8;
+// ADR 0003 rule 2: removing asks plainly, warns about unfinished outbox, order and
+// flagged work and needs "Remove anyway" for it, takes only the program entry out,
+// keeps the site file as a dated copy and never touches the store. Removing the
+// last machine is allowed and the setup page keeps working.
+#[tokio::test(flavor = "multi_thread")]
+async fn remove_warns_then_keeps_store_and_site_backup() -> Result<(), Error> {
+    let fixture = start_two().await?;
+    seed_unfinished(&fixture.store, "synthetic").await?;
+    let open = fixture.unfinished("synthetic").await?;
+    assert_eq!(
+        open,
+        analyte_store::Unfinished {
+            undelivered: 1,
+            open_orders: 1,
+            unread: 1,
+            flagged: 1,
+        }
+    );
+    let site_before = std::fs::read_to_string(&fixture.site)?;
+    let program_before = std::fs::read_to_string(&fixture.config)?;
+    let confirm = fixture.get("/setup/synthetic/remove").await?;
+    assert!(
+        confirm.contains(concat!(
+            "Remove synthetic?</strong> Its stored results, flagged items and history stay in ",
+            "the database and remain visible to staff; the machine just stops being served."
+        )),
+        "{confirm}"
+    );
+    for expected in [
+        "1 results or order messages not yet accepted by the lab app",
+        "1 orders sent to the machine and not finished",
+        "1 received messages not read yet",
+        "1 unresolved flagged items linked to this machine",
+        "No other set-up machine uses lab app destination demo",
+        "<button>Remove anyway</button>",
+    ] {
+        assert!(confirm.contains(expected), "missing {expected}: {confirm}");
+    }
+    let refused = fixture
+        .submit("/setup/synthetic/remove", "/setup/synthetic/remove", &[])
+        .await?;
+    assert!(refused.starts_with("HTTP/1.1 409"), "{refused}");
+    assert!(refused.contains("still has unfinished work"), "{refused}");
+    assert_eq!(std::fs::read_to_string(&fixture.config)?, program_before);
+    assert!(fixture.backups()?.is_empty());
+    let parked_before = fixture
+        .store
+        .request::<_, FixtureError>(fixture_deadline()?, |s| Ok(s.parked(0)?.len()))
+        .await?;
+    let removed = fixture
+        .submit(
+            "/setup/synthetic/remove",
+            "/setup/synthetic/remove",
+            &[("anyway", "yes")],
+        )
+        .await?;
+    assert!(removed.starts_with("HTTP/1.1 200"), "{removed}");
+    assert!(removed.contains("Restart now"));
+    let program = Program::load(&fixture.config)?;
+    assert!(program.machines().is_empty());
+    let waiting: Vec<&str> = program
+        .awaiting_setup()
+        .iter()
+        .map(Identifier::as_str)
+        .collect();
+    assert_eq!(waiting, ["machine-2"]);
+    assert!(!fixture.site.exists(), "the site file moved to its backup");
+    let backups = fixture.backups()?;
+    assert!(
+        backups
+            .iter()
+            .any(|p| std::fs::read_to_string(p).is_ok_and(|t| t == site_before))
+    );
+    assert!(
+        backups
+            .iter()
+            .any(|p| std::fs::read_to_string(p).is_ok_and(|t| t == program_before))
+    );
+    // The store is untouched: the same work is still open and still listed.
+    assert_eq!(fixture.unfinished("synthetic").await?, open);
+    let parked_after = fixture
+        .store
+        .request::<_, FixtureError>(fixture_deadline()?, |s| Ok(s.parked(0)?.len()))
+        .await?;
+    assert_eq!(parked_after, parked_before);
+    let receipts = fixture
+        .store
+        .request::<_, FixtureError>(fixture_deadline()?, |s| Ok(s.receipts("")?))
+        .await?;
+    assert!(receipts.iter().any(|r| r.machine.as_str() == "synthetic"));
+    let parked_page = fixture.get("/parked").await?;
+    assert!(
+        parked_page.contains("synthetic flagged item"),
+        "{parked_page}"
+    );
+    let index = fixture.get("/setup").await?;
+    assert!(
+        index.contains("<td>synthetic</td><td>Removed: runs until the restart</td>"),
+        "{index}"
+    );
+    let audits = fixture.audited("setup-remove").await?;
+    assert!(audits[0].contains("store untouched") && audits[0].contains("removed anyway: yes"));
+    Ok(())
+}
+
+// Owner request 2026-11-18 (remove machines): removing the last machine is
+// allowed; the service then lists no machines, the setup page keeps working and
+// a machine can be added again.
+#[tokio::test(flavor = "multi_thread")]
+async fn removing_the_last_machine_keeps_the_setup_page() -> Result<(), Error> {
+    let fixture = start_with(
+        "[admin]
+port = 8080
+[[machines]]
+id = 'machine-1'
+site = 'site.toml'
+",
+        include_str!("../../../../../../packaging/linux/starter/machine-1.site.toml"),
+    )
+    .await?;
+    // Nothing is unfinished, so the button is a plain "Remove".
+    let last = fixture.get("/setup/machine-1/remove").await?;
+    assert!(
+        last.contains("Nothing is unfinished") && last.contains("This is the last machine"),
+        "{last}"
+    );
+    assert!(last.contains("<button>Remove</button>"));
+    let removed = fixture
+        .submit("/setup/machine-1/remove", "/setup/machine-1/remove", &[])
+        .await?;
+    assert!(removed.starts_with("HTTP/1.1 200"), "{removed}");
+    let empty = Program::load(&fixture.config)?;
+    assert!(empty.machines().is_empty() && empty.awaiting_setup().is_empty());
+    let index = fixture.get("/setup").await?;
+    assert!(
+        index.starts_with("HTTP/1.1 200") && index.contains("Add machine"),
+        "{index}"
+    );
+    let added = fixture
+        .submit(
+            "/setup/add",
+            "/setup/add",
+            &[("name", "machine-1"), ("same_analyzer", "yes")],
+        )
+        .await?;
+    assert!(added.starts_with("HTTP/1.1 200"), "{added}");
+    assert_eq!(Program::load(&fixture.config)?.awaiting_setup().len(), 1);
+    Ok(())
+}
+
+// Owner request 2026-11-18 (add and remove machines): when the whole program no
+// longer loads after the write, add and remove put every file back as it was;
+// an added starter site file does not stay behind, a removed one is not moved.
+#[tokio::test(flavor = "multi_thread")]
+async fn add_and_remove_roll_back_when_the_reload_fails() -> Result<(), Error> {
+    let fixture = start_two().await?;
+    let program_before = std::fs::read_to_string(&fixture.config)?;
+    // An alert policy names synthetic, so a program without it does not load.
+    let with_alert = format!(
+        "{program_before}\n[[alerts]]\nkind = 'machine_silent'\nthreshold = 60\nresponder = 'duty'\nmachine = 'synthetic'\n"
+    );
+    std::fs::write(&fixture.config, &with_alert)?;
+    let refused = fixture
+        .submit("/setup/synthetic/remove", "/setup/synthetic/remove", &[])
+        .await?;
+    assert!(refused.starts_with("HTTP/1.1 409"), "{refused}");
+    assert!(
+        refused.contains("previous files were put back"),
+        "{refused}"
+    );
+    assert_eq!(std::fs::read_to_string(&fixture.config)?, with_alert);
+    assert!(
+        fixture.site.exists(),
+        "the site file stays when nothing was removed"
+    );
+    std::fs::write(&fixture.config, &program_before)?;
+    // A broken site file of another machine makes every reload fail.
+    std::fs::write(&fixture.site, "schema_version = 1\nendpoint = 5\n")?;
+    let refused = fixture
+        .submit("/setup/add", "/setup/add", &[("name", "machine-3")])
+        .await?;
+    assert!(refused.starts_with("HTTP/1.1 409"), "{refused}");
+    assert!(
+        refused.contains("previous files were put back"),
+        "{refused}"
+    );
+    assert_eq!(std::fs::read_to_string(&fixture.config)?, program_before);
+    assert!(!fixture.root().join("machine-3.site.toml").exists());
+    Ok(())
+}
+
+// Owner request 2026-11-18 (add machines): completing a machine with a serial
+// number another machine already uses is refused before anything is written,
+// and check-config refuses such a program written by hand.
+#[tokio::test(flavor = "multi_thread")]
+async fn two_machines_cannot_share_a_port_or_serial_number() -> Result<(), Error> {
+    let fixture = start_two().await?;
+    let program_before = std::fs::read_to_string(&fixture.config)?;
+    let page = "/setup/machine-2?definition=example/serial-astm";
+    let fields = |port| {
+        [
+            ("definition", "example/serial-astm"),
+            ("port", port),
+            ("base_url", "https://lab.example.invalid/v1"),
+            ("destination", "lab-app"),
+        ]
+    };
+    let refused = fixture
+        .submit(page, "/setup/machine-2", &fields("usb:A10K3XYZ"))
+        .await?;
+    assert!(refused.starts_with("HTTP/1.1 409"), "{refused}");
+    assert!(
+        refused.contains("machines synthetic and machine-2 both use USB serial number A10K3XYZ"),
+        "{refused}"
+    );
+    assert_eq!(std::fs::read_to_string(&fixture.config)?, program_before);
+    assert!(fixture.backups()?.is_empty());
+    let saved = fixture
+        .submit(page, "/setup/machine-2", &fields("name:COM3"))
+        .await?;
+    assert!(saved.starts_with("HTTP/1.1 200"), "{saved}");
+    // The same adapter written by hand: the program loader refuses it.
+    let second = fixture.root().join("machine-2.site.toml");
+    let text = std::fs::read_to_string(&second)?;
+    std::fs::write(
+        &second,
+        text.replace("endpoint = \"COM3\"", "usb_serial = \"a10k3xyz\""),
+    )?;
+    assert!(matches!(
+        Program::load(&fixture.config),
+        Err(crate::installation::config::Error::SharedConnection { .. })
+    ));
+    Ok(())
+}

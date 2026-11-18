@@ -279,7 +279,9 @@ missing; nothing is guessed in the meantime.
   writes a machine's site file after `check-config` validation, with a backup,
   offers a listen-only connection test that never sends, and stores destination
   keys in a locked file only the service can read (environment variables win).
-  Applying a save needs a restart.
+  It also adds a machine (a new entry and starter site file) and removes one
+  (the entry goes, its site file is kept as a dated copy, the store is never
+  touched), with the same checks and backups. Applying a change needs a restart.
 - Alerts on oldest undelivered item, stalled machines and disk space.
 - The PC must not sleep; updates are scheduled; USB serial reconnects and COM
   port changes are handled.

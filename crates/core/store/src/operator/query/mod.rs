@@ -388,6 +388,92 @@ impl Store {
     }
 }
 
+/// Work the store still holds open for one configured machine. Counting changes nothing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Unfinished {
+    /// Result deliveries from this machine's receipts, and order events for its
+    /// orders, that the lab app has not yet accepted.
+    pub undelivered: u64,
+    /// Machine orders sending, sent, accepted, cancel requested or uncertain.
+    pub open_orders: u64,
+    /// Receipts stored but never interpreted; only this machine's configuration reads them.
+    pub unread: u64,
+    /// Unresolved parked items whose targets link to this machine: its name, one of its
+    /// receipts, deliveries, completed transfers or machine orders. Items that link to
+    /// no single machine (an aborted transfer, a refused lab app order version) are not counted.
+    pub flagged: u64,
+}
+
+impl Unfinished {
+    /// True when nothing is open.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+/// Matches a parked target to machine `?1`. Receipt and delivery keys are stored as
+/// JSON strings, while parked targets hold the bare identity.
+const PARKED_FOR_MACHINE: &str = concat!(
+    "SELECT count(*) FROM parked p WHERE p.resolution IS NULL AND EXISTS(",
+    "SELECT 1 FROM json_each(p.evidence,'$.targets') t WHERE t.value=?1 ",
+    "OR EXISTS(SELECT 1 FROM receipts r WHERE r.id=json_quote(t.value) ",
+    "AND json_extract(r.metadata,'$.machine')=?1) ",
+    "OR EXISTS(SELECT 1 FROM outbox o JOIN receipts r ON r.id=o.receipt ",
+    "WHERE o.id=json_quote(t.value) AND json_extract(r.metadata,'$.machine')=?1) ",
+    "OR EXISTS(SELECT 1 FROM transfers x JOIN receipts r ON r.id=x.receipt ",
+    "WHERE x.id=t.value AND json_extract(r.metadata,'$.machine')=?1) ",
+    "OR EXISTS(SELECT 1 FROM machine_orders m WHERE CAST(m.id AS TEXT)=t.value AND m.machine=?1))"
+);
+
+impl Store {
+    /// Counts what is still open for `machine` before an operator stops serving it.
+    /// # Errors
+    /// Reports database failures or corrupt counts.
+    pub fn unfinished(&self, machine: &Identifier) -> Result<Unfinished, Error> {
+        let count = |sql: &str| -> Result<u64, Error> {
+            let value: i64 = self.db.query_row(sql, [machine.as_str()], |r| r.get(0))?;
+            u64::try_from(value).map_err(|_| Error::Corruption)
+        };
+        Ok(Unfinished {
+            undelivered: count(concat!(
+                "SELECT count(*) FROM outbox o WHERE o.state!='done' AND (",
+                "(o.kind='result' AND EXISTS(SELECT 1 FROM receipts r WHERE r.id=o.receipt ",
+                "AND json_extract(r.metadata,'$.machine')=?1)) OR (o.kind='order_event' ",
+                "AND EXISTS(SELECT 1 FROM machine_orders m WHERE m.order_id=o.order_id ",
+                "AND m.destination=o.destination AND m.machine=?1)))"
+            ))?,
+            open_orders: count(concat!(
+                "SELECT count(*) FROM machine_orders WHERE machine=?1 AND state IN ",
+                "('Sending','Sent','Accepted','CancelRequested','Uncertain')"
+            ))?,
+            unread: count(concat!(
+                "SELECT count(*) FROM receipts r WHERE json_extract(r.metadata,'$.machine')=?1 ",
+                "AND NOT EXISTS(SELECT 1 FROM interpretations i WHERE i.receipt=r.id)"
+            ))?,
+            flagged: count(PARKED_FOR_MACHINE)?,
+        })
+    }
+
+    /// True when the store holds any receipt, order, activity or retention record
+    /// for `machine`, so a machine added under that name joins that history.
+    /// # Errors
+    /// Reports database failures.
+    pub fn has_history(&self, machine: &Identifier) -> Result<bool, Error> {
+        Ok(self.db.query_row(
+            concat!(
+                "SELECT EXISTS(SELECT 1 FROM machine_activity WHERE machine=?1) ",
+                "OR EXISTS(SELECT 1 FROM machine_orders WHERE machine=?1) ",
+                "OR EXISTS(SELECT 1 FROM poll_intents WHERE machine=?1) ",
+                "OR EXISTS(SELECT 1 FROM retention_tombstones WHERE machine=?1) ",
+                "OR EXISTS(SELECT 1 FROM receipts WHERE json_extract(metadata,'$.machine')=?1)"
+            ),
+            [machine.as_str()],
+            |r| r.get(0),
+        )?)
+    }
+}
+
 impl Store {
     /// Lists a bounded page of raw receipts awaiting their first interpretation.
     /// Recovery owns no transport and cannot resend work.

@@ -38,7 +38,7 @@ to a shared network.
 | Deliveries | Inspect state and confirm eligible resends, with a reason. |
 | Machine orders | Inspect lifecycle; reconciliation remains a CLI task. |
 | Retention and holds | Policy, last purge, oldest retained receipt and indefinite holds. |
-| Setup | Choose a machine definition, its port or address and the lab app; test by listening; save; restart. See [Setup page](#setup-page). |
+| Setup | Add or remove machines; choose a machine definition, its port or address and the lab app; test by listening; save; restart. See [Setup page](#setup-page). |
 
 Follow Next page to inspect bounded lists. Reprocess uses retained raw bytes
 with current config and creates a new interpretation. Resend queues an existing
@@ -67,10 +67,45 @@ The **Setup** page lets a lab manager set up an installed machine without
 editing files. It needs a browser login (not just the bearer header), and the
 service needs write access to the folder that holds the program file and the
 site files (see [Install](install.md)). Each machine listed in the program file
-has a **Set up** link with five steps. A machine listed without a `definition`
-(the installers' `machine-1`) shows as **Not set up yet**: it does not run until
-you choose its definition in step 1 and save; the save adds the `definition`
-line to its program entry, and the restart starts it.
+has a **Set up** link with five steps and a **Remove machine** button. A machine
+listed without a `definition` (the installers' `machine-1`, or one added with
+**Add machine**) shows as **Not set up yet**: it does not run until you choose
+its definition in step 1 and save; the save adds the `definition` line to its
+program entry, and the restart starts it. A machine saved or added since the
+last start shows as not running until the restart; a removed one shows as
+running until the restart.
+
+**Add machine** asks for a name and suggests the next free `machine-N`. A name
+uses letters, digits, `-` and `_`, because it also names the machine's site file
+(`<name>.site.toml` beside the program file); a name already listed (ignoring
+case) or one the page uses itself (`add`, `listen`, `restart`) is refused before
+anything is written. The page adds one `[[machines]]` entry without a definition
+and writes the same starter site file the installers write (retention `keep`
+and the key names; no address, connection or key). Analyte keeps results,
+flagged items and history by machine name, so a name that belonged to a removed
+machine joins that history again: the page asks you to confirm it is the same
+analyzer, and a different analyzer should get a new name.
+
+**Remove machine** first shows what is still unfinished for that machine:
+results or order messages the lab app has not accepted, machine orders sent and
+not finished (sending, sent, accepted, cancel requested or uncertain), received
+messages not yet read, and unresolved flagged items linked to it (items linked
+to no single machine are not counted). If anything is open, the button becomes
+**Remove anyway**. Removing takes only the entry out of the program file and
+moves the site file to a dated copy (`<name>.site.toml.<time>.bak`); the store is
+never changed, so the machine's stored results, flagged items and history stay
+visible on the other pages. Delivery runs per lab app destination, not per
+machine: stored results keep being delivered while another machine uses the
+same destination; if none does, they stay stored and resume when such a machine
+is set up again. The page says which case applies. Removing the last machine is
+allowed: Analyte then serves only the admin page until a machine is added.
+
+Saving, adding and removing all use the same steps: check first, keep a dated
+copy of each file they change, write safely, load the whole program again as
+`check-config` does, and put every file back if that fails. A machine may not
+use a serial port, USB serial number, network address or folder that another
+machine uses; the page refuses it before writing, and `check-config` refuses a
+program written that way by hand.
 
 1. **Machine.** Choose a definition from the `machines` folder beside the program
    file. Each shows its evidence level; blocked definitions (no `machine.toml`
@@ -110,10 +145,12 @@ manager starts it again: the Windows recovery action after 5 seconds (15, then
 60 seconds for further restarts within a day), or systemd `Restart=on-failure`
 after 5 seconds. A foreground `analyte run` simply stops;
 start it again by hand. Log in again afterwards; the Setup page shows the running
-configuration digest, which should match the one shown after saving. Saves and
-restarts are audited without key values. The page writes only the site file,
-that one program line and the locked credentials file; retention, time zone,
-credential names and other site keys are kept as they were.
+configuration digest, which should match the one shown after saving. Saves,
+added and removed machines and restarts are audited (session and machine name)
+without key values. A save writes only the site file, that one program line and
+the locked credentials file; retention, time zone, credential names and other
+site keys are kept as they were. Adding and removing change only that machine's
+entry in the program file and its site file.
 
 ## Alerts and named responders
 

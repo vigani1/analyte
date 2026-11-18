@@ -18,7 +18,7 @@ record_bytes = 2097152
 page_rows = 4096
 busy_timeout_ms = 1000
 
-# Add one [[machines]] entry per analyzer, each with its own id and site file.
+# Add or remove machines on the setup page; each gets its own id and site file.
 [[machines]]
 id = "machine-1"
 site = "machine-1.site.toml"

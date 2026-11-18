@@ -2,6 +2,7 @@
 #[cfg(test)]
 use analyte_fixtures::ConfigEdit as _;
 mod alerts;
+pub(crate) mod connections;
 mod hooks;
 pub(crate) use crate::machine::hooks::MachineHooks;
 pub(crate) use hooks::ProgramHooks;
@@ -70,6 +71,8 @@ struct File {
     schema_version: u32,
     data_directory: PathBuf,
     store: Limits,
+    /// May be empty or absent while the setup page is on: machines are added there.
+    #[serde(default)]
     machines: Vec<Entry>,
 }
 
@@ -147,7 +150,6 @@ impl Program {
         let file: File = toml::from_str(&read(path)?)?;
         let admin_address = file.admin.as_ref().map(Admin::address).transpose()?;
         if file.schema_version != 1
-            || file.machines.is_empty()
             || file.machines.len() > 128
             || file.store.record_bytes == 0
             || file.store.record_bytes > 16_777_216
@@ -156,6 +158,10 @@ impl Program {
             || file.store.database_bytes <= file.store.reserve_bytes
         {
             return Err(Error::InvalidProgramLimits);
+        }
+        // With no machine and no setup page the program could never do anything.
+        if file.machines.is_empty() && admin_address.is_none() {
+            return Err(Error::NoMachines);
         }
         let base = path
             .parent()
@@ -166,6 +172,7 @@ impl Program {
             file.store.record_bytes,
             admin_address.is_some(),
         )?;
+        connections::check(&machines)?;
         if file.signing_rotation.len() > 128
             || file.signing_rotation.values().any(|names| names.len() > 7)
             || file.signing_rotation.keys().any(|name| {
@@ -455,11 +462,43 @@ mod admin_tests {
             Program::load(&path),
             Err(super::Error::DuplicateMachineIdentity)
         ));
-        std::fs::write(&path, program("machines = []\n[admin]\nport = 8080\n"))?;
-        assert!(matches!(
-            Program::load(&path),
-            Err(super::Error::InvalidProgramLimits)
-        ));
+        Ok(())
+    }
+
+    // Owner request 2026-11-18 (remove machines): removing the last machine leaves
+    // a program with no machines; it still serves the setup page, so a machine can
+    // be added again. Without the admin page it could do nothing, so it is refused.
+    #[test]
+    fn no_machines_is_allowed_only_with_the_setup_page() -> Result<(), Error> {
+        let temp = tempfile::tempdir()?;
+        let path = temp.path().join("program.toml");
+        let program = |machines: &str| {
+            analyte_fixtures::program_with_limits(
+                machines,
+                &analyte_store::Limits {
+                    reserve_bytes: 1,
+                    database_bytes: 100_000_000,
+                    record_bytes: 2_097_152,
+                    page_rows: 100,
+                    busy_timeout: Duration::from_millis(100),
+                },
+            )
+        };
+        for machines in [
+            "machines = []\n[admin]\nport = 8080\n",
+            "[admin]\nport = 8080\n",
+        ] {
+            std::fs::write(&path, program(machines))?;
+            let loaded = Program::load(&path)?;
+            assert!(loaded.machines().is_empty() && loaded.awaiting_setup().is_empty());
+        }
+        for machines in ["machines = []\n", ""] {
+            std::fs::write(&path, program(machines))?;
+            assert!(matches!(
+                Program::load(&path),
+                Err(super::Error::NoMachines)
+            ));
+        }
         Ok(())
     }
 

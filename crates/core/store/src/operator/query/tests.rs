@@ -314,3 +314,127 @@ fn verify_parked_and_audit_pages(store: &Store) -> TestResult {
     assert!(store.audits(next[0].0)?.is_empty());
     Ok(())
 }
+
+// Owner request 2026-11-18 (remove a machine); AGENTS.md safety rules 2 and 8:
+// before a machine stops being served, the store counts what is still open for it
+// (undelivered results and order events, open orders, unread receipts, unresolved
+// parked items linked to it) without changing anything, and ignores other machines.
+#[test]
+fn unfinished_work_is_counted_per_machine() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("store.db"))?;
+    let machine = Identifier::new("synthetic-machine")?;
+    assert_eq!(store.unfinished(&machine)?, Unfinished::default());
+    assert!(!store.has_history(&machine)?);
+    let parked = seed_machine_work(&mut store, &machine)?;
+    let counted = store.unfinished(&machine)?;
+    assert_eq!(
+        counted,
+        Unfinished {
+            undelivered: 2,
+            open_orders: 1,
+            unread: 1,
+            flagged: 4,
+        }
+    );
+    assert!(!counted.is_empty());
+    assert!(store.has_history(&machine)?);
+    assert!(!store.has_history(&Identifier::new("never-used")?)?);
+    // Counting changed nothing: every parked item is still listed and open.
+    assert_eq!(store.parked(0)?.len(), parked);
+    assert_eq!(store.unfinished(&machine)?, counted);
+    Ok(())
+}
+
+/// Stores open and finished work for `machine` and another machine; returns how
+/// many parked items exist.
+fn seed_machine_work(
+    store: &mut Store,
+    machine: &Identifier,
+) -> Result<usize, Box<dyn std::error::Error>> {
+    let unread = receipt(b"unread")?;
+    let read = receipt(b"read")?;
+    let mut other = receipt(b"other machine")?;
+    other.machine = Identifier::new("other-machine")?;
+    for (metadata, raw) in [
+        (&unread, "unread"),
+        (&read, "read"),
+        (&other, "other machine"),
+    ] {
+        store.receive(metadata, raw.as_bytes(), b"config")?;
+    }
+    for id in [read.id, other.id] {
+        store.db.execute(
+            "INSERT INTO interpretations(receipt,version,evidence) VALUES (?1,1,?2)",
+            params![key(&id)?, document(&interpretation()?)?],
+        )?;
+    }
+    let delivery = |receipt: ReceiptId,
+                    state: &str|
+     -> Result<DeliveryId, Box<dyn std::error::Error>> {
+        let id = DeliveryId::try_from(uuid::Uuid::now_v7())?;
+        store.db.execute(
+            "INSERT INTO outbox(id,kind,receipt,version,destination,ordering_key,payload,digest,contract,state,next_attempt) VALUES (?1,'result',?2,1,'app','k',x'00',x'00',1,?3,0)",
+            params![key(&id)?, key(&receipt)?, state],
+        )?;
+        Ok(id)
+    };
+    let pending = delivery(read.id, "pending")?;
+    delivery(read.id, "done")?;
+    delivery(other.id, "pending")?;
+    for (order, owner, state) in [
+        ("open", "synthetic-machine", "Uncertain"),
+        ("finished", "synthetic-machine", "Done"),
+        ("elsewhere", "other-machine", "Sent"),
+    ] {
+        store.db.execute(
+            "INSERT INTO machine_orders(destination,order_id,machine,version,state,created_at,updated_at,source_code) VALUES ('app',?1,?2,'1',?3,1,1,'x')",
+            params![order, owner, state],
+        )?;
+    }
+    let open_order: i64 = store.db.query_row(
+        "SELECT id FROM machine_orders WHERE order_id='open'",
+        [],
+        |r| r.get(0),
+    )?;
+    store.db.execute(
+        "INSERT INTO outbox(id,kind,order_id,destination,ordering_key,payload,digest,contract,state,next_attempt) VALUES (?1,'order_event','open','app','open',x'00',x'00',1,'paused',0)",
+        params![key(&DeliveryId::try_from(uuid::Uuid::now_v7())?)?],
+    )?;
+    let bare = |value: String| Identifier::new(&value);
+    let flagged = [
+        bare(uuid::Uuid::from(unread.id).to_string())?,
+        machine.clone(),
+        bare(uuid::Uuid::from(pending).to_string())?,
+        bare(open_order.to_string())?,
+    ];
+    let unrelated = [
+        bare(uuid::Uuid::from(other.id).to_string())?,
+        Identifier::new("no-machine")?,
+    ];
+    let mut parked = Vec::new();
+    for target in flagged.iter().chain(&unrelated) {
+        parked.push(store.park(&Parked {
+            kind: Identifier::new("synthetic")?,
+            reason: Reason::new("unfinished work")?,
+            targets: vec![target.clone()],
+        })?);
+    }
+    // A resolved item is finished, even though it names the machine.
+    let resolved = store.park(&Parked {
+        kind: Identifier::new("synthetic")?,
+        reason: Reason::new("reviewed")?,
+        targets: vec![machine.clone()],
+    })?;
+    store.resolve(
+        resolved,
+        &Audit {
+            actor: Identifier::new("operator")?,
+            action: Identifier::new("resolve")?,
+            targets: vec![],
+            time: 1,
+            reason: Reason::new("reviewed")?,
+        },
+    )?;
+    Ok(parked.len().saturating_add(1))
+}

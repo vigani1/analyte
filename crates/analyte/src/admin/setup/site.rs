@@ -4,7 +4,8 @@
 //! Only then are files written: each old file is copied to `<name>.<time>.bak`, the
 //! new text goes to `<name>.pending`, is flushed and renamed over the old one. The
 //! whole program is then loaded again exactly as `check-config` does; if it fails,
-//! the previous files are put back.
+//! the previous files are put back. Saving, adding and removing a machine all
+//! write through [`commit`].
 use super::SetupError;
 use crate::installation::config::{Program, read};
 use analyte_config::{Draft, Endpoint, HttpsUrl, UsbSerial, Validated};
@@ -33,28 +34,40 @@ enum Placement {
 }
 
 #[derive(serde::Deserialize)]
-struct ProgramSpans {
-    machines: Vec<EntrySpans>,
+pub(super) struct ProgramSpans {
+    #[serde(default)]
+    pub(super) machines: Vec<EntrySpans>,
 }
 
+/// One `[[machines]]` entry as written, with the byte positions of its values.
 #[derive(serde::Deserialize)]
-struct EntrySpans {
-    id: String,
-    definition: Option<toml::Spanned<String>>,
-    site: toml::Spanned<String>,
+pub(super) struct EntrySpans {
+    pub(super) id: toml::Spanned<String>,
+    pub(super) definition: Option<toml::Spanned<String>>,
+    pub(super) site: toml::Spanned<String>,
     overrides: Option<String>,
+}
+
+/// Reads the program file and its entries as written.
+pub(super) fn entries(config: &Path) -> Result<(String, Vec<EntrySpans>), SetupError> {
+    let text = read(config)?;
+    let spans: ProgramSpans =
+        toml::from_str(&text).map_err(|error| SetupError::ProgramFile(error.to_string()))?;
+    Ok((text, spans.machines))
+}
+
+/// The folder that holds the program file; entry paths are relative to it.
+pub(super) fn folder(config: &Path) -> &Path {
+    config.parent().unwrap_or_else(|| Path::new("."))
 }
 
 /// Reads the program file and finds the entry for machine `id`.
 pub(super) fn installed(config: &Path, id: &str) -> Result<(String, Installed), SetupError> {
-    let text = read(config)?;
-    let spans: ProgramSpans =
-        toml::from_str(&text).map_err(|error| SetupError::ProgramFile(error.to_string()))?;
-    let base = config.parent().unwrap_or_else(|| Path::new("."));
-    let entry = spans
-        .machines
+    let (text, listed) = entries(config)?;
+    let base = folder(config);
+    let entry = listed
         .into_iter()
-        .find(|entry| entry.id == id)
+        .find(|entry| entry.id.get_ref() == id)
         .ok_or_else(|| SetupError::UnknownMachine(id.into()))?;
     let placement = match &entry.definition {
         Some(definition) => Placement::Replace(definition.span()),
@@ -234,21 +247,33 @@ pub(super) fn apply(
             with_definition(program, config, installed, definition)?,
         ));
     }
-    let label = jiff::Timestamp::now()
+    commit(config, &changes)
+}
+
+/// The time label of backups made now.
+fn label() -> String {
+    jiff::Timestamp::now()
         .strftime("%Y%m%dT%H%M%SZ")
-        .to_string();
+        .to_string()
+}
+
+/// Writes each `(path, text)`, keeping a dated backup of every file that existed,
+/// then loads the whole program as `check-config` does; if writing or loading
+/// fails, every file is put back as it was.
+pub(super) fn commit(config: &Path, changes: &[(PathBuf, String)]) -> Result<Written, SetupError> {
+    let label = label();
     let mut backups = Vec::new();
-    for (path, _) in &changes {
+    for (path, _) in changes {
         backups.push(backup(path, &label)?);
     }
-    for (path, text) in &changes {
+    for (path, text) in changes {
         if let Err(error) = replace(path, text.as_bytes()) {
-            restore(&changes, &backups);
+            restore(changes, &backups);
             return Err(error);
         }
     }
     if let Err(error) = Program::load(config) {
-        restore(&changes, &backups);
+        restore(changes, &backups);
         return Err(SetupError::RolledBack(error.to_string()));
     }
     Ok(Written {
@@ -321,20 +346,37 @@ fn replace(path: &Path, bytes: &[u8]) -> Result<(), SetupError> {
     std::fs::rename(&pending, path).map_err(io("replace", path))
 }
 
-/// Puts each backup back over its file; a file that had none is left as written
-/// (it did not exist before, and the program refuses to start without it).
+/// Moves a file the program no longer names to `<name>.<time>.bak`: a durable
+/// copy first, then the original goes. A missing file needs nothing.
+pub(super) fn retire(path: &Path) -> Result<Option<PathBuf>, SetupError> {
+    let Some(kept) = backup(path, &label())? else {
+        return Ok(None);
+    };
+    std::fs::remove_file(path).map_err(io("move to the backup", path))?;
+    Ok(Some(kept))
+}
+
+/// Puts each backup back over its file. A file that did not exist before (it has
+/// no backup) was written only by this change, so it is removed again.
 fn restore(changes: &[(PathBuf, String)], backups: &[Option<PathBuf>]) {
     for ((path, _), backup) in changes.iter().zip(backups) {
-        if let Some(backup) = backup {
-            match std::fs::read(backup) {
-                Ok(bytes) => {
-                    if let Err(error) = replace(path, &bytes) {
-                        tracing::error!(%error, "setup could not restore a previous file");
-                    }
+        let Some(backup) = backup else {
+            // Not found: the write failed before this file was reached.
+            if let Err(error) = std::fs::remove_file(path)
+                && error.kind() != std::io::ErrorKind::NotFound
+            {
+                tracing::error!(%error, "setup could not remove a file it had just written");
+            }
+            continue;
+        };
+        match std::fs::read(backup) {
+            Ok(bytes) => {
+                if let Err(error) = replace(path, &bytes) {
+                    tracing::error!(%error, "setup could not restore a previous file");
                 }
-                Err(error) => {
-                    tracing::error!(%error, "setup could not read a backup to restore it");
-                }
+            }
+            Err(error) => {
+                tracing::error!(%error, "setup could not read a backup to restore it");
             }
         }
     }

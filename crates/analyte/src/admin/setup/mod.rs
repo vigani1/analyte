@@ -1,17 +1,21 @@
-//! Serves the setup page: choose a definition, a port and the lab app, test by listening, save, restart.
+//! Serves the setup page: add or remove machines, choose a definition, a port and the lab app, test by listening, save, restart.
 //!
 //! The page writes the machine's site file (and, when the definition changes, that
-//! one value in the program file), keeps backups, and stores keys in the locked
-//! credentials file. Applying a save needs a restart; there is no hot reload.
+//! one value in the program file), adds and removes program entries, keeps backups,
+//! and stores keys in the locked credentials file. Applying a change needs a
+//! restart; there is no hot reload.
 mod definitions;
+mod entries;
 mod listen;
+mod machines;
 mod site;
 
 pub(crate) use listen::{Limits, Open};
+pub(super) use machines::{add, add_form, confirm_remove, remove};
 
 use super::{markup::Markup, pages::NAV, server::Context, sessions::Session};
 use crate::installation::{
-    config::Program,
+    config::{Program, connections},
     credentials::{CredentialError, Locked, Secret},
     secrets,
 };
@@ -73,9 +77,10 @@ struct Running {
 pub(crate) struct Setup {
     seams: Seams,
     running: Vec<Running>,
-    /// Machines listed without a definition when the service started.
-    awaiting: Vec<Identifier>,
     data_directory: PathBuf,
+    /// Held while one save, add or remove reads and writes the configuration files,
+    /// so two of them never interleave; only taken on blocking threads, never across an await.
+    writing: std::sync::Mutex<()>,
     /// At most one listen test; the guard is never held across an await.
     listen: std::sync::Mutex<Option<listen::Session>>,
     restart: watch::Sender<bool>,
@@ -104,11 +109,16 @@ impl Setup {
         Self {
             seams,
             running,
-            awaiting: program.awaiting_setup().to_vec(),
             data_directory: program.data_directory().to_owned(),
+            writing: std::sync::Mutex::new(()),
             listen: std::sync::Mutex::new(None),
             restart: watch::channel(false).0,
         }
+    }
+
+    /// Serializes changes to the configuration files.
+    fn writing(&self) -> Result<std::sync::MutexGuard<'_, ()>, SetupError> {
+        self.writing.lock().map_err(|_| SetupError::Busy)
     }
 
     /// Becomes true when an operator asks for a restart.
@@ -127,8 +137,8 @@ impl Setup {
                 limits: Limits::STANDARD,
             },
             running: Vec::new(),
-            awaiting: Vec::new(),
             data_directory: data_directory.to_owned(),
+            writing: std::sync::Mutex::new(()),
             listen: std::sync::Mutex::new(None),
             restart: watch::channel(false).0,
         }
@@ -190,6 +200,30 @@ pub(crate) enum SetupError {
     Join(#[from] tokio::task::JoinError),
     #[error("the audit record could not be written: {0}")]
     Audit(String),
+    #[error("the machine name is not accepted: {0}")]
+    InvalidName(analyte_model::TextError),
+    #[error(
+        "a machine name uses only letters A to Z, digits, - and _, because it also names the machine's site file"
+    )]
+    NameCharacters,
+    #[error("{0} is a name the setup page uses itself; choose another name")]
+    ReservedName(String),
+    #[error("a machine called {0} is already listed; choose another name")]
+    NameInUse(String),
+    #[error("the site file {0} already belongs to machine {1}; choose another name")]
+    SiteInUse(String, String),
+    #[error(
+        "{0} has stored results or history from an earlier machine. If this is the same analyzer, tick \"same analyzer\" to add it under that name; for a different analyzer choose a new name"
+    )]
+    HistoryNotConfirmed(String),
+    #[error(
+        "{0} still has unfinished work ({1}); nothing was changed. Review it on the remove page and press \"Remove anyway\" to remove the machine regardless"
+    )]
+    UnfinishedWork(String, String),
+    #[error("the store could not be read: {0}")]
+    Store(String),
+    #[error("an earlier setup change failed while writing; reload the page and check the files")]
+    Busy,
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -227,6 +261,49 @@ fn needs_login() -> Response {
     ))
 }
 
+/// One row per machine in the program file, then any machine that still runs but
+/// is no longer listed (removed, waiting for the restart).
+fn machine_rows(state: &Context, listed: &[site::EntrySpans]) -> Markup {
+    let mut rows = Markup::new();
+    for entry in listed {
+        let id = entry.id.get_ref();
+        let status = match (running(state, id), &entry.definition) {
+            (Some(running), _) => Markup::new()
+                .markup("<code>")
+                .text(hex(&running.digest))
+                .markup("</code>"),
+            (None, None) => Markup::new().text("Not set up yet"),
+            (None, Some(_)) => Markup::new().text("Not running: saved, starts after a restart"),
+        };
+        rows.push_fragment(
+            &Markup::new()
+                .markup("<tr><td>")
+                .text(id)
+                .markup("</td><td>")
+                .fragment(&status)
+                .markup("</td><td><a href=\"/setup/")
+                .text(id)
+                .markup("\">Set up</a></td><td><form method=\"get\" action=\"/setup/")
+                .text(id)
+                .markup("/remove\"><button>Remove machine</button></form></td></tr>"),
+        );
+    }
+    for gone in state
+        .setup
+        .running
+        .iter()
+        .filter(|r| !listed.iter().any(|e| e.id.get_ref() == r.id.as_str()))
+    {
+        rows.push_fragment(
+            &Markup::new()
+                .markup("<tr><td>")
+                .text(gone.id.as_str())
+                .markup("</td><td>Removed: runs until the restart</td><td></td><td></td></tr>"),
+        );
+    }
+    rows
+}
+
 fn definitions(state: &Context) -> Result<Vec<Definition>, SetupError> {
     let root = state
         .setup
@@ -248,35 +325,28 @@ fn level_and_state(definition: &Definition) -> (String, String) {
     }
 }
 
-/// GET /setup: installed machines and the shipped definitions.
+/// GET /setup: the machines in the program file, what runs now, and the shipped definitions.
 pub(super) async fn index(State(state): State<Arc<Context>>) -> Response {
     let mut html = page("Set up a machine").markup(concat!(
         "<p>Choose a machine below to set its connection and lab app. ",
         "Saving writes the machine's site file; Analyte then restarts to use it.</p>",
-        "<h2>Installed machines</h2><table><tr><th>Machine</th><th>Running ",
-        "configuration digest</th><th></th></tr>"
+        "<h2>Installed machines</h2><form method=\"get\" action=\"/setup/add\">",
+        "<button>Add machine</button></form><table><tr><th>Machine</th><th>Running ",
+        "configuration digest</th><th></th><th></th></tr>"
     ));
-    for running in &state.setup.running {
-        html.push_fragment(
+    let worker = state.clone();
+    let listed = tokio::task::spawn_blocking(move || site::entries(&worker.config_path))
+        .await
+        .map_err(SetupError::from)
+        .and_then(|r| r);
+    match listed {
+        Ok((_, listed)) => html.push_fragment(&machine_rows(&state, &listed)),
+        Err(error) => html.push_fragment(
             &Markup::new()
-                .markup("<tr><td>")
-                .text(running.id.as_str())
-                .markup("</td><td><code>")
-                .text(hex(&running.digest))
-                .markup("</code></td><td><a href=\"/setup/")
-                .text(running.id.as_str())
-                .markup("\">Set up</a></td></tr>"),
-        );
-    }
-    for id in &state.setup.awaiting {
-        html.push_fragment(
-            &Markup::new()
-                .markup("<tr><td>")
-                .text(id.as_str())
-                .markup("</td><td>Not set up yet</td><td><a href=\"/setup/")
-                .text(id.as_str())
-                .markup("\">Set up</a></td></tr>"),
-        );
+                .markup("<tr><td colspan=\"4\">The program file cannot be read: ")
+                .text(error)
+                .markup("</td></tr>"),
+        ),
     }
     html.push_markup(concat!(
         "</table><h2>Shipped machine definitions</h2><table><tr><th>Definition",
@@ -375,13 +445,10 @@ fn chosen(
     }
 }
 
-/// What the service runs for `id`: its loaded machine, or `None` while it waits for setup.
-fn running<'a>(state: &'a Context, id: &str) -> Result<Option<&'a Running>, SetupError> {
-    match state.setup.running.iter().find(|r| r.id.as_str() == id) {
-        Some(running) => Ok(Some(running)),
-        None if state.setup.awaiting.iter().any(|a| a.as_str() == id) => Ok(None),
-        None => Err(SetupError::UnknownMachine(id.into())),
-    }
+/// What the service runs for `id`, or `None` when it runs nothing for it yet:
+/// not set up, or added or completed since the last start.
+fn running<'a>(state: &'a Context, id: &str) -> Option<&'a Running> {
+    state.setup.running.iter().find(|r| r.id.as_str() == id)
 }
 
 /// The running configuration digest, or why there is none.
@@ -473,7 +540,7 @@ fn render_machine(
         Err(SetupError::NoDefinitionYet) => None,
         Err(error) => return Err(error),
     };
-    let running = running(state, id)?;
+    let running = running(state, id);
     let mut html = page("Set up a machine")
         .markup("<p>Machine <strong>")
         .text(id)
@@ -841,7 +908,9 @@ struct Saved {
 }
 
 fn save_blocking(state: &Context, id: &str, mut choice: Choice) -> Result<Saved, SetupError> {
+    let _writing = state.setup.writing()?;
     let plan = plan(state, id, &choice)?;
+    shares_connection(state, id, &plan)?;
     // Keys are checked before any file is written, and stored only after the
     // files pass, so a refused or rolled-back save never changes a key.
     let updates = keys(&plan.validated, &mut choice)?;
@@ -937,7 +1006,7 @@ pub(super) async fn save(
     );
     let audited = audit(&state, &session, "setup-save", &id, reason).await;
     tracing::info!(machine = id.as_str(), "setup page saved a site file");
-    let running = running(&state, &id).map(running_digest).unwrap_or_default();
+    let running = running_digest(running(&state, &id));
     let mut html = page("Settings saved")
         .markup("<p>Machine <strong>")
         .text(&id)
@@ -1054,7 +1123,7 @@ fn in_use(state: &Context, chosen: &Endpoint, port: Option<&str>) -> Result<(), 
             }
         } else {
             matches!(running.link, Link::TcpServer | Link::TcpClient)
-                && same_address(&running.endpoint, chosen)
+                && connections::listeners_overlap(&running.endpoint, chosen)
         };
         if same {
             return Err(SetupError::InUse(running.id.as_str().into()));
@@ -1063,23 +1132,26 @@ fn in_use(state: &Context, chosen: &Endpoint, port: Option<&str>) -> Result<(), 
     Ok(())
 }
 
-/// Two socket addresses on the same port, where either listens on every address.
-fn same_address(running: &Endpoint, chosen: &Endpoint) -> bool {
-    let (Endpoint::Fixed(left), Endpoint::Fixed(right)) = (running, chosen) else {
-        return false;
+/// Refuses, before writing, a connection another machine in the program file
+/// already uses. When the current program does not load, the reload after
+/// writing refuses instead, so a broken file can still be fixed here.
+fn shares_connection(state: &Context, id: &str, plan: &Plan) -> Result<(), SetupError> {
+    let Ok(program) = Program::load(&state.config_path) else {
+        return Ok(());
     };
-    match (
-        left.parse::<std::net::SocketAddr>(),
-        right.parse::<std::net::SocketAddr>(),
-    ) {
-        (Ok(left), Ok(right)) => {
-            left.port() == right.port()
-                && (left.ip() == right.ip()
-                    || left.ip().is_unspecified()
-                    || right.ip().is_unspecified())
+    let endpoint = plan.connection.endpoint();
+    let chosen = (Link::of(plan.validated.effective().stack()), &endpoint);
+    for other in program.machines().iter().filter(|m| m.id().as_str() != id) {
+        if let Some(what) = connections::shared(connections::of(other), chosen) {
+            return Err(crate::installation::config::Error::SharedConnection {
+                first: other.id().as_str().into(),
+                second: id.into(),
+                what,
+            }
+            .into());
         }
-        (Err(_), _) | (_, Err(_)) => left == right,
     }
+    Ok(())
 }
 
 fn listen_target(state: &Context, plan: &Plan) -> Result<(String, listen::Target), SetupError> {
