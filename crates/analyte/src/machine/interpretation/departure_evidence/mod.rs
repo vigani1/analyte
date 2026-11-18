@@ -31,7 +31,9 @@ pub(crate) fn for_receipt(
             .any(|f| f.problem == analyte_mapping::Problem::UnsupportedEscape)
     });
     let mut entries = evidence.applied.as_slice().to_vec();
-    if let Err(error) = compatibility(machine, &receipt.raw, wire, preserved, &mut entries) {
+    if let Err(error) = compatibility(machine, &receipt.raw, wire, preserved, &mut entries)
+        .and_then(|()| tolerances(&receipt.raw, wire, &mut entries))
+    {
         evidence.incomplete = Some(analyte_model::Reason::new(&format!(
             "departure-evidence failure: {error}"
         ))?);
@@ -213,6 +215,51 @@ fn compatibility(
             });
         }
     }
+    Ok(())
+}
+
+/// Notes the always-on deliberate tolerances seen on the wire; none needs a declaration.
+fn tolerances(
+    raw: &[u8],
+    hl7: Option<&analyte_hl7::WireCompatibility>,
+    entries: &mut Vec<AppliedDeparture>,
+) -> Result<(), Error> {
+    if let Some(charset) = hl7.and_then(|wire| wire.charset_from_definition) {
+        // The spelling of the machine definition's `syntax.encoding` setting.
+        let encoding = match charset {
+            analyte_hl7::Charset::Ascii => "ascii",
+            analyte_hl7::Charset::Latin1 => "latin1",
+            analyte_hl7::Charset::Utf8 => "utf8",
+        };
+        push(
+            entries,
+            AppliedDeparture {
+                rule: Identifier::new("hl7_charset_from_definition")?,
+                declaration: SourceText::new(&format!(
+                    "machine definition syntax encoding = \"{encoding}\""
+                ))?,
+                standard: Identifier::new("HL7 2.5.1 §2.15.9.18 (2.3.1 §2.24.1.18) MSH-18")?,
+                record: 1,
+                field: 18,
+                source: SourceText::new(&format!(
+                    "MSH-18 empty; non-ASCII bytes decoded as {encoding} from the machine definition; bytes unchanged"
+                ))?,
+                meaning: DepartureMeaning::CharsetFromDefinition,
+                coordinates: Identifier::new("receipt_bytes")?,
+                spans: EvidenceList::new(vec![
+                    DepartureSpan::try_from(0..raw.len()).map_err(|_| Error::ReversedSpan)?,
+                ])?,
+            },
+        )?;
+    }
+    Ok(())
+}
+
+fn push(entries: &mut Vec<AppliedDeparture>, entry: AppliedDeparture) -> Result<(), Error> {
+    if entries.len() == EvidenceList::<AppliedDeparture>::MAX_ENTRIES {
+        return Err(Error::AppliedDepartureEvidenceLimit);
+    }
+    entries.push(entry);
     Ok(())
 }
 

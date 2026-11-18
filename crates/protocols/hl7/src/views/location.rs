@@ -81,6 +81,7 @@ pub fn syntax_location(error: &crate::Error, raw: &[u8], ending: Terminator) -> 
         | Error::UnsupportedCharset
         | Error::CharacterEncoding
         | Error::CharsetMismatch
+        | Error::UndeclaredCharset
         | Error::NotStored
         | Error::AckMode => None,
     }

@@ -189,6 +189,17 @@ choices within that scope, not additional promises of conformance.
 - **source**: HL7 2.3.1 §2.24.1.18, pp.2-108–2-109;
   HL7 2.5.1 §2.15.9.18, pp.2-78–2-80.
 - **test**: `charset_is_lossless_and_connection_checked`.
+- **deliberate tolerance** (owner decision, 2026-11-18): an empty MSH-18 with
+  non-ASCII bytes is decoded with the machine definition's `syntax.encoding`
+  instead of being refused. This is still the agreed encoding, not a guess, so
+  it is always on rather than a named departure; each use adds an
+  `hl7_charset_from_definition` note (`CharsetFromDefinition`) to the receipt's
+  departure evidence, shown on the admin receipt page. Contract v1 has no notes
+  field, so the delivered document is unchanged. A definition that names only
+  `ascii` still refuses with `UndeclaredCharset`. LAW keeps refusing an empty
+  MSH-18, which its profile requires. Tests:
+  `empty_msh18_uses_definition_charset`,
+  `empty_msh18_uses_definition_charset_with_note`.
 
 ## 5. Require a named departure for legacy UTF-8
 

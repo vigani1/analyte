@@ -66,6 +66,7 @@ impl fmt::Display for DepartureMeaning {
             Self::PackedRecords => "PackedRecords",
             Self::WireCompatibility => "WireCompatibility",
             Self::ControlCharacterKept => "ControlCharacterKept",
+            Self::CharsetFromDefinition => "CharsetFromDefinition",
         })
     }
 }
@@ -86,6 +87,10 @@ fn departuremeaning_spellings_are_compatible() {
         (
             DepartureMeaning::ControlCharacterKept,
             "ControlCharacterKept",
+        ),
+        (
+            DepartureMeaning::CharsetFromDefinition,
+            "CharsetFromDefinition",
         ),
     ] {
         assert_eq!(value.to_string(), expected);

@@ -67,6 +67,10 @@ pub enum Error {
     /// Connection and header encodings disagree.
     #[error("connection encoding disagrees with MSH-18")]
     CharsetMismatch,
+    /// Non-ASCII bytes arrived with an empty MSH-18, and the machine definition
+    /// names no character set other than the ASCII default.
+    #[error("non-ASCII bytes with empty MSH-18 and no character set in the machine definition")]
+    UndeclaredCharset,
     /// A typed control field is missing or invalid.
     #[error("invalid {segment}-{field}")]
     Control {
@@ -286,7 +290,11 @@ impl Message {
             });
         }
         let charset = text::declared_charset(msh, version_id, options, law)?;
+        let undeclared = !law && msh.field(18).is_none_or(|f| f.raw.is_empty());
         match charset {
+            Charset::Ascii if !raw.is_ascii() && undeclared => {
+                return Err(Error::UndeclaredCharset);
+            }
             Charset::Ascii if !raw.is_ascii() => return Err(Error::CharacterEncoding),
             Charset::Utf8 => {
                 std::str::from_utf8(raw).map_err(|_| Error::CharacterEncoding)?;

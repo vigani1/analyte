@@ -301,7 +301,8 @@ impl Output {
                     | DepartureMeaning::FinalObservationFromDocumentation => true,
                     DepartureMeaning::PackedRecords
                     | DepartureMeaning::WireCompatibility
-                    | DepartureMeaning::ControlCharacterKept => false,
+                    | DepartureMeaning::ControlCharacterKept
+                    | DepartureMeaning::CharsetFromDefinition => false,
                 })
             || !self.unmapped.is_empty()
             || self.results.iter().any(|r| r.content.requires_parking())

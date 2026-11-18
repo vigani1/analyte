@@ -186,10 +186,12 @@ fn render(html: &mut Markup, evidence: &DepartureEvidence) {
                     "contract v1 is parked.</strong></p>",
                 ));
             }
-            DepartureMeaning::ControlCharacterKept => html.push_markup(concat!(
-                "<p><strong>Deliberate tolerance — values kept exactly ",
-                "as received.</strong></p>",
-            )),
+            DepartureMeaning::ControlCharacterKept | DepartureMeaning::CharsetFromDefinition => {
+                html.push_markup(concat!(
+                    "<p><strong>Deliberate tolerance — values kept exactly ",
+                    "as received.</strong></p>",
+                ));
+            }
             DepartureMeaning::PackedRecords | DepartureMeaning::WireCompatibility => {}
         }
         html.push_fragment(

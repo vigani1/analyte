@@ -224,6 +224,40 @@ fn charset_is_lossless_and_connection_checked() -> Result<(), Error> {
     );
     Ok(())
 }
+// Deliberate tolerance: an empty MSH-18 takes the machine definition's set.
+// HL7 2.5.1 §2.15.9.18
+#[test]
+fn empty_msh18_uses_definition_charset() -> Result<(), Error> {
+    let mut raw = wire("2.5.1", "", "", "", "NTE|1||");
+    raw.extend_from_slice(&[0xe9, b'\r']);
+    let latin1 = Options {
+        charset: Charset::Latin1,
+        ..Options::default()
+    };
+    let m = Message::parse(&raw, latin1)?;
+    assert_eq!(m.raw(), raw.as_slice());
+    assert_eq!(m.charset(), Charset::Latin1);
+    assert_eq!(decode_text(&[0xe9], &m)?, "\u{e9}");
+    assert_eq!(
+        wire_compatibility(&m).charset_from_definition,
+        Some(Charset::Latin1)
+    );
+    // Plain ASCII needs no note; an explicit ASCII declaration still disagrees.
+    let ascii = wire("2.5.1", "", "", "", "NTE|1||e\r");
+    let plain = Message::parse(&ascii, latin1)?;
+    assert_eq!(wire_compatibility(&plain).charset_from_definition, None);
+    let explicit = wire("2.5.1", "", "", "ASCII", "NTE|1||e\r");
+    assert_eq!(
+        Message::parse(&explicit, latin1),
+        Err(Error::CharsetMismatch)
+    );
+    // A definition naming no other set keeps refusing, with a specific reason.
+    assert_eq!(parse(&raw), Err(Error::UndeclaredCharset));
+    // LAW requires MSH-18 (TF-2b §C.4), so its parse keeps the standard default.
+    assert!(law::parse_message(&raw, latin1).is_err());
+    Ok(())
+}
+
 // HL7 2.5.1 §2.9; HL7 2.3.1 §2.12
 #[test]
 fn acknowledgments_require_explicit_responsibility() -> Result<(), Error> {

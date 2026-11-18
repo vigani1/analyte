@@ -160,3 +160,84 @@ async fn packed_results_deliver_without_changing_meaning() -> Result<(), Error> 
     store.shutdown(deadline()?).await?;
     Ok(())
 }
+
+async fn latin1_receipt(encoding: &str) -> Result<(bool, Vec<u8>, String), Error> {
+    let temp = tempfile::tempdir()?;
+    let definition=include_str!("../../../../../core/config/examples/hl7.toml").rewrite("tcp_server","tcp_client")
+        .rewrite("encoding = \"ascii\"",&format!("encoding = \"{encoding}\""))
+        .rewrite("qc = []","qc = [{field={group='order',record='OBR',field=3,component=1,repetition=1},value='00012',classification='patient'}]");
+    let program = program(temp.path(), &definition, "127.0.0.1:5600")?;
+    let machine = program.machines().first().ok_or("machine")?;
+    let mut store = crate::runtime::service::open_store(&program, Box::new(Space)).await?;
+    let destination = crate::orders::destination(machine);
+    // MSH-18 is empty; OBX-6 holds Latin-1 0xB5 (micro sign).
+    let payload=b"MSH|^~\\&|SYN|LAB|HOST|LAB|20260101000000||ORU^R01^ORU_R01|message1|P|2.5.1\rPID|1\rOBR|1||00012|SYN^Synthetic^synthetic|||||||||||||||||||||F\rOBX|1|NM|SYN^Synthetic^synthetic||12.30|\xb5g/L|||||F\r";
+    let raw = analyte_framing::hl7::encode(payload, analyte_framing::hl7::Limit::new(1048576)?)?;
+    let id = ReceiptId::new();
+    intake::receive(
+        &store,
+        &intake::ConnectionEvidence::new(machine)?,
+        id,
+        raw.clone(),
+    )
+    .await?;
+    let delivered = intake::interpret(&store, machine, id).await?;
+    let summary = store
+        .request::<_, FixtureError>(deadline()?, move |s| {
+            assert_eq!(s.raw(id)?.as_deref(), Some(raw.as_slice()));
+            let interpretation = s.interpretation(id, 1)?.ok_or(FixtureError::Corruption)?;
+            let ledger = interpretation.departures.ok_or(FixtureError::Corruption)?;
+            let notes = ledger
+                .applied
+                .as_slice()
+                .iter()
+                .filter(|e| e.meaning == analyte_model::DepartureMeaning::CharsetFromDefinition)
+                .map(|e| {
+                    format!(
+                        "{} {} {}",
+                        e.rule.as_str(),
+                        e.source.as_str(),
+                        e.declaration.as_str()
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            let payload = s
+                .claim_destination(1, &destination)?
+                .map(|claim| claim.payload)
+                .unwrap_or_default();
+            let parked = s
+                .parked(0)?
+                .iter()
+                .filter_map(|row| row.details().ok())
+                .map(|e| e.reason.as_str().to_owned())
+                .collect::<Vec<_>>()
+                .join("\n");
+            Ok::<_, FixtureError>((payload, format!("{notes}\n{parked}")))
+        })
+        .await?;
+    store.shutdown(deadline()?).await?;
+    Ok((delivered, summary.0, summary.1))
+}
+
+// Deliberate tolerance: an empty MSH-18 uses the machine definition's character set.
+// HL7 2.5.1 §2.15.9.18
+#[tokio::test]
+async fn empty_msh18_uses_definition_charset_with_note() -> Result<(), Error> {
+    let (delivered, payload, evidence) = latin1_receipt("latin1").await?;
+    assert!(delivered, "{evidence}");
+    assert!(evidence.contains("hl7_charset_from_definition"));
+    assert!(evidence.contains("encoding = \"latin1\""));
+    let wire: serde_json::Value = serde_json::from_slice(&payload)?;
+    let units = wire
+        .pointer("/results/0/parts/0/units/original")
+        .and_then(serde_json::Value::as_str);
+    assert_eq!(units, Some("\u{b5}g/L"));
+    // Without a declared character set the receipt is still refused, with the reason.
+    let (delivered, payload, evidence) = latin1_receipt("ascii").await?;
+    assert!(!delivered);
+    assert!(payload.is_empty());
+    assert!(!evidence.contains("hl7_charset_from_definition"));
+    assert!(evidence.contains("no character set in the machine definition"));
+    Ok(())
+}
