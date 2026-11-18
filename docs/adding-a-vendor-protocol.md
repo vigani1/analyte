@@ -55,7 +55,7 @@ concern is absent from the protocol:
 | Owner | Files and work |
 | --- | --- |
 | Workspace | `Cargo.toml`: crate membership and shared dependency registration; `Cargo.lock`: regenerate through Cargo |
-| Config | `src/lib.rs`, `migration`, `orders/mod.rs`, `orders/validation`, `schema/mod.rs`, `selection`, `stack/mod.rs`, `stack/capabilities.rs`, `validation/stack`: protocol selection, validation, order support and capability row |
+| Config | `src/lib.rs`, `orders/mod.rs`, `orders/validation`, `schema/mod.rs`, `selection`, `stack/mod.rs`, `stack/capabilities.rs`, `validation/stack`: protocol selection, validation, order support and capability row |
 | Steps | `framing/src/lib.rs`, `dialog/src/lib.rs`, `mapping/src/lib.rs`, `mapping/src/inbound/evidence.rs`, `mapping/src/orders/mod.rs`: register owned layers and evidence |
 | Program machine | `machine/mod.rs`, `machine/settings.rs`, `machine/error.rs`, `machine/receive/bytes.rs`, `machine/receive/connection_input.rs`: dispatch, errors and input custody |
 | Program reading | `reading/mod.rs`, `reading/envelope.rs`: receipt dispatch and specific errors |

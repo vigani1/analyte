@@ -56,30 +56,6 @@ impl OrderOwner {
             )
         })
     }
-
-    // Only the forward migration interprets historical source-code conventions.
-    pub(crate) fn legacy(code: &str) -> Result<Self, Error> {
-        if let Some(owner) = code.strip_prefix("host-reserved:") {
-            return Ok(Self::Reservation(
-                Identifier::new(owner).map_err(|_| Error::Corruption)?,
-            ));
-        }
-        if let Some(cancel) = code.strip_prefix("app-cancel:") {
-            let (version, owner) = cancel.split_once(':').ok_or(Error::Corruption)?;
-            // Old ownership compared the final colon-delimited component. Preserve that
-            // exact meaning; the untouched source code retains the full original text.
-            let connection = owner.rsplit(':').next().ok_or(Error::Corruption)?;
-            return Ok(Self::Cancellation {
-                connection: if connection.is_empty() {
-                    None
-                } else {
-                    Some(Identifier::new(connection).map_err(|_| Error::Corruption)?)
-                },
-                version: canonical_version(version)?,
-            });
-        }
-        Ok(Self::None)
-    }
 }
 
 fn canonical_version(value: &str) -> Result<NonZeroU64, Error> {
@@ -94,19 +70,15 @@ fn canonical_version(value: &str) -> Result<NonZeroU64, Error> {
 mod tests {
     use super::*;
 
-    // ADR 0003 rule 8: normalizing a legacy version token could invent a replay guard.
+    // ADR 0003 rule 8: normalizing a stored version token could invent a replay guard.
     #[test]
-    fn adr0003_legacy_owner_never_normalizes_a_cancellation_version() {
+    fn adr0003_stored_owner_never_normalizes_a_cancellation_version() {
         for version in ["0001", "+1", "0", "invalid"] {
-            {
-                let refusal = OrderOwner::legacy(&format!("app-cancel:{version}:owner"))
-                    .map(|_| ())
-                    .expect_err("input must be refused");
-                assert!(
-                    matches!(&refusal, Error::Corruption),
-                    "unexpected refusal: {refusal:?}"
-                );
-            }
+            let refusal = canonical_version(version).expect_err("input must be refused");
+            assert!(
+                matches!(&refusal, Error::Corruption),
+                "unexpected refusal: {refusal:?}"
+            );
         }
     }
 }

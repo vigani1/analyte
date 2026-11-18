@@ -29,11 +29,12 @@ impl Store {
         Ok(file)
     }
 
-    /// Verifies and migrates a staged backup, retaining the displaced database.
+    /// Verifies and opens a staged backup, retaining the displaced database.
     /// The restore audit is committed before publication. Interrupted staging is
     /// retained and blocks another restore rather than deleting evidence.
     /// # Errors
-    /// Refuses active owners, existing recovery files, invalid backups and I/O failures.
+    /// Refuses active owners, existing recovery files, invalid or unsupported backups
+    /// and I/O failures.
     pub fn restore(
         path: &Path,
         source: &Path,
@@ -56,10 +57,8 @@ impl Store {
             Connection::open_with_flags(source, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
         Self::integrity(&source_db)?;
         let version: i64 = source_db.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-        if version > crate::SCHEMA_VERSION {
-            return Err(Error::SchemaTooNew(version));
-        }
-        if version < 1 {
+        super::migration::check(version)?;
+        if version == 0 {
             return Err(Error::Corruption);
         }
         Self::restore_capacity(&source_db, path, &limits, &*space)?;
@@ -100,8 +99,8 @@ impl Store {
         Ok(kept)
     }
 
-    /// Copies the backup into the stage, opens it through ordinary startup (which may
-    /// migrate it), records the audit entry and admits the final size.
+    /// Copies the backup into the stage, opens it through ordinary startup, records the
+    /// audit entry and admits the final size.
     fn fill_stage(
         source_db: &Connection,
         stage: &Path,
@@ -134,8 +133,8 @@ impl Store {
         restored
             .db
             .execute_batch("PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode=DELETE;")?;
-        // Opening the stage may migrate an older backup and grow it. Admit the
-        // final restored store under the same reserve and size rule as intake.
+        // The audit entry can grow the stage. Admit the final restored store under
+        // the same reserve and size rule as intake.
         restored.capacity(0)?;
         drop(restored);
         Ok(())

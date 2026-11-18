@@ -227,32 +227,6 @@ fn adr0013_item2_unfinished_items_events_and_linked_receipts_block_order_purge()
     Ok(())
 }
 #[test]
-fn adr0013_item3_v10_migration_keeps_existing_order_evidence() -> TestResult {
-    let temp = tempfile::tempdir()?;
-    let path = temp.path().join("store.db");
-    let mut store = open(&path)?;
-    order_seed(&mut store, "Uncertain")?;
-    remove_alert_schema_for_legacy_fixture(&store.db)?;
-    store.db.execute_batch("DROP TABLE law_work_history; DROP TABLE law_messages; DROP TABLE awos_execution_history; DROP TABLE retention_order_deliveries; DROP TABLE retention_orders; PRAGMA user_version=10;")?;
-    drop(store);
-    let store = open(&path)?;
-    assert_eq!(
-        store
-            .db
-            .query_row("SELECT state FROM machine_orders", [], |r| r
-                .get::<_, String>(0))?,
-        "Uncertain"
-    );
-    assert_eq!(
-        store
-            .db
-            .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-        crate::SCHEMA_VERSION
-    );
-    Ok(())
-}
-
-#[test]
 fn adr0013_item2_newer_cached_order_work_is_never_purged() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("store.db"))?;

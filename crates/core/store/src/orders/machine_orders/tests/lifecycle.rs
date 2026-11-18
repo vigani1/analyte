@@ -138,47 +138,6 @@ fn adr0004_reserve_transition_outbox_and_restart_never_resend() -> TestResult {
 }
 
 #[test]
-fn plan11_schema3_to6_preserves_rows_and_triggers() -> TestResult {
-    let temp = tempfile::tempdir()?;
-    let path = temp.path().join("legacy.db");
-    let mut db = Connection::open(&path)?;
-    db.execute_batch(include_str!("../../../upkeep/schema.sql"))?;
-    Store::migrate_v2(&mut db)?;
-    Store::migrate_v3(&mut db, 65_536)?;
-    db.execute("INSERT INTO audit(evidence) VALUES ('legacy-evidence')", [])?;
-    db.execute_batch("CREATE TRIGGER legacy_audit_retained BEFORE DELETE ON audit BEGIN SELECT RAISE(ABORT,'retained'); END;")?;
-    let before = db
-        .prepare("SELECT name,sql FROM sqlite_master WHERE type='trigger' ORDER BY name")?
-        .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
-        .collect::<Result<Vec<_>, _>>()?;
-    drop(db);
-    let store = open(&path)?;
-    assert_eq!(
-        store
-            .db
-            .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-        SCHEMA_VERSION
-    );
-    assert_eq!(
-        store
-            .db
-            .query_row("SELECT evidence FROM audit", [], |r| r.get::<_, String>(0))?,
-        "legacy-evidence"
-    );
-    for (name, sql) in before {
-        assert_eq!(
-            store.db.query_row(
-                "SELECT sql FROM sqlite_master WHERE type='trigger' AND name=?1",
-                [name],
-                |r| r.get::<_, String>(0)
-            )?,
-            sql
-        );
-    }
-    Ok(())
-}
-
-#[test]
 fn adr0004_sending_reservations_survive_restart_and_plan11_listing_is_filtered_and_bounded()
 -> TestResult {
     let temp = tempfile::tempdir()?;
@@ -255,45 +214,6 @@ fn adr0004_sending_reservations_survive_restart_and_plan11_listing_is_filtered_a
     );
     filter.state = Some(OrderState::Accepted);
     assert!(store.machine_orders(&filter)?.is_empty());
-    Ok(())
-}
-
-#[test]
-fn adr0003_v4_migration_preserves_orders_and_flags_unrecoverable_coverage() -> TestResult {
-    let temp = tempfile::tempdir()?;
-    let path = temp.path().join("legacy.db");
-    let mut db = Connection::open(&path)?;
-    db.execute_batch(include_str!("../../../upkeep/schema.sql"))?;
-    Store::migrate_v2(&mut db)?;
-    Store::migrate_v3(&mut db, 65_536)?;
-    db.execute_batch(include_str!("../../../upkeep/migration_v4.sql"))?;
-    db.execute("INSERT INTO machine_orders(destination,order_id,machine,version,state,created_at,updated_at,source_code) VALUES ('app','order','machine','1',?1,101,101,'reserved')",[document(&OrderState::Sending)?])?;
-    db.execute("INSERT INTO machine_order_history(machine_order,evidence) VALUES (1,?1)",[serde_json::json!({"id":1,"key":{"destination":"app","order":"order","machine":"machine"},"version":1,"state":"Sending","created_at":101,"updated_at":101,"source_code":"reserved"}).to_string()])?;
-    drop(db);
-    let store = open(&path)?;
-    let orders = store.machine_orders(&MachineOrderFilter {
-        after: 0,
-        machine: None,
-        state: None,
-    })?;
-    let item = orders
-        .first()
-        .and_then(|order| order.items.first())
-        .ok_or("missing migrated item")?;
-    assert!(!item.coverage_known);
-    assert!(item.tests.is_empty());
-    assert_eq!(item.state, OrderState::Sending);
-    assert_eq!(
-        item.source_code.as_str(),
-        "migration-v5-coverage-unavailable"
-    );
-    assert_eq!(
-        store
-            .db
-            .query_row("SELECT count(*) FROM machine_order_history", [], |r| r
-                .get::<_, i64>(0))?,
-        1
-    );
     Ok(())
 }
 

@@ -1,6 +1,6 @@
-//! Opens the store under its lock, checks integrity and applies forward-only migrations.
+//! Opens the store under its lock, checks integrity and creates or upgrades its schema.
 use crate::{
-    FreeSpace, Limits, MaintenanceError as Error, SCHEMA_VERSION, Store,
+    FreeSpace, Limits, MaintenanceError as Error, Store,
     startup::{Startup, StartupStep},
 };
 use rusqlite::Connection;
@@ -9,10 +9,10 @@ use std::path::Path;
 mod tests;
 
 impl Store {
-    /// Opens, checks integrity, and applies forward-only migrations before accepting writes.
+    /// Opens, checks integrity, and creates or upgrades the schema before accepting writes.
     /// Uses `DEFAULT_STARTUP_TIMEOUT`; each schema version commits atomically.
     /// # Errors
-    /// Refuses corruption, newer schemas, invalid limits and filesystem/database failures,
+    /// Refuses corruption, unsupported schemas, invalid limits and filesystem/database failures,
     /// and names the active step when the startup budget expires.
     pub fn open(path: &Path, limits: Limits, space: Box<dyn FreeSpace>) -> Result<Self, Error> {
         Self::open_with_startup(path, limits, space, &default_startup()?)
@@ -73,15 +73,12 @@ impl Store {
             }
             Ok((db, version))
         })?;
-        if version > SCHEMA_VERSION {
-            return Err(Error::SchemaTooNew(version));
-        }
+        super::migration::check(version)?;
         startup.run(StartupStep::Integrity, || Self::integrity(&db))?;
         db.execute_batch(
             "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA secure_delete=ON;",
         )?;
-        super::migration::apply(&mut db, startup, version, limits.record_bytes)?;
-        install_guards(&db, startup)?;
+        super::migration::apply(&mut db, startup, version)?;
         db.progress_handler(0, None::<fn() -> bool>)?;
         Ok(Self {
             retention_key: None,
@@ -123,14 +120,4 @@ fn default_startup() -> Result<Startup, Error> {
             .checked_add(crate::DEFAULT_STARTUP_TIMEOUT)
             .ok_or(Error::InvalidMaintenanceInput)?,
     ))
-}
-
-fn install_guards(db: &Connection, startup: &Startup) -> Result<(), Error> {
-    startup.run(StartupStep::Finalizing, || {
-        // SQL constraints also protect evidence from accidental maintenance updates.
-        for table in ["receipts", "frames", "interpretations", "attempts", "audit"] {
-            db.execute_batch(&format!("CREATE TRIGGER IF NOT EXISTS immutable_{table}_update BEFORE UPDATE ON {table} BEGIN SELECT RAISE(ABORT,'immutable evidence'); END; CREATE TRIGGER IF NOT EXISTS immutable_{table}_delete BEFORE DELETE ON {table} BEGIN SELECT RAISE(ABORT,'immutable evidence'); END;"))?;
-        }
-            Ok(())
-        })
 }

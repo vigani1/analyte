@@ -336,17 +336,13 @@ mod existing {
         Ok(())
     }
 
-    // Plan section 11: upgrading a version-five store backfills message activity.
+    // Plan section 11: a stored receipt and a live frame both count as machine activity.
     #[test]
-    fn plan11_schema5_activity_backfill_and_live_frames() -> TestResult {
+    fn plan11_receipt_and_live_frame_activity() -> TestResult {
         let temp = tempfile::tempdir()?;
-        let path = temp.path().join("old.db");
-        let mut db = Connection::open(&path)?;
-        db.execute_batch(include_str!("../../upkeep/schema.sql"))?;
-        Store::migrate_v2(&mut db)?;
-        Store::migrate_v3(&mut db, 65_536)?;
-        db.execute_batch(include_str!("../../upkeep/migration_v4.sql"))?;
-        db.execute_batch(include_str!("../../upkeep/migration_v5.sql"))?;
+        let path = temp.path().join("activity.db");
+        drop(open(&path)?);
+        let db = Connection::open(&path)?;
         let metadata = serde_json::json!({"machine":"busy","received_at":"1970-01-01T00:01:30Z"});
         db.execute(
             "INSERT INTO receipts VALUES('synthetic',?1,x'00',x'00')",

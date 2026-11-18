@@ -266,8 +266,8 @@ them can be collected at any time and kept as test data.
 - The PC must not sleep; updates are scheduled; USB serial reconnects and COM
   port changes are handled.
 - Store startup has a validated 30..3600-second budget (600 seconds by default),
-  structured per-step progress and cooperative SQLite interruption. Each migration
-  version remains transactional and resumable after timeout.
+  structured per-step progress and cooperative SQLite interruption. Each schema
+  version commits in one transaction, so a timeout keeps the last committed one.
 - Backups of the store; a tested restore. Restoring an older store
   reconciles deliveries and orders before any machine gets a command.
 - **Machine configs:** the shipped definition, the site settings and local
@@ -278,13 +278,15 @@ them can be collected at any time and kept as test data.
   not change the running service's snapshot, queued deliveries or machine orders.
   The config library provides draft, validated and active types, but there is no
   operator hot-reload command. Activation between conversations remains future
-  work. Store and config formats are versioned, with rehearsed migrations.
+  work. Store and config formats carry a version. Nothing is released yet, so
+  each has one starting format and refuses any other version; upgrade steps
+  start with the first release.
 - **Monitoring:** pending bytes and oldest item age, storage commit time,
   order cache freshness and uncertain orders, each alert with a named
   responder.
 - **Retention:** ADR 0013 defines required site periods, keyed tombstones, explicit
-  holds and bounded audited receipt and order purges. Existing stores need the offline
-  incremental-vacuum conversion described in the program guide.
+  holds and bounded audited receipt and order purges. Every store is created
+  ready for incremental vacuum.
 - **Before a pilot:** the supported outage length, disk capacity and reserve,
   retention, and backup and restore targets are written down.
 
