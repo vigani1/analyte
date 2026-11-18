@@ -1,7 +1,7 @@
 //! Drives HL7 connections and chooses ACKs after durable interpretation.
 use crate::intake::ByteReason;
 use crate::machine::hooks::Pause;
-pub(crate) mod error_location;
+pub(crate) mod location;
 use super::connection_input::{self, Input};
 use super::driver::{self, Context, Effects, Failures, Flow, Run};
 use crate::intake;

@@ -46,12 +46,26 @@ class LayoutTests(unittest.TestCase):
         ]
         self.assertFalse(layout.violations(grouped, {}))
 
-    def test_source_folders_keep_their_own_prefix_rule(self):
-        # The topic-prefix rule covers test trees; source stems that only share
-        # a word with a sibling are judged by the folder-name rule alone.
-        files = ["crates/analyte/src/runtime/test_hooks.rs", "crates/analyte/src/runtime/test_tracing.rs"]
-        self.assertFalse(layout.violations(files, {}))
-
+    def test_source_topic_prefix_cannot_stand_in_for_a_folder(self):
+        # Source folders follow the same prefix rule as test folders.
+        beside_folder = ["crates/analyte/src/runtime/test_hooks/mod.rs", "crates/analyte/src/runtime/test_tracing.rs"]
+        beside_file = ["crates/analyte/src/machine/hl7/error.rs", "crates/analyte/src/machine/hl7/error_location.rs"]
+        siblings = ["crates/core/store/src/order_cache.rs", "crates/core/store/src/order_events.rs"]
+        nested = ["crates/analyte/src/machine/mod.rs", "crates/analyte/src/machine/hl7/mod.rs", "crates/analyte/src/machine/hl7_send.rs"]
+        for files in (beside_folder, beside_file, siblings, nested):
+            errors = layout.violations(files, {})
+            self.assertTrue(errors, files)
+            self.assertTrue(all("stands in for a folder" in error for error in errors), errors)
+        grouped = [
+            "crates/analyte/src/runtime/test_hooks/mod.rs",
+            "crates/analyte/src/runtime/log_capture.rs",
+            "crates/analyte/src/machine/hl7/error.rs",
+            "crates/analyte/src/machine/hl7/location.rs",
+            "crates/core/store/src/orders/machine_orders/mod.rs",
+            "crates/protocols/hl7/examples/law_messages.rs",
+            "crates/protocols/hl7/examples/law_queries.rs",
+        ]
+        self.assertFalse(layout.violations(grouped, {}))
 
 if __name__ == "__main__":
     unittest.main()

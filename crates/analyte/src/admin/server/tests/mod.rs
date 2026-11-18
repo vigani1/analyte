@@ -170,7 +170,7 @@ fn headers_present(response: &str) {
 // bounded metadata reads, honest health and no credential/payload in logs.
 #[tokio::test(flavor = "multi_thread")]
 async fn plan11_plan12_overview_auth_headers_escaping_and_shutdown() -> Result<(), Error> {
-    let logs = crate::runtime::test_tracing::init();
+    let logs = crate::runtime::log_capture::init();
     let directory = crate::admin::private_tempdir()?;
     #[cfg(unix)]
     {
