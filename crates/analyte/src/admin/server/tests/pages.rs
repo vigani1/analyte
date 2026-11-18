@@ -154,6 +154,10 @@ async fn start_pages_server(
             departure_html: Markup::new(),
             id: Identifier::new(&format!("machine-{index}"))?,
             running: Arc::new(AtomicBool::new(true)),
+            status: crate::machine::link::status::Reporter::new(
+                crate::machine::link::status::Link::Serial,
+            )
+            .subscribe(),
         });
     }
     let (released, release) = tokio::sync::oneshot::channel();

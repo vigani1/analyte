@@ -33,7 +33,7 @@ to a shared network.
 | Page | Use |
 | --- | --- |
 | Overview | Active alerts, owner state, activity, pending age, cache trust, uncertain orders, restore pause and free space. |
-| Machines | Config and activity; connection state is explicitly unknown. A running owner does not prove a connection. |
+| Machines | Config, link light and activity. TCP server: Waiting or Connected. TCP client: Connected or Not connected (retrying). Serial: only Port open or Port not open, because an open port proves no cable or machine. Watched folder: Watching or Not watching. Last data received and last state change show as an age. |
 | Parked items | Reasons and linked evidence. Raw disclosure requires an audited browser POST. |
 | Deliveries | Inspect state and confirm eligible resends, with a reason. |
 | Machine orders | Inspect lifecycle; reconciliation remains a CLI task. |

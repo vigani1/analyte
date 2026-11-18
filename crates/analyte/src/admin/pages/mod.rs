@@ -135,7 +135,7 @@ pub(super) async fn machines(
                         } else {
                             "stopped"
                         })
-                        .markup(". Connection state: unknown.</p>"),
+                        .markup(".</p>"),
                 );
                 html.push_fragment(&machine.departure_html);
                 let mut cursor = String::new();
@@ -168,12 +168,13 @@ pub(super) async fn machines(
                         }
                     }
                 }
-                html.push_fragment(
-                    &Markup::new()
-                        .markup("<p>Last received activity: ")
-                        .text(last.map_or_else(|| "unknown".into(), |time| time.to_string()))
-                        .markup("</p></section>"),
-                );
+                html.push_markup("<dl>");
+                let now = jiff::Timestamp::now();
+                for (name, value) in super::overview::link_rows(&machine.status.borrow(), last, now)
+                {
+                    super::overview::row(&mut html, name, &value);
+                }
+                html.push_markup("</dl></section>");
             }
             if !page.is_empty() {
                 next(
