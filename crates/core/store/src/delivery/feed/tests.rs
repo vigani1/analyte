@@ -20,7 +20,7 @@ fn adr0004_order_cache_distinguishes_empty_stale_reset_and_tombstones() -> TestR
         orders: vec![CachedOrder {
             id: Identifier::new("order")?,
             sample: sample.clone(),
-            document: "synthetic-v1".into(),
+            document: r#"{"version":1}"#.into(),
             tombstone: false,
             expiry: 30,
         }],
@@ -145,7 +145,7 @@ fn mutation_adr0008_adr0004_feed_page_bounds_and_lookup_trust_are_independent() 
     let order = CachedOrder {
         id: Identifier::new("order-a")?,
         sample: sample.clone(),
-        document: "synthetic order".into(),
+        document: r#"{"version":1}"#.into(),
         tombstone: false,
         expiry: 200,
     };
@@ -169,7 +169,7 @@ fn mutation_adr0008_adr0004_feed_page_bounds_and_lookup_trust_are_independent() 
     assert_eq!(orders.len(), 1);
     assert_eq!(
         orders.first().ok_or("missing order")?.document,
-        "synthetic order"
+        r#"{"version":1}"#
     );
     assert!(matches!(
         store.orders(&destination, &sample, 130, 30)?,
@@ -198,5 +198,86 @@ fn mutation_adr0008_adr0004_feed_page_bounds_and_lookup_trust_are_independent() 
         store.orders(&destination, &sample, 100, 30)?,
         Lookup::NoOrders
     ));
+    Ok(())
+}
+
+fn versioned(version: u64, state: &str) -> Result<OrderPage, Box<dyn std::error::Error>> {
+    Ok(OrderPage {
+        destination: Identifier::new("app")?,
+        cursor: Identifier::new(&format!("cursor-{version}-{state}"))?,
+        complete: true,
+        polled: 100,
+        orders: vec![CachedOrder {
+            id: Identifier::new("order")?,
+            sample: SampleId::new("001a")?,
+            document: serde_json::json!({"version":version,"state":state,"tombstone":false,"tests":[{"namespace":"local","value":"test"}]}).to_string(),
+            tombstone: false,
+            expiry: 200,
+        }],
+    })
+}
+
+fn stored_document(store: &Store) -> Result<String, Box<dyn std::error::Error>> {
+    let app = Identifier::new("app")?;
+    let order = Identifier::new("order")?;
+    Ok(store
+        .cached_order(&app, &order)?
+        .ok_or("cache absent")?
+        .document)
+}
+
+// Contract v1 "GET /orders": each order carries a positive version; ADR 0004 rechecks
+// version and cancellation before sending, so a replayed older version never wins.
+#[test]
+fn older_version_refused() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("store.db"))?;
+    let cancelled = versioned(2, "cancel_confirmed")?;
+    store.order_page(&cancelled)?;
+    store.order_page(&versioned(1, "requested")?)?;
+    assert_eq!(
+        stored_document(&store)?,
+        cancelled.orders.first().ok_or("order")?.document
+    );
+    let (app, machine) = (Identifier::new("app")?, Identifier::new("machine")?);
+    assert!(matches!(
+        store.pending_orders(&app, &machine, "", 101, 30)?,
+        PendingOrders::Page { orders, .. } if orders.is_empty()
+    ));
+    let identity = MachineOrderKey {
+        destination: app,
+        order: Identifier::new("order")?,
+        machine,
+    };
+    let reservation = OrderReservation {
+        identity: &identity,
+        version: std::num::NonZeroU64::MIN,
+        now: 101,
+        freshness: 30,
+    };
+    assert!(matches!(
+        store.reserve_send(&reservation, ReserveOptions::default())?,
+        Err(SendRefusal::VersionChanged)
+    ));
+    assert_eq!(store.parked(0)?.len(), 1);
+    Ok(())
+}
+
+// Contract v1 "GET /orders": one order version has one content; a different document
+// under the same version is a conflict, kept for the operator, never applied.
+#[test]
+fn equal_version_conflict() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("store.db"))?;
+    let first = versioned(2, "requested")?;
+    store.order_page(&first)?;
+    store.order_page(&first)?;
+    assert!(store.parked(0)?.is_empty());
+    store.order_page(&versioned(2, "cancel_confirmed")?)?;
+    assert_eq!(
+        stored_document(&store)?,
+        first.orders.first().ok_or("order")?.document
+    );
+    assert_eq!(store.parked(0)?.len(), 1);
     Ok(())
 }

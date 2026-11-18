@@ -1,9 +1,14 @@
 //! Stores and pages order-change feed entries.
-use crate::{Lookup, OrderError as Error, OrderPage, OrderTrust, Store};
+use crate::{CachedOrder, Lookup, OrderError as Error, OrderPage, OrderTrust, Store};
 use analyte_model::{Identifier, SampleId};
 use rusqlite::{Connection, OptionalExtension, params};
 #[cfg(test)]
 mod tests;
+
+#[derive(serde::Deserialize)]
+struct Versioned {
+    version: std::num::NonZeroU64,
+}
 
 impl Store {
     /// Stores a bounded page with its cursor in the same commit.
@@ -27,10 +32,57 @@ impl Store {
             params![page.destination.as_str(), page.cursor.as_str(), page.complete, page.polled],
         )?;
         for order in &page.orders {
+            if let Some(reason) = Self::refused_version(&tx, &page.destination, order)? {
+                tx.execute(
+                    "INSERT INTO parked(evidence) VALUES (?1)",
+                    [crate::parked::evidence(
+                        "order_version_refused",
+                        order.id.as_str(),
+                        &reason,
+                        None,
+                    )?],
+                )?;
+                continue;
+            }
             tx.execute("INSERT INTO orders VALUES (?1,?2,?3,?4,?5,?6,(SELECT generation FROM feed WHERE destination=?1)) ON CONFLICT(destination,id) DO UPDATE SET sample=excluded.sample,evidence=excluded.evidence,tombstone=excluded.tombstone,expiry=excluded.expiry,generation=excluded.generation", params![page.destination.as_str(),order.id.as_str(),order.sample.as_str(),crate::document(order)?,order.tombstone,order.expiry])?;
         }
         tx.commit()?;
         Ok(())
+    }
+
+    /// Versions only move forward (contract v1 `GET /orders`): an older version, or the same
+    /// version with different content, keeps the cached order and returns the operator reason.
+    fn refused_version(
+        tx: &Connection,
+        destination: &Identifier,
+        order: &CachedOrder,
+    ) -> Result<Option<String>, Error> {
+        let cached: Option<String> = tx
+            .query_row(
+                "SELECT evidence FROM orders WHERE destination=?1 AND id=?2",
+                params![destination.as_str(), order.id.as_str()],
+                |r| r.get(0),
+            )
+            .optional()?;
+        let Some(cached) = cached else {
+            return Ok(None);
+        };
+        let cached: CachedOrder = serde_json::from_str(&cached)?;
+        let version = |document: &str| {
+            serde_json::from_str::<Versioned>(document).map(|parsed| parsed.version)
+        };
+        let (kept, offered) = (version(&cached.document)?, version(&order.document)?);
+        Ok(if offered < kept {
+            Some(format!(
+                "app sent order version {offered} after cached version {kept}; kept {kept}"
+            ))
+        } else if offered == kept && cached.document != order.document {
+            Some(format!(
+                "app sent different content for order version {kept}; kept the cached one"
+            ))
+        } else {
+            None
+        })
     }
 
     /// Invalidates the cursor and snapshot after 410; stale orders remain as evidence.

@@ -301,7 +301,10 @@ fn adr0003_v4_migration_preserves_orders_and_flags_unrecoverable_coverage() -> T
 fn adr0003_identity_overflow_duplicate_unknown_and_illegal_outcomes_roll_back() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("limits.db"))?;
-    store.order_page(&page(1, "requested", false, 200)?)?;
+    // The same document `reserve_two` caches: one version never changes content.
+    let mut cached = page(1, "requested", false, 200)?;
+    cached.orders.first_mut().ok_or("missing order")?.document = serde_json::json!({"version":1,"state":"requested","tombstone":false,"tests":[{"namespace":"local","value":"a"},{"namespace":"local","value":"b"}]}).to_string();
+    store.order_page(&cached)?;
     for namespace in ["n".repeat(22), "n".repeat(256)] {
         assert!(matches!(
             store.reserve_send(
@@ -313,7 +316,7 @@ fn adr0003_identity_overflow_duplicate_unknown_and_illegal_outcomes_roll_back() 
                 },
                 ReserveOptions {
                     items: OrderItems::Groups {
-                        groups: &test_groups(&["test"])?,
+                        groups: &test_groups(&["a", "b"])?,
                         namespace: Some(&Identifier::new(&namespace)?),
                         max_identity_bytes: 22usize
                             .saturating_sub(namespace.len())
