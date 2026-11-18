@@ -32,6 +32,8 @@ impl<'a> Poller<'a> {
     /// # Errors
     /// Returns specific network, document, pagination, status or storage failures.
     pub async fn poll_once(&self) -> Result<(), PollError> {
+        // Freshness counts from the chain's start: changes made while it runs may be missing.
+        let started = jiff::Timestamp::now().as_second();
         let id = self.destination.id.clone();
         let mut cursor = self
             .store
@@ -73,7 +75,7 @@ impl<'a> Poller<'a> {
                 cursor: Identifier::new(fields.next_cursor.as_str())
                     .map_err(|_| PollError::FeedProgress)?,
                 complete,
-                polled: jiff::Timestamp::now().as_second(),
+                polled: started,
                 orders,
             };
             self.store

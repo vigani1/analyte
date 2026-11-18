@@ -183,7 +183,8 @@ pub struct OrderPage {
     pub cursor: Identifier,
     /// Last snapshot page reached.
     pub complete: bool,
-    /// Last successful poll Unix second.
+    /// Unix second at which this page's poll chain began; it refreshes cache
+    /// trust only on the final page (`complete`).
     pub polled: i64,
     /// Changes, including tombstones.
     pub orders: Vec<CachedOrder>,
