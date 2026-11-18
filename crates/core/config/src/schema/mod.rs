@@ -401,6 +401,11 @@ pub struct Destination {
     /// Maximum trusted order-cache age in seconds, shared by every host path.
     #[serde(default = "default_order_freshness")]
     pub freshness_seconds: u64,
+    /// Deadline in seconds for one whole lab-app HTTP request (a result delivery
+    /// or one order page): connect, TLS, upload, the app storing and answering,
+    /// and the body read. Validated as 1 through 120 seconds.
+    #[serde(default = "default_request_timeout")]
+    pub request_timeout_seconds: u64,
     /// Destination identity.
     pub name: Identifier,
     /// HTTPS base URL without user info, query or fragment.
@@ -523,6 +528,13 @@ pub enum ValueKind {
 
 fn default_order_freshness() -> u64 {
     30
+}
+
+// Covers TLS setup over a slow WAN plus a few seconds of app storage, while a
+// hung order poll still fails and retries well inside the default 30-second
+// freshness, so one stalled page does not make the order cache untrusted.
+fn default_request_timeout() -> u64 {
+    10
 }
 
 /// Installed POCT identity evidence, never inferred from values or receipt IDs.
