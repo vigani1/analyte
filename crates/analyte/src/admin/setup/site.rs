@@ -153,7 +153,10 @@ fn with_definition(
             path.components()
                 .map(|part| match part {
                     std::path::Component::Normal(name) => name.to_str(),
-                    _ => None,
+                    std::path::Component::Prefix(_)
+                    | std::path::Component::RootDir
+                    | std::path::Component::CurDir
+                    | std::path::Component::ParentDir => None,
                 })
                 .collect::<Option<Vec<_>>>()
         })
