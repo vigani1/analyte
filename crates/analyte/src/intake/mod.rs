@@ -171,17 +171,9 @@ pub(crate) async fn persist_prepared(
     }
     let interpretation = reading_evidence(machine, reading, departures)?;
     let destination = machine.snapshot.effective().site().destination.name.clone();
-    let conflict = if atomic {
-        Some(Interpretation {
-            departures: interpretation.departures.clone(),
-            driver: interpretation.driver.clone(),
-            config_version: interpretation.config_version.clone(),
-            config: interpretation.config.clone(),
-            outcome: Reading::Failed(analyte_model::Reason::new(&BatchConflict.to_string())?),
-        })
-    } else {
-        None
-    };
+    let conflict = atomic
+        .then(|| persistence::failed(&interpretation, &BatchConflict.to_string()))
+        .transpose()?;
     let prepared = PreparedMapping {
         id,
         findings,

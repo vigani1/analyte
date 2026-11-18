@@ -52,6 +52,7 @@ impl PreparedMapping {
         let atomic = policy.atomic();
         let lifecycle = policy.lifecycle();
         let findings = park_findings(id, findings)?;
+        let oversize = failed(&interpretation, "interpretation exceeds store record_bytes")?;
         let receipt = store
             .receipt(id)?
             .ok_or(analyte_store::ReconciliationError::Conflict)?
@@ -90,11 +91,21 @@ impl PreparedMapping {
             Err(analyte_store::ReconciliationError::DeliveryBuild(error))
                 if error.is::<BatchConflict>() =>
             {
+                let conflict =
+                    conflict.ok_or(analyte_store::ReconciliationError::ConflictEvidenceRequired)?;
                 (
-                    reject_batch(store, id, conflict, &policy, action.as_ref(), &findings)?,
+                    retain_failed(store, id, conflict, &policy, action.as_ref(), &findings)?,
                     InterpretationOutcome::Conflict,
                 )
             }
+            // Evidence too large for one record still gets a final, parked answer;
+            // an error here would leave the machine retransmitting.
+            Err(analyte_store::ReconciliationError::Storage(
+                analyte_store::StorageError::LimitExceeded { .. },
+            )) => (
+                retain_failed(store, id, oversize, &policy, action.as_ref(), &findings)?,
+                InterpretationOutcome::Failed,
+            ),
             result => (
                 result?,
                 if accepted {
@@ -119,20 +130,32 @@ fn reconciliation_action(
     )
 }
 
-fn reject_batch(
+/// The same provenance as `evidence`, with a failed reading that parks `reason`.
+pub(super) fn failed(
+    evidence: &Interpretation,
+    reason: &str,
+) -> Result<Interpretation, analyte_model::TextError> {
+    Ok(Interpretation {
+        departures: evidence.departures.clone(),
+        driver: evidence.driver.clone(),
+        config_version: evidence.config_version.clone(),
+        config: evidence.config.clone(),
+        outcome: Reading::Failed(analyte_model::Reason::new(reason)?),
+    })
+}
+
+fn retain_failed(
     store: &mut analyte_store::Store,
     id: ReceiptId,
-    conflict: Option<Interpretation>,
+    evidence: Interpretation,
     policy: &Policy,
     action: Option<&analyte_store::Reprocess>,
     findings: &[analyte_store::Parked],
 ) -> Result<analyte_store::InterpretationCommit, analyte_store::ReconciliationError> {
-    let rejected_evidence =
-        conflict.ok_or(analyte_store::ReconciliationError::ConflictEvidenceRequired)?;
     let rejected_policy = policy.rejected();
     store.reconcile(
         reconciliation_action(id, action),
-        rejected_evidence,
+        evidence,
         analyte_store::ReconcileInput {
             corrections: &[],
             findings,

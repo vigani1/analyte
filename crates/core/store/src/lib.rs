@@ -142,7 +142,8 @@ struct BoundedJson {
 impl std::io::Write for BoundedJson {
     fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
         if bytes.len() > self.limit.saturating_sub(self.bytes.len()) {
-            return Err(std::io::Error::other(
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::FileTooLarge,
                 "encoded record exceeds configured bound",
             ));
         }
@@ -161,7 +162,15 @@ impl Store {
             bytes: Vec::new(),
             limit: self.limits.record_bytes,
         };
-        serde_json::to_writer(&mut writer, value)?;
+        serde_json::to_writer(&mut writer, value).map_err(|error| {
+            if error.io_error_kind() == Some(std::io::ErrorKind::FileTooLarge) {
+                StorageError::LimitExceeded {
+                    what: "record_bytes",
+                }
+            } else {
+                error.into()
+            }
+        })?;
         String::from_utf8(writer.bytes)
             .map_err(|cause| std::io::Error::new(std::io::ErrorKind::InvalidData, cause).into())
     }
