@@ -86,6 +86,33 @@
       "error": "example",
       "detail": "Synthetic rejection"
     },
+    "expected": "pause"
+  },
+  {
+    "status": 404,
+    "body": {
+      "contract_version": 1,
+      "error": "example",
+      "detail": "Synthetic rejection"
+    },
+    "expected": "pause"
+  },
+  {
+    "status": 413,
+    "body": {
+      "contract_version": 1,
+      "error": "example",
+      "detail": "Synthetic rejection"
+    },
+    "expected": "pause"
+  },
+  {
+    "status": 418,
+    "body": {
+      "contract_version": 1,
+      "error": "example",
+      "detail": "Synthetic rejection"
+    },
     "expected": "parked"
   }
 ]

@@ -32,8 +32,10 @@ pub enum StorageError {
     /// The filesystem probe failed; admission is refused.
     #[error("filesystem operation failed")]
     Io(#[from] std::io::Error),
-    /// Protected evidence could not be encoded.
-    #[error("evidence encoding failed: {0}")]
+    /// Protected evidence could not be encoded or decoded. The message names
+    /// only the failure category: `serde_json`'s own text can quote stored
+    /// values, which must stay out of ordinary logs (rule 10).
+    #[error("evidence encoding failed: {:?} error", .0.classify())]
     Json(#[from] serde_json::Error),
     /// Protected evidence could not fit its validated model type.
     #[error("invalid bounded storage text: {0}")]
@@ -61,5 +63,20 @@ impl From<rusqlite::Error> for StorageError {
             }
         }
         Self::Sqlite(error)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // AGENTS rule 10: no patient data in ordinary logs.
+    #[test]
+    fn json_error_text_carries_no_stored_value() -> Result<(), &'static str> {
+        let cause = serde_json::from_str::<u64>(r#""SAMPLE-0042""#)
+            .err()
+            .ok_or("a string is not a number")?;
+        let text = super::StorageError::from(cause).to_string();
+        assert!(!text.contains("SAMPLE-0042"));
+        assert_eq!(text, "evidence encoding failed: Data error");
+        Ok(())
     }
 }

@@ -125,7 +125,7 @@ fn adr0008_response_actions() -> Result<(), Box<dyn std::error::Error>> {
             ("done", ResponseAction::Done(_))
                 | ("conflict", ResponseAction::Conflict)
                 | ("parked", ResponseAction::Parked { .. })
-                | ("pause", ResponseAction::PauseForSetup)
+                | ("pause", ResponseAction::PauseForSetup { .. })
                 | ("retry", ResponseAction::Retry { after: Some(12) })
         ));
     }

@@ -29,8 +29,11 @@ pub enum ResponseAction {
         /// App reason, or a protocol error.
         reason: String,
     },
-    /// Credentials or destination setup require repair.
-    PauseForSetup,
+    /// Credentials or destination setup require repair; pauses the whole destination.
+    PauseForSetup {
+        /// Operator-visible cause.
+        reason: &'static str,
+    },
     /// Retry after the supplied delay, or normal backoff.
     Retry {
         /// Retry-After seconds.
@@ -48,7 +51,21 @@ pub fn classify_response(status: u16, body: &[u8], retry_after: Option<&str>) ->
             },
         },
         409 => ResponseAction::Conflict,
-        401 | 403 => ResponseAction::PauseForSetup,
+        401 | 403 => ResponseAction::PauseForSetup {
+            reason: "destination credentials require operator repair",
+        },
+        // Every later delivery would fail the same way, so parking items one by
+        // one would hide a wrong URL. The sender never exceeds the contract's
+        // document limit, so 413 means the app's limit is below it.
+        300..=399 => ResponseAction::PauseForSetup {
+            reason: "app redirected the request; correct the destination URL",
+        },
+        404 => ResponseAction::PauseForSetup {
+            reason: "app endpoint not found; correct the destination URL",
+        },
+        413 => ResponseAction::PauseForSetup {
+            reason: "app body limit is below the contract document limit",
+        },
         408 | 429 | 500..=599 => ResponseAction::Retry {
             after: retry_after.and_then(|s| retry_delay(s, jiff::Timestamp::now().as_second())),
         },
