@@ -39,25 +39,9 @@ starts without any lab connection or key. The starter site file holds only the
 retention (`keep`, so nothing is ever deleted until the lab chooses a period)
 and the key names `lab-app-api` and `lab-app-signing`; the setup page fills in
 the connection and the lab app. An upgrade never replaces this configuration.
-For more machines, add an entry with its own id and site file, for example:
-
-```toml
-[[machines]]
-id = "machine-2"
-site = "machine-2.site.toml"
-```
-
-and create `machine-2.site.toml` beside it with the starter's settings, then
-restart and set it up on the page:
-
-```toml
-schema_version = 1
-retention = "keep"
-
-[destination]
-api_key_name = "lab-app-api"
-signing_key_name = "lab-app-signing"
-```
+For more analyzers, press **Add machine** on the setup page; to take one out of
+service, press **Remove machine** (see [Setup page](operate.md#setup-page)).
+Nobody needs to edit the files by hand.
 
 The installers also create the admin token (`admin-token` in the data folder)
 when there is none. You need it to log in; the setup page needs a browser login.
@@ -80,7 +64,8 @@ anyway**.
    the data folder in File Explorer and accept its permission prompt: that adds
    your account to the folder and Analyte then refuses to start.
 4. Leave **Open the Analyte setup page** ticked and finish. Log in with the
-   token, choose **Setup**, then **Set up** for `machine-1`.
+   token, choose **Setup**, then **Set up** for `machine-1`. For each further
+   analyzer, press **Add machine** and set it up the same way.
 
 Running it again upgrades the program and keeps the configuration, data and
 token. Uninstall from Windows Settings → Apps: it stops and removes the service

@@ -423,6 +423,9 @@ fn check_config(file: &std::path::Path) -> Result<(), Error> {
             id.as_str()
         ))?;
     }
+    if program.machines().is_empty() && program.awaiting_setup().is_empty() {
+        analyte::operator::display::line("no machines: add one on the setup page")?;
+    }
     Ok(())
 }
 
