@@ -13,7 +13,7 @@ Evidence remains documented; implementation restrictions below do not amend LAW.
   execution or clinical decisions into the bridge.
 - **source**: PaLM TF-1 Rev11 §5.1.1.1–5.1.1.2, p.34;
   [ADR 0001](../../adr/0001-rust-and-layered-architecture.md), product boundary.
-- **test**: `law_tf2b_2_2_config_selects_mllp_251_manager_and_explicit_peer_options`.
+- **test**: `selects_mllp_manager_and_explicit_peer_options`.
 
 ## 2. Configure peer options explicitly
 
@@ -24,7 +24,7 @@ Evidence remains documented; implementation restrictions below do not amend LAW.
   granting repeat/reflex permission or sending unusable enhanced content.
 - **source**: PaLM TF-1 Rev11 §5.1.1.2, p.34;
   [ADR 0002](../../adr/0002-config-first.md), configuration boundary.
-- **test**: `law_tf2b_2_2_4_query_work_intersects_supplied_specimen_priority_with_peer_support`.
+- **test**: `query_work_limits_content_to_peer_support`.
 
 ## 3. Refuse queries whose identities the app cannot supply
 
@@ -35,7 +35,7 @@ Evidence remains documented; implementation restrictions below do not amend LAW.
   selecting another specimen's work. This remains an actor-coverage gap.
 - **source**: PaLM TF-1 Rev11 §§5.2.1–5.2.4, pp.36–37;
   PaLM TF-2b Rev11 §3.27.4.1.3, pp.43–44.
-- **test**: `law_tf2b_3_27_b7_unsupported_forms_are_ar_never_negative_work`.
+- **test**: `unsupported_query_forms_get_ar`.
 
 ## 4. Leave related-observation and pooling workflows unclaimed
 
@@ -57,7 +57,7 @@ Evidence remains documented; implementation restrictions below do not amend LAW.
   complete implementation of external results.
 - **source**: PaLM TF-2b Rev11 §B.3.12, p.77;
   [ADR 0001](../../adr/0001-rust-and-layered-architecture.md), I/O ownership.
-- **test**: `law_tf2b_c7_10_tf2x_a4_rp_application_hd_profile`.
+- **test**: `obx5_reference_pointer_application_rules`.
 
 ## 6. Use a short-lived outbound link in independent mode
 
@@ -68,7 +68,7 @@ Evidence remains documented; implementation restrictions below do not amend LAW.
   from orphaning already-admitted outbound work.
 - **source**: PaLM TF-2b Rev11 §B.6, pp.79–80;
   PaLM TF-2x Rev11 §2.2.4, pp.10–11.
-- **test**: `law_tf2b_b6_independent_query_followup_survives_inbound_close_and_restarts`.
+- **test**: `independent_query_followup_survives_inbound_close`.
 
 ## 7. Keep the shared persistent link an explicit restricted mode
 
@@ -79,7 +79,7 @@ Evidence remains documented; implementation restrictions below do not amend LAW.
   restriction avoids claiming full connection conformance from local tests.
 - **source**: PaLM TF-2b Rev11 §B.6, pp.79–80;
   [ADR 0002](../../adr/0002-config-first.md), explicit machine settings.
-- **test**: `law_tf2b_b6_declared_topologies_require_explicit_direction_and_outbound_endpoint`.
+- **test**: `topologies_require_direction_and_outbound_endpoint`.
 
 ## 8. Gate result AA on durable interpretation
 
@@ -90,7 +90,7 @@ Evidence remains documented; implementation restrictions below do not amend LAW.
   deliver or diagnose the result without asking the analyzer to resend it.
 - **source**: [ADR 0010](../../adr/0010-acknowledgment-boundaries.md), LAW row;
   [ADR 0003](../../adr/0003-clinical-safety-rules.md), custody policy.
-- **test**: `law_tf2b_3_29_4_adr0003_raw_commit_precedes_interpretation_and_ack`.
+- **test**: `raw_commit_precedes_interpretation_and_ack`.
 
 ## 9. Restrict profile recovery to avoid repeating machine work
 
@@ -101,7 +101,7 @@ Evidence remains documented; implementation restrictions below do not amend LAW.
   instead; this is a safety restriction against that recovery rule.
 - **source**: PaLM TF-2x Rev11 §2.2.4, p.10;
   [ADR 0003](../../adr/0003-clinical-safety-rules.md), order lifecycle rule.
-- **test**: `law_tf2b_3_28_query_followup_timeout_disconnect_and_bad_correlation_are_uncertain`.
+- **test**: `failed_query_followup_is_uncertain`.
 
 ## 10. Preflight and reserve work before a positive query response
 
@@ -112,7 +112,7 @@ Evidence remains documented; implementation restrictions below do not amend LAW.
   also lets restart recovery account for every possibly transmitted AWOS.
 - **source**: [ADR 0003](../../adr/0003-clinical-safety-rules.md), order lifecycle
   and durable identities.
-- **test**: `law_tf2b_3_27_3_28_preflight_and_reservation_failure_cannot_emit_positive_rsp_or_work`.
+- **test**: `preparation_failure_sends_no_positive_answer`.
 
 ## 11. Reserve negative work replies for trusted empty lookups
 
@@ -123,7 +123,7 @@ Evidence remains documented; implementation restrictions below do not amend LAW.
   into an incorrect instruction that no tests are required.
 - **source**: PaLM TF-2b Rev11 §3.27.4.1.3, p.44;
   [ADR 0003](../../adr/0003-clinical-safety-rules.md), Lookup failure is not no orders.
-- **test**: `law_tf2b_3_27_4_untrusted_read_failure_and_restore_pause_are_errors_not_no_work`.
+- **test**: `untrusted_or_paused_lookup_is_an_error`.
 
 ## 12. Preserve unverified results without upstream delivery
 
@@ -133,7 +133,7 @@ Evidence remains documented; implementation restrictions below do not amend LAW.
   Keeping its history supports that progression without publishing a revision
   that is not reportable or treating the final result as a conflict.
 - **source**: [ADR 0011](../../adr/0011-result-status-progression.md), Decision.
-- **test**: `law_adr0011_c7_all_status_moves_and_unverified_delivery`.
+- **test**: `status_transitions_and_unverified_delivery`.
 
 ## Result status progression
 
@@ -145,14 +145,14 @@ C as normal revisions, and F to C as a correction. Any other move with
 different content (for example F to P) is a conflict, parked. R means "not a
 candidate to be reported upstream": it is stored and shown, never delivered.
 A second run of one order and test reaching final is a conflict, parked.
-Test: `law_adr0011_c7_all_status_moves_and_unverified_delivery`.
+Test: `status_transitions_and_unverified_delivery`.
 
 ## Complete observation identities
 
 TF-2b C.7 Table C.7-4 requires distinct observations under one OBR. Results
 validation rejects a repeated primary code/system and complete OG before
 returning any observations, locating OBX-4 at its whole-message occurrence.
-Test: `law_tf2b_c7_repeated_observation_requires_unique_complete_og`.
+Test: `repeated_observation_needs_unique_og`.
 
 ## Retained work matching
 
@@ -162,7 +162,7 @@ OBR-2 authority component is rejected at configuration loading.
 Other OBR-2 components are X under TF-2b 2.2.1/2.2.2 and C.6-2: they remain
 in protected original bytes but do not authorize or reject a match. Specimen,
 container and test comparisons still reject conflicting returned work as a whole.
-Test: `law_tf2b_c6_2_x_awos_components_do_not_change_retained_work_match`.
+Test: `ignored_awos_components_do_not_change_work_match`.
 The combined receive/structure qualification row remains open.
 
 ## Text-kind applicability and FT evidence

@@ -584,9 +584,9 @@ mod tests {
         Ok(())
     }
 
+    // Safety rule 7 (ADR 0003)
     #[tokio::test]
-    async fn rule7_write_all_preserves_chunks_and_deadline_keeps_queued_prefix() -> Result<(), Error>
-    {
+    async fn write_all_chunks_and_keeps_prefix_on_deadline() -> Result<(), Error> {
         let (mut dialog, mut side) = connection(Limits::new(4, Duration::from_secs(1))?);
         side.start("synthetic".into())?;
         side.emit(Event::Opened {

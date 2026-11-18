@@ -2,9 +2,9 @@
 use super::*;
 use analyte_fixtures::ConfigEdit as _;
 
+// Plan §11
 #[tokio::test]
-async fn plan11_status_reports_health_and_last_receipt_without_payloads_or_secrets()
--> Result<(), Error> {
+async fn status_reports_health_without_payloads_or_secrets() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), false)?;
     let program = Program::load(&path)?;
@@ -56,9 +56,9 @@ async fn plan11_status_reports_health_and_last_receipt_without_payloads_or_secre
 
 // Plan section 11 and ADR 0003: real CLI commands require actor/reason and reuse
 // the live stored-byte interpretation; neither reprocess nor resend touches orders.
+// Plan §11
 #[tokio::test]
-async fn plan11_cli_reprocess_receipt_parked_and_bounded_delivery_list_require_actor_reason()
--> Result<(), Error> {
+async fn cli_commands_require_actor_and_reason() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), false)?;
     let definition = std::fs::read_to_string(temp.path().join("machine.toml"))?;
@@ -147,8 +147,9 @@ async fn plan11_cli_reprocess_receipt_parked_and_bounded_delivery_list_require_a
 }
 
 // ADR 0003 / AGENTS.md safety rule 3: provenance belongs to the connection that read bytes.
+// ADR 0003 rule 3
 #[tokio::test]
-async fn adr0003_rule3_connections_have_distinct_provenance() -> Result<(), Error> {
+async fn connections_have_distinct_provenance() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), false)?;
     let program = Program::load(&path)?;
@@ -197,18 +198,18 @@ async fn adr0003_rule3_connections_have_distinct_provenance() -> Result<(), Erro
 // ADR 0003 rules 1 and 2, LIS01-A2 §6.3 (each frame ACKed after its commit): when the
 // disk fills mid-transfer, the ACKed frames are parked by their transfer, and operator
 // reprocessing rebuilds them into a receipt with their exact bytes.
+// ADR 0003; CLSI LIS01-A2 §6.3
 #[tokio::test]
-async fn adr0003_lis01_6_3_disk_full_mid_transfer_rebuilds_a_reprocessable_receipt()
--> Result<(), Error> {
+async fn disk_full_mid_transfer_rebuilds_receipt() -> Result<(), Error> {
     disk_full_rebuilds(false).await
 }
 
 // ADR 0003 rules 1 and 2, LIS01-A2 §6.3 and §6.4 (EOT): every frame was ACKed, so a
 // receipt write refused at EOT parks the transfer, and operator reprocessing rebuilds
 // the complete receipt and delivers its result.
+// ADR 0003; CLSI LIS01-A2 §6.4
 #[tokio::test]
-async fn adr0003_lis01_6_4_disk_full_at_eot_rebuilds_and_delivers_the_receipt() -> Result<(), Error>
-{
+async fn disk_full_at_eot_rebuilds_and_delivers() -> Result<(), Error> {
     disk_full_rebuilds(true).await
 }
 

@@ -2,8 +2,9 @@
 use super::*;
 use analyte_fixtures::ConfigEdit as _;
 
+// Safety rule 2 (ADR 0003)
 #[test]
-fn rule2_uninterpreted_numeric_comparator_never_becomes_equality() -> TestResult {
+fn unknown_comparator_never_becomes_equality() -> TestResult {
     for raw in ["??^1", "<>^1"] {
         let mapped = hl7(
             &format!("OBR|1||001\rOBX|1|SN|SYN^^synthetic||{raw}||||||F\r"),
@@ -17,8 +18,9 @@ fn rule2_uninterpreted_numeric_comparator_never_becomes_equality() -> TestResult
     Ok(())
 }
 
+// Safety rule 2 (ADR 0003)
 #[test]
-fn rule2_configured_coded_kind_refuses_empty_or_numeric_text_without_guessing() -> TestResult {
+fn coded_kind_parks_empty_or_numeric_text() -> TestResult {
     let definition = HL7_CONFIG.rewrite(
         "app_system=\"demo\"",
         "app_system=\"demo\",value_kind=\"coded\"",
@@ -41,8 +43,9 @@ fn rule2_configured_coded_kind_refuses_empty_or_numeric_text_without_guessing() 
     Ok(())
 }
 
+// HL7 2.5.1 §7.4.2.2
 #[test]
-fn hl7_251_7_4_2_2_status_only_and_missing_populated_value_type_stay_distinct() -> TestResult {
+fn status_only_and_missing_value_type_differ() -> TestResult {
     let raw=b"MSH|^~\\&|SYN||||202611151200||ORU^R01^ORU_R01|MSG|P|2.5.1\rOBR|1||001\rOBX|1||SYN^^synthetic||populated||||||F\r";
     let message = analyte_hl7::Message::parse(raw, analyte_hl7::Options::default())?;
     assert!(matches!(
@@ -85,9 +88,9 @@ fn hl7_251_7_4_2_2_status_only_and_missing_populated_value_type_stay_distinct() 
     Ok(())
 }
 
+// Safety rule 2 (ADR 0003)
 #[test]
-fn rule2_operator_reason_distinguishes_uninterpreted_formatting_from_escape_agreement() -> TestResult
-{
+fn reason_tells_formatting_from_escape() -> TestResult {
     for (raw, word) in [(r"a\H\b\N\c", "formatting"), (r"a\Zlocal\b", "escape")] {
         let mapped = hl7(
             &format!("OBR|1||001\rOBX|1|TX|SYN^^synthetic||{raw}||||||F\r"),
@@ -108,8 +111,9 @@ fn rule2_operator_reason_distinguishes_uninterpreted_formatting_from_escape_agre
     Ok(())
 }
 
+// HL7 2.5.1 §2.A.70
 #[test]
-fn hl7_251_2a70_supported_numeric_comparators_and_ranges_keep_components() -> TestResult {
+fn sn_comparators_and_ranges_keep_components() -> TestResult {
     for (code, expected) in [
         ("<", Comparator::Less),
         ("<=", Comparator::LessOrEqual),
@@ -152,8 +156,9 @@ fn hl7_251_2a70_supported_numeric_comparators_and_ranges_keep_components() -> Te
     Ok(())
 }
 
+// ADR 0003
 #[test]
-fn adr0003_coded_values_without_unambiguous_code_and_namespace_are_parked() -> TestResult {
+fn ambiguous_coded_values_are_parked() -> TestResult {
     for raw in [
         "^Label^system",
         "code^Label",
@@ -178,8 +183,9 @@ fn adr0003_coded_values_without_unambiguous_code_and_namespace_are_parked() -> T
     Ok(())
 }
 
+// Safety rule 5 (ADR 0003)
 #[test]
-fn rule5_numeric_offset_evidence_keeps_reported_components_without_inferring_zone() -> TestResult {
+fn offsets_are_kept_without_inferring_zone() -> TestResult {
     // These are arithmetic evidence boundaries, not claims that these offsets
     // identify a legally defined timezone. No timezone is inferred or converted.
     for (suffix, offset) in [("+2300", 82800), ("+0159", 7140), ("-2300", -82800)] {
@@ -202,8 +208,9 @@ fn rule5_numeric_offset_evidence_keeps_reported_components_without_inferring_zon
     Ok(())
 }
 
+// HL7 2.5.1 chapter 7
 #[test]
-fn hl7_251_ch7_oru_specimen_observations_keep_their_specimen_owner() -> TestResult {
+fn oru_specimen_observations_keep_their_owner() -> TestResult {
     let mapped = hl7(
         "OBR|1||001\rOBX|1|NM|SYN^^synthetic||1||||||F\rSPM|1\rOBX|1|NM|SYN^^synthetic||2||||||F\rOBR|2||002\rOBX|1|NM|SYN^^synthetic||3||||||F\r",
         HL7_CONFIG,
@@ -252,8 +259,9 @@ fn hl7_251_ch7_oru_specimen_observations_keep_their_specimen_owner() -> TestResu
     Ok(())
 }
 
+// HL7 2.5.1 chapter 7
 #[test]
-fn hl7_251_ch7_oul_test_detail_and_notes_belong_to_observation_group() -> TestResult {
+fn oul_details_and_notes_stay_in_observation() -> TestResult {
     let cfg = config(HL7_CONFIG)?;
     let header = "MSH|^~\\&|SYN||||202611151200||OUL^R22^OUL_R22|MSG|P|2.5.1\rSPM|1\rOBR|1||001\r";
     let raw = format!(
@@ -302,8 +310,9 @@ fn hl7_251_ch7_oul_test_detail_and_notes_belong_to_observation_group() -> TestRe
     Ok(())
 }
 
+// Safety rule 2 (ADR 0003)
 #[test]
-fn rule2_hl7_mapping_refuses_unqualified_structure_without_losing_original() -> TestResult {
+fn unqualified_hl7_structure_is_refused_intact() -> TestResult {
     let cfg = config(&HL7_CONFIG.rewrite("edition = \"v251\"", "edition = \"v231\""))?;
     let raw=b"MSH|^~\\&|SYN||||202611151200||OUL^R22|MSG|P|2.3.1\rSPM|1\rOBR|1||001\rOBX|1|NM|SYN^^synthetic||1||||||F\r";
     let message = analyte_hl7::Message::parse(raw, analyte_hl7::Options::default())?;
@@ -338,8 +347,9 @@ fn rule2_hl7_mapping_refuses_unqualified_structure_without_losing_original() -> 
     Ok(())
 }
 
+// Safety rule 3 (ADR 0003)
 #[test]
-fn rule3_hl7_visit_context_does_not_discard_the_result() -> TestResult {
+fn visit_context_keeps_the_result() -> TestResult {
     let mapped = hl7(
         "PID|1\rPV1|1|O\rPV2\rOBR|1||001\rOBX|1|NM|SYN^^synthetic||1||||||F\r",
         HL7_CONFIG,
@@ -358,8 +368,9 @@ fn rule3_hl7_visit_context_does_not_discard_the_result() -> TestResult {
     Ok(())
 }
 
+// Safety rule 2 (ADR 0003)
 #[test]
-fn rule2_missing_group_relative_sample_reports_its_actual_owner_position() -> TestResult {
+fn missing_sample_reports_owner_position() -> TestResult {
     let raw=b"MSH|^~\\&|SYN||||202611151200||OUL^R22^OUL_R22|MSG|P|2.5.1\rSPM|1\rOBR|1\rORC|SC||||IP\rOBX|1|NM|SYN^^synthetic||1||||||F\r";
     let message = analyte_hl7::Message::parse(raw, analyte_hl7::Options::default())?;
     let mapped = map_hl7(
@@ -396,8 +407,9 @@ fn rule2_missing_group_relative_sample_reports_its_actual_owner_position() -> Te
     Ok(())
 }
 
+// Safety rule 7 (ADR 0003)
 #[test]
-fn rule7_value_source_text_bound_is_inclusive_in_both_syntaxes() -> TestResult {
+fn value_text_bound_is_inclusive() -> TestResult {
     for length in [16383, 16384, 16385] {
         let value = "X".repeat(length);
         let hl7_result = hl7(
@@ -428,8 +440,9 @@ fn rule7_value_source_text_bound_is_inclusive_in_both_syntaxes() -> TestResult {
     Ok(())
 }
 
+// Safety rule 3 (ADR 0003)
 #[test]
-fn rule3_hl7_source_path_keeps_statuses_sequences_and_specimen_times() -> TestResult {
+fn hl7_source_path_keeps_statuses_and_times() -> TestResult {
     let cfg = config(HL7_CONFIG)?;
     let mut raw = "MSH|^~\\&|SYN||||202611151200||OUL^R22^OUL_R22|MSG|P|2.5.1\r".to_owned();
     raw.push_str(&segment(
@@ -492,8 +505,9 @@ fn rule3_hl7_source_path_keeps_statuses_sequences_and_specimen_times() -> TestRe
     Ok(())
 }
 
+// Safety rule 3 (ADR 0003)
 #[test]
-fn rule3_astm_source_path_keeps_header_order_result_status_and_record_sequences() -> TestResult {
+fn astm_source_path_keeps_statuses_and_sequences() -> TestResult {
     let mut order = vec![""; 26];
     order[0] = "O";
     order[1] = "1";
@@ -529,8 +543,9 @@ fn rule3_astm_source_path_keeps_header_order_result_status_and_record_sequences(
     Ok(())
 }
 
+// CLSI LIS02-A2 §9.9
 #[test]
-fn lis02_9_9_retransmitted_and_warning_statuses_never_take_hl7_meanings() -> TestResult {
+fn astm_statuses_never_take_hl7_meanings() -> TestResult {
     for code in ["R", "W", "D", "U"] {
         let mapped = astm(&format!("R|1|^^^SYN|1|||||{code}\r"), "P")?;
         assert_eq!(first(&mapped)?.source_status.as_str(), code);
@@ -539,8 +554,9 @@ fn lis02_9_9_retransmitted_and_warning_statuses_never_take_hl7_meanings() -> Tes
     Ok(())
 }
 
+// HL7 2.5.1 §2.A.77
 #[test]
-fn hl7_251_2a77_declared_precision_cannot_invent_missing_digits() -> TestResult {
+fn declared_precision_never_invents_digits() -> TestResult {
     for (code, expected) in [
         ("Y", TimePrecision::Year),
         ("L", TimePrecision::Month),

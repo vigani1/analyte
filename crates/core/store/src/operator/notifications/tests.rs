@@ -2,8 +2,9 @@
 use crate::test_support::*;
 use crate::*;
 
+// ADR 0014
 #[test]
-fn adr0014_restart_attempt_identity_budget_and_immutable_bytes() -> TestResult {
+fn alert_retry_after_restart_keeps_id_and_bytes() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("alerts.db");
     let endpoint = Identifier::new("relay")?;
@@ -68,8 +69,9 @@ fn decoded(event: &PendingAlert) -> Result<serde_json::Value, serde_json::Error>
     serde_json::from_slice(event.payload())
 }
 
+// ADR 0014
 #[test]
-fn adr0014_raise_reminder_resolve_episodes_capacity_and_closed_payload() -> TestResult {
+fn alert_episodes_raise_remind_resolve_with_closed_payload() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("lifecycle.db");
     let endpoint = Identifier::new("relay")?;
@@ -160,8 +162,9 @@ fn adr0014_raise_reminder_resolve_episodes_capacity_and_closed_payload() -> Test
     Ok(())
 }
 
+// ADR 0014
 #[test]
-fn adr0014_missed_intervals_generate_one_outstanding_reminder() -> TestResult {
+fn missed_intervals_generate_one_outstanding_reminder() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("reminders.db"))?;
     let endpoint = Identifier::new("relay")?;
@@ -174,8 +177,9 @@ fn adr0014_missed_intervals_generate_one_outstanding_reminder() -> TestResult {
     Ok(())
 }
 
+// ADR 0014
 #[test]
-fn adr0014_backoff_doubles_then_caps_and_limits_refuse_invalid_input() -> TestResult {
+fn backoff_doubles_then_caps_and_refuses_bad_limits() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("bounds.db"))?;
     let endpoint = Identifier::new("relay")?;
@@ -210,8 +214,9 @@ fn adr0014_backoff_doubles_then_caps_and_limits_refuse_invalid_input() -> TestRe
     Ok(())
 }
 
+// ADR 0014
 #[test]
-fn adr0014_operator_retry_is_audited_and_preserves_original_event() -> TestResult {
+fn operator_retry_is_audited_and_keeps_original_event() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("retry.db"))?;
     let endpoint = Identifier::new("relay")?;
@@ -249,8 +254,9 @@ fn adr0014_operator_retry_is_audited_and_preserves_original_event() -> TestResul
     Ok(())
 }
 
+// ADR 0014
 #[test]
-fn adr0014_resolution_never_overtakes_failed_raise_even_in_same_second() -> TestResult {
+fn resolution_never_overtakes_failed_raise() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("ordering.db"))?;
     let endpoint = Identifier::new("relay")?;
@@ -288,8 +294,9 @@ fn adr0014_resolution_never_overtakes_failed_raise_even_in_same_second() -> Test
     Ok(())
 }
 
+// ADR 0014
 #[test]
-fn adr0014_stored_progress_records_setup_and_tls_failures() -> TestResult {
+fn progress_records_setup_and_tls_failures() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("progress.db");
     drop(open(&path)?);

@@ -3,8 +3,9 @@ use crate::test_support::*;
 use crate::*;
 use proptest::prelude::*;
 
+// ADR 0002, ADR 0003
 #[test]
-fn adr0002_0003_receipts_and_reinterpretations_are_immutable() -> TestResult {
+fn receipts_and_reinterpretations_are_immutable() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("store.db"))?;
     let metadata = receipt(b"raw\0exact")?;
@@ -44,8 +45,9 @@ fn adr0002_0003_receipts_and_reinterpretations_are_immutable() -> TestResult {
 
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(32))]
+    // Safety rule 3 (ADR 0003)
     #[test]
-    fn rule3_random_operations_never_lose_or_change_receipt_bytes(operations in prop::collection::vec(prop::collection::vec(any::<u8>(),0..128),1..20)) {
+    fn operations_never_lose_or_change_receipt_bytes(operations in prop::collection::vec(prop::collection::vec(any::<u8>(),0..128),1..20)) {
         let temp=tempfile::tempdir()?; let path=temp.path().join("store.db"); let mut store=open(&path)?;
         let mut saved=Vec::new();
         for raw in operations {
@@ -58,9 +60,9 @@ proptest! {
     }
 }
 
+// ADR 0003; mutation-testing regression
 #[test]
-fn mutation_adr0003_receipt_digests_validate_raw_and_config_independently_without_writes()
--> TestResult {
+fn raw_and_config_digests_checked_separately_without_writes() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("receipt-digests.db"))?;
     for (raw, config) in [

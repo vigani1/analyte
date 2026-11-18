@@ -226,8 +226,9 @@ mod tests {
             machine: None,
         }
     }
+    // Plan §11
     #[test]
-    fn plan11_kinds_and_thresholds_are_specific() {
+    fn alert_kinds_and_thresholds_are_specific() {
         for kind in [
             "oldest_undelivered",
             "disk_reserve",
@@ -281,8 +282,9 @@ mod tests {
         }
         assert!(draft("uncertain_orders", 0).validate(100).is_ok());
     }
+    // Plan §11
     #[test]
-    fn plan11_responder_is_required_bounded_and_single_line() {
+    fn responder_is_required_bounded_and_single_line() {
         for responder in [
             String::new(),
             " ".into(),

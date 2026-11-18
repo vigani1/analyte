@@ -33,8 +33,9 @@ fn injected_clock(startup: &mut Startup, target: StartupStep, base: Instant) {
     }));
 }
 
+// ADR 0003 rule 7
 #[test]
-fn adr0003_rule7_startup_timeout_names_integrity_and_larger_budget_succeeds() -> TestResult {
+fn integrity_timeout_is_named_larger_budget_opens() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("integrity.db");
     drop(Store::open(&path, limits(), Box::new(Space(u64::MAX)))?);
@@ -60,8 +61,9 @@ fn adr0003_rule7_startup_timeout_names_integrity_and_larger_budget_succeeds() ->
     Ok(())
 }
 
+// ADR 0003 rule 7
 #[test]
-fn adr0003_rule7_timeout_while_creating_the_schema_leaves_an_empty_file() -> TestResult {
+fn schema_creation_timeout_leaves_empty_file() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("create.db");
     let creating = StartupStep::Migration {
@@ -99,8 +101,9 @@ fn adr0003_rule7_timeout_while_creating_the_schema_leaves_an_empty_file() -> Tes
     Ok(())
 }
 
+// Plan §11
 #[test]
-fn plan11_empty_file_gets_the_current_schema_and_other_versions_are_refused() -> TestResult {
+fn empty_file_gets_schema_other_versions_refused() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("store.db");
     let store = Store::open(&path, limits(), Box::new(Space(u64::MAX)))?;
@@ -195,8 +198,9 @@ fn startup_timing_two_gib_synthetic_store() -> TestResult {
     Ok(())
 }
 
+// ADR 0003 rule 7
 #[test]
-fn adr0003_rule7_worker_reports_opening_deadline_instead_of_generic_timeout() -> TestResult {
+fn worker_reports_opening_deadline_not_generic_timeout() -> TestResult {
     let temp = tempfile::tempdir()?;
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_time()
@@ -219,8 +223,9 @@ fn adr0003_rule7_worker_reports_opening_deadline_instead_of_generic_timeout() ->
     Ok(())
 }
 
+// ADR 0003 rule 7
 #[test]
-fn adr0003_rule7_completed_startup_does_not_expire_later_store_operations() -> TestResult {
+fn completed_startup_does_not_expire_later_operations() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("completed.db");
     let base = Instant::now();
@@ -249,8 +254,9 @@ fn adr0003_rule7_completed_startup_does_not_expire_later_store_operations() -> T
     Ok(())
 }
 
+// ADR 0003; mutation-testing regression
 #[test]
-fn mutation_adr0003_startup_interrupts_sqlite_once_then_allows_cleanup() -> TestResult {
+fn startup_interrupts_sqlite_once_then_allows_cleanup() -> TestResult {
     let base = Instant::now();
     let mut startup = Startup::new(base + crate::test_support::HANG_GUARD);
     startup.clock = Some(Arc::new(move || base));
@@ -269,8 +275,9 @@ fn mutation_adr0003_startup_interrupts_sqlite_once_then_allows_cleanup() -> Test
     Ok(())
 }
 
+// Plan §11; mutation-testing regression
 #[test]
-fn mutation_plan11_startup_progress_names_and_completed_steps_are_visible() -> TestResult {
+fn startup_progress_shows_names_and_completed_steps() -> TestResult {
     use crate::startup::StartupStep;
     for (step, expected) in [
         (StartupStep::Opening, "opening"),
@@ -338,8 +345,9 @@ fn mutation_plan11_startup_progress_names_and_completed_steps_are_visible() -> T
     Ok(())
 }
 
+// ADR 0003; mutation-testing regression
 #[test]
-fn mutation_adr0003_startup_foreign_key_corruption_refuses_without_rewriting_raw() -> TestResult {
+fn foreign_key_corruption_refuses_without_rewriting_raw() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("broken-custody.db");
     drop(Store::open(&path, limits(), Box::new(Space(u64::MAX)))?);

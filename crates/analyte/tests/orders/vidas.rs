@@ -84,8 +84,9 @@ async fn confirm(peer: &mut TcpStream) -> Result<(), Error> {
     assert_eq!(byte(peer).await?, 4);
     Ok(())
 }
+// VIDAS BCI Link rev A chapters 3 and 5
 #[tokio::test]
-async fn vidas_bci_a_ch3_5_all_assays_confirm_once_sent_survives_restart() -> Result<(), Error> {
+async fn all_assays_confirm_once_and_survive_restart() -> Result<(), Error> {
     let mut value = order()?;
     value["tests"]
         .as_array_mut()
@@ -132,8 +133,9 @@ async fn vidas_bci_a_ch3_5_all_assays_confirm_once_sent_survives_restart() -> Re
     Ok(())
 }
 
+// VIDAS BCI Link rev A chapter 3; ADR 0004
 #[tokio::test]
-async fn vidas_bci_a_ch3_adr0004_ack_timeout_is_uncertain_never_resends() -> Result<(), Error> {
+async fn ack_timeout_is_uncertain_never_resent() -> Result<(), Error> {
     let (temp, path, reference, service, mut peer) = setup(order()?).await?;
     assert_eq!(byte(&mut peer).await?, 5);
     event(
@@ -157,8 +159,9 @@ async fn vidas_bci_a_ch3_adr0004_ack_timeout_is_uncertain_never_resends() -> Res
     Ok(())
 }
 
+// VIDAS BCI Link rev A chapter 3; ADR 0004
 #[tokio::test]
-async fn vidas_bci_a_ch3_adr0004_disconnect_mid_send_is_uncertain() -> Result<(), Error> {
+async fn disconnect_mid_send_is_uncertain() -> Result<(), Error> {
     let (temp, path, reference, service, mut peer) = setup(order()?).await?;
     assert_eq!(byte(&mut peer).await?, 5);
     packet(&mut peer).await?;
@@ -177,9 +180,9 @@ async fn vidas_bci_a_ch3_adr0004_disconnect_mid_send_is_uncertain() -> Result<()
     Ok(())
 }
 
+// ADR 0004; Safety rule 8 (ADR 0003)
 #[tokio::test]
-async fn adr0004_rule8_vidas_restart_during_send_recovers_sending_without_replay()
--> Result<(), Error> {
+async fn restart_during_send_never_replays() -> Result<(), Error> {
     let (temp, path, reference, service, mut peer) = setup(order()?).await?;
     assert_eq!(byte(&mut peer).await?, 5);
     packet(&mut peer).await?;
@@ -223,8 +226,9 @@ async fn rejection(value: serde_json::Value, code: &str) -> Result<(), Error> {
     reference.close().await?;
     Ok(())
 }
+// VIDAS BCI Link rev A chapter 4
 #[tokio::test]
-async fn vidas_bci_a_ch4_unmapped_test_rejected_before_send() -> Result<(), Error> {
+async fn unmapped_test_is_rejected_before_send() -> Result<(), Error> {
     let mut value = order()?;
     value["tests"]
         .as_array_mut()
@@ -232,38 +236,44 @@ async fn vidas_bci_a_ch4_unmapped_test_rejected_before_send() -> Result<(), Erro
         .push(serde_json::json!({"namespace":"synthetic","value":"UNKNOWN"}));
     rejection(value,"rejected: unmapped test NamespacedId { namespace: Identifier(\"synthetic\"), value: Identifier(\"UNKNOWN\") }").await
 }
+// VIDAS BCI Link rev A chapter 4
 #[tokio::test]
-async fn vidas_bci_a_ch4_unmapped_specimen_type_rejected_before_send() -> Result<(), Error> {
+async fn unmapped_specimen_type_is_rejected() -> Result<(), Error> {
     let mut value = order()?;
     value["specimen_type"] = serde_json::json!({"namespace":"synthetic","value":"SERUM"});
     rejection(value, "rejected: unmapped-specimen-type").await
 }
+// ADR 0004
 #[tokio::test]
-async fn adr0004_vidas_wrong_patient_namespace_rejected_before_send() -> Result<(), Error> {
+async fn wrong_patient_namespace_is_rejected() -> Result<(), Error> {
     let mut value = order()?;
     value["patient"]["id"]["namespace"] = "other".into();
     rejection(value, "rejected: patient-namespace-mismatch").await
 }
+// VIDAS BCI Link rev A chapter 4
 #[tokio::test]
-async fn vidas_bci_a_ch4_missing_patient_rejected_before_send() -> Result<(), Error> {
+async fn missing_patient_is_rejected_before_send() -> Result<(), Error> {
     let mut value = order()?;
     value.as_object_mut().ok_or("order")?.remove("patient");
     rejection(value, "rejected: missing-patient").await
 }
+// VIDAS PC User Manual F chapter 4.14
 #[tokio::test]
-async fn vidas_pc_ch4_14_overlong_sample_id_never_truncated() -> Result<(), Error> {
+async fn overlong_sample_id_is_rejected_not_truncated() -> Result<(), Error> {
     let mut value = order()?;
     value["sample_id"] = "1234567890123".into();
     rejection(value, "rejected: overlong-sample-id").await
 }
+// VIDAS BCI Link rev A chapter 4
 #[tokio::test]
-async fn vidas_bci_a_ch4_overlong_patient_id_never_truncated() -> Result<(), Error> {
+async fn overlong_patient_id_is_rejected_not_truncated() -> Result<(), Error> {
     let mut value = order()?;
     value["patient"]["id"]["value"] = "123456789012345678".into();
     rejection(value, "rejected: overlong-patient-id").await
 }
+// ADR 0004
 #[tokio::test]
-async fn adr0004_vidas_cancelled_before_send_has_no_wire_or_app_send_event() -> Result<(), Error> {
+async fn cancelled_before_send_sends_nothing() -> Result<(), Error> {
     let mut value = order()?;
     value["state"] = "cancel_requested".into();
     let (_temp, path, reference, service, mut peer) = setup(value).await?;
@@ -302,8 +312,9 @@ async fn adr0004_vidas_cancelled_before_send_has_no_wire_or_app_send_event() -> 
     Ok(())
 }
 
+// ADR 0004
 #[tokio::test]
-async fn adr0004_vidas_missing_patient_namespace_prevents_program_start() -> Result<(), Error> {
+async fn missing_patient_namespace_prevents_startup() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = vendor_config(
         temp.path(),
@@ -333,9 +344,9 @@ async fn adr0004_vidas_missing_patient_namespace_prevents_program_start() -> Res
     Ok(())
 }
 
+// VIDAS BCI Link rev A chapter 3
 #[tokio::test]
-async fn vidas_bci_a_ch3_park_mid_send_commits_uncertain_same_round_then_closes()
--> Result<(), Error> {
+async fn park_mid_send_commits_uncertain_then_closes() -> Result<(), Error> {
     let (temp, path, reference, service, mut peer) = setup(order()?).await?;
     assert_eq!(byte(&mut peer).await?, 5);
     packet(&mut peer).await?;

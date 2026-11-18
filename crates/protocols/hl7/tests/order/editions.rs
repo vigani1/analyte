@@ -45,8 +45,9 @@ fn sent(version: Version) -> Result<OrderMessage, Error> {
         Options::default(),
     )
 }
+// HL7 2.6 §4.4.6, §4.5.3.4, §4.5.4, §7.4.3
 #[test]
-fn hl7_2_6_s4_4_6_s4_5_3_4_s4_5_4_s7_4_3_exact_bytes() -> Result<(), Error> {
+fn v26_order_message_exact_bytes() -> Result<(), Error> {
     let sent = sent(Version::V26)?;
     assert_eq!(sent.message().raw(), concat!(
         "MSH|^~\\&|HOST|LAB|MACHINE|LAB|20261116120000+0100||OML^O21^OML_O21|sent1|T|2.6||||||ASCII\r",
@@ -56,8 +57,9 @@ fn hl7_2_6_s4_4_6_s4_5_3_4_s4_5_4_s7_4_3_exact_bytes() -> Result<(), Error> {
         "SPM|1|000aB||SER^^L^^^^spec-r1\r").as_bytes());
     Ok(())
 }
+// HL7 2.6 §2.A.13.7
 #[test]
-fn hl7_2_6_s2_a_13_7_revisions_are_explicit() -> Result<(), Error> {
+fn v26_coding_revisions_are_explicit() -> Result<(), Error> {
     let version = Version::V26;
     assert!(
         oml(
@@ -83,8 +85,9 @@ fn hl7_2_6_s2_a_13_7_revisions_are_explicit() -> Result<(), Error> {
     );
     Ok(())
 }
+// HL7 2.6 §4.4.7, §2.14.8
 #[test]
-fn hl7_2_6_s4_4_7_s2_14_8_response_outcomes_and_correlation() -> Result<(), Error> {
+fn v26_reply_outcomes_and_correlation() -> Result<(), Error> {
     let sent = sent(Version::V26)?;
     for (control, expected) in [("OK", true), ("UA", false)] {
         let bytes = format!(
@@ -113,8 +116,9 @@ fn hl7_2_6_s4_4_7_s2_14_8_response_outcomes_and_correlation() -> Result<(), Erro
     }
     Ok(())
 }
+// HL7 2.6 §2.A.6, §2.A.77
 #[test]
-fn hl7_2_6_s2_a_6_77_withdrawn_ce_ts_and_legacy_writer_refused() -> Result<(), Error> {
+fn v26_refuses_withdrawn_fields_and_legacy_orm() -> Result<(), Error> {
     let version = Version::V26;
     assert!(
         orm(
@@ -134,8 +138,9 @@ fn hl7_2_6_s2_a_6_77_withdrawn_ce_ts_and_legacy_writer_refused() -> Result<(), E
     Ok(())
 }
 
+// HL7 2.8.2 §4.4.6, §4.4.7, §4.5.1.4, §2.A.14.5
 #[test]
-fn hl7_2_8_2_s4_4_6_7_s4_5_1_4_s2_a_14_5_order_qualification() -> Result<(), Error> {
+fn v282_order_and_reply_qualification() -> Result<(), Error> {
     let version = Version::V282;
     let sent = sent(version)?;
     let expected = concat!(
@@ -237,8 +242,9 @@ fn hl7_2_8_2_s4_4_6_7_s4_5_1_4_s2_a_14_5_order_qualification() -> Result<(), Err
     Ok(())
 }
 
+// HL7 2.8.2 §2.A.13, §4.5.4.7
 #[test]
-fn hl7_2_8_2_s2_a_13_s4_5_4_7_reply_datatypes_and_name_bound() -> Result<(), Error> {
+fn v282_reply_datatypes_and_system_name_limit() -> Result<(), Error> {
     let version = Version::V282;
     let sent = sent(version)?;
     let raw = concat!(
@@ -274,8 +280,9 @@ fn hl7_2_8_2_s2_a_13_s4_5_4_7_reply_datatypes_and_name_bound() -> Result<(), Err
 }
 
 // HL7 2.5.1/2.6 section 4.4.7 and 3.4.2; 2.8.2 section 3.3.2.
+// HL7 2.5.1 §4.4.7; HL7 2.6 §4.4.7
 #[test]
-fn hl7_251_26_s4_4_7_required_pid_content_in_order_reply() -> Result<(), Error> {
+fn reply_pid_needs_identifier_and_name() -> Result<(), Error> {
     for version in [Version::V26, Version::V282] {
         let sent = sent(version)?;
         for pid in [

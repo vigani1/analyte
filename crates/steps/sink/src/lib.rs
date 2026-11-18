@@ -54,8 +54,9 @@ mod stop_tests {
     use super::*;
     use std::{future::Future, task::Poll};
 
+    // Safety rule 7 (ADR 0003)
     #[tokio::test(start_paused = true)]
-    async fn rule7_stop_wait_ignores_false_and_wakes_on_true_or_owner_loss() {
+    async fn stop_wait_wakes_on_true_or_owner_loss() {
         for close in [false, true] {
             let (sender, mut receiver) = watch::channel(false);
             let wait = receiver.wait_for(|&stopped| stopped);

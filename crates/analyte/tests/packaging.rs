@@ -1,8 +1,9 @@
 //! Tests portable service installation settings.
 use std::collections::BTreeMap;
 
+// Plan §11; AGENTS.md
 #[test]
-fn plan11_agents_systemd_unit_structure_and_shutdown_margin()
+fn systemd_unit_structure_and_shutdown_margin()
 -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let unit = include_str!("../../../packaging/linux/analyte.service");
     let mut section = "";

@@ -5,8 +5,9 @@ fn message(edition: &str, encoding: &str, value: &str) -> Vec<u8> {
     format!("MSH|{encoding}|S|F|R|F|202611161200||ORU^R01^ORU_R01|synthetic|P|{edition}\rOBX|1|ST|SYN||{value}\r").into_bytes()
 }
 
+// HL7 2.8.2 §2.14.9.2; HL7 2.9.1 §2.13.9.2
 #[test]
-fn hl7_2_8_2_s2_14_9_2_and_2_9_1_s2_13_9_2_encoding_characters() {
+fn fifth_encoding_character_is_edition_specific() {
     for edition in ["2.8.2", "2.9.1"] {
         for encoding in ["^~\\&", "^~\\&#", "^~\\&!"] {
             let raw = message(edition, encoding, "complete");
@@ -32,8 +33,9 @@ fn hl7_2_8_2_s2_14_9_2_and_2_9_1_s2_13_9_2_encoding_characters() {
     }
 }
 
+// HL7 2.8.2 §2.5.5.2; HL7 2.9.1 §2.4.5.2
 #[test]
-fn hl7_2_8_2_s2_5_5_2_and_2_9_1_s2_4_5_2_preserve_and_refuse_marked_values() {
+fn truncated_values_are_kept_and_refused() {
     for edition in ["2.8.2", "2.9.1"] {
         for value in [
             "partial#",
@@ -58,8 +60,9 @@ fn hl7_2_8_2_s2_5_5_2_and_2_9_1_s2_4_5_2_preserve_and_refuse_marked_values() {
     }
 }
 
+// HL7 2.9.1 §2.6.1
 #[test]
-fn hl7_2_9_1_s2_6_1_truncation_character_escape() {
+fn truncation_character_escape_round_trips() {
     for edition in ["2.8.2", "2.9.1"] {
         let parsed = Message::parse(
             &message(edition, "^~\\&!", "literal\\P\\"),
@@ -84,8 +87,9 @@ fn hl7_2_9_1_s2_6_1_truncation_character_escape() {
     }
 }
 
+// HL7 2.8.2 §2.7.2
 #[test]
-fn hl7_2_8_2_s2_7_2_undeclared_p_escape_remains_unsupported() {
+fn undeclared_truncation_escape_stays_unsupported() {
     for edition in ["2.3.1", "2.5.1", "2.8.2", "2.9.1"] {
         let raw = message(edition, "^~\\&", "literal\\P\\");
         assert!(matches!(

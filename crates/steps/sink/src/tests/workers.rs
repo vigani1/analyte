@@ -1,9 +1,9 @@
 //! Tests delivery worker cancellation and retry ownership.
 use super::*;
 
+// Safety rule 7 (ADR 0003)
 #[tokio::test]
-async fn rule7_active_delivery_and_order_poll_cancel_without_waiting_for_http_deadline()
--> TestResult {
+async fn active_work_cancels_before_http_deadline() -> TestResult {
     use tokio::io::AsyncReadExt as _;
     let directory = tempfile::tempdir()?;
     let mut store = store(&directory.path().join("store.db")).await?;
@@ -83,8 +83,9 @@ async fn rule7_active_delivery_and_order_poll_cancel_without_waiting_for_http_de
     Ok(())
 }
 
+// Safety rule 7 (ADR 0003); mutation-testing regression
 #[tokio::test]
-async fn mutation_rule7_draining_closed_or_set_stop_does_not_claim() -> TestResult {
+async fn stopped_worker_does_not_claim() -> TestResult {
     let directory = tempfile::tempdir()?;
     let mut store = store(&directory.path().join("store.db")).await?;
     store.shutdown(until()?).await?;
@@ -103,8 +104,9 @@ async fn mutation_rule7_draining_closed_or_set_stop_does_not_claim() -> TestResu
     Ok(())
 }
 
+// Safety rule 7 (ADR 0003); mutation-testing regression
 #[tokio::test]
-async fn mutation_rule7_idle_workers_wait_before_claiming_again() -> TestResult {
+async fn idle_workers_wait_before_claiming_again() -> TestResult {
     use std::{future::Future as _, task::Poll};
     for draining in [false, true] {
         let directory = tempfile::tempdir()?;
@@ -166,8 +168,9 @@ async fn mutation_rule7_idle_workers_wait_before_claiming_again() -> TestResult 
 
 // ADR 0004 / contract v1 GET orders: incomplete pages cannot establish trust,
 // but a final page may retain its cursor. Page-size and chain limits are separate.
+// Safety rule 7 (ADR 0003); mutation-testing regression
 #[tokio::test]
-async fn mutation_rule7_owner_loops_and_cancellation_wait_for_their_signal() -> TestResult {
+async fn owner_loops_wait_for_their_signal() -> TestResult {
     use std::{future::Future as _, task::Poll};
     let (sender, mut receiver) = watch::channel(false);
     {
@@ -210,8 +213,9 @@ async fn mutation_rule7_owner_loops_and_cancellation_wait_for_their_signal() -> 
 }
 
 // ADR 0008: a stalled app must not hold another destination's immutable delivery.
+// ADR 0008
 #[tokio::test]
-async fn adr0008_slow_destination_does_not_delay_another_owned_worker() -> TestResult {
+async fn slow_destination_never_delays_another_worker() -> TestResult {
     use tokio::io::AsyncWriteExt as _;
     let directory = tempfile::tempdir()?;
     let mut store = store(&directory.path().join("isolated.db")).await?;

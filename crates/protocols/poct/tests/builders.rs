@@ -5,8 +5,9 @@ use analyte_poct::{
     Nullable, Outbound, TerminationReason, Timestamp, encode,
 };
 
+// CLSI POCT01-A2 §B.6
 #[test]
-fn poct01_b_6_reviewer_builders_round_trip_and_correlate() -> Result<(), MessageError> {
+fn reviewer_builders_round_trip_and_correlate() -> Result<(), MessageError> {
     let header = Header {
         control_id: ControlId::new("new<&\"'")?,
         created: Timestamp::parse("2026-06-09T08:00:00+02:00")?,
@@ -64,8 +65,9 @@ fn poct01_b_6_reviewer_builders_round_trip_and_correlate() -> Result<(), Message
     Ok(())
 }
 
+// CLSI POCT01-A2; project rule
 #[test]
-fn poct01_project_builder_limits_and_explicit_offset() -> Result<(), MessageError> {
+fn builder_enforces_limits_and_explicit_offset() -> Result<(), MessageError> {
     let mut header = Header {
         control_id: ControlId::new("out")?,
         created: Timestamp::parse("2026-06-09T08:00:00+02:00")?,
@@ -94,8 +96,9 @@ fn poct01_project_builder_limits_and_explicit_offset() -> Result<(), MessageErro
     Ok(())
 }
 
+// CLSI POCT01-A2 §B.5.7
 #[test]
-fn poct01_b_5_7_builder_honors_exact_device_receive_size() -> Result<(), MessageError> {
+fn builder_honors_device_receive_size() -> Result<(), MessageError> {
     let header = Header {
         control_id: ControlId::new("synthetic-&-id")?,
         created: Timestamp::parse("2026-03-12T09:41:02+01:00")?,
@@ -122,8 +125,9 @@ fn poct01_b_5_7_builder_honors_exact_device_receive_size() -> Result<(), Message
 }
 
 // POCT01-A2 Appendix B 5.3 and 6.2: independently inspect the error detail attribute.
+// CLSI POCT01-A2 §B.6.2
 #[test]
-fn poct01_b_6_2_error_ack_detail_matches_classification() -> Result<(), MessageError> {
+fn error_ack_detail_matches_classification() -> Result<(), MessageError> {
     let header = Header {
         control_id: ControlId::new("reply")?,
         created: Timestamp::parse("2026-06-09T08:00:00+02:00")?,

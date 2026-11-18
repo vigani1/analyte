@@ -5,9 +5,9 @@ use analyte_fixtures::ConfigEdit as _;
 use analyte_transport::recording::{self, Direction, Evidence};
 use tokio::io::AsyncWriteExt as _;
 
+// Plan §10; ADR 0009
 #[tokio::test]
-async fn plan10_adr0009_capture_preserves_tcp_bytes_and_failure_does_not_change_delivery()
--> Result<(), Error> {
+async fn capture_keeps_bytes_and_never_alters_delivery() -> Result<(), Error> {
     for (client, enabled, fail) in [
         (false, true, false),
         (true, true, false),

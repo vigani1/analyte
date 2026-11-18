@@ -2,8 +2,9 @@
 use super::*;
 
 // PaLM TF-2b B.6 / ADR 0003: queue ownership and RSP issuance precede dial.
+// IHE PaLM TF-2b §B.6
 #[tokio::test]
-async fn law_tf2b_b6_rsp_issuance_precedes_outbound_dial() -> Result<(), Error> {
+async fn rsp_issuance_precedes_outbound_dial() -> Result<(), Error> {
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let (handover, owned) = Committed::new();
     let (rsp, issued) = Committed::new();
@@ -42,14 +43,16 @@ async fn law_tf2b_b6_rsp_issuance_precedes_outbound_dial() -> Result<(), Error> 
 }
 
 // PaLM TF-2b B.6 / ADR 0003 rule 8: every transferred AWOS keeps an owner.
+// IHE PaLM TF-2b §B.6
 #[tokio::test]
-async fn law_tf2b_b6_shutdown_during_handover_settles_all_without_reissue() -> Result<(), Error> {
+async fn shutdown_during_handover_settles_without_reissue() -> Result<(), Error> {
     transfer_failure(false).await
 }
 
 // PaLM TF-2b B.6 / 3.27.4: expiry of a queued followup cannot authorize a retry.
+// IHE PaLM TF-2b §B.6
 #[tokio::test]
-async fn law_tf2b_b6_queued_followup_expiry_settles_all_without_reissue() -> Result<(), Error> {
+async fn queued_followup_expiry_settles_without_reissue() -> Result<(), Error> {
     transfer_failure(true).await
 }
 async fn transfer_failure(expiry: bool) -> Result<(), Error> {

@@ -33,9 +33,9 @@ async fn open(path: &Path) -> Result<Handle, Error> {
     .await?)
 }
 
+// Safety rule 8 (ADR 0003)
 #[tokio::test]
-async fn rule8_sending_is_internal_and_only_interrupted_transfer_recovers_uncertain()
--> Result<(), Error> {
+async fn only_interrupted_transfer_recovers_as_uncertain() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("orders.db");
     let mut store = open(&path).await?;
@@ -167,8 +167,9 @@ async fn assert_recovered_outcomes(
     Ok(())
 }
 
+// ADR 0003
 #[tokio::test]
-async fn adr0003_cleanup_attempts_every_key_and_retains_every_failure() -> Result<(), Error> {
+async fn cleanup_attempts_every_key_and_keeps_failures() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("closed.db")).await?;
     store.shutdown(deadline()?).await?;

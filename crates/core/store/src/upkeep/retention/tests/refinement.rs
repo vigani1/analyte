@@ -16,8 +16,9 @@ fn cached(store: &mut Store, id: &str, sample: &str) -> TestResult {
     })?;
     Ok(())
 }
+// ADR 0013 item 7
 #[test]
-fn adr0013_item7_unrelated_order_hold_does_not_block_known_sample() -> TestResult {
+fn unrelated_order_hold_does_not_block_sample() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("store.db"))?;
     let receipt = finished(&mut store)?;
@@ -37,8 +38,9 @@ fn adr0013_item7_unrelated_order_hold_does_not_block_known_sample() -> TestResul
     assert!(!store.retention_eligible(receipt, 1, 86500)?);
     Ok(())
 }
+// ADR 0013 item 2
 #[test]
-fn adr0013_item2_open_work_only_blocks_related_or_unknown_receipts() -> TestResult {
+fn open_work_blocks_only_related_or_unknown_receipts() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("store.db"))?;
     let receipt = finished(&mut store)?;
@@ -49,8 +51,9 @@ fn adr0013_item2_open_work_only_blocks_related_or_unknown_receipts() -> TestResu
     assert!(!store.retention_eligible(receipt, 1, 86500)?);
     Ok(())
 }
+// ADR 0013 item 2
 #[test]
-fn adr0013_item2_explicit_poll_receipt_targets_are_narrowed() -> TestResult {
+fn explicit_poll_receipt_targets_are_narrowed() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("store.db"))?;
     let receipt = finished(&mut store)?;
@@ -84,8 +87,9 @@ fn order_run(store: &mut Store, now: i64) -> Result<PurgeRun, Error> {
             .ok_or(Error::InvalidMaintenanceInput)?,
     )
 }
+// ADR 0013 item 2
 #[test]
-fn adr0013_item2_final_orders_purge_only_after_period_and_keep_replay_guard() -> TestResult {
+fn final_orders_purge_after_period_keep_replay_guard() -> TestResult {
     for state in ["Done", "Rejected", "CancelConfirmed"] {
         let temp = tempfile::tempdir()?;
         let mut store = open(&temp.path().join("store.db"))?;
@@ -127,8 +131,9 @@ fn adr0013_item2_final_orders_purge_only_after_period_and_keep_replay_guard() ->
 }
 proptest::proptest! {
     #![proptest_config(proptest::test_runner::Config::with_cases(64))]
+    // ADR 0013 item 2
     #[test]
-    fn adr0013_item2_random_order_states_and_holds_keep_unfinished_work(state in 0usize..8,held in proptest::bool::ANY,recent in proptest::bool::ANY) {
+    fn random_order_states_keep_unfinished_work(state in 0usize..8,held in proptest::bool::ANY,recent in proptest::bool::ANY) {
         let result=order_property(state,held,recent);
         proptest::prop_assert!(result.is_ok(),"{:?}",result.err());
     }
@@ -168,8 +173,9 @@ fn order_property(state: usize, held: bool, recent: bool) -> TestResult {
     Ok(())
 }
 
+// ADR 0013 item 2
 #[test]
-fn adr0013_item2_unfinished_items_events_and_linked_receipts_block_order_purge() -> TestResult {
+fn unfinished_work_blocks_order_purge() -> TestResult {
     for guard in ["item", "event", "receipt", "audit"] {
         let temp = tempfile::tempdir()?;
         let mut store = open(&temp.path().join("store.db"))?;
@@ -226,8 +232,9 @@ fn adr0013_item2_unfinished_items_events_and_linked_receipts_block_order_purge()
     }
     Ok(())
 }
+// ADR 0013 item 2
 #[test]
-fn adr0013_item2_newer_cached_order_work_is_never_purged() -> TestResult {
+fn newer_cached_order_work_is_never_purged() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("store.db"))?;
     store.configure_retention_key(Some(DigestKey::new([4; 32])), true)?;

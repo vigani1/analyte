@@ -1,9 +1,9 @@
 //! Tests HTTP delivery retries and stable delivery identities.
 use super::*;
 
+// ADR 0008, ADR 0004
 #[tokio::test]
-async fn adr0008_reference_peer_delivery_conflict_pause_ordering_events_and_adr0004_cache()
--> TestResult {
+async fn reference_peer_delivery_events_pause_and_cache() -> TestResult {
     let directory = tempfile::tempdir()?;
     let peer = Peer::start(directory.path()).await?;
     let mut store = store(&directory.path().join("store.db")).await?;
@@ -67,9 +67,9 @@ async fn adr0008_reference_peer_delivery_conflict_pause_ordering_events_and_adr0
     Ok(())
 }
 
+// ADR 0008
 #[tokio::test]
-async fn adr0008_lost_response_retry_reuses_id_and_bytes_and_503_honours_retry_after() -> TestResult
-{
+async fn lost_response_retry_reuses_bytes_and_honours_503() -> TestResult {
     let directory = tempfile::tempdir()?;
     let peer = Peer::start(directory.path()).await?;
     for lose_response in [true, false] {
@@ -164,8 +164,9 @@ async fn adr0008_lost_response_retry_reuses_id_and_bytes_and_503_honours_retry_a
     Ok(())
 }
 
+// ADR 0008
 #[tokio::test]
-async fn adr0008_shutdown_drains_active_attempt_or_leaves_same_claim_for_recovery() -> TestResult {
+async fn shutdown_drains_or_keeps_claim_for_recovery() -> TestResult {
     use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
     for complete in [true, false] {
         let directory = tempfile::tempdir()?;
@@ -281,9 +282,9 @@ async fn recover_and_claim(
 }
 
 // Contract v1 HTTP document ceiling and clinical rule 7; synthetic local HTTP only.
+// ADR 0003 rules 4 and 5; mutation-testing regression
 #[test]
-fn mutation_adr0003_rule4_rule5_encode_delivery_preserves_three_identities_and_exact_values()
--> TestResult {
+fn delivery_keeps_three_identities_and_exact_values() -> TestResult {
     let metadata = receipt()?;
     let mut result = make_result(metadata.id, "run-A")?;
     let mut parts = result.parts.as_slice().to_vec();
@@ -343,9 +344,9 @@ fn mutation_adr0003_rule4_rule5_encode_delivery_preserves_three_identities_and_e
     Ok(())
 }
 
+// App contract v1 (ADR 0008); mutation-testing regression
 #[tokio::test]
-async fn mutation_contract_v1_conflict_detail_requires_conflict_status_and_version_one()
--> TestResult {
+async fn app_detail_kept_only_for_version_one() -> TestResult {
     use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
     for (status, version, expected) in [
         (409, 1, "specific receiver explanation"),

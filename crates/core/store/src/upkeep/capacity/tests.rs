@@ -2,8 +2,9 @@
 use crate::test_support::*;
 use crate::*;
 
+// ADR 0003
 #[test]
-fn adr0003_admission_check_matches_the_write_guard_without_writing() -> TestResult {
+fn admission_check_matches_write_guard_without_writing() -> TestResult {
     let temp = tempfile::tempdir()?;
     let full = Store::open(&temp.path().join("full.db"), limits(), Box::new(Space(0)))?;
     assert!(matches!(
@@ -16,8 +17,9 @@ fn adr0003_admission_check_matches_the_write_guard_without_writing() -> TestResu
     Ok(())
 }
 
+// ADR 0003
 #[test]
-fn adr0003_capacity_guard_refuses_receipts_and_frames() -> TestResult {
+fn capacity_guard_refuses_receipts_and_frames() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = Store::open(&temp.path().join("store.db"), limits(), Box::new(Space(0)))?;
     let metadata = receipt(b"raw")?;
@@ -37,8 +39,9 @@ fn adr0003_capacity_guard_refuses_receipts_and_frames() -> TestResult {
     Ok(())
 }
 
+// Plan §11
 #[test]
-fn plan11_corruption_and_database_size_limit_refuse_visibly() -> TestResult {
+fn corruption_and_size_limit_refuse_visibly() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("invalid.db");
     std::fs::write(&path, b"this is not SQLite")?;
@@ -60,8 +63,9 @@ fn plan11_corruption_and_database_size_limit_refuse_visibly() -> TestResult {
     Ok(())
 }
 
+// ADR 0003 rule 7; mutation-testing regression
 #[test]
-fn mutation_adr0003_rule7_capacity_checks_reserve_and_database_bound_independently() -> TestResult {
+fn reserve_and_database_bound_checked_independently() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("store.db"))?;
     store.limits.record_bytes = 2;

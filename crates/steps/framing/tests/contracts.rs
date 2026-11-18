@@ -14,9 +14,9 @@ fn collect<E, X>(
     Ok(events)
 }
 
+// ADR 0012; CLSI LIS01-A2; HL7 MLLP; CLSI POCT01-A2; VIDAS BCI Link; Autolyser manual Rev18
 #[test]
-fn adr0012_lis01_mllp_poct_bci_rev18_all_six_stacks_share_decode()
--> Result<(), Box<dyn std::error::Error>> {
+fn all_six_stacks_share_decode() -> Result<(), Box<dyn std::error::Error>> {
     let raw: Vec<u8> = astm::encode(
         b"R|synthetic\r",
         astm::FrameNumber::FIRST,

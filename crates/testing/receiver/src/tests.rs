@@ -1,9 +1,9 @@
 //! Tests that the reference receiver joins its storage worker on every exit path.
 use super::*;
 use analyte_fixtures::SECRET;
+// Safety rule 1 (ADR 0003)
 #[tokio::test]
-async fn rule1_error_after_open_drains_queued_write_with_live_router()
--> Result<(), Box<dyn std::error::Error>> {
+async fn error_after_open_drains_queued_write() -> Result<(), Box<dyn std::error::Error>> {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("receiver.db");
     let mut receiver = Receiver::open(&path, "key".into(), SigningSecret::parse(SECRET)?)?;
@@ -32,8 +32,9 @@ async fn rule1_error_after_open_drains_queued_write_with_live_router()
     drop(router);
     Ok(())
 }
+// Safety rule 7 (ADR 0003)
 #[tokio::test]
-async fn rule7_shutdown_surfaces_worker_panic() -> Result<(), Box<dyn std::error::Error>> {
+async fn shutdown_surfaces_worker_panic() -> Result<(), Box<dyn std::error::Error>> {
     let temp = tempfile::tempdir()?;
     let mut receiver = Receiver::open(
         &temp.path().join("receiver.db"),

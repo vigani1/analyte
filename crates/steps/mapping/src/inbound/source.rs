@@ -674,8 +674,9 @@ impl Hierarchy {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // HL7 2.5.1 §2.5.3; CLSI LIS02-A2
     #[test]
-    fn hl7_251_section_253_null_does_not_apply_to_lis02_fields() {
+    fn hl7_null_does_not_apply_to_astm_fields() {
         let mut source = Source {
             message: None,
             version: None,

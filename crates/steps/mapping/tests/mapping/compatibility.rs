@@ -2,8 +2,9 @@
 use super::*;
 use analyte_fixtures::ConfigEdit as _;
 
+// HL7 2.6 §7.3.1, §7.4.2.3, §7.4.2.5, §7.4.2.19, §7.4.2.21
 #[test]
-fn hl7_2_6_s7_3_1_s7_4_2_3_5_19_21_receiving_keeps_values_times_and_raw_identity() -> TestResult {
+fn receiving_keeps_values_times_and_raw_identity() -> TestResult {
     let config = config(&HL7_CONFIG.rewrite("edition = \"v251\"", "edition = \"v26\""))?;
     for (datatype, value) in [
         ("NM", "0.10"),
@@ -50,8 +51,9 @@ fn hl7_2_6_s7_3_1_s7_4_2_3_5_19_21_receiving_keeps_values_times_and_raw_identity
     Ok(())
 }
 
+// HL7 2.6 §2.A.6, §2.A.77, §7.4.2.22
 #[test]
-fn hl7_2_6_s2_a_6_77_and_s7_4_2_22_unsafe_results_never_map() -> TestResult {
+fn unsafe_results_never_map() -> TestResult {
     let config = config(&HL7_CONFIG.rewrite("edition = \"v251\"", "edition = \"v26\""))?;
     for observation in [
         "OBX|1|CE|SYN||POS||||||F\r",
@@ -73,8 +75,9 @@ fn hl7_2_6_s2_a_6_77_and_s7_4_2_22_unsafe_results_never_map() -> TestResult {
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.4, §3.29.4
 #[test]
-fn law_tf2b_c4_and_3_29_4_compatible_vid_keeps_law_analysis_time() -> TestResult {
+fn compatible_law_versions_keep_analysis_time() -> TestResult {
     let definition = include_str!("../../../../core/config/examples/law.toml").rewrite(
         "order_namespace = {fixed=\"LAB\"}",
         "order_namespace = {fixed=\"manager\"}",
@@ -102,9 +105,9 @@ fn law_tf2b_c4_and_3_29_4_compatible_vid_keeps_law_analysis_time() -> TestResult
     Ok(())
 }
 
+// HL7 2.5.1 §2.8.1
 #[test]
-fn hl7_2_5_1_s2_8_1_legacy_extension_groups_are_not_assigned_later_specimen_meanings() -> TestResult
-{
+fn legacy_extension_groups_gain_no_specimen_meaning() -> TestResult {
     for (edition, version) in [("v23", "2.3"), ("v24", "2.4"), ("v25", "2.5")] {
         let config =
             config(&HL7_CONFIG.rewrite("edition = \"v251\"", &format!("edition = \"{edition}\"")))?;
@@ -127,9 +130,9 @@ fn hl7_2_5_1_s2_8_1_legacy_extension_groups_are_not_assigned_later_specimen_mean
     Ok(())
 }
 
+// HL7 2.5.1 §2.8.1.2
 #[test]
-fn hl7_2_5_1_s2_8_1_2_legacy_results_map_stable_fields_and_keep_uncertain_extensions_raw()
--> TestResult {
+fn legacy_results_keep_uncertain_extensions_raw() -> TestResult {
     for (edition, version) in [("v23", "2.3"), ("v24", "2.4"), ("v25", "2.5")] {
         let config =
             config(&HL7_CONFIG.rewrite("edition = \"v251\"", &format!("edition = \"{edition}\"")))?;
@@ -185,8 +188,9 @@ fn hl7_2_5_1_s2_8_1_2_legacy_results_map_stable_fields_and_keep_uncertain_extens
     Ok(())
 }
 
+// HL7 2.5.1 §2.8.1
 #[test]
-fn hl7_2_5_1_s2_8_1_new_datatype_availability_is_not_guessed_for_legacy_cwe() -> TestResult {
+fn legacy_cwe_datatype_is_not_guessed() -> TestResult {
     for (edition, version) in [("v23", "2.3"), ("v24", "2.4"), ("v25", "2.5")] {
         let config =
             config(&HL7_CONFIG.rewrite("edition = \"v251\"", &format!("edition = \"{edition}\"")))?;
@@ -210,8 +214,9 @@ fn hl7_2_5_1_s2_8_1_new_datatype_availability_is_not_guessed_for_legacy_cwe() ->
 }
 
 // HL7 2.3.1 sections 7.2.1 and 7.3.2: no standard SPM/SAC or OBX-19 analysis time.
+// HL7 2.3.1 §7.2.1, §7.3.2
 #[test]
-fn hl7_231_s7_2_1_s7_3_2_later_fields_do_not_gain_meaning() -> TestResult {
+fn later_edition_fields_gain_no_meaning() -> TestResult {
     let config = config(&HL7_CONFIG.rewrite("edition = \"v251\"", "edition = \"v231\""))?;
     for extra in ["", "SPM|1|later-specimen\r", "SAC|||later-container\r"] {
         let mut fields = [""; 19];

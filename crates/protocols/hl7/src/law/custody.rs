@@ -127,8 +127,9 @@ impl<'a> RetainedControl<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // IHE PaLM TF-2b §B.7, §C.6, §C.8
     #[test]
-    fn law_tf2b_b7_c6_c8_custody_fields_preserve_original_spelling() -> Result<(), crate::Error> {
+    fn custody_fields_preserve_original_spelling() -> Result<(), crate::Error> {
         for (enc, component) in [("^~\\&", '^'), ("$~\\&", '$')] {
             let bytes = format!(
                 "MSH|{enc}|A|AF|M|MF|20260101120000+0000||OUL{component}R22{component}OUL_R22|m1|P{component}T|2.5.1\rOBR||awos-01{component}LAB\rORC|||||CM\rOBR||\"\"\r"
@@ -159,8 +160,9 @@ mod tests {
         }
         Ok(())
     }
+    // IHE PaLM TF-2b §C.8
     #[test]
-    fn law_tf2b_c8_status_rendering_matches_legacy_bytes() {
+    fn status_rendering_matches_legacy_bytes() {
         use super::super::OrderStatus;
         for status in [
             OrderStatus::Scheduled,
@@ -179,9 +181,9 @@ mod tests {
     }
 }
 
+// IHE PaLM TF-2b §B.7.6, ORC-9, ORC-27
 #[test]
-fn law_tf2b_b7_6_orc9_orc27_retained_evidence_matches_original_fields() -> Result<(), crate::Error>
-{
+fn retained_orc_evidence_matches_original_fields() -> Result<(), crate::Error> {
     for delimiter in ['|', '$'] {
         for estimate in ["", "\"\"", "202611171230+0100"] {
             let mut fields = vec![""; 28];

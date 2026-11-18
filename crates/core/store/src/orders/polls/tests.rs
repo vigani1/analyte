@@ -14,9 +14,9 @@ fn audit(id: PollIntentId, reason: &str) -> Result<Audit, analyte_model::TextErr
     })
 }
 
+// ADR 0003
 #[test]
-fn adr0003_poll_intent_pending_uncertain_confirmed_is_retained_and_blocks_cursor_replay()
--> TestResult {
+fn poll_intent_states_retained_and_block_cursor_replay() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("polls.db");
     let machine = Identifier::new("machine")?;
@@ -145,9 +145,9 @@ fn verify_poll_evidence_is_immutable_and_has_no_deliveries(
     Ok(())
 }
 
+// ADR 0003
 #[test]
-fn adr0003_poll_admission_outcome_and_operator_resolution_roll_back_all_evidence_on_failure()
--> TestResult {
+fn poll_writes_roll_back_all_evidence_on_failure() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("atomic.db"))?;
     let machine = Identifier::new("machine")?;
@@ -245,8 +245,9 @@ fn adr0003_poll_admission_outcome_and_operator_resolution_roll_back_all_evidence
     Ok(())
 }
 
+// ADR 0003
 #[test]
-fn adr0003_poll_capacity_refusal_never_admits_or_reconciles_a_cursor_movement() -> TestResult {
+fn poll_capacity_refusal_never_moves_cursor() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("capacity.db");
     let machine = Identifier::new("machine")?;
@@ -310,8 +311,9 @@ fn adr0003_poll_capacity_refusal_never_admits_or_reconciles_a_cursor_movement() 
     Ok(())
 }
 
+// ADR 0003; mutation-testing regression
 #[test]
-fn mutation_adr0003_poll_state_reason_and_repeated_evidence_are_independent() -> TestResult {
+fn poll_state_reason_and_repeats_are_independent() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("poll-idempotence.db");
     let mut store = open(&path)?;
@@ -367,8 +369,9 @@ fn mutation_adr0003_poll_state_reason_and_repeated_evidence_are_independent() ->
     Ok(())
 }
 
+// ADR 0003; mutation-testing regression
 #[test]
-fn mutation_adr0003_poll_reconciliation_preserves_the_disk_reserve_for_its_audit() -> TestResult {
+fn poll_reconciliation_keeps_disk_reserve_for_audit() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("poll-reserve.db"))?;
     let machine = Identifier::new("synthetic-machine")?;

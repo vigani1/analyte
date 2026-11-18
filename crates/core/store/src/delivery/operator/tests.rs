@@ -3,12 +3,13 @@ use crate::test_support::*;
 use crate::*;
 use analyte_model::Reason;
 
+// Plan §11; ADR 0008
 #[test]
 #[expect(
     clippy::too_many_lines,
     reason = "One retained-evidence scenario checks refusals and rollback alongside its successful lifecycle"
 )]
-fn plan11_adr0008_resend_preserves_identity_bytes_and_atomic_audit() -> TestResult {
+fn resend_keeps_identity_bytes_and_audits_atomically() -> TestResult {
     let app = Identifier::new("app")?;
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("resend.db"))?;
@@ -140,8 +141,9 @@ fn verify_unknown_resend_keeps_audit_count(store: &mut Store, mut audit: Audit) 
     Ok(())
 }
 
+// Plan §11; ADR 0003
 #[test]
-fn plan11_adr0003_superseded_resend_requires_explicit_delivery() -> TestResult {
+fn superseded_resend_requires_explicit_delivery() -> TestResult {
     let app = Identifier::new("app")?;
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("superseded.db"))?;
@@ -229,8 +231,9 @@ fn plan11_adr0003_superseded_resend_requires_explicit_delivery() -> TestResult {
     Ok(())
 }
 
+// ADR 0008; mutation-testing regression
 #[test]
-fn mutation_adr0008_resend_requires_both_action_and_exact_delivery_target() -> TestResult {
+fn resend_requires_action_and_exact_delivery_target() -> TestResult {
     let app = Identifier::new("app")?;
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("resend-authorization.db"))?;

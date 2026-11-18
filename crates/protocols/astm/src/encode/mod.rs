@@ -43,8 +43,9 @@ pub fn encode_order_envelope(
 #[cfg(test)]
 mod tests {
     use super::*;
+    // CLSI LIS02-A2 §6, §7, §12
     #[test]
-    fn lis02_a2_sections_6_7_12_envelope_matches_legacy_bytes() {
+    fn envelope_matches_legacy_bytes() {
         for (reason, code) in [
             (OrderTermination::Normal, b'N'),
             (OrderTermination::NoInformation, b'I'),

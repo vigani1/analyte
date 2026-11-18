@@ -77,8 +77,9 @@ fn orders_reply(code: &[u8], body: &[u8]) -> Result<Message, Error> {
     reply(code, &bytes)
 }
 
+// HL7 2.5.1 §4.4.6
 #[test]
-fn hl7_251_4_4_6_builds_order_owned_timing_specimen_and_cancel() -> Result<(), Error> {
+fn builds_oml_with_timing_specimen_and_cancel() -> Result<(), Error> {
     let sent = sent()?;
     let mut segments = sent.message().segments();
     let header = segments.next().ok_or(Error::Limit)?;
@@ -124,8 +125,9 @@ fn hl7_251_4_4_6_builds_order_owned_timing_specimen_and_cancel() -> Result<(), E
     Ok(())
 }
 
+// HL7 2.5.1 §4.4.7
 #[test]
-fn hl7_251_4_4_7_correlates_typed_decisions_and_specimen_container_groups() -> Result<(), Error> {
+fn orl_correlates_decisions_specimens_and_containers() -> Result<(), Error> {
     let sent = sent()?;
     let message=orders_reply(b"AA",b"ORC|OK|001^LAB|F1^M\rTQ1|1||||||202611151300|202611151400|S^^HL70485\rOBR|1|001^LAB|F1^M|T1^Synthetic^L\rSPM|1|000aB^peer&FILLER||SER^Serum^HL70487\rSAC|||tube-1^M\rSAC|||tube-2^M\rORC|CR|002^LAB|F2^M\r")?;
     let parsed = OrderResponse::new(&message, &sent)?;
@@ -156,8 +158,9 @@ fn hl7_251_4_4_7_correlates_typed_decisions_and_specimen_container_groups() -> R
     Ok(())
 }
 
+// HL7 2.5.1 §4.5.1.1
 #[test]
-fn hl7_251_4_5_1_1_orl_new_and_cancel_rejection_reuse_control_model() -> Result<(), Error> {
+fn orl_new_and_cancel_rejections_keep_reason() -> Result<(), Error> {
     let sent = sent()?;
     let message=orders_reply(b"AE",b"ORC|UA|001^LAB||||||||||||||LOCAL^Unavailable^L\rORC|UC|002^LAB|F2^M|||||||||||||LOCAL^Running^L\r")?;
     let parsed = OrderResponse::new(&message, &sent)?;
@@ -183,152 +186,179 @@ macro_rules! negative {
     };
 }
 
+// HL7 2.5.1 §4.5.1.1
 negative!(
-    hl7_251_4_5_1_1_orl_unknown_control,
+    orl_unknown_control_is_refused,
     b"ORC|ZZ|001^LAB\r",
     Error::Control
 );
+// HL7 2.5.1 §4.5.1.1
 negative!(
-    hl7_251_4_5_1_1_orl_request_not_acknowledgment,
+    orl_request_control_is_not_an_ack,
     b"ORC|NW|001^LAB\r",
     Error::Control
 );
+// HL7 2.5.1 §4.5.1.1
 negative!(
-    hl7_251_4_5_1_1_orl_wrong_cancel_reply,
+    orl_ok_reply_to_cancel_is_refused,
     b"ORC|OK|002^LAB\r",
     Error::Control
 );
+// HL7 2.5.1 §4.5.1.1
 negative!(
-    hl7_251_4_5_1_1_orl_notification_not_acknowledgment,
+    orl_notification_control_is_not_an_ack,
     b"ORC|OC|001^LAB\r",
     Error::Control
 );
+// HL7 2.5.1 §4.5.1.2
 negative!(
-    hl7_251_4_5_1_2_orl_wrong_order,
+    orl_unknown_placer_is_refused,
     b"ORC|OK|other^LAB\r",
     Error::Correlation {
         segment: "ORC",
         field: 2
     }
 );
+// HL7 2.5.1 §4.5.1.2
 negative!(
-    hl7_251_4_5_1_2_orl_wrong_namespace,
+    orl_wrong_placer_namespace_is_refused,
     b"ORC|OK|001^OTHER\r",
     Error::Correlation {
         segment: "ORC",
         field: 2
     }
 );
+// HL7 2.5.1 §4.5.1.3
 negative!(
-    hl7_251_4_5_1_3_orl_wrong_filler,
+    orl_wrong_filler_is_refused,
     b"ORC|CR|002^LAB|WRONG^M\r",
     Error::Correlation {
         segment: "ORC",
         field: 3
     }
 );
+// HL7 2.5.1 §4.4.7
 negative!(
-    hl7_251_4_4_7_orl_duplicate_order,
+    orl_duplicate_order_is_refused,
     b"ORC|OK|001^LAB\rORC|OK|001^LAB\r",
     Error::Duplicate { field: 2 }
 );
+// HL7 2.5.1 §4.4.7
 negative!(
-    hl7_251_4_4_7_orl_obr_identity_conflict,
+    orl_conflicting_obr_placer_is_refused,
     b"ORC|OK|001^LAB\rOBR|1|other^LAB||T1^Synthetic^L\r",
     Error::Correlation {
         segment: "OBR",
         field: 2
     }
 );
+// HL7 2.5.1 §4.4.7
 negative!(
-    hl7_251_4_4_7_orl_spm_requires_obr,
+    orl_specimen_without_obr_is_refused,
     b"ORC|OK|001^LAB\rSPM|1|000aB||SER^Serum^HL70487\r",
     Error::Content { field: 0, .. }
 );
+// HL7 2.5.1 §4.4.7
 negative!(
-    hl7_251_4_4_7_orl_sac_requires_spm,
+    orl_container_without_specimen_is_refused,
     b"ORC|OK|001^LAB\rOBR|1|001^LAB||T1^Synthetic^L\rSAC|||tube\r",
     Error::Content { field: 0, .. }
 );
+// HL7 2.5.1 §7.4.3.2
 negative!(
-    hl7_251_7_4_3_2_orl_wrong_sample_case,
+    orl_sample_case_mismatch_is_refused,
     b"ORC|OK|001^LAB\rOBR|1|001^LAB||T1^Synthetic^L\rSPM|1|000AB||SER^Serum^HL70487\r",
     Error::Correlation {
         segment: "SPM",
         field: 2
     }
 );
+// HL7 2.5.1 §7.4.3.2
 negative!(
-    hl7_251_7_4_3_2_orl_preserves_sample_leading_zero,
+    orl_sample_missing_leading_zero_is_refused,
     b"ORC|OK|001^LAB\rOBR|1|001^LAB||T1^Synthetic^L\rSPM|1|00aB||SER^Serum^HL70487\r",
     Error::Correlation {
         segment: "SPM",
         field: 2
     }
 );
+// HL7 2.5.1 §7.4.3.2
 negative!(
-    hl7_251_7_4_3_2_orl_missing_known_sample,
+    orl_missing_sample_is_refused,
     b"ORC|OK|001^LAB\rOBR|1|001^LAB||T1^Synthetic^L\rSPM|1|||SER^Serum^HL70487\r",
     Error::Correlation {
         segment: "SPM",
         field: 2
     }
 );
+// HL7 2.5.1 §7.4.3.2
 negative!(
-    hl7_251_7_4_3_2_orl_malformed_eip,
+    orl_malformed_specimen_eip_is_refused,
     b"ORC|OK|001^LAB\rOBR|1|001^LAB||T1^Synthetic^L\rSPM|1|000aB^^extra||SER^Serum^HL70487\r",
     Error::Content { field: 2, .. }
 );
+// HL7 2.5.1 §7.4.3.2
 negative!(
-    hl7_251_7_4_3_2_orl_unpaired_universal_namespace,
+    orl_unpaired_universal_namespace_is_refused,
     b"ORC|OK|001^LAB\rOBR|1|001^LAB||T1^Synthetic^L\rSPM|1|000aB&&uid||SER^Serum^HL70487\r",
     Error::Content { field: 2, .. }
 );
+// HL7 2.5.1 §7.4.3.4
 negative!(
-    hl7_251_7_4_3_4_orl_missing_specimen_type,
+    orl_missing_specimen_type_is_refused,
     b"ORC|OK|001^LAB\rOBR|1|001^LAB||T1^Synthetic^L\rSPM|1|000aB\r",
     Error::Content { field: 4, .. }
 );
-negative!(hl7_251_4_4_7_orl_extra_specimen_is_not_flattened,b"ORC|OK|001^LAB\rOBR|1|001^LAB||T1^Synthetic^L\rSPM|1|000aB||SER^Serum^HL70487\rSPM|2|000aB||SER^Serum^HL70487\r",Error::Content {field:2,..});
+// HL7 2.5.1 §4.4.7
+negative!(orl_extra_specimen_is_not_flattened,b"ORC|OK|001^LAB\rOBR|1|001^LAB||T1^Synthetic^L\rSPM|1|000aB||SER^Serum^HL70487\rSPM|2|000aB||SER^Serum^HL70487\r",Error::Content {field:2,..});
+// HL7 2.5.1 §13.4.3
 negative!(
-    hl7_251_13_4_3_orl_anonymous_container_not_assumed,
+    orl_container_without_identity_is_refused,
     b"ORC|OK|001^LAB\rOBR|1|001^LAB||T1^Synthetic^L\rSPM|1|000aB||SER^Serum^HL70487\rSAC\r",
     Error::Content { field: 3, .. }
 );
-negative!(hl7_251_13_4_3_orl_repeated_container_identity,b"ORC|OK|001^LAB\rOBR|1|001^LAB||T1^Synthetic^L\rSPM|1|000aB||SER^Serum^HL70487\rSAC|||tube~other\r",Error::Content {field:3,..});
+// HL7 2.5.1 §13.4.3
+negative!(orl_repeated_container_identity_is_refused,b"ORC|OK|001^LAB\rOBR|1|001^LAB||T1^Synthetic^L\rSPM|1|000aB||SER^Serum^HL70487\rSAC|||tube~other\r",Error::Content {field:3,..});
+// HL7 2.5.1 §4.5.4
 negative!(
-    hl7_251_4_5_4_orl_invalid_timing_date,
+    orl_invalid_timing_date_is_refused,
     b"ORC|OK|001^LAB\rTQ1|1||||||20260230\r",
     Error::Content { field: 7, .. }
 );
+// HL7 2.5.1 §4.5.4
 negative!(
-    hl7_251_4_5_4_orl_unknown_timing_conjunction_scope,
+    orl_timing_conjunction_is_out_of_scope,
     b"ORC|OK|001^LAB\rTQ1|1|||||||||||S\r",
     Error::Content { field: 12, .. }
 );
+// HL7 2.5.1 §4.5.4
 negative!(
-    hl7_251_4_5_4_orl_repeated_window_scope,
+    orl_repeated_timing_window_is_refused,
     b"ORC|OK|001^LAB\rTQ1|1\rTQ1|2\r",
     Error::Content { field: 0, .. }
 );
+// HL7 2.5.1 §4.5.5
 negative!(
-    hl7_251_4_5_5_orl_unsupported_timing_relationship,
+    orl_timing_relationship_is_refused,
     b"ORC|OK|001^LAB\rTQ1|1\rTQ2|1\r",
     Error::Content { field: 0, .. }
 );
+// HL7 2.5.1 §4.4.7
 negative!(
-    hl7_251_4_4_7_orl_order_note_not_header_note,
+    orl_misplaced_order_note_is_refused,
     b"ORC|OK|001^LAB\rNTE|1||Misplaced\r",
     Error::Content { field: 0, .. }
 );
+// HL7 2.5.1 §4.4.7
 negative!(
-    hl7_251_4_4_7_orl_bad_second_order_is_atomic,
+    orl_bad_second_order_fails_whole_reply,
     b"ORC|OK|001^LAB\rORC|ZZ|002^LAB\r",
     Error::Control
 );
 
+// HL7 2.5.1 §4.4.7
 #[test]
-fn hl7_251_4_4_7_message_ack_never_fabricates_order_decisions() -> Result<(), Error> {
+fn message_ack_never_fabricates_order_decisions() -> Result<(), Error> {
     let sent = sent()?;
     for code in [b"AA".as_slice(), b"AE", b"AR"] {
         let response = reply(code, b"")?;
@@ -350,8 +380,9 @@ fn hl7_251_4_4_7_message_ack_never_fabricates_order_decisions() -> Result<(), Er
     Ok(())
 }
 
+// HL7 2.5.1 §4.4.6, §4.4.7
 #[test]
-fn hl7_251_4_4_6_7_rejects_wrong_version_and_transaction_family() -> Result<(), Error> {
+fn rejects_wrong_version_and_message_family() -> Result<(), Error> {
     let source = Code::new(b"SER", b"Serum", b"HL70487")?;
     let mut old = header()?;
     old.version = Version::V231;
@@ -402,8 +433,9 @@ fn hl7_251_4_4_6_7_rejects_wrong_version_and_transaction_family() -> Result<(), 
     Ok(())
 }
 
+// HL7 2.5.1 §4.4.7, §2.9
 #[test]
-fn hl7_251_4_4_7_response_patient_group_and_2_9_correlation() -> Result<(), Error> {
+fn orl_needs_patient_group_and_msa_correlation() -> Result<(), Error> {
     let sent = sent()?;
     let response = reply(b"AA", b"ORC|OK|001^LAB\r")?;
     assert!(matches!(
@@ -433,8 +465,9 @@ fn hl7_251_4_4_7_response_patient_group_and_2_9_correlation() -> Result<(), Erro
     Ok(())
 }
 
+// HL7 2.5.1 §7.4.3.2
 #[test]
-fn hl7_251_7_4_3_2_sample_delimiters_are_escaped_without_changing_identity() -> Result<(), Error> {
+fn sample_delimiters_are_escaped_keeping_identity() -> Result<(), Error> {
     let sample = b"000aB|^~\\&";
     let sent = order::oml(
         &[new_order(sample, Code::new(b"SER", b"Serum", b"HL70487")?)?],
@@ -460,8 +493,9 @@ fn hl7_251_7_4_3_2_sample_delimiters_are_escaped_without_changing_identity() -> 
     Ok(())
 }
 
+// HL7 2.5.1 §2.A.13
 #[test]
-fn hl7_251_2a_13_cwe_keeps_supplied_version_and_never_guesses_one() -> Result<(), Error> {
+fn cwe_keeps_supplied_version_never_guesses() -> Result<(), Error> {
     let local = Code::new(b"LOCAL", b"Synthetic", b"L")?;
     assert!(matches!(
         order::oml(
@@ -499,8 +533,9 @@ fn hl7_251_2a_13_cwe_keeps_supplied_version_and_never_guesses_one() -> Result<()
     Ok(())
 }
 
+// HL7 2.5.1 §4.4.6
 #[test]
-fn hl7_251_4_4_6_builder_is_bounded_and_replay_is_pure() -> Result<(), Error> {
+fn builder_is_bounded_and_deterministic() -> Result<(), Error> {
     let first = sent()?;
     let second = sent()?;
     assert_eq!(first.message().raw(), second.message().raw());
@@ -525,8 +560,9 @@ fn hl7_251_4_4_6_builder_is_bounded_and_replay_is_pure() -> Result<(), Error> {
 }
 
 proptest::proptest! {
+    // HL7 2.5.1 §7.4.3.2
     #[test]
-    fn hl7_251_7_4_3_2_sample_strings_round_trip(value in "0[0-9A-Za-z]{1,15}") {
+    fn sample_strings_round_trip(value in "0[0-9A-Za-z]{1,15}") {
         let message=Code::new(b"SER",b"Serum",b"HL70487").and_then(|source|new_order(value.as_bytes(),source)).and_then(|order|order::oml(&[order],subject(),header()?,Options::default()));
         proptest::prop_assert!(message.is_ok());
         if let Ok(message)=message {
@@ -535,8 +571,9 @@ proptest::proptest! {
     }
 }
 
+// HL7 2.5.1 §4.4.6, §4.4.7
 #[test]
-fn hl7_251_4_4_6_7_specimens_stay_with_their_own_orders() -> Result<(), Error> {
+fn specimens_stay_with_their_own_orders() -> Result<(), Error> {
     let first = new_order(b"000aB", Code::new(b"SER", b"Serum", b"HL70487")?)?;
     let mut second = new_order(b"000cD", Code::new(b"SER", b"Serum", b"HL70487")?)?;
     match &mut second {
@@ -585,8 +622,9 @@ fn hl7_251_4_4_6_7_specimens_stay_with_their_own_orders() -> Result<(), Error> {
     Ok(())
 }
 
+// HL7 2.5.1 §7.4.3.2
 #[test]
-fn hl7_251_7_4_3_2_base_specimen_id_bound_precedes_correlation() -> Result<(), Error> {
+fn specimen_id_length_checked_before_correlation() -> Result<(), Error> {
     let sent = sent()?;
     let mut body = b"ORC|OK|001^LAB\rOBR|1|001^LAB||T1^Synthetic^L\rSPM|1|".to_vec();
     body.extend_from_slice(&[b'a'; 81]);
@@ -625,8 +663,9 @@ fn hl7_251_7_4_3_2_base_specimen_id_bound_precedes_correlation() -> Result<(), E
     Ok(())
 }
 
+// HL7 2.5.1 §4.4.7
 #[test]
-fn hl7_251_4_4_7_sft_and_header_notes_remain_in_message() -> Result<(), Error> {
+fn sft_and_header_notes_stay_in_message() -> Result<(), Error> {
     let sent = sent()?;
     let response=reply(b"AA",b"SFT|Synthetic|1|Software|binary\rNTE|1||Header note\rPID|1||P1^^^LAB||Synthetic\rORC|OK|001^LAB\r")?;
     let parsed = OrderResponse::new(&response, &sent)?;
@@ -640,30 +679,36 @@ fn hl7_251_4_4_7_sft_and_header_notes_remain_in_message() -> Result<(), Error> {
     Ok(())
 }
 
-negative!(hl7_251_13_4_3_container_null_entity_component,b"ORC|OK|001^LAB\rOBR|1|001^LAB||T1^Synthetic^L\rSPM|1|000aB||SER^Serum^HL70487\rSAC|||\"\"^M\r",Error::Content {field:3,..});
+// HL7 2.5.1 §13.4.3
+negative!(container_null_identifier_is_refused,b"ORC|OK|001^LAB\rOBR|1|001^LAB||T1^Synthetic^L\rSPM|1|000aB||SER^Serum^HL70487\rSAC|||\"\"^M\r",Error::Content {field:3,..});
+// HL7 2.5.1 §4.5.4
 negative!(
-    hl7_251_4_5_4_invalid_set_id_not_assumed,
+    invalid_timing_set_id_is_refused,
     b"ORC|OK|001^LAB\rTQ1|2\r",
     Error::Content { field: 1, .. }
 );
+// HL7 2.5.1 §4.5.4
 negative!(
-    hl7_251_4_5_4_priority_cwe_missing_version_not_guessed,
+    priority_code_version_is_not_guessed,
     b"ORC|OK|001^LAB\rTQ1|1||||||||LOCAL^^L\r",
     Error::Content { field: 9, .. }
 );
+// HL7 2.5.1 §7.4.3
 negative!(
-    hl7_251_7_4_3_spm_set_id_invalid,
+    invalid_specimen_set_id_is_refused,
     b"ORC|OK|001^LAB\rOBR|1|001^LAB||T1^Synthetic^L\rSPM|x|000aB||SER^Serum^HL70487\r",
     Error::Content { field: 1, .. }
 );
+// HL7 2.5.1 §7.4.3
 negative!(
-    hl7_251_7_4_3_specimen_type_cwe_invalid,
+    invalid_specimen_type_code_is_refused,
     b"ORC|OK|001^LAB\rOBR|1|001^LAB||T1^Synthetic^L\rSPM|1|000aB||SER^Serum^L\r",
     Error::Content { field: 4, .. }
 );
 
+// HL7 2.5.1 §4.4.6
 #[test]
-fn hl7_251_4_4_6_cancel_only_does_not_synthesize_specimen_or_container() -> Result<(), Error> {
+fn cancel_only_adds_no_specimen_or_container() -> Result<(), Error> {
     let sent = order::oml(
         &[Order::Cancel {
             placer: OrderId::new(b"001", b"LAB")?,
@@ -679,8 +724,9 @@ fn hl7_251_4_4_6_cancel_only_does_not_synthesize_specimen_or_container() -> Resu
 }
 
 proptest::proptest! {
+    // HL7 2.5.1 §4.5.1.1
     #[test]
-    fn hl7_251_4_5_1_1_orl_unknown_codes_are_errors(value in "[A-Z]{2}") {
+    fn orl_unknown_control_codes_are_errors(value in "[A-Z]{2}") {
         proptest::prop_assume!(!["OK","UA"].contains(&value.as_str()));
         let input=sent().and_then(|sent| {
             let mut body=b"ORC|".to_vec();body.extend_from_slice(value.as_bytes());body.extend_from_slice(b"|001^LAB\r");
@@ -691,8 +737,9 @@ proptest::proptest! {
     }
 }
 
+// HL7 2.5.1 §7.4.3.2
 negative!(
-    hl7_251_7_4_3_2_unknown_specimen_namespace_is_not_inferred_from_msh,
+    specimen_namespace_is_not_taken_from_msh,
     b"ORC|OK|001^LAB\rOBR|1|001^LAB||T1^Synthetic^L\rSPM|1|000aB&UNKNOWN||SER^Serum^HL70487\r",
     Error::Correlation {
         segment: "SPM",
@@ -700,8 +747,9 @@ negative!(
     }
 );
 
+// HL7 2.5.1 §4.5.4.9
 #[test]
-fn hl7_251_4_5_4_9_local_priority_retained_without_defaulting() -> Result<(), Error> {
+fn local_priority_kept_without_defaulting() -> Result<(), Error> {
     let sent = sent()?;
     let response = orders_reply(b"AA", b"ORC|OK|001^LAB\rTQ1|1||||||||URGENT^^L^^^^v1\r")?;
     let parsed = OrderResponse::new(&response, &sent)?;

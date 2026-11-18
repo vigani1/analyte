@@ -157,8 +157,9 @@ fn run_host(
 mod tests {
     use super::*;
     use crate::Error;
+    // Plan §11
     #[test]
-    fn plan11_scm_reports_stopped_before_forced_exit_acknowledgment() -> Result<(), Error> {
+    fn scm_reports_stopped_before_forced_exit_ack() -> Result<(), Error> {
         let (events, received) = mpsc::sync_channel(1);
         let (reported, report) = mpsc::sync_channel(1);
         events.send(Event::Deadline)?;
@@ -171,8 +172,9 @@ mod tests {
         report.recv_timeout(Duration::from_secs(1))?;
         Ok(())
     }
+    // Plan §11
     #[test]
-    fn plan11_scm_graceful_completion_reports_stopped() -> Result<(), Error> {
+    fn scm_graceful_completion_reports_stopped() -> Result<(), Error> {
         let (events, received) = mpsc::sync_channel(1);
         let (reported, report) = mpsc::sync_channel(1);
         events.send(Event::Finished)?;
@@ -182,8 +184,9 @@ mod tests {
         assert!(report.try_recv().is_err());
         Ok(())
     }
+    // Plan §11
     #[test]
-    fn plan11_scm_closed_completion_channel_reports_stopped_without_deadline_ack() {
+    fn scm_closed_channel_reports_stopped_without_ack() {
         let (events, received) = mpsc::sync_channel(1);
         let (reported, report) = mpsc::sync_channel(1);
         drop(events);
@@ -193,8 +196,9 @@ mod tests {
         assert!(report.try_recv().is_err());
     }
 
+    // Plan §11
     #[test]
-    fn plan11_scm_invalid_shutdown_bounds_refuse_before_dispatch() {
+    fn scm_invalid_bounds_refused_before_dispatch() {
         for seconds in [0, 29, 301] {
             let error = run(PathBuf::from("unused-config"), Duration::from_secs(seconds))
                 .expect_err("invalid bound must not reach SCM");

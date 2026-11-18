@@ -5,8 +5,9 @@ use analyte_poct::{Message, MessageError};
 use peer_messages::{hello, limits, observation, status};
 
 // POCT01-A2 Appendix B 12.3 p.189: numeric fixed metadata differs from PQ.
+// CLSI POCT01-A2 §B.12.3, p. 189
 #[test]
-fn poct01_b_12_3_p189_int_real_fixed_value_metadata() -> Result<(), MessageError> {
+fn int_and_real_value_type_metadata_is_fixed() -> Result<(), MessageError> {
     for (raw, field, wrong) in [
         (status("s", "2"), "DST.new_observations_qty", "INT"),
         (hello("h"), "DCP.application_timeout", "REAL"),
@@ -36,8 +37,9 @@ fn poct01_b_12_3_p189_int_real_fixed_value_metadata() -> Result<(), MessageError
 }
 
 // POCT01-A2 B 5.5 p.95 and clarification p.286; DML has no legacy-ID exception.
+// CLSI POCT01-A2 §B.5.5
 #[test]
-fn poct01_b_5_5_dml_device_id_is_eui64() -> Result<(), MessageError> {
+fn dml_device_id_is_eui64() -> Result<(), MessageError> {
     for id in ["a1-b2-c3-d4-e5-f6-07-08", "00-00-00-00-00-00-00-00"] {
         let raw = hello("h").rewrite("A1-B2-C3-D4-E5-F6-07-08", id);
         Message::parse(raw.as_bytes(), limits())?;
@@ -60,8 +62,9 @@ fn poct01_b_5_5_dml_device_id_is_eui64() -> Result<(), MessageError> {
 }
 
 // POCT01-A2 B 5.2 p.92.
+// CLSI POCT01-A2 §B.5.2
 #[test]
-fn poct01_b_5_2_access_point_id_and_nonnegative_port() -> Result<(), MessageError> {
+fn access_point_id_and_nonnegative_port() -> Result<(), MessageError> {
     for (id, port, valid) in [
         ("01-02-03-04-05-06-07-08", "0", true),
         ("01-02-03-04-05-06-07-08", "23", true),
@@ -78,8 +81,9 @@ fn poct01_b_5_2_access_point_id_and_nonnegative_port() -> Result<(), MessageErro
 }
 
 // POCT01-A2 B 5.9 p.97.
+// CLSI POCT01-A2 §B.5.9
 #[test]
-fn poct01_b_5_9_counts_are_nonnegative() {
+fn counts_are_nonnegative() {
     for count in ["0", "+2", "-0", "999999999999999999999"] {
         assert!(Message::parse(status("s", count).as_bytes(), limits()).is_ok());
     }
@@ -97,8 +101,9 @@ fn poct01_b_5_9_counts_are_nonnegative() {
 }
 
 // POCT01-A2 B 5.13 p.99: count decoded characters rather than encoded XML bytes.
+// CLSI POCT01-A2 §B.5.13
 #[test]
-fn poct01_b_5_13_encoding_declaration_has_four_characters() {
+fn encoding_declaration_has_four_characters() {
     for (value, valid) in [("^~\\&amp;", true), ("abc", false), ("abcde", false)] {
         let raw = hello("h").rewrite(
             "</HDR>",
@@ -109,8 +114,9 @@ fn poct01_b_5_13_encoding_declaration_has_four_characters() {
 }
 
 // POCT01-A2 B 5.4, 5.19 and clarification p.285 supersede the old element DTD lot type.
+// CLSI POCT01-A2 §B.5.4 clarification, p. 285
 #[test]
-fn poct01_b_5_4_clarification_p285_material_lots_are_cs() -> Result<(), MessageError> {
+fn material_lots_are_cs() -> Result<(), MessageError> {
     for (field, raw) in [
         ("CTC.lot_number", observation("o", false, "<OBS.value V=\"1\" U=\"mg/L\"/>").rewrite("<CTC.name V=\"synthetic-control\"/>", "<CTC.name V=\"synthetic-control\"/><CTC.lot_number V=\"lot-01\" T=\"CS\"/>")),
         ("RGT.lot_number", observation("o", true, "<OBS.value V=\"1\" U=\"mg/L\"/>").rewrite("</PT>", "</PT><RGT><RGT.name V=\"reagent\"/><RGT.lot_number V=\"lot-01\" T=\"CS\"/><RGT.expiration_date V=\"2027-01-01\"/></RGT>")),
@@ -124,8 +130,9 @@ fn poct01_b_5_4_clarification_p285_material_lots_are_cs() -> Result<(), MessageE
 }
 
 // POCT01-A2 B 8.4 and default tables 14/21/25/28/45/54/57.
+// CLSI POCT01-A2 §B.8.4
 #[test]
-fn poct01_b_8_4_default_codes_and_qualified_extensions() -> Result<(), MessageError> {
+fn default_codes_and_qualified_extensions() -> Result<(), MessageError> {
     for (field, valid, raw) in [
         ("DST.condition_cd", "R", status("s", "0")),
         ("DSC.topics_supported_cd", "D_EV", hello("h")),
@@ -175,8 +182,9 @@ fn poct01_b_8_4_default_codes_and_qualified_extensions() -> Result<(), MessageEr
 }
 
 // POCT01-A2 B 8.13: display spelling does not make the same coded member distinct.
+// CLSI POCT01-A2 §B.8.13
 #[test]
-fn poct01_b_8_13_advertised_sets_have_unique_members() -> Result<(), MessageError> {
+fn advertised_sets_have_unique_members() -> Result<(), MessageError> {
     for field in ["DSC.topics_supported_cd", "DSC.directives_supported_cd"] {
         let raw = hello("h").rewrite("<DSC.max_message_sz", &format!("<{field} V=\"custom\" SN=\"local\"/><{field} V=\"custom\" SN=\"local\" DN=\"label\"/><DSC.max_message_sz"));
         assert!(Message::parse(raw.as_bytes(), limits()).is_err());
@@ -187,8 +195,9 @@ fn poct01_b_8_13_advertised_sets_have_unique_members() -> Result<(), MessageErro
 }
 
 // POCT01-A2 B 12.3 p.196: translations use CD and retain modifier children.
+// CLSI POCT01-A2 §B.12.3, p. 196
 #[test]
-fn poct01_b_12_3_p196_translation_uses_cd() -> Result<(), MessageError> {
+fn translation_uses_cd() -> Result<(), MessageError> {
     let raw = observation("o", true, "<OBS.value V=\"1.20\" U=\"mg/L\"/>").rewrite("<TRANSLTN V=\"alternate\" SN=\"alternate-system\"/>", "<TRANSLTN T=\"CD\" V=\"alternate\" SN=\"alternate-system\"><MODIFIER T=\"CD\" V=\"modifier\" SN=\"local\"/></TRANSLTN>");
     Message::parse(raw.as_bytes(), limits())?;
     assert!(Message::parse(raw.rewrite("T=\"CD\"", "T=\"PQ\"").as_bytes(), limits()).is_err());
@@ -198,8 +207,9 @@ fn poct01_b_12_3_p196_translation_uses_cd() -> Result<(), MessageError> {
 }
 
 // POCT01-A2 B 12.3 pp.184-188: restricted text types use ordered singleton metadata.
+// CLSI POCT01-A2 §B.12.3, p. 188
 #[test]
-fn poct01_b_12_3_p188_organization_child_model() -> Result<(), MessageError> {
+fn text_children_are_ordered_singletons() -> Result<(), MessageError> {
     for (field, raw) in [
         ("DEV.manufacturer_name", hello("h").rewrite("<DCP>", "<DEV.manufacturer_name V=\"Synthetic\"/><DCP>")),
         ("GIV", observation("o", true, "<OBS.value V=\"1\" U=\"mg/L\"/>").rewrite("<PT.patient_id V=\"000xyz\"/>", "<PT.patient_id V=\"000xyz\"/><PT.name V=\"Synthetic\"><GIV V=\"Synthetic\"/></PT.name>")),
@@ -220,8 +230,9 @@ fn poct01_b_12_3_p188_organization_child_model() -> Result<(), MessageError> {
 }
 
 // POCT01-A2 B 12.3 pp.195-196: effective thumbnail properties come from its parent.
+// CLSI POCT01-A2 §B.12.3, p. 195
 #[test]
-fn poct01_b_12_3_p195_thumbnail_inherits_encapsulation() -> Result<(), MessageError> {
+fn thumbnail_inherits_encapsulation() -> Result<(), MessageError> {
     let raw = hello("h").rewrite("</DCP>", "<DCP.vendor_specific ENC=\"B64\" COMPN=\"GZ\" MT=\"image/png\"><THUMBNAIL>synthetic</THUMBNAIL><THUMBNAIL ENC=\"TXT\" MT=\"text/plain\">override</THUMBNAIL></DCP.vendor_specific></DCP>");
     let parsed = Message::parse(raw.as_bytes(), limits())?;
     let thumbnails = parsed
@@ -254,8 +265,9 @@ fn poct01_b_12_3_p195_thumbnail_inherits_encapsulation() -> Result<(), MessageEr
 }
 
 // POCT01-A2 B 12.3 p.181: trailing text after a child is not initial ED content.
+// CLSI POCT01-A2 §B.12.3, p. 181
 #[test]
-fn poct01_b_12_3_p181_encapsulation_uses_first_text_node() -> Result<(), MessageError> {
+fn encapsulation_uses_first_text_node() -> Result<(), MessageError> {
     let raw = hello("h").rewrite("</DCP>", "<DCP.vendor_specific>first&amp;text<REF V=\"https://invalid.example/inert\"/>later<NOTE V=\"note\"/>last</DCP.vendor_specific></DCP>");
     let parsed = Message::parse(raw.as_bytes(), limits())?;
     let (i, e) = parsed
@@ -288,8 +300,9 @@ fn poct01_b_12_3_p181_encapsulation_uses_first_text_node() -> Result<(), Message
 }
 
 // POCT01-A2 B 8.9 p.135, 12.3 p.189 and 6.5.2.1 p.116.
+// CLSI POCT01-A2 §B.8.9, p. 135
 #[test]
-fn poct01_b_8_9_p135_decimal_integral_with_trailing_point() -> Result<(), MessageError> {
+fn decimal_accepts_trailing_point() -> Result<(), MessageError> {
     for value in ["10.", "+5.", "-0.", "0.50"] {
         let real = hello("h").rewrite(
             "DCP.application_timeout V=\"12.5\"",

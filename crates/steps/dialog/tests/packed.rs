@@ -21,8 +21,9 @@ fn receiver(policy: RecordBoundaries) -> std::result::Result<Dialog, analyte_dia
     Ok(d)
 }
 
+// ADR 0015; CLSI LIS01-A2 §6.3.1.1
 #[test]
-fn adr0015_lis01_s6311_packing_requires_declaration_and_one_frame_custody() -> Result {
+fn packing_requires_declaration_and_one_frame_custody() -> Result {
     let frames: Vec<_> =
         astm::encode(b"H|x\rP|1\r", FrameNumber::FIRST, Limit::default())?.collect();
     let frame = frames.first().ok_or("frame")?;
@@ -64,8 +65,9 @@ fn adr0015_lis01_s6311_packing_requires_declaration_and_one_frame_custody() -> R
     Ok(())
 }
 
+// ADR 0015; CLSI LIS01-A2 §6.3.2
 #[test]
-fn adr0015_lis01_s632_packing_checksum_and_failed_custody_remain_strict() -> Result {
+fn packed_checksum_and_failed_custody_stay_strict() -> Result {
     let frames: Vec<_> =
         astm::encode(b"H|x\rP|1\r", FrameNumber::FIRST, Limit::default())?.collect();
     let frame = frames.first().ok_or("frame")?;
@@ -92,8 +94,9 @@ fn adr0015_lis01_s632_packing_checksum_and_failed_custody_remain_strict() -> Res
     Ok(())
 }
 
+// ADR 0015; CLSI LIS01-A2 §6.3.1.1
 #[test]
-fn adr0015_lis01_s6311_packed_cr_boundaries_survive_etb_and_split_reads() -> Result {
+fn packed_cr_boundaries_survive_etb_and_split_reads() -> Result {
     let frames: Vec<_> =
         astm::encode(b"H|x\rP|123\r", FrameNumber::FIRST, Limit::new(13)?)?.collect();
     let mut dialog = receiver(RecordBoundaries::Packed)?;

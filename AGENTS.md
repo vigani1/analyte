@@ -105,8 +105,9 @@ These are not optional and need an ADR to change.
 
 ## Standards and sources
 
-- Every protocol rule in code is traceable: its test names the source, for
-  example `HL7 2.5.1 §2.7 escape sequences` or `cobas e 411 HIM v2.3 §D`.
+- Every protocol rule in code is traceable: its test has a short behaviour
+  name and a comment above it naming the source, for example `// HL7 2.5.1
+  §2.7` or `// cobas e 411 HIM v2.3 §D`.
 - Write notes and docs in our own words. Never paste text, tables or examples
   from paid or copyrighted documents into the repository.
 - Never commit standards PDFs or vendor manuals. Keep them in `references/`,

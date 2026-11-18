@@ -67,9 +67,9 @@ pub(crate) fn load_site(path: &str, text: &str) -> Result<crate::Site, crate::Er
 #[cfg(test)]
 mod tests {
     use super::*;
+    // ADR 0013 item 1
     #[test]
-    fn adr0013_item1_required_period_has_no_default_and_checks_bounds() -> Result<(), crate::Error>
-    {
+    fn required_period_has_no_default_and_bounds() -> Result<(), crate::Error> {
         let site = include_str!("../examples/site.toml");
         for period in ["1", "90", "3650", "\"keep\""] {
             load_site("site", &site.rewrite("\"keep\"", period))?;

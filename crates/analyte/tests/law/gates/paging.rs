@@ -3,9 +3,9 @@ use super::*;
 use std::{future::Future, task::Poll};
 
 // PaLM TF-2b 3.27.4 / ADR 0004: a changed snapshot is never partial positive work.
+// IHE PaLM TF-2b §3.27.4
 #[tokio::test]
-async fn law_tf2b_3_27_4_competing_feed_during_pages_refuses_instead_of_mixing() -> Result<(), Error>
-{
+async fn competing_feed_during_paging_is_refused() -> Result<(), Error> {
     let (pages, collected) = StoreGate::new();
     let probe = Arc::new(StoreProbe::default());
     let gates = LawGates {

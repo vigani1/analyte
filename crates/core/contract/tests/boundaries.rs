@@ -10,8 +10,9 @@ fn fixture(name: &str) -> Result<Value, serde_json::Error> {
         _ => include_str!("../../../../docs/contract/vectors/order.json"),
     })
 }
+// App contract v1 (ADR 0008); Safety rule 7 (ADR 0003)
 #[test]
-fn contract_v1_rule7_text_and_document_byte_ceilings_are_inclusive() -> TestResult {
+fn text_and_document_byte_ceilings_are_inclusive() -> TestResult {
     for n in [1, 4095, 4096] {
         let s = "x".repeat(n);
         assert_eq!(Text::try_from(s.clone())?.as_str(), s);
@@ -26,8 +27,9 @@ fn contract_v1_rule7_text_and_document_byte_ceilings_are_inclusive() -> TestResu
     assert!(matches!(decode::<u8>(&bytes), Err(DocumentError::TooLarge)));
     Ok(())
 }
+// App contract v1 (ADR 0008); Safety rule 4 (ADR 0003)
 #[test]
-fn contract_v1_rule4_envelope_uuid_timestamps_and_digests_validate_independently() -> TestResult {
+fn envelope_ids_times_and_digests_validate_independently() -> TestResult {
     for (path, bad) in [
         (
             "/delivery_id",
@@ -56,8 +58,9 @@ fn contract_v1_rule4_envelope_uuid_timestamps_and_digests_validate_independently
     assert!(decode::<OrderEvent>(&serde_json::to_vec(&e)?).is_err());
     Ok(())
 }
+// App contract v1 (ADR 0008); Safety rule 7 (ADR 0003)
 #[test]
-fn contract_v1_rule7_lists_orders_and_cursor_accept_exact_limits() -> TestResult {
+fn lists_orders_and_cursor_accept_exact_limits() -> TestResult {
     let base = fixture("delivery")?;
     for n in [0, 1, 1000, 1001] {
         let mut v = base.clone();
@@ -108,14 +111,16 @@ fn contract_v1_rule7_lists_orders_and_cursor_accept_exact_limits() -> TestResult
     );
     Ok(())
 }
+// App contract v1 (ADR 0008)
 #[test]
-fn contract_v1_credentials_compare_exact_bytes() {
+fn credentials_compare_exact_bytes() {
     assert!(credential_matches(b"secret", b"secret"));
     assert!(!credential_matches(b"secret", b"secreu"));
     assert!(!credential_matches(b"secret", b"secret "));
 }
+// App contract v1 (ADR 0008); Safety rule 5 (ADR 0003)
 #[test]
-fn contract_v1_rule5_decimal_accessors_preserve_precision() -> TestResult {
+fn decimal_accessors_preserve_precision() -> TestResult {
     for (s, scale) in [("+001.2300", 4), ("-2", 0), ("1.00", 2)] {
         let d = document::Decimal::new(s)?;
         assert_eq!(d.as_str(), s);
@@ -123,8 +128,9 @@ fn contract_v1_rule5_decimal_accessors_preserve_precision() -> TestResult {
     }
     Ok(())
 }
+// App contract v1 (ADR 0008); Safety rules 6 and 2 (ADR 0003)
 #[test]
-fn contract_v1_rule6_units_and_rule2_unsupported_accessors_keep_evidence() -> TestResult {
+fn unit_and_unsupported_accessors_keep_evidence() -> TestResult {
     let units: document::Units = serde_json::from_value(
         json!({"original":" mg/dL ","mapping":{"source":" mg/dL ","target":"mg/dL"}}),
     )?;
@@ -147,8 +153,9 @@ fn contract_v1_rule6_units_and_rule2_unsupported_accessors_keep_evidence() -> Te
     }
     Ok(())
 }
+// App contract v1 (ADR 0008)
 #[test]
-fn contract_v1_evidence_list_reports_expected_type_and_retains_parts() -> TestResult {
+fn evidence_list_reports_type_and_keeps_parts() -> TestResult {
     let error =
         decode::<document::EvidenceList<u8>>(b"false").expect_err("boolean is not evidence list");
     assert!(error.to_string() == "invalid document");
@@ -160,8 +167,9 @@ fn contract_v1_evidence_list_reports_expected_type_and_retains_parts() -> TestRe
     assert_eq!(parts.as_slice(), [1, 2]);
     Ok(())
 }
+// App contract v1 (ADR 0008)
 #[test]
-fn contract_v1_delivery_responses_keep_reason_version_and_retry_boundaries() {
+fn delivery_responses_keep_reason_version_and_retry() {
     for status in [400, 422] {
         assert_eq!(
             classify_response(
@@ -211,8 +219,9 @@ fn setup_errors_pause_destination() {
         ));
     }
 }
+// App contract v1 (ADR 0008)
 #[test]
-fn contract_v1_success_requires_version_one() {
+fn success_requires_version_one() {
     assert_eq!(
         classify_response(200, br#"{"contract_version":2,"status":"accepted"}"#, None),
         ResponseAction::Parked {
@@ -220,8 +229,9 @@ fn contract_v1_success_requires_version_one() {
         }
     );
 }
+// App contract v1 (ADR 0008); Safety rule 7 (ADR 0003)
 #[test]
-fn contract_v1_rule7_retry_header_byte_limit_is_inclusive() {
+fn retry_header_byte_limit_is_inclusive() {
     for (n, after) in [(64, Some(0)), (65, None)] {
         assert_eq!(
             classify_response(503, b"", Some(&"0".repeat(n))),
@@ -229,8 +239,9 @@ fn contract_v1_rule7_retry_header_byte_limit_is_inclusive() {
         );
     }
 }
+// App contract v1 (ADR 0008)
 #[test]
-fn contract_v1_signing_secret_and_metadata_bounds_are_independent() -> TestResult {
+fn signing_secret_and_metadata_bounds_are_independent() -> TestResult {
     use base64::{Engine as _, engine::general_purpose::STANDARD};
     for n in [23, 24, 64, 65] {
         assert_eq!(
@@ -268,8 +279,9 @@ fn contract_v1_signing_secret_and_metadata_bounds_are_independent() -> TestResul
     ));
     Ok(())
 }
+// App contract v1 (ADR 0008); Safety rule 7 (ADR 0003)
 #[test]
-fn contract_v1_rule7_signature_header_limit_accepts_exactly_4096_bytes() -> TestResult {
+fn signature_header_accepts_exactly_4096_bytes() -> TestResult {
     let key = SigningSecret::parse(analyte_fixtures::SECRET)?;
     let sig = key.sign("id", "1", b"body")?;
     for n in [4096, 4097] {

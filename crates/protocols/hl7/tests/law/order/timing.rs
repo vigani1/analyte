@@ -2,8 +2,9 @@
 use super::*;
 use analyte_fixtures::ConfigEdit as _;
 
+// IHE PaLM TF-2b §C.14, TQ1-9
 #[test]
-fn law_tf2b_c14_tq1_9_r_priority_cwe_subset_and_option() -> TestResult {
+fn tq1_priority_code_subset_and_option() -> TestResult {
     for value in ["R^^HL70485", "S^Synthetic^HL70485", "local^^99LAB"] {
         both("TQ1", &[(9, value)], true)?;
     }
@@ -53,8 +54,9 @@ fn law_tf2b_c14_tq1_9_r_priority_cwe_subset_and_option() -> TestResult {
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.13, TCD-2, TCD-3, TCD-5
 #[test]
-fn law_tf2b_c13_tcd_2_3_5_sn_ratio_predicates_and_direction() -> TestResult {
+fn tcd_dilution_ratios_by_direction() -> TestResult {
     for field in [2, 3, 5] {
         for value in [
             "",
@@ -151,8 +153,9 @@ fn law_tf2b_c13_tcd_2_3_5_sn_ratio_predicates_and_direction() -> TestResult {
     Ok(())
 }
 
+// IHE PaLM TF-2b Table C.13-9
 #[test]
-fn law_tf2b_c13_9_repeat_status_text_matches_code() -> TestResult {
+fn repeat_status_text_matches_code() -> TestResult {
     let permissions = Profile::receive().with_repeat_options(false, true);
     for first in ["Y", "N"] {
         for second in ["Y", "N"] {
@@ -221,8 +224,9 @@ fn law_tf2b_c13_9_repeat_status_text_matches_code() -> TestResult {
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.13, TCD-9, TCD-10
 #[test]
-fn law_tf2b_c13_tcd_9_re_cq_ucum_units_and_10_pool_size() -> TestResult {
+fn tcd9_ucum_quantity_and_tcd10_pool_size() -> TestResult {
     for value in [
         "",
         "1^mL&&UCUM",
@@ -295,8 +299,9 @@ fn law_tf2b_c13_tcd_9_re_cq_ucum_units_and_10_pool_size() -> TestResult {
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.13, TCD-11
 #[test]
-fn law_tf2b_c13_tcd_11_re_cwe_dilution_option_and_either_factor_or_type() -> TestResult {
+fn tcd11_dilution_needs_factor_or_type() -> TestResult {
     for value in ["", "D1^^99LAB", "D1^Description^99LAB"] {
         both("TCD", &[(11, value)], true)?;
     }
@@ -366,8 +371,9 @@ fn law_tf2b_c13_tcd_11_re_cwe_dilution_option_and_either_factor_or_type() -> Tes
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.13, TCD-2, TCD-11
 #[test]
-fn law_tf2b_c13_tcd_2_11_consistency_requires_test_specific_host_definition() -> TestResult {
+fn dilution_factor_and_type_need_host_binding() -> TestResult {
     let bindings = [law::DilutionBinding::new(
         TEST.as_bytes(),
         b"D1^^99LAB",
@@ -426,9 +432,9 @@ fn law_tf2b_c13_tcd_2_11_consistency_requires_test_specific_host_definition() ->
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.13; Safety rule 6 (ADR 0003)
 #[test]
-fn law_tf2b_c13_safety_rule_6_reported_dilution_keeps_original_and_explicit_adjustment()
--> TestResult {
+fn reported_dilution_keeps_original_and_adjustment() -> TestResult {
     use law::{DilutionMeaning, ResultAdjustment, Value};
     let source = result_wire(&format!("TCD|{TEST}|^1^:^05.5000\r"))?;
     let message = law::parse_message(source.as_bytes(), options())?;
@@ -489,8 +495,9 @@ fn law_tf2b_c13_safety_rule_6_reported_dilution_keeps_original_and_explicit_adju
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.13; Safety rule 6 (ADR 0003)
 #[test]
-fn law_tf2b_c13_safety_rule_6_requests_and_diluent_are_never_reported_adjustments() -> TestResult {
+fn requested_dilutions_are_never_result_adjustments() -> TestResult {
     use law::{DilutionMeaning, TestDetail};
     let message = message(
         "TCD",
@@ -534,9 +541,9 @@ fn law_tf2b_c13_safety_rule_6_requests_and_diluent_are_never_reported_adjustment
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.13, §C.14
 #[test]
-fn law_tf2b_c13_c14_selected_options_require_details_and_priority_in_received_results() -> TestResult
-{
+fn selected_options_require_details_and_priority() -> TestResult {
     let empty = law::parse_message(result_wire("")?.as_bytes(), options())?;
     assert!(law::Results::with_profile(&empty, Profile::receive().with_dilution(true)).is_err());
     let present = law::parse_message(

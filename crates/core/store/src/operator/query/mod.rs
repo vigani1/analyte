@@ -423,8 +423,9 @@ mod operator_read_tests {
 
     // Plan section 11: exact metadata reads do not expose receipt bytes, and
     // stale cache inspection is distinct from permission to send machine work.
+    // Plan §11
     #[test]
-    fn plan11_operator_reads_preserve_identity_absence_and_stale_evidence() -> TestResult {
+    fn operator_reads_keep_absence_and_stale_evidence() -> TestResult {
         let temp = tempfile::tempdir()?;
         let mut store = open(&temp.path().join("store.db"))?;
         let id = ReceiptId::try_from(uuid::Uuid::now_v7())?;

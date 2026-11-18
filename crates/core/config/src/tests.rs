@@ -4,8 +4,9 @@ const SITE: &str = include_str!("../examples/site.toml");
 const ASTM: &str = include_str!("../examples/astm.toml");
 const HL7: &str = include_str!("../examples/hl7.toml");
 
+// ADR 0002
 #[test]
-fn adr0002_every_example_keeps_legacy_canonical_bytes() -> Result<(), Box<dyn std::error::Error>> {
+fn every_example_keeps_legacy_canonical_bytes() -> Result<(), Box<dyn std::error::Error>> {
     let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples");
     let cases = [
         ("astm.toml", "", "astm"),
@@ -50,8 +51,9 @@ fn adr0002_every_example_keeps_legacy_canonical_bytes() -> Result<(), Box<dyn st
     Ok(())
 }
 
+// ADR 0002
 #[test]
-fn adr0002_stack_conversion_returns_missing_setting_without_validation() -> Result<(), Error> {
+fn stack_conversion_reports_missing_setting() -> Result<(), Error> {
     let mut machine: MachineDocument = load("machine", ASTM)?;
     machine.framing.checksum_hex = None;
     assert!(
@@ -65,8 +67,9 @@ fn adr0002_stack_conversion_returns_missing_setting_without_validation() -> Resu
     Ok(())
 }
 
+// HL7 2.5.1 §2.15.9.12
 #[test]
-fn hl7_2_5_1_section_2_15_9_12_unsupported_edition_lists_qualified_result_editions() {
+fn unsupported_edition_lists_qualified_editions() {
     let error = Error::UnsupportedHl7Edition {
         path: "machine.toml".into(),
         edition: "2.7",
@@ -78,8 +81,9 @@ fn hl7_2_5_1_section_2_15_9_12_unsupported_edition_lists_qualified_result_editio
     );
 }
 
+// ADR 0002
 #[test]
-fn adr0002_machine_schema1_is_refused_as_unsupported() -> Result<(), Box<dyn std::error::Error>> {
+fn machine_schema1_is_refused_as_unsupported() -> Result<(), Box<dyn std::error::Error>> {
     for current in [ASTM, HL7] {
         let old = current.replace("schema_version = 2", "schema_version = 1");
         let refusal = Draft::load(

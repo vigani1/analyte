@@ -1,8 +1,9 @@
 //! Tests LAW MSH, MSA and ERR segment validation.
 use super::*;
 
+// IHE PaLM TF-2b §C.4, MSH-1, MSH-2
 #[test]
-fn law_tf2b_c4_msh_1_2_recommended_delimiters() -> TestResult {
+fn msh_recommended_delimiters() -> TestResult {
     both("query", &[], "", true)?;
     let good = wire("query", &[], "")?;
     for bytes in [
@@ -20,8 +21,9 @@ fn law_tf2b_c4_msh_1_2_recommended_delimiters() -> TestResult {
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.4, MSH-3 to MSH-6
 #[test]
-fn law_tf2b_c4_msh_3_4_5_6_re_hd_namespace_usage_length_type_cardinality() -> TestResult {
+fn msh3_to_6_hd_namespace_usage_and_cardinality() -> TestResult {
     for field in [3, 4, 5, 6] {
         for value in [
             "",
@@ -45,8 +47,9 @@ fn law_tf2b_c4_msh_3_4_5_6_re_hd_namespace_usage_length_type_cardinality() -> Te
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.4, MSH-7
 #[test]
-fn law_tf2b_c4_msh_7_m_ts_precision_calendar_timezone_and_singleton() -> TestResult {
+fn msh7_precision_calendar_timezone_singleton() -> TestResult {
     for value in ["20240229235959-1200", "20260101000000+0000"] {
         both("query", &[(7, value)], "", true)?;
     }
@@ -72,8 +75,9 @@ fn law_tf2b_c4_msh_7_m_ts_precision_calendar_timezone_and_singleton() -> TestRes
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.4, MSH-9
 #[test]
-fn law_tf2b_c4_msh_9_m_msg_components_tables_lengths_and_cardinality() -> TestResult {
+fn msh9_components_tables_lengths_cardinality() -> TestResult {
     for kind in ["query", "work", "results", "rsp", "orl", "ack"] {
         let body = if matches!(kind, "rsp" | "orl" | "ack") {
             "MSA|AA|000Ab\r"
@@ -103,8 +107,9 @@ fn law_tf2b_c4_msh_9_m_msg_components_tables_lengths_and_cardinality() -> TestRe
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.4, MSH-10, §C.3, MSA-2
 #[test]
-fn law_tf2b_c4_msh_10_m_st_and_c3_msa_2_m_st_length_null_cardinality() -> TestResult {
+fn msh10_msa2_length_null_cardinality() -> TestResult {
     for field in [10, 0] {
         for (value, valid) in [
             ("", false),
@@ -135,8 +140,9 @@ fn law_tf2b_c4_msh_10_m_st_and_c3_msa_2_m_st_length_null_cardinality() -> TestRe
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.4, MSH-11
 #[test]
-fn law_tf2b_c4_msh_11_m_pt_production_only() -> TestResult {
+fn msh11_production_only() -> TestResult {
     both("query", &[(11, "P")], "", true)?;
     for value in ["", "\"\"", "T", "D", "PP", "P~P", "P&x"] {
         both("query", &[(11, value)], "", false)?;
@@ -144,8 +150,9 @@ fn law_tf2b_c4_msh_11_m_pt_production_only() -> TestResult {
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.4, MSH-12
 #[test]
-fn law_tf2b_c4_msh_12_compatible_versions_and_base_legacy_charset_refusal() -> TestResult {
+fn msh12_compatible_versions_refuse_legacy_charset() -> TestResult {
     for version in ["2.5", "2.5.1", "2.5.2"] {
         both("query", &[(12, version)], "", true)?;
         let bytes = wire("query", &[(12, version)], "")?;
@@ -177,8 +184,9 @@ fn law_tf2b_c4_msh_12_compatible_versions_and_base_legacy_charset_refusal() -> T
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.4, MSH-15, MSH-16
 #[test]
-fn law_tf2b_c4_msh_15_16_c_m_x_predicate_is_trigger_versus_response() -> TestResult {
+fn msh15_16_predicate_trigger_versus_response() -> TestResult {
     for kind in ["query", "work", "results"] {
         both(kind, &[], "", true)?;
         for field in [15, 16] {
@@ -212,8 +220,9 @@ fn law_tf2b_c4_msh_15_16_c_m_x_predicate_is_trigger_versus_response() -> TestRes
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.4, MSH-18
 #[test]
-fn law_tf2b_c4_msh_18_m_utf8_singleton() -> TestResult {
+fn msh18_utf8_singleton() -> TestResult {
     both("query", &[(18, "UNICODE UTF-8")], "", true)?;
     for value in [
         "",
@@ -227,8 +236,9 @@ fn law_tf2b_c4_msh_18_m_utf8_singleton() -> TestResult {
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.4, MSH-21
 #[test]
-fn law_tf2b_c4_msh_21_m_ei_required_components_lengths_first_transaction() -> TestResult {
+fn msh21_required_components_and_lengths() -> TestResult {
     both("query", &[(21, "LAB-27^IHE~local^Lab")], "", true)?;
     let id = "\u{e9}".repeat(50);
     let namespace = "N".repeat(20);
@@ -268,8 +278,9 @@ fn law_tf2b_c4_msh_21_m_ei_required_components_lengths_first_transaction() -> Te
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.3, MSA-1
 #[test]
-fn law_tf2b_c3_msa_1_m_ack_code_subset_and_err_predicate() -> TestResult {
+fn msa1_ack_code_subset_and_err_predicate() -> TestResult {
     for code in ["AA", "AE", "AR"] {
         let error = if code == "AA" {
             ""
@@ -296,8 +307,9 @@ fn law_tf2b_c3_msa_1_m_ack_code_subset_and_err_predicate() -> TestResult {
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.1, ERR-2
 #[test]
-fn law_tf2b_c1_err_2_re_erl_r_re_components_lengths_positions_repetitions() -> TestResult {
+fn err2_location_components_lengths_repetitions() -> TestResult {
     for value in [
         "",
         "OBX^1",
@@ -325,8 +337,9 @@ fn law_tf2b_c1_err_2_re_erl_r_re_components_lengths_positions_repetitions() -> T
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.1, ERR-3
 #[test]
-fn law_tf2b_c1_err_3_m_cwe_subset_components_lengths_and_singleton() -> TestResult {
+fn err3_code_subset_lengths_singleton() -> TestResult {
     for code in [
         "100", "101", "102", "103", "200", "201", "202", "203", "207",
     ] {
@@ -366,8 +379,9 @@ fn law_tf2b_c1_err_3_m_cwe_subset_components_lengths_and_singleton() -> TestResu
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.1, ERR-4
 #[test]
-fn law_tf2b_c1_err_4_m_id_severity_e_only() -> TestResult {
+fn err4_severity_is_error_only() -> TestResult {
     both("ack", &[], &error_body(4, "E")?, true)?;
     for value in ["", "\"\"", "W", "I", "EE", "EEE", "E~E", "E^x", "E&x"] {
         both("ack", &[], &error_body(4, value)?, false)?;
@@ -375,8 +389,9 @@ fn law_tf2b_c1_err_4_m_id_severity_e_only() -> TestResult {
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.1, ERR-5
 #[test]
-fn law_tf2b_c1_err_5_re_cwe_r_o_r_components_vendor_namespace_lengths() -> TestResult {
+fn err5_vendor_namespace_component_lengths() -> TestResult {
     for value in ["", "local^^99ABC", "local^Description^99a1Z"] {
         both("ack", &[], &error_body(5, value)?, true)?;
     }
@@ -417,8 +432,9 @@ fn law_tf2b_c1_err_5_re_cwe_r_o_r_components_vendor_namespace_lengths() -> TestR
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.1, ERR-8
 #[test]
-fn law_tf2b_c1_err_8_re_tx_250_hash_preserves_long_text_and_singleton() -> TestResult {
+fn err8_hash_preserves_long_text_singleton() -> TestResult {
     for value in [
         "",
         "Synthetic detail",
@@ -433,8 +449,9 @@ fn law_tf2b_c1_err_8_re_tx_250_hash_preserves_long_text_and_singleton() -> TestR
     Ok(())
 }
 
+// IHE PaLM TF-2b §2.2.1.2, §C.1, §C.3, §C.4
 #[test]
-fn law_tf2b_2_2_1_2_c1_c3_c4_x_fields_and_components_receive_ignore_send_omit() -> TestResult {
+fn x_fields_ignored_on_receive_omitted_on_send() -> TestResult {
     for field in [8, 13, 14, 17, 19, 20, 22, 23, 24] {
         check(
             "query",
@@ -481,8 +498,9 @@ fn law_tf2b_2_2_1_2_c1_c3_c4_x_fields_and_components_receive_ignore_send_omit() 
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.4, §C.3, §B.5
 #[test]
-fn law_tf2b_c4_c3_b5_receive_query_reply_reversal_correlation_ignored_content() -> TestResult {
+fn query_reply_correlation_ignores_content() -> TestResult {
     use analyte_hl7::{Field, Responsibility};
     let source_id = "\u{e9}".repeat(50);
     let message = query_with(&[

@@ -7,16 +7,18 @@ use serde::{
     de::value::{Error, SeqDeserializer, StringDeserializer},
 };
 
+// ADR 0003
 #[test]
-fn adr0003_uuid_validation_survives_deserialization() {
+fn uuid_validation_survives_deserialization() {
     let invalid = StringDeserializer::<Error>::new("00000000-0000-0000-0000-000000000000".into());
     assert!(ReceiptId::deserialize(invalid).is_err());
     let valid = StringDeserializer::<Error>::new("0192a000-0000-7000-8000-000000000001".into());
     assert!(DeliveryId::deserialize(valid).is_ok());
 }
 
+// Safety rule 5 (ADR 0003)
 #[test]
-fn rule5_sample_identity_rejects_controls_empty_and_overlong_on_deserialize() {
+fn sample_id_rejects_control_empty_and_overlong() {
     for raw in [String::new(), "A\nB".into(), "x".repeat(257)] {
         assert!(SampleId::deserialize(StringDeserializer::<Error>::new(raw)).is_err());
     }
@@ -24,15 +26,17 @@ fn rule5_sample_identity_rejects_controls_empty_and_overlong_on_deserialize() {
 }
 
 proptest! {
+    // Safety rule 5 (ADR 0003)
     #[test]
-    fn rule5_sample_keeps_leading_zeros_and_case(raw in "[0-9A-Za-z]{1,256}") {
+    fn sample_keeps_leading_zeros_and_case(raw in "[0-9A-Za-z]{1,256}") {
         let id = SampleId::new(&raw)?;
         prop_assert_eq!(id.as_str(), raw.as_str());
         let restored = SampleId::deserialize(StringDeserializer::<Error>::new(raw.clone()))?;
         prop_assert_eq!(restored, id);
     }
+    // Safety rule 5 (ADR 0003)
     #[test]
-    fn rule5_decimal_keeps_precision(integer in "[0-9]{1,30}", fraction in "[0-9]{1,30}", sign in prop::sample::select(vec!["", "+", "-"])) {
+    fn decimal_keeps_written_precision(integer in "[0-9]{1,30}", fraction in "[0-9]{1,30}", sign in prop::sample::select(vec!["", "+", "-"])) {
         let raw = format!("{sign}{integer}.{fraction}");
         let decimal = Decimal::new(&raw)?;
         prop_assert_eq!(decimal.as_str(), raw.as_str());
@@ -40,8 +44,9 @@ proptest! {
     }
 }
 
+// Safety rule 5 (ADR 0003)
 #[test]
-fn rule5_no_guessed_decimal_or_lost_tokens() -> Result<(), Box<dyn std::error::Error>> {
+fn no_guessed_decimal_or_lost_tokens() -> Result<(), Box<dyn std::error::Error>> {
     for raw in [
         "1,234", "<0.1", "NaN", "1e9", ".", "1.", "--1", "", "positive",
     ] {
@@ -54,8 +59,9 @@ fn rule5_no_guessed_decimal_or_lost_tokens() -> Result<(), Box<dyn std::error::E
     Ok(())
 }
 
+// Safety rule 6 (ADR 0003)
 #[test]
-fn rule6_units_require_matching_explicit_mapping() -> Result<(), Box<dyn std::error::Error>> {
+fn units_require_matching_explicit_mapping() -> Result<(), Box<dyn std::error::Error>> {
     let original = SourceText::new("source-unit")?;
     let mapping = UnitMapping {
         source: original.clone(),
@@ -69,17 +75,18 @@ fn rule6_units_require_matching_explicit_mapping() -> Result<(), Box<dyn std::er
     Ok(())
 }
 
+// Safety rule 7 (ADR 0003)
 #[test]
-fn rule7_lists_reject_unbounded_deserialization() {
+fn lists_reject_unbounded_deserialization() {
     let seq = SeqDeserializer::<_, Error>::new(std::iter::repeat_n(1_u8, 257));
     assert!(EvidenceList::<u8>::deserialize(seq).is_err());
     assert!(EvidenceList::new(vec![1; 256]).is_ok());
     assert!(EvidenceList::new(vec![1; 257]).is_err());
 }
 
+// Safety rule 8 (ADR 0003)
 #[test]
-fn rule8_lifecycle_separates_acceptance_cancellation_and_uncertainty() -> Result<(), TransitionError>
-{
+fn lifecycle_separates_acceptance_cancellation_and_uncertainty() -> Result<(), TransitionError> {
     let sending =
         OrderState::Requested.transition(OrderTransition::Advance(OrderState::Sending))?;
     let sent = sending.transition(OrderTransition::Advance(OrderState::Sent))?;
@@ -119,8 +126,9 @@ fn rule8_lifecycle_separates_acceptance_cancellation_and_uncertainty() -> Result
     Ok(())
 }
 
+// Plan §6
 #[test]
-fn plan6_only_production_delivers() {
+fn only_production_mode_delivers() {
     assert!(ProcessingMode::Production.may_deliver_to_production());
     for mode in [
         ProcessingMode::Unknown,
@@ -132,9 +140,9 @@ fn plan6_only_production_delivers() {
     }
 }
 
+// Plan §6
 #[test]
-fn plan6_analyte_revision_is_independent_of_source_action() -> Result<(), Box<dyn std::error::Error>>
-{
+fn revision_is_independent_of_source_action() -> Result<(), Box<dyn std::error::Error>> {
     let key = ObservationIdentity {
         code: NamespacedId {
             namespace: Identifier::new("synthetic-code-system")?,
@@ -168,8 +176,9 @@ fn plan6_analyte_revision_is_independent_of_source_action() -> Result<(), Box<dy
     Ok(())
 }
 
+// Plan §6
 #[test]
-fn plan6_repeated_typed_and_unsupported_values_survive() -> Result<(), Box<dyn std::error::Error>> {
+fn repeated_typed_and_unsupported_values_survive() -> Result<(), Box<dyn std::error::Error>> {
     let value = ResultValue::new(
         SourceText::new("raw composite")?,
         ValueInterpretation::Unsupported {
@@ -183,8 +192,9 @@ fn plan6_repeated_typed_and_unsupported_values_survive() -> Result<(), Box<dyn s
     Ok(())
 }
 
+// Plan §6
 #[test]
-fn plan6_times_preserve_offset_and_written_precision() -> Result<(), Box<dyn std::error::Error>> {
+fn times_preserve_offset_and_written_precision() -> Result<(), Box<dyn std::error::Error>> {
     let time = SourceTime {
         original: SourceText::new("20261115120100.000+0100")?,
         parsed: Some("2026-11-15T12:01:00".parse()?),
@@ -197,15 +207,16 @@ fn plan6_times_preserve_offset_and_written_precision() -> Result<(), Box<dyn std
     Ok(())
 }
 
+// Plan §6
 #[test]
-fn plan6_replacement_units_cannot_be_empty_on_deserialize() {
+fn replacement_units_cannot_be_empty() {
     let seq = SeqDeserializer::<_, Error>::new(std::iter::empty::<u8>());
     assert!(NonEmptyEvidenceList::<u8>::deserialize(seq).is_err());
 }
 
+// ADR 0002, ADR 0003
 #[test]
-fn adr0002_receipt_provenance_and_adr0003_conflicts_keep_both_receipts()
--> Result<(), Box<dyn std::error::Error>> {
+fn receipt_provenance_conflicts_keep_both_receipts() -> Result<(), Box<dyn std::error::Error>> {
     let first = ReceiptId::try_from(uuid::Uuid::parse_str(
         "0192a000-0000-7000-8000-000000000001",
     )?)?;
@@ -306,9 +317,10 @@ fn replacement_parts()
     Ok((named, values, supported_part))
 }
 
+// Plan §6
 #[test]
-fn plan6_multisegment_replacement_keeps_typed_repeats_and_parks_unknown()
--> Result<(), Box<dyn std::error::Error>> {
+fn multisegment_replacement_keeps_repeats_parks_unknown() -> Result<(), Box<dyn std::error::Error>>
+{
     let (named, values, supported_part) = replacement_parts()?;
     let part = ResultPart {
         test: named.clone(),
@@ -380,9 +392,9 @@ fn plan6_multisegment_replacement_keeps_typed_repeats_and_parks_unknown()
     Ok(())
 }
 
+// ADR 0003
 #[test]
-fn adr0003_run_evidence_distinguishes_reruns_without_using_source_status()
--> Result<(), Box<dyn std::error::Error>> {
+fn run_evidence_tells_reruns_apart_without_status() -> Result<(), Box<dyn std::error::Error>> {
     let code = NamespacedId {
         namespace: Identifier::new("synthetic")?,
         value: Identifier::new("TEST")?,

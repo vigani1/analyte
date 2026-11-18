@@ -32,7 +32,7 @@ policy choices; mandatory message rules remain in [checklist.md](checklist.md).
 - **test**: none yet.
 
 The unsupported Keep Alive fallback is tested by
-`poct01_b_3_5_unsupported_keep_alive_gets_correlated_escape` (Appendix B 3.5,
+`unsupported_keep_alive_gets_correlated_escape` (Appendix B 3.5,
 4.1.9 and 6.9).
 
 ## 3. Close on expired configured waits instead of waiting indefinitely
@@ -44,7 +44,7 @@ The unsupported Keep Alive fallback is tested by
   peer cannot retain connection resources forever.
 - **source**: POCT01-A2 Appendix B §3.6, p.75;
   [ADR 0003](../../adr/0003-clinical-safety-rules.md), bounded waits.
-- **test**: `poct01_b_4_1_2_minimum_capability_peer_and_hello_deadline`.
+- **test**: `minimum_capability_peer_and_hello_deadline`.
 
 ## 4. Never guess acknowledgment correlation for a malformed Hello
 
@@ -55,7 +55,7 @@ The unsupported Keep Alive fallback is tested by
   while hiding the malformed header that caused the failure.
 - **source**: POCT01-A2 Appendix B §4.1.2, p.78;
   [ADR 0003](../../adr/0003-clinical-safety-rules.md), keep evidence and never invent data.
-- **test**: `poct01_b4_1_2_program_ambiguous_hello_header_is_parked_without_guessed_ack`.
+- **test**: `ambiguous_hello_header_parked_without_guessed_ack`.
 
 ## 5. Refuse DTD resolution in the XML reader
 
@@ -66,7 +66,7 @@ The unsupported Keep Alive fallback is tested by
   checked locally, with the raw rejected XML retained for diagnosis.
 - **source**: [ADR 0001](../../adr/0001-rust-and-layered-architecture.md), host I/O
   ownership; [ADR 0003](../../adr/0003-clinical-safety-rules.md), bounded input.
-- **test**: `poct01_project_security_rejects_dtd_without_resolution`.
+- **test**: `rejects_dtd_without_resolving_it`.
 
 ## 6. End a conversation when its control-ID budget fills
 
@@ -77,7 +77,7 @@ The unsupported Keep Alive fallback is tested by
   bounded; reconnect establishes a fresh protocol namespace.
 - **source**: POCT01-A2 Appendix B §5.13, p.99;
   [ADR 0003](../../adr/0003-clinical-safety-rules.md), bounded input and retained identities.
-- **test**: `poct01_b5_13_control_id_budget_ends_conversation_without_forgetting_ids`.
+- **test**: `control_id_budget_ends_conversation_keeping_ids`.
 
 ## 7. Return ownership of deferred input to the host
 
@@ -88,7 +88,7 @@ The unsupported Keep Alive fallback is tested by
   available, without losing a message between the transport and dialog.
 - **source**: [ADR 0001](../../adr/0001-rust-and-layered-architecture.md), layer
   ownership; [ADR 0003](../../adr/0003-clinical-safety-rules.md), Never drop data.
-- **test**: `poct01_b_9_bounded_backpressure_returns_unconsumed_input`.
+- **test**: `backpressure_returns_unconsumed_input`.
 
 ## 8. Include interpretation outcome in the custody gate
 
@@ -99,7 +99,7 @@ The unsupported Keep Alive fallback is tested by
   prevents an acknowledged semantic failure from disappearing into a parse log.
 - **source**: POCT01-A2 Appendix B §3.2, pp.71–72;
   [ADR 0010](../../adr/0010-acknowledgment-boundaries.md), POCT row.
-- **test**: `poct01_b3_2_adr0003_stored_before_ack_unresolved_parked_no_delivery`.
+- **test**: `poct_stores_before_ack_and_parks_unresolved`.
 
 ## 9. Default to unresolved result identity
 
@@ -110,7 +110,7 @@ The unsupported Keep Alive fallback is tested by
   could suppress a new result or publish a duplicate as new.
 - **source**: [ADR 0003](../../adr/0003-clinical-safety-rules.md), Three identities;
   [ADR 0002](../../adr/0002-config-first.md), machine configuration.
-- **test**: `poct01_b3_2_adr0003_stored_before_ack_unresolved_parked_no_delivery`.
+- **test**: `poct_stores_before_ack_and_parks_unresolved`.
 
 ## 10. Keep durable result history across conversations
 
@@ -121,7 +121,7 @@ The unsupported Keep Alive fallback is tested by
   knowledge needed to suppress that retransmission or retain a correction.
 - **source**: POCT01-A2 Appendix B §3.2, p.72;
   [ADR 0003](../../adr/0003-clinical-safety-rules.md), revision policy.
-- **test**: `poct01_b3_2_program_lost_ack_reconnect_restart_and_correction`.
+- **test**: `lost_ack_restart_and_correction_deliver_once`.
 
 ## Conservative edited-observation handling
 
@@ -141,4 +141,4 @@ future design note (ADR), including old evidence and retention behavior.
 
 Source: Appendix B 3.2, 5.15, 5.18, 5.21 Table 49, 5.22; project-lead decision
 2026-11-16. Test:
-`poct01_b_5_21_table49_patient_and_metadata_edits_are_not_retransmissions`.
+`patient_and_metadata_edits_are_not_retransmissions`.

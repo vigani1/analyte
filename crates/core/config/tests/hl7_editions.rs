@@ -19,8 +19,9 @@ fn query_config(edition: &str) -> Result<analyte_config::Validated, Error> {
     .validate()
 }
 
+// HL7 2.8.2 §5.10.2
 #[test]
-fn hl7_2_8_2_s5_10_2_withdrawn_original_query_fails_config_validation() {
+fn v282_withdrawn_original_query_is_refused() {
     let error = query_config("v282").unwrap_err();
     assert!(matches!(
         &error,
@@ -36,8 +37,9 @@ fn hl7_2_8_2_s5_10_2_withdrawn_original_query_fails_config_validation() {
     );
 }
 
+// HL7 2.9.1 §5.9.2
 #[test]
-fn hl7_2_9_1_s5_9_2_withdrawn_original_query_fails_config_validation() {
+fn v291_withdrawn_original_query_is_refused() {
     let error = query_config("v291").unwrap_err();
     assert!(matches!(
         &error,
@@ -53,8 +55,9 @@ fn hl7_2_9_1_s5_9_2_withdrawn_original_query_fails_config_validation() {
     );
 }
 
+// HL7 2.6 §5.10.2
 #[test]
-fn hl7_2_6_s5_10_2_original_queries_retained_for_backward_compatibility() -> Result<(), Error> {
+fn v26_keeps_original_queries() -> Result<(), Error> {
     assert_eq!(Version::V26.legacy_query_withdrawal(), None);
     query_config("v26")?;
     Ok(())
@@ -69,8 +72,9 @@ fn draft(edition: &str) -> Result<Draft, Error> {
     )
 }
 
+// ADR 0012 §3
 #[test]
-fn adr0012_s3_typed_supported_config_editions_preserve_exact_wire_identity() -> Result<(), Error> {
+fn supported_editions_keep_exact_wire_identity() -> Result<(), Error> {
     for (config_id, edition, wire) in [
         ("v23", Edition::from(Version::V23), "2.3"),
         ("v231", Edition::from(Version::V231), "2.3.1"),
@@ -102,8 +106,9 @@ fn adr0012_s3_typed_supported_config_editions_preserve_exact_wire_identity() -> 
     Ok(())
 }
 
+// ADR 0012 §3
 #[test]
-fn adr0012_s3_unlisted_config_editions_name_bad_value_and_allowed_values() {
+fn unlisted_edition_names_value_and_allowed_ones() {
     for edition in [
         "", "v22", "v230", "v2510", "v27", "v28", "v29", "v292", "v291 ", "2.9.1",
     ] {
@@ -121,8 +126,9 @@ fn adr0012_s3_unlisted_config_editions_name_bad_value_and_allowed_values() {
     }
 }
 
+// ADR 0012 §3
 #[test]
-fn adr0012_s3_missing_config_edition_is_not_defaulted() {
+fn missing_edition_is_not_defaulted() {
     let machine = MACHINE
         .lines()
         .filter(|line| !line.starts_with("edition ="))
@@ -145,8 +151,9 @@ fn adr0012_s3_missing_config_edition_is_not_defaulted() {
     }
 }
 
+// HL7 2.9.1 §4.5.1.4
 #[test]
-fn hl7_2_9_1_s4_5_1_4_unresolved_group_encoding_refuses_sending() -> Result<(), Error> {
+fn unresolved_group_encoding_refuses_sending() -> Result<(), Error> {
     {
         let edition = "v291";
         let base = MACHINE.rewrite("edition = \"v251\"", &format!("edition = \"{edition}\""));
@@ -164,8 +171,9 @@ fn hl7_2_9_1_s4_5_1_4_unresolved_group_encoding_refuses_sending() -> Result<(), 
     Ok(())
 }
 
+// HL7 2.5.1 §2.8
 #[test]
-fn hl7_2_5_1_s2_8_legacy_query_configs_validate_but_unimplemented_order_writers_do_not() {
+fn legacy_queries_validate_but_unbuilt_writers_fail() {
     for edition in ["v23", "v24", "v25"] {
         let base = MACHINE.rewrite("edition = \"v251\"", &format!("edition = \"{edition}\""));
         for (section, sending) in [
@@ -190,8 +198,9 @@ fn hl7_2_5_1_s2_8_legacy_query_configs_validate_but_unimplemented_order_writers_
     }
 }
 
+// ADR 0012 §3
 #[test]
-fn adr0012_s3_config_reports_the_registry_writer_blocker() {
+fn config_reports_registry_writer_blocker() {
     for (edition, version) in [
         ("v23", Version::V23),
         ("v24", Version::V24),
@@ -215,8 +224,9 @@ fn adr0012_s3_config_reports_the_registry_writer_blocker() {
     }
 }
 
+// HL7 2.6; HL7 2.8.2 §4.4.6, §2.A.13.7
 #[test]
-fn hl7_2_6_2_8_2_s4_4_6_s2_a_13_7_config_requires_explicit_revisions() {
+fn send_requires_explicit_table_revisions() {
     for edition in ["v26", "v282"] {
         let base = MACHINE.rewrite("edition = \"v251\"", &format!("edition = \"{edition}\""));
         let send = include_str!("../examples/hl7_send.toml")
@@ -245,8 +255,9 @@ fn hl7_2_6_2_8_2_s4_4_6_s2_a_13_7_config_requires_explicit_revisions() {
 }
 
 // HL7 2.9.1 section 2.8.3.2 requires a separate application exchange channel.
+// HL7 2.9.1 §2.8.3.2
 #[test]
-fn hl7_291_s2_8_3_2_separate_application_channel_cannot_be_enabled() -> Result<(), Error> {
+fn separate_application_channel_cannot_be_enabled() -> Result<(), Error> {
     for enabled in [false, true] {
         let definition=MACHINE.rewrite("edition = \"v251\"", "edition = \"v291\"").rewrite("acknowledgment = \"store_and_forward\"", &format!("acknowledgment = \"store_and_forward\"\nenhanced_application_acknowledgments = {enabled}"));
         let result = Draft::load(

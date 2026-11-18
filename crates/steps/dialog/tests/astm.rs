@@ -57,8 +57,9 @@ fn commit(d: &mut Dialog, actions: &[Action], ok: bool) -> Vec<Action> {
         .collect()
 }
 
+// CLSI LIS01-A2 §6.2.1 to §6.2.7
 #[test]
-fn lis01_6_2_1_to_7_neutral_readiness_and_busy() {
+fn neutral_readiness_and_busy_replies() {
     let mut d = Dialog::new(Config::default(), Epoch(1));
     assert!(!feed(&mut d, 0, b"garbage").contains(&Action::Write(vec![ACK])));
     assert!(feed(&mut d, 0, &[ENQ]).contains(&Action::Write(vec![NAK])));
@@ -66,8 +67,9 @@ fn lis01_6_2_1_to_7_neutral_readiness_and_busy() {
     assert!(feed(&mut d, 0, &[ENQ]).contains(&Action::Write(vec![ACK])));
 }
 
+// ADR 0003; CLSI LIS01-A2 §6.3.2, §6.5.1
 #[test]
-fn adr0003_lis01_6_3_2_6_5_1_commit_duplicate_and_conflict() -> TestResult {
+fn committed_duplicate_acks_and_conflict_naks() -> TestResult {
     let mut d = receiver();
     let frames = wire(b"R|synthetic\r", FrameNumber::FIRST, Limit::default())?;
     let frame = frames.first().ok_or("missing frame")?;
@@ -91,8 +93,9 @@ fn adr0003_lis01_6_3_2_6_5_1_commit_duplicate_and_conflict() -> TestResult {
     Ok(())
 }
 
+// ADR 0003; CLSI LIS01-A2 §6.5.2.5
 #[test]
-fn adr0003_lis01_6_5_2_5_failed_and_unanswered_commit_never_ack() -> TestResult {
+fn failed_or_unanswered_commit_never_acks() -> TestResult {
     for success in [false, true] {
         let mut d = receiver();
         let frames = wire(b"X\r", FrameNumber::FIRST, Limit::default())?;
@@ -109,8 +112,9 @@ fn adr0003_lis01_6_5_2_5_failed_and_unanswered_commit_never_ack() -> TestResult 
     Ok(())
 }
 
+// CLSI LIS01-A2 §6.3.1.2, §6.5.2.4
 #[test]
-fn lis01_6_3_1_2_6_5_2_4_etb_timeout_and_split_merge() -> TestResult {
+fn etb_timeout_and_split_merged_reads() -> TestResult {
     let frames = wire(b"ABCDEF\r", FrameNumber::FIRST, Limit::new(10)?)?;
     let mut d = receiver();
     let first = feed(&mut d, 0, frames.first().ok_or("missing frame")?);
@@ -146,8 +150,9 @@ fn lis01_6_3_1_2_6_5_2_4_etb_timeout_and_split_merge() -> TestResult {
     Ok(())
 }
 
+// CLSI LIS01-A2 §6.3.4, §6.4, §6.5.1.2
 #[test]
-fn lis01_6_3_4_6_4_6_5_1_2_sender_six_failures_and_eot() {
+fn sender_aborts_after_six_failures() {
     let mut d = Dialog::new(Config::default(), Epoch(1));
     assert!(
         step(&mut d, 0, Event::Send(vec![b"O\r".to_vec()])).contains(&Action::Write(vec![ENQ]))
@@ -164,8 +169,9 @@ fn lis01_6_3_4_6_4_6_5_1_2_sender_six_failures_and_eot() {
     assert!(feed(&mut d, 0, &[ACK]).contains(&Action::Sent(End::Normal)));
 }
 
+// CLSI LIS01-A2 §6.2.6, §6.5.2.1, §6.5.2.3
 #[test]
-fn lis01_6_2_6_6_5_2_1_3_busy_and_reply_timeouts() {
+fn busy_and_reply_timeouts() {
     let mut d = Dialog::new(Config::default(), Epoch(1));
     step(&mut d, 0, Event::Send(vec![b"O\r".to_vec()]));
     feed(&mut d, 0, &[NAK]);
@@ -185,8 +191,9 @@ fn lis01_6_2_6_6_5_2_1_3_busy_and_reply_timeouts() {
     assert!(step(&mut d, 40, Event::Tick).contains(&Action::Sent(End::Timeout)));
 }
 
+// CLSI LIS01-A2 §6.2.7.1, §6.5.2.2
 #[test]
-fn lis01_6_2_7_1_6_5_2_2_contention_both_roles() -> TestResult {
+fn contention_in_both_roles() -> TestResult {
     for role in [Role::Computer, Role::Instrument] {
         let config = Config::new(
             Limit::default(),
@@ -211,8 +218,9 @@ fn lis01_6_2_7_1_6_5_2_2_contention_both_roles() -> TestResult {
     Ok(())
 }
 
+// CLSI LIS01-A2 §6.3.5
 #[test]
-fn lis01_6_3_5_interrupt_honor_ignore_and_issue() -> TestResult {
+fn interrupt_honored_ignored_and_issued() -> TestResult {
     for honor in [true, false] {
         let config = Config::new(
             Limit::default(),
@@ -256,8 +264,9 @@ fn lis01_6_3_5_interrupt_honor_ignore_and_issue() -> TestResult {
     Ok(())
 }
 
+// CLSI LIS01-A2 §6.3.3, §6.5.1, §6.6
 #[test]
-fn lis01_6_3_3_6_5_1_6_6_reject_checksum_sequence_and_controls() -> TestResult {
+fn rejects_bad_checksum_sequence_and_controls() -> TestResult {
     let mut d = receiver();
     assert!(feed(&mut d, 0, b"\x021X\x0300\r\n").contains(&Action::Write(vec![NAK])));
     let frames = wire(b"X\r", FrameNumber::FIRST.next(), Limit::default())?;
@@ -277,8 +286,9 @@ fn lis01_6_3_3_6_5_1_6_6_reject_checksum_sequence_and_controls() -> TestResult {
 }
 
 proptest! {
+    // ADR 0003
     #[test]
-    fn adr0003_random_bytes_and_tick_orders_never_ack_uncommitted(events in prop::collection::vec((any::<u8>(), 0u64..100), 0..1000)) {
+    fn random_input_never_acks_uncommitted(events in prop::collection::vec((any::<u8>(), 0u64..100), 0..1000)) {
         let mut d = Dialog::new(Config::default(), Epoch(42));
         // Capacity stays false: no establishment or data ACK is authorized.
         for (byte, t) in events {
@@ -292,8 +302,9 @@ proptest! {
     }
 }
 
+// CLSI LIS01-A2 §6.3.1, §6.3.2, §6.3.3, §6.6
 #[test]
-fn lis01_6_3_1_6_3_2_6_3_3_6_6_large_records_rollover_separate_records() -> TestResult {
+fn long_records_split_and_numbers_roll_over() -> TestResult {
     let config = Config::new(
         Limit::new(10)?,
         Timers::default(),
@@ -328,8 +339,9 @@ fn lis01_6_3_1_6_3_2_6_3_3_6_6_large_records_rollover_separate_records() -> Test
     Ok(())
 }
 
+// ADR 0003
 #[test]
-fn adr0003_late_commit_and_failed_retry_have_distinct_identity() -> TestResult {
+fn late_commit_and_failed_retry_stay_distinct() -> TestResult {
     let mut d = receiver();
     let frames = wire(b"X\r", FrameNumber::FIRST, Limit::default())?;
     let frame = frames.first().ok_or("missing frame")?;
@@ -366,8 +378,9 @@ fn adr0003_late_commit_and_failed_retry_have_distinct_identity() -> TestResult {
     Ok(())
 }
 
+// CLSI LIS01-A2 §6.5.2.6
 #[test]
-fn lis01_6_5_2_6_one_message_buffer_and_validated_vendor_values() -> TestResult {
+fn one_message_buffer_and_validated_settings() -> TestResult {
     assert!(
         Config::new(
             Limit::default(),
@@ -406,8 +419,9 @@ fn lis01_6_5_2_6_one_message_buffer_and_validated_vendor_values() -> TestResult 
 }
 
 proptest! {
+    // ADR 0003
     #[test]
-    fn adr0003_active_receiver_arbitrary_ticks_bytes_without_commits_never_ack(events in prop::collection::vec((any::<u8>(), 0u64..100), 0..500)) {
+    fn active_receiver_never_acks_without_commit(events in prop::collection::vec((any::<u8>(), 0u64..100), 0..500)) {
         let mut d = receiver();
         step(&mut d, 0, Event::Capacity(false));
         // A synthetic valid frame ensures this exercises the pending-commit state.
@@ -423,8 +437,9 @@ proptest! {
     }
 }
 
+// CLSI LIS01-A2 §6.4
 #[test]
-fn lis01_6_4_eot_before_final_frame_ends_incomplete() -> TestResult {
+fn eot_before_final_frame_ends_incomplete() -> TestResult {
     let mut d = receiver();
     let frames = wire(&[b'A'; 40], FrameNumber::FIRST, Limit::new(17)?)?;
     let first = frames.first().ok_or("missing frame")?;
@@ -447,8 +462,9 @@ fn eot_inside_frame_sends_no_nak() {
     assert!(!ended.iter().any(|a| matches!(a, Action::Write(_))));
 }
 
+// ADR 0003
 #[test]
-fn adr0003_commit_timeout_keeps_transfer_open_for_retransmission() -> TestResult {
+fn commit_timeout_keeps_transfer_open() -> TestResult {
     let mut d = receiver();
     let frames = wire(b"X\r", FrameNumber::FIRST, Limit::default())?;
     let frame = frames.first().ok_or("missing frame")?;
@@ -475,8 +491,9 @@ fn adr0003_commit_timeout_keeps_transfer_open_for_retransmission() -> TestResult
 }
 
 // LIS01-A2 sections 6.5.2.4 p.10, 8.5.2.4 p.17: every frame reply renews reception.
+// CLSI LIS01-A2 §6.5.2.4, §8.5.2.4
 #[test]
-fn lis01_6_5_2_4_8_5_2_4_nak_at_29_expires_at_59() -> TestResult {
+fn nak_at_29s_expires_at_59s() -> TestResult {
     for kind in ["checksum", "conflict", "sequence"] {
         let mut d = receiver();
         let first = wire(b"H|x\r", FrameNumber::FIRST, Limit::default())?.remove(0);
@@ -503,8 +520,9 @@ fn lis01_6_5_2_4_8_5_2_4_nak_at_29_expires_at_59() -> TestResult {
     Ok(())
 }
 
+// CLSI LIS01-A2 §6.3.1.1, §8.3.1.1
 #[test]
-fn lis01_6_3_1_1_8_3_1_1_separate_records_never_share_strict_frame() -> TestResult {
+fn separate_records_never_share_strict_frame() -> TestResult {
     for payload in [b"H|x\rL|1\r".as_slice(), b"H|x\rL".as_slice()] {
         let mut d = receiver();
         let frames = wire(payload, FrameNumber::FIRST, Limit::default())?;
@@ -520,8 +538,9 @@ fn lis01_6_3_1_1_8_3_1_1_separate_records_never_share_strict_frame() -> TestResu
     Ok(())
 }
 
+// ADR 0001, ADR 0003
 #[test]
-fn adr0001_0003_disconnect_returns_partial_frame_and_never_writes_or_reopens() -> TestResult {
+fn disconnect_returns_partial_frame_without_writing() -> TestResult {
     let mut dialog = receiver();
     feed(&mut dialog, 0, b"\x021R|partial");
     let actions = step(&mut dialog, 1, Event::Disconnected);
@@ -547,8 +566,9 @@ fn adr0001_0003_disconnect_returns_partial_frame_and_never_writes_or_reopens() -
     Ok(())
 }
 
+// ADR 0003 rule 2
 #[test]
-fn adr0003_rule2_unsolicited_partial_frame_is_owned_and_bounded_without_ack() {
+fn unsolicited_partial_frame_is_bounded_without_ack() {
     let mut dialog = Dialog::new(Config::default(), Epoch(2));
     assert!(
         !feed(&mut dialog, 0, b"\x021R|unsolicited")

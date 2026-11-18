@@ -3,8 +3,9 @@ use crate::test_support::*;
 use crate::*;
 use analyte_model::Reason;
 
+// Safety rule 2 (ADR 0003)
 #[test]
-fn rule2_parse_failure_parks_and_resolution_is_audited_once() -> TestResult {
+fn parse_failure_parks_and_resolution_audited_once() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("store.db"))?;
     let metadata = receipt(b"invalid")?;
@@ -41,8 +42,9 @@ fn rule2_parse_failure_parks_and_resolution_is_audited_once() -> TestResult {
     Ok(())
 }
 
+// ADR 0003; mutation-testing regression
 #[test]
-fn mutation_adr0003_park_resolve_and_audit_keep_exact_evidence_once_after_restart() -> TestResult {
+fn park_resolve_audit_keep_exact_evidence_after_restart() -> TestResult {
     let encoded = parked::evidence("synthetic-kind", "synthetic-target", "exact reason", None)?;
     let decoded: parked::ParkingEvidence = serde_json::from_str(&encoded)?;
     assert_eq!(decoded.details.kind.as_str(), "synthetic-kind");

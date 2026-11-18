@@ -11,8 +11,9 @@ fn limits() -> Limits {
     }
 }
 
+// CLSI POCT01-A2 §B.8
 #[test]
-fn poct01_b_8_xml_preserves_bytes_and_decodes_attributes() -> Result<(), Error> {
+fn xml_preserves_bytes_and_decodes_attributes() -> Result<(), Error> {
     let raw = b"<synthetic V='001&amp;Ab'><value V='1.230'/></synthetic>\r\n";
     let document = Document::parse(raw, limits())?;
     assert_eq!(document.raw(), raw);
@@ -27,8 +28,9 @@ fn poct01_b_8_xml_preserves_bytes_and_decodes_attributes() -> Result<(), Error> 
     Ok(())
 }
 
+// CLSI POCT01-A2; project security rule
 #[test]
-fn poct01_project_security_rejects_dtd_without_resolution() {
+fn rejects_dtd_without_resolving_it() {
     for raw in [
         "<!DOCTYPE x SYSTEM 'file:///missing'><x/>",
         "<!DOCTYPE x SYSTEM 'https://invalid.example/a'><x/>",
@@ -41,8 +43,9 @@ fn poct01_project_security_rejects_dtd_without_resolution() {
     }
 }
 
+// CLSI POCT01-A2; project security rule
 #[test]
-fn poct01_project_security_bounds_each_resource() {
+fn bounds_each_resource() {
     let raw = b"<x V='123'><y/></x>";
     let mut bound = limits();
     bound.message_bytes = 1;
@@ -70,8 +73,9 @@ fn poct01_project_security_bounds_each_resource() {
     ));
 }
 
+// CLSI POCT01-A2; project security rule
 #[test]
-fn poct01_project_security_rejects_malformed_documents() {
+fn rejects_malformed_documents() {
     for raw in [
         "",
         "<x>",
@@ -98,8 +102,9 @@ fn poct01_project_security_rejects_malformed_documents() {
     }
 }
 
+// CLSI POCT01-A2 §B.8
 #[test]
-fn poct01_b_8_encapsulated_text_is_not_an_attribute() -> Result<(), Error> {
+fn encapsulated_text_is_not_an_attribute() -> Result<(), Error> {
     let document = Document::parse(
         b"<?xml version='1.0'?><data>one&amp;two<![CDATA[<three>]]></data>",
         limits(),
@@ -113,16 +118,18 @@ fn poct01_b_8_encapsulated_text_is_not_an_attribute() -> Result<(), Error> {
 }
 
 proptest! {
+    // CLSI POCT01-A2; project security rule
     #[test]
-    fn poct01_project_security_arbitrary_bytes_do_not_panic(raw in prop::collection::vec(any::<u8>(), 0..5000)) {
+    fn arbitrary_bytes_do_not_panic(raw in prop::collection::vec(any::<u8>(), 0..5000)) {
         if let Ok(document) = Document::parse(&raw, limits()) {
             prop_assert_eq!(document.raw(), raw.as_slice());
             prop_assert!(document.elements().len() <= limits().elements);
         }
     }
 
+    // CLSI POCT01-A2 §B.8
     #[test]
-    fn poct01_b_8_written_attribute_text_survives(value in "[a-zA-Z0-9 .-]{0,100}") {
+    fn written_attribute_text_survives(value in "[a-zA-Z0-9 .-]{0,100}") {
         let raw = format!("<synthetic V='{value}'/>");
         let document = Document::parse(raw.as_bytes(), limits())?;
         let root = document.elements().first().ok_or(Error::Root)?;
@@ -130,8 +137,9 @@ proptest! {
     }
 }
 
+// CLSI POCT01-A2; project rule
 #[test]
-fn poct01_project_utf8_bom_declarations_and_forbidden_text() -> Result<(), Error> {
+fn bom_accepted_and_bad_declarations_refused() -> Result<(), Error> {
     let raw = b"\xef\xbb\xbf<?xml version='1.0' encoding='UTF-8' standalone='yes'?><synthetic/>";
     assert_eq!(Document::parse(raw, limits())?.raw(), raw);
     for raw in [

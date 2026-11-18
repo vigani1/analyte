@@ -73,8 +73,9 @@ impl WebhookSender {
 mod tests {
     use super::*;
 
+    // ADR 0014
     #[test]
-    fn adr0014_refuses_insecure_embedded_secret_and_unbounded_urls() {
+    fn refuses_insecure_secret_or_unbounded_urls() {
         for value in [
             "",
             "invalid",

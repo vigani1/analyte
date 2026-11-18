@@ -107,9 +107,9 @@ pub(crate) async fn run(
 mod tests {
     use super::*;
     use crate::Error;
+    // ADR 0013 item 4
     #[tokio::test]
-    async fn adr0013_item4_background_run_is_audited_and_shutdown_is_bounded() -> Result<(), Error>
-    {
+    async fn background_run_is_audited_and_stops_bounded() -> Result<(), Error> {
         let temp = tempfile::tempdir()?;
         let store = Arc::new(
             Handle::start(

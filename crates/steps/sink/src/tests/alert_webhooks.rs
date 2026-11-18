@@ -15,8 +15,9 @@ async fn alert(store: &Handle, now: i64) -> Result<PendingAlert, Box<dyn std::er
         .await?)
 }
 
+// ADR 0014
 #[tokio::test]
-async fn adr0014_receiver_lifecycle_and_crash_after_accept_reuses_bytes() -> TestResult {
+async fn alert_lifecycle_and_crash_retry_reuse_bytes() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = store(&temp.path().join("store.db")).await?;
     let mut receiver = analyte_receiver::Receiver::open(
@@ -93,8 +94,9 @@ async fn adr0014_receiver_lifecycle_and_crash_after_accept_reuses_bytes() -> Tes
     Ok(())
 }
 
+// ADR 0014
 #[tokio::test]
-async fn adr0014_endpoint_down_then_up_backoff_is_durable_and_bounded() -> TestResult {
+async fn down_endpoint_backoff_is_durable_and_bounded() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = store(&temp.path().join("store.db")).await?;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
@@ -176,8 +178,9 @@ async fn adr0014_endpoint_down_then_up_backoff_is_durable_and_bounded() -> TestR
     Ok(())
 }
 
+// ADR 0014
 #[tokio::test]
-async fn adr0014_slow_endpoint_never_holds_store_or_clinical_intake() -> TestResult {
+async fn slow_endpoint_never_blocks_store_or_intake() -> TestResult {
     use tokio::io::AsyncWriteExt as _;
     let temp = tempfile::tempdir()?;
     let mut store = store(&temp.path().join("store.db")).await?;

@@ -79,8 +79,9 @@ mod tests {
 
     // Plan sections 11/12: every session has its own CSRF token; authenticated
     // replacement invalidates the challenge, and live sessions cannot grow unbounded.
+    // Plan §12
     #[test]
-    fn plan12_csrf_session_isolation_replacement_and_capacity() -> Result<(), crate::Error> {
+    fn csrf_sessions_are_isolated_replaced_and_bounded() -> Result<(), crate::Error> {
         let sessions = Sessions::default();
         let first = sessions.issue(false, None)?;
         let second = sessions.issue(false, None)?;
@@ -105,9 +106,9 @@ mod tests {
         );
         Ok(())
     }
+    // Plan §12
     #[test]
-    fn plan12_expired_challenges_and_authenticated_sessions_are_refused() -> Result<(), crate::Error>
-    {
+    fn expired_challenges_and_sessions_are_refused() -> Result<(), crate::Error> {
         for (authenticated, lifetime) in [(false, 300), (true, 3600)] {
             let sessions = Sessions::default();
             let mut session = sessions.issue(authenticated, None)?;

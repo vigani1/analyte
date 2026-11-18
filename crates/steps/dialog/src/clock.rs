@@ -63,8 +63,9 @@ impl Error {
 mod tests {
     use super::*;
 
+    // ADR 0001
     #[test]
-    fn adr_0001_clock_rejection_preserves_accepted_time() {
+    fn rejection_preserves_accepted_time() {
         let mut clock = Clock::default();
         clock
             .advance(Duration::from_secs(2), Duration::ZERO)

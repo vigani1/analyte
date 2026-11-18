@@ -22,8 +22,9 @@ fn config(
     )?)
 }
 
+// VIDAS BCI Link rev A §3
 #[test]
-fn vidas_bci_a_3_checksum_precedes_etx() -> Result<(), Box<dyn std::error::Error>> {
+fn checksum_precedes_etx() -> Result<(), Box<dyn std::error::Error>> {
     let c = config(Mode::Alternate, &[], false)?;
     // Independent arithmetic: RS + 'A' + GS = 124 = 0x7c.
     let raw = c.encode(b"A")?;
@@ -38,8 +39,9 @@ fn vidas_bci_a_3_checksum_precedes_etx() -> Result<(), Box<dyn std::error::Error
     Ok(())
 }
 
+// VIDAS BCI Link rev A §3
 #[test]
-fn vidas_bci_a_3_suffixes_and_literal_boundary() -> Result<(), Box<dyn std::error::Error>> {
+fn every_suffix_and_boundary_round_trips() -> Result<(), Box<dyn std::error::Error>> {
     for mode in [Mode::Literal, Mode::Alternate] {
         for suffix in [b"".as_slice(), b"\r", b"\n", b"\r\n"] {
             for include in [false, true] {
@@ -59,8 +61,9 @@ fn vidas_bci_a_3_suffixes_and_literal_boundary() -> Result<(), Box<dyn std::erro
     Ok(())
 }
 
+// VIDAS BCI Link rev A §3
 #[test]
-fn vidas_bci_a_3_bad_checksum_and_bounds_stop() -> Result<(), Box<dyn std::error::Error>> {
+fn bad_checksum_or_oversize_is_refused() -> Result<(), Box<dyn std::error::Error>> {
     let c = config(Mode::Literal, &[], false)?;
     let mut d = Decoder::new(c.clone());
     for byte in b"\x02\x1eA\x1d00".iter().take(5) {
@@ -72,9 +75,9 @@ fn vidas_bci_a_3_bad_checksum_and_bounds_stop() -> Result<(), Box<dyn std::error
     Ok(())
 }
 
+// VIDAS BCI Link rev A §3
 #[test]
-fn vidas_bci_a3_retained_packet_uses_live_decoder_and_requires_exact_boundary()
--> Result<(), Box<dyn std::error::Error>> {
+fn retained_packet_needs_exact_boundary() -> Result<(), Box<dyn std::error::Error>> {
     use analyte_framing::vidas::{Error, decode};
     for mode in [Mode::Literal, Mode::Alternate] {
         let c = config(mode, b"\r\n", true)?;

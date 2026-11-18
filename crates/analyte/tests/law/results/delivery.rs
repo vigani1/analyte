@@ -2,8 +2,9 @@
 use super::*;
 use analyte_fixtures::ConfigEdit as _;
 
+// IHE PaLM TF-2b §C.1, §B.7
 #[tokio::test]
-async fn law_tf2b_c1_b7_second_obx_error_reports_actual_occurrence() -> Result<(), Error> {
+async fn second_obx_error_names_actual_occurrence() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = vendor_config(temp.path(), "law", &definition())?;
     let reference = Reference::start(
@@ -55,8 +56,9 @@ async fn law_tf2b_c1_b7_second_obx_error_reports_actual_occurrence() -> Result<(
 }
 
 // ADR 0011; PaLM TF-2b Rev 11 C.7 Figure C.7-1 p.111, Table C.7-18 p.110.
+// ADR 0011; IHE PaLM TF-2b §C.7
 #[tokio::test]
-async fn law_adr0011_c7_all_status_moves_and_unverified_delivery() -> Result<(), Error> {
+async fn status_transitions_and_unverified_delivery() -> Result<(), Error> {
     for before in ["P", "R", "F", "C", "X"] {
         for after in ["P", "R", "F", "C", "X"] {
             let temp = tempfile::tempdir()?;
@@ -125,8 +127,9 @@ async fn law_adr0011_c7_all_status_moves_and_unverified_delivery() -> Result<(),
 }
 
 // C.7 Figure C.7-1 p.111 and OG.1 pp.102-103; ADR 0011.
+// ADR 0011; IHE PaLM TF-2b §C.7
 #[tokio::test]
-async fn law_adr0011_c7_only_one_final_run_in_history_or_batch() -> Result<(), Error> {
+async fn one_final_run_per_history_or_batch() -> Result<(), Error> {
     for batch in [false, true] {
         let temp = tempfile::tempdir()?;
         let path = vendor_config(temp.path(), "law", &definition())?;

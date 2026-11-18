@@ -1,9 +1,9 @@
 //! Tests allowed lifecycle transitions and retained states.
 use super::*;
 
+// IHE PaLM TF-2b §3.27.4
 #[test]
-fn law_tf2b_3_27_4_pending_pages_filter_targets_without_false_empty_and_never_replay() -> TestResult
-{
+fn pending_pages_filter_without_false_empty_or_replay() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("pending.db"))?;
     let mut snapshot = page(1, "requested", false, 200)?;
@@ -63,8 +63,9 @@ fn law_tf2b_3_27_4_pending_pages_filter_targets_without_false_empty_and_never_re
     Ok(())
 }
 
+// ADR 0004
 #[test]
-fn adr0004_reserve_transition_outbox_and_restart_never_resend() -> TestResult {
+fn reservation_and_restart_never_resend_orders() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("orders.db");
     let mut store = open(&path)?;
@@ -137,9 +138,9 @@ fn adr0004_reserve_transition_outbox_and_restart_never_resend() -> TestResult {
     verify_adr0004_restart_and_reconciliation(&path, reserved.id)
 }
 
+// ADR 0004; Plan §11
 #[test]
-fn adr0004_sending_reservations_survive_restart_and_plan11_listing_is_filtered_and_bounded()
--> TestResult {
+fn sending_reservations_survive_restart_listing_bounded() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("orders.db");
     let mut store = open(&path)?;
@@ -217,8 +218,9 @@ fn adr0004_sending_reservations_survive_restart_and_plan11_listing_is_filtered_a
     Ok(())
 }
 
+// ADR 0003
 #[test]
-fn adr0003_identity_overflow_duplicate_unknown_and_illegal_outcomes_roll_back() -> TestResult {
+fn overflow_duplicate_unknown_illegal_outcomes_roll_back() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("limits.db"))?;
     // The same document `reserve_two` caches: one version never changes content.
@@ -308,9 +310,9 @@ fn adr0003_identity_overflow_duplicate_unknown_and_illegal_outcomes_roll_back() 
     Ok(())
 }
 
+// ADR 0003
 #[test]
-fn adr0003_caller_groups_are_exact_and_identity_budget_has_no_namespace_assumptions() -> TestResult
-{
+fn caller_groups_exact_and_budget_ignores_namespace() -> TestResult {
     let temp = tempfile::tempdir()?;
     let long_namespace = Identifier::new(&"n".repeat(256))?;
     for (case, namespace) in [None, Some(&long_namespace)].into_iter().enumerate() {
@@ -374,8 +376,9 @@ fn adr0003_caller_groups_are_exact_and_identity_budget_has_no_namespace_assumpti
     Ok(())
 }
 
+// IHE PaLM TF-2b §B.7.6
 #[test]
-fn law_tf2b_b7_6_original_command_is_owned_immutable_and_survives_restart() -> TestResult {
+fn original_command_owned_immutable_survives_restart() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("command.db");
     let mut store = open(&path)?;

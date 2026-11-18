@@ -105,8 +105,9 @@ mod tests {
     use super::*;
     use analyte_transport::recording::Failure;
 
+    // ADR 0003
     #[test]
-    fn adr0003_law_unconsumed_byte_replays_before_untouched_tail() {
+    fn unconsumed_byte_replays_before_untouched_tail() {
         let mut input = Custody::default();
         input.begin(b"abc");
         assert_eq!(input.next(), Some(b'a'));
@@ -118,8 +119,9 @@ mod tests {
         assert_eq!(input.next(), None);
     }
 
+    // ADR 0009
     #[test]
-    fn adr0009_recorder_failure_never_reaches_a_protocol_host() {
+    fn recorder_failure_never_reaches_protocol_host() {
         for failure in [Failure::QueueFull, Failure::Closed, Failure::Oversized] {
             assert!(host_input(Some(Event::RecordingFailed(failure))).is_none());
         }

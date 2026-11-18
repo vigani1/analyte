@@ -50,9 +50,9 @@ Locations refer to the baseline production files, which this round did not edit.
 | Mutation | Decision and evidence |
 | --- | --- |
 | `astm.rs:315`, checksum OR changed to XOR | Equivalent: hex parsing returns 0–15; multiplying the high nibble by 16 leaves the low four bits clear. OR and XOR therefore give the same byte for every reachable input. Keep production code and tests unchanged. |
-| `mllp.rs:113`, `finish` returns no event | Real gap: partial evidence was not checked on disconnect. `adr0003_mllp_r1_1_2_disconnect_retains_partial_block_and_resets` requires the exact incomplete bytes and verifies reset/recovery. |
-| `mllp.rs:167`, `> 31` changed to `>= 31` | Real gap: byte 0x1F must be rejected. `mllp_r1_1_2_payload_repertoire_boundary_excludes_unit_separator` checks both encoding and decoding, plus permitted neighboring/high-bit/CR bytes. |
-| `mllp.rs:174`, payload length `>` changed to `==` | Real gap: over-limit encoding could escape the check. `rule7_mllp_r1_1_2_encoder_payload_limit_is_inclusive` requires rejection above the limit. |
+| `mllp.rs:113`, `finish` returns no event | Real gap: partial evidence was not checked on disconnect. `disconnect_keeps_partial_block_and_resets` requires the exact incomplete bytes and verifies reset/recovery. |
+| `mllp.rs:167`, `> 31` changed to `>= 31` | Real gap: byte 0x1F must be rejected. `payload_repertoire_excludes_unit_separator` checks both encoding and decoding, plus permitted neighboring/high-bit/CR bytes. |
+| `mllp.rs:174`, payload length `>` changed to `==` | Real gap: over-limit encoding could escape the check. `encoder_payload_limit_is_inclusive` requires rejection above the limit. |
 | `mllp.rs:174`, payload length `>` changed to `>=` | Real gap: a payload exactly at the configured limit could be rejected. The same boundary test checks below, at and above the limit. |
 
 Three tests were added in `crates/steps/framing/tests/custody.rs`. No production bug
@@ -95,7 +95,7 @@ ADRs 0003/0010 and clinical rule 7 supply the host-specific guarantees.
 | HL7 partial-input deadline | Rule 7 host absolute deadline; MLLP R1 specifies no timeout value. Expectation retained. |
 | HL7 busy send refusal | ADR 0010 custody isolation with response phases from §§2.9.2–2.9.3. Fixture corrected as above. |
 | HL7 callback identity/phase matrix | ADRs 0003/0010 host callback rules, with §§2.9.2–2.9.3 response phases. Fixture corrected as above. |
-| HL7 diagnostic bounds | Rule 7 host metadata ceiling; §2.15.5 does not prescribe a 64-byte application-code ceiling. Renamed to `rule7_host_error_metadata_bounds_refuse_without_losing_pending_receipt`; assertions retained as explicit host policy. |
+| HL7 diagnostic bounds | Rule 7 host metadata ceiling; §2.15.5 does not prescribe a 64-byte application-code ceiling. Renamed to `oversized_error_metadata_keeps_pending_receipt`; assertions retained as explicit host policy. |
 
 The fixture previously implied that a two-component MSH-9 was valid for this
 2.5.1 exchange. Main now correctly rejects that input; expectations were not
@@ -115,27 +115,27 @@ every distinct mutation and give the test that checks its behavior.
 
 | Missed mutation(s) | Behavior required and new test |
 | --- | --- |
-| `astm.rs:141:31`, `||` → `&&` | Reject an empty outgoing batch without starting a transfer: `rule7_lis01_6_3_sender_limits_are_inclusive_and_refuse_before_enq`. |
+| `astm.rs:141:31`, `||` → `&&` | Reject an empty outgoing batch without starting a transfer: `sender_limits_inclusive_and_refuse_before_enq`. |
 | `astm.rs:141:48`, `>` → `==`; `>` → `>=` | Accept a batch at the record/frame ceiling: same sender-limits test. Later split-frame checks also enforce the ceiling; these mutants wrongly reject valid batches at the ceiling. |
 | `astm.rs:146:22`, `>` → `==`; `>` → `>=` | Accept exactly the byte ceiling and refuse larger payloads before ENQ: same sender-limits test. |
-| `astm.rs:282:21`, `||` → `&&` | Either exhausted frame capacity or excessive record bytes must independently refuse before commit/ACK: `adr0003_rule7_lis01_6_3_receiver_limits_refuse_without_commit_or_ack`. |
+| `astm.rs:282:21`, `||` → `&&` | Either exhausted frame capacity or excessive record bytes must independently refuse before commit/ACK: `receiver_limits_refuse_without_commit_or_ack`. |
 | `astm.rs:286:43`, `>` → `==`; `>` → `>=` | Receive exact-limit records; reject over-limit records with raw evidence and NAK, no commit/ACK: same receiver-limits test. |
-| `astm.rs:369:25`, `==` → `!=` | In computer contention, ignore unrelated controls and accept the peer's next ENQ: `lis01_6_2_6_6_2_7_6_3_5_peer_enq_can_take_over_waiting_sender`. |
-| `astm.rs:436:25`, `==` → `!=` | EOT during a pending commit ends incomplete; unrelated controls do not. A late callback cannot ACK: `adr0003_lis01_6_4_eot_during_commit_ends_incomplete_and_late_commit_never_acks`. |
+| `astm.rs:369:25`, `==` → `!=` | In computer contention, ignore unrelated controls and accept the peer's next ENQ: `peer_enq_takes_over_waiting_sender`. |
+| `astm.rs:436:25`, `==` → `!=` | EOT during a pending commit ends incomplete; unrelated controls do not. A late callback cannot ACK: `eot_during_commit_ends_incomplete_without_ack`. |
 | `astm.rs:445:25`, `==` → `!=` | The interrupted sender must accept peer ENQ during holdoff: peer-ENQ takeover test above. |
 | `astm.rs:450:25`, `==` → `!=` | The busy sender yields to peer ENQ but ignores unrelated controls: peer-ENQ takeover test above. |
-| `hl7.rs:16:9`, epoch → `0`; epoch → `1` | Return the actual connection incarnation for host journaling: `adr0003_hl7_receipt_namespace_and_ordinal_survive_valid_and_malformed_input`. |
+| `hl7.rs:16:9`, epoch → `0`; epoch → `1` | Return the actual connection incarnation for host journaling: `receipt_namespace_and_ordinal_survive_bad_input`. |
 | `hl7.rs:21:9`, ordinal → `0`; ordinal → `1` | Advance receipt ordinals across valid and malformed messages: same namespace/ordinal test. |
-| `hl7.rs:216:13`, `&&` → `||` | Further partial input must not postpone the existing absolute deadline: `rule7_mllp_r1_partial_input_does_not_extend_absolute_deadline`. |
-| `hl7.rs:238:44`, `:239:21`, `:240:21`, each `||` → `&&` | Do not send over pending receipt, malformed input, outgoing work or a partial block: `adr0010_hl7_251_2_9_send_cannot_replace_active_custody_or_response`. |
-| `hl7.rs:274:53`, `&&` → `||` | Failed-commit callbacks require both the matching receipt and commit phase: `adr0003_0010_hl7_251_2_9_callbacks_require_matching_receipt_and_phase`. |
+| `hl7.rs:216:13`, `&&` → `||` | Further partial input must not postpone the existing absolute deadline: `partial_input_never_extends_absolute_deadline`. |
+| `hl7.rs:238:44`, `:239:21`, `:240:21`, each `||` → `&&` | Do not send over pending receipt, malformed input, outgoing work or a partial block: `send_cannot_replace_active_custody_or_response`. |
+| `hl7.rs:274:53`, `&&` → `||` | Failed-commit callbacks require both the matching receipt and commit phase: `callbacks_require_matching_receipt_and_phase`. |
 | `hl7.rs:286:49`, `&&` → `||` | Interpretation-failure callbacks require both the matching receipt and interpretation phase: same callback test. |
 | `hl7.rs:294:37`, `||` → `&&` | Response metadata requires the matching receipt in response phase: same callback test. |
 | `hl7.rs:346:13`, `||` → `&&` | A completion for another receipt must not change the pending receipt: same callback test. |
 | `hl7.rs:369:33`, `:369:53`, each `||` → `&&` | Each oversized diagnostic component independently refuses: `rule7_hl7_251_2_15_5_error_metadata_bounds_refuse_without_losing_pending_receipt`. |
 | `hl7.rs:369:29`, `>` → `<`; `:369:49`, `>` → `<` | Valid segment/code widths must be accepted; oversize ones refused: same diagnostic-bounds test. |
 | `hl7.rs:369:81`, `>` → `==`; `>` → `>=` | Accept 64-byte application diagnostics, refuse 65-byte ones: same diagnostic-bounds test. |
-| `astm/types.rs:214:9`, transfer → `0`; transfer → `1` | Host-visible transfer identity must follow each accepted ENQ: `adr0003_0010_astm_commit_identity_tracks_transfer_and_failed_request_ordinals`. |
+| `astm/types.rs:214:9`, transfer → `0`; transfer → `1` | Host-visible transfer identity must follow each accepted ENQ: `commit_identity_tracks_transfer_and_ordinals`. |
 | `astm/types.rs:220:9`, frame → `0`; frame → `1` | Each durable request consumes an ordinal, including failed writes: same commit-identity test. |
 
 The complete rerun caught 124 mutants, with zero missed, ten unable to compile
@@ -284,7 +284,7 @@ cargo mutants -p analyte-sink --all-features --timeout 60 --build-timeout 180 -j
 cargo mutants -p analyte-sink --all-features --timeout 60 --build-timeout 180 -j 4 -o target/mutation-final/sink
 cargo mutants -p analyte-sink --all-features --timeout 60 --build-timeout 180 -j 1 -F 'replace cancelled with|Poller.*run ->' --cargo-test-arg rule7_owner_loops_and_cancellation_wait_for_their_signal -o target/mutation-signal-recheck/sink
 cargo mutants -p analyte-sink --all-features --timeout 60 --build-timeout 180 -j 1 -F 'claim_timeout|Worker.*run.* ->' --cargo-test-arg rule7_idle_workers_wait_before_claiming_again -o target/mutation-idle-recheck/sink
-cargo mutants -p analyte-sink --all-features --timeout 60 --build-timeout 180 -j 1 -F 'destination.rs:145:42: replace > with <|destination.rs:146:16|destination.rs:148:50: replace > with <' --cargo-test-arg contract_v1_rule7_credentials_reject_each_invalid_component -o target/mutation-credentials-recheck/sink
+cargo mutants -p analyte-sink --all-features --timeout 60 --build-timeout 180 -j 1 -F 'destination.rs:145:42: replace > with <|destination.rs:146:16|destination.rs:148:50: replace > with <' --cargo-test-arg credentials_reject_each_invalid_component -o target/mutation-credentials-recheck/sink
 cargo mutants -p analyte-sink --all-features --timeout 60 --build-timeout 180 -j 1 -F 'polling.rs:34:9|polling.rs:92:9' --cargo-test-arg adr0004_contract_v1_pagination_progress_and_page_bounds -o target/mutation-polling-recheck/sink
 cargo mutants -p analyte-sink --all-features --timeout 60 --build-timeout 180 -j 1 -F 'delivery.rs:143:28|delivery.rs:199:35' --cargo-test-arg contract_v1_conflict_detail_requires_conflict_status_and_version_one -o target/mutation-delivery-final/sink
 cargo mutants -p analyte-sink --all-features --timeout 60 --build-timeout 180 -j 1 -F 'in body$' --cargo-test-arg contract_v1_rule7_response_body_ceiling_is_inclusive -o target/mutation-body-recheck/sink
@@ -293,7 +293,7 @@ cargo mutants -p analyte-sink --all-features --timeout 60 --build-timeout 180 -j
 $misses = Get-Content target/mutation-before/sink/mutants.out/missed.txt
 $pattern = ($misses | ForEach-Object { '^' + [regex]::Escape($_) + '$' }) -join '|'
 cargo mutants -p analyte-sink --all-features --timeout 60 --build-timeout 180 -j 1 -F $pattern --cargo-test-arg mutation_ -o target/mutation-misses-recheck/sink
-cargo mutants -p analyte-sink --all-features --timeout 60 --build-timeout 180 -j 1 -F 'destination.rs:100:13|destination.rs:101:13' --cargo-test-arg mutation_rule7_destination_url_byte_ceiling_is_inclusive -o target/mutation-url-recheck/sink
+cargo mutants -p analyte-sink --all-features --timeout 60 --build-timeout 180 -j 1 -F 'destination.rs:100:13|destination.rs:101:13' --cargo-test-arg destination_url_byte_ceiling_is_inclusive -o target/mutation-url-recheck/sink
 ```
 
 ### Uncovered safety regions to follow up
@@ -498,7 +498,7 @@ iterations. They were removed before committing.
 Load evidence (three concurrent full delivery processes, 20 total invocations):
 
 - Baseline: 19 passed, one failed. ASTM passed all 20. The failure was
-  `law_tf2b_b6_independent_failed_link_or_lost_orl_never_replays_on_restart`,
+  `independent_failed_link_never_replays_on_restart`,
   Windows `AddrInUse`: the unreachable-endpoint fixture released a port and
   rebound it after restart. A bound non-listening socket now reserves that
   same endpoint throughout the outage, then becomes its listener. The existing
@@ -530,7 +530,7 @@ A new **production-code test timing seam** is explicitly included:
 `Program::set_loopback_poll_interval_for_test`. It requires an existing loopback
 destination override, bounds the interval to 1 ms to 5 s and changes only that
 in-memory test program. Production entry points reject the required override.
-The new `plan11_loopback_poll_override_keeps_production_defaults_and_refuses_unbounded_waits`
+The new `loopback_poll_override_keeps_production_defaults`
 test checks refusal, bounds, unchanged default and production rejection. The
 send-ahead fixtures use 100 ms instead of the production five-second app-feed
 poll; their assertions concern lifecycle and delivery, not polling frequency.
@@ -544,17 +544,17 @@ locally in `target/timing/durations.txt` (all 110 delivery tests).
 
 | Source-named test (suffix under delivery) | Before seconds | After seconds |
 | --- | ---: | ---: |
-| `hl7_send_cases::hl7_231_251_cancel_accepted_or_refused_restores_prior_state_once` | 26.101 | 14.480 |
-| `law_queries::work::law_tf2b_3_28_c8_cancel_confirmed_refused_and_mixed_keep_each_awos` | 21.901 | 8.439 |
-| `law_queries::work::law_tf2b_3_28_adr0003_no_reply_and_disconnect_are_uncertain_never_replayed` | 26.170 | 17.479 |
-| `order_cases::adr0004_rule8_astm_send_timeout_is_uncertain_and_restart_never_resends` | 4.517 | 4.403 |
+| `hl7_send_cases::cancel_accepted_or_refused_restores_state` | 26.101 | 14.480 |
+| `law_queries::work::cancel_confirmed_refused_and_mixed_per_awos` | 21.901 | 8.439 |
+| `law_queries::work::no_reply_or_disconnect_is_never_replayed` | 26.170 | 17.479 |
+| `order_cases::astm_send_timeout_is_uncertain_never_resent` | 4.517 | 4.403 |
 
 The sink already uses `deliver_once_with_clock` to check the exact Retry-After
 boundary on this baseline. No sink source change or new speedup is claimed.
 Its two integration tests also build a receiver child inside the test:
-`adr0008_lost_response_retry_reuses_id_and_bytes_and_503_honours_retry_after`
+`lost_response_retry_reuses_bytes_and_honours_503`
 measured 46.079 s in the initial loaded/cold libtest run and 2.133 s in the
-final focused nextest run; `adr0008_reference_peer_delivery_conflict_pause_ordering_events_and_adr0004_cache`
+final focused nextest run; `reference_peer_delivery_events_pause_and_cache`
 measured 46.263 s and 2.697 s. Build cache, inherited environment and contention
 differ, so those are not before/after implementation comparisons. Existing
 pure timer worker tests already use paused Tokio time; store startup timeout

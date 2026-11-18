@@ -45,8 +45,9 @@ pub(super) async fn login(host: &str, bearer: &str) -> Result<String, Error> {
 
 // Plan section 11, rules 2/10: lists never disclose bytes; every raw page needs
 // its session's CSRF POST and a durable audit, including repeated views.
+// Plan §11
 #[tokio::test(flavor = "multi_thread")]
-async fn plan11_raw_audit_csrf_pagination_orders_and_restore_pause() -> Result<(), Error> {
+async fn raw_views_are_audited_and_lists_paginate() -> Result<(), Error> {
     let directory = crate::admin::private_tempdir()?;
     let bearer = crate::admin::rotate_token(directory.path())?;
     let limits = {

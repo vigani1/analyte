@@ -292,10 +292,10 @@ mod admin_tests {
     use super::*;
     use crate::Error;
 
+    // Plan §11
     #[test]
     #[cfg(feature = "test-hooks")]
-    fn plan11_loopback_poll_override_keeps_production_defaults_and_refuses_unbounded_waits()
-    -> Result<(), Error> {
+    fn loopback_poll_override_keeps_production_defaults() -> Result<(), Error> {
         let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/analyte.toml");
         let mut program = Program::load(&path)?;
         let interval = |program: &Program| -> Result<Duration, Error> {
@@ -367,8 +367,9 @@ mod admin_tests {
     }
 
     // Plan section 11: admission is restricted to the local operator interface.
+    // Plan §11
     #[test]
-    fn plan11_admin_refuses_non_loopback_configuration() -> Result<(), Error> {
+    fn admin_refuses_non_loopback_configuration() -> Result<(), Error> {
         for address in ["0.0.0.0", "192.0.2.1", "127.0.0.2"] {
             let admin: Admin = toml::from_str(&format!("port = 8080\naddress = '{address}'"))?;
             assert!(admin.address().is_err());
@@ -378,8 +379,9 @@ mod admin_tests {
     }
 
     // Plan section 11: the optional port selects only 127.0.0.1, never a wildcard bind.
+    // Plan §11
     #[test]
-    fn plan11_admin_port_defaults_to_ipv4_loopback() -> Result<(), Error> {
+    fn admin_port_defaults_to_ipv4_loopback() -> Result<(), Error> {
         let admin: Admin = toml::from_str("port = 8080")?;
         assert_eq!(admin.address()?.to_string(), "127.0.0.1:8080");
         assert!(toml::from_str::<Admin>("port = 65536").is_err());
@@ -388,8 +390,9 @@ mod admin_tests {
     }
 
     // Plan section 11: existing installations have no admin listener by default.
+    // Plan §11
     #[test]
-    fn plan11_admin_is_absent_by_default() -> Result<(), Error> {
+    fn admin_is_absent_by_default() -> Result<(), Error> {
         let file: File = toml::from_str(include_str!("../../../examples/analyte.toml"))?;
         assert!(file.admin.is_none());
         assert!(file.alerts.is_empty());
@@ -404,8 +407,9 @@ mod alert_program_tests {
     use crate::Error;
 
     // Plan section 11: policies identify installed machines and have unique identities.
+    // Plan §11
     #[test]
-    fn plan11_alert_program_validation() -> Result<(), Error> {
+    fn alert_policies_name_installed_machines_uniquely() -> Result<(), Error> {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"));
         let definition = root
             .join("../core/config/examples/hl7.toml")

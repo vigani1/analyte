@@ -14,8 +14,9 @@ fn load(text: &str) -> Result<analyte_config::Validated, Error> {
     .validate()
 }
 
+// IHE PaLM TF-2b §2.2
 #[test]
-fn law_tf2b_2_2_config_selects_mllp_251_manager_and_explicit_peer_options() -> Result<(), Error> {
+fn selects_mllp_manager_and_explicit_peer_options() -> Result<(), Error> {
     let config = load(LAW)?;
     let machine = config.effective().machine();
     assert!(matches!(
@@ -72,8 +73,9 @@ fn law_tf2b_2_2_config_selects_mllp_251_manager_and_explicit_peer_options() -> R
     Ok(())
 }
 
+// IHE PaLM TF-2b §2.2
 #[test]
-fn law_tf2b_2_2_config_rejects_impossible_stack_combinations() {
+fn rejects_impossible_stack_combinations() {
     for bad in [
         LAW.rewrite("[dialog]", "[dialog]\nkind = 'hl7_receiver'"),
         LAW.split("[law]").next().expect("prefix").to_owned(),
@@ -99,9 +101,9 @@ fn law_tf2b_2_2_config_rejects_impossible_stack_combinations() {
     }
 }
 
+// IHE PaLM TF-2b §3.27
 #[test]
-fn law_tf2b_3_27_config_bounds_deadlines_and_declares_only_supported_query_forms()
--> Result<(), Error> {
+fn bounds_deadlines_and_declares_supported_query_forms() -> Result<(), Error> {
     for forms in [
         "[]",
         "[\"container\", \"container\"]",
@@ -143,8 +145,9 @@ fn law_tf2b_3_27_config_bounds_deadlines_and_declares_only_supported_query_forms
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.29.4
 #[test]
-fn law_tf2b_3_29_4_config_allows_corrections_only_by_explicit_c() {
+fn allows_corrections_only_by_explicit_c() {
     for codes in ["[]", "[\"F\"]", "[\"C\", \"F\"]"] {
         let bad = LAW.rewrite(
             "correction_status_codes = [\"C\"]",
@@ -156,8 +159,9 @@ fn law_tf2b_3_29_4_config_allows_corrections_only_by_explicit_c() {
     }
 }
 
+// IHE PaLM TF-2b §3.27, §3.28
 #[test]
-fn law_tf2b_3_27_3_28_work_requires_explicit_bindings_and_allows_send_ahead() -> Result<(), Error> {
+fn work_requires_bindings_and_allows_send_ahead() -> Result<(), Error> {
     let layout = include_str!("../examples/law_orders.toml");
     let text = format!("{LAW}\n{layout}");
     load(&text.rewrite("send_ahead = false", "send_ahead = true"))?;
@@ -215,8 +219,9 @@ fn law_tf2b_3_27_3_28_work_requires_explicit_bindings_and_allows_send_ahead() ->
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.29.4, §B.3
 #[test]
-fn law_tf2b_3_29_4_b3_config_cannot_replace_awos_or_truncate_og_identity() {
+fn cannot_replace_awos_or_truncate_og_identity() {
     for bad in [
         LAW.rewrite(
             "record=\"OBR\",field=2,component=1",
@@ -245,8 +250,9 @@ fn law_tf2b_3_29_4_b3_config_cannot_replace_awos_or_truncate_og_identity() {
     }
 }
 
+// IHE PaLM TF-2b §3.27, §3.28
 #[test]
-fn law_tf2b_3_27_3_28_config_rejects_non_law_order_layouts() {
+fn rejects_non_law_order_layouts() {
     for orders in [
         include_str!("../examples/hl7_send.toml"),
         include_str!("../examples/hl7_orders.toml"),
@@ -256,8 +262,9 @@ fn law_tf2b_3_27_3_28_config_rejects_non_law_order_layouts() {
     }
 }
 
+// ADR 0002
 #[test]
-fn adr0002_law_overrides_replace_policy_and_change_protected_provenance() -> Result<(), Error> {
+fn overrides_replace_policy_and_change_provenance() -> Result<(), Error> {
     let replacement = LAW.split_once("[law]").expect("LAW policy").1;
     let replacement = format!("schema_version = 1\n[law]{replacement}")
         .rewrite("query_deadline_ms = 1500", "query_deadline_ms = 2500");
@@ -287,9 +294,9 @@ fn adr0002_law_overrides_replace_policy_and_change_protected_provenance() -> Res
     Ok(())
 }
 
+// IHE PaLM TF-2b §B.6
 #[test]
-fn law_tf2b_b6_declared_topologies_require_explicit_direction_and_outbound_endpoint()
--> Result<(), Error> {
+fn topologies_require_direction_and_outbound_endpoint() -> Result<(), Error> {
     for role in ["tcp_server", "tcp_client"] {
         load(&LAW.rewrite("kind = \"tcp_server\"", &format!("kind = \"{role}\"")))?;
     }

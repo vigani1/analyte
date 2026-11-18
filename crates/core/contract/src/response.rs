@@ -99,8 +99,9 @@ fn retry_delay(value: &str, now: i64) -> Option<u64> {
 
 #[cfg(test)]
 mod tests {
+    // ADR 0008
     #[test]
-    fn adr0008_retry_after_honors_seconds_and_http_date() {
+    fn retry_after_honors_seconds_and_http_date() {
         assert_eq!(super::retry_delay("120", 0), Some(120));
         assert_eq!(
             super::retry_delay("Thu, 01 Jan 1970 00:02:00 GMT", 0),

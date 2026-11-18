@@ -257,8 +257,9 @@ async fn detail_page(
 #[cfg(test)]
 mod tests {
     use super::*;
+    // ADR 0016
     #[test]
-    fn adr0016_protected_estimates_keep_null_absence_and_escape_scoped_source_notes() {
+    fn estimates_keep_null_and_absence_and_escape_notes() {
         for (estimate, expected) in [
             ("", "Absent"),
             ("\"\"", "Explicit source null"),

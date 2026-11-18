@@ -2,8 +2,9 @@
 use analyte_dialog::{Clock, ClockError};
 use std::time::Duration;
 
+// ADR 0001
 #[test]
-fn adr0001_clock_refuses_reversal_and_overflow_without_mutation() {
+fn clock_refuses_reversal_and_overflow_unchanged() {
     let mut clock = Clock::default();
     assert_eq!(
         clock.advance(Duration::from_secs(2), Duration::from_secs(3)),

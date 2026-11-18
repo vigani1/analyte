@@ -23,9 +23,9 @@ fn receipts(path: &Path) -> Result<Vec<String>, Error> {
 // are handled receipts. Restart must not re-read them as unprocessed results
 // and park them, while a query stored but never answered is still recovered
 // and parked with its specific MSH-21 reason.
+// IHE PaLM TF-2b §3.27, §3.28
 #[tokio::test]
-async fn law_tf2b_3_27_3_28_answered_query_and_orl_are_not_reparked_on_restart() -> Result<(), Error>
-{
+async fn restart_never_reparks_answered_query_or_orl() -> Result<(), Error> {
     let (_temp, path, reference, running, mut peer) = setup(
         vec![order("order-1", "000Ab12", None, 2)?],
         &definition(),

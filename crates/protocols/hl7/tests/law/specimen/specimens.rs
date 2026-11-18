@@ -1,8 +1,9 @@
 //! Tests LAW specimen and container segments.
 use super::*;
 
+// IHE PaLM TF-2b §C.12, SPM-1
 #[test]
-fn law_tf2b_c12_spm_1_m_si_length_type_and_message_sequence() -> TestResult {
+fn spm1_sequence_limits_and_message_order() -> TestResult {
     for value in ["1", "0001", "9999"] {
         both("SPM", &[(1, value)], true)?;
     }
@@ -33,9 +34,9 @@ fn law_tf2b_c12_spm_1_m_si_length_type_and_message_sequence() -> TestResult {
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.12, SPM-2, SPM-3
 #[test]
-fn law_tf2b_c12_spm_2_3_eip_ei_identity_namespace_predicate_lengths_and_repetitions() -> TestResult
-{
+fn spm2_spm3_identity_namespaces_and_lengths() -> TestResult {
     for field in [2, 3] {
         for value in ["", "id&Local", "id&&1.2.3&ISO", "id&Local&1.2.3&ISO"] {
             both("SPM", &[(field, value)], true)?;
@@ -83,8 +84,9 @@ fn law_tf2b_c12_spm_2_3_eip_ei_identity_namespace_predicate_lengths_and_repetiti
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.12, SPM-4, SPM-11
 #[test]
-fn law_tf2b_c12_spm_4_11_m_cwe_role_type_null_predicates_and_namespaces() -> TestResult {
+fn spm4_type_and_spm11_role_rules() -> TestResult {
     both("SPM", &[], true)?;
     both(
         "SPM",
@@ -154,8 +156,9 @@ fn law_tf2b_c12_spm_4_11_m_cwe_role_type_null_predicates_and_namespaces() -> Tes
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.12, SPM-7, SPM-8, SPM-9, SPM-16, SPM-27
 #[test]
-fn law_tf2b_c12_spm_7_8_9_16_27_option_cwe_and_analyzer_x() -> TestResult {
+fn spm_optional_codes_and_analyzer_x() -> TestResult {
     for (field, standard) in [
         (7, "HL70488"),
         (8, "99LAB"),
@@ -208,8 +211,9 @@ fn law_tf2b_c12_spm_7_8_9_16_27_option_cwe_and_analyzer_x() -> TestResult {
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.12, SPM-17, SPM-18
 #[test]
-fn law_tf2b_c12_spm_17_18_dr_ts_required_start_seconds_calendar_and_x() -> TestResult {
+fn spm17_spm18_collection_and_receipt_times() -> TestResult {
     for field in [17, 18] {
         for value in ["", "20240229235959"] {
             send_only("SPM", &[(field, value)], true)?;
@@ -241,8 +245,9 @@ fn law_tf2b_c12_spm_17_18_dr_ts_required_start_seconds_calendar_and_x() -> TestR
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.12, SPM-3, SPM-13
 #[test]
-fn law_tf2b_c12_spm_3_13_pooling_outside_r_x_count_and_role() -> TestResult {
+fn pooling_outside_needs_parents_count_and_role() -> TestResult {
     let selected = Profile::receive().with_pooling_outside(true);
     let good = [
         (3, "first&Local~second&Local"),
@@ -298,8 +303,9 @@ fn law_tf2b_c12_spm_3_13_pooling_outside_r_x_count_and_role() -> TestResult {
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.11, SAC-3, SAC-4
 #[test]
-fn law_tf2b_c11_sac_3_4_conditional_ei_component_lengths_nulls_and_cardinality() -> TestResult {
+fn sac3_sac4_container_ids_and_cardinality() -> TestResult {
     both("SAC", &[], true)?;
     both("SAC", &[(4, "parent")], true)?;
     for field in [3, 4, 10, 13] {
@@ -365,8 +371,9 @@ fn law_tf2b_c11_sac_3_4_conditional_ei_component_lengths_nulls_and_cardinality()
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.11, SAC-10, SAC-11, SAC-13, SAC-14
 #[test]
-fn law_tf2b_c11_sac_10_11_13_14_carrier_tray_predicates_na_axes_and_limits() -> TestResult {
+fn sac_carrier_and_tray_positions_and_limits() -> TestResult {
     for (identity, position) in [(10, 11), (13, 14)] {
         for value in ["1", "0001", "+1", "0", "1^2.5^3", "1^^3"] {
             both(
@@ -397,8 +404,9 @@ fn law_tf2b_c11_sac_10_11_13_14_carrier_tray_predicates_na_axes_and_limits() -> 
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.11, SAC-15
 #[test]
-fn law_tf2b_c11_sac_15_conditional_re_location_cwe_repetitions() -> TestResult {
+fn sac15_location_predicate_and_repetitions() -> TestResult {
     both(
         "SAC",
         &[
@@ -479,8 +487,9 @@ fn law_tf2b_c11_sac_15_conditional_re_location_cwe_repetitions() -> TestResult {
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.11, SAC-9
 #[test]
-fn law_tf2b_c11_sac_9_re_container_option_ce_namespace() -> TestResult {
+fn sac9_carrier_type_codes_and_namespace() -> TestResult {
     for value in ["", "local^^HL70378", "local^Synthetic^HL70378"] {
         send_only("SAC", &[(9, value)], true)?;
     }
@@ -516,8 +525,9 @@ fn law_tf2b_c11_sac_9_re_container_option_ce_namespace() -> TestResult {
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.11, SAC-21, SAC-22
 #[test]
-fn law_tf2b_c11_sac_21_22_re_nm_spelling_length_and_singletons() -> TestResult {
+fn sac21_sac22_volumes_keep_spelling() -> TestResult {
     for field in [21, 22] {
         for value in [
             "",

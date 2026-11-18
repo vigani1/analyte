@@ -9,8 +9,9 @@ fn pin<T: Key + Serialize>(value: &T, golden: &str) -> TestResult {
     Ok(())
 }
 
+// ADR 0003
 #[test]
-fn adr0003_durable_key_golden_bytes_and_decoding_round_trip() -> TestResult {
+fn durable_key_golden_bytes_round_trip() -> TestResult {
     let uuid = uuid::Uuid::parse_str("01900000-0000-7000-8000-000000000001")?;
     let receipt = ReceiptId::try_from(uuid)?;
     let delivery = DeliveryId::try_from(uuid)?;

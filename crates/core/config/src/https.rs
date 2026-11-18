@@ -95,15 +95,17 @@ fn parse_url(value: &str, limit: usize, loopback: bool) -> Result<url::Url, &'st
 #[cfg(test)]
 mod tests {
     use super::*;
+    // ADR 0002
     #[test]
-    fn adr0002_destination_keeps_exact_provenance_spelling() {
+    fn destination_keeps_exact_provenance_spelling() {
         let original = "https://EXAMPLE.com";
         let url = HttpsUrl::parse(original).expect("synthetic HTTPS URL");
         assert_eq!(url.as_str(), original);
         assert_eq!(String::from(url), original);
     }
+    // ADR 0002
     #[test]
-    fn adr0002_destination_refuses_unsafe_and_malformed_urls() {
+    fn destination_refuses_unsafe_and_malformed_urls() {
         for value in [
             "http://example.com",
             "https://user@example.com",

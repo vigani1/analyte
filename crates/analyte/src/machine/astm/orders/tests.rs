@@ -47,9 +47,9 @@ fn queries(machine: &Machine) -> Result<Queries<'_>, Error> {
     Ok(Queries::new(stack).ok_or("ASTM query fixture")?)
 }
 
+// CLSI LIS02-A2 §11; ADR 0004
 #[tokio::test]
-async fn lis02_section11_adr0004_missed_deadline_is_query_error_or_silence_never_no_information()
--> Result<(), Error> {
+async fn missed_deadline_never_answers_no_information() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let limits = {
         let mut limits = analyte_fixtures::store_limits();
@@ -98,9 +98,9 @@ async fn lis02_section11_adr0004_missed_deadline_is_query_error_or_silence_never
     Ok(())
 }
 
+// CLSI LIS02-A2 §11
 #[test]
-fn lis02_section11_cancel_is_distinct_and_unsupported_filters_are_not_empty_orders()
--> Result<(), Error> {
+fn cancel_and_unsupported_filters_are_not_empty_orders() -> Result<(), Error> {
     let machine = machine("error")?;
     // LIS02-A2 section 6.13 p.13: the edition is LIS2-A2, not a legacy numeric version.
     assert!(
@@ -129,8 +129,9 @@ fn lis02_section11_cancel_is_distinct_and_unsupported_filters_are_not_empty_orde
 }
 
 // ADR 0004 / safety rule 9 / LIS02 section 11: unavailable is query error, never no information.
+// Safety rule 9 (ADR 0003)
 #[tokio::test]
-async fn rule9_astm_all_untrusted_states_and_destination_freshness() -> Result<(), Error> {
+async fn untrusted_order_cache_answers_query_error() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     for case in ["unknown", "incomplete", "stale", "paused", "short", "long"] {
         let mut machine = machine("error")?;
@@ -215,8 +216,9 @@ async fn rule9_astm_all_untrusted_states_and_destination_freshness() -> Result<(
 }
 
 // LIS02-A2 section 6.14 p.13 and section 5.6.2 p.10: generated UTC date/time to seconds.
+// CLSI LIS02-A2 §6.14, p. 13
 #[test]
-fn lis02_6_14_p13_generated_header_time() -> Result<(), Error> {
+fn generated_header_has_utc_time() -> Result<(), Error> {
     let machine = machine("error")?;
     let before = jiff::Timestamp::now().strftime("%Y%m%d%H%M%S").to_string();
     let records = envelope(
@@ -239,8 +241,9 @@ fn lis02_6_14_p13_generated_header_time() -> Result<(), Error> {
     Ok(())
 }
 
+// CLSI LIS02-A2 §6.10
 #[test]
-fn lis02_6_10_generated_header_identifies_receiver() -> Result<(), Error> {
+fn generated_header_identifies_receiver() -> Result<(), Error> {
     for receiver in [None, Some("Peer|A")] {
         let mut machine = machine("error")?;
         if let Some(receiver) = receiver {
@@ -277,9 +280,9 @@ fn lis02_6_10_generated_header_identifies_receiver() -> Result<(), Error> {
     Ok(())
 }
 
+// CLSI LIS02-A2 §5.4.5, §8.4.3
 #[test]
-fn lis02_5_4_5_8_4_3_query_uses_decoded_specimen_and_refuses_unknown_operations()
--> Result<(), Error> {
+fn query_decodes_specimen_and_refuses_unknown_operations() -> Result<(), Error> {
     let machine = machine("error")?;
     for (raw, expected) in [
         ("A&F&B", "A|B"),

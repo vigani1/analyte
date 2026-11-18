@@ -3,8 +3,9 @@ use crate::test_support::*;
 use crate::*;
 use analyte_model::Reason;
 
+// ADR 0003
 #[test]
-fn adr0003_committed_frames_survive_restart() -> TestResult {
+fn committed_frames_survive_restart() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("store.db");
     let transfer = Identifier::new("transfer-1")?;
@@ -24,8 +25,9 @@ fn adr0003_committed_frames_survive_restart() -> TestResult {
     Ok(())
 }
 
+// ADR 0003
 #[test]
-fn adr0003_complete_and_aborted_transfers_keep_all_evidence() -> TestResult {
+fn complete_and_aborted_transfers_keep_all_evidence() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("store.db"))?;
     let complete = Identifier::new("complete")?;
@@ -67,9 +69,9 @@ fn adr0003_complete_and_aborted_transfers_keep_all_evidence() -> TestResult {
     Ok(())
 }
 
+// ADR 0003; mutation-testing regression
 #[test]
-fn mutation_adr0003_transfer_provenance_conflicts_preserve_original_frames_and_configuration()
--> TestResult {
+fn provenance_conflicts_keep_original_frames_and_config() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("transfer-provenance.db");
     let mut store = open(&path)?;

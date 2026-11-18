@@ -2,9 +2,9 @@
 
 use analyte_fixtures::ConfigEdit as _;
 // HL7 2.3.1 section 4.2.1.1(d) applies required PID to new patient orders.
+// HL7 2.3.1 §4.2.1.1(d)
 #[test]
-fn hl7_231_s4_2_1_1_d_patient_requiredness_distinguishes_new_and_cancel()
--> Result<(), Box<dyn std::error::Error>> {
+fn patient_required_for_new_order_not_cancel() -> Result<(), Box<dyn std::error::Error>> {
     let definition = format!(
         "{}\n{}",
         include_str!("../../../../core/config/examples/hl7.toml")

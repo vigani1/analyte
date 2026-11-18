@@ -1,9 +1,9 @@
 //! Tests chunk-journaled receipt custody for POCT, VIDAS and Autolyser.
 use super::*;
 
+// VIDAS Literal research notes §3; ADR 0003
 #[tokio::test]
-async fn vidas_literal_notes3_adr0003_stored_before_ack_unresolved_parked_no_delivery()
--> Result<(), Error> {
+async fn vidas_stores_before_ack_and_parks_unresolved() -> Result<(), Error> {
     let mut run = Running::start(include_str!(
         "../../../core/config/examples/vidas_literal.toml"
     ))
@@ -24,9 +24,9 @@ async fn vidas_literal_notes3_adr0003_stored_before_ack_unresolved_parked_no_del
     run.close().await
 }
 
+// CLSI POCT01-A2 §B.3.2; ADR 0003
 #[tokio::test]
-async fn poct01_b3_2_adr0003_stored_before_ack_unresolved_parked_no_delivery() -> Result<(), Error>
-{
+async fn poct_stores_before_ack_and_parks_unresolved() -> Result<(), Error> {
     let mut run = Running::start(include_str!("../../../core/config/examples/poct.toml")).await?;
     let hello = poct_peer::hello("hello");
     run.peer.write_all(hello.as_bytes()).await?;
@@ -55,9 +55,9 @@ async fn poct01_b3_2_adr0003_stored_before_ack_unresolved_parked_no_delivery() -
     run.close().await
 }
 
+// Autolyser manual Rev18 pp. 175-179; ADR 0003
 #[tokio::test]
-async fn autolyser_rev18_p175_179_adr0003_corrupt_stored_blocks_r_until_valid_l()
--> Result<(), Error> {
+async fn autolyser_corrupt_reply_blocks_r_until_valid_l() -> Result<(), Error> {
     let mut run =
         Running::start(include_str!("../../../core/config/examples/autolyser.toml")).await?;
     poll(&mut run.peer, b'R').await?;
@@ -82,8 +82,9 @@ async fn autolyser_rev18_p175_179_adr0003_corrupt_stored_blocks_r_until_valid_l(
     run.close().await
 }
 
+// ADR 0003
 #[tokio::test]
-async fn adr0003_chunk_storage_failure_never_acknowledges_data() -> Result<(), Error> {
+async fn chunk_storage_failure_never_acknowledges() -> Result<(), Error> {
     for definition in [
         include_str!("../../../core/config/examples/vidas_literal.toml"),
         include_str!("../../../core/config/examples/poct.toml"),
@@ -120,9 +121,9 @@ async fn adr0003_chunk_storage_failure_never_acknowledges_data() -> Result<(), E
     Ok(())
 }
 
+// Autolyser manual Rev18 p. 175; ADR 0003
 #[tokio::test]
-async fn autolyser_rev18_p175_adr0003_uncertain_r_blocks_restart_until_operator_reconciliation()
--> Result<(), Error> {
+async fn autolyser_uncertain_r_blocks_restart_until_reconciled() -> Result<(), Error> {
     let mut run =
         Running::start(include_str!("../../../core/config/examples/autolyser.toml")).await?;
     poll(&mut run.peer, b'R').await?;
@@ -137,8 +138,9 @@ async fn autolyser_rev18_p175_adr0003_uncertain_r_blocks_restart_until_operator_
     run.close().await
 }
 
+// VIDAS Literal protocol; Safety rule 2 (ADR 0003)
 #[tokio::test]
-async fn vidas_literal_rule2_unknown_test_is_unmapped_and_operator_visible() -> Result<(), Error> {
+async fn vidas_unknown_test_is_parked_for_operator() -> Result<(), Error> {
     let mut run = Running::start(include_str!(
         "../../../core/config/examples/vidas_literal.toml"
     ))
@@ -155,9 +157,9 @@ async fn vidas_literal_rule2_unknown_test_is_unmapped_and_operator_visible() -> 
     run.close().await
 }
 
+// Autolyser manual Rev18; Safety rule 2 (ADR 0003)
 #[tokio::test]
-async fn autolyser_rev18_rule2_unknown_test_is_unmapped_and_operator_visible() -> Result<(), Error>
-{
+async fn autolyser_unknown_test_is_parked_for_operator() -> Result<(), Error> {
     use analyte_autolyser::syntax::{Field, Report};
     let mut run =
         Running::start(include_str!("../../../core/config/examples/autolyser.toml")).await?;
@@ -180,8 +182,9 @@ async fn autolyser_rev18_rule2_unknown_test_is_unmapped_and_operator_visible() -
     run.close().await
 }
 
+// CLSI POCT01-A2 §B.6; Safety rule 2 (ADR 0003)
 #[tokio::test]
-async fn poct01_b6_rule2_unknown_test_is_unmapped_and_operator_visible() -> Result<(), Error> {
+async fn poct_unknown_test_is_parked_for_operator() -> Result<(), Error> {
     let mut run = Running::start(include_str!("../../../core/config/examples/poct.toml")).await?;
     run.peer
         .write_all(poct_peer::hello("hello").as_bytes())
@@ -203,8 +206,9 @@ async fn poct01_b6_rule2_unknown_test_is_unmapped_and_operator_visible() -> Resu
 }
 
 // AGENTS.md safety rule 2; VIDAS BCI-A chapter 3: interrupted transfers require reconciliation.
+// ADR 0003 rule 2
 #[tokio::test]
-async fn adr0003_rule2_vidas_disconnect_executes_park_action() -> Result<(), Error> {
+async fn vidas_disconnect_runs_park_action() -> Result<(), Error> {
     let mut run = Running::start(include_str!(
         "../../../core/config/examples/vidas_literal.toml"
     ))
@@ -220,8 +224,9 @@ async fn adr0003_rule2_vidas_disconnect_executes_park_action() -> Result<(), Err
 }
 
 // AGENTS.md safety rule 2; POCT01-A2 dialog abnormal closure is a retained operator outcome.
+// ADR 0003 rule 2
 #[tokio::test]
-async fn adr0003_rule2_poct_disconnect_executes_close_action() -> Result<(), Error> {
+async fn poct_disconnect_runs_close_action() -> Result<(), Error> {
     let mut run = Running::start(include_str!("../../../core/config/examples/poct.toml")).await?;
     run.peer
         .write_all(poct_peer::hello("hello").as_bytes())
@@ -234,8 +239,9 @@ async fn adr0003_rule2_poct_disconnect_executes_close_action() -> Result<(), Err
 }
 
 // AGENTS.md safety rules 1/2; Autolyser Rev18 storage failure must park, never acknowledge.
+// ADR 0003 rule 2
 #[tokio::test]
-async fn adr0003_rule2_autolyser_storage_failure_executes_park_action() -> Result<(), Error> {
+async fn autolyser_storage_failure_runs_park_action() -> Result<(), Error> {
     let mut run =
         Running::start(include_str!("../../../core/config/examples/autolyser.toml")).await?;
     poll(&mut run.peer, b'R').await?;
@@ -281,8 +287,9 @@ async fn adr0003_rule2_autolyser_storage_failure_executes_park_action() -> Resul
 }
 
 // CLSI POCT01-A2 Appendix B section 5.7, p.96: the advertised capacity bounds host replies.
+// CLSI POCT01-A2 §B.5.7
 #[tokio::test]
-async fn poct01_b5_7_host_never_sends_beyond_device_capacity() -> Result<(), Error> {
+async fn host_never_sends_beyond_device_capacity() -> Result<(), Error> {
     let mut run = Running::start(include_str!("../../../core/config/examples/poct.toml")).await?;
     let hello = poct_peer::hello("hello").rewrite(
         "<DSC.max_message_sz NULL=\"PINF\"/>",
@@ -299,8 +306,9 @@ async fn poct01_b5_7_host_never_sends_beyond_device_capacity() -> Result<(), Err
     run.close().await
 }
 
+// CLSI POCT01-A2 §B.3.2
 #[tokio::test]
-async fn poct01_b3_2_program_lost_ack_reconnect_restart_and_correction() -> Result<(), Error> {
+async fn lost_ack_restart_and_correction_deliver_once() -> Result<(), Error> {
     let definition = include_str!("../../../core/config/examples/poct.toml").rewrite(
         "[poct]",
         "[poct]\nidentity = { sequence_number = true, processing = \"Production\" }",
@@ -393,8 +401,9 @@ async fn poct01_b3_2_program_lost_ack_reconnect_restart_and_correction() -> Resu
     run.close_with_deliveries(2).await
 }
 
+// CLSI POCT01-A2 §B.4.1.2
 #[tokio::test]
-async fn poct01_b4_1_2_program_rejected_hello_ack_then_terminate_keeps_raw() -> Result<(), Error> {
+async fn rejected_hello_acks_terminates_and_keeps_raw() -> Result<(), Error> {
     let base = poct_peer::hello("bad-hello");
     for (raw, code, reason) in [
         (
@@ -465,9 +474,9 @@ async fn poct01_b4_1_2_program_rejected_hello_ack_then_terminate_keeps_raw() -> 
 }
 
 // POCT01-A2 B 4.1.2 p.78; AGENTS.md rule 4: never guess a reply reference.
+// CLSI POCT01-A2 §B.4.1.2
 #[tokio::test]
-async fn poct01_b4_1_2_program_ambiguous_hello_header_is_parked_without_guessed_ack()
--> Result<(), Error> {
+async fn ambiguous_hello_header_parked_without_guessed_ack() -> Result<(), Error> {
     let mut run = Running::start(include_str!("../../../core/config/examples/poct.toml")).await?;
     let raw = poct_peer::hello("one").rewrite(
         "<HDR.control_id V=\"one\"/>",
@@ -485,8 +494,9 @@ async fn poct01_b4_1_2_program_ambiguous_hello_header_is_parked_without_guessed_
 }
 
 // POCT01-A2 B 5.13 p.99 and 3.4.2 p.74: reused IDs are protocol faults, not new results.
+// CLSI POCT01-A2 §B.5.13
 #[tokio::test]
-async fn poct01_b5_13_program_reused_control_id_parks_evidence_and_escapes() -> Result<(), Error> {
+async fn reused_control_id_parks_evidence_and_escapes() -> Result<(), Error> {
     for reused in ["observation", "status"] {
         let mut run =
             Running::start(include_str!("../../../core/config/examples/poct.toml")).await?;
@@ -525,8 +535,9 @@ async fn poct01_b5_13_program_reused_control_id_parks_evidence_and_escapes() -> 
 // POCT01-A2 Appendix B 3.5, 5.7, 5.12 and 6.9; synthetic peer bytes. Per B 3.5 a
 // reviewer not prepared for Keep Alive replies with an Escape instead of an ACK;
 // that reply completes the exchange, so the conversation continues.
+// CLSI POCT01-A2 §B.3.5
 #[tokio::test]
-async fn poct01_b_3_5_unsupported_keep_alive_gets_correlated_escape() -> Result<(), Error> {
+async fn unsupported_keep_alive_gets_correlated_escape() -> Result<(), Error> {
     for (host, device) in [(2048, 1024), (1024, 2048)] {
         let definition = include_str!("../../../core/config/examples/poct.toml")
             .rewrite("bytes = 1048576", &format!("bytes = {host}"));
@@ -623,8 +634,9 @@ fn assert_accept(raw: &[u8], expected: &str) -> Result<(), Error> {
 }
 
 // POCT01-A2 Appendix B 5.7: a later error reply must also be refused whole.
+// CLSI POCT01-A2 §B.5.7
 #[tokio::test]
-async fn poct01_b_5_7_later_error_ack_cannot_exceed_device_capacity() -> Result<(), Error> {
+async fn later_error_ack_cannot_exceed_device_capacity() -> Result<(), Error> {
     let mut run = Running::start(include_str!("../../../core/config/examples/poct.toml")).await?;
     let hello = poct_peer::hello("hello").rewrite(
         "<DSC.max_message_sz NULL=\"PINF\"/>",

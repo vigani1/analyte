@@ -3,9 +3,9 @@ use super::*;
 const EDIT_REASON: &str = "edited POCT observation with no detectable common-content change; source context may have changed";
 
 // POCT01-A2 B 3.2, 5.15, 5.18, 5.21 Table 49 and 5.22; project decision 2026-11-16.
+// CLSI POCT01-A2 §B.5.21, table 49
 #[tokio::test]
-async fn poct01_b_5_21_table49_patient_and_metadata_edits_are_not_retransmissions()
--> Result<(), Error> {
+async fn patient_and_metadata_edits_are_not_retransmissions() -> Result<(), Error> {
     let definition = include_str!("../../../core/config/examples/poct.toml").rewrite(
         "[poct]",
         "[poct]\nidentity = { sequence_number = true, processing = \"Production\" }",

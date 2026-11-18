@@ -6,8 +6,9 @@ fn message(version: &str, body: &str) -> Result<Message, Error> {
         Options::default(),
     )
 }
+// HL7 2.5.1 §2.9.2.2, §2.15.9.7; HL7 2.3.1 §2.12.1.2
 #[test]
-fn hl7_251_s2_9_2_2_s2_15_9_7_and_231_s2_12_1_2_ack_response_time_is_valid() -> Result<(), Error> {
+fn ack_response_time_is_valid() -> Result<(), Error> {
     for version in ["2.3.1", "2.5.1"] {
         let input = message(version, "")?;
         for timestamp in [
@@ -58,8 +59,9 @@ fn hl7_251_s2_9_2_2_s2_15_9_7_and_231_s2_12_1_2_ack_response_time_is_valid() -> 
     }
     Ok(())
 }
+// HL7 2.5.1 §2.15.5.3, §2.15.5.4
 #[test]
-fn hl7_251_s2_15_5_3_4_err_tables_and_zero_code_severity() -> Result<(), Error> {
+fn err_tables_and_zero_code_severity() -> Result<(), Error> {
     for (code, severity, valid) in [
         ("0", "I", true),
         ("0", "E", false),
@@ -114,8 +116,9 @@ fn hl7_251_s2_15_5_3_4_err_tables_and_zero_code_severity() -> Result<(), Error> 
     }
     Ok(())
 }
+// HL7 2.8.2 §2.14.8; HL7 2.9.1 §2.13.8
 #[test]
-fn hl7_282_s2_14_8_and_291_s2_13_8_withdrawn_msa_err_explicit_null_policy() -> Result<(), Error> {
+fn withdrawn_msa_err_fields_need_null_policy() -> Result<(), Error> {
     for version in [Version::V282, Version::V291] {
         for field in [3, 5, 6] {
             let mut fields = vec![""; field];

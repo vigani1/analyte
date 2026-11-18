@@ -11,8 +11,9 @@ fn config(section: &str) -> Result<Validated, analyte_config::Error> {
     )?
     .validate()
 }
+// ADR 0002
 #[test]
-fn adr0002_outbound_duplicate_missing_policy_and_unbounded_deadline_are_rejected() -> TestResult {
+fn bad_outbound_policy_and_deadline_are_rejected() -> TestResult {
     let section = include_str!("../examples/orders.toml");
     for invalid in [section.rewrite("deadline_ms = 1000", "deadline_ms = 0"), section.rewrite("when_untrusted = \"error\"", ""), section.rewrite("send_ahead = true", ""), section.rewrite("machine_components=[\"\", \"\", \"\", \"SEND\"]}", "machine_components=[\"SEND\"]},{app={namespace=\"demo\",value=\"DEMO\"},machine_components=[\"OTHER\"]}")] {
         { let Err(refusal) = config(&invalid) else { panic!("input must be refused") }; assert!(matches!(&refusal, analyte_config::Error::Schema { .. } | analyte_config::Error::Invalid { .. }), "unexpected refusal: {refusal:?}"); }
@@ -43,8 +44,9 @@ fn invalid_key(result: Result<Validated, analyte_config::Error>, expected: &str)
     assert!(matches!(result, Err(analyte_config::Error::Invalid { key, .. }) if key == expected));
 }
 
+// ADR 0002
 #[test]
-fn adr0002_vendor_patient_namespace_is_required_and_retained_exactly() -> TestResult {
+fn patient_namespace_is_required_and_kept_exactly() -> TestResult {
     for definition in [
         include_str!("../examples/vidas_literal.toml"),
         include_str!("../examples/autolyser.toml"),
@@ -91,8 +93,9 @@ fn adr0002_vendor_patient_namespace_is_required_and_retained_exactly() -> TestRe
     Ok(())
 }
 
+// Autolyser manual Rev18 chapter 23
 #[test]
-fn autolyser_rev18_ch23_clone_requires_explicit_true_or_false() -> TestResult {
+fn autolyser_clone_requires_explicit_boolean() -> TestResult {
     let definition =
         include_str!("../examples/autolyser.toml").rewrite("download = false", "download = true");
     invalid_key(
@@ -122,8 +125,9 @@ fn autolyser_rev18_ch23_clone_requires_explicit_true_or_false() -> TestResult {
     Ok(())
 }
 
+// ADR 0002
 #[test]
-fn adr0002_outbound_settings_cannot_silently_apply_to_another_stack() -> TestResult {
+fn outbound_settings_cannot_apply_to_another_stack() -> TestResult {
     let vidas = include_str!("../examples/vidas_literal.toml")
         .rewrite("download = false", "download = true");
     invalid_key(
@@ -187,8 +191,9 @@ fn adr0002_outbound_settings_cannot_silently_apply_to_another_stack() -> TestRes
     Ok(())
 }
 
+// VIDAS BCI Link rev A §4
 #[test]
-fn vidas_bci_a_section4_outbound_assay_codes_require_single_bounded_tag_value() -> TestResult {
+fn vidas_assay_codes_need_one_bounded_tag() -> TestResult {
     let definition = include_str!("../examples/vidas_literal.toml")
         .rewrite("download = false", "download = true");
     for components in [r#"["ABCDE"]"#, r#"["A", "B"]"#, r#"["A|B"]"#] {
@@ -209,8 +214,9 @@ fn autolyser_orders() -> String {
         .rewrite(r#"machine="R""#, r#"machine="T""#)
 }
 
+// Autolyser manual Rev18 chapter 23
 #[test]
-fn autolyser_rev18_ch23_outbound_medium_list_and_analysis_tables_are_explicit() -> TestResult {
+fn autolyser_medium_and_analysis_tables_are_explicit() -> TestResult {
     let definition =
         include_str!("../examples/autolyser.toml").rewrite("download = false", "download = true");
     let section = format!("{}clone=false\n", autolyser_orders());
@@ -243,9 +249,9 @@ fn autolyser_rev18_ch23_outbound_medium_list_and_analysis_tables_are_explicit() 
     Ok(())
 }
 
+// CLSI LIS02-A2 §8.4.16.1
 #[test]
-fn lis02_section8_4_16_1_specimen_destination_and_code_table_preserve_field_ownership() -> TestResult
-{
+fn astm_specimen_tables_keep_field_ownership() -> TestResult {
     let section=include_str!("../examples/orders.toml").rewrite("[orders.query]", "specimen_types=[{app={namespace='specimens',value='SERUM'},machine='SER'}]\n[orders.query]");
     let destination = "specimen_type={group='order',record='O',field=16,component=1,repetition=1}";
     config(&format!("{section}\n{destination}"))?;
@@ -273,12 +279,13 @@ fn lis02_section8_4_16_1_specimen_destination_and_code_table_preserve_field_owne
     Ok(())
 }
 
+// ADR 0002
 #[test]
 #[expect(
     clippy::too_many_lines,
     reason = "One retained-evidence scenario checks refusals and rollback alongside its successful lifecycle"
 )]
-fn adr0002_hl7_legacy_query_requires_explicit_bounded_layout_and_selectors() -> TestResult {
+fn legacy_query_needs_explicit_layout_and_selectors() -> TestResult {
     let definition = include_str!("../examples/hl7.toml");
     let section = include_str!("../examples/hl7_orders.toml");
     let valid = vendor_config(definition, section)?;
@@ -388,8 +395,9 @@ fn adr0002_hl7_legacy_query_requires_explicit_bounded_layout_and_selectors() -> 
     Ok(())
 }
 
+// ADR 0002
 #[test]
-fn adr0002_hl7_send_requires_namespace_valid_headers_item_codes_and_deadline() -> TestResult {
+fn hl7_send_requires_namespace_headers_codes_deadline() -> TestResult {
     let definition = include_str!("../examples/hl7.toml");
     let section = include_str!("../examples/hl7_send.toml");
     vendor_config(definition, section)?;
@@ -437,8 +445,9 @@ fn adr0002_hl7_send_requires_namespace_valid_headers_item_codes_and_deadline() -
     Ok(())
 }
 
+// HL7 chapter 2, MSH-11; HL7 chapter 4
 #[test]
-fn hl7_ch2_msh11_and_ch4_priority_codes_are_typed_and_preserve_wire_spelling() -> TestResult {
+fn hl7_processing_and_priority_codes_keep_spelling() -> TestResult {
     use analyte_config::{Hl7Processing, MachinePriority, PriorityCode};
     let definition = include_str!("../examples/hl7.toml");
     let section = include_str!("../examples/hl7_send.toml");

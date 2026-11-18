@@ -108,8 +108,9 @@ mod tests {
             }
         }
     }
+    // Plan §11; AGENTS.md concurrency
     #[test]
-    fn plan11_agents_concurrency_stuck_component_exits_three() -> Result<(), Error> {
+    fn stuck_component_exits_with_code_three() -> Result<(), Error> {
         const CHILD: &str = "ANALYTE_WATCHDOG_CHILD";
         if std::env::var_os(CHILD).is_some() {
             tracing_subscriber::fmt()
@@ -126,7 +127,7 @@ mod tests {
         let mut child = std::process::Command::new(std::env::current_exe()?)
             .args([
                 "--exact",
-                "runtime::shutdown::tests::plan11_agents_concurrency_stuck_component_exits_three",
+                "runtime::shutdown::tests::stuck_component_exits_with_code_three",
                 "--nocapture",
             ])
             .env(CHILD, "1")
@@ -150,8 +151,9 @@ mod tests {
         assert_eq!(log.matches("shutdown bound exceeded").count(), 1);
         Ok(())
     }
+    // Plan §11
     #[test]
-    fn plan11_completed_shutdown_joins_watchdog() -> Result<(), Error> {
+    fn completed_shutdown_joins_watchdog() -> Result<(), Error> {
         let watchdog = Watchdog::new(Duration::from_millis(20), None)?;
         watchdog.arm();
         drop(watchdog);

@@ -58,8 +58,9 @@ fn change_scope(value: &mut Value, key: &str, replacement: Value) {
     declaration(value)["scope"][key] = replacement;
 }
 
+// ADR 0015
 #[test]
-fn adr0015_validate_once_rejects_legacy_unknown_tags_and_fields() {
+fn rejects_legacy_unknown_tags_and_fields() {
     let legacy = BASE.rewrite(
         "deviations = []",
         "deviations=[{name='old',key='framing.limit',reason='not evidence'}]",
@@ -91,8 +92,9 @@ fn adr0015_validate_once_rejects_legacy_unknown_tags_and_fields() {
     }
 }
 
+// ADR 0015
 #[test]
-fn adr0015_validate_once_duplicate_conflict_and_resource_refusals() {
+fn duplicate_conflict_and_resource_refusals() {
     let mut value = machine();
     let item = value["deviations"][0].clone();
     value["deviations"]
@@ -111,8 +113,9 @@ fn adr0015_validate_once_duplicate_conflict_and_resource_refusals() {
     assert_refused(&value, R::EvidenceLimit);
 }
 
+// ADR 0015
 #[test]
-fn adr0015_scope_model_firmware_mode_and_selected_protocol_are_exact() {
+fn scope_matches_model_firmware_mode_and_protocol() {
     for key in ["model", "firmware", "mode", "message", "direction"] {
         let mut value = machine();
         let replacement = match key {
@@ -141,8 +144,9 @@ fn adr0015_scope_model_firmware_mode_and_selected_protocol_are_exact() {
     assert_refused(&value, R::ProtocolMismatch);
 }
 
+// ADR 0015
 #[test]
-fn adr0015_existing_settings_require_active_evidenced_declarations() {
+fn existing_settings_require_active_evidenced_declarations() {
     let mut value = machine();
     value["framing"]["limit"] = 64000.into();
     assert_refused(&value, R::InactiveSetting);
@@ -176,8 +180,9 @@ fn hl7() -> Value {
         .expect("fixture")
 }
 
+// ADR 0015
 #[test]
-fn adr0015_status_rules_require_separate_documented_omission_guarantees() {
+fn status_rules_require_documented_omission_guarantees() {
     let mut value = hl7();
     assert!(validate(&value).is_ok());
     value["deviations"][0]["rule"] = "hl7_absent_obx11_means_final".into();
@@ -197,8 +202,9 @@ fn adr0015_status_rules_require_separate_documented_omission_guarantees() {
     assert_refused(&value, R::EditionMismatch);
 }
 
+// ADR 0015
 #[test]
-fn adr0015_recording_references_are_local_resolved_and_digest_checked() {
+fn recording_references_are_local_and_digest_checked() {
     let mut value = machine();
     let reference: Value = toml::from_str(
         "kind='recording'\nfile='../bad.rec.jsonl'\nsha256='bad'\nfirst_event=1\nlast_event=1",
@@ -281,8 +287,9 @@ fn adr0015_recording_references_are_local_resolved_and_digest_checked() {
     std::fs::remove_dir(directory).expect("remove empty temporary directory");
 }
 
+// ADR 0015
 #[test]
-fn adr0015_validate_once_terminator_conflicts_and_missing_manual_fields() {
+fn terminator_conflicts_and_missing_manual_fields() {
     let mut value = hl7();
     value["deviations"][0]["rule"] = "hl7_cr_lf_terminators".into();
     let mut other = value["deviations"][0].clone();
@@ -302,8 +309,9 @@ fn adr0015_validate_once_terminator_conflicts_and_missing_manual_fields() {
     }
 }
 
+// ADR 0015
 #[test]
-fn adr0015_existing_compatibility_inventory_validates_each_exact_selected_setting() {
+fn compatibility_inventory_validates_each_setting() {
     for (tag, section, key, setting) in [
         ("astm_frame_limit", "framing", "limit", Value::Integer(247)),
         (

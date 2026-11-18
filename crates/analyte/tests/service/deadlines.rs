@@ -1,7 +1,8 @@
 //! Tests named test deadlines and retained failure causes.
 use super::*;
+// Safety rule 7 (ADR 0003)
 #[tokio::test(start_paused = true)]
-async fn rule7_named_deadline_identifies_stalled_step() {
+async fn named_deadline_identifies_stalled_step() {
     let error = step(
         "synthetic stalled commit",
         std::future::pending::<Result<(), Error>>(),

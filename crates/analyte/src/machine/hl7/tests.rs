@@ -10,9 +10,9 @@ fn program(root: &Path, definition: &str, endpoint: &str) -> Result<Program, Err
     Program::load(&path).map_err(Into::into)
 }
 
+// ADR 0003; HL7 MLLP R1 §1.2
 #[tokio::test]
-async fn adr0003_mllp_r1_s1_2_coalesced_read_survives_ack_write_failure_and_cancellation()
--> Result<(), Error> {
+async fn coalesced_read_survives_ack_write_failure_and_cancel() -> Result<(), Error> {
     for orders in [false, true] {
         for cancel in [false, true] {
             let temp = crate::admin::private_tempdir()?;

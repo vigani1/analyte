@@ -1,7 +1,8 @@
 //! LAW FT line evidence is retained and blocks delivery without rendering layout.
 use super::*;
+// HL7 2.5.1 §2.7.6; IHE PaLM TF-2b §C.5
 #[test]
-fn hl7_251_2_7_6_law_c5_ft_line_markers_preserve_layout_evidence_in_mapping() -> TestResult {
+fn ft_line_markers_keep_layout_evidence() -> TestResult {
     let cfg = config(include_str!("../../../../core/config/examples/law.toml"))?;
     for note in [
         "first^second",

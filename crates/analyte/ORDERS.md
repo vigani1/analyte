@@ -264,20 +264,20 @@ missing or mismatched patient context is rejected at the order boundary.
 
 | Required case | VIDAS | Autolyser |
 | --- | --- | --- |
-| Normal send; Sent survives restart | [vidas_bci_a_ch3_5_all_assays_confirm_once_sent_survives_restart](tests/orders/vidas.rs) | [autolyser_rev18_ch23_confirmed_insertion_carries_explicit_clone_and_stays_sent_on_restart](tests/orders/autolyser.rs) |
-| Timeout | [vidas_bci_a_ch3_adr0004_ack_timeout_is_uncertain_never_resends](tests/orders/vidas.rs) | [autolyser_rev18_ch23_unanswered_insertion_is_uncertain_not_sent](tests/orders/autolyser.rs); [autolyser_rev18_ch23_parked_partial_reply_is_uncertain_same_round_with_timeout_code](tests/orders/autolyser.rs) |
-| Disconnect mid-send | [vidas_bci_a_ch3_adr0004_disconnect_mid_send_is_uncertain](tests/orders/vidas.rs) | [autolyser_rev18_ch23_disconnect_mid_send_retains_partial_reply_and_uncertain_code](tests/orders/autolyser.rs) |
-| Restart during Sending; no replay | [adr0004_rule8_vidas_restart_during_send_recovers_sending_without_replay](tests/orders/vidas.rs) | [adr0004_rule8_autolyser_restart_during_send_recovers_only_sending_never_replays](tests/orders/autolyser.rs) |
-| Unmapped test | [vidas_bci_a_ch4_unmapped_test_rejected_before_send](tests/orders/vidas.rs) | [autolyser_rev18_ch23_unmapped_test_rejects_whole_order_before_insertion](tests/orders/autolyser.rs) |
-| Unmapped specimen type | [vidas_bci_a_ch4_unmapped_specimen_type_rejected_before_send](tests/orders/vidas.rs) | [autolyser_rev18_ch23_unmapped_specimen_type_rejects_before_insertion](tests/orders/autolyser.rs) |
-| Missing required position | Not applicable: Literal has no position field | [autolyser_rev18_ch23_missing_cup_position_never_autoassigns_zero](tests/orders/autolyser.rs) |
-| Wrong patient namespace | [adr0004_vidas_wrong_patient_namespace_rejected_before_send](tests/orders/vidas.rs) | [adr0004_autolyser_wrong_patient_namespace_rejects_before_insertion](tests/orders/autolyser.rs) |
-| Missing namespace configuration | [adr0004_vidas_missing_patient_namespace_prevents_program_start](tests/orders/vidas.rs) | [adr0004_autolyser_missing_patient_namespace_prevents_program_start](tests/orders/autolyser.rs) |
-| Missing patient | [vidas_bci_a_ch4_missing_patient_rejected_before_send](tests/orders/vidas.rs) | [autolyser_rev18_ch23_missing_patient_never_uses_sample_id](tests/orders/autolyser.rs) |
-| Over-long ID | [vidas_pc_ch4_14_overlong_sample_id_never_truncated](tests/orders/vidas.rs); [vidas_bci_a_ch4_overlong_patient_id_never_truncated](tests/orders/vidas.rs) | [autolyser_rev18_ch23_overlong_patient_id_never_truncated](tests/orders/autolyser.rs) |
-| Cancelled before send | [adr0004_vidas_cancelled_before_send_has_no_wire_or_app_send_event](tests/orders/vidas.rs) | [adr0004_autolyser_cancelled_before_send_has_no_insertion_or_send_event](tests/orders/autolyser.rs) |
-| Park mid-send: same-round Uncertain and event | [vidas_bci_a_ch3_park_mid_send_commits_uncertain_same_round_then_closes](tests/orders/vidas.rs) | [autolyser_rev18_ch23_parked_bad_ack_is_uncertain_same_round](tests/orders/autolyser.rs) |
-| Unanswered result poll cannot send an order | Not applicable: Literal does not poll for results | [autolyser_rev18_ch23_unanswered_initial_poll_never_reserves_or_sends_order](tests/orders/autolyser.rs) |
+| Normal send; Sent survives restart | [all_assays_confirm_once_and_survive_restart](tests/orders/vidas.rs) | [confirmed_insertion_sends_clone_and_survives_restart](tests/orders/autolyser.rs) |
+| Timeout | [ack_timeout_is_uncertain_never_resent](tests/orders/vidas.rs) | [unanswered_insertion_is_uncertain](tests/orders/autolyser.rs); [partial_reply_is_parked_and_uncertain](tests/orders/autolyser.rs) |
+| Disconnect mid-send | [disconnect_mid_send_is_uncertain](tests/orders/vidas.rs) | [disconnect_mid_send_keeps_partial_reply](tests/orders/autolyser.rs) |
+| Restart during Sending; no replay | [restart_during_send_never_replays](tests/orders/vidas.rs) | [restart_recovers_only_sending_never_replays](tests/orders/autolyser.rs) |
+| Unmapped test | [unmapped_test_is_rejected_before_send](tests/orders/vidas.rs) | [unmapped_test_rejects_whole_order](tests/orders/autolyser.rs) |
+| Unmapped specimen type | [unmapped_specimen_type_is_rejected](tests/orders/vidas.rs) | [unmapped_specimen_type_rejects_before_insertion](tests/orders/autolyser.rs) |
+| Missing required position | Not applicable: Literal has no position field | [missing_cup_position_never_becomes_zero](tests/orders/autolyser.rs) |
+| Wrong patient namespace | [wrong_patient_namespace_is_rejected](tests/orders/vidas.rs) | [wrong_patient_namespace_rejects_before_insertion](tests/orders/autolyser.rs) |
+| Missing namespace configuration | [missing_patient_namespace_prevents_startup](tests/orders/vidas.rs) | [missing_patient_namespace_blocks_startup](tests/orders/autolyser.rs) |
+| Missing patient | [missing_patient_is_rejected_before_send](tests/orders/vidas.rs) | [missing_patient_never_uses_sample_id](tests/orders/autolyser.rs) |
+| Over-long ID | [overlong_sample_id_is_rejected_not_truncated](tests/orders/vidas.rs); [overlong_patient_id_is_rejected_not_truncated](tests/orders/vidas.rs) | [overlong_patient_id_is_never_truncated](tests/orders/autolyser.rs) |
+| Cancelled before send | [cancelled_before_send_sends_nothing](tests/orders/vidas.rs) | [cancelled_before_send_never_inserts](tests/orders/autolyser.rs) |
+| Park mid-send: same-round Uncertain and event | [park_mid_send_commits_uncertain_then_closes](tests/orders/vidas.rs) | [bad_ack_is_parked_and_uncertain](tests/orders/autolyser.rs) |
+| Unanswered result poll cannot send an order | Not applicable: Literal does not poll for results | [unanswered_poll_never_reserves_or_sends](tests/orders/autolyser.rs) |
 
 The suites contain 13 VIDAS and 18 Autolyser tests. They also cover Autolyser's
 invalid cup slots, missing specimen medium and negative/unknown insertion replies.

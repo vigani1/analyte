@@ -2,9 +2,9 @@
 use super::*;
 use analyte_fixtures::ConfigEdit as _;
 
+// IHE PaLM TF-2b §3.27.4
 #[test]
-fn law_tf2b_3_27_4_container_preserves_leading_zero_and_raw()
--> Result<(), Box<dyn std::error::Error>> {
+fn container_query_keeps_leading_zero_and_raw() -> Result<(), Box<dyn std::error::Error>> {
     let message = query("QPD|WOS^Work Order Step^IHELAW|tag|000Ab")?;
     let view = Query::new(&message)?;
     let Scope::Container(id) = view.scope() else {
@@ -16,8 +16,9 @@ fn law_tf2b_3_27_4_container_preserves_leading_zero_and_raw()
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.27.4
 #[test]
-fn law_tf2b_3_27_4_query_forms_and_conditional_fields() -> Result<(), Box<dyn std::error::Error>> {
+fn query_forms_select_their_scope() -> Result<(), Box<dyn std::error::Error>> {
     for (body, expected) in [
         ("QPD|WOS_ALL^Work Order Step All^IHELAW|tag", "all"),
         (
@@ -47,9 +48,9 @@ fn law_tf2b_3_27_4_query_forms_and_conditional_fields() -> Result<(), Box<dyn st
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.27.4
 #[test]
-fn law_tf2b_3_27_4_forbidden_missing_null_and_repeated_parameters_retain_bytes()
--> Result<(), Box<dyn std::error::Error>> {
+fn bad_query_parameters_fail_and_keep_bytes() -> Result<(), Box<dyn std::error::Error>> {
     for body in [
         "QPD|WOS_ALL^Work Order Step All^IHELAW|tag|forbidden",
         "QPD|WOS^Work Order Step^IHELAW|tag",
@@ -66,8 +67,9 @@ fn law_tf2b_3_27_4_forbidden_missing_null_and_repeated_parameters_retain_bytes()
 }
 
 proptest! {
+    // IHE PaLM TF-2b §3.27.4
     #[test]
-    fn law_tf2b_3_27_4_bounded_container_strings(id in "[0-9A-Za-z]{1,50}") {
+    fn bounded_container_ids_round_trip(id in "[0-9A-Za-z]{1,50}") {
         let message = query(&format!("QPD|WOS^Work Order Step^IHELAW|tag|{id}"))?;
         let parsed = Query::new(&message)?;
         prop_assert!(matches!(parsed.scope(), Scope::Container(_)));
@@ -77,9 +79,9 @@ proptest! {
     }
 }
 
+// IHE PaLM TF-2b §3.27.4
 #[test]
-fn law_tf2b_3_27_4_rsp_correlates_and_separates_empty_work_from_failed_lookup()
--> Result<(), Box<dyn std::error::Error>> {
+fn rsp_separates_no_work_from_failed_lookup() -> Result<(), Box<dyn std::error::Error>> {
     use analyte_hl7::{
         AckError, Field, Responsibility,
         law::{CacheAnswer, QueryFollowup, query_response},
@@ -175,8 +177,9 @@ fn law_tf2b_3_27_4_rsp_correlates_and_separates_empty_work_from_failed_lookup()
     Ok(())
 }
 
+// IHE PaLM TF-2b §B.5
 #[test]
-fn law_tf2b_b5_rsp_requires_storage_and_bounds_output() -> Result<(), Box<dyn std::error::Error>> {
+fn rsp_requires_storage_and_bounded_output() -> Result<(), Box<dyn std::error::Error>> {
     use analyte_hl7::{
         Responsibility,
         law::{CacheAnswer, query_response},
@@ -210,9 +213,9 @@ fn law_tf2b_b5_rsp_requires_storage_and_bounds_output() -> Result<(), Box<dyn st
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.28.4
 #[test]
-fn law_tf2b_3_28_4_work_unique_awos_replicates_and_authorized_options()
--> Result<(), Box<dyn std::error::Error>> {
+fn work_needs_unique_awos_and_authorized_options() -> Result<(), Box<dyn std::error::Error>> {
     use analyte_hl7::{
         Field,
         law::{Awos, Capabilities, Instructions, WorkAction, work_order},
@@ -309,8 +312,9 @@ fn law_tf2b_3_28_4_work_unique_awos_replicates_and_authorized_options()
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.28.4
 #[test]
-fn law_tf2b_3_28_4_negative_lab28_for_genuine_no_work() -> Result<(), Box<dyn std::error::Error>> {
+fn negative_lab28_for_genuine_no_work() -> Result<(), Box<dyn std::error::Error>> {
     use analyte_hl7::{Field, law::negative_work};
     for (body, container) in [
         (
@@ -349,9 +353,9 @@ fn law_tf2b_3_28_4_negative_lab28_for_genuine_no_work() -> Result<(), Box<dyn st
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.4
 #[test]
-fn law_tf2b_c4_work_and_negative_builders_keep_fifty_character_control_ids()
--> Result<(), Box<dyn std::error::Error>> {
+fn builders_keep_50_character_control_ids() -> Result<(), Box<dyn std::error::Error>> {
     use analyte_hl7::{
         Field, Response,
         law::{Awos, Capabilities, WorkAction},
@@ -399,9 +403,9 @@ fn law_tf2b_c4_work_and_negative_builders_keep_fifty_character_control_ids()
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.28.4
 #[test]
-fn law_tf2b_3_28_4_orl_outcomes_are_per_request_not_lifecycle_retractions()
--> Result<(), Box<dyn std::error::Error>> {
+fn orl_outcomes_are_per_request_not_retractions() -> Result<(), Box<dyn std::error::Error>> {
     use analyte_hl7::{
         AckCode,
         law::{Awos, AwosOutcome, WorkAction, WorkResponse, work_order},
@@ -496,9 +500,9 @@ fn law_tf2b_3_28_4_orl_outcomes_are_per_request_not_lifecycle_retractions()
     Ok(())
 }
 
+// IHE PaLM TF-2b §3.29.4
 #[test]
-fn law_tf2b_3_29_4_results_preserve_identity_values_status_equipment_and_scoped_notes()
--> Result<(), Box<dyn std::error::Error>> {
+fn results_keep_identity_values_status_and_notes() -> Result<(), Box<dyn std::error::Error>> {
     use analyte_hl7::{
         Field,
         law::{Parent, ResultStatus, Results, Value},
@@ -550,9 +554,9 @@ fn law_tf2b_3_29_4_results_preserve_identity_values_status_equipment_and_scoped_
     Ok(())
 }
 
+// IHE PaLM TF-2b §B.7.6
 #[test]
-fn law_tf2b_b7_6_inconsistent_tcd_rejects_whole_message_and_retains_original()
--> Result<(), Box<dyn std::error::Error>> {
+fn inconsistent_tcd_rejects_whole_message() -> Result<(), Box<dyn std::error::Error>> {
     use analyte_hl7::law::Results;
     let mut body = observation("test^Test^99LAB", "1", "NM", "1.20", "F");
     body.push_str(

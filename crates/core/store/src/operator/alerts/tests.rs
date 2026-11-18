@@ -2,9 +2,9 @@
 use crate::test_support::*;
 use crate::*;
 
+// Plan §11; mutation-testing regression
 #[test]
-fn mutation_plan11_alerts_validate_responders_and_destination_count_at_the_boundary() -> TestResult
-{
+fn alerts_validate_responders_and_destination_count() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("store.db"))?;
     let identity = AlertKey::DiskReserve;
@@ -50,8 +50,9 @@ fn mutation_plan11_alerts_validate_responders_and_destination_count_at_the_bound
     Ok(())
 }
 
+// Plan §11; mutation-testing regression
 #[test]
-fn mutation_plan11_alerts_pages_and_history_keep_raise_and_clear_times_distinct() -> TestResult {
+fn alert_pages_keep_raise_and_clear_times_distinct() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("store.db"))?;
     for identity in [AlertKey::DiskReserve, AlertKey::RestorePaused] {
@@ -101,9 +102,9 @@ fn mutation_plan11_alerts_pages_and_history_keep_raise_and_clear_times_distinct(
     Ok(())
 }
 
+// Plan §11; mutation-testing regression
 #[test]
-fn mutation_plan11_alerts_oldest_delivery_age_includes_zero_and_keeps_future_unknown() -> TestResult
-{
+fn oldest_delivery_age_includes_zero_future_unknown() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("store.db"))?;
     store.enqueue_order_event(
@@ -137,8 +138,9 @@ mod existing {
     use crate::test_support::{TestResult, open};
 
     // Plan section 11: a retry/restart cannot repeat a raise or clear.
+    // Plan §11
     #[test]
-    fn plan11_alert_restart_and_retained_transitions() -> TestResult {
+    fn alert_restart_never_repeats_raise_or_clear() -> TestResult {
         let temp = tempfile::tempdir()?;
         let path = temp.path().join("alerts.db");
         let mut store = open(&path)?;
@@ -202,8 +204,9 @@ mod existing {
     }
 
     // Plan section 11 and rule 10: numeric health never returns parked payload/sample text.
+    // Plan §11
     #[test]
-    fn plan11_alert_health_counts_ages_and_unknowns() -> TestResult {
+    fn alert_health_counts_ages_and_unknowns() -> TestResult {
         let temp = tempfile::tempdir()?;
         let store = open(&temp.path().join("metrics.db"))?;
         assert_eq!(
@@ -298,8 +301,9 @@ mod existing {
     }
 
     // Plan section 11: failure to retain history must roll back the state transition.
+    // Plan §11
     #[test]
-    fn plan11_alert_state_and_history_commit_atomically() -> TestResult {
+    fn alert_state_and_history_commit_atomically() -> TestResult {
         let temp = tempfile::tempdir()?;
         let mut store = open(&temp.path().join("atomic.db"))?;
         store.db.execute_batch("CREATE TRIGGER reject_alert BEFORE INSERT ON alert_history BEGIN SELECT RAISE(ABORT,'test history failure'); END;")?;
@@ -322,8 +326,9 @@ mod existing {
     }
 
     // Plan section 11: the disk alert can record its transition inside the admission reserve.
+    // Plan §11
     #[test]
-    fn plan11_disk_alert_does_not_require_free_admission_capacity() -> TestResult {
+    fn disk_alert_needs_no_free_admission_capacity() -> TestResult {
         let temp = tempfile::tempdir()?;
         let mut store = open(&temp.path().join("disk.db"))?;
         store.space = Box::new(Space(1));
@@ -337,8 +342,9 @@ mod existing {
     }
 
     // Plan section 11: a stored receipt and a live frame both count as machine activity.
+    // Plan §11
     #[test]
-    fn plan11_receipt_and_live_frame_activity() -> TestResult {
+    fn receipts_and_live_frames_count_as_activity() -> TestResult {
         let temp = tempfile::tempdir()?;
         let path = temp.path().join("activity.db");
         drop(open(&path)?);

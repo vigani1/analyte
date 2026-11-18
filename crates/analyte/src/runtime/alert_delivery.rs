@@ -129,8 +129,9 @@ mod tests {
         )
         .await?)
     }
+    // ADR 0014
     #[tokio::test]
-    async fn adr0014_worker_credential_failure_is_visible_and_never_logged() -> Result<(), Error> {
+    async fn credential_failure_is_visible_and_never_logged() -> Result<(), Error> {
         let temp = tempfile::tempdir()?;
         let mut store = open(temp.path().join("store.db")).await?;
         store
@@ -188,8 +189,9 @@ mod tests {
         store.shutdown(deadline()?).await?;
         Ok(())
     }
+    // ADR 0014
     #[tokio::test]
-    async fn adr0014_setup_failure_reaches_operator_status() -> Result<(), Error> {
+    async fn setup_failure_reaches_operator_status() -> Result<(), Error> {
         let temp = tempfile::tempdir()?;
         let mut store = open(temp.path().join("store.db")).await?;
         store
@@ -226,8 +228,9 @@ mod tests {
         store.shutdown(deadline()?).await?;
         Ok(())
     }
+    // ADR 0014
     #[tokio::test]
-    async fn adr0014_cancelling_worker_http_wait_keeps_reserved_event() -> Result<(), Error> {
+    async fn cancelled_http_wait_keeps_reserved_event() -> Result<(), Error> {
         use tokio::io::AsyncReadExt as _;
         let temp = tempfile::tempdir()?;
         let mut store = open(temp.path().join("store.db")).await?;

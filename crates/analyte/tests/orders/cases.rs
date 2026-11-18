@@ -82,9 +82,9 @@ async fn wait_cache(path: &Path) -> Result<(), Error> {
     .await?
 }
 
+// CLSI LIS02-A2 §11
 #[tokio::test]
-async fn lis02_section11_fresh_cache_orders_empty_and_untrusted_are_distinct_on_wire()
--> Result<(), Error> {
+async fn orders_empty_and_untrusted_differ_on_wire() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), true)?;
     configure_orders(temp.path(), false)?;
@@ -115,9 +115,9 @@ async fn lis02_section11_fresh_cache_orders_empty_and_untrusted_are_distinct_on_
     Ok(())
 }
 
+// Safety rule 8 (ADR 0003)
 #[tokio::test]
-async fn rule8_query_response_reserves_without_event_then_disconnect_emits_one_uncertain()
--> Result<(), Error> {
+async fn query_reply_disconnect_emits_one_uncertain() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), true)?;
     configure_orders(temp.path(), false)?;
@@ -161,9 +161,9 @@ pub(super) async fn machine_state(path: &Path, state: &str, count: i64) -> Resul
     .await?
 }
 
+// ADR 0004
 #[tokio::test]
-async fn adr0004_unmapped_and_cancelled_orders_are_never_sent_and_rejection_reaches_app()
--> Result<(), Error> {
+async fn unmapped_and_cancelled_orders_are_never_sent() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), true)?;
     configure_orders(temp.path(), true)?;
@@ -204,9 +204,9 @@ async fn adr0004_unmapped_and_cancelled_orders_are_never_sent_and_rejection_reac
     Ok(())
 }
 
+// CLSI LIS01-A2
 #[tokio::test]
-async fn lis01_transfer_ack_is_sent_not_application_acceptance_and_disconnect_is_uncertain()
--> Result<(), Error> {
+async fn transfer_ack_means_sent_not_accepted() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), true)?;
     configure_orders(temp.path(), true)?;
@@ -231,9 +231,9 @@ async fn lis01_transfer_ack_is_sent_not_application_acceptance_and_disconnect_is
     Ok(())
 }
 
+// CLSI LIS02-A2 §11
 #[tokio::test]
-async fn lis02_section11_deadline_includes_transfer_time_and_cancel_gets_no_order_response()
--> Result<(), Error> {
+async fn deadline_counts_transfer_and_cancel_gets_nothing() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), true)?;
     configure_orders(temp.path(), false)?;
@@ -278,9 +278,9 @@ async fn lis02_section11_deadline_includes_transfer_time_and_cancel_gets_no_orde
     Ok(())
 }
 
+// ADR 0004
 #[tokio::test]
-async fn adr0004_required_position_absent_rejects_query_order_and_delivers_specific_event()
--> Result<(), Error> {
+async fn missing_position_rejects_query_order() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), true)?;
     configure_orders(temp.path(), false)?;
@@ -317,9 +317,9 @@ async fn adr0004_required_position_absent_rejects_query_order_and_delivers_speci
     Ok(())
 }
 
+// ADR 0004
 #[tokio::test]
-async fn adr0004_disconnect_before_astm_ack_preserves_uncertain_outcome_and_events()
--> Result<(), Error> {
+async fn disconnect_before_ack_keeps_uncertain_outcome() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), true)?;
     configure_orders(temp.path(), true)?;
@@ -412,9 +412,9 @@ async fn astm_context_exchange(
     reference.close().await?;
     Ok(())
 }
+// CLSI LIS02-A2 §8
 #[tokio::test]
-async fn lis02_section8_o_record_send_ahead_and_query_forward_configured_position_and_specimen_exactly()
--> Result<(), Error> {
+async fn o_record_forwards_position_and_specimen_exactly() -> Result<(), Error> {
     for send in [true, false] {
         astm_context_exchange(
             send,
@@ -427,9 +427,9 @@ async fn lis02_section8_o_record_send_ahead_and_query_forward_configured_positio
     }
     Ok(())
 }
+// CLSI LIS02-A2 §8
 #[tokio::test]
-async fn lis02_section8_o_record_no_destinations_leave_context_empty_even_when_supplied_unknown()
--> Result<(), Error> {
+async fn o_record_without_destinations_stays_empty() -> Result<(), Error> {
     for send in [true, false] {
         astm_context_exchange(
             send,
@@ -442,9 +442,9 @@ async fn lis02_section8_o_record_no_destinations_leave_context_empty_even_when_s
     }
     Ok(())
 }
+// CLSI LIS02-A2 §8
 #[tokio::test]
-async fn lis02_section8_o_record_unmapped_specimen_rejects_send_ahead_and_query_without_partial_order()
--> Result<(), Error> {
+async fn o_record_unmapped_specimen_rejects_whole_order() -> Result<(), Error> {
     for send in [true, false] {
         astm_context_exchange(
             send,
@@ -457,9 +457,9 @@ async fn lis02_section8_o_record_unmapped_specimen_rejects_send_ahead_and_query_
     }
     Ok(())
 }
+// CLSI LIS02-A2 §8
 #[tokio::test]
-async fn lis02_section8_o_record_missing_required_specimen_rejects_without_guessing()
--> Result<(), Error> {
+async fn o_record_missing_specimen_is_rejected() -> Result<(), Error> {
     for send in [true, false] {
         astm_context_exchange(
             send,
@@ -473,9 +473,9 @@ async fn lis02_section8_o_record_missing_required_specimen_rejects_without_guess
     Ok(())
 }
 
+// Plan §11; Safety rule 8 (ADR 0003)
 #[tokio::test]
-async fn plan11_rule8_restore_blocks_astm_send_ahead_and_query_orders_on_wire() -> Result<(), Error>
-{
+async fn restore_blocks_send_ahead_and_query_orders() -> Result<(), Error> {
     for send in [true, false] {
         let temp = tempfile::tempdir()?;
         let path = config(temp.path(), true)?;
@@ -563,8 +563,9 @@ async fn plan11_rule8_restore_blocks_astm_send_ahead_and_query_orders_on_wire() 
     Ok(())
 }
 
+// CLSI LIS02-A2 §6.12, p. 12
 #[tokio::test]
-async fn lis02_6_12_p12_nonproduction_queries_never_reserve_or_send() -> Result<(), Error> {
+async fn nonproduction_queries_never_reserve_or_send() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), true)?;
     configure_orders(temp.path(), false)?;

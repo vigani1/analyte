@@ -23,9 +23,9 @@ fn attempts(path: &Path) -> Result<Vec<String>, Error> {
 // The former fixed 3-second deadline timed out every attempt to an app that needs
 // longer to store and answer, so no delivery ever completed. The site deadline
 // lets that answer arrive on the first attempt (ADR 0008 idempotent receiver).
+// ADR 0008
 #[tokio::test]
-async fn adr0008_app_answering_after_three_seconds_succeeds_within_site_request_timeout()
--> Result<(), Error> {
+async fn slow_app_within_request_timeout_succeeds() -> Result<(), Error> {
     const APP_DELAY: Duration = Duration::from_secs(4);
     let temp = tempfile::tempdir()?;
     let fixture = config(temp.path(), false)?;
@@ -57,9 +57,9 @@ async fn adr0008_app_answering_after_three_seconds_succeeds_within_site_request_
 
 // A timeout never proves the app did nothing: the attempt is recorded as a retry
 // and the next attempt resends the same delivery ID and bytes (ADR 0008).
+// ADR 0008
 #[tokio::test]
-async fn adr0008_app_slower_than_site_request_timeout_retries_same_id_and_bytes()
--> Result<(), Error> {
+async fn app_slower_than_timeout_retries_same_delivery() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let fixture = config(temp.path(), false)?;
     set_request_timeout(temp.path(), "hl7", 1)?;
@@ -89,8 +89,9 @@ async fn adr0008_app_slower_than_site_request_timeout_retries_same_id_and_bytes(
 }
 
 // One destination has one request deadline; machines sharing it must agree.
+// ADR 0004
 #[test]
-fn adr0004_shared_destination_refuses_different_request_timeouts() -> Result<(), Error> {
+fn shared_destination_refuses_different_timeouts() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let fixture = config(temp.path(), true)?;
     set_request_timeout(temp.path(), "hl7", 20)?;

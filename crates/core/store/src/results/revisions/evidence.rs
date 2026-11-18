@@ -76,8 +76,9 @@ fn revision_and_law_spellings_are_compatible() {
     }
 }
 
+// ADR 0016
 #[test]
-fn adr0016_scoped_disposition_keeps_stored_json() -> Result<(), serde_json::Error> {
+fn scoped_disposition_keeps_stored_json() -> Result<(), serde_json::Error> {
     let disposition = Disposition::Rejected(super::law::Rejection {
         occurrence: 2,
         reason: Conflict::Context,

@@ -431,9 +431,9 @@ mod tests {
     use analyte_fixtures::UnlimitedSpace as Space;
     use analyte_model::Identifier;
 
+    // ADR 0003
     #[tokio::test]
-    async fn adr0003_shared_cleanup_settles_later_key_after_store_failure()
-    -> Result<(), crate::Error> {
+    async fn cleanup_settles_later_key_after_store_failure() -> Result<(), crate::Error> {
         let machine = query_machine()?;
         let temp = tempfile::tempdir()?;
         let mut store = Handle::start(
@@ -485,9 +485,9 @@ mod tests {
         Ok(())
     }
 
+    // Safety rule 8 (ADR 0003)
     #[tokio::test]
-    async fn rule8_cleanup_preserves_session_error_and_attempts_every_reservation()
-    -> Result<(), crate::Error> {
+    async fn cleanup_keeps_session_error_and_tries_every_reservation() -> Result<(), crate::Error> {
         let machine = query_machine()?;
         let temp = tempfile::tempdir()?;
         let mut store = Handle::start(
@@ -559,9 +559,9 @@ mod tests {
         Ok(())
     }
 
+    // ADR 0003 rule 8
     #[tokio::test]
-    async fn adr0003_rule8_cancelled_query_cleanup_never_claims_another_connection()
-    -> Result<(), crate::Error> {
+    async fn cancelled_query_cleanup_never_claims_other_connection() -> Result<(), crate::Error> {
         let machine = query_machine()?;
         let temp = tempfile::tempdir()?;
         let mut store = Handle::start(

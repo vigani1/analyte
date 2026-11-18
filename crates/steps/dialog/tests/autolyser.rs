@@ -42,8 +42,9 @@ fn receive(dialog: &mut Dialog, raw: &[u8], time: u64) -> Result<Vec<Action>, Di
     Ok(actions)
 }
 
+// Autolyser manual Rev18 p. 179
 #[test]
-fn autolyser_rev18_p179_checksum_is_decimal_sum() -> TestResult {
+fn checksum_is_decimal_sum() -> TestResult {
     let report = Report::parse(analyte_framing::autolyser::decode(RESULT)?, false)?;
     assert_eq!(
         analyte_framing::autolyser::encode(report.raw.clone()),
@@ -74,8 +75,9 @@ fn autolyser_rev18_p179_checksum_is_decimal_sum() -> TestResult {
     Ok(())
 }
 
+// Autolyser manual Rev18 p. 178
 #[test]
-fn autolyser_rev18_p178_controls_are_explicit_and_values_stay_written() -> TestResult {
+fn controls_explicit_and_values_stay_written() -> TestResult {
     let control = Control {
         is_control: true,
         known: false,
@@ -121,8 +123,9 @@ fn autolyser_rev18_p178_controls_are_explicit_and_values_stay_written() -> TestR
     Ok(())
 }
 
+// Autolyser manual Rev18 p. 177
 #[test]
-fn autolyser_rev18_p177_raw_first_and_l_recovery_before_next_r() -> TestResult {
+fn raw_first_and_l_recovers_before_next_r() -> TestResult {
     let mut dialog = Dialog::new(config())?;
     start(&mut dialog, Request::Next, 0).unwrap();
     let corrupt = b"TEST0042       TS002ALB 0004.21CRE 00087.5190\x04";
@@ -178,8 +181,9 @@ fn autolyser_rev18_p177_raw_first_and_l_recovery_before_next_r() -> TestResult {
     Ok(())
 }
 
+// Autolyser manual Rev18 p. 177
 #[test]
-fn autolyser_rev18_p177_empty_queue_still_requires_storage() -> TestResult {
+fn empty_queue_still_requires_storage() -> TestResult {
     let mut dialog = Dialog::new(config())?;
     start(&mut dialog, Request::First, 0).unwrap();
     let actions = receive(&mut dialog, &[21], 0).unwrap();
@@ -199,8 +203,9 @@ fn autolyser_rev18_p177_empty_queue_still_requires_storage() -> TestResult {
     Ok(())
 }
 
+// Autolyser manual Rev18 p. 175
 #[test]
-fn autolyser_rev18_p175_download_serializes_and_preserves_binary_reply() -> TestResult {
+fn download_serializes_and_keeps_binary_reply() -> TestResult {
     let order = Worklist::parse(analyte_framing::autolyser::decode(ORDER)?)?;
     let mut dialog = Dialog::new(config())?;
     assert!(
@@ -247,8 +252,9 @@ fn autolyser_rev18_p175_download_serializes_and_preserves_binary_reply() -> Test
     Ok(())
 }
 
+// Autolyser manual Rev18 p. 177
 #[test]
-fn autolyser_rev18_p177_partial_timeout_and_storage_failure_never_resend() -> TestResult {
+fn partial_timeout_and_store_failure_never_resend() -> TestResult {
     let mut dialog = Dialog::new(config())?;
     start(&mut dialog, Request::Next, 0).unwrap();
     receive(&mut dialog, b"TEST", 0).unwrap();
@@ -277,22 +283,25 @@ fn autolyser_rev18_p177_partial_timeout_and_storage_failure_never_resend() -> Te
 }
 
 proptest! {
+    // Autolyser manual Rev18 p. 179
     #[test]
-    fn autolyser_rev18_p179_arbitrary_input_is_bounded(raw in prop::collection::vec(any::<u8>(), 0..12000)) {
+    fn arbitrary_input_is_bounded(raw in prop::collection::vec(any::<u8>(), 0..12000)) {
         let _ = Report::parse(&raw, false);
         let _ = Report::parse(&raw, true);
         let _ = Worklist::parse(&raw);
     }
 
+    // Autolyser manual Rev18 p. 179
     #[test]
-    fn autolyser_rev18_p179_checksum_wraps_explicitly(raw in prop::collection::vec(any::<u8>(), 0..1000)) {
+    fn checksum_wraps_explicitly(raw in prop::collection::vec(any::<u8>(), 0..1000)) {
         let sum: u64 = raw.iter().map(|b| u64::from(*b)).sum();
         prop_assert_eq!(u64::from(analyte_framing::autolyser::checksum(&raw)), sum % 256);
     }
 }
 
+// Autolyser manual Rev18 p. 177
 #[test]
-fn autolyser_rev18_p177_overlong_and_short_reports_are_stored_before_rejection() -> TestResult {
+fn bad_length_reports_stored_before_rejection() -> TestResult {
     for raw in [b"X\x04".as_slice(), b"12345678".as_slice()] {
         let mut policy = config();
         policy.max_bytes = 8;
@@ -318,8 +327,9 @@ fn autolyser_rev18_p177_overlong_and_short_reports_are_stored_before_rejection()
     Ok(())
 }
 
+// Autolyser manual Rev18 p. 175
 #[test]
-fn autolyser_rev18_p175_disconnect_during_commit_cannot_reopen_connection() -> TestResult {
+fn disconnect_during_commit_never_reopens() -> TestResult {
     let mut dialog = Dialog::new(config())?;
     start(&mut dialog, Request::Next, 0).unwrap();
     receive(&mut dialog, RESULT, 0).unwrap();
@@ -347,8 +357,9 @@ fn autolyser_rev18_p175_disconnect_during_commit_cannot_reopen_connection() -> T
     Ok(())
 }
 
+// Autolyser manual Rev18 p. 177
 #[test]
-fn autolyser_rev18_p177_l_empty_does_not_resolve_corruption() -> TestResult {
+fn l_empty_does_not_resolve_corruption() -> TestResult {
     let mut policy = config();
     policy.recovery = Recovery::LastOnPoll;
     let mut dialog = Dialog::new(policy)?;
@@ -392,8 +403,9 @@ fn autolyser_rev18_p177_l_empty_does_not_resolve_corruption() -> TestResult {
     Ok(())
 }
 
+// Autolyser manual Rev18 p. 175
 #[test]
-fn autolyser_rev18_p175_lost_download_reply_is_uncertain_without_retry() -> TestResult {
+fn lost_download_reply_is_uncertain_without_retry() -> TestResult {
     let order = Worklist::parse(analyte_framing::autolyser::decode(ORDER)?)?;
     let mut dialog = Dialog::new(config())?;
     let _ = dialog
@@ -414,8 +426,9 @@ fn autolyser_rev18_p175_lost_download_reply_is_uncertain_without_retry() -> Test
     Ok(())
 }
 
+// Autolyser manual Rev18 §23.1, p. 175
 #[test]
-fn autolyser_rev18_section23_1_p175_explicit_worklist_fields() -> TestResult {
+fn worklist_fields_are_explicit() -> TestResult {
     for list in [List::Routine, List::Stat] {
         for sample in [Sample::Serum, Sample::Urine] {
             for clone in [false, true] {
@@ -453,8 +466,9 @@ fn autolyser_rev18_section23_1_p175_explicit_worklist_fields() -> TestResult {
     Ok(())
 }
 
+// Autolyser manual Rev18 §23.2, p. 177
 #[test]
-fn autolyser_rev18_section23_2_p177_required_bounds_and_independent_deadlines() -> TestResult {
+fn required_bounds_and_independent_deadlines() -> TestResult {
     for index in 0..5 {
         let mut policy = config();
         match index {
@@ -524,8 +538,9 @@ fn autolyser_rev18_section23_2_p177_required_bounds_and_independent_deadlines() 
     Ok(())
 }
 
+// ADR 0001
 #[test]
-fn adr0001_autolyser_manual_recovery_has_no_polling_wake() -> TestResult {
+fn manual_recovery_has_no_polling_wake() -> TestResult {
     let mut dialog = Dialog::new(config())?;
     // Before the transport opens, there is no protocol operation to time.
     assert_eq!(dialog.next_deadline(), None);
@@ -552,8 +567,9 @@ fn adr0001_autolyser_manual_recovery_has_no_polling_wake() -> TestResult {
     Ok(())
 }
 
+// ADR 0001
 #[test]
-fn adr0001_autolyser_step_rejects_reversed_time_before_mutation() {
+fn step_rejects_reversed_time_before_mutation() {
     let mut dialog = Dialog::new(config()).unwrap();
     dialog.step(Duration::from_secs(2), Event::Tick).unwrap();
     assert!(matches!(
@@ -569,8 +585,9 @@ fn adr0001_autolyser_step_rejects_reversed_time_before_mutation() {
     ));
 }
 
+// ADR 0001
 #[test]
-fn adr0001_autolyser_deadline_overflow_is_exhausted() {
+fn deadline_overflow_is_exhausted() {
     let mut dialog = Dialog::new(config()).unwrap();
     let actions = dialog
         .step(Duration::MAX, Event::Poll(Request::Next))

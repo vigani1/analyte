@@ -12,8 +12,9 @@ fn accepts(ids: &[&[u8]], oul: bool) -> bool {
     }
     state.order() && !state.pending()
 }
+// HL7 2.3.1 §7.2.1
 #[test]
-fn hl7_2_3_1_s7_2_1_oru_states() {
+fn oru_segment_order_states() {
     assert!(accepts(
         &[b"PID", b"PV1", b"PV2", b"ORC", b"OBR", b"OBX", b"NTE"],
         false
@@ -26,8 +27,9 @@ fn hl7_2_3_1_s7_2_1_oru_states() {
     assert!(!accepts(&[b"PID", b"PV1", b"PV1", b"OBR"], false));
     assert!(!accepts(&[b"OBR", b"ORC"], false));
 }
+// HL7 2.5.1 §7.3.7
 #[test]
-fn hl7_2_5_1_s7_3_7_oul_states() {
+fn oul_segment_order_states() {
     assert!(accepts(
         &[
             b"NTE", b"PID", b"PV1", b"SPM", b"SAC", b"OBX", b"OBR", b"ORC", b"OBX", b"TCD", b"SID"

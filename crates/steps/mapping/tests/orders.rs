@@ -6,8 +6,9 @@ use analyte_model::{Identifier, NamespacedId, SampleId};
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
+// Safety rule 7 (ADR 0003)
 #[test]
-fn rule7_outbound_selected_component_at_configured_ceiling_is_preserved() -> TestResult {
+fn component_at_configured_ceiling_is_kept() -> TestResult {
     let base = include_str!("../../../core/config/examples/astm.toml")
         .rewrite("components = 128", "components = 4");
     let section = include_str!("../../../core/config/examples/orders.toml")
@@ -27,8 +28,9 @@ fn rule7_outbound_selected_component_at_configured_ceiling_is_preserved() -> Tes
     Ok(())
 }
 
+// Safety rule 7 (ADR 0003)
 #[test]
-fn rule7_display_text_bound_is_inclusive_and_refuses_delimiter_injection() -> TestResult {
+fn display_bound_is_inclusive_and_refuses_delimiters() -> TestResult {
     let section = include_str!("../../../core/config/examples/hl7_orders.toml").rewrite(
         "namespace=\"synthetic\",value=\"TEST\"",
         "namespace=\"demo\",value=\"DEMO\"",
@@ -102,8 +104,9 @@ fn bounded_order_config(key: &str, value: usize) -> Result<Validated, analyte_co
     .validate()
 }
 
+// Safety rule 7 (ADR 0003)
 #[test]
-fn rule7_outbound_encoded_record_and_message_limits_are_inclusive() -> TestResult {
+fn record_and_message_limits_are_inclusive() -> TestResult {
     let expected = b"O|1|001a||^^^SEND|R||||||N\r";
     for (key, ceiling) in [
         ("bytes", expected.len()),
@@ -133,8 +136,9 @@ fn rule7_outbound_encoded_record_and_message_limits_are_inclusive() -> TestResul
     Ok(())
 }
 
+// Safety rule 5 (ADR 0003)
 #[test]
-fn rule5_outbound_sample_reserved_characters_are_refused_without_rewriting() -> TestResult {
+fn reserved_sample_characters_are_refused_unchanged() -> TestResult {
     let settings = config(include_str!("../../../core/config/examples/orders.toml"))?;
     for sample in ["A|B", "A^B", "A&B", "A\\B", "café"] {
         let mut input = order()?;
@@ -151,8 +155,9 @@ fn rule5_outbound_sample_reserved_characters_are_refused_without_rewriting() -> 
     Ok(())
 }
 
+// Safety rule 7 (ADR 0003)
 #[test]
-fn rule7_outbound_test_count_is_nonempty_and_inclusive() -> TestResult {
+fn test_count_is_nonempty_and_inclusive() -> TestResult {
     let definition = format!(
         "{}\n{}",
         include_str!("../../../core/config/examples/astm.toml")
@@ -214,16 +219,18 @@ fn order() -> Result<AppOrder, analyte_model::TextError> {
     })
 }
 
+// CLSI LIS02-A2 §8
 #[test]
-fn lis02_section8_outbound_table_preserves_sample_and_never_reverses_inbound() -> TestResult {
+fn outbound_table_keeps_sample_and_never_reverses() -> TestResult {
     let config = config(include_str!("../../../core/config/examples/orders.toml"))?;
     let mapped = map_order(&order()?, config.effective().stack())?;
     assert_eq!(mapped.encode(), b"O|1|001a||^^^SEND|R||||||N\r");
     Ok(())
 }
 
+// ADR 0004
 #[test]
-fn adr0004_disabled_unmapped_system_priority_and_missing_position_refuse_output() -> TestResult {
+fn disabled_or_unmapped_orders_refuse_output() -> TestResult {
     assert!(matches!(
         map_order(&order()?, config("")?.effective().stack()),
         Err(analyte_mapping::astm::OrderError::Shared(
@@ -280,9 +287,9 @@ const POSITION: &str = "position={group='order',record='O',field=4,component=2,r
 const SPECIMEN_TYPE: &str =
     "specimen_type={group='order',record='O',field=16,component=1,repetition=1}\n";
 
+// CLSI LIS02-A2 §8.4.4, §8.4.16.1
 #[test]
-fn lis02_section8_4_4_and_8_4_16_1_configured_destinations_get_only_explicit_context() -> TestResult
-{
+fn destinations_get_only_explicit_context() -> TestResult {
     for (destinations, expected) in [
         (
             format!("{POSITION}{SPECIMEN_TYPE}"),
@@ -306,8 +313,9 @@ fn lis02_section8_4_4_and_8_4_16_1_configured_destinations_get_only_explicit_con
     }
     Ok(())
 }
+// CLSI LIS02-A2 §8.4.16.1
 #[test]
-fn lis02_section8_4_16_1_unmapped_or_missing_specimen_never_guesses_a_code() -> TestResult {
+fn unmapped_specimen_never_guesses_a_code() -> TestResult {
     let settings = config(&format!("{}\n{SPECIMEN_TYPE}", context_section()))?;
     let mut value = context_order()?;
     value.specimen_type.as_mut().ok_or("specimen")?.namespace =
@@ -333,8 +341,9 @@ fn lis02_section8_4_16_1_unmapped_or_missing_specimen_never_guesses_a_code() -> 
     Ok(())
 }
 
+// HL7 2.5.1 §5.10
 #[test]
-fn hl7_251_section5_10_dsp_layout_is_explicit_and_context_is_never_guessed() -> TestResult {
+fn dsp_layout_is_explicit_without_guessed_context() -> TestResult {
     let section = include_str!("../../../core/config/examples/hl7_orders.toml").rewrite(
         "namespace=\"synthetic\",value=\"TEST\"",
         "namespace=\"demo\",value=\"DEMO\"",
@@ -425,9 +434,9 @@ fn hl7_251_section5_10_dsp_layout_is_explicit_and_context_is_never_guessed() -> 
     Ok(())
 }
 
+// HL7 2.5.1 §5.10
 #[test]
-fn hl7_251_section5_10_optional_patient_specimen_and_slot_use_only_explicit_sources() -> TestResult
-{
+fn dsp_optional_context_uses_explicit_sources() -> TestResult {
     let section = include_str!("../../../core/config/examples/hl7_orders.toml")
         .rewrite(
             "namespace=\"synthetic\",value=\"TEST\"",
@@ -517,8 +526,9 @@ specimen_types = [{app={namespace="types",value="SERUM"},machine="SER"}]
     Ok(())
 }
 
+// HL7 chapter 4
 #[test]
-fn hl7_ch4_patient_requirement_and_orc_group_bound_return_typed_refusals() -> TestResult {
+fn patient_and_orc_group_refusals_are_typed() -> TestResult {
     use analyte_mapping::hl7::WireError;
     for (require_patient, id, expected) in [
         (true, "order-1".to_owned(), WireError::PatientNameRequired),

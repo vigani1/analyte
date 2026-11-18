@@ -2,8 +2,9 @@
 use super::*;
 use analyte_fixtures::ConfigEdit as _;
 
+// IHE PaLM TF-2b §C.1
 #[test]
-fn law_tf2b_c1_query_builder_checks_generated_erl_code_and_mandatory_err() -> TestResult {
+fn query_builder_checks_erl_code_and_mandatory_err() -> TestResult {
     use analyte_hl7::{AckError, Responsibility};
     let message = query_with(&[])?;
     let query = law::Query::new(&message)?;
@@ -64,8 +65,9 @@ fn law_tf2b_c1_query_builder_checks_generated_erl_code_and_mandatory_err() -> Te
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.4
 #[test]
-fn law_tf2b_c4_work_builder_checks_all_four_hd_fields_and_response_id() -> TestResult {
+fn work_builder_checks_hd_fields_and_response_id() -> TestResult {
     use law::{Address, Awos, Capabilities, WorkAction};
     let awos = Awos::new(
         b"awos-1",
@@ -146,8 +148,9 @@ fn law_tf2b_c4_work_builder_checks_all_four_hd_fields_and_response_id() -> TestR
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.1, §C.3, §C.4
 #[test]
-fn law_tf2b_c1_c3_c4_ack_builder_and_receive_correlation_and_err_profiles() -> TestResult {
+fn ack_builder_correlation_and_err_profiles() -> TestResult {
     use analyte_hl7::{AckCode, AckError, Responsibility};
     let body = "SPM|1||\"\"|SER^Synthetic^HL70487|||||||P^Patient^HL70369\rSAC|||000tube\rORC|SC||||IP\rOBR||awos-1||test^Synthetic^99LAB\r";
     let source = wire("results", &[], body)?;
@@ -200,8 +203,9 @@ fn law_tf2b_c1_c3_c4_ack_builder_and_receive_correlation_and_err_profiles() -> T
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.4, §C.1; HL7 2.5.1 §2.7
 #[test]
-fn law_tf2b_c4_c1_hl7_251_2_7_malformed_escapes_do_not_bypass_profile_validation() -> TestResult {
+fn malformed_escapes_do_not_bypass_profile_checks() -> TestResult {
     let bytes = wire("query", &[(3, "bad\\")], "")?;
     let permissive = Options {
         escapes: analyte_hl7::EscapePolicy::Preserve,
@@ -218,8 +222,9 @@ fn law_tf2b_c4_c1_hl7_251_2_7_malformed_escapes_do_not_bypass_profile_validation
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.4
 #[test]
-fn law_tf2b_c4_msh_single_header_and_configured_wire_repetition_bounds() -> TestResult {
+fn single_msh_and_wire_repetition_bounds() -> TestResult {
     let bytes = wire("query", &[(21, "LAB-27^IHE~local^Lab")], "")?;
     let mut bounded = options();
     bounded.limits.message_bytes = bytes.len();
@@ -240,8 +245,9 @@ fn law_tf2b_c4_msh_single_header_and_configured_wire_repetition_bounds() -> Test
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.4, §C.1
 #[test]
-fn law_tf2b_c4_c1_composite_field_lengths_include_empty_output_positions() -> TestResult {
+fn composite_lengths_count_empty_output_positions() -> TestResult {
     for (field, value, maximum) in [
         (3, "A", 227),
         (4, "A", 227),

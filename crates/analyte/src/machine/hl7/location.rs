@@ -45,8 +45,9 @@ pub(crate) fn mapping_location(
 mod tests {
     use super::*;
 
+    // HL7 2.5.1 §2.15.5.2
     #[test]
-    fn hl7_251_2_15_5_2_negative_ack_keeps_wrapped_syntax_and_mapping_locations() {
+    fn negative_ack_keeps_syntax_and_mapping_locations() {
         use crate::machine::interpretation::ReadError;
         use analyte_hl7::{AckCode, ControlId, Message, Options, Response, Responsibility};
         let raw = b"MSH|^~\\&|SYN|LAB|HOST|LAB|202611151200||ORU^R01^ORU_R01|message1|P|2.5.1\rOBX|1|NM|SYN||12\r";
@@ -89,8 +90,9 @@ mod tests {
         }
     }
 
+    // HL7 2.5.1 §2.15.5.2
     #[test]
-    fn hl7_251_2_15_5_2_location_requires_source_occurrence_and_keeps_numeric_segment_ids() {
+    fn location_needs_occurrence_and_keeps_numeric_segment_ids() {
         let raw = b"MSH|^~\\&|\rPV1|1\rOBX|1\rOBX|2\r";
         let precise = syntax_location(
             &analyte_hl7::Error::Escape {

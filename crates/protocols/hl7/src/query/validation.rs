@@ -148,9 +148,9 @@ pub(super) fn filter(segment: Segment<'_>, version: Version) -> Result<(), Error
 mod tests {
     use super::*;
 
+    // HL7 2.3.1 §2.24.4.2, §2.24.4.3; HL7 2.5.1 §5.10.5.3.3, §5.10.5.3.4
     #[test]
-    fn hl7_231_2_24_4_2_3_251_5_10_5_3_3_4_tables_are_distinct_from_transaction_scope()
-    -> Result<(), Error> {
+    fn query_tables_distinct_from_transaction_scope() -> Result<(), Error> {
         for (edition, version) in [("2.3.1", Version::V231), ("2.5.1", Version::V251)] {
             for format in ["D", "R", "T"] {
                 for priority in ["D", "I"] {

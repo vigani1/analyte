@@ -6,8 +6,9 @@ fn request(version: &str) -> Result<Message, analyte_hl7::Error> {
     Message::parse(format!("MSH|^~\\&|A|B|C|D|202611150900||QRY^Q02^QRY_Q02|q1|P|{version}\rQRD|20261115|D|D|tag|||5^LI|0001^^^^^^^LCL|ORD|TEST\rQRF|LAB\r").as_bytes(), Options::default())
 }
 
+// HL7 2.3.1 §2.18; HL7 2.6 §5.10
 #[test]
-fn hl7_231_2_18_and_2_6_s5_10_qck_answers_deferred_query() -> Result<(), analyte_hl7::Error> {
+fn qck_answers_deferred_query() -> Result<(), analyte_hl7::Error> {
     for version in ["2.3.1", "2.5.1", "2.6"] {
         let message = request(version)?;
         let request = query::Request::new(&message)?;
@@ -41,8 +42,9 @@ fn hl7_231_2_18_and_2_6_s5_10_qck_answers_deferred_query() -> Result<(), analyte
     Ok(())
 }
 
+// HL7 2.3.1 §2.18
 #[test]
-fn hl7_231_2_18_dsr_echoes_query_and_ack_correlates_dsr() -> Result<(), analyte_hl7::Error> {
+fn dsr_echoes_query_and_ack_correlates() -> Result<(), analyte_hl7::Error> {
     let message = request("2.3.1")?;
     let request = query::Request::new(&message)?;
     let dsr = query::display(
@@ -66,8 +68,9 @@ fn hl7_231_2_18_dsr_echoes_query_and_ack_correlates_dsr() -> Result<(), analyte_
 }
 
 proptest::proptest! {
+    // HL7 2.3.1 §2.24.4
     #[test]
-    fn hl7_231_2_24_4_query_id_is_preserved(id in "[A-Za-z0-9]{1,10}") {
+    fn query_id_is_preserved(id in "[A-Za-z0-9]{1,10}") {
         let bytes = format!("MSH|^~\\&|A|B|C|D|20261115||QRY^Q02^QRY_Q02|q1|P|2.3.1\rQRD|20261115|D|D|{id}|||5^LI|0001^^^^^^^LCL|ORD|TEST\r");
         let parsed = Message::parse(bytes.as_bytes(), Options::default());
         proptest::prop_assert!(parsed.is_ok());
@@ -81,9 +84,9 @@ proptest::proptest! {
     }
 }
 
+// HL7 2.3.1 §2.24.4
 #[test]
-fn hl7_231_2_24_4_rejects_vendor_quantity_and_missing_department() -> Result<(), analyte_hl7::Error>
-{
+fn rejects_vendor_quantity_and_missing_department() -> Result<(), analyte_hl7::Error> {
     for definition in [
         b"QRD|20261115|D|D|tag|||RD|0001^^^^^^^LCL|ORD|TEST\r".as_slice(),
         b"QRD|20261115|D|D|tag|||5^LI|0001^^^^^^^LCL|ORD\r",
@@ -96,8 +99,9 @@ fn hl7_231_2_24_4_rejects_vendor_quantity_and_missing_department() -> Result<(),
     Ok(())
 }
 
+// HL7 2.3.1 §2.18
 #[test]
-fn hl7_231_2_18_dsr_requires_data_and_distinct_response_ids() -> Result<(), analyte_hl7::Error> {
+fn dsr_requires_data_and_distinct_ids() -> Result<(), analyte_hl7::Error> {
     let message = request("2.3.1")?;
     let request = query::Request::new(&message)?;
     let response = Response {
@@ -141,8 +145,9 @@ fn hl7_231_2_18_dsr_requires_data_and_distinct_response_ids() -> Result<(), anal
     Ok(())
 }
 
+// HL7 2.3.1 §2.24.22; HL7 2.5.1 §5.5.2
 #[test]
-fn hl7_231_2_24_22_and_251_5_5_2_unavailable_is_ae_never_nf() -> Result<(), analyte_hl7::Error> {
+fn unavailable_lookup_is_ae_never_nf() -> Result<(), analyte_hl7::Error> {
     for version in ["2.3.1", "2.5.1"] {
         let message = request(version)?;
         let reply = query::acknowledgment(
@@ -164,9 +169,9 @@ fn hl7_231_2_24_22_and_251_5_5_2_unavailable_is_ae_never_nf() -> Result<(), anal
     Ok(())
 }
 
+// HL7 2.5.1 §5.10
 #[test]
-fn hl7_251_5_10_legacy_query_scope_rejects_modern_and_undeclared_events()
--> Result<(), analyte_hl7::Error> {
+fn legacy_query_refuses_modern_and_undeclared_events() -> Result<(), analyte_hl7::Error> {
     let source = request("2.5.1")?;
     let text = std::str::from_utf8(source.raw()).map_err(|_| analyte_hl7::Error::Encoding)?;
     for kind in [
@@ -191,9 +196,9 @@ fn hl7_251_5_10_legacy_query_scope_rejects_modern_and_undeclared_events()
     Ok(())
 }
 
+// HL7 2.3.1 §2.19, §2.20
 #[test]
-fn hl7_231_2_19_2_20_undeclared_enhanced_query_forms_are_rejected() -> Result<(), analyte_hl7::Error>
-{
+fn undeclared_enhanced_query_forms_are_refused() -> Result<(), analyte_hl7::Error> {
     let source = request("2.3.1")?;
     let text = std::str::from_utf8(source.raw()).map_err(|_| analyte_hl7::Error::Encoding)?;
     for kind in ["EQQ^Q04", "VQQ^Q07", "SPQ^Q08", "ERP^R09"] {
@@ -210,9 +215,9 @@ fn hl7_231_2_19_2_20_undeclared_enhanced_query_forms_are_rejected() -> Result<()
     Ok(())
 }
 
+// HL7 2.3.1 §2.24.8, §2.20.3; HL7 2.5.1 §5.6.3
 #[test]
-fn hl7_231_2_24_8_2_20_3_and_251_5_6_3_continuation_and_erq_are_located()
--> Result<(), analyte_hl7::Error> {
+fn continuation_and_erq_are_located_errors() -> Result<(), analyte_hl7::Error> {
     for edition in ["2.3.1", "2.5.1"] {
         let source = request(edition)?;
         for (segment, extra) in [

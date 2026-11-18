@@ -3,8 +3,9 @@ use crate::test_support::*;
 use crate::*;
 use analyte_model::Reason;
 
+// ADR 0003; mutation-testing regression
 #[test]
-fn mutation_adr0003_query_parked_receipt_requires_one_retained_unresolved_target() -> TestResult {
+fn parked_receipt_query_needs_one_unresolved_target() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("store.db"))?;
     let first = receipt(b"first")?;
@@ -59,9 +60,9 @@ fn mutation_adr0003_query_parked_receipt_requires_one_retained_unresolved_target
     Ok(())
 }
 
+// ADR 0003; mutation-testing regression
 #[test]
-fn mutation_adr0003_query_connection_lookup_requires_interpretation_and_exact_scope() -> TestResult
-{
+fn connection_lookup_needs_interpretation_and_exact_scope() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("store.db"))?;
     let first = receipt(b"uninterpreted")?;
@@ -96,8 +97,9 @@ fn mutation_adr0003_query_connection_lookup_requires_interpretation_and_exact_sc
     Ok(())
 }
 
+// ADR 0003; mutation-testing regression
 #[test]
-fn mutation_adr0003_query_receipt_checks_each_retained_identity_and_digest() -> TestResult {
+fn receipt_query_checks_identity_and_each_digest() -> TestResult {
     for field in ["id", "raw_digest", "config_digest"] {
         let temp = tempfile::tempdir()?;
         let mut store = open(&temp.path().join("store.db"))?;
@@ -143,8 +145,9 @@ fn mutation_adr0003_query_receipt_checks_each_retained_identity_and_digest() -> 
     Ok(())
 }
 
+// Safety rule 8 (ADR 0003); mutation-testing regression
 #[test]
-fn mutation_rule8_query_cached_order_checks_identity_without_authorizing_resend() -> TestResult {
+fn cached_order_query_never_authorizes_resend() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("store.db"))?;
     let app = Identifier::new("app")?;
@@ -187,8 +190,9 @@ fn mutation_rule8_query_cached_order_checks_identity_without_authorizing_resend(
     Ok(())
 }
 
+// ADR 0003; mutation-testing regression
 #[test]
-fn mutation_adr0003_query_pages_preserve_evidence_and_resume_after_the_cursor() -> TestResult {
+fn query_pages_keep_evidence_and_resume_after_cursor() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("store.db"))?;
     let first = receipt(b"first")?;
@@ -255,9 +259,9 @@ fn mutation_adr0003_query_pages_preserve_evidence_and_resume_after_the_cursor() 
     Ok(())
 }
 
+// Safety rule 8 (ADR 0003); mutation-testing regression
 #[test]
-fn mutation_rule8_query_order_events_are_deliveries_and_reset_invalidates_only_the_cursor()
--> TestResult {
+fn order_events_are_deliveries_reset_clears_only_cursor() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("store.db"))?;
     let app = Identifier::new("app")?;

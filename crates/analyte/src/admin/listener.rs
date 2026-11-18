@@ -109,9 +109,9 @@ mod tests {
     use super::*;
     use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
+    // Safety rule 7 (ADR 0003)
     #[tokio::test]
-    async fn rule7_expired_connection_refuses_reads_and_writes_and_releases_slot() -> io::Result<()>
-    {
+    async fn expired_connection_refuses_io_and_releases_slot() -> io::Result<()> {
         let socket = TcpListener::bind("127.0.0.1:0").await?;
         let client = TcpStream::connect(socket.local_addr()?).await?;
         let (peer, _) = socket.accept().await?;

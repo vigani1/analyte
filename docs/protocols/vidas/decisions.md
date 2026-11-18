@@ -35,7 +35,7 @@ Wire requirements remain in [checklist.md](checklist.md).
   participation is unresolved in the research. An inferred setting could
   acknowledge the wrong extent of a transfer or reject valid installed traffic.
 - **source**: [Research §3](../../research/vidas.md#3-literal-and-literal-alternate-low-level-protocol).
-- **test**: `vidas_bci_a_3_suffixes_and_literal_boundary`.
+- **test**: `every_suffix_and_boundary_round_trips`.
 
 ## 4. Require installed timing policy rather than guessed vendor defaults
 
@@ -57,7 +57,7 @@ Wire requirements remain in [checklist.md](checklist.md).
   only a plausible fragment of the original evidence.
 - **source**: [ADR 0003](../../adr/0003-clinical-safety-rules.md), Never drop data
   and Keep the original.
-- **test**: `vidas_bci_a_3_bad_checksum_and_bounds_stop`.
+- **test**: `bad_checksum_or_oversize_is_refused`.
 
 ## 6. Keep ambiguous value and dilution fields as text
 
@@ -69,7 +69,7 @@ Wire requirements remain in [checklist.md](checklist.md).
 - **source**: [Research §4](../../research/vidas.md#4-message-format-complete-field-table-and-assay-codes)
   and [§7](../../research/vidas.md#7-annotated-example-messages);
   [ADR 0003](../../adr/0003-clinical-safety-rules.md), values and dilution policy.
-- **test**: `vidas_bci_a_4_exact_identity_unknown_tags_and_values`.
+- **test**: `keeps_exact_identity_unknown_tags_and_values`.
 
 ## 7. Select the installed sample-ID ceiling
 
@@ -80,7 +80,7 @@ Wire requirements remain in [checklist.md](checklist.md).
   the smaller by truncation could associate it with another specimen.
 - **source**: [Research §6](../../research/vidas.md#6-sample-identification--the-critical-distinction);
   [ADR 0003](../../adr/0003-clinical-safety-rules.md), string identity policy.
-- **test**: `vidas_pc_ch4_14_overlong_sample_id_never_truncated`.
+- **test**: `overlong_sample_id_is_rejected_not_truncated`.
 
 ## 8. Leave result identity unresolved
 
@@ -91,7 +91,7 @@ Wire requirements remain in [checklist.md](checklist.md).
   would either suppress legitimate work or publish repeated results.
 - **source**: [Research §6](../../research/vidas.md#6-sample-identification--the-critical-distinction);
   [ADR 0003](../../adr/0003-clinical-safety-rules.md), Three identities.
-- **test**: `vidas_literal_notes3_adr0003_stored_before_ack_unresolved_parked_no_delivery`.
+- **test**: `vidas_stores_before_ack_and_parks_unresolved`.
 
 ## 9. Do not overload origin or structural tags with specimen metadata
 
@@ -102,7 +102,7 @@ Wire requirements remain in [checklist.md](checklist.md).
   falsely claiming that the analyzer received the requested specimen context.
 - **source**: [Research §4](../../research/vidas.md#4-message-format-complete-field-table-and-assay-codes)
   and [§6](../../research/vidas.md#6-sample-identification--the-critical-distinction).
-- **test**: `vidas_bci_a_ch4_unmapped_specimen_type_rejected_before_send`.
+- **test**: `unmapped_specimen_type_is_rejected`.
 
 ## 10. Require explicit assay mappings
 
@@ -113,7 +113,7 @@ Wire requirements remain in [checklist.md](checklist.md).
   transport acceptance without a reliable application-level response.
 - **source**: [Research §4](../../research/vidas.md#4-message-format-complete-field-table-and-assay-codes);
   [ADR 0002](../../adr/0002-config-first.md), explicit mappings.
-- **test**: `vidas_bci_a_ch4_unmapped_test_rejected_before_send`.
+- **test**: `unmapped_test_is_rejected_before_send`.
 
 ## 11. Tie the data ACK to durable custody
 
@@ -124,7 +124,7 @@ Wire requirements remain in [checklist.md](checklist.md).
   even if the transfer never reaches normal completion.
 - **source**: [Research §3](../../research/vidas.md#3-literal-and-literal-alternate-low-level-protocol);
   [ADR 0010](../../adr/0010-acknowledgment-boundaries.md), VIDAS row.
-- **test**: `vidas_bci_a_3_adr0003_store_gate_and_incomplete_transfer`.
+- **test**: `ack_waits_for_store_and_keeps_incomplete_transfer`.
 
 ## 12. Park uncertain downloads instead of resending
 
@@ -135,7 +135,7 @@ Wire requirements remain in [checklist.md](checklist.md).
   and the research does not establish a safe abort or retry exchange.
 - **source**: [Research §3](../../research/vidas.md#3-literal-and-literal-alternate-low-level-protocol);
   [ADR 0003](../../adr/0003-clinical-safety-rules.md), order lifecycle rule.
-- **test**: `vidas_bci_a_5_download_never_resends_after_lost_ack`.
+- **test**: `download_never_resends_after_lost_ack`.
 
 ## 13. Treat completion as transport evidence only
 

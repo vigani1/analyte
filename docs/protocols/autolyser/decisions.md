@@ -24,7 +24,7 @@ including the distinctions between manual rules and Analyte's recovery policy.
   checksum per pair. The consistent examples support a single trailing sum;
   this is an interpretation to qualify against installed traffic.
 - **source**: Operator's Manual Rev18 §§23.1–23.3, pp.175–179.
-- **test**: `autolyser_rev18_p179_checksum_is_decimal_sum`.
+- **test**: `checksum_is_decimal_sum`.
 
 ## 3. Follow the controls field layout over the inconsistent example
 
@@ -34,7 +34,7 @@ including the distinctions between manual rules and Analyte's recovery policy.
   with its field layout. Accepting both by guessing offsets could shift a
   control flag or result into another field while still yielding plausible text.
 - **source**: Operator's Manual Rev18 §23.2, p.178.
-- **test**: `autolyser_rev18_p178_controls_are_explicit_and_values_stay_written`.
+- **test**: `controls_explicit_and_values_stay_written`.
 
 ## 4. Select the controls variant explicitly
 
@@ -45,7 +45,7 @@ including the distinctions between manual rules and Analyte's recovery policy.
   and hide the real defect.
 - **source**: Operator's Manual Rev18 §23.2, pp.177–178;
   [ADR 0002](../../adr/0002-config-first.md), installed settings.
-- **test**: `autolyser_rev18_p178_controls_are_explicit_and_values_stay_written`.
+- **test**: `controls_explicit_and_values_stay_written`.
 
 ## 5. Preserve exact identity bytes rather than normalize padding
 
@@ -56,7 +56,7 @@ including the distinctions between manual rules and Analyte's recovery policy.
   could merge two different patient codes.
 - **source**: Operator's Manual Rev18, chapter 23 introduction and §23.1, p.175;
   [ADR 0003](../../adr/0003-clinical-safety-rules.md), string identity policy.
-- **test**: `autolyser_rev18_p179_checksum_is_decimal_sum`.
+- **test**: `checksum_is_decimal_sum`.
 
 ## 6. Require a known cup position instead of autoassignment
 
@@ -67,7 +67,7 @@ including the distinctions between manual rules and Analyte's recovery policy.
   order reaches the analyzer.
 - **source**: Operator's Manual Rev18 §23.1, p.175;
   [ADR 0003](../../adr/0003-clinical-safety-rules.md), no invented sample context.
-- **test**: `autolyser_rev18_ch23_missing_cup_position_never_autoassigns_zero`.
+- **test**: `missing_cup_position_never_becomes_zero`.
 
 ## 7. Do not substitute sample ID for required patient context
 
@@ -78,7 +78,7 @@ including the distinctions between manual rules and Analyte's recovery policy.
   incomplete mapping and could join unrelated records.
 - **source**: Operator's Manual Rev18 §23.1, p.175;
   [ADR 0003](../../adr/0003-clinical-safety-rules.md), no invented identity.
-- **test**: `autolyser_rev18_ch23_missing_patient_never_uses_sample_id`.
+- **test**: `missing_patient_never_uses_sample_id`.
 
 ## 8. Retain even an empty poll response before interpreting it
 
@@ -88,7 +88,7 @@ including the distinctions between manual rules and Analyte's recovery policy.
   Losing that evidence on a crash would leave the recovery path unable to
   distinguish an answered request from an uncertain cursor advance.
 - **source**: [ADR 0010](../../adr/0010-acknowledgment-boundaries.md), Autolyser row.
-- **test**: `autolyser_rev18_p177_empty_queue_still_requires_storage`.
+- **test**: `empty_queue_still_requires_storage`.
 
 ## 9. Recover a corrupt response through L before further cursor movement
 
@@ -99,7 +99,7 @@ including the distinctions between manual rules and Analyte's recovery policy.
   permanently step past the report whose evidence was corrupt.
 - **source**: Operator's Manual Rev18 §23.2, p.177;
   [ADR 0010](../../adr/0010-acknowledgment-boundaries.md), poll custody policy.
-- **test**: `autolyser_rev18_p177_l_empty_does_not_resolve_corruption`.
+- **test**: `l_empty_does_not_resolve_corruption`.
 
 ## 10. Persist a poll guard across connection and process lifetimes
 
@@ -111,7 +111,7 @@ including the distinctions between manual rules and Analyte's recovery policy.
   recoverable report with the next one before custody is settled.
 - **source**: [ADR 0010](../../adr/0010-acknowledgment-boundaries.md), uncertain R
   reconciliation; [ADR 0003](../../adr/0003-clinical-safety-rules.md), durable evidence.
-- **test**: `autolyser_rev18_p175_adr0003_uncertain_r_blocks_restart_until_operator_reconciliation`.
+- **test**: `autolyser_uncertain_r_blocks_restart_until_reconciled`.
 
 ## 11. Make timing and byte limits installation policy
 
@@ -122,7 +122,7 @@ including the distinctions between manual rules and Analyte's recovery policy.
   keeping an incomplete response alive indefinitely.
 - **source**: Operator's Manual Rev18 §§23.1–23.2, pp.175–178;
   [ADR 0003](../../adr/0003-clinical-safety-rules.md), bounded operations.
-- **test**: `autolyser_rev18_p177_partial_timeout_and_storage_failure_never_resend`.
+- **test**: `partial_timeout_and_store_failure_never_resend`.
 
 ## 12. Do not retry an uncertain insertion
 
@@ -132,7 +132,7 @@ including the distinctions between manual rules and Analyte's recovery policy.
   lost. Retrying would make the order's external effect depend on undocumented
   duplicate/clone behavior instead of retained acceptance evidence.
 - **source**: [ADR 0003](../../adr/0003-clinical-safety-rules.md), order lifecycle rule.
-- **test**: `autolyser_rev18_p175_lost_download_reply_is_uncertain_without_retry`.
+- **test**: `lost_download_reply_is_uncertain_without_retry`.
 
 ## 13. Park results whose run identity cannot be established
 
@@ -147,7 +147,7 @@ including the distinctions between manual rules and Analyte's recovery policy.
 - **source**: Operator's Manual Rev18 §23.2, pp.177–178 and §23.5,
   transmission variables p.183;
   [ADR 0003](../../adr/0003-clinical-safety-rules.md), Three identities and values.
-- **test**: `autolyser_rev18_p175_179_adr0003_corrupt_stored_blocks_r_until_valid_l`.
+- **test**: `autolyser_corrupt_reply_blocks_r_until_valid_l`.
 
 ## 14. Finish pending custody after disconnect without reopening the dialog
 
@@ -158,4 +158,4 @@ including the distinctions between manual rules and Analyte's recovery policy.
   commit from reviving a connection whose external outcome is already uncertain.
 - **source**: [ADR 0001](../../adr/0001-rust-and-layered-architecture.md), host and
   dialog ownership; [ADR 0003](../../adr/0003-clinical-safety-rules.md), Keep the original.
-- **test**: `autolyser_rev18_p175_disconnect_during_commit_cannot_reopen_connection`.
+- **test**: `disconnect_during_commit_never_reopens`.

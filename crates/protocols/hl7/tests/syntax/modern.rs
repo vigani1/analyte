@@ -24,8 +24,9 @@ fn observation(field: usize, value: &str) -> Result<String, Error> {
     Ok(format!("OBR|1||000AbC\rOBX|{}\r", fields.join("|")))
 }
 
+// HL7 2.8.2 §2.A.13; HL7 2.9.1 §2A.2.13
 #[test]
-fn hl7_2_8_2_s2_a_13_and_2_9_1_s2a_2_13_third_tuple_metadata_stays_exact() -> Result<(), Error> {
+fn cwe_third_tuple_metadata_stays_exact() -> Result<(), Error> {
     let mut parts = [""; 22];
     parts[0] = "SYN";
     parts[2] = "LOCAL";
@@ -65,8 +66,9 @@ fn hl7_2_8_2_s2_a_13_and_2_9_1_s2a_2_13_third_tuple_metadata_stays_exact() -> Re
     Ok(())
 }
 
+// HL7 2.8.2 §2.5.5.3; HL7 2.9.1 §2.4.5.3
 #[test]
-fn hl7_2_8_2_s2_5_5_3_and_2_9_1_s2_4_5_3_conformance_is_not_a_maximum() -> Result<(), Error> {
+fn conformance_length_is_not_a_maximum() -> Result<(), Error> {
     let long = "X".repeat(300);
     for edition in ["2.8.2", "2.9.1"] {
         validate_result_fields(&message(
@@ -111,8 +113,9 @@ fn hl7_2_8_2_s2_5_5_3_and_2_9_1_s2_4_5_3_conformance_is_not_a_maximum() -> Resul
     Ok(())
 }
 
+// HL7 2.8.2 §2.A.13.3, §2.A.13.7, §2.A.13.12; HL7 2.9.1 §2A.2.13
 #[test]
-fn hl7_2_8_2_s2_a_13_3_7_12_and_2_9_1_s2a_2_13_coding_authority_not_guessed() -> Result<(), Error> {
+fn cwe_coding_authority_is_not_guessed() -> Result<(), Error> {
     for edition in ["2.8.2", "2.9.1"] {
         for invalid in [
             "SYN",
@@ -146,8 +149,9 @@ fn hl7_2_8_2_s2_a_13_3_7_12_and_2_9_1_s2a_2_13_coding_authority_not_guessed() ->
     Ok(())
 }
 
+// HL7 2.8.2 §7.4.1; HL7 2.9.1 §7.4.1
 #[test]
-fn hl7_2_8_2_and_2_9_1_s7_4_1_withdrawn_obr_fields_are_refused() -> Result<(), Error> {
+fn withdrawn_obr_fields_are_refused() -> Result<(), Error> {
     for edition in ["2.8.2", "2.9.1"] {
         for field in [5, 6, 14, 15, 27, 16, 28, 32, 33, 34, 35] {
             let mut parts = vec![""; field];
@@ -165,8 +169,9 @@ fn hl7_2_8_2_and_2_9_1_s7_4_1_withdrawn_obr_fields_are_refused() -> Result<(), E
     Ok(())
 }
 
+// HL7 2.8.2 §2.14.8; HL7 2.9.1 §2.13.8
 #[test]
-fn hl7_2_8_2_s2_14_8_and_2_9_1_s2_13_8_withdrawn_msa_err_fields() -> Result<(), Error> {
+fn withdrawn_msa_and_err_fields_are_refused() -> Result<(), Error> {
     for edition in [Version::V282, Version::V291] {
         for field in [3, 5, 6] {
             let mut parts = vec![""; field];
@@ -194,8 +199,9 @@ fn hl7_2_8_2_s2_14_8_and_2_9_1_s2_13_8_withdrawn_msa_err_fields() -> Result<(), 
     Ok(())
 }
 
+// HL7 2.9.1 §2.13.9.15, §2.13.9.16
 #[test]
-fn hl7_2_9_1_s2_13_9_15_16_ack_requests_are_paired() -> Result<(), Error> {
+fn ack_type_requests_must_be_paired() -> Result<(), Error> {
     for (accept, application, valid) in [
         ("", "", true),
         ("AL", "NE", true),
@@ -215,8 +221,9 @@ fn hl7_2_9_1_s2_13_9_15_16_ack_requests_are_paired() -> Result<(), Error> {
     Ok(())
 }
 
+// HL7 2.8.2 §2.14.9; HL7 2.9.1 §2.13.9
 #[test]
-fn hl7_2_8_2_s2_14_9_and_2_9_1_s2_13_9_ack_preserves_exact_edition() -> Result<(), Error> {
+fn ack_keeps_exact_edition_and_delimiters() -> Result<(), Error> {
     for edition in ["2.8.2", "2.9.1"] {
         let input = message(edition, "^~\\&#", "")?;
         let ack = acknowledgment(
@@ -260,8 +267,9 @@ fn hl7_2_8_2_s2_14_9_and_2_9_1_s2_13_9_ack_preserves_exact_edition() -> Result<(
     Ok(())
 }
 
+// HL7 2.8.2 §2.5.5.2; HL7 2.9.1 §2.4.5.2
 #[test]
-fn hl7_2_8_2_s2_5_5_2_and_2_9_1_s2_4_5_2_truncation_parks_before_mapping() -> Result<(), Error> {
+fn truncated_value_parks_before_mapping() -> Result<(), Error> {
     for edition in ["2.8.2", "2.9.1"] {
         let input = message(edition, "^~\\&#", &observation(5, "0.1#")?)?;
         assert!(matches!(
@@ -279,8 +287,9 @@ fn hl7_2_8_2_s2_5_5_2_and_2_9_1_s2_4_5_2_truncation_parks_before_mapping() -> Re
     Ok(())
 }
 
+// HL7 2.8.2 §5.10.2; HL7 2.9.1 §5.9.2
 #[test]
-fn hl7_2_8_2_s5_10_2_and_2_9_1_s5_9_2_no_typed_legacy_query() -> Result<(), Error> {
+fn withdrawn_legacy_query_has_no_typed_view() -> Result<(), Error> {
     for (edition, section) in [("2.8.2", "5.10.2"), ("2.9.1", "5.9.2")] {
         let input = message(edition, "^~\\&", "")?;
         assert!(
@@ -290,9 +299,9 @@ fn hl7_2_8_2_s5_10_2_and_2_9_1_s5_9_2_no_typed_legacy_query() -> Result<(), Erro
     Ok(())
 }
 
+// HL7 2.8.2 §2.A.22; HL7 2.9.1 §2A.2.22
 #[test]
-fn hl7_2_8_2_s2_a_22_and_2_9_1_s2a_2_22_scalar_dtm_and_withdrawn_value_types() -> Result<(), Error>
-{
+fn dtm_is_scalar_and_ce_ts_are_refused() -> Result<(), Error> {
     for edition in ["2.8.2", "2.9.1"] {
         for field in [12, 14, 19] {
             for time in [
@@ -320,8 +329,9 @@ fn hl7_2_8_2_s2_a_22_and_2_9_1_s2a_2_22_scalar_dtm_and_withdrawn_value_types() -
     Ok(())
 }
 
+// HL7 2.8.2 §2.14.9.10; HL7 2.9.1 §2.13.9.10
 #[test]
-fn hl7_2_8_2_s2_14_9_10_and_2_9_1_s2_13_9_10_control_profile_limits() -> Result<(), Error> {
+fn control_id_limits_and_reserved_characters() -> Result<(), Error> {
     for edition in ["2.8.2", "2.9.1"] {
         for (id, accepted) in [
             ("X".repeat(199), true),
@@ -360,8 +370,9 @@ fn hl7_2_8_2_s2_14_9_10_and_2_9_1_s2_13_9_10_control_profile_limits() -> Result<
     Ok(())
 }
 
+// HL7 2.8.2 §7.4.2.12; HL7 2.9.1 §7.4.2.12
 #[test]
-fn hl7_2_8_2_and_2_9_1_s7_4_2_12_range_date_requires_reference_range() -> Result<(), Error> {
+fn range_date_requires_reference_range() -> Result<(), Error> {
     for edition in ["2.8.2", "2.9.1"] {
         let body = observation(12, "20261116")?;
         validate_result_fields(&message(edition, "^~\\&", &body)?)?;
@@ -377,8 +388,9 @@ fn hl7_2_8_2_and_2_9_1_s7_4_2_12_range_date_requires_reference_range() -> Result
     Ok(())
 }
 
+// HL7 2.8.2 §2.A.88; HL7 2.9.1 §2A.2.88
 #[test]
-fn hl7_2_8_2_s2_a_88_and_2_9_1_s2a_2_88_unselected_xcn_extensions_stay_raw() -> Result<(), Error> {
+fn unselected_xcn_extensions_stay_raw() -> Result<(), Error> {
     let mut fields = [""; 16];
     let mut name = [""; 25];
     name[0] = "person";
@@ -410,8 +422,9 @@ fn hl7_2_8_2_s2_a_88_and_2_9_1_s2a_2_88_unselected_xcn_extensions_stay_raw() -> 
     Ok(())
 }
 
+// HL7 2.8.2 §2.14.9.18; HL7 2.9.1 §2.13.9.18
 #[test]
-fn hl7_2_8_2_s2_14_9_18_and_2_9_1_s2_13_9_18_utf8_and_literal_p() -> Result<(), Error> {
+fn utf8_and_literal_truncation_escape_stay_exact() -> Result<(), Error> {
     let options = Options {
         charset: Charset::Utf8,
         ..Options::default()
@@ -462,8 +475,9 @@ fn hl7_2_8_2_s2_14_9_18_and_2_9_1_s2_13_9_18_utf8_and_literal_p() -> Result<(), 
 }
 
 // HL7 2.8.2 section 2.A.50 and 7.4.2.4; 2.9.1 section 2A.2.50 and 7.4.2.4.
+// HL7 2.8.2 §2.A.50; HL7 2.9.1 §7.4.2.4
 #[test]
-fn hl7_282_s2_a_50_291_s7_4_2_4_enhanced_og_requires_full_grouping_contract() -> Result<(), Error> {
+fn enhanced_observation_group_needs_full_contract() -> Result<(), Error> {
     for edition in ["2.8.2", "2.9.1"] {
         for group in ["^1^1", "^1^2", "legacy^1", "legacy^^^isolate"] {
             let message = message(edition, "^~\\&", &observation(4, group)?)?;
@@ -487,8 +501,9 @@ fn hl7_282_s2_a_50_291_s7_4_2_4_enhanced_og_requires_full_grouping_contract() ->
 }
 
 // HL7 2.9.1 section 2.8.3.2: an application acknowledgment cannot request another.
+// HL7 2.9.1 §2.8.3.2
 #[test]
-fn hl7_291_s2_8_3_2_application_ack_declares_ne_without_recursion() -> Result<(), Error> {
+fn application_ack_declares_ne_without_recursion() -> Result<(), Error> {
     let raw = b"MSH|^~\\&|S|F|R|F|20261116||ORU^R01^ORU_R01|id|P|2.9.1|||AL|AL\r";
     let input = Message::parse(raw, Options::default())?;
     for code in [AckCode::Ca, AckCode::Aa, AckCode::Ae, AckCode::Ar] {

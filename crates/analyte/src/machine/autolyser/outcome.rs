@@ -74,16 +74,18 @@ mod tests {
         error.into()
     }
 
+    // ADR 0004
     #[test]
-    fn adr0004_autolyser_write_failure_stores_write_failed() {
+    fn autolyser_write_failure_stores_write_failed() {
         for trigger in [Trigger::Exchange, Trigger::Deadline] {
             let write = Error::from(WriteError::DeadlineOverflow);
             assert_eq!(session_end(trigger, &Err(write)), AutolyserEnd::WriteFailed);
         }
     }
 
+    // ADR 0004
     #[tokio::test(start_paused = true)]
-    async fn adr0004_autolyser_storage_failure_stores_failed_or_timeout() {
+    async fn autolyser_storage_failure_stores_failed_or_timeout() {
         let elapsed = tokio::time::timeout(Duration::ZERO, std::future::pending::<()>())
             .await
             .unwrap_err();
@@ -115,8 +117,9 @@ mod tests {
         }
     }
 
+    // ADR 0004
     #[test]
-    fn adr0004_autolyser_timeout_stores_transfer_timeout() {
+    fn autolyser_timeout_stores_transfer_timeout() {
         assert_eq!(
             session_end(Trigger::Deadline, &Ok(())),
             AutolyserEnd::TransferTimeout
@@ -128,8 +131,9 @@ mod tests {
         );
     }
 
+    // ADR 0004
     #[test]
-    fn adr0004_autolyser_session_end_follows_its_input() {
+    fn autolyser_session_end_follows_its_input() {
         for (trigger, code) in [
             (Trigger::Exchange, AutolyserEnd::TransferError),
             (Trigger::Disconnected, AutolyserEnd::TransferDisconnected),
@@ -148,8 +152,9 @@ mod tests {
         );
     }
 
+    // ADR 0004
     #[test]
-    fn adr0004_autolyser_parked_replies_keep_their_interruption() {
+    fn autolyser_parked_replies_keep_their_interruption() {
         use analyte_dialog::autolyser::Error as Dialog;
         for (trigger, expected) in [
             (Trigger::Deadline, "Autolyser-transfer-timeout-incomplete"),

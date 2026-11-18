@@ -2,8 +2,9 @@
 use super::*;
 use analyte_fixtures::ConfigEdit as _;
 
+// IHE PaLM TF-2b §C.7, OBX-11
 #[test]
-fn law_tf2b_c7_obx_11_closed_status_and_explicit_correction_only() -> TestResult {
+fn obx11_closed_statuses_only_c_corrects() -> TestResult {
     for status in [
         ResultStatus::Final,
         ResultStatus::Preliminary,
@@ -39,8 +40,9 @@ fn law_tf2b_c7_obx_11_closed_status_and_explicit_correction_only() -> TestResult
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.7, OBX-14, OBX-19
 #[test]
-fn law_tf2b_c7_obx_14_19_seconds_timestamps_and_direction() -> TestResult {
+fn obx14_obx19_second_timestamps_by_direction() -> TestResult {
     for value in ["20240229120000", "20260101120000"] {
         both("OBX", &[(19, value)], true)?;
         check(
@@ -95,8 +97,9 @@ fn law_tf2b_c7_obx_14_19_seconds_timestamps_and_direction() -> TestResult {
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.7, OBX-16
 #[test]
-fn law_tf2b_c7_obx_16_xcn_null_observer_and_repetition_limits() -> TestResult {
+fn obx16_observer_nulls_and_repetitions() -> TestResult {
     for value in ["operator", "\"\"", "operator~\"\"", &"\u{e9}".repeat(15)] {
         both("OBX", &[(16, value)], true)?;
     }
@@ -121,8 +124,9 @@ fn law_tf2b_c7_obx_16_xcn_null_observer_and_repetition_limits() -> TestResult {
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.7, OBX-18
 #[test]
-fn law_tf2b_c7_obx_18_first_second_later_equipment_ei_rules() -> TestResult {
+fn obx18_equipment_repetition_rules() -> TestResult {
     for value in [
         "model^maker~serial^maker",
         "model^maker^1.2.3^ISO~serial^maker~site",
@@ -181,8 +185,9 @@ fn law_tf2b_c7_obx_18_first_second_later_equipment_ei_rules() -> TestResult {
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.7, OBX-21, OBX-29
 #[test]
-fn law_tf2b_c7_obx_21_available_ei_identity_and_29_type_subset() -> TestResult {
+fn obx21_instance_id_and_obx29_type_subset() -> TestResult {
     for value in ["", "instance", &"\u{e9}".repeat(50)] {
         both("OBX", &[(21, value)], true)?;
     }
@@ -213,8 +218,9 @@ fn law_tf2b_c7_obx_21_available_ei_identity_and_29_type_subset() -> TestResult {
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.5
 #[test]
-fn law_tf2b_c5_nte_required_singletons_source_and_truncatable_comment() -> TestResult {
+fn nte_required_fields_and_truncatable_comment() -> TestResult {
     both("NTE", &[], true)?;
     both("NTE", &[(1, "9999"), (3, &"\u{e9}".repeat(300))], true)?;
     for value in ["", "0", "-1", "10000", "\"\"", "1^2"] {
@@ -247,8 +253,9 @@ fn law_tf2b_c5_nte_required_singletons_source_and_truncatable_comment() -> TestR
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.5, NTE-4
 #[test]
-fn law_tf2b_c5_nte_4_re_ce_components_and_vendor_system() -> TestResult {
+fn nte4_comment_type_and_vendor_system() -> TestResult {
     for value in [
         "",
         "note^^99LAB",
@@ -271,8 +278,9 @@ fn law_tf2b_c5_nte_4_re_ce_components_and_vendor_system() -> TestResult {
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.5
 #[test]
-fn law_tf2b_c5_nte_sequence_is_local_to_consecutive_group() -> TestResult {
+fn nte_sequence_restarts_per_note_group() -> TestResult {
     let first = fields("NTE", ControlDirection::Receive, &[])?;
     let second = fields("NTE", ControlDirection::Receive, &[(1, "2")])?;
     let good = result_message(&[], &format!("{first}{second}"))?;
@@ -293,8 +301,9 @@ fn law_tf2b_c5_nte_sequence_is_local_to_consecutive_group() -> TestResult {
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.2, §2.2.3
 #[test]
-fn law_tf2b_c2_inv_required_ce_and_2_2_3_identifier_lot_conformance() -> TestResult {
+fn inv_required_codes_and_lot_identifiers() -> TestResult {
     check("INV", &[], Profile::receive(), ControlDirection::Receive)?;
     check(
         "INV",
@@ -385,8 +394,9 @@ fn law_tf2b_c2_inv_required_ce_and_2_2_3_identifier_lot_conformance() -> TestRes
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.2, INV-4, INV-12
 #[test]
-fn law_tf2b_c2_inv_4_12_re_an_container_expiry_and_option_direction() -> TestResult {
+fn inv4_container_and_inv12_expiry_by_direction() -> TestResult {
     check(
         "INV",
         &[(4, "package^^99LAB"), (12, "20240229120000")],
@@ -453,8 +463,9 @@ fn law_tf2b_c2_inv_4_12_re_an_container_expiry_and_option_direction() -> TestRes
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.2
 #[test]
-fn law_tf2b_c2_control_inventory_co_predicate_and_result_ownership() -> TestResult {
+fn control_inventory_co_type_and_ownership() -> TestResult {
     let inventory = fields("INV", ControlDirection::Receive, &[(3, "CO^^HL70384")])?;
     let result = result_message(&[], &inventory)?;
     law::Results::new(&result)?;
@@ -484,8 +495,9 @@ fn law_tf2b_c2_control_inventory_co_predicate_and_result_ownership() -> TestResu
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.7
 #[test]
-fn law_tf2b_c7_same_primary_identity_requires_og_group_sequence() -> TestResult {
+fn same_primary_identity_needs_og_sequence() -> TestResult {
     let second = fields(
         "OBX",
         ControlDirection::Receive,
@@ -508,8 +520,9 @@ fn law_tf2b_c7_same_primary_identity_requires_og_group_sequence() -> TestResult 
 }
 
 // PaLM TF-2b Rev11 C.7, Table C.7-4: complete identities must distinguish OBXs.
+// IHE PaLM TF-2b §C.7
 #[test]
-fn law_tf2b_c7_repeated_observation_requires_unique_complete_og() -> TestResult {
+fn repeated_observation_needs_unique_og() -> TestResult {
     let second = fields(
         "OBX",
         ControlDirection::Receive,

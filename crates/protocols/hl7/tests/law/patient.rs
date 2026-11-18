@@ -57,8 +57,9 @@ fn both(id: &str, changes: &[(usize, &str)], valid: bool) -> TestResult {
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.9, PID-3, PID-5
 #[test]
-fn law_tf2b_c9_pid_3_5_r_singleton_null_when_not_applicable() -> TestResult {
+fn pid3_pid5_single_value_or_explicit_null() -> TestResult {
     for number in [3, 5] {
         both("PID", &[], true)?;
         both("PID", &[(number, "\"\"")], true)?;
@@ -71,8 +72,9 @@ fn law_tf2b_c9_pid_3_5_r_singleton_null_when_not_applicable() -> TestResult {
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.9, PID-3
 #[test]
-fn law_tf2b_c9_pid_3_cx_id_and_assigning_authority_lengths_types_predicate() -> TestResult {
+fn pid3_identifier_and_authority_limits() -> TestResult {
     for value in [
         "000Ab",
         "000Ab^^^Local",
@@ -134,8 +136,9 @@ fn law_tf2b_c9_pid_3_cx_id_and_assigning_authority_lengths_types_predicate() -> 
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.9, PID-3.4
 #[test]
-fn law_tf2b_c9_pid_3_4_all_three_authority_names_require_a_trusted_binding() -> TestResult {
+fn pid3_authority_needs_trusted_binding() -> TestResult {
     let bindings = [AuthorityBinding::new(b"Local", b"1.2.3", b"ISO")?];
     let profile = Profile::receive().with_authorities(&bindings);
     for direction in [ControlDirection::Send, ControlDirection::Receive] {
@@ -172,8 +175,9 @@ fn law_tf2b_c9_pid_3_4_all_three_authority_names_require_a_trusted_binding() -> 
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.9, PID-5
 #[test]
-fn law_tf2b_c9_pid_5_xpn_legal_name_components_hash_lengths_preserve_full_text() -> TestResult {
+fn pid5_legal_name_keeps_full_text() -> TestResult {
     both("PID", &[(5, "^^^^^^L")], true)?;
     both("PID", &[(5, "Family^Given^Middle^Jr^^^L")], true)?;
     for component in [1, 2, 3, 4] {
@@ -196,8 +200,9 @@ fn law_tf2b_c9_pid_5_xpn_legal_name_components_hash_lengths_preserve_full_text()
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.9, PID-7
 #[test]
-fn law_tf2b_c9_pid_7_re_ts_date_or_seconds_no_zone() -> TestResult {
+fn pid7_birth_date_or_seconds_without_zone() -> TestResult {
     for value in ["", "20240229", "20240229123059"] {
         both("PID", &[(7, value)], true)?;
     }
@@ -221,8 +226,9 @@ fn law_tf2b_c9_pid_7_re_ts_date_or_seconds_no_zone() -> TestResult {
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.9, PID-8
 #[test]
-fn law_tf2b_c9_pid_8_re_sex_subset_singleton() -> TestResult {
+fn pid8_sex_code_subset() -> TestResult {
     for value in ["", "F", "M", "U"] {
         both("PID", &[(8, value)], true)?;
     }
@@ -232,8 +238,9 @@ fn law_tf2b_c9_pid_8_re_sex_subset_singleton() -> TestResult {
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.9, PID-10, PID-35
 #[test]
-fn law_tf2b_c9_pid_10_35_re_ce_cwe_components_systems_and_lengths() -> TestResult {
+fn pid10_pid35_coded_components_and_lengths() -> TestResult {
     for number in [10, 35] {
         for value in ["", "local^^99LAB", "local^Synthetic^99a1Z"] {
             both("PID", &[(number, value)], true)?;
@@ -276,8 +283,9 @@ fn law_tf2b_c9_pid_10_35_re_ce_cwe_components_systems_and_lengths() -> TestResul
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.10, PV1-2
 #[test]
-fn law_tf2b_c10_pv1_2_r_patient_class_subset() -> TestResult {
+fn pv1_patient_class_subset() -> TestResult {
     for value in ["E", "I", "O", "P", "R", "B", "C", "N", "U"] {
         both("PV1", &[(2, value)], true)?;
     }
@@ -287,8 +295,9 @@ fn law_tf2b_c10_pv1_2_r_patient_class_subset() -> TestResult {
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.10, PV1-3
 #[test]
-fn law_tf2b_c10_pv1_3_re_pl_room_r_hash_16_preserved() -> TestResult {
+fn pv1_room_kept_untruncated() -> TestResult {
     for value in ["", "^Room", "^12345678901234567"] {
         both("PV1", &[(3, value)], true)?;
     }
@@ -299,8 +308,9 @@ fn law_tf2b_c10_pv1_3_re_pl_room_r_hash_16_preserved() -> TestResult {
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.9, §C.10, §2.2
 #[test]
-fn law_tf2b_c9_c10_2_2_x_fields_components_and_patient_option() -> TestResult {
+fn patient_x_fields_and_patient_option() -> TestResult {
     for (id, supported) in [("PID", vec![3, 5, 7, 8, 10, 35]), ("PV1", vec![2, 3])] {
         both(id, &[], true)?;
         for field in 1..=39 {
@@ -354,8 +364,9 @@ fn law_tf2b_c9_c10_2_2_x_fields_components_and_patient_option() -> TestResult {
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.9, §C.10
 #[test]
-fn law_tf2b_c9_c10_builder_and_receive_validate_profile() -> TestResult {
+fn patient_builder_and_receive_check_profile() -> TestResult {
     use analyte_hl7::Response;
     use law::{Address, Awos, PatientInfo, Visit, WorkAction};
     let awos = Awos::new(
@@ -449,8 +460,9 @@ fn law_tf2b_c9_c10_builder_and_receive_validate_profile() -> TestResult {
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.9, PID-3
 #[test]
-fn law_tf2b_c9_pid_3_cx_hd_aggregate_limits_and_nested_x() -> TestResult {
+fn pid3_total_length_and_nested_x() -> TestResult {
     let namespace = "n".repeat(20);
     let uid = format!("2.{}", "1".repeat(197));
     let bindings = [AuthorityBinding::new(

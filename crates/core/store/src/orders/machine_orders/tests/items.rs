@@ -2,8 +2,9 @@
 use super::*;
 use crate::test_support::assert_constraint;
 
+// ADR 0003, ADR 0004
 #[test]
-fn adr0003_0004_items_are_atomic_retained_and_never_reserved_again() -> TestResult {
+fn items_are_atomic_retained_never_reserved_again() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("items.db");
     let mut store = open(&path)?;
@@ -78,8 +79,9 @@ fn adr0003_0004_items_are_atomic_retained_and_never_reserved_again() -> TestResu
     Ok(())
 }
 
+// ADR 0008
 #[test]
-fn adr0008_every_item_aggregation_row_is_atomic_and_emits_one_event() -> TestResult {
+fn item_aggregation_is_atomic_and_emits_one_event() -> TestResult {
     use ItemDecision::{Accepted as A, Rejected as R, Sent as S, Uncertain as U};
     for (decisions, expected) in [
         ([A, A], OrderState::Accepted),
@@ -135,8 +137,9 @@ fn adr0008_every_item_aggregation_row_is_atomic_and_emits_one_event() -> TestRes
     Ok(())
 }
 
+// ADR 0003, ADR 0008
 #[test]
-fn adr0003_0008_item_reasons_are_lossless_when_aggregate_summary_is_bounded() -> TestResult {
+fn item_reasons_lossless_when_summary_is_bounded() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("reasons.db"))?;
     let record = reserve_two(&mut store)?;
@@ -154,8 +157,9 @@ fn adr0003_0008_item_reasons_are_lossless_when_aggregate_summary_is_bounded() ->
 }
 
 // ADR 0003 rule 8: an aggregate Uncertain state never authorizes rewriting a terminal item.
+// ADR 0003 rule 8
 #[test]
-fn adr0003_rule8_operator_reconciliation_checks_items_and_rolls_back() -> TestResult {
+fn operator_reconciliation_checks_items_and_rolls_back() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("reconcile-items.db"))?;
     let record = reserve_two(&mut store)?;
@@ -225,9 +229,9 @@ fn adr0003_rule8_operator_reconciliation_checks_items_and_rolls_back() -> TestRe
 }
 
 // ADR 0003 rule 8 / ORDERS.md: refusal restores retained item state, not a past aggregate snapshot.
+// ADR 0003 rule 8; mutation-testing regression
 #[test]
-fn mutation_adr0003_rule8_order_item_limits_keep_exact_coverage_and_accept_the_host_ceiling()
--> TestResult {
+fn item_limits_keep_coverage_and_accept_host_ceiling() -> TestResult {
     for (count, shape, succeeds) in [
         (0, "together", false),
         (100, "together", true),
@@ -327,9 +331,9 @@ fn mutation_adr0003_rule8_order_item_limits_keep_exact_coverage_and_accept_the_h
     Ok(())
 }
 
+// ADR 0003 rule 8; mutation-testing regression
 #[test]
-fn mutation_adr0003_rule8_order_item_completion_has_its_own_clock_and_exchange_state() -> TestResult
-{
+fn item_completion_has_own_clock_and_exchange_state() -> TestResult {
     for now in [100, 101, 102] {
         let temp = tempfile::tempdir()?;
         let mut store = open(&temp.path().join("item-exchange-clock.db"))?;
@@ -406,8 +410,9 @@ fn mutation_adr0003_rule8_order_item_completion_has_its_own_clock_and_exchange_s
     Ok(())
 }
 
+// ADR 0003 rule 8; mutation-testing regression
 #[test]
-fn mutation_adr0003_rule8_order_item_outcomes_remain_bound_to_their_exact_index() -> TestResult {
+fn item_outcomes_stay_bound_to_exact_index() -> TestResult {
     let app = Identifier::new("app")?;
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("item-index.db");
@@ -499,8 +504,9 @@ fn mutation_adr0003_rule8_order_item_outcomes_remain_bound_to_their_exact_index(
     Ok(())
 }
 
+// IHE PaLM TF-2b §C.8; ADR 0003, ADR 0011
 #[test]
-fn palm_tf2b_c8_adr0003_0011_projection_restart_keeps_command_state_and_no_results() -> TestResult {
+fn projection_restart_keeps_command_state_no_results() -> TestResult {
     use analyte_model::AwosExecution;
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("execution.db");

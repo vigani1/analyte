@@ -3,8 +3,9 @@ use super::*;
 use analyte_fixtures::ConfigEdit as _;
 
 // TF-2b 2.2.4.10 and C.14: requested and applied priorities retain their supplied coding.
+// IHE PaLM TF-2b §C.14
 #[test]
-fn law_tf2b_c14_requested_and_applied_priority_preserve_exact_code() -> TestResult {
+fn requested_and_applied_priority_keep_exact_code() -> TestResult {
     for code in [
         b"S^Urgent^HL70485".as_slice(),
         b"vendor-7^Bench priority^99LAB",
@@ -64,8 +65,9 @@ fn law_tf2b_c14_requested_and_applied_priority_preserve_exact_code() -> TestResu
 }
 
 // TF-2b C.13-8/C.13-9: no clinical permission is inferred from display text.
+// IHE PaLM TF-2b Table C.13-9
 #[test]
-fn law_tf2b_c13_9_repeat_status_output_preserves_profiled_tuple() -> TestResult {
+fn repeat_status_output_keeps_supplied_code() -> TestResult {
     for code in [
         b"O^Original, first run^HL70389".as_slice(),
         b"R^Repeated without dilution^HL70389",

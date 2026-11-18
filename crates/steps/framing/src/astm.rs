@@ -536,9 +536,9 @@ pub fn decode(
 #[cfg(test)]
 mod evidence_tests {
     use super::*;
+    // CLSI LIS01-A2 §3.3.2, §6.3.1.1, §8.3.1.1
     #[test]
-    fn lis01_a2_3_3_2_6_3_1_1_8_3_1_1_record_fragment_spans_keep_original_bytes()
-    -> Result<(), Error> {
+    fn record_fragment_spans_keep_original_bytes() -> Result<(), Error> {
         for text in [b"H|x\r".as_slice(), b"H|x\rP|1\r", b"H|x", b"H|x\rP|"] {
             let wires = encode(text, FrameNumber::FIRST, Limit::default())?;
             for wire in wires {

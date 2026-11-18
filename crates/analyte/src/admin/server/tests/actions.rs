@@ -2,9 +2,9 @@
 use super::pages::{csrf, encode, login};
 use super::*;
 
+// Plan §11
 #[tokio::test]
-async fn plan11_admin_reprocess_resend_confirmation_csrf_actor_and_audit_failure_atomicity()
--> Result<(), Error> {
+async fn reprocess_and_resend_need_confirmation_csrf_and_audit() -> Result<(), Error> {
     let directory = crate::admin::private_tempdir()?;
     let root = directory.path();
     let (program, store, receipt, parked, config_path) = seed_parked_receipt(root).await?;
@@ -312,8 +312,9 @@ async fn start_action_server(
     Ok((state, stop, owner, host))
 }
 
+// ADR 0013 items 4 and 7
 #[tokio::test]
-async fn adr0013_items4_7_retention_page_and_receipt_hold_csrf_audit() -> Result<(), Error> {
+async fn retention_page_and_receipt_hold_are_audited() -> Result<(), Error> {
     let directory = crate::admin::private_tempdir()?;
     let (program, store, receipt, _, config_path) = seed_parked_receipt(directory.path()).await?;
     let bearer = super::super::super::rotate_token(program.data_directory())?;

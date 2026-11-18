@@ -36,8 +36,9 @@ fn fixture_deadline() -> Result<std::time::Instant, Error> {
 
 // Plan section 11: the actual program refuses absent tokens before opening the
 // endpoint, owns the enabled server, and joins it before closing the store.
+// Plan §11
 #[tokio::test(flavor = "multi_thread")]
-async fn plan11_service_admin_missing_token_and_owned_lifecycle() -> Result<(), Error> {
+async fn service_refuses_missing_token_and_owns_admin_server() -> Result<(), Error> {
     let directory = crate::admin::private_tempdir()?;
     std::fs::write(
         directory.path().join("machine.toml"),
@@ -168,8 +169,9 @@ fn headers_present(response: &str) {
 
 // Plan sections 11/12 and rule 10: real HTTP proves authorization, escaping,
 // bounded metadata reads, honest health and no credential/payload in logs.
+// Plan §11, §12
 #[tokio::test(flavor = "multi_thread")]
-async fn plan11_plan12_overview_auth_headers_escaping_and_shutdown() -> Result<(), Error> {
+async fn overview_checks_auth_escapes_and_shuts_down_bounded() -> Result<(), Error> {
     let logs = crate::runtime::log_capture::init();
     let directory = crate::admin::private_tempdir()?;
     #[cfg(unix)]
@@ -231,8 +233,9 @@ async fn plan11_plan12_overview_auth_headers_escaping_and_shutdown() -> Result<(
 }
 
 // AGENTS ownership: HTTP completion can precede the last router state destructor.
+// Plan §11
 #[tokio::test]
-async fn plan11_admin_drain_waits_for_router_state_release() -> Result<(), Error> {
+async fn drain_waits_for_router_state_release() -> Result<(), Error> {
     use std::{future::Future as _, task::Poll};
     let (release, released) = tokio::sync::oneshot::channel::<()>();
     let mut drain = Box::pin(drain_server(std::future::ready(Ok(())), released));

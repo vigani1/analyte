@@ -94,8 +94,9 @@ fn eot() -> String {
     )
 }
 
+// CLSI POCT01-A2 §B.4.1.2
 #[test]
-fn poct01_b_4_1_2_startup_and_rejection_in_sequence() -> Result<(), DialogError> {
+fn startup_and_rejection_in_sequence() -> Result<(), DialogError> {
     startup(&mut dialog(2)?)?;
     let mut rejected = dialog(2)?;
     step(&mut rejected, received(&peer_messages::hello("h"))?)?;
@@ -124,8 +125,9 @@ fn poct01_b_4_1_2_startup_and_rejection_in_sequence() -> Result<(), DialogError>
     Ok(())
 }
 
+// CLSI POCT01-A2 §B.3.2; ADR 0003
 #[test]
-fn poct01_b_3_2_adr0003_commit_gate_orders_asynchronous_acks() -> Result<(), DialogError> {
+fn commit_gate_orders_asynchronous_acks() -> Result<(), DialogError> {
     let mut dialog = dialog(3)?;
     startup(&mut dialog)?;
     let first = ticket(&step(&mut dialog, received(&observation("o1"))?)?)?;
@@ -141,8 +143,9 @@ fn poct01_b_3_2_adr0003_commit_gate_orders_asynchronous_acks() -> Result<(), Dia
     Ok(())
 }
 
+// CLSI POCT01-A2 §B.9
 #[test]
-fn poct01_b_9_bounded_backpressure_returns_unconsumed_input() -> Result<(), DialogError> {
+fn backpressure_returns_unconsumed_input() -> Result<(), DialogError> {
     let mut dialog = dialog(1)?;
     startup(&mut dialog)?;
     let store = step(&mut dialog, received(&observation("o1"))?)?;
@@ -164,8 +167,9 @@ fn poct01_b_9_bounded_backpressure_returns_unconsumed_input() -> Result<(), Dial
     Ok(())
 }
 
+// CLSI POCT01-A2 §B.3.4
 #[test]
-fn poct01_b_3_4_error_ack_keeps_topic_but_storage_failure_escapes() -> Result<(), DialogError> {
+fn error_ack_keeps_topic_but_store_failure_escapes() -> Result<(), DialogError> {
     let mut dialog = dialog(2)?;
     startup(&mut dialog)?;
     let t = ticket(&step(&mut dialog, received(&observation("bad"))?)?)?;
@@ -190,8 +194,9 @@ fn poct01_b_3_4_error_ack_keeps_topic_but_storage_failure_escapes() -> Result<()
     Ok(())
 }
 
+// CLSI POCT01-A2 §B.3.6
 #[test]
-fn poct01_b_3_6_no_resend_on_application_timeout() -> Result<(), DialogError> {
+fn application_timeout_never_resends() -> Result<(), DialogError> {
     let mut dialog = dialog(2)?;
     startup(&mut dialog)?;
     let t = ticket(&step(&mut dialog, received(&observation("o"))?)?)?;
@@ -215,9 +220,9 @@ fn poct01_b_3_6_no_resend_on_application_timeout() -> Result<(), DialogError> {
     Ok(())
 }
 
+// CLSI POCT01-A2 §B.4.1.3
 #[test]
-fn poct01_b_4_1_3_zero_observations_repeated_topic_and_normal_termination()
--> Result<(), DialogError> {
+fn zero_observations_repeat_topic_and_terminate() -> Result<(), DialogError> {
     let mut dialog = dialog(2)?;
     startup(&mut dialog)?;
     assert!(
@@ -268,8 +273,9 @@ fn poct01_b_4_1_3_zero_observations_repeated_topic_and_normal_termination()
     Ok(())
 }
 
+// CLSI POCT01-A2 §B.4.1.11
 #[test]
-fn poct01_b_4_1_11_remote_end_waits_for_prior_custody() -> Result<(), DialogError> {
+fn remote_end_waits_for_prior_custody() -> Result<(), DialogError> {
     let mut dialog = dialog(3)?;
     startup(&mut dialog)?;
     let t = ticket(&step(&mut dialog, received(&observation("o"))?)?)?;
@@ -295,8 +301,9 @@ fn poct01_b_4_1_11_remote_end_waits_for_prior_custody() -> Result<(), DialogErro
     Ok(())
 }
 
+// CLSI POCT01-A2 §B.4.1.2
 #[test]
-fn poct01_b_4_1_2_minimum_capability_peer_and_hello_deadline() -> Result<(), DialogError> {
+fn minimum_capability_peer_and_hello_deadline() -> Result<(), DialogError> {
     let mut minimal = dialog(2)?;
     let raw = peer_messages::message(
         "HEL.R01",
@@ -329,8 +336,9 @@ fn poct01_b_4_1_2_minimum_capability_peer_and_hello_deadline() -> Result<(), Dia
     Ok(())
 }
 
+// CLSI POCT01-A2 §B.4.1.12
 #[test]
-fn poct01_b_4_1_12_escape_correlation_and_final_ack_correlation() -> Result<(), DialogError> {
+fn escape_and_final_ack_correlate() -> Result<(), DialogError> {
     let mut valid = dialog(2)?;
     step(&mut valid, received(&peer_messages::hello("h"))?)?;
     let store = step(&mut valid, Event::HelloDecision(true))?;
@@ -383,9 +391,9 @@ fn poct01_b_4_1_12_escape_correlation_and_final_ack_correlation() -> Result<(), 
     Ok(())
 }
 
+// CLSI POCT01-A2; project rule
 #[test]
-fn poct01_project_disconnect_wrong_session_and_reversed_time_do_not_ack() -> Result<(), DialogError>
-{
+fn disconnect_wrong_session_and_reversed_time_never_ack() -> Result<(), DialogError> {
     let mut left = dialog(2)?;
     startup(&mut left)?;
     let store = step(&mut left, received(&observation("o"))?)?;
@@ -420,9 +428,9 @@ fn poct01_project_disconnect_wrong_session_and_reversed_time_do_not_ack() -> Res
 }
 
 // POCT01-A2 B 4.1.2 p.78: semantic Hello failure sends error ACK then END, not close.
+// CLSI POCT01-A2 §B.4.1.2
 #[test]
-fn poct01_b4_1_2_invalid_capabilities_are_retained_and_termination_has_deadline()
--> Result<(), DialogError> {
+fn invalid_capabilities_kept_and_termination_bounded() -> Result<(), DialogError> {
     let mut dialog = dialog(2)?;
     let raw = peer_messages::hello("bad").rewrite(
         "<DSC.max_message_sz NULL=\"PINF\"/>",
@@ -446,8 +454,9 @@ fn poct01_b4_1_2_invalid_capabilities_are_retained_and_termination_has_deadline(
 }
 
 // POCT01-A2 B 5.13 p.99, 3.4.2 p.74: every incoming message shares the ID namespace.
+// CLSI POCT01-A2 §B.5.13
 #[test]
-fn poct01_b5_13_reused_id_before_commit_is_retained_not_accepted() -> Result<(), DialogError> {
+fn reused_id_before_commit_is_retained_not_accepted() -> Result<(), DialogError> {
     let mut dialog = dialog(2)?;
     startup(&mut dialog)?;
     let first = step(&mut dialog, received(&observation("same"))?)?;
@@ -472,9 +481,9 @@ fn poct01_b5_13_reused_id_before_commit_is_retained_not_accepted() -> Result<(),
 }
 
 // POCT01-A2 B 5.13 p.99; AGENTS.md rule 7: no silent eviction when the budget fills.
+// CLSI POCT01-A2 §B.5.13
 #[test]
-fn poct01_b5_13_control_id_budget_ends_conversation_without_forgetting_ids()
--> Result<(), DialogError> {
+fn control_id_budget_ends_conversation_keeping_ids() -> Result<(), DialogError> {
     let mut config = Config {
         depth: 32,
         pending_messages: 2,
@@ -546,9 +555,9 @@ fn poct01_b5_13_control_id_budget_ends_conversation_without_forgetting_ids()
 }
 
 // POCT01-A2 B 4.1.2 p.78 and 5.13 p.99: a recovered rejected Hello ID is still used.
+// CLSI POCT01-A2 §B.5.13
 #[test]
-fn poct01_b5_13_rejected_hello_reference_cannot_be_reused_by_terminal_ack()
--> Result<(), DialogError> {
+fn rejected_hello_reference_never_reused() -> Result<(), DialogError> {
     let mut dialog = dialog(2)?;
     let rejected = step(
         &mut dialog,
@@ -593,8 +602,9 @@ fn poct01_b5_13_rejected_hello_reference_cannot_be_reused_by_terminal_ack()
 }
 
 // POCT01-A2 Appendix B 5.12 Table 29 and 3.4.2.
+// CLSI POCT01-A2 §B.5.12
 #[test]
-fn poct01_b_5_12_unexpected_ack_escape_references_incoming_header() -> Result<(), DialogError> {
+fn unexpected_ack_escape_references_incoming_header() -> Result<(), DialogError> {
     let mut dialog = dialog(4)?;
     startup(&mut dialog)?;
     let raw = peer_messages::message(
@@ -629,8 +639,9 @@ fn poct01_b_5_12_unexpected_ack_escape_references_incoming_header() -> Result<()
     Ok(())
 }
 
+// ADR 0001
 #[test]
-fn adr_0001_poct_reports_absolute_custody_deadline_without_polling() -> Result<(), DialogError> {
+fn reports_absolute_custody_deadline_without_polling() -> Result<(), DialogError> {
     let mut dialog = Dialog::new(
         Config {
             depth: 32,
@@ -667,8 +678,9 @@ fn adr_0001_poct_reports_absolute_custody_deadline_without_polling() -> Result<(
     Ok(())
 }
 
+// CLSI POCT01-A2 §B.3.2
 #[test]
-fn poct01_b3_2_journaled_bytes_keep_root_and_incomplete_evidence() -> Result<(), DialogError> {
+fn journaled_bytes_keep_root_and_incomplete_evidence() -> Result<(), DialogError> {
     let mut dialog = dialog(1)?;
     let raw = peer_messages::hello("byte-hello");
     let mut actions = Vec::new();
@@ -687,8 +699,9 @@ fn poct01_b3_2_journaled_bytes_keep_root_and_incomplete_evidence() -> Result<(),
     Ok(())
 }
 
+// CLSI POCT01-A2 §B.3.6
 #[test]
-fn poct01_b3_6_incomplete_tokens_do_not_postpone_deadline() -> Result<(), DialogError> {
+fn incomplete_tokens_never_postpone_deadline() -> Result<(), DialogError> {
     let mut dialog = dialog(1)?;
     for byte in b"<unfinished" {
         assert!(

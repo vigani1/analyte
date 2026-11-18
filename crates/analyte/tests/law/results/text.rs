@@ -1,9 +1,9 @@
 //! LAW text-kind refusal and FT layout evidence remain protected and undelivered.
 use super::*;
 use analyte_fixtures::ConfigEdit as _;
+// HL7 2.5.1 §2.7.1, §2.7.6
 #[tokio::test]
-async fn hl7_251_2_7_1_2_7_6_law_text_is_parked_with_specific_reason_and_raw() -> Result<(), Error>
-{
+async fn text_is_parked_with_reason_and_raw() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = vendor_config(temp.path(), "law", &definition())?;
     let receiver_path = temp.path().join("reference.db");

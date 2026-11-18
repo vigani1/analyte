@@ -234,9 +234,9 @@ mod tests {
     use analyte_model::{
         AppliedDeparture, DepartureEvidence, DepartureMeaning, EvidenceList, Identifier, SourceText,
     };
+    // ADR 0015
     #[test]
-    fn adr0015_admin_distinguishes_empty_applied_and_documented_final_without_html_injection()
-    -> Result<(), Error> {
+    fn shows_empty_and_documented_final_without_injection() -> Result<(), Error> {
         let mut html = Markup::new();
         render(&mut html, &DepartureEvidence::default());
         assert!(html.contains("Applied list: empty"));

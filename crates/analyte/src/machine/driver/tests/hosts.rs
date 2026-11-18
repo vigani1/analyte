@@ -34,9 +34,9 @@ async fn journal(store: &Handle) -> Result<Vec<(Vec<u8>, Option<String>)>, crate
 /// is journaled once before the dialog sees it (so before its ACK), and the stop
 /// then reaches the dialog as a disconnect that parks the open transfer.
 /// Source: AGENTS.md safety rules 1 and 2; ADR 0003; VIDAS Literal ENQ/ACK.
+// ADR 0003
 #[tokio::test(flavor = "current_thread")]
-async fn adr0003_vidas_chunk_before_stop_is_journaled_then_the_stop_parks_the_transfer()
--> Result<(), crate::Error> {
+async fn vidas_chunk_before_stop_is_journaled_then_parked() -> Result<(), crate::Error> {
     let temp = tempfile::tempdir()?;
     let (program, mut store) = synthetic(
         temp.path(),
@@ -117,9 +117,9 @@ async fn adr0003_vidas_chunk_before_stop_is_journaled_then_the_stop_parks_the_tr
 /// last byte arrived with the stop. The connection never opened, so any write
 /// attempt would fail the feed instead of returning `Stop`.
 /// Source: AGENTS.md safety rules 1 and 2; ADR 0003; POCT01-A2 dialog custody.
+// ADR 0003
 #[tokio::test]
-async fn adr0003_poct_stop_mid_chunk_parks_partial_input_and_never_acknowledges()
--> Result<(), crate::Error> {
+async fn poct_stop_mid_chunk_parks_without_acknowledging() -> Result<(), crate::Error> {
     let hello = peer::hello("hello").into_bytes();
     let middle = hello.len() / 2;
     let last = hello.len() - 1;

@@ -104,8 +104,9 @@ impl SecretsSource for Environment {
 
 #[cfg(test)]
 mod tests {
+    // ADR 0008
     #[test]
-    fn adr0008_missing_empty_and_invalid_credentials_name_only() -> Result<(), crate::Error> {
+    fn credential_errors_name_only_the_credential() -> Result<(), crate::Error> {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/analyte.toml");
         let program = crate::installation::config::Program::load(&path)?;
         for value in [None, Some(String::new())] {
@@ -146,8 +147,9 @@ mod tests {
         Ok(())
     }
 
+    // ADR 0008
     #[test]
-    fn adr0008_environment_names_are_stable() {
+    fn environment_names_are_stable() {
         assert_eq!(super::variable("lab-api.key"), "ANALYTE_SECRET_LAB_API_KEY");
     }
 }
@@ -185,9 +187,9 @@ fn parse_retention_key(
 
 #[cfg(test)]
 mod retention_tests {
+    // ADR 0013 item 6
     #[test]
-    fn adr0013_item6_retention_secret_required_only_for_finite_policy()
-    -> Result<(), super::SecretError> {
+    fn retention_secret_required_only_for_finite_policy() -> Result<(), super::SecretError> {
         assert!(super::parse_retention_key(None, true).is_err());
         assert!(super::parse_retention_key(None, false)?.is_none());
         assert!(super::parse_retention_key(Some("sensitive-invalid".into()), true).is_err());

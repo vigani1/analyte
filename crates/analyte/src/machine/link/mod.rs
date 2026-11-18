@@ -123,8 +123,9 @@ mod tests {
     use super::*;
 
     // Review Y1: a failure backs off once, a clean end does not, and stop always wins.
+    // Review finding Y1
     #[tokio::test(start_paused = true)]
-    async fn y1_failed_session_backs_off_then_serves_and_stop_wins() {
+    async fn failed_session_backs_off_and_stop_wins() {
         let (stop, mut stopping) = watch::channel(false);
         let failed = || Err::<(), _>("synthetic session fault");
         let clean = || Ok::<(), &str>(());

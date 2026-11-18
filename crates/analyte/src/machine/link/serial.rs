@@ -184,8 +184,9 @@ mod tests {
     use crate::Error;
 
     // AGENTS.md: keep errors specific; clinical safety rule 10: no payloads in logs.
+    // Safety rule 10 (ADR 0003)
     #[test]
-    fn safety_rule_10_drop_reports_worker_error_and_panic_without_payloads() {
+    fn serial_drop_reports_worker_failure_without_payloads() {
         for panic in [false, true] {
             let worker = thread::spawn(move || {
                 if panic {
@@ -284,9 +285,9 @@ mod tests {
 
     // ADR 0003 / ADR 0010: run the actual ASTM host dialog over the existing
     // serial factory seam. Every byte and failure is synthetic, never an OS port.
+    // ADR 0003, ADR 0010
     #[tokio::test(flavor = "multi_thread")]
-    async fn adr0003_adr0010_serial_timeout_split_merged_frames_store_before_ack_and_disconnect()
-    -> Result<(), Error> {
+    async fn serial_astm_stores_each_frame_before_ack() -> Result<(), Error> {
         let root = crate::admin::private_tempdir()?;
         let program = serial_program(
             root.path(),
@@ -389,8 +390,9 @@ mod tests {
         store.shutdown(until()).await?;
         Ok(())
     }
+    // Plan §11
     #[tokio::test]
-    async fn plan11_serial_open_failure_is_specific_and_owner_is_joined() -> Result<(), Error> {
+    async fn open_failure_is_specific_and_owner_joined() -> Result<(), Error> {
         let settings = port_settings("synthetic-refused-port")?;
         let (mut conn, side) =
             analyte_transport::connection(Limits::new(16, Duration::from_secs(2))?);
@@ -427,8 +429,9 @@ mod tests {
     // control byte without its configured suffix (bioMérieux VIDAS Literal protocol,
     // control suffix); the rejected byte is parked, the port owner is replaced, and
     // the next session answers ENQ on a freshly opened port.
+    // Review finding Y1
     #[test]
-    fn y1_serial_failed_session_then_next_session_is_served() -> Result<(), Error> {
+    fn failed_session_then_next_session_is_served() -> Result<(), Error> {
         use analyte_fixtures::ConfigEdit as _;
         let root = crate::admin::private_tempdir()?;
         let machine = include_str!("../../../../core/config/examples/vidas_literal.toml")
