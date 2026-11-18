@@ -299,7 +299,7 @@ async fn law_tf2b_3_28_query_followup_timeout_disconnect_and_bad_correlation_are
         } else {
             definition()
         };
-        let (_temp, path, reference, running, mut peer) = step(
+        let (temp, path, reference, running, mut peer) = step(
             "setup",
             setup(
                 vec![order("order-1", "000Ab12", None, 2)?],
@@ -328,6 +328,12 @@ async fn law_tf2b_3_28_query_followup_timeout_disconnect_and_bad_correlation_are
         assert_eq!(count(&path, "machine_order_items")?, 2);
         assert_eq!(count(&path, "outbox")?, 1);
         step("running.stop", running.stop()).await?;
+        if action == "timeout" {
+            // The 200 ms budget exists only to force the first timeout. The restarted
+            // service expects a timely negative ORL, so it gets the standard budget;
+            // keeping 200 ms made the audit depend on CI scheduling (run 44148059968).
+            std::fs::write(temp.path().join("hl7.toml"), definition())?;
+        }
         let running = step(
             "Running::start",
             Running::start(&path, &reference.url, "synthetic-api"),
@@ -342,6 +348,9 @@ async fn law_tf2b_3_28_query_followup_timeout_disconnect_and_bad_correlation_are
         assert_eq!(field(&packet(&mut peer).await?, b"QAK", 2)?, b"OK");
         let negative = step("packet", packet(&mut peer)).await?;
         assert!(!negative.segments().any(|s| s.id() == b"OBR"));
+        // Deliberately answer later than the failure-part 200 ms budget, so a
+        // restart that kept that budget fails here every time, not under load only.
+        tokio::time::sleep(Duration::from_millis(400)).await;
         step("orl", orl(&mut peer, &negative, &[], false)).await?;
         step("wait_audit", wait_audit(&path)).await?;
         assert_eq!(count(&path, "machine_order_items")?, 2);
@@ -549,6 +558,54 @@ async fn law_tf2b_3_27_3_28_negative_followup_bad_orl_is_retained_without_order_
     assert_eq!(count(&path, "machine_orders")?, 0);
     assert_eq!(count(&path, "outbox")?, 0);
     assert!(count(&path, "parked")? > 0);
+    quiet(&mut peer).await?;
+    running.stop().await?;
+    reference.close().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn law_tf2b_3_28_negative_followup_orl_after_response_deadline_is_parked_not_audited()
+-> Result<(), Error> {
+    let settings = definition().rewrite("response_ms = 30000", "response_ms = 200");
+    let (_temp, path, reference, running, mut peer) = setup(vec![], &settings, false).await?;
+    send(&mut peer, query(ALL, "late-negative").as_bytes()).await?;
+    assert_eq!(field(&packet(&mut peer).await?, b"QAK", 2)?, b"OK");
+    let negative = packet(&mut peer).await?;
+    assert!(!negative.segments().any(|s| s.id() == b"OBR"));
+    // The 200 ms budget starts when the OML is issued, before this side reads it;
+    // waiting a full second puts the ORL past it on any scheduler.
+    tokio::time::sleep(Duration::from_millis(1000)).await;
+    let raw = orl(&mut peer, &negative, &[], false).await?;
+    wait_database_count(
+        &path,
+        "SELECT count(*) FROM parked p JOIN receipts r ON EXISTS(SELECT 1 FROM json_each(p.evidence,'$.targets') t WHERE t.value=json_extract(r.id,'$')) WHERE r.raw=?1",
+        [&raw],
+        1,
+    )
+    .await?;
+    // The session tick may close the expired exchange first; either way the late
+    // ORL is kept and shown to an operator, never recorded as a correlated reply.
+    let reason: String = database(&path)?.query_row("SELECT json_extract(p.evidence,'$.reason') FROM parked p JOIN receipts r ON EXISTS(SELECT 1 FROM json_each(p.evidence,'$.targets') t WHERE t.value=json_extract(r.id,'$')) WHERE r.raw=?1", [&raw], |r| r.get(0))?;
+    assert!(
+        [
+            "LAW ORL arrived after response deadline",
+            "LAW ORL has no pending followup"
+        ]
+        .contains(&reason.as_str()),
+        "{reason}"
+    );
+    assert_eq!(count(&path, "receipts")?, 2);
+    assert_eq!(
+        database(&path)?.query_row(
+            "SELECT count(*) FROM audit WHERE json_extract(evidence,'$.action')='LAW-negative-query-ORL'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )?,
+        0
+    );
+    assert_eq!(count(&path, "machine_orders")?, 0);
+    assert_eq!(count(&path, "outbox")?, 0);
     quiet(&mut peer).await?;
     running.stop().await?;
     reference.close().await?;
