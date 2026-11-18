@@ -28,4 +28,10 @@
   pauses machine orders until the operator reconciles and resumes them.
 - Tag-only release workflow with Windows and Linux archives, checksums, locked
   dependency inventory, GitHub provenance and an owner-published draft release.
-  Code signing and an MSI installer remain future work.
+  Code signing remains future work.
+- Installers built by the release workflow: an unsigned click-through Windows
+  installer (Inno Setup) and Linux `.deb` and `.rpm` packages (nfpm). They
+  install the service, protect the data folder, let the service write the
+  config folder for the setup page, create the admin token, and write a starter
+  program whose one machine waits for the setup page. Uninstalling keeps data
+  and configuration.

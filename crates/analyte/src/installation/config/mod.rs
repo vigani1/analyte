@@ -51,6 +51,8 @@ pub struct Program {
     store_startup_timeout: Duration,
     /// Independently supervised machines.
     pub(crate) machines: Vec<Machine>,
+    /// Machines listed without a definition: they wait for the setup page and do not run.
+    awaiting_setup: Vec<analyte_model::Identifier>,
 }
 
 #[derive(Deserialize)]
@@ -117,7 +119,8 @@ struct Entry {
     #[serde(default)]
     capture: bool,
     id: analyte_model::Identifier,
-    definition: PathBuf,
+    /// Absent until the setup page chooses one; such a machine does not run.
+    definition: Option<PathBuf>,
     site: PathBuf,
     overrides: Option<PathBuf>,
 }
@@ -157,13 +160,12 @@ impl Program {
         let base = path
             .parent()
             .ok_or_else(|| Error::ConfigurationHasNoParentDirectory)?;
-        let mut machines: Vec<Machine> = Vec::new();
-        for entry in file.machines {
-            if machines.iter().any(|m| m.id == entry.id) {
-                return Err(Error::DuplicateMachineIdentity);
-            }
-            machines.push(load_machine(entry, base, file.store.record_bytes)?);
-        }
+        let (machines, awaiting_setup) = entries(
+            file.machines,
+            base,
+            file.store.record_bytes,
+            admin_address.is_some(),
+        )?;
         if file.signing_rotation.len() > 128
             || file.signing_rotation.values().any(|names| names.len() > 7)
             || file.signing_rotation.keys().any(|name| {
@@ -230,6 +232,7 @@ impl Program {
                 busy_timeout: Duration::from_millis(file.store.busy_timeout_ms),
             },
             machines,
+            awaiting_setup,
         })
     }
 }
@@ -275,6 +278,12 @@ impl Program {
     #[must_use]
     pub fn machines(&self) -> &[Machine] {
         &self.machines
+    }
+
+    /// Machines listed without a definition yet, in configured order; they do not run.
+    #[must_use]
+    pub fn awaiting_setup(&self) -> &[analyte_model::Identifier] {
+        &self.awaiting_setup
     }
 }
 
@@ -394,6 +403,66 @@ mod admin_tests {
         Ok(())
     }
 
+    // Owner request 2026-11-18 (installers): a machine listed without a
+    // definition waits for the setup page and does not run. It needs the admin
+    // page, cannot carry capture or overrides, and keeps identities unique.
+    #[test]
+    fn machine_without_definition_waits_for_setup() -> Result<(), Error> {
+        let temp = tempfile::tempdir()?;
+        let path = temp.path().join("program.toml");
+        let program = |machines: &str| {
+            analyte_fixtures::program_with_limits(
+                machines,
+                &analyte_store::Limits {
+                    reserve_bytes: 1,
+                    database_bytes: 100_000_000,
+                    record_bytes: 2_097_152,
+                    page_rows: 100,
+                    busy_timeout: Duration::from_millis(100),
+                },
+            )
+        };
+        let waiting = "[[machines]]\nid = 'machine-1'\nsite = 'machine-1.site.toml'\n";
+        std::fs::write(&path, program(&format!("[admin]\nport = 8080\n{waiting}")))?;
+        let loaded = Program::load(&path)?;
+        assert!(loaded.machines().is_empty());
+        let ids: Vec<_> = loaded
+            .awaiting_setup()
+            .iter()
+            .map(analyte_model::Identifier::as_str)
+            .collect();
+        assert_eq!(ids, ["machine-1"]);
+        std::fs::write(&path, program(waiting))?;
+        assert!(matches!(
+            Program::load(&path),
+            Err(super::Error::SetupNeedsAdmin)
+        ));
+        for extra in ["capture = true\n", "overrides = 'o.toml'\n"] {
+            std::fs::write(
+                &path,
+                program(&format!("[admin]\nport = 8080\n{waiting}{extra}")),
+            )?;
+            assert!(matches!(
+                Program::load(&path),
+                Err(super::Error::AwaitingSetupWithSettings)
+            ));
+        }
+        std::fs::write(
+            &path,
+            program(&format!("[admin]\nport = 8080\n{waiting}{waiting}")),
+        )?;
+        assert!(matches!(
+            Program::load(&path),
+            Err(super::Error::DuplicateMachineIdentity)
+        ));
+        std::fs::write(&path, program("machines = []\n[admin]\nport = 8080\n"))?;
+        assert!(matches!(
+            Program::load(&path),
+            Err(super::Error::InvalidProgramLimits)
+        ));
+        Ok(())
+    }
+
     // Plan section 11: existing installations have no admin listener by default.
     // Plan §11
     #[test]
@@ -505,8 +574,44 @@ mod startup_tests {
     }
 }
 
-fn load_machine(entry: Entry, base: &Path, record_bytes: usize) -> Result<Machine, Error> {
-    let definition = base.join(entry.definition);
+/// Loads each listed machine; one without a definition waits for the setup page.
+fn entries(
+    listed: Vec<Entry>,
+    base: &Path,
+    record_bytes: usize,
+    admin: bool,
+) -> Result<(Vec<Machine>, Vec<analyte_model::Identifier>), Error> {
+    let mut machines: Vec<Machine> = Vec::new();
+    let mut awaiting_setup = Vec::new();
+    for entry in listed {
+        if machines.iter().any(|m| m.id == entry.id) || awaiting_setup.contains(&entry.id) {
+            return Err(Error::DuplicateMachineIdentity);
+        }
+        match entry.definition.clone() {
+            Some(definition) => machines.push(load_machine(
+                entry,
+                &base.join(definition),
+                base,
+                record_bytes,
+            )?),
+            // Only the setup page can give it a definition, so without the
+            // page such an entry could never run: refuse it.
+            None if !admin => return Err(Error::SetupNeedsAdmin),
+            None if entry.capture || entry.overrides.is_some() => {
+                return Err(Error::AwaitingSetupWithSettings);
+            }
+            None => awaiting_setup.push(entry.id),
+        }
+    }
+    Ok((machines, awaiting_setup))
+}
+
+fn load_machine(
+    entry: Entry,
+    definition: &Path,
+    base: &Path,
+    record_bytes: usize,
+) -> Result<Machine, Error> {
     let site = base.join(entry.site);
     let overrides = entry.overrides.map(|p| base.join(p));
     let replacement = match &overrides {
@@ -514,7 +619,7 @@ fn load_machine(entry: Entry, base: &Path, record_bytes: usize) -> Result<Machin
         None => "schema_version = 1".into(),
     };
     let snapshot = Draft::load(
-        (&definition.display().to_string(), &read(&definition)?),
+        (&definition.display().to_string(), &read(definition)?),
         (&site.display().to_string(), &read(&site)?),
         ("overrides", &replacement),
     )?

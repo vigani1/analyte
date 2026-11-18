@@ -1,0 +1,10 @@
+# Starter site settings for machine-1, written once by the installer and never
+# overwritten. The setup page fills in the connection and the lab app address.
+# Keys are never kept here: the setup page stores them in the locked file.
+schema_version = 1
+# Keep every result until the lab sets a retention period (ADR 0013).
+retention = "keep"
+
+[destination]
+api_key_name = "lab-app-api"
+signing_key_name = "lab-app-signing"

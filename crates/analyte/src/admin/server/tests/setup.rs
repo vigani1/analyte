@@ -90,6 +90,16 @@ fn seams(root: &std::path::Path, written: Arc<Mutex<Vec<u8>>>) -> crate::admin::
 }
 
 async fn start() -> Result<Fixture, Error> {
+    start_with(
+        "[[machines]]\nid = 'synthetic'\ndefinition = 'machines/example/serial-astm/machine.toml'\nsite = 'site.toml'\n",
+        &include_str!("../../../../../core/config/examples/site.toml")
+            .rewrite("endpoint = \"127.0.0.1:5600\"", "usb_serial = \"A10K3XYZ\""),
+    )
+    .await
+}
+
+/// A fixture whose program file lists `machines` and whose `site.toml` holds `site_text`.
+async fn start_with(machines: &str, site_text: &str) -> Result<Fixture, Error> {
     let directory = crate::admin::private_tempdir()?;
     let root = directory.path();
     let serial = root.join("machines/example/serial-astm");
@@ -108,16 +118,12 @@ async fn start() -> Result<Fixture, Error> {
     std::fs::create_dir_all(&blocked)?;
     std::fs::write(blocked.join("README.md"), "A blocked machine definition.\n")?;
     let site = root.join("site.toml");
-    std::fs::write(
-        &site,
-        include_str!("../../../../../core/config/examples/site.toml")
-            .rewrite("endpoint = \"127.0.0.1:5600\"", "usb_serial = \"A10K3XYZ\""),
-    )?;
+    std::fs::write(&site, site_text)?;
     let config = root.join("program.toml");
     std::fs::write(
         &config,
         analyte_fixtures::program_with_limits(
-            "[[machines]]\nid = 'synthetic'\ndefinition = 'machines/example/serial-astm/machine.toml'\nsite = 'site.toml'\n",
+            machines,
             &analyte_store::Limits {
                 reserve_bytes: 1,
                 database_bytes: 100_000_000,
@@ -281,6 +287,70 @@ async fn page_lists_definitions_and_detected_adapters() -> Result<(), Error> {
         .await?;
     assert!(network.contains("name=\"host\""), "{network}");
     assert!(!network.contains("name=\"port\""));
+    Ok(())
+}
+
+// Owner request 2026-11-18 (installers): the installed starter lists a machine
+// without a definition; the page shows it as not set up, and a save adds the
+// definition line, so the program then runs it with the stored keys.
+#[tokio::test(flavor = "multi_thread")]
+async fn waiting_machine_is_set_up_from_the_starter() -> Result<(), Error> {
+    let fixture = start_with(
+        "[admin]\nport = 8080\n[[machines]]\nid = 'machine-1'\nsite = 'site.toml'\n",
+        include_str!("../../../../../../packaging/linux/starter/machine-1.site.toml"),
+    )
+    .await?;
+    let before = Program::load(&fixture.config)?;
+    assert!(before.machines().is_empty());
+    assert_eq!(before.awaiting_setup().len(), 1);
+    let index = fixture.get("/setup").await?;
+    assert!(
+        index.contains("<td>machine-1</td><td>Not set up yet</td>"),
+        "{index}"
+    );
+    let first = fixture.get("/setup/machine-1").await?;
+    assert!(first.starts_with("HTTP/1.1 200"), "{first}");
+    assert!(first.contains("This machine is not set up yet"));
+    assert!(!first.contains("name=\"base_url\""));
+    let chosen = fixture
+        .get("/setup/machine-1?definition=example/network-hl7")
+        .await?;
+    assert!(chosen.contains("name=\"host\""), "{chosen}");
+    assert!(chosen.contains("lab-app-api: not set"), "{chosen}");
+    let body = [
+        ("csrf", csrf(&chosen)?),
+        ("definition", "example/network-hl7".into()),
+        ("host", "127.0.0.1".into()),
+        ("tcp_port", "5600".into()),
+        ("base_url", "https://lab.example.invalid/v1".into()),
+        ("destination", "lab-app".into()),
+        ("api_key", API_KEY.into()),
+        ("signing_key", SIGNING_KEY.into()),
+    ]
+    .iter()
+    .map(|(name, value)| format!("{name}={}", encode(value)))
+    .collect::<Vec<_>>()
+    .join("&");
+    let saved = fixture.post("/setup/machine-1", &body).await?;
+    assert!(saved.starts_with("HTTP/1.1 200"), "{saved}");
+    assert!(saved.contains("Running now <code>none: not set up yet</code>"));
+    let program = std::fs::read_to_string(&fixture.config)?;
+    assert!(
+        program.contains(
+            "id = 'machine-1'\ndefinition = \"machines/example/network-hl7/machine.toml\"\nsite = 'site.toml'\n"
+        ),
+        "{program}"
+    );
+    let after = Program::load(&fixture.config)?;
+    assert!(after.awaiting_setup().is_empty());
+    let machine = after.machines().first().ok_or("machine missing")?;
+    assert_eq!(machine.id().as_str(), "machine-1");
+    let stored = crate::installation::credentials::Locked::new(&fixture.data).read()?;
+    assert!(
+        crate::installation::secrets::Environment::load_layered(&after, |_| None, &stored).is_ok(),
+        "the stored keys must satisfy startup"
+    );
+    assert!(!saved.contains(API_KEY) && !saved.contains(SIGNING_KEY));
     Ok(())
 }
 

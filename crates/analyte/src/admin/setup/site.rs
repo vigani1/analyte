@@ -17,10 +17,19 @@ use std::{
 
 /// One `[[machines]]` entry of the program file, with paths resolved.
 pub(super) struct Installed {
-    pub(super) definition: PathBuf,
-    definition_span: Range<usize>,
+    /// Absent while the machine waits for setup.
+    pub(super) definition: Option<PathBuf>,
+    placement: Placement,
     pub(super) site: PathBuf,
     overrides: Option<PathBuf>,
+}
+
+/// Where a chosen definition goes in the program file's text.
+enum Placement {
+    /// The bytes of the current `definition` value.
+    Replace(Range<usize>),
+    /// The start of the `site` line, for an entry still waiting for setup.
+    Insert(usize),
 }
 
 #[derive(serde::Deserialize)]
@@ -31,8 +40,8 @@ struct ProgramSpans {
 #[derive(serde::Deserialize)]
 struct EntrySpans {
     id: String,
-    definition: toml::Spanned<String>,
-    site: String,
+    definition: Option<toml::Spanned<String>>,
+    site: toml::Spanned<String>,
     overrides: Option<String>,
 }
 
@@ -47,13 +56,33 @@ pub(super) fn installed(config: &Path, id: &str) -> Result<(String, Installed), 
         .into_iter()
         .find(|entry| entry.id == id)
         .ok_or_else(|| SetupError::UnknownMachine(id.into()))?;
+    let placement = match &entry.definition {
+        Some(definition) => Placement::Replace(definition.span()),
+        None => Placement::Insert(site_line(&text, entry.site.span().start)?),
+    };
     let installed = Installed {
-        definition: base.join(entry.definition.get_ref()),
-        definition_span: entry.definition.span(),
-        site: base.join(entry.site),
+        definition: entry.definition.map(|d| base.join(d.get_ref())),
+        placement,
+        site: base.join(entry.site.get_ref()),
         overrides: entry.overrides.map(|path| base.join(path)),
     };
     Ok((text, installed))
+}
+
+/// The start of the line holding the `site` value at `value`; the definition of
+/// a waiting machine is inserted there, so it must be a plain `site = ...` line.
+fn site_line(text: &str, value: usize) -> Result<usize, SetupError> {
+    let start = text
+        .get(..value)
+        .and_then(|before| before.rfind('\n'))
+        .map_or(0, |newline| newline.saturating_add(1));
+    match text.get(start..value) {
+        Some(line) if line.trim_start().starts_with("site") => Ok(start),
+        _ => Err(SetupError::ProgramFile(
+            "write this machine's site = ... on its own line so setup can add the definition"
+                .into(),
+        )),
+    }
 }
 
 /// How the site file names the machine's link.
@@ -137,8 +166,9 @@ pub(super) fn validate(
     .validate()?)
 }
 
-/// The program text with this entry's `definition` replaced; comments and every
-/// other byte stay as they were. A definition inside the program file's folder is
+/// The program text with this entry's `definition` replaced, or added on its own
+/// line before `site` for a waiting machine; comments and every other byte stay
+/// as they were. A definition inside the program file's folder is
 /// written relative to it, with `/`, as the shipped examples are.
 fn with_definition(
     program: &str,
@@ -163,13 +193,20 @@ fn with_definition(
         .map(|parts| parts.join("/"));
     let text = relative.unwrap_or_else(|| definition.display().to_string());
     let value = toml::Value::String(text).to_string();
-    let Range { start, end } = installed.definition_span.clone();
-    let (Some(before), Some(after)) = (program.get(..start), program.get(end..)) else {
+    let (range, line) = match &installed.placement {
+        Placement::Replace(range) => (range.clone(), false),
+        Placement::Insert(at) => (*at..*at, true),
+    };
+    let (Some(before), Some(after)) = (program.get(..range.start), program.get(range.end..)) else {
         return Err(SetupError::ProgramFile(
             "definition position changed".into(),
         ));
     };
-    Ok(format!("{before}{value}{after}"))
+    Ok(if line {
+        format!("{before}definition = {value}\n{after}")
+    } else {
+        format!("{before}{value}{after}")
+    })
 }
 
 /// Files written by a save.
@@ -187,7 +224,11 @@ pub(super) fn apply(
     site_text: &str,
 ) -> Result<Written, SetupError> {
     let mut changes = vec![(installed.site.clone(), site_text.to_owned())];
-    if !same_file(definition, &installed.definition) {
+    if installed
+        .definition
+        .as_deref()
+        .is_none_or(|current| !same_file(definition, current))
+    {
         changes.push((
             config.to_owned(),
             with_definition(program, config, installed, definition)?,
@@ -331,6 +372,32 @@ mod tests {
             edited.contains("definition = \"machines/x/machine.toml\" # old"),
             "{edited}"
         );
+        Ok(())
+    }
+
+    // Owner request 2026-11-18 (installers): a machine waiting for setup gets its
+    // definition as a new line before `site`; nothing else changes.
+    #[test]
+    fn waiting_machine_gets_a_definition_line() -> Result<(), crate::Error> {
+        let directory = tempfile::tempdir()?;
+        let config = directory.path().join("analyte.toml");
+        let program = "schema_version = 1\n[[machines]]\nid = 'a'\n  site = 's.toml' # s\n";
+        std::fs::write(&config, program)?;
+        let (text, installed) = super::installed(&config, "a")?;
+        assert!(installed.definition.is_none());
+        let inside = directory
+            .path()
+            .join("machines")
+            .join("x")
+            .join("machine.toml");
+        let edited = super::with_definition(&text, &config, &installed, &inside)?;
+        assert_eq!(
+            edited,
+            "schema_version = 1\n[[machines]]\nid = 'a'\ndefinition = \"machines/x/machine.toml\"\n  site = 's.toml' # s\n"
+        );
+        // An inline entry has no `site` line to insert before; refuse rather than guess.
+        std::fs::write(&config, "machines = [{ id = 'a', site = 's.toml' }]\n")?;
+        assert!(super::installed(&config, "a").is_err());
         Ok(())
     }
 }

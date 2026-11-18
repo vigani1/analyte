@@ -119,6 +119,9 @@ pub async fn print(program: &Program) -> Result<(), Error> {
     for line in result? {
         crate::operator::display::line(&line)?;
     }
+    for id in program.awaiting_setup() {
+        crate::operator::display::line(&format!("machine={} not_set_up", id.as_str()))?;
+    }
     Ok(())
 }
 

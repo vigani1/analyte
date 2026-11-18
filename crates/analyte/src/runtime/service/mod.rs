@@ -203,6 +203,12 @@ pub(super) async fn serve_with(
         )?),
     };
     let store_component = watchdog.component("store".into());
+    for id in program.awaiting_setup() {
+        tracing::warn!(
+            machine = id.as_str(),
+            "machine has no definition yet and does not run; set it up on the setup page"
+        );
+    }
     let destinations = crate::runtime::delivery::destinations(&program, mode)?;
     let secrets = Arc::new(secrets);
     let (store, admin) = prepare_service(&program, space, mode).await?;

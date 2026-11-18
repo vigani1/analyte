@@ -73,6 +73,8 @@ struct Running {
 pub(crate) struct Setup {
     seams: Seams,
     running: Vec<Running>,
+    /// Machines listed without a definition when the service started.
+    awaiting: Vec<Identifier>,
     data_directory: PathBuf,
     /// At most one listen test; the guard is never held across an await.
     listen: std::sync::Mutex<Option<listen::Session>>,
@@ -102,6 +104,7 @@ impl Setup {
         Self {
             seams,
             running,
+            awaiting: program.awaiting_setup().to_vec(),
             data_directory: program.data_directory().to_owned(),
             listen: std::sync::Mutex::new(None),
             restart: watch::channel(false).0,
@@ -124,6 +127,7 @@ impl Setup {
                 limits: Limits::STANDARD,
             },
             running: Vec::new(),
+            awaiting: Vec::new(),
             data_directory: data_directory.to_owned(),
             listen: std::sync::Mutex::new(None),
             restart: watch::channel(false).0,
@@ -138,6 +142,8 @@ pub(crate) enum SetupError {
     UnknownMachine(String),
     #[error("choose one of the shipped machine definitions")]
     UnknownDefinition,
+    #[error("this machine is not set up yet: choose its machine definition first")]
+    NoDefinitionYet,
     #[error("{0} is a blocked machine definition; its README lists what is missing")]
     BlockedDefinition(String),
     #[error("{0}")]
@@ -262,6 +268,16 @@ pub(super) async fn index(State(state): State<Arc<Context>>) -> Response {
                 .markup("\">Set up</a></td></tr>"),
         );
     }
+    for id in &state.setup.awaiting {
+        html.push_fragment(
+            &Markup::new()
+                .markup("<tr><td>")
+                .text(id.as_str())
+                .markup("</td><td>Not set up yet</td><td><a href=\"/setup/")
+                .text(id.as_str())
+                .markup("\">Set up</a></td></tr>"),
+        );
+    }
     html.push_markup(concat!(
         "</table><h2>Shipped machine definitions</h2><table><tr><th>Definition",
         "</th><th>Name</th><th>Evidence</th><th>Status</th></tr>"
@@ -335,14 +351,18 @@ fn chosen(
             .find(|d| d.key == key)
             .ok_or(SetupError::UnknownDefinition)?,
         None => {
-            let current = installed.definition.canonicalize().ok();
+            let installed = installed
+                .definition
+                .as_ref()
+                .ok_or(SetupError::NoDefinitionYet)?;
+            let current = installed.canonicalize().ok();
             match list.iter().find(|d| match &d.state {
                 Shipped::Ready { path, .. } => path.canonicalize().ok() == current,
                 Shipped::Blocked | Shipped::Unreadable(_) => false,
             }) {
                 Some(found) => found,
                 None => {
-                    return Ok(("installed".into(), installed.definition.clone()));
+                    return Ok(("installed".into(), installed.clone()));
                 }
             }
         }
@@ -355,13 +375,36 @@ fn chosen(
     }
 }
 
-fn running<'a>(state: &'a Context, id: &str) -> Result<&'a Running, SetupError> {
-    state
-        .setup
-        .running
+/// What the service runs for `id`: its loaded machine, or `None` while it waits for setup.
+fn running<'a>(state: &'a Context, id: &str) -> Result<Option<&'a Running>, SetupError> {
+    match state.setup.running.iter().find(|r| r.id.as_str() == id) {
+        Some(running) => Ok(Some(running)),
+        None if state.setup.awaiting.iter().any(|a| a.as_str() == id) => Ok(None),
+        None => Err(SetupError::UnknownMachine(id.into())),
+    }
+}
+
+/// The running configuration digest, or why there is none.
+fn running_digest(running: Option<&Running>) -> String {
+    running.map_or_else(|| "none: not set up yet".into(), |r| hex(&r.digest))
+}
+
+/// The credential names to show: the running machine's, or for a machine still
+/// waiting for setup, the names its site file already holds.
+fn key_names(running: Option<&Running>, current_site: &toml::Table) -> Vec<Identifier> {
+    if let Some(running) = running {
+        return running.keys.to_vec();
+    }
+    ["api_key_name", "signing_key_name"]
         .iter()
-        .find(|r| r.id.as_str() == id)
-        .ok_or_else(|| SetupError::UnknownMachine(id.into()))
+        .filter_map(|key| {
+            current_site
+                .get("destination")
+                .and_then(|d| d.get(*key))
+                .and_then(toml::Value::as_str)
+                .and_then(|name| Identifier::new(name).ok())
+        })
+        .collect()
 }
 
 fn key_status(state: &Context, name: &Identifier) -> Markup {
@@ -425,19 +468,33 @@ fn render_machine(
         .and_then(|text| text.parse::<toml::Table>().ok())
         .unwrap_or_default();
     let list = definitions(state)?;
-    let (key, path) = chosen(&list, definition, &installed)?;
+    let picked = match chosen(&list, definition, &installed) {
+        Ok(picked) => Some(picked),
+        Err(SetupError::NoDefinitionYet) => None,
+        Err(error) => return Err(error),
+    };
     let running = running(state, id)?;
     let mut html = page("Set up a machine")
         .markup("<p>Machine <strong>")
         .text(id)
         .markup("</strong>. Running configuration digest <code>")
-        .text(hex(&running.digest))
+        .text(running_digest(running))
         .markup(concat!(
             "</code>.</p><h2>1. Machine</h2><form method=\"get\" action=\"\">",
             "<p>Choose the machine model from the shipped definitions.</p><ul>"
         ));
-    html.push_fragment(&definition_picker(&list, &key));
+    html.push_fragment(&definition_picker(
+        &list,
+        picked.as_ref().map_or("", |(key, _)| key.as_str()),
+    ));
     html.push_markup("</ul><button>Choose</button></form>");
+    let Some((key, path)) = picked else {
+        html.push_markup(concat!(
+            "<p>This machine is not set up yet. Choose its machine definition ",
+            "above and press Choose; the connection and lab app steps follow.</p></html>"
+        ));
+        return Ok(html);
+    };
     let action = format!("/setup/{id}");
     html.push_fragment(
         &Markup::new()
@@ -450,7 +507,12 @@ fn render_machine(
             .markup("\"><h2>2. Connection</h2>"),
     );
     html.push_fragment(&connection_inputs(state, &path, &current_site));
-    html.push_fragment(&test_and_lab_app(state, id, running, &current_site));
+    html.push_fragment(&test_and_lab_app(
+        state,
+        id,
+        &key_names(running, &current_site),
+        &current_site,
+    ));
     Ok(html)
 }
 
@@ -526,9 +588,18 @@ fn connection_inputs(
 fn test_and_lab_app(
     state: &Context,
     id: &str,
-    running: &Running,
+    keys: &[Identifier],
     current_site: &toml::Table,
 ) -> Markup {
+    let mut statuses = Markup::new();
+    for name in keys {
+        statuses.push_fragment(
+            &Markup::new()
+                .markup("<li>")
+                .fragment(&key_status(state, name))
+                .markup("</li>"),
+        );
+    }
     let mut html = Markup::new();
     html.push_fragment(
         &Markup::new()
@@ -563,13 +634,11 @@ fn test_and_lab_app(
             .markup(concat!(
                 "\"></label><p>Keys are stored so that only the Analyte service can ",
                 "read them, and are never shown again. Leave a box empty to keep the ",
-                "stored key.</p><ul><li>"
+                "stored key.</p><ul>"
             ))
-            .fragment(&key_status(state, &running.keys[0]))
-            .markup("</li><li>")
-            .fragment(&key_status(state, &running.keys[1]))
+            .fragment(&statuses)
             .markup(concat!(
-                "</li></ul><label>Replace API key <input name=\"api_key\" ",
+                "</ul><label>Replace API key <input name=\"api_key\" ",
                 "type=\"password\" autocomplete=\"off\" maxlength=\"4096\"></label> ",
                 "<label>Replace signing key <input name=\"signing_key\" ",
                 "type=\"password\" autocomplete=\"off\" maxlength=\"4096\"></label>",
@@ -868,9 +937,7 @@ pub(super) async fn save(
     );
     let audited = audit(&state, &session, "setup-save", &id, reason).await;
     tracing::info!(machine = id.as_str(), "setup page saved a site file");
-    let running = running(&state, &id)
-        .map(|r| hex(&r.digest))
-        .unwrap_or_default();
+    let running = running(&state, &id).map(running_digest).unwrap_or_default();
     let mut html = page("Settings saved")
         .markup("<p>Machine <strong>")
         .text(&id)

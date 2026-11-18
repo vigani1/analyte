@@ -39,6 +39,16 @@ pub enum Error {
     /// A required installation setting or relationship is refused.
     #[error("configuration has no parent directory")]
     ConfigurationHasNoParentDirectory,
+    /// A machine without a definition waits for the setup page, which needs `[admin]`.
+    #[error(
+        "a machine listed without a definition waits for the setup page; enable [admin] or add its definition"
+    )]
+    SetupNeedsAdmin,
+    /// A machine waiting for setup has capture or overrides, which need a definition.
+    #[error(
+        "a machine listed without a definition cannot have capture or overrides until it is set up"
+    )]
+    AwaitingSetupWithSettings,
     /// A required installation setting or relationship is refused.
     #[error("duplicate machine identity")]
     DuplicateMachineIdentity,
@@ -130,6 +140,8 @@ impl Error {
             | Self::ConfigurationTooLarge
             | Self::ConfigurationHasNoParentDirectory
             | Self::DuplicateMachineIdentity
+            | Self::SetupNeedsAdmin
+            | Self::AwaitingSetupWithSettings
             | Self::InconsistentSharedDestination
             | Self::InvalidProgramLimits
             | Self::InvalidSigningRotation

@@ -471,16 +471,25 @@ reconciliation remain CLI-only.
 
 Use a release build without `test-hooks`. Evidence remains **documented**:
 synthetic subprocess and SCM seam tests do not establish a real SCM installation,
-systemd runtime or machine qualification. There is no MSI/installer GUI, signing
-or automatic update mechanism.
+systemd runtime or machine qualification. The release builds an unsigned
+click-through Windows installer and Linux `.deb` and `.rpm` packages
+([Install](../../docs/operations/install.md)); there is no signing or automatic
+update mechanism.
+
+A program entry without `definition` is a machine that is not set up yet. The
+loader accepts it only with `[admin]` enabled and without `capture` or
+`overrides`; the service does not run it, `check-config`, `status` and the log
+name it, and the setup page finishes it by adding the `definition` line. The
+installers' starter program lists one such machine, so a fresh service starts
+with no lab connection and no keys.
 
 For Linux, follow the [systemd installation guide](../../packaging/linux/README.md).
-The unit starts `/usr/local/bin/analyte run --config /etc/analyte/analyte.toml
+The unit starts `/usr/bin/analyte run --config /etc/analyte/analyte.toml
 --shutdown-timeout-secs 30` as the dedicated `analyte` user without a login.
 The config's `data_directory` **must be `/var/lib/analyte`**, the only writable
 persistent data path allowed by the unit. The state directory is mode 0700;
-file handoff areas must also live beneath it. Configuration and binaries remain
-read-only to the service. `dialout` supplies serial device access; confirm the
+file handoff areas must also live beneath it. The service may also write
+`/etc/analyte`, for the setup page; binaries remain read-only to it. `dialout` supplies serial device access; confirm the
 group and actual device permissions for the distribution. Logs go to journald:
 `sudo journalctl -u analyte.service`. Stop safely with
 `sudo systemctl stop analyte.service`; SIGTERM and SIGINT both use graceful shutdown.

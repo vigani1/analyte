@@ -21,18 +21,77 @@ release binary. Never install a build with the test-only `test-hooks` feature.
 
 ## Obtain and verify the program
 
-Obtain an owner-approved release archive for the host. Follow the checksum and
-GitHub provenance verification in [release instructions](../release.md),
-including checking the source tag and commit. Extract the versioned directory.
-If no approved release exists, ask the maintainer for an approved pilot build;
-there is no release-download command in Analyte.
+Obtain an owner-approved release for the host: the Windows installer
+(`analyte-v<version>-x86_64-windows-setup.exe`), the Linux `.deb` or `.rpm`, or
+the archive for a manual installation. Follow the checksum and GitHub
+provenance verification in [release instructions](../release.md), including
+checking the source tag and commit. If no approved release exists, ask the
+maintainer for an approved pilot build; there is no release-download command in
+Analyte. There is no automatic updater. Keep the verified previous release for
+recovery.
 
-There is no MSI, installation GUI, Authenticode signing or automatic updater.
-Keep the verified previous archive for recovery.
+## What a fresh installation holds
 
-## Windows service
+The installers write a starter program with the admin page on port 8080 and one
+machine, `machine-1`, that has no machine definition yet. Such a machine waits
+for the [Setup page](operate.md#setup-page) and does not run, so the service
+starts without any lab connection or key. The starter site file holds only the
+retention (`keep`, so nothing is ever deleted until the lab chooses a period)
+and the key names `lab-app-api` and `lab-app-signing`; the setup page fills in
+the connection and the lab app. An upgrade never replaces this configuration.
+For more machines, add an entry with its own id and site file, for example:
 
-Use an elevated PowerShell window. Paths below are the packaged defaults.
+```toml
+[[machines]]
+id = "machine-2"
+site = "machine-2.site.toml"
+```
+
+and create `machine-2.site.toml` beside it with the starter's settings, then
+restart and set it up on the page:
+
+```toml
+schema_version = 1
+retention = "keep"
+
+[destination]
+api_key_name = "lab-app-api"
+signing_key_name = "lab-app-signing"
+```
+
+The installers also create the admin token (`admin-token` in the data folder)
+when there is none. You need it to log in; the setup page needs a browser login.
+
+## Windows installer (recommended)
+
+The Windows installer is unsigned for now: Windows SmartScreen will warn when it
+starts. Check the file's checksum first, then choose **More info** → **Run
+anyway**.
+
+1. Run the installer and accept the administrator prompt. It installs Analyte
+   in `C:\Program Files\Analyte`, the machine definitions and the starter
+   configuration in `C:\ProgramData\Analyte\config`, and protects
+   `C:\ProgramData\Analyte\data`.
+2. It registers and starts the `Analyte` service exactly as the script below
+   does, and lets the service write the config folder for the setup page.
+3. The last pages show the new admin token **once**. Copy it somewhere safe,
+   like a password. To read it again later, open PowerShell as administrator and
+   run `Get-Content C:\ProgramData\Analyte\data\admin-token`. Do not browse to
+   the data folder in File Explorer and accept its permission prompt: that adds
+   your account to the folder and Analyte then refuses to start.
+4. Leave **Open the Analyte setup page** ticked and finish. Log in with the
+   token, choose **Setup**, then **Set up** for `machine-1`.
+
+Running it again upgrades the program and keeps the configuration, data and
+token. Uninstall from Windows Settings → Apps: it stops and removes the service
+and the program files, and keeps data, configuration, backups, credentials and
+the token in `C:\ProgramData\Analyte`. Delete those yourself only after the lab
+has decided what to do with the clinical data they hold.
+
+## Windows service by script
+
+Use an elevated PowerShell window. Paths below are the packaged defaults. The
+installer runs this same script with `-ConfigWritable -CreateAdminToken -Start`.
 
 1. Place `analyte.exe` in `C:\Program Files\Analyte`. Administrators own the
    binary and configuration trees. Ordinary users must not write there.
@@ -52,13 +111,15 @@ Use an elevated PowerShell window. Paths below are the packaged defaults.
    Analyte refuses to start if the data directory grants anyone else access,
    including inherited BUILTIN\Users read access; the error names the SID.
 4. Grant the service Read/Execute on binaries, Read on config and the required
-   device access. The installer does not grant these. To use the admin
-   [Setup page](operate.md#setup-page), copy the archive's `machines` folder to
-   `C:\ProgramData\Analyte\config\machines` and grant the service Modify on
-   the config folder instead of Read:
-   `icacls C:\ProgramData\Analyte\config /grant "NT SERVICE\Analyte:(OI)(CI)M"`. Provision credentials
-   for the service environment, not just the terminal. See [Connect](connect.md).
-   If admin is enabled, provision its token as described in [Operate](operate.md).
+   device access; without switches the script grants none of these. To use the
+   admin [Setup page](operate.md#setup-page), copy the archive's `machines`
+   folder to `C:\ProgramData\Analyte\config\machines` and add
+   `-ConfigWritable`: the config folder then gets the data folder's protected
+   access list (SYSTEM and Administrators full control, the service Modify,
+   nothing inherited). Provision credentials for the service environment, not
+   just the terminal. See [Connect](connect.md). If admin is enabled, add
+   `-CreateAdminToken` (creates the token only when missing; read it as
+   described above) or provision it as described in [Operate](operate.md).
 5. Start and inspect:
 
    ```powershell
@@ -70,8 +131,10 @@ Read `C:\ProgramData\Analyte\data\analyte.log` and check the admin page.
 Running service status alone does not prove connection or successful delivery.
 Configure protected log rotation separately.
 
-The script accepts `-Executable`, `-Config`, `-DataDirectory` and
-`-ShutdownTimeoutSecs` (30–300, default 30). The directory parameter must match
+The script accepts `-Executable`, `-Config`, `-DataDirectory`,
+`-ShutdownTimeoutSecs` (30–300, default 30) and the switches `-ConfigWritable`,
+`-CreateAdminToken` and `-Start` (start the service instead of leaving it
+stopped). The directory parameter must match
 TOML; the script does not compare them. Use dedicated local directories without
 reparse points. Do not run as LocalSystem to work around permissions.
 See [the full Windows procedure](../../packaging/windows/README.md) for ACL
@@ -85,18 +148,41 @@ resend uncertain machine orders after an interrupted stop.
 The packaged `packaging/windows/uninstall.ps1` removes the service only.
 Data, configuration, backups, credentials and permissions remain.
 
-## Linux or foreground operation
+## Linux packages (recommended)
 
-Follow the [systemd procedure](../../packaging/linux/README.md), replacing its
-source-build binary path with the extracted binary. To use the admin
-[Setup page](operate.md#setup-page), copy the archive's `machines` folder to
-`/etc/analyte/machines`, make `/etc/analyte` writable by the `analyte` user, and
-add `ReadWritePaths=/etc/analyte` in a unit drop-in
-(`sudo systemctl edit analyte.service`); the supplied unit otherwise lets the
-service write only under `/var/lib/analyte`. It uses `/etc/analyte`
-for config, `/var/lib/analyte` for data and a dedicated `analyte` account.
-The supplied unit permits persistent writes only under `/var/lib/analyte`.
-Use `sudo systemctl stop analyte.service` for maintenance and
+Install the package for the distribution:
+
+```sh
+sudo apt install ./analyte_<version>-1_amd64.deb     # Debian, Ubuntu
+sudo dnf install ./analyte-<version>-1.x86_64.rpm    # Fedora, RHEL family
+```
+
+The package creates the `analyte` system account, installs `/usr/bin/analyte`,
+the systemd unit and the machine definitions (`/usr/share/analyte/machines`,
+linked from `/etc/analyte/machines`). It writes the starter configuration in
+`/etc/analyte` (configuration files that an upgrade never replaces), protects
+`/var/lib/analyte` (mode 0700, owned by `analyte`) and lets the service write
+`/etc/analyte` (owner root, group `analyte`, mode 0770) for the setup page. It
+creates the admin token when missing, enables and starts the service, and prints
+the setup page address. It never prints the token, because package tools keep
+their output in logs. Read it with `sudo cat /var/lib/analyte/admin-token`, then
+open `http://127.0.0.1:8080/setup` on that computer and log in.
+
+Removing the package (`apt remove`, `dnf remove`) stops and disables the
+service and keeps configuration and data. `apt purge` also deletes
+`/etc/analyte`, but never `/var/lib/analyte`: clinical data, credentials and the
+token stay until a person deletes them.
+
+The packages are built on the current Ubuntu GitHub runner, so they need a
+distribution whose C library is at least as new as that runner's (for example
+Ubuntu 24.04 or later). Older distributions are not supported yet.
+
+## Linux by hand or foreground operation
+
+Follow the [systemd procedure](../../packaging/linux/README.md) with the
+extracted binary. It uses `/etc/analyte` for config, `/var/lib/analyte` for data
+and a dedicated `analyte` account; the unit lets the service write only those two
+folders. Use `sudo systemctl stop analyte.service` for maintenance and
 `sudo journalctl -u analyte.service` for diagnostics.
 
 For supervised commissioning outside a service:
