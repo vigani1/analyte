@@ -1,5 +1,4 @@
 //! Tests LAW order queries and query-triggered work downloads.
-//! Kept whole: related query cases share synthetic peer and custody assertions.
 use super::*;
 
 #[tokio::test]

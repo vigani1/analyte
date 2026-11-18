@@ -1,5 +1,4 @@
 //! Runs HL7 acknowledgment conversations over MLLP with documented evidence (HL7 2.5.1 2.9.2/2.9.3).
-//! Kept whole: The HL7 conversation state transitions share connection ownership and deadline invariants.
 use analyte_framing::hl7 as mllp;
 use analyte_hl7::OwnedAckError as OwnedError;
 use analyte_hl7::{

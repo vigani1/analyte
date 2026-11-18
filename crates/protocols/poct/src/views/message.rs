@@ -1,5 +1,4 @@
 //! Reads mandatory POCT Basic Profile messages with exact source evidence.
-//! Kept whole: POCT message variants and their typed field accessors define one message vocabulary.
 use crate::{
     Document, Limits,
     syntax::structure,

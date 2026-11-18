@@ -1,5 +1,4 @@
 //! Exercises HTTP delivery, immutable identities and bounded order polling against local synthetic peers.
-//! Kept whole: Shared receiver, proxy and store fixtures keep delivery scenarios on the same controlled HTTP harness.
 use super::*;
 use analyte_fixtures as guard;
 use analyte_model::*;

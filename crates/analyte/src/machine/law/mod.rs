@@ -1,5 +1,4 @@
 //! Drives LAW connections using dialog actions and durable store calls.
-//! Kept whole: Keeps connection modes, ordered effects and reservation cleanup together.
 use crate::machine::hl7::orders::response::{Profile, response_metadata};
 pub(crate) mod policy;
 use super::connection_input::Input;

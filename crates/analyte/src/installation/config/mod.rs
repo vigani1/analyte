@@ -1,5 +1,4 @@
 //! Loads bounded program TOML and machine snapshots without secret values.
-//! Kept whole: Program configuration types and boundary validation express one installation contract.
 #[cfg(test)]
 use analyte_fixtures::ConfigEdit as _;
 mod alerts;

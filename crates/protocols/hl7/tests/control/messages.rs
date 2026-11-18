@@ -1,5 +1,4 @@
 //! Tests HL7 control fields and acknowledgments.
-//! Kept whole: Control acknowledgment validation cases share the same synthetic message builders.
 use analyte_fixtures::ConfigEdit as _;
 use analyte_hl7::*;
 use proptest::prelude::*;

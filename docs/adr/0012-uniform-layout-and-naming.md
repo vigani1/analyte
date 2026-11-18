@@ -145,9 +145,15 @@ can run over any transport that its framing supports.
 The workspace enables `too_many_lines` (100), `cognitive_complexity` (25),
 `fn_params_excessive_bools`, `struct_excessive_bools`, `items_after_statements`,
 `module_name_repetitions` and `similar_names`. An exception is a narrow
-`#[expect(..., reason = "...")]`, for a flat table that reads best whole. A
-tracked Rust file under `crates/` or `fuzz/` is limited to 800 lines; files of 601 to 800 lines require a `//!` header line containing `Kept whole:` and its reason, enforced by the Layout CI job.
+`#[expect(..., reason = "...")]`, for a flat table that reads best whole.
 Several related yes/no flags become one enum of named states.
+
+Files have no length limit. A file is split when it holds separate
+responsibilities, and a piece too small to stand alone stays in its owner's
+file. (Changed on 2026-11-18 at the owner's request: an 800-line file cap with
+28 `Kept whole:` exemptions split modules for the count's sake and left many
+files under 40 lines; the cap, its exemptions and those tiny files were
+removed or merged back.)
 
 ### 8. Every crate and every file says what it holds
 
@@ -161,10 +167,8 @@ first. Apply these rules:
 - Describe contents rather than where they belong. Good: `//! Reads ASTM header record fields.` Bad: `//! Header views belong beside the grammar.`
 - Prefer concrete terms to abstractions such as semantics, profiles, assembly or boundary. Good: `//! Writes HL7 segments within a byte limit.` Bad: `//! Private bounded wire assembly.`
 - Avoid words whose lab or standards meaning differs from the code. Good: `//! Holds evidence lists capped at 256 entries.` Bad: `//! Holds evidence collections.` In a lab, collection means collecting a specimen.
-- Keep any `//! Kept whole:` reason on its own line, as the second header line. Good: `//! Runs service startup and shutdown.` followed by `//! Kept whole: Preserves worker ownership order.` Bad: `//! Service ownership. Kept whole: Preserves worker ownership order.`
 
-The Layout CI job checks the opening header and finds the separate
-`Kept whole:` line in the opening documentation block.
+The Layout CI job checks that every Rust file opens with a `//!` line.
 
 ### 9. Large folders group files by role
 

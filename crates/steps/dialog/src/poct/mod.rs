@@ -1,5 +1,4 @@
 //! Turns POCT reviewer events into ordered host actions without I/O.
-//! Kept whole: The POCT conversation state transitions and timeout decisions form one protocol dialog.
 mod input;
 mod parking;
 mod storage;
