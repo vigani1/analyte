@@ -54,9 +54,8 @@ pub(crate) async fn recover(store: &Handle) -> Result<(), Error> {
     }
 }
 
-// HTTP and retry defaults are host policy, independent of analyzer dialog timers.
-/// Bounds the complete outbound HTTP attempt.
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
+// Retry and polling defaults are host policy, independent of analyzer dialog timers.
+// The HTTP request deadline is a site setting: it depends on the link and the app.
 /// Reserves time to persist an accepted or uncertain delivery outcome.
 const STORE_TIMEOUT: Duration = Duration::from_secs(2);
 /// Initial retry delay matches the store's one-second scheduling precision.
@@ -70,13 +69,14 @@ const PAGE_SIZE: u16 = 100;
 /// Bounds a single paged snapshot even when the peer never finishes it.
 const MAX_PAGES: u16 = 100;
 
-pub(crate) fn limits(freshness: u64) -> Limits {
+/// Turns validated site destination settings into the sink's operational bounds.
+pub(crate) fn limits(settings: &analyte_config::Destination) -> Limits {
     Limits {
-        request_timeout: REQUEST_TIMEOUT,
+        request_timeout: Duration::from_secs(settings.request_timeout_seconds),
         store_timeout: STORE_TIMEOUT,
         backoff_min: BACKOFF_MIN,
         backoff_max: BACKOFF_MAX,
-        freshness: Duration::from_secs(freshness),
+        freshness: Duration::from_secs(settings.freshness_seconds),
         poll_interval: POLL_INTERVAL,
         page_size: PAGE_SIZE,
         max_pages: MAX_PAGES,

@@ -486,11 +486,16 @@ impl Dialog {
                 }
             }
             Body::KeepAlive => {
-                actions.push(Action::Park {
-                    message,
-                    reason: RefusalCode::KeepAlive,
-                });
-                return self.unexpected(reference, actions);
+                // B 3.5: a participant not prepared for Keep Alive answers with an
+                // Escape instead of an ACK. Either reply completes the exchange, so
+                // the conversation stays in its current phase.
+                self.send(
+                    Outbound::Escape {
+                        reference,
+                        reason: EscapeReason::Other,
+                    },
+                    actions,
+                )?;
             }
             Body::Request(_) => return self.unexpected(reference, actions),
         }

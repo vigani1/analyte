@@ -226,6 +226,8 @@ enum Waiting {
 struct Sending {
     id: Vec<u8>,
     waiting: Waiting,
+    // Set by `step` from the current time; separate from the inbound deadline.
+    until: Option<Duration>,
 }
 impl Sending {
     fn acknowledge(&mut self, code: AckCode) -> Result<Option<Outcome>, Error> {
@@ -299,6 +301,8 @@ pub struct Dialog {
     next: u64,
     decoder: mllp::Decoder,
     state: State,
+    // HL7 2.5.1 §2.9: our outbound exchange runs beside inbound ones on the same link.
+    sending: Option<Sending>,
     queue: VecDeque<(Vec<u8>, Duration)>,
     clock: crate::Clock,
     deadline: Option<Duration>,
@@ -314,6 +318,7 @@ impl Dialog {
             epoch,
             next: 0,
             state: State::Idle,
+            sending: None,
             decoder: mllp::Decoder::new(config.limit),
             queue: VecDeque::new(),
             clock: crate::Clock::default(),
@@ -338,12 +343,14 @@ impl Dialog {
         if self.deadline.is_some_and(|d| now >= d) {
             self.expire(&mut out);
         }
+        if let Some(sending) = self.sending.take_if(|s| s.until.is_some_and(|d| now >= d)) {
+            out.push(Action::Sent(sending.id, Outcome::Uncertain));
+        }
         if let Err(error) = self.input(event, &mut out) {
             out.push(Action::Refused(error));
         }
         if self.state.pending().is_none()
             && self.state.malformed_id().is_none()
-            && !matches!(self.state, State::Sending(_))
             && !self.orders.as_ref().is_some_and(Orders::committing)
             && !matches!(self.state, State::Closed { .. })
             && let Some((raw, started)) = self.queue.pop_front()
@@ -354,10 +361,12 @@ impl Dialog {
         }
         if self.deadline.is_none()
             && ((self.state.pending().is_some() || self.state.malformed_id().is_some())
-                || matches!(self.state, State::Sending(_))
                 || !self.decoder.pending().is_empty())
         {
             self.deadline = Some(end);
+        }
+        if let Some(sending) = &mut self.sending {
+            sending.until.get_or_insert(end);
         }
         out.push(Action::Deadline(self.next_deadline()));
         Ok(out)
@@ -365,7 +374,7 @@ impl Dialog {
 
     fn send(&mut self, raw: &[u8], out: &mut Vec<Action>) -> Result<(), Error> {
         if (self.state.pending().is_some() || self.state.malformed_id().is_some())
-            || matches!(self.state, State::Sending(_))
+            || self.sending.is_some()
             || !self.decoder.pending().is_empty()
         {
             return Err(Error::Busy);
@@ -393,7 +402,11 @@ impl Dialog {
         let wire = crate::Write::encode(raw, self.config.limit, None)?;
         out.push(Action::Write(wire));
         if let Some(waiting) = waiting {
-            self.state = State::Sending(Sending { id, waiting });
+            self.sending = Some(Sending {
+                id,
+                waiting,
+                until: None,
+            });
         } else {
             out.push(Action::Sent(id, Outcome::NotRequested));
         }
@@ -534,7 +547,7 @@ impl Dialog {
                 self.respond(id, response, out)?;
             }
             Event::Disconnected => {
-                if let Some(sending) = self.state.take_sending() {
+                if let Some(sending) = self.sending.take() {
                     out.push(Action::Sent(sending.id, Outcome::Uncertain));
                 }
                 if let Some(event) = self.decoder.finish() {
@@ -595,10 +608,9 @@ impl Dialog {
     fn wire(&mut self, event: mllp::Event, out: &mut Vec<Action>) {
         match event {
             mllp::Event::Rejected { error, raw } => out.push(Action::Rejected(error, raw)),
+            mllp::Event::Block(raw) if self.ack(&raw, out) => {}
             mllp::Event::Block(raw) => {
-                if matches!(self.state, State::Sending(_)) {
-                    self.ack(&raw, out);
-                } else if self.state.pending().is_some()
+                if self.state.pending().is_some()
                     || self.state.malformed_id().is_some()
                     || self.orders.as_ref().is_some_and(Orders::committing)
                 {
@@ -667,39 +679,38 @@ impl Dialog {
         }
     }
 
-    fn ack(&mut self, raw: &[u8], out: &mut Vec<Action>) {
-        let parsed = mllp::payload(raw)
-            .ok_or(Error::Framing(mllp::Error::Incomplete))
-            .and_then(|p| Message::parse(p, self.config.options).map_err(Error::from));
-        let result = parsed.and_then(|message| {
-            let msh = Msh::new(&message)?;
-            let segment = message
-                .segments()
-                .find(|s| s.id() == b"MSA")
-                .ok_or(Error::Stale)?;
-            let msa = Msa::for_version(segment, msh.version())?;
-            Ok((msa.control_id().to_vec(), msa.code()))
-        });
-        if let Ok((id, code)) = result
-            && let State::Sending(sending) = &mut self.state
-            && sending.id == id
-        {
-            match sending.acknowledge(code) {
+    // Consumes only acknowledgments while our message waits; other blocks take the inbound path.
+    fn ack(&mut self, raw: &[u8], out: &mut Vec<Action>) -> bool {
+        let Some(sending) = &mut self.sending else {
+            return false;
+        };
+        let Some(message) =
+            mllp::payload(raw).and_then(|p| Message::parse(p, self.config.options).ok())
+        else {
+            return false;
+        };
+        let Some(segment) = message.segments().find(|s| s.id() == b"MSA") else {
+            return false;
+        };
+        let result = Msh::new(&message)
+            .and_then(|msh| Msa::for_version(segment, msh.version()))
+            .map(|msa| (msa.control_id().to_vec(), msa.code()));
+        match result {
+            Ok((id, code)) if sending.id == id => match sending.acknowledge(code) {
                 Ok(Some(outcome)) => {
-                    self.state = State::Idle;
-                    self.deadline = None;
+                    self.sending = None;
                     out.push(Action::Sent(id, outcome));
                 }
                 Ok(None) => {
                     // The application phase gets its own bounded wait.
-                    self.deadline = None;
+                    sending.until = None;
                     out.push(Action::CommitAccepted(id));
                 }
                 Err(error) => out.push(Action::Parked(raw.to_vec(), error)),
-            }
-            return;
+            },
+            _ => out.push(Action::Unmatched(raw.to_vec())),
         }
-        out.push(Action::Unmatched(raw.to_vec()));
+        true
     }
 
     fn complete_malformed(&mut self, id: ExchangeId, out: &mut Vec<Action>) -> Result<bool, Error> {
@@ -723,9 +734,6 @@ impl Dialog {
             out.push(Action::Parked(raw, error));
         }
         self.deadline = None;
-        if let Some(sending) = self.state.take_sending() {
-            out.push(Action::Sent(sending.id, Outcome::Uncertain));
-        }
         if let Some(pending) = self.state.pending() {
             let id = pending.id;
             out.push(Action::TimedOut(id));
