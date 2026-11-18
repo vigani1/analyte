@@ -96,7 +96,7 @@ corrections, reruns, partial panels and restart behavior end to end.
 
 Inspected on the task's main-based checkout, 2026-11-16:
 
-- [ADR 0012 §5](../adr/0012-uniform-layout-and-naming.md#5-machines) already
+- [ADR 0012 §5](../adr/0012-uniform-layout-and-naming.md) already
   requires named departures in `machine.toml` and a Departures README section.
   [machines/README.md](../../machines/README.md) provides that template.
 - [schema/mod.rs](../../crates/core/config/src/schema/mod.rs) has

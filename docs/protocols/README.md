@@ -14,8 +14,15 @@ themselves are never committed.
 | VIDAS PC Literal | [vidas](vidas/README.md) | 6 |
 | Autolyser internal | [autolyser](autolyser/README.md) | 6 |
 
-Each folder contains `README.md`, `decisions.md`, `checklist.md` and
-`versions.md`. See the [glossary](../glossary.md) for shared terms.
+Each folder has the same four files ([ADR 0012](../adr/0012-uniform-layout-and-naming.md)).
+See the [glossary](../glossary.md) for shared terms.
+
+| File | Holds |
+| --- | --- |
+| `README.md` | What the protocol is, Analyte's role, source documents and editions, scope, evidence level |
+| `decisions.md` | Each choice the standard leaves open or Analyte adds (role, strictness, options, readings of unclear text, defaults, safety departures): what, why, source and guarding test |
+| `checklist.md` | Plain requirements, one or more tests per row |
+| `versions.md` | Supported versions, the difference table with sources, and the rule for unlisted versions |
 
 ## Checklist test references
 
@@ -35,7 +42,7 @@ decide these boundaries; this table names the test that guards each one.
 | --- | --- | --- |
 | ASTM | Reserve capacity before ENQ ACK; commit each frame before data ACK | [astm.rs](../../crates/steps/dialog/tests/astm.rs): `adr0003_lis01_6_5_2_5_failed_and_unanswered_commit_never_ack` |
 | HL7/MLLP | Commit complete raw block; interpret before AA (enhanced CA gates raw custody) | [hl7/mod.rs](../../crates/steps/dialog/tests/hl7/mod.rs): `hl7_251_2_9_2_aa_only_after_store_and_interpret`; [dialog](../../crates/steps/dialog/tests/hl7/mod.rs) |
-| LAW LAB-29 | Retain raw result and interpretation before AA | [results.rs](../../crates/analyte/tests/law/results.rs): `law_tf2b_3_29_4_adr0003_raw_commit_precedes_interpretation_and_ack` |
+| LAW LAB-29 | Retain raw result and interpretation before AA | [results/custody.rs](../../crates/analyte/tests/law/results/custody.rs): `law_tf2b_3_29_4_adr0003_raw_commit_precedes_interpretation_and_ack` |
 | POCT | Complete raw receipt and semantic outcome before ACK | [chunk_receive/custody.rs](../../crates/analyte/tests/chunk_receive/custody.rs): `poct01_b3_2_adr0003_stored_before_ack_unresolved_parked_no_delivery` |
 | VIDAS Literal | Retain complete transfer before data ACK | [chunk_receive/custody.rs](../../crates/analyte/tests/chunk_receive/custody.rs): `vidas_literal_notes3_adr0003_stored_before_ack_unresolved_parked_no_delivery` |
 | Autolyser | Retain and validate poll response before destructive R; preserve uncertain R for reconciliation | [chunk_receive/custody.rs](../../crates/analyte/tests/chunk_receive/custody.rs): `autolyser_rev18_p175_179_adr0003_corrupt_stored_blocks_r_until_valid_l` |

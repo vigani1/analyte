@@ -37,6 +37,21 @@ these suspicious patterns.
 - Each machine config or driver states its evidence level (proven, simulated
   or documented) and never raises it without the evidence.
 
+## File headers
+
+Every Rust file opens with one `//!` sentence that a newcomer can read alone
+([ADR 0012](docs/adr/0012-uniform-layout-and-naming.md), item 8). Crate READMEs
+use the same plain descriptions, stating the crate's kind first.
+
+- Start with a verb and the concrete things handled: `//! Validates LAW MSH,
+  MSA and ERR segments.`, not `//! Manager control profiles.`
+- Put limits after the job: `//! Maps ASTM result records to model results
+  without I/O.`, not `//! No I/O or clinical decisions.`
+- Say what the file holds, not where it belongs, and avoid abstract words
+  (semantics, profiles, assembly, boundary).
+- Avoid words whose lab meaning differs: "collection" means collecting a
+  specimen, so write `//! Holds evidence lists capped at 256 entries.`
+
 ## Test wall-clock budgets
 
 `analyte_fixtures` defines harness and store-request budgets with a fixed CI

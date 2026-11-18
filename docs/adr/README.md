@@ -1,8 +1,9 @@
 # Architecture decision records
 
-One file per hard-to-reverse decision, named `NNNN-short-title.md`, with
-context, decision and consequences. A superseded record stays and links to its
-replacement.
+One file per hard-to-reverse decision, named `NNNN-short-title.md`, about half
+a page: context, decision, why, consequences and status. Protocol detail lives
+in [docs/protocols/](../protocols/README.md). A superseded record stays and
+links to its replacement; none is superseded today.
 
 | ADR                                             | Decision                                           |
 | ----------------------------------------------- | -------------------------------------------------- |
@@ -19,5 +20,7 @@ replacement.
 | [0011](0011-result-status-progression.md)       | Result status progression (refines ADR 0003)       |
 | [0012](0012-uniform-layout-and-naming.md)       | One layout and naming scheme for protocols and machines |
 | [0013](0013-retention-of-delivered-data.md)     | Retention of delivered data (refines ADR 0003)     |
-| [0014](0014-external-alert-delivery.md)         | External alert delivery                |
+| [0014](0014-external-alert-delivery.md)         | External alert delivery                            |
+| [0015](0015-named-machine-departures.md)        | Typed, evidenced departures for individual machines |
+| [0016](0016-awos-status-notifications.md)       | LAW status notifications beside order state        |
 | [0017](0017-windows-access-list-unsafe.md)      | Unsafe code for Windows access lists               |

@@ -1,27 +1,30 @@
 # Analyte plan
 
-Status, 2026-11-15: phases 1 to 4, 6 and 8 are built at the documented level,
-while phase 5 has a POCT Basic Profile implementation with an open conformance
-evidence gate (see the audited [POCT checklist](protocols/poct/README.md)),
-including IHE LAW as Analyzer Manager in the program (persistent or independent
-directional links; successful recorded simulator qualification remains). The program receives and parks
-results from every stack, answers machine queries and sends work lists for
-ASTM, HL7, LAW, VIDAS and Autolyser through one durable order path that never
-resends. Recordings replay through the program. From phase 9: OS services,
-safe restore, the release process, the read-only admin page with audited
-reprocess and resend, alerts with named responders, and the guide to adding a
-machine exist. Phase 7 machine configs and the pilot wait on the lab. Nothing
-has met a real machine yet. Recorded Gazelle message validation passes all eight
-Analyzer Manager messages after fixing a SAC-3/SAC-10 defect; this does not
-replace simulator qualification. The first live LAB-28 [run](conformance/gazelle/law-run/README.md)
-retained an invalid ORL as Uncertain and stopped before cancellation. See [reports](conformance/gazelle/README.md).
+Status on 2026-11-18, in plain words:
 
-ADR 0016 adds documented custody for empty LAW SC/IP/CA execution notices,
-including atomic mixed-message acceptance, retained-work correlation and
-restart-safe dispositions. Execution is visible only in protected admin views;
-contract v1 remains unchanged. Simulator status/cancellation-race qualification
-and a named admin responder remain deployment prerequisites. LAW custody
-receipts and linked work remain retained until explicit purge eligibility exists.
+- **Built:** every standard (ASTM, HL7 v2 with MLLP, IHE LAW, POCT1-A) and both
+  vendor formats (VIDAS, Autolyser), all at the documented level. The program
+  receives and stores results from all six, answers machine queries and sends
+  work lists through one order path that never resends, delivers to apps under
+  contract v1 and replays recordings. LAW status notices
+  ([ADR 0016](adr/0016-awos-status-notifications.md)) show on the admin page
+  only. Service installs, backup and restore, the admin page, alerts with named
+  responders, retention, the release process and the guides exist too.
+- **Not yet:** no machine config is qualified, and nothing has met a real
+  machine. Each protocol checklist still lists open rows, mostly ones that need
+  installation evidence or a more complete named test; the POCT conformance
+  gate is still open ([POCT notes](protocols/poct/README.md)).
+- **LAW simulator:** Gazelle's message validator passes all eight messages
+  Analyte sends ([reports](conformance/gazelle/README.md)). The live Gazelle
+  run was recorded, but the simulator's own reply broke the standard (MSH-7
+  without a time zone), so Analyte rightly refused it and LAW stays at
+  documented ([run](conformance/gazelle/law-run/README.md)).
+- **Just finished:** a bug-fix round and a slim-down round: the store starts
+  from one schema instead of unreleased migrations, one runner drives the
+  VIDAS, Autolyser and POCT connections, one protocol registry replaces
+  scattered per-protocol lists, and the file-length cap is gone.
+- **Next:** the lab's settings and recordings, then the machine configs, then
+  the lab pilot ([next steps](context.md#next-steps)).
 
 ## 1. Goal
 
@@ -107,7 +110,7 @@ Transport: serial · TCP client/server · watched folder
   are used by protocol and storage crates, and the program wires dialogs to
   host services. A dialog may acknowledge data only after the host reports
   that it is durably stored.
-- Planned workspace crates (one reason to change each):
+- Workspace crates (one reason to change each):
 
 | Crate               | Owns                                                         |
 | ------------------- | ------------------------------------------------------------ |
@@ -127,6 +130,7 @@ Transport: serial · TCP client/server · watched folder
 | `analyte-vidas`     | VIDAS tagged message syntax                    |
 | `analyte-autolyser` | Autolyser fixed-width record syntax        |
 | `analyte-receiver`  | Reference receiver: a small app that implements the contract |
+| `analyte-fixtures`  | Shared synthetic test fixtures                               |
 | `analyte`           | The program: service, CLI, admin page                        |
 
 Vendor syntax and POCT1-A have their own crates, so a new vendor format is a
@@ -229,14 +233,19 @@ machines to reach the proven level. They are added as configs (or vendor
 format pieces) after the standards they use are complete. Recordings from
 them can be collected at any time and kept as test data.
 
-| Machine                | Protocol                          | Direction                         | Evidence today | Missing                                          |
-| ---------------------- | --------------------------------- | --------------------------------- | -------------- | ------------------------------------------------ |
-| Roche cobas e 411      | ASTM over serial                  | Results, host query, orders       | documented     | Lab's host code table, trace log copy            |
-| YHLO iFlash 1200       | HL7 2.3.1 over MLLP (TCP), from the iFlash family manual | Results, query (QRY/QCK/DSR)      | documented     | Protocol confirmed for the 1200, port            |
-| Boule Swelab Lumi      | HL7 over TCP                      | Results, sample lookup            | documented     | Sample ID field, lookup message type             |
-| BioCARE Biolyte 2000   | ASTM over serial                  | Results only                      | documented     | One real recording                               |
-| bioMérieux VIDAS (PC)  | Vendor "Literal" over serial      | Results, work list download       | documented     | VIDAS PC version (sample ID length 12 or 17)     |
-| Dialab Autolyser       | Vendor format, host polls         | Results when asked, work list     | documented     | TCP settings; barcode reader retrofit            |
+Status on 2026-11-18: the protocol each machine needs is built at the
+documented level, but no machine config is written or qualified yet. Each
+machine folder in `machines/` holds a blocked definition that lists what is
+missing; nothing is guessed in the meantime.
+
+| Machine                | Protocol                          | Direction                         | Protocol today | Machine config | Waiting for                                     |
+| ---------------------- | --------------------------------- | --------------------------------- | -------------- | -------------- | ------------------------------------------------ |
+| Roche cobas e 411      | ASTM over serial                  | Results, host query, orders       | documented     | blocked        | Installed host codes, serial settings, trace log copy |
+| YHLO iFlash 1200       | HL7 2.3.1 over MLLP (TCP), from the iFlash family manual | Results, query (QRY/QCK/DSR)      | documented     | blocked        | Protocol confirmed for the 1200, port, deadlines; result status and QC mapping evidence |
+| Boule Swelab Lumi      | HL7 over TCP                      | Results, sample lookup            | documented     | blocked        | Boule's LIS description: framing, encoding, HL7 version, sample ID field, lookup message |
+| BioCARE Biolyte 2000   | ASTM over serial                  | Results only                      | documented     | blocked        | Serial flow control, one real recording          |
+| bioMérieux VIDAS (PC)  | Vendor "Literal" over serial      | Results, work list download       | documented     | blocked        | VIDAS PC version (sample ID length 12 or 17)     |
+| Dialab Autolyser       | Vendor format, host polls         | Results when asked, work list     | documented     | blocked        | TCP settings; barcode reader retrofit            |
 
 ## 10. Testing
 
@@ -303,19 +312,19 @@ them can be collected at any time and kept as test data.
 
 ## 13. Phases
 
-| #   | Work                                                                                | Done when                                  |
-| --- | ----------------------------------------------------------------------------------- | ------------------------------------------ |
-| 0   | Name, license, repo, this plan, first ADRs                                          | Plan approved                              |
-| 1   | Core: workspace, common model, store, outbox, delivery, order contract and order cache ("changes since" polling, freshness, deadlines), fake machine, first reference receiver, protected command-line view of parked items, CI | A fake result reaches the reference receiver and a fake query is answered from the cache, failure paths included |
-| 2   | ASTM complete within [its scope](protocols/astm/README.md): serial and TCP transport, LIS01 framing, LIS02 records, all dialogs (machine pushes, machine asks, host sends ahead) | Every checklist row has passing tests (documented) |
-| 3   | HL7 v2 complete within [its scope](protocols/hl7/README.md): 2.3.1 and 2.5.1 syntax, acknowledgments, MLLP | Every checklist row has passing tests, plus official examples and HL7 tools (documented) |
-| 4   | IHE LAW as Analyzer Manager within [its scope](protocols/law/README.md): LAB-27 query, LAB-28 work order, LAB-29 results, selected options | Every checklist row has passing tests and a recorded Gazelle run (simulated) |
-| 5   | POCT01-A2 as DML Observation Reviewer within [its scope](protocols/poct/README.md) | Every checklist row has passing tests (documented) |
-| 6   | Published contract: full reference receiver, contract docs and test vectors any app can run | The test vectors pass against the reference receiver end to end |
-| 7   | Machine configs: cobas e 411, Biolyte 2000, iFlash 1200, Swelab Lumi        | Each config passes its vendor traces (simulated) |
-| 8   | Vendor formats: VIDAS Literal, Autolyser (start/end framing, tags, fixed width, polling dialog) | Each piece passes its vendor examples (documented or simulated) |
-| 9   | Real-lab pilot with the six machines, admin page, installers, restore rehearsal, alerts with named responders, release process, docs for adding a machine | The six machines reach proven at the lab; another lab can install it |
-| 10  | Plugin interface, only if a real outside driver needs one                    | Contributors add machines                  |
+| #   | Work                                                                                | Done when                                  | Status on 2026-11-18 |
+| --- | ----------------------------------------------------------------------------------- | ------------------------------------------ | --- |
+| 0   | Name, license, repo, this plan, first ADRs                                          | Plan approved                              | Done |
+| 1   | Core: workspace, common model, store, outbox, delivery, order contract and order cache ("changes since" polling, freshness, deadlines), fake machine, first reference receiver, protected command-line view of parked items, CI | A fake result reaches the reference receiver and a fake query is answered from the cache, failure paths included | Done |
+| 2   | ASTM complete within [its scope](protocols/astm/README.md): serial and TCP transport, LIS01 framing, LIS02 records, all dialogs (machine pushes, machine asks, host sends ahead) | Every checklist row has passing tests (documented) | Built, documented; open checklist rows remain |
+| 3   | HL7 v2 complete within [its scope](protocols/hl7/README.md): 2.3.1 and 2.5.1 syntax, acknowledgments, MLLP | Every checklist row has passing tests, plus official examples and HL7 tools (documented) | Built, documented; open checklist rows remain |
+| 4   | IHE LAW as Analyzer Manager within [its scope](protocols/law/README.md): LAB-27 query, LAB-28 work order, LAB-29 results, selected options | Every checklist row has passing tests and a recorded Gazelle run (simulated) | Built, documented; Gazelle run recorded but the simulator's reply broke the standard, so simulated is not reached |
+| 5   | POCT01-A2 as DML Observation Reviewer within [its scope](protocols/poct/README.md) | Every checklist row has passing tests (documented) | Built, documented; conformance gate still open |
+| 6   | Published contract: full reference receiver, contract docs and test vectors any app can run | The test vectors pass against the reference receiver end to end | Done |
+| 7   | Machine configs: cobas e 411, Biolyte 2000, iFlash 1200, Swelab Lumi        | Each config passes its vendor traces (simulated) | Waiting for the lab's settings and recordings |
+| 8   | Vendor formats: VIDAS Literal, Autolyser (start/end framing, tags, fixed width, polling dialog) | Each piece passes its vendor examples (documented or simulated) | Built, documented |
+| 9   | Real-lab pilot with the six machines, admin page, installers, restore rehearsal, alerts with named responders, release process, docs for adding a machine | The six machines reach proven at the lab; another lab can install it | Software parts built (admin page, installers, restore, alerts, release process, machine guide); pilot not started |
+| 10  | Plugin interface, only if a real outside driver needs one                    | Contributors add machines                  | Not needed yet |
 
 Each standard's phase starts by writing its scope (see principle 7). A
 standard is done when it conforms to its official documents within that
