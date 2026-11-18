@@ -47,6 +47,7 @@ pub(super) struct Context {
     pub(super) destinations: Vec<analyte_sink::Destination>,
     pub(super) directory: std::path::PathBuf,
     pub(super) reserve: u64,
+    pub(super) setup: super::setup::Setup,
     // Struct fields drop in declaration order: notify only after store is released.
     _released: tokio::sync::oneshot::Sender<()>,
 }
@@ -54,6 +55,8 @@ pub(super) struct Context {
 pub(crate) struct Server {
     listener: Listener,
     app: Router,
+    /// Set by the setup page's "Restart now".
+    restart: watch::Receiver<bool>,
     released: tokio::sync::oneshot::Receiver<()>,
     pub(crate) owners: BTreeMap<String, Arc<AtomicBool>>,
 }
@@ -87,6 +90,16 @@ pub(crate) async fn prepare(
         .map(|m| (m.id.as_str().to_owned(), m.running.clone()))
         .collect();
     let (released, release) = tokio::sync::oneshot::channel();
+    #[cfg(feature = "test-hooks")]
+    let seams = program
+        .hooks
+        .setup
+        .clone()
+        .unwrap_or_else(|| super::setup::Seams::system(&program.source_path));
+    #[cfg(not(feature = "test-hooks"))]
+    let seams = super::setup::Seams::system(&program.source_path);
+    let setup = super::setup::Setup::new(program, seams);
+    let restart = setup.restart_requested();
     let state = Arc::new(Context {
         alert_endpoints: program
             .alert_delivery()
@@ -105,6 +118,7 @@ pub(crate) async fn prepare(
         destinations: crate::runtime::delivery::destinations(program, mode)?,
         directory: program.data_directory().to_owned(),
         reserve: program.store_limits.reserve_bytes,
+        setup,
         _released: released,
     });
     Ok(Some(Server {
@@ -112,6 +126,7 @@ pub(crate) async fn prepare(
             socket,
             slots: Arc::new(Semaphore::new(32)),
         },
+        restart,
         app: router(state),
         released: release,
         owners,
@@ -121,19 +136,38 @@ pub(crate) async fn prepare(
 impl Server {
     /// Shutdown stops admission and drains active requests; the service bounds and
     /// joins this owner. Cancellation can leave an already submitted read running.
+    /// A restart requested on the setup page drains the same way and then
+    /// returns [`Error::RestartRequested`], so the service stops for its manager to
+    /// start it again.
     pub(crate) async fn run(self, mut stop: watch::Receiver<bool>) -> Result<(), Error> {
+        let mut restart = self.restart.clone();
         drain_server(
             axum::serve(self.listener, self.app)
                 .with_graceful_shutdown(async move {
-                    let _ = async {
-                        let _ = stop.wait_for(|&stopped| stopped).await;
+                    let stopped = async {
+                        let _ = stop.wait_for(|&stopped| stopped).await.map(|_| ());
+                    };
+                    tokio::pin!(stopped);
+                    tokio::select! {
+                        () = &mut stopped => {}
+                        requested = async {
+                            restart.wait_for(|&requested| requested).await.map(|_| ())
+                        } => {
+                            // A closed channel is not a request; keep serving until stop.
+                            if requested.is_err() {
+                                stopped.await;
+                            }
+                        }
                     }
-                    .await;
                 })
                 .into_future(),
             self.released,
         )
-        .await
+        .await?;
+        if *self.restart.borrow() {
+            return Err(Error::RestartRequested);
+        }
+        Ok(())
     }
 }
 
@@ -172,6 +206,20 @@ fn router(state: Arc<Context>) -> Router {
         .route(
             "/parked/{id}/reprocess",
             get(super::actions::confirm_reprocess).post(super::actions::reprocess),
+        )
+        .route("/setup", get(super::setup::index))
+        .merge(
+            Router::new()
+                .route("/setup/restart", post(super::setup::restart))
+                .route("/setup/listen", get(super::setup::listen_view))
+                .route("/setup/listen/stop", post(super::setup::listen_stop))
+                .route(
+                    "/setup/{id}",
+                    get(super::setup::machine).post(super::setup::save),
+                )
+                .route("/setup/{id}/listen", post(super::setup::listen_start))
+                // Runs after the outer limit below, so setup forms get the larger bound.
+                .layer(DefaultBodyLimit::max(super::setup::FORM_LIMIT)),
         )
         .layer(DefaultBodyLimit::max(1024))
         .layer(middleware::from_fn_with_state(state.clone(), protect))
@@ -309,8 +357,13 @@ async fn dispatch(request: Request, next: Next, session: Option<Arc<Session>>) -
     let Some(session) = session else {
         return (StatusCode::FORBIDDEN, "CSRF session required").into_response();
     };
+    let limit = if request.uri().path().starts_with("/setup/") {
+        super::setup::FORM_LIMIT
+    } else {
+        1024
+    };
     let (parts, body) = request.into_parts();
-    let Ok(bytes) = axum::body::to_bytes(body, 1024).await else {
+    let Ok(bytes) = axum::body::to_bytes(body, limit).await else {
         return (StatusCode::PAYLOAD_TOO_LARGE, "admin form exceeds limit").into_response();
     };
     let copy = Request::from_parts(parts.clone(), axum::body::Body::from(bytes.clone()));

@@ -122,7 +122,10 @@ struct Entry {
     overrides: Option<PathBuf>,
 }
 
-fn read(path: &Path) -> Result<String, Error> {
+/// Reads one bounded, UTF-8 configuration file.
+/// # Errors
+/// Reports I/O failures, files over the size bound and invalid UTF-8.
+pub(crate) fn read(path: &Path) -> Result<String, Error> {
     let mut bytes = Vec::new();
     std::fs::File::open(path)?
         .take(1_048_577)

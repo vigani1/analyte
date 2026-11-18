@@ -8,6 +8,7 @@ mod pages;
 mod retention;
 mod server;
 mod sessions;
+pub(crate) mod setup;
 mod token;
 
 pub(crate) use server::{Server, prepare};

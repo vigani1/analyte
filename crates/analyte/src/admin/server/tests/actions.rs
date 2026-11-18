@@ -296,6 +296,7 @@ async fn start_action_server(
         destinations: Vec::new(),
         directory: program.data_directory().to_owned(),
         reserve: 1,
+        setup: crate::admin::setup::Setup::for_test(program.data_directory()),
         _released: released,
     });
     let server = Server {
@@ -304,6 +305,7 @@ async fn start_action_server(
             slots: Arc::new(Semaphore::new(32)),
         },
         app: router(state.clone()),
+        restart: watch::channel(false).1,
         released: release,
         owners: BTreeMap::new(),
     };

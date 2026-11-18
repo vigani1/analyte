@@ -216,7 +216,13 @@ pub(super) async fn serve_with(
         let component = watchdog.component("admin-server".into());
         admin_owners.spawn(async move {
             let _component = component;
-            admin.run(admin_stopped).await.map_err(Into::into)
+            admin.run(admin_stopped).await.map_err(|error| {
+                if matches!(error, crate::admin::Error::RestartRequested) {
+                    Failure::RestartRequested
+                } else {
+                    error.into()
+                }
+            })
         });
     }
     let (delivery_stop, mut delivery_owners) =

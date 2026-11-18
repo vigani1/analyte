@@ -242,6 +242,30 @@ fn settings(machine: &Machine, serial: &analyte_config::Serial) -> Result<Settin
         Endpoint::Fixed(name) => Device::Named(name.clone()),
         Endpoint::UsbSerial(usb_serial) => Device::UsbSerial(usb_serial.as_str().to_owned()),
     };
+    line(serial, device, Duration::from_millis(100))
+}
+
+/// The line settings a serial stack opens `device` with, or `None` for a stack
+/// that does not use a serial port. The setup page's listen-only test uses this,
+/// so it opens the port exactly as the machine runtime would.
+/// # Errors
+/// Reports data bits, stop bits or limits the transport cannot express.
+pub(crate) fn line_settings(
+    stack: &analyte_config::Stack,
+    device: Device,
+    timeout: Duration,
+) -> Option<Result<Settings, Error>> {
+    match protocols::transport(stack) {
+        protocols::Link::Serial(link) => Some(line(link.settings, device, timeout)),
+        protocols::Link::Tcp { .. } | protocols::Link::Folder { .. } => None,
+    }
+}
+
+fn line(
+    serial: &analyte_config::Serial,
+    device: Device,
+    timeout: Duration,
+) -> Result<Settings, Error> {
     Ok(Settings::new(
         device,
         serial.baud,
@@ -255,7 +279,7 @@ fn settings(machine: &Machine, serial: &analyte_config::Serial) -> Result<Settin
             .try_into()
             .map_err(|()| LinkError::InvalidSerialStopBits)?,
         serial.flow_control.into(),
-        Duration::from_millis(100),
+        timeout,
     )?)
 }
 

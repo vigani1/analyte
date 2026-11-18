@@ -55,6 +55,13 @@ pub enum Error {
     /// The runtime cannot safely continue the requested operation.
     #[error("admin owner stopped unexpectedly")]
     AdminOwnerStoppedUnexpectedly,
+    /// An operator asked on the setup page to restart and apply saved settings.
+    /// The service stopped gracefully and exits nonzero, so its manager (Windows
+    /// recovery actions, systemd `Restart=on-failure`) starts it again.
+    #[error(
+        "restart requested on the setup page; the service manager starts Analyte again with the saved settings"
+    )]
+    RestartRequested,
     /// The runtime cannot safely continue the requested operation.
     #[error("admin shutdown exceeded 5 seconds")]
     AdminShutdownExceeded5Seconds(#[source] tokio::time::error::Elapsed),

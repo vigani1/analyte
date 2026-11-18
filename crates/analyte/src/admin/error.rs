@@ -23,6 +23,10 @@ pub enum Error {
     /// looked up or issued until the program restarts.
     #[error("admin session lock poisoned")]
     AdminSessionLockPoisoned,
+    /// The setup page asked for a restart; the server drained and stopped so the
+    /// service manager starts the program again with the saved settings.
+    #[error("restart requested on the setup page to apply saved settings")]
+    RestartRequested,
     /// A hold form asked for an operation other than placing or releasing a hold.
     #[error("choose place or release")]
     ChoosePlaceOrRelease,

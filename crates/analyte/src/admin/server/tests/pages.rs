@@ -174,6 +174,7 @@ async fn start_pages_server(
         destinations: Vec::new(),
         directory: root.to_owned(),
         reserve: 1,
+        setup: crate::admin::setup::Setup::for_test(root),
         _released: released,
     });
     let server = Server {
@@ -182,6 +183,7 @@ async fn start_pages_server(
             slots: Arc::new(Semaphore::new(32)),
         },
         app: router(state.clone()),
+        restart: watch::channel(false).1,
         released: release,
         owners: BTreeMap::new(),
     };

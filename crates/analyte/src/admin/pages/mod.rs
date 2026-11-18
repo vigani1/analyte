@@ -36,7 +36,8 @@ pub(super) const NAV: &str = concat!(
     ),
     concat!(
         "href=\"/deliveries\">Deliveries</a> <a ",
-        "href=\"/retention\">Retention and holds</a></nav>",
+        "href=\"/retention\">Retention and holds</a> <a ",
+        "href=\"/setup\">Setup</a></nav>",
     ),
 );
 

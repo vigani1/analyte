@@ -392,7 +392,8 @@ enable HTTPS or change the trusted host/origin. The form and overview use no
 inline scripts or external assets. Every application response carries CSP,
 frame denial, no-referrer and no-store headers. Values pass through one HTML
 escaping helper. Requests are limited to two seconds, connections to two seconds
-and 32 concurrent connections, and form bodies to 1 KiB. Service shutdown stops
+and 32 concurrent connections, and form bodies to 1 KiB (16 KiB on the setup
+page, whose API key alone may be 4 KiB). Service shutdown stops
 admission and joins the admin owner within five seconds. Cancelled reads may
 finish on the storage worker; they do not change machine orders. Cancellation
 after submitting a raw-view audit may leave a durable audit without a completed
@@ -412,6 +413,21 @@ pages and deadlines. If a complete
 snapshot cannot be read in time, the page reports failure rather than displaying
 an incomplete count as a total. Raw payloads and sample IDs are not shown on
 the overview.
+
+The setup page (`src/admin/setup/`) writes a machine's site file and stores
+destination keys in the locked credentials file
+(`src/installation/credentials.rs`). It validates in memory with the same loader
+as `check-config`, then copies each old file to `<name>.<time>.bak`, writes
+`<name>.pending`, flushes and renames it, and loads the whole program again,
+restoring the backups if that fails. Keys are checked before any file is written
+and stored only after the files pass. Changing the definition rewrites only that
+entry's `definition` value in the program file, located by its TOML span. The
+listen-only test (`listen.rs`) opens one serial port, accepts one connection or
+connects to one address and only reads, for at most 60 seconds and 64 KiB; the
+bytes live in memory, appear only on the page, and are dropped when the test
+ends. It refuses an endpoint a running machine uses. "Restart now" drains the
+admin server and returns `RestartRequested`, which the service turns into a
+graceful stop and a nonzero exit, so the service manager restarts it.
 
 Use the navigation links for machines, parked items, machine orders and deliveries. Lists
 show at most 50 entries and may show fewer under the configured store page bound.
