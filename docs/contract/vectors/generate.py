@@ -43,7 +43,7 @@ body=json.dumps(delivery,separators=(',',':'))
 key=bytes(range(32)); secret='whsec_'+base64.b64encode(key).decode(); timestamp='1794744000'
 signature='v1,'+base64.b64encode(hmac.new(key,(delivery['delivery_id']+'.'+timestamp+'.'+body).encode(),hashlib.sha256).digest()).decode()
 write('signature.json',dict(secret=secret,id=delivery['delivery_id'],timestamp=timestamp,body=body,signature=signature,digest=hashlib.sha256(body.encode()).hexdigest()))
-write('responses.json',[dict(status=s,body=dict(contract_version=1,status='accepted') if s==200 else dict(contract_version=1,error='example',detail='Synthetic rejection'),expected=e) for s,e in [(200,'done'),(400,'parked'),(422,'parked'),(401,'pause'),(403,'pause'),(408,'retry'),(409,'conflict'),(429,'retry'),(500,'retry'),(302,'parked')]])
+write('responses.json',[dict(status=s,body=dict(contract_version=1,status='accepted') if s==200 else dict(contract_version=1,error='example',detail='Synthetic rejection'),expected=e) for s,e in [(200,'done'),(400,'parked'),(422,'parked'),(401,'pause'),(403,'pause'),(408,'retry'),(409,'conflict'),(429,'retry'),(500,'retry'),(302,'pause'),(404,'pause'),(413,'pause'),(418,'parked')]])
 bad=dict(delivery);bad['contract_version']=2
 write('invalid-version.json',bad)
 

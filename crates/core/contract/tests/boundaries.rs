@@ -192,13 +192,23 @@ fn contract_v1_delivery_responses_keep_reason_version_and_retry_boundaries() {
             );
         }
     }
-    for status in [199, 201, 302, 499, 600] {
+    for status in [199, 201, 499, 600] {
         assert_eq!(
             classify_response(status, b"", None),
             ResponseAction::Parked {
                 reason: format!("unexpected HTTP status {status}")
             }
         );
+    }
+}
+// ADR 0008; docs/contract/v1.md delivery responses: setup errors pause the destination.
+#[test]
+fn setup_errors_pause_destination() {
+    for status in [301, 302, 307, 308, 404, 413] {
+        assert!(matches!(
+            classify_response(status, b"", None),
+            ResponseAction::PauseForSetup { .. }
+        ));
     }
 }
 #[test]

@@ -1,7 +1,8 @@
 # 0008. Contract with lab apps (version 1)
 
 Status: accepted, 2026-11-15; amended 2026-11-15 before release (order
-states and optional order fields, matching contract v1)
+states and optional order fields, matching contract v1); amended 2026-11-18
+before release (setup errors pause the destination)
 
 ## Context
 
@@ -51,8 +52,8 @@ are relative to it.
   - `409`: the same ID arrived with different content; Analyte parks it;
   - `400` or `422` with `{"error": ..., "detail": ...}`: parked with the
     app's reason;
-  - `401` or `403`: delivery to that destination pauses until the setup is
-    fixed;
+  - `401`, `403`, a redirect (`3xx`), `404` or `413`: delivery to that
+    destination pauses until the setup is fixed;
   - `408`, `429`, `5xx` or no answer: retried with capped exponential backoff
     and jitter, honouring `Retry-After`;
   - any other status: parked.
