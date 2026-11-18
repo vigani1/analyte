@@ -21,30 +21,47 @@ Do not create a tag to test this workflow.
    Authenticate as the owner to read the draft. In that directory on Linux,
    run `sha256sum --check SHA256SUMS`. On Windows, compare
    `Get-FileHash -Algorithm SHA256 <asset>` with each entry in SHA256SUMS.
-5. Verify provenance for **each** archive, `dependencies.json` and SHA256SUMS:
+5. Verify provenance for **each** archive, installer, package,
+   `dependencies.json` and SHA256SUMS:
    `gh attestation verify <asset> --repo vigani1/analyte --signer-workflow vigani1/analyte/.github/workflows/release.yml`.
    Inspect the verified statement and confirm its source commit and tag match
    the intended release, rather than merely accepting a successful signature.
 6. Inspect archive contents and test installation on clean Windows and Linux
-   hosts with synthetic data. Review the changelog and replace the draft's short
+   hosts with synthetic data: run the Windows installer, install the `.deb` and
+   the `.rpm`, open the setup page and uninstall (see
+   [Install](operations/install.md)). Review the changelog and replace the draft's short
    placeholder notes with the version's release notes. Publish the draft in
    GitHub only after these checks, or explicitly use
    `gh release edit v0.1.0 --repo vigani1/analyte --draft=false`.
 
-The Windows zip contains analyte.exe, packaging/windows, LICENSE and README.md.
-The Linux tar.gz contains analyte, packaging/linux, LICENSE and README.md. Each
-has a versioned top-level directory. Follow the packaged service instructions;
-the Linux guide's source-build path `target/release/analyte` should be replaced
-with the extracted `analyte` path. Site configuration and secrets are provisioned
-separately. The root README still describes the original planning status; use
-CHANGELOG.md and the program and packaging guides for current functionality.
+Each platform's assets come from one script, `packaging/build.ps1`, which the
+pull-request Packaging check also runs and then installs and removes on the
+runners:
+
+| Asset | Contents |
+| --- | --- |
+| `analyte-<tag>-x86_64-pc-windows-msvc.zip` | analyte.exe, machines, packaging/windows, LICENSE, README.md |
+| `analyte-<tag>-x86_64-windows-setup.exe` | Click-through installer built with Inno Setup 6.7.4 from the same files |
+| `analyte-<tag>-x86_64-unknown-linux-gnu.tar.gz` | analyte, machines, packaging/linux, LICENSE, README.md |
+| `analyte_<version>-1_amd64.deb`, `analyte-<version>-1.x86_64.rpm` | Packages built with nfpm 2.48.0 from the same files |
+
+The archives have a versioned top-level directory. Follow the packaged service
+instructions with the extracted program. The build tools are downloaded at a
+pinned version and refused unless their SHA-256 matches; they are not Rust
+dependencies and are not shipped. The root README still describes the original
+planning status; use CHANGELOG.md and the program and packaging guides for
+current functionality.
+
+**The Windows installer is unsigned for now: Windows SmartScreen will warn;
+choose More info → Run anyway** after checking its checksum and provenance as
+above. The draft release notes say the same.
 
 `dependencies.json` is Cargo's full `cargo metadata --locked --format-version 1`
 output, including the resolved graph and development dependencies. It is a
 workspace inventory, not a target-specific SBOM or a claim that every listed
 package is linked. This fallback avoids adding a new third-party SBOM tool.
-SHA256SUMS covers both archives and the inventory; it cannot hash itself.
-GitHub provenance covers all four assets. Actions are pinned to full commit
+SHA256SUMS covers the archives, installer, packages and inventory; it cannot
+hash itself. GitHub provenance covers every asset. Actions are pinned to full commit
 SHAs with release comments; no credentials beyond GITHUB_TOKEN are needed.
 
 If a workflow fails, inspect the failed job before rerunning. A failure before
@@ -52,8 +69,9 @@ draft creation creates no release; failure during creation may leave a draft.
 Inspect and retain or remove that draft deliberately before retrying; the
 workflow does not replace an existing release or publish automatically.
 
-Code signing (including Windows Authenticode), an MSI installer, automatic
-updates and reproducible-build guarantees are not implemented. GitHub provenance
+Code signing (Windows Authenticode for the program and the installer, and
+package signing for the .deb and .rpm), automatic updates and reproducible-build
+guarantees are not implemented. GitHub provenance
 identifies the build workflow; it does not qualify an analyzer or replace lab
 validation. Evidence remains documented unless separately supported by recorded
 simulator or real-machine runs.

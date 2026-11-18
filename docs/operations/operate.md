@@ -67,7 +67,10 @@ The **Setup** page lets a lab manager set up an installed machine without
 editing files. It needs a browser login (not just the bearer header), and the
 service needs write access to the folder that holds the program file and the
 site files (see [Install](install.md)). Each machine listed in the program file
-has a **Set up** link with five steps:
+has a **Set up** link with five steps. A machine listed without a `definition`
+(the installers' `machine-1`) shows as **Not set up yet**: it does not run until
+you choose its definition in step 1 and save; the save adds the `definition`
+line to its program entry, and the restart starts it.
 
 1. **Machine.** Choose a definition from the `machines` folder beside the program
    file. Each shows its evidence level; blocked definitions (no `machine.toml`

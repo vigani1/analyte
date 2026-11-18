@@ -270,7 +270,9 @@ missing; nothing is guessed in the meantime.
 ## 11. Operations
 
 - One program, installed as a Windows service or Linux systemd unit, starting
-  without a login.
+  without a login. The release builds an unsigned click-through Windows
+  installer and `.deb`/`.rpm` packages; their starter program lists one machine
+  without a definition, which waits for the setup page and does not run.
 - Local admin page (localhost, bearer token): machines, last messages, parked
   items, resend and reprocess as separate actions, all audited. Its setup page
   writes a machine's site file after `check-config` validation, with a backup,
