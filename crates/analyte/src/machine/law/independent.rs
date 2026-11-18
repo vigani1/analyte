@@ -38,8 +38,16 @@ pub(in crate::machine) async fn run(
     let listener = match machine.listener.take() {
         Some(listener) => TcpListener::from_std(listener)?,
         None => {
-            analyte_transport::tcp::bind(machine.snapshot.effective().site().endpoint.parse()?)
-                .await?
+            analyte_transport::tcp::bind(
+                machine
+                    .snapshot
+                    .effective()
+                    .site()
+                    .endpoint
+                    .fixed()?
+                    .parse()?,
+            )
+            .await?
         }
     };
     machine.status.ready(true);

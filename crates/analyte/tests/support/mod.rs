@@ -208,7 +208,7 @@ impl Running {
 /// Fails when a recorded byte or durable outcome differs from the expected fixture.
 pub async fn connect(path: &Path, name: &str) -> Result<TcpStream, Error> {
     let program = Program::load(path)?;
-    let address = &program
+    let address = program
         .machines()
         .iter()
         .find(|m| m.id().as_str() == name)
@@ -216,7 +216,8 @@ pub async fn connect(path: &Path, name: &str) -> Result<TcpStream, Error> {
         .snapshot()
         .effective()
         .site()
-        .endpoint;
+        .endpoint
+        .fixed()?;
     let stream = tokio::time::timeout(HANG_GUARD, async {
         loop {
             if let Ok(stream) = TcpStream::connect(address).await {

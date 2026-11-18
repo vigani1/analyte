@@ -10,7 +10,11 @@ bounded local departure recording references through the existing ADR 0009
 reader; it never fetches a remote manual or recording.
 
 The shipped definition owns protocol choices, mappings, vendor departures and
-evidence. Site TOML owns `endpoint` and `destination`. Local overrides contain
+evidence. Site TOML owns the port choice and `destination`. The port choice is
+exactly one of `endpoint` (port name, socket address or folder) or `usb_serial`
+(a USB adapter serial number, serial links only); both or neither is refused,
+and loading turns them into one `Endpoint` value. An override's `endpoint` or
+`usb_serial` replaces the site's choice. Local overrides contain
 `schema_version = 1` plus optional replacement sections. Sections and lists
 replace in full; there is no implicit array merging or expression language.
 All three layers reject unknown keys. Overrides cannot change the machine-wide
@@ -19,7 +23,7 @@ evidence and matching selected settings.
 
 `examples/astm.toml` and `examples/hl7.toml` use `examples/site.toml` and an empty
 local layer (`schema_version = 1`). The serial example may replace the synthetic
-site endpoint with `COM9` or `/dev/ttyUSB0`. TCP endpoints require numeric socket
+site endpoint with `COM9`, `/dev/ttyUSB0` or `usb_serial = "A10K3XYZ"`. TCP endpoints require numeric socket
 addresses, including an explicit bind address for servers.
 
 Resource ceilings: 1 MiB per input layer; 4096 entries per mapping table;

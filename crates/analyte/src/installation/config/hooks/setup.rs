@@ -192,6 +192,8 @@ impl Program {
                 .effective()
                 .site()
                 .endpoint
+                .fixed()
+                .map_err(|_| Error::InvalidClosingHookTransport)?
                 .parse::<std::net::SocketAddr>()?
                 .ip()
                 .is_loopback()
@@ -214,7 +216,8 @@ impl Program {
         if !listener.local_addr()?.ip().is_loopback()
             || machine.snapshot.effective().stack().transport_kind()
                 != analyte_config::TransportKind::TcpServer
-            || listener.local_addr()?.to_string() != machine.snapshot.effective().site().endpoint
+            || machine.snapshot.effective().site().endpoint.fixed()
+                != Ok(listener.local_addr()?.to_string().as_str())
         {
             return Err(Error::TestListenerMismatch);
         }

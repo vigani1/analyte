@@ -148,6 +148,11 @@ impl From<std::net::AddrParseError> for Error {
         Self::Link(cause.into())
     }
 }
+impl From<analyte_config::NotFixed> for Error {
+    fn from(cause: analyte_config::NotFixed) -> Self {
+        Self::Link(cause.into())
+    }
+}
 impl From<analyte_transport::folder::WatchError> for Error {
     fn from(cause: analyte_transport::folder::WatchError) -> Self {
         Self::Link(cause.into())

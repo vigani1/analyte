@@ -124,7 +124,8 @@ async fn capture_listener(
             .effective()
             .site()
             .endpoint
-            .clone();
+            .fixed()?
+            .to_owned();
         std::fs::write(
             &site,
             std::fs::read_to_string(&site)?.rewrite(&previous, &listener.local_addr()?.to_string()),

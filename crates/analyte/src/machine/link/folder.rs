@@ -94,7 +94,15 @@ pub(in crate::machine) async fn session(
     let context = intake::ConnectionEvidence::new(machine)?;
     let machine = &context;
     let (owner, mut files) = Owner::start(
-        PathBuf::from(&machine.machine().snapshot.effective().site().endpoint),
+        PathBuf::from(
+            machine
+                .machine()
+                .snapshot
+                .effective()
+                .site()
+                .endpoint
+                .fixed()?,
+        ),
         root,
         u64::try_from(bytes)?,
         capture.map(|c| {
