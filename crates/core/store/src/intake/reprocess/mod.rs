@@ -1,7 +1,7 @@
 //! Records atomic operator reprocessing outcomes and audits.
 use crate::{Audit, ReconciliationError as Error, key};
 use analyte_model::{Identifier, ReceiptId};
-use rusqlite::{OptionalExtension, Transaction};
+use rusqlite::{OptionalExtension, Transaction, params};
 #[cfg(test)]
 mod tests;
 
@@ -30,10 +30,16 @@ pub(crate) fn check_parked(tx: &Transaction<'_>, id: i64, receipt: ReceiptId) ->
     }
     .details()?;
     let receipt_text: String = serde_json::from_str(&key(&receipt)?)?;
-    let linked = details
-        .targets
-        .iter()
-        .any(|target| target.as_str() == receipt_text);
+    let mut linked = false;
+    for target in &details.targets {
+        // An aborted transfer's parked item names the transfer its rebuilt receipt links to.
+        linked |= target.as_str() == receipt_text
+            || tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM transfers WHERE id=?1 AND receipt=?2)",
+                params![target.as_str(), key(&receipt)?],
+                |r| r.get::<_, bool>(0),
+            )?;
+    }
     if !linked {
         return Err(Error::ReprocessParked);
     }
