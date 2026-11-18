@@ -103,8 +103,9 @@ has a **Set up** link with five steps:
 
 Saved settings apply only after a restart. **Restart now** stops Analyte
 gracefully (like a normal stop) and exits with a failure code, so the service
-manager starts it again: the Windows recovery action after 5 seconds, or systemd
-`Restart=on-failure` after 5 seconds. A foreground `analyte run` simply stops;
+manager starts it again: the Windows recovery action after 5 seconds (15, then
+60 seconds for further restarts within a day), or systemd `Restart=on-failure`
+after 5 seconds. A foreground `analyte run` simply stops;
 start it again by hand. Log in again afterwards; the Setup page shows the running
 configuration digest, which should match the one shown after saving. Saves and
 restarts are audited without key values. The page writes only the site file,
