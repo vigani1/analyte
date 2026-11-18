@@ -398,11 +398,17 @@ finish on the storage worker; they do not change machine orders. Cancellation
 after submitting a raw-view audit may leave a durable audit without a completed
 HTTP response. Retrying creates another audit, never a machine command.
 
-The read-only overview shows machine owner state and last received activity,
+The read-only overview shows machine owner state and link light,
 oldest undelivered age, destination order-cache age and trust, Uncertain order
 count, restore pause, and free disk bytes against the configured reserve.
-Connection state is explicitly unknown; running an owner does not establish a
-machine connection. Reads use bounded store pages and deadlines. If a complete
+The link light comes from the machine runtime, not from receipt age: the
+transport reports each session opening, closing and read (never bytes) to a
+per-machine status the runtime owns and the admin page only reads. Serial says
+only whether the port is open, because an open port proves no cable or
+machine. "Last data received" is the later of the runtime's last read and the
+last stored receipt, so it survives a restart; `analyte status` runs in its own
+process and keeps showing only the stored last receipt. Reads use bounded store
+pages and deadlines. If a complete
 snapshot cannot be read in time, the page reports failure rather than displaying
 an incomplete count as a total. Raw payloads and sample IDs are not shown on
 the overview.

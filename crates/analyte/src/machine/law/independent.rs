@@ -50,6 +50,7 @@ pub(in crate::machine) async fn run(
             .await?
         }
     };
+    machine.status.ready(true);
     let machine = Arc::new(machine);
     let (sender, receiver) = mpsc::channel(8);
     let (shutdown, local_stop) = watch::channel(false);
@@ -186,7 +187,7 @@ async fn accepted_connection(
         Ok(limits) => limits,
         Err(error) => return (Err(error.into()), Ok(())),
     };
-    let (mut conn, side) = link::recorded_connection(limits, capture.as_deref());
+    let (mut conn, side) = link::recorded_connection(limits, capture.as_deref(), &machine.status);
     let context = match intake::ConnectionEvidence::new(&machine) {
         Ok(context) => context,
         Err(error) => return (Err(error.into()), Ok(())),
@@ -366,7 +367,7 @@ async fn exchange(
             settings.settings().transport().operation_timeout_ms(),
         )),
     )?;
-    let (mut conn, side) = link::recorded_connection(limits, capture);
+    let (mut conn, side) = link::recorded_connection(limits, capture, &machine.status);
     let context = intake::ConnectionEvidence::new(machine)?;
     let dialog = async move {
         let result = transaction(

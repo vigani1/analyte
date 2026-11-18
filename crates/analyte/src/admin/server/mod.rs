@@ -29,6 +29,8 @@ mod tests;
 pub(super) struct Machine {
     pub(super) id: Identifier,
     pub(super) running: Arc<AtomicBool>,
+    /// The machine runtime's link light; the admin page only reads it.
+    pub(super) status: watch::Receiver<crate::machine::link::status::Status>,
     pub(super) departure_html: Markup,
 }
 
@@ -76,6 +78,7 @@ pub(crate) async fn prepare(
                 departure_html: super::departures::enabled(&m.snapshot)?,
                 id: m.id().clone(),
                 running: Arc::new(AtomicBool::new(true)),
+                status: m.status.subscribe(),
             })
         })
         .collect::<Result<Vec<_>, Error>>()?;

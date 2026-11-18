@@ -191,7 +191,7 @@ async fn serve(
     // Fixed bounds; invalid only if the constants are wrong.
     let retry = retry()?;
     loop {
-        let (mut conn, side) = recorded_connection(limits, capture);
+        let (mut conn, side) = recorded_connection(limits, capture, &machine.status);
         // A refused thread spawn leaves no port owner to serve any session.
         let owner = Owner::start(worker, &settings, side, &retry, conn.cancellation())?;
         // Sessions share this port owner while they end cleanly: a clean close lets the
@@ -371,6 +371,32 @@ mod tests {
         crate::installation::config::Program::load(&path).map_err(Into::into)
     }
 
+    /// The synthetic VIDAS teaching config moved onto a serial port.
+    fn vidas_serial() -> String {
+        use analyte_fixtures::ConfigEdit as _;
+        include_str!("../../../../core/config/examples/vidas_literal.toml")
+            .rewrite(
+                "kind = \"tcp_server\"
+",
+                "kind = \"serial\"
+",
+            )
+            .rewrite(
+                "operation_timeout_ms = 10000
+",
+                "operation_timeout_ms = 10000
+[transport.serial]
+baud = 9600
+data_bits = 8
+                 parity = \"none\"
+stop_bits = 1
+flow_control = \"none\"
+",
+            )
+            .rewrite("suffix = []", "suffix = [13, 10]")
+            .rewrite("transport = \"tcp_server\"", "transport = \"serial\"")
+    }
+
     // ADR 0003 / ADR 0010: run the actual ASTM host dialog over the existing
     // serial factory seam. Every byte and failure is synthetic, never an OS port.
     // ADR 0003, ADR 0010
@@ -522,29 +548,8 @@ mod tests {
     // Review finding Y1
     #[test]
     fn failed_session_then_next_session_is_served() -> Result<(), Error> {
-        use analyte_fixtures::ConfigEdit as _;
         let root = crate::admin::private_tempdir()?;
-        let machine = include_str!("../../../../core/config/examples/vidas_literal.toml")
-            .rewrite(
-                "kind = \"tcp_server\"
-",
-                "kind = \"serial\"
-",
-            )
-            .rewrite(
-                "operation_timeout_ms = 10000
-",
-                "operation_timeout_ms = 10000
-[transport.serial]
-baud = 9600
-data_bits = 8
-                 parity = \"none\"
-stop_bits = 1
-flow_control = \"none\"
-",
-            )
-            .rewrite("suffix = []", "suffix = [13, 10]")
-            .rewrite("transport = \"tcp_server\"", "transport = \"serial\"");
+        let machine = vidas_serial();
         let program = serial_program(root.path(), &machine)?;
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -822,6 +827,72 @@ flow_control = \"none\"
         conversation?;
         served?;
         drop(idle);
+        store.shutdown(crate::deadline()?).await?;
+        Ok(())
+    }
+
+    // Plan §11 admin page: an open port proves neither a cable nor a machine, so a
+    // serial machine reports "Port open", never "Connected", and a read is last data.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn serial_reports_port_open_never_connected() -> Result<(), Error> {
+        let root = crate::admin::private_tempdir()?;
+        let program = serial_program(root.path(), &vidas_serial())?;
+        let mut store = crate::runtime::service::open_store_with_deadline(
+            &program,
+            Box::new(Space),
+            crate::deadline()?,
+        )
+        .await?;
+        let machine = program.machines().first().ok_or("missing machine")?;
+        let link = serial_link(machine)?;
+        let mut light = machine.status.subscribe();
+        assert_eq!(light.borrow().state(), "Port not open");
+        let (input, received) = std::sync::mpsc::sync_channel(4);
+        let (output, mut writes) = tokio::sync::mpsc::channel(4);
+        let port = std::sync::Mutex::new(Some(Port {
+            input: received,
+            output,
+        }));
+        let worker: Worker = Arc::new(move |settings, side, retry| {
+            serial::run(&settings, side, retry, never_listed, |_, _| {
+                let port = port
+                    .lock()
+                    .map_err(|_| std::io::Error::other("port lock"))?
+                    .take();
+                let port = port.ok_or(std::io::ErrorKind::PermissionDenied)?;
+                Ok(Box::new(port) as Box<dyn serial::Port>)
+            })
+        });
+        let (stop, stopping) = watch::channel(false);
+        let (ready, _ready) = watch::channel(false);
+        let (_close, close) = watch::channel(true);
+        let owner = serve(
+            machine,
+            &store,
+            link,
+            Limits::new(16, Duration::from_secs(2))?,
+            stopping,
+            crate::machine::Closing { ready, close },
+            None,
+            &worker,
+        );
+        let conversation = async {
+            light.wait_for(|s| s.state() == "Port open").await?;
+            assert_eq!(light.borrow().last_data(), None);
+            input.send(Ok(vec![5, 13, 10]))?;
+            assert_eq!(writes.recv().await.ok_or("ACK absent")?, vec![6, 13, 10]);
+            assert!(light.borrow().last_data().is_some(), "a read is last data");
+            input.send(Err(std::io::ErrorKind::BrokenPipe.into()))?;
+            light.wait_for(|s| s.state() == "Port not open").await?;
+            stop.send_replace(true);
+            Ok::<_, Error>(())
+        };
+        let (served, conversation) = tokio::time::timeout(analyte_fixtures::HANG_GUARD, async {
+            tokio::join!(owner, conversation)
+        })
+        .await?;
+        conversation?;
+        served?;
         store.shutdown(crate::deadline()?).await?;
         Ok(())
     }
