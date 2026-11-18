@@ -36,7 +36,7 @@ impl Context<'_> {
 pub(crate) type Outcome = (
     InterpretationOutcome,
     InterpretationCommit,
-    Option<crate::machine::hl7::error_location::Location>,
+    Option<crate::machine::hl7::location::Location>,
 );
 
 enum Profile<'a> {
@@ -202,7 +202,7 @@ async fn finish(
     let location = context.payload.and_then(|payload| {
         let options =
             crate::machine::hl7::settings::effective_options(machine.snapshot.effective())?;
-        crate::machine::hl7::error_location::mapping_location(&mapped, payload, options.terminator)
+        crate::machine::hl7::location::mapping_location(&mapped, payload, options.terminator)
     });
     let mapping = supplied.unwrap_or_else(|| match mapped {
         Ok(output) => Mapping::Mapped(output),

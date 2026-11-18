@@ -113,6 +113,7 @@ async fn adr0015_lis01_s6311_packed_results_use_v1_without_changing_source_meani
     let program = program(temp.path(), &definition, "127.0.0.1:5600")?;
     let machine = program.machines().first().ok_or("machine")?;
     let mut store = crate::runtime::service::open_store(&program, Box::new(Space)).await?;
+    let destination = crate::orders::destination(machine);
     let payload=b"H|\\^&||||||||||P|LIS2-A2|20261115120000\rP|1\rO|1|00012\rR|1|^^^SYN|12.30|mg/L||N||F\rL|1|N\r";
     let raw: Vec<_> = analyte_framing::astm::encode(
         payload,
@@ -136,7 +137,9 @@ async fn adr0015_lis01_s6311_packed_results_use_v1_without_changing_source_meani
             let interpretation = s.interpretation(id, 1)?.ok_or(FixtureError::Corruption)?;
             let ledger = interpretation.departures.ok_or(FixtureError::Corruption)?;
             assert_eq!(ledger.applied.as_slice().len(), 5);
-            let claim = s.claim(1)?.ok_or(FixtureError::Corruption)?;
+            let claim = s
+                .claim_destination(1, &destination)?
+                .ok_or(FixtureError::Corruption)?;
             assert_eq!(claim.contract_version, 1);
             let wire: serde_json::Value = serde_json::from_slice(&claim.payload)?;
             assert_eq!(

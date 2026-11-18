@@ -13,31 +13,38 @@ pub enum Error {
     /// The enabled departure declaration could not be rendered.
     #[error(transparent)]
     MachineConfig(#[from] analyte_config::Error),
-    /// Awos item not retained.
+    /// The AWOS history page names an item index that the retained machine order does not
+    /// hold, so there is no execution history to show for it.
     #[error("AWOS item not retained")]
     AwosItemNotRetained,
-    /// Admin session capacity reached; restart or wait for expiry.
+    /// A new admin session was refused because all 128 slots hold authenticated sessions
+    /// that have not yet expired; unauthenticated ones are evicted first.
     #[error("admin session capacity reached; restart or wait for expiry")]
     SessionCapacity,
-    /// Admin session lock poisoned.
+    /// A thread panicked while holding the in-memory session table, so no session can be
+    /// looked up or issued until the program restarts.
     #[error("admin session lock poisoned")]
     AdminSessionLockPoisoned,
-    /// Choose place or release.
+    /// A hold form asked for an operation other than placing or releasing a hold.
     #[error("choose place or release")]
     ChoosePlaceOrRelease,
-    /// Choose receipt or order.
+    /// A hold form named a scope other than a receipt or an order.
     #[error("choose receipt or order")]
     ChooseReceiptOrOrder,
-    /// Current configuration points to a different store.
+    /// Reprocessing was refused because the configuration file on disk now names a data
+    /// directory other than the store this admin server has open.
     #[error("current configuration points to a different store")]
     StoreMismatch,
-    /// Machine cursor overflow.
+    /// The machines page could not compute the cursor of its next page without integer
+    /// overflow.
     #[error("machine cursor overflow")]
     MachineCursorOverflow,
-    /// Parked target cursor overflow.
+    /// A parked item's page could not compute the cursor of its next page of targets without
+    /// integer overflow.
     #[error("parked target cursor overflow")]
     ParkedTargetCursorOverflow,
-    /// Uncertain order count overflow.
+    /// The overview's running count of uncertain machine orders would overflow; the page
+    /// fails rather than show a wrong count.
     #[error("uncertain order count overflow")]
     UncertainOrderCountOverflow,
     /// An audited operator action failed.

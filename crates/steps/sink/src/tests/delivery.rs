@@ -240,33 +240,44 @@ async fn adr0008_shutdown_drains_active_attempt_or_leaves_same_claim_for_recover
             );
         } else {
             assert!(matches!(outcome, Err(DeliveryError::Timeout)));
-            store
-                .request::<_, TestStoreError>(until()?, |s| {
-                    Ok::<_, TestStoreError>(
-                        s.recover_in_flight(
-                            jiff::Timestamp::now().as_second(),
-                            &analyte_store::Audit {
-                                actor: Identifier::new("startup").map_err(TestStoreError::Text)?,
-                                action: Identifier::new("recover").map_err(TestStoreError::Text)?,
-                                targets: vec![],
-                                time: 0,
-                                reason: Reason::new("ADR 0008 interrupted idempotent delivery")
-                                    .map_err(TestStoreError::Text)?,
-                            },
-                        )?,
-                    )
-                })
-                .await?;
-            let claim = store
-                .request(until()?, |s| s.claim(jiff::Timestamp::now().as_second()))
-                .await?
-                .ok_or("recovered claim missing")?;
+            let claim = recover_and_claim(&store, destinations[0].id()).await?;
             assert_eq!(claim.id, id);
             assert_eq!(claim.payload, bytes);
         }
         store.shutdown(until()?).await?;
     }
     Ok(())
+}
+
+/// Runs startup recovery, then claims the destination's head item as the next worker would.
+async fn recover_and_claim(
+    store: &Handle,
+    destination: &Identifier,
+) -> Result<analyte_store::Claim, Box<dyn std::error::Error>> {
+    store
+        .request::<_, TestStoreError>(until()?, |s| {
+            Ok::<_, TestStoreError>(
+                s.recover_in_flight(
+                    jiff::Timestamp::now().as_second(),
+                    &analyte_store::Audit {
+                        actor: Identifier::new("startup").map_err(TestStoreError::Text)?,
+                        action: Identifier::new("recover").map_err(TestStoreError::Text)?,
+                        targets: vec![],
+                        time: 0,
+                        reason: Reason::new("ADR 0008 interrupted idempotent delivery")
+                            .map_err(TestStoreError::Text)?,
+                    },
+                )?,
+            )
+        })
+        .await?;
+    let destination = destination.clone();
+    Ok(store
+        .request(until()?, move |s| {
+            s.claim_destination(jiff::Timestamp::now().as_second(), &destination)
+        })
+        .await?
+        .ok_or("recovered claim missing")?)
 }
 
 // Contract v1 HTTP document ceiling and clinical rule 7; synthetic local HTTP only.

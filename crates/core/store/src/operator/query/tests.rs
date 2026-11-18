@@ -278,7 +278,9 @@ fn mutation_rule8_query_order_events_are_deliveries_and_reset_invalidates_only_t
         contract_version: 1,
     };
     store.enqueue_order_event(&event, 2)?;
-    let delivery = store.claim(2)?.ok_or("event was not queued")?;
+    let delivery = store
+        .claim_destination(2, &app)?
+        .ok_or("event was not queued")?;
     assert_eq!(delivery.id, event.id);
     assert_eq!(delivery.payload, b"original event");
     assert_eq!(delivery.kind, DeliveryKind::OrderEvent);

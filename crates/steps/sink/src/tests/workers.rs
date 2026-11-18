@@ -70,10 +70,11 @@ async fn rule7_active_delivery_and_order_poll_cancel_without_waiting_for_http_de
         })
         .await?;
     assert_eq!(health.pending_count, 1);
+    let app = Identifier::new("app")?;
     assert!(
         store
-            .request::<_, TestStoreError>(until()?, |s| Ok::<_, TestStoreError>(
-                s.claim(jiff::Timestamp::now().as_second())?
+            .request::<_, TestStoreError>(until()?, move |s| Ok::<_, TestStoreError>(
+                s.claim_destination(jiff::Timestamp::now().as_second(), &app)?
             ))
             .await?
             .is_none()
@@ -150,9 +151,10 @@ async fn mutation_rule7_idle_workers_wait_before_claiming_again() -> TestResult 
                     .is_pending()
             );
             fixed_time(store.request(until()?, |_| Ok::<_, TestStoreError>(()))).await?;
-            let claim = fixed_time(
-                store.request(until()?, |s| s.claim(jiff::Timestamp::now().as_second())),
-            )
+            let app = destination.id().clone();
+            let claim = fixed_time(store.request(until()?, move |s| {
+                s.claim_destination(jiff::Timestamp::now().as_second(), &app)
+            }))
             .await?;
             assert!(claim.is_some(), "idle worker claimed before its 100ms wait");
             tokio::time::resume();

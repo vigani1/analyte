@@ -13,8 +13,10 @@ production; `cfg(all(test, feature = "test-hooks"))` remains test-only.
 Staged files are measurement inputs and never replace repository sources.
 Removed code contributes no padding lines to either denominator.
 
-Production has a 0.3% ceiling, just above the 0.21% measured on 2026-11-17. Only the six frozen contract v1 paths in
-`duplication-exclusions.txt` are exempt, for the reasons in ADR 0008. A drop
-caused by those exclusions is not removal of the underlying deliberate copies.
-Tests have a separate 2.95% ceiling, just above the 2.88% measured on 2026-11-17.
-Never raise a ceiling to make a change pass.
+Production has a 0.2% ceiling, just above the 0.16% of lines and tokens
+measured on 2026-11-18 (113 of 72,004 lines). Only the six frozen contract v1
+paths in `duplication-exclusions.txt` are exempt, for the reasons in ADR 0008.
+A drop caused by those exclusions is not removal of the underlying deliberate
+copies. Tests have a separate 2.95% ceiling; on 2026-11-18 they measured 2.85%
+of lines and 2.81% of tokens, too close to lower it. Never raise a ceiling to
+make a change pass.

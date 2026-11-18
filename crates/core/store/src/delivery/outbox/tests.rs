@@ -48,6 +48,7 @@ fn adr0008_outbox_and_interpretation_rollback_together() -> TestResult {
 
 #[test]
 fn adr0008_parked_head_blocks_correction_but_not_other_machine() -> TestResult {
+    let app = Identifier::new("app")?;
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("store.db"))?;
     let metadata = receipt(b"raw")?;
@@ -64,7 +65,9 @@ fn adr0008_parked_head_blocks_correction_but_not_other_machine() -> TestResult {
     seed_delivery(&store, metadata.id, first, "machine-a/observation")?;
     seed_delivery(&store, metadata.id, correction, "machine-a/observation")?;
     seed_delivery(&store, metadata.id, other, "machine-b/observation")?;
-    let claim = store.claim(0)?.ok_or(DeliveryError::Corruption)?;
+    let claim = store
+        .claim_destination(0, &app)?
+        .ok_or(DeliveryError::Corruption)?;
     assert_eq!(claim.id, first);
     assert_eq!(claim.payload, vec![0, 17, 34]);
     store.attempted(
@@ -72,13 +75,20 @@ fn adr0008_parked_head_blocks_correction_but_not_other_machine() -> TestResult {
         &Attempt::Parked(Reason::new("synthetic rejection")?),
         0,
     )?;
-    assert_eq!(store.claim(0)?.ok_or(DeliveryError::Corruption)?.id, other);
-    assert!(store.claim(0)?.is_none());
+    assert_eq!(
+        store
+            .claim_destination(0, &app)?
+            .ok_or(DeliveryError::Corruption)?
+            .id,
+        other
+    );
+    assert!(store.claim_destination(0, &app)?.is_none());
     Ok(())
 }
 
 #[test]
 fn adr0008_public_enqueue_is_atomic_and_retry_keeps_id_and_bytes() -> TestResult {
+    let app = Identifier::new("app")?;
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("store.db"))?;
     let metadata = receipt(b"raw")?;
@@ -149,15 +159,19 @@ fn adr0008_public_enqueue_is_atomic_and_retry_keeps_id_and_bytes() -> TestResult
         );
     }
     assert!(store.interpretation(metadata.id, 2)?.is_none());
-    let first = store.claim(0)?.ok_or(DeliveryError::Corruption)?;
+    let first = store
+        .claim_destination(0, &app)?
+        .ok_or(DeliveryError::Corruption)?;
     store.attempted(id, &Attempt::RetryAt(10), 0)?;
-    assert!(store.claim(9)?.is_none());
-    let retry = store.claim(10)?.ok_or(DeliveryError::Corruption)?;
+    assert!(store.claim_destination(9, &app)?.is_none());
+    let retry = store
+        .claim_destination(10, &app)?
+        .ok_or(DeliveryError::Corruption)?;
     assert_eq!(first.id, retry.id);
     assert_eq!(first.payload, retry.payload);
     assert_constraint(store.db.execute("UPDATE outbox SET payload=x'00'", []));
     store.attempted(id, &Attempt::Done, 10)?;
-    assert!(store.claim(20)?.is_none());
+    assert!(store.claim_destination(20, &app)?.is_none());
     Ok(())
 }
 
@@ -199,12 +213,17 @@ fn adr0008_event_provenance_health_ordering_and_restart_attempts() -> TestResult
         ..second
     };
     store.enqueue_order_event(&other, 12)?;
-    let claim = store.claim(12)?.ok_or(DeliveryError::Corruption)?;
+    let claim = store
+        .claim_destination(12, &destination)?
+        .ok_or(DeliveryError::Corruption)?;
     assert_eq!(claim.kind, DeliveryKind::OrderEvent);
     assert_eq!(claim.earlier_attempts, 0);
     store.attempted(claim.id, &Attempt::RetryAt(20), 12)?;
     assert_eq!(
-        store.claim(12)?.ok_or(DeliveryError::Corruption)?.id,
+        store
+            .claim_destination(12, &destination)?
+            .ok_or(DeliveryError::Corruption)?
+            .id,
         other.id
     );
     let health = store.health(&destination, 15, 30)?;
@@ -242,12 +261,14 @@ fn adr0008_event_provenance_health_ordering_and_restart_attempts() -> TestResult
 
     drop(store);
     let mut store = open(&path)?;
-    let retry = store.claim(20)?.ok_or(DeliveryError::Corruption)?;
+    let retry = store
+        .claim_destination(20, &destination)?
+        .ok_or(DeliveryError::Corruption)?;
     assert_eq!(retry.id, event.id);
     assert_eq!(retry.earlier_attempts, 1);
     store.attempted(retry.id, &Attempt::Paused(Reason::new("credentials")?), 20)?;
     assert!(store.health(&destination, 21, 30)?.paused);
-    assert!(store.claim(21)?.is_none());
+    assert!(store.claim_destination(21, &destination)?.is_none());
     // CHECK constraints reject both kinds carrying the other's provenance.
     assert_constraint(store.db.execute("INSERT INTO outbox(id,kind,receipt,version,order_id,destination,ordering_key,payload,digest,contract,state,next_attempt) VALUES ('bad','order_event','receipt',1,'o','app','o',x'00',x'00',1,'pending',0)",[]));
     assert_constraint(store.db.execute("INSERT INTO outbox(id,kind,receipt,version,order_id,destination,ordering_key,payload,digest,contract,state,next_attempt) VALUES ('bad','result',NULL,NULL,'o','app','o',x'00',x'00',1,'pending',0)",[]));
@@ -330,6 +351,7 @@ fn adr0003_withdrawal_assigns_next_revision_and_retransmission_enqueues_nothing(
 
 #[test]
 fn adr0008_recovery_audits_interrupted_attempts_and_preserves_blocked_items() -> TestResult {
+    let app = Identifier::new("app")?;
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("recover.db");
     let mut store = open(&path)?;
@@ -388,11 +410,11 @@ fn adr0008_recovery_audits_interrupted_attempts_and_preserves_blocked_items() ->
         assert_eq!(count, 1);
     }
     // A paused destination blocks even a recovered item until operator repair.
-    assert!(store.claim(42)?.is_none());
+    assert!(store.claim_destination(42, &app)?.is_none());
     store
         .db
         .execute("UPDATE outbox SET state='done' WHERE state='paused'", [])?;
-    let claim = store.claim(42)?.ok_or("not recovered")?;
+    let claim = store.claim_destination(42, &app)?.ok_or("not recovered")?;
     assert_eq!(claim.id, id);
     assert_eq!(claim.payload, [0, 17, 34]);
     assert_eq!(claim.earlier_attempts, 1);
@@ -401,6 +423,7 @@ fn adr0008_recovery_audits_interrupted_attempts_and_preserves_blocked_items() ->
 
 #[test]
 fn mutation_adr0008_recovery_audit_bound_is_inclusive_and_refusal_keeps_the_claim() -> TestResult {
+    let app = Identifier::new("app")?;
     for delta in [0, 1] {
         let temp = tempfile::tempdir()?;
         let mut store = open(&temp.path().join("recovery-audit-bound.db"))?;
@@ -415,7 +438,9 @@ fn mutation_adr0008_recovery_audit_bound_is_inclusive_and_refusal_keeps_the_clai
             },
             0,
         )?;
-        store.claim(0)?.ok_or("missing initial claim")?;
+        store
+            .claim_destination(0, &app)?
+            .ok_or("missing initial claim")?;
         let audit = Audit {
             actor: Identifier::new("startup")?,
             action: Identifier::new("recover")?,
@@ -429,7 +454,9 @@ fn mutation_adr0008_recovery_audit_bound_is_inclusive_and_refusal_keeps_the_clai
         if delta == 0 {
             assert_eq!(result?, 1);
             assert_eq!(state, DeliveryState::Pending);
-            let claim = store.claim(42)?.ok_or("missing recovered claim")?;
+            let claim = store
+                .claim_destination(42, &app)?
+                .ok_or("missing recovered claim")?;
             assert_eq!(claim.id, id);
             assert_eq!(claim.payload, b"immutable bytes");
             assert_eq!(claim.earlier_attempts, 1);

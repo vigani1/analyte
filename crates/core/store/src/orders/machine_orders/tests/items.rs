@@ -408,6 +408,7 @@ fn mutation_adr0003_rule8_order_item_completion_has_its_own_clock_and_exchange_s
 
 #[test]
 fn mutation_adr0003_rule8_order_item_outcomes_remain_bound_to_their_exact_index() -> TestResult {
+    let app = Identifier::new("app")?;
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("item-index.db");
     let mut store = open(&path)?;
@@ -471,7 +472,9 @@ fn mutation_adr0003_rule8_order_item_outcomes_remain_bound_to_their_exact_index(
             (2, OrderState::Rejected, "reject-two")
         ]
     );
-    let claim = store.claim(102)?.ok_or("missing outcome event")?;
+    let claim = store
+        .claim_destination(102, &app)?
+        .ok_or("missing outcome event")?;
     let delivered: MachineOrder = serde_json::from_slice(&claim.payload)?;
     assert_eq!(
         delivered

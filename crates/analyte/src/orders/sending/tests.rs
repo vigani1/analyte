@@ -89,7 +89,9 @@ async fn rule8_sending_is_internal_and_only_interrupted_transfer_recovers_uncert
                 )?
                 .map_err(|_| analyte_store::OrderError::Conflict)?;
             assert!(
-                store.claim(101)?.is_none(),
+                store
+                    .claim_destination(101, &completed.key.destination)?
+                    .is_none(),
                 "reservation must not enqueue an app event"
             );
             Ok::<_, FixtureError>((completed, interrupted))
@@ -132,6 +134,7 @@ async fn assert_recovered_outcomes(
             let interrupted = rows.last().ok_or(analyte_store::OrderError::Corruption)?;
             assert_eq!(interrupted.state, OrderState::Uncertain);
             assert_eq!(interrupted.source_code.as_str(), "host-restart");
+            let destination = completed_key.destination.clone();
             for key in [completed_key, interrupted_key] {
                 assert!(matches!(
                     store.reserve_send(
@@ -147,7 +150,9 @@ async fn assert_recovered_outcomes(
                 ));
             }
             let mut events = Vec::new();
-            while let Some(claim) = store.claim(jiff::Timestamp::now().as_second())? {
+            while let Some(claim) =
+                store.claim_destination(jiff::Timestamp::now().as_second(), &destination)?
+            {
                 events.push(claim.payload);
                 store.attempted(
                     claim.id,

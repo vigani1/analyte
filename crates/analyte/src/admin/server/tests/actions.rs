@@ -79,6 +79,8 @@ async fn plan11_admin_reprocess_resend_confirmation_csrf_actor_and_audit_failure
             .await?
             .starts_with("HTTP/1.1 409")
     );
+    let destination =
+        crate::orders::destination(program.machines().first().ok_or("missing machine")?);
     let delivery = store
         .request::<_, FixtureError>(fixture_deadline()?, move |s| {
             assert!(
@@ -88,7 +90,9 @@ async fn plan11_admin_reprocess_resend_confirmation_csrf_actor_and_audit_failure
                     .is_some()
             );
             assert_eq!(s.audits(0)?.len(), 1);
-            let claim = s.claim(0)?.ok_or(FixtureError::Corruption)?;
+            let claim = s
+                .claim_destination(0, &destination)?
+                .ok_or(FixtureError::Corruption)?;
             s.attempted(claim.id, &analyte_store::Attempt::Done, 0)?;
             Ok(claim.id)
         })
