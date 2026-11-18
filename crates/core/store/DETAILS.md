@@ -7,10 +7,9 @@ and backup files); nothing here logs clinical payloads.
 
 ## Durability and recovery
 
-Opening runs `integrity_check` and `foreign_key_check`. Schema version 11 is
-created by forward-only migrations from version 1; newer versions are refused. Migration preserves all rows and immutability triggers.
-Existing enqueue times are backfilled with migration time and explicitly marked.
-Migrations only move forward. WAL and `synchronous=FULL` deliberately require
+Opening runs `integrity_check` and `foreign_key_check`. An empty file gets the
+starting schema (version 15) in one transaction; a store with an older or newer
+version is refused. Later releases add forward-only steps. WAL and `synchronous=FULL` deliberately require
 SQLite to sync each committed WAL transaction before success is returned.
 Foreign keys are enabled on every connection; lock waits have a configured
 nonzero timeout capped at 30 seconds. These guarantees still require a local
@@ -103,10 +102,8 @@ count, bytes, oldest age, pause and feed status. Hosts supply the destination fr
 
 ## Observation history (ADR 0003)
 
-Version 3 adds immutable observation revisions and frame provenance. The forward
-migration retains existing rows/triggers and indexes resolved interpretation
-history; contradictory legacy content at the same revision refuses migration
-rather than picking a winner. No old interpretation is rewritten.
+Observation revisions and frame provenance are immutable. No old interpretation
+is rewritten.
 
 `reconcile` accepts mapped results, explicit correction evidence and
 positioned operator findings. One transaction assigns revisions, stores the
@@ -134,7 +131,6 @@ provide bounded receipt and audit pages for the protected operator interface.
 
 ## Machine order items (ADR 0003 rules 4/8; ADR 0004/0008)
 
-Schema v5 is a forward-only migration; v4 and its histories are unchanged.
 Each new reservation creates retained command items and append-only item history
 in the same transaction, without an app event. `OrderItems::Together` covers the
 current cached test list in one command. `OrderItems::Groups` retains the explicit
@@ -149,10 +145,8 @@ accounting for its encoding overhead. The store does not choose a delimiter,
 protocol grouping or composite identity limit. A too-small budget rolls back the
 whole reservation; no truncation or partial reservation is possible.
 
-V4 did not retain original test coverage. Its migrated orders get one item with
-`coverage_known=false`, empty coverage, and `migration-v5-coverage-unavailable`
-in history. A newer cache cannot reconstruct that evidence. Existing reservation
-identities still block resending, including after a cache version change.
+Existing reservation identities block resending, including after a cache version
+change.
 
 `finish_order_items` applies an entire exchange atomically. All accepted yields
 Accepted; all rejected yields Rejected; all transfer-confirmed yields Sent;
@@ -204,7 +198,7 @@ typed states in bounded pages rather than comparing state text in SQL.
 
 ## Implementation ownership
 
-`upkeep/open` owns integrity checks and forward migrations; `upkeep/capacity`
+`upkeep/open` owns integrity checks and runs `upkeep/migration`; `upkeep/capacity`
 owns admission and size limits. `intake/records` retains raw inputs,
 `intake/transfers` journals frames and
 provenance, `delivery/outbox` owns claims and attempts, `operator/parked` owns
@@ -228,12 +222,11 @@ sees assigned identities inside the transaction; an error rolls back reservation
 items and history. Callers retain any prepared payload locally until commit succeeds.
 
 The public write path for frames is `journal_frame`, which retains provenance.
-The internal frame insertion primitive also serves legacy-schema migration tests.
 Unfinished-transfer inspection is a crate-test helper; host receive tests inspect
 the protected journal directly after running the real service path. Operator
 resends use `resend_delivery`, including audited recovery from a setup pause.
 
-## Schema 7: typed persistence (ADR 0003 rules 2/3/8)
+## Typed persistence (ADR 0003 rules 2/3/8)
 
 Order/item SQL states use plain lifecycle names rather than JSON string literals.
 `sql_types` owns the SQLite codecs for lifecycle state, delivery state, delivery
@@ -245,48 +238,18 @@ Each lifecycle history row now has checked `owner_kind`, `owner_id` and
 `cancel_version` columns. Ownership checks read those columns, and cancellation
 replay checks use an indexed, exact version comparison. Versions are canonical
 unsigned decimal strings so the full `u64` range survives SQLite's signed integer
-limit. The human-readable source codes remain unchanged for evidence compatibility;
-they no longer decide ownership. Only migration interprets the old prefixes.
-For historical cancellations it preserves the old final-colon-component ownership
-rule, including an empty component that could never match a valid owner. New
-cancellations retain the supplied full connection ID explicitly.
+limit. Human-readable source codes are evidence only; they never decide ownership.
+Cancellations retain the supplied full connection ID explicitly.
 
 All parking writes use one object containing `kind`, `reason`, `targets` and
-`context`. Context retains interpretation version and result position where the
-old tuples carried them. Migration preserves each exact former JSON string in
-`original_evidence`, including resolved parking and Autolyser custody guards.
-Canonical and original evidence are immutable; resolution still appends an audit.
-No custody intent table or protocol behavior is introduced in this migration.
+`context`. Context retains interpretation version and result position.
+Parking evidence is immutable; resolution appends an audit.
 
-The table rebuild follows [SQLite's documented procedure](https://www.sqlite.org/lang_altertable.html#making_other_kinds_of_table_schema_changes).
-The forward migration copies every order and item with its existing identity,
-retains the reservation AUTOINCREMENT high-water mark, leaves history JSON and
-other evidence untouched, and preserves the alert counters. It decodes one
-bounded legacy record at a time. An unknown, corrupt or oversized record refuses
-the upgrade with its table and row identity; the whole schema-7 transaction rolls
-back rather than discarding or guessing evidence.
-
-`migration_tests.rs` exercises all eight retained order/item states, all six
-delivery states and both delivery kinds, unowned/reservation/cancellation forms,
-colon-containing owners, the maximum cancellation version, all five legacy tuple
-kinds (including older tuples without version context), structured custody parking,
-and both open and resolved rows. It compares
-every original table/row, checks ownership and replay meaning, retained bytes,
-foreign-key integrity, counters and reservation identity allocation, and proves
-that unreadable parking or ownership rolls the upgrade back without changing legacy
-rows. Noncanonical cancellation-version tokens are refused rather than normalized
-into replay guards.
-
-## Schema 8: caller-owned protocol constraints
+## Caller-owned protocol constraints
 
 `FrameSequence::new(number, maximum)` validates a byte-sized sequence against the
 caller's inclusive bound before journal writes. The store has no ASTM rollover
-rule. Schema 8 widens the old frame-column constraint to the byte domain; it keeps
-all frame bytes, transfer links, journal IDs, the AUTOINCREMENT high-water mark,
-evidence protections and machine activity. Copying old frames does not generate
-new activity. The migration test compares every table before and after upgrading
-a real schema-7 fixture and tests a sequence above seven, rejection above the
-caller bound, the byte maximum, closed transfers and reopening.
+rule; the frame column accepts the whole byte domain.
 
 `TransferOutcome::Complete` links retained receipt evidence;
 `TransferOutcome::Incomplete` requires the caller's typed reason. The host owns
@@ -295,7 +258,7 @@ HL7 and LAW callers build one group per test and calculate the remaining identit
 budget using named constants from `analyte-hl7`. Existing wire limits and the
 logical namespace budgets are preserved; the store does not know their encodings.
 
-## Schema 9: typed cursor custody
+## Typed cursor custody
 
 `begin_poll_intent(machine, reason)` atomically retains a Pending intent, an
 immutable history entry and linked operator-visible parked evidence before the
@@ -314,14 +277,6 @@ The existing audited `parked resolve` path also reconciles linked intents
 atomically. Parked rows remain operator evidence; they no longer own poll state.
 Capacity, history or audit failures roll the entire operation back.
 
-The forward migration imports every legacy `autolyser_poll_custody` row without
-changing or deleting any parked row, original JSON or resolution. Unresolved rows
-become Uncertain; a legacy resolution becomes Confirmed. Reasons and exact old
-resolution evidence are retained without inventing times or attribution. Multiple
-guards for a machine continue to block it until all are reconciled; a shared guard
-continues to cover each distinct named machine. A guard without a machine refuses
-the upgrade with its table and row identity and leaves schema 8 intact.
-
 The Autolyser host records observed failures as Uncertain and treats an interrupted
 Pending intent as uncertain when reconnecting. It confirms only after the existing
 dialog establishes retained response custody. The operator can inspect and reconcile
@@ -331,13 +286,11 @@ lifecycle rule is added to the store.
 Tests cover admission before wire output, unknown-outcome reconnect blocking,
 Pending/Uncertain/Confirmed transitions, restart, independent machines, terminal
 confirmation, capacity refusal, transactional audit/history failures and operator
-resolution. Migration tests include both resolved and unresolved guards beyond the
-old 128-page limit, exact retention of every original table/row, duplicate targets,
-multiple guards and refusal when the machine identity is missing.
+resolution.
 
 ## Retention schema (ADR 0013)
 
-Schema v10 adds receipt tombstones, delivery UUID associations, keyed result
+The store keeps receipt tombstones, delivery UUID associations, keyed result
 identity/component/content digests, a key fingerprint and explicit holds. The
 credential is never serialized into the database. Startup configures the key
 before machine admission and refuses a missing or changed credential when a
@@ -371,24 +324,21 @@ lock; purge/reclamation require it exclusively. Offline restore uses the separat
 exclusive store lock. The runtime owns and joins its retention task at shutdown.
 
 Incremental vacuum avoids running a whole-file rebuild during live receiving.
-New files set `auto_vacuum=INCREMENTAL` before schema creation; existing files use
-the explicit offline `prepare-retention` conversion. Online vacuum requests at
-most 32 pages and never waits for a checkpoint reader. `secure_delete=ON` clears
-deleted page content. The SQLite documentation explains why existing files need a
-rebuild and why conversion needs temporary capacity:
-[auto_vacuum and incremental_vacuum](https://www.sqlite.org/pragma.html#pragma_auto_vacuum),
-[VACUUM](https://www.sqlite.org/lang_vacuum.html).
+Every new file sets `auto_vacuum=INCREMENTAL` before schema creation; finite
+retention refuses any file without it. Online vacuum requests at most 32 pages and
+never waits for a checkpoint reader. `secure_delete=ON` clears deleted page
+content. See SQLite's
+[auto_vacuum and incremental_vacuum](https://www.sqlite.org/pragma.html#pragma_auto_vacuum).
 
 Tests named `adr0013_items3_4_5_6_real_purge_audit_refusals_and_late_duplicate`,
 `adr0013_item4_crash_mid_batch_rolls_back_data_tombstones_and_guards` and
 `adr0013_item2_random_unfinished_states_never_purge` guard the key safety outcomes.
 The crash test terminates a child process before commit without running destructors.
-The space test checks a real file shrink after offline conversion and bounded vacuum.
+The space test checks a real file shrink after bounded vacuum.
 
 ## Refined order retention (ADR 0013 items 2, 6 and 7)
 
-Schema v11 adds immutable keyed order tombstones and delivery associations. It
-preserves v10 evidence and reservation sequence high-water marks. Order bundles
+The store keeps immutable keyed order tombstones and delivery associations. Order bundles
 use separate bounded scan cursors, the existing transaction deadline/backup pause
 and the common audit header. Only Done, Rejected and CancelConfirmed parents with
 finished items and old enough final/acknowledgment times are eligible. Holds,
@@ -420,9 +370,7 @@ receipt, interpretation, delivery, order, operator, maintenance or host command.
 `Text` retains the model's precise bounded-text cause. Encoding refusals retain
 the original JSON error, including its I/O category for bounded serialization.
 
-Migrations are ordered in `src/upkeep/migration/mod.rs`; every step checks
-integrity, and transactional conversions also check before commit.
-`src/upkeep/current-schema.sql` records the current objects (excluding SQLite's
-internal objects), ordered by type and name. `current_schema_matches_fresh_store`
-compares these definitions with a freshly opened store, normalizing line endings
-only. Update the file deliberately alongside any future schema migration.
+`src/upkeep/schema.sql` is the starting schema: every table, seed row, index and
+trigger of a new store. `src/upkeep/migration.rs` applies it as the first step
+and is the one place a later release appends numbered steps; each step checks
+integrity before it commits. The starting schema is never edited after release.

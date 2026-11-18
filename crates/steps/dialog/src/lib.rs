@@ -1,6 +1,9 @@
 //! Runs protocol states and deadlines without I/O, storage or clinical interpretation.
 #![forbid(unsafe_code)]
 
+#[macro_use]
+pub mod outcome;
+
 pub mod astm;
 pub mod hl7;
 

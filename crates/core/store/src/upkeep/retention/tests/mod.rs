@@ -1,4 +1,4 @@
-//! Tests retention migration, key continuity and finished-data guards against ADR 0013.
+//! Tests retention key continuity and finished-data guards against ADR 0013.
 use super::*;
 use crate::test_support::*;
 use crate::{Attempt, Audit, DeliveryId, Identifier, Reading, key};
@@ -116,25 +116,6 @@ fn adr0013_item2_item7_receipt_hold_blocks_until_audited_release() -> TestResult
     );
     Ok(())
 }
-#[test]
-fn adr0013_item3_migration_from_v9_preserves_evidence() -> TestResult {
-    let temp = tempfile::tempdir()?;
-    let path = temp.path().join("store.db");
-    let mut store = open(&path)?;
-    let id = finished(&mut store)?;
-    remove_alert_schema_for_legacy_fixture(&store.db)?;
-    store.db.execute_batch("DROP TABLE law_work_history; DROP TABLE law_messages; DROP TABLE awos_execution_history; DROP TABLE retention_order_deliveries; DROP TABLE retention_orders; DROP TABLE retention_results; DROP TABLE retention_deliveries; DROP TABLE retention_tombstones; DROP TABLE retention_key; DROP TABLE retention_holds; PRAGMA user_version=9;")?;
-    drop(store);
-    let store = open(&path)?;
-    assert_eq!(store.raw(id)?.ok_or("missing raw")?, b"synthetic");
-    assert!(store.retention_eligible(id, 1, 86500)?);
-    let version: i64 = store
-        .db
-        .query_row("PRAGMA user_version", [], |r| r.get(0))?;
-    assert_eq!(version, crate::SCHEMA_VERSION);
-    Ok(())
-}
-
 #[test]
 fn adr0013_item2_parking_unresolved_orders_and_polls_prevent_purge() -> TestResult {
     for guard in ["parking", "unresolved", "order", "poll", "ack"] {
@@ -498,10 +479,11 @@ fn property_batch(mask: u8) -> TestResult {
 }
 
 #[test]
-fn adr0013_item4_offline_conversion_and_incremental_vacuum_return_space() -> TestResult {
+fn adr0013_item4_incremental_vacuum_returns_space_and_other_files_are_refused() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("store.db");
     let mut store = open(&path)?;
+    store.retention_space_ready()?;
     let id = finished(&mut store)?;
     drop(store);
     let db = rusqlite::Connection::open(&path)?;
@@ -512,22 +494,10 @@ fn adr0013_item4_offline_conversion_and_incremental_vacuum_return_space() -> Tes
         store.retention_space_ready(),
         Err(Error::RetentionVacuumRequired)
     ));
-    assert!(matches!(
-        Store::prepare_retention_space(
-            &path,
-            limits(),
-            Box::new(Space(u64::MAX)),
-            Instant::now().checked_add(HANG_GUARD).ok_or("deadline")?
-        ),
-        Err(Error::InUse)
-    ));
     drop(store);
-    Store::prepare_retention_space(
-        &path,
-        limits(),
-        Box::new(Space(u64::MAX)),
-        Instant::now().checked_add(HANG_GUARD).ok_or("deadline")?,
-    )?;
+    let db = rusqlite::Connection::open(&path)?;
+    db.execute_batch("PRAGMA auto_vacuum=INCREMENTAL; VACUUM;")?;
+    drop(db);
     let mut store = open(&path)?;
     store.retention_space_ready()?;
     assert!(store.receipt(id)?.is_some());

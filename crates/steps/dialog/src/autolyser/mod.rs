@@ -3,6 +3,7 @@ use analyte_autolyser::syntax::{self as records, Report, Worklist};
 use analyte_framing::autolyser::{ACK, Decoder, EOT, Frame, MAX_ENVELOPE, Mode, NAK, STX};
 use std::time::Duration;
 use thiserror::Error;
+pub mod outcome;
 
 /// Recovery policy must be chosen explicitly by the deployment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

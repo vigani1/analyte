@@ -10,7 +10,7 @@ mod effect;
 mod error;
 use effect::Effect;
 pub(crate) mod settings;
-use crate::orders::outcome::LawEnd;
+use analyte_dialog::law::outcome::Code as LawEnd;
 pub(crate) use error::Error;
 pub(super) mod independent;
 use crate::intake;

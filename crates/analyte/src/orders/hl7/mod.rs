@@ -5,8 +5,8 @@ use analyte_fixtures::ConfigEdit as _;
 pub(crate) mod response;
 mod send;
 use crate::orders::OrderError as Error;
-use crate::orders::outcome::Hl7End;
 use crate::{deadline, installation::config::Machine, intake};
+use analyte_dialog::hl7::outcome::{Code as Hl7End, Detail as Hl7Detail};
 use analyte_hl7::{
     Message, Options,
     query::{self, CacheAnswer},
@@ -321,10 +321,7 @@ impl Hl7OrderLink {
                             machine,
                             cached,
                             until,
-                            |error| {
-                                crate::orders::outcome::Hl7Detail::DisplayMapping(error.to_string())
-                                    .to_string()
-                            },
+                            |error| Hl7Detail::DisplayMapping(error.to_string()).to_string(),
                             |order| {
                                 let app = crate::orders::app_order(order)?;
                                 Ok(analyte_mapping::map_display(

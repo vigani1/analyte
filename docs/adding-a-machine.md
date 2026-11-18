@@ -425,4 +425,7 @@ installation secrets path. Keep that credential with the installation secrets
 when restoring; rotation is not supported. Older backups retain purged data
 until the deployment removes them through its backup rotation.
 
-Machine definitions use [schema 2 and its schema 1 migration rule](config-migration.md).
+Machine definitions use `schema_version = 2`: set `protocol` and
+`transport.kind`, and the loader derives framing, dialog and syntax, so those
+sections carry no `kind` key. Any other machine schema version is refused as
+unsupported.

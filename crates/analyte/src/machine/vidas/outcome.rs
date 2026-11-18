@@ -2,8 +2,8 @@
 use super::Error;
 use crate::machine::driver::Trigger;
 use crate::machine::receive::{custody::Refusal, error::Step};
-use crate::orders::outcome::VidasEnd;
 use analyte_dialog::vidas::Timer;
+use analyte_dialog::vidas::outcome::Code as VidasEnd;
 
 /// A closed or cancelled connection names the outcome; otherwise the cause
 /// that ended the session does, and a session without one is a transfer error.

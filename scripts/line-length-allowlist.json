@@ -15,19 +15,6 @@
   "crates/core/store/src/test_support.rs": [
     "    store.db.execute(\"INSERT INTO outbox(id,receipt,version,destination,ordering_key,payload,digest,contract,state,next_attempt) VALUES (?1,?2,1,'app',?3,x'001122',?4,1,'pending',0)\",params![key(&id)?,key(&receipt)?,ordering_key,digest(&[0,17,34]).0.as_slice()])?;"
   ],
-  "crates/core/store/src/upkeep/migration/mod.rs": [
-    "                    tx.execute(\"UPDATE machine_order_history SET owner_kind=?2,owner_id=?3,cancel_version=?4 WHERE sequence=?1\", rusqlite::params![id,kind,owner,version])?;",
-    "            tx.execute_batch(\"CREATE TRIGGER machine_order_history_update BEFORE UPDATE ON machine_order_history BEGIN SELECT RAISE(ABORT,'immutable lifecycle history'); END;",
-    "CREATE TRIGGER parked_evidence_immutable BEFORE UPDATE OF evidence,original_evidence ON parked BEGIN SELECT RAISE(ABORT,'immutable parking evidence'); END;",
-    "                tx.execute(\"INSERT INTO poll_intent_history(intent,state,reason,audit) VALUES (?1,?2,?3,?4)\",rusqlite::params![intent,state,details.reason.as_str(),resolution])?;"
-  ],
-  "crates/core/store/src/upkeep/migration/revisions.rs": [
-    "            let mut statement = tx.prepare(\"SELECT i.rowid,i.receipt,i.version,i.evidence,r.metadata FROM interpretations i JOIN receipts r ON r.id=i.receipt WHERE i.rowid>?1 ORDER BY i.rowid LIMIT 64\")?;",
-    "                            let previous: Option<Vec<u8>> = tx.query_row(\"SELECT content_digest FROM observation_revisions WHERE identity_key=?1 AND revision=?2\", params![identity_key,revision], |r| r.get(0)).optional()?;"
-  ],
-  "crates/core/store/src/upkeep/open/mod.rs": [
-    "            db.execute_batch(&format!(\"CREATE TRIGGER IF NOT EXISTS immutable_{table}_update BEFORE UPDATE ON {table} BEGIN SELECT RAISE(ABORT,'immutable evidence'); END; CREATE TRIGGER IF NOT EXISTS immutable_{table}_delete BEFORE DELETE ON {table} BEGIN SELECT RAISE(ABORT,'immutable evidence'); END;\"))?;"
-  ],
   "crates/core/store/src/upkeep/restore/mod.rs": [
     "        let action: Option<String> = db.query_row(\"SELECT json_extract(evidence,'$.action') FROM audit WHERE json_extract(evidence,'$.action') IN ('store-restore','orders-resume-after-restore') ORDER BY sequence DESC LIMIT 1\", [], |r| r.get(0)).optional()?;"
   ],

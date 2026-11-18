@@ -41,7 +41,7 @@ impl Work<analyte_autolyser::syntax::Worklist> {
             .active
             .as_ref()
             .ok_or(Error::UnexpectedInsertionOutcome)?;
-        let code = super::outcome::Transfer::AutolyserInsertion(reception);
+        let code = analyte_dialog::autolyser::outcome::insertion(reception);
         let outcome = match reception {
             analyte_dialog::autolyser::Reception::Accepted(_) => analyte_model::OrderState::Sent,
             analyte_dialog::autolyser::Reception::Rejected(_)
@@ -49,7 +49,7 @@ impl Work<analyte_autolyser::syntax::Worklist> {
                 analyte_model::OrderState::Uncertain
             }
         };
-        super::sending::complete(store, order, outcome, code).await?;
+        super::sending::complete(store, order, outcome, &code).await?;
         self.active = None;
         Ok(outcome == analyte_model::OrderState::Sent)
     }

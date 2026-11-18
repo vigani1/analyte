@@ -6,7 +6,6 @@ pub use https::{HttpsUrl, loopback_test_url};
 mod orders;
 mod retention;
 pub use retention::Retention;
-mod migration;
 mod selection;
 use selection::ParsedMachine;
 pub use selection::StackChoice;
@@ -182,28 +181,33 @@ fn load<T: for<'de> Deserialize<'de>>(path: &str, text: &str) -> Result<T, Error
     if text.len() > MAX_FILE_BYTES {
         return Err(Error::FileSize { path: path.into() });
     }
-    let mut value: toml::Table = toml::from_str(text).map_err(|source| Error::Schema {
+    let value: toml::Table = toml::from_str(text).map_err(|source| Error::Schema {
         path: path.into(),
         source,
     })?;
     let machine = value.contains_key("protocol");
-    let migrating = machine
-        && value
-            .get("schema_version")
-            .and_then(toml::Value::as_integer)
-            == Some(1);
-    if machine {
-        migration::normalize(&mut value, path)?;
-    } else if value
+    let (supported, reason) = if machine {
+        (2, "unsupported schema; use machine schema_version = 2")
+    } else {
+        (1, "use supported schema_version = 1")
+    };
+    if value
         .get("schema_version")
         .and_then(toml::Value::as_integer)
-        != Some(1)
+        != Some(supported)
     {
-        return Err(invalid(
-            path,
-            "schema_version",
-            "use supported schema_version = 1",
-        ));
+        return Err(invalid(path, "schema_version", reason));
+    }
+    if machine {
+        for section in ["framing", "dialog", "syntax"] {
+            if value.get(section).and_then(|v| v.get("kind")).is_some() {
+                return Err(invalid(
+                    path,
+                    &format!("{section}.kind"),
+                    "schema 2 derives this selector; remove the key",
+                ));
+            }
+        }
     }
     if value
         .get("deviations")
@@ -233,12 +237,7 @@ fn load<T: for<'de> Deserialize<'de>>(path: &str, text: &str) -> Result<T, Error
             }
         }
     }
-    let normalized = if migrating {
-        toml::to_string(&value)?
-    } else {
-        text.to_owned()
-    };
-    toml::from_str(&normalized).map_err(|source| Error::Schema {
+    toml::from_str(text).map_err(|source| Error::Schema {
         path: path.into(),
         source,
     })

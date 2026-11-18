@@ -688,23 +688,6 @@ pub async fn restore(
     .await??)
 }
 
-/// Converts an existing store for incremental vacuum while the service is stopped.
-/// # Errors
-/// Refuses active owners, capacity failures, expired deadlines and database errors.
-pub async fn prepare_retention(program: Program) -> Result<(), Error> {
-    Ok(tokio::task::spawn_blocking(move || {
-        analyte_store::Store::prepare_retention_space(
-            &program.data_directory.join("analyte.db"),
-            program.store_limits,
-            Box::new(Volume),
-            Instant::now()
-                .checked_add(analyte_store::DEFAULT_STARTUP_TIMEOUT)
-                .ok_or(analyte_store::MaintenanceError::DeadlineOverflow)?,
-        )
-    })
-    .await??)
-}
-
 // Shared ownership begins only in orchestration; preserve its original I/O failure identity.
 async fn open_service_store(
     program: &Program,

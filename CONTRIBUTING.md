@@ -55,9 +55,8 @@ cargo test -p analyte-store --release startup_timing_two_gib_synthetic_store -- 
 ```
 
 Windows measurement, 2026-11-15: a 2,150,469,632-byte synthetic store took
-1.713..1.775 seconds for integrity checking, 24.014 seconds for upgrade startup
-(v7 to v8: 21.042 seconds; v8 to v9: 1.483 seconds), and 1.604..1.630 seconds
-for current-schema restarts. These are local disk/cache measurements.
+1.713..1.775 seconds for integrity checking and 1.604..1.630 seconds for
+restarts. These are local disk/cache measurements.
 
 The global test-thread override was removed after the startup fix. Three concurrent
 full analyte integration binaries with default threads passed in 35.19, 35.64 and
