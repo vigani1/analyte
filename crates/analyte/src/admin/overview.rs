@@ -15,7 +15,7 @@ use std::{
     sync::{Arc, atomic::Ordering},
 };
 
-fn row(html: &mut Markup, name: &str, value: &str) {
+pub(super) fn row(html: &mut Markup, name: &str, value: &str) {
     html.push_fragment(
         &Markup::new()
             .markup("<dt>")
@@ -107,7 +107,7 @@ async fn render(state: &Context) -> Result<Markup, Error> {
     );
     render_uncertain_orders(state, &mut html, until).await?;
     render_destinations(state, &mut html, now).await?;
-    render_machines(state, &mut html, until).await?;
+    render_machines(state, &mut html, until, jiff::Timestamp::now()).await?;
     html.push_markup("</dl></html>");
     Ok(html)
 }
@@ -222,6 +222,7 @@ async fn render_machines(
     state: &Context,
     html: &mut Markup,
     until: std::time::Instant,
+    now: jiff::Timestamp,
 ) -> Result<(), Error> {
     let mut last_activity = BTreeMap::new();
     let mut cursor = String::new();
@@ -256,20 +257,48 @@ async fn render_machines(
                 "stopped"
             },
         );
-        row(
-            html,
-            "Connection state",
-            "unknown (not inferred from receipt age)",
-        );
-        row(
-            html,
-            "Last received activity",
-            &last_activity
-                .get(machine.id.as_str())
-                .map_or_else(|| "unknown".into(), ToString::to_string),
-        );
+        let stored = last_activity.get(machine.id.as_str()).copied();
+        for (name, value) in link_rows(&machine.status.borrow(), stored, now) {
+            row(html, name, &value);
+        }
     }
     Ok(())
+}
+
+/// The link light of one machine, from its runtime. "Last data" is the later of the
+/// runtime's last read and the last stored receipt, so it survives a restart. It never
+/// shows payloads, sample IDs or peer addresses (safety rule 10).
+pub(super) fn link_rows(
+    status: &crate::machine::link::status::Status,
+    stored: Option<jiff::Timestamp>,
+    now: jiff::Timestamp,
+) -> [(&'static str, String); 4] {
+    let last = status.last_data().max(stored);
+    [
+        ("Link", status.link().as_str().into()),
+        ("Connection state", status.state().into()),
+        (
+            "Last data received",
+            last.map_or_else(
+                || "unknown".into(),
+                |time| format!("{} ({time})", ago(time, now)),
+            ),
+        ),
+        ("Last state change", ago(status.changed_at(), now)),
+    ]
+}
+
+/// Says how long ago `then` was in the largest whole unit.
+fn ago(then: jiff::Timestamp, now: jiff::Timestamp) -> String {
+    let Ok(seconds) = u64::try_from(now.as_second().saturating_sub(then.as_second())) else {
+        return "unknown (clock moved back)".into();
+    };
+    match seconds {
+        0..60 => format!("{seconds} s ago"),
+        60..3_600 => format!("{} min ago", seconds / 60),
+        3_600..86_400 => format!("{} h ago", seconds / 3_600),
+        _ => format!("{} d ago", seconds / 86_400),
+    }
 }
 
 async fn render_alert_endpoints(

@@ -3,6 +3,7 @@ pub(crate) mod capture;
 pub(crate) mod error;
 pub(crate) mod folder;
 pub(crate) mod serial;
+pub(crate) mod status;
 pub(crate) mod tcp;
 
 use analyte_transport::{Backoff, Limits, connection};
@@ -105,12 +106,15 @@ pub(in crate::machine) fn retry() -> Result<Backoff, analyte_transport::Error> {
     Backoff::new(RECONNECT_MIN, RECONNECT_MAX, 1)
 }
 
-/// Creates one connection and attaches the optional recorder to its I/O side.
+/// Creates one connection, reports its openings and reads to the machine's status,
+/// and attaches the optional recorder to its I/O side.
 pub(in crate::machine) fn recorded_connection(
     limits: Limits,
     capture: Option<&capture::Capture>,
+    status: &status::Reporter,
 ) -> (analyte_transport::Connection, analyte_transport::IoSide) {
     let (conn, side) = connection(limits);
+    let side = side.with_observer(status.observer());
     let side = match capture {
         Some(capture) => capture.attach(side),
         None => side,

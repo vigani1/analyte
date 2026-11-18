@@ -29,6 +29,7 @@ pub(in crate::machine) async fn server(
                 .await?
         }
     };
+    machine.status.ready(true);
     loop {
         let stream = match accept(|| listener.accept(), machine.id.as_str(), &mut stop).await {
             Ok(Some((stream, _))) => stream,
@@ -39,7 +40,7 @@ pub(in crate::machine) async fn server(
             // accept retries every recoverable fault; only an unusable listening socket returns.
             Err(error) => return Err(error.into()),
         };
-        let (conn, side) = recorded_connection(limits, capture);
+        let (conn, side) = recorded_connection(limits, capture, &machine.status);
         let cancel = conn.cancellation();
         let processing = drive(machine, session, store, conn, stop.clone(), &mut closing);
         let pumped = analyte_transport::tcp::pump(stream, side);
@@ -80,7 +81,7 @@ pub(in crate::machine) async fn client(
     // Fixed bounds; invalid only if the constants are wrong, so no session can start.
     let retry = retry()?;
     loop {
-        let (conn, side) = recorded_connection(limits, capture);
+        let (conn, side) = recorded_connection(limits, capture, &machine.status);
         let cancel = conn.cancellation();
         let dialled = analyte_transport::tcp::client_session(endpoint, side, retry.clone());
         let (result, dialled) = tokio::join!(

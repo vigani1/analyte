@@ -49,7 +49,37 @@ impl Closing {
     }
 }
 
+/// Independent-link LAW listens for inbound transactions whatever its configured role.
+pub(crate) fn independent_law(stack: &analyte_config::Stack) -> Option<&analyte_config::LawStack> {
+    if let analyte_config::Stack::Law(settings) = stack
+        && matches!(
+            settings.policy().links(),
+            analyte_config::LawLinks::Independent { .. }
+        )
+    {
+        return Some(settings);
+    }
+    None
+}
+
+/// Runs one machine until stop; its link light reads "not listening/watching" after.
+/// An aborted owner task leaves the light at its last state; the admin page's owner
+/// row then says "stopped", so the light is never read alone.
 pub(crate) async fn run(
+    machine: Machine,
+    store: Arc<Handle>,
+    stop: watch::Receiver<bool>,
+    file_root: std::path::PathBuf,
+    closing: Closing,
+    capture: Option<Arc<capture::Capture>>,
+) -> Result<(), Error> {
+    let status = machine.status.clone();
+    let result = serve(machine, store, stop, file_root, closing, capture).await;
+    status.ready(false);
+    result
+}
+
+async fn serve(
     mut machine: Machine,
     store: Arc<Handle>,
     stop: watch::Receiver<bool>,
@@ -57,13 +87,8 @@ pub(crate) async fn run(
     closing: Closing,
     capture: Option<Arc<capture::Capture>>,
 ) -> Result<(), Error> {
-    if let analyte_config::Stack::Law(settings) = machine.snapshot.effective().stack()
-        && matches!(
-            settings.policy().links(),
-            analyte_config::LawLinks::Independent { .. }
-        )
-    {
-        let settings = Arc::new(settings.as_ref().clone());
+    if let Some(settings) = independent_law(machine.snapshot.effective().stack()) {
+        let settings = Arc::new(settings.clone());
         return Ok(law::independent::run(machine, settings, store, stop, closing, capture).await?);
     }
     let listener = machine.listener.take();
