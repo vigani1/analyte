@@ -431,7 +431,6 @@ pub struct Site {
     /// The lab's time zone: an IANA name or a fixed `+HH:MM` offset. Only a LAW
     /// MSH-7 sent without an offset is read in it, with a note; absent keeps
     /// refusing such a header.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub time_zone: Option<crate::SiteTimeZone>,
 }
 
@@ -448,6 +447,8 @@ pub(crate) struct SiteFile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     usb_serial: Option<crate::UsbSerial>,
     destination: Destination,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    time_zone: Option<crate::SiteTimeZone>,
 }
 
 impl SiteFile {
@@ -458,6 +459,7 @@ impl SiteFile {
             schema_version: self.schema_version,
             endpoint: crate::Endpoint::choose(self.endpoint, self.usb_serial, path)?,
             destination: self.destination,
+            time_zone: self.time_zone,
         })
     }
 }
@@ -474,6 +476,7 @@ impl From<Site> for SiteFile {
             endpoint,
             usb_serial,
             destination: site.destination,
+            time_zone: site.time_zone,
         }
     }
 }
