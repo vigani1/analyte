@@ -2,7 +2,7 @@
 //! HL7 2.5.1 §§2.9.2–2.9.3 define response responsibility. Receipt ordinals,
 //! callback phases, a non-extending timeout and diagnostic byte ceilings are
 //! Analyte host policies; MLLP R1 does not prescribe a timeout duration.
-use analyte_dialog::hl7::{Action, Config, Dialog, Error, Event, ExchangeId, Expect};
+use analyte_dialog::hl7::{Action, Config, Dialog, Error, Event, ExchangeId, Expect, Outcome};
 use analyte_hl7::{AckCode, AckError, ControlId, Options, Response};
 use std::time::Duration;
 
@@ -138,6 +138,61 @@ fn adr0010_hl7_251_2_9_send_cannot_replace_active_custody_or_response() -> TestR
         );
         assert!(!refused.iter().any(|a| matches!(a, Action::Write(_))));
     }
+    Ok(())
+}
+
+// HL7 2.5.1 §2.9: each system both sends and receives, and §2.9.3 b) lets the peer start
+// its own exchange while ours is open; MLLP R1 §1 sets no turn-taking. The inbound message
+// is stored and answered, and our wait keeps its identity and its original deadline.
+#[test]
+fn hl7_message_during_pending_ack_is_answered() -> TestResult {
+    let mut d = dialog(42)?;
+    d.step(Duration::ZERO, Event::Send(MESSAGE, Expect::Acknowledgment))?;
+    let at = Duration::from_secs(3);
+    let mut step = |event| d.step(at, event);
+    let inbound = b"\x0bMSH|^~\\&|C|D|A|B|20261115||ORU^R01^ORU_R01|IN1|P|2.5.1\r\x1c\r";
+    let mut out = Vec::new();
+    for byte in inbound {
+        out.extend(step(Event::Byte(*byte))?);
+    }
+    let id = out
+        .iter()
+        .find_map(|a| {
+            if let Action::Store(id, raw) = a
+                && raw == inbound
+            {
+                Some(*id)
+            } else {
+                None
+            }
+        })
+        .ok_or("inbound message not stored")?;
+    step(Event::Stored(id))?;
+    step(Event::Interpreted(id))?;
+    let control_id = ControlId::new(b"fresh")?;
+    let timestamp = b"20261115";
+    let answered = step(Event::Respond(
+        id,
+        Response {
+            control_id,
+            timestamp,
+        },
+    ))?;
+    assert!(answered.iter().any(|a| matches!(a, Action::Write(w)
+        if w.bytes.windows(11).any(|x| x == b"MSA|AA|IN1\r"))));
+    let five = Duration::from_secs(5);
+    assert!(
+        answered
+            .iter()
+            .any(|a| matches!(a, Action::Deadline(Some(t)) if *t == five))
+    );
+    let ack = b"\x0bMSH|^~\\&|C|D|A|B|20261115||ACK^R01^ACK|r|P|2.5.1\rMSA|AA|001\r\x1c\r";
+    let mut out = Vec::new();
+    for byte in ack {
+        out.extend(step(Event::Byte(*byte))?);
+    }
+    assert!(out.iter().any(|a| matches!(a,
+        Action::Sent(id, Outcome::Accepted(AckCode::Aa)) if id == b"001")));
     Ok(())
 }
 

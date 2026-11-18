@@ -20,7 +20,9 @@ async fn adr0004_law_superseded_mapping_rejection_continues_idle_admission() -> 
     .validate()?;
     let machine = Machine {
         capture: false,
-        destination_limits: crate::runtime::delivery::limits(30),
+        destination_limits: crate::runtime::delivery::limits(
+            &snapshot.effective().site().destination,
+        ),
         hooks: crate::installation::config::MachineHooks::default(),
         id: Identifier::new("synthetic")?,
         snapshot,
