@@ -22,6 +22,7 @@ file before relying on any detail below.
 | [middleware-practices.md](middleware-practices.md) | Independent research: how integration engines and lab middleware are built, standards notes, failure stories, overlooked topics, Rust ecosystem |
 | [idea-check.md](idea-check.md)     | Check of the ideas borrowed from other projects: keep, change or replace                         |
 | [rust-practices.md](rust-practices.md) | Rules and tooling from large Rust projects and company guidelines                            |
+| [machine-gaps.md](machine-gaps.md) | What each machine still lacks: documents, settings and recordings (kept current)              |
 
 ## The machines at a glance
 
