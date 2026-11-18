@@ -272,7 +272,11 @@ missing; nothing is guessed in the meantime.
 - One program, installed as a Windows service or Linux systemd unit, starting
   without a login.
 - Local admin page (localhost, bearer token): machines, last messages, parked
-  items, resend and reprocess as separate actions, all audited.
+  items, resend and reprocess as separate actions, all audited. Its setup page
+  writes a machine's site file after `check-config` validation, with a backup,
+  offers a listen-only connection test that never sends, and stores destination
+  keys in a locked file only the service can read (environment variables win).
+  Applying a save needs a restart.
 - Alerts on oldest undelivered item, stalled machines and disk space.
 - The PC must not sleep; updates are scheduled; USB serial reconnects and COM
   port changes are handled.

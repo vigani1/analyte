@@ -38,6 +38,7 @@ to a shared network.
 | Deliveries | Inspect state and confirm eligible resends, with a reason. |
 | Machine orders | Inspect lifecycle; reconciliation remains a CLI task. |
 | Retention and holds | Policy, last purge, oldest retained receipt and indefinite holds. |
+| Setup | Choose a machine definition, its port or address and the lab app; test by listening; save; restart. See [Setup page](#setup-page). |
 
 Follow Next page to inspect bounded lists. Reprocess uses retained raw bytes
 with current config and creates a new interpretation. Resend queues an existing
@@ -59,6 +60,56 @@ analyte --config analyte.toml --actor pilot-it deliveries list --reason "Pilot r
 the global `--config`. Recovery operators need OS access to the protected store.
 Lists are bounded; use `--after` with the last listed local ID/sequence where
 offered. CLI output can contain protected evidence.
+
+## Setup page
+
+The **Setup** page lets a lab manager set up an installed machine without
+editing files. It needs a browser login (not just the bearer header), and the
+service needs write access to the folder that holds the program file and the
+site files (see [Install](install.md)). Each machine listed in the program file
+has a **Set up** link with five steps:
+
+1. **Machine.** Choose a definition from the `machines` folder beside the program
+   file. Each shows its evidence level; blocked definitions (no `machine.toml`
+   yet) are listed but cannot be chosen.
+2. **Connection.** For a serial machine, choose a detected port. The list shows
+   each port's name, the adapter's own description and its USB serial number.
+   When the adapter has its own serial number, the site file gets `usb_serial`,
+   so Analyte finds the machine again if the COM number changes; otherwise it
+   gets the port name as `endpoint`. A number Windows made up (it contains `&`)
+   is not used. For a network machine, enter the IP address and port: the
+   address Analyte listens on when the machine connects to Analyte, or the
+   machine's address when Analyte connects to it.
+3. **Test the connection (listen only).** Analyte opens the chosen port or
+   address and shows, as hex and readable text, what the machine sends. It sends
+   nothing, not even an acknowledgment, so the machine may retry or report a
+   link error; that is expected. The test runs at most 60 seconds and keeps at
+   most 64 KiB; its bytes stay in memory only, are shown only on this page, and
+   are discarded when the test ends or is stopped. They may contain patient data:
+   keep them out of screenshots. The test refuses a port or address that a
+   running machine uses; stop that machine's service first or test a free port.
+4. **Lab app.** Enter the lab app address (HTTPS, checked with the same rules as
+   `check-config`) and the destination name. Enter the API key and signing key
+   only to set or replace them. They are stored in the [locked credentials
+   file](connect.md#credentials) and never shown again; the page shows only
+   "set on <date>", or that an environment variable sets the key (it wins).
+5. **Save.** Analyte first checks everything with the `check-config` rules. Only
+   then does it keep the old site file as `<name>.<time>.bak`, write the new one
+   and store the keys. If you chose a different definition, the program file's
+   `definition` line for that machine changes too (with its own backup); nothing
+   else in it changes. It then loads the whole program again; if that fails,
+   the previous files are put back and the page says why. The page shows the new
+   configuration digest.
+
+Saved settings apply only after a restart. **Restart now** stops Analyte
+gracefully (like a normal stop) and exits with a failure code, so the service
+manager starts it again: the Windows recovery action after 5 seconds, or systemd
+`Restart=on-failure` after 5 seconds. A foreground `analyte run` simply stops;
+start it again by hand. Log in again afterwards; the Setup page shows the running
+configuration digest, which should match the one shown after saving. Saves and
+restarts are audited without key values. The page writes only the site file,
+that one program line and the locked credentials file; retention, time zone,
+credential names and other site keys are kept as they were.
 
 ## Alerts and named responders
 

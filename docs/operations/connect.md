@@ -25,7 +25,9 @@ change evidence. Retention belongs in the site file. Unknown keys fail loading.
 without an offset, with a visible note; leave it out to keep refusing such
 headers.
 Keep all installation files outside the repository. The
-[config examples](../../crates/core/config/examples/) teach syntax only.
+[config examples](../../crates/core/config/examples/) teach syntax only. The
+admin [Setup page](operate.md#setup-page) can write a machine's site file for
+you, validated with the same rules and with a backup of the old one.
 
 A synthetic site file looks like this:
 
@@ -66,7 +68,9 @@ Each of these is logged once when it changes, not on every retry. Letter case in
 the serial number does not matter. TCP and folder links refuse `usb_serial`;
 they always need `endpoint`.
 
-Find the number on the lab PC:
+The admin [Setup page](operate.md#setup-page) lists the detected ports with
+their adapter names and serial numbers and makes this choice for you. To find
+the number by hand on the lab PC:
 
 - **Windows:** Device Manager → Ports (COM & LPT) → the adapter → Properties →
   Details → Device instance path. The serial number is the last part, after the
