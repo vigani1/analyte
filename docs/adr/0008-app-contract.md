@@ -55,7 +55,7 @@ are relative to it.
   - `401`, `403`, a redirect (`3xx`), `404` or `413`: delivery to that
     destination pauses until the setup is fixed;
   - `408`, `429`, `5xx` or no answer: retried with capped exponential backoff
-    and jitter, honouring `Retry-After`;
+    and jitter, honouring `Retry-After` up to the backoff cap;
   - any other status: parked.
 - Order status changes (requested, sent, accepted, rejected, done, cancel
   requested, cancel confirmed, uncertain) travel to `POST /order-events`
