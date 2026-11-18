@@ -1,5 +1,4 @@
 //! Tests ASTM query and send-ahead order exchanges.
-//! Kept whole: ASTM order context cases share one query and send-ahead exchange fixture.
 use super::*;
 use crate::support::HANG_GUARD;
 use analyte_fixtures::ConfigEdit as _;

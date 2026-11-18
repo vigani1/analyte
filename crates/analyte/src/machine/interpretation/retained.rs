@@ -26,7 +26,7 @@ impl Context<'_> {
                 crate::machine::law::policy::Policy::prepare(store, machine, self.results).await?,
             ))
         } else if stack.choice().connection_context() {
-            Ok(crate::machine::poct::policy::policy())
+            Ok(crate::machine::poct::policy())
         } else {
             Ok(Policy::standard())
         }

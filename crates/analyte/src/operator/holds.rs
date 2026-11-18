@@ -80,6 +80,6 @@ pub async fn run(program: &Program, actor: Identifier, command: Command) -> Resu
         .await;
     store.shutdown(deadline()?).await?;
     result?;
-    super::output::line("Retention hold updated.")?;
+    super::display::line("Retention hold updated.")?;
     Ok(())
 }

@@ -1,5 +1,4 @@
 //! Tests Autolyser polling, checksums and order exchanges.
-//! Kept whole: The polling and download cases share recorded fixtures and storage completion helpers.
 use analyte_autolyser::syntax::*;
 use analyte_dialog::autolyser::{
     Action, Config, Dialog, Error as DialogError, Event, InsertionError, Reception, Recovery,

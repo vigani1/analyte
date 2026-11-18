@@ -1,5 +1,4 @@
 //! Checks POCT message object structure (Appendix B 6, 8 and 12).
-//! Kept whole: object rules and field constraints define one supported wire vocabulary.
 //! Rules are executable checks, not copied schema documents.
 use crate::{
     Document, Element,

@@ -60,10 +60,11 @@ the data, flag it and stop; never guess.
   crate of a kind has the same inner layout; a module with children is a
   folder with a `mod.rs` front file, never a file beside a same-named folder;
   every file starts with a `//!` line saying what it holds; folders over about
-  ten files group them by role. The Layout check in CI limits Rust files to
-  800 lines, and a file of 601 to 800 lines needs a `//! Kept whole:` reason.
+  ten files group them by role. There is no file-length limit; function size
+  and complexity are Clippy lints.
 - **Folders:** group files by a clear owner (layer, then role). Split a module
-  when it has a separate responsibility, not to meet a file count. File names
+  when it has a separate responsibility, not to meet a file count or length;
+  a piece too small to stand alone stays in its owner's file. File names
   never repeat their folder (`astm/frame.rs`, not `astm/astm_frame.rs`).
 - **Stop rule:** if work seems to need a new subsystem, format, protocol
   family, dependency or ADR that the plan does not contain, stop and ask.
@@ -244,7 +245,7 @@ Run focused checks while iterating. Before handoff run `cargo fmt --check`,
 fuzz/Cargo.toml --bins` (the fuzz workspace is separate, so renames miss it).
 Also run `cargo clippy -p analyte -p analyte-sink --all-targets --no-default-features -- -D warnings`,
 `cargo test -p analyte -p analyte-sink --no-default-features`,
-`bash scripts/check-layout.sh` and `python scripts/check-code-page.py`.
+`bash scripts/check-layout.sh`, which runs every repository check script.
 The all-features test pass includes the six test-hooks suites; the second pass
 checks the production feature set used in CI.
 Report every check that was not run and

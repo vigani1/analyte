@@ -1,5 +1,4 @@
 //! Starts supervised service workers and handles signals and bounded shutdown.
-//! Kept whole: Service startup and shutdown retain the ownership order of supervised workers.
 
 #[cfg(feature = "test-hooks")]
 pub use super::hooks::serve_loopback_test;

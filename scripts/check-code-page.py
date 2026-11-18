@@ -70,25 +70,14 @@ def hits(path, source):
 
 
 def main():
-    # Exact path + exact source line, with a mandatory explanation. No globs or
-    # whole-file exemptions; moving a line does not require refreshing its entry.
-    allow = set()
-    allow_path = pathlib.Path("scripts/code-page-allowlist.txt")
-    for entry in allow_path.read_text(encoding="utf-8").splitlines():
-        if not entry.strip() or entry.startswith("#"):
-            continue
-        path, line, reason = entry.split("\t")
-        if not reason.strip():
-            raise ValueError("allowlist entries require a reason")
-        allow.add((path, line))
+    # No exceptions: reword a legitimate hit instead of exempting it.
     files = subprocess.check_output(["git", "ls-files", "-z", "--", "*.md", "*.rs"]).decode("utf-8").split("\0")
     failed = False
     for path in filter(None, files):
         source = pathlib.Path(path).read_text(encoding="utf-8")
         for number, line in hits(path, source):
-            if (path, line) not in allow:
-                print(f"{path}:{number}: possible code-page corruption: {line.strip()}")
-                failed = True
+            print(f"{path}:{number}: possible code-page corruption: {line.strip()}")
+            failed = True
     return int(failed)
 
 

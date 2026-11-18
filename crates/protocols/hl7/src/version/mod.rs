@@ -1,5 +1,4 @@
 //! Selects explicit HL7 editions without treating recognition as semantic qualification.
-//! Kept whole: Edition capability rows and their exhaustive lookup form one reviewable rule table.
 use crate::Error;
 mod rules;
 pub(crate) use rules::{AckPair, CodingVersions, Rules, TimeFormat, ZeroOffset};

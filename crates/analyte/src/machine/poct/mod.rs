@@ -1,5 +1,4 @@
 //! Drives POCT DML reviewer connections with durable custody before acceptance.
-pub(crate) mod policy;
 use super::driver::{Flow, HostInput, Protocol, Session};
 use crate::intake;
 use crate::machine::receive::custody::{self, ms};
@@ -21,6 +20,12 @@ pub(crate) const INCOMPLETE_REASON: &str = "POCT incomplete XML on timeout or di
 pub(crate) const DEFERRED_REASON: &str = "POCT message deferred by bounded custody queue";
 pub(crate) fn syntax_reason(error: &analyte_poct::MessageError) -> String {
     format!("POCT syntax: {error}")
+}
+/// Guards edits of independent POCT readings, which carry no execution context.
+pub(crate) fn policy() -> crate::machine::interpretation::policy::Policy {
+    crate::machine::interpretation::policy::Policy::independent(
+        "edited POCT observation with no detectable common-content change; source context may have changed",
+    )
 }
 pub(crate) fn closure_reason(normal: bool, unresolved: &str) -> String {
     format!(

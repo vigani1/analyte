@@ -1,5 +1,4 @@
 //! Tests HL7 messages, acknowledgments and failure handling.
-//! Kept whole: The HL7 acknowledgment matrix uses one shared dialog fixture and adjacent failure cases.
 use analyte_dialog::hl7::*;
 use analyte_fixtures::ConfigEdit as _;
 use analyte_hl7::{AckCode, AckError, ControlId, Options, Response};

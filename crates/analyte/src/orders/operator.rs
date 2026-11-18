@@ -107,7 +107,7 @@ pub async fn run(program: &Program, actor: Identifier, command: Command) -> Resu
         .request(deadline()?, |store| store.restore_unreconciled())
         .await?;
     if paused {
-        crate::operator::output::line(
+        crate::operator::display::line(
             "ORDER SENDING PAUSED: restored store requires machine/app reconciliation.",
         )?;
     }
@@ -136,7 +136,7 @@ pub async fn run(program: &Program, actor: Identifier, command: Command) -> Resu
         .await;
     store.shutdown(deadline()?).await?;
     for order in result.map_err(Error::OrderCommand)? {
-        crate::operator::output::line(&format!(
+        crate::operator::display::line(&format!(
             "{} app={} order={} machine={} version={} state={} updated_at={}",
             order.id,
             order.key.destination.as_str(),
@@ -147,7 +147,7 @@ pub async fn run(program: &Program, actor: Identifier, command: Command) -> Resu
             order.updated_at
         ))?;
         for item in order.items {
-            crate::operator::output::line(&format!(
+            crate::operator::display::line(&format!(
                 "  item={} placer={} namespace={} coverage_known={} tests={} state={} reason={}",
                 item.index,
                 item.placer,

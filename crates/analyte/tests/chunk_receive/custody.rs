@@ -1,5 +1,4 @@
 //! Tests chunk-journaled receipt custody for POCT, VIDAS and Autolyser.
-//! Kept whole: chunk custody conversations share the same program fixture.
 use super::*;
 
 #[tokio::test]

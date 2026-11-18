@@ -35,6 +35,6 @@ pub async fn retry(
         .await;
     store.shutdown(deadline()?).await?;
     result?;
-    super::output::line("Exhausted alert events queued with original identities.")?;
+    super::display::line("Exhausted alert events queued with original identities.")?;
     Ok(())
 }

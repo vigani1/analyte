@@ -1,2 +1,0 @@
-# Justified exceptions only: path<TAB>exact complete source line<TAB>reason
-# No exceptions are currently needed.

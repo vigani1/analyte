@@ -34,9 +34,6 @@ use transport::{stream, stream_kind, stream_timeout, tcp, tcp_kind};
 mod limits;
 use limits::limits;
 pub use limits::{DialogTimeouts, SyntaxLimits};
-mod order_tables;
-pub use order_tables::OrderTables;
-use order_tables::order_tables;
 mod capabilities;
 pub use capabilities::Hl7OptionsSource;
 pub(crate) use capabilities::RecordKind;
@@ -232,4 +229,41 @@ fn code_tables(machine: &ParsedMachine<'_>, path: &str) -> Result<CodeTables, Er
         .codes
         .clone()
         .ok_or_else(|| invalid(path, "codes", "vendor stack requires code tables"))
+}
+
+/// Outbound test, specimen and priority translations shared by every order-sending protocol.
+#[derive(Debug, Clone)]
+pub struct OrderTables {
+    /// Exact outbound test translations.
+    tests: Vec<OutboundTest>,
+    /// Explicit specimen translations; absence maps no values.
+    specimen_types: Option<Vec<OutboundSpecimen>>,
+    /// Exact outbound priority translations.
+    priorities: Vec<OrderPriority>,
+}
+
+fn order_tables(orders: &Orders) -> OrderTables {
+    OrderTables {
+        tests: orders.tests.clone(),
+        specimen_types: orders.specimen_types.clone(),
+        priorities: orders.priorities.clone(),
+    }
+}
+
+impl OrderTables {
+    /// Explicit application-to-instrument test-code mapping.
+    #[must_use]
+    pub fn tests(&self) -> &[OutboundTest] {
+        &self.tests
+    }
+    /// Explicit specimen-code mappings; unknown specimens remain unresolved.
+    #[must_use]
+    pub fn specimen_types(&self) -> Option<&[OutboundSpecimen]> {
+        self.specimen_types.as_deref()
+    }
+    /// Explicit order-priority mapping.
+    #[must_use]
+    pub fn priorities(&self) -> &[OrderPriority] {
+        &self.priorities
+    }
 }

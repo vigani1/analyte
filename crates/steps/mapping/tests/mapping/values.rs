@@ -1,5 +1,4 @@
 //! Tests machine field mapping and exact value retention.
-//! Kept whole: Value interpretation regressions share the same synthetic field-mapping fixtures and source helpers.
 use super::*;
 use analyte_fixtures::ConfigEdit as _;
 

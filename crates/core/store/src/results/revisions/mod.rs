@@ -6,7 +6,6 @@ mod history;
 pub mod law;
 mod outbox;
 mod parking;
-mod progression;
 mod status_policy;
 use crate::{Delivery, Interpretation, Reading, ReconciliationError as Error, Store, digest, key};
 use admission::required_capacity;

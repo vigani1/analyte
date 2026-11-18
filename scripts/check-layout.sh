@@ -1,21 +1,18 @@
 #!/usr/bin/env bash
-# Enforce ADR 0012 without installing dependencies.
+# Runs the repository checks that rustfmt, Clippy, cargo-deny and the tests
+# cannot do, using only Bash and the Python standard library.
 set -euo pipefail
 python3 scripts/test-code-page.py
 python3 scripts/check-code-page.py
 python3 scripts/test-layout-names.py
 python3 scripts/check-layout-names.py
-python3 scripts/check-front-declarations.py
+python3 scripts/test-protocol-tests.py
+python3 scripts/check-protocol-tests.py
+python3 scripts/check-fuzz-targets.py
 failed=0
 while IFS= read -r -d '' file; do
   if [[ "$file" == crates/* || "$file" == fuzz/* ]] && ! head -n 1 "$file" | grep -q '^//!'; then
     echo "$file: missing opening //! header"; failed=1
-  fi
-  lines=$(awk 'END { print NR }' "$file")
-  if [ "$lines" -gt 800 ]; then
-    echo "$file: $lines lines exceeds 800"; failed=1
-  elif [ "$lines" -gt 600 ] && ! awk 'substr($0,1,3)=="//!" { if ($0 ~ /Kept whole:.*[[:alnum:]]/) found=1; next } /^$/ { next } { exit } END { exit !found }' "$file"; then
-    echo "$file: requires a //! Kept whole: header reason"; failed=1
   fi
   if [ -d "${file%.rs}" ]; then
     echo "$file: exists beside ${file%.rs}/"; failed=1

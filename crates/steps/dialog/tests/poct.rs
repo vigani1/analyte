@@ -1,5 +1,4 @@
 //! Tests POCT reviewer conversations and timeouts.
-//! Kept whole: reviewer state transitions share custody and startup helpers.
 use analyte_dialog::poct::{
     Action, CommitId, Config, Dialog, Error as DialogError, Event, StoreOutcome,
 };

@@ -1,5 +1,4 @@
 //! Tests HL7 O21 and O22 laboratory orders.
-//! Kept whole: Laboratory order validation cases form one message-family conformance matrix.
 use analyte_fixtures::ConfigEdit as _;
 use analyte_hl7::order::{
     self, Code, Error, Header, Order, OrderId, OrderMessage, OrderResponse, Outcome, Patient,

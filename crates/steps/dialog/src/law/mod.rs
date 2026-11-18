@@ -1,5 +1,4 @@
 //! Runs deterministic LAW exchanges and deadlines (TF-2b 3.27-3.29, B.6/B.7).
-//! Kept whole: The LAW conversation state transitions and their deadline decisions are reviewed together.
 use analyte_framing::hl7 as mllp;
 use analyte_hl7::{APPLICATION_INTERNAL_ERROR, OwnedAckError as Detail};
 use analyte_hl7::{AckCode, AckError, Message, Options, Response, Responsibility, law};

@@ -1,5 +1,4 @@
 //! Adapts parsed source fields without splitting wire text.
-//! Kept whole: Borrowed field access and group ancestry share the private source-node invariants.
 use crate::FieldSyntax;
 use crate::{Error, Position};
 use analyte_config::{Field as Selection, Group};

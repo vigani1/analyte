@@ -36,7 +36,8 @@ reason pins.
   driving, specific failures and dialog construction. The host owns bounded
   I/O, durable storage and effect deadlines. Its `mod.rs` also holds the
   parking reasons it stores, as constants or small text functions.
-- Add `crates/analyte/src/reading/<key>.rs` for reading stored receipts.
+- Add a `<key>` function to `crates/analyte/src/reading.rs` for reading stored
+  receipts.
 - If orders are supported, add `crates/analyte/src/machine/<key>/orders.rs`
   with its failures in the host's `error.rs`, and
   `crates/steps/dialog/src/<key>/outcome.rs`. The outcome file declares one
@@ -63,7 +64,7 @@ concern is absent from the protocol:
 | Config | `src/lib.rs`, `orders/mod.rs`, `orders/validation`, `schema/mod.rs`, `selection`, `stack/mod.rs`, `stack/capabilities.rs`, `validation/stack`: protocol selection, validation, order support and capability row |
 | Steps | `framing/src/lib.rs`, `dialog/src/lib.rs`, `mapping/src/lib.rs`, `mapping/src/inbound/evidence.rs`, `mapping/src/orders/mod.rs`: register owned layers and evidence |
 | Program registry | `machine/protocols.rs`: one arm in each match (stream session, link, chunk-journal rule for startup recovery, host run, worker error, stored envelope, receipt reader) |
-| Program modules | `machine/mod.rs` and `reading/mod.rs`: declare the new modules; `reading/mod.rs` also names the reader's syntax and framing failures |
+| Program modules | `machine/mod.rs`: declare the new host module; `reading.rs`: name the reader's syntax and framing failures |
 | Program tests | `machine/receive/bytes.rs`: pin every new parking reason spelling |
 | Fuzzing and CI | `fuzz/Cargo.toml` and the CI fuzz matrix: register the target and regenerate its lockfile if needed |
 
@@ -83,7 +84,7 @@ Every protocol requirement needs a cited source and a named test; raise the
 evidence level only with the required recordings or simulator evidence.
 
 Run the complete AGENTS.md verification set, the protocol-checklist check and
-the CI layout, hook, line-length and duplication checks. Inspect generated
+the CI Layout and Duplication checks. Inspect generated
 file diffs. A machine definition is a separate step in
 [adding a machine](adding-a-machine.md); protocol support alone does not qualify
 a machine for clinical use.
