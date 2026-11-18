@@ -111,8 +111,11 @@ and drains its current attempt (5 seconds, retaining the HTTP deadline). Pollers
 stop, transports close and join (5 seconds), and the store drains and closes
 (5 seconds). Interrupted claims retry after restart with the same ID and bytes.
 Delivery/store failures stop the service visibly. Individual machine failures
-remain isolated. HTTP requests have a 3-second deadline, local delivery storage
-operations 2 seconds, idle claims back off 100 ms, retries range from 1 to 60 seconds,
+remain isolated. Each lab-app HTTP request (a delivery or one order page) has the
+site destination `request_timeout_seconds` deadline (default 10, 1 through 120);
+an attempt still running when the 5-second drain ends is cancelled, reported as
+a delivery shutdown timeout, and retried after restart with the same ID and bytes. Local delivery storage operations take
+2 seconds, idle claims back off 100 ms, retries range from 1 to 60 seconds,
 and order polls run every 5 seconds. Site destination `freshness_seconds`
 (default 30, nonzero) sets `Limits.freshness` for lookups, reservations and alerts.
 An uninterruptible operating-system flush cannot be cancelled within a worker;

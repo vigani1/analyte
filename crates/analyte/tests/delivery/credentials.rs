@@ -251,6 +251,8 @@ async fn adr0008_shutdown_during_http_wait_is_bounded_and_restart_sends_same_del
 -> Result<(), Error> {
     let directory = tempfile::tempdir()?;
     let path = config(directory.path(), false)?;
+    // A 3-second request deadline plus the 2-second store deadline fits the 5-second drain.
+    crate::timeouts::set_request_timeout(directory.path(), "hl7", 3)?;
     let receiver_path = directory.path().join("reference.db");
     let mut reference = Reference::start(
         &receiver_path,

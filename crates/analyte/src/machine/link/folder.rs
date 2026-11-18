@@ -304,10 +304,12 @@ mod tests {
             .validate()?;
             let machine = Machine {
                 id: analyte_model::Identifier::new("synthetic")?,
+                destination_limits: crate::runtime::delivery::limits(
+                    &snapshot.effective().site().destination,
+                ),
                 snapshot,
                 listener: None,
                 capture: false,
-                destination_limits: crate::runtime::delivery::limits(30),
 
                 hooks: crate::installation::config::MachineHooks::default(),
             };
