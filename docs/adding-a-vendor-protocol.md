@@ -19,6 +19,51 @@ Since 2026-11-18 the program crate's share is four existing files: the
 protocol registry `machine/protocols.rs`, two module lists and the parking
 reason pins.
 
+## Where each piece lives
+
+This is the code template of [ADR 0012](adr/0012-uniform-layout-and-naming.md).
+A concern the protocol lacks has no file; a file grows into a folder of the same
+name only for separate responsibilities.
+
+| Concern | Place |
+| --- | --- |
+| Message boundaries and checksums | `crates/steps/framing/src/<key>.rs` |
+| Conversation state, deadlines, acknowledgment choice | `crates/steps/dialog/src/<key>.rs` |
+| Stored order outcome codes and their spellings | `crates/steps/dialog/src/<key>/outcome.rs`; codes for every protocol and the spelling test in `crates/steps/dialog/src/outcome/` |
+| Reading bytes into structure | `crates/protocols/<key>/src/syntax.rs` (a profile: `crates/protocols/hl7/src/<key>/`) |
+| Writing every outgoing message (orders, work lists, envelopes, acknowledgments, query replies) | `crates/protocols/<key>/src/encode.rs` or `encode/` |
+| Typed named-field access; version rules | `views.rs`; `version.rs` |
+| Machine terms to the common model and back | `crates/steps/mapping/src/<key>.rs` |
+| Connection driving (I/O, store calls, timers) and parking reasons | `crates/analyte/src/machine/<key>/mod.rs`; spellings pinned in `machine/receive/bytes.rs` |
+| Order queries and work sent ahead; their failures | `machine/<key>/orders.rs`; `machine/<key>/error.rs` |
+| Registration (session, link, startup recovery rule, host run, worker error, stored envelope, receipt reader) | One arm per match in `crates/analyte/src/machine/protocols.rs` |
+
+Reading an incoming message, a machine query included, stays in `syntax` and
+`views`. ASTM adds `codes.rs` and `query.rs`; HL7 adds `datatypes.rs`,
+`order/` and `query/`, and its `encode/wire.rs` writes size-capped segments for
+every HL7 and LAW writer. `crates/analyte/src/orders/` keeps only the steps
+every protocol shares; HL7 and LAW keep a separate `OrderError` there because
+their order code raises shared causes directly.
+
+**Layer contracts.** Decoders take one byte at a time with `push(byte)` and end
+with `finish()`; Autolyser's `finish()` returns the partial frame so its bytes
+can be stored. Hosts journal bytes before feeding them. Every dialog has one
+entry, `step(now, event) -> Result<Vec<Action>, Error>`, which rejects invalid
+monotonic time before changing state. Timers stay in the dialog.
+
+**Hosts.** Each protocol has a `Host` that borrows the connection's evidence,
+settings and store; the caller owns them through shutdown. VIDAS, Autolyser and
+POCT implement the driver's `Protocol` trait, and its `serve` owns the receive
+loop (stop, then deadline, then input), journals each chunk, feeds it one byte
+at a time and always attempts `close` and the final flush. ASTM, HL7 and LAW
+still use `Effects` and `Drain`, whose one `drain` loop runs each action; LAW
+keeps its own loop because each effect has its own deadline. Every `drain` and
+`effect` returns `Result<Flow, Error>`. An effect that ends the session after
+the queued actions calls `Session::stop_when_drained`; a failure that must wait
+for queued replies is reported when the queue ends. Watched-folder stacks have
+no stream session and use `Link::Folder`. Never mix POCT's host-buffer scanning
+and stream-owned buffering on one decoder.
+
 ## New files
 
 - Create `crates/protocols/<key>/Cargo.toml`, `README.md` and `src/lib.rs`;

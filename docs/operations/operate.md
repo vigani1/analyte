@@ -208,7 +208,8 @@ notifications or stop clinical workers. Admission catches up when space returns.
 `oldest_age_seconds` uses the oldest queued observation; a clock rollback is
 unknown. Status also shows pending count, last success, next retry, failed and
 exhausted counts and queue-full state. A configured endpoint whose durable state
-is unavailable is shown explicitly as unavailable. Removed endpoint queues stay
+is unavailable is shown explicitly as unavailable. An alert delivery failure
+never raises another alert. Removed endpoint queues stay
 visible; restoring the same identity resumes their progress. Up to 128 endpoint
 identities can be retained over the installation lifetime. Do not rename an
 endpoint merely to bypass failure or erase queued evidence.

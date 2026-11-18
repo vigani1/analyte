@@ -282,12 +282,39 @@ restart never authorizes an automatic resend to a machine.
 
 ### Declare departures, do not program around them
 
-Keep `deviations = []` for the strict example. A supported compatibility choice
-needs a unique `name`, the exact affected `key` and a `reason` tied to evidence.
-For example a changed ASTM frame limit requires a declaration for `framing.limit`.
-A declaration does not implement arbitrary behavior. The service can reject
+Keep `deviations = []` for the strict example. Under
+[ADR 0015](adr/0015-named-machine-departures.md) each entry is one variant of a
+closed list, with its own scope, evidence references and evidence level. No
+field path, pattern, script or free status mapping can select behavior.
+
+| Variant | What it allows | Evidence it needs |
+| --- | --- | --- |
+| `Hl7AbsentObr25MeansFinal` | An absent or empty OBR-25 in generic ORU^R01 patient uploads means a final report | A manual or vendor statement naming the omission and guaranteeing final reports; a recording alone is not enough |
+| `Hl7AbsentObx11MeansFinal` | An absent or empty OBX-11 means a final observation | A manual or vendor statement guaranteeing final-only observations in that mode |
+| `AstmPackedRecordsInFrame` | Several CR-ended LIS02 records in one verified inbound frame | A manual section naming the packed mode, or an ADR 0009 recording showing it |
+| `Hl7Utf8InV231`, `Hl7CrLfTerminators`, `Hl7LfTerminators`, `Hl7PreserveUnsupportedEscapes`, `AstmFrameLimit`, `AstmReceiveTimeout`, `AstmSendTimeout`, `AstmHostContentionPriority`, `AstmLowercaseChecksumHex` | The existing compatibility settings, with their current limits | The same scope and evidence rules as above |
+
+The scope names the confirmed model, exact firmware, installed mode, edition,
+direction and message kind; no wildcard covers a firmware upgrade. Both HL7
+variants are needed when both status fields are absent. What each variant does
+inside its protocol is in the [HL7](protocols/hl7/decisions.md#named-missing-status-interpretations-and-contract-v1-parking)
+and [ASTM](protocols/astm/decisions.md#evidenced-inbound-record-packing) decisions.
+
+Loading refuses unknown tags, duplicates, conflicting variants, scope
+mismatches, empty or unresolved evidence, wrong recording digests, a manual
+reference without title, revision and section, and a level the evidence does
+not support. File references are local and bounded; nothing is fetched. A
+reviewer still checks what the cited manual actually says. An override cannot
+remove evidence and keep the behavior.
+
+No departure can weaken a clinical safety rule, infer clinical release,
+normality or QC acceptance, or invent a sample ID, result identity, unit or
+status. Missing MSH-10, a missing OBX-3 coding system, OBR-only QC layouts and
+bare LIS02 over TCP are candidates only: each needs its own evidence and a
+narrow new variant, never a blanket tolerance. The service can still reject
 choices the config library accepts (it currently requires strict ASTM checksum
-hex). If the schema cannot express a quirk, stop and ask maintainers. A reviewed
+hex). If the list cannot express a quirk, stop
+and ask maintainers. A reviewed
 code change belongs in the owning layer; do not weaken a shared standard or
 invent a config key. A new subsystem, protocol family, format, dependency or
 unplanned ADR requires agreement before building it.
@@ -351,7 +378,7 @@ cargo test -p analyte --test delivery every_machine_validates_and_replays -- --n
 ```
 
 For additional custody, delivery and failure assertions, follow the existing
-tests in [delivery.rs](../crates/analyte/tests/delivery.rs). A
+tests in [delivery](../crates/analyte/tests/delivery/mod.rs). A
 recording replay does not establish that every clinical workflow is qualified.
 Adding a definition or test also requires the workspace checks.
 

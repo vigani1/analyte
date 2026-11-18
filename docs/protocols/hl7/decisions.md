@@ -158,6 +158,9 @@ choices within that scope, not additional promises of conformance.
 
 - **what**: Original-mode AA means Analyte durably retained and interpreted
   the message; it does not wait for the destination lab app to receive it.
+  Each HL7 connection declares that Analyte takes on store-and-forward
+  responsibility. Input that is stored but cannot be interpreted gets AE or AR.
+  Raw storage, interpretation and the app's acceptance are separate events.
 - **why**: Waiting for an external app would tie the analyzer's response
   deadline to an unrelated network outage. Analyte instead accepts custody
   at its own durable boundary and owns subsequent delivery.
@@ -271,7 +274,7 @@ for OBR-4 and scalar DTM for timing. A test revision is carried in component 7;
 priority table 0485 and specimen coding revisions are supplied separately.
 Requiring revisions for all named systems avoids guessing table ownership from
 an HL7 prefix. Sources and the field matrix are in versions.md; protocol
-`edition_orders.rs`, config edition tests and program `send_ahead_accepted_rejected_and_mixed_items` establish
+`order/editions.rs`, config edition tests and program `send_ahead_accepted_rejected_and_mixed_items` establish
 the bounded behavior. Evidence remains documented; no retransmission is added.
 
 ## Keep the 2.8.2 writer on the patient-required O22 response
@@ -431,13 +434,13 @@ ERR-3 uses table 0357; zero requires informational severity (2.5.1 §2.15.5.3–
 The error-only ACK renderer refuses zero. Fatal severity starts with the selected
 2.6 profile; code 104 starts with the selected 2.8.2 profile. Unknown codes are
 refused, with local application codes carried separately. Tests are in
-[control_boundaries.rs](../../../crates/protocols/hl7/tests/control_boundaries.rs).
+[control/boundaries.rs](../../../crates/protocols/hl7/tests/control/boundaries.rs).
 
 The strict modern withdrawal profile refuses explicit null as well as other
 nonempty encodings in withdrawn MSA/ERR fields (2.8.2 §2.14.8 and 2.9.1 §2.13.8).
 This is the declared profile's refusal policy, not a claim that explicit null
 carries clinical content. View regressions and the O22 response regressions in
-[edition_orders.rs](../../../crates/protocols/hl7/tests/edition_orders.rs) cover it.
+[order/editions.rs](../../../crates/protocols/hl7/tests/order/editions.rs) cover it.
 
 ## Named missing-status interpretations and contract-v1 parking
 
@@ -461,7 +464,7 @@ carries clinical content. View regressions and the O22 response regressions in
   `departure-derived status requires a contract version that carries departure evidence`.
   The outbox remains empty; original bytes, source absence and derived meaning
   remain protected interpretation evidence. A future contract is a separate
-  decision under [ADR 0008](../../adr/0008-contract-with-lab-apps.md). Contract
+  decision under [ADR 0008](../../adr/0008-app-contract.md). Contract
   v1's unknown-field behavior must not hide this clinically meaningful origin.
 - **evidence and admin**: Each new interpretation stores enabled declaration
   snapshots and its applied list, including empty lists and parked outcomes.
@@ -472,6 +475,6 @@ carries clinical content. View regressions and the O22 response regressions in
 - **source**: HL7 2.3.1 §7.3.2; later supported editions §§7.4.1.25 and
   7.4.2.11; modern §7.4.1.22; ADRs 0003, 0005, 0008 and 0015.
 - **tests**: [paired mapping cases](../../../crates/steps/mapping/tests/mapping/departures.rs),
-  [durable v1 refusal](../../../crates/analyte/src/machine/interpretation/departure_tests.rs),
+  [durable v1 refusal](../../../crates/analyte/src/machine/interpretation/departure_evidence/tests.rs),
   [admin origin labels](../../../crates/analyte/src/admin/departures.rs).
   These are synthetic tests; no real analyzer gains an evidence level.
