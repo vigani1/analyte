@@ -42,6 +42,11 @@ impl Store {
                         None,
                     )?],
                 )?;
+                // The newer cached version stays part of a reloaded snapshot (after 410).
+                tx.execute(
+                    "UPDATE orders SET generation=(SELECT generation FROM feed WHERE destination=?1) WHERE destination=?1 AND id=?2",
+                    params![page.destination.as_str(), order.id.as_str()],
+                )?;
                 continue;
             }
             tx.execute("INSERT INTO orders VALUES (?1,?2,?3,?4,?5,?6,(SELECT generation FROM feed WHERE destination=?1)) ON CONFLICT(destination,id) DO UPDATE SET sample=excluded.sample,evidence=excluded.evidence,tombstone=excluded.tombstone,expiry=excluded.expiry,generation=excluded.generation", params![page.destination.as_str(),order.id.as_str(),order.sample.as_str(),crate::document(order)?,order.tombstone,order.expiry])?;

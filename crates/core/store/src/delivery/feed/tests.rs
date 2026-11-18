@@ -263,6 +263,34 @@ fn older_version_refused() -> TestResult {
     Ok(())
 }
 
+// Contract v1 "GET /orders" and 410 reload: a snapshot replaying an older version keeps
+// the newer cached order in the reloaded cache, so it is never reported absent.
+#[test]
+fn older_version_in_reload_keeps_newer() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("store.db"))?;
+    let app = Identifier::new("app")?;
+    store.order_page(&versioned(2, "cancel_confirmed")?)?;
+    store.reset_orders(&app)?;
+    store.order_page(&versioned(1, "requested")?)?;
+    let identity = MachineOrderKey {
+        destination: app,
+        order: Identifier::new("order")?,
+        machine: Identifier::new("machine")?,
+    };
+    let reservation = OrderReservation {
+        identity: &identity,
+        version: std::num::NonZeroU64::MIN.saturating_add(1),
+        now: 101,
+        freshness: 30,
+    };
+    assert!(matches!(
+        store.reserve_send(&reservation, ReserveOptions::default())?,
+        Err(SendRefusal::NotRequested)
+    ));
+    Ok(())
+}
+
 // Contract v1 "GET /orders": one order version has one content; a different document
 // under the same version is a conflict, kept for the operator, never applied.
 #[test]
