@@ -66,6 +66,17 @@ joins the worker. Drop also joins, so callers must shut down before destroying
 the async runtime. A blocking OS operation cannot be forcibly cancelled safely;
 shutdown deadlines bound the async wait, not an uninterruptible OS flush.
 
+Other processes, such as operator commands, may open the same store while the
+service runs, and some of them write (every audited command does). Every store
+transaction therefore takes SQLite's write lock when it begins (`IMMEDIATE`). A
+deferred transaction that has read and then writes gets `SQLITE_BUSY` at once,
+without calling the busy handler, if another connection is writing at that
+moment ([sqlite3_busy_handler](https://www.sqlite.org/c3ref/busy_handler.html),
+[transaction behavior](https://www.sqlite.org/lang_transaction.html)). With
+`IMMEDIATE`, contention waits up to the configured busy timeout instead. The
+owner lock file is released only after the connection, including SQLite's
+checkpoint on close, has closed.
+
 Backup uses SQLite's online backup API in bounded page steps with a deadline,
 then checks the target integrity. Existing targets are refused. A failed backup
 may leave a partial target; it must never be used as a successful backup.
