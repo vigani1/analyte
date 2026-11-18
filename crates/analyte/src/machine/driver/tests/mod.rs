@@ -23,6 +23,8 @@ impl CleanupFailure for Error {
     }
 }
 use std::{cell::RefCell, rc::Rc};
+/// Proves the stop, store-before-ACK and parking rules on the real chunk hosts.
+mod hosts;
 
 #[derive(Clone, Copy)]
 enum Scenario {
@@ -111,7 +113,7 @@ async fn synthetic(
 ) -> Result<(crate::installation::config::Program, Handle), crate::Error> {
     let path = analyte_fixtures::write_machine(
         temp,
-        include_str!("../../../../core/config/examples/hl7.toml"),
+        include_str!("../../../../../core/config/examples/hl7.toml"),
         "127.0.0.1:5600",
     )?;
     let program = crate::installation::config::Program::load(&path)?;
