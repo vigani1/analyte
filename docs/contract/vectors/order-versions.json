@@ -1,0 +1,112 @@
+[
+  {
+    "step": "first",
+    "offer": {
+      "id": "order-1",
+      "version": 2,
+      "state": "requested",
+      "sample_id": "000Ab12",
+      "tests": [
+        {
+          "namespace": "synthetic",
+          "value": "TEST"
+        }
+      ],
+      "priority": "routine",
+      "target_analyzers": null,
+      "expires_at": null,
+      "tombstone": false
+    },
+    "kept_version": 2,
+    "kept_state": "requested",
+    "parked": false
+  },
+  {
+    "step": "same-version-same-content",
+    "offer": {
+      "id": "order-1",
+      "version": 2,
+      "state": "requested",
+      "sample_id": "000Ab12",
+      "tests": [
+        {
+          "namespace": "synthetic",
+          "value": "TEST"
+        }
+      ],
+      "priority": "routine",
+      "target_analyzers": null,
+      "expires_at": null,
+      "tombstone": false
+    },
+    "kept_version": 2,
+    "kept_state": "requested",
+    "parked": false
+  },
+  {
+    "step": "lower-version",
+    "offer": {
+      "id": "order-1",
+      "version": 1,
+      "state": "requested",
+      "sample_id": "000Ab12",
+      "tests": [
+        {
+          "namespace": "synthetic",
+          "value": "TEST"
+        }
+      ],
+      "priority": "routine",
+      "target_analyzers": null,
+      "expires_at": null,
+      "tombstone": false
+    },
+    "kept_version": 2,
+    "kept_state": "requested",
+    "parked": true
+  },
+  {
+    "step": "same-version-different-content",
+    "offer": {
+      "id": "order-1",
+      "version": 2,
+      "state": "cancel_requested",
+      "sample_id": "000Ab12",
+      "tests": [
+        {
+          "namespace": "synthetic",
+          "value": "TEST"
+        }
+      ],
+      "priority": "routine",
+      "target_analyzers": null,
+      "expires_at": null,
+      "tombstone": false
+    },
+    "kept_version": 2,
+    "kept_state": "requested",
+    "parked": true
+  },
+  {
+    "step": "higher-version",
+    "offer": {
+      "id": "order-1",
+      "version": 3,
+      "state": "cancel_requested",
+      "sample_id": "000Ab12",
+      "tests": [
+        {
+          "namespace": "synthetic",
+          "value": "TEST"
+        }
+      ],
+      "priority": "routine",
+      "target_analyzers": null,
+      "expires_at": null,
+      "tombstone": false
+    },
+    "kept_version": 3,
+    "kept_state": "cancel_requested",
+    "parked": false
+  }
+]

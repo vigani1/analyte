@@ -195,7 +195,8 @@ new crate rather than a change to a shared one.
   whole contract. Tests run against it, and it is the worked example for app
   developers. Because it is ours, it cannot prove interoperability on its
   own: the contract also publishes test vectors, including invalid cases,
-  that any app can run. Packages for other languages come later.
+  and `analyte-contract-check` runs them against any app's real endpoints.
+  Packages for other languages come later.
 - FHIR output is an option for later, not the base format.
 
 ## 8. Protocol support

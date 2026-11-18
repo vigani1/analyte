@@ -1,0 +1,42 @@
+[
+  {
+    "step": "first",
+    "endpoint": "results",
+    "document": "delivery.json",
+    "change": null,
+    "expected_status": 200,
+    "expected_body": {
+      "contract_version": 1,
+      "status": "accepted"
+    }
+  },
+  {
+    "step": "retry",
+    "endpoint": "results",
+    "document": "delivery.json",
+    "change": null,
+    "expected_status": 200,
+    "expected_body": {
+      "contract_version": 1,
+      "status": "duplicate"
+    }
+  },
+  {
+    "step": "changed-content",
+    "endpoint": "results",
+    "document": "delivery.json",
+    "change": {
+      "created_at": "2026-11-15T12:00:01Z"
+    },
+    "expected_status": 409,
+    "expected_body": null
+  },
+  {
+    "step": "other-endpoint",
+    "endpoint": "order-events",
+    "document": "event.json",
+    "change": null,
+    "expected_status": 409,
+    "expected_body": null
+  }
+]

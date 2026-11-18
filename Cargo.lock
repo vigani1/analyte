@@ -106,6 +106,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "analyte-contract-check"
+version = "0.1.0"
+dependencies = [
+ "analyte-config",
+ "analyte-contract",
+ "analyte-fixtures",
+ "analyte-receiver",
+ "axum",
+ "base64",
+ "clap",
+ "hmac",
+ "jiff",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "analyte-dialog"
 version = "0.1.0"
 dependencies = [
