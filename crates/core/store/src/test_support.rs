@@ -145,26 +145,6 @@ pub(crate) fn revised_receipt(
         .ok_or(ReconciliationError::Corruption)?)
 }
 
-/// Removes only empty post-v11 notification tables when constructing an older fixture.
-pub(crate) fn remove_alert_schema_for_legacy_fixture(db: &Connection) -> TestResult {
-    for table in [
-        "alert_reminders",
-        "alert_progress",
-        "alert_events",
-        "alert_endpoints",
-    ] {
-        let count: i64 =
-            db.query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r.get(0))?;
-        assert_eq!(
-            count, 0,
-            "legacy fixture must not discard notification evidence"
-        );
-        db.execute_batch(&format!("DROP TABLE {table}"))?;
-    }
-    db.execute_batch("DROP INDEX alert_history_episode; DROP TRIGGER alert_installation_retained; DROP TABLE alert_installation;")?;
-    Ok(())
-}
-
 pub(crate) fn assert_constraint<T>(result: rusqlite::Result<T>) {
     let Err(error) = result else {
         panic!("SQL mutation must be refused")

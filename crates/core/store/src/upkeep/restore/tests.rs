@@ -206,16 +206,15 @@ fn mutation_plan11_restore_refuses_each_existing_recovery_file_before_staging() 
 }
 
 #[test]
-fn mutation_plan11_restore_accepts_schema_one_and_refuses_nonpositive_schema() -> TestResult {
-    for version in [-1, 0, 1] {
+fn mutation_plan11_restore_accepts_only_supported_schema_versions() -> TestResult {
+    let starting = upkeep::migration::STARTING_VERSION;
+    for version in [-1, 0, 1, starting - 1, SCHEMA_VERSION] {
         let temp = tempfile::tempdir()?;
         let path = temp.path().join("current.db");
         let source = temp.path().join("source.db");
         drop(open(&path)?);
-        let db = Connection::open(&source)?;
-        db.execute_batch(include_str!("../schema.sql"))?;
-        db.pragma_update(None, "user_version", version)?;
-        drop(db);
+        drop(open(&source)?);
+        Connection::open(&source)?.pragma_update(None, "user_version", version)?;
         let audit = Audit {
             actor: Identifier::new("operator")?,
             action: Identifier::new("store-restore")?,
@@ -231,13 +230,18 @@ fn mutation_plan11_restore_accepts_schema_one_and_refuses_nonpositive_schema() -
             &audit,
             Instant::now() + HANG_GUARD,
         );
-        if version == 1 {
+        if version == SCHEMA_VERSION {
             result?;
             assert!(open(&path)?.restore_unreconciled()?);
+            continue;
+        }
+        if version >= 1 {
+            assert!(matches!(result, Err(MaintenanceError::SchemaTooOld(v)) if v == version));
         } else {
             assert!(matches!(result, Err(MaintenanceError::Corruption)));
-            assert!(!path.with_extension("restore-pending").exists());
         }
+        assert!(!path.with_extension("restore-pending").exists());
+        assert!(!path.with_extension("before-restore").exists());
     }
     Ok(())
 }
@@ -286,85 +290,6 @@ fn mutation_plan11_rule7_restore_refuses_exhausted_reserve_before_publishing() -
         Some(b"current custody".to_vec())
     );
     assert!(!path.with_extension("before-restore").exists());
-    Ok(())
-}
-
-#[test]
-fn mutation_plan11_restore_upgrade_refuses_a_database_that_grows_past_its_limit() -> TestResult {
-    let temp = tempfile::tempdir()?;
-    let path = temp.path().join("current.db");
-    let source = temp.path().join("backup.db");
-    let current = receipt(b"current original")?;
-    let backup = receipt(b"backup original")?;
-    let mut bytes = Vec::new();
-    for (file, metadata, raw) in [
-        (&path, &current, b"current original".as_slice()),
-        (&source, &backup, b"backup original".as_slice()),
-    ] {
-        let db = Connection::open(file)?;
-        db.execute_batch(include_str!("../schema.sql"))?;
-        db.execute(
-            "INSERT INTO receipts VALUES (?1,?2,?3,?4)",
-            params![key(&metadata.id)?, document(metadata)?, raw, b"config"],
-        )?;
-        let pages: i64 = db.query_row("PRAGMA page_count", [], |r| r.get(0))?;
-        let page: i64 = db.query_row("PRAGMA page_size", [], |r| r.get(0))?;
-        bytes.push(pages.checked_mul(page).ok_or("database size")?);
-    }
-    let limit = bytes
-        .into_iter()
-        .max()
-        .ok_or("database sizes")?
-        .checked_add(1)
-        .ok_or("size limit")?;
-    let audit = Audit {
-        actor: Identifier::new("operator")?,
-        action: Identifier::new("store-restore")?,
-        targets: vec![],
-        time: 42,
-        reason: Reason::new("synthetic old-schema recovery")?,
-    };
-    let result = Store::restore(
-        &path,
-        &source,
-        {
-            let mut policy = limits();
-            policy.database_bytes = u64::try_from(limit)?;
-            policy
-        },
-        Box::new(Space(u64::MAX)),
-        &audit,
-        Instant::now() + HANG_GUARD,
-    );
-    let db = Connection::open(&path)?;
-    let pages: i64 = db.query_row("PRAGMA page_count", [], |r| r.get(0))?;
-    let page: i64 = db.query_row("PRAGMA page_size", [], |r| r.get(0))?;
-    let actual = pages.checked_mul(page).ok_or("restored size")?;
-    assert!(
-        matches!(
-            result,
-            Err(MaintenanceError::Storage(StorageError::Capacity))
-        ),
-        "restore result {result:?}; published size {actual} exceeds configured limit {limit}"
-    );
-    assert_eq!(
-        db.query_row(
-            "SELECT raw FROM receipts WHERE id=?1",
-            [key(&current.id)?],
-            |r| r.get::<_, Vec<u8>>(0)
-        )?,
-        b"current original"
-    );
-    assert!(!path.with_extension("before-restore").exists());
-    // A refused restore removes only its own staged copy; the backup and current store
-    // stay, and ordinary startup is not blocked by a leftover stage.
-    assert!(!path.with_extension("restore-pending").exists());
-    assert!(source.exists());
-    drop(db);
-    assert_eq!(
-        open(&path)?.raw(current.id)?,
-        Some(b"current original".to_vec())
-    );
     Ok(())
 }
 

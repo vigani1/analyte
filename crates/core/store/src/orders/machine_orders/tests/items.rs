@@ -500,46 +500,6 @@ fn mutation_adr0003_rule8_order_item_outcomes_remain_bound_to_their_exact_index(
 }
 
 #[test]
-fn adr0016_adr0003_v12_migration_keeps_unknown_execution_and_command_evidence() -> TestResult {
-    let temp = tempfile::tempdir()?;
-    let path = temp.path().join("execution-migration.db");
-    let mut store = open(&path)?;
-    let record = reserve_two(&mut store)?;
-    let before: String = store.db.query_row(
-        "SELECT evidence FROM machine_order_history ORDER BY sequence DESC LIMIT 1",
-        [],
-        |r| r.get(0),
-    )?;
-    store
-        .db
-        .execute_batch("DROP TABLE law_work_history; DROP TABLE law_messages; DROP TABLE awos_execution_history; PRAGMA user_version=12;")?;
-    drop(store);
-    let store = open(&path)?;
-    assert_eq!(
-        store
-            .db
-            .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-        SCHEMA_VERSION
-    );
-    let restored = store.machine_order(&identity()?)?.ok_or("missing")?;
-    assert_eq!(restored.id, record.id);
-    assert!(restored.items.iter().all(|i| i.execution.is_none()));
-    assert!(
-        restored
-            .items
-            .iter()
-            .all(|i| i.state == OrderState::Sending)
-    );
-    let after: String = store.db.query_row(
-        "SELECT evidence FROM machine_order_history ORDER BY sequence DESC LIMIT 1",
-        [],
-        |r| r.get(0),
-    )?;
-    assert_eq!(before, after);
-    Ok(())
-}
-
-#[test]
 fn palm_tf2b_c8_adr0003_0011_projection_restart_keeps_command_state_and_no_results() -> TestResult {
     use analyte_model::AwosExecution;
     let temp = tempfile::tempdir()?;

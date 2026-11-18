@@ -120,4 +120,7 @@ exchange does not remove this blocker. iFlash also needs evidence-backed code
 support for its status semantics and OBR-only QC arrays; config cannot supply
 that behavior today.
 
-Machine definitions use [schema 2 and its schema 1 migration rule](../config-migration.md).
+Machine definitions use `schema_version = 2`: set `protocol` and
+`transport.kind`, and the loader derives framing, dialog and syntax, so those
+sections carry no `kind` key. Any other machine schema version is refused as
+unsupported.

@@ -1,9 +1,9 @@
-//! Tests persisted alert progress and migration without network or clinical fixtures.
+//! Tests persisted alert progress without network or clinical fixtures.
 use crate::test_support::*;
 use crate::*;
 
 #[test]
-fn adr0014_migration_restart_attempt_identity_budget_and_immutable_bytes() -> TestResult {
+fn adr0014_restart_attempt_identity_budget_and_immutable_bytes() -> TestResult {
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("alerts.db");
     let endpoint = Identifier::new("relay")?;
@@ -61,26 +61,6 @@ fn adr0014_migration_restart_attempt_identity_budget_and_immutable_bytes() -> Te
             r.get(0)
         })?;
     assert_eq!(due, 160);
-    Ok(())
-}
-
-#[test]
-fn adr0014_v11_migration_preserves_local_alert_history_and_is_restart_safe() -> TestResult {
-    let temp = tempfile::tempdir()?;
-    let path = temp.path().join("legacy.db");
-    let mut store = open(&path)?;
-    store.evaluate_alert(&AlertKey::ParkedItems, "Duty officer", true, Some(1), 100)?;
-    store.db.execute_batch("DROP TABLE law_work_history; DROP TABLE law_messages; DROP TABLE awos_execution_history; DROP INDEX alert_history_episode; DROP TABLE alert_reminders; DROP TABLE alert_progress; DROP TABLE alert_events; DROP TABLE alert_endpoints; DROP TRIGGER alert_installation_retained; DROP TABLE alert_installation; PRAGMA user_version=11;")?;
-    drop(store);
-    let store = open(&path)?;
-    assert_eq!(store.alert_history(0)?.len(), 1);
-    assert!(store.alert_endpoint_status()?.is_empty());
-    let version: i64 = store
-        .db
-        .query_row("PRAGMA user_version", [], |r| r.get(0))?;
-    assert_eq!(version, SCHEMA_VERSION);
-    drop(store);
-    assert_eq!(open(&path)?.alert_history(0)?.len(), 1);
     Ok(())
 }
 
@@ -309,40 +289,18 @@ fn adr0014_resolution_never_overtakes_failed_raise_even_in_same_second() -> Test
 }
 
 #[test]
-fn adr0014_v14_upgrade_preserves_alert_bytes_and_progress() -> TestResult {
+fn adr0014_stored_progress_records_setup_and_tls_failures() -> TestResult {
     let temp = tempfile::tempdir()?;
-    let path = temp.path().join("v14.db");
+    let path = temp.path().join("progress.db");
     drop(open(&path)?);
     let db = Connection::open(&path)?;
-    // Version 15 changes only this constraint; restore the v14 table before
-    // seeding evidence and exercising the normal ordered upgrade.
-    let previous = include_str!("../../upkeep/current-schema.sql")
-        .lines()
-        .find(|line| line.starts_with("CREATE TABLE alert_progress("))
-        .ok_or("missing alert progress schema")?
-        .replace(
-            "'network','credentials','http','interrupted','setup','tls_setup'",
-            "'network','credentials','http','interrupted'",
-        );
-    db.execute_batch("DROP TABLE alert_progress;")?;
-    db.execute_batch(&previous)?;
     db.execute_batch(
-        "CREATE INDEX alert_progress_due ON alert_progress(exhausted,next_attempt,event);",
-    )?;
-    db.execute_batch(
-        "PRAGMA user_version=14;
-        INSERT INTO alert_endpoints VALUES('relay',7,0,90);
+        "INSERT INTO alert_endpoints VALUES('relay',7,0,90);
         INSERT INTO alert_events VALUES('00000000000000000000000000000001','relay','condition',1,'raised',100,x'7b7d');
         INSERT INTO alert_progress VALUES('00000000000000000000000000000001',2,130,0,'network');",
     )?;
     drop(db);
     let mut store = open(&path)?;
-    assert_eq!(
-        store
-            .db
-            .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-        15
-    );
     let endpoint = Identifier::new("relay")?;
     let status = store.alert_endpoint_status()?;
     assert_eq!(status[0].last_failure.as_deref(), Some("network"));

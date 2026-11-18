@@ -228,7 +228,8 @@ and cancellation require the separate explicit `[orders.hl7_send]` capability. S
 
 1. Stop the service. Keep the backup and data directory protected as clinical data.
 2. Run `analyte --config analyte.toml --actor operator-name restore --from backup.db --reason "Recovery after disk failure"`.
-   Integrity and supported schema are checked before migration of a staged copy.
+   Integrity is checked and a backup with an older or newer schema version is
+   refused before a staged copy is opened.
    Normal store owners prevent restore through an OS file lock.
 3. The previous database is retained as `analyte.before-restore`; it is never
    overwritten or deleted. Existing recovery files refuse a further restore.
@@ -562,16 +563,8 @@ and signing keys. Never place its value in configuration, the database or logs.
 Preserve it with the installation secrets when restoring. A missing or different
 key is refused when a fingerprint exists; rotation is unsupported.
 
-New stores support incremental vacuum from their creation. For an existing store:
-
-1. Stop the service and keep a verified, protected backup.
-2. Run `analyte --config analyte.toml prepare-retention`. This takes exclusive
-   offline ownership, checks capacity, sets incremental vacuum and rebuilds the
-   SQLite file atomically. The conversion has a ten-minute deadline and requires
-   free space exceeding twice the database size plus the configured reserve.
-3. Start the service with the same retention credential. Finite retention refuses
-   startup until the conversion is complete. A timed-out conversion preserves
-   evidence; inspect the error and rerun offline with sufficient disk capacity.
+Every store is created with incremental vacuum, which finite retention needs.
+Startup refuses a finite policy on any file without it.
 
 The supervised worker examines at most sixteen receipt and sixteen order candidates
 per machine every minute, each batch in its own transaction with a 250 ms SQLite budget. It advances a scan cursor so older

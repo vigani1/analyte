@@ -49,5 +49,4 @@ Tests build and run the reference receiver binary on 127.0.0.1 using Cargo.
 Owned child processes and a bounded loopback fault relay exercise uncertain
 acceptance, deduplication, conflict, setup pause/resume, Retry-After, correction
 ordering, events with key rotation, cache changes/reset, and active cancellation.
-Only synthetic fixtures are used. Store migration tests cover every v1 table,
-retained immutability triggers, disjoint provenance constraints and restart counts.
+Only synthetic fixtures are used.
