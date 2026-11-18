@@ -51,6 +51,7 @@ dependencies = [
  "tracing-subscriber",
  "uuid",
  "windows-services",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

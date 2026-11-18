@@ -178,7 +178,8 @@ impl Program {
                     && (other.base_url != destination.base_url
                         || other.api_key_name != destination.api_key_name
                         || other.signing_key_name != destination.signing_key_name
-                        || other.freshness_seconds != destination.freshness_seconds)
+                        || other.freshness_seconds != destination.freshness_seconds
+                        || other.request_timeout_seconds != destination.request_timeout_seconds)
             }) {
                 return Err(Error::InconsistentSharedDestination);
             }
@@ -540,7 +541,7 @@ fn load_machine(entry: Entry, base: &Path, record_bytes: usize) -> Result<Machin
 
         hooks: MachineHooks::default(),
         destination_limits: crate::runtime::delivery::limits(
-            snapshot.effective().site().destination.freshness_seconds,
+            &snapshot.effective().site().destination,
         ),
         id: entry.id,
         snapshot,

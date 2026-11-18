@@ -70,6 +70,10 @@ pub enum Error {
     /// The runtime cannot safely continue the requested operation.
     #[error("data directory must deny group and other access")]
     InsecureDataDirectory,
+    /// The Windows data directory grants access beyond the allowed principals.
+    #[cfg(windows)]
+    #[error("data directory: {0}")]
+    InsecureWindowsDataDirectory(#[from] super::service::acl::Error),
     /// The runtime cannot safely continue the requested operation.
     #[error("delivery owner stopped unexpectedly")]
     DeliveryOwnerStoppedUnexpectedly,

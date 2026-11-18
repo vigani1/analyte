@@ -171,8 +171,8 @@ fn diagnostic_reason_spellings_are_pinned() {
         "POCT syntax: invalid message structure"
     );
     assert_eq!(
-        ByteReason::PoctDialog(analyte_dialog::poct::RefusalCode::KeepAlive).to_string(),
-        "POCT unsupported Keep Alive"
+        ByteReason::PoctDialog(analyte_dialog::poct::RefusalCode::HelloPolicy).to_string(),
+        "POCT Hello rejected by host policy"
     );
     assert_eq!(
         ByteReason::Autolyser(&analyte_dialog::autolyser::Error::Storage).to_string(),

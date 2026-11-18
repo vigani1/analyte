@@ -120,14 +120,18 @@ impl Dialog {
         });
         Ok(())
     }
-    /// Returns the next ordinary or order/display deadline without advancing time.
+    /// Returns the next ordinary, sending or order/display deadline without advancing time.
     #[must_use]
     pub fn next_deadline(&self) -> Option<Duration> {
-        match (self.deadline, self.orders.as_ref().and_then(Orders::due)) {
-            (Some(a), Some(b)) => Some(a.min(b)),
-            (a, None) => a,
-            (None, b) => b,
-        }
+        let sending = self.sending.as_ref().and_then(|s| s.until);
+        [
+            self.deadline,
+            sending,
+            self.orders.as_ref().and_then(Orders::due),
+        ]
+        .into_iter()
+        .flatten()
+        .min()
     }
     /// Whether an order/display wait or a partial input block prevents new work.
     #[must_use]

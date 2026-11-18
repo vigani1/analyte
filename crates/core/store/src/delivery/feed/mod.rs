@@ -7,6 +7,8 @@ mod tests;
 
 impl Store {
     /// Stores a bounded page with its cursor in the same commit.
+    /// Only the final page of a chain moves `polled`, so an unfinished chain leaves
+    /// the cache as fresh as the last chain that reached the feed head.
     /// # Errors
     /// Rejects oversized pages and database failures.
     pub fn order_page(&mut self, page: &OrderPage) -> Result<(), Error> {
@@ -15,7 +17,15 @@ impl Store {
         }
         self.bound(self.encode(page)?.as_bytes())?;
         let tx = self.db.transaction()?;
-        tx.execute("INSERT INTO feed(destination,cursor,complete,trusted,polled) VALUES (?1,?2,?3,1,?4) ON CONFLICT(destination) DO UPDATE SET cursor=excluded.cursor,complete=max(feed.complete,excluded.complete),trusted=1,polled=excluded.polled",params![page.destination.as_str(),page.cursor.as_str(),page.complete,page.polled])?;
+        tx.execute(
+            concat!(
+                "INSERT INTO feed(destination,cursor,complete,trusted,polled) VALUES (?1,?2,?3,1,?4) ",
+                "ON CONFLICT(destination) DO UPDATE SET cursor=excluded.cursor,",
+                "complete=max(feed.complete,excluded.complete),trusted=1,",
+                "polled=CASE WHEN excluded.complete THEN excluded.polled ELSE feed.polled END"
+            ),
+            params![page.destination.as_str(), page.cursor.as_str(), page.complete, page.polled],
+        )?;
         for order in &page.orders {
             tx.execute("INSERT INTO orders VALUES (?1,?2,?3,?4,?5,?6,(SELECT generation FROM feed WHERE destination=?1)) ON CONFLICT(destination,id) DO UPDATE SET sample=excluded.sample,evidence=excluded.evidence,tombstone=excluded.tombstone,expiry=excluded.expiry,generation=excluded.generation", params![page.destination.as_str(),order.id.as_str(),order.sample.as_str(),crate::document(order)?,order.tombstone,order.expiry])?;
         }

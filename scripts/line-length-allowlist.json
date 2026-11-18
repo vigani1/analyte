@@ -143,7 +143,6 @@
     "        let mut query=self.db.prepare(\"SELECT r.rowid,r.metadata FROM receipts r WHERE r.rowid>?1 AND json_extract(r.metadata,'$.machine')=?2 AND NOT EXISTS(SELECT 1 FROM interpretations i WHERE i.receipt=r.id) ORDER BY r.rowid LIMIT ?3\")?;"
   ],
   "crates/core/store/src/delivery/feed/mod.rs": [
-    "        tx.execute(\"INSERT INTO feed(destination,cursor,complete,trusted,polled) VALUES (?1,?2,?3,1,?4) ON CONFLICT(destination) DO UPDATE SET cursor=excluded.cursor,complete=max(feed.complete,excluded.complete),trusted=1,polled=excluded.polled\",params![page.destination.as_str(),page.cursor.as_str(),page.complete,page.polled])?;",
     "            tx.execute(\"INSERT INTO orders VALUES (?1,?2,?3,?4,?5,?6,(SELECT generation FROM feed WHERE destination=?1)) ON CONFLICT(destination,id) DO UPDATE SET sample=excluded.sample,evidence=excluded.evidence,tombstone=excluded.tombstone,expiry=excluded.expiry,generation=excluded.generation\", params![page.destination.as_str(),order.id.as_str(),order.sample.as_str(),crate::document(order)?,order.tombstone,order.expiry])?;",
     "        let mut stmt=self.db.prepare(\"SELECT evidence FROM orders WHERE destination=?1 AND sample=?2 AND tombstone=0 AND expiry>?3 AND generation=(SELECT generation FROM feed WHERE destination=?1) LIMIT ?4\")?;"
   ],

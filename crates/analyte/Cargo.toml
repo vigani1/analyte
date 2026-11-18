@@ -58,6 +58,7 @@ workspace = true
 
 [target.'cfg(windows)'.dependencies]
 windows-services = { workspace = true }
+windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_System_Threading"] }
 
 [[test]]
 name = "admin_token"

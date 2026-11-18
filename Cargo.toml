@@ -33,6 +33,8 @@ analyte-autolyser = { path = "crates/protocols/autolyser", version = "0.1.0" }
 
 # Runtime, errors, logging
 windows-services = { version = "0.100.0", default-features = false }
+# ADR 0017: access-list FFI for the protected data directory; matches Cargo.lock.
+windows-sys = { version = "0.61.2", default-features = false }
 tokio = { version = "1.54", default-features = false }
 thiserror = "2.0"
 tracing = "0.1.44"
@@ -69,7 +71,8 @@ proptest = "1.12"
 tempfile = "3.27"
 
 [workspace.lints.rust]
-unsafe_code = "forbid"
+# Deny, not forbid, so ADR 0017 can expect it in one module; crate roots still forbid it.
+unsafe_code = "deny"
 missing_docs = "warn"
 unreachable_pub = "warn"
 unused_must_use = "deny"
@@ -114,6 +117,7 @@ dbg_macro = "warn"
 print_stdout = "warn"
 print_stderr = "warn"
 allow_attributes_without_reason = "warn"
+undocumented_unsafe_blocks = "warn"
 
 [profile.dev]
 # Line tables keep file:line in backtraces and panics at a fraction of the size

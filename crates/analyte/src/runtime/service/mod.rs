@@ -13,6 +13,9 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::{sync::watch, task::JoinSet};
+#[cfg(windows)]
+#[expect(unsafe_code, reason = "ADR 0017: Windows ACL FFI")]
+pub mod acl;
 #[cfg(test)]
 mod tests;
 /// Bounds pending storage work while allowing machine and operator requests.
@@ -644,7 +647,15 @@ pub(crate) fn create_data_directory(path: &std::path::Path) -> Result<(), Failur
         }
     }
     #[cfg(windows)]
-    std::fs::create_dir_all(path)?;
+    {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        acl::create_private(path)?;
+        // Like Unix, an existing non-directory entry is an I/O error.
+        std::fs::create_dir_all(path)?;
+        acl::check(path)?;
+    }
     Ok(())
 }
 

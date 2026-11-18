@@ -7,3 +7,4 @@ use capture::*;
 
 mod credentials;
 mod retries;
+mod timeouts;

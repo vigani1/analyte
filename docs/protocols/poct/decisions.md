@@ -18,15 +18,17 @@ policy choices; mandatory message rules remain in [checklist.md](checklist.md).
 
 - **what**: Keep device events, list updates, directives, keep-alive and
   continuous-mode workflows outside advertised support until qualified.
-  Recognize structurally valid KPA.R01 only to retain it and answer with a
-  correlated OTH Escape followed by ABN termination. This host policy ends
-  the unsupported exchange; it does not resume OBS or send periodic probes.
+  Recognize structurally valid KPA.R01 and answer it with a correlated OTH
+  Escape only. The standard lets a participant that is not prepared for Keep
+  Alive reply this way, and the reply completes the exchange, so the
+  conversation continues in its current phase. The bytes stay in the receipt
+  journal; nothing is parked, and the reviewer sends no probes of its own.
   Unknown roots and malformed headers remain rejected and retained.
 - **why**: Device capability is only half of an agreement. Enabling a topic
   because its objects parse would promise host workflow, authorization and
   recovery behavior that has not been implemented end to end.
-- **source**: POCT01-A2 Appendix B §4.1.3, p.78; §4.1, p.76;
-  [ADR 0007](../../adr/0007-standards-first.md), selected options.
+- **source**: POCT01-A2 Appendix B §4.1.3, p.78; §4.1, p.76; §3.5,
+  pp.74–75; [ADR 0007](../../adr/0007-standards-first.md), selected options.
 - **test**: none yet.
 
 The unsupported Keep Alive fallback is tested by
