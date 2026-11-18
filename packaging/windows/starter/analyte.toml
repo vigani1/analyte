@@ -1,0 +1,24 @@
+# Starter Analyte program, written once by the installer and never overwritten.
+# It runs no machine yet: machine-1 has no definition, so the service only serves
+# the admin page. Open http://127.0.0.1:8080/setup to choose the machine, its
+# connection and the lab app. Review the store limits for the lab's disk.
+schema_version = 1
+data_directory = 'C:\ProgramData\Analyte\data'
+
+[admin]
+port = 8080
+
+[store]
+startup_timeout_seconds = 600
+# Analyte refuses new data when free space falls below this reserve (1 GiB).
+reserve_bytes = 1073741824
+# Largest database (10 GiB).
+database_bytes = 10737418240
+record_bytes = 2097152
+page_rows = 4096
+busy_timeout_ms = 1000
+
+# Add one [[machines]] entry per analyzer, each with its own id and site file.
+[[machines]]
+id = "machine-1"
+site = "machine-1.site.toml"

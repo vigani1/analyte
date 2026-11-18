@@ -417,6 +417,12 @@ fn check_config(file: &std::path::Path) -> Result<(), Error> {
         };
         analyte::operator::display::line(&format!("{} {digest} {level}", machine.id().as_str()))?;
     }
+    for id in program.awaiting_setup() {
+        analyte::operator::display::line(&format!(
+            "{} not set up: choose its definition on the setup page",
+            id.as_str()
+        ))?;
+    }
     Ok(())
 }
 
