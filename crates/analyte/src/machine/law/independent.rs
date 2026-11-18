@@ -2,9 +2,9 @@
 use super::{Error, LawOrderLink, intake};
 use crate::machine::hooks::Pause;
 use crate::machine::link::{self, Kind, Next, session_ended};
-use crate::orders::outcome::LawEnd;
 use crate::{installation::config::Machine, machine::Closing};
 use analyte_config::{LawLinks, LawStack};
+use analyte_dialog::law::outcome::{Code as LawEnd, Detail as LawDetail};
 use analyte_hl7::Message;
 use analyte_store::Handle;
 use std::{sync::Arc, time::Duration};
@@ -326,9 +326,7 @@ async fn settle(
 ) -> Result<(), Error> {
     let reason = result.as_ref().err().map_or_else(
         || LawEnd::IndependentExchangeEnded.as_str().to_owned(),
-        |error| {
-            crate::orders::outcome::LawDetail::IndependentFailure(error.to_string()).to_string()
-        },
+        |error| LawDetail::IndependentFailure(error.to_string()).to_string(),
     );
     orders.close(store, &reason).await?;
     report(machine, result);

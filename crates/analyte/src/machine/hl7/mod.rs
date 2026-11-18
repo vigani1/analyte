@@ -8,7 +8,7 @@ use crate::intake;
 mod error;
 pub(crate) mod settings;
 use crate::machine::receive::custody::{self, WriteDeadline};
-use crate::orders::outcome::Hl7End;
+use analyte_dialog::hl7::outcome::Code as Hl7End;
 use analyte_dialog::hl7::{Action, Dialog, Event, Expect};
 use analyte_model::ReceiptId;
 use analyte_store::Handle;

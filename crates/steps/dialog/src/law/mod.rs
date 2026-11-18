@@ -7,6 +7,7 @@ use std::{collections::VecDeque, time::Duration};
 use thiserror::Error;
 
 mod failure;
+pub mod outcome;
 pub use crate::ExchangeId;
 /// Operation whose deadline elapsed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

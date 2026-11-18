@@ -35,6 +35,7 @@ Every protocol, standard or vendor, uses the same places:
 | --- | --- |
 | Message boundaries and checksums | `crates/steps/framing/src/<key>.rs`, when the protocol has its own framing |
 | Conversation state, deadlines, acknowledgment choice | `crates/steps/dialog/src/<key>.rs` |
+| Stored order outcome codes and their exact spellings | `crates/steps/dialog/src/<key>/outcome.rs`; codes the host writes for any protocol, and the test pinning every spelling, in `crates/steps/dialog/src/outcome/` |
 | Grammar: bytes to structure | `crates/protocols/<key>/src/syntax.rs` (a profile: `crates/protocols/hl7/src/<key>/`) |
 | Writing: typed values to outgoing bytes or messages | `crates/protocols/<key>/src/encode.rs`, or `encode/` when it has parts (a profile: `crates/protocols/hl7/src/<key>/encode/`) |
 | Typed named-field access | `crates/protocols/<key>/src/views.rs` |
@@ -42,6 +43,10 @@ Every protocol, standard or vendor, uses the same places:
 | Machine terms to the common model and back | `crates/steps/mapping/src/<key>.rs` |
 | Connection driving (I/O, store calls, timers) | `crates/analyte/src/machine/<key>.rs` |
 | Order sending | `crates/analyte/src/orders/<key>.rs` |
+
+(Changed on 2026-11-18 to slim the program crate: stored outcome codes are pure
+protocol text, so they moved from `crates/analyte/src/orders/outcome/` to the
+dialog that produces them; the program stores the text it is given.)
 
 A file grows into a folder of the same name (`law/mod.rs` plus its pieces)
 when it has separate responsibilities. A concern that a protocol lacks has no file.

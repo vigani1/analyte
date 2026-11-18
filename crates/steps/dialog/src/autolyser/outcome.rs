@@ -1,54 +1,29 @@
 //! Defines stored Autolyser order outcome codes: transfer ends, parked replies and insertions.
-/// Stable stored codes; spellings are compatibility data, never derived from Debug.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum AutolyserEnd {
-    InputFailed,
-    ParkedAck,
-    ParkedBusy,
-    ParkedConfig,
-    ParkedIncomplete,
-    ParkedStale,
-    ParkedStorage,
-    ParkedTime,
-    StorageFailed,
-    StorageTimeout,
-    TransferCancelled,
-    TransferDisconnected,
-    TransferError,
-    TransferTimeout,
-    WriteFailed,
-}
-impl AutolyserEnd {
-    /// Returns the exact historical spelling retained in the protected store.
-    pub(crate) const fn as_str(self) -> &'static str {
-        match self {
-            Self::InputFailed => "Autolyser-input-failed",
-            Self::ParkedAck => "Autolyser-parked-ack",
-            Self::ParkedBusy => "Autolyser-parked-busy",
-            Self::ParkedConfig => "Autolyser-parked-config",
-            Self::ParkedIncomplete => "Autolyser-parked-incomplete",
-            Self::ParkedStale => "Autolyser-parked-stale",
-            Self::ParkedStorage => "Autolyser-parked-storage",
-            Self::ParkedTime => "Autolyser-parked-time",
-            Self::StorageFailed => "Autolyser-storage-failed",
-            Self::StorageTimeout => "Autolyser-storage-timeout",
-            Self::TransferCancelled => "Autolyser-transfer-cancelled",
-            Self::TransferDisconnected => "Autolyser-transfer-disconnected",
-            Self::TransferError => "Autolyser-transfer-error",
-            Self::TransferTimeout => "Autolyser-transfer-timeout",
-            Self::WriteFailed => "Autolyser-write-failed",
-        }
-    }
-}
-impl std::fmt::Display for AutolyserEnd {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
+use super::{Error, InsertionError, Reception};
+
+codes! {
+    /// Stored Autolyser order transfer outcome codes.
+    Code {
+        InputFailed => "Autolyser-input-failed",
+        ParkedAck => "Autolyser-parked-ack",
+        ParkedBusy => "Autolyser-parked-busy",
+        ParkedConfig => "Autolyser-parked-config",
+        ParkedIncomplete => "Autolyser-parked-incomplete",
+        ParkedStale => "Autolyser-parked-stale",
+        ParkedStorage => "Autolyser-parked-storage",
+        ParkedTime => "Autolyser-parked-time",
+        StorageFailed => "Autolyser-storage-failed",
+        StorageTimeout => "Autolyser-storage-timeout",
+        TransferCancelled => "Autolyser-transfer-cancelled",
+        TransferDisconnected => "Autolyser-transfer-disconnected",
+        TransferError => "Autolyser-transfer-error",
+        TransferTimeout => "Autolyser-transfer-timeout",
+        WriteFailed => "Autolyser-write-failed",
     }
 }
 
 /// Writes historical insertion rejection evidence; unknown byte values remain decimal.
-pub(crate) fn insertion_rejection(error: analyte_dialog::autolyser::InsertionError) -> String {
-    use analyte_dialog::autolyser::InsertionError;
+pub(crate) fn insertion_rejection(error: InsertionError) -> String {
     match error {
         InsertionError::Checksum => "Checksum".to_owned(),
         InsertionError::UnknownCommand => "UnknownCommand".to_owned(),
@@ -79,8 +54,8 @@ pub(crate) fn insertion_rejection(error: analyte_dialog::autolyser::InsertionErr
 }
 
 /// Encodes each closed insertion response family with its historical stable prefix.
-pub(crate) fn insertion(reception: analyte_dialog::autolyser::Reception) -> String {
-    use analyte_dialog::autolyser::Reception;
+#[must_use]
+pub fn insertion(reception: Reception) -> String {
     match reception {
         Reception::Accepted(position) => {
             format!("Autolyser-insertion-confirmed-position-{position:02X}")
@@ -94,34 +69,42 @@ pub(crate) fn insertion(reception: analyte_dialog::autolyser::Reception) -> Stri
         }
     }
 }
+
 /// How an Autolyser reply was cut short; only these give an incomplete code.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum Interruption {
+pub enum Interruption {
+    /// A deadline expired.
     Timeout,
+    /// The connection closed.
     Disconnected,
+    /// The host cancelled the session.
     Cancelled,
 }
 impl Interruption {
     /// The transfer end this interruption also names when the session ends.
-    pub(crate) const fn end(self) -> AutolyserEnd {
+    #[must_use]
+    pub const fn end(self) -> Code {
         match self {
-            Self::Timeout => AutolyserEnd::TransferTimeout,
-            Self::Disconnected => AutolyserEnd::TransferDisconnected,
-            Self::Cancelled => AutolyserEnd::TransferCancelled,
+            Self::Timeout => Code::TransferTimeout,
+            Self::Disconnected => Code::TransferDisconnected,
+            Self::Cancelled => Code::TransferCancelled,
         }
     }
     /// Writes the historical code of a reply parked as incomplete after this interruption.
-    pub(crate) fn incomplete(self) -> String {
+    #[must_use]
+    pub fn incomplete(self) -> String {
         format!("{}-incomplete", self.end().as_str())
     }
 }
 
 /// Stored codes that carry diagnostic text; the caller bounds the text before storing it.
-pub(crate) enum AutolyserDetail {
+pub(crate) enum Detail {
+    /// Stored as `Autolyser-parked-framing-<text>`.
     Framing(String),
+    /// Stored as `Autolyser-parked-record-<text>`.
     Record(String),
 }
-impl std::fmt::Display for AutolyserDetail {
+impl std::fmt::Display for Detail {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Framing(detail) => write!(f, "Autolyser-parked-framing-{detail}"),
@@ -131,18 +114,18 @@ impl std::fmt::Display for AutolyserDetail {
 }
 
 /// Writes the historical code of a reply the dialog parked, from its reason.
-pub(crate) fn parked(error: &analyte_dialog::autolyser::Error) -> String {
-    use analyte_dialog::autolyser::Error;
+#[must_use]
+pub fn parked(error: &Error) -> String {
     let code = match error {
-        Error::Configuration => AutolyserEnd::ParkedConfig,
-        Error::Busy => AutolyserEnd::ParkedBusy,
-        Error::TimeReversed | Error::Exhausted => AutolyserEnd::ParkedTime,
-        Error::Incomplete => AutolyserEnd::ParkedIncomplete,
-        Error::Storage => AutolyserEnd::ParkedStorage,
-        Error::Stale => AutolyserEnd::ParkedStale,
-        Error::Ack => AutolyserEnd::ParkedAck,
-        Error::Framing(cause) => return AutolyserDetail::Framing(cause.to_string()).to_string(),
-        Error::Record(cause) => return AutolyserDetail::Record(cause.to_string()).to_string(),
+        Error::Configuration => Code::ParkedConfig,
+        Error::Busy => Code::ParkedBusy,
+        Error::TimeReversed | Error::Exhausted => Code::ParkedTime,
+        Error::Incomplete => Code::ParkedIncomplete,
+        Error::Storage => Code::ParkedStorage,
+        Error::Stale => Code::ParkedStale,
+        Error::Ack => Code::ParkedAck,
+        Error::Framing(cause) => return Detail::Framing(cause.to_string()).to_string(),
+        Error::Record(cause) => return Detail::Record(cause.to_string()).to_string(),
     };
     code.as_str().to_owned()
 }

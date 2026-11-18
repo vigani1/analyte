@@ -5,6 +5,7 @@
 use analyte_framing::vidas::{ACK, Config as FrameConfig, ENQ, EOT, ETX, Mode, Packet};
 use analyte_vidas::syntax::{Kind, Message};
 use std::time::Duration;
+pub mod outcome;
 
 /// Required site timing/retry evidence; no ASTM constants or defaults.
 #[derive(Debug, Clone)]

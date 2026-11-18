@@ -11,6 +11,7 @@ mod orders;
 use orders::Orders;
 pub use orders::{DisplayReply, Expect, ReplyPart};
 mod evidence;
+pub mod outcome;
 mod state;
 use state::State;
 

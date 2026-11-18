@@ -18,9 +18,7 @@ use analyte_mapping::app_order;
 use analyte_model::{Identifier, SampleId};
 use analyte_store::{MachineOrder, OrderEventDelivery};
 pub use operator::{Command, Outcome, run};
-mod acceptance;
 mod error;
-pub(crate) mod outcome;
 pub use error::OrderError;
 
 /// A mapped order version to recheck before issuing any query response bytes.

@@ -1,7 +1,7 @@
 //! Drives LAW work exchanges with cached orders, reservations and item outcomes (TF-2b 3.27/3.28).
 use crate::orders::OrderError as Error;
-use crate::orders::outcome::LawEnd;
 use crate::runtime::hooks::Operation;
+use analyte_dialog::law::outcome::{self, Code as LawEnd, Detail as LawDetail};
 use std::error::Error as _;
 mod sending;
 #[cfg(test)]
@@ -311,7 +311,7 @@ impl LawOrderLink {
         if let Some(query) = exchange.query {
             let code = response
                 .as_ref()
-                .map(|r| super::acceptance::acceptance(r.acceptance()).to_owned())
+                .map(|r| outcome::acceptance(r.acceptance()).to_owned())
                 .unwrap_or_else(|_| "invalid".into());
             let actor = machine.id.clone();
             store
@@ -555,11 +555,11 @@ fn item_outcomes(
             }
             Ok(response) => (
                 ItemDecision::Uncertain,
-                crate::orders::outcome::LawDetail::Application(response.acceptance()).to_string(),
+                LawDetail::Application(response.acceptance()).to_string(),
             ),
             Err(error) => (
                 ItemDecision::Uncertain,
-                crate::orders::outcome::LawDetail::InvalidOrl(error.to_string()).to_string(),
+                LawDetail::InvalidOrl(error.to_string()).to_string(),
             ),
         };
         let code = if let Ok(response) = response {

@@ -178,7 +178,7 @@ impl Effects for Host<'_, '_> {
         self.work
             .close(
                 self.store,
-                outcome::session_end(self.trigger, result).into(),
+                outcome::session_end(self.trigger, result).as_str(),
             )
             .await
             .map_err(Into::into)

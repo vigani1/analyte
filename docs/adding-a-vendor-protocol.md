@@ -34,9 +34,10 @@ matches deliberately expose integration work; there is no plugin subsystem.
   I/O, durable storage and effect deadlines.
 - Add `crates/analyte/src/reading/<key>.rs` for reading stored receipts.
 - If orders are supported, add `crates/analyte/src/orders/<key>.rs` and
-  `crates/analyte/src/orders/outcome/<key>.rs`. The outcome file holds one
-  `<Key>End` enum of fixed stored codes and, when codes carry text, one
-  `<Key>Detail` enum; pin every new spelling in `orders/outcome/tests.rs`.
+  `crates/steps/dialog/src/<key>/outcome.rs`. The outcome file declares one
+  `Code` enum of fixed stored codes with the `codes!` macro and, when
+  codes carry text, one `Detail` enum; pin every new spelling in
+  `crates/steps/dialog/src/outcome/tests.rs`.
   When the host stores an order outcome as its session ends, add
   `machine/<key>/outcome.rs` that works the code out from the session result.
   Preserve delivery and result identities; retries and replay must never cause
@@ -58,7 +59,7 @@ concern is absent from the protocol:
 | Steps | `framing/src/lib.rs`, `dialog/src/lib.rs`, `mapping/src/lib.rs`, `mapping/src/inbound/evidence.rs`, `mapping/src/orders/mod.rs`: register owned layers and evidence |
 | Program machine | `machine/mod.rs`, `machine/settings.rs`, `machine/error.rs`, `machine/receive/bytes.rs`, `machine/receive/connection_input.rs`: dispatch, errors and input custody |
 | Program reading | `reading/mod.rs`, `reading/envelope.rs`: receipt dispatch and specific errors |
-| Program orders | `orders/mod.rs`, `orders/error.rs`, `orders/outcome/mod.rs`: admission, sending, and one `Code` variant plus one `protocol_code!` row for retained outcomes |
+| Program orders | `orders/mod.rs`, `orders/error.rs`: admission and sending |
 | Fuzzing and CI | `fuzz/Cargo.toml` and the CI fuzz matrix: register the target and regenerate its lockfile if needed |
 
 Paths in the config row are relative to `crates/core/config/`; steps and

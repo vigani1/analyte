@@ -16,6 +16,8 @@
 - `poct`: POCT conversation rules.
 - `vidas`: VIDAS conversation rules.
 - `autolyser`: Autolyser conversation rules.
+- `outcome`: stored order outcome codes the host writes for any protocol; each
+  protocol keeps its own codes in `<key>/outcome.rs`.
 
 [Technical details and safety guidance](DETAILS.md).
 

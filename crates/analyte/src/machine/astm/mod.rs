@@ -507,7 +507,7 @@ impl Effects for Host<'_, '_> {
             .work
             .close(
                 self.store,
-                crate::orders::outcome::HostEnd::ConnectionEndedBeforeConfirmation.into(),
+                analyte_dialog::outcome::Host::ConnectionEndedBeforeConfirmation.as_str(),
             )
             .await;
         crate::machine::receive::custody::retain_cleanup(result, cleanup.map_err(Into::into));
@@ -515,7 +515,7 @@ impl Effects for Host<'_, '_> {
             let cleanup = crate::orders::sending::uncertain(
                 self.store,
                 &order,
-                crate::orders::outcome::HostEnd::ConnectionEndedBeforeConfirmation.into(),
+                analyte_dialog::outcome::Host::ConnectionEndedBeforeConfirmation.as_str(),
             )
             .await;
             crate::machine::receive::custody::retain_cleanup(result, cleanup.map_err(Into::into));
