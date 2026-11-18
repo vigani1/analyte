@@ -50,12 +50,7 @@ async fn session_with_outbound(
             host.outbound = outbound;
             Ok(host)
         },
-        Context {
-            machine,
-            store,
-            conn,
-            stop,
-        },
+        Context { conn, stop },
     )
     .await
 }
@@ -142,17 +137,13 @@ impl<'a, 'm> Host<'a, 'm> {
     async fn transition(
         &mut self,
         event: Event<'_>,
-        host: &mut Context<'_, '_>,
+        host: &mut Context<'_>,
     ) -> Result<Flow, Error> {
         let actions = self.dialog.step(self.start.elapsed(), event)?;
         self.apply(actions, host).await
     }
     /// LAW keeps no deferred failure: custody effects return their error at once.
-    async fn apply(
-        &mut self,
-        actions: Vec<Action>,
-        host: &mut Context<'_, '_>,
-    ) -> Result<Flow, Error> {
+    async fn apply(&mut self, actions: Vec<Action>, host: &mut Context<'_>) -> Result<Flow, Error> {
         let mut actions: VecDeque<_> = actions.into();
         while let Some(action) = actions.pop_front() {
             let end = self
@@ -215,7 +206,7 @@ impl<'a, 'm> Host<'a, 'm> {
     async fn effect(
         &mut self,
         action: Effect,
-        host: &mut Context<'_, '_>,
+        host: &mut Context<'_>,
     ) -> Result<Vec<Action>, Error> {
         let machine = self.machine.machine();
         let event = match action {
@@ -306,7 +297,7 @@ impl<'a, 'm> Host<'a, 'm> {
         };
         Ok(self.dialog.step(self.start.elapsed(), event)?)
     }
-    async fn complete_response(&mut self, host: &mut Context<'_, '_>) -> Result<(), Error> {
+    async fn complete_response(&mut self, host: &mut Context<'_>) -> Result<(), Error> {
         self.completion = Completion::Complete;
         self.custody = Custody::Idle;
         if self.ready.is_some() {
@@ -327,7 +318,7 @@ impl<'a, 'm> Host<'a, 'm> {
         token: protocol::ExchangeId,
         message: analyte_hl7::Message,
         started: Duration,
-        host: &mut Context<'_, '_>,
+        host: &mut Context<'_>,
     ) -> Result<Vec<Action>, Error> {
         let mut reply = self
             .orders
@@ -419,7 +410,7 @@ impl<'a, 'm> Host<'a, 'm> {
     async fn write_response(
         &mut self,
         write: analyte_dialog::Write,
-        host: &mut Context<'_, '_>,
+        host: &mut Context<'_>,
     ) -> Result<Event<'static>, Error> {
         let until = write.until.ok_or(protocol::Error::Stale)?;
         crate::machine::receive::custody::write(
@@ -430,7 +421,7 @@ impl<'a, 'm> Host<'a, 'm> {
         .await?;
         Ok(Event::Written)
     }
-    async fn feed(&mut self, bytes: Vec<u8>, host: &mut Context<'_, '_>) -> Result<(), Error> {
+    async fn feed(&mut self, bytes: Vec<u8>, host: &mut Context<'_>) -> Result<(), Error> {
         self.input_evidence.begin(&bytes);
         while let Some(byte) = self.input_evidence.next() {
             if self.transition(Event::Byte(byte), host).await? == Flow::Stop {
@@ -520,7 +511,7 @@ impl Effects for Host<'_, '_> {
             (Mode::Inbound { .. } | Mode::Outbound(_), error) => Err(error.into()),
         }
     }
-    async fn input(&mut self, host: &mut Context<'_, '_>, input: Input) -> Result<Flow, Error> {
+    async fn input(&mut self, host: &mut Context<'_>, input: Input) -> Result<Flow, Error> {
         match input {
             Input::Tick => self.tick(host).await?,
             Input::Opened { .. } => match &mut self.mode {
@@ -560,7 +551,7 @@ impl Effects for Host<'_, '_> {
     }
     async fn close(
         &mut self,
-        _host: &mut Context<'_, '_>,
+        _host: &mut Context<'_>,
         result: &mut Result<(), Error>,
     ) -> Result<(), Error> {
         let retained = self.input_evidence.retain(self.store, self.machine).await;
@@ -586,7 +577,7 @@ impl Effects for Host<'_, '_> {
     }
 }
 impl Host<'_, '_> {
-    async fn tick(&mut self, host: &mut Context<'_, '_>) -> Result<(), Error> {
+    async fn tick(&mut self, host: &mut Context<'_>) -> Result<(), Error> {
         let now = Instant::now();
         match self.mode {
             Mode::Outbound(_) => {

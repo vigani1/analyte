@@ -3,28 +3,18 @@ use super::{
     connection_input::{self, Input},
     receive::custody::{self, CleanupFailure},
 };
-use crate::intake;
-use analyte_store::Handle;
 use std::{collections::VecDeque, time::Duration};
 use tokio::sync::watch;
 
-mod chunk;
-pub(super) use chunk::chunk_effects;
+mod protocol;
+pub(super) use protocol::{HostInput, Protocol, Session, Trigger, serve};
 /// Exercises each concrete host without opening a real analyzer connection.
 #[cfg(test)]
 mod tests;
-
-/// Transport input custody follows the protocol's existing durable boundary.
-#[derive(Clone, Copy)]
-pub(super) enum Custody {
-    /// ASTM frames and HL7/LAW messages commit through dialog effects.
-    Dialog,
-    /// Vendor and POCT input chunks additionally commit before dialog input.
-    Chunks,
-}
 /// The one result shape of every driver step and every host effect.
 ///
-/// Each host runs its dialog actions through one [`drain`] (LAW keeps its own
+/// Each host runs its dialog actions through one queue loop ([`drain`] for an
+/// [`Effects`] host, [`serve`] for a [`Protocol`] host; LAW keeps its own
 /// deadline-bounded loop) returning `Result<Flow, Error>`: `Stop` ends the
 /// session without an error and an error ends it with that cause. A failure
 /// that must wait until the dialog's own queued replies (NAK, refusal, park)
@@ -75,14 +65,6 @@ pub(super) struct Run<'a, A, E> {
     pub failures: Failures<E>,
     pub conn: &'a mut analyte_transport::Connection,
     pub stop: &'a mut watch::Receiver<bool>,
-    stop_when_drained: bool,
-}
-
-impl<A, E> Run<'_, A, E> {
-    /// Ends the session normally once every queued action has run.
-    pub(super) const fn stop_when_drained(&mut self) {
-        self.stop_when_drained = true;
-    }
 }
 
 /// A host runs one dialog action at a time; [`drain`] owns the queue loop.
@@ -111,7 +93,6 @@ pub(super) async fn drain<H: Drain>(
         failures: Failures::new(),
         conn,
         stop,
-        stop_when_drained: false,
     };
     let result = async {
         while let Some(action) = run.actions.pop_front() {
@@ -119,87 +100,35 @@ pub(super) async fn drain<H: Drain>(
                 return Ok(Flow::Stop);
             }
         }
-        Ok(if run.stop_when_drained {
-            Flow::Stop
-        } else {
-            Flow::Continue
-        })
+        Ok(Flow::Continue)
     }
     .await;
     run.failures.finish(result)
 }
 
-/// The input a host was handling when its session ended. A vendor host sets it
-/// once per input and works out its stored order outcome from it and the
-/// session result when it closes.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum Trigger {
-    /// The connection opened or the machine sent bytes.
-    Exchange,
-    /// A dialog deadline was due.
-    Deadline,
-    /// The connection closed or failed while the service kept running.
-    Disconnected,
-    /// The connection closed because the service is stopping.
-    Cancelled,
-}
-
-impl Trigger {
-    /// Names the trigger of one input; a closed connection during shutdown is cancelled.
-    pub(super) fn of(input: &Input, stop: &watch::Receiver<bool>) -> Self {
-        match input {
-            Input::Opened { .. } | Input::Bytes { .. } => Self::Exchange,
-            Input::Tick => Self::Deadline,
-            Input::Closed(_) | Input::Failed(_) => {
-                if *stop.borrow() {
-                    Self::Cancelled
-                } else {
-                    Self::Disconnected
-                }
-            }
-        }
-    }
-}
-
-/// Shared host ownership; cancellation never cancels a queued durable-store request.
-pub(super) struct Context<'a, 'm> {
-    pub machine: &'a intake::ConnectionEvidence<'m>,
-    pub store: &'a Handle,
+/// The connection and stop signal an [`Effects`] host serves; cancellation never
+/// cancels a queued durable-store request.
+pub(super) struct Context<'a> {
     pub conn: &'a mut analyte_transport::Connection,
     pub stop: watch::Receiver<bool>,
 }
 
 /// A protocol supplies dialog transitions and effects, never its own receive loop.
 pub(super) trait Effects {
-    const CUSTODY: Custody = Custody::Dialog;
     type Error: CleanupFailure + From<super::link::error::Error> + From<analyte_transport::Error>;
     fn wait(&self) -> Result<Option<Duration>, Self::Error>;
     fn receive_error(&self, error: analyte_transport::Error) -> Result<Input, Self::Error> {
-        match error {
-            analyte_transport::Error::Deadline(_) => Ok(Input::Tick),
-            error @ (analyte_transport::Error::InvalidLimits
-            | analyte_transport::Error::OversizedWrite
-            | analyte_transport::Error::ConsumerClosed
-            | analyte_transport::Error::Offline
-            | analyte_transport::Error::Io { .. }) => Err(error.into()),
-        }
-    }
-    async fn prepare(&mut self, _host: &mut Context<'_, '_>) -> Result<Flow, Self::Error> {
-        Ok(Flow::Continue)
+        Ok(tick_on_deadline(error)?)
     }
     /// Protocol-specific pending host work races input; dropping it never proves rollback.
     async fn background(&mut self) -> Result<(), Self::Error> {
         std::future::pending().await
     }
-    async fn input(
-        &mut self,
-        host: &mut Context<'_, '_>,
-        input: Input,
-    ) -> Result<Flow, Self::Error>;
+    async fn input(&mut self, host: &mut Context<'_>, input: Input) -> Result<Flow, Self::Error>;
     /// Retains every owned effect even when another cleanup operation already failed.
     async fn close(
         &mut self,
-        host: &mut Context<'_, '_>,
+        host: &mut Context<'_>,
         result: &mut Result<(), Self::Error>,
     ) -> Result<(), Self::Error>;
 }
@@ -210,7 +139,7 @@ pub(super) trait Effects {
 /// owner's close cannot discard a final refusal (ADR 0003: refuse visibly).
 pub(super) async fn run<P: Effects>(
     open: impl FnOnce() -> Result<P, P::Error>,
-    mut host: Context<'_, '_>,
+    mut host: Context<'_>,
 ) -> Result<(), P::Error> {
     let mut protocol = open()?;
     let mut result = drive(&mut protocol, &mut host).await;
@@ -238,21 +167,12 @@ async fn sent(conn: &analyte_transport::Connection) -> Result<(), analyte_transp
         )) => flushed,
     }
 }
-async fn drive<P: Effects>(protocol: &mut P, host: &mut Context<'_, '_>) -> Result<(), P::Error> {
+async fn drive<P: Effects>(protocol: &mut P, host: &mut Context<'_>) -> Result<(), P::Error> {
     loop {
-        if matches!(protocol.prepare(host).await?, Flow::Stop) {
-            return Ok(());
-        }
         let wait = protocol.wait()?;
-        let custody = P::CUSTODY;
         let input = tokio::select! {
             biased;
-            _ = async { let _ = host.stop.wait_for(|&stopped| stopped).await; } => {
-                match custody {
-                    Custody::Dialog => return Ok(()),
-                    Custody::Chunks => Input::Closed(None),
-                }
-            },
+            _ = async { let _ = host.stop.wait_for(|&stopped| stopped).await; } => return Ok(()),
             () = wait_for(wait) => Input::Tick,
             input = connection_input::receive(host.conn) => match input {
                 Ok(input) => input,
@@ -263,48 +183,22 @@ async fn drive<P: Effects>(protocol: &mut P, host: &mut Context<'_, '_>) -> Resu
                 Input::Tick
             },
         };
-        if let (Custody::Chunks, Input::Bytes { bytes }) = (custody, &input) {
-            intake::receive(
-                host.store,
-                host.machine,
-                analyte_model::ReceiptId::new(),
-                bytes.clone(),
-            )
-            .await
-            .map_err(super::link::error::Error::from)?;
-        }
         if matches!(protocol.input(host, input).await?, Flow::Stop) {
             return Ok(());
         }
     }
 }
-/// A byte transition includes all ordered effects before another byte may be fed.
-pub(super) trait ByteEffects: Effects + Send {
-    fn apply_byte(
-        &mut self,
-        byte: u8,
-        conn: &mut analyte_transport::Connection,
-        stop: &mut watch::Receiver<bool>,
-    ) -> impl Future<Output = Result<Flow, Self::Error>> + Send;
-}
-
-/// Completes every byte's effects before advancing a merged input chunk.
-/// A stop or failure leaves subsequent bytes in the caller's retained input
-/// custody; cancellation can leave the current durable operation pending.
-pub(super) async fn feed<H: ByteEffects>(
-    host: &mut H,
-    bytes: Vec<u8>,
-    conn: &mut analyte_transport::Connection,
-    stop: &mut watch::Receiver<bool>,
-) -> Result<Flow, H::Error> {
-    for byte in bytes {
-        if host.apply_byte(byte, conn, stop).await? == Flow::Stop {
-            return Ok(Flow::Stop);
-        }
+/// A receive deadline is a tick; every other transport failure ends the session.
+fn tick_on_deadline(error: analyte_transport::Error) -> Result<Input, analyte_transport::Error> {
+    match error {
+        analyte_transport::Error::Deadline(_) => Ok(Input::Tick),
+        error @ (analyte_transport::Error::InvalidLimits
+        | analyte_transport::Error::OversizedWrite
+        | analyte_transport::Error::ConsumerClosed
+        | analyte_transport::Error::Offline
+        | analyte_transport::Error::Io { .. }) => Err(error),
     }
-    Ok(Flow::Continue)
 }
-
 async fn wait_for(wait: Option<Duration>) {
     match wait {
         Some(wait) if wait.is_zero() => {}

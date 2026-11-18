@@ -455,7 +455,7 @@ impl Effects for Host<'_, '_> {
         };
         Ok(())
     }
-    async fn input(&mut self, host: &mut Context<'_, '_>, input: Input) -> Result<Flow, Error> {
+    async fn input(&mut self, host: &mut Context<'_>, input: Input) -> Result<Flow, Error> {
         let bytes = match input {
             Input::Opened { session } => {
                 tracing::info!(
@@ -475,7 +475,7 @@ impl Effects for Host<'_, '_> {
     }
     async fn close(
         &mut self,
-        _host: &mut Context<'_, '_>,
+        _host: &mut Context<'_>,
         result: &mut Result<(), Error>,
     ) -> Result<(), Error> {
         // Disconnect drains the dialog-owned decoder on every exit, including failed

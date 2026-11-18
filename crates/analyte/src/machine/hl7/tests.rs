@@ -61,8 +61,6 @@ async fn adr0003_mllp_r1_s1_2_coalesced_read_survives_ack_write_failure_and_canc
             state
                 .close(
                     &mut Context {
-                        machine: &connection,
-                        store: &store,
                         conn: &mut conn,
                         stop: stop.clone(),
                     },
