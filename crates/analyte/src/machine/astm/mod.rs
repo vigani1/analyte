@@ -356,7 +356,13 @@ impl Host<'_, '_> {
                     })
                     .await?;
                 self.transfer = None;
-                match crate::orders::astm::request(self.machine.machine(), &self.payload)? {
+                let request = crate::orders::astm::request(self.machine.machine(), &self.payload)?;
+                if request.is_some() {
+                    // A query or cancel carries no results; the order lifecycle, not this
+                    // receipt, records what was answered (LIS02 §11).
+                    intake::mark_handled(self.store, self.machine.machine(), id).await?;
+                }
+                match request {
                     None => {
                         intake::interpret(self.store, self.machine.machine(), id).await?;
                     }

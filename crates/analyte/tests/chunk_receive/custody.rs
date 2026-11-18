@@ -523,7 +523,9 @@ async fn poct01_b5_13_program_reused_control_id_parks_evidence_and_escapes() -> 
     Ok(())
 }
 
-// POCT01-A2 Appendix B 3.5, 5.7, 5.12 and 6.9; synthetic peer bytes.
+// POCT01-A2 Appendix B 3.5, 5.7, 5.12 and 6.9; synthetic peer bytes. Per B 3.5 a
+// reviewer not prepared for Keep Alive replies with an Escape instead of an ACK;
+// that reply completes the exchange, so the conversation continues.
 #[tokio::test]
 async fn poct01_b_3_5_unsupported_keep_alive_gets_correlated_escape() -> Result<(), Error> {
     for (host, device) in [(2048, 1024), (1024, 2048)] {
@@ -574,11 +576,27 @@ async fn poct01_b_3_5_unsupported_keep_alive_gets_correlated_escape() -> Result<
             matches!(analyte_poct::Message::parse(&escape, poct_peer::limits())?.body(), analyte_poct::Body::Escape { reference, reason } if reference.as_str() == "keep-alive" && reason == "OTH")
         );
         run.stored(keep_alive.as_bytes(), "analyte-poct")?;
+        // The topic goes on: no Terminate, and the next observation is accepted.
+        let after = observation.rewrite("V=\"obs\"", "V=\"after-escape\"");
+        run.peer.write_all(after.as_bytes()).await?;
+        assert_accept(&xml(&mut run.peer).await?, "after-escape")?;
+        let keep_alive_parks: i64 = run.database()?.query_row(
+            "SELECT count(*) FROM parked WHERE evidence LIKE '%Keep Alive%'",
+            [],
+            |r| r.get(0),
+        )?;
+        assert_eq!(keep_alive_parks, 0);
+        let eot = poct_peer::message(
+            "EOT.R01",
+            "eot",
+            &format!("<EOT>{}</EOT>", poct_peer::field("EOT.topic_cd", "OBS")),
+        );
+        run.peer.write_all(eot.as_bytes()).await?;
         let end = xml(&mut run.peer).await?;
         assert!(end.len() <= host.min(device));
         let parsed = analyte_poct::Message::parse(&end, poct_peer::limits())?;
         assert!(
-            matches!(parsed.body(), analyte_poct::Body::Terminate(analyte_poct::Nullable::Value(code)) if code.value == "ABN")
+            matches!(parsed.body(), analyte_poct::Body::Terminate(analyte_poct::Nullable::Value(code)) if code.value == "NRM")
         );
         let reply = poct_peer::message(
             "ACK.R01",

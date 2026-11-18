@@ -23,6 +23,13 @@ pub(super) fn validate_site(site: &Site, transport: &Transport, path: &str) -> R
             "must be at least one second",
         ));
     }
+    if !(1..=120).contains(&site.destination.request_timeout_seconds) {
+        return Err(invalid(
+            path,
+            "site.destination.request_timeout_seconds",
+            "must be 1 through 120 seconds",
+        ));
+    }
     let endpoint = &site.endpoint;
     if endpoint.is_empty() || endpoint.len() > 1024 || endpoint.chars().any(char::is_control) {
         return Err(invalid(

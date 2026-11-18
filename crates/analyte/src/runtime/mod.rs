@@ -13,7 +13,7 @@ pub(crate) mod retention;
 
 pub(crate) mod alert_delivery;
 
-mod law_recovery;
+mod recovery;
 
 mod error;
 pub use error::Error;
