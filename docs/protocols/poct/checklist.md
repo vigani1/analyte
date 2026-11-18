@@ -25,7 +25,7 @@
 - [ ] **O/C** Device events: request/receive/acknowledge events and retain operator/event context and EOT (Appendix B §§4.1.6,5.8,6.3, pp.79–80,96,112). Remaining: extension not implemented or advertised.
 - [ ] **O/C** Patient/operator lists: obey complete/incremental support, acknowledgements and EOT (Appendix B §§4.1.7,6.11–6.12, pp.80,123–125). Remaining: extension not implemented or advertised.
 - [ ] **O/C** Directives: send supported authorized commands and distinguish receipt from eventual execution (Appendix B §§4.1.8,6.5, pp.80–81,113–117). Remaining: extension not implemented or advertised.
-- [ ] **O/C** Keep-alive: obey allowed timing and ACK/unsupported-topic Escape behavior (Appendix B §§3.5,4.1.9, pp.74–75,81). Remaining: extension not implemented or advertised.
+- [ ] **O/C** Keep-alive: obey allowed timing and ACK/unsupported-topic Escape behavior (Appendix B §§3.5,4.1.9, pp.74–75,81). Done: the reviewer is not prepared for Keep Alive and answers each one with a correlated OTH Escape only, then continues the conversation; nothing is parked. Program test: `poct01_b_3_5_unsupported_keep_alive_gets_correlated_escape`. Remaining: acknowledging Keep Alive and the timing rule (only when no reply is outstanding) are not implemented.
 - [ ] **O/C** Continuous mode: drain announced observations first, enter through acknowledged START_CONTINUOUS, accept unsolicited observations/events and obey list/directive interleaving and termination (Appendix B §4.2, pp.86–89). Remaining: extension not implemented or advertised.
 - [ ] **O/C** Set time: supply UTC offset, claim accuracy only with synchronization evidence and handle applicable timezone transition data (Appendix B §6.5.2.1, pp.115–117; §10, pp.139–143). Remaining: extension not implemented or advertised.
 - [ ] **O/C** Vendor extensions: preserve legal headers, bounded topics, standard startup and unsupported-extension responses (Appendix B §7, pp.126–128). Remaining: extension not implemented or advertised.
@@ -45,7 +45,8 @@ parking evidence and unchanged outbox counts (B 3.2, 5.21).
 `poct01_b_5_12_unexpected_ack_escape_references_incoming_header` checks the
 incoming ACK header reference independently of its body reference (B 5.12).
 `poct01_b_3_5_unsupported_keep_alive_gets_correlated_escape` covers a legal
-post-ACK Keep Alive, retained bytes, OTH Escape and ABN termination. It also
+post-ACK Keep Alive: retained bytes, an OTH Escape alone, no parked record, a
+later accepted observation and normal termination after EOT. It also
 checks every emitted ACK/error ACK/REQ/ESC/END length with each ordering of
 host/device limits; the one-byte refusal test remains. This is selected
 conversation evidence, not an exhaustive capacity/latency matrix.
