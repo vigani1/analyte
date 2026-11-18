@@ -238,6 +238,13 @@ fn windows_installer_and_scripts_agree() -> Outcome {
         "ExtractTemporaryFile('stop.ps1')",
         r"packaging\windows\uninstall.ps1",
         "SetupLogging=no",
+        // PR #255 run 44408167214: install.ps1 failed and setup still exited 0.
+        // A script counts as done only when it exits 0, and a failed service
+        // setup makes the installer exit 10.
+        "'', SW_HIDE, ewWaitUntilTerminated, Code) and (Code = 0);",
+        "  if ServiceReady then",
+        "function GetCustomSetupExitCode: Integer;",
+        "  if InstallError <> '' then\n    Result := 10",
     ] {
         assert!(installer.contains(expected), "analyte.iss lacks {expected}");
     }

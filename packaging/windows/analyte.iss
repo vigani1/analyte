@@ -40,7 +40,8 @@ UninstallDisplayIcon={app}\analyte.exe
 UninstallDisplayName=Analyte
 ; The service is stopped in PrepareToInstall; nothing else should hold the files.
 CloseApplications=no
-; Never write a setup log: nothing secret is logged, but keep it that way.
+; No setup log unless /LOG asks for one. The log holds the scripts' output
+; (paths and errors), never the admin token.
 SetupLogging=no
 
 [Messages]
@@ -67,6 +68,8 @@ var
   FirstInstall: Boolean;
   TokenExisted: Boolean;
   ServiceReady: Boolean;
+  { Why install.ps1 failed; empty after a successful setup. }
+  InstallError: String;
   TokenPage: TOutputMsgMemoWizardPage;
 
 function ConfigFile: String;
@@ -99,6 +102,7 @@ begin
   FirstInstall := not FileExists(ConfigFile);
   TokenExisted := FileExists(TokenFile);
   ServiceReady := False;
+  InstallError := '';
   Result := True;
 end;
 
@@ -107,15 +111,6 @@ begin
   TokenPage := CreateOutputMsgMemoPage(wpInstalling, 'Admin token',
     'You need this token to log in to the Analyte admin and setup pages.',
     'Keep the token like a password.', '');
-end;
-
-{ Runs a PowerShell script hidden, its output going to a file only this setup reads. }
-function RunScript(Script, Arguments, Output: String; var Code: Integer): Boolean;
-begin
-  Result := Exec(ExpandConstant('{cmd}'),
-    '/c ""' + PowerShell + '" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "'
-      + Script + '" ' + Arguments + ' > "' + Output + '" 2>&1"',
-    '', SW_HIDE, ewWaitUntilTerminated, Code);
 end;
 
 function ReadOutput(Output: String): String;
@@ -128,6 +123,20 @@ begin
     Result := '(no output)';
 end;
 
+{ Runs a PowerShell script hidden and returns True only when it exits 0. Its
+  output goes to a file in this setup's temporary folder and, when setup runs
+  with /LOG, into the setup log. The scripts never print the admin token. }
+function RunScript(Script, Arguments, Output: String; var Code: Integer): Boolean;
+begin
+  Code := -1;
+  Result := Exec(ExpandConstant('{cmd}'),
+    '/c ""' + PowerShell + '" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "'
+      + Script + '" ' + Arguments + ' > "' + Output + '" 2>&1"',
+    '', SW_HIDE, ewWaitUntilTerminated, Code) and (Code = 0);
+  Log(ExtractFileName(Script) + ' exit code ' + IntToStr(Code) + '; output:' + #13#10
+    + ReadOutput(Output));
+end;
+
 { Stops a running service before its program file is replaced. }
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
@@ -137,7 +146,7 @@ begin
   Result := '';
   ExtractTemporaryFile('stop.ps1');
   Output := ExpandConstant('{tmp}\stop-output.txt');
-  if not RunScript(ExpandConstant('{tmp}\stop.ps1'), '', Output, Code) or (Code <> 0) then
+  if not RunScript(ExpandConstant('{tmp}\stop.ps1'), '', Output, Code) then
     Result := 'The Analyte service could not be stopped, so nothing was changed:' + #13#10 + ReadOutput(Output);
 end;
 
@@ -172,12 +181,42 @@ begin
   ServiceReady := RunScript(ExpandConstant('{app}\packaging\windows\install.ps1'),
     '-Executable "' + ExpandConstant('{app}\analyte.exe') + '" -Config "' + ConfigFile
       + '" -DataDirectory "' + DataDirectory + '" -ConfigWritable -CreateAdminToken -Start',
-    Output, Code) and (Code = 0);
-  if not ServiceReady then
-    SuppressibleMsgBox('The files were installed, but the Analyte service could not be set up '
-      + 'and started:' + #13#10 + #13#10 + ReadOutput(Output) + #13#10 + #13#10
-      + 'Fix the cause, then run this installer again.', mbError, MB_OK, IDOK);
-  TokenPage.RichEditViewer.Lines.Text := TokenMessage;
+    Output, Code);
+  if ServiceReady then
+    TokenPage.RichEditViewer.Lines.Text := TokenMessage
+  else
+  begin
+    { Inno Setup cannot roll back once files are copied, and it ignores an
+      exception or Abort raised here, so fail loudly instead: an error box, the
+      script's output in the setup log, a failed finish page and a non-zero
+      exit code (GetCustomSetupExitCode). }
+    InstallError := 'The program files were copied, but the Analyte service was not set up '
+      + '(install.ps1 exit code ' + IntToStr(Code) + '):' + #13#10 + #13#10
+      + ReadOutput(Output) + #13#10 + #13#10
+      + 'Fix the cause, then run this installer again, or uninstall Analyte.';
+    TokenPage.RichEditViewer.Lines.Text := InstallError;
+    SuppressibleMsgBox(InstallError, mbCriticalError, MB_OK, IDOK);
+  end;
+end;
+
+{ A failed service setup ends with exit code 10 instead of 0. }
+function GetCustomSetupExitCode: Integer;
+begin
+  if InstallError <> '' then
+    Result := 10
+  else
+    Result := 0;
+end;
+
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  if (CurPageID = wpFinished) and (InstallError <> '') then
+  begin
+    WizardForm.FinishedHeadingLabel.Caption := 'Analyte was not set up';
+    WizardForm.FinishedLabel.Caption := 'The program files were copied, but the Analyte '
+      + 'service was not set up. The error was shown before this page. Fix the cause, then '
+      + 'run this installer again, or uninstall Analyte.';
+  end;
 end;
 
 { The admin port from the program file's [admin] table; empty when there is none. }
@@ -232,8 +271,7 @@ begin
   if CurUninstallStep = usUninstall then
   begin
     Output := ExpandConstant('{tmp}\uninstall-output.txt');
-    if not RunScript(ExpandConstant('{app}\packaging\windows\uninstall.ps1'), '', Output, Code)
-      or (Code <> 0) then
+    if not RunScript(ExpandConstant('{app}\packaging\windows\uninstall.ps1'), '', Output, Code) then
       SuppressibleMsgBox('The Analyte service could not be removed:' + #13#10 + #13#10
         + ReadOutput(Output) + #13#10 + #13#10
         + 'Run packaging\windows\uninstall.ps1 as administrator after fixing the cause.',

@@ -43,9 +43,17 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $setup = (Get-ChildItem dist/*-setup.exe).FullName
           $root = "$env:ProgramData\Analyte"
+          $logs = "$env:RUNNER_TEMP\analyte-logs"
+          $null = New-Item -ItemType Directory -Force -Path $logs
+          $run = 0
           function Install-Analyte {
-            $process = Start-Process -FilePath $setup -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru
-            if ($process.ExitCode -ne 0) { throw "installer exit code $($process.ExitCode)" }
+            $script:run++
+            $log = "$logs\setup-$($script:run).log"
+            $process = Start-Process -FilePath $setup -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=$log" -Wait -PassThru
+            if ($process.ExitCode -ne 0) {
+              Get-Content -LiteralPath $log -Tail 60 -ErrorAction SilentlyContinue
+              throw "installer exit code $($process.ExitCode); see $log"
+            }
             $service = Get-CimInstance Win32_Service -Filter "Name='Analyte'"
             if ($service.State -ne 'Running' -or $service.StartName -ne 'NT SERVICE\Analyte' -or $service.StartMode -ne 'Auto') {
               throw "service not running as configured: $($service.State) $($service.StartName) $($service.StartMode)"
@@ -76,7 +84,7 @@ jobs:
           if (-not (Select-String -LiteralPath "$root\config\analyte.toml" -SimpleMatch '# kept on upgrade')) { throw 'upgrade replaced the configuration' }
           if ((Get-FileHash -LiteralPath "$root\data\admin-token").Hash -ne $token) { throw 'upgrade replaced the token' }
           # Uninstall removes the service and program, and keeps data and configuration.
-          $process = Start-Process -FilePath "$env:ProgramFiles\Analyte\unins000.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru
+          $process = Start-Process -FilePath "$env:ProgramFiles\Analyte\unins000.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=$logs\uninstall.log" -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "uninstaller exit code $($process.ExitCode)" }
           for ($i = 0; $i -lt 60 -and (Test-Path -LiteralPath "$env:ProgramFiles\Analyte\analyte.exe"); $i++) { Start-Sleep -Seconds 1 }
           if (Get-CimInstance Win32_Service -Filter "Name='Analyte'") { throw 'service still registered' }
@@ -84,6 +92,24 @@ jobs:
           foreach ($kept in "$root\config\analyte.toml", "$root\data\analyte.db", "$root\data\admin-token") {
             if (-not (Test-Path -LiteralPath $kept)) { throw "uninstall removed $kept" }
           }
+      # Synthetic runner data only: setup logs (script output, never the token),
+      # the service log and the Service Control Manager's recent events.
+      - name: Collect installer diagnostics
+        if: failure()
+        shell: pwsh
+        run: |
+          $logs = "$env:RUNNER_TEMP\analyte-logs"
+          $null = New-Item -ItemType Directory -Force -Path $logs
+          Copy-Item -LiteralPath "$env:ProgramData\Analyte\data\analyte.log" -Destination $logs -ErrorAction SilentlyContinue
+          Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = 'Service Control Manager' } -MaxEvents 50 -ErrorAction SilentlyContinue |
+            Format-List TimeCreated, Id, LevelDisplayName, Message | Out-File "$logs\service-control-manager.txt"
+          Get-ChildItem -LiteralPath $logs | Format-Table Name, Length
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: packaging-check-windows-logs
+          path: ${{ runner.temp }}/analyte-logs/
+          retention-days: 7
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: packaging-check-windows
