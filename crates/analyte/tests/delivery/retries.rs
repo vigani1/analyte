@@ -236,6 +236,92 @@ async fn plan11_adr0008_operator_resend_reference_receiver_duplicate_same_id_and
     Ok(())
 }
 
+// SQLite sqlite3_busy_handler; AGENTS rule 7. An operator command such as
+// `deliveries list` commits an audit row on the live store. When that commit
+// overlaps the worker claiming a due retry, the worker waits within
+// busy_timeout: the service keeps running and the delivery is later accepted.
+#[tokio::test]
+async fn rule7_operator_commit_during_delivery_claim_never_stops_the_service() -> Result<(), Error>
+{
+    let directory = tempfile::tempdir()?;
+    let path = config(directory.path(), false)?;
+    let receiver_path = directory.path().join("reference.db");
+    let (outage, url) = AppOutage::start(&receiver_path, false).await?;
+    let service = Running::start(&path, &url, "synthetic-api").await?;
+    let mut peer = connect(&path, "hl7").await?;
+    assert!(hl7(&mut peer, ORU).await?.contains("MSA|AA"));
+    let due = step("schedule a later retry", next_retry(&path)).await?;
+    let before: i64 =
+        database(&path)?.query_row("SELECT count(*) FROM attempts", [], |r| r.get(0))?;
+    // Hold the write lock from just before the retry falls due until just
+    // after, well inside the program's one-second busy_timeout.
+    let operator = database(&path)?;
+    tokio::time::sleep(until(due, -100)).await;
+    operator.execute_batch("BEGIN IMMEDIATE")?;
+    tokio::time::sleep(until(due, 200)).await;
+    operator.execute_batch("COMMIT")?;
+    drop(operator);
+    let claimed = step("claim the due retry", async {
+        loop {
+            if service.is_finished() {
+                return Ok::<_, Error>(false);
+            }
+            let attempts: i64 =
+                database(&path)?.query_row("SELECT count(*) FROM attempts", [], |r| r.get(0))?;
+            if attempts > before {
+                return Ok(true);
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await?;
+    if !claimed {
+        // Surfaces the service's own failure.
+        service.stop().await?;
+        return Err("service ended while an operator committed".into());
+    }
+    let reference = outage.recover(&receiver_path).await?;
+    step("deliver after the outage", wait_state(&path, "done", 1)).await?;
+    assert_eq!(receiver_count(&receiver_path)?, 1);
+    step("stop contended service", service.stop()).await?;
+    step("close contended receiver", reference.close()).await?;
+    Ok(())
+}
+
+/// Waits for a pending retry due at least 400 ms ahead, so the test can act before it.
+async fn next_retry(path: &Fixture) -> Result<std::time::SystemTime, Error> {
+    loop {
+        let next: Option<i64> = database(path)?.query_row(
+            "SELECT max(next_attempt) FROM outbox WHERE state='pending'",
+            [],
+            |r| r.get(0),
+        )?;
+        if let Some(next) = next {
+            let due = std::time::UNIX_EPOCH
+                .checked_add(Duration::from_secs(u64::try_from(next)?))
+                .ok_or("retry time overflow")?;
+            let ahead = due.duration_since(std::time::SystemTime::now());
+            if ahead.is_ok_and(|ahead| ahead >= Duration::from_millis(400)) {
+                return Ok(due);
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+}
+
+/// Time left until `offset_ms` milliseconds after (or before) `due`; zero when past.
+fn until(due: std::time::SystemTime, offset_ms: i64) -> Duration {
+    let offset = Duration::from_millis(offset_ms.unsigned_abs());
+    let target = if offset_ms < 0 {
+        due.checked_sub(offset)
+    } else {
+        due.checked_add(offset)
+    };
+    target
+        .and_then(|target| target.duration_since(std::time::SystemTime::now()).ok())
+        .unwrap_or_default()
+}
+
 async fn refuse_incomplete_resends(path: &Fixture, original: &Captured) -> Result<(), Error> {
     for (name, suffix) in [
         (

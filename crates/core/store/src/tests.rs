@@ -183,3 +183,38 @@ fn sqlite_result_codes_preserve_lock_and_constraint_causes() {
         );
     }
 }
+
+// SQLite sqlite3_busy_handler: a transaction that has already read and then
+// asks to write while another connection writes gets SQLITE_BUSY at once, with
+// no busy-handler wait. An operator command committing on the same store must
+// only delay a service write within busy_timeout (AGENTS rule 7), never fail it.
+#[test]
+fn rule7_read_then_write_waits_for_another_writer_within_busy_timeout() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("store.db");
+    let mut bounds = limits();
+    bounds.busy_timeout = Duration::from_secs(10);
+    let mut store = Store::open(&path, bounds, Box::new(Space(u64::MAX)))?;
+    let metadata = receipt(b"raw")?;
+    store.receive(&metadata, b"raw", b"config")?;
+    store.reconcile(
+        ReconcileAction::Interpret(metadata.id),
+        interpretation()?,
+        ReconcileInput::standard(&[], &[]),
+        |_, _| Ok(Vec::new()),
+    )?;
+    let id = DeliveryId::try_from(uuid::Uuid::now_v7())?;
+    seed_delivery(&store, metadata.id, id, "machine/observation")?;
+    // Another connection, like an operator command, holds the write lock briefly.
+    let operator = Connection::open(&path)?;
+    operator.execute_batch("BEGIN IMMEDIATE")?;
+    let release = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(200));
+        operator.execute_batch("COMMIT")
+    });
+    // The claim reads the queue head before marking it in flight.
+    let claim = store.claim_destination(0, &Identifier::new("app")?);
+    release.join().map_err(|_| "operator thread panicked")??;
+    assert_eq!(claim?.ok_or("pending delivery not claimed")?.id, id);
+    Ok(())
+}

@@ -119,11 +119,13 @@ impl Limits {
 /// One connection, owned by a dedicated worker when used from async code.
 pub struct Store {
     retention_key: Option<DigestKey>,
-    _lock: std::fs::File,
     db: Connection,
     path: PathBuf,
     limits: Limits,
     space: Box<dyn FreeSpace>,
+    // Fields drop in order: the owner lock is released only after the
+    // connection has closed, including SQLite's checkpoint on close.
+    _lock: std::fs::File,
 }
 
 fn document<T: Serialize>(value: &T) -> Result<String, StorageError> {
