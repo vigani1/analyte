@@ -147,6 +147,35 @@ impl Program {
         machine.hooks.astm_committed = Some(hook);
         Ok(())
     }
+    /// Pauses every ASTM stream machine of a real `run` once, after a frame is durably
+    /// stored and before its ACK, and writes `marker` there so a test in another process
+    /// can kill the program at that point. Keep the returned control alive while serving;
+    /// a pause nobody kills ends after one minute by stopping the connection, never by
+    /// acknowledging.
+    /// # Errors
+    /// Rejects a program without an ASTM stream machine.
+    pub fn pause_astm_committed_with_marker(
+        &mut self,
+        marker: std::path::PathBuf,
+    ) -> Result<crate::runtime::test_hooks::Control, Error> {
+        let (hook, control) =
+            crate::runtime::test_hooks::Committed::with_marker(marker, Duration::from_secs(60));
+        let mut installed = false;
+        for machine in &mut self.machines {
+            if matches!(
+                machine.snapshot.effective().stack(),
+                analyte_config::Stack::Astm(analyte_config::RecordTransport::Stream(_))
+            ) {
+                machine.hooks.astm_committed = Some(hook.clone());
+                installed = true;
+            }
+        }
+        if installed {
+            Ok(control)
+        } else {
+            Err(Error::MissingAstmPauseMachine)
+        }
+    }
     /// Pauses a loopback client's closing owner after protocol cleanup, before transport release.
     /// # Errors
     /// Rejects unknown machines and endpoints that are not loopback TCP clients.

@@ -25,6 +25,10 @@ pub enum Error {
     /// test store closed.
     #[error("test store closed")]
     StoreClosed,
+    /// The pause marker for another process could not be written.
+    #[cfg(feature = "test-hooks")]
+    #[error("test pause marker not written")]
+    Marker(#[source] std::io::Error),
     /// A gate wait exceeded its bounded timeout.
     #[error(transparent)]
     Wait(#[from] tokio::time::error::Elapsed),

@@ -26,6 +26,10 @@ pub enum Error {
     /// A required installation setting or relationship is refused.
     #[error("commit hook requires injected ASTM loopback listener")]
     MissingAstmCommitListener,
+    /// The test-only ASTM pause found no ASTM stream machine to pause.
+    #[cfg(feature = "test-hooks")]
+    #[error("ASTM pause marker requires an ASTM stream machine")]
+    MissingAstmPauseMachine,
     /// A required installation setting or relationship is refused.
     #[error("commit hook requires injected LAW loopback listener")]
     MissingLawCommitListener,
@@ -137,6 +141,8 @@ impl Error {
             | Self::InvalidTestPolling
             | Self::UnknownTestDestination
             | Self::UnknownTestMachine => return None,
+            #[cfg(feature = "test-hooks")]
+            Self::MissingAstmPauseMachine => return None,
         };
         cause.downcast_ref::<T>()
     }
