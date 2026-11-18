@@ -531,7 +531,7 @@ fn seed_pending_notice(path: &Path, wire: &str) -> Result<analyte_model::Receipt
     seed_pending_raw(path, &raw)
 }
 
-fn seed_pending_raw(path: &Path, raw: &[u8]) -> Result<analyte_model::ReceiptId, Error> {
+pub(super) fn seed_pending_raw(path: &Path, raw: &[u8]) -> Result<analyte_model::ReceiptId, Error> {
     let db = database(path)?;
     let (encoded, config): (String, Vec<u8>) = db.query_row(
         "SELECT metadata,config FROM receipts ORDER BY rowid DESC LIMIT 1",

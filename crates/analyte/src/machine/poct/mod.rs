@@ -287,7 +287,7 @@ async fn store_message(
         Body::Hello { .. } => {
             // Mark the complete, parsed Hello as connection context. Transport
             // journal fragments are also receipts, but are not interpreted Hellos.
-            intake::remember_context(store, machine.machine(), id).await?;
+            intake::mark_handled(store, machine.machine(), id).await?;
         }
         Body::Status { .. }
         | Body::EndTopic(_)
