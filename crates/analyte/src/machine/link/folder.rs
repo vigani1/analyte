@@ -102,6 +102,7 @@ pub(in crate::machine) async fn session(
                 as Box<dyn FnMut() -> Option<analyte_transport::recording::Tap> + Send>
         }),
     )?;
+    machine.machine().status.ready(true);
     // Files are not sessions under the shared failed-session rule: a failed file drops
     // its reply, the watcher then ends with the claim retained, and only restart
     // recovery re-offers it. Restarting the watcher here would re-receive the same
@@ -116,6 +117,7 @@ pub(in crate::machine) async fn session(
             let Some(raw) = receive(&mut item.connection, bytes, &mut stop).await? else {
                 break;
             };
+            machine.machine().status.received();
             let id = ReceiptId::new();
             intake::receive(store, machine, id, raw).await?;
             let accepted = intake::interpret(store, machine.machine(), id).await?;
@@ -308,6 +310,9 @@ mod tests {
                 id: analyte_model::Identifier::new("synthetic")?,
                 destination_limits: crate::runtime::delivery::limits(
                     &snapshot.effective().site().destination,
+                ),
+                status: crate::machine::link::status::Reporter::new(
+                    crate::machine::link::status::Link::of(snapshot.effective().stack()),
                 ),
                 snapshot,
                 listener: None,

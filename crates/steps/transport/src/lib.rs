@@ -148,6 +148,18 @@ pub enum Event {
     RecordingFailed(recording::Failure),
 }
 
+/// What a link observer learns from an I/O owner: never bytes or endpoints.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Activity {
+    /// The I/O owner opened a session (socket connected or port opened).
+    Opened,
+    /// The open session read bytes from the peer.
+    Received,
+    /// The session that `Opened` reported has ended. Sent exactly once per opening,
+    /// including when the I/O side is dropped while open.
+    Closed,
+}
+
 /// Cloneable cancellation shared by an owner and its host.
 #[derive(Clone, Default)]
 pub struct Cancellation {
@@ -341,6 +353,15 @@ pub struct IoSide {
     tap: Option<recording::Tap>,
     recorder: Option<Box<dyn FnMut() -> Option<recording::Tap> + Send + Sync>>,
     settings: String,
+    observer: Option<Box<dyn Fn(Activity) + Send + Sync>>,
+    /// Pairs every reported `Opened` with exactly one `Closed`.
+    observed_open: bool,
+}
+
+impl Drop for IoSide {
+    fn drop(&mut self) {
+        self.stop();
+    }
 }
 
 /// Creates bounded queues without starting a task.
@@ -369,6 +390,8 @@ pub fn connection(limits: Limits) -> (Connection, IoSide) {
             tap: None,
             recorder: None,
             settings: String::new(),
+            observer: None,
+            observed_open: false,
         },
     )
 }
@@ -391,6 +414,20 @@ impl IoSide {
         self
     }
 
+    /// Reports session openings, closings and reads to a status owner. The observer
+    /// runs on the I/O owner's thread, so it must only record and return.
+    #[must_use]
+    pub fn with_observer(mut self, observer: impl Fn(Activity) + Send + Sync + 'static) -> Self {
+        self.observer = Some(Box::new(observer));
+        self
+    }
+
+    fn observe(&self, activity: Activity) {
+        if let Some(observer) = &self.observer {
+            observer(activity);
+        }
+    }
+
     fn start(&mut self, settings: String) -> Result<(), Error> {
         if let Some(factory) = &mut self.recorder {
             self.tap = None;
@@ -399,11 +436,18 @@ impl IoSide {
         self.settings = settings;
         self.generation = self.generation.checked_add(1).ok_or(Error::InvalidLimits)?;
         self.session.store(self.generation, Ordering::Release);
+        if !self.observed_open {
+            self.observed_open = true;
+            self.observe(Activity::Opened);
+        }
         Ok(())
     }
 
-    fn stop(&self) {
+    fn stop(&mut self) {
         self.session.store(0, Ordering::Release);
+        if std::mem::take(&mut self.observed_open) {
+            self.observe(Activity::Closed);
+        }
     }
 
     fn record_event(&mut self, event: &Event) -> Option<Event> {
@@ -413,7 +457,10 @@ impl IoSide {
                 Instant::now(),
                 self.settings.as_bytes().to_vec(),
             ),
-            Event::Received { at, bytes } => (recording::Kind::In, *at, bytes.clone()),
+            Event::Received { at, bytes } => {
+                self.observe(Activity::Received);
+                (recording::Kind::In, *at, bytes.clone())
+            }
             Event::Closed(reason) | Event::Failed(reason) => (
                 recording::Kind::Close,
                 Instant::now(),
@@ -553,6 +600,41 @@ mod tests {
             Poll::Ready(())
         );
         signal.cancelled().await;
+    }
+
+    // Plan §11 admin page: the link light needs every opening paired with one closing.
+    #[tokio::test]
+    async fn observer_pairs_openings_with_closings() -> Result<(), Error> {
+        let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let log = seen.clone();
+        let (_dialog, side) = connection(Limits::new(4, Duration::from_secs(1))?);
+        let mut side = side.with_observer(move |activity| {
+            if let Ok(mut log) = log.lock() {
+                log.push(activity);
+            }
+        });
+        side.start("synthetic".into())?;
+        side.emit(Event::Received {
+            at: Instant::now(),
+            bytes: vec![1],
+        })
+        .await?;
+        side.stop();
+        side.stop();
+        side.start("reopened".into())?;
+        drop(side);
+        let seen = seen.lock().map_err(|_| Error::InvalidLimits)?.clone();
+        assert_eq!(
+            seen,
+            [
+                Activity::Opened,
+                Activity::Received,
+                Activity::Closed,
+                Activity::Opened,
+                Activity::Closed
+            ]
+        );
+        Ok(())
     }
 
     #[tokio::test]

@@ -30,6 +30,8 @@ pub struct Machine {
     /// Exact reproducible machine configuration.
     pub(crate) snapshot: Validated,
     pub(crate) listener: Option<std::net::TcpListener>,
+    /// The link light this machine's runtime writes and the admin page reads.
+    pub(crate) status: crate::machine::link::status::Reporter,
 }
 
 /// Validated program settings. Paths are resolved relative to the program file.
@@ -547,6 +549,9 @@ fn load_machine(entry: Entry, base: &Path, record_bytes: usize) -> Result<Machin
             &snapshot.effective().site().destination,
         ),
         id: entry.id,
+        status: crate::machine::link::status::Reporter::new(
+            crate::machine::link::status::Link::of(snapshot.effective().stack()),
+        ),
         snapshot,
         listener: None,
     })
