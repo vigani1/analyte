@@ -1,11 +1,11 @@
 //! Shows analyzer execution separately from command state on authenticated admin pages.
-use super::{
-    pages::{Cursor, finish, next},
+use super::{Cursor, finish, next};
+use crate::admin::Error;
+use crate::admin::markup::Markup;
+use crate::admin::{
     server::Context,
     view::{self, Tab, plain},
 };
-use crate::admin::Error;
-use crate::admin::markup::Markup;
 use crate::deadline;
 use axum::{
     extract::{Path, Query, State},
@@ -53,7 +53,7 @@ pub(super) fn projection(item: &analyte_store::MachineOrderItem) -> Markup {
     }
 }
 
-pub(super) async fn cancelled(
+pub(in crate::admin) async fn cancelled(
     State(state): State<Arc<Context>>,
     Query(cursor): Query<Cursor>,
 ) -> Response {
@@ -62,7 +62,7 @@ pub(super) async fn cancelled(
     finish(result)
 }
 
-pub(super) async fn detail(
+pub(in crate::admin) async fn detail(
     State(state): State<Arc<Context>>,
     Path((order, item)): Path<(i64, u16)>,
     Query(cursor): Query<Cursor>,

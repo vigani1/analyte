@@ -14,9 +14,14 @@ use axum::{
 };
 use serde::Deserialize;
 use std::sync::Arc;
+pub(super) mod awos;
+mod deliveries;
+pub(super) use deliveries::deliveries;
+pub(super) mod departures;
 mod orders;
 pub(super) use orders::orders;
 mod raw;
+pub(super) mod retention;
 use crate::admin::view::{self, Tab, plain};
 pub(super) use raw::RawError;
 pub(super) use raw::raw;

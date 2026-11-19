@@ -1,11 +1,12 @@
 //! Shows retention policy and committed purge evidence and applies audited operator holds.
-use super::{
+use super::Cursor;
+use crate::admin::Error;
+use crate::admin::markup::Markup;
+use crate::admin::{
     server::Context,
     sessions::Session,
     view::{self, Tab, count, plain},
 };
-use crate::admin::Error;
-use crate::admin::markup::Markup;
 use crate::deadline;
 use analyte_model::{Identifier, Reason};
 use analyte_store::{Audit, HoldTarget};
@@ -38,9 +39,9 @@ fn failure(error: &dyn std::error::Error) -> Response {
     )
         .into_response()
 }
-pub(super) async fn show(
+pub(in crate::admin) async fn show(
     State(state): State<Arc<Context>>,
-    Query(cursor): Query<super::pages::Cursor>,
+    Query(cursor): Query<Cursor>,
     session: Option<Extension<Arc<Session>>>,
 ) -> Response {
     match render(
@@ -168,7 +169,7 @@ fn last_run(run: &analyte_store::PurgeRun, now: jiff::Timestamp) -> Markup {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(super) struct HoldForm {
+pub(in crate::admin) struct HoldForm {
     csrf: String,
     scope: String,
     id: String,
@@ -177,7 +178,7 @@ pub(super) struct HoldForm {
     reason: String,
     confirm: String,
 }
-pub(super) async fn hold(
+pub(in crate::admin) async fn hold(
     State(state): State<Arc<Context>>,
     Extension(session): Extension<Arc<Session>>,
     Form(form): Form<HoldForm>,

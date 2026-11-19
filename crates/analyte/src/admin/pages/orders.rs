@@ -39,7 +39,7 @@ async fn orders_page(state: &Context, cursor: Cursor) -> Result<Markup, Error> {
             for order in fetched.into_iter().take(PAGE) {
                 html.push_fragment(&order_section(&order, now));
                 for item in &order.items {
-                    html.push_fragment(&crate::admin::awos::projection(item));
+                    html.push_fragment(&super::awos::projection(item));
                 }
                 render_cache(&mut html, s, &order, now)?;
                 html.push_markup("</section>");
