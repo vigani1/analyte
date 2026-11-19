@@ -10,6 +10,7 @@ use analyte_model::{OrderState, Reason};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
 mod actions;
+mod logout;
 mod overview;
 mod pages;
 mod removal;

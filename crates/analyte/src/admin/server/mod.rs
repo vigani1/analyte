@@ -192,6 +192,7 @@ fn router(state: Arc<Context>) -> Router {
         .route("/", get(super::overview::show))
         .route(super::view::STYLESHEET, get(super::view::stylesheet))
         .route("/login", get(login_page).post(login))
+        .route("/logout", post(logout))
         .route(
             "/retention",
             get(super::pages::retention::show).post(super::pages::retention::hold),
@@ -491,5 +492,31 @@ async fn login(
     response
         .headers_mut()
         .insert(header::LOCATION, header::HeaderValue::from_static("/"));
+    response
+}
+
+/// POST /logout: the dispatcher already checked the session's CSRF token. Ends
+/// the session, clears its cookie and returns to the sign-in page. Sign-in is
+/// not audited, so sign-out is not either.
+async fn logout(
+    State(state): State<Arc<Context>>,
+    Extension(session): Extension<Arc<Session>>,
+) -> Response {
+    if let Err(error) = state.sessions.end(&session) {
+        return super::view::refusal(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "You cannot sign out right now",
+            "Analyte cannot check browser sessions any more. Restart Analyte; that signs everyone out.",
+            error,
+        );
+    }
+    let mut response = StatusCode::SEE_OTHER.into_response();
+    response.headers_mut().insert(
+        header::SET_COOKIE,
+        header::HeaderValue::from_static(Token::CLEARED_COOKIE),
+    );
+    response
+        .headers_mut()
+        .insert(header::LOCATION, header::HeaderValue::from_static("/login"));
     response
 }
