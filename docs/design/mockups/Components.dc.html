@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Analyte design system · Components</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/2679076d2049d0720ac5104465671ab9">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=Instrument+Sans:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="sheet" data-theme="{{theme}}" style="min-height: 100vh; box-sizing: border-box; padding: 56px 64px 80px; background: var(--bg); color: var(--text); font-family: var(--font-sans); font-size: 14px; line-height: 1.45; display: flex; flex-direction: column; gap: 40px; position: relative">
+
+<header style="display: flex; flex-direction: column; gap: 8px">
+<p class="eyebrow">Analyte design system · {{themeName}}</p>
+<h1 style="margin: 0; font-size: 40px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.05">Components</h1>
+<p class="muted" style="margin: 0; font-size: 15px; max-width: 760px">Plain HTML + the classes in <span class="mono">analyte.css</span>. Class names are shown under each block.</p>
+</header>
+
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px; align-items: start">
+
+<section class="section">
+<h2 class="label">Buttons</h2>
+<div class="card card--pad stack">
+<div class="cluster"><button type="button" class="btn btn--primary">Add keys</button><button type="button" class="btn btn--outline">Check connection</button><button type="button" class="btn btn--quiet">Details</button><button type="button" class="btn btn--danger">Remove</button></div>
+<div class="cluster"><button type="button" class="btn btn--primary btn--sm">Process again</button><button type="button" class="btn btn--outline btn--sm">Mark resolved</button><button type="button" class="btn btn--danger-quiet btn--sm">Remove</button><button type="button" class="btn btn--primary btn--sm" disabled="{{ true }}">Next</button></div>
+<p class="mono subtle" style="margin: 0; font-size: 12px">.btn · --primary --outline --quiet --danger --danger-quiet · --sm --lg · [disabled]</p>
+</div>
+</section>
+
+<section class="section">
+<h2 class="label">Status & live indicator</h2>
+<div class="card card--pad stack">
+<div class="cluster">
+<span class="status status--good"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.ok}}"></path></svg>Connected</span>
+<span class="status status--off"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.wait}}"></path></svg>Waiting for the machine</span>
+<span class="status status--bad"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.bad}}"></path></svg>Port not open</span>
+<span class="status status--warn"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.warn}}"></path></svg>2 to review</span>
+</div>
+<div class="cluster" style="gap: 20px">
+<span class="live tone-good" style="font-weight: 600"><span class="live-dot"></span>Live</span>
+<span class="live" style="font-weight: 600"><span class="live-dot live-dot--bad"></span><span class="tone-bad">Engine stopped</span></span>
+<span class="engine" style="margin: 0"><span class="live-dot"></span><span class="engine__text"><span class="engine__title">Engine running</span><span class="engine__meta">Live · 10:45:12</span></span></span>
+</div>
+<p class="mono subtle" style="margin: 0; font-size: 12px">.status--good|warn|bad|off · .live + .live-dot (pulse) · .engine</p>
+</div>
+</section>
+</div>
+
+<section class="section">
+<h2 class="label">Verdict + to-do list</h2>
+<section class="verdict verdict--bad">
+<div class="verdict__head"><span class="verdict__icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.bad}}"></path></svg></span><div><p class="verdict__title">2 things need you</p><p class="verdict__sub">Results are kept safely while you fix these.</p></div></div>
+<ol class="todo">
+<li><span class="todo__n">01</span><div class="todo__body"><svg class="icon tone-bad" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.bad}}"></path></svg><div><p class="todo__kind tone-bad">Problem</p><p class="todo__title">Chemistry analyzer: cable not connected</p><p class="todo__detail">Check the cable at the back of the analyzer.</p></div></div><button type="button" class="btn btn--outline">Check connection</button></li>
+<li><span class="todo__n">02</span><div class="todo__body"><svg class="icon tone-warn" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.warn}}"></path></svg><div><p class="todo__kind tone-warn">Warning</p><p class="todo__title">2 items need review</p><p class="todo__detail">Kept safely, not processed yet.</p></div></div><button type="button" class="btn btn--outline">Review items</button></li>
+</ol>
+</section>
+<section class="verdict verdict--good"><div class="verdict__head"><span class="verdict__icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.ok}}"></path></svg></span><div><p class="verdict__title">All good</p><p class="verdict__sub">5 machines connected. Results are flowing.</p></div></div></section>
+<p class="mono subtle" style="margin: 0; font-size: 12px">.verdict--good|warn|bad > .verdict__head · .todo > li (.todo__n, .todo__body, .btn)</p>
+</section>
+
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px; align-items: start">
+<section class="section">
+<h2 class="label">Alerts</h2>
+<div class="stack">
+<div class="alert alert--good"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.ok}}"></path></svg><div><p class="alert__title">Receiving data, looks like ASTM ✓</p><p class="alert__text">You can go to the next step.</p></div><span></span></div>
+<div class="alert alert--warn"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.warn}}"></path></svg><div><p class="alert__title">Nothing received yet</p><p class="alert__text">Check the cable and the machine’s host settings.</p></div><span></span></div>
+<div class="alert alert--bad"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.bad}}"></path></svg><div><p class="alert__title">Cannot deliver to Main lab app</p><p class="alert__text">The API key and signing key are missing.</p></div><button type="button" class="btn btn--primary btn--sm">Add keys</button></div>
+<div class="alert alert--info"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12a10 10 0 1 0 20 0a10 10 0 1 0-20 0 M12 16v-4 M12 8h.01"></path></svg><div><p class="alert__title">Keys are entered once</p><p class="alert__text">They’re never shown again after saving.</p></div><span></span></div>
+<p class="mono subtle" style="margin: 0; font-size: 12px">.alert--good|warn|bad|info > .icon, div, action</p>
+</div>
+</section>
+
+<section class="section">
+<h2 class="label">“What to do” box</h2>
+<div class="stack">
+<div class="whattodo"><p class="whattodo__text"><strong>What to do:</strong> add <span class="mono">XLT9</span> to this machine’s test list in Setup, then process it again.</p><div class="whattodo__actions"><button type="button" class="btn btn--primary btn--sm">Process again</button><button type="button" class="btn btn--outline btn--sm">Mark resolved</button></div></div>
+<p class="mono subtle" style="margin: 0; font-size: 12px">.whattodo > .whattodo__text + .whattodo__actions — always one plain sentence and the main action right there.</p>
+</div>
+<h2 class="label" style="margin-top: 16px">Empty state</h2>
+<div class="card"><div class="empty" style="padding: 32px 20px"><span class="empty__mark"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg></span><p class="empty__title">Nothing needs review.</p><p class="empty__text">When Analyte can’t handle something on its own, it keeps it here for you.</p></div></div>
+<p class="mono subtle" style="margin: 0; font-size: 12px">.empty > .empty__mark, .empty__title, .empty__text</p>
+</section>
+</div>
+
+<section class="section">
+<h2 class="label">Live feed line</h2>
+<ol class="card feed">
+<li class="feed__line feed__line--new"><time class="feed__time">10:45:12</time><svg class="icon tone-warn" viewBox="0 0 24 24" role="img" aria-label="Warning"><path d="{{ic.warn}}"></path></svg><span class="feed__text"><b>Needs review</b> <span class="muted">– 1 item added</span></span><a class="link" href="#">Open</a></li>
+<li class="feed__line"><time class="feed__time">10:43:37</time><svg class="icon tone-good" viewBox="0 0 24 24" role="img" aria-label="Done"><path d="{{ic.ok}}"></path></svg><span class="feed__text"><b>Immunoassay analyzer</b> <span class="muted">– sample 261119-031 – 8 results – sent to Outpatient lab app</span></span><span></span></li>
+<li class="feed__line"><time class="feed__time">10:41:20</time><svg class="icon tone-bad" viewBox="0 0 24 24" role="img" aria-label="Problem"><path d="{{ic.bad}}"></path></svg><span class="feed__text"><b>Chemistry analyzer</b> <span class="muted">– disconnected</span></span><span></span></li>
+</ol>
+<p class="mono subtle" style="margin: 0; font-size: 12px">.feed > .feed__line (.feed__time, .icon, .feed__text, link) · .feed__line--new slides in over 250 ms. Never patient names or result values.</p>
+</section>
+
+<section class="section">
+<h2 class="label">Signal path</h2>
+<div class="card"><div class="path-scroll"><div class="path" style="min-width: 0">
+<ul class="path__col">
+<li class="path__item"><a class="node" href="#"><span class="node__head"><svg class="icon icon--md tone-good" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.ok}}"></path></svg><span class="node__name">Hematology analyzer</span><span class="node__model">HM-5</span></span><span class="node__meta"><span class="tone-good" style="font-weight: 600">Connected</span><span class="subtle">·</span><span class="mono">1 min ago</span></span></a><span class="wire" aria-hidden="true"><span class="wire__dot"></span></span></li>
+<li class="path__item"><a class="node" href="#"><span class="node__head"><svg class="icon icon--md tone-off" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.wait}}"></path></svg><span class="node__name">Urine analyzer</span><span class="node__model">UR-40</span></span><span class="node__meta"><span class="tone-off" style="font-weight: 600">Waiting</span><span class="subtle">·</span><span class="mono subtle">Nothing yet</span></span></a><span class="wire wire--wait" aria-hidden="true"></span></li>
+<li class="path__item"><a class="node node--bad" href="#"><span class="node__head"><svg class="icon icon--md tone-bad" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.bad}}"></path></svg><span class="node__name">Chemistry analyzer</span><span class="node__model">XC-200</span></span><span class="node__meta"><span class="tone-bad" style="font-weight: 600">Disconnected</span></span></a><span class="wire wire--cut" aria-hidden="true"><span class="wire__break"><svg class="icon" viewBox="0 0 24 24"><path d="M17 7 7 17 M7 7l10 10"></path></svg></span></span></li>
+</ul>
+<div class="bus"><span class="live-dot live-dot--accent"></span><span class="bus__label">Analyte</span></div>
+<ul class="path__col path__col--out"><li class="path__item"><span class="wire" aria-hidden="true"><span class="wire__dot"></span><span class="wire__dot wire__dot--2"></span></span><div class="node node--lab"><div class="node__head"><span class="node__name">Outpatient lab app</span><span class="status status--good"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.ok}}"></path></svg>Receiving</span></div><p class="node__line">Last sent <span class="mono">10:43</span></p></div></li></ul>
+</div></div></div>
+<p class="mono subtle" style="margin: 0; font-size: 12px">.path > .path__col (.path__item > .node + .wire) · .bus · .path__col--out · .wire--wait|cut · .wire__dot(--2,--3) · .wire__break</p>
+</section>
+
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px; align-items: start">
+<section class="section">
+<h2 class="label">Forms</h2>
+<div class="card card--pad stack">
+<div class="field"><label class="field__label" for="c-in">Name in Analyte</label><input id="c-in" class="input" value="Chemistry analyzer 2"><span class="field__hint">How it appears everywhere in the app.</span></div>
+<div class="field"><label class="field__label" for="c-sel">Send results to</label><select id="c-sel" class="select"><option>Main lab app</option></select></div>
+<div class="field"><label class="field__label" for="c-key">Signing key</label><input id="c-key" class="input mono" type="password" placeholder="Paste the signing key"><span class="field__error"><svg class="icon icon--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.bad}}"></path></svg>Needed before Analyte can send results.</span></div>
+<div class="secret"><span class="status status--good"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.ok}}"></path></svg>Set on 19 Nov</span><span class="secret__dots">••••••••</span><span class="spacer"></span><button type="button" class="btn btn--outline btn--sm">Replace</button></div>
+<label class="check"><input type="checkbox" checked="{{ true }}">Hematology analyzer</label>
+<p class="mono subtle" style="margin: 0; font-size: 12px">.field (.field__label, .field__hint, .field__error) · .input .select .textarea · .secret · .check</p>
+</div>
+</section>
+
+<section class="section">
+<h2 class="label">Choices, segmented, chips</h2>
+<div class="card card--pad stack">
+<ul class="choices">
+<li><label class="choice"><input type="radio" name="cm" checked="{{ true }}"><span><span class="choice__title">Chemistry analyzer</span> <span class="choice__meta">XC-300</span></span><span class="status status--good"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.ok}}"></path></svg>Ready</span></label></li>
+<li><label class="choice"><input type="radio" name="cm"><span><span class="choice__title">Coagulation analyzer</span> <span class="choice__meta">CG-7</span></span><span class="status status--warn"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.clock}}"></path></svg>Not tested yet</span></label></li>
+<li><label class="choice"><input type="radio" name="cm" disabled="{{ true }}"><span><span class="choice__title">Blood gas analyzer</span> <span class="choice__meta">BG-3</span></span><span class="status status--off"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.off}}"></path></svg>Not ready yet</span></label></li>
+</ul>
+<div class="seg" role="group" aria-label="Connection"><button type="button" aria-pressed="true">Cable or USB</button><button type="button" aria-pressed="false">Network</button><button type="button" aria-pressed="false">Shared folder</button></div>
+<div class="chips"><button type="button" class="chip" aria-pressed="true">All</button><button type="button" class="chip" aria-pressed="false">Results <span class="chip__n">182</span></button><button type="button" class="chip" aria-pressed="false">Problems <span class="chip__n">5</span></button></div>
+<p class="mono subtle" style="margin: 0; font-size: 12px">.choices > .choice (radio, :checked, :disabled) · .seg [aria-pressed] · .chips > .chip [aria-pressed]</p>
+</div>
+</section>
+</div>
+
+<section class="section">
+<h2 class="label">Stepper</h2>
+<div class="card card--pad stack">
+<ol class="stepper"><li class="step step--done"><span class="step__n"><svg class="icon icon--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>Step 1 · done</span><span class="step__name">Machine</span></li><li class="step step--done"><span class="step__n"><svg class="icon icon--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>Step 2 · done</span><span class="step__name">Connection</span></li><li class="step" aria-current="step"><span class="step__n">Step 3</span><span class="step__name">Test</span></li><li class="step"><span class="step__n">Step 4</span><span class="step__name">Save</span></li></ol>
+<div class="wizard-foot"><button type="button" class="btn btn--outline">Back</button><span class="subtle" style="font-size: 13px">Step 3 of 4</span><button type="button" class="btn btn--primary">Next</button></div>
+<p class="mono subtle" style="margin: 0; font-size: 12px">.stepper > .step (--done, [aria-current=step]) · .wizard-foot — the bar slides to the next step over 250 ms</p>
+</div>
+</section>
+
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px; align-items: start">
+<section class="section">
+<h2 class="label">Table · numbers line up</h2>
+<div class="card table-wrap"><table class="table">
+<thead><tr><th scope="col">Time</th><th scope="col">Sample</th><th scope="col" class="right">Results</th><th scope="col">Outcome</th></tr></thead>
+<tbody>
+<tr><td class="num">10:43:37</td><td class="num">261119-031</td><td class="num right">8</td><td><span class="status status--good"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.ok}}"></path></svg>Delivered</span></td></tr>
+<tr><td class="num">10:40:05</td><td class="num">261119-041</td><td class="num right">6</td><td><span class="status status--warn"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.warn}}"></path></svg>Will retry</span></td></tr>
+<tr><td class="num">09:47:03</td><td class="num">261119-030</td><td class="num right">12</td><td><span class="status status--good"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.ok}}"></path></svg>Delivered</span></td></tr>
+</tbody></table></div>
+<p class="mono subtle" style="margin: 0; font-size: 12px">.table · .num / time (mono, tabular) · .right · .cell-main / .cell-sub</p>
+</section>
+
+<section class="section">
+<h2 class="label">Loading, details, countdown</h2>
+<div class="card card--pad stack">
+<div class="stack" style="gap: 8px"><span class="skeleton" style="width: 60%"></span><span class="skeleton" style="width: 85%"></span><span class="skeleton" style="width: 40%"></span></div>
+<div style="display: flex; align-items: center; gap: 20px"><span class="countdown">0:18</span><div class="meter" style="flex: 1"><div class="meter__fill" style="width: 40%"></div></div></div>
+<details class="details"><summary><svg class="icon icon--md" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg>Details</summary><pre>&lt;STX&gt;1H|\^&amp;|||XC-300</pre></details>
+<p class="mono subtle" style="margin: 0; font-size: 12px">.skeleton · .countdown + .meter > .meter__fill · .details</p>
+</div>
+</section>
+</div>
+
+<section class="section">
+<h2 class="label">Dialog</h2>
+<div style="position: relative; padding: 32px; border-radius: 6px; background: var(--overlay); display: grid; place-items: center">
+<div class="dialog" role="dialog" aria-labelledby="c-dlg" style="animation: none">
+<h3 id="c-dlg" class="dialog__title">Remove Hematology analyzer?</h3>
+<p class="dialog__text">Analyte stops listening to it. Its 3 waiting results will still be sent.</p>
+<ul class="dialog__list"><li><svg class="icon icon--md tone-warn" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.warn}}"></path></svg>1 order has no outcome yet.</li></ul>
+<div class="dialog__actions"><button type="button" class="btn btn--outline">Keep</button><button type="button" class="btn btn--danger">Remove</button></div>
+</div>
+</div>
+<p class="mono subtle" style="margin: 0; font-size: 12px">.scrim > .dialog (.dialog__title, .dialog__text, .dialog__list, .dialog__actions) · safe choice on the left, outlined</p>
+</section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"$preview":{"width":1280,"height":2600}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const dark = this.props.dark ?? false;
+    const ic = {
+      ok: 'M2 12a10 10 0 1 0 20 0a10 10 0 1 0-20 0 M8.5 12.5l2.5 2.5 4.5-5',
+      warn: 'm21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z M12 9v4 M12 17h.01',
+      bad: 'M2.586 16.726A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2h6.624a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586z M15 9l-6 6 M9 9l6 6',
+      off: 'M2 12a10 10 0 1 0 20 0a10 10 0 1 0-20 0 M4.9 4.9l14.2 14.2',
+      wait: 'M5 22h14 M5 2h14 M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22 M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2',
+      clock: 'M2 12a10 10 0 1 0 20 0a10 10 0 1 0-20 0 M12 6v6l4 2'
+    };
+    return { ic, theme: dark ? 'dark' : 'light', themeName: dark ? 'dark' : 'light' };
+  }
+}
+</script>
+</body>
+</html>

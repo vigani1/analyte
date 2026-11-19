@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Analyte · Needs review</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/2679076d2049d0720ac5104465671ab9">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=Instrument+Sans:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="app" data-theme="{{theme}}" style="font-family: var(--font-sans); color: var(--text)">
+<dc-import name="Sidebar" active="review" review="{{count}}" hint-size="232px,100vh"></dc-import>
+<main class="main">
+
+<header class="page-head">
+<div>
+<h1>Needs review</h1>
+<p class="page-head__lede">Messages and results Analyte kept but couldn’t process on its own. Nothing is ever deleted.</p>
+</div>
+<div class="chips" role="group" aria-label="Show">
+<button type="button" class="chip" aria-pressed="true">Open <span class="chip__n">{{count}}</span></button>
+<button type="button" class="chip" aria-pressed="false">Resolved <span class="chip__n">14</span></button>
+</div>
+</header>
+
+<sc-if value="{{empty}}" hint-placeholder-val="{{ false }}">
+<div class="card">
+<div class="empty">
+<span class="empty__mark"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg></span>
+<h2 class="empty__title">Nothing needs review.</h2>
+<p class="empty__text">When Analyte can’t handle a message or result on its own, it keeps it here for you, with what to do next.</p>
+<a class="link" href="#resolved">See resolved items (14)</a>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{hasItems}}" hint-placeholder-val="{{ true }}">
+<div class="stack stack--lg">
+
+<article class="card anim-in" aria-labelledby="rv-1">
+<div class="card__head">
+<span class="status status--warn"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.warn}}"></path></svg>Test not in this machine’s test list</span>
+<span class="spacer"></span>
+<span class="subtle" style="font-size: 13px">New · arrived <time>10:45</time></span>
+</div>
+<div class="card__body stack">
+<h2 id="rv-1" style="margin: 0; font-size: 15px; font-weight: 600">Chemistry analyzer · sample <span class="mono">261119-012</span></h2>
+<p class="muted" style="margin: 0">The machine sent a result for test code <span class="mono">XLT9</span>, which isn’t in the test list set up for this machine. The other 2 results from this sample were sent.</p>
+<div class="whattodo">
+<p class="whattodo__text"><strong>What to do:</strong> add <span class="mono">XLT9</span> to this machine’s test list in Setup, then process it again.</p>
+<div class="whattodo__actions"><button type="button" class="btn btn--primary btn--sm">Process again</button><button type="button" class="btn btn--outline btn--sm">Mark resolved</button><a class="btn btn--quiet btn--sm" href="#review-detail">Details</a></div>
+</div>
+</div>
+</article>
+
+<article class="card" aria-labelledby="rv-2">
+<div class="card__head">
+<span class="status status--bad"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.bad}}"></path></svg>Lab app already has different content</span>
+<span class="spacer"></span>
+<span class="subtle" style="font-size: 13px">Arrived <time>09:58</time></span>
+</div>
+<div class="card__body stack">
+<h2 id="rv-2" style="margin: 0; font-size: 15px; font-weight: 600">Immunoassay analyzer · sample <span class="mono">261119-008</span></h2>
+<p class="muted" style="margin: 0">Outpatient lab app already has results for this sample, and they’re different from what the machine sent this time.</p>
+<div class="whattodo">
+<p class="whattodo__text"><strong>What to do:</strong> check with the lab app team which version is right. Send again to replace it, or mark resolved to keep the lab app’s version.</p>
+<div class="whattodo__actions"><button type="button" class="btn btn--primary btn--sm">Send again</button><button type="button" class="btn btn--outline btn--sm">Mark resolved</button><a class="btn btn--quiet btn--sm" href="#review-detail">Details</a></div>
+</div>
+</div>
+</article>
+
+<section class="section" aria-labelledby="rv-done">
+<h2 id="rv-done" class="label">Resolved today</h2>
+<ul class="card rows">
+<li class="row">
+<svg class="icon tone-good" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.ok}}"></path></svg>
+<span class="row__main"><b style="font-weight: 600">Lab app refused a result</b> <span class="muted">· Coagulation analyzer · <span class="mono">261119-004</span></span><br><span class="subtle" style="font-size: 13px">Resolved by Lab manager at <time>09:20</time>: “Re-sent after the lab app restarted.”</span></span>
+<a class="link" href="#review-detail">History</a>
+</li>
+<li class="row">
+<svg class="icon tone-good" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.ok}}"></path></svg>
+<span class="row__main"><b style="font-weight: 600">Test not in this machine’s test list</b> <span class="muted">· Hematology analyzer · <span class="mono">261119-002</span></span><br><span class="subtle" style="font-size: 13px">Processed again by Lab manager at <time>08:41</time> after adding the test.</span></span>
+<a class="link" href="#review-detail">History</a>
+</li>
+</ul>
+</section>
+
+</div>
+</sc-if>
+
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"empty":{"editor":"boolean","default":false},"$preview":{"width":1280,"height":1100}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const dark = this.props.dark ?? false;
+    const empty = this.props.empty ?? false;
+    const ic = {
+      ok: 'M2 12a10 10 0 1 0 20 0a10 10 0 1 0-20 0 M8.5 12.5l2.5 2.5 4.5-5',
+      warn: 'm21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z M12 9v4 M12 17h.01',
+      bad: 'M2.586 16.726A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2h6.624a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586z M15 9l-6 6 M9 9l6 6'
+    };
+    return { theme: dark ? 'dark' : 'light', ic, empty, hasItems: !empty, count: empty ? '0' : '2' };
+  }
+}
+</script>
+</body>
+</html>

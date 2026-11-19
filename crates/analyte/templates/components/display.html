@@ -1,0 +1,148 @@
+{#- Macros that show values: time, exact values on hover, words with times, status, the verdict with its to-do list, wires and their legend, the signal path with its nodes, and figures. -#}
+{%- import "components/icon.html" as draw %}
+{%- import "components/feedback.html" as feedback %}
+{%- import "components/forms.html" as forms %}
+
+{#- A time people read, its exact value on hover; a stored value that is no date shows as text. -#}
+{%- macro time(moment) -%}
+{%- if moment.datetime.is_empty() %}{{ moment.shown }}{% else %}<time datetime="{{ moment.datetime }}" title="{{ moment.exact }}">{{ moment.shown }}</time>{% endif -%}
+{%- endmacro %}
+
+{#- A number people read, with its exact value on hover. -#}
+{%- macro exact(shown, exact) -%}
+<span class="num" title="{{ exact }}">{{ shown }}</span>
+{%- endmacro %}
+
+{#- Words with times in them; each time shows as a time people read. -#}
+{%- macro words(line) -%}
+{%- for part in line.parts() -%}
+{%- match part -%}
+{%- when Part::Text(text) -%}{{ text }}
+{%- when Part::Time(moment) -%}{% call time(moment) %}{% endcall %}
+{%- endmatch -%}
+{%- endfor -%}
+{%- endmacro %}
+
+{#- A status: always an icon and a word, never colour alone. -#}
+{%- macro status(tone, word) -%}
+<span class="status status--{{ tone.class() }}">{% call draw::icon(tone.icon(), "") %}{% endcall %}{{ word }}</span>
+{%- endmacro %}
+
+{#- The answer to "is everything OK?" and, when not, the numbered things with their fix. -#}
+{%- macro verdict(verdict) -%}
+<section class="verdict verdict--{{ verdict.tone.class() }}" aria-labelledby="ov-verdict" role="status">
+<div class="verdict__head">
+<span class="verdict__icon">{% call draw::icon(verdict.tone.icon(), "") %}{% endcall %}</span>
+<div class="verdict__text"><h2 id="ov-verdict" class="verdict__title">{{ verdict.title }}</h2><p class="verdict__sub">{{ verdict.sub }}</p></div>
+</div>
+{%- if !verdict.todo.is_empty() %}
+<ol class="todo">
+{%- for item in verdict.todo %}
+<li>
+<span class="todo__n">{{ item.number }}</span>
+<div class="todo__body">{% call draw::icon(item.tone.icon(), "tone-" ~ item.tone.class()) %}{% endcall %}<div class="todo__text"><p class="todo__kind tone-{{ item.tone.class() }}">{{ item.tone.word() }}</p><p class="todo__title">{{ item.title }}</p>
+{%- if let Some(detail) = item.detail %}<p class="todo__detail">{{ detail }}</p>{% endif %}</div></div>
+{% call forms::link_button(item.href, item.label, "btn--outline") %}{% endcall %}
+</li>
+{%- endfor %}
+</ol>
+{%- endif %}
+</section>
+{%- endmacro %}
+
+{#- The line between a node and the bus: live with travelling dots (a second one when `pair`), waiting, or cut with a break mark. -#}
+{%- macro wire(wire, dot, mark, pair) -%}
+<span class="wire {{ wire.class() }}" aria-hidden="true">
+{%- match wire %}
+{%- when Wire::Live %}<span class="wire__dot {{ dot }}"></span>{% if pair %}<span class="wire__dot wire__dot--2"></span>{% endif %}
+{%- when Wire::Wait %}
+{%- when Wire::Cut %}<span class="wire__break">{% call draw::icon(mark, "") %}{% endcall %}</span>
+{%- endmatch -%}
+</span>
+{%- endmacro %}
+
+{#- The key to the wires: one sample line per kind, with its word. -#}
+{%- macro legend() -%}
+<ul class="legend" aria-label="Line key">
+{%- for wire in Wire::ALL %}<li><span class="{{ wire.legend_class() }}"></span>{{ wire.word() }}</li>{% endfor -%}
+</ul>
+{%- endmacro %}
+
+{#- One set-up machine on the signal path, linking to the Machines page. -#}
+{%- macro machine_node(machine) -%}
+<li class="path__item">
+<a class="node{% if machine.wire == Wire::Cut %} node--bad{% endif %}" href="/machines">
+<span class="node__head">{% call draw::icon(machine.tone.icon(), "icon--md tone-" ~ machine.tone.class()) %}{% endcall %}<span class="node__name" title="{{ machine.id }}">{{ machine.id }}</span>{% if let Some(model) = machine.model %}<span class="node__model">{{ model }}</span>{% endif %}</span>
+<span class="node__meta"><span class="node__state tone-{{ machine.tone.class() }}">{{ machine.state }}</span><span class="subtle" aria-hidden="true">·</span>{% if let Some(last) = machine.last_data %}<span class="mono"><span class="sr-only">Last data </span>{% call time(last) %}{% endcall %}</span>{% else %}<span class="mono subtle">Nothing yet</span>{% endif %}<span class="subtle" aria-hidden="true">·</span><span class="with-icon muted">{% call draw::icon(machine.kind_icon, "icon--sm") %}{% endcall %}{{ machine.kind }}</span></span>
+{%- if let Some(line) = machine.line %}<span class="node__note">{{ line }}</span>{% endif %}
+</a>
+{% call wire(machine.wire, machine.dot, crate::admin::view::icon::Icon::Cross, false) %}{% endcall %}
+</li>
+{%- endmacro %}
+
+{#- One lab app on the signal path, with what to do when Analyte cannot deliver to it. -#}
+{%- macro lab_node(lab) -%}
+<li class="path__item">
+{% call wire(lab.wire, "", lab.mark, true) %}{% endcall %}
+<div class="node node--lab{% if lab.wire == Wire::Cut %} node--bad{% endif %}">
+<div class="node__head"><span class="node__name" title="{{ lab.name }}">{{ lab.name }}</span>{% call status(lab.tone, lab.status) %}{% endcall %}</div>
+{%- for line in lab.lines %}
+<p class="node__line">{% call words(line) %}{% endcall %}</p>
+{%- endfor %}
+{%- if !lab.support.is_empty() %}
+{% call feedback::support("Details for support", lab.support.as_slice()) %}{% endcall %}
+{%- endif %}
+{%- if let Some(todo) = lab.todo %}
+{% call feedback::whattodo(todo, crate::admin::view::Tab::LabApps.href(), "Add keys") %}{% endcall %}
+{%- endif %}
+</div>
+</li>
+{%- endmacro %}
+
+{#- A figure's small text after its value, with a time when it has one. -#}
+{%- macro aside(figure) -%}
+{%- if !figure.aside.is_empty() %} <span class="figure__aside">{{ figure.aside }}{% if let Some(moment) = figure.aside_when %} {% call time(moment) %}{% endcall %}{% endif %}</span>{% endif -%}
+{%- endmacro %}
+
+{#- One figure: a number or time in mono, or a worded state with its icon. -#}
+{%- macro figure(figure) -%}
+<div class="figure"><dt>{{ figure.label }}</dt>
+{%- if let Some(tone) = figure.tone %}
+<dd class="figure__text">{% call draw::icon(tone.icon(), "icon--md tone-" ~ tone.class()) %}{% endcall %}{{ figure.value }}{% call aside(figure) %}{% endcall %}</dd>
+{%- else %}
+<dd>{% if let Some(moment) = figure.when %}{% call time(moment) %}{% endcall %}{% else %}{{ figure.value }}{% endif %}{% call aside(figure) %}{% endcall %}</dd>
+{%- endif %}
+</div>
+{%- endmacro %}
+
+{#- The signal path card: set-up machines, the Analyte bus and lab apps, an empty state for a column with nothing in it, and the figures below. -#}
+{%- macro signal_path(machines, labs, figures) -%}
+<div class="card">
+<div class="path-scroll">
+<div class="path">
+<ul class="path__col" aria-label="Machines">
+{%- for machine in machines %}
+{% call machine_node(machine) %}{% endcall %}
+{%- else %}
+<li class="path__item">{% call feedback::empty("No machine is running", "Add or set one up on the Setup page.") %}{% call forms::link_button(crate::admin::view::Tab::Setup.href(), "Setup", "btn--outline btn--sm") %}{% endcall %}{% endcall %}</li>
+{%- endfor %}
+</ul>
+<div class="bus"><span class="live-dot live-dot--accent live-dot--still"></span><span class="bus__label">Analyte · reads · keeps a copy · sends</span></div>
+<ul class="path__col path__col--out" aria-label="Lab apps">
+{%- for lab in labs %}
+{% call lab_node(lab) %}{% endcall %}
+{%- else %}
+<li class="path__item">{% call feedback::empty("No lab app", "No running machine sends to a lab app.") %}{% endcall %}</li>
+{%- endfor %}
+</ul>
+</div>
+</div>
+{%- if !figures.is_empty() %}
+<dl class="figures figures--ruled">
+{%- for item in figures %}
+{% call figure(item) %}{% endcall %}
+{%- endfor %}
+</dl>
+{%- endif %}
+</div>
+{%- endmacro %}

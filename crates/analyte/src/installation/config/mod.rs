@@ -33,6 +33,9 @@ pub struct Machine {
     /// Exact reproducible machine configuration.
     pub(crate) snapshot: Validated,
     pub(crate) listener: Option<std::net::TcpListener>,
+    /// The machine definition file it was loaded from; the admin page reads its
+    /// model name from the definition's folder.
+    pub(crate) definition: PathBuf,
     /// The link light this machine's runtime writes and the admin page reads.
     pub(crate) status: crate::machine::link::status::Reporter,
 }
@@ -1028,5 +1031,6 @@ fn load_machine(entry: Entry, files: &Files, loading: &Loading<'_>) -> Result<Ma
         ),
         snapshot,
         listener: None,
+        definition: files.definition.clone(),
     })
 }

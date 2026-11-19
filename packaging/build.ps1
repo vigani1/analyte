@@ -53,6 +53,8 @@ Copy-Item -LiteralPath machines -Destination (Join-Path $stage 'machines') -Recu
 $stage = (Resolve-Path -LiteralPath $stage).ProviderPath
 
 if ($Platform -eq 'windows') {
+    # The installer's and the Apps list's icon; docs/design/README.md says how it is made.
+    Copy-Item -LiteralPath crates/analyte/assets/icons/analyte.ico -Destination $stage
     Compress-Archive -Path $stage -DestinationPath (Join-Path $output "$name.zip")
     $installer = Get-Tool $InnoSetup 'inno-setup'
     $inno = Join-Path $ToolDirectory 'inno-setup\portable'

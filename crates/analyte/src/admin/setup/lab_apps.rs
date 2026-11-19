@@ -14,7 +14,7 @@ use crate::admin::{
     markup::Markup,
     server::Context,
     sessions::Session,
-    view::{self, plain},
+    view::{self, format},
 };
 use crate::installation::{
     config::{
@@ -868,7 +868,7 @@ fn blockers(known: &Known, waiting: Result<u64, &SetupError>) -> Vec<String> {
         Ok(0) => {}
         Ok(count) => why.push(format!(
             "{} still wait for it. They are delivered first; remove it when the Overview shows nothing waiting.",
-            plain::amount(count, "result or order message", "results or order messages")
+            format::amount(count, "result or order message", "results or order messages")
         )),
         Err(error) => why.push(format!(
             "What still waits for it could not be counted ({error}), so it is kept."

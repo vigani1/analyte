@@ -71,6 +71,15 @@ impl Sessions {
         entries.push(session.clone());
         Ok(session)
     }
+
+    /// Ends `session`: its cookie and CSRF token stop working at once.
+    pub(super) fn end(&self, session: &Session) -> Result<(), super::Error> {
+        self.entries
+            .lock()
+            .map_err(|_| super::Error::AdminSessionLockPoisoned)?
+            .retain(|s| !s.id.matches(session.id.form_value()));
+        Ok(())
+    }
 }
 
 #[cfg(test)]

@@ -40,7 +40,7 @@ runners:
 
 | Asset | Contents |
 | --- | --- |
-| `analyte-<tag>-x86_64-pc-windows-msvc.zip` | analyte.exe, machines, packaging/windows, LICENSE, README.md |
+| `analyte-<tag>-x86_64-pc-windows-msvc.zip` | analyte.exe, analyte.ico, machines, packaging/windows, LICENSE, README.md |
 | `analyte-<tag>-x86_64-windows-setup.exe` | Click-through installer built with Inno Setup 6.7.4 from the same files |
 | `analyte-<tag>-x86_64-unknown-linux-gnu.tar.gz` | analyte, machines, packaging/linux, LICENSE, README.md |
 | `analyte_<version>-1_amd64.deb`, `analyte-<version>-1.x86_64.rpm` | Packages built with nfpm 2.48.0 from the same files |

@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Analyte · Lab apps</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/2679076d2049d0720ac5104465671ab9">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=Instrument+Sans:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="app" data-theme="{{theme}}" style="font-family: var(--font-sans); color: var(--text)">
+<dc-import name="Sidebar" active="labapps" hint-size="232px,100vh"></dc-import>
+<main class="main">
+
+<header class="page-head">
+<div>
+<h1>Lab apps</h1>
+<p class="page-head__lede">The lab software that receives results and sends orders.</p>
+</div>
+<a class="btn btn--primary" href="#labapp-edit"><svg class="icon icon--md" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14 M5 12h14"></path></svg>Add a lab app</a>
+</header>
+
+<div class="stack stack--lg">
+<article class="card card--bad" aria-labelledby="la-1">
+<div class="card__head" style="border-color: var(--bad-border)">
+<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.lab}}"></path></svg>
+<h2 id="la-1" class="card__title">Main lab app</h2>
+<span class="status status--bad" style="background: var(--surface)"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.bad}}"></path></svg>Cannot deliver</span>
+<span class="spacer"></span>
+<span class="mono subtle" style="font-size: 12.5px">Last error: keys missing, <time>10:44</time></span>
+</div>
+<div class="card__body stack">
+<dl class="kv">
+<dt>Address</dt><dd class="mono">https://lab-main.hospital.internal/api</dd>
+<dt>Used by</dt><dd>Chemistry analyzer, Hematology analyzer</dd>
+<dt>API key</dt><dd><span class="status status--bad"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.key}}"></path></svg>Missing</span></dd>
+<dt>Signing key</dt><dd><span class="status status--bad"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.key}}"></path></svg>Missing</span></dd>
+<dt>Results waiting</dt><dd><span class="mono" style="font-weight: 600">4</span> <span class="subtle">· oldest <time>10:31</time></span></dd>
+</dl>
+<div class="whattodo">
+<p class="whattodo__text"><strong>What to do:</strong> add the API key and signing key from your lab app team. The 4 waiting results go out right after.</p>
+<div class="whattodo__actions"><a class="btn btn--primary btn--sm" href="#labapp-edit">Add keys</a></div>
+</div>
+</div>
+<div class="card__foot" style="border-color: var(--bad-border)"><a class="btn btn--quiet btn--sm" href="#labapp-edit">Edit</a><button type="button" class="btn btn--quiet btn--sm" style="color: var(--bad-text)">Remove</button></div>
+</article>
+
+<article class="card" aria-labelledby="la-2">
+<div class="card__head">
+<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.lab}}"></path></svg>
+<h2 id="la-2" class="card__title">Outpatient lab app</h2>
+<span class="status status--good"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.ok}}"></path></svg>Receiving</span>
+<span class="spacer"></span>
+<span class="live tone-good mono" style="font-size: 12.5px"><span class="live-dot"></span>Last sent ✓ <time>10:43</time></span>
+</div>
+<div class="card__body">
+<dl class="kv">
+<dt>Address</dt><dd class="mono">https://lab-outpatient.hospital.internal/api</dd>
+<dt>Used by</dt><dd>Immunoassay analyzer, Coagulation analyzer, Urine analyzer</dd>
+<dt>API key</dt><dd><span class="status status--good"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.key}}"></path></svg>Set on 19 Nov</span></dd>
+<dt>Signing key</dt><dd><span class="status status--good"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.key}}"></path></svg>Set on 19 Nov</span></dd>
+<dt>Results waiting</dt><dd><span class="mono" style="font-weight: 600">0</span></dd>
+<dt>Order list</dt><dd>Up to date <span class="subtle">· checked <time>10:44</time></span></dd>
+</dl>
+</div>
+<div class="card__foot"><a class="btn btn--quiet btn--sm" href="#labapp-edit">Edit</a><button type="button" class="btn btn--quiet btn--sm" style="color: var(--bad-text)">Remove</button></div>
+</article>
+</div>
+
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"$preview":{"width":1280,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const ic = {
+      ok: 'M2 12a10 10 0 1 0 20 0a10 10 0 1 0-20 0 M8.5 12.5l2.5 2.5 4.5-5',
+      bad: 'M2.586 16.726A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2h6.624a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586z M15 9l-6 6 M9 9l6 6',
+      key: 'm15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4 M21 2l-9.6 9.6 M2 15.5a5.5 5.5 0 1 0 11 0a5.5 5.5 0 1 0-11 0',
+      lab: 'M4 2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Z M4 14h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2Z M6 6h.01 M6 18h.01'
+    };
+    return { theme: (this.props.dark ?? false) ? 'dark' : 'light', ic };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Analyte · More</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/2679076d2049d0720ac5104465671ab9">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=Instrument+Sans:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="app" data-theme="{{theme}}" style="font-family: var(--font-sans); color: var(--text)">
+<dc-import name="Sidebar" active="{{page}}" hint-size="232px,100vh"></dc-import>
+<main class="main">
+
+<sc-if value="{{isOrders}}" hint-placeholder-val="{{ true }}">
+<header class="page-head"><div><h1>Machine orders</h1><p class="page-head__lede">Orders Analyte passed from the lab apps to the machines, and what happened to them.</p></div>
+<div class="chips" role="group" aria-label="Show"><button type="button" class="chip" aria-pressed="true">All</button><button type="button" class="chip" aria-pressed="false">Unknown <span class="chip__n">1</span></button><button type="button" class="chip" aria-pressed="false">Cancelled <span class="chip__n">2</span></button></div></header>
+<div class="card table-wrap"><table class="table">
+<thead><tr><th scope="col">Time</th><th scope="col">Sample</th><th scope="col">Machine</th><th scope="col" class="right">Tests</th><th scope="col">Status</th><th scope="col"><span class="sr-only">Action</span></th></tr></thead>
+<tbody>
+<tr><td class="num">10:44</td><td class="num">261119-047</td><td>Immunoassay analyzer</td><td class="num right">4</td><td><span class="status status--off"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.send}}"></path></svg>Sending</span></td><td></td></tr>
+<tr><td class="num">10:42</td><td class="num">261119-033</td><td>Immunoassay analyzer</td><td class="num right">4</td><td><span class="status status--good"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>Sent</span></td><td></td></tr>
+<tr><td class="num">10:31</td><td class="num">261119-040</td><td>Hematology analyzer</td><td class="num right">5</td><td><span class="status status--good"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.ok}}"></path></svg>Done</span></td><td></td></tr>
+<tr><td class="num">10:12</td><td class="num">261119-021</td><td>Chemistry analyzer</td><td class="num right">8</td><td><span class="status status--warn"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.unknown}}"></path></svg>Unknown</span><div class="cell-sub" style="margin-top: 3px">The machine disconnected before confirming.</div></td><td class="right"><a class="link" href="#">Check</a></td></tr>
+<tr><td class="num">09:55</td><td class="num">261119-018</td><td>Coagulation analyzer</td><td class="num right">2</td><td><span class="status status--off"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.cancel}}"></path></svg>Cancelled</span></td><td class="right"><a class="link" href="#cancelled">Review</a></td></tr>
+<tr><td class="num">09:40</td><td class="num">261119-012</td><td>Chemistry analyzer</td><td class="num right">3</td><td><span class="status status--good"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.ok}}"></path></svg>Done</span></td><td></td></tr>
+</tbody></table></div>
+</sc-if>
+
+<sc-if value="{{isCancelled}}" hint-placeholder-val="{{ false }}">
+<header class="page-head"><div><h1>Cancelled by machine</h1><p class="page-head__lede">Orders a machine refused or cancelled. Check each one and tell the lab if a sample needs running again.</p></div></header>
+<ul class="stack" style="list-style: none; margin: 0; padding: 0">
+<li class="card"><div class="row" style="flex-wrap: wrap">
+<svg class="icon tone-off" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.cancel}}"></path></svg>
+<div class="row__main"><p style="margin: 0; font-weight: 600">Sample <span class="mono">261119-018</span> · Coagulation analyzer · 2 tests</p><p class="muted" style="margin: 2px 0 0; font-size: 13px">Machine said: “Sample not found on the rack.” Cancelled at <time>09:56</time>.</p></div>
+<div class="cluster"><button type="button" class="btn btn--outline btn--sm">Mark resolved</button></div>
+</div></li>
+<li class="card"><div class="row" style="flex-wrap: wrap">
+<svg class="icon tone-off" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.cancel}}"></path></svg>
+<div class="row__main"><p style="margin: 0; font-weight: 600">Sample <span class="mono">261119-009</span> · Immunoassay analyzer · 1 test</p><p class="muted" style="margin: 2px 0 0; font-size: 13px">Machine said: “Reagent not loaded.” Cancelled at <time>08:47</time>.</p></div>
+<div class="cluster"><button type="button" class="btn btn--outline btn--sm">Mark resolved</button></div>
+</div></li>
+</ul>
+</sc-if>
+
+<sc-if value="{{isDeliveries}}" hint-placeholder-val="{{ false }}">
+<header class="page-head"><div><h1>Deliveries</h1><p class="page-head__lede">Every time Analyte sent results to a lab app, and whether it worked.</p></div>
+<div class="chips" role="group" aria-label="Show"><button type="button" class="chip" aria-pressed="true">All</button><button type="button" class="chip" aria-pressed="false">Failed <span class="chip__n">3</span></button></div></header>
+<div class="card table-wrap"><table class="table">
+<thead><tr><th scope="col">Time</th><th scope="col">Sample</th><th scope="col">From</th><th scope="col">To</th><th scope="col" class="right">Results</th><th scope="col">Outcome</th></tr></thead>
+<tbody>
+<tr><td class="num">10:44:51</td><td class="num">261119-044</td><td>Hematology analyzer</td><td>Main lab app</td><td class="num right">6</td><td><span class="status status--bad"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.bad}}"></path></svg>Not sent · keys missing</span></td></tr>
+<tr><td class="num">10:43:37</td><td class="num">261119-031</td><td>Immunoassay analyzer</td><td>Outpatient lab app</td><td class="num right">8</td><td><span class="status status--good"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.ok}}"></path></svg>Delivered</span></td></tr>
+<tr><td class="num">10:42:58</td><td class="num">261119-029</td><td>Coagulation analyzer</td><td>Outpatient lab app</td><td class="num right">3</td><td><span class="status status--good"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.ok}}"></path></svg>Delivered</span></td></tr>
+<tr><td class="num">10:40:05</td><td class="num">261119-041</td><td>Hematology analyzer</td><td>Main lab app</td><td class="num right">6</td><td><span class="status status--warn"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.retry}}"></path></svg>Failed, will retry</span></td></tr>
+<tr><td class="num">10:39:44</td><td class="num">261119-038</td><td>Chemistry analyzer</td><td>Main lab app</td><td class="num right">12</td><td><span class="status status--bad"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.bad}}"></path></svg>Not sent · keys missing</span></td></tr>
+<tr><td class="num">10:28:17</td><td class="num">261119-026</td><td>Coagulation analyzer</td><td>Outpatient lab app</td><td class="num right">3</td><td><span class="status status--good"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.ok}}"></path></svg>Delivered</span></td></tr>
+<tr><td class="num">09:47:03</td><td class="num">261119-030</td><td>Hematology analyzer</td><td>Main lab app</td><td class="num right">6</td><td><span class="status status--good"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.ok}}"></path></svg>Delivered</span></td></tr>
+</tbody></table></div>
+</sc-if>
+
+<sc-if value="{{isKeeping}}" hint-placeholder-val="{{ false }}">
+<header class="page-head"><div><h1>Data keeping</h1><p class="page-head__lede">How long Analyte keeps results, messages and history before clearing them.</p></div></header>
+<section class="card card--pad stack" aria-labelledby="dk-1" style="max-width: 760px">
+<h2 id="dk-1" class="label">Keeping times</h2>
+<div class="form-grid">
+<div class="field"><label class="field__label" for="dk-res">Results and messages</label><select id="dk-res" class="select"><option>12 months</option><option>24 months</option></select><span class="field__hint">Includes items in Needs review.</span></div>
+<div class="field"><label class="field__label" for="dk-act">Activity history</label><select id="dk-act" class="select"><option>90 days</option><option>12 months</option></select></div>
+</div>
+</section>
+<section class="section" aria-labelledby="dk-2" style="max-width: 760px">
+<div class="section__head"><h2 id="dk-2" class="label">Holds</h2><button type="button" class="btn btn--outline btn--sm">Add a hold</button></div>
+<p class="muted" style="margin: 0; font-size: 13px">A hold keeps items longer than the keeping time, for example during an audit.</p>
+<ul class="card rows">
+<li class="row" style="flex-wrap: wrap"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.lock}}"></path></svg><div class="row__main"><p style="margin: 0; font-weight: 600">Chemistry analyzer · 1–15 November</p><p class="subtle" style="margin: 2px 0 0; font-size: 13px">Audit · set by Lab manager on 16 Nov · until released</p></div><button type="button" class="btn btn--quiet btn--sm">Release</button></li>
+<li class="row" style="flex-wrap: wrap"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.lock}}"></path></svg><div class="row__main"><p style="margin: 0; font-weight: 600">Sample <span class="mono">261102-117</span></p><p class="subtle" style="margin: 2px 0 0; font-size: 13px">Complaint follow-up · set by Senior technician on 3 Nov · until 3 May 2027</p></div><button type="button" class="btn btn--quiet btn--sm">Release</button></li>
+</ul>
+</section>
+</sc-if>
+
+<sc-if value="{{isSettings}}" hint-placeholder-val="{{ false }}">
+<header class="page-head"><div><h1>Settings</h1></div></header>
+<div class="stack stack--lg" style="max-width: 760px">
+<section class="card card--pad stack" aria-labelledby="st-1">
+<h2 id="st-1" class="label">Lab</h2>
+<div class="field"><label class="field__label" for="st-tz">Lab time zone</label><select id="st-tz" class="select" style="max-width: 360px"><option>Europe/Budapest (UTC+01:00)</option></select><span class="field__hint">All times in Analyte use this zone.</span></div>
+</section>
+<section class="card" aria-labelledby="st-2">
+<div class="card__head"><h2 id="st-2" class="card__title">Engine</h2><span class="status status--good"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.ok}}"></path></svg>Running</span></div>
+<div class="card__body"><dl class="kv"><dt>Running since</dt><dd><time>07:58</time> today</dd><dt>Engine version</dt><dd class="mono">2.4.1</dd><dt>App version</dt><dd class="mono">2.4.1</dd><dt>Machines connected</dt><dd>3 of 5</dd></dl></div>
+<div class="card__foot"><button type="button" class="btn btn--outline btn--sm">Restart engine</button><span class="subtle" style="font-size: 12.5px">Machine connections pause for a few seconds. Nothing is lost.</span></div>
+</section>
+</div>
+</sc-if>
+
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"page":{"editor":"enum","options":["orders","cancelled","deliveries","datakeeping","settings"],"default":"orders"},"$preview":{"width":1280,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const page = this.props.page ?? 'orders';
+    const ic = {
+      ok: 'M2 12a10 10 0 1 0 20 0a10 10 0 1 0-20 0 M8.5 12.5l2.5 2.5 4.5-5',
+      bad: 'M2.586 16.726A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2h6.624a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586z M15 9l-6 6 M9 9l6 6',
+      unknown: 'M2 12a10 10 0 1 0 20 0a10 10 0 1 0-20 0 M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3 M12 17h.01',
+      cancel: 'M2 12a10 10 0 1 0 20 0a10 10 0 1 0-20 0 M15 9l-6 6 M9 9l6 6',
+      send: 'M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z M21.854 2.147l-10.94 10.939',
+      retry: 'M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8 M21 3v5h-5 M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16 M8 16H3v5',
+      lock: 'M5 11h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2Z M7 11V7a5 5 0 0 1 10 0v4'
+    };
+    return {
+      theme: (this.props.dark ?? false) ? 'dark' : 'light', ic, page,
+      isOrders: page === 'orders', isCancelled: page === 'cancelled', isDeliveries: page === 'deliveries', isKeeping: page === 'datakeeping', isSettings: page === 'settings'
+    };
+  }
+}
+</script>
+</body>
+</html>

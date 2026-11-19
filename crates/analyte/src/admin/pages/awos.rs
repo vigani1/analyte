@@ -4,7 +4,7 @@ use crate::admin::Error;
 use crate::admin::markup::Markup;
 use crate::admin::{
     server::Context,
-    view::{self, Tab, plain},
+    view::{self, Tab, format},
 };
 use crate::deadline;
 use axum::{
@@ -22,7 +22,7 @@ pub(super) fn projection(item: &analyte_store::MachineOrderItem) -> Markup {
             .markup(", what the machine reports: <strong>")
             .text(p.state)
             .markup("</strong> <span class=\"muted\">(order status: ")
-            .text(plain::order_state(item.state))
+            .text(format::order_state(item.state))
             .markup("; reported in message <span title=\"Receipt ")
             .text(uuid::Uuid::from(p.receipt).to_string())
             .markup(", interpretation ")
@@ -36,9 +36,9 @@ pub(super) fn projection(item: &analyte_store::MachineOrderItem) -> Markup {
                     .collect::<String>(),
             )
             .markup("</span>, recorded ")
-            .fragment(&plain::when_unix(p.recorded_at, jiff::Timestamp::now()))
+            .fragment(&format::when_unix(p.recorded_at, jiff::Timestamp::now()))
             .markup("; a cancel request was pending then: ")
-            .text(plain::yes_no(p.cancel_outstanding))
+            .text(format::yes_no(p.cancel_outstanding))
             .markup(")</span> <a href=\"/awos/")
             .text(item.machine_order)
             .markup("/")
@@ -258,7 +258,7 @@ async fn detail_page(
                     .markup("<p title=\"Execution\">What the machine reports: ")
                     .text(crate::operator::display::optional(work.execution))
                     .markup(". <span title=\"Result-bearing completion evidence\">Results came with it: ")
-                    .text(plain::yes_no(work.complete))
+                    .text(format::yes_no(work.complete))
                     .markup("</span>.</p>")
                     .fragment(&(source_evidence(work.source.as_str()))),
             );

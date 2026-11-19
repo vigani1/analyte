@@ -312,6 +312,7 @@ async fn start_action_server(
         directory: program.data_directory().to_owned(),
         reserve: 1,
         setup: crate::admin::setup::Setup::for_test(program.data_directory()),
+        assets: crate::admin::view::assets::Root::of_this_build(),
         _released: released,
     });
     let server = Server {

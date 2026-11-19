@@ -18,11 +18,13 @@ pub(super) mod awos;
 mod deliveries;
 pub(super) use deliveries::deliveries;
 pub(super) mod departures;
+mod machines;
+pub(super) use machines::machines;
 mod orders;
 pub(super) use orders::orders;
 mod raw;
 pub(super) mod retention;
-use crate::admin::view::{self, Tab, plain};
+use crate::admin::view::{self, Tab, format};
 pub(super) use raw::RawError;
 pub(super) use raw::raw;
 use raw::raw_links;
@@ -99,7 +101,7 @@ pub(super) fn item_not_found() -> Response {
 }
 
 /// Says, only while it is true, that order sending is paused after a restore.
-async fn pause(state: &Context, html: &mut Markup) -> Result<(), Error> {
+pub(super) async fn pause(state: &Context, html: &mut Markup) -> Result<(), Error> {
     let paused = state
         .store
         .request(deadline()?, |s| s.restore_unreconciled())
@@ -109,76 +111,10 @@ async fn pause(state: &Context, html: &mut Markup) -> Result<(), Error> {
             "<p class=\"notice\" title=\"Order sending paused after restore: true\">",
             "<strong>Order sending is paused after a restore.</strong> ",
         ));
-        html.push_markup(super::overview::RESTORE_ADVICE);
+        html.push_markup(format::RESTORE_ADVICE);
         html.push_markup("</p>");
     }
     Ok(())
-}
-
-pub(super) async fn machines(
-    State(state): State<Arc<Context>>,
-    Query(cursor): Query<Cursor>,
-) -> Response {
-    finish(
-        async {
-            let mut html = view::page(Tab::Machines, "Machines");
-            pause(&state, &mut html).await?;
-            let after = usize::try_from(cursor.after)?;
-            let page: Vec<_> = state.machines.iter().skip(after).take(PAGE).collect();
-            let now = jiff::Timestamp::now();
-            let activity = super::overview::activity(&state, deadline()?, PAGE).await?;
-            for machine in &page {
-                let seen = activity.get(machine.id.as_str());
-                let last = seen.and_then(|seen| seen.last);
-                let received = seen.map_or(&[][..], |seen| seen.first.as_slice());
-                let mut evidence = Markup::new();
-                for &(receipt, received_at) in received {
-                    let id = uuid::Uuid::from(receipt);
-                    evidence.push_fragment(
-                        &Markup::new()
-                            .markup("<li><a href=\"/receipts/")
-                            .text(id)
-                            .markup(
-                                "/departures\" title=\"Receipt interpretation evidence\">Received ",
-                            )
-                            .text(plain::time(received_at))
-                            .markup("</a> <small class=\"muted\" title=\"Receipt ID\">")
-                            .text(id)
-                            .markup("</small></li>"),
-                    );
-                }
-                html.push_fragment(
-                    &Markup::new()
-                        .markup("<section><h2>")
-                        .text(machine.id.as_str())
-                        .markup("</h2><dl>")
-                        .fragment(&super::overview::LinkLight::of(machine, last, now).rows())
-                        .markup("</dl>")
-                        .fragment(&machine.departure_html)
-                        .markup("<h3>Messages received</h3>"),
-                );
-                if received.is_empty() {
-                    html.push_markup("<p class=\"muted\">Nothing yet.</p>");
-                } else {
-                    html.push_fragment(
-                        &Markup::new()
-                            .markup("<ul>")
-                            .fragment(&evidence)
-                            .markup("</ul>"),
-                    );
-                }
-                html.push_markup("</section>");
-            }
-            let shown = after
-                .checked_add(page.len())
-                .ok_or(Error::MachineCursorOverflow)?;
-            if shown < state.machines.len() {
-                next(&mut html, "/machines", shown);
-            }
-            Ok(html)
-        }
-        .await,
-    )
 }
 
 fn receipt_id(target: &Identifier) -> Option<ReceiptId> {
@@ -211,7 +147,7 @@ fn metadata(store: &Store, parked: &Parked) -> Result<Markup, analyte_store::Ope
             Some("Receipt time"),
             &receipt.map_or_else(
                 || Markup::new().text("Not known (no linked message)"),
-                |m| plain::when(m.received_at, now),
+                |m| format::when(m.received_at, now),
             ),
         ));
     }
@@ -244,7 +180,7 @@ fn kind_and_reason(parked: &Parked) -> Markup {
     view::row("Category", None, &category).fragment(&view::row(
         "Reason",
         None,
-        &plain::reason(parked.reason.as_str()),
+        &format::reason(parked.reason.as_str()),
     ))
 }
 

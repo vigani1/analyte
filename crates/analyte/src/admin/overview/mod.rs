@@ -1,173 +1,399 @@
-//! Renders a read-only HTML overview: whether everything is OK first, then sections for machines, sending to the lab app, orders, disk and alerts.
+//! Serves the Overview (GET /): whether everything is OK first, then the signal path from machines to lab apps, orders, disk and alerts.
+//!
+//! The page shows only what Analyte observed or stored: no patient names,
+//! result values, sample IDs or raw identifiers. A first run (no machine set
+//! up, nothing to do) shows only the welcome. When a read fails or the reads
+//! take too long, the error page says which read and keeps the reason for
+//! support; it never shows a partial page that could read as "All good".
 mod attention;
+mod page;
+mod signal;
+#[cfg(test)]
+mod tests;
 
-use super::server::{Context, Machine};
-use super::view::{self, Tab, Tone, count, exact, pill, plain, row};
-use crate::admin::Error;
-use crate::admin::markup::Markup;
+use super::server::Context;
+use super::sessions::Session;
+use super::view::{self, Tab, Tone, format, frame::Frame, icon::Icon};
+use crate::admin::{Error, error::CommandError};
 use crate::deadline;
-use crate::machine::link::status::{Light, Link};
 use analyte_model::{OrderState, ReceiptId};
-use analyte_store::{AlertKey, MachineOrderFilter};
+use analyte_store::{AlertKey, AlertState, FailingDestination, LastDelivered, MachineOrderFilter};
+use askama::Template as _;
 use axum::{
+    Extension,
     extract::State,
     http::StatusCode,
     response::{Html, IntoResponse, Response},
 };
 use jiff::Timestamp;
-use std::{
-    collections::BTreeMap,
-    sync::{Arc, atomic::Ordering},
-};
+use page::{AlertRow, Disk, ErrorPage, Notice, OrderRow, Page, Verdict, WIZARD_STEPS, Welcome};
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
-pub(super) async fn show(State(state): State<Arc<Context>>) -> Response {
-    match render(&state).await {
-        Ok(html) => Html(html).into_response(),
-        // Evidence and errors stay on the authenticated page, never in logs.
-        Err(error) => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Html(view::problem(
-                Some(Tab::Overview),
-                "Overview",
-                concat!(
-                    "The overview could not be shown just now. Reload the page; if this ",
-                    "keeps happening, give the details below to support.",
-                ),
-                error,
-            )),
-        )
-            .into_response(),
+/// How long the overview may read before it answers with its own error page:
+/// below the 2 s limit on every admin request, so a slow store still gets a
+/// page in the overview's look. The reads only read, so stopping them leaves
+/// nothing behind; a store request already queued may still run, and its
+/// answer is dropped.
+const BUDGET: Duration = Duration::from_millis(1500);
+
+pub(super) async fn show(
+    State(state): State<Arc<Context>>,
+    session: Option<Extension<Arc<Session>>>,
+) -> Response {
+    let now = Timestamp::now();
+    let session = session.as_ref().map(|Extension(session)| session.as_ref());
+    let failed = match tokio::time::timeout(BUDGET, render(&state, session, now)).await {
+        Ok(Ok(html)) => return Html(html).into_response(),
+        Ok(Err(failure)) => failure,
+        Err(_) => Failure {
+            reading: Reading::Time,
+            error: None,
+        },
+    };
+    // Evidence and errors stay on the authenticated page, never in logs.
+    failure(&state, session, now, &failed)
+}
+
+/// What the overview was reading when it stopped; the error page names it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Reading {
+    /// The store refused or dropped the request itself.
+    Store,
+    Restore,
+    Disk,
+    Review,
+    Delivered,
+    Failing,
+    Alerts,
+    Orders,
+    Receipts,
+    LabApps,
+    Kept,
+    Relays,
+    /// Everything was read, but the page could not be written.
+    Page,
+    /// The reads took longer than [`BUDGET`].
+    Time,
+}
+
+impl Reading {
+    /// What Analyte could not do, in plain words.
+    const fn sentence(self) -> &'static str {
+        match self {
+            Self::Store => "Analyte could not read its store.",
+            Self::Restore => {
+                "Analyte could not read whether order sending is paused after a restore."
+            }
+            Self::Disk => "Analyte could not read the free disk space.",
+            Self::Review => "Analyte could not read how many items need review.",
+            Self::Delivered => "Analyte could not read when each lab app last accepted a delivery.",
+            Self::Failing => {
+                "Analyte could not read which lab apps keep failing to accept deliveries."
+            }
+            Self::Alerts => "Analyte could not read the active alerts.",
+            Self::Orders => "Analyte could not read the machine orders.",
+            Self::Receipts => "Analyte could not read when each machine last sent data.",
+            Self::LabApps => "Analyte could not read what waits for each lab app.",
+            Self::Kept => "Analyte could not read what waits for lab apps no set-up machine uses.",
+            Self::Relays => "Analyte could not read the alert relays.",
+            Self::Page => "Analyte read everything but could not write the page.",
+            Self::Time => "Analyte did not finish reading within 1.5 seconds.",
+        }
+    }
+
+    /// Ties an error to this reading.
+    fn failed<E: Into<Error>>(self) -> impl FnOnce(E) -> Failure {
+        move |error| Failure {
+            reading: self,
+            error: Some(Box::new(error.into())),
+        }
     }
 }
 
-async fn render(state: &Context) -> Result<Markup, Error> {
-    let until = deadline()?;
+/// Why the overview could not be shown: the reading and, unless it ran out of
+/// time, the error.
+struct Failure {
+    reading: Reading,
+    error: Option<Box<Error>>,
+}
+
+impl Failure {
+    /// A timeout is a 504 like every slow admin request; any other failure is a 503.
+    fn status(&self) -> StatusCode {
+        if self.reading == Reading::Time {
+            StatusCode::GATEWAY_TIMEOUT
+        } else {
+            StatusCode::SERVICE_UNAVAILABLE
+        }
+    }
+
+    /// The exact reason, for support.
+    fn detail(&self) -> String {
+        self.error.as_ref().map_or_else(
+            || {
+                format!(
+                    "admin overview deadline of {} ms exceeded",
+                    BUDGET.as_millis()
+                )
+            },
+            ToString::to_string,
+        )
+    }
+}
+
+/// The overview's own error page; should even that fail to render, the plain
+/// refusal page carries both reasons.
+fn failure(
+    state: &Context,
+    session: Option<&Session>,
+    now: Timestamp,
+    failed: &Failure,
+) -> Response {
+    let page = ErrorPage {
+        frame: Frame::new(state, Tab::Overview, "Overview", None, session, now),
+        text: error_text(failed.reading),
+        detail: vec![failed.detail()],
+    };
+    match page.render() {
+        Ok(html) => (failed.status(), Html(html)).into_response(),
+        Err(render) => fallback(failed, &render),
+    }
+}
+
+/// What the error page tells people: what could not be read and what to do.
+fn error_text(reading: Reading) -> String {
+    format!(
+        "{} Reload the page; if this keeps happening, give the details below to support.",
+        reading.sentence()
+    )
+}
+
+/// The plain refusal page for when the error page itself could not be written.
+fn fallback(failed: &Failure, render: &askama::Error) -> Response {
+    view::refusal(
+        failed.status(),
+        "Overview",
+        concat!(
+            "The overview could not be shown just now. Reload the page; if this ",
+            "keeps happening, give the details below to support.",
+        ),
+        format!("{}; the error page failed too: {render}", failed.detail()),
+    )
+}
+
+/// What one store request reads for the overview; each part keeps its own
+/// error so the error page can say which read failed.
+struct Stored {
+    restore_paused: Result<bool, CommandError>,
+    free: Result<u64, std::io::Error>,
+    review: Result<u64, CommandError>,
+    delivered: Result<LastDelivered, CommandError>,
+    failing: Result<Vec<FailingDestination>, CommandError>,
+}
+
+/// [`Stored`] once every part was read.
+struct Read {
+    restore_paused: bool,
+    free: u64,
+    review: u64,
+    delivered: LastDelivered,
+    failing: Vec<FailingDestination>,
+}
+
+/// The first store request: the restore flag, free disk space, the Needs
+/// review count, when each lab app last accepted a delivery and which keep
+/// failing.
+async fn stored(
+    state: &Context,
+    until: std::time::Instant,
+    now: Timestamp,
+) -> Result<Read, Failure> {
     let directory = state.directory.clone();
-    let now = Timestamp::now();
-    let (paused, free, review) = state
+    let stored = state
         .store
-        .request::<_, crate::admin::error::CommandError>(until, move |store| {
-            Ok::<_, crate::admin::error::CommandError>((
-                store.restore_unreconciled()?,
-                fs4::available_space(&directory)?,
+        .request::<_, CommandError>(until, move |store| {
+            Ok::<_, CommandError>(Stored {
+                restore_paused: store.restore_unreconciled().map_err(CommandError::from),
+                free: fs4::available_space(&directory),
                 // The unresolved count the parked-items alert rule reads.
-                store
-                    .alert_value(&AlertKey::ParkedItems, now.as_second(), &[])?
-                    .unwrap_or_default(),
-            ))
+                review: store
+                    .alert_value(&AlertKey::ParkedItems, now.as_second(), &[])
+                    .map(Option::unwrap_or_default)
+                    .map_err(CommandError::from),
+                delivered: store.last_delivered().map_err(CommandError::from),
+                failing: store.failing_destinations().map_err(CommandError::from),
+            })
         })
-        .await?;
-    let alerts = crate::operator::alerts::active(&state.store).await?;
+        .await
+        .map_err(Reading::Store.failed())?;
+    Ok(Read {
+        restore_paused: stored.restore_paused.map_err(Reading::Restore.failed())?,
+        free: stored.free.map_err(Reading::Disk.failed())?,
+        review: stored.review.map_err(Reading::Review.failed())?,
+        delivered: stored.delivered.map_err(Reading::Delivered.failed())?,
+        failing: stored.failing.map_err(Reading::Failing.failed())?,
+    })
+}
+
+async fn render(
+    state: &Context,
+    session: Option<&Session>,
+    now: Timestamp,
+) -> Result<String, Failure> {
+    let until = deadline().map_err(Reading::Store.failed())?;
+    let Read {
+        restore_paused,
+        free,
+        review,
+        delivered,
+        failing,
+    } = stored(state, until, now).await?;
+    let alerts = crate::operator::alerts::active(&state.store)
+        .await
+        .map_err(Reading::Alerts.failed())?;
     let mut facts = attention::Facts {
         review,
         disk_full: free <= state.reserve,
-        restore_paused: paused,
+        restore_paused,
+        cancelled: state
+            .store
+            .request(until, |store| store.analyzer_cancelled_count())
+            .await
+            .map_err(Reading::Orders.failed())?,
+        uncertain: uncertain_orders(state, until)
+            .await
+            .map_err(Reading::Orders.failed())?,
         ..attention::Facts::default()
     };
-    let mut details = Markup::new();
-    render_machines(state, &mut details, &mut facts, until, now).await?;
-    let kept_waiting = render_destinations(state, &mut details, &mut facts, now).await?;
-    render_orders(state, &mut details, &mut facts, until, paused).await?;
-    details.push_markup("<section id=\"");
-    details.push_markup(attention::Section::Disk.id());
-    details.push_markup("\"><h2>Disk and alerts</h2><dl>");
-    render_disk(&mut details, free, state.reserve);
-    render_alerts(&mut details, &alerts, now);
-    render_alert_endpoints(
+    let activity = activity(state, until, 0)
+        .await
+        .map_err(Reading::Receipts.failed())?;
+    let machines = signal::machines(state, &activity, &mut facts, now);
+    let (labs, figures) = signal::lab_apps(state, &delivered, &failing, &mut facts, now)
+        .await
+        .map_err(Reading::LabApps.failed())?;
+    let kept = super::removed::lines(state)
+        .await
+        .map_err(Reading::Kept.failed())?;
+    facts
+        .blocked
+        .extend(kept.iter().filter_map(super::removed::Line::blocked));
+    let relays = crate::operator::notification_status::snapshot(
         &state.store,
         &state.alert_endpoints,
-        &mut details,
         now.as_second(),
     )
-    .await?;
-    details.push_markup("</section>");
+    .await
+    .map_err(Reading::Relays.failed())?;
+    let alert_rows = alerts.iter().map(|alert| alert_row(alert, now)).collect();
+    let alert_messages = alerts
+        .iter()
+        .filter_map(crate::operator::alerts::message)
+        .collect();
+    let orders = orders(&facts);
     facts.alerts = alerts;
     let things = attention::things(&facts);
+    let frame = Frame::new(state, Tab::Overview, "Overview", Some(review), session, now);
     // First run: no machine is set up, nothing needs anyone and nothing waits for a
     // lab app (a removed machine's results still being sent keep the full page).
-    if state.machines.is_empty() && things.is_empty() && !kept_waiting {
-        return Ok(view::page(Tab::Overview, "Welcome to Analyte")
-            .fragment(&attention::welcome())
-            .markup(view::END));
-    }
-    Ok(view::page(Tab::Overview, "Overview")
-        .fragment(&attention::status(&things))
-        .fragment(&details)
-        .markup(view::END))
+    let html = if state.machines.is_empty() && things.is_empty() && kept.is_empty() {
+        Welcome {
+            frame,
+            steps: WIZARD_STEPS,
+        }
+        .render()
+    } else {
+        Page {
+            frame,
+            today: format::today(now),
+            counts: format::machines_and_lab_apps(machines.len(), labs.len()),
+            verdict: Verdict::of(&things),
+            machines,
+            labs,
+            figures,
+            orders,
+            restore: restore_paused.then(|| Notice {
+                tone: Tone::Attention,
+                title: "Order sending is paused after a restore".into(),
+                text: format::RESTORE_ADVICE.into(),
+            }),
+            kept: kept
+                .iter()
+                .filter(|line| !line.on_path())
+                .map(|line| Notice {
+                    tone: line.tone(),
+                    title: line.text().to_owned(),
+                    text: String::new(),
+                })
+                .collect(),
+            disk: Disk::of(free, state.reserve),
+            alerts: alert_rows,
+            alert_messages,
+            relays,
+        }
+        .render()
+    };
+    html.map_err(Reading::Page.failed())
 }
 
-fn render_disk(html: &mut Markup, free: u64, reserve: u64) {
-    html.push_fragment(&row(
-        "Disk space",
-        Some("Free disk bytes"),
-        &exact(
-            &format!("{} free", plain::bytes(free)),
-            &format!("{free} bytes free"),
+/// The Orders card: orders with an unknown outcome and orders a machine
+/// cancelled, each with the page that lists them.
+fn orders(facts: &attention::Facts) -> Vec<OrderRow> {
+    vec![
+        order_row(
+            facts.uncertain,
+            (Icon::Unknown, Tone::Attention),
+            "No orders with an unknown outcome",
+            &format!(
+                "{} with an unknown outcome (check the machine)",
+                format::amount(facts.uncertain, "order", "orders")
+            ),
+            (Tab::MachineOrders.href(), "See machine orders"),
         ),
-    ));
-    html.push_fragment(&row(
-        "Always kept free",
-        Some("Disk reserve bytes"),
-        &exact(&plain::bytes(reserve), &format!("{reserve} bytes"))
-            .markup(" <span class=\"muted\">Analyte stops receiving below this</span>"),
-    ));
-    html.push_fragment(&row(
-        "Disk status",
-        Some("Disk capacity"),
-        &if free > reserve {
-            pill(Tone::Good, "Enough space")
-        } else {
-            pill(Tone::Problem, "Almost full: receiving refused")
-        },
-    ));
+        order_row(
+            facts.cancelled,
+            (Icon::Cancelled, Tone::Neutral),
+            "No orders cancelled by a machine",
+            &format!(
+                "{} cancelled by a machine",
+                format::amount(facts.cancelled, "order", "orders")
+            ),
+            (Tab::CancelledByMachine.href(), "Review cancelled orders"),
+        ),
+    ]
 }
 
-fn render_alerts(html: &mut Markup, alerts: &[analyte_store::AlertState], now: Timestamp) {
-    html.push_fragment(&row(
-        "Active alerts",
-        None,
-        &count(u64::try_from(alerts.len()).unwrap_or(u64::MAX)),
-    ));
-    html.push_markup("</dl>");
-    if alerts.is_empty() {
-        return;
+/// One Orders line: green with `none` at zero, otherwise `some` in its own icon and tone.
+fn order_row(
+    count: u64,
+    (icon, tone): (Icon, Tone),
+    none: &str,
+    some: &str,
+    (href, link): (&'static str, &'static str),
+) -> OrderRow {
+    let zero = count == 0;
+    OrderRow {
+        tone: if zero { Tone::Good } else { tone },
+        icon: if zero { Icon::Ok } else { icon },
+        text: if zero { none } else { some }.to_owned(),
+        href,
+        link,
     }
-    html.push_markup(concat!(
-        "<div class=\"table\"><table class=\"stack\"><tr><th>Alert</th><th>Machine</th><th>Responder</th>",
-        "<th>Raised</th><th>Last value</th></tr>",
-    ));
-    for alert in alerts {
-        let (kind, machine) = crate::operator::alerts::signal(&alert.key);
-        html.push_fragment(
-            &Markup::new()
-                .markup("<tr><td>")
-                .fragment(&exact(alert_words(&alert.key), kind))
-                .markup("</td><td data-label=\"Machine\">")
-                .text(machine.unwrap_or("—"))
-                .markup("</td><td data-label=\"Responder\">")
-                .text(&alert.responder)
-                .markup("</td><td data-label=\"Raised\">")
-                .fragment(&alert.raised_at.map_or_else(
-                    || Markup::new().text("Not known"),
-                    |raised| plain::when_unix(raised, now),
-                ))
-                .markup("</td><td data-label=\"Last value\">")
-                .text(
-                    alert
-                        .value
-                        .map_or_else(|| "Not known".into(), |value| value.to_string()),
-                )
-                .markup("</td></tr>"),
-        );
-    }
-    html.push_markup("</table></div>");
-    for message in alerts.iter().filter_map(crate::operator::alerts::message) {
-        html.push_fragment(
-            &Markup::new()
-                .markup("<p class=\"notice bad\">")
-                .text(message)
-                .markup("</p>"),
-        );
+}
+
+fn alert_row(alert: &AlertState, now: Timestamp) -> AlertRow {
+    let (kind, machine) = crate::operator::alerts::signal(&alert.key);
+    AlertRow {
+        words: alert_words(&alert.key),
+        kind,
+        machine: machine.unwrap_or("—").to_owned(),
+        responder: alert.responder.clone(),
+        raised: alert
+            .raised_at
+            .map(|raised| format::moment_unix(raised, now)),
+        value: alert
+            .value
+            .map_or_else(|| "Not known".into(), |value| value.to_string()),
     }
 }
 
@@ -185,72 +411,18 @@ const fn alert_words(key: &AlertKey) -> &'static str {
     }
 }
 
-async fn render_orders(
-    state: &Context,
-    html: &mut Markup,
-    facts: &mut attention::Facts,
-    until: std::time::Instant,
-    paused: bool,
-) -> Result<(), Error> {
-    let cancelled = state
-        .store
-        .request(until, |s| s.analyzer_cancelled_count())
-        .await?;
-    let uncertain = uncertain_orders(state, until).await?;
-    facts.cancelled = cancelled;
-    facts.uncertain = uncertain;
-    html.push_markup("<section id=\"");
-    html.push_markup(attention::Section::Orders.id());
-    html.push_markup("\"><h2>Orders</h2><dl>");
-    html.push_fragment(&row(
-        "Orders with unknown outcome (check the machine)",
-        Some("Uncertain orders"),
-        &count_link(uncertain, "/orders", "See machine orders"),
-    ));
-    html.push_fragment(&row(
-        "Cancelled by machine",
-        Some("Analyzer-cancelled AWOSs"),
-        &count_link(cancelled, "/analyzer-cancelled", "Review cancelled orders"),
-    ));
-    // Shown only when it applies; a "No" row on every visit is noise.
-    if paused {
-        html.push_fragment(&row(
-            "Order sending paused after restore",
-            Some("Restore unreconciled"),
-            &pill(Tone::Attention, "Yes")
-                .markup(" <span class=\"muted\">")
-                .markup(RESTORE_ADVICE)
-                .markup("</span>"),
-        ));
-    }
-    html.push_markup("</dl></section>");
-    Ok(())
-}
-
-/// A count, red when above zero, with a link to the page that lists the items.
-fn count_link(value: impl Into<u64>, href: &'static str, label: &'static str) -> Markup {
-    count(value.into())
-        .markup(" <a href=\"")
-        .markup(href)
-        .markup("\">")
-        .markup(label)
-        .markup("</a>")
-}
-
 async fn uncertain_orders(state: &Context, until: std::time::Instant) -> Result<u64, Error> {
     let mut after = 0;
     let mut uncertain = 0u64;
     loop {
         let page = state
             .store
-            .request::<_, crate::admin::error::CommandError>(until, move |store| {
-                Ok::<_, crate::admin::error::CommandError>(store.machine_orders(
-                    &MachineOrderFilter {
-                        after,
-                        machine: None,
-                        state: Some(OrderState::Uncertain),
-                    },
-                )?)
+            .request::<_, CommandError>(until, move |store| {
+                Ok::<_, CommandError>(store.machine_orders(&MachineOrderFilter {
+                    after,
+                    machine: None,
+                    state: Some(OrderState::Uncertain),
+                })?)
             })
             .await?;
         let Some(last) = page.last() else {
@@ -262,158 +434,6 @@ async fn uncertain_orders(state: &Context, until: std::time::Instant) -> Result<
             .ok_or_else(|| Error::UncertainOrderCountOverflow)?;
     }
     Ok(uncertain)
-}
-
-/// Renders the sending section; true when results wait for a lab app no running machine uses.
-async fn render_destinations(
-    state: &Context,
-    html: &mut Markup,
-    facts: &mut attention::Facts,
-    now: Timestamp,
-) -> Result<bool, Error> {
-    html.push_markup("<section id=\"");
-    html.push_markup(attention::Section::Sending.id());
-    html.push_markup("\"><h2>Sending to the lab app</h2>");
-    let mut oldest = None;
-    let mut pending = false;
-    let mut unknown_age = false;
-    for destination in &state.destinations {
-        let health = destination.health(&state.store, now.as_second()).await?;
-        pending |= health.pending_count > 0;
-        unknown_age |= health.pending_count > 0 && health.oldest_pending_age.is_none();
-        oldest = oldest.max(health.oldest_pending_age);
-        if health.paused {
-            facts
-                .paused
-                .push((destination.id().clone(), health.pending_count));
-        }
-        html.push_fragment(
-            &Markup::new()
-                .markup("<h3 title=\"Destination\">Lab app ")
-                .text(destination.id().as_str())
-                .markup("</h3><dl>")
-                .fragment(&row(
-                    "Waiting to be sent",
-                    Some("Pending items: results or order messages"),
-                    &count(health.pending_count),
-                ))
-                .fragment(&row(
-                    "Order list up to date",
-                    Some("Cache fresh and trusted"),
-                    &if health.cache_trusted {
-                        pill(Tone::Good, "Yes")
-                    } else {
-                        pill(Tone::Attention, "No")
-                    },
-                ))
-                .fragment(&row(
-                    "Last order list check",
-                    Some("Cache last successful poll"),
-                    &health.last_successful_poll.map_or_else(
-                        || Markup::new().text("Not yet"),
-                        |time| plain::when_unix(time, now),
-                    ),
-                ))
-                .fragment(&row(
-                    "Sending paused",
-                    Some("Delivery paused"),
-                    &if health.paused {
-                        pill(Tone::Attention, "Yes: see Deliveries")
-                    } else {
-                        pill(Tone::Good, "No")
-                    },
-                ))
-                .markup("</dl>"),
-        );
-    }
-    if state.destinations.is_empty() {
-        html.push_markup("<p class=\"muted\">No running machine sends to a lab app.</p>");
-    }
-    let oldest = if !pending {
-        Markup::new().text("None waiting")
-    } else if unknown_age {
-        Markup::new().text("Not known")
-    } else {
-        oldest.map_or_else(
-            || Markup::new().text("Not known"),
-            |age| exact(&plain::duration(age), &format!("{age} seconds")),
-        )
-    };
-    html.push_fragment(
-        &Markup::new()
-            .markup("<dl>")
-            .fragment(&row(
-                "Oldest result waiting to be sent",
-                Some("Oldest undelivered age"),
-                &oldest,
-            ))
-            .markup("</dl>"),
-    );
-    let lines = super::removed::lines(state).await?;
-    let kept_waiting = !lines.is_empty();
-    for line in lines {
-        html.push_fragment(&line.notice(""));
-        if let Some(blocked) = line.blocked() {
-            facts.blocked.push(blocked);
-        }
-    }
-    html.push_markup("</section>");
-    Ok(kept_waiting)
-}
-
-async fn render_machines(
-    state: &Context,
-    html: &mut Markup,
-    facts: &mut attention::Facts,
-    until: std::time::Instant,
-    now: Timestamp,
-) -> Result<(), Error> {
-    let activity = activity(state, until, 0).await?;
-    html.push_markup(concat!(
-        "<section><div class=\"heading\"><h2>Machines</h2>",
-        "<a href=\"/machines\">Details for each machine</a></div>",
-    ));
-    if state.machines.is_empty() {
-        html.push_markup(concat!(
-            "<p class=\"muted\">No machine is running. Add or set one up on the ",
-            "<a href=\"/setup\">Setup</a> page.</p></section>",
-        ));
-        return Ok(());
-    }
-    html.push_markup(concat!(
-        "<div class=\"table\"><table class=\"stack\"><tr><th>Machine</th><th>Connection</th>",
-        "<th>Last data received</th><th>Since</th><th>Connection type</th>",
-        "<th>Service</th></tr>",
-    ));
-    for machine in &state.machines {
-        let stored = activity.get(machine.id.as_str()).and_then(|seen| seen.last);
-        let light = LinkLight::of(machine, stored, now);
-        if !machine.running.load(Ordering::Acquire) {
-            facts.stopped.push(machine.id.clone());
-        }
-        let status = machine.status.borrow().clone();
-        if status.light() == Light::Off {
-            facts.unlinked.push((machine.id.clone(), status.state()));
-        }
-        html.push_fragment(
-            &Markup::new()
-                .markup("<tr><td><strong>")
-                .text(machine.id.as_str())
-                .markup("</strong></td><td data-label=\"Connection\">")
-                .fragment(&light.state)
-                .markup("</td><td data-label=\"Last data received\">")
-                .fragment(&light.last_data)
-                .markup("</td><td data-label=\"Since\">")
-                .fragment(&light.changed)
-                .markup("</td><td data-label=\"Connection type\">")
-                .fragment(&light.kind)
-                .markup("</td><td data-label=\"Service\">")
-                .fragment(&light.service)
-                .markup("</td></tr>"),
-        );
-    }
-    html.push_markup("</table></div></section>");
-    Ok(())
 }
 
 /// What the stored receipts say about one set-up machine.
@@ -456,107 +476,21 @@ pub(super) async fn activity(
     Ok(seen)
 }
 
-/// One machine's link light, ready to show. "Last data" is the later of the
-/// runtime's last read and the last stored receipt, so it survives a restart. It
-/// never shows payloads, sample IDs or peer addresses (safety rule 10).
-pub(super) struct LinkLight {
-    kind: Markup,
-    state: Markup,
-    last_data: Markup,
-    changed: Markup,
-    service: Markup,
-}
-
-impl LinkLight {
-    pub(super) fn of(machine: &Machine, stored: Option<Timestamp>, now: Timestamp) -> Self {
-        let status = machine.status.borrow().clone();
-        let tone = match status.light() {
-            Light::Live => Tone::Good,
-            Light::Waiting => Tone::Attention,
-            Light::Off => Tone::Neutral,
-        };
-        Self {
-            kind: exact(link_words(status.link()), status.link().as_str()),
-            state: pill(tone, status.state()),
-            last_data: status.last_data().max(stored).map_or_else(
-                || Markup::new().text(NOTHING_YET),
-                |time| plain::when(time, now),
-            ),
-            changed: plain::when(status.changed_at(), now),
-            service: if machine.running.load(Ordering::Acquire) {
-                exact("Running", "machine owner: running")
-            } else {
-                exact("Stopped", "machine owner: stopped")
-            },
-        }
-    }
-
-    /// The light as key and value rows, for a machine's own card.
-    pub(super) fn rows(&self) -> Markup {
-        Markup::new()
-            .fragment(&row("Connection", Some("Connection state"), &self.state))
-            .fragment(&row("Last data received", None, &self.last_data))
-            .fragment(&row("Since", Some("Last state change"), &self.changed))
-            .fragment(&row("Connection type", Some("Link"), &self.kind))
-            .fragment(&row("Service", Some("Machine owner"), &self.service))
-    }
-}
-
-/// What someone does while order sending is paused after a restore.
-pub(super) const RESTORE_ADVICE: &str =
-    "Ask IT to reconcile orders with the command line; until then no order is sent to a machine.";
-
-/// What "Last data received" says before a machine has sent anything.
-pub(super) const NOTHING_YET: &str = "Nothing yet";
-
-/// How the machine is attached, in plain words; the technical link kind shows on hover.
-const fn link_words(link: Link) -> &'static str {
-    match link {
-        Link::TcpServer => "Network: the machine connects to Analyte",
-        Link::TcpClient => "Network: Analyte connects to the machine",
-        Link::Serial => "Serial cable",
-        Link::Folder => "Watched folder",
-    }
-}
-
-async fn render_alert_endpoints(
-    store: &analyte_store::Handle,
-    configured: &[analyte_model::Identifier],
-    html: &mut Markup,
-    now: i64,
-) -> Result<(), Error> {
-    let lines = crate::operator::notification_status::snapshot(store, configured, now).await?;
-    html.push_fragment(
-        &Markup::new()
-            .markup("<dl>")
-            .fragment(&row(
-                "Alert relays",
-                Some("Alert endpoints"),
-                &Markup::new().text(lines.len()),
-            ))
-            .markup("</dl>"),
-    );
-    if !lines.is_empty() {
-        html.push_markup(
-            "<details class=\"support\"><summary>Relay status for support</summary><ul>",
-        );
-        for line in lines {
-            html.push_fragment(
-                &Markup::new()
-                    .markup("<li><code>")
-                    .text(line)
-                    .markup("</code></li>"),
-            );
-        }
-        html.push_markup("</ul></details>");
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod webhook_tests {
     use super::*;
     use crate::Error;
+
+    /// The overview's relay disclosure on its own.
+    #[derive(askama::Template)]
+    #[template(
+        source = "{% import \"components/feedback.html\" as feedback %}{% call feedback::support(\"Relay status for support\", relays) %}{% endcall %}",
+        ext = "html"
+    )]
+    struct Relays {
+        relays: Vec<String>,
+    }
+
     // ADR 0014
     #[tokio::test]
     async fn overview_shows_failed_and_full_webhook_queue() -> Result<(), Error> {
@@ -567,7 +501,7 @@ mod webhook_tests {
                 let mut limits = analyte_fixtures::store_limits();
                 limits.reserve_bytes = 0;
                 limits.record_bytes = 2_097_152;
-                limits.busy_timeout = std::time::Duration::from_millis(100);
+                limits.busy_timeout = Duration::from_millis(100);
                 limits
             },
             Box::new(crate::runtime::space::Volume),
@@ -590,14 +524,15 @@ mod webhook_tests {
                 s.fail_alert_attempt(event.id(), analyte_store::AlertFailure::Network)
             })
             .await?;
-        let mut html = Markup::new();
-        render_alert_endpoints(
+        // The overview reads the relay lines this way and shows them under "For support".
+        let relays = crate::operator::notification_status::snapshot(
             &store,
             &[analyte_model::Identifier::new("missing")?],
-            &mut html,
             120,
         )
         .await?;
+        let html = Relays { relays }.render()?;
+        assert!(html.contains("<summary>"), "{html}");
         for field in [
             "pending_count=1",
             "oldest_age_seconds=20",

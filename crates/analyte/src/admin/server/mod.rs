@@ -33,6 +33,58 @@ pub(super) struct Machine {
     /// The machine runtime's link light; the admin page only reads it.
     pub(super) status: watch::Receiver<crate::machine::link::status::Status>,
     pub(super) departure_html: Markup,
+    /// The model's name for people, read once at startup from its definition
+    /// (`setup::model_name`); none when the definition gives none.
+    pub(super) model: Option<String>,
+    /// How it is attached, as its site file says.
+    pub(super) connection: Connection,
+    /// The lab app it sends to.
+    pub(super) lab_app: Identifier,
+}
+
+/// How a set-up machine is attached, as configured: what the overview can name.
+/// It never holds a peer's address (safety rule 10 keeps endpoints off pages).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(in crate::admin) enum Connection {
+    /// A serial port named in the site file, such as COM3.
+    Serial(String),
+    /// The serial port of the USB adapter reporting this serial number.
+    UsbAdapter(String),
+    /// Analyte listens and the machine connects; the port when the site file
+    /// writes a plain socket address.
+    Listening(Option<u16>),
+    /// Analyte connects to the machine.
+    Dialing,
+    /// Analyte watches a folder; its last path part.
+    Folder(String),
+}
+
+impl Connection {
+    /// The connection of a machine with `link` at the site's `endpoint`.
+    pub(super) fn of(
+        link: crate::machine::link::status::Link,
+        endpoint: &analyte_config::Endpoint,
+    ) -> Self {
+        use crate::machine::link::status::Link;
+        let fixed = endpoint.fixed().unwrap_or_default();
+        match (link, endpoint) {
+            (Link::Serial, analyte_config::Endpoint::UsbSerial(serial)) => {
+                Self::UsbAdapter(serial.as_str().to_owned())
+            }
+            (Link::Serial, analyte_config::Endpoint::Fixed(port)) => Self::Serial(port.clone()),
+            (Link::TcpServer, _) => Self::Listening(
+                fixed
+                    .parse::<std::net::SocketAddr>()
+                    .ok()
+                    .map(|address| address.port()),
+            ),
+            (Link::TcpClient, _) => Self::Dialing,
+            (Link::Folder, _) => Self::Folder(std::path::Path::new(fixed).file_name().map_or_else(
+                || fixed.to_owned(),
+                |name| name.to_string_lossy().into_owned(),
+            )),
+        }
+    }
 }
 
 pub(super) struct Context {
@@ -51,6 +103,8 @@ pub(super) struct Context {
     pub(super) directory: std::path::PathBuf,
     pub(super) reserve: u64,
     pub(super) setup: super::setup::Setup,
+    /// Where restyled pages load this build's static files from.
+    pub(super) assets: super::view::assets::Root,
     // Struct fields drop in declaration order: notify only after store is released.
     _released: tokio::sync::oneshot::Sender<()>,
 }
@@ -77,23 +131,6 @@ pub(crate) async fn prepare(
     let token = Token::load(program.data_directory())?;
     let socket = tokio::net::TcpListener::bind(address).await?;
     let host = address.to_string();
-    let machines: Vec<_> = program
-        .machines()
-        .iter()
-        .map(|m| {
-            Ok(Machine {
-                departure_html: super::pages::departures::enabled(&m.snapshot)?,
-                id: m.id().clone(),
-                running: Arc::new(AtomicBool::new(true)),
-                status: m.status.subscribe(),
-            })
-        })
-        .collect::<Result<Vec<_>, Error>>()?;
-    let owners = machines
-        .iter()
-        .map(|m| (m.id.as_str().to_owned(), m.running.clone()))
-        .collect();
-    let (released, release) = tokio::sync::oneshot::channel();
     #[cfg(feature = "test-hooks")]
     let seams = program
         .hooks
@@ -102,6 +139,31 @@ pub(crate) async fn prepare(
         .unwrap_or_else(|| super::setup::Seams::system(&program.source_path));
     #[cfg(not(feature = "test-hooks"))]
     let seams = super::setup::Seams::system(&program.source_path);
+    let machines: Vec<_> = program
+        .machines()
+        .iter()
+        .map(|m| {
+            let effective = m.snapshot().effective();
+            Ok(Machine {
+                departure_html: super::pages::departures::enabled(&m.snapshot)?,
+                id: m.id().clone(),
+                running: Arc::new(AtomicBool::new(true)),
+                status: m.status.subscribe(),
+                // A small bounded README read per machine, once, before serving.
+                model: super::setup::model_name(&m.definition, seams.definitions.as_deref()),
+                connection: Connection::of(
+                    crate::machine::link::status::Link::of(effective.stack()),
+                    &effective.site().endpoint,
+                ),
+                lab_app: effective.site().destination.name.clone(),
+            })
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
+    let owners = machines
+        .iter()
+        .map(|m| (m.id.as_str().to_owned(), m.running.clone()))
+        .collect();
+    let (released, release) = tokio::sync::oneshot::channel();
     let setup = super::setup::Setup::new(program, seams);
     let restart = setup.restart_requested();
     let state = Arc::new(Context {
@@ -124,6 +186,7 @@ pub(crate) async fn prepare(
         directory: program.data_directory().to_owned(),
         reserve: program.store_limits.reserve_bytes,
         setup,
+        assets: super::view::assets::Root::of_this_build(),
         _released: released,
     });
     Ok(Some(Server {
@@ -190,8 +253,9 @@ async fn drain_server(
 fn router(state: Arc<Context>) -> Router {
     Router::new()
         .route("/", get(super::overview::show))
-        .route(super::view::STYLESHEET, get(super::view::stylesheet))
+        .route("/static/{*path}", get(super::view::assets::serve))
         .route("/login", get(login_page).post(login))
+        .route("/logout", post(logout))
         .route(
             "/retention",
             get(super::pages::retention::show).post(super::pages::retention::hold),
@@ -317,8 +381,8 @@ async fn protect(State(state): State<Arc<Context>>, mut request: Request, next: 
         .and_then(|v| v.to_str().ok())
         == Some(state.host.as_str());
     let login = request.uri().path() == "/login";
-    // The stylesheet holds no data; the login page needs it before any session exists.
-    let public = request.uri().path() == super::view::STYLESHEET;
+    // Static files hold no data; the login page needs them before any session exists.
+    let public = request.uri().path().starts_with("/static/");
     let bearer = request
         .headers()
         .get(header::AUTHORIZATION)
@@ -390,10 +454,14 @@ async fn protect(State(state): State<Arc<Context>>, mut request: Request, next: 
         ("cache-control", "no-store"),
         ("x-content-type-options", "nosniff"),
     ] {
-        response.headers_mut().insert(
-            header::HeaderName::from_static(name),
-            header::HeaderValue::from_static(value),
-        );
+        let name = header::HeaderName::from_static(name);
+        // A versioned static file keeps its own long cache; everything else is not stored.
+        if name == header::CACHE_CONTROL && response.headers().contains_key(&name) {
+            continue;
+        }
+        response
+            .headers_mut()
+            .insert(name, header::HeaderValue::from_static(value));
     }
     response
 }
@@ -495,5 +563,31 @@ async fn login(
     response
         .headers_mut()
         .insert(header::LOCATION, header::HeaderValue::from_static("/"));
+    response
+}
+
+/// POST /logout: the dispatcher already checked the session's CSRF token. Ends
+/// the session, clears its cookie and returns to the sign-in page. Sign-in is
+/// not audited, so sign-out is not either.
+async fn logout(
+    State(state): State<Arc<Context>>,
+    Extension(session): Extension<Arc<Session>>,
+) -> Response {
+    if let Err(error) = state.sessions.end(&session) {
+        return super::view::refusal(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "You cannot sign out right now",
+            "Analyte cannot check browser sessions any more. Restart Analyte; that signs everyone out.",
+            error,
+        );
+    }
+    let mut response = StatusCode::SEE_OTHER.into_response();
+    response.headers_mut().insert(
+        header::SET_COOKIE,
+        header::HeaderValue::from_static(Token::CLEARED_COOKIE),
+    );
+    response
+        .headers_mut()
+        .insert(header::LOCATION, header::HeaderValue::from_static("/login"));
     response
 }

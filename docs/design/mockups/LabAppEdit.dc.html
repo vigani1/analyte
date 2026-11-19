@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Analyte · Edit Main lab app</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/2679076d2049d0720ac5104465671ab9">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=Instrument+Sans:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="app" data-theme="{{theme}}" style="font-family: var(--font-sans); color: var(--text)">
+<dc-import name="Sidebar" active="labapps" hint-size="232px,100vh"></dc-import>
+<main class="main">
+
+<header class="page-head">
+<div>
+<ol class="crumbs"><li><a href="#labapps">Lab apps</a></li><li>Main lab app</li></ol>
+<h1>Edit Main lab app</h1>
+</div>
+</header>
+
+<form class="stack stack--lg" style="max-width: 760px">
+<section class="card card--pad stack" aria-labelledby="le-basic">
+<h2 id="le-basic" class="label">Where to send</h2>
+<div class="form-grid">
+<div class="field"><label class="field__label" for="le-name">Name</label><input id="le-name" class="input" value="Main lab app"></div>
+<div class="field"><label class="field__label" for="le-addr">Address</label><input id="le-addr" class="input mono" value="https://lab-main.hospital.internal/api"><span class="field__hint">Your lab app team gives you this.</span></div>
+</div>
+<fieldset style="border: 0; margin: 0; padding: 0">
+<legend class="field__label" style="margin-bottom: 4px">Machines that send here</legend>
+<label class="check"><input type="checkbox" checked="{{ true }}">Chemistry analyzer</label>
+<label class="check"><input type="checkbox" checked="{{ true }}">Hematology analyzer</label>
+<label class="check"><input type="checkbox">Immunoassay analyzer <span class="subtle" style="font-size: 12.5px">· sends to Outpatient lab app</span></label>
+</fieldset>
+</section>
+
+<section class="card card--pad stack" aria-labelledby="le-keys">
+<h2 id="le-keys" class="label">Keys</h2>
+<div class="alert alert--info">
+<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.lock}}"></path></svg>
+<div><p class="alert__title">Keys are entered once</p><p class="alert__text">After you save, Analyte keeps them locked away and never shows them again. To change a key, replace it.</p></div>
+<span></span>
+</div>
+<div class="field">
+<label class="field__label" for="le-api">API key</label>
+<input id="le-api" class="input mono" type="password" value="xxxxxxxxxxxxxxxxxxxxxxxx" autocomplete="off">
+<span class="field__hint">Paste it from your lab app team’s message.</span>
+</div>
+<div class="field">
+<label class="field__label" for="le-sign">Signing key</label>
+<input id="le-sign" class="input mono" type="password" placeholder="Paste the signing key" autocomplete="off">
+<span class="field__error"><svg class="icon icon--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.bad}}"></path></svg>Needed before Analyte can send results.</span>
+</div>
+<p class="field__label" style="margin: 8px 0 0">After saving, a key looks like this:</p>
+<div class="secret">
+<span class="status status--good"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.ok}}"></path></svg>Set on 19 Nov</span>
+<span class="secret__dots">••••••••••••</span>
+<span class="spacer"></span>
+<button type="button" class="btn btn--outline btn--sm">Replace</button>
+</div>
+</section>
+
+<div class="wizard-foot">
+<button type="button" class="btn btn--quiet" style="color: var(--bad-text)">Remove this lab app</button>
+<div class="cluster"><a class="btn btn--outline" href="#labapps">Cancel</a><button type="submit" class="btn btn--primary">Save</button></div>
+</div>
+</form>
+
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"$preview":{"width":1280,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const ic = {
+      ok: 'M2 12a10 10 0 1 0 20 0a10 10 0 1 0-20 0 M8.5 12.5l2.5 2.5 4.5-5',
+      bad: 'M2.586 16.726A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2h6.624a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586z M15 9l-6 6 M9 9l6 6',
+      lock: 'M5 11h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2Z M7 11V7a5 5 0 0 1 10 0v4'
+    };
+    return { theme: (this.props.dark ?? false) ? 'dark' : 'light', ic };
+  }
+}
+</script>
+</body>
+</html>

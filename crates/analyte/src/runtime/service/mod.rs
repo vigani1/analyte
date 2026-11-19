@@ -521,14 +521,17 @@ impl Destinations {
             // Each kept destination's worker clears its flag when nothing is left to
             // send. Only a kept destination can lack keys: a set-up machine's missing
             // keys stop startup instead.
-            draining: retired
-                .iter()
-                .map(|d| {
+            draining: program
+                .unused_lab_apps()
+                .map(|lab_app| {
+                    let settings = lab_app.settings();
                     let kept = crate::admin::Kept {
                         delivering: Arc::new(std::sync::atomic::AtomicBool::new(true)),
-                        keys_missing: !secrets.has_keys(d.id()),
+                        keys_missing: !secrets.has_keys(&settings.name),
+                        api_key: settings.api_key_name.clone(),
+                        signing_key: settings.signing_key_name.clone(),
                     };
-                    (d.id().as_str().to_owned(), kept)
+                    (settings.name.as_str().to_owned(), kept)
                 })
                 .collect(),
             retired,

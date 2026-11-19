@@ -267,3 +267,62 @@ fn windows_installer_and_scripts_agree() -> Outcome {
     assert!(install.contains("if (Test-Path -LiteralPath $token)"));
     Ok(())
 }
+
+// Owner request 2026-11-19 (Aperture logo, PR #273): the installer and the Apps
+// list show the Analyte icon. The release script stages the one committed
+// analyte.ico, which holds PNG frames at 16 and 20 px (from the hand-tuned
+// SVGs) and at 24, 32, 48 and 256 px (from the large icon); docs/design/README.md.
+#[test]
+fn windows_installer_shows_the_analyte_icon() -> Outcome {
+    let installer = read("windows/analyte.iss")?;
+    for expected in [
+        r"SetupIconFile={#SourceDir}\analyte.ico",
+        r"UninstallDisplayIcon={app}\analyte.ico",
+        r#"Source: "{#SourceDir}\analyte.ico"; DestDir: "{app}"; Flags: ignoreversion"#,
+    ] {
+        assert!(installer.contains(expected), "analyte.iss lacks {expected}");
+    }
+    let build = read("build.ps1")?;
+    assert!(build.contains(
+        "Copy-Item -LiteralPath crates/analyte/assets/icons/analyte.ico -Destination $stage"
+    ));
+    let icon = std::fs::read(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/icons/analyte.ico"),
+    )?;
+    // The icon directory: reserved, type 1 (icon), six frames.
+    assert_eq!(icon.get(..6), Some([0, 0, 1, 0, 6, 0].as_slice()));
+    let mut sides = Vec::new();
+    for entry in icon
+        .get(6..102)
+        .ok_or("frame entries missing")?
+        .as_chunks::<16>()
+        .0
+    {
+        let word = |at: usize| -> Result<usize, Box<dyn std::error::Error + Send + Sync>> {
+            let bytes = entry
+                .get(at..at.checked_add(4).ok_or("offset")?)
+                .ok_or("entry")?;
+            Ok(usize::try_from(u32::from_le_bytes(bytes.try_into()?))?)
+        };
+        // A 256 px frame is written as 0 in the one-byte width and height.
+        let side = match entry.first() {
+            Some(0) => 256,
+            Some(&side) => u32::from(side),
+            None => return Err("empty entry".into()),
+        };
+        let (length, offset) = (word(8)?, word(12)?);
+        let png = icon
+            .get(offset..offset.checked_add(length).ok_or("length")?)
+            .ok_or("frame outside the file")?;
+        assert!(
+            png.starts_with(b"\x89PNG\r\n\x1a\n"),
+            "frame {side} is no PNG"
+        );
+        let width = u32::from_be_bytes(png.get(16..20).ok_or("no width")?.try_into()?);
+        let height = u32::from_be_bytes(png.get(20..24).ok_or("no height")?.try_into()?);
+        assert_eq!((width, height), (side, side));
+        sides.push(side);
+    }
+    assert_eq!(sides, [16, 20, 24, 32, 48, 256]);
+    Ok(())
+}

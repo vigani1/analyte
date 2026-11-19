@@ -10,7 +10,7 @@ use super::{
     RELOAD, SetupError, after_write, audit, done, entries, incomplete, needs_login, off_thread,
     page, refused, see_other, site, stored,
 };
-use crate::admin::{markup::Markup, server::Context, sessions::Session, view::plain};
+use crate::admin::{markup::Markup, server::Context, sessions::Session, view::format};
 use crate::installation::config::{Program, folder};
 use analyte_model::Identifier;
 use analyte_store::Unfinished;
@@ -264,7 +264,7 @@ fn open_work(open: &Unfinished) -> Vec<String> {
     ]
     .into_iter()
     .filter(|(count, ..)| *count > 0)
-    .map(|(count, one, many, rest)| format!("{}{rest}", plain::amount(count, one, many)))
+    .map(|(count, one, many, rest)| format!("{}{rest}", format::amount(count, one, many)))
     .collect()
 }
 
@@ -317,7 +317,7 @@ fn delivery_sentence(lab_app: &LabApp, open: &Result<Unfinished, SetupError>) ->
         LabApp::Kept(name) => match open {
             Ok(open) if open.undelivered > 0 => Markup::new()
                 .markup("<span title=\"")
-                .text(plain::amount(
+                .text(format::amount(
                     open.undelivered,
                     "result or order message not yet accepted by the lab app",
                     "results or order messages not yet accepted by the lab app",
@@ -325,7 +325,7 @@ fn delivery_sentence(lab_app: &LabApp, open: &Result<Unfinished, SetupError>) ->
                 .markup("\">")
                 .text(format!(
                     "Its {} will still be sent to {name}.",
-                    plain::amount(open.undelivered, "waiting result", "waiting results")
+                    format::amount(open.undelivered, "waiting result", "waiting results")
                 ))
                 .markup("</span>"),
             Ok(_) => Markup::new().text(format!(

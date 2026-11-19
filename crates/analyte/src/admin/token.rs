@@ -49,6 +49,10 @@ impl Token {
             if https { "; Secure" } else { "" }
         )
     }
+    /// The header that makes the browser drop its session cookie at sign-out.
+    pub(super) const CLEARED_COOKIE: &'static str =
+        "analyte_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict";
+
     /// Reads at most 45 bytes and refuses missing, malformed or unprotected files.
     /// # Errors
     /// Reports missing credentials, invalid format, permissions and OS read failures.

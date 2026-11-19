@@ -1,0 +1,23 @@
+{#- The page frame of every restyled page: the head with the three stylesheets, the sidebar and the main column, which a page may centre. -#}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ frame.title }} · Analyte</title>
+{%- for icon in crate::admin::view::assets::FAVICONS %}
+<link rel="icon" type="image/svg+xml" sizes="{{ icon.sizes }}" href="{{ frame.assets }}{{ icon.path }}">
+{%- endfor %}
+<link rel="stylesheet" href="{{ frame.assets }}fonts.css">
+<link rel="stylesheet" href="{{ frame.assets }}analyte.css">
+<link rel="stylesheet" href="{{ frame.assets }}app.css">
+</head>
+<body>
+<div class="app">
+{% include "layout/sidebar.html" %}
+<main class="main{% block main_class %}{% endblock %}">
+{%- block main %}{% endblock %}
+</main>
+</div>
+</body>
+</html>

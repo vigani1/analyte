@@ -11,6 +11,7 @@
 use super::server::Context;
 use crate::admin::Error;
 use crate::admin::markup::Markup;
+use crate::admin::view::Tone;
 use analyte_model::Identifier;
 use analyte_store::{Undeliverable, Undelivered};
 use std::{
@@ -32,6 +33,10 @@ pub(crate) struct Kept {
     /// Its API key or signing key could not be loaded at startup, so its worker
     /// can send nothing until the keys are entered and Analyte restarts.
     pub(crate) keys_missing: bool,
+    /// The credential names of its API key and signing key, so the overview can
+    /// ask the key source which one is missing.
+    pub(crate) api_key: Identifier,
+    pub(crate) signing_key: Identifier,
 }
 
 /// One sentence about results waiting for a destination no running machine uses.
@@ -41,13 +46,31 @@ pub(super) struct Line {
     waiting: u64,
     /// Why nothing reaches the lab app until someone acts; none while delivery can go on.
     blocked: Option<Undeliverable>,
+    /// Who sent the waiting items, that they are kept and how many need
+    /// someone on the Deliveries page; only for a lab app whose keys are
+    /// missing, whose node on the Overview's signal path says the rest.
+    kept: Option<String>,
 }
 
 impl Line {
+    /// A problem when nothing can be delivered, otherwise a warning.
+    pub(super) const fn tone(&self) -> Tone {
+        if self.blocked.is_some() {
+            Tone::Problem
+        } else {
+            Tone::Attention
+        }
+    }
+
+    /// The sentence itself.
+    pub(super) fn text(&self) -> &str {
+        &self.text
+    }
+
     /// The sentence in a warning box: red when nothing can be delivered.
     pub(super) fn notice(&self, label: &'static str) -> Markup {
         Markup::new()
-            .markup(if self.blocked.is_some() {
+            .markup(if self.tone() == Tone::Problem {
                 "<p class=\"notice bad\">"
             } else {
                 "<p class=\"notice\">"
@@ -57,11 +80,25 @@ impl Line {
             .markup("</p>")
     }
 
-    /// The lab app, why nothing can be delivered to it and how many items wait;
-    /// none while delivery can go on.
-    pub(super) fn blocked(&self) -> Option<(Identifier, Undeliverable, u64)> {
-        self.blocked
-            .map(|reason| (self.destination.clone(), reason, self.waiting))
+    /// The lab app, why nothing can be delivered to it, how many items wait
+    /// and, when its node shows the rest ([`Self::on_path`]), what only this
+    /// line says; none while delivery can go on.
+    pub(super) fn blocked(&self) -> Option<(Identifier, Undeliverable, u64, Option<String>)> {
+        self.blocked.map(|reason| {
+            (
+                self.destination.clone(),
+                reason,
+                self.waiting,
+                self.kept.clone(),
+            )
+        })
+    }
+
+    /// A kept lab app whose keys are missing has its own node on the
+    /// Overview's signal path, which says it cannot deliver, which keys are
+    /// missing and what to do; there the sentence would only repeat it.
+    pub(super) const fn on_path(&self) -> bool {
+        matches!(self.blocked, Some(Undeliverable::CredentialsMissing))
     }
 }
 
@@ -122,30 +159,30 @@ fn line(open: &Undelivered, kept: Option<&Kept>, from_running: bool) -> Line {
         kept.is_some(),
         kept.is_some_and(|kept| kept.keys_missing),
     );
+    let are = if count == 1 { "is" } else { "are" };
+    let stays = format!("{from}: {count} {what} {are} kept and never deleted.{held}");
     let text = match blocked {
         // The worker runs, but without keys nothing is sent (ADR 0014 alert text).
         Some(Undeliverable::CredentialsMissing) => format!(
             concat!(
                 "Cannot send to lab app {destination}: its API key or signing key is ",
                 "missing. Enter them on the Lab app page (or in the service environment), ",
-                "then restart. {from}: {count} {what} are kept and never deleted.{held}"
+                "then restart. {stays}"
             ),
             destination = destination,
-            from = from,
-            count = count,
-            what = what,
-            held = held
+            stays = stays,
         ),
         Some(Undeliverable::NotConfigured) => format!(
             concat!(
                 "Cannot send to lab app {destination}: it is not set up any more. {from}: ",
-                "{count} {what} are kept and never deleted. Add lab app {destination} on the ",
+                "{count} {what} {are} kept and never deleted. Add lab app {destination} on the ",
                 "Lab app page, then restart, to send them."
             ),
             destination = destination,
             from = from,
             count = count,
-            what = what
+            what = what,
+            are = are
         ),
         None if kept.is_some_and(|kept| kept.delivering.load(Ordering::Acquire)) => {
             format!("{from}: {count} {what} still being delivered to lab app {destination}.{held}")
@@ -167,6 +204,7 @@ fn line(open: &Undelivered, kept: Option<&Kept>, from_running: bool) -> Line {
         destination: open.destination.clone(),
         waiting: count,
         blocked,
+        kept: matches!(blocked, Some(Undeliverable::CredentialsMissing)).then_some(stays),
     }
 }
 
@@ -203,6 +241,8 @@ mod tests {
         Kept {
             delivering: Arc::new(AtomicBool::new(delivering)),
             keys_missing,
+            api_key: Identifier::new("old-lab-api").expect("valid test name"),
+            signing_key: Identifier::new("old-lab-signing").expect("valid test name"),
         }
     }
 
@@ -218,9 +258,11 @@ mod tests {
             Some((
                 Identifier::new("old-lab")?,
                 Undeliverable::CredentialsMissing,
-                3
+                3,
+                Some("Removed machine machine-3: 3 results or order messages are kept and never deleted.".into())
             ))
         );
+        assert!(line.on_path());
         assert!(
             !line.text.contains("still being delivered"),
             "{}",
@@ -252,8 +294,14 @@ mod tests {
             finished.contains("sent after the next restart"),
             "{finished}"
         );
-        let gone = line_text(&open, None);
-        assert!(gone.starts_with("Cannot send to lab app old-lab: it is not set up any more."));
+        let gone = super::line(&open, None, false);
+        assert!(
+            gone.text
+                .starts_with("Cannot send to lab app old-lab: it is not set up any more.")
+        );
+        // No lab app node says this, so the sentence stays on the Overview.
+        assert!(!gone.on_path());
+        assert_eq!(gone.blocked().and_then(|blocked| blocked.3), None);
         Ok(())
     }
 

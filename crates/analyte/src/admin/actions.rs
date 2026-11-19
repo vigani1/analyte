@@ -2,7 +2,7 @@
 use super::{
     server::Context,
     sessions::Session,
-    view::{self, Tab, exact, plain},
+    view::{self, Tab, exact, format},
 };
 use crate::admin::Error;
 use crate::admin::error::CommandError;
@@ -231,7 +231,7 @@ pub(super) async fn confirm_resend(
                 .text(row.destination.as_str())
                 .markup(" again, unchanged and with the same delivery number. Its status now: ")
                 .fragment(&exact(
-                    plain::delivery_state(row.state),
+                    format::delivery_state(row.state),
                     &row.state.to_string(),
                 ))
                 .markup(concat!(

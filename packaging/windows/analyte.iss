@@ -2,8 +2,8 @@
 ; the files, then runs install.ps1, so manual and installer setups share one
 ; set of service and permission rules. Unsigned for now: see docs/release.md.
 ;
-; Build from a staged release folder (analyte.exe, LICENSE, README.md, machines,
-; packaging\windows):
+; Build from a staged release folder (analyte.exe, analyte.ico, LICENSE,
+; README.md, machines, packaging\windows):
 ;   ISCC.exe /DAppVersion=0.1.0 /DSourceDir=<folder> /DOutputDir=<folder> analyte.iss
 
 #ifndef AppVersion
@@ -36,7 +36,11 @@ OutputBaseFilename=analyte-v{#AppVersion}-x86_64-windows-setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
-UninstallDisplayIcon={app}\analyte.exe
+; The Analyte icon (crates/analyte/assets/icons/analyte.ico, staged by
+; packaging/build.ps1) for the installer itself and the Apps list. analyte.exe
+; carries no icon of its own yet, so the Apps list points at the installed .ico.
+SetupIconFile={#SourceDir}\analyte.ico
+UninstallDisplayIcon={app}\analyte.ico
 UninstallDisplayName=Analyte
 ; The service is stopped in PrepareToInstall; nothing else should hold the files.
 CloseApplications=no
@@ -49,6 +53,7 @@ ConfirmUninstall=This removes the Analyte service and program files.%n%nData, co
 
 [Files]
 Source: "{#SourceDir}\analyte.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourceDir}\analyte.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\packaging\windows\*"; DestDir: "{app}\packaging\windows"; Flags: ignoreversion recursesubdirs

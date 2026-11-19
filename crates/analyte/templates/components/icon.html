@@ -1,0 +1,11 @@
+{#- The drawings every template uses: the Lucide icon macro, whose path comes from the Rust `Icon` enum, and the Analyte mark. -#}
+
+{#- A Lucide icon; `class` adds size or tone classes and may be empty. -#}
+{%- macro icon(icon, class) -%}
+<svg class="icon {{ class }}" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ icon.path() }}"/></svg>
+{%- endmacro %}
+
+{#- The Analyte mark "Aperture", `size` pixels square, as the Sidebar and SignIn mockups draw it inline; its colours follow the theme. `stroke` is the ring and beam width the design gives each size (thicker as the mark gets smaller). -#}
+{%- macro brand_mark(size, stroke) -%}
+<svg class="logo" width="{{ size }}" height="{{ size }}" viewBox="0 0 48 48" aria-hidden="true"><path class="logo__tile" d="M10 0h28a10 10 0 0 1 10 10v28a10 10 0 0 1-10 10H10A10 10 0 0 1 0 38V10A10 10 0 0 1 10 0Z"/><g transform="translate(7 7) scale(.708)" stroke-width="{{ stroke }}"><path class="logo__sample" d="M11.3 28C19.4 32.3 28.6 32.3 36.7 28A13.4 13.4 0 0 1 11.3 28Z"/><path class="logo__light" d="M9 24a15 15 0 1 0 30 0a15 15 0 1 0-30 0 M2 20h5.5"/><path class="logo__measured" d="M40.5 20H46"/></g></svg>
+{%- endmacro %}

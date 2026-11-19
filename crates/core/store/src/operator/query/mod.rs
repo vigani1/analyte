@@ -345,6 +345,121 @@ impl Store {
     }
 }
 
+/// When each lab app last accepted a delivery, as far as the store still knows.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct LastDelivered {
+    /// Each destination with at least one accepted delivery still stored, and
+    /// the Unix second of its latest accepted attempt.
+    pub at: Vec<(Identifier, i64)>,
+    /// Data keeping has purged delivered items, so a destination missing from
+    /// `at` may still have delivered before: the purged records keep no
+    /// destination. False means a missing destination never delivered.
+    pub purged: bool,
+}
+
+impl Store {
+    /// Reads, in one query, the latest accepted ("done") attempt time per
+    /// destination, results and order messages alike; read-only.
+    /// # Errors
+    /// Reports database errors or a stored destination that is not an identifier.
+    pub fn last_delivered(&self) -> Result<LastDelivered, Error> {
+        let done = crate::document(&crate::Attempt::Done)?;
+        let mut statement = self.db.prepare(
+            "SELECT o.destination,max(a.time) FROM attempts a JOIN outbox o ON o.id=a.delivery WHERE a.outcome=?1 GROUP BY o.destination ORDER BY o.destination",
+        )?;
+        let at = statement
+            .query_map([done], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })?
+            .map(|row| {
+                let (destination, time) = row?;
+                Ok((
+                    Identifier::new(&destination).map_err(|_| Error::Corruption)?,
+                    time,
+                ))
+            })
+            .collect::<Result<Vec<_>, Error>>()?;
+        let purged = self.db.query_row(
+            "SELECT EXISTS(SELECT 1 FROM retention_deliveries) OR EXISTS(SELECT 1 FROM retention_order_deliveries)",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(LastDelivered { at, purged })
+    }
+}
+
+/// A lab app whose deliveries keep failing: items wait for it, and at least
+/// one try failed after its last accepted delivery (or ever, with none).
+/// A failed try is one the sink scheduled again (`RetryAt`): no answer, a
+/// timeout, or an answer that settles nothing. Restart recovery
+/// (`Interrupted`) is not a failed try. Only stored attempts count, so once
+/// data keeping purged a lab app's delivered items, `since` may predate an
+/// accepted delivery that is no longer kept.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FailingDestination {
+    /// The lab app.
+    pub destination: Identifier,
+    /// Unix second of the first failed try after the last accepted delivery.
+    pub since: i64,
+    /// Unix second of the latest failed try.
+    pub last: i64,
+    /// Failed tries from `since` to `last`, both included.
+    pub tries: u64,
+    /// Unix second the earliest waiting item is due to be tried again; none
+    /// while every waiting item is being tried.
+    pub next: Option<i64>,
+}
+
+impl Store {
+    /// Reads every lab app whose deliveries keep failing, by the rule on
+    /// [`FailingDestination`], ordered by name; read-only. Attempts are
+    /// ordered by their stored sequence, so a failure and a success in the same
+    /// second keep their real order.
+    /// # Errors
+    /// Reports database errors, a stored destination that is not an
+    /// identifier, or a negative count.
+    pub fn failing_destinations(&self) -> Result<Vec<FailingDestination>, Error> {
+        let done = crate::document(&crate::Attempt::Done)?;
+        let mut statement = self.db.prepare(concat!(
+            "WITH done AS (SELECT o.destination AS destination,max(a.sequence) AS last ",
+            "FROM attempts a JOIN outbox o ON o.id=a.delivery WHERE a.outcome=?1 ",
+            "GROUP BY o.destination) ",
+            "SELECT o.destination,min(a.time),max(a.time),count(*),",
+            "(SELECT min(p.next_attempt) FROM outbox p WHERE p.destination=o.destination AND p.state=?2) ",
+            "FROM attempts a JOIN outbox o ON o.id=a.delivery ",
+            "LEFT JOIN done d ON d.destination=o.destination ",
+            "WHERE json_type(a.outcome,'$.RetryAt')='integer' AND a.sequence>coalesce(d.last,0) ",
+            "GROUP BY o.destination ",
+            "HAVING EXISTS(SELECT 1 FROM outbox w WHERE w.destination=o.destination AND w.state IN (?2,?3)) ",
+            "ORDER BY o.destination",
+        ))?;
+        statement
+            .query_map(
+                params![done, DeliveryState::Pending, DeliveryState::InFlight],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, i64>(2)?,
+                        row.get::<_, i64>(3)?,
+                        row.get::<_, Option<i64>>(4)?,
+                    ))
+                },
+            )?
+            .map(|row| {
+                let (destination, since, last, tries, next) = row?;
+                Ok(FailingDestination {
+                    destination: Identifier::new(&destination).map_err(|_| Error::Corruption)?,
+                    since,
+                    last,
+                    tries: u64::try_from(tries).map_err(|_| Error::Corruption)?,
+                    next,
+                })
+            })
+            .collect()
+    }
+}
+
 impl Store {
     /// Lists receipt metadata in a bounded page ordered by stored UUID representation.
     /// Pass the previous page's final receipt UUID serialized as JSON as `after`, or

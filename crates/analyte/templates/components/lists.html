@@ -1,0 +1,43 @@
+{#- Macros that lay values out in lists: a card of rows with a link each, key-value lists and tables. -#}
+{%- import "components/icon.html" as draw %}
+
+{#- A card of rows; the caller writes its `row`s. -#}
+{%- macro rows() -%}
+<ul class="card rows">
+{{- caller() }}
+</ul>
+{%- endmacro %}
+
+{#- One row of a `.rows` card: an icon in its tone, the text and a link to the page about it. -#}
+{%- macro row(icon, tone, text, href, link) -%}
+<li class="row">{% call draw::icon(icon, "tone-" ~ tone.class()) %}{% endcall %}<span class="row__main">{{ text }}</span><a class="link" href="{{ href }}">{{ link }}</a></li>
+{%- endmacro %}
+
+{#- A key-value list; the caller writes its `pair`s. -#}
+{%- macro kv() -%}
+<dl class="kv">
+{{- caller() }}
+</dl>
+{%- endmacro %}
+
+{#- One key and its value; the caller writes the value, `class` styles it and may be empty. -#}
+{%- macro pair(term, class) -%}
+<dt>{{ term }}</dt><dd{% if !class.is_empty() %} class="{{ class }}"{% endif %}>{{ caller() }}</dd>
+{%- endmacro %}
+
+{#- A table in a card with one header row from `columns`; the caller writes the body rows of `cell`s. -#}
+{%- macro table(columns) -%}
+<div class="card table-wrap">
+<table class="table">
+<thead><tr>{% for column in columns %}<th scope="col"{% if column.right %} class="right"{% endif %}>{{ column.label }}</th>{% endfor %}</tr></thead>
+<tbody>
+{{- caller() }}
+</tbody>
+</table>
+</div>
+{%- endmacro %}
+
+{#- One table cell; the caller writes its content, `class` styles it and may be empty. -#}
+{%- macro cell(class) -%}
+<td{% if !class.is_empty() %} class="{{ class }}"{% endif %}>{{ caller() }}</td>
+{%- endmacro %}

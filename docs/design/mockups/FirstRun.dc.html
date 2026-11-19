@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Analyte · Welcome</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/2679076d2049d0720ac5104465671ab9">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=Instrument+Sans:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="app" data-theme="{{theme}}" style="font-family: var(--font-sans); color: var(--text)">
+<dc-import name="Sidebar" active="overview" review="0" hint-size="232px,100vh"></dc-import>
+<main class="main main--center">
+<div class="welcome anim-in">
+<svg width="72" height="72" viewBox="0 0 48 48" aria-hidden="true"><path d="M10 0h28a10 10 0 0 1 10 10v28a10 10 0 0 1-10 10H10A10 10 0 0 1 0 38V10A10 10 0 0 1 10 0Z" style="fill: var(--text)"></path><g transform="translate(7 7) scale(.708)"><path d="M11.3 28C19.4 32.3 28.6 32.3 36.7 28A13.4 13.4 0 0 1 11.3 28Z" style="fill: var(--mark)"></path><path d="M9 24a15 15 0 1 0 30 0a15 15 0 1 0-30 0 M2 20h5.5" style="fill: none; stroke: var(--surface); stroke-width: 3.2; stroke-linecap: round"></path><path d="M40.5 20H46" style="fill: none; stroke: var(--mark); stroke-width: 3.2; stroke-linecap: round"></path></g></svg>
+<div>
+<p class="eyebrow">Welcome</p>
+<h1 class="welcome__title">Let’s connect your first machine.</h1>
+</div>
+<p class="muted" style="margin: 0; font-size: 15px">Analyte takes results from your lab’s analyzers, checks them, keeps a safe copy and passes them to your lab app. Orders go the other way. Setting up one machine takes about five minutes.</p>
+<ol class="welcome__steps">
+<li>Pick the machine’s model</li>
+<li>Choose how it’s connected and which lab app gets its results</li>
+<li>Run a listen-only test. Analyte sends nothing to the machine</li>
+</ol>
+<a class="btn btn--primary btn--lg" href="#setup">Set up your first machine</a>
+<p class="live subtle" style="margin: 0; font-size: 13px"><span class="live-dot"></span>The engine is running and ready.</p>
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: (this.props.dark ?? false) ? 'dark' : 'light' };
+  }
+}
+</script>
+</body>
+</html>

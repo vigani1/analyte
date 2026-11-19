@@ -41,13 +41,14 @@ jobs:
       - name: Text files are UTF-8 without BOM and use LF
         # Fuzz corpora contain deliberate wire CR bytes. Binary files are skipped (-I); a BOM or a carriage return fails the job.
         run: |
-          bad=$(git ls-files -z -- . ':!fuzz/corpus/**' | LC_ALL=C xargs -0 grep -IlUP '\r|\A\xEF\xBB\xBF' || true)
+          bad=$(git ls-files -z -- . ':!fuzz/corpus/**' ':!*.woff2' ':!*.ico' ':!*.png' | LC_ALL=C xargs -0 grep -IlUP '\r|\A\xEF\xBB\xBF' || true)
           if [ -n "$bad" ]; then echo "$bad"; echo 'These files contain a BOM or CR line endings'; exit 1; fi
       - name: Text files are valid UTF-8
         # A builder saving with a Windows code page turns dashes, arrows and section
-        # signs into invalid bytes or '?'. Binary files are skipped (-I).
+        # signs into invalid bytes or '?'. Binary files are skipped (-I); bundled
+        # .woff2 fonts and .ico/.png images are excluded by name, since -a reads them as text.
         run: |
-          bad=$(git ls-files -z -- . ':!fuzz/corpus/**' | LC_ALL=C.UTF-8 xargs -0 grep -IlaxvP '.*' || true)
+          bad=$(git ls-files -z -- . ':!fuzz/corpus/**' ':!*.woff2' ':!*.ico' ':!*.png' | LC_ALL=C.UTF-8 xargs -0 grep -IlaxvP '.*' || true)
           if [ -n "$bad" ]; then echo "$bad"; echo 'These files are not valid UTF-8'; exit 1; fi
 
   clippy:

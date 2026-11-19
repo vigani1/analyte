@@ -1,0 +1,61 @@
+{#- The Overview (GET /) once something is set up or needs someone: the verdict, the signal path with its figures, orders, and disk and alerts. -#}
+{% extends "layout/base.html" %}
+{%- import "components/display.html" as display %}
+{%- import "components/feedback.html" as feedback %}
+{%- import "components/layout.html" as layout %}
+{%- import "components/lists.html" as lists %}
+{%- block main %}
+{% call layout::page_head(today, "Overview", counts) %}{% endcall %}
+{% call display::verdict(verdict) %}{% endcall %}
+
+<section class="section" id="sending" aria-labelledby="ov-path">
+<div class="section__head">
+{% call layout::label("ov-path", "02 · Signal path", "— machines → Analyte → lab apps") %}{% endcall %}
+{% call display::legend() %}{% endcall %}
+</div>
+{% call display::signal_path(machines, labs, figures) %}{% endcall %}
+{%- for notice in kept %}
+{% call feedback::alert(notice.tone, notice.title, notice.text) %}{% endcall %}
+{%- endfor %}
+</section>
+
+<div class="split">
+<section class="section" id="orders" aria-labelledby="ov-orders">
+{% call layout::label("ov-orders", "03 · Orders", "") %}{% endcall %}
+{% call lists::rows() %}
+{%- for order in orders %}
+{% call lists::row(order.icon, order.tone, order.text, order.href, order.link) %}{% endcall %}
+{%- endfor %}
+{% endcall %}
+{%- if let Some(notice) = restore %}
+{% call feedback::alert(notice.tone, notice.title, notice.text) %}{% endcall %}
+{%- endif %}
+</section>
+
+<section class="section grow" id="disk" aria-labelledby="ov-disk">
+{% call layout::label("ov-disk", "04 · Disk and alerts", "") %}{% endcall %}
+{% call layout::card() %}
+{% call lists::kv() %}
+{% call lists::pair("Free disk space", "") %}{% call display::exact(disk.free, disk.free_exact) %}{% endcall %}{% endcall %}
+{% call lists::pair("Always kept free", "") %}{% call display::exact(disk.reserve, disk.reserve_exact) %}{% endcall %} <span class="muted">Analyte stops receiving below this</span>{% endcall %}
+{% call lists::pair("Disk status", "") %}{% call display::status(disk.tone(), disk.status()) %}{% endcall %}{% endcall %}
+{% call lists::pair("Active alerts", "num") %}{{ alerts.len() }}{% endcall %}
+{% call lists::pair("Alert relays", "num") %}{{ relays.len() }}{% endcall %}
+{% endcall %}
+{% endcall %}
+{%- if !alerts.is_empty() %}
+{% call lists::table(ALERT_COLUMNS) %}
+{%- for alert in alerts %}
+<tr>{% call lists::cell("cell-main") %}<span title="{{ alert.kind }}">{{ alert.words }}</span>{% endcall %}{% call lists::cell("") %}{{ alert.machine }}{% endcall %}{% call lists::cell("") %}{{ alert.responder }}{% endcall %}{% call lists::cell("") %}{% if let Some(raised) = alert.raised %}{% call display::time(raised) %}{% endcall %}{% else %}Not known{% endif %}{% endcall %}{% call lists::cell("num right") %}{{ alert.value }}{% endcall %}</tr>
+{%- endfor %}
+{% endcall %}
+{%- endif %}
+{%- for message in alert_messages %}
+{% call feedback::alert(crate::admin::view::Tone::Problem, message, "") %}{% endcall %}
+{%- endfor %}
+{%- if !relays.is_empty() %}
+{% call feedback::support("Relay status for support", relays) %}{% endcall %}
+{%- endif %}
+</section>
+</div>
+{%- endblock %}

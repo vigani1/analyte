@@ -1,0 +1,7 @@
+{#- The Overview on a first run (GET /): no machine is set up and nothing needs anyone, so it only welcomes and points to the setup wizard. -#}
+{% extends "layout/base.html" %}
+{%- import "components/layout.html" as layout %}
+{%- block main_class %} main--center{% endblock %}
+{%- block main %}
+{% call layout::welcome("Let’s connect your first machine.", "Analyte reads results from your lab’s analyzers, keeps a copy and sends them to your lab app. Orders go the other way.", steps, "/setup/first", "Set up your first machine", "The engine is running.") %}{% endcall %}
+{%- endblock %}

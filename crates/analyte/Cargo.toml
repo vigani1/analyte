@@ -14,6 +14,7 @@ default = []
 test-hooks = ["analyte-sink/test-hooks"]
 
 [dependencies]
+askama = { workspace = true }
 axum = { workspace = true, features = ["form"] }
 getrandom = { workspace = true }
 base64 = { workspace = true }
@@ -52,6 +53,9 @@ analyte-sim = { workspace = true }
 analyte-receiver = { workspace = true }
 rusqlite = { workspace = true }
 tempfile = { workspace = true }
+
+[build-dependencies]
+embed-resource = { workspace = true }
 
 [lints]
 workspace = true

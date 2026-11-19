@@ -5,7 +5,7 @@ use crate::admin::markup::Markup;
 use crate::admin::{
     server::Context,
     sessions::Session,
-    view::{self, Tab, count, plain},
+    view::{self, Tab, count, format},
 };
 use crate::deadline;
 use analyte_model::{Identifier, Reason};
@@ -76,7 +76,7 @@ async fn render(state: &Context, session: Option<&Session>, after: u64) -> Resul
             |days| {
                 format!(
                     "deleted {} after the lab app last confirmed it",
-                    plain::amount(days, "day", "days")
+                    format::amount(days, "day", "days")
                 )
             },
         );
@@ -105,7 +105,7 @@ async fn render(state: &Context, session: Option<&Session>, after: u64) -> Resul
         |time| {
             Markup::new()
                 .text("Received ")
-                .fragment(&plain::when_unix(time, now))
+                .fragment(&format::when_unix(time, now))
         },
     ));
     html.push_markup(concat!(
@@ -146,7 +146,7 @@ fn last_run(run: &analyte_store::PurgeRun, now: jiff::Timestamp) -> Markup {
     let number = |value: &dyn std::fmt::Display| Markup::new().text(value);
     Markup::new()
         .markup("<dl>")
-        .fragment(&view::row("Ran", None, &plain::when_unix(run.time, now)))
+        .fragment(&view::row("Ran", None, &format::when_unix(run.time, now)))
         .fragment(&view::row(
             "Messages checked",
             Some("Examined"),
