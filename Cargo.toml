@@ -33,6 +33,8 @@ analyte-autolyser = { path = "crates/protocols/autolyser", version = "0.1.0" }
 
 # Runtime, errors, logging
 windows-services = { version = "0.100.0", default-features = false }
+# Build-time only: compiles the app icon into analyte.exe on Windows (owner-approved 2026-11-19).
+embed-resource = { version = "3.0.12", default-features = false }
 # ADR 0017: access-list FFI for the protected data directory; matches Cargo.lock.
 windows-sys = { version = "0.61.2", default-features = false }
 tokio = { version = "1.54", default-features = false }

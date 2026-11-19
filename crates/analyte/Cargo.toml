@@ -54,6 +54,9 @@ analyte-receiver = { workspace = true }
 rusqlite = { workspace = true }
 tempfile = { workspace = true }
 
+[build-dependencies]
+embed-resource = { workspace = true }
+
 [lints]
 workspace = true
 
