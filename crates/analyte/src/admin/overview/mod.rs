@@ -326,13 +326,7 @@ async fn render(
                     text: String::new(),
                 })
                 .collect(),
-            disk: Disk {
-                free: format!("{} free", format::bytes(free)),
-                free_exact: format!("{free} bytes free"),
-                reserve: format::bytes(state.reserve),
-                reserve_exact: format!("{} bytes", state.reserve),
-                enough: free > state.reserve,
-            },
+            disk: Disk::of(free, state.reserve),
             alerts: alert_rows,
             alert_messages,
             relays,

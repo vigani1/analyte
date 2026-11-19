@@ -146,13 +146,7 @@ fn page(facts: &Facts, enough: bool, alerts: Vec<AlertRow>, relays: Vec<String>)
                 text: String::new(),
             },
         ],
-        disk: Disk {
-            free: "512 bytes free".into(),
-            free_exact: "512 bytes free".into(),
-            reserve: "1 GB".into(),
-            reserve_exact: "1073741824 bytes".into(),
-            enough,
-        },
+        disk: Disk::of(if enough { 2 * GIB } else { 512 }, GIB),
         alerts,
         alert_messages: vec!["The lab app keys are missing.".into()],
         relays,
@@ -221,6 +215,26 @@ fn empty_path_and_kept_results_use_design_components() -> Result<(), askama::Err
     ));
     assert!(html.contains("<div class=\"alert alert--warn\" role=\"note\">"));
     Ok(())
+}
+
+/// One binary gigabyte, a realistic reserve.
+const GIB: u64 = 1_073_741_824;
+
+// Owner request 2026-11-19 (screenshot review, PR #273): "Always kept free:
+// 1 byte" came from a test fixture's reserve. Real sizes read in the largest
+// readable unit (1 GiB is "1 GB", as Windows shows it), exact bytes on hover.
+#[test]
+fn disk_sizes_read_in_units_with_exact_bytes() {
+    let disk = Disk::of(511_966_605_312, GIB);
+    assert_eq!(disk.free, "477 GB free");
+    assert_eq!(disk.free_exact, "511966605312 bytes free");
+    assert_eq!(disk.reserve, "1 GB");
+    assert_eq!(disk.reserve_exact, "1073741824 bytes");
+    assert_eq!(disk.status(), "Enough space");
+    let full = Disk::of(GIB, GIB);
+    assert_eq!(full.free, "1 GB free");
+    assert_eq!(full.status(), "Almost full: receiving refused");
+    assert_eq!(Disk::of(0, 1_536).reserve, "1.5 KB");
 }
 
 // Owner request 2026-11-19 (overview states): disk and alerts show free space

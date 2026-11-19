@@ -6,7 +6,7 @@
 use super::attention::Thing;
 use crate::admin::view::{
     Column, Tone,
-    format::{Line, Moment, Part},
+    format::{self, Line, Moment, Part},
     frame::Frame,
     icon::Icon,
 };
@@ -115,7 +115,7 @@ impl Verdict {
             },
             title: format!(
                 "{} you",
-                crate::admin::view::format::amount(count, "thing needs", "things need")
+                format::amount(count, "thing needs", "things need")
             ),
             sub: "Analyte keeps everything it has received while you fix these.",
             todo: things
@@ -252,6 +252,19 @@ pub(super) struct Disk {
 }
 
 impl Disk {
+    /// `free` bytes on the data folder's volume and the `reserve` Analyte
+    /// always keeps free, each in the largest readable unit with the exact
+    /// bytes on hover.
+    pub(super) fn of(free: u64, reserve: u64) -> Self {
+        Self {
+            free: format!("{} free", format::bytes(free)),
+            free_exact: format!("{free} bytes free"),
+            reserve: format::bytes(reserve),
+            reserve_exact: format!("{reserve} bytes"),
+            enough: free > reserve,
+        }
+    }
+
     pub(super) const fn tone(&self) -> Tone {
         if self.enough {
             Tone::Good
