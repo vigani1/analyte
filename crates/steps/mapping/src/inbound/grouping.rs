@@ -333,10 +333,12 @@ fn append_result(
                         .skip(finding_start)
                         .rev()
                         .find_map(|f| match f.problem {
-                            Problem::MissingIdentity { setting } => Some(format!(
-                                "missing identity {setting} at record {} field {}",
-                                f.position.record, f.position.field
-                            )),
+                            Problem::MissingIdentity { setting } => {
+                                Some(crate::Unidentified::Missing {
+                                    setting,
+                                    position: f.position,
+                                })
+                            }
                             Problem::ValueKindMismatch { .. }
                             | Problem::ComponentParts
                             | Problem::MissingSample
@@ -353,7 +355,8 @@ fn append_result(
                             | Problem::DepartureConflict
                             | Problem::DerivedStatusContract => None,
                         })
-                        .unwrap_or_else(|| "unknown test mapping".into()),
+                        .unwrap_or(crate::Unidentified::UnknownTest)
+                        .to_string(),
                 )
                 .map_err(|source| Error::Text { position, source })?,
             ),

@@ -175,7 +175,7 @@ fn map_one(
         patient_id,
         sample,
         identity: model::IdentityStatus::Unresolved(model::Reason::new(
-            "POCT service sequence may wrap; trusted run and revision evidence is required",
+            &crate::Unidentified::PoctSequence.to_string(),
         )?),
         source_index: observation.source_index,
     })

@@ -1,9 +1,11 @@
 //! Holds what each kind of Needs review item means for people: its words, its tone, the action that settles it and what to do.
 //!
-//! The guidance says only what the category and the problem read back from the
-//! stored reason say; a mapping finding names the problem, never the test code,
+//! The title and the reason's sentence come from `view::format::explain`, and
+//! the guidance only from the category and the problem read back from the
+//! stored reason; a mapping finding names the problem, never the test code,
 //! which stays in the protected original message.
-use crate::admin::view::Tone;
+use super::page::{Hover, Why};
+use crate::admin::view::{Tone, format};
 use analyte_mapping::{Finding, Problem};
 use analyte_store::{Parked, ParkedKind};
 
@@ -20,7 +22,8 @@ pub(super) enum Action {
 
 /// One item's category as the pages show it.
 pub(super) struct Category {
-    /// The category in plain words, or the stored kind when this version does not know it.
+    /// What the problem is when the stored reason says, else the category in
+    /// plain words, or the stored kind when this version does not know it.
     pub(super) shown: String,
     /// The stored kind, on hover; empty when it already shows as stored.
     pub(super) stored: String,
@@ -29,6 +32,10 @@ pub(super) struct Category {
     pub(super) action: Action,
     /// What someone does about the item.
     pub(super) guidance: &'static str,
+    /// Why the item is here.
+    pub(super) why: Why,
+    /// The exact stored reason and what goes with it, for support.
+    pub(super) support: Vec<String>,
 }
 
 impl Category {
@@ -37,6 +44,8 @@ impl Category {
     /// always had.
     pub(super) fn of(parked: &Parked) -> Self {
         let stored = parked.kind.as_str();
+        let reason = parked.reason.as_str();
+        let mut support = vec![format!("Reason as stored: {reason}")];
         let Some(kind) = ParkedKind::from_stored(stored) else {
             return Self {
                 shown: stored.to_owned(),
@@ -47,16 +56,49 @@ impl Category {
                     "Read the reason above and open the item for its linked records. If it is ",
                     "not clear what to do, give the item number to support.",
                 ),
+                why: as_stored(reason),
+                support,
             };
         };
-        let finding = Finding::from_stored(parked.reason.as_str());
+        let finding = Finding::from_stored(reason);
+        let explained = format::explain(kind, reason);
+        support.extend(explained.support);
         Self {
-            shown: words(kind).to_owned(),
+            shown: explained.title.unwrap_or(words(kind)).to_owned(),
             stored: stored.to_owned(),
             tone: tone(kind),
             action: main_action(kind),
             guidance: guidance(kind, finding.as_ref().map(|f| &f.problem)),
+            why: explained.sentence.map_or_else(
+                || as_stored(reason),
+                |sentence| Why {
+                    lead: "",
+                    text: Hover {
+                        shown: sentence,
+                        exact: String::new(),
+                    },
+                },
+            ),
+            support,
         }
+    }
+}
+
+/// A reason without a sentence: "Reason: " and the stored text, each mapping
+/// position in words with the exact text on hover.
+fn as_stored(stored: &str) -> Why {
+    Why {
+        lead: "Reason: ",
+        text: match format::reason_words(stored) {
+            Some(shown) => Hover {
+                shown,
+                exact: stored.to_owned(),
+            },
+            None => Hover {
+                shown: stored.to_owned(),
+                exact: String::new(),
+            },
+        },
     }
 }
 

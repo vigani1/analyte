@@ -163,9 +163,7 @@ impl<'a> Worker<'a> {
             ResponseAction::Done(status) => (Attempt::Done, DeliveryOutcome::Done(status)),
             ResponseAction::Conflict => (
                 Attempt::Conflict(reason(
-                    conflict_detail
-                        .as_deref()
-                        .unwrap_or("app reported delivery identity conflict"),
+                    conflict_detail.as_deref().unwrap_or(CONFLICT_REASON),
                 )),
                 DeliveryOutcome::Parked,
             ),
@@ -202,7 +200,7 @@ impl<'a> Worker<'a> {
         if claim.contract_version != 1 {
             return Ok((
                 ResponseAction::Parked {
-                    reason: "unsupported stored contract version".into(),
+                    reason: UNSUPPORTED_CONTRACT_REASON.into(),
                 },
                 None,
             ));
@@ -360,6 +358,13 @@ impl<'a> Worker<'a> {
         }
     }
 }
+
+/// The reason parked for a 409 whose body carries no version 1 detail.
+pub const CONFLICT_REASON: &str = "app reported delivery identity conflict";
+
+/// The reason parked for a delivery stored under a contract version this
+/// sender cannot send.
+pub const UNSUPPORTED_CONTRACT_REASON: &str = "unsupported stored contract version";
 
 // App diagnostics must never terminate the delivery owner.
 #[expect(

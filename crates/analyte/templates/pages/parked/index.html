@@ -1,4 +1,4 @@
-{#- Needs review (GET /parked): the Open and Resolved filters with their counts, then the open items as cards with what to do, or the resolved items as rows saying how each was settled. -#}
+{#- Needs review (GET /parked): the Open and Resolved filters with their counts, then the open items as cards with what to do and those resolved today, or the resolved items as rows saying how each was settled. -#}
 {% extends "layout/base.html" %}
 {%- import "components/display.html" as display %}
 {%- import "components/feedback.html" as feedback %}
@@ -20,7 +20,7 @@
 {%- endif %}
 </div>
 {%- endif %}
-{%- if !cards.is_empty() %}
+{%- if !cards.is_empty() || resolved.is_some() %}
 <div class="stack stack--lg">
 {%- for card in cards %}
 <article class="card" aria-labelledby="rv-{{ card.id }}">
@@ -33,21 +33,28 @@
 </div>
 <div class="card__body stack">
 <h2 id="rv-{{ card.id }}" class="review__title">Item <span class="mono">{{ card.id }}</span>{% if let Some(machine) = card.machine %} · {{ machine }}{% endif %}</h2>
-<p class="muted review__text">Reason: {% call display::hover(card.reason.shown, card.reason.exact) %}{% endcall %}</p>
+<p class="muted review__text">{{ card.category.why.lead }}{% call display::hover(card.category.why.text.shown, card.category.why.text.exact) %}{% endcall %}</p>
 {% call feedback::whattodo_with(card.category.guidance) %}
 {%- for button in card.actions %}{% call forms::link_button(button.href, button.label, button.class) %}{% endcall %}{% endfor -%}
 {% endcall %}
 </div>
 </article>
 {%- endfor %}
-</div>
+{%- if let Some(resolved) = resolved %}
+{%- if let Some(heading) = resolved.heading %}
+<section class="section" aria-labelledby="rv-done">
+{% call layout::label("rv-done", heading, "") %}{% endcall %}
 {%- endif %}
-{%- if !rows.is_empty() %}
 {% call lists::rows() %}
-{%- for row in rows %}
+{%- for row in resolved.rows %}
 {% call lists::row_with(RESOLVED.0, RESOLVED.1, row.href, "History") %}<b class="row__title">{{ row.category }}</b> <span class="muted">· Item <span class="mono">{{ row.id }}</span>{% if let Some(machine) = row.machine %} · {{ machine }}{% endif %}</span><br><span class="subtle row__sub">{% call display::words(row.settled) %}{% endcall %}</span>{% endcall %}
 {%- endfor %}
 {% endcall %}
+{%- if resolved.heading.is_some() %}
+</section>
+{%- endif %}
+{%- endif %}
+</div>
 {%- endif %}
 {%- if let Some(href) = next %}
 {% call forms::next_page(href) %}{% endcall %}

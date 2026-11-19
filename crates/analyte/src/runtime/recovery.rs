@@ -79,10 +79,8 @@ async fn park_open_transfers(store: &Handle) -> Result<(), Error> {
             return Ok(());
         }
         for transfer in open {
-            let reason = analyte_model::Reason::new(
-                "ASTM transfer was still open when Analyte stopped; its acknowledged frames are kept",
-            )
-            .map_err(RecoveryError::Text)?;
+            let reason = analyte_model::Reason::new(crate::machine::astm::STOPPED_REASON)
+                .map_err(RecoveryError::Text)?;
             store
                 .request::<_, RecoveryError>(deadline()?, move |s| {
                     Ok(s.finish_transfer(

@@ -6,6 +6,12 @@ mod error;
 // Parking reasons are stored text; `receive::bytes` pins their spellings.
 pub(crate) const CONFLICT_REASON: &str = "same ASTM frame number carried conflicting bytes";
 pub(crate) const UNSOLICITED_REASON: &str = "unsolicited ASTM frame";
+/// The reason parked when a machine ends a transfer before its receipt is complete.
+pub(crate) const CUT_OFF_REASON: &str =
+    "ASTM transfer ended before a complete receipt was retained";
+/// The reason parked at startup for a transfer that was open when Analyte stopped.
+pub(crate) const STOPPED_REASON: &str =
+    "ASTM transfer was still open when Analyte stopped; its acknowledged frames are kept";
 pub(crate) mod orders;
 pub(crate) mod settings;
 use crate::{deadline, intake};
@@ -522,8 +528,7 @@ impl Effects for Host<'_, '_> {
 }
 
 async fn finish_incomplete(store: &Handle, transfer: Identifier) -> Result<(), Error> {
-    let reason =
-        analyte_model::Reason::new("ASTM transfer ended before a complete receipt was retained")?;
+    let reason = analyte_model::Reason::new(CUT_OFF_REASON)?;
     store
         .request::<_, analyte_store::IntakeError>(deadline()?, move |store| {
             store.finish_transfer(

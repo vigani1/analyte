@@ -141,7 +141,14 @@ async fn filters_count_open_and_resolved_and_show_each_with_its_own_look() -> Re
     assert_eq!(open.matches("<article class=\"card\"").count(), 2);
     assert!(open.contains(&format!("<h2 id=\"rv-{0}\" class=\"review__title\">Item <span class=\"mono\">{0}</span> · chemistry</h2>", ids.0)));
     assert!(open.contains("<span class=\"subtle review__meta\">Arrived <time datetime=\""));
-    assert!(open.contains("Reason: <span title=\"Position { record: 3, field: 3 }: UnknownTest\">record 3, field 3: UnknownTest</span>"));
+    assert!(
+        open.contains("<span class=\"status status--warn\" title=\"mapping_finding\">"),
+        "{open}"
+    );
+    assert!(open.contains("Test not in this machine’s test mapping</span>"));
+    assert!(open.contains("<p class=\"muted review__text\">The test code in record 3, field 3 is not in this machine’s test mapping.</p>"));
+    assert!(!open.contains("UnknownTest"), "no enum names on the list");
+    assert!(open.contains("<p class=\"muted review__text\">Reason: version 2 is older</p>"));
     assert!(
         !open.contains("lab app holds different content"),
         "resolved items stay off the open list"
@@ -273,7 +280,9 @@ async fn item_page_shows_the_message_and_its_history_from_the_audit() -> Result<
     assert_new_look(&page);
     for text in [
         format!("<ol class=\"crumbs\"><li><a href=\"/parked\">Needs review</a></li><li>Item <span class=\"mono\">{item}</span></li></ol>").as_str(),
-        "<h1>Test or unit not mapped</h1>",
+        "<h1>Test not in this machine’s test mapping</h1>",
+        "<p class=\"review__text\">The test code in record 3, field 3 is not in this machine’s test mapping.</p>",
+        "Reason as stored: Position { record: 3, field: 3 }: UnknownTest",
         "<p class=\"page-head__lede\">From chemistry · arrived <time datetime=\"",
         "<span class=\"status status--good\">",
         "Resolved</span>",
@@ -305,6 +314,106 @@ async fn item_page_shows_the_message_and_its_history_from_the_audit() -> Result<
             page.get(at.saturating_sub(60)..at).unwrap_or_default()
         );
     }
+    stop(state, stopper, owner, store).await
+}
+
+// Owner review 2026-11-20 (PR 275): a reason Analyte wrote reads as a plain
+// sentence under a specific title, on the list and on the item page; the
+// stored text, and an HTTP status, are under "For support" only; a reason
+// with no known shape shows as stored, under the category's words.
+#[tokio::test(flavor = "multi_thread")]
+async fn known_reasons_read_plainly_and_keep_the_stored_text_for_support() -> Result<(), Error> {
+    let directory = crate::admin::private_tempdir()?;
+    let (store, (state, stopper, owner, host), auth, _) = started(directory.path()).await?;
+    let delivery = uuid::Uuid::now_v7().to_string();
+    let (unknown_test, conflict, status, free) = store
+        .request::<_, FixtureError>(fixture_deadline()?, move |s| {
+            let receipt = uuid::Uuid::from(receive(s, "chemistry", 1_795_046_077)?).to_string();
+            Ok((
+                park(
+                    s,
+                    "mapping_finding",
+                    "Position { record: 6, field: 3 }: UnknownTest",
+                    std::slice::from_ref(&receipt),
+                )?,
+                park(
+                    s,
+                    "conflict",
+                    analyte_sink::CONFLICT_REASON,
+                    std::slice::from_ref(&delivery),
+                )?,
+                park(s, "parked", "unexpected HTTP status 418", &[delivery])?,
+                park(
+                    s,
+                    "interpretation_failure",
+                    "HL7 syntax: segment too long",
+                    &[receipt],
+                )?,
+            ))
+        })
+        .await?;
+    let list = request(&host, "/parked", &auth, None).await?;
+    for text in [
+        "<span class=\"status status--warn\" title=\"mapping_finding\">",
+        "Test not in this machine’s test mapping</span>",
+        "<p class=\"muted review__text\">The test code in record 6, field 3 is not in this machine’s test mapping.</p>",
+        "<span class=\"status status--bad\" title=\"conflict\">",
+        "Lab app already has different content</span>",
+        "<p class=\"muted review__text\">The lab app already holds different content under this delivery’s ID.</p>",
+        "Unexpected answer from the lab app</span>",
+        "<p class=\"muted review__text\">The lab app gave an answer that the lab app contract does not define for a delivery.</p>",
+        "Could not read message</span>",
+        "<p class=\"muted review__text\">Reason: HL7 syntax: segment too long</p>",
+    ] {
+        assert!(list.contains(text), "{text}\n{list}");
+    }
+    for hidden in ["UnknownTest", "HTTP 418", "HTTP 409", "identity conflict"] {
+        assert!(!list.contains(hidden), "{hidden} is for support only");
+    }
+    let item = request(&host, &format!("/parked/{unknown_test}"), &auth, None).await?;
+    assert!(item.contains("<h1>Test not in this machine’s test mapping</h1>"));
+    assert!(item.contains("<p class=\"review__text\">The test code in record 6, field 3 is not in this machine’s test mapping.</p>"));
+    // The enum name appears once, in the stored reason under "For support".
+    assert_eq!(item.matches("UnknownTest").count(), 1, "{item}");
+    let support = item.find("For support</summary>").unwrap_or(usize::MAX);
+    assert!(
+        item.find("Reason as stored: Position { record: 6, field: 3 }: UnknownTest")
+            > Some(support)
+    );
+    for (id, title, lines) in [
+        (
+            conflict,
+            "Lab app already has different content",
+            [
+                format!("Reason as stored: {}", analyte_sink::CONFLICT_REASON),
+                "Lab app answer: HTTP 409".to_owned(),
+            ],
+        ),
+        (
+            status,
+            "Unexpected answer from the lab app",
+            [
+                "Reason as stored: unexpected HTTP status 418".to_owned(),
+                "Lab app answer: HTTP 418".to_owned(),
+            ],
+        ),
+    ] {
+        let page = request(&host, &format!("/parked/{id}"), &auth, None).await?;
+        assert!(page.contains(&format!("<h1>{title}</h1>")), "{page}");
+        let support = page.find("For support</summary>").unwrap_or(usize::MAX);
+        for line in lines {
+            assert!(page.find(&line) > Some(support), "{line}\n{page}");
+        }
+        // Above "For support" the page names no HTTP status (the response's own status line aside).
+        let why = page.get(..support).unwrap_or_default();
+        assert!(
+            !why.contains("HTTP 4") && !why.contains("Lab app answer"),
+            "the status code stays under support"
+        );
+    }
+    let stored = request(&host, &format!("/parked/{free}"), &auth, None).await?;
+    assert!(stored.contains("<h1>Could not read message</h1>"));
+    assert!(stored.contains("<p class=\"review__text\">Reason: HL7 syntax: segment too long</p>"));
     stop(state, stopper, owner, store).await
 }
 

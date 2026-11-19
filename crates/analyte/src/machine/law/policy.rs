@@ -73,17 +73,21 @@ impl Policy {
         }
     }
 }
+/// The reason parked when returned work differs from the command Analyte kept.
+pub(crate) const WORK_CONFLICT_REASON: &str =
+    "LAW returned work differs from retained downloaded command; operator review required";
 pub(crate) fn conflict_reason() -> Result<ParkReason, analyte_model::TextError> {
     Ok(ParkReason::WorkConflict(analyte_model::Reason::new(
-        "LAW returned work differs from retained downloaded command; operator review required",
+        WORK_CONFLICT_REASON,
     )?))
 }
 pub(crate) const MAPPING_REFUSAL: &str =
     "LAW mapping requires operator review; inspect protected findings and original receipt";
+/// What [`BatchConflict`] says; it is parked as the reading's reason.
+pub(crate) const BATCH_CONFLICT_REASON: &str =
+    "LAW result batch conflicts with retained observation history; no result revisions committed";
 #[derive(Debug, thiserror::Error)]
-#[error(
-    "LAW result batch conflicts with retained observation history; no result revisions committed"
-)]
+#[error("{reason}", reason = BATCH_CONFLICT_REASON)]
 pub(crate) struct BatchConflict;
 pub(crate) fn lifecycle() -> StatusLifecycle<'static> {
     StatusLifecycle {

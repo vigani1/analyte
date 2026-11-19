@@ -32,8 +32,8 @@ use axum::{
 use category::{Action, Category};
 use jiff::Timestamp;
 use page::{
-    Button, Card, Chip, Dialog, Empty, Entry, Head, Hover, Item, List, Original, OriginalTarget,
-    Pair, RawRequest, Row, Todo, item_href,
+    Button, Card, Chip, Dialog, Empty, Entry, Head, Item, List, Original, OriginalTarget, Pair,
+    RawRequest, Resolved, Row, Todo, item_href,
 };
 use problem::Problem;
 use serde::Deserialize;
@@ -156,9 +156,10 @@ pub(super) async fn list(
 ) -> Response {
     let session = session.as_ref().map(|Extension(session)| session.as_ref());
     let show = query.show;
+    let now = Timestamp::now();
     match tokio::time::timeout(view::READ_BUDGET, read_list(&state, query)).await {
         Ok(Ok(read)) => {
-            let html = list_page(&state, session, show, read, Timestamp::now()).render();
+            let html = list_page(&state, session, show, read, now).render();
             respond(&state, session, None, StatusCode::OK, html)
         }
         Ok(Err(error)) => Problem::Store(error.to_string()).page(&state, session, None),
@@ -177,19 +178,21 @@ async fn read_list(state: &Context, query: ListQuery) -> Result<ListRead, Error>
                 one_page::<_, CommandError>(s.parked_filtered(after, filter)?, PAGE, |last| {
                     Ok(!s.parked_filtered(last.id, filter)?.is_empty())
                 })?;
-            let items = rows
-                .into_iter()
-                .map(|row| {
-                    let parked = row.details().map_err(OperatorError::from)?;
-                    let first = parked.targets.first().map(|t| linked(s, t)).transpose()?;
-                    Ok(Listed {
-                        id: row.id,
-                        parked,
-                        resolution: row.resolution,
-                        first,
+            let listed = |rows: Vec<analyte_store::ParkedItem>| {
+                rows.into_iter()
+                    .map(|row| {
+                        let parked = row.details().map_err(OperatorError::from)?;
+                        let first = parked.targets.first().map(|t| linked(s, t)).transpose()?;
+                        Ok(Listed {
+                            id: row.id,
+                            parked,
+                            resolution: row.resolution,
+                            first,
+                        })
                     })
-                })
-                .collect::<Result<Vec<_>, CommandError>>()?;
+                    .collect::<Result<Vec<_>, CommandError>>()
+            };
+            let items = listed(rows)?;
             Ok(ListRead {
                 counts,
                 items,
@@ -222,29 +225,33 @@ fn list_page(
     let empty = items.is_empty().then(|| empty(show, shown, counts));
     let (mut cards, mut rows) = (Vec::new(), Vec::new());
     for item in items {
-        let (machine, arrived) = match item.first {
-            Some(Linked::Message { machine, at }) => (Some(machine), Some(format::moment(at, now))),
-            Some(Linked::Removed | Linked::Other) | None => (None, None),
-        };
         let category = Category::of(&item.parked);
         match show {
-            Show::Open => cards.push(Card {
-                id: item.id,
-                actions: actions(item.id, &item.parked, category.action, Size::Small),
-                category,
-                machine,
-                arrived,
-                reason: hover(item.parked.reason.as_str()),
-            }),
-            Show::Resolved => rows.push(Row {
-                id: item.id,
-                category: category.shown,
-                machine,
-                settled: settled_line(item.resolution.as_deref(), now),
-                href: item_href(item.id),
-            }),
+            Show::Open => {
+                let (machine, arrived) = match item.first {
+                    Some(Linked::Message { machine, at }) => {
+                        (Some(machine), Some(format::moment(at, now)))
+                    }
+                    Some(Linked::Removed | Linked::Other) | None => (None, None),
+                };
+                cards.push(Card {
+                    id: item.id,
+                    actions: actions(item.id, &item.parked, category.action, Size::Small),
+                    category,
+                    machine,
+                    arrived,
+                });
+            }
+            Show::Resolved => rows.push(row(item, category.shown, &settled_words, now)),
         }
     }
+    let resolved = match show {
+        Show::Resolved => (!rows.is_empty()).then_some(Resolved {
+            heading: None,
+            rows,
+        }),
+        Show::Open => None,
+    };
     List {
         frame: Frame::new(
             state,
@@ -269,9 +276,24 @@ fn list_page(
             },
         ],
         cards,
-        rows,
+        resolved,
         empty,
         next,
+    }
+}
+
+/// A resolved item's row: its title, machine and how it was settled, with
+/// `what` saying what the recorded action did.
+fn row(item: Listed, title: String, what: &dyn Fn(&Audit) -> String, now: Timestamp) -> Row {
+    Row {
+        id: item.id,
+        category: title,
+        machine: match item.first {
+            Some(Linked::Message { machine, .. }) => Some(machine),
+            Some(Linked::Removed | Linked::Other) | None => None,
+        },
+        settled: settled_line(item.resolution.as_deref(), what, now),
+        href: item_href(item.id),
     }
 }
 
@@ -302,20 +324,6 @@ fn empty(show: Show, shown: u64, counts: ParkedCounts) -> Empty {
             title: "No resolved items yet.",
             text: "Items marked resolved or processed again move here and keep their history.",
             link: other(Show::Open, counts.open, "See open items"),
-        },
-    }
-}
-
-/// The reason as people read it, the exact stored text on hover.
-fn hover(stored: &str) -> Hover {
-    match format::reason_words(stored) {
-        Some(shown) => Hover {
-            shown,
-            exact: stored.to_owned(),
-        },
-        None => Hover {
-            shown: stored.to_owned(),
-            exact: String::new(),
         },
     }
 }
@@ -397,13 +405,18 @@ fn resolution(stored: Option<&str>) -> Option<Audit> {
     stored.and_then(|text| serde_json::from_str(text).ok())
 }
 
-/// A resolved item's line on the list, from its stored resolution.
-fn settled_line(stored: Option<&str>, now: Timestamp) -> format::Line {
+/// A resolved item's line on the list, from its stored resolution; `what`
+/// says what the recorded action did.
+fn settled_line(
+    stored: Option<&str>,
+    what: &dyn Fn(&Audit) -> String,
+    now: Timestamp,
+) -> format::Line {
     resolution(stored).map_or_else(
         || format::Line::text("Resolved; how it was resolved could not be read"),
         |audit| {
             format::settled_line(
-                &settled_words(&audit),
+                &what(&audit),
                 &format::actor(audit.actor.as_str()),
                 audit.time,
                 audit.reason.as_str(),
@@ -509,12 +522,19 @@ fn item_page(
     now: Timestamp,
 ) -> Item {
     let id = read.id;
-    let category = Category::of(&read.parked);
+    let Category {
+        shown,
+        action,
+        guidance,
+        why,
+        support: reason_support,
+        ..
+    } = Category::of(&read.parked);
     let open = read.resolution.is_none();
     let settled = resolution(read.resolution.as_deref());
     let total = read.parked.targets.len();
     let end = read.after.saturating_add(read.linked.len());
-    let mut head = Head::under(Some(id), true, category.shown.clone());
+    let mut head = Head::under(Some(id), true, shown);
     head.lede = match &read.first {
         Some(Linked::Message { machine, at }) => Some(format::arrived(machine, *at, now)),
         Some(Linked::Removed | Linked::Other) | None => None,
@@ -544,10 +564,10 @@ fn item_page(
             now,
         ),
         head,
-        reason: hover(read.parked.reason.as_str()),
+        why,
         todo: open.then(|| Todo {
-            guidance: category.guidance,
-            actions: actions(id, &read.parked, category.action, Size::Full),
+            guidance,
+            actions: actions(id, &read.parked, action, Size::Full),
         }),
         linked: linked_pairs(&read.linked, now),
         linked_note: (total > PAGE).then(|| {
@@ -560,7 +580,7 @@ fn item_page(
         original: original(id, read, session, now),
         history: history(read, settled.as_ref(), now),
         history_notes,
-        support: support(read, settled.as_ref()),
+        support: support(read, reason_support, settled.as_ref()),
         dialog,
     }
 }
@@ -699,10 +719,12 @@ fn same(a: &Audit, b: &Audit) -> bool {
         && a.targets == b.targets
 }
 
-/// Exact IDs and stored values, for support.
-fn support(read: &ItemRead, settled: Option<&Audit>) -> Vec<String> {
+/// Exact IDs and stored values, for support: `reason` is the stored reason
+/// and what goes with it.
+fn support(read: &ItemRead, reason: Vec<String>, settled: Option<&Audit>) -> Vec<String> {
     let mut lines = vec![format!("Item {}", read.id)];
     lines.push(format!("Category as stored: {}", read.parked.kind.as_str()));
+    lines.extend(reason);
     lines.extend(
         read.linked
             .iter()
@@ -794,7 +816,7 @@ mod tests {
         assert_eq!(none.len(), 1);
         assert_eq!(none[0].value.plain(), "None recorded");
         assert_eq!(
-            settled_line(Some("resolved"), now).plain(),
+            settled_line(Some("resolved"), &settled_words, now).plain(),
             "Resolved; how it was resolved could not be read"
         );
         let read = ItemRead {
@@ -810,7 +832,9 @@ mod tests {
         let lines = history(&read, resolution(read.resolution.as_deref()).as_ref(), now);
         assert_eq!(lines.len(), 1);
         assert!(lines[0].good && lines[0].when.is_none());
-        assert!(support(&read, None).contains(&"Resolution as stored: resolved".to_owned()));
+        assert!(
+            support(&read, Vec::new(), None).contains(&"Resolution as stored: resolved".to_owned())
+        );
         Ok(())
     }
 

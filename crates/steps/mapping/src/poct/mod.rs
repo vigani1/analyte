@@ -86,7 +86,7 @@ fn park_repeated_identities(output: &mut Output) -> Result<(), Error> {
                 .is_some_and(|count| *count > 1)
         {
             result.content.identity = IdentityStatus::Unresolved(Reason::new(
-                "POCT repeated derived observation identity without a distinguishing sub-ID",
+                &crate::Unidentified::PoctRepeated.to_string(),
             )?);
         }
     }
@@ -160,7 +160,7 @@ fn map_identity(
             });
         } else {
             identity = IdentityStatus::Unresolved(Reason::new(
-                "POCT configured device/time/sequence identity evidence missing",
+                &crate::Unidentified::PoctEvidence.to_string(),
             )?);
         }
     }

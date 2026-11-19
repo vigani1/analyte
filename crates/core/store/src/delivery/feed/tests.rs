@@ -404,3 +404,37 @@ fn freshness_vector_counts_complete_chains_only() -> TestResult {
     }
     Ok(())
 }
+
+// Contract v1 `GET /orders`: the reason Analyte parks when it keeps its cached
+// order reads back exactly, and any other spelling does not.
+#[test]
+fn order_refusals_read_back_only_their_exact_spelling() -> TestResult {
+    let version = |n| std::num::NonZeroU64::new(n).ok_or("zero");
+    for (refusal, stored) in [
+        (
+            OrderRefusal::Older {
+                offered: version(2)?,
+                kept: version(5)?,
+            },
+            "app sent order version 2 after cached version 5; kept 5",
+        ),
+        (
+            OrderRefusal::ChangedContent { kept: version(3)? },
+            "app sent different content for order version 3; kept the cached one",
+        ),
+    ] {
+        assert_eq!(refusal.to_string(), stored);
+        assert_eq!(OrderRefusal::from_stored(stored), Some(refusal));
+    }
+    for text in [
+        "",
+        "app sent order version 2 after cached version 5; kept 6",
+        "app sent order version 02 after cached version 5; kept 5",
+        "app sent order version 0 after cached version 5; kept 5",
+        "app sent different content for order version 3; kept the cached one.",
+        "app sent different content for order version ; kept the cached one",
+    ] {
+        assert_eq!(OrderRefusal::from_stored(text), None, "{text}");
+    }
+    Ok(())
+}

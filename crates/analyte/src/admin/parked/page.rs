@@ -19,8 +19,9 @@ pub(super) struct List {
     pub(super) chips: [Chip; 2],
     /// The open items, when the Open filter is on.
     pub(super) cards: Vec<Card>,
-    /// The resolved items, when the Resolved filter is on.
-    pub(super) rows: Vec<Row>,
+    /// The resolved items: the Resolved filter's page, or those resolved today
+    /// under the open items.
+    pub(super) resolved: Option<Resolved>,
     /// What the page says when the filter shows nothing.
     pub(super) empty: Option<Empty>,
     /// The next page of the same filter.
@@ -49,8 +50,13 @@ pub(super) struct Card {
     pub(super) machine: Option<String>,
     /// When that message arrived.
     pub(super) arrived: Option<Moment>,
-    pub(super) reason: Hover,
     pub(super) actions: Vec<Button>,
+}
+
+/// Resolved items as rows, under `heading` when they sit below the open items.
+pub(super) struct Resolved {
+    pub(super) heading: Option<&'static str>,
+    pub(super) rows: Vec<Row>,
 }
 
 /// One resolved item on the list: what it was and how it was settled.
@@ -69,6 +75,13 @@ pub(super) struct Empty {
     pub(super) title: &'static str,
     pub(super) text: &'static str,
     pub(super) link: Option<(String, String)>,
+}
+
+/// Why an item is here: a plain sentence with no lead, or "Reason: " and the
+/// stored reason.
+pub(super) struct Why {
+    pub(super) lead: &'static str,
+    pub(super) text: Hover,
 }
 
 /// Words with their exact stored value on hover; `exact` is empty when they are the same.
@@ -91,7 +104,7 @@ pub(super) struct Button {
 pub(super) struct Item {
     pub(super) frame: Frame,
     pub(super) head: Head,
-    pub(super) reason: Hover,
+    pub(super) why: Why,
     /// What to do and the actions; none once the item is resolved.
     pub(super) todo: Option<Todo>,
     /// One line per linked record on this page.

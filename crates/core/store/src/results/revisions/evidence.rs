@@ -15,6 +15,27 @@ impl fmt::Display for RevisionOutcome {
         }
     }
 }
+impl RevisionOutcome {
+    /// Reads back a spelling written by `Display`, the exact reverse of it; any
+    /// other text gives `None`.
+    #[must_use]
+    pub fn from_stored(text: &str) -> Option<Self> {
+        let revision = |open: &str| {
+            let digits = text.strip_prefix(open)?.strip_suffix("))")?;
+            let value: u64 = digits.parse().ok()?;
+            // Only the exact spelling: no sign and no leading zero.
+            (value.to_string() == digits).then_some(analyte_model::Revision(value))
+        };
+        match text {
+            "Conflict" => Some(Self::Conflict),
+            "Unresolved" => Some(Self::Unresolved),
+            _ => revision("New(Revision(")
+                .map(Self::New)
+                .or_else(|| revision("Retransmission(Revision(").map(Self::Retransmission))
+                .or_else(|| revision("Correction(Revision(").map(Self::Correction)),
+        }
+    }
+}
 impl fmt::Display for Conflict {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {

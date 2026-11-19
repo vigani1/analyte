@@ -22,7 +22,7 @@ pub use inbound::evidence::ResultMappingError;
 pub use orders::codes::{map_priority, map_specimen, map_test};
 
 mod evidence_display;
-pub use evidence_display::ReasonPiece;
+pub use evidence_display::{ReasonPiece, Unidentified};
 mod inbound;
 mod orders;
 
@@ -198,8 +198,8 @@ pub enum Problem {
     UnknownTest,
     /// A required identity selector is missing, empty or null.
     MissingIdentity {
-        /// Configuration key requiring evidence.
-        setting: &'static str,
+        /// Configuration key, or LAW field, requiring evidence.
+        setting: IdentitySetting,
     },
     /// A source value type cannot be interpreted safely.
     UnsupportedValue,
@@ -217,6 +217,59 @@ pub enum Problem {
     UnsupportedLawStatusOnly,
     /// Source time could not be interpreted; original text survives.
     InvalidTime,
+}
+
+/// The identity value a [`Problem::MissingIdentity`] finding says is missing:
+/// one of the configured identity selectors, or a LAW order field.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IdentitySetting {
+    /// The configured order ID selector (`order_id`).
+    OrderId,
+    /// The configured order namespace selector (`order_namespace`).
+    OrderNamespace,
+    /// The configured sub-ID selector (`sub_id`).
+    SubId,
+    /// One of the configured run selectors (`run`).
+    Run,
+    /// A LAW observation without its OBR order.
+    LawOrder,
+    /// A LAW order without its AWOS or analyzer order authority, or OG.
+    LawOrderAuthority,
+    /// A LAW specimen observation without its AWOS.
+    LawSpecimenAwos,
+}
+
+impl IdentitySetting {
+    /// Every setting, in declaration order.
+    pub const ALL: [Self; 7] = [
+        Self::OrderId,
+        Self::OrderNamespace,
+        Self::SubId,
+        Self::Run,
+        Self::LawOrder,
+        Self::LawOrderAuthority,
+        Self::LawSpecimenAwos,
+    ];
+
+    /// The spelling stored in findings and reasons; it never changes.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::OrderId => "order_id",
+            Self::OrderNamespace => "order_namespace",
+            Self::SubId => "sub_id",
+            Self::Run => "run",
+            Self::LawOrder => "LAW order",
+            Self::LawOrderAuthority => "LAW AWOS/analyzer order authority or OG",
+            Self::LawSpecimenAwos => "LAW specimen observation has no AWOS",
+        }
+    }
+}
+
+impl std::fmt::Display for IdentitySetting {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
 }
 
 /// Positioned mapping problem; every finding prevents automatic delivery.

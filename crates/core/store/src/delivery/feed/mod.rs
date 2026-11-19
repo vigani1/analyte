@@ -10,6 +10,69 @@ struct Versioned {
     version: std::num::NonZeroU64,
 }
 
+/// Why Analyte kept its cached order instead of the copy the lab app sent
+/// (contract v1 `GET /orders`: versions only move forward). Its `Display` is
+/// the parked item's stored reason, so the spellings never change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OrderRefusal {
+    /// The app sent an older version than the one Analyte keeps.
+    Older {
+        /// The version the app sent.
+        offered: std::num::NonZeroU64,
+        /// The version Analyte keeps.
+        kept: std::num::NonZeroU64,
+    },
+    /// The app sent the version Analyte keeps, with different content.
+    ChangedContent {
+        /// The version Analyte keeps.
+        kept: std::num::NonZeroU64,
+    },
+}
+
+const OLDER_OPEN: &str = "app sent order version ";
+const OLDER_KEPT: &str = " after cached version ";
+const OLDER_CLOSE: &str = "; kept ";
+const CHANGED_OPEN: &str = "app sent different content for order version ";
+const CHANGED_CLOSE: &str = "; kept the cached one";
+
+impl std::fmt::Display for OrderRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Older { offered, kept } => {
+                write!(
+                    f,
+                    "{OLDER_OPEN}{offered}{OLDER_KEPT}{kept}{OLDER_CLOSE}{kept}"
+                )
+            }
+            Self::ChangedContent { kept } => write!(f, "{CHANGED_OPEN}{kept}{CHANGED_CLOSE}"),
+        }
+    }
+}
+
+impl OrderRefusal {
+    /// Reads back a reason written by `Display`, the exact reverse of it; any
+    /// other text gives `None`.
+    #[must_use]
+    pub fn from_stored(text: &str) -> Option<Self> {
+        fn version(text: &str) -> Option<(std::num::NonZeroU64, &str)> {
+            let digits = text.bytes().take_while(u8::is_ascii_digit).count();
+            let (number, rest) = text.split_at_checked(digits)?;
+            Some((number.parse().ok()?, rest))
+        }
+        let read = if let Some(rest) = text.strip_prefix(CHANGED_OPEN) {
+            Self::ChangedContent {
+                kept: version(rest)?.0,
+            }
+        } else {
+            let (offered, rest) = version(text.strip_prefix(OLDER_OPEN)?)?;
+            let (kept, _) = version(rest.strip_prefix(OLDER_KEPT)?)?;
+            Self::Older { offered, kept }
+        };
+        // Only the exact spelling reads back: no leading zero, nothing more or less.
+        (read.to_string() == text).then_some(read)
+    }
+}
+
 impl Store {
     /// Stores a bounded page with its cursor in the same commit.
     /// Only the final page of a chain moves `polled`, so an unfinished chain leaves
@@ -38,7 +101,7 @@ impl Store {
                     [crate::parked::evidence(
                         crate::ParkedKind::OrderVersionRefused.as_str(),
                         order.id.as_str(),
-                        &reason,
+                        &reason.to_string(),
                         None,
                     )?],
                 )?;
@@ -61,7 +124,7 @@ impl Store {
         tx: &Connection,
         destination: &Identifier,
         order: &CachedOrder,
-    ) -> Result<Option<String>, Error> {
+    ) -> Result<Option<OrderRefusal>, Error> {
         let cached: Option<String> = tx
             .query_row(
                 "SELECT evidence FROM orders WHERE destination=?1 AND id=?2",
@@ -78,13 +141,9 @@ impl Store {
         };
         let (kept, offered) = (version(&cached.document)?, version(&order.document)?);
         Ok(if offered < kept {
-            Some(format!(
-                "app sent order version {offered} after cached version {kept}; kept {kept}"
-            ))
+            Some(OrderRefusal::Older { offered, kept })
         } else if offered == kept && cached.document != order.document {
-            Some(format!(
-                "app sent different content for order version {kept}; kept the cached one"
-            ))
+            Some(OrderRefusal::ChangedContent { kept })
         } else {
             None
         })

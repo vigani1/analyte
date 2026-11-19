@@ -4,7 +4,7 @@ pub mod document;
 mod response;
 pub use document::ResultDocument;
 mod signing;
-pub use response::{DeliveryStatus, ResponseAction, StatusBody, classify_response};
+pub use response::{DeliveryStatus, ReplyProblem, ResponseAction, StatusBody, classify_response};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 pub use signing::{SignatureError, SigningSecret, api_key_valid};

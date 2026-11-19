@@ -1,5 +1,5 @@
 //! Writes stable mapping evidence spellings, preserving the historical protected-store format, and reads them back.
-use crate::{Finding, Position, Problem};
+use crate::{Finding, IdentitySetting, Position, Problem};
 use analyte_model::quoted;
 use std::fmt;
 
@@ -78,8 +78,8 @@ fn number(text: &str) -> Option<(usize, &str)> {
     Some((digits.parse().ok()?, rest))
 }
 
-/// Every problem whose spelling reads back. `MissingIdentity` is left out: its
-/// setting name cannot be rebuilt from stored text.
+/// Every problem without a setting; with [`IdentitySetting::ALL`] they are
+/// every problem there is.
 const READABLE: [Problem; 17] = [
     Problem::UnqualifiedHl7Report,
     Problem::DepartureConflict,
@@ -106,15 +106,21 @@ const READABLE: [Problem; 17] = [
     },
 ];
 
+/// Every problem there is, each `MissingIdentity` with each setting.
+fn every_problem() -> impl Iterator<Item = Problem> {
+    READABLE.into_iter().chain(
+        IdentitySetting::ALL
+            .into_iter()
+            .map(|setting| Problem::MissingIdentity { setting }),
+    )
+}
+
 impl Problem {
     /// Reads back a spelling written by `Display`, the exact reverse of it; any
-    /// other text, and a spelling that cannot be rebuilt, gives `None`.
+    /// other text gives `None`.
     #[must_use]
     pub fn from_stored(text: &str) -> Option<Self> {
-        READABLE
-            .iter()
-            .find(|problem| problem.to_string() == text)
-            .cloned()
+        every_problem().find(|problem| problem.to_string() == text)
     }
 }
 
@@ -156,7 +162,7 @@ impl fmt::Display for Problem {
             }
             Self::MissingIdentity { setting } => {
                 f.write_str("MissingIdentity { setting: ")?;
-                quoted(f, setting)?;
+                quoted(f, setting.as_str())?;
                 f.write_str(" }")
             }
         }
@@ -166,6 +172,101 @@ impl fmt::Display for Problem {
 impl fmt::Display for Finding {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}: {}", self.position, self.problem)
+    }
+}
+
+/// Why a mapped result has no identity, as its stored reason spells it. The
+/// host parks each one with the message, so the spellings never change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Unidentified {
+    /// A required identity value is missing at `position`.
+    Missing {
+        /// The value that is missing.
+        setting: IdentitySetting,
+        /// Where it should have been.
+        position: Position,
+    },
+    /// The test code has no unique translation in the test mapping.
+    UnknownTest,
+    /// Autolyser Rev18 sends no run identity that never changes, and its
+    /// patient code is not a trusted sample identity.
+    AutolyserRun,
+    /// Two POCT results derive the same identity and no sub-ID tells them apart.
+    PoctRepeated,
+    /// The POCT device, time or sequence evidence the configuration names is missing.
+    PoctEvidence,
+    /// A POCT service sequence may wrap, so it needs a trusted run and revision.
+    PoctSequence,
+    /// A VIDAS Literal has no trusted result or run identity and does not say
+    /// whether it is a patient or a QC result.
+    VidasLiteral,
+}
+
+/// The spelling of [`Unidentified::Missing`] is `missing identity S at record R field F`.
+const MISSING_OPEN: &str = "missing identity ";
+const MISSING_RECORD: &str = " at record ";
+const MISSING_FIELD: &str = " field ";
+
+impl Unidentified {
+    /// Every reason without a position, for reading back.
+    const FIXED: [Self; 6] = [
+        Self::UnknownTest,
+        Self::AutolyserRun,
+        Self::PoctRepeated,
+        Self::PoctEvidence,
+        Self::PoctSequence,
+        Self::VidasLiteral,
+    ];
+
+    /// Reads back a spelling written by `Display`, the exact reverse of it; any
+    /// other text gives `None`.
+    #[must_use]
+    pub fn from_stored(text: &str) -> Option<Self> {
+        if let Some(fixed) = Self::FIXED.into_iter().find(|r| r.to_string() == text) {
+            return Some(fixed);
+        }
+        let rest = text.strip_prefix(MISSING_OPEN)?;
+        IdentitySetting::ALL.into_iter().find_map(|setting| {
+            let rest = rest
+                .strip_prefix(setting.as_str())?
+                .strip_prefix(MISSING_RECORD)?;
+            let (record, rest) = number(rest)?;
+            let (field, rest) = number(rest.strip_prefix(MISSING_FIELD)?)?;
+            rest.is_empty().then_some(Self::Missing {
+                setting,
+                position: Position { record, field },
+            })
+        })
+    }
+}
+
+impl fmt::Display for Unidentified {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Missing { setting, position } => write!(
+                f,
+                "{MISSING_OPEN}{setting}{MISSING_RECORD}{}{MISSING_FIELD}{}",
+                position.record, position.field
+            ),
+            Self::UnknownTest => f.write_str("unknown test mapping"),
+            Self::AutolyserRun => f.write_str(concat!(
+                "Autolyser Rev18 has no immutable run identity; ",
+                "patient code is not trusted specimen identity",
+            )),
+            Self::PoctRepeated => f.write_str(
+                "POCT repeated derived observation identity without a distinguishing sub-ID",
+            ),
+            Self::PoctEvidence => {
+                f.write_str("POCT configured device/time/sequence identity evidence missing")
+            }
+            Self::PoctSequence => f.write_str(
+                "POCT service sequence may wrap; trusted run and revision evidence is required",
+            ),
+            Self::VidasLiteral => f.write_str(concat!(
+                "VIDAS Literal lacks trusted result/run identity ",
+                "and patient versus QC classification",
+            )),
+        }
     }
 }
 
@@ -225,19 +326,31 @@ mod tests {
             assert_eq!(problem.to_string(), expected);
             assert_eq!(Problem::from_stored(expected), Some(problem));
         }
+        for (setting, expected) in [
+            (IdentitySetting::OrderId, "order_id"),
+            (IdentitySetting::OrderNamespace, "order_namespace"),
+            (IdentitySetting::SubId, "sub_id"),
+            (IdentitySetting::Run, "run"),
+            (IdentitySetting::LawOrder, "LAW order"),
+            (
+                IdentitySetting::LawOrderAuthority,
+                "LAW AWOS/analyzer order authority or OG",
+            ),
+            (
+                IdentitySetting::LawSpecimenAwos,
+                "LAW specimen observation has no AWOS",
+            ),
+        ] {
+            let problem = Problem::MissingIdentity { setting };
+            let stored = format!("MissingIdentity {{ setting: \"{expected}\" }}");
+            assert_eq!(problem.to_string(), stored);
+            assert_eq!(Problem::from_stored(&stored), Some(problem));
+        }
         assert_eq!(
-            Problem::MissingIdentity {
-                setting: "LAW order"
-            }
-            .to_string(),
-            "MissingIdentity { setting: \"LAW order\" }"
-        );
-        // The setting name cannot be rebuilt, so this spelling gives the general advice.
-        assert_eq!(
-            Problem::from_stored("MissingIdentity { setting: \"LAW order\" }"),
+            Problem::from_stored("MissingIdentity { setting: \"other\" }"),
             None
         );
-        for problem in READABLE {
+        for problem in every_problem() {
             let finding = Finding {
                 position: Position {
                     record: 12,
@@ -325,6 +438,69 @@ mod tests {
             "departure-conflict at Position { record: 3, field: 3 }: present non-final status",
         ] {
             assert_eq!(Finding::from_stored(text), None, "{text}");
+        }
+    }
+
+    // The unresolved-identity reasons keep their stored spelling and read back
+    // exactly; anything else is not one of them.
+    #[test]
+    fn unresolved_identity_reasons_keep_their_spelling_and_read_back() {
+        let at = |record, field| Position { record, field };
+        for (reason, expected) in [
+            (
+                Unidentified::Missing {
+                    setting: IdentitySetting::OrderId,
+                    position: at(3, 2),
+                },
+                "missing identity order_id at record 3 field 2",
+            ),
+            (
+                Unidentified::Missing {
+                    setting: IdentitySetting::LawOrderAuthority,
+                    position: at(4, 0),
+                },
+                "missing identity LAW AWOS/analyzer order authority or OG at record 4 field 0",
+            ),
+            (Unidentified::UnknownTest, "unknown test mapping"),
+            (
+                Unidentified::AutolyserRun,
+                concat!(
+                    "Autolyser Rev18 has no immutable run identity; ",
+                    "patient code is not trusted specimen identity",
+                ),
+            ),
+            (
+                Unidentified::PoctRepeated,
+                "POCT repeated derived observation identity without a distinguishing sub-ID",
+            ),
+            (
+                Unidentified::PoctEvidence,
+                "POCT configured device/time/sequence identity evidence missing",
+            ),
+            (
+                Unidentified::PoctSequence,
+                "POCT service sequence may wrap; trusted run and revision evidence is required",
+            ),
+            (
+                Unidentified::VidasLiteral,
+                concat!(
+                    "VIDAS Literal lacks trusted result/run identity ",
+                    "and patient versus QC classification",
+                ),
+            ),
+        ] {
+            assert_eq!(reason.to_string(), expected);
+            assert_eq!(Unidentified::from_stored(expected), Some(reason));
+        }
+        for text in [
+            "",
+            "missing identity order_id at record 3 field",
+            "missing identity order_id at record 03 field 2",
+            "missing identity other at record 3 field 2",
+            "missing identity order_id at record 3 field 2 ",
+            "unknown test mapping.",
+        ] {
+            assert_eq!(Unidentified::from_stored(text), None, "{text}");
         }
     }
 }

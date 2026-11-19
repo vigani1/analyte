@@ -10,7 +10,7 @@
 <div class="split">
 <div class="stack stack--lg grow">
 {% call layout::label_card("rd-why", "Why it’s here") %}
-<p class="review__text">Reason: {% call display::hover(reason.shown, reason.exact) %}{% endcall %}</p>
+<p class="review__text">{{ why.lead }}{% call display::hover(why.text.shown, why.text.exact) %}{% endcall %}</p>
 {%- if let Some(todo) = todo %}
 {% call feedback::whattodo_with(todo.guidance) %}
 {%- for button in todo.actions %}{% call forms::link_button(button.href, button.label, button.class) %}{% endcall %}{% endfor -%}

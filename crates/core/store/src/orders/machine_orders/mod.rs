@@ -4,6 +4,7 @@ use crate::sql_types::SqlOrderState;
 use ownership::OrderOwner;
 mod eligibility;
 mod items;
+pub use items::CANCEL_CONFLICT_REASON;
 mod listing;
 mod reserve;
 use crate::{Audit, CachedOrder, OrderError as Error, OrderEventDelivery, Store, digest, key};

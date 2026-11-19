@@ -45,7 +45,7 @@ pub(crate) fn observation(
                 output,
                 source.position(index, 0),
                 Problem::MissingIdentity {
-                    setting: "LAW specimen observation has no AWOS",
+                    setting: crate::IdentitySetting::LawSpecimenAwos,
                 },
             )?;
             return Ok(None);
@@ -68,18 +68,18 @@ pub(crate) fn observation(
             }
         }
     };
-    let order_id = required(&settings.order_id, "order_id")?;
+    let order_id = required(&settings.order_id, crate::IdentitySetting::OrderId)?;
     let namespace = match &settings.order_namespace {
         OrderNamespace::Fixed { fixed } => fixed.as_str().to_owned(),
-        OrderNamespace::Field { field } => required(field, "order_namespace")?,
+        OrderNamespace::Field { field } => required(field, crate::IdentitySetting::OrderNamespace)?,
     };
     let sub_id = match &settings.sub_id {
-        SubId::Field(field) => required(field, "sub_id")?,
+        SubId::Field(field) => required(field, crate::IdentitySetting::SubId)?,
         SubId::None(NoSubId::None) => String::new(),
     };
     let mut run = Vec::new();
     for field in &settings.run {
-        run.push(required(field, "run")?);
+        run.push(required(field, crate::IdentitySetting::Run)?);
     }
     if missing {
         return Ok(None);
@@ -120,7 +120,7 @@ fn law_observation(
             output,
             source.position(index, 0),
             Problem::MissingIdentity {
-                setting: "LAW order",
+                setting: crate::IdentitySetting::LawOrder,
             },
         )?;
         return Ok(None);
@@ -152,7 +152,7 @@ fn law_observation(
             output,
             source.position(order, field),
             Problem::MissingIdentity {
-                setting: "LAW AWOS/analyzer order authority or OG",
+                setting: crate::IdentitySetting::LawOrderAuthority,
             },
         )?;
         return Ok(None);

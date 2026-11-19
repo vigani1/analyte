@@ -13,6 +13,7 @@ use analyte_model::{IdentityStatus, ReceiptId, ResultContent, ResultStatus, Revi
 use assignment::{AssignedRevision, Reconciliation};
 use content::clinical_digest;
 use history::write_history;
+pub use parking::{NO_RESULTS_REASON, reconciled_outcome};
 use parking::{park_outcomes, reconciliation_succeeded, write_reprocess_audit};
 use rusqlite::params;
 pub use status_policy::StatusLifecycle;

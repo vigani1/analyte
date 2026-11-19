@@ -5,6 +5,7 @@ use super::driver::{Flow, HostInput, Protocol, Session, Trigger};
 use crate::intake;
 use crate::machine::receive;
 use crate::machine::receive::custody::{WriteDeadline, ms};
+pub(crate) use custody::POLL_REASON;
 mod error;
 pub(crate) mod orders;
 mod outcome;
