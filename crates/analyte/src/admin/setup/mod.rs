@@ -953,7 +953,8 @@ fn in_use(state: &Context, chosen: &Endpoint, port: Option<&str>) -> Result<(), 
                     (Endpoint::UsbSerial(left), Endpoint::UsbSerial(right))
                         if left.as_str().eq_ignore_ascii_case(right.as_str())
                 );
-                same_number || running_port.is_some_and(|name| name.eq_ignore_ascii_case(port))
+                same_number
+                    || running_port.is_some_and(|name| connections::same_port_name(&name, port))
             }
         } else {
             matches!(running.link, Link::TcpServer | Link::TcpClient)

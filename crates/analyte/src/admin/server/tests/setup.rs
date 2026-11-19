@@ -1045,6 +1045,24 @@ async fn poisoned_test_state_is_shown_as_unavailable() -> Result<(), Error> {
     Ok(())
 }
 
+// Owner decision 2026-11-19 (one port rule); installation/config/connections.rs:
+// the listen test compares serial port names as the program loader does:
+// ignoring case on Windows (COM12 is com12), exactly elsewhere, where device
+// paths are case-sensitive.
+#[tokio::test(flavor = "multi_thread")]
+async fn listen_test_compares_port_names_like_the_loader() -> Result<(), Error> {
+    let fixture = start().await?;
+    let form = fixture.form(&[("port", "name:com12")]).await?;
+    let answer = fixture.post("/setup/synthetic/listen", &form).await?;
+    if cfg!(windows) {
+        assert!(answer.starts_with("HTTP/1.1 409"), "{answer}");
+        assert!(answer.contains("machine synthetic is using this connection"));
+    } else {
+        assert!(answer.starts_with("HTTP/1.1 303"), "{answer}");
+    }
+    Ok(())
+}
+
 // Owner request 2026-11-18 (setup page): "Restart now" is audited and stops the
 // admin server with the restart outcome the service turns into a managed restart.
 #[tokio::test(flavor = "multi_thread")]

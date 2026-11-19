@@ -32,7 +32,7 @@ pub(crate) fn shared(left: (Link, &Endpoint), right: (Link, &Endpoint)) -> Optio
 }
 
 /// Windows port names ignore case (`COM3` is `com3`); device paths elsewhere do not.
-fn same_port_name(left: &str, right: &str) -> bool {
+pub(crate) fn same_port_name(left: &str, right: &str) -> bool {
     if cfg!(windows) {
         left.eq_ignore_ascii_case(right)
     } else {
