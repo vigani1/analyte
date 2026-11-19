@@ -124,6 +124,9 @@ async fn render_alerts(state: &Context, html: &mut Markup, now: i64) -> Result<(
         if let Some(machine) = machine {
             row(html, "Alert machine", machine);
         }
+        if let Some(message) = crate::operator::alerts::message(&alert) {
+            row(html, "Alert reason and fix", &message);
+        }
         row(html, "Responder", &alert.responder);
         row(
             html,

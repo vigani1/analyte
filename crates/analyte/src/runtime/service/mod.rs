@@ -231,10 +231,11 @@ pub(super) async fn serve_with(
             })
         });
     }
+    let reach = destinations.reach(&secrets);
     let (delivery_stop, mut delivery_owners) =
         start_delivery(destinations, &store, &secrets, &watchdog);
     let (shutdown, stopping) = watch::channel(false);
-    let mut alert_owners = start_alerts(&program, &store, &stopping, &watchdog);
+    let mut alert_owners = start_alerts(&program, &store, &stopping, &watchdog, reach);
     let mut machines = start_machines(&mut program, &store, &stopping, &admin_states, &watchdog);
     if let Some(ready) = ready {
         let _ = ready.send(());
@@ -529,6 +530,27 @@ impl Destinations {
             retired,
         })
     }
+
+    /// What the `undeliverable_destination` alert compares stored items with.
+    fn reach(
+        &self,
+        secrets: &crate::installation::secrets::Environment,
+    ) -> crate::operator::alerts::Reach {
+        let configured: Vec<_> = self
+            .served
+            .iter()
+            .chain(&self.retired)
+            .map(|destination| destination.id().clone())
+            .collect();
+        crate::operator::alerts::Reach {
+            keyless: configured
+                .iter()
+                .filter(|destination| !secrets.has_keys(destination))
+                .cloned()
+                .collect(),
+            configured,
+        }
+    }
 }
 
 /// Supervised owners combine exactly polling and app delivery boundaries.
@@ -621,6 +643,7 @@ fn start_alerts(
     store: &Arc<Handle>,
     stopping: &watch::Receiver<bool>,
     watchdog: &crate::runtime::shutdown::Watchdog,
+    reach: crate::operator::alerts::Reach,
 ) -> JoinSet<Result<(), Error>> {
     let mut alert_owners = JoinSet::new();
     for endpoint in program.alert_delivery().endpoints() {
@@ -668,7 +691,7 @@ fn start_alerts(
         let component = watchdog.component("alert-evaluator".into());
         alert_owners.spawn(async move {
             let _component = component;
-            crate::operator::alerts::run(store, policies, destinations, interval, stop)
+            crate::operator::alerts::run(store, policies, destinations, reach, interval, stop)
                 .await
                 .map_err(Into::into)
         });

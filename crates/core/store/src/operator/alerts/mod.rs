@@ -23,6 +23,18 @@ pub enum AlertKey {
     ParkedItems,
     /// Restore reconciliation pause.
     RestorePaused,
+    /// Items wait for a lab app destination this run cannot deliver to, and why.
+    UndeliverableDestination(Identifier, Undeliverable),
+}
+
+/// Why waiting items cannot reach their lab app destination. Each reason is its
+/// own condition, so a changed reason clears one alert and raises the other.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Undeliverable {
+    /// No set-up machine and no kept destination defines it.
+    NotConfigured,
+    /// A kept destination is defined, but its keys could not be loaded.
+    CredentialsMissing,
 }
 
 /// Latest durable evaluation; timestamps are Unix seconds.
@@ -253,6 +265,11 @@ impl Store {
                 |r| r.get(0),
             )?),
             AlertKey::RestorePaused => Some(i64::from(self.restore_unreconciled()?)),
+            AlertKey::UndeliverableDestination(destination, _) => Some(self.db.query_row(
+                "SELECT count(*) FROM outbox WHERE destination=?1 AND state!=?2",
+                params![destination.as_str(), crate::DeliveryState::Done],
+                |r| r.get(0),
+            )?),
         };
         scalar
             .map(u64::try_from)

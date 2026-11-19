@@ -116,10 +116,12 @@ If a destination's settings cannot be read when its machine is removed (for
 example a broken site file), nothing is kept and the page says so. Results that
 wait for a destination that is configured nowhere stay stored and are never
 deleted; the pages show "Cannot deliver: destination X no longer configured", the
-service log says so at each start, and an `oldest_undelivered` alert, if
-configured, raises for them. Set up a machine that uses that destination to
-deliver them. If a kept destination's keys are missing, its deliveries pause with
-"destination credentials require operator repair" and the service keeps running.
+service log says so at each start, and an `undeliverable_destination` alert, if
+configured, raises for them with the reason and the fix (see
+[Alerts](#alerts-and-named-responders)). Set up a machine that uses that
+destination to deliver them. If a kept destination's keys are missing, its
+deliveries pause with "destination credentials require operator repair", the
+service keeps running, and the same alert raises with that reason.
 Removing the last machine is allowed: Analyte then serves only the admin page
 (and delivers what still waits) until a machine is added.
 
@@ -196,6 +198,11 @@ responder = "Lab IT on-call"
 [[alerts]]
 kind = "restore_paused"
 responder = "Recovery lead"
+
+[[alerts]]
+kind = "undeliverable_destination"
+threshold = 0
+responder = "Lab app support"
 ```
 
 | Kind | Threshold meaning | Response to agree |
@@ -207,6 +214,20 @@ responder = "Recovery lead"
 | `uncertain_orders` | Count strictly above | Operator reconciles with machine and app. Never blindly resend. |
 | `parked_items` | Count strictly above | Duty officer investigates the recorded reason. |
 | `restore_paused` | No threshold allowed | Recovery lead completes reconciliation. |
+| `undeliverable_destination` | Count strictly above, per lab app destination | See below: the alert names the destination, the count, the reason and the fix. |
+
+`undeliverable_destination` raises one alert per lab app destination that holds
+results or order messages this run cannot deliver. They stay stored and are never
+deleted. Its two reasons, as status and the Overview show them:
+
+| Reason | Means | Fix |
+| --- | --- | --- |
+| `not_configured` | No machine and no kept lab app setting uses destination X (for example its machine's settings were unreadable at removal, or a machine's destination was renamed). | Set up a machine with lab app destination X on the setup page, or restore its settings; the results are kept and will be sent once it is configured. |
+| `credentials_missing` | Destination X is kept, but its API key or signing key could not be loaded; its deliveries are paused. | Enter the API key and signing key for destination X on the setup page (on a machine that uses it) or in the service environment, then restart; the results are kept and will be sent once the keys are set. |
+
+It clears when the items are delivered or, after a restart, when the destination is
+configured again with its keys. Keys that the lab app rejects are not this alert:
+they pause deliveries for repair and `oldest_undelivered` covers them by age.
 
 Zero count thresholds catch any item. Unknown measurements raise rather than
 silently clear a policy. Set ages and margins from the agreed outage budget.
@@ -267,9 +288,14 @@ Response bodies are not read into alerts or ordinary logs. Events for one
 condition are delivered in queue order; a failed raise holds its later reminders
 and resolution until recovery. Other conditions can still make progress.
 
-The version 1 body has only these fields: `version`, `event_id`, `condition_id`,
-`episode_id`, `event`, `kind`, `machine_id`, `responder`, `observed_at`, `episode_at`
-and `measurement`. `event` is `raised`, `reminder` or `resolved`. Timestamps are
+The version 2 body has only these fields: `version`, `event_id`, `condition_id`,
+`episode_id`, `event`, `kind`, `machine_id`, `destination_id`, `reason`, `responder`,
+`observed_at`, `episode_at` and `measurement`. Version 2 added `destination_id` (the
+lab app destination name) and `reason` (`not_configured` or `credentials_missing`);
+both are null except for `undeliverable_destination`, so a relay can say which
+destination and which fix from the table above. Events queued before an upgrade
+keep their version 1 bytes, which lack those two fields, because every retry
+reuses the stored bytes. `event` is `raised`, `reminder` or `resolved`. Timestamps are
 Unix seconds; observation time is the last actual evaluation, not a guessed fresh
 measurement. `measurement` has `unit` (`seconds`, `bytes`, `count` or `paused`) and
 `value`; an unknown value is JSON null. No patient data, sample IDs, raw messages,

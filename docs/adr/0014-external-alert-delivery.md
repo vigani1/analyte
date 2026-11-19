@@ -15,7 +15,8 @@ never become a clinical delivery failure.
   endpoints. The lab owns the relay to email, chat or SMS and checks that its
   named responders receive them.
 - Each event is `raised`, `reminder` or `resolved` for one condition (its kind,
-  plus the machine ID for a silent machine), with a separate episode identity
+  plus the machine ID for a silent machine, or the destination and reason for an
+  undeliverable destination), with a separate episode identity
   and a stored event identity and exact bytes that every retry reuses.
   Receivers deduplicate by event, never by condition.
 - The payload is a closed list of operational fields. No patient data, sample
