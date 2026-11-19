@@ -367,7 +367,7 @@ fn judge(answer: Result<Answer, RequestError>, expect: Expect<'_>) -> Outcome {
             } else {
                 Outcome::Fail(format!(
                     "expected HTTP 200 with contract_version 1 and status {}; {}",
-                    status_name(wanted),
+                    wanted.as_str(),
                     answer.describe()
                 ))
             }
@@ -392,13 +392,6 @@ fn judge(answer: Result<Answer, RequestError>, expect: Expect<'_>) -> Outcome {
                 )),
             }
         }
-    }
-}
-
-fn status_name(status: DeliveryStatus) -> &'static str {
-    match status {
-        DeliveryStatus::Accepted => "accepted",
-        DeliveryStatus::Duplicate => "duplicate",
     }
 }
 

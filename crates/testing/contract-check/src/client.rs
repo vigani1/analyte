@@ -31,7 +31,7 @@ impl Answer {
     /// What Analyte would do with this answer, in operator words.
     pub(crate) fn action(&self) -> String {
         match classify_response(self.status, &self.body, self.retry_after.as_deref()) {
-            ResponseAction::Done(status) => format!("done, {status:?}").to_lowercase(),
+            ResponseAction::Done(status) => format!("done, {}", status.as_str()),
             ResponseAction::Conflict => "parked as a conflict".into(),
             ResponseAction::Parked { reason } => format!("parked: {}", one_line(&reason)),
             ResponseAction::PauseForSetup { reason } => format!("destination paused: {reason}"),
