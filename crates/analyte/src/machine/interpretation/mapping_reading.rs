@@ -22,9 +22,7 @@ pub(crate) fn map_reading(mapping: Mapping) -> Result<MappedReading, Error> {
                     | analyte_mapping::Problem::UnsupportedValue | analyte_mapping::Problem::UnsupportedFormatting
                     | analyte_mapping::Problem::UnsupportedEscape | analyte_mapping::Problem::UnknownProcessing
                     | analyte_mapping::Problem::ConflictingClassification | analyte_mapping::Problem::NoObservations
-                    | analyte_mapping::Problem::UnsupportedLawStatusOnly | analyte_mapping::Problem::InvalidTime => format!("{}: {}",
-                        f.position,
-                        f.problem),
+                    | analyte_mapping::Problem::UnsupportedLawStatusOnly | analyte_mapping::Problem::InvalidTime => f.to_string(),
                                         })
                 .collect::<Vec<_>>();
             for result in &output.results {

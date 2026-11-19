@@ -1,5 +1,5 @@
 //! Writes stable mapping evidence spellings, preserving the historical protected-store format.
-use crate::{Position, Problem};
+use crate::{Finding, Position, Problem};
 use analyte_model::quoted;
 use std::fmt;
 
@@ -44,6 +44,12 @@ impl fmt::Display for Problem {
                 f.write_str(" }")
             }
         }
+    }
+}
+
+impl fmt::Display for Finding {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.position, self.problem)
     }
 }
 
