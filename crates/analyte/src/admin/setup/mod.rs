@@ -23,7 +23,7 @@ use super::{
     markup::Markup,
     server::Context,
     sessions::Session,
-    view::{self, Refresh, Tone, page, pill},
+    view::{self, Refresh, Tab, Tone, pill},
 };
 use crate::installation::{
     config::{Program, connections},
@@ -158,11 +158,11 @@ impl Setup {
 pub(crate) enum SetupError {
     #[error("no installed machine is called {0}")]
     UnknownMachine(String),
-    #[error("choose one of the shipped machine definitions")]
+    #[error("choose one of the listed machine models")]
     UnknownDefinition,
-    #[error("this machine is not set up yet: choose its machine definition first")]
+    #[error("this machine is not set up yet: choose its machine model first")]
     NoDefinitionYet,
-    #[error("{0} is a blocked machine definition; its README lists what is missing")]
+    #[error("{0} is not ready yet: facts or recordings are still missing (its README lists them)")]
     BlockedDefinition(String),
     #[error("{0}")]
     Definitions(#[from] definitions::ListError),
@@ -173,7 +173,7 @@ pub(crate) enum SetupError {
     #[error("there is no lab app called {0}; add it on the Lab app page")]
     UnknownLabApp(String),
     #[error(
-        "lab app {0} is already listed in {1} with other settings; make them the same on the Lab app page, then save again"
+        "lab app {0} is already set up with other settings; make them the same on the Lab app page, then save again"
     )]
     LabAppDiffers(String, String),
     #[error(
@@ -187,7 +187,7 @@ pub(crate) enum SetupError {
     #[error("enter {0} as a whole number of seconds")]
     InvalidNumber(&'static str),
     #[error(
-        "lab app {0} is still written in the site file of {1}; save that machine on its setup page first, which moves the lab app to the Lab app page, then change it there"
+        "lab app {0} is still kept in the settings of {1}; save that machine on its setup page first, which moves the lab app to the Lab app page, then change it there"
     )]
     LabAppInSiteFile(String, String),
     #[error("lab app {0} cannot be removed: {1}")]
@@ -196,15 +196,15 @@ pub(crate) enum SetupError {
     Connection(&'static str),
     #[error("the {0} key is not in the expected format, so nothing was saved")]
     InvalidKey(String),
-    #[error("the program file cannot be read for setup: {0}")]
+    #[error("Analyte's main settings file cannot be read: {0}")]
     ProgramFile(String),
-    #[error("the current site file cannot be read for setup: {0}")]
+    #[error("this machine's settings file cannot be read: {0}")]
     SiteFile(String),
-    #[error("the settings do not pass check-config: {0}")]
+    #[error("the settings are not valid: {0}")]
     Config(#[from] analyte_config::Error),
     #[error("{0}")]
     Installation(#[from] crate::installation::config::Error),
-    #[error("the saved files did not pass check-config, so the previous files were put back: {0}")]
+    #[error("the saved settings did not pass the check, so the previous files were put back: {0}")]
     RolledBack(String),
     #[error("{operation} {path} failed: {source}")]
     Io {
@@ -226,21 +226,21 @@ pub(crate) enum SetupError {
     SerialSettings(String),
     #[error("{0}")]
     Lookup(#[from] serial::Lookup),
-    #[error("the setup task failed: {0}")]
+    #[error("the setup step stopped unexpectedly: {0}")]
     Join(#[from] tokio::task::JoinError),
-    #[error("the audit record could not be written: {0}")]
+    #[error("the record of who made this change could not be written: {0}")]
     Audit(String),
     #[error("the machine name is not accepted: {0}")]
     InvalidName(analyte_model::TextError),
     #[error(
-        "a machine name uses only letters A to Z, digits, - and _, because it also names the machine's site file"
+        "a machine name uses only letters A to Z, digits, - and _, because it also names the machine's settings file"
     )]
     NameCharacters,
     #[error("{0} is a name the setup page uses itself; choose another name")]
     ReservedName(String),
     #[error("a machine called {0} is already listed; choose another name")]
     NameInUse(String),
-    #[error("the site file {0} already belongs to machine {1}; choose another name")]
+    #[error("the settings file {0} already belongs to machine {1}; choose another name")]
     SiteInUse(String, String),
     #[error(
         "{0} has stored results or history from an earlier machine. If this is the same analyzer, tick \"same analyzer\" to add it under that name; for a different analyzer choose a new name"
@@ -250,14 +250,15 @@ pub(crate) enum SetupError {
         "{0} still has unfinished work ({1}); nothing was changed. Review it on the remove page and press \"Remove anyway\" to remove the machine regardless"
     )]
     UnfinishedWork(String, String),
-    #[error("the store could not be read: {0}")]
+    #[error("Analyte's stored data could not be read: {0}")]
     Store(String),
     #[error("an earlier setup change failed while writing; reload the page and check the files")]
     Busy,
 }
 
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
+/// Opens a page under the Setup tab; every setup step belongs to it.
+fn page(title: &str) -> Markup {
+    view::page(Tab::Setup, title)
 }
 
 fn done(html: Markup) -> Response {
@@ -268,7 +269,7 @@ fn refused(error: &SetupError) -> Response {
     (
         StatusCode::CONFLICT,
         Html(
-            page("Setup refused")
+            page("Setup could not continue")
                 .markup("<p class=\"notice bad\">")
                 .text(error)
                 .markup(concat!(
@@ -283,24 +284,15 @@ fn refused(error: &SetupError) -> Response {
 
 fn needs_login() -> Response {
     done(page("Set up a machine").markup(concat!(
-        "<p class=\"notice info\">Setup changes settings, so it needs a browser login: ",
-        "<a href=\"/login\">log in</a>.</p>",
+        "<p class=\"notice info\">Setup changes settings, so sign in first: ",
+        "<a href=\"/login\">sign in</a>.</p>",
     )))
 }
 
-/// The running configuration digest as a settings version: a short form to
-/// compare at a glance and the full digest in small print.
+/// The running settings version: the short form, with the full digest on hover.
 fn settings_version(running: Option<&Running>) -> Markup {
     match running {
-        Some(running) => {
-            let full = hex(&running.digest);
-            Markup::new()
-                .markup("<code title=\"Running configuration digest\">")
-                .text(full.chars().take(12).collect::<String>())
-                .markup("</code><small class=\"digest\">")
-                .text(full)
-                .markup("</small>")
-        }
+        Some(running) => view::version(&running.digest),
         None => Markup::new()
             .markup("<span class=\"muted\">")
             .text(NO_DIGEST)
@@ -308,54 +300,58 @@ fn settings_version(running: Option<&Running>) -> Markup {
     }
 }
 
-/// The settings version for a table cell: the short form, with the full digest on hover.
-fn short_version(running: Option<&Running>) -> Markup {
-    match running {
-        Some(running) => {
-            let full = hex(&running.digest);
-            Markup::new()
-                .markup("<code title=\"Running configuration digest ")
-                .text(&full)
-                .markup("\">")
-                .text(full.chars().take(12).collect::<String>())
-                .markup("</code>")
-        }
-        None => settings_version(None),
-    }
+/// What the page says for a machine that runs nothing yet.
+const NO_DIGEST: &str = "Not running yet";
+
+/// A program entry's machine model for people, with its definition path on hover;
+/// reads the definition folder's README, so call it off the async workers.
+fn model(config: &std::path::Path, definition: Option<&str>) -> Markup {
+    let Some(definition) = definition else {
+        return Markup::new().markup("<span class=\"muted\">Not chosen yet</span>");
+    };
+    let folder = site::folder(config)
+        .join(definition)
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_default();
+    let name = |path: Option<&std::path::Path>| {
+        path.and_then(std::path::Path::file_name)
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    };
+    let key = format!("{}/{}", name(folder.parent()), name(Some(folder.as_path())));
+    view::exact(&definitions::display_name(&folder, &key), definition)
 }
 
-/// What the page says for a machine that runs nothing yet.
-const NO_DIGEST: &str = "none: not set up yet";
-
 /// One row per machine in the program file, then any machine that still runs but
-/// is no longer listed (removed, waiting for the restart).
-fn machine_rows(state: &Context, listed: &[site::EntrySpans]) -> Markup {
+/// is no longer listed (removed, waiting for the restart). `models` holds each
+/// listed entry's model, in the same order.
+fn machine_rows(state: &Context, listed: &[site::EntrySpans], models: &[Markup]) -> Markup {
     let mut rows = Markup::new();
-    for entry in listed {
+    for (entry, model) in listed.iter().zip(models) {
         let id = entry.id.get_ref();
         let running = running(state, id);
         let status = match (running, &entry.definition) {
             (Some(_), _) => pill(Tone::Good, "Running"),
             (None, None) => pill(Tone::Neutral, "Not set up yet"),
-            (None, Some(_)) => pill(
-                Tone::Attention,
-                "Not running: saved, starts after a restart",
-            ),
+            (None, Some(_)) => pill(Tone::Attention, "Saved: starts after a restart"),
         };
         rows.push_fragment(
             &Markup::new()
                 .markup("<tr><td><strong>")
                 .text(id)
-                .markup("</strong></td><td data-label=\"Status\">")
+                .markup("</strong></td><td data-label=\"Model\">")
+                .fragment(model)
+                .markup("</td><td data-label=\"Status\">")
                 .fragment(&status)
                 .markup("</td><td data-label=\"Settings version\">")
-                .fragment(&short_version(running))
+                .fragment(&settings_version(running))
                 .markup("</td><td class=\"actions\"><div class=\"buttons\"><a class=\"button secondary\" href=\"/setup/")
                 .text(id)
                 .markup("\">Set up</a><form method=\"get\" action=\"/setup/")
                 .text(id)
                 .markup(concat!(
-                    "/remove\"><button class=\"quiet-danger\">Remove machine</button>",
+                    "/remove\"><button class=\"quiet-danger\">Remove</button>",
                     "</form></div></td></tr>",
                 )),
         );
@@ -370,10 +366,10 @@ fn machine_rows(state: &Context, listed: &[site::EntrySpans]) -> Markup {
             &Markup::new()
                 .markup("<tr><td><strong>")
                 .text(gone.id.as_str())
-                .markup("</strong></td><td data-label=\"Status\">")
-                .fragment(&pill(Tone::Attention, "Removed: runs until the restart"))
+                .markup("</strong></td><td data-label=\"Model\"></td><td data-label=\"Status\">")
+                .fragment(&pill(Tone::Attention, "Removed: stops at the restart"))
                 .markup("</td><td data-label=\"Settings version\">")
-                .fragment(&short_version(Some(gone)))
+                .fragment(&settings_version(Some(gone)))
                 .markup("</td><td></td></tr>"),
         );
     }
@@ -390,19 +386,26 @@ fn definitions(state: &Context) -> Result<Vec<Definition>, SetupError> {
     Ok(definitions::list(&root)?)
 }
 
-/// A definition's evidence level and its status, with the reason when it cannot be chosen.
-fn level_and_state(definition: &Definition) -> (String, Markup) {
+/// A definition's evidence level in words (the level itself on hover) and its
+/// status, with the reason when it cannot be chosen.
+fn level_and_state(definition: &Definition) -> (Markup, Markup) {
     match &definition.state {
-        Shipped::Ready { level, .. } => (level.clone(), pill(Tone::Good, "Ready to choose")),
+        Shipped::Ready { level, .. } => (
+            view::exact(evidence_words(level), &format!("Evidence level: {level}")),
+            pill(Tone::Good, "Ready"),
+        ),
         Shipped::Blocked => (
-            "none".into(),
-            pill(Tone::Attention, "Blocked").markup(concat!(
-                " <span class=\"muted\">Facts or recordings are missing ",
-                "(see its README)</span>",
+            view::exact(
+                "Not tested yet",
+                "Evidence level: none (blocked definition)",
+            ),
+            pill(Tone::Attention, "Not ready yet").markup(concat!(
+                " <span class=\"muted\" title=\"Blocked definition; see its README\">Facts or ",
+                "recordings are still missing</span>",
             )),
         ),
         Shipped::Unreadable(why) => (
-            "unknown".into(),
+            view::exact("Not known", "Evidence level unknown"),
             pill(Tone::Problem, "Cannot be read")
                 .markup(" <span class=\"muted\">")
                 .text(why)
@@ -436,11 +439,21 @@ async fn lab_apps_section(state: &Arc<Context>) -> Markup {
     html.markup("</section>")
 }
 
+/// How a model was checked, in words; an unknown level shows as written.
+fn evidence_words(level: &str) -> &str {
+    match level {
+        "documented" => "Built from the manuals",
+        "simulated" => "Tested with a simulator",
+        "proven" => "Tested on the real machine",
+        other => other,
+    }
+}
+
 /// GET /setup: the machines in the program file, what runs now, and the shipped definitions.
 pub(super) async fn index(State(state): State<Arc<Context>>) -> Response {
-    let mut html = page("Set up a machine").markup(concat!(
-        "<p class=\"lead\">Choose a machine below to set its connection and pick its lab app. ",
-        "Saving writes the machine's site file; Analyte then restarts to use it.</p>",
+    let mut html = page("Setup").markup(concat!(
+        "<p class=\"lead\">Add a machine, or choose one to set its connection and pick its ",
+        "lab app. Changes apply after Analyte restarts.</p>",
     ));
     html.push_fragment(&lab_apps_section(&state).await);
     match crate::admin::removed::lines(&state).await {
@@ -451,37 +464,52 @@ pub(super) async fn index(State(state): State<Arc<Context>>) -> Response {
         }
         Err(error) => html.push_fragment(
             &Markup::new()
-                .markup("<p class=\"notice bad\">Results waiting for removed machines could not be counted: ")
+                .markup("<p class=\"notice bad\">Results still waiting from removed machines could not be counted: ")
                 .text(error)
                 .markup("</p>"),
         ),
     }
     html.push_markup(concat!(
-        "<section><div class=\"heading\"><h2>Installed machines</h2>",
+        "<section><div class=\"heading\"><h2>Your machines</h2>",
         "<form method=\"get\" action=\"/setup/add\"><button>Add machine</button></form>",
-        "</div><div class=\"table\"><table class=\"stack\"><tr><th>Machine</th><th>Status</th>",
-        "<th title=\"Running configuration digest\">Settings version</th><th></th></tr>"
+        "</div><div class=\"table\"><table class=\"stack\"><tr><th>Machine</th><th>Model</th>",
+        "<th>Status</th><th title=\"Running configuration digest\">Settings version</th>",
+        "<th></th></tr>"
     ));
     let worker = state.clone();
-    let listed = tokio::task::spawn_blocking(move || site::entries(&worker.config_path))
-        .await
-        .map_err(SetupError::from)
-        .and_then(|r| r);
+    let listed = tokio::task::spawn_blocking(move || {
+        site::entries(&worker.config_path).map(|(_, listed)| {
+            let models: Vec<Markup> = listed
+                .iter()
+                .map(|entry| {
+                    model(
+                        &worker.config_path,
+                        entry.definition.as_ref().map(|d| d.get_ref().as_str()),
+                    )
+                })
+                .collect();
+            (listed, models)
+        })
+    })
+    .await
+    .map_err(SetupError::from)
+    .and_then(|r| r);
     match listed {
-        Ok((_, listed)) => html.push_fragment(&machine_rows(&state, &listed)),
+        Ok((listed, models)) => html.push_fragment(&machine_rows(&state, &listed, &models)),
         Err(error) => html.push_fragment(
             &Markup::new()
-                .markup("<tr><td colspan=\"4\">The program file cannot be read: ")
+                .markup("<tr><td colspan=\"5\">Analyte's settings cannot be read: ")
                 .text(error)
                 .markup("</td></tr>"),
         ),
     }
     html.push_markup(concat!(
-        "</table></div></section><section><h2>Shipped machine definitions</h2>",
-        "<p class=\"lead\">The machine models this Analyte can be set up for. A blocked ",
-        "definition cannot be chosen until its missing facts or recordings are added.</p>",
-        "<div class=\"table\"><table class=\"stack\"><tr><th>Definition",
-        "</th><th>Name</th><th>Evidence</th><th>Status</th></tr>"
+        "</table></div></section><section><h2 title=\"Shipped machine definitions\">",
+        "Supported machine models</h2>",
+        "<p class=\"lead\">The models this Analyte can be set up for. A model that is not ",
+        "ready yet cannot be chosen until its missing facts or recordings are added.</p>",
+        "<div class=\"table\"><table class=\"stack\"><tr><th>Model</th>",
+        "<th>How it was checked</th><th>Status</th></tr>"
     ));
     let worker = state.clone();
     let listed = tokio::task::spawn_blocking(move || definitions(&worker))
@@ -491,19 +519,13 @@ pub(super) async fn index(State(state): State<Arc<Context>>) -> Response {
     match listed {
         Ok(list) => {
             for definition in &list {
-                let name = match &definition.state {
-                    Shipped::Ready { name, .. } => name.as_str(),
-                    Shipped::Blocked | Shipped::Unreadable(_) => "",
-                };
                 let (level, status) = level_and_state(definition);
                 html.push_fragment(
                     &Markup::new()
-                        .markup("<tr><td><code>")
-                        .text(&definition.key)
-                        .markup("</code></td><td data-label=\"Name\">")
-                        .text(name)
-                        .markup("</td><td data-label=\"Evidence\">")
-                        .text(level)
+                        .markup("<tr><td><strong>")
+                        .fragment(&definition_name(definition))
+                        .markup("</strong></td><td data-label=\"How it was checked\">")
+                        .fragment(&level)
                         .markup("</td><td data-label=\"Status\">")
                         .fragment(&status)
                         .markup("</td></tr>"),
@@ -521,6 +543,15 @@ pub(super) async fn index(State(state): State<Arc<Context>>) -> Response {
         }
     }
     done(html)
+}
+
+/// A definition's name for people, with its folder key (and definition name) on hover.
+fn definition_name(definition: &Definition) -> Markup {
+    let technical = match &definition.state {
+        Shipped::Ready { name, .. } => format!("{} (name {name})", definition.key),
+        Shipped::Blocked | Shipped::Unreadable(_) => definition.key.clone(),
+    };
+    view::exact(&definition.display, &technical)
 }
 
 #[derive(Deserialize)]
@@ -677,8 +708,8 @@ fn render_machine(
         )
         .fragment(&settings_version(running))
         .markup(concat!(
-            "</dd></dl></section><section><h2>1. Machine</h2><form method=\"get\" action=\"\">",
-            "<p>Choose the machine model from the shipped definitions.</p><ul class=\"choices\">"
+            "</dd></dl></section><section><h2>1. Machine model</h2><form method=\"get\" action=\"\">",
+            "<p>Choose the machine model.</p><ul class=\"choices\">"
         ));
     html.push_fragment(&definition_picker(
         &list,
@@ -687,7 +718,7 @@ fn render_machine(
     html.push_markup("</ul><button class=\"secondary\">Choose</button></form></section>");
     let Some((key, path)) = picked else {
         html.push_markup(concat!(
-            "<p class=\"notice info\">This machine is not set up yet. Choose its machine definition ",
+            "<p class=\"notice info\">This machine is not set up yet. Choose its machine model ",
             "above and press Choose; the connection and lab app steps follow.</p>"
         ));
         return Ok(html.markup(view::END));
@@ -732,11 +763,11 @@ fn definition_picker(list: &[Definition], key: &str) -> Markup {
         }
         item.push_fragment(
             &Markup::new()
-                .markup("> ")
-                .text(&definition.key)
-                .markup(" <span class=\"muted\">(evidence: ")
-                .text(level)
-                .markup(")</span> ")
+                .markup("> <strong>")
+                .fragment(&definition_name(definition))
+                .markup("</strong> <span class=\"muted\">")
+                .fragment(&level)
+                .markup("</span> ")
                 .fragment(&status)
                 .markup("</label></li>"),
         );
@@ -802,9 +833,9 @@ fn test_and_lab_app(id: &str, picker: &Markup) -> Markup {
             ))
             .fragment(picker)
             .markup(concat!(
-                "</section><section><h2>5. Save</h2><p>Saving checks everything first, keeps a copy of the ",
-                "old site file, then writes the new one. Analyte keeps running the old ",
-                "settings until you restart it.</p><button>Save</button></section></form>"
+                "</section><section><h2>5. Save</h2><p>Saving checks everything first and keeps a copy of ",
+                "the old settings. Analyte keeps running the old settings until you restart ",
+                "it.</p><button>Save</button></section></form>"
             )),
     );
     html
@@ -1071,7 +1102,6 @@ pub(super) async fn save(
     );
     let audited = audit(&state, &session, "setup-save", &id, reason).await;
     tracing::info!(machine = id.as_str(), "setup page saved a site file");
-    let new = hex(&saved.digest);
     let mut html = page("Settings saved")
         .markup("<section><dl><dt>Machine</dt><dd><strong>")
         .text(&id)
@@ -1079,22 +1109,20 @@ pub(super) async fn save(
         .text(&saved.connection)
         .markup("</dd><dt>Lab app</dt><dd>")
         .text(format!("{} ({})", saved.lab_app, saved.base_url))
-        .markup("</dd><dt title=\"New configuration digest\">New settings version</dt><dd><code>")
-        .text(new.chars().take(12).collect::<String>())
-        .markup("</code><small class=\"digest\">")
-        .text(&new)
-        .markup("</small></dd><dt title=\"Running configuration digest\">Running now</dt><dd>")
+        .markup("</dd><dt title=\"New configuration digest\">New settings version</dt><dd>")
+        .fragment(&view::version(&saved.digest))
+        .markup("</dd><dt title=\"Running configuration digest\">Running now</dt><dd>")
         .fragment(&settings_version(running(&state, &id)))
         .markup("</dd></dl><ul>");
     if saved.moved {
         html.push_markup(
-            "<li>The lab app settings moved to the <a href=\"/setup/lab-apps\">Lab app page</a> (lab-apps.toml); nothing else changed.</li>",
+            "<li>This lab app is now kept on the <a href=\"/setup/lab-apps\">Lab app page</a>; nothing else changed.</li>",
         );
     }
     for backup in &saved.backups {
         html.push_fragment(
             &Markup::new()
-                .markup("<li>Previous file kept as ")
+                .markup("<li class=\"muted\">Copy of the old settings: ")
                 .text(backup.display())
                 .markup("</li>"),
         );
@@ -1117,7 +1145,7 @@ fn restart_form(session: &Session) -> Markup {
         .markup(concat!(
             "<section><h2>Restart to apply</h2><p>Restarting stops every machine connection for ",
             "a few seconds; machines resend what they could not deliver. After the ",
-            "restart, log in again: the setup page shows the running settings version.</p>",
+            "restart, sign in again: the setup page shows the running settings version.</p>",
             "<form method=\"post\" action=\"/setup/restart\"><input type=\"hidden\" ",
             "name=\"csrf\" value=\""
         ))
@@ -1152,12 +1180,12 @@ pub(super) async fn restart(
     tracing::info!("restart requested on the setup page");
     state.setup.restart.send_replace(true);
     let mut response = Html(
-        view::refreshing("Restarting", Refresh::SetupAfterRestart)
+        view::refreshing(Tab::Setup, "Restarting", Refresh::SetupAfterRestart)
             .markup(concat!(
                 "<p class=\"notice info\">Analyte is stopping ",
                 "and the service manager starts it again within about 15 seconds. ",
                 "If Analyte was started by hand in a terminal, start it again there. ",
-                "This page then asks you to log in.</p>"
+                "This page then asks you to sign in.</p>"
             ))
             .markup(view::END),
     )
@@ -1368,7 +1396,7 @@ pub(super) async fn listen_view(
     let running = view.end.is_none();
     let title = "Connection test (listen only)";
     let mut html = if running {
-        view::refreshing(title, Refresh::EveryTwoSeconds)
+        view::refreshing(Tab::Setup, title, Refresh::EveryTwoSeconds)
     } else {
         page(title)
     };

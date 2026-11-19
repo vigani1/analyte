@@ -7,23 +7,107 @@ pub(super) mod plain;
 
 use super::markup::Markup;
 use axum::{
-    http::header,
-    response::{IntoResponse, Response},
+    http::{StatusCode, header},
+    response::{Html, IntoResponse, Response},
 };
 
 /// Where the stylesheet is served.
 pub(super) const STYLESHEET: &str = "/static/admin.css";
 const CSS: &str = include_str!("style.css");
 
-/// The header bar: product name and the page links.
-const BAR: &str = concat!(
-    "<header><a class=\"brand\" href=\"/\">Analyte</a><nav aria-label=\"Admin pages\">",
-    "<a href=\"/\">Overview</a><a href=\"/machines\">Machines</a>",
-    "<a href=\"/parked\">Parked items</a><a href=\"/orders\">Machine orders</a>",
-    "<a href=\"/analyzer-cancelled\">Analyzer cancellations</a>",
-    "<a href=\"/deliveries\">Deliveries</a><a href=\"/retention\">Retention and holds</a>",
-    "<a href=\"/setup\">Setup</a></nav></header>",
-);
+/// One entry of the menu. The first four are the main tabs; the rest sit under "More".
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Tab {
+    Overview,
+    NeedsReview,
+    Machines,
+    Setup,
+    MachineOrders,
+    CancelledByMachine,
+    Deliveries,
+    DataKeeping,
+}
+
+impl Tab {
+    /// The main tabs, always visible.
+    const MAIN: [Self; 4] = [
+        Self::Overview,
+        Self::NeedsReview,
+        Self::Machines,
+        Self::Setup,
+    ];
+    /// The pages under "More".
+    const MORE: [Self; 4] = [
+        Self::MachineOrders,
+        Self::CancelledByMachine,
+        Self::Deliveries,
+        Self::DataKeeping,
+    ];
+
+    /// The page's path; these stay as they were, so bookmarks and docs keep working.
+    const fn href(self) -> &'static str {
+        match self {
+            Self::Overview => "/",
+            Self::NeedsReview => "/parked",
+            Self::Machines => "/machines",
+            Self::Setup => "/setup",
+            Self::MachineOrders => "/orders",
+            Self::CancelledByMachine => "/analyzer-cancelled",
+            Self::Deliveries => "/deliveries",
+            Self::DataKeeping => "/retention",
+        }
+    }
+
+    /// The menu label, which is also the page's heading.
+    pub(super) const fn label(self) -> &'static str {
+        match self {
+            Self::Overview => "Overview",
+            Self::NeedsReview => "Needs review",
+            Self::Machines => "Machines",
+            Self::Setup => "Setup",
+            Self::MachineOrders => "Machine orders",
+            Self::CancelledByMachine => "Cancelled by machine",
+            Self::Deliveries => "Deliveries",
+            Self::DataKeeping => "Data keeping",
+        }
+    }
+
+    fn link(self, current: Option<Self>) -> Markup {
+        Markup::new()
+            .markup("<li><a href=\"")
+            .markup(self.href())
+            .markup(if current == Some(self) {
+                "\" aria-current=\"page\">"
+            } else {
+                "\">"
+            })
+            .markup(self.label())
+            .markup("</a></li>")
+    }
+}
+
+/// The header bar: product name, the four main tabs and the "More" dropdown,
+/// with the current page marked. The dropdown is a `<details>` element, so it
+/// opens by mouse or keyboard without any script.
+fn bar(current: Option<Tab>) -> Markup {
+    let mut html = Markup::new().markup(concat!(
+        "<header class=\"bar\"><div class=\"bar-inner\"><a class=\"brand\" href=\"/\">",
+        "<span class=\"mark\" aria-hidden=\"true\"></span>Analyte</a>",
+        "<nav aria-label=\"Admin pages\"><ul class=\"tabs\">",
+    ));
+    for tab in Tab::MAIN {
+        html.push_fragment(&tab.link(current));
+    }
+    html.push_markup(if current.is_some_and(|tab| Tab::MORE.contains(&tab)) {
+        "<li class=\"more\"><details><summary class=\"current\">More</summary><ul class=\"menu\">"
+    } else {
+        "<li class=\"more\"><details><summary>More</summary><ul class=\"menu\">"
+    });
+    for tab in Tab::MORE {
+        html.push_fragment(&tab.link(current));
+    }
+    html.markup("</ul></details></li></ul></nav></div></header>")
+}
 
 /// Closes what [`page`] opened.
 pub(super) const END: &str = "</main></body></html>";
@@ -46,31 +130,67 @@ impl Refresh {
     }
 }
 
-/// Opens a page with the header bar and its title as the main heading; close it with [`END`].
-pub(super) fn page(title: &str) -> Markup {
-    head(title, None, true)
+/// Which header a page gets.
+#[derive(Clone, Copy)]
+enum Header {
+    /// The menu, with this page's tab marked when it belongs to one.
+    Menu(Option<Tab>),
+    /// The login page: no menu, since nothing else opens before login.
+    Login,
+}
+
+/// Opens a page under `tab` with the header bar and its title as the main heading; close it with [`END`].
+pub(super) fn page(tab: Tab, title: &str) -> Markup {
+    head(title, None, Header::Menu(Some(tab)))
 }
 
 /// Like [`page`], and the browser reloads it as `refresh` says.
-pub(super) fn refreshing(title: &str, refresh: Refresh) -> Markup {
-    head(title, Some(refresh), true)
+pub(super) fn refreshing(tab: Tab, title: &str, refresh: Refresh) -> Markup {
+    head(title, Some(refresh), Header::Menu(Some(tab)))
 }
 
 /// The login page: no navigation, since nothing else opens before login.
 pub(super) fn login(title: &str) -> Markup {
-    head(title, None, false)
+    head(title, None, Header::Login)
 }
 
-/// A whole page that only reports `message` under `title`.
-pub(super) fn message(title: &str, message: impl std::fmt::Display) -> Markup {
-    page(title)
+/// A whole page under `tab` that only reports `message` under `title`; the message is written for people.
+pub(super) fn message(tab: Tab, title: &str, message: impl std::fmt::Display) -> Markup {
+    page(tab, title)
         .markup("<p class=\"notice bad\">")
         .text(message)
         .markup("</p>")
         .markup(END)
 }
 
-fn head(title: &str, refresh: Option<Refresh>, navigation: bool) -> Markup {
+/// A whole page for something that went wrong: a plain `sentence` saying what it
+/// means, and the exact technical `detail` kept small for support.
+pub(super) fn problem(
+    tab: Option<Tab>,
+    title: &str,
+    sentence: &'static str,
+    detail: impl std::fmt::Display,
+) -> Markup {
+    head(title, None, Header::Menu(tab))
+        .markup("<p class=\"notice bad\">")
+        .markup(sentence)
+        .markup("</p><p class=\"muted\">Details for support: <code>")
+        .text(detail)
+        .markup("</code></p>")
+        .markup(END)
+}
+
+/// [`problem`] as a response with `status`, for refusals that have no page of their own.
+pub(super) fn refusal(
+    status: StatusCode,
+    title: &str,
+    sentence: &'static str,
+    detail: impl std::fmt::Display,
+) -> Response {
+    (status, Html(problem(None, title, sentence, detail))).into_response()
+}
+
+fn head(title: &str, refresh: Option<Refresh>, header: Header) -> Markup {
     let mut html = Markup::new().markup(concat!(
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">",
         "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">",
@@ -88,13 +208,12 @@ fn head(title: &str, refresh: Option<Refresh>, navigation: bool) -> Markup {
             .markup(STYLESHEET)
             .markup("\"></head>"),
     );
-    html.push_markup(if navigation {
-        "<body>"
-    } else {
-        "<body class=\"login\">"
-    });
-    if navigation {
-        html.push_markup(BAR);
+    match header {
+        Header::Menu(current) => {
+            html.push_markup("<body>");
+            html.push_fragment(&bar(current));
+        }
+        Header::Login => html.push_markup("<body class=\"login\">"),
     }
     html.markup("<main><h1>").text(title).markup("</h1>")
 }
@@ -161,6 +280,30 @@ pub(super) fn exact(shown: &str, technical: &str) -> Markup {
         .markup("</span>")
 }
 
+/// A count of things that may need attention: a plain number, red only when above zero.
+pub(super) fn count(value: u64) -> Markup {
+    Markup::new()
+        .markup(if value == 0 {
+            "<span class=\"count\">"
+        } else {
+            "<span class=\"count over\">"
+        })
+        .text(value)
+        .markup("</span>")
+}
+
+/// A settings version: the short form people compare at a glance, with the full
+/// configuration digest (`digest`, a hex SHA-256) on hover.
+pub(super) fn version(digest: &[u8]) -> Markup {
+    let full: String = digest.iter().map(|b| format!("{b:02x}")).collect();
+    Markup::new()
+        .markup("<code class=\"version\" title=\"Full settings version (configuration digest): ")
+        .text(&full)
+        .markup("\">")
+        .text(full.chars().take(12).collect::<String>())
+        .markup("</code>")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -169,7 +312,7 @@ mod tests {
     // same-origin stylesheet, and the login page has no navigation.
     #[test]
     fn pages_link_the_stylesheet_and_close_cleanly() {
-        let page = page("Machines").markup(END);
+        let page = page(Tab::Machines, "Machines").markup(END);
         assert!(
             page.starts_with("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">")
         );
@@ -180,8 +323,78 @@ mod tests {
         let login = login("Analyte admin");
         assert!(login.contains("href=\"/static/admin.css\""));
         assert!(!login.contains("<nav"));
-        let live = refreshing("Connection test", Refresh::EveryTwoSeconds);
+        let live = refreshing(Tab::Setup, "Connection test", Refresh::EveryTwoSeconds);
         assert!(live.contains("<meta http-equiv=\"refresh\" content=\"2\">"));
+    }
+
+    // Owner request 2026-11-19 (lab-manager admin pages, item 6): four main tabs,
+    // a "More" dropdown with the other four pages, the current page marked, and
+    // the old paths kept.
+    #[test]
+    fn menu_has_four_tabs_and_more_and_marks_the_current_page() {
+        let main = [
+            ("/", "Overview"),
+            ("/parked", "Needs review"),
+            ("/machines", "Machines"),
+            ("/setup", "Setup"),
+        ];
+        let more = [
+            ("/orders", "Machine orders"),
+            ("/analyzer-cancelled", "Cancelled by machine"),
+            ("/deliveries", "Deliveries"),
+            ("/retention", "Data keeping"),
+        ];
+        let overview = page(Tab::Overview, "Overview");
+        let (tabs, menu) = overview
+            .split_once("<li class=\"more\">")
+            .unwrap_or_default();
+        for (href, label) in main {
+            assert!(tabs.contains(&format!("href=\"{href}\"")), "{label}");
+            assert!(tabs.contains(&format!(">{label}</a>")), "{label}");
+        }
+        for (href, label) in more {
+            assert!(
+                menu.contains(&format!("<a href=\"{href}\">{label}</a>")),
+                "{label}"
+            );
+        }
+        assert!(overview.contains("<a href=\"/\" aria-current=\"page\">Overview</a>"));
+        assert_eq!(overview.matches("aria-current").count(), 1);
+        assert!(overview.contains("<details><summary>More</summary>"));
+        let deliveries = page(Tab::Deliveries, "Deliveries");
+        assert!(
+            deliveries.contains("<a href=\"/deliveries\" aria-current=\"page\">Deliveries</a>")
+        );
+        assert!(deliveries.contains("<summary class=\"current\">More</summary>"));
+        let refused = problem(None, "Not found", "That page does not exist.", "x");
+        assert!(refused.contains("<details><summary>More</summary>"));
+        assert!(!refused.contains("aria-current"));
+    }
+
+    // Owner request 2026-11-19 (item 8): counts are plain numbers, red only above zero.
+    #[test]
+    fn counts_are_plain_and_red_only_above_zero() {
+        assert_eq!(&*count(0), "<span class=\"count\">0</span>");
+        assert_eq!(&*count(1), "<span class=\"count over\">1</span>");
+        assert_eq!(
+            &*count(u64::MAX),
+            "<span class=\"count over\">18446744073709551615</span>"
+        );
+        assert!(CSS.contains(".count.over"));
+        assert!(!count(3).contains("pill"));
+    }
+
+    // Owner request 2026-11-19 (item 8): the short settings version, full digest on hover.
+    #[test]
+    fn settings_version_is_short_with_the_full_digest_on_hover() {
+        let html = version(&[0xab; 32]);
+        let full = "ab".repeat(32);
+        assert_eq!(
+            &*html,
+            format!(
+                "<code class=\"version\" title=\"Full settings version (configuration digest): {full}\">abababababab</code>"
+            )
+        );
     }
 
     // The stylesheet stays inside the CSP: no imports, fonts or external URLs.

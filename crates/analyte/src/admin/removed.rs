@@ -95,7 +95,7 @@ fn line(open: &Undelivered, kept: Option<&Kept>, from_running: bool) -> Line {
     };
     let destination = open.destination.as_str();
     let from = match (open.machines.len(), from_running) {
-        (0, _) => format!("Lab app destination {destination}"),
+        (0, _) => format!("Lab app {destination}"),
         (1, false) => format!("Removed machine {}", names(&open.machines)),
         (_, false) => format!("Removed machines {}", names(&open.machines)),
         (1, true) => format!("Machine {}", names(&open.machines)),
@@ -103,7 +103,7 @@ fn line(open: &Undelivered, kept: Option<&Kept>, from_running: bool) -> Line {
     };
     let held = if open.held > 0 {
         format!(
-            " {} of them wait for an operator on the Deliveries page (paused, parked or conflicting).",
+            " {} of them need someone to act on the Deliveries page (paused, rejected or in conflict).",
             open.held
         )
     } else {
@@ -114,10 +114,9 @@ fn line(open: &Undelivered, kept: Option<&Kept>, from_running: bool) -> Line {
         Some(kept) if kept.keys_missing => (
             format!(
                 concat!(
-                    "Cannot deliver to lab app {destination}: its API key or signing key is ",
-                    "missing. Enter them on the Lab app page or in ",
-                    "the service environment, then restart. {from}: {count} {what} stay stored ",
-                    "and are never deleted.{held}"
+                    "Cannot send to lab app {destination}: its API key or signing key is ",
+                    "missing. Enter them on the Lab app page (or in the service environment), ",
+                    "then restart. {from}: {count} {what} are kept and never deleted.{held}"
                 ),
                 destination = destination,
                 from = from,
@@ -128,17 +127,14 @@ fn line(open: &Undelivered, kept: Option<&Kept>, from_running: bool) -> Line {
             true,
         ),
         Some(kept) if kept.delivering.load(Ordering::Acquire) => (
-            format!(
-                "{from}: {count} {what} still being delivered to lab app destination {destination}.{held}"
-            ),
+            format!("{from}: {count} {what} still being delivered to lab app {destination}.{held}"),
             false,
         ),
         Some(_) => (
             format!(
                 concat!(
-                    "{from}: {count} {what} wait for lab app destination {destination}; its ",
-                    "delivery-only worker had already finished, so they are delivered after the ",
-                    "next restart.{held}"
+                    "{from}: {count} {what} wait for lab app {destination}; they are sent after ",
+                    "the next restart.{held}"
                 ),
                 from = from,
                 count = count,
@@ -151,9 +147,9 @@ fn line(open: &Undelivered, kept: Option<&Kept>, from_running: bool) -> Line {
         None => (
             format!(
                 concat!(
-                    "Cannot deliver: destination {destination} no longer configured. {from}: ",
-                    "{count} {what} stay stored and are never deleted. Add lab app {destination} ",
-                    "on the Lab app page and restart to deliver them."
+                    "Cannot send to lab app {destination}: it is not set up any more. {from}: ",
+                    "{count} {what} are kept and never deleted. Add lab app {destination} on the ",
+                    "Lab app page, then restart, to send them."
                 ),
                 destination = destination,
                 from = from,
@@ -216,10 +212,9 @@ mod tests {
             line.text
         );
         assert!(line.text.starts_with(concat!(
-            "Cannot deliver to lab app old-lab: its API key or signing key is missing. ",
-            "Enter them on the Lab app page or in the service ",
-            "environment, then restart. Removed machine machine-3: 3 results or order ",
-            "messages stay stored and are never deleted."
+            "Cannot send to lab app old-lab: its API key or signing key is missing. ",
+            "Enter them on the Lab app page (or in the service environment), then restart. ",
+            "Removed machine machine-3: 3 results or order messages are kept and never deleted."
         )));
         assert!(line.notice("").starts_with("<p class=\"notice bad\">"));
         Ok(())
@@ -234,16 +229,16 @@ mod tests {
         assert!(!line.blocked);
         assert_eq!(
             line.text,
-            "Removed machine machine-3: 3 results or order messages still being delivered to lab app destination old-lab."
+            "Removed machine machine-3: 3 results or order messages still being delivered to lab app old-lab."
         );
         assert!(line.notice("").starts_with("<p class=\"notice\">"));
         let finished = line_text(&open, Some(&kept(false, false)));
         assert!(
-            finished.contains("delivered after the next restart"),
+            finished.contains("sent after the next restart"),
             "{finished}"
         );
         let gone = line_text(&open, None);
-        assert!(gone.starts_with("Cannot deliver: destination old-lab no longer configured."));
+        assert!(gone.starts_with("Cannot send to lab app old-lab: it is not set up any more."));
         Ok(())
     }
 

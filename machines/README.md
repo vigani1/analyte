@@ -12,13 +12,18 @@ the real loader, compares the README evidence level, and replays every recording
 through the running service. A model folder with a README must also contain
 `machine.toml`, unless its README explicitly says "a blocked machine definition,"
 (line wrapping is allowed). This catches accidentally deleted definitions.
-The README uses these sections in this order. In Evidence, write exactly one
+The README starts with a `# ` title naming the vendor and model the way a lab
+says it (for example `# Roche cobas e 411`); the setup page shows that title as
+the model's name and keeps the folder key on hover. The README then uses these
+sections in this order. In Evidence, write exactly one
 `Level: documented`, `Level: simulated` or `Level: proven` line matching TOML.
 Synthetic recordings never raise the evidence level.
 
 ## README template
 
 ```markdown
+# Vendor model
+
 ## Machine
 Describe the confirmed facts, sources and unresolved details.
 

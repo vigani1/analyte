@@ -4,6 +4,8 @@
 //! disk. Times show in the PC's own time zone; the exact UTC time and Unix
 //! seconds stay in the hover text.
 use crate::admin::markup::Markup;
+use analyte_model::OrderState;
+use analyte_store::DeliveryState;
 use jiff::{Timestamp, tz::TimeZone};
 
 /// A size such as "477 GB" or "1.5 MB"; under 1 KB it counts bytes.
@@ -100,6 +102,33 @@ pub(in crate::admin) fn when_unix(seconds: i64, now: Timestamp) -> Markup {
         |_| Markup::new().text(format!("Unix time {seconds} (not a valid date)")),
         |at| when(at, now),
     )
+}
+
+/// An order's state in words a lab manager uses; pages keep the stored state on hover.
+pub(in crate::admin) const fn order_state(state: OrderState) -> &'static str {
+    match state {
+        OrderState::Requested => "Not sent yet",
+        OrderState::Sending => "Sending",
+        OrderState::Sent => "Sent, not yet accepted",
+        OrderState::Accepted => "Accepted by the machine",
+        OrderState::Done => "Done",
+        OrderState::Rejected => "Rejected",
+        OrderState::CancelRequested => "Cancel requested",
+        OrderState::CancelConfirmed => "Cancelled",
+        OrderState::Uncertain => "Outcome unknown: check the machine",
+    }
+}
+
+/// A delivery's state in plain words; pages keep the stored state on hover.
+pub(in crate::admin) const fn delivery_state(state: DeliveryState) -> &'static str {
+    match state {
+        DeliveryState::Pending => "Waiting to be sent",
+        DeliveryState::InFlight => "Sending",
+        DeliveryState::Done => "Delivered",
+        DeliveryState::Parked => "Rejected by the lab app",
+        DeliveryState::Paused => "Paused: lab app settings need repair",
+        DeliveryState::Conflict => "Lab app reports a conflict",
+    }
 }
 
 #[cfg(test)]

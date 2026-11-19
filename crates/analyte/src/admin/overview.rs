@@ -1,6 +1,6 @@
 //! Renders a read-only HTML overview in sections: machines, sending to the lab app, orders, disk and alerts.
 use super::server::{Context, Machine};
-use super::view::{self, Tone, exact, pill, plain, row};
+use super::view::{self, Tab, Tone, count, exact, pill, plain, row};
 use crate::admin::Error;
 use crate::admin::markup::Markup;
 use crate::deadline;
@@ -24,7 +24,15 @@ pub(super) async fn show(State(state): State<Arc<Context>>) -> Response {
         // Evidence and errors stay on the authenticated page, never in logs.
         Err(error) => (
             StatusCode::SERVICE_UNAVAILABLE,
-            Html(view::message("Overview unavailable", error)),
+            Html(view::problem(
+                Some(Tab::Overview),
+                "Overview",
+                concat!(
+                    "The overview could not be shown just now. Reload the page; if this ",
+                    "keeps happening, give the details below to support.",
+                ),
+                error,
+            )),
         )
             .into_response(),
     }
@@ -44,24 +52,27 @@ async fn render(state: &Context) -> Result<Markup, Error> {
         .await?;
     let now = Timestamp::now();
     let alerts = crate::operator::alerts::active(&state.store).await?;
-    let mut html = view::page("Overview")
-        .markup("<p class=\"lead\">Actions you take here are recorded with your reason.</p>");
+    let mut html = view::page(Tab::Overview, "Overview").markup(concat!(
+        "<p class=\"lead\">How your machines, results waiting for the lab app, orders and ",
+        "disk space are doing right now.</p>",
+    ));
     if !alerts.is_empty() {
         html.push_fragment(
             &Markup::new()
                 .markup("<p class=\"notice bad\"><strong>")
                 .text(plain::amount(
                     u64::try_from(alerts.len())?,
-                    "active alert",
-                    "active alerts",
+                    "alert needs",
+                    "alerts need",
                 ))
-                .markup("</strong>: see Disk and alerts below.</p>"),
+                .markup(" attention.</strong> See Disk and alerts below.</p>"),
         );
     }
     if free <= state.reserve {
         html.push_markup(concat!(
-            "<p class=\"notice bad\"><strong>The disk reserve is reached:</strong> Analyte ",
-            "refuses new data from machines until disk space is freed.</p>",
+            "<p class=\"notice bad\" title=\"Disk reserve reached\"><strong>The disk is ",
+            "almost full.</strong> Analyte refuses new data from machines until disk space ",
+            "is freed.</p>",
         ));
     }
     render_machines(state, &mut html, until, now).await?;
@@ -91,7 +102,7 @@ fn render_disk(html: &mut Markup, free: u64, reserve: u64) {
         ),
     ));
     html.push_fragment(&row(
-        "Reserve",
+        "Always kept free",
         Some("Disk reserve bytes"),
         &exact(&plain::bytes(reserve), &format!("{reserve} bytes"))
             .markup(" <span class=\"muted\">Analyte stops receiving below this</span>"),
@@ -100,9 +111,9 @@ fn render_disk(html: &mut Markup, free: u64, reserve: u64) {
         "Disk status",
         Some("Disk capacity"),
         &if free > reserve {
-            pill(Tone::Good, "Above reserve")
+            pill(Tone::Good, "Enough space")
         } else {
-            pill(Tone::Problem, "Reserve reached: receiving refused")
+            pill(Tone::Problem, "Almost full: receiving refused")
         },
     ));
 }
@@ -111,11 +122,7 @@ fn render_alerts(html: &mut Markup, alerts: &[analyte_store::AlertState], now: T
     html.push_fragment(&row(
         "Active alerts",
         None,
-        &if alerts.is_empty() {
-            pill(Tone::Good, "None")
-        } else {
-            pill(Tone::Problem, &alerts.len().to_string())
-        },
+        &count(u64::try_from(alerts.len()).unwrap_or(u64::MAX)),
     ));
     html.push_markup("</dl>");
     if alerts.is_empty() {
@@ -137,14 +144,14 @@ fn render_alerts(html: &mut Markup, alerts: &[analyte_store::AlertState], now: T
                 .text(&alert.responder)
                 .markup("</td><td data-label=\"Raised\">")
                 .fragment(&alert.raised_at.map_or_else(
-                    || Markup::new().text("unknown"),
+                    || Markup::new().text("Not known"),
                     |raised| plain::when_unix(raised, now),
                 ))
                 .markup("</td><td data-label=\"Last value\">")
                 .text(
                     alert
                         .value
-                        .map_or_else(|| "unknown".into(), |value| value.to_string()),
+                        .map_or_else(|| "Not known".into(), |value| value.to_string()),
                 )
                 .markup("</td></tr>"),
         );
@@ -168,7 +175,7 @@ const fn alert_words(key: &AlertKey) -> &'static str {
         AlertKey::DiskReserve => "Disk space is low",
         AlertKey::OrderCacheStale => "Order list is out of date",
         AlertKey::UncertainOrders => "Orders with unknown outcome",
-        AlertKey::ParkedItems => "Flagged items need review",
+        AlertKey::ParkedItems => "Items need review",
         AlertKey::RestorePaused => "Order sending paused after restore",
         AlertKey::UndeliverableDestination(..) => "Results cannot be delivered",
     }
@@ -189,39 +196,31 @@ async fn render_orders(
     html.push_fragment(&row(
         "Orders with unknown outcome (check the machine)",
         Some("Uncertain orders"),
-        &count_link(uncertain, "/orders", "Machine orders"),
+        &count_link(uncertain, "/orders", "See machine orders"),
     ));
     html.push_fragment(&row(
-        "Orders the analyzer cancelled",
+        "Cancelled by machine",
         Some("Analyzer-cancelled AWOSs"),
-        &count_link(
-            cancelled,
-            "/analyzer-cancelled",
-            "Review cancellation evidence and reconcile app intent",
-        ),
+        &count_link(cancelled, "/analyzer-cancelled", "Review cancelled orders"),
     ));
-    html.push_fragment(&row(
-        "Order sending paused after restore",
-        None,
-        &if paused {
-            pill(Tone::Attention, "Yes: reconcile with the command line")
-        } else {
-            pill(Tone::Good, "No")
-        },
-    ));
+    // Shown only when it applies; a "No" row on every visit is noise.
+    if paused {
+        html.push_fragment(&row(
+            "Order sending paused after restore",
+            Some("Restore unreconciled"),
+            &pill(Tone::Attention, "Yes").markup(concat!(
+                " <span class=\"muted\">Ask IT to reconcile orders with the command line; ",
+                "until then no order is sent to a machine.</span>",
+            )),
+        ));
+    }
     html.push_markup("</dl></section>");
     Ok(())
 }
 
-/// A count, marked when above zero, with a link to the page that lists the items.
-fn count_link(count: impl Into<u64>, href: &'static str, label: &'static str) -> Markup {
-    let count = count.into();
-    let tone = if count == 0 {
-        Tone::Good
-    } else {
-        Tone::Attention
-    };
-    pill(tone, &count.to_string())
+/// A count, red when above zero, with a link to the page that lists the items.
+fn count_link(value: impl Into<u64>, href: &'static str, label: &'static str) -> Markup {
+    count(value.into())
         .markup(" <a href=\"")
         .markup(href)
         .markup("\">")
@@ -272,17 +271,13 @@ async fn render_destinations(
         oldest = oldest.max(health.oldest_pending_age);
         html.push_fragment(
             &Markup::new()
-                .markup("<h3 title=\"Destination\">Lab app destination ")
+                .markup("<h3 title=\"Destination\">Lab app ")
                 .text(destination.id().as_str())
                 .markup("</h3><dl>")
                 .fragment(&row(
                     "Waiting to be sent",
-                    Some("Pending items"),
-                    &Markup::new().text(plain::amount(
-                        health.pending_count,
-                        "result or order message",
-                        "results or order messages",
-                    )),
+                    Some("Pending items: results or order messages"),
+                    &count(health.pending_count),
                 ))
                 .fragment(&row(
                     "Order list up to date",
@@ -297,7 +292,7 @@ async fn render_destinations(
                     "Last order list check",
                     Some("Cache last successful poll"),
                     &health.last_successful_poll.map_or_else(
-                        || Markup::new().text("No successful check recorded"),
+                        || Markup::new().text("Not yet"),
                         |time| plain::when_unix(time, now),
                     ),
                 ))
@@ -319,10 +314,10 @@ async fn render_destinations(
     let oldest = if !pending {
         Markup::new().text("None waiting")
     } else if unknown_age {
-        Markup::new().text("unknown")
+        Markup::new().text("Not known")
     } else {
         oldest.map_or_else(
-            || Markup::new().text("unknown"),
+            || Markup::new().text("Not known"),
             |age| exact(&plain::duration(age), &format!("{age} seconds")),
         )
     };
@@ -337,7 +332,7 @@ async fn render_destinations(
             .markup("</dl>"),
     );
     for line in super::removed::lines(state).await? {
-        html.push_fragment(&line.notice("<strong>Delivery after removal:</strong> "));
+        html.push_fragment(&line.notice(""));
     }
     html.push_markup("</section>");
     Ok(())
@@ -373,7 +368,7 @@ async fn render_machines(
     }
     html.push_markup(concat!(
         "<section><div class=\"heading\"><h2>Machines</h2>",
-        "<a href=\"/machines\">Machine details</a></div>",
+        "<a href=\"/machines\">Details for each machine</a></div>",
     ));
     if state.machines.is_empty() {
         html.push_markup(concat!(
@@ -384,7 +379,7 @@ async fn render_machines(
     }
     html.push_markup(concat!(
         "<div class=\"table\"><table class=\"stack\"><tr><th>Machine</th><th>Connection</th>",
-        "<th>Last data received</th><th>State since</th><th>Connection type</th>",
+        "<th>Last data received</th><th>Since</th><th>Connection type</th>",
         "<th>Service</th></tr>",
     ));
     for machine in &state.machines {
@@ -398,7 +393,7 @@ async fn render_machines(
                 .fragment(&light.state)
                 .markup("</td><td data-label=\"Last data received\">")
                 .fragment(&light.last_data)
-                .markup("</td><td data-label=\"State since\">")
+                .markup("</td><td data-label=\"Since\">")
                 .fragment(&light.changed)
                 .markup("</td><td data-label=\"Connection type\">")
                 .fragment(&light.kind)
@@ -434,7 +429,7 @@ impl LinkLight {
             kind: exact(link_words(status.link()), status.link().as_str()),
             state: pill(tone, status.state()),
             last_data: status.last_data().max(stored).map_or_else(
-                || Markup::new().text("unknown"),
+                || Markup::new().text(NOTHING_YET),
                 |time| plain::when(time, now),
             ),
             changed: plain::when(status.changed_at(), now),
@@ -451,15 +446,14 @@ impl LinkLight {
         Markup::new()
             .fragment(&row("Connection", Some("Connection state"), &self.state))
             .fragment(&row("Last data received", None, &self.last_data))
-            .fragment(&row(
-                "State since",
-                Some("Last state change"),
-                &self.changed,
-            ))
+            .fragment(&row("Since", Some("Last state change"), &self.changed))
             .fragment(&row("Connection type", Some("Link"), &self.kind))
             .fragment(&row("Service", Some("Machine owner"), &self.service))
     }
 }
+
+/// What "Last data received" says before a machine has sent anything.
+pub(super) const NOTHING_YET: &str = "Nothing yet";
 
 /// How the machine is attached, in plain words; the technical link kind shows on hover.
 const fn link_words(link: Link) -> &'static str {
@@ -489,7 +483,9 @@ async fn render_alert_endpoints(
             .markup("</dl>"),
     );
     if !lines.is_empty() {
-        html.push_markup("<ul>");
+        html.push_markup(
+            "<details class=\"support\"><summary>Relay status for support</summary><ul>",
+        );
         for line in lines {
             html.push_fragment(
                 &Markup::new()
@@ -498,7 +494,7 @@ async fn render_alert_endpoints(
                     .markup("</code></li>"),
             );
         }
-        html.push_markup("</ul>");
+        html.push_markup("</ul></details>");
     }
     Ok(())
 }

@@ -1,5 +1,9 @@
 //! Shows enabled configuration separately from actual protected receipt interpretation evidence.
-use super::{pages::finish, server::Context, view};
+use super::{
+    pages::finish,
+    server::Context,
+    view::{self, Tab},
+};
 use crate::admin::Error;
 use crate::admin::markup::Markup;
 use crate::deadline;
@@ -7,24 +11,17 @@ use analyte_model::{DepartureEvidence, DepartureMeaning, ReceiptId};
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
-    response::{IntoResponse, Response},
+    response::Response,
 };
 use serde::Deserialize;
 use std::sync::Arc;
 
 pub(super) fn enabled(config: &analyte_config::Validated) -> Result<Markup, Error> {
-    let digest = config
-        .digest()
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect::<String>();
     let mut html = Markup::new()
-        .markup("<dl><dt title=\"Active configuration digest\">Settings version</dt><dd><code>")
-        .text(digest.chars().take(12).collect::<String>())
-        .markup("</code><small class=\"digest\">")
-        .text(&digest)
+        .markup("<dl><dt title=\"Active configuration digest\">Settings version</dt><dd>")
+        .fragment(&view::version(&config.digest()))
         .markup(concat!(
-            "</small></dd></dl><h3 title=\"Enabled machine departures\">Deliberate exceptions ",
+            "</dd></dl><h3 title=\"Enabled machine departures\">Deliberate exceptions ",
             "for this machine</h3><p class=\"muted\">Places where this machine's settings ",
             "knowingly accept something the standard does not. Being switched on does not mean ",
             "an exception was used for a given message; each message's details show which ",
@@ -67,17 +64,16 @@ pub(super) async fn receipt(
     Query(version): Query<Version>,
 ) -> Response {
     if version.version < 1 {
-        return (
+        return view::refusal(
             StatusCode::BAD_REQUEST,
+            "Reading not found",
+            "Readings are numbered from 1. Open the message again from the Machines page.",
             "positive interpretation version required",
-        )
-            .into_response();
+        );
     }
     let until = match deadline() {
         Ok(until) => until,
-        Err(error) => {
-            return (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response();
-        }
+        Err(error) => return finish(Err(error.into())),
     };
     let result = state
         .store
@@ -85,73 +81,141 @@ pub(super) async fn receipt(
         .await;
     let interpretation = match result {
         Ok(Some(value)) => value,
-        Ok(None) => return (StatusCode::NOT_FOUND, "interpretation not found").into_response(),
+        Ok(None) => {
+            return view::refusal(
+                StatusCode::NOT_FOUND,
+                "Reading not found",
+                "This message has no reading with this number. Earlier readings stay listed from the Machines page.",
+                "interpretation not found",
+            );
+        }
         Err(error) => return finish(Err(error.into())),
     };
     let id = uuid::Uuid::from(id);
-    let mut html = view::page("Receipt interpretation departures");
-    html.push_fragment(
-        &Markup::new()
-            .markup("<p>Receipt ")
-            .text(id)
-            .markup(". Interpretation ")
-            .text(version.version)
-            .markup(". Config version: ")
-            .text(interpretation.config_version.as_str())
-            .markup(". Driver: ")
-            .text(interpretation.driver.to_string())
-            .markup(".</p>"),
-    );
-    let digest = analyte_contract::content_digest(&interpretation.config)
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect::<String>();
-    html.push_fragment(
-        &Markup::new()
-            .markup("<p>Retained config digest: ")
-            .text(digest)
-            .markup("</p>"),
-    );
+    let mut html = view::page(Tab::Machines, "How this message was read");
+    html.push_fragment(&summary(id, version.version, &interpretation));
     match &interpretation.departures {
         Some(evidence) => render(&mut html, evidence),
         None => html.push_markup(concat!(
-            concat!(
-                "<p>Legacy interpretation: enabled/applied ",
-                "departure ledger was not recorded; empty ",
-            ),
-            "application is not asserted.</p>",
+            "<p class=\"muted\" title=\"Legacy interpretation: departure ledger not ",
+            "recorded\">This message was read by an older version that did not record which ",
+            "exceptions were switched on or used; that does not mean none were.</p>",
         )),
     }
-    if let analyte_store::Reading::Results(results) = &interpretation.outcome {
-        html.push_markup("<h2>Source and summary statuses</h2><ul>");
+    html.push_fragment(&outcome(&interpretation.outcome));
+    html.push_fragment(
+        &Markup::new()
+            .markup("<p class=\"actions-row\"><a class=\"button secondary\" href=\"/receipts/")
+            .text(id)
+            .markup("/departures?version=")
+            .text(version.version.saturating_add(1))
+            .markup("\" title=\"Next interpretation version\">Next reading</a></p>"),
+    );
+    finish(Ok(html))
+}
+
+/// The message, reading and settings a receipt page is about.
+fn summary(id: uuid::Uuid, version: i64, interpretation: &analyte_store::Interpretation) -> Markup {
+    Markup::new()
+        .markup("<section><dl>")
+        .fragment(&view::row(
+            "Message",
+            Some("Receipt"),
+            &Markup::new().markup("<code>").text(id).markup("</code>"),
+        ))
+        .fragment(&view::row(
+            "Reading",
+            Some("Interpretation version"),
+            &Markup::new().text(version),
+        ))
+        .fragment(&view::row(
+            "Settings version",
+            Some("Retained config digest"),
+            &view::version(&analyte_contract::content_digest(&interpretation.config)),
+        ))
+        .fragment(&view::row(
+            "Settings label",
+            Some("Config version"),
+            &Markup::new().text(interpretation.config_version.as_str()),
+        ))
+        .fragment(&view::row(
+            "Read by",
+            Some("Driver"),
+            &Markup::new().text(interpretation.driver.to_string()),
+        ))
+        .markup("</dl></section>")
+}
+
+/// What the reading produced: each result part's status as sent and as shown, or why it failed.
+fn outcome(outcome: &analyte_store::Reading) -> Markup {
+    let mut html = Markup::new();
+    if let analyte_store::Reading::Results(results) = outcome {
+        html.push_markup(
+            "<section><h2 title=\"Source and summary statuses\">Result statuses</h2><ul>",
+        );
         for part in results.iter().flat_map(|r| r.parts.as_slice()) {
             html.push_fragment(
                 &Markup::new()
-                    .markup("<li>Received observation status: <code>")
+                    .markup("<li title=\"Received observation status; source absence stays empty\">Status sent by the machine: <code>")
                     .text(part.source_status.as_str())
-                    .markup("</code>. Summary: ")
+                    .markup("</code> (empty when none was sent). Shown as: ")
                     .text(part.status)
-                    .markup(". Source absence stays empty.</li>"),
+                    .markup(".</li>"),
             );
         }
-        html.push_markup("</ul>");
-    } else if let analyte_store::Reading::Failed(reason) = &interpretation.outcome {
+        html.push_markup("</ul></section>");
+    } else if let analyte_store::Reading::Failed(reason) = outcome {
         html.push_fragment(
             &Markup::new()
-                .markup("<p>Parked interpretation: ")
+                .markup("<p class=\"notice\" title=\"Parked interpretation\">Could not be read: ")
                 .text(reason.as_str())
                 .markup("</p>"),
         );
     }
-    html.push_fragment(
-        &Markup::new()
-            .markup("<p><a href=\"/receipts/")
-            .text(id)
-            .markup("/departures?version=")
-            .text(version.version.saturating_add(1))
-            .markup("\">Next interpretation version</a></p>"),
-    );
-    finish(Ok(html))
+    html
+}
+
+/// One exception used for a message: what was received, how it was read and where.
+fn applied_section(applied: &analyte_model::AppliedDeparture) -> Markup {
+    Markup::new()
+        .markup("<section><h3 title=\"Rule\">")
+        .text(applied.rule.as_str())
+        .markup("</h3><dl>")
+        .fragment(&view::row(
+            "As received",
+            Some("Source"),
+            &Markup::new().text(applied.source.as_str()),
+        ))
+        .fragment(&view::row(
+            "Read as",
+            Some("Derived meaning"),
+            &Markup::new().text(applied.meaning),
+        ))
+        .fragment(&view::row(
+            "Standard",
+            None,
+            &Markup::new().text(applied.standard.as_str()),
+        ))
+        .fragment(&view::row(
+            "Where in the message",
+            Some("Record and field; coordinates and spans on hover"),
+            &Markup::new()
+                .markup("<span title=\"Coordinates: ")
+                .text(applied.coordinates.as_str())
+                .markup("; spans: ")
+                .text(&applied.spans)
+                .markup("\">Record ")
+                .text(applied.record)
+                .markup(", field ")
+                .text(applied.field)
+                .markup("</span>"),
+        ))
+        .markup(concat!(
+            "</dl><p><a href=\"#enabled\" title=\"Protected evidence references and ",
+            "scope\">Where this exception comes from</a></p><pre>",
+        ))
+        .text(applied.declaration.as_str())
+        .markup("</pre></section>")
 }
 
 fn render(html: &mut Markup, evidence: &DepartureEvidence) {
@@ -159,14 +223,17 @@ fn render(html: &mut Markup, evidence: &DepartureEvidence) {
         html.push_fragment(
             &Markup::new()
                 .markup(concat!(
-                    "<p><strong>Applied ledger incomplete; delivery ",
-                    "stopped: ",
+                    "<p class=\"notice bad\" title=\"Applied ledger incomplete\"><strong>Not ",
+                    "sent to the lab app: the record of exceptions used is incomplete. ",
                 ))
                 .text(reason.as_str())
                 .markup("</strong></p>"),
         );
     }
-    html.push_markup("<h2 id=\"enabled\">Enabled declaration snapshot</h2><ul>");
+    html.push_markup(concat!(
+        "<section><h2 id=\"enabled\" title=\"Enabled declaration snapshot\">Exceptions ",
+        "switched on for this machine</h2><ul>",
+    ));
     for declaration in evidence.enabled.as_slice() {
         html.push_fragment(
             &Markup::new()
@@ -175,68 +242,43 @@ fn render(html: &mut Markup, evidence: &DepartureEvidence) {
                 .markup("</pre></li>"),
         );
     }
-    html.push_markup("</ul><h2>Actually applied departures and tolerances</h2>");
+    if evidence.enabled.as_slice().is_empty() {
+        html.push_markup("<li>None</li>");
+    }
+    html.push_markup(concat!(
+        "</ul></section><h2 title=\"Actually applied departures and tolerances\">Exceptions ",
+        "used for this message</h2>",
+    ));
     if evidence.applied.as_slice().is_empty() {
-        html.push_markup("<p>Applied list: empty.</p>");
+        html.push_markup("<p title=\"Applied list: empty\">None were used.</p>");
     }
     for applied in evidence.applied.as_slice() {
         match applied.meaning {
             DepartureMeaning::FinalReportFromDocumentation
             | DepartureMeaning::FinalObservationFromDocumentation => {
                 html.push_markup(concat!(
-                    concat!(
-                        "<p><strong>Final from documentation — not a ",
-                        "received final status. Delivery over ",
-                    ),
-                    "contract v1 is parked.</strong></p>",
+                    "<p class=\"notice\" title=\"Final from documentation; delivery over ",
+                    "contract v1 is parked\"><strong>Marked final because the manual says so, ",
+                    "not because the machine sent a final status.</strong> It waits on the Needs ",
+                    "review page instead of going to the lab app.</p>",
                 ));
             }
             DepartureMeaning::ControlCharacterKept
             | DepartureMeaning::CharsetFromDefinition
             | DepartureMeaning::ZoneFromSite => {
                 html.push_markup(concat!(
-                    "<p><strong>Deliberate tolerance — values kept exactly ",
-                    "as received.</strong></p>",
+                    "<p title=\"Deliberate tolerance\"><strong>Accepted on purpose: values ",
+                    "are kept exactly as received.</strong></p>",
                 ));
             }
             DepartureMeaning::PackedRecords | DepartureMeaning::WireCompatibility => {}
         }
-        html.push_fragment(
-            &Markup::new()
-                .markup("<section><h3>")
-                .text(applied.rule.as_str())
-                .markup(concat!(
-                    "</h3><p><a href=\"#enabled\">Protected evidence ",
-                    "references and scope</a></p><p>Source: ",
-                ))
-                .text(applied.source.as_str())
-                .markup(". Derived meaning: ")
-                .text(applied.meaning)
-                .markup(". Standard: ")
-                .text(applied.standard.as_str())
-                .markup(". Record ")
-                .text(applied.record)
-                .markup(", field ")
-                .text(applied.field)
-                .markup(". Coordinates: ")
-                .text(applied.coordinates.as_str())
-                .markup(". Spans: ")
-                .text(&applied.spans)
-                .markup(".</p><pre>")
-                .text(applied.declaration.as_str())
-                .markup("</pre></section>"),
-        );
+        html.push_fragment(&applied_section(applied));
     }
     html.push_markup(concat!(
-        concat!(
-            "<p>Manual reference IDs and recording digests ",
-            "above identify protected evidence for ",
-        ),
-        concat!(
-            "authorized operators. Original source bytes ",
-            "remain in the protected store; raw ",
-        ),
-        "disclosure requires the audited parked-item action.</p>",
+        "<p class=\"muted\">The references above point to the manual sections and recordings ",
+        "behind each exception. The original bytes stay in the protected store; to see them, ",
+        "use Show original bytes on an item in Needs review.</p>",
     ));
 }
 
@@ -252,8 +294,8 @@ mod tests {
     fn shows_empty_and_documented_final_without_injection() -> Result<(), Error> {
         let mut html = Markup::new();
         render(&mut html, &DepartureEvidence::default());
-        assert!(html.contains("Applied list: empty"));
-        assert!(!html.contains("Final from documentation"));
+        assert!(html.contains("None were used."));
+        assert!(!html.contains("Marked final because the manual says so"));
         let application = AppliedDeparture {
             rule: Identifier::new("hl7_absent_obx11_means_final")?,
             declaration: SourceText::new("scope = '<script>bad</script>'\nlevel = 'documented'")?,
@@ -272,8 +314,8 @@ mod tests {
         };
         let mut html = Markup::new();
         render(&mut html, &ledger);
-        assert!(html.contains("Final from documentation"));
-        assert!(html.contains("not a received final status"));
+        assert!(html.contains("Marked final because the manual says so"));
+        assert!(html.contains("not because the machine sent a final status"));
         assert!(html.contains("&lt;script&gt;bad&lt;/script&gt;"));
         assert!(!html.contains("<script>"));
         Ok(())
@@ -301,10 +343,10 @@ mod tests {
         };
         let mut html = Markup::new();
         render(&mut html, &ledger);
-        assert!(html.contains("Deliberate tolerance"));
+        assert!(html.contains("Accepted on purpose: values are kept exactly as received."));
         assert!(html.contains("astm_control_character_in_text"));
         assert!(html.contains("ControlCharacterKept"));
-        assert!(!html.contains("Final from documentation"));
+        assert!(!html.contains("Marked final because the manual says so"));
         Ok(())
     }
 }

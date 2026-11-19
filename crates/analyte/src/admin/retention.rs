@@ -2,7 +2,7 @@
 use super::{
     server::Context,
     sessions::Session,
-    view::{self, plain},
+    view::{self, Tab, count, plain},
 };
 use crate::admin::Error;
 use crate::admin::markup::Markup;
@@ -20,7 +20,12 @@ use std::sync::Arc;
 
 fn page(body: &Markup) -> Response {
     Html(
-        view::page("Retention and holds")
+        view::page(Tab::DataKeeping, "Data keeping")
+            .markup(concat!(
+                "<p class=\"lead\" title=\"Retention and holds\">How long Analyte keeps ",
+                "received messages, and holds that keep chosen data until someone releases ",
+                "them.</p>",
+            ))
             .fragment(body)
             .markup(view::END),
     )
@@ -29,7 +34,7 @@ fn page(body: &Markup) -> Response {
 fn failure(error: &dyn std::error::Error) -> Response {
     (
         StatusCode::CONFLICT,
-        Html(view::message("Retention action refused", error)),
+        Html(view::message(Tab::DataKeeping, "Hold not saved", error)),
     )
         .into_response()
 }
@@ -62,11 +67,17 @@ async fn render(state: &Context, session: Option<&Session>, after: u64) -> Resul
         })
         .await?;
     let now = jiff::Timestamp::now();
-    let mut html = Markup::new().markup("<section><h2>Policy</h2><ul>");
+    let mut html = Markup::new()
+        .markup("<section><h2 title=\"Retention policy\">How long data is kept</h2><ul>");
     for (machine, days) in &state.retention {
         let policy = days.map_or_else(
-            || "keep (never purge)".into(),
-            |days| format!("{days} days after the last acknowledgment"),
+            || "kept, never deleted".into(),
+            |days| {
+                format!(
+                    "deleted {} after the lab app last confirmed it",
+                    plain::amount(days, "day", "days")
+                )
+            },
         );
         html.push_fragment(
             &Markup::new()
@@ -77,26 +88,19 @@ async fn render(state: &Context, session: Option<&Session>, after: u64) -> Resul
                 .markup("</li>"),
         );
     }
-    html.push_markup("</ul></section><section><h2>Last run</h2>");
-    if let Some(run) = last {
-        let number = |value: &dyn std::fmt::Display| Markup::new().text(value);
-        html.push_fragment(
-            &Markup::new()
-                .markup("<dl>")
-                .fragment(&view::row("Ran", None, &plain::when_unix(run.time, now)))
-                .fragment(&view::row("Examined", None, &number(&run.examined)))
-                .fragment(&view::row("Purged receipts", None, &number(&run.purged)))
-                .fragment(&view::row("Purged orders", None, &number(&run.orders)))
-                .fragment(&view::row("Paused", None, &number(&run.paused)))
-                .fragment(&view::row("Failed", None, &number(&run.failed)))
-                .markup("</dl>"),
-        );
-    } else {
-        html.push_markup("<p>No retention run recorded.</p>");
+    if state.retention.is_empty() {
+        html.push_markup("<li>No machine is set up.</li>");
     }
-    html.push_markup("</section><section><h2>Oldest retained item</h2><p>");
+    html.push_markup("</ul></section><section><h2 title=\"Last purge run\">Last clean-up</h2>");
+    html.push_fragment(&last.map_or_else(
+        || Markup::new().markup("<p class=\"muted\">No clean-up has run yet.</p>"),
+        |run| last_run(&run, now),
+    ));
+    html.push_markup(
+        "</section><section><h2 title=\"Oldest retained receipt\">Oldest message kept</h2><p>",
+    );
     html.push_fragment(&oldest.map_or_else(
-        || Markup::new().text("No retained receipts."),
+        || Markup::new().text("None kept."),
         |time| {
             Markup::new()
                 .text("Received ")
@@ -104,17 +108,23 @@ async fn render(state: &Context, session: Option<&Session>, after: u64) -> Resul
         },
     ));
     html.push_markup(concat!(
-        "</p></section><section><h2>Active holds</h2><p>Holds have no expiry. An ",
-        "order hold covers linked receipts. Uncertain ",
-        "links retain additional data.</p><ul>",
+        "</p></section><section><h2 title=\"Active holds\">Holds</h2><p class=\"muted\">",
+        "A hold keeps data from clean-up until someone releases it; it never expires. ",
+        "Holding an order also keeps its messages. When Analyte is not sure what belongs ",
+        "together, it keeps more.</p><ul>",
     ));
     let next = holds.last().map(|hold| hold.sequence);
+    if holds.is_empty() {
+        html.push_markup("<li>No holds.</li>");
+    }
     for hold in holds {
         html.push_fragment(
             &Markup::new()
-                .markup("<li><code>")
+                .markup("<li title=\"")
                 .text(&serde_json::to_string(&hold.target)?)
-                .markup("</code></li>"),
+                .markup("\">")
+                .fragment(&held(&hold.target))
+                .markup("</li>"),
         );
     }
     html.push_markup("</ul>");
@@ -123,13 +133,39 @@ async fn render(state: &Context, session: Option<&Session>, after: u64) -> Resul
             &Markup::new()
                 .markup("<p><a class=\"button secondary\" rel=\"next\" href=\"/retention?after=")
                 .text(after)
-                .markup("\">Next holds page</a></p>"),
+                .markup("\">More holds</a></p>"),
         );
     }
     html.push_markup("</section>");
     render_form(&mut html, session);
     Ok(html)
 }
+/// What the last clean-up did, as plain numbers; failures show red.
+fn last_run(run: &analyte_store::PurgeRun, now: jiff::Timestamp) -> Markup {
+    let number = |value: &dyn std::fmt::Display| Markup::new().text(value);
+    Markup::new()
+        .markup("<dl>")
+        .fragment(&view::row("Ran", None, &plain::when_unix(run.time, now)))
+        .fragment(&view::row(
+            "Messages checked",
+            Some("Examined"),
+            &number(&run.examined),
+        ))
+        .fragment(&view::row(
+            "Messages deleted",
+            Some("Purged receipts"),
+            &number(&run.purged),
+        ))
+        .fragment(&view::row(
+            "Orders deleted",
+            Some("Purged orders"),
+            &number(&run.orders),
+        ))
+        .fragment(&view::row("Paused", None, &number(&run.paused)))
+        .fragment(&view::row("Failed", None, &count(u64::from(run.failed))))
+        .markup("</dl>")
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct HoldForm {
@@ -147,13 +183,18 @@ pub(super) async fn hold(
     Form(form): Form<HoldForm>,
 ) -> Response {
     if !session.authenticated || !session.csrf_valid(&form.csrf) || form.confirm != "yes" {
-        return StatusCode::FORBIDDEN.into_response();
+        return view::refusal(
+            StatusCode::FORBIDDEN,
+            "Hold not saved",
+            "Tick the confirmation box and make sure you are signed in, then try again.",
+            "authenticated session, valid form and confirmation required",
+        );
     }
     let result = apply(&state, &session, form).await;
     match result {
         Ok(()) => page(&Markup::new().markup(concat!(
-            "<p>Hold change recorded with your actor identity ",
-            "and reason.</p>",
+            "<p class=\"notice info\">Hold saved. Your session and reason are recorded with ",
+            "it.</p><p><a href=\"/retention\">Back to Data keeping</a></p>",
         ))),
         Err(error) => failure(&error),
     }
@@ -194,27 +235,42 @@ async fn apply(state: &Context, session: &Session, form: HoldForm) -> Result<(),
     Ok(())
 }
 
+/// What a hold keeps, in words; the stored target stays on hover.
+fn held(target: &HoldTarget) -> Markup {
+    match target {
+        HoldTarget::Receipt(id) => Markup::new()
+            .markup("Message <code>")
+            .text(uuid::Uuid::from(*id))
+            .markup("</code>"),
+        HoldTarget::Order { destination, order } => Markup::new()
+            .markup("Order <code>")
+            .text(order.as_str())
+            .markup("</code> from lab app ")
+            .text(destination.as_str()),
+    }
+}
+
 fn render_form(html: &mut Markup, session: Option<&Session>) {
     if let Some(session) = session.filter(|s| s.authenticated) {
         html.push_fragment(
             &Markup::new()
                 .markup(concat!(
-                    "<section><h2>Place or release a hold</h2><form ",
+                    "<section><h2>Add or release a hold</h2><form ",
                     "action=\"/retention\" method=\"post\"><input ",
                 ))
                 .markup("type=\"hidden\" name=\"csrf\" value=\"")
                 .text(session.csrf.form_value())
                 .markup(concat!(
-                    "\"><label class=\"field\"><span>Scope</span><select name=\"scope\"><option ",
-                    "value=\"receipt\">Receipt</option><option ",
+                    "\"><label class=\"field\"><span title=\"Scope\">Hold a</span><select name=\"scope\"><option ",
+                    "value=\"receipt\">Message</option><option ",
                 ))
                 .markup(concat!(
                     "value=\"order\">Order</option></select></label><label class=\"field\">",
-                    "<span>Receipt UUID or app order ID</span><input ",
+                    "<span title=\"Receipt UUID or app order ID\">Message number or lab app order number</span><input ",
                 ))
                 .markup(concat!(
                     "name=\"id\" required ",
-                    "maxlength=\"256\"></label><label class=\"field\"><span>Destination ",
+                    "maxlength=\"256\"></label><label class=\"field\"><span title=\"Destination\">Lab app ",
                     "(orders only)</span><input ",
                 ))
                 .markup(concat!(
@@ -223,7 +279,7 @@ fn render_form(html: &mut Markup, session: Option<&Session>) {
                     "name=\"operation\"><option ",
                 ))
                 .markup(concat!(
-                    "value=\"place\">Place hold</option><option ",
+                    "value=\"place\">Add hold</option><option ",
                     "value=\"release\">Release ",
                 ))
                 .markup(concat!(
@@ -236,7 +292,7 @@ fn render_form(html: &mut Markup, session: Option<&Session>) {
                 ))
                 .markup(concat!(
                     "required>I confirm this hold ",
-                    "change.</label><div class=\"actions-row\"><button>Record hold ",
+                    "change.</label><div class=\"actions-row\"><button>Save hold ",
                     "change</button></div></form></section>",
                 )),
         );

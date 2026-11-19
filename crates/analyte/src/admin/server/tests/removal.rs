@@ -87,8 +87,8 @@ async fn overview_until(
 }
 
 const STILL: &str = concat!(
-    "Delivery after removal:</strong> Removed machine synthetic: 1 result or order message ",
-    "still being delivered to lab app destination demo."
+    "<p class=\"notice\">Removed machine synthetic: 1 result or order message ",
+    "still being delivered to lab app demo."
 );
 
 // Owner request 2026-11-19 (results waiting after a removal; lab app set once,
@@ -160,8 +160,8 @@ async fn removed_machine_result_is_delivered_once() -> Result<(), Error> {
     drop(peer);
     overview_until(&host, &auth, |page| {
         page.contains(concat!(
-            "Lab app destination demo</h3><dl><dt title=\"Pending items\">",
-            "Waiting to be sent</dt><dd>1 result or order message</dd>"
+            "Lab app demo</h3><dl><dt title=\"Pending items: results or order messages\">",
+            "Waiting to be sent</dt><dd><span class=\"count over\">1</span></dd>"
         ))
     })
     .await?;
@@ -174,13 +174,14 @@ async fn removed_machine_result_is_delivered_once() -> Result<(), Error> {
         confirm.contains("1 result or order message not yet accepted by the lab app"),
         "{confirm}"
     );
+    // Owner request 2026-11-19 (item 9): one sentence says what happens, without
+    // "retired destination" or "program file".
     assert!(
-        confirm.contains(concat!(
-            "for lab app demo keep being delivered after the restart, even ",
-            "though no other machine uses it"
-        )),
+        confirm.contains("Its 1 waiting result will still be sent to demo."),
         "{confirm}"
     );
+    assert!(!confirm.contains("retired destination"), "{confirm}");
+    assert!(!confirm.contains("program file"), "{confirm}");
     let removed = request(
         &host,
         "/setup/synthetic/remove",
@@ -216,7 +217,7 @@ async fn removed_machine_result_is_delivered_once() -> Result<(), Error> {
     assert!(
         setup.contains(concat!(
             "<p class=\"notice\">Removed machine synthetic: 1 result or order message still being ",
-            "delivered to lab app destination demo.</p>"
+            "delivered to lab app demo.</p>"
         )),
         "{setup}"
     );
@@ -250,10 +251,8 @@ async fn removed_machine_result_is_delivered_once() -> Result<(), Error> {
     tokio::time::timeout(analyte_fixtures::HANG_GUARD, seen.arrived.notified()).await?;
     assert!(request(&host, "/", &auth, None).await?.contains(STILL));
     seen.release.notify_one();
-    let drained = overview_until(&host, &auth, |page| {
-        !page.contains("Delivery after removal")
-    })
-    .await?;
+    let drained =
+        overview_until(&host, &auth, |page| !page.contains("still being delivered")).await?;
     assert!(drained.starts_with("HTTP/1.1 200"), "{drained}");
     let setup = request(&host, "/setup", &format!("Cookie: {cookie}\r\n"), None).await?;
     assert!(!setup.contains("still being delivered"), "{setup}");

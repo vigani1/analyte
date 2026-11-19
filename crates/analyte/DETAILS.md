@@ -409,14 +409,27 @@ HTTP response. Retrying creates another audit, never a machine command.
 
 The read-only overview shows machine owner state and link light,
 oldest undelivered age, destination order-cache age and trust, Uncertain order
-count, restore pause, and free disk bytes against the configured reserve. It
-groups them into Machines, Sending to the lab app, Orders, and Disk and alerts,
-in plain words (sizes such as "477 GB free", local times with an age, Yes or
-No); each label keeps its technical name, and each value its exact number, in
-the hover text. Every admin page links one stylesheet served from the binary at
-`/static/admin.css`, which the `default-src 'self'` policy allows; pages use no
-inline styles, scripts, fonts or external URLs. The stylesheet holds no data,
-so it is served before login (the host check still applies).
+count, restore pause (only while it applies), and free disk bytes against the
+configured reserve. It groups them into Machines, Sending to the lab app,
+Orders, and Disk and alerts, in plain words (sizes such as "477 GB free", local
+times with an age, "Nothing yet" before a machine has sent anything); each label
+keeps its technical name, and each value its exact number, in the hover text.
+Counts are plain numbers, red only above zero; status pills are kept for states
+such as Connected or Waiting. Settings versions show the first 12 hex digits of
+the configuration digest, with the full digest on hover.
+
+Every admin page except the login has one header menu (`src/admin/view/`): four
+tabs (Overview, Needs review, Machines, Setup) and a More dropdown (Machine
+orders, Cancelled by machine, Deliveries, Data keeping), with the current page
+marked by `aria-current`. The dropdown is a `<details>` element, so it works by
+keyboard and without scripts. The paths are unchanged (`/parked`,
+`/analyzer-cancelled`, `/retention` and so on), so bookmarks keep working.
+Refusals and failures render as pages with a plain sentence and the exact
+technical detail in small print for support. Every admin page links one
+stylesheet served from the binary at `/static/admin.css` (light first, dark
+through `prefers-color-scheme`), which the `default-src 'self'` policy allows;
+pages use no inline styles, scripts, fonts or external URLs. The stylesheet
+holds no data, so it is served before login (the host check still applies).
 The link light comes from the machine runtime, not from receipt age: the
 transport reports each session opening, closing and read (never bytes) to a
 per-machine status the runtime owns and the admin page only reads. Serial says
@@ -442,9 +455,12 @@ connects to one address and only reads, for at most 60 seconds and 64 KiB; the
 bytes live in memory, appear only on the page, and are dropped when the test
 ends. It refuses an endpoint a running machine uses. "Restart now" drains the
 admin server and returns `RestartRequested`, which the service turns into a
-graceful stop and a nonzero exit, so the service manager restarts it.
+graceful stop and a nonzero exit, so the service manager restarts it. The
+setup page names each machine model by the `# ` title on the first line of its
+README (for example "Roche cobas e 411"), falling back to the tidied
+`vendor/model` key, which stays on hover (`setup/definitions.rs`).
 
-Use the navigation links for machines, parked items, machine orders and deliveries. Lists
+Use the menu for Machines, Needs review (parked items), Machine orders and Deliveries. Lists
 show at most 50 entries and may show fewer under the configured store page bound.
 Follow Next page to continue. Cursors are nonnegative and bounded; unknown
 query fields are refused. Parked lists show category, reason, linked identities

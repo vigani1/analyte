@@ -9,7 +9,12 @@
 use super::{
     SetupError, audit, done, entries, key_line, needs_login, page, refused, restart_form, site,
 };
-use crate::admin::{markup::Markup, server::Context, sessions::Session, view::plain};
+use crate::admin::{
+    markup::Markup,
+    server::Context,
+    sessions::Session,
+    view::{self, plain},
+};
 use crate::installation::{
     config::{lab_apps as file, read},
     credentials::{Locked, Secret},
@@ -71,12 +76,12 @@ impl Scan {
             Some(known) => {
                 if known.settings != *settings {
                     self.conflicts.push(format!(
-                        "Lab app {} is written with different settings in two places ({}). Analyte does not start until they are the same.",
+                        "Lab app {} has different settings in two places (one is {}). Analyte cannot start until they are the same.",
                         settings.name.as_str(),
                         match place {
-                            Place::File => "lab-apps.toml".into(),
-                            Place::Kept => "the program file".into(),
-                            Place::Site(id) => format!("machine {id}'s site file"),
+                            Place::File => "this page".into(),
+                            Place::Kept => "kept from a removed machine".into(),
+                            Place::Site(id) => format!("machine {id}'s own settings"),
                         }
                     ));
                 }
@@ -255,18 +260,25 @@ fn count(waiting: &[(String, u64)], name: &str) -> u64 {
         .map_or(0, |(_, count)| *count)
 }
 
-fn where_written(known: &Known) -> String {
-    let mut places = Vec::new();
-    if known.in_file {
-        places.push("lab-apps.toml".to_owned());
-    }
+/// Where a lab app not yet on this page is kept, in words; the exact place on hover.
+fn where_written(known: &Known) -> Markup {
+    let mut html = Markup::new();
     if !known.sites.is_empty() {
-        places.push(format!("the site file of {}", known.sites.join(", ")));
+        html.push_fragment(&view::exact(
+            &format!("Still kept in the settings of {}", known.sites.join(", ")),
+            "[destination] in the machine's site file; saving the machine moves it to lab-apps.toml",
+        ));
     }
     if known.kept {
-        places.push("the program file (kept for a removed machine)".to_owned());
+        if !known.sites.is_empty() {
+            html.push_markup("; ");
+        }
+        html.push_fragment(&view::exact(
+            "Kept from a removed machine",
+            "[[retired_destinations]] in the program file; saving it here moves it to lab-apps.toml",
+        ));
     }
-    places.join("; ")
+    html
 }
 
 /// GET /setup/lab-apps: every lab app, who uses it, its keys and what waits for it.
@@ -319,18 +331,19 @@ fn render_list(state: &Context, scan: &Scan, open: Option<&[(String, u64)]>) -> 
     }
     html.push_markup(concat!(
         "<div class=\"table\"><table class=\"stack\"><tr><th>Lab app</th><th>Address</th>",
-        "<th>Used by</th><th>Keys</th><th>Waiting</th><th></th></tr>"
+        "<th>Used by</th><th>Keys</th><th title=\"Results and order messages not yet accepted\">",
+        "Waiting to be sent</th><th></th></tr>"
     ));
     for known in &scan.known {
         let name = known.settings.name.as_str();
         let used = if known.users.is_empty() {
-            "no machine".to_owned()
+            "No machine".to_owned()
         } else {
             known.users.join(", ")
         };
         let waiting = match open {
-            Some(open) => plain::amount(count(open, name), "result", "results"),
-            None => "unknown".into(),
+            Some(open) => view::count(count(open, name)),
+            None => Markup::new().text("Unknown"),
         };
         let mut row = Markup::new()
             .markup("<tr><td><strong>")
@@ -339,8 +352,8 @@ fn render_list(state: &Context, scan: &Scan, open: Option<&[(String, u64)]>) -> 
         if !known.in_file {
             row.push_fragment(
                 &Markup::new()
-                    .markup("<br><small>Written in ")
-                    .text(where_written(known))
+                    .markup("<br><small>")
+                    .fragment(&where_written(known))
                     .markup("</small>"),
             );
         }
@@ -358,8 +371,8 @@ fn render_list(state: &Context, scan: &Scan, open: Option<&[(String, u64)]>) -> 
                     "Signing key",
                     &known.settings.signing_key_name,
                 ))
-                .markup("</td><td data-label=\"Waiting\">")
-                .text(waiting)
+                .markup("</td><td data-label=\"Waiting to be sent\">")
+                .fragment(&waiting)
                 .markup("</td><td class=\"actions\"><div class=\"buttons\"><a class=\"button secondary\" href=\"")
                 .text(format!("{PAGE}/{}", segment(name)))
                 .markup("\">Edit</a><a class=\"button quiet-danger\" href=\"")
@@ -408,11 +421,11 @@ fn form(state: &Context, session: &Session, existing: Option<&Known>) -> Markup 
     if let Some(known) = existing.filter(|known| !known.sites.is_empty()) {
         html.push_fragment(
             &Markup::new()
-                .markup("<p class=\"notice\">This lab app is still written in the site file of ")
+                .markup("<p class=\"notice\">This lab app is still kept in the settings of ")
                 .text(known.sites.join(", "))
                 .markup(concat!(
-                    ". Saving it here keeps its address and timing; to change them, ",
-                    "save that machine on its setup page first, which moves the lab app here.</p>"
+                    ". You can enter its keys here. To change its address or timing, first save ",
+                    "that machine on its setup page, which moves the lab app to this page.</p>"
                 )),
         );
     }
@@ -421,7 +434,7 @@ fn form(state: &Context, session: &Session, existing: Option<&Known>) -> Markup 
             .markup("<label class=\"field\"><span>Address</span><input name=\"base_url\" required maxlength=\"4096\" placeholder=\"https://\" value=\"")
             .text(settings.map_or("", |s| s.base_url.as_str()))
             .markup(concat!(
-                "\"></label><details><summary>Timing (advanced)</summary>",
+                "\"></label><details class=\"support\"><summary>Timing (advanced)</summary>",
                 "<label class=\"field\"><span>Order list counts as current for (seconds)</span>",
                 "<input name=\"freshness_seconds\" inputmode=\"numeric\" maxlength=\"10\" value=\""
             ))
@@ -433,8 +446,8 @@ fn form(state: &Context, session: &Session, existing: Option<&Known>) -> Markup 
             .text(settings.map_or(REQUEST_TIMEOUT, |s| s.request_timeout_seconds))
             .markup(concat!(
                 "\"></label><p class=\"muted\">The defaults suit most labs: 30 and 10 seconds.</p>",
-                "</details></section><section><h2>Keys</h2><p>Keys are stored so that only the ",
-                "Analyte service can read them, and are never shown again.</p>"
+                "</details></section><section><h2>Keys</h2><p>Keys are stored locked, so only ",
+                "Analyte can read them, and are never shown again.</p>"
             )),
     );
     match settings {
@@ -704,7 +717,7 @@ fn saved_page(session: &Session, saved: &Saved, audited: Result<(), SetupError>)
     for name in &saved.replaced {
         html.push_fragment(
             &Markup::new()
-                .markup("<li>Stored key ")
+                .markup("<li>Key stored: ")
                 .text(name)
                 .markup("</li>"),
         );
@@ -712,7 +725,7 @@ fn saved_page(session: &Session, saved: &Saved, audited: Result<(), SetupError>)
     for backup in &saved.backups {
         html.push_fragment(
             &Markup::new()
-                .markup("<li>Previous file kept as ")
+                .markup("<li class=\"muted\">Copy of the old settings: ")
                 .text(backup.display())
                 .markup("</li>"),
         );
@@ -867,8 +880,8 @@ pub(in crate::admin) async fn confirm_remove(
         .markup("<p class=\"lead\"><strong>Remove lab app ")
         .text(&name)
         .markup(concat!(
-            "?</strong> Its stored results and history stay in the database. Its keys stay ",
-            "in the locked credentials file.</p>"
+            "?</strong> Results already sent and their history stay. Its keys stay ",
+            "stored, locked.</p>"
         ));
     if why.is_empty() {
         html.push_fragment(
@@ -969,11 +982,13 @@ pub(in crate::admin) async fn remove(
     let mut html = page("Lab app removed")
         .markup("<section><p>Lab app <strong>")
         .text(&name)
-        .markup("</strong> is no longer listed. Its keys stay in the locked credentials file.</p><ul class=\"muted\">");
+        .markup(
+            "</strong> is no longer listed. Its keys stay stored, locked.</p><ul class=\"muted\">",
+        );
     for backup in &backups {
         html.push_fragment(
             &Markup::new()
-                .markup("<li>Previous file kept as ")
+                .markup("<li>Copy of the old settings: ")
                 .text(backup.display())
                 .markup("</li>"),
         );

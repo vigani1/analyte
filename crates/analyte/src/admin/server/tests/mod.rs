@@ -131,7 +131,10 @@ async fn service_refuses_missing_token_and_owns_admin_server() -> Result<(), Err
     .await?;
     assert!(response.starts_with("HTTP/1.1 200"), "{response}");
     assert!(response.contains("<span title=\"machine owner: running\">Running</span>"));
-    assert!(response.contains("</span></td><td data-label=\"Last data received\">unknown</td>"));
+    // Owner request 2026-11-19 (item 8): no data yet reads "Nothing yet", not "unknown".
+    assert!(
+        response.contains("</span></td><td data-label=\"Last data received\">Nothing yet</td>")
+    );
     headers_present(&response);
     stop.send(()).map_err(|_| "service stop receiver lost")?;
     tokio::time::timeout(Duration::from_secs(10), owner).await???;
@@ -216,7 +219,9 @@ async fn tcp_server_light_follows_peer_and_hides_payload() -> Result<(), Error> 
         waiting.contains("title=\"TCP server\">Network: the machine connects to Analyte"),
         "{waiting}"
     );
-    assert!(waiting.contains(&format!("Waiting</span></td>{LAST_DATA}unknown</td>")));
+    assert!(waiting.contains(&format!("Waiting</span></td>{LAST_DATA}Nothing yet</td>")));
+    // Owner request 2026-11-19 (item 9): no restore pause, so no pause line on either page.
+    assert!(!(waiting.clone() + &page("/machines").await?).contains("Order sending"));
     let mut peer = tokio::net::TcpStream::connect(&analyzer_address).await?;
     until("<span class=\"pill ok\">Connected</span>").await?;
     let message = format!(
@@ -532,15 +537,7 @@ async fn assert_overview_health(host: &str, bearer: &str) -> Result<(), Error> {
     headers_present(&response);
     assert!(response.contains("&lt;script&gt;alert(&#39;hostile&#39;)&amp;&quot;&lt;/script&gt;"));
     assert!(!response.contains("<script>"));
-    assert!(
-        response
-            .contains("Order sending paused after restore</dt><dd><span class=\"pill warn\">Yes")
-    );
-    assert!(response.contains(concat!(
-        "<dt title=\"Uncertain orders\">Orders with unknown outcome (check the machine)",
-        "</dt><dd><span class=\"pill warn\">2</span>"
-    )));
-    assert!(response.contains("Active alerts</dt><dd><span class=\"pill bad\">2</span>"));
+    assert_overview_counts(&response);
     assert!(response.contains("<span title=\"restore_paused\">Order sending paused after restore"));
     assert!(response.contains("<span title=\"machine_silent\">Machine has gone quiet"));
     assert!(
@@ -557,7 +554,7 @@ async fn assert_overview_health(host: &str, bearer: &str) -> Result<(), Error> {
     ));
     assert!(response.contains(" days ago</span>"));
     assert!(response.contains(
-        "<dt title=\"Pending items\">Waiting to be sent</dt><dd>2 results or order messages</dd>"
+        "<dt title=\"Pending items: results or order messages\">Waiting to be sent</dt><dd><span class=\"count over\">2</span></dd>"
     ));
     assert!(response.contains(concat!(
         "<dt title=\"Cache fresh and trusted\">Order list up to date</dt>",
@@ -572,6 +569,25 @@ async fn assert_overview_health(host: &str, bearer: &str) -> Result<(), Error> {
     assert!(!response.contains("<script>sample</script>"));
     assert!(response.contains("Free disk bytes"));
     Ok(())
+}
+
+/// Owner request 2026-11-19 (items 8 and 9): the paused line shows when it is Yes,
+/// and counts are plain numbers, red above zero, with the renamed links.
+fn assert_overview_counts(response: &str) {
+    assert!(response.contains(concat!(
+        "<dt title=\"Restore unreconciled\">Order sending paused after restore</dt>",
+        "<dd><span class=\"pill warn\">Yes</span>"
+    )));
+    assert!(response.contains(concat!(
+        "<dt title=\"Uncertain orders\">Orders with unknown outcome (check the machine)",
+        "</dt><dd><span class=\"count over\">2</span> <a href=\"/orders\">See machine orders</a>"
+    )));
+    assert!(response.contains(concat!(
+        "<dt title=\"Analyzer-cancelled AWOSs\">Cancelled by machine</dt><dd><span ",
+        "class=\"count\">0</span> <a href=\"/analyzer-cancelled\">Review cancelled orders</a>"
+    )));
+    assert!(response.contains("Active alerts</dt><dd><span class=\"count over\">2</span>"));
+    assert!(!response.contains("pill ok\">0<"));
 }
 
 // Owner request 2026-11-19 (readable admin pages): one same-origin stylesheet that
@@ -624,6 +640,33 @@ Connection: close
         assert!(!page.contains("<style"), "{path} has a style block");
         assert!(!page.contains("<script"), "{path} has a script");
         assert_eq!(page.matches("</html>").count(), 1, "{path}");
+        // Owner request 2026-11-19 (item 6): every page but the login has the four
+        // tabs and the More group, with its own tab marked.
+        let menu = [
+            "/",
+            "/parked",
+            "/machines",
+            "/setup",
+            "/orders",
+            "/analyzer-cancelled",
+            "/deliveries",
+            "/retention",
+        ];
+        if path == "/login" {
+            assert!(!page.contains("<nav"), "the login page has a menu");
+            continue;
+        }
+        for href in menu {
+            assert!(
+                page.contains(&format!("<a href=\"{href}\"")),
+                "{path} lacks {href}"
+            );
+        }
+        assert!(page.contains("<summary"), "{path} lacks More");
+        assert!(
+            page.contains(&format!("<a href=\"{path}\" aria-current=\"page\">")),
+            "{path} is not marked"
+        );
     }
     Ok(())
 }
