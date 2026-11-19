@@ -32,8 +32,8 @@ to a shared network.
 
 | Page | Use |
 | --- | --- |
-| Overview | Active alerts, owner state, activity, pending age, cache trust, uncertain orders, restore pause, free space and results still being delivered for removed machines. |
-| Machines | Config, link light and activity. TCP server: Waiting or Connected. TCP client: Connected or Not connected (retrying). Serial: only Port open or Port not open, because an open port proves no cable or machine. Watched folder: Watching or Not watching. Last data received and last state change show as an age. |
+| Overview | Four sections: Machines (connection light, last data, service), Sending to the lab app (results waiting, order list up to date, oldest result waiting, results still being delivered for removed machines), Orders (orders with unknown outcome, orders the analyzer cancelled, restore pause) and Disk and alerts (free space, reserve, active alerts). Hovering a label or value shows its exact technical name or value. |
+| Machines | Config, link light and activity. TCP server: Waiting or Connected. TCP client: Connected or Not connected (retrying). Serial: only Port open or Port not open, because an open port proves no cable or machine. Watched folder: Watching or Not watching. Last data received and last state change show as a local date and time with an age. |
 | Parked items | Reasons and linked evidence. Raw disclosure requires an audited browser POST. |
 | Deliveries | Inspect state and confirm eligible resends, with a reason. |
 | Machine orders | Inspect lifecycle; reconciliation remains a CLI task. |
@@ -121,7 +121,9 @@ configured, raises for them with the reason and the fix (see
 [Alerts](#alerts-and-named-responders)). Set up a machine that uses that
 destination to deliver them. If a kept destination's keys are missing, its
 deliveries pause with "destination credentials require operator repair", the
-service keeps running, and the same alert raises with that reason.
+service keeps running, and the same alert raises with that reason. The
+Overview and the Setup page then say "Cannot deliver to lab app X: its API key
+or signing key is missing" with the same fix, not "still being delivered".
 Removing the last machine is allowed: Analyte then serves only the admin page
 (and delivers what still waits) until a machine is added.
 
@@ -396,7 +398,8 @@ then inspect retained and machine-side work before resuming.
 
 ## LAW execution and analyzer cancellation
 
-Use the authenticated overview's **Analyzer-cancelled AWOSs** link for the
+Use the authenticated overview's **Orders the analyzer cancelled** link
+(analyzer-cancelled AWOSs) for the
 reconciliation list. Machine orders show execution alongside command state;
 open an item's execution history to review receipt/interpretation links,
 receive and host-recorded times, original estimate and zone evidence, scoped

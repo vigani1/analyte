@@ -1,7 +1,8 @@
 //! Shows analyzer execution separately from command state on authenticated admin pages.
 use super::{
-    pages::{Cursor, finish, next, start},
+    pages::{Cursor, finish, next},
     server::Context,
+    view,
 };
 use crate::admin::Error;
 use crate::admin::markup::Markup;
@@ -71,7 +72,7 @@ fn source_evidence(source: &str) -> Markup {
     };
     let estimate = control.estimate();
     let estimate = match estimate {
-        "" => "Absent ? earlier estimate evidence is retained",
+        "" => "Absent; earlier estimate evidence is retained",
         "\"\"" => "Explicit source null",
         supplied => supplied,
     };
@@ -109,10 +110,11 @@ async fn cancelled_page(state: &Context, cursor: Cursor) -> Result<Markup, Error
         .store
         .request(deadline()?, move |s| s.analyzer_cancelled_items(after))
         .await?;
-    let mut html = start("Analyzer-cancelled AWOSs — reconciliation required");
+    let mut html = view::page("Orders the analyzer cancelled");
     html.push_markup(concat!(
         concat!(
-            "<p><strong>Review each affected AWOS with the lab ",
+            "<p class=\"notice\"><strong>Reconciliation required: review each affected ",
+            "analyzer-cancelled AWOS (order item) with the lab ",
             "and lab app.</strong> Analyzer CA ",
         ),
         concat!(
@@ -192,7 +194,7 @@ async fn detail_page(
         .iter()
         .find(|i| i.index == item)
         .ok_or(Error::AwosItemNotRetained)?;
-    let mut html = start("AWOS execution history");
+    let mut html = view::page("AWOS execution history");
     html.push_fragment(&projection(item));
     html.push_markup(concat!(
         concat!(

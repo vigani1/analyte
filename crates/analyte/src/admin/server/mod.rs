@@ -189,6 +189,7 @@ async fn drain_server(
 fn router(state: Arc<Context>) -> Router {
     Router::new()
         .route("/", get(super::overview::show))
+        .route(super::view::STYLESHEET, get(super::view::stylesheet))
         .route("/login", get(login_page).post(login))
         .route(
             "/retention",
@@ -246,25 +247,20 @@ fn unauthorized(state: &Context, existing: Option<&Arc<Session>>) -> Response {
         .unwrap_or_else(|| state.sessions.issue(false, None));
     let mut response = match session {
         Ok(session) => {
-            let html = Markup::new()
+            let html = super::view::login("Analyte admin")
                 .markup(concat!(
-                    "<!doctype html><html lang=\"en\"><meta ",
-                    "charset=\"utf-8\"><title>Analyte ",
-                ))
-                .markup(concat!(
-                    "login</title><h1>Analyte admin</h1><form ",
+                    "<section><p class=\"lead\">Log in with the admin token ",
+                    "from this PC's Analyte data folder.</p><form ",
                     "action=\"/login\" method=\"post\"><input name=\"csrf\" ",
                 ))
                 .markup("type=\"hidden\" value=\"")
                 .text(session.csrf.form_value())
                 .markup(concat!(
-                    "\"><label>Token <input name=\"token\" ",
+                    "\"><label class=\"field\"><span>Token</span><input name=\"token\" ",
                     "type=\"password\" required autocomplete=\"off\" ",
                 ))
-                .markup(concat!(
-                    "maxlength=\"44\"></label><button>Log ",
-                    "in</button></form></html>",
-                ));
+                .markup("maxlength=\"44\"></label><button>Log in</button></form></section>")
+                .markup(super::view::END);
             let mut response = (StatusCode::UNAUTHORIZED, Html(html)).into_response();
             if let Ok(value) = header::HeaderValue::from_str(&session.id.cookie(false)) {
                 response.headers_mut().insert(header::SET_COOKIE, value);
@@ -287,6 +283,8 @@ async fn protect(State(state): State<Arc<Context>>, mut request: Request, next: 
         .and_then(|v| v.to_str().ok())
         == Some(state.host.as_str());
     let login = request.uri().path() == "/login";
+    // The stylesheet holds no data; the login page needs it before any session exists.
+    let public = request.uri().path() == super::view::STYLESHEET;
     let bearer = request
         .headers()
         .get(header::AUTHORIZATION)
@@ -320,7 +318,7 @@ async fn protect(State(state): State<Arc<Context>>, mut request: Request, next: 
             .into_response()
     } else if !valid_host || !same_origin {
         unauthorized(&state, None)
-    } else if login || authenticated {
+    } else if login || public || authenticated {
         let session = session.ok().flatten();
         if let Some(session) = &session {
             request.extensions_mut().insert(session.clone());

@@ -1,5 +1,9 @@
 //! Runs audited operator actions with GET confirmations and CSRF-checked POST requests.
-use super::{pages::NAV, server::Context, sessions::Session};
+use super::{
+    server::Context,
+    sessions::Session,
+    view::{self, Tone},
+};
 use crate::admin::Error;
 use crate::admin::markup::Markup;
 use crate::deadline;
@@ -25,33 +29,12 @@ pub(super) struct Confirmation {
 }
 
 fn page(title: &str, body: &Markup) -> Response {
-    Html(
-        Markup::new()
-            .markup(concat!(
-                "<!doctype html><html lang=\"en\"><meta ",
-                "charset=\"utf-8\"><title>",
-            ))
-            .text(title)
-            .markup("</title>")
-            .markup(NAV)
-            .markup("<h1>")
-            .text(title)
-            .markup("</h1>")
-            .fragment(body)
-            .markup("</html>"),
-    )
-    .into_response()
+    Html(view::page(title).fragment(body).markup(view::END)).into_response()
 }
 fn failure(error: &dyn std::error::Error) -> Response {
     (
         StatusCode::CONFLICT,
-        Html(
-            Markup::new()
-                .markup(NAV)
-                .markup("<h1>Action refused</h1><p>")
-                .text(error.to_string())
-                .markup("</p>"),
-        ),
+        Html(view::message("Action refused", error)),
     )
         .into_response()
 }
@@ -62,7 +45,7 @@ fn form(session: &Session, route: &str, label: &str, superseded: bool) -> Markup
     let acknowledgement = if superseded {
         concat!(
             concat!(
-                "<label><input type=\"checkbox\" ",
+                "<label class=\"check\"><input type=\"checkbox\" ",
                 "name=\"acknowledge_superseded\" value=\"true\">I ",
             ),
             concat!(
@@ -83,13 +66,13 @@ fn form(session: &Session, route: &str, label: &str, superseded: bool) -> Markup
         .text(session.csrf.form_value())
         .markup(concat!(
             "\"><input type=\"hidden\" name=\"confirm\" ",
-            "value=\"yes\"><label>Reason <input name=\"reason\" ",
+            "value=\"yes\"><label class=\"field\"><span>Reason</span><input name=\"reason\" ",
         ))
         .markup("required maxlength=\"256\"></label>")
         .markup(acknowledgement)
-        .markup("<button>")
+        .markup("<div class=\"actions-row\"><button>")
         .text(label)
-        .markup("</button></form>")
+        .markup("</button></div></form>")
 }
 
 pub(super) async fn deliveries(
@@ -115,18 +98,36 @@ pub(super) async fn deliveries(
     match result {
         Ok(rows) => {
             let rows: Vec<_> = rows.into_iter().take(super::pages::PAGE).collect();
-            let mut html = Markup::new();
+            let mut html = Markup::new().markup(concat!(
+                "<p class=\"lead\">Each result or order message Analyte sends to a lab app keeps ",
+                "one delivery ID on every retry.</p>",
+            ));
+            if rows.is_empty() {
+                html.push_markup("<p class=\"muted\">No deliveries on this page.</p>");
+            } else {
+                html.push_markup(concat!(
+                    "<section><div class=\"table\"><table><tr><th>Delivery ID</th>",
+                    "<th>Lab app destination</th><th>State</th><th></th></tr>",
+                ));
+            }
             for row in &rows {
                 let delivery = uuid::Uuid::from(row.id);
+                let tone = match row.state {
+                    DeliveryState::Done => Tone::Good,
+                    DeliveryState::Pending | DeliveryState::InFlight => Tone::Neutral,
+                    DeliveryState::Parked | DeliveryState::Paused | DeliveryState::Conflict => {
+                        Tone::Attention
+                    }
+                };
                 html.push_fragment(
                     &Markup::new()
-                        .markup("<section><h2>")
+                        .markup("<tr><td><code>")
                         .text(delivery)
-                        .markup("</h2><p>Destination: ")
+                        .markup("</code></td><td>")
                         .text(row.destination.as_str())
-                        .markup(". State: ")
-                        .text(row.state)
-                        .markup(".</p>"),
+                        .markup("</td><td>")
+                        .fragment(&view::pill(tone, &row.state.to_string()))
+                        .markup("</td><td class=\"actions\">"),
                 );
                 match row.state {
                     DeliveryState::Done | DeliveryState::Parked | DeliveryState::Paused => html
@@ -138,14 +139,14 @@ pub(super) async fn deliveries(
                         ),
                     DeliveryState::Pending | DeliveryState::InFlight | DeliveryState::Conflict => {}
                 }
-                html.push_markup("</section>");
+                html.push_markup("</td></tr>");
             }
             if let Some(last) = rows.last() {
                 html.push_fragment(
                     &Markup::new()
-                        .markup("<a rel=\"next\" href=\"/deliveries?after=")
+                        .markup("</table></div></section><p class=\"actions-row\"><a class=\"button secondary\" rel=\"next\" href=\"/deliveries?after=")
                         .text(last.sequence)
-                        .markup("\">Next page</a>"),
+                        .markup("\">Next page</a></p>"),
                 );
             }
             page("Deliveries", &html)
@@ -297,8 +298,8 @@ pub(super) async fn reprocess(
                 .markup(" recorded. Decisions: ")
                 .text(crate::operator::display::list(&commit.outcomes))
                 .markup(concat!(
-                    ". <a href=\"/parked\">Inspect remaining parked ",
-                    "reasons</a>.</p>",
+                    ".</p><p><a href=\"/parked\">Inspect remaining parked ",
+                    "reasons</a></p>",
                 )),
         ),
         Err(error) => failure(&error),

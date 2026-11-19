@@ -267,7 +267,7 @@ async fn page_lists_definitions_and_detected_adapters() -> Result<(), Error> {
         "generic-synthetic",
         "documented",
         "roche/cobas-e411",
-        "Blocked: facts or recordings are missing",
+        "Facts or recordings are missing (see its README)",
         "href=\"/setup/synthetic\"",
     ] {
         assert!(index.contains(expected), "missing {expected}");
@@ -306,7 +306,9 @@ async fn waiting_machine_is_set_up_from_the_starter() -> Result<(), Error> {
     assert_eq!(before.awaiting_setup().len(), 1);
     let index = fixture.get("/setup").await?;
     assert!(
-        index.contains("<td>machine-1</td><td>Not set up yet</td>"),
+        index.contains(
+            "<td><strong>machine-1</strong></td><td data-label=\"Status\"><span class=\"pill\">Not set up yet</span></td>"
+        ),
         "{index}"
     );
     let first = fixture.get("/setup/machine-1").await?;
@@ -334,7 +336,9 @@ async fn waiting_machine_is_set_up_from_the_starter() -> Result<(), Error> {
     .join("&");
     let saved = fixture.post("/setup/machine-1", &body).await?;
     assert!(saved.starts_with("HTTP/1.1 200"), "{saved}");
-    assert!(saved.contains("Running now <code>none: not set up yet</code>"));
+    assert!(
+        saved.contains("Running now</dt><dd><span class=\"muted\">none: not set up yet</span>")
+    );
     let program = std::fs::read_to_string(&fixture.config)?;
     assert!(
         program.contains(
@@ -880,7 +884,9 @@ async fn add_machine_writes_a_checked_entry_and_starter_site() -> Result<(), Err
     );
     let index = fixture.get("/setup").await?;
     assert!(
-        index.contains("<td>machine-2</td><td>Not set up yet</td>"),
+        index.contains(
+            "<td><strong>machine-2</strong></td><td data-label=\"Status\"><span class=\"pill\">Not set up yet</span></td>"
+        ),
         "{index}"
     );
     let page = fixture.get("/setup/machine-2").await?;
@@ -1014,12 +1020,12 @@ async fn remove_warns_then_keeps_store_and_site_backup() -> Result<(), Error> {
         "{confirm}"
     );
     for expected in [
-        "1 results or order messages not yet accepted by the lab app",
-        "1 orders sent to the machine and not finished",
-        "1 received messages not read yet",
-        "1 unresolved flagged items linked to this machine",
+        "1 result or order message not yet accepted by the lab app",
+        "1 order sent to the machine and not finished",
+        "1 received message not read yet",
+        "1 unresolved flagged item linked to this machine",
         "for lab app destination demo keep being delivered after the restart, even though no other machine uses it",
-        "<button>Remove anyway</button>",
+        "<button class=\"danger\">Remove anyway</button>",
     ] {
         assert!(confirm.contains(expected), "missing {expected}: {confirm}");
     }
@@ -1082,7 +1088,10 @@ async fn remove_warns_then_keeps_store_and_site_backup() -> Result<(), Error> {
     );
     let index = fixture.get("/setup").await?;
     assert!(
-        index.contains("<td>synthetic</td><td>Removed: runs until the restart</td>"),
+        index.contains(concat!(
+            "<td><strong>synthetic</strong></td><td data-label=\"Status\"><span class=\"pill warn\">",
+            "Removed: runs until the restart</span></td>"
+        )),
         "{index}"
     );
     let audits = fixture.audited("setup-remove").await?;
@@ -1111,7 +1120,7 @@ site = 'site.toml'
         last.contains("Nothing is unfinished") && last.contains("This is the last machine"),
         "{last}"
     );
-    assert!(last.contains("<button>Remove</button>"));
+    assert!(last.contains("<button class=\"danger\">Remove</button>"));
     let removed = fixture
         .submit("/setup/machine-1/remove", "/setup/machine-1/remove", &[])
         .await?;

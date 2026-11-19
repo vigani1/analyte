@@ -1,5 +1,9 @@
 //! Shows retention policy and committed purge evidence and applies audited operator holds.
-use super::{pages::NAV, server::Context, sessions::Session};
+use super::{
+    server::Context,
+    sessions::Session,
+    view::{self, plain},
+};
 use crate::admin::Error;
 use crate::admin::markup::Markup;
 use crate::deadline;
@@ -16,28 +20,16 @@ use std::sync::Arc;
 
 fn page(body: &Markup) -> Response {
     Html(
-        Markup::new()
-            .markup(concat!(
-                "<!doctype html><html lang=\"en\"><meta ",
-                "charset=\"utf-8\"><title>Retention and holds</title>",
-            ))
-            .markup(NAV)
-            .markup("<h1>Retention and holds</h1>")
+        view::page("Retention and holds")
             .fragment(body)
-            .markup("</html>"),
+            .markup(view::END),
     )
     .into_response()
 }
 fn failure(error: &dyn std::error::Error) -> Response {
     (
         StatusCode::CONFLICT,
-        Html(
-            Markup::new()
-                .markup(NAV)
-                .markup("<h1>Retention action refused</h1><p>")
-                .text(error.to_string())
-                .markup("</p>"),
-        ),
+        Html(view::message("Retention action refused", error)),
     )
         .into_response()
 }
@@ -69,7 +61,8 @@ async fn render(state: &Context, session: Option<&Session>, after: u64) -> Resul
             ))
         })
         .await?;
-    let mut html = Markup::new().markup("<h2>Policy</h2><ul>");
+    let now = jiff::Timestamp::now();
+    let mut html = Markup::new().markup("<section><h2>Policy</h2><ul>");
     for (machine, days) in &state.retention {
         let policy = days.map_or_else(
             || "keep (never purge)".into(),
@@ -84,38 +77,34 @@ async fn render(state: &Context, session: Option<&Session>, after: u64) -> Resul
                 .markup("</li>"),
         );
     }
-    html.push_markup("</ul><h2>Last run</h2>");
+    html.push_markup("</ul></section><section><h2>Last run</h2>");
     if let Some(run) = last {
+        let number = |value: &dyn std::fmt::Display| Markup::new().text(value);
         html.push_fragment(
             &Markup::new()
-                .markup("<p>Unix time ")
-                .text(run.time)
-                .markup(". Examined: ")
-                .text(run.examined)
-                .markup(". Purged receipts: ")
-                .text(run.purged)
-                .markup(". Purged orders: ")
-                .text(run.orders)
-                .markup(". Paused: ")
-                .text(run.paused)
-                .markup(". Failed: ")
-                .text(run.failed)
-                .markup(".</p>"),
+                .markup("<dl>")
+                .fragment(&view::row("Ran", None, &plain::when_unix(run.time, now)))
+                .fragment(&view::row("Examined", None, &number(&run.examined)))
+                .fragment(&view::row("Purged receipts", None, &number(&run.purged)))
+                .fragment(&view::row("Purged orders", None, &number(&run.orders)))
+                .fragment(&view::row("Paused", None, &number(&run.paused)))
+                .fragment(&view::row("Failed", None, &number(&run.failed)))
+                .markup("</dl>"),
         );
     } else {
         html.push_markup("<p>No retention run recorded.</p>");
     }
-    html.push_fragment(
-        &Markup::new()
-            .markup("<h2>Oldest retained item</h2><p>")
-            .text(oldest.map_or_else(
-                || "No retained receipts.".into(),
-                |time| format!("Received at Unix time {time}."),
-            ))
-            .markup("</p>"),
-    );
+    html.push_markup("</section><section><h2>Oldest retained item</h2><p>");
+    html.push_fragment(&oldest.map_or_else(
+        || Markup::new().text("No retained receipts."),
+        |time| {
+            Markup::new()
+                .text("Received ")
+                .fragment(&plain::when_unix(time, now))
+        },
+    ));
     html.push_markup(concat!(
-        "<h2>Active holds</h2><p>Holds have no expiry. An ",
+        "</p></section><section><h2>Active holds</h2><p>Holds have no expiry. An ",
         "order hold covers linked receipts. Uncertain ",
         "links retain additional data.</p><ul>",
     ));
@@ -123,20 +112,21 @@ async fn render(state: &Context, session: Option<&Session>, after: u64) -> Resul
     for hold in holds {
         html.push_fragment(
             &Markup::new()
-                .markup("<li>")
+                .markup("<li><code>")
                 .text(&serde_json::to_string(&hold.target)?)
-                .markup("</li>"),
+                .markup("</code></li>"),
         );
     }
     html.push_markup("</ul>");
     if let Some(after) = next {
         html.push_fragment(
             &Markup::new()
-                .markup("<a rel=\"next\" href=\"/retention?after=")
+                .markup("<p><a class=\"button secondary\" rel=\"next\" href=\"/retention?after=")
                 .text(after)
-                .markup("\">Next holds page</a>"),
+                .markup("\">Next holds page</a></p>"),
         );
     }
+    html.push_markup("</section>");
     render_form(&mut html, session);
     Ok(html)
 }
@@ -209,27 +199,27 @@ fn render_form(html: &mut Markup, session: Option<&Session>) {
         html.push_fragment(
             &Markup::new()
                 .markup(concat!(
-                    "<h2>Place or release a hold</h2><form ",
+                    "<section><h2>Place or release a hold</h2><form ",
                     "action=\"/retention\" method=\"post\"><input ",
                 ))
                 .markup("type=\"hidden\" name=\"csrf\" value=\"")
                 .text(session.csrf.form_value())
                 .markup(concat!(
-                    "\"><label>Scope <select name=\"scope\"><option ",
+                    "\"><label class=\"field\"><span>Scope</span><select name=\"scope\"><option ",
                     "value=\"receipt\">Receipt</option><option ",
                 ))
                 .markup(concat!(
-                    "value=\"order\">Order</option></select></label><labe",
-                    "l>Receipt UUID or app order ID <input ",
+                    "value=\"order\">Order</option></select></label><label class=\"field\">",
+                    "<span>Receipt UUID or app order ID</span><input ",
                 ))
                 .markup(concat!(
                     "name=\"id\" required ",
-                    "maxlength=\"256\"></label><label>Destination ",
-                    "(orders only) <input ",
+                    "maxlength=\"256\"></label><label class=\"field\"><span>Destination ",
+                    "(orders only)</span><input ",
                 ))
                 .markup(concat!(
                     "name=\"destination\" ",
-                    "maxlength=\"256\"></label><label>Action <select ",
+                    "maxlength=\"256\"></label><label class=\"field\"><span>Action</span><select ",
                     "name=\"operation\"><option ",
                 ))
                 .markup(concat!(
@@ -237,17 +227,17 @@ fn render_form(html: &mut Markup, session: Option<&Session>) {
                     "value=\"release\">Release ",
                 ))
                 .markup(concat!(
-                    "hold</option></select></label><label>Reason ",
+                    "hold</option></select></label><label class=\"field\"><span>Reason</span>",
                     "<input name=\"reason\" required ",
                 ))
                 .markup(concat!(
-                    "maxlength=\"256\"></label><label><input ",
+                    "maxlength=\"256\"></label><label class=\"check\"><input ",
                     "type=\"checkbox\" name=\"confirm\" value=\"yes\" ",
                 ))
                 .markup(concat!(
                     "required>I confirm this hold ",
-                    "change.</label><button>Record hold ",
-                    "change</button></form>",
+                    "change.</label><div class=\"actions-row\"><button>Record hold ",
+                    "change</button></div></form></section>",
                 )),
         );
     }

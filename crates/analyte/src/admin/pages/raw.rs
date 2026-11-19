@@ -1,5 +1,6 @@
 //! Discloses bounded raw evidence only after authenticated, durable audit.
-use super::{cursor_value, finish, receipt_id, start};
+use super::{cursor_value, finish, receipt_id};
+use crate::admin::view;
 use crate::{
     admin::{Error, markup::Markup, server::Context, sessions::Session},
     deadline,
@@ -80,11 +81,11 @@ fn raw_form(
             .markup("\"><input type=\"hidden\" name=\"offset\" value=\"")
             .text(cursor.offset.to_string())
             .markup(concat!(
-                "\"><label>Reason (optional) <input name=\"reason\" ",
+                "\"><label class=\"field\"><span>Reason (optional)</span><input name=\"reason\" ",
                 "maxlength=\"256\" value=\"",
             ))
             .text(reason)
-            .markup("\"></label><button>Show raw (audited)</button></form>"),
+            .markup("\"></label><button class=\"secondary\">Show raw (audited)</button></form>"),
     );
 }
 
@@ -240,7 +241,7 @@ pub(in crate::admin) async fn raw(
     .await;
     match result {
         Ok(Some(page)) => {
-            let mut html = start("Audited raw evidence");
+            let mut html = view::page("Audited raw evidence");
             html.push_fragment(
                 &Markup::new()
                     .markup("<p>Target: ")

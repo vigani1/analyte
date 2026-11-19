@@ -87,7 +87,7 @@ async fn overview_until(
 }
 
 const STILL: &str = concat!(
-    "Delivery after removal</dt><dd>Removed machine synthetic: 1 result or order message ",
+    "Delivery after removal:</strong> Removed machine synthetic: 1 result or order message ",
     "still being delivered to lab app destination demo."
 );
 
@@ -158,7 +158,10 @@ async fn removed_machine_result_is_delivered_once() -> Result<(), Error> {
     assert_eq!(reply, [0x0b], "the result is stored and acknowledged");
     drop(peer);
     overview_until(&host, &auth, |page| {
-        page.contains("Destination</dt><dd>demo</dd><dt>Pending items</dt><dd>1<")
+        page.contains(concat!(
+            "Lab app destination demo</h3><dl><dt title=\"Pending items\">",
+            "Waiting to be sent</dt><dd>1 result or order message</dd>"
+        ))
     })
     .await?;
 
@@ -167,7 +170,7 @@ async fn removed_machine_result_is_delivered_once() -> Result<(), Error> {
     let session = format!("Cookie: {cookie}\r\n");
     let confirm = request(&host, "/setup/synthetic/remove", &session, None).await?;
     assert!(
-        confirm.contains("1 results or order messages not yet accepted by the lab app"),
+        confirm.contains("1 result or order message not yet accepted by the lab app"),
         "{confirm}"
     );
     assert!(
@@ -201,13 +204,16 @@ async fn removed_machine_result_is_delivered_once() -> Result<(), Error> {
     let (stop, owner) = start(second, secrets);
     wait_for_service_listener(&host).await?;
     let waiting = overview_until(&host, &auth, |page| page.contains(STILL)).await?;
-    assert!(!waiting.contains("Machine</dt>"), "{waiting}");
+    assert!(
+        waiting.contains("No machine is running") && !waiting.contains("<th>Machine</th>"),
+        "{waiting}"
+    );
     let cookie = login(&host, &token).await?;
     let setup = request(&host, "/setup", &format!("Cookie: {cookie}\r\n"), None).await?;
     assert!(
         setup.contains(concat!(
-            "<p><strong>Removed machine synthetic: 1 result or order message still being ",
-            "delivered to lab app destination demo.</strong></p>"
+            "<p class=\"notice\">Removed machine synthetic: 1 result or order message still being ",
+            "delivered to lab app destination demo.</p>"
         )),
         "{setup}"
     );

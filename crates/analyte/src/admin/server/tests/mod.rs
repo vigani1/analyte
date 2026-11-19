@@ -130,8 +130,8 @@ async fn service_refuses_missing_token_and_owns_admin_server() -> Result<(), Err
     )
     .await?;
     assert!(response.starts_with("HTTP/1.1 200"), "{response}");
-    assert!(response.contains("Machine owner</dt><dd>running"));
-    assert!(response.contains("Last data received</dt><dd>unknown"));
+    assert!(response.contains("<span title=\"machine owner: running\">Running</span>"));
+    assert!(response.contains("</span></td><td data-label=\"Last data received\">unknown</td>"));
     headers_present(&response);
     stop.send(()).map_err(|_| "service stop receiver lost")?;
     tokio::time::timeout(Duration::from_secs(10), owner).await???;
@@ -211,11 +211,14 @@ async fn tcp_server_light_follows_peer_and_hides_payload() -> Result<(), Error> 
             .await?
         }
     };
-    let waiting = until("Connection state</dt><dd>Waiting").await?;
-    assert!(waiting.contains("Link</dt><dd>TCP server"), "{waiting}");
-    assert!(waiting.contains("Last data received</dt><dd>unknown"));
+    let waiting = until("<span class=\"pill warn\">Waiting</span>").await?;
+    assert!(
+        waiting.contains("title=\"TCP server\">Network: the machine connects to Analyte"),
+        "{waiting}"
+    );
+    assert!(waiting.contains(&format!("Waiting</span></td>{LAST_DATA}unknown</td>")));
     let mut peer = tokio::net::TcpStream::connect(&analyzer_address).await?;
-    until("Connection state</dt><dd>Connected").await?;
+    until("<span class=\"pill ok\">Connected</span>").await?;
     let message = format!(
         "\x0bMSH|^~\\&|SYN|LAB|HOST|LAB|20260101000000||ORU^R01^ORU_R01|light-1|P|2.5.1\r\
          PID|1\rOBR|1||{SAMPLE}|SYN^Synthetic^synthetic|||||||||||||||||||||F\r\
@@ -223,8 +226,8 @@ async fn tcp_server_light_follows_peer_and_hides_payload() -> Result<(), Error> 
     );
     peer.write_all(message.as_bytes()).await?;
     // Only a partial MLLP frame has arrived: no receipt exists, yet the runtime saw data.
-    let received = until(" s ago (").await?;
-    assert!(received.contains("Connection state</dt><dd>Connected"));
+    // One check: the green Connected pill next to a last-data time.
+    until("\"pill ok\">Connected</span></td><td data-label=\"Last data received\"><time").await?;
     peer.write_all(b"\x1c\r").await?;
     let mut reply = [0];
     peer.read_exact(&mut reply).await?;
@@ -240,11 +243,14 @@ async fn tcp_server_light_follows_peer_and_hides_payload() -> Result<(), Error> 
         );
     }
     drop(peer);
-    until("Connection state</dt><dd>Waiting").await?;
+    until("<span class=\"pill warn\">Waiting</span>").await?;
     stop.send(()).map_err(|_| "service stop receiver lost")?;
     tokio::time::timeout(Duration::from_secs(10), owner).await???;
     Ok(())
 }
+
+/// The overview's "last data received" cell as it opens.
+const LAST_DATA: &str = "<td data-label=\"Last data received\">";
 
 async fn request(
     host: &str,
@@ -312,6 +318,7 @@ async fn overview_checks_auth_escapes_and_shuts_down_bounded() -> Result<(), Err
     let wrong = "wrong-secret-never-log-this";
     assert_overview_refuses_auth(&host, wrong).await?;
     assert_overview_health(&host, &bearer).await?;
+    assert_stylesheet(&host, &bearer).await?;
     let (session, form) = assert_overview_login(&host, &bearer).await?;
     assert_overview_rejects_login_and_missing_route(&host, &bearer, &form).await?;
     // A peer that never finishes its headers must not prevent bounded shutdown.
@@ -525,29 +532,99 @@ async fn assert_overview_health(host: &str, bearer: &str) -> Result<(), Error> {
     headers_present(&response);
     assert!(response.contains("&lt;script&gt;alert(&#39;hostile&#39;)&amp;&quot;&lt;/script&gt;"));
     assert!(!response.contains("<script>"));
-    assert!(response.contains("Order sending paused after restore</dt><dd>true"));
-    assert!(response.contains("Uncertain orders</dt><dd>2"));
-    assert!(response.contains("Active alerts</dt><dd>2"));
-    assert!(response.contains("Alert</dt><dd>restore_paused"));
-    assert!(response.contains("Alert</dt><dd>machine_silent"));
     assert!(
-        response.contains(
-            "Responder</dt><dd>&lt;script&gt;responder(&#39;duty&#39;)&amp;&lt;/script&gt;"
-        )
+        response
+            .contains("Order sending paused after restore</dt><dd><span class=\"pill warn\">Yes")
     );
-    assert!(response.contains("Alert machine</dt><dd>&lt;busy&amp;machine&gt;"));
-    assert!(response.contains("Raised age (seconds)</dt><dd>"));
+    assert!(response.contains(concat!(
+        "<dt title=\"Uncertain orders\">Orders with unknown outcome (check the machine)",
+        "</dt><dd><span class=\"pill warn\">2</span>"
+    )));
+    assert!(response.contains("Active alerts</dt><dd><span class=\"pill bad\">2</span>"));
+    assert!(response.contains("<span title=\"restore_paused\">Order sending paused after restore"));
+    assert!(response.contains("<span title=\"machine_silent\">Machine has gone quiet"));
+    assert!(
+        response.contains("<td data-label=\"Responder\">&lt;script&gt;responder(&#39;duty&#39;)&amp;&lt;/script&gt;</td>")
+    );
+    assert!(response.contains("<td data-label=\"Machine\">&lt;busy&amp;machine&gt;</td>"));
+    assert!(response.contains(
+        "<time datetime=\"1970-01-01T00:01:40Z\" title=\"1970-01-01T00:01:40Z (Unix 100)\">"
+    ));
     assert!(!response.contains("cleared alert responder"));
-    assert!(response.contains("Machine owner</dt><dd>stopped"));
-    assert!(response.contains("Last data received</dt><dd>"));
-    assert!(response.contains(" d ago (1970-01-01T00:03:20Z)</dd>"));
-    assert!(response.contains("Pending items</dt><dd>2"));
-    assert!(response.contains("Cache fresh and trusted</dt><dd>false"));
-    assert!(response.contains("Cache last successful poll (Unix seconds)</dt><dd>100"));
+    assert!(response.contains("<span title=\"machine owner: stopped\">Stopped</span>"));
+    assert!(response.contains(
+        "</span></td><td data-label=\"Last data received\"><time datetime=\"1970-01-01T00:03:20Z\""
+    ));
+    assert!(response.contains(" days ago</span>"));
+    assert!(response.contains(
+        "<dt title=\"Pending items\">Waiting to be sent</dt><dd>2 results or order messages</dd>"
+    ));
+    assert!(response.contains(concat!(
+        "<dt title=\"Cache fresh and trusted\">Order list up to date</dt>",
+        "<dd><span class=\"pill warn\">No</span>"
+    )));
+    assert!(response.contains(concat!(
+        "<dt title=\"Cache last successful poll\">Last order list check</dt>",
+        "<dd><time datetime=\"1970-01-01T00:01:40Z\""
+    )));
     assert!(!response.contains("protected-raw-never-log"));
     assert!(!response.contains("protected-payload-never-log"));
     assert!(!response.contains("<script>sample</script>"));
     assert!(response.contains("Free disk bytes"));
+    Ok(())
+}
+
+// Owner request 2026-11-19 (readable admin pages): one same-origin stylesheet that
+// every page links, served as text/css under the unchanged CSP. It holds no data,
+// so the login page loads it before any session exists; the host check still applies.
+async fn assert_stylesheet(host: &str, bearer: &str) -> Result<(), Error> {
+    let css = request(host, "/static/admin.css", "", None).await?;
+    assert!(css.starts_with("HTTP/1.1 200"), "{css}");
+    headers_present(&css);
+    let lower = css.to_ascii_lowercase();
+    assert!(lower.contains("content-type: text/css; charset=utf-8"));
+    assert!(lower.contains("x-content-type-options: nosniff"));
+    assert!(css.contains(".pill.ok"));
+    let mut stream = tokio::net::TcpStream::connect(host).await?;
+    stream
+        .write_all(
+            b"GET /static/admin.css HTTP/1.1
+Host: attacker.invalid
+Connection: close
+
+",
+        )
+        .await?;
+    let mut refused = Vec::new();
+    tokio::time::timeout(
+        Duration::from_secs(6),
+        stream.take(1_048_576).read_to_end(&mut refused),
+    )
+    .await??;
+    assert!(String::from_utf8(refused)?.starts_with("HTTP/1.1 401"));
+    let auth = format!(
+        "Authorization: Bearer {bearer}
+"
+    );
+    for (path, headers) in [
+        ("/login", ""),
+        ("/", auth.as_str()),
+        ("/machines", auth.as_str()),
+        ("/parked", auth.as_str()),
+        ("/setup", auth.as_str()),
+        ("/retention", auth.as_str()),
+        ("/deliveries", auth.as_str()),
+    ] {
+        let page = request(host, path, headers, None).await?;
+        assert!(
+            page.contains("<link rel=\"stylesheet\" href=\"/static/admin.css\"></head>"),
+            "{path} does not link the stylesheet"
+        );
+        assert!(!page.contains("style="), "{path} has an inline style");
+        assert!(!page.contains("<style"), "{path} has a style block");
+        assert!(!page.contains("<script"), "{path} has a script");
+        assert_eq!(page.matches("</html>").count(), 1, "{path}");
+    }
     Ok(())
 }
 

@@ -212,11 +212,11 @@ async fn assert_paginated_lists(host: &str, auth: &str, parked_id: i64) -> Resul
     assert!(list.contains("&lt;script&gt;hostile reason&lt;/script&gt;"));
     assert!(list.contains("1970-01-01T00:00:00Z"));
     let page2 = request(host, &format!("/parked?after={parked_id}"), auth, None).await?;
-    assert!(page2.contains("Category: second"));
-    assert!(!page2.contains("Category: first"));
+    assert!(page2.contains("Category</dt><dd>second"));
+    assert!(!page2.contains("Category</dt><dd>first"));
     let orders = request(host, "/orders", auth, None).await?;
     assert!(orders.contains("Uncertain"));
-    assert!(orders.contains("Order sending paused after restore: true"));
+    assert!(orders.contains("Order sending is paused after a restore."));
     assert!(orders.contains("&lt;script&gt;sample&lt;/script&gt;"));
     assert!(orders.contains("&lt;test&gt;"));
     let orders2 = request(host, "/orders?after=1", auth, None).await?;
