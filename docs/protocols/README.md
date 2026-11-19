@@ -73,7 +73,12 @@ uncertain, never permission to acknowledge or repeat an order. A submitted store
 request may still commit after the caller stops waiting; retained identities and
 disconnect/restart recovery own that outcome. Store queue requests retain their
 own defensive deadline; the complete operation can finish earlier with a specific
-store error. Protocol reply timers can impose an earlier refusal.
+store error. Protocol reply timers can impose an earlier refusal; the HL7 host
+still writes that refusal before it ends the session. The TCP read-idle limit
+uses the same `operation_timeout_ms` but counts only while the host waits for the
+machine, so a slow commit never closes the socket before its reply.
 
-Tests: `store_budget_refuses_uncertain_custody` and
-`store_reports_only_completed_custody`.
+Tests: `store_budget_refuses_uncertain_custody`,
+`store_reports_only_completed_custody`,
+`stalled_store_commit_reaches_machine_as_refusal` and
+`busy_host_keeps_connection_until_its_reply`.

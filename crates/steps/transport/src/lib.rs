@@ -246,6 +246,26 @@ pub struct Connection {
     limits: Limits,
     session: Arc<AtomicU64>,
     cancel: Cancellation,
+    turn: Turn,
+}
+
+/// Whose turn it is on the line, as the read-idle limit sees it.
+///
+/// The host holds the turn from taking received bytes until it next asks for
+/// input. While it holds the turn the peer is waiting for the host's reply, so
+/// the peer's silence is expected and must not end the session: the host's own
+/// deadlines bound that work, and it may still owe a reply such as an
+/// acknowledgment or a refusal.
+#[derive(Clone, Default)]
+struct Turn(Arc<AtomicBool>);
+
+impl Turn {
+    fn host_holds(&self) -> bool {
+        self.0.load(Ordering::Acquire)
+    }
+    fn set(&self, host: bool) {
+        self.0.store(host, Ordering::Release);
+    }
 }
 
 impl Drop for Connection {
@@ -287,16 +307,22 @@ impl Connection {
     }
 
     /// Receives the next ordered event within the configured deadline.
+    ///
+    /// Asking for input hands the turn back to the peer; taking received bytes
+    /// gives it to the host until the next call. A TCP read-idle limit counts the
+    /// peer's silence only while the peer holds the turn.
     /// # Errors
     /// Reports a receive deadline, without cancelling the connection.
     pub async fn receive(&mut self) -> Result<Option<Event>, Error> {
+        self.turn.set(false);
         let event = tokio::time::timeout(self.limits.deadline, self.events.recv())
             .await
             .map_err(|_| Error::Deadline(DeadlineKind::Receive))?;
         match &event {
             Some(Event::Opened { session }) => self.observed_session = *session,
             Some(Event::Closed(_)) | None => self.observed_session = 0,
-            Some(Event::Received { .. } | Event::Failed(_) | Event::RecordingFailed(_)) => {}
+            Some(Event::Received { .. }) => self.turn.set(true),
+            Some(Event::Failed(_) | Event::RecordingFailed(_)) => {}
         }
         Ok(event)
     }
@@ -365,6 +391,7 @@ pub struct IoSide {
     observer: Option<Box<dyn Fn(Activity) + Send + Sync>>,
     /// Pairs every reported `Opened` with exactly one `Closed`.
     observed_open: bool,
+    turn: Turn,
 }
 
 impl Drop for IoSide {
@@ -380,6 +407,7 @@ pub fn connection(limits: Limits) -> (Connection, IoSide) {
     let (writes_tx, writes_rx) = mpsc::channel(limits.capacity);
     let session = Arc::new(AtomicU64::new(0));
     let cancel = Cancellation::default();
+    let turn = Turn::default();
     (
         Connection {
             observed_session: 0,
@@ -388,6 +416,7 @@ pub fn connection(limits: Limits) -> (Connection, IoSide) {
             limits,
             session: session.clone(),
             cancel: cancel.clone(),
+            turn: turn.clone(),
         },
         IoSide {
             events: events_tx,
@@ -401,6 +430,7 @@ pub fn connection(limits: Limits) -> (Connection, IoSide) {
             settings: String::new(),
             observer: None,
             observed_open: false,
+            turn,
         },
     )
 }

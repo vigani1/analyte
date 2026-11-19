@@ -160,10 +160,10 @@ async fn transfer(
     endpoint: &str,
 ) -> Result<Reason, Error> {
     let mut buffer = [0_u8; CHUNK_LIMIT];
-    let mut last_read = Instant::now();
+    let mut silent_since = Instant::now();
     loop {
         side.check_recording().await?;
-        if last_read.elapsed() >= side.limits.deadline {
+        if side.peer_silent(&mut silent_since) {
             return Err(Error::Deadline(crate::DeadlineKind::TcpRead));
         }
         tokio::select! {
@@ -190,15 +190,29 @@ async fn transfer(
             read = stream.read(&mut buffer) => {
                 let count = read.map_err(|source| Error::Io { operation: "read", endpoint: endpoint.into(), source })?;
                 if count == 0 { return Ok(Reason::Disconnect); }
-                last_read = Instant::now();
+                let at = Instant::now();
+                silent_since = at;
                 let bytes = buffer.get(..count).ok_or(Error::OversizedWrite)?.to_vec();
-                side.emit(Event::Received { at: last_read, bytes }).await?;
+                side.emit(Event::Received { at, bytes }).await?;
             }
             () = tokio::time::sleep(Duration::from_millis(2)) => {
                 side.check_recording().await?;
-                if last_read.elapsed() >= side.limits.deadline { return Err(Error::Deadline(crate::DeadlineKind::TcpRead)); }
+                if side.peer_silent(&mut silent_since) { return Err(Error::Deadline(crate::DeadlineKind::TcpRead)); }
             }
         }
+    }
+}
+
+impl IoSide {
+    /// Whether the peer has been silent for the whole deadline while it held the turn.
+    /// While the host holds received bytes it has not finished, the peer is waiting
+    /// for a reply, so the silence clock restarts instead of ending the session.
+    fn peer_silent(&self, since: &mut Instant) -> bool {
+        if self.turn.host_holds() {
+            *since = Instant::now();
+            return false;
+        }
+        since.elapsed() >= self.limits.deadline
     }
 }
 
