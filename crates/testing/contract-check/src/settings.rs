@@ -1,6 +1,6 @@
 //! Reads the app's address and credentials from the environment or a settings file, never from arguments.
 use analyte_contract::SigningSecret;
-use std::{collections::BTreeMap, io::Read as _, path::Path, time::Duration};
+use std::{collections::BTreeMap, path::Path, time::Duration};
 
 /// Base URL of the lab app, the same base Analyte's destination uses.
 pub const URL_NAME: &str = "ANALYTE_APP_URL";
@@ -115,12 +115,10 @@ impl Settings {
 }
 
 fn read_file(path: &Path) -> Result<BTreeMap<String, String>, Error> {
-    let mut text = String::new();
-    std::fs::File::open(path)
-        .map_err(Error::File)?
-        .take(FILE_LIMIT.saturating_add(1))
-        .read_to_string(&mut text)
-        .map_err(Error::File)?;
+    let bytes = crate::read_bounded(path, FILE_LIMIT).map_err(Error::File)?;
+    let text = String::from_utf8(bytes).map_err(|error| {
+        Error::File(std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+    })?;
     if u64::try_from(text.len()).map_or(true, |length| length > FILE_LIMIT) {
         return Err(Error::FileTooLarge);
     }
