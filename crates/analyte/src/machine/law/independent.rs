@@ -37,18 +37,7 @@ pub(in crate::machine) async fn run(
 ) -> Result<(), Error> {
     let listener = match machine.listener.take() {
         Some(listener) => TcpListener::from_std(listener)?,
-        None => {
-            analyte_transport::tcp::bind(
-                machine
-                    .snapshot
-                    .effective()
-                    .site()
-                    .endpoint
-                    .fixed()?
-                    .parse()?,
-            )
-            .await?
-        }
+        None => analyte_transport::tcp::bind(link::socket_address(&machine)?).await?,
     };
     machine.status.ready(true);
     let machine = Arc::new(machine);

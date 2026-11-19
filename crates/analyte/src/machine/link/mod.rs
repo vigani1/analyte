@@ -16,6 +16,20 @@ const RECONNECT_MIN: Duration = Duration::from_millis(100);
 /// Caps exponential transport reconnection backoff.
 const RECONNECT_MAX: Duration = Duration::from_secs(5);
 
+/// The site's fixed network endpoint as a socket address. A USB serial adapter or a
+/// spelling that is not a socket address is refused: no session can start on it.
+pub(in crate::machine) fn socket_address(
+    machine: &crate::installation::config::Machine,
+) -> Result<std::net::SocketAddr, error::Error> {
+    Ok(machine
+        .snapshot
+        .effective()
+        .site()
+        .endpoint
+        .fixed()?
+        .parse()?)
+}
+
 /// Names the session loop in diagnostics; never carries an endpoint or payload.
 #[derive(Clone, Copy)]
 pub(in crate::machine) enum Kind {
