@@ -1,3 +1,5 @@
+# Synthetic ASTM example
+
 ## Machine
 
 Synthetic ASTM teaching fixture, not a real machine. Not qualified for clinical use.

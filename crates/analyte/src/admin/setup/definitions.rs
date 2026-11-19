@@ -3,7 +3,9 @@
 //! Definitions live in `machines/<vendor>/<model>/` beside the program file. A model
 //! folder without `machine.toml` is a blocked definition (see `machines/README.md`).
 //! This list is for display and choice only; saving validates the chosen file
-//! through the real loader.
+//! through the real loader. A definition's display name is the `# ` title on the
+//! first line of its README (for example "Roche cobas e 411"); without one, the
+//! page tidies the folder key instead.
 use std::{
     io::Read as _,
     path::{Path, PathBuf},
@@ -15,7 +17,46 @@ const LIMIT: usize = 256;
 /// One shipped definition, keyed by its `vendor/model` folder.
 pub(super) struct Definition {
     pub(super) key: String,
+    /// The model's name for people, such as "Roche cobas e 411".
+    pub(super) display: String,
     pub(super) state: State,
+}
+
+/// Most README bytes read to find the title line.
+const TITLE_BYTES: u64 = 4096;
+/// Longest title shown; a longer first line is not a title.
+const TITLE_CHARS: usize = 80;
+
+/// The model's name for people: the README's `# ` title, or the tidied key.
+pub(super) fn display_name(folder: &Path, key: &str) -> String {
+    let mut text = String::new();
+    let read = std::fs::File::open(folder.join("README.md"))
+        .and_then(|file| file.take(TITLE_BYTES).read_to_string(&mut text));
+    read.ok()
+        .and_then(|_| text.lines().next())
+        .and_then(|line| line.strip_prefix("# "))
+        .map(str::trim)
+        .filter(|title| {
+            !title.is_empty()
+                && title.chars().count() <= TITLE_CHARS
+                && !title.chars().any(char::is_control)
+        })
+        .map_or_else(|| tidy(key), str::to_owned)
+}
+
+/// "roche/cobas-e411" becomes "Roche cobas e411": vendor capitalised, hyphens as spaces.
+fn tidy(key: &str) -> String {
+    let (vendor, model) = key.split_once('/').unwrap_or((key, ""));
+    let mut vendor = vendor.chars();
+    let mut name: String = vendor
+        .next()
+        .map(|first| first.to_uppercase().chain(vendor).collect())
+        .unwrap_or_default();
+    if !model.is_empty() {
+        name.push(' ');
+        name.push_str(&model.replace('-', " "));
+    }
+    name
 }
 
 pub(super) enum State {
@@ -35,12 +76,12 @@ pub(super) enum State {
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ListError {
     #[error(
-        "the machine definitions folder {0} is missing; copy the machines folder from the release beside the program file"
+        "the machine models folder {0} is missing; copy the machines folder from the release next to Analyte's settings file"
     )]
     Missing(PathBuf),
-    #[error("more than 256 machine definitions are installed")]
+    #[error("more than 256 machine models are installed")]
     TooMany,
-    #[error("listing machine definitions in {path} failed: {source}")]
+    #[error("listing the machine models in {path} failed: {source}")]
     Io {
         path: PathBuf,
         source: std::io::Error,
@@ -92,8 +133,10 @@ pub(super) fn list(root: &Path) -> Result<Vec<Definition>, ListError> {
             } else {
                 State::Blocked
             };
+            let key = format!("{vendor}/{model}");
             definitions.push(Definition {
-                key: format!("{vendor}/{model}"),
+                display: display_name(&model_path, &key),
+                key,
                 state,
             });
         }
@@ -130,7 +173,7 @@ fn head(path: &Path) -> State {
 
 #[cfg(test)]
 mod tests {
-    use super::{State, list};
+    use super::{State, display_name, list, tidy};
 
     // machines/README.md: a model folder without machine.toml is blocked; the
     // shipped tree lists the synthetic example as ready.
@@ -145,6 +188,53 @@ mod tests {
         ));
         assert!(matches!(state("roche/cobas-e411"), Some(State::Blocked)));
         assert!(definitions.iter().all(|d| !d.key.contains("..")));
+        let display = |key: &str| {
+            definitions
+                .iter()
+                .find(|d| d.key == key)
+                .map(|d| d.display.as_str())
+        };
+        assert_eq!(display("roche/cobas-e411"), Some("Roche cobas e 411"));
+        assert_eq!(display("yhlo/iflash-1200"), Some("YHLO iFlash 1200"));
+        assert_eq!(
+            display("example/synthetic-astm"),
+            Some("Synthetic ASTM example")
+        );
+        Ok(())
+    }
+
+    // Owner request 2026-11-19 (lab-manager admin pages, item 8): models show a
+    // name for people from the README title, and fall back to a tidied key.
+    #[test]
+    fn display_name_reads_the_readme_title_or_tidies_the_key() -> Result<(), crate::Error> {
+        let folder = tempfile::tempdir()?;
+        assert_eq!(
+            display_name(folder.path(), "roche/cobas-e411"),
+            "Roche cobas e411"
+        );
+        let readme = folder.path().join("README.md");
+        std::fs::write(&readme, "# Roche cobas e 411\n\n## Machine\n")?;
+        assert_eq!(
+            display_name(folder.path(), "roche/cobas-e411"),
+            "Roche cobas e 411"
+        );
+        std::fs::write(&readme, "## Machine\n\nRoche cobas e 411\n")?;
+        assert_eq!(
+            display_name(folder.path(), "roche/cobas-e411"),
+            "Roche cobas e411"
+        );
+        std::fs::write(&readme, "#   \n")?;
+        assert_eq!(
+            display_name(folder.path(), "boule/swelab-lumi"),
+            "Boule swelab lumi"
+        );
+        std::fs::write(&readme, format!("# {}\n", "x".repeat(81)))?;
+        assert_eq!(
+            display_name(folder.path(), "yhlo/iflash-1200"),
+            "Yhlo iflash 1200"
+        );
+        assert_eq!(tidy("example"), "Example");
+        assert_eq!(tidy(""), "");
         Ok(())
     }
 }

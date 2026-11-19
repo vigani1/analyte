@@ -23,26 +23,34 @@ directory may grant only SYSTEM, Administrators, the running account and
 Preserve and investigate any `admin-token.pending` file after an interrupted
 rotation. Restart after rotation to invalidate the loaded token and all sessions.
 
-Open `http://127.0.0.1:8080/login` on the host and enter the token. A bearer
+Open `http://127.0.0.1:8080/login` on the host and enter the token (the page
+calls it the admin key). A bearer
 header can also authorize reads. Browser sessions expire after one hour.
 All sessions share one administrator credential; there are no per-person roles.
 Browser audit actors identify sessions, not people. Use explicit `--actor`
 identities for accountable CLI recovery work. Do not forward this HTTP listener
 to a shared network.
 
+The menu has four tabs, Overview, Needs review, Machines and Setup, and a
+**More** dropdown with Machine orders, Cancelled by machine, Deliveries and Data
+keeping. The current page is marked. Page addresses did not change when the
+pages were renamed (Needs review is still `/parked`, Cancelled by machine
+`/analyzer-cancelled`, Data keeping `/retention`), so bookmarks keep working.
+
 | Page | Use |
 | --- | --- |
-| Overview | Four sections: Machines (connection light, last data, service), Sending to the lab app (results waiting, order list up to date, oldest result waiting, results still being delivered for removed machines), Orders (orders with unknown outcome, orders the analyzer cancelled, restore pause) and Disk and alerts (free space, reserve, active alerts). Hovering a label or value shows its exact technical name or value. |
-| Machines | Config, link light and activity. TCP server: Waiting or Connected. TCP client: Connected or Not connected (retrying). Serial: only Port open or Port not open, because an open port proves no cable or machine. Watched folder: Watching or Not watching. Last data received and last state change show as a local date and time with an age. |
-| Parked items | Reasons and linked evidence. Raw disclosure requires an audited browser POST. |
-| Deliveries | Inspect state and confirm eligible resends, with a reason. |
-| Machine orders | Inspect lifecycle; reconciliation remains a CLI task. |
-| Retention and holds | Policy, last purge, oldest retained receipt and indefinite holds. |
-| Setup | Add or remove machines; choose a machine definition, its port or address and the lab app; test by listening; save; restart. See [Setup page](#setup-page). |
+| Overview | Four sections: Machines (connection light, last data, service), Sending to the lab app (results waiting, order list up to date, oldest result waiting, results still being delivered for removed machines), Orders (orders with unknown outcome, orders cancelled by a machine, and "Order sending paused after restore" only while it applies) and Disk and alerts (free space, space always kept free, active alerts). Counts are plain numbers, red when above 0. Hovering a label or value shows its exact technical name or value. |
+| Needs review | Items Analyte kept but could not process (parked items): reason, linked records and "Process again with current settings". Showing the original bytes requires an audited browser POST. |
+| Machines | Config, link light and activity. TCP server: Waiting or Connected. TCP client: Connected or Not connected (retrying). Serial: only Port open or Port not open, because an open port proves no cable or machine. Watched folder: Watching or Not watching. Last data received ("Nothing yet" before anything arrived) and the time of the last change show as a local date and time with an age. The settings version shows its first 12 digits; hover for the full digest. |
+| Setup | Add or remove machines; choose a machine model, its port or address and the lab app; test by listening; save; restart. See [Setup page](#setup-page). |
+| Machine orders (More) | Inspect lifecycle; reconciliation remains a CLI task. |
+| Cancelled by machine (More) | Orders a machine cancelled on its own, to check with the lab and the lab app. See [LAW execution](#law-execution-and-analyzer-cancellation). |
+| Deliveries (More) | Inspect status and confirm "Send again" for eligible deliveries, with a reason. |
+| Data keeping (More) | How long data is kept, the last clean-up, the oldest message kept, and holds (retention and holds). |
 
-Follow Next page to inspect bounded lists. Reprocess uses retained raw bytes
-with current config and creates a new interpretation. Resend queues an existing
-delivery with its original ID and bytes. Neither resends machine orders.
+Follow Next page to inspect bounded lists. "Process again" (reprocess) uses
+retained raw bytes with current config and creates a new interpretation. "Send
+again" (resend) queues an existing delivery with its original ID and bytes. Neither resends machine orders.
 Raw views contain protected clinical evidence. Keep them out of screenshots
 and support tickets. If an action times out, inspect state before repeating it;
 it may already have committed.
@@ -67,7 +75,9 @@ The **Setup** page lets a lab manager set up an installed machine without
 editing files. It needs a browser login (not just the bearer header), and the
 service needs write access to the folder that holds the program file and the
 site files (see [Install](install.md)). Each machine listed in the program file
-has a **Set up** link with five steps and a **Remove machine** button. A machine
+has a **Set up** link with five steps and a **Remove** button. The table shows
+each machine's model by name (for example "Roche cobas e 411", from the first
+line of the model's README) and the short settings version. A machine
 listed without a `definition` (the installers' `machine-1`, or one added with
 **Add machine**) shows as **Not set up yet**: it does not run until you choose
 its definition in step 1 and save; the save adds the `definition` line to its
@@ -91,7 +101,8 @@ results or order messages the lab app has not accepted, machine orders sent and
 not finished (sending, sent, accepted, cancel requested or uncertain), received
 messages not yet read, and unresolved flagged items linked to it (items linked
 to no single machine are not counted). If anything is open, the button becomes
-**Remove anyway**. Removing takes only the entry out of the program file and
+**Remove anyway**. The page then says in one sentence what happens to waiting
+results, for example "Its 3 waiting results will still be sent to lab-app." Removing takes only the entry out of the program file and
 moves the site file to a dated copy (`<name>.site.toml.<time>.bak`); the store is
 never changed, so the machine's stored results, flagged items and history stay
 visible on the other pages.
@@ -108,21 +119,21 @@ release or resend is still sent; anything added after it stopped is sent after
 the next restart. A set-up machine that uses the same destination name wins:
 its own settings are used, as before. While anything waits, the Overview and the
 Setup page say so, for example "Removed machine machine-2: 3 results or order
-messages still being delivered to lab app destination lab-app"; the line goes
+messages still being delivered to lab app lab-app"; the line goes
 away when the count reaches 0. Remove a `[[retired_destinations]]` table by hand
 only when nothing waits for it.
 
 If a destination's settings cannot be read when its machine is removed (for
 example a broken site file), nothing is kept and the page says so. Results that
 wait for a destination that is configured nowhere stay stored and are never
-deleted; the pages show "Cannot deliver: destination X no longer configured", the
+deleted; the pages show "Cannot send to lab app X: no machine uses it any more", the
 service log says so at each start, and an `undeliverable_destination` alert, if
 configured, raises for them with the reason and the fix (see
 [Alerts](#alerts-and-named-responders)). Set up a machine that uses that
 destination to deliver them. If a kept destination's keys are missing, its
 deliveries pause with "destination credentials require operator repair", the
 service keeps running, and the same alert raises with that reason. The
-Overview and the Setup page then say "Cannot deliver to lab app X: its API key
+Overview and the Setup page then say "Cannot send to lab app X: its API key
 or signing key is missing" with the same fix, not "still being delivered".
 Removing the last machine is allowed: Analyte then serves only the admin page
 (and delivers what still waits) until a machine is added.
@@ -134,9 +145,10 @@ use a serial port, USB serial number, network address or folder that another
 machine uses; the page refuses it before writing, and `check-config` refuses a
 program written that way by hand.
 
-1. **Machine.** Choose a definition from the `machines` folder beside the program
-   file. Each shows its evidence level; blocked definitions (no `machine.toml`
-   yet) are listed but cannot be chosen.
+1. **Machine model.** Choose a model from the `machines` folder beside the
+   program file. Each shows its name, how it was checked (its evidence level, on
+   hover) and whether it is ready; blocked definitions (no `machine.toml` yet)
+   show as **Not ready yet** and cannot be chosen.
 2. **Connection.** For a serial machine, choose a detected port. The list shows
    each port's name, the adapter's own description and its USB serial number.
    When the adapter has its own serial number, the site file gets `usb_serial`,
@@ -164,7 +176,8 @@ program written that way by hand.
    `definition` line for that machine changes too (with its own backup); nothing
    else in it changes. It then loads the whole program again; if that fails,
    the previous files are put back and the page says why. The page shows the new
-   configuration digest.
+   settings version (the first 12 digits of the configuration digest; hover for
+   all of it).
 
 Saved settings apply only after a restart. **Restart now** stops Analyte
 gracefully (like a normal stop) and exits with a failure code, so the service
@@ -398,8 +411,8 @@ then inspect retained and machine-side work before resuming.
 
 ## LAW execution and analyzer cancellation
 
-Use the authenticated overview's **Orders the analyzer cancelled** link
-(analyzer-cancelled AWOSs) for the
+Use the authenticated overview's **Review cancelled orders** link, or the
+**Cancelled by machine** page under More (analyzer-cancelled AWOSs), for the
 reconciliation list. Machine orders show execution alongside command state;
 open an item's execution history to review receipt/interpretation links,
 receive and host-recorded times, original estimate and zone evidence, scoped

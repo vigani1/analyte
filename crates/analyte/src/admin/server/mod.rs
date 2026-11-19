@@ -247,19 +247,20 @@ fn unauthorized(state: &Context, existing: Option<&Arc<Session>>) -> Response {
         .unwrap_or_else(|| state.sessions.issue(false, None));
     let mut response = match session {
         Ok(session) => {
-            let html = super::view::login("Analyte admin")
+            let html = super::view::login("Sign in to Analyte")
                 .markup(concat!(
-                    "<section><p class=\"lead\">Log in with the admin token ",
-                    "from this PC's Analyte data folder.</p><form ",
+                    "<section><p class=\"lead\">Enter the admin key. It is in the file ",
+                    "<code>admin-token</code> in Analyte's data folder on this PC; ask IT if you ",
+                    "do not have it.</p><form ",
                     "action=\"/login\" method=\"post\"><input name=\"csrf\" ",
                 ))
                 .markup("type=\"hidden\" value=\"")
                 .text(session.csrf.form_value())
                 .markup(concat!(
-                    "\"><label class=\"field\"><span>Token</span><input name=\"token\" ",
+                    "\"><label class=\"field\"><span title=\"Admin token\">Admin key</span><input name=\"token\" ",
                     "type=\"password\" required autocomplete=\"off\" ",
                 ))
-                .markup("maxlength=\"44\"></label><button>Log in</button></form></section>")
+                .markup("maxlength=\"44\"></label><button>Sign in</button></form></section>")
                 .markup(super::view::END);
             let mut response = (StatusCode::UNAUTHORIZED, Html(html)).into_response();
             if let Ok(value) = header::HeaderValue::from_str(&session.id.cookie(false)) {
@@ -267,7 +268,12 @@ fn unauthorized(state: &Context, existing: Option<&Arc<Session>>) -> Response {
             }
             response
         }
-        Err(_) => (StatusCode::UNAUTHORIZED, "admin login session unavailable").into_response(),
+        Err(error) => super::view::refusal(
+            StatusCode::UNAUTHORIZED,
+            "You cannot sign in right now",
+            "Too many browser sessions are open. Wait a few minutes and try again, or restart Analyte.",
+            error,
+        ),
     };
     response.headers_mut().insert(
         header::WWW_AUTHENTICATE,
@@ -311,11 +317,12 @@ async fn protect(State(state): State<Arc<Context>>, mut request: Request, next: 
         .and_then(|v| v.to_str().ok());
     let same_origin = origin.is_none_or(|v| v == state.origin);
     let mut response = if session.is_err() {
-        (
+        super::view::refusal(
             StatusCode::SERVICE_UNAVAILABLE,
+            "Analyte needs a restart",
+            "Analyte cannot check browser sessions any more. Restart Analyte, then sign in again.",
             "admin session lookup failed",
         )
-            .into_response()
     } else if !valid_host || !same_origin {
         unauthorized(&state, None)
     } else if login || public || authenticated {
@@ -325,11 +332,15 @@ async fn protect(State(state): State<Arc<Context>>, mut request: Request, next: 
         }
         match tokio::time::timeout(Duration::from_secs(2), dispatch(request, next, session)).await {
             Ok(response) => response,
-            Err(_) => (
+            Err(_) => super::view::refusal(
                 StatusCode::GATEWAY_TIMEOUT,
+                "This took too long",
+                concat!(
+                    "Analyte did not finish in time. Check the page before trying again: ",
+                    "an action may already have been saved.",
+                ),
                 "admin request deadline exceeded",
-            )
-                .into_response(),
+            ),
         }
     } else {
         unauthorized(&state, session.ok().flatten().as_ref())
@@ -365,7 +376,7 @@ async fn dispatch(request: Request, next: Next, session: Option<Arc<Session>>) -
         return next.run(request).await;
     }
     let Some(session) = session else {
-        return (StatusCode::FORBIDDEN, "CSRF session required").into_response();
+        return form_expired("CSRF session required");
     };
     let limit = if request.uri().path().starts_with("/setup/") {
         super::setup::FORM_LIMIT
@@ -374,15 +385,30 @@ async fn dispatch(request: Request, next: Next, session: Option<Arc<Session>>) -
     };
     let (parts, body) = request.into_parts();
     let Ok(bytes) = axum::body::to_bytes(body, limit).await else {
-        return (StatusCode::PAYLOAD_TOO_LARGE, "admin form exceeds limit").into_response();
+        return super::view::refusal(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "Too much text",
+            "The form holds more text than Analyte accepts. Shorten what you typed and try again.",
+            "admin form exceeds limit",
+        );
     };
     let copy = Request::from_parts(parts.clone(), axum::body::Body::from(bytes.clone()));
     let form = Form::<Csrf>::from_request(copy, &()).await;
     if !form.is_ok_and(|Form(form)| session.csrf_valid(&form.csrf)) {
-        return (StatusCode::FORBIDDEN, "CSRF token invalid or missing").into_response();
+        return form_expired("CSRF token invalid or missing");
     }
     next.run(Request::from_parts(parts, axum::body::Body::from(bytes)))
         .await
+}
+
+/// The refusal for a form whose session check failed, usually an old page or a new sign-in.
+fn form_expired(detail: &'static str) -> Response {
+    super::view::refusal(
+        StatusCode::FORBIDDEN,
+        "This form has expired",
+        "Go back, reload the page and try again. Nothing was changed.",
+        detail,
+    )
 }
 
 async fn login_page(
@@ -415,24 +441,22 @@ async fn login(
     let session = match state.sessions.issue(true, Some(&previous)) {
         Ok(session) => session,
         Err(error) => {
-            return (
+            return super::view::refusal(
                 StatusCode::SERVICE_UNAVAILABLE,
-                Html(
-                    Markup::new()
-                        .markup("admin session creation failed: ")
-                        .text(error),
-                ),
-            )
-                .into_response();
+                "You cannot sign in right now",
+                "Too many browser sessions are open. Wait a few minutes and try again, or restart Analyte.",
+                error,
+            );
         }
     };
     let cookie = session.id.cookie(false);
     let Ok(cookie) = header::HeaderValue::from_str(&cookie) else {
-        return (
+        return super::view::refusal(
             StatusCode::INTERNAL_SERVER_ERROR,
+            "You cannot sign in right now",
+            "Analyte could not start a browser session. Try again; if this keeps happening, give the details below to support.",
             "admin session header invalid",
-        )
-            .into_response();
+        );
     };
     let mut response = StatusCode::SEE_OTHER.into_response();
     response.headers_mut().insert(header::SET_COOKIE, cookie);

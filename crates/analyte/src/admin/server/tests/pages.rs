@@ -400,7 +400,9 @@ async fn assert_cache_version_stays_distinct(
         })
         .await?;
     let mismatch = request(host, "/orders", auth, None).await?;
-    assert!(mismatch.contains("Different version; these are not the historical machine items."));
+    assert!(mismatch.contains(
+        "a different version from the one sent, so these are not the tests the machine got."
+    ));
     assert!(mismatch.contains("Uncertain"));
     assert!(mismatch.contains("Machine test: local: &lt;test&gt;"));
     assert!(mismatch.contains("&lt;newtest&gt;"));

@@ -1,3 +1,5 @@
+# Boule Swelab Lumi
+
 ## Machine
 
 Boule Swelab Lumi is the proposed model; confirm the installed model and
