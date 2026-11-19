@@ -62,7 +62,7 @@ pub(crate) async fn report_unconfigured(
         if !configured.contains(&&open.destination) {
             tracing::error!(
                 destination = open.destination.as_str(),
-                count = open.sending.saturating_add(open.held),
+                count = open.waiting(),
                 "results wait for a lab app destination that is no longer configured; they stay stored"
             );
         }

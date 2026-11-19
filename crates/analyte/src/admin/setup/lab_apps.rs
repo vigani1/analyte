@@ -254,12 +254,7 @@ async fn waiting(state: &Context) -> Result<Vec<(String, u64)>, SetupError> {
         .map_err(SetupError::Store)?;
     Ok(open
         .into_iter()
-        .map(|open| {
-            (
-                open.destination.as_str().to_owned(),
-                open.sending.saturating_add(open.held),
-            )
-        })
+        .map(|open| (open.destination.as_str().to_owned(), open.waiting()))
         .collect())
 }
 
