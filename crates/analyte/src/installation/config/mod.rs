@@ -948,6 +948,13 @@ fn entries(
     Ok((machines, awaiting_setup))
 }
 
+/// Whether `name` uses only ASCII letters, digits, `-` and `_`, so it can name
+/// a file or folder and appear in a link without escaping.
+pub(crate) fn plain_name(name: &str) -> bool {
+    name.bytes()
+        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
+}
+
 fn load_machine(entry: Entry, definition: &Path, loading: &Loading<'_>) -> Result<Machine, Error> {
     let (base, record_bytes) = (loading.base, loading.record_bytes);
     let site = base.join(entry.site);
@@ -978,14 +985,7 @@ fn load_machine(entry: Entry, definition: &Path, loading: &Loading<'_>) -> Resul
     {
         return Err(Error::StoreRecordLimitTooSmall);
     }
-    if entry.capture
-        && (!entry
-            .id
-            .as_str()
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
-            || matches!(entry.id.as_str(), "." | ".."))
-    {
+    if entry.capture && !plain_name(entry.id.as_str()) {
         return Err(Error::InvalidCaptureMachineId);
     }
     Ok(Machine {

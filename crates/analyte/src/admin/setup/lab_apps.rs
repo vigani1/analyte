@@ -19,7 +19,7 @@ use crate::admin::{
 use crate::installation::{
     config::{
         lab_apps::{self as file, Conflict, Written},
-        read,
+        plain_name, read,
     },
     credentials::{Locked, Secret, Stored},
     secrets,
@@ -233,12 +233,7 @@ pub(super) fn segment(name: &str) -> String {
 /// it uses only ASCII letters, digits, `-` and `_`, at most 64 characters.
 fn new_name(text: &str) -> Result<Identifier, SetupError> {
     let text = text.trim();
-    if text.is_empty()
-        || text.len() > 64
-        || !text
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
-    {
+    if text.is_empty() || text.len() > 64 || !plain_name(text) {
         return Err(SetupError::LabAppName);
     }
     Identifier::new(text).map_err(|_| SetupError::LabAppName)
