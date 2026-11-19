@@ -118,54 +118,48 @@ fn line(open: &Undelivered, kept: Option<&Kept>, from_running: bool) -> Line {
     } else {
         String::new()
     };
-    let (text, blocked) = match kept {
+    let blocked = crate::operator::alerts::undeliverable_reason(
+        kept.is_some(),
+        kept.is_some_and(|kept| kept.keys_missing),
+    );
+    let text = match blocked {
         // The worker runs, but without keys nothing is sent (ADR 0014 alert text).
-        Some(kept) if kept.keys_missing => (
-            format!(
-                concat!(
-                    "Cannot send to lab app {destination}: its API key or signing key is ",
-                    "missing. Enter them on the Lab app page (or in the service environment), ",
-                    "then restart. {from}: {count} {what} are kept and never deleted.{held}"
-                ),
-                destination = destination,
-                from = from,
-                count = count,
-                what = what,
-                held = held
+        Some(Undeliverable::CredentialsMissing) => format!(
+            concat!(
+                "Cannot send to lab app {destination}: its API key or signing key is ",
+                "missing. Enter them on the Lab app page (or in the service environment), ",
+                "then restart. {from}: {count} {what} are kept and never deleted.{held}"
             ),
-            Some(Undeliverable::CredentialsMissing),
+            destination = destination,
+            from = from,
+            count = count,
+            what = what,
+            held = held
         ),
-        Some(kept) if kept.delivering.load(Ordering::Acquire) => (
-            format!("{from}: {count} {what} still being delivered to lab app {destination}.{held}"),
-            None,
-        ),
-        Some(_) => (
-            format!(
-                concat!(
-                    "{from}: {count} {what} wait for lab app {destination}; they are sent after ",
-                    "the next restart.{held}"
-                ),
-                from = from,
-                count = count,
-                what = what,
-                destination = destination,
-                held = held
+        Some(Undeliverable::NotConfigured) => format!(
+            concat!(
+                "Cannot send to lab app {destination}: it is not set up any more. {from}: ",
+                "{count} {what} are kept and never deleted. Add lab app {destination} on the ",
+                "Lab app page, then restart, to send them."
             ),
-            None,
+            destination = destination,
+            from = from,
+            count = count,
+            what = what
         ),
-        None => (
-            format!(
-                concat!(
-                    "Cannot send to lab app {destination}: it is not set up any more. {from}: ",
-                    "{count} {what} are kept and never deleted. Add lab app {destination} on the ",
-                    "Lab app page, then restart, to send them."
-                ),
-                destination = destination,
-                from = from,
-                count = count,
-                what = what
+        None if kept.is_some_and(|kept| kept.delivering.load(Ordering::Acquire)) => {
+            format!("{from}: {count} {what} still being delivered to lab app {destination}.{held}")
+        }
+        None => format!(
+            concat!(
+                "{from}: {count} {what} wait for lab app {destination}; they are sent after ",
+                "the next restart.{held}"
             ),
-            Some(Undeliverable::NotConfigured),
+            from = from,
+            count = count,
+            what = what,
+            destination = destination,
+            held = held
         ),
     };
     Line {

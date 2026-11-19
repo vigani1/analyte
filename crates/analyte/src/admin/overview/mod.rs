@@ -7,7 +7,7 @@ use crate::admin::Error;
 use crate::admin::markup::Markup;
 use crate::deadline;
 use crate::machine::link::status::{Light, Link};
-use analyte_model::OrderState;
+use analyte_model::{OrderState, ReceiptId};
 use analyte_store::{AlertKey, MachineOrderFilter};
 use axum::{
     extract::State,
@@ -217,10 +217,10 @@ async fn render_orders(
         html.push_fragment(&row(
             "Order sending paused after restore",
             Some("Restore unreconciled"),
-            &pill(Tone::Attention, "Yes").markup(concat!(
-                " <span class=\"muted\">Ask IT to reconcile orders with the command line; ",
-                "until then no order is sent to a machine.</span>",
-            )),
+            &pill(Tone::Attention, "Yes")
+                .markup(" <span class=\"muted\">")
+                .markup(RESTORE_ADVICE)
+                .markup("</span>"),
         ));
     }
     html.push_markup("</dl></section>");
@@ -368,28 +368,7 @@ async fn render_machines(
     until: std::time::Instant,
     now: Timestamp,
 ) -> Result<(), Error> {
-    let mut last_activity = BTreeMap::new();
-    let mut cursor = String::new();
-    loop {
-        let page = state
-            .store
-            .request(until, move |store| store.receipts(&cursor))
-            .await?;
-        let Some(last) = page.last() else {
-            break;
-        };
-        cursor = serde_json::to_string(&last.id)?;
-        for receipt in page {
-            if state.machines.iter().any(|m| m.id == receipt.machine) {
-                last_activity
-                    .entry(receipt.machine.as_str().to_owned())
-                    .and_modify(|time: &mut Timestamp| {
-                        *time = (*time).max(receipt.received_at);
-                    })
-                    .or_insert(receipt.received_at);
-            }
-        }
-    }
+    let activity = activity(state, until, 0).await?;
     html.push_markup(concat!(
         "<section><div class=\"heading\"><h2>Machines</h2>",
         "<a href=\"/machines\">Details for each machine</a></div>",
@@ -407,7 +386,7 @@ async fn render_machines(
         "<th>Service</th></tr>",
     ));
     for machine in &state.machines {
-        let stored = last_activity.get(machine.id.as_str()).copied();
+        let stored = activity.get(machine.id.as_str()).and_then(|seen| seen.last);
         let light = LinkLight::of(machine, stored, now);
         if !machine.running.load(Ordering::Acquire) {
             facts.stopped.push(machine.id.clone());
@@ -435,6 +414,46 @@ async fn render_machines(
     }
     html.push_markup("</table></div></section>");
     Ok(())
+}
+
+/// What the stored receipts say about one set-up machine.
+#[derive(Default)]
+pub(super) struct Activity {
+    /// When the latest stored message from it was received.
+    pub(super) last: Option<Timestamp>,
+    /// Its first stored messages in store order, at most the number asked for.
+    pub(super) first: Vec<(ReceiptId, Timestamp)>,
+}
+
+/// Reads every stored receipt once and gathers each set-up machine's activity
+/// by machine name, keeping up to `keep` of its first receipts.
+pub(super) async fn activity(
+    state: &Context,
+    until: std::time::Instant,
+    keep: usize,
+) -> Result<BTreeMap<String, Activity>, Error> {
+    let mut seen = BTreeMap::<String, Activity>::new();
+    let mut cursor = String::new();
+    loop {
+        let page = state
+            .store
+            .request(until, move |store| store.receipts(&cursor))
+            .await?;
+        let Some(last) = page.last() else {
+            break;
+        };
+        cursor = serde_json::to_string(&last.id)?;
+        for receipt in page {
+            if state.machines.iter().any(|m| m.id == receipt.machine) {
+                let machine = seen.entry(receipt.machine.as_str().to_owned()).or_default();
+                machine.last = machine.last.max(Some(receipt.received_at));
+                if machine.first.len() < keep {
+                    machine.first.push((receipt.id, receipt.received_at));
+                }
+            }
+        }
+    }
+    Ok(seen)
 }
 
 /// One machine's link light, ready to show. "Last data" is the later of the
@@ -482,6 +501,10 @@ impl LinkLight {
             .fragment(&row("Service", Some("Machine owner"), &self.service))
     }
 }
+
+/// What someone does while order sending is paused after a restore.
+pub(super) const RESTORE_ADVICE: &str =
+    "Ask IT to reconcile orders with the command line; until then no order is sent to a machine.";
 
 /// What "Last data received" says before a machine has sent anything.
 pub(super) const NOTHING_YET: &str = "Nothing yet";

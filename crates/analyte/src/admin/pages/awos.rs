@@ -1,11 +1,11 @@
 //! Shows analyzer execution separately from command state on authenticated admin pages.
-use super::{
-    pages::{Cursor, finish, next},
+use super::{Cursor, finish, next, one_page};
+use crate::admin::Error;
+use crate::admin::markup::Markup;
+use crate::admin::{
     server::Context,
     view::{self, Tab, plain},
 };
-use crate::admin::Error;
-use crate::admin::markup::Markup;
 use crate::deadline;
 use axum::{
     extract::{Path, Query, State},
@@ -53,7 +53,7 @@ pub(super) fn projection(item: &analyte_store::MachineOrderItem) -> Markup {
     }
 }
 
-pub(super) async fn cancelled(
+pub(in crate::admin) async fn cancelled(
     State(state): State<Arc<Context>>,
     Query(cursor): Query<Cursor>,
 ) -> Response {
@@ -62,7 +62,7 @@ pub(super) async fn cancelled(
     finish(result)
 }
 
-pub(super) async fn detail(
+pub(in crate::admin) async fn detail(
     State(state): State<Arc<Context>>,
     Path((order, item)): Path<(i64, u16)>,
     Query(cursor): Query<Cursor>,
@@ -122,12 +122,12 @@ async fn cancelled_page(state: &Context, cursor: Cursor) -> Result<Markup, Error
     let (rows, more) = state
         .store
         .request(deadline()?, move |s| {
-            let rows = s.analyzer_cancelled_items(after)?;
-            let more = match rows.last() {
-                Some(last) => !s.analyzer_cancelled_items(last.cursor)?.is_empty(),
-                None => false,
-            };
-            Ok::<_, analyte_store::ReconciliationError>((rows, more))
+            // This page shows every row of the store's read, not the admin page size.
+            one_page::<_, analyte_store::ReconciliationError>(
+                s.analyzer_cancelled_items(after)?,
+                usize::MAX,
+                |last| Ok(!s.analyzer_cancelled_items(last.cursor)?.is_empty()),
+            )
         })
         .await?;
     let mut html = view::page(Tab::CancelledByMachine, "Cancelled by machine");

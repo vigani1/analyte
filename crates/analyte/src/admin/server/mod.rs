@@ -81,7 +81,7 @@ pub(crate) async fn prepare(
         .iter()
         .map(|m| {
             Ok(Machine {
-                departure_html: super::departures::enabled(&m.snapshot)?,
+                departure_html: super::pages::departures::enabled(&m.snapshot)?,
                 id: m.id().clone(),
                 running: Arc::new(AtomicBool::new(true)),
                 status: m.status.subscribe(),
@@ -193,17 +193,20 @@ fn router(state: Arc<Context>) -> Router {
         .route("/login", get(login_page).post(login))
         .route(
             "/retention",
-            get(super::retention::show).post(super::retention::hold),
+            get(super::pages::retention::show).post(super::pages::retention::hold),
         )
         .route("/machines", get(super::pages::machines))
-        .route("/receipts/{id}/departures", get(super::departures::receipt))
+        .route(
+            "/receipts/{id}/departures",
+            get(super::pages::departures::receipt),
+        )
         .route("/parked", get(super::pages::parked))
         .route("/parked/{id}", get(super::pages::detail))
         .route("/parked/{id}/raw", post(super::pages::raw))
         .route("/orders", get(super::pages::orders))
-        .route("/analyzer-cancelled", get(super::awos::cancelled))
-        .route("/awos/{order}/{item}", get(super::awos::detail))
-        .route("/deliveries", get(super::actions::deliveries))
+        .route("/analyzer-cancelled", get(super::pages::awos::cancelled))
+        .route("/awos/{order}/{item}", get(super::pages::awos::detail))
+        .route("/deliveries", get(super::pages::deliveries))
         .route(
             "/deliveries/{id}/resend",
             get(super::actions::confirm_resend).post(super::actions::resend),
