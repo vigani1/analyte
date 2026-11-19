@@ -29,7 +29,7 @@ impl crate::Destination {
                 "must be at least one second",
             ));
         }
-        if !(1..=120).contains(&self.request_timeout_seconds) {
+        if !Self::REQUEST_TIMEOUT_SECONDS.contains(&self.request_timeout_seconds) {
             return Err(invalid(
                 path,
                 &format!("{table}.request_timeout_seconds"),

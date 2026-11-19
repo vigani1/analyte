@@ -37,10 +37,6 @@ use std::{path::PathBuf, sync::Arc};
 /// Where the page lives; the overview links here too.
 pub(in crate::admin) const PAGE: &str = "/setup/lab-apps";
 
-/// Defaults a new lab app starts with, the same as a `[destination]` table's.
-const FRESHNESS: u64 = 30;
-const REQUEST_TIMEOUT: u64 = 10;
-
 /// One lab app as the installation writes it today, and who uses it.
 pub(super) struct Known {
     pub(super) settings: Destination,
@@ -486,12 +482,12 @@ fn form(state: &Context, session: &Session, existing: Option<&Known>) -> Markup 
                 "<label class=\"field\"><span>Order list counts as current for (seconds)</span>",
                 "<input name=\"freshness_seconds\" inputmode=\"numeric\" maxlength=\"10\" value=\""
             ))
-            .text(settings.map_or(FRESHNESS, |s| s.freshness_seconds))
+            .text(settings.map_or(Destination::DEFAULT_FRESHNESS_SECONDS, |s| s.freshness_seconds))
             .markup(concat!(
                 "\"></label><label class=\"field\"><span>Wait for each request (seconds, 1 to 120)</span>",
                 "<input name=\"request_timeout_seconds\" inputmode=\"numeric\" maxlength=\"3\" value=\""
             ))
-            .text(settings.map_or(REQUEST_TIMEOUT, |s| s.request_timeout_seconds))
+            .text(settings.map_or(Destination::DEFAULT_REQUEST_TIMEOUT_SECONDS, |s| s.request_timeout_seconds))
             .markup(concat!(
                 "\"></label><p class=\"muted\">The defaults suit most labs: 30 and 10 seconds.</p>",
                 "</details></section><section><h2>Keys</h2><p>Keys are stored locked, so only ",
@@ -589,10 +585,14 @@ fn settings(
 ) -> Result<Destination, SetupError> {
     let [api_key_name, signing_key_name] = keys;
     Ok(Destination {
-        freshness_seconds: seconds(&posted.freshness_seconds, FRESHNESS, "the order list time")?,
+        freshness_seconds: seconds(
+            &posted.freshness_seconds,
+            Destination::DEFAULT_FRESHNESS_SECONDS,
+            "the order list time",
+        )?,
         request_timeout_seconds: seconds(
             &posted.request_timeout_seconds,
-            REQUEST_TIMEOUT,
+            Destination::DEFAULT_REQUEST_TIMEOUT_SECONDS,
             "the request wait",
         )?,
         name,

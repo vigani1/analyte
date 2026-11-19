@@ -1,4 +1,5 @@
 //! Reads the app's address and credentials from the environment or a settings file, never from arguments.
+use analyte_config::Destination;
 use analyte_contract::SigningSecret;
 use std::{collections::BTreeMap, path::Path, time::Duration};
 
@@ -13,9 +14,6 @@ pub const TIMEOUT_NAME: &str = "ANALYTE_REQUEST_TIMEOUT_SECONDS";
 
 const NAMES: [&str; 4] = [URL_NAME, KEY_NAME, SECRET_NAME, TIMEOUT_NAME];
 const FILE_LIMIT: u64 = 65_536;
-// Same default and range as a destination's `request_timeout_seconds` in Analyte.
-const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
-const TIMEOUT_RANGE: std::ops::RangeInclusive<u64> = 1..=120;
 
 /// Invalid or missing settings; messages name the setting, never its value.
 #[derive(Debug, thiserror::Error)]
@@ -97,11 +95,11 @@ impl Settings {
         }
         let parsed = SigningSecret::parse(&secret).map_err(|_| Error::Secret)?;
         let timeout = match lookup(TIMEOUT_NAME) {
-            None => DEFAULT_TIMEOUT,
+            None => Duration::from_secs(Destination::DEFAULT_REQUEST_TIMEOUT_SECONDS),
             Some(seconds) => seconds
                 .parse::<u64>()
                 .ok()
-                .filter(|seconds| TIMEOUT_RANGE.contains(seconds))
+                .filter(|seconds| Destination::REQUEST_TIMEOUT_SECONDS.contains(seconds))
                 .map(Duration::from_secs)
                 .ok_or(Error::Timeout)?,
         };
