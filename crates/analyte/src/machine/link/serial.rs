@@ -594,7 +594,7 @@ flow_control = \"none\"
         let mut store = crate::runtime::service::open_store_with_deadline(
             program,
             Box::new(Space),
-            crate::deadline()?,
+            crate::test_startup_deadline()?,
         )
         .await?;
         let machine = program.machines().first().ok_or("missing machine")?;
@@ -780,7 +780,7 @@ flow_control = \"none\"
         let mut store = crate::runtime::service::open_store_with_deadline(
             &program,
             Box::new(Space),
-            crate::deadline()?,
+            crate::test_startup_deadline()?,
         )
         .await?;
         let machine = program.machines().first().ok_or("missing machine")?;
@@ -861,7 +861,7 @@ flow_control = \"none\"
         let mut store = crate::runtime::service::open_store_with_deadline(
             &program,
             Box::new(Space),
-            crate::deadline()?,
+            crate::test_startup_deadline()?,
         )
         .await?;
         let machine = program.machines().first().ok_or("missing machine")?;
