@@ -135,6 +135,18 @@ fn today_in(now: Timestamp, zone: &TimeZone) -> String {
         .to_string()
 }
 
+/// Today, as [`clock`] reads it: the PC's local day that `now` falls in, as
+/// Unix seconds `from..until`. None when the day cannot be worked out.
+pub(in crate::admin) fn today_span(now: Timestamp) -> Option<(i64, i64)> {
+    day_in(now, &TimeZone::system())
+}
+
+fn day_in(now: Timestamp, zone: &TimeZone) -> Option<(i64, i64)> {
+    let start = now.to_zoned(zone.clone()).start_of_day().ok()?;
+    let end = start.tomorrow().ok()?.start_of_day().ok()?;
+    Some((start.timestamp().as_second(), end.timestamp().as_second()))
+}
+
 /// The exact value kept on hover for every shown time: UTC and Unix seconds.
 fn exact_time(at: Timestamp) -> String {
     format!("{at} (Unix {})", at.as_second())
@@ -2155,5 +2167,30 @@ mod tests {
             settled_action("autolyser_poll_custody_complete"),
             "Resolved"
         );
+    }
+
+    // Owner review 2026-11-20 (PR 275): "today" is the PC's local day, the day
+    // `clock` shows as a bare time; the span runs from its midnight to the next.
+    #[test]
+    fn today_runs_from_local_midnight_to_the_next() -> Result<(), Box<dyn std::error::Error>> {
+        // A fixed UTC+1 zone: 2026-11-20 09:20 local is 08:20 UTC.
+        let zone = TimeZone::fixed(jiff::tz::offset(1));
+        let now: Timestamp = "2026-11-20T08:20:00Z".parse()?;
+        let (from, until) = day_in(now, &zone).ok_or("no day")?;
+        assert_eq!(
+            Timestamp::from_second(from)?,
+            "2026-11-19T23:00:00Z".parse()?
+        );
+        assert_eq!(
+            Timestamp::from_second(until)?,
+            "2026-11-20T23:00:00Z".parse()?
+        );
+        assert_eq!(clock_in(Timestamp::from_second(from)?, now, &zone), "00:00");
+        assert_eq!(
+            clock_in(Timestamp::from_second(from.saturating_sub(1))?, now, &zone),
+            "19 Nov 23:59",
+            "the second before is yesterday"
+        );
+        Ok(())
     }
 }

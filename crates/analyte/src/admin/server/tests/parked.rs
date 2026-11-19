@@ -417,6 +417,165 @@ async fn known_reasons_read_plainly_and_keep_the_stored_text_for_support() -> Re
     stop(state, stopper, owner, store).await
 }
 
+/// One open item; one resolved yesterday; eleven resolved today a minute
+/// apart, from midnight (`from`); and the newest, settled by Process again an
+/// hour after midnight. Returns the open item, yesterday's, today's in order
+/// and the reprocessed one.
+fn resolved_today(
+    s: &mut analyte_store::Store,
+    from: i64,
+) -> Result<(i64, i64, Vec<i64>, i64), FixtureError> {
+    let receipt = uuid::Uuid::from(receive(s, "chemistry", from)?).to_string();
+    let open = park(
+        s,
+        "mapping_finding",
+        "Position { record: 6, field: 3 }: UnknownTest",
+        std::slice::from_ref(&receipt),
+    )?;
+    let yesterday = park(s, "poll_intent", "no answer", &["cobas".into()])?;
+    s.resolve(
+        yesterday,
+        &audit(
+            "parked-resolve",
+            &[yesterday.to_string()],
+            from.saturating_sub(1),
+            "late shift",
+        )?,
+    )?;
+    let mut today = Vec::new();
+    for minute in 0..11_i64 {
+        let id = park(
+            s,
+            "mapping_finding",
+            "Position { record: 2, field: 0 }: MissingSample",
+            std::slice::from_ref(&receipt),
+        )?;
+        s.resolve(
+            id,
+            &audit(
+                "parked-resolve",
+                &[id.to_string()],
+                from.saturating_add(minute.saturating_mul(60)),
+                "checked",
+            )?,
+        )?;
+        today.push(id);
+    }
+    // The newest one was settled by Process again.
+    let reprocessed = park(
+        s,
+        "mapping_finding",
+        "Position { record: 6, field: 3 }: UnknownTest",
+        std::slice::from_ref(&receipt),
+    )?;
+    s.resolve(
+        reprocessed,
+        &audit(
+            "receipt-reprocess",
+            &[
+                receipt.clone(),
+                format!("interpretation:{receipt}:2"),
+                "reprocess:succeeded".into(),
+                format!("parked:{reprocessed}"),
+            ],
+            from.saturating_add(3_600),
+            "test added to the mapping",
+        )?,
+    )?;
+    Ok((open, yesterday, today, reprocessed))
+}
+
+// Owner review 2026-11-20 (PR 275, Review mockup): the first page of open
+// items lists the items resolved today under them, newest first and at most
+// ten, each with its title, machine, how and when it was settled, who did it
+// as recorded and the reason, and a History link; yesterday's are left out.
+// The Resolved filter, a later page and an empty Open filter stay as they were.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_open_list_shows_items_resolved_today_newest_first() -> Result<(), Error> {
+    let directory = crate::admin::private_tempdir()?;
+    let (store, (state, stopper, owner, host), auth, _) = started(directory.path()).await?;
+    let (from, _) = crate::admin::view::format::today_span(jiff::Timestamp::now())
+        .ok_or(FixtureError::Corruption)?;
+    let ids = store
+        .request::<_, FixtureError>(fixture_deadline()?, move |s| resolved_today(s, from))
+        .await?;
+    let (open, yesterday, today, reprocessed) = ids;
+    let list = request(&host, "/parked", &auth, None).await?;
+    assert_eq!(list.matches("<article class=\"card\"").count(), 1, "{list}");
+    let section = list
+        .find("<section class=\"section\" aria-labelledby=\"rv-done\">")
+        .ok_or(FixtureError::Corruption)?;
+    let rows = list.get(section..).unwrap_or_default();
+    assert!(rows.contains("<h2 id=\"rv-done\" class=\"label\">Resolved today</h2>"));
+    assert_eq!(
+        rows.matches("<li class=\"row\">").count(),
+        10,
+        "at most ten"
+    );
+    let order: Vec<usize> = [reprocessed, today[10], today[1]]
+        .iter()
+        .map(|id| {
+            rows.find(&format!("href=\"/parked/{id}\">History</a>"))
+                .unwrap_or(usize::MAX)
+        })
+        .collect();
+    assert!(
+        order[0] < order[1] && order[1] < order[2],
+        "newest first: {order:?}"
+    );
+    for left_out in [today[0], yesterday, open] {
+        assert!(!rows.contains(&format!("href=\"/parked/{left_out}\">History</a>")));
+    }
+    for text in [
+        format!(
+            "<b class=\"row__title\">Test not in this machine’s test mapping</b> <span class=\"muted\">· Item <span class=\"mono\">{reprocessed}</span> · chemistry</span>"
+        ),
+        "Processed again by admin session at <time".to_owned(),
+        ": “test added to the mapping”</span>".to_owned(),
+        format!(
+            "<b class=\"row__title\">Sample ID missing</b> <span class=\"muted\">· Item <span class=\"mono\">{}</span> · chemistry</span>",
+            today[10]
+        ),
+        "Marked resolved by admin session at <time".to_owned(),
+        ": “checked”</span>".to_owned(),
+    ] {
+        assert!(rows.contains(&text), "{text}\n{rows}");
+    }
+    assert!(
+        !rows.contains("reading 2"),
+        "today's rows say only the action"
+    );
+    assert!(
+        !list.contains(SESSION),
+        "the session ID is for support only"
+    );
+    // The Resolved filter keeps its own rows, every one, and no heading.
+    let resolved = request(&host, "/parked?show=resolved", &auth, None).await?;
+    assert!(!resolved.contains("Resolved today"));
+    assert_eq!(resolved.matches("<li class=\"row\">").count(), 13);
+    assert!(resolved.contains("Processed again: reading 2 recorded by admin session at <time"));
+    // A later page of open items, and an empty Open filter, list none.
+    let later = request(&host, &format!("/parked?after={open}"), &auth, None).await?;
+    assert!(!later.contains("Resolved today"));
+    store
+        .request::<_, FixtureError>(fixture_deadline()?, move |s| {
+            Ok(s.resolve(
+                open,
+                &audit(
+                    "parked-resolve",
+                    &[open.to_string()],
+                    from.saturating_add(60),
+                    "done",
+                )?,
+            )?)
+        })
+        .await?;
+    let cleared = request(&host, "/parked", &auth, None).await?;
+    assert!(cleared.contains("Nothing needs review."));
+    assert!(!cleared.contains("Resolved today"));
+    stop(state, stopper, owner, store).await
+}
+
 // Owner request 2026-11-19 (admin restyle b1): an open item says what to do and
 // that its history fills in later; an item linked to more than one page of
 // records lists them a page at a time with Next page; a category this version

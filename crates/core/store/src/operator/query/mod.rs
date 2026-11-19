@@ -350,6 +350,35 @@ impl Store {
             .collect::<Result<_, _>>()?)
     }
 
+    /// The parked items resolved at a time in `from..until` (Unix seconds, as
+    /// their resolution records it), newest first, at most `limit` and at most
+    /// one page. A resolution that is not a readable audit entry has no time and
+    /// is left out. Reading changes nothing.
+    /// # Errors
+    /// Reports database failures.
+    pub fn parked_resolved_between(
+        &self,
+        from: i64,
+        until: i64,
+        limit: usize,
+    ) -> Result<Vec<ParkedItem>, Error> {
+        let limit = i64::try_from(limit.min(self.limits.page_rows))
+            .map_err(|_| Error::InvalidOperatorInput)?;
+        // json_extract refuses malformed JSON, so only valid resolutions are read.
+        let mut stmt = self.db.prepare(
+            "SELECT id,evidence,resolution FROM (SELECT id,evidence,resolution,CASE WHEN json_valid(resolution) THEN json_extract(resolution,'$.time') END AS at FROM parked WHERE resolution IS NOT NULL) WHERE at>=?1 AND at<?2 ORDER BY at DESC,id DESC LIMIT ?3",
+        )?;
+        Ok(stmt
+            .query_map(params![from, until, limit], |r| {
+                Ok(ParkedItem {
+                    id: r.get(0)?,
+                    evidence: r.get(1)?,
+                    resolution: r.get(2)?,
+                })
+            })?
+            .collect::<Result<_, _>>()?)
+    }
+
     /// The newest audit entries recording `action` on `target`, oldest first: at
     /// most one page, and whether older entries exist beyond it.
     /// # Errors

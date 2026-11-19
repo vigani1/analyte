@@ -679,6 +679,69 @@ fn parked_items_are_counted_and_paged_as_open_or_resolved() -> TestResult {
     Ok(())
 }
 
+// Owner review 2026-11-20 (PR 275): Needs review lists the items resolved
+// today under the open ones: only those resolved inside the day asked for,
+// newest first and bounded; open items and resolutions that cannot be read
+// are left out, and reading changes nothing.
+#[test]
+fn resolved_items_of_one_day_come_newest_first_and_bounded() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("store.db"))?;
+    let mut ids = Vec::new();
+    for reason in ["a", "b", "c", "d", "e", "f"] {
+        ids.push(store.park(&Parked {
+            kind: Identifier::new("synthetic")?,
+            reason: Reason::new(reason)?,
+            targets: vec![],
+        })?);
+    }
+    // Resolved at 99 (the day before), 100, 150, 150, 199, and 200 (the next day).
+    for (id, time) in ids.iter().zip([99, 150, 100, 150, 199, 200]) {
+        store.resolve(
+            *id,
+            &Audit {
+                actor: Identifier::new("operator")?,
+                action: Identifier::new("parked-resolve")?,
+                targets: vec![Identifier::new(&id.to_string())?],
+                time,
+                reason: Reason::new("settled")?,
+            },
+        )?;
+    }
+    let open = store.park(&Parked {
+        kind: Identifier::new("synthetic")?,
+        reason: Reason::new("open")?,
+        targets: vec![],
+    })?;
+    let unreadable = store.park(&Parked {
+        kind: Identifier::new("synthetic")?,
+        reason: Reason::new("unreadable")?,
+        targets: vec![],
+    })?;
+    store.db.execute(
+        "UPDATE parked SET resolution='resolved by hand' WHERE id=?1",
+        [unreadable],
+    )?;
+    let counts = store.parked_counts()?;
+    let day = |store: &Store, limit| -> Result<Vec<i64>, Box<dyn std::error::Error>> {
+        Ok(store
+            .parked_resolved_between(100, 200, limit)?
+            .iter()
+            .map(|item| item.id)
+            .collect())
+    };
+    // Newest first; the same time comes in the newer item's order first.
+    let all = day(&store, 10)?;
+    assert_eq!(all, [ids[4], ids[3], ids[1], ids[2]]);
+    assert!(!all.contains(&open) && !all.contains(&unreadable));
+    assert_eq!(day(&store, 2)?, [ids[4], ids[3]]);
+    store.limits.page_rows = 1;
+    assert_eq!(day(&store, 10)?, [ids[4]]);
+    assert!(store.parked_resolved_between(300, 400, 10)?.is_empty());
+    assert_eq!(store.parked_counts()?, counts);
+    Ok(())
+}
+
 // Owner request 2026-11-19 (admin restyle b1): an item's history reads the
 // audit entries that name it with one action, oldest first; other actions,
 // other items and entries that only mention the name in a reason are left out,

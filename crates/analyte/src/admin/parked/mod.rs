@@ -147,7 +147,12 @@ struct ListRead {
     counts: ParkedCounts,
     items: Vec<Listed>,
     more: bool,
+    /// The items resolved today, newest first, under the first page of open items.
+    today: Vec<Listed>,
 }
+
+/// How many items resolved today the Open filter lists under the open ones.
+const TODAY_ROWS: usize = 10;
 
 pub(super) async fn list(
     State(state): State<Arc<Context>>,
@@ -157,7 +162,7 @@ pub(super) async fn list(
     let session = session.as_ref().map(|Extension(session)| session.as_ref());
     let show = query.show;
     let now = Timestamp::now();
-    match tokio::time::timeout(view::READ_BUDGET, read_list(&state, query)).await {
+    match tokio::time::timeout(view::READ_BUDGET, read_list(&state, query, now)).await {
         Ok(Ok(read)) => {
             let html = list_page(&state, session, show, read, now).render();
             respond(&state, session, None, StatusCode::OK, html)
@@ -167,9 +172,13 @@ pub(super) async fn list(
     }
 }
 
-async fn read_list(state: &Context, query: ListQuery) -> Result<ListRead, Error> {
+async fn read_list(state: &Context, query: ListQuery, now: Timestamp) -> Result<ListRead, Error> {
     let after = i64::try_from(query.after)?;
     let filter = query.show.filter();
+    // Only the first page of open items lists those resolved today.
+    let today = (query.show == Show::Open && after == 0)
+        .then(|| format::today_span(now))
+        .flatten();
     Ok(state
         .store
         .request::<_, CommandError>(deadline()?, move |s| {
@@ -193,10 +202,15 @@ async fn read_list(state: &Context, query: ListQuery) -> Result<ListRead, Error>
                     .collect::<Result<Vec<_>, CommandError>>()
             };
             let items = listed(rows)?;
+            let today = match today {
+                Some((from, until)) => listed(s.parked_resolved_between(from, until, TODAY_ROWS)?)?,
+                None => Vec::new(),
+            };
             Ok(ListRead {
                 counts,
                 items,
                 more,
+                today,
             })
         })
         .await?)
@@ -213,6 +227,7 @@ fn list_page(
         counts,
         items,
         more,
+        today,
     } = read;
     let next = items.last().filter(|_| more).map(|last| match show {
         Show::Open => format!("/parked?after={}", last.id),
@@ -250,7 +265,22 @@ fn list_page(
             heading: None,
             rows,
         }),
-        Show::Open => None,
+        // Under open items only: an empty Open filter says so on its own.
+        Show::Open => (!cards.is_empty() && !today.is_empty()).then(|| Resolved {
+            heading: Some("Resolved today"),
+            rows: today
+                .into_iter()
+                .map(|item| {
+                    let title = Category::of(&item.parked).shown;
+                    row(
+                        item,
+                        title,
+                        &|audit| format::settled_action(audit.action.as_str()).into(),
+                        now,
+                    )
+                })
+                .collect(),
+        }),
     };
     List {
         frame: Frame::new(
