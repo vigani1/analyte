@@ -835,6 +835,21 @@ async fn audit(
         .map_err(|e| failed(&e))
 }
 
+/// Ends a page that wrote files: the audit failure, if the record of who made
+/// the change could not be written (shown, never hidden), then Restart now.
+fn after_write(mut html: Markup, audited: Result<(), SetupError>, session: &Session) -> Response {
+    if let Err(error) = audited {
+        html.push_fragment(
+            &Markup::new()
+                .markup("<p class=\"notice bad\">")
+                .text(error)
+                .markup("</p>"),
+        );
+    }
+    html.push_fragment(&restart_form(session));
+    done(html)
+}
+
 fn restart_form(session: &Session) -> Markup {
     Markup::new()
         .markup(concat!(

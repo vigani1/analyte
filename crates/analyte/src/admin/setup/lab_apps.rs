@@ -7,7 +7,7 @@
 //! write, reload, rollback) and applies after a restart. Keys go only to the
 //! locked credentials file and are shown only as `set on <date>`.
 use super::{
-    SetupError, audit, done, entries, key_line, needs_login, page, refused, restart_form, site,
+    SetupError, after_write, audit, done, entries, key_line, needs_login, page, refused, site,
 };
 use crate::admin::{
     markup::Markup,
@@ -731,16 +731,7 @@ fn saved_page(session: &Session, saved: &Saved, audited: Result<(), SetupError>)
         );
     }
     html.push_markup("</ul><p><a href=\"/setup/lab-apps\">Back to lab apps</a></p></section>");
-    if let Err(error) = audited {
-        html.push_fragment(
-            &Markup::new()
-                .markup("<p class=\"notice bad\">")
-                .text(error)
-                .markup("</p>"),
-        );
-    }
-    html.push_fragment(&restart_form(session));
-    done(html)
+    after_write(html, audited, session)
 }
 
 fn reason(action: &str, saved: &Saved) -> String {
@@ -994,16 +985,7 @@ pub(in crate::admin) async fn remove(
         );
     }
     html.push_markup("</ul></section>");
-    if let Err(error) = audited {
-        html.push_fragment(
-            &Markup::new()
-                .markup("<p class=\"notice bad\">")
-                .text(error)
-                .markup("</p>"),
-        );
-    }
-    html.push_fragment(&restart_form(&session));
-    done(html)
+    after_write(html, audited, &session)
 }
 
 /// The machine form's lab app step: a picker of the known lab apps, with

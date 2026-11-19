@@ -9,9 +9,9 @@
 //! URL. Hidden fields beat a server-side draft here: there is nothing to store,
 //! bound, expire or lose at a restart, and Back works in every tab.
 use super::{
-    Choice, Csrf, SetupError, audit, chosen, current_lab_app, definition_name, definitions, done,
-    kind_of, level_and_state, listen, listen_target, needs_login, page, plan, refused,
-    restart_form, running, save_blocking, serial, settings_version, site,
+    Choice, Csrf, SetupError, after_write, audit, chosen, current_lab_app, definition_name,
+    definitions, done, kind_of, level_and_state, listen, listen_target, needs_login, page, plan,
+    refused, running, save_blocking, serial, settings_version, site,
     verdict::{self, Family},
 };
 use crate::admin::{
@@ -250,6 +250,21 @@ fn step_page(id: &str, step: Step) -> Markup {
     page(&format!("Set up {id}")).fragment(&indicator(Some(step)))
 }
 
+/// Runs `work` on machine `id`'s draft off the async workers: it reads files,
+/// the port list and the credentials file, which block.
+async fn blocking<T: Send + 'static>(
+    state: &Arc<Context>,
+    id: &str,
+    draft: &Draft,
+    work: impl FnOnce(&Context, &str, &Draft) -> Result<T, SetupError> + Send + 'static,
+) -> Result<T, SetupError> {
+    let (worker, machine, kept) = (state.clone(), id.to_owned(), draft.clone());
+    tokio::task::spawn_blocking(move || work(&worker, &machine, &kept))
+        .await
+        .map_err(SetupError::from)
+        .and_then(|r| r)
+}
+
 type Render = fn(&Context, &Session, &str, &Draft) -> Result<Markup, SetupError>;
 
 /// Serves one step: signed in only; files are read off the async workers; a
@@ -269,12 +284,10 @@ async fn serve(
             "the form was incomplete; start again from the setup page",
         ));
     };
-    let worker = state.clone();
-    let (machine, kept) = (id.clone(), draft.clone());
-    let rendered = tokio::task::spawn_blocking(move || render(&worker, &session, &machine, &kept))
-        .await
-        .map_err(SetupError::from)
-        .and_then(|r| r);
+    let rendered = blocking(&state, &id, &draft, move |state, id, draft| {
+        render(state, &session, id, draft)
+    })
+    .await;
     match rendered {
         Ok(html) => done(html),
         Err(error) => refused_at(&error, &id, &draft),
@@ -699,26 +712,28 @@ fn render_review(
         .markup("<button>Save</button></form></div>"))
 }
 
+/// A posted step (the test or Save), or why its form could not be read.
+type Posted = Result<Form<Choice>, axum::extract::rejection::FormRejection>;
+
+/// The refusal of a posted step whose form is incomplete.
+fn incomplete() -> Response {
+    refused(&SetupError::Connection(
+        "the form was incomplete; start again from the setup page",
+    ))
+}
+
 /// POST /setup/{id}: check every choice again, write the files with backups, show what was saved.
 pub(in crate::admin) async fn save(
     State(state): State<Arc<Context>>,
     Extension(session): Extension<Arc<Session>>,
     Path(id): Path<String>,
-    form: Result<Form<Choice>, axum::extract::rejection::FormRejection>,
+    form: Posted,
 ) -> Response {
     let Ok(Form(choice)) = form else {
-        return refused(&SetupError::Connection(
-            "the form was incomplete; start again from the setup page",
-        ));
+        return incomplete();
     };
     let draft = Draft::from(choice);
-    let worker = state.clone();
-    let (machine, kept) = (id.clone(), draft.clone());
-    let saved = match tokio::task::spawn_blocking(move || save_blocking(&worker, &machine, &kept))
-        .await
-        .map_err(SetupError::from)
-        .and_then(|r| r)
-    {
+    let saved = match blocking(&state, &id, &draft, save_blocking).await {
         Ok(saved) => saved,
         Err(error) => return refused_at(&error, &id, &draft),
     };
@@ -782,16 +797,7 @@ pub(in crate::admin) async fn save(
         );
     }
     html.push_markup("</ul></section>");
-    if let Err(error) = audited {
-        html.push_fragment(
-            &Markup::new()
-                .markup("<p class=\"notice bad\">")
-                .text(error)
-                .markup("</p>"),
-        );
-    }
-    html.push_fragment(&restart_form(&session));
-    done(html)
+    after_write(html, audited, &session)
 }
 
 /// The one connection test and the setup choices it was started from.
@@ -806,24 +812,18 @@ pub(super) struct Test {
 pub(in crate::admin) async fn listen_start(
     State(state): State<Arc<Context>>,
     Path(id): Path<String>,
-    form: Result<Form<Choice>, axum::extract::rejection::FormRejection>,
+    form: Posted,
 ) -> Response {
     let Ok(Form(choice)) = form else {
-        return refused(&SetupError::Connection(
-            "the form was incomplete; start again from the setup page",
-        ));
+        return incomplete();
     };
     let draft = Draft::from(choice);
-    let worker = state.clone();
-    let (machine, kept) = (id.clone(), draft.clone());
-    let target = tokio::task::spawn_blocking(move || {
-        let plan = plan(&worker, &machine, &kept)?;
+    let target = blocking(&state, &id, &draft, |state, id, draft| {
+        let plan = plan(state, id, draft)?;
         let model = Family::of(plan.validated.effective().stack());
-        listen_target(&worker, &plan).map(|(label, target)| (label, target, model))
+        listen_target(state, &plan).map(|(label, target)| (label, target, model))
     })
-    .await
-    .map_err(SetupError::from)
-    .and_then(|r| r);
+    .await;
     let (label, target, model) = match target {
         Ok(found) => found,
         Err(error) => return refused_at(&error, &id, &draft),

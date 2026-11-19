@@ -6,7 +6,7 @@
 //! Its lab app stays in `lab-apps.toml` (moved there first if the site file
 //! still wrote it), so results waiting for it are still delivered. A machine just
 //! added goes straight into step 1 of the setup steps.
-use super::{SetupError, audit, done, entries, needs_login, page, refused, restart_form, site};
+use super::{SetupError, after_write, audit, done, entries, needs_login, page, refused, site};
 use crate::admin::{markup::Markup, server::Context, sessions::Session, view::plain};
 use crate::installation::config::Program;
 use analyte_model::Identifier;
@@ -189,16 +189,7 @@ pub(in crate::admin) async fn add(
         );
     }
     html.push_fragment(&backups_kept(&written.backups));
-    if let Err(error) = audited {
-        html.push_fragment(
-            &Markup::new()
-                .markup("<p class=\"notice bad\">")
-                .text(error)
-                .markup("</p>"),
-        );
-    }
-    html.push_fragment(&restart_form(&session));
-    done(html)
+    after_write(html, audited, &session)
 }
 
 /// See Other to `location`; a machine name that cannot be a header value (only
@@ -617,14 +608,5 @@ pub(in crate::admin) async fn remove(
         .text(site)
         .markup(".</p>");
     html.push_fragment(&backups_kept(&removed.backups).markup("</section>"));
-    if let Err(error) = audited {
-        html.push_fragment(
-            &Markup::new()
-                .markup("<p class=\"notice bad\">")
-                .text(error)
-                .markup("</p>"),
-        );
-    }
-    html.push_fragment(&restart_form(&session));
-    done(html)
+    after_write(html, audited, &session)
 }
