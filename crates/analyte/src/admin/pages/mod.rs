@@ -3,6 +3,7 @@ use crate::admin::Error;
 use crate::admin::markup::Markup;
 use crate::admin::{server::Context, sessions::Session};
 use crate::deadline;
+use analyte_mapping::{Finding, Problem};
 use analyte_model::{Identifier, ReceiptId};
 use analyte_store::{Parked, Store};
 use axum::{
@@ -300,19 +301,21 @@ impl Category {
     }
 
     /// What someone does about the item. It says only what the category and the
-    /// stored reason say; a mapping finding's reason names the problem, never the
-    /// test code, which stays in the protected original message.
-    fn guidance(self, reason: &str) -> &'static str {
+    /// problem read back from the stored reason say; a mapping finding names the
+    /// problem, never the test code, which stays in the protected original message.
+    const fn guidance(self, problem: Option<&Problem>) -> &'static str {
         match self {
-            Self::MappingFinding if reason.ends_with(": UnknownTest") => concat!(
+            Self::MappingFinding if matches!(problem, Some(Problem::UnknownTest)) => concat!(
                 "The machine sent a test code that this machine's test mapping does not ",
                 "list. Add it to the test mapping, then use Process again.",
             ),
-            Self::MappingFinding if reason.contains(": ValueKindMismatch") => concat!(
-                "The value does not fit what the test mapping expects for this test. ",
-                "Check that test in this machine's test mapping, then use Process again.",
-            ),
-            Self::MappingFinding if reason.ends_with(": MissingSample") => concat!(
+            Self::MappingFinding if matches!(problem, Some(Problem::ValueKindMismatch { .. })) => {
+                concat!(
+                    "The value does not fit what the test mapping expects for this test. ",
+                    "Check that test in this machine's test mapping, then use Process again.",
+                )
+            }
+            Self::MappingFinding if matches!(problem, Some(Problem::MissingSample)) => concat!(
                 "The message has no sample ID. Check how the machine sends sample IDs; once ",
                 "its settings are fixed, use Process again.",
             ),
@@ -359,6 +362,7 @@ impl Category {
 
 /// The plain "What to do" line for an item that waits for review.
 fn todo(parked: &Parked) -> Markup {
+    let finding = Finding::from_stored(parked.reason.as_str());
     Markup::new()
         .markup("<p class=\"todo\"><strong>What to do:</strong> ")
         .text(Category::of(parked.kind.as_str()).map_or(
@@ -366,7 +370,7 @@ fn todo(parked: &Parked) -> Markup {
                 "Read the reason above and open the item for its linked records. If it is ",
                 "not clear what to do, give the item number to support.",
             ),
-            |category| category.guidance(parked.reason.as_str()),
+            |category| category.guidance(finding.as_ref().map(|f| &f.problem)),
         ))
         .markup("</p>")
 }
@@ -610,5 +614,51 @@ mod tests {
         let unknown = kind_and_reason(&parked("future_kind")?);
         assert!(unknown.contains("Category</dt><dd>future_kind</dd>"));
         Ok(())
+    }
+
+    // Owner review 2026-11-19 (Needs review item 3): a mapping finding's advice
+    // follows the problem read back from its stored reason, never its wording.
+    #[test]
+    fn mapping_advice_follows_the_problem_read_back_from_the_reason() {
+        let advice = |category: Category, reason: &str| {
+            let finding = Finding::from_stored(reason);
+            category.guidance(finding.as_ref().map(|f| &f.problem))
+        };
+        let general = advice(Category::MappingFinding, "synthetic reason");
+        for (reason, starts) in [
+            (
+                "Position { record: 3, field: 3 }: UnknownTest",
+                "The machine sent a test code",
+            ),
+            (
+                "Position { record: 4, field: 5 }: ValueKindMismatch { expected: Coded }",
+                "The value does not fit",
+            ),
+            (
+                "Position { record: 2, field: 0 }: MissingSample",
+                "The message has no sample ID.",
+            ),
+            (
+                "Position { record: 2, field: 4 }: MissingIdentity { setting: \"LAW order\" }",
+                general,
+            ),
+            (
+                "departure-conflict at Position { record: 3, field: 25 }: present non-final status contradicts documented final-only scope",
+                general,
+            ),
+        ] {
+            assert!(
+                advice(Category::MappingFinding, reason).starts_with(starts),
+                "{reason}"
+            );
+        }
+        assert!(general.starts_with("Check this machine's test mapping"));
+        assert!(
+            advice(
+                Category::InterpretationFailure,
+                "Position { record: 3, field: 3 }: UnknownTest"
+            )
+            .starts_with("Check the machine's settings")
+        );
     }
 }

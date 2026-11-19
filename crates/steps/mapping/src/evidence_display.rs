@@ -1,15 +1,94 @@
-//! Writes stable mapping evidence spellings, preserving the historical protected-store format.
+//! Writes stable mapping evidence spellings, preserving the historical protected-store format, and reads them back.
 use crate::{Finding, Position, Problem};
 use analyte_model::quoted;
 use std::fmt;
+
+/// The stored position spelling is `Position { record: R, field: F }`.
+const POSITION_OPEN: &str = "Position { record: ";
+const POSITION_FIELD: &str = ", field: ";
+const POSITION_CLOSE: &str = " }";
 
 impl fmt::Display for Position {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Position {{ record: {}, field: {} }}",
+            "{POSITION_OPEN}{}{POSITION_FIELD}{}{POSITION_CLOSE}",
             self.record, self.field
         )
+    }
+}
+
+impl Position {
+    /// Reads a position spelling at the start of `text`; returns it and the rest.
+    fn read_prefix(text: &str) -> Option<(Self, &str)> {
+        let rest = text.strip_prefix(POSITION_OPEN)?;
+        let (record, rest) = number(rest)?;
+        let rest = rest.strip_prefix(POSITION_FIELD)?;
+        let (field, rest) = number(rest)?;
+        let rest = rest.strip_prefix(POSITION_CLOSE)?;
+        Some((Self { record, field }, rest))
+    }
+}
+
+/// Reads a number the way `Display` writes one: ASCII digits, no sign and no
+/// leading zero, so only an exact spelling reads back.
+fn number(text: &str) -> Option<(usize, &str)> {
+    let length = text.bytes().take_while(u8::is_ascii_digit).count();
+    let (digits, rest) = text.split_at_checked(length)?;
+    if digits.is_empty() || (digits.len() > 1 && digits.starts_with('0')) {
+        return None;
+    }
+    Some((digits.parse().ok()?, rest))
+}
+
+/// Every problem whose spelling reads back. `MissingIdentity` is left out: its
+/// setting name cannot be rebuilt from stored text.
+const READABLE: [Problem; 17] = [
+    Problem::UnqualifiedHl7Report,
+    Problem::DepartureConflict,
+    Problem::DerivedStatusContract,
+    Problem::ComponentParts,
+    Problem::MissingSample,
+    Problem::UnknownTest,
+    Problem::UnsupportedValue,
+    Problem::UnsupportedFormatting,
+    Problem::UnsupportedEscape,
+    Problem::UnknownProcessing,
+    Problem::ConflictingClassification,
+    Problem::NoObservations,
+    Problem::UnsupportedLawStatusOnly,
+    Problem::InvalidTime,
+    Problem::ValueKindMismatch {
+        expected: analyte_config::ValueKind::Numeric,
+    },
+    Problem::ValueKindMismatch {
+        expected: analyte_config::ValueKind::Coded,
+    },
+    Problem::ValueKindMismatch {
+        expected: analyte_config::ValueKind::Either,
+    },
+];
+
+impl Problem {
+    /// Reads back a spelling written by `Display`, the exact reverse of it; any
+    /// other text, and a spelling that cannot be rebuilt, gives `None`.
+    #[must_use]
+    pub fn from_stored(text: &str) -> Option<Self> {
+        READABLE
+            .iter()
+            .find(|problem| problem.to_string() == text)
+            .cloned()
+    }
+}
+
+impl Finding {
+    /// Reads back a finding written by `Display` (`{position}: {problem}`), the
+    /// exact reverse of it; any other text gives `None`.
+    #[must_use]
+    pub fn from_stored(text: &str) -> Option<Self> {
+        let (position, rest) = Position::read_prefix(text)?;
+        let problem = Problem::from_stored(rest.strip_prefix(": ")?)?;
+        Some(Self { position, problem })
     }
 }
 
@@ -89,6 +168,7 @@ mod tests {
             (Problem::InvalidTime, "InvalidTime"),
         ] {
             assert_eq!(problem.to_string(), expected);
+            assert_eq!(Problem::from_stored(expected), Some(problem));
         }
         for (kind, expected) in [
             (
@@ -104,10 +184,9 @@ mod tests {
                 "ValueKindMismatch { expected: Either }",
             ),
         ] {
-            assert_eq!(
-                Problem::ValueKindMismatch { expected: kind }.to_string(),
-                expected
-            );
+            let problem = Problem::ValueKindMismatch { expected: kind };
+            assert_eq!(problem.to_string(), expected);
+            assert_eq!(Problem::from_stored(expected), Some(problem));
         }
         assert_eq!(
             Problem::MissingIdentity {
@@ -116,5 +195,56 @@ mod tests {
             .to_string(),
             "MissingIdentity { setting: \"LAW order\" }"
         );
+        // The setting name cannot be rebuilt, so this spelling gives the general advice.
+        assert_eq!(
+            Problem::from_stored("MissingIdentity { setting: \"LAW order\" }"),
+            None
+        );
+        for problem in READABLE {
+            let finding = Finding {
+                position: Position {
+                    record: 12,
+                    field: 3,
+                },
+                problem,
+            };
+            let stored = finding.to_string();
+            assert_eq!(
+                stored,
+                format!("Position {{ record: 12, field: 3 }}: {}", finding.problem)
+            );
+            assert_eq!(Finding::from_stored(&stored), Some(finding));
+        }
+    }
+
+    // Only the exact spelling reads back; anything else is not a finding.
+    #[test]
+    fn stored_findings_read_back_only_from_their_exact_spelling() {
+        assert_eq!(
+            Finding::from_stored("Position { record: 3, field: 0 }: MissingSample"),
+            Some(Finding {
+                position: Position {
+                    record: 3,
+                    field: 0
+                },
+                problem: Problem::MissingSample,
+            })
+        );
+        for text in [
+            "",
+            "UnknownTest",
+            "Position { record: 3, field: 3 }",
+            "Position { record: 3, field: 3 }: UnknownTest ",
+            "Position { record: 3, field: 3 }:UnknownTest",
+            "Position { record: 03, field: 3 }: UnknownTest",
+            "Position { record: +3, field: 3 }: UnknownTest",
+            "Position { record: , field: 3 }: UnknownTest",
+            "Position { record: 99999999999999999999999, field: 3 }: UnknownTest",
+            "x Position { record: 3, field: 3 }: UnknownTest",
+            "Position { record: 3, field: 3 }: unknowntest",
+            "departure-conflict at Position { record: 3, field: 3 }: present non-final status",
+        ] {
+            assert_eq!(Finding::from_stored(text), None, "{text}");
+        }
     }
 }
