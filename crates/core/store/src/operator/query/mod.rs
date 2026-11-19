@@ -1,7 +1,9 @@
 //! Reads protected receipts, records and operator evidence.
-use crate::{Interpretation, OperatorError as Error, Store, key};
-use analyte_model::{Identifier, ReceiptId, ReceiptMetadata};
-use rusqlite::{OptionalExtension, params};
+use crate::delivery::outbox::outbox_owners;
+use crate::sql_types::SqlOrderState;
+use crate::{DeliveryState, Interpretation, OperatorError as Error, Store, key};
+use analyte_model::{Identifier, OrderState, ReceiptId, ReceiptMetadata};
+use rusqlite::{OptionalExtension, ToSql, params};
 #[cfg(test)]
 mod tests;
 
@@ -307,7 +309,7 @@ impl Store {
     ) -> Result<(), Error> {
         self.bound(&event.payload)?;
         self.capacity(event.payload.len())?;
-        self.db.execute("INSERT INTO outbox(id,kind,order_id,destination,ordering_key,payload,digest,contract,state,next_attempt,enqueued_at) VALUES (?1,?8,?2,?3,?2,?4,?5,?6,?9,0,?7)", params![key(&event.id)?,event.order_id.as_str(),event.destination.as_str(),event.payload,crate::digest(&event.payload).0.as_slice(),event.contract_version,now,crate::DeliveryKind::OrderEvent,crate::DeliveryState::Pending])?;
+        self.db.execute("INSERT INTO outbox(id,kind,order_id,destination,ordering_key,payload,digest,contract,state,next_attempt,enqueued_at) VALUES (?1,?8,?2,?3,?2,?4,?5,?6,?9,0,?7)", params![key(&event.id)?,event.order_id.as_str(),event.destination.as_str(),event.payload,crate::digest(&event.payload).0.as_slice(),event.contract_version,now,crate::DeliveryKind::OrderEvent,DeliveryState::Pending])?;
         Ok(())
     }
 
@@ -320,7 +322,7 @@ impl Store {
         now: i64,
         freshness: u64,
     ) -> Result<crate::Health, Error> {
-        let (count, bytes, oldest, paused): (i64,i64,Option<i64>,bool) = self.db.query_row("SELECT count(*),coalesce(sum(length(payload)),0),min(enqueued_at),coalesce(max(state=?2),0) FROM outbox WHERE destination=?1 AND state!=?3",params![destination.as_str(),crate::DeliveryState::Paused,crate::DeliveryState::Done], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?)))?;
+        let (count, bytes, oldest, paused): (i64,i64,Option<i64>,bool) = self.db.query_row("SELECT count(*),coalesce(sum(length(payload)),0),min(enqueued_at),coalesce(max(state=?2),0) FROM outbox WHERE destination=?1 AND state!=?3",params![destination.as_str(),DeliveryState::Paused,DeliveryState::Done], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?)))?;
         let feed: Option<(i64, bool, bool)> = self
             .db
             .query_row(
@@ -431,27 +433,39 @@ impl Store {
     /// # Errors
     /// Reports database failures or corrupt counts.
     pub fn unfinished(&self, machine: &Identifier) -> Result<Unfinished, Error> {
-        let count = |sql: &str| -> Result<u64, Error> {
-            let value: i64 = self.db.query_row(sql, [machine.as_str()], |r| r.get(0))?;
+        let count = |sql: &str, values: &[&dyn ToSql]| -> Result<u64, Error> {
+            let value: i64 = self.db.query_row(sql, values, |r| r.get(0))?;
             u64::try_from(value).map_err(|_| Error::Corruption)
         };
+        let machine = machine.as_str();
         Ok(Unfinished {
-            undelivered: count(concat!(
-                "SELECT count(*) FROM outbox o WHERE o.state!='done' AND (",
-                "(o.kind='result' AND EXISTS(SELECT 1 FROM receipts r WHERE r.id=o.receipt ",
-                "AND json_extract(r.metadata,'$.machine')=?1)) OR (o.kind='order_event' ",
-                "AND EXISTS(SELECT 1 FROM machine_orders m WHERE m.order_id=o.order_id ",
-                "AND m.destination=o.destination AND m.machine=?1)))"
-            ))?,
-            open_orders: count(concat!(
-                "SELECT count(*) FROM machine_orders WHERE machine=?1 AND state IN ",
-                "('Sending','Sent','Accepted','CancelRequested','Uncertain')"
-            ))?,
-            unread: count(concat!(
-                "SELECT count(*) FROM receipts r WHERE json_extract(r.metadata,'$.machine')=?1 ",
-                "AND NOT EXISTS(SELECT 1 FROM interpretations i WHERE i.receipt=r.id)"
-            ))?,
-            flagged: count(PARKED_FOR_MACHINE)?,
+            undelivered: count(
+                concat!(
+                    "SELECT count(DISTINCT item) FROM (",
+                    outbox_owners!("o.state!=?2"),
+                    ") WHERE machine=?1"
+                ),
+                params![machine, DeliveryState::Done],
+            )?,
+            open_orders: count(
+                "SELECT count(*) FROM machine_orders WHERE machine=?1 AND state IN (?2,?3,?4,?5,?6)",
+                params![
+                    machine,
+                    SqlOrderState(OrderState::Sending),
+                    SqlOrderState(OrderState::Sent),
+                    SqlOrderState(OrderState::Accepted),
+                    SqlOrderState(OrderState::CancelRequested),
+                    SqlOrderState(OrderState::Uncertain)
+                ],
+            )?,
+            unread: count(
+                concat!(
+                    "SELECT count(*) FROM receipts r WHERE json_extract(r.metadata,'$.machine')=?1 ",
+                    "AND NOT EXISTS(SELECT 1 FROM interpretations i WHERE i.receipt=r.id)"
+                ),
+                params![machine],
+            )?,
+            flagged: count(PARKED_FOR_MACHINE, params![machine])?,
         })
     }
 

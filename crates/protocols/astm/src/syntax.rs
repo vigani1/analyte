@@ -330,7 +330,7 @@ impl Message {
 }
 
 fn legal(byte: u8) -> bool {
-    matches!(byte, 7 | 9 | 11 | 12 | 32..=126 | 128..=254)
+    text_control(byte) || matches!(byte, 32..=126 | 128..=254)
 }
 
 /// The controls §5.1 allows in a record but not in text data: BEL, HT, VT and FF.
@@ -810,4 +810,17 @@ fn parse_fields(
         });
     }
     Ok(fields)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    // CLSI LIS02-A2 §5.1
+    #[test]
+    fn record_legal_bytes_are_text_controls_and_printables() {
+        for byte in 0..=u8::MAX {
+            let before = matches!(byte, 7 | 9 | 11 | 12 | 32..=126 | 128..=254);
+            assert_eq!(legal(byte), before, "byte {byte}");
+        }
+    }
 }
