@@ -56,3 +56,40 @@ fn interpretation_roundtrip_keeps_provenance_and_failure_reason() -> TestResult 
     );
     Ok(())
 }
+
+// Safety rule 2 (ADR 0003): parked items are kept as stored, so each kind keeps
+// its exact spelling, and every spelling reads back to the same kind.
+#[test]
+fn parked_kinds_keep_their_stored_spelling() {
+    let expected = [
+        (ParkedKind::MappingFinding, "mapping_finding"),
+        (ParkedKind::InterpretationFailure, "interpretation_failure"),
+        (ParkedKind::ResultReconciliation, "result_reconciliation"),
+        (ParkedKind::IncompleteTransfer, "incomplete_transfer"),
+        (ParkedKind::DeliveryRejected, "parked"),
+        (ParkedKind::DeliveryConflict, "conflict"),
+        (ParkedKind::OrderVersionRefused, "order_version_refused"),
+        (ParkedKind::CancelConflict, "law_cancel_refusal_conflict"),
+        (ParkedKind::PollIntent, "poll_intent"),
+    ];
+    assert_eq!(ParkedKind::ALL.len(), expected.len());
+    for ((kind, spelling), listed) in expected.into_iter().zip(ParkedKind::ALL) {
+        // A new kind fails to compile here until it is listed above and in `ALL`.
+        match kind {
+            ParkedKind::MappingFinding
+            | ParkedKind::InterpretationFailure
+            | ParkedKind::ResultReconciliation
+            | ParkedKind::IncompleteTransfer
+            | ParkedKind::DeliveryRejected
+            | ParkedKind::DeliveryConflict
+            | ParkedKind::OrderVersionRefused
+            | ParkedKind::CancelConflict
+            | ParkedKind::PollIntent => {}
+        }
+        assert_eq!(kind, listed);
+        assert_eq!(kind.as_str(), spelling);
+        assert_eq!(ParkedKind::from_stored(spelling), Some(kind));
+    }
+    assert_eq!(ParkedKind::from_stored("future_kind"), None);
+    assert_eq!(ParkedKind::from_stored("Parked"), None);
+}

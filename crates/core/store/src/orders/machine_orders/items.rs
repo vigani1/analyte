@@ -50,7 +50,7 @@ impl Store {
                 if matches!(outcome.decision, ItemDecision::CancelRefused)
                     && item.analyzer_cancelled()
                 {
-                    tx.execute("INSERT INTO parked(evidence) VALUES (?1)", [crate::parked::evidence("law_cancel_refusal_conflict", &id.to_string(), "LAB-28 UC conflicts with retained analyzer CA; reconcile both facts without another machine command", None)?])?;
+                    tx.execute("INSERT INTO parked(evidence) VALUES (?1)", [crate::parked::evidence(crate::ParkedKind::CancelConflict.as_str(), &id.to_string(), "LAB-28 UC conflicts with retained analyzer CA; reconcile both facts without another machine command", None)?])?;
                 }
                 item.state = next;
                 item.source_code = outcome.code.clone();

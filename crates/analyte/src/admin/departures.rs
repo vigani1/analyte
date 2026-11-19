@@ -2,7 +2,7 @@
 use super::{
     pages::finish,
     server::Context,
-    view::{self, Tab},
+    view::{self, Tab, plain},
 };
 use crate::admin::Error;
 use crate::admin::markup::Markup;
@@ -168,7 +168,7 @@ fn outcome(outcome: &analyte_store::Reading) -> Markup {
         html.push_fragment(
             &Markup::new()
                 .markup("<p class=\"notice\" title=\"Parked interpretation\">Could not be read: ")
-                .text(reason.as_str())
+                .fragment(&plain::reason(reason.as_str()))
                 .markup("</p>"),
         );
     }
@@ -226,7 +226,7 @@ fn render(html: &mut Markup, evidence: &DepartureEvidence) {
                     "<p class=\"notice bad\" title=\"Applied ledger incomplete\"><strong>Not ",
                     "sent to the lab app: the record of exceptions used is incomplete. ",
                 ))
-                .text(reason.as_str())
+                .fragment(&plain::reason(reason.as_str()))
                 .markup("</strong></p>"),
         );
     }
