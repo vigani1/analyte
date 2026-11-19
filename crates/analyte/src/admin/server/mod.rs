@@ -265,9 +265,9 @@ fn router(state: Arc<Context>) -> Router {
             "/receipts/{id}/departures",
             get(super::pages::departures::receipt),
         )
-        .route("/parked", get(super::pages::parked))
-        .route("/parked/{id}", get(super::pages::detail))
-        .route("/parked/{id}/raw", post(super::pages::raw))
+        .route("/parked", get(super::parked::list))
+        .route("/parked/{id}", get(super::parked::item))
+        .route("/parked/{id}/raw", post(super::parked::raw))
         .route("/orders", get(super::pages::orders))
         .route("/analyzer-cancelled", get(super::pages::awos::cancelled))
         .route("/awos/{order}/{item}", get(super::pages::awos::detail))

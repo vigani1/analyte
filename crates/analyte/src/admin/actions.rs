@@ -198,7 +198,7 @@ pub(super) async fn confirm_resolve(
             "This item is already resolved. Open it from Needs review to see who resolved it and why.",
             "parked item already resolved",
         ),
-        None => super::pages::item_not_found(),
+        None => super::parked::item_not_found(),
     })
     .await
 }

@@ -1,5 +1,6 @@
 //! Discloses bounded raw evidence only after authenticated, durable audit.
-use super::{cursor_value, finish, receipt_id};
+use super::receipt_id;
+use crate::admin::pages::{cursor_value, finish};
 use crate::admin::view::{self, Tab};
 use crate::{
     admin::{Error, markup::Markup, server::Context, sessions::Session},

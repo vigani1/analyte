@@ -3,6 +3,7 @@ mod actions;
 mod listener;
 mod overview;
 mod pages;
+mod parked;
 mod removed;
 mod server;
 mod sessions;

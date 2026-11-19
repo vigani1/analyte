@@ -63,7 +63,7 @@ pub enum Error {
     Reconciliation(#[from] analyte_store::ReconciliationError),
     /// Audited raw-view input or evidence failed.
     #[error(transparent)]
-    Raw(#[from] super::pages::RawError),
+    Raw(#[from] super::parked::RawError),
     /// Receipt interpretation failed.
     #[error(transparent)]
     Intake(#[from] crate::IntakeError),
