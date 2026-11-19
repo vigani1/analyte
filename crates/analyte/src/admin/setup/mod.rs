@@ -15,8 +15,9 @@ mod verdict;
 mod wizard;
 
 pub(super) use lab_apps::{
-    add as add_lab_app, add_form as add_lab_app_form, confirm_remove as confirm_remove_lab_app,
-    edit_form as edit_lab_app, list as lab_apps, remove as remove_lab_app, save as save_lab_app,
+    PAGE as LAB_APPS, add as add_lab_app, add_form as add_lab_app_form,
+    confirm_remove as confirm_remove_lab_app, edit_form as edit_lab_app, list as lab_apps,
+    remove as remove_lab_app, save as save_lab_app,
 };
 pub(crate) use listen::{Limits, Open};
 pub(super) use machines::{add, add_form, confirm_remove, remove};

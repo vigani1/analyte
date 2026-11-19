@@ -13,7 +13,7 @@ async fn reprocess_and_resend_need_confirmation_csrf_and_audit() -> Result<(), E
     let cookie = login(&host, &bearer).await?;
     let auth = format!("Cookie: {cookie}\r\n");
     let post_auth = format!("{auth}Content-Type: application/x-www-form-urlencoded\r\n");
-    let path = format!("/parked/{parked}/reprocess");
+    let path = list_opens_reprocess(&host, &auth, parked).await?;
     let confirm = request(&host, &path, &auth, None).await?;
     assert!(confirm.starts_with("HTTP/1.1 200"));
     assert!(confirm.contains("<h1>Process this message again?</h1>"));
@@ -105,6 +105,20 @@ async fn reprocess_and_resend_need_confirmation_csrf_and_audit() -> Result<(), E
     let mut store = Arc::try_unwrap(store).map_err(|_| "admin retains store")?;
     store.shutdown(fixture_deadline()?).await?;
     Ok(())
+}
+
+/// Owner request 2026-11-19 (Needs review item 3): the list's button opens the
+/// same confirmation page, so the reason, CSRF and audit checks on it cover the
+/// list. Returns that page's path.
+async fn list_opens_reprocess(host: &str, auth: &str, parked: i64) -> Result<String, Error> {
+    let path = format!("/parked/{parked}/reprocess");
+    let list = request(host, "/parked", auth, None).await?;
+    assert!(
+        list.contains(&format!("href=\"{path}\">Process again</a>")),
+        "{list}"
+    );
+    assert!(list.contains("<strong>What to do:</strong>"), "{list}");
+    Ok(path)
 }
 
 async fn seed_parked_receipt(

@@ -23,21 +23,20 @@ pub(in crate::admin) async fn orders(
 
 async fn orders_page(state: &Context, cursor: Cursor) -> Result<Markup, Error> {
     let after = i64::try_from(cursor.after)?;
-    let (rows, last) = state
+    let (rows, last, more) = state
         .store
         .request::<_, crate::admin::error::CommandError>(deadline()?, move |s| {
             let mut html = Markup::new();
             let mut last = None;
             let now = jiff::Timestamp::now();
-            for order in s
-                .machine_orders(&MachineOrderFilter {
-                    after,
-                    machine: None,
-                    state: None,
-                })?
-                .into_iter()
-                .take(PAGE)
-            {
+            let all = |after| MachineOrderFilter {
+                after,
+                machine: None,
+                state: None,
+            };
+            let fetched = s.machine_orders(&all(after))?;
+            let mut more = fetched.len() > PAGE;
+            for order in fetched.into_iter().take(PAGE) {
                 html.push_fragment(&order_section(&order, now));
                 for item in &order.items {
                     html.push_fragment(&crate::admin::awos::projection(item));
@@ -46,7 +45,12 @@ async fn orders_page(state: &Context, cursor: Cursor) -> Result<Markup, Error> {
                 html.push_markup("</section>");
                 last = Some(order.id);
             }
-            Ok::<_, crate::admin::error::CommandError>((html, last))
+            if let Some(last) = last
+                && !more
+            {
+                more = !s.machine_orders(&all(last))?.is_empty();
+            }
+            Ok::<_, crate::admin::error::CommandError>((html, last, more))
         })
         .await?;
     let mut html = view::page(Tab::MachineOrders, "Machine orders").markup(concat!(
@@ -58,7 +62,9 @@ async fn orders_page(state: &Context, cursor: Cursor) -> Result<Markup, Error> {
         html.push_markup("<p class=\"muted\">No orders to show.</p>");
     }
     html.push_fragment(&rows);
-    if let Some(last) = last {
+    if let Some(last) = last
+        && more
+    {
         next(&mut html, "/orders", last);
     }
     Ok(html)

@@ -244,8 +244,39 @@ input:focus, select:focus { border-color: var(--accent); outline: 3px solid var(
   border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600;
 }
 .steps [aria-current="step"] .number { background: var(--accent); color: var(--accent-ink); }
-.verdict { font-size: 16px; font-weight: 600; }
+.notice.verdict { font-size: 16px; font-weight: 600; }
 details.raw pre { margin-top: 8px; }
+
+/* Overview status: "All good" in green, or what needs someone in red */
+.status {
+  background: var(--surface); border: 1px solid var(--line); border-left: 6px solid var(--ok);
+  border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px 24px; margin: 0 0 24px;
+}
+.status.bad { border-left-color: var(--bad); }
+.status .verdict { font-size: 20px; font-weight: 650; margin: 0 0 4px; color: var(--ok); }
+.status.bad .verdict { color: var(--bad); margin-bottom: 8px; }
+.status > :last-child { margin-bottom: 0; }
+.status .verdict::before {
+  content: ""; display: inline-block; width: 12px; height: 12px; margin-right: 10px;
+  border-radius: 50%; background: currentColor; vertical-align: 1px;
+}
+.things { list-style: none; padding: 0; margin: 0; }
+.things li {
+  display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline;
+  gap: 4px 16px; margin: 0; padding: 10px 0; border-top: 1px solid var(--line);
+}
+.things a { font-weight: 600; white-space: nowrap; }
+.things a::after { content: " \2192"; }
+
+/* First run */
+.welcome {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 32px; max-width: 640px;
+}
+.welcome p { color: var(--muted); }
+
+/* Needs review: what to do about an item */
+.todo { background: var(--accent-soft); border-radius: 10px; padding: 10px 14px; margin: 4px 0 0; }
 
 /* Login */
 .login main { max-width: 440px; padding-top: 96px; }
