@@ -17,7 +17,7 @@ use axum::{
 };
 
 /// How long a restyled page may read before it answers with its own error
-/// page: below the 2 s limit on every admin request, so a slow store still
+/// page: below the limit on every admin request, so a slow store still
 /// gets a page in the new look. Pages that only read leave nothing behind when
 /// stopped; a store request already queued may still run, and its answer is
 /// dropped. [`format::SLOW_READ`] says this time in words.

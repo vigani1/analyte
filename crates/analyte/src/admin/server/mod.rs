@@ -250,6 +250,12 @@ async fn drain_server(
     Ok(())
 }
 
+/// How long one request may run before it is answered with "This took too
+/// long": shorter than the connection's [`super::listener::LIFETIME`], which
+/// starts earlier, at accept, so the answer is still written before the
+/// connection closes.
+const REQUEST_BUDGET: Duration = Duration::from_millis(1750);
+
 fn router(state: Arc<Context>) -> Router {
     Router::new()
         .route("/", get(super::overview::show))
@@ -422,7 +428,7 @@ async fn protect(State(state): State<Arc<Context>>, mut request: Request, next: 
         if let Some(session) = &session {
             request.extensions_mut().insert(session.clone());
         }
-        match tokio::time::timeout(Duration::from_secs(2), dispatch(request, next, session)).await {
+        match tokio::time::timeout(REQUEST_BUDGET, dispatch(request, next, session)).await {
             Ok(response) => response,
             Err(_) => super::view::refusal(
                 StatusCode::GATEWAY_TIMEOUT,

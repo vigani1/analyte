@@ -584,3 +584,44 @@ async fn store_failures_and_slow_reads_answer_in_the_new_look() -> Result<(), Er
     tokio::time::timeout(Duration::from_secs(5), owner).await???;
     Ok(())
 }
+
+// AGENTS.md rule 7 (bound every wait): a Mark resolved that outlasts the
+// request budget gets the "This took too long" page, which warns that the
+// action may already be saved; it used to be cut off with the connection,
+// whose own 2 s lifetime ended first.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_slow_action_answers_before_the_connection_closes() -> Result<(), Error> {
+    assert!(crate::admin::view::READ_BUDGET < super::REQUEST_BUDGET);
+    assert!(super::REQUEST_BUDGET < crate::admin::listener::LIFETIME);
+    let directory = crate::admin::private_tempdir()?;
+    let (store, (state, stopper, owner, host), auth, _) = started(directory.path()).await?;
+    let item = store
+        .request::<_, FixtureError>(fixture_deadline()?, |s| {
+            park(s, "conflict", "different content", &["d".into()])
+        })
+        .await?;
+    let page = request(&host, &format!("/parked/{item}"), &auth, None).await?;
+    let form = format!("csrf={}&confirm=yes&reason=settled", encode(&csrf(&page)?));
+    let busy = store.clone();
+    let blocker = tokio::spawn(async move {
+        busy.request::<_, FixtureError>(fixture_deadline()?, |_| {
+            std::thread::sleep(Duration::from_millis(2600));
+            Ok(())
+        })
+        .await
+        .map_err(Error::from)
+    });
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let post = format!("{auth}Content-Type: application/x-www-form-urlencoded\r\n");
+    let slow = request(
+        &host,
+        &format!("/parked/{item}/resolve"),
+        &post,
+        Some(&form),
+    )
+    .await?;
+    assert!(slow.starts_with("HTTP/1.1 504"), "{slow:?}");
+    assert!(slow.contains("an action may already have been saved."));
+    blocker.await??;
+    stop(state, stopper, owner, store).await
+}
