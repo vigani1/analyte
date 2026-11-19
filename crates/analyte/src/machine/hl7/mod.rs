@@ -211,10 +211,11 @@ impl driver::Drain for Host<'_, '_> {
             Action::QueueFull(bytes) | Action::Unmatched(bytes) => {
                 return self.refuse_message(machine, store, bytes).await;
             }
-            Action::Refused(error) => return Err(error.into()),
-            Action::TimedOut(_) => {
-                return Err(Error::HostPhaseTimeout);
-            }
+            // Both end the session, but only after the replies the dialog already queued:
+            // a timed-out exchange is answered with its refusal (AR or CE), and a late
+            // store or interpretation outcome for it is refused as stale (ADR 0003).
+            Action::Refused(error) => run.failures.keep(error.into()),
+            Action::TimedOut(_) => run.failures.keep(Error::HostPhaseTimeout),
             Action::Sent(_, _) | Action::CommitAccepted(_) => {
                 return Err(Error::UnexpectedOutgoingHl7Outcome);
             }

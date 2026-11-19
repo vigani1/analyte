@@ -64,6 +64,101 @@ async fn dropping_dialog_cancels_owner() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+// ADR 0003 (refuse visibly); HL7 2.5.1 §2.9.2: the receiver answers every message.
+// While the host is still storing a message the machine waits for its reply, so the
+// read-idle limit must not close the socket before that reply is written.
+#[tokio::test]
+async fn busy_host_keeps_connection_until_its_reply() -> Result<(), Box<dyn Error>> {
+    let deadline = Duration::from_millis(100);
+    let listener = tcp::bind("127.0.0.1:0".parse()?).await?;
+    let mut socket = TcpStream::connect(listener.local_addr()?).await?;
+    let (stream, _) = listener.accept().await?;
+    let (mut dialog, side) = connection(Limits::new(4, deadline)?);
+    let host = async {
+        assert!(matches!(
+            dialog.receive().await?,
+            Some(Event::Opened { .. })
+        ));
+        socket.write_all(b"message").await?;
+        let mut received = Vec::new();
+        while received.len() < 7 {
+            if let Some(Event::Received { bytes, .. }) = dialog.receive().await? {
+                received.extend(bytes);
+            }
+        }
+        // A slow durable commit: several read-idle limits pass with no peer bytes.
+        tokio::time::sleep(deadline.saturating_mul(5)).await;
+        dialog.write(b"reply".to_vec()).await?;
+        let mut reply = [0; 5];
+        socket.read_exact(&mut reply).await?;
+        assert_eq!(&reply, b"reply");
+        // The silence clock restarts once the host waits again; a silent peer is then closed.
+        let next = loop {
+            match dialog.receive().await {
+                Err(analyte_transport::Error::Deadline(_)) => {}
+                next => break next?,
+            }
+        };
+        assert!(
+            matches!(
+                next,
+                Some(Event::Failed(analyte_transport::Reason::Deadline(
+                    analyte_transport::DeadlineKind::TcpRead
+                )))
+            ),
+            "a peer silent for the whole limit while the host waits is still closed"
+        );
+        Ok::<_, Box<dyn Error>>(())
+    };
+    let (host, pumped) = tokio::time::timeout(Duration::from_secs(5), async {
+        tokio::join!(host, tcp::pump(stream, side))
+    })
+    .await?;
+    host?;
+    pumped?;
+    Ok(())
+}
+
+// AGENTS.md safety rule 7 (bound every wait): a peer that stays silent while the
+// host waits for it is closed after the read-idle limit.
+#[tokio::test]
+async fn silent_peer_is_closed_after_read_limit() -> Result<(), Box<dyn Error>> {
+    let listener = tcp::bind("127.0.0.1:0".parse()?).await?;
+    let mut socket = TcpStream::connect(listener.local_addr()?).await?;
+    let (stream, _) = listener.accept().await?;
+    let (mut dialog, side) = connection(Limits::new(4, Duration::from_millis(100))?);
+    let host = async {
+        let mut events = Vec::new();
+        loop {
+            match dialog.receive().await {
+                Ok(Some(Event::Closed(reason))) => {
+                    events.push(Event::Closed(reason));
+                    return Ok::<_, Box<dyn Error>>(events);
+                }
+                Ok(Some(event)) => events.push(event),
+                Ok(None) => return Err("events ended before Closed".into()),
+                Err(analyte_transport::Error::Deadline(_)) => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
+    };
+    let (events, pumped) = tokio::time::timeout(Duration::from_secs(5), async {
+        tokio::join!(host, tcp::pump(stream, side))
+    })
+    .await?;
+    pumped?;
+    let silent = analyte_transport::Reason::Deadline(analyte_transport::DeadlineKind::TcpRead);
+    assert!(matches!(
+        events?.as_slice(),
+        [Event::Opened { .. }, Event::Failed(failed), Event::Closed(closed)]
+            if *failed == silent && *closed == silent
+    ));
+    let mut rest = Vec::new();
+    socket.read_to_end(&mut rest).await?;
+    assert!(rest.is_empty(), "the socket is closed with nothing sent");
+    Ok(())
+}
+
 /// ADR 0003 (refuse visibly): a reply queued just before the owner cancels must still
 /// reach the peer. The single-threaded runtime fixes the order: without the flush the
 /// cancel is seen before the pump takes the queued bytes.
