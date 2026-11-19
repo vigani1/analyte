@@ -725,6 +725,13 @@ fn assert_machine_nodes(page: &str) {
     assert!(waiting.contains("Listening on port 5600, nothing connected since "));
     assert!(waiting.contains("<span class=\"wire wire--wait\""));
     assert!(waiting.contains("</svg>Network</span>"));
+    // Owner request 2026-11-19 (screenshot review, PR #273): a name the node
+    // cuts short shows in full on hover, so similar names can be told apart.
+    for name in ["chemistry-1", "hematology-2", "immunoassay-3", "urine-4"] {
+        assert!(page.contains(&format!(
+            "<span class=\"node__name\" title=\"{name}\">{name}</span>"
+        )));
+    }
     let watching = node(page, "urine-4");
     assert!(watching.contains("<span class=\"node__state tone-good\">Watching</span>"));
     assert!(watching.contains("</svg>Watched folder</span>"));
@@ -750,6 +757,11 @@ fn assert_lab_app_nodes(page: &str) {
         "<p class=\"node__line\">From chemistry-1, hematology-2, immunoassay-3, urine-4</p>",
     ] {
         assert!(main.contains(part), "{part}\n{main}");
+    }
+    for name in ["main-lab", "old-lab"] {
+        assert!(page.contains(&format!(
+            "<span class=\"node__name\" title=\"{name}\">{name}</span>"
+        )));
     }
     let kept = node(page, "old-lab");
     for part in [
