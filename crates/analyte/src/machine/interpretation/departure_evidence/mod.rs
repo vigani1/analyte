@@ -134,16 +134,22 @@ fn packed(
                 );
                 if ends_record {
                     if nonstandard || continued_packing {
-                        if entries.len() == EvidenceList::<AppliedDeparture>::MAX_ENTRIES {
-                            return Err(Error::AppliedDepartureEvidenceLimit);
-                        }
-                        entries.push(AppliedDeparture {
-                            rule:Identifier::new(declaration.tag())?,declaration:declaration.evidence_snapshot()?,
-                            standard:Identifier::new("LIS01-A2 §§3.3.2, 6.3.1.1, 8.3.1.1")?,record,field:0,
-                            source:SourceText::new("CR-ended records share a verified source frame; no semantic values derived")?,
-                            meaning:DepartureMeaning::PackedRecords,coordinates:Identifier::new("receipt_bytes")?,
-                            spans:EvidenceList::new(std::mem::take(&mut spans))?,
-                        });
+                        push(
+                            entries,
+                            AppliedDeparture {
+                                rule: Identifier::new(declaration.tag())?,
+                                declaration: declaration.evidence_snapshot()?,
+                                standard: Identifier::new("LIS01-A2 §§3.3.2, 6.3.1.1, 8.3.1.1")?,
+                                record,
+                                field: 0,
+                                source: SourceText::new(
+                                    "CR-ended records share a verified source frame; no semantic values derived",
+                                )?,
+                                meaning: DepartureMeaning::PackedRecords,
+                                coordinates: Identifier::new("receipt_bytes")?,
+                                spans: EvidenceList::new(std::mem::take(&mut spans))?,
+                            },
+                        )?;
                     } else {
                         spans.clear();
                     }
@@ -197,22 +203,20 @@ fn compatibility(
             | MachineDeparture::AstmHostContentionPriority(_) => (false, ""),
         };
         if exercised {
-            if entries.len() == EvidenceList::<AppliedDeparture>::MAX_ENTRIES {
-                return Err(Error::AppliedDepartureEvidenceLimit);
-            }
-            entries.push(AppliedDeparture {
-                rule: Identifier::new(declaration.tag())?,
-                declaration: declaration.evidence_snapshot()?,
-                standard: Identifier::new(standard)?,
-                record: 0,
-                field: 0,
-                source: SourceText::new(WIRE_COMPATIBILITY_SOURCE)?,
-                meaning: DepartureMeaning::WireCompatibility,
-                coordinates: Identifier::new("receipt_bytes")?,
-                spans: EvidenceList::new(vec![
-                    DepartureSpan::try_from(0..raw.len()).map_err(|_| Error::ReversedSpan)?,
-                ])?,
-            });
+            push(
+                entries,
+                AppliedDeparture {
+                    rule: Identifier::new(declaration.tag())?,
+                    declaration: declaration.evidence_snapshot()?,
+                    standard: Identifier::new(standard)?,
+                    record: 0,
+                    field: 0,
+                    source: SourceText::new(WIRE_COMPATIBILITY_SOURCE)?,
+                    meaning: DepartureMeaning::WireCompatibility,
+                    coordinates: Identifier::new("receipt_bytes")?,
+                    spans: whole_receipt(raw)?,
+                },
+            )?;
         }
     }
     Ok(())
@@ -226,14 +230,7 @@ fn tolerances(
     entries: &mut Vec<AppliedDeparture>,
 ) -> Result<(), Error> {
     if let Some(header) = hl7.and_then(|wire| wire.header_time_without_zone.as_deref()) {
-        let zone = machine
-            .snapshot
-            .effective()
-            .site()
-            .time_zone
-            .as_ref()
-            .ok_or(Error::SiteZoneMissing)?;
-        push(entries, site_zone_note(zone, header, raw)?)?;
+        push(entries, site_zone_note(machine, header, raw)?)?;
     }
     if let Some(charset) = hl7.and_then(|wire| wire.charset_from_definition) {
         // The spelling of the machine definition's `syntax.encoding` setting.
@@ -257,21 +254,27 @@ fn tolerances(
                 ))?,
                 meaning: DepartureMeaning::CharsetFromDefinition,
                 coordinates: Identifier::new("receipt_bytes")?,
-                spans: EvidenceList::new(vec![
-                    DepartureSpan::try_from(0..raw.len()).map_err(|_| Error::ReversedSpan)?,
-                ])?,
+                spans: whole_receipt(raw)?,
             },
         )?;
     }
     Ok(())
 }
 
-/// Names the site zone and, when the local time has exactly one, the offset it gives.
+/// Names the machine's site zone and, when the local time has exactly one, the offset
+/// it gives. A zoneless header on a site without a time zone is [`Error::SiteZoneMissing`].
 pub(crate) fn site_zone_note(
-    zone: &analyte_config::SiteTimeZone,
+    machine: &Machine,
     header: &[u8],
     raw: &[u8],
 ) -> Result<AppliedDeparture, Error> {
+    let zone = machine
+        .snapshot
+        .effective()
+        .site()
+        .time_zone
+        .as_ref()
+        .ok_or(Error::SiteZoneMissing)?;
     let original = std::str::from_utf8(header).map_err(|_| Error::HeaderTime)?;
     let local =
         jiff::civil::DateTime::strptime("%Y%m%d%H%M%S", original).map_err(|_| Error::HeaderTime)?;
@@ -291,14 +294,19 @@ pub(crate) fn site_zone_note(
         ))?,
         meaning: DepartureMeaning::ZoneFromSite,
         coordinates: Identifier::new("receipt_bytes")?,
-        spans: EvidenceList::new(vec![
-            DepartureSpan::try_from(0..raw.len()).map_err(|_| Error::ReversedSpan)?,
-        ])?,
+        spans: whole_receipt(raw)?,
     })
 }
 
 /// Rule tag of the LAW header-zone tolerance, shared by evidence and audit notes.
-pub(crate) const SITE_ZONE_RULE: &str = "law_header_zone_from_site";
+const SITE_ZONE_RULE: &str = "law_header_zone_from_site";
+
+/// One span covering the whole receipt, for evidence about the message as a whole.
+fn whole_receipt(raw: &[u8]) -> Result<EvidenceList<DepartureSpan>, Error> {
+    Ok(EvidenceList::new(vec![
+        DepartureSpan::try_from(0..raw.len()).map_err(|_| Error::ReversedSpan)?,
+    ])?)
+}
 
 fn push(entries: &mut Vec<AppliedDeparture>, entry: AppliedDeparture) -> Result<(), Error> {
     if entries.len() == EvidenceList::<AppliedDeparture>::MAX_ENTRIES {

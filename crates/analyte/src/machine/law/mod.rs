@@ -694,14 +694,7 @@ pub(crate) async fn note_site_zone(
     let Some(header) = analyte_hl7::law::site_zone_header_time(message) else {
         return Ok(());
     };
-    let zone = machine
-        .snapshot
-        .effective()
-        .site()
-        .time_zone
-        .as_ref()
-        .ok_or(EvidenceError::SiteZoneMissing)?;
-    let note = site_zone_note(zone, header, message.raw())?;
+    let note = site_zone_note(machine, header, message.raw())?;
     let audit = analyte_store::Audit {
         actor: machine.id.clone(),
         action: note.rule,
