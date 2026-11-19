@@ -10,7 +10,8 @@
 use super::server::Context;
 use crate::admin::Error;
 use crate::admin::markup::Markup;
-use analyte_store::Undelivered;
+use analyte_model::Identifier;
+use analyte_store::{Undeliverable, Undelivered};
 use std::{
     collections::BTreeMap,
     sync::{
@@ -35,15 +36,17 @@ pub(crate) struct Kept {
 /// One sentence about results waiting for a destination no running machine uses.
 pub(super) struct Line {
     text: String,
-    /// Nothing reaches the lab app until someone acts.
-    blocked: bool,
+    destination: Identifier,
+    waiting: u64,
+    /// Why nothing reaches the lab app until someone acts; none while delivery can go on.
+    blocked: Option<Undeliverable>,
 }
 
 impl Line {
     /// The sentence in a warning box: red when nothing can be delivered.
     pub(super) fn notice(&self, label: &'static str) -> Markup {
         Markup::new()
-            .markup(if self.blocked {
+            .markup(if self.blocked.is_some() {
                 "<p class=\"notice bad\">"
             } else {
                 "<p class=\"notice\">"
@@ -51,6 +54,13 @@ impl Line {
             .markup(label)
             .text(&self.text)
             .markup("</p>")
+    }
+
+    /// The lab app, why nothing can be delivered to it and how many items wait;
+    /// none while delivery can go on.
+    pub(super) fn blocked(&self) -> Option<(Identifier, Undeliverable, u64)> {
+        self.blocked
+            .map(|reason| (self.destination.clone(), reason, self.waiting))
     }
 }
 
@@ -73,9 +83,8 @@ pub(super) async fn lines(state: &Context) -> Result<Vec<Line>, Error> {
                 .any(|served| served.id() == &open.destination)
         })
         .map(|open| {
-            let running = |name: &analyte_model::Identifier| {
-                state.machines.iter().any(|machine| &machine.id == name)
-            };
+            let running =
+                |name: &Identifier| state.machines.iter().any(|machine| &machine.id == name);
             line(
                 open,
                 state.retired.get(open.destination.as_str()),
@@ -124,11 +133,11 @@ fn line(open: &Undelivered, kept: Option<&Kept>, from_running: bool) -> Line {
                 what = what,
                 held = held
             ),
-            true,
+            Some(Undeliverable::CredentialsMissing),
         ),
         Some(kept) if kept.delivering.load(Ordering::Acquire) => (
             format!("{from}: {count} {what} still being delivered to lab app {destination}.{held}"),
-            false,
+            None,
         ),
         Some(_) => (
             format!(
@@ -142,7 +151,7 @@ fn line(open: &Undelivered, kept: Option<&Kept>, from_running: bool) -> Line {
                 destination = destination,
                 held = held
             ),
-            false,
+            None,
         ),
         None => (
             format!(
@@ -156,16 +165,21 @@ fn line(open: &Undelivered, kept: Option<&Kept>, from_running: bool) -> Line {
                 count = count,
                 what = what
             ),
-            true,
+            Some(Undeliverable::NotConfigured),
         ),
     };
-    Line { text, blocked }
+    Line {
+        text,
+        destination: open.destination.clone(),
+        waiting: count,
+        blocked,
+    }
 }
 
-fn names(machines: &[analyte_model::Identifier]) -> String {
+fn names(machines: &[Identifier]) -> String {
     let mut text = machines
         .iter()
-        .map(analyte_model::Identifier::as_str)
+        .map(Identifier::as_str)
         .collect::<Vec<_>>()
         .join(", ");
     if machines.len() >= analyte_store::UNDELIVERED_MACHINES {
@@ -205,7 +219,14 @@ mod tests {
     fn kept_destination_without_keys_says_cannot_deliver() -> Result<(), analyte_model::TextError> {
         let open = waiting(&["machine-3"])?;
         let line = line(&open, Some(&kept(true, true)), false);
-        assert!(line.blocked);
+        assert_eq!(
+            line.blocked(),
+            Some((
+                Identifier::new("old-lab")?,
+                Undeliverable::CredentialsMissing,
+                3
+            ))
+        );
         assert!(
             !line.text.contains("still being delivered"),
             "{}",
@@ -227,7 +248,7 @@ mod tests {
     {
         let open = waiting(&["machine-3"])?;
         let line = line(&open, Some(&kept(true, false)), false);
-        assert!(!line.blocked);
+        assert_eq!(line.blocked(), None);
         assert_eq!(
             line.text,
             "Removed machine machine-3: 3 results or order messages still being delivered to lab app old-lab."

@@ -119,9 +119,16 @@ fn source_evidence(source: &str) -> Markup {
 
 async fn cancelled_page(state: &Context, cursor: Cursor) -> Result<Markup, Error> {
     let after = i64::try_from(cursor.after)?;
-    let rows = state
+    let (rows, more) = state
         .store
-        .request(deadline()?, move |s| s.analyzer_cancelled_items(after))
+        .request(deadline()?, move |s| {
+            let rows = s.analyzer_cancelled_items(after)?;
+            let more = match rows.last() {
+                Some(last) => !s.analyzer_cancelled_items(last.cursor)?.is_empty(),
+                None => false,
+            };
+            Ok::<_, analyte_store::ReconciliationError>((rows, more))
+        })
         .await?;
     let mut html = view::page(Tab::CancelledByMachine, "Cancelled by machine");
     html.push_markup(concat!(
@@ -176,7 +183,9 @@ async fn cancelled_page(state: &Context, cursor: Cursor) -> Result<Markup, Error
         }
         html.push_markup("</section>");
     }
-    if let Some(last) = rows.last() {
+    if let Some(last) = rows.last()
+        && more
+    {
         next(&mut html, "/analyzer-cancelled", last.cursor);
     }
     Ok(html)

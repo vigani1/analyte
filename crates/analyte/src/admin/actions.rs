@@ -105,12 +105,21 @@ pub(super) async fn deliveries(
                     Err(error) => return failure(&error),
                 }
             },
-            move |s| Ok(s.deliveries(after)?),
+            move |s| {
+                let rows = s.deliveries(after)?;
+                let mut more = rows.len() > super::pages::PAGE;
+                let rows: Vec<_> = rows.into_iter().take(super::pages::PAGE).collect();
+                if let Some(last) = rows.last()
+                    && !more
+                {
+                    more = !s.deliveries(last.sequence)?.is_empty();
+                }
+                Ok((rows, more))
+            },
         )
         .await;
     match result {
-        Ok(rows) => {
-            let rows: Vec<_> = rows.into_iter().take(super::pages::PAGE).collect();
+        Ok((rows, more)) => {
             let mut html = Markup::new().markup(concat!(
                 "<p class=\"lead\">Results and order messages Analyte sends to a lab app. Each ",
                 "keeps the same delivery number on every retry, so the lab app never files it ",
@@ -159,12 +168,10 @@ pub(super) async fn deliveries(
                 html.push_markup("</td></tr>");
             }
             if let Some(last) = rows.last() {
-                html.push_fragment(
-                    &Markup::new()
-                        .markup("</table></div></section><p class=\"actions-row\"><a class=\"button secondary\" rel=\"next\" href=\"/deliveries?after=")
-                        .text(last.sequence)
-                        .markup("\">Next page</a></p>"),
-                );
+                html.push_markup("</table></div></section>");
+                if more {
+                    super::pages::next(&mut html, "/deliveries", last.sequence);
+                }
             }
             page(Tab::Deliveries, "Deliveries", &html)
         }
