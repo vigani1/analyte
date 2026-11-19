@@ -239,6 +239,9 @@ fn router(state: Arc<Context>) -> Router {
                     "/setup/{id}",
                     get(super::setup::machine).post(super::setup::save),
                 )
+                .route("/setup/{id}/connection", get(super::setup::connection))
+                .route("/setup/{id}/test", get(super::setup::test))
+                .route("/setup/{id}/save", get(super::setup::review))
                 .route("/setup/{id}/listen", post(super::setup::listen_start))
                 .route(
                     "/setup/{id}/remove",

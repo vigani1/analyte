@@ -1,16 +1,18 @@
-//! Serves the setup page: add or remove machines, choose a definition, a port and the lab app, test by listening, save, restart.
+//! Serves the setup page: add or remove machines, set one up step by step (model, connection and lab app, test, save), restart.
 //!
-//! The page writes the machine's site file (and, when the definition changes, that
-//! one value in the program file), adds and removes program entries, and keeps
-//! backups. Lab apps and their keys are set once on the Lab app page
-//! ([`lab_apps`]); a machine only picks one. Applying a change needs a restart;
-//! there is no hot reload.
+//! The steps ([`wizard`]) write the machine's site file (and, when the definition
+//! changes, that one value in the program file); adding and removing change
+//! program entries; every write keeps backups. Lab apps and their keys are set
+//! once on the Lab app page ([`lab_apps`]); a machine only picks one. Applying a
+//! change needs a restart; there is no hot reload.
 mod definitions;
 mod entries;
 mod lab_apps;
 mod listen;
 mod machines;
 mod site;
+mod verdict;
+mod wizard;
 
 pub(super) use lab_apps::{
     add as add_lab_app, add_form as add_lab_app_form, confirm_remove as confirm_remove_lab_app,
@@ -18,6 +20,9 @@ pub(super) use lab_apps::{
 };
 pub(crate) use listen::{Limits, Open};
 pub(super) use machines::{add, add_form, confirm_remove, remove};
+pub(super) use wizard::{
+    connection, listen_start, listen_stop, listen_view, machine, review, save, test,
+};
 
 use super::{
     markup::Markup,
@@ -36,7 +41,7 @@ use analyte_model::{Identifier, Reason};
 use analyte_transport::serial;
 use axum::{
     Extension, Form,
-    extract::{Path, Query, State},
+    extract::State,
     http::{StatusCode, header},
     response::{Html, IntoResponse, Response},
 };
@@ -94,7 +99,7 @@ pub(crate) struct Setup {
     /// so two of them never interleave; only taken on blocking threads, never across an await.
     writing: std::sync::Mutex<()>,
     /// At most one listen test; the guard is never held across an await.
-    listen: std::sync::Mutex<Option<listen::Session>>,
+    listen: std::sync::Mutex<Option<wizard::Test>>,
     restart: watch::Sender<bool>,
 }
 
@@ -554,12 +559,6 @@ fn definition_name(definition: &Definition) -> Markup {
     view::exact(&definition.display, &technical)
 }
 
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct Pick {
-    definition: Option<String>,
-}
-
 /// The raw transport kind of a definition, used only to choose which inputs to show.
 fn kind_of(path: &std::path::Path) -> Option<String> {
     let text = crate::installation::config::read(path).ok()?;
@@ -656,269 +655,30 @@ fn key_line(state: &Context, label: &str, name: &Identifier) -> Markup {
     }
 }
 
-/// GET /setup/{id}: the setup form for one installed machine.
-pub(super) async fn machine(
-    State(state): State<Arc<Context>>,
-    session: Option<Extension<Arc<Session>>>,
-    Path(id): Path<String>,
-    Query(pick): Query<Pick>,
-) -> Response {
-    let Some(Extension(session)) = session.filter(|Extension(s)| s.authenticated) else {
-        return needs_login();
-    };
-    // Reading files, the port list and the credentials file blocks; keep it off
-    // the async workers.
-    let worker = state.clone();
-    let rendered = tokio::task::spawn_blocking(move || {
-        render_machine(&worker, &session, &id, pick.definition.as_deref())
-    })
-    .await
-    .map_err(SetupError::from)
-    .and_then(|r| r);
-    match rendered {
-        Ok(html) => Html(html).into_response(),
-        Err(error) => refused(&error),
-    }
-}
-
-/// Builds the setup form for one installed machine; reads files and the port list.
-fn render_machine(
-    state: &Context,
-    session: &Session,
-    id: &str,
-    definition: Option<&str>,
-) -> Result<Markup, SetupError> {
-    let (_, installed) = site::installed(&state.config_path, id)?;
-    let current_site = crate::installation::config::read(&installed.site)
-        .ok()
-        .and_then(|text| text.parse::<toml::Table>().ok())
-        .unwrap_or_default();
-    let list = definitions(state)?;
-    let picked = match chosen(&list, definition, &installed) {
-        Ok(picked) => Some(picked),
-        Err(SetupError::NoDefinitionYet) => None,
-        Err(error) => return Err(error),
-    };
-    let running = running(state, id);
-    let mut html = page("Set up a machine")
-        .markup("<section><dl><dt>Machine</dt><dd><strong>")
-        .text(id)
-        .markup(
-            "</strong></dd><dt title=\"Running configuration digest\">Settings version</dt><dd>",
-        )
-        .fragment(&settings_version(running))
-        .markup(concat!(
-            "</dd></dl></section><section><h2>1. Machine model</h2><form method=\"get\" action=\"\">",
-            "<p>Choose the machine model.</p><ul class=\"choices\">"
-        ));
-    html.push_fragment(&definition_picker(
-        &list,
-        picked.as_ref().map_or("", |(key, _)| key.as_str()),
-    ));
-    html.push_markup("</ul><button class=\"secondary\">Choose</button></form></section>");
-    let Some((key, path)) = picked else {
-        html.push_markup(concat!(
-            "<p class=\"notice info\">This machine is not set up yet. Choose its machine model ",
-            "above and press Choose; the connection and lab app steps follow.</p>"
-        ));
-        return Ok(html.markup(view::END));
-    };
-    let action = format!("/setup/{id}");
-    html.push_fragment(
-        &Markup::new()
-            .markup("<form method=\"post\" action=\"")
-            .text(&action)
-            .markup("\"><input type=\"hidden\" name=\"csrf\" value=\"")
-            .text(session.csrf.form_value())
-            .markup("\"><input type=\"hidden\" name=\"definition\" value=\"")
-            .text(&key)
-            .markup("\"><section><h2>2. Connection</h2>"),
-    );
-    html.push_fragment(&connection_inputs(state, &path, &current_site));
-    let lab_app_step = match lab_apps::scan(&state.config_path) {
-        Ok(scan) => lab_apps::picker(&scan, current_lab_app(running, &current_site).as_deref()),
-        Err(error) => Markup::new()
-            .markup("<p class=\"notice bad\">The lab apps cannot be read: ")
-            .text(error)
-            .markup("</p>"),
-    };
-    html.push_fragment(&test_and_lab_app(id, &lab_app_step));
-    Ok(html.markup(view::END))
-}
-
-fn definition_picker(list: &[Definition], key: &str) -> Markup {
-    let mut html = Markup::new();
-    for definition in list {
-        let (level, status) = level_and_state(definition);
-        let selectable = matches!(definition.state, Shipped::Ready { .. });
-        let mut item = Markup::new()
-            .markup("<li><label><input type=\"radio\" name=\"definition\" value=\"")
-            .text(&definition.key)
-            .markup("\"");
-        if definition.key == key {
-            item.push_markup(" checked");
-        }
-        if !selectable {
-            item.push_markup(" disabled");
-        }
-        item.push_fragment(
-            &Markup::new()
-                .markup("> <strong>")
-                .fragment(&definition_name(definition))
-                .markup("</strong> <span class=\"muted\">")
-                .fragment(&level)
-                .markup("</span> ")
-                .fragment(&status)
-                .markup("</label></li>"),
-        );
-        html.push_fragment(&item);
-    }
-    html
-}
-
-fn connection_inputs(
-    state: &Context,
-    path: &std::path::Path,
-    current_site: &toml::Table,
-) -> Markup {
-    let mut html = Markup::new();
-    let current_endpoint = current_site
-        .get("endpoint")
-        .and_then(toml::Value::as_str)
-        .unwrap_or_default();
-    match kind_of(path).as_deref() {
-        Some("serial") => html.push_fragment(&serial_choices(state, current_endpoint)),
-        Some(kind @ ("tcp_server" | "tcp_client")) => {
-            let (host, port) = current_endpoint.rsplit_once(':').unwrap_or(("", ""));
-            html.push_fragment(
-                &Markup::new()
-                    .markup("<p>")
-                    .markup(if kind == "tcp_server" {
-                        "The machine connects to Analyte. Enter the address of this PC that Analyte listens on (0.0.0.0 means every network card) and the port the machine is set to."
-                    } else {
-                        "Analyte connects to the machine. Enter the machine's IP address and port."
-                    })
-                    .markup("</p><label class=\"field\"><span>IP address</span><input name=\"host\" value=\"")
-                    .text(host.trim_start_matches('[').trim_end_matches(']'))
-                    .markup("\" maxlength=\"64\"></label><label class=\"field\"><span>Port</span><input name=\"tcp_port\" value=\"")
-                    .text(port)
-                    .markup("\" maxlength=\"5\" inputmode=\"numeric\"></label>"),
-            );
-        }
-        _ => html.push_fragment(
-            &Markup::new()
-                .markup("<label class=\"field\"><span>Folder</span><input name=\"folder\" value=\"")
-                .text(current_endpoint)
-                .markup("\" maxlength=\"1024\"></label>"),
-        ),
-    }
-    html
-}
-
-fn test_and_lab_app(id: &str, picker: &Markup) -> Markup {
-    let mut html = Markup::new();
-    html.push_fragment(
-        &Markup::new()
-            .markup(concat!(
-                "</section><section><h2>3. Test the connection</h2><p>The test only listens: it shows ",
-                "what the machine sends for up to 60 seconds and sends nothing back. ",
-                "It cannot use a port the running service is using.</p>",
-                "<p class=\"notice\">What it shows may contain patient data; it appears only on this page ",
-                "and is never stored or logged.</p><button class=\"secondary\" formaction=\""
-            ))
-            .text(format!("/setup/{id}/listen"))
-            .markup(concat!(
-                "\">Test connection (listen only)</button></section>",
-                "<section><h2>4. Lab app</h2>"
-            ))
-            .fragment(picker)
-            .markup(concat!(
-                "</section><section><h2>5. Save</h2><p>Saving checks everything first and keeps a copy of ",
-                "the old settings. Analyte keeps running the old settings until you restart ",
-                "it.</p><button>Save</button></section></form>"
-            )),
-    );
-    html
-}
-
-fn serial_choices(state: &Context, current: &str) -> Markup {
-    let mut html = Markup::new().markup(concat!(
-        "<p>Choose the port the machine's cable is plugged into. If the USB adapter ",
-        "has its own serial number, Analyte saves that number, so it finds the ",
-        "machine again even if the port name changes; otherwise it saves the port name.</p><ul class=\"choices\">"
-    ));
-    match (state.setup.seams.ports)() {
-        Ok(ports) => {
-            for port in ports.iter().take(serial::LIST_LIMIT) {
-                let (value, saved) = match port.factory_serial() {
-                    Some(number) => (
-                        format!("usb:{number}"),
-                        format!("saved as serial number {number}"),
-                    ),
-                    None => (
-                        format!("name:{}", port.name),
-                        "no serial number; saved as the port name".into(),
-                    ),
-                };
-                html.push_fragment(
-                    &Markup::new()
-                        .markup("<li><label><input type=\"radio\" name=\"port\" value=\"")
-                        .text(value)
-                        .markup("\"> ")
-                        .text(&port.name)
-                        .markup(" — ")
-                        .text(port.description.as_deref().unwrap_or("unknown adapter"))
-                        .markup(" — ")
-                        .text(saved)
-                        .markup("</label></li>"),
-                );
-            }
-            if ports.is_empty() {
-                html.push_markup("<li class=\"notice\">No serial ports were found.</li>");
-            }
-        }
-        Err(error) => html.push_fragment(
-            &Markup::new()
-                .markup("<li class=\"notice bad\">Listing serial ports failed: ")
-                .text(error)
-                .markup("</li>"),
-        ),
-    }
-    html.push_fragment(
-        &Markup::new()
-            .markup("</ul><label class=\"field\"><span>Or type a port name</span><input name=\"port_name\" maxlength=\"1024\" placeholder=\"")
-            .text(current)
-            .markup("\"></label>"),
-    );
-    html
-}
-
-/// The setup form as posted; it holds no key.
+/// A setup step posted for the test or the save: the CSRF value and the
+/// [`wizard::Draft`] fields. It holds no key.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Choice {
     #[expect(dead_code, reason = "the CSRF middleware has already checked it")]
     csrf: String,
-    definition: String,
+    definition: Option<String>,
     port: Option<String>,
-    #[serde(default)]
-    port_name: String,
-    #[serde(default)]
-    host: String,
-    #[serde(default)]
-    tcp_port: String,
-    #[serde(default)]
-    folder: String,
-    #[serde(default)]
-    lab_app: String,
+    port_name: Option<String>,
+    host: Option<String>,
+    tcp_port: Option<String>,
+    folder: Option<String>,
+    lab_app: Option<String>,
 }
 
-fn connection(kind: Option<&str>, choice: &Choice) -> Result<Connection, SetupError> {
+/// The connection the draft names for a definition of transport `kind`.
+fn connection_of(kind: Option<&str>, choice: &wizard::Draft) -> Result<Connection, SetupError> {
+    let field = |value: &Option<String>| value.as_deref().unwrap_or_default().trim().to_owned();
     match kind {
         Some("serial") => {
-            let typed = choice.port_name.trim();
+            let typed = field(&choice.port_name);
             if !typed.is_empty() {
-                return Ok(Connection::Endpoint(typed.into()));
+                return Ok(Connection::Endpoint(typed));
             }
             match choice.port.as_deref().and_then(|v| v.split_once(':')) {
                 Some(("usb", number)) => Ok(Connection::UsbSerial(
@@ -930,13 +690,10 @@ fn connection(kind: Option<&str>, choice: &Choice) -> Result<Connection, SetupEr
             }
         }
         Some("tcp_server" | "tcp_client") => {
-            let host: std::net::IpAddr =
-                choice.host.trim().parse().map_err(|_| {
-                    SetupError::Connection("enter an IP address such as 192.168.1.20")
-                })?;
-            let port: u16 = choice
-                .tcp_port
-                .trim()
+            let host: std::net::IpAddr = field(&choice.host)
+                .parse()
+                .map_err(|_| SetupError::Connection("enter an IP address such as 192.168.1.20"))?;
+            let port: u16 = field(&choice.tcp_port)
                 .parse()
                 .ok()
                 .filter(|port| *port != 0)
@@ -948,11 +705,11 @@ fn connection(kind: Option<&str>, choice: &Choice) -> Result<Connection, SetupEr
             ))
         }
         _ => {
-            let folder = choice.folder.trim();
+            let folder = field(&choice.folder);
             if folder.is_empty() {
                 return Err(SetupError::Connection("enter the folder path"));
             }
-            Ok(Connection::Endpoint(folder.into()))
+            Ok(Connection::Endpoint(folder))
         }
     }
 }
@@ -962,6 +719,8 @@ struct Plan {
     program: String,
     installed: site::Installed,
     definition: PathBuf,
+    /// The model's name for people.
+    model: String,
     connection: Connection,
     site_text: String,
     /// The new `lab-apps.toml` text, when the save moves a lab app into it.
@@ -969,13 +728,16 @@ struct Plan {
     validated: analyte_config::Validated,
 }
 
-fn plan(state: &Context, id: &str, choice: &Choice) -> Result<Plan, SetupError> {
+/// Checks every choice of `draft` against the files, in step order, and
+/// validates the result as the program loader does; writes nothing.
+fn plan(state: &Context, id: &str, draft: &wizard::Draft) -> Result<Plan, SetupError> {
     let (program, installed) = site::installed(&state.config_path, id)?;
     let list = definitions(state)?;
-    let key = (choice.definition != "installed").then_some(choice.definition.as_str());
-    let (_, definition) = chosen(&list, key, &installed)?;
-    let lab_app = Identifier::new(choice.lab_app.trim()).map_err(|_| SetupError::NoLabAppChosen)?;
-    let connection = connection(kind_of(&definition).as_deref(), choice)?;
+    let (key, definition) = wizard::model_of(&list, draft, &installed)?;
+    let model = wizard::model_name(&list, &key, &definition);
+    let connection = connection_of(kind_of(&definition).as_deref(), draft)?;
+    let lab_app = Identifier::new(draft.lab_app.as_deref().unwrap_or_default().trim())
+        .map_err(|_| SetupError::NoLabAppChosen)?;
     let current = crate::installation::config::read(&installed.site)?;
     let scan = lab_apps::scan(&state.config_path)?;
     let candidate = site::candidate(
@@ -1000,6 +762,7 @@ fn plan(state: &Context, id: &str, choice: &Choice) -> Result<Plan, SetupError> 
         program,
         installed,
         definition,
+        model,
         connection,
         site_text: candidate.text,
         lab_apps,
@@ -1009,7 +772,9 @@ fn plan(state: &Context, id: &str, choice: &Choice) -> Result<Plan, SetupError> 
 
 struct Saved {
     digest: [u8; 32],
-    connection: String,
+    model: String,
+    link: Link,
+    connection: Connection,
     lab_app: String,
     base_url: String,
     /// The save moved a lab app into `lab-apps.toml`.
@@ -1017,9 +782,9 @@ struct Saved {
     backups: Vec<PathBuf>,
 }
 
-fn save_blocking(state: &Context, id: &str, choice: &Choice) -> Result<Saved, SetupError> {
+fn save_blocking(state: &Context, id: &str, draft: &wizard::Draft) -> Result<Saved, SetupError> {
     let _writing = state.setup.writing()?;
-    let plan = plan(state, id, choice)?;
+    let plan = plan(state, id, draft)?;
     shares_connection(state, id, &plan)?;
     let moved = plan.lab_apps.is_some();
     let written = site::apply(
@@ -1033,7 +798,9 @@ fn save_blocking(state: &Context, id: &str, choice: &Choice) -> Result<Saved, Se
     let destination = &plan.validated.effective().site().destination;
     Ok(Saved {
         digest: plan.validated.digest(),
-        connection: plan.connection.describe(),
+        model: plan.model,
+        link: Link::of(plan.validated.effective().stack()),
+        connection: plan.connection,
         lab_app: destination.name.as_str().to_owned(),
         base_url: destination.base_url.as_str().to_owned(),
         moved,
@@ -1065,79 +832,6 @@ async fn audit(
         )
         .await
         .map_err(|e| failed(&e))
-}
-
-/// POST /setup/{id}: validate, store keys, write the site file, keep backups.
-pub(super) async fn save(
-    State(state): State<Arc<Context>>,
-    Extension(session): Extension<Arc<Session>>,
-    Path(id): Path<String>,
-    form: Result<Form<Choice>, axum::extract::rejection::FormRejection>,
-) -> Response {
-    let Ok(Form(choice)) = form else {
-        return refused(&SetupError::Connection(
-            "the form was incomplete; reload the page",
-        ));
-    };
-    let worker = state.clone();
-    let machine = id.clone();
-    let saved = match tokio::task::spawn_blocking(move || save_blocking(&worker, &machine, &choice))
-        .await
-        .map_err(SetupError::from)
-        .and_then(|r| r)
-    {
-        Ok(saved) => saved,
-        Err(error) => return refused(&error),
-    };
-    let reason = format!(
-        "setup page saved: {}, lab app {} ({}){}",
-        saved.connection,
-        saved.lab_app,
-        saved.base_url,
-        if saved.moved {
-            "; its lab app settings moved to lab-apps.toml"
-        } else {
-            ""
-        }
-    );
-    let audited = audit(&state, &session, "setup-save", &id, reason).await;
-    tracing::info!(machine = id.as_str(), "setup page saved a site file");
-    let mut html = page("Settings saved")
-        .markup("<section><dl><dt>Machine</dt><dd><strong>")
-        .text(&id)
-        .markup("</strong></dd><dt>Connection</dt><dd>")
-        .text(&saved.connection)
-        .markup("</dd><dt>Lab app</dt><dd>")
-        .text(format!("{} ({})", saved.lab_app, saved.base_url))
-        .markup("</dd><dt title=\"New configuration digest\">New settings version</dt><dd>")
-        .fragment(&view::version(&saved.digest))
-        .markup("</dd><dt title=\"Running configuration digest\">Running now</dt><dd>")
-        .fragment(&settings_version(running(&state, &id)))
-        .markup("</dd></dl><ul>");
-    if saved.moved {
-        html.push_markup(
-            "<li>This lab app is now kept on the <a href=\"/setup/lab-apps\">Lab app page</a>; nothing else changed.</li>",
-        );
-    }
-    for backup in &saved.backups {
-        html.push_fragment(
-            &Markup::new()
-                .markup("<li class=\"muted\">Copy of the old settings: ")
-                .text(backup.display())
-                .markup("</li>"),
-        );
-    }
-    html.push_markup("</ul></section>");
-    if let Err(error) = audited {
-        html.push_fragment(
-            &Markup::new()
-                .markup("<p class=\"notice bad\">")
-                .text(error)
-                .markup("</p>"),
-        );
-    }
-    html.push_fragment(&restart_form(&session));
-    done(html)
 }
 
 fn restart_form(session: &Session) -> Markup {
@@ -1305,202 +999,4 @@ fn listen_target(state: &Context, plan: &Plan) -> Result<(String, listen::Target
         }
         Link::Folder => Err(SetupError::NothingToListen),
     }
-}
-
-/// POST /setup/{id}/listen: start the listen-only test with the form's choices.
-pub(super) async fn listen_start(
-    State(state): State<Arc<Context>>,
-    Path(id): Path<String>,
-    form: Result<Form<Choice>, axum::extract::rejection::FormRejection>,
-) -> Response {
-    let Ok(Form(choice)) = form else {
-        return refused(&SetupError::Connection(
-            "the form was incomplete; reload the page",
-        ));
-    };
-    let worker = state.clone();
-    let target = tokio::task::spawn_blocking(move || {
-        let plan = plan(&worker, &id, &choice)?;
-        listen_target(&worker, &plan)
-    })
-    .await
-    .map_err(SetupError::from)
-    .and_then(|r| r);
-    let (label, target) = match target {
-        Ok(found) => found,
-        Err(error) => return refused(&error),
-    };
-    let session = listen::Session::start(label, target, state.setup.seams.limits);
-    match state.setup.listen.lock() {
-        Ok(mut slot) => {
-            // Dropping the previous test stops it and discards its bytes.
-            *slot = Some(session);
-        }
-        Err(_) => {
-            return refused(&SetupError::Connection(
-                "the listen test state is unavailable",
-            ));
-        }
-    }
-    let mut response = StatusCode::SEE_OTHER.into_response();
-    response.headers_mut().insert(
-        header::LOCATION,
-        header::HeaderValue::from_static("/setup/listen"),
-    );
-    response
-}
-
-/// One line of the live view: offset, hex bytes and printable text.
-fn dump(bytes: &[u8]) -> String {
-    let mut text = String::new();
-    for (index, line) in bytes.chunks(16).enumerate() {
-        let hex: Vec<String> = line.iter().map(|b| format!("{b:02x}")).collect();
-        let printable: String = line
-            .iter()
-            .map(|&b| {
-                if (32..127).contains(&b) {
-                    char::from(b)
-                } else {
-                    '.'
-                }
-            })
-            .collect();
-        text.push_str(&format!(
-            "{:06x}  {:<47}  {printable}\n",
-            index.saturating_mul(16),
-            hex.join(" ")
-        ));
-    }
-    text
-}
-
-/// GET /setup/listen: the live view, refreshed every two seconds while running.
-pub(super) async fn listen_view(
-    State(state): State<Arc<Context>>,
-    session: Option<Extension<Arc<Session>>>,
-) -> Response {
-    let Some(Extension(session)) = session.filter(|Extension(s)| s.authenticated) else {
-        return needs_login();
-    };
-    let view = match state.setup.listen.lock() {
-        Ok(slot) => slot.as_ref().map(listen::Session::view),
-        Err(_) => None,
-    };
-    let Some(view) = view else {
-        return done(
-            page("Connection test").markup(
-                "<p class=\"notice info\">No test has been started. Start one from a machine's setup page.</p>",
-            ),
-        );
-    };
-    let running = view.end.is_none();
-    let title = "Connection test (listen only)";
-    let mut html = if running {
-        view::refreshing(Tab::Setup, title, Refresh::EveryTwoSeconds)
-    } else {
-        page(title)
-    };
-    html.push_fragment(
-        &Markup::new()
-            .markup(concat!(
-                "<p class=\"notice\">Analyte sends nothing to ",
-                "the machine. What is shown may contain patient data: it stays on this ",
-                "page only, is never stored or logged, and is discarded when the test ends.</p>",
-                "<section><p>"
-            ))
-            .text(&view.label)
-            .markup(". "),
-    );
-    let (tone, light, status) = listen_status(&view);
-    html.push_fragment(
-        &pill(tone, light)
-            .markup(" ")
-            .text(status)
-            .markup(" Bytes received: ")
-            .text(view.seen)
-            .markup("."),
-    );
-    if view.size_limit_reached {
-        html.push_markup(" The 64 KiB display limit was reached, so reading stopped.");
-    }
-    html.push_markup("</p></section>");
-    if running {
-        html.push_fragment(
-            &Markup::new()
-                .markup("<pre>")
-                .text(dump(&view.bytes))
-                .markup(concat!(
-                    "</pre><form method=\"post\" action=\"/setup/listen/stop\">",
-                    "<input type=\"hidden\" name=\"csrf\" value=\""
-                ))
-                .text(session.csrf.form_value())
-                .markup("\"><button class=\"danger\">Stop the test</button></form>"),
-        );
-    }
-    done(html)
-}
-
-/// The listen test's state as a pill colour, a short word and a sentence.
-fn listen_status(view: &listen::View) -> (Tone, &'static str, String) {
-    match &view.end {
-        None if view.closed => (
-            Tone::Neutral,
-            "Closed",
-            format!(
-                "The machine closed the connection. Showing for {} more seconds.",
-                view.remaining.as_secs()
-            ),
-        ),
-        None if view.connected => (
-            Tone::Good,
-            "Connected",
-            format!("Connected. {} seconds left.", view.remaining.as_secs()),
-        ),
-        None => (
-            Tone::Attention,
-            "Waiting",
-            format!(
-                "Waiting for the connection. {} seconds left.",
-                view.remaining.as_secs()
-            ),
-        ),
-        Some(listen::End::TimeLimit) => (
-            Tone::Neutral,
-            "Ended",
-            "The test ended after its time limit; the bytes were discarded.".into(),
-        ),
-        Some(listen::End::Stopped) => (
-            Tone::Neutral,
-            "Stopped",
-            "The test was stopped; the bytes were discarded.".into(),
-        ),
-        Some(listen::End::Closed) => (
-            Tone::Neutral,
-            "Closed",
-            "The machine closed the connection; the bytes were discarded.".into(),
-        ),
-        Some(listen::End::Failed(why)) => (
-            Tone::Problem,
-            "Failed",
-            format!("The test could not run: {why}."),
-        ),
-    }
-}
-
-/// POST /setup/listen/stop: end the test now and discard its bytes.
-pub(super) async fn listen_stop(
-    State(state): State<Arc<Context>>,
-    Form(_): Form<Csrf>,
-) -> Response {
-    if let Ok(slot) = state.setup.listen.lock()
-        && let Some(session) = slot.as_ref()
-    {
-        session.stop();
-    }
-    let mut response = StatusCode::SEE_OTHER.into_response();
-    response.headers_mut().insert(
-        header::LOCATION,
-        header::HeaderValue::from_static("/setup/listen"),
-    );
-    response
 }

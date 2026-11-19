@@ -4,7 +4,8 @@
 //! rollback) and apply after a restart. Removing never touches the store: a
 //! removed machine's receipts, flagged items and history stay listed for staff.
 //! Its lab app stays in `lab-apps.toml` (moved there first if the site file
-//! still wrote it), so results waiting for it are still delivered.
+//! still wrote it), so results waiting for it are still delivered. A machine just
+//! added goes straight into step 1 of the setup steps.
 use super::{SetupError, audit, done, entries, needs_login, page, refused, restart_form, site};
 use crate::admin::{markup::Markup, server::Context, sessions::Session, view::plain};
 use crate::installation::config::Program;
@@ -13,7 +14,8 @@ use analyte_store::Unfinished;
 use axum::{
     Extension, Form,
     extract::{Path, State},
-    response::Response,
+    http::{StatusCode, header},
+    response::{IntoResponse as _, Response},
 };
 use serde::Deserialize;
 use std::{path::PathBuf, sync::Arc};
@@ -42,8 +44,8 @@ pub(in crate::admin) async fn add_form(
             .markup(concat!(
                 "<p class=\"lead\">Adds a machine that is not set up yet. Analyte checks its ",
                 "settings, keeps a copy of the old ones and writes the new ones; if anything ",
-                "fails, the old settings are put back. The new machine shows as <strong>Not set ",
-                "up yet</strong>: set it up like any other, then restart.</p>",
+                "fails, the old settings are put back. Then the setup steps follow: its model, ",
+                "its connection, a test and the save.</p>",
                 "<section><form method=\"post\" action=\"/setup/add\"><input type=\"hidden\" ",
                 "name=\"csrf\" value=\""
             ))
@@ -169,6 +171,10 @@ pub(in crate::admin) async fn add(
     );
     let audited = audit(&state, &session, "setup-add", id.as_str(), reason).await;
     tracing::info!(machine = id.as_str(), "setup page added a machine");
+    // Straight into step 1, unless the audit failed: that is shown, never hidden.
+    if audited.is_ok() {
+        return step_one(&id);
+    }
     let mut html = page("Machine added")
         .markup("<p class=\"notice info\">Machine <strong>")
         .text(id.as_str())
@@ -193,6 +199,18 @@ pub(in crate::admin) async fn add(
     }
     html.push_fragment(&restart_form(&session));
     done(html)
+}
+
+/// See Other to step 1 of the setup steps for machine `id`.
+fn step_one(id: &Identifier) -> Response {
+    let mut response = StatusCode::SEE_OTHER.into_response();
+    match header::HeaderValue::from_str(&format!("/setup/{}", id.as_str())) {
+        Ok(location) => {
+            response.headers_mut().insert(header::LOCATION, location);
+            response
+        }
+        Err(_) => refused(&SetupError::NameCharacters),
+    }
 }
 
 fn backups_kept(backups: &[PathBuf]) -> Markup {
