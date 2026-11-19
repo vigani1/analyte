@@ -27,7 +27,7 @@
 {#- The first-run welcome: the mark, the title, what Analyte does, the setup steps, the one button and what the engine was doing. -#}
 {%- macro welcome(title, lede, steps, href, action, engine) -%}
 <div class="welcome anim-in">
-{% call draw::brand_mark(72) %}{% endcall %}
+{% call draw::brand_mark(72, "3.2") %}{% endcall %}
 <div><p class="eyebrow">Welcome</p><h1 class="welcome__title">{{ title }}</h1></div>
 <p class="muted welcome__lede">{{ lede }}</p>
 <ol class="welcome__steps">

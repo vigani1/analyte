@@ -752,6 +752,7 @@ Connection: close
     ] {
         let page = request(host, path, headers, None).await?;
         assert_stylesheets(path, &page);
+        assert_logo(path, &page);
         assert!(!page.contains("style="), "{path} has an inline style");
         assert!(!page.contains("<style"), "{path} has a style block");
         assert!(!page.contains("<script"), "{path} has a script");
@@ -785,6 +786,47 @@ Connection: close
         );
     }
     Ok(())
+}
+
+/// Owner request 2026-11-19 (Aperture logo, PR #273): every page links the
+/// Analyte icon for its browser tab, the hand-tuned files at 16 and 20 px; the
+/// restyled sidebar draws the mark inline in the theme colours and the old
+/// pages' header bar shows the same icon.
+fn assert_logo(path: &str, page: &str) {
+    let root = if path == "/" {
+        crate::admin::view::assets::Root::of_this_build()
+            .as_str()
+            .to_owned()
+    } else {
+        "/static/".to_owned()
+    };
+    for (file, sizes) in [
+        ("analyte-app-icon-16.svg", "16x16"),
+        ("analyte-app-icon-20.svg", "20x20"),
+        (
+            "analyte-app-icon.svg",
+            "24x24 32x32 48x48 64x64 128x128 256x256",
+        ),
+    ] {
+        let link = format!(
+            "<link rel=\"icon\" type=\"image/svg+xml\" sizes=\"{sizes}\" href=\"{root}icons/{file}\">"
+        );
+        assert!(page.contains(&link), "{path} lacks {link}");
+    }
+    match path {
+        "/" => assert!(page.contains(concat!(
+            "<div class=\"brand\">\n<svg class=\"logo\" width=\"30\" height=\"30\" ",
+            "viewBox=\"0 0 48 48\" aria-hidden=\"true\"><path class=\"logo__tile\" "
+        ))),
+        "/login" => {}
+        _ => assert!(
+            page.contains(concat!(
+                "<img class=\"mark\" src=\"/static/icons/analyte-app-icon.svg\" ",
+                "alt=\"\" width=\"24\" height=\"24\">Analyte</a>"
+            )),
+            "{path} lacks the logo"
+        ),
+    }
 }
 
 /// ADR 0018: the restyled Overview loads fonts.css, analyte.css and app.css in

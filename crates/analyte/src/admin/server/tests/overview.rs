@@ -62,6 +62,12 @@ async fn first_run_overview_is_only_the_welcome_card() -> Result<(), Error> {
         .map(|(_, main)| main)
         .ok_or("overview without a centred main")?;
     assert!(main.contains("<div class=\"welcome anim-in\">"), "{main}");
+    // The Aperture mark at the FirstRun mockup's size and stroke, in theme colours.
+    assert!(main.contains(concat!(
+        "<svg class=\"logo\" width=\"72\" height=\"72\" viewBox=\"0 0 48 48\" ",
+        "aria-hidden=\"true\"><path class=\"logo__tile\" "
+    )));
+    assert!(main.contains("<g transform=\"translate(7 7) scale(.708)\" stroke-width=\"3.2\">"));
     assert!(main.contains(concat!(
         "<div><p class=\"eyebrow\">Welcome</p><h1 class=\"welcome__title\">",
         "Let’s connect your first machine.</h1></div>"

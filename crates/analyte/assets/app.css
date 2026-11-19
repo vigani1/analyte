@@ -18,10 +18,13 @@
 
 body { margin: 0; background: var(--bg); }
 
-/* Brand mark: its colours follow the theme (the mockup's inline styles). */
-.brand__tile { fill: var(--text); }
-.brand__letter { fill: none; stroke: var(--surface); stroke-linecap: round; stroke-linejoin: round; }
-.brand__arc { fill: none; stroke: var(--mark); stroke-linecap: round; }
+/* The Analyte mark "Aperture" (the Sidebar and SignIn mockups' inline styles):
+   an ink tile, a paper ring with the plain light going in, and the cobalt
+   sample and measured light coming out. Its colours follow the theme. */
+.logo__tile { fill: var(--text); }
+.logo__sample { fill: var(--mark); }
+.logo__light { fill: none; stroke: var(--surface); stroke-linecap: round; }
+.logo__measured { fill: none; stroke: var(--mark); stroke-linecap: round; }
 
 /* A status dot that does not pulse: pages are not live yet, so nothing moves. */
 .live-dot--still::after { animation: none; }

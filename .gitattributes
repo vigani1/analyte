@@ -4,5 +4,6 @@
 # Recorded analyzer conversations are exact bytes; never touch line endings.
 **/fixtures/** -text
 *.woff2 binary
+*.ico binary
 # Font licences ship byte for byte as published (docs/design/fonts.md hashes them).
 crates/analyte/assets/fonts/*.txt -text

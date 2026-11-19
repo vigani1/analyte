@@ -24,6 +24,7 @@ const CSS: &str = "text/css; charset=utf-8";
 const FONT: &str = "font/woff2";
 const TEXT: &str = "text/plain; charset=utf-8";
 const SVG: &str = "image/svg+xml";
+const ICO: &str = "image/vnd.microsoft.icon";
 
 /// Builds one table entry from a file in `crates/analyte/assets/`.
 macro_rules! asset {
@@ -37,7 +38,7 @@ macro_rules! asset {
 }
 
 /// Every file served under `/static/`.
-const ASSETS: [Asset; 17] = [
+const ASSETS: [Asset; 26] = [
     asset!("admin.css", CSS),
     asset!("fonts.css", CSS),
     asset!("analyte.css", CSS),
@@ -52,9 +53,44 @@ const ASSETS: [Asset; 17] = [
     asset!("fonts/OFL-InstrumentSans.txt", TEXT),
     asset!("fonts/OFL-IBMPlexMono.txt", TEXT),
     asset!("icons/analyte-app-icon.svg", SVG),
+    asset!("icons/analyte-app-icon-16.svg", SVG),
+    asset!("icons/analyte-app-icon-20.svg", SVG),
+    asset!("icons/analyte.ico", ICO),
     asset!("icons/tray-all-good.svg", SVG),
+    asset!("icons/tray-all-good-16.svg", SVG),
+    asset!("icons/tray-all-good-20.svg", SVG),
     asset!("icons/tray-needs-you.svg", SVG),
+    asset!("icons/tray-needs-you-16.svg", SVG),
+    asset!("icons/tray-needs-you-20.svg", SVG),
     asset!("icons/tray-engine-stopped.svg", SVG),
+    asset!("icons/tray-engine-stopped-16.svg", SVG),
+    asset!("icons/tray-engine-stopped-20.svg", SVG),
+];
+
+/// One browser-tab icon: its file under `/static/` and the pixel sizes it is
+/// drawn for. At 16 and 20 px the hand-tuned files are used, never the large
+/// icon scaled down (docs/design/HANDOFF.md, "Logo"). The large icon names its
+/// sizes rather than `any`, so a browser asking for 16 or 20 px still picks
+/// the hand-tuned file.
+pub(in crate::admin) struct Favicon {
+    pub(in crate::admin) path: &'static str,
+    pub(in crate::admin) sizes: &'static str,
+}
+
+/// The browser-tab icons every page links, smallest first.
+pub(in crate::admin) const FAVICONS: [Favicon; 3] = [
+    Favicon {
+        path: "icons/analyte-app-icon-16.svg",
+        sizes: "16x16",
+    },
+    Favicon {
+        path: "icons/analyte-app-icon-20.svg",
+        sizes: "20x20",
+    },
+    Favicon {
+        path: "icons/analyte-app-icon.svg",
+        sizes: "24x24 32x32 48x48 64x64 128x128 256x256",
+    },
 ];
 
 /// How long a browser may keep a versioned file: a year, unchanged. Other

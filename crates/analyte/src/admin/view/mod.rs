@@ -102,7 +102,7 @@ impl Tab {
 fn bar(current: Option<Tab>) -> Markup {
     let mut html = Markup::new().markup(concat!(
         "<header class=\"bar\"><div class=\"bar-inner\"><a class=\"brand\" href=\"/\">",
-        "<span class=\"mark\" aria-hidden=\"true\"></span>Analyte</a>",
+        "<img class=\"mark\" src=\"/static/icons/analyte-app-icon.svg\" alt=\"\" width=\"24\" height=\"24\">Analyte</a>",
         "<nav aria-label=\"Admin pages\"><ul class=\"tabs\">",
     ));
     for tab in Tab::MAIN {
@@ -214,7 +214,21 @@ fn head(title: &str, refresh: Option<Refresh>, header: Header) -> Markup {
         &Markup::new()
             .markup("<title>")
             .text(title)
-            .markup(" · Analyte</title><link rel=\"stylesheet\" href=\"")
+            .markup(" · Analyte</title>"),
+    );
+    for icon in &assets::FAVICONS {
+        html.push_fragment(
+            &Markup::new()
+                .markup("<link rel=\"icon\" type=\"image/svg+xml\" sizes=\"")
+                .markup(icon.sizes)
+                .markup("\" href=\"/static/")
+                .markup(icon.path)
+                .markup("\">"),
+        );
+    }
+    html.push_fragment(
+        &Markup::new()
+            .markup("<link rel=\"stylesheet\" href=\"")
             .markup(STYLESHEET)
             .markup("\"></head>"),
     );

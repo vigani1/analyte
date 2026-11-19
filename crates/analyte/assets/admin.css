@@ -76,14 +76,7 @@ a:hover { text-decoration-thickness: 2px; }
   display: inline-flex; align-items: center; gap: 10px;
   color: var(--text); font-weight: 700; font-size: 18px; letter-spacing: .01em; text-decoration: none;
 }
-.mark {
-  position: relative; display: inline-block; width: 24px; height: 24px;
-  border-radius: 8px; background: var(--accent);
-}
-.mark::after {
-  content: ""; position: absolute; left: 7px; top: 7px; width: 10px; height: 10px;
-  border-radius: 50%; background: var(--accent-ink);
-}
+.mark { display: block; width: 24px; height: 24px; }
 .tabs { display: flex; flex-wrap: wrap; gap: 4px; list-style: none; margin: 0; padding: 0; }
 .tabs li { margin: 0; }
 .tabs a, .more summary {
