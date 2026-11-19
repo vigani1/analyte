@@ -64,14 +64,14 @@ async fn pause(state: &Context, html: &mut Markup) -> Result<(), Error> {
         .await?;
     html.push_markup(if paused {
         concat!(
-            "<p class=\"notice\"><strong>Order sending is paused after a restore.</strong> ",
-            "Reconcile with the command line before orders are sent again ",
-            "<span class=\"muted\">(order sending paused after restore: true)</span>.</p>",
+            "<p class=\"notice\" title=\"Order sending paused after restore: true\">",
+            "<strong>Order sending is paused after a restore.</strong> ",
+            "Reconcile with the command line before orders are sent again.</p>",
         )
     } else {
         concat!(
-            "<p class=\"muted\">Order sending is not paused ",
-            "(order sending paused after restore: false).</p>",
+            "<p class=\"muted\"><span title=\"Order sending paused after restore: false\">",
+            "Order sending is not paused.</span></p>",
         )
     });
     Ok(())
@@ -108,17 +108,16 @@ pub(super) async fn machines(
                             last = last.max(Some(receipt.received_at));
                             if evidence_links < PAGE {
                                 evidence_links = evidence_links.saturating_add(1);
+                                let id = uuid::Uuid::from(receipt.id);
                                 evidence.push_fragment(
                                     &Markup::new()
                                         .markup("<li><a href=\"/receipts/")
-                                        .text(uuid::Uuid::from(receipt.id))
-                                        .markup("/departures\">Receipt ")
-                                        .text(uuid::Uuid::from(receipt.id))
-                                        .markup(
-                                            " interpretation evidence</a> <span class=\"muted\">",
-                                        )
+                                        .text(id)
+                                        .markup("/departures\" title=\"Receipt interpretation evidence\">Message received ")
                                         .text(plain::time(receipt.received_at))
-                                        .markup("</span></li>"),
+                                        .markup("</a> <small class=\"muted\">")
+                                        .text(id)
+                                        .markup("</small></li>"),
                                 );
                             }
                         }
@@ -216,11 +215,32 @@ fn more_targets(html: &mut Markup, parked: &Parked) {
 }
 
 fn kind_and_reason(parked: &Parked) -> Markup {
-    view::row("Category", None, &Markup::new().text(parked.kind.as_str())).fragment(&view::row(
+    let kind = parked.kind.as_str();
+    let category = category(kind).map_or_else(
+        || Markup::new().text(kind),
+        |words| view::exact(words, kind),
+    );
+    view::row("Category", None, &category).fragment(&view::row(
         "Reason",
         None,
         &Markup::new().text(parked.reason.as_str()),
     ))
+}
+
+/// A parked item's category in plain words; an unknown category shows as written.
+fn category(kind: &str) -> Option<&'static str> {
+    Some(match kind {
+        "mapping_finding" => "Test or unit not mapped",
+        "interpretation_failure" => "Could not read message",
+        "result_reconciliation" => "Result could not be matched to earlier results",
+        "incomplete_transfer" => "Message from the machine was incomplete",
+        "parked" => "Lab app rejected a delivery",
+        "conflict" => "Lab app reported a conflicting delivery",
+        "order_version_refused" => "Order from the lab app was refused",
+        "law_cancel_refusal_conflict" => "Cancel conflicts with the analyzer",
+        "poll_intent" => "Machine poll waiting for its outcome",
+        _ => return None,
+    })
 }
 
 pub(super) async fn parked(
@@ -358,4 +378,31 @@ async fn parked_page(state: &Context, cursor: Cursor) -> Result<Markup, Error> {
         next(&mut html, "/parked", last);
     }
     Ok(html)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Owner review 2026-11-19: parked categories read in plain words, and the
+    // stored category stays on hover; an unknown one shows exactly as written.
+    #[test]
+    fn categories_read_plainly_and_keep_the_stored_value() -> Result<(), analyte_model::TextError> {
+        let parked = |kind: &str| -> Result<Parked, analyte_model::TextError> {
+            Ok(Parked {
+                kind: Identifier::new(kind)?,
+                reason: analyte_model::Reason::new("synthetic reason")?,
+                targets: Vec::new(),
+            })
+        };
+        let mapped = kind_and_reason(&parked("mapping_finding")?);
+        assert!(mapped.contains(
+            "Category</dt><dd><span title=\"mapping_finding\">Test or unit not mapped</span></dd>"
+        ));
+        let failed = kind_and_reason(&parked("interpretation_failure")?);
+        assert!(failed.contains(">Could not read message</span>"));
+        let unknown = kind_and_reason(&parked("future_kind")?);
+        assert!(unknown.contains("Category</dt><dd>future_kind</dd>"));
+        Ok(())
+    }
 }

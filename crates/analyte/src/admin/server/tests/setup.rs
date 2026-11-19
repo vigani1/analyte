@@ -307,7 +307,7 @@ async fn waiting_machine_is_set_up_from_the_starter() -> Result<(), Error> {
     let index = fixture.get("/setup").await?;
     assert!(
         index.contains(
-            "<td><strong>machine-1</strong></td><td><span class=\"pill\">Not set up yet</span></td>"
+            "<td><strong>machine-1</strong></td><td data-label=\"Status\"><span class=\"pill\">Not set up yet</span></td>"
         ),
         "{index}"
     );
@@ -885,7 +885,7 @@ async fn add_machine_writes_a_checked_entry_and_starter_site() -> Result<(), Err
     let index = fixture.get("/setup").await?;
     assert!(
         index.contains(
-            "<td><strong>machine-2</strong></td><td><span class=\"pill\">Not set up yet</span></td>"
+            "<td><strong>machine-2</strong></td><td data-label=\"Status\"><span class=\"pill\">Not set up yet</span></td>"
         ),
         "{index}"
     );
@@ -1089,7 +1089,7 @@ async fn remove_warns_then_keeps_store_and_site_backup() -> Result<(), Error> {
     let index = fixture.get("/setup").await?;
     assert!(
         index.contains(concat!(
-            "<td><strong>synthetic</strong></td><td><span class=\"pill warn\">",
+            "<td><strong>synthetic</strong></td><td data-label=\"Status\"><span class=\"pill warn\">",
             "Removed: runs until the restart</span></td>"
         )),
         "{index}"

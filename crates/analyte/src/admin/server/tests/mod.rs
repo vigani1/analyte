@@ -131,7 +131,7 @@ async fn service_refuses_missing_token_and_owns_admin_server() -> Result<(), Err
     .await?;
     assert!(response.starts_with("HTTP/1.1 200"), "{response}");
     assert!(response.contains("<span title=\"machine owner: running\">Running</span>"));
-    assert!(response.contains("</span></td><td>unknown</td><td><time"));
+    assert!(response.contains("</span></td><td data-label=\"Last data received\">unknown</td>"));
     headers_present(&response);
     stop.send(()).map_err(|_| "service stop receiver lost")?;
     tokio::time::timeout(Duration::from_secs(10), owner).await???;
@@ -216,7 +216,7 @@ async fn tcp_server_light_follows_peer_and_hides_payload() -> Result<(), Error> 
         waiting.contains("title=\"TCP server\">Network: the machine connects to Analyte"),
         "{waiting}"
     );
-    assert!(waiting.contains("Waiting</span></td><td>unknown</td>"));
+    assert!(waiting.contains(&format!("Waiting</span></td>{LAST_DATA}unknown</td>")));
     let mut peer = tokio::net::TcpStream::connect(&analyzer_address).await?;
     until("<span class=\"pill ok\">Connected</span>").await?;
     let message = format!(
@@ -226,8 +226,8 @@ async fn tcp_server_light_follows_peer_and_hides_payload() -> Result<(), Error> 
     );
     peer.write_all(message.as_bytes()).await?;
     // Only a partial MLLP frame has arrived: no receipt exists, yet the runtime saw data.
-    let received = until("Connected</span></td><td><time datetime=").await?;
-    assert!(received.contains("<span class=\"pill ok\">Connected</span>"));
+    // One check: the green Connected pill next to a last-data time.
+    until("\"pill ok\">Connected</span></td><td data-label=\"Last data received\"><time").await?;
     peer.write_all(b"\x1c\r").await?;
     let mut reply = [0];
     peer.read_exact(&mut reply).await?;
@@ -248,6 +248,9 @@ async fn tcp_server_light_follows_peer_and_hides_payload() -> Result<(), Error> 
     tokio::time::timeout(Duration::from_secs(10), owner).await???;
     Ok(())
 }
+
+/// The overview's "last data received" cell as it opens.
+const LAST_DATA: &str = "<td data-label=\"Last data received\">";
 
 async fn request(
     host: &str,
@@ -541,15 +544,17 @@ async fn assert_overview_health(host: &str, bearer: &str) -> Result<(), Error> {
     assert!(response.contains("<span title=\"restore_paused\">Order sending paused after restore"));
     assert!(response.contains("<span title=\"machine_silent\">Machine has gone quiet"));
     assert!(
-        response.contains("<td>&lt;script&gt;responder(&#39;duty&#39;)&amp;&lt;/script&gt;</td>")
+        response.contains("<td data-label=\"Responder\">&lt;script&gt;responder(&#39;duty&#39;)&amp;&lt;/script&gt;</td>")
     );
-    assert!(response.contains("<td>&lt;busy&amp;machine&gt;</td>"));
+    assert!(response.contains("<td data-label=\"Machine\">&lt;busy&amp;machine&gt;</td>"));
     assert!(response.contains(
         "<time datetime=\"1970-01-01T00:01:40Z\" title=\"1970-01-01T00:01:40Z (Unix 100)\">"
     ));
     assert!(!response.contains("cleared alert responder"));
     assert!(response.contains("<span title=\"machine owner: stopped\">Stopped</span>"));
-    assert!(response.contains("</span></td><td><time datetime=\"1970-01-01T00:03:20Z\""));
+    assert!(response.contains(
+        "</span></td><td data-label=\"Last data received\"><time datetime=\"1970-01-01T00:03:20Z\""
+    ));
     assert!(response.contains(" days ago</span>"));
     assert!(response.contains(
         "<dt title=\"Pending items\">Waiting to be sent</dt><dd>2 results or order messages</dd>"

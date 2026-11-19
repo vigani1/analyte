@@ -117,9 +117,9 @@ th {
 }
 tr:nth-child(odd) > td { background: var(--surface); }
 tr:nth-child(even) > td { background: var(--stripe); }
-td.actions { white-space: nowrap; text-align: right; }
+td.actions { text-align: right; }
 td > strong:only-child { white-space: nowrap; }
-td.actions > * { display: inline-block; margin: 0 0 0 8px; }
+.buttons { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 
 /* Code */
 code, pre { font-family: ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace; font-size: 13px; }
@@ -194,7 +194,20 @@ input:focus, select:focus { border-color: var(--accent); outline: 3px solid var(
   section { padding: 16px; }
   dl, .field { grid-template-columns: 1fr; }
   dd { border-top: 0; padding-top: 0; }
-  td.actions { white-space: normal; text-align: left; }
+  .pill { white-space: normal; }
+}
+
+/* Below laptop width each row of a wide table becomes a small card with its labels. */
+@media (max-width: 900px) {
+  table.stack, table.stack tbody, table.stack tr, table.stack td { display: block; width: 100%; }
+  table.stack tr:first-child { display: none; }
+  table.stack tr { border-bottom: 1px solid var(--line); padding: 8px 0; }
+  table.stack tr > td { border: 0; padding: 4px 0; background: transparent; }
+  table.stack td[data-label]::before {
+    content: attr(data-label); display: block; color: var(--muted); font-size: 12px;
+  }
+  table.stack td.actions { text-align: left; }
+  table.stack .buttons { justify-content: flex-start; }
 }
 
 @media print {

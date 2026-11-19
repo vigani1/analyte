@@ -19,13 +19,24 @@ pub(super) fn enabled(config: &analyte_config::Validated) -> Result<Markup, Erro
         .map(|b| format!("{b:02x}"))
         .collect::<String>();
     let mut html = Markup::new()
+        .markup("<dl><dt title=\"Active configuration digest\">Settings version</dt><dd><code>")
+        .text(digest.chars().take(12).collect::<String>())
+        .markup("</code><small class=\"digest\">")
+        .text(&digest)
         .markup(concat!(
-            "<h3>Enabled machine departures</h3><p title=\"Active configuration digest\">",
-            "Settings version <small class=\"digest\">",
-        ))
-        .text(digest)
-        .markup("</small></p><ul>");
-    for rule in &config.effective().machine().deviations {
+            "</small></dd></dl><h3 title=\"Enabled machine departures\">Deliberate exceptions ",
+            "for this machine</h3><p class=\"muted\">Places where this machine's settings ",
+            "knowingly accept something the standard does not. Being switched on does not mean ",
+            "an exception was used for a given message; each message's details show which ",
+            "ones were.</p>",
+        ));
+    let rules = &config.effective().machine().deviations;
+    if rules.is_empty() {
+        html.push_markup("<p>None</p>");
+        return Ok(html);
+    }
+    html.push_markup("<ul>");
+    for rule in rules {
         html.push_fragment(
             &Markup::new()
                 .markup("<li><b>")
@@ -37,10 +48,7 @@ pub(super) fn enabled(config: &analyte_config::Validated) -> Result<Markup, Erro
                 .markup("</pre></li>"),
         );
     }
-    html.push_markup(concat!(
-        "</ul><p>Enabled is not evidence that a rule ",
-        "applied to a receipt.</p>",
-    ));
+    html.push_markup("</ul>");
     Ok(html)
 }
 

@@ -44,9 +44,8 @@ async fn render(state: &Context) -> Result<Markup, Error> {
         .await?;
     let now = Timestamp::now();
     let alerts = crate::operator::alerts::active(&state.store).await?;
-    let mut html = view::page("Overview").markup(
-        "<p class=\"lead\">Operator actions require an authenticated session and a reason.</p>",
-    );
+    let mut html = view::page("Overview")
+        .markup("<p class=\"lead\">Actions you take here are recorded with your reason.</p>");
     if !alerts.is_empty() {
         html.push_fragment(
             &Markup::new()
@@ -123,7 +122,7 @@ fn render_alerts(html: &mut Markup, alerts: &[analyte_store::AlertState], now: T
         return;
     }
     html.push_markup(concat!(
-        "<div class=\"table\"><table><tr><th>Alert</th><th>Machine</th><th>Responder</th>",
+        "<div class=\"table\"><table class=\"stack\"><tr><th>Alert</th><th>Machine</th><th>Responder</th>",
         "<th>Raised</th><th>Last value</th></tr>",
     ));
     for alert in alerts {
@@ -132,16 +131,16 @@ fn render_alerts(html: &mut Markup, alerts: &[analyte_store::AlertState], now: T
             &Markup::new()
                 .markup("<tr><td>")
                 .fragment(&exact(alert_words(&alert.key), kind))
-                .markup("</td><td>")
+                .markup("</td><td data-label=\"Machine\">")
                 .text(machine.unwrap_or("—"))
-                .markup("</td><td>")
+                .markup("</td><td data-label=\"Responder\">")
                 .text(&alert.responder)
-                .markup("</td><td>")
+                .markup("</td><td data-label=\"Raised\">")
                 .fragment(&alert.raised_at.map_or_else(
                     || Markup::new().text("unknown"),
                     |raised| plain::when_unix(raised, now),
                 ))
-                .markup("</td><td>")
+                .markup("</td><td data-label=\"Last value\">")
                 .text(
                     alert
                         .value
@@ -384,7 +383,7 @@ async fn render_machines(
         return Ok(());
     }
     html.push_markup(concat!(
-        "<div class=\"table\"><table><tr><th>Machine</th><th>Connection</th>",
+        "<div class=\"table\"><table class=\"stack\"><tr><th>Machine</th><th>Connection</th>",
         "<th>Last data received</th><th>State since</th><th>Connection type</th>",
         "<th>Service</th></tr>",
     ));
@@ -395,15 +394,15 @@ async fn render_machines(
             &Markup::new()
                 .markup("<tr><td><strong>")
                 .text(machine.id.as_str())
-                .markup("</strong></td><td>")
+                .markup("</strong></td><td data-label=\"Connection\">")
                 .fragment(&light.state)
-                .markup("</td><td>")
+                .markup("</td><td data-label=\"Last data received\">")
                 .fragment(&light.last_data)
-                .markup("</td><td>")
+                .markup("</td><td data-label=\"State since\">")
                 .fragment(&light.changed)
-                .markup("</td><td>")
+                .markup("</td><td data-label=\"Connection type\">")
                 .fragment(&light.kind)
-                .markup("</td><td>")
+                .markup("</td><td data-label=\"Service\">")
                 .fragment(&light.service)
                 .markup("</td></tr>"),
         );

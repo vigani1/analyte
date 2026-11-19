@@ -321,17 +321,17 @@ fn machine_rows(state: &Context, listed: &[site::EntrySpans]) -> Markup {
             &Markup::new()
                 .markup("<tr><td><strong>")
                 .text(id)
-                .markup("</strong></td><td>")
+                .markup("</strong></td><td data-label=\"Status\">")
                 .fragment(&status)
-                .markup("</td><td>")
+                .markup("</td><td data-label=\"Settings version\">")
                 .fragment(&short_version(running))
-                .markup("</td><td class=\"actions\"><a class=\"button secondary\" href=\"/setup/")
+                .markup("</td><td class=\"actions\"><div class=\"buttons\"><a class=\"button secondary\" href=\"/setup/")
                 .text(id)
                 .markup("\">Set up</a><form method=\"get\" action=\"/setup/")
                 .text(id)
                 .markup(concat!(
                     "/remove\"><button class=\"quiet-danger\">Remove machine</button>",
-                    "</form></td></tr>",
+                    "</form></div></td></tr>",
                 )),
         );
     }
@@ -345,9 +345,9 @@ fn machine_rows(state: &Context, listed: &[site::EntrySpans]) -> Markup {
             &Markup::new()
                 .markup("<tr><td><strong>")
                 .text(gone.id.as_str())
-                .markup("</strong></td><td>")
+                .markup("</strong></td><td data-label=\"Status\">")
                 .fragment(&pill(Tone::Attention, "Removed: runs until the restart"))
-                .markup("</td><td>")
+                .markup("</td><td data-label=\"Settings version\">")
                 .fragment(&short_version(Some(gone)))
                 .markup("</td><td></td></tr>"),
         );
@@ -408,7 +408,7 @@ pub(super) async fn index(State(state): State<Arc<Context>>) -> Response {
     html.push_markup(concat!(
         "<section><div class=\"heading\"><h2>Installed machines</h2>",
         "<form method=\"get\" action=\"/setup/add\"><button>Add machine</button></form>",
-        "</div><div class=\"table\"><table><tr><th>Machine</th><th>Status</th>",
+        "</div><div class=\"table\"><table class=\"stack\"><tr><th>Machine</th><th>Status</th>",
         "<th title=\"Running configuration digest\">Settings version</th><th></th></tr>"
     ));
     let worker = state.clone();
@@ -429,7 +429,7 @@ pub(super) async fn index(State(state): State<Arc<Context>>) -> Response {
         "</table></div></section><section><h2>Shipped machine definitions</h2>",
         "<p class=\"lead\">The machine models this Analyte can be set up for. A blocked ",
         "definition cannot be chosen until its missing facts or recordings are added.</p>",
-        "<div class=\"table\"><table><tr><th>Definition",
+        "<div class=\"table\"><table class=\"stack\"><tr><th>Definition",
         "</th><th>Name</th><th>Evidence</th><th>Status</th></tr>"
     ));
     let worker = state.clone();
@@ -449,11 +449,11 @@ pub(super) async fn index(State(state): State<Arc<Context>>) -> Response {
                     &Markup::new()
                         .markup("<tr><td><code>")
                         .text(&definition.key)
-                        .markup("</code></td><td>")
+                        .markup("</code></td><td data-label=\"Name\">")
                         .text(name)
-                        .markup("</td><td>")
+                        .markup("</td><td data-label=\"Evidence\">")
                         .text(level)
-                        .markup("</td><td>")
+                        .markup("</td><td data-label=\"Status\">")
                         .fragment(&status)
                         .markup("</td></tr>"),
                 );
