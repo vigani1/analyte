@@ -45,7 +45,7 @@ impl Tab {
     ];
 
     /// The page's path; these stay as they were, so bookmarks and docs keep working.
-    const fn href(self) -> &'static str {
+    pub(super) const fn href(self) -> &'static str {
         match self {
             Self::Overview => "/",
             Self::NeedsReview => "/parked",

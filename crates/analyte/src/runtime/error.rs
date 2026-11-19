@@ -195,6 +195,9 @@ pub enum ParkedCommandError {
     /// Reprocessing was sent to the wrong command route.
     #[error("reprocessing requires the interpretation route")]
     ReprocessRequiresInterpretation,
+    /// Resolving was sent to the wrong command route.
+    #[error("resolving requires the recovery route")]
+    ResolveUsesRecovery,
     /// The next operator cursor cannot be represented.
     #[error("operator sequence cursor overflow")]
     OperatorCursorOverflow,

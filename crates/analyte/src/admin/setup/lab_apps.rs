@@ -30,8 +30,8 @@ use axum::{
 use serde::Deserialize;
 use std::{path::PathBuf, sync::Arc};
 
-/// Where the page lives.
-pub(super) const PAGE: &str = "/setup/lab-apps";
+/// Where the page lives; the overview links here too.
+pub(in crate::admin) const PAGE: &str = "/setup/lab-apps";
 
 /// Defaults a new lab app starts with, the same as a `[destination]` table's.
 const FRESHNESS: u64 = 30;
