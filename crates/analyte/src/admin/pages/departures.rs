@@ -4,7 +4,7 @@ use crate::admin::Error;
 use crate::admin::markup::Markup;
 use crate::admin::{
     server::Context,
-    view::{self, Tab, plain},
+    view::{self, Tab, format},
 };
 use crate::deadline;
 use analyte_model::{DepartureEvidence, DepartureMeaning, ReceiptId};
@@ -168,7 +168,7 @@ fn outcome(outcome: &analyte_store::Reading) -> Markup {
         html.push_fragment(
             &Markup::new()
                 .markup("<p class=\"notice\" title=\"Parked interpretation\">Could not be read: ")
-                .fragment(&plain::reason(reason.as_str()))
+                .fragment(&format::reason(reason.as_str()))
                 .markup("</p>"),
         );
     }
@@ -226,7 +226,7 @@ fn render(html: &mut Markup, evidence: &DepartureEvidence) {
                     "<p class=\"notice bad\" title=\"Applied ledger incomplete\"><strong>Not ",
                     "sent to the lab app: the record of exceptions used is incomplete. ",
                 ))
-                .fragment(&plain::reason(reason.as_str()))
+                .fragment(&format::reason(reason.as_str()))
                 .markup("</strong></p>"),
         );
     }

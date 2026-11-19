@@ -3,7 +3,7 @@
 //! The stylesheet is served from the binary at a same-origin path, so the
 //! `default-src 'self'` content security policy allows it unchanged. Pages use no
 //! inline styles, scripts, fonts or external URLs.
-pub(super) mod plain;
+pub(super) mod format;
 
 use super::markup::Markup;
 use axum::{
@@ -13,7 +13,7 @@ use axum::{
 
 /// Where the stylesheet is served.
 pub(super) const STYLESHEET: &str = "/static/admin.css";
-const CSS: &str = include_str!("style.css");
+const CSS: &str = include_str!("../../../assets/admin.css");
 
 /// One entry of the menu. The first four are the main tabs; the rest sit under "More".
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

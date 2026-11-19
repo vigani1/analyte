@@ -4,7 +4,7 @@
 //! rules raised; it adds no thresholds of its own. Lines hold names and counts,
 //! never payloads or sample IDs (safety rule 10).
 use crate::admin::markup::Markup;
-use crate::admin::view::{Tab, plain};
+use crate::admin::view::{Tab, format};
 use analyte_model::Identifier;
 use analyte_store::{AlertKey, AlertState, Undeliverable};
 
@@ -200,7 +200,7 @@ fn from_alert(alert: &AlertState) -> Thing {
             Subject::Disk,
             value.map_or_else(
                 || "Disk space is low".into(),
-                |free| format!("Disk space is low: {} free", plain::bytes(free)),
+                |free| format!("Disk space is low: {} free", format::bytes(free)),
             ),
             Fix::Section(Section::Disk),
         ),
@@ -215,7 +215,7 @@ fn from_alert(alert: &AlertState) -> Thing {
                     format!(
                         "{} has sent nothing for {}",
                         machine.as_str(),
-                        plain::duration(seconds)
+                        format::duration(seconds)
                     )
                 },
             ),
@@ -231,7 +231,7 @@ fn from_alert(alert: &AlertState) -> Thing {
                 |seconds| {
                     format!(
                         "A result has waited {} to be sent",
-                        plain::duration(seconds)
+                        format::duration(seconds)
                     )
                 },
             ),
@@ -268,7 +268,7 @@ fn review(count: u64) -> Thing {
     } else {
         format!(
             "{} review",
-            plain::amount(count, "item needs", "items need")
+            format::amount(count, "item needs", "items need")
         )
     };
     Thing::new(Subject::Review, text, Fix::Page(Tab::NeedsReview))
@@ -302,7 +302,7 @@ pub(super) fn status(things: &[Thing]) -> Markup {
     let count = u64::try_from(things.len()).unwrap_or(u64::MAX);
     let mut html = Markup::new()
         .markup("<div class=\"status bad\" role=\"status\"><p class=\"verdict\">")
-        .text(plain::amount(count, "thing needs", "things need"))
+        .text(format::amount(count, "thing needs", "things need"))
         .markup(" you</p><ul class=\"things\">");
     for thing in things {
         html.push_fragment(

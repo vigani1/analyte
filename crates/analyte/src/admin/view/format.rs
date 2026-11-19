@@ -71,6 +71,13 @@ fn time_in(at: Timestamp, zone: &TimeZone) -> String {
         .to_string()
 }
 
+/// What someone does while order sending is paused after a restore.
+pub(in crate::admin) const RESTORE_ADVICE: &str =
+    "Ask IT to reconcile orders with the command line; until then no order is sent to a machine.";
+
+/// What "Last data received" says before a machine has sent anything.
+pub(in crate::admin) const NOTHING_YET: &str = "Nothing yet";
+
 /// "Yes" or "No".
 pub(in crate::admin) const fn yes_no(value: bool) -> &'static str {
     if value { "Yes" } else { "No" }

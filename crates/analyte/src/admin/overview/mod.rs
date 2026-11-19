@@ -1,12 +1,13 @@
 //! Renders a read-only HTML overview: whether everything is OK first, then sections for machines, sending to the lab app, orders, disk and alerts.
 mod attention;
 
-use super::server::{Context, Machine};
-use super::view::{self, Tab, Tone, count, exact, pill, plain, row};
+use super::pages::LinkLight;
+use super::server::Context;
+use super::view::{self, Tab, Tone, count, exact, format, pill, row};
 use crate::admin::Error;
 use crate::admin::markup::Markup;
 use crate::deadline;
-use crate::machine::link::status::{Light, Link};
+use crate::machine::link::status::Light;
 use analyte_model::{OrderState, ReceiptId};
 use analyte_store::{AlertKey, MachineOrderFilter};
 use axum::{
@@ -101,14 +102,14 @@ fn render_disk(html: &mut Markup, free: u64, reserve: u64) {
         "Disk space",
         Some("Free disk bytes"),
         &exact(
-            &format!("{} free", plain::bytes(free)),
+            &format!("{} free", format::bytes(free)),
             &format!("{free} bytes free"),
         ),
     ));
     html.push_fragment(&row(
         "Always kept free",
         Some("Disk reserve bytes"),
-        &exact(&plain::bytes(reserve), &format!("{reserve} bytes"))
+        &exact(&format::bytes(reserve), &format!("{reserve} bytes"))
             .markup(" <span class=\"muted\">Analyte stops receiving below this</span>"),
     ));
     html.push_fragment(&row(
@@ -149,7 +150,7 @@ fn render_alerts(html: &mut Markup, alerts: &[analyte_store::AlertState], now: T
                 .markup("</td><td data-label=\"Raised\">")
                 .fragment(&alert.raised_at.map_or_else(
                     || Markup::new().text("Not known"),
-                    |raised| plain::when_unix(raised, now),
+                    |raised| format::when_unix(raised, now),
                 ))
                 .markup("</td><td data-label=\"Last value\">")
                 .text(
@@ -219,7 +220,7 @@ async fn render_orders(
             Some("Restore unreconciled"),
             &pill(Tone::Attention, "Yes")
                 .markup(" <span class=\"muted\">")
-                .markup(RESTORE_ADVICE)
+                .markup(format::RESTORE_ADVICE)
                 .markup("</span>"),
         ));
     }
@@ -311,7 +312,7 @@ async fn render_destinations(
                     Some("Cache last successful poll"),
                     &health.last_successful_poll.map_or_else(
                         || Markup::new().text("Not yet"),
-                        |time| plain::when_unix(time, now),
+                        |time| format::when_unix(time, now),
                     ),
                 ))
                 .fragment(&row(
@@ -336,7 +337,7 @@ async fn render_destinations(
     } else {
         oldest.map_or_else(
             || Markup::new().text("Not known"),
-            |age| exact(&plain::duration(age), &format!("{age} seconds")),
+            |age| exact(&format::duration(age), &format!("{age} seconds")),
         )
     };
     html.push_fragment(
@@ -454,69 +455,6 @@ pub(super) async fn activity(
         }
     }
     Ok(seen)
-}
-
-/// One machine's link light, ready to show. "Last data" is the later of the
-/// runtime's last read and the last stored receipt, so it survives a restart. It
-/// never shows payloads, sample IDs or peer addresses (safety rule 10).
-pub(super) struct LinkLight {
-    kind: Markup,
-    state: Markup,
-    last_data: Markup,
-    changed: Markup,
-    service: Markup,
-}
-
-impl LinkLight {
-    pub(super) fn of(machine: &Machine, stored: Option<Timestamp>, now: Timestamp) -> Self {
-        let status = machine.status.borrow().clone();
-        let tone = match status.light() {
-            Light::Live => Tone::Good,
-            Light::Waiting => Tone::Attention,
-            Light::Off => Tone::Neutral,
-        };
-        Self {
-            kind: exact(link_words(status.link()), status.link().as_str()),
-            state: pill(tone, status.state()),
-            last_data: status.last_data().max(stored).map_or_else(
-                || Markup::new().text(NOTHING_YET),
-                |time| plain::when(time, now),
-            ),
-            changed: plain::when(status.changed_at(), now),
-            service: if machine.running.load(Ordering::Acquire) {
-                exact("Running", "machine owner: running")
-            } else {
-                exact("Stopped", "machine owner: stopped")
-            },
-        }
-    }
-
-    /// The light as key and value rows, for a machine's own card.
-    pub(super) fn rows(&self) -> Markup {
-        Markup::new()
-            .fragment(&row("Connection", Some("Connection state"), &self.state))
-            .fragment(&row("Last data received", None, &self.last_data))
-            .fragment(&row("Since", Some("Last state change"), &self.changed))
-            .fragment(&row("Connection type", Some("Link"), &self.kind))
-            .fragment(&row("Service", Some("Machine owner"), &self.service))
-    }
-}
-
-/// What someone does while order sending is paused after a restore.
-pub(super) const RESTORE_ADVICE: &str =
-    "Ask IT to reconcile orders with the command line; until then no order is sent to a machine.";
-
-/// What "Last data received" says before a machine has sent anything.
-pub(super) const NOTHING_YET: &str = "Nothing yet";
-
-/// How the machine is attached, in plain words; the technical link kind shows on hover.
-const fn link_words(link: Link) -> &'static str {
-    match link {
-        Link::TcpServer => "Network: the machine connects to Analyte",
-        Link::TcpClient => "Network: Analyte connects to the machine",
-        Link::Serial => "Serial cable",
-        Link::Folder => "Watched folder",
-    }
 }
 
 async fn render_alert_endpoints(

@@ -5,7 +5,7 @@ use crate::admin::error::CommandError;
 use crate::admin::markup::Markup;
 use crate::admin::{
     server::Context,
-    view::{self, Tab, Tone, plain},
+    view::{self, Tab, Tone, format},
 };
 use crate::deadline;
 use analyte_store::DeliveryState;
@@ -73,7 +73,7 @@ pub(in crate::admin) async fn deliveries(
                         .markup("</td><td data-label=\"Status\"><span title=\"")
                         .text(row.state)
                         .markup("\">")
-                        .fragment(&view::pill(tone, plain::delivery_state(row.state)))
+                        .fragment(&view::pill(tone, format::delivery_state(row.state)))
                         .markup("</span></td><td class=\"actions\">"),
                 );
                 match row.state {

@@ -1,6 +1,6 @@
 //! Renders protected machine orders and retained cache evidence.
 use super::{Cursor, PAGE, finish, next, one_page, pause};
-use crate::admin::view::{self, Tab, exact, plain, row};
+use crate::admin::view::{self, Tab, exact, format, row};
 use crate::{
     admin::{Error, markup::Markup, server::Context},
     deadline,
@@ -91,7 +91,7 @@ fn order_section(order: &analyte_store::MachineOrder, now: jiff::Timestamp) -> M
             .fragment(&row(
                 "Status",
                 None,
-                &exact(plain::order_state(order.state), &order.state.to_string()),
+                &exact(format::order_state(order.state), &order.state.to_string()),
             ))
             .fragment(&row(
                 "Order version sent",
@@ -101,7 +101,7 @@ fn order_section(order: &analyte_store::MachineOrder, now: jiff::Timestamp) -> M
             .fragment(&row(
                 "Last change",
                 None,
-                &plain::when_unix(order.updated_at, now),
+                &format::when_unix(order.updated_at, now),
             ))
             .markup("</dl>"),
     );
@@ -113,7 +113,7 @@ fn order_section(order: &analyte_store::MachineOrder, now: jiff::Timestamp) -> M
                 .text(item.index)
                 .markup("</strong>: ")
                 .fragment(&exact(
-                    plain::order_state(item.state),
+                    format::order_state(item.state),
                     &item.state.to_string(),
                 ))
                 .markup(" <small class=\"muted\" title=\"Placer, namespace and source code\">Order number ")
@@ -177,12 +177,12 @@ fn render_cache(
                 .fragment(&row(
                     "Cancelled in the lab app",
                     Some("Tombstone"),
-                    &Markup::new().text(plain::yes_no(cached.tombstone)),
+                    &Markup::new().text(format::yes_no(cached.tombstone)),
                 ))
                 .fragment(&row(
                     "Kept until",
                     Some("Cache expiry"),
-                    &plain::when_unix(cached.expiry, now),
+                    &format::when_unix(cached.expiry, now),
                 ))
                 .markup("</dl>"),
         );
