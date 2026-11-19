@@ -12,7 +12,7 @@ mod webhooks;
 pub(crate) use alerts::Condition;
 pub use alerts::{Alert, AlertConfigError, AlertKind};
 use analyte_config::{Draft, Validated};
-pub use error::Error;
+pub use error::{Clashing, Error};
 pub use lab_apps::LabApp;
 use serde::Deserialize;
 use std::{
@@ -201,6 +201,9 @@ impl Program {
             })
         {
             return Err(Error::InvalidSigningRotation);
+        }
+        for name in file.signing_rotation.values().flatten() {
+            places.key(name)?;
         }
         if !(1..=3600).contains(&file.alert_interval_seconds) {
             return Err(AlertConfigError::Interval.into());
@@ -638,6 +641,107 @@ mod admin_tests {
                 "{program}{}",
                 kept.replace("moved.example.invalid", "lab.example.invalid")
             ),
+        )?;
+        assert_eq!(Program::load(&path)?.lab_apps().len(), 1);
+        Ok(())
+    }
+
+    // Owner decision 2026-11-19 (key clash): two lab app names that differ only by
+    // letter case or - versus _ are refused at startup wherever they are written
+    // (lab-apps.toml, a site file's [destination], a kept destination), and so are
+    // two different key names, rotation included, that share one variable. The
+    // message names both, the variable and the fix.
+    #[test]
+    fn clashing_lab_app_and_key_names_are_refused_at_startup() -> Result<(), Error> {
+        let temp = tempfile::tempdir()?;
+        let path = temp.path().join("program.toml");
+        let file = temp.path().join(analyte_config::LAB_APPS_FILE);
+        let app = |name: &str, api: &str, signing: &str| {
+            format!(
+                "name = '{name}'\nbase_url = 'https://lab.example.invalid'\napi_key_name = '{api}'\nsigning_key_name = '{signing}'\n"
+            )
+        };
+        let listed = |body: &str| format!("schema_version = 1\n[[lab_apps]]\n{body}");
+        let program = |tail: &str| {
+            format!(
+                "{}{tail}",
+                analyte_fixtures::program("[admin]\nport = 8080\n")
+            )
+        };
+        let refused = |what: Clashing, first: &str, second: &str| {
+            let error = Program::load(&path).err().ok_or("clash accepted")?;
+            let named = matches!(
+                &error,
+                super::Error::NameClash { what: found, first: one, second: two, .. }
+                    if *found == what && one == first && two == second
+            );
+            if named {
+                Ok(error.to_string())
+            } else {
+                Err(Error::from(format!("unexpected: {error}")))
+            }
+        };
+
+        // lab-apps.toml and a kept destination in the program file.
+        std::fs::write(&file, listed(&app("lab-1", "lab-1-api", "lab-1-signing")))?;
+        let kept = format!(
+            "[[retired_destinations]]\n{}",
+            app("lab_1", "lab_1-api", "lab_1-signing")
+        );
+        std::fs::write(&path, program(&kept))?;
+        assert_eq!(
+            refused(Clashing::LabApps, "lab-1", "lab_1")?,
+            concat!(
+                "Lab apps \"lab-1\" and \"lab_1\" clash: both would use the key name ",
+                "ANALYTE_SECRET_LAB_1_API. Rename one so the names differ by more than letter ",
+                "case or - versus _, in the file that defines it (lab-apps.toml, a site file ",
+                "or the program file)"
+            )
+        );
+
+        // lab-apps.toml and a machine's own [destination] differing by case.
+        let examples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../core/config/examples");
+        let site = include_str!("../../../../core/config/examples/site.toml");
+        std::fs::write(
+            temp.path().join("site.toml"),
+            site.replace("name = \"demo\"", "name = \"DEMO\"")
+                .replace("demo-", "DEMO-"),
+        )?;
+        std::fs::write(&file, listed(&app("demo", "demo-api", "demo-signing")))?;
+        let machine = format!(
+            "[[machines]]\nid = 'synthetic'\ndefinition = '{}'\nsite = 'site.toml'\n",
+            examples
+                .join("hl7.toml")
+                .display()
+                .to_string()
+                .replace('\\', "/"),
+        );
+        std::fs::write(
+            &path,
+            analyte_fixtures::program(&format!("[admin]\nport = 8080\n{machine}")),
+        )?;
+        refused(Clashing::LabApps, "demo", "DEMO")?;
+
+        // Two lab apps whose key names share one variable.
+        std::fs::write(&file, listed(&app("first", "shared-key", "first-signing")))?;
+        let kept = format!(
+            "[[retired_destinations]]\n{}",
+            app("second", "shared_key", "second-signing")
+        );
+        std::fs::write(&path, program(&kept))?;
+        let text = refused(Clashing::Keys, "shared-key", "shared_key")?;
+        assert!(text.contains("ANALYTE_SECRET_SHARED_KEY"), "{text}");
+
+        // A rotation key name against the lab app's own signing key name.
+        std::fs::write(
+            &path,
+            program("[signing_rotation]\nfirst = ['first_signing']\n"),
+        )?;
+        refused(Clashing::Keys, "first-signing", "first_signing")?;
+        // The same names written alike are no clash.
+        std::fs::write(
+            &path,
+            program("[signing_rotation]\nfirst = ['first-previous']\n"),
         )?;
         assert_eq!(Program::load(&path)?.lab_apps().len(), 1);
         Ok(())

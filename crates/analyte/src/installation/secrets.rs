@@ -94,6 +94,14 @@ pub fn variable(name: &str) -> String {
     format!("ANALYTE_SECRET_{suffix}")
 }
 
+/// Whether two different names would share one environment variable: they
+/// differ only by letter case or by `-` versus `_` (or another sign). Such
+/// names are refused, because one could be given the other's key.
+#[must_use]
+pub fn clash(left: &str, right: &str) -> bool {
+    left != right && variable(left) == variable(right)
+}
+
 impl Environment {
     /// Whether keys for this destination were loaded. Only a kept destination
     /// can lack them: a set-up machine's missing keys stop startup instead.
@@ -352,6 +360,16 @@ mod tests {
     #[test]
     fn environment_names_are_stable() {
         assert_eq!(super::variable("lab-api.key"), "ANALYTE_SECRET_LAB_API_KEY");
+    }
+
+    // Owner decision 2026-11-19 (key clash): names clash when they differ only
+    // by letter case or - versus _; the same name is no clash.
+    #[test]
+    fn names_differing_only_by_case_or_dash_clash() {
+        assert!(super::clash("lab-1", "lab_1"));
+        assert!(super::clash("Lab-1", "lab-1"));
+        assert!(!super::clash("lab-1", "lab-1"));
+        assert!(!super::clash("lab-1", "lab-12"));
     }
 }
 

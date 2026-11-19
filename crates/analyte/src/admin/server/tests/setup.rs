@@ -884,6 +884,52 @@ async fn lab_app_in_use_is_not_removed() -> Result<(), Error> {
     Ok(())
 }
 
+// Owner decision 2026-11-19 (key clash): the Lab app page refuses a new lab app
+// whose name differs from an existing one only by - versus _ or letter case,
+// with the same plain message as startup, before any file or key is written.
+#[tokio::test(flavor = "multi_thread")]
+async fn lab_app_page_refuses_a_clashing_name() -> Result<(), Error> {
+    let fixture = start().await?;
+    let fixture = &fixture;
+    let add = |name: &'static str| async move {
+        fixture
+            .submit(
+                "/setup/lab-apps/new",
+                "/setup/lab-apps/new",
+                &[
+                    ("name", name),
+                    ("base_url", "https://lab.example.invalid"),
+                    ("api_key", API_KEY),
+                    ("signing_key", SIGNING_KEY),
+                ],
+            )
+            .await
+    };
+    assert!(add("lab-1").await?.starts_with("HTTP/1.1 200"));
+    let file = fixture.root().join("lab-apps.toml");
+    let before = std::fs::read_to_string(&file)?;
+    let refused = add("lab_1").await?;
+    assert!(refused.starts_with("HTTP/1.1 409"), "{refused}");
+    assert!(
+        refused.contains(concat!(
+            "Lab apps &quot;lab-1&quot; and &quot;lab_1&quot; clash: both would use the key ",
+            "name ANALYTE_SECRET_LAB_1_API. Rename one so the names differ by more than ",
+            "letter case or - versus _"
+        )),
+        "{refused}"
+    );
+    // The site file's "demo", by letter case only.
+    let refused = add("Demo").await?;
+    assert!(
+        refused.contains("Lab apps &quot;demo&quot; and &quot;Demo&quot; clash"),
+        "{refused}"
+    );
+    assert_eq!(std::fs::read_to_string(&file)?, before);
+    let stored = crate::installation::credentials::Locked::new(&fixture.data).read()?;
+    assert!(stored.set_at("lab_1-api").is_none() && stored.set_at("Demo-api").is_none());
+    Ok(())
+}
+
 // Owner request 2026-11-18 (setup page); AGENTS.md rules 7 and 10: the listen
 // test shows the bytes on the page only, writes nothing to the port, refuses a
 // port the running service owns, and stores and logs nothing.

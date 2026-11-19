@@ -640,15 +640,10 @@ fn add_blocking(state: &Context, mut posted: Posted) -> Result<Saved, SetupError
     let _writing = state.setup.writing()?;
     let name = new_name(&posted.name)?;
     let scan = scan(&state.config_path)?;
-    if scan.known.iter().any(|known| {
-        known
-            .settings
-            .name
-            .as_str()
-            .eq_ignore_ascii_case(name.as_str())
-    }) {
+    if scan.get(name.as_str()).is_some() {
         return Err(SetupError::LabAppTaken(name.as_str().into()));
     }
+    file::refuse_lab_app_clash(scan.known.iter().map(|known| &known.settings.name), &name)?;
     let keys_named = [
         Identifier::new(&format!("{}-api", name.as_str())).map_err(|_| SetupError::LabAppName)?,
         Identifier::new(&format!("{}-signing", name.as_str()))

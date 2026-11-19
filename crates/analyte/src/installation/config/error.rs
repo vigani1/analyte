@@ -80,6 +80,21 @@ pub enum Error {
         /// The place read later.
         second: String,
     },
+    /// Two different lab app names, or two different key names, would share one
+    /// environment variable, so one could be given the other's key.
+    #[error(
+        "{what} \"{first}\" and \"{second}\" clash: both would use the key name {variable}. Rename one so the names differ by more than letter case or - versus _, in the file that defines it (lab-apps.toml, a site file or the program file)"
+    )]
+    NameClash {
+        /// Whether lab app names or key names clash.
+        what: Clashing,
+        /// The name read first.
+        first: String,
+        /// The name read later.
+        second: String,
+        /// The environment variable both would use.
+        variable: String,
+    },
     /// Two retired destinations share one name, so which address to use is unknown.
     #[error(
         "retired destination {0} is listed twice; keep one [[retired_destinations]] table per name"
@@ -147,6 +162,24 @@ pub enum Error {
     Integer(#[from] std::num::TryFromIntError),
 }
 
+/// What kind of names clash in [`Error::NameClash`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Clashing {
+    /// Two lab app names.
+    LabApps,
+    /// Two credential key names.
+    Keys,
+}
+
+impl std::fmt::Display for Clashing {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::LabApps => "Lab apps",
+            Self::Keys => "Keys",
+        })
+    }
+}
+
 // Existing unit assertions still inspect the original validation cause during API migration.
 #[cfg(test)]
 impl Error {
@@ -178,6 +211,7 @@ impl Error {
             | Self::SetupNeedsAdmin
             | Self::AwaitingSetupWithSettings
             | Self::ConflictingLabApp { .. }
+            | Self::NameClash { .. }
             | Self::DuplicateRetiredDestination(_)
             | Self::TooManyRetiredDestinations
             | Self::InvalidProgramLimits
