@@ -5,7 +5,7 @@
 //! page lists those too, and a save moves them into `lab-apps.toml`. Every write
 //! goes through the same checked commit as the machine setup (backup, safe
 //! write, reload, rollback) and applies after a restart. Keys go only to the
-//! locked credentials file and are shown only as "set on <date>".
+//! locked credentials file and are shown only as `set on <date>`.
 use super::{
     SetupError, audit, done, entries, key_line, needs_login, page, refused, restart_form, site,
 };
