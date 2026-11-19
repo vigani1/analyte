@@ -62,6 +62,14 @@ pub fn loopback_test_url(value: &str) -> Result<url::Url, &'static str> {
     parse_url(value, 4096, true)
 }
 
+/// Makes a lab app's base URL end in `/`, so the contract paths (`results`,
+/// `orders`) join beneath its last path segment instead of replacing it.
+pub fn as_base(url: &mut url::Url) {
+    if !url.path().ends_with('/') {
+        url.set_path(&format!("{}/", url.path()));
+    }
+}
+
 fn parse_url(value: &str, limit: usize, loopback: bool) -> Result<url::Url, &'static str> {
     if value.len() > limit
         || value.chars().any(|c| c.is_whitespace() || c.is_control())

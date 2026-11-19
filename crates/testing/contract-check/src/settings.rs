@@ -87,9 +87,7 @@ impl Settings {
             // Analyte's literal-loopback exception, for an app on the developer's own machine.
             analyte_config::loopback_test_url(&url).map_err(Error::Url)?
         };
-        if !base.path().ends_with('/') {
-            base.set_path(&format!("{}/", base.path()));
-        }
+        analyte_config::as_base(&mut base);
         if !analyte_contract::api_key_valid(&api_key) {
             return Err(Error::Key);
         }

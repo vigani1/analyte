@@ -101,9 +101,7 @@ impl Destination {
         {
             return Err(DestinationError::Configuration);
         }
-        if !base.path().ends_with('/') {
-            base.set_path(&format!("{}/", base.path()));
-        }
+        analyte_config::as_base(&mut base);
         let client = crate::http_client(limits.request_timeout)?;
         Ok(Self {
             id,
