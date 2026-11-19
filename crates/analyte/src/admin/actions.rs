@@ -5,9 +5,10 @@ use super::{
     view::{self, Tab, Tone, exact, plain},
 };
 use crate::admin::Error;
+use crate::admin::error::CommandError;
 use crate::admin::markup::Markup;
 use crate::deadline;
-use analyte_model::{DeliveryId, Reason};
+use analyte_model::{DeliveryId, Identifier, Reason};
 use analyte_store::DeliveryState;
 use axum::{
     Extension, Form,
@@ -98,7 +99,7 @@ pub(super) async fn deliveries(
     };
     let result = state
         .store
-        .request::<_, crate::admin::error::CommandError>(
+        .request::<_, CommandError>(
             {
                 match deadline() {
                     Ok(until) => until,
@@ -179,28 +180,59 @@ pub(super) async fn deliveries(
     }
 }
 
+/// Shows an audited action's confirmation page, only to a signed-in browser
+/// session: `read` fetches what the page needs from the store within the request
+/// deadline, then `show` builds the page around [`form`], which carries the
+/// session's CSRF token and asks for the reason.
+async fn confirmation<T: Send + 'static>(
+    state: &Context,
+    session: Option<Extension<Arc<Session>>>,
+    read: impl FnOnce(&mut analyte_store::Store) -> Result<T, CommandError> + Send + 'static,
+    show: impl FnOnce(T, &Session) -> Response,
+) -> Response {
+    let Some(Extension(session)) = session.filter(|Extension(s)| s.authenticated) else {
+        return sign_in_first();
+    };
+    let until = match deadline() {
+        Ok(until) => until,
+        Err(error) => return failure(&error),
+    };
+    match state.store.request::<_, CommandError>(until, read).await {
+        Ok(value) => show(value, &session),
+        Err(error) => failure(&error),
+    }
+}
+
+/// Runs an audited action posted from its confirmation page. A form without this
+/// session's CSRF token and "confirm=yes" is refused before anything runs; the
+/// typed reason and the session's actor are what `act` records in the audit.
+async fn confirmed<T, F: Future<Output = Result<T, Error>>>(
+    session: &Session,
+    form: &Confirmation,
+    act: impl FnOnce(Reason, Identifier) -> F,
+    done: impl FnOnce(T) -> Response,
+) -> Response {
+    if !(session.authenticated && session.csrf_valid(&form.csrf) && form.confirm == "yes") {
+        return sign_in_first();
+    }
+    let result = match Reason::new(&form.reason) {
+        Ok(reason) => act(reason, session.actor.clone()).await,
+        Err(error) => Err(error.into()),
+    };
+    match result {
+        Ok(value) => done(value),
+        Err(error) => failure(&error),
+    }
+}
+
 pub(super) async fn confirm_reprocess(
     State(state): State<Arc<Context>>,
     Path(parked): Path<i64>,
     session: Option<Extension<Arc<Session>>>,
 ) -> Response {
-    let Some(Extension(session)) = session.filter(|Extension(s)| s.authenticated) else {
-        return sign_in_first();
-    };
-    match state
-        .store
-        .request::<_, crate::admin::error::CommandError>(
-            {
-                match deadline() {
-                    Ok(until) => until,
-                    Err(error) => return failure(&error),
-                }
-            },
-            move |s| Ok(s.parked_receipt(parked)?),
-        )
-        .await
-    {
-        Ok(receipt) => page(
+    let read = move |s: &mut analyte_store::Store| Ok(s.parked_receipt(parked)?);
+    confirmation(&state, session, read, |receipt, session| {
+        page(
             Tab::NeedsReview,
             "Process this message again?",
             &Markup::new()
@@ -212,18 +244,16 @@ pub(super) async fn confirm_reprocess(
                     "a new one is added; corrected results follow the usual correction rules. ",
                     "Nothing is sent to the machine.</p>",
                 ))
-                .fragment(
-                    &(form(
-                        &session,
-                        &format!("/parked/{parked}/reprocess"),
-                        "Process again",
-                        false,
-                    )),
-                )
+                .fragment(&form(
+                    session,
+                    &format!("/parked/{parked}/reprocess"),
+                    "Process again",
+                    false,
+                ))
                 .markup("</section>"),
-        ),
-        Err(error) => failure(&error),
-    }
+        )
+    })
+    .await
 }
 
 pub(super) async fn confirm_resolve(
@@ -231,19 +261,9 @@ pub(super) async fn confirm_resolve(
     Path(parked): Path<i64>,
     session: Option<Extension<Arc<Session>>>,
 ) -> Response {
-    let Some(Extension(session)) = session.filter(|Extension(s)| s.authenticated) else {
-        return sign_in_first();
-    };
-    let until = match deadline() {
-        Ok(until) => until,
-        Err(error) => return failure(&error),
-    };
-    let item = state
-        .store
-        .request::<_, crate::admin::error::CommandError>(until, move |s| Ok(s.parked_item(parked)?))
-        .await;
-    match item {
-        Ok(Some(item)) if item.resolution.is_none() => page(
+    let read = move |s: &mut analyte_store::Store| Ok(s.parked_item(parked)?);
+    confirmation(&state, session, read, |item, session| match item {
+        Some(item) if item.resolution.is_none() => page(
             Tab::NeedsReview,
             "Mark this item resolved?",
             &Markup::new()
@@ -257,27 +277,27 @@ pub(super) async fn confirm_resolve(
                     "history, marked resolved by you with your reason.</p>",
                 ))
                 .fragment(&form(
-                    &session,
+                    session,
                     &format!("/parked/{parked}/resolve"),
                     "Mark resolved",
                     false,
                 ))
                 .markup("</section>"),
         ),
-        Ok(Some(_)) => view::refusal(
+        Some(_) => view::refusal(
             StatusCode::CONFLICT,
             "Already resolved",
             "This item is already resolved. Open it from Needs review to see who resolved it and why.",
             "parked item already resolved",
         ),
-        Ok(None) => view::refusal(
+        None => view::refusal(
             StatusCode::NOT_FOUND,
             "Item not found",
             "There is no item to review with this number. Go back to Needs review and pick one from the list.",
             "parked item not found",
         ),
-        Err(error) => failure(&error),
-    }
+    })
+    .await
 }
 
 pub(super) async fn confirm_resend(
@@ -285,32 +305,17 @@ pub(super) async fn confirm_resend(
     Path(text): Path<String>,
     session: Option<Extension<Arc<Session>>>,
 ) -> Response {
-    let Some(Extension(session)) = session.filter(|Extension(s)| s.authenticated) else {
-        return sign_in_first();
-    };
     let delivery = match id(&text) {
         Ok(id) => id,
         Err(error) => return failure(&error),
     };
-    match state
-        .store
-        .request::<_, crate::admin::error::CommandError>(
-            {
-                match deadline() {
-                    Ok(until) => until,
-                    Err(error) => return failure(&error),
-                }
-            },
-            move |s| {
-                s.delivery(delivery)?
-                    .ok_or(crate::admin::error::CommandError::from(
-                        analyte_store::DeliveryError::UnknownDelivery,
-                    ))
-            },
-        )
-        .await
-    {
-        Ok(row) => page(
+    let read = move |s: &mut analyte_store::Store| {
+        s.delivery(delivery)?.ok_or(CommandError::from(
+            analyte_store::DeliveryError::UnknownDelivery,
+        ))
+    };
+    confirmation(&state, session, read, |row, session| {
+        page(
             Tab::Deliveries,
             "Send this delivery again?",
             &Markup::new()
@@ -330,22 +335,16 @@ pub(super) async fn confirm_resend(
                     ". If the lab app already has it, it treats the repeat as done. Analyte ",
                     "checks again that it may be sent when you confirm.</p>",
                 ))
-                .fragment(
-                    &(form(
-                        &session,
-                        &format!("/deliveries/{}/resend", uuid::Uuid::from(delivery)),
-                        "Send again",
-                        true,
-                    )),
-                )
+                .fragment(&form(
+                    session,
+                    &format!("/deliveries/{}/resend", uuid::Uuid::from(delivery)),
+                    "Send again",
+                    true,
+                ))
                 .markup("</section>"),
-        ),
-        Err(error) => failure(&error),
-    }
-}
-
-fn valid(session: &Session, form: &Confirmation) -> bool {
-    session.authenticated && session.csrf_valid(&form.csrf) && form.confirm == "yes"
+        )
+    })
+    .await
 }
 
 pub(super) async fn reprocess(
@@ -354,11 +353,7 @@ pub(super) async fn reprocess(
     Extension(session): Extension<Arc<Session>>,
     Form(form): Form<Confirmation>,
 ) -> Response {
-    if !valid(&session, &form) {
-        return sign_in_first();
-    }
-    let result = async {
-        let reason = Reason::new(&form.reason)?;
+    let act = |reason, actor| async move {
         let path = state.config_path.clone();
         let program =
             tokio::task::spawn_blocking(move || crate::installation::config::Program::load(&path))
@@ -370,15 +365,14 @@ pub(super) async fn reprocess(
             &state.store,
             &program,
             crate::operator::recovery::ReprocessTarget::Parked(parked),
-            session.actor.clone(),
+            actor,
             reason,
         )
         .await
         .map_err(Error::from)
-    }
-    .await;
-    match result {
-        Ok(commit) => page(
+    };
+    confirmed(&session, &form, act, |commit| {
+        page(
             Tab::NeedsReview,
             "Processed again",
             &Markup::new()
@@ -387,9 +381,9 @@ pub(super) async fn reprocess(
                 .markup(" was recorded. What happened: ")
                 .text(crate::operator::display::list(&commit.outcomes))
                 .markup(".</p><p><a href=\"/parked\">Back to Needs review</a></p>"),
-        ),
-        Err(error) => failure(&error),
-    }
+        )
+    })
+    .await
 }
 
 pub(super) async fn resolve(
@@ -398,22 +392,13 @@ pub(super) async fn resolve(
     Extension(session): Extension<Arc<Session>>,
     Form(form): Form<Confirmation>,
 ) -> Response {
-    if !valid(&session, &form) {
-        return sign_in_first();
-    }
-    let result = async {
-        crate::operator::recovery::resolve(
-            &state.store,
-            parked,
-            session.actor.clone(),
-            Reason::new(&form.reason)?,
-        )
-        .await
-        .map_err(Error::from)
-    }
-    .await;
-    match result {
-        Ok(()) => page(
+    let act = |reason, actor| async move {
+        crate::operator::recovery::resolve(&state.store, parked, actor, reason)
+            .await
+            .map_err(Error::from)
+    };
+    confirmed(&session, &form, act, |()| {
+        page(
             Tab::NeedsReview,
             "Marked resolved",
             &Markup::new()
@@ -423,9 +408,9 @@ pub(super) async fn resolve(
                     " is marked resolved with your reason. It stays in the history.</p>",
                     "<p><a href=\"/parked\">Back to Needs review</a></p>",
                 )),
-        ),
-        Err(error) => failure(&error),
-    }
+        )
+    })
+    .await
 }
 
 pub(super) async fn resend(
@@ -434,23 +419,14 @@ pub(super) async fn resend(
     Extension(session): Extension<Arc<Session>>,
     Form(form): Form<Confirmation>,
 ) -> Response {
-    if !valid(&session, &form) {
-        return sign_in_first();
-    }
-    let result = async {
-        crate::operator::recovery::resend(
-            &state.store,
-            id(&text)?,
-            form.acknowledge_superseded,
-            session.actor.clone(),
-            Reason::new(&form.reason)?,
-        )
-        .await
-        .map_err(Error::from)
-    }
-    .await;
-    match result {
-        Ok(()) => page(
+    let superseded = form.acknowledge_superseded;
+    let act = |reason, actor| async move {
+        crate::operator::recovery::resend(&state.store, id(&text)?, superseded, actor, reason)
+            .await
+            .map_err(Error::from)
+    };
+    confirmed(&session, &form, act, |()| {
+        page(
             Tab::Deliveries,
             "Queued to send again",
             &Markup::new().markup(concat!(
@@ -458,7 +434,7 @@ pub(super) async fn resend(
                 "goes to the lab app unchanged, with the same delivery number.</p>",
                 "<p><a href=\"/deliveries\">Back to Deliveries</a></p>",
             )),
-        ),
-        Err(error) => failure(&error),
-    }
+        )
+    })
+    .await
 }
