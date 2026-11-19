@@ -4,27 +4,43 @@
 //! [`save_blocking`] writes, under the write lock. The connection test finds its
 //! target here too, refusing a port or address a running machine uses.
 use super::{
-    Definition, Running, SetupError, Shipped, definitions, lab_apps, listen, site,
-    site::Connection, wizard,
+    Definition, Running, SetupError, Shipped, definitions, lab_apps, listen, site, wizard,
 };
 use crate::admin::server::Context;
 use crate::installation::config::{Program, connections};
 use crate::machine::link::status::Link;
-use analyte_config::Endpoint;
+use analyte_config::{Endpoint, TransportKind};
 use analyte_model::Identifier;
 use analyte_transport::serial;
 use serde::Deserialize;
 use std::path::PathBuf;
 
-/// The raw transport kind of a definition, used only to choose which inputs to show.
-pub(super) fn kind_of(path: &std::path::Path) -> Option<String> {
+/// A definition's transport kind, used only to choose which inputs to show;
+/// `None` when it cannot be read or names no known kind.
+pub(super) fn kind_of(path: &std::path::Path) -> Option<TransportKind> {
     let text = crate::installation::config::read(path).ok()?;
     let table: toml::Table = text.parse().ok()?;
-    table
-        .get("transport")?
-        .get("kind")?
-        .as_str()
-        .map(str::to_owned)
+    table.get("transport")?.get("kind")?.clone().try_into().ok()
+}
+
+/// The form value that keeps the installed model when it is not a shipped one.
+pub(super) const KEEP: &str = "installed";
+
+/// The machine model a setup step uses.
+pub(super) struct Model {
+    /// The shipped model's `vendor/model` key; `None` for an installed model
+    /// kept from outside the shipped list.
+    pub(super) key: Option<String>,
+    pub(super) path: PathBuf,
+    /// The name for people; a kept model shows its file.
+    pub(super) name: String,
+}
+
+impl Model {
+    /// The model as the step forms carry it: its key, or [`KEEP`].
+    pub(super) fn form_value(&self) -> &str {
+        self.key.as_deref().unwrap_or(KEEP)
+    }
 }
 
 /// Finds the chosen shipped definition, or the installed one when none is chosen.
@@ -32,7 +48,7 @@ pub(super) fn chosen(
     list: &[Definition],
     key: Option<&str>,
     installed: &site::Installed,
-) -> Result<(String, PathBuf), SetupError> {
+) -> Result<Model, SetupError> {
     let found = match key {
         Some(key) => list
             .iter()
@@ -50,13 +66,21 @@ pub(super) fn chosen(
             }) {
                 Some(found) => found,
                 None => {
-                    return Ok(("installed".into(), installed.clone()));
+                    return Ok(Model {
+                        key: None,
+                        path: installed.clone(),
+                        name: installed.display().to_string(),
+                    });
                 }
             }
         }
     };
     match &found.state {
-        Shipped::Ready { path, .. } => Ok((found.key.clone(), path.clone())),
+        Shipped::Ready { path, .. } => Ok(Model {
+            key: Some(found.key.clone()),
+            path: path.clone(),
+            name: found.display.clone(),
+        }),
         Shipped::Blocked | Shipped::Unreadable(_) => {
             Err(SetupError::BlockedDefinition(found.key.clone()))
         }
@@ -95,25 +119,29 @@ pub(in crate::admin) struct Choice {
     pub(super) lab_app: Option<String>,
 }
 
-/// The connection the draft names for a definition of transport `kind`.
-fn connection_of(kind: Option<&str>, choice: &wizard::Draft) -> Result<Connection, SetupError> {
+/// The connection the draft names for a definition of transport `kind`; an
+/// unknown kind asks for a folder, as a watched folder does.
+fn connection_of(
+    kind: Option<TransportKind>,
+    choice: &wizard::Draft,
+) -> Result<Endpoint, SetupError> {
     let field = |value: &Option<String>| value.as_deref().unwrap_or_default().trim().to_owned();
     match kind {
-        Some("serial") => {
+        Some(TransportKind::Serial) => {
             let typed = field(&choice.port_name);
             if !typed.is_empty() {
-                return Ok(Connection::Endpoint(typed));
+                return Ok(Endpoint::Fixed(typed));
             }
             match choice.port.as_deref().and_then(|v| v.split_once(':')) {
-                Some(("usb", number)) => Ok(Connection::UsbSerial(
+                Some(("usb", number)) => Ok(Endpoint::UsbSerial(
                     analyte_config::UsbSerial::new(number.into())
                         .map_err(SetupError::Connection)?,
                 )),
-                Some(("name", name)) if !name.is_empty() => Ok(Connection::Endpoint(name.into())),
+                Some(("name", name)) if !name.is_empty() => Ok(Endpoint::Fixed(name.into())),
                 _ => Err(SetupError::Connection("choose a serial port")),
             }
         }
-        Some("tcp_server" | "tcp_client") => {
+        Some(TransportKind::TcpServer | TransportKind::TcpClient) => {
             let host: std::net::IpAddr = field(&choice.host)
                 .parse()
                 .map_err(|_| SetupError::Connection("enter an IP address such as 192.168.1.20"))?;
@@ -124,16 +152,16 @@ fn connection_of(kind: Option<&str>, choice: &wizard::Draft) -> Result<Connectio
                 .ok_or(SetupError::Connection(
                     "enter a port number from 1 to 65535",
                 ))?;
-            Ok(Connection::Endpoint(
+            Ok(Endpoint::Fixed(
                 std::net::SocketAddr::new(host, port).to_string(),
             ))
         }
-        _ => {
+        Some(TransportKind::WatchedFolder) | None => {
             let folder = field(&choice.folder);
             if folder.is_empty() {
                 return Err(SetupError::Connection("enter the folder path"));
             }
-            Ok(Connection::Endpoint(folder))
+            Ok(Endpoint::Fixed(folder))
         }
     }
 }
@@ -145,7 +173,7 @@ pub(super) struct Plan {
     pub(super) definition: PathBuf,
     /// The model's name for people.
     pub(super) model: String,
-    pub(super) connection: Connection,
+    pub(super) connection: Endpoint,
     pub(super) site_text: String,
     /// The new `lab-apps.toml` text, when the save moves a lab app into it.
     pub(super) lab_apps: Option<String>,
@@ -157,9 +185,12 @@ pub(super) struct Plan {
 pub(super) fn plan(state: &Context, id: &str, draft: &wizard::Draft) -> Result<Plan, SetupError> {
     let (program, installed) = site::installed(&state.config_path, id)?;
     let list = definitions(state)?;
-    let (key, definition) = model_of(&list, draft, &installed)?;
-    let model = model_name(&list, &key, &definition);
-    let connection = connection_of(kind_of(&definition).as_deref(), draft)?;
+    let Model {
+        path: definition,
+        name: model,
+        ..
+    } = model_of(&list, draft, &installed)?;
+    let connection = connection_of(kind_of(&definition), draft)?;
     let lab_app = Identifier::new(draft.lab_app.as_deref().unwrap_or_default().trim())
         .map_err(|_| SetupError::NoLabAppChosen)?;
     let current = crate::installation::config::read(&installed.site)?;
@@ -198,7 +229,7 @@ pub(super) struct Saved {
     pub(super) digest: [u8; 32],
     pub(super) model: String,
     pub(super) link: Link,
-    pub(super) connection: Connection,
+    pub(super) connection: Endpoint,
     pub(super) lab_app: String,
     pub(super) base_url: String,
     /// The save moved a lab app into `lab-apps.toml`.
@@ -236,24 +267,17 @@ pub(super) fn save_blocking(
     })
 }
 
-/// The chosen model's key and file; `installed` keeps the current one.
+/// The model the draft chose; [`KEEP`] keeps the current one.
 pub(super) fn model_of(
     list: &[Definition],
     draft: &wizard::Draft,
     installed: &site::Installed,
-) -> Result<(String, PathBuf), SetupError> {
+) -> Result<Model, SetupError> {
     match draft.definition.as_deref().map(str::trim) {
         None | Some("") => Err(SetupError::UnknownDefinition),
-        Some("installed") => chosen(list, None, installed),
+        Some(KEEP) => chosen(list, None, installed),
         Some(key) => chosen(list, Some(key), installed),
     }
-}
-
-/// The model's name for people; a model kept from outside the shipped list shows its file.
-pub(super) fn model_name(list: &[Definition], key: &str, path: &std::path::Path) -> String {
-    list.iter()
-        .find(|definition| definition.key == key)
-        .map_or_else(|| path.display().to_string(), |d| d.display.clone())
 }
 
 /// Refuses a test on a serial port or network address a running machine uses.
@@ -298,8 +322,10 @@ fn shares_connection(state: &Context, id: &str, plan: &Plan) -> Result<(), Setup
     let Ok(program) = Program::load(&state.config_path) else {
         return Ok(());
     };
-    let endpoint = plan.connection.endpoint();
-    let chosen = (Link::of(plan.validated.effective().stack()), &endpoint);
+    let chosen = (
+        Link::of(plan.validated.effective().stack()),
+        &plan.connection,
+    );
     for other in program.machines().iter().filter(|m| m.id().as_str() != id) {
         if let Some(what) = connections::shared(connections::of(other), chosen) {
             return Err(crate::installation::config::Error::SharedConnection {
@@ -318,16 +344,16 @@ pub(super) fn listen_target(
     plan: &Plan,
 ) -> Result<(String, listen::Target), SetupError> {
     let stack = plan.validated.effective().stack();
-    let endpoint = plan.connection.endpoint();
+    let endpoint = &plan.connection;
     match Link::of(stack) {
         Link::Serial => {
-            let device = match &endpoint {
+            let device = match endpoint {
                 Endpoint::Fixed(name) => serial::Device::Named(name.clone()),
                 Endpoint::UsbSerial(number) => serial::Device::UsbSerial(number.as_str().into()),
             };
             let ports = state.setup.seams.ports.clone();
             let name = serial::locate(&device, || ports())?;
-            in_use(state, &endpoint, Some(&name))?;
+            in_use(state, endpoint, Some(&name))?;
             let settings = crate::machine::link::serial::line_settings(
                 stack,
                 serial::Device::Named(name.clone()),
@@ -345,8 +371,8 @@ pub(super) fn listen_target(
             ))
         }
         link @ (Link::TcpServer | Link::TcpClient) => {
-            in_use(state, &endpoint, None)?;
-            let Endpoint::Fixed(text) = &endpoint else {
+            in_use(state, endpoint, None)?;
+            let Endpoint::Fixed(text) = endpoint else {
                 return Err(SetupError::Connection(
                     "a network link needs an IP address and port",
                 ));

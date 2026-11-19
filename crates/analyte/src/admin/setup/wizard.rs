@@ -12,7 +12,7 @@ use super::{
     Csrf, SetupError, after_write, audit, definition_name, definitions, done, incomplete,
     level_and_state, listen, needs_login, off_thread, page,
     plan::{
-        Choice, chosen, current_lab_app, kind_of, listen_target, model_name, model_of, plan,
+        Choice, KEEP, chosen, current_lab_app, kind_of, listen_target, model_of, plan,
         save_blocking,
     },
     refused, running, see_other, serial, settings_version, site,
@@ -25,11 +25,13 @@ use crate::admin::{
     view::{self, Refresh, Tab, Tone, pill},
 };
 use crate::machine::link::status::Link;
+use analyte_config::{Endpoint, TransportKind};
 use axum::{
     Extension, Form,
     extract::{Path, Query, State, rejection::QueryRejection},
     http::StatusCode,
     response::{Html, IntoResponse, Response},
+    routing::{MethodRouter, get},
 };
 use serde::Deserialize;
 use std::sync::Arc;
@@ -102,26 +104,21 @@ impl From<Choice> for Draft {
     }
 }
 
-/// One screen of the setup steps.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Step {
+/// One screen of the setup steps, in step order; each is a GET with the draft as the query.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(in crate::admin) enum Step {
+    /// GET /setup/{id}: step 1, the machine model.
     Machine,
+    /// GET /setup/{id}/connection: step 2, the port or address and the lab app.
     Connection,
+    /// GET /setup/{id}/test: step 3, the listen-only connection test.
     Test,
+    /// GET /setup/{id}/save: step 4, the summary before saving.
     Save,
 }
 
 impl Step {
     const ALL: [Self; 4] = [Self::Machine, Self::Connection, Self::Test, Self::Save];
-
-    const fn index(self) -> u8 {
-        match self {
-            Self::Machine => 1,
-            Self::Connection => 2,
-            Self::Test => 3,
-            Self::Save => 4,
-        }
-    }
 
     const fn number(self) -> &'static str {
         match self {
@@ -209,7 +206,7 @@ impl Step {
 fn indicator(current: Option<Step>) -> Markup {
     let mut html = Markup::new().markup("<ol class=\"steps\" aria-label=\"Setup steps\">");
     for step in Step::ALL {
-        let done = current.is_none_or(|current| step.index() < current.index());
+        let done = current.is_none_or(|current| step < current);
         html.push_markup(if current == Some(step) {
             "<li aria-current=\"step\">"
         } else if done {
@@ -287,44 +284,22 @@ async fn serve(
     }
 }
 
-/// GET /setup/{id}: step 1, the machine model.
-pub(in crate::admin) async fn machine(
-    State(state): State<Arc<Context>>,
-    session: Option<Extension<Arc<Session>>>,
-    Path(id): Path<String>,
-    query: Result<Query<Draft>, QueryRejection>,
-) -> Response {
-    serve(state, session, id, query, render_machine).await
-}
-
-/// GET /setup/{id}/connection: step 2, the port or address and the lab app.
-pub(in crate::admin) async fn connection(
-    State(state): State<Arc<Context>>,
-    session: Option<Extension<Arc<Session>>>,
-    Path(id): Path<String>,
-    query: Result<Query<Draft>, QueryRejection>,
-) -> Response {
-    serve(state, session, id, query, render_connection).await
-}
-
-/// GET /setup/{id}/test: step 3, the listen-only connection test.
-pub(in crate::admin) async fn test(
-    State(state): State<Arc<Context>>,
-    session: Option<Extension<Arc<Session>>>,
-    Path(id): Path<String>,
-    query: Result<Query<Draft>, QueryRejection>,
-) -> Response {
-    serve(state, session, id, query, render_test).await
-}
-
-/// GET /setup/{id}/save: step 4, the summary before saving.
-pub(in crate::admin) async fn review(
-    State(state): State<Arc<Context>>,
-    session: Option<Extension<Arc<Session>>>,
-    Path(id): Path<String>,
-    query: Result<Query<Draft>, QueryRejection>,
-) -> Response {
-    serve(state, session, id, query, render_review).await
+/// The GET handler of `step`, for the router.
+pub(in crate::admin) fn step(step: Step) -> MethodRouter<Arc<Context>> {
+    let render: Render = match step {
+        Step::Machine => render_machine,
+        Step::Connection => render_connection,
+        Step::Test => render_test,
+        Step::Save => render_review,
+    };
+    get(
+        move |State(state): State<Arc<Context>>,
+              session: Option<Extension<Arc<Session>>>,
+              Path(id): Path<String>,
+              query: Result<Query<Draft>, QueryRejection>| {
+            serve(state, session, id, query, render)
+        },
+    )
 }
 
 fn render_machine(
@@ -343,7 +318,7 @@ fn render_machine(
     let selected = draft
         .definition
         .clone()
-        .or_else(|| current.as_ref().map(|(key, _)| key.clone()))
+        .or_else(|| current.as_ref().map(|model| model.form_value().to_owned()))
         .unwrap_or_default();
     let mut html = step_page(id, Step::Machine)
         .markup("<section><dl><dt>Machine</dt><dd><strong>")
@@ -358,15 +333,15 @@ fn render_machine(
             "\"><section><h2>1. Machine model</h2><p>Choose this machine's model. A model ",
             "that is not ready yet cannot be chosen.</p><ul class=\"choices\">"
         ));
-    if let Some((key, path)) = &current
-        && key == "installed"
-    {
+    if let Some(kept) = current.as_ref().filter(|model| model.key.is_none()) {
         html.push_fragment(
             &Markup::new()
-                .markup("<li><label><input type=\"radio\" name=\"definition\" value=\"installed\" required")
-                .markup(if selected == "installed" { " checked" } else { "" })
+                .markup("<li><label><input type=\"radio\" name=\"definition\" value=\"")
+                .markup(KEEP)
+                .markup("\" required")
+                .markup(if selected == KEEP { " checked" } else { "" })
                 .markup("> <strong>Keep the current model</strong> <span class=\"muted\">")
-                .text(path.display())
+                .text(kept.path.display())
                 .markup("</span></label></li>"),
         );
     }
@@ -416,7 +391,7 @@ fn render_connection(
 ) -> Result<Markup, SetupError> {
     let (_, installed) = site::installed(&state.config_path, id)?;
     let list = definitions(state)?;
-    let (key, path) = model_of(&list, draft, &installed)?;
+    let model = model_of(&list, draft, &installed)?;
     let current_site = crate::installation::config::read(&installed.site)
         .ok()
         .and_then(|text| text.parse::<toml::Table>().ok())
@@ -436,9 +411,9 @@ fn render_connection(
         .markup("<form method=\"get\" action=\"")
         .text(Step::Test.path(id))
         .markup("\"><section><h2>2. Connection</h2><p class=\"muted\">Model: <strong>")
-        .text(model_name(&list, &key, &path))
+        .text(&model.name)
         .markup("</strong></p>")
-        .fragment(&connection_inputs(state, &path, &current_site, draft))
+        .fragment(&connection_inputs(state, &model.path, &current_site, draft))
         .markup("</section><section><h2>Lab app</h2>")
         .fragment(&picker)
         .markup("</section>")
@@ -458,14 +433,14 @@ fn connection_inputs(
         .get("endpoint")
         .and_then(toml::Value::as_str)
         .unwrap_or_default();
-    match kind_of(path).as_deref() {
-        Some("serial") => serial_choices(state, current_site, draft),
-        Some(kind @ ("tcp_server" | "tcp_client")) => {
+    match kind_of(path) {
+        Some(TransportKind::Serial) => serial_choices(state, current_site, draft),
+        Some(kind @ (TransportKind::TcpServer | TransportKind::TcpClient)) => {
             let (host, port) = current_endpoint.rsplit_once(':').unwrap_or(("", ""));
             let host = host.trim_start_matches('[').trim_end_matches(']');
             Markup::new()
                 .markup("<p>")
-                .markup(if kind == "tcp_server" {
+                .markup(if kind == TransportKind::TcpServer {
                     "The machine connects to Analyte. Enter the address of this PC that Analyte listens on (0.0.0.0 means every network card) and the port the machine is set to."
                 } else {
                     "Analyte connects to the machine. Enter the machine's IP address and port."
@@ -476,7 +451,7 @@ fn connection_inputs(
                 .text(draft.tcp_port.as_deref().unwrap_or(port))
                 .markup("\" maxlength=\"5\" inputmode=\"numeric\"></label>")
         }
-        _ => Markup::new()
+        Some(TransportKind::WatchedFolder) | None => Markup::new()
             .markup("<label class=\"field\"><span>Folder</span><input name=\"folder\" required value=\"")
             .text(draft.folder.as_deref().unwrap_or(current_endpoint))
             .markup("\" maxlength=\"1024\"></label>"),
@@ -544,21 +519,21 @@ fn serial_choices(state: &Context, current_site: &toml::Table, draft: &Draft) ->
 }
 
 /// The chosen connection in plain words, with the exact setting on hover.
-pub(super) fn connection_words(link: Link, connection: &site::Connection) -> Markup {
+pub(super) fn connection_words(link: Link, connection: &Endpoint) -> Markup {
     let words = match (link, connection) {
-        (_, site::Connection::UsbSerial(number)) => {
+        (_, Endpoint::UsbSerial(number)) => {
             format!("USB serial adapter with serial number {}", number.as_str())
         }
-        (Link::Serial, site::Connection::Endpoint(name)) => format!("Serial port {name}"),
-        (Link::TcpServer, site::Connection::Endpoint(address)) => {
+        (Link::Serial, Endpoint::Fixed(name)) => format!("Serial port {name}"),
+        (Link::TcpServer, Endpoint::Fixed(address)) => {
             format!("Analyte listens on {address}; the machine connects to it")
         }
-        (Link::TcpClient, site::Connection::Endpoint(address)) => {
+        (Link::TcpClient, Endpoint::Fixed(address)) => {
             format!("Analyte connects to the machine at {address}")
         }
-        (Link::Folder, site::Connection::Endpoint(folder)) => format!("Watched folder {folder}"),
+        (Link::Folder, Endpoint::Fixed(folder)) => format!("Watched folder {folder}"),
     };
-    view::exact(&words, &connection.describe())
+    view::exact(&words, &site::describe(connection))
 }
 
 fn render_test(
@@ -709,7 +684,7 @@ pub(in crate::admin) async fn save(
     };
     let reason = format!(
         "setup page saved: {}, lab app {} ({}){}",
-        saved.connection.describe(),
+        site::describe(&saved.connection),
         saved.lab_app,
         saved.base_url,
         if saved.moved {

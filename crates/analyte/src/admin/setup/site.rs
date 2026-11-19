@@ -8,7 +8,7 @@
 //! write through [`commit`].
 use super::SetupError;
 use crate::installation::config::{Program, read};
-use analyte_config::{Destination, Draft, Endpoint, LabApps, UsbSerial, Validated};
+use analyte_config::{Destination, Draft, Endpoint, LabApps, Validated};
 use analyte_model::Identifier;
 use std::{
     io::Write as _,
@@ -96,29 +96,11 @@ fn site_line(text: &str, value: usize) -> Result<usize, SetupError> {
     }
 }
 
-/// How the site file names the machine's link.
-pub(super) enum Connection {
-    /// The USB adapter's factory serial number.
-    UsbSerial(UsbSerial),
-    /// A port name, socket address or folder, used exactly as written.
-    Endpoint(String),
-}
-
-impl Connection {
-    /// The site-file line this choice becomes, for display.
-    pub(super) fn describe(&self) -> String {
-        match self {
-            Self::UsbSerial(serial) => format!("usb_serial = {}", serial.as_str()),
-            Self::Endpoint(endpoint) => format!("endpoint = {endpoint}"),
-        }
-    }
-
-    /// The same choice as the loader's endpoint type.
-    pub(super) fn endpoint(&self) -> Endpoint {
-        match self {
-            Self::UsbSerial(serial) => Endpoint::UsbSerial(serial.clone()),
-            Self::Endpoint(endpoint) => Endpoint::Fixed(endpoint.clone()),
-        }
+/// The site-file line a connection becomes, for display.
+pub(super) fn describe(connection: &Endpoint) -> String {
+    match connection {
+        Endpoint::UsbSerial(serial) => format!("usb_serial = {}", serial.as_str()),
+        Endpoint::Fixed(endpoint) => format!("endpoint = {endpoint}"),
     }
 }
 
@@ -142,7 +124,7 @@ pub(super) struct Candidate {
 /// setup page) is copied into `lab-apps.toml` with the same values.
 pub(super) fn candidate(
     current: &str,
-    connection: &Connection,
+    connection: &Endpoint,
     lab_app: &Identifier,
     lab_apps: &LabApps,
     elsewhere: &[Destination],
@@ -151,8 +133,8 @@ pub(super) fn candidate(
     table.remove("endpoint");
     table.remove("usb_serial");
     let (key, value) = match connection {
-        Connection::UsbSerial(serial) => ("usb_serial", serial.as_str()),
-        Connection::Endpoint(endpoint) => ("endpoint", endpoint.as_str()),
+        Endpoint::UsbSerial(serial) => ("usb_serial", serial.as_str()),
+        Endpoint::Fixed(endpoint) => ("endpoint", endpoint.as_str()),
     };
     table.insert(key.into(), toml::Value::String(value.into()));
     let mut after = lab_apps.clone();

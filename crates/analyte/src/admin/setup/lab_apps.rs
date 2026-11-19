@@ -746,9 +746,33 @@ fn saved_page(session: &Session, saved: &Saved, audited: Result<(), SetupError>)
     after_write(html, audited, session)
 }
 
-fn reason(action: &str, saved: &Saved) -> String {
+/// What a lab app form did, for the audit row and the log.
+#[derive(Clone, Copy)]
+enum Change {
+    Added,
+    Saved,
+}
+
+impl Change {
+    const fn action(self) -> &'static str {
+        match self {
+            Self::Added => "lab-app-add",
+            Self::Saved => "lab-app-save",
+        }
+    }
+
+    const fn verb(self) -> &'static str {
+        match self {
+            Self::Added => "added",
+            Self::Saved => "saved",
+        }
+    }
+}
+
+fn reason(change: Change, saved: &Saved) -> String {
     format!(
-        "lab app page {action} {}: address {}, order list current for {} s, request wait {} s, keys replaced: {}",
+        "lab app page {} {}: address {}, order list current for {} s, request wait {} s, keys replaced: {}",
+        change.verb(),
         saved.settings.name.as_str(),
         saved.settings.base_url.as_str(),
         saved.settings.freshness_seconds,
@@ -770,21 +794,8 @@ pub(in crate::admin) async fn add(
     let Ok(Form(posted)) = form else {
         return incomplete(RELOAD);
     };
-    let saved = match off_thread(&state, move |state| add_blocking(state, posted)).await {
-        Ok(saved) => saved,
-        Err(error) => return refused(&error),
-    };
-    let name = saved.settings.name.as_str().to_owned();
-    let audited = audit(
-        &state,
-        &session,
-        "lab-app-add",
-        &name,
-        reason("added", &saved),
-    )
-    .await;
-    tracing::info!(lab_app = name.as_str(), "lab app page added a lab app");
-    saved_page(&session, &saved, audited)
+    let saved = off_thread(&state, move |state| add_blocking(state, posted)).await;
+    finish(&state, &session, Change::Added, saved).await
 }
 
 /// POST /setup/lab-apps/{name}: check, write `lab-apps.toml`, store any new keys.
@@ -797,22 +808,32 @@ pub(in crate::admin) async fn save(
     let Ok(Form(posted)) = form else {
         return incomplete(RELOAD);
     };
-    let lab_app = name.clone();
-    let saved = match off_thread(&state, move |state| save_blocking(state, &lab_app, posted)).await
-    {
+    let saved = off_thread(&state, move |state| save_blocking(state, &name, posted)).await;
+    finish(&state, &session, Change::Saved, saved).await
+}
+
+/// Audits a written lab app and shows what was saved, or why nothing was.
+async fn finish(
+    state: &Context,
+    session: &Session,
+    change: Change,
+    saved: Result<Saved, SetupError>,
+) -> Response {
+    let saved = match saved {
         Ok(saved) => saved,
         Err(error) => return refused(&error),
     };
+    let name = saved.settings.name.as_str();
     let audited = audit(
-        &state,
-        &session,
-        "lab-app-save",
-        &name,
-        reason("saved", &saved),
+        state,
+        session,
+        change.action(),
+        name,
+        reason(change, &saved),
     )
     .await;
-    tracing::info!(lab_app = name.as_str(), "lab app page saved a lab app");
-    saved_page(&session, &saved, audited)
+    tracing::info!(lab_app = name, "lab app page {} a lab app", change.verb());
+    saved_page(session, &saved, audited)
 }
 
 /// Why `known` cannot be removed now: machines use it or results wait for it.

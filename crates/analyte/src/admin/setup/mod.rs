@@ -22,9 +22,7 @@ pub(super) use lab_apps::{
 };
 pub(crate) use listen::{Limits, Open};
 pub(super) use machines::{add, add_form, confirm_remove, first, remove};
-pub(super) use wizard::{
-    connection, listen_start, listen_stop, listen_view, machine, review, save, test,
-};
+pub(super) use wizard::{Step, listen_start, listen_stop, listen_view, save, step};
 
 use super::{
     markup::Markup,
@@ -116,10 +114,14 @@ impl Setup {
                 }
             })
             .collect();
+        Self::with(seams, running, program.data_directory())
+    }
+
+    fn with(seams: Seams, running: Vec<Running>, data_directory: &std::path::Path) -> Self {
         Self {
             seams,
             running,
-            data_directory: program.data_directory().to_owned(),
+            data_directory: data_directory.to_owned(),
             writing: std::sync::Mutex::new(()),
             listen: std::sync::Mutex::new(None),
             restart: watch::channel(false).0,
@@ -153,19 +155,13 @@ impl Setup {
     /// Setup state for admin server tests that do not exercise the setup page.
     #[cfg(all(test, feature = "test-hooks"))]
     pub(crate) fn for_test(data_directory: &std::path::Path) -> Self {
-        Self {
-            seams: Seams {
-                definitions: None,
-                ports: Arc::new(|| Ok(Vec::new())),
-                open: Arc::new(|_, _| Err(io::ErrorKind::Unsupported.into())),
-                limits: Limits::STANDARD,
-            },
-            running: Vec::new(),
-            data_directory: data_directory.to_owned(),
-            writing: std::sync::Mutex::new(()),
-            listen: std::sync::Mutex::new(None),
-            restart: watch::channel(false).0,
-        }
+        let seams = Seams {
+            definitions: None,
+            ports: Arc::new(|| Ok(Vec::new())),
+            open: Arc::new(|_, _| Err(io::ErrorKind::Unsupported.into())),
+            limits: Limits::STANDARD,
+        };
+        Self::with(seams, Vec::new(), data_directory)
     }
 }
 
