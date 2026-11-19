@@ -33,7 +33,7 @@ fn frame() -> Frame {
         title: "Overview",
         assets: "/static/0123456789abcdef/".into(),
         sidebar: Sidebar {
-            page_time: "10:45:12".into(),
+            loaded: "Page loaded 10:45".into(),
             main: Vec::new(),
             more: Vec::new(),
             more_open: false,

@@ -103,11 +103,14 @@ fn clock_in(at: Timestamp, now: Timestamp, zone: &TimeZone) -> String {
     at.strftime(pattern).to_string()
 }
 
-/// The time a page was made, to the second: "10:45:12".
-pub(in crate::admin) fn clock_seconds(at: Timestamp) -> String {
-    at.to_zoned(TimeZone::system())
-        .strftime("%H:%M:%S")
-        .to_string()
+/// What the sidebar says about when the page was made: "Page loaded 10:45".
+/// Pages are not live yet, so this is the minute it was loaded, not a clock.
+pub(in crate::admin) fn page_loaded(now: Timestamp) -> String {
+    page_loaded_in(now, &TimeZone::system())
+}
+
+fn page_loaded_in(now: Timestamp, zone: &TimeZone) -> String {
+    format!("Page loaded {}", clock_in(now, now, zone))
 }
 
 /// The date line above a page title: "Thursday 19 November · 10:45".
@@ -576,6 +579,9 @@ mod tests {
             "1970-01-01 00:00"
         );
         assert_eq!(today_in(now, utc), "Wednesday 18 November · 23:54");
+        // Owner request 2026-11-19 (screenshot review, PR #273): the sidebar
+        // says when the page was loaded, to the minute, until pages are live.
+        assert_eq!(page_loaded_in(now, utc), "Page loaded 23:54");
         let shown = moment_unix(100, now);
         assert_eq!(shown.datetime, "1970-01-01T00:01:40Z");
         assert_eq!(shown.exact, "1970-01-01T00:01:40Z (Unix 100)");

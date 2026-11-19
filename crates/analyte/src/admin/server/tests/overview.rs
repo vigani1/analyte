@@ -791,6 +791,9 @@ fn assert_figures_and_sidebar(page: &str, state: &Context, cookie: &str) -> Resu
     // The sidebar: open review items beside Needs review, and Sign out with this session's token.
     // The Overview is not under "More", so that group starts closed.
     assert!(page.contains("<details class=\"nav-group nav-more\">"));
+    // Owner request 2026-11-19 (screenshot review, PR #273): until pages are
+    // live the engine box says when the page was loaded, to the minute.
+    assert!(page.contains("<span class=\"engine__meta\">Page loaded "));
     assert!(page.contains("<span class=\"nav__count\"><span class=\"sr-only\">, </span>1</span>"));
     let token = state
         .sessions

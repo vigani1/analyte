@@ -1,7 +1,7 @@
 //! Holds what every restyled page's frame shows: its title, where its files load from and the sidebar.
 //!
 //! The sidebar says only what the page observed when it was made: the engine
-//! answered ("Engine running") and when ("Page from 10:45:12"). There is no
+//! answered ("Engine running") and when ("Page loaded 10:45"). There is no
 //! live channel yet, so nothing pulses.
 use super::{Tab, format, icon::Icon};
 use crate::admin::{server::Context, sessions::Session};
@@ -17,8 +17,8 @@ pub(in crate::admin) struct Frame {
 
 /// The sidebar: engine box, main links, the "More" group and the sign-out foot.
 pub(in crate::admin) struct Sidebar {
-    /// When the page was made, such as "10:45:12".
-    pub(in crate::admin) page_time: String,
+    /// When the page was made, such as "Page loaded 10:45".
+    pub(in crate::admin) loaded: String,
     pub(in crate::admin) main: Vec<NavLink>,
     pub(in crate::admin) more: Vec<MoreLink>,
     /// The current page sits under "More", so the group starts open.
@@ -74,7 +74,7 @@ impl Frame {
             title,
             assets: state.assets.as_str().to_owned(),
             sidebar: Sidebar {
-                page_time: format::clock_seconds(now),
+                loaded: format::page_loaded(now),
                 main: MAIN
                     .into_iter()
                     .map(|(tab, icon)| NavLink {
