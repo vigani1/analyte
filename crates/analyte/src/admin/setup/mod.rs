@@ -395,12 +395,7 @@ pub(super) async fn index(State(state): State<Arc<Context>>) -> Response {
     match crate::admin::removed::lines(&state).await {
         Ok(lines) => {
             for line in lines {
-                html.push_fragment(
-                    &Markup::new()
-                        .markup("<p class=\"notice\">")
-                        .text(line)
-                        .markup("</p>"),
-                );
+                html.push_fragment(&line.notice(""));
             }
         }
         Err(error) => html.push_fragment(

@@ -338,12 +338,7 @@ async fn render_destinations(
             .markup("</dl>"),
     );
     for line in super::removed::lines(state).await? {
-        html.push_fragment(
-            &Markup::new()
-                .markup("<p class=\"notice\"><strong>Delivery after removal:</strong> ")
-                .text(line)
-                .markup("</p>"),
-        );
+        html.push_fragment(&line.notice("<strong>Delivery after removal:</strong> "));
     }
     html.push_markup("</section>");
     Ok(())

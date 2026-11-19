@@ -13,7 +13,7 @@ pub(crate) mod setup;
 mod token;
 mod view;
 
-pub(crate) use removed::Draining;
+pub(crate) use removed::{Draining, Kept};
 pub(crate) use server::{Server, prepare};
 
 pub use token::{Token, TokenError, rotate_token};

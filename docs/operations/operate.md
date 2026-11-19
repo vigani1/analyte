@@ -121,7 +121,9 @@ configured, raises for them with the reason and the fix (see
 [Alerts](#alerts-and-named-responders)). Set up a machine that uses that
 destination to deliver them. If a kept destination's keys are missing, its
 deliveries pause with "destination credentials require operator repair", the
-service keeps running, and the same alert raises with that reason.
+service keeps running, and the same alert raises with that reason. The
+Overview and the Setup page then say "Cannot deliver to lab app X: its API key
+or signing key is missing" with the same fix, not "still being delivered".
 Removing the last machine is allowed: Analyte then serves only the admin page
 (and delivers what still waits) until a machine is added.
 

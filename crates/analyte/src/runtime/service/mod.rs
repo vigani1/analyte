@@ -209,7 +209,7 @@ pub(super) async fn serve_with(
             "machine has no definition yet and does not run; set it up on the setup page"
         );
     }
-    let destinations = Destinations::new(&program, mode)?;
+    let destinations = Destinations::new(&program, mode, &secrets)?;
     let secrets = Arc::new(secrets);
     let (store, admin) = prepare_service(&program, space, mode, &destinations).await?;
     let admin_states = admin
@@ -231,7 +231,7 @@ pub(super) async fn serve_with(
             })
         });
     }
-    let reach = destinations.reach(&secrets);
+    let reach = destinations.reach();
     let (delivery_stop, mut delivery_owners) =
         start_delivery(destinations, &store, &secrets, &watchdog);
     let (shutdown, stopping) = watch::channel(false);
@@ -515,40 +515,51 @@ struct Destinations {
 }
 
 impl Destinations {
-    fn new(program: &Program, mode: super::hooks::ServiceMode) -> Result<Self, Error> {
+    fn new(
+        program: &Program,
+        mode: super::hooks::ServiceMode,
+        secrets: &crate::installation::secrets::Environment,
+    ) -> Result<Self, Error> {
         let retired = crate::runtime::delivery::retired(program, mode)?;
         Ok(Self {
             served: crate::runtime::delivery::destinations(program, mode)?,
-            // Each kept destination's worker clears its flag when nothing is left to send.
+            // Each kept destination's worker clears its flag when nothing is left to
+            // send. Only a kept destination can lack keys: a set-up machine's missing
+            // keys stop startup instead.
             draining: retired
                 .iter()
                 .map(|d| {
-                    let delivering = Arc::new(std::sync::atomic::AtomicBool::new(true));
-                    (d.id().as_str().to_owned(), delivering)
+                    let kept = crate::admin::Kept {
+                        delivering: Arc::new(std::sync::atomic::AtomicBool::new(true)),
+                        keys_missing: !secrets.has_keys(d.id()),
+                    };
+                    (d.id().as_str().to_owned(), kept)
                 })
                 .collect(),
             retired,
         })
     }
 
-    /// What the `undeliverable_destination` alert compares stored items with.
-    fn reach(
-        &self,
-        secrets: &crate::installation::secrets::Environment,
-    ) -> crate::operator::alerts::Reach {
-        let configured: Vec<_> = self
-            .served
-            .iter()
-            .chain(&self.retired)
-            .map(|destination| destination.id().clone())
-            .collect();
+    /// What the `undeliverable_destination` alert compares stored items with:
+    /// the same missing keys the admin page reports, decided once at startup.
+    fn reach(&self) -> crate::operator::alerts::Reach {
         crate::operator::alerts::Reach {
-            keyless: configured
+            configured: self
+                .served
                 .iter()
-                .filter(|destination| !secrets.has_keys(destination))
-                .cloned()
+                .chain(&self.retired)
+                .map(|destination| destination.id().clone())
                 .collect(),
-            configured,
+            keyless: self
+                .retired
+                .iter()
+                .filter(|destination| {
+                    self.draining
+                        .get(destination.id().as_str())
+                        .is_some_and(|kept| kept.keys_missing)
+                })
+                .map(|destination| destination.id().clone())
+                .collect(),
         }
     }
 }
@@ -610,7 +621,7 @@ fn start_delivery(
         let flag = destinations
             .draining
             .get(destination.id().as_str())
-            .cloned()
+            .map(|kept| kept.delivering.clone())
             .unwrap_or_default();
         let component = watchdog.component(format!(
             "retired-delivery-worker:{}",
