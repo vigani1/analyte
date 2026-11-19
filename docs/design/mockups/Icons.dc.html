@@ -19,7 +19,7 @@ body{margin:0}
 <header style="display: flex; flex-direction: column; gap: 8px">
 <p class="eyebrow">Analyte · identity</p>
 <h1 style="margin: 0; font-size: 40px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.05">App icon, tray & notifications</h1>
-<p class="muted" style="margin: 0; font-size: 15px; max-width: 760px">The mark is an “A” whose crossbar is a meniscus, the curved line you read a measurement from. Ink square, paper letter, cobalt meniscus.</p>
+<p class="muted" style="margin: 0; font-size: 15px; max-width: 760px">Aperture: a sample cell seen end-on, with the liquid line inside and a beam of light passing across: plain light in, measured cobalt light out. Ink square, paper ring, cobalt sample.</p>
 </header>
 
 <section class="section" aria-labelledby="i-app">
@@ -28,7 +28,7 @@ body{margin:0}
 <div style="display: flex; align-items: flex-end; gap: 28px; padding: 32px; flex-wrap: wrap">
 <sc-for list="{{sizes}}" as="s" hint-placeholder-count="5">
 <div style="display: flex; flex-direction: column; align-items: center; gap: 10px">
-<svg width="{{s.px}}" height="{{s.px}}" viewBox="0 0 32 32" role="img" aria-label="Analyte app icon"><rect width="32" height="32" rx="7" fill="#17202A"></rect><path d="M9.5 24.5 16 7.5l6.5 17" fill="none" stroke="#FBFBF9" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path><path d="M11.4 18.6c3 1.7 6.2 1.7 9.2 0" fill="none" stroke="#93A8FF" stroke-width="2.6" stroke-linecap="round"></path></svg>
+<svg width="{{s.px}}" height="{{s.px}}" viewBox="0 0 48 48" role="img" aria-label="Analyte app icon"><path d="M10 0h28a10 10 0 0 1 10 10v28a10 10 0 0 1-10 10H10A10 10 0 0 1 0 38V10A10 10 0 0 1 10 0Z" fill="#17202A"></path><g transform="translate(7 7) scale(.708)"><path d="M11.3 28C19.4 32.3 28.6 32.3 36.7 28A13.4 13.4 0 0 1 11.3 28Z" fill="#93A8FF"></path><path d="M9 24a15 15 0 1 0 30 0a15 15 0 1 0-30 0 M2 20h5.5" fill="none" stroke="#FBFBF9" stroke-width="{{s.sw}}" stroke-linecap="round"></path><path d="M40.5 20H46" fill="none" stroke="#93A8FF" stroke-width="{{s.sw}}" stroke-linecap="round"></path></g></svg>
 <span class="mono subtle" style="font-size: 12px">{{s.px}}</span>
 </div>
 </sc-for>
@@ -36,13 +36,13 @@ body{margin:0}
 <div style="display: flex; align-items: flex-end; gap: 28px; padding: 32px; background: #0F1418; border-radius: 0 3px 3px 0; flex-wrap: wrap">
 <sc-for list="{{sizes}}" as="s" hint-placeholder-count="5">
 <div style="display: flex; flex-direction: column; align-items: center; gap: 10px">
-<svg width="{{s.px}}" height="{{s.px}}" viewBox="0 0 32 32" role="img" aria-label="Analyte app icon on dark"><rect x=".5" y=".5" width="31" height="31" rx="7" fill="#17202A" stroke="#3A4551"></rect><path d="M9.5 24.5 16 7.5l6.5 17" fill="none" stroke="#FBFBF9" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path><path d="M11.4 18.6c3 1.7 6.2 1.7 9.2 0" fill="none" stroke="#93A8FF" stroke-width="2.6" stroke-linecap="round"></path></svg>
+<svg width="{{s.px}}" height="{{s.px}}" viewBox="0 0 48 48" role="img" aria-label="Analyte app icon on dark"><path d="M10 .75h28A9.25 9.25 0 0 1 47.25 10v28A9.25 9.25 0 0 1 38 47.25H10A9.25 9.25 0 0 1 .75 38V10A9.25 9.25 0 0 1 10 .75Z" fill="#17202A" stroke="#3A4551" stroke-width="1.5"></path><g transform="translate(7 7) scale(.708)"><path d="M11.3 28C19.4 32.3 28.6 32.3 36.7 28A13.4 13.4 0 0 1 11.3 28Z" fill="#93A8FF"></path><path d="M9 24a15 15 0 1 0 30 0a15 15 0 1 0-30 0 M2 20h5.5" fill="none" stroke="#FBFBF9" stroke-width="{{s.sw}}" stroke-linecap="round"></path><path d="M40.5 20H46" fill="none" stroke="#93A8FF" stroke-width="{{s.sw}}" stroke-linecap="round"></path></g></svg>
 <span class="mono" style="font-size: 12px; color: #909BA6">{{s.px}}</span>
 </div>
 </sc-for>
 </div>
 </div>
-<p class="subtle" style="margin: 0; font-size: 13px">On dark backgrounds the square gets a 1 px slate edge so it doesn’t sink. Below 24 px the strokes thicken to 2.6 units.</p>
+<p class="subtle" style="margin: 0; font-size: 13px">On dark backgrounds the square gets a 1 px slate edge so it doesn’t sink. Strokes get thicker as the icon gets smaller, so the ring and beam stay clear at 16 px.</p>
 </section>
 
 <section class="section" aria-labelledby="i-tray">
@@ -56,7 +56,7 @@ body{margin:0}
 <div style="display: flex; align-items: flex-end; gap: 12px">
 <sc-for list="{{traySizes}}" as="z" hint-placeholder-count="3">
 <svg width="{{z.px}}" height="{{z.px}}" viewBox="0 0 32 32" role="img" aria-label="{{t.label}}">
-<g opacity="{{t.op}}"><rect x="1" y="1" width="25" height="25" rx="5" fill="{{t.sq}}" stroke="{{b.edge}}" stroke-width="1.2"></rect><path d="M8.2 21.6 13.5 6.6l5.3 15" fill="none" stroke="{{t.letter}}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path><path d="M9.8 16.4c2.4 1.4 5 1.4 7.4 0" fill="none" stroke="{{t.men}}" stroke-width="2.6" stroke-linecap="round"></path></g>
+<g opacity="{{t.op}}"><rect x="1" y="1" width="25" height="25" rx="5" fill="{{t.sq}}" stroke="{{b.edge}}" stroke-width="1.2"></rect><g transform="translate(4.65 4.65) scale(.369)"><path d="M11.3 28C19.4 32.3 28.6 32.3 36.7 28A13.4 13.4 0 0 1 11.3 28Z" fill="{{t.men}}"></path><path d="M9 24a15 15 0 1 0 30 0a15 15 0 1 0-30 0 M2 20h5.5" fill="none" stroke="{{t.letter}}" stroke-width="5.4" stroke-linecap="round"></path><path d="M40.5 20H46" fill="none" stroke="{{t.men}}" stroke-width="5.4" stroke-linecap="round"></path></g></g>
 <path d="{{t.badge}}" fill="{{t.badgeFill}}" stroke="{{b.bg}}" stroke-width="2"></path>
 <path d="{{t.glyph}}" fill="none" stroke="{{t.glyphInk}}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path>
 </svg>
@@ -96,7 +96,7 @@ body{margin:0}
 <div class="stack">
 <sc-for list="{{notes}}" as="n" hint-placeholder-count="3">
 <div data-theme="{{n.theme}}" class="notif" role="status">
-<svg width="40" height="40" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#17202A"></rect><path d="M9.5 24.5 16 7.5l6.5 17" fill="none" stroke="#FBFBF9" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path><path d="M11.4 18.6c3 1.7 6.2 1.7 9.2 0" fill="none" stroke="#93A8FF" stroke-width="2.6" stroke-linecap="round"></path></svg>
+<svg width="40" height="40" viewBox="0 0 48 48" aria-hidden="true"><path d="M10 0h28a10 10 0 0 1 10 10v28a10 10 0 0 1-10 10H10A10 10 0 0 1 0 38V10A10 10 0 0 1 10 0Z" fill="#17202A"></path><g transform="translate(7 7) scale(.708)"><path d="M11.3 28C19.4 32.3 28.6 32.3 36.7 28A13.4 13.4 0 0 1 11.3 28Z" fill="#93A8FF"></path><path d="M9 24a15 15 0 1 0 30 0a15 15 0 1 0-30 0 M2 20h5.5" fill="none" stroke="#FBFBF9" stroke-width="3.8" stroke-linecap="round"></path><path d="M40.5 20H46" fill="none" stroke="#93A8FF" stroke-width="3.8" stroke-linecap="round"></path></g></svg>
 <div><p class="notif__app">Analyte · now</p><p class="notif__title">{{n.title}}</p><p class="notif__text">{{n.text}}</p></div>
 </div>
 </sc-for>
@@ -114,7 +114,7 @@ class Component extends DCLogic {
       bad: 'M2.586 16.726A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2h6.624a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586z M15 9l-6 6 M9 9l6 6',
       retry: 'M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8 M21 3v5h-5 M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16 M8 16H3v5'
     };
-    const sizes = [{ px: 128 }, { px: 64 }, { px: 48 }, { px: 32 }, { px: 16 }];
+    const sizes = [{ px: 128, sw: 3 }, { px: 64, sw: 3.2 }, { px: 48, sw: 3.4 }, { px: 32, sw: 3.8 }, { px: 16, sw: 4.8 }];
     const traySizes = [{ px: 16 }, { px: 20 }, { px: 32 }];
     const tray = [
       { label: 'All good', op: '1', sq: '#17202A', letter: '#FBFBF9', men: '#93A8FF',
