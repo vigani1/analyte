@@ -1,4 +1,5 @@
 //! Lists delivery states and bounded operator metadata, and resends deliveries with the same ID and bytes (ADR 0008).
+use crate::delivery::outbox::outbox_owners;
 use crate::{Audit, DeliveryError as Error, DeliveryKind, OrderingKey, Store, key};
 use analyte_model::{DeliveryId, Identifier};
 use rusqlite::{OptionalExtension, params};
@@ -78,12 +79,9 @@ impl Store {
             )?
             .collect::<Result<_, _>>()?;
         let mut machines = self.db.prepare(concat!(
-            "SELECT machine FROM (",
-            "SELECT json_extract(r.metadata,'$.machine') AS machine FROM outbox o ",
-            "JOIN receipts r ON r.id=o.receipt WHERE o.destination=?1 AND o.state!=?2 ",
-            "UNION SELECT m.machine FROM outbox o JOIN machine_orders m ",
-            "ON m.order_id=o.order_id AND m.destination=o.destination ",
-            "WHERE o.destination=?1 AND o.state!=?2 AND o.kind=?3) ORDER BY machine LIMIT ?4"
+            "SELECT DISTINCT machine FROM (",
+            outbox_owners!("o.destination=?1 AND o.state!=?2"),
+            ") ORDER BY machine LIMIT ?3"
         ))?;
         rows.into_iter()
             .map(|(destination, sending, held)| {
@@ -92,7 +90,6 @@ impl Store {
                         params![
                             destination,
                             DeliveryState::Done,
-                            DeliveryKind::OrderEvent,
                             i64::try_from(UNDELIVERED_MACHINES)
                                 .map_err(|_| Error::InvalidDeliveryInput)?
                         ],

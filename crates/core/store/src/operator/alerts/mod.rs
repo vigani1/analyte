@@ -265,11 +265,9 @@ impl Store {
                 |r| r.get(0),
             )?),
             AlertKey::RestorePaused => Some(i64::from(self.restore_unreconciled()?)),
-            AlertKey::UndeliverableDestination(destination, _) => Some(self.db.query_row(
-                "SELECT count(*) FROM outbox WHERE destination=?1 AND state!=?2",
-                params![destination.as_str(), crate::DeliveryState::Done],
-                |r| r.get(0),
-            )?),
+            AlertKey::UndeliverableDestination(destination, _) => Some(
+                crate::delivery::outbox::count_undelivered(&self.db, destination)?,
+            ),
         };
         scalar
             .map(u64::try_from)
