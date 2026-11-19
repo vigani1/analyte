@@ -6,7 +6,7 @@ pub use endpoint::{Endpoint, NotFixed, UsbSerial};
 mod https;
 pub use https::{HttpsUrl, loopback_test_url};
 mod lab_apps;
-pub use lab_apps::{LAB_APPS_FILE, LabAppProblem, LabAppSource, LabApps};
+pub use lab_apps::{LAB_APPS_FILE, LabAppProblem, LabAppSource, LabApps, MAX_LAB_APPS};
 mod orders;
 mod retention;
 pub use retention::Retention;

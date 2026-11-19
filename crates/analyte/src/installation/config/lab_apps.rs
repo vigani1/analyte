@@ -108,7 +108,7 @@ pub(super) fn validate(
     retired: &[Destination],
     program: &Path,
 ) -> Result<(Vec<LabApp>, Places), Error> {
-    if retired.len() > 128 {
+    if retired.len() > analyte_config::MAX_LAB_APPS {
         return Err(Error::TooManyRetiredDestinations);
     }
     let mut places = Places {
