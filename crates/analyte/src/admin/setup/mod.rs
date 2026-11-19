@@ -191,7 +191,7 @@ pub(crate) enum SetupError {
     #[error(
         "lab app {0} is already set up with other settings; make them the same on the Lab app page, then save again"
     )]
-    LabAppDiffers(String, String),
+    LabAppDiffers(String),
     #[error(
         "a lab app name uses only letters A to Z, digits, - and _ (at most 64), because it also names its keys"
     )]
@@ -215,15 +215,23 @@ pub(crate) enum SetupError {
     #[error("the {0} key is not in the expected format, so nothing was saved")]
     InvalidKey(String),
     #[error("Analyte's main settings file cannot be read: {0}")]
-    ProgramFile(String),
+    ProgramFile(#[source] toml::de::Error),
+    #[error("Analyte's main settings file cannot be read: {0}")]
+    ProgramLayout(&'static str),
     #[error("this machine's settings file cannot be read: {0}")]
-    SiteFile(String),
+    SiteFile(#[source] toml::de::Error),
+    #[error(
+        "this machine's settings file cannot be read: its [destination] cannot be moved to the Lab app page: {0}"
+    )]
+    SiteDestination(#[source] toml::de::Error),
+    #[error("this machine's settings file cannot be read: {0}")]
+    SiteText(#[source] toml::ser::Error),
     #[error("the settings are not valid: {0}")]
     Config(#[from] analyte_config::Error),
     #[error("{0}")]
     Installation(#[from] crate::installation::config::Error),
     #[error("the saved settings did not pass the check, so the previous files were put back: {0}")]
-    RolledBack(String),
+    RolledBack(#[source] crate::installation::config::Error),
     #[error("{operation} {path} failed: {source}")]
     Io {
         operation: &'static str,
@@ -243,7 +251,7 @@ pub(crate) enum SetupError {
     #[error("the connection test state is unavailable; restart the service")]
     ListenState,
     #[error("the serial port settings cannot be used: {0}")]
-    SerialSettings(String),
+    SerialSettings(#[source] crate::machine::protocols::Error),
     #[error("{0}")]
     Lookup(#[from] serial::Lookup),
     #[error("the setup step stopped unexpectedly: {0}")]

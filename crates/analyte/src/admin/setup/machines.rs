@@ -274,8 +274,8 @@ fn open_work(open: &Unfinished) -> Vec<String> {
 fn configured_destination(
     config: &std::path::Path,
     id: &str,
-) -> Result<Option<analyte_config::Destination>, String> {
-    let program = Program::load(config).map_err(|error| error.to_string())?;
+) -> Result<Option<analyte_config::Destination>, crate::installation::config::Error> {
+    let program = Program::load(config)?;
     Ok(program
         .machines()
         .iter()
@@ -288,7 +288,7 @@ enum LabApp {
     /// Not set up: it has no lab app.
     None,
     /// Its settings cannot be read, so its lab app cannot be kept.
-    Unreadable(String),
+    Unreadable(crate::installation::config::Error),
     /// The lab app stays on the Lab app page (moved into `lab-apps.toml` first if
     /// the site file still wrote it), and the service sends to it until nothing
     /// is left (`runtime::delivery::unused_lab_apps`).
@@ -455,10 +455,10 @@ struct Removed {
     backups: Vec<PathBuf>,
     /// The lab app kept for delivery, none for a machine not set up, or why its
     /// settings could not be read (then nothing is kept).
-    kept: Result<Option<String>, String>,
+    kept: Result<Option<String>, crate::installation::config::Error>,
     /// Where the site file went: a dated copy, nowhere (missing or still named by
     /// another machine), or why moving it failed after the program was changed.
-    site: Result<Option<PathBuf>, String>,
+    site: Result<Option<PathBuf>, SetupError>,
 }
 
 fn remove_blocking(state: &Context, id: &str) -> Result<Removed, SetupError> {
@@ -488,7 +488,7 @@ fn remove_blocking(state: &Context, id: &str) -> Result<Removed, SetupError> {
     let site = if shared {
         Ok(None)
     } else {
-        site::retire(&installed.site).map_err(|error| error.to_string())
+        site::retire(&installed.site)
     };
     Ok(Removed {
         backups: written.backups,

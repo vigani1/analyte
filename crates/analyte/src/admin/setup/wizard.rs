@@ -180,7 +180,10 @@ impl Step {
             | SetupError::InvalidKey(_)
             | SetupError::IncompleteForm(_)
             | SetupError::ProgramFile(_)
+            | SetupError::ProgramLayout(_)
             | SetupError::SiteFile(_)
+            | SetupError::SiteDestination(_)
+            | SetupError::SiteText(_)
             | SetupError::Installation(_)
             | SetupError::Io { .. }
             | SetupError::Credentials(_)

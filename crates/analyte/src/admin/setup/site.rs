@@ -51,8 +51,7 @@ pub(super) struct EntrySpans {
 /// Reads the program file and its entries as written.
 pub(super) fn entries(config: &Path) -> Result<(String, Vec<EntrySpans>), SetupError> {
     let text = read(config)?;
-    let spans: ProgramSpans =
-        toml::from_str(&text).map_err(|error| SetupError::ProgramFile(error.to_string()))?;
+    let spans: ProgramSpans = toml::from_str(&text).map_err(SetupError::ProgramFile)?;
     Ok((text, spans.machines))
 }
 
@@ -91,9 +90,8 @@ fn site_line(text: &str, value: usize) -> Result<usize, SetupError> {
         .map_or(0, |newline| newline.saturating_add(1));
     match text.get(start..value) {
         Some(line) if line.trim_start().starts_with("site") => Ok(start),
-        _ => Err(SetupError::ProgramFile(
-            "write this machine's site = ... on its own line so setup can add the definition"
-                .into(),
+        _ => Err(SetupError::ProgramLayout(
+            "write this machine's site = ... on its own line so setup can add the definition",
         )),
     }
 }
@@ -149,9 +147,7 @@ pub(super) fn candidate(
     lab_apps: &LabApps,
     elsewhere: &[Destination],
 ) -> Result<Candidate, SetupError> {
-    let mut table: toml::Table = current
-        .parse()
-        .map_err(|error: toml::de::Error| SetupError::SiteFile(error.to_string()))?;
+    let mut table: toml::Table = current.parse().map_err(SetupError::SiteFile)?;
     table.remove("endpoint");
     table.remove("usb_serial");
     let (key, value) = match connection {
@@ -165,11 +161,7 @@ pub(super) fn candidate(
         match own.try_into::<Destination>() {
             Ok(own) => after = moved(&after, own)?,
             Err(_) if !complete => {}
-            Err(error) => {
-                return Err(SetupError::SiteFile(format!(
-                    "its [destination] cannot be moved to the Lab app page: {error}"
-                )));
-            }
+            Err(error) => return Err(SetupError::SiteDestination(error)),
         }
     }
     if after.get(lab_app.as_str()).is_none() {
@@ -184,7 +176,7 @@ pub(super) fn candidate(
         "lab_app".into(),
         toml::Value::String(lab_app.as_str().into()),
     );
-    let text = toml::to_string(&table).map_err(|error| SetupError::SiteFile(error.to_string()))?;
+    let text = toml::to_string(&table).map_err(SetupError::SiteText)?;
     Ok(Candidate {
         text: format!("# Written by the Analyte setup page.\n{text}"),
         lab_apps: after,
@@ -196,10 +188,7 @@ pub(super) fn candidate(
 pub(super) fn moved(lab_apps: &LabApps, lab_app: Destination) -> Result<LabApps, SetupError> {
     match lab_apps.get(lab_app.name.as_str()) {
         Some(listed) if *listed == lab_app => Ok(lab_apps.clone()),
-        Some(_) => Err(SetupError::LabAppDiffers(
-            lab_app.name.as_str().into(),
-            lab_apps.path().into(),
-        )),
+        Some(_) => Err(SetupError::LabAppDiffers(lab_app.name.as_str().into())),
         None => Ok(lab_apps.with(lab_app)?),
     }
 }
@@ -257,9 +246,7 @@ fn with_definition(
         Placement::Insert(at) => (*at..*at, true),
     };
     let (Some(before), Some(after)) = (program.get(..range.start), program.get(range.end..)) else {
-        return Err(SetupError::ProgramFile(
-            "definition position changed".into(),
-        ));
+        return Err(SetupError::ProgramLayout("definition position changed"));
     };
     Ok(if line {
         format!("{before}definition = {value}\n{after}")
@@ -325,7 +312,7 @@ pub(super) fn commit(config: &Path, changes: &[(PathBuf, String)]) -> Result<Wri
     }
     if let Err(error) = Program::load(config) {
         restore(changes, &backups);
-        return Err(SetupError::RolledBack(error.to_string()));
+        return Err(SetupError::RolledBack(error));
     }
     Ok(Written {
         backups: backups.into_iter().flatten().collect(),

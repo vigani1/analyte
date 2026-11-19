@@ -157,12 +157,11 @@ struct RetiredName {
 /// Text without such a table is returned unchanged.
 pub(super) fn without_retired(program: &str, name: &str) -> Result<String, SetupError> {
     let kept_layout = || {
-        SetupError::ProgramFile(
-            "write each kept lab app destination as its own [[retired_destinations]] table".into(),
+        SetupError::ProgramLayout(
+            "write each kept lab app destination as its own [[retired_destinations]] table",
         )
     };
-    let spans: RetiredSpans = toml::from_str(program)
-        .map_err(|error: toml::de::Error| SetupError::ProgramFile(error.to_string()))?;
+    let spans: RetiredSpans = toml::from_str(program).map_err(SetupError::ProgramFile)?;
     let Some(entry) = spans
         .retired_destinations
         .iter()
@@ -191,15 +190,13 @@ pub(super) fn without_retired(program: &str, name: &str) -> Result<String, Setup
 }
 
 fn layout() -> SetupError {
-    SetupError::ProgramFile(
-        "write each machine as its own [[machines]] table so setup can add or remove machines"
-            .into(),
+    SetupError::ProgramLayout(
+        "write each machine as its own [[machines]] table so setup can add or remove machines",
     )
 }
 
 fn parsed(text: &str) -> Result<toml::Table, SetupError> {
-    text.parse()
-        .map_err(|error: toml::de::Error| SetupError::ProgramFile(error.to_string()))
+    text.parse().map_err(SetupError::ProgramFile)
 }
 
 /// The edit holds exactly the expected tables; anything else means the text

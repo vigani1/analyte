@@ -334,7 +334,7 @@ pub(super) fn listen_target(
                 listen::SERIAL_READ,
             )
             .ok_or(SetupError::NothingToListen)?
-            .map_err(|error| SetupError::SerialSettings(error.to_string()))?;
+            .map_err(SetupError::SerialSettings)?;
             Ok((
                 format!("serial port {name}"),
                 listen::Target::Serial {

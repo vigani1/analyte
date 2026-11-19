@@ -137,14 +137,9 @@ impl Scan {
 
 /// The lab app destinations an older setup page kept in the program file.
 fn kept(program: &str) -> Result<Vec<Destination>, SetupError> {
-    let table: toml::Table = program
-        .parse()
-        .map_err(|error: toml::de::Error| SetupError::ProgramFile(error.to_string()))?;
+    let table: toml::Table = program.parse().map_err(SetupError::ProgramFile)?;
     match table.get("retired_destinations") {
-        Some(listed) => listed
-            .clone()
-            .try_into()
-            .map_err(|error: toml::de::Error| SetupError::ProgramFile(error.to_string())),
+        Some(listed) => listed.clone().try_into().map_err(SetupError::ProgramFile),
         None => Ok(Vec::new()),
     }
 }
