@@ -979,9 +979,12 @@ const CANCEL_REASONS: [Fixed; 1] = [(
     ),
 )];
 
+/// What an open request for a machine's next results is called, as its category and its title.
+pub(in crate::admin) const POLL_TITLE: &str = "Request for results not settled";
+
 const POLL_REASONS: [Fixed; 1] = [(
     autolyser::POLL_REASON,
-    "Request for results not settled",
+    POLL_TITLE,
     concat!(
         "Analyte asked this machine for its next results, and the machine may count them as ",
         "sent before their answer was safely stored.",
