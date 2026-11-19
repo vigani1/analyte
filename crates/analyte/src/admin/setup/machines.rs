@@ -38,11 +38,10 @@ pub(in crate::admin) async fn add_form(
     done(
         page("Add a machine")
             .markup(concat!(
-                "<p class=\"lead\">Adds one machine that is not set up yet, with a starter site file that ",
-                "holds only the retention and the key names. Analyte checks the program file, ",
-                "keeps a copy of it, writes it and loads it again; if that fails, the previous ",
-                "file is put back. The new machine shows as <strong>Not set up yet</strong>: ",
-                "set it up like any other, then restart.</p>",
+                "<p class=\"lead\">Adds a machine that is not set up yet. Analyte checks its ",
+                "settings, keeps a copy of the old ones and writes the new ones; if anything ",
+                "fails, the old settings are put back. The new machine shows as <strong>Not set ",
+                "up yet</strong>: set it up like any other, then restart.</p>",
                 "<section><form method=\"post\" action=\"/setup/add\"><input type=\"hidden\" ",
                 "name=\"csrf\" value=\""
             ))
@@ -51,8 +50,8 @@ pub(in crate::admin) async fn add_form(
             .text(&suggested)
             .markup(concat!(
                 "\"></label><p class=\"muted\">Use letters, digits, - and _. The name also names the ",
-                "machine's site file (<code>&lt;name&gt;.site.toml</code> beside the program file).</p>",
-                "<div class=\"notice\"><p><strong>Reusing a name.</strong> Analyte keeps results, flagged items and ",
+                "machine's settings file (<code>&lt;name&gt;.site.toml</code>).</p>",
+                "<div class=\"notice\"><p><strong>Reusing a name.</strong> Analyte keeps results, items to review and ",
                 "history by machine name. A machine added under the name of one removed ",
                 "earlier joins that stored history. Use an earlier name only for the same ",
                 "analyzer; give a different analyzer a new name, so its results are never ",
@@ -171,9 +170,9 @@ pub(in crate::admin) async fn add(
     let mut html = page("Machine added")
         .markup("<p class=\"notice info\">Machine <strong>")
         .text(id.as_str())
-        .markup("</strong> is listed and <strong>Not set up yet</strong>. Its starter site file is <code>")
+        .markup("</strong> is listed and <strong>Not set up yet</strong>. <span class=\"muted\">Its settings file is <code>")
         .text(path.display())
-        .markup("</code>. <a href=\"/setup/")
+        .markup("</code>.</span> <a href=\"/setup/")
         .text(id.as_str())
         .markup("\">Set it up now</a>, or restart first.</p>");
     if reused {
@@ -199,7 +198,7 @@ fn backups_kept(backups: &[PathBuf]) -> Markup {
     for backup in backups {
         html.push_fragment(
             &Markup::new()
-                .markup("<li>Previous file kept as ")
+                .markup("<li>Copy of the old settings: ")
                 .text(backup.display())
                 .markup("</li>"),
         );
@@ -258,9 +257,9 @@ fn open_work(open: &Unfinished) -> Vec<String> {
         ),
         (
             open.flagged,
-            "unresolved flagged item",
-            "unresolved flagged items",
-            " linked to this machine (Parked items page)",
+            "item waiting for review",
+            "items waiting for review",
+            " linked to this machine (Needs review page)",
         ),
     ]
     .into_iter()
@@ -284,65 +283,57 @@ fn configured_destination(
         .map(|machine| machine.snapshot().effective().site().destination.clone()))
 }
 
-/// What happens to delivery after removal. Removing keeps the machine's lab app
-/// destination as a `[[retired_destinations]]` entry, and the service delivers to a
-/// kept destination no machine uses until nothing is left (`runtime::delivery::retired`).
-fn delivery_note(state: &Context, id: &str) -> String {
-    let destination = match configured_destination(&state.config_path, id) {
-        Ok(Some(destination)) => destination,
-        Ok(None) => {
-            return "This machine is not set up, so it has no lab app destination to keep.".into();
-        }
-        Err(error) => {
-            return format!(
-                concat!(
-                    "This machine's lab app settings cannot be read ({}), so they cannot be ",
-                    "kept: results still waiting for it stay stored and are never deleted, and the ",
-                    "Overview shows them as not deliverable until a machine that uses that lab ",
-                    "app destination is set up."
-                ),
-                error
-            );
-        }
-    };
-    let name = destination.name.as_str();
-    let others: Vec<String> = Program::load(&state.config_path)
-        .map(|program| {
-            program
-                .machines()
-                .iter()
-                .filter(|machine| {
-                    machine.id().as_str() != id
-                        && machine.snapshot().effective().site().destination.name
-                            == destination.name
-                })
-                .map(|machine| machine.id().as_str().to_owned())
-                .collect()
-        })
-        .unwrap_or_default();
-    if others.is_empty() {
-        format!(
+/// The lab app a machine sends to, as far as removing it is concerned.
+enum LabApp {
+    /// Not set up: it has no lab app.
+    None,
+    /// Its settings cannot be read, so its lab app cannot be kept.
+    Unreadable(String),
+    /// Removing keeps this lab app's settings (as `[[retired_destinations]]`), and the
+    /// service sends to it until nothing is left (`runtime::delivery::retired`).
+    Kept(String),
+}
+
+fn lab_app(config: &std::path::Path, id: &str) -> LabApp {
+    match configured_destination(config, id) {
+        Ok(Some(destination)) => LabApp::Kept(destination.name.as_str().to_owned()),
+        Ok(None) => LabApp::None,
+        Err(error) => LabApp::Unreadable(error),
+    }
+}
+
+/// One sentence on what happens to the machine's waiting results after removal.
+fn delivery_sentence(lab_app: &LabApp, open: &Result<Unfinished, SetupError>) -> Markup {
+    match lab_app {
+        LabApp::None => Markup::new().text("It is not set up, so nothing is waiting to be sent."),
+        LabApp::Unreadable(error) => Markup::new().text(format!(
             concat!(
-                "Results and order messages already stored for lab app destination {name} keep ",
-                "being delivered after the restart, even though no other machine uses it: ",
-                "removing keeps its address and key names in the program file (as a retired ",
-                "destination), and Analyte delivers to it until nothing is left. It no longer ",
-                "asks that lab app for orders. The Overview shows how many are still being ",
-                "delivered."
+                "Its lab app settings cannot be read ({}), so results still waiting for it are ",
+                "kept, never deleted, until a machine that uses the same lab app is set up."
             ),
-            name = name
-        )
-    } else {
-        format!(
-            concat!(
-                "Results and order messages already stored for lab app destination {name} keep ",
-                "being delivered after the restart: {others} still use it. Removing also keeps ",
-                "its address and key names in the program file (as a retired destination), so ",
-                "they are delivered even if no machine uses it later."
-            ),
-            name = name,
-            others = others.join(", ")
-        )
+            error
+        )),
+        LabApp::Kept(name) => match open {
+            Ok(open) if open.undelivered > 0 => Markup::new()
+                .markup("<span title=\"")
+                .text(plain::amount(
+                    open.undelivered,
+                    "result or order message not yet accepted by the lab app",
+                    "results or order messages not yet accepted by the lab app",
+                ))
+                .markup("\">")
+                .text(format!(
+                    "Its {} will still be sent to {name}.",
+                    plain::amount(open.undelivered, "waiting result", "waiting results")
+                ))
+                .markup("</span>"),
+            Ok(_) => Markup::new().text(format!(
+                "Nothing is waiting; anything it sends before the restart will still be sent to {name}."
+            )),
+            Err(_) => Markup::new().text(format!(
+                "Its waiting results will still be sent to {name}."
+            )),
+        },
     }
 }
 
@@ -359,14 +350,14 @@ pub(in crate::admin) async fn confirm_remove(
     let machine = id.clone();
     let facts = tokio::task::spawn_blocking(move || {
         site::installed(&worker.config_path, &machine)?;
-        let note = delivery_note(&worker, &machine);
+        let kept = lab_app(&worker.config_path, &machine);
         let (_, listed) = site::entries(&worker.config_path)?;
-        Ok::<_, SetupError>((note, listed.len() == 1))
+        Ok::<_, SetupError>((kept, listed.len() == 1))
     })
     .await
     .map_err(SetupError::from)
     .and_then(|r| r);
-    let (note, last) = match facts {
+    let (kept, last) = match facts {
         Ok(facts) => facts,
         Err(error) => return refused(&error),
     };
@@ -375,14 +366,14 @@ pub(in crate::admin) async fn confirm_remove(
         .markup("<p class=\"lead\"><strong>Remove ")
         .text(&id)
         .markup(concat!(
-            "?</strong> Its stored results, flagged items and history stay in the ",
-            "database and remain visible to staff; the machine just stops being served.</p>"
+            "?</strong> Its results, items to review and history are kept and stay visible ",
+            "here; Analyte just stops connecting to it.</p>"
         ));
     let warned = warning(&mut html, &open);
     html.push_fragment(
         &Markup::new()
-            .markup("<section><h2>Delivery after removal</h2><p>")
-            .text(note)
+            .markup("<section><h2>Waiting results</h2><p class=\"removal\">")
+            .fragment(&delivery_sentence(&kept, &open))
             .markup("</p>"),
     );
     if last {
@@ -394,9 +385,9 @@ pub(in crate::admin) async fn confirm_remove(
     html.push_fragment(
         &Markup::new()
             .markup(concat!(
-                "<p class=\"muted\">The program file keeps a dated copy, and the machine's site file is ",
-                "moved to a dated copy, not deleted. Removing applies after a restart; ",
-                "until then the machine keeps running.</p></section><form method=\"post\" action=\""
+                "<p class=\"muted\">Analyte keeps dated copies of the old settings. Removing ",
+                "applies after a restart; until then the machine keeps running.</p></section>",
+                "<form method=\"post\" action=\""
             ))
             .text(format!("/setup/{id}/remove"))
             .markup("\"><input type=\"hidden\" name=\"csrf\" value=\"")
@@ -420,8 +411,8 @@ fn warning(html: &mut Markup, open: &Result<Unfinished, SetupError>) -> bool {
     match open {
         Ok(open) if open.is_empty() => {
             html.push_markup(concat!(
-                "<p class=\"notice info\">Nothing is unfinished for this machine. (Flagged items not linked to ",
-                "one machine are not counted.)</p>"
+                "<p class=\"notice info\">Nothing is unfinished for this machine. (Items to review ",
+                "that are not linked to one machine are not counted.)</p>"
             ));
             false
         }
@@ -434,7 +425,8 @@ fn warning(html: &mut Markup, open: &Result<Unfinished, SetupError>) -> bool {
             }
             html.push_markup(concat!(
                 "</ul><p>Removing does not delete any of this. Finish it first, or ",
-                "remove anyway. (Flagged items not linked to one machine are not counted.)</p></div>"
+                "remove anyway. (Items to review that are not linked to one machine are not ",
+                "counted.)</p></div>"
             ));
             true
         }
@@ -444,7 +436,7 @@ fn warning(html: &mut Markup, open: &Result<Unfinished, SetupError>) -> bool {
                     .markup("<p class=\"notice bad\"><strong>Unfinished work could not be counted:</strong> ")
                     .text(error)
                     .markup(
-                        ". Check the Deliveries, Machine orders and Parked items pages first.</p>",
+                        ". Check the Deliveries, Machine orders and Needs review pages first.</p>",
                     ),
             );
             true
@@ -531,21 +523,28 @@ pub(in crate::admin) async fn remove(
         Err(error) => return refused(&error),
     };
     let site = match &removed.site {
-        Ok(Some(path)) => format!("site file kept as {}", path.display()),
-        Ok(None) => "site file left in place (missing or used by another machine)".into(),
-        Err(error) => format!("site file could not be moved: {error}"),
+        Ok(Some(path)) => format!(
+            "Its settings file was kept as a dated copy: {}",
+            path.display()
+        ),
+        Ok(None) => {
+            "Its settings file was left in place (missing or used by another machine)".into()
+        }
+        Err(error) => format!("Its settings file could not be moved: {error}"),
     };
     let kept = match &removed.kept {
         Ok(Some(destination)) => format!(
             concat!(
-                "Lab app destination {} is kept in the program file for delivery: results still ",
-                "waiting for it are delivered after the restart until none are left"
+                "Results still waiting for lab app {} are sent after the restart until none ",
+                "are left"
             ),
             destination
         ),
-        Ok(None) => "no lab app destination to keep (machine not set up)".into(),
+        Ok(None) => "It was not set up, so it had no lab app".into(),
         Err(error) => {
-            format!("lab app destination not kept, its settings could not be read: {error}")
+            format!(
+                "Its lab app settings could not be read, so waiting results stay stored until a machine that uses the same lab app is set up: {error}"
+            )
         }
     };
     let reason = format!(
@@ -558,12 +557,12 @@ pub(in crate::admin) async fn remove(
         .markup("<section><p>Machine <strong>")
         .text(&id)
         .markup(concat!(
-            "</strong> is no longer listed in the program file. Its stored results, ",
-            "flagged items and history stay in the database and remain visible to staff.</p><p>"
+            "</strong> is removed from Analyte's settings. Its results, items to review and ",
+            "history are kept and stay visible here.</p><p>"
         ))
-        .text(site)
-        .markup(".</p><p>")
         .text(kept)
+        .markup(".</p><p class=\"muted\">")
+        .text(site)
         .markup(".</p>");
     html.push_fragment(&backups_kept(&removed.backups).markup("</section>"));
     if let Err(error) = audited {

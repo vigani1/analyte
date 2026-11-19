@@ -2,7 +2,7 @@
 use super::{
     server::Context,
     sessions::Session,
-    view::{self, Tone},
+    view::{self, Tab, Tone, exact, plain},
 };
 use crate::admin::Error;
 use crate::admin::markup::Markup;
@@ -28,15 +28,28 @@ pub(super) struct Confirmation {
     acknowledge_superseded: bool,
 }
 
-fn page(title: &str, body: &Markup) -> Response {
-    Html(view::page(title).fragment(body).markup(view::END)).into_response()
+fn page(tab: Tab, title: &str, body: &Markup) -> Response {
+    Html(view::page(tab, title).fragment(body).markup(view::END)).into_response()
 }
 fn failure(error: &dyn std::error::Error) -> Response {
-    (
+    view::refusal(
         StatusCode::CONFLICT,
-        Html(view::message("Action refused", error)),
+        "That could not be done",
+        concat!(
+            "Nothing was changed. Check the page it came from and try again; if this keeps ",
+            "happening, give the details below to support.",
+        ),
+        error,
     )
-        .into_response()
+}
+/// The refusal for a confirmation page opened without a signed-in browser session.
+fn sign_in_first() -> Response {
+    view::refusal(
+        StatusCode::FORBIDDEN,
+        "Sign in first",
+        "This action needs a signed-in browser session. Sign in, then open the page again.",
+        "authenticated session required",
+    )
 }
 fn id(text: &str) -> Result<DeliveryId, Error> {
     Ok(uuid::Uuid::parse_str(text)?.try_into()?)
@@ -45,13 +58,10 @@ fn form(session: &Session, route: &str, label: &str, superseded: bool) -> Markup
     let acknowledgement = if superseded {
         concat!(
             concat!(
-                "<label class=\"check\"><input type=\"checkbox\" ",
-                "name=\"acknowledge_superseded\" value=\"true\">I ",
+                "<label class=\"check\" title=\"Acknowledge superseded revision\"><input ",
+                "type=\"checkbox\" name=\"acknowledge_superseded\" value=\"true\">",
             ),
-            concat!(
-                "explicitly request this delivery even if a newer ",
-                "revision exists.</label>",
-            ),
+            concat!("Send it even if a newer correction of this result exists.</label>",),
         )
     } else {
         ""
@@ -68,7 +78,10 @@ fn form(session: &Session, route: &str, label: &str, superseded: bool) -> Markup
             "\"><input type=\"hidden\" name=\"confirm\" ",
             "value=\"yes\"><label class=\"field\"><span>Reason</span><input name=\"reason\" ",
         ))
-        .markup("required maxlength=\"256\"></label>")
+        .markup(concat!(
+            "required maxlength=\"256\"></label><p class=\"muted\">Your reason is recorded ",
+            "with the action.</p>",
+        ))
         .markup(acknowledgement)
         .markup("<div class=\"actions-row\"><button>")
         .text(label)
@@ -99,15 +112,17 @@ pub(super) async fn deliveries(
         Ok(rows) => {
             let rows: Vec<_> = rows.into_iter().take(super::pages::PAGE).collect();
             let mut html = Markup::new().markup(concat!(
-                "<p class=\"lead\">Each result or order message Analyte sends to a lab app keeps ",
-                "one delivery ID on every retry.</p>",
+                "<p class=\"lead\">Results and order messages Analyte sends to a lab app. Each ",
+                "keeps the same delivery number on every retry, so the lab app never files it ",
+                "twice.</p>",
             ));
             if rows.is_empty() {
-                html.push_markup("<p class=\"muted\">No deliveries on this page.</p>");
+                html.push_markup("<p class=\"muted\">No deliveries to show.</p>");
             } else {
                 html.push_markup(concat!(
-                    "<section><div class=\"table\"><table><tr><th>Delivery ID</th>",
-                    "<th>Lab app destination</th><th>State</th><th></th></tr>",
+                    "<section><div class=\"table\"><table class=\"stack\"><tr>",
+                    "<th title=\"Delivery ID\">Delivery number</th>",
+                    "<th title=\"Destination\">Lab app</th><th>Status</th><th></th></tr>",
                 ));
             }
             for row in &rows {
@@ -123,11 +138,13 @@ pub(super) async fn deliveries(
                     &Markup::new()
                         .markup("<tr><td><code>")
                         .text(delivery)
-                        .markup("</code></td><td>")
+                        .markup("</code></td><td data-label=\"Lab app\">")
                         .text(row.destination.as_str())
-                        .markup("</td><td>")
-                        .fragment(&view::pill(tone, &row.state.to_string()))
-                        .markup("</td><td class=\"actions\">"),
+                        .markup("</td><td data-label=\"Status\"><span title=\"")
+                        .text(row.state)
+                        .markup("\">")
+                        .fragment(&view::pill(tone, plain::delivery_state(row.state)))
+                        .markup("</span></td><td class=\"actions\">"),
                 );
                 match row.state {
                     DeliveryState::Done | DeliveryState::Parked | DeliveryState::Paused => html
@@ -135,7 +152,7 @@ pub(super) async fn deliveries(
                             &Markup::new()
                                 .markup("<a href=\"/deliveries/")
                                 .text(delivery)
-                                .markup("/resend\">Resend this delivery</a>"),
+                                .markup("/resend\" title=\"Resend this delivery\">Send again</a>"),
                         ),
                     DeliveryState::Pending | DeliveryState::InFlight | DeliveryState::Conflict => {}
                 }
@@ -149,7 +166,7 @@ pub(super) async fn deliveries(
                         .markup("\">Next page</a></p>"),
                 );
             }
-            page("Deliveries", &html)
+            page(Tab::Deliveries, "Deliveries", &html)
         }
         Err(error) => failure(&error),
     }
@@ -161,7 +178,7 @@ pub(super) async fn confirm_reprocess(
     session: Option<Extension<Arc<Session>>>,
 ) -> Response {
     let Some(Extension(session)) = session.filter(|Extension(s)| s.authenticated) else {
-        return (StatusCode::FORBIDDEN, "authenticated session required").into_response();
+        return sign_in_first();
     };
     match state
         .store
@@ -177,23 +194,26 @@ pub(super) async fn confirm_reprocess(
         .await
     {
         Ok(receipt) => page(
-            "Confirm reprocess",
+            Tab::NeedsReview,
+            "Process this message again?",
             &Markup::new()
-                .markup("<p>Reinterpret original receipt ")
+                .markup("<section><p title=\"Reprocess: reinterpret the original receipt\">")
+                .markup("Analyte reads the original message <code>")
                 .text(uuid::Uuid::from(receipt))
                 .markup(concat!(
-                    " with the current configuration. A new version is ",
-                    "retained; results use the normal ",
+                    "</code> again with the current settings. The earlier reading is kept and ",
+                    "a new one is added; corrected results follow the usual correction rules. ",
+                    "Nothing is sent to the machine.</p>",
                 ))
-                .markup("revision rules. This never sends work to a machine.</p>")
                 .fragment(
                     &(form(
                         &session,
                         &format!("/parked/{parked}/reprocess"),
-                        "Confirm reprocess",
+                        "Process again",
                         false,
                     )),
-                ),
+                )
+                .markup("</section>"),
         ),
         Err(error) => failure(&error),
     }
@@ -205,7 +225,7 @@ pub(super) async fn confirm_resend(
     session: Option<Extension<Arc<Session>>>,
 ) -> Response {
     let Some(Extension(session)) = session.filter(|Extension(s)| s.authenticated) else {
-        return (StatusCode::FORBIDDEN, "authenticated session required").into_response();
+        return sign_in_first();
     };
     let delivery = match id(&text) {
         Ok(id) => id,
@@ -230,27 +250,34 @@ pub(super) async fn confirm_resend(
         .await
     {
         Ok(row) => page(
-            "Confirm resend",
+            Tab::Deliveries,
+            "Send this delivery again?",
             &Markup::new()
-                .markup("<p>Resend delivery ")
+                .markup(
+                    "<section><p title=\"Resend with the original delivery ID and exact bytes\">",
+                )
+                .markup("Analyte sends delivery <code>")
                 .text(uuid::Uuid::from(delivery))
-                .markup(" to ")
+                .markup("</code> to lab app ")
                 .text(row.destination.as_str())
-                .markup(" with its original ID and exact bytes. Recorded state: ")
-                .text(row.state)
-                .markup(concat!(
-                    ". The app treats a repeat as already done. The ",
-                    "store checks eligibility again on ",
+                .markup(" again, unchanged and with the same delivery number. Its status now: ")
+                .fragment(&exact(
+                    plain::delivery_state(row.state),
+                    &row.state.to_string(),
                 ))
-                .markup("confirmation.</p>")
+                .markup(concat!(
+                    ". If the lab app already has it, it treats the repeat as done. Analyte ",
+                    "checks again that it may be sent when you confirm.</p>",
+                ))
                 .fragment(
                     &(form(
                         &session,
                         &format!("/deliveries/{}/resend", uuid::Uuid::from(delivery)),
-                        "Confirm resend",
+                        "Send again",
                         true,
                     )),
-                ),
+                )
+                .markup("</section>"),
         ),
         Err(error) => failure(&error),
     }
@@ -267,7 +294,7 @@ pub(super) async fn reprocess(
     Form(form): Form<Confirmation>,
 ) -> Response {
     if !valid(&session, &form) {
-        return StatusCode::FORBIDDEN.into_response();
+        return sign_in_first();
     }
     let result = async {
         let reason = Reason::new(&form.reason)?;
@@ -291,16 +318,14 @@ pub(super) async fn reprocess(
     .await;
     match result {
         Ok(commit) => page(
-            "Reprocess recorded",
+            Tab::NeedsReview,
+            "Processed again",
             &Markup::new()
-                .markup("<p>Interpretation ")
+                .markup("<p class=\"notice info\" title=\"Reprocess recorded\">Reading ")
                 .text(commit.version)
-                .markup(" recorded. Decisions: ")
+                .markup(" was recorded. What happened: ")
                 .text(crate::operator::display::list(&commit.outcomes))
-                .markup(concat!(
-                    ".</p><p><a href=\"/parked\">Inspect remaining parked ",
-                    "reasons</a></p>",
-                )),
+                .markup(".</p><p><a href=\"/parked\">Back to Needs review</a></p>"),
         ),
         Err(error) => failure(&error),
     }
@@ -313,7 +338,7 @@ pub(super) async fn resend(
     Form(form): Form<Confirmation>,
 ) -> Response {
     if !valid(&session, &form) {
-        return StatusCode::FORBIDDEN.into_response();
+        return sign_in_first();
     }
     let result = async {
         crate::operator::recovery::resend(
@@ -329,10 +354,12 @@ pub(super) async fn resend(
     .await;
     match result {
         Ok(()) => page(
-            "Resend queued",
+            Tab::Deliveries,
+            "Queued to send again",
             &Markup::new().markup(concat!(
-                "<p>The original delivery ID and bytes are queued ",
-                "for the app.</p>",
+                "<p class=\"notice info\" title=\"Resend queued\">The delivery is queued and ",
+                "goes to the lab app unchanged, with the same delivery number.</p>",
+                "<p><a href=\"/deliveries\">Back to Deliveries</a></p>",
             )),
         ),
         Err(error) => failure(&error),

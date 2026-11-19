@@ -16,7 +16,7 @@ async fn reprocess_and_resend_need_confirmation_csrf_and_audit() -> Result<(), E
     let path = format!("/parked/{parked}/reprocess");
     let confirm = request(&host, &path, &auth, None).await?;
     assert!(confirm.starts_with("HTTP/1.1 200"));
-    assert!(confirm.contains("Confirm reprocess"));
+    assert!(confirm.contains("<h1>Process this message again?</h1>"));
     assert!(confirm.contains("method=\"post\""));
     let token = csrf(&confirm)?;
     let form = format!(
@@ -184,11 +184,11 @@ async fn assert_resend_audit_atomicity(
     let path = format!("/deliveries/{}/resend", uuid::Uuid::from(delivery));
     let confirm = request(host, &path, auth, None).await?;
     assert!(confirm.starts_with("HTTP/1.1 200"));
-    assert!(confirm.contains("Confirm resend"));
+    assert!(confirm.contains("Send this delivery again?"));
     assert!(
         request(host, "/deliveries", auth, None)
             .await?
-            .contains("Resend this delivery")
+            .contains(">Send again</a>")
     );
     assert!(
         request(host, &path, post_auth, Some("reason=test&confirm=yes"))
@@ -326,11 +326,12 @@ async fn retention_page_and_receipt_hold_are_audited() -> Result<(), Error> {
     let auth = format!("Cookie: {cookie}\r\n");
     let page = request(&host, "/retention", &auth, None).await?;
     for text in [
-        "Policy",
-        "keep (never purge)",
-        "Last run",
-        "Oldest retained item",
-        "Holds have no expiry",
+        "<h1>Data keeping</h1>",
+        "How long data is kept",
+        "kept, never deleted",
+        "Last clean-up",
+        "Oldest message kept",
+        "it never expires",
     ] {
         assert!(page.contains(text), "{text}");
     }

@@ -16,7 +16,7 @@ use std::sync::Arc;
 mod orders;
 pub(super) use orders::orders;
 mod raw;
-use crate::admin::view::{self, plain};
+use crate::admin::view::{self, Tab, plain};
 pub(super) use raw::RawError;
 pub(super) use raw::raw;
 use raw::raw_links;
@@ -38,11 +38,15 @@ fn cursor_value<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<u64
 pub(super) fn finish(result: Result<Markup, Error>) -> Response {
     match result {
         Ok(html) => Html(html.markup(view::END)).into_response(),
-        Err(error) => (
+        Err(error) => view::refusal(
             StatusCode::SERVICE_UNAVAILABLE,
-            Html(view::message("Read failed", error)),
-        )
-            .into_response(),
+            "This page could not be shown",
+            concat!(
+                "Analyte could not read its stored data just now. Reload the page; if this ",
+                "keeps happening, give the details below to support.",
+            ),
+            error,
+        ),
     }
 }
 
@@ -57,23 +61,20 @@ pub(super) fn next(html: &mut Markup, route: &str, after: impl std::fmt::Display
     );
 }
 
+/// Says, only while it is true, that order sending is paused after a restore.
 async fn pause(state: &Context, html: &mut Markup) -> Result<(), Error> {
     let paused = state
         .store
         .request(deadline()?, |s| s.restore_unreconciled())
         .await?;
-    html.push_markup(if paused {
-        concat!(
+    if paused {
+        html.push_markup(concat!(
             "<p class=\"notice\" title=\"Order sending paused after restore: true\">",
             "<strong>Order sending is paused after a restore.</strong> ",
-            "Reconcile with the command line before orders are sent again.</p>",
-        )
-    } else {
-        concat!(
-            "<p class=\"muted\"><span title=\"Order sending paused after restore: false\">",
-            "Order sending is not paused.</span></p>",
-        )
-    });
+            "Ask IT to reconcile orders with the command line; until then no order is sent ",
+            "to a machine.</p>",
+        ));
+    }
     Ok(())
 }
 
@@ -83,7 +84,7 @@ pub(super) async fn machines(
 ) -> Response {
     finish(
         async {
-            let mut html = view::page("Machines");
+            let mut html = view::page(Tab::Machines, "Machines");
             pause(&state, &mut html).await?;
             let after = usize::try_from(cursor.after)?;
             let page: Vec<_> = state.machines.iter().skip(after).take(PAGE).collect();
@@ -113,9 +114,9 @@ pub(super) async fn machines(
                                     &Markup::new()
                                         .markup("<li><a href=\"/receipts/")
                                         .text(id)
-                                        .markup("/departures\" title=\"Receipt interpretation evidence\">Message received ")
+                                        .markup("/departures\" title=\"Receipt interpretation evidence\">Received ")
                                         .text(plain::time(receipt.received_at))
-                                        .markup("</a> <small class=\"muted\">")
+                                        .markup("</a> <small class=\"muted\" title=\"Receipt ID\">")
                                         .text(id)
                                         .markup("</small></li>"),
                                 );
@@ -131,10 +132,10 @@ pub(super) async fn machines(
                         .fragment(&super::overview::LinkLight::of(machine, last, now).rows())
                         .markup("</dl>")
                         .fragment(&machine.departure_html)
-                        .markup("<h3>Received messages</h3>"),
+                        .markup("<h3>Messages received</h3>"),
                 );
                 if evidence_links == 0 {
-                    html.push_markup("<p class=\"muted\">None stored yet.</p>");
+                    html.push_markup("<p class=\"muted\">Nothing yet.</p>");
                 } else {
                     html.push_fragment(
                         &Markup::new()
@@ -178,8 +179,8 @@ fn metadata(store: &Store, parked: &Parked) -> Result<Markup, analyte_store::Ope
             .transpose()?
             .flatten();
         html.push_fragment(&view::row(
-            "Target",
-            None,
+            "Linked record",
+            Some("Target"),
             &Markup::new()
                 .markup("<code>")
                 .text(target.as_str())
@@ -189,16 +190,16 @@ fn metadata(store: &Store, parked: &Parked) -> Result<Markup, analyte_store::Ope
             "Received",
             Some("Receipt time"),
             &receipt.map_or_else(
-                || Markup::new().text("unknown (no linked receipt)"),
+                || Markup::new().text("Not known (no linked message)"),
                 |m| plain::when(m.received_at, now),
             ),
         ));
     }
     if parked.targets.is_empty() {
         html.push_fragment(&view::row(
-            "Receipt",
-            None,
-            &Markup::new().text("ID and time not recorded"),
+            "Linked record",
+            Some("Receipt"),
+            &Markup::new().text("Not recorded"),
         ));
     }
     Ok(html)
@@ -208,8 +209,8 @@ fn metadata(store: &Store, parked: &Parked) -> Result<Markup, analyte_store::Ope
 fn more_targets(html: &mut Markup, parked: &Parked) {
     if parked.targets.len() > PAGE {
         html.push_markup(concat!(
-            "<p class=\"muted\">First 50 targets shown; use the detail target ",
-            "pages for the rest.</p>",
+            "<p class=\"muted\">The first 50 linked records are shown; open the item ",
+            "and use Next page for the rest.</p>",
         ));
     }
 }
@@ -237,8 +238,8 @@ fn category(kind: &str) -> Option<&'static str> {
         "parked" => "Lab app rejected a delivery",
         "conflict" => "Lab app reported a conflicting delivery",
         "order_version_refused" => "Order from the lab app was refused",
-        "law_cancel_refusal_conflict" => "Cancel conflicts with the analyzer",
-        "poll_intent" => "Machine poll waiting for its outcome",
+        "law_cancel_refusal_conflict" => "Cancel conflicts with what the machine reported",
+        "poll_intent" => "Machine asked for orders; the outcome is not known yet",
         _ => return None,
     })
 }
@@ -261,7 +262,7 @@ pub(super) async fn detail(
     let until = match deadline() {
         Ok(until) => until,
         Err(error) => {
-            return (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response();
+            return finish(Err(error.into()));
         }
     };
     let after = match usize::try_from(cursor.after) {
@@ -286,10 +287,17 @@ pub(super) async fn detail(
         .await;
     let (meta, evidence, resolution) = match result {
         Ok(Some(row)) => row,
-        Ok(None) => return (StatusCode::NOT_FOUND, "parked item not found").into_response(),
+        Ok(None) => {
+            return view::refusal(
+                StatusCode::NOT_FOUND,
+                "Item not found",
+                "There is no item to review with this number. Go back to Needs review and pick one from the list.",
+                "parked item not found",
+            );
+        }
         Err(error) => return finish(Err(error.into())),
     };
-    let mut html = view::page("Parked item");
+    let mut html = view::page(Tab::NeedsReview, "Item to review");
     html.push_fragment(
         &Markup::new()
             .markup("<section><dl>")
@@ -301,21 +309,29 @@ pub(super) async fn detail(
             &view::row(
                 "Status",
                 None,
-                &view::pill(view::Tone::Attention, "Unresolved"),
+                &view::pill(view::Tone::Attention, "Waiting for review"),
             )
             .markup("</dl>")
-            .markup("<p class=\"actions-row\"><a class=\"button\" href=\"/parked/")
+            .markup(
+                "<p class=\"actions-row\"><a class=\"button\" title=\"Reprocess\" href=\"/parked/",
+            )
             .text(id)
-            .markup("/reprocess\">Reprocess this parked item</a></p>"),
+            .markup("/reprocess\">Process again with current settings</a></p>"),
         ),
         Some(resolution) => html.push_fragment(
-            &view::row("Resolution", None, &Markup::new().text(&resolution)).markup("</dl>"),
+            &view::row(
+                "How it was resolved",
+                Some("Resolution"),
+                &Markup::new().text(&resolution),
+            )
+            .markup("</dl>"),
         ),
     }
     more_targets(&mut html, &evidence);
     html.push_markup(concat!(
-        "</section><section><h2>Raw evidence</h2><p class=\"lead\">Raw bytes are hidden. ",
-        "Each raw page is disclosed only after its audit entry is durable.</p>",
+        "</section><section><h2 title=\"Raw evidence\">Original message</h2><p class=\"lead\">",
+        "The original bytes are hidden because they may contain patient data. Each time ",
+        "they are shown, Analyte first records who asked and why.</p>",
     ));
     raw_links(&mut html, id, &evidence, session);
     html.push_markup("</section>");
@@ -344,13 +360,13 @@ async fn parked_page(state: &Context, cursor: Cursor) -> Result<Markup, Error> {
                     &Markup::new()
                         .markup("<section><div class=\"heading\"><h2><a href=\"/parked/")
                         .text(row.id)
-                        .markup("\">Parked item ")
+                        .markup("\" title=\"Parked item\">Item ")
                         .text(row.id)
                         .markup("</a></h2>")
                         .fragment(&if row.resolution.is_some() {
                             view::pill(view::Tone::Good, "Resolved")
                         } else {
-                            view::pill(view::Tone::Attention, "Unresolved")
+                            view::pill(view::Tone::Attention, "Waiting for review")
                         })
                         .markup("</div><dl>")
                         .fragment(&kind_and_reason(&evidence))
@@ -364,14 +380,14 @@ async fn parked_page(state: &Context, cursor: Cursor) -> Result<Markup, Error> {
             Ok::<_, crate::admin::error::CommandError>((html, last))
         })
         .await?;
-    let mut html = view::page("Parked items");
+    let mut html = view::page(Tab::NeedsReview, "Needs review");
     html.push_markup(concat!(
-        "<p class=\"lead\">Messages and results Analyte kept but could not process. ",
-        "No raw bytes are shown on this list. Times below are receipt times; parking ",
-        "time is not recorded by the store.</p>",
+        "<p class=\"lead\" title=\"Parked items\">Messages and results Analyte kept but ",
+        "could not process on its own. Nothing here is deleted; each item waits until ",
+        "someone reviews it. Times are when the message was received.</p>",
     ));
     if last.is_none() {
-        html.push_markup("<p class=\"muted\">No parked items.</p>");
+        html.push_markup("<p class=\"muted\">Nothing needs review.</p>");
     }
     html.push_fragment(&rows);
     if let Some(last) = last {

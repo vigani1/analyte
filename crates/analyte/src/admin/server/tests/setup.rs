@@ -116,7 +116,10 @@ async fn start_with(machines: &str, site_text: &str) -> Result<Fixture, Error> {
     )?;
     let blocked = root.join("machines/roche/cobas-e411");
     std::fs::create_dir_all(&blocked)?;
-    std::fs::write(blocked.join("README.md"), "A blocked machine definition.\n")?;
+    std::fs::write(
+        blocked.join("README.md"),
+        "# Roche cobas e 411\n\nA blocked machine definition.\n",
+    )?;
     let site = root.join("site.toml");
     std::fs::write(&site, site_text)?;
     let config = root.join("program.toml");
@@ -256,22 +259,29 @@ impl Fixture {
 
 // Owner request 2026-11-18 (setup page); machines/README.md: the page lists the
 // shipped definitions with name and evidence, blocked ones as blocked, and the
-// detected ports with adapter name and USB serial number.
+// detected ports with adapter name and USB serial number. Owner request
+// 2026-11-19 (item 8): models show the README title, or a tidied key without
+// one, with the key on hover; the settings version is short with the digest on hover.
 #[tokio::test(flavor = "multi_thread")]
 async fn page_lists_definitions_and_detected_adapters() -> Result<(), Error> {
     let fixture = start().await?;
     let index = fixture.get("/setup").await?;
     assert!(index.starts_with("HTTP/1.1 200"), "{index}");
     for expected in [
-        "example/serial-astm",
-        "generic-synthetic",
-        "documented",
-        "roche/cobas-e411",
-        "Facts or recordings are missing (see its README)",
+        "<span title=\"example/serial-astm (name generic-synthetic)\">Example serial astm</span>",
+        "<span title=\"Evidence level: documented\">Built from the manuals</span>",
+        "<span title=\"roche/cobas-e411\">Roche cobas e 411</span>",
+        "<span class=\"pill warn\">Not ready yet</span>",
+        "Facts or recordings are still missing",
+        concat!(
+            "<td data-label=\"Model\"><span title=\"machines/example/serial-astm/machine.toml\">",
+            "Example serial astm</span></td>",
+        ),
         "href=\"/setup/synthetic\"",
     ] {
         assert!(index.contains(expected), "missing {expected}");
     }
+    assert!(!index.contains("class=\"digest\""));
     let machine = fixture.get("/setup/synthetic").await?;
     assert!(machine.starts_with("HTTP/1.1 200"), "{machine}");
     for expected in [
@@ -307,7 +317,7 @@ async fn waiting_machine_is_set_up_from_the_starter() -> Result<(), Error> {
     let index = fixture.get("/setup").await?;
     assert!(
         index.contains(
-            "<td><strong>machine-1</strong></td><td data-label=\"Status\"><span class=\"pill\">Not set up yet</span></td>"
+            "<td><strong>machine-1</strong></td><td data-label=\"Model\"><span class=\"muted\">Not chosen yet</span></td><td data-label=\"Status\"><span class=\"pill\">Not set up yet</span></td>"
         ),
         "{index}"
     );
@@ -336,9 +346,7 @@ async fn waiting_machine_is_set_up_from_the_starter() -> Result<(), Error> {
     .join("&");
     let saved = fixture.post("/setup/machine-1", &body).await?;
     assert!(saved.starts_with("HTTP/1.1 200"), "{saved}");
-    assert!(
-        saved.contains("Running now</dt><dd><span class=\"muted\">none: not set up yet</span>")
-    );
+    assert!(saved.contains("Running now</dt><dd><span class=\"muted\">Not running yet</span>"));
     let program = std::fs::read_to_string(&fixture.config)?;
     assert!(
         program.contains(
@@ -710,7 +718,8 @@ fn assert_destination_kept(
     program: &Program,
     site_before: &str,
 ) -> Result<(), Error> {
-    let kept = "Lab app destination demo is kept in the program file for delivery";
+    let kept =
+        "Results still waiting for lab app demo are sent after the restart until none are left";
     assert!(
         removed.contains("Restart now") && removed.contains(kept),
         "{removed}"
@@ -885,7 +894,7 @@ async fn add_machine_writes_a_checked_entry_and_starter_site() -> Result<(), Err
     let index = fixture.get("/setup").await?;
     assert!(
         index.contains(
-            "<td><strong>machine-2</strong></td><td data-label=\"Status\"><span class=\"pill\">Not set up yet</span></td>"
+            "<td><strong>machine-2</strong></td><td data-label=\"Model\"><span class=\"muted\">Not chosen yet</span></td><td data-label=\"Status\"><span class=\"pill\">Not set up yet</span></td>"
         ),
         "{index}"
     );
@@ -1014,8 +1023,8 @@ async fn remove_warns_then_keeps_store_and_site_backup() -> Result<(), Error> {
     let confirm = fixture.get("/setup/synthetic/remove").await?;
     assert!(
         confirm.contains(concat!(
-            "Remove synthetic?</strong> Its stored results, flagged items and history stay in ",
-            "the database and remain visible to staff; the machine just stops being served."
+            "Remove synthetic?</strong> Its results, items to review and history are kept and ",
+            "stay visible here; Analyte just stops connecting to it."
         )),
         "{confirm}"
     );
@@ -1023,8 +1032,8 @@ async fn remove_warns_then_keeps_store_and_site_backup() -> Result<(), Error> {
         "1 result or order message not yet accepted by the lab app",
         "1 order sent to the machine and not finished",
         "1 received message not read yet",
-        "1 unresolved flagged item linked to this machine",
-        "for lab app destination demo keep being delivered after the restart, even though no other machine uses it",
+        "1 item waiting for review linked to this machine (Needs review page)",
+        "the lab app\">Its 1 waiting result will still be sent to demo.</span></p>",
         "<button class=\"danger\">Remove anyway</button>",
     ] {
         assert!(confirm.contains(expected), "missing {expected}: {confirm}");
@@ -1089,8 +1098,9 @@ async fn remove_warns_then_keeps_store_and_site_backup() -> Result<(), Error> {
     let index = fixture.get("/setup").await?;
     assert!(
         index.contains(concat!(
-            "<td><strong>synthetic</strong></td><td data-label=\"Status\"><span class=\"pill warn\">",
-            "Removed: runs until the restart</span></td>"
+            "<td><strong>synthetic</strong></td><td data-label=\"Model\"></td>",
+            "<td data-label=\"Status\"><span class=\"pill warn\">",
+            "Removed: stops at the restart</span></td>"
         )),
         "{index}"
     );

@@ -1,6 +1,6 @@
 //! Discloses bounded raw evidence only after authenticated, durable audit.
 use super::{cursor_value, finish, receipt_id};
-use crate::admin::view;
+use crate::admin::view::{self, Tab};
 use crate::{
     admin::{Error, markup::Markup, server::Context, sessions::Session},
     deadline,
@@ -11,7 +11,7 @@ use axum::{
     Extension, Form,
     extract::{Path, State},
     http::StatusCode,
-    response::{IntoResponse, Response},
+    response::Response,
 };
 use serde::Deserialize;
 use std::sync::Arc;
@@ -55,16 +55,28 @@ fn raw_form(
     cursor: RawCursor,
     reason: &str,
 ) {
+    let what = if source == "receipt" {
+        "The message as stored"
+    } else {
+        "The pieces as they arrived from the machine"
+    };
     html.push_fragment(
         &Markup::new()
-            .markup("<p>Raw source: ")
+            .markup("<p class=\"muted\" title=\"Raw source: ")
             .text(source)
-            .markup(". Target: ")
+            .markup(", target ")
             .text(target)
-            .markup(". Cursor: ")
+            .markup(", cursor ")
             .text(cursor.after.to_string())
             .markup(", ")
             .text(cursor.offset.to_string())
+            .markup("\">")
+            .markup(what)
+            .markup(if cursor.after == 0 && cursor.offset == 0 {
+                ""
+            } else {
+                ", continued"
+            })
             .markup(".</p><form action=\"/parked/")
             .text(id)
             .markup(concat!(
@@ -85,7 +97,10 @@ fn raw_form(
                 "maxlength=\"256\" value=\"",
             ))
             .text(reason)
-            .markup("\"></label><button class=\"secondary\">Show raw (audited)</button></form>"),
+            .markup(concat!(
+                "\"></label><button class=\"secondary\" title=\"Audited raw view\">",
+                "Show original bytes</button></form>",
+            )),
     );
 }
 
@@ -193,7 +208,12 @@ pub(in crate::admin) async fn raw(
     Form(form): Form<RawForm>,
 ) -> Response {
     if !session.authenticated || !session.csrf_valid(&form.csrf) {
-        return (StatusCode::FORBIDDEN, "authenticated CSRF session required").into_response();
+        return view::refusal(
+            StatusCode::FORBIDDEN,
+            "Sign in again",
+            "Showing original bytes needs a signed-in browser session. Sign in again, then retry.",
+            "authenticated CSRF session required",
+        );
     }
     let target = form.target.clone();
     let source = match form.source {
@@ -241,14 +261,17 @@ pub(in crate::admin) async fn raw(
     .await;
     match result {
         Ok(Some(page)) => {
-            let mut html = view::page("Audited raw evidence");
+            let mut html = view::page(Tab::NeedsReview, "Original message bytes");
             html.push_fragment(
                 &Markup::new()
-                    .markup("<p>Target: ")
-                    .text(target.as_str())
-                    .markup(". Actor: ")
+                    .markup("<p class=\"notice\">May contain patient data: keep it out of ")
+                    .markup(
+                        "screenshots and support tickets. This view is recorded for session <code>",
+                    )
                     .text(session.actor.as_str())
-                    .markup(".</p><pre>"),
+                    .markup("</code>.</p><p class=\"muted\" title=\"Target\">Linked record: <code>")
+                    .text(target.as_str())
+                    .markup("</code></p><pre>"),
             );
             render_raw_bytes(&mut html, &page.bytes);
             if let Some(after) = page.next {
@@ -264,11 +287,12 @@ pub(in crate::admin) async fn raw(
             }
             finish(Ok(html))
         }
-        Ok(None) => (
+        Ok(None) => view::refusal(
             StatusCode::NOT_FOUND,
+            "Nothing more to show",
+            "There are no more original bytes for this record.",
             "no linked raw evidence at this cursor",
-        )
-            .into_response(),
+        ),
         Err(error) => finish(Err(error)),
     }
 }
@@ -295,9 +319,8 @@ fn render_raw_bytes(html: &mut Markup, bytes: &[u8]) {
         html.push_markup("\n");
     }
     html.push_markup(concat!(
-        "</pre><p>Nonprinting and non-ASCII bytes are ",
-        "shown as dots; hex preserves each byte ",
-        "exactly.</p>",
+        "</pre><p class=\"muted\">Left: every byte exactly, in hex. Right: the same bytes as ",
+        "text, with bytes that are not plain letters or signs shown as dots.</p>",
     ));
 }
 
@@ -315,7 +338,10 @@ pub(super) fn raw_links(
                     &Markup::new()
                         .markup("<p><a href=\"/receipts/")
                         .text(receipt)
-                        .markup("/departures\">Interpretation departure evidence</a></p>"),
+                        .markup(concat!(
+                            "/departures\" title=\"Interpretation departure evidence\">",
+                            "How this message was read</a></p>",
+                        )),
                 );
                 raw_form(
                     html,
@@ -338,9 +364,6 @@ pub(super) fn raw_links(
             );
         }
     } else {
-        html.push_markup(concat!(
-            "<p><a href=\"/login\">Log in</a> to authorize an ",
-            "audited raw view.</p>",
-        ));
+        html.push_markup("<p><a href=\"/login\">Sign in</a> to show the original bytes.</p>");
     }
 }

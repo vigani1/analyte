@@ -2,7 +2,7 @@
 use super::{
     pages::{Cursor, finish, next},
     server::Context,
-    view,
+    view::{self, Tab, plain},
 };
 use crate::admin::Error;
 use crate::admin::markup::Markup;
@@ -13,30 +13,43 @@ use axum::{
 };
 use std::sync::Arc;
 
+/// What the machine reported doing with one order item, kept apart from the order's own state.
 pub(super) fn projection(item: &analyte_store::MachineOrderItem) -> Markup {
     match &item.execution {
         Some(p) => Markup::new()
-            .markup("<p><strong>Execution: ")
+            .markup("<p title=\"Execution reported by the analyzer\">Item ")
+            .text(item.index)
+            .markup(", what the machine reports: <strong>")
             .text(p.state)
-            .markup("</strong>. Command state: ")
-            .text(item.state)
-            .markup(". Origin: analyzer. Receipt: ")
+            .markup("</strong> <span class=\"muted\">(order status: ")
+            .text(plain::order_state(item.state))
+            .markup("; reported in message <span title=\"Receipt ")
             .text(uuid::Uuid::from(p.receipt).to_string())
-            .markup(" (interpretation ")
+            .markup(", interpretation ")
             .text(p.interpretation)
-            .markup("). Host recorded: ")
-            .text(p.recorded_at)
-            .markup(". Cancel request outstanding at receipt: ")
-            .text(p.cancel_outstanding)
-            .markup(". <a href=\"/awos/")
+            .markup("\">")
+            .text(
+                uuid::Uuid::from(p.receipt)
+                    .to_string()
+                    .chars()
+                    .take(8)
+                    .collect::<String>(),
+            )
+            .markup("</span>, recorded ")
+            .fragment(&plain::when_unix(p.recorded_at, jiff::Timestamp::now()))
+            .markup("; a cancel request was pending then: ")
+            .text(plain::yes_no(p.cancel_outstanding))
+            .markup(")</span> <a href=\"/awos/")
             .text(item.machine_order)
             .markup("/")
             .text(item.index)
-            .markup(concat!(
-                "\">Execution history and reconciliation ",
-                "evidence</a>.</p>",
-            )),
-        None => Markup::new().markup("<p>Execution: unknown (no execution evidence).</p>"),
+            .markup(
+                "\" title=\"Execution history and reconciliation evidence\">Item history</a></p>",
+            ),
+        None => Markup::new()
+            .markup("<p title=\"No execution evidence\">Item ")
+            .text(item.index)
+            .markup(", what the machine reports: nothing yet.</p>"),
     }
 }
 
@@ -72,26 +85,26 @@ fn source_evidence(source: &str) -> Markup {
     };
     let estimate = control.estimate();
     let estimate = match estimate {
-        "" => "Absent; earlier estimate evidence is retained",
-        "\"\"" => "Explicit source null",
+        "" => "Not sent; the earlier expected time is kept",
+        "\"\"" => "Sent as empty (cleared by the machine)",
         supplied => supplied,
     };
     let header = value
         .get("header_time")
         .and_then(serde_json::Value::as_str)
-        .unwrap_or("unknown");
+        .unwrap_or("not known");
     let event = match control.event_time() {
-        "" => "not supplied",
+        "" => "not sent",
         supplied => supplied,
     };
     let mut html = Markup::new()
-        .markup("<dl><dt>Availability estimate as supplied</dt><dd>")
+        .markup("<dl><dt title=\"Availability estimate as supplied\">Expected ready time, as sent</dt><dd>")
         .text(estimate)
-        .markup("</dd><dt>Zone evidence (MSH-7)</dt><dd>")
+        .markup("</dd><dt title=\"Zone evidence (MSH-7)\">Message time and zone</dt><dd>")
         .text(header)
         .markup(concat!(
-            "</dd><dt>Source event time (ORC-9), as ",
-            "supplied</dt><dd>",
+            "</dd><dt title=\"Source event time (ORC-9), as supplied\">Event time, as ",
+            "sent</dt><dd>",
         ))
         .text(event)
         .markup("</dd></dl><ul>");
@@ -110,36 +123,31 @@ async fn cancelled_page(state: &Context, cursor: Cursor) -> Result<Markup, Error
         .store
         .request(deadline()?, move |s| s.analyzer_cancelled_items(after))
         .await?;
-    let mut html = view::page("Orders the analyzer cancelled");
+    let mut html = view::page(Tab::CancelledByMachine, "Cancelled by machine");
     html.push_markup(concat!(
-        concat!(
-            "<p class=\"notice\"><strong>Reconciliation required: review each affected ",
-            "analyzer-cancelled AWOS (order item) with the lab ",
-            "and lab app.</strong> Analyzer CA ",
-        ),
-        concat!(
-            "does not confirm an app cancellation, cancel ",
-            "siblings or authorize another machine ",
-        ),
-        concat!(
-            "command. This condition is not sent to contract ",
-            "v1 apps.</p>",
-        ),
+        "<p class=\"notice\" title=\"Analyzer-cancelled AWOSs; reconciliation required\">",
+        "<strong>Check each order below with the lab and the lab app.</strong> The machine ",
+        "cancelled these tests on its own. That does not cancel them in the lab app, does not ",
+        "cancel the order's other tests and does not let Analyte send anything else. The lab ",
+        "app is not told automatically.</p>",
     ));
+    if rows.is_empty() {
+        html.push_markup("<p class=\"muted\">No order was cancelled by a machine.</p>");
+    }
     for row in &rows {
         html.push_fragment(
             &Markup::new()
-                .markup("<section><h2>Machine ")
-                .text(row.order.key.machine.as_str())
-                .markup(" — order ")
+                .markup("<section><h2 title=\"Machine order ")
                 .text(row.order.id)
-                .markup(" item ")
+                .markup(", item ")
                 .text(row.item.index)
-                .markup("</h2><p>App order: ")
+                .markup("\">Order ")
                 .text(row.order.key.order.as_str())
-                .markup(". Reserved version: ")
+                .markup(" on ")
+                .text(row.order.key.machine.as_str())
+                .markup("</h2><p class=\"muted\" title=\"Reserved version\">Order version sent: ")
                 .text(row.order.version)
-                .markup(".</p>")
+                .markup("</p>")
                 .fragment(&(projection(&row.item))),
         );
         let destination = row.order.key.destination.clone();
@@ -152,17 +160,18 @@ async fn cancelled_page(state: &Context, cursor: Cursor) -> Result<Markup, Error
             let document: serde_json::Value = serde_json::from_str(&cached.document)?;
             html.push_fragment(
                 &Markup::new()
-                    .markup("<p>Current app intent: ")
+                    .markup("<p title=\"Current app intent\">The lab app's current status: ")
                     .text(
                         document
                             .get("state")
-                            .map_or_else(|| "unknown".into(), ToString::to_string),
+                            .map_or_else(|| "not known".into(), ToString::to_string),
                     )
                     .markup(concat!(
-                        ". Reconcile any pending cancel through its ",
-                        "original LAB-28 response; no CR is inferred ",
-                    ))
-                    .markup("from CA.</p>"),
+                        ". <span title=\"Reconcile through the original LAB-28 response; ",
+                        "no CR is inferred from CA\">If a cancel request from the lab app is ",
+                        "pending, settle it with the lab app's own answer; Analyte does not ",
+                        "count the machine's cancel as that answer.</span></p>",
+                    )),
             );
         }
         html.push_markup("</section>");
@@ -194,39 +203,40 @@ async fn detail_page(
         .iter()
         .find(|i| i.index == item)
         .ok_or(Error::AwosItemNotRetained)?;
-    let mut html = view::page("AWOS execution history");
+    let mut html = view::page(Tab::MachineOrders, "Order item history");
     html.push_fragment(&projection(item));
     html.push_markup(concat!(
-        concat!(
-            "<p>Command acceptance and execution are ",
-            "independent. Estimate ordering is uncertain ",
-        ),
-        concat!(
-            "unless source evidence proves otherwise. ",
-            "Estimates keep source spelling and use only ",
-        ),
-        concat!(
-            "the MSH-7 zone; an absent estimate does not erase ",
-            "earlier evidence. Rejected message ",
-        ),
-        "evidence below was not applied.</p>",
+        "<p class=\"lead\" title=\"AWOS execution history\">What the machine accepted and ",
+        "what it actually did are shown separately. Times keep the machine's own spelling and ",
+        "time zone; when the machine leaves a time out, the earlier one is kept. Messages ",
+        "marked as rejected were not applied.</p>",
     ));
     for row in &rows {
         html.push_fragment(
             &Markup::new()
-                .markup("<section><h2>Receipt ")
+                .markup("<section><h2 title=\"Receipt ")
                 .text(uuid::Uuid::from(row.receipt).to_string())
-                .markup(" — interpretation ")
+                .markup(", interpretation ")
                 .text(row.version)
-                .markup("</h2><p>Received: ")
+                .markup("\">Message received ")
                 .text(row.received_at.as_str())
-                .markup(". Host recorded: ")
-                .text(row.custody.recorded_at)
-                .markup(". Message: ")
-                .text(row.custody.message.as_str())
-                .markup(". Disposition: ")
-                .text(row.disposition)
-                .markup(".</p>"),
+                .markup("</h2><dl>")
+                .fragment(&view::row(
+                    "Recorded by Analyte",
+                    Some("Host recorded"),
+                    &Markup::new().text(row.custody.recorded_at),
+                ))
+                .fragment(&view::row(
+                    "Message",
+                    None,
+                    &Markup::new().text(row.custody.message.as_str()),
+                ))
+                .fragment(&view::row(
+                    "Outcome",
+                    Some("Disposition"),
+                    &Markup::new().text(row.disposition),
+                ))
+                .markup("</dl>"),
         );
         for work in row
             .custody
@@ -236,11 +246,11 @@ async fn detail_page(
         {
             html.push_fragment(
                 &Markup::new()
-                    .markup("<p>Execution: ")
+                    .markup("<p title=\"Execution\">What the machine reports: ")
                     .text(crate::operator::display::optional(work.execution))
-                    .markup(". Result-bearing completion evidence: ")
-                    .text(work.complete)
-                    .markup(".</p>")
+                    .markup(". <span title=\"Result-bearing completion evidence\">Results came with it: ")
+                    .text(plain::yes_no(work.complete))
+                    .markup("</span>.</p>")
                     .fragment(&(source_evidence(work.source.as_str()))),
             );
         }
@@ -263,8 +273,8 @@ mod tests {
     #[test]
     fn estimates_keep_null_and_absence_and_escape_notes() {
         for (estimate, expected) in [
-            ("", "Absent"),
-            ("\"\"", "Explicit source null"),
+            ("", "Not sent; the earlier expected time is kept"),
+            ("\"\"", "Sent as empty (cleared by the machine)"),
             ("20260101", "20260101"),
         ] {
             let mut fields = vec![""; 28];
