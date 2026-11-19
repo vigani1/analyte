@@ -131,8 +131,8 @@ impl Setup {
     }
 
     /// Leaves the connection test state poisoned, as a thread that panics while
-    /// holding it would.
-    #[cfg(test)]
+    /// holding it would. Only the admin server tests, built with test hooks, use it.
+    #[cfg(all(test, feature = "test-hooks"))]
     pub(crate) fn poison_listen(&self) {
         std::thread::scope(|scope| {
             let _ = scope
