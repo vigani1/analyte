@@ -7,7 +7,7 @@ use super::{SetupError, site::EntrySpans};
 use analyte_model::Identifier;
 
 /// Paths the setup page itself uses under `/setup/`; a machine cannot take them.
-const RESERVED: [&str; 4] = ["add", "lab-apps", "listen", "restart"];
+const RESERVED: [&str; 5] = ["add", "first", "lab-apps", "listen", "restart"];
 
 /// Checks a new machine's name. It is an [`Identifier`], and because it also
 /// names the machine's site file, it uses only ASCII letters, digits, `-` and `_`.

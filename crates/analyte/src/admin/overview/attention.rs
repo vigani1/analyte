@@ -325,7 +325,7 @@ pub(super) fn welcome() -> Markup {
         "<div class=\"welcome\"><h2>Set up your first machine</h2><p>Analyte is running, ",
         "but no machine is set up yet. On the Setup page you choose the machine model, how ",
         "it is connected and the lab app that receives its results.</p>",
-        "<p class=\"actions-row\"><a class=\"button\" href=\"/setup\">Set up a machine</a>",
+        "<p class=\"actions-row\"><a class=\"button\" href=\"/setup/first\">Set up a machine</a>",
         "</p></div>",
     ))
 }

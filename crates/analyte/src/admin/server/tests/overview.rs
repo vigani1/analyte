@@ -64,7 +64,7 @@ async fn first_run_overview_is_only_the_welcome_card() -> Result<(), Error> {
             "machine</h2><p>Analyte is running, but no machine is set up yet. On the Setup ",
             "page you choose the machine model, how it is connected and the lab app that ",
             "receives its results.</p><p class=\"actions-row\"><a class=\"button\" ",
-            "href=\"/setup\">Set up a machine</a></p></div></main></body></html>",
+            "href=\"/setup/first\">Set up a machine</a></p></div></main></body></html>",
         )
     );
     assert!(page.contains("<nav aria-label=\"Admin pages\">"));

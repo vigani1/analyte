@@ -1,4 +1,4 @@
-//! Tests the setup page and the Lab app page: definitions, detected ports, saving with backups, lab app moves, refusals, keys and the listen test.
+//! Tests the setup page, its steps and the Lab app page: definitions, detected ports, saving with backups, lab app moves, refusals, keys and the listen test with its verdict.
 use super::pages::{csrf, encode, login};
 use super::*;
 use std::sync::Mutex;
@@ -20,9 +20,11 @@ struct Fixture {
     owner: tokio::task::JoinHandle<Result<(), crate::admin::Error>>,
     _stop: watch::Sender<bool>,
     written: Arc<Mutex<Vec<u8>>>,
+    /// What the fake serial port sends once after it is opened; `MARKER` by default.
+    input: Arc<Mutex<Vec<u8>>>,
 }
 
-/// A fake serial port: sends `MARKER` once, then only times out; records writes.
+/// A fake serial port: sends its input once, then only times out; records writes.
 struct FakePort {
     input: Vec<u8>,
     written: Arc<Mutex<Vec<u8>>>,
@@ -56,7 +58,18 @@ impl std::io::Write for FakePort {
     }
 }
 
-fn seams(root: &std::path::Path, written: Arc<Mutex<Vec<u8>>>) -> crate::admin::setup::Seams {
+/// The fixture's test bounds: long enough for a test to read and stop it.
+const LIMITS: crate::admin::setup::Limits = crate::admin::setup::Limits {
+    duration: Duration::from_secs(20),
+    bytes: 1024,
+};
+
+fn seams(
+    root: &std::path::Path,
+    written: Arc<Mutex<Vec<u8>>>,
+    input: Arc<Mutex<Vec<u8>>>,
+    limits: crate::admin::setup::Limits,
+) -> crate::admin::setup::Seams {
     use analyte_transport::serial::Listed;
     crate::admin::setup::Seams {
         definitions: Some(root.join("machines")),
@@ -78,14 +91,14 @@ fn seams(root: &std::path::Path, written: Arc<Mutex<Vec<u8>>>) -> crate::admin::
         }),
         open: Arc::new(move |_, _| {
             Ok(Box::new(FakePort {
-                input: MARKER.to_vec(),
+                input: input
+                    .lock()
+                    .map_err(|_| std::io::Error::other("poisoned"))?
+                    .clone(),
                 written: written.clone(),
             }) as Box<dyn analyte_transport::serial::Port>)
         }),
-        limits: crate::admin::setup::Limits {
-            duration: Duration::from_secs(20),
-            bytes: 1024,
-        },
+        limits,
     }
 }
 
@@ -98,8 +111,31 @@ async fn start() -> Result<Fixture, Error> {
     .await
 }
 
+/// [`start`] with the listen test bounded by `limits`.
+async fn start_limited(limits: crate::admin::setup::Limits) -> Result<Fixture, Error> {
+    start_with_limits(
+        "[[machines]]
+id = 'synthetic'
+definition = 'machines/example/serial-astm/machine.toml'
+site = 'site.toml'
+",
+        &include_str!("../../../../../core/config/examples/site.toml")
+            .rewrite("endpoint = \"127.0.0.1:5600\"", "usb_serial = \"A10K3XYZ\""),
+        limits,
+    )
+    .await
+}
+
 /// A fixture whose program file lists `machines` and whose `site.toml` holds `site_text`.
 async fn start_with(machines: &str, site_text: &str) -> Result<Fixture, Error> {
+    start_with_limits(machines, site_text, LIMITS).await
+}
+
+async fn start_with_limits(
+    machines: &str,
+    site_text: &str,
+    limits: crate::admin::setup::Limits,
+) -> Result<Fixture, Error> {
     let program = analyte_fixtures::program_with_limits(
         machines,
         &analyte_store::Limits {
@@ -110,7 +146,7 @@ async fn start_with(machines: &str, site_text: &str) -> Result<Fixture, Error> {
             busy_timeout: Duration::from_millis(100),
         },
     );
-    start_program(&program, "site.toml", site_text).await
+    start_program_with(&program, "site.toml", site_text, limits).await
 }
 
 /// A fixture with the whole program file `program_text` and the site file
@@ -119,6 +155,16 @@ async fn start_program(
     program_text: &str,
     site_name: &str,
     site_text: &str,
+) -> Result<Fixture, Error> {
+    start_program_with(program_text, site_name, site_text, LIMITS).await
+}
+
+/// [`start_program`] with the listen test bounded by `limits`.
+async fn start_program_with(
+    program_text: &str,
+    site_name: &str,
+    site_text: &str,
+    limits: crate::admin::setup::Limits,
 ) -> Result<Fixture, Error> {
     let directory = crate::admin::private_tempdir()?;
     let root = directory.path();
@@ -157,7 +203,11 @@ async fn start_program(
     );
     let bearer = crate::admin::rotate_token(&data)?;
     let written = Arc::new(Mutex::new(Vec::new()));
-    let setup = crate::admin::setup::Setup::new(&program, seams(root, written.clone()));
+    let input = Arc::new(Mutex::new(MARKER.to_vec()));
+    let setup = crate::admin::setup::Setup::new(
+        &program,
+        seams(root, written.clone(), input.clone(), limits),
+    );
     let restart = setup.restart_requested();
     let socket = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let host = socket.local_addr()?.to_string();
@@ -203,6 +253,7 @@ async fn start_program(
         owner,
         _stop: stop,
         written,
+        input,
     })
 }
 
@@ -230,9 +281,10 @@ impl Fixture {
         .await
     }
 
-    /// The setup form's fields with `fields` replacing or adding values.
+    /// The setup steps' fields for `synthetic` with `fields` replacing or adding
+    /// values, and the session's CSRF value, as the test and Save post them.
     async fn form(&self, fields: &[(&str, &str)]) -> Result<String, Error> {
-        let page = self.get("/setup/synthetic").await?;
+        let page = self.get("/setup/lab-apps/new").await?;
         let mut values = vec![
             ("csrf", csrf(&page)?),
             ("definition", "example/serial-astm".to_owned()),
@@ -287,19 +339,35 @@ async fn page_lists_definitions_and_detected_adapters() -> Result<(), Error> {
         assert!(index.contains(expected), "missing {expected}");
     }
     assert!(!index.contains("class=\"digest\""));
-    let machine = fixture.get("/setup/synthetic").await?;
+    let model = fixture.get("/setup/synthetic").await?;
+    assert!(model.starts_with("HTTP/1.1 200"), "{model}");
+    assert!(
+        model.contains("value=\"roche/cobas-e411\" required disabled"),
+        "{model}"
+    );
+    assert!(
+        model.contains("value=\"example/serial-astm\" required checked"),
+        "the installed model is chosen: {model}"
+    );
+    let machine = fixture
+        .get("/setup/synthetic/connection?definition=example/serial-astm")
+        .await?;
     assert!(machine.starts_with("HTTP/1.1 200"), "{machine}");
     for expected in [
-        "value=\"usb:A10K3XYZ\"> COM12 — FT232R USB UART — saved as serial number A10K3XYZ",
+        "value=\"usb:A10K3XYZ\" checked> COM12 — FT232R USB UART — saved as serial number A10K3XYZ",
         "value=\"name:COM3\"> COM3 — USB-SERIAL CH340 — no serial number; saved as the port name",
-        "value=\"roche/cobas-e411\" disabled",
         "Analyte saves that number",
-        "may contain patient data",
     ] {
         assert!(machine.contains(expected), "missing {expected}");
     }
+    let test = fixture
+        .get(
+            "/setup/synthetic/test?definition=example/serial-astm&port=usb%3AA10K3XYZ&lab_app=demo",
+        )
+        .await?;
+    assert!(test.contains("may contain patient data"), "{test}");
     let network = fixture
-        .get("/setup/synthetic?definition=example/network-hl7")
+        .get("/setup/synthetic/connection?definition=example/network-hl7")
         .await?;
     assert!(network.contains("name=\"host\""), "{network}");
     assert!(!network.contains("name=\"port\""));
@@ -382,6 +450,10 @@ async fn starter_setup_page_matches_the_packaging_check() -> Result<(), Error> {
 // picks the only lab app by default, and a save adds the definition line, so
 // the program runs it with the stored keys.
 #[tokio::test(flavor = "multi_thread")]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one scenario: from the starter through the Lab app page and the steps to the saved summary"
+)]
 async fn waiting_machine_is_set_up_from_the_starter() -> Result<(), Error> {
     let fixture = start_with(
         "[admin]\nport = 8080\n[[machines]]\nid = 'machine-1'\nsite = 'site.toml'\n",
@@ -400,9 +472,13 @@ async fn waiting_machine_is_set_up_from_the_starter() -> Result<(), Error> {
     );
     let first = fixture.get("/setup/machine-1").await?;
     assert!(first.starts_with("HTTP/1.1 200"), "{first}");
-    assert!(first.contains("This machine is not set up yet"));
+    assert!(first.contains(STEP_ONE), "{first}");
+    assert!(
+        !first.contains(" checked"),
+        "no model is chosen yet: {first}"
+    );
     assert!(!first.contains("name=\"lab_app\""));
-    let page = "/setup/machine-1?definition=example/network-hl7";
+    let page = "/setup/machine-1/connection?definition=example/network-hl7";
     let empty = fixture.get(page).await?;
     assert!(empty.contains("name=\"host\""), "{empty}");
     assert!(
@@ -438,8 +514,12 @@ async fn waiting_machine_is_set_up_from_the_starter() -> Result<(), Error> {
         ),
         "the only lab app is the default: {chosen}"
     );
+    let review = fixture
+        .get("/setup/machine-1/save?definition=example%2Fnetwork-hl7&host=127.0.0.1&tcp_port=5600&lab_app=lab-app")
+        .await?;
+    assert!(review.starts_with("HTTP/1.1 200"), "{review}");
     let body = [
-        ("csrf", csrf(&chosen)?),
+        ("csrf", csrf(&review)?),
         ("definition", "example/network-hl7".into()),
         ("host", "127.0.0.1".into()),
         ("tcp_port", "5600".into()),
@@ -452,6 +532,15 @@ async fn waiting_machine_is_set_up_from_the_starter() -> Result<(), Error> {
     let saved = fixture.post("/setup/machine-1", &body).await?;
     assert!(saved.starts_with("HTTP/1.1 200"), "{saved}");
     assert!(saved.contains("Running now</dt><dd><span class=\"muted\">Not running yet</span>"));
+    for shown in [
+        "<dt>Machine</dt><dd><strong>machine-1</strong></dd>",
+        "<dt>Model</dt><dd>Example network hl7</dd>",
+        "Analyte listens on 127.0.0.1:5600; the machine connects to it",
+        "<dt>Lab app</dt><dd>lab-app (https://lab.example.invalid/v1)</dd>",
+        "Restart now",
+    ] {
+        assert!(saved.contains(shown), "missing {shown}: {saved}");
+    }
     let program = std::fs::read_to_string(&fixture.config)?;
     assert!(
         program.contains(
@@ -545,7 +634,9 @@ async fn save_moves_the_lab_app_and_keeps_the_digest() -> Result<(), Error> {
             .collect())
     };
     let old = digest(&Program::load(&fixture.config)?)?;
-    let form = fixture.get("/setup/synthetic").await?;
+    let form = fixture
+        .get("/setup/synthetic/connection?definition=example/serial-astm")
+        .await?;
     assert!(
         form.contains(
             "<option value=\"demo\" selected>demo (https://lab.example.invalid)</option>"
@@ -867,9 +958,8 @@ async fn listen_test_shows_bytes_only_on_the_page() -> Result<(), Error> {
 #[tokio::test(flavor = "multi_thread")]
 async fn restart_now_is_audited_and_stops_the_server() -> Result<(), Error> {
     let fixture = start().await?;
-    let page = fixture.get("/setup/synthetic").await?;
     let response = fixture
-        .post("/setup/restart", &format!("csrf={}", encode(&csrf(&page)?)))
+        .submit("/setup/lab-apps/new", "/setup/restart", &[])
         .await?;
     assert!(response.starts_with("HTTP/1.1 200"), "{response}");
     assert!(response.contains("Restarting"));
@@ -1176,8 +1266,14 @@ async fn add_machine_writes_a_checked_entry_and_starter_site() -> Result<(), Err
     let added = fixture
         .submit("/setup/add", "/setup/add", &[("name", "machine-2")])
         .await?;
-    assert!(added.starts_with("HTTP/1.1 200"), "{added}");
-    assert!(added.contains("Restart now"), "{added}");
+    // Owner request 2026-11-19 (item 3): "Add machine" goes straight into step 1.
+    assert!(added.starts_with("HTTP/1.1 303"), "{added}");
+    assert!(
+        added
+            .to_ascii_lowercase()
+            .contains("\r\nlocation: /setup/machine-2\r\n"),
+        "{added}"
+    );
     let program = Program::load(&fixture.config)?;
     let waiting: Vec<&str> = program
         .awaiting_setup()
@@ -1217,7 +1313,8 @@ async fn add_machine_writes_a_checked_entry_and_starter_site() -> Result<(), Err
         "{index}"
     );
     let page = fixture.get("/setup/machine-2").await?;
-    assert!(page.contains("This machine is not set up yet"), "{page}");
+    assert!(page.contains(STEP_ONE), "{page}");
+    assert!(page.contains("<h1>Set up machine-2</h1>"), "{page}");
     let audits = fixture.audited("setup-add").await?;
     assert_eq!(audits.len(), 1);
     assert!(
@@ -1270,8 +1367,7 @@ async fn add_refuses_duplicate_and_invalid_names_before_writing() -> Result<(), 
             &[("name", "old-analyzer"), ("same_analyzer", "yes")],
         )
         .await?;
-    assert!(confirmed.starts_with("HTTP/1.1 200"), "{confirmed}");
-    assert!(confirmed.contains("joins the stored history"));
+    assert!(confirmed.starts_with("HTTP/1.1 303"), "{confirmed}");
     assert!(fixture.audited("setup-add").await?[0].contains("same analyzer confirmed"));
     Ok(())
 }
@@ -1486,7 +1582,7 @@ site = 'site.toml'
             &[("name", "machine-1"), ("same_analyzer", "yes")],
         )
         .await?;
-    assert!(added.starts_with("HTTP/1.1 200"), "{added}");
+    assert!(added.starts_with("HTTP/1.1 303"), "{added}");
     assert_eq!(Program::load(&fixture.config)?.awaiting_setup().len(), 1);
     Ok(())
 }
@@ -1539,7 +1635,7 @@ async fn add_and_remove_roll_back_when_the_reload_fails() -> Result<(), Error> {
 async fn two_machines_cannot_share_a_port_or_serial_number() -> Result<(), Error> {
     let fixture = start_two().await?;
     let program_before = std::fs::read_to_string(&fixture.config)?;
-    let page = "/setup/machine-2?definition=example/serial-astm";
+    let page = "/setup/lab-apps/new";
     let fields = |port| {
         [
             ("definition", "example/serial-astm"),
@@ -1574,5 +1670,319 @@ async fn two_machines_cannot_share_a_port_or_serial_number() -> Result<(), Error
         Program::load(&fixture.config),
         Err(crate::installation::config::Error::SharedConnection { .. })
     ));
+    Ok(())
+}
+
+/// Step 1 marked as the current step.
+const STEP_ONE: &str = "<li aria-current=\"step\"><span class=\"number\">1</span>Machine</li>";
+
+/// The choices for `synthetic` on the serial example with a detected adapter, as a query.
+const DRAFT: &str = "definition=example%2Fserial-astm&port=name%3ACOM3&lab_app=demo";
+
+/// The indicator's item for the current step.
+fn current(number: &str, label: &str) -> String {
+    format!("<li aria-current=\"step\"><span class=\"number\">{number}</span>{label}</li>")
+}
+
+// Owner request 2026-11-19 (item 3): setup is four steps, one per screen, each
+// marking itself in the indicator; Back and Next carry every choice, as hidden
+// fields on the steps that do not show it; the summary says what will be saved,
+// and nothing is written before Save.
+#[tokio::test(flavor = "multi_thread")]
+async fn each_step_shows_its_indicator_and_keeps_the_choices() -> Result<(), Error> {
+    let fixture = start().await?;
+    let site_before = std::fs::read_to_string(&fixture.site)?;
+    for (path, number, label) in [
+        (format!("/setup/synthetic?{DRAFT}"), "1", "Machine"),
+        (
+            format!("/setup/synthetic/connection?{DRAFT}"),
+            "2",
+            "Connection",
+        ),
+        (format!("/setup/synthetic/test?{DRAFT}"), "3", "Test"),
+        (format!("/setup/synthetic/save?{DRAFT}"), "4", "Save"),
+    ] {
+        let page = fixture.get(&path).await?;
+        assert!(page.starts_with("HTTP/1.1 200"), "{path}: {page}");
+        assert!(page.contains(&current(number, label)), "{path}: {page}");
+        assert_eq!(page.matches("aria-current=\"step\"").count(), 1, "{path}");
+    }
+    // Back to step 1: the model stays chosen and the later choices ride hidden.
+    let first = fixture.get(&format!("/setup/synthetic?{DRAFT}")).await?;
+    for kept in [
+        "value=\"example/serial-astm\" required checked",
+        "<input type=\"hidden\" name=\"port\" value=\"name:COM3\">",
+        "<input type=\"hidden\" name=\"lab_app\" value=\"demo\">",
+        "<form method=\"get\" action=\"/setup/synthetic/connection\">",
+        "<button>Next: Connection</button>",
+    ] {
+        assert!(first.contains(kept), "missing {kept}: {first}");
+    }
+    // Step 2 shows its own choices and carries the model; Back goes to step 1.
+    let second = fixture
+        .get(&format!("/setup/synthetic/connection?{DRAFT}"))
+        .await?;
+    for kept in [
+        "value=\"name:COM3\" checked> COM3",
+        "<input type=\"hidden\" name=\"definition\" value=\"example/serial-astm\">",
+        "<option value=\"demo\" selected>",
+        "<h2>Lab app</h2><label class=\"field\"><span>Send results to</span>",
+        "formaction=\"/setup/synthetic\" formnovalidate>Back</button>",
+        "<button>Next: Test</button>",
+    ] {
+        assert!(second.contains(kept), "missing {kept}: {second}");
+    }
+    assert!(
+        !second.contains("type=\"hidden\" name=\"port\""),
+        "{second}"
+    );
+    assert!(
+        !second.contains("value=\"usb:A10K3XYZ\" checked"),
+        "the draft's port wins over the saved one"
+    );
+    // Steps 3 and 4 carry every choice; the summary names them in plain words.
+    let review = fixture
+        .get(&format!("/setup/synthetic/save?{DRAFT}"))
+        .await?;
+    for shown in [
+        "<dt>Machine</dt><dd><strong>synthetic</strong></dd>",
+        "<dt>Model</dt><dd>Example serial astm</dd>",
+        "<span title=\"endpoint = COM3\">Serial port COM3</span>",
+        "<dt>Send results to</dt><dd>demo (https://lab.example.invalid)</dd>",
+        "<input type=\"hidden\" name=\"port\" value=\"name:COM3\">",
+        "<form method=\"post\" action=\"/setup/synthetic\">",
+        "<button>Save</button>",
+    ] {
+        assert!(review.contains(shown), "missing {shown}: {review}");
+    }
+    assert_eq!(std::fs::read_to_string(&fixture.site)?, site_before);
+    assert!(
+        fixture.backups()?.is_empty(),
+        "nothing is written before Save"
+    );
+    Ok(())
+}
+
+// Owner request 2026-11-19 (item 3 with overview item 2): the first-run button
+// opens step 1 for the machine waiting for setup, and Add machine when none is
+// listed; "first" is a name the setup page keeps for itself.
+#[tokio::test(flavor = "multi_thread")]
+async fn first_run_button_opens_step_one() -> Result<(), Error> {
+    let fixture = start_with(
+        "[admin]\nport = 8080\n[[machines]]\nid = 'machine-1'\nsite = 'site.toml'\n",
+        include_str!("../../../../../../packaging/linux/starter/machine-1.site.toml"),
+    )
+    .await?;
+    let location = |response: &str| {
+        response
+            .lines()
+            .find_map(|line| {
+                line.to_ascii_lowercase()
+                    .strip_prefix("location: ")
+                    .map(str::to_owned)
+            })
+            .unwrap_or_default()
+    };
+    let waiting = fixture.get("/setup/first").await?;
+    assert!(waiting.starts_with("HTTP/1.1 303"), "{waiting}");
+    assert_eq!(location(&waiting), "/setup/machine-1");
+    let step = fixture.get("/setup/machine-1").await?;
+    assert!(step.contains(STEP_ONE), "{step}");
+    let removed = fixture
+        .submit("/setup/machine-1/remove", "/setup/machine-1/remove", &[])
+        .await?;
+    assert!(removed.starts_with("HTTP/1.1 200"), "{removed}");
+    let none = fixture.get("/setup/first").await?;
+    assert_eq!(location(&none), "/setup/add");
+    let reserved = fixture
+        .submit("/setup/add", "/setup/add", &[("name", "first")])
+        .await?;
+    assert!(
+        reserved.starts_with("HTTP/1.1 409") && reserved.contains("setup page uses itself"),
+        "{reserved}"
+    );
+    Ok(())
+}
+
+// Owner request 2026-11-19 (item 3): a step cannot be skipped and hidden fields
+// are never trusted. Save and every step check all earlier choices again, and a
+// missing or tampered one is refused with the step to fix, before anything is
+// written.
+#[tokio::test(flavor = "multi_thread")]
+async fn skipped_or_tampered_steps_are_refused_with_the_step_to_fix() -> Result<(), Error> {
+    let fixture = start().await?;
+    let site_before = std::fs::read_to_string(&fixture.site)?;
+    let program_before = std::fs::read_to_string(&fixture.config)?;
+    let machine = "Fix this in step 1: Machine.";
+    let connection = "Fix this in step 2: Connection.";
+    for (fields, step, why) in [
+        (
+            vec![("definition", "")],
+            machine,
+            "choose one of the listed machine models",
+        ),
+        (
+            vec![("definition", "roche/cobas-e411")],
+            machine,
+            "is not ready yet",
+        ),
+        (
+            vec![("definition", "../../etc")],
+            machine,
+            "choose one of the listed machine models",
+        ),
+        (vec![], connection, "choose a serial port"),
+        (
+            vec![("definition", "example/network-hl7"), ("host", "not-an-ip")],
+            connection,
+            "enter an IP address",
+        ),
+        (
+            vec![("port", "name:COM3"), ("lab_app", "")],
+            connection,
+            "choose the lab app this machine sends results to",
+        ),
+        (
+            vec![("port", "name:COM3"), ("lab_app", "nowhere")],
+            connection,
+            "there is no lab app called nowhere",
+        ),
+    ] {
+        let body = fixture.form(&fields).await?;
+        let refused = fixture.post("/setup/synthetic", &body).await?;
+        assert!(refused.starts_with("HTTP/1.1 409"), "{fields:?}: {refused}");
+        assert!(refused.contains(step), "{fields:?}: {refused}");
+        assert!(refused.contains(why), "{fields:?}: {refused}");
+    }
+    // A tampered model in a later step's hidden fields: refused, choices kept.
+    let tampered = fixture
+        .get("/setup/synthetic/test?definition=roche%2Fcobas-e411&port=name%3ACOM3&lab_app=demo")
+        .await?;
+    assert!(tampered.starts_with("HTTP/1.1 409"), "{tampered}");
+    for expected in [
+        machine,
+        "<form method=\"get\" action=\"/setup/synthetic\">",
+        "<input type=\"hidden\" name=\"port\" value=\"name:COM3\">",
+        "<button>Go to step 1: Machine</button>",
+    ] {
+        assert!(
+            tampered.contains(expected),
+            "missing {expected}: {tampered}"
+        );
+    }
+    let skipped = fixture
+        .get("/setup/synthetic/save?definition=example%2Fserial-astm&lab_app=demo")
+        .await?;
+    assert!(
+        skipped.starts_with("HTTP/1.1 409") && skipped.contains(connection),
+        "{skipped}"
+    );
+    assert_eq!(std::fs::read_to_string(&fixture.site)?, site_before);
+    assert_eq!(std::fs::read_to_string(&fixture.config)?, program_before);
+    assert!(fixture.backups()?.is_empty());
+    assert!(fixture.audited("setup-save").await?.is_empty());
+    Ok(())
+}
+
+/// Starts the listen test for `synthetic` on COM3 and returns the test page once `ready` holds.
+async fn listen_until(fixture: &Fixture, ready: impl Fn(&str) -> bool) -> Result<String, Error> {
+    let body = fixture.form(&[("port", "name:COM3")]).await?;
+    let started = fixture.post("/setup/synthetic/listen", &body).await?;
+    assert!(started.starts_with("HTTP/1.1 303"), "{started}");
+    let mut view = String::new();
+    for _ in 0..200 {
+        view = fixture.get("/setup/listen").await?;
+        if ready(&view) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    Ok(view)
+}
+
+// Owner request 2026-11-19 (item 5); CLSI LIS01-A2 §6.2 and §6.3.1.1 (ENQ, then
+// STX and a frame number): the test page leads with a plain verdict, keeps the
+// bytes as hex and text under a closed Details element, offers the next step,
+// and sends nothing to the machine.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_verdict_comes_first_with_the_bytes_under_details() -> Result<(), Error> {
+    let fixture = start().await?;
+    *fixture.input.lock().map_err(|_| "poisoned")? = b"\x05\x021H|\\^&|||SYN\r".to_vec();
+    let view = listen_until(&fixture, |view| view.contains("looks like ASTM")).await?;
+    let verdict = concat!(
+        "<p class=\"verdict notice ok\">",
+        "Receiving data from the machine, looks like ASTM.</p>"
+    );
+    let at = view.find(verdict).ok_or("verdict missing")?;
+    assert!(view.contains(&current("3", "Test")), "{view}");
+    let opened = view
+        .find("<details class=\"support raw\">")
+        .ok_or("closed details missing")?;
+    assert!(at < opened, "the verdict comes before the details");
+    let details = view
+        .get(opened..)
+        .and_then(|rest| rest.split("</details>").next())
+        .ok_or("details missing")?;
+    assert!(details.contains("05 02 31 48 7c 5c 5e 26"), "{details}");
+    assert!(details.contains("..1H|\\^&amp;|||SYN."), "{details}");
+    assert!(view.contains("<button>Next: Save</button>"), "{view}");
+    assert!(view.contains("<form method=\"get\" action=\"/setup/synthetic/save\">"));
+    let open = fixture.get("/setup/listen?details=open").await?;
+    assert!(
+        open.contains("<details class=\"support raw\" open>"),
+        "{open}"
+    );
+    assert!(
+        fixture.written.lock().map_err(|_| "poisoned")?.is_empty(),
+        "the test sent bytes to the machine"
+    );
+    Ok(())
+}
+
+// Owner request 2026-11-19 (item 5); MLLP Release 1 §1.2: HL7 from a machine
+// whose model speaks ASTM is named, and the mismatch is said plainly.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_warns_when_the_machine_speaks_another_protocol() -> Result<(), Error> {
+    let fixture = start().await?;
+    *fixture.input.lock().map_err(|_| "poisoned")? = b"\x0bMSH|^~\\&|SYN|LAB\r".to_vec();
+    let view = listen_until(&fixture, |view| view.contains("looks like HL7")).await?;
+    let warning = concat!(
+        "<p class=\"verdict notice\">Receiving data from the machine. It looks like HL7, ",
+        "but this model uses ASTM: check the model or the machine&#39;s setting.</p>"
+    );
+    assert!(view.contains(warning), "{view}");
+    assert!(fixture.written.lock().map_err(|_| "poisoned")?.is_empty());
+    Ok(())
+}
+
+// Owner request 2026-11-19 (item 5): when nothing arrives before the time
+// limit, the verdict says so and what to check; nothing was sent, and the test
+// can be run again from the same choices.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_with_no_bytes_says_nothing_received() -> Result<(), Error> {
+    let fixture = start_limited(crate::admin::setup::Limits {
+        duration: Duration::from_secs(1),
+        bytes: 1024,
+    })
+    .await?;
+    fixture.input.lock().map_err(|_| "poisoned")?.clear();
+    let view = listen_until(&fixture, |view| view.contains("ended after its time limit")).await?;
+    assert!(view.contains("ended after its time limit"), "{view}");
+    assert!(
+        view.contains(concat!(
+            "<p class=\"verdict notice\">Nothing received yet: check the cable and the ",
+            "machine&#39;s host settings.</p>"
+        )),
+        "{view}"
+    );
+    assert!(view.contains("Bytes received: 0."), "{view}");
+    assert!(!view.contains("<details class=\"support raw\""), "{view}");
+    assert!(!view.contains("http-equiv=\"refresh\""), "{view}");
+    assert!(
+        view.contains("<form method=\"post\" action=\"/setup/synthetic/listen\">"),
+        "{view}"
+    );
+    assert!(view.contains("<button>Test again</button>"), "{view}");
+    assert!(fixture.written.lock().map_err(|_| "poisoned")?.is_empty());
     Ok(())
 }

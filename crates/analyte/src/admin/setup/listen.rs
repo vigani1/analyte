@@ -4,7 +4,9 @@
 //! address, and only reads. It keeps at most [`Limits::bytes`] bytes in memory for
 //! at most [`Limits::duration`]; then the bytes are dropped. Nothing is stored,
 //! logged or written to the peer. The bytes may hold patient data, so they live
-//! only in this owner and on the local admin page that shows them.
+//! only in this owner and on the local admin page that shows them. Only the guess
+//! of their protocol family ([`super::verdict`]) outlives them.
+use super::verdict::{self, Guess};
 use analyte_transport::serial;
 use std::{
     io,
@@ -75,6 +77,8 @@ pub(crate) struct View {
     pub(crate) seen: usize,
     pub(crate) size_limit_reached: bool,
     pub(crate) end: Option<End>,
+    /// What the first bytes looked like; kept after the bytes are dropped.
+    pub(crate) guess: Guess,
 }
 
 struct Capture {
@@ -83,6 +87,7 @@ struct Capture {
     bytes: Vec<u8>,
     seen: usize,
     end: Option<End>,
+    guess: Guess,
 }
 
 impl Capture {
@@ -92,6 +97,7 @@ impl Capture {
         let room = limit.saturating_sub(self.bytes.len());
         self.bytes
             .extend_from_slice(chunk.get(..room.min(chunk.len())).unwrap_or_default());
+        self.guess = verdict::classify(&self.bytes);
         self.bytes.len() < limit
     }
 
@@ -135,6 +141,7 @@ impl Session {
             bytes: Vec::new(),
             seen: 0,
             end: None,
+            guess: Guess::Nothing,
         }));
         let stop = Arc::new(Notify::new());
         let owner = tokio::spawn(run(
@@ -165,13 +172,14 @@ impl Session {
     /// Copies the current state for display.
     pub(crate) fn view(&self) -> View {
         let remaining = self.deadline.saturating_duration_since(Instant::now());
-        let (connected, closed, bytes, seen, end) = match self.capture.lock() {
+        let (connected, closed, bytes, seen, end, guess) = match self.capture.lock() {
             Ok(capture) => (
                 capture.connected,
                 capture.closed,
                 capture.bytes.clone(),
                 capture.seen,
                 capture.end.clone(),
+                capture.guess,
             ),
             Err(_) => (
                 false,
@@ -179,6 +187,7 @@ impl Session {
                 Vec::new(),
                 0,
                 Some(End::Failed("test state unavailable".into())),
+                Guess::Nothing,
             ),
         };
         View {
@@ -190,6 +199,7 @@ impl Session {
             bytes,
             seen,
             end,
+            guess,
         }
     }
 }
@@ -340,7 +350,7 @@ async fn read_serial(
 
 #[cfg(test)]
 mod tests {
-    use super::{End, Limits, Session, Target};
+    use super::{End, Guess, Limits, Session, Target};
     use std::{
         io,
         sync::{Arc, Mutex},
@@ -394,6 +404,30 @@ mod tests {
         assert!(view.connected);
         session.stop();
         drop(session);
+        assert_eq!(sent_to_peer(&mut peer, Duration::from_secs(5)).await?, 0);
+        Ok(())
+    }
+
+    // Owner request 2026-11-19 (item 5): the protocol guess outlives the bytes,
+    // so the verdict still shows once the test has dropped them.
+    #[tokio::test]
+    async fn guess_is_kept_after_the_bytes_are_dropped() -> Result<(), crate::Error> {
+        let machine = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        let session = Session::start(
+            "test".into(),
+            Target::TcpClient(machine.local_addr()?),
+            SHORT,
+        );
+        let (mut peer, _) =
+            tokio::time::timeout(Duration::from_secs(5), machine.accept()).await??;
+        peer.write_all(b"\x05\x021H|").await?;
+        let view = until(&session, |view| view.bytes.len() == 5).await;
+        let astm = Guess::Family(super::verdict::Family::Astm);
+        assert_eq!(view.guess, astm);
+        session.stop();
+        let stopped = session.view();
+        assert!(stopped.bytes.is_empty());
+        assert_eq!(stopped.guess, astm);
         assert_eq!(sent_to_peer(&mut peer, Duration::from_secs(5)).await?, 0);
         Ok(())
     }

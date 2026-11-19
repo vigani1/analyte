@@ -222,8 +222,30 @@ input:focus, select:focus { border-color: var(--accent); outline: 3px solid var(
   border-radius: 10px; padding: 12px 16px; margin: 0 0 16px;
 }
 .notice.bad { background: var(--bad-bg); border-color: var(--bad); }
+.notice.ok { background: var(--ok-bg); border-color: var(--ok); }
 .notice.info { background: var(--accent-soft); border-color: var(--accent); }
 .notice > :last-child { margin-bottom: 0; }
+
+/* Setup steps: one numbered pill per step, the current one in the accent colour */
+.steps {
+  display: flex; flex-wrap: wrap; gap: 8px; list-style: none; padding: 0; margin: 0 0 20px;
+}
+.steps li {
+  display: flex; align-items: center; gap: 10px; margin: 0; padding: 6px 16px 6px 6px;
+  border: 1px solid var(--line); border-radius: 999px; background: var(--surface);
+  color: var(--muted); font-size: 14px; font-weight: 500;
+}
+.steps .number {
+  display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--idle-bg); color: var(--idle); font-size: 13px; font-weight: 700;
+}
+.steps .done .number { background: var(--ok-bg); color: var(--ok); }
+.steps [aria-current="step"] {
+  border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600;
+}
+.steps [aria-current="step"] .number { background: var(--accent); color: var(--accent-ink); }
+.notice.verdict { font-size: 16px; font-weight: 600; }
+details.raw pre { margin-top: 8px; }
 
 /* Overview status: "All good" in green, or what needs someone in red */
 .status {
@@ -276,6 +298,7 @@ input:focus, select:focus { border-color: var(--accent); outline: 3px solid var(
   dt { padding-bottom: 0; }
   dd { border-top: 0; padding-top: 2px; }
   .pill { white-space: normal; }
+  .steps li { padding-right: 12px; }
   .login main { padding-top: 48px; }
 }
 

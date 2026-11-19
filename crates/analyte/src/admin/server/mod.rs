@@ -233,6 +233,7 @@ fn router(state: Arc<Context>) -> Router {
                     "/setup/lab-apps/{name}/remove",
                     get(super::setup::confirm_remove_lab_app).post(super::setup::remove_lab_app),
                 )
+                .route("/setup/first", get(super::setup::first))
                 .route("/setup/listen", get(super::setup::listen_view))
                 .route("/setup/listen/stop", post(super::setup::listen_stop))
                 .route(
@@ -243,6 +244,9 @@ fn router(state: Arc<Context>) -> Router {
                     "/setup/{id}",
                     get(super::setup::machine).post(super::setup::save),
                 )
+                .route("/setup/{id}/connection", get(super::setup::connection))
+                .route("/setup/{id}/test", get(super::setup::test))
+                .route("/setup/{id}/save", get(super::setup::review))
                 .route("/setup/{id}/listen", post(super::setup::listen_start))
                 .route(
                     "/setup/{id}/remove",

@@ -75,12 +75,13 @@ The **Setup** page lets a lab manager set up an installed machine without
 editing files. It needs a browser login (not just the bearer header), and the
 service needs write access to the folder that holds the program file and the
 site files (see [Install](install.md)). Each machine listed in the program file
-has a **Set up** link with five steps and a **Remove** button. The table shows
+has a **Set up** link that opens four steps, one per screen, and a **Remove**
+button. The table shows
 each machine's model by name (for example "Roche cobas e 411", from the first
 line of the model's README) and the short settings version. A machine
 listed without a `definition` (the installers' `machine-1`, or one added with
 **Add machine**) shows as **Not set up yet**: it does not run until you choose
-its definition in step 1 and save; the save adds the `definition` line to its
+its model in step 1 and save; the save adds the `definition` line to its
 program entry, and the restart starts it. A machine saved or added since the
 last start shows as not running until the restart; a removed one shows as
 running until the restart.
@@ -88,13 +89,17 @@ running until the restart.
 **Add machine** asks for a name and suggests the next free `machine-N`. A name
 uses letters, digits, `-` and `_`, because it also names the machine's site file
 (`<name>.site.toml` beside the program file); a name already listed (ignoring
-case) or one the page uses itself (`add`, `listen`, `restart`) is refused before
+case) or one the page uses itself (`add`, `first`, `lab-apps`, `listen`, `restart`) is refused before
 anything is written. The page adds one `[[machines]]` entry without a definition
 and writes the same starter site file the installers write (retention `keep`
 and the key names; no address, connection or key). Analyte keeps results,
 flagged items and history by machine name, so a name that belonged to a removed
 machine joins that history again: the page asks you to confirm it is the same
-analyzer, and a different analyzer should get a new name.
+analyzer, and a different analyzer should get a new name. After adding, the
+page goes straight to step 1 for the new machine. On a first run, the
+Overview's **Set up a machine** button opens step 1 for the first machine that
+is not set up yet (the installers' `machine-1`), or **Add machine** when none
+is listed.
 
 **Remove machine** first shows what is still unfinished for that machine:
 results or order messages the lab app has not accepted, machine orders sent and
@@ -145,10 +150,22 @@ use a serial port, USB serial number, network address or folder that another
 machine uses; the page refuses it before writing, and `check-config` refuses a
 program written that way by hand.
 
-1. **Machine model.** Choose a model from the `machines` folder beside the
-   program file. Each shows its name, how it was checked (its evidence level, on
-   hover) and whether it is ready; blocked definitions (no `machine.toml` yet)
-   show as **Not ready yet** and cannot be chosen.
+A row of numbered steps at the top shows where you are: **1 Machine**,
+**2 Connection**, **3 Test**, **4 Save**. Each screen has **Back** and **Next**,
+and Back and Next keep what you chose. The pages use no script, so each screen
+carries the earlier choices along as hidden form fields (never a key: keys are
+set on the [Lab app page](#lab-app-page)). Those fields are not trusted: every
+step checks all earlier choices again, and Save checks everything once more. A
+choice that is missing or not valid (for example a model that is not ready, or
+an address that is not an IP address) is refused with "Fix this in step N" and
+a button back to that step with the choices kept. Steps 1 to 4 only read;
+nothing is written before **Save**.
+
+1. **Machine.** Choose the model from the `machines` folder beside the program
+   file. Each shows its name, how it was checked (its evidence level, on hover)
+   and whether it is ready; blocked definitions (no `machine.toml` yet) show as
+   **Not ready yet** and cannot be chosen. For a machine already set up, its
+   current model is chosen.
 2. **Connection.** For a serial machine, choose a detected port. The list shows
    each port's name, the adapter's own description and its USB serial number.
    When the adapter has its own serial number, the site file gets `usb_serial`,
@@ -156,29 +173,46 @@ program written that way by hand.
    gets the port name as `endpoint`. A number Windows made up (it contains `&`)
    is not used. For a network machine, enter the IP address and port: the
    address Analyte listens on when the machine connects to Analyte, or the
-   machine's address when Analyte connects to it.
-3. **Test the connection (listen only).** Analyte opens the chosen port or
-   address and shows, as hex and readable text, what the machine sends. It sends
-   nothing, not even an acknowledgment, so the machine may retry or report a
-   link error; that is expected. The test runs at most 60 seconds and keeps at
-   most 64 KiB; its bytes stay in memory only, are shown only on this page, and
-   are discarded when the test ends or is stopped. They may contain patient data:
-   keep them out of screenshots. The test refuses a port or address that a
-   running machine uses; stop that machine's service first or test a free port.
-4. **Lab app.** "Send results to" picks one lab app from the
-   [Lab app page](#lab-app-page). With only one, it is chosen already. With none,
-   the page links to the Lab app page to add one first. Keys are not asked here.
-5. **Save.** Analyte first checks everything with the `check-config` rules. Only
-   then does it keep the old site file as `<name>.<time>.bak` and write the new
-   one, which names the lab app with `lab_app = "<name>"`. If the old site file
-   wrote its own `[destination]`, that lab app moves into `lab-apps.toml` (unless
-   it is already there with the same values; other values are refused); with
-   the same values the settings version does not change. If you chose a
-   different definition, the program file's `definition` line for that machine
-   changes too (with its own backup); nothing else in it changes. It then loads
-   the whole program again; if that fails, the previous files are put back and
-   the page says why. The page shows the new settings version (the first 12
-   digits of the configuration digest; hover for all of it).
+   machine's address when Analyte connects to it. On the same screen, "Send
+   results to" picks one lab app from the [Lab app page](#lab-app-page). With
+   only one, it is chosen already. With none, the page links to the Lab app
+   page to add one first. Keys are not asked here.
+3. **Test (listen only).** **Start the test** opens the chosen port or address
+   and listens. The test page first says in one sentence what it saw, for
+   example "Receiving data from the machine, looks like ASTM", or "Nothing
+   received yet: check the cable and the machine's host settings". It guesses
+   the protocol only from how the data starts: ENQ or a frame that starts with
+   STX and a digit (ASTM), the MLLP start byte followed by `MSH|` (HL7), a VIDAS
+   packet (STX, then RS), or XML (POCT1-A). ENQ alone fits both ASTM and VIDAS.
+   If what it saw is not the model's protocol, it says so, for example "It looks
+   like HL7, but this model uses ASTM: check the model or the machine's
+   setting". Anything else is "Receiving data, but it doesn't look like a format
+   Analyte knows. Check the machine's host protocol setting." An Autolyser
+   waits for the host to ask first, so its test shows nothing; the page says
+   that is expected. The bytes themselves, as hex and readable text, are under
+   a closed **Details** section. Analyte sends nothing, not even an
+   acknowledgment, so the machine may retry or report a link error; that is
+   expected. The test runs at most 60 seconds and keeps at most 64 KiB; its
+   bytes stay in memory only, are shown only on this page, and are discarded
+   when the test ends or is stopped (only the one-line verdict stays). They
+   may contain patient data: keep them out of screenshots. The test refuses a
+   port or address that a running machine uses; stop that machine's service
+   first or test a free port. A watched folder has nothing to listen to, so
+   its test step just goes on to Save.
+4. **Save.** The screen sums up the machine, its model, the connection in
+   plain words (the exact setting on hover) and the lab app. **Save** first
+   checks everything with the `check-config` rules. Only then does it keep the
+   old site file as `<name>.<time>.bak` and write the new one, which names the
+   lab app with `lab_app = "<name>"`. If the old site file wrote its own
+   `[destination]`, that lab app moves into `lab-apps.toml` (unless it is
+   already there with the same values; other values are refused); with the
+   same values the settings version does not change. If you chose a different
+   definition, the program file's `definition` line for that machine changes
+   too (with its own backup); nothing else in it changes. It then loads the
+   whole program again; if that fails, the previous files are put back and the
+   page says why. The saved page shows what was saved (machine, model,
+   connection, lab app), the new settings version (the first 12 digits of the
+   configuration digest; hover for all of it) and **Restart now**.
 
 Saved settings apply only after a restart. **Restart now** stops Analyte
 gracefully (like a normal stop) and exits with a failure code, so the service
