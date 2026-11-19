@@ -7,6 +7,36 @@ use rusqlite::{OptionalExtension, params};
 #[cfg(test)]
 mod tests;
 
+/// SQL listing each outbox item `o` that matches `$filter` with the machine that owns
+/// it, as `(item, machine)` rows: a result through its receipt, an order event through
+/// the machine orders it reports. The outbox's kind check keeps the two branches apart:
+/// a result never has an order and an order event never has a receipt.
+macro_rules! outbox_owners {
+    ($filter:literal) => {
+        concat!(
+            "SELECT o.id AS item, json_extract(r.metadata,'$.machine') AS machine ",
+            "FROM outbox o JOIN receipts r ON r.id=o.receipt WHERE ",
+            $filter,
+            " UNION ALL SELECT o.id, m.machine FROM outbox o JOIN machine_orders m ",
+            "ON m.order_id=o.order_id AND m.destination=o.destination WHERE ",
+            $filter
+        )
+    };
+}
+pub(crate) use outbox_owners;
+
+/// Counts `destination`'s items the app has not accepted yet: every state but done.
+pub(crate) fn count_undelivered(
+    db: &rusqlite::Connection,
+    destination: &Identifier,
+) -> rusqlite::Result<i64> {
+    db.query_row(
+        "SELECT count(*) FROM outbox WHERE destination=?1 AND state!=?2",
+        params![destination.as_str(), DeliveryState::Done],
+        |r| r.get(0),
+    )
+}
+
 impl Store {
     /// Claims this destination's eligible head item; an unresolved earlier item blocks only its
     /// own key, and a paused item blocks the whole destination.
@@ -49,12 +79,7 @@ impl Store {
     /// # Errors
     /// Reports database failures or a corrupt count.
     pub fn undelivered(&self, destination: &Identifier) -> Result<u64, Error> {
-        let count: i64 = self.db.query_row(
-            "SELECT count(*) FROM outbox WHERE destination=?1 AND state!=?2",
-            params![destination.as_str(), DeliveryState::Done],
-            |r| r.get(0),
-        )?;
-        u64::try_from(count).map_err(|_| Error::Corruption)
+        u64::try_from(count_undelivered(&self.db, destination)?).map_err(|_| Error::Corruption)
     }
 
     /// Records an attempt and its next state atomically, retaining bytes and delivery ID.
