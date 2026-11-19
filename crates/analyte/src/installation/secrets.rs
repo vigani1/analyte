@@ -18,13 +18,6 @@ pub enum SecretError {
     File(#[from] super::credentials::CredentialError),
 }
 
-/// Whether an API key value meets the contract's bearer bound: 1 to 4096
-/// printable ASCII characters.
-#[must_use]
-pub fn api_key_valid(value: &str) -> bool {
-    !value.is_empty() && value.len() <= 4096 && value.bytes().all(|b| (32..=126).contains(&b))
-}
-
 /// Preloaded host credentials. Deliberately has no Debug implementation.
 pub struct Environment(BTreeMap<String, Credentials>);
 
@@ -187,7 +180,7 @@ fn read(
         lookup(name.as_str()).ok_or_else(|| SecretError::Missing(name.as_str().into()))
     };
     let api_key = read(&destination.api_key_name)?;
-    if !api_key_valid(&api_key) {
+    if !analyte_contract::api_key_valid(&api_key) {
         return Err(SecretError::Invalid(
             destination.api_key_name.as_str().into(),
         ));

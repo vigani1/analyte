@@ -7,7 +7,7 @@ mod signing;
 pub use response::{DeliveryStatus, ResponseAction, StatusBody, classify_response};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-pub use signing::{SignatureError, SigningSecret};
+pub use signing::{SignatureError, SigningSecret, api_key_valid};
 /// Maximum document size, including unknown fields.
 pub const MAX_DOCUMENT_BYTES: usize = 1_048_576;
 /// Rejected document, without input values in its display text.

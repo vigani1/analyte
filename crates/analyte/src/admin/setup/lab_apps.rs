@@ -18,7 +18,6 @@ use crate::admin::{
 use crate::installation::{
     config::{lab_apps as file, read},
     credentials::{Locked, Secret},
-    secrets,
 };
 use analyte_config::{Destination, HttpsUrl, LabApps};
 use analyte_model::Identifier;
@@ -571,7 +570,7 @@ fn keys(
     let mut updates = Vec::new();
     if !api.is_empty() {
         let name = settings.api_key_name.clone();
-        if !secrets::api_key_valid(&api) {
+        if !analyte_contract::api_key_valid(&api) {
             return Err(SetupError::InvalidKey(name.as_str().into()));
         }
         let secret = Secret::new(&name, api)?;
