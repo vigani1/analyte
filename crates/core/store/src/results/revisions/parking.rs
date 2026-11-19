@@ -36,7 +36,7 @@ pub(super) fn park_outcomes(
             tx.execute(
                 "INSERT INTO parked(evidence) VALUES (?1)",
                 [crate::parked::evidence(
-                    "interpretation_failure",
+                    crate::ParkedKind::InterpretationFailure.as_str(),
                     &serde_json::from_str::<String>(receipt_key)?,
                     reason.as_str(),
                     Some(crate::parked::ParkingContext::Interpretation { version }),
@@ -48,7 +48,7 @@ pub(super) fn park_outcomes(
                 tx.execute(
                     "INSERT INTO parked(evidence) VALUES (?1)",
                     [crate::parked::evidence(
-                        "interpretation_failure",
+                        crate::ParkedKind::InterpretationFailure.as_str(),
                         &serde_json::from_str::<String>(receipt_key)?,
                         "reprocessing produced no results",
                         Some(crate::parked::ParkingContext::Interpretation { version }),
@@ -65,7 +65,7 @@ pub(super) fn park_outcomes(
                     tx.execute(
                         "INSERT INTO parked(evidence) VALUES (?1)",
                         [crate::parked::evidence(
-                            "result_reconciliation",
+                            crate::ParkedKind::ResultReconciliation.as_str(),
                             &serde_json::from_str::<String>(receipt_key)?,
                             &match (&result.identity, edit_guard) {
                                 (IdentityStatus::Unresolved(reason), Some(guard))

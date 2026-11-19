@@ -91,7 +91,7 @@ impl Store {
             tx.execute(
                 "INSERT INTO parked(evidence) VALUES (?1)",
                 [crate::parked::evidence(
-                    "incomplete_transfer",
+                    crate::ParkedKind::IncompleteTransfer.as_str(),
                     transfer.as_str(),
                     reason.as_str(),
                     None,

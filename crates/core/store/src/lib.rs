@@ -51,8 +51,8 @@ pub use query::{Frame, ParkedItem, Receipt, Unfinished};
 
 pub use records::{
     Attempt, Audit, CachedOrder, Claim, Delivery, DeliveryKind, FrameProvenance, Health,
-    Interpretation, Lookup, OrderEventDelivery, OrderPage, OrderingKey, Parked, PendingOrders,
-    Reading,
+    Interpretation, Lookup, OrderEventDelivery, OrderPage, OrderingKey, Parked, ParkedKind,
+    PendingOrders, Reading,
 };
 
 pub use worker::Handle;
