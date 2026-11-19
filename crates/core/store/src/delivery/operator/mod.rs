@@ -79,9 +79,10 @@ impl Store {
             )?
             .collect::<Result<_, _>>()?;
         let mut machines = self.db.prepare(concat!(
-            "SELECT DISTINCT machine FROM (",
+            "WITH owners AS (",
             outbox_owners!("o.destination=?1 AND o.state!=?2"),
-            ") ORDER BY machine LIMIT ?3"
+            ")",
+            " SELECT DISTINCT machine FROM owners ORDER BY machine LIMIT ?3"
         ))?;
         rows.into_iter()
             .map(|(destination, sending, held)| {
