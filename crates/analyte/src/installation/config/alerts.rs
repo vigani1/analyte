@@ -48,6 +48,9 @@ pub enum AlertKind {
     ParkedItems,
     /// Restore reconciliation pause; has no threshold.
     RestorePaused,
+    /// Items waiting, strictly above the threshold, for one lab app destination
+    /// this run cannot deliver to (not configured, or its keys are missing).
+    UndeliverableDestination,
 }
 
 /// Validated policy. Each signal owns exactly the fields it needs.
@@ -66,6 +69,7 @@ pub(crate) enum Condition {
     UncertainOrders(u64),
     ParkedItems(u64),
     RestorePaused,
+    UndeliverableDestination(u64),
 }
 
 impl Alert {
@@ -89,6 +93,7 @@ impl Alert {
             Condition::UncertainOrders(_) => AlertKind::UncertainOrders,
             Condition::ParkedItems(_) => AlertKind::ParkedItems,
             Condition::RestorePaused => AlertKind::RestorePaused,
+            Condition::UndeliverableDestination(_) => AlertKind::UndeliverableDestination,
         }
     }
     /// Returns seconds, bytes or count; restore pause has no threshold.
@@ -99,7 +104,8 @@ impl Alert {
             | Condition::MachineSilent(_, value)
             | Condition::OrderCacheStale(value)
             | Condition::UncertainOrders(value)
-            | Condition::ParkedItems(value) => Some(value),
+            | Condition::ParkedItems(value)
+            | Condition::UndeliverableDestination(value) => Some(value),
             Condition::DiskReserve { margin, .. } => Some(margin),
             Condition::RestorePaused => None,
         }
@@ -119,7 +125,8 @@ impl Alert {
             | Condition::OrderCacheStale(_)
             | Condition::UncertainOrders(_)
             | Condition::ParkedItems(_)
-            | Condition::RestorePaused => None,
+            | Condition::RestorePaused
+            | Condition::UndeliverableDestination(_) => None,
         }
     }
 }
@@ -142,6 +149,7 @@ impl DraftAlert {
             "uncertain_orders" => AlertKind::UncertainOrders,
             "parked_items" => AlertKind::ParkedItems,
             "restore_paused" => AlertKind::RestorePaused,
+            "undeliverable_destination" => AlertKind::UndeliverableDestination,
             _ => return Err(AlertConfigError::UnknownKind),
         };
         if self.responder.trim().is_empty()
@@ -165,7 +173,10 @@ impl DraftAlert {
             | AlertKind::DiskReserve
             | AlertKind::OrderCacheStale
             | AlertKind::UncertainOrders
-            | AlertKind::ParkedItems => Some(self.threshold.ok_or(AlertConfigError::Threshold)?),
+            | AlertKind::ParkedItems
+            | AlertKind::UndeliverableDestination => {
+                Some(self.threshold.ok_or(AlertConfigError::Threshold)?)
+            }
         };
         let condition = match (kind, threshold) {
             (AlertKind::RestorePaused, None) => Condition::RestorePaused,
@@ -186,13 +197,19 @@ impl DraftAlert {
                     .checked_add(margin)
                     .ok_or(AlertConfigError::Threshold)?,
             },
-            (AlertKind::UncertainOrders | AlertKind::ParkedItems, Some(count))
-                if count > i64::MAX as u64 =>
-            {
+            (
+                AlertKind::UncertainOrders
+                | AlertKind::ParkedItems
+                | AlertKind::UndeliverableDestination,
+                Some(count),
+            ) if count > i64::MAX as u64 => {
                 return Err(AlertConfigError::Threshold);
             }
             (AlertKind::UncertainOrders, Some(count)) => Condition::UncertainOrders(count),
             (AlertKind::ParkedItems, Some(count)) => Condition::ParkedItems(count),
+            (AlertKind::UndeliverableDestination, Some(count)) => {
+                Condition::UndeliverableDestination(count)
+            }
             (AlertKind::RestorePaused, Some(_))
             | (
                 AlertKind::OldestUndelivered
@@ -200,7 +217,8 @@ impl DraftAlert {
                 | AlertKind::DiskReserve
                 | AlertKind::OrderCacheStale
                 | AlertKind::UncertainOrders
-                | AlertKind::ParkedItems,
+                | AlertKind::ParkedItems
+                | AlertKind::UndeliverableDestination,
                 None,
             ) => return Err(AlertConfigError::Threshold),
         };
@@ -235,6 +253,7 @@ mod tests {
             "order_cache_stale",
             "uncertain_orders",
             "parked_items",
+            "undeliverable_destination",
         ] {
             assert!(draft(kind, 1).validate(100).is_ok());
         }
@@ -272,6 +291,7 @@ mod tests {
             "order_cache_stale",
             "uncertain_orders",
             "parked_items",
+            "undeliverable_destination",
         ] {
             let mut policy = draft(kind, 1);
             policy.threshold = None;
@@ -281,6 +301,13 @@ mod tests {
             );
         }
         assert!(draft("uncertain_orders", 0).validate(100).is_ok());
+        assert!(draft("undeliverable_destination", 0).validate(100).is_ok());
+        assert_eq!(
+            draft("undeliverable_destination", u64::MAX)
+                .validate(100)
+                .unwrap_err(),
+            AlertConfigError::Threshold
+        );
     }
     // Plan §11
     #[test]

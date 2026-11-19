@@ -151,6 +151,14 @@ fn render_alerts(html: &mut Markup, alerts: &[analyte_store::AlertState], now: T
         );
     }
     html.push_markup("</table></div>");
+    for message in alerts.iter().filter_map(crate::operator::alerts::message) {
+        html.push_fragment(
+            &Markup::new()
+                .markup("<p class=\"notice bad\">")
+                .text(message)
+                .markup("</p>"),
+        );
+    }
 }
 
 /// What an alert means, in plain words; its signal name shows on hover.
@@ -163,6 +171,7 @@ const fn alert_words(key: &AlertKey) -> &'static str {
         AlertKey::UncertainOrders => "Orders with unknown outcome",
         AlertKey::ParkedItems => "Flagged items need review",
         AlertKey::RestorePaused => "Order sending paused after restore",
+        AlertKey::UndeliverableDestination(..) => "Results cannot be delivered",
     }
 }
 

@@ -1,5 +1,5 @@
 //! Builds alert events exclusively from operational state and persisted identities.
-use crate::{AlertKey, AlertState, OperatorError as Error};
+use crate::{AlertKey, AlertState, OperatorError as Error, Undeliverable};
 use serde::Serialize;
 
 #[derive(Clone, Copy, Serialize)]
@@ -28,6 +28,8 @@ struct Event<'a> {
     event: EventKind,
     kind: &'static str,
     machine_id: Option<&'a str>,
+    destination_id: Option<&'a str>,
+    reason: Option<&'static str>,
     responder: &'a str,
     observed_at: i64,
     episode_at: i64,
@@ -49,6 +51,22 @@ pub(super) fn build(
     episode: (i64, i64),
     event: EventKind,
 ) -> Result<Vec<u8>, Error> {
+    let (destination_id, reason) = match &state.key {
+        AlertKey::UndeliverableDestination(destination, reason) => (
+            Some(destination.as_str()),
+            Some(match reason {
+                Undeliverable::NotConfigured => "not_configured",
+                Undeliverable::CredentialsMissing => "credentials_missing",
+            }),
+        ),
+        AlertKey::OldestUndelivered
+        | AlertKey::MachineSilent(_)
+        | AlertKey::DiskReserve
+        | AlertKey::OrderCacheStale
+        | AlertKey::UncertainOrders
+        | AlertKey::ParkedItems
+        | AlertKey::RestorePaused => (None, None),
+    };
     let (kind, machine_id, measurement) = match &state.key {
         AlertKey::OldestUndelivered => (
             "oldest_undelivered",
@@ -65,15 +83,23 @@ pub(super) fn build(
         AlertKey::UncertainOrders => ("uncertain_orders", None, Measurement::Count(state.value)),
         AlertKey::ParkedItems => ("parked_items", None, Measurement::Count(state.value)),
         AlertKey::RestorePaused => ("restore_paused", None, Measurement::Paused(state.value)),
+        AlertKey::UndeliverableDestination(..) => (
+            "undeliverable_destination",
+            None,
+            Measurement::Count(state.value),
+        ),
     };
     let bytes = serde_json::to_vec(&Event {
-        version: 1,
+        // Version 2 added destination_id and reason; stored version 1 bytes are resent unchanged.
+        version: 2,
         event_id: id,
         condition_id: format!("{namespace}:{}", crate::key(&state.key)?),
         episode_id: format!("{namespace}:{}", episode.0),
         event,
         kind,
         machine_id,
+        destination_id,
+        reason,
         responder: &state.responder,
         observed_at: state.evaluated_at,
         episode_at: episode.1,

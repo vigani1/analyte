@@ -78,6 +78,20 @@ fn durable_key_golden_bytes_round_trip() -> TestResult {
         (crate::AlertKey::UncertainOrders, r#""UncertainOrders""#),
         (crate::AlertKey::ParkedItems, r#""ParkedItems""#),
         (crate::AlertKey::RestorePaused, r#""RestorePaused""#),
+        (
+            crate::AlertKey::UndeliverableDestination(
+                Identifier::new("D")?,
+                crate::Undeliverable::NotConfigured,
+            ),
+            r#"{"UndeliverableDestination":["D","NotConfigured"]}"#,
+        ),
+        (
+            crate::AlertKey::UndeliverableDestination(
+                Identifier::new("D")?,
+                crate::Undeliverable::CredentialsMissing,
+            ),
+            r#"{"UndeliverableDestination":["D","CredentialsMissing"]}"#,
+        ),
     ] {
         pin(&alert, golden)?;
         assert_eq!(

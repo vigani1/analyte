@@ -312,11 +312,20 @@ responder = "Lab duty officer"
 [[alerts]]
 kind = "restore_paused"
 responder = "Restore lead"
+
+[[alerts]]
+kind = "undeliverable_destination"
+threshold = 0
+responder = "Lab app support"
 ```
 
 Age thresholds are seconds and raise at or above the threshold. Count thresholds
-raise strictly above the threshold: zero catches any uncertain order or unresolved
-parked item. The disk threshold is a margin in bytes above `store.reserve_bytes`;
+raise strictly above the threshold: zero catches any uncertain order, unresolved
+parked item or undeliverable result. `undeliverable_destination` raises one alert
+per lab app destination whose waiting items this run cannot deliver, because no
+machine and no kept destination defines it or because a kept destination's keys
+are missing; status and the overview give the destination, count, reason and fix
+(see `docs/operations/operate.md`). The disk threshold is a margin in bytes above `store.reserve_bytes`;
 an alert raises when free space is below reserve plus margin. `restore_paused`
 has no threshold and rejects one in config. Other kinds require a threshold.
 Responders must be nonempty, single-line and at most 256 UTF-8 bytes. At most

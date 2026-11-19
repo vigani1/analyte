@@ -25,7 +25,7 @@ pub use polls::{PollIntent, PollIntentId, PollIntentState, PollOutcome};
 
 mod sql_types;
 
-pub use alerts::{AlertKey, AlertState, AlertTransition};
+pub use alerts::{AlertKey, AlertState, AlertTransition, Undeliverable};
 pub use operator::notifications::{AlertEndpointStatus, AlertEventId, AlertFailure, PendingAlert};
 pub use transfers::{FrameSequence, TransferOutcome};
 

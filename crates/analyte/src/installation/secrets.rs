@@ -45,6 +45,13 @@ pub fn variable(name: &str) -> String {
 }
 
 impl Environment {
+    /// Whether keys for this destination were loaded. Only a kept destination
+    /// can lack them: a set-up machine's missing keys stop startup instead.
+    #[must_use]
+    pub fn has_keys(&self, destination: &Identifier) -> bool {
+        self.0.contains_key(destination.as_str())
+    }
+
     /// Loads every destination before admission, retaining no values in errors.
     /// An environment variable wins; a name without one is read from the locked
     /// credentials file in the data directory.
