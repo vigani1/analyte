@@ -332,12 +332,20 @@ fn settings_version(running: Option<&Running>) -> Markup {
 const NO_DIGEST: &str = "Not running yet";
 
 /// A program entry's machine model for people, with its definition path on hover;
-/// reads the definition folder's README, so call it off the async workers.
-fn model(config: &std::path::Path, definition: Option<&str>) -> Markup {
+/// the path itself when the definition names no model. Reads the definition and
+/// its folder's README, so call it off the async workers.
+fn model(
+    config: &std::path::Path,
+    root: Option<&std::path::Path>,
+    definition: Option<&str>,
+) -> Markup {
     let Some(definition) = definition else {
         return Markup::new().markup("<span class=\"muted\">Not chosen yet</span>");
     };
-    view::exact(&model_name(&folder(config).join(definition)), definition)
+    model_name(&folder(config).join(definition), root).map_or_else(
+        || Markup::new().text(definition),
+        |name| view::exact(&name, definition),
+    )
 }
 
 /// One row per machine in the program file, then any machine that still runs but
@@ -503,6 +511,7 @@ pub(super) async fn index(State(state): State<Arc<Context>>) -> Response {
                 .map(|entry| {
                     model(
                         &state.config_path,
+                        state.setup.seams.definitions.as_deref(),
                         entry.definition.as_ref().map(|d| d.get_ref().as_str()),
                     )
                 })

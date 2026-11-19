@@ -17,7 +17,7 @@ use super::view::{self, Tab, Tone, format, frame::Frame, icon::Icon};
 use crate::admin::{Error, error::CommandError};
 use crate::deadline;
 use analyte_model::{OrderState, ReceiptId};
-use analyte_store::{AlertKey, AlertState, LastDelivered, MachineOrderFilter};
+use analyte_store::{AlertKey, AlertState, FailingDestination, LastDelivered, MachineOrderFilter};
 use askama::Template as _;
 use axum::{
     Extension,
@@ -63,6 +63,7 @@ enum Reading {
     Disk,
     Review,
     Delivered,
+    Failing,
     Alerts,
     Orders,
     Receipts,
@@ -86,6 +87,9 @@ impl Reading {
             Self::Disk => "Analyte could not read the free disk space.",
             Self::Review => "Analyte could not read how many items need review.",
             Self::Delivered => "Analyte could not read when each lab app last accepted a delivery.",
+            Self::Failing => {
+                "Analyte could not read which lab apps keep failing to accept deliveries."
+            }
             Self::Alerts => "Analyte could not read the active alerts.",
             Self::Orders => "Analyte could not read the machine orders.",
             Self::Receipts => "Analyte could not read when each machine last sent data.",
@@ -184,6 +188,7 @@ struct Stored {
     free: Result<u64, std::io::Error>,
     review: Result<u64, CommandError>,
     delivered: Result<LastDelivered, CommandError>,
+    failing: Result<Vec<FailingDestination>, CommandError>,
 }
 
 /// [`Stored`] once every part was read.
@@ -192,10 +197,12 @@ struct Read {
     free: u64,
     review: u64,
     delivered: LastDelivered,
+    failing: Vec<FailingDestination>,
 }
 
 /// The first store request: the restore flag, free disk space, the Needs
-/// review count and when each lab app last accepted a delivery.
+/// review count, when each lab app last accepted a delivery and which keep
+/// failing.
 async fn stored(
     state: &Context,
     until: std::time::Instant,
@@ -214,6 +221,7 @@ async fn stored(
                     .map(Option::unwrap_or_default)
                     .map_err(CommandError::from),
                 delivered: store.last_delivered().map_err(CommandError::from),
+                failing: store.failing_destinations().map_err(CommandError::from),
             })
         })
         .await
@@ -223,6 +231,7 @@ async fn stored(
         free: stored.free.map_err(Reading::Disk.failed())?,
         review: stored.review.map_err(Reading::Review.failed())?,
         delivered: stored.delivered.map_err(Reading::Delivered.failed())?,
+        failing: stored.failing.map_err(Reading::Failing.failed())?,
     })
 }
 
@@ -237,6 +246,7 @@ async fn render(
         free,
         review,
         delivered,
+        failing,
     } = stored(state, until, now).await?;
     let alerts = crate::operator::alerts::active(&state.store)
         .await
@@ -259,7 +269,7 @@ async fn render(
         .await
         .map_err(Reading::Receipts.failed())?;
     let machines = signal::machines(state, &activity, &mut facts, now);
-    let (labs, figures) = signal::lab_apps(state, &delivered, &mut facts, now)
+    let (labs, figures) = signal::lab_apps(state, &delivered, &failing, &mut facts, now)
         .await
         .map_err(Reading::LabApps.failed())?;
     let kept = super::removed::lines(state)

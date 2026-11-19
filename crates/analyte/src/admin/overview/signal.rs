@@ -1,9 +1,9 @@
 //! Builds the signal path from observed state: one node per set-up machine and per lab app, and the figures below it.
 //!
 //! Machines come from their runtime link light and stored receipts; lab apps
-//! from their store health, the last accepted delivery and, for a kept lab app
-//! whose keys were missing at startup, the key source. Nothing is guessed: a
-//! figure without data behind it is left out.
+//! from their store health, the last accepted delivery, failed tries since it
+//! and, for a kept lab app whose keys were missing at startup, the key source.
+//! Nothing is guessed: a figure without data behind it is left out.
 use super::Activity;
 use super::attention::Facts;
 use super::page::{Figure, LabNode, MachineNode, Wire};
@@ -13,7 +13,7 @@ use crate::admin::server::{Connection, Context};
 use crate::admin::view::{Tone, format, format::Line, icon::Icon};
 use crate::machine::link::status::Light;
 use analyte_model::Identifier;
-use analyte_store::{Health, LastDelivered};
+use analyte_store::{FailingDestination, Health, LastDelivered};
 use jiff::Timestamp;
 use std::{collections::BTreeMap, sync::atomic::Ordering};
 
@@ -95,10 +95,11 @@ const fn connection_icon(connection: &Connection) -> Icon {
 
 /// The lab app nodes and the figures under the path: first the lab apps
 /// set-up machines send to, then those kept for removed machines. Paused
-/// sending is added to `facts`.
+/// sending and failing tries are added to `facts`.
 pub(super) async fn lab_apps(
     state: &Context,
     delivered: &LastDelivered,
+    failing: &[FailingDestination],
     facts: &mut Facts,
     now: Timestamp,
 ) -> Result<(Vec<LabNode>, Vec<Figure>), Error> {
@@ -119,14 +120,21 @@ pub(super) async fn lab_apps(
             .filter(|machine| &machine.lab_app == destination.id())
             .map(|machine| machine.id.as_str())
             .collect();
-        nodes.push(lab_node(
+        let (node, observed) = lab_node(
             destination.id(),
             &health,
             delivered,
+            failing,
             &senders,
             None,
             now,
-        ));
+        );
+        if let Some(observed) = observed {
+            facts
+                .failing
+                .push((destination.id().clone(), health.pending_count, observed));
+        }
+        nodes.push(node);
         lists.push(order_list(destination.id(), &health, now));
     }
     for (name, kept) in &state.retired {
@@ -145,7 +153,13 @@ pub(super) async fn lab_apps(
         } else {
             None
         };
-        nodes.push(lab_node(&id, &health, delivered, &[], keys, now));
+        let (node, observed) = lab_node(&id, &health, delivered, failing, &[], keys, now);
+        if let Some(observed) = observed {
+            facts
+                .failing
+                .push((id.clone(), health.pending_count, observed));
+        }
+        nodes.push(node);
     }
     let mut figures = Vec::new();
     if !nodes.is_empty() {
@@ -155,23 +169,35 @@ pub(super) async fn lab_apps(
     Ok((nodes, figures))
 }
 
+/// One lab app's node and, when its tries keep failing and nothing else stops
+/// it, what was observed in plain words for its to-do line. Keys missing and
+/// paused sending come first: no try is made then, so failing would mislead.
 fn lab_node(
     name: &Identifier,
     health: &Health,
     delivered: &LastDelivered,
+    failing: &[FailingDestination],
     senders: &[&str],
     keys: Option<Keys>,
     now: Timestamp,
-) -> LabNode {
+) -> (LabNode, Option<String>) {
     let last = delivered
         .at
         .iter()
         .find(|(destination, _)| destination == name)
         .and_then(|&(_, time)| Timestamp::from_second(time).ok());
     let blocked = keys.is_some();
+    let failing = failing
+        .iter()
+        .find(|failing| &failing.destination == name)
+        .filter(|_| !blocked && !health.paused)
+        .map(|failing| format::failing(failing, now));
+    let observed = failing.as_ref().map(Line::plain);
     let (keys, support) = keys.map_or((None, None), |keys| (Some(keys.line), keys.support));
     // Why it cannot deliver comes first, as the to-do line leads with it.
     let mut lines: Vec<Line> = keys.into_iter().map(Line::text).collect();
+    let not_delivering = failing.is_some();
+    lines.extend(failing);
     lines.push(
         format::last_delivered(last, delivered.purged, now).then(format::waiting(
             health.pending_count,
@@ -184,12 +210,14 @@ fn lab_node(
         (Tone::Problem, "Cannot deliver", Wire::Cut)
     } else if health.paused {
         (Tone::Attention, "Sending paused", Wire::Wait)
+    } else if not_delivering {
+        (Tone::Problem, "Not delivering", Wire::Cut)
     } else if health.pending_count > 0 {
         (Tone::Neutral, "Queued", Wire::Live)
     } else {
         (Tone::Good, "Up to date", Wire::Live)
     };
-    LabNode {
+    let node = LabNode {
         name: name.as_str().to_owned(),
         tone,
         status,
@@ -197,7 +225,8 @@ fn lab_node(
         lines,
         support: support.into_iter().collect(),
         todo: blocked.then_some(format::KEYS_ADVICE),
-    }
+    };
+    (node, observed)
 }
 
 /// What a kept lab app's node says about its keys: the line people read and,
@@ -387,22 +416,31 @@ mod tests {
     }
 
     fn lab(health: &Health, delivered: &LastDelivered, keys: Option<&str>) -> String {
+        lab_failing(health, delivered, &[], keys).0
+    }
+
+    /// The rendered node and what its to-do line would say, with `failing` as the store read it.
+    fn lab_failing(
+        health: &Health,
+        delivered: &LastDelivered,
+        failing: &[FailingDestination],
+        keys: Option<&str>,
+    ) -> (String, Option<String>) {
         let name = Identifier::new("main-lab").expect("a valid test name");
-        LabShown {
-            lab: lab_node(
-                &name,
-                health,
-                delivered,
-                &["chemistry-1"],
-                keys.map(|line| Keys {
-                    line: line.to_owned(),
-                    support: None,
-                }),
-                now(),
-            ),
-        }
-        .render()
-        .expect("the lab node renders")
+        let (lab, observed) = lab_node(
+            &name,
+            health,
+            delivered,
+            failing,
+            &["chemistry-1"],
+            keys.map(|line| Keys {
+                line: line.to_owned(),
+                support: None,
+            }),
+            now(),
+        );
+        let html = LabShown { lab }.render().expect("the lab node renders");
+        (html, observed)
     }
 
     fn figure(figure: Figure) -> String {
@@ -470,6 +508,62 @@ mod tests {
         assert!(blocked.contains("<p class=\"node__line\">Nothing delivered yet · 1 item waiting"));
         assert!(blocked.contains("<strong>What to do:</strong> add the missing keys"));
         assert!(blocked.contains("href=\"/setup/lab-apps\">Add keys</a>"));
+    }
+
+    // Owner request 2026-11-19 (overview: delivery failing): items wait and
+    // every try since the last delivery failed, so the lab app reads "Not
+    // delivering" in red with a cut wire, and its first line says what was
+    // observed; "Queued" stays for items with no failed try. Missing keys and
+    // paused sending keep their own state, as no try is made then.
+    #[test]
+    fn failing_tries_read_not_delivering_with_what_was_observed() {
+        let delivered = LastDelivered::default();
+        let failing = [FailingDestination {
+            destination: Identifier::new("main-lab").expect("a valid test name"),
+            since: now().as_second() - 2400,
+            last: now().as_second() - 60,
+            tries: 74,
+            next: Some(now().as_second() + 30),
+        }];
+        let waiting = health(2, Some(2400), false);
+        let (html, observed) = lab_failing(&waiting, &delivered, &failing, None);
+        assert!(
+            html.contains("<div class=\"node node--lab node--bad\">"),
+            "{html}"
+        );
+        assert!(html.contains("<span class=\"status status--bad\">"));
+        assert!(html.contains("Not delivering</span>"));
+        assert!(!html.contains("Queued"));
+        assert!(html.contains("<span class=\"wire wire--cut\""));
+        assert!(html.contains("<p class=\"node__line\">Last try <time "));
+        assert!(html.contains("</time> failed · 74 failed tries since <time "));
+        assert!(html.contains("</time> · next try <time "));
+        assert!(html.contains(
+            "<p class=\"node__line\">Nothing delivered yet · 2 items waiting · oldest <time "
+        ));
+        let observed = observed.expect("a to-do line for failing tries");
+        assert!(observed.starts_with("Last try "), "{observed}");
+        assert!(observed.contains(" failed · 74 failed tries since "));
+
+        let other = [FailingDestination {
+            destination: Identifier::new("other-lab").expect("a valid test name"),
+            ..failing[0].clone()
+        }];
+        let (queued, none) = lab_failing(&waiting, &delivered, &other, None);
+        assert!(queued.contains("Queued</span>"), "{queued}");
+        assert_eq!(none, None);
+        let (paused, none) = lab_failing(&health(2, None, true), &delivered, &failing, None);
+        assert!(paused.contains("Sending paused</span>"), "{paused}");
+        assert!(!paused.contains("Last try"));
+        assert_eq!(none, None);
+        let (blocked, none) = lab_failing(
+            &waiting,
+            &delivered,
+            &failing,
+            Some("Key missing: signing key."),
+        );
+        assert!(blocked.contains("Cannot deliver</span>"), "{blocked}");
+        assert_eq!(none, None);
     }
 
     // Owner request 2026-11-19 (overview states): once data keeping purged

@@ -33,8 +33,9 @@ pub(super) struct Machine {
     /// The machine runtime's link light; the admin page only reads it.
     pub(super) status: watch::Receiver<crate::machine::link::status::Status>,
     pub(super) departure_html: Markup,
-    /// The model's name for people, read once at startup from its definition.
-    pub(super) model: String,
+    /// The model's name for people, read once at startup from its definition
+    /// (`setup::model_name`); none when the definition gives none.
+    pub(super) model: Option<String>,
     /// How it is attached, as its site file says.
     pub(super) connection: Connection,
     /// The lab app it sends to.
@@ -130,6 +131,14 @@ pub(crate) async fn prepare(
     let token = Token::load(program.data_directory())?;
     let socket = tokio::net::TcpListener::bind(address).await?;
     let host = address.to_string();
+    #[cfg(feature = "test-hooks")]
+    let seams = program
+        .hooks
+        .setup
+        .clone()
+        .unwrap_or_else(|| super::setup::Seams::system(&program.source_path));
+    #[cfg(not(feature = "test-hooks"))]
+    let seams = super::setup::Seams::system(&program.source_path);
     let machines: Vec<_> = program
         .machines()
         .iter()
@@ -141,7 +150,7 @@ pub(crate) async fn prepare(
                 running: Arc::new(AtomicBool::new(true)),
                 status: m.status.subscribe(),
                 // A small bounded README read per machine, once, before serving.
-                model: super::setup::model_name(&m.definition),
+                model: super::setup::model_name(&m.definition, seams.definitions.as_deref()),
                 connection: Connection::of(
                     crate::machine::link::status::Link::of(effective.stack()),
                     &effective.site().endpoint,
@@ -155,14 +164,6 @@ pub(crate) async fn prepare(
         .map(|m| (m.id.as_str().to_owned(), m.running.clone()))
         .collect();
     let (released, release) = tokio::sync::oneshot::channel();
-    #[cfg(feature = "test-hooks")]
-    let seams = program
-        .hooks
-        .setup
-        .clone()
-        .unwrap_or_else(|| super::setup::Seams::system(&program.source_path));
-    #[cfg(not(feature = "test-hooks"))]
-    let seams = super::setup::Seams::system(&program.source_path);
     let setup = super::setup::Setup::new(program, seams);
     let restart = setup.restart_requested();
     let state = Arc::new(Context {

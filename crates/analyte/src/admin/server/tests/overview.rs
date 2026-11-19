@@ -539,6 +539,77 @@ fn node<'a>(page: &'a str, name: &str) -> &'a str {
         .unwrap_or_default()
 }
 
+// Owner request 2026-11-19 (overview: delivery failing): items wait for a lab
+// app and every try since its last delivery failed, so its node reads "Not
+// delivering" in red with what was observed, and the verdict has a red to-do
+// line with what to check that links to the Deliveries page.
+#[tokio::test(flavor = "multi_thread")]
+async fn failing_lab_app_reads_not_delivering_with_a_todo_line() -> Result<(), Error> {
+    use crate::machine::link::status::{Link, Reporter};
+    let directory = crate::admin::private_tempdir()?;
+    let bearer = crate::admin::rotate_token(directory.path())?;
+    let store = empty_store(directory.path()).await?;
+    let now = jiff::Timestamp::now().as_second();
+    store
+        .request::<_, FixtureError>(fixture_deadline()?, move |s| {
+            queue(s, "main-lab", "order-failing", false, now - 2400)?;
+            let lab = Identifier::new("main-lab")?;
+            for (tried, next) in [(now - 2400, now - 2340), (now - 60, now + 600)] {
+                let claim = s
+                    .claim_destination(tried, &lab)?
+                    .ok_or(FixtureError::UnknownDelivery)?;
+                s.attempted(claim.id, &analyte_store::Attempt::RetryAt(next), tried)?;
+            }
+            Ok(())
+        })
+        .await?;
+    let link = Reporter::new(Link::Serial);
+    (link.observer())(analyte_transport::Activity::Opened);
+    let (state, stopper, owner, host) = start_overview_server(
+        directory.path(),
+        &store,
+        vec![machine("chemistry-1", true, link.subscribe(), "main-lab")?],
+        vec![loopback_destination("main-lab")?],
+    )
+    .await?;
+    let page = request(
+        &host,
+        "/",
+        &format!("Authorization: Bearer {bearer}\r\n"),
+        None,
+    )
+    .await?;
+    assert!(page.starts_with("HTTP/1.1 200"), "{page}");
+    let lab = node(&page, "main-lab");
+    for part in [
+        "<div class=\"node node--lab node--bad\">",
+        "<span class=\"status status--bad\">",
+        "Not delivering</span>",
+        "<span class=\"wire wire--cut\" aria-hidden=\"true\">",
+        "<p class=\"node__line\">Last try <time ",
+        "</time> failed · 2 failed tries since <time ",
+        "</time> · next try <time ",
+        "<p class=\"node__line\">Nothing delivered yet · 1 item waiting · oldest <time ",
+    ] {
+        assert!(lab.contains(part), "{part}\n{lab}");
+    }
+    assert!(!lab.contains("Queued"));
+    assert!(page.contains("<section class=\"verdict verdict--bad\""));
+    assert!(page.contains("class=\"verdict__title\">1 thing needs you</h2>"));
+    assert!(page.contains(
+        "<p class=\"todo__title\">Sending to lab app main-lab is failing: 1 waiting</p>"
+    ));
+    assert!(page.contains("<p class=\"todo__detail\">Last try "));
+    assert!(page.contains(concat!(
+        ". Check that the lab app is running and that this PC can reach it ",
+        "at its address.</p>"
+    )));
+    assert!(page.contains("<a class=\"btn btn--outline\" href=\"/deliveries\">Deliveries</a>"));
+    assert!(!page.contains("order-failing"));
+    drop(link);
+    stop(state, stopper, owner, store).await
+}
+
 // Owner request 2026-11-19 (admin restyle, PR a): the signal path has one node
 // per set-up machine (its model, the observed state, last data, how it is
 // attached, and a live, waiting or cut wire) and one per lab app (last
@@ -651,7 +722,10 @@ fn assert_machine_nodes(page: &str) {
     // The closed port is a to-do line: what Analyte observed and what to check.
     assert!(page.contains("<p class=\"todo__title\">hematology-2: Port not open</p>"));
     assert!(page.contains("<p class=\"todo__detail\">Port of USB adapter A9X not open since "));
-    assert!(page.contains(". Check the cable and the machine&#39;s host settings.</p>"));
+    assert!(page.contains(concat!(
+        ". Check that the USB adapter with serial A9X is plugged into this PC ",
+        "and that no other program is using its port.</p>"
+    )));
     assert!(page.contains("<section class=\"verdict verdict--bad\""));
 }
 
@@ -774,8 +848,11 @@ async fn signal_path_shows_every_other_machine_state() -> Result<(), Error> {
     connected.received();
     let halted = Reporter::new(Link::Serial);
     (halted.observer())(analyte_transport::Activity::Opened);
+    // A definition outside the shipped tree with no name of its own: no model shows.
+    let mut unnamed = machine("dialing-1", true, dialing.subscribe(), "main-lab")?;
+    unnamed.model = None;
     let machines = vec![
-        machine("dialing-1", true, dialing.subscribe(), "main-lab")?,
+        unnamed,
         machine("deaf-2", true, deaf.subscribe(), "main-lab")?,
         machine("connected-3", true, connected.subscribe(), "main-lab")?,
         machine("stopped-4", false, halted.subscribe(), "main-lab")?,
@@ -814,6 +891,7 @@ async fn signal_path_shows_every_other_machine_state() -> Result<(), Error> {
     );
     assert!(dialing_node.contains("<span class=\"node__note\">No connection to dialing-1 since "));
     assert!(dialing_node.contains("<span class=\"wire wire--cut\""));
+    assert!(!dialing_node.contains("node__model"), "{dialing_node}");
     let deaf_node = node(&page, "deaf-2");
     assert!(deaf_node.contains("<span class=\"node__state tone-bad\">Not listening</span>"));
     assert!(deaf_node.contains("<span class=\"node__note\">Not listening on port 5600 since "));

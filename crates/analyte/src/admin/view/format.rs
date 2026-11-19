@@ -10,7 +10,7 @@ use crate::admin::server::Connection;
 use crate::machine::link::status::Light;
 use analyte_mapping::{Position, ReasonPiece};
 use analyte_model::OrderState;
-use analyte_store::DeliveryState;
+use analyte_store::{DeliveryState, FailingDestination};
 use jiff::{Timestamp, tz::TimeZone};
 
 /// A size such as "477 GB" or "1.5 MB"; under 1 KB it counts bytes.
@@ -160,6 +160,11 @@ impl Line {
         self
     }
 
+    fn text_part(mut self, text: &str) -> Self {
+        self.0.push(Part::Text(text.into()));
+        self
+    }
+
     /// This line, a " · " separator, then `next`.
     pub(in crate::admin) fn then(mut self, next: Self) -> Self {
         self.0.push(Part::Text(" · ".into()));
@@ -171,8 +176,8 @@ impl Line {
         &self.0
     }
 
-    /// The line as people read it, each time as shown.
-    #[cfg(test)]
+    /// The line as people read it, each time as shown: for text that cannot
+    /// hold a `<time>`, such as a to-do line's detail.
     pub(in crate::admin) fn plain(&self) -> String {
         self.0
             .iter()
@@ -275,16 +280,23 @@ fn on_port(port: Option<u16>) -> String {
 }
 
 /// What to check when a machine's link is not open: what Analyte cannot see.
-pub(in crate::admin) const fn link_advice(connection: &Connection) -> &'static str {
+/// A serial port that will not open is a problem on this PC (the adapter or
+/// cable unplugged from it, a wrong port name, or another program holding the
+/// port); the cable to the machine and its host settings matter once the port
+/// is open and nothing arrives, which the listen test says.
+pub(in crate::admin) fn link_advice(connection: &Connection) -> String {
     match connection {
-        Connection::Serial(_) | Connection::UsbAdapter(_) => {
-            "Check the cable and the machine's host settings."
-        }
+        Connection::Serial(port) => format!(
+            "Check that the USB adapter or cable is plugged into this PC, that {port} is the right port, and that no other program is using it."
+        ),
+        Connection::UsbAdapter(serial) => format!(
+            "Check that the USB adapter with serial {serial} is plugged into this PC and that no other program is using its port."
+        ),
         Connection::Listening(_) | Connection::Dialing => {
-            "Check the network cable and the machine's host settings."
+            "Check the network cable and the machine's host settings.".into()
         }
         Connection::Folder(_) => {
-            "Check that the folder exists and that Analyte's service account may read it."
+            "Check that the folder exists and that Analyte's service account may read it.".into()
         }
     }
 }
@@ -316,6 +328,32 @@ pub(in crate::admin) fn waiting(count: u64, oldest: Option<Timestamp>, now: Time
         None => Line::text(format!("{items} · oldest not known")),
     }
 }
+
+/// What Analyte observed about a lab app whose tries keep failing (see
+/// [`FailingDestination`]): "Last try 21:59 failed · 74 failed
+/// tries since 21:21 · next try 22:00". The next try reads "due" once its time
+/// has come, and "under way" while every waiting item is being tried. No cause
+/// is named: the store keeps none.
+pub(in crate::admin) fn failing(failing: &FailingDestination, now: Timestamp) -> Line {
+    let tried = Line::text("Last try ")
+        .time(moment_unix(failing.last, now))
+        .text_part(" failed");
+    let count = Line::text(format!(
+        "{} since ",
+        amount(failing.tries, "failed try", "failed tries")
+    ))
+    .time(moment_unix(failing.since, now));
+    let next = match failing.next {
+        Some(at) if at > now.as_second() => Line::text("next try ").time(moment_unix(at, now)),
+        Some(_) => Line::text("next try due"),
+        None => Line::text("a try is under way"),
+    };
+    tried.then(count).then(next)
+}
+
+/// What to check when a lab app's tries keep failing.
+pub(in crate::admin) const FAILING_ADVICE: &str =
+    "Check that the lab app is running and that this PC can reach it at its address.";
 
 /// Which set-up machines send to a lab app: "From cobas-e411, iflash".
 pub(in crate::admin) fn senders(machines: &[&str]) -> String {
@@ -617,9 +655,18 @@ mod tests {
                 assert!(!sentence.contains(unseen), "{sentence}");
             }
         }
+        // A port that will not open is a problem on this PC, not at the machine.
         assert_eq!(
             link_advice(&Connection::Serial("COM3".into())),
-            "Check the cable and the machine's host settings."
+            "Check that the USB adapter or cable is plugged into this PC, that COM3 is the right port, and that no other program is using it."
+        );
+        assert_eq!(
+            link_advice(&Connection::UsbAdapter("FT4XQ2B9".into())),
+            "Check that the USB adapter with serial FT4XQ2B9 is plugged into this PC and that no other program is using its port."
+        );
+        assert_eq!(
+            link_advice(&Connection::Dialing),
+            "Check the network cable and the machine's host settings."
         );
         assert_eq!(
             connection_kind(&Connection::UsbAdapter("A9X".into())),
@@ -669,6 +716,45 @@ mod tests {
         assert_eq!(missing_keys(&["signing key"]), "Key missing: signing key.");
         assert!(missing_keys(&[]).contains("after it restarts"));
         assert_eq!(machines_and_lab_apps(1, 2), "1 machine · 2 lab apps");
+        Ok(())
+    }
+
+    // Owner request 2026-11-19 (overview: delivery failing): the node line says
+    // when the last try failed, how many failed since when, and when the next
+    // try is due, with real times only; no cause, as none is stored.
+    #[test]
+    fn failing_line_reads_tries_and_times() -> Result<(), Box<dyn std::error::Error>> {
+        let now = Timestamp::from_second(1_795_046_077)?;
+        let clock = |second| Timestamp::from_second(second).map(|at| clock(at, now));
+        let failing = |since, last, tries, next| FailingDestination {
+            destination: analyte_model::Identifier::new("main-lab").expect("a valid test name"),
+            since,
+            last,
+            tries,
+            next,
+        };
+        let (since, last, next) = (1_795_043_400, 1_795_046_000, 1_795_046_100);
+        assert_eq!(
+            super::failing(&failing(since, last, 74, Some(next)), now).plain(),
+            format!(
+                "Last try {} failed · 74 failed tries since {} · next try {}",
+                clock(last)?,
+                clock(since)?,
+                clock(next)?
+            )
+        );
+        assert_eq!(
+            super::failing(&failing(last, last, 1, Some(last)), now).plain(),
+            format!(
+                "Last try {0} failed · 1 failed try since {0} · next try due",
+                clock(last)?
+            )
+        );
+        assert!(
+            super::failing(&failing(since, last, 2, None), now)
+                .plain()
+                .ends_with(" · a try is under way")
+        );
         Ok(())
     }
 

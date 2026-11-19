@@ -23,6 +23,9 @@ pub(super) struct Facts {
     pub(super) paused: Vec<(Identifier, u64)>,
     /// Lab apps Analyte cannot send to now, why, and how many items wait.
     pub(super) blocked: Vec<(Identifier, Undeliverable, u64)>,
+    /// Lab apps whose tries keep failing (`analyte_store::FailingDestination`),
+    /// how many items wait, and what their node says was observed.
+    pub(super) failing: Vec<(Identifier, u64, String)>,
     /// Orders whose outcome on the machine is not known.
     pub(super) uncertain: u64,
     /// Orders a machine cancelled on its own.
@@ -61,7 +64,8 @@ impl Section {
 }
 
 /// Where someone goes to fix a thing. Lab app lines go to the Lab apps page,
-/// where each lab app's address and keys are set.
+/// where each lab app's address and keys are set; failing tries go to the
+/// Deliveries page, which lists each delivery and its state.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Fix {
     Page(Tab),
@@ -89,6 +93,7 @@ impl Fix {
 enum Subject {
     Disk,
     Blocked(Identifier, Undeliverable),
+    Failing(Identifier),
     Paused(Identifier),
     Stopped(Identifier),
     Unlinked(Identifier),
@@ -103,10 +108,17 @@ enum Subject {
 
 impl Subject {
     /// How serious a line about this subject is: a problem stops data now;
-    /// a warning needs a look but nothing is refused.
+    /// a warning needs a look but nothing is refused. Failing tries are a
+    /// problem from the first one, like keys missing: results are not reaching
+    /// the lab app now. No age threshold is added, as the overview adds none of
+    /// its own; the site's optional `oldest_undelivered` alert adds its line.
     const fn tone(&self) -> Tone {
         match self {
-            Self::Disk | Self::Blocked(..) | Self::Stopped(_) | Self::Unlinked(_) => Tone::Problem,
+            Self::Disk
+            | Self::Blocked(..)
+            | Self::Failing(_)
+            | Self::Stopped(_)
+            | Self::Unlinked(_) => Tone::Problem,
             Self::Paused(_)
             | Self::Silent(_)
             | Self::Review
@@ -159,6 +171,19 @@ pub(super) fn things(facts: &Facts) -> Vec<Thing> {
     }
     for (destination, reason, waiting) in &facts.blocked {
         list.push(blocked(destination, *reason, Some(*waiting)));
+    }
+    for (destination, waiting, observed) in &facts.failing {
+        list.push(Thing {
+            detail: Some(format!("{observed}. {}", format::FAILING_ADVICE)),
+            ..Thing::new(
+                Subject::Failing(destination.clone()),
+                format!(
+                    "Sending to lab app {} is failing: {waiting} waiting",
+                    destination.as_str()
+                ),
+                Fix::Page(Tab::Deliveries),
+            )
+        });
     }
     for (destination, waiting) in &facts.paused {
         list.push(Thing::new(
@@ -652,6 +677,45 @@ mod tests {
         assert!(!html.contains("href=\"/setup\">"));
     }
 
+    // Owner request 2026-11-19 (overview: delivery failing): failing tries are a
+    // red line that says what was observed, what to check, and links to the
+    // Deliveries page.
+    #[test]
+    fn failing_delivery_is_a_problem_line_with_what_to_check() {
+        let facts = Facts {
+            failing: vec![(
+                id("main-lab"),
+                2,
+                "Last try 21:59 failed · 74 failed tries since 21:21 · next try 22:00".into(),
+            )],
+            ..Facts::default()
+        };
+        assert_eq!(
+            only(&facts),
+            (
+                "Sending to lab app main-lab is failing: 2 waiting".to_owned(),
+                "/deliveries"
+            )
+        );
+        let list = things(&facts);
+        let thing = list.first().expect("one line");
+        assert_eq!(thing.tone(), Tone::Problem);
+        assert_eq!(
+            thing.detail.as_deref(),
+            Some(concat!(
+                "Last try 21:59 failed · 74 failed tries since 21:21 · next try 22:00. ",
+                "Check that the lab app is running and that this PC can reach it at its address."
+            ))
+        );
+        let html = status(&list);
+        assert!(html.starts_with("<section class=\"verdict verdict--bad\""));
+        assert!(html.contains("class=\"verdict__title\">1 thing needs you</h2>"));
+        assert!(
+            html.contains("href=\"/deliveries\">Deliveries</a>"),
+            "{html}"
+        );
+    }
+
     // Owner request 2026-11-19 (admin restyle): each line carries a tone from
     // its subject: a problem when data is refused or cannot move, otherwise a
     // warning; the verdict is red when any line is a problem.
@@ -662,10 +726,11 @@ mod tests {
             stopped: vec![id("a")],
             unlinked: vec![(id("b"), "Port not open", String::new())],
             blocked: vec![(id("x"), Undeliverable::CredentialsMissing, 1)],
+            failing: vec![(id("y"), 1, "Last try 21:59 failed".into())],
             ..Facts::default()
         };
         let list = things(&problems);
-        assert_eq!(list.len(), 4);
+        assert_eq!(list.len(), 5);
         assert!(list.iter().all(|thing| thing.tone() == Tone::Problem));
         assert_eq!(Verdict::of(&list).tone, Tone::Problem);
         let warnings = Facts {

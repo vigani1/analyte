@@ -945,7 +945,7 @@ fn machine(
         id: Identifier::new(id)?,
         running: Arc::new(AtomicBool::new(running)),
         status,
-        model: "Synthetic analyzer".into(),
+        model: Some("Synthetic analyzer".into()),
         connection,
         lab_app: Identifier::new(lab_app)?,
     })

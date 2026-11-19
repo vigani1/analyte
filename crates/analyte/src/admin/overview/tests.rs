@@ -11,12 +11,13 @@ use analyte_store::{AlertKey, AlertState};
 use askama::Template as _;
 
 /// Every reading, in the order the overview reads.
-const READINGS: [Reading; 13] = [
+const READINGS: [Reading; 14] = [
     Reading::Store,
     Reading::Restore,
     Reading::Disk,
     Reading::Review,
     Reading::Delivered,
+    Reading::Failing,
     Reading::Alerts,
     Reading::Orders,
     Reading::Receipts,

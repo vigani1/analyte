@@ -180,7 +180,8 @@ impl Wire {
 /// One set-up machine on the signal path.
 pub(super) struct MachineNode {
     pub(super) id: String,
-    pub(super) model: String,
+    /// The model's name; none when its definition gives none.
+    pub(super) model: Option<String>,
     pub(super) tone: Tone,
     /// The link state as the Machines page words it, or that Analyte stopped.
     pub(super) state: String,
