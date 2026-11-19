@@ -17,18 +17,26 @@ pub(in crate::admin) fn bytes(count: u64) -> String {
     let mut name = UNITS[0];
     // Move up while the value, rounded, would read 1024 or more of this unit.
     for next in UNITS.iter().skip(1) {
-        if value.saturating_add(unit / 2) / unit < 1024 {
+        if rounded(value, unit) < 1024 {
             break;
         }
         unit = unit.saturating_mul(1024);
         name = next;
     }
-    let tenths = value.saturating_mul(10).saturating_add(unit / 2) / unit;
-    if tenths < 100 && tenths % 10 != 0 {
+    let tenths = rounded(value.saturating_mul(10), unit);
+    if tenths < 100 && !tenths.is_multiple_of(10) {
         format!("{}.{} {name}", tenths / 10, tenths % 10)
     } else {
-        format!("{} {name}", value.saturating_add(unit / 2) / unit)
+        format!("{} {name}", rounded(value, unit))
     }
+}
+
+/// `value / unit` rounded half up; `unit` is a power of 1024, never zero.
+fn rounded(value: u128, unit: u128) -> u128 {
+    value
+        .saturating_add(unit / 2)
+        .checked_div(unit)
+        .unwrap_or_default()
 }
 
 /// A length of time in its largest whole unit: "45 s", "3 min", "2 h", "1 day".

@@ -1401,7 +1401,38 @@ pub(super) async fn listen_view(
             .text(&view.label)
             .markup(". "),
     );
-    let (tone, light, status) = match &view.end {
+    let (tone, light, status) = listen_status(&view);
+    html.push_fragment(
+        &pill(tone, light)
+            .markup(" ")
+            .text(status)
+            .markup(" Bytes received: ")
+            .text(view.seen)
+            .markup("."),
+    );
+    if view.size_limit_reached {
+        html.push_markup(" The 64 KiB display limit was reached, so reading stopped.");
+    }
+    html.push_markup("</p></section>");
+    if running {
+        html.push_fragment(
+            &Markup::new()
+                .markup("<pre>")
+                .text(dump(&view.bytes))
+                .markup(concat!(
+                    "</pre><form method=\"post\" action=\"/setup/listen/stop\">",
+                    "<input type=\"hidden\" name=\"csrf\" value=\""
+                ))
+                .text(session.csrf.form_value())
+                .markup("\"><button class=\"danger\">Stop the test</button></form>"),
+        );
+    }
+    done(html)
+}
+
+/// The listen test's state as a pill colour, a short word and a sentence.
+fn listen_status(view: &listen::View) -> (Tone, &'static str, String) {
+    match &view.end {
         None if view.closed => (
             Tone::Neutral,
             "Closed",
@@ -1443,33 +1474,7 @@ pub(super) async fn listen_view(
             "Failed",
             format!("The test could not run: {why}."),
         ),
-    };
-    html.push_fragment(
-        &pill(tone, light)
-            .markup(" ")
-            .text(status)
-            .markup(" Bytes received: ")
-            .text(view.seen)
-            .markup("."),
-    );
-    if view.size_limit_reached {
-        html.push_markup(" The 64 KiB display limit was reached, so reading stopped.");
     }
-    html.push_markup("</p></section>");
-    if running {
-        html.push_fragment(
-            &Markup::new()
-                .markup("<pre>")
-                .text(dump(&view.bytes))
-                .markup(concat!(
-                    "</pre><form method=\"post\" action=\"/setup/listen/stop\">",
-                    "<input type=\"hidden\" name=\"csrf\" value=\""
-                ))
-                .text(session.csrf.form_value())
-                .markup("\"><button class=\"danger\">Stop the test</button></form>"),
-        );
-    }
-    done(html)
 }
 
 /// POST /setup/listen/stop: end the test now and discard its bytes.
