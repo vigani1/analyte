@@ -11,6 +11,7 @@
 use super::server::Context;
 use crate::admin::Error;
 use crate::admin::markup::Markup;
+use crate::admin::view::Tone;
 use analyte_model::Identifier;
 use analyte_store::{Undeliverable, Undelivered};
 use std::{
@@ -32,6 +33,10 @@ pub(crate) struct Kept {
     /// Its API key or signing key could not be loaded at startup, so its worker
     /// can send nothing until the keys are entered and Analyte restarts.
     pub(crate) keys_missing: bool,
+    /// The credential names of its API key and signing key, so the overview can
+    /// ask the key source which one is missing.
+    pub(crate) api_key: Identifier,
+    pub(crate) signing_key: Identifier,
 }
 
 /// One sentence about results waiting for a destination no running machine uses.
@@ -44,10 +49,24 @@ pub(super) struct Line {
 }
 
 impl Line {
+    /// A problem when nothing can be delivered, otherwise a warning.
+    pub(super) const fn tone(&self) -> Tone {
+        if self.blocked.is_some() {
+            Tone::Problem
+        } else {
+            Tone::Attention
+        }
+    }
+
+    /// The sentence itself.
+    pub(super) fn text(&self) -> &str {
+        &self.text
+    }
+
     /// The sentence in a warning box: red when nothing can be delivered.
     pub(super) fn notice(&self, label: &'static str) -> Markup {
         Markup::new()
-            .markup(if self.blocked.is_some() {
+            .markup(if self.tone() == Tone::Problem {
                 "<p class=\"notice bad\">"
             } else {
                 "<p class=\"notice\">"
@@ -203,6 +222,8 @@ mod tests {
         Kept {
             delivering: Arc::new(AtomicBool::new(delivering)),
             keys_missing,
+            api_key: Identifier::new("old-lab-api").expect("valid test name"),
+            signing_key: Identifier::new("old-lab-signing").expect("valid test name"),
         }
     }
 

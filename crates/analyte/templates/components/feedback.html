@@ -1,0 +1,21 @@
+{#- Macros that tell someone something: alert boxes, the "What to do" box and the support disclosure. -#}
+{%- import "components/icon.html" as draw %}
+{%- import "components/forms.html" as forms %}
+
+{#- A boxed message in a tone; `text` may be empty. -#}
+{%- macro alert(tone, title, text) -%}
+<div class="alert alert--{{ tone.class() }}" role="note">{% call draw::icon(tone.icon(), "") %}{% endcall %}<div><p class="alert__title">{{ title }}</p>{% if !text.is_empty() %}<p class="alert__text">{{ text }}</p>{% endif %}</div><span></span></div>
+{%- endmacro %}
+
+{#- One plain sentence of what to do, and the page that does it. -#}
+{%- macro whattodo(text, href, label) -%}
+<div class="whattodo"><p class="whattodo__text"><strong>What to do:</strong> {{ text }}</p><div class="whattodo__actions">{% call forms::link_button(href, label, "btn--primary btn--sm") %}{% endcall %}</div></div>
+{%- endmacro %}
+
+{#- Exact technical lines for support, closed until someone opens them. -#}
+{%- macro support(title, lines) -%}
+<details class="details"><summary>{% call draw::icon(crate::admin::view::icon::Icon::ChevronRight, "icon--md") %}{% endcall %}{{ title }}</summary><pre>
+{%- for line in lines %}{{ line }}
+{% endfor -%}
+</pre></details>
+{%- endmacro %}

@@ -63,6 +63,9 @@ base64 = "0.23"
 subtle = "2.6"
 getrandom = { version = "=0.4.3", default-features = false } # admin token OS entropy
 
+# Admin pages (ADR 0018): compiled HTML templates, escaping on by default
+askama = { version = "0.16.1", default-features = false, features = ["derive", "std"] }
+
 # Command line
 clap = { version = "4.6", features = ["derive"] }
 

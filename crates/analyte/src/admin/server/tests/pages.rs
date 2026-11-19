@@ -1,6 +1,5 @@
 //! Tests read-only operator pages and retained evidence.
 use super::*;
-use crate::admin::markup::Markup;
 use analyte_model::{Digest, NamespacedId, ReceiptId, ReceiptMetadata, SampleId};
 use analyte_store::{Audit, CachedOrder, OrderPage, Parked};
 
@@ -151,15 +150,13 @@ async fn start_pages_server(
     let host = socket.local_addr()?.to_string();
     let mut machines = Vec::new();
     for index in 0..61 {
-        machines.push(Machine {
-            departure_html: Markup::new(),
-            id: Identifier::new(&format!("machine-{index}"))?,
-            running: Arc::new(AtomicBool::new(true)),
-            status: crate::machine::link::status::Reporter::new(
-                crate::machine::link::status::Link::Serial,
-            )
-            .subscribe(),
-        });
+        machines.push(machine(
+            &format!("machine-{index}"),
+            true,
+            crate::machine::link::status::Reporter::new(crate::machine::link::status::Link::Serial)
+                .subscribe(),
+            "app",
+        )?);
     }
     let (released, release) = tokio::sync::oneshot::channel();
     let state = Arc::new(Context {

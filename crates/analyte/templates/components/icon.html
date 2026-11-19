@@ -1,0 +1,6 @@
+{#- The one icon macro every template draws Lucide icons with; the path comes from the Rust `Icon` enum. -#}
+
+{#- A Lucide icon; `class` adds size or tone classes and may be empty. -#}
+{%- macro icon(icon, class) -%}
+<svg class="icon {{ class }}" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ icon.path() }}"/></svg>
+{%- endmacro %}

@@ -324,6 +324,7 @@ mod tests {
                 ),
                 snapshot,
                 listener: None,
+                definition: PathBuf::new(),
                 capture: false,
 
                 hooks: crate::installation::config::MachineHooks::default(),

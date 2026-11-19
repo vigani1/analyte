@@ -31,6 +31,7 @@ async fn superseded_mapping_rejection_continues_idle_admission() -> Result<(), E
         ),
         snapshot,
         listener: None,
+        definition: std::path::PathBuf::new(),
     };
     let temp = tempfile::tempdir()?;
     let mut store = Handle::start(

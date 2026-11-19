@@ -44,6 +44,19 @@ pub(super) fn display_name(folder: &Path, key: &str) -> String {
         .map_or_else(|| tidy(key), str::to_owned)
 }
 
+/// The model name of the machine definition file `definition`, read from its
+/// `vendor/model` folder's README; reads a file, so call it off the async workers.
+pub(in crate::admin) fn model_name(definition: &Path) -> String {
+    let folder = definition.parent().unwrap_or_else(|| Path::new(""));
+    let name = |path: Option<&Path>| {
+        path.and_then(Path::file_name)
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    };
+    let key = format!("{}/{}", name(folder.parent()), name(Some(folder)));
+    display_name(folder, &key)
+}
+
 /// "roche/cobas-e411" becomes "Roche cobas e411": vendor capitalised, hyphens as spaces.
 fn tidy(key: &str) -> String {
     let (vendor, model) = key.split_once('/').unwrap_or((key, ""));

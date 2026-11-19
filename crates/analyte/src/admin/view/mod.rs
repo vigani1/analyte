@@ -5,6 +5,8 @@
 //! inline styles, scripts, fonts or external URLs.
 pub(super) mod assets;
 pub(super) mod format;
+pub(super) mod frame;
+pub(super) mod icon;
 
 use super::markup::Markup;
 use axum::{
@@ -23,6 +25,8 @@ pub(super) enum Tab {
     Overview,
     NeedsReview,
     Machines,
+    /// The Lab apps page under Setup; the restyled sidebar lists it, the old menu does not.
+    LabApps,
     Setup,
     MachineOrders,
     CancelledByMachine,
@@ -52,6 +56,7 @@ impl Tab {
             Self::Overview => "/",
             Self::NeedsReview => "/parked",
             Self::Machines => "/machines",
+            Self::LabApps => crate::admin::setup::LAB_APPS,
             Self::Setup => "/setup",
             Self::MachineOrders => "/orders",
             Self::CancelledByMachine => "/analyzer-cancelled",
@@ -66,6 +71,7 @@ impl Tab {
             Self::Overview => "Overview",
             Self::NeedsReview => "Needs review",
             Self::Machines => "Machines",
+            Self::LabApps => "Lab apps",
             Self::Setup => "Setup",
             Self::MachineOrders => "Machine orders",
             Self::CancelledByMachine => "Cancelled by machine",
@@ -242,6 +248,36 @@ pub(super) enum Tone {
 }
 
 impl Tone {
+    /// The design system's name for the tone, as in `status--good` or `tone-warn`.
+    pub(super) const fn class(self) -> &'static str {
+        match self {
+            Self::Good => "good",
+            Self::Attention => "warn",
+            Self::Problem => "bad",
+            Self::Neutral => "off",
+        }
+    }
+
+    /// The icon that carries the tone, so status is never colour alone.
+    pub(super) const fn icon(self) -> icon::Icon {
+        match self {
+            Self::Good => icon::Icon::Ok,
+            Self::Attention => icon::Icon::Warning,
+            Self::Problem => icon::Icon::Problem,
+            Self::Neutral => icon::Icon::Waiting,
+        }
+    }
+
+    /// The word a to-do line shows above its title.
+    pub(super) const fn word(self) -> &'static str {
+        match self {
+            Self::Good => "Good",
+            Self::Attention => "Warning",
+            Self::Problem => "Problem",
+            Self::Neutral => "Note",
+        }
+    }
+
     const fn open(self) -> &'static str {
         match self {
             Self::Good => "<span class=\"pill ok\">",
@@ -430,5 +466,64 @@ mod tests {
             &*pill(Tone::Good, "Connected"),
             "<span class=\"pill ok\">Connected</span>"
         );
+    }
+
+    /// Every file under `folder`, with its path relative to the crate.
+    fn files(folder: &str) -> Result<Vec<(String, String)>, std::io::Error> {
+        let crate_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let mut found = Vec::new();
+        let mut folders = vec![crate_root.join(folder)];
+        while let Some(folder) = folders.pop() {
+            for entry in std::fs::read_dir(folder)? {
+                let path = entry?.path();
+                if path.is_dir() {
+                    folders.push(path);
+                } else {
+                    let name = path
+                        .strip_prefix(crate_root)
+                        .unwrap_or(&path)
+                        .display()
+                        .to_string();
+                    found.push((name, std::fs::read_to_string(&path)?));
+                }
+            }
+        }
+        Ok(found)
+    }
+
+    // ADR 0018: the restyled pages keep the strict CSP and escaping. No template
+    // holds an inline style or script, or turns escaping off; each starts with a
+    // comment saying what it holds.
+    #[test]
+    fn templates_hold_no_inline_style_script_or_unescaped_output() -> Result<(), std::io::Error> {
+        let templates = files("templates")?;
+        assert!(templates.len() >= 8, "{}", templates.len());
+        for (name, text) in templates {
+            for forbidden in [
+                "style=",
+                "<style",
+                "<script",
+                "|safe",
+                "| safe",
+                "escape = \"none\"",
+            ] {
+                assert!(!text.contains(forbidden), "{name} contains {forbidden}");
+            }
+            assert!(text.starts_with("{#- "), "{name} lacks its opening comment");
+        }
+        Ok(())
+    }
+
+    // ADR 0018: app.css adds to the design system with semantic tokens only: no
+    // primitives, no raw colours, nothing loaded from elsewhere.
+    #[test]
+    fn app_css_uses_semantic_tokens_only() {
+        const APP: &str = include_str!("../../../assets/app.css");
+        assert!(APP.starts_with("/* Analyte's additions"));
+        for forbidden in [
+            "--p-", "#", "rgb(", "rgba(", "hsl(", "@import", "url(", "http:", "https:",
+        ] {
+            assert!(!APP.contains(forbidden), "app.css contains {forbidden}");
+        }
     }
 }

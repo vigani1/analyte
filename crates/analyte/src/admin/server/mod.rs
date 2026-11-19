@@ -33,6 +33,57 @@ pub(super) struct Machine {
     /// The machine runtime's link light; the admin page only reads it.
     pub(super) status: watch::Receiver<crate::machine::link::status::Status>,
     pub(super) departure_html: Markup,
+    /// The model's name for people, read once at startup from its definition.
+    pub(super) model: String,
+    /// How it is attached, as its site file says.
+    pub(super) connection: Connection,
+    /// The lab app it sends to.
+    pub(super) lab_app: Identifier,
+}
+
+/// How a set-up machine is attached, as configured: what the overview can name.
+/// It never holds a peer's address (safety rule 10 keeps endpoints off pages).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(in crate::admin) enum Connection {
+    /// A serial port named in the site file, such as COM3.
+    Serial(String),
+    /// The serial port of the USB adapter reporting this serial number.
+    UsbAdapter(String),
+    /// Analyte listens and the machine connects; the port when the site file
+    /// writes a plain socket address.
+    Listening(Option<u16>),
+    /// Analyte connects to the machine.
+    Dialing,
+    /// Analyte watches a folder; its last path part.
+    Folder(String),
+}
+
+impl Connection {
+    /// The connection of a machine with `link` at the site's `endpoint`.
+    pub(super) fn of(
+        link: crate::machine::link::status::Link,
+        endpoint: &analyte_config::Endpoint,
+    ) -> Self {
+        use crate::machine::link::status::Link;
+        let fixed = endpoint.fixed().unwrap_or_default();
+        match (link, endpoint) {
+            (Link::Serial, analyte_config::Endpoint::UsbSerial(serial)) => {
+                Self::UsbAdapter(serial.as_str().to_owned())
+            }
+            (Link::Serial, analyte_config::Endpoint::Fixed(port)) => Self::Serial(port.clone()),
+            (Link::TcpServer, _) => Self::Listening(
+                fixed
+                    .parse::<std::net::SocketAddr>()
+                    .ok()
+                    .map(|address| address.port()),
+            ),
+            (Link::TcpClient, _) => Self::Dialing,
+            (Link::Folder, _) => Self::Folder(std::path::Path::new(fixed).file_name().map_or_else(
+                || fixed.to_owned(),
+                |name| name.to_string_lossy().into_owned(),
+            )),
+        }
+    }
 }
 
 pub(super) struct Context {
@@ -83,11 +134,19 @@ pub(crate) async fn prepare(
         .machines()
         .iter()
         .map(|m| {
+            let effective = m.snapshot().effective();
             Ok(Machine {
                 departure_html: super::pages::departures::enabled(&m.snapshot)?,
                 id: m.id().clone(),
                 running: Arc::new(AtomicBool::new(true)),
                 status: m.status.subscribe(),
+                // A small bounded README read per machine, once, before serving.
+                model: super::setup::model_name(&m.definition),
+                connection: Connection::of(
+                    crate::machine::link::status::Link::of(effective.stack()),
+                    &effective.site().endpoint,
+                ),
+                lab_app: effective.site().destination.name.clone(),
             })
         })
         .collect::<Result<Vec<_>, Error>>()?;

@@ -38,6 +38,7 @@ fn machine(policy: &str) -> Result<Machine, Error> {
         ),
         snapshot,
         listener: None,
+        definition: std::path::PathBuf::new(),
     })
 }
 

@@ -24,7 +24,7 @@ async fn every_static_file_is_public_typed_and_cached_by_version() -> Result<(),
         start_overview_server(directory.path(), &store, Vec::new(), Vec::new()).await?;
     let root = crate::admin::view::assets::Root::of_this_build();
     let listed = crate::admin::view::assets::tests::listed();
-    assert_eq!(listed.len(), 16);
+    assert_eq!(listed.len(), 17);
     for (name, kind, bytes) in listed {
         for (path, kept) in [
             (format!("{}{name}", root.as_str()), true),

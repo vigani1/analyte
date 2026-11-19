@@ -1,0 +1,222 @@
+//! Holds the Overview's view structs: display-ready values the templates show, built from what the overview measured.
+//!
+//! Every word comes from `view::format` or the attention list; the templates
+//! only loop, test and call macros. Nothing here invents a value: a figure or
+//! line with no data behind it is left out.
+use super::attention::Thing;
+use crate::admin::view::{Tone, format::Moment, frame::Frame, icon::Icon};
+
+/// GET / once something is set up or needs someone.
+#[derive(askama::Template)]
+#[template(path = "pages/overview/index.html")]
+pub(super) struct Page {
+    pub(super) frame: Frame,
+    /// "Thursday 19 November · 10:45".
+    pub(super) today: String,
+    /// "5 machines · 2 lab apps".
+    pub(super) counts: String,
+    pub(super) verdict: Verdict,
+    pub(super) machines: Vec<MachineNode>,
+    pub(super) labs: Vec<LabNode>,
+    pub(super) figures: Vec<Figure>,
+    pub(super) orders: Vec<OrderRow>,
+    /// Order sending is paused after a restore: what to do.
+    pub(super) restore: Option<Notice>,
+    /// Results waiting for lab apps no set-up machine uses.
+    pub(super) kept: Vec<Notice>,
+    pub(super) disk: Disk,
+    pub(super) alerts: Vec<AlertRow>,
+    /// The reason and fix of alerts whose cause varies.
+    pub(super) alert_messages: Vec<String>,
+    /// One status line per alert relay, for support.
+    pub(super) relays: Vec<String>,
+}
+
+/// GET / when the overview could not be read: what it means and, for support, why.
+#[derive(askama::Template)]
+#[template(path = "pages/overview/error.html")]
+pub(super) struct ErrorPage {
+    pub(super) frame: Frame,
+    /// The failure, one line per part, for support.
+    pub(super) detail: Vec<String>,
+}
+
+/// The answer to "is everything OK?": all good, or the things that need someone.
+pub(super) struct Verdict {
+    pub(super) tone: Tone,
+    pub(super) title: String,
+    pub(super) sub: &'static str,
+    pub(super) todo: Vec<Todo>,
+}
+
+/// One numbered thing that needs someone, with the page that fixes it.
+pub(super) struct Todo {
+    /// "01", "02"…
+    pub(super) number: String,
+    pub(super) tone: Tone,
+    pub(super) title: String,
+    pub(super) detail: Option<String>,
+    pub(super) href: &'static str,
+    pub(super) label: &'static str,
+}
+
+impl Verdict {
+    /// "All good" when nothing needs anyone; otherwise how many things do,
+    /// red when any of them stops data now.
+    pub(super) fn of(things: &[Thing]) -> Self {
+        if things.is_empty() {
+            return Self {
+                tone: Tone::Good,
+                title: "All good".into(),
+                sub: "Nothing needs you right now.",
+                todo: Vec::new(),
+            };
+        }
+        let count = u64::try_from(things.len()).unwrap_or(u64::MAX);
+        Self {
+            tone: if things.iter().any(|thing| thing.tone() == Tone::Problem) {
+                Tone::Problem
+            } else {
+                Tone::Attention
+            },
+            title: format!(
+                "{} you",
+                crate::admin::view::format::amount(count, "thing needs", "things need")
+            ),
+            sub: "Analyte keeps everything it has received while you fix these.",
+            todo: things
+                .iter()
+                .zip(1u32..)
+                .map(|(thing, number)| Todo {
+                    number: format!("{number:02}"),
+                    tone: thing.tone(),
+                    title: thing.text.clone(),
+                    detail: thing.detail.clone(),
+                    href: thing.fix.href(),
+                    label: thing.fix.label(),
+                })
+                .collect(),
+        }
+    }
+}
+
+/// How a wire between a node and the bus is drawn.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Wire {
+    /// The link is open: data dots travel along it.
+    Live,
+    /// Waiting for the other side: a dotted line.
+    Wait,
+    /// Broken: a dashed line with a break mark.
+    Cut,
+}
+
+impl Wire {
+    /// The wire's extra class in the design system.
+    pub(super) const fn class(self) -> &'static str {
+        match self {
+            Self::Live => "",
+            Self::Wait => "wire--wait",
+            Self::Cut => "wire--cut",
+        }
+    }
+}
+
+/// One set-up machine on the signal path.
+pub(super) struct MachineNode {
+    pub(super) id: String,
+    pub(super) model: String,
+    pub(super) tone: Tone,
+    /// The link state as the Machines page words it, or that Analyte stopped.
+    pub(super) state: String,
+    /// When data last came from it; none before it sent anything.
+    pub(super) last_data: Option<Moment>,
+    pub(super) kind: &'static str,
+    pub(super) kind_icon: Icon,
+    pub(super) wire: Wire,
+    /// Staggers the travelling dots so neighbouring wires do not move in step.
+    pub(super) dot: &'static str,
+    /// What Analyte observed, shown while the link is not open.
+    pub(super) line: Option<String>,
+}
+
+/// One lab app on the signal path.
+pub(super) struct LabNode {
+    pub(super) name: String,
+    pub(super) tone: Tone,
+    pub(super) status: &'static str,
+    pub(super) wire: Wire,
+    /// Last delivered, what waits, who sends here, and which key is missing.
+    pub(super) lines: Vec<String>,
+    /// What to do when Analyte cannot deliver here.
+    pub(super) todo: Option<&'static str>,
+}
+
+/// One figure below the signal path.
+pub(super) struct Figure {
+    pub(super) label: String,
+    /// The figure; ignored when `when` holds it as a time.
+    pub(super) value: String,
+    pub(super) when: Option<Moment>,
+    pub(super) aside: String,
+    /// A time after the aside, such as when an order list was checked.
+    pub(super) aside_when: Option<Moment>,
+    /// A worded figure (such as "Up to date") with its tone's icon; a number when none.
+    pub(super) tone: Option<Tone>,
+}
+
+/// One line of the Orders card.
+pub(super) struct OrderRow {
+    pub(super) tone: Tone,
+    pub(super) icon: Icon,
+    pub(super) text: String,
+    pub(super) href: &'static str,
+    pub(super) link: &'static str,
+}
+
+/// A boxed sentence: a title and, when needed, more text.
+pub(super) struct Notice {
+    pub(super) tone: Tone,
+    pub(super) title: String,
+    pub(super) text: String,
+}
+
+/// Disk space as the overview shows it, exact bytes on hover.
+pub(super) struct Disk {
+    pub(super) free: String,
+    pub(super) free_exact: String,
+    pub(super) reserve: String,
+    pub(super) reserve_exact: String,
+    /// Free space is above the reserve, so receiving goes on.
+    pub(super) enough: bool,
+}
+
+impl Disk {
+    pub(super) const fn tone(&self) -> Tone {
+        if self.enough {
+            Tone::Good
+        } else {
+            Tone::Problem
+        }
+    }
+
+    pub(super) const fn status(&self) -> &'static str {
+        if self.enough {
+            "Enough space"
+        } else {
+            "Almost full: receiving refused"
+        }
+    }
+}
+
+/// One active alert in the alerts table.
+pub(super) struct AlertRow {
+    /// What it means, in plain words.
+    pub(super) words: &'static str,
+    /// The alert rule's signal name, on hover.
+    pub(super) kind: &'static str,
+    pub(super) machine: String,
+    pub(super) responder: String,
+    pub(super) raised: Option<Moment>,
+    pub(super) value: String,
+}

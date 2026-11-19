@@ -6,6 +6,7 @@
 //! once on the Lab app page ([`lab_apps`]); a machine only picks one. Applying a
 //! change needs a restart; there is no hot reload.
 mod definitions;
+pub(in crate::admin) use definitions::model_name;
 mod entries;
 mod lab_apps;
 mod listen;
@@ -336,18 +337,7 @@ fn model(config: &std::path::Path, definition: Option<&str>) -> Markup {
     let Some(definition) = definition else {
         return Markup::new().markup("<span class=\"muted\">Not chosen yet</span>");
     };
-    let folder = folder(config)
-        .join(definition)
-        .parent()
-        .map(std::path::Path::to_path_buf)
-        .unwrap_or_default();
-    let name = |path: Option<&std::path::Path>| {
-        path.and_then(std::path::Path::file_name)
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_default()
-    };
-    let key = format!("{}/{}", name(folder.parent()), name(Some(folder.as_path())));
-    view::exact(&definitions::display_name(&folder, &key), definition)
+    view::exact(&model_name(&folder(config).join(definition)), definition)
 }
 
 /// One row per machine in the program file, then any machine that still runs but

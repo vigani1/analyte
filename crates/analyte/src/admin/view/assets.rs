@@ -37,10 +37,11 @@ macro_rules! asset {
 }
 
 /// Every file served under `/static/`.
-const ASSETS: [Asset; 16] = [
+const ASSETS: [Asset; 17] = [
     asset!("admin.css", CSS),
     asset!("fonts.css", CSS),
     asset!("analyte.css", CSS),
+    asset!("app.css", CSS),
     asset!("fonts/InstrumentSans-Regular.woff2", FONT),
     asset!("fonts/InstrumentSans-Medium.woff2", FONT),
     asset!("fonts/InstrumentSans-SemiBold.woff2", FONT),
@@ -83,10 +84,6 @@ impl Root {
         Self(format!("/static/{version}/"))
     }
 
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "the restyled Overview links its files under this root")
-    )]
     pub(in crate::admin) fn as_str(&self) -> &str {
         &self.0
     }

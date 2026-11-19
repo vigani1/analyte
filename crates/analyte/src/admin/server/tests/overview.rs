@@ -83,11 +83,15 @@ async fn first_run_overview_is_only_the_welcome_card() -> Result<(), Error> {
         .await?;
     let attention = request(&host, "/", &auth, None).await?;
     assert!(!attention.contains("Set up your first machine"));
-    assert!(attention.contains("<p class=\"verdict\">1 thing needs you</p>"));
-    assert!(
-        attention
-            .contains("<span>Disk space is low: 512 bytes free</span> <a href=\"/#disk\">Disk</a>")
-    );
+    assert!(attention.contains("class=\"verdict__title\">1 thing needs you</h2>"));
+    let disk = attention
+        .split("<li>")
+        .find(|item| {
+            item.contains("<p class=\"todo__title\">Disk space is low: 512 bytes free</p>")
+        })
+        .ok_or("disk line missing")?;
+    assert!(disk.contains("<a class=\"btn btn--outline\" href=\"/#disk\">Disk</a>"));
+    assert!(attention.contains("id=\"disk\""));
     assert!(attention.contains("No machine is running. Add or set one up"));
     stop(state, stopper, owner, store).await
 }
@@ -102,12 +106,7 @@ async fn overview_with_nothing_wrong_reads_all_good() -> Result<(), Error> {
     let link =
         crate::machine::link::status::Reporter::new(crate::machine::link::status::Link::Serial);
     (link.observer())(analyte_transport::Activity::Opened);
-    let machines = vec![Machine {
-        departure_html: Markup::new(),
-        id: Identifier::new("cobas-e411")?,
-        running: Arc::new(AtomicBool::new(true)),
-        status: link.subscribe(),
-    }];
+    let machines = vec![machine("cobas-e411", true, link.subscribe(), "lab")?];
     let (state, stopper, owner, host) = start_overview_server(
         directory.path(),
         &store,
@@ -122,11 +121,21 @@ async fn overview_with_nothing_wrong_reads_all_good() -> Result<(), Error> {
         None,
     )
     .await?;
-    assert!(page.contains(concat!(
-        "<main><h1>Overview</h1><div class=\"status good\" role=\"status\">",
-        "<p class=\"verdict\">All good</p>"
-    )));
-    assert!(page.contains("<span class=\"pill ok\">Port open</span>"));
+    let main = page
+        .split_once("<main class=\"main\">")
+        .map(|(_, main)| main)
+        .ok_or("overview without main")?;
+    let (head, rest) = main
+        .split_once("</header>")
+        .ok_or("overview without a page head")?;
+    assert!(head.contains("<h1>Overview</h1>"), "{head}");
+    assert!(
+        rest.trim_start()
+            .starts_with("<section class=\"verdict verdict--good\""),
+        "{rest}"
+    );
+    assert!(rest.contains("class=\"verdict__title\">All good</h2>"));
+    assert!(page.contains("<span class=\"node__state tone-good\">Port open</span>"));
     drop(link);
     stop(state, stopper, owner, store).await
 }
@@ -400,7 +409,7 @@ async fn mark_resolved_is_audited_needs_csrf_and_keeps_the_item() -> Result<(), 
     assert!(detail.contains("settled with the lab app"));
     let overview = request(&host, "/", &auth, None).await?;
     assert!(
-        overview.contains("<span>1 item needs review</span>"),
+        overview.contains("<p class=\"todo__title\">1 item needs review</p>"),
         "{overview}"
     );
     stop(state, stopper, owner, store).await
@@ -466,5 +475,254 @@ async fn assert_recorded(
         assert_eq!(recorded.targets, vec![Identifier::new(&id.to_string())?]);
         assert_eq!(recorded.reason.as_str(), "settled with the lab app");
     }
+    Ok(())
+}
+
+/// Queues one order message for `lab_app` at `now` and, when `delivered`,
+/// records that the lab app accepted it.
+fn queue(
+    store: &mut analyte_store::Store,
+    lab_app: &str,
+    order: &str,
+    delivered: bool,
+    now: i64,
+) -> Result<(), FixtureError> {
+    let event = analyte_store::OrderEventDelivery {
+        id: analyte_model::DeliveryId::try_from(uuid::Uuid::now_v7())?,
+        destination: Identifier::new(lab_app)?,
+        order_id: Identifier::new(order)?,
+        payload: b"synthetic-order-message".to_vec(),
+        contract_version: 1,
+    };
+    store.enqueue_order_event(&event, now)?;
+    if delivered {
+        let claim = store
+            .claim_destination(now, &event.destination)?
+            .ok_or(FixtureError::UnknownDelivery)?;
+        store.attempted(claim.id, &analyte_store::Attempt::Done, now)?;
+    }
+    Ok(())
+}
+
+/// The signal path item (machine or lab app) whose node is named `name`.
+fn node<'a>(page: &'a str, name: &str) -> &'a str {
+    page.split("<li class=\"path__item\">")
+        .find(|item| {
+            item.contains(&format!(
+                "<span class=\"node__name\" title=\"{name}\">{name}</span>"
+            ))
+        })
+        .unwrap_or_default()
+}
+
+// Owner request 2026-11-19 (admin restyle, PR a): the signal path has one node
+// per set-up machine (its model, the observed state, last data, how it is
+// attached, and a live, waiting or cut wire) and one per lab app (last
+// delivered, what waits and since when, who sends to it, and for a kept lab
+// app without keys which key is missing and what to do), all from real state.
+// It shows no order or delivery identifiers and no payload.
+#[tokio::test(flavor = "multi_thread")]
+async fn signal_path_shows_machines_and_lab_apps_from_real_state() -> Result<(), Error> {
+    use crate::machine::link::status::{Link, Reporter};
+    let directory = crate::admin::private_tempdir()?;
+    let bearer = crate::admin::rotate_token(directory.path())?;
+    let store = empty_store(directory.path()).await?;
+    let now = jiff::Timestamp::now().as_second();
+    let review = review_items("unused", &uuid::Uuid::now_v7().to_string())?
+        .into_iter()
+        .take(1)
+        .collect::<Vec<_>>();
+    store
+        .request::<_, FixtureError>(fixture_deadline()?, move |s| {
+            queue(s, "main-lab", "order-delivered", true, now - 60)?;
+            queue(s, "old-lab", "order-waiting", false, now - 120)?;
+            for item in &review {
+                s.park(item)?;
+            }
+            Ok(())
+        })
+        .await?;
+    let serial = Reporter::new(Link::Serial);
+    (serial.observer())(analyte_transport::Activity::Opened);
+    let usb = Reporter::new(Link::Serial);
+    let listening = Reporter::new(Link::TcpServer);
+    listening.ready(true);
+    let folder = Reporter::new(Link::Folder);
+    folder.ready(true);
+    let mut adapter = machine("hematology-2", true, usb.subscribe(), "main-lab")?;
+    adapter.connection = Connection::UsbAdapter("A9X".into());
+    let machines = vec![
+        machine("chemistry-1", true, serial.subscribe(), "main-lab")?,
+        adapter,
+        machine("immunoassay-3", true, listening.subscribe(), "main-lab")?,
+        machine("urine-4", true, folder.subscribe(), "main-lab")?,
+    ];
+    let retired = crate::admin::Draining::from([(
+        "old-lab".to_owned(),
+        crate::admin::Kept {
+            delivering: Arc::new(AtomicBool::new(true)),
+            keys_missing: true,
+            api_key: Identifier::new("old-lab-api-key")?,
+            signing_key: Identifier::new("old-lab-signing-key")?,
+        },
+    )]);
+    let (state, stopper, owner, host) = start_with(
+        directory.path(),
+        &store,
+        (machines, vec![loopback_destination("main-lab")?]),
+        retired,
+        directory.path(),
+    )
+    .await?;
+    let cookie = login(&host, &bearer).await?;
+    let page = request(&host, "/", &format!("Cookie: {cookie}\r\n"), None).await?;
+    assert!(page.starts_with("HTTP/1.1 200"), "{page}");
+    assert!(page.contains("4 machines · 2 lab apps"));
+    assert_machine_nodes(&page);
+    assert_lab_app_nodes(&page);
+    assert_figures_and_sidebar(&page, &state, &cookie)?;
+    for hidden in [
+        "order-delivered",
+        "order-waiting",
+        "synthetic-order-message",
+    ] {
+        assert!(!page.contains(hidden), "{hidden} shown");
+    }
+    drop((serial, usb, listening, folder));
+    stop(state, stopper, owner, store).await
+}
+
+/// Each machine node: model, observed state, last data, attachment and wire;
+/// the closed port is also a to-do line with what to check.
+fn assert_machine_nodes(page: &str) {
+    let open = node(page, "chemistry-1");
+    for part in [
+        "<span class=\"node__model\">Synthetic analyzer</span>",
+        "<span class=\"node__state tone-good\">Port open</span>",
+        "<span class=\"mono\">Nothing yet</span>",
+        "</svg>Serial</span>",
+        "<span class=\"wire \" aria-hidden=\"true\"><span class=\"wire__dot",
+    ] {
+        assert!(open.contains(part), "{part}\n{open}");
+    }
+    let closed = node(page, "hematology-2");
+    for part in [
+        "<a class=\"node node--bad\" href=\"/machines\">",
+        "<span class=\"node__state tone-bad\">Port not open</span>",
+        "</svg>USB adapter</span>",
+        "<span class=\"node__note\">Port of USB adapter A9X not open since ",
+        "<span class=\"wire wire--cut\" aria-hidden=\"true\"><span class=\"wire__break\">",
+    ] {
+        assert!(closed.contains(part), "{part}\n{closed}");
+    }
+    let waiting = node(page, "immunoassay-3");
+    assert!(waiting.contains("<span class=\"node__state tone-warn\">Waiting</span>"));
+    assert!(waiting.contains("Listening on port 5600, nothing connected since "));
+    assert!(waiting.contains("<span class=\"wire wire--wait\""));
+    let watching = node(page, "urine-4");
+    assert!(watching.contains("<span class=\"node__state tone-good\">Watching</span>"));
+    assert!(watching.contains("</svg>Watched folder</span>"));
+
+    // The closed port is a to-do line: what Analyte observed and what to check.
+    assert!(page.contains("<p class=\"todo__title\">hematology-2: Port not open</p>"));
+    assert!(page.contains("<p class=\"todo__detail\">Port of USB adapter A9X not open since "));
+    assert!(page.contains(". Check the cable and the machine&#39;s host settings.</p>"));
+    assert!(page.contains("<section class=\"verdict verdict--bad\""));
+}
+
+/// The lab app a machine sends to, and the kept one whose keys are missing.
+fn assert_lab_app_nodes(page: &str) {
+    let main = node(page, "main-lab");
+    for part in [
+        "<span class=\"status status--good\">",
+        "Up to date</span>",
+        "<p class=\"node__line\">Last delivered ",
+        "<p class=\"node__line\">Nothing waiting</p>",
+        "<p class=\"node__line\">From chemistry-1, hematology-2, immunoassay-3, urine-4</p>",
+    ] {
+        assert!(main.contains(part), "{part}\n{main}");
+    }
+    let kept = node(page, "old-lab");
+    for part in [
+        "<span class=\"wire wire--cut\" aria-hidden=\"true\"><span class=\"wire__break\">",
+        "<div class=\"node node--lab node--bad\">",
+        "Cannot deliver</span>",
+        "<p class=\"node__line\">Nothing delivered yet</p>",
+        "<p class=\"node__line\">1 item waiting · oldest ",
+        "<p class=\"node__line\">No set-up machine sends here</p>",
+        "<p class=\"node__line\">Keys missing: API key and signing key.</p>",
+        "Waiting items go out after Analyte restarts with the keys.",
+        "<a class=\"btn btn--primary btn--sm\" href=\"/setup/lab-apps\">Add keys</a>",
+    ] {
+        assert!(kept.contains(part), "{part}\n{kept}");
+    }
+}
+
+/// The figures under the path, the review count and this session's Sign out.
+fn assert_figures_and_sidebar(page: &str, state: &Context, cookie: &str) -> Result<(), Error> {
+    // Figures: what waits for every lab app, and the order list only where it is polled.
+    assert!(page.contains("<dt>Items waiting to send</dt>\n<dd>1 "));
+    let oldest = page
+        .split("<div class=\"figure\">")
+        .find(|figure| figure.contains("<dt>Oldest waiting</dt>"))
+        .unwrap_or_default();
+    assert!(oldest.contains("<time datetime="), "{oldest}");
+    assert!(page.contains("<dt>Order list · main-lab</dt>"));
+    assert!(!page.contains("<dt>Order list · old-lab</dt>"));
+
+    // The sidebar: open review items beside Needs review, and Sign out with this session's token.
+    assert!(page.contains("<span class=\"nav__count\"><span class=\"sr-only\">, </span>1</span>"));
+    let token = state
+        .sessions
+        .lookup(cookie.strip_prefix("analyte_session="))?
+        .ok_or("session missing")?
+        .csrf
+        .form_value()
+        .to_owned();
+    assert!(page.contains(&format!(
+        "<form class=\"sidebar__signout\" method=\"post\" action=\"/logout\"><input type=\"hidden\" name=\"csrf\" value=\"{token}\">"
+    )));
+    Ok(())
+}
+
+// Owner request 2026-11-19 (admin restyle): when the overview cannot read its
+// data it says so in the new look, keeps the sidebar, answers 503 and keeps the
+// exact reason under "Details for support".
+#[tokio::test(flavor = "multi_thread")]
+async fn overview_error_page_keeps_the_reason_for_support() -> Result<(), Error> {
+    let directory = crate::admin::private_tempdir()?;
+    let bearer = crate::admin::rotate_token(directory.path())?;
+    // A store whose worker has stopped refuses every read.
+    let mut closed = Arc::try_unwrap(empty_store(directory.path()).await?)
+        .map_err(|_| "fixture store shared")?;
+    closed.shutdown(fixture_deadline()?).await?;
+    let store = Arc::new(closed);
+    let (state, stop, owner, host) =
+        start_overview_server(directory.path(), &store, Vec::new(), Vec::new()).await?;
+    let page = request(
+        &host,
+        "/",
+        &format!("Authorization: Bearer {bearer}\r\n"),
+        None,
+    )
+    .await?;
+    assert!(page.starts_with("HTTP/1.1 503"), "{page}");
+    headers_present(&page);
+    assert!(page.contains("<nav class=\"sidebar\" aria-label=\"Main\">"));
+    assert!(page.contains("<h1>Overview</h1>"));
+    assert!(page.contains("<div class=\"alert alert--bad\" role=\"note\">"));
+    assert!(
+        page.contains("<p class=\"alert__title\">The overview could not be shown just now</p>")
+    );
+    assert!(page.contains("Details for support</summary><pre>"));
+    assert!(page.contains("app.css"));
+    assert!(!page.contains("admin.css"));
+    assert!(
+        !page.contains("nav__count"),
+        "no count when nothing could be read"
+    );
+    drop(state);
+    stop.send_replace(true);
+    tokio::time::timeout(Duration::from_secs(5), owner).await???;
     Ok(())
 }

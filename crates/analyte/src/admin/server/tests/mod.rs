@@ -133,11 +133,14 @@ async fn service_refuses_missing_token_and_owns_admin_server() -> Result<(), Err
     )
     .await?;
     assert!(response.starts_with("HTTP/1.1 200"), "{response}");
-    assert!(response.contains("<span title=\"machine owner: running\">Running</span>"));
-    // Owner request 2026-11-19 (item 8): no data yet reads "Nothing yet", not "unknown".
+    // The machine's service runs: its node shows the link state, not that Analyte stopped.
     assert!(
-        response.contains("</span></td><td data-label=\"Last data received\">Nothing yet</td>")
+        response.contains("<span class=\"node__state tone-"),
+        "{response}"
     );
+    assert!(!response.contains("Stopped in Analyte"));
+    // Owner request 2026-11-19 (item 8): no data yet reads "Nothing yet", not "unknown".
+    assert!(response.contains("<span class=\"mono\">Nothing yet</span>"));
     headers_present(&response);
     stop.send(()).map_err(|_| "service stop receiver lost")?;
     tokio::time::timeout(Duration::from_secs(10), owner).await???;
@@ -217,16 +220,12 @@ async fn tcp_server_light_follows_peer_and_hides_payload() -> Result<(), Error> 
             .await?
         }
     };
-    let waiting = until("<span class=\"pill warn\">Waiting</span>").await?;
-    assert!(
-        waiting.contains("title=\"TCP server\">Network: the machine connects to Analyte"),
-        "{waiting}"
-    );
-    assert!(waiting.contains(&format!("Waiting</span></td>{LAST_DATA}Nothing yet</td>")));
+    let waiting = until("<span class=\"node__state tone-warn\">Waiting</span>").await?;
+    assert_listening(&waiting, &analyzer_address);
     // Owner request 2026-11-19 (item 9): no restore pause, so no pause line on either page.
     assert!(!(waiting.clone() + &page("/machines").await?).contains("Order sending"));
     let mut peer = tokio::net::TcpStream::connect(&analyzer_address).await?;
-    until("<span class=\"pill ok\">Connected</span>").await?;
+    until("<span class=\"node__state tone-good\">Connected</span>").await?;
     let message = format!(
         "\x0bMSH|^~\\&|SYN|LAB|HOST|LAB|20260101000000||ORU^R01^ORU_R01|light-1|P|2.5.1\r\
          PID|1\rOBR|1||{SAMPLE}|SYN^Synthetic^synthetic|||||||||||||||||||||F\r\
@@ -235,7 +234,7 @@ async fn tcp_server_light_follows_peer_and_hides_payload() -> Result<(), Error> 
     peer.write_all(message.as_bytes()).await?;
     // Only a partial MLLP frame has arrived: no receipt exists, yet the runtime saw data.
     // One check: the green Connected pill next to a last-data time.
-    until("\"pill ok\">Connected</span></td><td data-label=\"Last data received\"><time").await?;
+    until(CONNECTED_WITH_DATA).await?;
     peer.write_all(b"\x1c\r").await?;
     let mut reply = [0];
     peer.read_exact(&mut reply).await?;
@@ -251,14 +250,38 @@ async fn tcp_server_light_follows_peer_and_hides_payload() -> Result<(), Error> 
         );
     }
     drop(peer);
-    until("<span class=\"pill warn\">Waiting</span>").await?;
+    until("<span class=\"node__state tone-warn\">Waiting</span>").await?;
     stop.send(()).map_err(|_| "service stop receiver lost")?;
     tokio::time::timeout(Duration::from_secs(10), owner).await???;
     Ok(())
 }
 
-/// The overview's "last data received" cell as it opens.
-const LAST_DATA: &str = "<td data-label=\"Last data received\">";
+/// A network machine that has not connected: its node says Analyte listens on
+/// its port (never the full address) and that no data came yet.
+fn assert_listening(page: &str, address: &str) {
+    let port = address.rsplit(':').next().unwrap_or_default();
+    assert!(page.contains("</svg>Network</span>"), "{page}");
+    assert!(
+        page.contains(&format!(
+            "Listening on port {port}, nothing connected since "
+        )),
+        "{page}"
+    );
+    assert!(page.contains(&format!(
+        "Waiting</span>{SEPARATOR}{LAST_DATA}Nothing yet</span>"
+    )));
+}
+
+/// A connected machine node that already shows a last-data time.
+const CONNECTED_WITH_DATA: &str = concat!(
+    "<span class=\"node__state tone-good\">Connected</span>",
+    "<span class=\"subtle\" aria-hidden=\"true\">·</span>",
+    "<span class=\"mono\">last data <time"
+);
+
+/// A machine node's "last data" as it opens, and the dot before it.
+const LAST_DATA: &str = "<span class=\"mono\">";
+const SEPARATOR: &str = "<span class=\"subtle\" aria-hidden=\"true\">·</span>";
 
 async fn request(
     host: &str,
@@ -322,15 +345,13 @@ async fn overview_checks_auth_escapes_and_shuts_down_bounded() -> Result<(), Err
         .map_err(|error| format!("admin overview fixture migration: {error}"))?,
     );
     seed_overview(&store).await?;
-    let machines = vec![Machine {
-        departure_html: Markup::new(),
-        id: Identifier::new("<script>alert('hostile')&\"</script>")?,
-        running: Arc::new(AtomicBool::new(false)),
-        status: crate::machine::link::status::Reporter::new(
-            crate::machine::link::status::Link::TcpServer,
-        )
-        .subscribe(),
-    }];
+    let machines = vec![machine(
+        "<script>alert('hostile')&\"</script>",
+        false,
+        crate::machine::link::status::Reporter::new(crate::machine::link::status::Link::TcpServer)
+            .subscribe(),
+        "app",
+    )?];
     let (state, stop, owner, host) = start_overview_server(
         directory.path(),
         &store,
@@ -553,86 +574,138 @@ async fn assert_overview_health(host: &str, bearer: &str) -> Result<(), Error> {
     .await?;
     assert!(response.starts_with("HTTP/1.1 200"), "{response}");
     headers_present(&response);
-    assert!(response.contains("&lt;script&gt;alert(&#39;hostile&#39;)&amp;&quot;&lt;/script&gt;"));
+    assert!(response.contains(HOSTILE));
     assert!(!response.contains("<script>"));
     assert_overview_counts(&response);
     assert_overview_status(&response)?;
     assert!(response.contains("<span title=\"restore_paused\">Order sending paused after restore"));
     assert!(response.contains("<span title=\"machine_silent\">Machine has gone quiet"));
     assert!(
-        response.contains("<td data-label=\"Responder\">&lt;script&gt;responder(&#39;duty&#39;)&amp;&lt;/script&gt;</td>")
+        response
+            .contains("<td>&#60;script&#62;responder(&#39;duty&#39;)&#38;&#60;/script&#62;</td>")
     );
-    assert!(response.contains("<td data-label=\"Machine\">&lt;busy&amp;machine&gt;</td>"));
+    assert!(response.contains("<td>&#60;busy&#38;machine&#62;</td>"));
     assert!(response.contains(
         "<time datetime=\"1970-01-01T00:01:40Z\" title=\"1970-01-01T00:01:40Z (Unix 100)\">"
     ));
     assert!(!response.contains("cleared alert responder"));
-    assert!(response.contains("<span title=\"machine owner: stopped\">Stopped</span>"));
-    assert!(response.contains(
-        "</span></td><td data-label=\"Last data received\"><time datetime=\"1970-01-01T00:03:20Z\""
-    ));
-    assert!(response.contains(" days ago</span>"));
-    assert!(response.contains(
-        "<dt title=\"Pending items: results or order messages\">Waiting to be sent</dt><dd><span class=\"count over\">2</span></dd>"
-    ));
+    assert!(response.contains("<span class=\"node__state tone-bad\">Stopped in Analyte</span>"));
+    // Last data is the stored receipt's time (Unix 200), exact on hover.
     assert!(response.contains(concat!(
-        "<dt title=\"Cache fresh and trusted\">Order list up to date</dt>",
-        "<dd><span class=\"pill warn\">No</span>"
+        "<span class=\"mono\">last data <time datetime=\"1970-01-01T00:03:20Z\" ",
+        "title=\"1970-01-01T00:03:20Z (Unix 200)\">"
     )));
-    assert!(response.contains(concat!(
-        "<dt title=\"Cache last successful poll\">Last order list check</dt>",
-        "<dd><time datetime=\"1970-01-01T00:01:40Z\""
+    // How long ago shows beside the oldest waiting item (queued at Unix 102).
+    assert!(response.contains(" days ago</span>"));
+    assert!(response.contains("<p class=\"node__line\">2 items waiting · oldest "));
+    assert!(
+        response
+            .contains("<dd>2 <span class=\"figure__aside\">results and order messages</span></dd>")
+    );
+    let list = response
+        .split("<div class=\"figure\">")
+        .find(|figure| figure.contains("<dt>Order list · app</dt>"))
+        .ok_or("order list figure missing")?;
+    assert!(list.contains("tone-warn"), "{list}");
+    assert!(list.contains(concat!(
+        "Out of date <span class=\"figure__aside\">checked ",
+        "<time datetime=\"1970-01-01T00:01:40Z\""
     )));
     assert!(!response.contains("protected-raw-never-log"));
     assert!(!response.contains("protected-payload-never-log"));
     assert!(!response.contains("<script>sample</script>"));
-    assert!(response.contains("Free disk bytes"));
+    assert!(response.contains("<dt>Free disk space</dt>"));
+    assert!(response.contains(" bytes free\">"));
     Ok(())
+}
+
+/// The fixture machine's name as the page escapes it.
+const HOSTILE: &str = "&#60;script&#62;alert(&#39;hostile&#39;)&#38;&#34;&#60;/script&#62;";
+
+/// The to-do line titled `title` names its fix as a button to `href` labelled `label`.
+fn todo_item(verdict: &str, title: &str, href: &str, label: &str) -> bool {
+    verdict.split("<li>").any(|item| {
+        item.contains(&format!("<p class=\"todo__title\">{title}</p>"))
+            && item.contains(&format!(
+                "<a class=\"btn btn--outline\" href=\"{href}\">{label}</a>"
+            ))
+    })
 }
 
 /// Owner request 2026-11-19 (overview item 1): the answer to "is everything OK?"
 /// comes first, one line per thing with its fix, before the detail sections.
 fn assert_overview_status(response: &str) -> Result<(), Error> {
     let (top, details) = response
-        .split_once("<section")
+        .split_once("<section class=\"section\"")
         .ok_or("overview without sections")?;
-    assert!(top.contains("<main><h1>Overview</h1><div class=\"status bad\" role=\"status\"><p class=\"verdict\">4 things need you</p>"), "{top}");
-    for line in [
-        "<li><span>Analyte stopped working with &lt;script&gt;alert(&#39;hostile&#39;)&amp;&quot;&lt;/script&gt;</span> <a href=\"/machines\">Machines</a></li>",
-        "<li><span>Orders with unknown outcome: 2</span> <a href=\"/orders\">Machine orders</a></li>",
-        "<li><span>Order sending is paused after a restore</span> <a href=\"/#orders\">Orders</a></li>",
-        "<li><span>&lt;busy&amp;machine&gt; has gone quiet</span> <a href=\"/machines\">Machines</a></li>",
+    let (head, verdict) = top
+        .split_once("</header>")
+        .ok_or("overview without a page head")?;
+    assert!(head.contains("<main class=\"main\">"), "{head}");
+    assert!(head.contains("<h1>Overview</h1>"), "{head}");
+    assert!(
+        verdict
+            .trim_start()
+            .starts_with("<section class=\"verdict verdict--bad\""),
+        "{verdict}"
+    );
+    assert!(
+        verdict.contains("class=\"verdict__title\">4 things need you</h2>"),
+        "{verdict}"
+    );
+    for (title, href, label) in [
+        (
+            format!("Analyte stopped working with {HOSTILE}"),
+            "/machines",
+            "Machines",
+        ),
+        (
+            "Orders with unknown outcome: 2".into(),
+            "/orders",
+            "Machine orders",
+        ),
+        (
+            "Order sending is paused after a restore".into(),
+            "/#orders",
+            "Orders",
+        ),
+        (
+            "&#60;busy&#38;machine&#62; has gone quiet".into(),
+            "/machines",
+            "Machines",
+        ),
     ] {
         assert!(
-            top.contains(line),
-            "{line}
-{top}"
+            todo_item(verdict, &title, href, label),
+            "{title}\n{verdict}"
         );
     }
     assert!(!top.contains("All good"));
     for id in ["sending", "orders", "disk"] {
-        assert!(details.contains(&format!("<section id=\"{id}\">")), "{id}");
+        assert!(response.contains(&format!("id=\"{id}\"")), "{id}");
     }
+    assert!(details.contains("id=\"orders\""));
     Ok(())
 }
 
 /// Owner request 2026-11-19 (items 8 and 9): the paused line shows when it is Yes,
 /// and counts are plain numbers, red above zero, with the renamed links.
 fn assert_overview_counts(response: &str) {
+    assert!(response.contains("<div class=\"alert alert--warn\" role=\"note\">"));
     assert!(response.contains(concat!(
-        "<dt title=\"Restore unreconciled\">Order sending paused after restore</dt>",
-        "<dd><span class=\"pill warn\">Yes</span>"
+        "<p class=\"alert__title\">Order sending is paused after a restore</p>",
+        "<p class=\"alert__text\">Ask IT to reconcile orders"
     )));
     assert!(response.contains(concat!(
-        "<dt title=\"Uncertain orders\">Orders with unknown outcome (check the machine)",
-        "</dt><dd><span class=\"count over\">2</span> <a href=\"/orders\">See machine orders</a>"
+        "<span class=\"row__main\">2 orders with an unknown outcome (check the machine)</span>",
+        "<a class=\"link\" href=\"/orders\">See machine orders</a>"
     )));
     assert!(response.contains(concat!(
-        "<dt title=\"Analyzer-cancelled AWOSs\">Cancelled by machine</dt><dd><span ",
-        "class=\"count\">0</span> <a href=\"/analyzer-cancelled\">Review cancelled orders</a>"
+        "<span class=\"row__main\">No orders cancelled by a machine</span>",
+        "<a class=\"link\" href=\"/analyzer-cancelled\">Review cancelled orders</a>"
     )));
-    assert!(response.contains("Active alerts</dt><dd><span class=\"count over\">2</span>"));
-    assert!(!response.contains("pill ok\">0<"));
+    assert!(response.contains("<dt>Active alerts</dt><dd class=\"num\">2</dd>"));
+    assert!(!response.contains("class=\"pill"));
 }
 
 // Owner request 2026-11-19 (readable admin pages): one same-origin stylesheet that
@@ -677,10 +750,7 @@ Connection: close
         ("/deliveries", auth.as_str()),
     ] {
         let page = request(host, path, headers, None).await?;
-        assert!(
-            page.contains("<link rel=\"stylesheet\" href=\"/static/admin.css\"></head>"),
-            "{path} does not link the stylesheet"
-        );
+        assert_stylesheets(path, &page);
         assert!(!page.contains("style="), "{path} has an inline style");
         assert!(!page.contains("<style"), "{path} has a style block");
         assert!(!page.contains("<script"), "{path} has a script");
@@ -714,6 +784,34 @@ Connection: close
         );
     }
     Ok(())
+}
+
+/// ADR 0018: the restyled Overview loads fonts.css, analyte.css and app.css in
+/// that order; every other page keeps admin.css. Never both on one page.
+fn assert_stylesheets(path: &str, page: &str) {
+    if path == "/" {
+        let root = crate::admin::view::assets::Root::of_this_build();
+        let sheets: Vec<&str> = page
+            .split("<link rel=\"stylesheet\" href=\"")
+            .skip(1)
+            .filter_map(|link| link.split('"').next())
+            .collect();
+        assert_eq!(
+            sheets,
+            ["fonts.css", "analyte.css", "app.css"].map(|name| format!("{}{name}", root.as_str())),
+            "{path}"
+        );
+        assert!(
+            !page.contains("/static/admin.css"),
+            "{path} mixes stylesheets"
+        );
+    } else {
+        assert!(
+            page.contains("<link rel=\"stylesheet\" href=\"/static/admin.css\"></head>"),
+            "{path} does not link the stylesheet"
+        );
+        assert!(!page.contains("analyte.css"), "{path} mixes stylesheets");
+    }
 }
 
 async fn assert_overview_login(host: &str, bearer: &str) -> Result<(String, String), Error> {
@@ -814,6 +912,32 @@ async fn assert_overview_rejects_login_and_missing_route(
     Ok(())
 }
 
+/// A set-up machine for page tests, attached as its light's link says and
+/// sending to lab app `lab_app`.
+fn machine(
+    id: &str,
+    running: bool,
+    status: watch::Receiver<crate::machine::link::status::Status>,
+    lab_app: &str,
+) -> Result<Machine, Error> {
+    use crate::machine::link::status::Link;
+    let connection = match status.borrow().link() {
+        Link::Serial => Connection::Serial("COM3".into()),
+        Link::TcpServer => Connection::Listening(Some(5600)),
+        Link::TcpClient => Connection::Dialing,
+        Link::Folder => Connection::Folder("results".into()),
+    };
+    Ok(Machine {
+        departure_html: Markup::new(),
+        id: Identifier::new(id)?,
+        running: Arc::new(AtomicBool::new(running)),
+        status,
+        model: "Synthetic analyzer".into(),
+        connection,
+        lab_app: Identifier::new(lab_app)?,
+    })
+}
+
 /// A lab app destination on a closed loopback port, for pages that only read its health.
 fn loopback_destination(name: &str) -> Result<analyte_sink::Destination, Error> {
     Ok(analyte_sink::Destination::for_loopback_test(
@@ -833,20 +957,39 @@ fn loopback_destination(name: &str) -> Result<analyte_sink::Destination, Error> 
     )?)
 }
 
+/// A running test server: its state, stop switch, owner task and `host:port`.
+type Started = (
+    Arc<Context>,
+    watch::Sender<bool>,
+    tokio::task::JoinHandle<Result<(), crate::admin::Error>>,
+    String,
+);
+
 async fn start_overview_server(
     root: &std::path::Path,
     store: &Arc<analyte_store::Handle>,
     machines: Vec<Machine>,
     destinations: Vec<analyte_sink::Destination>,
-) -> Result<
-    (
-        Arc<Context>,
-        watch::Sender<bool>,
-        tokio::task::JoinHandle<Result<(), crate::admin::Error>>,
-        String,
-    ),
-    Error,
-> {
+) -> Result<Started, Error> {
+    start_with(
+        root,
+        store,
+        (machines, destinations),
+        crate::admin::Draining::new(),
+        root,
+    )
+    .await
+}
+
+/// [`start_overview_server`] with kept lab apps and the data folder whose free
+/// space the overview reads.
+async fn start_with(
+    root: &std::path::Path,
+    store: &Arc<analyte_store::Handle>,
+    (machines, destinations): (Vec<Machine>, Vec<analyte_sink::Destination>),
+    retired: crate::admin::Draining,
+    directory: &std::path::Path,
+) -> Result<Started, Error> {
     let socket = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let host = socket.local_addr()?.to_string();
     let (released, release) = tokio::sync::oneshot::channel();
@@ -861,8 +1004,8 @@ async fn start_overview_server(
         store: store.clone(),
         machines,
         destinations,
-        retired: crate::admin::Draining::new(),
-        directory: root.to_owned(),
+        retired,
+        directory: directory.to_owned(),
         reserve: 1,
         setup: crate::admin::setup::Setup::for_test(root),
         assets: crate::admin::view::assets::Root::of_this_build(),

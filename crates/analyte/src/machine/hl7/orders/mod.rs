@@ -659,6 +659,7 @@ mod tests {
             ),
             snapshot,
             listener: None,
+            definition: std::path::PathBuf::new(),
         })
     }
 

@@ -1,0 +1,6 @@
+{#- Macros for actions: a link drawn as a button. -#}
+
+{#- A link to the page that does something, drawn as a button; `class` picks its kind and size. -#}
+{%- macro link_button(href, label, class) -%}
+<a class="btn {{ class }}" href="{{ href }}">{{ label }}</a>
+{%- endmacro %}

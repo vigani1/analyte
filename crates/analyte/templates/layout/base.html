@@ -1,0 +1,21 @@
+{#- The page frame of every restyled page: the head with the three stylesheets, the sidebar and the main column. -#}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ frame.title }} · Analyte</title>
+<link rel="icon" type="image/svg+xml" href="{{ frame.assets }}icons/analyte-app-icon.svg">
+<link rel="stylesheet" href="{{ frame.assets }}fonts.css">
+<link rel="stylesheet" href="{{ frame.assets }}analyte.css">
+<link rel="stylesheet" href="{{ frame.assets }}app.css">
+</head>
+<body>
+<div class="app">
+{% include "layout/sidebar.html" %}
+<main class="main">
+{%- block main %}{% endblock %}
+</main>
+</div>
+</body>
+</html>

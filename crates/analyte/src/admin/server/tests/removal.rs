@@ -87,7 +87,7 @@ async fn overview_until(
 }
 
 const STILL: &str = concat!(
-    "<p class=\"notice\">Removed machine synthetic: 1 result or order message ",
+    "<p class=\"alert__title\">Removed machine synthetic: 1 result or order message ",
     "still being delivered to lab app demo."
 );
 
@@ -159,10 +159,12 @@ async fn removed_machine_result_is_delivered_once() -> Result<(), Error> {
     assert_eq!(reply, [0x0b], "the result is stored and acknowledged");
     drop(peer);
     overview_until(&host, &auth, |page| {
-        page.contains(concat!(
-            "Lab app demo</h3><dl><dt title=\"Pending items: results or order messages\">",
-            "Waiting to be sent</dt><dd><span class=\"count over\">1</span></dd>"
-        ))
+        page.split("<div class=\"node node--lab")
+            .skip(1)
+            .any(|lab| {
+                lab.contains("<span class=\"node__name\" title=\"demo\">demo</span>")
+                    && lab.contains("<p class=\"node__line\">1 item waiting · oldest ")
+            })
     })
     .await?;
 
@@ -209,7 +211,7 @@ async fn removed_machine_result_is_delivered_once() -> Result<(), Error> {
     wait_for_service_listener(&host).await?;
     let waiting = overview_until(&host, &auth, |page| page.contains(STILL)).await?;
     assert!(
-        waiting.contains("No machine is running") && !waiting.contains("<th>Machine</th>"),
+        waiting.contains("No machine is running") && !waiting.contains("<a class=\"node"),
         "{waiting}"
     );
     let cookie = login(&host, &token).await?;
