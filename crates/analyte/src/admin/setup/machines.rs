@@ -6,7 +6,10 @@
 //! Its lab app stays in `lab-apps.toml` (moved there first if the site file
 //! still wrote it), so results waiting for it are still delivered. A machine just
 //! added goes straight into step 1 of the setup steps.
-use super::{SetupError, after_write, audit, done, entries, needs_login, page, refused, site};
+use super::{
+    RELOAD, SetupError, after_write, audit, done, entries, incomplete, needs_login, off_thread,
+    page, refused, see_other, site, stored,
+};
 use crate::admin::{markup::Markup, server::Context, sessions::Session, view::plain};
 use crate::installation::config::Program;
 use analyte_model::Identifier;
@@ -14,8 +17,7 @@ use analyte_store::Unfinished;
 use axum::{
     Extension, Form,
     extract::{Path, State},
-    http::{StatusCode, header},
-    response::{IntoResponse as _, Response},
+    response::Response,
 };
 use serde::Deserialize;
 use std::{path::PathBuf, sync::Arc};
@@ -28,13 +30,10 @@ pub(in crate::admin) async fn add_form(
     let Some(Extension(session)) = session.filter(|Extension(s)| s.authenticated) else {
         return needs_login();
     };
-    let worker = state.clone();
-    let suggested = tokio::task::spawn_blocking(move || {
-        site::entries(&worker.config_path).map(|(_, listed)| entries::suggestion(&listed))
+    let suggested = off_thread(&state, |state| {
+        site::entries(&state.config_path).map(|(_, listed)| entries::suggestion(&listed))
     })
-    .await
-    .map_err(SetupError::from)
-    .and_then(|r| r);
+    .await;
     let suggested = match suggested {
         Ok(name) => name,
         Err(error) => return refused(&error),
@@ -119,9 +118,7 @@ pub(in crate::admin) async fn add(
     form: Result<Form<Addition>, axum::extract::rejection::FormRejection>,
 ) -> Response {
     let Ok(Form(addition)) = form else {
-        return refused(&SetupError::Connection(
-            "the form was incomplete; reload the page",
-        ));
+        return incomplete(RELOAD);
     };
     let id = match entries::name(&addition.name) {
         Ok(id) => id,
@@ -129,14 +126,11 @@ pub(in crate::admin) async fn add(
     };
     // A listed name is refused as such before its history is looked at;
     // `add_blocking` checks again under the write lock.
-    let worker = state.clone();
     let name = id.clone();
-    let listed = tokio::task::spawn_blocking(move || {
-        site::entries(&worker.config_path).map(|(_, listed)| entries::taken(&listed, name.as_str()))
+    let listed = off_thread(&state, move |state| {
+        site::entries(&state.config_path).map(|(_, listed)| entries::taken(&listed, name.as_str()))
     })
-    .await
-    .map_err(SetupError::from)
-    .and_then(|r| r);
+    .await;
     match listed {
         Ok(false) => {}
         Ok(true) => return refused(&SetupError::NameInUse(id.as_str().into())),
@@ -149,12 +143,8 @@ pub(in crate::admin) async fn add(
     if reused && addition.same_analyzer.as_deref() != Some("yes") {
         return refused(&SetupError::HistoryNotConfirmed(id.as_str().into()));
     }
-    let worker = state.clone();
     let machine = id.clone();
-    let added = tokio::task::spawn_blocking(move || add_blocking(&worker, &machine))
-        .await
-        .map_err(SetupError::from)
-        .and_then(|r| r);
+    let added = off_thread(&state, move |state| add_blocking(state, &machine)).await;
     let (path, written) = match added {
         Ok(added) => added,
         Err(error) => return refused(&error),
@@ -192,22 +182,11 @@ pub(in crate::admin) async fn add(
     after_write(html, audited, &session)
 }
 
-/// See Other to `location`; a machine name that cannot be a header value (only
-/// possible in a hand-written program file) goes to the setup page instead.
-fn see_other(location: &str) -> Response {
-    let mut response = StatusCode::SEE_OTHER.into_response();
-    let location = header::HeaderValue::from_str(location)
-        .unwrap_or_else(|_| header::HeaderValue::from_static("/setup"));
-    response.headers_mut().insert(header::LOCATION, location);
-    response
-}
-
 /// GET /setup/first: the first-run button. Step 1 for the first listed machine
 /// that is not set up yet; Add machine when none is listed; otherwise the setup page.
 pub(in crate::admin) async fn first(State(state): State<Arc<Context>>) -> Response {
-    let worker = state.clone();
-    let listed = tokio::task::spawn_blocking(move || {
-        site::entries(&worker.config_path).map(|(_, listed)| {
+    let listed = off_thread(&state, |state| {
+        site::entries(&state.config_path).map(|(_, listed)| {
             let waiting = listed
                 .iter()
                 .find(|entry| entry.definition.is_none())
@@ -215,9 +194,7 @@ pub(in crate::admin) async fn first(State(state): State<Arc<Context>>) -> Respon
             (waiting, listed.is_empty())
         })
     })
-    .await
-    .map_err(SetupError::from)
-    .and_then(|r| r);
+    .await;
     match listed {
         Ok((Some(id), _)) => see_other(&format!("/setup/{id}")),
         Ok((None, true)) => see_other("/setup/add"),
@@ -241,26 +218,16 @@ fn backups_kept(backups: &[PathBuf]) -> Markup {
 
 async fn history(state: &Context, id: &Identifier) -> Result<bool, SetupError> {
     let machine = id.clone();
-    state
-        .store
-        .request::<_, analyte_store::OperatorError>(
-            crate::deadline().map_err(|e| SetupError::Store(e.to_string()))?,
-            move |store| store.has_history(&machine),
-        )
+    stored::<_, analyte_store::OperatorError>(state, move |store| store.has_history(&machine))
         .await
-        .map_err(|e| SetupError::Store(e.to_string()))
+        .map_err(SetupError::Store)
 }
 
 async fn unfinished(state: &Context, id: &str) -> Result<Unfinished, SetupError> {
     let machine = Identifier::new(id).map_err(SetupError::InvalidName)?;
-    state
-        .store
-        .request::<_, analyte_store::OperatorError>(
-            crate::deadline().map_err(|e| SetupError::Store(e.to_string()))?,
-            move |store| store.unfinished(&machine),
-        )
+    stored::<_, analyte_store::OperatorError>(state, move |store| store.unfinished(&machine))
         .await
-        .map_err(|e| SetupError::Store(e.to_string()))
+        .map_err(SetupError::Store)
 }
 
 /// One line per kind of open work, or none when nothing is open.
@@ -307,8 +274,8 @@ fn open_work(open: &Unfinished) -> Vec<String> {
 fn configured_destination(
     config: &std::path::Path,
     id: &str,
-) -> Result<Option<analyte_config::Destination>, String> {
-    let program = Program::load(config).map_err(|error| error.to_string())?;
+) -> Result<Option<analyte_config::Destination>, crate::installation::config::Error> {
+    let program = Program::load(config)?;
     Ok(program
         .machines()
         .iter()
@@ -321,7 +288,7 @@ enum LabApp {
     /// Not set up: it has no lab app.
     None,
     /// Its settings cannot be read, so its lab app cannot be kept.
-    Unreadable(String),
+    Unreadable(crate::installation::config::Error),
     /// The lab app stays on the Lab app page (moved into `lab-apps.toml` first if
     /// the site file still wrote it), and the service sends to it until nothing
     /// is left (`runtime::delivery::unused_lab_apps`).
@@ -380,17 +347,14 @@ pub(in crate::admin) async fn confirm_remove(
     let Some(Extension(session)) = session.filter(|Extension(s)| s.authenticated) else {
         return needs_login();
     };
-    let worker = state.clone();
     let machine = id.clone();
-    let facts = tokio::task::spawn_blocking(move || {
-        site::installed(&worker.config_path, &machine)?;
-        let kept = lab_app(&worker.config_path, &machine);
-        let (_, listed) = site::entries(&worker.config_path)?;
-        Ok::<_, SetupError>((kept, listed.len() == 1))
+    let facts = off_thread(&state, move |state| {
+        site::installed(&state.config_path, &machine)?;
+        let kept = lab_app(&state.config_path, &machine);
+        let (_, listed) = site::entries(&state.config_path)?;
+        Ok((kept, listed.len() == 1))
     })
-    .await
-    .map_err(SetupError::from)
-    .and_then(|r| r);
+    .await;
     let (kept, last) = match facts {
         Ok(facts) => facts,
         Err(error) => return refused(&error),
@@ -491,10 +455,10 @@ struct Removed {
     backups: Vec<PathBuf>,
     /// The lab app kept for delivery, none for a machine not set up, or why its
     /// settings could not be read (then nothing is kept).
-    kept: Result<Option<String>, String>,
+    kept: Result<Option<String>, crate::installation::config::Error>,
     /// Where the site file went: a dated copy, nowhere (missing or still named by
     /// another machine), or why moving it failed after the program was changed.
-    site: Result<Option<PathBuf>, String>,
+    site: Result<Option<PathBuf>, SetupError>,
 }
 
 fn remove_blocking(state: &Context, id: &str) -> Result<Removed, SetupError> {
@@ -524,7 +488,7 @@ fn remove_blocking(state: &Context, id: &str) -> Result<Removed, SetupError> {
     let site = if shared {
         Ok(None)
     } else {
-        site::retire(&installed.site).map_err(|error| error.to_string())
+        site::retire(&installed.site)
     };
     Ok(Removed {
         backups: written.backups,
@@ -541,9 +505,7 @@ pub(in crate::admin) async fn remove(
     form: Result<Form<Removal>, axum::extract::rejection::FormRejection>,
 ) -> Response {
     let Ok(Form(removal)) = form else {
-        return refused(&SetupError::Connection(
-            "the form was incomplete; reload the page",
-        ));
+        return incomplete(RELOAD);
     };
     let anyway = removal.anyway.as_deref() == Some("yes");
     let open = unfinished(&state, &id).await;
@@ -555,12 +517,8 @@ pub(in crate::admin) async fn remove(
     if !anyway && !matches!(&open, Ok(open) if open.is_empty()) {
         return refused(&SetupError::UnfinishedWork(id, summary));
     }
-    let worker = state.clone();
     let machine = id.clone();
-    let removed = tokio::task::spawn_blocking(move || remove_blocking(&worker, &machine))
-        .await
-        .map_err(SetupError::from)
-        .and_then(|r| r);
+    let removed = off_thread(&state, move |state| remove_blocking(state, &machine)).await;
     let removed = match removed {
         Ok(removed) => removed,
         Err(error) => return refused(&error),

@@ -3,6 +3,7 @@ use super::{
     Token,
     listener::Listener,
     sessions::{Session, Sessions},
+    setup::Step,
 };
 use crate::admin::Error;
 use crate::admin::markup::Markup;
@@ -245,11 +246,14 @@ fn router(state: Arc<Context>) -> Router {
                 )
                 .route(
                     "/setup/{id}",
-                    get(super::setup::machine).post(super::setup::save),
+                    super::setup::step(Step::Machine).post(super::setup::save),
                 )
-                .route("/setup/{id}/connection", get(super::setup::connection))
-                .route("/setup/{id}/test", get(super::setup::test))
-                .route("/setup/{id}/save", get(super::setup::review))
+                .route(
+                    "/setup/{id}/connection",
+                    super::setup::step(Step::Connection),
+                )
+                .route("/setup/{id}/test", super::setup::step(Step::Test))
+                .route("/setup/{id}/save", super::setup::step(Step::Save))
                 .route("/setup/{id}/listen", post(super::setup::listen_start))
                 .route(
                     "/setup/{id}/remove",

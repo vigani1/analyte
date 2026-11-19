@@ -7,7 +7,8 @@
 //! write, reload, rollback) and applies after a restart. Keys go only to the
 //! locked credentials file and are shown only as `set on <date>`.
 use super::{
-    SetupError, after_write, audit, done, entries, key_line, needs_login, page, refused, site,
+    Csrf, RELOAD, SetupError, after_write, audit, done, entries, incomplete, needs_login,
+    off_thread, page, refused, site, stored,
 };
 use crate::admin::{
     markup::Markup,
@@ -16,8 +17,12 @@ use crate::admin::{
     view::{self, plain},
 };
 use crate::installation::{
-    config::{lab_apps as file, read},
-    credentials::{Locked, Secret},
+    config::{
+        lab_apps::{self as file, Conflict, Written},
+        read,
+    },
+    credentials::{Locked, Secret, Stored},
+    secrets,
 };
 use analyte_config::{Destination, HttpsUrl, LabApps};
 use analyte_model::Identifier;
@@ -55,55 +60,59 @@ pub(super) struct Scan {
     program: String,
     pub(super) file: LabApps,
     pub(super) known: Vec<Known>,
-    /// One sentence per name written differently in two places.
-    conflicts: Vec<String>,
+    /// Where each name was first written, by the loader's rule.
+    written: Written<Place>,
+    /// Every name written differently in two places.
+    conflicts: Vec<Conflict<Place>>,
 }
 
-enum Place<'a> {
+/// Where the page found a lab app written.
+#[derive(Clone)]
+enum Place {
     File,
     Kept,
-    Site(&'a str),
+    /// The site file of this machine.
+    Site(String),
+}
+
+/// The page's sentence for a name written differently in two places; it names
+/// the place read later.
+fn conflict_sentence(conflict: &Conflict<Place>) -> String {
+    format!(
+        "Lab app {} has different settings in two places (one is {}). Analyte cannot start until they are the same.",
+        conflict.name.as_str(),
+        match &conflict.second {
+            Place::File => "this page".into(),
+            Place::Kept => "kept from a removed machine".into(),
+            Place::Site(id) => format!("machine {id}'s own settings"),
+        }
+    )
 }
 
 impl Scan {
-    fn note(&mut self, settings: &Destination, place: &Place<'_>) {
-        let known = match self
+    fn note(&mut self, settings: &Destination, place: Place) {
+        match self.written.note(settings, place.clone()) {
+            Ok(true) => self.known.push(Known {
+                settings: settings.clone(),
+                in_file: false,
+                kept: false,
+                sites: Vec::new(),
+                users: Vec::new(),
+            }),
+            Ok(false) => {}
+            Err(conflict) => self.conflicts.push(conflict),
+        }
+        let Some(known) = self
             .known
             .iter_mut()
             .find(|known| known.settings.name == settings.name)
-        {
-            Some(known) => {
-                if known.settings != *settings {
-                    self.conflicts.push(format!(
-                        "Lab app {} has different settings in two places (one is {}). Analyte cannot start until they are the same.",
-                        settings.name.as_str(),
-                        match place {
-                            Place::File => "this page".into(),
-                            Place::Kept => "kept from a removed machine".into(),
-                            Place::Site(id) => format!("machine {id}'s own settings"),
-                        }
-                    ));
-                }
-                known
-            }
-            None => {
-                self.known.push(Known {
-                    settings: settings.clone(),
-                    in_file: false,
-                    kept: false,
-                    sites: Vec::new(),
-                    users: Vec::new(),
-                });
-                let Some(known) = self.known.last_mut() else {
-                    return;
-                };
-                known
-            }
+        else {
+            return;
         };
         match place {
             Place::File => known.in_file = true,
             Place::Kept => known.kept = true,
-            Place::Site(id) => known.sites.push((*id).to_owned()),
+            Place::Site(id) => known.sites.push(id),
         }
     }
 
@@ -135,15 +144,33 @@ impl Scan {
 
 /// The lab app destinations an older setup page kept in the program file.
 fn kept(program: &str) -> Result<Vec<Destination>, SetupError> {
-    let table: toml::Table = program
-        .parse()
-        .map_err(|error: toml::de::Error| SetupError::ProgramFile(error.to_string()))?;
+    let table: toml::Table = program.parse().map_err(SetupError::ProgramFile)?;
     match table.get("retired_destinations") {
-        Some(listed) => listed
-            .clone()
-            .try_into()
-            .map_err(|error: toml::de::Error| SetupError::ProgramFile(error.to_string())),
+        Some(listed) => listed.clone().try_into().map_err(SetupError::ProgramFile),
         None => Ok(Vec::new()),
+    }
+}
+
+/// The lab app a site file's settings choose, read leniently for display: its
+/// own complete `[destination]`, else the one `lab_app` names, else none
+/// named (then the only lab app listed, if there is exactly one). The loader
+/// refuses what this lets through, such as both written.
+pub(super) enum SiteLabApp<'a> {
+    Own(Destination),
+    Named(&'a str),
+    Unnamed,
+}
+
+/// Reads which lab app the site file settings `site` choose.
+pub(super) fn site_lab_app(site: &toml::Table) -> SiteLabApp<'_> {
+    let own = site
+        .get("destination")
+        .cloned()
+        .and_then(|own| own.try_into::<Destination>().ok());
+    match (own, site.get("lab_app").and_then(toml::Value::as_str)) {
+        (Some(own), _) => SiteLabApp::Own(own),
+        (None, Some(name)) => SiteLabApp::Named(name),
+        (None, None) => SiteLabApp::Unnamed,
     }
 }
 
@@ -156,13 +183,14 @@ pub(super) fn scan(config: &std::path::Path) -> Result<Scan, SetupError> {
         program,
         file: lab_apps.clone(),
         known: Vec::new(),
+        written: Written::new(),
         conflicts: Vec::new(),
     };
     for settings in lab_apps.listed() {
-        scan.note(settings, &Place::File);
+        scan.note(settings, Place::File);
     }
     for settings in &kept {
-        scan.note(settings, &Place::Kept);
+        scan.note(settings, Place::Kept);
     }
     let base = site::folder(config);
     let mut by_default = Vec::new();
@@ -174,17 +202,14 @@ pub(super) fn scan(config: &std::path::Path) -> Result<Scan, SetupError> {
         else {
             continue;
         };
-        let own = table
-            .get("destination")
-            .cloned()
-            .and_then(|own| own.try_into::<Destination>().ok());
-        if let Some(own) = own {
-            scan.note(&own, &Place::Site(id));
-            scan.uses(own.name.as_str(), id);
-        } else if let Some(name) = table.get("lab_app").and_then(toml::Value::as_str) {
-            scan.uses(name, id);
-        } else if entry.definition.is_some() {
-            by_default.push(id.clone());
+        match site_lab_app(&table) {
+            SiteLabApp::Own(own) => {
+                scan.note(&own, Place::Site(id.clone()));
+                scan.uses(own.name.as_str(), id);
+            }
+            SiteLabApp::Named(name) => scan.uses(name, id),
+            SiteLabApp::Unnamed if entry.definition.is_some() => by_default.push(id.clone()),
+            SiteLabApp::Unnamed => {}
         }
     }
     if let [only] = lab_apps.listed() {
@@ -233,14 +258,9 @@ fn seconds(text: &str, default: u64, what: &'static str) -> Result<u64, SetupErr
 
 /// Results and order messages the lab app has not accepted yet, by lab app name.
 async fn waiting(state: &Context) -> Result<Vec<(String, u64)>, SetupError> {
-    let open = state
-        .store
-        .request(
-            crate::deadline().map_err(|e| SetupError::Store(e.to_string()))?,
-            |store| store.undelivered_by_destination(),
-        )
+    let open = stored(state, |store| store.undelivered_by_destination())
         .await
-        .map_err(|e| SetupError::Store(e.to_string()))?;
+        .map_err(SetupError::Store)?;
     Ok(open
         .into_iter()
         .map(|open| {
@@ -280,6 +300,38 @@ fn where_written(known: &Known) -> Markup {
     html
 }
 
+/// One key's state, never its value: "API key: set on 2026-11-19". The key
+/// name shows on hover.
+fn key_line(state: &Context, label: &str, name: &Identifier) -> Markup {
+    let line = Markup::new()
+        .markup("<span title=\"")
+        .text(name.as_str())
+        .markup("\">")
+        .text(label)
+        .markup("</span>: ");
+    // The service's own rule decides; an unreadable file still lets a set
+    // environment variable show, as it wins at startup too.
+    let read = Locked::new(&state.setup.data_directory).read();
+    let none = Stored::default();
+    let stored = read.as_ref().unwrap_or(&none);
+    match secrets::source(name.as_str(), |key| std::env::var(key).ok(), stored) {
+        secrets::Source::Environment(_) => line
+            .text("set in the service environment (")
+            .text(secrets::variable(name.as_str()))
+            .text("), which wins over a stored key"),
+        secrets::Source::Stored { set_at, .. } => {
+            let date = jiff::Timestamp::from_second(set_at)
+                .map(|t| t.strftime("%Y-%m-%d").to_string())
+                .unwrap_or_else(|_| "an unknown date".into());
+            line.text(format!("set on {date}"))
+        }
+        secrets::Source::Missing => match read {
+            Ok(_) => line.text("not set"),
+            Err(error) => line.text(format!("cannot be checked: {error}")),
+        },
+    }
+}
+
 /// GET /setup/lab-apps: every lab app, who uses it, its keys and what waits for it.
 pub(in crate::admin) async fn list(
     State(state): State<Arc<Context>>,
@@ -289,14 +341,11 @@ pub(in crate::admin) async fn list(
         return needs_login();
     }
     let open = waiting(&state).await;
-    let worker = state.clone();
-    let rendered = tokio::task::spawn_blocking(move || {
-        let scan = scan(&worker.config_path)?;
-        Ok::<_, SetupError>(render_list(&worker, &scan, open.as_deref().ok()))
+    let rendered = off_thread(&state, move |state| {
+        let scan = scan(&state.config_path)?;
+        Ok(render_list(state, &scan, open.as_deref().ok()))
     })
-    .await
-    .map_err(SetupError::from)
-    .and_then(|r| r);
+    .await;
     match rendered {
         Ok(html) => done(html),
         Err(error) => refused(&error),
@@ -313,7 +362,7 @@ fn render_list(state: &Context, scan: &Scan, open: Option<&[(String, u64)]>) -> 
         html.push_fragment(
             &Markup::new()
                 .markup("<p class=\"notice bad\">")
-                .text(conflict)
+                .text(conflict_sentence(conflict))
                 .markup("</p>"),
         );
     }
@@ -498,17 +547,14 @@ pub(in crate::admin) async fn edit_form(
     let Some(Extension(session)) = session.filter(|Extension(s)| s.authenticated) else {
         return needs_login();
     };
-    let worker = state.clone();
-    let rendered = tokio::task::spawn_blocking(move || {
-        let scan = scan(&worker.config_path)?;
+    let rendered = off_thread(&state, move |state| {
+        let scan = scan(&state.config_path)?;
         let known = scan
             .get(&name)
             .ok_or_else(|| SetupError::UnknownLabApp(name.clone()))?;
-        Ok::<_, SetupError>(form(&worker, &session, Some(known)))
+        Ok(form(state, &session, Some(known)))
     })
-    .await
-    .map_err(SetupError::from)
-    .and_then(|r| r);
+    .await;
     match rendered {
         Ok(html) => done(html),
         Err(error) => refused(&error),
@@ -728,9 +774,33 @@ fn saved_page(session: &Session, saved: &Saved, audited: Result<(), SetupError>)
     after_write(html, audited, session)
 }
 
-fn reason(action: &str, saved: &Saved) -> String {
+/// What a lab app form did, for the audit row and the log.
+#[derive(Clone, Copy)]
+enum Change {
+    Added,
+    Saved,
+}
+
+impl Change {
+    const fn action(self) -> &'static str {
+        match self {
+            Self::Added => "lab-app-add",
+            Self::Saved => "lab-app-save",
+        }
+    }
+
+    const fn verb(self) -> &'static str {
+        match self {
+            Self::Added => "added",
+            Self::Saved => "saved",
+        }
+    }
+}
+
+fn reason(change: Change, saved: &Saved) -> String {
     format!(
-        "lab app page {action} {}: address {}, order list current for {} s, request wait {} s, keys replaced: {}",
+        "lab app page {} {}: address {}, order list current for {} s, request wait {} s, keys replaced: {}",
+        change.verb(),
         saved.settings.name.as_str(),
         saved.settings.base_url.as_str(),
         saved.settings.freshness_seconds,
@@ -750,30 +820,10 @@ pub(in crate::admin) async fn add(
     form: Result<Form<Posted>, axum::extract::rejection::FormRejection>,
 ) -> Response {
     let Ok(Form(posted)) = form else {
-        return refused(&SetupError::Connection(
-            "the form was incomplete; reload the page",
-        ));
+        return incomplete(RELOAD);
     };
-    let worker = state.clone();
-    let saved = match tokio::task::spawn_blocking(move || add_blocking(&worker, posted))
-        .await
-        .map_err(SetupError::from)
-        .and_then(|r| r)
-    {
-        Ok(saved) => saved,
-        Err(error) => return refused(&error),
-    };
-    let name = saved.settings.name.as_str().to_owned();
-    let audited = audit(
-        &state,
-        &session,
-        "lab-app-add",
-        &name,
-        reason("added", &saved),
-    )
-    .await;
-    tracing::info!(lab_app = name.as_str(), "lab app page added a lab app");
-    saved_page(&session, &saved, audited)
+    let saved = off_thread(&state, move |state| add_blocking(state, posted)).await;
+    finish(&state, &session, Change::Added, saved).await
 }
 
 /// POST /setup/lab-apps/{name}: check, write `lab-apps.toml`, store any new keys.
@@ -784,30 +834,34 @@ pub(in crate::admin) async fn save(
     form: Result<Form<Posted>, axum::extract::rejection::FormRejection>,
 ) -> Response {
     let Ok(Form(posted)) = form else {
-        return refused(&SetupError::Connection(
-            "the form was incomplete; reload the page",
-        ));
+        return incomplete(RELOAD);
     };
-    let worker = state.clone();
-    let lab_app = name.clone();
-    let saved = match tokio::task::spawn_blocking(move || save_blocking(&worker, &lab_app, posted))
-        .await
-        .map_err(SetupError::from)
-        .and_then(|r| r)
-    {
+    let saved = off_thread(&state, move |state| save_blocking(state, &name, posted)).await;
+    finish(&state, &session, Change::Saved, saved).await
+}
+
+/// Audits a written lab app and shows what was saved, or why nothing was.
+async fn finish(
+    state: &Context,
+    session: &Session,
+    change: Change,
+    saved: Result<Saved, SetupError>,
+) -> Response {
+    let saved = match saved {
         Ok(saved) => saved,
         Err(error) => return refused(&error),
     };
+    let name = saved.settings.name.as_str();
     let audited = audit(
-        &state,
-        &session,
-        "lab-app-save",
-        &name,
-        reason("saved", &saved),
+        state,
+        session,
+        change.action(),
+        name,
+        reason(change, &saved),
     )
     .await;
-    tracing::info!(lab_app = name.as_str(), "lab app page saved a lab app");
-    saved_page(&session, &saved, audited)
+    tracing::info!(lab_app = name, "lab app page {} a lab app", change.verb());
+    saved_page(session, &saved, audited)
 }
 
 /// Why `known` cannot be removed now: machines use it or results wait for it.
@@ -842,21 +896,18 @@ pub(in crate::admin) async fn confirm_remove(
         return needs_login();
     };
     let open = waiting(&state).await;
-    let worker = state.clone();
     let lab_app = name.clone();
-    let found = tokio::task::spawn_blocking(move || {
-        let scan = scan(&worker.config_path)?;
+    let found = off_thread(&state, move |state| {
+        let scan = scan(&state.config_path)?;
         let known = scan
             .get(&lab_app)
             .ok_or_else(|| SetupError::UnknownLabApp(lab_app.clone()))?;
-        Ok::<_, SetupError>(blockers(
+        Ok(blockers(
             known,
             open.as_ref().map(|open| count(open, &lab_app)),
         ))
     })
-    .await
-    .map_err(SetupError::from)
-    .and_then(|r| r);
+    .await;
     let why = match found {
         Ok(why) => why,
         Err(error) => return refused(&error),
@@ -924,33 +975,19 @@ fn remove_blocking(
     Ok(site::commit(&state.config_path, &changes)?.backups)
 }
 
-/// The remove form as posted.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(in crate::admin) struct Removal {
-    #[expect(dead_code, reason = "the CSRF middleware has already checked it")]
-    csrf: String,
-}
-
 /// POST /setup/lab-apps/{name}/remove: refused while a machine uses it or results wait.
 pub(in crate::admin) async fn remove(
     State(state): State<Arc<Context>>,
     Extension(session): Extension<Arc<Session>>,
     Path(name): Path<String>,
-    form: Result<Form<Removal>, axum::extract::rejection::FormRejection>,
+    form: Result<Form<Csrf>, axum::extract::rejection::FormRejection>,
 ) -> Response {
     if form.is_err() {
-        return refused(&SetupError::Connection(
-            "the form was incomplete; reload the page",
-        ));
+        return incomplete(RELOAD);
     }
     let open = waiting(&state).await.map(|open| count(&open, &name));
-    let worker = state.clone();
     let lab_app = name.clone();
-    let removed = tokio::task::spawn_blocking(move || remove_blocking(&worker, &lab_app, &open))
-        .await
-        .map_err(SetupError::from)
-        .and_then(|r| r);
+    let removed = off_thread(&state, move |state| remove_blocking(state, &lab_app, &open)).await;
     let backups = match removed {
         Ok(backups) => backups,
         Err(error) => return refused(&error),

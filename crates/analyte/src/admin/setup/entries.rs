@@ -73,8 +73,13 @@ pub(super) fn added(
     id: &Identifier,
     site: &str,
 ) -> Result<String, SetupError> {
+    let layout = || MACHINES.refused();
     let at = match listed.last() {
-        Some(last) => span(program, last.id.span().start, MACHINES)?.end,
+        Some(last) => {
+            span(program, last.id.span().start, MACHINES.header)
+                .ok_or_else(layout)?
+                .end
+        }
         None => program.len(),
     };
     let (before, after) = (
@@ -97,13 +102,13 @@ pub(super) fn added(
     table.insert("id".into(), toml::Value::String(id.as_str().into()));
     table.insert("site".into(), toml::Value::String(site.into()));
     let toml::Value::Array(machines) = expected
-        .entry("machines")
+        .entry(MACHINES.key)
         .or_insert_with(|| toml::Value::Array(Vec::new()))
     else {
         return Err(layout());
     };
     machines.push(toml::Value::Table(table));
-    check(&edited, &expected)?;
+    MACHINES.check(&edited, &expected)?;
     Ok(edited)
 }
 
@@ -117,28 +122,8 @@ pub(super) fn removed(
         .iter()
         .find(|entry| entry.id.get_ref() == id)
         .ok_or_else(|| SetupError::UnknownMachine(id.into()))?;
-    let range = span(program, entry.id.span().start, MACHINES)?;
-    let edited = format!(
-        "{}{}",
-        program.get(..range.start).ok_or_else(layout)?,
-        program.get(range.end..).ok_or_else(layout)?
-    );
-    let mut expected = parsed(program)?;
-    let Some(toml::Value::Array(machines)) = expected.get_mut("machines") else {
-        return Err(layout());
-    };
-    machines.retain(|machine| machine.get("id").and_then(toml::Value::as_str) != Some(id));
-    if machines.is_empty() {
-        expected.remove("machines");
-    }
-    check(&edited, &expected)?;
-    Ok(edited)
+    MACHINES.cut(program, entry.id.span().start, id)
 }
-
-/// Header of one machine entry.
-const MACHINES: &str = "[[machines]]";
-/// Header of one destination kept after its machine was removed.
-const RETIRED: &str = "[[retired_destinations]]";
 
 /// The names of the kept destinations as written, with their byte positions.
 #[derive(serde::Deserialize)]
@@ -156,60 +141,85 @@ struct RetiredName {
 /// `name`, now that `lab-apps.toml` holds that lab app; every other byte stays.
 /// Text without such a table is returned unchanged.
 pub(super) fn without_retired(program: &str, name: &str) -> Result<String, SetupError> {
-    let kept_layout = || {
-        SetupError::ProgramFile(
-            "write each kept lab app destination as its own [[retired_destinations]] table".into(),
-        )
-    };
-    let spans: RetiredSpans = toml::from_str(program)
-        .map_err(|error: toml::de::Error| SetupError::ProgramFile(error.to_string()))?;
-    let Some(entry) = spans
+    let spans: RetiredSpans = toml::from_str(program).map_err(SetupError::ProgramFile)?;
+    match spans
         .retired_destinations
         .iter()
         .find(|entry| entry.name.get_ref() == name)
-    else {
-        return Ok(program.to_owned());
-    };
-    let range = span(program, entry.name.span().start, RETIRED).map_err(|_| kept_layout())?;
-    let text = format!(
-        "{}{}",
-        program.get(..range.start).ok_or_else(kept_layout)?,
-        program.get(range.end..).ok_or_else(kept_layout)?
-    );
-    let mut expected = parsed(program)?;
-    if let Some(toml::Value::Array(kept)) = expected.get_mut("retired_destinations") {
-        kept.retain(|entry| entry.get("name").and_then(toml::Value::as_str) != Some(name));
-        if kept.is_empty() {
-            expected.remove("retired_destinations");
-        }
-    }
-    if parsed(&text).ok().as_ref() == Some(&expected) {
-        Ok(text)
-    } else {
-        Err(kept_layout())
+    {
+        Some(entry) => RETIRED.cut(program, entry.name.span().start, name),
+        None => Ok(program.to_owned()),
     }
 }
 
-fn layout() -> SetupError {
-    SetupError::ProgramFile(
-        "write each machine as its own [[machines]] table so setup can add or remove machines"
-            .into(),
-    )
+/// One kind of array-of-tables entry the page edits in the program file.
+struct Tables {
+    /// The header line of one entry.
+    header: &'static str,
+    /// The array's key.
+    key: &'static str,
+    /// The setting that names one entry.
+    field: &'static str,
+    /// How to write the entries when the text cannot be edited in place.
+    layout: &'static str,
+}
+
+/// One machine entry.
+const MACHINES: Tables = Tables {
+    header: "[[machines]]",
+    key: "machines",
+    field: "id",
+    layout: "write each machine as its own [[machines]] table so setup can add or remove machines",
+};
+
+/// One destination kept after its machine was removed.
+const RETIRED: Tables = Tables {
+    header: "[[retired_destinations]]",
+    key: "retired_destinations",
+    field: "name",
+    layout: "write each kept lab app destination as its own [[retired_destinations]] table",
+};
+
+impl Tables {
+    fn refused(&self) -> SetupError {
+        SetupError::ProgramLayout(self.layout)
+    }
+
+    /// The program text without the entry called `name`, whose naming value
+    /// starts at byte `at`; the key goes when no entry is left.
+    fn cut(&self, program: &str, at: usize, name: &str) -> Result<String, SetupError> {
+        let layout = || self.refused();
+        let range = span(program, at, self.header).ok_or_else(layout)?;
+        let edited = format!(
+            "{}{}",
+            program.get(..range.start).ok_or_else(layout)?,
+            program.get(range.end..).ok_or_else(layout)?
+        );
+        let mut expected = parsed(program)?;
+        if let Some(toml::Value::Array(listed)) = expected.get_mut(self.key) {
+            listed
+                .retain(|entry| entry.get(self.field).and_then(toml::Value::as_str) != Some(name));
+            if listed.is_empty() {
+                expected.remove(self.key);
+            }
+        }
+        self.check(&edited, &expected)?;
+        Ok(edited)
+    }
+
+    /// The edit holds exactly the expected tables; anything else means the text
+    /// was laid out in a way the edit did not follow.
+    fn check(&self, edited: &str, expected: &toml::Table) -> Result<(), SetupError> {
+        if parsed(edited).ok().as_ref() == Some(expected) {
+            Ok(())
+        } else {
+            Err(self.refused())
+        }
+    }
 }
 
 fn parsed(text: &str) -> Result<toml::Table, SetupError> {
-    text.parse()
-        .map_err(|error: toml::de::Error| SetupError::ProgramFile(error.to_string()))
-}
-
-/// The edit holds exactly the expected tables; anything else means the text
-/// was laid out in a way the edit did not follow.
-fn check(edited: &str, expected: &toml::Table) -> Result<(), SetupError> {
-    if parsed(edited).ok().as_ref() == Some(expected) {
-        Ok(())
-    } else {
-        Err(layout())
-    }
+    text.parse().map_err(SetupError::ProgramFile)
 }
 
 /// Lines of `text` with their byte ranges, newline included.
@@ -222,8 +232,9 @@ fn lines(text: &str) -> impl Iterator<Item = (std::ops::Range<usize>, &str)> {
 }
 
 /// From the `header` line (such as `[[machines]]`) above the entry whose value
-/// starts at `id` to the end of its last setting line, before the next table header.
-fn span(text: &str, id: usize, header: &str) -> Result<std::ops::Range<usize>, SetupError> {
+/// starts at `id` to the end of its last setting line, before the next table
+/// header; `None` when the text is not laid out that way.
+fn span(text: &str, id: usize, header: &str) -> Option<std::ops::Range<usize>> {
     let header = |line: &str| {
         let content = line.split('#').next().unwrap_or_default().trim();
         content == header
@@ -232,8 +243,7 @@ fn span(text: &str, id: usize, header: &str) -> Result<std::ops::Range<usize>, S
         .take_while(|(range, _)| range.start <= id)
         .filter(|(_, line)| header(line))
         .last()
-        .map(|(range, _)| range.start)
-        .ok_or_else(layout)?;
+        .map(|(range, _)| range.start)?;
     let mut end = start;
     for (range, line) in lines(text)
         .skip_while(|(range, _)| range.end <= start)
@@ -247,10 +257,7 @@ fn span(text: &str, id: usize, header: &str) -> Result<std::ops::Range<usize>, S
             end = range.end;
         }
     }
-    if end <= id {
-        return Err(layout());
-    }
-    Ok(start..end)
+    (end > id).then_some(start..end)
 }
 
 #[cfg(test)]

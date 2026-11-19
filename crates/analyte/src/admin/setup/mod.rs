@@ -10,6 +10,7 @@ mod entries;
 mod lab_apps;
 mod listen;
 mod machines;
+mod plan;
 mod site;
 mod verdict;
 mod wizard;
@@ -21,9 +22,7 @@ pub(super) use lab_apps::{
 };
 pub(crate) use listen::{Limits, Open};
 pub(super) use machines::{add, add_form, confirm_remove, first, remove};
-pub(super) use wizard::{
-    connection, listen_start, listen_stop, listen_view, machine, review, save, test,
-};
+pub(super) use wizard::{Step, listen_start, listen_stop, listen_view, save, step};
 
 use super::{
     markup::Markup,
@@ -31,11 +30,7 @@ use super::{
     sessions::Session,
     view::{self, Refresh, Tab, Tone, pill},
 };
-use crate::installation::{
-    config::{Program, connections},
-    credentials::{CredentialError, Locked, Stored},
-    secrets,
-};
+use crate::installation::{config::Program, credentials::CredentialError};
 use crate::machine::link::status::Link;
 use analyte_config::Endpoint;
 use analyte_model::{Identifier, Reason};
@@ -48,7 +43,6 @@ use axum::{
 };
 use definitions::{Definition, State as Shipped};
 use serde::Deserialize;
-use site::Connection;
 use std::{io, path::PathBuf, sync::Arc};
 use tokio::sync::watch;
 
@@ -120,10 +114,14 @@ impl Setup {
                 }
             })
             .collect();
+        Self::with(seams, running, program.data_directory())
+    }
+
+    fn with(seams: Seams, running: Vec<Running>, data_directory: &std::path::Path) -> Self {
         Self {
             seams,
             running,
-            data_directory: program.data_directory().to_owned(),
+            data_directory: data_directory.to_owned(),
             writing: std::sync::Mutex::new(()),
             listen: std::sync::Mutex::new(None),
             restart: watch::channel(false).0,
@@ -157,19 +155,13 @@ impl Setup {
     /// Setup state for admin server tests that do not exercise the setup page.
     #[cfg(all(test, feature = "test-hooks"))]
     pub(crate) fn for_test(data_directory: &std::path::Path) -> Self {
-        Self {
-            seams: Seams {
-                definitions: None,
-                ports: Arc::new(|| Ok(Vec::new())),
-                open: Arc::new(|_, _| Err(io::ErrorKind::Unsupported.into())),
-                limits: Limits::STANDARD,
-            },
-            running: Vec::new(),
-            data_directory: data_directory.to_owned(),
-            writing: std::sync::Mutex::new(()),
-            listen: std::sync::Mutex::new(None),
-            restart: watch::channel(false).0,
-        }
+        let seams = Seams {
+            definitions: None,
+            ports: Arc::new(|| Ok(Vec::new())),
+            open: Arc::new(|_, _| Err(io::ErrorKind::Unsupported.into())),
+            limits: Limits::STANDARD,
+        };
+        Self::with(seams, Vec::new(), data_directory)
     }
 }
 
@@ -195,7 +187,7 @@ pub(crate) enum SetupError {
     #[error(
         "lab app {0} is already set up with other settings; make them the same on the Lab app page, then save again"
     )]
-    LabAppDiffers(String, String),
+    LabAppDiffers(String),
     #[error(
         "a lab app name uses only letters A to Z, digits, - and _ (at most 64), because it also names its keys"
     )]
@@ -214,18 +206,28 @@ pub(crate) enum SetupError {
     LabAppInUse(String, String),
     #[error("{0}")]
     Connection(&'static str),
+    #[error("the form was incomplete; {0}")]
+    IncompleteForm(&'static str),
     #[error("the {0} key is not in the expected format, so nothing was saved")]
     InvalidKey(String),
     #[error("Analyte's main settings file cannot be read: {0}")]
-    ProgramFile(String),
+    ProgramFile(#[source] toml::de::Error),
+    #[error("Analyte's main settings file cannot be read: {0}")]
+    ProgramLayout(&'static str),
     #[error("this machine's settings file cannot be read: {0}")]
-    SiteFile(String),
+    SiteFile(#[source] toml::de::Error),
+    #[error(
+        "this machine's settings file cannot be read: its [destination] cannot be moved to the Lab app page: {0}"
+    )]
+    SiteDestination(#[source] toml::de::Error),
+    #[error("this machine's settings file cannot be read: {0}")]
+    SiteText(#[source] toml::ser::Error),
     #[error("the settings are not valid: {0}")]
     Config(#[from] analyte_config::Error),
     #[error("{0}")]
     Installation(#[from] crate::installation::config::Error),
     #[error("the saved settings did not pass the check, so the previous files were put back: {0}")]
-    RolledBack(String),
+    RolledBack(#[source] crate::installation::config::Error),
     #[error("{operation} {path} failed: {source}")]
     Io {
         operation: &'static str,
@@ -245,13 +247,13 @@ pub(crate) enum SetupError {
     #[error("the connection test state is unavailable; restart the service")]
     ListenState,
     #[error("the serial port settings cannot be used: {0}")]
-    SerialSettings(String),
+    SerialSettings(#[source] crate::machine::protocols::Error),
     #[error("{0}")]
     Lookup(#[from] serial::Lookup),
     #[error("the setup step stopped unexpectedly: {0}")]
     Join(#[from] tokio::task::JoinError),
     #[error("the record of who made this change could not be written: {0}")]
-    Audit(String),
+    Audit(#[source] AuditFailure),
     #[error("the machine name is not accepted: {0}")]
     InvalidName(analyte_model::TextError),
     #[error(
@@ -273,7 +275,7 @@ pub(crate) enum SetupError {
     )]
     UnfinishedWork(String, String),
     #[error("Analyte's stored data could not be read: {0}")]
-    Store(String),
+    Store(#[source] StoreFailure),
     #[error("an earlier setup change failed while writing; reload the page and check the files")]
     Busy,
 }
@@ -446,11 +448,7 @@ async fn lab_apps_section(state: &Arc<Context>) -> Markup {
     ));
     // A fresh installation has none yet; a machine not set up needs none, but
     // setting one up does, so say where to add it.
-    let worker = state.clone();
-    let scanned = tokio::task::spawn_blocking(move || lab_apps::scan(&worker.config_path))
-        .await
-        .map_err(SetupError::from)
-        .and_then(|scanned| scanned);
+    let scanned = off_thread(state, |state| lab_apps::scan(&state.config_path)).await;
     match scanned {
         Ok(scan) if scan.known.is_empty() => html.push_markup(concat!(
             "<p class=\"notice info\">No lab app yet: ",
@@ -505,14 +503,13 @@ pub(super) async fn index(State(state): State<Arc<Context>>) -> Response {
         "<th>Status</th><th title=\"Running configuration digest\">Settings version</th>",
         "<th></th></tr>"
     ));
-    let worker = state.clone();
-    let listed = tokio::task::spawn_blocking(move || {
-        site::entries(&worker.config_path).map(|(_, listed)| {
+    let listed = off_thread(&state, |state| {
+        site::entries(&state.config_path).map(|(_, listed)| {
             let models: Vec<Markup> = listed
                 .iter()
                 .map(|entry| {
                     model(
-                        &worker.config_path,
+                        &state.config_path,
                         entry.definition.as_ref().map(|d| d.get_ref().as_str()),
                     )
                 })
@@ -520,9 +517,7 @@ pub(super) async fn index(State(state): State<Arc<Context>>) -> Response {
             (listed, models)
         })
     })
-    .await
-    .map_err(SetupError::from)
-    .and_then(|r| r);
+    .await;
     match listed {
         Ok((listed, models)) => html.push_fragment(&machine_rows(&state, &listed, &models)),
         Err(error) => html.push_fragment(
@@ -540,11 +535,7 @@ pub(super) async fn index(State(state): State<Arc<Context>>) -> Response {
         "<div class=\"table\"><table class=\"stack\"><tr><th>Model</th>",
         "<th>How it was checked</th><th>Status</th></tr>"
     ));
-    let worker = state.clone();
-    let listed = tokio::task::spawn_blocking(move || definitions(&worker))
-        .await
-        .map_err(SetupError::from)
-        .and_then(|r| r);
+    let listed = off_thread(&state, definitions).await;
     match listed {
         Ok(list) => {
             for definition in &list {
@@ -583,255 +574,10 @@ fn definition_name(definition: &Definition) -> Markup {
     view::exact(&definition.display, &technical)
 }
 
-/// The raw transport kind of a definition, used only to choose which inputs to show.
-fn kind_of(path: &std::path::Path) -> Option<String> {
-    let text = crate::installation::config::read(path).ok()?;
-    let table: toml::Table = text.parse().ok()?;
-    table
-        .get("transport")?
-        .get("kind")?
-        .as_str()
-        .map(str::to_owned)
-}
-
-/// Finds the chosen shipped definition, or the installed one when none is chosen.
-fn chosen(
-    list: &[Definition],
-    key: Option<&str>,
-    installed: &site::Installed,
-) -> Result<(String, PathBuf), SetupError> {
-    let found = match key {
-        Some(key) => list
-            .iter()
-            .find(|d| d.key == key)
-            .ok_or(SetupError::UnknownDefinition)?,
-        None => {
-            let installed = installed
-                .definition
-                .as_ref()
-                .ok_or(SetupError::NoDefinitionYet)?;
-            let current = installed.canonicalize().ok();
-            match list.iter().find(|d| match &d.state {
-                Shipped::Ready { path, .. } => path.canonicalize().ok() == current,
-                Shipped::Blocked | Shipped::Unreadable(_) => false,
-            }) {
-                Some(found) => found,
-                None => {
-                    return Ok(("installed".into(), installed.clone()));
-                }
-            }
-        }
-    };
-    match &found.state {
-        Shipped::Ready { path, .. } => Ok((found.key.clone(), path.clone())),
-        Shipped::Blocked | Shipped::Unreadable(_) => {
-            Err(SetupError::BlockedDefinition(found.key.clone()))
-        }
-    }
-}
-
 /// What the service runs for `id`, or `None` when it runs nothing for it yet:
 /// not set up, or added or completed since the last start.
 fn running<'a>(state: &'a Context, id: &str) -> Option<&'a Running> {
     state.setup.running.iter().find(|r| r.id.as_str() == id)
-}
-
-/// The lab app the machine sends to now: the running one's, or for a machine
-/// not running yet, the one its site file names or writes.
-fn current_lab_app(running: Option<&Running>, current_site: &toml::Table) -> Option<String> {
-    if let Some(running) = running {
-        return Some(running.lab_app.as_str().to_owned());
-    }
-    current_site
-        .get("lab_app")
-        .or_else(|| current_site.get("destination").and_then(|d| d.get("name")))
-        .and_then(toml::Value::as_str)
-        .map(str::to_owned)
-}
-
-/// One key's state, never its value: "API key: set on 2026-11-19". The key
-/// name shows on hover.
-fn key_line(state: &Context, label: &str, name: &Identifier) -> Markup {
-    let line = Markup::new()
-        .markup("<span title=\"")
-        .text(name.as_str())
-        .markup("\">")
-        .text(label)
-        .markup("</span>: ");
-    // The service's own rule decides; an unreadable file still lets a set
-    // environment variable show, as it wins at startup too.
-    let read = Locked::new(&state.setup.data_directory).read();
-    let none = Stored::default();
-    let stored = read.as_ref().unwrap_or(&none);
-    match secrets::source(name.as_str(), |key| std::env::var(key).ok(), stored) {
-        secrets::Source::Environment(_) => line
-            .text("set in the service environment (")
-            .text(secrets::variable(name.as_str()))
-            .text("), which wins over a stored key"),
-        secrets::Source::Stored { set_at, .. } => {
-            let date = jiff::Timestamp::from_second(set_at)
-                .map(|t| t.strftime("%Y-%m-%d").to_string())
-                .unwrap_or_else(|_| "an unknown date".into());
-            line.text(format!("set on {date}"))
-        }
-        secrets::Source::Missing => match read {
-            Ok(_) => line.text("not set"),
-            Err(error) => line.text(format!("cannot be checked: {error}")),
-        },
-    }
-}
-
-/// A setup step posted for the test or the save: the CSRF value and the
-/// [`wizard::Draft`] fields. It holds no key.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct Choice {
-    #[expect(dead_code, reason = "the CSRF middleware has already checked it")]
-    csrf: String,
-    definition: Option<String>,
-    port: Option<String>,
-    port_name: Option<String>,
-    host: Option<String>,
-    tcp_port: Option<String>,
-    folder: Option<String>,
-    lab_app: Option<String>,
-}
-
-/// The connection the draft names for a definition of transport `kind`.
-fn connection_of(kind: Option<&str>, choice: &wizard::Draft) -> Result<Connection, SetupError> {
-    let field = |value: &Option<String>| value.as_deref().unwrap_or_default().trim().to_owned();
-    match kind {
-        Some("serial") => {
-            let typed = field(&choice.port_name);
-            if !typed.is_empty() {
-                return Ok(Connection::Endpoint(typed));
-            }
-            match choice.port.as_deref().and_then(|v| v.split_once(':')) {
-                Some(("usb", number)) => Ok(Connection::UsbSerial(
-                    analyte_config::UsbSerial::new(number.into())
-                        .map_err(SetupError::Connection)?,
-                )),
-                Some(("name", name)) if !name.is_empty() => Ok(Connection::Endpoint(name.into())),
-                _ => Err(SetupError::Connection("choose a serial port")),
-            }
-        }
-        Some("tcp_server" | "tcp_client") => {
-            let host: std::net::IpAddr = field(&choice.host)
-                .parse()
-                .map_err(|_| SetupError::Connection("enter an IP address such as 192.168.1.20"))?;
-            let port: u16 = field(&choice.tcp_port)
-                .parse()
-                .ok()
-                .filter(|port| *port != 0)
-                .ok_or(SetupError::Connection(
-                    "enter a port number from 1 to 65535",
-                ))?;
-            Ok(Connection::Endpoint(
-                std::net::SocketAddr::new(host, port).to_string(),
-            ))
-        }
-        _ => {
-            let folder = field(&choice.folder);
-            if folder.is_empty() {
-                return Err(SetupError::Connection("enter the folder path"));
-            }
-            Ok(Connection::Endpoint(folder))
-        }
-    }
-}
-
-/// Everything a save or a test needs, checked and validated in memory.
-struct Plan {
-    program: String,
-    installed: site::Installed,
-    definition: PathBuf,
-    /// The model's name for people.
-    model: String,
-    connection: Connection,
-    site_text: String,
-    /// The new `lab-apps.toml` text, when the save moves a lab app into it.
-    lab_apps: Option<String>,
-    validated: analyte_config::Validated,
-}
-
-/// Checks every choice of `draft` against the files, in step order, and
-/// validates the result as the program loader does; writes nothing.
-fn plan(state: &Context, id: &str, draft: &wizard::Draft) -> Result<Plan, SetupError> {
-    let (program, installed) = site::installed(&state.config_path, id)?;
-    let list = definitions(state)?;
-    let (key, definition) = wizard::model_of(&list, draft, &installed)?;
-    let model = wizard::model_name(&list, &key, &definition);
-    let connection = connection_of(kind_of(&definition).as_deref(), draft)?;
-    let lab_app = Identifier::new(draft.lab_app.as_deref().unwrap_or_default().trim())
-        .map_err(|_| SetupError::NoLabAppChosen)?;
-    let current = crate::installation::config::read(&installed.site)?;
-    let scan = lab_apps::scan(&state.config_path)?;
-    let candidate = site::candidate(
-        &current,
-        &connection,
-        &lab_app,
-        &scan.file,
-        &scan.settings(),
-    )?;
-    let validated = site::validate(
-        &installed,
-        &definition,
-        &candidate.text,
-        &candidate.lab_apps,
-    )?;
-    let lab_apps = if candidate.lab_apps == scan.file {
-        None
-    } else {
-        Some(candidate.lab_apps.text()?)
-    };
-    Ok(Plan {
-        program,
-        installed,
-        definition,
-        model,
-        connection,
-        site_text: candidate.text,
-        lab_apps,
-        validated,
-    })
-}
-
-struct Saved {
-    digest: [u8; 32],
-    model: String,
-    link: Link,
-    connection: Connection,
-    lab_app: String,
-    base_url: String,
-    /// The save moved a lab app into `lab-apps.toml`.
-    moved: bool,
-    backups: Vec<PathBuf>,
-}
-
-fn save_blocking(state: &Context, id: &str, draft: &wizard::Draft) -> Result<Saved, SetupError> {
-    let _writing = state.setup.writing()?;
-    let plan = plan(state, id, draft)?;
-    shares_connection(state, id, &plan)?;
-    let moved = plan.lab_apps.is_some();
-    let written = site::apply(
-        &state.config_path,
-        &plan.program,
-        &plan.installed,
-        &plan.definition,
-        &plan.site_text,
-        plan.lab_apps,
-    )?;
-    let destination = &plan.validated.effective().site().destination;
-    Ok(Saved {
-        digest: plan.validated.digest(),
-        model: plan.model,
-        link: Link::of(plan.validated.effective().stack()),
-        connection: plan.connection,
-        lab_app: destination.name.as_str().to_owned(),
-        base_url: destination.base_url.as_str().to_owned(),
-        moved,
-        backups: written.backups,
-    })
 }
 
 async fn audit(
@@ -841,23 +587,84 @@ async fn audit(
     id: &str,
     reason: String,
 ) -> Result<(), SetupError> {
-    let failed = |error: &dyn std::fmt::Display| SetupError::Audit(error.to_string());
+    let failed = |error| SetupError::Audit(AuditFailure::Text(error));
     let audit = analyte_store::Audit {
         actor: session.actor.clone(),
-        action: Identifier::new(action).map_err(|e| failed(&e))?,
-        targets: vec![Identifier::new(id).map_err(|e| failed(&e))?],
+        action: Identifier::new(action).map_err(failed)?,
+        targets: vec![Identifier::new(id).map_err(failed)?],
         time: jiff::Timestamp::now().as_second(),
-        reason: Reason::new(&reason.chars().take(1000).collect::<String>())
-            .map_err(|e| failed(&e))?,
+        reason: Reason::new(&reason.chars().take(1000).collect::<String>()).map_err(failed)?,
     };
-    state
-        .store
-        .request::<_, analyte_store::StorageError>(
-            crate::deadline().map_err(|e| failed(&e))?,
-            move |store| store.audit(&audit),
-        )
+    stored::<_, analyte_store::StorageError>(state, move |store| store.audit(&audit))
         .await
-        .map_err(|e| failed(&e))
+        .map_err(|error| SetupError::Audit(AuditFailure::Store(error)))
+}
+
+/// Why a store request from a setup page did not complete.
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum StoreFailure {
+    #[error(transparent)]
+    Deadline(#[from] crate::DeadlineError),
+    #[error(transparent)]
+    Storage(#[from] analyte_store::StorageError),
+    #[error(transparent)]
+    Operator(#[from] analyte_store::OperatorError),
+    #[error(transparent)]
+    Delivery(#[from] analyte_store::DeliveryError),
+}
+
+/// Why the record of who made a change could not be written.
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum AuditFailure {
+    #[error(transparent)]
+    Text(analyte_model::TextError),
+    #[error(transparent)]
+    Store(StoreFailure),
+}
+
+/// Runs one store request within the shared store deadline.
+async fn stored<T, E>(
+    state: &Context,
+    work: impl FnOnce(&mut analyte_store::Store) -> Result<T, E> + Send + 'static,
+) -> Result<T, StoreFailure>
+where
+    T: Send + 'static,
+    E: From<analyte_store::WorkerError> + Send + 'static,
+    StoreFailure: From<E>,
+{
+    let until = crate::deadline()?;
+    Ok(state.store.request(until, work).await?)
+}
+
+/// Runs `work` off the async workers: it reads or writes files, the port list
+/// or the credentials file, which block.
+async fn off_thread<T: Send + 'static>(
+    state: &Arc<Context>,
+    work: impl FnOnce(&Context) -> Result<T, SetupError> + Send + 'static,
+) -> Result<T, SetupError> {
+    let worker = state.clone();
+    tokio::task::spawn_blocking(move || work(&worker))
+        .await
+        .map_err(SetupError::from)
+        .and_then(|done| done)
+}
+
+/// See Other to `location`; a machine name that cannot be a header value (only
+/// possible in a hand-written program file) goes to the setup page instead.
+fn see_other(location: &str) -> Response {
+    let mut response = StatusCode::SEE_OTHER.into_response();
+    let location = header::HeaderValue::from_str(location)
+        .unwrap_or_else(|_| header::HeaderValue::from_static("/setup"));
+    response.headers_mut().insert(header::LOCATION, location);
+    response
+}
+
+/// What to do after a Lab app, add or remove form could not be read.
+const RELOAD: &str = "reload the page";
+
+/// The refusal of a posted form that could not be read; `hint` says what to do.
+fn incomplete(hint: &'static str) -> Response {
+    refused(&SetupError::IncompleteForm(hint))
 }
 
 /// Ends a page that wrote files: the audit failure, if the record of who made
@@ -930,115 +737,4 @@ pub(super) async fn restart(
         header::HeaderValue::from_static("close"),
     );
     response
-}
-
-/// Refuses a test on a serial port or network address a running machine uses.
-/// A running machine named by `usb_serial` is looked up in the current port list,
-/// so choosing its port by name is refused too.
-fn in_use(state: &Context, chosen: &Endpoint, port: Option<&str>) -> Result<(), SetupError> {
-    for running in &state.setup.running {
-        let same = if let Some(port) = port {
-            running.link == Link::Serial && {
-                let running_port = match &running.endpoint {
-                    Endpoint::Fixed(name) => Some(name.clone()),
-                    Endpoint::UsbSerial(number) => {
-                        serial::locate(&serial::Device::UsbSerial(number.as_str().into()), || {
-                            (state.setup.seams.ports)()
-                        })
-                        .ok()
-                    }
-                };
-                let same_number = matches!(
-                    (&running.endpoint, chosen),
-                    (Endpoint::UsbSerial(left), Endpoint::UsbSerial(right))
-                        if left.as_str().eq_ignore_ascii_case(right.as_str())
-                );
-                same_number
-                    || running_port.is_some_and(|name| connections::same_port_name(&name, port))
-            }
-        } else {
-            matches!(running.link, Link::TcpServer | Link::TcpClient)
-                && connections::listeners_overlap(&running.endpoint, chosen)
-        };
-        if same {
-            return Err(SetupError::InUse(running.id.as_str().into()));
-        }
-    }
-    Ok(())
-}
-
-/// Refuses, before writing, a connection another machine in the program file
-/// already uses. When the current program does not load, the reload after
-/// writing refuses instead, so a broken file can still be fixed here.
-fn shares_connection(state: &Context, id: &str, plan: &Plan) -> Result<(), SetupError> {
-    let Ok(program) = Program::load(&state.config_path) else {
-        return Ok(());
-    };
-    let endpoint = plan.connection.endpoint();
-    let chosen = (Link::of(plan.validated.effective().stack()), &endpoint);
-    for other in program.machines().iter().filter(|m| m.id().as_str() != id) {
-        if let Some(what) = connections::shared(connections::of(other), chosen) {
-            return Err(crate::installation::config::Error::SharedConnection {
-                first: other.id().as_str().into(),
-                second: id.into(),
-                what,
-            }
-            .into());
-        }
-    }
-    Ok(())
-}
-
-fn listen_target(state: &Context, plan: &Plan) -> Result<(String, listen::Target), SetupError> {
-    let stack = plan.validated.effective().stack();
-    let endpoint = plan.connection.endpoint();
-    match Link::of(stack) {
-        Link::Serial => {
-            let device = match &endpoint {
-                Endpoint::Fixed(name) => serial::Device::Named(name.clone()),
-                Endpoint::UsbSerial(number) => serial::Device::UsbSerial(number.as_str().into()),
-            };
-            let ports = state.setup.seams.ports.clone();
-            let name = serial::locate(&device, || ports())?;
-            in_use(state, &endpoint, Some(&name))?;
-            let settings = crate::machine::link::serial::line_settings(
-                stack,
-                serial::Device::Named(name.clone()),
-                listen::SERIAL_READ,
-            )
-            .ok_or(SetupError::NothingToListen)?
-            .map_err(|error| SetupError::SerialSettings(error.to_string()))?;
-            Ok((
-                format!("serial port {name}"),
-                listen::Target::Serial {
-                    name,
-                    settings,
-                    open: state.setup.seams.open.clone(),
-                },
-            ))
-        }
-        link @ (Link::TcpServer | Link::TcpClient) => {
-            in_use(state, &endpoint, None)?;
-            let Endpoint::Fixed(text) = &endpoint else {
-                return Err(SetupError::Connection(
-                    "a network link needs an IP address and port",
-                ));
-            };
-            let address = text
-                .parse()
-                .map_err(|_| SetupError::Connection("enter an IP address and port"))?;
-            Ok(if link == Link::TcpServer {
-                (
-                    format!("listening on {address}"),
-                    listen::Target::TcpServer(address),
-                )
-            } else {
-                (
-                    format!("connecting to {address}"),
-                    listen::Target::TcpClient(address),
-                )
-            })
-        }
-        Link::Folder => Err(SetupError::NothingToListen),
-    }
 }

@@ -8,7 +8,7 @@
 //! write through [`commit`].
 use super::SetupError;
 use crate::installation::config::{Program, read};
-use analyte_config::{Destination, Draft, Endpoint, LabApps, UsbSerial, Validated};
+use analyte_config::{Destination, Draft, Endpoint, LabApps, Validated};
 use analyte_model::Identifier;
 use std::{
     io::Write as _,
@@ -51,8 +51,7 @@ pub(super) struct EntrySpans {
 /// Reads the program file and its entries as written.
 pub(super) fn entries(config: &Path) -> Result<(String, Vec<EntrySpans>), SetupError> {
     let text = read(config)?;
-    let spans: ProgramSpans =
-        toml::from_str(&text).map_err(|error| SetupError::ProgramFile(error.to_string()))?;
+    let spans: ProgramSpans = toml::from_str(&text).map_err(SetupError::ProgramFile)?;
     Ok((text, spans.machines))
 }
 
@@ -91,36 +90,17 @@ fn site_line(text: &str, value: usize) -> Result<usize, SetupError> {
         .map_or(0, |newline| newline.saturating_add(1));
     match text.get(start..value) {
         Some(line) if line.trim_start().starts_with("site") => Ok(start),
-        _ => Err(SetupError::ProgramFile(
-            "write this machine's site = ... on its own line so setup can add the definition"
-                .into(),
+        _ => Err(SetupError::ProgramLayout(
+            "write this machine's site = ... on its own line so setup can add the definition",
         )),
     }
 }
 
-/// How the site file names the machine's link.
-pub(super) enum Connection {
-    /// The USB adapter's factory serial number.
-    UsbSerial(UsbSerial),
-    /// A port name, socket address or folder, used exactly as written.
-    Endpoint(String),
-}
-
-impl Connection {
-    /// The site-file line this choice becomes, for display.
-    pub(super) fn describe(&self) -> String {
-        match self {
-            Self::UsbSerial(serial) => format!("usb_serial = {}", serial.as_str()),
-            Self::Endpoint(endpoint) => format!("endpoint = {endpoint}"),
-        }
-    }
-
-    /// The same choice as the loader's endpoint type.
-    pub(super) fn endpoint(&self) -> Endpoint {
-        match self {
-            Self::UsbSerial(serial) => Endpoint::UsbSerial(serial.clone()),
-            Self::Endpoint(endpoint) => Endpoint::Fixed(endpoint.clone()),
-        }
+/// The site-file line a connection becomes, for display.
+pub(super) fn describe(connection: &Endpoint) -> String {
+    match connection {
+        Endpoint::UsbSerial(serial) => format!("usb_serial = {}", serial.as_str()),
+        Endpoint::Fixed(endpoint) => format!("endpoint = {endpoint}"),
     }
 }
 
@@ -144,19 +124,17 @@ pub(super) struct Candidate {
 /// setup page) is copied into `lab-apps.toml` with the same values.
 pub(super) fn candidate(
     current: &str,
-    connection: &Connection,
+    connection: &Endpoint,
     lab_app: &Identifier,
     lab_apps: &LabApps,
     elsewhere: &[Destination],
 ) -> Result<Candidate, SetupError> {
-    let mut table: toml::Table = current
-        .parse()
-        .map_err(|error: toml::de::Error| SetupError::SiteFile(error.to_string()))?;
+    let mut table: toml::Table = current.parse().map_err(SetupError::SiteFile)?;
     table.remove("endpoint");
     table.remove("usb_serial");
     let (key, value) = match connection {
-        Connection::UsbSerial(serial) => ("usb_serial", serial.as_str()),
-        Connection::Endpoint(endpoint) => ("endpoint", endpoint.as_str()),
+        Endpoint::UsbSerial(serial) => ("usb_serial", serial.as_str()),
+        Endpoint::Fixed(endpoint) => ("endpoint", endpoint.as_str()),
     };
     table.insert(key.into(), toml::Value::String(value.into()));
     let mut after = lab_apps.clone();
@@ -165,11 +143,7 @@ pub(super) fn candidate(
         match own.try_into::<Destination>() {
             Ok(own) => after = moved(&after, own)?,
             Err(_) if !complete => {}
-            Err(error) => {
-                return Err(SetupError::SiteFile(format!(
-                    "its [destination] cannot be moved to the Lab app page: {error}"
-                )));
-            }
+            Err(error) => return Err(SetupError::SiteDestination(error)),
         }
     }
     if after.get(lab_app.as_str()).is_none() {
@@ -184,7 +158,7 @@ pub(super) fn candidate(
         "lab_app".into(),
         toml::Value::String(lab_app.as_str().into()),
     );
-    let text = toml::to_string(&table).map_err(|error| SetupError::SiteFile(error.to_string()))?;
+    let text = toml::to_string(&table).map_err(SetupError::SiteText)?;
     Ok(Candidate {
         text: format!("# Written by the Analyte setup page.\n{text}"),
         lab_apps: after,
@@ -196,10 +170,7 @@ pub(super) fn candidate(
 pub(super) fn moved(lab_apps: &LabApps, lab_app: Destination) -> Result<LabApps, SetupError> {
     match lab_apps.get(lab_app.name.as_str()) {
         Some(listed) if *listed == lab_app => Ok(lab_apps.clone()),
-        Some(_) => Err(SetupError::LabAppDiffers(
-            lab_app.name.as_str().into(),
-            lab_apps.path().into(),
-        )),
+        Some(_) => Err(SetupError::LabAppDiffers(lab_app.name.as_str().into())),
         None => Ok(lab_apps.with(lab_app)?),
     }
 }
@@ -257,9 +228,7 @@ fn with_definition(
         Placement::Insert(at) => (*at..*at, true),
     };
     let (Some(before), Some(after)) = (program.get(..range.start), program.get(range.end..)) else {
-        return Err(SetupError::ProgramFile(
-            "definition position changed".into(),
-        ));
+        return Err(SetupError::ProgramLayout("definition position changed"));
     };
     Ok(if line {
         format!("{before}definition = {value}\n{after}")
@@ -325,7 +294,7 @@ pub(super) fn commit(config: &Path, changes: &[(PathBuf, String)]) -> Result<Wri
     }
     if let Err(error) = Program::load(config) {
         restore(changes, &backups);
-        return Err(SetupError::RolledBack(error.to_string()));
+        return Err(SetupError::RolledBack(error));
     }
     Ok(Written {
         backups: backups.into_iter().flatten().collect(),
