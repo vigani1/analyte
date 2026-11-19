@@ -10,7 +10,7 @@ use super::page::{Figure, LabNode, MachineNode, Wire};
 use crate::admin::Error;
 use crate::admin::removed::Kept;
 use crate::admin::server::{Connection, Context};
-use crate::admin::view::{Tone, format, icon::Icon};
+use crate::admin::view::{Tone, format, format::Line, icon::Icon};
 use crate::machine::link::status::Light;
 use analyte_model::Identifier;
 use analyte_store::{Health, LastDelivered};
@@ -53,7 +53,7 @@ pub(super) fn machines(
             let (tone, state, wire) = match (running, light) {
                 (false, _) => (Tone::Problem, "Stopped in Analyte", Wire::Cut),
                 (true, Light::Live) => (Tone::Good, status.state(), Wire::Live),
-                (true, Light::Waiting) => (Tone::Attention, status.state(), Wire::Wait),
+                (true, Light::Waiting) => (Tone::Neutral, status.state(), Wire::Wait),
                 (true, Light::Off) => (Tone::Problem, status.state(), Wire::Cut),
             };
             let stored = activity.get(id).and_then(|seen| seen.last);
@@ -168,13 +168,17 @@ fn lab_node(
         .iter()
         .find(|(destination, _)| destination == name)
         .and_then(|&(_, time)| Timestamp::from_second(time).ok());
-    let mut lines = vec![
-        format::last_delivered(last, delivered.purged, now),
-        format::waiting(health.pending_count, oldest(health, now), now),
-        format::senders(senders),
-    ];
     let blocked = keys.is_some();
-    lines.extend(keys);
+    // Why it cannot deliver comes first, as the to-do line leads with it.
+    let mut lines: Vec<Line> = keys.into_iter().map(Line::text).collect();
+    lines.push(
+        format::last_delivered(last, delivered.purged, now).then(format::waiting(
+            health.pending_count,
+            oldest(health, now),
+            now,
+        )),
+    );
+    lines.push(Line::text(format::senders(senders)));
     let (tone, status, wire) = if blocked {
         (Tone::Problem, "Cannot deliver", Wire::Cut)
     } else if health.paused {
@@ -247,7 +251,7 @@ fn order_list(name: &Identifier, health: &Health, now: Timestamp) -> Figure {
         value: value.into(),
         when: None,
         aside: if checked.is_some() {
-            "checked".into()
+            "· checked".into()
         } else {
             String::new()
         },
@@ -290,7 +294,14 @@ impl Waiting {
             .and_then(|age| now.as_second().checked_sub(age))
             .and_then(|second| Timestamp::from_second(second).ok());
         let oldest = match (self.count, self.unknown, since) {
-            (0, _, _) => worded("Oldest waiting", Tone::Good, "Nothing waiting"),
+            (0, _, _) => Figure {
+                label: "Oldest waiting".into(),
+                value: "—".into(),
+                when: None,
+                aside: "nothing waiting".into(),
+                aside_when: None,
+                tone: None,
+            },
             (_, false, Some(at)) => Figure {
                 label: "Oldest waiting".into(),
                 value: String::new(),

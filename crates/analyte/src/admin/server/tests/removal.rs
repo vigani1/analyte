@@ -163,7 +163,7 @@ async fn removed_machine_result_is_delivered_once() -> Result<(), Error> {
             .skip(1)
             .any(|lab| {
                 lab.contains("<span class=\"node__name\" title=\"demo\">demo</span>")
-                    && lab.contains("<p class=\"node__line\">1 item waiting · oldest ")
+                    && lab.contains(" · 1 item waiting · oldest <time ")
             })
     })
     .await?;

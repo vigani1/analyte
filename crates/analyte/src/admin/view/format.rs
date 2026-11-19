@@ -140,6 +140,50 @@ pub(in crate::admin) struct Moment {
     pub(in crate::admin) exact: String,
 }
 
+/// Words with times in them, as one line shows them: each time is a
+/// [`Moment`], so it reads in mono with its exact value on hover.
+pub(in crate::admin) struct Line(Vec<Part>);
+
+/// One piece of a [`Line`].
+pub(in crate::admin) enum Part {
+    Text(String),
+    Time(Moment),
+}
+
+impl Line {
+    pub(in crate::admin) fn text(text: impl Into<String>) -> Self {
+        Self(vec![Part::Text(text.into())])
+    }
+
+    fn time(mut self, moment: Moment) -> Self {
+        self.0.push(Part::Time(moment));
+        self
+    }
+
+    /// This line, a " · " separator, then `next`.
+    pub(in crate::admin) fn then(mut self, next: Self) -> Self {
+        self.0.push(Part::Text(" · ".into()));
+        self.0.extend(next.0);
+        self
+    }
+
+    pub(in crate::admin) fn parts(&self) -> &[Part] {
+        &self.0
+    }
+
+    /// The line as people read it, each time as shown.
+    #[cfg(test)]
+    pub(in crate::admin) fn plain(&self) -> String {
+        self.0
+            .iter()
+            .map(|part| match part {
+                Part::Text(text) => text.as_str(),
+                Part::Time(moment) => moment.shown.as_str(),
+            })
+            .collect()
+    }
+}
+
 /// [`clock`] as a [`Moment`].
 pub(in crate::admin) fn moment(at: Timestamp, now: Timestamp) -> Moment {
     Moment {
@@ -251,24 +295,25 @@ pub(in crate::admin) fn last_delivered(
     at: Option<Timestamp>,
     purged: bool,
     now: Timestamp,
-) -> String {
+) -> Line {
     match at {
-        Some(at) => format!("Last delivered {}", clock(at, now)),
-        None if purged => "No delivery in the kept records".into(),
-        None => "Nothing delivered yet".into(),
+        Some(at) => Line::text("Last delivered ").time(moment(at, now)),
+        None if purged => Line::text("No delivery in the kept records"),
+        None => Line::text("Nothing delivered yet"),
     }
 }
 
-/// What waits for a lab app: "4 items waiting · oldest 10:31", or "Nothing
-/// waiting". Items are results and order messages alike.
-pub(in crate::admin) fn waiting(count: u64, oldest: Option<Timestamp>, now: Timestamp) -> String {
+/// What waits for a lab app, written to follow [`last_delivered`] after a
+/// " · ": "4 items waiting · oldest 10:31", or "nothing waiting". Items are
+/// results and order messages alike.
+pub(in crate::admin) fn waiting(count: u64, oldest: Option<Timestamp>, now: Timestamp) -> Line {
     if count == 0 {
-        return "Nothing waiting".into();
+        return Line::text("nothing waiting");
     }
     let items = amount(count, "item waiting", "items waiting");
     match oldest {
-        Some(at) => format!("{items} · oldest {}", clock(at, now)),
-        None => format!("{items} · oldest not known"),
+        Some(at) => Line::text(format!("{items} · oldest ")).time(moment(at, now)),
+        None => Line::text(format!("{items} · oldest not known")),
     }
 }
 
@@ -589,15 +634,29 @@ mod tests {
     fn lab_app_lines_read_plainly() -> Result<(), jiff::Error> {
         let now = Timestamp::from_second(1_795_046_077)?;
         let earlier = Timestamp::from_second(1_795_045_000)?;
-        assert_eq!(last_delivered(None, false, now), "Nothing delivered yet");
         assert_eq!(
-            last_delivered(None, true, now),
+            last_delivered(None, false, now).plain(),
+            "Nothing delivered yet"
+        );
+        assert_eq!(
+            last_delivered(None, true, now).plain(),
             "No delivery in the kept records"
         );
-        assert!(last_delivered(Some(earlier), true, now).starts_with("Last delivered "));
-        assert_eq!(waiting(0, None, now), "Nothing waiting");
-        assert_eq!(waiting(1, None, now), "1 item waiting · oldest not known");
-        assert!(waiting(4, Some(earlier), now).starts_with("4 items waiting · oldest "));
+        assert!(
+            last_delivered(Some(earlier), true, now)
+                .plain()
+                .starts_with("Last delivered ")
+        );
+        assert_eq!(waiting(0, None, now).plain(), "nothing waiting");
+        assert_eq!(
+            waiting(1, None, now).plain(),
+            "1 item waiting · oldest not known"
+        );
+        assert!(
+            waiting(4, Some(earlier), now)
+                .plain()
+                .starts_with("4 items waiting · oldest ")
+        );
         assert_eq!(senders(&[]), "No set-up machine sends here");
         assert_eq!(
             senders(&["cobas-e411", "iflash"]),

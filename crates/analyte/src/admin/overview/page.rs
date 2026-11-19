@@ -4,7 +4,12 @@
 //! only loop, test and call macros. Nothing here invents a value: a figure or
 //! line with no data behind it is left out.
 use super::attention::Thing;
-use crate::admin::view::{Tone, format::Moment, frame::Frame, icon::Icon};
+use crate::admin::view::{
+    Tone,
+    format::{Line, Moment, Part},
+    frame::Frame,
+    icon::Icon,
+};
 
 /// GET / once something is set up or needs someone.
 #[derive(askama::Template)]
@@ -146,8 +151,8 @@ pub(super) struct LabNode {
     pub(super) tone: Tone,
     pub(super) status: &'static str,
     pub(super) wire: Wire,
-    /// Last delivered, what waits, who sends here, and which key is missing.
-    pub(super) lines: Vec<String>,
+    /// Which key is missing, last delivered with what waits, and who sends here.
+    pub(super) lines: Vec<Line>,
     /// What to do when Analyte cannot deliver here.
     pub(super) todo: Option<&'static str>,
 }

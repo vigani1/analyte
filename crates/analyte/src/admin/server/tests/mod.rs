@@ -140,7 +140,7 @@ async fn service_refuses_missing_token_and_owns_admin_server() -> Result<(), Err
     );
     assert!(!response.contains("Stopped in Analyte"));
     // Owner request 2026-11-19 (item 8): no data yet reads "Nothing yet", not "unknown".
-    assert!(response.contains("<span class=\"mono\">Nothing yet</span>"));
+    assert!(response.contains("<span class=\"mono subtle\">Nothing yet</span>"));
     headers_present(&response);
     stop.send(()).map_err(|_| "service stop receiver lost")?;
     tokio::time::timeout(Duration::from_secs(10), owner).await???;
@@ -220,7 +220,7 @@ async fn tcp_server_light_follows_peer_and_hides_payload() -> Result<(), Error> 
             .await?
         }
     };
-    let waiting = until("<span class=\"node__state tone-warn\">Waiting</span>").await?;
+    let waiting = until("<span class=\"node__state tone-off\">Waiting</span>").await?;
     assert_listening(&waiting, &analyzer_address);
     // Owner request 2026-11-19 (item 9): no restore pause, so no pause line on either page.
     assert!(!(waiting.clone() + &page("/machines").await?).contains("Order sending"));
@@ -250,7 +250,7 @@ async fn tcp_server_light_follows_peer_and_hides_payload() -> Result<(), Error> 
         );
     }
     drop(peer);
-    until("<span class=\"node__state tone-warn\">Waiting</span>").await?;
+    until("<span class=\"node__state tone-off\">Waiting</span>").await?;
     stop.send(()).map_err(|_| "service stop receiver lost")?;
     tokio::time::timeout(Duration::from_secs(10), owner).await???;
     Ok(())
@@ -276,11 +276,11 @@ fn assert_listening(page: &str, address: &str) {
 const CONNECTED_WITH_DATA: &str = concat!(
     "<span class=\"node__state tone-good\">Connected</span>",
     "<span class=\"subtle\" aria-hidden=\"true\">·</span>",
-    "<span class=\"mono\">last data <time"
+    "<span class=\"mono\"><span class=\"sr-only\">Last data </span><time"
 );
 
-/// A machine node's "last data" as it opens, and the dot before it.
-const LAST_DATA: &str = "<span class=\"mono\">";
+/// A machine node's "last data" with no data yet, as it opens, and the dot before it.
+const LAST_DATA: &str = "<span class=\"mono subtle\">";
 const SEPARATOR: &str = "<span class=\"subtle\" aria-hidden=\"true\">·</span>";
 
 async fn request(
@@ -592,12 +592,13 @@ async fn assert_overview_health(host: &str, bearer: &str) -> Result<(), Error> {
     assert!(response.contains("<span class=\"node__state tone-bad\">Stopped in Analyte</span>"));
     // Last data is the stored receipt's time (Unix 200), exact on hover.
     assert!(response.contains(concat!(
-        "<span class=\"mono\">last data <time datetime=\"1970-01-01T00:03:20Z\" ",
+        "<span class=\"mono\"><span class=\"sr-only\">Last data </span>",
+        "<time datetime=\"1970-01-01T00:03:20Z\" ",
         "title=\"1970-01-01T00:03:20Z (Unix 200)\">"
     )));
     // How long ago shows beside the oldest waiting item (queued at Unix 102).
     assert!(response.contains(" days ago</span>"));
-    assert!(response.contains("<p class=\"node__line\">2 items waiting · oldest "));
+    assert!(response.contains(" · 2 items waiting · oldest <time datetime="));
     assert!(
         response
             .contains("<dd>2 <span class=\"figure__aside\">results and order messages</span></dd>")
@@ -608,7 +609,7 @@ async fn assert_overview_health(host: &str, bearer: &str) -> Result<(), Error> {
         .ok_or("order list figure missing")?;
     assert!(list.contains("tone-warn"), "{list}");
     assert!(list.contains(concat!(
-        "Out of date <span class=\"figure__aside\">checked ",
+        "Out of date <span class=\"figure__aside\">· checked ",
         "<time datetime=\"1970-01-01T00:01:40Z\""
     )));
     assert!(!response.contains("protected-raw-never-log"));

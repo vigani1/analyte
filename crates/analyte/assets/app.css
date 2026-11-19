@@ -19,7 +19,6 @@
 body { margin: 0; background: var(--bg); }
 
 /* Brand mark: its colours follow the theme (the mockup's inline styles). */
-.brand__mark { width: var(--space-7); height: var(--space-7); }
 .brand__tile { fill: var(--text); }
 .brand__letter { fill: none; stroke: var(--surface); stroke-linecap: round; stroke-linejoin: round; }
 .brand__arc { fill: none; stroke: var(--mark); stroke-linecap: round; }
@@ -39,9 +38,7 @@ body { margin: 0; background: var(--bg); }
 }
 .nav-more__summary::-webkit-details-marker { display: none; }
 .nav-more__summary:hover { background: var(--surface); color: var(--text); }
-.nav-more__summary .nav__label { flex: 1; }
 .nav-more[open] > .nav-more__summary .nav__chev { transform: rotate(180deg); }
-.nav-more > .nav--sub { margin-top: var(--space-1); }
 
 /* Sign out is a form button (it posts with the session's form token), drawn
    like the foot's link. */
@@ -50,7 +47,6 @@ body { margin: 0; background: var(--bg); }
   padding: 0; border: 0; background: none;
   font: inherit; color: var(--text-muted); text-decoration: underline; cursor: pointer;
 }
-.sidebar__signout button:hover { color: var(--text); }
 
 /* Page head and verdict (the mockup's inline styles). */
 .page-head__aside { margin: 0; font-size: var(--text-sm); }
@@ -59,13 +55,15 @@ body { margin: 0; background: var(--bg); }
 
 /* Signal path nodes (the mockup's inline styles) and what a node adds. */
 .node__state { font-weight: var(--weight-semibold); }
-.node__kind { gap: var(--space-1); }
 .node__note {
   display: block; margin-top: var(--space-1); padding-left: var(--space-6);
   font-size: var(--text-xs); color: var(--text-muted);
 }
 .path__note { padding: var(--space-3); font-size: var(--text-sm); color: var(--text-muted); }
 .figures--ruled { border-top: var(--border-width) solid var(--border); }
+/* A worded figure keeps its words together: in a narrow column its aside
+   ("· checked 10:44") moves to the next line instead of splitting the state. */
+.figure dd.figure__text { flex-wrap: wrap; }
 
 /* Icon rail: the same width as analyte.css's --narrow, which a container query
    cannot read from a custom property. */

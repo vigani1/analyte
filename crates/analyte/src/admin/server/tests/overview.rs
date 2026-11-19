@@ -599,7 +599,7 @@ fn assert_machine_nodes(page: &str) {
     for part in [
         "<span class=\"node__model\">Synthetic analyzer</span>",
         "<span class=\"node__state tone-good\">Port open</span>",
-        "<span class=\"mono\">Nothing yet</span>",
+        "<span class=\"mono subtle\">Nothing yet</span>",
         "</svg>Serial</span>",
         "<span class=\"wire \" aria-hidden=\"true\"><span class=\"wire__dot",
     ] {
@@ -616,7 +616,7 @@ fn assert_machine_nodes(page: &str) {
         assert!(closed.contains(part), "{part}\n{closed}");
     }
     let waiting = node(page, "immunoassay-3");
-    assert!(waiting.contains("<span class=\"node__state tone-warn\">Waiting</span>"));
+    assert!(waiting.contains("<span class=\"node__state tone-off\">Waiting</span>"));
     assert!(waiting.contains("Listening on port 5600, nothing connected since "));
     assert!(waiting.contains("<span class=\"wire wire--wait\""));
     let watching = node(page, "urine-4");
@@ -636,8 +636,8 @@ fn assert_lab_app_nodes(page: &str) {
     for part in [
         "<span class=\"status status--good\">",
         "Up to date</span>",
-        "<p class=\"node__line\">Last delivered ",
-        "<p class=\"node__line\">Nothing waiting</p>",
+        "<p class=\"node__line\">Last delivered <time ",
+        "</time> · nothing waiting</p>",
         "<p class=\"node__line\">From chemistry-1, hematology-2, immunoassay-3, urine-4</p>",
     ] {
         assert!(main.contains(part), "{part}\n{main}");
@@ -647,8 +647,7 @@ fn assert_lab_app_nodes(page: &str) {
         "<span class=\"wire wire--cut\" aria-hidden=\"true\"><span class=\"wire__break\">",
         "<div class=\"node node--lab node--bad\">",
         "Cannot deliver</span>",
-        "<p class=\"node__line\">Nothing delivered yet</p>",
-        "<p class=\"node__line\">1 item waiting · oldest ",
+        "<p class=\"node__line\">Nothing delivered yet · 1 item waiting · oldest <time ",
         "<p class=\"node__line\">No set-up machine sends here</p>",
         "<p class=\"node__line\">Keys missing: API key and signing key.</p>",
         "Waiting items go out after Analyte restarts with the keys.",
