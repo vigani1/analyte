@@ -37,6 +37,24 @@ pub struct ParkedItem {
     pub resolution: Option<String>,
 }
 
+/// Which parked items a page lists: those waiting for review or those resolved.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ParkedFilter {
+    /// Not resolved yet.
+    Open,
+    /// Resolved, with their resolution kept.
+    Resolved,
+}
+
+/// How many parked items are open and resolved; every parked item is one of the two.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub struct ParkedCounts {
+    /// Items waiting for review.
+    pub open: u64,
+    /// Items resolved, kept with their resolution.
+    pub resolved: u64,
+}
+
 impl ParkedItem {
     /// Decodes the canonical protected parking record.
     /// # Errors
@@ -281,6 +299,89 @@ impl Store {
                 },
             )?
             .collect::<Result<_, _>>()?)
+    }
+
+    /// How many parked items are open and how many are resolved. Counting changes nothing.
+    /// # Errors
+    /// Reports database failures or corrupt counts.
+    pub fn parked_counts(&self) -> Result<ParkedCounts, Error> {
+        let (open, resolved): (i64, i64) = self.db.query_row(
+            concat!(
+                "SELECT count(*) FILTER (WHERE resolution IS NULL),",
+                "count(*) FILTER (WHERE resolution IS NOT NULL) FROM parked",
+            ),
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
+        Ok(ParkedCounts {
+            open: u64::try_from(open).map_err(|_| Error::Corruption)?,
+            resolved: u64::try_from(resolved).map_err(|_| Error::Corruption)?,
+        })
+    }
+
+    /// Lists a bounded page of the open or the resolved parked items after `after`,
+    /// in item order, like [`Store::parked`].
+    /// # Errors
+    /// Reports database failures.
+    pub fn parked_filtered(
+        &self,
+        after: i64,
+        filter: ParkedFilter,
+    ) -> Result<Vec<ParkedItem>, Error> {
+        let mut stmt = self.db.prepare(concat!(
+            "SELECT id,evidence,resolution FROM parked WHERE id>?1 ",
+            "AND (resolution IS NULL)=?2 ORDER BY id LIMIT ?3",
+        ))?;
+        Ok(stmt
+            .query_map(
+                params![
+                    after,
+                    filter == ParkedFilter::Open,
+                    i64::try_from(self.limits.page_rows)
+                        .map_err(|_| Error::InvalidOperatorInput)?
+                ],
+                |r| {
+                    Ok(ParkedItem {
+                        id: r.get(0)?,
+                        evidence: r.get(1)?,
+                        resolution: r.get(2)?,
+                    })
+                },
+            )?
+            .collect::<Result<_, _>>()?)
+    }
+
+    /// The newest audit entries recording `action` on `target`, oldest first: at
+    /// most one page, and whether older entries exist beyond it.
+    /// # Errors
+    /// Reports database failures or corrupt audit entries.
+    pub fn audits_naming(
+        &self,
+        target: &Identifier,
+        action: &Identifier,
+    ) -> Result<(Vec<crate::Audit>, bool), Error> {
+        let page = self.limits.page_rows;
+        let limit = i64::try_from(page.checked_add(1).ok_or(Error::InvalidOperatorInput)?)
+            .map_err(|_| Error::InvalidOperatorInput)?;
+        // The quoted target narrows the scan before each entry's targets are read.
+        let quoted = serde_json::to_string(target.as_str())?;
+        let mut stmt = self.db.prepare(concat!(
+            "SELECT evidence FROM audit WHERE instr(evidence,?1)>0 ",
+            "AND json_extract(evidence,'$.action')=?2 ",
+            "AND EXISTS(SELECT 1 FROM json_each(evidence,'$.targets') t WHERE t.value=?3) ",
+            "ORDER BY sequence DESC LIMIT ?4",
+        ))?;
+        let mut rows = stmt
+            .query_map(
+                params![quoted, action.as_str(), target.as_str(), limit],
+                |r| r.get::<_, String>(0),
+            )?
+            .map(|row| Ok(serde_json::from_str::<crate::Audit>(&row?)?))
+            .collect::<Result<Vec<_>, Error>>()?;
+        let older = rows.len() > page;
+        rows.truncate(page);
+        rows.reverse();
+        Ok((rows, older))
     }
 
     /// Returns the feed cursor committed with its last page, absent after reset.

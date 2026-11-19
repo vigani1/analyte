@@ -614,3 +614,117 @@ fn failing_destinations_are_waiting_items_with_failed_tries_since_the_last_deliv
     );
     Ok(())
 }
+
+// Owner request 2026-11-19 (admin restyle b1): the Needs review filter shows
+// real counts of open and resolved items, and each filter pages through only its
+// own items in item order. Reading changes nothing, and the open count is the
+// one the parked-items alert reads.
+#[test]
+fn parked_items_are_counted_and_paged_as_open_or_resolved() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("store.db"))?;
+    assert_eq!(store.parked_counts()?, ParkedCounts::default());
+    let mut ids = Vec::new();
+    for reason in ["first", "second", "third", "fourth"] {
+        ids.push(store.park(&Parked {
+            kind: Identifier::new("synthetic")?,
+            reason: Reason::new(reason)?,
+            targets: vec![],
+        })?);
+    }
+    let resolve = |store: &mut Store, id: i64| -> TestResult {
+        Ok(store.resolve(
+            id,
+            &Audit {
+                actor: Identifier::new("operator")?,
+                action: Identifier::new("parked-resolve")?,
+                targets: vec![Identifier::new(&id.to_string())?],
+                time: 5,
+                reason: Reason::new("settled")?,
+            },
+        )?)
+    };
+    resolve(&mut store, ids[1])?;
+    resolve(&mut store, ids[3])?;
+    let counts = store.parked_counts()?;
+    assert_eq!(
+        counts,
+        ParkedCounts {
+            open: 2,
+            resolved: 2
+        }
+    );
+    assert_eq!(
+        store.alert_value(&AlertKey::ParkedItems, 0, &[])?,
+        Some(counts.open)
+    );
+    store.limits.page_rows = 1;
+    for (filter, expected) in [
+        (ParkedFilter::Open, [ids[0], ids[2]]),
+        (ParkedFilter::Resolved, [ids[1], ids[3]]),
+    ] {
+        let mut after = 0;
+        let mut seen = Vec::new();
+        loop {
+            let page = store.parked_filtered(after, filter)?;
+            let Some(last) = page.last() else { break };
+            assert_eq!(page.len(), 1);
+            assert_eq!(last.resolution.is_some(), filter == ParkedFilter::Resolved);
+            after = last.id;
+            seen.push(last.id);
+        }
+        assert_eq!(seen, expected, "{filter:?}");
+    }
+    assert_eq!(store.parked_counts()?, counts);
+    Ok(())
+}
+
+// Owner request 2026-11-19 (admin restyle b1): an item's history reads the
+// audit entries that name it with one action, oldest first; other actions,
+// other items and entries that only mention the name in a reason are left out,
+// and only the newest page is kept with a flag for older ones.
+#[test]
+fn audits_naming_a_target_keep_the_newest_page_oldest_first() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("store.db"))?;
+    let target = Identifier::new("parked:7")?;
+    let action = Identifier::new("receipt-reprocess")?;
+    let entry = |action: &str,
+                 target: &str,
+                 time: i64,
+                 reason: &str|
+     -> Result<Audit, Box<dyn std::error::Error>> {
+        Ok(Audit {
+            actor: Identifier::new("operator")?,
+            action: Identifier::new(action)?,
+            targets: vec![Identifier::new("receipt")?, Identifier::new(target)?],
+            time,
+            reason: Reason::new(reason)?,
+        })
+    };
+    let (none, older) = store.audits_naming(&target, &action)?;
+    assert!(none.is_empty() && !older);
+    for audit in [
+        entry("receipt-reprocess", "parked:7", 1, "first")?,
+        entry("admin-raw-view", "parked:7", 2, "a view")?,
+        entry("receipt-reprocess", "parked:70", 3, "another item")?,
+        entry("receipt-reprocess", "parked:8", 4, "mentions \"parked:7\"")?,
+        entry("receipt-reprocess", "parked:7", 5, "second")?,
+        entry("receipt-reprocess", "parked:7", 6, "third")?,
+    ] {
+        store.audit(&audit)?;
+    }
+    let reasons = |rows: &[Audit]| {
+        rows.iter()
+            .map(|a| a.reason.as_str().to_owned())
+            .collect::<Vec<_>>()
+    };
+    let (rows, older) = store.audits_naming(&target, &action)?;
+    assert_eq!(reasons(&rows), ["first", "second", "third"]);
+    assert!(!older);
+    store.limits.page_rows = 2;
+    let (rows, older) = store.audits_naming(&target, &action)?;
+    assert_eq!(reasons(&rows), ["second", "third"]);
+    assert!(older);
+    Ok(())
+}
