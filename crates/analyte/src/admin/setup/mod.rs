@@ -431,16 +431,23 @@ async fn lab_apps_section(state: &Arc<Context>) -> Markup {
     // A fresh installation has none yet; a machine not set up needs none, but
     // setting one up does, so say where to add it.
     let worker = state.clone();
-    let none = tokio::task::spawn_blocking(move || lab_apps::scan(&worker.config_path))
+    let scanned = tokio::task::spawn_blocking(move || lab_apps::scan(&worker.config_path))
         .await
-        .ok()
-        .and_then(Result::ok)
-        .is_some_and(|scan| scan.known.is_empty());
-    if none {
-        html.push_markup(concat!(
+        .map_err(SetupError::from)
+        .and_then(|scanned| scanned);
+    match scanned {
+        Ok(scan) if scan.known.is_empty() => html.push_markup(concat!(
             "<p class=\"notice info\">No lab app yet: ",
             "<a href=\"/setup/lab-apps/new\">add one</a>.</p>"
-        ));
+        )),
+        Ok(_) => {}
+        // These files hold key names only, never key values.
+        Err(error) => html.push_fragment(
+            &Markup::new()
+                .markup("<p class=\"notice bad\">The lab apps file could not be read: ")
+                .text(error)
+                .markup("</p>"),
+        ),
     }
     html.markup("</section>")
 }

@@ -930,6 +930,32 @@ async fn lab_app_page_refuses_a_clashing_name() -> Result<(), Error> {
     Ok(())
 }
 
+// Owner decision 2026-11-19 (visible failures); AGENTS.md "keep errors
+// specific": when lab-apps.toml cannot be read, the setup page says so and why,
+// instead of showing an empty lab apps section.
+#[tokio::test(flavor = "multi_thread")]
+async fn setup_page_says_when_the_lab_apps_file_cannot_be_read() -> Result<(), Error> {
+    let fixture = start().await?;
+    std::fs::write(
+        fixture.root().join("lab-apps.toml"),
+        "schema_version = 1
+[[lab_apps]]
+name = 'broken'
+unknown_setting = 1
+",
+    )?;
+    let page = fixture.get("/setup").await?;
+    assert!(page.starts_with("HTTP/1.1 200"), "{page}");
+    let notice = page
+        .split("<p class=\"notice bad\">The lab apps file could not be read: ")
+        .nth(1)
+        .and_then(|rest| rest.split("</p>").next())
+        .ok_or("no notice")?;
+    assert!(notice.contains("lab-apps.toml"), "{notice}");
+    assert!(notice.contains("unknown_setting"), "{notice}");
+    Ok(())
+}
+
 // Owner request 2026-11-18 (setup page); AGENTS.md rules 7 and 10: the listen
 // test shows the bytes on the page only, writes nothing to the port, refuses a
 // port the running service owns, and stores and logs nothing.
