@@ -223,7 +223,7 @@ fn kind_and_reason(parked: &Parked) -> Markup {
     view::row("Category", None, &category).fragment(&view::row(
         "Reason",
         None,
-        &Markup::new().text(parked.reason.as_str()),
+        &plain::reason(parked.reason.as_str()),
     ))
 }
 

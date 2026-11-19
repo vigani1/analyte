@@ -22,6 +22,7 @@ pub use inbound::evidence::ResultMappingError;
 pub use orders::codes::{map_priority, map_specimen, map_test};
 
 mod evidence_display;
+pub use evidence_display::ReasonPiece;
 mod inbound;
 mod orders;
 

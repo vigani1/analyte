@@ -4,6 +4,7 @@
 //! disk. Times show in the PC's own time zone; the exact UTC time and Unix
 //! seconds stay in the hover text.
 use crate::admin::markup::Markup;
+use analyte_mapping::{Position, ReasonPiece};
 use analyte_model::OrderState;
 use analyte_store::DeliveryState;
 use jiff::{Timestamp, tz::TimeZone};
@@ -102,6 +103,32 @@ pub(in crate::admin) fn when_unix(seconds: i64, now: Timestamp) -> Markup {
         |_| Markup::new().text(format!("Unix time {seconds} (not a valid date)")),
         |at| when(at, now),
     )
+}
+
+/// A stored reason for people: each mapping position reads "record 3, field 3",
+/// or "record 3" when field zero means the whole record, and the exact stored
+/// text stays on hover. A reason without a position shows exactly as stored.
+pub(in crate::admin) fn reason(stored: &str) -> Markup {
+    let pieces = Position::split_stored(stored);
+    if !pieces
+        .iter()
+        .any(|piece| matches!(piece, ReasonPiece::Position(_)))
+    {
+        return Markup::new().text(stored);
+    }
+    let mut shown = String::new();
+    for piece in pieces {
+        match piece {
+            ReasonPiece::Text(text) => shown.push_str(text),
+            ReasonPiece::Position(Position { record, field: 0 }) => {
+                shown.push_str(&format!("record {record}"));
+            }
+            ReasonPiece::Position(Position { record, field }) => {
+                shown.push_str(&format!("record {record}, field {field}"));
+            }
+        }
+    }
+    super::exact(&shown, stored)
 }
 
 /// An order's state in words a lab manager uses; pages keep the stored state on hover.
@@ -204,6 +231,32 @@ mod tests {
         assert!(html.contains("0 s ago"));
         assert!(when_unix(i64::MAX, at).contains("Unix time 9223372036854775807"));
         Ok(())
+    }
+
+    // Owner review 2026-11-19 (structure review PR 2): positions read as record
+    // and field, the stored reason stays on hover, and other reasons are unchanged.
+    #[test]
+    fn reasons_show_positions_plainly_and_keep_the_stored_text() {
+        assert_eq!(
+            &*reason("Position { record: 3, field: 3 }: UnknownTest"),
+            concat!(
+                "<span title=\"Position { record: 3, field: 3 }: UnknownTest\">",
+                "record 3, field 3: UnknownTest</span>",
+            )
+        );
+        assert_eq!(
+            &*reason(
+                "bad <a> at Position { record: 7, field: 0 }, see Position { record: 8, field: 2 }"
+            ),
+            concat!(
+                "<span title=\"bad &lt;a&gt; at Position { record: 7, field: 0 }, see ",
+                "Position { record: 8, field: 2 }\">bad &lt;a&gt; at record 7, see record 8, ",
+                "field 2</span>",
+            )
+        );
+        for stored in ["checksum mismatch in frame 2", "Position { record: x }", ""] {
+            assert_eq!(&*reason(stored), &*Markup::new().text(stored));
+        }
     }
 
     #[test]

@@ -18,7 +18,44 @@ impl fmt::Display for Position {
     }
 }
 
+/// A piece of stored text: plain text, or a position written by [`Position`]'s `Display`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReasonPiece<'a> {
+    /// Text exactly as stored.
+    Text(&'a str),
+    /// A position spelling, read back.
+    Position(Position),
+}
+
 impl Position {
+    /// Cuts stored text into plain text and the positions written inside it, in
+    /// order; joining the pieces with their `Display` gives `text` back exactly.
+    /// Text that only resembles a position stays text. The scan is linear and
+    /// not recursive; the caller bounds `text` (a stored reason is bounded).
+    #[must_use]
+    pub fn split_stored(text: &str) -> Vec<ReasonPiece<'_>> {
+        let mut pieces = Vec::new();
+        let mut done = 0usize;
+        for (start, _) in text.match_indices(POSITION_OPEN) {
+            let Some((position, rest)) = text
+                .get(start..)
+                .filter(|_| start >= done)
+                .and_then(Self::read_prefix)
+            else {
+                continue;
+            };
+            if let Some(before) = text.get(done..start).filter(|t| !t.is_empty()) {
+                pieces.push(ReasonPiece::Text(before));
+            }
+            pieces.push(ReasonPiece::Position(position));
+            done = text.len().saturating_sub(rest.len());
+        }
+        if let Some(tail) = text.get(done..).filter(|t| !t.is_empty()) {
+            pieces.push(ReasonPiece::Text(tail));
+        }
+        pieces
+    }
+
     /// Reads a position spelling at the start of `text`; returns it and the rest.
     fn read_prefix(text: &str) -> Option<(Self, &str)> {
         let rest = text.strip_prefix(POSITION_OPEN)?;
@@ -214,6 +251,49 @@ mod tests {
                 format!("Position {{ record: 12, field: 3 }}: {}", finding.problem)
             );
             assert_eq!(Finding::from_stored(&stored), Some(finding));
+        }
+    }
+
+    // Owner review 2026-11-19 (structure review PR 2): every stored position is
+    // found, text around it is kept exactly, and look-alikes stay text.
+    #[test]
+    fn stored_text_splits_into_text_and_positions() {
+        use ReasonPiece::{Position as At, Text};
+        let at = |record, field| At(Position { record, field });
+        for (stored, pieces) in [
+            ("", vec![]),
+            ("no position here", vec![Text("no position here")]),
+            (
+                "Position { record: 3, field: 3 }: UnknownTest",
+                vec![at(3, 3), Text(": UnknownTest")],
+            ),
+            (
+                "departure-conflict at Position { record: 3, field: 25 }: present",
+                vec![Text("departure-conflict at "), at(3, 25), Text(": present")],
+            ),
+            (
+                "Position { record: 1, field: 0 }Position { record: 2, field: 7 }",
+                vec![at(1, 0), at(2, 7)],
+            ),
+            (
+                "Position { record: 01, field: 3 } and Position { record: 4, field: 0 }",
+                vec![Text("Position { record: 01, field: 3 } and "), at(4, 0)],
+            ),
+            (
+                "Position { record: Position { record: 5, field: 6 } }",
+                vec![Text("Position { record: "), at(5, 6), Text(" }")],
+            ),
+        ] {
+            let split = Position::split_stored(stored);
+            assert_eq!(split, pieces, "{stored}");
+            let joined: String = split
+                .iter()
+                .map(|piece| match piece {
+                    Text(text) => (*text).to_owned(),
+                    At(position) => position.to_string(),
+                })
+                .collect();
+            assert_eq!(joined, stored);
         }
     }
 
