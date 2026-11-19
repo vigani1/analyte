@@ -191,14 +191,10 @@ impl Program {
         connections::check(&machines)?;
         if file.signing_rotation.len() > 128
             || file.signing_rotation.values().any(|names| names.len() > 7)
-            || file.signing_rotation.keys().any(|name| {
-                !machines
-                    .iter()
-                    .any(|m| m.snapshot.effective().site().destination.name.as_str() == name)
-                    && !lab_apps
-                        .iter()
-                        .any(|known| known.settings.name.as_str() == name)
-            })
+            || file
+                .signing_rotation
+                .keys()
+                .any(|name| !knows_destination(&machines, &lab_apps, name))
         {
             return Err(Error::InvalidSigningRotation);
         }
@@ -313,14 +309,29 @@ impl Program {
     /// because a machine's lab app already has a worker and an order poller.
     pub(crate) fn unused_lab_apps(&self) -> impl Iterator<Item = &LabApp> {
         self.lab_apps.iter().filter(|known| {
-            !self.machines.iter().any(|machine| {
-                machine.snapshot.effective().site().destination.name == known.settings.name
-            })
+            !self
+                .machines
+                .iter()
+                .any(|machine| machine.sends_to(known.settings.name.as_str()))
         })
     }
 }
 
+/// Whether `name` is a lab app some set-up machine sends to, or one listed in
+/// `lab-apps.toml` or kept in the program file.
+fn knows_destination(machines: &[Machine], lab_apps: &[LabApp], name: &str) -> bool {
+    machines.iter().any(|machine| machine.sends_to(name))
+        || lab_apps
+            .iter()
+            .any(|known| known.settings.name.as_str() == name)
+}
+
 impl Machine {
+    /// Whether this machine's site sends results to the lab app called `name`.
+    pub(crate) fn sends_to(&self, name: &str) -> bool {
+        self.snapshot.effective().site().destination.name.as_str() == name
+    }
+
     /// Borrows the unique installation identity.
     #[must_use]
     pub fn id(&self) -> &analyte_model::Identifier {
