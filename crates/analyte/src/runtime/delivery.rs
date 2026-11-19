@@ -53,16 +53,16 @@ pub(crate) fn unused_lab_apps(
 /// so those items stay stored and the admin page names them.
 pub(crate) async fn report_unconfigured(
     store: &Handle,
-    configured: &[&Identifier],
+    configured: &[Identifier],
 ) -> Result<(), Error> {
     let open = store
         .request(deadline()?, |store| store.undelivered_by_destination())
         .await?;
     for open in open {
-        if !configured.contains(&&open.destination) {
+        if !configured.contains(&open.destination) {
             tracing::error!(
                 destination = open.destination.as_str(),
-                count = open.sending.saturating_add(open.held),
+                count = open.waiting(),
                 "results wait for a lab app destination that is no longer configured; they stay stored"
             );
         }

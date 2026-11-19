@@ -289,19 +289,15 @@ fn in_use(state: &Context, chosen: &Endpoint, port: Option<&str>) -> Result<(), 
     for running in &state.setup.running {
         let same = if let Some(port) = port {
             running.link == Link::Serial && {
-                let running_port = match &running.endpoint {
-                    Endpoint::Fixed(name) => Some(name.clone()),
-                    Endpoint::UsbSerial(number) => {
-                        serial::locate(&serial::Device::UsbSerial(number.as_str().into()), || {
-                            (state.setup.seams.ports)()
-                        })
-                        .ok()
-                    }
-                };
+                // A fixed name comes back as written, without listing ports.
+                let running_port = serial::locate(&serial::Device::from(&running.endpoint), || {
+                    (state.setup.seams.ports)()
+                })
+                .ok();
                 let same_number = matches!(
                     (&running.endpoint, chosen),
                     (Endpoint::UsbSerial(left), Endpoint::UsbSerial(right))
-                        if left.as_str().eq_ignore_ascii_case(right.as_str())
+                        if serial::same_usb_serial(left.as_str(), right.as_str())
                 );
                 same_number
                     || running_port.is_some_and(|name| connections::same_port_name(&name, port))
@@ -349,10 +345,7 @@ pub(super) fn listen_target(
     let endpoint = &plan.connection;
     match Link::of(stack) {
         Link::Serial => {
-            let device = match endpoint {
-                Endpoint::Fixed(name) => serial::Device::Named(name.clone()),
-                Endpoint::UsbSerial(number) => serial::Device::UsbSerial(number.as_str().into()),
-            };
+            let device = serial::Device::from(endpoint);
             let ports = state.setup.seams.ports.clone();
             let name = serial::locate(&device, || ports())?;
             in_use(state, endpoint, Some(&name))?;

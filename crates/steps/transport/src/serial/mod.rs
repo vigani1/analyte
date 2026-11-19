@@ -14,7 +14,7 @@ mod owner;
 #[cfg(test)]
 mod tests;
 
-pub use lookup::{LIST_LIMIT, Listed, Lookup, list, locate};
+pub use lookup::{LIST_LIMIT, Listed, Lookup, list, locate, same_usb_serial};
 pub(crate) use owner::emit;
 pub use owner::run;
 

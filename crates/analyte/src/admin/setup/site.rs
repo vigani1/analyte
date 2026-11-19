@@ -7,7 +7,7 @@
 //! the previous files are put back. Saving, adding and removing a machine all
 //! write through [`commit`].
 use super::SetupError;
-use crate::installation::config::{Program, read};
+use crate::installation::config::{Program, folder, read};
 use analyte_config::{Destination, Draft, Endpoint, LabApps, Validated};
 use analyte_model::Identifier;
 use std::{
@@ -53,11 +53,6 @@ pub(super) fn entries(config: &Path) -> Result<(String, Vec<EntrySpans>), SetupE
     let text = read(config)?;
     let spans: ProgramSpans = toml::from_str(&text).map_err(SetupError::ProgramFile)?;
     Ok((text, spans.machines))
-}
-
-/// The folder that holds the program file; entry paths are relative to it.
-pub(super) fn folder(config: &Path) -> &Path {
-    config.parent().unwrap_or_else(|| Path::new("."))
 }
 
 /// Reads the program file and finds the entry for machine `id`.

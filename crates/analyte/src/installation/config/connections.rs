@@ -14,10 +14,10 @@ pub(crate) fn shared(left: (Link, &Endpoint), right: (Link, &Endpoint)) -> Optio
         ((Link::Serial, Endpoint::Fixed(a)), (Link::Serial, Endpoint::Fixed(b))) => {
             same_port_name(a, b).then(|| format!("serial port {a}"))
         }
-        ((Link::Serial, Endpoint::UsbSerial(a)), (Link::Serial, Endpoint::UsbSerial(b))) => a
-            .as_str()
-            .eq_ignore_ascii_case(b.as_str())
-            .then(|| format!("USB serial number {}", a.as_str())),
+        ((Link::Serial, Endpoint::UsbSerial(a)), (Link::Serial, Endpoint::UsbSerial(b))) => {
+            analyte_transport::serial::same_usb_serial(a.as_str(), b.as_str())
+                .then(|| format!("USB serial number {}", a.as_str()))
+        }
         ((Link::TcpServer, a), (Link::TcpServer, b)) => {
             listeners_overlap(a, b).then(|| format!("network address {}", text(a)))
         }

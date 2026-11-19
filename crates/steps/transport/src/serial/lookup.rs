@@ -127,11 +127,18 @@ impl Lookup {
     }
 }
 
+/// Whether two USB serial numbers name the same adapter. They compare without
+/// ASCII letter case, because Windows reports the letters of a USB hardware ID
+/// in upper case.
+#[must_use]
+pub fn same_usb_serial(left: &str, right: &str) -> bool {
+    left.eq_ignore_ascii_case(right)
+}
+
 /// Finds the port name to open for `device`; lists ports only for a USB serial number.
 ///
-/// Serial numbers compare without ASCII letter case, because Windows reports the
-/// letters of a USB hardware ID in upper case. Several matches are refused, so
-/// this never chooses between two adapters.
+/// Serial numbers compare with [`same_usb_serial`]. Several matches are refused,
+/// so this never chooses between two adapters.
 ///
 /// # Errors
 /// Returns [`Lookup`] when no port, several ports or no listing is available.
@@ -152,7 +159,7 @@ pub fn locate(
         .filter(|port| {
             port.usb_serial
                 .as_deref()
-                .is_some_and(|reported| reported.eq_ignore_ascii_case(serial))
+                .is_some_and(|reported| same_usb_serial(reported, serial))
         })
         .map(|port| port.name)
         .collect();
