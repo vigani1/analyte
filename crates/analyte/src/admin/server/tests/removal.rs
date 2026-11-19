@@ -193,7 +193,7 @@ async fn removed_machine_result_is_delivered_once() -> Result<(), Error> {
     let kept = Program::load(&file)?;
     assert!(kept.machines().is_empty() && kept.awaiting_setup().is_empty());
     let names: Vec<&str> = kept
-        .retired_destinations()
+        .lab_apps()
         .iter()
         .map(|kept| kept.settings().name.as_str())
         .collect();

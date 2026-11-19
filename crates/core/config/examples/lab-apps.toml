@@ -1,0 +1,10 @@
+# Synthetic lab apps, listed once beside the program file; credential names only.
+# A site file picks one with lab_app = "demo"; with only one listed, a site file
+# that names none uses it.
+schema_version = 1
+
+[[lab_apps]]
+name = "demo"
+base_url = "https://lab.example.invalid"
+api_key_name = "demo-api"
+signing_key_name = "demo-signing"

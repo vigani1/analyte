@@ -717,7 +717,7 @@ fn assert_destination_kept(
     );
     let site: toml::Table = site_before.parse()?;
     let kept: Vec<toml::Value> = program
-        .retired_destinations()
+        .lab_apps()
         .iter()
         .map(|kept| toml::Value::try_from(kept.settings()))
         .collect::<Result<_, _>>()?;

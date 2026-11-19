@@ -520,7 +520,7 @@ impl Destinations {
         mode: super::hooks::ServiceMode,
         secrets: &crate::installation::secrets::Environment,
     ) -> Result<Self, Error> {
-        let retired = crate::runtime::delivery::retired(program, mode)?;
+        let retired = crate::runtime::delivery::unused_lab_apps(program, mode)?;
         Ok(Self {
             served: crate::runtime::delivery::destinations(program, mode)?,
             // Each kept destination's worker clears its flag when nothing is left to

@@ -7,13 +7,13 @@ mod hooks;
 pub(crate) use crate::machine::hooks::MachineHooks;
 pub(crate) use hooks::ProgramHooks;
 mod error;
-mod retired;
+pub(crate) mod lab_apps;
 mod webhooks;
 pub(crate) use alerts::Condition;
 pub use alerts::{Alert, AlertConfigError, AlertKind};
 use analyte_config::{Draft, Validated};
 pub use error::Error;
-pub use retired::Retired;
+pub use lab_apps::LabApp;
 use serde::Deserialize;
 use std::{
     io::Read,
@@ -56,8 +56,9 @@ pub struct Program {
     pub(crate) machines: Vec<Machine>,
     /// Machines listed without a definition: they wait for the setup page and do not run.
     awaiting_setup: Vec<analyte_model::Identifier>,
-    /// Destinations kept after their machines were removed, for delivery only.
-    pub(crate) retired: Vec<Retired>,
+    /// Lab apps from `lab-apps.toml` and older kept destinations; those no
+    /// machine uses are served for delivery only.
+    pub(crate) lab_apps: Vec<LabApp>,
 }
 
 #[derive(Deserialize)]
@@ -78,8 +79,9 @@ struct File {
     /// May be empty or absent while the setup page is on: machines are added there.
     #[serde(default)]
     machines: Vec<Entry>,
-    /// Lab app destinations kept by the setup page when a machine using them was
-    /// removed, written like a site file's `[destination]` table.
+    /// Lab app destinations kept by older setup pages when a machine using them
+    /// was removed, written like a site file's `[destination]` table. Still read
+    /// as lab apps; nothing writes new ones.
     #[serde(default)]
     retired_destinations: Vec<analyte_config::Destination>,
 }
@@ -174,40 +176,31 @@ impl Program {
         let base = path
             .parent()
             .ok_or_else(|| Error::ConfigurationHasNoParentDirectory)?;
+        let listed = lab_apps::read(path)?;
+        let (lab_apps, mut places) = lab_apps::validate(&listed, &file.retired_destinations, path)?;
         let (machines, awaiting_setup) = entries(
             file.machines,
-            base,
-            file.store.record_bytes,
-            admin_address.is_some(),
+            &Loading {
+                base,
+                record_bytes: file.store.record_bytes,
+                admin: admin_address.is_some(),
+                lab_apps: &listed,
+            },
+            &mut places,
         )?;
         connections::check(&machines)?;
-        let retired = retired::validate(file.retired_destinations, path)?;
         if file.signing_rotation.len() > 128
             || file.signing_rotation.values().any(|names| names.len() > 7)
             || file.signing_rotation.keys().any(|name| {
                 !machines
                     .iter()
                     .any(|m| m.snapshot.effective().site().destination.name.as_str() == name)
-                    && !retired
+                    && !lab_apps
                         .iter()
-                        .any(|kept| kept.settings.name.as_str() == name)
+                        .any(|known| known.settings.name.as_str() == name)
             })
         {
             return Err(Error::InvalidSigningRotation);
-        }
-        for machine in &machines {
-            let destination = &machine.snapshot.effective().site().destination;
-            if machines.iter().any(|other| {
-                let other = &other.snapshot.effective().site().destination;
-                other.name == destination.name
-                    && (other.base_url != destination.base_url
-                        || other.api_key_name != destination.api_key_name
-                        || other.signing_key_name != destination.signing_key_name
-                        || other.freshness_seconds != destination.freshness_seconds
-                        || other.request_timeout_seconds != destination.request_timeout_seconds)
-            }) {
-                return Err(Error::InconsistentSharedDestination);
-            }
         }
         if !(1..=3600).contains(&file.alert_interval_seconds) {
             return Err(AlertConfigError::Interval.into());
@@ -252,7 +245,7 @@ impl Program {
             },
             machines,
             awaiting_setup,
-            retired,
+            lab_apps,
         })
     }
 }
@@ -306,19 +299,19 @@ impl Program {
         &self.awaiting_setup
     }
 
-    /// Destinations kept after their machines were removed, in configured order,
-    /// including any that a set-up machine uses again.
+    /// The lab apps of `lab-apps.toml` in written order, then older kept
+    /// destinations not listed there; includes those a set-up machine uses.
     #[must_use]
-    pub fn retired_destinations(&self) -> &[Retired] {
-        &self.retired
+    pub fn lab_apps(&self) -> &[LabApp] {
+        &self.lab_apps
     }
 
-    /// Kept destinations that no set-up machine uses: only these get a
-    /// delivery-only worker, because a machine's own settings win for its name.
-    pub(crate) fn unused_retired(&self) -> impl Iterator<Item = &Retired> {
-        self.retired.iter().filter(|kept| {
+    /// Lab apps no set-up machine uses: only these get a delivery-only worker,
+    /// because a machine's lab app already has a worker and an order poller.
+    pub(crate) fn unused_lab_apps(&self) -> impl Iterator<Item = &LabApp> {
+        self.lab_apps.iter().filter(|known| {
             !self.machines.iter().any(|machine| {
-                machine.snapshot.effective().site().destination.name == kept.settings.name
+                machine.snapshot.effective().site().destination.name == known.settings.name
             })
         })
     }
@@ -495,10 +488,10 @@ mod admin_tests {
         Ok(())
     }
 
-    // Owner request 2026-11-19 (results waiting after a removal); safety rule 2:
-    // a kept destination is read with the site file's [destination] rules, once
-    // per name, may carry a signing rotation, and gets a delivery-only worker only
-    // while no set-up machine uses its name.
+    // Owner request 2026-11-19 (results waiting after a removal; lab app set once,
+    // item 3); safety rule 2: a kept destination is read as a lab app with the site
+    // file's [destination] rules, once per name, may carry a signing rotation, and
+    // gets a delivery-only worker only while no set-up machine uses its name.
     #[test]
     fn retired_destinations_load_for_delivery_only() -> Result<(), Error> {
         let temp = tempfile::tempdir()?;
@@ -523,18 +516,23 @@ mod admin_tests {
             )
         };
         let rotation = "[signing_rotation]\nold = ['old-previous']\n";
-        let tail = format!("{}{}{rotation}", kept("old", ""), kept("demo", ""));
+        // The machine's "demo" kept with the very same settings is allowed.
+        let same = concat!(
+            "[[retired_destinations]]\nname = 'demo'\nbase_url = 'https://lab.example.invalid'\n",
+            "api_key_name = 'demo-api'\nsigning_key_name = 'demo-signing'\n"
+        );
+        let tail = format!("{}{same}{rotation}", kept("old", ""));
         std::fs::write(&path, program(&machine, &tail))?;
         let loaded = Program::load(&path)?;
-        let names = |kept: &mut dyn Iterator<Item = &Retired>| -> Vec<String> {
+        let names = |kept: &mut dyn Iterator<Item = &LabApp>| -> Vec<String> {
             kept.map(|kept| kept.settings().name.as_str().to_owned())
                 .collect()
         };
-        let all = names(&mut loaded.retired_destinations().iter());
+        let all = names(&mut loaded.lab_apps().iter());
         assert_eq!(all, ["old", "demo"]);
-        // The running machine's own "demo" settings win; only "old" is drained.
-        assert_eq!(names(&mut loaded.unused_retired()), ["old"]);
-        let timeout = loaded.retired_destinations()[0].limits.request_timeout;
+        // The running machine serves "demo"; only "old" is drained.
+        assert_eq!(names(&mut loaded.unused_lab_apps()), ["old"]);
+        let timeout = loaded.lab_apps()[0].limits.request_timeout;
         assert_eq!(timeout, Duration::from_secs(10));
         let twice = format!("{}{}", kept("old", ""), kept("old", ""));
         std::fs::write(&path, program("", &twice))?;
@@ -556,6 +554,92 @@ mod admin_tests {
             std::fs::write(&path, program("", &invalid))?;
             assert!(Program::load(&path).is_err(), "{invalid}");
         }
+        Ok(())
+    }
+
+    // Owner request 2026-11-19 (lab app set once), items 1 to 3 and 6: a site file
+    // names a lab app from lab-apps.toml beside the program file and runs with the
+    // same snapshot digest as the old embedded form; a missing file lists none; one
+    // name written differently in two places (lab-apps.toml, a site file or a kept
+    // destination) is refused, naming both places, and never guessed.
+    #[test]
+    fn lab_apps_file_is_read_and_conflicts_refused() -> Result<(), Error> {
+        let temp = tempfile::tempdir()?;
+        let path = temp.path().join("program.toml");
+        let examples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../core/config/examples");
+        let site = include_str!("../../../../core/config/examples/site.toml");
+        let lab_apps = include_str!("../../../../core/config/examples/lab-apps.toml");
+        let at = site.find("[destination]").ok_or("example site")?;
+        let named = format!("{}lab_app = \"demo\"\n", &site[..at]);
+        let machine = format!(
+            "[[machines]]\nid = 'synthetic'\ndefinition = '{}'\nsite = 'site.toml'\n",
+            examples
+                .join("hl7.toml")
+                .display()
+                .to_string()
+                .replace('\\', "/"),
+        );
+        let program = analyte_fixtures::program(&format!("[admin]\nport = 8080\n{machine}"));
+        std::fs::write(&path, &program)?;
+        let file = temp.path().join(analyte_config::LAB_APPS_FILE);
+        let digest = |path: &Path| -> Result<[u8; 32], Error> {
+            Ok(Program::load(path)?.machines()[0].snapshot().digest())
+        };
+
+        // Old setup: no lab-apps.toml, the site file writes its own [destination].
+        std::fs::write(temp.path().join("site.toml"), site)?;
+        let old = digest(&path)?;
+        assert!(Program::load(&path)?.lab_apps().is_empty());
+        // New setup: the lab app is listed once and the site file names it.
+        std::fs::write(&file, lab_apps)?;
+        std::fs::write(temp.path().join("site.toml"), &named)?;
+        assert_eq!(digest(&path)?, old, "the effective config is unchanged");
+        let loaded = Program::load(&path)?;
+        assert_eq!(loaded.lab_apps().len(), 1);
+        assert_eq!(loaded.unused_lab_apps().count(), 0);
+
+        // The same name written differently in lab-apps.toml and a site file.
+        std::fs::write(
+            &file,
+            lab_apps.replace("lab.example.invalid", "other.example.invalid"),
+        )?;
+        std::fs::write(temp.path().join("site.toml"), site)?;
+        let refused = Program::load(&path).err().ok_or("conflict accepted")?;
+        let text = refused.to_string();
+        assert!(
+            matches!(
+                &refused,
+                super::Error::ConflictingLabApp { name, .. } if name == "demo"
+            ),
+            "{text}"
+        );
+        assert!(text.contains(&file.display().to_string()), "{text}");
+        assert!(text.contains("site.toml [destination]"), "{text}");
+        // ...and in lab-apps.toml and a kept destination in the program file.
+        std::fs::write(&file, lab_apps)?;
+        let kept = concat!(
+            "[[retired_destinations]]\nname = 'demo'\nbase_url = 'https://moved.example.invalid'\n",
+            "api_key_name = 'demo-api'\nsigning_key_name = 'demo-signing'\n"
+        );
+        std::fs::write(&path, format!("{program}{kept}"))?;
+        let text = Program::load(&path)
+            .err()
+            .ok_or("conflict accepted")?
+            .to_string();
+        assert!(
+            text.contains("program.toml [[retired_destinations]]"),
+            "{text}"
+        );
+        assert!(text.contains(&file.display().to_string()), "{text}");
+        // A kept destination identical to the listed one is the same lab app.
+        std::fs::write(
+            &path,
+            format!(
+                "{program}{}",
+                kept.replace("moved.example.invalid", "lab.example.invalid")
+            ),
+        )?;
+        assert_eq!(Program::load(&path)?.lab_apps().len(), 1);
         Ok(())
     }
 
@@ -707,12 +791,21 @@ mod startup_tests {
     }
 }
 
-/// Loads each listed machine; one without a definition waits for the setup page.
-fn entries(
-    listed: Vec<Entry>,
-    base: &Path,
+/// What every machine is loaded with.
+struct Loading<'a> {
+    base: &'a Path,
     record_bytes: usize,
     admin: bool,
+    lab_apps: &'a analyte_config::LabApps,
+}
+
+/// Loads each listed machine; one without a definition waits for the setup page.
+/// A lab app a machine writes itself (or in its overrides) is added to `places`,
+/// so one name written differently anywhere is refused.
+fn entries(
+    listed: Vec<Entry>,
+    loading: &Loading<'_>,
+    places: &mut lab_apps::Places,
 ) -> Result<(Vec<Machine>, Vec<analyte_model::Identifier>), Error> {
     let mut machines: Vec<Machine> = Vec::new();
     let mut awaiting_setup = Vec::new();
@@ -721,15 +814,27 @@ fn entries(
             return Err(Error::DuplicateMachineIdentity);
         }
         match entry.definition.clone() {
-            Some(definition) => machines.push(load_machine(
-                entry,
-                &base.join(definition),
-                base,
-                record_bytes,
-            )?),
+            Some(definition) => {
+                let site = loading.base.join(&entry.site);
+                let overrides = entry.overrides.as_ref().map(|p| loading.base.join(p));
+                let machine = load_machine(entry, &loading.base.join(definition), loading)?;
+                let effective = machine.snapshot.effective();
+                let place = match effective.lab_app_source() {
+                    analyte_config::LabAppSource::LabApps => None,
+                    analyte_config::LabAppSource::Site => Some(site),
+                    analyte_config::LabAppSource::Overrides => overrides,
+                };
+                if let Some(place) = place {
+                    places.add(
+                        &effective.site().destination,
+                        format!("{} [destination]", place.display()),
+                    )?;
+                }
+                machines.push(machine);
+            }
             // Only the setup page can give it a definition, so without the
             // page such an entry could never run: refuse it.
-            None if !admin => return Err(Error::SetupNeedsAdmin),
+            None if !loading.admin => return Err(Error::SetupNeedsAdmin),
             None if entry.capture || entry.overrides.is_some() => {
                 return Err(Error::AwaitingSetupWithSettings);
             }
@@ -739,22 +844,19 @@ fn entries(
     Ok((machines, awaiting_setup))
 }
 
-fn load_machine(
-    entry: Entry,
-    definition: &Path,
-    base: &Path,
-    record_bytes: usize,
-) -> Result<Machine, Error> {
+fn load_machine(entry: Entry, definition: &Path, loading: &Loading<'_>) -> Result<Machine, Error> {
+    let (base, record_bytes) = (loading.base, loading.record_bytes);
     let site = base.join(entry.site);
     let overrides = entry.overrides.map(|p| base.join(p));
     let replacement = match &overrides {
         Some(p) => read(p)?,
         None => "schema_version = 1".into(),
     };
-    let snapshot = Draft::load(
+    let snapshot = Draft::load_with(
         (&definition.display().to_string(), &read(definition)?),
         (&site.display().to_string(), &read(&site)?),
         ("overrides", &replacement),
+        loading.lab_apps,
     )?
     .validate()?;
     if matches!(
