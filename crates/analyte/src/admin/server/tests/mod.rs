@@ -281,7 +281,7 @@ fn headers_present(response: &str) {
     for expected in [
         "content-security-policy: default-src 'self'",
         "x-frame-options: deny",
-        "referrer-policy: no-referrer",
+        "referrer-policy: same-origin",
         "cache-control: no-store",
     ] {
         assert!(lower.contains(expected), "missing {expected}");
@@ -800,6 +800,18 @@ async fn assert_overview_rejects_login_and_missing_route(
     )
     .await?;
     assert!(cross_origin.starts_with("HTTP/1.1 401"));
+    // An opaque origin stays refused: the referrer policy, not a looser check,
+    // is what lets real browsers send their own origin on our forms.
+    let opaque_origin = request(
+        host,
+        "/login",
+        "Origin: null
+Content-Type: application/x-www-form-urlencoded
+",
+        Some(form),
+    )
+    .await?;
+    assert!(opaque_origin.starts_with("HTTP/1.1 401"));
     let missing = request(
         host,
         "/missing",
