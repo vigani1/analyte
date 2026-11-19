@@ -101,6 +101,7 @@ fn alert_episodes_raise_remind_resolve_with_closed_payload() -> TestResult {
         keys,
         vec![
             "condition_id",
+            "destination_id",
             "episode_at",
             "episode_id",
             "event",
@@ -109,10 +110,13 @@ fn alert_episodes_raise_remind_resolve_with_closed_payload() -> TestResult {
             "machine_id",
             "measurement",
             "observed_at",
+            "reason",
             "responder",
             "version"
         ]
     );
+    assert_eq!(raised["version"], 2);
+    assert!(raised["destination_id"].is_null() && raised["reason"].is_null());
     let text = String::from_utf8(raise.payload().to_vec())?;
     for forbidden in [
         "PATIENT-SECRET",
@@ -159,6 +163,44 @@ fn alert_episodes_raise_remind_resolve_with_closed_payload() -> TestResult {
     assert_eq!(reraised["condition_id"], raised["condition_id"]);
     assert_ne!(reraised["episode_id"], raised["episode_id"]);
     assert!(reraised["measurement"]["value"].is_null());
+    Ok(())
+}
+
+// ADR 0014; ADR 0003 rule 2
+#[test]
+fn undeliverable_destination_event_names_destination_reason_and_count() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("undeliverable.db"))?;
+    let endpoint = Identifier::new("relay")?;
+    store.register_alert_endpoint(&endpoint)?;
+    store.db.execute_batch(concat!(
+        "INSERT INTO outbox(id,kind,order_id,destination,ordering_key,payload,digest,contract,",
+        "state,next_attempt,enqueued_at) VALUES('delivery','order_event','SAMPLE-00012',",
+        "'old-app','SAMPLE-00012',CAST('PATIENT-SECRET' AS BLOB),zeroblob(32),1,'pending',0,90);"
+    ))?;
+    for (reason, code) in [
+        (Undeliverable::NotConfigured, "not_configured"),
+        (Undeliverable::CredentialsMissing, "credentials_missing"),
+    ] {
+        let key = AlertKey::UndeliverableDestination(Identifier::new("old-app")?, reason);
+        let count = store.alert_value(&key, 100, &[])?;
+        assert_eq!(count, Some(1));
+        store.evaluate_alert(&key, "App support", true, count, 100)?;
+        assert!(store.prepare_alert_event(&endpoint, 100, 60, 8)?);
+        let event = store
+            .claim_alert_attempt(&endpoint, 100, 3, 5, 30)?
+            .ok_or("raise missing")?;
+        let body = decoded(&event)?;
+        assert_eq!(body["kind"], "undeliverable_destination");
+        assert_eq!(body["destination_id"], "old-app");
+        assert_eq!(body["reason"], code);
+        assert!(body["machine_id"].is_null());
+        assert_eq!(body["measurement"]["unit"], "count");
+        assert_eq!(body["measurement"]["value"], 1);
+        let text = String::from_utf8(event.payload().to_vec())?;
+        assert!(!text.contains("SAMPLE-00012") && !text.contains("PATIENT-SECRET"));
+        store.complete_alert_attempt(event.id(), 101)?;
+    }
     Ok(())
 }
 

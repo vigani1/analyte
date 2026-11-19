@@ -5,12 +5,36 @@ use crate::{
     installation::config::{Alert, Condition},
 };
 use analyte_model::Identifier;
-use analyte_store::{AlertKey, AlertState, Handle};
+use analyte_store::{AlertKey, AlertState, Handle, Undeliverable};
 use std::{sync::Arc, time::Duration};
 use tokio::sync::watch;
 
-fn identity(policy: &Alert) -> AlertKey {
-    match policy.condition() {
+/// The lab app destinations this run can deliver to, fixed at startup like its
+/// delivery workers: a configuration or key change applies after a restart.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct Reach {
+    /// Every destination a set-up machine uses or a kept destination defines.
+    pub(crate) configured: Vec<Identifier>,
+    /// Kept destinations among them whose keys could not be loaded.
+    pub(crate) keyless: Vec<Identifier>,
+}
+
+impl Reach {
+    fn problem(&self, destination: &Identifier) -> Option<Undeliverable> {
+        if self.keyless.contains(destination) {
+            Some(Undeliverable::CredentialsMissing)
+        } else if self.configured.contains(destination) {
+            None
+        } else {
+            Some(Undeliverable::NotConfigured)
+        }
+    }
+}
+
+/// The single condition a policy watches; none for a policy with one condition
+/// per lab app destination.
+fn identity(policy: &Alert) -> Option<AlertKey> {
+    Some(match policy.condition() {
         Condition::OldestUndelivered(_) => AlertKey::OldestUndelivered,
         Condition::MachineSilent(machine, _) => AlertKey::MachineSilent(machine.clone()),
         Condition::DiskReserve { .. } => AlertKey::DiskReserve,
@@ -18,7 +42,8 @@ fn identity(policy: &Alert) -> AlertKey {
         Condition::UncertainOrders(_) => AlertKey::UncertainOrders,
         Condition::ParkedItems(_) => AlertKey::ParkedItems,
         Condition::RestorePaused => AlertKey::RestorePaused,
-    }
+        Condition::UndeliverableDestination(_) => return None,
+    })
 }
 
 fn raised(policy: &Alert, value: Option<u64>) -> bool {
@@ -28,9 +53,9 @@ fn raised(policy: &Alert, value: Option<u64>) -> bool {
     match policy.condition() {
         Condition::RestorePaused => value != 0,
         Condition::DiskReserve { below, .. } => value < *below,
-        Condition::UncertainOrders(threshold) | Condition::ParkedItems(threshold) => {
-            value > *threshold
-        }
+        Condition::UncertainOrders(threshold)
+        | Condition::ParkedItems(threshold)
+        | Condition::UndeliverableDestination(threshold) => value > *threshold,
         Condition::OldestUndelivered(threshold)
         | Condition::MachineSilent(_, threshold)
         | Condition::OrderCacheStale(threshold) => value >= *threshold,
@@ -46,7 +71,59 @@ pub(crate) fn signal(key: &AlertKey) -> (&'static str, Option<&str>) {
         AlertKey::UncertainOrders => ("uncertain_orders", None),
         AlertKey::ParkedItems => ("parked_items", None),
         AlertKey::RestorePaused => ("restore_paused", None),
+        AlertKey::UndeliverableDestination(..) => ("undeliverable_destination", None),
     }
+}
+
+/// The lab app destination a condition is about, if any.
+fn destination(key: &AlertKey) -> Option<&str> {
+    match key {
+        AlertKey::UndeliverableDestination(destination, _) => Some(destination.as_str()),
+        AlertKey::OldestUndelivered
+        | AlertKey::MachineSilent(_)
+        | AlertKey::DiskReserve
+        | AlertKey::OrderCacheStale
+        | AlertKey::UncertainOrders
+        | AlertKey::ParkedItems
+        | AlertKey::RestorePaused => None,
+    }
+}
+
+/// The plain reason and fix for a condition whose kind alone does not say it.
+/// Names and counts only, never payloads or sample IDs (safety rule 10).
+pub(crate) fn message(state: &AlertState) -> Option<String> {
+    let AlertKey::UndeliverableDestination(destination, reason) = &state.key else {
+        return None;
+    };
+    let destination = destination.as_str();
+    let waiting = match state.value {
+        Some(1) => "1 result or order message waits".to_owned(),
+        Some(count) => format!("{count} results or order messages wait"),
+        None => "an unknown number of results or order messages wait".to_owned(),
+    };
+    Some(match reason {
+        Undeliverable::NotConfigured => format!(
+            concat!(
+                "Cannot deliver: no machine and no kept lab app setting uses destination ",
+                "{destination}; {waiting}. Set up a machine with lab app destination ",
+                "{destination} on the setup page, or restore its settings; the results are ",
+                "kept and will be sent once it is configured."
+            ),
+            destination = destination,
+            waiting = waiting
+        ),
+        Undeliverable::CredentialsMissing => format!(
+            concat!(
+                "Cannot deliver: the API key or signing key for lab app destination ",
+                "{destination} is missing; {waiting}, paused. Enter the API key and signing ",
+                "key for destination {destination} on the setup page (on a machine that uses ",
+                "it) or in the service environment, then restart; the results are kept and ",
+                "will be sent once the keys are set."
+            ),
+            destination = destination,
+            waiting = waiting
+        ),
+    })
 }
 
 fn log_transition(state: &AlertState) {
@@ -55,6 +132,7 @@ fn log_transition(state: &AlertState) {
     tracing::info!(
         alert_kind = kind,
         machine,
+        destination = destination(&state.key),
         active = state.active,
         value = state.value,
         "alert transition"
@@ -97,27 +175,80 @@ async fn evaluate(
     store: &Handle,
     policies: &[Alert],
     destinations: &[(Identifier, u64)],
+    reach: &Reach,
     now: i64,
 ) -> Result<(), Error> {
     for policy in policies {
-        let key = identity(policy);
-        let read_key = key.clone();
-        let destinations = destinations.to_vec();
-        let value = store
-            .request(deadline()?, move |store| {
-                store.alert_value(&read_key, now, &destinations)
-            })
-            .await?;
-        let active = raised(policy, value);
-        let responder = policy.responder().to_owned();
-        let transition = store
-            .request(deadline()?, move |store| {
-                store.evaluate_alert(&key, &responder, active, value, now)
-            })
-            .await?;
-        if let Some(transition) = transition {
-            log_transition(&transition);
+        match identity(policy) {
+            Some(key) => record(store, policy, key, true, destinations, now).await?,
+            None => undeliverable(store, policy, reach, now).await?,
         }
+    }
+    Ok(())
+}
+
+/// Measures one condition and stores the result; `applies` false clears it
+/// whatever the measurement.
+async fn record(
+    store: &Handle,
+    policy: &Alert,
+    key: AlertKey,
+    applies: bool,
+    destinations: &[(Identifier, u64)],
+    now: i64,
+) -> Result<(), Error> {
+    let read_key = key.clone();
+    let destinations = destinations.to_vec();
+    let value = store
+        .request(deadline()?, move |store| {
+            store.alert_value(&read_key, now, &destinations)
+        })
+        .await?;
+    let active = applies && raised(policy, value);
+    let responder = policy.responder().to_owned();
+    let transition = store
+        .request(deadline()?, move |store| {
+            store.evaluate_alert(&key, &responder, active, value, now)
+        })
+        .await?;
+    if let Some(transition) = transition {
+        log_transition(&transition);
+    }
+    Ok(())
+}
+
+/// One condition per destination and reason (ADR 0003 rule 2: such items stay
+/// stored, so someone must be told). Raises for each destination that holds
+/// items this run cannot deliver to; clears each retained raise whose items were
+/// delivered, or whose destination is now configured or has another reason.
+async fn undeliverable(
+    store: &Handle,
+    policy: &Alert,
+    reach: &Reach,
+    now: i64,
+) -> Result<(), Error> {
+    let open = store
+        .request(deadline()?, |store| store.undelivered_by_destination())
+        .await?;
+    let mut conditions: Vec<(Identifier, Undeliverable)> = open
+        .into_iter()
+        .filter_map(|open| {
+            reach
+                .problem(&open.destination)
+                .map(|reason| (open.destination, reason))
+        })
+        .collect();
+    for state in active(store).await? {
+        if let AlertKey::UndeliverableDestination(destination, reason) = state.key
+            && !conditions.contains(&(destination.clone(), reason))
+        {
+            conditions.push((destination, reason));
+        }
+    }
+    for (destination, reason) in conditions {
+        let applies = reach.problem(&destination) == Some(reason);
+        let key = AlertKey::UndeliverableDestination(destination, reason);
+        record(store, policy, key, applies, &[], now).await?;
     }
     Ok(())
 }
@@ -126,6 +257,7 @@ pub(crate) async fn run(
     store: Arc<Handle>,
     policies: Vec<Alert>,
     destinations: Vec<(Identifier, u64)>,
+    reach: Reach,
     interval: Duration,
     mut stop: watch::Receiver<bool>,
 ) -> Result<(), Error> {
@@ -138,7 +270,7 @@ pub(crate) async fn run(
         tokio::select! {
             biased;
             _ = async { let _ = stop.wait_for(|&stopped| stopped).await; } => return Ok(()),
-            result = evaluate(&store, &policies, &destinations, jiff::Timestamp::now().as_second()) => result?,
+            result = evaluate(&store, &policies, &destinations, &reach, jiff::Timestamp::now().as_second()) => result?,
         }
     }
 }
@@ -164,7 +296,7 @@ mod tests {
     fn policy(kind: &str) -> Result<Alert, Error> {
         let threshold = match kind {
             "restore_paused" => "",
-            "uncertain_orders" | "parked_items" => "threshold=0",
+            "uncertain_orders" | "parked_items" | "undeliverable_destination" => "threshold=0",
             _ => "threshold=10",
         };
         let machine = if kind == "machine_silent" {
@@ -217,7 +349,7 @@ mod tests {
         // Disk is clear at reserve+margin; ages raise exactly at their threshold.
         assert!(!raised(&policies[2], Some(1034)));
         space.store(1033, Ordering::SeqCst);
-        evaluate(&store, &policies, &destinations, 100).await?;
+        evaluate(&store, &policies, &destinations, &Reach::default(), 100).await?;
         let history = store.request(deadline()?, |s| s.alert_history(0)).await?;
         assert_eq!(history.len(), 7);
         assert!(
@@ -235,7 +367,7 @@ mod tests {
             crate::test_startup_deadline()?,
         )
         .await?;
-        evaluate(&store, &policies, &destinations, 101).await?;
+        evaluate(&store, &policies, &destinations, &Reach::default(), 101).await?;
         assert_eq!(
             store
                 .request(deadline()?, |s| s.alert_history(0))
@@ -253,8 +385,8 @@ mod tests {
             INSERT INTO audit(evidence) VALUES('{"action":"orders-resume-after-restore"}');"#,
         )?;
         space.store(1034, Ordering::SeqCst);
-        evaluate(&store, &policies, &destinations, 101).await?;
-        evaluate(&store, &policies, &destinations, 102).await?;
+        evaluate(&store, &policies, &destinations, &Reach::default(), 101).await?;
+        evaluate(&store, &policies, &destinations, &Reach::default(), 102).await?;
         let history = store.request(deadline()?, |s| s.alert_history(0)).await?;
         assert_eq!(history.len(), 14);
         assert!(
@@ -267,6 +399,99 @@ mod tests {
             assert!(!format!("{:?}", item.state.value).contains("SAMPLE-PRIVATE-00012"));
         }
         drop(db);
+        store.shutdown(deadline()?).await?;
+        Ok(())
+    }
+
+    async fn undeliverable_states(store: &Handle) -> Result<Vec<AlertState>, Error> {
+        Ok(active(store)
+            .await?
+            .into_iter()
+            .filter(|state| destination(&state.key).is_some())
+            .collect())
+    }
+
+    // ADR 0014; ADR 0003 rule 2: results no destination can take stay stored and
+    // raise an alert naming the destination, the count, the reason and the fix.
+    #[tokio::test]
+    async fn undeliverable_destination_names_reason_and_fix_then_clears() -> Result<(), Error> {
+        let temp = tempfile::tempdir()?;
+        let path = temp.path().join("undeliverable.db");
+        let store = open_store(path.clone()).await?;
+        let db = rusqlite::Connection::open(&path)?;
+        db.execute_batch(concat!(
+            "INSERT INTO outbox(id,kind,order_id,destination,ordering_key,payload,digest,",
+            "contract,state,next_attempt,enqueued_at) VALUES",
+            "('a','order_event','SAMPLE-PRIVATE-00012','old-app','SAMPLE-PRIVATE-00012',",
+            "CAST('SAMPLE-PRIVATE-00012' AS BLOB),zeroblob(32),1,'pending',0,90),",
+            "('b','order_event','SAMPLE-PRIVATE-00013','old-app','SAMPLE-PRIVATE-00013',",
+            "CAST('SAMPLE-PRIVATE-00013' AS BLOB),zeroblob(32),1,'paused',0,90),",
+            "('c','order_event','SAMPLE-PRIVATE-00014','lab','SAMPLE-PRIVATE-00014',",
+            "CAST('SAMPLE-PRIVATE-00014' AS BLOB),zeroblob(32),1,'pending',0,90);"
+        ))?;
+        let policies = [policy("undeliverable_destination")?];
+        let old = Identifier::new("old-app")?;
+        let lab = Identifier::new("lab")?;
+        let configured = |names: &[&Identifier], keyless: &[&Identifier]| Reach {
+            configured: names.iter().map(|&name| name.clone()).collect(),
+            keyless: keyless.iter().map(|&name| name.clone()).collect(),
+        };
+
+        evaluate(&store, &policies, &[], &configured(&[&lab], &[]), 100).await?;
+        let raised = undeliverable_states(&store).await?;
+        assert_eq!(raised.len(), 1);
+        assert_eq!(
+            raised[0].key,
+            AlertKey::UndeliverableDestination(old.clone(), Undeliverable::NotConfigured)
+        );
+        assert_eq!(raised[0].value, Some(2));
+        assert_eq!(signal(&raised[0].key).0, "undeliverable_destination");
+        let text = message(&raised[0]).ok_or("no reason and fix")?;
+        assert!(text.contains(
+            "no machine and no kept lab app setting uses destination old-app; 2 results or order messages wait"
+        ));
+        assert!(text.contains(concat!(
+            "Set up a machine with lab app destination old-app on the setup page, or restore ",
+            "its settings; the results are kept and will be sent once it is configured."
+        )));
+        assert!(!text.contains("SAMPLE-PRIVATE"));
+
+        // Configured again (kept destination with keys): the alert clears.
+        evaluate(&store, &policies, &[], &configured(&[&lab, &old], &[]), 101).await?;
+        assert!(undeliverable_states(&store).await?.is_empty());
+
+        // Configured, but its keys are missing: the second reason with its own fix.
+        let keyless = configured(&[&lab, &old], &[&old]);
+        evaluate(&store, &policies, &[], &keyless, 102).await?;
+        let raised = undeliverable_states(&store).await?;
+        assert_eq!(raised.len(), 1);
+        assert_eq!(
+            raised[0].key,
+            AlertKey::UndeliverableDestination(old.clone(), Undeliverable::CredentialsMissing)
+        );
+        let text = message(&raised[0]).ok_or("no reason and fix")?;
+        assert!(
+            text.contains("the API key or signing key for lab app destination old-app is missing")
+        );
+        assert!(text.contains(
+            "Enter the API key and signing key for destination old-app on the setup page"
+        ));
+
+        // Delivered: the alert clears even though the keys are still missing.
+        db.execute_batch("UPDATE outbox SET state='done' WHERE destination='old-app';")?;
+        evaluate(&store, &policies, &[], &keyless, 103).await?;
+        assert!(undeliverable_states(&store).await?.is_empty());
+        let history = store.request(deadline()?, |s| s.alert_history(0)).await?;
+        let transitions: Vec<_> = history
+            .iter()
+            .map(|h| (h.state.active, h.state.evaluated_at))
+            .collect();
+        assert_eq!(
+            transitions,
+            [(true, 100), (false, 101), (true, 102), (false, 103)]
+        );
+        drop(db);
+        let mut store = Arc::try_unwrap(store).map_err(|_| "evaluator retained store")?;
         store.shutdown(deadline()?).await?;
         Ok(())
     }
@@ -349,6 +574,7 @@ mod tests {
             store.clone(),
             vec![policy("restore_paused")?],
             vec![],
+            Reach::default(),
             Duration::from_secs(3600),
             stopped,
         ));
@@ -384,7 +610,13 @@ mod tests {
         waiting.await?;
         let result = tokio::time::timeout(
             Duration::from_secs(6),
-            evaluate(&store, &[policy("restore_paused")?], &[], 100),
+            evaluate(
+                &store,
+                &[policy("restore_paused")?],
+                &[],
+                &Reach::default(),
+                100,
+            ),
         )
         .await?;
         release.send(())?;

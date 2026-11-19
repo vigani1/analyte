@@ -28,14 +28,7 @@ pub async fn snapshot(program: &Program, store: &Handle) -> Result<Vec<String>, 
         .collect();
     lines.extend(crate::operator::notification_status::snapshot(store, &configured, now).await?);
     for alert in crate::operator::alerts::active(store).await? {
-        let (kind, machine) = crate::operator::alerts::signal(&alert.key);
-        lines.push(format!(
-            "alert={kind} machine={} responder={} raised_age_seconds={} last_value={}",
-            super::display::optional_text(machine),
-            super::display::text(&alert.responder),
-            crate::operator::alerts::age(&alert, now),
-            super::display::optional(alert.value)
-        ));
+        lines.push(alert_line(&alert, now));
     }
     for destination in crate::runtime::delivery::destinations(
         program,
@@ -109,6 +102,21 @@ pub async fn snapshot(program: &Program, store: &Handle) -> Result<Vec<String>, 
     Ok(lines)
 }
 
+/// One active alert; a kind whose reason and fix vary also gets a `message`.
+fn alert_line(alert: &analyte_store::AlertState, now: i64) -> String {
+    let (kind, machine) = crate::operator::alerts::signal(&alert.key);
+    let message = crate::operator::alerts::message(alert)
+        .map(|message| format!(" message={}", super::display::text(&message)))
+        .unwrap_or_default();
+    format!(
+        "alert={kind} machine={} responder={} raised_age_seconds={} last_value={}{message}",
+        super::display::optional_text(machine),
+        super::display::text(&alert.responder),
+        crate::operator::alerts::age(alert, now),
+        super::display::optional(alert.value)
+    )
+}
+
 /// Opens a local store, prints health, then joins its owner even on read failure.
 /// # Errors
 /// Reports configuration, protected store, read or output failures.
@@ -130,6 +138,32 @@ mod tests {
     use super::*;
     use crate::Error;
     use analyte_fixtures::UnlimitedSpace as Space;
+
+    // ADR 0014; ADR 0003 rule 2: the line says the destination, count, reason and fix.
+    #[test]
+    fn status_line_gives_undeliverable_reason_and_fix() -> Result<(), Box<dyn std::error::Error>> {
+        let line = alert_line(
+            &analyte_store::AlertState {
+                key: analyte_store::AlertKey::UndeliverableDestination(
+                    analyte_model::Identifier::new("old-app")?,
+                    analyte_store::Undeliverable::NotConfigured,
+                ),
+                responder: "app support".into(),
+                active: true,
+                raised_at: Some(100),
+                cleared_at: None,
+                value: Some(3),
+                evaluated_at: 100,
+            },
+            130,
+        );
+        assert!(line.starts_with("alert=undeliverable_destination machine=None"));
+        assert!(line.contains(concat!(
+            "message=\"Cannot deliver: no machine and no kept lab app setting uses ",
+            "destination old-app; 3 results or order messages wait. Set up a machine"
+        )));
+        Ok(())
+    }
 
     // Plan section 11: status shows every active page, names responders and omits cleared alerts.
     // Plan §11

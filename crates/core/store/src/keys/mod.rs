@@ -118,7 +118,7 @@ impl Key for Option<&analyte_model::SampleId> {
 }
 impl Key for crate::AlertKey {
     fn wire(&self) -> impl Serialize {
-        use crate::AlertKey;
+        use crate::{AlertKey, Undeliverable};
         #[derive(Serialize)]
         enum Wire<'a> {
             OldestUndelivered,
@@ -128,6 +128,7 @@ impl Key for crate::AlertKey {
             UncertainOrders,
             ParkedItems,
             RestorePaused,
+            UndeliverableDestination(&'a str, &'static str),
         }
         match self {
             AlertKey::OldestUndelivered => Wire::OldestUndelivered,
@@ -137,6 +138,13 @@ impl Key for crate::AlertKey {
             AlertKey::UncertainOrders => Wire::UncertainOrders,
             AlertKey::ParkedItems => Wire::ParkedItems,
             AlertKey::RestorePaused => Wire::RestorePaused,
+            AlertKey::UndeliverableDestination(id, reason) => Wire::UndeliverableDestination(
+                id.as_str(),
+                match reason {
+                    Undeliverable::NotConfigured => "NotConfigured",
+                    Undeliverable::CredentialsMissing => "CredentialsMissing",
+                },
+            ),
         }
     }
 }
