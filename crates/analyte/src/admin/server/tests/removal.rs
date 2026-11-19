@@ -91,12 +91,13 @@ const STILL: &str = concat!(
     "still being delivered to lab app destination demo."
 );
 
-// Owner request 2026-11-19 (results waiting after a removal); ADR 0003 rule 2;
-// AGENTS.md safety rules 2 and 8; plan §11: removing the only machine that sends
-// to a lab app keeps that destination, so after the restart its undelivered
-// result reaches the reference receiver exactly once, the pages count it down
-// to nothing, the worker ends without stopping the service, and no order poll
-// runs for a destination no machine uses.
+// Owner request 2026-11-19 (results waiting after a removal; lab app set once,
+// item 5); ADR 0003 rule 2; AGENTS.md safety rules 2 and 8; plan §11: removing
+// the only machine that sends to a lab app keeps that lab app in lab-apps.toml
+// (never in the program file), so after the restart its undelivered result
+// reaches the reference receiver exactly once, the pages count it down to
+// nothing, the worker ends without stopping the service, and no order poll
+// runs for a lab app no machine uses.
 #[tokio::test(flavor = "multi_thread")]
 #[expect(
     clippy::too_many_lines,
@@ -175,7 +176,7 @@ async fn removed_machine_result_is_delivered_once() -> Result<(), Error> {
     );
     assert!(
         confirm.contains(concat!(
-            "for lab app destination demo keep being delivered after the restart, even ",
+            "for lab app demo keep being delivered after the restart, even ",
             "though no other machine uses it"
         )),
         "{confirm}"
@@ -198,6 +199,8 @@ async fn removed_machine_result_is_delivered_once() -> Result<(), Error> {
         .map(|kept| kept.settings().name.as_str())
         .collect();
     assert_eq!(names, ["demo"]);
+    assert!(root.join("lab-apps.toml").exists());
+    assert!(!std::fs::read_to_string(&file)?.contains("retired_destinations"));
 
     // Restart with no machine: the result waits, and both pages say so.
     let (second, secrets) = program(&file, None, &receiver_url)?;

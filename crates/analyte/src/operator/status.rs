@@ -159,8 +159,8 @@ mod tests {
         );
         assert!(line.starts_with("alert=undeliverable_destination machine=None"));
         assert!(line.contains(concat!(
-            "message=\"Cannot deliver: no machine and no kept lab app setting uses ",
-            "destination old-app; 3 results or order messages wait. Set up a machine"
+            "message=\"Cannot deliver: no machine and no lab app uses ",
+            "destination old-app; 3 results or order messages wait. Add lab app old-app"
         )));
         Ok(())
     }

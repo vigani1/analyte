@@ -124,11 +124,7 @@ fn validated(machine: &str, site: &str, lab_apps: &LabApps) -> Result<Validated,
 /// The example site file naming its lab app instead of writing it.
 fn named_site() -> String {
     let at = SITE.find("[destination]").unwrap_or(SITE.len());
-    format!(
-        "{}lab_app = \"demo\"
-",
-        SITE.get(..at).unwrap_or_default()
-    )
+    format!("{}lab_app = \"demo\"\n", SITE.get(..at).unwrap_or_default())
 }
 
 // Owner request 2026-11-19 (lab app set once), item 6; ADR 0002: an old site file
@@ -192,12 +188,8 @@ fn lab_app_choice_is_never_guessed() -> Result<(), Box<dyn std::error::Error>> {
     let only = validated(HL7, unnamed, &one)?;
     assert_eq!(only.digest(), validated(HL7, SITE, &one)?.digest());
     let two = one.with(toml::from_str(concat!(
-        "name = 'second'
-base_url = 'https://second.example.invalid'
-",
-        "api_key_name = 'second-api'
-signing_key_name = 'second-signing'
-"
+        "name = 'second'\nbase_url = 'https://second.example.invalid'\n",
+        "api_key_name = 'second-api'\nsigning_key_name = 'second-signing'\n"
     ))?)?;
     assert_eq!(
         refusal(HL7, unnamed, &two)?,
@@ -205,19 +197,13 @@ signing_key_name = 'second-signing'
             file: LAB_APPS_FILE.into()
         }
     );
-    let chosen = format!(
-        "{unnamed}lab_app = \"second\"
-"
-    );
+    let chosen = format!("{unnamed}lab_app = \"second\"\n");
     let second = validated(HL7, &chosen, &two)?;
     assert_eq!(
         second.effective().site().destination.name.as_str(),
         "second"
     );
-    let unknown = format!(
-        "{unnamed}lab_app = \"third\"
-"
-    );
+    let unknown = format!("{unnamed}lab_app = \"third\"\n");
     assert_eq!(
         refusal(HL7, &unknown, &two)?,
         LabAppProblem::Unknown {
@@ -231,10 +217,7 @@ signing_key_name = 'second-signing'
         refusal(HL7, &named_site(), &none)?,
         LabAppProblem::Unknown { .. }
     ));
-    let both = format!(
-        "lab_app = \"demo\"
-{SITE}"
-    );
+    let both = format!("lab_app = \"demo\"\n{SITE}");
     assert_eq!(refusal(HL7, &both, &one)?, LabAppProblem::Both);
     let message = Error::LabApp {
         path: "site".into(),
@@ -269,15 +252,10 @@ fn lab_apps_file_is_checked_like_a_destination() -> Result<(), Box<dyn std::erro
     ));
     for (bad, key) in [
         (
-            "request_timeout_seconds = 121
-",
+            "request_timeout_seconds = 121\n",
             "lab_apps.request_timeout_seconds",
         ),
-        (
-            "freshness_seconds = 0
-",
-            "lab_apps.freshness_seconds",
-        ),
+        ("freshness_seconds = 0\n", "lab_apps.freshness_seconds"),
     ] {
         let error = LabApps::load(LAB_APPS_FILE, &format!("{LAB_APPS}{bad}"))
             .err()
@@ -288,10 +266,7 @@ fn lab_apps_file_is_checked_like_a_destination() -> Result<(), Box<dyn std::erro
         );
     }
     for bad in [
-        format!(
-            "{LAB_APPS}endpoint = '127.0.0.1:1'
-"
-        ),
+        format!("{LAB_APPS}endpoint = '127.0.0.1:1'\n"),
         LAB_APPS.replace("https://", "http://"),
         LAB_APPS.replace("schema_version = 1", "schema_version = 2"),
     ] {

@@ -33,6 +33,25 @@ fn variant(stack: &Stack) -> &str {
     }
 }
 
+/// The lab apps example with the example site file naming its lab app gives
+/// the same stack and the same snapshot as the site file's own [destination].
+fn assert_named_lab_app(base: &str, text: &str, expected: &str) -> TestResult {
+    let at = SITE.find("[destination]").ok_or("example site")?;
+    let named = format!("{}lab_app = \"demo\"\n", SITE.get(..at).ok_or("site")?);
+    let lab_apps = analyte_config::LabApps::load("lab-apps.toml", text)?;
+    let validated = Draft::load_with(
+        ("machine", base),
+        ("site", &named),
+        ("overrides", "schema_version=1"),
+        &lab_apps,
+    )?
+    .validate()?;
+    assert_eq!(variant(validated.effective().stack()), expected);
+    let embedded = load(base, SITE, "schema_version=1")?;
+    assert_eq!(validated.canonical(), embedded.canonical());
+    Ok(())
+}
+
 // ADR 0002
 #[test]
 fn every_example_maps_to_its_documented_stack() -> TestResult {
@@ -71,19 +90,7 @@ fn every_example_maps_to_its_documented_stack() -> TestResult {
     for (name, base, expected) in cases {
         let text = std::fs::read_to_string(directory.join(name))?;
         if name == "lab-apps.toml" {
-            let at = SITE.find("[destination]").ok_or("example site")?;
-            let named = format!("{}lab_app = \"demo\"\n", SITE.get(..at).ok_or("site")?);
-            let lab_apps = analyte_config::LabApps::load(name, &text)?;
-            let validated = Draft::load_with(
-                ("machine", base),
-                ("site", &named),
-                ("overrides", "schema_version=1"),
-                &lab_apps,
-            )?
-            .validate()?;
-            assert_eq!(variant(validated.effective().stack()), expected, "{name}");
-            let embedded = load(base, SITE, "schema_version=1")?;
-            assert_eq!(validated.canonical(), embedded.canonical(), "{name}");
+            assert_named_lab_app(base, &text, expected)?;
             continue;
         }
         let (machine, site) = if name == "site.toml" {

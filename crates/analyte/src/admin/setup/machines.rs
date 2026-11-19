@@ -3,6 +3,8 @@
 //! Both write through the same checked commit as Save (backup, safe write, reload,
 //! rollback) and apply after a restart. Removing never touches the store: a
 //! removed machine's receipts, flagged items and history stay listed for staff.
+//! Its lab app stays in `lab-apps.toml` (moved there first if the site file
+//! still wrote it), so results waiting for it are still delivered.
 use super::{SetupError, audit, done, entries, needs_login, page, refused, restart_form, site};
 use crate::admin::{markup::Markup, server::Context, sessions::Session, view::plain};
 use crate::installation::config::Program;
@@ -39,7 +41,7 @@ pub(in crate::admin) async fn add_form(
         page("Add a machine")
             .markup(concat!(
                 "<p class=\"lead\">Adds one machine that is not set up yet, with a starter site file that ",
-                "holds only the retention and the key names. Analyte checks the program file, ",
+                "holds only the retention. Analyte checks the program file, ",
                 "keeps a copy of it, writes it and loads it again; if that fails, the previous ",
                 "file is put back. The new machine shows as <strong>Not set up yet</strong>: ",
                 "set it up like any other, then restart.</p>",
@@ -269,9 +271,9 @@ fn open_work(open: &Unfinished) -> Vec<String> {
     .collect()
 }
 
-/// The lab app destination machine `id` is configured with (overrides included),
-/// which removing keeps in the program file; none while it waits for setup. An
-/// error says why it cannot be read, and then nothing is kept.
+/// The lab app machine `id` is configured with (overrides included), which
+/// removing keeps in `lab-apps.toml`; none while it waits for setup. An error
+/// says why it cannot be read, and then nothing is kept.
 fn configured_destination(
     config: &std::path::Path,
     id: &str,
@@ -284,22 +286,22 @@ fn configured_destination(
         .map(|machine| machine.snapshot().effective().site().destination.clone()))
 }
 
-/// What happens to delivery after removal. Removing keeps the machine's lab app
-/// destination as a `[[retired_destinations]]` entry, and the service delivers to a
-/// kept destination no machine uses until nothing is left (`runtime::delivery::retired`).
+/// What happens to delivery after removal. The machine's lab app stays in
+/// `lab-apps.toml`, and the service delivers to a lab app no machine uses until
+/// nothing is left (`runtime::delivery::unused_lab_apps`).
 fn delivery_note(state: &Context, id: &str) -> String {
     let destination = match configured_destination(&state.config_path, id) {
         Ok(Some(destination)) => destination,
         Ok(None) => {
-            return "This machine is not set up, so it has no lab app destination to keep.".into();
+            return "This machine is not set up, so it has no lab app to keep.".into();
         }
         Err(error) => {
             return format!(
                 concat!(
                     "This machine's lab app settings cannot be read ({}), so they cannot be ",
                     "kept: results still waiting for it stay stored and are never deleted, and the ",
-                    "Overview shows them as not deliverable until a machine that uses that lab ",
-                    "app destination is set up."
+                    "Overview shows them as not deliverable until that lab app is added on the ",
+                    "Lab app page."
                 ),
                 error
             );
@@ -323,22 +325,20 @@ fn delivery_note(state: &Context, id: &str) -> String {
     if others.is_empty() {
         format!(
             concat!(
-                "Results and order messages already stored for lab app destination {name} keep ",
-                "being delivered after the restart, even though no other machine uses it: ",
-                "removing keeps its address and key names in the program file (as a retired ",
-                "destination), and Analyte delivers to it until nothing is left. It no longer ",
-                "asks that lab app for orders. The Overview shows how many are still being ",
-                "delivered."
+                "Results and order messages already stored for lab app {name} keep being ",
+                "delivered after the restart, even though no other machine uses it: the lab ",
+                "app stays on the Lab app page, and Analyte delivers to it until nothing is ",
+                "left. It no longer asks that lab app for orders. The Overview shows how many ",
+                "are still being delivered."
             ),
             name = name
         )
     } else {
         format!(
             concat!(
-                "Results and order messages already stored for lab app destination {name} keep ",
-                "being delivered after the restart: {others} still use it. Removing also keeps ",
-                "its address and key names in the program file (as a retired destination), so ",
-                "they are delivered even if no machine uses it later."
+                "Results and order messages already stored for lab app {name} keep being ",
+                "delivered after the restart: {others} still use it. The lab app stays on the ",
+                "Lab app page, so they are delivered even if no machine uses it later."
             ),
             name = name,
             others = others.join(", ")
@@ -463,8 +463,8 @@ pub(in crate::admin) struct Removal {
 
 struct Removed {
     backups: Vec<PathBuf>,
-    /// The lab app destination kept for delivery, none for a machine not set up,
-    /// or why its settings could not be read (then nothing is kept).
+    /// The lab app kept for delivery, none for a machine not set up, or why its
+    /// settings could not be read (then nothing is kept).
     kept: Result<Option<String>, String>,
     /// Where the site file went: a dated copy, nowhere (missing or still named by
     /// another machine), or why moving it failed after the program was changed.
@@ -477,11 +477,20 @@ fn remove_blocking(state: &Context, id: &str) -> Result<Removed, SetupError> {
     let (program, listed) = site::entries(config)?;
     let (_, installed) = site::installed(config, id)?;
     let kept = configured_destination(config, id);
-    let mut edited = entries::removed(&program, &listed, id)?;
+    let mut changes = vec![(config.clone(), entries::removed(&program, &listed, id)?)];
+    // A lab app the site file still wrote moves into lab-apps.toml, so results
+    // waiting for it stay deliverable after the site file is moved away.
     if let Ok(Some(destination)) = &kept {
-        edited = entries::retired(&edited, destination, id)?;
+        let lab_apps = crate::installation::config::lab_apps::read(config)?;
+        let after = site::moved(&lab_apps, destination.clone())?;
+        if after != lab_apps {
+            changes.push((
+                crate::installation::config::lab_apps::path(config),
+                after.text()?,
+            ));
+        }
     }
-    let written = site::commit(config, &[(config.clone(), edited)])?;
+    let written = site::commit(config, &changes)?;
     let folder = site::folder(config);
     let shared = listed.iter().any(|entry| {
         entry.id.get_ref() != id && same_path(&folder.join(entry.site.get_ref()), &installed.site)
@@ -538,14 +547,14 @@ pub(in crate::admin) async fn remove(
     let kept = match &removed.kept {
         Ok(Some(destination)) => format!(
             concat!(
-                "Lab app destination {} is kept in the program file for delivery: results still ",
-                "waiting for it are delivered after the restart until none are left"
+                "Lab app {} stays on the Lab app page: results still waiting for it are ",
+                "delivered after the restart until none are left"
             ),
             destination
         ),
-        Ok(None) => "no lab app destination to keep (machine not set up)".into(),
+        Ok(None) => "no lab app to keep (machine not set up)".into(),
         Err(error) => {
-            format!("lab app destination not kept, its settings could not be read: {error}")
+            format!("lab app not kept, its settings could not be read: {error}")
         }
     };
     let reason = format!(

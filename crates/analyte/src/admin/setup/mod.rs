@@ -1,15 +1,21 @@
 //! Serves the setup page: add or remove machines, choose a definition, a port and the lab app, test by listening, save, restart.
 //!
 //! The page writes the machine's site file (and, when the definition changes, that
-//! one value in the program file), adds and removes program entries, keeps backups,
-//! and stores keys in the locked credentials file. Applying a change needs a
-//! restart; there is no hot reload.
+//! one value in the program file), adds and removes program entries, and keeps
+//! backups. Lab apps and their keys are set once on the Lab app page
+//! ([`lab_apps`]); a machine only picks one. Applying a change needs a restart;
+//! there is no hot reload.
 mod definitions;
 mod entries;
+mod lab_apps;
 mod listen;
 mod machines;
 mod site;
 
+pub(super) use lab_apps::{
+    add as add_lab_app, add_form as add_lab_app_form, confirm_remove as confirm_remove_lab_app,
+    edit_form as edit_lab_app, list as lab_apps, remove as remove_lab_app, save as save_lab_app,
+};
 pub(crate) use listen::{Limits, Open};
 pub(super) use machines::{add, add_form, confirm_remove, remove};
 
@@ -21,11 +27,11 @@ use super::{
 };
 use crate::installation::{
     config::{Program, connections},
-    credentials::{CredentialError, Locked, Secret},
+    credentials::{CredentialError, Locked},
     secrets,
 };
 use crate::machine::link::status::Link;
-use analyte_config::{Endpoint, HttpsUrl};
+use analyte_config::Endpoint;
 use analyte_model::{Identifier, Reason};
 use analyte_transport::serial;
 use axum::{
@@ -40,7 +46,7 @@ use site::Connection;
 use std::{io, path::PathBuf, sync::Arc};
 use tokio::sync::watch;
 
-/// Largest setup form body; an API key alone may be 4096 bytes.
+/// Largest setup or Lab app form body; an API key alone may be 4096 bytes.
 pub(super) const FORM_LIMIT: usize = 16_384;
 
 /// Lists the operating system's serial ports.
@@ -75,7 +81,8 @@ struct Running {
     digest: [u8; 32],
     endpoint: Endpoint,
     link: Link,
-    keys: [Identifier; 2],
+    /// The lab app it sends results to.
+    lab_app: Identifier,
 }
 
 /// Setup state owned by the admin server.
@@ -98,16 +105,12 @@ impl Setup {
             .iter()
             .map(|machine| {
                 let effective = machine.snapshot().effective();
-                let destination = &effective.site().destination;
                 Running {
                     id: machine.id().clone(),
                     digest: machine.snapshot().digest(),
                     endpoint: effective.site().endpoint.clone(),
                     link: Link::of(effective.stack()),
-                    keys: [
-                        destination.api_key_name.clone(),
-                        destination.signing_key_name.clone(),
-                    ],
+                    lab_app: effective.site().destination.name.clone(),
                 }
             })
             .collect();
@@ -165,8 +168,30 @@ pub(crate) enum SetupError {
     Definitions(#[from] definitions::ListError),
     #[error("the lab app address is not accepted: {0}")]
     InvalidUrl(&'static str),
-    #[error("the destination name is not accepted: {0}")]
-    InvalidDestination(analyte_model::TextError),
+    #[error("choose the lab app this machine sends results to; add one on the Lab app page first")]
+    NoLabAppChosen,
+    #[error("there is no lab app called {0}; add it on the Lab app page")]
+    UnknownLabApp(String),
+    #[error(
+        "lab app {0} is already listed in {1} with other settings; make them the same on the Lab app page, then save again"
+    )]
+    LabAppDiffers(String, String),
+    #[error(
+        "a lab app name uses only letters A to Z, digits, - and _ (at most 64), because it also names its keys"
+    )]
+    LabAppName,
+    #[error("a lab app called {0} already exists; edit it, or choose another name")]
+    LabAppTaken(String),
+    #[error("enter both keys for a new lab app: the API key and the signing key")]
+    KeysRequired,
+    #[error("enter {0} as a whole number of seconds")]
+    InvalidNumber(&'static str),
+    #[error(
+        "lab app {0} is still written in the site file of {1}; save that machine on its setup page first, which moves the lab app to the Lab app page, then change it there"
+    )]
+    LabAppInSiteFile(String, String),
+    #[error("lab app {0} cannot be removed: {1}")]
+    LabAppInUse(String, String),
     #[error("{0}")]
     Connection(&'static str),
     #[error("the {0} key is not in the expected format, so nothing was saved")]
@@ -389,8 +414,14 @@ fn level_and_state(definition: &Definition) -> (String, Markup) {
 /// GET /setup: the machines in the program file, what runs now, and the shipped definitions.
 pub(super) async fn index(State(state): State<Arc<Context>>) -> Response {
     let mut html = page("Set up a machine").markup(concat!(
-        "<p class=\"lead\">Choose a machine below to set its connection and lab app. ",
+        "<p class=\"lead\">Choose a machine below to set its connection and pick its lab app. ",
         "Saving writes the machine's site file; Analyte then restarts to use it.</p>",
+    ));
+    html.push_markup(concat!(
+        "<section><div class=\"heading\"><h2>Lab apps</h2>",
+        "<a class=\"button secondary\" href=\"/setup/lab-apps\">Lab apps</a></div>",
+        "<p>Where results are sent. Each lab app is set once, with its address and keys; ",
+        "each machine below picks one.</p></section>"
     ));
     match crate::admin::removed::lines(&state).await {
         Ok(lines) => {
@@ -531,29 +562,31 @@ fn running<'a>(state: &'a Context, id: &str) -> Option<&'a Running> {
     state.setup.running.iter().find(|r| r.id.as_str() == id)
 }
 
-/// The credential names to show: the running machine's, or for a machine still
-/// waiting for setup, the names its site file already holds.
-fn key_names(running: Option<&Running>, current_site: &toml::Table) -> Vec<Identifier> {
+/// The lab app the machine sends to now: the running one's, or for a machine
+/// not running yet, the one its site file names or writes.
+fn current_lab_app(running: Option<&Running>, current_site: &toml::Table) -> Option<String> {
     if let Some(running) = running {
-        return running.keys.to_vec();
+        return Some(running.lab_app.as_str().to_owned());
     }
-    ["api_key_name", "signing_key_name"]
-        .iter()
-        .filter_map(|key| {
-            current_site
-                .get("destination")
-                .and_then(|d| d.get(*key))
-                .and_then(toml::Value::as_str)
-                .and_then(|name| Identifier::new(name).ok())
-        })
-        .collect()
+    current_site
+        .get("lab_app")
+        .or_else(|| current_site.get("destination").and_then(|d| d.get("name")))
+        .and_then(toml::Value::as_str)
+        .map(str::to_owned)
 }
 
-fn key_status(state: &Context, name: &Identifier) -> Markup {
-    let mut line = Markup::new().text(name.as_str()).markup(": ");
+/// One key's state, never its value: "API key: set on 2026-11-19". The key
+/// name shows on hover.
+fn key_line(state: &Context, label: &str, name: &Identifier) -> Markup {
+    let mut line = Markup::new()
+        .markup("<span title=\"")
+        .text(name.as_str())
+        .markup("\">")
+        .text(label)
+        .markup("</span>: ");
     if std::env::var_os(secrets::variable(name.as_str())).is_some() {
         return line
-            .text("set in the environment (")
+            .text("set in the service environment (")
             .text(secrets::variable(name.as_str()))
             .text("), which wins over a stored key");
     }
@@ -651,12 +684,14 @@ fn render_machine(
             .markup("\"><section><h2>2. Connection</h2>"),
     );
     html.push_fragment(&connection_inputs(state, &path, &current_site));
-    html.push_fragment(&test_and_lab_app(
-        state,
-        id,
-        &key_names(running, &current_site),
-        &current_site,
-    ));
+    let lab_app_step = match lab_apps::scan(&state.config_path) {
+        Ok(scan) => lab_apps::picker(&scan, current_lab_app(running, &current_site).as_deref()),
+        Err(error) => Markup::new()
+            .markup("<p class=\"notice bad\">The lab apps cannot be read: ")
+            .text(error)
+            .markup("</p>"),
+    };
+    html.push_fragment(&test_and_lab_app(id, &lab_app_step));
     Ok(html.markup(view::END))
 }
 
@@ -729,21 +764,7 @@ fn connection_inputs(
     html
 }
 
-fn test_and_lab_app(
-    state: &Context,
-    id: &str,
-    keys: &[Identifier],
-    current_site: &toml::Table,
-) -> Markup {
-    let mut statuses = Markup::new();
-    for name in keys {
-        statuses.push_fragment(
-            &Markup::new()
-                .markup("<li>")
-                .fragment(&key_status(state, name))
-                .markup("</li>"),
-        );
-    }
+fn test_and_lab_app(id: &str, picker: &Markup) -> Markup {
     let mut html = Markup::new();
     html.push_fragment(
         &Markup::new()
@@ -757,36 +778,11 @@ fn test_and_lab_app(
             .text(format!("/setup/{id}/listen"))
             .markup(concat!(
                 "\">Test connection (listen only)</button></section>",
-                "<section><h2>4. Lab app</h2><label class=\"field\"><span>Lab app address</span><input name=\"base_url\" ",
-                "required maxlength=\"4096\" value=\""
+                "<section><h2>4. Lab app</h2>"
             ))
-            .text(
-                current_site
-                    .get("destination")
-                    .and_then(|d| d.get("base_url"))
-                    .and_then(toml::Value::as_str)
-                    .unwrap_or_default(),
-            )
-            .markup("\"></label><label class=\"field\"><span>Destination name</span><input name=\"destination\" required maxlength=\"128\" value=\"")
-            .text(
-                current_site
-                    .get("destination")
-                    .and_then(|d| d.get("name"))
-                    .and_then(toml::Value::as_str)
-                    .unwrap_or_default(),
-            )
+            .fragment(picker)
             .markup(concat!(
-                "\"></label><p>Keys are stored so that only the Analyte service can ",
-                "read them, and are never shown again. Leave a box empty to keep the ",
-                "stored key.</p><ul>"
-            ))
-            .fragment(&statuses)
-            .markup(concat!(
-                "</ul><label class=\"field\"><span>Replace API key</span><input name=\"api_key\" ",
-                "type=\"password\" autocomplete=\"off\" maxlength=\"4096\"></label>",
-                "<label class=\"field\"><span>Replace signing key</span><input name=\"signing_key\" ",
-                "type=\"password\" autocomplete=\"off\" maxlength=\"4096\"></label></section>",
-                "<section><h2>5. Save</h2><p>Saving checks everything first, keeps a copy of the ",
+                "</section><section><h2>5. Save</h2><p>Saving checks everything first, keeps a copy of the ",
                 "old site file, then writes the new one. Analyte keeps running the old ",
                 "settings until you restart it.</p><button>Save</button></section></form>"
             )),
@@ -846,7 +842,7 @@ fn serial_choices(state: &Context, current: &str) -> Markup {
     html
 }
 
-/// The setup form as posted. Keys are moved into [`Secret`] at once.
+/// The setup form as posted; it holds no key.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Choice {
@@ -863,13 +859,7 @@ pub(super) struct Choice {
     #[serde(default)]
     folder: String,
     #[serde(default)]
-    base_url: String,
-    #[serde(default)]
-    destination: String,
-    #[serde(default)]
-    api_key: String,
-    #[serde(default)]
-    signing_key: String,
+    lab_app: String,
 }
 
 fn connection(kind: Option<&str>, choice: &Choice) -> Result<Connection, SetupError> {
@@ -923,6 +913,8 @@ struct Plan {
     definition: PathBuf,
     connection: Connection,
     site_text: String,
+    /// The new `lab-apps.toml` text, when the save moves a lab app into it.
+    lab_apps: Option<String>,
     validated: analyte_config::Validated,
 }
 
@@ -931,94 +923,69 @@ fn plan(state: &Context, id: &str, choice: &Choice) -> Result<Plan, SetupError> 
     let list = definitions(state)?;
     let key = (choice.definition != "installed").then_some(choice.definition.as_str());
     let (_, definition) = chosen(&list, key, &installed)?;
-    let base_url = HttpsUrl::parse(choice.base_url.trim()).map_err(SetupError::InvalidUrl)?;
-    let destination =
-        Identifier::new(choice.destination.trim()).map_err(SetupError::InvalidDestination)?;
+    let lab_app = Identifier::new(choice.lab_app.trim()).map_err(|_| SetupError::NoLabAppChosen)?;
     let connection = connection(kind_of(&definition).as_deref(), choice)?;
     let current = crate::installation::config::read(&installed.site)?;
-    let site_text = site::candidate(&current, &connection, &base_url, &destination)?;
-    let validated = site::validate(&installed, &definition, &site_text)?;
+    let scan = lab_apps::scan(&state.config_path)?;
+    let candidate = site::candidate(
+        &current,
+        &connection,
+        &lab_app,
+        &scan.file,
+        &scan.settings(),
+    )?;
+    let validated = site::validate(
+        &installed,
+        &definition,
+        &candidate.text,
+        &candidate.lab_apps,
+    )?;
+    let lab_apps = if candidate.lab_apps == scan.file {
+        None
+    } else {
+        Some(candidate.lab_apps.text()?)
+    };
     Ok(Plan {
         program,
         installed,
         definition,
         connection,
-        site_text,
+        site_text: candidate.text,
+        lab_apps,
         validated,
     })
-}
-
-/// Turns the posted keys into checked values; errors name only the key.
-fn keys(
-    validated: &analyte_config::Validated,
-    choice: &mut Choice,
-) -> Result<Vec<(Identifier, Secret)>, SetupError> {
-    let destination = &validated.effective().site().destination;
-    let mut updates = Vec::new();
-    let api = std::mem::take(&mut choice.api_key);
-    if !api.is_empty() {
-        let name = destination.api_key_name.clone();
-        if !secrets::api_key_valid(&api) {
-            return Err(SetupError::InvalidKey(name.as_str().into()));
-        }
-        let secret = Secret::new(&name, api)?;
-        updates.push((name, secret));
-    }
-    let signing = std::mem::take(&mut choice.signing_key);
-    if !signing.is_empty() {
-        let name = destination.signing_key_name.clone();
-        if analyte_contract::SigningSecret::parse(&signing).is_err() {
-            return Err(SetupError::InvalidKey(name.as_str().into()));
-        }
-        let secret = Secret::new(&name, signing)?;
-        updates.push((name, secret));
-    }
-    Ok(updates)
 }
 
 struct Saved {
     digest: [u8; 32],
     connection: String,
+    lab_app: String,
     base_url: String,
-    replaced: Vec<String>,
+    /// The save moved a lab app into `lab-apps.toml`.
+    moved: bool,
     backups: Vec<PathBuf>,
 }
 
-fn save_blocking(state: &Context, id: &str, mut choice: Choice) -> Result<Saved, SetupError> {
+fn save_blocking(state: &Context, id: &str, choice: &Choice) -> Result<Saved, SetupError> {
     let _writing = state.setup.writing()?;
-    let plan = plan(state, id, &choice)?;
+    let plan = plan(state, id, choice)?;
     shares_connection(state, id, &plan)?;
-    // Keys are checked before any file is written, and stored only after the
-    // files pass, so a refused or rolled-back save never changes a key.
-    let updates = keys(&plan.validated, &mut choice)?;
-    let replaced = updates
-        .iter()
-        .map(|(name, _)| name.as_str().to_owned())
-        .collect();
+    let moved = plan.lab_apps.is_some();
     let written = site::apply(
         &state.config_path,
         &plan.program,
         &plan.installed,
         &plan.definition,
         &plan.site_text,
+        plan.lab_apps,
     )?;
-    if !updates.is_empty() {
-        Locked::new(&state.setup.data_directory)
-            .replace(updates, jiff::Timestamp::now().as_second())
-            .map_err(SetupError::KeysNotStored)?;
-    }
+    let destination = &plan.validated.effective().site().destination;
     Ok(Saved {
         digest: plan.validated.digest(),
         connection: plan.connection.describe(),
-        base_url: plan
-            .validated
-            .effective()
-            .site()
-            .destination
-            .base_url
-            .as_str()
-            .to_owned(),
-        replaced,
+        lab_app: destination.name.as_str().to_owned(),
+        base_url: destination.base_url.as_str().to_owned(),
+        moved,
         backups: written.backups,
     })
 }
@@ -1063,7 +1030,7 @@ pub(super) async fn save(
     };
     let worker = state.clone();
     let machine = id.clone();
-    let saved = match tokio::task::spawn_blocking(move || save_blocking(&worker, &machine, choice))
+    let saved = match tokio::task::spawn_blocking(move || save_blocking(&worker, &machine, &choice))
         .await
         .map_err(SetupError::from)
         .and_then(|r| r)
@@ -1072,13 +1039,14 @@ pub(super) async fn save(
         Err(error) => return refused(&error),
     };
     let reason = format!(
-        "setup page saved: {}, lab app {}, keys replaced: {}",
+        "setup page saved: {}, lab app {} ({}){}",
         saved.connection,
+        saved.lab_app,
         saved.base_url,
-        if saved.replaced.is_empty() {
-            "none".into()
+        if saved.moved {
+            "; its lab app settings moved to lab-apps.toml"
         } else {
-            saved.replaced.join(", ")
+            ""
         }
     );
     let audited = audit(&state, &session, "setup-save", &id, reason).await;
@@ -1090,7 +1058,7 @@ pub(super) async fn save(
         .markup("</strong></dd><dt>Connection</dt><dd>")
         .text(&saved.connection)
         .markup("</dd><dt>Lab app</dt><dd>")
-        .text(&saved.base_url)
+        .text(format!("{} ({})", saved.lab_app, saved.base_url))
         .markup("</dd><dt title=\"New configuration digest\">New settings version</dt><dd><code>")
         .text(new.chars().take(12).collect::<String>())
         .markup("</code><small class=\"digest\">")
@@ -1098,12 +1066,9 @@ pub(super) async fn save(
         .markup("</small></dd><dt title=\"Running configuration digest\">Running now</dt><dd>")
         .fragment(&settings_version(running(&state, &id)))
         .markup("</dd></dl><ul>");
-    for name in &saved.replaced {
-        html.push_fragment(
-            &Markup::new()
-                .markup("<li>Stored key ")
-                .text(name)
-                .markup("</li>"),
+    if saved.moved {
+        html.push_markup(
+            "<li>The lab app settings moved to the <a href=\"/setup/lab-apps\">Lab app page</a> (lab-apps.toml); nothing else changed.</li>",
         );
     }
     for backup in &saved.backups {
@@ -1300,14 +1265,11 @@ pub(super) async fn listen_start(
     Path(id): Path<String>,
     form: Result<Form<Choice>, axum::extract::rejection::FormRejection>,
 ) -> Response {
-    let Ok(Form(mut choice)) = form else {
+    let Ok(Form(choice)) = form else {
         return refused(&SetupError::Connection(
             "the form was incomplete; reload the page",
         ));
     };
-    // The test never uses keys; drop them at once.
-    drop(std::mem::take(&mut choice.api_key));
-    drop(std::mem::take(&mut choice.signing_key));
     let worker = state.clone();
     let target = tokio::task::spawn_blocking(move || {
         let plan = plan(&worker, &id, &choice)?;

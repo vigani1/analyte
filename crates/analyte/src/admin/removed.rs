@@ -1,10 +1,11 @@
 //! Says which results wait for a lab app destination that no running machine uses, and what happens to them.
 //!
-//! A destination kept after its last machine was removed gets a delivery-only
-//! worker at startup that runs until nothing is left (`runtime::delivery::retired`).
-//! A destination that is not kept anywhere cannot be delivered to: Analyte never
-//! guesses an address, so its items stay stored and this page says so. Neither
-//! can a kept destination whose keys were missing at startup: its worker runs but
+//! A lab app no running machine uses (listed in `lab-apps.toml`, or kept by an
+//! older setup page) gets a delivery-only worker at startup that runs until
+//! nothing is left (`runtime::delivery::unused_lab_apps`). A destination that is
+//! no lab app cannot be delivered to: Analyte never guesses an address, so its
+//! items stay stored and this page says so. Neither can a lab app whose keys
+//! were missing at startup: its worker runs but
 //! sends nothing, so the page gives the same reason and fix as the
 //! `undeliverable_destination` alert instead of "still being delivered".
 use super::server::Context;
@@ -114,7 +115,7 @@ fn line(open: &Undelivered, kept: Option<&Kept>, from_running: bool) -> Line {
             format!(
                 concat!(
                     "Cannot deliver to lab app {destination}: its API key or signing key is ",
-                    "missing. Enter them on the setup page (on a machine that uses it) or in ",
+                    "missing. Enter them on the Lab app page or in ",
                     "the service environment, then restart. {from}: {count} {what} stay stored ",
                     "and are never deleted.{held}"
                 ),
@@ -151,8 +152,8 @@ fn line(open: &Undelivered, kept: Option<&Kept>, from_running: bool) -> Line {
             format!(
                 concat!(
                     "Cannot deliver: destination {destination} no longer configured. {from}: ",
-                    "{count} {what} stay stored and are never deleted. Set up a machine that uses ",
-                    "this lab app destination to deliver them."
+                    "{count} {what} stay stored and are never deleted. Add lab app {destination} ",
+                    "on the Lab app page and restart to deliver them."
                 ),
                 destination = destination,
                 from = from,
@@ -216,7 +217,7 @@ mod tests {
         );
         assert!(line.text.starts_with(concat!(
             "Cannot deliver to lab app old-lab: its API key or signing key is missing. ",
-            "Enter them on the setup page (on a machine that uses it) or in the service ",
+            "Enter them on the Lab app page or in the service ",
             "environment, then restart. Removed machine machine-3: 3 results or order ",
             "messages stay stored and are never deleted."
         )));
