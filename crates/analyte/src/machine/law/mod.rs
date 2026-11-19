@@ -286,7 +286,7 @@ impl<'a, 'm> Host<'a, 'm> {
             }
             Effect::WorkResponse(token, message) => {
                 let receipt = self.receipt(token)?;
-                orders::note_site_zone(self.store, machine, &message, receipt).await?;
+                note_site_zone(self.store, machine, &message, receipt).await?;
                 self.orders
                     .orl(self.store, machine, &message, receipt)
                     .await?;
@@ -362,7 +362,7 @@ impl<'a, 'm> Host<'a, 'm> {
         started: Duration,
         host: &mut Context<'_>,
     ) -> Result<Vec<Action>, Error> {
-        orders::note_site_zone(
+        note_site_zone(
             self.store,
             self.machine.machine(),
             &message,
@@ -679,4 +679,45 @@ impl Host<'_, '_> {
         }
         Ok(())
     }
+}
+
+/// Writes an operator-visible audit note when a LAW query or order reply carried
+/// an MSH-7 without an offset and it was read in the site's time zone. These
+/// exchanges have no interpretation record, so the audit names their receipt.
+pub(crate) async fn note_site_zone(
+    store: &Handle,
+    machine: &crate::installation::config::Machine,
+    message: &analyte_hl7::Message,
+    receipt: ReceiptId,
+) -> Result<(), error::OrderError> {
+    use crate::machine::interpretation::departure_evidence::{EvidenceError, site_zone_note};
+    let Some(header) = analyte_hl7::law::site_zone_header_time(message) else {
+        return Ok(());
+    };
+    let zone = machine
+        .snapshot
+        .effective()
+        .site()
+        .time_zone
+        .as_ref()
+        .ok_or(EvidenceError::SiteZoneMissing)?;
+    let note = site_zone_note(zone, header, message.raw())?;
+    let audit = analyte_store::Audit {
+        actor: machine.id.clone(),
+        action: note.rule,
+        targets: vec![
+            analyte_model::Identifier::new(&uuid::Uuid::from(receipt).to_string())
+                .map_err(EvidenceError::from)?,
+        ],
+        time: jiff::Timestamp::now().as_second(),
+        reason: analyte_model::Reason::new(note.source.as_str()).map_err(EvidenceError::from)?,
+    };
+    store
+        .request::<_, analyte_store::OrderError>(crate::deadline()?, move |store| {
+            store
+                .audit(&audit)
+                .map_err(analyte_store::OrderError::Storage)
+        })
+        .await?;
+    Ok(())
 }
