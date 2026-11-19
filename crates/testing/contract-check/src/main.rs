@@ -1,8 +1,8 @@
 //! The `analyte-contract-check` command: checks a lab app against contract v1 and prints a table.
 #![forbid(unsafe_code)]
-use analyte_contract_check::{RunError, Settings, parse_seed, run};
+use analyte_contract_check::{RunError, Settings, read_seed, run};
 use clap::Parser;
-use std::{io::Read as _, io::Write as _, path::PathBuf, process::ExitCode};
+use std::{io::Write as _, path::PathBuf, process::ExitCode};
 
 /// Command-line options; the app's address and credentials are never among them.
 #[derive(Parser)]
@@ -47,20 +47,7 @@ fn start(arguments: &Arguments) -> Result<bool, String> {
         Settings::load(arguments.env_file.as_deref()).map_err(|error| error.to_string())?;
     let seed = match &arguments.seed_file {
         None => None,
-        Some(path) => {
-            let mut bytes = Vec::new();
-            std::fs::File::open(path)
-                .and_then(|file| {
-                    file.take(
-                        u64::try_from(analyte_contract::MAX_DOCUMENT_BYTES)
-                            .unwrap_or(u64::MAX)
-                            .saturating_add(1),
-                    )
-                    .read_to_end(&mut bytes)
-                })
-                .map_err(|error| format!("seed file could not be read: {error}"))?;
-            Some(parse_seed(&bytes).map_err(|error| error.to_string())?)
-        }
+        Some(path) => Some(read_seed(path).map_err(|error| error.to_string())?),
     };
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()

@@ -1,7 +1,6 @@
 //! Reads the app's address and credentials from the environment or a settings file, never from arguments.
 use analyte_contract::SigningSecret;
-use base64::{Engine as _, engine::general_purpose::STANDARD};
-use std::{collections::BTreeMap, io::Read as _, path::Path, time::Duration};
+use std::{collections::BTreeMap, path::Path, time::Duration};
 
 /// Base URL of the lab app, the same base Analyte's destination uses.
 pub const URL_NAME: &str = "ANALYTE_APP_URL";
@@ -52,8 +51,6 @@ pub struct Settings {
     pub(crate) base: url::Url,
     pub(crate) api_key: String,
     pub(crate) secret: SigningSecret,
-    /// The same key as `secret`, kept only to sign the one deliberately oversized body.
-    pub(crate) oversize_key: Vec<u8>,
     pub(crate) timeout: Duration,
 }
 
@@ -99,10 +96,6 @@ impl Settings {
             return Err(Error::Key);
         }
         let parsed = SigningSecret::parse(&secret).map_err(|_| Error::Secret)?;
-        let oversize_key = secret
-            .strip_prefix("whsec_")
-            .and_then(|encoded| STANDARD.decode(encoded).ok())
-            .ok_or(Error::Secret)?;
         let timeout = match lookup(TIMEOUT_NAME) {
             None => DEFAULT_TIMEOUT,
             Some(seconds) => seconds
@@ -116,19 +109,16 @@ impl Settings {
             base,
             api_key,
             secret: parsed,
-            oversize_key,
             timeout,
         })
     }
 }
 
 fn read_file(path: &Path) -> Result<BTreeMap<String, String>, Error> {
-    let mut text = String::new();
-    std::fs::File::open(path)
-        .map_err(Error::File)?
-        .take(FILE_LIMIT.saturating_add(1))
-        .read_to_string(&mut text)
-        .map_err(Error::File)?;
+    let bytes = crate::read_bounded(path, FILE_LIMIT).map_err(Error::File)?;
+    let text = String::from_utf8(bytes).map_err(|error| {
+        Error::File(std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+    })?;
     if u64::try_from(text.len()).map_or(true, |length| length > FILE_LIMIT) {
         return Err(Error::FileTooLarge);
     }

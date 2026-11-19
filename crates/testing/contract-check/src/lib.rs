@@ -8,7 +8,7 @@ mod vectors;
 
 use serde_json::Value;
 pub use settings::Settings;
-use std::fmt::Write as _;
+use std::{fmt::Write as _, io::Read as _, path::Path};
 
 /// The seed file the docs ask app developers to load before a seeded run.
 pub const SEED_FILE: &str = "docs/contract/vectors/seed-orders.json";
@@ -124,6 +124,19 @@ pub enum RunError {
     /// The seed file is not a JSON array of at most 100 valid contract orders.
     #[error("seed file must be a JSON array of at most 100 valid contract v1 orders")]
     Seed,
+    /// The seed file could not be opened or read.
+    #[error("seed file could not be read: {0}")]
+    SeedFile(#[source] std::io::Error),
+}
+
+/// Reads a seed file of at most one document's size and parses it like [`parse_seed`].
+///
+/// # Errors
+/// Returns `RunError::SeedFile` when the file cannot be read and `RunError::Seed` when
+/// it is too large or not at most 100 valid contract orders.
+pub fn read_seed(path: &Path) -> Result<Vec<analyte_contract::Order>, RunError> {
+    let limit = u64::try_from(analyte_contract::MAX_DOCUMENT_BYTES).unwrap_or(u64::MAX);
+    parse_seed(&read_bounded(path, limit).map_err(RunError::SeedFile)?)
 }
 
 /// Parses a seed file: the orders the app developer loaded into the app.
@@ -156,6 +169,15 @@ pub async fn run(
     orders::check(&app, seed, &mut report).await?;
     deliveries::check_retry_after(&app, &mut report);
     Ok(report)
+}
+
+/// Reads at most `limit` bytes plus one, so the caller can tell a file over the limit.
+fn read_bounded(path: &Path, limit: u64) -> std::io::Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)?
+        .take(limit.saturating_add(1))
+        .read_to_end(&mut bytes)?;
+    Ok(bytes)
 }
 
 /// Reads one number from `limits.json`.

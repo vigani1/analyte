@@ -38,12 +38,15 @@ for name, original, decoded, parsed in [
 
 event=dict(contract_version=1,delivery_id='019ab000-0000-7000-8000-000000000002',created_at='2026-11-15T12:00:00Z',source=delivery['source'],order_id='order-1',order_version=1,state='uncertain',occurred_at='2026-11-15T11:59:59Z',source_status='timeout',reason='No answer')
 write('event.json',event)
-write('order.json',dict(id='order-1',version=1,state='requested',sample_id='000Ab12',tests=[code('TEST')],priority='routine',target_analyzers=None,expires_at=None,tombstone=False))
+order=dict(id='order-1',version=1,state='requested',sample_id='000Ab12',tests=[code('TEST')],priority='routine',target_analyzers=None,expires_at=None,tombstone=False)
+write('order.json',order)
 body=json.dumps(delivery,separators=(',',':'))
+# Standard Webhooks v1: base64 HMAC-SHA256 over "id.timestamp.body".
+def sign(key,id,timestamp,body): return 'v1,'+base64.b64encode(hmac.new(key,(id+'.'+timestamp+'.'+body).encode(),hashlib.sha256).digest()).decode()
 key=bytes(range(32)); secret='whsec_'+base64.b64encode(key).decode(); timestamp='1794744000'
-signature='v1,'+base64.b64encode(hmac.new(key,(delivery['delivery_id']+'.'+timestamp+'.'+body).encode(),hashlib.sha256).digest()).decode()
+signature=sign(key,delivery['delivery_id'],timestamp,body)
 write('signature.json',dict(secret=secret,id=delivery['delivery_id'],timestamp=timestamp,body=body,signature=signature,digest=hashlib.sha256(body.encode()).hexdigest()))
-write('responses.json',[dict(status=s,body=dict(contract_version=1,status='accepted') if s==200 else dict(contract_version=1,error='example',detail='Synthetic rejection'),expected=e) for s,e in [(200,'done'),(400,'parked'),(422,'parked'),(401,'pause'),(403,'pause'),(408,'retry'),(409,'conflict'),(429,'retry'),(500,'retry'),(302,'pause'),(404,'pause'),(413,'pause'),(418,'parked')]])
+responses=[dict(status=s,body=dict(contract_version=1,status='accepted') if s==200 else dict(contract_version=1,error='example',detail='Synthetic rejection'),expected=e) for s,e in [(200,'done'),(400,'parked'),(422,'parked'),(401,'pause'),(403,'pause'),(408,'retry'),(409,'conflict'),(429,'retry'),(500,'retry'),(302,'pause'),(404,'pause'),(413,'pause'),(418,'parked')]]
 bad=dict(delivery);bad['contract_version']=2
 write('invalid-version.json',bad)
 
@@ -52,7 +55,7 @@ write('accepted.json',dict(contract_version=1,status='accepted'))
 write('duplicate.json',dict(contract_version=1,status='duplicate'))
 
 # Optional general app-order context; keep the minimal order vector unchanged.
-context_order=json.loads((root/'order.json').read_text())
+context_order=copy.deepcopy(order)
 context_order.update(position=dict(kind='tray',carrier='A',slot='03'),specimen_type=code('SERUM'),patient=dict(id=code('000PatA')))
 write('order-context.json',context_order)
 
@@ -112,7 +115,7 @@ write('signature-window.json',[dict(offset_seconds=o,expected='accept' if abs(o)
 
 # v1 "HTTP and authentication": any matching candidate signature is accepted (rotation).
 other_key=bytes(range(32,64)); other_secret='whsec_'+base64.b64encode(other_key).decode()
-other='v1,'+base64.b64encode(hmac.new(other_key,(delivery['delivery_id']+'.'+timestamp+'.'+body).encode(),hashlib.sha256).digest()).decode()
+other=sign(other_key,delivery['delivery_id'],timestamp,body)
 write('rotated-signature.json',dict(uses='signature.json',other_secret=other_secret,signature_header=other+' '+signature,expected='accept'))
 
 # v1 "Delivery responses and retries": one delivery ID, its retries and conflicts.
@@ -135,18 +138,17 @@ write('retry-after.json',dict(cap_seconds=60,now=now,cases=[
     ]]))
 
 # v1 "Delivery responses and retries": every 3xx pauses, only 200 is done, other 2xx park.
-rows=json.loads((root/'responses.json').read_text())
 error=dict(contract_version=1,error='example',detail='Synthetic rejection')
-rows+=[dict(status=s,body=b,expected=e) for s,b,e in [
+responses+=[dict(status=s,body=b,expected=e) for s,b,e in [
     (301,error,'pause'),(307,error,'pause'),(308,error,'pause'),(204,error,'parked'),
     (200,{},'parked'),(502,error,'retry'),(503,error,'retry'),(504,error,'retry')]]
-write('responses.json',rows)
+write('responses.json',responses)
 
 # v1 "GET /orders": a client keeps the higher version and one content per version.
 def offered(version,state):
-    order=json.loads((root/'order.json').read_text())
-    order.update(version=version,state=state)
-    return order
+    offer=copy.deepcopy(order)
+    offer.update(version=version,state=state)
+    return offer
 write('order-versions.json',[
     dict(step='first',offer=offered(2,'requested'),kept_version=2,kept_state='requested',parked=False),
     dict(step='same-version-same-content',offer=offered(2,'requested'),kept_version=2,kept_state='requested',parked=False),

@@ -138,6 +138,28 @@ fn response_vectors_map_to_actions() -> Result<(), Box<dyn std::error::Error>> {
     ));
     Ok(())
 }
+// Contract v1 "Delivery responses and retries": the status name is the one a status body carries
+#[test]
+fn status_names_match_published_status_bodies() -> Result<(), Box<dyn std::error::Error>> {
+    for (status, vector) in [
+        (
+            DeliveryStatus::Accepted,
+            include_bytes!("../../../../docs/contract/vectors/accepted.json").as_slice(),
+        ),
+        (
+            DeliveryStatus::Duplicate,
+            include_bytes!("../../../../docs/contract/vectors/duplicate.json").as_slice(),
+        ),
+    ] {
+        let body: Value = serde_json::from_slice(vector)?;
+        assert_eq!(
+            body.get("status").and_then(Value::as_str),
+            Some(status.as_str())
+        );
+        assert_eq!(serde_json::to_value(status)?, status.as_str());
+    }
+    Ok(())
+}
 proptest::proptest! {
     // ADR 0008
     #[test]

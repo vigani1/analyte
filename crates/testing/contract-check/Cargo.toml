@@ -20,9 +20,6 @@ thiserror = { workspace = true }
 uuid = { workspace = true }
 jiff = { workspace = true }
 clap = { workspace = true }
-hmac = { workspace = true }
-sha2 = { workspace = true }
-base64 = { workspace = true }
 
 [dev-dependencies]
 analyte-fixtures.workspace = true

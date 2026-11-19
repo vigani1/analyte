@@ -59,7 +59,6 @@ impl SigningSecret {
             || timestamp.len() > 20
             || timestamp.is_empty()
             || !timestamp.bytes().all(|b| b.is_ascii_digit())
-            || body.len() > crate::MAX_DOCUMENT_BYTES
         {
             return Err(SignatureError::Metadata);
         }
@@ -77,6 +76,23 @@ impl SigningSecret {
     /// # Errors
     /// Rejects oversized bodies or malformed metadata.
     pub fn sign(&self, id: &str, timestamp: &str, body: &[u8]) -> Result<String, SignatureError> {
+        within_document_limit(body)?;
+        self.sign_unbounded(id, timestamp, body)
+    }
+    /// Signs like [`Self::sign`] but without the contract's document size bound.
+    ///
+    /// Only for conformance checks that must send a document over the limit to
+    /// see the receiver refuse it. Analyte never sends such a document, so its
+    /// own deliveries use [`Self::sign`].
+    ///
+    /// # Errors
+    /// Rejects malformed metadata.
+    pub fn sign_unbounded(
+        &self,
+        id: &str,
+        timestamp: &str,
+        body: &[u8],
+    ) -> Result<String, SignatureError> {
         Ok(format!(
             "v1,{}",
             STANDARD.encode(self.mac(id, timestamp, body)?.finalize().into_bytes())
@@ -94,6 +110,7 @@ impl SigningSecret {
         signatures: &str,
         now: i64,
     ) -> Result<(), SignatureError> {
+        within_document_limit(body)?;
         let mac = self.mac(id, timestamp, body)?;
         let sent = timestamp
             .parse::<i64>()
@@ -117,5 +134,14 @@ impl SigningSecret {
         } else {
             Err(SignatureError::Mismatch)
         }
+    }
+}
+
+/// A signed or verified body holds at most one contract document.
+fn within_document_limit(body: &[u8]) -> Result<(), SignatureError> {
+    if body.len() > crate::MAX_DOCUMENT_BYTES {
+        Err(SignatureError::Metadata)
+    } else {
+        Ok(())
     }
 }
