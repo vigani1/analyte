@@ -76,3 +76,20 @@ body { margin: 0; background: var(--bg); }
 @container app (max-width: 1000px) {
   .nav-more__summary { justify-content: center; width: var(--nav-rail-item); padding: 0; }
 }
+
+/* Page changes cross-fade, CSS only: both pages opt in, the sidebar keeps its
+   own name so it stays still while the main column changes. Pages in the old
+   look do not load this file, so moving to or from one does not animate. */
+@view-transition { navigation: auto; }
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: var(--dur-base);
+  animation-timing-function: var(--ease-out);
+}
+.sidebar { view-transition-name: sidebar; }
+@media (prefers-reduced-motion: reduce) {
+  @view-transition { navigation: none; }
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) { animation: none; }
+}

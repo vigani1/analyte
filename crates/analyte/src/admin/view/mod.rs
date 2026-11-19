@@ -552,16 +552,40 @@ mod tests {
         Ok(())
     }
 
+    /// The restyled pages' additions to the design system.
+    const APP: &str = include_str!("../../../assets/app.css");
+
     // ADR 0018: app.css adds to the design system with semantic tokens only: no
     // primitives, no raw colours, nothing loaded from elsewhere.
     #[test]
     fn app_css_uses_semantic_tokens_only() {
-        const APP: &str = include_str!("../../../assets/app.css");
         assert!(APP.starts_with("/* Analyte's additions"));
         for forbidden in [
             "--p-", "#", "rgb(", "rgba(", "hsl(", "@import", "url(", "http:", "https:",
         ] {
             assert!(!APP.contains(forbidden), "app.css contains {forbidden}");
         }
+    }
+
+    // Owner request 2026-11-19 (PR #273): moving between restyled pages
+    // cross-fades with CSS only, in the design's base duration and easing; the
+    // sidebar keeps its own name so it stays still; reduced motion turns it off.
+    #[test]
+    fn page_changes_cross_fade_unless_motion_is_reduced() {
+        for rule in [
+            "@view-transition { navigation: auto; }",
+            "animation-duration: var(--dur-base);",
+            "animation-timing-function: var(--ease-out);",
+            ".sidebar { view-transition-name: sidebar; }",
+        ] {
+            assert!(APP.contains(rule), "app.css lacks {rule}");
+        }
+        let reduced = APP
+            .split_once("@media (prefers-reduced-motion: reduce) {")
+            .map(|(_, rest)| rest)
+            .unwrap_or_default();
+        assert!(reduced.contains("@view-transition { navigation: none; }"));
+        assert!(reduced.contains("::view-transition-old(*)"));
+        assert!(reduced.contains("animation: none;"));
     }
 }
