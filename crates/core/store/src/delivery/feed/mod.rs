@@ -36,7 +36,7 @@ impl Store {
                 tx.execute(
                     "INSERT INTO parked(evidence) VALUES (?1)",
                     [crate::parked::evidence(
-                        "order_version_refused",
+                        crate::ParkedKind::OrderVersionRefused.as_str(),
                         order.id.as_str(),
                         &reason,
                         None,

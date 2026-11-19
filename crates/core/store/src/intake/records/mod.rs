@@ -146,6 +146,68 @@ pub struct Parked {
     pub targets: Vec<Identifier>,
 }
 
+/// What kind of item waits for review. [`ParkedKind::as_str`] is the exact
+/// spelling kept in a parked item's `kind`; every writer in Analyte uses it.
+/// Items stored by another version may hold a kind this one does not know.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ParkedKind {
+    /// A mapping finding stopped automatic delivery.
+    MappingFinding,
+    /// A message could not be read.
+    InterpretationFailure,
+    /// A result could not be matched to earlier results.
+    ResultReconciliation,
+    /// The machine stopped part-way through sending.
+    IncompleteTransfer,
+    /// The lab app rejected a delivery.
+    DeliveryRejected,
+    /// The lab app holds different content for a delivery.
+    DeliveryConflict,
+    /// An older or changed copy of a cached order was refused.
+    OrderVersionRefused,
+    /// A LAW cancel conflicts with what the machine reported.
+    CancelConflict,
+    /// A machine asked for orders and the outcome is not known yet.
+    PollIntent,
+}
+
+impl ParkedKind {
+    /// Every kind, so a stored spelling can be read back.
+    pub const ALL: [Self; 9] = [
+        Self::MappingFinding,
+        Self::InterpretationFailure,
+        Self::ResultReconciliation,
+        Self::IncompleteTransfer,
+        Self::DeliveryRejected,
+        Self::DeliveryConflict,
+        Self::OrderVersionRefused,
+        Self::CancelConflict,
+        Self::PollIntent,
+    ];
+
+    /// The stored spelling; it never changes, because stored items keep it.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::MappingFinding => "mapping_finding",
+            Self::InterpretationFailure => "interpretation_failure",
+            Self::ResultReconciliation => "result_reconciliation",
+            Self::IncompleteTransfer => "incomplete_transfer",
+            Self::DeliveryRejected => "parked",
+            Self::DeliveryConflict => "conflict",
+            Self::OrderVersionRefused => "order_version_refused",
+            Self::CancelConflict => "law_cancel_refusal_conflict",
+            Self::PollIntent => "poll_intent",
+        }
+    }
+
+    /// Reads back a stored spelling; a kind this version does not know gives `None`.
+    #[must_use]
+    pub fn from_stored(kind: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|known| known.as_str() == kind)
+    }
+}
+
 /// Permanent operator action, including resolution details.
 #[derive(Serialize, Deserialize)]
 pub struct Audit {
