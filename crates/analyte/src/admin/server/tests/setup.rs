@@ -1,4 +1,4 @@
-//! Tests the setup page: definitions, detected ports, saving with backups, refusals, keys and the listen test.
+//! Tests the setup page and the Lab app page: definitions, detected ports, saving with backups, lab app moves, refusals, keys and the listen test.
 use super::pages::{csrf, encode, login};
 use super::*;
 use std::sync::Mutex;
@@ -100,6 +100,26 @@ async fn start() -> Result<Fixture, Error> {
 
 /// A fixture whose program file lists `machines` and whose `site.toml` holds `site_text`.
 async fn start_with(machines: &str, site_text: &str) -> Result<Fixture, Error> {
+    let program = analyte_fixtures::program_with_limits(
+        machines,
+        &analyte_store::Limits {
+            reserve_bytes: 1,
+            database_bytes: 100_000_000,
+            record_bytes: 2_097_152,
+            page_rows: 100,
+            busy_timeout: Duration::from_millis(100),
+        },
+    );
+    start_program(&program, "site.toml", site_text).await
+}
+
+/// A fixture with the whole program file `program_text` and the site file
+/// `site_name` holding `site_text`, beside the shipped example definitions.
+async fn start_program(
+    program_text: &str,
+    site_name: &str,
+    site_text: &str,
+) -> Result<Fixture, Error> {
     let directory = crate::admin::private_tempdir()?;
     let root = directory.path();
     let serial = root.join("machines/example/serial-astm");
@@ -120,22 +140,10 @@ async fn start_with(machines: &str, site_text: &str) -> Result<Fixture, Error> {
         blocked.join("README.md"),
         "# Roche cobas e 411\n\nA blocked machine definition.\n",
     )?;
-    let site = root.join("site.toml");
+    let site = root.join(site_name);
     std::fs::write(&site, site_text)?;
     let config = root.join("program.toml");
-    std::fs::write(
-        &config,
-        analyte_fixtures::program_with_limits(
-            machines,
-            &analyte_store::Limits {
-                reserve_bytes: 1,
-                database_bytes: 100_000_000,
-                record_bytes: 2_097_152,
-                page_rows: 100,
-                busy_timeout: Duration::from_millis(100),
-            },
-        ),
-    )?;
+    std::fs::write(&config, program_text)?;
     let program = Program::load(&config)?;
     let data = program.data_directory().to_owned();
     let store = Arc::new(
@@ -229,10 +237,7 @@ impl Fixture {
             ("csrf", csrf(&page)?),
             ("definition", "example/serial-astm".to_owned()),
             ("port_name", String::new()),
-            ("base_url", "https://lab.example.invalid/v1".to_owned()),
-            ("destination", "demo".to_owned()),
-            ("api_key", String::new()),
-            ("signing_key", String::new()),
+            ("lab_app", "demo".to_owned()),
         ];
         for (name, value) in fields {
             values.retain(|(existing, _)| existing != name);
@@ -301,9 +306,81 @@ async fn page_lists_definitions_and_detected_adapters() -> Result<(), Error> {
     Ok(())
 }
 
-// Owner request 2026-11-18 (installers): the installed starter lists a machine
-// without a definition; the page shows it as not set up, and a save adds the
-// definition line, so the program then runs it with the stored keys.
+/// The packaging workflow's check, in plain code: one table row of `page` names
+/// `machine` as a cell's whole text and, later in the same row, says "Not set up
+/// yet". Cell markup inside the row may change.
+fn row_not_set_up(page: &str, machine: &str) -> bool {
+    let cell = format!(">{machine}<");
+    page.split("<tr").skip(1).any(|row| {
+        let row = row.split("</tr>").next().unwrap_or_default();
+        row.find(&cell).is_some_and(|at| {
+            row.get(at..)
+                .is_some_and(|rest| rest.contains("Not set up yet"))
+        })
+    })
+}
+
+// Owner request 2026-11-19 (lab app set once; PR #260 packaging failure): the
+// installers' exact starter files load, the machine not set up needs no lab app,
+// and the setup page lists machine-1 as not set up, as the packaging workflow
+// checks after install, with a link to add the first lab app.
+#[tokio::test(flavor = "multi_thread")]
+async fn starter_setup_page_matches_the_packaging_check() -> Result<(), Error> {
+    // Both installer jobs use this row-level match, not exact cell markup.
+    let workflow = include_str!("../../../../../../.github/workflows/packaging.yml");
+    assert_eq!(
+        workflow
+            .matches(">machine-1<(?:(?!</tr>).)*Not set up yet")
+            .count(),
+        2,
+        "the Windows and Linux checks match one row"
+    );
+    let link = "No lab app yet: <a href=\"/setup/lab-apps/new\">add one</a>";
+    for program in [
+        include_str!("../../../../../../packaging/linux/starter/analyte.toml"),
+        include_str!("../../../../../../packaging/windows/starter/analyte.toml"),
+    ] {
+        // Only the data folder moves into the test's private folder.
+        let program: String = program
+            .lines()
+            .map(|line| {
+                if line.starts_with("data_directory") {
+                    "data_directory = 'data'\n".to_owned()
+                } else {
+                    format!("{line}\n")
+                }
+            })
+            .collect();
+        let fixture = start_program(
+            &program,
+            "machine-1.site.toml",
+            include_str!("../../../../../../packaging/linux/starter/machine-1.site.toml"),
+        )
+        .await?;
+        let loaded = Program::load(&fixture.config)?;
+        assert!(loaded.machines().is_empty() && loaded.lab_apps().is_empty());
+        let waiting: Vec<&str> = loaded
+            .awaiting_setup()
+            .iter()
+            .map(Identifier::as_str)
+            .collect();
+        assert_eq!(waiting, ["machine-1"]);
+        let index = fixture.get("/setup").await?;
+        assert!(index.starts_with("HTTP/1.1 200"), "{index}");
+        assert!(row_not_set_up(&index, "machine-1"), "{index}");
+        assert!(!row_not_set_up(&index, "machine-2"), "{index}");
+        assert!(index.contains(link), "missing {link}: {index}");
+        let lab_apps = fixture.get("/setup/lab-apps").await?;
+        assert!(lab_apps.contains("No lab app is set up yet"), "{lab_apps}");
+    }
+    Ok(())
+}
+
+// Owner request 2026-11-18 (installers) and 2026-11-19 (lab app set once): the
+// installed starter lists a machine without a definition; with no lab app the
+// form links to the Lab app page, which stores the keys once; the machine then
+// picks the only lab app by default, and a save adds the definition line, so
+// the program runs it with the stored keys.
 #[tokio::test(flavor = "multi_thread")]
 async fn waiting_machine_is_set_up_from_the_starter() -> Result<(), Error> {
     let fixture = start_with(
@@ -324,21 +401,49 @@ async fn waiting_machine_is_set_up_from_the_starter() -> Result<(), Error> {
     let first = fixture.get("/setup/machine-1").await?;
     assert!(first.starts_with("HTTP/1.1 200"), "{first}");
     assert!(first.contains("This machine is not set up yet"));
-    assert!(!first.contains("name=\"base_url\""));
-    let chosen = fixture
-        .get("/setup/machine-1?definition=example/network-hl7")
+    assert!(!first.contains("name=\"lab_app\""));
+    let page = "/setup/machine-1?definition=example/network-hl7";
+    let empty = fixture.get(page).await?;
+    assert!(empty.contains("name=\"host\""), "{empty}");
+    assert!(
+        empty.contains(
+            "No lab app is set up yet. <a href=\"/setup/lab-apps/new\">Add a lab app</a>"
+        ),
+        "{empty}"
+    );
+    assert!(
+        !empty.contains("name=\"api_key\""),
+        "keys are not asked per machine"
+    );
+    let added = fixture
+        .submit(
+            "/setup/lab-apps/new",
+            "/setup/lab-apps/new",
+            &[
+                ("name", "lab-app"),
+                ("base_url", "https://lab.example.invalid/v1"),
+                ("freshness_seconds", "30"),
+                ("request_timeout_seconds", "10"),
+                ("api_key", API_KEY),
+                ("signing_key", SIGNING_KEY),
+            ],
+        )
         .await?;
-    assert!(chosen.contains("name=\"host\""), "{chosen}");
-    assert!(chosen.contains("lab-app-api: not set"), "{chosen}");
+    assert!(added.starts_with("HTTP/1.1 200"), "{added}");
+    assert!(added.contains("Key stored: lab-app-api"), "{added}");
+    let chosen = fixture.get(page).await?;
+    assert!(
+        chosen.contains(
+            "<option value=\"lab-app\" selected>lab-app (https://lab.example.invalid/v1)</option>"
+        ),
+        "the only lab app is the default: {chosen}"
+    );
     let body = [
         ("csrf", csrf(&chosen)?),
         ("definition", "example/network-hl7".into()),
         ("host", "127.0.0.1".into()),
         ("tcp_port", "5600".into()),
-        ("base_url", "https://lab.example.invalid/v1".into()),
-        ("destination", "lab-app".into()),
-        ("api_key", API_KEY.into()),
-        ("signing_key", SIGNING_KEY.into()),
+        ("lab_app", "lab-app".into()),
     ]
     .iter()
     .map(|(name, value)| format!("{name}={}", encode(value)))
@@ -358,6 +463,9 @@ async fn waiting_machine_is_set_up_from_the_starter() -> Result<(), Error> {
     assert!(after.awaiting_setup().is_empty());
     let machine = after.machines().first().ok_or("machine missing")?;
     assert_eq!(machine.id().as_str(), "machine-1");
+    let site = std::fs::read_to_string(&fixture.site)?;
+    assert!(site.contains("lab_app = \"lab-app\""), "{site}");
+    assert!(!site.contains("[destination]"), "{site}");
     let stored = crate::installation::credentials::Locked::new(&fixture.data).read()?;
     assert!(
         crate::installation::secrets::Environment::load_layered(&after, |_| None, &stored).is_ok(),
@@ -367,80 +475,197 @@ async fn waiting_machine_is_set_up_from_the_starter() -> Result<(), Error> {
     Ok(())
 }
 
-// Owner request 2026-11-18 (setup page): an invalid lab app address is refused
-// before any file, backup or key is written.
+// Owner request 2026-11-18 (setup page) and 2026-11-19 (lab app set once): an
+// invalid lab app address, missing keys, or an unknown lab app picked for a
+// machine are refused before any file, backup or key is written.
 #[tokio::test(flavor = "multi_thread")]
 async fn invalid_address_is_refused_before_anything_is_written() -> Result<(), Error> {
     let fixture = start().await?;
     let before = std::fs::read_to_string(&fixture.site)?;
+    let lab_apps = fixture.root().join("lab-apps.toml");
+    for (fields, refusal) in [
+        (
+            [
+                ("base_url", "http://lab.example.invalid"),
+                ("signing_key", SIGNING_KEY),
+            ],
+            "lab app address is not accepted",
+        ),
+        (
+            [
+                ("base_url", "https://lab.example.invalid"),
+                ("signing_key", ""),
+            ],
+            "enter both keys for a new lab app",
+        ),
+    ] {
+        let mut posted = vec![("name", "second"), ("api_key", API_KEY)];
+        posted.extend(fields);
+        let response = fixture
+            .submit("/setup/lab-apps/new", "/setup/lab-apps/new", &posted)
+            .await?;
+        assert!(response.starts_with("HTTP/1.1 409"), "{response}");
+        assert!(response.contains(refusal), "{response}");
+        assert!(!response.contains(API_KEY) && !response.contains(SIGNING_KEY));
+    }
     let body = fixture
-        .form(&[
-            ("port", "usb:A10K3XYZ"),
-            ("base_url", "http://lab.example.invalid"),
-            ("api_key", API_KEY),
-        ])
+        .form(&[("port", "usb:A10K3XYZ"), ("lab_app", "nowhere")])
         .await?;
     let response = fixture.post("/setup/synthetic", &body).await?;
     assert!(response.starts_with("HTTP/1.1 409"), "{response}");
-    assert!(response.contains("lab app address is not accepted"));
-    assert!(!response.contains(API_KEY));
+    assert!(
+        response.contains("there is no lab app called nowhere"),
+        "{response}"
+    );
     assert_eq!(std::fs::read_to_string(&fixture.site)?, before);
     assert!(fixture.backups()?.is_empty());
+    assert!(!lab_apps.exists());
     assert!(!fixture.data.join("credentials").exists());
     Ok(())
 }
 
-// Owner request 2026-11-18 (setup page, locked file); AGENTS.md rule 10: a save
-// writes a site file the program loader (check-config) accepts, keeps the old
-// one, stores the keys in the locked file, and no key reaches a page, an audit
-// row or a log line.
+// Owner request 2026-11-18 (setup page) and 2026-11-19 (lab app set once,
+// items 4 and 6): a save writes a site file the program loader (check-config)
+// accepts and keeps the old one; the site file's own [destination] moves into
+// lab-apps.toml and the site file names it, and with the same values the
+// effective config digest does not change.
 #[tokio::test(flavor = "multi_thread")]
-async fn save_writes_checked_site_with_backup_and_locked_keys() -> Result<(), Error> {
-    let logs = crate::runtime::log_capture::init();
+async fn save_moves_the_lab_app_and_keeps_the_digest() -> Result<(), Error> {
     let fixture = start().await?;
-    // An adapter without its own serial number is saved by port name.
+    let original = std::fs::read_to_string(&fixture.site)?;
+    let digest = |program: &Program| -> Result<String, Error> {
+        Ok(program
+            .machines()
+            .first()
+            .ok_or("machine missing")?
+            .snapshot()
+            .digest()
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect())
+    };
+    let old = digest(&Program::load(&fixture.config)?)?;
+    let form = fixture.get("/setup/synthetic").await?;
+    assert!(
+        form.contains(
+            "<option value=\"demo\" selected>demo (https://lab.example.invalid)</option>"
+        ),
+        "{form}"
+    );
+    assert!(
+        !form.contains("name=\"api_key\""),
+        "keys are not asked per machine"
+    );
+    // The same connection and lab app: only where the lab app is written moves.
+    let same = fixture.form(&[("port", "usb:A10K3XYZ")]).await?;
+    let saved = fixture.post("/setup/synthetic", &same).await?;
+    assert!(saved.starts_with("HTTP/1.1 200"), "{saved}");
+    assert!(saved.contains("This lab app is now kept on the"), "{saved}");
+    assert!(saved.contains("Restart now"));
+    let program = Program::load(&fixture.config)?;
+    assert_eq!(digest(&program)?, old, "same values, same digest");
+    assert!(saved.contains(&old), "saved page lacks the digest");
+    let site = std::fs::read_to_string(&fixture.site)?;
+    assert!(site.contains("lab_app = \"demo\""), "{site}");
+    assert!(!site.contains("[destination]"), "{site}");
+    assert!(site.contains("usb_serial = \"A10K3XYZ\""), "{site}");
+    assert!(site.contains("retention = \"keep\""));
+    let lab_apps = analyte_config::LabApps::load(
+        "lab-apps.toml",
+        &std::fs::read_to_string(fixture.root().join("lab-apps.toml"))?,
+    )?;
+    let site_table: toml::Table = original.parse()?;
+    let written: analyte_config::Destination = site_table
+        .get("destination")
+        .ok_or("destination")?
+        .clone()
+        .try_into()?;
+    assert_eq!(lab_apps.listed(), [written]);
+    assert!(
+        fixture
+            .backups()?
+            .iter()
+            .any(|path| std::fs::read_to_string(path).is_ok_and(|text| text == original)),
+        "the old site file is kept"
+    );
+    // An adapter without its own serial number is saved by port name; nothing
+    // more moves, and the lab app file stays as it is.
+    let lab_apps_text = std::fs::read_to_string(fixture.root().join("lab-apps.toml"))?;
     let by_name = fixture.form(&[("port", "name:COM3")]).await?;
     let named = fixture.post("/setup/synthetic", &by_name).await?;
     assert!(named.starts_with("HTTP/1.1 200"), "{named}");
+    assert!(!named.contains("is now kept on the"), "{named}");
     let site = std::fs::read_to_string(&fixture.site)?;
     assert!(site.contains("endpoint = \"COM3\""), "{site}");
     assert!(!site.contains("usb_serial"));
-    let before = site;
-    let body = fixture
-        .form(&[
-            ("port", "usb:A10K3XYZ"),
-            ("api_key", API_KEY),
-            ("signing_key", SIGNING_KEY),
-        ])
-        .await?;
-    let saved = fixture.post("/setup/synthetic", &body).await?;
-    assert!(saved.starts_with("HTTP/1.1 200"), "{saved}");
-    assert!(saved.contains("usb_serial = A10K3XYZ"));
-    assert!(saved.contains("Restart now"));
-    let program = Program::load(&fixture.config)?;
-    let machine = program.machines().first().ok_or("machine missing")?;
-    let digest: String = machine
-        .snapshot()
-        .digest()
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect();
-    assert!(saved.contains(&digest), "saved page lacks the new digest");
     assert_eq!(
-        machine.snapshot().effective().site().endpoint,
-        analyte_config::Endpoint::UsbSerial(analyte_config::UsbSerial::new("A10K3XYZ".into())?)
+        std::fs::read_to_string(fixture.root().join("lab-apps.toml"))?,
+        lab_apps_text
     );
-    let site = std::fs::read_to_string(&fixture.site)?;
-    assert!(site.contains("usb_serial = \"A10K3XYZ\""), "{site}");
-    assert!(!site.contains("endpoint"));
-    assert!(site.contains("retention = \"keep\""));
-    let backups = fixture.backups()?;
-    assert_eq!(backups.len(), 2);
+    assert_eq!(fixture.backups()?.len(), 2, "one site backup per save");
+    let audits = fixture.audited("setup-save").await?;
     assert!(
-        backups
-            .iter()
-            .any(|path| std::fs::read_to_string(path).is_ok_and(|text| text == before))
+        audits[0].contains("lab app demo (https://lab.example.invalid); its lab app settings moved to lab-apps.toml"),
+        "{audits:?}"
     );
+    Ok(())
+}
+
+// Owner request 2026-11-19 (lab app set once): the Lab app page stores each key
+// once in the locked file and then shows it only as "set on <date>"; a new lab
+// app gets its own key names; no key reaches a page, an audit row or a log
+// line. A lab app still written in a machine's site file keeps its address
+// until that machine is saved.
+#[tokio::test(flavor = "multi_thread")]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one scenario: refuse, store, show, add, then check every page, audit row and log line"
+)]
+async fn lab_app_page_stores_keys_once() -> Result<(), Error> {
+    let logs = crate::runtime::log_capture::init();
+    let fixture = start().await?;
+    let list = fixture.get("/setup/lab-apps").await?;
+    assert!(
+        list.contains(">Still kept in the settings of synthetic</span></small>"),
+        "{list}"
+    );
+    assert!(
+        list.contains("<span title=\"demo-api\">API key</span>: not set"),
+        "{list}"
+    );
+    let moved_first = fixture
+        .submit(
+            "/setup/lab-apps/demo",
+            "/setup/lab-apps/demo",
+            &[
+                ("base_url", "https://moved.example.invalid"),
+                ("api_key", API_KEY),
+            ],
+        )
+        .await?;
+    assert!(moved_first.starts_with("HTTP/1.1 409"), "{moved_first}");
+    assert!(
+        moved_first.contains("still kept in the settings of synthetic; save that machine"),
+        "{moved_first}"
+    );
+    assert!(!fixture.data.join("credentials").exists());
+    let saved = fixture
+        .submit(
+            "/setup/lab-apps/demo",
+            "/setup/lab-apps/demo",
+            &[
+                ("base_url", "https://lab.example.invalid"),
+                ("freshness_seconds", "30"),
+                ("request_timeout_seconds", "10"),
+                ("api_key", API_KEY),
+                ("signing_key", SIGNING_KEY),
+            ],
+        )
+        .await?;
+    assert!(saved.starts_with("HTTP/1.1 200"), "{saved}");
+    assert!(saved.contains("Key stored: demo-api") && saved.contains("Key stored: demo-signing"));
+    // The same values beside the site file's own copy: the program still loads.
+    Program::load(&fixture.config)?;
     let stored = crate::installation::credentials::Locked::new(&fixture.data).read()?;
     assert_eq!(
         stored.by_variable("ANALYTE_SECRET_DEMO_API").as_deref(),
@@ -461,9 +686,37 @@ async fn save_writes_checked_site_with_backup_and_locked_keys() -> Result<(), Er
     }
     #[cfg(windows)]
     crate::runtime::service::acl::check(&file, crate::runtime::service::acl::Readers::ServiceOnly)?;
-    let again = fixture.get("/setup/synthetic").await?;
-    assert!(again.contains("demo-api: set on "), "{again}");
-    assert!(again.contains("demo-signing: set on "));
+    let again = fixture.get("/setup/lab-apps/demo").await?;
+    assert!(
+        again.contains("<span title=\"demo-api\">API key</span>: set on "),
+        "{again}"
+    );
+    assert!(again.contains("<span title=\"demo-signing\">Signing key</span>: set on "));
+    assert!(again.contains("Leave a box empty to keep the stored key"));
+    let added = fixture
+        .submit(
+            "/setup/lab-apps/new",
+            "/setup/lab-apps/new",
+            &[
+                ("name", "second"),
+                ("base_url", "https://second.example.invalid"),
+                ("api_key", API_KEY),
+                ("signing_key", SIGNING_KEY),
+            ],
+        )
+        .await?;
+    assert!(added.starts_with("HTTP/1.1 200"), "{added}");
+    let stored = crate::installation::credentials::Locked::new(&fixture.data).read()?;
+    assert!(stored.set_at("second-api").is_some() && stored.set_at("second-signing").is_some());
+    let program = Program::load(&fixture.config)?;
+    let names: Vec<&str> = program
+        .lab_apps()
+        .iter()
+        .map(|known| known.settings().name.as_str())
+        .collect();
+    assert_eq!(names, ["demo", "second"]);
+    let list = fixture.get("/setup/lab-apps").await?;
+    let machine = fixture.get("/setup/synthetic").await?;
     let audits = fixture
         .store
         .request::<_, FixtureError>(fixture_deadline()?, |s| Ok(s.audits(0)?))
@@ -471,10 +724,15 @@ async fn save_writes_checked_site_with_backup_and_locked_keys() -> Result<(), Er
     assert!(
         audits
             .iter()
-            .any(|(_, audit)| audit.action.as_str() == "setup-save")
+            .any(|(_, a)| a.action.as_str() == "lab-app-save")
+    );
+    assert!(
+        audits
+            .iter()
+            .any(|(_, a)| a.action.as_str() == "lab-app-add")
     );
     let logged = String::from_utf8_lossy(&logs.lock().map_err(|_| "log poisoned")?).into_owned();
-    for page in [&named, &saved, &again] {
+    for page in [&moved_first, &saved, &again, &added, &list, &machine] {
         assert!(!page.contains(API_KEY) && !page.contains(SIGNING_KEY));
     }
     for (_, audit) in &audits {
@@ -482,6 +740,62 @@ async fn save_writes_checked_site_with_backup_and_locked_keys() -> Result<(), Er
         assert!(!text.contains(API_KEY) && !text.contains(SIGNING_KEY));
     }
     assert!(!logged.contains(API_KEY) && !logged.contains(SIGNING_KEY));
+    Ok(())
+}
+
+// Owner request 2026-11-19 (lab app set once): removing a lab app is refused
+// while a machine uses it, and allowed, with a backup, when nothing uses it.
+#[tokio::test(flavor = "multi_thread")]
+async fn lab_app_in_use_is_not_removed() -> Result<(), Error> {
+    let fixture = start().await?;
+    let confirm = fixture.get("/setup/lab-apps/demo/remove").await?;
+    assert!(confirm.contains("It cannot be removed now"), "{confirm}");
+    assert!(
+        confirm.contains("Machines send results to it: synthetic."),
+        "{confirm}"
+    );
+    assert!(!confirm.contains("<button class=\"danger\">Remove</button>"));
+    let refused = fixture
+        .submit("/setup/lab-apps/new", "/setup/lab-apps/demo/remove", &[])
+        .await?;
+    assert!(refused.starts_with("HTTP/1.1 409"), "{refused}");
+    assert!(
+        refused.contains("lab app demo cannot be removed"),
+        "{refused}"
+    );
+    assert!(!fixture.root().join("lab-apps.toml").exists());
+    let added = fixture
+        .submit(
+            "/setup/lab-apps/new",
+            "/setup/lab-apps/new",
+            &[
+                ("name", "spare"),
+                ("base_url", "https://spare.example.invalid"),
+                ("api_key", API_KEY),
+                ("signing_key", SIGNING_KEY),
+            ],
+        )
+        .await?;
+    assert!(added.starts_with("HTTP/1.1 200"), "{added}");
+    let confirm = fixture.get("/setup/lab-apps/spare/remove").await?;
+    assert!(
+        confirm.contains("<button class=\"danger\">Remove</button>"),
+        "{confirm}"
+    );
+    let removed = fixture
+        .submit(
+            "/setup/lab-apps/spare/remove",
+            "/setup/lab-apps/spare/remove",
+            &[],
+        )
+        .await?;
+    assert!(removed.starts_with("HTTP/1.1 200"), "{removed}");
+    let program = Program::load(&fixture.config)?;
+    assert!(program.lab_apps().is_empty(), "spare is gone");
+    assert!(fixture.backups()?.iter().any(|path| {
+        std::fs::read_to_string(path).is_ok_and(|text| text.contains("spare.example.invalid"))
+    }));
+    assert_eq!(fixture.audited("lab-app-remove").await?.len(), 1);
     Ok(())
 }
 
@@ -711,35 +1025,39 @@ impl Fixture {
     }
 }
 
-/// The site file's `[destination]` is kept in the program, so its waiting results
-/// stay deliverable after the removal, and the page says so.
+/// The site file's `[destination]` moved into lab-apps.toml, not into the
+/// program file, so its waiting results stay deliverable after the removal, and
+/// the page says so.
 fn assert_destination_kept(
     removed: &str,
     program: &Program,
     site_before: &str,
+    root: &std::path::Path,
 ) -> Result<(), Error> {
-    let kept =
-        "Results still waiting for lab app demo are sent after the restart until none are left";
+    let kept = "Lab app demo stays on the Lab app page; results still waiting for it are sent";
     assert!(
         removed.contains("Restart now") && removed.contains(kept),
         "{removed}"
     );
     let site: toml::Table = site_before.parse()?;
-    let kept: Vec<toml::Value> = program
-        .retired_destinations()
+    let expected: analyte_config::Destination = site
+        .get("destination")
+        .ok_or("destination")?
+        .clone()
+        .try_into()?;
+    let kept: Vec<&analyte_config::Destination> = program
+        .lab_apps()
         .iter()
-        .map(|kept| toml::Value::try_from(kept.settings()))
-        .collect::<Result<_, _>>()?;
-    let mut expected = site.get("destination").ok_or("destination")?.clone();
-    if let Some(table) = expected.as_table_mut() {
-        table
-            .entry("freshness_seconds")
-            .or_insert(toml::Value::Integer(30));
-        table
-            .entry("request_timeout_seconds")
-            .or_insert(toml::Value::Integer(10));
-    }
-    assert_eq!(kept, [expected]);
+        .map(crate::installation::config::LabApp::settings)
+        .collect();
+    assert_eq!(kept, [&expected]);
+    let listed = analyte_config::LabApps::load(
+        "lab-apps.toml",
+        &std::fs::read_to_string(root.join("lab-apps.toml"))?,
+    )?;
+    assert_eq!(listed.listed(), [expected]);
+    let text = std::fs::read_to_string(root.join("program.toml"))?;
+    assert!(!text.contains("retired_destinations"), "{text}");
     Ok(())
 }
 
@@ -1005,6 +1323,10 @@ async fn listed_name_refused_before_history_lookup() -> Result<(), Error> {
 // keeps the site file as a dated copy and never touches the store. Removing the
 // last machine is allowed and the setup page keeps working.
 #[tokio::test(flavor = "multi_thread")]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one scenario: warn, refuse, remove anyway, then check files, store and lab app"
+)]
 async fn remove_warns_then_keeps_store_and_site_backup() -> Result<(), Error> {
     let fixture = start_two().await?;
     seed_unfinished(&fixture.store, "synthetic").await?;
@@ -1059,7 +1381,22 @@ async fn remove_warns_then_keeps_store_and_site_backup() -> Result<(), Error> {
     assert!(removed.starts_with("HTTP/1.1 200"), "{removed}");
     let program = Program::load(&fixture.config)?;
     assert!(program.machines().is_empty());
-    assert_destination_kept(&removed, &program, &site_before)?;
+    assert_destination_kept(&removed, &program, &site_before, fixture.root())?;
+    // Owner request 2026-11-19 (lab app set once): no machine uses demo now, but
+    // a result still waits for it, so the Lab app page refuses to remove it.
+    let refused = fixture
+        .submit("/setup/lab-apps/new", "/setup/lab-apps/demo/remove", &[])
+        .await?;
+    assert!(refused.starts_with("HTTP/1.1 409"), "{refused}");
+    assert!(
+        refused.contains("1 result or order message still wait for it"),
+        "{refused}"
+    );
+    assert!(
+        !refused.contains("Machines send results to it"),
+        "{refused}"
+    );
+    assert_eq!(Program::load(&fixture.config)?.lab_apps().len(), 1);
     let waiting: Vec<&str> = program
         .awaiting_setup()
         .iter()
@@ -1207,8 +1544,7 @@ async fn two_machines_cannot_share_a_port_or_serial_number() -> Result<(), Error
         [
             ("definition", "example/serial-astm"),
             ("port", port),
-            ("base_url", "https://lab.example.invalid/v1"),
-            ("destination", "lab-app"),
+            ("lab_app", "demo"),
         ]
     };
     let refused = fixture
@@ -1225,6 +1561,8 @@ async fn two_machines_cannot_share_a_port_or_serial_number() -> Result<(), Error
         .submit(page, "/setup/machine-2", &fields("name:COM3"))
         .await?;
     assert!(saved.starts_with("HTTP/1.1 200"), "{saved}");
+    // demo, written only in synthetic's site file, was copied into lab-apps.toml.
+    assert_eq!(Program::load(&fixture.config)?.lab_apps().len(), 1);
     // The same adapter written by hand: the program loader refuses it.
     let second = fixture.root().join("machine-2.site.toml");
     let text = std::fs::read_to_string(&second)?;

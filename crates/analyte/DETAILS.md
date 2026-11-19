@@ -112,11 +112,11 @@ stop, transports close and join (5 seconds), and the store drains and closes
 (5 seconds). Interrupted claims retry after restart with the same ID and bytes.
 Delivery/store failures stop the service visibly. Individual machine failures
 remain isolated. Each lab-app HTTP request (a delivery or one order page) has the
-site destination `request_timeout_seconds` deadline (default 10, 1 through 120);
+lab app's `request_timeout_seconds` deadline (default 10, 1 through 120);
 an attempt still running when the 5-second drain ends is cancelled, reported as
 a delivery shutdown timeout, and retried after restart with the same ID and bytes. Local delivery storage operations take
 2 seconds, idle claims back off 100 ms, retries range from 1 to 60 seconds,
-and order polls run every 5 seconds. Site destination `freshness_seconds`
+and order polls run every 5 seconds. The lab app's `freshness_seconds`
 (default 30, nonzero) sets `Limits.freshness` for lookups, reservations and alerts.
 An uninterruptible operating-system flush cannot be cancelled within a worker;
 owner destructors join rather than detach. The process watchdog enforces the
@@ -323,8 +323,7 @@ Age thresholds are seconds and raise at or above the threshold. Count thresholds
 raise strictly above the threshold: zero catches any uncertain order, unresolved
 parked item or undeliverable result. `undeliverable_destination` raises one alert
 per lab app destination whose waiting items this run cannot deliver, because no
-machine and no kept destination defines it or because a kept destination's keys
-are missing; status and the overview give the destination, count, reason and fix
+machine and no lab app defines it or because a lab app's keys are missing; status and the overview give the destination, count, reason and fix
 (see `docs/operations/operate.md`). The disk threshold is a margin in bytes above `store.reserve_bytes`;
 an alert raises when free space is below reserve plus margin. `restore_paused`
 has no threshold and rejects one in config. Other kinds require a threshold.

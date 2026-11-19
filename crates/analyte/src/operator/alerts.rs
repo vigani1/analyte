@@ -104,10 +104,10 @@ pub(crate) fn message(state: &AlertState) -> Option<String> {
     Some(match reason {
         Undeliverable::NotConfigured => format!(
             concat!(
-                "Cannot deliver: no machine and no kept lab app setting uses destination ",
-                "{destination}; {waiting}. Set up a machine with lab app destination ",
-                "{destination} on the setup page, or restore its settings; the results are ",
-                "kept and will be sent once it is configured."
+                "Cannot deliver: no machine and no lab app uses destination ",
+                "{destination}; {waiting}. Add lab app {destination} on the Lab app page ",
+                "and restart, or restore its settings; the results are kept and will be sent ",
+                "once it is configured."
             ),
             destination = destination,
             waiting = waiting
@@ -116,9 +116,9 @@ pub(crate) fn message(state: &AlertState) -> Option<String> {
             concat!(
                 "Cannot deliver: the API key or signing key for lab app destination ",
                 "{destination} is missing; {waiting}, paused. Enter the API key and signing ",
-                "key for destination {destination} on the setup page (on a machine that uses ",
-                "it) or in the service environment, then restart; the results are kept and ",
-                "will be sent once the keys are set."
+                "key for lab app {destination} on the Lab app page or in the service ",
+                "environment, then restart; the results are kept and will be sent once the ",
+                "keys are set."
             ),
             destination = destination,
             waiting = waiting
@@ -448,11 +448,11 @@ mod tests {
         assert_eq!(signal(&raised[0].key).0, "undeliverable_destination");
         let text = message(&raised[0]).ok_or("no reason and fix")?;
         assert!(text.contains(
-            "no machine and no kept lab app setting uses destination old-app; 2 results or order messages wait"
+            "no machine and no lab app uses destination old-app; 2 results or order messages wait"
         ));
         assert!(text.contains(concat!(
-            "Set up a machine with lab app destination old-app on the setup page, or restore ",
-            "its settings; the results are kept and will be sent once it is configured."
+            "Add lab app old-app on the Lab app page and restart, or restore its settings; ",
+            "the results are kept and will be sent once it is configured."
         )));
         assert!(!text.contains("SAMPLE-PRIVATE"));
 
@@ -473,9 +473,11 @@ mod tests {
         assert!(
             text.contains("the API key or signing key for lab app destination old-app is missing")
         );
-        assert!(text.contains(
-            "Enter the API key and signing key for destination old-app on the setup page"
-        ));
+        assert!(
+            text.contains(
+                "Enter the API key and signing key for lab app old-app on the Lab app page"
+            )
+        );
 
         // Delivered: the alert clears even though the keys are still missing.
         db.execute_batch("UPDATE outbox SET state='done' WHERE destination='old-app';")?;

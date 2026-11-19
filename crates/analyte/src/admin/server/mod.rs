@@ -216,6 +216,19 @@ fn router(state: Arc<Context>) -> Router {
         .merge(
             Router::new()
                 .route("/setup/restart", post(super::setup::restart))
+                .route("/setup/lab-apps", get(super::setup::lab_apps))
+                .route(
+                    "/setup/lab-apps/new",
+                    get(super::setup::add_lab_app_form).post(super::setup::add_lab_app),
+                )
+                .route(
+                    "/setup/lab-apps/{name}",
+                    get(super::setup::edit_lab_app).post(super::setup::save_lab_app),
+                )
+                .route(
+                    "/setup/lab-apps/{name}/remove",
+                    get(super::setup::confirm_remove_lab_app).post(super::setup::remove_lab_app),
+                )
                 .route("/setup/listen", get(super::setup::listen_view))
                 .route("/setup/listen/stop", post(super::setup::listen_stop))
                 .route(

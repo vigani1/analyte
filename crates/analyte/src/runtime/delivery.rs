@@ -33,15 +33,15 @@ pub(crate) fn destinations(
     Ok(destinations)
 }
 
-/// Kept destinations no set-up machine uses, built like a machine's destination.
+/// Lab apps no set-up machine uses, built like a machine's destination.
 /// Each gets a delivery-only worker and no order poller: no machine is left to
 /// take its orders, so reading them would only fill the cache.
-pub(crate) fn retired(
+pub(crate) fn unused_lab_apps(
     program: &Program,
     mode: super::hooks::ServiceMode,
 ) -> Result<Vec<Destination>, Error> {
     program
-        .unused_retired()
+        .unused_lab_apps()
         .map(|kept| {
             super::hooks::destination(&program.hooks, kept.settings(), kept.limits.clone(), mode)
         })
@@ -49,7 +49,7 @@ pub(crate) fn retired(
 }
 
 /// Logs each destination that holds results the app has not accepted while no
-/// machine and no kept destination defines it: Analyte never guesses an address,
+/// machine and no lab app defines it: Analyte never guesses an address,
 /// so those items stay stored and the admin page names them.
 pub(crate) async fn report_unconfigured(
     store: &Handle,
