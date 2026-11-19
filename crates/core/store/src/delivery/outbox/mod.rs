@@ -89,8 +89,8 @@ impl Store {
                     "INSERT INTO parked(evidence) VALUES (?1)",
                     [crate::parked::evidence(
                         match outcome {
-                            Attempt::Parked(_) => "parked",
-                            Attempt::Conflict(_) => "conflict",
+                            Attempt::Parked(_) => crate::ParkedKind::DeliveryRejected.as_str(),
+                            Attempt::Conflict(_) => crate::ParkedKind::DeliveryConflict.as_str(),
                             Attempt::Done
                             | Attempt::Interrupted
                             | Attempt::RetryAt(_)

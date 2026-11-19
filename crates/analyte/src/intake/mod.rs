@@ -253,7 +253,7 @@ fn park_findings(
         .into_iter()
         .map(|finding| {
             Ok(analyte_store::Parked {
-                kind: Identifier::new("mapping_finding")?,
+                kind: Identifier::new(analyte_store::ParkedKind::MappingFinding.as_str())?,
                 reason: analyte_model::Reason::new(&finding)?,
                 targets: vec![Identifier::new(&uuid::Uuid::from(id).to_string())?],
             })

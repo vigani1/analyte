@@ -5,7 +5,7 @@ use crate::admin::{server::Context, sessions::Session};
 use crate::deadline;
 use analyte_mapping::{Finding, Problem};
 use analyte_model::{Identifier, ReceiptId};
-use analyte_store::{Parked, Store};
+use analyte_store::{Parked, ParkedKind, Store};
 use axum::{
     Extension,
     extract::{Path, Query, State},
@@ -216,29 +216,15 @@ fn more_targets(html: &mut Markup, parked: &Parked) {
 
 fn kind_and_reason(parked: &Parked) -> Markup {
     let kind = parked.kind.as_str();
-    let category = Category::of(kind).map_or_else(
+    let category = ParkedKind::from_stored(kind).map_or_else(
         || Markup::new().text(kind),
-        |category| view::exact(category.words(), kind),
+        |known| view::exact(words(known), kind),
     );
     view::row("Category", None, &category).fragment(&view::row(
         "Reason",
         None,
         &plain::reason(parked.reason.as_str()),
     ))
-}
-
-/// What kind of item waits for review, as stored in its category.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Category {
-    MappingFinding,
-    InterpretationFailure,
-    ResultReconciliation,
-    IncompleteTransfer,
-    DeliveryRejected,
-    DeliveryConflict,
-    OrderVersionRefused,
-    CancelConflict,
-    PollIntent,
 }
 
 /// The audited action that settles an item from the admin pages.
@@ -252,111 +238,95 @@ enum Action {
     Resolve,
 }
 
-impl Category {
-    /// The category for a stored kind; an unknown one has none and shows as written.
-    fn of(kind: &str) -> Option<Self> {
-        Some(match kind {
-            "mapping_finding" => Self::MappingFinding,
-            "interpretation_failure" => Self::InterpretationFailure,
-            "result_reconciliation" => Self::ResultReconciliation,
-            "incomplete_transfer" => Self::IncompleteTransfer,
-            "parked" => Self::DeliveryRejected,
-            "conflict" => Self::DeliveryConflict,
-            "order_version_refused" => Self::OrderVersionRefused,
-            "law_cancel_refusal_conflict" => Self::CancelConflict,
-            "poll_intent" => Self::PollIntent,
-            _ => return None,
-        })
+/// The category in plain words.
+const fn words(kind: ParkedKind) -> &'static str {
+    match kind {
+        ParkedKind::MappingFinding => "Test or unit not mapped",
+        ParkedKind::InterpretationFailure => "Could not read message",
+        ParkedKind::ResultReconciliation => "Result could not be matched to earlier results",
+        ParkedKind::IncompleteTransfer => "Message from the machine was incomplete",
+        ParkedKind::DeliveryRejected => "Lab app rejected a delivery",
+        ParkedKind::DeliveryConflict => "Lab app reported a conflicting delivery",
+        ParkedKind::OrderVersionRefused => "Order from the lab app was refused",
+        ParkedKind::CancelConflict => "Cancel conflicts with what the machine reported",
+        ParkedKind::PollIntent => "Machine asked for orders; the outcome is not known yet",
     }
+}
 
-    /// The category in plain words.
-    const fn words(self) -> &'static str {
-        match self {
-            Self::MappingFinding => "Test or unit not mapped",
-            Self::InterpretationFailure => "Could not read message",
-            Self::ResultReconciliation => "Result could not be matched to earlier results",
-            Self::IncompleteTransfer => "Message from the machine was incomplete",
-            Self::DeliveryRejected => "Lab app rejected a delivery",
-            Self::DeliveryConflict => "Lab app reported a conflicting delivery",
-            Self::OrderVersionRefused => "Order from the lab app was refused",
-            Self::CancelConflict => "Cancel conflicts with what the machine reported",
-            Self::PollIntent => "Machine asked for orders; the outcome is not known yet",
-        }
+/// The action that exists today for this category. Process again reads the
+/// item's original message, so only items linked to a message offer it.
+const fn main_action(kind: ParkedKind) -> Action {
+    match kind {
+        ParkedKind::MappingFinding
+        | ParkedKind::InterpretationFailure
+        | ParkedKind::ResultReconciliation
+        | ParkedKind::IncompleteTransfer => Action::ProcessAgain,
+        ParkedKind::DeliveryRejected => Action::SendAgain,
+        ParkedKind::DeliveryConflict
+        | ParkedKind::OrderVersionRefused
+        | ParkedKind::CancelConflict
+        | ParkedKind::PollIntent => Action::Resolve,
     }
+}
 
-    /// The action that exists today for this category. Process again reads the
-    /// item's original message, so only items linked to a message offer it.
-    const fn action(self) -> Action {
-        match self {
-            Self::MappingFinding
-            | Self::InterpretationFailure
-            | Self::ResultReconciliation
-            | Self::IncompleteTransfer => Action::ProcessAgain,
-            Self::DeliveryRejected => Action::SendAgain,
-            Self::DeliveryConflict
-            | Self::OrderVersionRefused
-            | Self::CancelConflict
-            | Self::PollIntent => Action::Resolve,
+/// What someone does about the item. It says only what the category and the
+/// problem read back from the stored reason say; a mapping finding names the
+/// problem, never the test code, which stays in the protected original message.
+const fn guidance(kind: ParkedKind, problem: Option<&Problem>) -> &'static str {
+    match kind {
+        ParkedKind::MappingFinding if matches!(problem, Some(Problem::UnknownTest)) => concat!(
+            "The machine sent a test code that this machine's test mapping does not ",
+            "list. Add it to the test mapping, then use Process again.",
+        ),
+        ParkedKind::MappingFinding
+            if matches!(problem, Some(Problem::ValueKindMismatch { .. })) =>
+        {
+            concat!(
+                "The value does not fit what the test mapping expects for this test. ",
+                "Check that test in this machine's test mapping, then use Process again.",
+            )
         }
-    }
-
-    /// What someone does about the item. It says only what the category and the
-    /// problem read back from the stored reason say; a mapping finding names the
-    /// problem, never the test code, which stays in the protected original message.
-    const fn guidance(self, problem: Option<&Problem>) -> &'static str {
-        match self {
-            Self::MappingFinding if matches!(problem, Some(Problem::UnknownTest)) => concat!(
-                "The machine sent a test code that this machine's test mapping does not ",
-                "list. Add it to the test mapping, then use Process again.",
-            ),
-            Self::MappingFinding if matches!(problem, Some(Problem::ValueKindMismatch { .. })) => {
-                concat!(
-                    "The value does not fit what the test mapping expects for this test. ",
-                    "Check that test in this machine's test mapping, then use Process again.",
-                )
-            }
-            Self::MappingFinding if matches!(problem, Some(Problem::MissingSample)) => concat!(
-                "The message has no sample ID. Check how the machine sends sample IDs; once ",
-                "its settings are fixed, use Process again.",
-            ),
-            Self::MappingFinding => concat!(
-                "Check this machine's test mapping and settings against the reason above, ",
-                "then use Process again.",
-            ),
-            Self::InterpretationFailure => concat!(
-                "Check the machine's settings on the Setup page (machine model and ",
-                "connection) against the reason above, then use Process again.",
-            ),
-            Self::ResultReconciliation => concat!(
-                "Compare this result with the earlier results for the same sample on the ",
-                "machine. If a setting caused the mismatch, fix it, then use Process again.",
-            ),
-            Self::IncompleteTransfer => concat!(
-                "The machine stopped part-way through sending. Check the cable or network ",
-                "and have the machine send the results again, then use Process again here.",
-            ),
-            Self::DeliveryRejected => {
-                "Fix the problem the lab app reported (see Reason), then use Send again."
-            }
-            Self::DeliveryConflict => concat!(
-                "The lab app already holds different content for this delivery; Analyte does ",
-                "not send it again on its own. Check the delivery in the lab app and settle it ",
-                "there, then Mark resolved.",
-            ),
-            Self::OrderVersionRefused => concat!(
-                "The lab app sent an older or changed copy of an order Analyte already has; ",
-                "Analyte kept its copy. Correct the order in the lab app, then Mark resolved.",
-            ),
-            Self::CancelConflict => concat!(
-                "The lab app cancelled tests the machine has already reported on; Analyte sends ",
-                "the machine nothing more. Check both on the machine and in the lab app, then ",
-                "Mark resolved.",
-            ),
-            Self::PollIntent => concat!(
-                "Analyte starts no other exchange with this machine until this item is ",
-                "resolved. Check on the machine whether this one finished, then Mark resolved.",
-            ),
+        ParkedKind::MappingFinding if matches!(problem, Some(Problem::MissingSample)) => concat!(
+            "The message has no sample ID. Check how the machine sends sample IDs; once ",
+            "its settings are fixed, use Process again.",
+        ),
+        ParkedKind::MappingFinding => concat!(
+            "Check this machine's test mapping and settings against the reason above, ",
+            "then use Process again.",
+        ),
+        ParkedKind::InterpretationFailure => concat!(
+            "Check the machine's settings on the Setup page (machine model and ",
+            "connection) against the reason above, then use Process again.",
+        ),
+        ParkedKind::ResultReconciliation => concat!(
+            "Compare this result with the earlier results for the same sample on the ",
+            "machine. If a setting caused the mismatch, fix it, then use Process again.",
+        ),
+        ParkedKind::IncompleteTransfer => concat!(
+            "The machine stopped part-way through sending. Check the cable or network ",
+            "and have the machine send the results again, then use Process again here.",
+        ),
+        ParkedKind::DeliveryRejected => {
+            "Fix the problem the lab app reported (see Reason), then use Send again."
         }
+        ParkedKind::DeliveryConflict => concat!(
+            "The lab app already holds different content for this delivery; Analyte does ",
+            "not send it again on its own. Check the delivery in the lab app and settle it ",
+            "there, then Mark resolved.",
+        ),
+        ParkedKind::OrderVersionRefused => concat!(
+            "The lab app sent an older or changed copy of an order Analyte already has; ",
+            "Analyte kept its copy. Correct the order in the lab app, then Mark resolved.",
+        ),
+        ParkedKind::CancelConflict => concat!(
+            "The lab app cancelled tests the machine has already reported on; Analyte sends ",
+            "the machine nothing more. Check both on the machine and in the lab app, then ",
+            "Mark resolved.",
+        ),
+        ParkedKind::PollIntent => concat!(
+            "Analyte starts no other exchange with this machine until this item is ",
+            "resolved. Check on the machine whether this one finished, then Mark resolved.",
+        ),
     }
 }
 
@@ -365,12 +335,12 @@ fn todo(parked: &Parked) -> Markup {
     let finding = Finding::from_stored(parked.reason.as_str());
     Markup::new()
         .markup("<p class=\"todo\"><strong>What to do:</strong> ")
-        .text(Category::of(parked.kind.as_str()).map_or(
+        .text(ParkedKind::from_stored(parked.kind.as_str()).map_or(
             concat!(
                 "Read the reason above and open the item for its linked records. If it is ",
                 "not clear what to do, give the item number to support.",
             ),
-            |category| category.guidance(finding.as_ref().map(|f| &f.problem)),
+            |kind| guidance(kind, finding.as_ref().map(|f| &f.problem)),
         ))
         .markup("</p>")
 }
@@ -381,7 +351,8 @@ fn todo(parked: &Parked) -> Markup {
 /// which asks for a reason and posts with the session's CSRF token. An unknown
 /// category keeps the Process again it always had.
 fn action_buttons(id: i64, parked: &Parked) -> Markup {
-    let action = Category::of(parked.kind.as_str()).map_or(Action::ProcessAgain, Category::action);
+    let action =
+        ParkedKind::from_stored(parked.kind.as_str()).map_or(Action::ProcessAgain, main_action);
     let main = match action {
         Action::ProcessAgain => Markup::new()
             .markup("<a class=\"button\" title=\"Reprocess\" href=\"/parked/")
@@ -620,11 +591,11 @@ mod tests {
     // follows the problem read back from its stored reason, never its wording.
     #[test]
     fn mapping_advice_follows_the_problem_read_back_from_the_reason() {
-        let advice = |category: Category, reason: &str| {
+        let advice = |kind: ParkedKind, reason: &str| {
             let finding = Finding::from_stored(reason);
-            category.guidance(finding.as_ref().map(|f| &f.problem))
+            guidance(kind, finding.as_ref().map(|f| &f.problem))
         };
-        let general = advice(Category::MappingFinding, "synthetic reason");
+        let general = advice(ParkedKind::MappingFinding, "synthetic reason");
         for (reason, starts) in [
             (
                 "Position { record: 3, field: 3 }: UnknownTest",
@@ -648,14 +619,14 @@ mod tests {
             ),
         ] {
             assert!(
-                advice(Category::MappingFinding, reason).starts_with(starts),
+                advice(ParkedKind::MappingFinding, reason).starts_with(starts),
                 "{reason}"
             );
         }
         assert!(general.starts_with("Check this machine's test mapping"));
         assert!(
             advice(
-                Category::InterpretationFailure,
+                ParkedKind::InterpretationFailure,
                 "Position { record: 3, field: 3 }: UnknownTest"
             )
             .starts_with("Check the machine's settings")

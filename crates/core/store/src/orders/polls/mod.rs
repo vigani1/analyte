@@ -83,7 +83,8 @@ impl Store {
         reason: &Reason,
     ) -> Result<PollIntentId, Error> {
         let details = Parked {
-            kind: Identifier::new("poll_intent").map_err(crate::StorageError::Text)?,
+            kind: Identifier::new(crate::ParkedKind::PollIntent.as_str())
+                .map_err(crate::StorageError::Text)?,
             reason: reason.clone(),
             targets: vec![machine.clone()],
         };
