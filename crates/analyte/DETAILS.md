@@ -401,7 +401,14 @@ HTTP response. Retrying creates another audit, never a machine command.
 
 The read-only overview shows machine owner state and link light,
 oldest undelivered age, destination order-cache age and trust, Uncertain order
-count, restore pause, and free disk bytes against the configured reserve.
+count, restore pause, and free disk bytes against the configured reserve. It
+groups them into Machines, Sending to the lab app, Orders, and Disk and alerts,
+in plain words (sizes such as "477 GB free", local times with an age, Yes or
+No); each label keeps its technical name, and each value its exact number, in
+the hover text. Every admin page links one stylesheet served from the binary at
+`/static/admin.css`, which the `default-src 'self'` policy allows; pages use no
+inline styles, scripts, fonts or external URLs. The stylesheet holds no data,
+so it is served before login (the host check still applies).
 The link light comes from the machine runtime, not from receipt age: the
 transport reports each session opening, closing and read (never bytes) to a
 per-machine status the runtime owns and the admin page only reads. Serial says

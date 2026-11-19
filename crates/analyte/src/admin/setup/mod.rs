@@ -13,7 +13,12 @@ mod site;
 pub(crate) use listen::{Limits, Open};
 pub(super) use machines::{add, add_form, confirm_remove, remove};
 
-use super::{markup::Markup, pages::NAV, server::Context, sessions::Session};
+use super::{
+    markup::Markup,
+    server::Context,
+    sessions::Session,
+    view::{self, Refresh, Tone, page, pill},
+};
 use crate::installation::{
     config::{Program, connections},
     credentials::{CredentialError, Locked, Secret},
@@ -230,36 +235,72 @@ fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-fn page(title: &str) -> Markup {
-    super::pages::start(title)
-}
-
-fn done(mut html: Markup) -> Response {
-    html.push_markup("</html>");
-    Html(html).into_response()
+fn done(html: Markup) -> Response {
+    Html(html.markup(view::END)).into_response()
 }
 
 fn refused(error: &SetupError) -> Response {
     (
         StatusCode::CONFLICT,
         Html(
-            Markup::new()
-                .markup("<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><title>")
-                .markup("Setup refused</title>")
-                .markup(NAV)
-                .markup("<h1>Setup refused</h1><p>")
+            page("Setup refused")
+                .markup("<p class=\"notice bad\">")
                 .text(error)
-                .markup("</p><p><a href=\"/setup\">Back to setup</a></p></html>"),
+                .markup(concat!(
+                    "</p><p><a class=\"button secondary\" href=\"/setup\">",
+                    "Back to setup</a></p>",
+                ))
+                .markup(view::END),
         ),
     )
         .into_response()
 }
 
 fn needs_login() -> Response {
-    done(page("Set up a machine").markup(
-        "<p>Setup changes settings, so it needs a browser login: <a href=\"/login\">log in</a>.</p>",
-    ))
+    done(page("Set up a machine").markup(concat!(
+        "<p class=\"notice info\">Setup changes settings, so it needs a browser login: ",
+        "<a href=\"/login\">log in</a>.</p>",
+    )))
 }
+
+/// The running configuration digest as a settings version: a short form to
+/// compare at a glance and the full digest in small print.
+fn settings_version(running: Option<&Running>) -> Markup {
+    match running {
+        Some(running) => {
+            let full = hex(&running.digest);
+            Markup::new()
+                .markup("<code title=\"Running configuration digest\">")
+                .text(full.chars().take(12).collect::<String>())
+                .markup("</code><small class=\"digest\">")
+                .text(full)
+                .markup("</small>")
+        }
+        None => Markup::new()
+            .markup("<span class=\"muted\">")
+            .text(NO_DIGEST)
+            .markup("</span>"),
+    }
+}
+
+/// The settings version for a table cell: the short form, with the full digest on hover.
+fn short_version(running: Option<&Running>) -> Markup {
+    match running {
+        Some(running) => {
+            let full = hex(&running.digest);
+            Markup::new()
+                .markup("<code title=\"Running configuration digest ")
+                .text(&full)
+                .markup("\">")
+                .text(full.chars().take(12).collect::<String>())
+                .markup("</code>")
+        }
+        None => settings_version(None),
+    }
+}
+
+/// What the page says for a machine that runs nothing yet.
+const NO_DIGEST: &str = "none: not set up yet";
 
 /// One row per machine in the program file, then any machine that still runs but
 /// is no longer listed (removed, waiting for the restart).
@@ -267,25 +308,31 @@ fn machine_rows(state: &Context, listed: &[site::EntrySpans]) -> Markup {
     let mut rows = Markup::new();
     for entry in listed {
         let id = entry.id.get_ref();
-        let status = match (running(state, id), &entry.definition) {
-            (Some(running), _) => Markup::new()
-                .markup("<code>")
-                .text(hex(&running.digest))
-                .markup("</code>"),
-            (None, None) => Markup::new().text("Not set up yet"),
-            (None, Some(_)) => Markup::new().text("Not running: saved, starts after a restart"),
+        let running = running(state, id);
+        let status = match (running, &entry.definition) {
+            (Some(_), _) => pill(Tone::Good, "Running"),
+            (None, None) => pill(Tone::Neutral, "Not set up yet"),
+            (None, Some(_)) => pill(
+                Tone::Attention,
+                "Not running: saved, starts after a restart",
+            ),
         };
         rows.push_fragment(
             &Markup::new()
-                .markup("<tr><td>")
+                .markup("<tr><td><strong>")
                 .text(id)
-                .markup("</td><td>")
+                .markup("</strong></td><td>")
                 .fragment(&status)
-                .markup("</td><td><a href=\"/setup/")
+                .markup("</td><td>")
+                .fragment(&short_version(running))
+                .markup("</td><td class=\"actions\"><a class=\"button secondary\" href=\"/setup/")
                 .text(id)
-                .markup("\">Set up</a></td><td><form method=\"get\" action=\"/setup/")
+                .markup("\">Set up</a><form method=\"get\" action=\"/setup/")
                 .text(id)
-                .markup("/remove\"><button>Remove machine</button></form></td></tr>"),
+                .markup(concat!(
+                    "/remove\"><button class=\"quiet-danger\">Remove machine</button>",
+                    "</form></td></tr>",
+                )),
         );
     }
     for gone in state
@@ -296,9 +343,13 @@ fn machine_rows(state: &Context, listed: &[site::EntrySpans]) -> Markup {
     {
         rows.push_fragment(
             &Markup::new()
-                .markup("<tr><td>")
+                .markup("<tr><td><strong>")
                 .text(gone.id.as_str())
-                .markup("</td><td>Removed: runs until the restart</td><td></td><td></td></tr>"),
+                .markup("</strong></td><td>")
+                .fragment(&pill(Tone::Attention, "Removed: runs until the restart"))
+                .markup("</td><td>")
+                .fragment(&short_version(Some(gone)))
+                .markup("</td><td></td></tr>"),
         );
     }
     rows
@@ -314,21 +365,31 @@ fn definitions(state: &Context) -> Result<Vec<Definition>, SetupError> {
     Ok(definitions::list(&root)?)
 }
 
-fn level_and_state(definition: &Definition) -> (String, String) {
+/// A definition's evidence level and its status, with the reason when it cannot be chosen.
+fn level_and_state(definition: &Definition) -> (String, Markup) {
     match &definition.state {
-        Shipped::Ready { level, .. } => (level.clone(), "Ready to choose".into()),
+        Shipped::Ready { level, .. } => (level.clone(), pill(Tone::Good, "Ready to choose")),
         Shipped::Blocked => (
             "none".into(),
-            "Blocked: facts or recordings are missing (see its README)".into(),
+            pill(Tone::Attention, "Blocked").markup(concat!(
+                " <span class=\"muted\">Facts or recordings are missing ",
+                "(see its README)</span>",
+            )),
         ),
-        Shipped::Unreadable(why) => ("unknown".into(), format!("Cannot be read: {why}")),
+        Shipped::Unreadable(why) => (
+            "unknown".into(),
+            pill(Tone::Problem, "Cannot be read")
+                .markup(" <span class=\"muted\">")
+                .text(why)
+                .markup("</span>"),
+        ),
     }
 }
 
 /// GET /setup: the machines in the program file, what runs now, and the shipped definitions.
 pub(super) async fn index(State(state): State<Arc<Context>>) -> Response {
     let mut html = page("Set up a machine").markup(concat!(
-        "<p>Choose a machine below to set its connection and lab app. ",
+        "<p class=\"lead\">Choose a machine below to set its connection and lab app. ",
         "Saving writes the machine's site file; Analyte then restarts to use it.</p>",
     ));
     match crate::admin::removed::lines(&state).await {
@@ -336,23 +397,24 @@ pub(super) async fn index(State(state): State<Arc<Context>>) -> Response {
             for line in lines {
                 html.push_fragment(
                     &Markup::new()
-                        .markup("<p><strong>")
+                        .markup("<p class=\"notice\">")
                         .text(line)
-                        .markup("</strong></p>"),
+                        .markup("</p>"),
                 );
             }
         }
         Err(error) => html.push_fragment(
             &Markup::new()
-                .markup("<p>Results waiting for removed machines could not be counted: ")
+                .markup("<p class=\"notice bad\">Results waiting for removed machines could not be counted: ")
                 .text(error)
                 .markup("</p>"),
         ),
     }
     html.push_markup(concat!(
-        "<h2>Installed machines</h2><form method=\"get\" action=\"/setup/add\">",
-        "<button>Add machine</button></form><table><tr><th>Machine</th><th>Running ",
-        "configuration digest</th><th></th><th></th></tr>"
+        "<section><div class=\"heading\"><h2>Installed machines</h2>",
+        "<form method=\"get\" action=\"/setup/add\"><button>Add machine</button></form>",
+        "</div><div class=\"table\"><table><tr><th>Machine</th><th>Status</th>",
+        "<th title=\"Running configuration digest\">Settings version</th><th></th></tr>"
     ));
     let worker = state.clone();
     let listed = tokio::task::spawn_blocking(move || site::entries(&worker.config_path))
@@ -369,7 +431,10 @@ pub(super) async fn index(State(state): State<Arc<Context>>) -> Response {
         ),
     }
     html.push_markup(concat!(
-        "</table><h2>Shipped machine definitions</h2><table><tr><th>Definition",
+        "</table></div></section><section><h2>Shipped machine definitions</h2>",
+        "<p class=\"lead\">The machine models this Analyte can be set up for. A blocked ",
+        "definition cannot be chosen until its missing facts or recordings are added.</p>",
+        "<div class=\"table\"><table><tr><th>Definition",
         "</th><th>Name</th><th>Evidence</th><th>Status</th></tr>"
     ));
     let worker = state.clone();
@@ -387,25 +452,25 @@ pub(super) async fn index(State(state): State<Arc<Context>>) -> Response {
                 let (level, status) = level_and_state(definition);
                 html.push_fragment(
                     &Markup::new()
-                        .markup("<tr><td>")
+                        .markup("<tr><td><code>")
                         .text(&definition.key)
-                        .markup("</td><td>")
+                        .markup("</code></td><td>")
                         .text(name)
                         .markup("</td><td>")
                         .text(level)
                         .markup("</td><td>")
-                        .text(status)
+                        .fragment(&status)
                         .markup("</td></tr>"),
                 );
             }
-            html.push_markup("</table>");
+            html.push_markup("</table></div></section>");
         }
         Err(error) => {
             html.push_fragment(
                 &Markup::new()
-                    .markup("</table><p>")
+                    .markup("</table></div><p class=\"notice bad\">")
                     .text(error)
-                    .markup("</p>"),
+                    .markup("</p></section>"),
             );
         }
     }
@@ -469,11 +534,6 @@ fn chosen(
 /// not set up, or added or completed since the last start.
 fn running<'a>(state: &'a Context, id: &str) -> Option<&'a Running> {
     state.setup.running.iter().find(|r| r.id.as_str() == id)
-}
-
-/// The running configuration digest, or why there is none.
-fn running_digest(running: Option<&Running>) -> String {
-    running.map_or_else(|| "none: not set up yet".into(), |r| hex(&r.digest))
 }
 
 /// The credential names to show: the running machine's, or for a machine still
@@ -562,25 +622,27 @@ fn render_machine(
     };
     let running = running(state, id);
     let mut html = page("Set up a machine")
-        .markup("<p>Machine <strong>")
+        .markup("<section><dl><dt>Machine</dt><dd><strong>")
         .text(id)
-        .markup("</strong>. Running configuration digest <code>")
-        .text(running_digest(running))
+        .markup(
+            "</strong></dd><dt title=\"Running configuration digest\">Settings version</dt><dd>",
+        )
+        .fragment(&settings_version(running))
         .markup(concat!(
-            "</code>.</p><h2>1. Machine</h2><form method=\"get\" action=\"\">",
-            "<p>Choose the machine model from the shipped definitions.</p><ul>"
+            "</dd></dl></section><section><h2>1. Machine</h2><form method=\"get\" action=\"\">",
+            "<p>Choose the machine model from the shipped definitions.</p><ul class=\"choices\">"
         ));
     html.push_fragment(&definition_picker(
         &list,
         picked.as_ref().map_or("", |(key, _)| key.as_str()),
     ));
-    html.push_markup("</ul><button>Choose</button></form>");
+    html.push_markup("</ul><button class=\"secondary\">Choose</button></form></section>");
     let Some((key, path)) = picked else {
         html.push_markup(concat!(
-            "<p>This machine is not set up yet. Choose its machine definition ",
-            "above and press Choose; the connection and lab app steps follow.</p></html>"
+            "<p class=\"notice info\">This machine is not set up yet. Choose its machine definition ",
+            "above and press Choose; the connection and lab app steps follow.</p>"
         ));
-        return Ok(html);
+        return Ok(html.markup(view::END));
     };
     let action = format!("/setup/{id}");
     html.push_fragment(
@@ -591,7 +653,7 @@ fn render_machine(
             .text(session.csrf.form_value())
             .markup("\"><input type=\"hidden\" name=\"definition\" value=\"")
             .text(&key)
-            .markup("\"><h2>2. Connection</h2>"),
+            .markup("\"><section><h2>2. Connection</h2>"),
     );
     html.push_fragment(&connection_inputs(state, &path, &current_site));
     html.push_fragment(&test_and_lab_app(
@@ -600,7 +662,7 @@ fn render_machine(
         &key_names(running, &current_site),
         &current_site,
     ));
-    Ok(html)
+    Ok(html.markup(view::END))
 }
 
 fn definition_picker(list: &[Definition], key: &str) -> Markup {
@@ -622,10 +684,10 @@ fn definition_picker(list: &[Definition], key: &str) -> Markup {
             &Markup::new()
                 .markup("> ")
                 .text(&definition.key)
-                .markup(" (evidence: ")
+                .markup(" <span class=\"muted\">(evidence: ")
                 .text(level)
-                .markup(") ")
-                .text(status)
+                .markup(")</span> ")
+                .fragment(&status)
                 .markup("</label></li>"),
         );
         html.push_fragment(&item);
@@ -655,16 +717,16 @@ fn connection_inputs(
                     } else {
                         "Analyte connects to the machine. Enter the machine's IP address and port."
                     })
-                    .markup("</p><label>IP address <input name=\"host\" value=\"")
+                    .markup("</p><label class=\"field\"><span>IP address</span><input name=\"host\" value=\"")
                     .text(host.trim_start_matches('[').trim_end_matches(']'))
-                    .markup("\" maxlength=\"64\"></label> <label>Port <input name=\"tcp_port\" value=\"")
+                    .markup("\" maxlength=\"64\"></label><label class=\"field\"><span>Port</span><input name=\"tcp_port\" value=\"")
                     .text(port)
                     .markup("\" maxlength=\"5\" inputmode=\"numeric\"></label>"),
             );
         }
         _ => html.push_fragment(
             &Markup::new()
-                .markup("<label>Folder <input name=\"folder\" value=\"")
+                .markup("<label class=\"field\"><span>Folder</span><input name=\"folder\" value=\"")
                 .text(current_endpoint)
                 .markup("\" maxlength=\"1024\"></label>"),
         ),
@@ -691,16 +753,16 @@ fn test_and_lab_app(
     html.push_fragment(
         &Markup::new()
             .markup(concat!(
-                "<h2>3. Test the connection</h2><p>The test only listens: it shows ",
+                "</section><section><h2>3. Test the connection</h2><p>The test only listens: it shows ",
                 "what the machine sends for up to 60 seconds and sends nothing back. ",
-                "What it shows may contain patient data; it appears only on this page ",
-                "and is never stored or logged. It cannot use a port the running service ",
-                "is using.</p><button formaction=\""
+                "It cannot use a port the running service is using.</p>",
+                "<p class=\"notice\">What it shows may contain patient data; it appears only on this page ",
+                "and is never stored or logged.</p><button class=\"secondary\" formaction=\""
             ))
             .text(format!("/setup/{id}/listen"))
             .markup(concat!(
-                "\">Test connection (listen only)</button>",
-                "<h2>4. Lab app</h2><label>Lab app address <input name=\"base_url\" ",
+                "\">Test connection (listen only)</button></section>",
+                "<section><h2>4. Lab app</h2><label class=\"field\"><span>Lab app address</span><input name=\"base_url\" ",
                 "required maxlength=\"4096\" value=\""
             ))
             .text(
@@ -710,7 +772,7 @@ fn test_and_lab_app(
                     .and_then(toml::Value::as_str)
                     .unwrap_or_default(),
             )
-            .markup("\"></label> <label>Destination name <input name=\"destination\" required maxlength=\"128\" value=\"")
+            .markup("\"></label><label class=\"field\"><span>Destination name</span><input name=\"destination\" required maxlength=\"128\" value=\"")
             .text(
                 current_site
                     .get("destination")
@@ -725,13 +787,13 @@ fn test_and_lab_app(
             ))
             .fragment(&statuses)
             .markup(concat!(
-                "</ul><label>Replace API key <input name=\"api_key\" ",
-                "type=\"password\" autocomplete=\"off\" maxlength=\"4096\"></label> ",
-                "<label>Replace signing key <input name=\"signing_key\" ",
+                "</ul><label class=\"field\"><span>Replace API key</span><input name=\"api_key\" ",
                 "type=\"password\" autocomplete=\"off\" maxlength=\"4096\"></label>",
-                "<h2>5. Save</h2><p>Saving checks everything first, keeps a copy of the ",
+                "<label class=\"field\"><span>Replace signing key</span><input name=\"signing_key\" ",
+                "type=\"password\" autocomplete=\"off\" maxlength=\"4096\"></label></section>",
+                "<section><h2>5. Save</h2><p>Saving checks everything first, keeps a copy of the ",
                 "old site file, then writes the new one. Analyte keeps running the old ",
-                "settings until you restart it.</p><button>Save</button></form></html>"
+                "settings until you restart it.</p><button>Save</button></section></form>"
             )),
     );
     html
@@ -741,7 +803,7 @@ fn serial_choices(state: &Context, current: &str) -> Markup {
     let mut html = Markup::new().markup(concat!(
         "<p>Choose the port the machine's cable is plugged into. If the USB adapter ",
         "has its own serial number, Analyte saves that number, so it finds the ",
-        "machine again even if the port name changes; otherwise it saves the port name.</p><ul>"
+        "machine again even if the port name changes; otherwise it saves the port name.</p><ul class=\"choices\">"
     ));
     match (state.setup.seams.ports)() {
         Ok(ports) => {
@@ -770,19 +832,19 @@ fn serial_choices(state: &Context, current: &str) -> Markup {
                 );
             }
             if ports.is_empty() {
-                html.push_markup("<li>No serial ports were found.</li>");
+                html.push_markup("<li class=\"notice\">No serial ports were found.</li>");
             }
         }
         Err(error) => html.push_fragment(
             &Markup::new()
-                .markup("<li>Listing serial ports failed: ")
+                .markup("<li class=\"notice bad\">Listing serial ports failed: ")
                 .text(error)
                 .markup("</li>"),
         ),
     }
     html.push_fragment(
         &Markup::new()
-            .markup("</ul><label>Or type a port name <input name=\"port_name\" maxlength=\"1024\" placeholder=\"")
+            .markup("</ul><label class=\"field\"><span>Or type a port name</span><input name=\"port_name\" maxlength=\"1024\" placeholder=\"")
             .text(current)
             .markup("\"></label>"),
     );
@@ -1026,19 +1088,21 @@ pub(super) async fn save(
     );
     let audited = audit(&state, &session, "setup-save", &id, reason).await;
     tracing::info!(machine = id.as_str(), "setup page saved a site file");
-    let running = running_digest(running(&state, &id));
+    let new = hex(&saved.digest);
     let mut html = page("Settings saved")
-        .markup("<p>Machine <strong>")
+        .markup("<section><dl><dt>Machine</dt><dd><strong>")
         .text(&id)
-        .markup("</strong>: ")
+        .markup("</strong></dd><dt>Connection</dt><dd>")
         .text(&saved.connection)
-        .markup(", lab app ")
+        .markup("</dd><dt>Lab app</dt><dd>")
         .text(&saved.base_url)
-        .markup(".</p><p>New configuration digest <code>")
-        .text(hex(&saved.digest))
-        .markup("</code>. Running now <code>")
-        .text(running)
-        .markup("</code>.</p><ul>");
+        .markup("</dd><dt title=\"New configuration digest\">New settings version</dt><dd><code>")
+        .text(new.chars().take(12).collect::<String>())
+        .markup("</code><small class=\"digest\">")
+        .text(&new)
+        .markup("</small></dd><dt title=\"Running configuration digest\">Running now</dt><dd>")
+        .fragment(&settings_version(running(&state, &id)))
+        .markup("</dd></dl><ul>");
     for name in &saved.replaced {
         html.push_fragment(
             &Markup::new()
@@ -1055,9 +1119,14 @@ pub(super) async fn save(
                 .markup("</li>"),
         );
     }
-    html.push_markup("</ul>");
+    html.push_markup("</ul></section>");
     if let Err(error) = audited {
-        html.push_fragment(&Markup::new().markup("<p>").text(error).markup("</p>"));
+        html.push_fragment(
+            &Markup::new()
+                .markup("<p class=\"notice bad\">")
+                .text(error)
+                .markup("</p>"),
+        );
     }
     html.push_fragment(&restart_form(&session));
     done(html)
@@ -1066,14 +1135,14 @@ pub(super) async fn save(
 fn restart_form(session: &Session) -> Markup {
     Markup::new()
         .markup(concat!(
-            "<h2>Restart to apply</h2><p>Restarting stops every machine connection for ",
+            "<section><h2>Restart to apply</h2><p>Restarting stops every machine connection for ",
             "a few seconds; machines resend what they could not deliver. After the ",
-            "restart, log in again: the setup page shows the running configuration digest.</p>",
+            "restart, log in again: the setup page shows the running settings version.</p>",
             "<form method=\"post\" action=\"/setup/restart\"><input type=\"hidden\" ",
             "name=\"csrf\" value=\""
         ))
         .text(session.csrf.form_value())
-        .markup("\"><button>Restart now</button></form>")
+        .markup("\"><button>Restart now</button></form></section>")
 }
 
 #[derive(Deserialize)]
@@ -1102,14 +1171,16 @@ pub(super) async fn restart(
     }
     tracing::info!("restart requested on the setup page");
     state.setup.restart.send_replace(true);
-    let mut response = Html(Markup::new().markup(concat!(
-        "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\">",
-        "<meta http-equiv=\"refresh\" content=\"15;url=/setup\">",
-        "<title>Restarting</title><h1>Restarting</h1><p>Analyte is stopping ",
-        "and the service manager starts it again within about 15 seconds. ",
-        "If Analyte was started by hand in a terminal, start it again there. ",
-        "This page then asks you to log in.</p></html>"
-    )))
+    let mut response = Html(
+        view::refreshing("Restarting", Refresh::SetupAfterRestart)
+            .markup(concat!(
+                "<p class=\"notice info\">Analyte is stopping ",
+                "and the service manager starts it again within about 15 seconds. ",
+                "If Analyte was started by hand in a terminal, start it again there. ",
+                "This page then asks you to log in.</p>"
+            ))
+            .markup(view::END),
+    )
     .into_response();
     response.headers_mut().insert(
         header::CONNECTION,
@@ -1312,49 +1383,75 @@ pub(super) async fn listen_view(
     };
     let Some(view) = view else {
         return done(
-            page("Connection test")
-                .markup("<p>No test has been started. Start one from a machine's setup page.</p>"),
+            page("Connection test").markup(
+                "<p class=\"notice info\">No test has been started. Start one from a machine's setup page.</p>",
+            ),
         );
     };
     let running = view.end.is_none();
-    let mut html =
-        Markup::new().markup("<!doctype html><html lang=\"en\"><meta charset=\"utf-8\">");
-    if running {
-        html.push_markup("<meta http-equiv=\"refresh\" content=\"2\">");
-    }
+    let title = "Connection test (listen only)";
+    let mut html = if running {
+        view::refreshing(title, Refresh::EveryTwoSeconds)
+    } else {
+        page(title)
+    };
     html.push_fragment(
         &Markup::new()
-            .markup("<title>Connection test</title>")
-            .markup(NAV)
             .markup(concat!(
-                "<h1>Connection test (listen only)</h1><p>Analyte sends nothing to ",
+                "<p class=\"notice\">Analyte sends nothing to ",
                 "the machine. What is shown may contain patient data: it stays on this ",
-                "page only, is never stored or logged, and is discarded when the test ends.</p><p>"
+                "page only, is never stored or logged, and is discarded when the test ends.</p>",
+                "<section><p>"
             ))
             .text(&view.label)
             .markup(". "),
     );
-    let status = match &view.end {
-        None if view.closed => format!(
-            "The machine closed the connection. Showing for {} more seconds.",
-            view.remaining.as_secs()
+    let (tone, light, status) = match &view.end {
+        None if view.closed => (
+            Tone::Neutral,
+            "Closed",
+            format!(
+                "The machine closed the connection. Showing for {} more seconds.",
+                view.remaining.as_secs()
+            ),
         ),
-        None if view.connected => format!("Connected. {} seconds left.", view.remaining.as_secs()),
-        None => format!(
-            "Waiting for the connection. {} seconds left.",
-            view.remaining.as_secs()
+        None if view.connected => (
+            Tone::Good,
+            "Connected",
+            format!("Connected. {} seconds left.", view.remaining.as_secs()),
         ),
-        Some(listen::End::TimeLimit) => {
-            "The test ended after its time limit; the bytes were discarded.".into()
-        }
-        Some(listen::End::Stopped) => "The test was stopped; the bytes were discarded.".into(),
-        Some(listen::End::Closed) => {
-            "The machine closed the connection; the bytes were discarded.".into()
-        }
-        Some(listen::End::Failed(why)) => format!("The test could not run: {why}."),
+        None => (
+            Tone::Attention,
+            "Waiting",
+            format!(
+                "Waiting for the connection. {} seconds left.",
+                view.remaining.as_secs()
+            ),
+        ),
+        Some(listen::End::TimeLimit) => (
+            Tone::Neutral,
+            "Ended",
+            "The test ended after its time limit; the bytes were discarded.".into(),
+        ),
+        Some(listen::End::Stopped) => (
+            Tone::Neutral,
+            "Stopped",
+            "The test was stopped; the bytes were discarded.".into(),
+        ),
+        Some(listen::End::Closed) => (
+            Tone::Neutral,
+            "Closed",
+            "The machine closed the connection; the bytes were discarded.".into(),
+        ),
+        Some(listen::End::Failed(why)) => (
+            Tone::Problem,
+            "Failed",
+            format!("The test could not run: {why}."),
+        ),
     };
     html.push_fragment(
-        &Markup::new()
+        &pill(tone, light)
+            .markup(" ")
             .text(status)
             .markup(" Bytes received: ")
             .text(view.seen)
@@ -1363,7 +1460,7 @@ pub(super) async fn listen_view(
     if view.size_limit_reached {
         html.push_markup(" The 64 KiB display limit was reached, so reading stopped.");
     }
-    html.push_markup("</p>");
+    html.push_markup("</p></section>");
     if running {
         html.push_fragment(
             &Markup::new()
@@ -1374,7 +1471,7 @@ pub(super) async fn listen_view(
                     "<input type=\"hidden\" name=\"csrf\" value=\""
                 ))
                 .text(session.csrf.form_value())
-                .markup("\"><button>Stop the test</button></form>"),
+                .markup("\"><button class=\"danger\">Stop the test</button></form>"),
         );
     }
     done(html)

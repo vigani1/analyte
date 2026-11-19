@@ -1,5 +1,6 @@
 //! Renders protected machine orders and retained cache evidence.
-use super::{Cursor, PAGE, finish, next, pause, start};
+use super::{Cursor, PAGE, finish, next, pause};
+use crate::admin::view::{self, plain};
 use crate::{
     admin::{Error, markup::Markup, server::Context},
     deadline,
@@ -27,6 +28,7 @@ async fn orders_page(state: &Context, cursor: Cursor) -> Result<Markup, Error> {
         .request::<_, crate::admin::error::CommandError>(deadline()?, move |s| {
             let mut html = Markup::new();
             let mut last = None;
+            let now = jiff::Timestamp::now();
             for order in s
                 .machine_orders(&MachineOrderFilter {
                     after,
@@ -50,8 +52,8 @@ async fn orders_page(state: &Context, cursor: Cursor) -> Result<Markup, Error> {
                         .text(order.version.to_string())
                         .markup(". State: ")
                         .text(order.state.to_string())
-                        .markup(". Updated (Unix seconds): ")
-                        .text(order.updated_at.to_string())
+                        .markup(". Updated: ")
+                        .fragment(&plain::when_unix(order.updated_at, now))
                         .markup(".</p>"),
                 );
                 html.push_markup("<h3>Durable machine items</h3><ul>");
@@ -103,14 +105,14 @@ async fn orders_page(state: &Context, cursor: Cursor) -> Result<Markup, Error> {
                 for item in &order.items {
                     html.push_fragment(&crate::admin::awos::projection(item));
                 }
-                render_cache(&mut html, s, &order)?;
+                render_cache(&mut html, s, &order, now)?;
                 html.push_markup("</section>");
                 last = Some(order.id);
             }
             Ok::<_, crate::admin::error::CommandError>((html, last))
         })
         .await?;
-    let mut html = start("Machine orders");
+    let mut html = view::page("Machine orders");
     pause(state, &mut html).await?;
     html.push_fragment(&rows);
     if let Some(last) = last {
@@ -123,6 +125,7 @@ fn render_cache(
     html: &mut Markup,
     store: &analyte_store::Store,
     order: &analyte_store::MachineOrder,
+    now: jiff::Timestamp,
 ) -> Result<(), crate::admin::error::CommandError> {
     if let Some(cached) = store.cached_order(&order.key.destination, &order.key.order)? {
         html.push_fragment(
@@ -130,9 +133,9 @@ fn render_cache(
                 .markup("<p>Retained cache sample: ")
                 .text(cached.sample.as_str())
                 .markup(". Tombstone: ")
-                .text(cached.tombstone.to_string())
-                .markup(". Expiry (Unix seconds): ")
-                .text(cached.expiry.to_string())
+                .text(plain::yes_no(cached.tombstone))
+                .markup(". Expires: ")
+                .fragment(&plain::when_unix(cached.expiry, now))
                 .markup(".</p>"),
         );
         match analyte_contract::decode::<analyte_contract::Order>(cached.document.as_bytes()) {

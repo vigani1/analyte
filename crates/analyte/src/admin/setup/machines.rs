@@ -4,7 +4,7 @@
 //! rollback) and apply after a restart. Removing never touches the store: a
 //! removed machine's receipts, flagged items and history stay listed for staff.
 use super::{SetupError, audit, done, entries, needs_login, page, refused, restart_form, site};
-use crate::admin::{markup::Markup, server::Context, sessions::Session};
+use crate::admin::{markup::Markup, server::Context, sessions::Session, view::plain};
 use crate::installation::config::Program;
 use analyte_model::Identifier;
 use analyte_store::Unfinished;
@@ -38,28 +38,29 @@ pub(in crate::admin) async fn add_form(
     done(
         page("Add a machine")
             .markup(concat!(
-                "<p>Adds one machine that is not set up yet, with a starter site file that ",
+                "<p class=\"lead\">Adds one machine that is not set up yet, with a starter site file that ",
                 "holds only the retention and the key names. Analyte checks the program file, ",
                 "keeps a copy of it, writes it and loads it again; if that fails, the previous ",
                 "file is put back. The new machine shows as <strong>Not set up yet</strong>: ",
                 "set it up like any other, then restart.</p>",
-                "<form method=\"post\" action=\"/setup/add\"><input type=\"hidden\" ",
+                "<section><form method=\"post\" action=\"/setup/add\"><input type=\"hidden\" ",
                 "name=\"csrf\" value=\""
             ))
             .text(session.csrf.form_value())
-            .markup("\"><label>Machine name <input name=\"name\" required maxlength=\"64\" value=\"")
+            .markup("\"><label class=\"field\"><span>Machine name</span><input name=\"name\" required maxlength=\"64\" value=\"")
             .text(&suggested)
             .markup(concat!(
-                "\"></label><p>Use letters, digits, - and _. The name also names the ",
+                "\"></label><p class=\"muted\">Use letters, digits, - and _. The name also names the ",
                 "machine's site file (<code>&lt;name&gt;.site.toml</code> beside the program file).</p>",
-                "<p><strong>Reusing a name.</strong> Analyte keeps results, flagged items and ",
+                "<div class=\"notice\"><p><strong>Reusing a name.</strong> Analyte keeps results, flagged items and ",
                 "history by machine name. A machine added under the name of one removed ",
                 "earlier joins that stored history. Use an earlier name only for the same ",
                 "analyzer; give a different analyzer a new name, so its results are never ",
                 "matched with the old one's. If the name has stored history, tick this box ",
-                "to confirm:</p><label><input type=\"checkbox\" name=\"same_analyzer\" ",
-                "value=\"yes\"> This is the same analyzer that used this name before</label> ",
-                "<button>Add machine</button></form>"
+                "to confirm:</p><label class=\"check\"><input type=\"checkbox\" name=\"same_analyzer\" ",
+                "value=\"yes\"> This is the same analyzer that used this name before</label></div>",
+                "<div class=\"actions-row\"><button>Add machine</button>",
+                "<a class=\"button secondary\" href=\"/setup\">Cancel</a></div></form></section>"
             )),
     )
 }
@@ -168,7 +169,7 @@ pub(in crate::admin) async fn add(
     let audited = audit(&state, &session, "setup-add", id.as_str(), reason).await;
     tracing::info!(machine = id.as_str(), "setup page added a machine");
     let mut html = page("Machine added")
-        .markup("<p>Machine <strong>")
+        .markup("<p class=\"notice info\">Machine <strong>")
         .text(id.as_str())
         .markup("</strong> is listed and <strong>Not set up yet</strong>. Its starter site file is <code>")
         .text(path.display())
@@ -182,14 +183,19 @@ pub(in crate::admin) async fn add(
     }
     html.push_fragment(&backups_kept(&written.backups));
     if let Err(error) = audited {
-        html.push_fragment(&Markup::new().markup("<p>").text(error).markup("</p>"));
+        html.push_fragment(
+            &Markup::new()
+                .markup("<p class=\"notice bad\">")
+                .text(error)
+                .markup("</p>"),
+        );
     }
     html.push_fragment(&restart_form(&session));
     done(html)
 }
 
 fn backups_kept(backups: &[PathBuf]) -> Markup {
-    let mut html = Markup::new().markup("<ul>");
+    let mut html = Markup::new().markup("<ul class=\"muted\">");
     for backup in backups {
         html.push_fragment(
             &Markup::new()
@@ -230,28 +236,36 @@ fn open_work(open: &Unfinished) -> Vec<String> {
     [
         (
             open.undelivered,
-            "results or order messages not yet accepted by the lab app",
+            "result or order message",
+            "results or order messages",
+            " not yet accepted by the lab app",
         ),
         (
             open.open_orders,
+            "order",
+            "orders",
             concat!(
-                "orders sent to the machine and not finished (sending, sent, accepted, ",
+                " sent to the machine and not finished (sending, sent, accepted, ",
                 "cancel requested or uncertain); once it is removed nothing serves them, so ",
                 "reconcile them with the machine first (Machine orders page)"
             ),
         ),
         (
             open.unread,
-            "received messages not read yet; only this machine's settings read them, at its next start",
+            "received message",
+            "received messages",
+            " not read yet; only this machine's settings read them, at its next start",
         ),
         (
             open.flagged,
-            "unresolved flagged items linked to this machine (Parked items page)",
+            "unresolved flagged item",
+            "unresolved flagged items",
+            " linked to this machine (Parked items page)",
         ),
     ]
     .into_iter()
-    .filter(|(count, _)| *count > 0)
-    .map(|(count, what)| format!("{count} {what}"))
+    .filter(|(count, ..)| *count > 0)
+    .map(|(count, one, many, rest)| format!("{}{rest}", plain::amount(count, one, many)))
     .collect()
 }
 
@@ -358,26 +372,31 @@ pub(in crate::admin) async fn confirm_remove(
     };
     let open = unfinished(&state, &id).await;
     let mut html = page("Remove a machine")
-        .markup("<p><strong>Remove ")
+        .markup("<p class=\"lead\"><strong>Remove ")
         .text(&id)
         .markup(concat!(
             "?</strong> Its stored results, flagged items and history stay in the ",
             "database and remain visible to staff; the machine just stops being served.</p>"
         ));
     let warned = warning(&mut html, &open);
-    html.push_fragment(&Markup::new().markup("<p>").text(note).markup("</p>"));
+    html.push_fragment(
+        &Markup::new()
+            .markup("<section><h2>Delivery after removal</h2><p>")
+            .text(note)
+            .markup("</p>"),
+    );
     if last {
         html.push_markup(concat!(
-            "<p>This is the last machine. After the restart Analyte serves only this ",
+            "<p class=\"notice\">This is the last machine. After the restart Analyte serves only this ",
             "admin page until a machine is added.</p>"
         ));
     }
     html.push_fragment(
         &Markup::new()
             .markup(concat!(
-                "<p>The program file keeps a dated copy, and the machine's site file is ",
+                "<p class=\"muted\">The program file keeps a dated copy, and the machine's site file is ",
                 "moved to a dated copy, not deleted. Removing applies after a restart; ",
-                "until then the machine keeps running.</p><form method=\"post\" action=\""
+                "until then the machine keeps running.</p></section><form method=\"post\" action=\""
             ))
             .text(format!("/setup/{id}/remove"))
             .markup("\"><input type=\"hidden\" name=\"csrf\" value=\"")
@@ -385,11 +404,14 @@ pub(in crate::admin) async fn confirm_remove(
             .markup("\">"),
     );
     html.push_markup(if warned {
-        "<input type=\"hidden\" name=\"anyway\" value=\"yes\"><button>Remove anyway</button>"
+        concat!(
+            "<input type=\"hidden\" name=\"anyway\" value=\"yes\"><div class=\"actions-row\">",
+            "<button class=\"danger\">Remove anyway</button>"
+        )
     } else {
-        "<button>Remove</button>"
+        "<div class=\"actions-row\"><button class=\"danger\">Remove</button>"
     });
-    html.push_markup(" <a href=\"/setup\">Keep it</a></form>");
+    html.push_markup("<a class=\"button secondary\" href=\"/setup\">Keep it</a></div></form>");
     done(html)
 }
 
@@ -398,26 +420,28 @@ fn warning(html: &mut Markup, open: &Result<Unfinished, SetupError>) -> bool {
     match open {
         Ok(open) if open.is_empty() => {
             html.push_markup(concat!(
-                "<p>Nothing is unfinished for this machine. (Flagged items not linked to ",
+                "<p class=\"notice info\">Nothing is unfinished for this machine. (Flagged items not linked to ",
                 "one machine are not counted.)</p>"
             ));
             false
         }
         Ok(open) => {
-            html.push_markup("<p><strong>Unfinished for this machine:</strong></p><ul>");
+            html.push_markup(
+                "<div class=\"notice\"><p><strong>Unfinished for this machine:</strong></p><ul>",
+            );
             for line in open_work(open) {
                 html.push_fragment(&Markup::new().markup("<li>").text(line).markup("</li>"));
             }
             html.push_markup(concat!(
                 "</ul><p>Removing does not delete any of this. Finish it first, or ",
-                "remove anyway. (Flagged items not linked to one machine are not counted.)</p>"
+                "remove anyway. (Flagged items not linked to one machine are not counted.)</p></div>"
             ));
             true
         }
         Err(error) => {
             html.push_fragment(
                 &Markup::new()
-                    .markup("<p><strong>Unfinished work could not be counted:</strong> ")
+                    .markup("<p class=\"notice bad\"><strong>Unfinished work could not be counted:</strong> ")
                     .text(error)
                     .markup(
                         ". Check the Deliveries, Machine orders and Parked items pages first.</p>",
@@ -531,7 +555,7 @@ pub(in crate::admin) async fn remove(
     let audited = audit(&state, &session, "setup-remove", &id, reason).await;
     tracing::info!(machine = id.as_str(), "setup page removed a machine");
     let mut html = page("Machine removed")
-        .markup("<p>Machine <strong>")
+        .markup("<section><p>Machine <strong>")
         .text(&id)
         .markup(concat!(
             "</strong> is no longer listed in the program file. Its stored results, ",
@@ -541,9 +565,14 @@ pub(in crate::admin) async fn remove(
         .markup(".</p><p>")
         .text(kept)
         .markup(".</p>");
-    html.push_fragment(&backups_kept(&removed.backups));
+    html.push_fragment(&backups_kept(&removed.backups).markup("</section>"));
     if let Err(error) = audited {
-        html.push_fragment(&Markup::new().markup("<p>").text(error).markup("</p>"));
+        html.push_fragment(
+            &Markup::new()
+                .markup("<p class=\"notice bad\">")
+                .text(error)
+                .markup("</p>"),
+        );
     }
     html.push_fragment(&restart_form(&session));
     done(html)

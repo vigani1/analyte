@@ -1,8 +1,5 @@
 //! Shows enabled configuration separately from actual protected receipt interpretation evidence.
-use super::{
-    pages::{finish, start},
-    server::Context,
-};
+use super::{pages::finish, server::Context, view};
 use crate::admin::Error;
 use crate::admin::markup::Markup;
 use crate::deadline;
@@ -23,11 +20,11 @@ pub(super) fn enabled(config: &analyte_config::Validated) -> Result<Markup, Erro
         .collect::<String>();
     let mut html = Markup::new()
         .markup(concat!(
-            "<h3>Enabled machine departures</h3><p>Active ",
-            "configuration digest: <code>",
+            "<h3>Enabled machine departures</h3><p title=\"Active configuration digest\">",
+            "Settings version <small class=\"digest\">",
         ))
         .text(digest)
-        .markup("</code>.</p><ul>");
+        .markup("</small></p><ul>");
     for rule in &config.effective().machine().deviations {
         html.push_fragment(
             &Markup::new()
@@ -84,7 +81,7 @@ pub(super) async fn receipt(
         Err(error) => return finish(Err(error.into())),
     };
     let id = uuid::Uuid::from(id);
-    let mut html = start("Receipt interpretation departures");
+    let mut html = view::page("Receipt interpretation departures");
     html.push_fragment(
         &Markup::new()
             .markup("<p>Receipt ")

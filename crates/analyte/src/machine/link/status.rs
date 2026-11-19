@@ -45,6 +45,17 @@ impl Link {
     }
 }
 
+/// The colour of a link light: on, waiting for the machine, or off.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Light {
+    /// Connected, port open or folder watched.
+    Live,
+    /// Listening; the machine has not connected.
+    Waiting,
+    /// Not connected, not listening, port not open or folder not watched.
+    Off,
+}
+
 /// One machine's link as last observed by its runtime.
 #[derive(Clone, Debug)]
 pub(crate) struct Status {
@@ -66,16 +77,25 @@ impl Status {
     /// The operator-facing state. A serial port can be open with no cable or machine
     /// attached, so serial says only whether the port is open, never "Connected".
     pub(crate) const fn state(&self) -> &'static str {
+        self.reading().0
+    }
+
+    /// The colour of the state's light on the admin page.
+    pub(crate) const fn light(&self) -> Light {
+        self.reading().1
+    }
+
+    const fn reading(&self) -> (&'static str, Light) {
         let open = self.open > 0;
         match self.link {
-            Link::TcpServer | Link::TcpClient if open => "Connected",
-            Link::TcpServer if self.ready => "Waiting",
-            Link::TcpServer => "Not listening",
-            Link::TcpClient => "Not connected (retrying)",
-            Link::Serial if open => "Port open",
-            Link::Serial => "Port not open",
-            Link::Folder if self.ready => "Watching",
-            Link::Folder => "Not watching",
+            Link::TcpServer | Link::TcpClient if open => ("Connected", Light::Live),
+            Link::TcpServer if self.ready => ("Waiting", Light::Waiting),
+            Link::TcpServer => ("Not listening", Light::Off),
+            Link::TcpClient => ("Not connected (retrying)", Light::Off),
+            Link::Serial if open => ("Port open", Light::Live),
+            Link::Serial => ("Port not open", Light::Off),
+            Link::Folder if self.ready => ("Watching", Light::Live),
+            Link::Folder => ("Not watching", Light::Off),
         }
     }
 
@@ -178,5 +198,24 @@ mod tests {
         );
         assert_eq!(status(Link::Folder, true, 0).state(), "Watching");
         assert_eq!(status(Link::Folder, false, 0).state(), "Not watching");
+    }
+
+    // Owner request 2026-11-19: green for Connected or Port open, amber for
+    // Waiting, grey for Not connected or Port not open.
+    #[test]
+    fn light_colour_follows_the_state() {
+        for (link, ready, open, light) in [
+            (Link::TcpServer, true, 1, Light::Live),
+            (Link::TcpClient, false, 1, Light::Live),
+            (Link::Serial, false, 1, Light::Live),
+            (Link::Folder, true, 0, Light::Live),
+            (Link::TcpServer, true, 0, Light::Waiting),
+            (Link::TcpServer, false, 0, Light::Off),
+            (Link::TcpClient, true, 0, Light::Off),
+            (Link::Serial, true, 0, Light::Off),
+            (Link::Folder, false, 0, Light::Off),
+        ] {
+            assert_eq!(status(link, ready, open).light(), light, "{link:?}");
+        }
     }
 }

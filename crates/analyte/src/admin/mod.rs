@@ -11,6 +11,7 @@ mod server;
 mod sessions;
 pub(crate) mod setup;
 mod token;
+mod view;
 
 pub(crate) use removed::Draining;
 pub(crate) use server::{Server, prepare};
