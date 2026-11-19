@@ -1,6 +1,6 @@
 //! Sends bounded, signed requests to the app the way Analyte does: no redirects, verified TLS, one deadline.
 use crate::settings::Settings;
-use analyte_contract::{MAX_DOCUMENT_BYTES, ResponseAction, classify_response};
+use analyte_contract::{ErrorBody, MAX_DOCUMENT_BYTES, ResponseAction, classify_response};
 use std::sync::Mutex;
 
 /// A request that never got a complete answer.
@@ -36,6 +36,17 @@ impl Answer {
             ResponseAction::Parked { reason } => format!("parked: {}", one_line(&reason)),
             ResponseAction::PauseForSetup { reason } => format!("destination paused: {reason}"),
             ResponseAction::Retry { .. } => "retried later".into(),
+        }
+    }
+
+    /// Why the answer lacks a `contract_version` 1 error body; `None` when it carries one.
+    pub(crate) fn missing_error_body(&self) -> Option<String> {
+        match analyte_contract::decode::<ErrorBody>(&self.body) {
+            Ok(body) if body.contract_version == 1 => None,
+            _ => Some(format!(
+                "HTTP {} without a contract_version 1 error body (error, detail)",
+                self.status
+            )),
         }
     }
 
