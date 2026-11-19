@@ -453,7 +453,7 @@ fn render_connection(
         .text(model_name(&list, &key, &path))
         .markup("</strong></p>")
         .fragment(&connection_inputs(state, &path, &current_site, draft))
-        .markup("</section><section><h2>Send results to</h2>")
+        .markup("</section><section><h2>Lab app</h2>")
         .fragment(&picker)
         .markup("</section>")
         .fragment(&draft.hidden(&CONNECTION_FIELDS))

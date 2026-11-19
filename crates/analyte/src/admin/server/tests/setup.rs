@@ -1726,6 +1726,7 @@ async fn each_step_shows_its_indicator_and_keeps_the_choices() -> Result<(), Err
         "value=\"name:COM3\" checked> COM3",
         "<input type=\"hidden\" name=\"definition\" value=\"example/serial-astm\">",
         "<option value=\"demo\" selected>",
+        "<h2>Lab app</h2><label class=\"field\"><span>Send results to</span>",
         "formaction=\"/setup/synthetic\" formnovalidate>Back</button>",
         "<button>Next: Test</button>",
     ] {
@@ -1758,6 +1759,47 @@ async fn each_step_shows_its_indicator_and_keeps_the_choices() -> Result<(), Err
     assert!(
         fixture.backups()?.is_empty(),
         "nothing is written before Save"
+    );
+    Ok(())
+}
+
+// Owner request 2026-11-19 (item 3 with overview item 2): the first-run button
+// opens step 1 for the machine waiting for setup, and Add machine when none is
+// listed; "first" is a name the setup page keeps for itself.
+#[tokio::test(flavor = "multi_thread")]
+async fn first_run_button_opens_step_one() -> Result<(), Error> {
+    let fixture = start_with(
+        "[admin]\nport = 8080\n[[machines]]\nid = 'machine-1'\nsite = 'site.toml'\n",
+        include_str!("../../../../../../packaging/linux/starter/machine-1.site.toml"),
+    )
+    .await?;
+    let location = |response: &str| {
+        response
+            .lines()
+            .find_map(|line| {
+                line.to_ascii_lowercase()
+                    .strip_prefix("location: ")
+                    .map(str::to_owned)
+            })
+            .unwrap_or_default()
+    };
+    let waiting = fixture.get("/setup/first").await?;
+    assert!(waiting.starts_with("HTTP/1.1 303"), "{waiting}");
+    assert_eq!(location(&waiting), "/setup/machine-1");
+    let step = fixture.get("/setup/machine-1").await?;
+    assert!(step.contains(STEP_ONE), "{step}");
+    let removed = fixture
+        .submit("/setup/machine-1/remove", "/setup/machine-1/remove", &[])
+        .await?;
+    assert!(removed.starts_with("HTTP/1.1 200"), "{removed}");
+    let none = fixture.get("/setup/first").await?;
+    assert_eq!(location(&none), "/setup/add");
+    let reserved = fixture
+        .submit("/setup/add", "/setup/add", &[("name", "first")])
+        .await?;
+    assert!(
+        reserved.starts_with("HTTP/1.1 409") && reserved.contains("setup page uses itself"),
+        "{reserved}"
     );
     Ok(())
 }

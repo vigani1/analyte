@@ -173,7 +173,7 @@ pub(in crate::admin) async fn add(
     tracing::info!(machine = id.as_str(), "setup page added a machine");
     // Straight into step 1, unless the audit failed: that is shown, never hidden.
     if audited.is_ok() {
-        return step_one(&id);
+        return see_other(&format!("/setup/{}", id.as_str()));
     }
     let mut html = page("Machine added")
         .markup("<p class=\"notice info\">Machine <strong>")
@@ -201,15 +201,37 @@ pub(in crate::admin) async fn add(
     done(html)
 }
 
-/// See Other to step 1 of the setup steps for machine `id`.
-fn step_one(id: &Identifier) -> Response {
+/// See Other to `location`; a machine name that cannot be a header value (only
+/// possible in a hand-written program file) goes to the setup page instead.
+fn see_other(location: &str) -> Response {
     let mut response = StatusCode::SEE_OTHER.into_response();
-    match header::HeaderValue::from_str(&format!("/setup/{}", id.as_str())) {
-        Ok(location) => {
-            response.headers_mut().insert(header::LOCATION, location);
-            response
-        }
-        Err(_) => refused(&SetupError::NameCharacters),
+    let location = header::HeaderValue::from_str(location)
+        .unwrap_or_else(|_| header::HeaderValue::from_static("/setup"));
+    response.headers_mut().insert(header::LOCATION, location);
+    response
+}
+
+/// GET /setup/first: the first-run button. Step 1 for the first listed machine
+/// that is not set up yet; Add machine when none is listed; otherwise the setup page.
+pub(in crate::admin) async fn first(State(state): State<Arc<Context>>) -> Response {
+    let worker = state.clone();
+    let listed = tokio::task::spawn_blocking(move || {
+        site::entries(&worker.config_path).map(|(_, listed)| {
+            let waiting = listed
+                .iter()
+                .find(|entry| entry.definition.is_none())
+                .map(|entry| entry.id.get_ref().clone());
+            (waiting, listed.is_empty())
+        })
+    })
+    .await
+    .map_err(SetupError::from)
+    .and_then(|r| r);
+    match listed {
+        Ok((Some(id), _)) => see_other(&format!("/setup/{id}")),
+        Ok((None, true)) => see_other("/setup/add"),
+        Ok((None, false)) => see_other("/setup"),
+        Err(error) => refused(&error),
     }
 }
 

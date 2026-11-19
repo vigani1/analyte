@@ -20,7 +20,7 @@ pub(super) use lab_apps::{
     remove as remove_lab_app, save as save_lab_app,
 };
 pub(crate) use listen::{Limits, Open};
-pub(super) use machines::{add, add_form, confirm_remove, remove};
+pub(super) use machines::{add, add_form, confirm_remove, first, remove};
 pub(super) use wizard::{
     connection, listen_start, listen_stop, listen_view, machine, review, save, test,
 };

@@ -89,14 +89,17 @@ running until the restart.
 **Add machine** asks for a name and suggests the next free `machine-N`. A name
 uses letters, digits, `-` and `_`, because it also names the machine's site file
 (`<name>.site.toml` beside the program file); a name already listed (ignoring
-case) or one the page uses itself (`add`, `listen`, `restart`) is refused before
+case) or one the page uses itself (`add`, `first`, `lab-apps`, `listen`, `restart`) is refused before
 anything is written. The page adds one `[[machines]]` entry without a definition
 and writes the same starter site file the installers write (retention `keep`
 and the key names; no address, connection or key). Analyte keeps results,
 flagged items and history by machine name, so a name that belonged to a removed
 machine joins that history again: the page asks you to confirm it is the same
 analyzer, and a different analyzer should get a new name. After adding, the
-page goes straight to step 1 for the new machine.
+page goes straight to step 1 for the new machine. On a first run, the
+Overview's **Set up a machine** button opens step 1 for the first machine that
+is not set up yet (the installers' `machine-1`), or **Add machine** when none
+is listed.
 
 **Remove machine** first shows what is still unfinished for that machine:
 results or order messages the lab app has not accepted, machine orders sent and

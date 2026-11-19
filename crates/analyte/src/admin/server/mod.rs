@@ -233,6 +233,7 @@ fn router(state: Arc<Context>) -> Router {
                     "/setup/lab-apps/{name}/remove",
                     get(super::setup::confirm_remove_lab_app).post(super::setup::remove_lab_app),
                 )
+                .route("/setup/first", get(super::setup::first))
                 .route("/setup/listen", get(super::setup::listen_view))
                 .route("/setup/listen/stop", post(super::setup::listen_stop))
                 .route(
