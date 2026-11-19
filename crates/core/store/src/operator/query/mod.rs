@@ -328,10 +328,9 @@ impl Store {
         after: i64,
         filter: ParkedFilter,
     ) -> Result<Vec<ParkedItem>, Error> {
-        let mut stmt = self.db.prepare(concat!(
-            "SELECT id,evidence,resolution FROM parked WHERE id>?1 ",
-            "AND (resolution IS NULL)=?2 ORDER BY id LIMIT ?3",
-        ))?;
+        let mut stmt = self.db.prepare(
+            "SELECT id,evidence,resolution FROM parked WHERE id>?1 AND (resolution IS NULL)=?2 ORDER BY id LIMIT ?3",
+        )?;
         Ok(stmt
             .query_map(
                 params![
@@ -365,12 +364,9 @@ impl Store {
             .map_err(|_| Error::InvalidOperatorInput)?;
         // The quoted target narrows the scan before each entry's targets are read.
         let quoted = serde_json::to_string(target.as_str())?;
-        let mut stmt = self.db.prepare(concat!(
-            "SELECT evidence FROM audit WHERE instr(evidence,?1)>0 ",
-            "AND json_extract(evidence,'$.action')=?2 ",
-            "AND EXISTS(SELECT 1 FROM json_each(evidence,'$.targets') t WHERE t.value=?3) ",
-            "ORDER BY sequence DESC LIMIT ?4",
-        ))?;
+        let mut stmt = self.db.prepare(
+            "SELECT evidence FROM audit WHERE instr(evidence,?1)>0 AND json_extract(evidence,'$.action')=?2 AND EXISTS(SELECT 1 FROM json_each(evidence,'$.targets') t WHERE t.value=?3) ORDER BY sequence DESC LIMIT ?4",
+        )?;
         let mut rows = stmt
             .query_map(
                 params![quoted, action.as_str(), target.as_str(), limit],
