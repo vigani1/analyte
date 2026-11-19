@@ -19,6 +19,15 @@ pub enum SignatureError {
     #[error("signature mismatch")]
     Mismatch,
 }
+/// Whether an API key value meets the contract's bearer bound: 1 to 4096
+/// printable ASCII characters, space through `~`. A TAB or any other control
+/// character is refused (contract v1 "HTTP and authentication"). Analyte, its
+/// sink and the contract checker all use this one rule.
+#[must_use]
+pub fn api_key_valid(value: &str) -> bool {
+    !value.is_empty() && value.len() <= 4096 && value.bytes().all(|b| (32..=126).contains(&b))
+}
+
 /// A decoded 24â€“64 byte Standard Webhooks secret; deliberately has no Debug output.
 #[derive(Clone)]
 pub struct SigningSecret(Vec<u8>);

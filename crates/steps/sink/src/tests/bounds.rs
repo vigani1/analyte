@@ -186,6 +186,23 @@ fn credentials_reject_each_invalid_component() -> TestResult {
     Ok(())
 }
 
+// Contract v1 "HTTP and authentication": the API key is 1 to 4096 printable
+// ASCII characters, the rule Analyte's startup and the contract checker apply;
+// a TAB, which an HTTP header would carry, is refused here too.
+#[test]
+fn credentials_refuse_a_tab_in_the_api_key() -> TestResult {
+    let d = destination("http://127.0.0.1:1234")?;
+    assert!(matches!(
+        d.credentials(&Secrets("key\twith-tab")),
+        Err(DestinationError::Secrets)
+    ));
+    assert_eq!(
+        d.credentials(&Secrets("key with space"))?.api_key,
+        "key with space"
+    );
+    Ok(())
+}
+
 // ADR 0003 retention; contract v1 delivery responses preserve the app's reason.
 // Safety rule 7 (ADR 0003); mutation-testing regression
 #[test]

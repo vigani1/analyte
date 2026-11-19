@@ -62,8 +62,17 @@ pub(crate) async fn check(app: &App, report: &mut Report) -> Result<(), RunError
 
 /// Every Retry-After the app sent during the run must be seconds or an HTTP date.
 pub(crate) fn check_retry_after(app: &App, report: &mut Report) {
-    let seen = app.retry_after_seen();
-    let outcome = if seen.is_empty() {
+    report.add(
+        "retry-after.format",
+        RESPONSES,
+        retry_after_outcome(&app.retry_after_seen()),
+    );
+}
+
+/// Judges each value by the contract classifier Analyte's sender uses, so the
+/// checker fails exactly the values Analyte ignores.
+fn retry_after_outcome(seen: &[String]) -> Outcome {
+    if seen.is_empty() {
         Outcome::Skip("the app sent no Retry-After header during this run".into())
     } else if let Some(bad) = seen.iter().find(|value| {
         !matches!(
@@ -72,12 +81,11 @@ pub(crate) fn check_retry_after(app: &App, report: &mut Report) {
         )
     }) {
         Outcome::Fail(format!(
-            "Retry-After {bad:?} is neither delay seconds nor an IMF-fixdate; Analyte ignores it and uses its own backoff"
+            "Retry-After {bad:?} is not delay seconds or an IMF-fixdate of at most 64 characters; Analyte ignores it and uses its own backoff"
         ))
     } else {
         Outcome::Pass
-    };
-    report.add("retry-after.format", RESPONSES, outcome);
+    }
 }
 
 async fn idempotency(app: &App, report: &mut Report) -> Result<(), RunError> {
@@ -413,6 +421,20 @@ mod tests {
             analyte_contract::decode(&bytes).map_err(|_| RunError::Vector("padded"))?;
         assert_eq!(delivery.fields().delivery_id.as_str(), id);
         Ok(())
+    }
+
+    // Contract v1 "Delivery responses and retries": Retry-After longer than 64
+    // characters is malformed, as Analyte's sender treats it; RFC 9110 §5.4.
+    #[test]
+    fn retry_after_over_64_characters_fails() {
+        let at_limit = format!("{}45", "0".repeat(62));
+        assert_eq!(retry_after_outcome(&[at_limit]), Outcome::Pass);
+        let over = format!("{}45", "0".repeat(63));
+        let outcome = retry_after_outcome(&["30".into(), over]);
+        assert!(
+            matches!(&outcome, Outcome::Fail(text) if text.contains("at most 64 characters")),
+            "{outcome:?}"
+        );
     }
 
     // Contract v1 "Delivery responses and retries": 400 or 422 must carry the versioned error body

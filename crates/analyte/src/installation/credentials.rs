@@ -17,8 +17,6 @@ use std::{
 const FILE_LIMIT: u64 = 65_536;
 /// Most keys one file holds.
 const KEY_LIMIT: usize = 32;
-/// Longest accepted key value, matching the API key bound.
-const VALUE_LIMIT: usize = 4096;
 
 /// Why the locked credentials file could not be read or written; never holds a value.
 #[derive(Debug, thiserror::Error)]
@@ -69,14 +67,12 @@ fn io(operation: &'static str) -> impl FnOnce(std::io::Error) -> CredentialError
 pub struct Secret(String);
 
 impl Secret {
-    /// Accepts 1 to 4096 printable ASCII characters; the error names only `name`.
+    /// Accepts the API key bound, 1 to 4096 printable ASCII characters, which
+    /// every `whsec_` signing key also meets; the error names only `name`.
     /// # Errors
     /// Refuses empty, overlong or non-printable values.
     pub fn new(name: &Identifier, value: String) -> Result<Self, CredentialError> {
-        if value.is_empty()
-            || value.len() > VALUE_LIMIT
-            || !value.bytes().all(|b| (32..=126).contains(&b))
-        {
+        if !analyte_contract::api_key_valid(&value) {
             return Err(CredentialError::InvalidValue(name.as_str().into()));
         }
         Ok(Self(value))
@@ -110,13 +106,10 @@ struct Entry {
 pub struct Stored(BTreeMap<String, Entry>);
 
 impl Stored {
-    /// The value stored for the credential whose environment variable is `variable`.
+    /// The value stored under exactly the credential name `name`.
     #[must_use]
-    pub fn by_variable(&self, variable: &str) -> Option<String> {
-        self.0
-            .iter()
-            .find(|(name, _)| super::secrets::variable(name) == variable)
-            .map(|(_, entry)| entry.value.clone())
+    pub fn value(&self, name: &str) -> Option<&str> {
+        self.0.get(name).map(|entry| entry.value.as_str())
     }
 
     /// When the named credential was stored, as a Unix second; never its value.
@@ -328,10 +321,7 @@ mod tests {
         let secret = Secret::new(&signing, analyte_fixtures::SECRET.into())?;
         locked.replace(vec![(signing, secret)], 1_763_500_000)?;
         let stored = locked.read()?;
-        assert_eq!(
-            stored.by_variable("ANALYTE_SECRET_DEMO_API").as_deref(),
-            Some(KEY)
-        );
+        assert_eq!(stored.value("demo-api"), Some(KEY));
         assert_eq!(stored.set_at("demo-api"), Some(1_763_424_000));
         assert_eq!(stored.set_at("demo-signing"), Some(1_763_500_000));
         assert!(

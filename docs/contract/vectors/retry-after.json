@@ -73,6 +73,18 @@
       "requested_seconds": null,
       "wait_at_least": null,
       "wait_at_most": 60
+    },
+    {
+      "value": "0000000000000000000000000000000000000000000000000000000000000045",
+      "requested_seconds": 45,
+      "wait_at_least": 45,
+      "wait_at_most": 60
+    },
+    {
+      "value": "00000000000000000000000000000000000000000000000000000000000000045",
+      "requested_seconds": null,
+      "wait_at_least": null,
+      "wait_at_most": 60
     }
   ]
 }

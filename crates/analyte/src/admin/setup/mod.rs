@@ -33,7 +33,7 @@ use super::{
 };
 use crate::installation::{
     config::{Program, connections},
-    credentials::{CredentialError, Locked},
+    credentials::{CredentialError, Locked, Stored},
     secrets,
 };
 use crate::machine::link::status::Link;
@@ -128,6 +128,20 @@ impl Setup {
             listen: std::sync::Mutex::new(None),
             restart: watch::channel(false).0,
         }
+    }
+
+    /// Leaves the connection test state poisoned, as a thread that panics while
+    /// holding it would. Only the admin server tests, built with test hooks, use it.
+    #[cfg(all(test, feature = "test-hooks"))]
+    pub(crate) fn poison_listen(&self) {
+        std::thread::scope(|scope| {
+            let _ = scope
+                .spawn(|| {
+                    let _held = self.listen.lock();
+                    std::panic::resume_unwind(Box::new("poisoned by a test"));
+                })
+                .join();
+        });
     }
 
     /// Serializes changes to the configuration files.
@@ -228,6 +242,8 @@ pub(crate) enum SetupError {
     InUse(String),
     #[error("a watched folder has no connection to listen on")]
     NothingToListen,
+    #[error("the connection test state is unavailable; restart the service")]
+    ListenState,
     #[error("the serial port settings cannot be used: {0}")]
     SerialSettings(String),
     #[error("{0}")]
@@ -431,16 +447,23 @@ async fn lab_apps_section(state: &Arc<Context>) -> Markup {
     // A fresh installation has none yet; a machine not set up needs none, but
     // setting one up does, so say where to add it.
     let worker = state.clone();
-    let none = tokio::task::spawn_blocking(move || lab_apps::scan(&worker.config_path))
+    let scanned = tokio::task::spawn_blocking(move || lab_apps::scan(&worker.config_path))
         .await
-        .ok()
-        .and_then(Result::ok)
-        .is_some_and(|scan| scan.known.is_empty());
-    if none {
-        html.push_markup(concat!(
+        .map_err(SetupError::from)
+        .and_then(|scanned| scanned);
+    match scanned {
+        Ok(scan) if scan.known.is_empty() => html.push_markup(concat!(
             "<p class=\"notice info\">No lab app yet: ",
             "<a href=\"/setup/lab-apps/new\">add one</a>.</p>"
-        ));
+        )),
+        Ok(_) => {}
+        // These files hold key names only, never key values.
+        Err(error) => html.push_fragment(
+            &Markup::new()
+                .markup("<p class=\"notice bad\">The lab apps file could not be read: ")
+                .text(error)
+                .markup("</p>"),
+        ),
     }
     html.markup("</section>")
 }
@@ -629,30 +652,32 @@ fn current_lab_app(running: Option<&Running>, current_site: &toml::Table) -> Opt
 /// One key's state, never its value: "API key: set on 2026-11-19". The key
 /// name shows on hover.
 fn key_line(state: &Context, label: &str, name: &Identifier) -> Markup {
-    let mut line = Markup::new()
+    let line = Markup::new()
         .markup("<span title=\"")
         .text(name.as_str())
         .markup("\">")
         .text(label)
         .markup("</span>: ");
-    if std::env::var_os(secrets::variable(name.as_str())).is_some() {
-        return line
+    // The service's own rule decides; an unreadable file still lets a set
+    // environment variable show, as it wins at startup too.
+    let read = Locked::new(&state.setup.data_directory).read();
+    let none = Stored::default();
+    let stored = read.as_ref().unwrap_or(&none);
+    match secrets::source(name.as_str(), |key| std::env::var(key).ok(), stored) {
+        secrets::Source::Environment(_) => line
             .text("set in the service environment (")
             .text(secrets::variable(name.as_str()))
-            .text("), which wins over a stored key");
-    }
-    match Locked::new(&state.setup.data_directory).read() {
-        Ok(stored) => match stored.set_at(name.as_str()) {
-            Some(second) => {
-                let date = jiff::Timestamp::from_second(second)
-                    .map(|t| t.strftime("%Y-%m-%d").to_string())
-                    .unwrap_or_else(|_| "an unknown date".into());
-                line.push_text(format!("set on {date}"));
-                line
-            }
-            None => line.text("not set"),
+            .text("), which wins over a stored key"),
+        secrets::Source::Stored { set_at, .. } => {
+            let date = jiff::Timestamp::from_second(set_at)
+                .map(|t| t.strftime("%Y-%m-%d").to_string())
+                .unwrap_or_else(|_| "an unknown date".into());
+            line.text(format!("set on {date}"))
+        }
+        secrets::Source::Missing => match read {
+            Ok(_) => line.text("not set"),
+            Err(error) => line.text(format!("cannot be checked: {error}")),
         },
-        Err(error) => line.text(format!("cannot be checked: {error}")),
     }
 }
 
@@ -928,7 +953,8 @@ fn in_use(state: &Context, chosen: &Endpoint, port: Option<&str>) -> Result<(), 
                     (Endpoint::UsbSerial(left), Endpoint::UsbSerial(right))
                         if left.as_str().eq_ignore_ascii_case(right.as_str())
                 );
-                same_number || running_port.is_some_and(|name| name.eq_ignore_ascii_case(port))
+                same_number
+                    || running_port.is_some_and(|name| connections::same_port_name(&name, port))
             }
         } else {
             matches!(running.link, Link::TcpServer | Link::TcpClient)

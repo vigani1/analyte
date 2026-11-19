@@ -22,6 +22,8 @@ struct Fixture {
     written: Arc<Mutex<Vec<u8>>>,
     /// What the fake serial port sends once after it is opened; `MARKER` by default.
     input: Arc<Mutex<Vec<u8>>>,
+    /// The server's state; weak, so shutdown never waits for the fixture.
+    state: std::sync::Weak<Context>,
 }
 
 /// A fake serial port: sends its input once, then only times out; records writes.
@@ -229,6 +231,7 @@ async fn start_program_with(
         setup,
         _released: released,
     });
+    let weak = Arc::downgrade(&state);
     let server = Server {
         listener: Listener {
             socket,
@@ -254,6 +257,7 @@ async fn start_program_with(
         _stop: stop,
         written,
         input,
+        state: weak,
     })
 }
 
@@ -758,14 +762,8 @@ async fn lab_app_page_stores_keys_once() -> Result<(), Error> {
     // The same values beside the site file's own copy: the program still loads.
     Program::load(&fixture.config)?;
     let stored = crate::installation::credentials::Locked::new(&fixture.data).read()?;
-    assert_eq!(
-        stored.by_variable("ANALYTE_SECRET_DEMO_API").as_deref(),
-        Some(API_KEY)
-    );
-    assert_eq!(
-        stored.by_variable("ANALYTE_SECRET_DEMO_SIGNING").as_deref(),
-        Some(SIGNING_KEY)
-    );
+    assert_eq!(stored.value("demo-api"), Some(API_KEY));
+    assert_eq!(stored.value("demo-signing"), Some(SIGNING_KEY));
     let file = fixture.data.join("credentials/credentials.toml");
     #[cfg(unix)]
     {
@@ -890,6 +888,78 @@ async fn lab_app_in_use_is_not_removed() -> Result<(), Error> {
     Ok(())
 }
 
+// Owner decision 2026-11-19 (key clash): the Lab app page refuses a new lab app
+// whose name differs from an existing one only by - versus _ or letter case,
+// with the same plain message as startup, before any file or key is written.
+#[tokio::test(flavor = "multi_thread")]
+async fn lab_app_page_refuses_a_clashing_name() -> Result<(), Error> {
+    let fixture = start().await?;
+    let fixture = &fixture;
+    let add = |name: &'static str| async move {
+        fixture
+            .submit(
+                "/setup/lab-apps/new",
+                "/setup/lab-apps/new",
+                &[
+                    ("name", name),
+                    ("base_url", "https://lab.example.invalid"),
+                    ("api_key", API_KEY),
+                    ("signing_key", SIGNING_KEY),
+                ],
+            )
+            .await
+    };
+    assert!(add("lab-1").await?.starts_with("HTTP/1.1 200"));
+    let file = fixture.root().join("lab-apps.toml");
+    let before = std::fs::read_to_string(&file)?;
+    let refused = add("lab_1").await?;
+    assert!(refused.starts_with("HTTP/1.1 409"), "{refused}");
+    assert!(
+        refused.contains(concat!(
+            "Lab apps &quot;lab-1&quot; and &quot;lab_1&quot; clash: both would use the key ",
+            "name ANALYTE_SECRET_LAB_1_API. Rename one so the names differ by more than ",
+            "letter case or - versus _"
+        )),
+        "{refused}"
+    );
+    // The site file's "demo", by letter case only.
+    let refused = add("Demo").await?;
+    assert!(
+        refused.contains("Lab apps &quot;demo&quot; and &quot;Demo&quot; clash"),
+        "{refused}"
+    );
+    assert_eq!(std::fs::read_to_string(&file)?, before);
+    let stored = crate::installation::credentials::Locked::new(&fixture.data).read()?;
+    assert!(stored.set_at("lab_1-api").is_none() && stored.set_at("Demo-api").is_none());
+    Ok(())
+}
+
+// Owner decision 2026-11-19 (visible failures); AGENTS.md "keep errors
+// specific": when lab-apps.toml cannot be read, the setup page says so and why,
+// instead of showing an empty lab apps section.
+#[tokio::test(flavor = "multi_thread")]
+async fn setup_page_says_when_the_lab_apps_file_cannot_be_read() -> Result<(), Error> {
+    let fixture = start().await?;
+    std::fs::write(
+        fixture.root().join("lab-apps.toml"),
+        "schema_version = 1
+[[lab_apps]]
+name = 'broken'
+unknown_setting = 1
+",
+    )?;
+    let page = fixture.get("/setup").await?;
+    assert!(page.starts_with("HTTP/1.1 200"), "{page}");
+    let notice = page
+        .split("<p class=\"notice bad\">The lab apps file could not be read: ")
+        .nth(1)
+        .and_then(|rest| rest.split("</p>").next())
+        .ok_or("no notice")?;
+    assert!(notice.contains("lab-apps.toml"), "{notice}");
+    assert!(notice.contains("unknown_setting"), "{notice}");
+    Ok(())
+}
+
 // Owner request 2026-11-18 (setup page); AGENTS.md rules 7 and 10: the listen
 // test shows the bytes on the page only, writes nothing to the port, refuses a
 // port the running service owns, and stores and logs nothing.
@@ -950,6 +1020,46 @@ async fn listen_test_shows_bytes_only_on_the_page() -> Result<(), Error> {
         .request::<_, FixtureError>(fixture_deadline()?, |s| Ok(s.parked(0)?.len()))
         .await?;
     assert_eq!(receipts, 0);
+    Ok(())
+}
+
+// Owner decision 2026-11-19 (visible failures); AGENTS.md "keep errors
+// specific": when the connection test state is poisoned by a panicked thread,
+// the test page says it is unavailable instead of "No test has been started".
+#[tokio::test(flavor = "multi_thread")]
+async fn poisoned_test_state_is_shown_as_unavailable() -> Result<(), Error> {
+    let fixture = start().await?;
+    fixture
+        .state
+        .upgrade()
+        .ok_or("server state gone")?
+        .setup
+        .poison_listen();
+    let page = fixture.get("/setup/listen").await?;
+    assert!(page.starts_with("HTTP/1.1 409"), "{page}");
+    assert!(
+        page.contains("the connection test state is unavailable; restart the service"),
+        "{page}"
+    );
+    assert!(!page.contains("No test has been started"), "{page}");
+    Ok(())
+}
+
+// Owner decision 2026-11-19 (one port rule); installation/config/connections.rs:
+// the listen test compares serial port names as the program loader does:
+// ignoring case on Windows (COM12 is com12), exactly elsewhere, where device
+// paths are case-sensitive.
+#[tokio::test(flavor = "multi_thread")]
+async fn listen_test_compares_port_names_like_the_loader() -> Result<(), Error> {
+    let fixture = start().await?;
+    let form = fixture.form(&[("port", "name:com12")]).await?;
+    let answer = fixture.post("/setup/synthetic/listen", &form).await?;
+    if cfg!(windows) {
+        assert!(answer.starts_with("HTTP/1.1 409"), "{answer}");
+        assert!(answer.contains("machine synthetic is using this connection"));
+    } else {
+        assert!(answer.starts_with("HTTP/1.1 303"), "{answer}");
+    }
     Ok(())
 }
 

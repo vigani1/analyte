@@ -18,15 +18,58 @@ pub enum SecretError {
     File(#[from] super::credentials::CredentialError),
 }
 
-/// Whether an API key value meets the contract's bearer bound: 1 to 4096
-/// printable ASCII characters.
-#[must_use]
-pub fn api_key_valid(value: &str) -> bool {
-    !value.is_empty() && value.len() <= 4096 && value.bytes().all(|b| (32..=126).contains(&b))
-}
-
 /// Preloaded host credentials. Deliberately has no Debug implementation.
 pub struct Environment(BTreeMap<String, Credentials>);
+
+/// Where a credential's value is found. The service loader and the setup page
+/// both ask [`source`], so the page never reports a key the service does not use.
+/// Deliberately has no Debug implementation: it may hold a value.
+pub enum Source {
+    /// A non-empty environment variable named by [`variable`]; it wins over the file.
+    Environment(String),
+    /// The locked credentials file's entry of exactly this name.
+    Stored {
+        /// The stored value.
+        value: String,
+        /// Unix second the value was stored.
+        set_at: i64,
+    },
+    /// Neither holds a non-empty value.
+    Missing,
+}
+
+impl Source {
+    /// The value found, if any.
+    #[must_use]
+    pub fn value(self) -> Option<String> {
+        match self {
+            Self::Environment(value) | Self::Stored { value, .. } => Some(value),
+            Self::Missing => None,
+        }
+    }
+}
+
+/// Finds credential `name`: its environment variable when that is set and not
+/// empty, otherwise the locked file's entry of exactly `name`. The file is read
+/// by name, never by variable, so two names that share a variable cannot
+/// receive each other's stored key.
+#[must_use]
+pub fn source(
+    name: &str,
+    environment: impl Fn(&str) -> Option<String>,
+    stored: &super::credentials::Stored,
+) -> Source {
+    if let Some(value) = environment(&variable(name)).filter(|value| !value.is_empty()) {
+        return Source::Environment(value);
+    }
+    match (stored.value(name), stored.set_at(name)) {
+        (Some(value), Some(set_at)) if !value.is_empty() => Source::Stored {
+            value: value.to_owned(),
+            set_at,
+        },
+        _ => Source::Missing,
+    }
+}
 
 /// Returns the environment variable for a configured credential name.
 #[must_use]
@@ -42,6 +85,14 @@ pub fn variable(name: &str) -> String {
         })
         .collect();
     format!("ANALYTE_SECRET_{suffix}")
+}
+
+/// Whether two different names would share one environment variable: they
+/// differ only by letter case or by `-` versus `_` (or another sign). Such
+/// names are refused, because one could be given the other's key.
+#[must_use]
+pub fn clash(left: &str, right: &str) -> bool {
+    left != right && variable(left) == variable(right)
 }
 
 impl Environment {
@@ -62,7 +113,8 @@ impl Environment {
         Self::load_layered(program, |key| std::env::var(key).ok(), &stored)
     }
 
-    /// Loads with `environment` first and `stored` for names it lacks or leaves empty.
+    /// Loads each credential from where [`source`] finds it: `environment`
+    /// (keyed by variable) first, then `stored` by exact credential name.
     /// # Errors
     /// Names a missing, empty or malformed credential.
     pub fn load_layered(
@@ -70,20 +122,25 @@ impl Environment {
         environment: impl Fn(&str) -> Option<String>,
         stored: &super::credentials::Stored,
     ) -> Result<Self, SecretError> {
-        Self::load_with(program, |key| {
-            environment(key)
-                .filter(|value| !value.is_empty())
-                .or_else(|| stored.by_variable(key))
-        })
+        Self::load_named(program, |name| source(name, &environment, stored).value())
     }
 
-    /// Loads from a host lookup; tests can inject credentials without mutating the environment.
-    /// A lab app no set-up machine uses never stops startup: when
-    /// its keys are missing or invalid it is left out, its deliveries pause with a
-    /// visible "credentials require operator repair" reason, and the key name is logged.
+    /// Loads from a host lookup keyed by variable, with no locked file; tests can
+    /// inject credentials without mutating the environment.
     /// # Errors
     /// Names a missing, empty or malformed credential of a set-up machine's destination.
     pub fn load_with(
+        program: &crate::installation::config::Program,
+        lookup: impl Fn(&str) -> Option<String>,
+    ) -> Result<Self, SecretError> {
+        Self::load_layered(program, lookup, &super::credentials::Stored::default())
+    }
+
+    /// Loads from a lookup keyed by credential name.
+    /// A lab app no set-up machine uses never stops startup: when
+    /// its keys are missing or invalid it is left out, its deliveries pause with a
+    /// visible "credentials require operator repair" reason, and the key name is logged.
+    fn load_named(
         program: &crate::installation::config::Program,
         lookup: impl Fn(&str) -> Option<String>,
     ) -> Result<Self, SecretError> {
@@ -112,19 +169,18 @@ impl Environment {
     }
 }
 
-/// Reads one destination's API key and signing keys, rotation included.
+/// Reads one destination's API key and signing keys, rotation included, from a
+/// lookup keyed by credential name.
 fn read(
     program: &crate::installation::config::Program,
     destination: &analyte_config::Destination,
     lookup: &impl Fn(&str) -> Option<String>,
 ) -> Result<Credentials, SecretError> {
     let read = |name: &Identifier| {
-        lookup(&variable(name.as_str()))
-            .filter(|s| !s.is_empty())
-            .ok_or_else(|| SecretError::Missing(name.as_str().into()))
+        lookup(name.as_str()).ok_or_else(|| SecretError::Missing(name.as_str().into()))
     };
     let api_key = read(&destination.api_key_name)?;
-    if !api_key_valid(&api_key) {
+    if !analyte_contract::api_key_valid(&api_key) {
         return Err(SecretError::Invalid(
             destination.api_key_name.as_str().into(),
         ));
@@ -251,10 +307,62 @@ mod tests {
         Ok(())
     }
 
+    // Owner decision 2026-11-19 (key clash): the locked file is read by exact
+    // credential name, so lab_1 never receives lab-1's key although both names
+    // share ANALYTE_SECRET_LAB_1_API; and an empty environment variable does not
+    // win, for the service and the setup page alike.
+    #[test]
+    fn stored_keys_are_found_by_exact_name() -> Result<(), crate::Error> {
+        use super::{Source, source};
+        use crate::installation::credentials::{Locked, Secret};
+        use analyte_model::Identifier;
+        let directory = crate::admin::private_tempdir()?;
+        let locked = Locked::new(directory.path());
+        let (dash, underscore) = (Identifier::new("lab-1-api")?, Identifier::new("lab_1-api")?);
+        locked.replace(
+            vec![
+                (dash.clone(), Secret::new(&dash, "dash-key".into())?),
+                (
+                    underscore.clone(),
+                    Secret::new(&underscore, "underscore-key".into())?,
+                ),
+            ],
+            7,
+        )?;
+        let stored = locked.read()?;
+        let found = |name: &str, environment: Option<&str>| {
+            source(name, |_| environment.map(str::to_owned), &stored)
+        };
+        assert!(matches!(
+            found("lab_1-api", None),
+            Source::Stored { value, set_at: 7 } if value == "underscore-key"
+        ));
+        assert!(matches!(
+            found("lab-1-api", Some("")),
+            Source::Stored { value, .. } if value == "dash-key"
+        ));
+        assert!(matches!(
+            found("lab-1-api", Some("env-key")),
+            Source::Environment(value) if value == "env-key"
+        ));
+        assert!(matches!(found("lab-2-api", Some("")), Source::Missing));
+        Ok(())
+    }
+
     // ADR 0008
     #[test]
     fn environment_names_are_stable() {
         assert_eq!(super::variable("lab-api.key"), "ANALYTE_SECRET_LAB_API_KEY");
+    }
+
+    // Owner decision 2026-11-19 (key clash): names clash when they differ only
+    // by letter case or - versus _; the same name is no clash.
+    #[test]
+    fn names_differing_only_by_case_or_dash_clash() {
+        assert!(super::clash("lab-1", "lab_1"));
+        assert!(super::clash("Lab-1", "lab-1"));
+        assert!(!super::clash("lab-1", "lab-1"));
+        assert!(!super::clash("lab-1", "lab-12"));
     }
 }
 

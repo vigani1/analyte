@@ -84,6 +84,8 @@ pub fn classify_response(status: u16, body: &[u8], retry_after: Option<&str>) ->
     }
 }
 
+/// The one Retry-After rule, for Analyte's sender and the contract checker:
+/// delay seconds or an IMF-fixdate, at most 64 characters (contract v1).
 fn retry_delay(value: &str, now: i64) -> Option<u64> {
     if value.len() > 64 {
         return None;
