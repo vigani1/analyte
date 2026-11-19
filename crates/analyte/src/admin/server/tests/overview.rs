@@ -759,11 +759,21 @@ fn assert_lab_app_nodes(page: &str) {
         "<p class=\"node__line\">Nothing delivered yet · 1 item waiting · oldest <time ",
         "<p class=\"node__line\">No set-up machine sends here</p>",
         "<p class=\"node__line\">Keys missing: API key and signing key.</p>",
+        "add the missing keys on the Lab apps page or in the service environment. ",
         "Waiting items go out after Analyte restarts with the keys.",
         "<a class=\"btn btn--primary btn--sm\" href=\"/setup/lab-apps\">Add keys</a>",
     ] {
         assert!(kept.contains(part), "{part}\n{kept}");
     }
+    // Owner request 2026-11-19 (screenshot review, PR #273): no red notice
+    // under the path repeats the node; its to-do line keeps what only the
+    // notice said: who sent the waiting item and that it is kept.
+    assert!(!page.contains("Cannot send to lab app old-lab: its API key"));
+    assert!(page.contains(concat!(
+        "<p class=\"todo__title\">Cannot send to lab app old-lab: keys missing, 1 waiting</p>",
+        "<p class=\"todo__detail\">Lab app old-lab: 1 result or order message is kept ",
+        "and never deleted.</p>"
+    )));
 }
 
 /// The figures under the path, the review count and this session's Sign out.

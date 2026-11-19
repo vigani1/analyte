@@ -319,6 +319,7 @@ async fn render(
             }),
             kept: kept
                 .iter()
+                .filter(|line| !line.on_path())
                 .map(|line| Notice {
                     tone: line.tone(),
                     title: line.text().to_owned(),

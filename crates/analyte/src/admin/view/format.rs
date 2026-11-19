@@ -377,8 +377,8 @@ pub(in crate::admin) fn missing_keys(missing: &[&str]) -> String {
 
 /// What to do for a lab app Analyte cannot deliver to.
 pub(in crate::admin) const KEYS_ADVICE: &str = concat!(
-    "add the missing keys on the Lab apps page. Waiting items go out after ",
-    "Analyte restarts with the keys."
+    "add the missing keys on the Lab apps page or in the service environment. ",
+    "Waiting items go out after Analyte restarts with the keys."
 );
 
 /// "Yes" or "No".

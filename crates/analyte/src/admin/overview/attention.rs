@@ -21,8 +21,9 @@ pub(super) struct Facts {
     pub(super) unlinked: Vec<(Identifier, &'static str, String)>,
     /// Lab apps whose sending is paused, with how many items wait for each.
     pub(super) paused: Vec<(Identifier, u64)>,
-    /// Lab apps Analyte cannot send to now, why, and how many items wait.
-    pub(super) blocked: Vec<(Identifier, Undeliverable, u64)>,
+    /// Lab apps Analyte cannot send to now, why, how many items wait and, for
+    /// a kept lab app without keys, who sent them and that they are kept.
+    pub(super) blocked: Vec<(Identifier, Undeliverable, u64, Option<String>)>,
     /// Lab apps whose tries keep failing (`analyte_store::FailingDestination`),
     /// how many items wait, and what their node says was observed.
     pub(super) failing: Vec<(Identifier, u64, String)>,
@@ -169,8 +170,11 @@ pub(super) fn things(facts: &Facts) -> Vec<Thing> {
             Fix::Section(Section::Disk),
         ));
     }
-    for (destination, reason, waiting) in &facts.blocked {
-        list.push(blocked(destination, *reason, Some(*waiting)));
+    for (destination, reason, waiting, kept) in &facts.blocked {
+        list.push(Thing {
+            detail: kept.clone(),
+            ..blocked(destination, *reason, Some(*waiting))
+        });
     }
     for (destination, waiting, observed) in &facts.failing {
         list.push(Thing {
@@ -446,7 +450,7 @@ mod tests {
             ),
             (
                 Facts {
-                    blocked: vec![(id("x"), Undeliverable::CredentialsMissing, 3)],
+                    blocked: vec![(id("x"), Undeliverable::CredentialsMissing, 3, None)],
                     ..Facts::default()
                 },
                 "Cannot send to lab app x: keys missing, 3 waiting",
@@ -454,7 +458,7 @@ mod tests {
             ),
             (
                 Facts {
-                    blocked: vec![(id("old"), Undeliverable::NotConfigured, 1)],
+                    blocked: vec![(id("old"), Undeliverable::NotConfigured, 1, None)],
                     ..Facts::default()
                 },
                 "Cannot send to lab app old: not set up any more, 1 waiting",
@@ -570,7 +574,7 @@ mod tests {
         let facts = Facts {
             review: 2,
             disk_full: true,
-            blocked: vec![(id("demo"), Undeliverable::CredentialsMissing, 4)],
+            blocked: vec![(id("demo"), Undeliverable::CredentialsMissing, 4, None)],
             alerts: vec![
                 alert(AlertKey::ParkedItems, Some(2)),
                 alert(AlertKey::DiskReserve, Some(10)),
@@ -645,6 +649,37 @@ mod tests {
         assert!(one.contains("1 thing needs you"));
     }
 
+    // Owner request 2026-11-19 (screenshot review, PR #273): the red notice
+    // under the signal path for a kept lab app without keys is gone, so its
+    // to-do line keeps what only the notice said: who sent the waiting items,
+    // that they are kept and never deleted, and how many need someone.
+    #[test]
+    fn keys_missing_line_keeps_who_sent_what_waits() {
+        let kept = "Removed machine m-3: 4 results or order messages are kept and never deleted.";
+        let facts = Facts {
+            blocked: vec![(
+                id("demo"),
+                Undeliverable::CredentialsMissing,
+                4,
+                Some(kept.into()),
+            )],
+            ..Facts::default()
+        };
+        let list = things(&facts);
+        let lines: Vec<_> = list
+            .iter()
+            .map(|line| (line.text.as_str(), line.detail.as_deref(), line.tone()))
+            .collect();
+        assert_eq!(
+            lines,
+            [(
+                "Cannot send to lab app demo: keys missing, 4 waiting",
+                Some(kept),
+                Tone::Problem
+            )]
+        );
+    }
+
     // Owner request 2026-11-19 (after #260): every line about a lab app (keys
     // missing, sending paused, not set up any more) links to the Lab app page,
     // where its address and keys are set, under its own name.
@@ -653,8 +688,8 @@ mod tests {
         let facts = Facts {
             paused: vec![(id("demo"), 4)],
             blocked: vec![
-                (id("x"), Undeliverable::CredentialsMissing, 3),
-                (id("old"), Undeliverable::NotConfigured, 1),
+                (id("x"), Undeliverable::CredentialsMissing, 3, None),
+                (id("old"), Undeliverable::NotConfigured, 1, None),
             ],
             alerts: vec![alert(
                 AlertKey::UndeliverableDestination(id("y"), Undeliverable::CredentialsMissing),
@@ -725,7 +760,7 @@ mod tests {
             disk_full: true,
             stopped: vec![id("a")],
             unlinked: vec![(id("b"), "Port not open", String::new())],
-            blocked: vec![(id("x"), Undeliverable::CredentialsMissing, 1)],
+            blocked: vec![(id("x"), Undeliverable::CredentialsMissing, 1, None)],
             failing: vec![(id("y"), 1, "Last try 21:59 failed".into())],
             ..Facts::default()
         };
