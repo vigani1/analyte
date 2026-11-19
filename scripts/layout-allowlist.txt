@@ -1,4 +1,3 @@
 # Direct Rust file count exceptions to ADR 0012; one folder and reason per line.
-crates/analyte/src/admin | Each file owns one admin page, session or listener concern; page rendering is grouped under pages/.
 crates/core/config/src/stack | Protocol keys stay side by side under ADR 0012 section 9, alongside their shared settings.
 crates/protocols/hl7/src/law | Each file owns one LAW segment or transaction concern; grouping would obscure standard names.

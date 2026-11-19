@@ -1,11 +1,11 @@
 //! Shows enabled configuration separately from actual protected receipt interpretation evidence.
-use super::{
-    pages::finish,
+use super::finish;
+use crate::admin::Error;
+use crate::admin::markup::Markup;
+use crate::admin::{
     server::Context,
     view::{self, Tab, plain},
 };
-use crate::admin::Error;
-use crate::admin::markup::Markup;
 use crate::deadline;
 use analyte_model::{DepartureEvidence, DepartureMeaning, ReceiptId};
 use axum::{
@@ -16,7 +16,7 @@ use axum::{
 use serde::Deserialize;
 use std::sync::Arc;
 
-pub(super) fn enabled(config: &analyte_config::Validated) -> Result<Markup, Error> {
+pub(in crate::admin) fn enabled(config: &analyte_config::Validated) -> Result<Markup, Error> {
     let mut html = Markup::new()
         .markup("<dl><dt title=\"Active configuration digest\">Settings version</dt><dd>")
         .fragment(&view::version(&config.digest()))
@@ -50,7 +50,7 @@ pub(super) fn enabled(config: &analyte_config::Validated) -> Result<Markup, Erro
 }
 
 #[derive(Deserialize)]
-pub(super) struct Version {
+pub(in crate::admin) struct Version {
     #[serde(default = "first")]
     version: i64,
 }
@@ -58,7 +58,7 @@ fn first() -> i64 {
     1
 }
 
-pub(super) async fn receipt(
+pub(in crate::admin) async fn receipt(
     State(state): State<Arc<Context>>,
     Path(id): Path<ReceiptId>,
     Query(version): Query<Version>,

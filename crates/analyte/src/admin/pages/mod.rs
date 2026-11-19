@@ -14,9 +14,14 @@ use axum::{
 };
 use serde::Deserialize;
 use std::sync::Arc;
+pub(super) mod awos;
+mod deliveries;
+pub(super) use deliveries::deliveries;
+pub(super) mod departures;
 mod orders;
 pub(super) use orders::orders;
 mod raw;
+pub(super) mod retention;
 use crate::admin::view::{self, Tab, plain};
 pub(super) use raw::RawError;
 pub(super) use raw::raw;
@@ -63,6 +68,36 @@ pub(super) fn next(html: &mut Markup, route: &str, after: impl std::fmt::Display
     );
 }
 
+/// Splits one store read into the rows a page shows and whether more follow:
+/// at most `shown` rows are kept, and more follow when the read held more than
+/// that or when `rest` finds a row after the last one kept. An empty read has
+/// nothing after it.
+pub(super) fn one_page<T, E>(
+    mut rows: Vec<T>,
+    shown: usize,
+    rest: impl FnOnce(&T) -> Result<bool, E>,
+) -> Result<(Vec<T>, bool), E> {
+    if rows.len() > shown {
+        rows.truncate(shown);
+        return Ok((rows, true));
+    }
+    let more = match rows.last() {
+        Some(last) => rest(last)?,
+        None => false,
+    };
+    Ok((rows, more))
+}
+
+/// The refusal for an item number that has no item to review.
+pub(super) fn item_not_found() -> Response {
+    view::refusal(
+        StatusCode::NOT_FOUND,
+        "Item not found",
+        "There is no item to review with this number. Go back to Needs review and pick one from the list.",
+        "parked item not found",
+    )
+}
+
 /// Says, only while it is true, that order sending is paused after a restore.
 async fn pause(state: &Context, html: &mut Markup) -> Result<(), Error> {
     let paused = state
@@ -73,9 +108,9 @@ async fn pause(state: &Context, html: &mut Markup) -> Result<(), Error> {
         html.push_markup(concat!(
             "<p class=\"notice\" title=\"Order sending paused after restore: true\">",
             "<strong>Order sending is paused after a restore.</strong> ",
-            "Ask IT to reconcile orders with the command line; until then no order is sent ",
-            "to a machine.</p>",
         ));
+        html.push_markup(super::overview::RESTORE_ADVICE);
+        html.push_markup("</p>");
     }
     Ok(())
 }
@@ -91,40 +126,26 @@ pub(super) async fn machines(
             let after = usize::try_from(cursor.after)?;
             let page: Vec<_> = state.machines.iter().skip(after).take(PAGE).collect();
             let now = jiff::Timestamp::now();
+            let activity = super::overview::activity(&state, deadline()?, PAGE).await?;
             for machine in &page {
-                let mut cursor = String::new();
-                let until = deadline()?;
-                let mut last = None;
+                let seen = activity.get(machine.id.as_str());
+                let last = seen.and_then(|seen| seen.last);
+                let received = seen.map_or(&[][..], |seen| seen.first.as_slice());
                 let mut evidence = Markup::new();
-                let mut evidence_links = 0usize;
-                loop {
-                    let rows = state
-                        .store
-                        .request(until, move |s| s.receipts(&cursor))
-                        .await?;
-                    let Some(end) = rows.last() else {
-                        break;
-                    };
-                    cursor = serde_json::to_string(&end.id)?;
-                    for receipt in rows {
-                        if receipt.machine == machine.id {
-                            last = last.max(Some(receipt.received_at));
-                            if evidence_links < PAGE {
-                                evidence_links = evidence_links.saturating_add(1);
-                                let id = uuid::Uuid::from(receipt.id);
-                                evidence.push_fragment(
-                                    &Markup::new()
-                                        .markup("<li><a href=\"/receipts/")
-                                        .text(id)
-                                        .markup("/departures\" title=\"Receipt interpretation evidence\">Received ")
-                                        .text(plain::time(receipt.received_at))
-                                        .markup("</a> <small class=\"muted\" title=\"Receipt ID\">")
-                                        .text(id)
-                                        .markup("</small></li>"),
-                                );
-                            }
-                        }
-                    }
+                for &(receipt, received_at) in received {
+                    let id = uuid::Uuid::from(receipt);
+                    evidence.push_fragment(
+                        &Markup::new()
+                            .markup("<li><a href=\"/receipts/")
+                            .text(id)
+                            .markup(
+                                "/departures\" title=\"Receipt interpretation evidence\">Received ",
+                            )
+                            .text(plain::time(received_at))
+                            .markup("</a> <small class=\"muted\" title=\"Receipt ID\">")
+                            .text(id)
+                            .markup("</small></li>"),
+                    );
                 }
                 html.push_fragment(
                     &Markup::new()
@@ -136,7 +157,7 @@ pub(super) async fn machines(
                         .fragment(&machine.departure_html)
                         .markup("<h3>Messages received</h3>"),
                 );
-                if evidence_links == 0 {
+                if received.is_empty() {
                     html.push_markup("<p class=\"muted\">Nothing yet.</p>");
                 } else {
                     html.push_fragment(
@@ -434,14 +455,7 @@ pub(super) async fn detail(
         .await;
     let (meta, evidence, resolution, total) = match result {
         Ok(Some(row)) => row,
-        Ok(None) => {
-            return view::refusal(
-                StatusCode::NOT_FOUND,
-                "Item not found",
-                "There is no item to review with this number. Go back to Needs review and pick one from the list.",
-                "parked item not found",
-            );
-        }
+        Ok(None) => return item_not_found(),
         Err(error) => return finish(Err(error.into())),
     };
     let mut html = view::page(Tab::NeedsReview, "Item to review");
@@ -497,17 +511,14 @@ async fn parked_page(state: &Context, cursor: Cursor) -> Result<Markup, Error> {
         .request::<_, crate::admin::error::CommandError>(deadline()?, move |s| {
             let mut html = Markup::new();
             let mut last = None;
-            let fetched = s.parked(after)?;
-            let mut more = fetched.len() > PAGE;
-            for row in fetched.into_iter().take(PAGE) {
+            let (fetched, more) =
+                one_page::<_, crate::admin::error::CommandError>(s.parked(after)?, PAGE, |last| {
+                    Ok(!s.parked(last.id)?.is_empty())
+                })?;
+            for row in fetched {
                 let evidence = row.details().map_err(analyte_store::OperatorError::from)?;
                 html.push_fragment(&review_item(row.id, &evidence, row.resolution.is_some()));
                 last = Some(row.id);
-            }
-            if let Some(last) = last
-                && !more
-            {
-                more = !s.parked(last)?.is_empty();
             }
             Ok::<_, crate::admin::error::CommandError>((html, last, more))
         })

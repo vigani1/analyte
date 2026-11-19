@@ -2,17 +2,16 @@
 use super::{
     server::Context,
     sessions::Session,
-    view::{self, Tab, Tone, exact, plain},
+    view::{self, Tab, exact, plain},
 };
 use crate::admin::Error;
 use crate::admin::error::CommandError;
 use crate::admin::markup::Markup;
 use crate::deadline;
 use analyte_model::{DeliveryId, Identifier, Reason};
-use analyte_store::DeliveryState;
 use axum::{
     Extension, Form,
-    extract::{Path, Query, State},
+    extract::{Path, State},
     http::StatusCode,
     response::{Html, IntoResponse, Response},
 };
@@ -29,10 +28,10 @@ pub(super) struct Confirmation {
     acknowledge_superseded: bool,
 }
 
-fn page(tab: Tab, title: &str, body: &Markup) -> Response {
+pub(super) fn page(tab: Tab, title: &str, body: &Markup) -> Response {
     Html(view::page(tab, title).fragment(body).markup(view::END)).into_response()
 }
-fn failure(error: &dyn std::error::Error) -> Response {
+pub(super) fn failure(error: &dyn std::error::Error) -> Response {
     view::refusal(
         StatusCode::CONFLICT,
         "That could not be done",
@@ -87,97 +86,6 @@ fn form(session: &Session, route: &str, label: &str, superseded: bool) -> Markup
         .markup("<div class=\"actions-row\"><button>")
         .text(label)
         .markup("</button></div></form>")
-}
-
-pub(super) async fn deliveries(
-    State(state): State<Arc<Context>>,
-    Query(cursor): Query<super::pages::Cursor>,
-) -> Response {
-    let after = match i64::try_from(cursor.after) {
-        Ok(after) => after,
-        Err(error) => return failure(&error),
-    };
-    let result = state
-        .store
-        .request::<_, CommandError>(
-            {
-                match deadline() {
-                    Ok(until) => until,
-                    Err(error) => return failure(&error),
-                }
-            },
-            move |s| {
-                let rows = s.deliveries(after)?;
-                let mut more = rows.len() > super::pages::PAGE;
-                let rows: Vec<_> = rows.into_iter().take(super::pages::PAGE).collect();
-                if let Some(last) = rows.last()
-                    && !more
-                {
-                    more = !s.deliveries(last.sequence)?.is_empty();
-                }
-                Ok((rows, more))
-            },
-        )
-        .await;
-    match result {
-        Ok((rows, more)) => {
-            let mut html = Markup::new().markup(concat!(
-                "<p class=\"lead\">Results and order messages Analyte sends to a lab app. Each ",
-                "keeps the same delivery number on every retry, so the lab app never files it ",
-                "twice.</p>",
-            ));
-            if rows.is_empty() {
-                html.push_markup("<p class=\"muted\">No deliveries to show.</p>");
-            } else {
-                html.push_markup(concat!(
-                    "<section><div class=\"table\"><table class=\"stack\"><tr>",
-                    "<th title=\"Delivery ID\">Delivery number</th>",
-                    "<th title=\"Destination\">Lab app</th><th>Status</th><th></th></tr>",
-                ));
-            }
-            for row in &rows {
-                let delivery = uuid::Uuid::from(row.id);
-                let tone = match row.state {
-                    DeliveryState::Done => Tone::Good,
-                    DeliveryState::Pending | DeliveryState::InFlight => Tone::Neutral,
-                    DeliveryState::Parked | DeliveryState::Paused | DeliveryState::Conflict => {
-                        Tone::Attention
-                    }
-                };
-                html.push_fragment(
-                    &Markup::new()
-                        .markup("<tr><td><code>")
-                        .text(delivery)
-                        .markup("</code></td><td data-label=\"Lab app\">")
-                        .text(row.destination.as_str())
-                        .markup("</td><td data-label=\"Status\"><span title=\"")
-                        .text(row.state)
-                        .markup("\">")
-                        .fragment(&view::pill(tone, plain::delivery_state(row.state)))
-                        .markup("</span></td><td class=\"actions\">"),
-                );
-                match row.state {
-                    DeliveryState::Done | DeliveryState::Parked | DeliveryState::Paused => html
-                        .push_fragment(
-                            &Markup::new()
-                                .markup("<a href=\"/deliveries/")
-                                .text(delivery)
-                                .markup("/resend\" title=\"Resend this delivery\">Send again</a>"),
-                        ),
-                    DeliveryState::Pending | DeliveryState::InFlight | DeliveryState::Conflict => {}
-                }
-                html.push_markup("</td></tr>");
-            }
-            if let Some(last) = rows.last() {
-                html.push_markup("</table></div></section>");
-                if more {
-                    super::pages::next(&mut html, "/deliveries", last.sequence);
-                }
-            }
-            page(Tab::Deliveries, "Deliveries", &html)
-        }
-        Err(error) => failure(&error),
-    }
 }
 
 /// Shows an audited action's confirmation page, only to a signed-in browser
@@ -290,12 +198,7 @@ pub(super) async fn confirm_resolve(
             "This item is already resolved. Open it from Needs review to see who resolved it and why.",
             "parked item already resolved",
         ),
-        None => view::refusal(
-            StatusCode::NOT_FOUND,
-            "Item not found",
-            "There is no item to review with this number. Go back to Needs review and pick one from the list.",
-            "parked item not found",
-        ),
+        None => super::pages::item_not_found(),
     })
     .await
 }

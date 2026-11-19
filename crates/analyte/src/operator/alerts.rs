@@ -21,13 +21,26 @@ pub(crate) struct Reach {
 
 impl Reach {
     fn problem(&self, destination: &Identifier) -> Option<Undeliverable> {
-        if self.keyless.contains(destination) {
-            Some(Undeliverable::CredentialsMissing)
-        } else if self.configured.contains(destination) {
-            None
-        } else {
-            Some(Undeliverable::NotConfigured)
-        }
+        undeliverable_reason(
+            self.configured.contains(destination),
+            self.keyless.contains(destination),
+        )
+    }
+}
+
+/// Why this run cannot deliver a destination's stored items, or none when it
+/// can. Missing keys come first, then a destination that is not set up. The
+/// `undeliverable_destination` alert and the admin pages both decide it here.
+pub(crate) const fn undeliverable_reason(
+    set_up: bool,
+    keys_missing: bool,
+) -> Option<Undeliverable> {
+    if keys_missing {
+        Some(Undeliverable::CredentialsMissing)
+    } else if set_up {
+        None
+    } else {
+        Some(Undeliverable::NotConfigured)
     }
 }
 
