@@ -113,7 +113,7 @@ const fn words(kind: ParkedKind) -> &'static str {
         ParkedKind::DeliveryConflict => "Lab app reported a conflicting delivery",
         ParkedKind::OrderVersionRefused => "Order from the lab app was refused",
         ParkedKind::CancelConflict => "Cancel conflicts with what the machine reported",
-        ParkedKind::PollIntent => crate::admin::view::format::POLL_TITLE,
+        ParkedKind::PollIntent => format::POLL_TITLE,
     }
 }
 
