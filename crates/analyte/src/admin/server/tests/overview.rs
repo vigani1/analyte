@@ -1,5 +1,5 @@
 //! Tests the overview's first-run welcome and the guided Needs review list through the real handlers.
-use super::pages::login;
+use super::pages::{csrf, encode, login};
 use super::*;
 use analyte_store::Parked;
 
@@ -182,15 +182,15 @@ fn review_items(receipt: &str, delivery: &str) -> Result<Vec<Parked>, Error> {
     ])
 }
 
-/// The button an item carries on the Needs review list.
+/// The main button an item carries on the Needs review list.
 #[derive(Clone, Copy)]
 enum Button {
     Process,
     Send,
-    None,
+    Resolve,
 }
 
-/// What each item of [`review_items`] says to do, in order, and its button.
+/// What each item of [`review_items`] says to do, in order, and its main button.
 const STEPS: [(&str, Button); 10] = [
     (
         "The machine sent a test code that this machine's test mapping does not list. Add it to the test mapping, then use Process again.",
@@ -213,20 +213,20 @@ const STEPS: [(&str, Button); 10] = [
         Button::Send,
     ),
     (
-        "The lab app already holds different content for this delivery. Check it in the lab app; Analyte does not send it again on its own. Then ask IT to mark this item resolved with the command line.",
-        Button::None,
+        "The lab app already holds different content for this delivery; Analyte does not send it again on its own. Check the delivery in the lab app and settle it there, then Mark resolved.",
+        Button::Resolve,
     ),
     (
-        "The lab app sent an older or changed copy of an order Analyte already has; Analyte kept its copy. Correct the order in the lab app, then ask IT to mark this item resolved with the command line.",
-        Button::None,
+        "The lab app sent an older or changed copy of an order Analyte already has; Analyte kept its copy. Correct the order in the lab app, then Mark resolved.",
+        Button::Resolve,
     ),
     (
-        "The lab app cancelled tests the machine has already reported on. Check both on the machine and in the lab app; Analyte sends the machine nothing more. Then ask IT to mark this item resolved with the command line.",
-        Button::None,
+        "The lab app cancelled tests the machine has already reported on; Analyte sends the machine nothing more. Check both on the machine and in the lab app, then Mark resolved.",
+        Button::Resolve,
     ),
     (
-        "Check on the machine whether this exchange finished. Until this item is resolved, Analyte does not start another one with that machine. Then ask IT to mark this item resolved with the command line.",
-        Button::None,
+        "Analyte starts no other exchange with this machine until this item is resolved. Check on the machine whether this one finished, then Mark resolved.",
+        Button::Resolve,
     ),
     (
         "Read the reason above and open the item for its linked records. If it is not clear what to do, give the item number to support.",
@@ -240,31 +240,39 @@ fn process_button(id: i64) -> String {
     )
 }
 
-/// One list item says what to do, carries its button and links to its own page.
+/// The Mark resolved button: the main one, or secondary beside another action.
+fn resolve_button(id: i64, main: bool) -> String {
+    let class = if main { "button" } else { "button secondary" };
+    format!(
+        "<a class=\"{class}\" title=\"Resolve\" href=\"/parked/{id}/resolve\">Mark resolved</a>"
+    )
+}
+
+/// One list item says what to do, carries its buttons and links to its own page.
 fn assert_item(section: &str, id: i64, delivery: &str, (todo, button): (&str, Button)) {
     let todo = todo.replace('\'', "&#39;");
     assert!(
         section.contains(&format!(
             "<p class=\"todo\"><strong>What to do:</strong> {todo}</p>"
         )),
-        "{todo}
-{section}"
+        "{todo}\n{section}"
     );
-    let expected = match button {
-        Button::Process => Some(process_button(id)),
-        Button::Send => Some(format!(
-            "<a class=\"button\" title=\"Resend this delivery\" href=\"/deliveries/{delivery}/resend\">Send again</a>"
-        )),
-        Button::None => None,
-    };
-    match expected {
-        Some(button) => assert!(
-            section.contains(&button),
-            "{button}
-{section}"
+    let buttons = match button {
+        Button::Process => process_button(id) + &resolve_button(id, false),
+        Button::Send => format!(
+            "<a class=\"button\" title=\"Resend this delivery\" href=\"/deliveries/{delivery}/resend\">Send again</a>{}",
+            resolve_button(id, false)
         ),
-        None => assert!(!section.contains("class=\"button\""), "{section}"),
-    }
+        Button::Resolve => format!("<p class=\"actions-row\">{}", resolve_button(id, true)),
+    };
+    assert!(section.contains(&buttons), "{buttons}\n{section}");
+    assert_eq!(
+        section.matches("class=\"button").count(),
+        match button {
+            Button::Resolve => 1,
+            Button::Process | Button::Send => 2,
+        }
+    );
     assert!(section.contains(&format!("<a href=\"/parked/{id}\">Open item</a>")));
 }
 
@@ -316,6 +324,147 @@ async fn review_list_says_what_to_do_with_the_action_and_no_ids() -> Result<(), 
             "<p class=\"todo\"><strong>What to do:</strong> The machine sent a test code"
         )
     );
-    assert!(detail.contains(&process_button(ids[0])));
+    assert!(detail.contains(&(process_button(ids[0]) + &resolve_button(ids[0], false))));
     stop(state, stopper, owner, store).await
+}
+
+// Owner request 2026-11-19 (Needs review follow-up) and ADR 0003 rule 2: Mark
+// resolved on the page needs the session's CSRF token and a reason, uses the same
+// store resolution and audit as `analyte parked resolve`, and never deletes the
+// item: it leaves the unresolved count and stays in the history, resolved.
+#[tokio::test(flavor = "multi_thread")]
+async fn mark_resolved_is_audited_needs_csrf_and_keeps_the_item() -> Result<(), Error> {
+    let directory = crate::admin::private_tempdir()?;
+    let bearer = crate::admin::rotate_token(directory.path())?;
+    let store = empty_store(directory.path()).await?;
+    // The conflicting delivery and the refused order from the category list.
+    let items: Vec<Parked> = review_items("unused", &uuid::Uuid::now_v7().to_string())?
+        .into_iter()
+        .skip(5)
+        .take(2)
+        .collect();
+    let ids = store
+        .request::<_, FixtureError>(fixture_deadline()?, move |s| {
+            items
+                .iter()
+                .map(|item| s.park(item).map_err(FixtureError::from))
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .await?;
+    let (state, stopper, owner, host) =
+        start_overview_server(directory.path(), &store, Vec::new(), Vec::new()).await?;
+    let cookie = login(&host, &bearer).await?;
+    let auth = format!("Cookie: {cookie}\r\n");
+    let post_auth = format!("{auth}Content-Type: application/x-www-form-urlencoded\r\n");
+    let id = ids[0];
+    let path = format!("/parked/{id}/resolve");
+    let list = request(&host, "/parked", &auth, None).await?;
+    assert!(list.contains(&resolve_button(id, true)), "{list}");
+    let form = confirm_needs_csrf(&host, &auth, &path).await?;
+    let unresolved = |store: Arc<analyte_store::Handle>| async move {
+        store
+            .request::<_, FixtureError>(fixture_deadline()?, |s| {
+                Ok(
+                    s.alert_value(&analyte_store::AlertKey::ParkedItems, 0, &[])?
+                        .unwrap_or_default(),
+                )
+            })
+            .await
+            .map_err(Error::from)
+    };
+    assert_eq!(
+        unresolved(store.clone()).await?,
+        2,
+        "refused posts change nothing"
+    );
+    let done = request(&host, &path, &post_auth, Some(&form)).await?;
+    assert!(done.starts_with("HTTP/1.1 200"), "{done}");
+    assert!(done.contains("<h1>Marked resolved</h1>"));
+    let again = request(&host, &path, &post_auth, Some(&form)).await?;
+    assert!(again.starts_with("HTTP/1.1 409"), "resolves only once");
+    assert_recorded(&store, &state, &cookie, id).await?;
+    assert_eq!(unresolved(store.clone()).await?, 1);
+    // Still in the history: listed as resolved, with who and why on its page.
+    let history = request(&host, "/parked", &auth, None).await?;
+    let section = history
+        .split("<section>")
+        .find(|section| section.contains(&format!("href=\"/parked/{id}\" title")))
+        .ok_or("resolved item missing from the list")?;
+    assert!(
+        section.contains("<span class=\"pill ok\">Resolved</span>"),
+        "{section}"
+    );
+    assert!(!section.contains("Mark resolved"), "{section}");
+    let detail = request(&host, &format!("/parked/{id}"), &auth, None).await?;
+    assert!(detail.contains("How it was resolved"));
+    assert!(detail.contains("settled with the lab app"));
+    let overview = request(&host, "/", &auth, None).await?;
+    assert!(
+        overview.contains("<span>1 item needs review</span>"),
+        "{overview}"
+    );
+    stop(state, stopper, owner, store).await
+}
+
+/// The confirmation says the item stays in the history; posting needs the
+/// session's CSRF token and "confirm=yes". Returns a valid form body.
+async fn confirm_needs_csrf(host: &str, auth: &str, path: &str) -> Result<String, Error> {
+    let confirm = request(host, path, auth, None).await?;
+    assert!(confirm.starts_with("HTTP/1.1 200"), "{confirm}");
+    assert!(confirm.contains("<h1>Mark this item resolved?</h1>"));
+    assert!(
+        confirm.contains("The item stays in the history, marked resolved by you with your reason.")
+    );
+    assert!(confirm.contains("method=\"post\""));
+    let token = csrf(&confirm)?;
+    let form = format!(
+        "csrf={}&confirm=yes&reason=settled%20with%20the%20lab%20app",
+        encode(&token)
+    );
+    let post_auth = format!(
+        "{auth}Content-Type: application/x-www-form-urlencoded
+"
+    );
+    for refused in [
+        "confirm=yes&reason=no%20token".to_owned(),
+        form.rewrite(&encode(&token), "wrong"),
+        form.rewrite("confirm=yes", "confirm=no"),
+    ] {
+        let response = request(host, path, &post_auth, Some(&refused)).await?;
+        assert!(response.starts_with("HTTP/1.1 403"), "{response}");
+    }
+    Ok(form)
+}
+
+/// The item carries its resolution and the audit trail one matching row: this
+/// session as the actor, the CLI's action name, the item and the typed reason.
+async fn assert_recorded(
+    store: &analyte_store::Handle,
+    state: &Context,
+    cookie: &str,
+    id: i64,
+) -> Result<(), Error> {
+    let actor = state
+        .sessions
+        .lookup(cookie.strip_prefix("analyte_session="))?
+        .ok_or("session missing")?
+        .actor
+        .clone();
+    let (resolution, audits) = store
+        .request::<_, FixtureError>(fixture_deadline()?, move |s| {
+            let item = s.parked_item(id)?.ok_or(FixtureError::Corruption)?;
+            Ok((item.resolution, s.audits(0)?))
+        })
+        .await?;
+    let resolution: analyte_store::Audit =
+        serde_json::from_str(&resolution.ok_or("item not resolved")?)?;
+    assert_eq!(audits.len(), 1, "one audit row");
+    let (_, audit) = audits.first().ok_or("audit row missing")?;
+    for recorded in [&resolution, audit] {
+        assert_eq!(recorded.actor, actor);
+        assert_eq!(recorded.action.as_str(), "parked-resolve");
+        assert_eq!(recorded.targets, vec![Identifier::new(&id.to_string())?]);
+        assert_eq!(recorded.reason.as_str(), "settled with the lab app");
+    }
+    Ok(())
 }

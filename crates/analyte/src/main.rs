@@ -331,6 +331,15 @@ async fn operator(
     let program = Program::load(config)?;
     let mut store = analyte::open_system_store(&program).await?;
     let result = async {
+        if let Parked::Resolve { id, reason } = &command {
+            return Ok(analyte::operator::recovery::resolve(
+                &store,
+                *id,
+                actor,
+                Reason::new(reason)?,
+            )
+            .await?);
+        }
         let (action, targets, reason) = match &command {
             Parked::List { .. } => (
                 "parked-list",
@@ -347,11 +356,11 @@ async fn operator(
                     std::io::Error::other("reprocess must use the recovery entry point").into(),
                 );
             }
-            Parked::Resolve { id, reason } => (
-                "parked-resolve",
-                vec![Identifier::new(&id.to_string())?],
-                reason.clone(),
-            ),
+            Parked::Resolve { .. } => {
+                return Err(
+                    std::io::Error::other("resolve must use the recovery entry point").into(),
+                );
+            }
         };
         let audit = Audit {
             actor,
@@ -365,10 +374,7 @@ async fn operator(
                 Parked::Reprocess { .. } => {
                     Err(ParkedCommandError::ReprocessRequiresInterpretation)
                 }
-                Parked::Resolve { id, .. } => {
-                    store.resolve(id, &audit)?;
-                    Ok(Vec::new())
-                }
+                Parked::Resolve { .. } => Err(ParkedCommandError::ResolveUsesRecovery),
                 Parked::List { after } => {
                     store.audit(&audit)?;
                     Ok(store.parked(after)?)

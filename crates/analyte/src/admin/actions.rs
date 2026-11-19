@@ -226,6 +226,60 @@ pub(super) async fn confirm_reprocess(
     }
 }
 
+pub(super) async fn confirm_resolve(
+    State(state): State<Arc<Context>>,
+    Path(parked): Path<i64>,
+    session: Option<Extension<Arc<Session>>>,
+) -> Response {
+    let Some(Extension(session)) = session.filter(|Extension(s)| s.authenticated) else {
+        return sign_in_first();
+    };
+    let until = match deadline() {
+        Ok(until) => until,
+        Err(error) => return failure(&error),
+    };
+    let item = state
+        .store
+        .request::<_, crate::admin::error::CommandError>(until, move |s| Ok(s.parked_item(parked)?))
+        .await;
+    match item {
+        Ok(Some(item)) if item.resolution.is_none() => page(
+            Tab::NeedsReview,
+            "Mark this item resolved?",
+            &Markup::new()
+                .markup("<section><p title=\"Resolve parked item ")
+                .text(parked)
+                .markup("\">Item ")
+                .text(parked)
+                .markup(concat!(
+                    " leaves the list of items waiting for review. Nothing is deleted and ",
+                    "nothing is sent to a machine or the lab app. The item stays in the ",
+                    "history, marked resolved by you with your reason.</p>",
+                ))
+                .fragment(&form(
+                    &session,
+                    &format!("/parked/{parked}/resolve"),
+                    "Mark resolved",
+                    false,
+                ))
+                .markup("</section>"),
+        ),
+        Ok(Some(_)) => view::refusal(
+            StatusCode::CONFLICT,
+            "Already resolved",
+            "This item is already resolved. Open it from Needs review to see who resolved it and why.",
+            "parked item already resolved",
+        ),
+        Ok(None) => view::refusal(
+            StatusCode::NOT_FOUND,
+            "Item not found",
+            "There is no item to review with this number. Go back to Needs review and pick one from the list.",
+            "parked item not found",
+        ),
+        Err(error) => failure(&error),
+    }
+}
+
 pub(super) async fn confirm_resend(
     State(state): State<Arc<Context>>,
     Path(text): Path<String>,
@@ -333,6 +387,42 @@ pub(super) async fn reprocess(
                 .markup(" was recorded. What happened: ")
                 .text(crate::operator::display::list(&commit.outcomes))
                 .markup(".</p><p><a href=\"/parked\">Back to Needs review</a></p>"),
+        ),
+        Err(error) => failure(&error),
+    }
+}
+
+pub(super) async fn resolve(
+    State(state): State<Arc<Context>>,
+    Path(parked): Path<i64>,
+    Extension(session): Extension<Arc<Session>>,
+    Form(form): Form<Confirmation>,
+) -> Response {
+    if !valid(&session, &form) {
+        return sign_in_first();
+    }
+    let result = async {
+        crate::operator::recovery::resolve(
+            &state.store,
+            parked,
+            session.actor.clone(),
+            Reason::new(&form.reason)?,
+        )
+        .await
+        .map_err(Error::from)
+    }
+    .await;
+    match result {
+        Ok(()) => page(
+            Tab::NeedsReview,
+            "Marked resolved",
+            &Markup::new()
+                .markup("<p class=\"notice info\" title=\"Resolution recorded\">Item ")
+                .text(parked)
+                .markup(concat!(
+                    " is marked resolved with your reason. It stays in the history.</p>",
+                    "<p><a href=\"/parked\">Back to Needs review</a></p>",
+                )),
         ),
         Err(error) => failure(&error),
     }

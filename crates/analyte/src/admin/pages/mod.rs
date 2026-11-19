@@ -247,8 +247,8 @@ enum Action {
     ProcessAgain,
     /// Queue the rejected delivery again, unchanged.
     SendAgain,
-    /// None on these pages: someone checks, then IT marks it resolved.
-    None,
+    /// Mark the item resolved after someone checked it; it stays in the history.
+    Resolve,
 }
 
 impl Category {
@@ -295,7 +295,7 @@ impl Category {
             Self::DeliveryConflict
             | Self::OrderVersionRefused
             | Self::CancelConflict
-            | Self::PollIntent => Action::None,
+            | Self::PollIntent => Action::Resolve,
         }
     }
 
@@ -336,24 +336,22 @@ impl Category {
                 "Fix the problem the lab app reported (see Reason), then use Send again."
             }
             Self::DeliveryConflict => concat!(
-                "The lab app already holds different content for this delivery. Check it in ",
-                "the lab app; Analyte does not send it again on its own. Then ask IT to mark ",
-                "this item resolved with the command line.",
+                "The lab app already holds different content for this delivery; Analyte does ",
+                "not send it again on its own. Check the delivery in the lab app and settle it ",
+                "there, then Mark resolved.",
             ),
             Self::OrderVersionRefused => concat!(
                 "The lab app sent an older or changed copy of an order Analyte already has; ",
-                "Analyte kept its copy. Correct the order in the lab app, then ask IT to mark ",
-                "this item resolved with the command line.",
+                "Analyte kept its copy. Correct the order in the lab app, then Mark resolved.",
             ),
             Self::CancelConflict => concat!(
-                "The lab app cancelled tests the machine has already reported on. Check both ",
-                "on the machine and in the lab app; Analyte sends the machine nothing more. ",
-                "Then ask IT to mark this item resolved with the command line.",
+                "The lab app cancelled tests the machine has already reported on; Analyte sends ",
+                "the machine nothing more. Check both on the machine and in the lab app, then ",
+                "Mark resolved.",
             ),
             Self::PollIntent => concat!(
-                "Check on the machine whether this exchange finished. Until this item is ",
-                "resolved, Analyte does not start another one with that machine. Then ask IT ",
-                "to mark this item resolved with the command line.",
+                "Analyte starts no other exchange with this machine until this item is ",
+                "resolved. Check on the machine whether this one finished, then Mark resolved.",
             ),
         }
     }
@@ -373,12 +371,14 @@ fn todo(parked: &Parked) -> Markup {
         .markup("</p>")
 }
 
-/// The button for the item's audited action, or nothing when none exists. It opens
-/// the action's confirmation page, which asks for a reason and posts with the
-/// session's CSRF token, so the audit and CSRF checks stay exactly as they were.
-/// An unknown category keeps the Process again it always had.
-fn action_button(id: i64, parked: &Parked) -> Markup {
-    match Category::of(parked.kind.as_str()).map_or(Action::ProcessAgain, Category::action) {
+/// The buttons for an item's audited actions: its main action first, then Mark
+/// resolved as a secondary button when the main action is something else, for
+/// when the lab decides nothing more is needed. Each opens its confirmation page,
+/// which asks for a reason and posts with the session's CSRF token. An unknown
+/// category keeps the Process again it always had.
+fn action_buttons(id: i64, parked: &Parked) -> Markup {
+    let action = Category::of(parked.kind.as_str()).map_or(Action::ProcessAgain, Category::action);
+    let main = match action {
         Action::ProcessAgain => Markup::new()
             .markup("<a class=\"button\" title=\"Reprocess\" href=\"/parked/")
             .text(id)
@@ -396,8 +396,18 @@ fn action_button(id: i64, parked: &Parked) -> Markup {
                     .text(delivery)
                     .markup("/resend\">Send again</a>")
             }),
-        Action::None => Markup::new(),
-    }
+        Action::Resolve => Markup::new(),
+    };
+    let resolve = Markup::new()
+        .markup(match action {
+            Action::Resolve => "<a class=\"button\" title=\"Resolve\" href=\"/parked/",
+            Action::ProcessAgain | Action::SendAgain => {
+                "<a class=\"button secondary\" title=\"Resolve\" href=\"/parked/"
+            }
+        })
+        .text(id)
+        .markup("/resolve\">Mark resolved</a>");
+    main.fragment(&resolve)
 }
 
 pub(super) async fn parked(
@@ -475,17 +485,9 @@ pub(super) async fn detail(
             )
             .markup("</dl>")
             .fragment(&todo(&evidence))
-            .fragment(&{
-                let button = action_button(id, &evidence);
-                if button.is_empty() {
-                    button
-                } else {
-                    Markup::new()
-                        .markup("<p class=\"actions-row\">")
-                        .fragment(&button)
-                        .markup("</p>")
-                }
-            }),
+            .markup("<p class=\"actions-row\">")
+            .fragment(&action_buttons(id, &evidence))
+            .markup("</p>"),
         ),
         Some(resolution) => html.push_fragment(
             &view::row(
@@ -578,7 +580,7 @@ fn review_item(id: i64, parked: &Parked, resolved: bool) -> Markup {
     }
     html.fragment(&todo(parked))
         .markup("<p class=\"actions-row\">")
-        .fragment(&action_button(id, parked))
+        .fragment(&action_buttons(id, parked))
         .markup("<a href=\"/parked/")
         .text(id)
         .markup("\">Open item</a></p></section>")
