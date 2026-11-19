@@ -1,7 +1,7 @@
 //! Checks the order feed: paging, cursors, 410, versions, and orders the developer seeded.
 use crate::client::{App, Key};
 use crate::{Outcome, Report, RunError, SEED_FILE, limit};
-use analyte_contract::{ErrorBody, Order, OrdersPage};
+use analyte_contract::{Order, OrdersPage};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
@@ -146,14 +146,9 @@ async fn unknown_cursor(app: &App) -> Outcome {
         .await
     {
         Err(error) => Outcome::Fail(error.to_string()),
-        Ok(answer) if answer.status == 410 => {
-            match analyte_contract::decode::<ErrorBody>(&answer.body) {
-                Ok(body) if body.contract_version == 1 => Outcome::Pass,
-                _ => Outcome::Fail(
-                    "HTTP 410 without a contract_version 1 error body (error, detail)".into(),
-                ),
-            }
-        }
+        Ok(answer) if answer.status == 410 => answer
+            .missing_error_body()
+            .map_or(Outcome::Pass, Outcome::Fail),
         Ok(answer) => Outcome::Fail(format!(
             "expected HTTP 410 for an unknown cursor, so Analyte reloads a snapshot; got HTTP {}",
             answer.status

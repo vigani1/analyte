@@ -9,6 +9,16 @@ pub enum DeliveryStatus {
     /// Exact bytes already committed.
     Duplicate,
 }
+impl DeliveryStatus {
+    /// The status as a status body spells it: `accepted` or `duplicate`.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Accepted => "accepted",
+            Self::Duplicate => "duplicate",
+        }
+    }
+}
 /// Success body including the contract version.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct StatusBody {

@@ -1,7 +1,7 @@
 //! Checks result and order-event deliveries: acceptance, retries, conflicts, refusals and the size limit.
 use crate::client::{Answer, App, Key, RequestError, Signature};
 use crate::{Outcome, Report, RunError, limit, vectors};
-use analyte_contract::{DeliveryStatus, ErrorBody, ResponseAction, StatusBody, classify_response};
+use analyte_contract::{DeliveryStatus, ResponseAction, StatusBody, classify_response};
 use serde_json::Value;
 
 const RESULTS: &str = "POST /results";
@@ -286,7 +286,10 @@ async fn size_limit(app: &App, report: &mut Report) -> Result<(), RunError> {
     );
     let id = fresh_id();
     let over = padded(&id, max.saturating_add(1))?;
-    let outcome = match app.post_oversized("results", &id, &over).await {
+    let outcome = match app
+        .post("results", &id, &over, Key::Correct, Signature::Unbounded)
+        .await
+    {
         Ok(answer) if matches!(answer.status, 400 | 413 | 422) => Outcome::Pass,
         Ok(answer) => Outcome::Fail(format!(
             "expected HTTP 400, 413 or 422 for a document one byte over the limit; {}",
@@ -364,7 +367,7 @@ fn judge(answer: Result<Answer, RequestError>, expect: Expect<'_>) -> Outcome {
             } else {
                 Outcome::Fail(format!(
                     "expected HTTP 200 with contract_version 1 and status {}; {}",
-                    status_name(wanted),
+                    wanted.as_str(),
                     answer.describe()
                 ))
             }
@@ -375,27 +378,16 @@ fn judge(answer: Result<Answer, RequestError>, expect: Expect<'_>) -> Outcome {
             list(wanted),
             answer.describe()
         )),
-        Expect::Refused => {
-            let body = analyte_contract::decode::<ErrorBody>(&answer.body).ok();
-            match (answer.status, body) {
-                (400 | 422, Some(body)) if body.contract_version == 1 => Outcome::Pass,
-                (400 | 422, _) => Outcome::Fail(format!(
-                    "HTTP {} without a contract_version 1 error body (error, detail); Analyte parks it without the app's reason",
-                    answer.status
-                )),
-                _ => Outcome::Fail(format!(
-                    "expected HTTP 400 or 422 with an error body; {}",
-                    answer.describe()
-                )),
-            }
-        }
-    }
-}
-
-fn status_name(status: DeliveryStatus) -> &'static str {
-    match status {
-        DeliveryStatus::Accepted => "accepted",
-        DeliveryStatus::Duplicate => "duplicate",
+        Expect::Refused => match (answer.status, answer.missing_error_body()) {
+            (400 | 422, None) => Outcome::Pass,
+            (400 | 422, Some(missing)) => Outcome::Fail(format!(
+                "{missing}; Analyte parks it without the app's reason"
+            )),
+            _ => Outcome::Fail(format!(
+                "expected HTTP 400 or 422 with an error body; {}",
+                answer.describe()
+            )),
+        },
     }
 }
 
