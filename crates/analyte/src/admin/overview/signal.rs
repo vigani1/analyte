@@ -222,6 +222,9 @@ fn lab_node(
         tone,
         status,
         wire,
+        // The break mark says why the line is cut: a key for missing keys, a
+        // cross for tries that fail; Analyte makes no try without keys.
+        mark: if blocked { Icon::Key } else { Icon::Cross },
         lines,
         support: support.into_iter().collect(),
         todo: blocked.then_some(format::KEYS_ADVICE),

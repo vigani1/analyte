@@ -594,6 +594,10 @@ async fn failing_lab_app_reads_not_delivering_with_a_todo_line() -> Result<(), E
         assert!(lab.contains(part), "{part}\n{lab}");
     }
     assert!(!lab.contains("Queued"));
+    // The cut line carries a cross, not the key mark that means missing keys.
+    let key = crate::admin::view::icon::Icon::Key.path();
+    assert!(!page.contains(key), "the key mark is for missing keys only");
+    assert!(page.contains(crate::admin::view::icon::Icon::Cross.path()));
     assert!(page.contains("<section class=\"verdict verdict--bad\""));
     assert!(page.contains("class=\"verdict__title\">1 thing needs you</h2>"));
     assert!(page.contains(

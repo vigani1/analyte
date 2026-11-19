@@ -83,7 +83,7 @@
 {#- One lab app on the signal path, with what to do when Analyte cannot deliver to it. -#}
 {%- macro lab_node(lab) -%}
 <li class="path__item">
-{% call wire(lab.wire, "", crate::admin::view::icon::Icon::Key, true) %}{% endcall %}
+{% call wire(lab.wire, "", lab.mark, true) %}{% endcall %}
 <div class="node node--lab{% if lab.wire == Wire::Cut %} node--bad{% endif %}">
 <div class="node__head"><span class="node__name" title="{{ lab.name }}">{{ lab.name }}</span>{% call status(lab.tone, lab.status) %}{% endcall %}</div>
 {%- for line in lab.lines %}

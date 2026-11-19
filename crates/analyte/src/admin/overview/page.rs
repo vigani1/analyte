@@ -202,6 +202,8 @@ pub(super) struct LabNode {
     pub(super) tone: Tone,
     pub(super) status: &'static str,
     pub(super) wire: Wire,
+    /// The mark on a cut line: why Analyte cannot deliver here.
+    pub(super) mark: Icon,
     /// Which key is missing, last delivered with what waits, and who sends here.
     pub(super) lines: Vec<Line>,
     /// The exact reason its keys could not be checked, for support; empty otherwise.
