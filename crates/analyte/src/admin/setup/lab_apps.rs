@@ -6,9 +6,7 @@
 //! goes through the same checked commit as the machine setup (backup, safe
 //! write, reload, rollback) and applies after a restart. Keys go only to the
 //! locked credentials file and are shown only as `set on <date>`.
-use super::{
-    SetupError, after_write, audit, done, entries, key_line, needs_login, page, refused, site,
-};
+use super::{SetupError, after_write, audit, done, entries, needs_login, page, refused, site};
 use crate::admin::{
     markup::Markup,
     server::Context,
@@ -17,7 +15,8 @@ use crate::admin::{
 };
 use crate::installation::{
     config::{lab_apps as file, read},
-    credentials::{Locked, Secret},
+    credentials::{Locked, Secret, Stored},
+    secrets,
 };
 use analyte_config::{Destination, HttpsUrl, LabApps};
 use analyte_model::Identifier;
@@ -278,6 +277,38 @@ fn where_written(known: &Known) -> Markup {
         ));
     }
     html
+}
+
+/// One key's state, never its value: "API key: set on 2026-11-19". The key
+/// name shows on hover.
+fn key_line(state: &Context, label: &str, name: &Identifier) -> Markup {
+    let line = Markup::new()
+        .markup("<span title=\"")
+        .text(name.as_str())
+        .markup("\">")
+        .text(label)
+        .markup("</span>: ");
+    // The service's own rule decides; an unreadable file still lets a set
+    // environment variable show, as it wins at startup too.
+    let read = Locked::new(&state.setup.data_directory).read();
+    let none = Stored::default();
+    let stored = read.as_ref().unwrap_or(&none);
+    match secrets::source(name.as_str(), |key| std::env::var(key).ok(), stored) {
+        secrets::Source::Environment(_) => line
+            .text("set in the service environment (")
+            .text(secrets::variable(name.as_str()))
+            .text("), which wins over a stored key"),
+        secrets::Source::Stored { set_at, .. } => {
+            let date = jiff::Timestamp::from_second(set_at)
+                .map(|t| t.strftime("%Y-%m-%d").to_string())
+                .unwrap_or_else(|_| "an unknown date".into());
+            line.text(format!("set on {date}"))
+        }
+        secrets::Source::Missing => match read {
+            Ok(_) => line.text("not set"),
+            Err(error) => line.text(format!("cannot be checked: {error}")),
+        },
+    }
 }
 
 /// GET /setup/lab-apps: every lab app, who uses it, its keys and what waits for it.

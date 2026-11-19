@@ -9,9 +9,13 @@
 //! URL. Hidden fields beat a server-side draft here: there is nothing to store,
 //! bound, expire or lose at a restart, and Back works in every tab.
 use super::{
-    Choice, Csrf, SetupError, after_write, audit, chosen, current_lab_app, definition_name,
-    definitions, done, kind_of, level_and_state, listen, listen_target, needs_login, page, plan,
-    refused, running, save_blocking, serial, settings_version, site,
+    Csrf, SetupError, after_write, audit, definition_name, definitions, done, level_and_state,
+    listen, needs_login, page,
+    plan::{
+        Choice, chosen, current_lab_app, kind_of, listen_target, model_name, model_of, plan,
+        save_blocking,
+    },
+    refused, running, serial, settings_version, site,
     verdict::{self, Family},
 };
 use crate::admin::{
@@ -333,26 +337,6 @@ pub(in crate::admin) async fn review(
     query: Result<Query<Draft>, QueryRejection>,
 ) -> Response {
     serve(state, session, id, query, render_review).await
-}
-
-/// The chosen model's key and file; `installed` keeps the current one.
-pub(super) fn model_of(
-    list: &[super::Definition],
-    draft: &Draft,
-    installed: &site::Installed,
-) -> Result<(String, std::path::PathBuf), SetupError> {
-    match draft.definition.as_deref().map(str::trim) {
-        None | Some("") => Err(SetupError::UnknownDefinition),
-        Some("installed") => chosen(list, None, installed),
-        Some(key) => chosen(list, Some(key), installed),
-    }
-}
-
-/// The model's name for people; a model kept from outside the shipped list shows its file.
-pub(super) fn model_name(list: &[super::Definition], key: &str, path: &std::path::Path) -> String {
-    list.iter()
-        .find(|definition| definition.key == key)
-        .map_or_else(|| path.display().to_string(), |d| d.display.clone())
 }
 
 fn render_machine(
