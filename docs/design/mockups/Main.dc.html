@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Analyte · Overview</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/2679076d2049d0720ac5104465671ab9">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=Instrument+Sans:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="app" data-theme="{{theme}}" style="font-family: var(--font-sans); color: var(--text)">
+<dc-import name="Sidebar" active="overview" review="{{reviewCount}}" hint-size="232px,100vh"></dc-import>
+<main class="main">
+
+<header class="page-head">
+<div><p class="eyebrow">Thursday 19 November · 10:45</p><h1>Overview</h1></div>
+<p class="mono subtle" style="margin: 0; font-size: 13px">5 machines · 2 lab apps</p>
+</header>
+
+<section class="verdict {{v.cls}}" aria-labelledby="ov-verdict">
+<div class="verdict__head">
+<span class="verdict__icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{v.icon}}"></path></svg></span>
+<div style="flex: 1; min-width: 240px"><h2 id="ov-verdict" class="verdict__title">{{v.title}}</h2><p class="verdict__sub">{{v.sub}}</p></div>
+</div>
+<sc-if value="{{hasProblems}}" hint-placeholder-val="{{ true }}">
+<ol class="todo">
+<sc-for list="{{problems}}" as="p" hint-placeholder-count="3">
+<li>
+<span class="todo__n">{{p.n}}</span>
+<div class="todo__body">
+<svg class="icon {{p.tone}}" viewBox="0 0 24 24" aria-hidden="true"><path d="{{p.icon}}"></path></svg>
+<div style="min-width: 0"><p class="todo__kind {{p.tone}}">{{p.word}}</p><p class="todo__title">{{p.title}}</p><p class="todo__detail">{{p.detail}}</p></div>
+</div>
+<button type="button" class="btn btn--outline">{{p.action}}</button>
+</li>
+</sc-for>
+</ol>
+</sc-if>
+</section>
+
+<section class="section" aria-labelledby="ov-path">
+<div class="section__head">
+<h2 id="ov-path" class="label">02 · Signal path <span class="label__aside">— machines → Analyte → lab apps</span></h2>
+<ul class="legend" aria-label="Line key"><li><span class="legend__line"></span>Data flowing</li><li><span class="legend__line legend__line--wait"></span>Waiting</li><li><span class="legend__line legend__line--cut"></span>Broken</li></ul>
+</div>
+<div class="card">
+<div class="path-scroll">
+<div class="path">
+<ul class="path__col" aria-label="Machines">
+<sc-for list="{{machines}}" as="m" hint-placeholder-count="5">
+<li class="path__item">
+<a class="node {{m.nodeCls}}" href="#machines">
+<span class="node__head"><svg class="icon icon--md {{m.tone}}" viewBox="0 0 24 24" aria-hidden="true"><path d="{{m.icon}}"></path></svg><span class="node__name">{{m.name}}</span><span class="node__model">{{m.model}}</span></span>
+<span class="node__meta"><span class="{{m.tone}}" style="font-weight: 600">{{m.state}}</span><span class="subtle" aria-hidden="true">·</span><span class="mono {{m.lastCls}}">{{m.last}}</span><span class="subtle" aria-hidden="true">·</span><span class="with-icon muted" style="gap: 5px"><svg class="icon icon--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="{{m.ci}}"></path></svg>{{m.conn}}</span></span>
+</a>
+<span class="wire {{m.wireCls}}" aria-hidden="true">
+<sc-if value="{{m.live}}" hint-placeholder-val="{{ false }}"><span class="wire__dot {{m.dotCls}}"></span></sc-if>
+<sc-if value="{{m.cut}}" hint-placeholder-val="{{ false }}"><span class="wire__break"><svg class="icon" viewBox="0 0 24 24"><path d="M17 7 7 17 M7 7l10 10"></path></svg></span></sc-if>
+</span>
+</li>
+</sc-for>
+</ul>
+<div class="bus"><span class="live-dot live-dot--accent"></span><span class="bus__label">Analyte · checks · keeps a copy · sends</span></div>
+<ul class="path__col path__col--out" aria-label="Lab apps">
+<sc-for list="{{labs}}" as="l" hint-placeholder-count="2">
+<li class="path__item">
+<span class="wire {{l.wireCls}}" aria-hidden="true">
+<sc-if value="{{l.live}}" hint-placeholder-val="{{ false }}"><span class="wire__dot"></span><span class="wire__dot wire__dot--2"></span></sc-if>
+<sc-if value="{{l.cut}}" hint-placeholder-val="{{ false }}"><span class="wire__break"><svg class="icon" viewBox="0 0 24 24"><path d="{{ic.key}}"></path></svg></span></sc-if>
+</span>
+<div class="node node--lab {{l.nodeCls}}">
+<div class="node__head"><svg class="icon icon--md" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.lab}}"></path></svg><span class="node__name">{{l.name}}</span><span class="status {{l.stCls}}"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{l.stIcon}}"></path></svg>{{l.stWord}}</span></div>
+<p class="node__line">{{l.line1}}</p>
+<p class="node__line">{{l.line2}}</p>
+<sc-if value="{{l.cut}}" hint-placeholder-val="{{ false }}"><div class="whattodo"><p class="whattodo__text"><strong>What to do:</strong> add both keys. Waiting results go out right after.</p><button type="button" class="btn btn--primary btn--sm">Add keys</button></div></sc-if>
+</div>
+</li>
+</sc-for>
+</ul>
+</div>
+</div>
+<dl class="figures" style="border-top: 1px solid var(--border)">
+<div class="figure"><dt>Results waiting to send</dt><dd>{{waiting}}</dd></div>
+<div class="figure"><dt>Oldest waiting</dt><dd>{{oldest}} <span class="figure__aside">{{oldestAgo}}</span></dd></div>
+<div class="figure"><dt>Order list</dt><dd class="figure__text"><svg class="icon icon--md tone-good" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.ok}}"></path></svg>Up to date <span class="subtle" style="font-weight: 400">· checked <span class="mono">10:44</span></span></dd></div>
+</dl>
+</div>
+</section>
+
+<div class="split">
+<section class="section" aria-labelledby="ov-orders">
+<h2 id="ov-orders" class="label">03 · Orders</h2>
+<ul class="card rows">
+<sc-for list="{{orders}}" as="o" hint-placeholder-count="2">
+<li class="row">
+<svg class="icon {{o.tone}}" viewBox="0 0 24 24" aria-hidden="true"><path d="{{o.icon}}"></path></svg>
+<span class="row__main">{{o.text}}</span>
+<sc-if value="{{o.link}}" hint-placeholder-val="{{ true }}"><a class="link" href="{{o.href}}">{{o.link}}</a></sc-if>
+</li>
+</sc-for>
+</ul>
+</section>
+
+<section class="section grow" aria-labelledby="ov-activity">
+<div class="section__head">
+<h2 id="ov-activity" class="label">04 · Latest activity <span class="live tone-good"><span class="live-dot"></span>Live</span></h2>
+<a class="link" href="#activity">Open Activity</a>
+</div>
+<ol class="card feed feed--compact">
+<sc-for list="{{activity}}" as="a" hint-placeholder-count="5">
+<li class="feed__line {{a.cls}}">
+<time class="feed__time">{{a.t}}</time>
+<svg class="icon {{a.tone}}" viewBox="0 0 24 24" role="img" aria-label="{{a.word}}"><path d="{{a.icon}}"></path></svg>
+<span class="feed__text"><sc-if value="{{a.isLink}}" hint-placeholder-val="{{ false }}"><a href="#review">{{a.head}}</a></sc-if><sc-if value="{{a.plain}}" hint-placeholder-val="{{ true }}"><b>{{a.head}}</b> <span class="muted">– {{a.rest}}</span></sc-if></span>
+</li>
+</sc-for>
+</ol>
+</section>
+</div>
+
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"state":{"editor":"enum","options":["problems","good"],"default":"problems"},"$preview":{"width":1280,"height":1400}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const dark = this.props.dark ?? false;
+    const good = (this.props.state ?? 'problems') === 'good';
+    const ic = {
+      ok: 'M2 12a10 10 0 1 0 20 0a10 10 0 1 0-20 0 M8.5 12.5l2.5 2.5 4.5-5',
+      warn: 'm21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z M12 9v4 M12 17h.01',
+      bad: 'M2.586 16.726A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2h6.624a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586z M15 9l-6 6 M9 9l6 6',
+      wait: 'M5 22h14 M5 2h14 M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22 M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2',
+      serial: 'M12 22v-5 M9 8V2 M15 8V2 M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z',
+      usb: 'M9 7a1 1 0 1 0 2 0a1 1 0 1 0-2 0 M3 20a1 1 0 1 0 2 0a1 1 0 1 0-2 0 M4.7 19.3 19 5 M21 3l-3 1 2 2Z M9.26 7.68 5 12l2 5 M10 14l5 2 3.5-3.5 M18 12l1-1 1 1-1 1Z',
+      net: 'M17 16h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1Z M3 16h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1Z M10 2h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1Z M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3 M12 12V8',
+      folder: 'M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z',
+      lab: 'M4 2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Z M4 14h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2Z M6 6h.01 M6 18h.01',
+      key: 'm15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4 M21 2l-9.6 9.6 M2 15.5a5.5 5.5 0 1 0 11 0a5.5 5.5 0 1 0-11 0',
+      unknown: 'M2 12a10 10 0 1 0 20 0a10 10 0 1 0-20 0 M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3 M12 17h.01',
+      cancel: 'M2 12a10 10 0 1 0 20 0a10 10 0 1 0-20 0 M15 9l-6 6 M9 9l6 6'
+    };
+    const S = {
+      good: { tone: 'tone-good', icon: ic.ok, word: 'Good', st: 'status--good' },
+      warn: { tone: 'tone-warn', icon: ic.warn, word: 'Warning', st: 'status--warn' },
+      bad: { tone: 'tone-bad', icon: ic.bad, word: 'Problem', st: 'status--bad' },
+      wait: { tone: 'tone-off', icon: ic.wait, word: 'Waiting', st: 'status--off' }
+    };
+    const v = good
+      ? { cls: 'verdict--good', icon: ic.ok, title: 'All good', sub: '5 machines connected. Results are flowing to both lab apps. Last sent 10:44.' }
+      : { cls: 'verdict--bad', icon: ic.bad, title: '3 things need you', sub: 'Results are kept safely while you fix these. Nothing is lost.' };
+    const problems = [
+      { s: S.bad, title: 'Chemistry analyzer: cable not connected', detail: 'Disconnected at 10:41. Check the cable at the back of the analyzer and that it is switched on.', action: 'Check connection' },
+      { s: S.warn, title: '2 items need review', detail: 'Analyte kept them safely but could not process them on its own.', action: 'Review items' },
+      { s: S.bad, title: 'Can’t send to Main lab app: keys missing', detail: '4 results waiting. The oldest arrived at 10:31.', action: 'Add keys' }
+    ].map((p, i) => ({ n: '0' + (i + 1), tone: p.s.tone, icon: p.s.icon, word: p.s.word, title: p.title, detail: p.detail, action: p.action }));
+    const mk = (name, model, s, state, last, conn, ci, wire, dot) => ({
+      name, model, tone: s.tone, icon: s.icon, state, last, conn, ci,
+      lastCls: last === 'Nothing yet' ? 'subtle' : '',
+      nodeCls: wire === 'cut' ? 'node--bad' : '',
+      wireCls: wire === 'live' ? '' : 'wire--' + wire,
+      live: wire === 'live', cut: wire === 'cut', dotCls: dot || ''
+    });
+    const machines = good ? [
+      mk('Chemistry analyzer', 'XC-200', S.good, 'Connected', '1 min ago', 'Serial cable', ic.serial, 'live', ''),
+      mk('Hematology analyzer', 'HM-5', S.good, 'Connected', '1 min ago', 'USB adapter', ic.usb, 'live', 'wire__dot--3'),
+      mk('Immunoassay analyzer', 'IA-900', S.good, 'Connected', '2 min ago', 'Network', ic.net, 'live', 'wire__dot--2'),
+      mk('Coagulation analyzer', 'CG-7', S.good, 'Connected', '3 min ago', 'Network', ic.net, 'live', ''),
+      mk('Urine analyzer', 'UR-40', S.good, 'Connected', '9 min ago', 'Shared folder', ic.folder, 'live', 'wire__dot--3')
+    ] : [
+      mk('Chemistry analyzer', 'XC-200', S.bad, 'Disconnected', '6 min ago', 'Serial cable', ic.serial, 'cut', ''),
+      mk('Hematology analyzer', 'HM-5', S.good, 'Connected', '1 min ago', 'USB adapter', ic.usb, 'live', ''),
+      mk('Immunoassay analyzer', 'IA-900', S.good, 'Connected', '2 min ago', 'Network', ic.net, 'live', 'wire__dot--2'),
+      mk('Coagulation analyzer', 'CG-7', S.good, 'Connected', '3 min ago', 'Network', ic.net, 'live', 'wire__dot--3'),
+      mk('Urine analyzer', 'UR-40', S.wait, 'Waiting for the machine', 'Nothing yet', 'Shared folder', ic.folder, 'wait', '')
+    ];
+    const labOk = (name, l1, l2) => ({ name, line1: l1, line2: l2, live: true, cut: false, wireCls: '', nodeCls: '', stCls: 'status--good', stIcon: ic.ok, stWord: 'Receiving' });
+    const labs = good ? [
+      labOk('Main lab app', 'Last sent 10:44 · nothing waiting', 'From Chemistry, Hematology'),
+      labOk('Outpatient lab app', 'Last sent 10:43 · nothing waiting', 'From Immunoassay, Coagulation, Urine')
+    ] : [
+      { name: 'Main lab app', line1: 'Keys missing: API key and signing key.', line2: '4 results waiting · oldest 10:31 · from Chemistry, Hematology', live: false, cut: true, wireCls: 'wire--cut', nodeCls: 'node--bad', stCls: 'status--bad', stIcon: ic.bad, stWord: 'Cannot deliver' },
+      labOk('Outpatient lab app', 'Last sent 10:43 · nothing waiting', 'From Immunoassay, Coagulation, Urine')
+    ];
+    const orders = good ? [
+      { tone: 'tone-good', icon: ic.ok, text: 'No orders with an unknown outcome', link: '', href: '' },
+      { tone: 'tone-good', icon: ic.ok, text: 'No orders cancelled by a machine', link: '', href: '' }
+    ] : [
+      { tone: 'tone-warn', icon: ic.unknown, text: '1 order with unknown outcome', link: 'Check', href: '#orders' },
+      { tone: 'tone-off', icon: ic.cancel, text: '2 orders cancelled by a machine', link: 'Review', href: '#cancelled' }
+    ];
+    const act = good ? [
+      { t: '10:45', s: S.good, head: 'Chemistry analyzer', rest: 'sample 261119-052 – 12 results – sent to Main lab app', cls: 'feed__line--new' },
+      { t: '10:44', s: S.good, head: 'Hematology analyzer', rest: 'sample 261119-044 – 6 results – sent to Main lab app' },
+      { t: '10:43', s: S.good, head: 'Immunoassay analyzer', rest: 'sample 261119-031 – 8 results – sent to Outpatient lab app' },
+      { t: '10:42', s: S.good, head: 'Coagulation analyzer', rest: 'sample 261119-029 – 3 results – sent to Outpatient lab app' },
+      { t: '10:36', s: S.good, head: 'Urine analyzer', rest: 'sample 261119-027 – 10 results – sent to Outpatient lab app' }
+    ] : [
+      { t: '10:45', s: S.warn, head: '1 item added to Needs review', rest: '', isLink: true, cls: 'feed__line--new' },
+      { t: '10:44', s: S.warn, head: 'Hematology analyzer', rest: 'sample 261119-044 – 6 results – waiting, Main lab app has no keys' },
+      { t: '10:43', s: S.good, head: 'Immunoassay analyzer', rest: 'sample 261119-031 – 8 results – sent to Outpatient lab app' },
+      { t: '10:42', s: S.good, head: 'Coagulation analyzer', rest: 'sample 261119-029 – 3 results – sent to Outpatient lab app' },
+      { t: '10:41', s: S.bad, head: 'Chemistry analyzer', rest: 'disconnected' }
+    ];
+    const activity = act.map((a) => ({ t: a.t, tone: a.s.tone, icon: a.s.icon, word: a.s.word, head: a.head, rest: a.rest, isLink: !!a.isLink, plain: !a.isLink, cls: a.cls || '' }));
+    return {
+      theme: dark ? 'dark' : 'light', ic, v, hasProblems: !good, problems, machines, labs, orders, activity,
+      waiting: good ? '0' : '4', oldest: good ? '—' : '10:31', oldestAgo: good ? 'nothing waiting' : '14 min ago',
+      reviewCount: good ? '0' : '2'
+    };
+  }
+}
+</script>
+</body>
+</html>

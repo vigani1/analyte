@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Analyte · Sign in</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/2679076d2049d0720ac5104465671ab9">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=Instrument+Sans:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="center" data-theme="{{theme}}" style="font-family: var(--font-sans); color: var(--text)">
+<form class="panel anim-in" aria-labelledby="si-title">
+<svg width="44" height="44" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="5" style="fill: var(--text)"></rect><path d="M9.5 24.5 16 7.5l6.5 17" style="fill: none; stroke: var(--surface); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round"></path><path d="M11.4 18.6c3 1.7 6.2 1.7 9.2 0" style="fill: none; stroke: var(--mark); stroke-width: 2.4; stroke-linecap: round"></path></svg>
+<div>
+<h1 id="si-title" class="panel__title">Sign in to Analyte</h1>
+<p class="panel__text">Use your account on this computer.</p>
+</div>
+<div class="field"><label class="field__label" for="si-user">User name</label><input id="si-user" class="input" autocomplete="username" value="labmanager"></div>
+<div class="field"><label class="field__label" for="si-pass">Password</label><input id="si-pass" class="input" type="password" autocomplete="current-password"></div>
+<button type="submit" class="btn btn--primary btn--lg" style="width: 100%">Sign in</button>
+<p class="subtle" style="margin: 0; font-size: 12.5px">Forgot your password? Ask your lab manager to reset it in Settings.</p>
+<p class="live subtle" style="margin: 0; padding-top: 14px; border-top: 1px solid var(--border); font-size: 12.5px"><span class="live-dot"></span>Engine running · machines keep working while you’re signed out</p>
+</form>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: (this.props.dark ?? false) ? 'dark' : 'light' };
+  }
+}
+</script>
+</body>
+</html>

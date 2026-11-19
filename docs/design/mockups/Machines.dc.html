@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Analyte · Machines</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/2679076d2049d0720ac5104465671ab9">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=Instrument+Sans:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="app" data-theme="{{theme}}" style="font-family: var(--font-sans); color: var(--text)">
+<dc-import name="Sidebar" active="machines" hint-size="232px,100vh"></dc-import>
+<main class="main">
+
+<header class="page-head">
+<div>
+<h1>Machines</h1>
+<p class="page-head__lede">3 of 5 connected · 1 problem · 1 waiting for the machine</p>
+</div>
+<a class="btn btn--primary" href="#setup"><svg class="icon icon--md" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14 M5 12h14"></path></svg>Add a machine</a>
+</header>
+
+<div class="card table-wrap">
+<table class="table">
+<thead><tr><th scope="col">Machine</th><th scope="col">Connection</th><th scope="col">Last data</th><th scope="col">Connected by</th><th scope="col">Connected since</th><th scope="col">Sends to</th></tr></thead>
+<tbody>
+<tr>
+<td><div class="cell-main"><a href="#machine">Chemistry analyzer</a></div><div class="cell-sub">XC-200</div></td>
+<td><span class="status status--bad"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.bad}}"></path></svg>Disconnected</span><div class="cell-sub" style="margin-top: 3px">Cable not connected</div></td>
+<td class="num">6 min ago</td>
+<td><span class="with-icon"><svg class="icon icon--md" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.serial}}"></path></svg>Serial cable</span><div class="cell-sub mono">COM3</div></td>
+<td class="num subtle">—</td>
+<td>Main lab app</td>
+</tr>
+<tr>
+<td><div class="cell-main"><a href="#machine">Hematology analyzer</a></div><div class="cell-sub">HM-5</div></td>
+<td><span class="status status--good"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.ok}}"></path></svg>Connected</span></td>
+<td class="num">1 min ago</td>
+<td><span class="with-icon"><svg class="icon icon--md" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.usb}}"></path></svg>USB adapter</span><div class="cell-sub mono">COM12</div></td>
+<td class="num">08:02</td>
+<td>Main lab app</td>
+</tr>
+<tr>
+<td><div class="cell-main"><a href="#machine">Immunoassay analyzer</a></div><div class="cell-sub">IA-900</div></td>
+<td><span class="status status--good"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.ok}}"></path></svg>Connected</span></td>
+<td class="num">2 min ago</td>
+<td><span class="with-icon"><svg class="icon icon--md" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.net}}"></path></svg>Network</span><div class="cell-sub mono">10.20.4.21 : 5001</div></td>
+<td class="num">07:58</td>
+<td>Outpatient lab app</td>
+</tr>
+<tr>
+<td><div class="cell-main"><a href="#machine">Coagulation analyzer</a></div><div class="cell-sub">CG-7</div></td>
+<td><span class="status status--good"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.ok}}"></path></svg>Connected</span></td>
+<td class="num">3 min ago</td>
+<td><span class="with-icon"><svg class="icon icon--md" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.net}}"></path></svg>Network</span><div class="cell-sub mono">10.20.4.30 : 4100</div></td>
+<td class="num">07:58</td>
+<td>Outpatient lab app</td>
+</tr>
+<tr>
+<td><div class="cell-main"><a href="#machine">Urine analyzer</a></div><div class="cell-sub">UR-40</div></td>
+<td><span class="status status--off"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.wait}}"></path></svg>Waiting for the machine</span></td>
+<td class="num subtle">Nothing yet</td>
+<td><span class="with-icon"><svg class="icon icon--md" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.folder}}"></path></svg>Shared folder</span><div class="cell-sub mono">\\LABSRV\ur40-out</div></td>
+<td class="num">07:58</td>
+<td>Outpatient lab app</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<div class="alert alert--info">
+<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12a10 10 0 1 0 20 0a10 10 0 1 0-20 0 M12 16v-4 M12 8h.01"></path></svg>
+<div><p class="alert__title">“Waiting for the machine” is normal after a restart</p><p class="alert__text">Analyte is listening. It changes to Connected when the machine sends its first message. If it stays like this, check the machine’s host settings.</p></div>
+<span></span>
+</div>
+
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"$preview":{"width":1280,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const ic = {
+      ok: 'M2 12a10 10 0 1 0 20 0a10 10 0 1 0-20 0 M8.5 12.5l2.5 2.5 4.5-5',
+      bad: 'M2.586 16.726A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2h6.624a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586z M15 9l-6 6 M9 9l6 6',
+      wait: 'M5 22h14 M5 2h14 M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22 M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2',
+      serial: 'M12 22v-5 M9 8V2 M15 8V2 M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z',
+      usb: 'M9 7a1 1 0 1 0 2 0a1 1 0 1 0-2 0 M3 20a1 1 0 1 0 2 0a1 1 0 1 0-2 0 M4.7 19.3 19 5 M21 3l-3 1 2 2Z M9.26 7.68 5 12l2 5 M10 14l5 2 3.5-3.5 M18 12l1-1 1 1-1 1Z',
+      net: 'M17 16h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1Z M3 16h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1Z M10 2h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1Z M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3 M12 12V8',
+      folder: 'M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z'
+    };
+    return { theme: (this.props.dark ?? false) ? 'dark' : 'light', ic };
+  }
+}
+</script>
+</body>
+</html>

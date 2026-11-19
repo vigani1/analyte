@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Analyte · App icon, tray and notifications</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/2679076d2049d0720ac5104465671ab9">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=Instrument+Sans:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="sheet" data-theme="light" style="min-height: 100vh; box-sizing: border-box; padding: 56px 64px 80px; background: var(--bg); color: var(--text); font-family: var(--font-sans); font-size: 14px; line-height: 1.45; display: flex; flex-direction: column; gap: 44px">
+
+<header style="display: flex; flex-direction: column; gap: 8px">
+<p class="eyebrow">Analyte · identity</p>
+<h1 style="margin: 0; font-size: 40px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.05">App icon, tray & notifications</h1>
+<p class="muted" style="margin: 0; font-size: 15px; max-width: 760px">The mark is an “A” whose crossbar is a meniscus, the curved line you read a measurement from. Ink square, paper letter, cobalt meniscus.</p>
+</header>
+
+<section class="section" aria-labelledby="i-app">
+<h2 id="i-app" class="label">01 · App icon</h2>
+<div class="card" style="display: grid; grid-template-columns: 1fr 1fr">
+<div style="display: flex; align-items: flex-end; gap: 28px; padding: 32px; flex-wrap: wrap">
+<sc-for list="{{sizes}}" as="s" hint-placeholder-count="5">
+<div style="display: flex; flex-direction: column; align-items: center; gap: 10px">
+<svg width="{{s.px}}" height="{{s.px}}" viewBox="0 0 32 32" role="img" aria-label="Analyte app icon"><rect width="32" height="32" rx="7" fill="#17202A"></rect><path d="M9.5 24.5 16 7.5l6.5 17" fill="none" stroke="#FBFBF9" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path><path d="M11.4 18.6c3 1.7 6.2 1.7 9.2 0" fill="none" stroke="#93A8FF" stroke-width="2.6" stroke-linecap="round"></path></svg>
+<span class="mono subtle" style="font-size: 12px">{{s.px}}</span>
+</div>
+</sc-for>
+</div>
+<div style="display: flex; align-items: flex-end; gap: 28px; padding: 32px; background: #0F1418; border-radius: 0 3px 3px 0; flex-wrap: wrap">
+<sc-for list="{{sizes}}" as="s" hint-placeholder-count="5">
+<div style="display: flex; flex-direction: column; align-items: center; gap: 10px">
+<svg width="{{s.px}}" height="{{s.px}}" viewBox="0 0 32 32" role="img" aria-label="Analyte app icon on dark"><rect x=".5" y=".5" width="31" height="31" rx="7" fill="#17202A" stroke="#3A4551"></rect><path d="M9.5 24.5 16 7.5l6.5 17" fill="none" stroke="#FBFBF9" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path><path d="M11.4 18.6c3 1.7 6.2 1.7 9.2 0" fill="none" stroke="#93A8FF" stroke-width="2.6" stroke-linecap="round"></path></svg>
+<span class="mono" style="font-size: 12px; color: #909BA6">{{s.px}}</span>
+</div>
+</sc-for>
+</div>
+</div>
+<p class="subtle" style="margin: 0; font-size: 13px">On dark backgrounds the square gets a 1 px slate edge so it doesn’t sink. Below 24 px the strokes thicken to 2.6 units.</p>
+</section>
+
+<section class="section" aria-labelledby="i-tray">
+<h2 id="i-tray" class="label">02 · Tray icons · shape and colour both change</h2>
+<div class="stack">
+<sc-for list="{{bars}}" as="b" hint-placeholder-count="2">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 40px; padding: 18px 28px; border-radius: 3px; background: {{b.bg}}; color: {{b.fg}}; border: 1px solid {{b.line}}">
+<span class="mono" style="font-size: 12px; width: 110px">{{b.name}}</span>
+<sc-for list="{{tray}}" as="t" hint-placeholder-count="3">
+<div style="display: flex; align-items: center; gap: 14px">
+<div style="display: flex; align-items: flex-end; gap: 12px">
+<sc-for list="{{traySizes}}" as="z" hint-placeholder-count="3">
+<svg width="{{z.px}}" height="{{z.px}}" viewBox="0 0 32 32" role="img" aria-label="{{t.label}}">
+<g opacity="{{t.op}}"><rect x="1" y="1" width="25" height="25" rx="5" fill="{{t.sq}}" stroke="{{b.edge}}" stroke-width="1.2"></rect><path d="M8.2 21.6 13.5 6.6l5.3 15" fill="none" stroke="{{t.letter}}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path><path d="M9.8 16.4c2.4 1.4 5 1.4 7.4 0" fill="none" stroke="{{t.men}}" stroke-width="2.6" stroke-linecap="round"></path></g>
+<path d="{{t.badge}}" fill="{{t.badgeFill}}" stroke="{{b.bg}}" stroke-width="2"></path>
+<path d="{{t.glyph}}" fill="none" stroke="{{t.glyphInk}}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
+</sc-for>
+</div>
+<span style="font-size: 13px; font-weight: 600">{{t.label}}</span>
+</div>
+</sc-for>
+</div>
+</sc-for>
+</div>
+<p class="subtle" style="margin: 0; font-size: 13px">All good: green round badge with a tick. Something needs you: amber triangle with “!”. Engine not running: faded mark with a grey square pause badge. Tooltip repeats the status line, e.g. “Analyte: 3 things need you”.</p>
+</section>
+
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px; align-items: start">
+<section class="section" aria-labelledby="i-menu">
+<h2 id="i-menu" class="label">03 · Tray menu</h2>
+<div style="display: flex; flex-wrap: wrap; gap: 20px">
+<sc-for list="{{themes}}" as="th" hint-placeholder-count="2">
+<div data-theme="{{th}}" class="tray-menu" role="menu" aria-label="Analyte tray menu">
+<div class="tray-menu__status">
+<svg class="icon tone-bad" viewBox="0 0 24 24" aria-hidden="true" style="margin-top: 1px"><path d="{{ic.bad}}"></path></svg>
+<div><p style="margin: 0; font-weight: 600">3 things need you</p><p class="subtle" style="margin: 0; font-size: 12.5px">Engine running · 3 of 5 machines connected</p></div>
+</div>
+<button type="button" class="tray-menu__item" role="menuitem"><svg class="icon icon--md" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6 M10 14 21 3 M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path></svg><b style="font-weight: 600">Open Analyte</b></button>
+<button type="button" class="tray-menu__item" role="menuitem"><svg class="icon icon--md" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.retry}}"></path></svg>Restart engine</button>
+<hr>
+<button type="button" class="tray-menu__item" role="menuitem"><svg class="icon icon--md" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18 M6 6l12 12"></path></svg>Quit app</button>
+<p class="tray-menu__note">Closes this window and icon. The engine keeps running.</p>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section class="section" aria-labelledby="i-notif">
+<h2 id="i-notif" class="label">04 · System notifications</h2>
+<div class="stack">
+<sc-for list="{{notes}}" as="n" hint-placeholder-count="3">
+<div data-theme="{{n.theme}}" class="notif" role="status">
+<svg width="40" height="40" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#17202A"></rect><path d="M9.5 24.5 16 7.5l6.5 17" fill="none" stroke="#FBFBF9" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path><path d="M11.4 18.6c3 1.7 6.2 1.7 9.2 0" fill="none" stroke="#93A8FF" stroke-width="2.6" stroke-linecap="round"></path></svg>
+<div><p class="notif__app">Analyte · now</p><p class="notif__title">{{n.title}}</p><p class="notif__text">{{n.text}}</p></div>
+</div>
+</sc-for>
+<p class="subtle" style="margin: 0; font-size: 13px">Sent only when something turns bad. Clicking opens the right screen: the machine, Needs review or the lab app.</p>
+</div>
+</section>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":1400}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const ic = {
+      bad: 'M2.586 16.726A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2h6.624a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586z M15 9l-6 6 M9 9l6 6',
+      retry: 'M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8 M21 3v5h-5 M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16 M8 16H3v5'
+    };
+    const sizes = [{ px: 128 }, { px: 64 }, { px: 48 }, { px: 32 }, { px: 16 }];
+    const traySizes = [{ px: 16 }, { px: 20 }, { px: 32 }];
+    const tray = [
+      { label: 'All good', op: '1', sq: '#17202A', letter: '#FBFBF9', men: '#93A8FF',
+        badge: 'M18 24.5a6.5 6.5 0 1 0 13 0a6.5 6.5 0 1 0-13 0', badgeFill: '#2E9E66', glyph: 'M21.6 24.6l2.1 2.1 3.8-4.1', glyphInk: '#FFFFFF' },
+      { label: 'Something needs you', op: '1', sq: '#17202A', letter: '#FBFBF9', men: '#93A8FF',
+        badge: 'M24.5 16.5 31.5 30h-14Z', badgeFill: '#E5A11A', glyph: 'M24.5 21.2v3.6 M24.5 27.4h.01', glyphInk: '#17202A' },
+      { label: 'Engine not running', op: '0.45', sq: '#5C6772', letter: '#FBFBF9', men: '#FBFBF9',
+        badge: 'M18.5 18.5h12v12h-12Z', badgeFill: '#8A949E', glyph: 'M22.6 21.8v5.4 M26.4 21.8v5.4', glyphInk: '#FFFFFF' }
+    ];
+    const bars = [
+      { name: 'Light taskbar', bg: '#E9EBE6', fg: '#17202A', line: '#DCDFD9', edge: '#E9EBE6' },
+      { name: 'Dark taskbar', bg: '#1C1F24', fg: '#E7ECEF', line: '#1C1F24', edge: '#4A5560' }
+    ];
+    const notes = [
+      { theme: 'light', title: 'Chemistry analyzer disconnected', text: 'Cable not connected since 10:41. Click to see what to do.' },
+      { theme: 'dark', title: 'Can’t send to Main lab app', text: 'Keys missing. 4 results are waiting safely.' },
+      { theme: 'light', title: '1 item needs review', text: 'Test not in this machine’s test list.' }
+    ];
+    return { ic, sizes, traySizes, tray, bars, notes, themes: ['light', 'dark'] };
+  }
+}
+</script>
+</body>
+</html>

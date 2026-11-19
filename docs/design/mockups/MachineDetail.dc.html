@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Analyte · Hematology analyzer</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/2679076d2049d0720ac5104465671ab9">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=Instrument+Sans:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="app" data-theme="{{theme}}" style="font-family: var(--font-sans); color: var(--text)">
+<dc-import name="Sidebar" active="machines" hint-size="232px,100vh"></dc-import>
+<main class="main">
+
+<header class="page-head">
+<div>
+<ol class="crumbs"><li><a href="#machines">Machines</a></li><li>Hematology analyzer</li></ol>
+<div class="cluster" style="gap: 12px">
+<h1>Hematology analyzer</h1>
+<span class="status status--good"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.ok}}"></path></svg>Connected</span>
+</div>
+<p class="page-head__lede">HM-5 · last data <span class="mono">1 min ago</span></p>
+</div>
+<div class="cluster">
+<button type="button" class="btn btn--outline">Test connection</button>
+<a class="btn btn--outline" href="#setup">Edit setup</a>
+<button type="button" class="btn btn--danger-quiet">Remove</button>
+</div>
+</header>
+
+<div class="split">
+<section class="card" aria-labelledby="md-setup">
+<div class="card__head"><h2 id="md-setup" class="card__title">Setup</h2></div>
+<div class="card__body">
+<dl class="kv">
+<dt>Model</dt><dd>Hematology analyzer HM-5</dd>
+<dt>Connected by</dt><dd><span class="with-icon"><svg class="icon icon--md" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.usb}}"></path></svg>USB adapter, <span class="mono">COM12</span></span><div class="subtle" style="font-size: 12.5px">Remembered by its serial number, so it keeps working if Windows renames the port.</div></dd>
+<dt>Connected since</dt><dd><time>08:02</time> today</dd>
+<dt>Sends results to</dt><dd><a class="link" href="#labapps" style="font-size: 13.5px">Main lab app</a> <span class="tone-warn">· 3 waiting, keys missing</span></dd>
+<dt>Receives orders</dt><dd>Yes, from Main lab app</dd>
+</dl>
+</div>
+</section>
+
+<section class="card" aria-labelledby="md-diff">
+<div class="card__head"><h2 id="md-diff" class="card__title">Accepted differences from the standard</h2></div>
+<div class="card__body stack">
+<p class="muted" style="margin: 0; font-size: 13px">This model does a few things its own way. Analyte handles them for you:</p>
+<ul class="rows" style="font-size: 13.5px">
+<li style="padding: 8px 0">Sends the sample ID in a different place in the message. Analyte reads it from there.</li>
+<li style="padding: 8px 0">Sends “no result” as an empty value instead of a code. Analyte treats it as “not measured”.</li>
+<li style="padding: 8px 0">Doesn’t confirm orders. Analyte marks them “sent” and waits for results.</li>
+</ul>
+</div>
+</section>
+</div>
+
+<section class="section" aria-labelledby="md-recent">
+<div class="section__head"><h2 id="md-recent" class="label">Recent messages received <span class="live tone-good"><span class="live-dot"></span>Live</span></h2><a class="link" href="#activity">All activity for this machine</a></div>
+<div class="card table-wrap">
+<table class="table">
+<thead><tr><th scope="col">Time</th><th scope="col">Message</th><th scope="col">Sample</th><th scope="col" class="right">Results</th><th scope="col">What happened</th></tr></thead>
+<tbody>
+<tr class="feed__line--new" style="display: table-row"><td class="num">10:44:51</td><td>Results</td><td class="num">261119-044</td><td class="num right">6</td><td><span class="status status--warn"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.warn}}"></path></svg>Waiting · lab app has no keys</span></td></tr>
+<tr><td class="num">10:40:05</td><td>Results</td><td class="num">261119-041</td><td class="num right">6</td><td><span class="status status--warn"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.retry}}"></path></svg>Sending failed, will retry</span></td></tr>
+<tr><td class="num">10:31:22</td><td>Order question</td><td class="num">261119-040</td><td class="num right subtle">—</td><td><span class="status status--good"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.ok}}"></path></svg>Answered · 5 tests</span></td></tr>
+<tr><td class="num">10:18:40</td><td>Results</td><td class="num">261119-037</td><td class="num right">6</td><td><span class="status status--warn"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.warn}}"></path></svg>Waiting · lab app has no keys</span></td></tr>
+<tr><td class="num">09:47:03</td><td>Results</td><td class="num">261119-030</td><td class="num right">6</td><td><span class="status status--good"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.ok}}"></path></svg>Sent to Main lab app</span></td></tr>
+<tr><td class="num">08:02:11</td><td>Hello</td><td class="num subtle">—</td><td class="num right subtle">—</td><td><span class="status status--good"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.ok}}"></path></svg>Connected</span></td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<sc-if value="{{dialog}}" hint-placeholder-val="{{ false }}">
+<div class="scrim">
+<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="rm-title">
+<h2 id="rm-title" class="dialog__title">Remove Hematology analyzer?</h2>
+<p class="dialog__text">Analyte stops listening to it. Its 3 waiting results will still be sent once Main lab app has its keys.</p>
+<p style="margin: 0; font-weight: 600; font-size: 13.5px">Still unfinished</p>
+<ul class="dialog__list">
+<li><svg class="icon icon--md tone-warn" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.unknown}}"></path></svg>1 order sent to it has no outcome yet. It will be marked “unknown”.</li>
+<li><svg class="icon icon--md tone-off" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.ok}}"></path></svg>Its history and kept messages stay, following Data keeping.</li>
+</ul>
+<div class="dialog__actions"><button type="button" class="btn btn--outline">Keep</button><button type="button" class="btn btn--danger">Remove</button></div>
+</div>
+</div>
+</sc-if>
+
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"dialog":{"editor":"boolean","default":false},"$preview":{"width":1280,"height":1100}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const ic = {
+      ok: 'M2 12a10 10 0 1 0 20 0a10 10 0 1 0-20 0 M8.5 12.5l2.5 2.5 4.5-5',
+      warn: 'm21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z M12 9v4 M12 17h.01',
+      retry: 'M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8 M21 3v5h-5 M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16 M8 16H3v5',
+      usb: 'M9 7a1 1 0 1 0 2 0a1 1 0 1 0-2 0 M3 20a1 1 0 1 0 2 0a1 1 0 1 0-2 0 M4.7 19.3 19 5 M21 3l-3 1 2 2Z M9.26 7.68 5 12l2 5 M10 14l5 2 3.5-3.5 M18 12l1-1 1 1-1 1Z',
+      unknown: 'M2 12a10 10 0 1 0 20 0a10 10 0 1 0-20 0 M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3 M12 17h.01'
+    };
+    return { theme: (this.props.dark ?? false) ? 'dark' : 'light', dialog: this.props.dialog ?? false, ic };
+  }
+}
+</script>
+</body>
+</html>

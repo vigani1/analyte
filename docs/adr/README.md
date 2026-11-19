@@ -24,3 +24,4 @@ links to its replacement; none is superseded today.
 | [0015](0015-named-machine-departures.md)        | Typed, evidenced departures for individual machines |
 | [0016](0016-awos-status-notifications.md)       | LAW status notifications beside order state        |
 | [0017](0017-windows-access-list-unsafe.md)      | Unsafe code for Windows access lists               |
+| [0018](0018-server-rendered-pages-and-one-stylesheet.md) | Server-rendered admin pages with one token stylesheet |

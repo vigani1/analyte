@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Analyte sidebar</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/2679076d2049d0720ac5104465671ab9">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=Instrument+Sans:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<nav class="sidebar" aria-label="Main" style="font-family: var(--font-sans); font-size: 14px; line-height: 1.45; color: var(--text)">
+<div class="brand">
+<svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="5" style="fill: var(--text)"></rect><path d="M9.5 24.5 16 7.5l6.5 17" style="fill: none; stroke: var(--surface); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round"></path><path d="M11.4 18.6c3 1.7 6.2 1.7 9.2 0" style="fill: none; stroke: var(--mark); stroke-width: 2.4; stroke-linecap: round"></path></svg>
+<span class="brand__name">Analyte</span>
+</div>
+
+<sc-if value="{{running}}" hint-placeholder-val="{{ true }}">
+<div class="engine">
+<span class="live-dot"></span>
+<span class="engine__text"><span class="engine__title">Engine running</span><span class="engine__meta">Live · 10:45:12</span></span>
+</div>
+</sc-if>
+<sc-if value="{{stopped}}" hint-placeholder-val="{{ false }}">
+<div class="engine engine--stopped">
+<span class="live-dot live-dot--bad"></span>
+<span class="engine__text"><span class="engine__title tone-bad">Engine stopped</span><span class="engine__meta">Since 10:52</span></span>
+</div>
+</sc-if>
+
+<ul class="nav">
+<sc-for list="{{main}}" as="n" hint-placeholder-count="6">
+<li><a href="{{n.href}}" aria-current="{{n.cur}}">
+<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{n.icon}}"></path></svg>
+<span class="nav__label">{{n.label}}</span>
+<sc-if value="{{n.count}}" hint-placeholder-val="{{ false }}"><span class="nav__count"><span class="sr-only">, </span>{{n.count}}</span></sc-if>
+</a></li>
+</sc-for>
+</ul>
+
+<div class="nav-group">
+<ul class="nav">
+<li><button type="button" aria-expanded="{{moreOpen}}">
+<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.more}}"></path></svg>
+<span class="nav__label">More</span>
+<svg class="icon icon--md nav__chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+</button></li>
+</ul>
+<sc-if value="{{moreOpenBool}}" hint-placeholder-val="{{ false }}">
+<ul class="nav nav--sub">
+<sc-for list="{{more}}" as="m" hint-placeholder-count="5">
+<li><a href="{{m.href}}" aria-current="{{m.cur}}"><span class="nav__label">{{m.label}}</span></a></li>
+</sc-for>
+</ul>
+</sc-if>
+</div>
+
+<div class="sidebar__foot"><span>Lab manager</span><a href="#sign-out">Sign out</a></div>
+</nav>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"active":{"editor":"enum","options":["overview","activity","review","machines","labapps","setup","orders","cancelled","deliveries","datakeeping","settings","none"],"default":"overview"},"engine":{"editor":"enum","options":["running","stopped"],"default":"running"},"review":{"editor":"text","default":"2"},"$preview":{"width":232,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const active = this.props.active ?? 'overview';
+    const engine = this.props.engine ?? 'running';
+    const review = this.props.review ?? '2';
+    const ic = {
+      overview: 'M4 3h5a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z M15 3h5a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z M15 12h5a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1Z M4 16h5a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1Z',
+      activity: 'M22 12h-4l-3 9L9 3l-3 9H2',
+      review: 'M22 12h-6l-2 3h-4l-2-3H2 M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11Z',
+      machines: 'M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z M7 8h7 M7 16h4 M15 16a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0',
+      labapps: 'M4 2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Z M4 14h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2Z M6 6h.01 M6 18h.01',
+      setup: 'M4 21v-7 M4 10V3 M12 21v-9 M12 8V3 M20 21v-5 M20 12V3 M1 14h6 M9 8h6 M17 16h6',
+      more: 'M11 12a1 1 0 1 0 2 0a1 1 0 1 0-2 0 M18 12a1 1 0 1 0 2 0a1 1 0 1 0-2 0 M4 12a1 1 0 1 0 2 0a1 1 0 1 0-2 0'
+    };
+    const mainSrc = [['overview', 'Overview'], ['activity', 'Activity'], ['review', 'Needs review'], ['machines', 'Machines'], ['labapps', 'Lab apps'], ['setup', 'Setup']];
+    const main = mainSrc.map((n) => ({ label: n[1], icon: ic[n[0]], href: '#' + n[0], cur: n[0] === active ? 'page' : undefined, count: n[0] === 'review' && review !== '0' ? review : '' }));
+    const moreSrc = [['orders', 'Machine orders'], ['cancelled', 'Cancelled by machine'], ['deliveries', 'Deliveries'], ['datakeeping', 'Data keeping'], ['settings', 'Settings']];
+    const more = moreSrc.map((m) => ({ label: m[1], href: '#' + m[0], cur: m[0] === active ? 'page' : undefined }));
+    const inMore = moreSrc.some((m) => m[0] === active);
+    return { ic, main, more, moreOpen: inMore ? 'true' : 'false', moreOpenBool: inMore, running: engine === 'running', stopped: engine === 'stopped' };
+  }
+}
+</script>
+</body>
+</html>

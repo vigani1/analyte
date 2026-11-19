@@ -3,3 +3,4 @@
 *.bin binary
 # Recorded analyzer conversations are exact bytes; never touch line endings.
 **/fixtures/** -text
+*.woff2 binary

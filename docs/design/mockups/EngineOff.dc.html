@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Analyte · Engine not running</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/2679076d2049d0720ac5104465671ab9">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=Instrument+Sans:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="app" data-theme="{{theme}}" style="font-family: var(--font-sans); color: var(--text)">
+<dc-import name="Sidebar" active="overview" engine="stopped" review="0" hint-size="232px,100vh"></dc-import>
+<main class="main main--center">
+<section class="panel panel--wide anim-in" aria-labelledby="eo-title" role="alert">
+<span class="verdict__icon" style="background: var(--bad-bg); color: var(--bad-text)"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" style="width: 24px; height: 24px"><path d="M2 12a10 10 0 1 0 20 0a10 10 0 1 0-20 0 M10 15V9 M14 15V9"></path></svg></span>
+<div>
+<h1 id="eo-title" class="panel__title">The Analyte engine isn’t running</h1>
+<p class="panel__text" style="margin-top: 6px">Machines aren’t being listened to and nothing is being sent to the lab apps. Results Analyte already kept are safe.</p>
+</div>
+<dl class="kv" style="padding: 12px 14px; background: var(--surface-sunken); border-radius: var(--radius-sm)">
+<dt>Stopped at</dt><dd><time>10:52</time> today</dd>
+<dt>Last known state</dt><dd>3 machines connected · 4 results waiting</dd>
+</dl>
+<div class="cluster"><button type="button" class="btn btn--primary btn--lg">Start engine</button><span class="subtle" style="font-size: 13px">Usually takes a few seconds.</span></div>
+<p class="subtle" style="margin: 0; padding-top: 14px; border-top: 1px solid var(--border); font-size: 12.5px">If it doesn’t start, restart the computer or contact your IT team. The app keeps checking and updates this screen by itself.</p>
+</section>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: (this.props.dark ?? false) ? 'dark' : 'light' };
+  }
+}
+</script>
+</body>
+</html>

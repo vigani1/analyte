@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Analyte · Set up a machine</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/2679076d2049d0720ac5104465671ab9">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=Instrument+Sans:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="app" data-theme="{{theme}}" style="font-family: var(--font-sans); color: var(--text)">
+<dc-import name="Sidebar" active="setup" hint-size="232px,100vh"></dc-import>
+<main class="main">
+
+<header class="page-head">
+<div>
+<p class="eyebrow">New machine</p>
+<h1>Set up a machine</h1>
+</div>
+<a class="btn btn--quiet" href="#machines">Cancel</a>
+</header>
+
+<ol class="stepper" aria-label="Steps">
+<sc-for list="{{steps}}" as="s" hint-placeholder-count="4">
+<li class="step {{s.cls}}" aria-current="{{s.cur}}">
+<span class="step__n"><sc-if value="{{s.done}}" hint-placeholder-val="{{ false }}"><svg class="icon icon--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg></sc-if>Step {{s.n}}<sc-if value="{{s.done}}" hint-placeholder-val="{{ false }}"> · done</sc-if></span>
+<span class="step__name">{{s.name}}</span>
+</li>
+</sc-for>
+</ol>
+
+<div class="anim-in" style="max-width: 820px; display: flex; flex-direction: column; gap: 20px">
+
+<sc-if value="{{is1}}" hint-placeholder-val="{{ true }}">
+<section class="stack" aria-labelledby="s1">
+<div><h2 id="s1" style="margin: 0; font-size: 20px; font-weight: 600">Which machine is it?</h2><p class="muted" style="margin: 4px 0 0">Pick the model. Models marked “Not ready yet” can’t be set up until their information is complete.</p></div>
+<input class="input" type="search" placeholder="Search models" aria-label="Search models" style="max-width: 360px">
+<ul class="choices">
+<sc-for list="{{models}}" as="m" hint-placeholder-count="6">
+<li><label class="choice">
+<input type="radio" name="model" checked="{{m.checked}}" disabled="{{m.disabled}}">
+<span><span class="choice__title">{{m.name}}</span> <span class="choice__meta">{{m.code}}</span></span>
+<span class="status {{m.st}}"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{m.icon}}"></path></svg>{{m.ready}}</span>
+</label></li>
+</sc-for>
+</ul>
+</section>
+</sc-if>
+
+<sc-if value="{{is2}}" hint-placeholder-val="{{ false }}">
+<section class="stack stack--lg" aria-labelledby="s2">
+<div><h2 id="s2" style="margin: 0; font-size: 20px; font-weight: 600">How is it connected?</h2><p class="muted" style="margin: 4px 0 0">Chemistry analyzer XC-300 usually uses a serial or USB cable.</p></div>
+<div class="seg" role="group" aria-label="Connection type">
+<button type="button" aria-pressed="true"><svg class="icon icon--md" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.usb}}"></path></svg>Cable or USB adapter</button>
+<button type="button" aria-pressed="false"><svg class="icon icon--md" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.net}}"></path></svg>Network</button>
+<button type="button" aria-pressed="false"><svg class="icon icon--md" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.folder}}"></path></svg>Shared folder</button>
+</div>
+<fieldset style="border: 0; margin: 0; padding: 0" class="stack">
+<legend class="field__label" style="margin-bottom: 8px">Port</legend>
+<ul class="choices">
+<li><label class="choice"><input type="radio" name="port" checked="{{ true }}"><span><span class="choice__title mono">COM14</span> <span class="choice__meta">– USB adapter – remembered by its serial number</span></span><span class="status status--good"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.ok}}"></path></svg>Free</span></label></li>
+<li><label class="choice"><input type="radio" name="port" disabled="{{ true }}"><span><span class="choice__title mono">COM12</span> <span class="choice__meta">– USB adapter – used by Hematology analyzer</span></span><span class="status status--off"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.off}}"></path></svg>In use</span></label></li>
+<li><label class="choice"><input type="radio" name="port" disabled="{{ true }}"><span><span class="choice__title mono">COM3</span> <span class="choice__meta">– serial cable – used by Chemistry analyzer</span></span><span class="status status--off"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.off}}"></path></svg>In use</span></label></li>
+<li><label class="choice"><input type="radio" name="port"><span><span class="choice__title">Type a port</span> <span class="choice__meta">– if yours isn’t listed</span></span><span></span></label></li>
+</ul>
+</fieldset>
+<div class="form-grid">
+<div class="field"><label class="field__label" for="s2-name">Name in Analyte</label><input id="s2-name" class="input" value="Chemistry analyzer 2"><span class="field__hint">How it appears everywhere in the app.</span></div>
+<div class="field"><label class="field__label" for="s2-lab">Send results to</label><select id="s2-lab" class="select"><option>Main lab app</option><option>Outpatient lab app</option></select></div>
+</div>
+</section>
+</sc-if>
+
+<sc-if value="{{is3}}" hint-placeholder-val="{{ false }}">
+<section class="stack stack--lg" aria-labelledby="s3">
+<div><h2 id="s3" style="margin: 0; font-size: 20px; font-weight: 600">Test the connection</h2><p class="muted" style="margin: 4px 0 0">Analyte only listens. It sends nothing to the machine. Ask the machine to send a result now.</p></div>
+<div class="card card--pad" style="display: flex; flex-wrap: wrap; align-items: center; gap: 20px 32px">
+<div><p class="eyebrow" style="margin: 0 0 6px">Listening on COM14</p><p class="countdown" style="margin: 0" aria-live="polite"><span class="sr-only">Time left </span>{{t.time}}</p></div>
+<div style="flex: 1 1 260px; display: flex; flex-direction: column; gap: 8px">
+<div class="meter" role="progressbar" aria-label="Test progress" aria-valuenow="{{t.pct}}" aria-valuemin="0" aria-valuemax="100"><div class="meter__fill" style="width: {{t.width}}"></div></div>
+<p class="subtle mono" style="margin: 0; font-size: 12.5px">{{t.bytes}}</p>
+</div>
+<button type="button" class="btn btn--outline">Stop</button>
+</div>
+<div class="alert {{t.cls}}" role="status">
+<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{t.icon}}"></path></svg>
+<div><p class="alert__title">{{t.title}}</p><p class="alert__text">{{t.text}}</p></div>
+<span></span>
+</div>
+<details class="details"><summary><svg class="icon icon--md" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg>Details · what was received</summary><pre>{{t.raw}}</pre></details>
+</section>
+</sc-if>
+
+<sc-if value="{{is4}}" hint-placeholder-val="{{ false }}">
+<section class="stack stack--lg" aria-labelledby="s4">
+<div><h2 id="s4" style="margin: 0; font-size: 20px; font-weight: 600">Check and save</h2><p class="muted" style="margin: 4px 0 0">This is what will be saved.</p></div>
+<div class="card card--pad">
+<dl class="kv">
+<dt>Machine</dt><dd>Chemistry analyzer XC-300</dd>
+<dt>Name in Analyte</dt><dd>Chemistry analyzer 2</dd>
+<dt>Connection</dt><dd>USB adapter, <span class="mono">COM14</span> · remembered by its serial number</dd>
+<dt>Sends results to</dt><dd>Main lab app <span class="tone-warn">· keys still missing, results will wait</span></dd>
+<dt>Connection test</dt><dd><span class="with-icon tone-good"><svg class="icon icon--md" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.ok}}"></path></svg>Receiving data, looks like ASTM · <time>11:02</time></span></dd>
+</dl>
+</div>
+<div class="alert alert--good anim-in" role="status">
+<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.ok}}"></path></svg>
+<div><p class="alert__title">Settings saved</p><p class="alert__text">The engine picks up the new machine after a restart. Restarting pauses machine connections for a few seconds; machines keep their results and send them again.</p></div>
+<div class="cluster"><button type="button" class="btn btn--quiet btn--sm">Later</button><button type="button" class="btn btn--primary btn--sm">Restart engine now</button></div>
+</div>
+</section>
+</sc-if>
+
+<div class="wizard-foot">
+<button type="button" class="btn btn--outline" disabled="{{backOff}}">Back</button>
+<span class="subtle" style="font-size: 13px">Step {{step}} of 4</span>
+<button type="button" class="btn btn--primary" disabled="{{nextOff}}">{{nextLabel}}</button>
+</div>
+</div>
+
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"step":{"editor":"enum","options":["1","2","3","4"],"default":"1"},"verdict":{"editor":"enum","options":["ok","none","wrong"],"default":"ok"},"$preview":{"width":1280,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const step = Number(this.props.step ?? '1');
+    const verdict = this.props.verdict ?? 'ok';
+    const ic = {
+      ok: 'M2 12a10 10 0 1 0 20 0a10 10 0 1 0-20 0 M8.5 12.5l2.5 2.5 4.5-5',
+      warn: 'm21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z M12 9v4 M12 17h.01',
+      bad: 'M2.586 16.726A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2h6.624a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586z M15 9l-6 6 M9 9l6 6',
+      off: 'M2 12a10 10 0 1 0 20 0a10 10 0 1 0-20 0 M4.9 4.9l14.2 14.2',
+      clock: 'M2 12a10 10 0 1 0 20 0a10 10 0 1 0-20 0 M12 6v6l4 2',
+      usb: 'M9 7a1 1 0 1 0 2 0a1 1 0 1 0-2 0 M3 20a1 1 0 1 0 2 0a1 1 0 1 0-2 0 M4.7 19.3 19 5 M21 3l-3 1 2 2Z M9.26 7.68 5 12l2 5 M10 14l5 2 3.5-3.5 M18 12l1-1 1 1-1 1Z',
+      net: 'M17 16h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1Z M3 16h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1Z M10 2h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1Z M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3 M12 12V8',
+      folder: 'M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z'
+    };
+    const names = ['Machine', 'Connection', 'Test', 'Save'];
+    const steps = names.map((name, i) => {
+      const n = i + 1;
+      return { n: String(n), name, done: n < step, cls: n < step ? 'step--done' : '', cur: n === step ? 'step' : undefined };
+    });
+    const R = {
+      ready: ['status--good', ic.ok, 'Ready'],
+      untested: ['status--warn', ic.clock, 'Not tested yet'],
+      missing: ['status--off', ic.off, 'Not ready yet – information still missing']
+    };
+    const models = [
+      ['Chemistry analyzer', 'XC-200', 'ready'], ['Chemistry analyzer', 'XC-300', 'ready', true], ['Hematology analyzer', 'HM-5', 'ready'],
+      ['Immunoassay analyzer', 'IA-900', 'ready'], ['Coagulation analyzer', 'CG-7', 'untested'], ['Urine analyzer', 'UR-40', 'ready'], ['Blood gas analyzer', 'BG-3', 'missing']
+    ].map((m) => ({ name: m[0], code: m[1], st: R[m[2]][0], icon: R[m[2]][1], ready: R[m[2]][2], checked: !!m[3], disabled: m[2] === 'missing' }));
+    const V = {
+      ok: { cls: 'alert--good', icon: ic.ok, title: 'Receiving data, looks like ASTM ✓', text: 'The machine is talking in the format this model uses. You can go to the next step.', time: '0:18', pct: '40', width: '40%', bytes: '1,204 bytes received · 2 messages',
+        raw: '<STX>1H|\\^&|||XC-300^5.1|||||||P|1<CR>\n<STX>2P|1<CR>\n<STX>3O|1|TEST-0001||^^^GLU<CR>\n<STX>4R|1|^^^GLU|•••|…<CR>\n<STX>5L|1|N<CR><ETX>' },
+      none: { cls: 'alert--warn', icon: ic.warn, title: 'Nothing received yet', text: 'Check the cable and the machine’s host settings (port and speed), then ask the machine to send a result again.', time: '0:41', pct: '32', width: '32%', bytes: '0 bytes received',
+        raw: '(nothing yet)' },
+      wrong: { cls: 'alert--bad', icon: ic.bad, title: 'Receiving data, but it looks like HL7 and this model uses ASTM', text: 'The machine may be set to a different output format. Change its host format to ASTM, or go back and pick the right model.', time: '0:12', pct: '60', width: '60%', bytes: '986 bytes received · 1 message',
+        raw: 'MSH|^~\\&|XC|LAB|||20261119110201||ORU^R01|0001|P|2.5\nOBR|1|TEST-0001\nOBX|1|NM|GLU||•••' }
+    };
+    return {
+      theme: (this.props.dark ?? false) ? 'dark' : 'light', ic, steps, models, step: String(step),
+      is1: step === 1, is2: step === 2, is3: step === 3, is4: step === 4, t: V[verdict] || V.ok,
+      backOff: step === 1, nextOff: step === 3 && verdict !== 'ok', nextLabel: step === 4 ? 'Done' : 'Next'
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Analyte · Activity</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/2679076d2049d0720ac5104465671ab9">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=Instrument+Sans:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="app" data-theme="{{theme}}" style="font-family: var(--font-sans); color: var(--text)">
+<dc-import name="Sidebar" active="activity" hint-size="232px,100vh"></dc-import>
+<main class="main">
+
+<header class="page-head">
+<div>
+<p class="eyebrow">Live feed · newest at the top</p>
+<h1>Activity</h1>
+<p class="page-head__lede">Sample IDs and counts only. Patient names and result values never appear here.</p>
+</div>
+<div class="cluster">
+<span class="live tone-good" style="font-weight: 600; font-size: 13px; margin-right: 6px"><span class="live-dot"></span>Live</span>
+<button type="button" class="btn btn--outline btn--sm">Pause updates</button>
+</div>
+</header>
+
+<div class="toolbar">
+<div class="field" style="flex-direction: row; align-items: center; gap: 10px">
+<label class="field__label" for="act-machine">Machine</label>
+<select id="act-machine" class="select" style="width: 230px">
+<option>All machines</option>
+<option>Chemistry analyzer</option>
+<option>Hematology analyzer</option>
+<option>Immunoassay analyzer</option>
+<option>Coagulation analyzer</option>
+<option>Urine analyzer</option>
+</select>
+</div>
+<div class="chips" role="group" aria-label="Type">
+<button type="button" class="chip" aria-pressed="true">All</button>
+<button type="button" class="chip" aria-pressed="false">Results <span class="chip__n">182</span></button>
+<button type="button" class="chip" aria-pressed="false">Connections <span class="chip__n">6</span></button>
+<button type="button" class="chip" aria-pressed="false">Problems <span class="chip__n">5</span></button>
+</div>
+<span class="spacer"></span>
+<span class="subtle" style="font-size: 13px">Today · <span class="mono">194</span> events</span>
+</div>
+
+<div class="card">
+<p class="feed__divider" style="margin: 0; border-top: 0">Today · Thursday 19 November</p>
+<ol class="feed" style="border-top: 1px solid var(--border)">
+<sc-for list="{{lines}}" as="a" hint-placeholder-count="12">
+<li class="feed__line {{a.cls}}">
+<time class="feed__time">{{a.t}}</time>
+<svg class="icon {{a.tone}}" viewBox="0 0 24 24" role="img" aria-label="{{a.word}}"><path d="{{a.icon}}"></path></svg>
+<span class="feed__text"><b>{{a.head}}</b> <span class="muted">{{a.rest}}</span></span>
+<sc-if value="{{a.link}}" hint-placeholder-val="{{ false }}"><a class="link" href="{{a.href}}">{{a.link}}</a></sc-if>
+</li>
+</sc-for>
+</ol>
+<div class="card__foot">
+<button type="button" class="btn btn--quiet btn--sm">Show earlier activity</button>
+<span class="spacer"></span>
+<span class="subtle" style="font-size: 12.5px">Activity is kept for 90 days · <a class="link" href="#datakeeping">Data keeping</a></span>
+</div>
+</div>
+
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"$preview":{"width":1280,"height":1100}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const dark = this.props.dark ?? false;
+    const ic = {
+      ok: 'M2 12a10 10 0 1 0 20 0a10 10 0 1 0-20 0 M8.5 12.5l2.5 2.5 4.5-5',
+      warn: 'm21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z M12 9v4 M12 17h.01',
+      bad: 'M2.586 16.726A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2h6.624a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586z M15 9l-6 6 M9 9l6 6',
+      off: 'M2 12a10 10 0 1 0 20 0a10 10 0 1 0-20 0 M4.9 4.9l14.2 14.2',
+      order: 'M3 17l2 2 4-4 M3 7l2 2 4-4 M13 6h8 M13 12h8 M13 18h8',
+      retry: 'M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8 M21 3v5h-5 M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16 M8 16H3v5'
+    };
+    const T = {
+      good: ['tone-good', ic.ok, 'Done'], warn: ['tone-warn', ic.warn, 'Warning'], bad: ['tone-bad', ic.bad, 'Problem'],
+      off: ['tone-off', ic.off, 'No change'], order: ['tone-good', ic.order, 'Order'], retry: ['tone-warn', ic.retry, 'Will retry']
+    };
+    const src = [
+      ['10:45:12', 'warn', 'Needs review', '– 1 item added: test not in this machine’s test list', 'Open', '#review', 'feed__line--new'],
+      ['10:44:51', 'warn', 'Hematology analyzer', '– sample 261119-044 – 6 results – waiting, Main lab app has no keys'],
+      ['10:44:02', 'order', 'Order list', '– checked, up to date – 3 new orders'],
+      ['10:43:37', 'good', 'Immunoassay analyzer', '– sample 261119-031 – 8 results – sent to Outpatient lab app'],
+      ['10:42:58', 'good', 'Coagulation analyzer', '– sample 261119-029 – 3 results – sent to Outpatient lab app'],
+      ['10:42:10', 'order', 'Immunoassay analyzer', '– order 261119-033 – 4 tests – sent to the machine'],
+      ['10:41:20', 'bad', 'Chemistry analyzer', '– disconnected', 'Machine', '#machines'],
+      ['10:40:05', 'retry', 'Hematology analyzer', '– sample 261119-041 – sending failed, will retry'],
+      ['10:39:44', 'warn', 'Chemistry analyzer', '– sample 261119-038 – 12 results – waiting, Main lab app has no keys'],
+      ['10:36:12', 'off', 'Urine analyzer', '– shared folder checked – nothing new'],
+      ['10:31:09', 'warn', 'Chemistry analyzer', '– sample 261119-035 – 10 results – waiting, Main lab app has no keys'],
+      ['10:30:41', 'bad', 'Main lab app', '– can’t send: keys missing', 'Lab app', '#labapps'],
+      ['10:28:17', 'good', 'Coagulation analyzer', '– sample 261119-026 – 3 results – sent to Outpatient lab app']
+    ];
+    const lines = src.map((r) => ({ t: r[0], tone: T[r[1]][0], icon: T[r[1]][1], word: T[r[1]][2], head: r[2], rest: r[3], link: r[4] || '', href: r[5] || '', cls: r[6] || '' }));
+    return { theme: dark ? 'dark' : 'light', lines };
+  }
+}
+</script>
+</body>
+</html>
