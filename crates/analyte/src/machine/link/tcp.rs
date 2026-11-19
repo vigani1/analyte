@@ -276,4 +276,90 @@ mod tests {
         store.shutdown(crate::deadline()?).await?;
         Ok(())
     }
+
+    // ADR 0003 (refuse visibly); HL7 2.5.1 §2.9.3: a storage failure is answered AR in
+    // original mode. While the one store worker is stalled, whichever deadline ends the
+    // exchange first, the machine must get that refusal rather than a closed socket:
+    // the custody budget, which equals the TCP read-idle limit, or the dialog's own
+    // receive deadline, which can expire while the commit is still running.
+    #[tokio::test]
+    async fn stalled_store_commit_reaches_machine_as_refusal() -> Result<(), crate::Error> {
+        use analyte_fixtures::ConfigEdit as _;
+        let hl7 = include_str!("../../../../core/config/examples/hl7.toml");
+        for definition in [
+            hl7.rewrite("operation_timeout_ms = 10000", "operation_timeout_ms = 200"),
+            hl7.rewrite("receive_timeout_ms = 30000", "receive_timeout_ms = 200"),
+        ] {
+            let reply = stalled_store_reply(&definition).await?;
+            assert!(reply.contains("MSA|AR|stalled"), "{reply}");
+        }
+        Ok(())
+    }
+
+    /// Sends one message while the store worker is stalled and returns the reply.
+    async fn stalled_store_reply(definition: &str) -> Result<String, crate::Error> {
+        let temp = crate::admin::private_tempdir()?;
+        let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+        listener.set_nonblocking(true)?;
+        let address = listener.local_addr()?;
+        let path = analyte_fixtures::write_machine(temp.path(), definition, &address.to_string())?;
+        let mut program = crate::installation::config::Program::load(&path)?;
+        let store = std::sync::Arc::new(
+            crate::runtime::service::open_store(
+                &program,
+                Box::new(analyte_fixtures::UnlimitedSpace),
+            )
+            .await?,
+        );
+        let mut machine = program.machines.pop().ok_or("machine")?;
+        machine.listener = Some(listener);
+        let (stop, stopped) = watch::channel(false);
+        let (ready, _ready) = watch::channel(false);
+        let (_close, close) = watch::channel(true);
+        let owner = crate::machine::run(
+            machine,
+            store.clone(),
+            stopped,
+            temp.path().into(),
+            Closing { ready, close },
+            None,
+        );
+        let (started, stalled) = tokio::sync::oneshot::channel();
+        // Occupies the one store worker for several budgets, like a disk that stops
+        // completing writes; the receipt commit queues behind it.
+        let stall = store.request::<_, analyte_store::OperatorError>(crate::deadline()?, |_| {
+            let _ = started.send(());
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            Ok(())
+        });
+        let peer = async {
+            let reply = async {
+                let mut socket = TcpStream::connect(address).await?;
+                stalled.await?;
+                socket
+                    .write_all(
+                        b"\x0bMSH|^~\\&|S|F|R|F|20261116||ORU^R01^ORU_R01|stalled|P|2.5.1\rPID|1\r\x1c\r",
+                    )
+                    .await?;
+                let mut reply = Vec::new();
+                while !reply.ends_with(b"\x1c\r") && reply.len() < 4096 {
+                    reply.push(socket.read_u8().await?);
+                }
+                Ok::<_, crate::Error>(String::from_utf8(reply)?)
+            }
+            .await;
+            // Stop on every path, so a closed socket fails at once instead of at the guard.
+            stop.send_replace(true);
+            reply
+        };
+        let (result, stall, reply) = tokio::time::timeout(analyte_fixtures::HANG_GUARD, async {
+            tokio::join!(owner, stall, peer)
+        })
+        .await?;
+        result?;
+        stall?;
+        let mut store = std::sync::Arc::try_unwrap(store).map_err(|_| "store still owned")?;
+        store.shutdown(crate::deadline()?).await?;
+        reply
+    }
 }
