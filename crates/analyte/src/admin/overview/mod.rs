@@ -27,14 +27,7 @@ use axum::{
 };
 use jiff::Timestamp;
 use page::{AlertRow, Disk, ErrorPage, Notice, OrderRow, Page, Verdict, WIZARD_STEPS, Welcome};
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
-
-/// How long the overview may read before it answers with its own error page:
-/// below the 2 s limit on every admin request, so a slow store still gets a
-/// page in the overview's look. The reads only read, so stopping them leaves
-/// nothing behind; a store request already queued may still run, and its
-/// answer is dropped.
-const BUDGET: Duration = Duration::from_millis(1500);
+use std::{collections::BTreeMap, sync::Arc};
 
 pub(super) async fn show(
     State(state): State<Arc<Context>>,
@@ -42,7 +35,7 @@ pub(super) async fn show(
 ) -> Response {
     let now = Timestamp::now();
     let session = session.as_ref().map(|Extension(session)| session.as_ref());
-    let failed = match tokio::time::timeout(BUDGET, render(&state, session, now)).await {
+    let failed = match tokio::time::timeout(view::READ_BUDGET, render(&state, session, now)).await {
         Ok(Ok(html)) => return Html(html).into_response(),
         Ok(Err(failure)) => failure,
         Err(_) => Failure {
@@ -72,7 +65,7 @@ enum Reading {
     Relays,
     /// Everything was read, but the page could not be written.
     Page,
-    /// The reads took longer than [`BUDGET`].
+    /// The reads took longer than [`view::READ_BUDGET`].
     Time,
 }
 
@@ -97,7 +90,7 @@ impl Reading {
             Self::Kept => "Analyte could not read what waits for lab apps no set-up machine uses.",
             Self::Relays => "Analyte could not read the alert relays.",
             Self::Page => "Analyte read everything but could not write the page.",
-            Self::Time => "Analyte did not finish reading within 1.5 seconds.",
+            Self::Time => format::SLOW_READ,
         }
     }
 
@@ -133,7 +126,7 @@ impl Failure {
             || {
                 format!(
                     "admin overview deadline of {} ms exceeded",
-                    BUDGET.as_millis()
+                    view::READ_BUDGET.as_millis()
                 )
             },
             ToString::to_string,
@@ -480,6 +473,7 @@ pub(super) async fn activity(
 mod webhook_tests {
     use super::*;
     use crate::Error;
+    use std::time::Duration;
 
     /// The overview's relay disclosure on its own.
     #[derive(askama::Template)]

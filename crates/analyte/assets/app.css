@@ -71,6 +71,23 @@ body { margin: 0; background: var(--bg); }
 .welcome__lede { margin: 0; font-size: var(--text-md); }
 .welcome__live { margin: 0; font-size: var(--text-sm); }
 
+/* Needs review (the Review and ReviewDetail mockups' inline styles). */
+/* A page head's title and lede take the room beside what sits on the right,
+   so a two-line lede keeps the filters beside it rather than below. */
+.page-head__main { flex: 1 1 320px; min-width: 0; }
+.review__title { margin: 0; font-size: var(--text-md); font-weight: var(--weight-semibold); }
+.review__meta { font-size: var(--text-sm); }
+.review__text { margin: 0; }
+.review__note { margin: 0; font-size: var(--text-xs); }
+.row__title { font-weight: var(--weight-semibold); }
+.row__sub { font-size: var(--text-sm); }
+/* Filter chips that are links: the current one is drawn like a pressed chip. */
+a.chip { text-decoration: none; }
+.chip[aria-current] { background: var(--text); border-color: var(--text); color: var(--surface); }
+/* A disclosure in a card's foot spans it, and what it opens to has room. */
+.card__foot > .details { flex: 1 1 100%; }
+.details__body { padding: var(--space-3) var(--space-4); border-top: var(--border-width) solid var(--border); }
+
 /* Icon rail: the same width as analyte.css's --narrow, which a container query
    cannot read from a custom property. */
 @container app (max-width: 1000px) {

@@ -1,35 +1,91 @@
-//! Serves Needs review: the list of parked items, each item's page and its audited original-message view.
-use crate::admin::Error;
-use crate::admin::markup::Markup;
-use crate::admin::pages::{Cursor, PAGE, finish, next, one_page};
-use crate::admin::{server::Context, sessions::Session};
+//! Serves Needs review: the list of parked items with its Open and Resolved filters, each item's page, its dialogs and its audited original-message view.
+//!
+//! Pages show what the store holds: the category, the stored reason, the
+//! machine and arrival time of a linked stored message, and the history Analyte
+//! recorded. Sample IDs are not stored with an item and test codes and result
+//! values never show; raw IDs only appear under "For support". Reads stop after
+//! [`view::READ_BUDGET`] with the error page in the same look.
+mod category;
+mod dialog;
+mod page;
+mod problem;
+mod raw;
+
+pub(super) use dialog::{confirm_reprocess, confirm_resolve, reprocess, resolve};
+pub(super) use raw::{RawError, raw};
+
+use crate::admin::error::CommandError;
+use crate::admin::pages::{PAGE, cursor_value, one_page};
+use crate::admin::view::{self, Tab, Tone, format, frame::Frame};
+use crate::admin::{Error, server::Context, sessions::Session};
 use crate::deadline;
-use analyte_mapping::{Finding, Problem};
+use crate::operator::recovery;
 use analyte_model::{Identifier, ReceiptId};
-use analyte_store::{Parked, ParkedKind, Store};
+use analyte_store::{Audit, OperatorError, Parked, ParkedCounts, ParkedFilter, Store};
+use askama::Template;
 use axum::{
     Extension,
     extract::{Path, Query, State},
     http::StatusCode,
-    response::Response,
+    response::{Html, IntoResponse, Response},
 };
+use category::{Action, Category};
+use jiff::Timestamp;
+use page::{
+    Button, Card, Chip, Dialog, Empty, Entry, Head, Hover, Item, List, Original, OriginalTarget,
+    Pair, RawRequest, Row, Todo, item_href,
+};
+use problem::Problem;
+use serde::Deserialize;
 use std::sync::Arc;
-mod raw;
-use crate::admin::view::{self, Tab, format};
-pub(super) use raw::RawError;
-pub(super) use raw::raw;
-use raw::raw_links;
 
-/// The refusal for an item number that has no item to review.
-pub(super) fn item_not_found() -> Response {
-    view::refusal(
-        StatusCode::NOT_FOUND,
-        "Item not found",
-        "There is no item to review with this number. Go back to Needs review and pick one from the list.",
-        "parked item not found",
-    )
+/// Which items the list shows; the sidebar's link opens the open ones.
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub(super) enum Show {
+    #[default]
+    Open,
+    Resolved,
 }
 
+impl Show {
+    const fn filter(self) -> ParkedFilter {
+        match self {
+            Self::Open => ParkedFilter::Open,
+            Self::Resolved => ParkedFilter::Resolved,
+        }
+    }
+
+    /// The list's address for this filter.
+    const fn href(self) -> &'static str {
+        match self {
+            Self::Open => "/parked?show=open",
+            Self::Resolved => "/parked?show=resolved",
+        }
+    }
+}
+
+/// GET /parked's query: the filter and the cursor of the page.
+#[derive(Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct ListQuery {
+    #[serde(default)]
+    show: Show,
+    #[serde(default, deserialize_with = "cursor_value")]
+    after: u64,
+}
+
+/// What a linked record is, as far as the store says.
+enum Linked {
+    /// A stored message: the machine it came from and when it arrived.
+    Message { machine: String, at: Timestamp },
+    /// A stored message that data keeping removed.
+    Removed,
+    /// Anything else: a delivery, a transfer, an order or a machine.
+    Other,
+}
+
+/// The receipt a target names, when it is written as one.
 fn receipt_id(target: &Identifier) -> Option<ReceiptId> {
     target
         .as_str()
@@ -38,458 +94,644 @@ fn receipt_id(target: &Identifier) -> Option<ReceiptId> {
         .and_then(|id| ReceiptId::try_from(id).ok())
 }
 
-/// Key and value rows for a parked item's targets and their receipt times.
-fn metadata(store: &Store, parked: &Parked) -> Result<Markup, analyte_store::OperatorError> {
-    let now = jiff::Timestamp::now();
-    let mut html = Markup::new();
-    for target in parked.targets.iter().take(PAGE) {
-        let receipt = receipt_id(target)
-            .map(|id| store.receipt_metadata(id))
-            .transpose()?
-            .flatten();
-        html.push_fragment(&view::row(
-            "Linked record",
-            Some("Target"),
-            &Markup::new()
-                .markup("<code>")
-                .text(target.as_str())
-                .markup("</code>"),
-        ));
-        html.push_fragment(&view::row(
-            "Received",
-            Some("Receipt time"),
-            &receipt.map_or_else(
-                || Markup::new().text("Not known (no linked message)"),
-                |m| format::when(m.received_at, now),
-            ),
-        ));
-    }
-    if parked.targets.is_empty() {
-        html.push_fragment(&view::row(
-            "Linked record",
-            Some("Receipt"),
-            &Markup::new().text("Not recorded"),
-        ));
-    }
-    Ok(html)
-}
-
-/// Says when only the first page of a parked item's targets is listed.
-fn more_targets(html: &mut Markup, parked: &Parked) {
-    if parked.targets.len() > PAGE {
-        html.push_markup(concat!(
-            "<p class=\"muted\">The first 50 linked records are shown; open the item ",
-            "and use Next page for the rest.</p>",
-        ));
-    }
-}
-
-fn kind_and_reason(parked: &Parked) -> Markup {
-    let kind = parked.kind.as_str();
-    let category = ParkedKind::from_stored(kind).map_or_else(
-        || Markup::new().text(kind),
-        |known| view::exact(words(known), kind),
-    );
-    view::row("Category", None, &category).fragment(&view::row(
-        "Reason",
-        None,
-        &format::reason(parked.reason.as_str()),
-    ))
-}
-
-/// The audited action that settles an item from the admin pages.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Action {
-    /// Read the original message again with the current settings.
-    ProcessAgain,
-    /// Queue the rejected delivery again, unchanged.
-    SendAgain,
-    /// Mark the item resolved after someone checked it; it stays in the history.
-    Resolve,
-}
-
-/// The category in plain words.
-const fn words(kind: ParkedKind) -> &'static str {
-    match kind {
-        ParkedKind::MappingFinding => "Test or unit not mapped",
-        ParkedKind::InterpretationFailure => "Could not read message",
-        ParkedKind::ResultReconciliation => "Result could not be matched to earlier results",
-        ParkedKind::IncompleteTransfer => "Message from the machine was incomplete",
-        ParkedKind::DeliveryRejected => "Lab app rejected a delivery",
-        ParkedKind::DeliveryConflict => "Lab app reported a conflicting delivery",
-        ParkedKind::OrderVersionRefused => "Order from the lab app was refused",
-        ParkedKind::CancelConflict => "Cancel conflicts with what the machine reported",
-        ParkedKind::PollIntent => "Machine asked for orders; the outcome is not known yet",
-    }
-}
-
-/// The action that exists today for this category. Process again reads the
-/// item's original message, so only items linked to a message offer it.
-const fn main_action(kind: ParkedKind) -> Action {
-    match kind {
-        ParkedKind::MappingFinding
-        | ParkedKind::InterpretationFailure
-        | ParkedKind::ResultReconciliation
-        | ParkedKind::IncompleteTransfer => Action::ProcessAgain,
-        ParkedKind::DeliveryRejected => Action::SendAgain,
-        ParkedKind::DeliveryConflict
-        | ParkedKind::OrderVersionRefused
-        | ParkedKind::CancelConflict
-        | ParkedKind::PollIntent => Action::Resolve,
-    }
-}
-
-/// What someone does about the item. It says only what the category and the
-/// problem read back from the stored reason say; a mapping finding names the
-/// problem, never the test code, which stays in the protected original message.
-const fn guidance(kind: ParkedKind, problem: Option<&Problem>) -> &'static str {
-    match kind {
-        ParkedKind::MappingFinding if matches!(problem, Some(Problem::UnknownTest)) => concat!(
-            "The machine sent a test code that this machine's test mapping does not ",
-            "list. Add it to the test mapping, then use Process again.",
-        ),
-        ParkedKind::MappingFinding
-            if matches!(problem, Some(Problem::ValueKindMismatch { .. })) =>
-        {
-            concat!(
-                "The value does not fit what the test mapping expects for this test. ",
-                "Check that test in this machine's test mapping, then use Process again.",
-            )
-        }
-        ParkedKind::MappingFinding if matches!(problem, Some(Problem::MissingSample)) => concat!(
-            "The message has no sample ID. Check how the machine sends sample IDs; once ",
-            "its settings are fixed, use Process again.",
-        ),
-        ParkedKind::MappingFinding => concat!(
-            "Check this machine's test mapping and settings against the reason above, ",
-            "then use Process again.",
-        ),
-        ParkedKind::InterpretationFailure => concat!(
-            "Check the machine's settings on the Setup page (machine model and ",
-            "connection) against the reason above, then use Process again.",
-        ),
-        ParkedKind::ResultReconciliation => concat!(
-            "Compare this result with the earlier results for the same sample on the ",
-            "machine. If a setting caused the mismatch, fix it, then use Process again.",
-        ),
-        ParkedKind::IncompleteTransfer => concat!(
-            "The machine stopped part-way through sending. Check the cable or network ",
-            "and have the machine send the results again, then use Process again here.",
-        ),
-        ParkedKind::DeliveryRejected => {
-            "Fix the problem the lab app reported (see Reason), then use Send again."
-        }
-        ParkedKind::DeliveryConflict => concat!(
-            "The lab app already holds different content for this delivery; Analyte does ",
-            "not send it again on its own. Check the delivery in the lab app and settle it ",
-            "there, then Mark resolved.",
-        ),
-        ParkedKind::OrderVersionRefused => concat!(
-            "The lab app sent an older or changed copy of an order Analyte already has; ",
-            "Analyte kept its copy. Correct the order in the lab app, then Mark resolved.",
-        ),
-        ParkedKind::CancelConflict => concat!(
-            "The lab app cancelled tests the machine has already reported on; Analyte sends ",
-            "the machine nothing more. Check both on the machine and in the lab app, then ",
-            "Mark resolved.",
-        ),
-        ParkedKind::PollIntent => concat!(
-            "Analyte starts no other exchange with this machine until this item is ",
-            "resolved. Check on the machine whether this one finished, then Mark resolved.",
-        ),
-    }
-}
-
-/// The plain "What to do" line for an item that waits for review.
-fn todo(parked: &Parked) -> Markup {
-    let finding = Finding::from_stored(parked.reason.as_str());
-    Markup::new()
-        .markup("<p class=\"todo\"><strong>What to do:</strong> ")
-        .text(ParkedKind::from_stored(parked.kind.as_str()).map_or(
-            concat!(
-                "Read the reason above and open the item for its linked records. If it is ",
-                "not clear what to do, give the item number to support.",
-            ),
-            |kind| guidance(kind, finding.as_ref().map(|f| &f.problem)),
-        ))
-        .markup("</p>")
-}
-
-/// The buttons for an item's audited actions: its main action first, then Mark
-/// resolved as a secondary button when the main action is something else, for
-/// when the lab decides nothing more is needed. Each opens its confirmation page,
-/// which asks for a reason and posts with the session's CSRF token. An unknown
-/// category keeps the Process again it always had.
-fn action_buttons(id: i64, parked: &Parked) -> Markup {
-    let action =
-        ParkedKind::from_stored(parked.kind.as_str()).map_or(Action::ProcessAgain, main_action);
-    let main = match action {
-        Action::ProcessAgain => Markup::new()
-            .markup("<a class=\"button\" title=\"Reprocess\" href=\"/parked/")
-            .text(id)
-            .markup("/reprocess\">Process again</a>"),
-        // A rejected delivery's target is its delivery ID; anything else gets no button.
-        Action::SendAgain => parked
-            .targets
-            .first()
-            .and_then(|target| uuid::Uuid::parse_str(target.as_str()).ok())
-            .map_or_else(Markup::new, |delivery| {
-                Markup::new()
-                    .markup(
-                        "<a class=\"button\" title=\"Resend this delivery\" href=\"/deliveries/",
-                    )
-                    .text(delivery)
-                    .markup("/resend\">Send again</a>")
-            }),
-        Action::Resolve => Markup::new(),
+/// Reads what `target` is without loading any original bytes.
+fn linked(store: &Store, target: &Identifier) -> Result<Linked, OperatorError> {
+    let Some(id) = receipt_id(target) else {
+        return Ok(Linked::Other);
     };
-    let resolve = Markup::new()
-        .markup(match action {
-            Action::Resolve => "<a class=\"button\" title=\"Resolve\" href=\"/parked/",
-            Action::ProcessAgain | Action::SendAgain => {
-                "<a class=\"button secondary\" title=\"Resolve\" href=\"/parked/"
-            }
-        })
-        .text(id)
-        .markup("/resolve\">Mark resolved</a>");
-    main.fragment(&resolve)
+    match store.receipt_metadata(id) {
+        Ok(Some(metadata)) => Ok(Linked::Message {
+            machine: metadata.machine.as_str().to_owned(),
+            at: metadata.received_at,
+        }),
+        Ok(None) => Ok(Linked::Other),
+        Err(OperatorError::Purged) => Ok(Linked::Removed),
+        Err(error) => Err(error),
+    }
+}
+
+/// The signed-in browser session, when the request has one.
+fn signed_in(session: Option<&Extension<Arc<Session>>>) -> Option<&Session> {
+    session
+        .map(|Extension(session)| session.as_ref())
+        .filter(|session| session.authenticated)
+}
+
+/// A page rendered with `status`, or the store-failure page when it could not be written.
+fn respond(
+    state: &Context,
+    session: Option<&Session>,
+    id: Option<i64>,
+    status: StatusCode,
+    html: Result<String, askama::Error>,
+) -> Response {
+    match html {
+        Ok(html) => (status, Html(html)).into_response(),
+        Err(error) => {
+            Problem::Store(format!("page could not be written: {error}")).page(state, session, id)
+        }
+    }
+}
+
+/// One stored parked item with the facts its list entry needs.
+struct Listed {
+    id: i64,
+    parked: Parked,
+    resolution: Option<String>,
+    /// What the item's first target is.
+    first: Option<Linked>,
+}
+
+/// What GET /parked reads in one store request.
+struct ListRead {
+    counts: ParkedCounts,
+    items: Vec<Listed>,
+    more: bool,
 }
 
 pub(super) async fn list(
     State(state): State<Arc<Context>>,
-    Query(cursor): Query<Cursor>,
+    Query(query): Query<ListQuery>,
+    session: Option<Extension<Arc<Session>>>,
 ) -> Response {
-    let result = parked_page(&state, cursor).await;
+    let session = session.as_ref().map(|Extension(session)| session.as_ref());
+    let show = query.show;
+    match tokio::time::timeout(view::READ_BUDGET, read_list(&state, query)).await {
+        Ok(Ok(read)) => {
+            let html = list_page(&state, session, show, read, Timestamp::now()).render();
+            respond(&state, session, None, StatusCode::OK, html)
+        }
+        Ok(Err(error)) => Problem::Store(error.to_string()).page(&state, session, None),
+        Err(_) => Problem::Time.page(&state, session, None),
+    }
+}
 
-    finish(result)
+async fn read_list(state: &Context, query: ListQuery) -> Result<ListRead, Error> {
+    let after = i64::try_from(query.after)?;
+    let filter = query.show.filter();
+    Ok(state
+        .store
+        .request::<_, CommandError>(deadline()?, move |s| {
+            let counts = s.parked_counts()?;
+            let (rows, more) =
+                one_page::<_, CommandError>(s.parked_filtered(after, filter)?, PAGE, |last| {
+                    Ok(!s.parked_filtered(last.id, filter)?.is_empty())
+                })?;
+            let items = rows
+                .into_iter()
+                .map(|row| {
+                    let parked = row.details().map_err(OperatorError::from)?;
+                    let first = parked.targets.first().map(|t| linked(s, t)).transpose()?;
+                    Ok(Listed {
+                        id: row.id,
+                        parked,
+                        resolution: row.resolution,
+                        first,
+                    })
+                })
+                .collect::<Result<Vec<_>, CommandError>>()?;
+            Ok(ListRead {
+                counts,
+                items,
+                more,
+            })
+        })
+        .await?)
+}
+
+fn list_page(
+    state: &Context,
+    session: Option<&Session>,
+    show: Show,
+    read: ListRead,
+    now: Timestamp,
+) -> List {
+    let ListRead {
+        counts,
+        items,
+        more,
+    } = read;
+    let next = items.last().filter(|_| more).map(|last| match show {
+        Show::Open => format!("/parked?after={}", last.id),
+        Show::Resolved => format!("/parked?show=resolved&after={}", last.id),
+    });
+    let shown = match show {
+        Show::Open => counts.open,
+        Show::Resolved => counts.resolved,
+    };
+    let empty = items.is_empty().then(|| empty(show, shown, counts));
+    let (mut cards, mut rows) = (Vec::new(), Vec::new());
+    for item in items {
+        let (machine, arrived) = match item.first {
+            Some(Linked::Message { machine, at }) => (Some(machine), Some(format::moment(at, now))),
+            Some(Linked::Removed | Linked::Other) | None => (None, None),
+        };
+        let category = Category::of(&item.parked);
+        match show {
+            Show::Open => cards.push(Card {
+                id: item.id,
+                actions: actions(item.id, &item.parked, category.action, Size::Small),
+                category,
+                machine,
+                arrived,
+                reason: hover(item.parked.reason.as_str()),
+            }),
+            Show::Resolved => rows.push(Row {
+                id: item.id,
+                category: category.shown,
+                machine,
+                settled: settled_line(item.resolution.as_deref(), now),
+                href: item_href(item.id),
+            }),
+        }
+    }
+    List {
+        frame: Frame::new(
+            state,
+            Tab::NeedsReview,
+            "Needs review",
+            Some(counts.open),
+            session,
+            now,
+        ),
+        chips: [
+            Chip {
+                href: Show::Open.href(),
+                label: "Open",
+                count: counts.open,
+                current: show == Show::Open,
+            },
+            Chip {
+                href: Show::Resolved.href(),
+                label: "Resolved",
+                count: counts.resolved,
+                current: show == Show::Resolved,
+            },
+        ],
+        cards,
+        rows,
+        empty,
+        next,
+    }
+}
+
+/// What a filter with nothing on this page says: no open item is good news;
+/// no resolved item is only a fact; a page past the last item says so.
+fn empty(show: Show, shown: u64, counts: ParkedCounts) -> Empty {
+    let other = |show: Show, count: u64, words: &str| {
+        (count > 0).then(|| (show.href().to_owned(), format!("{words} ({count})")))
+    };
+    match show {
+        _ if shown > 0 => Empty {
+            good: false,
+            title: "No more items",
+            text: "This page is past the last item.",
+            link: Some((show.href().to_owned(), "Back to the first page".into())),
+        },
+        Show::Open => Empty {
+            good: true,
+            title: "Nothing needs review.",
+            text: concat!(
+                "When Analyte cannot handle a message or result on its own, it keeps it ",
+                "here with what to do next.",
+            ),
+            link: other(Show::Resolved, counts.resolved, "See resolved items"),
+        },
+        Show::Resolved => Empty {
+            good: false,
+            title: "No resolved items yet.",
+            text: "Items marked resolved or processed again move here and keep their history.",
+            link: other(Show::Open, counts.open, "See open items"),
+        },
+    }
+}
+
+/// The reason as people read it, the exact stored text on hover.
+fn hover(stored: &str) -> Hover {
+    match format::reason_words(stored) {
+        Some(shown) => Hover {
+            shown,
+            exact: stored.to_owned(),
+        },
+        None => Hover {
+            shown: stored.to_owned(),
+            exact: String::new(),
+        },
+    }
+}
+
+/// How big an item's buttons are: small on the list, full size on the item page.
+#[derive(Clone, Copy)]
+enum Size {
+    Small,
+    Full,
+}
+
+impl Size {
+    const fn class(self, kind: Kind) -> &'static str {
+        match (self, kind) {
+            (Self::Small, Kind::Main) => "btn--primary btn--sm",
+            (Self::Small, Kind::Second) => "btn--outline btn--sm",
+            (Self::Small, Kind::Quiet) => "btn--quiet btn--sm",
+            (Self::Full, Kind::Main) => "btn--primary",
+            (Self::Full, Kind::Second) => "btn--outline",
+            (Self::Full, Kind::Quiet) => "btn--quiet",
+        }
+    }
+}
+
+/// A button's weight beside the others.
+#[derive(Clone, Copy)]
+enum Kind {
+    Main,
+    Second,
+    Quiet,
+}
+
+/// An open item's buttons: its main action first, then Mark resolved as the
+/// second button when the main action is something else, for when the lab
+/// decides nothing more is needed. Each opens its confirmation, which asks for
+/// a reason. On the list, "Details" opens the item page.
+fn actions(id: i64, parked: &Parked, action: Action, size: Size) -> Vec<Button> {
+    let resolve = |kind| Button {
+        href: format!("/parked/{id}/resolve"),
+        label: "Mark resolved",
+        class: size.class(kind),
+    };
+    let mut buttons = Vec::new();
+    match action {
+        Action::ProcessAgain => buttons.push(Button {
+            href: format!("/parked/{id}/reprocess"),
+            label: "Process again",
+            class: size.class(Kind::Main),
+        }),
+        // A rejected delivery's target is its delivery ID; anything else gets no button.
+        Action::SendAgain => buttons.extend(
+            parked
+                .targets
+                .first()
+                .and_then(|target| uuid::Uuid::parse_str(target.as_str()).ok())
+                .map(|delivery| Button {
+                    href: format!("/deliveries/{delivery}/resend"),
+                    label: "Send again",
+                    class: size.class(Kind::Main),
+                }),
+        ),
+        Action::Resolve => buttons.push(resolve(Kind::Main)),
+    }
+    if action != Action::Resolve {
+        buttons.push(resolve(Kind::Second));
+    }
+    if matches!(size, Size::Small) {
+        buttons.push(Button {
+            href: item_href(id),
+            label: "Details",
+            class: size.class(Kind::Quiet),
+        });
+    }
+    buttons
+}
+
+/// The audit entry a stored resolution holds; none when it cannot be read as one.
+fn resolution(stored: Option<&str>) -> Option<Audit> {
+    stored.and_then(|text| serde_json::from_str(text).ok())
+}
+
+/// A resolved item's line on the list, from its stored resolution.
+fn settled_line(stored: Option<&str>, now: Timestamp) -> format::Line {
+    resolution(stored).map_or_else(
+        || format::Line::text("Resolved; how it was resolved could not be read"),
+        |audit| {
+            format::settled_line(
+                &settled_words(&audit),
+                &format::actor(audit.actor.as_str()),
+                audit.time,
+                audit.reason.as_str(),
+                now,
+            )
+        },
+    )
+}
+
+/// What an audited action did, in words.
+fn settled_words(audit: &Audit) -> String {
+    let targets: Vec<&str> = audit.targets.iter().map(Identifier::as_str).collect();
+    format::settled(audit.action.as_str(), &targets)
+}
+
+/// What GET /parked/{id} and its dialogs read in one store request.
+struct ItemRead {
+    id: i64,
+    parked: Parked,
+    resolution: Option<String>,
+    counts: ParkedCounts,
+    /// Where this page of linked records starts.
+    after: usize,
+    /// What the first target is, for the head and history on every page.
+    first: Option<Linked>,
+    /// This page of linked records.
+    linked: Vec<(Identifier, Linked)>,
+    /// The item's reprocess audit entries, oldest first, and whether older ones exist.
+    reprocessed: (Vec<Audit>, bool),
+}
+
+/// Reads item `id`, `after` linked records in, with `extra` run on the same
+/// store request for a dialog's own check; none when there is no such item.
+async fn read_item<T: Send + 'static>(
+    state: &Context,
+    id: i64,
+    after: u64,
+    extra: impl FnOnce(&mut Store, bool) -> T + Send + 'static,
+) -> Result<Option<(ItemRead, T)>, Error> {
+    let after = usize::try_from(after)?;
+    let history = Identifier::new(&format!("parked:{id}"))?;
+    let action = Identifier::new(recovery::REPROCESS_ACTION)?;
+    Ok(state
+        .store
+        .request::<_, CommandError>(deadline()?, move |s| {
+            let Some(row) = s.parked_item(id)? else {
+                return Ok(None);
+            };
+            let parked = row.details().map_err(OperatorError::from)?;
+            let first = parked.targets.first().map(|t| linked(s, t)).transpose()?;
+            let page = parked
+                .targets
+                .iter()
+                .skip(after)
+                .take(PAGE)
+                .map(|t| Ok((t.clone(), linked(s, t)?)))
+                .collect::<Result<Vec<_>, OperatorError>>()?;
+            let read = ItemRead {
+                id,
+                counts: s.parked_counts()?,
+                reprocessed: s.audits_naming(&history, &action)?,
+                after,
+                first,
+                linked: page,
+                parked,
+                resolution: row.resolution,
+            };
+            let extra = extra(s, read.resolution.is_none());
+            Ok(Some((read, extra)))
+        })
+        .await?)
 }
 
 pub(super) async fn item(
     State(state): State<Arc<Context>>,
     Path(id): Path<i64>,
-    Query(cursor): Query<Cursor>,
+    Query(cursor): Query<crate::admin::pages::Cursor>,
     session: Option<Extension<Arc<Session>>>,
 ) -> Response {
-    let until = match deadline() {
-        Ok(until) => until,
-        Err(error) => {
-            return finish(Err(error.into()));
+    let session = session.as_ref().map(|Extension(session)| session.as_ref());
+    let read = tokio::time::timeout(
+        view::READ_BUDGET,
+        read_item(&state, id, cursor.after, |_, _| ()),
+    )
+    .await;
+    match read {
+        Ok(Ok(Some((read, ())))) => {
+            let html = item_page(&state, session, &read, None, Timestamp::now()).render();
+            respond(&state, session, Some(id), StatusCode::OK, html)
         }
-    };
-    let after = match usize::try_from(cursor.after) {
-        Ok(after) => after,
-        Err(error) => return finish(Err(error.into())),
-    };
-    let result = state
-        .store
-        .request::<_, crate::admin::error::CommandError>(until, move |s| {
-            let Some(row) = s.parked_item(id)? else {
-                return Ok(None);
-            };
-            let mut evidence = row.details().map_err(analyte_store::OperatorError::from)?;
-            let total = evidence.targets.len();
-            evidence.targets = evidence
-                .targets
-                .into_iter()
-                .skip(after)
-                .take(PAGE)
-                .collect();
-            Ok(Some((
-                metadata(s, &evidence)?,
-                evidence,
-                row.resolution,
-                total,
-            )))
-        })
-        .await;
-    let (meta, evidence, resolution, total) = match result {
-        Ok(Some(row)) => row,
-        Ok(None) => return item_not_found(),
-        Err(error) => return finish(Err(error.into())),
-    };
-    let mut html = view::page(Tab::NeedsReview, "Item to review");
-    html.push_fragment(
-        &Markup::new()
-            .markup("<section><dl>")
-            .fragment(&kind_and_reason(&evidence))
-            .fragment(&meta),
-    );
-    match resolution {
-        None => html.push_fragment(
-            &view::row(
-                "Status",
-                None,
-                &view::pill(view::Tone::Attention, "Waiting for review"),
-            )
-            .markup("</dl>")
-            .fragment(&todo(&evidence))
-            .markup("<p class=\"actions-row\">")
-            .fragment(&action_buttons(id, &evidence))
-            .markup("</p>"),
-        ),
-        Some(resolution) => html.push_fragment(
-            &view::row(
-                "How it was resolved",
-                Some("Resolution"),
-                &Markup::new().text(&resolution),
-            )
-            .markup("</dl>"),
-        ),
+        Ok(Ok(None)) => Problem::NotFound.page(&state, session, Some(id)),
+        Ok(Err(error)) => Problem::Store(error.to_string()).page(&state, session, Some(id)),
+        Err(_) => Problem::Time.page(&state, session, Some(id)),
     }
-    more_targets(&mut html, &evidence);
-    html.push_markup(concat!(
-        "</section><section><h2 title=\"Raw evidence\">Original message</h2><p class=\"lead\">",
-        "The original bytes are hidden because they may contain patient data. Each time ",
-        "they are shown, Analyte first records who asked and why.</p>",
-    ));
-    raw_links(&mut html, id, &evidence, session);
-    html.push_markup("</section>");
-    let Some(shown) = after.checked_add(evidence.targets.len()) else {
-        return finish(Err(Error::ParkedTargetCursorOverflow));
-    };
-    if shown < total {
-        next(&mut html, &format!("/parked/{id}"), shown);
-    }
-    finish(Ok(html))
 }
 
-async fn parked_page(state: &Context, cursor: Cursor) -> Result<Markup, Error> {
-    let after = i64::try_from(cursor.after)?;
-    let (rows, last, more) = state
-        .store
-        .request::<_, crate::admin::error::CommandError>(deadline()?, move |s| {
-            let mut html = Markup::new();
-            let mut last = None;
-            let (fetched, more) =
-                one_page::<_, crate::admin::error::CommandError>(s.parked(after)?, PAGE, |last| {
-                    Ok(!s.parked(last.id)?.is_empty())
-                })?;
-            for row in fetched {
-                let evidence = row.details().map_err(analyte_store::OperatorError::from)?;
-                html.push_fragment(&review_item(row.id, &evidence, row.resolution.is_some()));
-                last = Some(row.id);
-            }
-            Ok::<_, crate::admin::error::CommandError>((html, last, more))
-        })
-        .await?;
-    let mut html = view::page(Tab::NeedsReview, "Needs review");
-    html.push_markup(concat!(
-        "<p class=\"lead\" title=\"Parked items\">Messages and results Analyte kept but ",
-        "could not process on its own. Nothing here is deleted; each item waits until ",
-        "someone reviews it.</p>",
-    ));
-    if last.is_none() {
-        html.push_markup("<p class=\"muted\">Nothing needs review.</p>");
+/// The item page, under `dialog` when one is open.
+fn item_page(
+    state: &Context,
+    session: Option<&Session>,
+    read: &ItemRead,
+    dialog: Option<Dialog>,
+    now: Timestamp,
+) -> Item {
+    let id = read.id;
+    let category = Category::of(&read.parked);
+    let open = read.resolution.is_none();
+    let settled = resolution(read.resolution.as_deref());
+    let total = read.parked.targets.len();
+    let end = read.after.saturating_add(read.linked.len());
+    let mut head = Head::under(Some(id), true, category.shown.clone());
+    head.lede = match &read.first {
+        Some(Linked::Message { machine, at }) => Some(format::arrived(machine, *at, now)),
+        Some(Linked::Removed | Linked::Other) | None => None,
+    };
+    head.status = Some(if open {
+        (Tone::Attention, "Open")
+    } else {
+        (Tone::Good, "Resolved")
+    });
+    let mut history_notes = Vec::new();
+    if read.reprocessed.1 {
+        history_notes.push("Older entries are kept but not shown here.");
     }
-    html.push_fragment(&rows);
-    if let Some(last) = last
-        && more
-    {
-        next(&mut html, "/parked", last);
-    }
-    Ok(html)
-}
-
-/// One item on the Needs review list: its category, reason, what to do and its
-/// action. Linked record IDs and receipt times stay on the item's own page.
-fn review_item(id: i64, parked: &Parked, resolved: bool) -> Markup {
-    let html = Markup::new()
-        .markup("<section><div class=\"heading\"><h2><a href=\"/parked/")
-        .text(id)
-        .markup("\" title=\"Parked item\">Item ")
-        .text(id)
-        .markup("</a></h2>")
-        .fragment(&if resolved {
-            view::pill(view::Tone::Good, "Resolved")
-        } else {
-            view::pill(view::Tone::Attention, "Waiting for review")
-        })
-        .markup("</div><dl>")
-        .fragment(&kind_and_reason(parked))
-        .markup("</dl>");
-    if resolved {
-        return html
-            .markup("<p class=\"actions-row\"><a href=\"/parked/")
-            .text(id)
-            .markup("\">Open item</a></p></section>");
-    }
-    html.fragment(&todo(parked))
-        .markup("<p class=\"actions-row\">")
-        .fragment(&action_buttons(id, parked))
-        .markup("<a href=\"/parked/")
-        .text(id)
-        .markup("\">Open item</a></p></section>")
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // Owner review 2026-11-19: parked categories read in plain words, and the
-    // stored category stays on hover; an unknown one shows exactly as written.
-    #[test]
-    fn categories_read_plainly_and_keep_the_stored_value() -> Result<(), analyte_model::TextError> {
-        let parked = |kind: &str| -> Result<Parked, analyte_model::TextError> {
-            Ok(Parked {
-                kind: Identifier::new(kind)?,
-                reason: analyte_model::Reason::new("synthetic reason")?,
-                targets: Vec::new(),
-            })
-        };
-        let mapped = kind_and_reason(&parked("mapping_finding")?);
-        assert!(mapped.contains(
-            "Category</dt><dd><span title=\"mapping_finding\">Test or unit not mapped</span></dd>"
+    if open {
+        history_notes.push(concat!(
+            "When someone resolves this item or processes it again, the time, the ",
+            "action and the reason appear here.",
         ));
-        let failed = kind_and_reason(&parked("interpretation_failure")?);
-        assert!(failed.contains(">Could not read message</span>"));
-        let unknown = kind_and_reason(&parked("future_kind")?);
-        assert!(unknown.contains("Category</dt><dd>future_kind</dd>"));
-        Ok(())
     }
-
-    // Owner review 2026-11-19 (Needs review item 3): a mapping finding's advice
-    // follows the problem read back from its stored reason, never its wording.
-    #[test]
-    fn mapping_advice_follows_the_problem_read_back_from_the_reason() {
-        let advice = |kind: ParkedKind, reason: &str| {
-            let finding = Finding::from_stored(reason);
-            guidance(kind, finding.as_ref().map(|f| &f.problem))
-        };
-        let general = advice(ParkedKind::MappingFinding, "synthetic reason");
-        for (reason, starts) in [
-            (
-                "Position { record: 3, field: 3 }: UnknownTest",
-                "The machine sent a test code",
-            ),
-            (
-                "Position { record: 4, field: 5 }: ValueKindMismatch { expected: Coded }",
-                "The value does not fit",
-            ),
-            (
-                "Position { record: 2, field: 0 }: MissingSample",
-                "The message has no sample ID.",
-            ),
-            (
-                "Position { record: 2, field: 4 }: MissingIdentity { setting: \"LAW order\" }",
-                general,
-            ),
-            (
-                "departure-conflict at Position { record: 3, field: 25 }: present non-final status contradicts documented final-only scope",
-                general,
-            ),
-        ] {
-            assert!(
-                advice(ParkedKind::MappingFinding, reason).starts_with(starts),
-                "{reason}"
-            );
-        }
-        assert!(general.starts_with("Check this machine's test mapping"));
-        assert!(
-            advice(
-                ParkedKind::InterpretationFailure,
-                "Position { record: 3, field: 3 }: UnknownTest"
+    Item {
+        frame: Frame::new(
+            state,
+            Tab::NeedsReview,
+            "Item to review",
+            Some(read.counts.open),
+            session,
+            now,
+        ),
+        head,
+        reason: hover(read.parked.reason.as_str()),
+        todo: open.then(|| Todo {
+            guidance: category.guidance,
+            actions: actions(id, &read.parked, category.action, Size::Full),
+        }),
+        linked: linked_pairs(&read.linked, now),
+        linked_note: (total > PAGE).then(|| {
+            format!(
+                "Linked records {} to {end} of {total}.",
+                read.after.saturating_add(1)
             )
-            .starts_with("Check the machine's settings")
-        );
+        }),
+        next: (end < total).then(|| format!("/parked/{id}?after={end}")),
+        original: original(id, read, session, now),
+        history: history(read, settled.as_ref(), now),
+        history_notes,
+        support: support(read, settled.as_ref()),
+        dialog,
     }
+}
+
+/// One line per linked record on this page.
+fn linked_pairs(linked: &[(Identifier, Linked)], now: Timestamp) -> Vec<Pair> {
+    if linked.is_empty() {
+        return vec![Pair {
+            term: "Linked record",
+            value: format::Line::text("None recorded"),
+        }];
+    }
+    linked
+        .iter()
+        .map(|(_, linked)| match linked {
+            Linked::Message { machine, at } => Pair {
+                term: "Message",
+                value: format::arrived(machine, *at, now),
+            },
+            Linked::Removed => Pair {
+                term: "Message",
+                value: format::Line::text("Removed by data keeping"),
+            },
+            Linked::Other => Pair {
+                term: "Linked record",
+                value: format::Line::text("Not a stored message; its ID is under For support"),
+            },
+        })
+        .collect()
+}
+
+/// The "Show the original message" forms: one per linked record on this page,
+/// offering the stored message only while it is kept.
+fn original(id: i64, read: &ItemRead, session: Option<&Session>, now: Timestamp) -> Original {
+    let Some(session) = session.filter(|session| session.authenticated) else {
+        return Original {
+            signed_in: false,
+            targets: Vec::new(),
+        };
+    };
+    let targets = read
+        .linked
+        .iter()
+        .enumerate()
+        .map(|(index, (target, linked))| {
+            let number = read.after.saturating_add(index).saturating_add(1);
+            let (title, departures, buttons) = match linked {
+                Linked::Message { machine, at } => (
+                    format::arrived(machine, *at, now),
+                    receipt_id(target).map(|receipt| {
+                        format!("/receipts/{}/departures", uuid::Uuid::from(receipt))
+                    }),
+                    vec![
+                        ("receipt", "Show the message as stored"),
+                        ("frames", "Show the pieces as they arrived"),
+                    ],
+                ),
+                Linked::Removed => (
+                    format::Line::text("Message removed by data keeping"),
+                    None,
+                    vec![("frames", "Show the pieces as they arrived")],
+                ),
+                Linked::Other => (
+                    format::Line::text(format!("Linked record {number}")),
+                    None,
+                    vec![("frames", "Show the pieces as they arrived")],
+                ),
+            };
+            OriginalTarget {
+                title,
+                departures,
+                form: RawRequest {
+                    action: format!("/parked/{id}/raw"),
+                    csrf: session.csrf.form_value().to_owned(),
+                    target: target.as_str().to_owned(),
+                    after: 0,
+                    offset: 0,
+                    field: format!("raw-reason-{number}"),
+                    reason: String::new(),
+                    buttons,
+                },
+            }
+        })
+        .collect();
+    Original {
+        signed_in: true,
+        targets,
+    }
+}
+
+/// The item's history: the message arriving, each time it was processed again
+/// and how it was resolved, as Analyte recorded them.
+fn history(read: &ItemRead, settled: Option<&Audit>, now: Timestamp) -> Vec<Entry> {
+    let mut entries = Vec::new();
+    if let Some(Linked::Message { machine, at }) = &read.first {
+        entries.push(Entry {
+            when: Some(format::moment(*at, now)),
+            text: format!("Arrived from {machine}"),
+            who: "Analyte stored the message".into(),
+            good: false,
+        });
+    }
+    let entry = |audit: &Audit, good: bool| Entry {
+        when: Some(format::moment_unix(audit.time, now)),
+        text: settled_words(audit),
+        who: format::recorded(audit.actor.as_str(), audit.reason.as_str()),
+        good,
+    };
+    let mut shown = false;
+    for audit in &read.reprocessed.0 {
+        let resolved = settled.is_some_and(|settled| same(settled, audit));
+        shown |= resolved;
+        entries.push(entry(audit, resolved));
+    }
+    match (settled, &read.resolution) {
+        (Some(audit), _) if !shown => entries.push(entry(audit, true)),
+        (None, Some(_)) => entries.push(Entry {
+            when: None,
+            text: "Resolved".into(),
+            who: "How it was resolved could not be read; the stored record is under For support."
+                .into(),
+            good: true,
+        }),
+        _ => {}
+    }
+    entries
+}
+
+/// Whether two audit entries record the same action: a reprocess that settled
+/// the item is stored as its resolution and in the audit trail.
+fn same(a: &Audit, b: &Audit) -> bool {
+    a.time == b.time
+        && a.actor == b.actor
+        && a.action == b.action
+        && a.reason == b.reason
+        && a.targets == b.targets
+}
+
+/// Exact IDs and stored values, for support.
+fn support(read: &ItemRead, settled: Option<&Audit>) -> Vec<String> {
+    let mut lines = vec![format!("Item {}", read.id)];
+    lines.push(format!("Category as stored: {}", read.parked.kind.as_str()));
+    lines.extend(
+        read.linked
+            .iter()
+            .map(|(target, _)| format!("Linked record: {}", target.as_str())),
+    );
+    for audit in read.reprocessed.0.iter().chain(settled) {
+        lines.push(format!(
+            "Recorded at Unix {}: {} by {}",
+            audit.time,
+            audit.action.as_str(),
+            audit.actor.as_str()
+        ));
+    }
+    if settled.is_none()
+        && let Some(stored) = &read.resolution
+    {
+        lines.push(format!("Resolution as stored: {stored}"));
+    }
+    lines
+}
+
+/// The sidebar's open count after an action; it is a convenience, so a page
+/// that cannot read it leaves it out, as the error pages do.
+async fn open_count(state: &Context) -> Option<u64> {
+    let until = deadline().ok()?;
+    state
+        .store
+        .request::<_, OperatorError>(until, |s| s.parked_counts())
+        .await
+        .ok()
+        .map(|counts| counts.open)
 }

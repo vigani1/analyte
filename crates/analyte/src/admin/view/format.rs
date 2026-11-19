@@ -8,9 +8,10 @@
 use crate::admin::markup::Markup;
 use crate::admin::server::Connection;
 use crate::machine::link::status::Light;
+use crate::operator::recovery;
 use analyte_mapping::{Position, ReasonPiece};
 use analyte_model::OrderState;
-use analyte_store::{DeliveryState, FailingDestination};
+use analyte_store::{DeliveryState, FailingDestination, RevisionOutcome};
 use jiff::{Timestamp, tz::TimeZone};
 
 /// A size such as "477 GB" or "1.5 MB"; under 1 KB it counts bytes.
@@ -80,6 +81,10 @@ fn time_in(at: Timestamp, zone: &TimeZone) -> String {
 /// What someone does while order sending is paused after a restore.
 pub(in crate::admin) const RESTORE_ADVICE: &str =
     "Ask IT to reconcile orders with the command line; until then no order is sent to a machine.";
+
+/// What a restyled page says when its reads took longer than
+/// [`super::READ_BUDGET`].
+pub(in crate::admin) const SLOW_READ: &str = "Analyte did not finish reading within 1.5 seconds.";
 
 /// What "Last data received" says before a machine has sent anything.
 pub(in crate::admin) const NOTHING_YET: &str = "Nothing yet";
@@ -422,12 +427,21 @@ pub(in crate::admin) fn when_unix(seconds: i64, now: Timestamp) -> Markup {
 /// or "record 3" when field zero means the whole record, and the exact stored
 /// text stays on hover. A reason without a position shows exactly as stored.
 pub(in crate::admin) fn reason(stored: &str) -> Markup {
+    reason_words(stored).map_or_else(
+        || Markup::new().text(stored),
+        |shown| super::exact(&shown, stored),
+    )
+}
+
+/// [`reason`] as plain words; none when the stored reason holds no mapping
+/// position, so it already reads as stored.
+pub(in crate::admin) fn reason_words(stored: &str) -> Option<String> {
     let pieces = Position::split_stored(stored);
     if !pieces
         .iter()
         .any(|piece| matches!(piece, ReasonPiece::Position(_)))
     {
-        return Markup::new().text(stored);
+        return None;
     }
     let mut shown = String::new();
     for piece in pieces {
@@ -441,7 +455,117 @@ pub(in crate::admin) fn reason(stored: &str) -> Markup {
             }
         }
     }
-    super::exact(&shown, stored)
+    Some(shown)
+}
+
+/// Who an audit entry names, in words: the admin pages' browser sessions read
+/// "admin session" (the session's ID is for support only), Analyte's own work
+/// reads "Analyte", and any other actor, such as one given to the command
+/// line, reads as it was recorded. No person's name is ever made up.
+pub(in crate::admin) fn actor(recorded: &str) -> String {
+    if recorded.starts_with("admin-session-") {
+        "admin session".into()
+    } else if recorded == "analyte" {
+        "Analyte".into()
+    } else {
+        recorded.to_owned()
+    }
+}
+
+/// Who recorded an audit entry and why, as one line under it in a history:
+/// "admin session · “settled with the lab app”".
+pub(in crate::admin) fn recorded(actor: &str, reason: &str) -> String {
+    format!("{} · “{reason}”", self::actor(actor))
+}
+
+/// What an audited action did to a Needs review item, from the action and
+/// targets Analyte recorded with it: "Marked resolved", "Processed again:
+/// reading 2 recorded" (and, when the new reading still needed review, "it
+/// still needs review"), or "Resolved" for an action recorded elsewhere.
+pub(in crate::admin) fn settled(action: &str, targets: &[&str]) -> String {
+    match action {
+        recovery::RESOLVE_ACTION => "Marked resolved".into(),
+        recovery::REPROCESS_ACTION => {
+            let reading = targets
+                .iter()
+                .find_map(|target| target.strip_prefix("interpretation:"))
+                .and_then(|rest| rest.rsplit(':').next())
+                .map_or_else(String::new, |version| {
+                    format!(": reading {version} recorded")
+                });
+            let still = if targets.contains(&"reprocess:parked") {
+                "; it still needs review"
+            } else {
+                ""
+            };
+            format!("Processed again{reading}{still}")
+        }
+        _ => "Resolved".into(),
+    }
+}
+
+/// One resolved item's line on the Needs review list: "Marked resolved by
+/// admin session at 09:20: “Re-sent after the lab app restarted.”"
+pub(in crate::admin) fn settled_line(
+    what: &str,
+    actor: &str,
+    seconds: i64,
+    reason: &str,
+    now: Timestamp,
+) -> Line {
+    Line::text(format!("{what} by {actor} at "))
+        .time(moment_unix(seconds, now))
+        .text_part(&format!(": “{reason}”"))
+}
+
+/// Where a parked item's message came from and when it arrived:
+/// "From cobas-e411 · arrived 10:45".
+pub(in crate::admin) fn arrived(machine: &str, at: Timestamp, now: Timestamp) -> Line {
+    Line::text(format!("From {machine} · arrived ")).time(moment(at, now))
+}
+
+/// What a new reading decided for each of its results, counted: "2 new
+/// results, 1 correction". Results Analyte kept for review say so.
+pub(in crate::admin) fn outcomes(outcomes: &[RevisionOutcome]) -> String {
+    let count = |wanted: fn(&RevisionOutcome) -> bool| {
+        u64::try_from(outcomes.iter().filter(|outcome| wanted(outcome)).count()).unwrap_or(u64::MAX)
+    };
+    let parts: Vec<String> = [
+        (
+            count(|o| matches!(o, RevisionOutcome::New(_))),
+            "new result",
+            "new results",
+        ),
+        (
+            count(|o| matches!(o, RevisionOutcome::Correction(_))),
+            "correction",
+            "corrections",
+        ),
+        (
+            count(|o| matches!(o, RevisionOutcome::Retransmission(_))),
+            "result already received",
+            "results already received",
+        ),
+        (
+            count(|o| matches!(o, RevisionOutcome::Conflict)),
+            "conflicting result kept for review",
+            "conflicting results kept for review",
+        ),
+        (
+            count(|o| matches!(o, RevisionOutcome::Unresolved)),
+            "result without an identity kept for review",
+            "results without an identity kept for review",
+        ),
+    ]
+    .into_iter()
+    .filter(|(n, _, _)| *n > 0)
+    .map(|(n, one, many)| amount(n, one, many))
+    .collect();
+    if parts.is_empty() {
+        "no results in it".into()
+    } else {
+        parts.join(", ")
+    }
 }
 
 /// An order's state in words a lab manager uses; pages keep the stored state on hover.
@@ -801,5 +925,80 @@ mod tests {
         );
         assert_eq!(yes_no(true), "Yes");
         assert_eq!(yes_no(false), "No");
+    }
+
+    // Owner decision 2026-11-19 (admin restyle b1): history lines name the
+    // admin pages' sessions "admin session" and never a made-up person; other
+    // recorded actors read as recorded.
+    #[test]
+    fn actors_read_as_admin_session_analyte_or_as_recorded() {
+        assert_eq!(
+            actor("admin-session-0193a1b2-0000-7000-8000-000000000001"),
+            "admin session"
+        );
+        assert_eq!(actor("analyte"), "Analyte");
+        assert_eq!(actor("night-shift"), "night-shift");
+        assert_eq!(
+            recorded("admin-session-1", "settled"),
+            "admin session · \u{201c}settled\u{201d}"
+        );
+    }
+
+    // Owner decision 2026-11-19 (admin restyle b1): each history line says what
+    // the recorded action did, from the targets Analyte stored with it.
+    #[test]
+    fn settled_actions_read_from_the_stored_action_and_targets() {
+        assert_eq!(settled("parked-resolve", &["7"]), "Marked resolved");
+        assert_eq!(
+            settled(
+                "receipt-reprocess",
+                &["r", "interpretation:r:3", "reprocess:succeeded", "parked:7"]
+            ),
+            "Processed again: reading 3 recorded"
+        );
+        assert_eq!(
+            settled(
+                "receipt-reprocess",
+                &["r", "interpretation:r:2", "reprocess:parked", "parked:7"]
+            ),
+            "Processed again: reading 2 recorded; it still needs review"
+        );
+        assert_eq!(settled("receipt-reprocess", &[]), "Processed again");
+        assert_eq!(settled("autolyser_poll_custody_complete", &[]), "Resolved");
+    }
+
+    // Owner decision 2026-11-19 (admin restyle b1): "Reading N recorded" says
+    // what the new reading decided, counted, and what was kept for review.
+    #[test]
+    fn reprocess_outcomes_are_counted_in_words() {
+        use analyte_model::Revision;
+        assert_eq!(outcomes(&[]), "no results in it");
+        assert_eq!(
+            outcomes(&[
+                RevisionOutcome::New(Revision(0)),
+                RevisionOutcome::New(Revision(0)),
+                RevisionOutcome::Correction(Revision(1)),
+                RevisionOutcome::Retransmission(Revision(0)),
+                RevisionOutcome::Conflict,
+                RevisionOutcome::Unresolved,
+                RevisionOutcome::Unresolved,
+            ]),
+            concat!(
+                "2 new results, 1 correction, 1 result already received, ",
+                "1 conflicting result kept for review, ",
+                "2 results without an identity kept for review"
+            )
+        );
+    }
+
+    // ADR 0018: the restyled pages show a stored reason in plain words with the
+    // exact text on hover, by the same rule as the old pages.
+    #[test]
+    fn reason_words_follow_the_reason_rule() {
+        assert_eq!(
+            reason_words("Position { record: 3, field: 0 }: MissingSample").as_deref(),
+            Some("record 3: MissingSample")
+        );
+        assert_eq!(reason_words("checksum mismatch"), None);
     }
 }

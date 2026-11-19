@@ -1,5 +1,6 @@
-{#- Macros that lay out a page: its head, cards, the numbered section labels and the first-run welcome. -#}
+{#- Macros that lay out a page: its heads, cards, the numbered section labels, a disclosure and the first-run welcome. -#}
 {%- import "components/icon.html" as draw %}
+{%- import "components/display.html" as display %}
 {%- import "components/forms.html" as forms %}
 
 {#- The page head: date line, title and a short aside on the right. -#}
@@ -10,6 +11,50 @@
 <p class="mono subtle page-head__aside">{{ aside }}</p>
 {%- endif %}
 </header>
+{%- endmacro %}
+
+{#- A page head with a line under the title; the caller writes what sits on the right, such as filters. -#}
+{%- macro intro_head(title, lede) -%}
+<header class="page-head">
+<div class="page-head__main"><h1>{{ title }}</h1><p class="page-head__lede">{{ lede }}</p></div>
+{{ caller() }}
+</header>
+{%- endmacro %}
+
+{#- One step of the way back in a page head: words, an item number in mono, and a link unless it is this page. -#}
+{%- macro crumb(crumb) -%}
+{{ crumb.label }}{% if let Some(number) = crumb.number %} <span class="mono">{{ number }}</span>{% endif %}
+{%- endmacro %}
+
+{#- The head of a page about one thing: the way back, the title, a line with times in it, and its status on the right. -#}
+{%- macro item_head(head) -%}
+<header class="page-head">
+<div>
+<ol class="crumbs">{% for crumb in head.crumbs %}<li>{% if let Some(href) = crumb.href %}<a href="{{ href }}">{% call crumb(crumb) %}{% endcall %}</a>{% else %}{% call crumb(crumb) %}{% endcall %}{% endif %}</li>{% endfor %}</ol>
+<h1>{{ head.title }}</h1>
+{%- if let Some(lede) = head.lede %}
+<p class="page-head__lede">{% call display::words(lede) %}{% endcall %}</p>
+{%- endif %}
+</div>
+{%- if let Some((tone, word)) = head.status %}
+{% call display::status(tone, word) %}{% endcall %}
+{%- endif %}
+</header>
+{%- endmacro %}
+
+{#- A card with a section label inside, such as "Why it is here"; the caller writes the rest. -#}
+{%- macro label_card(id, text) -%}
+<section class="card card--pad stack" aria-labelledby="{{ id }}">
+<h2 id="{{ id }}" class="label">{{ text }}</h2>
+{{- caller() }}
+</section>
+{%- endmacro %}
+
+{#- A disclosure that opens to more of the page, such as forms; the caller writes what it holds. -#}
+{%- macro disclosure(title) -%}
+<details class="details"><summary>{% call draw::icon(crate::admin::view::icon::Icon::ChevronRight, "icon--md") %}{% endcall %}{{ title }}</summary><div class="details__body stack">
+{{- caller() }}
+</div></details>
 {%- endmacro %}
 
 {#- A card with room inside; the caller writes its content. -#}

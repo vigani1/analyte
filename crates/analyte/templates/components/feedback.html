@@ -1,4 +1,4 @@
-{#- Macros that tell someone something: alert boxes, the "What to do" box, empty states and the support disclosure. -#}
+{#- Macros that tell someone something: alert boxes, the "What to do" box, empty states, and disclosures of exact lines such as the support details. -#}
 {%- import "components/icon.html" as draw %}
 {%- import "components/forms.html" as forms %}
 
@@ -9,7 +9,12 @@
 
 {#- One plain sentence of what to do, and the page that does it. -#}
 {%- macro whattodo(text, href, label) -%}
-<div class="whattodo"><p class="whattodo__text"><strong>What to do:</strong> {{ text }}</p><div class="whattodo__actions">{% call forms::link_button(href, label, "btn--primary btn--sm") %}{% endcall %}</div></div>
+{% call whattodo_with(text) %}{% call forms::link_button(href, label, "btn--primary btn--sm") %}{% endcall %}{% endcall %}
+{%- endmacro %}
+
+{#- One plain sentence of what to do; the caller writes the actions, the main one first. -#}
+{%- macro whattodo_with(text) -%}
+<div class="whattodo"><p class="whattodo__text"><strong>What to do:</strong> {{ text }}</p><div class="whattodo__actions">{{ caller() }}</div></div>
 {%- endmacro %}
 
 {#- A place with nothing to show: a title, a sentence and, from the caller, what to do. It has no check mark, because an empty list is not good news by itself. -#}
@@ -17,10 +22,20 @@
 <div class="empty"><p class="empty__title">{{ title }}</p><p class="empty__text">{{ text }}</p>{{ caller() }}</div>
 {%- endmacro %}
 
+{#- A place where nothing is left to do: the tick, a title, a sentence and, from the caller, a link. Only for good news, such as nothing waiting for review. -#}
+{%- macro done(title, text) -%}
+<div class="empty"><span class="empty__mark">{% call draw::icon(crate::admin::view::icon::Icon::Check, "") %}{% endcall %}</span><p class="empty__title">{{ title }}</p><p class="empty__text">{{ text }}</p>{{ caller() }}</div>
+{%- endmacro %}
+
 {#- Exact technical lines for support, closed until someone opens them. -#}
 {%- macro support(title, lines) -%}
-<details class="details"><summary>{% call draw::icon(crate::admin::view::icon::Icon::ChevronRight, "icon--md") %}{% endcall %}{{ title }}</summary><pre>
-{%- for line in lines %}{{ line }}
+{% call exact_lines(title, lines, false) %}{% endcall %}
+{%- endmacro %}
+
+{#- Exact lines in a disclosure, one per line, open when `open`: support details, or bytes someone asked to see. -#}
+{%- macro exact_lines(title, rows, open) -%}
+<details class="details"{% if open %} open{% endif %}><summary>{% call draw::icon(crate::admin::view::icon::Icon::ChevronRight, "icon--md") %}{% endcall %}{{ title }}</summary><pre>
+{%- for row in rows %}{{ row }}
 {% endfor -%}
 </pre></details>
 {%- endmacro %}

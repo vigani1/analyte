@@ -1,19 +1,27 @@
-//! Discloses bounded raw evidence only after authenticated, durable audit.
-use super::receipt_id;
-use crate::admin::pages::{cursor_value, finish};
-use crate::admin::view::{self, Tab};
+//! Shows bounded original bytes of an item's linked record (POST /parked/{id}/raw), only after an authenticated session's view is recorded durably.
+//!
+//! The reason someone gives is optional and recorded with the view; the page
+//! warns that the bytes may contain patient data and keeps the record's ID and
+//! the session's ID under "For support".
+use super::page::{Head, Raw, RawRequest};
+use super::problem::Problem;
+use super::{receipt_id, respond};
+use crate::admin::pages::cursor_value;
+use crate::admin::view::{Tab, frame::Frame};
 use crate::{
-    admin::{Error, markup::Markup, server::Context, sessions::Session},
+    admin::{Error, server::Context, sessions::Session},
     deadline,
 };
 use analyte_model::{Identifier, Reason};
-use analyte_store::{Audit, Parked, Store};
+use analyte_store::{Audit, OperatorError, ParkedCounts, Store};
+use askama::Template as _;
 use axum::{
     Extension, Form,
     extract::{Path, State},
     http::StatusCode,
     response::Response,
 };
+use jiff::Timestamp;
 use serde::Deserialize;
 use std::sync::Arc;
 /// Refusals and boundary failures of an audited raw-evidence page.
@@ -21,7 +29,7 @@ use std::sync::Arc;
 pub enum RawError {
     /// Retained evidence could not be queried.
     #[error(transparent)]
-    Evidence(#[from] analyte_store::OperatorError),
+    Evidence(#[from] OperatorError),
     /// Disclosure could not be audited durably.
     #[error(transparent)]
     Audit(#[from] analyte_store::StorageError),
@@ -47,63 +55,6 @@ impl From<analyte_store::WorkerError> for RawError {
     }
 }
 const RAW_PAGE: usize = 4096;
-fn raw_form(
-    html: &mut Markup,
-    id: i64,
-    session: &Session,
-    target: &str,
-    source: &str,
-    cursor: RawCursor,
-    reason: &str,
-) {
-    let what = if source == "receipt" {
-        "The message as stored"
-    } else {
-        "The pieces as they arrived from the machine"
-    };
-    html.push_fragment(
-        &Markup::new()
-            .markup("<p class=\"muted\" title=\"Raw source: ")
-            .text(source)
-            .markup(", target ")
-            .text(target)
-            .markup(", cursor ")
-            .text(cursor.after.to_string())
-            .markup(", ")
-            .text(cursor.offset.to_string())
-            .markup("\">")
-            .markup(what)
-            .markup(if cursor.after == 0 && cursor.offset == 0 {
-                ""
-            } else {
-                ", continued"
-            })
-            .markup(".</p><form action=\"/parked/")
-            .text(id)
-            .markup(concat!(
-                "/raw\" method=\"post\"><input type=\"hidden\" ",
-                "name=\"csrf\" value=\"",
-            ))
-            .text(session.csrf.form_value())
-            .markup("\"><input type=\"hidden\" name=\"target\" value=\"")
-            .text(target)
-            .markup("\"><input type=\"hidden\" name=\"source\" value=\"")
-            .text(source)
-            .markup("\"><input type=\"hidden\" name=\"after\" value=\"")
-            .text(cursor.after.to_string())
-            .markup("\"><input type=\"hidden\" name=\"offset\" value=\"")
-            .text(cursor.offset.to_string())
-            .markup(concat!(
-                "\"><label class=\"field\"><span>Reason (optional)</span><input name=\"reason\" ",
-                "maxlength=\"256\" value=\"",
-            ))
-            .text(reason)
-            .markup(concat!(
-                "\"></label><button class=\"secondary\" title=\"Audited raw view\">",
-                "Show original bytes</button></form>",
-            )),
-    );
-}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -202,27 +153,54 @@ fn read_raw(s: &Store, form: &RawForm) -> Result<Option<RawPage>, RawError> {
     }
 }
 
+/// What the store answered for a raw view.
+enum Shown {
+    /// No parked item has this number.
+    NoItem,
+    /// Nothing follows at this cursor, so nothing was recorded.
+    Nothing,
+    /// The view was recorded; these bytes may be shown.
+    Page(RawPage, ParkedCounts),
+}
+
+impl Source {
+    const fn as_str(&self) -> &'static str {
+        match self {
+            Self::Receipt => "receipt",
+            Self::Frames => "frames",
+        }
+    }
+
+    /// What the bytes are, as the page names them.
+    const fn what(&self) -> &'static str {
+        match self {
+            Self::Receipt => "The message as stored",
+            Self::Frames => "The pieces as they arrived from the machine",
+        }
+    }
+}
+
 pub(in crate::admin) async fn raw(
     State(state): State<Arc<Context>>,
     Path(id): Path<i64>,
     Extension(session): Extension<Arc<Session>>,
     Form(form): Form<RawForm>,
 ) -> Response {
-    if !session.authenticated || !session.csrf_valid(&form.csrf) {
-        return view::refusal(
-            StatusCode::FORBIDDEN,
-            "Sign in again",
-            "Showing original bytes needs a signed-in browser session. Sign in again, then retry.",
-            "authenticated CSRF session required",
-        );
+    if !session.authenticated {
+        return Problem::SignIn.page(&state, None, Some(id));
+    }
+    if !session.csrf_valid(&form.csrf) {
+        return Problem::FormExpired.page(&state, Some(&session), Some(id));
     }
     let target = form.target.clone();
-    let source = match form.source {
-        Source::Receipt => "receipt",
-        Source::Frames => "frames",
+    let source = form.source.as_str();
+    let what = form.source.what();
+    let cursor = RawCursor {
+        after: form.after,
+        offset: form.offset,
     };
-    let reason_text = form.reason.clone();
-    let result = async {
+    let typed = form.reason.clone();
+    let shown = async {
         let reason = Reason::new(if form.reason.is_empty() {
             "operator requested raw evidence"
         } else {
@@ -236,7 +214,7 @@ pub(in crate::admin) async fn raw(
                 target.clone(),
                 Identifier::new(&format!("{source}-offset:{}:{}", form.after, form.offset))?,
             ],
-            time: jiff::Timestamp::now().as_second(),
+            time: Timestamp::now().as_second(),
             reason,
         };
         Ok::<_, Error>(
@@ -244,127 +222,124 @@ pub(in crate::admin) async fn raw(
                 .store
                 .request::<_, RawError>(deadline()?, move |s| {
                     let Some(row) = s.parked_item(id)? else {
-                        return Ok(None);
+                        return Ok(Shown::NoItem);
                     };
-                    let evidence = row.details().map_err(analyte_store::OperatorError::from)?;
+                    let evidence = row.details().map_err(OperatorError::from)?;
                     if !evidence.targets.contains(&form.target) {
-                        return Err(analyte_store::OperatorError::AuditMismatch.into());
+                        return Err(OperatorError::AuditMismatch.into());
                     }
-                    let page = read_raw(s, &form)?;
-                    if page.is_some() {
-                        s.audit(&audit)?;
-                    }
-                    Ok(page)
+                    let Some(page) = read_raw(s, &form)? else {
+                        return Ok(Shown::Nothing);
+                    };
+                    s.audit(&audit)?;
+                    Ok(Shown::Page(page, s.parked_counts()?))
                 })
                 .await?,
         )
     }
     .await;
-    match result {
-        Ok(Some(page)) => {
-            let mut html = view::page(Tab::NeedsReview, "Original message bytes");
-            html.push_fragment(
-                &Markup::new()
-                    .markup("<p class=\"notice\">May contain patient data: keep it out of ")
-                    .markup(
-                        "screenshots and support tickets. This view is recorded for session <code>",
-                    )
-                    .text(session.actor.as_str())
-                    .markup("</code>.</p><p class=\"muted\" title=\"Target\">Linked record: <code>")
-                    .text(target.as_str())
-                    .markup("</code></p><pre>"),
-            );
-            render_raw_bytes(&mut html, &page.bytes);
-            if let Some(after) = page.next {
-                raw_form(
-                    &mut html,
-                    id,
-                    &session,
-                    target.as_str(),
-                    source,
-                    after,
-                    &reason_text,
-                );
-            }
-            finish(Ok(html))
+    let (page, counts) = match shown {
+        Ok(Shown::Page(page, counts)) => (page, counts),
+        Ok(Shown::NoItem) => return Problem::NotFound.page(&state, Some(&session), Some(id)),
+        Ok(Shown::Nothing) => return Problem::NothingMore.page(&state, Some(&session), Some(id)),
+        Err(Error::Raw(RawError::Evidence(OperatorError::Purged))) => {
+            return Problem::Purged.page(&state, Some(&session), Some(id));
         }
-        Ok(None) => view::refusal(
-            StatusCode::NOT_FOUND,
-            "Nothing more to show",
-            "There are no more original bytes for this record.",
-            "no linked raw evidence at this cursor",
-        ),
-        Err(error) => finish(Err(error)),
-    }
+        Err(error) => {
+            return Problem::Store(error.to_string()).page(&state, Some(&session), Some(id));
+        }
+    };
+    let view = shown_page(
+        &state,
+        &session,
+        id,
+        (target, source, what),
+        cursor,
+        typed,
+        &page,
+        counts,
+    );
+    respond(
+        &state,
+        Some(&session),
+        Some(id),
+        StatusCode::OK,
+        view.render(),
+    )
 }
 
-fn render_raw_bytes(html: &mut Markup, bytes: &[u8]) {
-    for chunk in bytes.chunks(16) {
-        let hex = chunk
-            .iter()
-            .map(|byte| format!("{byte:02x} "))
-            .collect::<String>();
-        let text = chunk
-            .iter()
-            .map(|byte| {
-                if byte.is_ascii_graphic() || *byte == b' ' {
-                    char::from(*byte)
-                } else {
-                    '.'
-                }
-            })
-            .collect::<String>();
-        html.push_text(&hex);
-        html.push_markup(" | ");
-        html.push_text(&text);
-        html.push_markup("\n");
-    }
-    html.push_markup(concat!(
-        "</pre><p class=\"muted\">Left: every byte exactly, in hex. Right: the same bytes as ",
-        "text, with bytes that are not plain letters or signs shown as dots.</p>",
-    ));
-}
-
-pub(super) fn raw_links(
-    html: &mut Markup,
+/// The page showing `page`'s bytes of `target`, read from `source` at `cursor`,
+/// with the form for the next part carrying the reason typed before.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "each value is one fact the page shows"
+)]
+fn shown_page(
+    state: &Context,
+    session: &Session,
     id: i64,
-    evidence: &Parked,
-    session: Option<Extension<Arc<Session>>>,
-) {
-    if let Some(Extension(session)) = session.filter(|Extension(s)| s.authenticated) {
-        for target in &evidence.targets {
-            if let Some(receipt) = receipt_id(target) {
-                let receipt = uuid::Uuid::from(receipt);
-                html.push_fragment(
-                    &Markup::new()
-                        .markup("<p><a href=\"/receipts/")
-                        .text(receipt)
-                        .markup(concat!(
-                            "/departures\" title=\"Interpretation departure evidence\">",
-                            "How this message was read</a></p>",
-                        )),
-                );
-                raw_form(
-                    html,
-                    id,
-                    &session,
-                    target.as_str(),
-                    "receipt",
-                    RawCursor::default(),
-                    "",
-                );
-            }
-            raw_form(
-                html,
-                id,
-                &session,
-                target.as_str(),
-                "frames",
-                RawCursor::default(),
-                "",
-            );
-        }
-    } else {
-        html.push_markup("<p><a href=\"/login\">Sign in</a> to show the original bytes.</p>");
+    (target, source, what): (Identifier, &'static str, &'static str),
+    cursor: RawCursor,
+    typed: String,
+    page: &RawPage,
+    counts: ParkedCounts,
+) -> Raw {
+    let continued = cursor.after != 0 || cursor.offset != 0;
+    Raw {
+        frame: Frame::new(
+            state,
+            Tab::NeedsReview,
+            "Original message",
+            Some(counts.open),
+            Some(session),
+            Timestamp::now(),
+        ),
+        head: Head::under(Some(id), false, "Original message"),
+        what: if continued {
+            format!("{what}, continued")
+        } else {
+            what.to_owned()
+        },
+        lines: dump(&page.bytes),
+        more: page.next.map(|next| RawRequest {
+            action: format!("/parked/{id}/raw"),
+            csrf: session.csrf.form_value().to_owned(),
+            target: target.as_str().to_owned(),
+            after: next.after,
+            offset: next.offset,
+            field: "raw-reason".into(),
+            reason: typed,
+            buttons: vec![(source, "Show the next part")],
+        }),
+        support: vec![
+            format!("Linked record: {}", target.as_str()),
+            format!(
+                "Source: {source}, cursor {}, offset {}",
+                cursor.after, cursor.offset
+            ),
+            format!("View recorded for: {}", session.actor.as_str()),
+        ],
     }
+}
+
+/// Each 16 bytes as one line: every byte exactly in hex, then the same bytes as
+/// text, with bytes that are not plain letters or signs shown as dots.
+fn dump(bytes: &[u8]) -> Vec<String> {
+    bytes
+        .chunks(16)
+        .map(|chunk| {
+            let hex: String = chunk.iter().map(|byte| format!("{byte:02x} ")).collect();
+            let text: String = chunk
+                .iter()
+                .map(|byte| {
+                    if byte.is_ascii_graphic() || *byte == b' ' {
+                        char::from(*byte)
+                    } else {
+                        '.'
+                    }
+                })
+                .collect();
+            format!("{hex:<48} | {text}")
+        })
+        .collect()
 }

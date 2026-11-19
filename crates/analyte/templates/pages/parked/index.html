@@ -1,0 +1,55 @@
+{#- Needs review (GET /parked): the Open and Resolved filters with their counts, then the open items as cards with what to do, or the resolved items as rows saying how each was settled. -#}
+{% extends "layout/base.html" %}
+{%- import "components/display.html" as display %}
+{%- import "components/feedback.html" as feedback %}
+{%- import "components/forms.html" as forms %}
+{%- import "components/layout.html" as layout %}
+{%- import "components/lists.html" as lists %}
+{%- block main %}
+{% call layout::intro_head("Needs review", LEDE) %}
+<nav class="chips" aria-label="Show">
+{%- for chip in chips %}{% call forms::chip(chip) %}{% endcall %}{% endfor -%}
+</nav>
+{% endcall %}
+{%- if let Some(empty) = empty %}
+<div class="card">
+{%- if empty.good %}
+{% call feedback::done(empty.title, empty.text) %}{% if let Some((href, words)) = empty.link %}<a class="link" href="{{ href }}">{{ words }}</a>{% endif %}{% endcall %}
+{%- else %}
+{% call feedback::empty(empty.title, empty.text) %}{% if let Some((href, words)) = empty.link %}<a class="link" href="{{ href }}">{{ words }}</a>{% endif %}{% endcall %}
+{%- endif %}
+</div>
+{%- endif %}
+{%- if !cards.is_empty() %}
+<div class="stack stack--lg">
+{%- for card in cards %}
+<article class="card" aria-labelledby="rv-{{ card.id }}">
+<div class="card__head">
+{% call display::status_exact(card.category.tone, card.category.shown, card.category.stored) %}{% endcall %}
+<span class="spacer"></span>
+{%- if let Some(arrived) = card.arrived %}
+<span class="subtle review__meta">Arrived {% call display::time(arrived) %}{% endcall %}</span>
+{%- endif %}
+</div>
+<div class="card__body stack">
+<h2 id="rv-{{ card.id }}" class="review__title">Item <span class="mono">{{ card.id }}</span>{% if let Some(machine) = card.machine %} · {{ machine }}{% endif %}</h2>
+<p class="muted review__text">Reason: {% call display::hover(card.reason.shown, card.reason.exact) %}{% endcall %}</p>
+{% call feedback::whattodo_with(card.category.guidance) %}
+{%- for button in card.actions %}{% call forms::link_button(button.href, button.label, button.class) %}{% endcall %}{% endfor -%}
+{% endcall %}
+</div>
+</article>
+{%- endfor %}
+</div>
+{%- endif %}
+{%- if !rows.is_empty() %}
+{% call lists::rows() %}
+{%- for row in rows %}
+{% call lists::row_with(RESOLVED.0, RESOLVED.1, row.href, "History") %}<b class="row__title">{{ row.category }}</b> <span class="muted">· Item <span class="mono">{{ row.id }}</span>{% if let Some(machine) = row.machine %} · {{ machine }}{% endif %}</span><br><span class="subtle row__sub">{% call display::words(row.settled) %}{% endcall %}</span>{% endcall %}
+{%- endfor %}
+{% endcall %}
+{%- endif %}
+{%- if let Some(href) = next %}
+{% call forms::next_page(href) %}{% endcall %}
+{%- endif %}
+{%- endblock %}

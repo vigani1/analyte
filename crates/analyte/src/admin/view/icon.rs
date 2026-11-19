@@ -47,6 +47,8 @@ pub(in crate::admin) enum Icon {
     Unknown,
     /// Cancelled: a crossed circle.
     Cancelled,
+    /// Nothing left to do: a tick, as on an empty Needs review list.
+    Check,
 }
 
 impl Icon {
@@ -124,6 +126,7 @@ impl Icon {
                 "2-3 3-3 3 M12 17h.01",
             ),
             Self::Cancelled => "M2 12a10 10 0 1 0 20 0a10 10 0 1 0-20 0 M15 9l-6 6 M9 9l6 6",
+            Self::Check => "M20 6 9 17l-5-5",
         }
     }
 }
@@ -132,7 +135,7 @@ impl Icon {
 mod tests {
     use super::*;
 
-    const ALL: [Icon; 20] = [
+    const ALL: [Icon; 21] = [
         Icon::Overview,
         Icon::Review,
         Icon::Machine,
@@ -153,6 +156,7 @@ mod tests {
         Icon::Cross,
         Icon::Unknown,
         Icon::Cancelled,
+        Icon::Check,
     ];
 
     // ADR 0018: icon paths go through the template's escaping, which must leave

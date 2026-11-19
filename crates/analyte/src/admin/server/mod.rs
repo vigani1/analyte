@@ -278,11 +278,11 @@ fn router(state: Arc<Context>) -> Router {
         )
         .route(
             "/parked/{id}/reprocess",
-            get(super::actions::confirm_reprocess).post(super::actions::reprocess),
+            get(super::parked::confirm_reprocess).post(super::parked::reprocess),
         )
         .route(
             "/parked/{id}/resolve",
-            get(super::actions::confirm_resolve).post(super::actions::resolve),
+            get(super::parked::confirm_resolve).post(super::parked::resolve),
         )
         .route("/setup", get(super::setup::index))
         .merge(

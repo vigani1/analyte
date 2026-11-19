@@ -1,4 +1,4 @@
-//! Runs audited operator actions with GET confirmations and CSRF-checked POST requests.
+//! Runs the audited Send again action (GET and POST /deliveries/{id}/resend) in the old look until the Deliveries page moves (admin restyle b5).
 use super::{
     server::Context,
     sessions::Session,
@@ -54,18 +54,7 @@ fn sign_in_first() -> Response {
 fn id(text: &str) -> Result<DeliveryId, Error> {
     Ok(uuid::Uuid::parse_str(text)?.try_into()?)
 }
-fn form(session: &Session, route: &str, label: &str, superseded: bool) -> Markup {
-    let acknowledgement = if superseded {
-        concat!(
-            concat!(
-                "<label class=\"check\" title=\"Acknowledge superseded revision\"><input ",
-                "type=\"checkbox\" name=\"acknowledge_superseded\" value=\"true\">",
-            ),
-            concat!("Send it even if a newer correction of this result exists.</label>",),
-        )
-    } else {
-        ""
-    };
+fn form(session: &Session, route: &str, label: &str) -> Markup {
     Markup::new()
         .markup("<form action=\"")
         .text(route)
@@ -82,7 +71,11 @@ fn form(session: &Session, route: &str, label: &str, superseded: bool) -> Markup
             "required maxlength=\"256\"></label><p class=\"muted\">Your reason is recorded ",
             "with the action.</p>",
         ))
-        .markup(acknowledgement)
+        .markup(concat!(
+            "<label class=\"check\" title=\"Acknowledge superseded revision\"><input ",
+            "type=\"checkbox\" name=\"acknowledge_superseded\" value=\"true\">",
+            "Send it even if a newer correction of this result exists.</label>",
+        ))
         .markup("<div class=\"actions-row\"><button>")
         .text(label)
         .markup("</button></div></form>")
@@ -133,76 +126,6 @@ async fn confirmed<T, F: Future<Output = Result<T, Error>>>(
     }
 }
 
-pub(super) async fn confirm_reprocess(
-    State(state): State<Arc<Context>>,
-    Path(parked): Path<i64>,
-    session: Option<Extension<Arc<Session>>>,
-) -> Response {
-    let read = move |s: &mut analyte_store::Store| Ok(s.parked_receipt(parked)?);
-    confirmation(&state, session, read, |receipt, session| {
-        page(
-            Tab::NeedsReview,
-            "Process this message again?",
-            &Markup::new()
-                .markup("<section><p title=\"Reprocess: reinterpret the original receipt\">")
-                .markup("Analyte reads the original message <code>")
-                .text(uuid::Uuid::from(receipt))
-                .markup(concat!(
-                    "</code> again with the current settings. The earlier reading is kept and ",
-                    "a new one is added; corrected results follow the usual correction rules. ",
-                    "Nothing is sent to the machine.</p>",
-                ))
-                .fragment(&form(
-                    session,
-                    &format!("/parked/{parked}/reprocess"),
-                    "Process again",
-                    false,
-                ))
-                .markup("</section>"),
-        )
-    })
-    .await
-}
-
-pub(super) async fn confirm_resolve(
-    State(state): State<Arc<Context>>,
-    Path(parked): Path<i64>,
-    session: Option<Extension<Arc<Session>>>,
-) -> Response {
-    let read = move |s: &mut analyte_store::Store| Ok(s.parked_item(parked)?);
-    confirmation(&state, session, read, |item, session| match item {
-        Some(item) if item.resolution.is_none() => page(
-            Tab::NeedsReview,
-            "Mark this item resolved?",
-            &Markup::new()
-                .markup("<section><p title=\"Resolve parked item ")
-                .text(parked)
-                .markup("\">Item ")
-                .text(parked)
-                .markup(concat!(
-                    " leaves the list of items waiting for review. Nothing is deleted and ",
-                    "nothing is sent to a machine or the lab app. The item stays in the ",
-                    "history, marked resolved by you with your reason.</p>",
-                ))
-                .fragment(&form(
-                    session,
-                    &format!("/parked/{parked}/resolve"),
-                    "Mark resolved",
-                    false,
-                ))
-                .markup("</section>"),
-        ),
-        Some(_) => view::refusal(
-            StatusCode::CONFLICT,
-            "Already resolved",
-            "This item is already resolved. Open it from Needs review to see who resolved it and why.",
-            "parked item already resolved",
-        ),
-        None => super::parked::item_not_found(),
-    })
-    .await
-}
-
 pub(super) async fn confirm_resend(
     State(state): State<Arc<Context>>,
     Path(text): Path<String>,
@@ -242,75 +165,8 @@ pub(super) async fn confirm_resend(
                     session,
                     &format!("/deliveries/{}/resend", uuid::Uuid::from(delivery)),
                     "Send again",
-                    true,
                 ))
                 .markup("</section>"),
-        )
-    })
-    .await
-}
-
-pub(super) async fn reprocess(
-    State(state): State<Arc<Context>>,
-    Path(parked): Path<i64>,
-    Extension(session): Extension<Arc<Session>>,
-    Form(form): Form<Confirmation>,
-) -> Response {
-    let act = |reason, actor| async move {
-        let path = state.config_path.clone();
-        let program =
-            tokio::task::spawn_blocking(move || crate::installation::config::Program::load(&path))
-                .await??;
-        if program.data_directory().canonicalize()? != state.directory.canonicalize()? {
-            return Err(Error::StoreMismatch);
-        }
-        crate::operator::recovery::reprocess(
-            &state.store,
-            &program,
-            crate::operator::recovery::ReprocessTarget::Parked(parked),
-            actor,
-            reason,
-        )
-        .await
-        .map_err(Error::from)
-    };
-    confirmed(&session, &form, act, |commit| {
-        page(
-            Tab::NeedsReview,
-            "Processed again",
-            &Markup::new()
-                .markup("<p class=\"notice info\" title=\"Reprocess recorded\">Reading ")
-                .text(commit.version)
-                .markup(" was recorded. What happened: ")
-                .text(crate::operator::display::list(&commit.outcomes))
-                .markup(".</p><p><a href=\"/parked\">Back to Needs review</a></p>"),
-        )
-    })
-    .await
-}
-
-pub(super) async fn resolve(
-    State(state): State<Arc<Context>>,
-    Path(parked): Path<i64>,
-    Extension(session): Extension<Arc<Session>>,
-    Form(form): Form<Confirmation>,
-) -> Response {
-    let act = |reason, actor| async move {
-        crate::operator::recovery::resolve(&state.store, parked, actor, reason)
-            .await
-            .map_err(Error::from)
-    };
-    confirmed(&session, &form, act, |()| {
-        page(
-            Tab::NeedsReview,
-            "Marked resolved",
-            &Markup::new()
-                .markup("<p class=\"notice info\" title=\"Resolution recorded\">Item ")
-                .text(parked)
-                .markup(concat!(
-                    " is marked resolved with your reason. It stays in the history.</p>",
-                    "<p><a href=\"/parked\">Back to Needs review</a></p>",
-                )),
         )
     })
     .await

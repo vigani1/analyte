@@ -1,0 +1,252 @@
+//! Holds the Needs review pages' view structs: display-ready values the templates show, built from what the store holds.
+//!
+//! Every word comes from `view::format` or the item's category; the templates
+//! only loop, test and call macros. Nothing here invents a value: a line with
+//! no stored data behind it is left out, and raw IDs only go under "For support".
+use super::category::Category;
+use crate::admin::view::{
+    Tone,
+    format::{Line, Moment, Part},
+    frame::Frame,
+    icon::Icon,
+};
+
+/// GET /parked: the Open and Resolved filters, then the items the filter shows.
+#[derive(askama::Template)]
+#[template(path = "pages/parked/index.html")]
+pub(super) struct List {
+    pub(super) frame: Frame,
+    pub(super) chips: [Chip; 2],
+    /// The open items, when the Open filter is on.
+    pub(super) cards: Vec<Card>,
+    /// The resolved items, when the Resolved filter is on.
+    pub(super) rows: Vec<Row>,
+    /// What the page says when the filter shows nothing.
+    pub(super) empty: Option<Empty>,
+    /// The next page of the same filter.
+    pub(super) next: Option<String>,
+}
+
+/// What the Needs review page says under its title.
+pub(super) const LEDE: &str = concat!(
+    "Messages and results Analyte kept but could not process on its own. Items stay ",
+    "here until someone resolves them; their history is kept.",
+);
+
+/// One filter link with its count.
+pub(super) struct Chip {
+    pub(super) href: &'static str,
+    pub(super) label: &'static str,
+    pub(super) count: u64,
+    pub(super) current: bool,
+}
+
+/// One open item on the list.
+pub(super) struct Card {
+    pub(super) id: i64,
+    pub(super) category: Category,
+    /// The machine its message came from, when its target is a stored message.
+    pub(super) machine: Option<String>,
+    /// When that message arrived.
+    pub(super) arrived: Option<Moment>,
+    pub(super) reason: Hover,
+    pub(super) actions: Vec<Button>,
+}
+
+/// One resolved item on the list: what it was and how it was settled.
+pub(super) struct Row {
+    pub(super) id: i64,
+    pub(super) category: String,
+    pub(super) machine: Option<String>,
+    pub(super) settled: Line,
+    pub(super) href: String,
+}
+
+/// What a filter with no items says: good news, with a tick, only for the
+/// Open filter; `link` points to the other filter when it has items.
+pub(super) struct Empty {
+    pub(super) good: bool,
+    pub(super) title: &'static str,
+    pub(super) text: &'static str,
+    pub(super) link: Option<(String, String)>,
+}
+
+/// Words with their exact stored value on hover; `exact` is empty when they are the same.
+pub(super) struct Hover {
+    pub(super) shown: String,
+    pub(super) exact: String,
+}
+
+/// A link drawn as a button: where it goes, its words and its kind.
+pub(super) struct Button {
+    pub(super) href: String,
+    pub(super) label: &'static str,
+    pub(super) class: &'static str,
+}
+
+/// GET /parked/{id}, and the same page under the Mark resolved and Process
+/// again dialogs.
+#[derive(askama::Template)]
+#[template(path = "pages/parked/item.html")]
+pub(super) struct Item {
+    pub(super) frame: Frame,
+    pub(super) head: Head,
+    pub(super) reason: Hover,
+    /// What to do and the actions; none once the item is resolved.
+    pub(super) todo: Option<Todo>,
+    /// One line per linked record on this page.
+    pub(super) linked: Vec<Pair>,
+    /// Which linked records this page shows, when there are more than one page.
+    pub(super) linked_note: Option<String>,
+    pub(super) next: Option<String>,
+    pub(super) original: Original,
+    pub(super) history: Vec<Entry>,
+    /// Said under the history: that older entries are not shown, and while the
+    /// item is open, what will appear there.
+    pub(super) history_notes: Vec<&'static str>,
+    /// Exact IDs and stored values, for support.
+    pub(super) support: Vec<String>,
+    pub(super) dialog: Option<Dialog>,
+}
+
+/// The head of a page under Needs review.
+pub(super) struct Head {
+    pub(super) crumbs: Vec<Crumb>,
+    pub(super) title: String,
+    pub(super) lede: Option<Line>,
+    pub(super) status: Option<(Tone, &'static str)>,
+}
+
+/// One step of the way back: words, an item number in mono, and a link unless it is this page.
+pub(super) struct Crumb {
+    pub(super) label: &'static str,
+    pub(super) number: Option<i64>,
+    pub(super) href: Option<String>,
+}
+
+/// What to do about an open item, with its buttons.
+pub(super) struct Todo {
+    pub(super) guidance: &'static str,
+    pub(super) actions: Vec<Button>,
+}
+
+/// One key and its value.
+pub(super) struct Pair {
+    pub(super) term: &'static str,
+    pub(super) value: Line,
+}
+
+/// The "Show the original message" disclosure: a form per linked record, or
+/// the way to sign in when the request came with the admin key alone.
+pub(super) struct Original {
+    pub(super) signed_in: bool,
+    pub(super) targets: Vec<OriginalTarget>,
+}
+
+/// One linked record's way to its original bytes.
+pub(super) struct OriginalTarget {
+    pub(super) title: Line,
+    /// "How this message was read", for a stored message.
+    pub(super) departures: Option<String>,
+    pub(super) form: RawRequest,
+}
+
+/// The audited form that shows original bytes: one button per way they were kept.
+pub(super) struct RawRequest {
+    pub(super) action: String,
+    pub(super) csrf: String,
+    pub(super) target: String,
+    pub(super) after: u64,
+    pub(super) offset: u64,
+    /// The reason field's id, unique on the page.
+    pub(super) field: String,
+    pub(super) reason: String,
+    /// `source` value and words of each button.
+    pub(super) buttons: Vec<(&'static str, &'static str)>,
+}
+
+/// One line of an item's history.
+pub(super) struct Entry {
+    pub(super) when: Option<Moment>,
+    pub(super) text: String,
+    pub(super) who: String,
+    /// The line that settled the item.
+    pub(super) good: bool,
+}
+
+/// A confirmation drawn over the item page.
+pub(super) struct Dialog {
+    pub(super) action: String,
+    pub(super) title: &'static str,
+    pub(super) text: &'static str,
+    pub(super) placeholder: &'static str,
+    pub(super) hint: &'static str,
+    pub(super) button: &'static str,
+    pub(super) csrf: String,
+    pub(super) cancel: String,
+    /// What was typed, shown again after a refusal.
+    pub(super) reason: String,
+    pub(super) error: Option<&'static str>,
+}
+
+/// POST /parked/{id}/raw: the bytes someone asked to see, after the view was recorded.
+#[derive(askama::Template)]
+#[template(path = "pages/parked/raw.html")]
+pub(super) struct Raw {
+    pub(super) frame: Frame,
+    pub(super) head: Head,
+    /// "The message as stored" or "The pieces as they arrived from the machine".
+    pub(super) what: String,
+    /// One line per 16 bytes: hex, then the same bytes as text.
+    pub(super) lines: Vec<String>,
+    /// The form for the next part, when more bytes follow.
+    pub(super) more: Option<RawRequest>,
+    pub(super) support: Vec<String>,
+}
+
+/// A page that only reports an outcome or a refusal, with where to go next.
+#[derive(askama::Template)]
+#[template(path = "pages/parked/message.html")]
+pub(super) struct Message {
+    pub(super) frame: Frame,
+    pub(super) head: Head,
+    pub(super) tone: Tone,
+    pub(super) title: String,
+    pub(super) text: String,
+    pub(super) links: Vec<Button>,
+    /// The exact reason, for support; empty after a success.
+    pub(super) support: Vec<String>,
+}
+
+impl Head {
+    /// A page under Needs review: "Needs review / Item 412" when it is about one
+    /// item, linked back to the item unless `here` is the item page itself.
+    pub(super) fn under(id: Option<i64>, here: bool, title: impl Into<String>) -> Self {
+        let mut crumbs = vec![Crumb {
+            label: "Needs review",
+            number: None,
+            href: Some(crate::admin::view::Tab::NeedsReview.href().to_owned()),
+        }];
+        if let Some(id) = id {
+            crumbs.push(Crumb {
+                label: "Item",
+                number: Some(id),
+                href: (!here).then(|| item_href(id)),
+            });
+        }
+        Self {
+            crumbs,
+            title: title.into(),
+            lede: None,
+            status: None,
+        }
+    }
+}
+
+/// The item page's address.
+pub(super) fn item_href(id: i64) -> String {
+    format!("/parked/{id}")
+}
+
+/// The icon a resolved row shows; the templates name no icon themselves.
+pub(super) const RESOLVED: (Icon, Tone) = (Icon::Ok, Tone::Good);
