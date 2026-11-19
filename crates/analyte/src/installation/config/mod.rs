@@ -959,6 +959,11 @@ fn entries(
     Ok((machines, awaiting_setup))
 }
 
+/// The folder that holds the program file `program`; entry paths are relative to it.
+pub(crate) fn folder(program: &Path) -> &Path {
+    program.parent().unwrap_or_else(|| Path::new("."))
+}
+
 /// Whether `name` uses only ASCII letters, digits, `-` and `_`, so it can name
 /// a file or folder and appear in a link without escaping.
 pub(crate) fn plain_name(name: &str) -> bool {

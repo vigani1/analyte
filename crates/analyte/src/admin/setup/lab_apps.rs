@@ -18,6 +18,7 @@ use crate::admin::{
 };
 use crate::installation::{
     config::{
+        folder,
         lab_apps::{self as file, Conflict, Written},
         plain_name, read,
     },
@@ -188,7 +189,7 @@ pub(super) fn scan(config: &std::path::Path) -> Result<Scan, SetupError> {
     for settings in &kept {
         scan.note(settings, Place::Kept);
     }
-    let base = site::folder(config);
+    let base = folder(config);
     let mut by_default = Vec::new();
     for entry in &listed {
         let id = entry.id.get_ref();
