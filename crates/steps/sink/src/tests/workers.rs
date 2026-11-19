@@ -292,3 +292,60 @@ async fn slow_destination_never_delays_another_worker() -> TestResult {
     store.shutdown(until()?).await?;
     Ok(())
 }
+
+// Owner request 2026-11-19 (results waiting after a removal); AGENTS.md safety
+// rule 2: a delivery-only worker for a destination no machine uses ends at once
+// when nothing is waiting, but an item held for an operator (here paused) keeps
+// it running, so a later release is still sent; shutdown still stops it.
+#[tokio::test]
+async fn delivery_only_worker_ends_when_nothing_waits() -> TestResult {
+    let directory = tempfile::tempdir()?;
+    let store = store(&directory.path().join("store.db")).await?;
+    let secrets = Secrets("key");
+    let destination = destination("http://127.0.0.1:1")?;
+    let worker = Worker::for_destination(&store, &destination, &secrets);
+    let (stop, stopped) = watch::channel(false);
+    tokio::time::timeout(
+        HANG_GUARD,
+        worker.run_until_delivered(stopped.clone(), Duration::from_secs(1)),
+    )
+    .await??;
+    let metadata = receipt()?;
+    let result = make_result(metadata.id, "held")?;
+    let delivery = encode_delivery(
+        &result,
+        &metadata,
+        Identifier::new("app")?,
+        jiff::Timestamp::now(),
+    )?;
+    let id = delivery.id;
+    enqueue(&store, metadata, result, delivery).await?;
+    store
+        .request::<_, TestStoreError>(until()?, move |s| {
+            let app = Identifier::new("app").map_err(TestStoreError::Text)?;
+            let claim = s
+                .claim_destination(jiff::Timestamp::now().as_second(), &app)?
+                .ok_or(TestStoreError::Text(TextError::Empty))?;
+            assert_eq!(claim.id, id);
+            s.attempted(
+                id,
+                &analyte_store::Attempt::Paused(
+                    Reason::new("synthetic pause").map_err(TestStoreError::Text)?,
+                ),
+                jiff::Timestamp::now().as_second(),
+            )?;
+            Ok::<_, TestStoreError>(())
+        })
+        .await?;
+    let run = worker.run_until_delivered(stopped, Duration::from_secs(1));
+    tokio::pin!(run);
+    assert!(
+        tokio::time::timeout(Duration::from_millis(300), &mut run)
+            .await
+            .is_err(),
+        "a paused item keeps the worker running"
+    );
+    stop.send(true)?;
+    tokio::time::timeout(HANG_GUARD, run).await??;
+    Ok(())
+}

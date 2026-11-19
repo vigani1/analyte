@@ -162,6 +162,7 @@ async fn start_with(machines: &str, site_text: &str) -> Result<Fixture, Error> {
         store: store.clone(),
         machines: Vec::new(),
         destinations: Vec::new(),
+        retired: crate::admin::Draining::new(),
         directory: data.clone(),
         reserve: 1,
         setup,
@@ -698,6 +699,37 @@ impl Fixture {
     }
 }
 
+/// The site file's `[destination]` is kept in the program, so its waiting results
+/// stay deliverable after the removal, and the page says so.
+fn assert_destination_kept(
+    removed: &str,
+    program: &Program,
+    site_before: &str,
+) -> Result<(), Error> {
+    let kept = "Lab app destination demo is kept in the program file for delivery";
+    assert!(
+        removed.contains("Restart now") && removed.contains(kept),
+        "{removed}"
+    );
+    let site: toml::Table = site_before.parse()?;
+    let kept: Vec<toml::Value> = program
+        .retired_destinations()
+        .iter()
+        .map(|kept| toml::Value::try_from(kept.settings()))
+        .collect::<Result<_, _>>()?;
+    let mut expected = site.get("destination").ok_or("destination")?.clone();
+    if let Some(table) = expected.as_table_mut() {
+        table
+            .entry("freshness_seconds")
+            .or_insert(toml::Value::Integer(30));
+        table
+            .entry("request_timeout_seconds")
+            .or_insert(toml::Value::Integer(10));
+    }
+    assert_eq!(kept, [expected]);
+    Ok(())
+}
+
 /// Stores, for `machine`, one unread receipt with an unresolved flagged item and
 /// one uncertain machine order with its order event waiting in the outbox.
 async fn seed_unfinished(
@@ -911,6 +943,47 @@ async fn add_refuses_duplicate_and_invalid_names_before_writing() -> Result<(), 
     Ok(())
 }
 
+// Owner request 2026-11-19 (add machines); AGENTS.md safety rule 4; plan §11: a
+// name already listed is refused as listed before its stored history is looked
+// up. The store's only owner thread is held busy, so a history lookup could not
+// answer; the refusal must come back anyway, and say "already listed".
+#[tokio::test(flavor = "multi_thread")]
+async fn listed_name_refused_before_history_lookup() -> Result<(), Error> {
+    let fixture = start_two().await?;
+    // The listed machine also has history, so a lookup would ask to confirm it.
+    seed_unfinished(&fixture.store, "synthetic").await?;
+    let form = fixture.get("/setup/add").await?;
+    let body = format!("csrf={}&name=SYNTHETIC", encode(&csrf(&form)?));
+    let (started, busy) = tokio::sync::oneshot::channel();
+    let (release, released) = std::sync::mpsc::channel::<()>();
+    let store = fixture.store.clone();
+    let holder = tokio::spawn(async move {
+        store
+            .request::<_, FixtureError>(fixture_deadline()?, move |_| {
+                let _ = started.send(());
+                // Bounded: the test releases it, or it gives up by itself.
+                let _ = released.recv_timeout(Duration::from_secs(20));
+                Ok(())
+            })
+            .await
+            .map_err(Error::from)
+    });
+    busy.await?;
+    let refused = tokio::time::timeout(Duration::from_secs(2), fixture.post("/setup/add", &body))
+        .await
+        .map_err(|_| "the listed name waited for the store: history was looked up first")?;
+    release.send(())?;
+    holder.await??;
+    let refused = refused?;
+    assert!(refused.starts_with("HTTP/1.1 409"), "{refused}");
+    assert!(refused.contains("already listed"), "{refused}");
+    assert!(
+        !refused.contains("has stored results or history"),
+        "{refused}"
+    );
+    Ok(())
+}
+
 // Owner request 2026-11-18 (remove machines); AGENTS.md safety rules 2 and 8;
 // ADR 0003 rule 2: removing asks plainly, warns about unfinished outbox, order and
 // flagged work and needs "Remove anyway" for it, takes only the program entry out,
@@ -945,7 +1018,7 @@ async fn remove_warns_then_keeps_store_and_site_backup() -> Result<(), Error> {
         "1 orders sent to the machine and not finished",
         "1 received messages not read yet",
         "1 unresolved flagged items linked to this machine",
-        "No other set-up machine uses lab app destination demo",
+        "for lab app destination demo keep being delivered after the restart, even though no other machine uses it",
         "<button>Remove anyway</button>",
     ] {
         assert!(confirm.contains(expected), "missing {expected}: {confirm}");
@@ -969,9 +1042,9 @@ async fn remove_warns_then_keeps_store_and_site_backup() -> Result<(), Error> {
         )
         .await?;
     assert!(removed.starts_with("HTTP/1.1 200"), "{removed}");
-    assert!(removed.contains("Restart now"));
     let program = Program::load(&fixture.config)?;
     assert!(program.machines().is_empty());
+    assert_destination_kept(&removed, &program, &site_before)?;
     let waiting: Vec<&str> = program
         .awaiting_setup()
         .iter()

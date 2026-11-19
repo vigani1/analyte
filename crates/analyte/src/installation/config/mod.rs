@@ -7,11 +7,13 @@ mod hooks;
 pub(crate) use crate::machine::hooks::MachineHooks;
 pub(crate) use hooks::ProgramHooks;
 mod error;
+mod retired;
 mod webhooks;
 pub(crate) use alerts::Condition;
 pub use alerts::{Alert, AlertConfigError, AlertKind};
 use analyte_config::{Draft, Validated};
 pub use error::Error;
+pub use retired::Retired;
 use serde::Deserialize;
 use std::{
     io::Read,
@@ -54,6 +56,8 @@ pub struct Program {
     pub(crate) machines: Vec<Machine>,
     /// Machines listed without a definition: they wait for the setup page and do not run.
     awaiting_setup: Vec<analyte_model::Identifier>,
+    /// Destinations kept after their machines were removed, for delivery only.
+    pub(crate) retired: Vec<Retired>,
 }
 
 #[derive(Deserialize)]
@@ -74,6 +78,10 @@ struct File {
     /// May be empty or absent while the setup page is on: machines are added there.
     #[serde(default)]
     machines: Vec<Entry>,
+    /// Lab app destinations kept by the setup page when a machine using them was
+    /// removed, written like a site file's `[destination]` table.
+    #[serde(default)]
+    retired_destinations: Vec<analyte_config::Destination>,
 }
 
 #[derive(Deserialize)]
@@ -173,12 +181,16 @@ impl Program {
             admin_address.is_some(),
         )?;
         connections::check(&machines)?;
+        let retired = retired::validate(file.retired_destinations, path)?;
         if file.signing_rotation.len() > 128
             || file.signing_rotation.values().any(|names| names.len() > 7)
             || file.signing_rotation.keys().any(|name| {
                 !machines
                     .iter()
                     .any(|m| m.snapshot.effective().site().destination.name.as_str() == name)
+                    && !retired
+                        .iter()
+                        .any(|kept| kept.settings.name.as_str() == name)
             })
         {
             return Err(Error::InvalidSigningRotation);
@@ -240,6 +252,7 @@ impl Program {
             },
             machines,
             awaiting_setup,
+            retired,
         })
     }
 }
@@ -291,6 +304,23 @@ impl Program {
     #[must_use]
     pub fn awaiting_setup(&self) -> &[analyte_model::Identifier] {
         &self.awaiting_setup
+    }
+
+    /// Destinations kept after their machines were removed, in configured order,
+    /// including any that a set-up machine uses again.
+    #[must_use]
+    pub fn retired_destinations(&self) -> &[Retired] {
+        &self.retired
+    }
+
+    /// Kept destinations that no set-up machine uses: only these get a
+    /// delivery-only worker, because a machine's own settings win for its name.
+    pub(crate) fn unused_retired(&self) -> impl Iterator<Item = &Retired> {
+        self.retired.iter().filter(|kept| {
+            !self.machines.iter().any(|machine| {
+                machine.snapshot.effective().site().destination.name == kept.settings.name
+            })
+        })
     }
 }
 
@@ -462,6 +492,70 @@ mod admin_tests {
             Program::load(&path),
             Err(super::Error::DuplicateMachineIdentity)
         ));
+        Ok(())
+    }
+
+    // Owner request 2026-11-19 (results waiting after a removal); safety rule 2:
+    // a kept destination is read with the site file's [destination] rules, once
+    // per name, may carry a signing rotation, and gets a delivery-only worker only
+    // while no set-up machine uses its name.
+    #[test]
+    fn retired_destinations_load_for_delivery_only() -> Result<(), Error> {
+        let temp = tempfile::tempdir()?;
+        let path = temp.path().join("program.toml");
+        let examples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../core/config/examples");
+        let machine = format!(
+            "[[machines]]\nid = 'synthetic'\ndefinition = '{}'\nsite = '{}'\n",
+            examples.join("hl7.toml").display(),
+            examples.join("site.toml").display()
+        );
+        let program = |machines: &str, tail: &str| {
+            let head = analyte_fixtures::program(&format!("[admin]\nport = 8080\n{machines}"));
+            format!("{head}{tail}")
+        };
+        let kept = |name: &str, extra: &str| {
+            format!(
+                concat!(
+                    "[[retired_destinations]]\nname = '{}'\nbase_url = 'https://old.example.invalid'\n",
+                    "api_key_name = 'old-api'\nsigning_key_name = 'old-signing'\n{}"
+                ),
+                name, extra
+            )
+        };
+        let rotation = "[signing_rotation]\nold = ['old-previous']\n";
+        let tail = format!("{}{}{rotation}", kept("old", ""), kept("demo", ""));
+        std::fs::write(&path, program(&machine, &tail))?;
+        let loaded = Program::load(&path)?;
+        let names = |kept: &mut dyn Iterator<Item = &Retired>| -> Vec<String> {
+            kept.map(|kept| kept.settings().name.as_str().to_owned())
+                .collect()
+        };
+        let all = names(&mut loaded.retired_destinations().iter());
+        assert_eq!(all, ["old", "demo"]);
+        // The running machine's own "demo" settings win; only "old" is drained.
+        assert_eq!(names(&mut loaded.unused_retired()), ["old"]);
+        let timeout = loaded.retired_destinations()[0].limits.request_timeout;
+        assert_eq!(timeout, Duration::from_secs(10));
+        let twice = format!("{}{}", kept("old", ""), kept("old", ""));
+        std::fs::write(&path, program("", &twice))?;
+        assert!(matches!(
+            Program::load(&path),
+            Err(super::Error::DuplicateRetiredDestination(name)) if name == "old"
+        ));
+        let zero = kept("old", "request_timeout_seconds = 0\n");
+        std::fs::write(&path, program("", &zero))?;
+        let refused = Program::load(&path).err().ok_or("timeout accepted")?;
+        let key = "retired_destinations.request_timeout_seconds";
+        assert!(refused.to_string().contains(key), "{refused}");
+        // A machine-only key, an unknown key and plain HTTP are refused.
+        for invalid in [
+            kept("old", "endpoint = '127.0.0.1:1'\n"),
+            kept("old", "base_url2 = 'x'\n"),
+            kept("old", "").replace("https://", "http://"),
+        ] {
+            std::fs::write(&path, program("", &invalid))?;
+            assert!(Program::load(&path).is_err(), "{invalid}");
+        }
         Ok(())
     }
 

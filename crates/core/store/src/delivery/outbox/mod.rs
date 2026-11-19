@@ -43,6 +43,20 @@ impl Store {
         Ok(result)
     }
 
+    /// Counts this destination's items the app has not accepted yet, in any state but
+    /// done: waiting, in flight, scheduled for a retry, paused, parked or conflicting.
+    /// A delivery-only worker stops when this reaches zero.
+    /// # Errors
+    /// Reports database failures or a corrupt count.
+    pub fn undelivered(&self, destination: &Identifier) -> Result<u64, Error> {
+        let count: i64 = self.db.query_row(
+            "SELECT count(*) FROM outbox WHERE destination=?1 AND state!=?2",
+            params![destination.as_str(), DeliveryState::Done],
+            |r| r.get(0),
+        )?;
+        u64::try_from(count).map_err(|_| Error::Corruption)
+    }
+
     /// Records an attempt and its next state atomically, retaining bytes and delivery ID.
     /// # Errors
     /// Refuses outcomes for items that are not in flight.

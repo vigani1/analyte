@@ -281,7 +281,10 @@ missing; nothing is guessed in the meantime.
   keys in a locked file only the service can read (environment variables win).
   It also adds a machine (a new entry and starter site file) and removes one
   (the entry goes, its site file is kept as a dated copy, the store is never
-  touched), with the same checks and backups. Applying a change needs a restart.
+  touched), with the same checks and backups. Removing keeps the machine's lab
+  app destination in the program file, so its waiting results are still
+  delivered (no order polling) until none are left; the Overview counts them.
+  Applying a change needs a restart.
 - Alerts on oldest undelivered item, stalled machines and disk space.
 - The PC must not sleep; updates are scheduled; USB serial reconnects and COM
   port changes are handled.

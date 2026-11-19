@@ -268,8 +268,31 @@ impl<'a> Worker<'a> {
     /// Reports storage/configuration failures or expiry of the shutdown budget.
     pub async fn run_draining(
         &self,
+        stop: watch::Receiver<bool>,
+        budget: Duration,
+    ) -> Result<(), DeliveryError> {
+        self.run_bounded(stop, budget, false).await
+    }
+
+    /// Like [`Self::run_draining`], and also returns once the destination holds
+    /// nothing the app has not accepted (`Store::undelivered` is zero). Items held
+    /// for an operator (paused, parked, conflicting) keep it running, so a release
+    /// or resend is still sent. For a destination no machine uses any more.
+    /// # Errors
+    /// Reports storage/configuration failures or expiry of the shutdown budget.
+    pub async fn run_until_delivered(
+        &self,
+        stop: watch::Receiver<bool>,
+        budget: Duration,
+    ) -> Result<(), DeliveryError> {
+        self.run_bounded(stop, budget, true).await
+    }
+
+    async fn run_bounded(
+        &self,
         mut stop: watch::Receiver<bool>,
         budget: Duration,
+        until_delivered: bool,
     ) -> Result<(), DeliveryError> {
         loop {
             if *stop.borrow() || stop.has_changed().is_err() {
@@ -291,6 +314,9 @@ impl<'a> Worker<'a> {
                 result = &mut attempt => result?,
             };
             if outcome == DeliveryOutcome::Idle {
+                if until_delivered && self.undelivered().await? == 0 {
+                    return Ok(());
+                }
                 tokio::select! {
                     biased;
                     _ = async { let _ = stop.wait_for(|&stopped| stopped).await; } => return Ok(()),
@@ -298,6 +324,20 @@ impl<'a> Worker<'a> {
                 }
             }
         }
+    }
+
+    async fn undelivered(&self) -> Result<u64, DeliveryError> {
+        let destination = self.destination.id().clone();
+        Ok(self
+            .store
+            .request(
+                deadline(
+                    self.destination.limits.store_timeout,
+                    DeliveryError::Timeout,
+                )?,
+                move |s| s.undelivered(&destination),
+            )
+            .await?)
     }
 
     /// Runs until cancellation or a specific storage/configuration error.

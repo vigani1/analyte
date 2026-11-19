@@ -34,7 +34,84 @@ pub struct StoredDelivery {
     pub state: DeliveryState,
 }
 
+/// What the app has not accepted yet for one destination, without payloads.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Undelivered {
+    /// Destination chosen when the bytes were built.
+    pub destination: Identifier,
+    /// Items a worker still sends: waiting, in flight or scheduled for a retry.
+    pub sending: u64,
+    /// Items held for an operator: paused, parked or conflicting.
+    pub held: u64,
+    /// Machines whose results or orders these items carry, at most
+    /// [`UNDELIVERED_MACHINES`] of them, in name order.
+    pub machines: Vec<Identifier>,
+}
+
+/// How many machine names one [`Undelivered`] lists.
+pub const UNDELIVERED_MACHINES: usize = 8;
+
 impl Store {
+    /// Lists, per destination, what the app has not accepted yet; destinations with
+    /// nothing open are left out. At most `page_rows` destinations, in name order.
+    /// # Errors
+    /// Reports database failures, corrupt counts and corrupt stored names.
+    pub fn undelivered_by_destination(&self) -> Result<Vec<Undelivered>, Error> {
+        let rows: Vec<(String, i64, i64)> = self
+            .db
+            .prepare(concat!(
+                "SELECT destination,sum(state IN (?1,?2)),sum(state IN (?3,?4,?5)) FROM outbox ",
+                "WHERE state!=?6 GROUP BY destination ORDER BY destination LIMIT ?7"
+            ))?
+            .query_map(
+                params![
+                    DeliveryState::Pending,
+                    DeliveryState::InFlight,
+                    DeliveryState::Paused,
+                    DeliveryState::Parked,
+                    DeliveryState::Conflict,
+                    DeliveryState::Done,
+                    i64::try_from(self.limits.page_rows)
+                        .map_err(|_| Error::InvalidDeliveryInput)?
+                ],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )?
+            .collect::<Result<_, _>>()?;
+        let mut machines = self.db.prepare(concat!(
+            "SELECT machine FROM (",
+            "SELECT json_extract(r.metadata,'$.machine') AS machine FROM outbox o ",
+            "JOIN receipts r ON r.id=o.receipt WHERE o.destination=?1 AND o.state!=?2 ",
+            "UNION SELECT m.machine FROM outbox o JOIN machine_orders m ",
+            "ON m.order_id=o.order_id AND m.destination=o.destination ",
+            "WHERE o.destination=?1 AND o.state!=?2 AND o.kind=?3) ORDER BY machine LIMIT ?4"
+        ))?;
+        rows.into_iter()
+            .map(|(destination, sending, held)| {
+                let names: Vec<String> = machines
+                    .query_map(
+                        params![
+                            destination,
+                            DeliveryState::Done,
+                            DeliveryKind::OrderEvent,
+                            i64::try_from(UNDELIVERED_MACHINES)
+                                .map_err(|_| Error::InvalidDeliveryInput)?
+                        ],
+                        |r| r.get(0),
+                    )?
+                    .collect::<Result<_, _>>()?;
+                Ok(Undelivered {
+                    destination: Identifier::new(&destination).map_err(|_| Error::Corruption)?,
+                    sending: u64::try_from(sending).map_err(|_| Error::Corruption)?,
+                    held: u64::try_from(held).map_err(|_| Error::Corruption)?,
+                    machines: names
+                        .iter()
+                        .map(|name| Identifier::new(name).map_err(|_| Error::Corruption))
+                        .collect::<Result<_, _>>()?,
+                })
+            })
+            .collect()
+    }
+
     /// Reads one delivery's operator metadata without exposing its bytes.
     /// # Errors
     /// Reports database failures or corrupt stored metadata; unknown IDs return absence.

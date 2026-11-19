@@ -346,6 +346,38 @@ fn unfinished_work_is_counted_per_machine() -> TestResult {
     Ok(())
 }
 
+// Owner request 2026-11-19 (results waiting after a removal); AGENTS.md safety
+// rule 2: per destination, the store counts what the app has not accepted (sent by
+// a worker, or held for an operator) and names the machines it came from; a
+// delivery-only worker stops only when nothing but accepted items is left.
+#[test]
+fn undelivered_is_counted_per_destination() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("store.db"))?;
+    let app = Identifier::new("app")?;
+    assert!(store.undelivered_by_destination()?.is_empty());
+    assert_eq!(store.undelivered(&app)?, 0);
+    seed_machine_work(&mut store, &Identifier::new("synthetic-machine")?)?;
+    assert_eq!(
+        store.undelivered_by_destination()?,
+        [Undelivered {
+            destination: app.clone(),
+            sending: 2,
+            held: 1,
+            machines: vec![
+                Identifier::new("other-machine")?,
+                Identifier::new("synthetic-machine")?
+            ],
+        }]
+    );
+    assert_eq!(store.undelivered(&app)?, 3);
+    assert_eq!(store.undelivered(&Identifier::new("elsewhere")?)?, 0);
+    store.db.execute("UPDATE outbox SET state='done'", [])?;
+    assert!(store.undelivered_by_destination()?.is_empty());
+    assert_eq!(store.undelivered(&app)?, 0);
+    Ok(())
+}
+
 /// Stores open and finished work for `machine` and another machine; returns how
 /// many parked items exist.
 fn seed_machine_work(

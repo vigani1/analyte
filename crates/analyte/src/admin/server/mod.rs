@@ -45,6 +45,8 @@ pub(super) struct Context {
     pub(super) store: Arc<analyte_store::Handle>,
     pub(super) machines: Vec<Machine>,
     pub(super) destinations: Vec<analyte_sink::Destination>,
+    /// Kept destinations no set-up machine uses, with their delivery-only worker's flag.
+    pub(super) retired: super::Draining,
     pub(super) directory: std::path::PathBuf,
     pub(super) reserve: u64,
     pub(super) setup: super::setup::Setup,
@@ -65,6 +67,7 @@ pub(crate) async fn prepare(
     program: &Program,
     store: Arc<analyte_store::Handle>,
     mode: crate::runtime::hooks::ServiceMode,
+    retired: &super::Draining,
 ) -> Result<Option<Server>, Error> {
     let Some(address) = program.admin_address() else {
         return Ok(None);
@@ -116,6 +119,7 @@ pub(crate) async fn prepare(
         store,
         machines,
         destinations: crate::runtime::delivery::destinations(program, mode)?,
+        retired: retired.clone(),
         directory: program.data_directory().to_owned(),
         reserve: program.store_limits.reserve_bytes,
         setup,

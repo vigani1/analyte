@@ -32,7 +32,7 @@ to a shared network.
 
 | Page | Use |
 | --- | --- |
-| Overview | Active alerts, owner state, activity, pending age, cache trust, uncertain orders, restore pause and free space. |
+| Overview | Active alerts, owner state, activity, pending age, cache trust, uncertain orders, restore pause, free space and results still being delivered for removed machines. |
 | Machines | Config, link light and activity. TCP server: Waiting or Connected. TCP client: Connected or Not connected (retrying). Serial: only Port open or Port not open, because an open port proves no cable or machine. Watched folder: Watching or Not watching. Last data received and last state change show as an age. |
 | Parked items | Reasons and linked evidence. Raw disclosure requires an audited browser POST. |
 | Deliveries | Inspect state and confirm eligible resends, with a reason. |
@@ -94,11 +94,34 @@ to no single machine are not counted). If anything is open, the button becomes
 **Remove anyway**. Removing takes only the entry out of the program file and
 moves the site file to a dated copy (`<name>.site.toml.<time>.bak`); the store is
 never changed, so the machine's stored results, flagged items and history stay
-visible on the other pages. Delivery runs per lab app destination, not per
-machine: stored results keep being delivered while another machine uses the
-same destination; if none does, they stay stored and resume when such a machine
-is set up again. The page says which case applies. Removing the last machine is
-allowed: Analyte then serves only the admin page until a machine is added.
+visible on the other pages.
+
+Stored results and order messages keep being delivered after a removal, even
+when no other machine uses the same lab app. Removing keeps the machine's lab app
+destination (its name, address, deadlines and key names, never the keys) in the
+program file as a `[[retired_destinations]]` table, in the same checked write. At
+each start, Analyte runs a delivery-only worker for every kept destination that
+no set-up machine uses: it sends what is waiting with the usual retries and
+shutdown limits, and stops when nothing is left. It never asks that lab app for
+orders. Items paused, parked or conflicting keep it running, so an operator's
+release or resend is still sent; anything added after it stopped is sent after
+the next restart. A set-up machine that uses the same destination name wins:
+its own settings are used, as before. While anything waits, the Overview and the
+Setup page say so, for example "Removed machine machine-2: 3 results or order
+messages still being delivered to lab app destination lab-app"; the line goes
+away when the count reaches 0. Remove a `[[retired_destinations]]` table by hand
+only when nothing waits for it.
+
+If a destination's settings cannot be read when its machine is removed (for
+example a broken site file), nothing is kept and the page says so. Results that
+wait for a destination that is configured nowhere stay stored and are never
+deleted; the pages show "Cannot deliver: destination X no longer configured", the
+service log says so at each start, and an `oldest_undelivered` alert, if
+configured, raises for them. Set up a machine that uses that destination to
+deliver them. If a kept destination's keys are missing, its deliveries pause with
+"destination credentials require operator repair" and the service keeps running.
+Removing the last machine is allowed: Analyte then serves only the admin page
+(and delivers what still waits) until a machine is added.
 
 Saving, adding and removing all use the same steps: check first, keep a dated
 copy of each file they change, write safely, load the whole program again as
@@ -150,7 +173,8 @@ added and removed machines and restarts are audited (session and machine name)
 without key values. A save writes only the site file, that one program line and
 the locked credentials file; retention, time zone, credential names and other
 site keys are kept as they were. Adding and removing change only that machine's
-entry in the program file and its site file.
+entry in the program file and its site file; removing also adds or updates the
+`[[retired_destinations]]` table for its lab app destination.
 
 ## Alerts and named responders
 

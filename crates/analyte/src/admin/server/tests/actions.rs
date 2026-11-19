@@ -294,6 +294,7 @@ async fn start_action_server(
         store: store.clone(),
         machines: Vec::new(),
         destinations: Vec::new(),
+        retired: crate::admin::Draining::new(),
         directory: program.data_directory().to_owned(),
         reserve: 1,
         setup: crate::admin::setup::Setup::for_test(program.data_directory()),

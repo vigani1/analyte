@@ -31,7 +31,7 @@ pub use transfers::{FrameSequence, TransferOutcome};
 
 pub use reprocess::Reprocess;
 
-pub use delivery_operator::{DeliveryState, StoredDelivery};
+pub use delivery_operator::{DeliveryState, StoredDelivery, UNDELIVERED_MACHINES, Undelivered};
 /// Schema version this build creates and migrates to; readers wait for it
 /// before using tables added by the latest migration.
 pub const SCHEMA_VERSION: i64 = 15;

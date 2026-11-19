@@ -33,6 +33,43 @@ pub(crate) fn destinations(
     Ok(destinations)
 }
 
+/// Kept destinations no set-up machine uses, built like a machine's destination.
+/// Each gets a delivery-only worker and no order poller: no machine is left to
+/// take its orders, so reading them would only fill the cache.
+pub(crate) fn retired(
+    program: &Program,
+    mode: super::hooks::ServiceMode,
+) -> Result<Vec<Destination>, Error> {
+    program
+        .unused_retired()
+        .map(|kept| {
+            super::hooks::destination(&program.hooks, kept.settings(), kept.limits.clone(), mode)
+        })
+        .collect()
+}
+
+/// Logs each destination that holds results the app has not accepted while no
+/// machine and no kept destination defines it: Analyte never guesses an address,
+/// so those items stay stored and the admin page names them.
+pub(crate) async fn report_unconfigured(
+    store: &Handle,
+    configured: &[&Identifier],
+) -> Result<(), Error> {
+    let open = store
+        .request(deadline()?, |store| store.undelivered_by_destination())
+        .await?;
+    for open in open {
+        if !configured.contains(&&open.destination) {
+            tracing::error!(
+                destination = open.destination.as_str(),
+                count = open.sending.saturating_add(open.held),
+                "results wait for a lab app destination that is no longer configured; they stay stored"
+            );
+        }
+    }
+    Ok(())
+}
+
 pub(crate) async fn recover(store: &Handle) -> Result<(), Error> {
     crate::orders::sending::recover(store).await?;
     let until = deadline()?;

@@ -107,6 +107,9 @@ async fn render(state: &Context) -> Result<Markup, Error> {
     );
     render_uncertain_orders(state, &mut html, until).await?;
     render_destinations(state, &mut html, now).await?;
+    for line in super::removed::lines(state).await? {
+        row(&mut html, "Delivery after removal", &line);
+    }
     render_machines(state, &mut html, until, jiff::Timestamp::now()).await?;
     html.push_markup("</dl></html>");
     Ok(html)

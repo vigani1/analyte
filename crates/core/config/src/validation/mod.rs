@@ -15,21 +15,33 @@ use stack::{
     validate_transport,
 };
 
+impl crate::Destination {
+    /// Checks the bounds every destination keeps wherever it is written: in a
+    /// site file, or kept in the program file after its machine was removed.
+    /// `table` names where it is written (`site.destination`) for the error.
+    /// # Errors
+    /// Refuses a zero order freshness or a request deadline outside 1 through 120 seconds.
+    pub fn check(&self, path: &str, table: &str) -> Result<(), Error> {
+        if self.freshness_seconds == 0 {
+            return Err(invalid(
+                path,
+                &format!("{table}.freshness_seconds"),
+                "must be at least one second",
+            ));
+        }
+        if !(1..=120).contains(&self.request_timeout_seconds) {
+            return Err(invalid(
+                path,
+                &format!("{table}.request_timeout_seconds"),
+                "must be 1 through 120 seconds",
+            ));
+        }
+        Ok(())
+    }
+}
+
 pub(super) fn validate_site(site: &Site, transport: &Transport, path: &str) -> Result<(), Error> {
-    if site.destination.freshness_seconds == 0 {
-        return Err(invalid(
-            path,
-            "site.destination.freshness_seconds",
-            "must be at least one second",
-        ));
-    }
-    if !(1..=120).contains(&site.destination.request_timeout_seconds) {
-        return Err(invalid(
-            path,
-            "site.destination.request_timeout_seconds",
-            "must be 1 through 120 seconds",
-        ));
-    }
+    site.destination.check(path, "site.destination")?;
     let endpoint = match &site.endpoint {
         crate::Endpoint::Fixed(endpoint) => endpoint,
         crate::Endpoint::UsbSerial(_) if transport.kind == TransportKind::Serial => return Ok(()),
