@@ -123,13 +123,15 @@ write('idempotency.json',[
     dict(step='other-endpoint',endpoint='order-events',document='event.json',change=None,expected_status=409,expected_body=None),
 ])
 
-# v1 "Delivery responses and retries": Retry-After seconds or IMF-fixdate, honoured up to the cap.
+# v1 "Delivery responses and retries": Retry-After seconds or IMF-fixdate, honoured up to the cap;
+# a value longer than 64 characters counts as malformed (RFC 9110 §5.4 lets a client ignore it).
 now=calendar.timegm((2026,11,18,12,0,0))
 write('retry-after.json',dict(cap_seconds=60,now=now,cases=[
     dict(value=v,requested_seconds=r,wait_at_least=None if r is None else min(r,60),wait_at_most=60) for v,r in [
         ('30',30),('120',120),('0',0),
         ('Wed, 18 Nov 2026 12:00:45 GMT',45),('Wed, 18 Nov 2026 11:59:00 GMT',0),('Wed, 18 Nov 2026 12:05:00 GMT',300),
         ('-5',None),('1.5',None),('soon',None),('',None),('18 Nov 2026 12:00:45 GMT',None),('Wed, 18 Nov 2026 12:00:45 UTC',None),
+        ('0'*62+'45',45),('0'*63+'45',None),
     ]]))
 
 # v1 "Delivery responses and retries": every 3xx pauses, only 200 is done, other 2xx park.

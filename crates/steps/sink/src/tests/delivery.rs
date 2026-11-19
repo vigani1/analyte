@@ -344,6 +344,74 @@ fn delivery_keeps_three_identities_and_exact_values() -> TestResult {
     Ok(())
 }
 
+// Contract v1 "Delivery responses and retries"; RFC 9110 §5.4: a Retry-After of
+// 64 characters is honoured, a longer one counts as malformed and the sender
+// falls back to its own backoff, the same rule the contract checker applies.
+#[tokio::test]
+async fn retry_after_longer_than_64_characters_is_ignored() -> TestResult {
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+    for (zeros, honoured) in [(62, true), (63, false)] {
+        let value = format!("{}45", "0".repeat(zeros));
+        let directory = tempfile::tempdir()?;
+        let mut store = store(&directory.path().join("store.db")).await?;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        let mut limits = limits();
+        limits.backoff_max = Duration::from_secs(60);
+        let destination = Destination::for_loopback_test(
+            Identifier::new("app")?,
+            &format!("http://{}", listener.local_addr()?),
+            Identifier::new("secret")?,
+            limits,
+        )?;
+        let metadata = receipt()?;
+        let result = make_result(metadata.id, "retry-after-run")?;
+        let delivery = encode_delivery(
+            &result,
+            &metadata,
+            Identifier::new("app")?,
+            metadata.received_at,
+        )?;
+        let length = delivery.payload.len();
+        enqueue(&store, metadata, result, delivery).await?;
+        let server = async {
+            let (mut stream, _) = listener.accept().await?;
+            let mut headers = Vec::new();
+            while !headers.ends_with(b"\r\n\r\n") {
+                if headers.len() > 8192 {
+                    return Err(std::io::Error::other("test headers too large"));
+                }
+                headers.push(stream.read_u8().await?);
+            }
+            stream.read_exact(&mut vec![0; length]).await?;
+            let answer = format!(
+                "HTTP/1.1 503 Busy\r\nRetry-After: {value}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            );
+            stream.write_all(answer.as_bytes()).await?;
+            Ok::<_, std::io::Error>(())
+        };
+        let secrets = Secrets("key");
+        let worker = Worker::for_destination(&store, &destination, &secrets);
+        let before = jiff::Timestamp::now().as_second();
+        let (server, outcome) = tokio::time::timeout(HANG_GUARD, async {
+            tokio::join!(server, worker.deliver_once())
+        })
+        .await?;
+        server?;
+        let DeliveryOutcome::RetryAt(next) = outcome? else {
+            return Err("503 was not retried".into());
+        };
+        let wait = next.saturating_sub(before);
+        assert_eq!(
+            wait >= 45,
+            honoured,
+            "{} characters waited {wait} s",
+            value.len()
+        );
+        store.shutdown(until()?).await?;
+    }
+    Ok(())
+}
+
 // App contract v1 (ADR 0008); mutation-testing regression
 #[tokio::test]
 async fn app_detail_kept_only_for_version_one() -> TestResult {

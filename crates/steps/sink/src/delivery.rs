@@ -236,7 +236,6 @@ impl<'a> Worker<'a> {
             .headers()
             .get("retry-after")
             .and_then(|v| v.to_str().ok())
-            .filter(|s| s.len() <= 64)
             .map(str::to_owned);
         // These actions need no body. In particular, a stalled error body must
         // not discard Retry-After or delay a setup pause.
