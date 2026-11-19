@@ -73,6 +73,7 @@ async fn raw_views_are_audited_and_lists_paginate() -> Result<(), Error> {
     let session = login(&host, &bearer).await?;
     let auth = format!("Cookie: {session}\r\n");
     assert_paginated_lists(&host, &auth, parked_id).await?;
+    assert_next_page_only_when_more(&host, &auth, parked_id).await?;
     let view =
         assert_raw_authorization(&host, &bearer, &auth, receipt_id, parked_id, other_receipt)
             .await?;
@@ -210,7 +211,9 @@ async fn assert_paginated_lists(host: &str, auth: &str, parked_id: i64) -> Resul
     }
     let list = request(host, "/parked", auth, None).await?;
     assert!(list.contains("&lt;script&gt;hostile reason&lt;/script&gt;"));
-    assert!(list.contains("1970-01-01T00:00:00Z"));
+    // Owner request 2026-11-19 (Needs review item 3): the receipt time stays on
+    // the item's page (checked with the raw links below), not the list.
+    assert!(!list.contains("1970-01-01T00:00:00Z"));
     let page2 = request(host, &format!("/parked?after={parked_id}"), auth, None).await?;
     assert!(page2.contains("Category</dt><dd>second"));
     assert!(!page2.contains("Category</dt><dd>first"));
@@ -236,6 +239,44 @@ async fn assert_paginated_lists(host: &str, auth: &str, parked_id: i64) -> Resul
     Ok(())
 }
 
+// Owner request 2026-11-19 (Needs review item 3): every paged list shows "Next
+// page" only while more rows follow, so the last page has none. The store returns
+// one row per query here, so each list of two rows has exactly two pages.
+async fn assert_next_page_only_when_more(
+    host: &str,
+    auth: &str,
+    parked_id: i64,
+) -> Result<(), Error> {
+    for (route, pages) in [
+        ("/parked", 2),
+        ("/orders", 2),
+        ("/deliveries", 2),
+        ("/machines", 2),
+        ("/analyzer-cancelled", 1),
+    ] {
+        let mut path = route.to_owned();
+        let mut seen: usize = 1;
+        loop {
+            let page = request(host, &path, auth, None).await?;
+            assert!(page.starts_with("HTTP/1.1 200"), "{path}: {page}");
+            let Some((_, rest)) = page.split_once("rel=\"next\" href=\"") else {
+                assert!(!page.contains("Next page"), "{path}");
+                break;
+            };
+            path = rest.split('"').next().ok_or("next link")?.to_owned();
+            seen = seen.checked_add(1).ok_or("page count")?;
+            assert!(seen <= pages, "{route}: Next page on its last page");
+        }
+        assert_eq!(seen, pages, "{route}");
+    }
+    let item = request(host, &format!("/parked/{parked_id}"), auth, None).await?;
+    assert!(
+        !item.contains("Next page"),
+        "an item with one linked record"
+    );
+    Ok(())
+}
+
 async fn assert_raw_authorization(
     host: &str,
     bearer: &str,
@@ -246,6 +287,7 @@ async fn assert_raw_authorization(
 ) -> Result<RawPage, Error> {
     let detail = request(host, &format!("/parked/{parked_id}"), auth, None).await?;
     assert!(detail.starts_with("HTTP/1.1 200"));
+    assert!(detail.contains("1970-01-01T00:00:00Z"));
     assert!(!detail.contains("RAW"));
     assert!(!detail.contains("TAIL"));
     let csrf = csrf(&detail)?;

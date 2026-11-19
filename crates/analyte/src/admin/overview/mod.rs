@@ -1,4 +1,6 @@
-//! Renders a read-only HTML overview in sections: machines, sending to the lab app, orders, disk and alerts.
+//! Renders a read-only HTML overview: whether everything is OK first, then sections for machines, sending to the lab app, orders, disk and alerts.
+mod attention;
+
 use super::server::{Context, Machine};
 use super::view::{self, Tab, Tone, count, exact, pill, plain, row};
 use crate::admin::Error;
@@ -41,55 +43,57 @@ pub(super) async fn show(State(state): State<Arc<Context>>) -> Response {
 async fn render(state: &Context) -> Result<Markup, Error> {
     let until = deadline()?;
     let directory = state.directory.clone();
-    let (paused, free) = state
+    let now = Timestamp::now();
+    let (paused, free, review) = state
         .store
         .request::<_, crate::admin::error::CommandError>(until, move |store| {
             Ok::<_, crate::admin::error::CommandError>((
                 store.restore_unreconciled()?,
                 fs4::available_space(&directory)?,
+                // The unresolved count the parked-items alert rule reads.
+                store
+                    .alert_value(&AlertKey::ParkedItems, now.as_second(), &[])?
+                    .unwrap_or_default(),
             ))
         })
         .await?;
-    let now = Timestamp::now();
     let alerts = crate::operator::alerts::active(&state.store).await?;
-    let mut html = view::page(Tab::Overview, "Overview").markup(concat!(
-        "<p class=\"lead\">How your machines, results waiting for the lab app, orders and ",
-        "disk space are doing right now.</p>",
-    ));
-    if !alerts.is_empty() {
-        html.push_fragment(
-            &Markup::new()
-                .markup("<p class=\"notice bad\"><strong>")
-                .text(plain::amount(
-                    u64::try_from(alerts.len())?,
-                    "alert needs",
-                    "alerts need",
-                ))
-                .markup(" attention.</strong> See Disk and alerts below.</p>"),
-        );
-    }
-    if free <= state.reserve {
-        html.push_markup(concat!(
-            "<p class=\"notice bad\" title=\"Disk reserve reached\"><strong>The disk is ",
-            "almost full.</strong> Analyte refuses new data from machines until disk space ",
-            "is freed.</p>",
-        ));
-    }
-    render_machines(state, &mut html, until, now).await?;
-    render_destinations(state, &mut html, now).await?;
-    render_orders(state, &mut html, until, paused).await?;
-    html.push_markup("<section><h2>Disk and alerts</h2><dl>");
-    render_disk(&mut html, free, state.reserve);
-    render_alerts(&mut html, &alerts, now);
+    let mut facts = attention::Facts {
+        review,
+        disk_full: free <= state.reserve,
+        restore_paused: paused,
+        ..attention::Facts::default()
+    };
+    let mut details = Markup::new();
+    render_machines(state, &mut details, &mut facts, until, now).await?;
+    let kept_waiting = render_destinations(state, &mut details, &mut facts, now).await?;
+    render_orders(state, &mut details, &mut facts, until, paused).await?;
+    details.push_markup("<section id=\"");
+    details.push_markup(attention::Section::Disk.id());
+    details.push_markup("\"><h2>Disk and alerts</h2><dl>");
+    render_disk(&mut details, free, state.reserve);
+    render_alerts(&mut details, &alerts, now);
     render_alert_endpoints(
         &state.store,
         &state.alert_endpoints,
-        &mut html,
+        &mut details,
         now.as_second(),
     )
     .await?;
-    html.push_markup("</section>");
-    Ok(html.markup(view::END))
+    details.push_markup("</section>");
+    facts.alerts = alerts;
+    let things = attention::things(&facts);
+    // First run: no machine is set up, nothing needs anyone and nothing waits for a
+    // lab app (a removed machine's results still being sent keep the full page).
+    if state.machines.is_empty() && things.is_empty() && !kept_waiting {
+        return Ok(view::page(Tab::Overview, "Welcome to Analyte")
+            .fragment(&attention::welcome())
+            .markup(view::END));
+    }
+    Ok(view::page(Tab::Overview, "Overview")
+        .fragment(&attention::status(&things))
+        .fragment(&details)
+        .markup(view::END))
 }
 
 fn render_disk(html: &mut Markup, free: u64, reserve: u64) {
@@ -184,6 +188,7 @@ const fn alert_words(key: &AlertKey) -> &'static str {
 async fn render_orders(
     state: &Context,
     html: &mut Markup,
+    facts: &mut attention::Facts,
     until: std::time::Instant,
     paused: bool,
 ) -> Result<(), Error> {
@@ -192,7 +197,11 @@ async fn render_orders(
         .request(until, |s| s.analyzer_cancelled_count())
         .await?;
     let uncertain = uncertain_orders(state, until).await?;
-    html.push_markup("<section><h2>Orders</h2><dl>");
+    facts.cancelled = cancelled;
+    facts.uncertain = uncertain;
+    html.push_markup("<section id=\"");
+    html.push_markup(attention::Section::Orders.id());
+    html.push_markup("\"><h2>Orders</h2><dl>");
     html.push_fragment(&row(
         "Orders with unknown outcome (check the machine)",
         Some("Uncertain orders"),
@@ -255,12 +264,16 @@ async fn uncertain_orders(state: &Context, until: std::time::Instant) -> Result<
     Ok(uncertain)
 }
 
+/// Renders the sending section; true when results wait for a lab app no running machine uses.
 async fn render_destinations(
     state: &Context,
     html: &mut Markup,
+    facts: &mut attention::Facts,
     now: Timestamp,
-) -> Result<(), Error> {
-    html.push_markup("<section><h2>Sending to the lab app</h2>");
+) -> Result<bool, Error> {
+    html.push_markup("<section id=\"");
+    html.push_markup(attention::Section::Sending.id());
+    html.push_markup("\"><h2>Sending to the lab app</h2>");
     let mut oldest = None;
     let mut pending = false;
     let mut unknown_age = false;
@@ -269,6 +282,11 @@ async fn render_destinations(
         pending |= health.pending_count > 0;
         unknown_age |= health.pending_count > 0 && health.oldest_pending_age.is_none();
         oldest = oldest.max(health.oldest_pending_age);
+        if health.paused {
+            facts
+                .paused
+                .push((destination.id().clone(), health.pending_count));
+        }
         html.push_fragment(
             &Markup::new()
                 .markup("<h3 title=\"Destination\">Lab app ")
@@ -331,16 +349,22 @@ async fn render_destinations(
             ))
             .markup("</dl>"),
     );
-    for line in super::removed::lines(state).await? {
+    let lines = super::removed::lines(state).await?;
+    let kept_waiting = !lines.is_empty();
+    for line in lines {
         html.push_fragment(&line.notice(""));
+        if let Some(blocked) = line.blocked() {
+            facts.blocked.push(blocked);
+        }
     }
     html.push_markup("</section>");
-    Ok(())
+    Ok(kept_waiting)
 }
 
 async fn render_machines(
     state: &Context,
     html: &mut Markup,
+    facts: &mut attention::Facts,
     until: std::time::Instant,
     now: Timestamp,
 ) -> Result<(), Error> {
@@ -385,6 +409,13 @@ async fn render_machines(
     for machine in &state.machines {
         let stored = last_activity.get(machine.id.as_str()).copied();
         let light = LinkLight::of(machine, stored, now);
+        if !machine.running.load(Ordering::Acquire) {
+            facts.stopped.push(machine.id.clone());
+        }
+        let status = machine.status.borrow().clone();
+        if status.light() == Light::Off {
+            facts.unlinked.push((machine.id.clone(), status.state()));
+        }
         html.push_fragment(
             &Markup::new()
                 .markup("<tr><td><strong>")

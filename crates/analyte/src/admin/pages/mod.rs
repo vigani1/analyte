@@ -50,6 +50,7 @@ pub(super) fn finish(result: Result<Markup, Error>) -> Response {
     }
 }
 
+/// The "Next page" link; call it only when rows exist after `after`.
 pub(super) fn next(html: &mut Markup, route: &str, after: impl std::fmt::Display) {
     html.push_fragment(
         &Markup::new()
@@ -146,14 +147,11 @@ pub(super) async fn machines(
                 }
                 html.push_markup("</section>");
             }
-            if !page.is_empty() {
-                next(
-                    &mut html,
-                    "/machines",
-                    after
-                        .checked_add(page.len())
-                        .ok_or(Error::MachineCursorOverflow)?,
-                );
+            let shown = after
+                .checked_add(page.len())
+                .ok_or(Error::MachineCursorOverflow)?;
+            if shown < state.machines.len() {
+                next(&mut html, "/machines", shown);
             }
             Ok(html)
         }
@@ -217,9 +215,9 @@ fn more_targets(html: &mut Markup, parked: &Parked) {
 
 fn kind_and_reason(parked: &Parked) -> Markup {
     let kind = parked.kind.as_str();
-    let category = category(kind).map_or_else(
+    let category = Category::of(kind).map_or_else(
         || Markup::new().text(kind),
-        |words| view::exact(words, kind),
+        |category| view::exact(category.words(), kind),
     );
     view::row("Category", None, &category).fragment(&view::row(
         "Reason",
@@ -228,20 +226,188 @@ fn kind_and_reason(parked: &Parked) -> Markup {
     ))
 }
 
-/// A parked item's category in plain words; an unknown category shows as written.
-fn category(kind: &str) -> Option<&'static str> {
-    Some(match kind {
-        "mapping_finding" => "Test or unit not mapped",
-        "interpretation_failure" => "Could not read message",
-        "result_reconciliation" => "Result could not be matched to earlier results",
-        "incomplete_transfer" => "Message from the machine was incomplete",
-        "parked" => "Lab app rejected a delivery",
-        "conflict" => "Lab app reported a conflicting delivery",
-        "order_version_refused" => "Order from the lab app was refused",
-        "law_cancel_refusal_conflict" => "Cancel conflicts with what the machine reported",
-        "poll_intent" => "Machine asked for orders; the outcome is not known yet",
-        _ => return None,
-    })
+/// What kind of item waits for review, as stored in its category.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Category {
+    MappingFinding,
+    InterpretationFailure,
+    ResultReconciliation,
+    IncompleteTransfer,
+    DeliveryRejected,
+    DeliveryConflict,
+    OrderVersionRefused,
+    CancelConflict,
+    PollIntent,
+}
+
+/// The audited action that settles an item from the admin pages.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Action {
+    /// Read the original message again with the current settings.
+    ProcessAgain,
+    /// Queue the rejected delivery again, unchanged.
+    SendAgain,
+    /// Mark the item resolved after someone checked it; it stays in the history.
+    Resolve,
+}
+
+impl Category {
+    /// The category for a stored kind; an unknown one has none and shows as written.
+    fn of(kind: &str) -> Option<Self> {
+        Some(match kind {
+            "mapping_finding" => Self::MappingFinding,
+            "interpretation_failure" => Self::InterpretationFailure,
+            "result_reconciliation" => Self::ResultReconciliation,
+            "incomplete_transfer" => Self::IncompleteTransfer,
+            "parked" => Self::DeliveryRejected,
+            "conflict" => Self::DeliveryConflict,
+            "order_version_refused" => Self::OrderVersionRefused,
+            "law_cancel_refusal_conflict" => Self::CancelConflict,
+            "poll_intent" => Self::PollIntent,
+            _ => return None,
+        })
+    }
+
+    /// The category in plain words.
+    const fn words(self) -> &'static str {
+        match self {
+            Self::MappingFinding => "Test or unit not mapped",
+            Self::InterpretationFailure => "Could not read message",
+            Self::ResultReconciliation => "Result could not be matched to earlier results",
+            Self::IncompleteTransfer => "Message from the machine was incomplete",
+            Self::DeliveryRejected => "Lab app rejected a delivery",
+            Self::DeliveryConflict => "Lab app reported a conflicting delivery",
+            Self::OrderVersionRefused => "Order from the lab app was refused",
+            Self::CancelConflict => "Cancel conflicts with what the machine reported",
+            Self::PollIntent => "Machine asked for orders; the outcome is not known yet",
+        }
+    }
+
+    /// The action that exists today for this category. Process again reads the
+    /// item's original message, so only items linked to a message offer it.
+    const fn action(self) -> Action {
+        match self {
+            Self::MappingFinding
+            | Self::InterpretationFailure
+            | Self::ResultReconciliation
+            | Self::IncompleteTransfer => Action::ProcessAgain,
+            Self::DeliveryRejected => Action::SendAgain,
+            Self::DeliveryConflict
+            | Self::OrderVersionRefused
+            | Self::CancelConflict
+            | Self::PollIntent => Action::Resolve,
+        }
+    }
+
+    /// What someone does about the item. It says only what the category and the
+    /// stored reason say; a mapping finding's reason names the problem, never the
+    /// test code, which stays in the protected original message.
+    fn guidance(self, reason: &str) -> &'static str {
+        match self {
+            Self::MappingFinding if reason.ends_with(": UnknownTest") => concat!(
+                "The machine sent a test code that this machine's test mapping does not ",
+                "list. Add it to the test mapping, then use Process again.",
+            ),
+            Self::MappingFinding if reason.contains(": ValueKindMismatch") => concat!(
+                "The value does not fit what the test mapping expects for this test. ",
+                "Check that test in this machine's test mapping, then use Process again.",
+            ),
+            Self::MappingFinding if reason.ends_with(": MissingSample") => concat!(
+                "The message has no sample ID. Check how the machine sends sample IDs; once ",
+                "its settings are fixed, use Process again.",
+            ),
+            Self::MappingFinding => concat!(
+                "Check this machine's test mapping and settings against the reason above, ",
+                "then use Process again.",
+            ),
+            Self::InterpretationFailure => concat!(
+                "Check the machine's settings on the Setup page (machine model and ",
+                "connection) against the reason above, then use Process again.",
+            ),
+            Self::ResultReconciliation => concat!(
+                "Compare this result with the earlier results for the same sample on the ",
+                "machine. If a setting caused the mismatch, fix it, then use Process again.",
+            ),
+            Self::IncompleteTransfer => concat!(
+                "The machine stopped part-way through sending. Check the cable or network ",
+                "and have the machine send the results again, then use Process again here.",
+            ),
+            Self::DeliveryRejected => {
+                "Fix the problem the lab app reported (see Reason), then use Send again."
+            }
+            Self::DeliveryConflict => concat!(
+                "The lab app already holds different content for this delivery; Analyte does ",
+                "not send it again on its own. Check the delivery in the lab app and settle it ",
+                "there, then Mark resolved.",
+            ),
+            Self::OrderVersionRefused => concat!(
+                "The lab app sent an older or changed copy of an order Analyte already has; ",
+                "Analyte kept its copy. Correct the order in the lab app, then Mark resolved.",
+            ),
+            Self::CancelConflict => concat!(
+                "The lab app cancelled tests the machine has already reported on; Analyte sends ",
+                "the machine nothing more. Check both on the machine and in the lab app, then ",
+                "Mark resolved.",
+            ),
+            Self::PollIntent => concat!(
+                "Analyte starts no other exchange with this machine until this item is ",
+                "resolved. Check on the machine whether this one finished, then Mark resolved.",
+            ),
+        }
+    }
+}
+
+/// The plain "What to do" line for an item that waits for review.
+fn todo(parked: &Parked) -> Markup {
+    Markup::new()
+        .markup("<p class=\"todo\"><strong>What to do:</strong> ")
+        .text(Category::of(parked.kind.as_str()).map_or(
+            concat!(
+                "Read the reason above and open the item for its linked records. If it is ",
+                "not clear what to do, give the item number to support.",
+            ),
+            |category| category.guidance(parked.reason.as_str()),
+        ))
+        .markup("</p>")
+}
+
+/// The buttons for an item's audited actions: its main action first, then Mark
+/// resolved as a secondary button when the main action is something else, for
+/// when the lab decides nothing more is needed. Each opens its confirmation page,
+/// which asks for a reason and posts with the session's CSRF token. An unknown
+/// category keeps the Process again it always had.
+fn action_buttons(id: i64, parked: &Parked) -> Markup {
+    let action = Category::of(parked.kind.as_str()).map_or(Action::ProcessAgain, Category::action);
+    let main = match action {
+        Action::ProcessAgain => Markup::new()
+            .markup("<a class=\"button\" title=\"Reprocess\" href=\"/parked/")
+            .text(id)
+            .markup("/reprocess\">Process again</a>"),
+        // A rejected delivery's target is its delivery ID; anything else gets no button.
+        Action::SendAgain => parked
+            .targets
+            .first()
+            .and_then(|target| uuid::Uuid::parse_str(target.as_str()).ok())
+            .map_or_else(Markup::new, |delivery| {
+                Markup::new()
+                    .markup(
+                        "<a class=\"button\" title=\"Resend this delivery\" href=\"/deliveries/",
+                    )
+                    .text(delivery)
+                    .markup("/resend\">Send again</a>")
+            }),
+        Action::Resolve => Markup::new(),
+    };
+    let resolve = Markup::new()
+        .markup(match action {
+            Action::Resolve => "<a class=\"button\" title=\"Resolve\" href=\"/parked/",
+            Action::ProcessAgain | Action::SendAgain => {
+                "<a class=\"button secondary\" title=\"Resolve\" href=\"/parked/"
+            }
+        })
+        .text(id)
+        .markup("/resolve\">Mark resolved</a>");
+    main.fragment(&resolve)
 }
 
 pub(super) async fn parked(
@@ -276,16 +442,22 @@ pub(super) async fn detail(
                 return Ok(None);
             };
             let mut evidence = row.details().map_err(analyte_store::OperatorError::from)?;
+            let total = evidence.targets.len();
             evidence.targets = evidence
                 .targets
                 .into_iter()
                 .skip(after)
                 .take(PAGE)
                 .collect();
-            Ok(Some((metadata(s, &evidence)?, evidence, row.resolution)))
+            Ok(Some((
+                metadata(s, &evidence)?,
+                evidence,
+                row.resolution,
+                total,
+            )))
         })
         .await;
-    let (meta, evidence, resolution) = match result {
+    let (meta, evidence, resolution, total) = match result {
         Ok(Some(row)) => row,
         Ok(None) => {
             return view::refusal(
@@ -312,11 +484,10 @@ pub(super) async fn detail(
                 &view::pill(view::Tone::Attention, "Waiting for review"),
             )
             .markup("</dl>")
-            .markup(
-                "<p class=\"actions-row\"><a class=\"button\" title=\"Reprocess\" href=\"/parked/",
-            )
-            .text(id)
-            .markup("/reprocess\">Process again with current settings</a></p>"),
+            .fragment(&todo(&evidence))
+            .markup("<p class=\"actions-row\">")
+            .fragment(&action_buttons(id, &evidence))
+            .markup("</p>"),
         ),
         Some(resolution) => html.push_fragment(
             &view::row(
@@ -335,65 +506,84 @@ pub(super) async fn detail(
     ));
     raw_links(&mut html, id, &evidence, session);
     html.push_markup("</section>");
-    if !evidence.targets.is_empty() {
-        let Some(after) = u64::try_from(evidence.targets.len())
-            .ok()
-            .and_then(|len| cursor.after.checked_add(len))
-        else {
-            return finish(Err(Error::ParkedTargetCursorOverflow));
-        };
-        next(&mut html, &format!("/parked/{id}"), after);
+    let Some(shown) = after.checked_add(evidence.targets.len()) else {
+        return finish(Err(Error::ParkedTargetCursorOverflow));
+    };
+    if shown < total {
+        next(&mut html, &format!("/parked/{id}"), shown);
     }
     finish(Ok(html))
 }
 
 async fn parked_page(state: &Context, cursor: Cursor) -> Result<Markup, Error> {
     let after = i64::try_from(cursor.after)?;
-    let (rows, last) = state
+    let (rows, last, more) = state
         .store
         .request::<_, crate::admin::error::CommandError>(deadline()?, move |s| {
             let mut html = Markup::new();
             let mut last = None;
-            for row in s.parked(after)?.into_iter().take(PAGE) {
+            let fetched = s.parked(after)?;
+            let mut more = fetched.len() > PAGE;
+            for row in fetched.into_iter().take(PAGE) {
                 let evidence = row.details().map_err(analyte_store::OperatorError::from)?;
-                html.push_fragment(
-                    &Markup::new()
-                        .markup("<section><div class=\"heading\"><h2><a href=\"/parked/")
-                        .text(row.id)
-                        .markup("\" title=\"Parked item\">Item ")
-                        .text(row.id)
-                        .markup("</a></h2>")
-                        .fragment(&if row.resolution.is_some() {
-                            view::pill(view::Tone::Good, "Resolved")
-                        } else {
-                            view::pill(view::Tone::Attention, "Waiting for review")
-                        })
-                        .markup("</div><dl>")
-                        .fragment(&kind_and_reason(&evidence))
-                        .fragment(&metadata(s, &evidence)?)
-                        .markup("</dl>"),
-                );
-                more_targets(&mut html, &evidence);
-                html.push_markup("</section>");
+                html.push_fragment(&review_item(row.id, &evidence, row.resolution.is_some()));
                 last = Some(row.id);
             }
-            Ok::<_, crate::admin::error::CommandError>((html, last))
+            if let Some(last) = last
+                && !more
+            {
+                more = !s.parked(last)?.is_empty();
+            }
+            Ok::<_, crate::admin::error::CommandError>((html, last, more))
         })
         .await?;
     let mut html = view::page(Tab::NeedsReview, "Needs review");
     html.push_markup(concat!(
         "<p class=\"lead\" title=\"Parked items\">Messages and results Analyte kept but ",
         "could not process on its own. Nothing here is deleted; each item waits until ",
-        "someone reviews it. Times are when the message was received.</p>",
+        "someone reviews it.</p>",
     ));
     if last.is_none() {
         html.push_markup("<p class=\"muted\">Nothing needs review.</p>");
     }
     html.push_fragment(&rows);
-    if let Some(last) = last {
+    if let Some(last) = last
+        && more
+    {
         next(&mut html, "/parked", last);
     }
     Ok(html)
+}
+
+/// One item on the Needs review list: its category, reason, what to do and its
+/// action. Linked record IDs and receipt times stay on the item's own page.
+fn review_item(id: i64, parked: &Parked, resolved: bool) -> Markup {
+    let html = Markup::new()
+        .markup("<section><div class=\"heading\"><h2><a href=\"/parked/")
+        .text(id)
+        .markup("\" title=\"Parked item\">Item ")
+        .text(id)
+        .markup("</a></h2>")
+        .fragment(&if resolved {
+            view::pill(view::Tone::Good, "Resolved")
+        } else {
+            view::pill(view::Tone::Attention, "Waiting for review")
+        })
+        .markup("</div><dl>")
+        .fragment(&kind_and_reason(parked))
+        .markup("</dl>");
+    if resolved {
+        return html
+            .markup("<p class=\"actions-row\"><a href=\"/parked/")
+            .text(id)
+            .markup("\">Open item</a></p></section>");
+    }
+    html.fragment(&todo(parked))
+        .markup("<p class=\"actions-row\">")
+        .fragment(&action_buttons(id, parked))
+        .markup("<a href=\"/parked/")
+        .text(id)
+        .markup("\">Open item</a></p></section>")
 }
 
 #[cfg(test)]

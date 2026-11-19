@@ -10,6 +10,7 @@ use analyte_model::{OrderState, Reason};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
 mod actions;
+mod overview;
 mod pages;
 mod removal;
 mod setup;
@@ -319,7 +320,22 @@ async fn overview_checks_auth_escapes_and_shuts_down_bounded() -> Result<(), Err
         .map_err(|error| format!("admin overview fixture migration: {error}"))?,
     );
     seed_overview(&store).await?;
-    let (state, stop, owner, host) = start_overview_server(directory.path(), &store).await?;
+    let machines = vec![Machine {
+        departure_html: Markup::new(),
+        id: Identifier::new("<script>alert('hostile')&\"</script>")?,
+        running: Arc::new(AtomicBool::new(false)),
+        status: crate::machine::link::status::Reporter::new(
+            crate::machine::link::status::Link::TcpServer,
+        )
+        .subscribe(),
+    }];
+    let (state, stop, owner, host) = start_overview_server(
+        directory.path(),
+        &store,
+        machines,
+        vec![loopback_destination("app")?],
+    )
+    .await?;
     let wrong = "wrong-secret-never-log-this";
     assert_overview_refuses_auth(&host, wrong).await?;
     assert_overview_health(&host, &bearer).await?;
@@ -538,6 +554,7 @@ async fn assert_overview_health(host: &str, bearer: &str) -> Result<(), Error> {
     assert!(response.contains("&lt;script&gt;alert(&#39;hostile&#39;)&amp;&quot;&lt;/script&gt;"));
     assert!(!response.contains("<script>"));
     assert_overview_counts(&response);
+    assert_overview_status(&response)?;
     assert!(response.contains("<span title=\"restore_paused\">Order sending paused after restore"));
     assert!(response.contains("<span title=\"machine_silent\">Machine has gone quiet"));
     assert!(
@@ -568,6 +585,32 @@ async fn assert_overview_health(host: &str, bearer: &str) -> Result<(), Error> {
     assert!(!response.contains("protected-payload-never-log"));
     assert!(!response.contains("<script>sample</script>"));
     assert!(response.contains("Free disk bytes"));
+    Ok(())
+}
+
+/// Owner request 2026-11-19 (overview item 1): the answer to "is everything OK?"
+/// comes first, one line per thing with its fix, before the detail sections.
+fn assert_overview_status(response: &str) -> Result<(), Error> {
+    let (top, details) = response
+        .split_once("<section")
+        .ok_or("overview without sections")?;
+    assert!(top.contains("<main><h1>Overview</h1><div class=\"status bad\" role=\"status\"><p class=\"verdict\">4 things need you</p>"), "{top}");
+    for line in [
+        "<li><span>Analyte stopped working with &lt;script&gt;alert(&#39;hostile&#39;)&amp;&quot;&lt;/script&gt;</span> <a href=\"/machines\">Machines</a></li>",
+        "<li><span>Orders with unknown outcome: 2</span> <a href=\"/orders\">Machine orders</a></li>",
+        "<li><span>Order sending is paused after a restore</span> <a href=\"/#orders\">Orders</a></li>",
+        "<li><span>&lt;busy&amp;machine&gt; has gone quiet</span> <a href=\"/machines\">Machines</a></li>",
+    ] {
+        assert!(
+            top.contains(line),
+            "{line}
+{top}"
+        );
+    }
+    assert!(!top.contains("All good"));
+    for id in ["sending", "orders", "disk"] {
+        assert!(details.contains(&format!("<section id=\"{id}\">")), "{id}");
+    }
     Ok(())
 }
 
@@ -769,9 +812,30 @@ async fn assert_overview_rejects_login_and_missing_route(
     Ok(())
 }
 
+/// A lab app destination on a closed loopback port, for pages that only read its health.
+fn loopback_destination(name: &str) -> Result<analyte_sink::Destination, Error> {
+    Ok(analyte_sink::Destination::for_loopback_test(
+        Identifier::new(name)?,
+        "http://127.0.0.1:1",
+        Identifier::new(name)?,
+        analyte_sink::Limits {
+            request_timeout: Duration::from_secs(1),
+            store_timeout: Duration::from_secs(1),
+            backoff_min: Duration::from_secs(1),
+            backoff_max: Duration::from_secs(1),
+            freshness: Duration::from_secs(30),
+            poll_interval: Duration::from_secs(5),
+            page_size: 1,
+            max_pages: 1,
+        },
+    )?)
+}
+
 async fn start_overview_server(
     root: &std::path::Path,
     store: &Arc<analyte_store::Handle>,
+    machines: Vec<Machine>,
+    destinations: Vec<analyte_sink::Destination>,
 ) -> Result<
     (
         Arc<Context>,
@@ -793,30 +857,8 @@ async fn start_overview_server(
         origin: format!("http://{host}"),
         host: host.clone(),
         store: store.clone(),
-        machines: vec![Machine {
-            departure_html: Markup::new(),
-            id: Identifier::new("<script>alert('hostile')&\"</script>")?,
-            running: Arc::new(AtomicBool::new(false)),
-            status: crate::machine::link::status::Reporter::new(
-                crate::machine::link::status::Link::TcpServer,
-            )
-            .subscribe(),
-        }],
-        destinations: vec![analyte_sink::Destination::for_loopback_test(
-            Identifier::new("app")?,
-            "http://127.0.0.1:1",
-            Identifier::new("app")?,
-            analyte_sink::Limits {
-                request_timeout: Duration::from_secs(1),
-                store_timeout: Duration::from_secs(1),
-                backoff_min: Duration::from_secs(1),
-                backoff_max: Duration::from_secs(1),
-                freshness: Duration::from_secs(30),
-                poll_interval: Duration::from_secs(5),
-                page_size: 1,
-                max_pages: 1,
-            },
-        )?],
+        machines,
+        destinations,
         retired: crate::admin::Draining::new(),
         directory: root.to_owned(),
         reserve: 1,

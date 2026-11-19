@@ -1,4 +1,4 @@
-//! Runs operator recovery for app deliveries and receipt interpretation without resending machine orders.
+//! Runs operator recovery for app deliveries, receipt interpretation and parked items without resending machine orders.
 use crate::operator::Error;
 use crate::{deadline, installation::config::Program};
 use analyte_model::{DeliveryId, Identifier, Reason, ReceiptId};
@@ -62,6 +62,33 @@ pub async fn reprocess(
     )
     .await
     .map_err(Into::into)
+}
+
+/// Marks one parked item resolved with who did it and why, for the command line
+/// and the admin pages alike. The item is never deleted (ADR 0003 rule 2): it
+/// keeps its evidence and gains its resolution, and the same audit row is
+/// written in the same transaction. Linked machine exchanges of unknown outcome
+/// are settled with it.
+/// # Errors
+/// Reports invalid audit fields, an unknown or already resolved item, and store
+/// failures. A timeout leaves the outcome uncertain; inspect the item before retrying.
+pub async fn resolve(
+    store: &Handle,
+    id: i64,
+    actor: Identifier,
+    reason: Reason,
+) -> Result<(), Error> {
+    let audit = Audit {
+        actor,
+        action: Identifier::new("parked-resolve")?,
+        targets: vec![Identifier::new(&id.to_string())?],
+        time: jiff::Timestamp::now().as_second(),
+        reason,
+    };
+    store
+        .request(deadline()?, move |s| s.resolve(id, &audit))
+        .await?;
+    Ok(())
 }
 
 /// Requeues exactly the named delivery, preserving its ID and stored bytes.
