@@ -446,21 +446,38 @@ pub(crate) struct SiteFile {
     endpoint: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     usb_serial: Option<crate::UsbSerial>,
-    destination: Destination,
+    /// The lab app written in the site file itself (the older form).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    destination: Option<Destination>,
+    /// The name of a lab app in `lab-apps.toml`; never part of the effective
+    /// snapshot, which holds the resolved settings under `destination`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    lab_app: Option<Identifier>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     time_zone: Option<crate::SiteTimeZone>,
 }
 
 impl SiteFile {
-    /// Refuses a site file that sets both endpoint forms or neither.
-    pub(crate) fn into_site(self, path: &str) -> Result<Site, crate::Error> {
-        Ok(Site {
-            retention: self.retention,
-            schema_version: self.schema_version,
-            endpoint: crate::Endpoint::choose(self.endpoint, self.usb_serial, path)?,
-            destination: self.destination,
-            time_zone: self.time_zone,
-        })
+    /// Refuses a site file that sets both endpoint forms or neither, and resolves
+    /// its lab app: its own `[destination]`, the named `lab_app`, or the only lab
+    /// app in `lab_apps`. Several lab apps without a choice are refused.
+    pub(crate) fn into_site(
+        self,
+        path: &str,
+        lab_apps: &crate::LabApps,
+    ) -> Result<(Site, crate::LabAppSource), crate::Error> {
+        let (destination, source) =
+            lab_apps.resolve(path, self.destination, self.lab_app.as_ref())?;
+        Ok((
+            Site {
+                retention: self.retention,
+                schema_version: self.schema_version,
+                endpoint: crate::Endpoint::choose(self.endpoint, self.usb_serial, path)?,
+                destination,
+                time_zone: self.time_zone,
+            },
+            source,
+        ))
     }
 }
 
@@ -475,7 +492,8 @@ impl From<Site> for SiteFile {
             schema_version: site.schema_version,
             endpoint,
             usb_serial,
-            destination: site.destination,
+            destination: Some(site.destination),
+            lab_app: None,
             time_zone: site.time_zone,
         }
     }

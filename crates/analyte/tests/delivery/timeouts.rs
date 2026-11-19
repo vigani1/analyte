@@ -97,7 +97,7 @@ fn shared_destination_refuses_different_timeouts() -> Result<(), Error> {
     set_request_timeout(temp.path(), "hl7", 20)?;
     assert!(matches!(
         Program::load(&fixture),
-        Err(analyte::installation::config::Error::InconsistentSharedDestination)
+        Err(analyte::installation::config::Error::ConflictingLabApp { .. })
     ));
     set_request_timeout(temp.path(), "astm", 20)?;
     Program::load(&fixture)?;

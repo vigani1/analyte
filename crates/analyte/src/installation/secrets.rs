@@ -78,7 +78,7 @@ impl Environment {
     }
 
     /// Loads from a host lookup; tests can inject credentials without mutating the environment.
-    /// A destination kept after its machines were removed never stops startup: when
+    /// A lab app no set-up machine uses never stops startup: when
     /// its keys are missing or invalid it is left out, its deliveries pause with a
     /// visible "credentials require operator repair" reason, and the key name is logged.
     /// # Errors
@@ -95,7 +95,7 @@ impl Environment {
                 read(program, destination, &lookup)?,
             );
         }
-        for kept in program.unused_retired() {
+        for kept in program.unused_lab_apps() {
             let destination = kept.settings();
             match read(program, destination, &lookup) {
                 Ok(read) => {
@@ -104,7 +104,7 @@ impl Environment {
                 Err(error) => tracing::error!(
                     destination = destination.name.as_str(),
                     %error,
-                    "retired destination has no usable keys; its deliveries pause until they are set"
+                    "lab app no machine uses has no usable keys; its deliveries pause until they are set"
                 ),
             }
         }

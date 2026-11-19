@@ -165,19 +165,16 @@ evidence_files = []
 
 ```
 
-`site.toml` (replace the port and destination only with confirmed site values):
+`site.toml` (replace the port only with confirmed site values; the lab app is
+set once in `lab-apps.toml`, see
+[connect](operations/connect.md#lab-apps-set-once-picked-by-each-machine)):
 
 ```toml
-# Synthetic installation; credential names only.
+# Synthetic installation; no addresses or keys.
 schema_version = 1
 retention = 90 # recommended; requires the retention-digest host credential
 endpoint = "COM9" # or usb_serial = "A10K3XYZ"; see operations/connect.md
-[destination]
-name = "demo"
-base_url = "https://lab.example.invalid"
-api_key_name = "demo-api"
-signing_key_name = "demo-signing"
-
+lab_app = "demo"
 ```
 
 `local.toml`:

@@ -1,4 +1,4 @@
-//! Adds and removes `[[machines]]` entries and keeps `[[retired_destinations]]` in the program file text, keeping every other byte.
+//! Adds and removes `[[machines]]` entries and old `[[retired_destinations]]` tables in the program file text, keeping every other byte.
 //!
 //! Each edit is checked by parsing: the edited file must hold exactly the old
 //! entries plus or minus the one changed. A layout the edit cannot follow (an
@@ -7,7 +7,7 @@ use super::{SetupError, site::EntrySpans};
 use analyte_model::Identifier;
 
 /// Paths the setup page itself uses under `/setup/`; a machine cannot take them.
-const RESERVED: [&str; 3] = ["add", "listen", "restart"];
+const RESERVED: [&str; 4] = ["add", "lab-apps", "listen", "restart"];
 
 /// Checks a new machine's name. It is an [`Identifier`], and because it also
 /// names the machine's site file, it uses only ASCII letters, digits, `-` and `_`.
@@ -34,20 +34,17 @@ pub(super) fn site_file(id: &Identifier) -> String {
     format!("{}.site.toml", id.as_str())
 }
 
-/// The installers' starter site settings for a new machine: retention and the
-/// credential names only; no address, connection or key.
+/// The installers' starter site settings for a new machine: the retention only;
+/// no connection and no lab app, which the setup page chooses.
 pub(super) fn starter_site(id: &Identifier) -> String {
     format!(
         concat!(
             "# Starter site settings for {}, written by the Analyte setup page. The setup\n",
-            "# page fills in the connection and the lab app address. Keys are never kept\n",
-            "# here: the setup page stores them in the locked file.\n",
+            "# page fills in the connection and picks the lab app, which is set once on\n",
+            "# the Lab app page.\n",
             "schema_version = 1\n",
             "# Keep every result until the lab sets a retention period (ADR 0013).\n",
-            "retention = \"keep\"\n\n",
-            "[destination]\n",
-            "api_key_name = \"lab-app-api\"\n",
-            "signing_key_name = \"lab-app-signing\"\n"
+            "retention = \"keep\"\n"
         ),
         id.as_str()
     )
@@ -155,74 +152,37 @@ struct RetiredName {
     name: toml::Spanned<String>,
 }
 
-/// The program text with `destination` kept as a `[[retired_destinations]]` entry,
-/// so results still waiting for it are delivered after machine `machine` is
-/// removed. An identical entry leaves the text unchanged; an entry with the same
-/// name and other settings is replaced, because these are the settings in use.
-pub(super) fn retired(
-    program: &str,
-    destination: &analyte_config::Destination,
-    machine: &str,
-) -> Result<String, SetupError> {
+/// The program text without the old `[[retired_destinations]]` table called
+/// `name`, now that `lab-apps.toml` holds that lab app; every other byte stays.
+/// Text without such a table is returned unchanged.
+pub(super) fn without_retired(program: &str, name: &str) -> Result<String, SetupError> {
     let kept_layout = || {
         SetupError::ProgramFile(
             "write each kept lab app destination as its own [[retired_destinations]] table".into(),
         )
     };
-    let value = toml::Value::try_from(destination)
-        .map_err(|error| SetupError::ProgramFile(error.to_string()))?;
-    let mut expected = parsed(program)?;
-    let toml::Value::Array(kept) = expected
-        .entry("retired_destinations")
-        .or_insert_with(|| toml::Value::Array(Vec::new()))
+    let spans: RetiredSpans = toml::from_str(program)
+        .map_err(|error: toml::de::Error| SetupError::ProgramFile(error.to_string()))?;
+    let Some(entry) = spans
+        .retired_destinations
+        .iter()
+        .find(|entry| entry.name.get_ref() == name)
     else {
-        return Err(kept_layout());
+        return Ok(program.to_owned());
     };
-    let name = destination.name.as_str();
-    let same = |entry: &toml::Value| entry.get("name").and_then(toml::Value::as_str) == Some(name);
-    let mut text = program.to_owned();
-    if let Some(index) = kept.iter().position(same) {
-        let existing = kept.remove(index);
-        if existing
-            .clone()
-            .try_into::<analyte_config::Destination>()
-            .ok()
-            .as_ref()
-            == Some(destination)
-        {
-            return Ok(program.to_owned());
+    let range = span(program, entry.name.span().start, RETIRED).map_err(|_| kept_layout())?;
+    let text = format!(
+        "{}{}",
+        program.get(..range.start).ok_or_else(kept_layout)?,
+        program.get(range.end..).ok_or_else(kept_layout)?
+    );
+    let mut expected = parsed(program)?;
+    if let Some(toml::Value::Array(kept)) = expected.get_mut("retired_destinations") {
+        kept.retain(|entry| entry.get("name").and_then(toml::Value::as_str) != Some(name));
+        if kept.is_empty() {
+            expected.remove("retired_destinations");
         }
-        let spans: RetiredSpans = toml::from_str(program)
-            .map_err(|error: toml::de::Error| SetupError::ProgramFile(error.to_string()))?;
-        let at = spans
-            .retired_destinations
-            .iter()
-            .find(|entry| entry.name.get_ref() == name)
-            .ok_or_else(kept_layout)?
-            .name
-            .span()
-            .start;
-        let range = span(program, at, RETIRED).map_err(|_| kept_layout())?;
-        text = format!(
-            "{}{}",
-            program.get(..range.start).ok_or_else(kept_layout)?,
-            program.get(range.end..).ok_or_else(kept_layout)?
-        );
     }
-    kept.push(value);
-    if !text.is_empty() && !text.ends_with('\n') {
-        text.push('\n');
-    }
-    let fields =
-        toml::to_string(destination).map_err(|error| SetupError::ProgramFile(error.to_string()))?;
-    text.push_str(&format!(
-        concat!(
-            "\n{}\n# Kept by the setup page when machine {} was removed: results still waiting\n",
-            "# for this lab app are delivered to it until none are left; its orders are not\n",
-            "# read. Remove this table only when the Overview shows nothing waiting for it.\n{}"
-        ),
-        RETIRED, machine, fields
-    ));
     if parsed(&text).ok().as_ref() == Some(&expected) {
         Ok(text)
     } else {
@@ -335,39 +295,31 @@ mod tests {
         Ok(())
     }
 
-    // Owner request 2026-11-19 (results waiting after a removal); safety rule 2:
-    // removing keeps the lab app destination as written in the site file, appended
-    // without touching other bytes; the same settings again change nothing, and
-    // newer settings under the same name replace the old entry.
+    // Owner request 2026-11-19 (lab app set once), item 3: an old kept destination
+    // whose lab app moved to lab-apps.toml leaves the program file without
+    // touching other bytes; a name with no table changes nothing.
     #[test]
-    fn removed_destination_is_kept_once() -> Result<(), crate::Error> {
-        let program = "schema_version = 1\n# about a\n[[machines]]\nid = 'a'\nsite = 'a.toml'\n";
-        let destination: analyte_config::Destination = toml::from_str(concat!(
-            "name = 'demo'\nbase_url = 'https://lab.example.invalid'\n",
-            "api_key_name = 'demo-api'\nsigning_key_name = 'demo-signing'\n"
-        ))?;
-        let kept = retired(program, &destination, "a")?;
-        assert!(kept.starts_with(program), "{kept}");
-        let comment =
-            "[[retired_destinations]]\n# Kept by the setup page when machine a was removed";
-        assert!(kept.contains(comment), "{kept}");
-        let table: toml::Table = kept.parse()?;
-        let listed: Vec<analyte_config::Destination> = table
-            .get("retired_destinations")
-            .ok_or("kept")?
-            .clone()
-            .try_into()?;
-        assert_eq!(listed, std::slice::from_ref(&destination));
-        let again = retired(&kept, &destination, "b")?;
-        assert_eq!(again, kept, "same settings: unchanged");
-        let mut moved = destination.clone();
-        moved.base_url = analyte_config::HttpsUrl::parse("https://new.example.invalid")
-            .map_err(crate::invalid)?;
-        let replaced = retired(&kept, &moved, "b")?;
-        assert_eq!(replaced.matches("[[retired_destinations]]").count(), 1);
-        assert!(replaced.contains("new.example.invalid"), "{replaced}");
-        assert!(!replaced.contains("lab.example.invalid"), "{replaced}");
-        assert!(replaced.starts_with(program));
+    fn retired_table_is_removed_in_place() -> Result<(), crate::Error> {
+        let program = concat!(
+            "schema_version = 1\n# about a\n[[machines]]\nid = 'a'\nsite = 'a.toml'\n\n",
+            "[[retired_destinations]]\n# Kept by the setup page\nname = 'demo'\n",
+            "base_url = 'https://lab.example.invalid'\napi_key_name = 'demo-api'\n",
+            "signing_key_name = 'demo-signing'\n\n[[retired_destinations]]\nname = 'old'\n",
+            "base_url = 'https://old.example.invalid'\napi_key_name = 'old-api'\n",
+            "signing_key_name = 'old-signing'\n"
+        );
+        let without = without_retired(program, "demo")?;
+        assert!(
+            without.starts_with(
+                "schema_version = 1\n# about a\n[[machines]]\nid = 'a'\nsite = 'a.toml'\n\n\n[[retired_destinations]]\nname = 'old'"
+            ),
+            "{without}"
+        );
+        assert!(!without.contains("demo"), "{without}");
+        assert_eq!(without_retired(&without, "demo")?, without);
+        let none = without_retired(&without, "old")?;
+        assert!(!none.contains("retired_destinations"), "{none}");
+        assert!(none.starts_with("schema_version = 1\n# about a\n[[machines]]"));
         Ok(())
     }
 

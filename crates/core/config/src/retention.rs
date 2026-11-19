@@ -47,7 +47,11 @@ impl From<Retention> for Value {
         }
     }
 }
-pub(crate) fn load_site(path: &str, text: &str) -> Result<crate::Site, crate::Error> {
+pub(crate) fn load_site(
+    path: &str,
+    text: &str,
+    lab_apps: &crate::LabApps,
+) -> Result<(crate::Site, crate::LabAppSource), crate::Error> {
     if text.len() <= crate::MAX_FILE_BYTES {
         let table: toml::Table = toml::from_str(text).map_err(|source| crate::Error::Schema {
             path: path.into(),
@@ -61,22 +65,26 @@ pub(crate) fn load_site(path: &str, text: &str) -> Result<crate::Site, crate::Er
             ));
         }
     }
-    crate::load::<crate::schema::SiteFile>(path, text)?.into_site(path)
+    crate::load::<crate::schema::SiteFile>(path, text)?.into_site(path, lab_apps)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn none() -> crate::LabApps {
+        crate::LabApps::none(crate::LAB_APPS_FILE)
+    }
     // ADR 0013 item 1
     #[test]
     fn required_period_has_no_default_and_bounds() -> Result<(), crate::Error> {
         let site = include_str!("../examples/site.toml");
         for period in ["1", "90", "3650", "\"keep\""] {
-            load_site("site", &site.rewrite("\"keep\"", period))?;
+            load_site("site", &site.rewrite("\"keep\"", period), &none())?;
         }
         for period in ["0", "3651", "-1", "\"forever\""] {
             {
-                let Err(refusal) = load_site("site", &site.rewrite("\"keep\"", period)) else {
+                let Err(refusal) = load_site("site", &site.rewrite("\"keep\"", period), &none())
+                else {
                     panic!("input must be refused")
                 };
                 assert!(
@@ -87,7 +95,7 @@ mod tests {
         }
         let missing = site.rewrite("retention = \"keep\"", "");
         assert!(
-            matches!(load_site("site", &missing), Err(crate::Error::Invalid { key, .. }) if key == "retention")
+            matches!(load_site("site", &missing, &none()), Err(crate::Error::Invalid { key, .. }) if key == "retention")
         );
         Ok(())
     }

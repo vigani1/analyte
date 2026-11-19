@@ -67,9 +67,19 @@ pub enum Error {
     /// A required installation setting or relationship is refused.
     #[error("duplicate machine identity")]
     DuplicateMachineIdentity,
-    /// A required installation setting or relationship is refused.
-    #[error("inconsistent shared destination")]
-    InconsistentSharedDestination,
+    /// One lab app name is written with different settings in two places, so
+    /// which address or keys are meant is unknown; Analyte never guesses.
+    #[error(
+        "lab app {name} is written differently in {first} and in {second}; make both the same (or give one another name), then start again"
+    )]
+    ConflictingLabApp {
+        /// The lab app name.
+        name: String,
+        /// The place read first.
+        first: String,
+        /// The place read later.
+        second: String,
+    },
     /// Two retired destinations share one name, so which address to use is unknown.
     #[error(
         "retired destination {0} is listed twice; keep one [[retired_destinations]] table per name"
@@ -167,7 +177,7 @@ impl Error {
             | Self::SharedConnection { .. }
             | Self::SetupNeedsAdmin
             | Self::AwaitingSetupWithSettings
-            | Self::InconsistentSharedDestination
+            | Self::ConflictingLabApp { .. }
             | Self::DuplicateRetiredDestination(_)
             | Self::TooManyRetiredDestinations
             | Self::InvalidProgramLimits

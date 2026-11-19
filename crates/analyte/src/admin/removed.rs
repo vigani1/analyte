@@ -1,10 +1,11 @@
 //! Says which results wait for a lab app destination that no running machine uses, and what happens to them.
 //!
-//! A destination kept after its last machine was removed gets a delivery-only
-//! worker at startup that runs until nothing is left (`runtime::delivery::retired`).
-//! A destination that is not kept anywhere cannot be delivered to: Analyte never
-//! guesses an address, so its items stay stored and this page says so. Neither
-//! can a kept destination whose keys were missing at startup: its worker runs but
+//! A lab app no running machine uses (listed in `lab-apps.toml`, or kept by an
+//! older setup page) gets a delivery-only worker at startup that runs until
+//! nothing is left (`runtime::delivery::unused_lab_apps`). A destination that is
+//! no lab app cannot be delivered to: Analyte never guesses an address, so its
+//! items stay stored and this page says so. Neither can a lab app whose keys
+//! were missing at startup: its worker runs but
 //! sends nothing, so the page gives the same reason and fix as the
 //! `undeliverable_destination` alert instead of "still being delivered".
 use super::server::Context;
@@ -123,9 +124,8 @@ fn line(open: &Undelivered, kept: Option<&Kept>, from_running: bool) -> Line {
             format!(
                 concat!(
                     "Cannot send to lab app {destination}: its API key or signing key is ",
-                    "missing. Enter them on the setup page of a machine that uses this lab app ",
-                    "(or in the service environment), then restart. {from}: {count} {what} are ",
-                    "kept and never deleted.{held}"
+                    "missing. Enter them on the Lab app page (or in the service environment), ",
+                    "then restart. {from}: {count} {what} are kept and never deleted.{held}"
                 ),
                 destination = destination,
                 from = from,
@@ -156,9 +156,9 @@ fn line(open: &Undelivered, kept: Option<&Kept>, from_running: bool) -> Line {
         None => (
             format!(
                 concat!(
-                    "Cannot send to lab app {destination}: no machine uses it any more. {from}: ",
-                    "{count} {what} are kept and never deleted. Set up a machine that uses lab ",
-                    "app {destination} to send them."
+                    "Cannot send to lab app {destination}: it is not set up any more. {from}: ",
+                    "{count} {what} are kept and never deleted. Add lab app {destination} on the ",
+                    "Lab app page, then restart, to send them."
                 ),
                 destination = destination,
                 from = from,
@@ -234,9 +234,8 @@ mod tests {
         );
         assert!(line.text.starts_with(concat!(
             "Cannot send to lab app old-lab: its API key or signing key is missing. ",
-            "Enter them on the setup page of a machine that uses this lab app (or in the ",
-            "service environment), then restart. Removed machine machine-3: 3 results or ",
-            "order messages are kept and never deleted."
+            "Enter them on the Lab app page (or in the service environment), then restart. ",
+            "Removed machine machine-3: 3 results or order messages are kept and never deleted."
         )));
         assert!(line.notice("").starts_with("<p class=\"notice bad\">"));
         Ok(())
@@ -260,7 +259,7 @@ mod tests {
             "{finished}"
         );
         let gone = line_text(&open, None);
-        assert!(gone.starts_with("Cannot send to lab app old-lab: no machine uses it any more."));
+        assert!(gone.starts_with("Cannot send to lab app old-lab: it is not set up any more."));
         Ok(())
     }
 

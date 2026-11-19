@@ -36,9 +36,11 @@ The installers write a starter program with the admin page on port 8080 and one
 machine, `machine-1`, that has no machine definition yet. Such a machine waits
 for the [Setup page](operate.md#setup-page) and does not run, so the service
 starts without any lab connection or key. The starter site file holds only the
-retention (`keep`, so nothing is ever deleted until the lab chooses a period)
-and the key names `lab-app-api` and `lab-app-signing`; the setup page fills in
-the connection and the lab app. An upgrade never replaces this configuration.
+retention (`keep`, so nothing is ever deleted until the lab chooses a period).
+No `lab-apps.toml` is shipped: add the lab app, with its address and keys, on
+the [Lab app page](operate.md#lab-app-page), which writes that file beside the
+program file; the setup page then fills in the connection and picks the lab
+app. An upgrade never replaces this configuration.
 For more analyzers, press **Add machine** on the setup page; to take one out of
 service, press **Remove machine** (see [Setup page](operate.md#setup-page)).
 Nobody needs to edit the files by hand.

@@ -29,7 +29,7 @@ impl Program {
                 machine.destination_limits.store_timeout = budget;
             }
         }
-        for kept in &mut self.retired {
+        for kept in &mut self.lab_apps {
             if kept.settings.name.as_str() == name {
                 kept.limits.store_timeout = budget;
             }
@@ -244,7 +244,7 @@ impl Program {
             .iter()
             .any(|m| m.snapshot.effective().site().destination.name.as_str() == name)
             && !self
-                .retired
+                .lab_apps
                 .iter()
                 .any(|kept| kept.settings.name.as_str() == name)
         {
@@ -282,7 +282,7 @@ impl Program {
         }
         // A kept destination has no poller; a short interval here makes any poll
         // that wrongly started for it show up at once in a test.
-        for kept in &mut self.retired {
+        for kept in &mut self.lab_apps {
             if kept.settings.name.as_str() == name {
                 kept.limits.poll_interval = interval;
             }
