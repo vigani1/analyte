@@ -411,18 +411,38 @@ fn level_and_state(definition: &Definition) -> (String, Markup) {
     }
 }
 
+/// The setup page's Lab apps section, with a link to add the first lab app.
+async fn lab_apps_section(state: &Arc<Context>) -> Markup {
+    let mut html = Markup::new().markup(concat!(
+        "<section><div class=\"heading\"><h2>Lab apps</h2>",
+        "<a class=\"button secondary\" href=\"/setup/lab-apps\">Lab apps</a></div>",
+        "<p>Where results are sent. Each lab app is set once, with its address and keys; ",
+        "each machine below picks one.</p>"
+    ));
+    // A fresh installation has none yet; a machine not set up needs none, but
+    // setting one up does, so say where to add it.
+    let worker = state.clone();
+    let none = tokio::task::spawn_blocking(move || lab_apps::scan(&worker.config_path))
+        .await
+        .ok()
+        .and_then(Result::ok)
+        .is_some_and(|scan| scan.known.is_empty());
+    if none {
+        html.push_markup(concat!(
+            "<p class=\"notice info\">No lab app yet: ",
+            "<a href=\"/setup/lab-apps/new\">add one</a>.</p>"
+        ));
+    }
+    html.markup("</section>")
+}
+
 /// GET /setup: the machines in the program file, what runs now, and the shipped definitions.
 pub(super) async fn index(State(state): State<Arc<Context>>) -> Response {
     let mut html = page("Set up a machine").markup(concat!(
         "<p class=\"lead\">Choose a machine below to set its connection and pick its lab app. ",
         "Saving writes the machine's site file; Analyte then restarts to use it.</p>",
     ));
-    html.push_markup(concat!(
-        "<section><div class=\"heading\"><h2>Lab apps</h2>",
-        "<a class=\"button secondary\" href=\"/setup/lab-apps\">Lab apps</a></div>",
-        "<p>Where results are sent. Each lab app is set once, with its address and keys; ",
-        "each machine below picks one.</p></section>"
-    ));
+    html.push_fragment(&lab_apps_section(&state).await);
     match crate::admin::removed::lines(&state).await {
         Ok(lines) => {
             for line in lines {

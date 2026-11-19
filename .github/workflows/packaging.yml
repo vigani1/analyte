@@ -64,7 +64,8 @@ jobs:
             for ($i = 0; $i -lt 60; $i++) {
               try {
                 $page = Invoke-WebRequest -UseBasicParsing -Uri http://127.0.0.1:8080/setup -Headers @{ Authorization = "Bearer $token" }
-                if ($page.Content -match 'machine-1</td><td>Not set up yet') { return }
+                # One table row names machine-1 and says it is not set up; cell markup may change.
+                if ($page.Content -match '(?s)<tr[^>]*>(?:(?!</tr>).)*>machine-1<(?:(?!</tr>).)*Not set up yet') { return }
               } catch { Write-Output "waiting for the admin page: $($_.Exception.Message)" }
               Start-Sleep -Seconds 1
             }
@@ -142,7 +143,7 @@ jobs:
           setup_page() {
             for _ in $(seq 60); do
               if curl -fsS -H "Authorization: Bearer $(sudo cat /var/lib/analyte/admin-token)" \
-                  http://127.0.0.1:8080/setup | grep -q 'machine-1</td><td>Not set up yet'; then
+                  http://127.0.0.1:8080/setup | perl -0777 -ne 'exit(!m{<tr[^>]*>(?:(?!</tr>).)*>machine-1<(?:(?!</tr>).)*Not set up yet}s)'; then
                 return 0
               fi
               sleep 1

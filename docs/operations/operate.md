@@ -184,7 +184,10 @@ only the retention.
 
 ### Lab app page
 
-The Lab app page (Setup, then **Lab apps**) lists each lab app once: its
+On a fresh install the Setup page says "No lab app yet: add one", with a link;
+a machine that is not set up yet needs no lab app, so the service starts and
+serves the page without one. The Lab app page (Setup, then **Lab apps**) lists
+each lab app once: its
 address, which machines send to it, whether its keys are set ("set on
 <date>", never the value) and how many results wait for it. A lab app still
 written in an older place (a machine's site file, or the program file) says

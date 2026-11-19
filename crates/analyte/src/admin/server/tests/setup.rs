@@ -100,6 +100,26 @@ async fn start() -> Result<Fixture, Error> {
 
 /// A fixture whose program file lists `machines` and whose `site.toml` holds `site_text`.
 async fn start_with(machines: &str, site_text: &str) -> Result<Fixture, Error> {
+    let program = analyte_fixtures::program_with_limits(
+        machines,
+        &analyte_store::Limits {
+            reserve_bytes: 1,
+            database_bytes: 100_000_000,
+            record_bytes: 2_097_152,
+            page_rows: 100,
+            busy_timeout: Duration::from_millis(100),
+        },
+    );
+    start_program(&program, "site.toml", site_text).await
+}
+
+/// A fixture with the whole program file `program_text` and the site file
+/// `site_name` holding `site_text`, beside the shipped example definitions.
+async fn start_program(
+    program_text: &str,
+    site_name: &str,
+    site_text: &str,
+) -> Result<Fixture, Error> {
     let directory = crate::admin::private_tempdir()?;
     let root = directory.path();
     let serial = root.join("machines/example/serial-astm");
@@ -117,22 +137,10 @@ async fn start_with(machines: &str, site_text: &str) -> Result<Fixture, Error> {
     let blocked = root.join("machines/roche/cobas-e411");
     std::fs::create_dir_all(&blocked)?;
     std::fs::write(blocked.join("README.md"), "A blocked machine definition.\n")?;
-    let site = root.join("site.toml");
+    let site = root.join(site_name);
     std::fs::write(&site, site_text)?;
     let config = root.join("program.toml");
-    std::fs::write(
-        &config,
-        analyte_fixtures::program_with_limits(
-            machines,
-            &analyte_store::Limits {
-                reserve_bytes: 1,
-                database_bytes: 100_000_000,
-                record_bytes: 2_097_152,
-                page_rows: 100,
-                busy_timeout: Duration::from_millis(100),
-            },
-        ),
-    )?;
+    std::fs::write(&config, program_text)?;
     let program = Program::load(&config)?;
     let data = program.data_directory().to_owned();
     let store = Arc::new(
@@ -285,6 +293,76 @@ async fn page_lists_definitions_and_detected_adapters() -> Result<(), Error> {
         .await?;
     assert!(network.contains("name=\"host\""), "{network}");
     assert!(!network.contains("name=\"port\""));
+    Ok(())
+}
+
+/// The packaging workflow's check, in plain code: one table row of `page` names
+/// `machine` as a cell's whole text and, later in the same row, says "Not set up
+/// yet". Cell markup inside the row may change.
+fn row_not_set_up(page: &str, machine: &str) -> bool {
+    let cell = format!(">{machine}<");
+    page.split("<tr").skip(1).any(|row| {
+        let row = row.split("</tr>").next().unwrap_or_default();
+        row.find(&cell).is_some_and(|at| {
+            row.get(at..)
+                .is_some_and(|rest| rest.contains("Not set up yet"))
+        })
+    })
+}
+
+// Owner request 2026-11-19 (lab app set once; PR #260 packaging failure): the
+// installers' exact starter files load, the machine not set up needs no lab app,
+// and the setup page lists machine-1 as not set up, as the packaging workflow
+// checks after install, with a link to add the first lab app.
+#[tokio::test(flavor = "multi_thread")]
+async fn starter_setup_page_matches_the_packaging_check() -> Result<(), Error> {
+    // Both installer jobs use this row-level match, not exact cell markup.
+    let workflow = include_str!("../../../../../../.github/workflows/packaging.yml");
+    assert_eq!(
+        workflow
+            .matches(">machine-1<(?:(?!</tr>).)*Not set up yet")
+            .count(),
+        2,
+        "the Windows and Linux checks match one row"
+    );
+    let link = "No lab app yet: <a href=\"/setup/lab-apps/new\">add one</a>";
+    for program in [
+        include_str!("../../../../../../packaging/linux/starter/analyte.toml"),
+        include_str!("../../../../../../packaging/windows/starter/analyte.toml"),
+    ] {
+        // Only the data folder moves into the test's private folder.
+        let program: String = program
+            .lines()
+            .map(|line| {
+                if line.starts_with("data_directory") {
+                    "data_directory = 'data'\n".to_owned()
+                } else {
+                    format!("{line}\n")
+                }
+            })
+            .collect();
+        let fixture = start_program(
+            &program,
+            "machine-1.site.toml",
+            include_str!("../../../../../../packaging/linux/starter/machine-1.site.toml"),
+        )
+        .await?;
+        let loaded = Program::load(&fixture.config)?;
+        assert!(loaded.machines().is_empty() && loaded.lab_apps().is_empty());
+        let waiting: Vec<&str> = loaded
+            .awaiting_setup()
+            .iter()
+            .map(Identifier::as_str)
+            .collect();
+        assert_eq!(waiting, ["machine-1"]);
+        let index = fixture.get("/setup").await?;
+        assert!(index.starts_with("HTTP/1.1 200"), "{index}");
+        assert!(row_not_set_up(&index, "machine-1"), "{index}");
+        assert!(!row_not_set_up(&index, "machine-2"), "{index}");
+        assert!(index.contains(link), "missing {link}: {index}");
+        let lab_apps = fixture.get("/setup/lab-apps").await?;
+        assert!(lab_apps.contains("No lab app is set up yet"), "{lab_apps}");
+    }
     Ok(())
 }
 
