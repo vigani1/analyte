@@ -5,6 +5,8 @@ mod endpoint;
 pub use endpoint::{Endpoint, NotFixed, UsbSerial};
 mod https;
 pub use https::{HttpsUrl, loopback_test_url};
+mod lab_apps;
+pub use lab_apps::{LAB_APPS_FILE, LabAppProblem, LabAppSource, LabApps};
 mod orders;
 mod retention;
 pub use retention::Retention;
@@ -168,6 +170,14 @@ pub enum Error {
         /// Required corrective action.
         reason: &'static str,
     },
+    /// A site file's lab app cannot be chosen, or `lab-apps.toml` is refused.
+    #[error("{path}: {problem}")]
+    LabApp {
+        /// The site file or lab apps file.
+        path: String,
+        /// What to correct.
+        problem: LabAppProblem,
+    },
     /// Canonical snapshot could not be serialized.
     #[error("effective config: cannot serialize snapshot: {0}")]
     Serialization(#[from] toml::ser::Error),
@@ -252,6 +262,7 @@ fn load<T: for<'de> Deserialize<'de>>(path: &str, text: &str) -> Result<T, Error
 pub struct Draft {
     machine: MachineDocument,
     site: Site,
+    source: LabAppSource,
     overrides: Overrides,
     paths: [String; 3],
 }
@@ -288,6 +299,7 @@ impl Machine {
 pub struct Effective {
     machine: Machine,
     site: Site,
+    source: LabAppSource,
     document: toml::Value,
 }
 
@@ -317,7 +329,9 @@ pub struct Validated {
 pub struct Active(Validated);
 
 impl Draft {
-    /// Loads three independently versioned TOML layers, without reading files or secrets.
+    /// Loads three independently versioned TOML layers, without reading files or
+    /// secrets, for a site file that writes its own `[destination]`: the same as
+    /// [`Draft::load_with`] with no lab apps listed.
     /// # Errors
     /// Rejects oversized files, unsupported versions, malformed TOML and unknown keys.
     pub fn load(
@@ -325,9 +339,25 @@ impl Draft {
         site: (&str, &str),
         overrides: (&str, &str),
     ) -> Result<Self, Error> {
+        Self::load_with(machine, site, overrides, &LabApps::none(LAB_APPS_FILE))
+    }
+
+    /// Loads the three layers and resolves the site file's lab app from its own
+    /// `[destination]`, its `lab_app` name in `lab_apps`, or the only lab app.
+    /// # Errors
+    /// Rejects what [`Draft::load`] rejects, an unknown or missing lab app, and
+    /// several lab apps without a choice.
+    pub fn load_with(
+        machine: (&str, &str),
+        site: (&str, &str),
+        overrides: (&str, &str),
+        lab_apps: &LabApps,
+    ) -> Result<Self, Error> {
+        let (resolved, source) = retention::load_site(site.0, site.1, lab_apps)?;
         Ok(Self {
             machine: load(machine.0, machine.1)?,
-            site: retention::load_site(site.0, site.1)?,
+            site: resolved,
+            source,
             overrides: load(overrides.0, overrides.1)?,
             paths: [machine.0.into(), site.0.into(), overrides.0.into()],
         })
@@ -382,6 +412,7 @@ impl Draft {
         }
         if let Some(v) = o.destination {
             self.site.destination = v;
+            self.source = LabAppSource::Overrides;
         }
         let stack = validate_machine(
             &self.machine,
@@ -405,6 +436,7 @@ impl Draft {
                 stack,
             },
             site: self.site,
+            source: self.source,
             document,
         };
         let digest = Sha256::digest(canonical.as_bytes()).into();
@@ -467,5 +499,12 @@ impl Effective {
     #[must_use]
     pub fn site(&self) -> &Site {
         &self.site
+    }
+
+    /// Where the lab app in `site().destination` was written. It is not part of
+    /// the snapshot: the same settings give the same bytes from any source.
+    #[must_use]
+    pub fn lab_app_source(&self) -> LabAppSource {
+        self.source
     }
 }

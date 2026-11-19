@@ -10,7 +10,15 @@ bounded local departure recording references through the existing ADR 0009
 reader; it never fetches a remote manual or recording.
 
 The shipped definition owns protocol choices, mappings, vendor departures and
-evidence. Site TOML owns the port choice and `destination`. The port choice is
+evidence. Site TOML owns the port choice and the lab app: either its own
+`[destination]` table (the older form) or `lab_app = "<name>"`, a lab app from
+`LabApps` (`lab-apps.toml`, checked by the same `[destination]` rules, each name
+once, at most 128). A site file with neither uses the only lab app; several are
+refused with `LabAppProblem::Choose`, an unknown name with
+`LabAppProblem::Unknown`, both forms with `LabAppProblem::Both`. The effective
+snapshot always holds the resolved settings under `destination` and never
+`lab_app`, so the same values give the same canonical bytes and digest from
+either form (`Effective::lab_app_source` says which). The port choice is
 exactly one of `endpoint` (port name, socket address or folder) or `usb_serial`
 (a USB adapter serial number, serial links only); both or neither is refused,
 and loading turns them into one `Endpoint` value. An override's `endpoint` or

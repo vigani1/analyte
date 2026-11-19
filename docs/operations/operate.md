@@ -42,7 +42,7 @@ pages were renamed (Needs review is still `/parked`, Cancelled by machine
 | Overview | Four sections: Machines (connection light, last data, service), Sending to the lab app (results waiting, order list up to date, oldest result waiting, results still being delivered for removed machines), Orders (orders with unknown outcome, orders cancelled by a machine, and "Order sending paused after restore" only while it applies) and Disk and alerts (free space, space always kept free, active alerts). Counts are plain numbers, red when above 0. Hovering a label or value shows its exact technical name or value. |
 | Needs review | Items Analyte kept but could not process (parked items): reason, linked records and "Process again with current settings". Showing the original bytes requires an audited browser POST. |
 | Machines | Config, link light and activity. TCP server: Waiting or Connected. TCP client: Connected or Not connected (retrying). Serial: only Port open or Port not open, because an open port proves no cable or machine. Watched folder: Watching or Not watching. Last data received ("Nothing yet" before anything arrived) and the time of the last change show as a local date and time with an age. The settings version shows its first 12 digits; hover for the full digest. |
-| Setup | Add or remove machines; choose a machine model, its port or address and the lab app; test by listening; save; restart. See [Setup page](#setup-page). |
+| Setup | Add or remove machines; choose a machine model, its port or address and pick its lab app; test by listening; save; restart. See [Setup page](#setup-page). Its **Lab apps** link opens the [Lab app page](#lab-app-page), where each lab app's address and keys are set once. |
 | Machine orders (More) | Inspect lifecycle; reconciliation remains a CLI task. |
 | Cancelled by machine (More) | Orders a machine cancelled on its own, to check with the lab and the lab app. See [LAW execution](#law-execution-and-analyzer-cancellation). |
 | Deliveries (More) | Inspect status and confirm "Send again" for eligible deliveries, with a reason. |
@@ -108,33 +108,33 @@ never changed, so the machine's stored results, flagged items and history stay
 visible on the other pages.
 
 Stored results and order messages keep being delivered after a removal, even
-when no other machine uses the same lab app. Removing keeps the machine's lab app
-destination (its name, address, deadlines and key names, never the keys) in the
-program file as a `[[retired_destinations]]` table, in the same checked write. At
-each start, Analyte runs a delivery-only worker for every kept destination that
-no set-up machine uses: it sends what is waiting with the usual retries and
-shutdown limits, and stops when nothing is left. It never asks that lab app for
-orders. Items paused, parked or conflicting keep it running, so an operator's
-release or resend is still sent; anything added after it stopped is sent after
-the next restart. A set-up machine that uses the same destination name wins:
-its own settings are used, as before. While anything waits, the Overview and the
-Setup page say so, for example "Removed machine machine-2: 3 results or order
-messages still being delivered to lab app lab-app"; the line goes
-away when the count reaches 0. Remove a `[[retired_destinations]]` table by hand
-only when nothing waits for it.
+when no other machine uses the same lab app. The lab app simply stays on the
+[Lab app page](#lab-app-page) (`lab-apps.toml`); if the machine's site file
+still wrote its own `[destination]`, removing moves it there first, in the same
+checked write. At each start, Analyte runs a delivery-only worker for every lab
+app that no set-up machine uses: it sends what is waiting with the usual
+retries and shutdown limits, and stops when nothing is left. It never asks that
+lab app for orders. Items paused, parked or conflicting keep it running, so an
+operator's release or resend is still sent; anything added after it stopped is
+sent after the next restart. While anything waits, the Overview and the Setup
+page say so, for example "Removed machine machine-2: 3 results or order
+messages still being delivered to lab app lab-app"; the line goes away when the
+count reaches 0. `[[retired_destinations]]` tables that older versions kept in
+the program file are still read as lab apps.
 
-If a destination's settings cannot be read when its machine is removed (for
+If a lab app's settings cannot be read when its machine is removed (for
 example a broken site file), nothing is kept and the page says so. Results that
-wait for a destination that is configured nowhere stay stored and are never
-deleted; the pages show "Cannot send to lab app X: no machine uses it any more", the
+wait for a destination that is no lab app stay stored and are never deleted;
+the pages show "Cannot send to lab app X: it is not set up any more", the
 service log says so at each start, and an `undeliverable_destination` alert, if
 configured, raises for them with the reason and the fix (see
-[Alerts](#alerts-and-named-responders)). Set up a machine that uses that
-destination to deliver them. If a kept destination's keys are missing, its
-deliveries pause with "destination credentials require operator repair", the
-service keeps running, and the same alert raises with that reason. The
-Overview and the Setup page then say "Cannot send to lab app X: its API key
-or signing key is missing" with the same fix, not "still being delivered".
+[Alerts](#alerts-and-named-responders)). Add lab app X on the Lab app page and
+restart to send them. If a lab app's keys are missing, its deliveries pause
+with "destination credentials require operator repair", the service keeps
+running, and the same alert raises with that reason. The Overview and the Setup
+page then say "Cannot send to lab app X: its API key or signing key is
+missing" with the same fix (enter them on the Lab app page), not "still being
+delivered".
 Removing the last machine is allowed: Analyte then serves only the admin page
 (and delivers what still waits) until a machine is added.
 
@@ -165,19 +165,20 @@ program written that way by hand.
    are discarded when the test ends or is stopped. They may contain patient data:
    keep them out of screenshots. The test refuses a port or address that a
    running machine uses; stop that machine's service first or test a free port.
-4. **Lab app.** Enter the lab app address (HTTPS, checked with the same rules as
-   `check-config`) and the destination name. Enter the API key and signing key
-   only to set or replace them. They are stored in the [locked credentials
-   file](connect.md#credentials) and never shown again; the page shows only
-   "set on <date>", or that an environment variable sets the key (it wins).
+4. **Lab app.** "Send results to" picks one lab app from the
+   [Lab app page](#lab-app-page). With only one, it is chosen already. With none,
+   the page links to the Lab app page to add one first. Keys are not asked here.
 5. **Save.** Analyte first checks everything with the `check-config` rules. Only
-   then does it keep the old site file as `<name>.<time>.bak`, write the new one
-   and store the keys. If you chose a different definition, the program file's
-   `definition` line for that machine changes too (with its own backup); nothing
-   else in it changes. It then loads the whole program again; if that fails,
-   the previous files are put back and the page says why. The page shows the new
-   settings version (the first 12 digits of the configuration digest; hover for
-   all of it).
+   then does it keep the old site file as `<name>.<time>.bak` and write the new
+   one, which names the lab app with `lab_app = "<name>"`. If the old site file
+   wrote its own `[destination]`, that lab app moves into `lab-apps.toml` (unless
+   it is already there with the same values; other values are refused); with
+   the same values the settings version does not change. If you chose a
+   different definition, the program file's `definition` line for that machine
+   changes too (with its own backup); nothing else in it changes. It then loads
+   the whole program again; if that fails, the previous files are put back and
+   the page says why. The page shows the new settings version (the first 12
+   digits of the configuration digest; hover for all of it).
 
 Saved settings apply only after a restart. **Restart now** stops Analyte
 gracefully (like a normal stop) and exits with a failure code, so the service
@@ -187,11 +188,45 @@ after 5 seconds. A foreground `analyte run` simply stops;
 start it again by hand. Log in again afterwards; the Setup page shows the running
 configuration digest, which should match the one shown after saving. Saves,
 added and removed machines and restarts are audited (session and machine name)
-without key values. A save writes only the site file, that one program line and
-the locked credentials file; retention, time zone, credential names and other
+without key values. A save writes only the site file, `lab-apps.toml` when a
+lab app moves there, and that one program line; retention, time zone and other
 site keys are kept as they were. Adding and removing change only that machine's
-entry in the program file and its site file; removing also adds or updates the
-`[[retired_destinations]]` table for its lab app destination.
+entry in the program file and its site file; removing may also add its lab app
+to `lab-apps.toml`. A machine added on the page gets a starter site file with
+only the retention.
+
+### Lab app page
+
+On a fresh install the Setup page says "No lab app yet: add one", with a link;
+a machine that is not set up yet needs no lab app, so the service starts and
+serves the page without one. The Lab app page (Setup, then **Lab apps**) lists
+each lab app once: its
+address, which machines send to it, whether its keys are set ("set on
+<date>", never the value) and how many results wait for it. A lab app still
+written in an older place (a machine's site file, or the program file) says
+so.
+
+- **Add lab app.** Enter a name (letters, digits, `-` and `_`), the HTTPS
+  address and both keys. "Timing (advanced)" holds the order freshness (default
+  30 seconds) and the request deadline (default 10, 1 through 120). The keys are
+  stored as `<name>-api` and `<name>-signing` in the
+  [locked credentials file](connect.md#credentials), after the file passes
+  `check-config`; they are never shown again.
+- **Edit.** Change the address or timing, or enter a key to replace it (leave a
+  box empty to keep the stored key). The name cannot change: stored results
+  wait under it. While a machine's site file still writes the lab app, its
+  address and timing can change only after that machine is saved on the Setup
+  page, which moves the lab app here; keys can be entered at any time. Saving a
+  lab app that an older version kept in the program file moves it into
+  `lab-apps.toml`.
+- **Remove.** Refused while a machine sends to it or results still wait for it.
+  Its keys stay in the locked file.
+
+Every change uses the same checks, dated backups, reload and rollback as the
+Setup page, is audited (session and lab app name, never a key) and applies
+after a restart. Adding a second lab app is refused while a hand-written site
+file relies on the only one by default; that site file must name its lab app
+first.
 
 ## Alerts and named responders
 
@@ -237,8 +272,8 @@ deleted. Its two reasons, as status and the Overview show them:
 
 | Reason | Means | Fix |
 | --- | --- | --- |
-| `not_configured` | No machine and no kept lab app setting uses destination X (for example its machine's settings were unreadable at removal, or a machine's destination was renamed). | Set up a machine with lab app destination X on the setup page, or restore its settings; the results are kept and will be sent once it is configured. |
-| `credentials_missing` | Destination X is kept, but its API key or signing key could not be loaded; its deliveries are paused. | Enter the API key and signing key for destination X on the setup page (on a machine that uses it) or in the service environment, then restart; the results are kept and will be sent once the keys are set. |
+| `not_configured` | No machine and no lab app uses destination X (for example its machine's settings were unreadable at removal, or a lab app was renamed). | Add lab app X on the Lab app page and restart, or restore its settings; the results are kept and will be sent once it is configured. |
+| `credentials_missing` | Lab app X is listed, but its API key or signing key could not be loaded; its deliveries are paused. | Enter the API key and signing key for lab app X on the Lab app page or in the service environment, then restart; the results are kept and will be sent once the keys are set. |
 
 It clears when the items are delivered or, after a restart, when the destination is
 configured again with its keys. Keys that the lab app rejects are not this alert:

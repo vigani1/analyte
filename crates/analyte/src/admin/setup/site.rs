@@ -8,7 +8,7 @@
 //! write through [`commit`].
 use super::SetupError;
 use crate::installation::config::{Program, read};
-use analyte_config::{Draft, Endpoint, HttpsUrl, UsbSerial, Validated};
+use analyte_config::{Destination, Draft, Endpoint, LabApps, UsbSerial, Validated};
 use analyte_model::Identifier;
 use std::{
     io::Write as _,
@@ -124,14 +124,31 @@ impl Connection {
     }
 }
 
-/// The current site file with the page's choices applied; every other key
-/// (retention, time zone, credential names, limits) is kept as it was.
+/// A site file with the page's choices applied, and the lab apps it needs.
+pub(super) struct Candidate {
+    /// The new site file text.
+    pub(super) text: String,
+    /// The lab apps after the save; written only when they differ from the current ones.
+    pub(super) lab_apps: LabApps,
+}
+
+/// The current site file with the page's choices applied: the connection, and
+/// `lab_app = "<name>"` in place of any `[destination]` table. Every other key
+/// (retention, time zone, limits) is kept as it was.
+///
+/// A complete `[destination]` moves into `lab-apps.toml` unless it is already
+/// there with identical values, so results waiting for it stay deliverable even
+/// when another lab app is picked. A partial one (the installers' starter key
+/// names, which never loaded) is dropped. A picked lab app written only
+/// elsewhere (another machine's site file, or the program file by an older
+/// setup page) is copied into `lab-apps.toml` with the same values.
 pub(super) fn candidate(
     current: &str,
     connection: &Connection,
-    base_url: &HttpsUrl,
-    destination: &Identifier,
-) -> Result<String, SetupError> {
+    lab_app: &Identifier,
+    lab_apps: &LabApps,
+    elsewhere: &[Destination],
+) -> Result<Candidate, SetupError> {
     let mut table: toml::Table = current
         .parse()
         .map_err(|error: toml::de::Error| SetupError::SiteFile(error.to_string()))?;
@@ -142,39 +159,68 @@ pub(super) fn candidate(
         Connection::Endpoint(endpoint) => ("endpoint", endpoint.as_str()),
     };
     table.insert(key.into(), toml::Value::String(value.into()));
-    let section = table
-        .entry("destination")
-        .or_insert_with(|| toml::Value::Table(toml::Table::new()));
-    let toml::Value::Table(section) = section else {
-        return Err(SetupError::SiteFile("destination is not a table".into()));
-    };
-    section.insert(
-        "name".into(),
-        toml::Value::String(destination.as_str().into()),
-    );
-    section.insert(
-        "base_url".into(),
-        toml::Value::String(base_url.as_str().into()),
+    let mut after = lab_apps.clone();
+    if let Some(own) = table.remove("destination") {
+        let complete = own.get("name").is_some() || own.get("base_url").is_some();
+        match own.try_into::<Destination>() {
+            Ok(own) => after = moved(&after, own)?,
+            Err(_) if !complete => {}
+            Err(error) => {
+                return Err(SetupError::SiteFile(format!(
+                    "its [destination] cannot be moved to the Lab app page: {error}"
+                )));
+            }
+        }
+    }
+    if after.get(lab_app.as_str()).is_none() {
+        let old = elsewhere
+            .iter()
+            .find(|known| &known.name == lab_app)
+            .ok_or_else(|| SetupError::UnknownLabApp(lab_app.as_str().into()))?;
+        after = moved(&after, old.clone())?;
+    }
+    table.remove("lab_app");
+    table.insert(
+        "lab_app".into(),
+        toml::Value::String(lab_app.as_str().into()),
     );
     let text = toml::to_string(&table).map_err(|error| SetupError::SiteFile(error.to_string()))?;
-    Ok(format!("# Written by the Analyte setup page.\n{text}"))
+    Ok(Candidate {
+        text: format!("# Written by the Analyte setup page.\n{text}"),
+        lab_apps: after,
+    })
 }
 
-/// Validates `definition` with `site_text` and the installed overrides, exactly as
-/// the program loader does for one machine; nothing is written.
+/// `lab_apps` with `lab_app` added; unchanged when it is already listed with
+/// identical values. Other values under the same name are refused, never chosen.
+pub(super) fn moved(lab_apps: &LabApps, lab_app: Destination) -> Result<LabApps, SetupError> {
+    match lab_apps.get(lab_app.name.as_str()) {
+        Some(listed) if *listed == lab_app => Ok(lab_apps.clone()),
+        Some(_) => Err(SetupError::LabAppDiffers(
+            lab_app.name.as_str().into(),
+            lab_apps.path().into(),
+        )),
+        None => Ok(lab_apps.with(lab_app)?),
+    }
+}
+
+/// Validates `definition` with `site_text`, the installed overrides and
+/// `lab_apps`, exactly as the program loader does for one machine; nothing is written.
 pub(super) fn validate(
     installed: &Installed,
     definition: &Path,
     site_text: &str,
+    lab_apps: &LabApps,
 ) -> Result<Validated, SetupError> {
     let overrides = match &installed.overrides {
         Some(path) => read(path)?,
         None => "schema_version = 1".into(),
     };
-    Ok(Draft::load(
+    Ok(Draft::load_with(
         (&definition.display().to_string(), &read(definition)?),
         (&installed.site.display().to_string(), site_text),
         ("overrides", &overrides),
+        lab_apps,
     )?
     .validate()?)
 }
@@ -227,16 +273,21 @@ pub(super) struct Written {
     pub(super) backups: Vec<PathBuf>,
 }
 
-/// Writes the site file (and the program entry's definition when it changed),
-/// keeping backups; puts the old files back if the program no longer loads.
+/// Writes the site file, `lab-apps.toml` when `lab_apps` is given, and the
+/// program entry's definition when it changed, keeping backups; puts the old
+/// files back if the program no longer loads.
 pub(super) fn apply(
     config: &Path,
     program: &str,
     installed: &Installed,
     definition: &Path,
     site_text: &str,
+    lab_apps: Option<String>,
 ) -> Result<Written, SetupError> {
     let mut changes = vec![(installed.site.clone(), site_text.to_owned())];
+    if let Some(text) = lab_apps {
+        changes.push((crate::installation::config::lab_apps::path(config), text));
+    }
     if installed
         .definition
         .as_deref()
