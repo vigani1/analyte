@@ -33,7 +33,7 @@ use super::{
 };
 use crate::installation::{
     config::{Program, connections},
-    credentials::{CredentialError, Locked},
+    credentials::{CredentialError, Locked, Stored},
     secrets,
 };
 use crate::machine::link::status::Link;
@@ -629,30 +629,32 @@ fn current_lab_app(running: Option<&Running>, current_site: &toml::Table) -> Opt
 /// One key's state, never its value: "API key: set on 2026-11-19". The key
 /// name shows on hover.
 fn key_line(state: &Context, label: &str, name: &Identifier) -> Markup {
-    let mut line = Markup::new()
+    let line = Markup::new()
         .markup("<span title=\"")
         .text(name.as_str())
         .markup("\">")
         .text(label)
         .markup("</span>: ");
-    if std::env::var_os(secrets::variable(name.as_str())).is_some() {
-        return line
+    // The service's own rule decides; an unreadable file still lets a set
+    // environment variable show, as it wins at startup too.
+    let read = Locked::new(&state.setup.data_directory).read();
+    let none = Stored::default();
+    let stored = read.as_ref().unwrap_or(&none);
+    match secrets::source(name.as_str(), |key| std::env::var(key).ok(), stored) {
+        secrets::Source::Environment(_) => line
             .text("set in the service environment (")
             .text(secrets::variable(name.as_str()))
-            .text("), which wins over a stored key");
-    }
-    match Locked::new(&state.setup.data_directory).read() {
-        Ok(stored) => match stored.set_at(name.as_str()) {
-            Some(second) => {
-                let date = jiff::Timestamp::from_second(second)
-                    .map(|t| t.strftime("%Y-%m-%d").to_string())
-                    .unwrap_or_else(|_| "an unknown date".into());
-                line.push_text(format!("set on {date}"));
-                line
-            }
-            None => line.text("not set"),
+            .text("), which wins over a stored key"),
+        secrets::Source::Stored { set_at, .. } => {
+            let date = jiff::Timestamp::from_second(set_at)
+                .map(|t| t.strftime("%Y-%m-%d").to_string())
+                .unwrap_or_else(|_| "an unknown date".into());
+            line.text(format!("set on {date}"))
+        }
+        secrets::Source::Missing => match read {
+            Ok(_) => line.text("not set"),
+            Err(error) => line.text(format!("cannot be checked: {error}")),
         },
-        Err(error) => line.text(format!("cannot be checked: {error}")),
     }
 }
 

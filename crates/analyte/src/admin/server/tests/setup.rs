@@ -758,14 +758,8 @@ async fn lab_app_page_stores_keys_once() -> Result<(), Error> {
     // The same values beside the site file's own copy: the program still loads.
     Program::load(&fixture.config)?;
     let stored = crate::installation::credentials::Locked::new(&fixture.data).read()?;
-    assert_eq!(
-        stored.by_variable("ANALYTE_SECRET_DEMO_API").as_deref(),
-        Some(API_KEY)
-    );
-    assert_eq!(
-        stored.by_variable("ANALYTE_SECRET_DEMO_SIGNING").as_deref(),
-        Some(SIGNING_KEY)
-    );
+    assert_eq!(stored.value("demo-api"), Some(API_KEY));
+    assert_eq!(stored.value("demo-signing"), Some(SIGNING_KEY));
     let file = fixture.data.join("credentials/credentials.toml");
     #[cfg(unix)]
     {

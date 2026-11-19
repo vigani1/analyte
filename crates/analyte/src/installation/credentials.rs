@@ -110,13 +110,10 @@ struct Entry {
 pub struct Stored(BTreeMap<String, Entry>);
 
 impl Stored {
-    /// The value stored for the credential whose environment variable is `variable`.
+    /// The value stored under exactly the credential name `name`.
     #[must_use]
-    pub fn by_variable(&self, variable: &str) -> Option<String> {
-        self.0
-            .iter()
-            .find(|(name, _)| super::secrets::variable(name) == variable)
-            .map(|(_, entry)| entry.value.clone())
+    pub fn value(&self, name: &str) -> Option<&str> {
+        self.0.get(name).map(|entry| entry.value.as_str())
     }
 
     /// When the named credential was stored, as a Unix second; never its value.
@@ -328,10 +325,7 @@ mod tests {
         let secret = Secret::new(&signing, analyte_fixtures::SECRET.into())?;
         locked.replace(vec![(signing, secret)], 1_763_500_000)?;
         let stored = locked.read()?;
-        assert_eq!(
-            stored.by_variable("ANALYTE_SECRET_DEMO_API").as_deref(),
-            Some(KEY)
-        );
+        assert_eq!(stored.value("demo-api"), Some(KEY));
         assert_eq!(stored.set_at("demo-api"), Some(1_763_424_000));
         assert_eq!(stored.set_at("demo-signing"), Some(1_763_500_000));
         assert!(
