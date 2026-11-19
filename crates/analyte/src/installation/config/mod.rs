@@ -930,14 +930,17 @@ fn entries(
         }
         match entry.definition.clone() {
             Some(definition) => {
-                let site = loading.base.join(&entry.site);
-                let overrides = entry.overrides.as_ref().map(|p| loading.base.join(p));
-                let machine = load_machine(entry, &loading.base.join(definition), loading)?;
+                let files = Files {
+                    definition: loading.base.join(definition),
+                    site: loading.base.join(&entry.site),
+                    overrides: entry.overrides.as_ref().map(|p| loading.base.join(p)),
+                };
+                let machine = load_machine(entry, &files, loading)?;
                 let effective = machine.snapshot.effective();
                 let place = match effective.lab_app_source() {
                     analyte_config::LabAppSource::LabApps => None,
-                    analyte_config::LabAppSource::Site => Some(site),
-                    analyte_config::LabAppSource::Overrides => overrides,
+                    analyte_config::LabAppSource::Site => Some(files.site),
+                    analyte_config::LabAppSource::Overrides => files.overrides,
                 };
                 if let Some(place) = place {
                     places.add(
@@ -971,17 +974,25 @@ pub(crate) fn plain_name(name: &str) -> bool {
         .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
 }
 
-fn load_machine(entry: Entry, definition: &Path, loading: &Loading<'_>) -> Result<Machine, Error> {
-    let (base, record_bytes) = (loading.base, loading.record_bytes);
-    let site = base.join(entry.site);
-    let overrides = entry.overrides.map(|p| base.join(p));
-    let replacement = match &overrides {
+/// The files one machine entry names, resolved against the program folder.
+struct Files {
+    definition: PathBuf,
+    site: PathBuf,
+    overrides: Option<PathBuf>,
+}
+
+fn load_machine(entry: Entry, files: &Files, loading: &Loading<'_>) -> Result<Machine, Error> {
+    let record_bytes = loading.record_bytes;
+    let replacement = match &files.overrides {
         Some(p) => read(p)?,
         None => "schema_version = 1".into(),
     };
     let snapshot = Draft::load_with(
-        (&definition.display().to_string(), &read(definition)?),
-        (&site.display().to_string(), &read(&site)?),
+        (
+            &files.definition.display().to_string(),
+            &read(&files.definition)?,
+        ),
+        (&files.site.display().to_string(), &read(&files.site)?),
         ("overrides", &replacement),
         loading.lab_apps,
     )?
