@@ -14,7 +14,7 @@ Use a nonclinical installation ID, never a patient or sample ID.
 | Layer | Contents |
 | --- | --- |
 | Shipped definition | Protocol, mappings, departures and evidence; qualified definitions belong under `machines/`. |
-| Site file | `schema_version = 1`, endpoint (or `usb_serial` for a serial port), required retention period, destination with credential names and optional `time_zone`. |
+| Site file | `schema_version = 1`, endpoint (or `usb_serial` for a serial port), required retention period, the lab app it sends to (`lab_app = "<name>"`) and optional `time_zone`. |
 | Optional local overrides | `schema_version = 1` and explicit replacement sections for this installation. |
 
 Overrides replace whole sections and lists; an override's `endpoint` or
@@ -36,33 +36,55 @@ schema_version = 1
 retention = 90
 endpoint = "COM9"          # the port by name, or instead:
 # usb_serial = "A10K3XYZ"  # the port by its USB adapter's serial number
-[destination]
-name = "demo"
-base_url = "https://lab.example.invalid"
-api_key_name = "demo-api"
-signing_key_name = "demo-signing"
+lab_app = "demo"           # a lab app listed in lab-apps.toml
 ```
 
-### Destinations kept after a removal
+### Lab apps: set once, picked by each machine
 
-When the [Setup page](operate.md#setup-page) removes a machine, it copies that
-machine's `[destination]` table into the program file as a
-`[[retired_destinations]]` table with the same keys, so results still waiting for
-that lab app are delivered (and nothing else is done with it). A synthetic
-example:
+Each lab app is listed once in `lab-apps.toml`, beside the program file: its
+name, address, deadlines and the names of its two keys. The keys themselves
+stay in the locked credentials file or the service environment, under those
+names. The admin [Lab app page](operate.md#lab-app-page) writes this file for
+you, with the same checks and backups as the Setup page. A synthetic example
+(also in the [config examples](../../crates/core/config/examples/lab-apps.toml)):
 
 ```toml
-[[retired_destinations]]
+schema_version = 1
+
+[[lab_apps]]
 name = "demo"
 base_url = "https://lab.example.invalid"
 api_key_name = "demo-api"
 signing_key_name = "demo-signing"
+# freshness_seconds = 30, request_timeout_seconds = 10 when left out
 ```
 
-Each name appears once and follows the same rules as a site file's
-`[destination]`; keys still come from the environment or the locked file. A
-`signing_rotation` entry may name a kept destination. A machine that uses the
-same name wins. `check-config` validates these tables.
+Each `[[lab_apps]]` table follows the same rules as a site file's
+`[destination]` table, and each name appears once. A machine's site file picks
+one with `lab_app = "<name>"`. If it names none and exactly one lab app is
+listed, it uses that one; with several, `check-config` refuses it and asks you
+to choose. An unknown name is refused too. A missing `lab-apps.toml` lists no
+lab apps. A `signing_rotation` entry may name any lab app.
+
+The stored snapshot of a machine's settings (kept with every result and
+digested) holds the lab app's values under `destination`, exactly as before, so
+moving a lab app into `lab-apps.toml` with the same values does not change the
+settings version.
+
+### Older setups
+
+Older site files that write their own `[destination]` table instead of
+`lab_app`, and `[[retired_destinations]]` tables that older Setup pages kept in
+the program file after a machine was removed, still load exactly as before and
+are read as lab apps. Analyte never rewrites them at startup: a machine's own
+table moves into `lab-apps.toml` when that machine is saved or removed on the
+Setup page, and a kept table moves there when its lab app is saved on the Lab
+app page. A site file may not set both `lab_app` and `[destination]`.
+
+The same lab app name may appear in several of these places only with
+identical values. If one name has different values in two places (for example
+`lab-apps.toml` and a machine's site file), Analyte refuses to start and the
+message names both places; make them the same, or give one another name.
 
 ### Name a serial port
 
@@ -169,8 +191,9 @@ repeats as duplicate. Retries keep the same ID and bytes. Authentication failure
 pauses delivery; conflicts and rejected content are parked. Fix the cause before
 using an audited resend. Orders need a complete paged snapshot and changes feed.
 Stale or incomplete lookup is an error or silence, never a guessed empty list.
-`destination.freshness_seconds` defaults to 30; agree the offline policy with the lab.
-`destination.request_timeout_seconds` (default 10, 1 through 120) bounds each
+A lab app's `freshness_seconds` defaults to 30; agree the offline policy with the lab.
+Its `request_timeout_seconds` (default 10, 1 through 120; "Timing (advanced)" on
+the Lab app page) bounds each
 request to the app, including TLS and the app storing; raise it for a slow link
 or app, but keep it well below the freshness setting.
 
