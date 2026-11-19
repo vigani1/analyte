@@ -1,8 +1,6 @@
 //! Sends bounded, signed requests to the app the way Analyte does: no redirects, verified TLS, one deadline.
 use crate::settings::Settings;
 use analyte_contract::{MAX_DOCUMENT_BYTES, ResponseAction, classify_response};
-use base64::{Engine as _, engine::general_purpose::STANDARD};
-use hmac::{KeyInit as _, Mac as _};
 use std::sync::Mutex;
 
 /// A request that never got a complete answer.
@@ -60,6 +58,8 @@ pub(crate) enum Key<'a> {
 pub(crate) enum Signature<'a> {
     /// Signed now with the configured secret.
     Correct,
+    /// Signed now with the configured secret, past the document size bound, for the over-limit case.
+    Unbounded,
     /// Signed with the configured secret over a shifted timestamp.
     Shifted(i64),
     /// This exact header value instead of a signature.
@@ -105,6 +105,7 @@ impl App {
         let timestamp = match signature {
             Signature::Shifted(offset) => now.saturating_add(offset),
             Signature::Correct
+            | Signature::Unbounded
             | Signature::Fixed(_)
             | Signature::Rotated(_)
             | Signature::Missing => now,
@@ -117,6 +118,12 @@ impl App {
         };
         let header = match signature {
             Signature::Correct | Signature::Shifted(_) => Some(sign(&self.settings.secret)?),
+            Signature::Unbounded => Some(
+                self.settings
+                    .secret
+                    .sign_unbounded(id, &timestamp, body)
+                    .map_err(|_| RequestError::Build("webhook metadata outside signing bounds"))?,
+            ),
             Signature::Fixed(value) => Some(value.to_owned()),
             Signature::Rotated(other) => {
                 Some(format!("{} {}", sign(other)?, sign(&self.settings.secret)?))
@@ -134,30 +141,6 @@ impl App {
             request = request.header("webhook-signature", header);
         }
         self.send(self.authorize(request, key)).await
-    }
-
-    /// POSTs a body above the signing bound, signed with the same HMAC rule.
-    pub(crate) async fn post_oversized(
-        &self,
-        path: &str,
-        id: &str,
-        body: &[u8],
-    ) -> Result<Answer, RequestError> {
-        let timestamp = jiff::Timestamp::now().as_second().to_string();
-        let mut mac = hmac::Hmac::<sha2::Sha256>::new_from_slice(&self.settings.oversize_key)
-            .map_err(|_| RequestError::Build("signing key"))?;
-        mac.update(format!("{id}.{timestamp}.").as_bytes());
-        mac.update(body);
-        let signature = format!("v1,{}", STANDARD.encode(mac.finalize().into_bytes()));
-        let request = self
-            .client
-            .post(self.url(path)?)
-            .header("content-type", "application/json")
-            .header("webhook-id", id)
-            .header("webhook-timestamp", timestamp)
-            .header("webhook-signature", signature)
-            .body(body.to_vec());
-        self.send(self.authorize(request, Key::Correct)).await
     }
 
     /// GETs `/orders` with the given query pairs.

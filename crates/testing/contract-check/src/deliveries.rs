@@ -286,7 +286,10 @@ async fn size_limit(app: &App, report: &mut Report) -> Result<(), RunError> {
     );
     let id = fresh_id();
     let over = padded(&id, max.saturating_add(1))?;
-    let outcome = match app.post_oversized("results", &id, &over).await {
+    let outcome = match app
+        .post("results", &id, &over, Key::Correct, Signature::Unbounded)
+        .await
+    {
         Ok(answer) if matches!(answer.status, 400 | 413 | 422) => Outcome::Pass,
         Ok(answer) => Outcome::Fail(format!(
             "expected HTTP 400, 413 or 422 for a document one byte over the limit; {}",
