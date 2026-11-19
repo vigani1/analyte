@@ -9,13 +9,13 @@
 //! URL. Hidden fields beat a server-side draft here: there is nothing to store,
 //! bound, expire or lose at a restart, and Back works in every tab.
 use super::{
-    Csrf, SetupError, after_write, audit, definition_name, definitions, done, level_and_state,
-    listen, needs_login, page,
+    Csrf, SetupError, after_write, audit, definition_name, definitions, done, incomplete,
+    level_and_state, listen, needs_login, off_thread, page,
     plan::{
         Choice, chosen, current_lab_app, kind_of, listen_target, model_name, model_of, plan,
         save_blocking,
     },
-    refused, running, serial, settings_version, site,
+    refused, running, see_other, serial, settings_version, site,
     verdict::{self, Family},
 };
 use crate::admin::{
@@ -28,7 +28,7 @@ use crate::machine::link::status::Link;
 use axum::{
     Extension, Form,
     extract::{Path, Query, State, rejection::QueryRejection},
-    http::{StatusCode, header},
+    http::StatusCode,
     response::{Html, IntoResponse, Response},
 };
 use serde::Deserialize;
@@ -178,6 +178,7 @@ impl Step {
             | SetupError::LabAppInSiteFile(..)
             | SetupError::LabAppInUse(..)
             | SetupError::InvalidKey(_)
+            | SetupError::IncompleteForm(_)
             | SetupError::ProgramFile(_)
             | SetupError::SiteFile(_)
             | SetupError::Installation(_)
@@ -255,21 +256,6 @@ fn step_page(id: &str, step: Step) -> Markup {
     page(&format!("Set up {id}")).fragment(&indicator(Some(step)))
 }
 
-/// Runs `work` on machine `id`'s draft off the async workers: it reads files,
-/// the port list and the credentials file, which block.
-async fn blocking<T: Send + 'static>(
-    state: &Arc<Context>,
-    id: &str,
-    draft: &Draft,
-    work: impl FnOnce(&Context, &str, &Draft) -> Result<T, SetupError> + Send + 'static,
-) -> Result<T, SetupError> {
-    let (worker, machine, kept) = (state.clone(), id.to_owned(), draft.clone());
-    tokio::task::spawn_blocking(move || work(&worker, &machine, &kept))
-        .await
-        .map_err(SetupError::from)
-        .and_then(|r| r)
-}
-
 type Render = fn(&Context, &Session, &str, &Draft) -> Result<Markup, SetupError>;
 
 /// Serves one step: signed in only; files are read off the async workers; a
@@ -285,12 +271,11 @@ async fn serve(
         return needs_login();
     };
     let Ok(Query(draft)) = query else {
-        return refused(&SetupError::Connection(
-            "the form was incomplete; start again from the setup page",
-        ));
+        return incomplete(START_AGAIN);
     };
-    let rendered = blocking(&state, &id, &draft, move |state, id, draft| {
-        render(state, &session, id, draft)
+    let (machine, kept) = (id.clone(), draft.clone());
+    let rendered = off_thread(&state, move |state| {
+        render(state, &session, &machine, &kept)
     })
     .await;
     match rendered {
@@ -700,12 +685,8 @@ fn render_review(
 /// A posted step (the test or Save), or why its form could not be read.
 type Posted = Result<Form<Choice>, axum::extract::rejection::FormRejection>;
 
-/// The refusal of a posted step whose form is incomplete.
-fn incomplete() -> Response {
-    refused(&SetupError::Connection(
-        "the form was incomplete; start again from the setup page",
-    ))
-}
+/// What to do after a step's form could not be read.
+const START_AGAIN: &str = "start again from the setup page";
 
 /// POST /setup/{id}: check every choice again, write the files with backups, show what was saved.
 pub(in crate::admin) async fn save(
@@ -715,10 +696,11 @@ pub(in crate::admin) async fn save(
     form: Posted,
 ) -> Response {
     let Ok(Form(choice)) = form else {
-        return incomplete();
+        return incomplete(START_AGAIN);
     };
     let draft = Draft::from(choice);
-    let saved = match blocking(&state, &id, &draft, save_blocking).await {
+    let (machine, kept) = (id.clone(), draft.clone());
+    let saved = match off_thread(&state, move |state| save_blocking(state, &machine, &kept)).await {
         Ok(saved) => saved,
         Err(error) => return refused_at(&error, &id, &draft),
     };
@@ -800,11 +782,12 @@ pub(in crate::admin) async fn listen_start(
     form: Posted,
 ) -> Response {
     let Ok(Form(choice)) = form else {
-        return incomplete();
+        return incomplete(START_AGAIN);
     };
     let draft = Draft::from(choice);
-    let target = blocking(&state, &id, &draft, |state, id, draft| {
-        let plan = plan(state, id, draft)?;
+    let (machine, kept) = (id.clone(), draft.clone());
+    let target = off_thread(&state, move |state| {
+        let plan = plan(state, &machine, &kept)?;
         let model = Family::of(plan.validated.effective().stack());
         listen_target(state, &plan).map(|(label, target)| (label, target, model))
     })
@@ -827,14 +810,6 @@ pub(in crate::admin) async fn listen_start(
         Err(_) => return refused(&SetupError::ListenState),
     }
     see_other("/setup/listen")
-}
-
-fn see_other(location: &'static str) -> Response {
-    let mut response = StatusCode::SEE_OTHER.into_response();
-    response
-        .headers_mut()
-        .insert(header::LOCATION, header::HeaderValue::from_static(location));
-    response
 }
 
 /// One line of the details: offset, hex bytes and printable text.

@@ -210,6 +210,8 @@ pub(crate) enum SetupError {
     LabAppInUse(String, String),
     #[error("{0}")]
     Connection(&'static str),
+    #[error("the form was incomplete; {0}")]
+    IncompleteForm(&'static str),
     #[error("the {0} key is not in the expected format, so nothing was saved")]
     InvalidKey(String),
     #[error("Analyte's main settings file cannot be read: {0}")]
@@ -247,7 +249,7 @@ pub(crate) enum SetupError {
     #[error("the setup step stopped unexpectedly: {0}")]
     Join(#[from] tokio::task::JoinError),
     #[error("the record of who made this change could not be written: {0}")]
-    Audit(String),
+    Audit(#[source] AuditFailure),
     #[error("the machine name is not accepted: {0}")]
     InvalidName(analyte_model::TextError),
     #[error(
@@ -269,7 +271,7 @@ pub(crate) enum SetupError {
     )]
     UnfinishedWork(String, String),
     #[error("Analyte's stored data could not be read: {0}")]
-    Store(String),
+    Store(#[source] StoreFailure),
     #[error("an earlier setup change failed while writing; reload the page and check the files")]
     Busy,
 }
@@ -442,11 +444,7 @@ async fn lab_apps_section(state: &Arc<Context>) -> Markup {
     ));
     // A fresh installation has none yet; a machine not set up needs none, but
     // setting one up does, so say where to add it.
-    let worker = state.clone();
-    let scanned = tokio::task::spawn_blocking(move || lab_apps::scan(&worker.config_path))
-        .await
-        .map_err(SetupError::from)
-        .and_then(|scanned| scanned);
+    let scanned = off_thread(state, |state| lab_apps::scan(&state.config_path)).await;
     match scanned {
         Ok(scan) if scan.known.is_empty() => html.push_markup(concat!(
             "<p class=\"notice info\">No lab app yet: ",
@@ -501,14 +499,13 @@ pub(super) async fn index(State(state): State<Arc<Context>>) -> Response {
         "<th>Status</th><th title=\"Running configuration digest\">Settings version</th>",
         "<th></th></tr>"
     ));
-    let worker = state.clone();
-    let listed = tokio::task::spawn_blocking(move || {
-        site::entries(&worker.config_path).map(|(_, listed)| {
+    let listed = off_thread(&state, |state| {
+        site::entries(&state.config_path).map(|(_, listed)| {
             let models: Vec<Markup> = listed
                 .iter()
                 .map(|entry| {
                     model(
-                        &worker.config_path,
+                        &state.config_path,
                         entry.definition.as_ref().map(|d| d.get_ref().as_str()),
                     )
                 })
@@ -516,9 +513,7 @@ pub(super) async fn index(State(state): State<Arc<Context>>) -> Response {
             (listed, models)
         })
     })
-    .await
-    .map_err(SetupError::from)
-    .and_then(|r| r);
+    .await;
     match listed {
         Ok((listed, models)) => html.push_fragment(&machine_rows(&state, &listed, &models)),
         Err(error) => html.push_fragment(
@@ -536,11 +531,7 @@ pub(super) async fn index(State(state): State<Arc<Context>>) -> Response {
         "<div class=\"table\"><table class=\"stack\"><tr><th>Model</th>",
         "<th>How it was checked</th><th>Status</th></tr>"
     ));
-    let worker = state.clone();
-    let listed = tokio::task::spawn_blocking(move || definitions(&worker))
-        .await
-        .map_err(SetupError::from)
-        .and_then(|r| r);
+    let listed = off_thread(&state, definitions).await;
     match listed {
         Ok(list) => {
             for definition in &list {
@@ -592,23 +583,84 @@ async fn audit(
     id: &str,
     reason: String,
 ) -> Result<(), SetupError> {
-    let failed = |error: &dyn std::fmt::Display| SetupError::Audit(error.to_string());
+    let failed = |error| SetupError::Audit(AuditFailure::Text(error));
     let audit = analyte_store::Audit {
         actor: session.actor.clone(),
-        action: Identifier::new(action).map_err(|e| failed(&e))?,
-        targets: vec![Identifier::new(id).map_err(|e| failed(&e))?],
+        action: Identifier::new(action).map_err(failed)?,
+        targets: vec![Identifier::new(id).map_err(failed)?],
         time: jiff::Timestamp::now().as_second(),
-        reason: Reason::new(&reason.chars().take(1000).collect::<String>())
-            .map_err(|e| failed(&e))?,
+        reason: Reason::new(&reason.chars().take(1000).collect::<String>()).map_err(failed)?,
     };
-    state
-        .store
-        .request::<_, analyte_store::StorageError>(
-            crate::deadline().map_err(|e| failed(&e))?,
-            move |store| store.audit(&audit),
-        )
+    stored::<_, analyte_store::StorageError>(state, move |store| store.audit(&audit))
         .await
-        .map_err(|e| failed(&e))
+        .map_err(|error| SetupError::Audit(AuditFailure::Store(error)))
+}
+
+/// Why a store request from a setup page did not complete.
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum StoreFailure {
+    #[error(transparent)]
+    Deadline(#[from] crate::DeadlineError),
+    #[error(transparent)]
+    Storage(#[from] analyte_store::StorageError),
+    #[error(transparent)]
+    Operator(#[from] analyte_store::OperatorError),
+    #[error(transparent)]
+    Delivery(#[from] analyte_store::DeliveryError),
+}
+
+/// Why the record of who made a change could not be written.
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum AuditFailure {
+    #[error(transparent)]
+    Text(analyte_model::TextError),
+    #[error(transparent)]
+    Store(StoreFailure),
+}
+
+/// Runs one store request within the shared store deadline.
+async fn stored<T, E>(
+    state: &Context,
+    work: impl FnOnce(&mut analyte_store::Store) -> Result<T, E> + Send + 'static,
+) -> Result<T, StoreFailure>
+where
+    T: Send + 'static,
+    E: From<analyte_store::WorkerError> + Send + 'static,
+    StoreFailure: From<E>,
+{
+    let until = crate::deadline()?;
+    Ok(state.store.request(until, work).await?)
+}
+
+/// Runs `work` off the async workers: it reads or writes files, the port list
+/// or the credentials file, which block.
+async fn off_thread<T: Send + 'static>(
+    state: &Arc<Context>,
+    work: impl FnOnce(&Context) -> Result<T, SetupError> + Send + 'static,
+) -> Result<T, SetupError> {
+    let worker = state.clone();
+    tokio::task::spawn_blocking(move || work(&worker))
+        .await
+        .map_err(SetupError::from)
+        .and_then(|done| done)
+}
+
+/// See Other to `location`; a machine name that cannot be a header value (only
+/// possible in a hand-written program file) goes to the setup page instead.
+fn see_other(location: &str) -> Response {
+    let mut response = StatusCode::SEE_OTHER.into_response();
+    let location = header::HeaderValue::from_str(location)
+        .unwrap_or_else(|_| header::HeaderValue::from_static("/setup"));
+    response.headers_mut().insert(header::LOCATION, location);
+    response
+}
+
+/// What to do after a Lab app, add or remove form could not be read.
+const RELOAD: &str = "reload the page";
+
+/// The refusal of a posted form that could not be read; `hint` says what to do.
+fn incomplete(hint: &'static str) -> Response {
+    refused(&SetupError::IncompleteForm(hint))
 }
 
 /// Ends a page that wrote files: the audit failure, if the record of who made

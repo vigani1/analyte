@@ -6,7 +6,10 @@
 //! goes through the same checked commit as the machine setup (backup, safe
 //! write, reload, rollback) and applies after a restart. Keys go only to the
 //! locked credentials file and are shown only as `set on <date>`.
-use super::{SetupError, after_write, audit, done, entries, needs_login, page, refused, site};
+use super::{
+    Csrf, RELOAD, SetupError, after_write, audit, done, entries, incomplete, needs_login,
+    off_thread, page, refused, site, stored,
+};
 use crate::admin::{
     markup::Markup,
     server::Context,
@@ -232,14 +235,9 @@ fn seconds(text: &str, default: u64, what: &'static str) -> Result<u64, SetupErr
 
 /// Results and order messages the lab app has not accepted yet, by lab app name.
 async fn waiting(state: &Context) -> Result<Vec<(String, u64)>, SetupError> {
-    let open = state
-        .store
-        .request(
-            crate::deadline().map_err(|e| SetupError::Store(e.to_string()))?,
-            |store| store.undelivered_by_destination(),
-        )
+    let open = stored(state, |store| store.undelivered_by_destination())
         .await
-        .map_err(|e| SetupError::Store(e.to_string()))?;
+        .map_err(SetupError::Store)?;
     Ok(open
         .into_iter()
         .map(|open| {
@@ -320,14 +318,11 @@ pub(in crate::admin) async fn list(
         return needs_login();
     }
     let open = waiting(&state).await;
-    let worker = state.clone();
-    let rendered = tokio::task::spawn_blocking(move || {
-        let scan = scan(&worker.config_path)?;
-        Ok::<_, SetupError>(render_list(&worker, &scan, open.as_deref().ok()))
+    let rendered = off_thread(&state, move |state| {
+        let scan = scan(&state.config_path)?;
+        Ok(render_list(state, &scan, open.as_deref().ok()))
     })
-    .await
-    .map_err(SetupError::from)
-    .and_then(|r| r);
+    .await;
     match rendered {
         Ok(html) => done(html),
         Err(error) => refused(&error),
@@ -529,17 +524,14 @@ pub(in crate::admin) async fn edit_form(
     let Some(Extension(session)) = session.filter(|Extension(s)| s.authenticated) else {
         return needs_login();
     };
-    let worker = state.clone();
-    let rendered = tokio::task::spawn_blocking(move || {
-        let scan = scan(&worker.config_path)?;
+    let rendered = off_thread(&state, move |state| {
+        let scan = scan(&state.config_path)?;
         let known = scan
             .get(&name)
             .ok_or_else(|| SetupError::UnknownLabApp(name.clone()))?;
-        Ok::<_, SetupError>(form(&worker, &session, Some(known)))
+        Ok(form(state, &session, Some(known)))
     })
-    .await
-    .map_err(SetupError::from)
-    .and_then(|r| r);
+    .await;
     match rendered {
         Ok(html) => done(html),
         Err(error) => refused(&error),
@@ -781,16 +773,9 @@ pub(in crate::admin) async fn add(
     form: Result<Form<Posted>, axum::extract::rejection::FormRejection>,
 ) -> Response {
     let Ok(Form(posted)) = form else {
-        return refused(&SetupError::Connection(
-            "the form was incomplete; reload the page",
-        ));
+        return incomplete(RELOAD);
     };
-    let worker = state.clone();
-    let saved = match tokio::task::spawn_blocking(move || add_blocking(&worker, posted))
-        .await
-        .map_err(SetupError::from)
-        .and_then(|r| r)
-    {
+    let saved = match off_thread(&state, move |state| add_blocking(state, posted)).await {
         Ok(saved) => saved,
         Err(error) => return refused(&error),
     };
@@ -815,16 +800,10 @@ pub(in crate::admin) async fn save(
     form: Result<Form<Posted>, axum::extract::rejection::FormRejection>,
 ) -> Response {
     let Ok(Form(posted)) = form else {
-        return refused(&SetupError::Connection(
-            "the form was incomplete; reload the page",
-        ));
+        return incomplete(RELOAD);
     };
-    let worker = state.clone();
     let lab_app = name.clone();
-    let saved = match tokio::task::spawn_blocking(move || save_blocking(&worker, &lab_app, posted))
-        .await
-        .map_err(SetupError::from)
-        .and_then(|r| r)
+    let saved = match off_thread(&state, move |state| save_blocking(state, &lab_app, posted)).await
     {
         Ok(saved) => saved,
         Err(error) => return refused(&error),
@@ -873,21 +852,18 @@ pub(in crate::admin) async fn confirm_remove(
         return needs_login();
     };
     let open = waiting(&state).await;
-    let worker = state.clone();
     let lab_app = name.clone();
-    let found = tokio::task::spawn_blocking(move || {
-        let scan = scan(&worker.config_path)?;
+    let found = off_thread(&state, move |state| {
+        let scan = scan(&state.config_path)?;
         let known = scan
             .get(&lab_app)
             .ok_or_else(|| SetupError::UnknownLabApp(lab_app.clone()))?;
-        Ok::<_, SetupError>(blockers(
+        Ok(blockers(
             known,
             open.as_ref().map(|open| count(open, &lab_app)),
         ))
     })
-    .await
-    .map_err(SetupError::from)
-    .and_then(|r| r);
+    .await;
     let why = match found {
         Ok(why) => why,
         Err(error) => return refused(&error),
@@ -955,33 +931,19 @@ fn remove_blocking(
     Ok(site::commit(&state.config_path, &changes)?.backups)
 }
 
-/// The remove form as posted.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(in crate::admin) struct Removal {
-    #[expect(dead_code, reason = "the CSRF middleware has already checked it")]
-    csrf: String,
-}
-
 /// POST /setup/lab-apps/{name}/remove: refused while a machine uses it or results wait.
 pub(in crate::admin) async fn remove(
     State(state): State<Arc<Context>>,
     Extension(session): Extension<Arc<Session>>,
     Path(name): Path<String>,
-    form: Result<Form<Removal>, axum::extract::rejection::FormRejection>,
+    form: Result<Form<Csrf>, axum::extract::rejection::FormRejection>,
 ) -> Response {
     if form.is_err() {
-        return refused(&SetupError::Connection(
-            "the form was incomplete; reload the page",
-        ));
+        return incomplete(RELOAD);
     }
     let open = waiting(&state).await.map(|open| count(&open, &name));
-    let worker = state.clone();
     let lab_app = name.clone();
-    let removed = tokio::task::spawn_blocking(move || remove_blocking(&worker, &lab_app, &open))
-        .await
-        .map_err(SetupError::from)
-        .and_then(|r| r);
+    let removed = off_thread(&state, move |state| remove_blocking(state, &lab_app, &open)).await;
     let backups = match removed {
         Ok(backups) => backups,
         Err(error) => return refused(&error),
