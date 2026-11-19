@@ -49,6 +49,14 @@ pub struct Undelivered {
     pub machines: Vec<Identifier>,
 }
 
+impl Undelivered {
+    /// Every item the app has not accepted yet: still sending plus held.
+    #[must_use]
+    pub fn waiting(&self) -> u64 {
+        self.sending.saturating_add(self.held)
+    }
+}
+
 /// How many machine names one [`Undelivered`] lists.
 pub const UNDELIVERED_MACHINES: usize = 8;
 

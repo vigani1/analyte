@@ -50,6 +50,17 @@ impl Endpoint {
     }
 }
 
+/// The serial device a serial link opens: the fixed port name, or the one
+/// adapter reporting the USB serial number.
+impl From<&Endpoint> for analyte_transport::serial::Device {
+    fn from(endpoint: &Endpoint) -> Self {
+        match endpoint {
+            Endpoint::Fixed(name) => Self::Named(name.clone()),
+            Endpoint::UsbSerial(serial) => Self::UsbSerial(serial.as_str().to_owned()),
+        }
+    }
+}
+
 /// The site names a USB serial adapter where a fixed endpoint is needed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 #[error("the site names a USB serial adapter, which only a serial link can open")]

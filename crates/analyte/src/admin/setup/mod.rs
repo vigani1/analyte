@@ -30,7 +30,10 @@ use super::{
     sessions::Session,
     view::{self, Refresh, Tab, Tone, pill},
 };
-use crate::installation::{config::Program, credentials::CredentialError};
+use crate::installation::{
+    config::{Program, folder},
+    credentials::CredentialError,
+};
 use crate::machine::link::status::Link;
 use analyte_config::Endpoint;
 use analyte_model::{Identifier, Reason};
@@ -333,7 +336,7 @@ fn model(config: &std::path::Path, definition: Option<&str>) -> Markup {
     let Some(definition) = definition else {
         return Markup::new().markup("<span class=\"muted\">Not chosen yet</span>");
     };
-    let folder = site::folder(config)
+    let folder = folder(config)
         .join(definition)
         .parent()
         .map(std::path::Path::to_path_buf)

@@ -11,7 +11,7 @@ use super::{
     page, refused, see_other, site, stored,
 };
 use crate::admin::{markup::Markup, server::Context, sessions::Session, view::plain};
-use crate::installation::config::Program;
+use crate::installation::config::{Program, folder};
 use analyte_model::Identifier;
 use analyte_store::Unfinished;
 use axum::{
@@ -92,7 +92,7 @@ fn add_blocking(state: &Context, id: &Identifier) -> Result<(PathBuf, site::Writ
         return Err(SetupError::NameInUse(id.as_str().into()));
     }
     let file = entries::site_file(id);
-    let folder = site::folder(config);
+    let folder = folder(config);
     let path = folder.join(&file);
     if let Some(owner) = listed
         .iter()
@@ -481,7 +481,7 @@ fn remove_blocking(state: &Context, id: &str) -> Result<Removed, SetupError> {
         }
     }
     let written = site::commit(config, &changes)?;
-    let folder = site::folder(config);
+    let folder = folder(config);
     let shared = listed.iter().any(|entry| {
         entry.id.get_ref() != id && same_path(&folder.join(entry.site.get_ref()), &installed.site)
     });

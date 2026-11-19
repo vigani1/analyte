@@ -191,14 +191,10 @@ impl Program {
         connections::check(&machines)?;
         if file.signing_rotation.len() > 128
             || file.signing_rotation.values().any(|names| names.len() > 7)
-            || file.signing_rotation.keys().any(|name| {
-                !machines
-                    .iter()
-                    .any(|m| m.snapshot.effective().site().destination.name.as_str() == name)
-                    && !lab_apps
-                        .iter()
-                        .any(|known| known.settings.name.as_str() == name)
-            })
+            || file
+                .signing_rotation
+                .keys()
+                .any(|name| !knows_destination(&machines, &lab_apps, name))
         {
             return Err(Error::InvalidSigningRotation);
         }
@@ -313,14 +309,29 @@ impl Program {
     /// because a machine's lab app already has a worker and an order poller.
     pub(crate) fn unused_lab_apps(&self) -> impl Iterator<Item = &LabApp> {
         self.lab_apps.iter().filter(|known| {
-            !self.machines.iter().any(|machine| {
-                machine.snapshot.effective().site().destination.name == known.settings.name
-            })
+            !self
+                .machines
+                .iter()
+                .any(|machine| machine.sends_to(known.settings.name.as_str()))
         })
     }
 }
 
+/// Whether `name` is a lab app some set-up machine sends to, or one listed in
+/// `lab-apps.toml` or kept in the program file.
+fn knows_destination(machines: &[Machine], lab_apps: &[LabApp], name: &str) -> bool {
+    machines.iter().any(|machine| machine.sends_to(name))
+        || lab_apps
+            .iter()
+            .any(|known| known.settings.name.as_str() == name)
+}
+
 impl Machine {
+    /// Whether this machine's site sends results to the lab app called `name`.
+    pub(crate) fn sends_to(&self, name: &str) -> bool {
+        self.snapshot.effective().site().destination.name.as_str() == name
+    }
+
     /// Borrows the unique installation identity.
     #[must_use]
     pub fn id(&self) -> &analyte_model::Identifier {
@@ -919,14 +930,17 @@ fn entries(
         }
         match entry.definition.clone() {
             Some(definition) => {
-                let site = loading.base.join(&entry.site);
-                let overrides = entry.overrides.as_ref().map(|p| loading.base.join(p));
-                let machine = load_machine(entry, &loading.base.join(definition), loading)?;
+                let files = Files {
+                    definition: loading.base.join(definition),
+                    site: loading.base.join(&entry.site),
+                    overrides: entry.overrides.as_ref().map(|p| loading.base.join(p)),
+                };
+                let machine = load_machine(entry, &files, loading)?;
                 let effective = machine.snapshot.effective();
                 let place = match effective.lab_app_source() {
                     analyte_config::LabAppSource::LabApps => None,
-                    analyte_config::LabAppSource::Site => Some(site),
-                    analyte_config::LabAppSource::Overrides => overrides,
+                    analyte_config::LabAppSource::Site => Some(files.site),
+                    analyte_config::LabAppSource::Overrides => files.overrides,
                 };
                 if let Some(place) = place {
                     places.add(
@@ -948,17 +962,37 @@ fn entries(
     Ok((machines, awaiting_setup))
 }
 
-fn load_machine(entry: Entry, definition: &Path, loading: &Loading<'_>) -> Result<Machine, Error> {
-    let (base, record_bytes) = (loading.base, loading.record_bytes);
-    let site = base.join(entry.site);
-    let overrides = entry.overrides.map(|p| base.join(p));
-    let replacement = match &overrides {
+/// The folder that holds the program file `program`; entry paths are relative to it.
+pub(crate) fn folder(program: &Path) -> &Path {
+    program.parent().unwrap_or_else(|| Path::new("."))
+}
+
+/// Whether `name` uses only ASCII letters, digits, `-` and `_`, so it can name
+/// a file or folder and appear in a link without escaping.
+pub(crate) fn plain_name(name: &str) -> bool {
+    name.bytes()
+        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
+}
+
+/// The files one machine entry names, resolved against the program folder.
+struct Files {
+    definition: PathBuf,
+    site: PathBuf,
+    overrides: Option<PathBuf>,
+}
+
+fn load_machine(entry: Entry, files: &Files, loading: &Loading<'_>) -> Result<Machine, Error> {
+    let record_bytes = loading.record_bytes;
+    let replacement = match &files.overrides {
         Some(p) => read(p)?,
         None => "schema_version = 1".into(),
     };
     let snapshot = Draft::load_with(
-        (&definition.display().to_string(), &read(definition)?),
-        (&site.display().to_string(), &read(&site)?),
+        (
+            &files.definition.display().to_string(),
+            &read(&files.definition)?,
+        ),
+        (&files.site.display().to_string(), &read(&files.site)?),
         ("overrides", &replacement),
         loading.lab_apps,
     )?
@@ -978,14 +1012,7 @@ fn load_machine(entry: Entry, definition: &Path, loading: &Loading<'_>) -> Resul
     {
         return Err(Error::StoreRecordLimitTooSmall);
     }
-    if entry.capture
-        && (!entry
-            .id
-            .as_str()
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
-            || matches!(entry.id.as_str(), "." | ".."))
-    {
+    if entry.capture && !plain_name(entry.id.as_str()) {
         return Err(Error::InvalidCaptureMachineId);
     }
     Ok(Machine {

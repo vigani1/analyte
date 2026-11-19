@@ -1,5 +1,5 @@
 //! Installs synthetic pause gates and loopback overrides through explicit test APIs.
-use super::super::{Error, Machine, Program};
+use super::super::{Error, Machine, Program, knows_destination};
 use std::time::Duration;
 impl Program {
     /// Overrides delivery/poller store waits for a synthetic loopback destination.
@@ -17,15 +17,7 @@ impl Program {
             return Err(Error::InvalidTestStoreBudget);
         }
         for machine in &mut self.machines {
-            if machine
-                .snapshot
-                .effective()
-                .site()
-                .destination
-                .name
-                .as_str()
-                == name
-            {
+            if machine.sends_to(name) {
                 machine.destination_limits.store_timeout = budget;
             }
         }
@@ -239,15 +231,7 @@ impl Program {
         name: &str,
         url: String,
     ) -> Result<(), Error> {
-        if !self
-            .machines
-            .iter()
-            .any(|m| m.snapshot.effective().site().destination.name.as_str() == name)
-            && !self
-                .lab_apps
-                .iter()
-                .any(|kept| kept.settings.name.as_str() == name)
-        {
+        if !knows_destination(&self.machines, &self.lab_apps, name) {
             return Err(Error::UnknownTestDestination);
         }
         self.hooks.loopback_destinations.insert(name.into(), url);
@@ -268,15 +252,7 @@ impl Program {
             return Err(Error::InvalidTestPolling);
         }
         for machine in &mut self.machines {
-            if machine
-                .snapshot
-                .effective()
-                .site()
-                .destination
-                .name
-                .as_str()
-                == name
-            {
+            if machine.sends_to(name) {
                 machine.destination_limits.poll_interval = interval;
             }
         }

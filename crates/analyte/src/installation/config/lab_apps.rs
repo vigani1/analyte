@@ -82,10 +82,7 @@ impl<P: Clone> Written<P> {
 /// `lab-apps.toml` beside the program file `program`.
 #[must_use]
 pub(crate) fn path(program: &Path) -> PathBuf {
-    program
-        .parent()
-        .unwrap_or_else(|| Path::new("."))
-        .join(LAB_APPS_FILE)
+    super::folder(program).join(LAB_APPS_FILE)
 }
 
 /// Reads `lab-apps.toml`; a missing file lists no lab apps.
@@ -111,7 +108,7 @@ pub(super) fn validate(
     retired: &[Destination],
     program: &Path,
 ) -> Result<(Vec<LabApp>, Places), Error> {
-    if retired.len() > 128 {
+    if retired.len() > analyte_config::MAX_LAB_APPS {
         return Err(Error::TooManyRetiredDestinations);
     }
     let mut places = Places {

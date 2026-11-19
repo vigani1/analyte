@@ -4,6 +4,7 @@
 //! entries plus or minus the one changed. A layout the edit cannot follow (an
 //! inline `machines = [...]` array) is refused with a message, never guessed at.
 use super::{SetupError, site::EntrySpans};
+use crate::installation::config::plain_name;
 use analyte_model::Identifier;
 
 /// Paths the setup page itself uses under `/setup/`; a machine cannot take them.
@@ -13,11 +14,7 @@ const RESERVED: [&str; 5] = ["add", "first", "lab-apps", "listen", "restart"];
 /// names the machine's site file, it uses only ASCII letters, digits, `-` and `_`.
 pub(super) fn name(text: &str) -> Result<Identifier, SetupError> {
     let id = Identifier::new(text.trim()).map_err(SetupError::InvalidName)?;
-    if !id
-        .as_str()
-        .bytes()
-        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
-    {
+    if !plain_name(id.as_str()) {
         return Err(SetupError::NameCharacters);
     }
     if RESERVED

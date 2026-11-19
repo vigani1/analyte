@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 pub const LAB_APPS_FILE: &str = "lab-apps.toml";
 
 /// Most lab apps one installation lists, matching the machine bound.
-const MAX_LAB_APPS: usize = 128;
+pub const MAX_LAB_APPS: usize = 128;
 
 /// Written above the tables when the admin page writes the file.
 const HEADER: &str = concat!(

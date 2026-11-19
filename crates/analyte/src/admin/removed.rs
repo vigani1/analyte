@@ -96,7 +96,7 @@ pub(super) async fn lines(state: &Context) -> Result<Vec<Line>, Error> {
 }
 
 fn line(open: &Undelivered, kept: Option<&Kept>, from_running: bool) -> Line {
-    let count = open.sending.saturating_add(open.held);
+    let count = open.waiting();
     let what = if count == 1 {
         "result or order message"
     } else {

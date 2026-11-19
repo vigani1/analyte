@@ -416,6 +416,19 @@ pub struct Destination {
     pub signing_key_name: Identifier,
 }
 
+impl Destination {
+    /// Order freshness a `[destination]` table gets when it omits `freshness_seconds`.
+    pub const DEFAULT_FRESHNESS_SECONDS: u64 = 30;
+    /// Request deadline a `[destination]` table gets when it omits
+    /// `request_timeout_seconds`. It covers TLS setup over a slow WAN plus a few
+    /// seconds of app storage, while a hung order poll still fails and retries
+    /// well inside the default freshness, so one stalled page does not make the
+    /// order cache untrusted.
+    pub const DEFAULT_REQUEST_TIMEOUT_SECONDS: u64 = 10;
+    /// Accepted `request_timeout_seconds`, in whole seconds.
+    pub const REQUEST_TIMEOUT_SECONDS: std::ops::RangeInclusive<u64> = 1..=120;
+}
+
 /// Installation-specific values kept apart from protocol rules.
 #[derive(Debug, Clone, Serialize)]
 #[serde(into = "SiteFile")]
@@ -598,14 +611,11 @@ pub enum ValueKind {
 }
 
 fn default_order_freshness() -> u64 {
-    30
+    Destination::DEFAULT_FRESHNESS_SECONDS
 }
 
-// Covers TLS setup over a slow WAN plus a few seconds of app storage, while a
-// hung order poll still fails and retries well inside the default 30-second
-// freshness, so one stalled page does not make the order cache untrusted.
 fn default_request_timeout() -> u64 {
-    10
+    Destination::DEFAULT_REQUEST_TIMEOUT_SECONDS
 }
 
 /// Installed POCT identity evidence, never inferred from values or receipt IDs.

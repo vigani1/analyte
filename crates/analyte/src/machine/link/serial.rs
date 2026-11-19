@@ -3,7 +3,6 @@ use super::error::Error as LinkError;
 use super::{Kind, Next, recorded_connection, retry, session_ended};
 use crate::machine::protocols::{self, SerialLink};
 use crate::machine::{Error, Handle, Limits, Machine};
-use analyte_config::Endpoint;
 use analyte_transport::serial::{self, Device, Settings};
 use analyte_transport::{Backoff, Cancellation, IoSide};
 use std::{sync::Arc, thread, time::Duration};
@@ -238,10 +237,7 @@ async fn serve(
 }
 
 fn settings(machine: &Machine, serial: &analyte_config::Serial) -> Result<Settings, Error> {
-    let device = match &machine.snapshot.effective().site().endpoint {
-        Endpoint::Fixed(name) => Device::Named(name.clone()),
-        Endpoint::UsbSerial(usb_serial) => Device::UsbSerial(usb_serial.as_str().to_owned()),
-    };
+    let device = Device::from(&machine.snapshot.effective().site().endpoint);
     line(serial, device, Duration::from_millis(100))
 }
 
