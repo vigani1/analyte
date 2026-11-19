@@ -51,6 +51,8 @@ pub(super) struct Context {
     pub(super) directory: std::path::PathBuf,
     pub(super) reserve: u64,
     pub(super) setup: super::setup::Setup,
+    /// Where restyled pages load this build's static files from.
+    pub(super) assets: super::view::assets::Root,
     // Struct fields drop in declaration order: notify only after store is released.
     _released: tokio::sync::oneshot::Sender<()>,
 }
@@ -124,6 +126,7 @@ pub(crate) async fn prepare(
         directory: program.data_directory().to_owned(),
         reserve: program.store_limits.reserve_bytes,
         setup,
+        assets: super::view::assets::Root::of_this_build(),
         _released: released,
     });
     Ok(Some(Server {
@@ -190,7 +193,7 @@ async fn drain_server(
 fn router(state: Arc<Context>) -> Router {
     Router::new()
         .route("/", get(super::overview::show))
-        .route(super::view::STYLESHEET, get(super::view::stylesheet))
+        .route("/static/{*path}", get(super::view::assets::serve))
         .route("/login", get(login_page).post(login))
         .route("/logout", post(logout))
         .route(
@@ -318,8 +321,8 @@ async fn protect(State(state): State<Arc<Context>>, mut request: Request, next: 
         .and_then(|v| v.to_str().ok())
         == Some(state.host.as_str());
     let login = request.uri().path() == "/login";
-    // The stylesheet holds no data; the login page needs it before any session exists.
-    let public = request.uri().path() == super::view::STYLESHEET;
+    // Static files hold no data; the login page needs them before any session exists.
+    let public = request.uri().path().starts_with("/static/");
     let bearer = request
         .headers()
         .get(header::AUTHORIZATION)
@@ -387,10 +390,14 @@ async fn protect(State(state): State<Arc<Context>>, mut request: Request, next: 
         ("cache-control", "no-store"),
         ("x-content-type-options", "nosniff"),
     ] {
-        response.headers_mut().insert(
-            header::HeaderName::from_static(name),
-            header::HeaderValue::from_static(value),
-        );
+        let name = header::HeaderName::from_static(name);
+        // A versioned static file keeps its own long cache; everything else is not stored.
+        if name == header::CACHE_CONTROL && response.headers().contains_key(&name) {
+            continue;
+        }
+        response
+            .headers_mut()
+            .insert(name, header::HeaderValue::from_static(value));
     }
     response
 }

@@ -10,6 +10,7 @@ use analyte_model::{OrderState, Reason};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
 mod actions;
+mod assets;
 mod logout;
 mod overview;
 mod pages;
@@ -864,6 +865,7 @@ async fn start_overview_server(
         directory: root.to_owned(),
         reserve: 1,
         setup: crate::admin::setup::Setup::for_test(root),
+        assets: crate::admin::view::assets::Root::of_this_build(),
         _released: released,
     });
     let server = Server {

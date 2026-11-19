@@ -229,6 +229,7 @@ async fn start_program_with(
         directory: data.clone(),
         reserve: 1,
         setup,
+        assets: crate::admin::view::assets::Root::of_this_build(),
         _released: released,
     });
     let weak = Arc::downgrade(&state);

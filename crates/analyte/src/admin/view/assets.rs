@@ -1,0 +1,176 @@
+//! Serves the files pages load (stylesheets, fonts with their licences, icons) from one table built into the program.
+//!
+//! Every file is compiled in, so nothing loads from the internet and the
+//! `default-src 'self'` policy allows them unchanged. They hold no data, so they
+//! are public like the sign-in page that loads them. Restyled pages ask for them
+//! under a version made from their bytes, which browsers may keep for a year;
+//! a new build changes the version, so no browser keeps an old look. The old
+//! pages' `/static/admin.css` has no version and, like every page, is not kept.
+use axum::{
+    extract::{Path, State},
+    http::{StatusCode, header},
+    response::{IntoResponse, Response},
+};
+use std::sync::Arc;
+
+/// One served file: its path under `/static/`, its media type and its bytes.
+struct Asset {
+    name: &'static str,
+    kind: &'static str,
+    bytes: &'static [u8],
+}
+
+const CSS: &str = "text/css; charset=utf-8";
+const FONT: &str = "font/woff2";
+const TEXT: &str = "text/plain; charset=utf-8";
+const SVG: &str = "image/svg+xml";
+
+/// Builds one table entry from a file in `crates/analyte/assets/`.
+macro_rules! asset {
+    ($name:literal, $kind:expr) => {
+        Asset {
+            name: $name,
+            kind: $kind,
+            bytes: include_bytes!(concat!("../../../assets/", $name)),
+        }
+    };
+}
+
+/// Every file served under `/static/`.
+const ASSETS: [Asset; 16] = [
+    asset!("admin.css", CSS),
+    asset!("fonts.css", CSS),
+    asset!("analyte.css", CSS),
+    asset!("fonts/InstrumentSans-Regular.woff2", FONT),
+    asset!("fonts/InstrumentSans-Medium.woff2", FONT),
+    asset!("fonts/InstrumentSans-SemiBold.woff2", FONT),
+    asset!("fonts/InstrumentSans-Bold.woff2", FONT),
+    asset!("fonts/IBMPlexMono-Regular.woff2", FONT),
+    asset!("fonts/IBMPlexMono-Medium.woff2", FONT),
+    asset!("fonts/IBMPlexMono-SemiBold.woff2", FONT),
+    asset!("fonts/OFL-InstrumentSans.txt", TEXT),
+    asset!("fonts/OFL-IBMPlexMono.txt", TEXT),
+    asset!("icons/analyte-app-icon.svg", SVG),
+    asset!("icons/tray-all-good.svg", SVG),
+    asset!("icons/tray-needs-you.svg", SVG),
+    asset!("icons/tray-engine-stopped.svg", SVG),
+];
+
+/// How long a browser may keep a versioned file: a year, unchanged. Other
+/// responses get the server's `no-store`.
+const KEEP: &str = "public, max-age=31536000, immutable";
+
+/// The path prefix every restyled page loads its files from, such as
+/// `/static/0123456789abcdef/`; computed once at startup from every file's
+/// name and bytes.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(in crate::admin) struct Root(String);
+
+impl Root {
+    pub(in crate::admin) fn of_this_build() -> Self {
+        let mut all = Vec::new();
+        for asset in &ASSETS {
+            all.extend_from_slice(asset.name.as_bytes());
+            all.push(0);
+            all.extend_from_slice(asset.bytes);
+        }
+        let digest = analyte_contract::content_digest(&all);
+        let version: String = digest
+            .iter()
+            .take(8)
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        Self(format!("/static/{version}/"))
+    }
+
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "the restyled Overview links its files under this root")
+    )]
+    pub(in crate::admin) fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// The version segment, without slashes.
+    fn version(&self) -> &str {
+        self.0.trim_start_matches("/static/").trim_end_matches('/')
+    }
+}
+
+/// GET /static/{path}: one file of the table. A path that starts with this
+/// build's version may be kept for a year; any other is not kept.
+pub(in crate::admin) async fn serve(
+    State(state): State<Arc<crate::admin::server::Context>>,
+    Path(path): Path<String>,
+) -> Response {
+    let (keep, name) = match path.split_once('/') {
+        Some((version, name)) if version == state.assets.version() => (true, name),
+        _ => (false, path.as_str()),
+    };
+    match ASSETS.iter().find(|asset| asset.name == name) {
+        Some(asset) => {
+            let mut response = ([(header::CONTENT_TYPE, asset.kind)], asset.bytes).into_response();
+            if keep {
+                response.headers_mut().insert(
+                    header::CACHE_CONTROL,
+                    header::HeaderValue::from_static(KEEP),
+                );
+            }
+            response
+        }
+        None => super::refusal(
+            StatusCode::NOT_FOUND,
+            "File not found",
+            "Analyte has no file at this address.",
+            "static asset not found",
+        ),
+    }
+}
+
+#[cfg(test)]
+pub(in crate::admin) mod tests {
+    use super::*;
+
+    /// Every served path with its media type and bytes, for the route test.
+    #[cfg(feature = "test-hooks")]
+    pub(in crate::admin) fn listed() -> Vec<(&'static str, &'static str, &'static [u8])> {
+        ASSETS
+            .iter()
+            .map(|asset| (asset.name, asset.kind, asset.bytes))
+            .collect()
+    }
+
+    // ADR 0018: the table lists every file of the assets folder once, so a new
+    // file cannot be forgotten and nothing is served from outside it.
+    #[test]
+    fn the_table_lists_every_asset_file_once() -> Result<(), std::io::Error> {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets");
+        let mut files = Vec::new();
+        let mut folders = vec![root.clone()];
+        while let Some(folder) = folders.pop() {
+            for entry in std::fs::read_dir(folder)? {
+                let path = entry?.path();
+                if path.is_dir() {
+                    folders.push(path);
+                } else if let Ok(relative) = path.strip_prefix(&root) {
+                    files.push(relative.to_string_lossy().replace('\\', "/"));
+                }
+            }
+        }
+        files.sort();
+        let mut names: Vec<String> = ASSETS.iter().map(|a| a.name.to_owned()).collect();
+        names.sort();
+        assert_eq!(files, names);
+        Ok(())
+    }
+
+    // ADR 0018: the version changes with the bytes and is plain hex.
+    #[test]
+    fn the_version_is_hex_from_the_bytes() {
+        let root = Root::of_this_build();
+        assert_eq!(root, Root::of_this_build());
+        assert!(root.as_str().starts_with("/static/"));
+        assert_eq!(root.version().len(), 16);
+        assert!(root.version().bytes().all(|b| b.is_ascii_hexdigit()));
+    }
+}

@@ -3,16 +3,18 @@
 //! The stylesheet is served from the binary at a same-origin path, so the
 //! `default-src 'self'` content security policy allows it unchanged. Pages use no
 //! inline styles, scripts, fonts or external URLs.
+pub(super) mod assets;
 pub(super) mod format;
 
 use super::markup::Markup;
 use axum::{
-    http::{StatusCode, header},
+    http::StatusCode,
     response::{Html, IntoResponse, Response},
 };
 
-/// Where the stylesheet is served.
+/// Where the old pages' stylesheet is served (see [`assets`]).
 pub(super) const STYLESHEET: &str = "/static/admin.css";
+#[cfg(test)]
 const CSS: &str = include_str!("../../../assets/admin.css");
 
 /// One entry of the menu. The first four are the main tabs; the rest sit under "More".
@@ -216,11 +218,6 @@ fn head(title: &str, refresh: Option<Refresh>, header: Header) -> Markup {
         Header::Login => html.push_markup("<body class=\"login\">"),
     }
     html.markup("<main><h1>").text(title).markup("</h1>")
-}
-
-/// GET /static/admin.css. It holds no data, so the login page may load it too.
-pub(super) async fn stylesheet() -> Response {
-    ([(header::CONTENT_TYPE, "text/css; charset=utf-8")], CSS).into_response()
 }
 
 /// A coloured status pill; `tone` picks the colour.
