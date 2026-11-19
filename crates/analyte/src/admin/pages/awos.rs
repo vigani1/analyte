@@ -1,5 +1,5 @@
 //! Shows analyzer execution separately from command state on authenticated admin pages.
-use super::{Cursor, finish, next};
+use super::{Cursor, finish, next, one_page};
 use crate::admin::Error;
 use crate::admin::markup::Markup;
 use crate::admin::{
@@ -122,12 +122,12 @@ async fn cancelled_page(state: &Context, cursor: Cursor) -> Result<Markup, Error
     let (rows, more) = state
         .store
         .request(deadline()?, move |s| {
-            let rows = s.analyzer_cancelled_items(after)?;
-            let more = match rows.last() {
-                Some(last) => !s.analyzer_cancelled_items(last.cursor)?.is_empty(),
-                None => false,
-            };
-            Ok::<_, analyte_store::ReconciliationError>((rows, more))
+            // This page shows every row of the store's read, not the admin page size.
+            one_page::<_, analyte_store::ReconciliationError>(
+                s.analyzer_cancelled_items(after)?,
+                usize::MAX,
+                |last| Ok(!s.analyzer_cancelled_items(last.cursor)?.is_empty()),
+            )
         })
         .await?;
     let mut html = view::page(Tab::CancelledByMachine, "Cancelled by machine");

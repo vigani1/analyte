@@ -1,5 +1,5 @@
 //! Lists the deliveries Analyte sends to a lab app, with a resend link where one is allowed.
-use super::{Cursor, PAGE, next};
+use super::{Cursor, PAGE, next, one_page};
 use crate::admin::actions::{failure, page};
 use crate::admin::error::CommandError;
 use crate::admin::markup::Markup;
@@ -33,15 +33,9 @@ pub(in crate::admin) async fn deliveries(
                 }
             },
             move |s| {
-                let rows = s.deliveries(after)?;
-                let mut more = rows.len() > PAGE;
-                let rows: Vec<_> = rows.into_iter().take(PAGE).collect();
-                if let Some(last) = rows.last()
-                    && !more
-                {
-                    more = !s.deliveries(last.sequence)?.is_empty();
-                }
-                Ok((rows, more))
+                one_page(s.deliveries(after)?, PAGE, |last| {
+                    Ok(!s.deliveries(last.sequence)?.is_empty())
+                })
             },
         )
         .await;

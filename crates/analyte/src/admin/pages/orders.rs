@@ -1,5 +1,5 @@
 //! Renders protected machine orders and retained cache evidence.
-use super::{Cursor, PAGE, finish, next, pause};
+use super::{Cursor, PAGE, finish, next, one_page, pause};
 use crate::admin::view::{self, Tab, exact, plain, row};
 use crate::{
     admin::{Error, markup::Markup, server::Context},
@@ -34,9 +34,12 @@ async fn orders_page(state: &Context, cursor: Cursor) -> Result<Markup, Error> {
                 machine: None,
                 state: None,
             };
-            let fetched = s.machine_orders(&all(after))?;
-            let mut more = fetched.len() > PAGE;
-            for order in fetched.into_iter().take(PAGE) {
+            let (fetched, more) = one_page::<_, crate::admin::error::CommandError>(
+                s.machine_orders(&all(after))?,
+                PAGE,
+                |last| Ok(!s.machine_orders(&all(last.id))?.is_empty()),
+            )?;
+            for order in fetched {
                 html.push_fragment(&order_section(&order, now));
                 for item in &order.items {
                     html.push_fragment(&super::awos::projection(item));
@@ -44,11 +47,6 @@ async fn orders_page(state: &Context, cursor: Cursor) -> Result<Markup, Error> {
                 render_cache(&mut html, s, &order, now)?;
                 html.push_markup("</section>");
                 last = Some(order.id);
-            }
-            if let Some(last) = last
-                && !more
-            {
-                more = !s.machine_orders(&all(last))?.is_empty();
             }
             Ok::<_, crate::admin::error::CommandError>((html, last, more))
         })

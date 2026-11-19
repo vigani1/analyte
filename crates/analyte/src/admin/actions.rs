@@ -198,12 +198,7 @@ pub(super) async fn confirm_resolve(
             "This item is already resolved. Open it from Needs review to see who resolved it and why.",
             "parked item already resolved",
         ),
-        None => view::refusal(
-            StatusCode::NOT_FOUND,
-            "Item not found",
-            "There is no item to review with this number. Go back to Needs review and pick one from the list.",
-            "parked item not found",
-        ),
+        None => super::pages::item_not_found(),
     })
     .await
 }
