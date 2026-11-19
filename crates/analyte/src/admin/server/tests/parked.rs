@@ -591,8 +591,8 @@ async fn store_failures_and_slow_reads_answer_in_the_new_look() -> Result<(), Er
 // whose own 2 s lifetime ended first.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_slow_action_answers_before_the_connection_closes() -> Result<(), Error> {
-    assert!(crate::admin::view::READ_BUDGET < super::REQUEST_BUDGET);
-    assert!(super::REQUEST_BUDGET < crate::admin::listener::LIFETIME);
+    assert!(crate::admin::view::READ_BUDGET < REQUEST_BUDGET);
+    assert!(REQUEST_BUDGET < crate::admin::listener::LIFETIME);
     let directory = crate::admin::private_tempdir()?;
     let (store, (state, stopper, owner, host), auth, _) = started(directory.path()).await?;
     let item = store
