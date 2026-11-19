@@ -382,7 +382,11 @@ async fn protect(State(state): State<Arc<Context>>, mut request: Request, next: 
             ),
         ),
         ("x-frame-options", "DENY"),
-        ("referrer-policy", "no-referrer"),
+        // Not "no-referrer": with it, Chrome and Edge send `Origin: null` on every
+        // form post, which the same-origin check above refuses, so no form could
+        // be sent from those browsers. "same-origin" keeps the real origin on our
+        // own posts and still sends nothing to any other site.
+        ("referrer-policy", "same-origin"),
         ("cache-control", "no-store"),
         ("x-content-type-options", "nosniff"),
     ] {
