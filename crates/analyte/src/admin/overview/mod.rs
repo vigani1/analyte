@@ -1,16 +1,20 @@
 //! Serves the Overview (GET /): whether everything is OK first, then the signal path from machines to lab apps, orders, disk and alerts.
 //!
 //! The page shows only what Analyte observed or stored: no patient names,
-//! result values, sample IDs or raw identifiers. A first run with nothing set
-//! up keeps the old welcome card until its own restyle.
+//! result values, sample IDs or raw identifiers. A first run (no machine set
+//! up, nothing to do) shows only the welcome. When a read fails or the reads
+//! take too long, the error page says which read and keeps the reason for
+//! support; it never shows a partial page that could read as "All good".
 mod attention;
 mod page;
 mod signal;
+#[cfg(test)]
+mod tests;
 
 use super::server::Context;
 use super::sessions::Session;
 use super::view::{self, Tab, Tone, format, frame::Frame, icon::Icon};
-use crate::admin::Error;
+use crate::admin::{Error, error::CommandError};
 use crate::deadline;
 use analyte_model::{OrderState, ReceiptId};
 use analyte_store::{AlertKey, AlertState, LastDelivered, MachineOrderFilter};
@@ -22,8 +26,15 @@ use axum::{
     response::{Html, IntoResponse, Response},
 };
 use jiff::Timestamp;
-use page::{AlertRow, Disk, ErrorPage, Notice, OrderRow, Page, Verdict};
-use std::{collections::BTreeMap, sync::Arc};
+use page::{AlertRow, Disk, ErrorPage, Notice, OrderRow, Page, Verdict, WIZARD_STEPS, Welcome};
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
+
+/// How long the overview may read before it answers with its own error page:
+/// below the 2 s limit on every admin request, so a slow store still gets a
+/// page in the overview's look. The reads only read, so stopping them leaves
+/// nothing behind; a store request already queued may still run, and its
+/// answer is dropped.
+const BUDGET: Duration = Duration::from_millis(1500);
 
 pub(super) async fn show(
     State(state): State<Arc<Context>>,
@@ -31,79 +42,229 @@ pub(super) async fn show(
 ) -> Response {
     let now = Timestamp::now();
     let session = session.as_ref().map(|Extension(session)| session.as_ref());
-    match render(&state, session, now).await {
-        Ok(html) => Html(html).into_response(),
-        // Evidence and errors stay on the authenticated page, never in logs.
-        Err(error) => failure(&state, session, now, &error),
+    let failed = match tokio::time::timeout(BUDGET, render(&state, session, now)).await {
+        Ok(Ok(html)) => return Html(html).into_response(),
+        Ok(Err(failure)) => failure,
+        Err(_) => Failure {
+            reading: Reading::Time,
+            error: None,
+        },
+    };
+    // Evidence and errors stay on the authenticated page, never in logs.
+    failure(&state, session, now, &failed)
+}
+
+/// What the overview was reading when it stopped; the error page names it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Reading {
+    /// The store refused or dropped the request itself.
+    Store,
+    Restore,
+    Disk,
+    Review,
+    Delivered,
+    Alerts,
+    Orders,
+    Receipts,
+    LabApps,
+    Kept,
+    Relays,
+    /// Everything was read, but the page could not be written.
+    Page,
+    /// The reads took longer than [`BUDGET`].
+    Time,
+}
+
+impl Reading {
+    /// What Analyte could not do, in plain words.
+    const fn sentence(self) -> &'static str {
+        match self {
+            Self::Store => "Analyte could not read its store.",
+            Self::Restore => {
+                "Analyte could not read whether order sending is paused after a restore."
+            }
+            Self::Disk => "Analyte could not read the free disk space.",
+            Self::Review => "Analyte could not read how many items need review.",
+            Self::Delivered => "Analyte could not read when each lab app last accepted a delivery.",
+            Self::Alerts => "Analyte could not read the active alerts.",
+            Self::Orders => "Analyte could not read the machine orders.",
+            Self::Receipts => "Analyte could not read when each machine last sent data.",
+            Self::LabApps => "Analyte could not read what waits for each lab app.",
+            Self::Kept => "Analyte could not read what waits for lab apps no set-up machine uses.",
+            Self::Relays => "Analyte could not read the alert relays.",
+            Self::Page => "Analyte read everything but could not write the page.",
+            Self::Time => "Analyte did not finish reading within 1.5 seconds.",
+        }
+    }
+
+    /// Ties an error to this reading.
+    fn failed<E: Into<Error>>(self) -> impl FnOnce(E) -> Failure {
+        move |error| Failure {
+            reading: self,
+            error: Some(Box::new(error.into())),
+        }
+    }
+}
+
+/// Why the overview could not be shown: the reading and, unless it ran out of
+/// time, the error.
+struct Failure {
+    reading: Reading,
+    error: Option<Box<Error>>,
+}
+
+impl Failure {
+    /// A timeout is a 504 like every slow admin request; any other failure is a 503.
+    fn status(&self) -> StatusCode {
+        if self.reading == Reading::Time {
+            StatusCode::GATEWAY_TIMEOUT
+        } else {
+            StatusCode::SERVICE_UNAVAILABLE
+        }
+    }
+
+    /// The exact reason, for support.
+    fn detail(&self) -> String {
+        self.error.as_ref().map_or_else(
+            || {
+                format!(
+                    "admin overview deadline of {} ms exceeded",
+                    BUDGET.as_millis()
+                )
+            },
+            ToString::to_string,
+        )
     }
 }
 
 /// The overview's own error page; should even that fail to render, the plain
 /// refusal page carries both reasons.
-fn failure(state: &Context, session: Option<&Session>, now: Timestamp, error: &Error) -> Response {
+fn failure(
+    state: &Context,
+    session: Option<&Session>,
+    now: Timestamp,
+    failed: &Failure,
+) -> Response {
     let page = ErrorPage {
         frame: Frame::new(state, Tab::Overview, "Overview", None, session, now),
-        detail: vec![error.to_string()],
+        text: error_text(failed.reading),
+        detail: vec![failed.detail()],
     };
     match page.render() {
-        Ok(html) => (StatusCode::SERVICE_UNAVAILABLE, Html(html)).into_response(),
-        Err(render) => view::refusal(
-            StatusCode::SERVICE_UNAVAILABLE,
-            "Overview",
-            concat!(
-                "The overview could not be shown just now. Reload the page; if this ",
-                "keeps happening, give the details below to support.",
-            ),
-            format!("{error}; the error page failed too: {render}"),
-        ),
+        Ok(html) => (failed.status(), Html(html)).into_response(),
+        Err(render) => fallback(failed, &render),
     }
 }
 
-/// What one store request reads for the overview.
+/// What the error page tells people: what could not be read and what to do.
+fn error_text(reading: Reading) -> String {
+    format!(
+        "{} Reload the page; if this keeps happening, give the details below to support.",
+        reading.sentence()
+    )
+}
+
+/// The plain refusal page for when the error page itself could not be written.
+fn fallback(failed: &Failure, render: &askama::Error) -> Response {
+    view::refusal(
+        failed.status(),
+        "Overview",
+        concat!(
+            "The overview could not be shown just now. Reload the page; if this ",
+            "keeps happening, give the details below to support.",
+        ),
+        format!("{}; the error page failed too: {render}", failed.detail()),
+    )
+}
+
+/// What one store request reads for the overview; each part keeps its own
+/// error so the error page can say which read failed.
 struct Stored {
+    restore_paused: Result<bool, CommandError>,
+    free: Result<u64, std::io::Error>,
+    review: Result<u64, CommandError>,
+    delivered: Result<LastDelivered, CommandError>,
+}
+
+/// [`Stored`] once every part was read.
+struct Read {
     restore_paused: bool,
     free: u64,
     review: u64,
     delivered: LastDelivered,
 }
 
+/// The first store request: the restore flag, free disk space, the Needs
+/// review count and when each lab app last accepted a delivery.
+async fn stored(
+    state: &Context,
+    until: std::time::Instant,
+    now: Timestamp,
+) -> Result<Read, Failure> {
+    let directory = state.directory.clone();
+    let stored = state
+        .store
+        .request::<_, CommandError>(until, move |store| {
+            Ok::<_, CommandError>(Stored {
+                restore_paused: store.restore_unreconciled().map_err(CommandError::from),
+                free: fs4::available_space(&directory),
+                // The unresolved count the parked-items alert rule reads.
+                review: store
+                    .alert_value(&AlertKey::ParkedItems, now.as_second(), &[])
+                    .map(Option::unwrap_or_default)
+                    .map_err(CommandError::from),
+                delivered: store.last_delivered().map_err(CommandError::from),
+            })
+        })
+        .await
+        .map_err(Reading::Store.failed())?;
+    Ok(Read {
+        restore_paused: stored.restore_paused.map_err(Reading::Restore.failed())?,
+        free: stored.free.map_err(Reading::Disk.failed())?,
+        review: stored.review.map_err(Reading::Review.failed())?,
+        delivered: stored.delivered.map_err(Reading::Delivered.failed())?,
+    })
+}
+
 async fn render(
     state: &Context,
     session: Option<&Session>,
     now: Timestamp,
-) -> Result<String, Error> {
-    let until = deadline()?;
-    let directory = state.directory.clone();
-    let stored = state
-        .store
-        .request::<_, crate::admin::error::CommandError>(until, move |store| {
-            Ok::<_, crate::admin::error::CommandError>(Stored {
-                restore_paused: store.restore_unreconciled()?,
-                free: fs4::available_space(&directory)?,
-                // The unresolved count the parked-items alert rule reads.
-                review: store
-                    .alert_value(&AlertKey::ParkedItems, now.as_second(), &[])?
-                    .unwrap_or_default(),
-                delivered: store.last_delivered()?,
-            })
-        })
-        .await?;
-    let alerts = crate::operator::alerts::active(&state.store).await?;
+) -> Result<String, Failure> {
+    let until = deadline().map_err(Reading::Store.failed())?;
+    let Read {
+        restore_paused,
+        free,
+        review,
+        delivered,
+    } = stored(state, until, now).await?;
+    let alerts = crate::operator::alerts::active(&state.store)
+        .await
+        .map_err(Reading::Alerts.failed())?;
     let mut facts = attention::Facts {
-        review: stored.review,
-        disk_full: stored.free <= state.reserve,
-        restore_paused: stored.restore_paused,
+        review,
+        disk_full: free <= state.reserve,
+        restore_paused,
         cancelled: state
             .store
             .request(until, |store| store.analyzer_cancelled_count())
-            .await?,
-        uncertain: uncertain_orders(state, until).await?,
+            .await
+            .map_err(Reading::Orders.failed())?,
+        uncertain: uncertain_orders(state, until)
+            .await
+            .map_err(Reading::Orders.failed())?,
         ..attention::Facts::default()
     };
-    let activity = activity(state, until, 0).await?;
+    let activity = activity(state, until, 0)
+        .await
+        .map_err(Reading::Receipts.failed())?;
     let machines = signal::machines(state, &activity, &mut facts, now);
-    let (labs, figures) = signal::lab_apps(state, &stored.delivered, &mut facts, now).await?;
-    let kept = super::removed::lines(state).await?;
+    let (labs, figures) = signal::lab_apps(state, &delivered, &mut facts, now)
+        .await
+        .map_err(Reading::LabApps.failed())?;
+    let kept = super::removed::lines(state)
+        .await
+        .map_err(Reading::Kept.failed())?;
     facts
         .blocked
         .extend(kept.iter().filter_map(super::removed::Line::blocked));
@@ -112,7 +273,8 @@ async fn render(
         &state.alert_endpoints,
         now.as_second(),
     )
-    .await?;
+    .await
+    .map_err(Reading::Relays.failed())?;
     let alert_rows = alerts.iter().map(|alert| alert_row(alert, now)).collect();
     let alert_messages = alerts
         .iter()
@@ -121,55 +283,52 @@ async fn render(
     let orders = orders(&facts);
     facts.alerts = alerts;
     let things = attention::things(&facts);
+    let frame = Frame::new(state, Tab::Overview, "Overview", Some(review), session, now);
     // First run: no machine is set up, nothing needs anyone and nothing waits for a
     // lab app (a removed machine's results still being sent keep the full page).
-    if state.machines.is_empty() && things.is_empty() && kept.is_empty() {
-        return Ok(view::page(Tab::Overview, "Welcome to Analyte")
-            .fragment(&attention::welcome())
-            .markup(view::END)
-            .to_string());
-    }
-    Ok(Page {
-        frame: Frame::new(
-            state,
-            Tab::Overview,
-            "Overview",
-            Some(stored.review),
-            session,
-            now,
-        ),
-        today: format::today(now),
-        counts: format::machines_and_lab_apps(machines.len(), labs.len()),
-        verdict: Verdict::of(&things),
-        machines,
-        labs,
-        figures,
-        orders,
-        restore: stored.restore_paused.then(|| Notice {
-            tone: Tone::Attention,
-            title: "Order sending is paused after a restore".into(),
-            text: format::RESTORE_ADVICE.into(),
-        }),
-        kept: kept
-            .iter()
-            .map(|line| Notice {
-                tone: line.tone(),
-                title: line.text().to_owned(),
-                text: String::new(),
-            })
-            .collect(),
-        disk: Disk {
-            free: format!("{} free", format::bytes(stored.free)),
-            free_exact: format!("{} bytes free", stored.free),
-            reserve: format::bytes(state.reserve),
-            reserve_exact: format!("{} bytes", state.reserve),
-            enough: stored.free > state.reserve,
-        },
-        alerts: alert_rows,
-        alert_messages,
-        relays,
-    }
-    .render()?)
+    let html = if state.machines.is_empty() && things.is_empty() && kept.is_empty() {
+        Welcome {
+            frame,
+            steps: WIZARD_STEPS,
+        }
+        .render()
+    } else {
+        Page {
+            frame,
+            today: format::today(now),
+            counts: format::machines_and_lab_apps(machines.len(), labs.len()),
+            verdict: Verdict::of(&things),
+            machines,
+            labs,
+            figures,
+            orders,
+            restore: restore_paused.then(|| Notice {
+                tone: Tone::Attention,
+                title: "Order sending is paused after a restore".into(),
+                text: format::RESTORE_ADVICE.into(),
+            }),
+            kept: kept
+                .iter()
+                .map(|line| Notice {
+                    tone: line.tone(),
+                    title: line.text().to_owned(),
+                    text: String::new(),
+                })
+                .collect(),
+            disk: Disk {
+                free: format!("{} free", format::bytes(free)),
+                free_exact: format!("{free} bytes free"),
+                reserve: format::bytes(state.reserve),
+                reserve_exact: format!("{} bytes", state.reserve),
+                enough: free > state.reserve,
+            },
+            alerts: alert_rows,
+            alert_messages,
+            relays,
+        }
+        .render()
+    };
+    html.map_err(Reading::Page.failed())
 }
 
 /// The Orders card: orders with an unknown outcome and orders a machine
@@ -253,14 +412,12 @@ async fn uncertain_orders(state: &Context, until: std::time::Instant) -> Result<
     loop {
         let page = state
             .store
-            .request::<_, crate::admin::error::CommandError>(until, move |store| {
-                Ok::<_, crate::admin::error::CommandError>(store.machine_orders(
-                    &MachineOrderFilter {
-                        after,
-                        machine: None,
-                        state: Some(OrderState::Uncertain),
-                    },
-                )?)
+            .request::<_, CommandError>(until, move |store| {
+                Ok::<_, CommandError>(store.machine_orders(&MachineOrderFilter {
+                    after,
+                    machine: None,
+                    state: Some(OrderState::Uncertain),
+                })?)
             })
             .await?;
         let Some(last) = page.last() else {
@@ -339,7 +496,7 @@ mod webhook_tests {
                 let mut limits = analyte_fixtures::store_limits();
                 limits.reserve_bytes = 0;
                 limits.record_bytes = 2_097_152;
-                limits.busy_timeout = std::time::Duration::from_millis(100);
+                limits.busy_timeout = Duration::from_millis(100);
                 limits
             },
             Box::new(crate::runtime::space::Volume),

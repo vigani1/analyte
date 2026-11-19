@@ -1,4 +1,4 @@
-{#- Macros that show values: time, words with times, status, the verdict with its to-do list, wires, signal path nodes and figures. -#}
+{#- Macros that show values: time, exact values on hover, words with times, status, the verdict with its to-do list, wires and their legend, the signal path with its nodes, and figures. -#}
 {%- import "components/icon.html" as draw %}
 {%- import "components/feedback.html" as feedback %}
 {%- import "components/forms.html" as forms %}
@@ -6,6 +6,11 @@
 {#- A time people read, its exact value on hover; a stored value that is no date shows as text. -#}
 {%- macro time(moment) -%}
 {%- if moment.datetime.is_empty() %}{{ moment.shown }}{% else %}<time datetime="{{ moment.datetime }}" title="{{ moment.exact }}">{{ moment.shown }}</time>{% endif -%}
+{%- endmacro %}
+
+{#- A number people read, with its exact value on hover. -#}
+{%- macro exact(shown, exact) -%}
+<span class="num" title="{{ exact }}">{{ shown }}</span>
 {%- endmacro %}
 
 {#- Words with times in them; each time shows as a time people read. -#}
@@ -56,6 +61,13 @@
 </span>
 {%- endmacro %}
 
+{#- The key to the wires: one sample line per kind, with its word. -#}
+{%- macro legend() -%}
+<ul class="legend" aria-label="Line key">
+{%- for wire in Wire::ALL %}<li><span class="{{ wire.legend_class() }}"></span>{{ wire.word() }}</li>{% endfor -%}
+</ul>
+{%- endmacro %}
+
 {#- One set-up machine on the signal path, linking to the Machines page. -#}
 {%- macro machine_node(machine) -%}
 <li class="path__item">
@@ -77,6 +89,9 @@
 {%- for line in lab.lines %}
 <p class="node__line">{% call words(line) %}{% endcall %}</p>
 {%- endfor %}
+{%- if !lab.support.is_empty() %}
+{% call feedback::support("Details for support", lab.support.as_slice()) %}{% endcall %}
+{%- endif %}
 {%- if let Some(todo) = lab.todo %}
 {% call feedback::whattodo(todo, crate::admin::view::Tab::LabApps.href(), "Add keys") %}{% endcall %}
 {%- endif %}
@@ -96,6 +111,38 @@
 <dd class="figure__text">{% call draw::icon(tone.icon(), "icon--md tone-" ~ tone.class()) %}{% endcall %}{{ figure.value }}{% call aside(figure) %}{% endcall %}</dd>
 {%- else %}
 <dd>{% if let Some(moment) = figure.when %}{% call time(moment) %}{% endcall %}{% else %}{{ figure.value }}{% endif %}{% call aside(figure) %}{% endcall %}</dd>
+{%- endif %}
+</div>
+{%- endmacro %}
+
+{#- The signal path card: set-up machines, the Analyte bus and lab apps, an empty state for a column with nothing in it, and the figures below. -#}
+{%- macro signal_path(machines, labs, figures) -%}
+<div class="card">
+<div class="path-scroll">
+<div class="path">
+<ul class="path__col" aria-label="Machines">
+{%- for machine in machines %}
+{% call machine_node(machine) %}{% endcall %}
+{%- else %}
+<li class="path__item">{% call feedback::empty("No machine is running", "Add or set one up on the Setup page.") %}{% call forms::link_button(crate::admin::view::Tab::Setup.href(), "Setup", "btn--outline btn--sm") %}{% endcall %}{% endcall %}</li>
+{%- endfor %}
+</ul>
+<div class="bus"><span class="live-dot live-dot--accent live-dot--still"></span><span class="bus__label">Analyte · reads · keeps a copy · sends</span></div>
+<ul class="path__col path__col--out" aria-label="Lab apps">
+{%- for lab in labs %}
+{% call lab_node(lab) %}{% endcall %}
+{%- else %}
+<li class="path__item">{% call feedback::empty("No lab app", "No running machine sends to a lab app.") %}{% endcall %}</li>
+{%- endfor %}
+</ul>
+</div>
+</div>
+{%- if !figures.is_empty() %}
+<dl class="figures figures--ruled">
+{%- for item in figures %}
+{% call figure(item) %}{% endcall %}
+{%- endfor %}
+</dl>
 {%- endif %}
 </div>
 {%- endmacro %}

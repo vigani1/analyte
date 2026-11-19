@@ -1,6 +1,11 @@
-{#- The one icon macro every template draws Lucide icons with; the path comes from the Rust `Icon` enum. -#}
+{#- The drawings every template uses: the Lucide icon macro, whose path comes from the Rust `Icon` enum, and the brand mark. -#}
 
 {#- A Lucide icon; `class` adds size or tone classes and may be empty. -#}
 {%- macro icon(icon, class) -%}
 <svg class="icon {{ class }}" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ icon.path() }}"/></svg>
+{%- endmacro %}
+
+{#- The Analyte mark, `size` pixels square; its colours follow the theme. -#}
+{%- macro brand_mark(size) -%}
+<svg width="{{ size }}" height="{{ size }}" viewBox="0 0 32 32" aria-hidden="true"><rect class="brand__tile" width="32" height="32" rx="5"/><path class="brand__letter" d="M9.5 24.5 16 7.5l6.5 17" stroke-width="2.4"/><path class="brand__arc" d="M11.4 18.6c3 1.7 6.2 1.7 9.2 0" stroke-width="2.4"/></svg>
 {%- endmacro %}

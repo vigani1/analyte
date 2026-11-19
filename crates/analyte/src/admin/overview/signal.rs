@@ -160,7 +160,7 @@ fn lab_node(
     health: &Health,
     delivered: &LastDelivered,
     senders: &[&str],
-    keys: Option<String>,
+    keys: Option<Keys>,
     now: Timestamp,
 ) -> LabNode {
     let last = delivered
@@ -169,6 +169,7 @@ fn lab_node(
         .find(|(destination, _)| destination == name)
         .and_then(|&(_, time)| Timestamp::from_second(time).ok());
     let blocked = keys.is_some();
+    let (keys, support) = keys.map_or((None, None), |keys| (Some(keys.line), keys.support));
     // Why it cannot deliver comes first, as the to-do line leads with it.
     let mut lines: Vec<Line> = keys.into_iter().map(Line::text).collect();
     lines.push(
@@ -194,8 +195,16 @@ fn lab_node(
         status,
         wire,
         lines,
+        support: support.into_iter().collect(),
         todo: blocked.then_some(format::KEYS_ADVICE),
     }
+}
+
+/// What a kept lab app's node says about its keys: the line people read and,
+/// when the keys could not be checked, the exact reason for support.
+struct Keys {
+    line: String,
+    support: Option<String>,
 }
 
 /// When the oldest waiting item arrived, when the store knows its age.
@@ -209,7 +218,7 @@ fn oldest(health: &Health, now: Timestamp) -> Option<Timestamp> {
 
 /// Which of a kept lab app's keys the key source has no value for now; the
 /// same rule the service loader and the Lab apps page use.
-async fn missing_keys(state: &Context, kept: &Kept) -> Result<String, Error> {
+async fn missing_keys(state: &Context, kept: &Kept) -> Result<Keys, Error> {
     use crate::installation::{credentials::Locked, secrets};
     let directory = state.directory.clone();
     let names = [
@@ -219,7 +228,12 @@ async fn missing_keys(state: &Context, kept: &Kept) -> Result<String, Error> {
     Ok(tokio::task::spawn_blocking(move || {
         let stored = match Locked::new(&directory).read() {
             Ok(stored) => stored,
-            Err(error) => return format!("Its keys cannot be checked: {error}."),
+            Err(error) => {
+                return Keys {
+                    line: "Its keys cannot be checked.".into(),
+                    support: Some(error.to_string()),
+                };
+            }
         };
         let missing: Vec<&str> = names
             .iter()
@@ -231,7 +245,10 @@ async fn missing_keys(state: &Context, kept: &Kept) -> Result<String, Error> {
             })
             .map(|&(label, _)| label)
             .collect();
-        format::missing_keys(&missing)
+        Keys {
+            line: format::missing_keys(&missing),
+            support: None,
+        }
     })
     .await?)
 }
@@ -324,5 +341,218 @@ fn worded(label: &str, tone: Tone, value: &str) -> Figure {
         aside: String::new(),
         aside_when: None,
         tone: Some(tone),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::admin::view::format::Part;
+    use askama::Template as _;
+
+    /// One lab app node on its own, as the signal path draws it.
+    #[derive(askama::Template)]
+    #[template(
+        source = "{% import \"components/display.html\" as display %}{% call display::lab_node(lab) %}{% endcall %}",
+        ext = "html"
+    )]
+    struct LabShown {
+        lab: LabNode,
+    }
+
+    /// One figure on its own, as the figures row draws it.
+    #[derive(askama::Template)]
+    #[template(
+        source = "{% import \"components/display.html\" as display %}{% call display::figure(item) %}{% endcall %}",
+        ext = "html"
+    )]
+    struct FigureShown {
+        item: Figure,
+    }
+
+    fn now() -> Timestamp {
+        Timestamp::from_second(1_795_046_077).expect("a valid test time")
+    }
+
+    fn health(pending: u64, age: Option<u64>, paused: bool) -> Health {
+        Health {
+            pending_count: pending,
+            pending_bytes: 0,
+            oldest_pending_age: age,
+            paused,
+            last_successful_poll: None,
+            snapshot_complete: false,
+            cache_trusted: false,
+        }
+    }
+
+    fn lab(health: &Health, delivered: &LastDelivered, keys: Option<&str>) -> String {
+        let name = Identifier::new("main-lab").expect("a valid test name");
+        LabShown {
+            lab: lab_node(
+                &name,
+                health,
+                delivered,
+                &["chemistry-1"],
+                keys.map(|line| Keys {
+                    line: line.to_owned(),
+                    support: None,
+                }),
+                now(),
+            ),
+        }
+        .render()
+        .expect("the lab node renders")
+    }
+
+    fn figure(figure: Figure) -> String {
+        FigureShown { item: figure }
+            .render()
+            .expect("the figure renders")
+    }
+
+    // Owner request 2026-11-19 (overview states): a lab app reads "Up to date"
+    // with nothing waiting, "Queued" while items wait and it can send, "Sending
+    // paused" when a delivery paused it, and "Cannot deliver" with what to do
+    // when its keys are missing; each from the store's own health.
+    #[test]
+    fn each_lab_app_state_has_its_status_wire_and_lines() {
+        let delivered = LastDelivered {
+            at: vec![(
+                Identifier::new("main-lab").expect("a valid test name"),
+                now().as_second() - 120,
+            )],
+            purged: false,
+        };
+        let good = lab(&health(0, None, false), &delivered, None);
+        assert!(
+            good.contains("<span class=\"status status--good\">"),
+            "{good}"
+        );
+        assert!(good.contains("Up to date</span>"));
+        assert!(
+            good.contains("<span class=\"wire \" aria-hidden=\"true\"><span class=\"wire__dot")
+        );
+        assert!(good.contains("<p class=\"node__line\">Last delivered <time "));
+        assert!(good.contains("</time> · nothing waiting</p>"));
+        assert!(good.contains("<p class=\"node__line\">From chemistry-1</p>"));
+
+        let queued = lab(&health(3, Some(600), false), &delivered, None);
+        assert!(
+            queued.contains("<span class=\"status status--off\">"),
+            "{queued}"
+        );
+        assert!(queued.contains("Queued</span>"));
+        assert!(queued.contains(" · 3 items waiting · oldest <time "));
+        assert!(!queued.contains("node--bad"));
+
+        let paused = lab(&health(2, None, true), &delivered, None);
+        assert!(
+            paused.contains("<span class=\"status status--warn\">"),
+            "{paused}"
+        );
+        assert!(paused.contains("Sending paused</span>"));
+        assert!(paused.contains("<span class=\"wire wire--wait\""));
+        assert!(paused.contains(" · 2 items waiting · oldest not known</p>"));
+
+        let blocked = lab(
+            &health(1, Some(60), false),
+            &LastDelivered::default(),
+            Some("Key missing: signing key."),
+        );
+        assert!(
+            blocked.contains("<div class=\"node node--lab node--bad\">"),
+            "{blocked}"
+        );
+        assert!(blocked.contains("Cannot deliver</span>"));
+        assert!(blocked.contains("<span class=\"wire wire--cut\""));
+        assert!(blocked.contains("<p class=\"node__line\">Key missing: signing key.</p>"));
+        assert!(blocked.contains("<p class=\"node__line\">Nothing delivered yet · 1 item waiting"));
+        assert!(blocked.contains("<strong>What to do:</strong> add the missing keys"));
+        assert!(blocked.contains("href=\"/setup/lab-apps\">Add keys</a>"));
+    }
+
+    // Owner request 2026-11-19 (overview states): once data keeping purged
+    // delivered items, a lab app with none left says so instead of "Nothing
+    // delivered yet".
+    #[test]
+    fn purged_records_never_read_as_nothing_delivered() {
+        let html = lab(
+            &health(0, None, false),
+            &LastDelivered {
+                at: Vec::new(),
+                purged: true,
+            },
+            None,
+        );
+        assert!(
+            html.contains(
+                "<p class=\"node__line\">No delivery in the kept records · nothing waiting</p>"
+            ),
+            "{html}"
+        );
+        assert!(!html.contains("Nothing delivered yet"));
+    }
+
+    // Owner request 2026-11-19 (overview states): the order list figure says
+    // "Up to date" or "Out of date" with when it was last checked, or "Not
+    // checked yet"; never a time it does not have.
+    #[test]
+    fn order_list_figure_says_only_what_the_health_records() {
+        let name = Identifier::new("main-lab").expect("a valid test name");
+        let checked = Health {
+            last_successful_poll: Some(now().as_second() - 60),
+            cache_trusted: true,
+            ..health(0, None, false)
+        };
+        let fresh = figure(order_list(&name, &checked, now()));
+        assert!(fresh.contains("<dt>Order list · main-lab</dt>"), "{fresh}");
+        assert!(fresh.contains("tone-good"));
+        assert!(fresh.contains("</svg>Up to date <span class=\"figure__aside\">· checked <time "));
+        let stale = figure(order_list(
+            &name,
+            &Health {
+                cache_trusted: false,
+                ..checked
+            },
+            now(),
+        ));
+        assert!(stale.contains("tone-warn"), "{stale}");
+        assert!(stale.contains("</svg>Out of date <span class=\"figure__aside\">· checked <time "));
+        let never = figure(order_list(&name, &health(0, None, false), now()));
+        assert!(never.contains("tone-off"), "{never}");
+        assert!(never.contains("</svg>Not checked yet</dd>"));
+        assert!(!never.contains("checked <time"));
+    }
+
+    // Owner request 2026-11-19 (overview states): what waits for every lab app
+    // together: the count, then the oldest item's time, "—" with "nothing
+    // waiting", or "Not known" when the store has no age for a waiting item.
+    #[test]
+    fn waiting_figures_cover_none_known_and_unknown_ages() {
+        let mut none = Waiting::default();
+        none.add(&health(0, None, false));
+        let [count, oldest] = none.figures(now());
+        assert!(figure(count).contains("<dt>Items waiting to send</dt>\n<dd>0 <span class=\"figure__aside\">results and order messages</span>"));
+        let oldest = figure(oldest);
+        assert!(
+            oldest.contains("<dd>— <span class=\"figure__aside\">nothing waiting</span></dd>"),
+            "{oldest}"
+        );
+
+        let mut known = Waiting::default();
+        known.add(&health(4, Some(840), false));
+        let [count, oldest] = known.figures(now());
+        assert!(figure(count).contains("<dd>4 "));
+        let oldest = figure(oldest);
+        assert!(oldest.contains("<dd><time datetime="), "{oldest}");
+        assert!(oldest.contains("<span class=\"figure__aside\">14 min ago</span>"));
+
+        let mut unknown = Waiting::default();
+        unknown.add(&health(4, Some(840), false));
+        unknown.add(&health(1, None, false));
+        let [_, oldest] = unknown.figures(now());
+        let oldest = figure(oldest);
+        assert!(oldest.contains("</svg>Not known</dd>"), "{oldest}");
     }
 }

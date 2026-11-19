@@ -1,8 +1,10 @@
-//! Lays out every admin page: the document head, the header bar with navigation, and the one stylesheet.
+//! Holds the old pages' layout until PR b6 (their head, menu bar and `admin.css`), and the tabs, tones and table columns every page shares.
 //!
-//! The stylesheet is served from the binary at a same-origin path, so the
-//! `default-src 'self'` content security policy allows it unchanged. Pages use no
-//! inline styles, scripts, fonts or external URLs.
+//! Restyled pages are Askama templates with a [`frame::Frame`]; the pages not
+//! restyled yet are built here as markup and load the old stylesheet, which is
+//! served from the binary at a same-origin path, so the `default-src 'self'`
+//! content security policy allows it unchanged. No page uses inline styles,
+//! scripts, fonts or external URLs.
 pub(super) mod assets;
 pub(super) mod format;
 pub(super) mod frame;
@@ -285,6 +287,28 @@ impl Tone {
             Self::Problem => "<span class=\"pill bad\">",
             Self::Neutral => "<span class=\"pill\">",
         }
+    }
+}
+
+/// One column of a restyled table: its heading and whether it holds numbers,
+/// which line up on the right.
+pub(super) struct Column {
+    pub(super) label: &'static str,
+    pub(super) right: bool,
+}
+
+impl Column {
+    /// A column of words, aligned left.
+    pub(super) const fn text(label: &'static str) -> Self {
+        Self {
+            label,
+            right: false,
+        }
+    }
+
+    /// A column of numbers, aligned right.
+    pub(super) const fn number(label: &'static str) -> Self {
+        Self { label, right: true }
     }
 }
 

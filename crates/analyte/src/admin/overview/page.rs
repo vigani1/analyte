@@ -5,11 +5,20 @@
 //! line with no data behind it is left out.
 use super::attention::Thing;
 use crate::admin::view::{
-    Tone,
+    Column, Tone,
     format::{Line, Moment, Part},
     frame::Frame,
     icon::Icon,
 };
+
+/// The alerts table's columns.
+pub(super) const ALERT_COLUMNS: [Column; 5] = [
+    Column::text("Alert"),
+    Column::text("Machine"),
+    Column::text("Responder"),
+    Column::text("Raised"),
+    Column::number("Last value"),
+];
 
 /// GET / once something is set up or needs someone.
 #[derive(askama::Template)]
@@ -37,11 +46,31 @@ pub(super) struct Page {
     pub(super) relays: Vec<String>,
 }
 
+/// GET / on a first run: no machine is set up, nothing needs anyone and
+/// nothing waits for a lab app, so the page only points to the setup wizard.
+#[derive(askama::Template)]
+#[template(path = "pages/overview/welcome.html")]
+pub(super) struct Welcome {
+    pub(super) frame: Frame,
+    /// The setup wizard's steps, one sentence each.
+    pub(super) steps: [&'static str; 4],
+}
+
+/// The setup wizard's four steps (`setup::wizard::Step`) as the welcome words them.
+pub(super) const WIZARD_STEPS: [&str; 4] = [
+    "Pick the machine’s model",
+    "Choose how it’s connected and which lab app gets its results",
+    "Run a listen-only test. Analyte only reads and sends nothing to the machine",
+    "Save, then restart Analyte to use the new settings",
+];
+
 /// GET / when the overview could not be read: what it means and, for support, why.
 #[derive(askama::Template)]
 #[template(path = "pages/overview/error.html")]
 pub(super) struct ErrorPage {
     pub(super) frame: Frame,
+    /// What Analyte could not read, and what to do.
+    pub(super) text: String,
     /// The failure, one line per part, for support.
     pub(super) detail: Vec<String>,
 }
@@ -117,12 +146,33 @@ pub(super) enum Wire {
 }
 
 impl Wire {
+    /// Every kind, in the legend's order.
+    pub(super) const ALL: [Self; 3] = [Self::Live, Self::Wait, Self::Cut];
+
     /// The wire's extra class in the design system.
     pub(super) const fn class(self) -> &'static str {
         match self {
             Self::Live => "",
             Self::Wait => "wire--wait",
             Self::Cut => "wire--cut",
+        }
+    }
+
+    /// The legend's sample line for this kind.
+    pub(super) const fn legend_class(self) -> &'static str {
+        match self {
+            Self::Live => "legend__line",
+            Self::Wait => "legend__line legend__line--wait",
+            Self::Cut => "legend__line legend__line--cut",
+        }
+    }
+
+    /// What the legend calls it: an open link does not prove that data flows.
+    pub(super) const fn word(self) -> &'static str {
+        match self {
+            Self::Live => "Link open",
+            Self::Wait => "Waiting",
+            Self::Cut => "Broken",
         }
     }
 }
@@ -153,6 +203,8 @@ pub(super) struct LabNode {
     pub(super) wire: Wire,
     /// Which key is missing, last delivered with what waits, and who sends here.
     pub(super) lines: Vec<Line>,
+    /// The exact reason its keys could not be checked, for support; empty otherwise.
+    pub(super) support: Vec<String>,
     /// What to do when Analyte cannot deliver here.
     pub(super) todo: Option<&'static str>,
 }

@@ -3,7 +3,6 @@
 //! It only reads what the overview already measured and the alerts the alert
 //! rules raised; it adds no thresholds of its own. Lines hold names and counts,
 //! never payloads or sample IDs (safety rule 10).
-use crate::admin::markup::Markup;
 use crate::admin::view::{Tab, Tone, format};
 use analyte_model::Identifier;
 use analyte_store::{AlertKey, AlertState, Undeliverable};
@@ -311,17 +310,6 @@ fn restore_paused() -> Thing {
         "Order sending is paused after a restore".into(),
         Fix::Section(Section::Orders),
     )
-}
-
-/// All a first run shows: no machine is set up yet, so there is one thing to do.
-pub(super) fn welcome() -> Markup {
-    Markup::new().markup(concat!(
-        "<div class=\"welcome\"><h2>Set up your first machine</h2><p>Analyte is running, ",
-        "but no machine is set up yet. On the Setup page you choose the machine model, how ",
-        "it is connected and the lab app that receives its results.</p>",
-        "<p class=\"actions-row\"><a class=\"button\" href=\"/setup/first\">Set up a machine</a>",
-        "</p></div>",
-    ))
 }
 
 #[cfg(test)]

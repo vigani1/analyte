@@ -1,4 +1,4 @@
-{#- Macros that tell someone something: alert boxes, the "What to do" box and the support disclosure. -#}
+{#- Macros that tell someone something: alert boxes, the "What to do" box, empty states and the support disclosure. -#}
 {%- import "components/icon.html" as draw %}
 {%- import "components/forms.html" as forms %}
 
@@ -10,6 +10,11 @@
 {#- One plain sentence of what to do, and the page that does it. -#}
 {%- macro whattodo(text, href, label) -%}
 <div class="whattodo"><p class="whattodo__text"><strong>What to do:</strong> {{ text }}</p><div class="whattodo__actions">{% call forms::link_button(href, label, "btn--primary btn--sm") %}{% endcall %}</div></div>
+{%- endmacro %}
+
+{#- A place with nothing to show: a title, a sentence and, from the caller, what to do. It has no check mark, because an empty list is not good news by itself. -#}
+{%- macro empty(title, text) -%}
+<div class="empty"><p class="empty__title">{{ title }}</p><p class="empty__text">{{ text }}</p>{{ caller() }}</div>
 {%- endmacro %}
 
 {#- Exact technical lines for support, closed until someone opens them. -#}

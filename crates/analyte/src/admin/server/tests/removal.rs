@@ -211,7 +211,8 @@ async fn removed_machine_result_is_delivered_once() -> Result<(), Error> {
     wait_for_service_listener(&host).await?;
     let waiting = overview_until(&host, &auth, |page| page.contains(STILL)).await?;
     assert!(
-        waiting.contains("No machine is running") && !waiting.contains("<a class=\"node"),
+        waiting.contains("<p class=\"empty__title\">No machine is running</p>")
+            && !waiting.contains("<a class=\"node"),
         "{waiting}"
     );
     let cookie = login(&host, &token).await?;

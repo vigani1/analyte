@@ -59,11 +59,14 @@ body { margin: 0; background: var(--bg); }
   display: block; margin-top: var(--space-1); padding-left: var(--space-6);
   font-size: var(--text-xs); color: var(--text-muted);
 }
-.path__note { padding: var(--space-3); font-size: var(--text-sm); color: var(--text-muted); }
 .figures--ruled { border-top: var(--border-width) solid var(--border); }
 /* A worded figure keeps its words together: in a narrow column its aside
    ("· checked 10:44") moves to the next line instead of splitting the state. */
 .figure dd.figure__text { flex-wrap: wrap; }
+
+/* First-run welcome (the mockup's inline styles). */
+.welcome__lede { margin: 0; font-size: var(--text-md); }
+.welcome__live { margin: 0; font-size: var(--text-sm); }
 
 /* Icon rail: the same width as analyte.css's --narrow, which a container query
    cannot read from a custom property. */

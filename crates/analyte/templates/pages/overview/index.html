@@ -1,9 +1,9 @@
-{#- The Overview (GET /): the verdict, the signal path with its figures, orders, and disk and alerts. -#}
+{#- The Overview (GET /) once something is set up or needs someone: the verdict, the signal path with its figures, orders, and disk and alerts. -#}
 {% extends "layout/base.html" %}
-{%- import "components/icon.html" as draw %}
 {%- import "components/display.html" as display %}
 {%- import "components/feedback.html" as feedback %}
 {%- import "components/layout.html" as layout %}
+{%- import "components/lists.html" as lists %}
 {%- block main %}
 {% call layout::page_head(today, "Overview", counts) %}{% endcall %}
 {% call display::verdict(verdict) %}{% endcall %}
@@ -11,36 +11,9 @@
 <section class="section" id="sending" aria-labelledby="ov-path">
 <div class="section__head">
 {% call layout::label("ov-path", "02 · Signal path", "— machines → Analyte → lab apps") %}{% endcall %}
-<ul class="legend" aria-label="Line key"><li><span class="legend__line"></span>Link open</li><li><span class="legend__line legend__line--wait"></span>Waiting</li><li><span class="legend__line legend__line--cut"></span>Broken</li></ul>
+{% call display::legend() %}{% endcall %}
 </div>
-<div class="card">
-<div class="path-scroll">
-<div class="path">
-<ul class="path__col" aria-label="Machines">
-{%- for machine in machines %}
-{% call display::machine_node(machine) %}{% endcall %}
-{%- else %}
-<li class="path__item path__note">No machine is running. Add or set one up on the <a class="link" href="/setup">Setup</a> page.</li>
-{%- endfor %}
-</ul>
-<div class="bus"><span class="live-dot live-dot--accent live-dot--still"></span><span class="bus__label">Analyte · reads · keeps a copy · sends</span></div>
-<ul class="path__col path__col--out" aria-label="Lab apps">
-{%- for lab in labs %}
-{% call display::lab_node(lab) %}{% endcall %}
-{%- else %}
-<li class="path__item path__note">No running machine sends to a lab app.</li>
-{%- endfor %}
-</ul>
-</div>
-</div>
-{%- if !figures.is_empty() %}
-<dl class="figures figures--ruled">
-{%- for figure in figures %}
-{% call display::figure(figure) %}{% endcall %}
-{%- endfor %}
-</dl>
-{%- endif %}
-</div>
+{% call display::signal_path(machines, labs, figures) %}{% endcall %}
 {%- for notice in kept %}
 {% call feedback::alert(notice.tone, notice.title, notice.text) %}{% endcall %}
 {%- endfor %}
@@ -49,11 +22,11 @@
 <div class="split">
 <section class="section" id="orders" aria-labelledby="ov-orders">
 {% call layout::label("ov-orders", "03 · Orders", "") %}{% endcall %}
-<ul class="card rows">
+{% call lists::rows() %}
 {%- for order in orders %}
-<li class="row">{% call draw::icon(order.icon, "tone-" ~ order.tone.class()) %}{% endcall %}<span class="row__main">{{ order.text }}</span><a class="link" href="{{ order.href }}">{{ order.link }}</a></li>
+{% call lists::row(order.icon, order.tone, order.text, order.href, order.link) %}{% endcall %}
 {%- endfor %}
-</ul>
+{% endcall %}
 {%- if let Some(notice) = restore %}
 {% call feedback::alert(notice.tone, notice.title, notice.text) %}{% endcall %}
 {%- endif %}
@@ -61,26 +34,21 @@
 
 <section class="section grow" id="disk" aria-labelledby="ov-disk">
 {% call layout::label("ov-disk", "04 · Disk and alerts", "") %}{% endcall %}
-<div class="card card--pad">
-<dl class="kv">
-<dt>Free disk space</dt><dd><span class="num" title="{{ disk.free_exact }}">{{ disk.free }}</span></dd>
-<dt>Always kept free</dt><dd><span class="num" title="{{ disk.reserve_exact }}">{{ disk.reserve }}</span> <span class="muted">Analyte stops receiving below this</span></dd>
-<dt>Disk status</dt><dd>{% call display::status(disk.tone(), disk.status()) %}{% endcall %}</dd>
-<dt>Active alerts</dt><dd class="num">{{ alerts.len() }}</dd>
-<dt>Alert relays</dt><dd class="num">{{ relays.len() }}</dd>
-</dl>
-</div>
+{% call layout::card() %}
+{% call lists::kv() %}
+{% call lists::pair("Free disk space", "") %}{% call display::exact(disk.free, disk.free_exact) %}{% endcall %}{% endcall %}
+{% call lists::pair("Always kept free", "") %}{% call display::exact(disk.reserve, disk.reserve_exact) %}{% endcall %} <span class="muted">Analyte stops receiving below this</span>{% endcall %}
+{% call lists::pair("Disk status", "") %}{% call display::status(disk.tone(), disk.status()) %}{% endcall %}{% endcall %}
+{% call lists::pair("Active alerts", "num") %}{{ alerts.len() }}{% endcall %}
+{% call lists::pair("Alert relays", "num") %}{{ relays.len() }}{% endcall %}
+{% endcall %}
+{% endcall %}
 {%- if !alerts.is_empty() %}
-<div class="card table-wrap">
-<table class="table">
-<thead><tr><th scope="col">Alert</th><th scope="col">Machine</th><th scope="col">Responder</th><th scope="col">Raised</th><th scope="col" class="right">Last value</th></tr></thead>
-<tbody>
+{% call lists::table(ALERT_COLUMNS) %}
 {%- for alert in alerts %}
-<tr><td class="cell-main"><span title="{{ alert.kind }}">{{ alert.words }}</span></td><td>{{ alert.machine }}</td><td>{{ alert.responder }}</td><td>{% if let Some(raised) = alert.raised %}{% call display::time(raised) %}{% endcall %}{% else %}Not known{% endif %}</td><td class="num right">{{ alert.value }}</td></tr>
+<tr>{% call lists::cell("cell-main") %}<span title="{{ alert.kind }}">{{ alert.words }}</span>{% endcall %}{% call lists::cell("") %}{{ alert.machine }}{% endcall %}{% call lists::cell("") %}{{ alert.responder }}{% endcall %}{% call lists::cell("") %}{% if let Some(raised) = alert.raised %}{% call display::time(raised) %}{% endcall %}{% else %}Not known{% endif %}{% endcall %}{% call lists::cell("num right") %}{{ alert.value }}{% endcall %}</tr>
 {%- endfor %}
-</tbody>
-</table>
-</div>
+{% endcall %}
 {%- endif %}
 {%- for message in alert_messages %}
 {% call feedback::alert(crate::admin::view::Tone::Problem, message, "") %}{% endcall %}

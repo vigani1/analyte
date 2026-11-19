@@ -1,4 +1,6 @@
-{#- Macros that lay out a page: its head and the numbered section labels. -#}
+{#- Macros that lay out a page: its head, cards, the numbered section labels and the first-run welcome. -#}
+{%- import "components/icon.html" as draw %}
+{%- import "components/forms.html" as forms %}
 
 {#- The page head: date line, title and a short aside on the right. -#}
 {%- macro page_head(eyebrow, title, aside) -%}
@@ -10,7 +12,30 @@
 </header>
 {%- endmacro %}
 
+{#- A card with room inside; the caller writes its content. -#}
+{%- macro card() -%}
+<div class="card card--pad">
+{{- caller() }}
+</div>
+{%- endmacro %}
+
 {#- A section's label, such as "02 · Signal path", with an optional aside. -#}
 {%- macro label(id, text, aside) -%}
 <h2 id="{{ id }}" class="label">{{ text }}{% if !aside.is_empty() %} <span class="label__aside">{{ aside }}</span>{% endif %}</h2>
+{%- endmacro %}
+
+{#- The first-run welcome: the mark, the title, what Analyte does, the setup steps, the one button and what the engine was doing. -#}
+{%- macro welcome(title, lede, steps, href, action, engine) -%}
+<div class="welcome anim-in">
+{% call draw::brand_mark(72) %}{% endcall %}
+<div><p class="eyebrow">Welcome</p><h1 class="welcome__title">{{ title }}</h1></div>
+<p class="muted welcome__lede">{{ lede }}</p>
+<ol class="welcome__steps">
+{%- for step in steps %}
+<li>{{ step }}</li>
+{%- endfor %}
+</ol>
+{% call forms::link_button(href, action, "btn--primary btn--lg") %}{% endcall %}
+<p class="live subtle welcome__live"><span class="live-dot live-dot--still"></span>{{ engine }}</p>
+</div>
 {%- endmacro %}

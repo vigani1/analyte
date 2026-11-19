@@ -1,4 +1,4 @@
-{#- The page frame of every restyled page: the head with the three stylesheets, the sidebar and the main column. -#}
+{#- The page frame of every restyled page: the head with the three stylesheets, the sidebar and the main column, which a page may centre. -#}
 <!doctype html>
 <html lang="en">
 <head>
@@ -13,7 +13,7 @@
 <body>
 <div class="app">
 {% include "layout/sidebar.html" %}
-<main class="main">
+<main class="main{% block main_class %}{% endblock %}">
 {%- block main %}{% endblock %}
 </main>
 </div>

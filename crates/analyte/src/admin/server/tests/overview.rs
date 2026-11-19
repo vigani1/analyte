@@ -38,10 +38,11 @@ async fn stop(
     Ok(())
 }
 
-// Owner request 2026-11-19 (overview item 2): with no machine set up and nothing
-// that needs anyone, the overview is only a welcome card with one button to the
-// setup page; the menu stays. Once something needs someone, the full overview
-// with its status line comes back even without a machine.
+// Owner request 2026-11-19 (overview item 2, restyled from FirstRun): with no
+// machine set up and nothing that needs anyone, the overview is only the welcome
+// with one button to the setup wizard and its four steps; the sidebar stays.
+// Once something needs someone, the full overview with its verdict comes back
+// even without a machine.
 #[tokio::test(flavor = "multi_thread")]
 async fn first_run_overview_is_only_the_welcome_card() -> Result<(), Error> {
     let directory = crate::admin::private_tempdir()?;
@@ -49,26 +50,42 @@ async fn first_run_overview_is_only_the_welcome_card() -> Result<(), Error> {
     let store = empty_store(directory.path()).await?;
     let (state, stopper, owner, host) =
         start_overview_server(directory.path(), &store, Vec::new(), Vec::new()).await?;
-    let auth = format!("Authorization: Bearer {bearer}\r\n");
+    let auth = format!(
+        "Authorization: Bearer {bearer}
+"
+    );
     let page = request(&host, "/", &auth, None).await?;
     assert!(page.starts_with("HTTP/1.1 200"), "{page}");
     headers_present(&page);
     let main = page
-        .split_once("<main>")
+        .split_once("<main class=\"main main--center\">")
         .map(|(_, main)| main)
-        .ok_or("overview without main")?;
-    assert_eq!(
-        main,
-        concat!(
-            "<h1>Welcome to Analyte</h1><div class=\"welcome\"><h2>Set up your first ",
-            "machine</h2><p>Analyte is running, but no machine is set up yet. On the Setup ",
-            "page you choose the machine model, how it is connected and the lab app that ",
-            "receives its results.</p><p class=\"actions-row\"><a class=\"button\" ",
-            "href=\"/setup/first\">Set up a machine</a></p></div></main></body></html>",
-        )
+        .ok_or("overview without a centred main")?;
+    assert!(main.contains("<div class=\"welcome anim-in\">"), "{main}");
+    assert!(main.contains(concat!(
+        "<div><p class=\"eyebrow\">Welcome</p><h1 class=\"welcome__title\">",
+        "Let’s connect your first machine.</h1></div>"
+    )));
+    let steps: Vec<&str> = main
+        .split_once("<ol class=\"welcome__steps\">")
+        .and_then(|(_, rest)| rest.split_once("</ol>"))
+        .map(|(steps, _)| steps.split("<li>").skip(1).collect())
+        .unwrap_or_default();
+    assert_eq!(steps.len(), 4, "the wizard has four steps: {main}");
+    assert!(main.contains(
+        "<a class=\"btn btn--primary btn--lg\" href=\"/setup/first\">Set up your first machine</a>"
+    ));
+    assert!(
+        main.contains("<span class=\"live-dot live-dot--still\"></span>The engine is running.</p>")
     );
-    assert!(page.contains("<nav aria-label=\"Admin pages\">"));
-    assert!(page.contains("<a href=\"/\" aria-current=\"page\">Overview</a>"));
+    assert!(!main.contains("verdict"), "no verdict on a first run");
+    assert!(page.contains("<nav class=\"sidebar\" aria-label=\"Main\">"));
+    assert!(page.contains("<a href=\"/\" aria-current=\"page\">"));
+    assert!(
+        !page.contains("nav__count"),
+        "nothing to review on a first run"
+    );
+    assert!(page.contains("<span>Signed in with the admin key</span>"));
     store
         .request::<_, FixtureError>(fixture_deadline()?, |s| {
             s.evaluate_alert(
@@ -92,7 +109,11 @@ async fn first_run_overview_is_only_the_welcome_card() -> Result<(), Error> {
         .ok_or("disk line missing")?;
     assert!(disk.contains("<a class=\"btn btn--outline\" href=\"/#disk\">Disk</a>"));
     assert!(attention.contains("id=\"disk\""));
-    assert!(attention.contains("No machine is running. Add or set one up"));
+    assert!(attention.contains(concat!(
+        "<p class=\"empty__title\">No machine is running</p>",
+        "<p class=\"empty__text\">Add or set one up on the Setup page.</p>"
+    )));
+    assert!(attention.contains("<p class=\"empty__title\">No lab app</p>"));
     stop(state, stopper, owner, store).await
 }
 
@@ -136,6 +157,9 @@ async fn overview_with_nothing_wrong_reads_all_good() -> Result<(), Error> {
     );
     assert!(rest.contains("class=\"verdict__title\">All good</h2>"));
     assert!(page.contains("<span class=\"node__state tone-good\">Port open</span>"));
+    // The bearer key itself has no session, so there is nothing to sign out of.
+    assert!(page.contains("<span>Signed in with the admin key</span>"));
+    assert!(!page.contains("action=\"/logout\""));
     drop(link);
     stop(state, stopper, owner, store).await
 }
@@ -619,6 +643,7 @@ fn assert_machine_nodes(page: &str) {
     assert!(waiting.contains("<span class=\"node__state tone-off\">Waiting</span>"));
     assert!(waiting.contains("Listening on port 5600, nothing connected since "));
     assert!(waiting.contains("<span class=\"wire wire--wait\""));
+    assert!(waiting.contains("</svg>Network</span>"));
     let watching = node(page, "urine-4");
     assert!(watching.contains("<span class=\"node__state tone-good\">Watching</span>"));
     assert!(watching.contains("</svg>Watched folder</span>"));
@@ -670,6 +695,8 @@ fn assert_figures_and_sidebar(page: &str, state: &Context, cookie: &str) -> Resu
     assert!(!page.contains("<dt>Order list · old-lab</dt>"));
 
     // The sidebar: open review items beside Needs review, and Sign out with this session's token.
+    // The Overview is not under "More", so that group starts closed.
+    assert!(page.contains("<details class=\"nav-group nav-more\">"));
     assert!(page.contains("<span class=\"nav__count\"><span class=\"sr-only\">, </span>1</span>"));
     let token = state
         .sessions
@@ -713,6 +740,7 @@ async fn overview_error_page_keeps_the_reason_for_support() -> Result<(), Error>
     assert!(
         page.contains("<p class=\"alert__title\">The overview could not be shown just now</p>")
     );
+    assert!(page.contains("Analyte could not read its store. Reload the page;"));
     assert!(page.contains("Details for support</summary><pre>"));
     assert!(page.contains("app.css"));
     assert!(!page.contains("admin.css"));
@@ -724,4 +752,191 @@ async fn overview_error_page_keeps_the_reason_for_support() -> Result<(), Error>
     stop.send_replace(true);
     tokio::time::timeout(Duration::from_secs(5), owner).await???;
     Ok(())
+}
+
+// Owner request 2026-11-19 (overview states): the machine states the signal
+// path test does not reach, each from the real link and receipts: a machine
+// dialling out with no connection, a listener that is not listening, a
+// connected network machine with the time of its last data, and one whose
+// service in Analyte stopped. A kept lab app whose keys cannot be checked says
+// so instead of naming keys it could not look at.
+#[tokio::test(flavor = "multi_thread")]
+async fn signal_path_shows_every_other_machine_state() -> Result<(), Error> {
+    use crate::machine::link::status::{Link, Reporter};
+    let directory = crate::admin::private_tempdir()?;
+    let bearer = crate::admin::rotate_token(directory.path())?;
+    let store = empty_store(directory.path()).await?;
+    let dialing = Reporter::new(Link::TcpClient);
+    let deaf = Reporter::new(Link::TcpServer);
+    let connected = Reporter::new(Link::TcpServer);
+    connected.ready(true);
+    (connected.observer())(analyte_transport::Activity::Opened);
+    connected.received();
+    let halted = Reporter::new(Link::Serial);
+    (halted.observer())(analyte_transport::Activity::Opened);
+    let machines = vec![
+        machine("dialing-1", true, dialing.subscribe(), "main-lab")?,
+        machine("deaf-2", true, deaf.subscribe(), "main-lab")?,
+        machine("connected-3", true, connected.subscribe(), "main-lab")?,
+        machine("stopped-4", false, halted.subscribe(), "main-lab")?,
+    ];
+    let retired = crate::admin::Draining::from([(
+        "old-lab".to_owned(),
+        crate::admin::Kept {
+            delivering: Arc::new(AtomicBool::new(true)),
+            keys_missing: true,
+            api_key: Identifier::new("old-lab-api-key")?,
+            signing_key: Identifier::new("old-lab-signing-key")?,
+        },
+    )]);
+    // The key store's folder is a plain file, so the keys cannot be read.
+    std::fs::write(directory.path().join("credentials"), b"not a folder")?;
+    let (state, stopper, owner, host) = start_with(
+        directory.path(),
+        &store,
+        (machines, vec![loopback_destination("main-lab")?]),
+        retired,
+        directory.path(),
+    )
+    .await?;
+    let page = request(
+        &host,
+        "/",
+        &format!("Authorization: Bearer {bearer}\r\n"),
+        None,
+    )
+    .await?;
+    assert!(page.starts_with("HTTP/1.1 200"), "{page}");
+    let dialing_node = node(&page, "dialing-1");
+    assert!(
+        dialing_node
+            .contains("<span class=\"node__state tone-bad\">Not connected (retrying)</span>")
+    );
+    assert!(dialing_node.contains("<span class=\"node__note\">No connection to dialing-1 since "));
+    assert!(dialing_node.contains("<span class=\"wire wire--cut\""));
+    let deaf_node = node(&page, "deaf-2");
+    assert!(deaf_node.contains("<span class=\"node__state tone-bad\">Not listening</span>"));
+    assert!(deaf_node.contains("<span class=\"node__note\">Not listening on port 5600 since "));
+    let connected_node = node(&page, "connected-3");
+    assert!(connected_node.contains("<span class=\"node__state tone-good\">Connected</span>"));
+    assert!(
+        connected_node.contains(
+            "<span class=\"mono\"><span class=\"sr-only\">Last data </span><time datetime="
+        )
+    );
+    assert!(!connected_node.contains("node__note"));
+    let stopped_node = node(&page, "stopped-4");
+    assert!(stopped_node.contains("<a class=\"node node--bad\" href=\"/machines\">"));
+    assert!(
+        stopped_node.contains("<span class=\"node__state tone-bad\">Stopped in Analyte</span>")
+    );
+    assert!(
+        stopped_node.contains(
+            "<span class=\"node__note\">Analyte stopped working with this machine</span>"
+        )
+    );
+    assert!(page.contains("<p class=\"todo__title\">Analyte stopped working with stopped-4</p>"));
+    assert!(page.contains("<p class=\"todo__title\">dialing-1: Not connected (retrying)</p>"));
+    assert!(page.contains(". Check the network cable and the machine&#39;s host settings.</p>"));
+    let kept = node(&page, "old-lab");
+    assert!(
+        kept.contains("<p class=\"node__line\">Its keys cannot be checked.</p>"),
+        "{kept}"
+    );
+    assert!(
+        kept.contains("Details for support</summary><pre>"),
+        "{kept}"
+    );
+    assert!(kept.contains("Cannot deliver</span>"));
+    drop((dialing, deaf, connected, halted));
+    stop(state, stopper, owner, store).await
+}
+
+/// A folder whose free space cannot be read: a missing folder on Unix; on
+/// Windows, which reads the volume of a missing folder, a drive that does not exist.
+fn unreadable_folder(root: &std::path::Path) -> Result<std::path::PathBuf, Error> {
+    if cfg!(windows) {
+        let free = ('D'..='Z')
+            .rev()
+            .map(|letter| std::path::PathBuf::from(format!("{letter}:\\")))
+            .find(|drive| !drive.exists())
+            .ok_or("no free drive letter")?;
+        Ok(free.join("analyte"))
+    } else {
+        Ok(root.join("no-such-folder"))
+    }
+}
+
+// Owner request 2026-11-19 (overview states): when the free disk space cannot
+// be read, the overview cannot say whether receiving goes on, so it shows its
+// error page and names that read instead of a partial page.
+#[tokio::test(flavor = "multi_thread")]
+async fn unreadable_disk_space_shows_the_error_page() -> Result<(), Error> {
+    let directory = crate::admin::private_tempdir()?;
+    let bearer = crate::admin::rotate_token(directory.path())?;
+    let store = empty_store(directory.path()).await?;
+    let (state, stopper, owner, host) = start_with(
+        directory.path(),
+        &store,
+        (Vec::new(), Vec::new()),
+        crate::admin::Draining::new(),
+        &unreadable_folder(directory.path())?,
+    )
+    .await?;
+    let page = request(
+        &host,
+        "/",
+        &format!("Authorization: Bearer {bearer}\r\n"),
+        None,
+    )
+    .await?;
+    assert!(page.starts_with("HTTP/1.1 503"), "{page}");
+    assert!(
+        page.contains("<p class=\"alert__title\">The overview could not be shown just now</p>")
+    );
+    assert!(page.contains("Analyte could not read the free disk space. Reload the page;"));
+    assert!(
+        !page.contains("welcome"),
+        "no welcome without knowing the disk"
+    );
+    stop(state, stopper, owner, store).await
+}
+
+// Owner request 2026-11-19 (overview states): when the store answers too
+// slowly, the overview stops reading after 1.5 s, inside the 2 s limit on
+// every admin request, and answers 504 in its own look with the sidebar.
+#[tokio::test(flavor = "multi_thread")]
+async fn slow_store_answers_in_the_overview_look() -> Result<(), Error> {
+    let directory = crate::admin::private_tempdir()?;
+    let bearer = crate::admin::rotate_token(directory.path())?;
+    let store = empty_store(directory.path()).await?;
+    let (state, stopper, owner, host) =
+        start_overview_server(directory.path(), &store, Vec::new(), Vec::new()).await?;
+    // The store's one thread is busy longer than the overview may wait.
+    let busy = store.clone();
+    let blocker = tokio::spawn(async move {
+        busy.request::<_, FixtureError>(fixture_deadline()?, |_| {
+            std::thread::sleep(Duration::from_millis(1800));
+            Ok(())
+        })
+        .await
+        .map_err(Error::from)
+    });
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let page = request(
+        &host,
+        "/",
+        &format!("Authorization: Bearer {bearer}\r\n"),
+        None,
+    )
+    .await?;
+    assert!(page.starts_with("HTTP/1.1 504"), "{page}");
+    headers_present(&page);
+    assert!(page.contains("<nav class=\"sidebar\" aria-label=\"Main\">"));
+    assert!(page.contains("app.css"));
+    assert!(!page.contains("admin.css"));
+    assert!(page.contains("Analyte did not finish reading within 1.5 seconds. Reload the page;"));
+    assert!(page.contains("admin overview deadline of 1500 ms exceeded"));
+    blocker.await??;
+    stop(state, stopper, owner, store).await
 }
