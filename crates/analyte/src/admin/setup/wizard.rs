@@ -190,6 +190,7 @@ impl Step {
             | SetupError::HistoryNotConfirmed(_)
             | SetupError::UnfinishedWork(..)
             | SetupError::Store(_)
+            | SetupError::ListenState
             | SetupError::Busy => None,
         }
     }
@@ -839,11 +840,7 @@ pub(in crate::admin) async fn listen_start(
                 model,
             });
         }
-        Err(_) => {
-            return refused(&SetupError::Connection(
-                "the listen test state is unavailable",
-            ));
-        }
+        Err(_) => return refused(&SetupError::ListenState),
     }
     see_other("/setup/listen")
 }
@@ -908,7 +905,8 @@ pub(in crate::admin) async fn listen_view(
                 t.model,
             )
         }),
-        Err(_) => None,
+        // A test thread panicked while holding the state; what it held is unknown.
+        Err(_) => return refused(&SetupError::ListenState),
     };
     let Some((view, machine, draft, model)) = test else {
         return done(

@@ -130,6 +130,20 @@ impl Setup {
         }
     }
 
+    /// Leaves the connection test state poisoned, as a thread that panics while
+    /// holding it would.
+    #[cfg(test)]
+    pub(crate) fn poison_listen(&self) {
+        std::thread::scope(|scope| {
+            let _ = scope
+                .spawn(|| {
+                    let _held = self.listen.lock();
+                    std::panic::resume_unwind(Box::new("poisoned by a test"));
+                })
+                .join();
+        });
+    }
+
     /// Serializes changes to the configuration files.
     fn writing(&self) -> Result<std::sync::MutexGuard<'_, ()>, SetupError> {
         self.writing.lock().map_err(|_| SetupError::Busy)
@@ -228,6 +242,8 @@ pub(crate) enum SetupError {
     InUse(String),
     #[error("a watched folder has no connection to listen on")]
     NothingToListen,
+    #[error("the connection test state is unavailable; restart the service")]
+    ListenState,
     #[error("the serial port settings cannot be used: {0}")]
     SerialSettings(String),
     #[error("{0}")]

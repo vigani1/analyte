@@ -22,6 +22,8 @@ struct Fixture {
     written: Arc<Mutex<Vec<u8>>>,
     /// What the fake serial port sends once after it is opened; `MARKER` by default.
     input: Arc<Mutex<Vec<u8>>>,
+    /// The server's state; weak, so shutdown never waits for the fixture.
+    state: std::sync::Weak<Context>,
 }
 
 /// A fake serial port: sends its input once, then only times out; records writes.
@@ -229,6 +231,7 @@ async fn start_program_with(
         setup,
         _released: released,
     });
+    let weak = Arc::downgrade(&state);
     let server = Server {
         listener: Listener {
             socket,
@@ -254,6 +257,7 @@ async fn start_program_with(
         _stop: stop,
         written,
         input,
+        state: weak,
     })
 }
 
@@ -1016,6 +1020,28 @@ async fn listen_test_shows_bytes_only_on_the_page() -> Result<(), Error> {
         .request::<_, FixtureError>(fixture_deadline()?, |s| Ok(s.parked(0)?.len()))
         .await?;
     assert_eq!(receipts, 0);
+    Ok(())
+}
+
+// Owner decision 2026-11-19 (visible failures); AGENTS.md "keep errors
+// specific": when the connection test state is poisoned by a panicked thread,
+// the test page says it is unavailable instead of "No test has been started".
+#[tokio::test(flavor = "multi_thread")]
+async fn poisoned_test_state_is_shown_as_unavailable() -> Result<(), Error> {
+    let fixture = start().await?;
+    fixture
+        .state
+        .upgrade()
+        .ok_or("server state gone")?
+        .setup
+        .poison_listen();
+    let page = fixture.get("/setup/listen").await?;
+    assert!(page.starts_with("HTTP/1.1 409"), "{page}");
+    assert!(
+        page.contains("the connection test state is unavailable; restart the service"),
+        "{page}"
+    );
+    assert!(!page.contains("No test has been started"), "{page}");
     Ok(())
 }
 
