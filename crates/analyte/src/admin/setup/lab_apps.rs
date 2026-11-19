@@ -17,7 +17,10 @@ use crate::admin::{
     view::{self, plain},
 };
 use crate::installation::{
-    config::{lab_apps as file, read},
+    config::{
+        lab_apps::{self as file, Conflict, Written},
+        read,
+    },
     credentials::{Locked, Secret, Stored},
     secrets,
 };
@@ -57,55 +60,59 @@ pub(super) struct Scan {
     program: String,
     pub(super) file: LabApps,
     pub(super) known: Vec<Known>,
-    /// One sentence per name written differently in two places.
-    conflicts: Vec<String>,
+    /// Where each name was first written, by the loader's rule.
+    written: Written<Place>,
+    /// Every name written differently in two places.
+    conflicts: Vec<Conflict<Place>>,
 }
 
-enum Place<'a> {
+/// Where the page found a lab app written.
+#[derive(Clone)]
+enum Place {
     File,
     Kept,
-    Site(&'a str),
+    /// The site file of this machine.
+    Site(String),
+}
+
+/// The page's sentence for a name written differently in two places; it names
+/// the place read later.
+fn conflict_sentence(conflict: &Conflict<Place>) -> String {
+    format!(
+        "Lab app {} has different settings in two places (one is {}). Analyte cannot start until they are the same.",
+        conflict.name.as_str(),
+        match &conflict.second {
+            Place::File => "this page".into(),
+            Place::Kept => "kept from a removed machine".into(),
+            Place::Site(id) => format!("machine {id}'s own settings"),
+        }
+    )
 }
 
 impl Scan {
-    fn note(&mut self, settings: &Destination, place: &Place<'_>) {
-        let known = match self
+    fn note(&mut self, settings: &Destination, place: Place) {
+        match self.written.note(settings, place.clone()) {
+            Ok(true) => self.known.push(Known {
+                settings: settings.clone(),
+                in_file: false,
+                kept: false,
+                sites: Vec::new(),
+                users: Vec::new(),
+            }),
+            Ok(false) => {}
+            Err(conflict) => self.conflicts.push(conflict),
+        }
+        let Some(known) = self
             .known
             .iter_mut()
             .find(|known| known.settings.name == settings.name)
-        {
-            Some(known) => {
-                if known.settings != *settings {
-                    self.conflicts.push(format!(
-                        "Lab app {} has different settings in two places (one is {}). Analyte cannot start until they are the same.",
-                        settings.name.as_str(),
-                        match place {
-                            Place::File => "this page".into(),
-                            Place::Kept => "kept from a removed machine".into(),
-                            Place::Site(id) => format!("machine {id}'s own settings"),
-                        }
-                    ));
-                }
-                known
-            }
-            None => {
-                self.known.push(Known {
-                    settings: settings.clone(),
-                    in_file: false,
-                    kept: false,
-                    sites: Vec::new(),
-                    users: Vec::new(),
-                });
-                let Some(known) = self.known.last_mut() else {
-                    return;
-                };
-                known
-            }
+        else {
+            return;
         };
         match place {
             Place::File => known.in_file = true,
             Place::Kept => known.kept = true,
-            Place::Site(id) => known.sites.push((*id).to_owned()),
+            Place::Site(id) => known.sites.push(id),
         }
     }
 
@@ -144,6 +151,29 @@ fn kept(program: &str) -> Result<Vec<Destination>, SetupError> {
     }
 }
 
+/// The lab app a site file's settings choose, read leniently for display: its
+/// own complete `[destination]`, else the one `lab_app` names, else none
+/// named (then the only lab app listed, if there is exactly one). The loader
+/// refuses what this lets through, such as both written.
+pub(super) enum SiteLabApp<'a> {
+    Own(Destination),
+    Named(&'a str),
+    Unnamed,
+}
+
+/// Reads which lab app the site file settings `site` choose.
+pub(super) fn site_lab_app(site: &toml::Table) -> SiteLabApp<'_> {
+    let own = site
+        .get("destination")
+        .cloned()
+        .and_then(|own| own.try_into::<Destination>().ok());
+    match (own, site.get("lab_app").and_then(toml::Value::as_str)) {
+        (Some(own), _) => SiteLabApp::Own(own),
+        (None, Some(name)) => SiteLabApp::Named(name),
+        (None, None) => SiteLabApp::Unnamed,
+    }
+}
+
 /// Reads the program file, `lab-apps.toml` and each machine's site file.
 pub(super) fn scan(config: &std::path::Path) -> Result<Scan, SetupError> {
     let (program, listed) = site::entries(config)?;
@@ -153,13 +183,14 @@ pub(super) fn scan(config: &std::path::Path) -> Result<Scan, SetupError> {
         program,
         file: lab_apps.clone(),
         known: Vec::new(),
+        written: Written::new(),
         conflicts: Vec::new(),
     };
     for settings in lab_apps.listed() {
-        scan.note(settings, &Place::File);
+        scan.note(settings, Place::File);
     }
     for settings in &kept {
-        scan.note(settings, &Place::Kept);
+        scan.note(settings, Place::Kept);
     }
     let base = site::folder(config);
     let mut by_default = Vec::new();
@@ -171,17 +202,14 @@ pub(super) fn scan(config: &std::path::Path) -> Result<Scan, SetupError> {
         else {
             continue;
         };
-        let own = table
-            .get("destination")
-            .cloned()
-            .and_then(|own| own.try_into::<Destination>().ok());
-        if let Some(own) = own {
-            scan.note(&own, &Place::Site(id));
-            scan.uses(own.name.as_str(), id);
-        } else if let Some(name) = table.get("lab_app").and_then(toml::Value::as_str) {
-            scan.uses(name, id);
-        } else if entry.definition.is_some() {
-            by_default.push(id.clone());
+        match site_lab_app(&table) {
+            SiteLabApp::Own(own) => {
+                scan.note(&own, Place::Site(id.clone()));
+                scan.uses(own.name.as_str(), id);
+            }
+            SiteLabApp::Named(name) => scan.uses(name, id),
+            SiteLabApp::Unnamed if entry.definition.is_some() => by_default.push(id.clone()),
+            SiteLabApp::Unnamed => {}
         }
     }
     if let [only] = lab_apps.listed() {
@@ -334,7 +362,7 @@ fn render_list(state: &Context, scan: &Scan, open: Option<&[(String, u64)]>) -> 
         html.push_fragment(
             &Markup::new()
                 .markup("<p class=\"notice bad\">")
-                .text(conflict)
+                .text(conflict_sentence(conflict))
                 .markup("</p>"),
         );
     }

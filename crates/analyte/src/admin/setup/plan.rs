@@ -4,7 +4,9 @@
 //! [`save_blocking`] writes, under the write lock. The connection test finds its
 //! target here too, refusing a port or address a running machine uses.
 use super::{
-    Definition, Running, SetupError, Shipped, definitions, lab_apps, listen, site, wizard,
+    Definition, Running, SetupError, Shipped, definitions,
+    lab_apps::{self, SiteLabApp},
+    listen, site, wizard,
 };
 use crate::admin::server::Context;
 use crate::installation::config::{Program, connections};
@@ -96,11 +98,11 @@ pub(super) fn current_lab_app(
     if let Some(running) = running {
         return Some(running.lab_app.as_str().to_owned());
     }
-    current_site
-        .get("lab_app")
-        .or_else(|| current_site.get("destination").and_then(|d| d.get("name")))
-        .and_then(toml::Value::as_str)
-        .map(str::to_owned)
+    match lab_apps::site_lab_app(current_site) {
+        SiteLabApp::Own(own) => Some(own.name.as_str().to_owned()),
+        SiteLabApp::Named(name) => Some(name.to_owned()),
+        SiteLabApp::Unnamed => None,
+    }
 }
 
 /// A setup step posted for the test or the save: the CSRF value and the

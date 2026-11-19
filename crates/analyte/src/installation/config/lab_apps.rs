@@ -33,10 +33,50 @@ impl LabApp {
     }
 }
 
-/// Where one set of lab app settings is written, for the conflict message.
-pub(super) struct Written {
-    settings: Destination,
-    place: String,
+/// One lab app name written with different settings in two places; which
+/// settings are meant is unknown, so it is never guessed.
+pub(crate) struct Conflict<P> {
+    pub(crate) name: Identifier,
+    /// Where the name was written first.
+    pub(crate) first: P,
+    /// Where it was written again with other settings.
+    pub(crate) second: P,
+}
+
+/// Each lab app name with the settings and place it was first written at. The
+/// same name may be written again only with identical settings.
+pub(crate) struct Written<P> {
+    first: Vec<(Destination, P)>,
+}
+
+impl<P: Clone> Written<P> {
+    pub(crate) const fn new() -> Self {
+        Self { first: Vec::new() }
+    }
+
+    /// Records `settings` written at `place`: true for a new name, false for
+    /// a name already written with identical settings.
+    /// # Errors
+    /// The conflict, when the name was written before with other settings;
+    /// the first settings stay.
+    pub(crate) fn note(&mut self, settings: &Destination, place: P) -> Result<bool, Conflict<P>> {
+        match self
+            .first
+            .iter()
+            .find(|(earlier, _)| earlier.name == settings.name)
+        {
+            Some((earlier, _)) if earlier == settings => Ok(false),
+            Some((_, first)) => Err(Conflict {
+                name: settings.name.clone(),
+                first: first.clone(),
+                second: place,
+            }),
+            None => {
+                self.first.push((settings.clone(), place));
+                Ok(true)
+            }
+        }
+    }
 }
 
 /// `lab-apps.toml` beside the program file `program`.
@@ -75,7 +115,7 @@ pub(super) fn validate(
         return Err(Error::TooManyRetiredDestinations);
     }
     let mut places = Places {
-        written: Vec::new(),
+        written: Written::new(),
         keys: Vec::new(),
     };
     for settings in listed.listed() {
@@ -148,7 +188,7 @@ fn refuse_clash<'a>(
 
 /// Every place a lab app is written and every key name, checked as each is added.
 pub(super) struct Places {
-    written: Vec<Written>,
+    written: Written<String>,
     keys: Vec<Identifier>,
 }
 
@@ -158,31 +198,24 @@ impl Places {
     /// Refuses the same name written with other settings elsewhere, naming both
     /// places, and a lab app or key name that clashes with one added before.
     pub(super) fn add(&mut self, settings: &Destination, place: String) -> Result<(), Error> {
-        if let Some(earlier) = self
-            .written
-            .iter()
-            .find(|earlier| earlier.settings.name == settings.name)
-        {
-            if earlier.settings != *settings {
-                return Err(Error::ConflictingLabApp {
-                    name: settings.name.as_str().into(),
-                    first: earlier.place.clone(),
-                    second: place,
-                });
-            }
+        let new =
+            self.written
+                .note(settings, place)
+                .map_err(|conflict| Error::ConflictingLabApp {
+                    name: conflict.name.as_str().into(),
+                    first: conflict.first,
+                    second: conflict.second,
+                })?;
+        if !new {
             return Ok(());
         }
+        // The new name is listed too; a name never clashes with itself.
         refuse_lab_app_clash(
-            self.written.iter().map(|earlier| &earlier.settings.name),
+            self.written.first.iter().map(|(earlier, _)| &earlier.name),
             &settings.name,
         )?;
         self.key(&settings.api_key_name)?;
-        self.key(&settings.signing_key_name)?;
-        self.written.push(Written {
-            settings: settings.clone(),
-            place,
-        });
-        Ok(())
+        self.key(&settings.signing_key_name)
     }
 
     /// Records a key name.
