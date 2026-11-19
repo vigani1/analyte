@@ -17,8 +17,6 @@ use std::{
 const FILE_LIMIT: u64 = 65_536;
 /// Most keys one file holds.
 const KEY_LIMIT: usize = 32;
-/// Longest accepted key value, matching the API key bound.
-const VALUE_LIMIT: usize = 4096;
 
 /// Why the locked credentials file could not be read or written; never holds a value.
 #[derive(Debug, thiserror::Error)]
@@ -69,14 +67,12 @@ fn io(operation: &'static str) -> impl FnOnce(std::io::Error) -> CredentialError
 pub struct Secret(String);
 
 impl Secret {
-    /// Accepts 1 to 4096 printable ASCII characters; the error names only `name`.
+    /// Accepts the API key bound, 1 to 4096 printable ASCII characters, which
+    /// every `whsec_` signing key also meets; the error names only `name`.
     /// # Errors
     /// Refuses empty, overlong or non-printable values.
     pub fn new(name: &Identifier, value: String) -> Result<Self, CredentialError> {
-        if value.is_empty()
-            || value.len() > VALUE_LIMIT
-            || !value.bytes().all(|b| (32..=126).contains(&b))
-        {
+        if !analyte_contract::api_key_valid(&value) {
             return Err(CredentialError::InvalidValue(name.as_str().into()));
         }
         Ok(Self(value))

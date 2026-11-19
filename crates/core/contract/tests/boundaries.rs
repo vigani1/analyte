@@ -27,6 +27,17 @@ fn text_and_document_byte_ceilings_are_inclusive() -> TestResult {
     assert!(matches!(decode::<u8>(&bytes), Err(DocumentError::TooLarge)));
     Ok(())
 }
+// App contract v1 "HTTP and authentication": the bearer key is 1 to 4096
+// printable ASCII characters; a TAB or other control character is refused.
+#[test]
+fn api_key_is_bounded_printable_ascii() {
+    for accepted in ["k", "key with space", "~!", &"x".repeat(4096)] {
+        assert!(api_key_valid(accepted), "{accepted:?}");
+    }
+    for refused in ["", "a\tb", "a\nb", "a\u{7f}", "\u{e9}", &"x".repeat(4097)] {
+        assert!(!api_key_valid(refused), "{refused:?}");
+    }
+}
 // App contract v1 (ADR 0008); Safety rule 4 (ADR 0003)
 #[test]
 fn envelope_ids_times_and_digests_validate_independently() -> TestResult {

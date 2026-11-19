@@ -20,7 +20,9 @@ pub enum SignatureError {
     Mismatch,
 }
 /// Whether an API key value meets the contract's bearer bound: 1 to 4096
-/// printable ASCII characters.
+/// printable ASCII characters, space through `~`. A TAB or any other control
+/// character is refused (contract v1 "HTTP and authentication"). Analyte, its
+/// sink and the contract checker all use this one rule.
 #[must_use]
 pub fn api_key_valid(value: &str) -> bool {
     !value.is_empty() && value.len() <= 4096 && value.bytes().all(|b| (32..=126).contains(&b))

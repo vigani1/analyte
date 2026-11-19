@@ -95,11 +95,7 @@ impl Settings {
         if !base.path().ends_with('/') {
             base.set_path(&format!("{}/", base.path()));
         }
-        if api_key.is_empty()
-            || api_key.len() > 4096
-            || !api_key.bytes().all(|b| b.is_ascii_graphic() || b == b' ')
-            || reqwest::header::HeaderValue::from_str(&format!("Bearer {api_key}")).is_err()
-        {
+        if !analyte_contract::api_key_valid(&api_key) {
             return Err(Error::Key);
         }
         let parsed = SigningSecret::parse(&secret).map_err(|_| Error::Secret)?;
@@ -218,6 +214,27 @@ mod tests {
             ]));
             assert!(matches!(settings, Err(Error::Timeout)));
         }
+    }
+
+    // Contract v1 "HTTP and authentication": the key is 1 to 4096 printable ASCII
+    // characters, the same rule Analyte's sink applies; a TAB is refused.
+    #[test]
+    fn key_follows_the_shared_bearer_rule() {
+        let key = |value: &str| {
+            Settings::from_lookup(lookup(&[
+                (URL_NAME, "http://127.0.0.1:1"),
+                (KEY_NAME, value),
+                (SECRET_NAME, SECRET),
+            ]))
+        };
+        for refused in ["", "a\tb", "a\nb", "\u{e9}"] {
+            assert!(matches!(key(refused), Err(Error::Key)), "{refused:?}");
+        }
+        assert!(matches!(key(&"x".repeat(4097)), Err(Error::Key)));
+        for accepted in ["a b", "k=v~"] {
+            assert!(key(accepted).is_ok(), "{accepted:?}");
+        }
+        assert!(key(&"x".repeat(4096)).is_ok());
     }
 
     // Contract v1 "HTTP and authentication": credentials never on the command line

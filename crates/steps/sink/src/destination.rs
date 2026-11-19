@@ -125,13 +125,9 @@ impl Destination {
         source: &dyn SecretsSource,
     ) -> Result<Credentials, DestinationError> {
         let credentials = source.credentials(&self.secrets)?;
-        if credentials.api_key.is_empty()
-            || credentials.api_key.len() > 4096
-            || !credentials.api_key.is_ascii()
+        if !analyte_contract::api_key_valid(&credentials.api_key)
             || credentials.signing_secrets.is_empty()
             || credentials.signing_secrets.len() > 8
-            || reqwest::header::HeaderValue::from_str(&format!("Bearer {}", credentials.api_key))
-                .is_err()
         {
             return Err(DestinationError::Secrets);
         }
