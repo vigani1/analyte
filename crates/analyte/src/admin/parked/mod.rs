@@ -735,3 +735,124 @@ async fn open_count(state: &Context) -> Option<u64> {
         .ok()
         .map(|counts| counts.open)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use analyte_model::{Reason, TextError};
+
+    fn parked(kind: &str, targets: &[&str]) -> Result<Parked, TextError> {
+        Ok(Parked {
+            kind: Identifier::new(kind)?,
+            reason: Reason::new("synthetic")?,
+            targets: targets
+                .iter()
+                .map(|t| Identifier::new(t))
+                .collect::<Result<_, _>>()?,
+        })
+    }
+
+    fn audit(action: &str, targets: &[&str], time: i64) -> Result<Audit, TextError> {
+        Ok(Audit {
+            actor: Identifier::new("admin-session-1")?,
+            action: Identifier::new(action)?,
+            targets: targets
+                .iter()
+                .map(|t| Identifier::new(t))
+                .collect::<Result<_, _>>()?,
+            time,
+            reason: Reason::new("mapping repaired")?,
+        })
+    }
+
+    // Owner request 2026-11-19 (Needs review item 3): Send again appears only
+    // when the rejected delivery's target is a delivery ID; Mark resolved stays.
+    #[test]
+    fn send_again_needs_a_delivery_id() -> Result<(), TextError> {
+        let labels = |item: &Parked| -> Vec<&'static str> {
+            actions(7, item, Action::SendAgain, Size::Full)
+                .iter()
+                .map(|b| b.label)
+                .collect()
+        };
+        let delivery = uuid::Uuid::now_v7().to_string();
+        assert_eq!(
+            labels(&parked("parked", &[&delivery])?),
+            ["Send again", "Mark resolved"]
+        );
+        assert_eq!(labels(&parked("parked", &["order-9"])?), ["Mark resolved"]);
+        Ok(())
+    }
+
+    // Owner decision 2026-11-19 (admin restyle b1): an item without a linked
+    // record says so, and a resolution that cannot be read says so on the list
+    // and in the history instead of showing raw JSON.
+    #[test]
+    fn missing_links_and_unreadable_resolutions_say_so() -> Result<(), TextError> {
+        let now = Timestamp::UNIX_EPOCH;
+        let none = linked_pairs(&[], now);
+        assert_eq!(none.len(), 1);
+        assert_eq!(none[0].value.plain(), "None recorded");
+        assert_eq!(
+            settled_line(Some("resolved"), now).plain(),
+            "Resolved; how it was resolved could not be read"
+        );
+        let read = ItemRead {
+            id: 7,
+            parked: parked("conflict", &[])?,
+            resolution: Some("resolved".into()),
+            counts: ParkedCounts::default(),
+            after: 0,
+            first: None,
+            linked: Vec::new(),
+            reprocessed: (Vec::new(), false),
+        };
+        let lines = history(&read, resolution(read.resolution.as_deref()).as_ref(), now);
+        assert_eq!(lines.len(), 1);
+        assert!(lines[0].good && lines[0].when.is_none());
+        assert!(support(&read, None).contains(&"Resolution as stored: resolved".to_owned()));
+        Ok(())
+    }
+
+    // Owner decision 2026-11-19 (admin restyle b1): a reprocess that settled
+    // the item is stored both as its resolution and in the audit trail; the
+    // history shows it once, as the settling line.
+    #[test]
+    fn a_settling_reprocess_is_one_history_line() -> Result<(), Box<dyn std::error::Error>> {
+        let targets = ["r", "interpretation:r:2", "reprocess:succeeded", "parked:7"];
+        let failed = audit(
+            "receipt-reprocess",
+            &["r", "interpretation:r:1", "reprocess:parked", "parked:7"],
+            10,
+        )?;
+        let settling = audit("receipt-reprocess", &targets, 20)?;
+        let stored = serde_json::to_string(&audit("receipt-reprocess", &targets, 20)?)?;
+        let read = ItemRead {
+            id: 7,
+            parked: parked("mapping_finding", &["r"])?,
+            resolution: Some(stored),
+            counts: ParkedCounts::default(),
+            after: 0,
+            first: None,
+            linked: Vec::new(),
+            reprocessed: (vec![failed, settling], false),
+        };
+        let lines = history(
+            &read,
+            resolution(read.resolution.as_deref()).as_ref(),
+            Timestamp::UNIX_EPOCH,
+        );
+        let shown: Vec<(&str, bool)> = lines.iter().map(|l| (l.text.as_str(), l.good)).collect();
+        assert_eq!(
+            shown,
+            [
+                (
+                    "Processed again: reading 1 recorded; it still needs review",
+                    false
+                ),
+                ("Processed again: reading 2 recorded", true)
+            ]
+        );
+        Ok(())
+    }
+}
