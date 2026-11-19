@@ -73,6 +73,8 @@ impl Section {
 pub(super) enum Fix {
     Page(Tab),
     Section(Section),
+    /// The Lab app page under Setup, where each lab app's address and keys are set.
+    LabApps,
 }
 
 impl Fix {
@@ -80,6 +82,7 @@ impl Fix {
         match self {
             Self::Page(tab) => tab.href(),
             Self::Section(section) => section.href(),
+            Self::LabApps => crate::admin::setup::LAB_APPS,
         }
     }
 
@@ -87,6 +90,7 @@ impl Fix {
         match self {
             Self::Page(tab) => tab.label(),
             Self::Section(section) => section.label(),
+            Self::LabApps => "Lab apps",
         }
     }
 }
@@ -144,7 +148,7 @@ pub(super) fn things(facts: &Facts) -> Vec<Thing> {
                 "Sending to lab app {} is paused: {waiting} waiting",
                 destination.as_str()
             ),
-            Fix::Page(Tab::Deliveries),
+            Fix::LabApps,
         ));
     }
     for machine in &facts.stopped {
@@ -244,7 +248,7 @@ fn from_alert(alert: &AlertState) -> Thing {
 fn blocked(destination: &Identifier, reason: Undeliverable, waiting: Option<u64>) -> Thing {
     let why = match reason {
         Undeliverable::CredentialsMissing => "keys missing",
-        Undeliverable::NotConfigured => "no machine uses it",
+        Undeliverable::NotConfigured => "not set up any more",
     };
     let waiting = waiting.map_or_else(String::new, |count| format!(", {count} waiting"));
     Thing::new(
@@ -253,7 +257,7 @@ fn blocked(destination: &Identifier, reason: Undeliverable, waiting: Option<u64>
             "Cannot send to lab app {}: {why}{waiting}",
             destination.as_str()
         ),
-        Fix::Page(Tab::Setup),
+        Fix::LabApps,
     )
 }
 
@@ -410,7 +414,7 @@ mod tests {
                     ..Facts::default()
                 },
                 "Sending to lab app demo is paused: 4 waiting",
-                "/deliveries",
+                "/setup/lab-apps",
             ),
             (
                 Facts {
@@ -418,15 +422,15 @@ mod tests {
                     ..Facts::default()
                 },
                 "Cannot send to lab app x: keys missing, 3 waiting",
-                "/setup",
+                "/setup/lab-apps",
             ),
             (
                 Facts {
                     blocked: vec![(id("old"), Undeliverable::NotConfigured, 1)],
                     ..Facts::default()
                 },
-                "Cannot send to lab app old: no machine uses it, 1 waiting",
-                "/setup",
+                "Cannot send to lab app old: not set up any more, 1 waiting",
+                "/setup/lab-apps",
             ),
             (
                 Facts {
@@ -520,7 +524,7 @@ mod tests {
                     Some(4),
                 ),
                 "Cannot send to lab app demo: keys missing, 4 waiting",
-                "/setup",
+                "/setup/lab-apps",
             ),
         ];
         for (alert, text, href) in cases {
@@ -564,7 +568,7 @@ mod tests {
                 "Disk almost full: Analyte refuses new data from machines",
                 "Cannot send to lab app demo: keys missing, 4 waiting",
                 "2 items need review",
-                "Cannot send to lab app demo: no machine uses it, 4 waiting",
+                "Cannot send to lab app demo: not set up any more, 4 waiting",
             ]
         );
     }
@@ -593,5 +597,38 @@ mod tests {
             ..Facts::default()
         }));
         assert!(one.contains("1 thing needs you"));
+    }
+
+    // Owner request 2026-11-19 (after #260): every line about a lab app (keys
+    // missing, sending paused, not set up any more) links to the Lab app page,
+    // where its address and keys are set, under its own name.
+    #[test]
+    fn lab_app_lines_link_to_the_lab_app_page() {
+        let facts = Facts {
+            paused: vec![(id("demo"), 4)],
+            blocked: vec![
+                (id("x"), Undeliverable::CredentialsMissing, 3),
+                (id("old"), Undeliverable::NotConfigured, 1),
+            ],
+            alerts: vec![alert(
+                AlertKey::UndeliverableDestination(id("y"), Undeliverable::CredentialsMissing),
+                Some(2),
+            )],
+            ..Facts::default()
+        };
+        let list = things(&facts);
+        assert_eq!(list.len(), 4);
+        for thing in &list {
+            assert_eq!(thing.fix, Fix::LabApps, "{}", thing.text);
+        }
+        let html = status(&list);
+        assert_eq!(
+            html.matches("<a href=\"/setup/lab-apps\">Lab apps</a>")
+                .count(),
+            4,
+            "{}",
+            &*html
+        );
+        assert!(!html.contains("<a href=\"/setup\">"));
     }
 }
