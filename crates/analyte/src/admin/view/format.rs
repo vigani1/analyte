@@ -974,8 +974,8 @@ const CANCEL_REASONS: [Fixed; 1] = [(
     CANCEL_CONFLICT_REASON,
     "Machine’s cancel answers disagree",
     concat!(
-        "The machine answered that it could not cancel a test it had earlier reported as ",
-        "cancelled on its own; Analyte sends the machine nothing more about it.",
+        "The machine answered that it could not cancel a test that it had earlier reported ",
+        "as cancelled on its own.",
     ),
 )];
 
@@ -983,9 +983,8 @@ const POLL_REASONS: [Fixed; 1] = [(
     autolyser::POLL_REASON,
     "Request for results not settled",
     concat!(
-        "Analyte asked this machine for its next results, and the machine may already count ",
-        "them as sent; until the answer is safely stored, or someone checks the machine, ",
-        "Analyte asks it for nothing more.",
+        "Analyte asked this machine for its next results, and the machine may count them as ",
+        "sent before their answer was safely stored.",
     ),
 )];
 
@@ -1937,9 +1936,8 @@ mod tests {
             CANCEL_CONFLICT_REASON,
             "Machine’s cancel answers disagree",
             concat!(
-                "The machine answered that it could not cancel a test it had earlier ",
-                "reported as cancelled on its own; Analyte sends the machine nothing more ",
-                "about it.",
+                "The machine answered that it could not cancel a test that it had earlier ",
+                "reported as cancelled on its own.",
             ),
         ),
         (
@@ -1947,9 +1945,8 @@ mod tests {
             autolyser::POLL_REASON,
             "Request for results not settled",
             concat!(
-                "Analyte asked this machine for its next results, and the machine may ",
-                "already count them as sent; until the answer is safely stored, or someone ",
-                "checks the machine, Analyte asks it for nothing more.",
+                "Analyte asked this machine for its next results, and the machine may count ",
+                "them as sent before their answer was safely stored.",
             ),
         ),
     ];

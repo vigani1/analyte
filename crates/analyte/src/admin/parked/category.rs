@@ -188,7 +188,7 @@ const fn guidance(kind: ParkedKind, problem: Option<&Problem>) -> &'static str {
             "and have the machine send the results again, then use Process again here.",
         ),
         ParkedKind::DeliveryRejected => {
-            "Fix the problem the lab app reported (see Reason), then use Send again."
+            "Settle the problem described above with the lab app team, then use Send again."
         }
         ParkedKind::DeliveryConflict => concat!(
             "The lab app already holds different content for this delivery; Analyte does ",

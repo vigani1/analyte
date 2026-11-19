@@ -250,7 +250,7 @@ const STEPS: [(&str, Button); 10] = [
         Button::Process,
     ),
     (
-        "Fix the problem the lab app reported (see Reason), then use Send again.",
+        "Settle the problem described above with the lab app team, then use Send again.",
         Button::Send,
     ),
     (
