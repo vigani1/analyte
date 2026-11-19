@@ -38,20 +38,6 @@ struct Settings<'a> {
     orders: &'a analyte_config::LawOrders,
     options: Options,
 }
-impl<'a> Settings<'a> {
-    fn new(
-        stack: &'a analyte_config::LawStack,
-        orders: &'a analyte_config::LawOrders,
-        site: &analyte_config::Site,
-    ) -> Self {
-        let options = crate::machine::law::settings::options(stack, site);
-        Self {
-            stack,
-            orders,
-            options,
-        }
-    }
-}
 
 struct Exchange {
     records: Vec<MachineOrder>,
@@ -124,19 +110,7 @@ impl LawOrderLink {
             }
         };
         let policy = stack.policy();
-        let supported = match query.scope() {
-            law::Scope::Container(_) => policy
-                .query_forms()
-                .contains(&analyte_config::LawQueryForm::Container),
-            law::Scope::AllPending => policy
-                .query_forms()
-                .contains(&analyte_config::LawQueryForm::AllPending),
-            law::Scope::Rack { .. }
-            | law::Scope::Tray { .. }
-            | law::Scope::Isolate { .. }
-            | law::Scope::InformationalRack { .. } => false,
-        };
-        if !supported {
+        if !supported(policy, query.scope()) {
             intake::failed_reading(
                 store,
                 machine,
@@ -185,7 +159,11 @@ impl LawOrderLink {
         let until = started
             .checked_add(Duration::from_millis(u64::from(policy.query_deadline_ms())))
             .ok_or(Error::QueryDeadlineOverflow)?;
-        let settings = Settings::new(stack, orders, site);
+        let settings = Settings {
+            stack,
+            orders,
+            options,
+        };
         match self
             .prepare(store, machine, settings, query, receipt, until)
             .await
@@ -424,6 +402,22 @@ fn reply(
             .clone(),
         ))
     })
+}
+
+/// True when the configured LAW policy answers this query form.
+fn supported(policy: &analyte_config::LawPolicy, scope: law::Scope<'_>) -> bool {
+    match scope {
+        law::Scope::Container(_) => policy
+            .query_forms()
+            .contains(&analyte_config::LawQueryForm::Container),
+        law::Scope::AllPending => policy
+            .query_forms()
+            .contains(&analyte_config::LawQueryForm::AllPending),
+        law::Scope::Rack { .. }
+        | law::Scope::Tray { .. }
+        | law::Scope::Isolate { .. }
+        | law::Scope::InformationalRack { .. } => false,
+    }
 }
 
 fn reject_query(message: &Message, error: &law::Failure, options: Options) -> Result<Reply, Error> {
