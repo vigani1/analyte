@@ -76,6 +76,16 @@ pub enum Device {
     UsbSerial(String),
 }
 
+impl Device {
+    /// The configured text: the port name or the USB serial number.
+    #[must_use]
+    pub fn text(&self) -> &str {
+        match self {
+            Self::Named(text) | Self::UsbSerial(text) => text,
+        }
+    }
+}
+
 /// Keeps the serial library's error with its portable kind; a missing device is `NotFound`.
 fn io_error(source: serialport::Error) -> io::Error {
     io::Error::new(
@@ -175,7 +185,7 @@ impl Settings {
         flow: FlowControl,
         timeout: Duration,
     ) -> Result<Self, Error> {
-        let (Device::Named(text) | Device::UsbSerial(text)) = &device;
+        let text = device.text();
         if text.is_empty()
             || text.len() > 1024
             || text.contains('\0')

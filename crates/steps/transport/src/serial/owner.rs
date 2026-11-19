@@ -48,9 +48,7 @@ where
             .join()
             .map_err(|_| Error::Io {
                 operation: "join serial owner",
-                endpoint: match &settings.device {
-                    Device::Named(text) | Device::UsbSerial(text) => text.clone(),
-                },
+                endpoint: settings.device.text().to_owned(),
                 source: io::Error::other("serial owner thread panicked"),
             })?
     })
