@@ -30,11 +30,14 @@ nothing was converted.
 - Fetched with `gh release download "@ibm/plex-mono@2.5.0" -R IBM/plex -p ibm-plex-mono.zip`;
   the files below were extracted unchanged from
   `ibm-plex-mono/fonts/complete/woff2/` and `ibm-plex-mono/LICENSE.txt`
-  (shipped as `OFL-IBMPlexMono.txt`).
+  (shipped as `OFL-IBMPlexMono.txt`). The licence is published with CRLF line
+  endings; it is shipped with LF endings, because the repository refuses CR,
+  and its text is otherwise unchanged (published SHA-256
+  `7e6b2818edbd8f6a01ae80641cc8f16a51080d08fb4e532be3a0b6f74adb07da`).
 
 | File | SHA-256 |
 | --- | --- |
 | IBMPlexMono-Regular.woff2 | `ba204497f16b6d334cee9d1e963a831b73e3a56e1d6300a8489d18df7214b350` |
 | IBMPlexMono-Medium.woff2 | `33faf307fa6031fb4062276d7320a6d632de890cbb347576fd80cfa01077bc25` |
 | IBMPlexMono-SemiBold.woff2 | `6a825b4824c01cbb401e829e5a066a1818411bcb3538b5a5792c5ca9b82343c3` |
-| OFL-IBMPlexMono.txt | `7e6b2818edbd8f6a01ae80641cc8f16a51080d08fb4e532be3a0b6f74adb07da` |
+| OFL-IBMPlexMono.txt | `37784b44044a4ffd9256702b7c0982c37e5c8887ba90c6dca0479aea93dc898d` |
