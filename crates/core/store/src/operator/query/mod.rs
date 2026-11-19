@@ -345,6 +345,49 @@ impl Store {
     }
 }
 
+/// When each lab app last accepted a delivery, as far as the store still knows.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct LastDelivered {
+    /// Each destination with at least one accepted delivery still stored, and
+    /// the Unix second of its latest accepted attempt.
+    pub at: Vec<(Identifier, i64)>,
+    /// Data keeping has purged delivered items, so a destination missing from
+    /// `at` may still have delivered before: the purged records keep no
+    /// destination. False means a missing destination never delivered.
+    pub purged: bool,
+}
+
+impl Store {
+    /// Reads, in one query, the latest accepted ("done") attempt time per
+    /// destination, results and order messages alike; read-only.
+    /// # Errors
+    /// Reports database errors or a stored destination that is not an identifier.
+    pub fn last_delivered(&self) -> Result<LastDelivered, Error> {
+        let done = crate::document(&crate::Attempt::Done)?;
+        let mut statement = self.db.prepare(
+            "SELECT o.destination,max(a.time) FROM attempts a JOIN outbox o ON o.id=a.delivery WHERE a.outcome=?1 GROUP BY o.destination ORDER BY o.destination",
+        )?;
+        let at = statement
+            .query_map([done], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })?
+            .map(|row| {
+                let (destination, time) = row?;
+                Ok((
+                    Identifier::new(&destination).map_err(|_| Error::Corruption)?,
+                    time,
+                ))
+            })
+            .collect::<Result<Vec<_>, Error>>()?;
+        let purged = self.db.query_row(
+            "SELECT EXISTS(SELECT 1 FROM retention_deliveries) OR EXISTS(SELECT 1 FROM retention_order_deliveries)",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(LastDelivered { at, purged })
+    }
+}
+
 impl Store {
     /// Lists receipt metadata in a bounded page ordered by stored UUID representation.
     /// Pass the previous page's final receipt UUID serialized as JSON as `after`, or

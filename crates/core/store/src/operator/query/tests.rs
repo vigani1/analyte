@@ -470,3 +470,74 @@ fn seed_machine_work(
     )?;
     Ok(parked.len().saturating_add(1))
 }
+
+/// Queues one order message for `destination` at `now` and records `outcome` for it.
+fn attempt(
+    store: &mut Store,
+    destination: &Identifier,
+    order: &str,
+    outcome: &Attempt,
+    now: i64,
+) -> TestResult {
+    let event = OrderEventDelivery {
+        id: DeliveryId::try_from(uuid::Uuid::now_v7())?,
+        destination: destination.clone(),
+        order_id: Identifier::new(order)?,
+        payload: b"event".to_vec(),
+        contract_version: 1,
+    };
+    store.enqueue_order_event(&event, now)?;
+    let claim = store
+        .claim_destination(now, destination)?
+        .ok_or(DeliveryError::Corruption)?;
+    store.attempted(claim.id, outcome, now)?;
+    Ok(())
+}
+
+// Owner request 2026-11-19 (overview restyle): "Last delivered" is the latest
+// accepted attempt per lab app; retries, refusals and other lab apps do not count,
+// and an empty store says nothing was delivered.
+#[test]
+fn last_delivered_is_the_latest_accepted_attempt_per_destination() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("store.db"))?;
+    assert_eq!(store.last_delivered()?, LastDelivered::default());
+    let main = Identifier::new("main-lab")?;
+    let other = Identifier::new("outpatient")?;
+    attempt(&mut store, &main, "order-a", &Attempt::Done, 100)?;
+    attempt(&mut store, &main, "order-b", &Attempt::Done, 250)?;
+    attempt(&mut store, &main, "order-c", &Attempt::RetryAt(900), 400)?;
+    attempt(
+        &mut store,
+        &other,
+        "order-d",
+        &Attempt::Parked(Reason::new("refused")?),
+        300,
+    )?;
+    let delivered = store.last_delivered()?;
+    assert_eq!(delivered.at, vec![(main.clone(), 250)]);
+    assert!(!delivered.purged);
+    attempt(&mut store, &other, "order-e", &Attempt::Done, 320)?;
+    assert_eq!(store.last_delivered()?.at, vec![(main, 250), (other, 320)]);
+    Ok(())
+}
+
+// ADR 0013: data keeping removes delivered attempts and keeps no destination,
+// so the query says older deliveries may exist instead of "never delivered".
+#[test]
+fn last_delivered_says_when_data_keeping_purged_deliveries() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let store = open(&temp.path().join("store.db"))?;
+    store.db.execute(
+        "INSERT INTO retention_orders VALUES (1,zeroblob(32),'m',zeroblob(32),NULL,NULL,1,2,3)",
+        [],
+    )?;
+    store.db.execute(
+        "INSERT INTO retention_order_deliveries VALUES ('purged',1,2)",
+        [],
+    )?;
+    let delivered = store.last_delivered()?;
+    assert!(delivered.at.is_empty());
+    assert!(delivered.purged);
+    Ok(())
+}
