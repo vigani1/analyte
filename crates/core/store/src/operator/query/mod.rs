@@ -328,6 +328,18 @@ impl Store {
         after: i64,
         filter: ParkedFilter,
     ) -> Result<Vec<ParkedItem>, Error> {
+        self.parked_filtered_up_to(after, filter, self.limits.page_rows)
+    }
+
+    /// Like [`Store::parked_filtered`], with at most `limit` items.
+    /// # Errors
+    /// Reports database failures.
+    pub fn parked_filtered_up_to(
+        &self,
+        after: i64,
+        filter: ParkedFilter,
+        limit: usize,
+    ) -> Result<Vec<ParkedItem>, Error> {
         let mut stmt = self.db.prepare(
             "SELECT id,evidence,resolution FROM parked WHERE id>?1 AND (resolution IS NULL)=?2 ORDER BY id LIMIT ?3",
         )?;
@@ -336,7 +348,7 @@ impl Store {
                 params![
                     after,
                     filter == ParkedFilter::Open,
-                    i64::try_from(self.limits.page_rows)
+                    i64::try_from(limit.min(self.limits.page_rows))
                         .map_err(|_| Error::InvalidOperatorInput)?
                 ],
                 |r| {
@@ -483,18 +495,46 @@ pub struct LastDelivered {
     pub purged: bool,
 }
 
+/// Every lab app with a stored delivery, as `lab(destination)` in name order,
+/// ending with one NULL row. Each step is one index lookup, so the cost grows
+/// with the number of lab apps, not deliveries.
+macro_rules! lab_apps {
+    () => {
+        concat!(
+            "WITH RECURSIVE lab(destination) AS (SELECT (SELECT min(destination) FROM outbox) ",
+            "UNION ALL SELECT (SELECT min(destination) FROM outbox WHERE destination>lab.destination) ",
+            "FROM lab WHERE lab.destination IS NOT NULL) "
+        )
+    };
+}
+
+/// Every delivery state but Done. A delivery in Done holds no attempt after
+/// its own latest accepted one, since every attempt moves a delivery out of
+/// Done unless it is itself accepted; so a try after a lab app's last accepted
+/// delivery always belongs to a delivery in one of these.
+const NOT_DONE: [DeliveryState; 5] = [
+    DeliveryState::Pending,
+    DeliveryState::InFlight,
+    DeliveryState::Parked,
+    DeliveryState::Paused,
+    DeliveryState::Conflict,
+];
+
 impl Store {
     /// Reads, in one query, the latest accepted ("done") attempt time per
-    /// destination, results and order messages alike; read-only.
+    /// destination, results and order messages alike; read-only. Each lab
+    /// app's time is one index lookup of its deliveries' `delivered_at`, which
+    /// the store keeps as the latest time of each delivery's accepted attempts.
     /// # Errors
     /// Reports database errors or a stored destination that is not an identifier.
     pub fn last_delivered(&self) -> Result<LastDelivered, Error> {
-        let done = crate::document(&crate::Attempt::Done)?;
-        let mut statement = self.db.prepare(
-            "SELECT o.destination,max(a.time) FROM attempts a JOIN outbox o ON o.id=a.delivery WHERE a.outcome=?1 GROUP BY o.destination ORDER BY o.destination",
-        )?;
+        let mut statement = self.db.prepare(concat!(
+            lab_apps!(),
+            "SELECT destination,(SELECT max(o.delivered_at) FROM outbox o WHERE o.destination=lab.destination) AS at ",
+            "FROM lab WHERE at IS NOT NULL ORDER BY destination"
+        ))?;
         let at = statement
-            .query_map([done], |row| {
+            .query_map([], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
             })?
             .map(|row| {
@@ -540,28 +580,39 @@ impl Store {
     /// Reads every lab app whose deliveries keep failing, by the rule on
     /// [`FailingDestination`], ordered by name; read-only. Attempts are
     /// ordered by their stored sequence, so a failure and a success in the same
-    /// second keep their real order.
+    /// second keep their real order. Only lab apps with items waiting are
+    /// read, and for each only the tries of its deliveries not in Done that
+    /// come after its last accepted attempt (`delivered_attempt`, see
+    /// [`NOT_DONE`]), so the cost follows what is waiting, not what was kept.
     /// # Errors
     /// Reports database errors, a stored destination that is not an
     /// identifier, or a negative count.
     pub fn failing_destinations(&self) -> Result<Vec<FailingDestination>, Error> {
-        let done = crate::document(&crate::Attempt::Done)?;
         let mut statement = self.db.prepare(concat!(
-            "WITH done AS (SELECT o.destination AS destination,max(a.sequence) AS last ",
-            "FROM attempts a JOIN outbox o ON o.id=a.delivery WHERE a.outcome=?1 ",
-            "GROUP BY o.destination) ",
-            "SELECT o.destination,min(a.time),max(a.time),count(*),",
-            "(SELECT min(p.next_attempt) FROM outbox p WHERE p.destination=o.destination AND p.state=?2) ",
-            "FROM attempts a JOIN outbox o ON o.id=a.delivery ",
-            "LEFT JOIN done d ON d.destination=o.destination ",
-            "WHERE json_type(a.outcome,'$.RetryAt')='integer' AND a.sequence>coalesce(d.last,0) ",
-            "GROUP BY o.destination ",
-            "HAVING EXISTS(SELECT 1 FROM outbox w WHERE w.destination=o.destination AND w.state IN (?2,?3)) ",
-            "ORDER BY o.destination",
+            lab_apps!(),
+            ", waiting(destination, accepted) AS (SELECT lab.destination,",
+            "(SELECT max(o.delivered_attempt) FROM outbox o WHERE o.destination=lab.destination) ",
+            "FROM lab WHERE lab.destination IS NOT NULL ",
+            "AND EXISTS(SELECT 1 FROM outbox w WHERE w.destination=lab.destination AND w.state IN (?1,?2))) ",
+            "SELECT w.destination,min(a.time),max(a.time),count(*),",
+            "(SELECT min(p.next_attempt) FROM outbox p WHERE p.destination=w.destination AND p.state=?1) ",
+            "FROM waiting w CROSS JOIN outbox o CROSS JOIN attempts a ",
+            "WHERE o.destination=w.destination AND o.state IN (?3,?4,?5,?6,?7) AND a.delivery=o.id ",
+            "AND a.sequence>coalesce(w.accepted,0) AND json_type(a.outcome,'$.RetryAt')='integer' ",
+            "GROUP BY w.destination ORDER BY w.destination",
         ))?;
+        let [pending, in_flight, parked, paused, conflict] = NOT_DONE;
         statement
             .query_map(
-                params![done, DeliveryState::Pending, DeliveryState::InFlight],
+                params![
+                    DeliveryState::Pending,
+                    DeliveryState::InFlight,
+                    pending,
+                    in_flight,
+                    parked,
+                    paused,
+                    conflict
+                ],
                 |row| {
                     Ok((
                         row.get::<_, String>(0)?,
@@ -605,6 +656,41 @@ impl Store {
         )?;
         rows.map(|row| serde_json::from_str(&row?).map_err(Error::from))
             .collect()
+    }
+
+    /// When the latest stored message from each of `machines` was received, for
+    /// those with any, in the order given; read-only. Each machine costs one
+    /// index lookup: its messages in the latest received second (and any whose
+    /// time SQLite cannot read, which sort apart) are compared in full, so
+    /// fractions of a second decide as they would over every message.
+    /// # Errors
+    /// Reports database errors or a received time that is not a timestamp.
+    pub fn newest_receipts(
+        &self,
+        machines: &[Identifier],
+    ) -> Result<Vec<(Identifier, jiff::Timestamp)>, Error> {
+        let mut statement = self.db.prepare(concat!(
+            "SELECT json_extract(metadata,'$.received_at') FROM receipts ",
+            "WHERE json_extract(metadata,'$.machine')=?1 AND unixepoch(json_extract(metadata,'$.received_at'))=",
+            "(SELECT max(unixepoch(json_extract(metadata,'$.received_at'))) FROM receipts WHERE json_extract(metadata,'$.machine')=?1) ",
+            "UNION ALL SELECT json_extract(metadata,'$.received_at') FROM receipts ",
+            "WHERE json_extract(metadata,'$.machine')=?1 AND unixepoch(json_extract(metadata,'$.received_at')) IS NULL"
+        ))?;
+        let mut newest = Vec::new();
+        for machine in machines {
+            let mut latest: Option<jiff::Timestamp> = None;
+            for received in
+                statement.query_map([machine.as_str()], |row| row.get::<_, String>(0))?
+            {
+                let received: jiff::Timestamp =
+                    serde_json::from_value(serde_json::Value::String(received?))?;
+                latest = latest.max(Some(received));
+            }
+            if let Some(latest) = latest {
+                newest.push((machine.clone(), latest));
+            }
+        }
+        Ok(newest)
     }
 
     /// The newest stored messages from `machine`, newest first in store order: at

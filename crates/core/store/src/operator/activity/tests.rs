@@ -243,6 +243,187 @@ fn activity_filters_pages_and_counts_a_day() -> TestResult {
     Ok(())
 }
 
+/// Every line as schema 16 read it: all sources combined, then sorted. Kept
+/// here as the reference the indexed reads must match line for line.
+macro_rules! combined {
+    () => {
+        concat!(
+            "WITH parked_machine(id, machine) AS (SELECT p.id, coalesce(",
+            "(SELECT coalesce(",
+            "(SELECT json_extract(r.metadata,'$.machine') FROM receipts r WHERE r.id=json_quote(t.value)),",
+            "(SELECT json_extract(r.metadata,'$.machine') FROM outbox o JOIN receipts r ON r.id=o.receipt WHERE o.id=json_quote(t.value)),",
+            "(SELECT m.machine FROM machine_orders m WHERE m.id=CAST(t.value AS INTEGER) AND CAST(m.id AS TEXT)=t.value),",
+            "(SELECT json_extract(f.evidence,'$.machine') FROM frame_provenance f WHERE f.transfer=t.value)",
+            ") FROM json_each(p.evidence,'$.targets') t ORDER BY t.key LIMIT 1),",
+            "(SELECT i.machine FROM poll_intents i WHERE i.parked=p.id)) FROM parked p),",
+            "events(at, source, key, machine, grp) AS (",
+            "SELECT unixepoch(json_extract(metadata,'$.received_at')),0,rowid,json_extract(metadata,'$.machine'),1 FROM receipts",
+            " UNION ALL SELECT p.parked_at,1,p.id,m.machine,3 FROM parked p JOIN parked_machine m ON m.id=p.id",
+            " UNION ALL SELECT json_extract(p.resolution,'$.time'),2,p.id,m.machine,4 FROM parked p JOIN parked_machine m ON m.id=p.id WHERE p.resolution IS NOT NULL",
+            " UNION ALL SELECT a.time,3,a.sequence,coalesce(",
+            "(SELECT json_extract(r.metadata,'$.machine') FROM receipts r WHERE r.id=o.receipt),",
+            "(SELECT CASE WHEN count(DISTINCT m.machine)=1 THEN min(m.machine) END FROM machine_orders m WHERE m.order_id=o.order_id AND m.destination=o.destination)),",
+            "CASE WHEN a.outcome='\"Done\"' THEN 1 ELSE 3 END FROM attempts a JOIN outbox o ON o.id=a.delivery",
+            " UNION ALL SELECT json_extract(evidence,'$.updated_at'),4,sequence,json_extract(evidence,'$.key.machine'),2 FROM (",
+            "SELECT sequence,evidence,json_extract(evidence,'$.state') AS state,",
+            "lag(json_extract(evidence,'$.state')) OVER (PARTITION BY machine_order ORDER BY sequence) AS was ",
+            "FROM machine_order_history) WHERE was IS NULL OR was!=state",
+            " UNION ALL SELECT json_extract(a.evidence,'$.time'),5,a.sequence,",
+            "CASE WHEN json_extract(a.evidence,'$.action') LIKE 'setup-%' THEN json_extract(a.evidence,'$.targets[0]') END,4 ",
+            "FROM audit a WHERE json_extract(a.evidence,'$.action') NOT IN ('admin-raw-view','deliveries-list','orders-list') ",
+            "AND NOT EXISTS(SELECT 1 FROM parked p WHERE p.resolution=a.evidence)",
+            ") "
+        )
+    };
+}
+
+/// The number the combined read gave each group.
+const fn group_number(group: ActivityGroup) -> i64 {
+    match group {
+        ActivityGroup::Results => 1,
+        ActivityGroup::Orders => 2,
+        ActivityGroup::Problems => 3,
+        ActivityGroup::Changes => 4,
+    }
+}
+
+/// A line's position, time and machine.
+type Position = (ActivityCursor, Option<i64>, Option<String>);
+
+fn positions(lines: &[ActivityLine]) -> Vec<Position> {
+    lines
+        .iter()
+        .map(|line| (line.cursor, line.at, line.machine.clone()))
+        .collect()
+}
+
+/// A page as the combined read gave it.
+fn combined_page(
+    store: &Store,
+    machine: Option<&str>,
+    group: Option<ActivityGroup>,
+    before: ActivityCursor,
+    limit: i64,
+) -> Result<Vec<Position>, rusqlite::Error> {
+    store
+        .db
+        .prepare(concat!(
+            combined!(),
+            "SELECT coalesce(at,-9223372036854775808) AS sort,source,key,at,machine FROM events ",
+            "WHERE (?1 IS NULL OR machine=?1) AND (?2 IS NULL OR grp=?2) AND (coalesce(at,-9223372036854775808),source,key)<(?3,?4,?5) ORDER BY sort DESC,source DESC,key DESC LIMIT ?6"
+        ))?
+        .query_map(
+            params![
+                machine,
+                group.map(group_number),
+                before.at,
+                before.source,
+                before.key,
+                limit
+            ],
+            |r| {
+                Ok((
+                    ActivityCursor {
+                        at: r.get(0)?,
+                        source: r.get(1)?,
+                        key: r.get(2)?,
+                    },
+                    r.get(3)?,
+                    r.get(4)?,
+                ))
+            },
+        )?
+        .collect()
+}
+
+/// A day's counts as the combined read gave them, in [`ActivityGroup::ALL`]'s order.
+fn combined_counts(
+    store: &Store,
+    machine: Option<&str>,
+    day: (i64, i64),
+) -> Result<Vec<(ActivityGroup, u64)>, Box<dyn std::error::Error>> {
+    let counted: Vec<(i64, i64)> = store
+        .db
+        .prepare(concat!(
+            combined!(),
+            "SELECT grp,count(*) FROM events WHERE (?1 IS NULL OR machine=?1) AND at>=?2 AND at<?3 GROUP BY grp"
+        ))?
+        .query_map(params![machine, day.0, day.1], |r| {
+            Ok((r.get(0)?, r.get(1)?))
+        })?
+        .collect::<Result<_, _>>()?;
+    Ok(ActivityGroup::ALL
+        .into_iter()
+        .map(|group| {
+            let count = counted
+                .iter()
+                .find(|(number, _)| *number == group_number(group))
+                .map_or(0, |&(_, count)| count);
+            u64::try_from(count).map(|count| (group, count))
+        })
+        .collect::<Result<_, _>>()?)
+}
+
+// Owner decision 2026-11-20 (admin read speed, item 5): Activity reads only
+// the newest rows each table needs, and shows exactly what the combined read
+// of every kept row showed: the same lines, order, times, machines, page
+// breaks and day counts, for every machine and filter, including lines in the
+// same second, items with no stored time, a resolution whose audit names a
+// poll, an order sent to two machines and a purged message.
+#[test]
+fn activity_pages_and_counts_match_the_combined_read() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let store = crate::test_support::mixed_store(&temp.path().join("mixed.db"))?;
+    let everything = combined_page(&store, None, None, ActivityCursor::NEWEST, 100)?;
+    assert!(everything.len() > 30, "the fixture shows many lines");
+    assert!(
+        everything.iter().filter(|line| line.1.is_none()).count() >= 3,
+        "and several with no stored time"
+    );
+    let groups = std::iter::once(None).chain(ActivityGroup::ALL.into_iter().map(Some));
+    for machine in [
+        None,
+        Some("m-a"),
+        Some("m-b"),
+        Some("m-quiet"),
+        Some("no-such-machine"),
+    ] {
+        for group in groups.clone() {
+            for limit in [1, 2, 3, 7, 100] {
+                let mut before = ActivityCursor::NEWEST;
+                let mut shown = 0;
+                loop {
+                    let page = store.activity(machine, group, before, limit)?;
+                    assert_eq!(
+                        positions(&page),
+                        combined_page(&store, machine, group, before, i64::try_from(limit)?)?,
+                        "{machine:?} {group:?} {limit} after {before:?}"
+                    );
+                    let Some(last) = page.last() else { break };
+                    before = last.cursor;
+                    shown += page.len();
+                    assert!(shown <= everything.len(), "paging ends");
+                }
+            }
+        }
+        for day in [
+            (9_000, 10_100),
+            (10_000, 10_001),
+            (10_050, 10_051),
+            (10_130, 10_141),
+            (10_500, 10_501),
+            (i64::MIN, i64::MAX),
+        ] {
+            assert_eq!(
+                store.activity_counts(machine, day)?,
+                combined_counts(&store, machine, day)?,
+                "{machine:?} {day:?}"
+            );
+        }
+    }
+    Ok(())
+}
+
 // Owner decision 2026-11-20 (PR c2): the live pages learn that something was
 // stored from marks that move with every stored row they show.
 #[test]

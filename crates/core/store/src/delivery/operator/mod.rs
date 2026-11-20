@@ -221,6 +221,19 @@ impl Store {
         after: i64,
         filter: DeliveryFilter,
     ) -> Result<Vec<ListedDelivery>, Error> {
+        self.listed_deliveries_up_to(after, filter, self.limits.page_rows)
+    }
+
+    /// Like [`Store::listed_deliveries`], with at most `limit` rows, so a page
+    /// that shows fewer than a store page builds only those it may show.
+    /// # Errors
+    /// Reports database failures and corrupt stored identities, states or evidence.
+    pub fn listed_deliveries_up_to(
+        &self,
+        after: i64,
+        filter: DeliveryFilter,
+        limit: usize,
+    ) -> Result<Vec<ListedDelivery>, Error> {
         type Row = (
             i64,
             String,
@@ -239,7 +252,7 @@ impl Store {
                     after,
                     filter == DeliveryFilter::Undelivered,
                     DeliveryState::Done,
-                    i64::try_from(self.limits.page_rows)
+                    i64::try_from(limit.min(self.limits.page_rows))
                         .map_err(|_| Error::InvalidDeliveryInput)?
                 ],
                 |r| {

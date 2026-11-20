@@ -981,3 +981,174 @@ fn seed_recent(store: &mut Store) -> Result<Recent, Box<dyn std::error::Error>> 
         open_read,
     })
 }
+
+/// When each lab app last accepted a delivery, as schema 16 read it: every
+/// accepted attempt joined to its delivery. Kept as the reference.
+fn last_delivered_scanned(
+    store: &Store,
+) -> Result<Vec<(Identifier, i64)>, Box<dyn std::error::Error>> {
+    let rows: Vec<(String, i64)> = store
+        .db
+        .prepare("SELECT o.destination,max(a.time) FROM attempts a JOIN outbox o ON o.id=a.delivery WHERE a.outcome=?1 GROUP BY o.destination ORDER BY o.destination")?
+        .query_map([document(&Attempt::Done)?], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<Result<_, _>>()?;
+    rows.into_iter()
+        .map(|(destination, at)| Ok((Identifier::new(&destination)?, at)))
+        .collect()
+}
+
+/// The failing lab apps as schema 16 read them: every attempt joined to its
+/// delivery. Kept as the reference.
+fn failing_scanned(store: &Store) -> Result<Vec<FailingDestination>, Box<dyn std::error::Error>> {
+    let rows: Vec<(String, i64, i64, u64, Option<i64>)> = store
+        .db
+        .prepare(concat!(
+            "WITH done AS (SELECT o.destination AS destination,max(a.sequence) AS last ",
+            "FROM attempts a JOIN outbox o ON o.id=a.delivery WHERE a.outcome=?1 ",
+            "GROUP BY o.destination) ",
+            "SELECT o.destination,min(a.time),max(a.time),count(*),",
+            "(SELECT min(p.next_attempt) FROM outbox p WHERE p.destination=o.destination AND p.state=?2) ",
+            "FROM attempts a JOIN outbox o ON o.id=a.delivery ",
+            "LEFT JOIN done d ON d.destination=o.destination ",
+            "WHERE json_type(a.outcome,'$.RetryAt')='integer' AND a.sequence>coalesce(d.last,0) ",
+            "GROUP BY o.destination ",
+            "HAVING EXISTS(SELECT 1 FROM outbox w WHERE w.destination=o.destination AND w.state IN (?2,?3)) ",
+            "ORDER BY o.destination",
+        ))?
+        .query_map(
+            rusqlite::params![
+                document(&Attempt::Done)?,
+                DeliveryState::Pending,
+                DeliveryState::InFlight
+            ],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get::<_, i64>(3)?.try_into().unwrap_or(u64::MAX), r.get(4)?)),
+        )?
+        .collect::<Result<_, _>>()?;
+    rows.into_iter()
+        .map(|(destination, since, last, tries, next)| {
+            Ok(FailingDestination {
+                destination: Identifier::new(&destination)?,
+                since,
+                last,
+                tries,
+                next,
+            })
+        })
+        .collect()
+}
+
+// Owner decision 2026-11-20 (admin read speed, item 4): "Last delivered" and
+// the failing lab apps are read through the accepted-delivery helpers and
+// indexes, and say exactly what the scan over every attempt said: with a
+// delivery accepted again under an earlier clock, a lab app that never
+// accepted anything, a try and a success in the same second, an order
+// message, a purged message, and again after the delivery worker writes.
+#[test]
+fn delivery_reads_match_the_scan_over_every_attempt() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = mixed_store(&temp.path().join("mixed.db"))?;
+    let main = Identifier::new("main-lab")?;
+    let outpatient = Identifier::new("outpatient")?;
+    let silent = Identifier::new("silent-lab")?;
+    let delivered = store.last_delivered()?;
+    assert_eq!(delivered.at, last_delivered_scanned(&store)?);
+    assert_eq!(
+        delivered.at,
+        [(main.clone(), 10_140), (outpatient.clone(), 10_305)],
+        "the latest accepted time, never the latest accepted row"
+    );
+    assert!(delivered.purged);
+    let failing = store.failing_destinations()?;
+    assert_eq!(failing, failing_scanned(&store)?);
+    assert_eq!(
+        failing
+            .iter()
+            .map(|failing| (failing.destination.clone(), failing.since, failing.tries))
+            .collect::<Vec<_>>(),
+        [
+            (main.clone(), 10_130, 1),
+            (outpatient.clone(), 10_320, 1),
+            (silent.clone(), 10_110, 2)
+        ]
+    );
+    // The delivery worker accepts main-lab's waiting item and fails again on
+    // the silent lab app's.
+    for (destination, outcome, now) in [
+        (&main, Attempt::Done, 20_010),
+        (&silent, Attempt::RetryAt(20_100), 20_020),
+    ] {
+        let claim = store
+            .claim_destination(now, destination)?
+            .ok_or("a waiting item")?;
+        store.attempted(claim.id, &outcome, now)?;
+        assert_eq!(store.last_delivered()?.at, last_delivered_scanned(&store)?);
+        assert_eq!(store.failing_destinations()?, failing_scanned(&store)?);
+    }
+    assert_eq!(
+        store
+            .failing_destinations()?
+            .iter()
+            .map(|failing| failing.destination.clone())
+            .collect::<Vec<_>>(),
+        [outpatient, silent]
+    );
+    Ok(())
+}
+
+// Owner decision 2026-11-20 (admin read speed, item 3): the newest message
+// per machine is read through the index by machine and received time, and is
+// the same as the latest of every stored message: fractions of a second
+// decide within a second, a purged message no longer counts, and a machine
+// with no message is left out. Data keeping's oldest kept message is
+// unchanged.
+#[test]
+fn newest_message_per_machine_matches_every_stored_message() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let store = mixed_store(&temp.path().join("mixed.db"))?;
+    let machines = ["m-a", "m-b", "m-quiet", "no-such-machine"]
+        .map(Identifier::new)
+        .into_iter()
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut walked = std::collections::BTreeMap::<String, jiff::Timestamp>::new();
+    let mut after = String::new();
+    loop {
+        let page = store.receipts(&after)?;
+        let Some(last) = page.last() else { break };
+        after = serde_json::to_string(&last.id)?;
+        for receipt in page {
+            let newest = walked
+                .entry(receipt.machine.as_str().to_owned())
+                .or_insert(receipt.received_at);
+            *newest = (*newest).max(receipt.received_at);
+        }
+    }
+    let newest = store.newest_receipts(&machines)?;
+    assert_eq!(
+        newest,
+        machines
+            .iter()
+            .filter_map(|machine| walked
+                .get(machine.as_str())
+                .map(|at| (machine.clone(), *at)))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        newest,
+        [
+            (
+                Identifier::new("m-a")?,
+                jiff::Timestamp::new(10_050, 700_000_000)?
+            ),
+            (
+                Identifier::new("m-b")?,
+                jiff::Timestamp::from_second(10_300)?
+            ),
+            (
+                Identifier::new("m-quiet")?,
+                jiff::Timestamp::from_second(9_000)?
+            ),
+        ]
+    );
+    assert_eq!(store.oldest_retained_receipt()?, Some(9_000));
+    Ok(())
+}
