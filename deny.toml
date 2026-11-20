@@ -2,10 +2,25 @@
 
 [graph]
 all-features = true
+# The two platforms Analyte ships for, so crates only macOS, iOS or Android
+# use are not checked. cargo-deny joins the targets' graphs, so Tauri's Linux
+# desktop crates (gtk, D-Bus) still appear, though the desktop app is Windows
+# only (ADR 0019) and Tauri is never built for Linux; see the ignores below.
+targets = ["x86_64-pc-windows-msvc", "x86_64-unknown-linux-gnu"]
 
 [advisories]
 version = 2
 yanked = "deny"
+# Unmaintained (not vulnerable) crates that only Tauri's Linux desktop code
+# uses. The desktop app depends on Tauri only on Windows (crates/app/Cargo.toml,
+# ADR 0019), so none of them is ever built or shipped; they show here because
+# cargo-deny joins the Windows and Linux graphs. Review when Tauri moves on.
+ignore = [
+    { id = "RUSTSEC-2024-0370", reason = "proc-macro-error via gtk 0.18 in Tauri's Linux tray; never built (Tauri is Windows-only here)" },
+    { id = "RUSTSEC-2026-0370", reason = "zvariant via zbus in Tauri plugins' Linux D-Bus code; never built (Tauri is Windows-only here)" },
+    { id = "RUSTSEC-2026-0371", reason = "zbus_names via zbus in Tauri plugins' Linux D-Bus code; never built (Tauri is Windows-only here)" },
+    { id = "RUSTSEC-2026-0372", reason = "zvariant_derive via zbus in Tauri plugins' Linux D-Bus code; never built (Tauri is Windows-only here)" },
+]
 
 [licenses]
 version = 2

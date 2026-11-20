@@ -1,6 +1,6 @@
 #Requires -Version 5.1
 # Registers the Analyte service and protects its folders. Run by hand or by the
-# click-through installer (analyte.iss), which passes the three switches below.
+# click-through installer (analyte.iss), which passes the four switches below.
 [CmdletBinding()]
 param(
     [string]$Executable = "$env:ProgramFiles\Analyte\analyte.exe",
@@ -11,6 +11,9 @@ param(
     [switch]$ConfigWritable,
     # Create <data>\admin-token when it is missing; an existing token is kept.
     [switch]$CreateAdminToken,
+    # Let signed-in (interactive) users start the service, so the desktop app's
+    # "Start engine" works; never stop it or change it (ADR 0019).
+    [switch]$UsersMayStart,
     # Start the service at the end instead of leaving it stopped.
     [switch]$Start
 )
@@ -149,6 +152,22 @@ if ($ConfigWritable) { Set-ServiceFolderAcl $ConfigDirectory }
 if ($LASTEXITCODE -ne 0) { throw "Setting service recovery failed with exit code $LASTEXITCODE." }
 & $sc failureflag Analyte 1
 if ($LASTEXITCODE -ne 0) { throw "Setting service failure actions flag failed with exit code $LASTEXITCODE." }
+
+if ($UsersMayStart) {
+    # One more allow entry in the service's access list: SERVICE_START ("RP")
+    # for interactive users ("IU"). Stopping, pausing and changing the service
+    # stay with SYSTEM and Administrators. Running it again adds nothing.
+    $startRight = '(A;;RP;;;IU)'
+    $descriptor = (& $sc sdshow Analyte | Where-Object { $_ -match '^D:' } | Select-Object -First 1)
+    if ($LASTEXITCODE -ne 0 -or -not $descriptor) { throw "Reading the service's access list failed (sc.exe sdshow exit code $LASTEXITCODE)." }
+    $descriptor = $descriptor.Trim()
+    if (-not $descriptor.Contains($startRight)) {
+        # Insert after the list's flags (such as P for protected), before the first entry.
+        $updated = $descriptor -replace '^(D:[A-Z]*)', ('$1' + $startRight)
+        & $sc sdset Analyte $updated
+        if ($LASTEXITCODE -ne 0) { throw "Letting signed-in users start the service failed (sc.exe sdset exit code $LASTEXITCODE)." }
+    }
+}
 
 if ($CreateAdminToken) {
     $token = Join-Path $DataDirectory 'admin-token'

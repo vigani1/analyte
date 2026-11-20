@@ -4,7 +4,7 @@ A **crate** is one self-contained part of the Rust project. Its `Cargo.toml`
 is its ID card, `src/` holds its code, and `tests/`, when present, holds tests
 that exercise the part from outside. Some tests also live beside the code.
 
-[analyte](analyte/) is the program you run on the lab PC: it connects these
+[analyte](analyte/) is the program you run on the lab PC (the engine): it connects these
 building blocks, owns connections and storage calls, and runs operator tools.
 The other crates provide building blocks; `receiver` and `contract-check` also
 have separate test programs. They are not separate services needed to run the bridge.
@@ -13,7 +13,8 @@ Crates are grouped by kind:
 
 ```text
 crates/
-  analyte/
+  analyte/     the engine
+  app/         the desktop app (Windows)
   steps/       transport, framing, dialog, mapping, sink
   protocols/   astm, hl7, poct, vidas, autolyser
   core/        model, store, config, contract
@@ -56,6 +57,7 @@ simply passing each message along once. Outgoing orders use these parts too.
 | [sink](steps/sink/) | Delivers results to lab apps over HTTP and polls apps for order changes. |
 | [config](core/config/) | Loads size-limited configuration and checks settings before use. |
 | [analyte](analyte/) | Runs the bridge and coordinates all these parts. |
+| [app](app/) | The Windows desktop app: the engine's pages in a window and its state in the tray. |
 | [receiver](testing/receiver/) | Provides a reference lab-app endpoint for integration tests and examples. |
 | [contract-check](testing/contract-check/) | Runs the published contract vectors against a lab app's real endpoints and reports each case. |
 | [fixtures](testing/fixtures/) | Shares synthetic messages, storage probes and bounded waits across tests. |

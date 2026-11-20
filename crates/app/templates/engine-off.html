@@ -1,0 +1,55 @@
+{#- Engine off (the EngineOff and EngineOffDark mockups), the app's own screen while the engine does not answer: only what the app observed, the Start engine button when the service is stopped, and that the screen updates by itself. The sidebar keeps the brand and the engine box; its page links need the engine, so they are left out. -#}
+{%- import "../../analyte/templates/components/icon.html" as draw %}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Engine off · Analyte</title>
+<link rel="icon" type="image/svg+xml" sizes="16x16" href="/static/icons/analyte-app-icon-16.svg">
+<link rel="icon" type="image/svg+xml" sizes="20x20" href="/static/icons/analyte-app-icon-20.svg">
+<link rel="icon" type="image/svg+xml" sizes="24x24 32x32 48x48 64x64 128x128 256x256" href="/static/icons/analyte-app-icon.svg">
+<link rel="stylesheet" href="/static/fonts.css">
+<link rel="stylesheet" href="/static/analyte.css">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<div class="app">
+<nav class="sidebar" aria-label="Main">
+<div class="brand">
+{% call draw::brand_mark(30, "3.8") %}{% endcall %}
+<span class="brand__name">Analyte</span>
+</div>
+<div class="engine engine--stopped">
+<span class="live-dot live-dot--bad"></span>
+<span class="engine__text"><span class="engine__title tone-bad">{{ engine_title }}</span><span class="engine__meta">Noticed {{ noticed }}</span></span>
+</div>
+</nav>
+<main class="main main--center">
+<section class="panel panel--wide anim-in" aria-labelledby="eo-title" role="alert">
+<span class="verdict__icon engine-off__icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12a10 10 0 1 0 20 0a10 10 0 1 0-20 0 M10 15V9 M14 15V9"/></svg></span>
+<div>
+<h1 id="eo-title" class="panel__title">{{ title }}</h1>
+<p class="panel__text engine-off__lead">{{ lead }}</p>
+</div>
+<dl class="kv engine-off__facts">
+{%- for (term, value) in facts %}
+<dt>{{ term }}</dt><dd>{{ value }}</dd>
+{%- endfor %}
+</dl>
+{%- if let Some(start) = start %}
+<form class="cluster" method="post" action="/start-engine">
+{%- if start.busy %}
+<button type="submit" class="btn btn--primary btn--lg" disabled>Starting…</button>
+{%- else %}
+<button type="submit" class="btn btn--primary btn--lg">Start engine</button>
+{%- endif %}
+<span class="subtle engine-off__hint">Usually takes a few seconds.</span>
+</form>
+{%- endif %}
+<p class="subtle panel__live">{% if start.is_some() %}If it doesn’t start, restart the computer or contact your IT team. {% endif %}The app keeps checking and updates this screen by itself.</p>
+</section>
+</main>
+</div>
+</body>
+</html>

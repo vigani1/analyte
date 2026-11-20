@@ -24,7 +24,7 @@ async fn every_static_file_is_public_typed_and_cached_by_version() -> Result<(),
         start_overview_server(directory.path(), &store, Vec::new(), Vec::new()).await?;
     let root = crate::admin::view::assets::Root::of_this_build();
     let listed = crate::admin::view::assets::tests::listed();
-    assert_eq!(listed.len(), 26);
+    assert_eq!(listed.len(), 29);
     // Owner decision 2026-11-20 (PR c2): the one script file is served typed
     // as JavaScript and kept by version like the stylesheets.
     assert!(

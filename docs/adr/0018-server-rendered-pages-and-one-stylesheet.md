@@ -1,7 +1,8 @@
 # 0018. Server-rendered admin pages with one token stylesheet
 
-Status: accepted, 2026-11-19 (the owner approved the restyle and Askama; the
-desktop shell waits for its own approval)
+Status: accepted, 2026-11-19 (the owner approved the restyle and Askama); the
+desktop shell was approved on 2026-11-20 and is
+[ADR 0019](0019-desktop-app.md)
 
 ## Context
 
@@ -25,8 +26,9 @@ the strict content security policy.
   script, no `|safe`; escaping stays on everywhere.
 - **Live updates**, when added, use axum server-sent events plus one script
   served as a file.
-- A **desktop shell** (Tauri: window and tray icon around the same pages) is
-  planned and needs the owner's approval before any work starts.
+- A **desktop shell** (Tauri: window and tray icon around the same pages) was
+  approved on 2026-11-20 and is built as [ADR 0019](0019-desktop-app.md)
+  describes.
 - Pages moved one PR at a time, and the two looks never loaded on one page.
   **The last page PR (b6) is done:** sign-in and every refusal without a page
   of its own use a plain centred frame with no sidebar, so a page shown before
@@ -43,8 +45,10 @@ the strict content security policy.
   at most 4 are open (of 32 connection slots); shutdown ends them at once.
   Every page stays whole without the script. `futures-core` was added for the
   stream type axum takes.
-- **Still to come:** PR d, the Engine off page and the Tauri desktop shell,
-  which waits for the owner's approval before any work starts.
+- **PR d is done:** the Analyte desktop app (`crates/app`) shows these pages in
+  its own window with a tray icon, and its Engine off screen uses the same
+  stylesheets and fonts, compiled in from `crates/analyte/assets`
+  ([ADR 0019](0019-desktop-app.md)). Every PR of this restyle is done.
 
 ## Why
 

@@ -1,4 +1,4 @@
-//! Tests the overview's first-run welcome and the guided Needs review list through the real handlers.
+//! Tests the overview's first-run welcome, the guided Needs review list and `GET /status`, the verdict in one word, through the real handlers.
 use super::pages::{csrf, encode, login};
 use super::*;
 use analyte_store::Parked;
@@ -1074,5 +1074,126 @@ async fn slow_store_answers_in_the_overview_look() -> Result<(), Error> {
     assert!(page.contains("Analyte did not finish reading within 1.5 seconds. Reload the page;"));
     assert!(page.contains("admin overview deadline of 1500 ms exceeded"));
     blocker.await??;
+    stop(state, stopper, owner, store).await
+}
+
+/// One raw request with exactly these header lines, so the Host can be wrong.
+async fn raw(host: &str, lines: &str) -> Result<String, Error> {
+    tokio::time::timeout(Duration::from_secs(6), async {
+        let mut stream = tokio::net::TcpStream::connect(host).await?;
+        let message = format!("GET /status HTTP/1.1\r\n{lines}Connection: close\r\n\r\n");
+        stream.write_all(message.as_bytes()).await?;
+        let mut bytes = Vec::new();
+        stream.take(65_536).read_to_end(&mut bytes).await?;
+        Ok::<_, Error>(String::from_utf8(bytes)?)
+    })
+    .await?
+}
+
+/// The JSON body of a `/status` answer, checked to hold exactly the state and
+/// the version and nothing more.
+fn state_of(response: &str) -> Result<String, Error> {
+    let lower = response.to_ascii_lowercase();
+    assert!(
+        lower.contains("content-type: application/json"),
+        "{response}"
+    );
+    assert!(lower.contains("cache-control: no-store"), "{response}");
+    assert!(!lower.contains("set-cookie"), "status starts no session");
+    let (_, body) = response
+        .split_once("\r\n\r\n")
+        .ok_or("status answer without a body")?;
+    let value: serde_json::Value = serde_json::from_str(body)?;
+    let fields = value.as_object().ok_or("status body is not an object")?;
+    let keys: Vec<&str> = fields.keys().map(String::as_str).collect();
+    assert_eq!(keys, ["state", "version"], "{body}");
+    assert_eq!(
+        fields.get("version").and_then(serde_json::Value::as_str),
+        Some(env!("CARGO_PKG_VERSION"))
+    );
+    Ok(fields
+        .get("state")
+        .and_then(serde_json::Value::as_str)
+        .ok_or("state is not a word")?
+        .to_owned())
+}
+
+/// Raises or clears one alert, as the alert rules would.
+async fn alert(
+    store: &analyte_store::Handle,
+    key: analyte_store::AlertKey,
+    active: bool,
+) -> Result<(), Error> {
+    store
+        .request::<_, FixtureError>(fixture_deadline()?, move |s| {
+            s.evaluate_alert(&key, "duty", active, active.then_some(3), 100)?;
+            Ok::<_, FixtureError>(())
+        })
+        .await?;
+    Ok(())
+}
+
+// ADR 0019: the tray reads the Overview's verdict without the admin key, as
+// one word and a version: good, then attention for items to review, then
+// problem when the disk is full, back to good when both clear. The answer
+// holds no name or count, starts no session and is never stored.
+#[tokio::test(flavor = "multi_thread")]
+async fn status_answers_the_overview_verdict_in_one_word() -> Result<(), Error> {
+    let directory = crate::admin::private_tempdir()?;
+    crate::admin::rotate_token(directory.path())?;
+    let store = empty_store(directory.path()).await?;
+    let link =
+        crate::machine::link::status::Reporter::new(crate::machine::link::status::Link::Serial);
+    (link.observer())(analyte_transport::Activity::Opened);
+    let machines = vec![machine("cobas-e411", true, link.subscribe(), "lab")?];
+    let (state, stopper, owner, host) = start_overview_server(
+        directory.path(),
+        &store,
+        machines,
+        vec![loopback_destination("lab")?],
+    )
+    .await?;
+    let lines = format!("Host: {host}\r\n");
+    let ask = || raw(&host, &lines);
+    let good = ask().await?;
+    assert!(good.starts_with("HTTP/1.1 200"), "{good}");
+    headers_present(&good);
+    assert_eq!(state_of(&good)?, "good");
+    alert(&store, analyte_store::AlertKey::ParkedItems, true).await?;
+    let attention = ask().await?;
+    assert_eq!(state_of(&attention)?, "attention");
+    for hidden in ["cobas-e411", "lab", "3", "review"] {
+        let (_, body) = attention.split_once("\r\n\r\n").unwrap_or_default();
+        assert!(!body.contains(hidden), "status names {hidden}: {body}");
+    }
+    alert(&store, analyte_store::AlertKey::DiskReserve, true).await?;
+    assert_eq!(state_of(&ask().await?)?, "problem");
+    alert(&store, analyte_store::AlertKey::DiskReserve, false).await?;
+    alert(&store, analyte_store::AlertKey::ParkedItems, false).await?;
+    assert_eq!(state_of(&ask().await?)?, "good");
+    drop(link);
+    stop(state, stopper, owner, store).await
+}
+
+// ADR 0019, ADR 0018: `/status` keeps the admin pages' Host and Origin checks,
+// so another site or a rebound name gets the sign-in challenge, not the state.
+#[tokio::test(flavor = "multi_thread")]
+async fn status_keeps_host_and_origin_checks() -> Result<(), Error> {
+    let directory = crate::admin::private_tempdir()?;
+    crate::admin::rotate_token(directory.path())?;
+    let store = empty_store(directory.path()).await?;
+    let (state, stopper, owner, host) =
+        start_overview_server(directory.path(), &store, Vec::new(), Vec::new()).await?;
+    for lines in [
+        "Host: analyte.example\r\n".to_owned(),
+        format!("Host: {host}\r\nOrigin: https://attacker.invalid\r\n"),
+    ] {
+        let refused = raw(&host, &lines).await?;
+        assert!(refused.starts_with("HTTP/1.1 401"), "{refused}");
+        assert!(!refused.contains("\"state\""), "{refused}");
+        headers_present(&refused);
+    }
+    let same = raw(&host, &format!("Host: {host}\r\nOrigin: http://{host}\r\n")).await?;
+    assert_eq!(state_of(&same)?, "good");
     stop(state, stopper, owner, store).await
 }

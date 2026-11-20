@@ -158,6 +158,51 @@ impl Thing {
     }
 }
 
+/// The overall state the Overview's verdict shows, in one word: the one place
+/// that turns the list of things into a state, for the verdict and for the
+/// public `GET /status` the desktop app reads.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::admin) enum Overall {
+    /// Nothing needs anyone ("All good").
+    Good,
+    /// Something needs a look, but nothing stops data now.
+    Attention,
+    /// At least one thing stops data now (a [`Tone::Problem`] line).
+    Problem,
+}
+
+impl Overall {
+    /// The state of `things`: a problem if any line is one, otherwise attention
+    /// if there is any line at all.
+    pub(super) fn of(things: &[Thing]) -> Self {
+        if things.is_empty() {
+            Self::Good
+        } else if things.iter().any(|thing| thing.tone() == Tone::Problem) {
+            Self::Problem
+        } else {
+            Self::Attention
+        }
+    }
+
+    /// The verdict's tone for this state.
+    pub(super) const fn tone(self) -> Tone {
+        match self {
+            Self::Good => Tone::Good,
+            Self::Attention => Tone::Attention,
+            Self::Problem => Tone::Problem,
+        }
+    }
+
+    /// The word `GET /status` answers with.
+    pub(in crate::admin) const fn word(self) -> &'static str {
+        match self {
+            Self::Good => "good",
+            Self::Attention => "attention",
+            Self::Problem => "problem",
+        }
+    }
+}
+
 /// Every thing that needs someone now, most urgent first; empty means all is well.
 /// Direct measurements come first; an alert adds a line only for what they do not
 /// already say.
@@ -386,6 +431,30 @@ mod tests {
         assert_eq!(list.len(), 1, "{list:?}");
         let thing = list.first().expect("one thing");
         (thing.text.clone(), thing.fix.href())
+    }
+
+    // ADR 0019: the tray's word is the verdict's own state: good with nothing
+    // listed, attention for a look, problem once any line stops data now.
+    #[test]
+    fn overall_is_the_verdict_state_in_one_word() {
+        let good = things(&Facts::default());
+        assert_eq!(Overall::of(&good), Overall::Good);
+        assert_eq!(Verdict::of(&good).tone, Tone::Good);
+        let review = things(&Facts {
+            review: 2,
+            ..Facts::default()
+        });
+        assert_eq!(Overall::of(&review), Overall::Attention);
+        assert_eq!(Verdict::of(&review).tone, Tone::Attention);
+        let full = things(&Facts {
+            review: 2,
+            disk_full: true,
+            ..Facts::default()
+        });
+        assert_eq!(Overall::of(&full), Overall::Problem);
+        assert_eq!(Verdict::of(&full).tone, Tone::Problem);
+        let words = [Overall::Good, Overall::Attention, Overall::Problem].map(Overall::word);
+        assert_eq!(words, ["good", "attention", "problem"]);
     }
 
     // Owner request 2026-11-19 (overview item 1): nothing to do reads "All good" in green.

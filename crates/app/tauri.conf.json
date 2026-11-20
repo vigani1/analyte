@@ -1,0 +1,15 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Analyte",
+  "version": "0.1.0",
+  "identifier": "io.github.vigani1.analyte.app",
+  "app": {
+    "withGlobalTauri": false,
+    "windows": []
+  },
+  "bundle": {
+    "active": false,
+    "publisher": "Analyte contributors",
+    "icon": ["../analyte/assets/icons/analyte.ico"]
+  }
+}

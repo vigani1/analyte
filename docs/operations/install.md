@@ -59,26 +59,63 @@ anyway**.
    configuration in `C:\ProgramData\Analyte\config`, and protects
    `C:\ProgramData\Analyte\data`.
 2. It registers and starts the `Analyte` service exactly as the script below
-   does, and lets the service write the config folder for the setup page.
-3. The last pages show the new admin token **once**. Copy it somewhere safe,
+   does, lets the service write the config folder for the setup page, and lets
+   people signed in to this PC start (never stop) the service, for the app's
+   **Start engine** button.
+3. It installs the **Analyte app** (`analyte-app.exe`) with a Start menu entry
+   "Analyte". The app shows the same pages in its own window and keeps a tray
+   icon with the engine's state; see [The Analyte app](#the-analyte-app). Leave
+   **Start Analyte when I sign in** ticked to have the tray icon after every
+   sign-in.
+4. The last pages show the new admin token **once**. Copy it somewhere safe,
    like a password. To read it again later, open PowerShell as administrator and
    run `Get-Content C:\ProgramData\Analyte\data\admin-token`. Do not browse to
    the data folder in File Explorer and accept its permission prompt: that adds
    your account to the folder and Analyte then refuses to start.
-4. Leave **Open the Analyte setup page** ticked and finish. Log in with the
-   token, choose **Setup**, then **Set up** for `machine-1`. For each further
-   analyzer, press **Add machine** and set it up the same way.
+5. Leave **Open Analyte** ticked and finish. Sign in with the token, choose
+   **Setup**, then **Set up** for `machine-1`. For each further analyzer, press
+   **Add machine** and set it up the same way.
+
+The app's window needs the Microsoft Edge WebView2 Runtime, which Windows 11
+has. On a Windows 10 PC without it, the last page says so and opens the setup
+page in the browser instead; install the WebView2 Runtime (Evergreen) from
+Microsoft, then open Analyte from the Start menu.
 
 Running it again upgrades the program and keeps the configuration, data and
-token. Uninstall from Windows Settings → Apps: it stops and removes the service
-and the program files, and keeps data, configuration, backups, credentials and
+token. Uninstall from Windows Settings → Apps: it closes the app, stops and
+removes the service, removes the program files, the Start menu entry and the
+installing user's sign-in entry and app folders, and keeps data, configuration, backups, credentials and
 the token in `C:\ProgramData\Analyte`. Delete those yourself only after the lab
 has decided what to do with the clinical data they hold.
+
+## The Analyte app
+
+The app replaces opening `http://127.0.0.1:8080` in a browser. It never runs the
+engine and never holds the admin key: you sign in inside its window with the
+normal form.
+
+- **Window:** the engine's pages, only them. Links to other sites open in your
+  browser. Closing the window frees its memory; the app stays in the tray.
+- **Tray icon:** the Analyte mark with a badge: green tick (all good), amber
+  triangle (something needs you), red octagon (a problem stops data) or a grey
+  pause (the engine is not answering). Its menu has **Open Analyte**, the state
+  in words, **Start at sign-in** and **Quit app**, which closes only the app;
+  the engine keeps running.
+- **Notifications:** one when the state gets worse, saying only the state.
+  Clicking it opens the window.
+- **Engine off:** when the engine does not answer, the window shows what the app
+  saw and, if the service is stopped, **Start engine**. It switches back to the
+  pages by itself once the engine answers.
+
+The app reads the engine's admin port from `analyte-app.toml` beside it, which
+setup writes from the program file. If you change `[admin] port`, run the
+installer again so the app follows. Its own log is
+`%LOCALAPPDATA%\Analyte\analyte-app.log` for each Windows user.
 
 ## Windows service by script
 
 Use an elevated PowerShell window. Paths below are the packaged defaults. The
-installer runs this same script with `-ConfigWritable -CreateAdminToken -Start`.
+installer runs this same script with `-ConfigWritable -CreateAdminToken -UsersMayStart -Start`.
 
 1. Place `analyte.exe` in `C:\Program Files\Analyte`. Administrators own the
    binary and configuration trees. Ordinary users must not write there.

@@ -11,6 +11,8 @@ param(
     # The workspace version without "v", for example 0.1.0.
     [Parameter(Mandatory)][ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version,
     [Parameter(Mandatory)][string]$Binary,
+    # Windows only: the desktop app, analyte-app.exe (ADR 0019).
+    [string]$App = '',
     [string]$OutputDirectory = 'dist',
     [string]$StageDirectory = 'stage',
     [string]$ToolDirectory = (Join-Path ([IO.Path]::GetTempPath()) 'analyte-packaging-tools')
@@ -53,6 +55,8 @@ Copy-Item -LiteralPath machines -Destination (Join-Path $stage 'machines') -Recu
 $stage = (Resolve-Path -LiteralPath $stage).ProviderPath
 
 if ($Platform -eq 'windows') {
+    if (-not $App) { throw 'Pass -App with the built analyte-app.exe; the Windows packages include the desktop app.' }
+    Copy-Item -LiteralPath $App -Destination (Join-Path $stage 'analyte-app.exe')
     # The installer's and the Apps list's icon; docs/design/README.md says how it is made.
     Copy-Item -LiteralPath crates/analyte/assets/icons/analyte.ico -Destination $stage
     Compress-Archive -Path $stage -DestinationPath (Join-Path $output "$name.zip")

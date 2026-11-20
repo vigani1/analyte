@@ -13,17 +13,24 @@ checksum. The lab manager's steps are in
 [Install](../../docs/operations/install.md#windows-installer-recommended). In order, it:
 
 1. stops a running Analyte service with `stop.ps1`, so the program can be replaced;
-2. installs `analyte.exe` and this folder in `C:\Program Files\Analyte`, and the
-   `machines` definitions in `C:\ProgramData\Analyte\config\machines`;
+2. closes a running desktop app, then installs `analyte.exe`, the desktop app
+   `analyte-app.exe` (ADR 0019) and this folder in `C:\Program Files\Analyte`,
+   the `machines` definitions in `C:\ProgramData\Analyte\config\machines`, a
+   Start menu entry "Analyte" and, if ticked, the installing user's sign-in
+   entry (`HKCU\...\Run\Analyte`);
 3. on a first installation only, writes the starter program and site file from
    `starter\` into `C:\ProgramData\Analyte\config` (an upgrade never replaces them);
-4. runs `install.ps1 -ConfigWritable -CreateAdminToken -Start`, which checks the
-   config, registers the service, protects the data and config folders, creates
-   the admin token if missing and starts the service;
+4. runs `install.ps1 -ConfigWritable -CreateAdminToken -UsersMayStart -Start`,
+   which checks the config, registers the service, protects the data and config
+   folders, lets signed-in users start (not stop or change) the service, creates
+   the admin token if missing and starts the service; then writes
+   `analyte-app.toml` with the program's admin port beside the app;
 5. shows a new admin token once, read from the protected file (it is never
-   logged), and offers to open `http://127.0.0.1:<admin port>/setup`.
+   logged), and offers to open the Analyte app. Without the WebView2 Runtime it
+   says so and offers `http://127.0.0.1:<admin port>/setup` in the browser.
 
-Uninstall runs `uninstall.ps1`, removes the program files and keeps data,
+Uninstall closes the app, runs `uninstall.ps1`, removes the program files, the
+app's settings, the Start menu entry and the installing user's sign-in entry, and keeps data,
 configuration, machine definitions, backups, credentials and the token. To build
 the installer by hand from a staged release folder:
 `ISCC.exe /DAppVersion=<version> /DSourceDir=<folder> /DOutputDir=<folder> analyte.iss`.
@@ -55,7 +62,9 @@ the installer by hand from a staged release folder:
    Optional parameters: `-Executable`, `-Config`, `-DataDirectory`, and
    `-ShutdownTimeoutSecs` (30 through 300, default 30). Switches:
    `-ConfigWritable` gives the config folder the data folder's protected ACL
-   (the service gets Modify, for the setup page); `-CreateAdminToken` creates
+   (the service gets Modify, for the setup page); `-UsersMayStart` adds one
+   entry to the service's access list, `(A;;RP;;;IU)`: interactive users may
+   start it, for the app's Start engine button; `-CreateAdminToken` creates
    `<data>\admin-token` only when it is missing and does not print it;
    `-Start` starts the service at the end. The data directory must
    match the TOML setting; the script runs `check-config` but does not parse TOML

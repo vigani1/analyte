@@ -9,6 +9,7 @@ mod removed;
 mod server;
 mod sessions;
 pub(crate) mod setup;
+mod status;
 mod token;
 mod view;
 

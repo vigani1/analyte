@@ -234,7 +234,7 @@ fn windows_installer_and_scripts_agree() -> Outcome {
         r#"DestDir: "{commonappdata}\Analyte\config\machines""#,
         r#"starter\analyte.toml"; DestDir: "{commonappdata}\Analyte\config"; Flags: onlyifdoesntexist uninsneveruninstall; Check: IsFirstInstall"#,
         r#"starter\machine-1.site.toml"; DestDir: "{commonappdata}\Analyte\config"; Flags: onlyifdoesntexist uninsneveruninstall; Check: IsFirstInstall"#,
-        "-ConfigWritable -CreateAdminToken -Start",
+        "-ConfigWritable -CreateAdminToken -UsersMayStart -Start",
         "ExtractTemporaryFile('stop.ps1')",
         r"packaging\windows\uninstall.ps1",
         "SetupLogging=no",
@@ -324,5 +324,59 @@ fn windows_installer_shows_the_analyte_icon() -> Outcome {
         sides.push(side);
     }
     assert_eq!(sides, [16, 20, 24, 32, 48, 256]);
+    Ok(())
+}
+
+// ADR 0019 (desktop app): the installer puts analyte-app.exe beside the engine
+// with a Start menu entry "Analyte" whose AppUserModelID is the app's
+// identifier (so notifications say "Analyte"), writes the same sign-in entry
+// the tray writes, the app's settings with the admin port, lets signed-in
+// users start (never stop) the service, closes the app before replacing or
+// removing it, and opens the app instead of the browser.
+#[test]
+fn windows_installer_installs_the_desktop_app() -> Outcome {
+    let installer = read("windows/analyte.iss")?;
+    let install = read("windows/install.ps1")?;
+    let app = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../app");
+    let config = std::fs::read_to_string(app.join("tauri.conf.json"))?;
+    let identifier = config
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("\"identifier\": \""))
+        .and_then(|rest| rest.strip_suffix("\","))
+        .ok_or("tauri.conf.json names no identifier")?;
+    assert!(config.contains("\"productName\": \"Analyte\""));
+    let autostart = std::fs::read_to_string(app.join("src/shell/autostart.rs"))?;
+    assert!(autostart.contains("pub(super) const VALUE: &str = \"Analyte\";"));
+    let shell = std::fs::read_to_string(app.join("src/shell/mod.rs"))?;
+    assert!(shell.contains("pub const TRAY_ONLY: &str = \"--tray\";"));
+    let engine = std::fs::read_to_string(app.join("src/engine/mod.rs"))?;
+    assert!(engine.contains("pub const SETTINGS: &str = \"analyte-app.toml\";"));
+    for expected in [
+        r#"Source: "{#SourceDir}\analyte-app.exe"; DestDir: "{app}"; Flags: ignoreversion"#.to_owned(),
+        format!(
+            r#"Name: "{{autoprograms}}\Analyte"; Filename: "{{app}}\analyte-app.exe"; AppUserModelID: "{identifier}";"#
+        ),
+        r#"ValueName: "Analyte"; ValueData: """{app}\analyte-app.exe"" --tray"; Flags: uninsdeletevalue; Tasks: autostart"#.to_owned(),
+        r#"Name: "autostart"; Description: "Start Analyte when I sign in""#.to_owned(),
+        r"SaveStringToFile(ExpandConstant('{app}\analyte-app.toml'),".to_owned(),
+        "+ 'admin_port = ' + Port + #13#10, False)".to_owned(),
+        r#"Type: files; Name: "{app}\analyte-app.toml""#.to_owned(),
+        r#"Filename: "{app}\analyte-app.exe"; Description: "Open Analyte"; Flags: postinstall nowait skipifsilent runasoriginaluser; Check: CanOpenApp"#.to_owned(),
+        r"Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM analyte-app.exe',".to_owned(),
+        "  Result := '';\n  CloseDesktopApp;".to_owned(),
+        "  begin\n    CloseDesktopApp;".to_owned(),
+        "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}".to_owned(),
+    ] {
+        assert!(installer.contains(&expected), "analyte.iss lacks {expected}");
+    }
+    // SERVICE_START for interactive users only: no stop ("WP") or change right.
+    assert!(install.contains("$startRight = '(A;;RP;;;IU)'"));
+    assert!(!install.contains("WP;;;IU"));
+    let build = read("build.ps1")?;
+    assert!(
+        build.contains(
+            "Copy-Item -LiteralPath $App -Destination (Join-Path $stage 'analyte-app.exe')"
+        )
+    );
     Ok(())
 }

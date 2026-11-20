@@ -21,7 +21,7 @@ done < <(git ls-files -z -- '*.rs')
 while IFS= read -r -d '' manifest; do
   directory=${manifest%/Cargo.toml}
   case "$directory" in
-    crates/analyte|crates/steps/*|crates/protocols/*|crates/core/*|crates/testing/*)
+    crates/analyte|crates/app|crates/steps/*|crates/protocols/*|crates/core/*|crates/testing/*)
       case "$directory" in crates/*/*/*) echo "$directory: nested crate"; failed=1 ;; esac ;;
     *) echo "$directory: crate outside approved kind folders"; failed=1 ;;
   esac

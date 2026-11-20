@@ -9,6 +9,7 @@ mod attention;
 mod page;
 mod signal;
 
+pub(in crate::admin) use attention::Overall;
 pub(in crate::admin) use signal::{Delivery, Keys, Standing, kept_health, order_list, standing};
 #[cfg(test)]
 mod tests;
@@ -231,12 +232,37 @@ async fn stored(
     })
 }
 
-async fn render(
+/// What the overview read: everything its verdict depends on, and the signal
+/// path's nodes and figures built from the same reads.
+struct Observed {
+    restore_paused: bool,
+    free: u64,
+    review: u64,
+    /// Every measured fact, the active alerts included.
+    facts: attention::Facts,
+    machines: Vec<page::MachineNode>,
+    labs: Vec<page::LabNode>,
+    figures: Vec<page::Figure>,
+    kept: Vec<super::removed::Line>,
+}
+
+/// What the overview reads besides the verdict's facts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Nodes {
+    /// When each machine last sent data, for the machine nodes: the page.
+    WithActivity,
+    /// The facts only: `GET /status`. Receipts never change a fact.
+    FactsOnly,
+}
+
+/// Reads what decides the verdict, once, for the page and for `GET /status`,
+/// in the page's order, so the first read that fails is the one it names.
+async fn observe(
     state: &Context,
-    session: Option<&Session>,
+    until: std::time::Instant,
+    nodes: Nodes,
     now: Timestamp,
-) -> Result<String, Failure> {
-    let until = deadline().map_err(Reading::Store.failed())?;
+) -> Result<Observed, Failure> {
     let Read {
         restore_paused,
         free,
@@ -261,9 +287,12 @@ async fn render(
             .map_err(Reading::Orders.failed())?,
         ..attention::Facts::default()
     };
-    let activity = activity(state, until)
-        .await
-        .map_err(Reading::Receipts.failed())?;
+    let activity = match nodes {
+        Nodes::WithActivity => activity(state, until)
+            .await
+            .map_err(Reading::Receipts.failed())?,
+        Nodes::FactsOnly => BTreeMap::new(),
+    };
     let machines = signal::machines(state, &activity, &mut facts, now);
     let (labs, figures) = signal::lab_apps(state, &delivered, &failing, &mut facts, now)
         .await
@@ -274,6 +303,53 @@ async fn render(
     facts
         .blocked
         .extend(kept.iter().filter_map(super::removed::Line::blocked));
+    facts.alerts = alerts;
+    Ok(Observed {
+        restore_paused,
+        free,
+        review,
+        facts,
+        machines,
+        labs,
+        figures,
+        kept,
+    })
+}
+
+/// The overall state the verdict shows, from the same reads and rules, within
+/// [`view::READ_BUDGET`]; none when it could not be read in time. It reads no
+/// receipts, which only draw the machine nodes. Why it failed goes to the log
+/// as the reading's name only, never its values.
+pub(in crate::admin) async fn overall(state: &Context, now: Timestamp) -> Option<Overall> {
+    let read = async {
+        let until = deadline().map_err(Reading::Store.failed())?;
+        observe(state, until, Nodes::FactsOnly, now).await
+    };
+    let reading = match tokio::time::timeout(view::READ_BUDGET, read).await {
+        Ok(Ok(observed)) => return Some(Overall::of(&attention::things(&observed.facts))),
+        Ok(Err(failure)) => failure.reading,
+        Err(_) => Reading::Time,
+    };
+    tracing::warn!(?reading, "the overall state could not be read");
+    None
+}
+
+async fn render(
+    state: &Context,
+    session: Option<&Session>,
+    now: Timestamp,
+) -> Result<String, Failure> {
+    let until = deadline().map_err(Reading::Store.failed())?;
+    let Observed {
+        restore_paused,
+        free,
+        review,
+        facts,
+        machines,
+        labs,
+        figures,
+        kept,
+    } = observe(state, until, Nodes::WithActivity, now).await?;
     let relays = crate::operator::notification_status::snapshot(
         &state.store,
         &state.alert_endpoints,
@@ -281,13 +357,17 @@ async fn render(
     )
     .await
     .map_err(Reading::Relays.failed())?;
-    let alert_rows = alerts.iter().map(|alert| alert_row(alert, now)).collect();
-    let alert_messages = alerts
+    let alert_rows = facts
+        .alerts
+        .iter()
+        .map(|alert| alert_row(alert, now))
+        .collect();
+    let alert_messages = facts
+        .alerts
         .iter()
         .filter_map(crate::operator::alerts::message)
         .collect();
     let orders = orders(&facts);
-    facts.alerts = alerts;
     let things = attention::things(&facts);
     let frame = Frame::new(state, Tab::Overview, "Overview", Some(review), session, now);
     // First run: no machine is set up, nothing needs anyone and nothing waits for a

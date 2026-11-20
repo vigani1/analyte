@@ -285,9 +285,14 @@ missing; nothing is guessed in the meantime.
   app destination in the program file, so its waiting results are still
   delivered (no order polling) until none are left; the Overview counts them.
   Applying a change needs a restart.
-- The admin pages are being restyled one PR at a time as server-rendered
-  Askama pages with one token stylesheet ([ADR 0018](adr/0018-server-rendered-pages-and-one-stylesheet.md));
-  no release is built until the last page is restyled.
+- The admin pages are server-rendered Askama pages with one token stylesheet
+  ([ADR 0018](adr/0018-server-rendered-pages-and-one-stylesheet.md)).
+- On Windows the **Analyte app** (`analyte-app.exe`, [ADR 0019](adr/0019-desktop-app.md))
+  replaces opening the pages in a browser: the same pages in its own window,
+  a tray icon with the engine's state from its public `GET /status`,
+  notifications when the state gets worse, an Engine off screen with Start
+  engine, and start at sign-in. It never runs the engine or holds the admin
+  key. Linux keeps the browser.
 - Alerts on oldest undelivered item, stalled machines and disk space.
 - The PC must not sleep; updates are scheduled; USB serial reconnects and COM
   port changes are handled.
