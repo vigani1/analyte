@@ -621,6 +621,7 @@ fn schema_seventeen_keeps_every_row_and_fills_when_each_delivery_was_accepted() 
         "outbox_delivered_at",
         "outbox_delivered_attempt",
         "outbox_destination_state",
+        "outbox_ordering",
         "outbox_receipt",
         "parked_resolved_time",
         "parked_time",

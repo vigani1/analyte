@@ -29,6 +29,10 @@ CREATE INDEX attempts_accepted_time ON attempts(outcome='"Done"',time);
 -- Deliveries by lab app and state, by receipt, and by when last accepted.
 CREATE INDEX outbox_destination_state ON outbox(destination,state);
 CREATE INDEX outbox_receipt ON outbox(receipt);
+-- The delivery worker's claim looks up earlier deliveries of the same lab app,
+-- kind and ordering key; without this the indexes by lab app above would make
+-- that lookup read every delivery of the lab app.
+CREATE INDEX outbox_ordering ON outbox(destination,kind,ordering_key);
 ALTER TABLE outbox ADD COLUMN delivered_at INTEGER CHECK(delivered_at IS NULL OR typeof(delivered_at)='integer');
 ALTER TABLE outbox ADD COLUMN delivered_attempt INTEGER CHECK(delivered_attempt IS NULL OR typeof(delivered_attempt)='integer');
 UPDATE outbox SET
