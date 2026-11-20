@@ -1,10 +1,11 @@
 //! Renders the Overview states a test server cannot reach cheaply: each read the error page names, its plain fallback, and orders, notices, disk and alerts in every form.
 use super::attention::Facts;
-use super::page::{AlertRow, Disk, ErrorPage, Notice, Page, Verdict};
-use super::{Failure, Reading, alert_row, error_text, fallback, orders};
+use super::page::{AlertRow, Disk, Notice, Page, Verdict};
+use super::{Failure, Reading, alert_row, orders};
 use crate::admin::view::{
     Tone,
     frame::{Frame, Sidebar},
+    report::{Problem, Section},
 };
 use analyte_model::Identifier;
 use analyte_store::{AlertKey, AlertState};
@@ -50,12 +51,18 @@ fn frame() -> Frame {
 #[test]
 fn error_page_names_the_read_that_failed() -> Result<(), askama::Error> {
     for reading in READINGS {
-        let html = ErrorPage {
-            frame: frame(),
-            text: error_text(reading),
-            detail: vec!["the exact reason".into()],
+        let timed_out = reading == Reading::Time;
+        let problem = Failure {
+            reading,
+            error: (!timed_out).then(|| Box::new(crate::admin::Error::StoreMismatch)),
         }
-        .render()?;
+        .problem();
+        assert_eq!(
+            problem.status().as_u16(),
+            if timed_out { 504 } else { 503 },
+            "{reading:?}"
+        );
+        let html = problem.report(frame(), Section::Overview).render()?;
         assert!(html.contains("<div class=\"alert alert--bad\" role=\"note\">"));
         assert!(
             html.contains("<p class=\"alert__title\">The overview could not be shown just now</p>")
@@ -67,13 +74,14 @@ fn error_page_names_the_read_that_failed() -> Result<(), askama::Error> {
             )),
             "{reading:?}\n{html}"
         );
-        assert!(html.contains("Details for support</summary><pre>the exact reason\n</pre>"));
-        let failure = Failure {
-            reading,
-            error: None,
+        let detail = if timed_out {
+            "admin overview deadline of 1500 ms exceeded"
+        } else {
+            "current configuration points to a different store"
         };
-        let expected = if reading == Reading::Time { 504 } else { 503 };
-        assert_eq!(failure.status().as_u16(), expected, "{reading:?}");
+        assert!(html.contains(&format!(
+            "Details for support</summary><pre>{detail}\n</pre>"
+        )));
     }
     let sentences: std::collections::BTreeSet<&str> =
         READINGS.iter().map(|reading| reading.sentence()).collect();
@@ -90,21 +98,16 @@ fn error_page_names_the_read_that_failed() -> Result<(), askama::Error> {
 #[tokio::test]
 async fn failed_error_page_falls_back_to_the_plain_refusal()
 -> Result<(), Box<dyn std::error::Error>> {
-    let response = fallback(
+    let response = Problem::Time.fallback(
         &crate::admin::view::assets::Root::of_this_build(),
-        &Failure {
-            reading: Reading::Time,
-            error: None,
-        },
+        Section::Overview,
         &askama::Error::Fmt,
     );
     assert_eq!(response.status().as_u16(), 504);
     let body = axum::body::to_bytes(response.into_body(), 1 << 16).await?;
     let body = String::from_utf8_lossy(&body);
-    assert!(body.contains("The overview could not be shown just now."));
-    assert!(
-        body.contains("admin overview deadline of 1500 ms exceeded; the error page failed too: ")
-    );
+    assert!(body.contains("This page could not be shown. Give the details below to support."));
+    assert!(body.contains("admin overview deadline of 1500 ms exceeded; the page failed too: "));
     assert!(body.contains("<section class=\"panel anim-in\" aria-labelledby=\"rf-title\">"));
     assert!(!body.contains("class=\"sidebar\""));
     Ok(())

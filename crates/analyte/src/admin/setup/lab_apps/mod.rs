@@ -747,10 +747,8 @@ fn form_page(
         |settings| format!("Edit {}", settings.name.as_str()),
     );
     let mut head = Section::LabApps(None).head(title.clone());
-    head.crumbs.extend(settings.map(|settings| Crumb {
-        label: settings.name.as_str().to_owned(),
-        href: None,
-    }));
+    head.crumbs
+        .extend(settings.map(|settings| Crumb::here(settings.name.as_str())));
     let new = |(label, field, input)| Key {
         label,
         field,

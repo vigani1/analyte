@@ -517,14 +517,8 @@ fn detail_page(
         frame: Frame::new(state, Tab::Machines, id.to_owned(), None, session, now),
         head: Head {
             crumbs: vec![
-                Crumb {
-                    label: Tab::Machines.label().to_owned(),
-                    href: Some(Tab::Machines.href().to_owned()),
-                },
-                Crumb {
-                    label: id.to_owned(),
-                    href: None,
-                },
+                Crumb::link(Tab::Machines.label(), Tab::Machines.href()),
+                Crumb::here(id),
             ],
             title: id.to_owned(),
             status: Some(Status {

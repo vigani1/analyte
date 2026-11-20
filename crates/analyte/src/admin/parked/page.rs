@@ -5,7 +5,7 @@
 //! no stored data behind it is left out, and raw IDs only go under "Details for support".
 use super::category::Category;
 use crate::admin::view::{
-    Tone,
+    Tone, format,
     format::{Line, Moment, Part},
     frame::Frame,
     icon::Icon,
@@ -211,20 +211,6 @@ pub(super) struct Raw {
     pub(super) support: Vec<String>,
 }
 
-/// A page that only reports an outcome or a refusal, with where to go next.
-#[derive(askama::Template)]
-#[template(path = "pages/parked/message.html")]
-pub(super) struct Message {
-    pub(super) frame: Frame,
-    pub(super) head: Head,
-    pub(super) tone: Tone,
-    pub(super) title: String,
-    pub(super) text: String,
-    pub(super) links: Vec<Button>,
-    /// The exact reason, for support; empty after a success.
-    pub(super) support: Vec<String>,
-}
-
 impl Head {
     /// A page under Needs review: "Needs review / Item 412" when it is about one
     /// item, linked back to the item unless `here` is the item page itself.
@@ -238,7 +224,7 @@ impl Head {
             crumbs.push(Crumb {
                 label: "Item",
                 number: Some(id),
-                href: (!here).then(|| item_href(id)),
+                href: (!here).then(|| format::parked_href(id)),
             });
         }
         Self {
@@ -248,11 +234,6 @@ impl Head {
             status: None,
         }
     }
-}
-
-/// The item page's address.
-pub(super) fn item_href(id: i64) -> String {
-    format!("/parked/{id}")
 }
 
 /// The icon a resolved row shows; the templates name no icon themselves.

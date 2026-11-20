@@ -119,13 +119,12 @@ fn page(
         next,
     } = read;
     let title = "How this message was read";
-    let mut crumbs = vec![Crumb {
-        label: Tab::Machines.label().to_owned(),
-        href: Some(Tab::Machines.href().to_owned()),
-    }];
-    crumbs.extend(metadata.as_ref().map(|metadata| Crumb {
-        label: metadata.machine.as_str().to_owned(),
-        href: Some(format::machine_href(metadata.machine.as_str())),
+    let mut crumbs = vec![Crumb::link(Tab::Machines.label(), Tab::Machines.href())];
+    crumbs.extend(metadata.as_ref().map(|metadata| {
+        Crumb::link(
+            metadata.machine.as_str(),
+            format::machine_href(metadata.machine.as_str()),
+        )
     }));
     let digest = analyte_contract::content_digest(&interpretation.config);
     let Outcome {

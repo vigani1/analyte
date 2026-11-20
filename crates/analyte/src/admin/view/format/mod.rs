@@ -20,7 +20,7 @@ pub(in crate::admin) use history::{
     actor, arrived, outcomes, recorded, settled, settled_action, settled_line,
 };
 pub(in crate::admin) use href::{
-    lab_app_href, machine_href, order_item_href, path_segment, setup_href,
+    lab_app_href, machine_href, order_item_href, parked_href, path_segment, setup_href,
 };
 pub(in crate::admin) use lab_app::{
     failing, last_delivered, missing_keys, senders, set_in_environment, set_on, waiting,

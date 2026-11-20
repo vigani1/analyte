@@ -4,11 +4,11 @@
 //! link back to the item, and the form posts with the session's form token.
 //! The shared request guard already refused a post without a session or with
 //! a wrong token; these handlers check again and ask for a signed-in session.
-use super::page::{Button, Dialog, Head, Message, item_href};
-use super::problem::Problem;
-use super::{ItemQuery, ItemRead, item_page, open_count, respond};
+use super::page::Dialog;
+use super::{ItemQuery, ItemRead, item_page, open_count};
 use crate::admin::server::Context;
 use crate::admin::server::sessions::{Session, signed_in};
+use crate::admin::view::report::{Button, Problem, Report, Section, respond};
 use crate::admin::view::{self, Tab, Tone, format, frame::Frame};
 use crate::admin::{CommandError, Error};
 use crate::operator::recovery;
@@ -75,7 +75,7 @@ impl Confirm {
             hint: "Required, up to 256 characters. Recorded in the history with the time.",
             button,
             csrf: session.csrf.form_value().to_owned(),
-            cancel: item_href(id),
+            cancel: format::parked_href(id),
             reason: reason.to_owned(),
             error,
         }
@@ -113,7 +113,7 @@ pub(in crate::admin) async fn confirm_resolve(
     session: Option<Extension<Arc<Session>>>,
 ) -> Response {
     let Some(session) = signed_in(session.as_ref()) else {
-        return Problem::SignIn.page(&state, None, Some(id));
+        return Problem::SignIn.page(&state, None, Section::NeedsReview(Some(id)));
     };
     open(&state, session, id, Confirm::Resolve, "", None).await
 }
@@ -124,7 +124,7 @@ pub(in crate::admin) async fn confirm_reprocess(
     session: Option<Extension<Arc<Session>>>,
 ) -> Response {
     let Some(session) = signed_in(session.as_ref()) else {
-        return Problem::SignIn.page(&state, None, Some(id));
+        return Problem::SignIn.page(&state, None, Section::NeedsReview(Some(id)));
     };
     open(&state, session, id, Confirm::Reprocess, "", None).await
 }
@@ -163,24 +163,26 @@ async fn open(
     .await;
     let (read, receipt): (ItemRead, _) = match read {
         Ok(Ok(Some(read))) => read,
-        Ok(Ok(None)) => return Problem::NotFound.page(state, Some(session), Some(id)),
-        Ok(Err(error)) => {
-            return Problem::of(&error).page(state, Some(session), Some(id));
+        Ok(Ok(None)) => {
+            return Problem::NotFound.page(state, Some(session), Section::NeedsReview(Some(id)));
         }
-        Err(_) => return Problem::Time.page(state, Some(session), Some(id)),
+        Ok(Err(error)) => {
+            return Problem::of(&error).page(state, Some(session), Section::NeedsReview(Some(id)));
+        }
+        Err(_) => return Problem::Time.page(state, Some(session), Section::NeedsReview(Some(id))),
     };
     if read.resolution.is_some() {
-        return Problem::AlreadyResolved(id).page(state, Some(session), Some(id));
+        return Problem::AlreadyResolved.page(state, Some(session), Section::NeedsReview(Some(id)));
     }
     match receipt {
         Some(Err(OperatorError::Purged)) => {
-            return Problem::Purged.page(state, Some(session), Some(id));
+            return Problem::Purged.page(state, Some(session), Section::NeedsReview(Some(id)));
         }
         Some(Err(other)) => {
-            return Problem::NoSingleMessage(id, other.to_string()).page(
+            return Problem::NoSingleMessage(other.to_string()).page(
                 state,
                 Some(session),
-                Some(id),
+                Section::NeedsReview(Some(id)),
             );
         }
         Some(Ok(())) | None => {}
@@ -192,7 +194,13 @@ async fn open(
     } else {
         StatusCode::OK
     };
-    respond(state, Some(session), Some(id), status, html)
+    respond(
+        state,
+        Some(session),
+        Section::NeedsReview(Some(id)),
+        status,
+        html,
+    )
 }
 
 pub(in crate::admin) async fn resolve(
@@ -224,10 +232,10 @@ async fn send(
     form: &ReasonForm,
 ) -> Response {
     if !session.authenticated {
-        return Problem::SignIn.page(state, None, Some(id));
+        return Problem::SignIn.page(state, None, Section::NeedsReview(Some(id)));
     }
     if !session.csrf_valid(&form.csrf) || form.confirm != "yes" {
-        return Problem::FormExpired.page(state, Some(session), Some(id));
+        return Problem::FormExpired.page(state, Some(session), Section::NeedsReview(Some(id)));
     }
     let reason = match checked(&form.reason) {
         Ok(reason) => reason,
@@ -244,7 +252,11 @@ async fn send(
     };
     match done {
         Ok(done) => done.page(state, session, id).await,
-        Err(error) => Problem::Failed(error.to_string()).page(state, Some(session), Some(id)),
+        Err(error) => Problem::Failed(error.to_string()).page(
+            state,
+            Some(session),
+            Section::NeedsReview(Some(id)),
+        ),
     }
 }
 
@@ -311,7 +323,8 @@ impl Done {
                 )
             }
         };
-        let page = Message {
+        let section = Section::NeedsReview(Some(id));
+        let page = Report {
             frame: Frame::new(
                 state,
                 Tab::NeedsReview,
@@ -320,10 +333,13 @@ impl Done {
                 Some(session),
                 Timestamp::now(),
             ),
-            head: Head::under(Some(id), false, title),
+            head: section.head(title),
             tone,
             title: alert,
             text,
+            lines: Vec::new(),
+            problems: Vec::new(),
+            restart: None,
             links: vec![
                 Button {
                     href: Tab::NeedsReview.href().to_owned(),
@@ -331,20 +347,14 @@ impl Done {
                     class: "btn--primary",
                 },
                 Button {
-                    href: item_href(id),
+                    href: format::parked_href(id),
                     label: "Open the item",
                     class: "btn--outline",
                 },
             ],
             support: Vec::new(),
         };
-        respond(
-            state,
-            Some(session),
-            Some(id),
-            StatusCode::OK,
-            page.render(),
-        )
+        respond(state, Some(session), section, StatusCode::OK, page.render())
     }
 }
 

@@ -413,14 +413,8 @@ fn detail_page(
         frame: Frame::new(state, Tab::MachineOrders, title.clone(), None, session, now),
         head: Head {
             crumbs: vec![
-                Crumb {
-                    label: Tab::MachineOrders.label().to_owned(),
-                    href: Some(Tab::MachineOrders.href().to_owned()),
-                },
-                Crumb {
-                    label: format!("Order {number}"),
-                    href: None,
-                },
+                Crumb::link(Tab::MachineOrders.label(), Tab::MachineOrders.href()),
+                Crumb::here(format!("Order {number}")),
             ],
             title,
             status: Some(Status {
