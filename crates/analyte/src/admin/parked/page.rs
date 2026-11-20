@@ -9,7 +9,9 @@ use crate::admin::view::{
     format::{Line, Moment, Part},
     frame::Frame,
     icon::Icon,
-    report::Chip,
+    list::Empty,
+    parts::{Hover, ReasonDialog},
+    report::{Button, Chip},
 };
 
 /// GET /parked: the Open and Resolved filters, then the items the filter shows.
@@ -61,33 +63,11 @@ pub(super) struct Row {
     pub(super) href: String,
 }
 
-/// What a filter with no items says: good news, with a tick, only for the
-/// Open filter; `link` points to the other filter when it has items.
-pub(super) struct Empty {
-    pub(super) good: bool,
-    pub(super) title: &'static str,
-    pub(super) text: &'static str,
-    pub(super) link: Option<(String, String)>,
-}
-
 /// Why an item is here: a plain sentence with no lead, or "Reason: " and the
 /// stored reason.
 pub(super) struct Why {
     pub(super) lead: &'static str,
     pub(super) text: Hover,
-}
-
-/// Words with their exact stored value on hover; `exact` is empty when they are the same.
-pub(super) struct Hover {
-    pub(super) shown: String,
-    pub(super) exact: String,
-}
-
-/// A link drawn as a button: where it goes, its words and its kind.
-pub(super) struct Button {
-    pub(super) href: String,
-    pub(super) label: &'static str,
-    pub(super) class: &'static str,
 }
 
 /// GET /parked/{id}, and the same page under the Mark resolved and Process
@@ -112,7 +92,7 @@ pub(super) struct Item {
     pub(super) history_notes: Vec<&'static str>,
     /// Exact IDs and stored values, for support.
     pub(super) support: Vec<String>,
-    pub(super) dialog: Option<Dialog>,
+    pub(super) dialog: Option<ReasonDialog>,
 }
 
 /// The head of a page under Needs review.
@@ -179,21 +159,6 @@ pub(super) struct Entry {
     pub(super) who: String,
     /// The line that settled the item.
     pub(super) good: bool,
-}
-
-/// A confirmation drawn over the item page.
-pub(super) struct Dialog {
-    pub(super) action: String,
-    pub(super) title: &'static str,
-    pub(super) text: &'static str,
-    pub(super) placeholder: &'static str,
-    pub(super) hint: &'static str,
-    pub(super) button: &'static str,
-    pub(super) csrf: String,
-    pub(super) cancel: String,
-    /// What was typed, shown again after a refusal.
-    pub(super) reason: String,
-    pub(super) error: Option<&'static str>,
 }
 
 /// POST /parked/{id}/raw: the bytes someone asked to see, after the view was recorded.

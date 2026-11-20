@@ -216,18 +216,21 @@ fn feed(
     let empty = read.lines.is_empty().then(|| {
         if before.is_some() {
             Empty {
+                good: false,
                 title: "No earlier activity",
                 text: "This page is past the oldest line Analyte keeps.",
-                link: Some((Tab::Activity.href(), "Back to the newest")),
+                link: Some((Tab::Activity.href(), "Back to the newest".into())),
             }
         } else if machine.is_some() || show != Show::All {
             Empty {
+                good: false,
                 title: "Nothing for this filter",
                 text: "No stored activity matches this machine and type.",
-                link: Some((Tab::Activity.href(), "Show all activity")),
+                link: Some((Tab::Activity.href(), "Show all activity".into())),
             }
         } else {
             Empty {
+                good: false,
                 title: "No activity yet",
                 text: concat!(
                     "Messages from machines, deliveries to lab apps, orders and changes ",

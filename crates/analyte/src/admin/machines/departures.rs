@@ -3,13 +3,14 @@
 //! Switched on is not the same as used: a machine's settings switch a
 //! departure on, and each reading records which ones it used for those bytes.
 //! The page shows both from the stored reading, never from today's settings.
-use super::page::{Applied, Departures, Notice};
+use super::page::{Applied, Departures};
 use crate::admin::error::CommandError;
 use crate::admin::server::Context;
 use crate::admin::server::sessions::Session;
-use crate::admin::view::report::{Button, Crumb, Head, Problem, Section, respond};
+use crate::admin::view::parts::Notice;
+use crate::admin::view::report::{Button, Crumb, Head, Problem, Section, read_within, respond};
 use crate::admin::view::report::{Fact, Value};
-use crate::admin::view::{self, Tab, Tone, format, frame::Frame};
+use crate::admin::view::{Tab, Tone, format, frame::Frame};
 use crate::deadline;
 use analyte_model::{DepartureEvidence, DepartureMeaning, ReceiptId, ReceiptMetadata};
 use analyte_store::{Interpretation, OperatorError, Reading};
@@ -55,8 +56,8 @@ pub(in crate::admin) async fn receipt(
         return Problem::ReadingNumber.page(&state, session, Section::Machines(None));
     }
     let now = Timestamp::now();
-    match tokio::time::timeout(view::READ_BUDGET, read(&state, id, version)).await {
-        Ok(Ok(Some(read))) => {
+    match read_within(read(&state, id, version)).await {
+        Ok(Some(read)) => {
             let machine = read
                 .metadata
                 .as_ref()
@@ -70,9 +71,8 @@ pub(in crate::admin) async fn receipt(
                 html,
             )
         }
-        Ok(Ok(None)) => Problem::ReadingNotFound.page(&state, session, Section::Machines(None)),
-        Ok(Err(error)) => Problem::of(&error).page(&state, session, Section::Machines(None)),
-        Err(_) => Problem::Time.page(&state, session, Section::Machines(None)),
+        Ok(None) => Problem::ReadingNotFound.page(&state, session, Section::Machines(None)),
+        Err(problem) => problem.page(&state, session, Section::Machines(None)),
     }
 }
 

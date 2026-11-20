@@ -10,7 +10,8 @@ use super::{
     RELOAD, SetupError, audit, copies, entries, needs_login, off_thread, page, refused, see_other,
     site, stored,
 };
-use crate::admin::machines::{self, DialogItem, Hover, RemoveDialog};
+use crate::admin::machines::{self, DialogItem, RemoveDialog};
+use crate::admin::view::parts::Hover;
 use crate::admin::view::report::{Button, Problem, Report, Section, respond};
 use crate::admin::view::{Tone, icon::Icon};
 use crate::admin::{
@@ -194,11 +195,6 @@ fn added_page(
     let mut support = vec![format!("Its settings file: {}", path.display())];
     support.extend(copies(&written.backups));
     let page = Report {
-        frame: section.frame(state, "Machine added", Some(session)),
-        head: section.head("Machine added"),
-        tone: Tone::Good,
-        title: format!("{id} is added"),
-        text: "Set it up now, or restart first.".into(),
         lines,
         problems: vec![format::sentence(&error.to_string())],
         restart: Some(session.csrf.form_value().to_owned()),
@@ -215,6 +211,13 @@ fn added_page(
             },
         ],
         support,
+        ..Report::new(
+            section.frame(state, "Machine added", Some(session)),
+            section,
+            Tone::Good,
+            format!("{id} is added"),
+            "Set it up now, or restart first.",
+        )
     };
     respond(state, Some(session), section, StatusCode::OK, page.render())
 }

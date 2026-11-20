@@ -9,6 +9,7 @@ pub(super) mod format;
 pub(super) mod frame;
 pub(super) mod icon;
 pub(super) mod list;
+pub(super) mod parts;
 pub(super) mod refusal;
 pub(super) mod report;
 

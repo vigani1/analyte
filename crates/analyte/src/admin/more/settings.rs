@@ -5,7 +5,7 @@ use crate::admin::server::sessions::Session;
 use crate::admin::view::{
     self, Tab, Tone, format,
     frame::Frame,
-    report::{Fact, Problem, Section, Value, respond},
+    report::{Fact, Problem, Section, Value, read_within, respond},
 };
 use crate::installation::config::Program;
 use crate::machine::link::status::Light;
@@ -80,17 +80,15 @@ pub(in crate::admin) async fn settings(
     let section = Section::More(Tab::Settings);
     let now = Timestamp::now();
     let targets = state.installed.alert_targets.clone();
-    let read = tokio::time::timeout(
-        view::READ_BUDGET,
-        crate::admin::setup::key_sources(&state, targets, now),
-    )
-    .await;
-    let (found, unlisted, unreadable) = match read {
-        Ok(Ok(keys)) => keys,
-        Ok(Err(error)) => {
-            return Problem::Settings(error.to_string()).page(&state, session, section);
-        }
-        Err(_) => return Problem::Time.page(&state, session, section),
+    let sources = crate::admin::setup::key_sources(&state, targets, now);
+    let read = read_within(async {
+        sources
+            .await
+            .map_err(|error| Problem::Settings(error.to_string()))
+    });
+    let (found, unlisted, unreadable) = match read.await {
+        Ok(keys) => keys,
+        Err(problem) => return problem.page(&state, session, section),
     };
     let mut problems = Vec::new();
     let mut support = Vec::new();

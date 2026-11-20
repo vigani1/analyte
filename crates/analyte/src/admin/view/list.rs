@@ -37,9 +37,12 @@ pub(in crate::admin) fn one_page<T, E>(
     Ok((rows, more))
 }
 
-/// What an empty list says, and a link to a list that has rows.
+/// What an empty list says and where to go instead: a list that has rows,
+/// or what to do first. `good` marks good news, such as nothing to review,
+/// which shows a tick; an empty list is not good news by itself.
 pub(in crate::admin) struct Empty {
+    pub(in crate::admin) good: bool,
     pub(in crate::admin) title: &'static str,
     pub(in crate::admin) text: &'static str,
-    pub(in crate::admin) link: Option<(&'static str, &'static str)>,
+    pub(in crate::admin) link: Option<(&'static str, String)>,
 }

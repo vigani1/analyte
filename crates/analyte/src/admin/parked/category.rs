@@ -4,7 +4,8 @@
 //! the guidance only from the category and the problem read back from the
 //! stored reason; a mapping finding names the problem, never the test code,
 //! which stays in the protected original message.
-use super::page::{Hover, Why};
+use super::page::Why;
+use crate::admin::view::parts::Hover;
 use crate::admin::view::{Tone, format};
 use analyte_mapping::{Finding, Problem};
 use analyte_store::{Parked, ParkedKind};

@@ -9,6 +9,7 @@ use crate::admin::view::{
     format::{self, Line, Moment, Part},
     frame::Frame,
     icon::Icon,
+    parts::Notice,
 };
 
 /// The alerts table's columns.
@@ -219,13 +220,6 @@ pub(super) struct OrderRow {
     pub(super) text: String,
     pub(super) href: &'static str,
     pub(super) link: &'static str,
-}
-
-/// A boxed sentence: a title and, when needed, more text.
-pub(super) struct Notice {
-    pub(super) tone: Tone,
-    pub(super) title: String,
-    pub(super) text: String,
 }
 
 /// Disk space as the overview shows it, exact bytes on hover.

@@ -29,10 +29,10 @@
 {%- if let Some(href) = next %}
 {% call forms::next_page(href) %}{% endcall %}
 {%- endif %}
-{%- if let Some(dialog) = dialog %}
-{% call forms::reason_dialog(dialog) %}
-<label class="check"><input type="checkbox" name="acknowledge_superseded" value="true"{% if dialog.superseded %} checked{% endif %}>Send it even if a newer correction of this result exists</label>
-{% call feedback::support(crate::admin::view::format::SUPPORT, dialog.support.as_slice()) %}{% endcall %}
+{%- if let Some(resend) = dialog %}
+{% call forms::reason_dialog(resend.form) %}
+<label class="check"><input type="checkbox" name="acknowledge_superseded" value="true"{% if resend.superseded %} checked{% endif %}>Send it even if a newer correction of this result exists</label>
+{% call feedback::support(crate::admin::view::format::SUPPORT, resend.support.as_slice()) %}{% endcall %}
 {%- endcall %}
 {%- endif %}
 {%- endblock %}

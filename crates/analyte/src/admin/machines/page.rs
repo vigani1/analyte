@@ -9,6 +9,8 @@ use crate::admin::view::{
     format::{Moment, Part, StateLook},
     frame::Frame,
     icon::Icon,
+    list::Empty,
+    parts::{Hover, Notice},
     report::{Button, Fact, Head, Link, Status, Value},
 };
 
@@ -58,20 +60,6 @@ pub(super) struct List {
     pub(super) next: Option<String>,
     /// The exact reasons behind the problems, for support.
     pub(super) support: Vec<String>,
-}
-
-/// What a list with nothing on it says, and whether to offer adding a machine.
-pub(super) struct Empty {
-    pub(super) title: &'static str,
-    pub(super) text: &'static str,
-    pub(super) add: bool,
-}
-
-/// A boxed sentence: a tone, a title and, when needed, more text.
-pub(in crate::admin) struct Notice {
-    pub(in crate::admin) tone: Tone,
-    pub(in crate::admin) title: String,
-    pub(in crate::admin) text: String,
 }
 
 /// One machine on the list.
@@ -171,13 +159,6 @@ pub(in crate::admin) struct RemoveDialog {
     pub(in crate::admin) anyway: bool,
     /// The action's button; none when nothing can be done now, so only Cancel shows.
     pub(in crate::admin) button: Option<&'static str>,
-}
-
-/// Words with their exact value on hover; `exact` is empty when there is none.
-#[derive(Clone)]
-pub(in crate::admin) struct Hover {
-    pub(in crate::admin) shown: String,
-    pub(in crate::admin) exact: String,
 }
 
 /// One line of a dialog's list, with its icon in its tone.

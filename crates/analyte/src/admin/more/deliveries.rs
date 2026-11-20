@@ -12,10 +12,11 @@ use crate::admin::error::CommandError;
 use crate::admin::parked::checked;
 use crate::admin::server::sessions::{Session, signed_in};
 use crate::admin::view::list::{Empty, PAGE, cursor_value, one_page};
+use crate::admin::view::parts::ReasonDialog;
 use crate::admin::view::{
     Tab, Tone, format,
     frame::Frame,
-    report::{Chip, Problem, Section, respond},
+    report::{Chip, Problem, Section, read_within, respond},
 };
 use crate::admin::{Error, server::Context};
 use crate::deadline;
@@ -164,24 +165,27 @@ fn list(
 }
 
 /// What a filter with nothing on this page says.
-const fn empty(show: Show, shown: u64) -> Empty {
+fn empty(show: Show, shown: u64) -> Empty {
     if shown > 0 {
         return Empty {
+            good: false,
             title: "No more deliveries",
             text: "This page is past the last delivery.",
-            link: Some((Show::All.href(), "Back to the first page")),
+            link: Some((Show::All.href(), "Back to the first page".into())),
         };
     }
     match show {
         Show::All => Empty {
+            good: false,
             title: "No deliveries yet",
             text: "Results and order messages Analyte sends to a lab app are listed here.",
             link: None,
         },
         Show::Undelivered => Empty {
+            good: false,
             title: "Nothing waits for a lab app",
             text: "Every delivery listed was accepted by its lab app.",
-            link: Some((Show::All.href(), "Show all deliveries")),
+            link: Some((Show::All.href(), "Show all deliveries".into())),
         },
     }
 }
@@ -303,18 +307,15 @@ async fn open(
             .await?;
         Ok::<_, Error>((delivery, read(state, Show::All, 0).await?))
     };
-    let (delivery, read) = match tokio::time::timeout(crate::admin::view::READ_BUDGET, both).await {
-        Ok(Ok((Some(delivery), read))) => (delivery, read),
-        Ok(Ok((None, _))) => {
+    let (delivery, read) = match read_within(both).await {
+        Ok((Some(delivery), read)) => (delivery, read),
+        Ok((None, _)) => {
             return Problem::Refused(analyte_store::DeliveryError::UnknownDelivery.to_string())
                 .page(state, Some(session), section);
         }
-        Ok(Err(error)) => {
-            return Problem::of(&error).page(state, Some(session), section);
-        }
-        Err(_) => return Problem::Time.page(state, Some(session), section),
+        Err(problem) => return problem.page(state, Some(session), section),
     };
-    let dialog = ResendDialog {
+    let form = ReasonDialog {
         action: resend_href(uuid::Uuid::from(id)),
         title: "Send this delivery again?",
         text: format!(
@@ -326,9 +327,12 @@ async fn open(
         hint: "Required, up to 256 characters. Recorded with the action and the time.",
         button: "Send again",
         csrf: session.csrf.form_value().to_owned(),
-        cancel: Tab::Deliveries.href(),
+        cancel: Tab::Deliveries.href().into(),
         reason: typed.to_owned(),
         error,
+    };
+    let dialog = ResendDialog {
+        form,
         support: vec![format!("Delivery {}", uuid::Uuid::from(id))],
         superseded,
     };

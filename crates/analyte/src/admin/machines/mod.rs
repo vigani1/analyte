@@ -4,20 +4,23 @@
 //! connection type's own words, the model named at startup, and for each
 //! stored message its time, its sample IDs as stored, how it was read and how
 //! its deliveries stand. Test codes and result values never show; raw IDs only
-//! appear under "Details for support". Reads stop after [`view::READ_BUDGET`] with the
-//! error page in the same look.
+//! appear under "Details for support". Reads stop after
+//! [`crate::admin::view::READ_BUDGET`] with the error page in the same look.
 pub(super) mod departures;
 mod page;
 
-pub(super) use page::{DialogItem, Hover, Notice, RemoveDialog, Removed, Rule};
+pub(super) use page::{DialogItem, RemoveDialog, Removed, Rule};
 
 use crate::admin::server::sessions::Session;
 use crate::admin::server::{Context, Machine};
 use crate::admin::setup::Listed;
-use crate::admin::view::list::{Cursor, PAGE};
-use crate::admin::view::report::{Button, Crumb, Head, Problem, Report, Section, Status, respond};
+use crate::admin::view::list::{Cursor, Empty, PAGE};
+use crate::admin::view::parts::Notice;
+use crate::admin::view::report::{
+    Button, Crumb, Head, Problem, Report, Section, Status, read_within, respond,
+};
 use crate::admin::view::report::{Fact, Link, Value};
-use crate::admin::view::{self, Tab, Tone, format, frame::Frame, icon::Icon};
+use crate::admin::view::{Tab, Tone, format, frame::Frame, icon::Icon};
 use crate::admin::{Error, error::CommandError};
 use crate::deadline;
 use crate::machine::link::status::Light;
@@ -31,7 +34,7 @@ use axum::{
     response::Response,
 };
 use jiff::Timestamp;
-use page::{Delivery, Detail, Empty, List, Message, Row, Todo};
+use page::{Delivery, Detail, List, Message, Row, Todo};
 use std::sync::{Arc, atomic::Ordering};
 
 /// How many of a machine's newest stored messages its page lists.
@@ -211,12 +214,9 @@ pub(super) async fn list(
 ) -> Response {
     let session = session.as_ref().map(|Extension(session)| session.as_ref());
     let now = Timestamp::now();
-    let read = match tokio::time::timeout(view::READ_BUDGET, read_list(&state)).await {
-        Ok(Ok(read)) => read,
-        Ok(Err(error)) => {
-            return Problem::of(&error).page(&state, session, Section::Machines(None));
-        }
-        Err(_) => return Problem::Time.page(&state, session, Section::Machines(None)),
+    let read = match read_within(read_list(&state)).await {
+        Ok(read) => read,
+        Err(problem) => return problem.page(&state, session, Section::Machines(None)),
     };
     match list_page(&state, session, &cursor, read, now) {
         Ok(page) => respond(
@@ -226,7 +226,7 @@ pub(super) async fn list(
             StatusCode::OK,
             page.render(),
         ),
-        Err(error) => Problem::of(&error).page(&state, session, Section::Machines(None)),
+        Err(error) => Problem::from(error).page(&state, session, Section::Machines(None)),
     }
 }
 
@@ -288,15 +288,17 @@ fn list_page(
         }),
         empty: if entries.is_empty() {
             Some(Empty {
+                good: false,
                 title: "No machine is set up yet",
                 text: "Add one, then set it up step by step: its model, its connection, a listen-only test and the save.",
-                add: true,
+                link: Some(("/setup/add", "Add a machine".into())),
             })
         } else if rows.is_empty() {
             Some(Empty {
+                good: false,
                 title: "No more machines",
                 text: "This page is past the end of the list.",
-                add: false,
+                link: None,
             })
         } else {
             None
@@ -416,14 +418,10 @@ async fn page(
     dialog: Option<RemoveDialog>,
 ) -> Response {
     let now = Timestamp::now();
-    let (listed, mut recent) =
-        match tokio::time::timeout(view::READ_BUDGET, read_detail(state, id)).await {
-            Ok(Ok(read)) => read,
-            Ok(Err(error)) => {
-                return Problem::of(&error).page(state, session, Section::Machines(Some(id)));
-            }
-            Err(_) => return Problem::Time.page(state, session, Section::Machines(Some(id))),
-        };
+    let (listed, mut recent) = match read_within(read_detail(state, id)).await {
+        Ok(read) => read,
+        Err(problem) => return problem.page(state, session, Section::Machines(Some(id))),
+    };
     let entries = roster(state, listed.as_deref().ok());
     let Some(entry) = entries.iter().find(|entry| entry.id() == id) else {
         return match listed {
@@ -720,6 +718,7 @@ pub(in crate::admin) fn removed(
         .machines
         .iter()
         .any(|machine| machine.id.as_str() == id);
+    let section = Section::Machines(page_left.then_some(id));
     let mut links: Vec<Button> = page_left
         .then(|| Button {
             href: format::machine_href(id),
@@ -734,23 +733,18 @@ pub(in crate::admin) fn removed(
         class: "btn--outline",
     });
     let page = Report {
-        frame: Frame::new(
-            state,
-            Tab::Machines,
-            title,
-            None,
-            Some(session),
-            Timestamp::now(),
-        ),
-        head: Section::Machines(page_left.then_some(id)).head(title),
-        tone: Tone::Good,
-        title: format!("{id} is removed from Analyte’s settings"),
-        text: format::REMOVED_ADVICE.into(),
         lines: std::iter::once(removed.kept).chain(removed.lines).collect(),
         problems: removed.problems,
         restart: Some(removed.csrf),
         links,
         support: removed.support,
+        ..Report::new(
+            section.frame(state, title, Some(session)),
+            section,
+            Tone::Good,
+            format!("{id} is removed from Analyte’s settings"),
+            format::REMOVED_ADVICE,
+        )
     };
     respond(
         state,
