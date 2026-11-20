@@ -8,8 +8,12 @@ and backup files); nothing here logs clinical payloads.
 ## Durability and recovery
 
 Opening runs `integrity_check` and `foreign_key_check`. An empty file gets the
-starting schema (version 15) in one transaction; a store with an older or newer
-version is refused. Later releases add forward-only steps. WAL and `synchronous=FULL` deliberately require
+starting schema (version 15) in one transaction, then each later step in its
+own; a store older than 15 or newer than this build is refused. Step 16
+(`upkeep/parked_at.sql`) adds `parked.parked_at`, when an item was parked: new
+items get it from a trigger in the same write, kept items only where the same
+transaction wrote a time (a rejected or conflicting delivery's attempt), and
+NULL otherwise. WAL and `synchronous=FULL` deliberately require
 SQLite to sync each committed WAL transaction before success is returned.
 Foreign keys are enabled on every connection; lock waits have a configured
 nonzero timeout capped at 30 seconds. These guarantees still require a local
