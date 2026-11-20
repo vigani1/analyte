@@ -37,6 +37,17 @@ pub(super) enum Problem {
 }
 
 impl Problem {
+    /// The page for a read that failed: [`Self::Time`] when the store stopped
+    /// it at its deadline, as when the page gave up on it, else [`Self::Store`]
+    /// with the reason.
+    pub(in crate::admin) fn of(error: &crate::admin::Error) -> Self {
+        if error.read_stopped() {
+            Self::Time
+        } else {
+            Self::Store(error.to_string())
+        }
+    }
+
     /// Its status code: what went wrong in HTTP's terms.
     const fn status(&self) -> StatusCode {
         match self {

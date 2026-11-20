@@ -71,9 +71,7 @@ pub(in crate::admin) async fn receipt(
             )
         }
         Ok(Ok(None)) => Problem::ReadingNotFound.page(&state, session, Section::Machines(None)),
-        Ok(Err(error)) => {
-            Problem::Store(error.to_string()).page(&state, session, Section::Machines(None))
-        }
+        Ok(Err(error)) => Problem::of(&error).page(&state, session, Section::Machines(None)),
         Err(_) => Problem::Time.page(&state, session, Section::Machines(None)),
     }
 }
@@ -85,7 +83,7 @@ async fn read(
 ) -> Result<Option<Read>, crate::admin::Error> {
     Ok(state
         .store
-        .request::<_, CommandError>(deadline()?, move |store| {
+        .read::<_, CommandError>(deadline()?, move |store| {
             let Some(interpretation) = store.interpretation(id, version)? else {
                 return Ok(None);
             };

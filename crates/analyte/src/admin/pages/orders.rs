@@ -91,7 +91,7 @@ async fn read(state: &Context, query: OrdersQuery) -> Result<Read, Error> {
     };
     Ok(state
         .store
-        .request::<_, CommandError>(deadline()?, move |s| {
+        .read::<_, CommandError>(deadline()?, move |s| {
             let (orders, more) = one_page::<_, CommandError>(
                 s.machine_orders_up_to(&filter(after), PAGE + 1)?,
                 PAGE,

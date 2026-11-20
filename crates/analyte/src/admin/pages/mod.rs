@@ -76,7 +76,7 @@ async fn show<T>(
             let html = draw(value, session, Timestamp::now());
             respond(state, session, section, StatusCode::OK, html)
         }
-        Ok(Err(error)) => Problem::Store(error.to_string()).page(state, session, section),
+        Ok(Err(error)) => Problem::of(&error).page(state, session, section),
         Err(_) => Problem::Time.page(state, session, section),
     }
 }

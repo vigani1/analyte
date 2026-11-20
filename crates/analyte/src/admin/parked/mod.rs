@@ -169,7 +169,7 @@ pub(super) async fn list(
             let html = list_page(&state, session, show, read, now).render();
             respond(&state, session, None, StatusCode::OK, html)
         }
-        Ok(Err(error)) => Problem::Store(error.to_string()).page(&state, session, None),
+        Ok(Err(error)) => Problem::of(&error).page(&state, session, None),
         Err(_) => Problem::Time.page(&state, session, None),
     }
 }
@@ -183,7 +183,7 @@ async fn read_list(state: &Context, query: ListQuery, now: Timestamp) -> Result<
         .flatten();
     Ok(state
         .store
-        .request::<_, CommandError>(deadline()?, move |s| {
+        .read::<_, CommandError>(deadline()?, move |s| {
             let counts = s.parked_counts()?;
             let (rows, more) = one_page::<_, CommandError>(
                 s.parked_filtered_up_to(after, filter, PAGE + 1)?,
@@ -481,45 +481,58 @@ struct ItemRead {
     reprocessed: (Vec<Audit>, bool),
 }
 
-/// Reads item `id`, `after` linked records in, with `extra` run on the same
-/// store request for a dialog's own check; none when there is no such item.
-async fn read_item<T: Send + 'static>(
-    state: &Context,
+/// What item `id`'s page reads, `after` linked records in, in one store request.
+struct ItemQuery {
     id: i64,
-    after: u64,
-    extra: impl FnOnce(&mut Store, bool) -> T + Send + 'static,
-) -> Result<Option<(ItemRead, T)>, Error> {
-    let after = usize::try_from(after)?;
-    let history = Identifier::new(&format!("parked:{id}"))?;
-    let action = Identifier::new(recovery::REPROCESS_ACTION)?;
+    after: usize,
+    history: Identifier,
+    action: Identifier,
+}
+
+impl ItemQuery {
+    fn new(id: i64, after: u64) -> Result<Self, Error> {
+        Ok(Self {
+            id,
+            after: usize::try_from(after)?,
+            history: Identifier::new(&format!("parked:{id}"))?,
+            action: Identifier::new(recovery::REPROCESS_ACTION)?,
+        })
+    }
+
+    /// The item as its page shows it; none when there is no such item.
+    fn run(&self, s: &Store) -> Result<Option<ItemRead>, CommandError> {
+        let Some(row) = s.parked_item(self.id)? else {
+            return Ok(None);
+        };
+        let parked = row.details().map_err(OperatorError::from)?;
+        let first = parked.targets.first().map(|t| linked(s, t)).transpose()?;
+        let page = parked
+            .targets
+            .iter()
+            .skip(self.after)
+            .take(PAGE)
+            .map(|t| Ok((t.clone(), linked(s, t)?)))
+            .collect::<Result<Vec<_>, OperatorError>>()?;
+        Ok(Some(ItemRead {
+            id: self.id,
+            counts: s.parked_counts()?,
+            reprocessed: s.audits_naming(&self.history, &self.action)?,
+            after: self.after,
+            first,
+            linked: page,
+            parked,
+            resolution: row.resolution,
+        }))
+    }
+}
+
+/// Reads item `id`, `after` linked records in, as a read that stops with the
+/// page; none when there is no such item.
+async fn read_item(state: &Context, id: i64, after: u64) -> Result<Option<ItemRead>, Error> {
+    let query = ItemQuery::new(id, after)?;
     Ok(state
         .store
-        .request::<_, CommandError>(deadline()?, move |s| {
-            let Some(row) = s.parked_item(id)? else {
-                return Ok(None);
-            };
-            let parked = row.details().map_err(OperatorError::from)?;
-            let first = parked.targets.first().map(|t| linked(s, t)).transpose()?;
-            let page = parked
-                .targets
-                .iter()
-                .skip(after)
-                .take(PAGE)
-                .map(|t| Ok((t.clone(), linked(s, t)?)))
-                .collect::<Result<Vec<_>, OperatorError>>()?;
-            let read = ItemRead {
-                id,
-                counts: s.parked_counts()?,
-                reprocessed: s.audits_naming(&history, &action)?,
-                after,
-                first,
-                linked: page,
-                parked,
-                resolution: row.resolution,
-            };
-            let extra = extra(s, read.resolution.is_none());
-            Ok(Some((read, extra)))
-        })
+        .read::<_, CommandError>(deadline()?, move |s| query.run(s))
         .await?)
 }
 
@@ -530,18 +543,14 @@ pub(super) async fn item(
     session: Option<Extension<Arc<Session>>>,
 ) -> Response {
     let session = session.as_ref().map(|Extension(session)| session.as_ref());
-    let read = tokio::time::timeout(
-        view::READ_BUDGET,
-        read_item(&state, id, cursor.after, |_, _| ()),
-    )
-    .await;
+    let read = tokio::time::timeout(view::READ_BUDGET, read_item(&state, id, cursor.after)).await;
     match read {
-        Ok(Ok(Some((read, ())))) => {
+        Ok(Ok(Some(read))) => {
             let html = item_page(&state, session, &read, None, Timestamp::now()).render();
             respond(&state, session, Some(id), StatusCode::OK, html)
         }
         Ok(Ok(None)) => Problem::NotFound.page(&state, session, Some(id)),
-        Ok(Err(error)) => Problem::Store(error.to_string()).page(&state, session, Some(id)),
+        Ok(Err(error)) => Problem::of(&error).page(&state, session, Some(id)),
         Err(_) => Problem::Time.page(&state, session, Some(id)),
     }
 }
@@ -787,7 +796,7 @@ async fn open_count(state: &Context) -> Option<u64> {
     let until = deadline().ok()?;
     state
         .store
-        .request::<_, OperatorError>(until, |s| s.parked_counts())
+        .read::<_, OperatorError>(until, Store::parked_counts)
         .await
         .ok()
         .map(|counts| counts.open)

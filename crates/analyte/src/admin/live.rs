@@ -193,7 +193,10 @@ impl Watch {
             Some(deadline) => self
                 .state
                 .store
-                .request::<_, analyte_store::OperatorError>(deadline, |s| s.activity_marks())
+                .read::<_, analyte_store::OperatorError>(
+                    deadline,
+                    analyte_store::Store::activity_marks,
+                )
                 .await
                 .inspect_err(|error| {
                     tracing::debug!(%error, "live stream could not read the store's marks");

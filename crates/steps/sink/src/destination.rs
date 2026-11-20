@@ -175,7 +175,7 @@ impl Destination {
         let id = self.id.clone();
         let freshness = self.limits.freshness.as_secs();
         let health = store
-            .request(
+            .read(
                 crate::deadline(
                     self.limits.store_timeout,
                     analyte_store::OperatorError::Worker(

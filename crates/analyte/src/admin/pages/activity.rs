@@ -152,7 +152,7 @@ async fn read(
     let group = show.group();
     Ok(state
         .store
-        .request::<_, CommandError>(deadline()?, move |s| {
+        .read::<_, CommandError>(deadline()?, move |s| {
             let machine = machine.as_deref();
             let start = before.unwrap_or(ActivityCursor::NEWEST);
             let (lines, more) = one_page::<_, CommandError>(

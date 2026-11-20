@@ -73,7 +73,7 @@ async fn read(state: &Context, after: u64, release: Option<i64>) -> Result<Read,
     let after = i64::try_from(after)?;
     Ok(state
         .store
-        .request::<_, CommandError>(deadline()?, move |store| {
+        .read::<_, CommandError>(deadline()?, move |store| {
             let held = |hold: RetentionHold| -> Result<Held, CommandError> {
                 let message = match &hold.target {
                     HoldTarget::Receipt(id) => store.receipt_metadata(*id)?.map(|metadata| {

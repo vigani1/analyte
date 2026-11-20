@@ -189,7 +189,7 @@ async fn read_list(state: &Arc<Context>) -> Result<ListRead, Error> {
     let until = deadline()?;
     let restore_paused = state
         .store
-        .request(until, |store| store.restore_unreconciled())
+        .read(until, analyte_store::Store::restore_unreconciled)
         .await?;
     let last = crate::admin::overview::activity(state, until).await?;
     let kept = crate::admin::removed::lines(state)
@@ -214,11 +214,7 @@ pub(super) async fn list(
     let read = match tokio::time::timeout(view::READ_BUDGET, read_list(&state)).await {
         Ok(Ok(read)) => read,
         Ok(Err(error)) => {
-            return Problem::Store(error.to_string()).page(
-                &state,
-                session,
-                Section::Machines(None),
-            );
+            return Problem::of(&error).page(&state, session, Section::Machines(None));
         }
         Err(_) => return Problem::Time.page(&state, session, Section::Machines(None)),
     };
@@ -230,9 +226,7 @@ pub(super) async fn list(
             StatusCode::OK,
             page.render(),
         ),
-        Err(error) => {
-            Problem::Store(error.to_string()).page(&state, session, Section::Machines(None))
-        }
+        Err(error) => Problem::of(&error).page(&state, session, Section::Machines(None)),
     }
 }
 
@@ -405,7 +399,7 @@ async fn read_detail(
         Ok(machine) => {
             state
                 .store
-                .request::<_, CommandError>(deadline()?, move |store| {
+                .read::<_, CommandError>(deadline()?, move |store| {
                     Ok(store.recent_receipts(&machine, RECENT.saturating_add(1))?)
                 })
                 .await?
@@ -426,11 +420,7 @@ async fn page(
         match tokio::time::timeout(view::READ_BUDGET, read_detail(state, id)).await {
             Ok(Ok(read)) => read,
             Ok(Err(error)) => {
-                return Problem::Store(error.to_string()).page(
-                    state,
-                    session,
-                    Section::Machines(Some(id)),
-                );
+                return Problem::of(&error).page(state, session, Section::Machines(Some(id)));
             }
             Err(_) => return Problem::Time.page(state, session, Section::Machines(Some(id))),
         };

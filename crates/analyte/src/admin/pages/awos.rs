@@ -54,7 +54,7 @@ async fn read_cancelled(
     let after = i64::try_from(cursor.after)?;
     Ok(state
         .store
-        .request::<_, CommandError>(deadline()?, move |s| {
+        .read::<_, CommandError>(deadline()?, move |s| {
             // This page shows every row of the store's read, not the admin page size.
             let (rows, more) = one_page::<_, CommandError>(
                 s.analyzer_cancelled_items(after)?,
@@ -287,7 +287,7 @@ pub(in crate::admin) async fn notes(
             )
             .render(),
         ),
-        Err(error) => Problem::Store(error.to_string()).page(&state, Some(&session), section),
+        Err(error) => Problem::of(&error).page(&state, Some(&session), section),
     }
 }
 
@@ -318,7 +318,7 @@ async fn read_detail(
     let after = i64::try_from(cursor.after)?;
     let read = state
         .store
-        .request::<_, CommandError>(deadline()?, move |s| read_in(s, order, item, after))
+        .read::<_, CommandError>(deadline()?, move |s| read_in(s, order, item, after))
         .await?;
     settle(read, item)
 }

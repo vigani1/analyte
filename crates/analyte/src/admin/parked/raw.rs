@@ -250,7 +250,7 @@ pub(in crate::admin) async fn raw(
             return Problem::Purged.page(&state, Some(&session), Some(id));
         }
         Err(error) => {
-            return Problem::Store(error.to_string()).page(&state, Some(&session), Some(id));
+            return Problem::of(&error).page(&state, Some(&session), Some(id));
         }
     };
     let view = shown_page(
