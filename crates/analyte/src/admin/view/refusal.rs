@@ -202,3 +202,170 @@ impl Refusal {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A refusal and what its page must show: status, title, a sentence of
+    /// what to do, the link onward (none when only a restart helps) and the
+    /// exact reason.
+    type Case = (
+        Refusal,
+        u16,
+        &'static str,
+        &'static str,
+        Option<&'static str>,
+        &'static str,
+    );
+
+    const OVERVIEW: Option<&str> = Some("href=\"/\">Go to Overview</a>");
+    const AGAIN: Option<&str> = Some("href=\"/login\">Try again</a>");
+
+    /// Renders each case and checks its page in the plain frame.
+    async fn check(cases: Vec<Case>) -> Result<(), axum::Error> {
+        for (refusal, status, title, text, link, detail) in cases {
+            let response = refusal.page(&Root::of_this_build());
+            assert_eq!(response.status().as_u16(), status, "{title}");
+            let body = axum::body::to_bytes(response.into_body(), 1 << 16).await?;
+            let page = String::from_utf8_lossy(&body);
+            assert!(page.contains("<main class=\"center\">"), "{title}");
+            assert!(!page.contains("class=\"sidebar\""), "{title}");
+            assert!(page.contains(&format!("<title>{title} · Analyte</title>")));
+            assert!(page.contains(&format!("class=\"panel__title\">{title}</h1>")));
+            assert!(page.contains(text), "{title}: {text}");
+            match link {
+                Some(link) => assert!(page.contains(link), "{title}: {link}"),
+                None => assert!(!page.contains("panel__action"), "{title}"),
+            }
+            assert!(page.contains(detail), "{title}: {detail}");
+            assert!(!page.contains("<b>"), "{title}");
+        }
+        Ok(())
+    }
+
+    // Owner request 2026-11-20 (admin restyle b6): the refusals about sessions
+    // and time are the plain frame with their status, words, link and reason.
+    // A broken session table cannot be made through the router, so these
+    // states are rendered here.
+    #[tokio::test]
+    async fn session_and_time_refusals_say_what_happened() -> Result<(), axum::Error> {
+        check(vec![
+            (
+                Refusal::TooLong,
+                504,
+                "This took too long",
+                "an action may already have been saved.",
+                OVERVIEW,
+                "admin request deadline exceeded",
+            ),
+            (
+                Refusal::NeedsRestart,
+                503,
+                "Analyte needs a restart",
+                "Restart Analyte, then sign in again.",
+                None,
+                "admin session lookup failed",
+            ),
+            (
+                Refusal::SignOut("admin session lock poisoned".into()),
+                503,
+                "You cannot sign out right now",
+                "Restart Analyte; that signs everyone out.",
+                None,
+                "admin session lock poisoned",
+            ),
+            (
+                Refusal::SessionHeader,
+                500,
+                "You cannot sign in right now",
+                "Analyte could not start a browser session.",
+                AGAIN,
+                "admin session header invalid",
+            ),
+            (
+                Refusal::SessionsFull("full".into()),
+                503,
+                "You cannot sign in right now",
+                "Too many browser sessions are open.",
+                AGAIN,
+                "full",
+            ),
+            (
+                Refusal::FormExpired("CSRF session required"),
+                403,
+                "This form has expired",
+                "Nothing was changed.",
+                OVERVIEW,
+                "CSRF session required",
+            ),
+        ])
+        .await
+    }
+
+    // Owner request 2026-11-20 (admin restyle b6): the refusals about an
+    // address, a form or a page that failed are the plain frame with their
+    // status, words, link and reason; a reason from outside stays escaped.
+    #[tokio::test]
+    async fn address_and_page_refusals_say_what_happened() -> Result<(), axum::Error> {
+        check(vec![
+            (
+                Refusal::TooMuchText,
+                413,
+                "Too much text",
+                "Shorten what you typed and try again.",
+                OVERVIEW,
+                "admin form exceeds limit",
+            ),
+            (
+                Refusal::PageNotFound,
+                404,
+                "Page not found",
+                "Analyte has no page at this address.",
+                OVERVIEW,
+                "no admin page at this address",
+            ),
+            (
+                Refusal::FileNotFound,
+                404,
+                "File not found",
+                "Analyte has no file at this address.",
+                OVERVIEW,
+                "static asset not found",
+            ),
+            (
+                Refusal::WrongMethod(Method::DELETE),
+                405,
+                "This cannot be done here",
+                "Nothing was changed.",
+                OVERVIEW,
+                "DELETE is not allowed at this address",
+            ),
+            (
+                Refusal::Unreadable {
+                    status: StatusCode::UNPROCESSABLE_ENTITY,
+                    detail: "<b>bad</b>".into(),
+                },
+                422,
+                "This could not be read",
+                "Go back and try again.",
+                OVERVIEW,
+                "&#60;b&#62;bad&#60;/b&#62;",
+            ),
+            (
+                Refusal::PageFailed {
+                    status: StatusCode::NOT_FOUND,
+                    title: "Item not found",
+                    text: "This page could not be shown.",
+                    detail: "parked item not found; the page failed too: x".into(),
+                },
+                404,
+                "Item not found",
+                "This page could not be shown.",
+                OVERVIEW,
+                "the page failed too: x",
+            ),
+        ])
+        .await
+    }
+}
