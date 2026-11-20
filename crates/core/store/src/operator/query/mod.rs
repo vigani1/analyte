@@ -606,6 +606,149 @@ impl Store {
         rows.map(|row| serde_json::from_str(&row?).map_err(Error::from))
             .collect()
     }
+
+    /// The newest stored messages from `machine`, newest first in store order: at
+    /// most `limit` and at most one page. Each says what was stored about it: its
+    /// latest reading, how its deliveries stand and the first open Needs review
+    /// item naming it. No bytes, values or test codes leave the store; sample IDs
+    /// do, as stored. Reading changes nothing.
+    /// # Errors
+    /// Reports database failures, bounds or corrupt stored evidence.
+    pub fn recent_receipts(
+        &self,
+        machine: &Identifier,
+        limit: usize,
+    ) -> Result<Vec<RecentReceipt>, Error> {
+        let limit = i64::try_from(limit.min(self.limits.page_rows))
+            .map_err(|_| Error::InvalidOperatorInput)?;
+        let mut statement = self.db.prepare(
+            "SELECT id,metadata,(SELECT evidence FROM interpretations i WHERE i.receipt=r.id ORDER BY version DESC LIMIT 1),(SELECT max(version) FROM interpretations i WHERE i.receipt=r.id) FROM receipts r WHERE json_extract(metadata,'$.machine')=?1 ORDER BY rowid DESC LIMIT ?2",
+        )?;
+        let rows = statement
+            .query_map(params![machine.as_str(), limit], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, Option<i64>>(3)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        // One pass each over the deliveries and the open items for the whole page.
+        let bare = rows
+            .iter()
+            .map(|(id, ..)| serde_json::from_str::<String>(id))
+            .collect::<Result<Vec<_>, _>>()?;
+        let page = serde_json::to_string(&bare)?;
+        let mut deliveries = self.db.prepare(
+            "SELECT receipt,state,count(*) FROM outbox WHERE receipt IN (SELECT json_quote(value) FROM json_each(?1)) GROUP BY receipt,state ORDER BY receipt,min(sequence)",
+        )?;
+        let deliveries = deliveries
+            .query_map([&page], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, DeliveryState>(1)?,
+                    row.get::<_, i64>(2)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut review = self.db.prepare(
+            "SELECT json_quote(t.value),min(p.id) FROM parked p,json_each(p.evidence,'$.targets') t WHERE p.resolution IS NULL AND t.value IN (SELECT value FROM json_each(?1)) GROUP BY t.value",
+        )?;
+        let review = review
+            .query_map([&page], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        rows.into_iter()
+            .map(|(id, metadata, evidence, version)| {
+                let metadata: ReceiptMetadata = serde_json::from_str(&metadata)?;
+                let reading = match (evidence, version) {
+                    (Some(evidence), Some(version)) => Some(RecentReading {
+                        version,
+                        outcome: RecentOutcome::of(&serde_json::from_str(&evidence)?),
+                    }),
+                    (None, None) => None,
+                    _ => return Err(Error::Corruption),
+                };
+                Ok(RecentReceipt {
+                    metadata,
+                    reading,
+                    deliveries: deliveries
+                        .iter()
+                        .filter(|(receipt, ..)| *receipt == id)
+                        .map(|&(_, state, count)| {
+                            u64::try_from(count)
+                                .map(|count| (state, count))
+                                .map_err(|_| Error::Corruption)
+                        })
+                        .collect::<Result<_, _>>()?,
+                    review: review
+                        .iter()
+                        .find(|(receipt, _)| *receipt == id)
+                        .map(|&(_, item)| item),
+                })
+            })
+            .collect()
+    }
+}
+
+/// One stored message as a machine's page lists it: what was stored about it,
+/// never its bytes, values or test codes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecentReceipt {
+    /// Its metadata, captured at reception.
+    pub metadata: ReceiptMetadata,
+    /// Its latest reading; none while it was never read.
+    pub reading: Option<RecentReading>,
+    /// How many of its deliveries, over all its readings, are in each state, in
+    /// the order the first of each was queued; empty when none was queued.
+    pub deliveries: Vec<(DeliveryState, u64)>,
+    /// The first open Needs review item that names it.
+    pub review: Option<i64>,
+}
+
+/// A message's latest reading, in short.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecentReading {
+    /// Its number; the first reading is 1.
+    pub version: i64,
+    /// What it produced.
+    pub outcome: RecentOutcome,
+}
+
+/// What a reading produced, without values or test codes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RecentOutcome {
+    /// Results: how many, and each sample ID the machine sent, once, in order.
+    Results {
+        /// How many results it held.
+        results: usize,
+        /// The sample IDs, exactly as stored.
+        samples: Vec<analyte_model::SampleId>,
+    },
+    /// It could not be read, and was kept for review.
+    Failed,
+}
+
+impl RecentOutcome {
+    fn of(interpretation: &Interpretation) -> Self {
+        match &interpretation.outcome {
+            crate::Reading::Results(results) => {
+                let mut samples: Vec<analyte_model::SampleId> = Vec::new();
+                for sample in results.iter().filter_map(|result| result.sample.as_ref()) {
+                    if !samples.contains(&sample.id) {
+                        samples.push(sample.id.clone());
+                    }
+                }
+                Self::Results {
+                    results: results.len(),
+                    samples,
+                }
+            }
+            crate::Reading::Failed(_) => Self::Failed,
+        }
+    }
 }
 
 impl Store {

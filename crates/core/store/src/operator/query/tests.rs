@@ -791,3 +791,193 @@ fn audits_naming_a_target_keep_the_newest_page_oldest_first() -> TestResult {
     assert!(older);
     Ok(())
 }
+
+// Owner request 2026-11-20 (admin restyle b2, machine page): a machine's page
+// lists its newest stored messages first, bounded, each with what was stored:
+// the latest reading (results with their sample IDs as stored, a failed
+// reading, or none yet), its deliveries by state over every reading and the
+// first open Needs review item naming it. Other machines' messages, resolved
+// items and every value stay out, and reading changes nothing.
+#[test]
+fn recent_receipts_of_one_machine_come_newest_first_with_what_was_stored() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("store.db"))?;
+    let machine = Identifier::new("synthetic-machine")?;
+    assert!(store.recent_receipts(&machine, 20)?.is_empty());
+    let Recent {
+        unread,
+        read,
+        failed,
+        open_failed,
+        open_read,
+    } = seed_recent(&mut store)?;
+    let parked_before = store.parked(0)?.len();
+
+    let recent = store.recent_receipts(&machine, 20)?;
+    assert_eq!(
+        recent,
+        [
+            RecentReceipt {
+                metadata: failed.clone(),
+                reading: Some(RecentReading {
+                    version: 1,
+                    outcome: RecentOutcome::Failed,
+                }),
+                deliveries: vec![],
+                review: Some(open_failed),
+            },
+            RecentReceipt {
+                metadata: read.clone(),
+                reading: Some(RecentReading {
+                    version: 2,
+                    outcome: RecentOutcome::Results {
+                        results: 3,
+                        samples: vec![SampleId::new("000123")?, SampleId::new("0042")?],
+                    },
+                }),
+                deliveries: vec![
+                    (DeliveryState::Parked, 1),
+                    (DeliveryState::Done, 2),
+                    (DeliveryState::Pending, 1),
+                ],
+                review: Some(open_read),
+            },
+            RecentReceipt {
+                metadata: unread,
+                reading: None,
+                deliveries: vec![],
+                review: None,
+            },
+        ]
+    );
+    // Bounded by the caller and by one page.
+    let newest: Vec<ReceiptId> = store
+        .recent_receipts(&machine, 2)?
+        .iter()
+        .map(|recent| recent.metadata.id)
+        .collect();
+    assert_eq!(newest, [failed.id, read.id]);
+    let mut paged = open(&temp.path().join("paged.db"))?;
+    paged.limits.page_rows = 1;
+    for raw in [b"one".as_slice(), b"two"] {
+        paged.receive(&receipt(raw)?, raw, b"config")?;
+    }
+    assert_eq!(paged.recent_receipts(&machine, 20)?.len(), 1);
+    assert!(
+        store
+            .recent_receipts(&Identifier::new("never-used")?, 20)?
+            .is_empty()
+    );
+    // Reading changed nothing.
+    assert_eq!(store.parked(0)?.len(), parked_before);
+    assert_eq!(store.recent_receipts(&machine, 20)?, recent);
+    Ok(())
+}
+
+/// The messages [`seed_recent`] stored for `synthetic-machine` and the open items naming them.
+struct Recent {
+    unread: ReceiptMetadata,
+    read: ReceiptMetadata,
+    failed: ReceiptMetadata,
+    open_failed: i64,
+    open_read: i64,
+}
+
+/// Stores, oldest first, an unread message, one read twice (a failed reading,
+/// then three results from two samples) with deliveries from both readings, and
+/// one that could not be read; another machine's message; and open and resolved
+/// Needs review items naming them.
+fn seed_recent(store: &mut Store) -> Result<Recent, Box<dyn std::error::Error>> {
+    let unread = receipt(b"unread")?;
+    let read = receipt(b"read")?;
+    let failed = receipt(b"failed")?;
+    let mut other = receipt(b"other")?;
+    other.machine = Identifier::new("other-machine")?;
+    for (metadata, raw) in [
+        (&unread, "unread"),
+        (&read, "read"),
+        (&failed, "failed"),
+        (&other, "other"),
+    ] {
+        store.receive(metadata, raw.as_bytes(), b"config")?;
+    }
+    let reading = |outcome: Reading| -> Result<String, Box<dyn std::error::Error>> {
+        let mut evidence = interpretation()?;
+        evidence.outcome = outcome;
+        Ok(document(&evidence)?)
+    };
+    let mut first = production_result(read.id)?;
+    let mut second = production_result(read.id)?;
+    let mut third = production_result(read.id)?;
+    for (result, sample) in [
+        (&mut first, "000123"),
+        (&mut second, "0042"),
+        (&mut third, "000123"),
+    ] {
+        if let Some(identity) = &mut result.sample {
+            identity.id = SampleId::new(sample)?;
+        }
+    }
+    third.sample = None;
+    for (id, version, outcome) in [
+        (
+            read.id,
+            1,
+            Reading::Failed(Reason::new("first reading failed")?),
+        ),
+        (read.id, 2, Reading::Results(vec![first, second, third])),
+        (failed.id, 1, Reading::Failed(Reason::new("not a message")?)),
+        (other.id, 1, Reading::Results(vec![])),
+    ] {
+        store.db.execute(
+            "INSERT INTO interpretations(receipt,version,evidence) VALUES (?1,?2,?3)",
+            params![key(&id)?, version, reading(outcome)?],
+        )?;
+    }
+    for (id, version, state) in [
+        (read.id, 1, "parked"),
+        (read.id, 2, "done"),
+        (read.id, 2, "done"),
+        (read.id, 2, "pending"),
+        (other.id, 1, "pending"),
+    ] {
+        store.db.execute(
+            "INSERT INTO outbox(id,kind,receipt,version,destination,ordering_key,payload,digest,contract,state,next_attempt) VALUES (?1,'result',?2,?3,'app','k',x'00',x'00',1,?4,0)",
+            params![key(&DeliveryId::try_from(uuid::Uuid::now_v7())?)?, key(&id)?, version, state],
+        )?;
+    }
+    let target = |id: ReceiptId| Identifier::new(&uuid::Uuid::from(id).to_string());
+    let park =
+        |store: &mut Store, targets: Vec<Identifier>| -> Result<i64, Box<dyn std::error::Error>> {
+            Ok(store.park(&Parked {
+                kind: Identifier::new("synthetic")?,
+                reason: Reason::new("recent messages")?,
+                targets,
+            })?)
+        };
+    let settled = park(store, vec![target(failed.id)?])?;
+    store.resolve(
+        settled,
+        &Audit {
+            actor: Identifier::new("operator")?,
+            action: Identifier::new("resolve")?,
+            targets: vec![],
+            time: 1,
+            reason: Reason::new("reviewed")?,
+        },
+    )?;
+    let open_failed = park(
+        store,
+        vec![Identifier::new("elsewhere")?, target(failed.id)?],
+    )?;
+    park(store, vec![target(failed.id)?])?;
+    let open_read = park(store, vec![target(read.id)?])?;
+    park(store, vec![target(other.id)?])?;
+    Ok(Recent {
+        unread,
+        read,
+        failed,
+        open_failed,
+        open_read,
+    })
+}
