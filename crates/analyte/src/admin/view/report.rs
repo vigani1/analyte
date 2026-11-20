@@ -7,7 +7,7 @@ use super::{
     refusal::Refusal,
 };
 use crate::admin::server::Context;
-use crate::admin::sessions::Session;
+use crate::admin::server::sessions::Session;
 use askama::Template as _;
 use axum::{
     http::StatusCode,

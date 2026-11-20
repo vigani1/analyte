@@ -1,6 +1,6 @@
 //! Serves the pages under the sidebar's More group (Machine orders with an order item's history, Cancelled by machine, Deliveries with Send again, Data keeping with its holds, and Settings) and what they share: the read budget and their error pages.
 use crate::admin::server::Context;
-use crate::admin::sessions::Session;
+use crate::admin::server::sessions::Session;
 use crate::admin::view::{
     self, Tab, Tone,
     report::{Problem, Report, Section, respond},

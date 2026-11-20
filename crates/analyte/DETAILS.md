@@ -476,7 +476,7 @@ GET form, counts today's lines, and pages 50 lines at a time after the last line
 shown. It shows sample IDs and counts, never test codes, values or the reasons
 people typed.
 
-Live updates (`src/admin/live.rs`, `assets/live.js`): signed-in pages load one
+Live updates (`src/admin/server/live.rs`, `assets/live.js`): signed-in pages load one
 script file. It opens `GET /events`, a server-sent event stream that says only
 which areas changed (overview, review, machines, deliveries, activity) and the
 PC's time, never page content. Each page's `<body data-live>` names its area;

@@ -10,7 +10,7 @@
 //! request builds shows it ([`with_review`]), so the sidebar is the same on
 //! every page. A page that reads the count itself, newer, passes its own.
 use super::{Tab, assets::Root, format, icon::Icon};
-use crate::admin::{server::Context, sessions::Session};
+use crate::admin::server::{Context, sessions::Session};
 use analyte_store::{AlertKey, OperatorError};
 use jiff::Timestamp;
 use std::time::{Duration, Instant};
@@ -141,7 +141,7 @@ impl Frame {
         Self {
             title: title.into(),
             assets: state.assets.as_str().to_owned(),
-            live: crate::admin::live::area(current),
+            live: crate::admin::server::live::area(current),
             sidebar: Sidebar {
                 loaded: format::page_loaded(now),
                 main: MAIN

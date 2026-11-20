@@ -35,14 +35,14 @@ pub enum TokenError {
 pub struct Token(String);
 
 impl Token {
-    pub(super) fn form_value(&self) -> &str {
+    pub(in crate::admin) fn form_value(&self) -> &str {
         &self.0
     }
-    pub(super) fn session() -> Result<Self, TokenError> {
+    pub(in crate::admin) fn session() -> Result<Self, TokenError> {
         generate(getrandom::fill).map(Self)
     }
 
-    pub(super) fn cookie(&self, https: bool) -> String {
+    pub(in crate::admin) fn cookie(&self, https: bool) -> String {
         format!(
             "analyte_session={}; Path=/; HttpOnly; SameSite=Strict{}",
             self.0,
@@ -50,7 +50,7 @@ impl Token {
         )
     }
     /// The header that makes the browser drop its session cookie at sign-out.
-    pub(super) const CLEARED_COOKIE: &'static str =
+    pub(in crate::admin) const CLEARED_COOKIE: &'static str =
         "analyte_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict";
 
     /// Reads at most 45 bytes and refuses missing, malformed or unprotected files.
@@ -122,7 +122,7 @@ fn generate(
 /// retrying. A failed installation retains the previous token when present.
 /// # Errors
 /// Reports protected-directory, entropy, staging, flush or rename failures.
-pub fn rotate_token(directory: &Path) -> Result<String, super::Error> {
+pub fn rotate_token(directory: &Path) -> Result<String, crate::admin::Error> {
     crate::runtime::service::create_data_directory(directory)?;
     let token = generate(getrandom::fill)?;
     let pending = directory.join("admin-token.pending");

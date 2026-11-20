@@ -19,14 +19,14 @@ use tokio::{
 
 /// How long one connection may live, from accept to its last byte, unless a
 /// request it carries keeps it open longer ([`Lifetime::keep_open_for`]).
-pub(super) const LIFETIME: Duration = Duration::from_secs(2);
+pub(in crate::admin) const LIFETIME: Duration = Duration::from_secs(2);
 
 /// The end of one connection's life, shared with the requests it carries.
 /// The server hands it to a request that may run longer than a page read (a
 /// setup write whose form has passed the session check), so its answer is
 /// still written before the connection closes. The end only moves later.
 #[derive(Clone)]
-pub(super) struct Lifetime(Arc<End>);
+pub(in crate::admin) struct Lifetime(Arc<End>);
 
 struct End {
     accepted: Instant,
@@ -44,7 +44,7 @@ impl Lifetime {
     }
 
     /// Keeps the connection open for at least `duration` from now.
-    pub(super) fn keep_open_for(&self, duration: Duration) {
+    pub(in crate::admin) fn keep_open_for(&self, duration: Duration) {
         let until = Instant::now()
             .saturating_duration_since(self.0.accepted)
             .saturating_add(duration);
@@ -72,12 +72,12 @@ impl axum::extract::connect_info::Connected<axum::serve::IncomingStream<'_, List
     }
 }
 
-pub(super) struct Listener {
-    pub(super) socket: TcpListener,
-    pub(super) slots: Arc<Semaphore>,
+pub(in crate::admin) struct Listener {
+    pub(in crate::admin) socket: TcpListener,
+    pub(in crate::admin) slots: Arc<Semaphore>,
 }
 
-pub(super) struct Stream {
+pub(in crate::admin) struct Stream {
     socket: TcpStream,
     _slot: OwnedSemaphorePermit,
     lifetime: Lifetime,

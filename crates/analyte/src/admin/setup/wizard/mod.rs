@@ -19,8 +19,7 @@ use super::{
 };
 use crate::admin::{
     machines::{Hover, Notice},
-    server::{Connection, Context},
-    sessions::Session,
+    server::{Connection, Context, sessions::Session},
     view::{
         Tab, Tone, format,
         frame::Frame,

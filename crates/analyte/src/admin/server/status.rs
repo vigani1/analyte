@@ -5,8 +5,8 @@
 //! no names, counts, identifiers or values (safety rule 10). The word comes
 //! from the Overview's own rules (`overview::Overall`), so the tray and the
 //! verdict never disagree.
-use super::overview::{self, Overall};
-use super::server::Context;
+use super::Context;
+use crate::admin::overview::{self, Overall};
 use axum::{
     Json,
     extract::State,
@@ -30,7 +30,7 @@ struct Status {
 /// say how things are, which the app shows as such and never as "All good".
 const UNKNOWN: &str = "unknown";
 
-pub(super) async fn show(State(state): State<Arc<Context>>) -> Response {
+pub(in crate::admin) async fn show(State(state): State<Arc<Context>>) -> Response {
     let overall = overview::overall(&state, Timestamp::now()).await;
     let status = if overall.is_some() {
         StatusCode::OK

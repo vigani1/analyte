@@ -1,10 +1,5 @@
-//! Routes authenticated local HTTP requests with session and request limits.
-use super::{
-    Token,
-    listener::{Lifetime, Listener},
-    sessions::{Session, Sessions},
-    setup::Step,
-};
+//! Routes authenticated local HTTP requests with session and request limits; the connection cap, sessions, admin key, sign-in, live updates and `GET /status` live in the modules below.
+use super::{Token, setup::Step};
 use crate::admin::Error;
 use crate::admin::view::{frame, refusal::Refusal};
 use crate::installation::config::Program;
@@ -24,7 +19,14 @@ use std::{
     time::Duration,
 };
 use tokio::sync::{Semaphore, watch};
+pub(super) mod listener;
+pub(super) mod live;
+pub(super) mod sessions;
 mod sign_in;
+mod status;
+pub(super) mod token;
+use listener::{Lifetime, Listener};
+use sessions::{Session, Sessions};
 use sign_in::Attempt;
 #[cfg(all(test, feature = "test-hooks"))]
 mod tests;
@@ -115,7 +117,7 @@ pub(super) struct Context {
     /// How long a setup write may run: [`WRITE_BUDGET`]; tests shorten it.
     pub(super) write_budget: Duration,
     /// The live streams' bounds and their cap; tests shorten them.
-    pub(super) live: super::live::Bounds,
+    pub(super) live: live::Bounds,
     /// Turns true when the server starts to drain, so open live streams end
     /// at once and draining stays bounded.
     pub(super) closing: watch::Receiver<bool>,
@@ -218,7 +220,7 @@ pub(crate) async fn prepare(
         assets: super::view::assets::Root::of_this_build(),
         installed: super::more::Installed::of(program, shutdown),
         write_budget: WRITE_BUDGET,
-        live: super::live::Bounds::standard(),
+        live: live::Bounds::standard(),
         closing: closed,
         _released: released,
     });
@@ -290,7 +292,7 @@ async fn drain_server(
 }
 
 /// How long one request may run before it is answered with "This took too
-/// long": shorter than the connection's [`super::listener::LIFETIME`] by
+/// long": shorter than the connection's [`listener::LIFETIME`] by
 /// [`ANSWER_TIME`]. The lifetime starts earlier, at accept, so the answer is
 /// still written before the connection closes. A setup write has this long to
 /// send and check its form, then [`WRITE_BUDGET`] in all.
@@ -315,7 +317,7 @@ fn router(state: Arc<Context>) -> Router {
     Router::new()
         .route("/", get(super::overview::show))
         .route("/static/{*path}", get(super::view::assets::serve))
-        .route("/status", get(super::status::show))
+        .route("/status", get(status::show))
         .route("/login", get(sign_in::login_page).post(sign_in::login))
         .route("/logout", post(sign_in::logout))
         .route(
@@ -324,7 +326,7 @@ fn router(state: Arc<Context>) -> Router {
         )
         .route("/settings", get(super::more::settings))
         .route("/activity", get(super::activity::activity))
-        .route("/events", get(super::live::events))
+        .route("/events", get(live::events))
         .route("/machines", get(super::machines::list))
         .route("/machines/{id}", get(super::machines::detail))
         .route(

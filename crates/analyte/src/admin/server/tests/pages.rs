@@ -178,7 +178,7 @@ async fn start_pages_server(
         assets: crate::admin::view::assets::Root::of_this_build(),
         installed: crate::admin::more::Installed::for_test(Vec::new()),
         write_budget: WRITE_BUDGET,
-        live: crate::admin::live::Bounds::standard(),
+        live: crate::admin::server::live::Bounds::standard(),
         closing: closed,
         _released: released,
     });

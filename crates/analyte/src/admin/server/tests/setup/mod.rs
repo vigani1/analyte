@@ -252,7 +252,7 @@ async fn start_program_with(
         assets: crate::admin::view::assets::Root::of_this_build(),
         installed: crate::admin::more::Installed::for_test(Vec::new()),
         write_budget: bounds.write,
-        live: crate::admin::live::Bounds::standard(),
+        live: crate::admin::server::live::Bounds::standard(),
         closing: closed,
         _released: released,
     });

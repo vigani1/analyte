@@ -10,7 +10,7 @@ use super::page::{Deliveries, DeliveryRow, Look, ResendDialog};
 use super::{Outcome, next_href, report};
 use crate::admin::error::CommandError;
 use crate::admin::parked::checked;
-use crate::admin::sessions::{Session, signed_in};
+use crate::admin::server::sessions::{Session, signed_in};
 use crate::admin::view::list::{Empty, PAGE, cursor_value, one_page};
 use crate::admin::view::{
     Tab, Tone, format,

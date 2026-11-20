@@ -1,7 +1,7 @@
 //! Serves Settings (GET /settings): what Analyte runs with, read-only and only real values from the loaded program and this installation; where each key is found, never its value.
 use super::page::{KeyRow, Settings};
 use crate::admin::server::Context;
-use crate::admin::sessions::Session;
+use crate::admin::server::sessions::Session;
 use crate::admin::view::{
     self, Tab, Tone, format,
     frame::Frame,

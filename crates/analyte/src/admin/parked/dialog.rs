@@ -8,7 +8,7 @@ use super::page::{Button, Dialog, Head, Message, item_href};
 use super::problem::Problem;
 use super::{ItemQuery, ItemRead, item_page, open_count, respond};
 use crate::admin::server::Context;
-use crate::admin::sessions::{Session, signed_in};
+use crate::admin::server::sessions::{Session, signed_in};
 use crate::admin::view::{self, Tab, Tone, format, frame::Frame};
 use crate::admin::{CommandError, Error};
 use crate::operator::recovery;

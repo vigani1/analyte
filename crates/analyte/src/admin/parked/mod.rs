@@ -26,7 +26,10 @@ use crate::admin::error::CommandError;
 use crate::admin::view::list::{Cursor, PAGE, cursor_value, one_page};
 use crate::admin::view::report::Chip;
 use crate::admin::view::{self, Tab, Tone, format, frame::Frame};
-use crate::admin::{Error, server::Context, sessions::Session};
+use crate::admin::{
+    Error,
+    server::{Context, sessions::Session},
+};
 use crate::deadline;
 use crate::operator::recovery;
 use analyte_model::{Identifier, ReceiptId};

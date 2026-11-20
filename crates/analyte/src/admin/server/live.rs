@@ -12,10 +12,10 @@
 //! Cancellation: the stream only reads; dropping it (the browser leaves, the
 //! connection's lifetime ends, shutdown) leaves at most one queued store read,
 //! whose answer is dropped.
+use super::Context;
 use super::listener::Lifetime;
-use super::server::Context;
 use super::sessions::Session;
-use super::view::{Tab, format, refusal::Refusal};
+use crate::admin::view::{Tab, format, refusal::Refusal};
 use crate::machine::link::status::{Light, Status};
 use analyte_store::ActivityMarks;
 use axum::{
@@ -45,33 +45,33 @@ use tokio::{
 /// new one: long enough that reconnects are rare, short enough that a stream
 /// never outlives a session's check by much and every connection's end is
 /// bounded.
-pub(super) const LIFETIME: Duration = Duration::from_secs(300);
+pub(in crate::admin) const LIFETIME: Duration = Duration::from_secs(300);
 
 /// How often a stream says it is still there when nothing changed: the
 /// sidebar's "Live" time moves at least this often, and a browser that went
 /// away is noticed at the next write.
-pub(super) const HEARTBEAT: Duration = Duration::from_secs(10);
+pub(in crate::admin) const HEARTBEAT: Duration = Duration::from_secs(10);
 
 /// How often a stream compares the store's marks and the link lights: the
 /// longest a change waits before the page hears of it.
-pub(super) const CHECK: Duration = Duration::from_secs(2);
+pub(in crate::admin) const CHECK: Duration = Duration::from_secs(2);
 
 /// How many streams may be open at once. The admin server has 32 connection
 /// slots; four streams (a few tabs on the lab PC) leave 28 for pages.
-pub(super) const STREAMS: usize = 4;
+pub(in crate::admin) const STREAMS: usize = 4;
 
 /// A stream's bounds; tests shorten them.
 #[derive(Clone)]
-pub(super) struct Bounds {
-    pub(super) lifetime: Duration,
-    pub(super) heartbeat: Duration,
-    pub(super) check: Duration,
+pub(in crate::admin) struct Bounds {
+    pub(in crate::admin) lifetime: Duration,
+    pub(in crate::admin) heartbeat: Duration,
+    pub(in crate::admin) check: Duration,
     /// One permit per open stream.
-    pub(super) streams: Arc<Semaphore>,
+    pub(in crate::admin) streams: Arc<Semaphore>,
 }
 
 impl Bounds {
-    pub(super) fn standard() -> Self {
+    pub(in crate::admin) fn standard() -> Self {
         Self {
             lifetime: LIFETIME,
             heartbeat: HEARTBEAT,
@@ -111,7 +111,7 @@ impl Area {
 /// The live area page `tab` shows, as its body names it; empty for a page
 /// where only the sidebar's Needs review count ([`Area::Count`], which every
 /// signed-in page shows) is live.
-pub(super) const fn area(tab: Tab) -> &'static str {
+pub(in crate::admin) const fn area(tab: Tab) -> &'static str {
     match tab {
         Tab::Overview => Area::Overview.name(),
         Tab::Activity => Area::Activity.name(),
@@ -315,7 +315,7 @@ impl Stream for Events {
 /// here. A stream holds one of [`STREAMS`] permits and keeps its connection
 /// open for its lifetime and no longer; past the cap it is refused, and pages
 /// still answer.
-pub(super) async fn events(
+pub(in crate::admin) async fn events(
     State(state): State<Arc<Context>>,
     session: Option<Extension<Arc<Session>>>,
     lifetime: Option<Extension<ConnectInfo<Lifetime>>>,
@@ -325,7 +325,7 @@ pub(super) async fn events(
     };
     let bounds = state.live.clone();
     if let Some(Extension(ConnectInfo(lifetime))) = lifetime {
-        lifetime.keep_open_for(bounds.lifetime.saturating_add(super::server::ANSWER_TIME));
+        lifetime.keep_open_for(bounds.lifetime.saturating_add(super::ANSWER_TIME));
     }
     let watch = Watch {
         lights: state.machines.iter().map(|m| m.status.clone()).collect(),

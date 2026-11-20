@@ -2,7 +2,7 @@
 use super::next_href;
 use super::page::{Look, OrderRow, Orders};
 use crate::admin::error::CommandError;
-use crate::admin::sessions::Session;
+use crate::admin::server::sessions::Session;
 use crate::admin::view::list::{Empty, PAGE, cursor_value, one_page};
 use crate::admin::view::{Tab, format, frame::Frame, report::Chip};
 use crate::admin::{Error, server::Context};

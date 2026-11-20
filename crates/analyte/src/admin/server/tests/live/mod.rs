@@ -2,7 +2,7 @@
 use super::overview::{empty_store, stop};
 use super::pages::{csrf, encode, login};
 use super::*;
-use crate::admin::live::Bounds;
+use crate::admin::server::live::Bounds;
 mod script;
 
 /// A running admin server over an empty store with the live streams' bounds

@@ -1098,7 +1098,7 @@ async fn start_full(
         root,
         store,
         (parts, kept, settings),
-        crate::admin::live::Bounds::standard(),
+        crate::admin::server::live::Bounds::standard(),
     )
     .await
 }
@@ -1120,7 +1120,7 @@ async fn start_bounded(
     root: &std::path::Path,
     store: &Arc<analyte_store::Handle>,
     ((machines, destinations), (retired, directory), (retention, installed)): Parts<'_>,
-    bounds: crate::admin::live::Bounds,
+    bounds: crate::admin::server::live::Bounds,
 ) -> Result<Started, Error> {
     let socket = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let host = socket.local_addr()?.to_string();

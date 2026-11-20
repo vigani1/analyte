@@ -1,59 +1,61 @@
 //! Manages bounded operator sessions without logging credential or CSRF tokens.
-use super::Token;
+use super::token::Token;
 use analyte_model::Identifier;
 use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
-pub(super) struct Session {
-    pub(super) id: Token,
-    pub(super) csrf: Token,
-    pub(super) actor: Identifier,
-    pub(super) authenticated: bool,
+pub(in crate::admin) struct Session {
+    pub(in crate::admin) id: Token,
+    pub(in crate::admin) csrf: Token,
+    pub(in crate::admin) actor: Identifier,
+    pub(in crate::admin) authenticated: bool,
     created: Instant,
 }
 
 impl Session {
-    pub(super) fn csrf_valid(&self, supplied: &str) -> bool {
+    pub(in crate::admin) fn csrf_valid(&self, supplied: &str) -> bool {
         self.csrf.matches(supplied)
     }
 }
 
 /// The signed-in browser session, when the request has one; a request with
 /// the admin key alone or a session not signed in yet has none.
-pub(super) fn signed_in(session: Option<&axum::Extension<Arc<Session>>>) -> Option<&Session> {
+pub(in crate::admin) fn signed_in(
+    session: Option<&axum::Extension<Arc<Session>>>,
+) -> Option<&Session> {
     session
         .map(|axum::Extension(session)| session.as_ref())
         .filter(|session| session.authenticated)
 }
 
 #[derive(Default)]
-pub(super) struct Sessions {
+pub(in crate::admin) struct Sessions {
     // Protects capacity, expiry and session replacement; guards never cross await.
     entries: Mutex<Vec<Arc<Session>>>,
 }
 
 impl Sessions {
-    pub(super) fn lookup(
+    pub(in crate::admin) fn lookup(
         &self,
         cookie: Option<&str>,
-    ) -> Result<Option<Arc<Session>>, super::Error> {
+    ) -> Result<Option<Arc<Session>>, crate::admin::Error> {
         let mut entries = self
             .entries
             .lock()
-            .map_err(|_| super::Error::AdminSessionLockPoisoned)?;
+            .map_err(|_| crate::admin::Error::AdminSessionLockPoisoned)?;
         entries.retain(|s| {
             s.created.elapsed() < Duration::from_secs(if s.authenticated { 3600 } else { 300 })
         });
         Ok(cookie.and_then(|cookie| entries.iter().find(|s| s.id.matches(cookie)).cloned()))
     }
 
-    pub(super) fn issue(
+    pub(in crate::admin) fn issue(
         &self,
         authenticated: bool,
         replace: Option<&Session>,
-    ) -> Result<Arc<Session>, super::Error> {
+    ) -> Result<Arc<Session>, crate::admin::Error> {
         let session = Arc::new(Session {
             id: Token::session()?,
             csrf: Token::session()?,
@@ -64,7 +66,7 @@ impl Sessions {
         let mut entries = self
             .entries
             .lock()
-            .map_err(|_| super::Error::AdminSessionLockPoisoned)?;
+            .map_err(|_| crate::admin::Error::AdminSessionLockPoisoned)?;
         entries.retain(|s| {
             s.created.elapsed() < Duration::from_secs(if s.authenticated { 3600 } else { 300 })
                 && replace.is_none_or(|old| !s.id.matches(old.id.form_value()))
@@ -73,7 +75,7 @@ impl Sessions {
             if let Some(index) = entries.iter().position(|s| !s.authenticated) {
                 entries.remove(index);
             } else {
-                return Err(super::Error::SessionCapacity);
+                return Err(crate::admin::Error::SessionCapacity);
             }
         }
         entries.push(session.clone());
@@ -81,10 +83,10 @@ impl Sessions {
     }
 
     /// Ends `session`: its cookie and CSRF token stop working at once.
-    pub(super) fn end(&self, session: &Session) -> Result<(), super::Error> {
+    pub(in crate::admin) fn end(&self, session: &Session) -> Result<(), crate::admin::Error> {
         self.entries
             .lock()
-            .map_err(|_| super::Error::AdminSessionLockPoisoned)?
+            .map_err(|_| crate::admin::Error::AdminSessionLockPoisoned)?
             .retain(|s| !s.id.matches(session.id.form_value()));
         Ok(())
     }

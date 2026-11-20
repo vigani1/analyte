@@ -15,7 +15,7 @@ pub(in crate::admin) use signal::{Delivery, Keys, Standing, kept_health, order_l
 mod tests;
 
 use super::server::Context;
-use super::sessions::Session;
+use super::server::sessions::Session;
 use super::view::{self, Tab, Tone, format, frame::Frame, icon::Icon, refusal::Refusal};
 use crate::admin::{Error, error::CommandError};
 use crate::deadline;

@@ -6,7 +6,7 @@
 //! they are not listed, and the mockup's Connections filter is left out. No
 //! script: the filters are one GET form, and each type is a submit button.
 use crate::admin::error::CommandError;
-use crate::admin::sessions::Session;
+use crate::admin::server::sessions::Session;
 use crate::admin::view::{
     Tab, format,
     frame::Frame,

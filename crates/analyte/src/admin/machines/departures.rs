@@ -6,7 +6,7 @@
 use super::page::{Applied, Departures, Notice};
 use crate::admin::error::CommandError;
 use crate::admin::server::Context;
-use crate::admin::sessions::Session;
+use crate::admin::server::sessions::Session;
 use crate::admin::view::report::{Button, Crumb, Head, Problem, Section, respond};
 use crate::admin::view::report::{Fact, Value};
 use crate::admin::view::{self, Tab, Tone, format, frame::Frame};
