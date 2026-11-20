@@ -1,2 +1,29 @@
-// The app icon of analyte.exe: the Aperture mark, 16 and 20 px from the hand-tuned files (see docs/design/README.md).
+// The icon and version details of analyte.exe, the engine: the Aperture mark,
+// 16 and 20 px from the hand-tuned files (see docs/design/README.md), and the
+// description "Analyte engine", so it is never mistaken for the desktop app
+// analyte-app.exe, which Windows lists as "Analyte" (ADR 0019).
 1 ICON "assets/icons/analyte.ico"
+
+1 VERSIONINFO
+FILEVERSION ANALYTE_MAJOR, ANALYTE_MINOR, ANALYTE_PATCH, 0
+PRODUCTVERSION ANALYTE_MAJOR, ANALYTE_MINOR, ANALYTE_PATCH, 0
+FILEOS 0x40004
+FILETYPE 0x1
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904B0"
+    BEGIN
+      VALUE "CompanyName", "Analyte contributors"
+      VALUE "FileDescription", "Analyte engine"
+      VALUE "FileVersion", ANALYTE_VERSION
+      VALUE "ProductName", "Analyte"
+      VALUE "ProductVersion", ANALYTE_VERSION
+      VALUE "OriginalFilename", "analyte.exe"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x0409, 1200
+  END
+END

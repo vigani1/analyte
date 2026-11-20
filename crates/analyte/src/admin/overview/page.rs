@@ -3,7 +3,7 @@
 //! Every word comes from `view::format` or the attention list; the templates
 //! only loop, test and call macros. Nothing here invents a value: a figure or
 //! line with no data behind it is left out.
-use super::attention::Thing;
+use super::attention::{Overall, Thing};
 use crate::admin::view::{
     Column, Tone,
     format::{self, Line, Moment, Part},
@@ -108,11 +108,7 @@ impl Verdict {
         }
         let count = u64::try_from(things.len()).unwrap_or(u64::MAX);
         Self {
-            tone: if things.iter().any(|thing| thing.tone() == Tone::Problem) {
-                Tone::Problem
-            } else {
-                Tone::Attention
-            },
+            tone: Overall::of(things).tone(),
             title: format!(
                 "{} you",
                 format::amount(count, "thing needs", "things need")

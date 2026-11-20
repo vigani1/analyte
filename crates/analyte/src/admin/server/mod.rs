@@ -301,6 +301,7 @@ fn router(state: Arc<Context>) -> Router {
     Router::new()
         .route("/", get(super::overview::show))
         .route("/static/{*path}", get(super::view::assets::serve))
+        .route("/status", get(super::status::show))
         .route("/login", get(sign_in::login_page).post(sign_in::login))
         .route("/logout", post(sign_in::logout))
         .route(
@@ -401,7 +402,8 @@ async fn protect(State(state): State<Arc<Context>>, mut request: Request, next: 
         == Some(state.host.as_str());
     let login = request.uri().path() == "/login";
     // Static files hold no data; the login page needs them before any session exists.
-    let public = request.uri().path().starts_with("/static/");
+    // `/status` says only the overall state in one word, for the desktop app's tray.
+    let public = request.uri().path().starts_with("/static/") || request.uri().path() == "/status";
     let bearer = request
         .headers()
         .get(header::AUTHORIZATION)

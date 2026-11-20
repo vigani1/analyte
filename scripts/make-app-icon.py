@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Make the Windows icon analyte.ico from the app icon SVGs, drawn by headless Microsoft Edge.
+"""Make the Windows icon analyte.ico and the desktop app's tray icons from the SVGs, drawn by headless Microsoft Edge.
 
 Run from anywhere with `python -I scripts/make-app-icon.py [--edge PATH]`. It
 uses only the Python standard library and an installed Microsoft Edge (no new
@@ -7,6 +7,10 @@ dependency). Frames 16 and 20 come from the hand-tuned `-16`/`-20` files and
 24, 32, 48 and 256 from the large icon, never the other way round
 (docs/design/HANDOFF.md, "Logo"). Each frame is a PNG with transparent
 corners; Windows reads PNG frames at every size.
+
+The tray icons (ADR 0019) are PNGs in `crates/app/icons/`, one per state and
+size: 16 and 20 px from the hand-tuned `tray-*-16`/`-20` files, 24 and 32 px
+from the large one. The app picks the size for the screen's scale.
 """
 
 import argparse
@@ -34,6 +38,15 @@ EDGE = [
 ]
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
+TRAY_OUTPUT = ROOT / "crates" / "app" / "icons"
+# The app's state name, then the design's SVG name.
+TRAY_STATES = [
+    ("good", "tray-all-good"),
+    ("attention", "tray-needs-you"),
+    ("problem", "tray-problem"),
+    ("off", "tray-engine-stopped"),
+]
+TRAY_FRAMES = [(16, "-16"), (20, "-20"), (24, ""), (32, "")]
 
 def png_size(data):
     """Return (width, height) of a 32-bit RGBA PNG, or raise if it is anything else."""
@@ -104,8 +117,15 @@ def main():
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp:
         folder = pathlib.Path(temp)
         frames = [(size, draw(edge, ICONS / name, size, folder)) for size, name in FRAMES]
-    OUTPUT.write_bytes(pack(frames))
-    print(f"{OUTPUT.relative_to(ROOT).as_posix()}: " + ", ".join(f"{size} px from {name}" for size, name in FRAMES))
+        OUTPUT.write_bytes(pack(frames))
+        print(f"{OUTPUT.relative_to(ROOT).as_posix()}: " + ", ".join(f"{size} px from {name}" for size, name in FRAMES))
+        TRAY_OUTPUT.mkdir(parents=True, exist_ok=True)
+        for state, svg in TRAY_STATES:
+            for size, suffix in TRAY_FRAMES:
+                source = ICONS / f"{svg}{suffix}.svg"
+                target = TRAY_OUTPUT / f"tray-{state}-{size}.png"
+                target.write_bytes(draw(edge, source, size, folder))
+                print(f"{target.relative_to(ROOT).as_posix()}: from {source.name}")
 
 
 if __name__ == "__main__":

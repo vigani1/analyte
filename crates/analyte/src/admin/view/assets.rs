@@ -39,7 +39,7 @@ macro_rules! asset {
 }
 
 /// Every file served under `/static/`.
-const ASSETS: [Asset; 25] = [
+const ASSETS: [Asset; 28] = [
     asset!("fonts.css", CSS),
     asset!("analyte.css", CSS),
     asset!("app.css", CSS),
@@ -65,6 +65,9 @@ const ASSETS: [Asset; 25] = [
     asset!("icons/tray-engine-stopped.svg", SVG),
     asset!("icons/tray-engine-stopped-16.svg", SVG),
     asset!("icons/tray-engine-stopped-20.svg", SVG),
+    asset!("icons/tray-problem.svg", SVG),
+    asset!("icons/tray-problem-16.svg", SVG),
+    asset!("icons/tray-problem-20.svg", SVG),
 ];
 
 /// One browser-tab icon: its file under `/static/` and the pixel sizes it is

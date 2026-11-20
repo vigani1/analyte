@@ -9,6 +9,7 @@ on:
       - 'packaging/**'
       - 'machines/**'
       - 'crates/analyte/tests/packaging.rs'
+      - 'crates/app/**'
       - '.github/workflows/packaging.yml'
       - '.github/workflows/release.yml'
 
@@ -31,12 +32,12 @@ jobs:
         with:
           persist-credentials: false
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      - run: cargo build --locked -p analyte
+      - run: cargo build --locked -p analyte -p analyte-app
       - name: Build archive and installer
         shell: pwsh
         run: |
           $version = (Select-String -Path Cargo.toml -Pattern '^version = "(.+)"$' | Select-Object -First 1).Matches.Groups[1].Value
-          ./packaging/build.ps1 -Platform windows -Target x86_64-pc-windows-msvc -Version $version -Binary target/debug/analyte.exe
+          ./packaging/build.ps1 -Platform windows -Target x86_64-pc-windows-msvc -Version $version -Binary target/debug/analyte.exe -App target/debug/analyte-app.exe
       - name: Install, check the setup page, upgrade and uninstall
         shell: pwsh
         run: |
@@ -72,8 +73,37 @@ jobs:
             Get-Content -LiteralPath "$root\data\analyte.log" -Tail 50 -ErrorAction SilentlyContinue
             throw 'the setup page did not list machine-1 as not set up'
           }
+          # ADR 0019: the desktop app beside the engine, told apart by name; the
+          # same signing as the engine (none yet: both unsigned); its settings,
+          # Start menu entry and sign-in entry; signed-in users may start the
+          # service; /status answers without a key; the app reads it.
+          function Assert-DesktopApp {
+            $app = "$env:ProgramFiles\Analyte\analyte-app.exe"
+            $engine = "$env:ProgramFiles\Analyte\analyte.exe"
+            if (-not (Test-Path -LiteralPath $app)) { throw 'analyte-app.exe not installed' }
+            if ((Get-Item $app).VersionInfo.FileDescription -ne 'Analyte') { throw 'the app is not described as Analyte' }
+            if ((Get-Item $engine).VersionInfo.FileDescription -ne 'Analyte engine') { throw 'the engine is not described as Analyte engine' }
+            $signed = (Get-AuthenticodeSignature -LiteralPath $app).Status
+            if ($signed -ne (Get-AuthenticodeSignature -LiteralPath $engine).Status) { throw "app signature $signed differs from the engine's" }
+            if ((Get-Content -LiteralPath "$env:ProgramFiles\Analyte\analyte-app.toml") -notcontains 'admin_port = 8080') { throw 'analyte-app.toml lacks the admin port' }
+            if (-not (Test-Path -LiteralPath "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Analyte.lnk")) { throw 'Start menu entry missing' }
+            $run = (Get-ItemProperty -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name Analyte).Analyte
+            if ($run -ne "`"$app`" --tray") { throw "sign-in entry is $run" }
+            if (-not ((& sc.exe sdshow Analyte) -join '').Contains('(A;;RP;;;IU)')) { throw 'signed-in users may not start the service' }
+            $status = Invoke-RestMethod -Uri http://127.0.0.1:8080/status
+            if ($status.state -ne 'good' -or -not $status.version) { throw "status answered $($status | ConvertTo-Json -Compress)" }
+            # The app in the tray only: it reads /status and logs the state it shows.
+            $log = "$env:LOCALAPPDATA\Analyte\analyte-app.log"
+            Remove-Item -LiteralPath $log -ErrorAction SilentlyContinue
+            $process = Start-Process -FilePath $app -ArgumentList '--tray' -PassThru
+            for ($i = 0; $i -lt 30 -and -not (Select-String -LiteralPath $log -SimpleMatch 'to=Running(Good)' -Quiet -ErrorAction SilentlyContinue); $i++) { Start-Sleep -Seconds 1 }
+            $seen = Select-String -LiteralPath $log -SimpleMatch 'to=Running(Good)' -Quiet -ErrorAction SilentlyContinue
+            if ($process.HasExited) { throw "the app exited with code $($process.ExitCode)" }
+            if (-not $seen) { Get-Content -LiteralPath $log -ErrorAction SilentlyContinue; throw 'the app did not show the engine as good' }
+          }
           Install-Analyte
           Assert-SetupPage
+          Assert-DesktopApp
           $rules = (Get-Acl -LiteralPath "$root\config").Access | Where-Object { $_.IdentityReference -eq 'NT SERVICE\Analyte' }
           if (-not ($rules.FileSystemRights -match 'Modify')) { throw 'the service cannot write the config folder' }
           if (-not (Get-Acl -LiteralPath "$root\config").AreAccessRulesProtected) { throw 'config folder inherits ProgramData permissions' }
@@ -82,6 +112,7 @@ jobs:
           $token = (Get-FileHash -LiteralPath "$root\data\admin-token").Hash
           Install-Analyte
           Assert-SetupPage
+          Assert-DesktopApp
           if (-not (Select-String -LiteralPath "$root\config\analyte.toml" -SimpleMatch '# kept on upgrade')) { throw 'upgrade replaced the configuration' }
           if ((Get-FileHash -LiteralPath "$root\data\admin-token").Hash -ne $token) { throw 'upgrade replaced the token' }
           # Uninstall removes the service and program, and keeps data and configuration.
@@ -90,6 +121,13 @@ jobs:
           for ($i = 0; $i -lt 60 -and (Test-Path -LiteralPath "$env:ProgramFiles\Analyte\analyte.exe"); $i++) { Start-Sleep -Seconds 1 }
           if (Get-CimInstance Win32_Service -Filter "Name='Analyte'") { throw 'service still registered' }
           if (Test-Path -LiteralPath "$env:ProgramFiles\Analyte\analyte.exe") { throw 'program not removed' }
+          # The app, its settings, its Start menu and sign-in entries go too; the
+          # uninstaller closed the running app first.
+          if (Get-Process analyte-app -ErrorAction SilentlyContinue) { throw 'the app still runs' }
+          foreach ($gone in "$env:ProgramFiles\Analyte\analyte-app.exe", "$env:ProgramFiles\Analyte\analyte-app.toml", "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Analyte.lnk", "$env:LOCALAPPDATA\Analyte") {
+            if (Test-Path -LiteralPath $gone) { throw "uninstall left $gone" }
+          }
+          if (Get-ItemProperty -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name Analyte -ErrorAction SilentlyContinue) { throw 'sign-in entry left' }
           foreach ($kept in "$root\config\analyte.toml", "$root\data\analyte.db", "$root\data\admin-token") {
             if (-not (Test-Path -LiteralPath $kept)) { throw "uninstall removed $kept" }
           }

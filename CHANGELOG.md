@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- The Analyte desktop app for Windows (`analyte-app.exe`): the admin pages in
+  their own window, a tray icon with the engine's state, notifications when it
+  gets worse, an Engine off screen with Start engine, and start at sign-in. The
+  engine gains a public `GET /status` that says only the overall state.
+
 - Local bearer-token admin page, named-responder alerts, and audited stored-byte
   reprocessing and exact-payload resend.
 - LAW program receiving, query-triggered work, send-ahead and cancellation on one

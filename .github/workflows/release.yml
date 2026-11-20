@@ -63,6 +63,8 @@ jobs:
             target: x86_64-pc-windows-msvc
             platform: windows
             binary: analyte.exe
+            # The desktop app (ADR 0019) is Windows only.
+            app: -p analyte-app
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             platform: linux
@@ -83,7 +85,7 @@ jobs:
           if ($features -match 'test-hooks') { throw 'test-hooks must never ship' }
           Write-Output $features
       # Keep these flags identical to the feature inspection: no --all-features.
-      - run: cargo build --release --locked -p analyte --target ${{ matrix.target }}
+      - run: cargo build --release --locked -p analyte ${{ matrix.app }} --target ${{ matrix.target }}
       # Archive plus installers: the Windows installer (unsigned for now) or the
       # Linux .deb and .rpm. Tool versions and hashes are pinned in the script.
       - name: Package archive and installers
@@ -94,6 +96,7 @@ jobs:
           ./packaging/build.ps1 -Platform ${{ matrix.platform }} -Target ${{ matrix.target }}
           -Version ($env:RELEASE_TAG.Substring(1))
           -Binary 'target/${{ matrix.target }}/release/${{ matrix.binary }}'
+          -App ($(if ('${{ matrix.platform }}' -eq 'windows') { 'target/${{ matrix.target }}/release/analyte-app.exe' } else { '' }))
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: package-${{ matrix.target }}

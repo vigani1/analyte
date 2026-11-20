@@ -199,3 +199,14 @@ progress.meter::-moz-progress-bar { background: var(--accent); border-radius: va
   ::view-transition-old(*),
   ::view-transition-new(*) { animation: none; }
 }
+
+/* Engine off, the desktop app's own screen (the EngineOff mockup's inline
+   styles, ADR 0019): its pause mark in the problem colours, what the app
+   observed on a sunken ground, and the hint beside Start engine. */
+.engine-off__icon { background: var(--bad-bg); color: var(--bad-text); }
+.engine-off__lead { margin-top: calc(var(--space-1) + var(--space-1) / 2); }
+.engine-off__facts {
+  padding: var(--space-3) calc(var(--space-3) + var(--space-1) / 2);
+  background: var(--surface-sunken); border-radius: var(--radius-sm);
+}
+.engine-off__hint { font-size: var(--text-sm); }

@@ -2,8 +2,8 @@
 ; the files, then runs install.ps1, so manual and installer setups share one
 ; set of service and permission rules. Unsigned for now: see docs/release.md.
 ;
-; Build from a staged release folder (analyte.exe, analyte.ico, LICENSE,
-; README.md, machines, packaging\windows):
+; Build from a staged release folder (analyte.exe, analyte-app.exe, analyte.ico,
+; LICENSE, README.md, machines, packaging\windows):
 ;   ISCC.exe /DAppVersion=0.1.0 /DSourceDir=<folder> /DOutputDir=<folder> analyte.iss
 
 #ifndef AppVersion
@@ -37,22 +37,29 @@ Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 ; The Analyte icon (crates/analyte/assets/icons/analyte.ico, staged by
-; packaging/build.ps1) for the installer itself and the Apps list. analyte.exe
-; carries no icon of its own yet, so the Apps list points at the installed .ico.
+; packaging/build.ps1) for the installer itself and the Apps list.
 SetupIconFile={#SourceDir}\analyte.ico
 UninstallDisplayIcon={app}\analyte.ico
 UninstallDisplayName=Analyte
-; The service is stopped in PrepareToInstall; nothing else should hold the files.
+; The service is stopped and the desktop app closed in PrepareToInstall;
+; nothing else should hold the files.
 CloseApplications=no
 ; No setup log unless /LOG asks for one. The log holds the scripts' output
 ; (paths and errors), never the admin token.
 SetupLogging=no
 
 [Messages]
-ConfirmUninstall=This removes the Analyte service and program files.%n%nData, configuration, backups, credentials and the admin token in C:\ProgramData\Analyte are kept. Delete them yourself only after the lab has decided what to do with the clinical data they hold.%n%nRemove Analyte now?
+ConfirmUninstall=This removes the Analyte service, the Analyte app and the program files.%n%nData, configuration, backups, credentials and the admin token in C:\ProgramData\Analyte are kept. Delete them yourself only after the lab has decided what to do with the clinical data they hold.%n%nRemove Analyte now?
+
+[Tasks]
+; ADR 0019: the desktop app starts in the tray when this Windows user signs in;
+; the tray's "Start at sign-in" switches it later.
+Name: "autostart"; Description: "Start Analyte when I sign in"
 
 [Files]
 Source: "{#SourceDir}\analyte.exe"; DestDir: "{app}"; Flags: ignoreversion
+; The desktop app (ADR 0019): the engine's pages in a window, and a tray icon.
+Source: "{#SourceDir}\analyte-app.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\analyte.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\README.md"; DestDir: "{app}"; Flags: ignoreversion
@@ -65,8 +72,28 @@ Source: "{#SourceDir}\machines\*"; DestDir: "{commonappdata}\Analyte\config\mach
 Source: "{#SourceDir}\packaging\windows\starter\machine-1.site.toml"; DestDir: "{commonappdata}\Analyte\config"; Flags: onlyifdoesntexist uninsneveruninstall; Check: IsFirstInstall
 Source: "{#SourceDir}\packaging\windows\starter\analyte.toml"; DestDir: "{commonappdata}\Analyte\config"; Flags: onlyifdoesntexist uninsneveruninstall; Check: IsFirstInstall
 
+[Icons]
+; The Start menu entry. Its AppUserModelID is the app's identifier
+; (crates/app/tauri.conf.json), so notifications show as "Analyte".
+Name: "{autoprograms}\Analyte"; Filename: "{app}\analyte-app.exe"; AppUserModelID: "io.github.vigani1.analyte.app"; Comment: "See what the Analyte engine is doing"
+
+[Registry]
+; The same value the tray's "Start at sign-in" writes (crates/app/src/shell/autostart.rs):
+; the quoted path and the tray-only argument, for the user running setup.
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Analyte"; ValueData: """{app}\analyte-app.exe"" --tray"; Flags: uninsdeletevalue; Tasks: autostart
+
+[UninstallDelete]
+; Written by setup from the program file's admin port.
+Type: files; Name: "{app}\analyte-app.toml"
+; The installing user's app log and WebView2 data (no patient data: the app
+; never sees any, and the pages are never stored). Other users' stay.
+Type: filesandordirs; Name: "{localappdata}\Analyte"
+Type: filesandordirs; Name: "{localappdata}\io.github.vigani1.analyte.app"
+
 [Run]
-Filename: "{code:SetupUrl}"; Description: "Open the Analyte setup page"; Flags: postinstall shellexec nowait skipifsilent; Check: CanOpenSetup
+Filename: "{app}\analyte-app.exe"; Description: "Open Analyte"; Flags: postinstall nowait skipifsilent runasoriginaluser; Check: CanOpenApp
+; Without the WebView2 Runtime the app has no window: the setup page opens in the browser.
+Filename: "{code:SetupUrl}"; Description: "Open the Analyte setup page in the browser"; Flags: postinstall shellexec nowait skipifsilent; Check: CanOpenSetupInBrowser
 
 [Code]
 var
@@ -149,6 +176,16 @@ begin
     + ReadOutput(Output));
 end;
 
+{ Closes every running desktop app, which holds no data, so its file can be
+  replaced or removed. Nothing to close is fine. }
+procedure CloseDesktopApp;
+var
+  Code: Integer;
+begin
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM analyte-app.exe', '', SW_HIDE, ewWaitUntilTerminated, Code);
+  Log('taskkill analyte-app.exe exit code ' + IntToStr(Code));
+end;
+
 { Stops a running service before its program file is replaced. }
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
@@ -156,6 +193,7 @@ var
   Output: String;
 begin
   Result := '';
+  CloseDesktopApp;
   ExtractTemporaryFile('stop.ps1');
   Output := ExpandConstant('{tmp}\stop-output.txt');
   if not RunScript(ExpandConstant('{tmp}\stop.ps1'), '', Output, Code) then
@@ -180,55 +218,6 @@ begin
     + '  Get-Content ''' + TokenFile + '''' + #13#10 + #13#10
     + 'Do not open that folder in File Explorer and accept its "You don''t currently have '
     + 'permission" prompt: that adds your account to the folder, and Analyte then refuses to start.';
-end;
-
-procedure CurStepChanged(CurStep: TSetupStep);
-var
-  Code: Integer;
-  Output: String;
-begin
-  if CurStep <> ssPostInstall then
-    exit;
-  Output := ExpandConstant('{tmp}\install-output.txt');
-  ServiceReady := RunScript(ExpandConstant('{app}\packaging\windows\install.ps1'),
-    '-Executable "' + ExpandConstant('{app}\analyte.exe') + '" -Config "' + ConfigFile
-      + '" -DataDirectory "' + DataDirectory + '" -ConfigWritable -CreateAdminToken -Start',
-    Output, Code);
-  if ServiceReady then
-    TokenPage.RichEditViewer.Lines.Text := TokenMessage
-  else
-  begin
-    { Inno Setup cannot roll back once files are copied, and it ignores an
-      exception or Abort raised here, so fail loudly instead: an error box, the
-      script's output in the setup log, a failed finish page and a non-zero
-      exit code (GetCustomSetupExitCode). }
-    InstallError := 'The program files were copied, but the Analyte service was not set up '
-      + '(install.ps1 exit code ' + IntToStr(Code) + '):' + #13#10 + #13#10
-      + ReadOutput(Output) + #13#10 + #13#10
-      + 'Fix the cause, then run this installer again, or uninstall Analyte.';
-    TokenPage.RichEditViewer.Lines.Text := InstallError;
-    SuppressibleMsgBox(InstallError, mbCriticalError, MB_OK, IDOK);
-  end;
-end;
-
-{ A failed service setup ends with exit code 10 instead of 0. }
-function GetCustomSetupExitCode: Integer;
-begin
-  if InstallError <> '' then
-    Result := 10
-  else
-    Result := 0;
-end;
-
-procedure CurPageChanged(CurPageID: Integer);
-begin
-  if (CurPageID = wpFinished) and (InstallError <> '') then
-  begin
-    WizardForm.FinishedHeadingLabel.Caption := 'Analyte was not set up';
-    WizardForm.FinishedLabel.Caption := 'The program files were copied, but the Analyte '
-      + 'service was not set up. The error was shown before this page. Fix the cause, then '
-      + 'run this installer again, or uninstall Analyte.';
-  end;
 end;
 
 { The admin port from the program file's [admin] table; empty when there is none. }
@@ -265,10 +254,101 @@ begin
   end;
 end;
 
-function CanOpenSetup: Boolean;
+{ The WebView2 Runtime the app's window needs: Windows 11 has it; Windows 10
+  may not. Microsoft's documented check is a non-empty, non-zero "pv" version. }
+function WebView2Present: Boolean;
+var
+  Version: String;
+  Key: String;
 begin
-  Result := ServiceReady and (AdminPort <> '');
+  Key := 'Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}';
+  Result := (RegQueryStringValue(HKLM, 'SOFTWARE\WOW6432Node\' + Key, 'pv', Version)
+      or RegQueryStringValue(HKLM, 'SOFTWARE\' + Key, 'pv', Version)
+      or RegQueryStringValue(HKCU, 'Software\' + Key, 'pv', Version))
+    and (Version <> '') and (Version <> '0.0.0.0');
 end;
+
+{ The app's settings beside it: the engine's admin port, which only
+  administrators may read in the program file. Without an admin port the app
+  uses the starter's 8080 and says when nothing answers there. }
+procedure WriteAppSettings;
+var
+  Port: String;
+begin
+  Port := AdminPort;
+  if Port = '' then
+    exit;
+  if not SaveStringToFile(ExpandConstant('{app}\analyte-app.toml'),
+      '# Written by setup from the [admin] port in ' + ConfigFile + '.' + #13#10
+      + 'admin_port = ' + Port + #13#10, False) then
+    Log('analyte-app.toml could not be written');
+end;
+
+function CanOpenApp: Boolean;
+begin
+  Result := ServiceReady and WebView2Present;
+end;
+
+function CanOpenSetupInBrowser: Boolean;
+begin
+  Result := ServiceReady and (AdminPort <> '') and not WebView2Present;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  Code: Integer;
+  Output: String;
+begin
+  if CurStep <> ssPostInstall then
+    exit;
+  Output := ExpandConstant('{tmp}\install-output.txt');
+  ServiceReady := RunScript(ExpandConstant('{app}\packaging\windows\install.ps1'),
+    '-Executable "' + ExpandConstant('{app}\analyte.exe') + '" -Config "' + ConfigFile
+      + '" -DataDirectory "' + DataDirectory + '" -ConfigWritable -CreateAdminToken -UsersMayStart -Start',
+    Output, Code);
+  WriteAppSettings;
+  if ServiceReady then
+    TokenPage.RichEditViewer.Lines.Text := TokenMessage
+  else
+  begin
+    { Inno Setup cannot roll back once files are copied, and it ignores an
+      exception or Abort raised here, so fail loudly instead: an error box, the
+      script's output in the setup log, a failed finish page and a non-zero
+      exit code (GetCustomSetupExitCode). }
+    InstallError := 'The program files were copied, but the Analyte service was not set up '
+      + '(install.ps1 exit code ' + IntToStr(Code) + '):' + #13#10 + #13#10
+      + ReadOutput(Output) + #13#10 + #13#10
+      + 'Fix the cause, then run this installer again, or uninstall Analyte.';
+    TokenPage.RichEditViewer.Lines.Text := InstallError;
+    SuppressibleMsgBox(InstallError, mbCriticalError, MB_OK, IDOK);
+  end;
+end;
+
+{ A failed service setup ends with exit code 10 instead of 0. }
+function GetCustomSetupExitCode: Integer;
+begin
+  if InstallError <> '' then
+    Result := 10
+  else
+    Result := 0;
+end;
+
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  if (CurPageID = wpFinished) and (InstallError = '') and not WebView2Present then
+    WizardForm.FinishedLabel.Caption := 'The Analyte engine is installed and running. The '
+      + 'Analyte app needs the Microsoft Edge WebView2 Runtime, which this PC does not have, '
+      + 'so it opens the pages in the browser instead. Install the WebView2 Runtime '
+      + '(Evergreen) from Microsoft, then open Analyte from the Start menu.';
+  if (CurPageID = wpFinished) and (InstallError <> '') then
+  begin
+    WizardForm.FinishedHeadingLabel.Caption := 'Analyte was not set up';
+    WizardForm.FinishedLabel.Caption := 'The program files were copied, but the Analyte '
+      + 'service was not set up. The error was shown before this page. Fix the cause, then '
+      + 'run this installer again, or uninstall Analyte.';
+  end;
+end;
+
 
 function SetupUrl(Param: String): String;
 begin
@@ -282,6 +362,7 @@ var
 begin
   if CurUninstallStep = usUninstall then
   begin
+    CloseDesktopApp;
     Output := ExpandConstant('{tmp}\uninstall-output.txt');
     if not RunScript(ExpandConstant('{app}\packaging\windows\uninstall.ps1'), '', Output, Code) then
       SuppressibleMsgBox('The Analyte service could not be removed:' + #13#10 + #13#10

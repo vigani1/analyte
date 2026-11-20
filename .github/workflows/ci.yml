@@ -87,6 +87,9 @@ jobs:
       - run: cargo nextest run --workspace --all-features --locked --no-fail-fast --partition count:${{ matrix.shard }}/${{ matrix.total }}
       # Reuses the existing OS shards; only the two hook-bearing crates are rebuilt.
       - run: cargo nextest run -p analyte -p analyte-sink --no-default-features --locked --no-fail-fast --partition count:${{ matrix.shard }}/${{ matrix.total }}
+      # The desktop app's Windows shell is compiled only on Windows (ADR 0019).
+      - if: runner.os == 'Windows' && matrix.shard == 1
+        run: cargo clippy -p analyte-app --all-targets --all-features --locked -- -D warnings
       - if: matrix.shard == 1
         run: cargo test --doc --workspace --all-features --locked
       - if: matrix.shard == 1
