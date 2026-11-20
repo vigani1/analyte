@@ -1,4 +1,4 @@
-{#- A Machines page that only reports: what removing a machine did, with Restart now, or why a request was refused, with where to go next and the exact reason for support. -#}
+{#- An admin page that only reports: what an action did, with Restart now after a settings change, or why a request was refused, with where to go next and the exact reason for support. -#}
 {% extends "layout/base.html" %}
 {%- import "components/feedback.html" as feedback %}
 {%- import "components/forms.html" as forms %}
@@ -22,9 +22,11 @@
 <form class="cluster" method="post" action="/setup/restart"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="btn btn--primary">Restart now</button></form>
 {% endcall %}
 {%- endif %}
+{%- if !links.is_empty() %}
 <p class="cluster">
 {%- for link in links %}{% call forms::link_button(link.href, link.label, link.class) %}{% endcall %}{% endfor -%}
 </p>
+{%- endif %}
 {%- if !support.is_empty() %}
 {% call feedback::support(crate::admin::view::format::SUPPORT, support) %}{% endcall %}
 {%- endif %}

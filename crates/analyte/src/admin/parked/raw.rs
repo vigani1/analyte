@@ -4,9 +4,9 @@
 //! warns that the bytes may contain patient data and keeps the record's ID and
 //! the session's ID under "Details for support".
 use super::page::{Head, Raw, RawRequest};
-use super::problem::Problem;
-use super::{receipt_id, respond};
+use super::receipt_id;
 use crate::admin::view::list::cursor_value;
+use crate::admin::view::report::{Problem, Section, respond};
 use crate::admin::view::{Tab, frame::Frame};
 use crate::{
     admin::{
@@ -194,10 +194,10 @@ pub(in crate::admin) async fn raw(
     Form(form): Form<RawForm>,
 ) -> Response {
     if !session.authenticated {
-        return Problem::SignIn.page(&state, None, Some(id));
+        return Problem::SignIn.page(&state, None, Section::NeedsReview(Some(id)));
     }
     if !session.csrf_valid(&form.csrf) {
-        return Problem::FormExpired.page(&state, Some(&session), Some(id));
+        return Problem::FormExpired.page(&state, Some(&session), Section::NeedsReview(Some(id)));
     }
     let target = form.target.clone();
     let source = form.source.as_str();
@@ -247,13 +247,25 @@ pub(in crate::admin) async fn raw(
     .await;
     let (page, counts) = match shown {
         Ok(Shown::Page(page, counts)) => (page, counts),
-        Ok(Shown::NoItem) => return Problem::NotFound.page(&state, Some(&session), Some(id)),
-        Ok(Shown::Nothing) => return Problem::NothingMore.page(&state, Some(&session), Some(id)),
+        Ok(Shown::NoItem) => {
+            return Problem::NotFound.page(&state, Some(&session), Section::NeedsReview(Some(id)));
+        }
+        Ok(Shown::Nothing) => {
+            return Problem::NothingMore.page(
+                &state,
+                Some(&session),
+                Section::NeedsReview(Some(id)),
+            );
+        }
         Err(Error::Raw(RawError::Evidence(OperatorError::Purged))) => {
-            return Problem::Purged.page(&state, Some(&session), Some(id));
+            return Problem::Purged.page(&state, Some(&session), Section::NeedsReview(Some(id)));
         }
         Err(error) => {
-            return Problem::of(&error).page(&state, Some(&session), Some(id));
+            return Problem::of(&error).page(
+                &state,
+                Some(&session),
+                Section::NeedsReview(Some(id)),
+            );
         }
     };
     let view = shown_page(
@@ -269,7 +281,7 @@ pub(in crate::admin) async fn raw(
     respond(
         &state,
         Some(&session),
-        Some(id),
+        Section::NeedsReview(Some(id)),
         StatusCode::OK,
         view.render(),
     )

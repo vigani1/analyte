@@ -8,7 +8,6 @@
 mod category;
 mod dialog;
 mod page;
-mod problem;
 mod raw;
 
 pub(super) use dialog::{checked, confirm_reprocess, confirm_resolve, reprocess, resolve};
@@ -24,7 +23,7 @@ pub(super) fn headline(details: &Parked) -> (String, Tone) {
 
 use crate::admin::error::CommandError;
 use crate::admin::view::list::{Cursor, PAGE, cursor_value, one_page};
-use crate::admin::view::report::Chip;
+use crate::admin::view::report::{Chip, Problem, Section, respond};
 use crate::admin::view::{self, Tab, Tone, format, frame::Frame};
 use crate::admin::{
     Error,
@@ -39,15 +38,14 @@ use axum::{
     Extension,
     extract::{Path, Query, State},
     http::StatusCode,
-    response::{Html, IntoResponse, Response},
+    response::Response,
 };
 use category::{Action, Category};
 use jiff::Timestamp;
 use page::{
     Button, Card, Dialog, Empty, Entry, Head, Item, List, Original, OriginalTarget, Pair, Resolved,
-    Row, Todo, item_href,
+    Row, Todo,
 };
-use problem::Problem;
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -122,22 +120,6 @@ fn linked(store: &Store, target: &Identifier) -> Result<Linked, OperatorError> {
     }
 }
 
-/// A page rendered with `status`, or the store-failure page when it could not be written.
-fn respond(
-    state: &Context,
-    session: Option<&Session>,
-    id: Option<i64>,
-    status: StatusCode,
-    html: Result<String, askama::Error>,
-) -> Response {
-    match html {
-        Ok(html) => (status, Html(html)).into_response(),
-        Err(error) => {
-            Problem::Store(format!("page could not be written: {error}")).page(state, session, id)
-        }
-    }
-}
-
 /// One stored parked item with the facts its list entry needs.
 struct Listed {
     id: i64,
@@ -170,10 +152,16 @@ pub(super) async fn list(
     match tokio::time::timeout(view::READ_BUDGET, read_list(&state, query, now)).await {
         Ok(Ok(read)) => {
             let html = list_page(&state, session, show, read, now).render();
-            respond(&state, session, None, StatusCode::OK, html)
+            respond(
+                &state,
+                session,
+                Section::NeedsReview(None),
+                StatusCode::OK,
+                html,
+            )
         }
-        Ok(Err(error)) => Problem::of(&error).page(&state, session, None),
-        Err(_) => Problem::Time.page(&state, session, None),
+        Ok(Err(error)) => Problem::of(&error).page(&state, session, Section::NeedsReview(None)),
+        Err(_) => Problem::Time.page(&state, session, Section::NeedsReview(None)),
     }
 }
 
@@ -329,7 +317,7 @@ fn row(item: Listed, title: String, what: &dyn Fn(&Audit) -> String, now: Timest
             Some(Linked::Removed | Linked::Other) | None => None,
         },
         settled: settled_line(item.resolution.as_deref(), what, now),
-        href: item_href(item.id),
+        href: format::parked_href(item.id),
     }
 }
 
@@ -428,7 +416,7 @@ fn actions(id: i64, parked: &Parked, action: Action, size: Size) -> Vec<Button> 
     }
     if matches!(size, Size::Small) {
         buttons.push(Button {
-            href: item_href(id),
+            href: format::parked_href(id),
             label: "Details",
             class: size.class(Kind::Quiet),
         });
@@ -550,11 +538,17 @@ pub(super) async fn item(
     match read {
         Ok(Ok(Some(read))) => {
             let html = item_page(&state, session, &read, None, Timestamp::now()).render();
-            respond(&state, session, Some(id), StatusCode::OK, html)
+            respond(
+                &state,
+                session,
+                Section::NeedsReview(Some(id)),
+                StatusCode::OK,
+                html,
+            )
         }
-        Ok(Ok(None)) => Problem::NotFound.page(&state, session, Some(id)),
-        Ok(Err(error)) => Problem::of(&error).page(&state, session, Some(id)),
-        Err(_) => Problem::Time.page(&state, session, Some(id)),
+        Ok(Ok(None)) => Problem::NotFound.page(&state, session, Section::NeedsReview(Some(id))),
+        Ok(Err(error)) => Problem::of(&error).page(&state, session, Section::NeedsReview(Some(id))),
+        Err(_) => Problem::Time.page(&state, session, Section::NeedsReview(Some(id))),
     }
 }
 

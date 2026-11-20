@@ -16,7 +16,8 @@ mod tests;
 
 use super::server::Context;
 use super::server::sessions::Session;
-use super::view::{self, Tab, Tone, format, frame::Frame, icon::Icon, refusal::Refusal};
+use super::view::report::{Problem, Section};
+use super::view::{self, Tab, Tone, format, frame::Frame, icon::Icon};
 use crate::admin::{Error, error::CommandError};
 use crate::deadline;
 use analyte_model::OrderState;
@@ -25,11 +26,10 @@ use askama::Template as _;
 use axum::{
     Extension,
     extract::State,
-    http::StatusCode,
     response::{Html, IntoResponse, Response},
 };
 use jiff::Timestamp;
-use page::{AlertRow, Disk, ErrorPage, Notice, OrderRow, Page, Verdict, WIZARD_STEPS, Welcome};
+use page::{AlertRow, Disk, Notice, OrderRow, Page, Verdict, WIZARD_STEPS, Welcome};
 use std::{collections::BTreeMap, sync::Arc};
 
 pub(super) async fn show(
@@ -38,16 +38,14 @@ pub(super) async fn show(
 ) -> Response {
     let now = Timestamp::now();
     let session = session.as_ref().map(|Extension(session)| session.as_ref());
-    let failed = match tokio::time::timeout(view::READ_BUDGET, render(&state, session, now)).await {
+    let problem = match tokio::time::timeout(view::READ_BUDGET, render(&state, session, now)).await
+    {
         Ok(Ok(html)) => return Html(html).into_response(),
-        Ok(Err(failure)) => failure,
-        Err(_) => Failure {
-            reading: Reading::Time,
-            error: None,
-        },
+        Ok(Err(failure)) => failure.problem(),
+        Err(_) => Problem::Time,
     };
     // Evidence and errors stay on the authenticated page, never in logs.
-    failure(&state, session, now, &failed)
+    problem.page(&state, session, Section::Overview)
 }
 
 /// What the overview was reading when it stopped; the error page names it.
@@ -124,68 +122,14 @@ struct Failure {
 }
 
 impl Failure {
-    /// A timeout is a 504 like every slow admin request; any other failure is a 503.
-    fn status(&self) -> StatusCode {
-        if self.reading == Reading::Time {
-            StatusCode::GATEWAY_TIMEOUT
-        } else {
-            StatusCode::SERVICE_UNAVAILABLE
+    /// The error page's problem: the reads ran out of time, or this reading
+    /// failed and why.
+    fn problem(self) -> Problem {
+        match self.error {
+            Some(error) => Problem::Unread(self.reading.sentence(), error.to_string()),
+            None => Problem::Time,
         }
     }
-
-    /// The exact reason, for support.
-    fn detail(&self) -> String {
-        self.error.as_ref().map_or_else(
-            || {
-                format!(
-                    "admin overview deadline of {} ms exceeded",
-                    view::READ_BUDGET.as_millis()
-                )
-            },
-            ToString::to_string,
-        )
-    }
-}
-
-/// The overview's own error page; should even that fail to render, the plain
-/// refusal page carries both reasons.
-fn failure(
-    state: &Context,
-    session: Option<&Session>,
-    now: Timestamp,
-    failed: &Failure,
-) -> Response {
-    let page = ErrorPage {
-        frame: Frame::new(state, Tab::Overview, "Overview", None, session, now),
-        text: error_text(failed.reading),
-        detail: vec![failed.detail()],
-    };
-    match page.render() {
-        Ok(html) => (failed.status(), Html(html)).into_response(),
-        Err(render) => fallback(&state.assets, failed, &render),
-    }
-}
-
-/// What the error page tells people: what could not be read and what to do.
-fn error_text(reading: Reading) -> String {
-    format!(
-        "{} Reload the page; if this keeps happening, give the details below to support.",
-        reading.sentence()
-    )
-}
-
-/// The plain refusal page for when the error page itself could not be written.
-fn fallback(assets: &view::assets::Root, failed: &Failure, render: &askama::Error) -> Response {
-    Refusal::PageFailed {
-        status: failed.status(),
-        title: "Overview",
-        text: concat!(
-            "The overview could not be shown just now. Reload the page; if this ",
-            "keeps happening, give the details below to support.",
-        ),
-        detail: format!("{}; the error page failed too: {render}", failed.detail()),
-    }
-    .page(assets)
 }
 
 /// What one store request reads for the overview; each part keeps its own
