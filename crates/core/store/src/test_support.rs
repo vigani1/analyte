@@ -173,6 +173,50 @@ pub(crate) fn assert_constraint<T>(result: rusqlite::Result<T>) {
 /// Rows are written as the store writes them; times are fixed.
 pub(crate) fn mixed_store(path: &Path) -> Result<Store, Box<dyn std::error::Error>> {
     let mut store = open(path)?;
+    let receipts = mixed_receipts(&mut store)?;
+    let deliveries = mixed_deliveries(&store, &receipts)?;
+    mixed_orders(&store)?;
+    mixed_review(&store, &receipts, &deliveries)?;
+    // Data keeping purged the seventh message and its delivery, keeping a
+    // tombstone; the item parked about it stays.
+    let purged = key(receipts.get(6).ok_or("fixture receipt")?)?;
+    let guards: Vec<(String, String)> = store
+        .db
+        .prepare("SELECT name,sql FROM sqlite_master WHERE type='trigger' AND name IN ('immutable_receipts_delete','immutable_interpretations_delete','immutable_attempts_delete','outbox_retained')")?
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<Result<_, _>>()?;
+    for (name, _) in &guards {
+        store.db.execute_batch(&format!("DROP TRIGGER {name}"))?;
+    }
+    store.db.execute(
+        "DELETE FROM attempts WHERE delivery IN (SELECT id FROM outbox WHERE receipt=?1)",
+        [&purged],
+    )?;
+    store
+        .db
+        .execute("DELETE FROM outbox WHERE receipt=?1", [&purged])?;
+    store
+        .db
+        .execute("DELETE FROM interpretations WHERE receipt=?1", [&purged])?;
+    store
+        .db
+        .execute("DELETE FROM receipts WHERE id=?1", [&purged])?;
+    for (_, sql) in &guards {
+        store.db.execute_batch(sql)?;
+    }
+    store.db.execute(
+        "INSERT INTO retention_tombstones VALUES (?1,'m-a','d','1',zeroblob(32),10200,10210,10600)",
+        [&purged],
+    )?;
+    store.db.execute(
+        "INSERT INTO retention_deliveries VALUES (?1,?2,10210)",
+        params![deliveries.get(8).ok_or("fixture delivery")?, purged],
+    )?;
+    Ok(store)
+}
+
+/// The mixed store's messages, each with one reading.
+fn mixed_receipts(store: &mut Store) -> Result<Vec<ReceiptId>, Box<dyn std::error::Error>> {
     let mut receipts = Vec::new();
     for (machine, second, nanos) in [
         ("m-a", 10_000, 0),
@@ -197,7 +241,14 @@ pub(crate) fn mixed_store(path: &Path) -> Result<Store, Box<dyn std::error::Erro
         )?;
         receipts.push(metadata.id);
     }
-    let bare = |id: ReceiptId| uuid::Uuid::from(id).to_string();
+    Ok(receipts)
+}
+
+/// The mixed store's deliveries and their attempts, in the order written.
+fn mixed_deliveries(
+    store: &Store,
+    receipts: &[ReceiptId],
+) -> Result<Vec<String>, Box<dyn std::error::Error>> {
     let receipt_at = |index: usize| receipts.get(index).copied().ok_or("fixture receipt");
     let mut deliveries = Vec::new();
     for (receipt, destination, state) in [
@@ -250,6 +301,11 @@ pub(crate) fn mixed_store(path: &Path) -> Result<Store, Box<dyn std::error::Erro
             params![delivery(index)?, outcome, time],
         )?;
     }
+    Ok(deliveries)
+}
+
+/// The mixed store's machine orders and their snapshots.
+fn mixed_orders(store: &Store) -> Result<(), Box<dyn std::error::Error>> {
     store.db.execute_batch(concat!(
         "INSERT INTO feed(destination,cursor,complete,trusted,polled) VALUES ('main-lab','c',1,1,0);",
         "INSERT INTO orders VALUES ('main-lab','o-1','000777','{}',0,0,0);",
@@ -278,6 +334,18 @@ pub(crate) fn mixed_store(path: &Path) -> Result<Store, Box<dyn std::error::Erro
             params![row, snapshot(order, destination, machine, state, at)],
         )?;
     }
+    Ok(())
+}
+
+/// The mixed store's parked items, poll intent and audit entries.
+fn mixed_review(
+    store: &Store,
+    receipts: &[ReceiptId],
+    deliveries: &[String],
+) -> Result<(), Box<dyn std::error::Error>> {
+    let bare = |id: ReceiptId| uuid::Uuid::from(id).to_string();
+    let receipt_at = |index: usize| receipts.get(index).copied().ok_or("fixture receipt");
+    let delivery = |index: usize| deliveries.get(index).cloned().ok_or("fixture delivery");
     let item = |kind: &str, targets: &[String]| -> Result<String, serde_json::Error> {
         serde_json::to_string(&serde_json::json!({
             "kind": kind, "reason": "synthetic", "targets": targets, "context": null
@@ -360,40 +428,5 @@ pub(crate) fn mixed_store(path: &Path) -> Result<Store, Box<dyn std::error::Erro
             .db
             .execute("INSERT INTO audit(evidence) VALUES (?1)", [resolution])?;
     }
-    // Data keeping purged the seventh message and its delivery, keeping a
-    // tombstone; the item parked about it stays.
-    let purged = key(&receipt_at(6)?)?;
-    let guards: Vec<(String, String)> = store
-        .db
-        .prepare("SELECT name,sql FROM sqlite_master WHERE type='trigger' AND name IN ('immutable_receipts_delete','immutable_interpretations_delete','immutable_attempts_delete','outbox_retained')")?
-        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
-        .collect::<Result<_, _>>()?;
-    for (name, _) in &guards {
-        store.db.execute_batch(&format!("DROP TRIGGER {name}"))?;
-    }
-    store.db.execute(
-        "DELETE FROM attempts WHERE delivery IN (SELECT id FROM outbox WHERE receipt=?1)",
-        [&purged],
-    )?;
-    store
-        .db
-        .execute("DELETE FROM outbox WHERE receipt=?1", [&purged])?;
-    store
-        .db
-        .execute("DELETE FROM interpretations WHERE receipt=?1", [&purged])?;
-    store
-        .db
-        .execute("DELETE FROM receipts WHERE id=?1", [&purged])?;
-    for (_, sql) in &guards {
-        store.db.execute_batch(sql)?;
-    }
-    store.db.execute(
-        "INSERT INTO retention_tombstones VALUES (?1,'m-a','d','1',zeroblob(32),10200,10210,10600)",
-        [&purged],
-    )?;
-    store.db.execute(
-        "INSERT INTO retention_deliveries VALUES (?1,?2,10210)",
-        params![delivery(8)?, purged],
-    )?;
-    Ok(store)
+    Ok(())
 }

@@ -462,7 +462,7 @@ impl Store {
     ) -> Result<crate::Health, Error> {
         // Every state but Done, named, so the lab app's undelivered items are
         // read through the index by lab app and state, not all its deliveries.
-        let [pending, in_flight, parked, paused, conflict] = NOT_DONE;
+        let [pending, in_flight, parked, paused, conflict] = DeliveryState::NOT_DONE;
         let (count, bytes, oldest, paused): (i64,i64,Option<i64>,bool) = self.db.query_row("SELECT count(*),coalesce(sum(length(payload)),0),min(enqueued_at),coalesce(max(state=?2),0) FROM outbox WHERE destination=?1 AND state IN (?3,?4,?5,?6,?7)",params![destination.as_str(),DeliveryState::Paused,pending,in_flight,parked,paused,conflict], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?)))?;
         let feed: Option<(i64, bool, bool)> = self
             .db
@@ -510,18 +510,6 @@ macro_rules! lab_apps {
         )
     };
 }
-
-/// Every delivery state but Done. A delivery in Done holds no attempt after
-/// its own latest accepted one, since every attempt moves a delivery out of
-/// Done unless it is itself accepted; so a try after a lab app's last accepted
-/// delivery always belongs to a delivery in one of these.
-const NOT_DONE: [DeliveryState; 5] = [
-    DeliveryState::Pending,
-    DeliveryState::InFlight,
-    DeliveryState::Parked,
-    DeliveryState::Paused,
-    DeliveryState::Conflict,
-];
 
 impl Store {
     /// Reads, in one query, the latest accepted ("done") attempt time per
@@ -586,7 +574,7 @@ impl Store {
     /// second keep their real order. Only lab apps with items waiting are
     /// read, and for each only the tries of its deliveries not in Done that
     /// come after its last accepted attempt (`delivered_attempt`, see
-    /// [`NOT_DONE`]), so the cost follows what is waiting, not what was kept.
+    /// [`DeliveryState::NOT_DONE`]), so the cost follows what is waiting, not what was kept.
     /// Each lab app's last accepted attempt is read once (`MATERIALIZED`), not
     /// again for every try compared with it.
     /// # Errors
@@ -606,7 +594,7 @@ impl Store {
             "AND a.sequence>coalesce(w.accepted,0) AND json_type(a.outcome,'$.RetryAt')='integer' ",
             "GROUP BY w.destination ORDER BY w.destination",
         ))?;
-        let [pending, in_flight, parked, paused, conflict] = NOT_DONE;
+        let [pending, in_flight, parked, paused, conflict] = DeliveryState::NOT_DONE;
         statement
             .query_map(
                 params![

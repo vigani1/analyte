@@ -23,6 +23,22 @@ pub enum DeliveryState {
     Conflict,
 }
 
+impl DeliveryState {
+    /// Every state but Done, named so that reads of what waits go through the
+    /// index by lab app and state instead of every delivery. A delivery in
+    /// Done holds no attempt after its own latest accepted one, since every
+    /// attempt moves a delivery out of Done unless it is itself accepted; so a
+    /// try after a lab app's last accepted delivery always belongs to a
+    /// delivery in one of these.
+    pub(crate) const NOT_DONE: [Self; 5] = [
+        Self::Pending,
+        Self::InFlight,
+        Self::Parked,
+        Self::Paused,
+        Self::Conflict,
+    ];
+}
+
 /// Bounded operator listing without clinical payloads.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoredDelivery {
@@ -126,17 +142,22 @@ impl Store {
             .collect::<Result<_, _>>()?;
         let mut machines = self.db.prepare(concat!(
             "WITH owners AS (",
-            outbox_owners!("o.destination=?1 AND o.state!=?2"),
+            outbox_owners!("o.destination=?1 AND o.state IN (?2,?3,?4,?5,?6)"),
             ")",
-            " SELECT DISTINCT machine FROM owners ORDER BY machine LIMIT ?3"
+            " SELECT DISTINCT machine FROM owners ORDER BY machine LIMIT ?7"
         ))?;
+        let [pending, in_flight, parked, paused, conflict] = DeliveryState::NOT_DONE;
         rows.into_iter()
             .map(|(destination, sending, held)| {
                 let names: Vec<String> = machines
                     .query_map(
                         params![
                             destination,
-                            DeliveryState::Done,
+                            pending,
+                            in_flight,
+                            parked,
+                            paused,
+                            conflict,
                             i64::try_from(UNDELIVERED_MACHINES)
                                 .map_err(|_| Error::InvalidDeliveryInput)?
                         ],
