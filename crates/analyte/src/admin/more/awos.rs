@@ -1,10 +1,11 @@
 //! Serves what a machine did with orders, kept apart from the order's own state: Cancelled by machine (GET /analyzer-cancelled) and one order item's page with its history (GET /awos/{order}/{item}), whose machine notes show only after the audited "Show the original message" (POST /awos/{order}/{item}/raw).
 use super::orders::{look, model, tests};
 use super::page::{Cancelled, CancelledCard, ITEM_LEDE, Message, Notes, OrderItem, Original};
-use super::{Cursor, PAGE, cursor_value, next_href, one_page, show};
+use super::{next_href, show};
 use crate::admin::error::CommandError;
 use crate::admin::parked::{RAW_VIEW, RawRequest};
 use crate::admin::sessions::Session;
+use crate::admin::view::list::{Cursor, PAGE, cursor_value, one_page};
 use crate::admin::view::{
     Tab, Tone, format,
     format::Line,

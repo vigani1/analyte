@@ -5,11 +5,13 @@
 //! time stored beside it. Machine links and disconnects are not stored, so
 //! they are not listed, and the mockup's Connections filter is left out. No
 //! script: the filters are one GET form, and each type is a submit button.
-use super::page::{Day, Empty, Feed, FeedLine, MachineOption, TypeChip};
-use super::{PAGE, one_page};
 use crate::admin::error::CommandError;
 use crate::admin::sessions::Session;
-use crate::admin::view::{Tab, format, frame::Frame};
+use crate::admin::view::{
+    Tab, format,
+    frame::Frame,
+    list::{Empty, PAGE, one_page},
+};
 use crate::admin::{Error, server::Context};
 use crate::deadline;
 use analyte_store::{ActivityCursor, ActivityGroup, ActivityLine};
@@ -22,6 +24,8 @@ use axum::{
 use jiff::Timestamp;
 use serde::Deserialize;
 use std::sync::Arc;
+mod page;
+use page::{Day, Feed, FeedLine, MachineOption, TypeChip};
 
 /// Which lines the page shows; the sidebar's link shows them all.
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
@@ -121,7 +125,7 @@ pub(in crate::admin) async fn activity(
 ) -> Response {
     let machine = (!query.machine.is_empty()).then_some(query.machine);
     let (show, before) = (query.show, query.before);
-    super::show(
+    crate::admin::more::show(
         &state,
         session.as_ref(),
         Tab::Activity,

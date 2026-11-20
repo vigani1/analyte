@@ -1,4 +1,4 @@
-//! Serves Activity and the pages under the sidebar's More group (Machine orders with an order item's history, Cancelled by machine, Deliveries with Send again, Data keeping with its holds, and Settings) and what they share: paging, the read budget and their error pages.
+//! Serves the pages under the sidebar's More group (Machine orders with an order item's history, Cancelled by machine, Deliveries with Send again, Data keeping with its holds, and Settings) and what they share: the read budget and their error pages.
 use crate::admin::server::Context;
 use crate::admin::sessions::Session;
 use crate::admin::view::{
@@ -8,10 +8,7 @@ use crate::admin::view::{
 use askama::Template as _;
 use axum::{Extension, http::StatusCode, response::Response};
 use jiff::Timestamp;
-use serde::Deserialize;
 use std::sync::Arc;
-mod activity;
-pub(super) use activity::activity;
 pub(super) mod awos;
 mod deliveries;
 pub(super) use deliveries::{confirm_resend, deliveries, resend};
@@ -22,47 +19,11 @@ pub(super) mod retention;
 mod settings;
 pub(super) use settings::{Installed, settings};
 
-pub(super) const PAGE: usize = 50;
-#[derive(Default, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(super) struct Cursor {
-    #[serde(default, deserialize_with = "cursor_value")]
-    pub(super) after: u64,
-}
-
-pub(super) fn cursor_value<'de, D: serde::Deserializer<'de>>(
-    deserializer: D,
-) -> Result<u64, D::Error> {
-    let value = u64::deserialize(deserializer)?;
-    i64::try_from(value).map_err(serde::de::Error::custom)?;
-    Ok(value)
-}
-
-/// Splits one store read into the rows a page shows and whether more follow:
-/// at most `shown` rows are kept, and more follow when the read held more than
-/// that or when `rest` finds a row after the last one kept. An empty read has
-/// nothing after it.
-pub(super) fn one_page<T, E>(
-    mut rows: Vec<T>,
-    shown: usize,
-    rest: impl FnOnce(&T) -> Result<bool, E>,
-) -> Result<(Vec<T>, bool), E> {
-    if rows.len() > shown {
-        rows.truncate(shown);
-        return Ok((rows, true));
-    }
-    let more = match rows.last() {
-        Some(last) => rest(last)?,
-        None => false,
-    };
-    Ok((rows, more))
-}
-
 /// Runs a page's reads within [`view::READ_BUDGET`] and draws the page
 /// from what they returned, for the request's session, now; a read that fails
 /// or takes too long gets the page saying so, with the reason kept for
 /// support. The reads only read, so stopping them leaves nothing behind.
-async fn show<T>(
+pub(super) async fn show<T>(
     state: &Context,
     session: Option<&Extension<Arc<Session>>>,
     tab: Tab,

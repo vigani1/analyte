@@ -1,8 +1,9 @@
 //! Serves Machine orders (GET /orders): the All, Unknown and Cancelled filters with their counts, then one row per order Analyte sent to a machine with its four separate states.
-use super::page::{Empty, Look, OrderRow, Orders};
-use super::{PAGE, cursor_value, next_href, one_page};
+use super::next_href;
+use super::page::{Look, OrderRow, Orders};
 use crate::admin::error::CommandError;
 use crate::admin::sessions::Session;
+use crate::admin::view::list::{Empty, PAGE, cursor_value, one_page};
 use crate::admin::view::{Tab, format, frame::Frame, report::Chip};
 use crate::admin::{Error, server::Context};
 use crate::deadline;

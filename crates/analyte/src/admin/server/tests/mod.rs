@@ -1077,7 +1077,7 @@ async fn start_with(
         (retired, directory),
         (
             Vec::new(),
-            crate::admin::pages::Installed::for_test(Vec::new()),
+            crate::admin::more::Installed::for_test(Vec::new()),
         ),
     )
     .await
@@ -1091,7 +1091,7 @@ async fn start_full(
     kept: (crate::admin::Draining, &std::path::Path),
     settings: (
         Vec<(Identifier, Option<u16>)>,
-        crate::admin::pages::Installed,
+        crate::admin::more::Installed,
     ),
 ) -> Result<Started, Error> {
     start_bounded(
@@ -1111,7 +1111,7 @@ type Parts<'a> = (
     (crate::admin::Draining, &'a std::path::Path),
     (
         Vec<(Identifier, Option<u16>)>,
-        crate::admin::pages::Installed,
+        crate::admin::more::Installed,
     ),
 );
 

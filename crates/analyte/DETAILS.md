@@ -465,7 +465,7 @@ setup page names each machine model by the `# ` title on the first line of its
 README (for example "Roche cobas e 411"), falling back to the tidied
 `vendor/model` key, which stays on hover (`setup/definitions.rs`).
 
-Activity (`/activity`, `src/admin/pages/activity.rs`) lists, newest first, the
+Activity (`/activity`, `src/admin/activity/`) lists, newest first, the
 rows the store already keeps: messages stored, items parked for review and
 resolved, delivery tries (delivered, will retry, rejected, paused, conflict),
 machine orders' new states and audited changes. Each line shows the time stored

@@ -1,8 +1,9 @@
 //! Serves Data keeping (GET and POST /retention): how long each machine's messages are kept, the last clean-up, the active holds with who placed them, and the audited hold form, with each hold's Release dialog drawn over the page (GET /retention?release={hold}).
 use super::page::{HoldRow, Keeping, ReleaseDialog};
-use super::{Outcome, PAGE, cursor_value, next_href, one_page, report, show};
+use super::{Outcome, next_href, report, show};
 use crate::admin::error::CommandError;
 use crate::admin::sessions::{Session, signed_in};
+use crate::admin::view::list::{PAGE, cursor_value, one_page};
 use crate::admin::view::{
     Tab, Tone, format,
     format::Line,

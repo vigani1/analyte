@@ -11,10 +11,10 @@ mod page;
 
 pub(super) use page::{DialogItem, Hover, Notice, RemoveDialog, Removed, Rule};
 
-use crate::admin::pages::{Cursor, PAGE};
 use crate::admin::server::{Context, Machine};
 use crate::admin::sessions::Session;
 use crate::admin::setup::Listed;
+use crate::admin::view::list::{Cursor, PAGE};
 use crate::admin::view::report::{Button, Crumb, Head, Problem, Report, Section, Status, respond};
 use crate::admin::view::report::{Fact, Link, Value};
 use crate::admin::view::{self, Tab, Tone, format, frame::Frame, icon::Icon};

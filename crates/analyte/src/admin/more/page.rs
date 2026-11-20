@@ -8,15 +8,9 @@ use crate::admin::view::{
     format::{Line, Moment, Part},
     frame::Frame,
     icon::Icon,
+    list::Empty,
     report::{Chip, Fact, Head, Value},
 };
-
-/// What an empty list says, and a link to a list that has rows.
-pub(super) struct Empty {
-    pub(super) title: &'static str,
-    pub(super) text: &'static str,
-    pub(super) link: Option<(&'static str, &'static str)>,
-}
 
 /// A status with its own icon, such as the question mark of an order whose
 /// outcome is unknown; `note` is what was recorded, shown under it.
@@ -333,64 +327,4 @@ pub(super) struct KeyRow {
     pub(super) word: String,
     /// Its credential name or file, on hover.
     pub(super) exact: String,
-}
-
-/// What the Activity page says under its title.
-pub(super) const ACTIVITY_LEDE: &str =
-    "Sample IDs and counts only. Patient names and result values never appear here.";
-
-/// GET /activity: the machine and type filters, today's count, the lines
-/// grouped by day, newest first, and the link to earlier lines.
-#[derive(askama::Template)]
-#[template(path = "pages/activity/index.html")]
-pub(super) struct Feed {
-    pub(super) frame: Frame,
-    pub(super) machines: Vec<MachineOption>,
-    /// The type shown, which the machine filter's Show keeps.
-    pub(super) show: &'static str,
-    pub(super) chips: Vec<TypeChip>,
-    /// How many lines today holds for the machine chosen, and "event" or
-    /// "events"; none when the PC's day could not be worked out.
-    pub(super) today: Option<(u64, &'static str)>,
-    pub(super) days: Vec<Day>,
-    pub(super) empty: Option<Empty>,
-    /// Show earlier activity.
-    pub(super) earlier: Option<String>,
-}
-
-/// One machine in the machine filter: its ID, with its model beside it.
-pub(super) struct MachineOption {
-    pub(super) id: String,
-    pub(super) label: String,
-    pub(super) selected: bool,
-}
-
-/// One type filter: a button that shows the lines of its type, with today's
-/// count; the one shown is drawn pressed.
-pub(super) struct TypeChip {
-    pub(super) value: &'static str,
-    pub(super) label: &'static str,
-    pub(super) count: Option<u64>,
-    pub(super) pressed: bool,
-}
-
-/// The lines of one day, under its divider.
-pub(super) struct Day {
-    pub(super) label: String,
-    pub(super) lines: Vec<FeedLine>,
-}
-
-/// One line: when, its icon in its tone with the word a screen reader says,
-/// who or what it is about, the rest of the sentence and a link.
-pub(super) struct FeedLine {
-    /// Its position, which the script uses to mark lines that are new.
-    pub(super) key: String,
-    /// None when no time was stored.
-    pub(super) at: Option<Moment>,
-    pub(super) tone: Tone,
-    pub(super) icon: Icon,
-    pub(super) word: &'static str,
-    pub(super) head: String,
-    pub(super) rest: String,
-    pub(super) link: Option<(String, &'static str)>,
 }

@@ -176,7 +176,7 @@ async fn start_pages_server(
         reserve: 1,
         setup: crate::admin::setup::Setup::for_test(root),
         assets: crate::admin::view::assets::Root::of_this_build(),
-        installed: crate::admin::pages::Installed::for_test(Vec::new()),
+        installed: crate::admin::more::Installed::for_test(Vec::new()),
         write_budget: WRITE_BUDGET,
         live: crate::admin::live::Bounds::standard(),
         closing: closed,

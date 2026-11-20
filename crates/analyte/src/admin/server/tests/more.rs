@@ -91,7 +91,7 @@ impl Scene {
             (Identifier::new("chemistry-analyzer")?, Some(365)),
             (Identifier::new("hematology-analyzer")?, None),
         ];
-        let installed = crate::admin::pages::Installed::for_test(vec![(
+        let installed = crate::admin::more::Installed::for_test(vec![(
             Identifier::new("lab-alerts")?,
             Identifier::new("alerts-signing")?,
         )]);

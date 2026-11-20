@@ -1,9 +1,10 @@
 //! Serves protected local administration pages and actions with host-owned credentials.
+mod activity;
 mod listener;
 mod live;
 mod machines;
+mod more;
 mod overview;
-mod pages;
 mod parked;
 mod removed;
 mod server;

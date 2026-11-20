@@ -111,7 +111,7 @@ pub(super) struct Context {
     /// Where pages load this build's static files from.
     pub(super) assets: super::view::assets::Root,
     /// What the Settings page shows from the loaded program.
-    pub(super) installed: super::pages::Installed,
+    pub(super) installed: super::more::Installed,
     /// How long a setup write may run: [`WRITE_BUDGET`]; tests shorten it.
     pub(super) write_budget: Duration,
     /// The live streams' bounds and their cap; tests shorten them.
@@ -216,7 +216,7 @@ pub(crate) async fn prepare(
         reserve: program.store_limits.reserve_bytes,
         setup,
         assets: super::view::assets::Root::of_this_build(),
-        installed: super::pages::Installed::of(program, shutdown),
+        installed: super::more::Installed::of(program, shutdown),
         write_budget: WRITE_BUDGET,
         live: super::live::Bounds::standard(),
         closing: closed,
@@ -320,10 +320,10 @@ fn router(state: Arc<Context>) -> Router {
         .route("/logout", post(sign_in::logout))
         .route(
             "/retention",
-            get(super::pages::retention::show_page).post(super::pages::retention::hold),
+            get(super::more::retention::show_page).post(super::more::retention::hold),
         )
-        .route("/settings", get(super::pages::settings))
-        .route("/activity", get(super::pages::activity))
+        .route("/settings", get(super::more::settings))
+        .route("/activity", get(super::activity::activity))
         .route("/events", get(super::live::events))
         .route("/machines", get(super::machines::list))
         .route("/machines/{id}", get(super::machines::detail))
@@ -334,14 +334,14 @@ fn router(state: Arc<Context>) -> Router {
         .route("/parked", get(super::parked::list))
         .route("/parked/{id}", get(super::parked::item))
         .route("/parked/{id}/raw", post(super::parked::raw))
-        .route("/orders", get(super::pages::orders))
-        .route("/analyzer-cancelled", get(super::pages::awos::cancelled))
-        .route("/awos/{order}/{item}", get(super::pages::awos::detail))
-        .route("/awos/{order}/{item}/raw", post(super::pages::awos::notes))
-        .route("/deliveries", get(super::pages::deliveries))
+        .route("/orders", get(super::more::orders))
+        .route("/analyzer-cancelled", get(super::more::awos::cancelled))
+        .route("/awos/{order}/{item}", get(super::more::awos::detail))
+        .route("/awos/{order}/{item}/raw", post(super::more::awos::notes))
+        .route("/deliveries", get(super::more::deliveries))
         .route(
             "/deliveries/{id}/resend",
-            get(super::pages::confirm_resend).post(super::pages::resend),
+            get(super::more::confirm_resend).post(super::more::resend),
         )
         .route(
             "/parked/{id}/reprocess",

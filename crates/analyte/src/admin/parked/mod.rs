@@ -23,7 +23,7 @@ pub(super) fn headline(details: &Parked) -> (String, Tone) {
 }
 
 use crate::admin::error::CommandError;
-use crate::admin::pages::{PAGE, cursor_value, one_page};
+use crate::admin::view::list::{Cursor, PAGE, cursor_value, one_page};
 use crate::admin::view::report::Chip;
 use crate::admin::view::{self, Tab, Tone, format, frame::Frame};
 use crate::admin::{Error, server::Context, sessions::Session};
@@ -539,7 +539,7 @@ async fn read_item(state: &Context, id: i64, after: u64) -> Result<Option<ItemRe
 pub(super) async fn item(
     State(state): State<Arc<Context>>,
     Path(id): Path<i64>,
-    Query(cursor): Query<crate::admin::pages::Cursor>,
+    Query(cursor): Query<Cursor>,
     session: Option<Extension<Arc<Session>>>,
 ) -> Response {
     let session = session.as_ref().map(|Extension(session)| session.as_ref());

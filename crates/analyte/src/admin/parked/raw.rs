@@ -6,7 +6,7 @@
 use super::page::{Head, Raw, RawRequest};
 use super::problem::Problem;
 use super::{receipt_id, respond};
-use crate::admin::pages::cursor_value;
+use crate::admin::view::list::cursor_value;
 use crate::admin::view::{Tab, frame::Frame};
 use crate::{
     admin::{Error, server::Context, sessions::Session},

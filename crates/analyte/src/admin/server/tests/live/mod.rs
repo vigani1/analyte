@@ -39,7 +39,7 @@ impl Site {
                 (crate::admin::Draining::new(), root),
                 (
                     Vec::new(),
-                    crate::admin::pages::Installed::for_test(Vec::new()),
+                    crate::admin::more::Installed::for_test(Vec::new()),
                 ),
             ),
             bounds,

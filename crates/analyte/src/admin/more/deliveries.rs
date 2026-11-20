@@ -6,11 +6,12 @@
 //! wrong token; the action checks again and asks for a signed-in session.
 //! Sending again never sends an order to a machine: it only queues the kept
 //! delivery for the lab app again (safety rules 4 and 8).
-use super::page::{Deliveries, DeliveryRow, Empty, Look, ResendDialog};
-use super::{Outcome, PAGE, cursor_value, next_href, one_page, report};
+use super::page::{Deliveries, DeliveryRow, Look, ResendDialog};
+use super::{Outcome, next_href, report};
 use crate::admin::error::CommandError;
 use crate::admin::parked::checked;
 use crate::admin::sessions::{Session, signed_in};
+use crate::admin::view::list::{Empty, PAGE, cursor_value, one_page};
 use crate::admin::view::{
     Tab, Tone, format,
     frame::Frame,
