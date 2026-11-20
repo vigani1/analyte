@@ -92,10 +92,11 @@ async fn read(state: &Context, query: OrdersQuery) -> Result<Read, Error> {
     Ok(state
         .store
         .request::<_, CommandError>(deadline()?, move |s| {
-            let (orders, more) =
-                one_page::<_, CommandError>(s.machine_orders(&filter(after))?, PAGE, |last| {
-                    Ok(!s.machine_orders(&filter(last.id))?.is_empty())
-                })?;
+            let (orders, more) = one_page::<_, CommandError>(
+                s.machine_orders_up_to(&filter(after), PAGE + 1)?,
+                PAGE,
+                |last| Ok(!s.machine_orders_up_to(&filter(last.id), 1)?.is_empty()),
+            )?;
             let orders = orders
                 .into_iter()
                 .map(|order| {

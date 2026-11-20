@@ -99,12 +99,15 @@ async fn read(state: &Context, show: Show, after: u64) -> Result<Read, Error> {
     Ok(state
         .store
         .request::<_, CommandError>(deadline()?, move |s| {
-            let (rows, more) =
-                one_page::<_, CommandError>(s.listed_deliveries(after, filter)?, PAGE, |last| {
+            let (rows, more) = one_page::<_, CommandError>(
+                s.listed_deliveries_up_to(after, filter, PAGE + 1)?,
+                PAGE,
+                |last| {
                     Ok(!s
-                        .listed_deliveries(last.delivery.sequence, filter)?
+                        .listed_deliveries_up_to(last.delivery.sequence, filter, 1)?
                         .is_empty())
-                })?;
+                },
+            )?;
             Ok(Read {
                 counts: s.delivery_counts()?,
                 rows,

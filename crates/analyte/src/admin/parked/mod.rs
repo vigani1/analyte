@@ -184,10 +184,11 @@ async fn read_list(state: &Context, query: ListQuery, now: Timestamp) -> Result<
         .store
         .request::<_, CommandError>(deadline()?, move |s| {
             let counts = s.parked_counts()?;
-            let (rows, more) =
-                one_page::<_, CommandError>(s.parked_filtered(after, filter)?, PAGE, |last| {
-                    Ok(!s.parked_filtered(last.id, filter)?.is_empty())
-                })?;
+            let (rows, more) = one_page::<_, CommandError>(
+                s.parked_filtered_up_to(after, filter, PAGE + 1)?,
+                PAGE,
+                |last| Ok(!s.parked_filtered_up_to(last.id, filter, 1)?.is_empty()),
+            )?;
             let listed = |rows: Vec<analyte_store::ParkedItem>| {
                 rows.into_iter()
                     .map(|row| {

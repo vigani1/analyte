@@ -19,8 +19,7 @@ use super::sessions::Session;
 use super::view::{self, Tab, Tone, format, frame::Frame, icon::Icon, refusal::Refusal};
 use crate::admin::{Error, error::CommandError};
 use crate::deadline;
-use analyte_model::OrderState;
-use analyte_store::{AlertKey, AlertState, FailingDestination, LastDelivered, MachineOrderFilter};
+use analyte_store::{AlertKey, AlertState, FailingDestination, LastDelivered};
 use askama::Template as _;
 use axum::{
     Extension,
@@ -282,7 +281,7 @@ async fn observe(
             .request(until, |store| store.analyzer_cancelled_count())
             .await
             .map_err(Reading::Orders.failed())?,
-        uncertain: uncertain_orders(state, until)
+        uncertain: uncertain_orders(state, until, now)
             .await
             .map_err(Reading::Orders.failed())?,
         ..attention::Facts::default()
@@ -487,58 +486,38 @@ const fn alert_words(key: &AlertKey) -> &'static str {
     }
 }
 
-async fn uncertain_orders(state: &Context, until: std::time::Instant) -> Result<u64, Error> {
-    let mut after = 0;
-    let mut uncertain = 0u64;
-    loop {
-        let page = state
-            .store
-            .request::<_, CommandError>(until, move |store| {
-                Ok::<_, CommandError>(store.machine_orders(&MachineOrderFilter {
-                    after,
-                    machine: None,
-                    state: Some(OrderState::Uncertain),
-                })?)
-            })
-            .await?;
-        let Some(last) = page.last() else {
-            break;
-        };
-        after = last.id;
-        uncertain = uncertain
-            .checked_add(u64::try_from(page.len())?)
-            .ok_or_else(|| Error::UncertainOrderCountOverflow)?;
-    }
-    Ok(uncertain)
+/// How many machine orders have an unknown outcome: the count the store keeps
+/// with every order state change, which the uncertain-orders alert reads too.
+async fn uncertain_orders(
+    state: &Context,
+    until: std::time::Instant,
+    now: Timestamp,
+) -> Result<u64, Error> {
+    Ok(state
+        .store
+        .request::<_, CommandError>(until, move |store| {
+            Ok(store
+                .alert_value(&AlertKey::UncertainOrders, now.as_second(), &[])?
+                .unwrap_or_default())
+        })
+        .await?)
 }
 
-/// Reads every stored receipt once and gives, by machine name, when the latest
-/// stored message from each set-up machine was received.
+/// Gives, by machine name, when the latest stored message from each set-up
+/// machine was received, in one store request.
 pub(super) async fn activity(
     state: &Context,
     until: std::time::Instant,
 ) -> Result<BTreeMap<String, Timestamp>, Error> {
-    let mut seen = BTreeMap::<String, Timestamp>::new();
-    let mut cursor = String::new();
-    loop {
-        let page = state
-            .store
-            .request(until, move |store| store.receipts(&cursor))
-            .await?;
-        let Some(last) = page.last() else {
-            break;
-        };
-        cursor = serde_json::to_string(&last.id)?;
-        for receipt in page {
-            if state.machines.iter().any(|m| m.id == receipt.machine) {
-                let last = seen
-                    .entry(receipt.machine.as_str().to_owned())
-                    .or_insert(receipt.received_at);
-                *last = (*last).max(receipt.received_at);
-            }
-        }
-    }
-    Ok(seen)
+    let machines: Vec<_> = state.machines.iter().map(|m| m.id.clone()).collect();
+    let newest = state
+        .store
+        .request(until, move |store| store.newest_receipts(&machines))
+        .await?;
+    Ok(newest
+        .into_iter()
+        .map(|(machine, at)| (machine.as_str().to_owned(), at))
+        .collect())
 }
 
 #[cfg(test)]
