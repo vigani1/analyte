@@ -1,0 +1,19 @@
+{#- Sign in (the SignIn and SignInDark mockups): the admin key and nothing else, never the key typed back; why the last try was refused, under the field; a note when a form was sent without a signed-in session; and where the key is kept. -#}
+{% extends "layout/center.html" %}
+{%- import "components/feedback.html" as feedback %}
+{%- import "components/icon.html" as draw %}
+{%- block main %}
+<form class="panel anim-in" aria-labelledby="si-title" method="post" action="/login">
+<input type="hidden" name="csrf" value="{{ csrf }}">
+{% call draw::brand_mark(44, "3.4") %}{% endcall %}
+<div><h1 id="si-title" class="panel__title">Sign in to Analyte</h1><p class="panel__text">Use the admin key of Analyte on this PC.</p></div>
+{%- if refused %}
+{% call feedback::alert(crate::admin::view::Tone::Attention, "Nothing was changed", "The form was sent without a signed-in session. Sign in, then open the page again and repeat what you did.") %}{% endcall %}
+{%- endif %}
+<div class="field"><label class="field__label" for="si-key">Admin key</label><input id="si-key" class="input" type="password" name="token" required autocomplete="off" maxlength="44" autofocus{% if error.is_some() %} aria-invalid="true" aria-describedby="si-error"{% endif %}>
+{%- if let Some(error) = error %}<span id="si-error" class="field__error">{% call draw::icon(crate::admin::view::icon::Icon::Problem, "icon--sm") %}{% endcall %}{{ error }}</span>{% endif %}</div>
+<button type="submit" class="btn btn--primary btn--lg panel__action">Sign in</button>
+<p class="subtle panel__note">The key is in the file <span class="mono">admin-token</span> in Analyte’s data folder on this PC. Ask IT if you do not have it.</p>
+<p class="live subtle panel__live"><span class="live-dot live-dot--still"></span>Engine running · machines keep working while you’re signed out</p>
+</form>
+{%- endblock %}

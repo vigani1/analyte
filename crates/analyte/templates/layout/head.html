@@ -1,0 +1,10 @@
+{#- What every page's head holds: the character set and viewport, the title, the browser-tab icons and the three stylesheets in their order. -#}
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ frame.title }} · Analyte</title>
+{%- for icon in crate::admin::view::assets::FAVICONS %}
+<link rel="icon" type="image/svg+xml" sizes="{{ icon.sizes }}" href="{{ frame.assets }}{{ icon.path }}">
+{%- endfor %}
+<link rel="stylesheet" href="{{ frame.assets }}fonts.css">
+<link rel="stylesheet" href="{{ frame.assets }}analyte.css">
+<link rel="stylesheet" href="{{ frame.assets }}app.css">

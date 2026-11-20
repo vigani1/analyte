@@ -1,9 +1,10 @@
-//! Holds what restyled pages share to report: a page head with its way back, buttons, statuses, facts, filter chips, the page that only reports, and every way a Machines, Lab apps, Setup or More page refuses or fails with its status code, words and the exact reason kept for support.
+//! Holds what pages share to report: a page head with its way back, buttons, statuses, facts, filter chips, the page that only reports, and every way a Machines, Lab apps, Setup or More page refuses or fails with its status code, words and the exact reason kept for support.
 use super::{
     self as view, Tab, Tone, format,
     format::{Line, Moment, Part},
     frame::Frame,
     icon::Icon,
+    refusal::Refusal,
 };
 use crate::admin::server::Context;
 use crate::admin::sessions::Session;
@@ -370,15 +371,16 @@ impl Problem {
         };
         match page.render() {
             Ok(html) => (self.status(), Html(html)).into_response(),
-            Err(render) => view::refusal(
-                self.status(),
+            Err(render) => Refusal::PageFailed {
+                status: self.status(),
                 title,
-                "This page could not be shown. Give the details below to support.",
-                format!(
+                text: "This page could not be shown. Give the details below to support.",
+                detail: format!(
                     "{}; the page failed too: {render}",
                     detail.unwrap_or_else(|| alert.to_owned())
                 ),
-            ),
+            }
+            .page(&state.assets),
         }
     }
 }

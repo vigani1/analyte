@@ -173,9 +173,19 @@ progress.meter::-moz-progress-bar { background: var(--accent); border-radius: va
 /* Data keeping and Settings keep a readable width. */
 .more-narrow { max-width: 760px; }
 
+/* Sign in and the refusals in the plain frame (the SignIn mockup's inline
+   styles): the main button spans the panel, and the small print and the
+   engine line sit at 12.5 px, the latter under a rule. */
+.panel__action { width: 100%; }
+.panel__note { margin: 0; font-size: calc((var(--text-xs) + var(--text-sm)) / 2); }
+.panel__live {
+  margin: 0; padding-top: calc(var(--space-3) + var(--space-1) / 2);
+  border-top: var(--border-width) solid var(--border);
+  font-size: calc((var(--text-xs) + var(--text-sm)) / 2);
+}
+
 /* Page changes cross-fade, CSS only: both pages opt in, the sidebar keeps its
-   own name so it stays still while the main column changes. Pages in the old
-   look do not load this file, so moving to or from one does not animate. */
+   own name so it stays still while the main column changes. */
 @view-transition { navigation: auto; }
 ::view-transition-old(root),
 ::view-transition-new(root) {

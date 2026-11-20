@@ -90,6 +90,7 @@ fn error_page_names_the_read_that_failed() -> Result<(), askama::Error> {
 async fn failed_error_page_falls_back_to_the_plain_refusal()
 -> Result<(), Box<dyn std::error::Error>> {
     let response = fallback(
+        &crate::admin::view::assets::Root::of_this_build(),
         &Failure {
             reading: Reading::Time,
             error: None,
@@ -103,7 +104,8 @@ async fn failed_error_page_falls_back_to_the_plain_refusal()
     assert!(
         body.contains("admin overview deadline of 1500 ms exceeded; the error page failed too: ")
     );
-    assert!(body.contains("admin.css"));
+    assert!(body.contains("<section class=\"panel anim-in\" aria-labelledby=\"rf-title\">"));
+    assert!(!body.contains("class=\"sidebar\""));
     Ok(())
 }
 

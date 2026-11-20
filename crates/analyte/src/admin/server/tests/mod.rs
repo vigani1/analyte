@@ -10,13 +10,13 @@ use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
 mod actions;
 mod assets;
-mod logout;
 mod machines;
 mod more;
 mod overview;
 mod pages;
 mod parked;
 mod setup;
+mod sign_in;
 
 use analyte_fixtures::UnlimitedSpace as Space;
 
@@ -710,25 +710,35 @@ fn assert_overview_counts(response: &str) {
     assert!(!response.contains("class=\"pill"));
 }
 
-// Owner request 2026-11-19 (readable admin pages): one same-origin stylesheet that
-// every page links, served as text/css under the unchanged CSP. It holds no data,
-// so the login page loads it before any session exists; the host check still applies.
+// ADR 0018 (admin restyle b6): every page is in the new look, so the old
+// stylesheet is gone and its address answers "File not found" in the plain
+// frame. The design's stylesheets hold no data, so they load before any session
+// exists; the host check still applies.
 async fn assert_stylesheet(host: &str, bearer: &str) -> Result<(), Error> {
-    let css = request(host, "/static/admin.css", "", None).await?;
+    let root = crate::admin::view::assets::Root::of_this_build();
+    let old = request(host, "/static/admin.css", "", None).await?;
+    assert!(old.starts_with("HTTP/1.1 404"), "{old}");
+    headers_present(&old);
+    assert!(old.contains("<h1 id=\"rf-title\" class=\"panel__title\">File not found</h1>"));
+    assert_stylesheets("/static/admin.css", &old);
+    let css = request(host, "/static/app.css", "", None).await?;
     assert!(css.starts_with("HTTP/1.1 200"), "{css}");
     headers_present(&css);
     let lower = css.to_ascii_lowercase();
     assert!(lower.contains("content-type: text/css; charset=utf-8"));
     assert!(lower.contains("x-content-type-options: nosniff"));
-    assert!(css.contains(".notice.bad"));
     let mut stream = tokio::net::TcpStream::connect(host).await?;
     stream
         .write_all(
-            b"GET /static/admin.css HTTP/1.1
+            format!(
+                "GET {}app.css HTTP/1.1
 Host: attacker.invalid
 Connection: close
 
 ",
+                root.as_str()
+            )
+            .as_bytes(),
         )
         .await?;
     let mut refused = Vec::new();
@@ -748,8 +758,11 @@ Connection: close
         ("/machines", auth.as_str()),
         ("/parked", auth.as_str()),
         ("/setup", auth.as_str()),
+        ("/orders", auth.as_str()),
+        ("/analyzer-cancelled", auth.as_str()),
         ("/retention", auth.as_str()),
         ("/deliveries", auth.as_str()),
+        ("/settings", auth.as_str()),
     ] {
         let page = request(host, path, headers, None).await?;
         assert_stylesheets(path, &page);
@@ -758,8 +771,8 @@ Connection: close
         assert!(!page.contains("<style"), "{path} has a style block");
         assert!(!page.contains("<script"), "{path} has a script");
         assert_eq!(page.matches("</html>").count(), 1, "{path}");
-        // Owner request 2026-11-19 (item 6): every page but the login has the four
-        // tabs and the More group, with its own tab marked.
+        // Owner request 2026-11-19 (item 6): every page but the login has the
+        // sidebar's main links and the More group, with its own page marked.
         let menu = [
             "/",
             "/parked",
@@ -792,16 +805,10 @@ Connection: close
 
 /// Owner request 2026-11-19 (Aperture logo, PR #273): every page links the
 /// Analyte icon for its browser tab, the hand-tuned files at 16 and 20 px; the
-/// restyled sidebar draws the mark inline in the theme colours and the old
-/// pages' header bar shows the same icon.
+/// sidebar draws the mark inline in the theme colours at 30 px, and sign-in at
+/// 44 px as the `SignIn` mockup does.
 fn assert_logo(path: &str, page: &str) {
-    let root = if RESTYLED.contains(&path) {
-        crate::admin::view::assets::Root::of_this_build()
-            .as_str()
-            .to_owned()
-    } else {
-        "/static/".to_owned()
-    };
+    let root = crate::admin::view::assets::Root::of_this_build();
     for (file, sizes) in [
         ("analyte-app-icon-16.svg", "16x16"),
         ("analyte-app-icon-20.svg", "20x20"),
@@ -811,70 +818,45 @@ fn assert_logo(path: &str, page: &str) {
         ),
     ] {
         let link = format!(
-            "<link rel=\"icon\" type=\"image/svg+xml\" sizes=\"{sizes}\" href=\"{root}icons/{file}\">"
+            "<link rel=\"icon\" type=\"image/svg+xml\" sizes=\"{sizes}\" href=\"{}icons/{file}\">",
+            root.as_str()
         );
         assert!(page.contains(&link), "{path} lacks {link}");
     }
-    match path {
-        "/" | "/parked" | "/machines" | "/setup" | "/retention" | "/deliveries" => {
-            assert!(page.contains(concat!(
-                "<div class=\"brand\">\n<svg class=\"logo\" width=\"30\" height=\"30\" ",
-                "viewBox=\"0 0 48 48\" aria-hidden=\"true\"><path class=\"logo__tile\" "
-            )));
-        }
-        "/login" => {}
-        _ => assert!(
-            page.contains(concat!(
-                "<img class=\"mark\" src=\"/static/icons/analyte-app-icon.svg\" ",
-                "alt=\"\" width=\"24\" height=\"24\">Analyte</a>"
-            )),
-            "{path} lacks the logo"
-        ),
-    }
+    let mark = if path == "/login" {
+        "<svg class=\"logo\" width=\"44\" height=\"44\" "
+    } else {
+        "<div class=\"brand\">
+<svg class=\"logo\" width=\"30\" height=\"30\" "
+    };
+    assert!(
+        page.contains(&format!(
+            "{mark}viewBox=\"0 0 48 48\" aria-hidden=\"true\"><path class=\"logo__tile\" "
+        )),
+        "{path} lacks the logo"
+    );
 }
 
-/// ADR 0018: the restyled Overview loads fonts.css, analyte.css and app.css in
-/// that order; every other page keeps admin.css. Never both on one page.
-/// The pages in the new look so far (ADR 0018); the others keep `admin.css`.
-const RESTYLED: [&str; 6] = [
-    "/",
-    "/parked",
-    "/machines",
-    "/setup",
-    "/retention",
-    "/deliveries",
-];
-
+/// ADR 0018: every page loads fonts.css, analyte.css and app.css, in that
+/// order and under this build's version, and nothing else.
 fn assert_stylesheets(path: &str, page: &str) {
-    if RESTYLED.contains(&path) {
-        let root = crate::admin::view::assets::Root::of_this_build();
-        let sheets: Vec<&str> = page
-            .split("<link rel=\"stylesheet\" href=\"")
-            .skip(1)
-            .filter_map(|link| link.split('"').next())
-            .collect();
-        assert_eq!(
-            sheets,
-            ["fonts.css", "analyte.css", "app.css"].map(|name| format!("{}{name}", root.as_str())),
-            "{path}"
-        );
-        assert!(
-            !page.contains("/static/admin.css"),
-            "{path} mixes stylesheets"
-        );
-    } else {
-        assert!(
-            page.contains("<link rel=\"stylesheet\" href=\"/static/admin.css\"></head>"),
-            "{path} does not link the stylesheet"
-        );
-        assert!(!page.contains("analyte.css"), "{path} mixes stylesheets");
-    }
+    let root = crate::admin::view::assets::Root::of_this_build();
+    let sheets: Vec<&str> = page
+        .split("<link rel=\"stylesheet\" href=\"")
+        .skip(1)
+        .filter_map(|link| link.split('"').next())
+        .collect();
+    assert_eq!(
+        sheets,
+        ["fonts.css", "analyte.css", "app.css"].map(|name| format!("{}{name}", root.as_str())),
+        "{path}"
+    );
 }
 
 async fn assert_overview_login(host: &str, bearer: &str) -> Result<(String, String), Error> {
     let challenge = request(host, "/login", "", None).await?;
     let csrf = challenge
-        .split("name=\"csrf\" type=\"hidden\" value=\"")
+        .split("type=\"hidden\" name=\"csrf\" value=\"")
         .nth(1)
         .and_then(|s| s.split('"').next())
         .ok_or("CSRF challenge missing")?;
@@ -924,7 +906,7 @@ async fn assert_overview_rejects_login_and_missing_route(
 ) -> Result<(), Error> {
     let challenge = request(host, "/login", "", None).await?;
     let csrf = challenge
-        .split("name=\"csrf\" type=\"hidden\" value=\"")
+        .split("type=\"hidden\" name=\"csrf\" value=\"")
         .nth(1)
         .and_then(|s| s.split('"').next())
         .ok_or("CSRF challenge missing")?;

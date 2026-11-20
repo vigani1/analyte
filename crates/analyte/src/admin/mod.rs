@@ -17,7 +17,6 @@ pub(crate) use server::{Server, prepare};
 pub use token::{Token, TokenError, rotate_token};
 
 mod error;
-mod markup;
 pub use error::{CommandError, Error};
 
 /// A temporary data directory with the owner-only mode the host requires on Unix

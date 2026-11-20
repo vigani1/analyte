@@ -2,7 +2,7 @@
 use super::page::{Button, Head, Message, item_href};
 use crate::admin::server::Context;
 use crate::admin::sessions::Session;
-use crate::admin::view::{self, Tab, Tone, format, frame::Frame};
+use crate::admin::view::{self, Tab, Tone, format, frame::Frame, refusal::Refusal};
 use askama::Template as _;
 use axum::{
     http::StatusCode,
@@ -200,12 +200,13 @@ impl Problem {
         };
         match page.render() {
             Ok(html) => (self.status(), Html(html)).into_response(),
-            Err(render) => view::refusal(
-                self.status(),
+            Err(render) => Refusal::PageFailed {
+                status: self.status(),
                 title,
-                "This page could not be shown. Give the details below to support.",
-                format!("{}; the page failed too: {render}", self.detail()),
-            ),
+                text: "This page could not be shown. Give the details below to support.",
+                detail: format!("{}; the page failed too: {render}", self.detail()),
+            }
+            .page(&state.assets),
         }
     }
 }

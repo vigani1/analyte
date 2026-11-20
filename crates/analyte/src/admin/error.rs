@@ -79,7 +79,7 @@ pub enum Error {
     /// The supplied UUID is invalid.
     #[error(transparent)]
     Uuid(#[from] uuid::Error),
-    /// A restyled page's template could not be written out.
+    /// A page's template could not be written out.
     #[error(transparent)]
     Render(#[from] askama::Error),
     /// An integer exceeds the target range.

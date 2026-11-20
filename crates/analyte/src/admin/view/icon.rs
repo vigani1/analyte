@@ -1,4 +1,4 @@
-//! Holds each Lucide icon the restyled pages draw (ISC licence), its SVG path written once.
+//! Holds each Lucide icon the pages draw (ISC licence), its SVG path written once.
 //!
 //! The `icon` template macro draws `<svg class="icon"><path d="…"/></svg>` from
 //! [`Icon::path`]. Paths use only letters, digits, spaces, `.`, `-` and `,`, so

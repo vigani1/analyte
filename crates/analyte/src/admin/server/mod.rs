@@ -6,14 +6,15 @@ use super::{
     setup::Step,
 };
 use crate::admin::Error;
+use crate::admin::view::refusal::Refusal;
 use crate::installation::config::Program;
 use analyte_model::Identifier;
 use axum::{
-    Extension, Form, Router,
+    Form, Router,
     extract::{ConnectInfo, DefaultBodyLimit, FromRequest, Request, State},
-    http::{StatusCode, header},
+    http::{Method, header},
     middleware::{self, Next},
-    response::{Html, IntoResponse, Response},
+    response::Response,
     routing::{get, post},
 };
 use std::{
@@ -23,6 +24,8 @@ use std::{
     time::Duration,
 };
 use tokio::sync::{Semaphore, watch};
+mod sign_in;
+use sign_in::Attempt;
 #[cfg(all(test, feature = "test-hooks"))]
 mod tests;
 
@@ -105,7 +108,7 @@ pub(super) struct Context {
     pub(super) directory: std::path::PathBuf,
     pub(super) reserve: u64,
     pub(super) setup: super::setup::Setup,
-    /// Where restyled pages load this build's static files from.
+    /// Where pages load this build's static files from.
     pub(super) assets: super::view::assets::Root,
     /// What the Settings page shows from the loaded program.
     pub(super) installed: super::pages::Installed,
@@ -298,8 +301,8 @@ fn router(state: Arc<Context>) -> Router {
     Router::new()
         .route("/", get(super::overview::show))
         .route("/static/{*path}", get(super::view::assets::serve))
-        .route("/login", get(login_page).post(login))
-        .route("/logout", post(logout))
+        .route("/login", get(sign_in::login_page).post(sign_in::login))
+        .route("/logout", post(sign_in::logout))
         .route(
             "/retention",
             get(super::pages::retention::show_page).post(super::pages::retention::hold),
@@ -372,52 +375,22 @@ fn router(state: Arc<Context>) -> Router {
                 // Runs after the outer limit below, so setup forms get the larger bound.
                 .layer(DefaultBodyLimit::max(super::setup::FORM_LIMIT)),
         )
+        .fallback(not_found)
+        // After every route, merged ones too: it is set on each route there is.
+        .method_not_allowed_fallback(wrong_method)
         .layer(DefaultBodyLimit::max(1024))
         .layer(middleware::from_fn_with_state(state.clone(), protect))
         .with_state(state)
 }
 
-fn unauthorized(state: &Context, existing: Option<&Arc<Session>>) -> Response {
-    tracing::warn!("admin authentication refused");
-    let session = existing
-        .cloned()
-        .map(Ok)
-        .unwrap_or_else(|| state.sessions.issue(false, None));
-    let mut response = match session {
-        Ok(session) => {
-            let html = super::view::login("Sign in to Analyte")
-                .markup(concat!(
-                    "<section><p class=\"lead\">Enter the admin key. It is in the file ",
-                    "<code>admin-token</code> in Analyte's data folder on this PC; ask IT if you ",
-                    "do not have it.</p><form ",
-                    "action=\"/login\" method=\"post\"><input name=\"csrf\" ",
-                ))
-                .markup("type=\"hidden\" value=\"")
-                .text(session.csrf.form_value())
-                .markup(concat!(
-                    "\"><label class=\"field\"><span title=\"Admin token\">Admin key</span><input name=\"token\" ",
-                    "type=\"password\" required autocomplete=\"off\" ",
-                ))
-                .markup("maxlength=\"44\"></label><button>Sign in</button></form></section>")
-                .markup(super::view::END);
-            let mut response = (StatusCode::UNAUTHORIZED, Html(html)).into_response();
-            if let Ok(value) = header::HeaderValue::from_str(&session.id.cookie(false)) {
-                response.headers_mut().insert(header::SET_COOKIE, value);
-            }
-            response
-        }
-        Err(error) => super::view::refusal(
-            StatusCode::UNAUTHORIZED,
-            "You cannot sign in right now",
-            "Too many browser sessions are open. Wait a few minutes and try again, or restart Analyte.",
-            error,
-        ),
-    };
-    response.headers_mut().insert(
-        header::WWW_AUTHENTICATE,
-        header::HeaderValue::from_static("Bearer"),
-    );
-    response
+/// Any address without a page.
+async fn not_found(State(state): State<Arc<Context>>) -> Response {
+    Refusal::PageNotFound.page(&state.assets)
+}
+
+/// An address that takes other requests, such as opening Sign out as a page.
+async fn wrong_method(State(state): State<Arc<Context>>, method: Method) -> Response {
+    Refusal::WrongMethod(method).page(&state.assets)
 }
 
 async fn protect(State(state): State<Arc<Context>>, mut request: Request, next: Next) -> Response {
@@ -455,22 +428,22 @@ async fn protect(State(state): State<Arc<Context>>, mut request: Request, next: 
         .and_then(|v| v.to_str().ok());
     let same_origin = origin.is_none_or(|v| v == state.origin);
     let mut response = if session.is_err() {
-        super::view::refusal(
-            StatusCode::SERVICE_UNAVAILABLE,
-            "Analyte needs a restart",
-            "Analyte cannot check browser sessions any more. Restart Analyte, then sign in again.",
-            "admin session lookup failed",
-        )
+        Refusal::NeedsRestart.page(&state.assets)
     } else if !valid_host || !same_origin {
-        unauthorized(&state, None)
+        sign_in::unauthorized(&state, None, Attempt::Open)
     } else if login || public || authenticated {
         let session = session.ok().flatten();
         if let Some(session) = &session {
             request.extensions_mut().insert(session.clone());
         }
-        answer(&state, request, next, session).await
+        plain_refusal_as_page(&state.assets, answer(&state, request, next, session).await).await
     } else {
-        unauthorized(&state, session.ok().flatten().as_ref())
+        let attempt = if request.method() == Method::POST {
+            Attempt::Form
+        } else {
+            Attempt::Open
+        };
+        sign_in::unauthorized(&state, session.ok().flatten().as_ref(), attempt)
     };
     for (name, value) in [
         (
@@ -509,7 +482,7 @@ struct Csrf {
 /// A POST under `/setup/`: a setup write. It gets the larger form limit and,
 /// once its form has passed the session check, [`WRITE_BUDGET`].
 fn setup_write(request: &Request) -> bool {
-    request.method() == axum::http::Method::POST && request.uri().path().starts_with("/setup/")
+    request.method() == Method::POST && request.uri().path().starts_with("/setup/")
 }
 
 /// Runs an admitted request within its budget. Its form is read and checked
@@ -530,8 +503,8 @@ async fn answer(
         .map(|ConnectInfo(lifetime)| lifetime.clone());
     let checked = match tokio::time::timeout(REQUEST_BUDGET, checked(request, session)).await {
         Ok(Ok(request)) => request,
-        Ok(Err(refusal)) => return *refusal,
-        Err(_) => return too_long(),
+        Ok(Err(refusal)) => return refusal.page(&state.assets),
+        Err(_) => return Refusal::TooLong.page(&state.assets),
     };
     let budget = if write {
         state.write_budget
@@ -542,36 +515,44 @@ async fn answer(
     if write && let Some(lifetime) = lifetime {
         lifetime.keep_open_for(left.saturating_add(ANSWER_TIME));
     }
+    // Past the budget the work it started may still finish, so the page says
+    // to look before trying again.
     tokio::time::timeout(left, next.run(checked))
         .await
-        .unwrap_or_else(|_| too_long())
+        .unwrap_or_else(|_| Refusal::TooLong.page(&state.assets))
 }
 
-/// The answer to a request that ran past its budget. The work it started may
-/// still finish, so the page says to look before trying again.
-fn too_long() -> Response {
-    super::view::refusal(
-        StatusCode::GATEWAY_TIMEOUT,
-        "This took too long",
-        concat!(
-            "Analyte did not finish in time. Check the page before trying again: ",
-            "an action may already have been saved.",
-        ),
-        "admin request deadline exceeded",
-    )
+/// The most a plain-text refusal's words are read to show them for support.
+const PLAIN_LIMIT: usize = 4096;
+
+/// The web framework's own refusals of an address, a query or a form it could
+/// not read are plain text; they leave as the refusal page with the same
+/// status, keeping the framework's words for support. Every other answer
+/// passes as it is.
+async fn plain_refusal_as_page(assets: &super::view::assets::Root, response: Response) -> Response {
+    let plain = response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .is_some_and(|kind| kind.as_bytes().starts_with(b"text/plain"));
+    let status = response.status();
+    if !plain || !(status.is_client_error() || status.is_server_error()) {
+        return response;
+    }
+    let detail = match axum::body::to_bytes(response.into_body(), PLAIN_LIMIT).await {
+        Ok(words) => String::from_utf8_lossy(&words).into_owned(),
+        Err(error) => format!("its words could not be read within {PLAIN_LIMIT} bytes: {error}"),
+    };
+    Refusal::Unreadable { status, detail }.page(assets)
 }
 
 /// The request with its posted form read and the form's CSRF value checked
 /// against the session, or the refusal; a request that posts nothing passes as it is.
-async fn checked(
-    request: Request,
-    session: Option<Arc<Session>>,
-) -> Result<Request, Box<Response>> {
-    if request.method() != axum::http::Method::POST {
+async fn checked(request: Request, session: Option<Arc<Session>>) -> Result<Request, Refusal> {
+    if request.method() != Method::POST {
         return Ok(request);
     }
     let Some(session) = session else {
-        return Err(Box::new(form_expired("CSRF session required")));
+        return Err(Refusal::FormExpired("CSRF session required"));
     };
     let limit = if setup_write(&request) {
         super::setup::FORM_LIMIT
@@ -580,108 +561,13 @@ async fn checked(
     };
     let (parts, body) = request.into_parts();
     let Ok(bytes) = axum::body::to_bytes(body, limit).await else {
-        return Err(Box::new(super::view::refusal(
-            StatusCode::PAYLOAD_TOO_LARGE,
-            "Too much text",
-            "The form holds more text than Analyte accepts. Shorten what you typed and try again.",
-            "admin form exceeds limit",
-        )));
+        return Err(Refusal::TooMuchText);
     };
     let copy = Request::from_parts(parts.clone(), axum::body::Body::from(bytes.clone()));
     let form = Form::<Csrf>::from_request(copy, &()).await;
     if !form.is_ok_and(|Form(form)| session.csrf_valid(&form.csrf)) {
-        return Err(Box::new(form_expired("CSRF token invalid or missing")));
+        // Usually an old page or a new sign-in.
+        return Err(Refusal::FormExpired("CSRF token invalid or missing"));
     }
     Ok(Request::from_parts(parts, axum::body::Body::from(bytes)))
-}
-
-/// The refusal for a form whose session check failed, usually an old page or a new sign-in.
-fn form_expired(detail: &'static str) -> Response {
-    super::view::refusal(
-        StatusCode::FORBIDDEN,
-        "This form has expired",
-        "Go back, reload the page and try again. Nothing was changed.",
-        detail,
-    )
-}
-
-async fn login_page(
-    State(state): State<Arc<Context>>,
-    session: Option<Extension<Arc<Session>>>,
-) -> Response {
-    unauthorized(&state, session.as_ref().map(|Extension(s)| s))
-}
-
-#[derive(serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Login {
-    csrf: String,
-    token: String,
-}
-
-async fn login(
-    State(state): State<Arc<Context>>,
-    Extension(previous): Extension<Arc<Session>>,
-    form: Result<Form<Login>, axum::extract::rejection::FormRejection>,
-) -> Response {
-    let Ok(Form(form)) = form else {
-        return unauthorized(&state, Some(&previous));
-    };
-    if !previous.csrf_valid(&form.csrf) || !state.token.matches(&form.token) {
-        return unauthorized(&state, Some(&previous));
-    }
-    // This listener is HTTP loopback only. Forwarded scheme headers are never
-    // trusted. HTTPS transport, when supported, must also enable Secure here.
-    let session = match state.sessions.issue(true, Some(&previous)) {
-        Ok(session) => session,
-        Err(error) => {
-            return super::view::refusal(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "You cannot sign in right now",
-                "Too many browser sessions are open. Wait a few minutes and try again, or restart Analyte.",
-                error,
-            );
-        }
-    };
-    let cookie = session.id.cookie(false);
-    let Ok(cookie) = header::HeaderValue::from_str(&cookie) else {
-        return super::view::refusal(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "You cannot sign in right now",
-            "Analyte could not start a browser session. Try again; if this keeps happening, give the details below to support.",
-            "admin session header invalid",
-        );
-    };
-    let mut response = StatusCode::SEE_OTHER.into_response();
-    response.headers_mut().insert(header::SET_COOKIE, cookie);
-    response
-        .headers_mut()
-        .insert(header::LOCATION, header::HeaderValue::from_static("/"));
-    response
-}
-
-/// POST /logout: the dispatcher already checked the session's CSRF token. Ends
-/// the session, clears its cookie and returns to the sign-in page. Sign-in is
-/// not audited, so sign-out is not either.
-async fn logout(
-    State(state): State<Arc<Context>>,
-    Extension(session): Extension<Arc<Session>>,
-) -> Response {
-    if let Err(error) = state.sessions.end(&session) {
-        return super::view::refusal(
-            StatusCode::SERVICE_UNAVAILABLE,
-            "You cannot sign out right now",
-            "Analyte cannot check browser sessions any more. Restart Analyte; that signs everyone out.",
-            error,
-        );
-    }
-    let mut response = StatusCode::SEE_OTHER.into_response();
-    response.headers_mut().insert(
-        header::SET_COOKIE,
-        header::HeaderValue::from_static(Token::CLEARED_COOKIE),
-    );
-    response
-        .headers_mut()
-        .insert(header::LOCATION, header::HeaderValue::from_static("/login"));
-    response
 }

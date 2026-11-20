@@ -1,0 +1,15 @@
+{#- A refusal that has no page of its own, in the plain frame because it may be shown before sign-in: what happened, what to do, one link onward unless only a restart helps, and the exact reason for support. -#}
+{% extends "layout/center.html" %}
+{%- import "components/feedback.html" as feedback %}
+{%- import "components/forms.html" as forms %}
+{%- import "components/icon.html" as draw %}
+{%- block main %}
+<section class="panel anim-in" aria-labelledby="rf-title">
+{% call draw::brand_mark(44, "3.4") %}{% endcall %}
+<div><h1 id="rf-title" class="panel__title">{{ title }}</h1><p class="panel__text">{{ text }}</p></div>
+{%- if let Some(next) = next %}
+{% call forms::link_button(next.href(), next.label(), "btn--primary btn--lg panel__action") %}{% endcall %}
+{%- endif %}
+{% call feedback::support("Details for support", support) %}{% endcall %}
+</section>
+{%- endblock %}

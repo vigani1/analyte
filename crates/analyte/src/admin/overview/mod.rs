@@ -15,7 +15,7 @@ mod tests;
 
 use super::server::Context;
 use super::sessions::Session;
-use super::view::{self, Tab, Tone, format, frame::Frame, icon::Icon};
+use super::view::{self, Tab, Tone, format, frame::Frame, icon::Icon, refusal::Refusal};
 use crate::admin::{Error, error::CommandError};
 use crate::deadline;
 use analyte_model::OrderState;
@@ -151,7 +151,7 @@ fn failure(
     };
     match page.render() {
         Ok(html) => (failed.status(), Html(html)).into_response(),
-        Err(render) => fallback(failed, &render),
+        Err(render) => fallback(&state.assets, failed, &render),
     }
 }
 
@@ -164,16 +164,17 @@ fn error_text(reading: Reading) -> String {
 }
 
 /// The plain refusal page for when the error page itself could not be written.
-fn fallback(failed: &Failure, render: &askama::Error) -> Response {
-    view::refusal(
-        failed.status(),
-        "Overview",
-        concat!(
+fn fallback(assets: &view::assets::Root, failed: &Failure, render: &askama::Error) -> Response {
+    Refusal::PageFailed {
+        status: failed.status(),
+        title: "Overview",
+        text: concat!(
             "The overview could not be shown just now. Reload the page; if this ",
             "keeps happening, give the details below to support.",
         ),
-        format!("{}; the error page failed too: {render}", failed.detail()),
-    )
+        detail: format!("{}; the error page failed too: {render}", failed.detail()),
+    }
+    .page(assets)
 }
 
 /// What one store request reads for the overview; each part keeps its own

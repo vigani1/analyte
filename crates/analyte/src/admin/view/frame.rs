@@ -1,9 +1,9 @@
-//! Holds what every restyled page's frame shows: its title, where its files load from and the sidebar.
+//! Holds what a page's frame shows: its title, where its files load from and, once signed in, the sidebar.
 //!
 //! The sidebar says only what the page observed when it was made: the engine
 //! answered ("Engine running") and when ("Page loaded 10:45"). There is no
 //! live channel yet, so nothing pulses.
-use super::{Tab, format, icon::Icon};
+use super::{Tab, assets::Root, format, icon::Icon};
 use crate::admin::{server::Context, sessions::Session};
 use jiff::Timestamp;
 
@@ -13,6 +13,24 @@ pub(in crate::admin) struct Frame {
     /// This build's static file root, such as `/static/0123456789abcdef/`.
     pub(in crate::admin) assets: String,
     pub(in crate::admin) sidebar: Sidebar,
+}
+
+/// The plain frame of sign-in and the refusals: the `<title>` and the static
+/// file root, and no sidebar, so a page that may be shown before sign-in
+/// names no machine, lab app or count.
+pub(in crate::admin) struct Plain {
+    pub(in crate::admin) title: String,
+    /// This build's static file root, such as `/static/0123456789abcdef/`.
+    pub(in crate::admin) assets: String,
+}
+
+impl Plain {
+    pub(in crate::admin) fn new(assets: &Root, title: &str) -> Self {
+        Self {
+            title: title.to_owned(),
+            assets: assets.as_str().to_owned(),
+        }
+    }
 }
 
 /// The sidebar: engine box, main links, the "More" group and the sign-out foot.
