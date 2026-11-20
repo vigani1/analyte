@@ -303,9 +303,9 @@ const SOURCES: [Source; 7] = [
         number: 4,
         group: ActivityGroup::Orders,
         from: "machine_order_history x",
-        at: "json_extract(x.evidence,'$.updated_at')",
+        at: "CASE WHEN json_valid(x.evidence) THEN json_extract(x.evidence,'$.updated_at') END",
         key: "x.sequence",
-        machine: "json_extract(x.evidence,'$.key.machine')",
+        machine: "CASE WHEN json_valid(x.evidence) THEN json_extract(x.evidence,'$.key.machine') END",
         keep: concat!(
             "(",
             previous_state!(),
@@ -320,13 +320,13 @@ const SOURCES: [Source; 7] = [
         number: 5,
         group: ActivityGroup::Changes,
         from: "audit x",
-        at: "json_extract(x.evidence,'$.time')",
+        at: "CASE WHEN json_valid(x.evidence) THEN json_extract(x.evidence,'$.time') END",
         key: "x.sequence",
         machine: "CASE WHEN json_extract(x.evidence,'$.action') LIKE 'setup-%' THEN json_extract(x.evidence,'$.targets[0]') END",
         keep: concat!(
             "json_extract(x.evidence,'$.action') NOT IN ('admin-raw-view','deliveries-list','orders-list') ",
             "AND NOT EXISTS(SELECT 1 FROM parked p WHERE p.resolution IS NOT NULL ",
-            "AND (CASE WHEN json_valid(p.resolution) THEN json_extract(p.resolution,'$.time') END) IS json_extract(x.evidence,'$.time') ",
+            "AND (CASE WHEN json_valid(p.resolution) THEN json_extract(p.resolution,'$.time') END) IS (CASE WHEN json_valid(x.evidence) THEN json_extract(x.evidence,'$.time') END) ",
             "AND p.resolution=x.evidence)"
         ),
         undated: true,

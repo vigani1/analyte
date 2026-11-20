@@ -630,6 +630,11 @@ fn schema_seventeen_keeps_every_row_and_fills_when_each_delivery_was_accepted() 
     ] {
         assert!(indexes.iter().any(|name| name == index), "{index}");
     }
+    // An index on stored JSON must never make a write fail: an audit entry
+    // that is not JSON is still written (the clinical write beside it too).
+    store
+        .db
+        .execute("INSERT INTO audit(evidence) VALUES ('not json')", [])?;
     // Later attempts keep the helpers current in the same write; a retry or an
     // earlier clock never lowers them.
     store.db.execute_batch(concat!(

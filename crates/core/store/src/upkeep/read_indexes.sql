@@ -12,7 +12,9 @@
 -- An index expression must give the same value every time, and a write fails if
 -- it raises an error. Receipt metadata is always JSON (the receipt_activity
 -- trigger reads it on every insert), as are audit entries and order snapshots;
--- a parked item's resolution is read only where it is JSON.
+-- a parked item's resolution is read only where it is JSON. Audit entries and
+-- order snapshots are read the same way, so a row that is somehow not JSON can
+-- never make an audit or order write (and the clinical write beside it) fail.
 
 -- Receipts by received second, and by machine then received second.
 CREATE INDEX receipts_received ON receipts(unixepoch(json_extract(metadata,'$.received_at')));
@@ -49,9 +51,9 @@ CREATE TRIGGER outbox_delivered AFTER INSERT ON attempts WHEN NEW.outcome='"Done
 END;
 
 -- Order snapshots by update time, and by machine then update time.
-CREATE INDEX machine_order_history_updated ON machine_order_history(json_extract(evidence,'$.updated_at'));
-CREATE INDEX machine_order_history_machine_updated ON machine_order_history(json_extract(evidence,'$.key.machine'),json_extract(evidence,'$.updated_at'));
+CREATE INDEX machine_order_history_updated ON machine_order_history((CASE WHEN json_valid(evidence) THEN json_extract(evidence,'$.updated_at') END));
+CREATE INDEX machine_order_history_machine_updated ON machine_order_history((CASE WHEN json_valid(evidence) THEN json_extract(evidence,'$.key.machine') END),(CASE WHEN json_valid(evidence) THEN json_extract(evidence,'$.updated_at') END));
 
 -- Audit entries by time.
-CREATE INDEX audit_time ON audit(json_extract(evidence,'$.time'));
+CREATE INDEX audit_time ON audit((CASE WHEN json_valid(evidence) THEN json_extract(evidence,'$.time') END));
 PRAGMA user_version=17;
