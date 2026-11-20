@@ -1,0 +1,35 @@
+{#- Machine orders (GET /orders): the All, Unknown and Cancelled filters with their counts, the restore pause while it is on, then one row per order with its sample, machine, test count and status, and the next page. -#}
+{% extends "layout/base.html" %}
+{%- import "components/display.html" as display %}
+{%- import "components/feedback.html" as feedback %}
+{%- import "components/forms.html" as forms %}
+{%- import "components/layout.html" as layout %}
+{%- block main %}
+{% call layout::intro_head("Machine orders", ORDERS_LEDE) %}
+<nav class="chips" aria-label="Show">
+{%- for chip in chips %}{% call forms::chip(chip) %}{% endcall %}{% endfor -%}
+</nav>
+{% endcall %}
+{%- if paused %}
+{% call feedback::alert(crate::admin::view::Tone::Attention, crate::admin::view::format::RESTORE_PAUSED, crate::admin::view::format::RESTORE_ADVICE) %}{% endcall %}
+{%- endif %}
+{%- if let Some(empty) = empty %}
+<div class="card">{% call feedback::empty(empty.title, empty.text) %}{% if let Some((href, words)) = empty.link %}<a class="link" href="{{ href }}">{{ words }}</a>{% endif %}{% endcall %}</div>
+{%- endif %}
+{%- if !rows.is_empty() %}
+{% call display::table(ORDER_COLUMNS) %}
+{%- for row in rows %}
+<tr>{% call display::cell("num") %}{% call display::time(row.when) %}{% endcall %}{% endcall %}
+{%- call display::cell("num") %}<span title="{{ row.order_exact }}">{{ row.order }}</span>{% endcall %}
+{%- if let Some(sample) = row.sample %}{% call display::cell("num") %}{{ sample }}{% endcall %}{% else %}{% call display::cell("subtle") %}—{% endcall %}{% endif %}
+{%- call display::cell("") %}{{ row.machine }}{% if let Some(model) = row.model %}<div class="cell-sub">{{ model }}</div>{% endif %}{% endcall %}
+{%- if let Some(tests) = row.tests %}{% call display::cell("num right") %}{{ tests }}{% endcall %}{% else %}{% call display::cell("right subtle") %}Not recorded{% endcall %}{% endif %}
+{%- call display::cell("") %}{% call display::status_with(row.status.tone, row.status.icon, row.status.word, row.status.exact) %}{% endcall %}{% if let Some(note) = row.status.note %}<div class="cell-sub cell-note">{{ note }}</div>{% endif %}{% endcall %}
+{%- if let Some((href, label)) = row.link %}{% call display::cell("right") %}<a class="link" href="{{ href }}">{{ label }}</a>{% endcall %}{% else %}{% call display::cell("") %}{% endcall %}{% endif %}</tr>
+{%- endfor %}
+{% endcall %}
+{%- endif %}
+{%- if let Some(href) = next %}
+{% call forms::next_page(href) %}{% endcall %}
+{%- endif %}
+{%- endblock %}

@@ -15,8 +15,7 @@ use crate::admin::machines::{DialogItem, Hover, RemoveDialog};
 use crate::admin::overview::{self, Delivery, Standing};
 use crate::admin::removed;
 use crate::admin::{
-    server::Context,
-    sessions::Session,
+    server::{Context, sessions::Session},
     view::{
         self, Tone, format,
         icon::Icon,

@@ -4,7 +4,6 @@
 {%- import "components/feedback.html" as feedback %}
 {%- import "components/forms.html" as forms %}
 {%- import "components/layout.html" as layout %}
-{%- import "components/lists.html" as lists %}
 {%- block main %}
 {% call layout::intro_head("Needs review", LEDE) %}
 <nav class="chips" aria-label="Show">
@@ -45,9 +44,9 @@
 <section class="section" aria-labelledby="rv-done">
 {% call layout::label("rv-done", heading, "") %}{% endcall %}
 {%- endif %}
-{% call lists::rows() %}
+{% call display::rows() %}
 {%- for row in resolved.rows %}
-{% call lists::row_with(RESOLVED.0, RESOLVED.1, row.href, "History") %}<b class="row__title">{{ row.category }}</b> <span class="muted">· Item <span class="mono">{{ row.id }}</span>{% if let Some(machine) = row.machine %} · {{ machine }}{% endif %}</span><br><span class="subtle row__sub">{% call display::words(row.settled) %}{% endcall %}</span>{% endcall %}
+{% call display::row_with(RESOLVED.0, RESOLVED.1, row.href, "History") %}<b class="row__title">{{ row.category }}</b> <span class="muted">· Item <span class="mono">{{ row.id }}</span>{% if let Some(machine) = row.machine %} · {{ machine }}{% endif %}</span><br><span class="subtle row__sub">{% call display::words(row.settled) %}{% endcall %}</span>{% endcall %}
 {%- endfor %}
 {% endcall %}
 {%- if resolved.heading.is_some() %}

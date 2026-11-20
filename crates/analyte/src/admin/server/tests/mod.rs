@@ -1077,7 +1077,7 @@ async fn start_with(
         (retired, directory),
         (
             Vec::new(),
-            crate::admin::pages::Installed::for_test(Vec::new()),
+            crate::admin::more::Installed::for_test(Vec::new()),
         ),
     )
     .await
@@ -1091,14 +1091,14 @@ async fn start_full(
     kept: (crate::admin::Draining, &std::path::Path),
     settings: (
         Vec<(Identifier, Option<u16>)>,
-        crate::admin::pages::Installed,
+        crate::admin::more::Installed,
     ),
 ) -> Result<Started, Error> {
     start_bounded(
         root,
         store,
         (parts, kept, settings),
-        crate::admin::live::Bounds::standard(),
+        crate::admin::server::live::Bounds::standard(),
     )
     .await
 }
@@ -1111,7 +1111,7 @@ type Parts<'a> = (
     (crate::admin::Draining, &'a std::path::Path),
     (
         Vec<(Identifier, Option<u16>)>,
-        crate::admin::pages::Installed,
+        crate::admin::more::Installed,
     ),
 );
 
@@ -1120,7 +1120,7 @@ async fn start_bounded(
     root: &std::path::Path,
     store: &Arc<analyte_store::Handle>,
     ((machines, destinations), (retired, directory), (retention, installed)): Parts<'_>,
-    bounds: crate::admin::live::Bounds,
+    bounds: crate::admin::server::live::Bounds,
 ) -> Result<Started, Error> {
     let socket = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let host = socket.local_addr()?.to_string();

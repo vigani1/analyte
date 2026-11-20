@@ -487,5 +487,5 @@ carries clinical content. View regressions and the O22 response regressions in
   7.4.2.11; modern §7.4.1.22; ADRs 0003, 0005, 0008 and 0015.
 - **tests**: [paired mapping cases](../../../crates/steps/mapping/tests/mapping/departures.rs),
   [durable v1 refusal](../../../crates/analyte/src/machine/interpretation/departure_evidence/tests.rs),
-  [admin origin labels](../../../crates/analyte/src/admin/pages/departures.rs).
+  [admin origin labels](../../../crates/analyte/src/admin/machines/departures.rs).
   These are synthetic tests; no real analyzer gains an evidence level.

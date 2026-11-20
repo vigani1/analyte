@@ -465,7 +465,7 @@ setup page names each machine model by the `# ` title on the first line of its
 README (for example "Roche cobas e 411"), falling back to the tidied
 `vendor/model` key, which stays on hover (`setup/definitions.rs`).
 
-Activity (`/activity`, `src/admin/pages/activity.rs`) lists, newest first, the
+Activity (`/activity`, `src/admin/activity/`) lists, newest first, the
 rows the store already keeps: messages stored, items parked for review and
 resolved, delivery tries (delivered, will retry, rejected, paused, conflict),
 machine orders' new states and audited changes. Each line shows the time stored
@@ -476,7 +476,7 @@ GET form, counts today's lines, and pages 50 lines at a time after the last line
 shown. It shows sample IDs and counts, never test codes, values or the reasons
 people typed.
 
-Live updates (`src/admin/live.rs`, `assets/live.js`): signed-in pages load one
+Live updates (`src/admin/server/live.rs`, `assets/live.js`): signed-in pages load one
 script file. It opens `GET /events`, a server-sent event stream that says only
 which areas changed (overview, review, machines, deliveries, activity) and the
 PC's time, never page content. Each page's `<body data-live>` names its area;

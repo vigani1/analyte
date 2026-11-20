@@ -204,7 +204,7 @@ pub(in crate::admin) struct Removed {
 
 /// GET /receipts/{id}/departures: how one stored message was read.
 #[derive(askama::Template)]
-#[template(path = "pages/receipts/departures.html")]
+#[template(path = "pages/machines/departures.html")]
 pub(super) struct Departures {
     pub(super) frame: Frame,
     pub(super) head: Head,

@@ -1,22 +1,18 @@
 //! Serves protected local administration pages and actions with host-owned credentials.
-mod listener;
-mod live;
+mod activity;
 mod machines;
+mod more;
 mod overview;
-mod pages;
 mod parked;
 mod removed;
 mod server;
-mod sessions;
 pub(crate) mod setup;
-mod status;
-mod token;
 mod view;
 
 pub(crate) use removed::{Draining, Kept};
 pub(crate) use server::{Server, prepare};
 
-pub use token::{Token, TokenError, rotate_token};
+pub use server::token::{Token, TokenError, rotate_token};
 
 mod error;
 pub use error::{CommandError, Error};

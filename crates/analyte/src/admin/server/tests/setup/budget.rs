@@ -31,7 +31,7 @@ async fn hold_store(
 async fn save_slower_than_a_page_read_still_answers() -> Result<(), Error> {
     let fixture = start().await?;
     let body = fixture.form(&[("port", "usb:A10K3XYZ")]).await?;
-    let hold = crate::admin::listener::LIFETIME.saturating_add(Duration::from_millis(500));
+    let hold = listener::LIFETIME.saturating_add(Duration::from_millis(500));
     let blocker = hold_store(&fixture, hold).await?;
     let started = std::time::Instant::now();
     let saved = fixture.post("/setup/synthetic", &body).await?;
@@ -39,7 +39,7 @@ async fn save_slower_than_a_page_read_still_answers() -> Result<(), Error> {
     blocker.await??;
     assert!(saved.starts_with("HTTP/1.1 200"), "{saved}");
     assert!(saved.contains("Settings saved"), "{saved}");
-    assert!(took > crate::admin::listener::LIFETIME, "{took:?}");
+    assert!(took > listener::LIFETIME, "{took:?}");
     assert_eq!(fixture.audited("setup-save").await?.len(), 1);
     Ok(())
 }
@@ -50,7 +50,7 @@ async fn save_slower_than_a_page_read_still_answers() -> Result<(), Error> {
 #[tokio::test(flavor = "multi_thread")]
 async fn save_slower_than_its_budget_is_too_long() -> Result<(), Error> {
     // Past the first lifetime too, so only a connection kept open can carry the answer.
-    let budget = crate::admin::listener::LIFETIME.saturating_add(Duration::from_millis(500));
+    let budget = listener::LIFETIME.saturating_add(Duration::from_millis(500));
     let fixture = start_bounded(Bounds {
         write: budget,
         ..BOUNDS

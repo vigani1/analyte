@@ -13,7 +13,10 @@ use super::{
 use crate::admin::machines::{self, DialogItem, Hover, RemoveDialog};
 use crate::admin::view::report::{Button, Problem, Report, Section, respond};
 use crate::admin::view::{Tone, icon::Icon};
-use crate::admin::{server::Context, sessions::Session, view::format};
+use crate::admin::{
+    server::{Context, sessions::Session},
+    view::format,
+};
 use crate::installation::config::{Program, folder};
 use analyte_model::Identifier;
 use analyte_store::Unfinished;

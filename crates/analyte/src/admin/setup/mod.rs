@@ -27,8 +27,7 @@ pub(super) use wizard::{Step, listen_start, listen_stop, listen_view, save, step
 
 use super::{
     machines::{Hover, Notice},
-    server::Context,
-    sessions::Session,
+    server::{Context, sessions::Session},
     view::{
         Tab, Tone, format,
         frame::Frame,

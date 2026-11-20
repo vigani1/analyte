@@ -1,4 +1,4 @@
-//! Holds what every page shares: the tabs, tones and table columns, and the read budget; the frames, formatting, icons and reports live in the modules below.
+//! Holds what every page shares: the tabs, tones and table columns, and the read budget; the frames, formatting, icons, list paging and reports live in the modules below.
 //!
 //! Every page is an Askama template in `templates/` with one view struct. Its
 //! files are served from the binary at same-origin paths, so the
@@ -8,6 +8,7 @@ pub(super) mod assets;
 pub(super) mod format;
 pub(super) mod frame;
 pub(super) mod icon;
+pub(super) mod list;
 pub(super) mod refusal;
 pub(super) mod report;
 
