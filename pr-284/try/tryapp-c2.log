@@ -1,0 +1,25 @@
+app started: true
+signed in: Overview · Analyte
+overview live after ms: 1 | Live · 15:21:53 | dot still: false
+activity live after ms: 1 | pill shown: true | pause shown: true
+send_astm.py TRY-C2-A6537 -> ENQ -> b'\x06' / H -> b'\x06' / P -> b'\x06' / O -> b'\x06' / R -> b'\x06' / L -> b'\x06'
+activity showed TRY-C2-A6537 without a reload after ms (from send end): 1211 | from send start: 1363 | new lines marked: 3 | said: Updated at 15:21:57
+send_astm.py TRY-C2-B8167 -> ENQ -> b'\x06' / H -> b'\x06' / P -> b'\x06' / O -> b'\x06' / R -> b'\x06' / L -> b'\x06'
+overview main changed without a reload after ms: 1753
+paused: label Resume updates | pressed true | new sample shown while paused: false
+resumed: shown after ms: 112
+console errors so far: Failed to load resource: the server responded with a status of 401 (Unauthorized)
+stopped: fell back after ms: 0 | Page loaded 15:22 | dot still: true
+still down (reconnecting): Page loaded 15:22
+console while down: Failed to load resource: net::ERR_CONNECTION_RESET ;; Failed to load resource: net::ERR_CONNECTION_REFUSED ;; Failed to load resource: net::ERR_CONNECTION_REFUSED | CSP report among them: false
+app up again: true
+sign in again from the page: opaqueredirect 0
+reconnected after ms (from sign-in): 1415
+reconnected after ms (from start): 1924 | Live · 15:22:11
+console after reconnect: Failed to load resource: the server responded with a status of 401 (Unauthorized)
+no script / | Overview | Page loaded 15:22 | lines 2 | pill displayed: n/a
+no script /activity | Activity | Page loaded 15:22 | lines 50 | pill displayed: none
+no script /parked | Needs review | Page loaded 15:22 | lines 0 | pill displayed: n/a
+no script /machines | Machines | Page loaded 15:22 | lines 5 | pill displayed: n/a
+no script /deliveries | Deliveries | Page loaded 15:22 | lines 8 | pill displayed: n/a
+console at end: none
