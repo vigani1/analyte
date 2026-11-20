@@ -207,15 +207,21 @@ fn row(
     now: Timestamp,
 ) -> OrderRow {
     let first = order.items.first();
-    let link = if order
+    let machine_cancelled = order
         .items
         .iter()
-        .any(analyte_store::MachineOrderItem::analyzer_cancelled)
-    {
+        .any(analyte_store::MachineOrderItem::analyzer_cancelled);
+    let link = if machine_cancelled {
         Some((Tab::CancelledByMachine.href().to_owned(), "Review"))
     } else {
         first.map(|item| (format::order_item_href(order.id, item.index), "Details"))
     };
+    let mut status = look(order.state, &order.source_code);
+    // The order's own state can read "Accepted" while the machine later
+    // cancelled part of it; say so beside the Review link.
+    if machine_cancelled && status.note.is_none() {
+        status.note = Some("The machine cancelled part of this order".to_owned());
+    }
     OrderRow {
         when: format::moment_unix(order.updated_at, now),
         order: order.key.order.as_str().to_owned(),
@@ -229,7 +235,7 @@ fn row(
         machine: order.key.machine.as_str().to_owned(),
         model: model(state, order.key.machine.as_str()),
         tests: tests(order),
-        status: look(order.state, &order.source_code),
+        status,
         link,
     }
 }

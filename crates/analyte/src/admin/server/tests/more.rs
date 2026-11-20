@@ -533,6 +533,7 @@ async fn machine_orders_are_filtered_and_never_show_test_codes() -> Result<(), E
         "Sending</span>",
         "Sent, not yet accepted</span>",
         "<a class=\"link\" href=\"/analyzer-cancelled\">Review</a>",
+        "<div class=\"cell-sub cell-note\">The machine cancelled part of this order</div>",
     ] {
         assert!(all.contains(part), "missing {part}");
     }
