@@ -16,7 +16,8 @@ mod tests;
 
 use super::server::Context;
 use super::server::sessions::Session;
-use super::view::report::{Problem, Section};
+use super::view::parts::Notice;
+use super::view::report::{Problem, Section, read_within};
 use super::view::{self, Tab, Tone, format, frame::Frame, icon::Icon};
 use crate::admin::{Error, error::CommandError};
 use crate::deadline;
@@ -29,7 +30,7 @@ use axum::{
     response::{Html, IntoResponse, Response},
 };
 use jiff::Timestamp;
-use page::{AlertRow, Disk, Notice, OrderRow, Page, Verdict, WIZARD_STEPS, Welcome};
+use page::{AlertRow, Disk, OrderRow, Page, Verdict, WIZARD_STEPS, Welcome};
 use std::{collections::BTreeMap, sync::Arc};
 
 pub(super) async fn show(
@@ -38,14 +39,11 @@ pub(super) async fn show(
 ) -> Response {
     let now = Timestamp::now();
     let session = session.as_ref().map(|Extension(session)| session.as_ref());
-    let problem = match tokio::time::timeout(view::READ_BUDGET, render(&state, session, now)).await
-    {
-        Ok(Ok(html)) => return Html(html).into_response(),
-        Ok(Err(failure)) => failure.problem(),
-        Err(_) => Problem::Time,
-    };
-    // Evidence and errors stay on the authenticated page, never in logs.
-    problem.page(&state, session, Section::Overview)
+    match read_within(render(&state, session, now)).await {
+        Ok(html) => Html(html).into_response(),
+        // Evidence and errors stay on the authenticated page, never in logs.
+        Err(problem) => problem.page(&state, session, Section::Overview),
+    }
 }
 
 /// What the overview was reading when it stopped; the error page names it.
@@ -121,13 +119,13 @@ struct Failure {
     error: Option<Box<Error>>,
 }
 
-impl Failure {
+impl From<Failure> for Problem {
     /// The error page's problem: the reads ran out of time, or this reading
     /// failed and why.
-    fn problem(self) -> Problem {
-        match self.error {
-            Some(error) => Problem::Unread(self.reading.sentence(), error.to_string()),
-            None => Problem::Time,
+    fn from(failure: Failure) -> Self {
+        match failure.error {
+            Some(error) => Self::Unread(failure.reading.sentence(), error.to_string()),
+            None => Self::Time,
         }
     }
 }

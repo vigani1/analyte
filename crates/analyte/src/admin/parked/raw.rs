@@ -261,7 +261,7 @@ pub(in crate::admin) async fn raw(
             return Problem::Purged.page(&state, Some(&session), Section::NeedsReview(Some(id)));
         }
         Err(error) => {
-            return Problem::of(&error).page(
+            return Problem::from(error).page(
                 &state,
                 Some(&session),
                 Section::NeedsReview(Some(id)),

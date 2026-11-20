@@ -4,7 +4,7 @@
 //! test. The test shows only what Analyte observed: how many bytes arrived,
 //! which framing characters they used and how the stream starts, never the
 //! message itself.
-use crate::admin::machines::{Hover, Notice};
+use crate::admin::view::parts::{Hover, Notice};
 use crate::admin::view::{Tone, format::Moment, frame::Frame, icon::Icon, report::Status};
 
 /// What every step shows around its form: the fixed machine name, the

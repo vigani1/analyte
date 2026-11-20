@@ -128,6 +128,33 @@ pub(in crate::admin) struct Report {
     pub(in crate::admin) support: Vec<String>,
 }
 
+impl Report {
+    /// A report in `section`, inside `frame` and titled as it is, saying
+    /// `alert` and `text` in `tone`, with the section's way back and links.
+    /// It has no lines, problems, Restart now or support yet; callers set the
+    /// ones they need with struct update syntax.
+    pub(in crate::admin) fn new(
+        frame: Frame,
+        section: Section<'_>,
+        tone: Tone,
+        alert: impl Into<String>,
+        text: impl Into<String>,
+    ) -> Self {
+        Self {
+            head: section.head(frame.title.clone()),
+            frame,
+            tone,
+            title: alert.into(),
+            text: text.into(),
+            lines: Vec::new(),
+            problems: Vec::new(),
+            restart: None,
+            links: section.links(),
+            support: Vec::new(),
+        }
+    }
+}
+
 /// Which pages a report belongs to: its tab, the way back and its links.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::admin) enum Section<'a> {
@@ -367,18 +394,36 @@ pub(in crate::admin) enum Problem {
 /// What a page that failed tells people to do.
 const RELOAD: &str = "Reload the page; if this keeps happening, give the details below to support.";
 
-impl Problem {
+/// Runs a page's reads within [`view::READ_BUDGET`]: what they returned, or
+/// the problem the page shows instead, [`Problem::Time`] once the budget is
+/// spent, else what their error says. A store read stops at its own deadline;
+/// a store request that may write runs to its end even when the page gives up.
+pub(in crate::admin) async fn read_within<T, E>(
+    read: impl Future<Output = Result<T, E>>,
+) -> Result<T, Problem>
+where
+    Problem: From<E>,
+{
+    match tokio::time::timeout(view::READ_BUDGET, read).await {
+        Ok(read) => read.map_err(Problem::from),
+        Err(_) => Err(Problem::Time),
+    }
+}
+
+impl From<crate::admin::Error> for Problem {
     /// The page for a read that failed: [`Self::Time`] when the store stopped
     /// it at its deadline, as when the page gave up on it, else [`Self::Store`]
     /// with the reason.
-    pub(in crate::admin) fn of(error: &crate::admin::Error) -> Self {
+    fn from(error: crate::admin::Error) -> Self {
         if error.read_stopped() {
             Self::Time
         } else {
             Self::Store(error.to_string())
         }
     }
+}
 
+impl Problem {
     /// Its status code: what went wrong in HTTP's terms.
     pub(in crate::admin) const fn status(&self) -> StatusCode {
         match self {
@@ -524,26 +569,18 @@ impl Problem {
         }
     }
 
-    /// The report in `section` inside `frame`; a thing that is not found has
-    /// no page to link to.
+    /// The report in `section` inside `frame`, which carries this problem's
+    /// title; a thing that is not found has no page to link to.
     pub(in crate::admin) fn report(&self, frame: Frame, section: Section<'_>) -> Report {
         let section = if matches!(self, Self::NotFound) {
             section.unnamed()
         } else {
             section
         };
-        let (title, alert, text) = self.words(section);
+        let (_, alert, text) = self.words(section);
         Report {
-            frame,
-            head: section.head(title),
-            tone: Tone::Problem,
-            title: alert.into(),
-            text,
-            lines: Vec::new(),
-            problems: Vec::new(),
-            restart: None,
-            links: section.links(),
             support: self.detail(section).into_iter().collect(),
+            ..Report::new(frame, section, Tone::Problem, alert, text)
         }
     }
 

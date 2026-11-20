@@ -61,7 +61,7 @@
 {% call feedback::note("Sign in to add or release a hold", "Analyte records who places or releases a hold, so it needs a signed-in browser session.") %}{% endcall %}
 {%- endif %}
 </div>
-{%- if let Some(dialog) = dialog %}
-{% call forms::reason_dialog(dialog) %}{% call forms::hidden_fields(dialog.hidden) %}{% endcall %}{% endcall %}
+{%- if let Some(release) = dialog %}
+{% call forms::reason_dialog(release.form) %}{% call forms::hidden_fields(release.hidden) %}{% endcall %}{% endcall %}
 {%- endif %}
 {%- endblock %}

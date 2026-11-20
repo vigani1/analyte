@@ -11,15 +11,16 @@
 mod page;
 
 use super::{Csrf, RELOAD, SetupError, audit, copies, entries, off_thread, site, stored};
-use crate::admin::machines::{DialogItem, Hover, RemoveDialog};
+use crate::admin::machines::{DialogItem, RemoveDialog};
 use crate::admin::overview::{self, Delivery, Standing};
 use crate::admin::removed;
+use crate::admin::view::parts::{Hover, Notice};
 use crate::admin::{
     server::{Context, sessions::Session},
     view::{
         self, Tone, format,
         icon::Icon,
-        report::{Crumb, Problem, Report, Section, Status, respond},
+        report::{Crumb, Problem, Report, Section, Status, read_within, respond},
     },
 };
 use crate::installation::{
@@ -42,7 +43,7 @@ use axum::{
     response::Response,
 };
 use jiff::Timestamp;
-use page::{Card, Entry, Key, LabApp, List, Name, Notice, Orders, Sender, Todo};
+use page::{Card, Entry, Key, LabApp, List, Name, Orders, Sender, Todo};
 use serde::Deserialize;
 use std::{path::PathBuf, sync::Arc};
 
@@ -549,12 +550,9 @@ pub(in crate::admin) async fn list(
         return Problem::SignIn.page(&state, None, section);
     };
     let now = Timestamp::now();
-    let read = match tokio::time::timeout(view::READ_BUDGET, read_list(&state, now)).await {
-        Ok(Ok(read)) => read,
-        Ok(Err(error)) => {
-            return Problem::of(&error).page(&state, Some(&session), section);
-        }
-        Err(_) => return Problem::Time.page(&state, Some(&session), section),
+    let read = match read_within(read_list(&state, now)).await {
+        Ok(read) => read,
+        Err(problem) => return problem.page(&state, Some(&session), section),
     };
     let (status, page) = list_page(&state, &session, read, now);
     respond(&state, Some(&session), section, status, page.render())
@@ -1180,11 +1178,6 @@ fn saved_page(
         lines.push("A dated copy of the old settings was kept.".into());
     }
     let page = Report {
-        frame: section.frame(state, title, Some(session)),
-        head: section.head(title),
-        tone: Tone::Good,
-        title: format!("{name} is {}", change.verb()),
-        text: "Analyte uses these settings after it restarts.".into(),
         lines,
         problems: audited
             .err()
@@ -1192,8 +1185,14 @@ fn saved_page(
             .into_iter()
             .collect(),
         restart: Some(session.csrf.form_value().to_owned()),
-        links: section.links(),
         support: copies(&saved.backups),
+        ..Report::new(
+            section.frame(state, title, Some(session)),
+            section,
+            Tone::Good,
+            format!("{name} is {}", change.verb()),
+            "Analyte uses these settings after it restarts.",
+        )
     };
     respond(state, Some(session), section, StatusCode::OK, page.render())
 }
@@ -1389,11 +1388,6 @@ pub(in crate::admin) async fn remove(
     let section = Section::LabApps(None);
     let title = "Lab app removed";
     let page = Report {
-        frame: section.frame(&state, title, Some(&session)),
-        head: section.head(title),
-        tone: Tone::Good,
-        title: format!("{name} is no longer listed"),
-        text: keys.into(),
         lines: if backups.is_empty() {
             Vec::new()
         } else {
@@ -1405,8 +1399,14 @@ pub(in crate::admin) async fn remove(
             .into_iter()
             .collect(),
         restart: Some(session.csrf.form_value().to_owned()),
-        links: section.links(),
         support: copies(&backups),
+        ..Report::new(
+            section.frame(&state, title, Some(&session)),
+            section,
+            Tone::Good,
+            format!("{name} is no longer listed"),
+            keys,
+        )
     };
     respond(
         &state,

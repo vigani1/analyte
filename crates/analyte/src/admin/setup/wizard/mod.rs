@@ -18,11 +18,11 @@ use super::{
     refused, running, see_other, serial, settings_version, site,
 };
 use crate::admin::{
-    machines::{Hover, Notice},
     server::{Connection, Context, sessions::Session},
     view::{
         Tab, Tone, format,
         frame::Frame,
+        parts::{Hover, Notice},
         report::{Button, Report, Section, Status, respond},
     },
 };
@@ -282,18 +282,11 @@ pub(super) fn refused_at(
     let section = Section::Setup(Some(id));
     let title = "Nothing was changed";
     let page = Report {
-        frame: section.frame(state, title, Some(session)),
-        head: section.head(title),
-        tone: Tone::Problem,
-        title: "Setup could not continue".into(),
-        text: format::sentence(&error.to_string()),
         lines: vec![format!(
             "Fix this in step {}: {}.",
             step.number(),
             step.label()
         )],
-        problems: Vec::new(),
-        restart: None,
         links: vec![
             Button {
                 href: format!("{}?{}", step.path(id), draft.query()),
@@ -306,7 +299,13 @@ pub(super) fn refused_at(
                 class: "btn--outline",
             },
         ],
-        support: Vec::new(),
+        ..Report::new(
+            section.frame(state, title, Some(session)),
+            section,
+            Tone::Problem,
+            "Setup could not continue",
+            format::sentence(&error.to_string()),
+        )
     };
     respond(
         state,
@@ -938,18 +937,13 @@ pub(in crate::admin) async fn listen_view(
     let section = Section::Setup(None);
     let Some(page) = page else {
         let title = "Connection test";
-        let report = Report {
-            frame: section.frame(&state, title, Some(&session)),
-            head: section.head(title),
-            tone: Tone::Neutral,
-            title: "No test has been started".into(),
-            text: "Start one from a machine’s setup steps, in step 3.".into(),
-            lines: Vec::new(),
-            problems: Vec::new(),
-            restart: None,
-            links: section.links(),
-            support: Vec::new(),
-        };
+        let report = Report::new(
+            section.frame(&state, title, Some(&session)),
+            section,
+            Tone::Neutral,
+            "No test has been started",
+            "Start one from a machine’s setup steps, in step 3.",
+        );
         return respond(
             &state,
             Some(&session),

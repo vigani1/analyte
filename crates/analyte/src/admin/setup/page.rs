@@ -2,7 +2,7 @@
 //!
 //! Nothing here invents a value: a model the settings do not name reads "Not
 //! chosen yet", and a machine that runs nothing yet has no settings version.
-use crate::admin::machines::{Hover, Notice};
+use crate::admin::view::parts::{Hover, Notice};
 use crate::admin::view::{
     Column,
     format::Part,

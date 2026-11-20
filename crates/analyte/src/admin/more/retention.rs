@@ -4,6 +4,7 @@ use super::{Outcome, next_href, report, show};
 use crate::admin::error::CommandError;
 use crate::admin::server::sessions::{Session, signed_in};
 use crate::admin::view::list::{PAGE, cursor_value, one_page};
+use crate::admin::view::parts::ReasonDialog;
 use crate::admin::view::{
     Tab, Tone, format,
     format::Line,
@@ -267,8 +268,8 @@ fn release_dialog(session: &Session, held: &Held, now: Timestamp) -> ReleaseDial
             destination.as_str().to_owned(),
         ),
     };
-    ReleaseDialog {
-        action: Tab::DataKeeping.href(),
+    let form = ReasonDialog {
+        action: Tab::DataKeeping.href().into(),
         title: "Release this hold?",
         text: format!(
             "{}: clean-up may delete it once its keeping time has passed. The hold's history is kept.",
@@ -278,9 +279,12 @@ fn release_dialog(session: &Session, held: &Held, now: Timestamp) -> ReleaseDial
         hint: "Required, up to 256 characters. Recorded with the time.",
         button: "Release",
         csrf: session.csrf.form_value().to_owned(),
-        cancel: Tab::DataKeeping.href(),
+        cancel: Tab::DataKeeping.href().into(),
         reason: String::new(),
         error: None,
+    };
+    ReleaseDialog {
+        form,
         hidden: vec![
             ("scope", scope.to_owned()),
             ("id", id),

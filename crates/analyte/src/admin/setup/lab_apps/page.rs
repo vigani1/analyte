@@ -8,6 +8,7 @@ use crate::admin::view::{
     Tone,
     format::{Line, Moment, Part},
     frame::Frame,
+    parts::Notice,
     report::{Head, Status},
 };
 
@@ -25,13 +26,6 @@ pub(super) struct List {
     /// Results waiting for lab apps the settings no longer write, under the list.
     pub(super) notices: Vec<Notice>,
     pub(super) support: Vec<String>,
-}
-
-/// A boxed sentence: a tone, a title and, when needed, more text.
-pub(super) struct Notice {
-    pub(super) tone: Tone,
-    pub(super) title: String,
-    pub(super) text: String,
 }
 
 /// One lab app on the list.

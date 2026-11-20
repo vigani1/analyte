@@ -173,29 +173,33 @@ fn page(
 }
 
 /// What a filter with nothing on this page says.
-const fn empty(show: Show, shown: u64) -> Empty {
+fn empty(show: Show, shown: u64) -> Empty {
     if shown > 0 {
         return Empty {
+            good: false,
             title: "No more orders",
             text: "This page is past the last order.",
-            link: Some((Show::All.href(), "Back to the first page")),
+            link: Some((Show::All.href(), "Back to the first page".into())),
         };
     }
     match show {
         Show::All => Empty {
+            good: false,
             title: "No orders yet",
             text: "Orders Analyte sends from a lab app to a machine are listed here.",
             link: None,
         },
         Show::Unknown => Empty {
+            good: false,
             title: "No order with an unknown outcome",
             text: "Every order sent to a machine has a known outcome.",
-            link: Some((Show::All.href(), "Show all orders")),
+            link: Some((Show::All.href(), "Show all orders".into())),
         },
         Show::Cancelled => Empty {
+            good: false,
             title: "No cancelled order",
             text: "No order was cancelled by the lab app and confirmed by its machine.",
-            link: Some((Show::All.href(), "Show all orders")),
+            link: Some((Show::All.href(), "Show all orders".into())),
         },
     }
 }

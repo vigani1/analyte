@@ -9,6 +9,7 @@ use crate::admin::view::{
     frame::Frame,
     icon::Icon,
     list::Empty,
+    parts::ReasonDialog,
     report::{Chip, Fact, Head, Value},
 };
 
@@ -219,21 +220,10 @@ pub(super) struct DeliveryRow {
     pub(super) resend: Option<String>,
 }
 
-/// The Send again confirmation drawn over the list: a real form with the
-/// session's form token, a required reason and the superseded box.
+/// The Send again confirmation drawn over the list: the reason form, the
+/// superseded box and the full delivery ID, for support.
 pub(super) struct ResendDialog {
-    pub(super) action: String,
-    pub(super) title: &'static str,
-    pub(super) text: String,
-    pub(super) placeholder: &'static str,
-    pub(super) hint: &'static str,
-    pub(super) button: &'static str,
-    pub(super) csrf: String,
-    pub(super) cancel: &'static str,
-    /// What was typed, shown again after a refusal.
-    pub(super) reason: String,
-    pub(super) error: Option<&'static str>,
-    /// The full delivery ID, for support.
+    pub(super) form: ReasonDialog,
     pub(super) support: Vec<String>,
     pub(super) superseded: bool,
 }
@@ -279,20 +269,10 @@ pub(super) struct HoldRow {
     pub(super) release: Option<String>,
 }
 
-/// The Release confirmation drawn over Data keeping: the hold form's own
-/// fields, hidden, with a required reason.
+/// The Release confirmation drawn over Data keeping: the reason form with
+/// the hold form's other fields, hidden: scope, id, destination and operation.
 pub(super) struct ReleaseDialog {
-    pub(super) action: &'static str,
-    pub(super) title: &'static str,
-    pub(super) text: String,
-    pub(super) placeholder: &'static str,
-    pub(super) hint: &'static str,
-    pub(super) button: &'static str,
-    pub(super) csrf: String,
-    pub(super) cancel: &'static str,
-    pub(super) reason: String,
-    pub(super) error: Option<&'static str>,
-    /// The hold form's other fields: scope, id, destination and operation.
+    pub(super) form: ReasonDialog,
     pub(super) hidden: Vec<(&'static str, String)>,
 }
 
