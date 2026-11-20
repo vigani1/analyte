@@ -19,7 +19,7 @@
 <div class="card__body stack">
 <dl class="kv">{% for fact in item %}{% call display::fact(fact) %}{% endcall %}{% endfor %}</dl>
 {%- if !others.is_empty() %}
-<p class="cluster more-row__text"><span class="subtle">Other items of this order:</span>{% for (href, label) in others %} <a class="link" href="{{ href }}">{{ label }}</a>{% endfor %}</p>
+<p class="cluster text--sm"><span class="subtle">Other items of this order:</span>{% for (href, label) in others %} <a class="link" href="{{ href }}">{{ label }}</a>{% endfor %}</p>
 {%- endif %}
 </div>
 </section>
@@ -31,7 +31,7 @@
 <dl class="kv">{% for fact in copy %}{% call display::fact(fact) %}{% endcall %}{% endfor %}</dl>
 {%- endif %}
 {%- if let Some(note) = copy_note %}
-<p class="muted more-row__text">{{ note }}</p>
+<p class="muted text--sm">{{ note }}</p>
 {%- endif %}
 </div>
 </section>
@@ -48,7 +48,7 @@
 {%- match message.notes %}
 {%- when Notes::None %}
 {%- when Notes::Hidden(hidden) %}
-<p class="muted more-row__text">{{ hidden }}</p>
+<p class="muted text--sm">{{ hidden }}</p>
 {%- when Notes::Shown(notes) %}
 {% call feedback::exact_lines("Notes the machine sent, as sent", notes.as_slice(), true) %}{% endcall %}
 {%- endmatch %}
@@ -57,11 +57,11 @@
 {%- endfor %}
 {%- if let Some(original) = original %}
 {% call layout::disclosure("Show the original message") %}
-<p class="muted review__note">{{ NOTES_HIDDEN }}</p>
+<p class="muted note">{{ NOTES_HIDDEN }}</p>
 {%- if let Some(form) = original.form %}
 {% call forms::raw_request(form) %}{% endcall %}
 {%- else %}
-<p class="review__text"><a class="link" href="/login">Sign in</a> to show the original message.</p>
+<p class="text"><a class="link" href="/login">Sign in</a> to show the original message.</p>
 {%- endif %}
 {% endcall %}
 {%- endif %}

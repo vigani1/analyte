@@ -283,12 +283,10 @@ fn windows_installer_shows_the_analyte_icon() -> Outcome {
         assert!(installer.contains(expected), "analyte.iss lacks {expected}");
     }
     let build = read("build.ps1")?;
-    assert!(build.contains(
-        "Copy-Item -LiteralPath crates/analyte/assets/icons/analyte.ico -Destination $stage"
-    ));
-    let icon = std::fs::read(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/icons/analyte.ico"),
-    )?;
+    assert!(
+        build.contains("Copy-Item -LiteralPath crates/analyte/analyte.ico -Destination $stage")
+    );
+    let icon = std::fs::read(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("analyte.ico"))?;
     // The icon directory: reserved, type 1 (icon), six frames.
     assert_eq!(icon.get(..6), Some([0, 0, 1, 0, 6, 0].as_slice()));
     let mut sides = Vec::new();

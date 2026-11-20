@@ -8,7 +8,7 @@
 {%- if let Some(machines) = kept %}
 {% call feedback::alert(crate::admin::view::Tone::Attention, "Still kept in the settings of " ~ machines, "You can enter its keys here. To change its address or timing, first save that machine on its setup page, which moves the lab app to this page.") %}{% endcall %}
 {%- endif %}
-<form class="stack stack--lg lab-form" method="post" action="{{ action }}">
+<form class="stack stack--lg narrow" method="post" action="{{ action }}">
 <input type="hidden" name="csrf" value="{{ csrf }}">
 <section class="card card--pad stack" aria-labelledby="la-where">
 <h2 id="la-where" class="label">Where to send</h2>
@@ -22,7 +22,7 @@
 <div class="field"><label class="field__label" for="la-address">Address</label><input id="la-address" class="input mono" name="base_url" required maxlength="4096" placeholder="https://" value="{{ address }}"><span class="field__hint">Your lab app team gives you this.</span></div>
 </div>
 <div class="field">
-<p class="field__label lab-form__label">Machines that send here</p>
+<p class="field__label text">Machines that send here</p>
 {%- if !senders.is_empty() %}
 <ul class="lab-form__senders">
 {%- for sender in senders %}
@@ -49,7 +49,7 @@
 </section>
 <div class="wizard-foot">
 {%- if let Some(href) = remove %}
-{% call forms::link_button(href, "Remove this lab app", "btn--quiet lab__remove") %}{% endcall %}
+{% call forms::link_button(href, "Remove this lab app", "btn--danger-quiet") %}{% endcall %}
 {%- else %}
 <span></span>
 {%- endif %}

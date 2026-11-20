@@ -146,9 +146,9 @@ async fn filters_count_open_and_resolved_and_show_each_with_its_own_look() -> Re
         "{open}"
     );
     assert!(open.contains("Test not in this machine’s test mapping</span>"));
-    assert!(open.contains("<p class=\"muted review__text\">The test code in record 3, field 3 is not in this machine’s test mapping.</p>"));
+    assert!(open.contains("<p class=\"muted text\">The test code in record 3, field 3 is not in this machine’s test mapping.</p>"));
     assert!(!open.contains("UnknownTest"), "no enum names on the list");
-    assert!(open.contains("<p class=\"muted review__text\">Reason: version 2 is older</p>"));
+    assert!(open.contains("<p class=\"muted text\">Reason: version 2 is older</p>"));
     assert!(
         !open.contains("lab app holds different content"),
         "resolved items stay off the open list"
@@ -281,7 +281,7 @@ async fn item_page_shows_the_message_and_its_history_from_the_audit() -> Result<
     for text in [
         format!("<ol class=\"crumbs\"><li><a href=\"/parked\">Needs review</a></li><li>Item <span class=\"mono\">{item}</span></li></ol>").as_str(),
         "<h1>Test not in this machine’s test mapping</h1>",
-        "<p class=\"review__text\">The test code in record 3, field 3 is not in this machine’s test mapping.</p>",
+        "<p class=\"text\">The test code in record 3, field 3 is not in this machine’s test mapping.</p>",
         "Reason as stored: Position { record: 3, field: 3 }: UnknownTest",
         "<p class=\"page-head__lede\">From chemistry · arrived <time datetime=\"",
         "<span class=\"status status--good\">",
@@ -356,14 +356,14 @@ async fn known_reasons_read_plainly_and_keep_the_stored_text_for_support() -> Re
     for text in [
         "<span class=\"status status--warn\" title=\"mapping_finding\">",
         "Test not in this machine’s test mapping</span>",
-        "<p class=\"muted review__text\">The test code in record 6, field 3 is not in this machine’s test mapping.</p>",
+        "<p class=\"muted text\">The test code in record 6, field 3 is not in this machine’s test mapping.</p>",
         "<span class=\"status status--bad\" title=\"conflict\">",
         "Lab app already has different content</span>",
-        "<p class=\"muted review__text\">The lab app already holds different content under this delivery’s ID.</p>",
+        "<p class=\"muted text\">The lab app already holds different content under this delivery’s ID.</p>",
         "Unexpected answer from the lab app</span>",
-        "<p class=\"muted review__text\">The lab app gave an answer that the lab app contract does not define for a delivery.</p>",
+        "<p class=\"muted text\">The lab app gave an answer that the lab app contract does not define for a delivery.</p>",
         "Could not read message</span>",
-        "<p class=\"muted review__text\">Reason: HL7 syntax: segment too long</p>",
+        "<p class=\"muted text\">Reason: HL7 syntax: segment too long</p>",
     ] {
         assert!(list.contains(text), "{text}\n{list}");
     }
@@ -372,7 +372,7 @@ async fn known_reasons_read_plainly_and_keep_the_stored_text_for_support() -> Re
     }
     let item = request(&host, &format!("/parked/{unknown_test}"), &auth, None).await?;
     assert!(item.contains("<h1>Test not in this machine’s test mapping</h1>"));
-    assert!(item.contains("<p class=\"review__text\">The test code in record 6, field 3 is not in this machine’s test mapping.</p>"));
+    assert!(item.contains("<p class=\"text\">The test code in record 6, field 3 is not in this machine’s test mapping.</p>"));
     // The enum name appears once, in the stored reason under "Details for support".
     assert_eq!(item.matches("UnknownTest").count(), 1, "{item}");
     let support = item
@@ -417,7 +417,7 @@ async fn known_reasons_read_plainly_and_keep_the_stored_text_for_support() -> Re
     }
     let stored = request(&host, &format!("/parked/{free}"), &auth, None).await?;
     assert!(stored.contains("<h1>Could not read message</h1>"));
-    assert!(stored.contains("<p class=\"review__text\">Reason: HL7 syntax: segment too long</p>"));
+    assert!(stored.contains("<p class=\"text\">Reason: HL7 syntax: segment too long</p>"));
     stop(state, stopper, owner, store).await
 }
 
@@ -602,7 +602,7 @@ async fn open_items_page_their_linked_records_and_unknown_categories_show_as_sto
         "Open</span>",
         "Read the reason above and open the item for its linked records.",
         format!("<a class=\"btn btn--primary\" href=\"/parked/{item}/reprocess\">Process again</a><a class=\"btn btn--outline\" href=\"/parked/{item}/resolve\">Mark resolved</a>").as_str(),
-        "<p class=\"subtle review__note\">Linked records 1 to 50 of 51.</p>",
+        "<p class=\"subtle note\">Linked records 1 to 50 of 51.</p>",
         format!("rel=\"next\" href=\"/parked/{item}?after=50\">Next page</a>").as_str(),
         "When someone resolves this item or processes it again, the time, the action and the reason appear here.",
         "<dt>Linked record</dt><dd>Not a stored message; its ID is under Details for support</dd>",

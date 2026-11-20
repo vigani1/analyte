@@ -583,7 +583,7 @@ async fn order_item_page_keeps_what_the_machine_did_apart() -> Result<(), Error>
         "<dt>Expected ready time, as sent</dt><dd>20261119103000</dd>",
         "<dt>Message time and zone</dt><dd>20261119095600+0100</dd>",
         "<dt>Event time, as sent</dt><dd>20261119095600</dd>",
-        "<p class=\"muted more-row__text\">1 note from the machine, hidden</p>",
+        "<p class=\"muted text--sm\">1 note from the machine, hidden</p>",
         "Message MSG-1018 · receipt ",
     ] {
         assert!(item.contains(part), "missing {part}");

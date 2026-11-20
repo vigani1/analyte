@@ -26,7 +26,7 @@ async fn order_notes_show_only_after_the_audited_view() -> Result<(), Error> {
     assert!(!hidden.contains(note), "{hidden}");
     assert!(!hidden.contains("May contain patient data"));
     for part in [
-        "<p class=\"muted more-row__text\">1 note from the machine, hidden</p>",
+        "<p class=\"muted text--sm\">1 note from the machine, hidden</p>",
         "Show the original message</summary>",
         "The machine&#39;s notes are hidden because free text may contain patient data.",
         &format!("<form class=\"stack\" method=\"post\" action=\"/awos/{order}/1/raw\">"),

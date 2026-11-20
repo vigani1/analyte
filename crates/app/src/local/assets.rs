@@ -74,4 +74,21 @@ mod tests {
             assert!(find(name).is_some(), "{name} is not served");
         }
     }
+
+    // ADR 0018/0019 (review D15): the Engine off screen repeats the engine's
+    // icon and stylesheet links, so every `/static/` file it links must be in
+    // this table, or the screen would show without its look or icon.
+    #[test]
+    fn every_file_the_engine_off_screen_links_is_served() {
+        let page = include_str!("../../templates/engine-off.html");
+        let linked: Vec<&str> = page
+            .split("\"/static/")
+            .skip(1)
+            .filter_map(|rest| rest.split('"').next())
+            .collect();
+        assert_eq!(linked.len(), 6, "{linked:?}");
+        for name in linked {
+            assert!(find(name).is_some(), "{name} is not served");
+        }
+    }
 }

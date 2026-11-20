@@ -43,8 +43,8 @@ tried on the new ones and ADR 0019 names them. `build.rs` links the Windows
 manifest Tauri needs into the tests as well as the app, so the test that
 proves the permissions can start Tauri's mock runtime.
 
-**Icons:** the window, taskbar and file use `crates/analyte/assets/icons/analyte.ico`.
-The tray PNGs in `icons/` are drawn from the tray SVGs by
+**Icons:** the window, taskbar and file use `crates/analyte/analyte.ico`.
+The tray PNGs in `icons/` are drawn from the tray SVGs in `icons/svg/` by
 `python -I scripts/make-app-icon.py`; 16 and 20 px come from the hand-tuned files.
 
 **Platforms:** only the shell needs Tauri and WebView2, so it builds only on

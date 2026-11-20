@@ -58,7 +58,7 @@ if ($Platform -eq 'windows') {
     if (-not $App) { throw 'Pass -App with the built analyte-app.exe; the Windows packages include the desktop app.' }
     Copy-Item -LiteralPath $App -Destination (Join-Path $stage 'analyte-app.exe')
     # The installer's and the Apps list's icon; docs/design/README.md says how it is made.
-    Copy-Item -LiteralPath crates/analyte/assets/icons/analyte.ico -Destination $stage
+    Copy-Item -LiteralPath crates/analyte/analyte.ico -Destination $stage
     Compress-Archive -Path $stage -DestinationPath (Join-Path $output "$name.zip")
     $installer = Get-Tool $InnoSetup 'inno-setup'
     $inno = Join-Path $ToolDirectory 'inno-setup\portable'

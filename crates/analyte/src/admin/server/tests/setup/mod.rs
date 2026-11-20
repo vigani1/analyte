@@ -1863,8 +1863,8 @@ async fn removing_keeps_one_line_for_the_dated_copy_and_offers_restart() -> Resu
         "<ol class=\"crumbs\"><li><a href=\"/machines\">Machines</a></li></ol>",
         "<p class=\"alert__title\">machine-2 is removed from Analyte’s settings</p>",
         "<p class=\"alert__text\">After the next restart Analyte stops connecting to it; until then it keeps running. Its results, items to review and history are kept and stay visible here.</p>",
-        "<p class=\"report__line\">It was not set up, so it had no lab app.</p>",
-        "<p class=\"report__line\">A dated copy of the old settings was kept.</p>",
+        "<p class=\"text\">It was not set up, so it had no lab app.</p>",
+        "<p class=\"text\">A dated copy of the old settings was kept.</p>",
         "<h2 id=\"rp-restart\" class=\"label\">Restart to apply</h2>",
         "<form class=\"cluster\" method=\"post\" action=\"/setup/restart\"><input type=\"hidden\" name=\"csrf\" value=\"",
         "<button type=\"submit\" class=\"btn btn--primary\">Restart now</button>",
@@ -1931,7 +1931,7 @@ async fn a_missing_settings_file_is_left_in_place_and_said_so() -> Result<(), Er
     assert!(removed.starts_with("HTTP/1.1 200"), "{removed}");
     assert!(
         removed.contains(concat!(
-            "<p class=\"report__line\">Its settings file was left in place (missing or used ",
+            "<p class=\"text\">Its settings file was left in place (missing or used ",
             "by another machine).</p>"
         )),
         "{removed}"
