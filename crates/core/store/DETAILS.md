@@ -13,7 +13,13 @@ own; a store older than 15 or newer than this build is refused. Step 16
 (`upkeep/parked_at.sql`) adds `parked.parked_at`, when an item was parked: new
 items get it from a trigger in the same write, kept items only where the same
 transaction wrote a time (a rejected or conflicting delivery's attempt), and
-NULL otherwise. WAL and `synchronous=FULL` deliberately require
+NULL otherwise. Step 17 (`upkeep/read_indexes.sql`) adds only indexes for the
+admin pages' reads, plus two helper columns on `outbox`: `delivered_at` and
+`delivered_attempt`, the latest time and highest sequence of a delivery's
+accepted ("Done") attempts. They are filled from the attempts already kept and
+kept current by a trigger in the same write as each attempt, because no index
+can reach a delivery's lab app from its attempts. No stored value changes.
+WAL and `synchronous=FULL` deliberately require
 SQLite to sync each committed WAL transaction before success is returned.
 Foreign keys are enabled on every connection; lock waits have a configured
 nonzero timeout capped at 30 seconds. These guarantees still require a local

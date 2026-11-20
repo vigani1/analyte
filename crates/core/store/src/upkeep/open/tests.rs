@@ -421,7 +421,7 @@ fn schema_sixteen_keeps_parked_items_and_fills_only_recorded_times() -> TestResu
         store
             .db
             .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-        16
+        SCHEMA_VERSION
     );
     let after: Vec<(i64, String, Option<String>, Option<i64>)> = {
         let mut rows = store
@@ -473,6 +473,199 @@ fn schema_sixteen_keeps_parked_items_and_fills_only_recorded_times() -> TestResu
             .execute("UPDATE parked SET parked_at=1 WHERE id=?1", [item])
             .is_err(),
         "a parking time never changes"
+    );
+    Ok(())
+}
+
+/// A version-16 store, as the release before schema 17 wrote it: messages from
+/// two machines, deliveries to two lab apps accepted once, twice (the second
+/// time with an earlier clock), never or not yet, parked items with a JSON, a
+/// plain-text and no resolution, audit entries and an order snapshot.
+fn store_at_sixteen(path: &Path) -> Result<(), Error> {
+    let db = Connection::open(path)?;
+    db.execute_batch(include_str!("../schema.sql"))?;
+    db.execute_batch(include_str!("../parked_at.sql"))?;
+    db.execute_batch(concat!(
+        "INSERT INTO receipts VALUES ",
+        "('\"r-1\"','{\"machine\":\"m-1\",\"received_at\":\"2026-01-01T00:00:00Z\"}',x'00',x'00'),",
+        "('\"r-2\"','{\"machine\":\"m-2\",\"received_at\":\"2026-01-01T00:00:00.5Z\"}',x'00',x'00'),",
+        "('\"r-3\"','{\"machine\":\"m-1\",\"received_at\":\"2026-01-02T00:00:00Z\"}',x'00',x'00');",
+        "INSERT INTO interpretations VALUES ('\"r-1\"',1,'{}'),('\"r-2\"',1,'{}'),('\"r-3\"',1,'{}');",
+        "INSERT INTO outbox(id,kind,receipt,version,destination,ordering_key,payload,digest,contract,state,next_attempt,enqueued_at) VALUES ",
+        "('\"d-twice\"','result','\"r-1\"',1,'main-lab','k1',x'00',x'00',1,'done',0,100),",
+        "('\"d-waiting\"','result','\"r-2\"',1,'main-lab','k2',x'00',x'00',1,'pending',900,110),",
+        "('\"d-once\"','result','\"r-3\"',1,'outpatient','k3',x'00',x'00',1,'done',0,120);",
+        "INSERT INTO outbox(id,kind,order_id,destination,ordering_key,payload,digest,contract,state,next_attempt,enqueued_at) VALUES ",
+        "('\"d-never\"','order_event','o-1','outpatient','o-1',x'00',x'00',1,'pending',0,130);",
+        "INSERT INTO attempts(delivery,outcome,time) VALUES ",
+        "('\"d-twice\"','\"Done\"',200),",
+        "('\"d-waiting\"','{\"RetryAt\":900}',210),",
+        "('\"d-twice\"','{\"RetryAt\":320}',300),",
+        "('\"d-twice\"','\"Done\"',150),",
+        "('\"d-once\"','\"Done\"',400);",
+        "INSERT INTO parked(evidence,resolution) VALUES ",
+        "('{\"kind\":\"mapping_finding\",\"reason\":\"unknown test\",\"targets\":[\"r-1\"],\"context\":null}','{\"action\":\"parked-resolve\",\"targets\":[\"1\"],\"time\":500}'),",
+        "('{\"kind\":\"mapping_finding\",\"reason\":\"unknown test\",\"targets\":[\"r-2\"],\"context\":null}','resolved by hand'),",
+        "('{\"kind\":\"mapping_finding\",\"reason\":\"unknown test\",\"targets\":[\"r-3\"],\"context\":null}',NULL);",
+        "INSERT INTO audit(evidence) VALUES ",
+        "('{\"action\":\"parked-resolve\",\"targets\":[\"1\"],\"time\":500}'),",
+        "('{\"action\":\"setup-save\",\"targets\":[\"m-1\"],\"time\":600}');",
+        "INSERT INTO machine_orders(destination,order_id,machine,version,state,created_at,updated_at,source_code) VALUES ",
+        "('outpatient','o-1','m-1','1','Sent',700,700,'x');",
+        "INSERT INTO machine_order_history(machine_order,evidence) VALUES ",
+        "(1,'{\"key\":{\"machine\":\"m-1\"},\"state\":\"Sent\",\"updated_at\":700}');",
+    ))?;
+    Ok(())
+}
+
+/// Every row of the tables step 17 touches, in the columns schema 16 has.
+fn rows_at_sixteen(db: &Connection) -> Result<Vec<Vec<rusqlite::types::Value>>, Error> {
+    let mut rows = Vec::new();
+    for sql in [
+        "SELECT * FROM receipts ORDER BY rowid",
+        "SELECT sequence,id,kind,receipt,version,order_id,destination,ordering_key,payload,digest,contract,state,next_attempt,enqueued_at,enqueue_time_backfilled FROM outbox ORDER BY sequence",
+        "SELECT * FROM attempts ORDER BY sequence",
+        "SELECT * FROM parked ORDER BY id",
+        "SELECT * FROM audit ORDER BY sequence",
+        "SELECT * FROM machine_order_history ORDER BY sequence",
+        "SELECT * FROM alert_counts ORDER BY kind",
+    ] {
+        let mut statement = db.prepare(sql)?;
+        let columns = statement.column_count();
+        let mut read = statement.query([])?;
+        while let Some(row) = read.next()? {
+            rows.push(
+                (0..columns)
+                    .map(|column| row.get(column))
+                    .collect::<Result<_, _>>()?,
+            );
+        }
+    }
+    Ok(rows)
+}
+
+/// The schema as stored: every table, index and trigger with its SQL.
+fn schema(db: &Connection) -> Result<Vec<(String, Option<String>)>, Error> {
+    let mut statement = db.prepare("SELECT name,sql FROM sqlite_master ORDER BY type,name")?;
+    let rows = statement
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<Result<_, _>>()?;
+    Ok(rows)
+}
+
+/// Each delivery with when and by which attempt it was last accepted.
+type Accepted = Vec<(String, Option<i64>, Option<i64>)>;
+
+fn accepted(db: &Connection) -> Result<Accepted, Error> {
+    let mut statement =
+        db.prepare("SELECT id,delivered_at,delivered_attempt FROM outbox ORDER BY sequence")?;
+    let rows = statement
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+        .collect::<Result<_, _>>()?;
+    Ok(rows)
+}
+
+// Owner decision 2026-11-20 (admin read speed, items 3 to 5): step 17 adds
+// indexes and two helper columns only. It keeps every row and value, fills the
+// helpers from the attempts already kept (the latest accepted time and the
+// highest accepted sequence, NULL when never accepted), keeps them current on
+// later attempts, and opening again changes nothing.
+#[test]
+fn schema_seventeen_keeps_every_row_and_fills_when_each_delivery_was_accepted() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("sixteen.db");
+    store_at_sixteen(&path)?;
+    let before = {
+        let db = Connection::open(&path)?;
+        assert_eq!(
+            db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
+            16
+        );
+        rows_at_sixteen(&db)?
+    };
+    let store = Store::open(&path, limits(), Box::new(Space(u64::MAX)))?;
+    assert_eq!(
+        store
+            .db
+            .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
+        17
+    );
+    assert_eq!(
+        rows_at_sixteen(&store.db)?,
+        before,
+        "every row is kept as it was"
+    );
+    let named =
+        |id: &str, at: Option<i64>, attempt: Option<i64>| (format!("\"{id}\""), at, attempt);
+    assert_eq!(
+        accepted(&store.db)?,
+        [
+            named("d-twice", Some(200), Some(4)),
+            named("d-waiting", None, None),
+            named("d-once", Some(400), Some(5)),
+            named("d-never", None, None),
+        ],
+        "the latest accepted time and the highest accepted attempt, from the kept attempts"
+    );
+    let indexes: Vec<String> = store
+        .db
+        .prepare("SELECT name FROM sqlite_master WHERE type='index' AND sql IS NOT NULL")?
+        .query_map([], |r| r.get(0))?
+        .collect::<Result<_, _>>()?;
+    for index in [
+        "attempts_accepted_time",
+        "attempts_delivery",
+        "audit_time",
+        "machine_order_history_machine_updated",
+        "machine_order_history_updated",
+        "outbox_delivered_at",
+        "outbox_delivered_attempt",
+        "outbox_destination_state",
+        "outbox_receipt",
+        "parked_resolved_time",
+        "parked_time",
+        "receipts_machine_received",
+        "receipts_received",
+    ] {
+        assert!(indexes.iter().any(|name| name == index), "{index}");
+    }
+    // Later attempts keep the helpers current in the same write; a retry or an
+    // earlier clock never lowers them.
+    store.db.execute_batch(concat!(
+        "INSERT INTO attempts(delivery,outcome,time) VALUES ",
+        "('\"d-waiting\"','\"Done\"',220),",
+        "('\"d-once\"','{\"RetryAt\":999}',410),",
+        "('\"d-once\"','\"Done\"',390);",
+    ))?;
+    assert_eq!(
+        accepted(&store.db)?,
+        [
+            named("d-twice", Some(200), Some(4)),
+            named("d-waiting", Some(220), Some(6)),
+            named("d-once", Some(400), Some(8)),
+            named("d-never", None, None),
+        ]
+    );
+    // A resolution that is not JSON stays writable.
+    store.db.execute(
+        "UPDATE parked SET resolution='resolved by hand' WHERE id=3",
+        [],
+    )?;
+    let after = (
+        schema(&store.db)?,
+        rows_at_sixteen(&store.db)?,
+        accepted(&store.db)?,
+    );
+    drop(store);
+    let store = Store::open(&path, limits(), Box::new(Space(u64::MAX)))?;
+    assert_eq!(
+        (
+            schema(&store.db)?,
+            rows_at_sixteen(&store.db)?,
+            accepted(&store.db)?
+        ),
+        after,
+        "opening a version-17 store again changes nothing"
     );
     Ok(())
 }
