@@ -1,4 +1,4 @@
-//! Serves the pages under the sidebar's More group (Machine orders with an order item's history, Cancelled by machine, Deliveries with Send again, Data keeping with its holds, and Settings) and what they share: paging, the read budget and their error pages.
+//! Serves Activity and the pages under the sidebar's More group (Machine orders with an order item's history, Cancelled by machine, Deliveries with Send again, Data keeping with its holds, and Settings) and what they share: paging, the read budget and their error pages.
 use crate::admin::server::Context;
 use crate::admin::sessions::Session;
 use crate::admin::view::{
@@ -10,6 +10,8 @@ use axum::{Extension, http::StatusCode, response::Response};
 use jiff::Timestamp;
 use serde::Deserialize;
 use std::sync::Arc;
+mod activity;
+pub(super) use activity::activity;
 pub(super) mod awos;
 mod deliveries;
 pub(super) use deliveries::{confirm_resend, deliveries, resend};
@@ -56,7 +58,7 @@ pub(super) fn one_page<T, E>(
     Ok((rows, more))
 }
 
-/// Runs a More page's reads within [`view::READ_BUDGET`] and draws the page
+/// Runs a page's reads within [`view::READ_BUDGET`] and draws the page
 /// from what they returned, for the request's session, now; a read that fails
 /// or takes too long gets the page saying so, with the reason kept for
 /// support. The reads only read, so stopping them leaves nothing behind.

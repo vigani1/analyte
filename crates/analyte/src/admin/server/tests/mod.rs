@@ -1,7 +1,4 @@
 //! Tests server behavior with synthetic fixtures.
-mod error;
-use error::FixtureError;
-
 use super::*;
 use crate::Error;
 use analyte_fixtures::ConfigEdit as _;
@@ -9,6 +6,7 @@ use analyte_model::{OrderState, Reason};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
 mod actions;
+mod activity;
 mod assets;
 mod machines;
 mod more;
@@ -755,6 +753,7 @@ Connection: close
     for (path, headers) in [
         ("/login", ""),
         ("/", auth.as_str()),
+        ("/activity", auth.as_str()),
         ("/machines", auth.as_str()),
         ("/parked", auth.as_str()),
         ("/setup", auth.as_str()),
@@ -775,6 +774,7 @@ Connection: close
         // sidebar's main links and the More group, with its own page marked.
         let menu = [
             "/",
+            "/activity",
             "/parked",
             "/machines",
             "/setup",
@@ -1102,4 +1102,45 @@ async fn start_full(
     let (stop, stopped) = watch::channel(false);
     let owner = tokio::spawn(server.run(stopped));
     Ok((state, stop, owner, host))
+}
+
+/// Classifies failures while constructing and inspecting synthetic admin fixtures.
+#[derive(Debug, thiserror::Error)]
+enum FixtureError {
+    #[error(transparent)]
+    Maintenance(#[from] analyte_store::MaintenanceError),
+    #[error(transparent)]
+    Intake(#[from] analyte_store::IntakeError),
+    #[error(transparent)]
+    Order(#[from] analyte_store::OrderError),
+    #[error(transparent)]
+    Reconciliation(#[from] analyte_store::ReconciliationError),
+    #[error(transparent)]
+    Operator(#[from] analyte_store::OperatorError),
+    #[error(transparent)]
+    Delivery(#[from] analyte_store::DeliveryError),
+    #[error(transparent)]
+    Audit(#[from] analyte_store::StorageError),
+    #[error(transparent)]
+    Worker(#[from] analyte_store::WorkerError),
+    #[error(transparent)]
+    Text(#[from] analyte_model::TextError),
+    #[error(transparent)]
+    Identity(#[from] analyte_model::InvalidUuid),
+    #[error(transparent)]
+    Json(#[from] serde_json::Error),
+    #[error(transparent)]
+    EvidenceTimestamp(#[from] jiff::Error),
+    #[error("identity or state constraint conflict")]
+    Conflict,
+    #[error("stored evidence is corrupt")]
+    Corruption,
+    #[error("receipt does not exist")]
+    UnknownReceipt,
+    #[error("delivery does not exist")]
+    UnknownDelivery,
+    #[error("audit evidence does not exist")]
+    UnknownAudit,
+    #[error("order document lacks {field}")]
+    MissingOrderField { field: &'static str },
 }

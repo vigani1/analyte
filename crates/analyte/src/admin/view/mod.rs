@@ -22,6 +22,8 @@ pub(super) const READ_BUDGET: std::time::Duration = std::time::Duration::from_mi
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Tab {
     Overview,
+    /// What Analyte stored, newest first.
+    Activity,
     NeedsReview,
     Machines,
     /// The Lab apps page.
@@ -40,6 +42,7 @@ impl Tab {
     pub(super) const fn href(self) -> &'static str {
         match self {
             Self::Overview => "/",
+            Self::Activity => "/activity",
             Self::NeedsReview => "/parked",
             Self::Machines => "/machines",
             Self::LabApps => crate::admin::setup::LAB_APPS,
@@ -56,6 +59,7 @@ impl Tab {
     pub(super) const fn label(self) -> &'static str {
         match self {
             Self::Overview => "Overview",
+            Self::Activity => "Activity",
             Self::NeedsReview => "Needs review",
             Self::Machines => "Machines",
             Self::LabApps => "Lab apps",
@@ -72,6 +76,7 @@ impl Tab {
     pub(super) const fn back(self) -> &'static str {
         match self {
             Self::Overview => "Back to Overview",
+            Self::Activity => "Back to Activity",
             Self::NeedsReview => "Back to Needs review",
             Self::Machines => "Back to Machines",
             Self::LabApps => "Back to Lab apps",

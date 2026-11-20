@@ -33,8 +33,11 @@ the strict content security policy.
   sign-in names no machine, lab app or count. The old builder and its
   stylesheet are deleted, so the hold on release and installer builds is
   lifted.
-- **Still to come:** PR c, live updates (server-sent events) and the Activity
-  page; PR d, the Engine off page and the Tauri desktop shell, which waits for
+- **Activity (PR c1) is done:** it is read from the tables the store already
+  keeps, newest first; the store records when an item was parked from schema
+  16 on, and an older item shows "Not recorded".
+- **Still to come:** PR c2, live updates (server-sent events and one script
+  file); PR d, the Engine off page and the Tauri desktop shell, which waits for
   the owner's approval before any work starts.
 
 ## Why

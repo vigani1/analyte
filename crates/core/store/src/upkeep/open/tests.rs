@@ -369,3 +369,110 @@ fn foreign_key_corruption_refuses_without_rewriting_raw() -> TestResult {
     );
     Ok(())
 }
+
+/// A version-15 store, as the release before schema 16 wrote it, holding
+/// parked items of each kind the step treats differently.
+fn store_at_fifteen(path: &Path) -> Result<(), Error> {
+    let db = Connection::open(path)?;
+    db.execute_batch(include_str!("../schema.sql"))?;
+    db.execute_batch(concat!(
+        "INSERT INTO outbox(id,kind,order_id,destination,ordering_key,payload,digest,contract,state,next_attempt) VALUES ",
+        "('\"d-rejected\"','order_event','o1','main-lab','o1',x'00',x'00',1,'parked',0),",
+        "('\"d-conflict\"','order_event','o2','main-lab','o2',x'00',x'00',1,'conflict',0),",
+        "('\"d-silent\"','order_event','o3','main-lab','o3',x'00',x'00',1,'parked',0);",
+        "INSERT INTO attempts(delivery,outcome,time) VALUES ",
+        "('\"d-rejected\"','\"Done\"',100),",
+        "('\"d-rejected\"','{\"Parked\":\"HTTP 422\"}',200),",
+        "('\"d-rejected\"','{\"RetryAt\":350}',300),",
+        "('\"d-rejected\"','{\"Parked\":\"HTTP 422\"}',400),",
+        "('\"d-conflict\"','{\"Conflict\":\"HTTP 409\"}',500),",
+        "('\"d-silent\"','{\"Paused\":\"keys\"}',600);",
+        "INSERT INTO parked(evidence,resolution) VALUES ",
+        "('{\"kind\":\"parked\",\"reason\":\"HTTP 422\",\"targets\":[\"d-rejected\"],\"context\":null}','{\"time\":250}'),",
+        "('{\"kind\":\"parked\",\"reason\":\"HTTP 422\",\"targets\":[\"d-rejected\"],\"context\":null}',NULL),",
+        "('{\"kind\":\"conflict\",\"reason\":\"HTTP 409\",\"targets\":[\"d-conflict\"],\"context\":null}',NULL),",
+        "('{\"kind\":\"parked\",\"reason\":\"HTTP 422\",\"targets\":[\"d-silent\"],\"context\":null}',NULL),",
+        "('{\"kind\":\"interpretation_failure\",\"reason\":\"no frames\",\"targets\":[\"r-1\"],\"context\":null}',NULL);",
+    ))?;
+    Ok(())
+}
+
+// Owner decision 2026-11-20 (PR c): a parked item has a time. The step from 15
+// keeps every row, fills only the time written in the same transaction as the
+// parking (a rejected or conflicting delivery's attempt) and leaves the rest NULL.
+#[test]
+fn schema_sixteen_keeps_parked_items_and_fills_only_recorded_times() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("fifteen.db");
+    store_at_fifteen(&path)?;
+    let before: Vec<(i64, String, Option<String>)> = {
+        let db = Connection::open(&path)?;
+        assert_eq!(
+            db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
+            STARTING_VERSION
+        );
+        let mut rows = db.prepare("SELECT id,evidence,resolution FROM parked ORDER BY id")?;
+        rows.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+            .collect::<Result<_, _>>()?
+    };
+    let opened = jiff::Timestamp::now().as_second();
+    let mut store = Store::open(&path, limits(), Box::new(Space(u64::MAX)))?;
+    assert_eq!(
+        store
+            .db
+            .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
+        16
+    );
+    let after: Vec<(i64, String, Option<String>, Option<i64>)> = {
+        let mut rows = store
+            .db
+            .prepare("SELECT id,evidence,resolution,parked_at FROM parked ORDER BY id")?;
+        rows.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
+            .collect::<Result<_, _>>()?
+    };
+    assert_eq!(
+        after
+            .iter()
+            .map(|(id, evidence, resolution, _)| (*id, evidence.clone(), resolution.clone()))
+            .collect::<Vec<_>>(),
+        before,
+        "every item is kept as it was"
+    );
+    assert_eq!(
+        after.iter().map(|row| row.3).collect::<Vec<_>>(),
+        [Some(200), Some(400), Some(500), None, None],
+        "the n-th rejection's attempt, the conflict's attempt, then NULL where no time was written"
+    );
+    assert_eq!(
+        store.db.query_row(
+            "SELECT value FROM alert_counts WHERE kind='parked'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )?,
+        4,
+        "the open count is untouched"
+    );
+    let item = store.park(&crate::Parked {
+        kind: analyte_model::Identifier::new("mapping_finding")?,
+        reason: analyte_model::Reason::new("synthetic")?,
+        targets: vec![analyte_model::Identifier::new("r-2")?],
+    })?;
+    let parked_at: i64 =
+        store
+            .db
+            .query_row("SELECT parked_at FROM parked WHERE id=?1", [item], |r| {
+                r.get(0)
+            })?;
+    assert!(
+        (opened..=jiff::Timestamp::now().as_second()).contains(&parked_at),
+        "a new item gets the time it was parked: {parked_at}"
+    );
+    assert!(
+        store
+            .db
+            .execute("UPDATE parked SET parked_at=1 WHERE id=?1", [item])
+            .is_err(),
+        "a parking time never changes"
+    );
+    Ok(())
+}
