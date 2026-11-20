@@ -55,9 +55,10 @@ pub use revisions::{
 pub use operator::activity::{
     Activity, ActivityCursor, ActivityGroup, ActivityLine, ActivityMarks, AttemptOutcome, Carries,
 };
+pub use parked::{ParkedCounts, ParkedFilter, ParkedItem};
 pub use query::{
-    FailingDestination, Frame, LastDelivered, ParkedCounts, ParkedFilter, ParkedItem, Receipt,
-    RecentOutcome, RecentReading, RecentReceipt, Unfinished,
+    FailingDestination, Frame, LastDelivered, Receipt, RecentOutcome, RecentReading, RecentReceipt,
+    Unfinished,
 };
 
 pub use records::{
