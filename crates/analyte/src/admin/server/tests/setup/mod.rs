@@ -3,6 +3,8 @@ use super::pages::{csrf, encode, login};
 use super::*;
 use std::sync::Mutex;
 
+mod removal;
+
 /// Synthetic key values; neither may ever appear in a page, audit row or log.
 const API_KEY: &str = "sensitive-setup-api-key-5XK";
 const SIGNING_KEY: &str = analyte_fixtures::SECRET;
@@ -107,7 +109,7 @@ fn seams(
 async fn start() -> Result<Fixture, Error> {
     start_with(
         "[[machines]]\nid = 'synthetic'\ndefinition = 'machines/example/serial-astm/machine.toml'\nsite = 'site.toml'\n",
-        &include_str!("../../../../../core/config/examples/site.toml")
+        &include_str!("../../../../../../core/config/examples/site.toml")
             .rewrite("endpoint = \"127.0.0.1:5600\"", "usb_serial = \"A10K3XYZ\""),
     )
     .await
@@ -121,7 +123,7 @@ id = 'synthetic'
 definition = 'machines/example/serial-astm/machine.toml'
 site = 'site.toml'
 ",
-        &include_str!("../../../../../core/config/examples/site.toml")
+        &include_str!("../../../../../../core/config/examples/site.toml")
             .rewrite("endpoint = \"127.0.0.1:5600\"", "usb_serial = \"A10K3XYZ\""),
         limits,
     )
@@ -174,13 +176,13 @@ async fn start_program_with(
     std::fs::create_dir_all(&serial)?;
     std::fs::write(
         serial.join("machine.toml"),
-        include_str!("../../../../../core/config/examples/astm.toml"),
+        include_str!("../../../../../../core/config/examples/astm.toml"),
     )?;
     let network = root.join("machines/example/network-hl7");
     std::fs::create_dir_all(&network)?;
     std::fs::write(
         network.join("machine.toml"),
-        include_str!("../../../../../core/config/examples/hl7.toml"),
+        include_str!("../../../../../../core/config/examples/hl7.toml"),
     )?;
     let blocked = root.join("machines/roche/cobas-e411");
     std::fs::create_dir_all(&blocked)?;
@@ -400,7 +402,7 @@ fn row_not_set_up(page: &str, machine: &str) -> bool {
 #[tokio::test(flavor = "multi_thread")]
 async fn starter_setup_page_matches_the_packaging_check() -> Result<(), Error> {
     // Both installer jobs use this row-level match, not exact cell markup.
-    let workflow = include_str!("../../../../../../.github/workflows/packaging.yml");
+    let workflow = include_str!("../../../../../../../.github/workflows/packaging.yml");
     assert_eq!(
         workflow
             .matches(">machine-1<(?:(?!</tr>).)*Not set up yet")
@@ -410,8 +412,8 @@ async fn starter_setup_page_matches_the_packaging_check() -> Result<(), Error> {
     );
     let link = "No lab app yet: <a href=\"/setup/lab-apps/new\">add one</a>";
     for program in [
-        include_str!("../../../../../../packaging/linux/starter/analyte.toml"),
-        include_str!("../../../../../../packaging/windows/starter/analyte.toml"),
+        include_str!("../../../../../../../packaging/linux/starter/analyte.toml"),
+        include_str!("../../../../../../../packaging/windows/starter/analyte.toml"),
     ] {
         // Only the data folder moves into the test's private folder.
         let program: String = program
@@ -427,7 +429,7 @@ async fn starter_setup_page_matches_the_packaging_check() -> Result<(), Error> {
         let fixture = start_program(
             &program,
             "machine-1.site.toml",
-            include_str!("../../../../../../packaging/linux/starter/machine-1.site.toml"),
+            include_str!("../../../../../../../packaging/linux/starter/machine-1.site.toml"),
         )
         .await?;
         let loaded = Program::load(&fixture.config)?;
@@ -462,7 +464,7 @@ async fn starter_setup_page_matches_the_packaging_check() -> Result<(), Error> {
 async fn waiting_machine_is_set_up_from_the_starter() -> Result<(), Error> {
     let fixture = start_with(
         "[admin]\nport = 8080\n[[machines]]\nid = 'machine-1'\nsite = 'site.toml'\n",
-        include_str!("../../../../../../packaging/linux/starter/machine-1.site.toml"),
+        include_str!("../../../../../../../packaging/linux/starter/machine-1.site.toml"),
     )
     .await?;
     let before = Program::load(&fixture.config)?;
@@ -1103,7 +1105,7 @@ async fn definition_change_edits_program_and_rolls_back_on_refusal() -> Result<(
     std::fs::create_dir_all(&big)?;
     std::fs::write(
         big.join("machine.toml"),
-        include_str!("../../../../../core/config/examples/hl7.toml")
+        include_str!("../../../../../../core/config/examples/hl7.toml")
             .rewrite("bytes = 1048576", "bytes = 4194304"),
     )?;
     let program_before = std::fs::read_to_string(&fixture.config)?;
@@ -1162,13 +1164,13 @@ async fn start_two() -> Result<Fixture, Error> {
             "[[machines]]\nid = 'synthetic'\ndefinition = 'machines/example/serial-astm/machine.toml'\nsite = 'site.toml'\n",
             "[[machines]]\nid = 'machine-2'\nsite = 'machine-2.site.toml'\n"
         ),
-        &include_str!("../../../../../core/config/examples/site.toml")
+        &include_str!("../../../../../../core/config/examples/site.toml")
             .rewrite("endpoint = \"127.0.0.1:5600\"", "usb_serial = \"A10K3XYZ\""),
     )
     .await?;
     std::fs::write(
         fixture.root().join("machine-2.site.toml"),
-        include_str!("../../../../../../packaging/linux/starter/machine-1.site.toml"),
+        include_str!("../../../../../../../packaging/linux/starter/machine-1.site.toml"),
     )?;
     Ok(fixture)
 }
@@ -1359,7 +1361,7 @@ async fn seed_unfinished(
 async fn add_machine_writes_a_checked_entry_and_starter_site() -> Result<(), Error> {
     let fixture = start_with(
         "[admin]\nport = 8080\n[[machines]]\nid = 'machine-1'\nsite = 'site.toml'\n",
-        include_str!("../../../../../../packaging/linux/starter/machine-1.site.toml"),
+        include_str!("../../../../../../../packaging/linux/starter/machine-1.site.toml"),
     )
     .await?;
     let program_before = std::fs::read_to_string(&fixture.config)?;
@@ -1403,7 +1405,7 @@ async fn add_machine_writes_a_checked_entry_and_starter_site() -> Result<(), Err
     );
     let site = std::fs::read_to_string(fixture.root().join("machine-2.site.toml"))?;
     let starter: toml::Table =
-        include_str!("../../../../../../packaging/linux/starter/machine-1.site.toml").parse()?;
+        include_str!("../../../../../../../packaging/linux/starter/machine-1.site.toml").parse()?;
     assert_eq!(
         site.parse::<toml::Table>()?,
         starter,
@@ -1668,7 +1670,7 @@ port = 8080
 id = 'machine-1'
 site = 'site.toml'
 ",
-        include_str!("../../../../../../packaging/linux/starter/machine-1.site.toml"),
+        include_str!("../../../../../../../packaging/linux/starter/machine-1.site.toml"),
     )
     .await?;
     // Nothing is unfinished, so the button is a plain "Remove".
@@ -2044,7 +2046,7 @@ async fn each_step_shows_its_indicator_and_keeps_the_choices() -> Result<(), Err
 async fn first_run_button_opens_step_one() -> Result<(), Error> {
     let fixture = start_with(
         "[admin]\nport = 8080\n[[machines]]\nid = 'machine-1'\nsite = 'site.toml'\n",
-        include_str!("../../../../../../packaging/linux/starter/machine-1.site.toml"),
+        include_str!("../../../../../../../packaging/linux/starter/machine-1.site.toml"),
     )
     .await?;
     let location = |response: &str| {

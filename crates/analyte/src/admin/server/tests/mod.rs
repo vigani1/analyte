@@ -15,7 +15,6 @@ mod machines;
 mod overview;
 mod pages;
 mod parked;
-mod removal;
 mod setup;
 
 use analyte_fixtures::UnlimitedSpace as Space;
