@@ -1,0 +1,17 @@
+{#- The original message (POST /parked/{id}/raw): the patient-data warning, the bytes someone asked to see in hex and text, the form for the next part, and details for support. -#}
+{% extends "layout/base.html" %}
+{%- import "components/feedback.html" as feedback %}
+{%- import "components/forms.html" as forms %}
+{%- import "components/layout.html" as layout %}
+{%- block main %}
+{% call layout::item_head(head) %}{% endcall %}
+{% call feedback::alert(crate::admin::view::Tone::Attention, "May contain patient data", "Keep it out of screenshots and support tickets. Analyte recorded who asked to see it and why before showing it.") %}{% endcall %}
+<div class="stack">
+{% call feedback::exact_lines(what, lines, true) %}{% endcall %}
+<p class="subtle review__note">Left: every byte exactly, in hex. Right: the same bytes as text, with bytes that are not plain letters or signs shown as dots.</p>
+</div>
+{%- if let Some(form) = more %}
+{% call layout::card() %}{% call forms::raw_request(form) %}{% endcall %}{% endcall %}
+{%- endif %}
+{% call feedback::support("For support", support) %}{% endcall %}
+{%- endblock %}

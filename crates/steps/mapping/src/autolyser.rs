@@ -46,7 +46,7 @@ pub fn map(
                 None,
                 source,
                 IdentityStatus::Unresolved(Reason::new(
-                    "Autolyser Rev18 has no immutable run identity; patient code is not trusted specimen identity",
+                    &crate::Unidentified::AutolyserRun.to_string(),
                 )?),
             )?,
         )?;

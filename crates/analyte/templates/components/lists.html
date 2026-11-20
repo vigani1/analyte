@@ -10,7 +10,12 @@
 
 {#- One row of a `.rows` card: an icon in its tone, the text and a link to the page about it. -#}
 {%- macro row(icon, tone, text, href, link) -%}
-<li class="row">{% call draw::icon(icon, "tone-" ~ tone.class()) %}{% endcall %}<span class="row__main">{{ text }}</span><a class="link" href="{{ href }}">{{ link }}</a></li>
+{% call row_with(icon, tone, href, link) %}{{ text }}{% endcall %}
+{%- endmacro %}
+
+{#- A `.rows` row whose main text the caller writes. -#}
+{%- macro row_with(icon, tone, href, link) -%}
+<li class="row">{% call draw::icon(icon, "tone-" ~ tone.class()) %}{% endcall %}<span class="row__main">{{ caller() }}</span><a class="link" href="{{ href }}">{{ link }}</a></li>
 {%- endmacro %}
 
 {#- A key-value list; the caller writes its `pair`s. -#}

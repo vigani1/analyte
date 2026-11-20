@@ -193,28 +193,26 @@ async fn start_pages_server(
 }
 
 async fn assert_paginated_lists(host: &str, auth: &str, parked_id: i64) -> Result<(), Error> {
-    for (path, sections) in [
-        ("/parked", 1),
-        ("/orders", 1),
-        ("/analyzer-cancelled", 0),
-        ("/machines", 50),
-        ("/machines?after=50", 11),
+    // Each listed item is one `<section>`, or one card on the restyled Needs review.
+    for (path, item, sections) in [
+        ("/parked", "<article class=\"card\"", 1),
+        ("/orders", "<section>", 1),
+        ("/analyzer-cancelled", "<section>", 0),
+        ("/machines", "<section>", 50),
+        ("/machines?after=50", "<section>", 11),
     ] {
         let response = request(host, path, auth, None).await?;
         assert!(response.starts_with("HTTP/1.1 200"), "{response}");
         headers_present(&response);
-        assert_eq!(response.matches("<section>").count(), sections);
+        assert_eq!(response.matches(item).count(), sections);
         assert!(!response.contains("RAW"));
         assert!(!response.contains("TAIL"));
     }
     let list = request(host, "/parked", auth, None).await?;
-    assert!(list.contains("&lt;script&gt;hostile reason&lt;/script&gt;"));
-    // Owner request 2026-11-19 (Needs review item 3): the receipt time stays on
-    // the item's page (checked with the raw links below), not the list.
-    assert!(!list.contains("1970-01-01T00:00:00Z"));
+    assert_parked_list(&list);
     let page2 = request(host, &format!("/parked?after={parked_id}"), auth, None).await?;
-    assert!(page2.contains("Category</dt><dd>second"));
-    assert!(!page2.contains("Category</dt><dd>first"));
+    assert!(page2.contains("</svg>second</span>"));
+    assert!(!page2.contains("</svg>first</span>"));
     let orders = request(host, "/orders", auth, None).await?;
     assert!(orders.contains("Uncertain"));
     assert!(orders.contains("Order sending is paused after a restore."));
@@ -359,9 +357,10 @@ async fn assert_raw_views_audited(
         let response = request(host, raw_path, post_auth, Some(form)).await?;
         assert!(response.starts_with("HTTP/1.1 200"), "{response}");
         headers_present(&response);
-        assert!(response.contains("&lt;script&gt;RAW&amp;&quot;&#39;"));
+        assert!(response.contains("&#60;script&#62;RAW&#38;&#34;&#39;"));
         assert!(!response.contains("<script>"));
         assert!(response.contains("3c 73 63 72 69 70 74 3e"));
+        assert_raw_page(&response);
         assert!(!response.contains("TAIL"));
     }
     let tail = request(
@@ -490,7 +489,7 @@ async fn assert_frame_pagination(
     let frame_path = format!("/parked/{frame_park}/raw");
     let frame = request(host, &frame_path, post_auth, Some(&frame_form)).await?;
     assert!(frame.starts_with("HTTP/1.1 200"));
-    assert!(frame.contains("&lt;frame&gt;"));
+    assert!(frame.contains("&#60;frame&#62;"));
     assert!(!frame.contains("FRAME-TAIL"));
     let frame_tail = request(
         host,
@@ -509,4 +508,22 @@ async fn assert_frame_pagination(
         .join(" ");
     assert!(hex.contains("46 52 41 4d 45 2d 54 41 49 4c"));
     Ok(())
+}
+
+/// The Needs review list escapes the stored reason and, by owner decision
+/// 2026-11-19 (admin restyle b1), shows when a linked message arrived, as the
+/// item page does; its ID stays on the item page. Askama escapes with numeric
+/// entities.
+fn assert_parked_list(list: &str) {
+    assert!(list.contains("&#60;script&#62;hostile reason&#60;/script&#62;"));
+    assert!(list.contains("<time datetime=\"1970-01-01T00:00:00Z\""));
+    assert!(!list.contains("Linked record"));
+}
+
+/// Owner decision 2026-11-19 (admin restyle b1): the audited view keeps its
+/// patient-data notice and offers the next part with the same reason.
+fn assert_raw_page(response: &str) {
+    assert!(response.contains("<p class=\"alert__title\">May contain patient data</p>"));
+    assert!(response.contains("value=\"review\""));
+    assert!(response.contains("name=\"source\" value=\"receipt\">Show the next part</button>"));
 }

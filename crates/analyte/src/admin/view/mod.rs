@@ -16,6 +16,13 @@ use axum::{
     response::{Html, IntoResponse, Response},
 };
 
+/// How long a restyled page may read before it answers with its own error
+/// page: below the limit on every admin request, so a slow store still
+/// gets a page in the new look. Pages that only read leave nothing behind when
+/// stopped; a store request already queued may still run, and its answer is
+/// dropped. [`format::SLOW_READ`] says this time in words.
+pub(super) const READ_BUDGET: std::time::Duration = std::time::Duration::from_millis(1500);
+
 /// Where the old pages' stylesheet is served (see [`assets`]).
 pub(super) const STYLESHEET: &str = "/static/admin.css";
 #[cfg(test)]

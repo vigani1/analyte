@@ -2,6 +2,10 @@
 use super::pages::{csrf, encode, login};
 use super::*;
 
+/// The Process again dialog's title.
+const PROCESS_AGAIN_TITLE: &str =
+    "<h2 id=\"dlg-title\" class=\"dialog__title\">Process this message again?</h2>";
+
 // Plan §11
 #[tokio::test]
 async fn reprocess_and_resend_need_confirmation_csrf_and_audit() -> Result<(), Error> {
@@ -16,7 +20,7 @@ async fn reprocess_and_resend_need_confirmation_csrf_and_audit() -> Result<(), E
     let path = list_opens_reprocess(&host, &auth, parked).await?;
     let confirm = request(&host, &path, &auth, None).await?;
     assert!(confirm.starts_with("HTTP/1.1 200"));
-    assert!(confirm.contains("<h1>Process this message again?</h1>"));
+    assert!(confirm.contains(PROCESS_AGAIN_TITLE));
     assert!(confirm.contains("method=\"post\""));
     let token = csrf(&confirm)?;
     let form = format!(
@@ -73,7 +77,7 @@ async fn reprocess_and_resend_need_confirmation_csrf_and_audit() -> Result<(), E
         .await?;
     rusqlite::Connection::open(&database)?.execute_batch("DROP TRIGGER refuse_operator_audit;")?;
     let response = request(&host, &path, &post_auth, Some(&form)).await?;
-    assert!(response.starts_with("HTTP/1.1 200"), "{response}");
+    assert_processed_again(&response);
     assert!(
         request(&host, &path, &post_auth, Some(&form))
             .await?
@@ -421,4 +425,13 @@ async fn retention_page_and_receipt_hold_are_audited() -> Result<(), Error> {
     let mut store = Arc::try_unwrap(store).map_err(|_| "admin retains store")?;
     store.shutdown(fixture_deadline()?).await?;
     Ok(())
+}
+
+/// Owner decision 2026-11-19 (admin restyle b1): the result says which reading
+/// was recorded and what it decided.
+fn assert_processed_again(response: &str) {
+    assert!(response.starts_with("HTTP/1.1 200"), "{response}");
+    assert!(response.contains("<h1>Processed again</h1>"), "{response}");
+    assert!(response.contains("<p class=\"alert__title\">Reading 2 was recorded</p>"));
+    assert!(response.contains("What happened: "));
 }

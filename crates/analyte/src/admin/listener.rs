@@ -14,6 +14,9 @@ use tokio::{
     time::Sleep,
 };
 
+/// How long one connection may live, from accept to its last byte.
+pub(super) const LIFETIME: Duration = Duration::from_secs(2);
+
 pub(super) struct Listener {
     pub(super) socket: TcpListener,
     pub(super) slots: Arc<Semaphore>,
@@ -47,7 +50,7 @@ impl axum::serve::Listener for Listener {
                         Stream {
                             socket,
                             _slot: slot,
-                            expires: Box::pin(tokio::time::sleep(Duration::from_secs(2))),
+                            expires: Box::pin(tokio::time::sleep(LIFETIME)),
                         },
                         address,
                     );

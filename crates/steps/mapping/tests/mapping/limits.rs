@@ -108,7 +108,7 @@ fn hl7_optional_orc_does_not_leak_into_the_following_order() -> TestResult {
     ));
     assert!(output.findings.iter().any(|f| f.problem
         == Problem::MissingIdentity {
-            setting: "order_id"
+            setting: analyte_mapping::IdentitySetting::OrderId
         }));
     Ok(())
 }

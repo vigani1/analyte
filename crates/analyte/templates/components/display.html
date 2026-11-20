@@ -1,4 +1,4 @@
-{#- Macros that show values: time, exact values on hover, words with times, status, the verdict with its to-do list, wires and their legend, the signal path with its nodes, and figures. -#}
+{#- Macros that show values: time, exact values on hover, words with times, status, the verdict with its to-do list, wires and their legend, the signal path with its nodes, figures and a history timeline. -#}
 {%- import "components/icon.html" as draw %}
 {%- import "components/feedback.html" as feedback %}
 {%- import "components/forms.html" as forms %}
@@ -6,6 +6,16 @@
 {#- A time people read, its exact value on hover; a stored value that is no date shows as text. -#}
 {%- macro time(moment) -%}
 {%- if moment.datetime.is_empty() %}{{ moment.shown }}{% else %}<time datetime="{{ moment.datetime }}" title="{{ moment.exact }}">{{ moment.shown }}</time>{% endif -%}
+{%- endmacro %}
+
+{#- `time` with a class, such as a timeline's time column; a stored value that is no date keeps the class on a plain span. -#}
+{%- macro time_in(moment, class) -%}
+{%- if moment.datetime.is_empty() %}<span class="{{ class }}">{{ moment.shown }}</span>{% else %}<time class="{{ class }}" datetime="{{ moment.datetime }}" title="{{ moment.exact }}">{{ moment.shown }}</time>{% endif -%}
+{%- endmacro %}
+
+{#- Words with their exact stored value on hover; no hover when `exact` is empty. -#}
+{%- macro hover(shown, exact) -%}
+{%- if exact.is_empty() %}{{ shown }}{% else %}<span title="{{ exact }}">{{ shown }}</span>{% endif -%}
 {%- endmacro %}
 
 {#- A number people read, with its exact value on hover. -#}
@@ -25,7 +35,12 @@
 
 {#- A status: always an icon and a word, never colour alone. -#}
 {%- macro status(tone, word) -%}
-<span class="status status--{{ tone.class() }}">{% call draw::icon(tone.icon(), "") %}{% endcall %}{{ word }}</span>
+{% call status_exact(tone, word, "") %}{% endcall %}
+{%- endmacro %}
+
+{#- A status with the exact stored value on hover; no hover when `exact` is empty. -#}
+{%- macro status_exact(tone, word, exact) -%}
+<span class="status status--{{ tone.class() }}"{% if !exact.is_empty() %} title="{{ exact }}"{% endif %}>{% call draw::icon(tone.icon(), "") %}{% endcall %}{{ word }}</span>
 {%- endmacro %}
 
 {#- The answer to "is everything OK?" and, when not, the numbered things with their fix. -#}
@@ -145,4 +160,13 @@
 </dl>
 {%- endif %}
 </div>
+{%- endmacro %}
+
+{#- A history, oldest first: each line's time, a dot (filled for the line that settled it), what happened and who recorded it. -#}
+{%- macro timeline(entries) -%}
+<ol class="timeline">
+{%- for entry in entries %}
+<li>{% if let Some(moment) = entry.when %}{% call time_in(moment, "timeline__time") %}{% endcall %}{% else %}<span class="timeline__time"></span>{% endif %}<span class="timeline__dot{% if entry.good %} timeline__dot--good{% endif %}"></span><span class="timeline__text">{{ entry.text }}<span class="timeline__who">{{ entry.who }}</span></span></li>
+{%- endfor %}
+</ol>
 {%- endmacro %}

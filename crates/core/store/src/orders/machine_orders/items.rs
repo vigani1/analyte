@@ -5,6 +5,10 @@ use super::{
     append, item_decision, load, params, write_item,
 };
 
+/// The reason parked when the machine refuses (UC) to cancel an item it had
+/// already reported cancelled on its own (CA); Analyte sends it no command.
+pub const CANCEL_CONFLICT_REASON: &str = "LAB-28 UC conflicts with retained analyzer CA; reconcile both facts without another machine command";
+
 impl Store {
     /// Commits completed exchange outcomes, conservative aggregation and one app event.
     /// Missing decisions become Uncertain. Duplicate/unknown items and illegal moves
@@ -50,7 +54,15 @@ impl Store {
                 if matches!(outcome.decision, ItemDecision::CancelRefused)
                     && item.analyzer_cancelled()
                 {
-                    tx.execute("INSERT INTO parked(evidence) VALUES (?1)", [crate::parked::evidence(crate::ParkedKind::CancelConflict.as_str(), &id.to_string(), "LAB-28 UC conflicts with retained analyzer CA; reconcile both facts without another machine command", None)?])?;
+                    tx.execute(
+                        "INSERT INTO parked(evidence) VALUES (?1)",
+                        [crate::parked::evidence(
+                            crate::ParkedKind::CancelConflict.as_str(),
+                            &id.to_string(),
+                            CANCEL_CONFLICT_REASON,
+                            None,
+                        )?],
+                    )?;
                 }
                 item.state = next;
                 item.source_code = outcome.code.clone();

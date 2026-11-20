@@ -3,7 +3,9 @@ use super::pages::{csrf, encode, login};
 use super::*;
 use analyte_store::Parked;
 
-async fn empty_store(root: &std::path::Path) -> Result<Arc<analyte_store::Handle>, Error> {
+pub(super) async fn empty_store(
+    root: &std::path::Path,
+) -> Result<Arc<analyte_store::Handle>, Error> {
     let limits = {
         let mut limits = analyte_fixtures::store_limits();
         limits.reserve_bytes = 1;
@@ -24,7 +26,7 @@ async fn empty_store(root: &std::path::Path) -> Result<Arc<analyte_store::Handle
     ))
 }
 
-async fn stop(
+pub(super) async fn stop(
     state: Arc<Context>,
     stop: watch::Sender<bool>,
     owner: tokio::task::JoinHandle<Result<(), crate::admin::Error>>,
@@ -248,7 +250,7 @@ const STEPS: [(&str, Button); 10] = [
         Button::Process,
     ),
     (
-        "Fix the problem the lab app reported (see Reason), then use Send again.",
+        "Settle the problem described above with the lab app team, then use Send again.",
         Button::Send,
     ),
     (
@@ -273,17 +275,24 @@ const STEPS: [(&str, Button); 10] = [
     ),
 ];
 
-fn process_button(id: i64) -> String {
+/// The size class of a list button; the item page's buttons are full size.
+fn size(small: bool) -> &'static str {
+    if small { " btn--sm" } else { "" }
+}
+
+fn process_button(id: i64, small: bool) -> String {
     format!(
-        "<a class=\"button\" title=\"Reprocess\" href=\"/parked/{id}/reprocess\">Process again</a>"
+        "<a class=\"btn btn--primary{}\" href=\"/parked/{id}/reprocess\">Process again</a>",
+        size(small)
     )
 }
 
 /// The Mark resolved button: the main one, or secondary beside another action.
-fn resolve_button(id: i64, main: bool) -> String {
-    let class = if main { "button" } else { "button secondary" };
+fn resolve_button(id: i64, main: bool, small: bool) -> String {
+    let kind = if main { "btn--primary" } else { "btn--outline" };
     format!(
-        "<a class=\"{class}\" title=\"Resolve\" href=\"/parked/{id}/resolve\">Mark resolved</a>"
+        "<a class=\"btn {kind}{}\" href=\"/parked/{id}/resolve\">Mark resolved</a>",
+        size(small)
     )
 }
 
@@ -292,27 +301,33 @@ fn assert_item(section: &str, id: i64, delivery: &str, (todo, button): (&str, Bu
     let todo = todo.replace('\'', "&#39;");
     assert!(
         section.contains(&format!(
-            "<p class=\"todo\"><strong>What to do:</strong> {todo}</p>"
+            "<p class=\"whattodo__text\"><strong>What to do:</strong> {todo}</p>"
         )),
         "{todo}\n{section}"
     );
     let buttons = match button {
-        Button::Process => process_button(id) + &resolve_button(id, false),
+        Button::Process => process_button(id, true) + &resolve_button(id, false, true),
         Button::Send => format!(
-            "<a class=\"button\" title=\"Resend this delivery\" href=\"/deliveries/{delivery}/resend\">Send again</a>{}",
-            resolve_button(id, false)
+            "<a class=\"btn btn--primary btn--sm\" href=\"/deliveries/{delivery}/resend\">Send again</a>{}",
+            resolve_button(id, false, true)
         ),
-        Button::Resolve => format!("<p class=\"actions-row\">{}", resolve_button(id, true)),
+        Button::Resolve => format!(
+            "<div class=\"whattodo__actions\">{}",
+            resolve_button(id, true, true)
+        ),
     };
     assert!(section.contains(&buttons), "{buttons}\n{section}");
+    // The action buttons and the item's Details link.
     assert_eq!(
-        section.matches("class=\"button").count(),
+        section.matches("class=\"btn ").count(),
         match button {
-            Button::Resolve => 1,
-            Button::Process | Button::Send => 2,
+            Button::Resolve => 2,
+            Button::Process | Button::Send => 3,
         }
     );
-    assert!(section.contains(&format!("<a href=\"/parked/{id}\">Open item</a>")));
+    assert!(section.contains(&format!(
+        "<a class=\"btn btn--quiet btn--sm\" href=\"/parked/{id}\">Details</a>"
+    )));
 }
 
 // Owner request 2026-11-19 (Needs review item 3): every item says what to do in
@@ -340,7 +355,7 @@ async fn review_list_says_what_to_do_with_the_action_and_no_ids() -> Result<(), 
     let auth = format!("Cookie: {cookie}\r\n");
     let list = request(&host, "/parked", &auth, None).await?;
     assert!(list.starts_with("HTTP/1.1 200"), "{list}");
-    let sections: Vec<&str> = list.split("<section>").skip(1).collect();
+    let sections: Vec<&str> = list.split("<article class=\"card\"").skip(1).collect();
     assert_eq!(sections.len(), ids.len());
     for ((section, step), id) in sections.iter().zip(STEPS).zip(&ids) {
         assert_item(section, *id, &delivery, step);
@@ -357,13 +372,13 @@ async fn review_list_says_what_to_do_with_the_action_and_no_ids() -> Result<(), 
     }
     // The ID and the receipt time stay on the item's own page.
     let detail = request(&host, &format!("/parked/{}", ids[0]), &auth, None).await?;
-    assert!(detail.contains(&format!("<code>{receipt}</code>")));
+    assert!(detail.contains(&format!("Linked record: {receipt}")));
+    assert!(detail.contains(
+        "<p class=\"whattodo__text\"><strong>What to do:</strong> The machine sent a test code"
+    ));
     assert!(
-        detail.contains(
-            "<p class=\"todo\"><strong>What to do:</strong> The machine sent a test code"
-        )
+        detail.contains(&(process_button(ids[0], false) + &resolve_button(ids[0], false, false)))
     );
-    assert!(detail.contains(&(process_button(ids[0]) + &resolve_button(ids[0], false))));
     stop(state, stopper, owner, store).await
 }
 
@@ -398,7 +413,7 @@ async fn mark_resolved_is_audited_needs_csrf_and_keeps_the_item() -> Result<(), 
     let id = ids[0];
     let path = format!("/parked/{id}/resolve");
     let list = request(&host, "/parked", &auth, None).await?;
-    assert!(list.contains(&resolve_button(id, true)), "{list}");
+    assert!(list.contains(&resolve_button(id, true, true)), "{list}");
     let form = confirm_needs_csrf(&host, &auth, &path).await?;
     let unresolved = |store: Arc<analyte_store::Handle>| async move {
         store
@@ -419,24 +434,29 @@ async fn mark_resolved_is_audited_needs_csrf_and_keeps_the_item() -> Result<(), 
     let done = request(&host, &path, &post_auth, Some(&form)).await?;
     assert!(done.starts_with("HTTP/1.1 200"), "{done}");
     assert!(done.contains("<h1>Marked resolved</h1>"));
+    assert!(done.contains(&format!(
+        "<p class=\"alert__title\">Item {id} is marked resolved</p>"
+    )));
     let again = request(&host, &path, &post_auth, Some(&form)).await?;
     assert!(again.starts_with("HTTP/1.1 409"), "resolves only once");
     assert_recorded(&store, &state, &cookie, id).await?;
     assert_eq!(unresolved(store.clone()).await?, 1);
     // Still in the history: listed as resolved, with who and why on its page.
-    let history = request(&host, "/parked", &auth, None).await?;
+    let history = request(&host, "/parked?show=resolved", &auth, None).await?;
     let section = history
-        .split("<section>")
-        .find(|section| section.contains(&format!("href=\"/parked/{id}\" title")))
+        .split("<li class=\"row\">")
+        .find(|section| section.contains(&format!("href=\"/parked/{id}\">History</a>")))
         .ok_or("resolved item missing from the list")?;
     assert!(
-        section.contains("<span class=\"pill ok\">Resolved</span>"),
+        section.contains("Marked resolved by admin session at "),
         "{section}"
     );
     assert!(!section.contains("Mark resolved"), "{section}");
     let detail = request(&host, &format!("/parked/{id}"), &auth, None).await?;
-    assert!(detail.contains("How it was resolved"));
-    assert!(detail.contains("settled with the lab app"));
+    assert!(detail.contains(concat!(
+        "<span class=\"timeline__text\">Marked resolved<span class=\"timeline__who\">",
+        "admin session · “settled with the lab app”</span>"
+    )));
     let overview = request(&host, "/", &auth, None).await?;
     assert!(
         overview.contains("<p class=\"todo__title\">1 item needs review</p>"),
@@ -450,9 +470,12 @@ async fn mark_resolved_is_audited_needs_csrf_and_keeps_the_item() -> Result<(), 
 async fn confirm_needs_csrf(host: &str, auth: &str, path: &str) -> Result<String, Error> {
     let confirm = request(host, path, auth, None).await?;
     assert!(confirm.starts_with("HTTP/1.1 200"), "{confirm}");
-    assert!(confirm.contains("<h1>Mark this item resolved?</h1>"));
     assert!(
-        confirm.contains("The item stays in the history, marked resolved by you with your reason.")
+        confirm.contains("<h2 id=\"dlg-title\" class=\"dialog__title\">Mark as resolved?</h2>")
+    );
+    assert!(
+        confirm
+            .contains("The item leaves the open list and stays under Resolved with its history.")
     );
     assert!(confirm.contains("method=\"post\""));
     let token = csrf(&confirm)?;

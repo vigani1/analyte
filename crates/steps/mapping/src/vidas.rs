@@ -53,7 +53,7 @@ pub fn map(
             }),
             source,
             IdentityStatus::Unresolved(Reason::new(
-                "VIDAS Literal lacks trusted result/run identity and patient versus QC classification",
+                &crate::Unidentified::VidasLiteral.to_string(),
             )?),
         )?,
     )?;

@@ -50,6 +50,46 @@ pub enum ResponseAction {
         after: Option<u64>,
     },
 }
+/// Why the response rules park a delivery when the reason is not the app's
+/// own `detail`. Its `Display` is the stored reason, so spellings never change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReplyProblem {
+    /// HTTP 200 whose body is not a version 1 status body.
+    InvalidSuccess,
+    /// HTTP 400 or 422 whose body is not a version 1 error body.
+    InvalidError,
+    /// A status the contract gives no meaning for a delivery.
+    UnexpectedStatus(u16),
+}
+
+const UNEXPECTED_OPEN: &str = "unexpected HTTP status ";
+
+impl std::fmt::Display for ReplyProblem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidSuccess => f.write_str("invalid success response"),
+            Self::InvalidError => f.write_str("invalid error response"),
+            Self::UnexpectedStatus(status) => write!(f, "{UNEXPECTED_OPEN}{status}"),
+        }
+    }
+}
+
+impl ReplyProblem {
+    /// Reads back a reason written by `Display`, the exact reverse of it; any
+    /// other text, such as an app's own detail, gives `None`.
+    #[must_use]
+    pub fn from_stored(text: &str) -> Option<Self> {
+        let read = match text.strip_prefix(UNEXPECTED_OPEN) {
+            Some(status) => Self::UnexpectedStatus(status.parse().ok()?),
+            None => [Self::InvalidSuccess, Self::InvalidError]
+                .into_iter()
+                .find(|problem| problem.to_string() == text)?,
+        };
+        // Only the exact spelling reads back: no sign and no leading zero.
+        (read.to_string() == text).then_some(read)
+    }
+}
+
 /// Classifies ADR 0008 responses; malformed success is never acknowledged locally.
 #[must_use]
 pub fn classify_response(status: u16, body: &[u8], retry_after: Option<&str>) -> ResponseAction {
@@ -57,7 +97,7 @@ pub fn classify_response(status: u16, body: &[u8], retry_after: Option<&str>) ->
         200 => match crate::decode::<StatusBody>(body) {
             Ok(value) if value.contract_version == 1 => ResponseAction::Done(value.status),
             _ => ResponseAction::Parked {
-                reason: "invalid success response".into(),
+                reason: ReplyProblem::InvalidSuccess.to_string(),
             },
         },
         409 => ResponseAction::Conflict,
@@ -84,12 +124,12 @@ pub fn classify_response(status: u16, body: &[u8], retry_after: Option<&str>) ->
                 .ok()
                 .filter(|v| v.contract_version == 1)
                 .map_or_else(
-                    || "invalid error response".into(),
+                    || ReplyProblem::InvalidError.to_string(),
                     |v| v.detail.as_str().to_owned(),
                 ),
         },
         _ => ResponseAction::Parked {
-            reason: format!("unexpected HTTP status {status}"),
+            reason: ReplyProblem::UnexpectedStatus(status).to_string(),
         },
     }
 }
@@ -111,6 +151,41 @@ fn retry_delay(value: &str, now: i64) -> Option<u64> {
 
 #[cfg(test)]
 mod tests {
+
+    // ADR 0008: the parked reasons the response rules write read back exactly;
+    // the app's own detail, and any other spelling, does not.
+    #[test]
+    fn reply_problems_read_back_only_their_exact_spelling() {
+        for (problem, stored) in [
+            (
+                super::ReplyProblem::InvalidSuccess,
+                "invalid success response",
+            ),
+            (super::ReplyProblem::InvalidError, "invalid error response"),
+            (
+                super::ReplyProblem::UnexpectedStatus(418),
+                "unexpected HTTP status 418",
+            ),
+            (
+                super::ReplyProblem::UnexpectedStatus(0),
+                "unexpected HTTP status 0",
+            ),
+        ] {
+            assert_eq!(problem.to_string(), stored);
+            assert_eq!(super::ReplyProblem::from_stored(stored), Some(problem));
+        }
+        for text in [
+            "",
+            "sample 12 is unknown",
+            "unexpected HTTP status 0418",
+            "unexpected HTTP status +418",
+            "unexpected HTTP status 70000",
+            "unexpected HTTP status 418 ",
+            "invalid success response.",
+        ] {
+            assert_eq!(super::ReplyProblem::from_stored(text), None, "{text}");
+        }
+    }
     // ADR 0008
     #[test]
     fn retry_after_honors_seconds_and_http_date() {

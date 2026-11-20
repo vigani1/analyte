@@ -14,6 +14,7 @@ mod assets;
 mod logout;
 mod overview;
 mod pages;
+mod parked;
 mod removal;
 mod setup;
 
@@ -793,7 +794,7 @@ Connection: close
 /// restyled sidebar draws the mark inline in the theme colours and the old
 /// pages' header bar shows the same icon.
 fn assert_logo(path: &str, page: &str) {
-    let root = if path == "/" {
+    let root = if RESTYLED.contains(&path) {
         crate::admin::view::assets::Root::of_this_build()
             .as_str()
             .to_owned()
@@ -814,7 +815,7 @@ fn assert_logo(path: &str, page: &str) {
         assert!(page.contains(&link), "{path} lacks {link}");
     }
     match path {
-        "/" => assert!(page.contains(concat!(
+        "/" | "/parked" => assert!(page.contains(concat!(
             "<div class=\"brand\">\n<svg class=\"logo\" width=\"30\" height=\"30\" ",
             "viewBox=\"0 0 48 48\" aria-hidden=\"true\"><path class=\"logo__tile\" "
         ))),
@@ -831,8 +832,11 @@ fn assert_logo(path: &str, page: &str) {
 
 /// ADR 0018: the restyled Overview loads fonts.css, analyte.css and app.css in
 /// that order; every other page keeps admin.css. Never both on one page.
+/// The pages in the new look so far (ADR 0018); the others keep `admin.css`.
+const RESTYLED: [&str; 2] = ["/", "/parked"];
+
 fn assert_stylesheets(path: &str, page: &str) {
-    if path == "/" {
+    if RESTYLED.contains(&path) {
         let root = crate::admin::view::assets::Root::of_this_build();
         let sheets: Vec<&str> = page
             .split("<link rel=\"stylesheet\" href=\"")

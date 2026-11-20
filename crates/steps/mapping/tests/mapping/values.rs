@@ -326,7 +326,7 @@ fn missing_sample_and_unknown_code_are_located() -> TestResult {
     );
     assert!(output.findings.iter().any(|f| f.problem
         == Problem::MissingIdentity {
-            setting: "order_id"
+            setting: analyte_mapping::IdentitySetting::OrderId
         }));
     let output = astm("R|1|^^^UNKNOWN|1|||||F\r", "P")?;
     assert!(output.results.is_empty());
@@ -431,7 +431,11 @@ fn identity_selectors_resolve_or_stay_unresolved() -> TestResult {
         "OBR|1||001\rOBX|1|NM|SYN^^synthetic||1||||||F\r",
         &definition,
     )?;
-    for setting in ["sub_id", "run", "order_namespace"] {
+    for setting in [
+        analyte_mapping::IdentitySetting::SubId,
+        analyte_mapping::IdentitySetting::Run,
+        analyte_mapping::IdentitySetting::OrderNamespace,
+    ] {
         assert!(
             missing
                 .findings

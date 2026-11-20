@@ -21,11 +21,11 @@ pub(crate) const DEFERRED_REASON: &str = "POCT message deferred by bounded custo
 pub(crate) fn syntax_reason(error: &analyte_poct::MessageError) -> String {
     format!("POCT syntax: {error}")
 }
+/// The reason parked for an edited POCT reading whose common content did not change.
+pub(crate) const EDIT_GUARD_REASON: &str = "edited POCT observation with no detectable common-content change; source context may have changed";
 /// Guards edits of independent POCT readings, which carry no execution context.
 pub(crate) fn policy() -> crate::machine::interpretation::policy::Policy {
-    crate::machine::interpretation::policy::Policy::independent(
-        "edited POCT observation with no detectable common-content change; source context may have changed",
-    )
+    crate::machine::interpretation::policy::Policy::independent(EDIT_GUARD_REASON)
 }
 pub(crate) fn closure_reason(normal: bool, unresolved: &str) -> String {
     format!(

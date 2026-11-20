@@ -4,6 +4,9 @@ use crate::{deadline, installation::config::Machine};
 use analyte_model::{Identifier, Reason};
 use analyte_store::{Audit, Handle, PollIntentId, PollIntentState, PollOutcome};
 
+/// The reason parked with each R poll until its response is stored.
+pub(crate) const POLL_REASON: &str = "Autolyser R may advance its cursor; retain this guard until its response is durably in custody or an operator reconciles it";
+
 fn audit(
     id: PollIntentId,
     machine: &Identifier,
@@ -57,9 +60,7 @@ pub(super) async fn ensure_reconciled(store: &Handle, machine: &Machine) -> Resu
 
 pub(super) async fn reserve(store: &Handle, machine: &Machine) -> Result<PollIntentId, Error> {
     let machine = machine.id.clone();
-    let reason = Reason::new(
-        "Autolyser R may advance its cursor; retain this guard until its response is durably in custody or an operator reconciles it",
-    )?;
+    let reason = Reason::new(POLL_REASON)?;
     Ok(store
         .request(deadline()?, move |store| {
             store.begin_poll_intent(&machine, &reason)

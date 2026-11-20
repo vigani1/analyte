@@ -9,7 +9,10 @@ mod polling;
 mod webhook;
 pub use webhook::{WebhookSender, WebhookSetupError, WebhookUrl};
 
-pub use delivery::{DeliveryOutcome, Worker, encode_delivery, encode_order_event};
+pub use delivery::{
+    CONFLICT_REASON, DeliveryOutcome, UNSUPPORTED_CONTRACT_REASON, Worker, encode_delivery,
+    encode_order_event,
+};
 pub use destination::{Credentials, Destination, Limits, SecretsSource};
 pub use polling::Poller;
 

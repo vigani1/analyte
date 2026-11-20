@@ -250,6 +250,12 @@ async fn drain_server(
     Ok(())
 }
 
+/// How long one request may run before it is answered with "This took too
+/// long": shorter than the connection's [`super::listener::LIFETIME`], which
+/// starts earlier, at accept, so the answer is still written before the
+/// connection closes.
+const REQUEST_BUDGET: Duration = Duration::from_millis(1750);
+
 fn router(state: Arc<Context>) -> Router {
     Router::new()
         .route("/", get(super::overview::show))
@@ -265,9 +271,9 @@ fn router(state: Arc<Context>) -> Router {
             "/receipts/{id}/departures",
             get(super::pages::departures::receipt),
         )
-        .route("/parked", get(super::pages::parked))
-        .route("/parked/{id}", get(super::pages::detail))
-        .route("/parked/{id}/raw", post(super::pages::raw))
+        .route("/parked", get(super::parked::list))
+        .route("/parked/{id}", get(super::parked::item))
+        .route("/parked/{id}/raw", post(super::parked::raw))
         .route("/orders", get(super::pages::orders))
         .route("/analyzer-cancelled", get(super::pages::awos::cancelled))
         .route("/awos/{order}/{item}", get(super::pages::awos::detail))
@@ -278,11 +284,11 @@ fn router(state: Arc<Context>) -> Router {
         )
         .route(
             "/parked/{id}/reprocess",
-            get(super::actions::confirm_reprocess).post(super::actions::reprocess),
+            get(super::parked::confirm_reprocess).post(super::parked::reprocess),
         )
         .route(
             "/parked/{id}/resolve",
-            get(super::actions::confirm_resolve).post(super::actions::resolve),
+            get(super::parked::confirm_resolve).post(super::parked::resolve),
         )
         .route("/setup", get(super::setup::index))
         .merge(
@@ -422,7 +428,7 @@ async fn protect(State(state): State<Arc<Context>>, mut request: Request, next: 
         if let Some(session) = &session {
             request.extensions_mut().insert(session.clone());
         }
-        match tokio::time::timeout(Duration::from_secs(2), dispatch(request, next, session)).await {
+        match tokio::time::timeout(REQUEST_BUDGET, dispatch(request, next, session)).await {
             Ok(response) => response,
             Err(_) => super::view::refusal(
                 StatusCode::GATEWAY_TIMEOUT,

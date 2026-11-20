@@ -1,0 +1,373 @@
+//! Serves the Mark resolved and Process again dialogs (GET and POST /parked/{id}/resolve and /reprocess): drawn over the item page, a real form with a required reason, audited when sent.
+//!
+//! No script: the dialog is the item page with a `.scrim`, its Cancel is a
+//! link back to the item, and the form posts with the session's form token.
+//! The shared request guard already refused a post without a session or with
+//! a wrong token; these handlers check again and ask for a signed-in session.
+use super::page::{Button, Dialog, Head, Message, item_href};
+use super::problem::Problem;
+use super::{ItemRead, item_page, open_count, read_item, respond, signed_in};
+use crate::admin::Error;
+use crate::admin::server::Context;
+use crate::admin::sessions::Session;
+use crate::admin::view::{self, Tab, Tone, format, frame::Frame};
+use crate::operator::recovery;
+use analyte_model::Reason;
+use analyte_store::{InterpretationCommit, OperatorError, RevisionOutcome};
+use askama::Template as _;
+use axum::{
+    Extension, Form,
+    extract::{Path, State},
+    http::StatusCode,
+    response::Response,
+};
+use jiff::Timestamp;
+use serde::Deserialize;
+use std::sync::Arc;
+
+/// The most characters a reason may have; the field stops there too.
+const REASON_CHARACTERS: usize = 256;
+
+/// Which audited action a dialog confirms.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Confirm {
+    Resolve,
+    Reprocess,
+}
+
+impl Confirm {
+    /// The dialog over item `id`, with what was typed and why it was refused.
+    fn dialog(
+        self,
+        id: i64,
+        session: &Session,
+        reason: &str,
+        error: Option<&'static str>,
+    ) -> Dialog {
+        let (path, title, text, placeholder, button) = match self {
+            Self::Resolve => (
+                "resolve",
+                "Mark as resolved?",
+                concat!(
+                    "The item leaves the open list and stays under Resolved with its history. ",
+                    "Nothing is deleted, and nothing is sent to a machine or the lab app.",
+                ),
+                "For example: settled with the lab app team",
+                "Mark resolved",
+            ),
+            Self::Reprocess => (
+                "reprocess",
+                "Process this message again?",
+                concat!(
+                    "Analyte reads the original message again with the current settings. The ",
+                    "earlier reading is kept and a new one is added; corrected results follow ",
+                    "the usual correction rules. Nothing is sent to the machine.",
+                ),
+                "For example: test added to the test mapping",
+                "Process again",
+            ),
+        };
+        Dialog {
+            action: format!("/parked/{id}/{path}"),
+            title,
+            text,
+            placeholder,
+            hint: "Required, up to 256 characters. Recorded in the history with the time.",
+            button,
+            csrf: session.csrf.form_value().to_owned(),
+            cancel: item_href(id),
+            reason: reason.to_owned(),
+            error,
+        }
+    }
+}
+
+/// The form both dialogs post.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(in crate::admin) struct ReasonForm {
+    csrf: String,
+    #[serde(default)]
+    reason: String,
+    #[serde(default)]
+    confirm: String,
+}
+
+/// The reason as it is recorded, or why it cannot be. Line breaks typed in the
+/// field become spaces, because an audit reason is one line; other control
+/// characters are refused.
+fn checked(typed: &str) -> Result<Reason, &'static str> {
+    let line = typed.replace("\r\n", " ").replace(['\r', '\n', '\t'], " ");
+    if line.trim().is_empty() {
+        return Err("Write a reason. It is recorded in the history.");
+    }
+    if line.chars().count() > REASON_CHARACTERS {
+        return Err("Keep the reason to 256 characters.");
+    }
+    Reason::new(&line).map_err(|_| "The reason holds a character that cannot be recorded.")
+}
+
+pub(in crate::admin) async fn confirm_resolve(
+    State(state): State<Arc<Context>>,
+    Path(id): Path<i64>,
+    session: Option<Extension<Arc<Session>>>,
+) -> Response {
+    let Some(session) = signed_in(session.as_ref()) else {
+        return Problem::SignIn.page(&state, None, Some(id));
+    };
+    open(&state, session, id, Confirm::Resolve, "", None).await
+}
+
+pub(in crate::admin) async fn confirm_reprocess(
+    State(state): State<Arc<Context>>,
+    Path(id): Path<i64>,
+    session: Option<Extension<Arc<Session>>>,
+) -> Response {
+    let Some(session) = signed_in(session.as_ref()) else {
+        return Problem::SignIn.page(&state, None, Some(id));
+    };
+    open(&state, session, id, Confirm::Reprocess, "", None).await
+}
+
+/// The item page under `confirm`'s dialog: OK on a first look, 400 with
+/// `error` when a sent reason was refused. A resolved item, and for Process
+/// again an item without exactly one stored message, are refused instead.
+/// Finding that message may rebuild an aborted transfer's receipt from its
+/// acknowledged frames, as the command line does.
+async fn open(
+    state: &Context,
+    session: &Session,
+    id: i64,
+    confirm: Confirm,
+    typed: &str,
+    error: Option<&'static str>,
+) -> Response {
+    let read = tokio::time::timeout(
+        view::READ_BUDGET,
+        read_item(state, id, 0, move |s, open| {
+            (open && confirm == Confirm::Reprocess).then(|| s.parked_receipt(id).map(drop))
+        }),
+    )
+    .await;
+    let (read, receipt): (ItemRead, _) = match read {
+        Ok(Ok(Some(read))) => read,
+        Ok(Ok(None)) => return Problem::NotFound.page(state, Some(session), Some(id)),
+        Ok(Err(error)) => {
+            return Problem::Store(error.to_string()).page(state, Some(session), Some(id));
+        }
+        Err(_) => return Problem::Time.page(state, Some(session), Some(id)),
+    };
+    if read.resolution.is_some() {
+        return Problem::AlreadyResolved(id).page(state, Some(session), Some(id));
+    }
+    match receipt {
+        Some(Err(OperatorError::Purged)) => {
+            return Problem::Purged.page(state, Some(session), Some(id));
+        }
+        Some(Err(other)) => {
+            return Problem::NoSingleMessage(id, other.to_string()).page(
+                state,
+                Some(session),
+                Some(id),
+            );
+        }
+        Some(Ok(())) | None => {}
+    }
+    let dialog = confirm.dialog(id, session, typed, error);
+    let html = item_page(state, Some(session), &read, Some(dialog), Timestamp::now()).render();
+    let status = if error.is_some() {
+        StatusCode::BAD_REQUEST
+    } else {
+        StatusCode::OK
+    };
+    respond(state, Some(session), Some(id), status, html)
+}
+
+pub(in crate::admin) async fn resolve(
+    State(state): State<Arc<Context>>,
+    Path(id): Path<i64>,
+    Extension(session): Extension<Arc<Session>>,
+    Form(form): Form<ReasonForm>,
+) -> Response {
+    send(&state, &session, id, Confirm::Resolve, &form).await
+}
+
+pub(in crate::admin) async fn reprocess(
+    State(state): State<Arc<Context>>,
+    Path(id): Path<i64>,
+    Extension(session): Extension<Arc<Session>>,
+    Form(form): Form<ReasonForm>,
+) -> Response {
+    send(&state, &session, id, Confirm::Reprocess, &form).await
+}
+
+/// Runs a sent dialog's action after checking, before anything runs, a
+/// signed-in session, its form token and the confirmation, then the reason; a
+/// refused reason opens the dialog again with what was typed.
+async fn send(
+    state: &Context,
+    session: &Session,
+    id: i64,
+    confirm: Confirm,
+    form: &ReasonForm,
+) -> Response {
+    if !session.authenticated {
+        return Problem::SignIn.page(state, None, Some(id));
+    }
+    if !session.csrf_valid(&form.csrf) || form.confirm != "yes" {
+        return Problem::FormExpired.page(state, Some(session), Some(id));
+    }
+    let reason = match checked(&form.reason) {
+        Ok(reason) => reason,
+        Err(error) => return open(state, session, id, confirm, &form.reason, Some(error)).await,
+    };
+    let done = match confirm {
+        Confirm::Resolve => recovery::resolve(&state.store, id, session.actor.clone(), reason)
+            .await
+            .map(|()| Done::Resolved)
+            .map_err(Error::from),
+        Confirm::Reprocess => process_again(state, id, session, reason)
+            .await
+            .map(Done::Reprocessed),
+    };
+    match done {
+        Ok(done) => done.page(state, session, id).await,
+        Err(error) => Problem::Failed(error.to_string()).page(state, Some(session), Some(id)),
+    }
+}
+
+/// Reads item `id`'s original message again with the program's settings as
+/// they are on disk now, refusing when they name another store.
+async fn process_again(
+    state: &Context,
+    id: i64,
+    session: &Session,
+    reason: Reason,
+) -> Result<InterpretationCommit, Error> {
+    let path = state.config_path.clone();
+    let program =
+        tokio::task::spawn_blocking(move || crate::installation::config::Program::load(&path))
+            .await??;
+    if program.data_directory().canonicalize()? != state.directory.canonicalize()? {
+        return Err(Error::StoreMismatch);
+    }
+    recovery::reprocess(
+        &state.store,
+        &program,
+        recovery::ReprocessTarget::Parked(id),
+        session.actor.clone(),
+        reason,
+    )
+    .await
+    .map_err(Error::from)
+}
+
+/// What a sent dialog did.
+enum Done {
+    Resolved,
+    Reprocessed(InterpretationCommit),
+}
+
+impl Done {
+    /// The page saying what was recorded, with the way back.
+    async fn page(self, state: &Context, session: &Session, id: i64) -> Response {
+        let (title, tone, alert, text) = match self {
+            Self::Resolved => (
+                "Marked resolved",
+                Tone::Good,
+                format!("Item {id} is marked resolved"),
+                String::from(concat!(
+                    "It moved to Resolved and keeps its history. Nothing was sent to a ",
+                    "machine or the lab app.",
+                )),
+            ),
+            Self::Reprocessed(commit) => {
+                let review = commit.outcomes.iter().any(|outcome| {
+                    matches!(
+                        outcome,
+                        RevisionOutcome::Conflict | RevisionOutcome::Unresolved
+                    )
+                });
+                (
+                    "Processed again",
+                    if review { Tone::Attention } else { Tone::Good },
+                    format!("Reading {} was recorded", commit.version),
+                    format!(
+                        "What happened: {}. The earlier reading is kept.",
+                        format::outcomes(&commit.outcomes)
+                    ),
+                )
+            }
+        };
+        let page = Message {
+            frame: Frame::new(
+                state,
+                Tab::NeedsReview,
+                title,
+                open_count(state).await,
+                Some(session),
+                Timestamp::now(),
+            ),
+            head: Head::under(Some(id), false, title),
+            tone,
+            title: alert,
+            text,
+            links: vec![
+                Button {
+                    href: Tab::NeedsReview.href().to_owned(),
+                    label: "Back to Needs review",
+                    class: "btn--primary",
+                },
+                Button {
+                    href: item_href(id),
+                    label: "Open the item",
+                    class: "btn--outline",
+                },
+            ],
+            support: Vec::new(),
+        };
+        respond(
+            state,
+            Some(session),
+            Some(id),
+            StatusCode::OK,
+            page.render(),
+        )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Owner decision 2026-11-19 (admin restyle b1): the reason is required and
+    // capped at 256 characters; line breaks typed in the field become spaces,
+    // because an audit reason is one line.
+    #[test]
+    fn reasons_are_required_one_line_and_at_most_256_characters() {
+        for blank in ["", "   ", "\r\n\t"] {
+            assert_eq!(
+                checked(blank).err(),
+                Some("Write a reason. It is recorded in the history."),
+                "{blank:?}"
+            );
+        }
+        assert_eq!(
+            checked("first line\r\nsecond\nthird\tend").map(|r| r.as_str().to_owned()),
+            Ok("first line second third end".to_owned())
+        );
+        let longest = "é".repeat(256);
+        assert_eq!(
+            checked(&longest).map(|r| r.as_str().to_owned()),
+            Ok(longest.clone())
+        );
+        assert_eq!(
+            checked(&format!("{longest}x")).err(),
+            Some("Keep the reason to 256 characters.")
+        );
+        assert_eq!(
+            checked("bell \u{7}").err(),
+            Some("The reason holds a character that cannot be recorded.")
+        );
+    }
+}

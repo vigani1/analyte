@@ -4,6 +4,11 @@ use crate::{deadline, installation::config::Program};
 use analyte_model::{DeliveryId, Identifier, Reason, ReceiptId};
 use analyte_store::{Audit, Handle, InterpretationCommit, Reprocess};
 
+/// The audit action recorded when retained evidence is read again.
+pub const REPROCESS_ACTION: &str = "receipt-reprocess";
+/// The audit action recorded when a parked item is marked resolved.
+pub const RESOLVE_ACTION: &str = "parked-resolve";
+
 /// Selects retained evidence without accepting unvalidated textual IDs inward.
 #[derive(Clone, Copy)]
 pub enum ReprocessTarget {
@@ -53,7 +58,7 @@ pub async fn reprocess(
             parked,
             audit: Audit {
                 actor,
-                action: Identifier::new("receipt-reprocess")?,
+                action: Identifier::new(REPROCESS_ACTION)?,
                 targets: Vec::new(),
                 time: jiff::Timestamp::now().as_second(),
                 reason,
@@ -80,7 +85,7 @@ pub async fn resolve(
 ) -> Result<(), Error> {
     let audit = Audit {
         actor,
-        action: Identifier::new("parked-resolve")?,
+        action: Identifier::new(RESOLVE_ACTION)?,
         targets: vec![Identifier::new(&id.to_string())?],
         time: jiff::Timestamp::now().as_second(),
         reason,

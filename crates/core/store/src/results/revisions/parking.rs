@@ -1,5 +1,23 @@
 //! Parks unresolved results and writes reprocessing audits in the caller transaction.
 use super::{Error, IdentityStatus, Interpretation, Reading, RevisionOutcome, params};
+
+/// The reason parked when processing a message again found no results at all.
+pub const NO_RESULTS_REASON: &str = "reprocessing produced no results";
+
+/// A parked result's reason is `result reconciliation: ` and its outcome.
+const RECONCILIATION_OPEN: &str = "result reconciliation: ";
+
+/// The reason a parked result is stored with: its reconciliation outcome.
+fn reconciliation_reason(outcome: &RevisionOutcome) -> String {
+    format!("{RECONCILIATION_OPEN}{outcome}")
+}
+
+/// Reads back the outcome a parked result's reason names, the exact reverse
+/// of how it was written; any other text gives `None`.
+#[must_use]
+pub fn reconciled_outcome(stored: &str) -> Option<RevisionOutcome> {
+    RevisionOutcome::from_stored(stored.strip_prefix(RECONCILIATION_OPEN)?)
+}
 pub(super) fn reconciliation_succeeded(
     evidence: &Interpretation,
     outcomes: &[RevisionOutcome],
@@ -50,7 +68,7 @@ pub(super) fn park_outcomes(
                     [crate::parked::evidence(
                         crate::ParkedKind::InterpretationFailure.as_str(),
                         &serde_json::from_str::<String>(receipt_key)?,
-                        "reprocessing produced no results",
+                        NO_RESULTS_REASON,
                         Some(crate::parked::ParkingContext::Interpretation { version }),
                     )?],
                 )?;
@@ -73,7 +91,7 @@ pub(super) fn park_outcomes(
                                 {
                                     guard.to_owned()
                                 }
-                                _ => format!("result reconciliation: {outcome}"),
+                                _ => reconciliation_reason(outcome),
                             },
                             Some(crate::parked::ParkingContext::Result {
                                 version: Some(version),
@@ -105,4 +123,38 @@ pub(super) fn write_reprocess_audit(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use analyte_model::Revision;
+
+    // A parked result's reason names its reconciliation outcome; it reads back
+    // exactly, and any other spelling does not.
+    #[test]
+    fn reconciliation_reasons_read_back_only_their_exact_spelling() {
+        for outcome in [
+            RevisionOutcome::New(Revision(0)),
+            RevisionOutcome::Retransmission(Revision(7)),
+            RevisionOutcome::Correction(Revision(12)),
+            RevisionOutcome::Conflict,
+            RevisionOutcome::Unresolved,
+        ] {
+            let stored = reconciliation_reason(&outcome);
+            assert_eq!(stored, format!("result reconciliation: {outcome}"));
+            assert_eq!(reconciled_outcome(&stored), Some(outcome));
+        }
+        for text in [
+            "",
+            "Conflict",
+            "result reconciliation: conflict",
+            "result reconciliation: New(Revision(01))",
+            "result reconciliation: New(Revision(-1))",
+            "result reconciliation: New(Revision(1)) ",
+            NO_RESULTS_REASON,
+        ] {
+            assert_eq!(reconciled_outcome(text), None, "{text}");
+        }
+    }
 }

@@ -35,6 +35,8 @@ pub use delivery_operator::{DeliveryState, StoredDelivery, UNDELIVERED_MACHINES,
 /// Schema version this build creates and migrates to; readers wait for it
 /// before using tables added by the latest migration.
 pub const SCHEMA_VERSION: i64 = 15;
+pub use delivery::feed::OrderRefusal;
+pub use machine_orders::CANCEL_CONFLICT_REASON;
 pub use machine_orders::{
     ItemDecision, ItemOutcome, MachineOrder, MachineOrderFilter, MachineOrderItem, MachineOrderKey,
     OrderItems, OrderReservation, ReservationPreflight, ReserveOptions, SendRefusal,
@@ -43,11 +45,14 @@ pub use machine_orders::{
 /// LAW execution custody and retained message dispositions.
 pub use revisions::law;
 pub use revisions::{
-    InterpretationCommit, ReconcileAction, ReconcileInput, ReconcileMode, RevisionOutcome,
-    StatusLifecycle,
+    InterpretationCommit, NO_RESULTS_REASON, ReconcileAction, ReconcileInput, ReconcileMode,
+    RevisionOutcome, StatusLifecycle, reconciled_outcome,
 };
 
-pub use query::{FailingDestination, Frame, LastDelivered, ParkedItem, Receipt, Unfinished};
+pub use query::{
+    FailingDestination, Frame, LastDelivered, ParkedCounts, ParkedFilter, ParkedItem, Receipt,
+    Unfinished,
+};
 
 pub use records::{
     Attempt, Audit, CachedOrder, Claim, Delivery, DeliveryKind, FrameProvenance, Health,

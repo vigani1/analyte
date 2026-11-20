@@ -1,5 +1,6 @@
 //! Maps stored receipts without transport handles, orders or acknowledgments.
 mod mapping_reading;
+pub(crate) use mapping_reading::{DERIVED_STATUS_REASON, departure_conflict_at};
 pub(crate) mod policy;
 pub(crate) mod retained;
 use crate::{deadline, installation::config::Machine, intake};
