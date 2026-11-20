@@ -6,7 +6,8 @@
 use super::{
     Definition, Running, SetupError, Shipped, definitions,
     lab_apps::{self, SiteLabApp},
-    listen, site, wizard,
+    site,
+    wizard::{self, listen},
 };
 use crate::admin::server::Context;
 use crate::installation::config::{Program, connections};
@@ -232,8 +233,8 @@ pub(super) struct Saved {
     pub(super) model: String,
     pub(super) link: Link,
     pub(super) connection: Endpoint,
-    pub(super) lab_app: String,
-    pub(super) base_url: String,
+    /// The lab app it sends results to.
+    pub(super) lab_app: analyte_config::Destination,
     /// The save moved a lab app into `lab-apps.toml`.
     pub(super) moved: bool,
     pub(super) backups: Vec<PathBuf>,
@@ -256,14 +257,12 @@ pub(super) fn save_blocking(
         &plan.site_text,
         plan.lab_apps,
     )?;
-    let destination = &plan.validated.effective().site().destination;
     Ok(Saved {
         digest: plan.validated.digest(),
         model: plan.model,
         link: Link::of(plan.validated.effective().stack()),
         connection: plan.connection,
-        lab_app: destination.name.as_str().to_owned(),
-        base_url: destination.base_url.as_str().to_owned(),
+        lab_app: plan.validated.effective().site().destination.clone(),
         moved,
         backups: written.backups,
     })
@@ -283,17 +282,29 @@ pub(super) fn model_of(
 }
 
 /// Refuses a test on a serial port or network address a running machine uses.
-/// A running machine named by `usb_serial` is looked up in the current port list,
-/// so choosing its port by name is refused too.
 fn in_use(state: &Context, chosen: &Endpoint, port: Option<&str>) -> Result<(), SetupError> {
+    match holder(state, chosen, port, &|| (state.setup.seams.ports)()) {
+        Some(running) => Err(SetupError::InUse(running.as_str().into())),
+        None => Ok(()),
+    }
+}
+
+/// The running machine that uses the serial port `port` (`chosen` names it)
+/// or, without a port, the network address `chosen`; none when no running
+/// machine does. A running machine named by `usb_serial` is looked up in
+/// `ports`, so choosing its port by name finds it too.
+pub(super) fn holder<'a>(
+    state: &'a Context,
+    chosen: &Endpoint,
+    port: Option<&str>,
+    ports: &dyn Fn() -> std::io::Result<Vec<serial::Listed>>,
+) -> Option<&'a Identifier> {
     for running in &state.setup.running {
         let same = if let Some(port) = port {
             running.link == Link::Serial && {
                 // A fixed name comes back as written, without listing ports.
-                let running_port = serial::locate(&serial::Device::from(&running.endpoint), || {
-                    (state.setup.seams.ports)()
-                })
-                .ok();
+                let running_port =
+                    serial::locate(&serial::Device::from(&running.endpoint), ports).ok();
                 let same_number = matches!(
                     (&running.endpoint, chosen),
                     (Endpoint::UsbSerial(left), Endpoint::UsbSerial(right))
@@ -307,10 +318,10 @@ fn in_use(state: &Context, chosen: &Endpoint, port: Option<&str>) -> Result<(), 
                 && connections::listeners_overlap(&running.endpoint, chosen)
         };
         if same {
-            return Err(SetupError::InUse(running.id.as_str().into()));
+            return Some(&running.id);
         }
     }
-    Ok(())
+    None
 }
 
 /// Refuses, before writing, a connection another machine in the program file
@@ -357,7 +368,7 @@ pub(super) fn listen_target(
             .ok_or(SetupError::NothingToListen)?
             .map_err(SetupError::SerialSettings)?;
             Ok((
-                format!("serial port {name}"),
+                format!("Serial port {name}"),
                 listen::Target::Serial {
                     name,
                     settings,
@@ -377,12 +388,12 @@ pub(super) fn listen_target(
                 .map_err(|_| SetupError::Connection("enter an IP address and port"))?;
             Ok(if link == Link::TcpServer {
                 (
-                    format!("listening on {address}"),
+                    format!("Listening on {address}"),
                     listen::Target::TcpServer(address),
                 )
             } else {
                 (
-                    format!("connecting to {address}"),
+                    format!("Connecting to {address}"),
                     listen::Target::TcpClient(address),
                 )
             })

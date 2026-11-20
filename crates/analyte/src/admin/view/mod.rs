@@ -130,24 +130,6 @@ fn bar(current: Option<Tab>) -> Markup {
 /// Closes what [`page`] opened.
 pub(super) const END: &str = "</main></body></html>";
 
-/// How often a page reloads itself, as the `content` of a refresh `<meta>`.
-#[derive(Clone, Copy)]
-pub(super) enum Refresh {
-    /// The live connection test.
-    EveryTwoSeconds,
-    /// After "Restart now": back to the setup page once the service is up again.
-    SetupAfterRestart,
-}
-
-impl Refresh {
-    const fn content(self) -> &'static str {
-        match self {
-            Self::EveryTwoSeconds => "2",
-            Self::SetupAfterRestart => "15;url=/setup",
-        }
-    }
-}
-
 /// Which header a page gets.
 #[derive(Clone, Copy)]
 enum Header {
@@ -159,17 +141,12 @@ enum Header {
 
 /// Opens a page under `tab` with the header bar and its title as the main heading; close it with [`END`].
 pub(super) fn page(tab: Tab, title: &str) -> Markup {
-    head(title, None, Header::Menu(Some(tab)))
-}
-
-/// Like [`page`], and the browser reloads it as `refresh` says.
-pub(super) fn refreshing(tab: Tab, title: &str, refresh: Refresh) -> Markup {
-    head(title, Some(refresh), Header::Menu(Some(tab)))
+    head(title, Header::Menu(Some(tab)))
 }
 
 /// The login page: no navigation, since nothing else opens before login.
 pub(super) fn login(title: &str) -> Markup {
-    head(title, None, Header::Login)
+    head(title, Header::Login)
 }
 
 /// A whole page under `tab` that only reports `message` under `title`; the message is written for people.
@@ -189,7 +166,7 @@ pub(super) fn problem(
     sentence: &'static str,
     detail: impl std::fmt::Display,
 ) -> Markup {
-    head(title, None, Header::Menu(tab))
+    head(title, Header::Menu(tab))
         .markup("<p class=\"notice bad\">")
         .markup(sentence)
         .markup("</p><p class=\"muted\">Details for support: <code>")
@@ -208,16 +185,11 @@ pub(super) fn refusal(
     (status, Html(problem(None, title, sentence, detail))).into_response()
 }
 
-fn head(title: &str, refresh: Option<Refresh>, header: Header) -> Markup {
+fn head(title: &str, header: Header) -> Markup {
     let mut html = Markup::new().markup(concat!(
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">",
         "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">",
     ));
-    if let Some(refresh) = refresh {
-        html.push_markup("<meta http-equiv=\"refresh\" content=\"");
-        html.push_markup(refresh.content());
-        html.push_markup("\">");
-    }
     html.push_fragment(
         &Markup::new()
             .markup("<title>")
@@ -371,17 +343,6 @@ pub(super) fn count(value: u64) -> Markup {
         .markup("</span>")
 }
 
-/// A settings version: the short form people compare at a glance, with the full
-/// configuration digest (`digest`, a hex SHA-256) on hover.
-pub(super) fn version(digest: &[u8]) -> Markup {
-    Markup::new()
-        .markup("<code class=\"version\" title=\"Full settings version (configuration digest): ")
-        .text(format::digest_hex(digest))
-        .markup("\">")
-        .text(format::digest_short(digest))
-        .markup("</code>")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -401,8 +362,6 @@ mod tests {
         let login = login("Analyte admin");
         assert!(login.contains("href=\"/static/admin.css\""));
         assert!(!login.contains("<nav"));
-        let live = refreshing(Tab::Setup, "Connection test", Refresh::EveryTwoSeconds);
-        assert!(live.contains("<meta http-equiv=\"refresh\" content=\"2\">"));
     }
 
     // Owner request 2026-11-19 (lab-manager admin pages, item 6): four main tabs,
@@ -460,19 +419,6 @@ mod tests {
         );
         assert!(CSS.contains(".count.over"));
         assert!(!count(3).contains("pill"));
-    }
-
-    // Owner request 2026-11-19 (item 8): the short settings version, full digest on hover.
-    #[test]
-    fn settings_version_is_short_with_the_full_digest_on_hover() {
-        let html = version(&[0xab; 32]);
-        let full = "ab".repeat(32);
-        assert_eq!(
-            &*html,
-            format!(
-                "<code class=\"version\" title=\"Full settings version (configuration digest): {full}\">abababababab</code>"
-            )
-        );
     }
 
     // The stylesheet stays inside the CSP: no imports, fonts or external URLs.

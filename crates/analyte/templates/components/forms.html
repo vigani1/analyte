@@ -1,4 +1,4 @@
-{#- Macros for actions: a link drawn as a button with or without an icon, filter chips, the next page, the reason and list dialogs, the audited original-bytes form and a lab app key field. -#}
+{#- Macros for actions: a link drawn as a button with or without an icon, filter chips, the next page, the reason and list dialogs, the audited original-bytes form, a lab app key field, and the setup steps' hidden choices and Back and Next. -#}
 {%- import "components/icon.html" as draw %}
 
 {#- A link to the page that does something, drawn as a button; `class` picks its kind and size. -#}
@@ -84,4 +84,19 @@
 {%- when Entry::Needed(why) %}
 <div class="field"><label class="field__label" for="{{ key.input }}">{{ key.label }}</label><input id="{{ key.input }}" class="input mono" type="password" name="{{ key.field }}" autocomplete="off" maxlength="4096" placeholder="Paste the {{ key.label|lower }}" aria-describedby="{{ key.input }}-why"><span id="{{ key.input }}-why" class="field__error">{% call draw::icon(crate::admin::view::icon::Icon::Problem, "icon--sm") %}{% endcall %}{{ why }}</span></div>
 {%- endmatch %}
+{%- endmacro %}
+
+{#- The choices made in earlier setup steps, carried as hidden fields; never a secret. -#}
+{%- macro hidden_fields(fields) -%}
+{%- for (name, value) in fields.iter() %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor -%}
+{%- endmacro %}
+
+{#- A setup step's foot: Back and Next, both carrying the choices, with which step this is between them. -#}
+{%- macro step_foot(foot, count) -%}
+<form class="wizard-foot" method="get" action="{{ foot.next }}">
+{%- call hidden_fields(foot.hidden) %}{% endcall %}
+<button type="submit" class="btn btn--outline" formaction="{{ foot.back }}">Back</button>
+<span class="subtle wizard__count">{{ count }}</span>
+<button type="submit" class="btn {% if foot.primary %}btn--primary{% else %}btn--outline{% endif %}">Next</button>
+</form>
 {%- endmacro %}

@@ -1,0 +1,21 @@
+{#- Add a machine (GET /setup/add): its fixed name, what reusing an earlier name means, and Add, after which the setup steps follow. -#}
+{% extends "layout/base.html" %}
+{%- import "components/forms.html" as forms %}
+{%- import "components/layout.html" as layout %}
+{%- block main %}
+{% call layout::detail_head(head) %}{% endcall %}
+<form class="stack stack--lg setup-form" method="post" action="/setup/add">
+<input type="hidden" name="csrf" value="{{ csrf }}">
+<section class="card card--pad stack" aria-labelledby="ad-machine">
+<h2 id="ad-machine" class="label">The machine</h2>
+<p class="setup__text">Adds a machine that is not set up yet. Analyte checks the settings, keeps a dated copy of the old ones and writes the new ones; if anything fails, the old settings are put back. Then the setup steps follow: its model, its connection, a test and the save.</p>
+<div class="field"><label class="field__label" for="ad-name">Machine name</label><input id="ad-name" class="input" name="name" required maxlength="64" value="{{ name }}"><span class="field__hint">Letters, digits, - and _. It also names the machine’s settings file (name.site.toml) and cannot change later: stored results are kept under it.</span></div>
+</section>
+<section class="card card--pad stack" aria-labelledby="ad-reuse">
+<h2 id="ad-reuse" class="label">Reusing a name</h2>
+<p class="setup__text">Analyte keeps results, items to review and history by machine name. A machine added under the name of one removed earlier joins that stored history. Use an earlier name only for the same analyzer; give a different analyzer a new name, so its results are never matched with the old one’s.</p>
+<div class="field"><label class="check"><input type="checkbox" name="same_analyzer" value="yes">This is the same analyzer that used this name before</label><span class="field__hint">Needed only when the name has stored history.</span></div>
+</section>
+<div class="wizard-foot">{% call forms::link_button(crate::admin::view::Tab::Setup.href(), "Cancel", "btn--outline") %}{% endcall %}<button type="submit" class="btn btn--primary">Add machine</button></div>
+</form>
+{%- endblock %}

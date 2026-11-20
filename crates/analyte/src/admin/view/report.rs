@@ -1,4 +1,4 @@
-//! Holds what restyled pages share to report: a page head with its way back, buttons, statuses, the page that only reports, and every way a Machines or Lab apps page refuses or fails with its status code, words and the exact reason kept for support.
+//! Holds what restyled pages share to report: a page head with its way back, buttons, statuses, the page that only reports, and every way a Machines, Lab apps or Setup page refuses or fails with its status code, words and the exact reason kept for support.
 use super::{
     self as view, Tab, Tone, format,
     format::{Line, Part},
@@ -67,6 +67,8 @@ pub(in crate::admin) enum Section<'a> {
     Machines(Option<&'a str>),
     /// Under Lab apps, about the lab app named, which has a page.
     LabApps(Option<&'a str>),
+    /// Under Setup, about the machine named, whose setup steps start at step 1.
+    Setup(Option<&'a str>),
 }
 
 impl Section<'_> {
@@ -75,6 +77,7 @@ impl Section<'_> {
         match self {
             Self::Machines(_) => Tab::Machines,
             Self::LabApps(_) => Tab::LabApps,
+            Self::Setup(_) => Tab::Setup,
         }
     }
 
@@ -91,11 +94,15 @@ impl Section<'_> {
                     format::lab_app_href(name),
                 )
             }),
+            Self::Setup(id) => {
+                id.map(|id| ("Open its setup", id.to_owned(), format::setup_href(id, "")))
+            }
         }
     }
 
-    /// The head of a page here: "Machines / cobas-e411" or "Lab apps /
-    /// main-lab" when it is about one thing, linked back to its page.
+    /// The head of a page here: "Machines / cobas-e411", "Lab apps /
+    /// main-lab" or "Setup / cobas-e411" when it is about one thing, linked
+    /// back to its page.
     pub(in crate::admin) fn head(self, title: impl Into<String>) -> Head {
         let tab = self.tab();
         let mut crumbs = vec![Crumb {
@@ -132,6 +139,7 @@ impl Section<'_> {
             label: match self {
                 Self::Machines(_) => "Back to Machines",
                 Self::LabApps(_) => "Back to Lab apps",
+                Self::Setup(_) => "Back to Setup",
             },
             class: if links.is_empty() {
                 "btn--primary"
@@ -169,7 +177,7 @@ pub(in crate::admin) fn respond(
     }
 }
 
-/// Why a Machines or Lab apps page could not do what was asked.
+/// Why a Machines, Lab apps or Setup page could not do what was asked.
 pub(in crate::admin) enum Problem {
     /// No machine runs or is listed under this name.
     NotFound,
@@ -228,6 +236,9 @@ impl Problem {
                     }
                     Section::LabApps(_) => {
                         "Lab apps hold addresses and keys, so their pages need a signed-in browser session"
+                    }
+                    Section::Setup(_) => {
+                        "Setup changes settings, so its pages need a signed-in browser session"
                     }
                 },
                 "Sign in with the admin key, then open the page again.".into(),
@@ -289,7 +300,7 @@ impl Problem {
         let (title, alert, text) = self.words(section);
         let section = match section {
             Section::Machines(_) if matches!(self, Self::NotFound) => Section::Machines(None),
-            Section::Machines(_) | Section::LabApps(_) => section,
+            Section::Machines(_) | Section::LabApps(_) | Section::Setup(_) => section,
         };
         let detail = self.detail(section);
         let page = Report {

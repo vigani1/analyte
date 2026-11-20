@@ -10,12 +10,11 @@
 //! the Overview's lab app rules; reads stop after [`view::READ_BUDGET`].
 mod page;
 
-use super::{Csrf, RELOAD, SetupError, audit, entries, off_thread, site, stored};
+use super::{Csrf, RELOAD, SetupError, audit, copies, entries, off_thread, site, stored};
 use crate::admin::machines::{DialogItem, Hover, RemoveDialog};
 use crate::admin::overview::{self, Delivery, Standing};
 use crate::admin::removed;
 use crate::admin::{
-    markup::Markup,
     server::Context,
     sessions::Session,
     view::{
@@ -1141,14 +1140,6 @@ fn saved_page(
     respond(state, Some(session), section, StatusCode::OK, page.render())
 }
 
-/// The dated copies of the old settings, for support.
-fn copies(backups: &[PathBuf]) -> Vec<String> {
-    backups
-        .iter()
-        .map(|backup| format!("Copy of the old settings: {}", backup.display()))
-        .collect()
-}
-
 /// A refused lab app form: nothing was written; the reason in words.
 fn refused(state: &Context, session: &Session, name: Option<&str>, error: &SetupError) -> Response {
     // A lab app that does not exist has no page to go back to.
@@ -1368,50 +1359,28 @@ pub(in crate::admin) async fn remove(
     )
 }
 
-/// The machine form's lab app step: a picker of the known lab apps, with
-/// `current` (or the only one) chosen; a link to add one when there is none.
-pub(super) fn picker(scan: &Scan, current: Option<&str>) -> Markup {
-    if scan.known.is_empty() {
-        return Markup::new().markup(concat!(
-            "<p class=\"notice info\">No lab app is set up yet. ",
-            "<a href=\"/setup/lab-apps/new\">Add a lab app</a> first (its address and keys), ",
-            "then come back and choose it here.</p>"
-        ));
-    }
-    let chosen = current
-        .filter(|name| scan.get(name).is_some())
-        .map(str::to_owned)
-        .or_else(|| match scan.known.as_slice() {
-            [only] => Some(only.settings.name.as_str().to_owned()),
-            _ => None,
-        });
-    let mut html = Markup::new().markup(
-        "<label class=\"field\"><span>Send results to</span><select name=\"lab_app\" required>",
-    );
-    if chosen.is_none() {
-        html.push_markup("<option value=\"\" selected>Choose a lab app</option>");
-    }
-    for known in &scan.known {
-        let name = known.settings.name.as_str();
-        html.push_fragment(
-            &Markup::new()
-                .markup("<option value=\"")
-                .text(name)
-                .markup(if chosen.as_deref() == Some(name) {
-                    "\" selected>"
-                } else {
-                    "\">"
-                })
-                .text(name)
-                .markup(" (")
-                .text(known.settings.base_url.as_str())
-                .markup(")</option>"),
-        );
-    }
-    html.markup(concat!(
-        "</select></label><p class=\"muted\">Addresses and keys are set once on the ",
-        "<a href=\"/setup/lab-apps\">Lab app page</a>.</p>"
-    ))
+/// Which of `lab_app`'s keys neither the service environment nor the locked
+/// keys file holds, said with when keys apply; none when both are found or
+/// the keys file cannot be read, since then it cannot be told. Reads the keys
+/// file, so call it off the async workers. Never reads out a value.
+pub(super) fn missing_keys(state: &Context, lab_app: &Destination) -> Option<String> {
+    let source = KeySource::read(state);
+    let stored = source.stored.as_ref().ok()?;
+    let missing: Vec<&str> = [
+        ("API key", &lab_app.api_key_name),
+        ("signing key", &lab_app.signing_key_name),
+    ]
+    .into_iter()
+    .filter(|(_, name)| {
+        matches!(
+            secrets::source(name.as_str(), source.environment, stored),
+            secrets::Source::Missing
+        )
+    })
+    .map(|(label, _)| label)
+    .collect();
+    (!missing.is_empty())
+        .then(|| format!("{} {}", format::missing_keys(&missing), format::KEYS_APPLY))
 }
 
 #[cfg(test)]

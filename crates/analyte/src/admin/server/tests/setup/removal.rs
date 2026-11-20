@@ -219,8 +219,8 @@ async fn removed_machine_result_is_delivered_once() -> Result<(), Error> {
     let setup = request(&host, "/setup", &format!("Cookie: {cookie}\r\n"), None).await?;
     assert!(
         setup.contains(concat!(
-            "<p class=\"notice\">Removed machine synthetic: 1 result or order message still being ",
-            "delivered to lab app demo.</p>"
+            "<p class=\"alert__title\">Removed machine synthetic: 1 result or order message ",
+            "still being delivered to lab app demo.</p>"
         )),
         "{setup}"
     );

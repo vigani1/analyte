@@ -6,6 +6,7 @@ use std::sync::Mutex;
 mod budget;
 mod lab_apps;
 mod removal;
+mod steps;
 
 /// Synthetic key values; neither may ever appear in a page, audit row or log.
 const API_KEY: &str = "sensitive-setup-api-key-5XK";
@@ -21,6 +22,8 @@ struct Fixture {
     store: Arc<analyte_store::Handle>,
     host: String,
     cookie: String,
+    /// The admin key, for requests without a signed-in session.
+    bearer: String,
     owner: tokio::task::JoinHandle<Result<(), crate::admin::Error>>,
     _stop: watch::Sender<bool>,
     written: Arc<Mutex<Vec<u8>>>,
@@ -272,6 +275,7 @@ async fn start_program_with(
         store,
         host,
         cookie,
+        bearer,
         owner,
         _stop: stop,
         written,
@@ -351,10 +355,10 @@ async fn page_lists_definitions_and_detected_adapters() -> Result<(), Error> {
         "<span title=\"example/serial-astm (name generic-synthetic)\">Example serial astm</span>",
         "<span title=\"Evidence level: documented\">Built from the manuals</span>",
         "<span title=\"roche/cobas-e411\">Roche cobas e 411</span>",
-        "<span class=\"pill warn\">Not ready yet</span>",
+        "</svg>Not ready yet</span>",
         "Facts or recordings are still missing",
         concat!(
-            "<td data-label=\"Model\"><span title=\"machines/example/serial-astm/machine.toml\">",
+            "<td><span title=\"machines/example/serial-astm/machine.toml\">",
             "Example serial astm</span></td>",
         ),
         "href=\"/setup/synthetic\"",
@@ -377,8 +381,14 @@ async fn page_lists_definitions_and_detected_adapters() -> Result<(), Error> {
         .await?;
     assert!(machine.starts_with("HTTP/1.1 200"), "{machine}");
     for expected in [
-        "value=\"usb:A10K3XYZ\" checked> COM12 — FT232R USB UART — saved as serial number A10K3XYZ",
-        "value=\"name:COM3\"> COM3 — USB-SERIAL CH340 — no serial number; saved as the port name",
+        concat!(
+            "value=\"usb:A10K3XYZ\" checked><span><span class=\"choice__title mono\">COM12</span> ",
+            "<span class=\"choice__meta\">– FT232R USB UART – remembered by its serial number A10K3XYZ</span>"
+        ),
+        concat!(
+            "value=\"name:COM3\"><span><span class=\"choice__title mono\">COM3</span> ",
+            "<span class=\"choice__meta\">– USB-SERIAL CH340 – no serial number; remembered by its port name</span>"
+        ),
         "Analyte saves that number",
     ] {
         assert!(machine.contains(expected), "missing {expected}");
@@ -388,7 +398,7 @@ async fn page_lists_definitions_and_detected_adapters() -> Result<(), Error> {
             "/setup/synthetic/test?definition=example/serial-astm&port=usb%3AA10K3XYZ&lab_app=demo",
         )
         .await?;
-    assert!(test.contains("may contain patient data"), "{test}");
+    assert!(test.contains("never the message"), "{test}");
     let network = fixture
         .get("/setup/synthetic/connection?definition=example/network-hl7")
         .await?;
@@ -411,6 +421,17 @@ fn row_not_set_up(page: &str, machine: &str) -> bool {
     })
 }
 
+/// The table row of `page` whose cell text is exactly `machine`, as the
+/// packaging check finds it; empty when there is none.
+fn machine_row<'a>(page: &'a str, machine: &str) -> &'a str {
+    let cell = format!(">{machine}<");
+    page.split("<tr")
+        .skip(1)
+        .map(|row| row.split("</tr>").next().unwrap_or_default())
+        .find(|row| row.contains(&cell))
+        .unwrap_or_default()
+}
+
 // Owner request 2026-11-19 (lab app set once; PR #260 packaging failure): the
 // installers' exact starter files load, the machine not set up needs no lab app,
 // and the setup page lists machine-1 as not set up, as the packaging workflow
@@ -426,7 +447,8 @@ async fn starter_setup_page_matches_the_packaging_check() -> Result<(), Error> {
         2,
         "the Windows and Linux checks match one row"
     );
-    let link = "No lab app yet: <a href=\"/setup/lab-apps/new\">add one</a>";
+    let link =
+        "<a class=\"btn btn--primary btn--sm\" href=\"/setup/lab-apps/new\">Add a lab app</a>";
     for program in [
         include_str!("../../../../../../../packaging/linux/starter/analyte.toml"),
         include_str!("../../../../../../../packaging/windows/starter/analyte.toml"),
@@ -460,6 +482,7 @@ async fn starter_setup_page_matches_the_packaging_check() -> Result<(), Error> {
         assert!(index.starts_with("HTTP/1.1 200"), "{index}");
         assert!(row_not_set_up(&index, "machine-1"), "{index}");
         assert!(!row_not_set_up(&index, "machine-2"), "{index}");
+        assert!(index.contains("No lab app is set up yet"), "{index}");
         assert!(index.contains(link), "missing {link}: {index}");
         let lab_apps = fixture.get("/setup/lab-apps").await?;
         assert!(lab_apps.contains("No lab app is set up yet"), "{lab_apps}");
@@ -487,10 +510,11 @@ async fn waiting_machine_is_set_up_from_the_starter() -> Result<(), Error> {
     assert!(before.machines().is_empty());
     assert_eq!(before.awaiting_setup().len(), 1);
     let index = fixture.get("/setup").await?;
+    let row = machine_row(&index, "machine-1");
     assert!(
-        index.contains(
-            "<td><strong>machine-1</strong></td><td data-label=\"Model\"><span class=\"muted\">Not chosen yet</span></td><td data-label=\"Status\"><span class=\"pill\">Not set up yet</span></td>"
-        ),
+        row.contains("<td class=\"subtle\">Not chosen yet</td>")
+            && row.contains("<span class=\"status status--off\">")
+            && row.contains("</svg>Not set up yet</span>"),
         "{index}"
     );
     let first = fixture.get("/setup/machine-1").await?;
@@ -505,9 +529,8 @@ async fn waiting_machine_is_set_up_from_the_starter() -> Result<(), Error> {
     let empty = fixture.get(page).await?;
     assert!(empty.contains("name=\"host\""), "{empty}");
     assert!(
-        empty.contains(
-            "No lab app is set up yet. <a href=\"/setup/lab-apps/new\">Add a lab app</a>"
-        ),
+        empty.contains("No lab app is set up yet")
+            && empty.contains("href=\"/setup/lab-apps/new\">Add a lab app</a>"),
         "{empty}"
     );
     assert!(
@@ -554,12 +577,18 @@ async fn waiting_machine_is_set_up_from_the_starter() -> Result<(), Error> {
     .join("&");
     let saved = fixture.post("/setup/machine-1", &body).await?;
     assert!(saved.starts_with("HTTP/1.1 200"), "{saved}");
-    assert!(saved.contains("Running now</dt><dd><span class=\"muted\">Not running yet</span>"));
+    assert!(
+        saved
+            .contains("<dt>Running now</dt><dd><span class=\"subtle\">Not running yet</span></dd>")
+    );
     for shown in [
-        "<dt>Machine</dt><dd><strong>machine-1</strong></dd>",
+        "<dt>Machine</dt><dd>machine-1</dd>",
         "<dt>Model</dt><dd>Example network hl7</dd>",
         "Analyte listens on 127.0.0.1:5600; the machine connects to it",
-        "<dt>Lab app</dt><dd>lab-app (https://lab.example.invalid/v1)</dd>",
+        concat!(
+            "<dt>Sends results to</dt><dd><a class=\"link\" href=\"/setup/lab-apps/lab-app\" ",
+            "title=\"https://lab.example.invalid/v1\">lab-app</a>"
+        ),
         "Restart now",
     ] {
         assert!(saved.contains(shown), "missing {shown}: {saved}");
@@ -626,7 +655,7 @@ async fn invalid_address_is_refused_before_anything_is_written() -> Result<(), E
     let response = fixture.post("/setup/synthetic", &body).await?;
     assert!(response.starts_with("HTTP/1.1 409"), "{response}");
     assert!(
-        response.contains("there is no lab app called nowhere"),
+        response.contains("There is no lab app called nowhere"),
         "{response}"
     );
     assert_eq!(std::fs::read_to_string(&fixture.site)?, before);
@@ -972,7 +1001,7 @@ unknown_setting = 1
     let page = fixture.get("/setup").await?;
     assert!(page.starts_with("HTTP/1.1 200"), "{page}");
     let notice = page
-        .split("<p class=\"notice bad\">The lab apps file could not be read: ")
+        .split("<p class=\"alert__title\">The lab apps file could not be read</p><p class=\"alert__text\">")
         .nth(1)
         .and_then(|rest| rest.split("</p>").next())
         .ok_or("no notice")?;
@@ -982,10 +1011,11 @@ unknown_setting = 1
 }
 
 // Owner request 2026-11-18 (setup page); AGENTS.md rules 7 and 10: the listen
-// test shows the bytes on the page only, writes nothing to the port, refuses a
-// port the running service owns, and stores and logs nothing.
+// test writes nothing to the port, refuses a port the running service owns, and
+// stores and logs nothing. Owner decision 2026-11-20 (admin restyle b4): the
+// page counts the bytes and never shows them, not even as hex.
 #[tokio::test(flavor = "multi_thread")]
-async fn listen_test_shows_bytes_only_on_the_page() -> Result<(), Error> {
+async fn listen_test_counts_bytes_and_never_shows_them() -> Result<(), Error> {
     let logs = crate::runtime::log_capture::init();
     let fixture = start().await?;
     // The running machine names its adapter by serial number; the fake listing
@@ -994,7 +1024,7 @@ async fn listen_test_shows_bytes_only_on_the_page() -> Result<(), Error> {
         let form = fixture.form(&[("port", busy)]).await?;
         let refused = fixture.post("/setup/synthetic/listen", &form).await?;
         assert!(refused.starts_with("HTTP/1.1 409"), "{refused}");
-        assert!(refused.contains("machine synthetic is using this connection"));
+        assert!(refused.contains("Machine synthetic is using this connection"));
     }
     let body = fixture.form(&[("port", "name:COM3")]).await?;
     let started = fixture.post("/setup/synthetic/listen", &body).await?;
@@ -1002,17 +1032,16 @@ async fn listen_test_shows_bytes_only_on_the_page() -> Result<(), Error> {
     let mut view = String::new();
     for _ in 0..100 {
         view = fixture.get("/setup/listen").await?;
-        if view.contains("SYN-MARK-731") {
+        if view.contains("12 bytes received") {
             break;
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
-    assert!(
-        view.contains("53 59 4e 2d 4d 41 52 4b 2d 37 33 31"),
-        "{view}"
-    );
+    assert!(view.contains("12 bytes received"), "{view}");
+    assert!(!view.contains("SYN-MARK-731"), "{view}");
+    assert!(!view.contains("53 59 4e"), "{view}");
     assert!(view.contains("http-equiv=\"refresh\""));
-    assert!(view.contains("Analyte sends nothing"));
+    assert!(view.contains("It sends nothing to the machine"));
     let token = csrf(&view)?;
     let stopped = fixture
         .post("/setup/listen/stop", &format!("csrf={}", encode(&token)))
@@ -1059,7 +1088,7 @@ async fn poisoned_test_state_is_shown_as_unavailable() -> Result<(), Error> {
     let page = fixture.get("/setup/listen").await?;
     assert!(page.starts_with("HTTP/1.1 409"), "{page}");
     assert!(
-        page.contains("the connection test state is unavailable; restart the service"),
+        page.contains("The connection test state is unavailable; restart the service."),
         "{page}"
     );
     assert!(!page.contains("No test has been started"), "{page}");
@@ -1077,7 +1106,7 @@ async fn listen_test_compares_port_names_like_the_loader() -> Result<(), Error> 
     let answer = fixture.post("/setup/synthetic/listen", &form).await?;
     if cfg!(windows) {
         assert!(answer.starts_with("HTTP/1.1 409"), "{answer}");
-        assert!(answer.contains("machine synthetic is using this connection"));
+        assert!(answer.contains("Machine synthetic is using this connection"));
     } else {
         assert!(answer.starts_with("HTTP/1.1 303"), "{answer}");
     }
@@ -1198,6 +1227,29 @@ impl Fixture {
         self.config
             .parent()
             .unwrap_or_else(|| std::path::Path::new("."))
+    }
+
+    /// The admin key as a request header, without a signed-in session.
+    fn bearer_header(&self) -> Result<String, Error> {
+        Ok(format!(
+            "Authorization: Bearer {}
+",
+            self.bearer
+        ))
+    }
+
+    /// Makes the store refuse every audit row from now on, as a full or broken
+    /// audit table would.
+    fn refuse_audits(&self) -> Result<(), Error> {
+        let database = std::fs::read_dir(&self.data)?
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .find(|path| path.extension().is_some_and(|e| e == "db"))
+            .ok_or("store file")?;
+        rusqlite::Connection::open(&database)?.execute_batch(
+            "CREATE TRIGGER refuse_audit BEFORE INSERT ON audit BEGIN SELECT RAISE(ABORT,'synthetic audit refusal'); END;",
+        )?;
+        Ok(())
     }
 
     /// Posts `fields` with the CSRF value of the page at `page`.
@@ -1385,7 +1437,7 @@ async fn add_machine_writes_a_checked_entry_and_starter_site() -> Result<(), Err
     let program_before = std::fs::read_to_string(&fixture.config)?;
     let index = fixture.get("/setup").await?;
     assert!(
-        index.contains("action=\"/setup/add\"><button>Add machine</button>"),
+        index.contains("href=\"/setup/add\"><svg") && index.contains("</svg>Add machine</a>"),
         "{index}"
     );
     let form = fixture.get("/setup/add").await?;
@@ -1437,15 +1489,19 @@ async fn add_machine_writes_a_checked_entry_and_starter_site() -> Result<(), Err
         "the previous program file is kept"
     );
     let index = fixture.get("/setup").await?;
+    let row = machine_row(&index, "machine-2");
     assert!(
-        index.contains(
-            "<td><strong>machine-2</strong></td><td data-label=\"Model\"><span class=\"muted\">Not chosen yet</span></td><td data-label=\"Status\"><span class=\"pill\">Not set up yet</span></td>"
-        ),
+        row.contains("<td class=\"subtle\">Not chosen yet</td>")
+            && row.contains("</svg>Not set up yet</span>"),
         "{index}"
     );
     let page = fixture.get("/setup/machine-2").await?;
     assert!(page.contains(STEP_ONE), "{page}");
-    assert!(page.contains("<h1>Set up machine-2</h1>"), "{page}");
+    assert!(
+        page.contains("<title>Set up machine-2 · Analyte</title>"),
+        "{page}"
+    );
+    assert!(page.contains("<h1>machine-2</h1>"), "{page}");
     let audits = fixture.audited("setup-add").await?;
     assert_eq!(audits.len(), 1);
     assert!(
@@ -1663,12 +1719,11 @@ async fn remove_warns_then_keeps_store_and_site_backup() -> Result<(), Error> {
         "{parked_page}"
     );
     let index = fixture.get("/setup").await?;
+    let row = machine_row(&index, "synthetic");
     assert!(
-        index.contains(concat!(
-            "<td><strong>synthetic</strong></td><td data-label=\"Model\"></td>",
-            "<td data-label=\"Status\"><span class=\"pill warn\">",
-            "Removed: stops at the restart</span></td>"
-        )),
+        row.contains("<span class=\"status status--warn\">")
+            && row.contains("</svg>Removed: stops at the restart</span>")
+            && !row.contains("Set up"),
         "{index}"
     );
     let audits = fixture.audited("setup-remove").await?;
@@ -1942,7 +1997,7 @@ async fn two_machines_cannot_share_a_port_or_serial_number() -> Result<(), Error
         .await?;
     assert!(refused.starts_with("HTTP/1.1 409"), "{refused}");
     assert!(
-        refused.contains("machines synthetic and machine-2 both use USB serial number A10K3XYZ"),
+        refused.contains("Machines synthetic and machine-2 both use USB serial number A10K3XYZ"),
         "{refused}"
     );
     assert_eq!(std::fs::read_to_string(&fixture.config)?, program_before);
@@ -1968,14 +2023,19 @@ async fn two_machines_cannot_share_a_port_or_serial_number() -> Result<(), Error
 }
 
 /// Step 1 marked as the current step.
-const STEP_ONE: &str = "<li aria-current=\"step\"><span class=\"number\">1</span>Machine</li>";
+const STEP_ONE: &str = concat!(
+    "<li class=\"step\" aria-current=\"step\"><span class=\"step__n\">Step 1</span>",
+    "<span class=\"step__name\">Machine</span></li>"
+);
 
 /// The choices for `synthetic` on the serial example with a detected adapter, as a query.
 const DRAFT: &str = "definition=example%2Fserial-astm&port=name%3ACOM3&lab_app=demo";
 
-/// The indicator's item for the current step.
+/// The stepper's item for the current step.
 fn current(number: &str, label: &str) -> String {
-    format!("<li aria-current=\"step\"><span class=\"number\">{number}</span>{label}</li>")
+    format!(
+        "<li class=\"step\" aria-current=\"step\"><span class=\"step__n\">Step {number}</span><span class=\"step__name\">{label}</span></li>"
+    )
 }
 
 // Owner request 2026-11-19 (item 3): setup is four steps, one per screen, each
@@ -2007,8 +2067,8 @@ async fn each_step_shows_its_indicator_and_keeps_the_choices() -> Result<(), Err
         "value=\"example/serial-astm\" required checked",
         "<input type=\"hidden\" name=\"port\" value=\"name:COM3\">",
         "<input type=\"hidden\" name=\"lab_app\" value=\"demo\">",
-        "<form method=\"get\" action=\"/setup/synthetic/connection\">",
-        "<button>Next: Connection</button>",
+        "method=\"get\" action=\"/setup/synthetic/connection\">",
+        "<button type=\"submit\" class=\"btn btn--primary\">Next</button>",
     ] {
         assert!(first.contains(kept), "missing {kept}: {first}");
     }
@@ -2017,12 +2077,12 @@ async fn each_step_shows_its_indicator_and_keeps_the_choices() -> Result<(), Err
         .get(&format!("/setup/synthetic/connection?{DRAFT}"))
         .await?;
     for kept in [
-        "value=\"name:COM3\" checked> COM3",
+        "value=\"name:COM3\" checked><span><span class=\"choice__title mono\">COM3</span>",
         "<input type=\"hidden\" name=\"definition\" value=\"example/serial-astm\">",
         "<option value=\"demo\" selected>",
-        "<h2>Lab app</h2><label class=\"field\"><span>Send results to</span>",
+        "<label class=\"field__label\" for=\"s2-lab\">Send results to</label><select id=\"s2-lab\" class=\"select\" name=\"lab_app\" required>",
         "formaction=\"/setup/synthetic\" formnovalidate>Back</button>",
-        "<button>Next: Test</button>",
+        "<button type=\"submit\" class=\"btn btn--primary\">Next</button>",
     ] {
         assert!(second.contains(kept), "missing {kept}: {second}");
     }
@@ -2039,13 +2099,16 @@ async fn each_step_shows_its_indicator_and_keeps_the_choices() -> Result<(), Err
         .get(&format!("/setup/synthetic/save?{DRAFT}"))
         .await?;
     for shown in [
-        "<dt>Machine</dt><dd><strong>synthetic</strong></dd>",
+        "<dt>Machine</dt><dd>synthetic</dd>",
         "<dt>Model</dt><dd>Example serial astm</dd>",
         "<span title=\"endpoint = COM3\">Serial port COM3</span>",
-        "<dt>Send results to</dt><dd>demo (https://lab.example.invalid)</dd>",
+        concat!(
+            "<dt>Sends results to</dt><dd><a class=\"link\" href=\"/setup/lab-apps/demo\" ",
+            "title=\"https://lab.example.invalid\">demo</a>"
+        ),
         "<input type=\"hidden\" name=\"port\" value=\"name:COM3\">",
         "<form method=\"post\" action=\"/setup/synthetic\">",
-        "<button>Save</button>",
+        "<button type=\"submit\" class=\"btn btn--primary\">Save</button>",
     ] {
         assert!(review.contains(shown), "missing {shown}: {review}");
     }
@@ -2113,7 +2176,7 @@ async fn skipped_or_tampered_steps_are_refused_with_the_step_to_fix() -> Result<
         (
             vec![("definition", "")],
             machine,
-            "choose one of the listed machine models",
+            "Choose one of the listed machine models",
         ),
         (
             vec![("definition", "roche/cobas-e411")],
@@ -2123,23 +2186,23 @@ async fn skipped_or_tampered_steps_are_refused_with_the_step_to_fix() -> Result<
         (
             vec![("definition", "../../etc")],
             machine,
-            "choose one of the listed machine models",
+            "Choose one of the listed machine models",
         ),
-        (vec![], connection, "choose a serial port"),
+        (vec![], connection, "Choose a serial port"),
         (
             vec![("definition", "example/network-hl7"), ("host", "not-an-ip")],
             connection,
-            "enter an IP address",
+            "Enter an IP address",
         ),
         (
             vec![("port", "name:COM3"), ("lab_app", "")],
             connection,
-            "choose the lab app this machine sends results to",
+            "Choose the lab app this machine sends results to",
         ),
         (
             vec![("port", "name:COM3"), ("lab_app", "nowhere")],
             connection,
-            "there is no lab app called nowhere",
+            "There is no lab app called nowhere",
         ),
     ] {
         let body = fixture.form(&fields).await?;
@@ -2155,9 +2218,10 @@ async fn skipped_or_tampered_steps_are_refused_with_the_step_to_fix() -> Result<
     assert!(tampered.starts_with("HTTP/1.1 409"), "{tampered}");
     for expected in [
         machine,
-        "<form method=\"get\" action=\"/setup/synthetic\">",
-        "<input type=\"hidden\" name=\"port\" value=\"name:COM3\">",
-        "<button>Go to step 1: Machine</button>",
+        concat!(
+            "<a class=\"btn btn--primary\" href=\"/setup/synthetic?definition=roche%2Fcobas-e411",
+            "&#38;port=name%3ACOM3&#38;lab_app=demo\">Go to step 1: Machine</a>"
+        ),
     ] {
         assert!(
             tampered.contains(expected),
@@ -2195,36 +2259,53 @@ async fn listen_until(fixture: &Fixture, ready: impl Fn(&str) -> bool) -> Result
 }
 
 // Owner request 2026-11-19 (item 5); CLSI LIS01-A2 §6.2 and §6.3.1.1 (ENQ, then
-// STX and a frame number): the test page leads with a plain verdict, keeps the
-// bytes as hex and text under a closed Details element, offers the next step,
-// and sends nothing to the machine.
+// STX and a frame number): the test page leads with a plain verdict, offers the
+// next step and sends nothing to the machine. Owner decision 2026-11-20 (admin
+// restyle b4): under the verdict, a closed Details element names the framing
+// characters only; the bytes themselves never reach the page.
 #[tokio::test(flavor = "multi_thread")]
-async fn test_verdict_comes_first_with_the_bytes_under_details() -> Result<(), Error> {
+async fn test_verdict_comes_first_with_the_framing_under_details() -> Result<(), Error> {
     let fixture = start().await?;
     *fixture.input.lock().map_err(|_| "poisoned")? = b"\x05\x021H|\\^&|||SYN\r".to_vec();
     let view = listen_until(&fixture, |view| view.contains("looks like ASTM")).await?;
-    let verdict = concat!(
-        "<p class=\"verdict notice ok\">",
-        "Receiving data from the machine, looks like ASTM.</p>"
-    );
+    let verdict = "<div class=\"alert alert--good\" role=\"note\">";
     let at = view.find(verdict).ok_or("verdict missing")?;
+    assert!(
+        view.contains("<p class=\"alert__title\">Receiving data, looks like ASTM</p>")
+            || view.contains("<p class=\"alert__title\">Received data, looks like ASTM</p>"),
+        "{view}"
+    );
     assert!(view.contains(&current("3", "Test")), "{view}");
     let opened = view
-        .find("<details class=\"support raw\">")
+        .find("<details class=\"details\">")
         .ok_or("closed details missing")?;
     assert!(at < opened, "the verdict comes before the details");
     let details = view
         .get(opened..)
         .and_then(|rest| rest.split("</details>").next())
         .ok_or("details missing")?;
-    assert!(details.contains("05 02 31 48 7c 5c 5e 26"), "{details}");
-    assert!(details.contains("..1H|\\^&amp;|||SYN."), "{details}");
-    assert!(view.contains("<button>Next: Save</button>"), "{view}");
-    assert!(view.contains("<form method=\"get\" action=\"/setup/synthetic/save\">"));
-    let open = fixture.get("/setup/listen?details=open").await?;
     assert!(
-        open.contains("<details class=\"support raw\" open>"),
-        "{open}"
+        details.contains("Details · framing characters received"),
+        "{details}"
+    );
+    assert!(
+        details.contains("&#60;ENQ&#62; &#60;STX&#62; &#60;CR&#62;"),
+        "{details}"
+    );
+    assert!(view.contains("15 bytes received"), "{view}");
+    assert!(
+        !view.contains("SYN") && !view.contains("05 02 31"),
+        "{view}"
+    );
+    assert!(
+        view.contains(
+            "<form class=\"wizard-foot\" method=\"get\" action=\"/setup/synthetic/save\">"
+        ),
+        "{view}"
+    );
+    assert!(
+        view.contains("<button type=\"submit\" class=\"btn btn--primary\">Next</button>"),
+        "{view}"
     );
     assert!(
         fixture.written.lock().map_err(|_| "poisoned")?.is_empty(),
@@ -2240,11 +2321,18 @@ async fn test_warns_when_the_machine_speaks_another_protocol() -> Result<(), Err
     let fixture = start().await?;
     *fixture.input.lock().map_err(|_| "poisoned")? = b"\x0bMSH|^~\\&|SYN|LAB\r".to_vec();
     let view = listen_until(&fixture, |view| view.contains("looks like HL7")).await?;
-    let warning = concat!(
-        "<p class=\"verdict notice\">Receiving data from the machine. It looks like HL7, ",
-        "but this model uses ASTM: check the model or the machine&#39;s setting.</p>"
+    let warning = "data, but it looks like HL7 and this model uses ASTM</p>";
+    let at = view.find(warning).ok_or("warning missing")?;
+    let alert = view
+        .get(..at)
+        .and_then(|before| before.rfind("<div class=\"alert "))
+        .and_then(|start| view.get(start..at))
+        .ok_or("no alert")?;
+    assert!(
+        alert.starts_with("<div class=\"alert alert--bad\""),
+        "{view}"
     );
-    assert!(view.contains(warning), "{view}");
+    assert!(view.contains("pick the right model"), "{view}");
     assert!(fixture.written.lock().map_err(|_| "poisoned")?.is_empty());
     Ok(())
 }
@@ -2267,19 +2355,22 @@ async fn test_with_no_bytes_says_nothing_received() -> Result<(), Error> {
     assert!(view.contains("ended after its time limit"), "{view}");
     assert!(
         view.contains(concat!(
-            "<p class=\"verdict notice\">Nothing received yet: check the cable and the ",
-            "machine&#39;s host settings.</p>"
+            "<p class=\"alert__title\">Nothing received</p><p class=\"alert__text\">Check the ",
+            "cable and the machine’s host settings, then ask the machine to send a result again.</p>"
         )),
         "{view}"
     );
-    assert!(view.contains("Bytes received: 0."), "{view}");
-    assert!(!view.contains("<details class=\"support raw\""), "{view}");
+    assert!(view.contains("0 bytes received"), "{view}");
+    assert!(view.contains("<pre>None yet\n</pre>"), "{view}");
     assert!(!view.contains("http-equiv=\"refresh\""), "{view}");
     assert!(
         view.contains("<form method=\"post\" action=\"/setup/synthetic/listen\">"),
         "{view}"
     );
-    assert!(view.contains("<button>Test again</button>"), "{view}");
+    assert!(
+        view.contains("<button type=\"submit\" class=\"btn btn--outline\">Test again</button>"),
+        "{view}"
+    );
     assert!(fixture.written.lock().map_err(|_| "poisoned")?.is_empty());
     Ok(())
 }

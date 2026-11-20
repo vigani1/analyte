@@ -1,4 +1,4 @@
-{#- Macros that show values: time, exact values on hover, words with times, status, the verdict with its to-do list, wires and their legend, the signal path with its nodes, figures, a history timeline, a fact about one thing, the differences used for one message and where a key is found. -#}
+{#- Macros that show values: time, exact values on hover, words with times, status (with its tone's icon or its own), the verdict with its to-do list, wires and their legend, the signal path with its nodes, figures, a history timeline, a fact about one thing, the differences used for one message and where a key is found. -#}
 {%- import "components/icon.html" as draw %}
 {%- import "components/feedback.html" as feedback %}
 {%- import "components/forms.html" as forms %}
@@ -40,7 +40,12 @@
 
 {#- A status with the exact stored value on hover; no hover when `exact` is empty. -#}
 {%- macro status_exact(tone, word, exact) -%}
-<span class="status status--{{ tone.class() }}"{% if !exact.is_empty() %} title="{{ exact }}"{% endif %}>{% call draw::icon(tone.icon(), "") %}{% endcall %}{{ word }}</span>
+{% call status_with(tone, tone.icon(), word, exact) %}{% endcall %}
+{%- endmacro %}
+
+{#- A status with its own icon, such as the slashed circle of a model that is not ready yet. -#}
+{%- macro status_with(tone, icon, word, exact) -%}
+<span class="status status--{{ tone.class() }}"{% if !exact.is_empty() %} title="{{ exact }}"{% endif %}>{% call draw::icon(icon, "") %}{% endcall %}{{ word }}</span>
 {%- endmacro %}
 
 {#- The answer to "is everything OK?" and, when not, the numbered things with their fix. -#}

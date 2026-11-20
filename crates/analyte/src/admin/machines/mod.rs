@@ -9,7 +9,7 @@
 pub(super) mod departures;
 mod page;
 
-pub(super) use page::{DialogItem, Hover, RemoveDialog, Removed, Rule};
+pub(super) use page::{DialogItem, Hover, Notice, RemoveDialog, Removed, Rule};
 
 use crate::admin::pages::{Cursor, PAGE};
 use crate::admin::server::{Context, Machine};
@@ -30,7 +30,7 @@ use axum::{
     response::Response,
 };
 use jiff::Timestamp;
-use page::{Detail, Empty, Fact, Link, List, Message, Notice, Row, Todo, Value};
+use page::{Detail, Empty, Fact, Link, List, Message, Row, Todo, Value};
 use std::sync::{Arc, atomic::Ordering};
 
 /// How many of a machine's newest stored messages its page lists.

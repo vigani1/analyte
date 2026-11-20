@@ -123,8 +123,6 @@ section {
   box-shadow: var(--shadow); padding: 20px 24px 24px; margin: 0 0 20px;
 }
 section > :last-child { margin-bottom: 0; }
-.heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin-bottom: 16px; }
-.heading h2 { margin: 0; }
 
 /* Key and value lists */
 dl { display: grid; grid-template-columns: minmax(12rem, 18rem) 1fr; margin: 0 0 12px; }
@@ -150,7 +148,6 @@ th:first-child, td:first-child { padding-left: 0; }
 th:last-child, td:last-child { padding-right: 0; }
 td.actions { text-align: right; }
 td > strong:only-child { white-space: nowrap; }
-.buttons { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 
 /* Code */
 code, pre { font-family: ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace; font-size: 13px; }
@@ -173,7 +170,6 @@ button, .button {
 button:hover, .button:hover { filter: brightness(1.08); }
 .secondary { background: var(--surface); color: var(--accent); border-color: var(--field); }
 .danger { background: var(--bad); border-color: var(--bad); color: var(--surface); }
-.quiet-danger { background: var(--surface); color: var(--bad); border-color: var(--bad); }
 .actions-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 16px; }
 
 /* Forms */
@@ -186,14 +182,10 @@ input, select {
 }
 input[type="radio"], input[type="checkbox"] { width: auto; accent-color: var(--accent); }
 input:focus, select:focus { border-color: var(--accent); outline: 3px solid var(--accent-soft); }
-.choices { list-style: none; padding: 0; display: grid; gap: 8px; }
-.choices li { margin: 0; }
-.choices label, .check {
+.check {
   display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 12px; padding: 12px 16px;
   border: 1px solid var(--line); border-radius: 10px; cursor: pointer;
 }
-.choices label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
-.choices label:has(input:disabled) { cursor: not-allowed; color: var(--muted); }
 .check { margin: 0 0 12px; }
 
 /* Status pills: the connection light and other states */
@@ -215,30 +207,8 @@ input:focus, select:focus { border-color: var(--accent); outline: 3px solid var(
   border-radius: 10px; padding: 12px 16px; margin: 0 0 16px;
 }
 .notice.bad { background: var(--bad-bg); border-color: var(--bad); }
-.notice.ok { background: var(--ok-bg); border-color: var(--ok); }
 .notice.info { background: var(--accent-soft); border-color: var(--accent); }
 .notice > :last-child { margin-bottom: 0; }
-
-/* Setup steps: one numbered pill per step, the current one in the accent colour */
-.steps {
-  display: flex; flex-wrap: wrap; gap: 8px; list-style: none; padding: 0; margin: 0 0 20px;
-}
-.steps li {
-  display: flex; align-items: center; gap: 10px; margin: 0; padding: 6px 16px 6px 6px;
-  border: 1px solid var(--line); border-radius: 999px; background: var(--surface);
-  color: var(--muted); font-size: 14px; font-weight: 500;
-}
-.steps .number {
-  display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%;
-  background: var(--idle-bg); color: var(--idle); font-size: 13px; font-weight: 700;
-}
-.steps .done .number { background: var(--ok-bg); color: var(--ok); }
-.steps [aria-current="step"] {
-  border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600;
-}
-.steps [aria-current="step"] .number { background: var(--accent); color: var(--accent-ink); }
-.notice.verdict { font-size: 16px; font-weight: 600; }
-details.raw pre { margin-top: 8px; }
 
 /* Overview status: "All good" in green, or what needs someone in red */
 .status {
@@ -291,7 +261,6 @@ details.raw pre { margin-top: 8px; }
   dt { padding-bottom: 0; }
   dd { border-top: 0; padding-top: 2px; }
   .pill { white-space: normal; }
-  .steps li { padding-right: 12px; }
   .login main { padding-top: 48px; }
 }
 
@@ -306,7 +275,6 @@ details.raw pre { margin-top: 8px; }
     content: attr(data-label); display: block; color: var(--muted); font-size: 12px;
   }
   table.stack td.actions { text-align: left; }
-  table.stack .buttons { justify-content: flex-start; }
 }
 
 @media print {

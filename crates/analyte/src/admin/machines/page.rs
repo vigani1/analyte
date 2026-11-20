@@ -68,10 +68,10 @@ pub(super) struct Empty {
 }
 
 /// A boxed sentence: a tone, a title and, when needed, more text.
-pub(super) struct Notice {
-    pub(super) tone: Tone,
-    pub(super) title: String,
-    pub(super) text: String,
+pub(in crate::admin) struct Notice {
+    pub(in crate::admin) tone: Tone,
+    pub(in crate::admin) title: String,
+    pub(in crate::admin) text: String,
 }
 
 /// One machine on the list.
@@ -196,6 +196,7 @@ pub(in crate::admin) struct RemoveDialog {
 }
 
 /// Words with their exact value on hover; `exact` is empty when there is none.
+#[derive(Clone)]
 pub(in crate::admin) struct Hover {
     pub(in crate::admin) shown: String,
     pub(in crate::admin) exact: String,
