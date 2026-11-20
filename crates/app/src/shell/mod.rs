@@ -13,6 +13,7 @@ mod window;
 
 use crate::engine::{Engine, LOCAL_SCHEME};
 use crate::local::{self, Off};
+use crate::title_bar::View;
 use std::process::ExitCode;
 use std::sync::{Arc, Mutex, PoisonError};
 use tauri::Manager as _;
@@ -33,12 +34,15 @@ pub(crate) enum Command {
 /// How many commands may wait; more are dropped, as they repeat one another.
 const COMMANDS: usize = 8;
 
-/// What the app's pages and the monitor share. The lock guards only the
-/// snapshot the Engine off screen shows, and is never held across a wait.
+/// What the app's pages and the monitor share. Each lock guards only the
+/// snapshot one of the app's own pages shows, and is never held across a
+/// wait.
 pub(crate) struct Shared {
     /// The engine, or why the settings file could not name it.
     pub(crate) engine: Result<Engine, String>,
     pub(crate) off: Mutex<Off>,
+    /// What the title bar shows: the engine's state and the window's sizing.
+    pub(crate) bar: Mutex<View>,
     pub(crate) commands: mpsc::Sender<Command>,
 }
 
@@ -57,6 +61,19 @@ impl Shared {
         let before = off.clone();
         change(&mut off);
         *off != before
+    }
+
+    /// A copy of what the title bar shows now.
+    pub(crate) fn bar(&self) -> View {
+        *self.bar.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Changes what the title bar shows; gives the new view if it changed.
+    pub(crate) fn update_bar(&self, change: impl FnOnce(&mut View)) -> Option<View> {
+        let mut bar = self.bar.lock().unwrap_or_else(PoisonError::into_inner);
+        let before = *bar;
+        change(&mut bar);
+        (*bar != before).then_some(*bar)
     }
 
     /// Hands `command` to the monitor; a full queue already holds one like it.
@@ -113,6 +130,7 @@ fn build(engine: Result<Engine, String>, tray_only: bool) -> tauri::Result<tauri
             ..Off::default()
         }),
         engine,
+        bar: Mutex::new(View::default()),
         commands,
     });
     let (stop, stopped) = watch::channel(false);
@@ -125,8 +143,13 @@ fn build(engine: Result<Engine, String>, tray_only: bool) -> tauri::Result<tauri
         .plugin(tauri_plugin_notification::init())
         .register_uri_scheme_protocol(LOCAL_SCHEME, |context, request| {
             let shared = context.app_handle().state::<Arc<Shared>>();
-            local_page(&shared, &request)
+            local_page(
+                &shared,
+                local::Webview::of(context.webview_label()),
+                &request,
+            )
         })
+        .on_window_event(window::on_event)
         .manage(Arc::clone(&shared))
         .setup(move |app| {
             tray::create(app.handle())?;
@@ -194,9 +217,10 @@ fn notifications(app: &tauri::AppHandle) {
     }
 }
 
-/// Answers one request to the app's own pages.
+/// Answers one request to the app's own pages from `webview`.
 fn local_page(
     shared: &Shared,
+    webview: local::Webview,
     request: &tauri::http::Request<Vec<u8>>,
 ) -> tauri::http::Response<Vec<u8>> {
     let origin = request
@@ -207,8 +231,10 @@ fn local_page(
         method: request.method().as_str(),
         path: request.uri().path(),
         origin,
+        webview,
     };
-    let (answer, action) = local::answer(&asked, &shared.off(), jiff::Timestamp::now());
+    let (answer, action) =
+        local::answer(&asked, &shared.off(), shared.bar(), jiff::Timestamp::now());
     if action == Some(local::Action::StartEngine) {
         // Shown at once, so the page after the redirect already says "Starting…".
         shared.update_off(|off| off.starting = true);
@@ -217,6 +243,7 @@ fn local_page(
     let mut response = tauri::http::Response::builder()
         .status(answer.status)
         .header(tauri::http::header::CONTENT_TYPE, answer.kind)
+        .header(tauri::http::header::CONTENT_SECURITY_POLICY, answer.policy)
         .header(
             tauri::http::header::CACHE_CONTROL,
             if answer.store {

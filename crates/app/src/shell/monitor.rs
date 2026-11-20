@@ -91,6 +91,7 @@ async fn check(app: &AppHandle, shared: &Shared, client: &Client, watch: &mut Wa
     if let Some(change) = change {
         tracing::info!(from = ?change.from, to = ?change.to, "engine state changed");
         tray::show(app, change.to);
+        window::show_state(app, shared, change.to);
         if let Some(notice) = change.notice() {
             notify(app, notice);
         }
