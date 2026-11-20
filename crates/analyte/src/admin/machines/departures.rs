@@ -3,11 +3,12 @@
 //! Switched on is not the same as used: a machine's settings switch a
 //! departure on, and each reading records which ones it used for those bytes.
 //! The page shows both from the stored reading, never from today's settings.
-use super::page::{Applied, Departures, Fact, Notice, Value};
+use super::page::{Applied, Departures, Notice};
 use crate::admin::error::CommandError;
 use crate::admin::server::Context;
 use crate::admin::sessions::Session;
 use crate::admin::view::report::{Button, Crumb, Head, Problem, Section, respond};
+use crate::admin::view::report::{Fact, Value};
 use crate::admin::view::{self, Tab, Tone, format, frame::Frame};
 use crate::deadline;
 use analyte_model::{DepartureEvidence, DepartureMeaning, ReceiptId, ReceiptMetadata};

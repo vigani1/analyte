@@ -1,8 +1,9 @@
-//! Holds what restyled pages share to report: a page head with its way back, buttons, statuses, the page that only reports, and every way a Machines, Lab apps or Setup page refuses or fails with its status code, words and the exact reason kept for support.
+//! Holds what restyled pages share to report: a page head with its way back, buttons, statuses, facts, filter chips, the page that only reports, and every way a Machines, Lab apps or Setup page refuses or fails with its status code, words and the exact reason kept for support.
 use super::{
     self as view, Tab, Tone, format,
-    format::{Line, Part},
+    format::{Line, Moment, Part},
     frame::Frame,
+    icon::Icon,
 };
 use crate::admin::server::Context;
 use crate::admin::sessions::Session;
@@ -41,6 +42,48 @@ pub(in crate::admin) struct Button {
     pub(in crate::admin) href: String,
     pub(in crate::admin) label: &'static str,
     pub(in crate::admin) class: &'static str,
+}
+
+/// One key and its value on a page about one thing.
+pub(in crate::admin) struct Fact {
+    pub(in crate::admin) term: &'static str,
+    pub(in crate::admin) value: Value,
+}
+
+/// A fact's value, as it is drawn.
+pub(in crate::admin) enum Value {
+    Text(String),
+    /// Words in mono with their exact value on hover, such as a settings version.
+    Code {
+        shown: String,
+        exact: String,
+    },
+    Status(Status),
+    Link(Link),
+    /// A time, or "Nothing yet".
+    Time(Option<Moment>),
+    /// A page about it.
+    Page {
+        href: String,
+        label: String,
+    },
+}
+
+/// How a machine is attached: the icon, the kind and where.
+pub(in crate::admin) struct Link {
+    pub(in crate::admin) icon: Icon,
+    pub(in crate::admin) kind: &'static str,
+    pub(in crate::admin) detail: Option<String>,
+    /// What the connection does that people may not expect.
+    pub(in crate::admin) note: Option<&'static str>,
+}
+
+/// One filter link with its count.
+pub(in crate::admin) struct Chip {
+    pub(in crate::admin) href: &'static str,
+    pub(in crate::admin) label: &'static str,
+    pub(in crate::admin) count: u64,
+    pub(in crate::admin) current: bool,
 }
 
 /// A page that only reports: what an action did, or why a request was refused.

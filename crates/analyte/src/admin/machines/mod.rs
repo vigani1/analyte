@@ -16,6 +16,7 @@ use crate::admin::server::{Context, Machine};
 use crate::admin::sessions::Session;
 use crate::admin::setup::Listed;
 use crate::admin::view::report::{Button, Crumb, Head, Problem, Report, Section, Status, respond};
+use crate::admin::view::report::{Fact, Link, Value};
 use crate::admin::view::{self, Tab, Tone, format, frame::Frame, icon::Icon};
 use crate::admin::{Error, error::CommandError};
 use crate::deadline;
@@ -30,7 +31,7 @@ use axum::{
     response::Response,
 };
 use jiff::Timestamp;
-use page::{Detail, Empty, Fact, Link, List, Message, Row, Todo, Value};
+use page::{Detail, Empty, List, Message, Row, Todo};
 use std::sync::{Arc, atomic::Ordering};
 
 /// How many of a machine's newest stored messages its page lists.

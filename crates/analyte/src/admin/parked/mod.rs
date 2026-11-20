@@ -16,6 +16,7 @@ pub(super) use raw::{RawError, raw};
 
 use crate::admin::error::CommandError;
 use crate::admin::pages::{PAGE, cursor_value, one_page};
+use crate::admin::view::report::Chip;
 use crate::admin::view::{self, Tab, Tone, format, frame::Frame};
 use crate::admin::{Error, server::Context, sessions::Session};
 use crate::deadline;
@@ -32,7 +33,7 @@ use axum::{
 use category::{Action, Category};
 use jiff::Timestamp;
 use page::{
-    Button, Card, Chip, Dialog, Empty, Entry, Head, Item, List, Original, OriginalTarget, Pair,
+    Button, Card, Dialog, Empty, Entry, Head, Item, List, Original, OriginalTarget, Pair,
     RawRequest, Resolved, Row, Todo, item_href,
 };
 use problem::Problem;
