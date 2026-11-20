@@ -814,7 +814,7 @@ fn assert_logo(path: &str, page: &str) {
         assert!(page.contains(&link), "{path} lacks {link}");
     }
     match path {
-        "/" | "/parked" | "/machines" => assert!(page.contains(concat!(
+        "/" | "/parked" | "/machines" | "/setup" => assert!(page.contains(concat!(
             "<div class=\"brand\">\n<svg class=\"logo\" width=\"30\" height=\"30\" ",
             "viewBox=\"0 0 48 48\" aria-hidden=\"true\"><path class=\"logo__tile\" "
         ))),
@@ -832,7 +832,7 @@ fn assert_logo(path: &str, page: &str) {
 /// ADR 0018: the restyled Overview loads fonts.css, analyte.css and app.css in
 /// that order; every other page keeps admin.css. Never both on one page.
 /// The pages in the new look so far (ADR 0018); the others keep `admin.css`.
-const RESTYLED: [&str; 3] = ["/", "/parked", "/machines"];
+const RESTYLED: [&str; 4] = ["/", "/parked", "/machines", "/setup"];
 
 fn assert_stylesheets(path: &str, page: &str) {
     if RESTYLED.contains(&path) {

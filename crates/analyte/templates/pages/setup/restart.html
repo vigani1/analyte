@@ -1,0 +1,11 @@
+{#- Restarting (POST /setup/restart): Analyte is stopping; the page reloads Setup once the service manager has started it again. -#}
+{% extends "layout/base.html" %}
+{%- import "components/feedback.html" as feedback %}
+{%- import "components/layout.html" as layout %}
+{%- block head %}
+<meta http-equiv="refresh" content="15;url=/setup">
+{%- endblock %}
+{%- block main %}
+{% call layout::page_head("Setup", "Restarting", "") %}{% endcall %}
+{% call feedback::note("Analyte is stopping", "The service manager starts it again within about 15 seconds. If Analyte was started by hand in a terminal, start it again there. This page then opens Setup, which asks you to sign in.") %}{% endcall %}
+{%- endblock %}

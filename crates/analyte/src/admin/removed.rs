@@ -10,7 +10,6 @@
 //! `undeliverable_destination` alert instead of "still being delivered".
 use super::server::Context;
 use crate::admin::Error;
-use crate::admin::markup::Markup;
 use crate::admin::view::Tone;
 use analyte_model::Identifier;
 use analyte_store::{Undeliverable, Undelivered};
@@ -70,19 +69,6 @@ impl Line {
     /// The sentence itself.
     pub(super) fn text(&self) -> &str {
         &self.text
-    }
-
-    /// The sentence in a warning box: red when nothing can be delivered.
-    pub(super) fn notice(&self, label: &'static str) -> Markup {
-        Markup::new()
-            .markup(if self.tone() == Tone::Problem {
-                "<p class=\"notice bad\">"
-            } else {
-                "<p class=\"notice\">"
-            })
-            .markup(label)
-            .text(&self.text)
-            .markup("</p>")
     }
 
     /// The lab app, why nothing can be delivered to it, how many items wait
@@ -278,7 +264,7 @@ mod tests {
             "Enter them on the Lab app page (or in the service environment), then restart. ",
             "Removed machine machine-3: 3 results or order messages are kept and never deleted."
         )));
-        assert!(line.notice("").starts_with("<p class=\"notice bad\">"));
+        assert_eq!(line.tone(), Tone::Problem);
         Ok(())
     }
 
@@ -293,7 +279,7 @@ mod tests {
             line.text,
             "Removed machine machine-3: 3 results or order messages still being delivered to lab app old-lab."
         );
-        assert!(line.notice("").starts_with("<p class=\"notice\">"));
+        assert_eq!(line.tone(), Tone::Attention);
         let finished = line_text(&open, Some(&kept(false, false)));
         assert!(
             finished.contains("sent after the next restart"),

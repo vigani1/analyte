@@ -1,0 +1,19 @@
+{#- The frame of every setup step (GET /setup/{id}, its connection, test and save steps, and /setup/listen): the machine's fixed name with its model, Cancel, the four steps with this one marked, then the step. -#}
+{% extends "layout/base.html" %}
+{%- import "components/icon.html" as draw %}
+{%- block main %}
+<header class="page-head">
+<div class="page-head__main"><p class="eyebrow">Set up a machine</p><h1>{{ wizard.id }}</h1>{% if let Some(model) = wizard.model %}<p class="page-head__lede">{{ model }}</p>{% endif %}</div>
+{%- if wizard.cancel %}
+<a class="btn btn--quiet" href="/setup">Cancel</a>
+{%- endif %}
+</header>
+<ol class="stepper" aria-label="Setup steps">
+{%- for step in wizard.steps %}
+<li class="step{% if step.done %} step--done{% endif %}"{% if step.current %} aria-current="step"{% endif %}><span class="step__n">{% if step.done %}{% call draw::icon(crate::admin::view::icon::Icon::Check, "icon--sm") %}{% endcall %}{% endif %}Step {{ step.number }}{% if step.done %} · done{% endif %}</span><span class="step__name">{{ step.label }}</span></li>
+{%- endfor %}
+</ol>
+<div class="wizard anim-in">
+{%- block step %}{% endblock %}
+</div>
+{%- endblock %}

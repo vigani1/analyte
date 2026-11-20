@@ -7,19 +7,21 @@
 //! still wrote it), so results waiting for it are still delivered. A machine just
 //! added goes straight into step 1 of the setup steps.
 use super::{
-    RELOAD, SetupError, after_write, audit, done, entries, incomplete, needs_login, off_thread,
-    page, refused, see_other, site, stored,
+    RELOAD, SetupError, audit, copies, entries, needs_login, off_thread, page, refused, see_other,
+    site, stored,
 };
 use crate::admin::machines::{self, DialogItem, Hover, RemoveDialog};
-use crate::admin::view::report::{Problem, Section};
+use crate::admin::view::report::{Button, Problem, Report, Section, respond};
 use crate::admin::view::{Tone, icon::Icon};
-use crate::admin::{markup::Markup, server::Context, sessions::Session, view::format};
+use crate::admin::{server::Context, sessions::Session, view::format};
 use crate::installation::config::{Program, folder};
 use analyte_model::Identifier;
 use analyte_store::Unfinished;
+use askama::Template as _;
 use axum::{
     Extension, Form,
     extract::{Path, State},
+    http::StatusCode,
     response::Response,
 };
 use serde::Deserialize;
@@ -31,42 +33,29 @@ pub(in crate::admin) async fn add_form(
     session: Option<Extension<Arc<Session>>>,
 ) -> Response {
     let Some(Extension(session)) = session.filter(|Extension(s)| s.authenticated) else {
-        return needs_login();
+        return needs_login(&state);
     };
     let suggested = off_thread(&state, |state| {
         site::entries(&state.config_path).map(|(_, listed)| entries::suggestion(&listed))
     })
     .await;
-    let suggested = match suggested {
+    let name = match suggested {
         Ok(name) => name,
-        Err(error) => return refused(&error),
+        Err(error) => return refused(&state, Some(&session), None, &error),
     };
-    done(
-        page("Add a machine")
-            .markup(concat!(
-                "<p class=\"lead\">Adds a machine that is not set up yet. Analyte checks its ",
-                "settings, keeps a copy of the old ones and writes the new ones; if anything ",
-                "fails, the old settings are put back. Then the setup steps follow: its model, ",
-                "its connection, a test and the save.</p>",
-                "<section><form method=\"post\" action=\"/setup/add\"><input type=\"hidden\" ",
-                "name=\"csrf\" value=\""
-            ))
-            .text(session.csrf.form_value())
-            .markup("\"><label class=\"field\"><span>Machine name</span><input name=\"name\" required maxlength=\"64\" value=\"")
-            .text(&suggested)
-            .markup(concat!(
-                "\"></label><p class=\"muted\">Use letters, digits, - and _. The name also names the ",
-                "machine's settings file (<code>&lt;name&gt;.site.toml</code>).</p>",
-                "<div class=\"notice\"><p><strong>Reusing a name.</strong> Analyte keeps results, items to review and ",
-                "history by machine name. A machine added under the name of one removed ",
-                "earlier joins that stored history. Use an earlier name only for the same ",
-                "analyzer; give a different analyzer a new name, so its results are never ",
-                "matched with the old one's. If the name has stored history, tick this box ",
-                "to confirm:</p><label class=\"check\"><input type=\"checkbox\" name=\"same_analyzer\" ",
-                "value=\"yes\"> This is the same analyzer that used this name before</label></div>",
-                "<div class=\"actions-row\"><button>Add machine</button>",
-                "<a class=\"button secondary\" href=\"/setup\">Cancel</a></div></form></section>"
-            )),
+    let section = Section::Setup(None);
+    let page = page::Add {
+        frame: section.frame(&state, "Add a machine", Some(&session)),
+        head: section.head("Add a machine"),
+        csrf: session.csrf.form_value().to_owned(),
+        name,
+    };
+    respond(
+        &state,
+        Some(&session),
+        section,
+        StatusCode::OK,
+        page.render(),
     )
 }
 
@@ -120,12 +109,13 @@ pub(in crate::admin) async fn add(
     Extension(session): Extension<Arc<Session>>,
     form: Result<Form<Addition>, axum::extract::rejection::FormRejection>,
 ) -> Response {
+    let refuse = |error: &SetupError| refused(&state, Some(&session), None, error);
     let Ok(Form(addition)) = form else {
-        return incomplete(RELOAD);
+        return refuse(&SetupError::IncompleteForm(RELOAD));
     };
     let id = match entries::name(&addition.name) {
         Ok(id) => id,
-        Err(error) => return refused(&error),
+        Err(error) => return refuse(&error),
     };
     // A listed name is refused as such before its history is looked at;
     // `add_blocking` checks again under the write lock.
@@ -136,21 +126,21 @@ pub(in crate::admin) async fn add(
     .await;
     match listed {
         Ok(false) => {}
-        Ok(true) => return refused(&SetupError::NameInUse(id.as_str().into())),
-        Err(error) => return refused(&error),
+        Ok(true) => return refuse(&SetupError::NameInUse(id.as_str().into())),
+        Err(error) => return refuse(&error),
     }
     let reused = match history(&state, &id).await {
         Ok(reused) => reused,
-        Err(error) => return refused(&error),
+        Err(error) => return refuse(&error),
     };
     if reused && addition.same_analyzer.as_deref() != Some("yes") {
-        return refused(&SetupError::HistoryNotConfirmed(id.as_str().into()));
+        return refuse(&SetupError::HistoryNotConfirmed(id.as_str().into()));
     }
     let machine = id.clone();
     let added = off_thread(&state, move |state| add_blocking(state, &machine)).await;
     let (path, written) = match added {
         Ok(added) => added,
-        Err(error) => return refused(&error),
+        Err(error) => return refuse(&error),
     };
     let reason = format!(
         "setup page added machine {} with starter site file {}{}",
@@ -165,24 +155,65 @@ pub(in crate::admin) async fn add(
     let audited = audit(&state, &session, "setup-add", id.as_str(), reason).await;
     tracing::info!(machine = id.as_str(), "setup page added a machine");
     // Straight into step 1, unless the audit failed: that is shown, never hidden.
-    if audited.is_ok() {
-        return see_other(&format!("/setup/{}", id.as_str()));
+    match audited {
+        Ok(()) => see_other(&format::setup_href(id.as_str(), "")),
+        Err(error) => added_page(
+            &state,
+            &session,
+            id.as_str(),
+            reused,
+            &path,
+            &written,
+            &error,
+        ),
     }
-    let mut html = page("Machine added")
-        .markup("<p class=\"notice info\">Machine <strong>")
-        .text(id.as_str())
-        .markup("</strong> is listed and <strong>Not set up yet</strong>. <span class=\"muted\">Its settings file is <code>")
-        .text(path.display())
-        .markup("</code>.</span> <a href=\"/setup/")
-        .text(id.as_str())
-        .markup("\">Set it up now</a>, or restart first.</p>");
+}
+
+/// What adding a machine did when the record of who added it could not be
+/// written: the machine is listed, the failure is shown, then Restart now.
+fn added_page(
+    state: &Context,
+    session: &Session,
+    id: &str,
+    reused: bool,
+    path: &std::path::Path,
+    written: &site::Written,
+    error: &SetupError,
+) -> Response {
+    let section = Section::Setup(Some(id));
+    let mut lines = vec!["It is listed and not set up yet.".to_owned()];
     if reused {
-        html.push_markup(
-            "<p>It joins the stored history of the earlier machine with this name.</p>",
-        );
+        lines.push("It joins the stored history of the earlier machine with this name.".into());
     }
-    html.push_fragment(&backups_kept(&written.backups));
-    after_write(html, audited, &session)
+    if !written.backups.is_empty() {
+        lines.push("A dated copy of the old settings was kept.".into());
+    }
+    let mut support = vec![format!("Its settings file: {}", path.display())];
+    support.extend(copies(&written.backups));
+    let page = Report {
+        frame: section.frame(state, "Machine added", Some(session)),
+        head: section.head("Machine added"),
+        tone: Tone::Good,
+        title: format!("{id} is added"),
+        text: "Set it up now, or restart first.".into(),
+        lines,
+        problems: vec![format::sentence(&error.to_string())],
+        restart: Some(session.csrf.form_value().to_owned()),
+        links: vec![
+            Button {
+                href: format::setup_href(id, ""),
+                label: "Set it up now",
+                class: "btn--primary",
+            },
+            Button {
+                href: crate::admin::view::Tab::Setup.href().to_owned(),
+                label: "Back to Setup",
+                class: "btn--outline",
+            },
+        ],
+        support,
+    };
+    respond(state, Some(session), section, StatusCode::OK, page.render())
 }
 
 /// GET /setup/first: the first-run button. Step 1 for the first listed machine
@@ -202,21 +233,8 @@ pub(in crate::admin) async fn first(State(state): State<Arc<Context>>) -> Respon
         Ok((Some(id), _)) => see_other(&format!("/setup/{id}")),
         Ok((None, true)) => see_other("/setup/add"),
         Ok((None, false)) => see_other("/setup"),
-        Err(error) => refused(&error),
+        Err(error) => refused(&state, None, None, &error),
     }
-}
-
-fn backups_kept(backups: &[PathBuf]) -> Markup {
-    let mut html = Markup::new().markup("<ul class=\"muted\">");
-    for backup in backups {
-        html.push_fragment(
-            &Markup::new()
-                .markup("<li>Copy of the old settings: ")
-                .text(backup.display())
-                .markup("</li>"),
-        );
-    }
-    html.markup("</ul>")
 }
 
 async fn history(state: &Context, id: &Identifier) -> Result<bool, SetupError> {
@@ -579,11 +597,7 @@ pub(in crate::admin) async fn remove(
     tracing::info!(machine = id.as_str(), "setup page removed a machine");
     let mut lines = Vec::new();
     let mut problems = Vec::new();
-    let mut support: Vec<String> = removed
-        .backups
-        .iter()
-        .map(|backup| format!("Copy of the old settings: {}", backup.display()))
-        .collect();
+    let mut support = copies(&removed.backups);
     match &removed.site {
         Ok(Some(path)) => support.push(format!(
             "Its settings file, kept as a dated copy: {}",

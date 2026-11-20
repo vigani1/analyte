@@ -1,0 +1,52 @@
+{#- Setup step 4 (GET /setup/{id}/save, and POST /setup/{id} once saved): what will be or was saved, the last test with these choices, then Save, or Settings saved with Restart now. -#}
+{% extends "pages/setup/machine/step.html" %}
+{%- import "components/display.html" as display %}
+{%- import "components/feedback.html" as feedback %}
+{%- import "components/forms.html" as forms %}
+{%- import "components/icon.html" as draw %}
+{%- block step %}
+<section class="stack stack--lg" aria-labelledby="s4">
+<div><h2 id="s4" class="wizard__title">Check and save</h2><p class="muted wizard__text">{% match outcome %}{% when Outcome::Review { .. } %}This is what will be saved. Saving checks everything again and keeps a dated copy of the old settings.{% when Outcome::Saved { .. } %}This is what was saved.{% endmatch %}</p></div>
+<div class="card card--pad">
+<dl class="kv">
+<dt>Machine</dt><dd>{{ wizard.id }}</dd>
+<dt>Model</dt><dd>{{ summary.model }}</dd>
+<dt>Connection</dt><dd>{% call display::hover(summary.connection.shown, summary.connection.exact) %}{% endcall %}</dd>
+<dt>Sends results to</dt><dd><a class="link" href="{{ summary.lab_app.href }}">{{ summary.lab_app.name }}</a> <span class="mono">{{ summary.lab_app.address }}</span>{% if let Some(missing) = summary.lab_app.missing %} <span class="tone-warn">· {{ missing }}</span>{% endif %}</dd>
+<dt>Connection test</dt><dd>
+{%- match summary.test %}
+{%- when Tested::Seen { tone, title, when } %}<span class="with-icon tone-{{ tone.class() }}">{% call draw::icon(tone.icon(), "icon--md") %}{% endcall %}<span>{{ title }} · {% call display::time(when) %}{% endcall %}</span></span>
+{%- when Tested::NotRun %}<span class="subtle">Not run with these settings</span>
+{%- when Tested::Folder %}<span class="subtle">Nothing to test for a watched folder</span>
+{%- endmatch -%}
+</dd>
+{%- if let Some((new, running)) = summary.versions %}
+<dt>New settings version</dt><dd><span class="mono" title="{{ new.exact }}">{{ new.shown }}</span></dd>
+<dt>Running now</dt><dd>{% if let Some(running) = running %}<span class="mono" title="{{ running.exact }}">{{ running.shown }}</span>{% else %}<span class="subtle">Not running yet</span>{% endif %}</dd>
+{%- endif %}
+</dl>
+</div>
+{%- match outcome %}
+{%- when Outcome::Review { back, action, csrf, hidden } %}
+</section>
+<div class="wizard-foot">
+<form method="get" action="{{ back }}">{% call forms::hidden_fields(hidden) %}{% endcall %}<button type="submit" class="btn btn--outline">Back</button></form>
+<span class="subtle wizard__count">{{ wizard.count }}</span>
+<form method="post" action="{{ action }}"><input type="hidden" name="csrf" value="{{ csrf }}">{% call forms::hidden_fields(hidden) %}{% endcall %}<button type="submit" class="btn btn--primary">Save</button></form>
+</div>
+{%- when Outcome::Saved { csrf, lines, problems, support, done } %}
+<div class="alert alert--good" role="status">{% call draw::icon(crate::admin::view::Tone::Good.icon(), "") %}{% endcall %}<div><p class="alert__title">Settings saved</p><p class="alert__text">Analyte keeps running the old settings until it restarts. Restarting stops every machine connection for a few seconds; machines resend what they could not deliver. After the restart, sign in again.</p></div>
+<div class="cluster">{% call forms::link_button(crate::admin::view::Tab::Setup.href(), "Later", "btn--quiet btn--sm") %}{% endcall %}<form method="post" action="/setup/restart"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="btn btn--primary btn--sm">Restart now</button></form></div></div>
+{%- for line in lines %}
+<p class="report__line">{{ line }}</p>
+{%- endfor %}
+{%- for problem in problems %}
+{% call feedback::alert(crate::admin::view::Tone::Problem, problem, "") %}{% endcall %}
+{%- endfor %}
+{%- if !support.is_empty() %}
+{% call feedback::support("Details for support", support) %}{% endcall %}
+{%- endif %}
+</section>
+<div class="wizard-foot"><span></span><span class="subtle wizard__count">{{ wizard.count }}</span>{% call forms::link_button(done, "Done", "btn--primary") %}{% endcall %}</div>
+{%- endmatch %}
+{%- endblock %}

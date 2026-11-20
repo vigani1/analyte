@@ -110,23 +110,37 @@ fn poct(bytes: &[u8]) -> bool {
     text.starts_with(b"<?xml") || text.starts_with(b"<HEL.R01")
 }
 
-/// The plain verdict for a test of a machine whose model speaks `model`.
-pub(super) fn verdict(guess: Guess, model: Family) -> (Tone, String) {
+/// The plain verdict for a test of a machine whose model speaks `model`: its
+/// tone, a title saying what was seen and what to do next. `ended` puts the
+/// title in the past, since nothing is being received any more.
+pub(super) fn verdict(guess: Guess, model: Family, ended: bool) -> (Tone, String, &'static str) {
+    let data = if ended {
+        "Received data"
+    } else {
+        "Receiving data"
+    };
+    let nothing = if ended {
+        "Nothing received"
+    } else {
+        "Nothing received yet"
+    };
     let receiving = |seen: &str| {
         if fits(guess, model) {
             (
                 Tone::Good,
-                format!(
-                    "Receiving data from the machine, looks like {}.",
-                    model.name()
-                ),
+                format!("{data}, looks like {}", model.name()),
+                "It starts the way this model’s format does. You can go on to the next step.",
             )
         } else {
             (
-                Tone::Attention,
+                Tone::Problem,
                 format!(
-                    "Receiving data from the machine. It looks like {seen}, but this model uses {}: check the model or the machine's setting.",
+                    "{data}, but it looks like {seen} and this model uses {}",
                     model.name()
+                ),
+                concat!(
+                    "The machine may be set to a different output format. Change its host ",
+                    "format setting, or go back and pick the right model."
                 ),
             )
         }
@@ -134,25 +148,26 @@ pub(super) fn verdict(guess: Guess, model: Family) -> (Tone, String) {
     match guess {
         Guess::Nothing if model == Family::Autolyser => (
             Tone::Attention,
+            nothing.into(),
             concat!(
-                "Nothing received yet. That is expected for this model: it waits for ",
-                "Analyte to ask first, and the test never sends anything."
-            )
-            .into(),
+                "That is expected for this model: it waits for Analyte to ask first, and the ",
+                "test never sends anything."
+            ),
         ),
         Guess::Nothing => (
             Tone::Attention,
-            "Nothing received yet: check the cable and the machine's host settings.".into(),
+            nothing.into(),
+            concat!(
+                "Check the cable and the machine’s host settings, then ask the machine to send ",
+                "a result again."
+            ),
         ),
         Guess::Family(family) => receiving(family.name()),
         Guess::AstmOrVidas => receiving("ASTM or VIDAS"),
         Guess::Unknown => (
             Tone::Attention,
-            concat!(
-                "Receiving data, but it doesn't look like a format Analyte knows. ",
-                "Check the machine's host protocol setting."
-            )
-            .into(),
+            format!("{data}, but not in a format Analyte knows"),
+            "Check the machine’s host protocol setting.",
         ),
     }
 }
@@ -236,46 +251,60 @@ mod tests {
     }
 
     // Owner request 2026-11-19 (item 5): the verdict says plainly what was seen,
-    // and warns when it is not the model's protocol.
+    // and warns when it is not the model's protocol. Owner decisions 2026-11-20
+    // (admin restyle b4): a title and what to do, as in the SetupStep3 mockups;
+    // a wrong format is a problem (SetupStep3Wrong); once the test ended the
+    // title says what was received, not what is being received.
     #[test]
     fn verdict_names_the_family_and_warns_on_a_mismatch() {
         let astm = Guess::Family(Family::Astm);
+        let (tone, title, text) = verdict(astm, Family::Astm, false);
         assert_eq!(
-            verdict(astm, Family::Astm),
+            (tone, title.as_str()),
+            (Tone::Good, "Receiving data, looks like ASTM")
+        );
+        assert!(text.contains("go on to the next step"), "{text}");
+        assert_eq!(
+            verdict(astm, Family::Astm, true).1,
+            "Received data, looks like ASTM"
+        );
+        assert_eq!(
+            verdict(Guess::AstmOrVidas, Family::Vidas, false).1,
+            "Receiving data, looks like VIDAS"
+        );
+        let (tone, title, text) = verdict(Guess::Family(Family::Hl7), Family::Astm, false);
+        assert_eq!(
+            (tone, title.as_str()),
             (
-                Tone::Good,
-                "Receiving data from the machine, looks like ASTM.".into()
+                Tone::Problem,
+                "Receiving data, but it looks like HL7 and this model uses ASTM"
             )
         );
-        assert_eq!(
-            verdict(Guess::AstmOrVidas, Family::Vidas).1,
-            "Receiving data from the machine, looks like VIDAS."
+        assert!(text.contains("pick the right model"), "{text}");
+        assert!(
+            verdict(Guess::AstmOrVidas, Family::Hl7, false)
+                .1
+                .contains("it looks like ASTM or VIDAS and this model uses HL7")
         );
+        let (tone, title, text) = verdict(Guess::Nothing, Family::Hl7, false);
         assert_eq!(
-            verdict(Guess::Family(Family::Hl7), Family::Astm),
-            (
-                Tone::Attention,
-                "Receiving data from the machine. It looks like HL7, but this model uses ASTM: check the model or the machine's setting.".into()
-            )
+            (tone, title.as_str()),
+            (Tone::Attention, "Nothing received yet")
+        );
+        assert!(text.starts_with("Check the cable and the machine’s host settings"));
+        assert_eq!(
+            verdict(Guess::Nothing, Family::Hl7, true).1,
+            "Nothing received"
         );
         assert!(
-            verdict(Guess::AstmOrVidas, Family::Hl7)
-                .1
-                .contains("It looks like ASTM or VIDAS, but this model uses HL7")
-        );
-        assert_eq!(
-            verdict(Guess::Nothing, Family::Hl7).1,
-            "Nothing received yet: check the cable and the machine's host settings."
-        );
-        assert!(
-            verdict(Guess::Nothing, Family::Autolyser)
-                .1
+            verdict(Guess::Nothing, Family::Autolyser, false)
+                .2
                 .contains("it waits for Analyte to ask first")
         );
         assert!(
-            verdict(Guess::Unknown, Family::Poct)
+            verdict(Guess::Unknown, Family::Poct, false)
                 .1
-                .contains("doesn't look like a format Analyte knows")
+                .contains("not in a format Analyte knows")
         );
     }
 }

@@ -1,0 +1,32 @@
+{#- Setup step 3 while and after the listen-only test runs (GET /setup/listen): time left, the bytes counted, the test's state in the words used for a machine's link, the verdict and the framing characters, never the message; it reloads every two seconds while running. -#}
+{% extends "pages/setup/machine/step.html" %}
+{%- import "components/display.html" as display %}
+{%- import "components/feedback.html" as feedback %}
+{%- import "components/forms.html" as forms %}
+{%- block head %}
+{%- if live.clock.is_some() %}
+<meta http-equiv="refresh" content="2">
+{%- endif %}
+{%- endblock %}
+{%- block step %}
+<section class="stack stack--lg" aria-labelledby="s3">
+<div><h2 id="s3" class="wizard__title">Test the connection</h2><p class="muted wizard__text">Analyte only listens. It sends nothing to the machine. Ask the machine to send a result now.</p></div>
+<div class="card card--pad listen">
+<div><p class="eyebrow listen__target">{{ live.target }}</p>{% if let Some(clock) = live.clock %}<p class="countdown listen__clock" aria-live="polite"><span class="sr-only">Time left </span>{{ clock }}</p>{% else %}{% call display::status(live.state.tone, live.state.word) %}{% endcall %}{% endif %}</div>
+<div class="listen__progress">
+<progress class="meter" max="{{ live.limit }}" value="{{ live.elapsed }}" aria-label="Test progress">{{ live.elapsed }} of {{ live.limit }} seconds</progress>
+<p class="subtle mono listen__line">{{ live.received }}</p>
+<p class="listen__line">{% if live.clock.is_some() %}{% call display::status(live.state.tone, live.state.word) %}{% endcall %} {% endif %}{% if let Some(note) = live.state.note %}{{ note }}{% endif %}</p>
+</div>
+{%- if let Some(csrf) = live.stop %}
+<form method="post" action="/setup/listen/stop"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="btn btn--outline">Stop</button></form>
+{%- endif %}
+{%- if let Some(again) = live.again %}
+<form method="post" action="{{ again.action }}"><input type="hidden" name="csrf" value="{{ again.csrf }}">{% call forms::hidden_fields(again.hidden) %}{% endcall %}<button type="submit" class="btn btn--outline">{{ again.label }}</button></form>
+{%- endif %}
+</div>
+{% call feedback::alert(live.verdict.tone, live.verdict.title, live.verdict.text) %}{% endcall %}
+{% call feedback::exact_lines("Details · framing characters received", live.framing, false) %}{% endcall %}
+</section>
+{% call forms::step_foot(foot, wizard.count) %}{% endcall %}
+{%- endblock %}

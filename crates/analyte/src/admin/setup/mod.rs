@@ -10,6 +10,7 @@ pub(in crate::admin) use definitions::model_name;
 mod entries;
 mod lab_apps;
 mod machines;
+mod page;
 mod plan;
 mod site;
 mod wizard;
@@ -24,10 +25,14 @@ pub(crate) use wizard::listen::{Limits, Open};
 pub(super) use wizard::{Step, listen_start, listen_stop, listen_view, save, step};
 
 use super::{
-    markup::Markup,
+    machines::{Hover, Notice},
     server::Context,
     sessions::Session,
-    view::{self, Refresh, Tab, Tone, pill},
+    view::{
+        Tab, Tone, format,
+        frame::Frame,
+        report::{Problem, Section, Status, respond},
+    },
 };
 use crate::installation::{
     config::{Program, folder},
@@ -37,13 +42,15 @@ use crate::machine::link::status::Link;
 use analyte_config::Endpoint;
 use analyte_model::{Identifier, Reason};
 use analyte_transport::serial;
+use askama::Template as _;
 use axum::{
     Extension, Form,
     extract::State,
     http::{StatusCode, header},
-    response::{Html, IntoResponse, Response},
+    response::{IntoResponse, Response},
 };
 use definitions::{Definition, State as Shipped};
+use jiff::Timestamp;
 use serde::Deserialize;
 use std::{io, path::PathBuf, sync::Arc};
 use tokio::sync::watch;
@@ -282,121 +289,102 @@ pub(crate) enum SetupError {
     Busy,
 }
 
-/// Opens a page under the Setup tab; every setup step belongs to it.
-fn page(title: &str) -> Markup {
-    view::page(Tab::Setup, title)
+/// Refuses a setup request in `error`'s own words: nothing was changed (409).
+fn refused(
+    state: &Context,
+    session: Option<&Session>,
+    id: Option<&str>,
+    error: &SetupError,
+) -> Response {
+    // A machine that does not exist has no setup steps to go back to.
+    let id = id.filter(|_| !matches!(error, SetupError::UnknownMachine(_)));
+    Problem::Refused(error.to_string()).page(state, session, Section::Setup(id))
 }
 
-fn done(html: Markup) -> Response {
-    Html(html.markup(view::END)).into_response()
+/// Setup changes settings, so its pages need a signed-in browser session (403).
+fn needs_login(state: &Context) -> Response {
+    Problem::SignIn.page(state, None, Section::Setup(None))
 }
 
-fn refused(error: &SetupError) -> Response {
-    (
-        StatusCode::CONFLICT,
-        Html(
-            page("Setup could not continue")
-                .markup("<p class=\"notice bad\">")
-                .text(error)
-                .markup(concat!(
-                    "</p><p><a class=\"button secondary\" href=\"/setup\">",
-                    "Back to setup</a></p>",
-                ))
-                .markup(view::END),
-        ),
-    )
-        .into_response()
+/// The running settings version: the short form, with the full digest on
+/// hover; none while it runs nothing.
+fn settings_version(running: Option<&Running>) -> Option<Hover> {
+    running.map(|running| Hover {
+        shown: format::digest_short(&running.digest),
+        exact: format::digest_hex(&running.digest),
+    })
 }
-
-fn needs_login() -> Response {
-    done(page("Set up a machine").markup(concat!(
-        "<p class=\"notice info\">Setup changes settings, so sign in first: ",
-        "<a href=\"/login\">sign in</a>.</p>",
-    )))
-}
-
-/// The running settings version: the short form, with the full digest on hover.
-fn settings_version(running: Option<&Running>) -> Markup {
-    match running {
-        Some(running) => view::version(&running.digest),
-        None => Markup::new()
-            .markup("<span class=\"muted\">")
-            .text(NO_DIGEST)
-            .markup("</span>"),
-    }
-}
-
-/// What the page says for a machine that runs nothing yet.
-const NO_DIGEST: &str = "Not running yet";
 
 /// A program entry's machine model for people, with its definition path on hover;
-/// the path itself when the definition names no model. Reads the definition and
-/// its folder's README, so call it off the async workers.
+/// the path itself when the definition names no model; none when no model is
+/// chosen. Reads the definition and its folder's README, so call it off the
+/// async workers.
 fn model(
     config: &std::path::Path,
     root: Option<&std::path::Path>,
     definition: Option<&str>,
-) -> Markup {
-    let Some(definition) = definition else {
-        return Markup::new().markup("<span class=\"muted\">Not chosen yet</span>");
-    };
-    model_name(&folder(config).join(definition), root).map_or_else(
-        || Markup::new().text(definition),
-        |name| view::exact(&name, definition),
-    )
+) -> Option<Hover> {
+    let definition = definition?;
+    Some(Hover {
+        shown: model_name(&folder(config).join(definition), root)
+            .unwrap_or_else(|| definition.to_owned()),
+        exact: definition.to_owned(),
+    })
 }
 
 /// One row per machine in the program file, then any machine that still runs but
 /// is no longer listed (removed, waiting for the restart). `models` holds each
 /// listed entry's model, in the same order.
-fn machine_rows(state: &Context, listed: &[site::EntrySpans], models: &[Markup]) -> Markup {
-    let mut rows = Markup::new();
-    for (entry, model) in listed.iter().zip(models) {
-        let id = entry.id.get_ref();
-        let running = running(state, id);
-        let status = match (running, &entry.definition) {
-            (Some(_), _) => pill(Tone::Good, "Running"),
-            (None, None) => pill(Tone::Neutral, "Not set up yet"),
-            (None, Some(_)) => pill(Tone::Attention, "Saved: starts after a restart"),
-        };
-        rows.push_fragment(
-            &Markup::new()
-                .markup("<tr><td><strong>")
-                .text(id)
-                .markup("</strong></td><td data-label=\"Model\">")
-                .fragment(model)
-                .markup("</td><td data-label=\"Status\">")
-                .fragment(&status)
-                .markup("</td><td data-label=\"Settings version\">")
-                .fragment(&settings_version(running))
-                .markup("</td><td class=\"actions\"><div class=\"buttons\"><a class=\"button secondary\" href=\"/setup/")
-                .text(id)
-                .markup("\">Set up</a><form method=\"get\" action=\"/setup/")
-                .text(id)
-                .markup(concat!(
-                    "/remove\"><button class=\"quiet-danger\">Remove</button>",
-                    "</form></div></td></tr>",
-                )),
-        );
-    }
-    for gone in state
-        .setup
-        .running
+fn machine_rows(
+    state: &Context,
+    listed: &[site::EntrySpans],
+    models: Vec<Option<Hover>>,
+) -> Vec<page::Machine> {
+    let mut rows: Vec<page::Machine> = listed
         .iter()
-        .filter(|r| !listed.iter().any(|e| e.id.get_ref() == r.id.as_str()))
-    {
-        rows.push_fragment(
-            &Markup::new()
-                .markup("<tr><td><strong>")
-                .text(gone.id.as_str())
-                .markup("</strong></td><td data-label=\"Model\"></td><td data-label=\"Status\">")
-                .fragment(&pill(Tone::Attention, "Removed: stops at the restart"))
-                .markup("</td><td data-label=\"Settings version\">")
-                .fragment(&settings_version(Some(gone)))
-                .markup("</td><td></td></tr>"),
-        );
-    }
+        .zip(models)
+        .map(|(entry, model)| {
+            let id = entry.id.get_ref();
+            let running = running(state, id);
+            let (tone, word) = match (running, &entry.definition) {
+                (Some(_), _) => (Tone::Good, "Running"),
+                (None, None) => (Tone::Neutral, "Not set up yet"),
+                (None, Some(_)) => (Tone::Attention, "Saved: starts after a restart"),
+            };
+            page::Machine {
+                id: id.clone(),
+                links: Some((format::setup_href(id, ""), format::setup_href(id, "remove"))),
+                model,
+                status: status(tone, word),
+                version: settings_version(running),
+            }
+        })
+        .collect();
+    rows.extend(
+        state
+            .setup
+            .running
+            .iter()
+            .filter(|r| !listed.iter().any(|e| e.id.get_ref() == r.id.as_str()))
+            .map(|gone| page::Machine {
+                id: gone.id.as_str().to_owned(),
+                links: None,
+                model: None,
+                status: status(Tone::Attention, "Removed: stops at the restart"),
+                version: settings_version(Some(gone)),
+            }),
+    );
     rows
+}
+
+/// A status with its word only: nothing more was observed.
+fn status(tone: Tone, word: &str) -> Status {
+    Status {
+        tone,
+        word: word.to_owned(),
+        exact: String::new(),
+        note: None,
+    }
 }
 
 fn definitions(state: &Context) -> Result<Vec<Definition>, SetupError> {
@@ -410,59 +398,35 @@ fn definitions(state: &Context) -> Result<Vec<Definition>, SetupError> {
 }
 
 /// A definition's evidence level in words (the level itself on hover) and its
-/// status, with the reason when it cannot be chosen.
-fn level_and_state(definition: &Definition) -> (Markup, Markup) {
+/// status, with the reason under it when it cannot be chosen.
+fn level_and_state(definition: &Definition) -> (Hover, Status) {
+    let hover = |shown: &str, exact: String| Hover {
+        shown: shown.to_owned(),
+        exact,
+    };
     match &definition.state {
         Shipped::Ready { level, .. } => (
-            view::exact(evidence_words(level), &format!("Evidence level: {level}")),
-            pill(Tone::Good, "Ready"),
+            hover(evidence_words(level), format!("Evidence level: {level}")),
+            status(Tone::Good, "Ready"),
         ),
         Shipped::Blocked => (
-            view::exact(
+            hover(
                 "Not tested yet",
-                "Evidence level: none (blocked definition)",
+                "Evidence level: none (blocked definition)".into(),
             ),
-            pill(Tone::Attention, "Not ready yet").markup(concat!(
-                " <span class=\"muted\" title=\"Blocked definition; see its README\">Facts or ",
-                "recordings are still missing</span>",
-            )),
+            Status {
+                note: Some("Facts or recordings are still missing; its README lists them.".into()),
+                ..status(Tone::Neutral, "Not ready yet")
+            },
         ),
         Shipped::Unreadable(why) => (
-            view::exact("Not known", "Evidence level unknown"),
-            pill(Tone::Problem, "Cannot be read")
-                .markup(" <span class=\"muted\">")
-                .text(why)
-                .markup("</span>"),
+            hover("Not known", "Evidence level unknown".into()),
+            Status {
+                note: Some(format::sentence(why)),
+                ..status(Tone::Problem, "Cannot be read")
+            },
         ),
     }
-}
-
-/// The setup page's Lab apps section, with a link to add the first lab app.
-async fn lab_apps_section(state: &Arc<Context>) -> Markup {
-    let mut html = Markup::new().markup(concat!(
-        "<section><div class=\"heading\"><h2>Lab apps</h2>",
-        "<a class=\"button secondary\" href=\"/setup/lab-apps\">Lab apps</a></div>",
-        "<p>Where results are sent. Each lab app is set once, with its address and keys; ",
-        "each machine below picks one.</p>"
-    ));
-    // A fresh installation has none yet; a machine not set up needs none, but
-    // setting one up does, so say where to add it.
-    let scanned = off_thread(state, |state| lab_apps::scan(&state.config_path)).await;
-    match scanned {
-        Ok(scan) if scan.known.is_empty() => html.push_markup(concat!(
-            "<p class=\"notice info\">No lab app yet: ",
-            "<a href=\"/setup/lab-apps/new\">add one</a>.</p>"
-        )),
-        Ok(_) => {}
-        // These files hold key names only, never key values.
-        Err(error) => html.push_fragment(
-            &Markup::new()
-                .markup("<p class=\"notice bad\">The lab apps file could not be read: ")
-                .text(error)
-                .markup("</p>"),
-        ),
-    }
-    html.markup("</section>")
 }
 
 /// How a model was checked, in words; an unknown level shows as written.
@@ -475,36 +439,39 @@ fn evidence_words(level: &str) -> &str {
     }
 }
 
-/// GET /setup: the machines in the program file, what runs now, and the shipped definitions.
-pub(super) async fn index(State(state): State<Arc<Context>>) -> Response {
-    let mut html = page("Setup").markup(concat!(
-        "<p class=\"lead\">Add a machine, or choose one to set its connection and pick its ",
-        "lab app. Changes apply after Analyte restarts.</p>",
-    ));
-    html.push_fragment(&lab_apps_section(&state).await);
-    match crate::admin::removed::lines(&state).await {
-        Ok(lines) => {
-            for line in lines {
-                html.push_fragment(&line.notice(""));
-            }
-        }
-        Err(error) => html.push_fragment(
-            &Markup::new()
-                .markup("<p class=\"notice bad\">Results still waiting from removed machines could not be counted: ")
-                .text(error)
-                .markup("</p>"),
-        ),
-    }
-    html.push_markup(concat!(
-        "<section><div class=\"heading\"><h2>Your machines</h2>",
-        "<form method=\"get\" action=\"/setup/add\"><button>Add machine</button></form>",
-        "</div><div class=\"table\"><table class=\"stack\"><tr><th>Machine</th><th>Model</th>",
-        "<th>Status</th><th title=\"Running configuration digest\">Settings version</th>",
-        "<th></th></tr>"
-    ));
+/// GET /setup: the lab apps, the machines in the program file with what runs
+/// now, and the shipped models.
+pub(super) async fn index(
+    State(state): State<Arc<Context>>,
+    session: Option<Extension<Arc<Session>>>,
+) -> Response {
+    let session = session.map(|Extension(session)| session);
+    // A fresh installation has none yet; a machine not set up needs none, but
+    // setting one up does, so the page says where to add it. These files hold
+    // key names only, never key values.
+    let lab_apps = match off_thread(&state, |state| lab_apps::scan(&state.config_path)).await {
+        Ok(scan) if scan.known.is_empty() => page::LabApps::None,
+        Ok(_) => page::LabApps::Some,
+        Err(error) => page::LabApps::Unreadable(format::sentence(&error.to_string())),
+    };
+    let notices = match crate::admin::removed::lines(&state).await {
+        Ok(lines) => lines
+            .iter()
+            .map(|line| Notice {
+                tone: line.tone(),
+                title: line.text().to_owned(),
+                text: String::new(),
+            })
+            .collect(),
+        Err(error) => vec![Notice {
+            tone: Tone::Problem,
+            title: "Results still waiting from removed machines could not be counted".into(),
+            text: format::sentence(&error.to_string()),
+        }],
+    };
     let listed = off_thread(&state, |state| {
         site::entries(&state.config_path).map(|(_, listed)| {
-            let models: Vec<Markup> = listed
+            let models: Vec<Option<Hover>> = listed
                 .iter()
                 .map(|entry| {
                     model(
@@ -518,60 +485,56 @@ pub(super) async fn index(State(state): State<Arc<Context>>) -> Response {
         })
     })
     .await;
-    match listed {
-        Ok((listed, models)) => html.push_fragment(&machine_rows(&state, &listed, &models)),
-        Err(error) => html.push_fragment(
-            &Markup::new()
-                .markup("<tr><td colspan=\"5\">Analyte's settings cannot be read: ")
-                .text(error)
-                .markup("</td></tr>"),
+    let machines = listed
+        .map(|(listed, models)| machine_rows(&state, &listed, models))
+        .map_err(|error| format::sentence(&format!("Analyte's settings cannot be read: {error}")));
+    let models = off_thread(&state, definitions)
+        .await
+        .map(|list| {
+            list.iter()
+                .map(|definition| {
+                    let (checked, status) = level_and_state(definition);
+                    page::Model {
+                        name: definition_name(definition),
+                        checked,
+                        status,
+                    }
+                })
+                .collect()
+        })
+        .map_err(|error| format::sentence(&error.to_string()));
+    let page = page::Index {
+        frame: Frame::new(
+            &state,
+            Tab::Setup,
+            "Setup",
+            None,
+            session.as_deref(),
+            Timestamp::now(),
         ),
-    }
-    html.push_markup(concat!(
-        "</table></div></section><section><h2 title=\"Shipped machine definitions\">",
-        "Supported machine models</h2>",
-        "<p class=\"lead\">The models this Analyte can be set up for. A model that is not ",
-        "ready yet cannot be chosen until its missing facts or recordings are added.</p>",
-        "<div class=\"table\"><table class=\"stack\"><tr><th>Model</th>",
-        "<th>How it was checked</th><th>Status</th></tr>"
-    ));
-    let listed = off_thread(&state, definitions).await;
-    match listed {
-        Ok(list) => {
-            for definition in &list {
-                let (level, status) = level_and_state(definition);
-                html.push_fragment(
-                    &Markup::new()
-                        .markup("<tr><td><strong>")
-                        .fragment(&definition_name(definition))
-                        .markup("</strong></td><td data-label=\"How it was checked\">")
-                        .fragment(&level)
-                        .markup("</td><td data-label=\"Status\">")
-                        .fragment(&status)
-                        .markup("</td></tr>"),
-                );
-            }
-            html.push_markup("</table></div></section>");
-        }
-        Err(error) => {
-            html.push_fragment(
-                &Markup::new()
-                    .markup("</table></div><p class=\"notice bad\">")
-                    .text(error)
-                    .markup("</p></section>"),
-            );
-        }
-    }
-    done(html)
+        lab_apps,
+        notices,
+        machines,
+        models,
+    };
+    respond(
+        &state,
+        session.as_deref(),
+        Section::Setup(None),
+        StatusCode::OK,
+        page.render(),
+    )
 }
 
 /// A definition's name for people, with its folder key (and definition name) on hover.
-fn definition_name(definition: &Definition) -> Markup {
-    let technical = match &definition.state {
-        Shipped::Ready { name, .. } => format!("{} (name {name})", definition.key),
-        Shipped::Blocked | Shipped::Unreadable(_) => definition.key.clone(),
-    };
-    view::exact(&definition.display, &technical)
+fn definition_name(definition: &Definition) -> Hover {
+    Hover {
+        shown: definition.display.clone(),
+        exact: match &definition.state {
+            Shipped::Ready { name, .. } => format!("{} (name {name})", definition.key),
+            Shipped::Blocked | Shipped::Unreadable(_) => definition.key.clone(),
+        },
+    }
 }
 
 /// One machine the settings file lists, as the Machines pages show it.
@@ -616,7 +579,7 @@ async fn audit(
         actor: session.actor.clone(),
         action: Identifier::new(action).map_err(failed)?,
         targets: vec![Identifier::new(id).map_err(failed)?],
-        time: jiff::Timestamp::now().as_second(),
+        time: Timestamp::now().as_second(),
         reason: Reason::new(&reason.chars().take(1000).collect::<String>()).map_err(failed)?,
     };
     stored::<_, analyte_store::StorageError>(state, move |store| store.audit(&audit))
@@ -683,41 +646,16 @@ fn see_other(location: &str) -> Response {
     response
 }
 
+/// The dated copies of the old settings, for support: one line each, with its path.
+fn copies(backups: &[PathBuf]) -> Vec<String> {
+    backups
+        .iter()
+        .map(|backup| format!("Copy of the old settings: {}", backup.display()))
+        .collect()
+}
+
 /// What to do after a Lab app, add or remove form could not be read.
 const RELOAD: &str = "reload the page";
-
-/// The refusal of a posted form that could not be read; `hint` says what to do.
-fn incomplete(hint: &'static str) -> Response {
-    refused(&SetupError::IncompleteForm(hint))
-}
-
-/// Ends a page that wrote files: the audit failure, if the record of who made
-/// the change could not be written (shown, never hidden), then Restart now.
-fn after_write(mut html: Markup, audited: Result<(), SetupError>, session: &Session) -> Response {
-    if let Err(error) = audited {
-        html.push_fragment(
-            &Markup::new()
-                .markup("<p class=\"notice bad\">")
-                .text(error)
-                .markup("</p>"),
-        );
-    }
-    html.push_fragment(&restart_form(session));
-    done(html)
-}
-
-fn restart_form(session: &Session) -> Markup {
-    Markup::new()
-        .markup(concat!(
-            "<section><h2>Restart to apply</h2><p>Restarting stops every machine connection for ",
-            "a few seconds; machines resend what they could not deliver. After the ",
-            "restart, sign in again: the setup page shows the running settings version.</p>",
-            "<form method=\"post\" action=\"/setup/restart\"><input type=\"hidden\" ",
-            "name=\"csrf\" value=\""
-        ))
-        .text(session.csrf.form_value())
-        .markup("\"><button>Restart now</button></form></section>")
-}
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -741,21 +679,27 @@ pub(super) async fn restart(
     )
     .await
     {
-        return refused(&error);
+        return refused(&state, Some(&session), None, &error);
     }
     tracing::info!("restart requested on the setup page");
     state.setup.restart.send_replace(true);
-    let mut response = Html(
-        view::refreshing(Tab::Setup, "Restarting", Refresh::SetupAfterRestart)
-            .markup(concat!(
-                "<p class=\"notice info\">Analyte is stopping ",
-                "and the service manager starts it again within about 15 seconds. ",
-                "If Analyte was started by hand in a terminal, start it again there. ",
-                "This page then asks you to sign in.</p>"
-            ))
-            .markup(view::END),
-    )
-    .into_response();
+    let page = page::Restart {
+        frame: Frame::new(
+            &state,
+            Tab::Setup,
+            "Restarting",
+            None,
+            Some(&session),
+            Timestamp::now(),
+        ),
+    };
+    let mut response = respond(
+        &state,
+        Some(&session),
+        Section::Setup(None),
+        StatusCode::OK,
+        page.render(),
+    );
     response.headers_mut().insert(
         header::CONNECTION,
         header::HeaderValue::from_static("close"),

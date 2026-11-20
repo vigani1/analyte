@@ -608,14 +608,7 @@ async fn saving_says_which_keys_were_stored_and_when_they_apply() -> Result<(), 
         "it has no page any more"
     );
     // The audit refuses: the lab app is added, and the page says the record is missing.
-    let database = std::fs::read_dir(&fixture.data)?
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .find(|path| path.extension().is_some_and(|e| e == "db"))
-        .ok_or("store file")?;
-    rusqlite::Connection::open(&database)?.execute_batch(
-        "CREATE TRIGGER refuse_audit BEFORE INSERT ON audit BEGIN SELECT RAISE(ABORT,'synthetic audit refusal'); END;",
-    )?;
+    fixture.refuse_audits()?;
     let unaudited = fixture
         .submit("/setup/lab-apps/new", "/setup/lab-apps/new", &fields)
         .await?;

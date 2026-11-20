@@ -419,6 +419,31 @@ pub(in crate::admin) fn digest_short(digest: &[u8]) -> String {
     digest_hex(digest).chars().take(12).collect()
 }
 
+/// Time left on a countdown: "0:41", "1:00".
+pub(in crate::admin) fn countdown(seconds: u64) -> String {
+    format!("{}:{:02}", seconds / 60, seconds % 60)
+}
+
+/// Control characters by their standard names in angle brackets, in the
+/// order given: "<ENQ> <STX> <CR> <ETX>". They frame a message and say
+/// nothing of what it holds; any other byte is left out.
+pub(in crate::admin) fn control_names(bytes: &[u8]) -> String {
+    const C0: [&str; 32] = [
+        "NUL", "SOH", "STX", "ETX", "EOT", "ENQ", "ACK", "BEL", "BS", "HT", "LF", "VT", "FF", "CR",
+        "SO", "SI", "DLE", "DC1", "DC2", "DC3", "DC4", "NAK", "SYN", "ETB", "CAN", "EM", "SUB",
+        "ESC", "FS", "GS", "RS", "US",
+    ];
+    bytes
+        .iter()
+        .filter_map(|&byte| match byte {
+            0x7f => Some("DEL"),
+            byte => C0.get(usize::from(byte)).copied(),
+        })
+        .map(|name| format!("<{name}>"))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 /// How the set-up machines stand, as the Machines page counts them.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(in crate::admin) struct MachineCounts {
@@ -2743,5 +2768,24 @@ mod tests {
         assert_eq!(KEY_NEEDED, "Needed before Analyte can send results.");
         assert!(KEYS_ADVICE.ends_with(KEYS_APPLY));
         Ok(())
+    }
+
+    // Owner decision 2026-11-20 (admin restyle b4): the setup test shows the
+    // framing characters by their ASCII names (ANSI X3.4 / ISO 646 control
+    // codes), never a printable byte; its countdown reads minutes and seconds.
+    #[test]
+    fn framing_characters_read_by_name_and_countdowns_by_minutes() {
+        assert_eq!(
+            control_names(&[0x05, 0x02, 0x0d, 0x03, 0x04, 0x0a]),
+            "<ENQ> <STX> <CR> <ETX> <EOT> <LF>"
+        );
+        assert_eq!(
+            control_names(&[0x0b, 0x1c, 0x1e, 0x7f, 0x00]),
+            "<VT> <FS> <RS> <DEL> <NUL>"
+        );
+        assert_eq!(control_names(b"MSH|PID"), "");
+        assert_eq!(countdown(41), "0:41");
+        assert_eq!(countdown(60), "1:00");
+        assert_eq!(countdown(0), "0:00");
     }
 }

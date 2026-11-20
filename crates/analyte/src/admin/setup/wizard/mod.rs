@@ -9,34 +9,45 @@
 //! URL. Hidden fields beat a server-side draft here: there is nothing to store,
 //! bound, expire or lose at a restart, and Back works in every tab.
 use super::{
-    Csrf, SetupError, after_write, audit, definition_name, definitions, done, incomplete,
-    level_and_state, needs_login, off_thread, page,
+    Csrf, SetupError, Shipped, audit, copies, definition_name, definitions, lab_apps,
+    level_and_state, needs_login, off_thread,
     plan::{
-        Choice, KEEP, chosen, current_lab_app, kind_of, listen_target, model_of, plan,
-        save_blocking,
+        Choice as Posted, KEEP, chosen, current_lab_app, holder, kind_of, listen_target, model_of,
+        plan, save_blocking,
     },
     refused, running, see_other, serial, settings_version, site,
 };
 use crate::admin::{
-    markup::Markup,
-    server::Context,
+    machines::{Hover, Notice},
+    server::{Connection, Context},
     sessions::Session,
-    view::{self, Refresh, Tab, Tone, pill},
+    view::{
+        Tab, Tone, format,
+        frame::Frame,
+        report::{Button, Report, Section, Status, respond},
+    },
 };
-use crate::machine::link::status::Link;
+use crate::machine::link::status::{Light, Link};
 use analyte_config::{Endpoint, TransportKind};
+use askama::Template as _;
 use axum::{
     Extension, Form,
     extract::{Path, Query, State, rejection::QueryRejection},
     http::StatusCode,
-    response::{Html, IntoResponse, Response},
+    response::Response,
     routing::{MethodRouter, get},
+};
+use jiff::Timestamp;
+use page::{
+    Choice, ConnectionStep, Foot, Hidden, LabApp, Listen, Live, Mark, ModelStep, Outcome, Picker,
+    Port, SaveStep, Sends, Start, Summary, TestStep, Tested, Wizard,
 };
 use serde::Deserialize;
 use std::sync::Arc;
 use verdict::Family;
 
 pub(super) mod listen;
+mod page;
 mod verdict;
 
 /// The choices made so far, as carried in a step's form. Every value is
@@ -72,29 +83,40 @@ impl Draft {
         ]
     }
 
-    /// Hidden inputs for every choice made, except the ones the step shows.
-    fn hidden(&self, shown: &[&str]) -> Markup {
-        let mut html = Markup::new();
-        for (name, value) in self.fields() {
-            if let Some(value) = value
-                && !shown.contains(&name)
-            {
-                html.push_fragment(
-                    &Markup::new()
-                        .markup("<input type=\"hidden\" name=\"")
-                        .markup(name)
-                        .markup("\" value=\"")
-                        .text(value)
-                        .markup("\">"),
-                );
-            }
-        }
-        html
+    /// Every choice made, except the ones the step shows, as hidden fields.
+    fn hidden(&self, shown: &[&str]) -> Hidden {
+        self.fields()
+            .into_iter()
+            .filter(|(name, _)| !shown.contains(name))
+            .filter_map(|(name, value)| value.map(|value| (name, value.to_owned())))
+            .collect()
+    }
+
+    /// Whether `other` holds the same choices; an empty field counts as not
+    /// chosen, as every step reads it.
+    fn same(&self, other: &Self) -> bool {
+        let chosen = |draft: &Self| -> Vec<(&'static str, String)> {
+            draft
+                .hidden(&[])
+                .into_iter()
+                .filter(|(_, value)| !value.trim().is_empty())
+                .collect()
+        };
+        chosen(self) == chosen(other)
+    }
+
+    /// Every choice made, as a URL query that opens a step with them.
+    fn query(&self) -> String {
+        self.hidden(&[])
+            .iter()
+            .map(|(name, value)| format!("{name}={}", format::path_segment(value)))
+            .collect::<Vec<_>>()
+            .join("&")
     }
 }
 
-impl From<Choice> for Draft {
-    fn from(choice: Choice) -> Self {
+impl From<Posted> for Draft {
+    fn from(choice: Posted) -> Self {
         Self {
             definition: choice.definition,
             port: choice.port,
@@ -141,14 +163,27 @@ impl Step {
         }
     }
 
+    /// The button that goes back to this step to fix a refused choice.
+    const fn fix(self) -> &'static str {
+        match self {
+            Self::Machine => "Go to step 1: Machine",
+            Self::Connection => "Go to step 2: Connection",
+            Self::Test => "Go to step 3: Test",
+            Self::Save => "Go to step 4: Save",
+        }
+    }
+
     /// The step's page; GET, with the draft as the query.
     fn path(self, id: &str) -> String {
-        match self {
-            Self::Machine => format!("/setup/{id}"),
-            Self::Connection => format!("/setup/{id}/connection"),
-            Self::Test => format!("/setup/{id}/test"),
-            Self::Save => format!("/setup/{id}/save"),
-        }
+        format::setup_href(
+            id,
+            match self {
+                Self::Machine => "",
+                Self::Connection => "connection",
+                Self::Test => "test",
+                Self::Save => "save",
+            },
+        )
     }
 
     /// The step whose choice caused `error`, or `None` when no step can fix it.
@@ -204,62 +239,89 @@ impl Step {
     }
 }
 
-/// The step indicator: every step by number and name, the current one marked,
+/// The stepper: every step by number and name, `current` marked and the
 /// earlier ones done. `None` marks all four done, after a save.
-fn indicator(current: Option<Step>) -> Markup {
-    let mut html = Markup::new().markup("<ol class=\"steps\" aria-label=\"Setup steps\">");
-    for step in Step::ALL {
-        let done = current.is_none_or(|current| step < current);
-        html.push_markup(if current == Some(step) {
-            "<li aria-current=\"step\">"
-        } else if done {
-            "<li class=\"done\">"
-        } else {
-            "<li>"
-        });
-        html.push_markup("<span class=\"number\">");
-        html.push_markup(step.number());
-        html.push_markup("</span>");
-        html.push_markup(step.label());
-        html.push_markup("</li>");
-    }
-    html.markup("</ol>")
+fn marks(current: Option<Step>) -> Vec<Mark> {
+    Step::ALL
+        .into_iter()
+        .map(|step| Mark {
+            number: step.number(),
+            label: step.label(),
+            done: current.is_none_or(|current| step < current),
+            current: current == Some(step),
+        })
+        .collect()
 }
 
-/// A refusal that names the step to fix and goes back to it with every choice kept.
-pub(super) fn refused_at(error: &SetupError, id: &str, draft: &Draft) -> Response {
+/// What every step shows around its form; `current` is none after a save.
+fn wizard(id: &str, model: Option<String>, current: Option<Step>) -> Wizard {
+    Wizard {
+        id: id.to_owned(),
+        model,
+        steps: marks(current),
+        count: format!("Step {} of 4", current.unwrap_or(Step::Save).number()),
+        cancel: current.is_some(),
+    }
+}
+
+/// The frame of a step about machine `id`.
+fn frame(state: &Context, session: &Session, id: &str) -> Frame {
+    Section::Setup(Some(id)).frame(state, format!("Set up {id}"), Some(session))
+}
+
+/// A refusal that names the step to fix and links back to it with every choice kept.
+pub(super) fn refused_at(
+    state: &Context,
+    session: &Session,
+    error: &SetupError,
+    id: &str,
+    draft: &Draft,
+) -> Response {
     let Some(step) = Step::to_fix(error) else {
-        return refused(error);
+        return refused(state, Some(session), Some(id), error);
     };
-    let html = page("Setup could not continue")
-        .markup("<p class=\"notice bad\">")
-        .text(error)
-        .markup("</p><p>")
-        .text(format!(
+    let section = Section::Setup(Some(id));
+    let title = "Nothing was changed";
+    let page = Report {
+        frame: section.frame(state, title, Some(session)),
+        head: section.head(title),
+        tone: Tone::Problem,
+        title: "Setup could not continue".into(),
+        text: format::sentence(&error.to_string()),
+        lines: vec![format!(
             "Fix this in step {}: {}.",
             step.number(),
             step.label()
-        ))
-        .markup("</p><form method=\"get\" action=\"")
-        .text(step.path(id))
-        .markup("\">")
-        .fragment(&draft.hidden(&[]))
-        .markup("<div class=\"actions-row\"><button>")
-        .text(format!("Go to step {}: {}", step.number(), step.label()))
-        .markup(concat!(
-            "</button><a class=\"button secondary\" href=\"/setup\">Back to setup</a>",
-            "</div></form>"
-        ))
-        .markup(view::END);
-    (StatusCode::CONFLICT, Html(html)).into_response()
+        )],
+        problems: Vec::new(),
+        restart: None,
+        links: vec![
+            Button {
+                href: format!("{}?{}", step.path(id), draft.query()),
+                label: step.fix(),
+                class: "btn--primary",
+            },
+            Button {
+                href: Tab::Setup.href().to_owned(),
+                label: "Back to Setup",
+                class: "btn--outline",
+            },
+        ],
+        support: Vec::new(),
+    };
+    respond(
+        state,
+        Some(session),
+        section,
+        StatusCode::CONFLICT,
+        page.render(),
+    )
 }
 
-/// Opens a step's page: the machine's name in the title, then the indicator.
-fn step_page(id: &str, step: Step) -> Markup {
-    page(&format!("Set up {id}")).fragment(&indicator(Some(step)))
-}
+/// A step's page, or why its template could not be written.
+type Rendered = Result<String, askama::Error>;
 
-type Render = fn(&Context, &Session, &str, &Draft) -> Result<Markup, SetupError>;
+type Render = fn(&Context, &Session, &str, &Draft) -> Result<Rendered, SetupError>;
 
 /// Serves one step: signed in only; files are read off the async workers; a
 /// choice that does not pass is refused with the step to fix.
@@ -271,19 +333,27 @@ async fn serve(
     render: Render,
 ) -> Response {
     let Some(Extension(session)) = session.filter(|Extension(s)| s.authenticated) else {
-        return needs_login();
+        return needs_login(&state);
     };
     let Ok(Query(draft)) = query else {
-        return incomplete(START_AGAIN);
+        return refused(
+            &state,
+            Some(&session),
+            Some(&id),
+            &SetupError::IncompleteForm(START_AGAIN),
+        );
     };
-    let (machine, kept) = (id.clone(), draft.clone());
-    let rendered = off_thread(&state, move |state| {
-        render(state, &session, &machine, &kept)
-    })
-    .await;
+    let (machine, kept, owner) = (id.clone(), draft.clone(), session.clone());
+    let rendered = off_thread(&state, move |state| render(state, &owner, &machine, &kept)).await;
     match rendered {
-        Ok(html) => done(html),
-        Err(error) => refused_at(&error, &id, &draft),
+        Ok(html) => respond(
+            &state,
+            Some(&session),
+            Section::Setup(Some(&id)),
+            StatusCode::OK,
+            html,
+        ),
+        Err(error) => refused_at(&state, &session, &error, &id, &draft),
     }
 }
 
@@ -307,10 +377,10 @@ pub(in crate::admin) fn step(step: Step) -> MethodRouter<Arc<Context>> {
 
 fn render_machine(
     state: &Context,
-    _: &Session,
+    session: &Session,
     id: &str,
     draft: &Draft,
-) -> Result<Markup, SetupError> {
+) -> Result<Rendered, SetupError> {
     let (_, installed) = site::installed(&state.config_path, id)?;
     let list = definitions(state)?;
     let current = match chosen(&list, None, &installed) {
@@ -323,75 +393,50 @@ fn render_machine(
         .clone()
         .or_else(|| current.as_ref().map(|model| model.form_value().to_owned()))
         .unwrap_or_default();
-    let mut html = step_page(id, Step::Machine)
-        .markup("<section><dl><dt>Machine</dt><dd><strong>")
-        .text(id)
-        .markup(
-            "</strong></dd><dt title=\"Running configuration digest\">Settings version</dt><dd>",
-        )
-        .fragment(&settings_version(running(state, id)))
-        .markup("</dd></dl></section><form method=\"get\" action=\"")
-        .text(Step::Connection.path(id))
-        .markup(concat!(
-            "\"><section><h2>1. Machine model</h2><p>Choose this machine's model. A model ",
-            "that is not ready yet cannot be chosen.</p><ul class=\"choices\">"
-        ));
-    if let Some(kept) = current.as_ref().filter(|model| model.key.is_none()) {
-        html.push_fragment(
-            &Markup::new()
-                .markup("<li><label><input type=\"radio\" name=\"definition\" value=\"")
-                .markup(KEEP)
-                .markup("\" required")
-                .markup(if selected == KEEP { " checked" } else { "" })
-                .markup("> <strong>Keep the current model</strong> <span class=\"muted\">")
-                .text(kept.path.display())
-                .markup("</span></label></li>"),
-        );
+    let plain = |shown: String| Hover {
+        shown,
+        exact: String::new(),
+    };
+    let mut choices: Vec<Choice> = current
+        .as_ref()
+        .filter(|model| model.key.is_none())
+        .map(|kept| Choice {
+            value: KEEP.to_owned(),
+            title: plain("Keep the current model".into()),
+            meta: plain(kept.path.display().to_string()),
+            status: None,
+            checked: selected == KEEP,
+            disabled: false,
+        })
+        .into_iter()
+        .collect();
+    choices.extend(list.iter().map(|definition| {
+        let (checked, status) = level_and_state(definition);
+        Choice {
+            value: definition.key.clone(),
+            title: definition_name(definition),
+            meta: checked,
+            status: Some(status),
+            checked: definition.key == selected,
+            disabled: !matches!(definition.state, Shipped::Ready { .. }),
+        }
+    }));
+    Ok(ModelStep {
+        frame: frame(state, session, id),
+        wizard: wizard(id, current.map(|model| model.name), Some(Step::Machine)),
+        action: Step::Connection.path(id),
+        hidden: draft.hidden(&["definition"]),
+        choices,
     }
-    html.push_fragment(&definition_picker(&list, &selected));
-    Ok(html
-        .markup("</ul></section>")
-        .fragment(&draft.hidden(&["definition"]))
-        .markup(concat!(
-            "<div class=\"actions-row\"><a class=\"button secondary\" href=\"/setup\">Cancel</a>",
-            "<button>Next: Connection</button></div></form>"
-        )))
-}
-
-fn definition_picker(list: &[super::Definition], key: &str) -> Markup {
-    let mut html = Markup::new();
-    for definition in list {
-        let (level, status) = level_and_state(definition);
-        let selectable = matches!(definition.state, super::Shipped::Ready { .. });
-        html.push_fragment(
-            &Markup::new()
-                .markup("<li><label><input type=\"radio\" name=\"definition\" value=\"")
-                .text(&definition.key)
-                .markup("\" required")
-                .markup(if definition.key == key {
-                    " checked"
-                } else {
-                    ""
-                })
-                .markup(if selectable { "" } else { " disabled" })
-                .markup("> <strong>")
-                .fragment(&definition_name(definition))
-                .markup("</strong> <span class=\"muted\">")
-                .fragment(&level)
-                .markup("</span> ")
-                .fragment(&status)
-                .markup("</label></li>"),
-        );
-    }
-    html
+    .render())
 }
 
 fn render_connection(
     state: &Context,
-    _: &Session,
+    session: &Session,
     id: &str,
     draft: &Draft,
-) -> Result<Markup, SetupError> {
+) -> Result<Rendered, SetupError> {
     let (_, installed) = site::installed(&state.config_path, id)?;
     let list = definitions(state)?;
     let model = model_of(&list, draft, &installed)?;
@@ -403,127 +448,167 @@ fn render_connection(
         .lab_app
         .clone()
         .or_else(|| current_lab_app(running(state, id), &current_site));
-    let picker = match super::lab_apps::scan(&state.config_path) {
-        Ok(scan) => super::lab_apps::picker(&scan, lab_app.as_deref()),
-        Err(error) => Markup::new()
-            .markup("<p class=\"notice bad\">The lab apps cannot be read: ")
-            .text(error)
-            .markup("</p>"),
+    let lab_apps = match lab_apps::scan(&state.config_path) {
+        Ok(scan) => picker(&scan, lab_app.as_deref()),
+        Err(error) => Picker::Unreadable(format::sentence(&error.to_string())),
     };
-    Ok(step_page(id, Step::Connection)
-        .markup("<form method=\"get\" action=\"")
-        .text(Step::Test.path(id))
-        .markup("\"><section><h2>2. Connection</h2><p class=\"muted\">Model: <strong>")
-        .text(&model.name)
-        .markup("</strong></p>")
-        .fragment(&connection_inputs(state, &model.path, &current_site, draft))
-        .markup("</section><section><h2>Lab app</h2>")
-        .fragment(&picker)
-        .markup("</section>")
-        .fragment(&draft.hidden(&CONNECTION_FIELDS))
-        .markup("<div class=\"actions-row\"><button class=\"secondary\" formaction=\"")
-        .text(Step::Machine.path(id))
-        .markup("\" formnovalidate>Back</button><button>Next: Test</button></div></form>"))
+    let (how, inputs) = connection_inputs(state, id, &model.path, &current_site, draft);
+    Ok(ConnectionStep {
+        frame: frame(state, session, id),
+        wizard: wizard(id, Some(model.name), Some(Step::Connection)),
+        action: Step::Test.path(id),
+        back: Step::Machine.path(id),
+        hidden: draft.hidden(&CONNECTION_FIELDS),
+        how,
+        inputs,
+        lab_apps,
+    }
+    .render())
 }
 
+/// The lab app picker: the known lab apps with `current` (or the only one) chosen.
+fn picker(scan: &lab_apps::Scan, current: Option<&str>) -> Picker {
+    if scan.known.is_empty() {
+        return Picker::None;
+    }
+    let chosen = current
+        .filter(|name| scan.get(name).is_some())
+        .map(str::to_owned)
+        .or_else(|| match scan.known.as_slice() {
+            [only] => Some(only.settings.name.as_str().to_owned()),
+            _ => None,
+        });
+    Picker::Choose {
+        apps: scan
+            .known
+            .iter()
+            .map(|known| LabApp {
+                name: known.settings.name.as_str().to_owned(),
+                address: known.settings.base_url.as_str().to_owned(),
+                selected: chosen.as_deref() == Some(known.settings.name.as_str()),
+            })
+            .collect(),
+        chosen: chosen.is_some(),
+    }
+}
+
+/// How the model connects in one sentence, and the fields its transport asks for.
 fn connection_inputs(
     state: &Context,
+    id: &str,
     path: &std::path::Path,
     current_site: &toml::Table,
     draft: &Draft,
-) -> Markup {
+) -> (&'static str, page::Inputs) {
     let current_endpoint = current_site
         .get("endpoint")
         .and_then(toml::Value::as_str)
         .unwrap_or_default();
     match kind_of(path) {
-        Some(TransportKind::Serial) => serial_choices(state, current_site, draft),
+        Some(TransportKind::Serial) => (
+            "It connects by a serial cable or a USB serial adapter.",
+            serial_choices(state, id, current_site, draft),
+        ),
         Some(kind @ (TransportKind::TcpServer | TransportKind::TcpClient)) => {
             let (host, port) = current_endpoint.rsplit_once(':').unwrap_or(("", ""));
             let host = host.trim_start_matches('[').trim_end_matches(']');
-            Markup::new()
-                .markup("<p>")
-                .markup(if kind == TransportKind::TcpServer {
-                    "The machine connects to Analyte. Enter the address of this PC that Analyte listens on (0.0.0.0 means every network card) and the port the machine is set to."
+            let listens = kind == TransportKind::TcpServer;
+            (
+                if listens {
+                    "It connects to Analyte over the network."
                 } else {
-                    "Analyte connects to the machine. Enter the machine's IP address and port."
-                })
-                .markup("</p><label class=\"field\"><span>IP address</span><input name=\"host\" required value=\"")
-                .text(draft.host.as_deref().unwrap_or(host))
-                .markup("\" maxlength=\"64\"></label><label class=\"field\"><span>Port</span><input name=\"tcp_port\" required value=\"")
-                .text(draft.tcp_port.as_deref().unwrap_or(port))
-                .markup("\" maxlength=\"5\" inputmode=\"numeric\"></label>")
+                    "Analyte connects to it over the network."
+                },
+                page::Inputs::Network {
+                    listens,
+                    host: draft.host.as_deref().unwrap_or(host).to_owned(),
+                    port: draft.tcp_port.as_deref().unwrap_or(port).to_owned(),
+                },
+            )
         }
-        Some(TransportKind::WatchedFolder) | None => Markup::new()
-            .markup("<label class=\"field\"><span>Folder</span><input name=\"folder\" required value=\"")
-            .text(draft.folder.as_deref().unwrap_or(current_endpoint))
-            .markup("\" maxlength=\"1024\"></label>"),
+        Some(TransportKind::WatchedFolder) | None => (
+            "Analyte reads its results from a folder.",
+            page::Inputs::Folder(
+                draft
+                    .folder
+                    .as_deref()
+                    .unwrap_or(current_endpoint)
+                    .to_owned(),
+            ),
+        ),
     }
 }
 
 /// The detected ports with adapter name and serial number, then a typed name.
-/// Without a choice in the draft, the port the site file names is chosen.
-fn serial_choices(state: &Context, current_site: &toml::Table, draft: &Draft) -> Markup {
+/// Without a choice in the draft, the port the site file names is chosen. A
+/// port another running machine uses cannot be chosen.
+fn serial_choices(
+    state: &Context,
+    id: &str,
+    current_site: &toml::Table,
+    draft: &Draft,
+) -> page::Inputs {
     let current = |key| current_site.get(key).and_then(toml::Value::as_str);
-    let mut html = Markup::new().markup(concat!(
-        "<p>Choose the port the machine's cable is plugged into. If the USB adapter ",
-        "has its own serial number, Analyte saves that number, so it finds the ",
-        "machine again even if the port name changes; otherwise it saves the port name.</p><ul class=\"choices\">"
-    ));
-    match (state.setup.seams.ports)() {
-        Ok(ports) => {
-            for port in ports.iter().take(serial::LIST_LIMIT) {
-                let (value, saved) = match port.factory_serial() {
-                    Some(number) => (
-                        format!("usb:{number}"),
-                        format!("saved as serial number {number}"),
-                    ),
-                    None => (
-                        format!("name:{}", port.name),
-                        "no serial number; saved as the port name".into(),
-                    ),
-                };
-                let checked = match draft.port.as_deref() {
-                    Some(chosen) => chosen == value,
-                    None => match port.factory_serial() {
-                        Some(number) => current("usb_serial") == Some(number),
-                        None => current("endpoint") == Some(port.name.as_str()),
-                    },
-                };
-                html.push_fragment(
-                    &Markup::new()
-                        .markup("<li><label><input type=\"radio\" name=\"port\" value=\"")
-                        .text(value)
-                        .markup(if checked { "\" checked> " } else { "\"> " })
-                        .text(&port.name)
-                        .markup(" — ")
-                        .text(port.description.as_deref().unwrap_or("unknown adapter"))
-                        .markup(" — ")
-                        .text(saved)
-                        .markup("</label></li>"),
-                );
-            }
-            if ports.is_empty() {
-                html.push_markup("<li class=\"notice\">No serial ports were found.</li>");
-            }
-        }
-        Err(error) => html.push_fragment(
-            &Markup::new()
-                .markup("<li class=\"notice bad\">Listing serial ports failed: ")
-                .text(error)
-                .markup("</li>"),
-        ),
+    let ports = (state.setup.seams.ports)()
+        .map(|ports| {
+            let listed: Vec<serial::Listed> =
+                ports.iter().take(serial::LIST_LIMIT).cloned().collect();
+            listed
+                .iter()
+                .map(|port| {
+                    let (value, endpoint, saved) = match port.factory_serial() {
+                        Some(number) => (
+                            format!("usb:{number}"),
+                            analyte_config::UsbSerial::new(number.into()).map_or_else(
+                                |_| Endpoint::Fixed(port.name.clone()),
+                                Endpoint::UsbSerial,
+                            ),
+                            format!("remembered by its serial number {number}"),
+                        ),
+                        None => (
+                            format!("name:{}", port.name),
+                            Endpoint::Fixed(port.name.clone()),
+                            "no serial number; remembered by its port name".into(),
+                        ),
+                    };
+                    let checked = match draft.port.as_deref() {
+                        Some(chosen) => chosen == value,
+                        None => match port.factory_serial() {
+                            Some(number) => current("usb_serial") == Some(number),
+                            None => current("endpoint") == Some(port.name.as_str()),
+                        },
+                    };
+                    let used_by =
+                        holder(state, &endpoint, Some(&port.name), &|| Ok(listed.clone()))
+                            .filter(|holder| holder.as_str() != id)
+                            .map(|holder| holder.as_str().to_owned());
+                    Port {
+                        meta: format!(
+                            "{} – {}",
+                            port.description.as_deref().unwrap_or("unknown adapter"),
+                            used_by
+                                .as_ref()
+                                .map_or(saved, |holder| format!("used by {holder}"))
+                        ),
+                        value,
+                        name: port.name.clone(),
+                        checked: checked && used_by.is_none(),
+                        used_by,
+                    }
+                })
+                .collect()
+        })
+        .map_err(|error| format::sentence(&format!("listing serial ports failed: {error}")));
+    page::Inputs::Serial {
+        ports,
+        typed: draft.port_name.clone().unwrap_or_default(),
+        placeholder: current("endpoint").unwrap_or_default().to_owned(),
     }
-    html.markup("</ul><label class=\"field\"><span>Or type a port name</span><input name=\"port_name\" maxlength=\"1024\" value=\"")
-        .text(draft.port_name.as_deref().unwrap_or_default())
-        .markup("\" placeholder=\"")
-        .text(current("endpoint").unwrap_or_default())
-        .markup("\"></label>")
 }
 
 /// The chosen connection in plain words, with the exact setting on hover.
-pub(super) fn connection_words(link: Link, connection: &Endpoint) -> Markup {
-    let words = match (link, connection) {
+fn connection_words(link: Link, connection: &Endpoint) -> Hover {
+    let shown = match (link, connection) {
         (_, Endpoint::UsbSerial(number)) => {
             format!("USB serial adapter with serial number {}", number.as_str())
         }
@@ -536,7 +621,10 @@ pub(super) fn connection_words(link: Link, connection: &Endpoint) -> Markup {
         }
         (Link::Folder, Endpoint::Fixed(folder)) => format!("Watched folder {folder}"),
     };
-    view::exact(&words, &site::describe(connection))
+    Hover {
+        shown,
+        exact: site::describe(connection),
+    }
 }
 
 fn render_test(
@@ -544,72 +632,56 @@ fn render_test(
     session: &Session,
     id: &str,
     draft: &Draft,
-) -> Result<Markup, SetupError> {
+) -> Result<Rendered, SetupError> {
     let plan = plan(state, id, draft)?;
     let link = Link::of(plan.validated.effective().stack());
-    let mut html = step_page(id, Step::Test).markup("<section><h2>3. Test the connection</h2>");
-    if link == Link::Folder {
-        html.push_markup(concat!(
-            "<p class=\"notice info\">A watched folder has no connection to listen on, so ",
-            "there is nothing to test here. Go on to save.</p></section>"
-        ));
-    } else {
-        html.push_fragment(
-            &Markup::new()
-                .markup(concat!(
-                    "<p>The test only listens: for up to 60 seconds it shows what the machine ",
-                    "sends, says what it looks like, and sends nothing back. It cannot use a ",
-                    "port the running service is using.</p><p class=\"notice\">What it shows may ",
-                    "contain patient data; it appears only on this page and is never stored or ",
-                    "logged.</p>"
-                ))
-                .fragment(&start_test(
-                    session,
-                    id,
-                    draft,
-                    "Start the test (listen only)",
-                ))
-                .markup("</section>"),
-        );
+    let folder = link == Link::Folder;
+    let start = (!folder).then(|| {
+        start(
+            state,
+            session,
+            id,
+            draft,
+            connection_words(link, &plan.connection),
+            "Start the test",
+        )
+    });
+    Ok(TestStep {
+        frame: frame(state, session, id),
+        wizard: wizard(id, Some(plan.model), Some(Step::Test)),
+        foot: foot(id, draft, folder),
+        start,
     }
-    Ok(html.fragment(&nav(
-        id,
-        draft,
-        Step::Connection,
-        if link == Link::Folder {
-            "<button>Next: Save</button>"
-        } else {
-            "<button class=\"secondary\">Next: Save</button>"
-        },
-    )))
+    .render())
 }
 
 /// The form that starts (or repeats) the listen-only test with the draft's choices.
-fn start_test(session: &Session, id: &str, draft: &Draft, label: &'static str) -> Markup {
-    Markup::new()
-        .markup("<form method=\"post\" action=\"")
-        .text(format!("/setup/{id}/listen"))
-        .markup("\"><input type=\"hidden\" name=\"csrf\" value=\"")
-        .text(session.csrf.form_value())
-        .markup("\">")
-        .fragment(&draft.hidden(&[]))
-        .markup("<button>")
-        .markup(label)
-        .markup("</button></form>")
+fn start(
+    state: &Context,
+    session: &Session,
+    id: &str,
+    draft: &Draft,
+    target: Hover,
+    label: &'static str,
+) -> Start {
+    Start {
+        action: format::setup_href(id, "listen"),
+        csrf: session.csrf.form_value().to_owned(),
+        hidden: draft.hidden(&[]),
+        target,
+        limit: state.setup.seams.limits.duration.as_secs(),
+        label,
+    }
 }
 
-/// Back to `back` and Next to the Save step, both carrying the draft.
-fn nav(id: &str, draft: &Draft, back: Step, next: &'static str) -> Markup {
-    Markup::new()
-        .markup("<form method=\"get\" action=\"")
-        .text(Step::Save.path(id))
-        .markup("\">")
-        .fragment(&draft.hidden(&[]))
-        .markup("<div class=\"actions-row\"><button class=\"secondary\" formaction=\"")
-        .text(back.path(id))
-        .markup("\">Back</button>")
-        .markup(next)
-        .markup("</div></form>")
+/// Back to step 2 and Next to step 4, both carrying the draft.
+fn foot(id: &str, draft: &Draft, primary: bool) -> Foot {
+    Foot {
+        back: Step::Connection.path(id),
+        next: Step::Save.path(id),
+        hidden: draft.hidden(&[]),
+        primary,
+    }
 }
 
 fn render_review(
@@ -617,79 +689,110 @@ fn render_review(
     session: &Session,
     id: &str,
     draft: &Draft,
-) -> Result<Markup, SetupError> {
+) -> Result<Rendered, SetupError> {
     let plan = plan(state, id, draft)?;
     let link = Link::of(plan.validated.effective().stack());
     let destination = &plan.validated.effective().site().destination;
-    Ok(step_page(id, Step::Save)
-        .markup("<section><h2>4. Check and save</h2><dl>")
-        .fragment(&view::row(
-            "Machine",
-            None,
-            &Markup::new()
-                .markup("<strong>")
-                .text(id)
-                .markup("</strong>"),
-        ))
-        .fragment(&view::row("Model", None, &Markup::new().text(&plan.model)))
-        .fragment(&view::row(
-            "Connection",
-            None,
-            &connection_words(link, &plan.connection),
-        ))
-        .fragment(&view::row(
-            "Send results to",
-            None,
-            &Markup::new().text(format!(
-                "{} ({})",
-                destination.name.as_str(),
-                destination.base_url.as_str()
-            )),
-        ))
-        .markup(concat!(
-            "</dl><p>Saving checks everything again and keeps a copy of the old settings. ",
-            "Analyte keeps running the old settings until you restart it.</p></section>",
-            "<div class=\"actions-row\"><form method=\"get\" action=\""
-        ))
-        .text(Step::Test.path(id))
-        .markup("\">")
-        .fragment(&draft.hidden(&[]))
-        .markup("<button class=\"secondary\">Back</button></form><form method=\"post\" action=\"")
-        .text(format!("/setup/{id}"))
-        .markup("\"><input type=\"hidden\" name=\"csrf\" value=\"")
-        .text(session.csrf.form_value())
-        .markup("\">")
-        .fragment(&draft.hidden(&[]))
-        .markup("<button>Save</button></form></div>"))
+    let summary = Summary {
+        connection: connection_words(link, &plan.connection),
+        lab_app: sends(destination, lab_apps::missing_keys(state, destination)),
+        test: tested(state, id, draft, link),
+        versions: None,
+        model: plan.model.clone(),
+    };
+    Ok(SaveStep {
+        frame: frame(state, session, id),
+        wizard: wizard(id, Some(plan.model), Some(Step::Save)),
+        summary,
+        outcome: Outcome::Review {
+            back: Step::Test.path(id),
+            action: format::setup_href(id, ""),
+            csrf: session.csrf.form_value().to_owned(),
+            hidden: draft.hidden(&[]),
+        },
+    }
+    .render())
+}
+
+/// The lab app the machine sends to, with the keys it still lacks.
+fn sends(destination: &analyte_config::Destination, missing: Option<String>) -> Sends {
+    Sends {
+        name: destination.name.as_str().to_owned(),
+        href: format::lab_app_href(destination.name.as_str()),
+        address: destination.base_url.as_str().to_owned(),
+        missing,
+    }
+}
+
+/// The verdict of the last connection test for `id`, when it ran with exactly
+/// these choices; a watched folder has nothing to test.
+fn tested(state: &Context, id: &str, draft: &Draft, link: Link) -> Tested {
+    if link == Link::Folder {
+        return Tested::Folder;
+    }
+    let Ok(slot) = state.setup.listen.lock() else {
+        return Tested::NotRun;
+    };
+    match slot
+        .as_ref()
+        .filter(|test| test.machine == id && test.draft.same(draft))
+    {
+        Some(test) => {
+            let view = test.session.view();
+            let verdict = verdict_of(&view, test.family);
+            Tested::Seen {
+                tone: verdict.tone,
+                title: verdict.title,
+                when: format::moment(view.started, Timestamp::now()),
+            }
+        }
+        None => Tested::NotRun,
+    }
 }
 
 /// A posted step (the test or Save), or why its form could not be read.
-type Posted = Result<Form<Choice>, axum::extract::rejection::FormRejection>;
+type PostedForm = Result<Form<Posted>, axum::extract::rejection::FormRejection>;
 
 /// What to do after a step's form could not be read.
 const START_AGAIN: &str = "start again from the setup page";
+
+/// The refusal of a step's form that could not be read.
+fn unread(state: &Context, session: &Session, id: &str) -> Response {
+    refused(
+        state,
+        Some(session),
+        Some(id),
+        &SetupError::IncompleteForm(START_AGAIN),
+    )
+}
 
 /// POST /setup/{id}: check every choice again, write the files with backups, show what was saved.
 pub(in crate::admin) async fn save(
     State(state): State<Arc<Context>>,
     Extension(session): Extension<Arc<Session>>,
     Path(id): Path<String>,
-    form: Posted,
+    form: PostedForm,
 ) -> Response {
     let Ok(Form(choice)) = form else {
-        return incomplete(START_AGAIN);
+        return unread(&state, &session, &id);
     };
     let draft = Draft::from(choice);
     let (machine, kept) = (id.clone(), draft.clone());
-    let saved = match off_thread(&state, move |state| save_blocking(state, &machine, &kept)).await {
+    let saved = off_thread(&state, move |state| {
+        let saved = save_blocking(state, &machine, &kept)?;
+        let missing = lab_apps::missing_keys(state, &saved.lab_app);
+        Ok((saved, missing))
+    })
+    .await;
+    let (saved, missing) = match saved {
         Ok(saved) => saved,
-        Err(error) => return refused_at(&error, &id, &draft),
+        Err(error) => return refused_at(&state, &session, &error, &id, &draft),
     };
     let reason = format!(
         "setup page saved: {}, lab app {} ({}){}",
         site::describe(&saved.connection),
-        saved.lab_app,
-        saved.base_url,
+        saved.lab_app.name.as_str(),
+        saved.lab_app.base_url.as_str(),
         if saved.moved {
             "; its lab app settings moved to lab-apps.toml"
         } else {
@@ -698,54 +801,50 @@ pub(in crate::admin) async fn save(
     );
     let audited = audit(&state, &session, "setup-save", &id, reason).await;
     tracing::info!(machine = id.as_str(), "setup page saved a site file");
-    let mut html = page("Settings saved")
-        .fragment(&indicator(None))
-        .markup("<section><dl>")
-        .fragment(&view::row(
-            "Machine",
-            None,
-            &Markup::new()
-                .markup("<strong>")
-                .text(&id)
-                .markup("</strong>"),
-        ))
-        .fragment(&view::row("Model", None, &Markup::new().text(&saved.model)))
-        .fragment(&view::row(
-            "Connection",
-            None,
-            &connection_words(saved.link, &saved.connection),
-        ))
-        .fragment(&view::row(
-            "Lab app",
-            None,
-            &Markup::new().text(format!("{} ({})", saved.lab_app, saved.base_url)),
-        ))
-        .fragment(&view::row(
-            "New settings version",
-            Some("New configuration digest"),
-            &view::version(&saved.digest),
-        ))
-        .fragment(&view::row(
-            "Running now",
-            Some("Running configuration digest"),
-            &settings_version(running(&state, &id)),
-        ))
-        .markup("</dl><ul>");
+    let mut lines = Vec::new();
     if saved.moved {
-        html.push_markup(
-            "<li>This lab app is now kept on the <a href=\"/setup/lab-apps\">Lab app page</a>; nothing else changed.</li>",
+        lines.push(
+            "This lab app is now kept on the Lab apps page; nothing else changed.".to_owned(),
         );
     }
-    for backup in &saved.backups {
-        html.push_fragment(
-            &Markup::new()
-                .markup("<li class=\"muted\">Copy of the old settings: ")
-                .text(backup.display())
-                .markup("</li>"),
-        );
+    if !saved.backups.is_empty() {
+        lines.push("A dated copy of the old settings was kept.".into());
     }
-    html.push_markup("</ul></section>");
-    after_write(html, audited, &session)
+    let page = SaveStep {
+        frame: frame(&state, &session, &id),
+        wizard: wizard(&id, Some(saved.model.clone()), None),
+        summary: Summary {
+            connection: connection_words(saved.link, &saved.connection),
+            lab_app: sends(&saved.lab_app, missing),
+            test: tested(&state, &id, &draft, saved.link),
+            versions: Some((
+                Hover {
+                    shown: format::digest_short(&saved.digest),
+                    exact: format::digest_hex(&saved.digest),
+                },
+                settings_version(running(&state, &id)),
+            )),
+            model: saved.model,
+        },
+        outcome: Outcome::Saved {
+            csrf: session.csrf.form_value().to_owned(),
+            lines,
+            problems: audited
+                .err()
+                .map(|error| format::sentence(&error.to_string()))
+                .into_iter()
+                .collect(),
+            support: copies(&saved.backups),
+            done: format::machine_href(&id),
+        },
+    };
+    respond(
+        &state,
+        Some(&session),
+        Section::Setup(Some(&id)),
+        StatusCode::OK,
+        page.render(),
+    )
 }
 
 /// The one connection test and the setup choices it was started from.
@@ -753,218 +852,194 @@ pub(super) struct Test {
     session: listen::Session,
     machine: String,
     draft: Draft,
-    model: Family,
+    family: Family,
+    /// The model's name, beside the machine's name on the test page.
+    model: String,
+    /// What it listens on, for the words Analyte uses for a machine's link.
+    connection: Connection,
+    /// What it listens on, in words with the exact setting on hover.
+    target: Hover,
 }
 
 /// POST /setup/{id}/listen: start the listen-only test with the draft's choices.
 pub(in crate::admin) async fn listen_start(
     State(state): State<Arc<Context>>,
     Path(id): Path<String>,
-    form: Posted,
+    Extension(session): Extension<Arc<Session>>,
+    form: PostedForm,
 ) -> Response {
     let Ok(Form(choice)) = form else {
-        return incomplete(START_AGAIN);
+        return unread(&state, &session, &id);
     };
     let draft = Draft::from(choice);
-    let (machine, kept) = (id.clone(), draft.clone());
+    let (machine, choices) = (id.clone(), draft.clone());
     let target = off_thread(&state, move |state| {
-        let plan = plan(state, &machine, &kept)?;
-        let model = Family::of(plan.validated.effective().stack());
-        listen_target(state, &plan).map(|(label, target)| (label, target, model))
+        let plan = plan(state, &machine, &choices)?;
+        let stack = plan.validated.effective().stack();
+        let (family, link) = (Family::of(stack), Link::of(stack));
+        let (label, target) = listen_target(state, &plan)?;
+        Ok((label, target, plan, family, link))
     })
     .await;
-    let (label, target, model) = match target {
+    let (label, target, plan, family, link) = match target {
         Ok(found) => found,
-        Err(error) => return refused_at(&error, &id, &draft),
+        Err(error) => return refused_at(&state, &session, &error, &id, &draft),
     };
-    let session = listen::Session::start(label, target, state.setup.seams.limits);
+    let test = Test {
+        session: listen::Session::start(label, target, state.setup.seams.limits),
+        machine: id.clone(),
+        draft,
+        family,
+        connection: Connection::of(link, &plan.connection),
+        target: connection_words(link, &plan.connection),
+        model: plan.model,
+    };
     match state.setup.listen.lock() {
-        Ok(mut slot) => {
-            // Dropping the previous test stops it and discards its bytes.
-            *slot = Some(Test {
-                session,
-                machine: id,
-                draft,
-                model,
-            });
-        }
-        Err(_) => return refused(&SetupError::ListenState),
+        // Dropping the previous test stops it and discards its bytes.
+        Ok(mut slot) => *slot = Some(test),
+        Err(_) => return refused(&state, Some(&session), Some(&id), &SetupError::ListenState),
     }
     see_other("/setup/listen")
 }
 
-/// One line of the details: offset, hex bytes and printable text.
-fn dump(bytes: &[u8]) -> String {
-    let mut text = String::new();
-    for (index, line) in bytes.chunks(16).enumerate() {
-        let hex: Vec<String> = line.iter().map(|b| format!("{b:02x}")).collect();
-        let printable: String = line
-            .iter()
-            .map(|&b| {
-                if (32..127).contains(&b) {
-                    char::from(b)
-                } else {
-                    '.'
-                }
-            })
-            .collect();
-        text.push_str(&format!(
-            "{:06x}  {:<47}  {printable}\n",
-            index.saturating_mul(16),
-            hex.join(" ")
-        ));
-    }
-    text
+/// A verdict: what the test saw, or that it could not run.
+fn verdict_of(view: &listen::View, family: Family) -> Notice {
+    let (tone, title, text) = match &view.end {
+        Some(listen::End::Failed(why)) => (
+            Tone::Problem,
+            "The test could not run".to_owned(),
+            format::sentence(why),
+        ),
+        end => {
+            let (tone, title, text) = verdict::verdict(view.guess, family, end.is_some());
+            (tone, title, text.to_owned())
+        }
+    };
+    Notice { tone, title, text }
 }
 
-/// How the test page shows the bytes.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub(in crate::admin) struct Shown {
-    /// `open` keeps the details open across the page's reloads.
-    details: Option<String>,
-}
-
-/// GET /setup/listen: the verdict first, then the test's state, the bytes under
-/// Details, and the way back into the steps; reloads every two seconds while running.
+/// GET /setup/listen: the test's state, the bytes counted, their framing
+/// characters and the verdict, never the bytes themselves; reloads every two
+/// seconds while running, then offers Test again. Next goes on to step 4.
 pub(in crate::admin) async fn listen_view(
     State(state): State<Arc<Context>>,
     session: Option<Extension<Arc<Session>>>,
-    shown: Result<Query<Shown>, QueryRejection>,
 ) -> Response {
     let Some(Extension(session)) = session.filter(|Extension(s)| s.authenticated) else {
-        return needs_login();
+        return needs_login(&state);
     };
-    let open = shown.is_ok_and(|Query(shown)| shown.details.as_deref() == Some("open"));
-    let test = match state.setup.listen.lock() {
-        Ok(slot) => slot.as_ref().map(|t| {
-            (
-                t.session.view(),
-                t.machine.clone(),
-                t.draft.clone(),
-                t.model,
-            )
-        }),
+    let now = Timestamp::now();
+    let page = match state.setup.listen.lock() {
+        Ok(slot) => slot
+            .as_ref()
+            .map(|test| listen_page(&state, &session, test, now)),
         // A test thread panicked while holding the state; what it held is unknown.
-        Err(_) => return refused(&SetupError::ListenState),
+        Err(_) => return refused(&state, Some(&session), None, &SetupError::ListenState),
     };
-    let Some((view, machine, draft, model)) = test else {
-        return done(
-            page("Connection test").markup(
-                "<p class=\"notice info\">No test has been started. Start one from a machine's setup steps.</p>",
-            ),
+    let section = Section::Setup(None);
+    let Some(page) = page else {
+        let title = "Connection test";
+        let report = Report {
+            frame: section.frame(&state, title, Some(&session)),
+            head: section.head(title),
+            tone: Tone::Neutral,
+            title: "No test has been started".into(),
+            text: "Start one from a machine’s setup steps, in step 3.".into(),
+            lines: Vec::new(),
+            problems: Vec::new(),
+            restart: None,
+            links: section.links(),
+            support: Vec::new(),
+        };
+        return respond(
+            &state,
+            Some(&session),
+            section,
+            StatusCode::OK,
+            report.render(),
         );
     };
+    respond(&state, Some(&session), section, StatusCode::OK, page)
+}
+
+/// The test page for `test` as it stands `now`.
+fn listen_page(state: &Context, session: &Session, test: &Test, now: Timestamp) -> Rendered {
+    let view = test.session.view();
+    let limit = state.setup.seams.limits.duration.as_secs();
+    let remaining = view.remaining.as_secs();
     let running = view.end.is_none();
-    let title = "Connection test (listen only)";
-    let mut html = if running {
-        view::refreshing(Tab::Setup, title, Refresh::EveryTwoSeconds)
-    } else {
-        page(title)
-    };
-    let (tone, sentence) = match &view.end {
-        Some(listen::End::Failed(why)) => {
-            (Tone::Problem, format!("The test could not run: {why}."))
-        }
-        _ => verdict::verdict(view.guess, model),
-    };
-    let (light, word, status) = listen_status(&view);
-    html.push_fragment(
-        &indicator(Some(Step::Test))
-            .markup("<section><h2>")
-            .text(&machine)
-            .markup("</h2><p class=\"verdict ")
-            .markup(notice(tone))
-            .markup("\">")
-            .text(sentence)
-            .markup("</p><p>")
-            .fragment(&pill(light, word))
-            .markup(" ")
-            .text(&view.label)
-            .markup(". ")
-            .text(status)
-            .markup(" Bytes received: ")
-            .text(view.seen)
-            .markup("."),
+    let mut received = format!(
+        "{} received",
+        format::amount(
+            u64::try_from(view.seen).unwrap_or(u64::MAX),
+            "byte",
+            "bytes"
+        )
     );
     if view.size_limit_reached {
-        html.push_markup(" The 64 KiB display limit was reached, so reading stopped.");
+        received.push_str(&format!(
+            " · reading stopped at the {} limit",
+            format::bytes(u64::try_from(state.setup.seams.limits.bytes).unwrap_or(u64::MAX))
+        ));
     }
-    html.push_markup(concat!(
-        "</p><p class=\"muted\">Analyte sends nothing to the machine. What is shown may ",
-        "contain patient data: it stays on this page only, is never stored or logged, and ",
-        "is discarded when the test ends.</p>"
-    ));
-    if running && !view.bytes.is_empty() {
-        html.push_fragment(
-            &Markup::new()
-                .markup(if open {
-                    "<details class=\"support raw\" open><summary><a href=\"/setup/listen\">"
-                } else {
-                    "<details class=\"support raw\"><summary><a href=\"/setup/listen?details=open\">"
-                })
-                .markup("Details: the bytes received, as hex and text</a></summary><pre>")
-                .text(dump(&view.bytes))
-                .markup("</pre></details>"),
-        );
+    let id = test.machine.as_str();
+    Listen {
+        frame: frame(state, session, id),
+        wizard: wizard(id, Some(test.model.clone()), Some(Step::Test)),
+        foot: foot(id, &test.draft, true),
+        live: Live {
+            target: view.label.clone(),
+            clock: running.then(|| format::countdown(remaining)),
+            elapsed: limit.saturating_sub(remaining),
+            limit,
+            received,
+            framing: vec![if view.framing.is_empty() {
+                "None yet".to_owned()
+            } else {
+                format::control_names(&view.framing)
+            }],
+            state: test_state(&view, &test.connection, id, now),
+            verdict: verdict_of(&view, test.family),
+            stop: running.then(|| session.csrf.form_value().to_owned()),
+            again: (!running).then(|| {
+                start(
+                    state,
+                    session,
+                    id,
+                    &test.draft,
+                    test.target.clone(),
+                    "Test again",
+                )
+            }),
+        },
     }
-    if running {
-        html.push_fragment(
-            &Markup::new()
-                .markup(concat!(
-                    "<form method=\"post\" action=\"/setup/listen/stop\">",
-                    "<input type=\"hidden\" name=\"csrf\" value=\""
-                ))
-                .text(session.csrf.form_value())
-                .markup("\"><button class=\"quiet-danger\">Stop the test</button></form>"),
-        );
-    } else {
-        html.push_fragment(&start_test(&session, &machine, &draft, "Test again"));
-    }
-    html.push_markup("</section>");
-    html.push_fragment(&nav(
-        &machine,
-        &draft,
-        Step::Connection,
-        "<button>Next: Save</button>",
-    ));
-    done(html)
+    .render()
 }
 
-/// The notice class for a verdict's tone.
-const fn notice(tone: Tone) -> &'static str {
-    match tone {
-        Tone::Good => "notice ok",
-        Tone::Attention => "notice",
-        Tone::Problem => "notice bad",
-        Tone::Neutral => "notice info",
-    }
-}
-
-/// The listen test's state as a pill colour, a short word and a sentence.
-fn listen_status(view: &listen::View) -> (Tone, &'static str, String) {
-    match &view.end {
+/// The test's state as a status, with what Analyte observed in the words it
+/// uses for a machine's link: "Listening on port 5000, nothing connected since
+/// 10:41", "Port COM3 open since 10:41".
+fn test_state(view: &listen::View, connection: &Connection, id: &str, now: Timestamp) -> Status {
+    let link = |light, since: Timestamp| {
+        format::link_sentence(connection, light, &format::clock(since, now), id)
+    };
+    let (tone, word, note) = match &view.end {
         None if view.closed => (
             Tone::Neutral,
             "Closed",
             format!(
-                "The machine closed the connection. Showing for {} more seconds.",
-                view.remaining.as_secs()
+                "The machine closed the connection. The test ends in {}.",
+                format::duration(view.remaining.as_secs())
             ),
         ),
-        None if view.connected => (
-            Tone::Good,
-            "Connected",
-            format!("Connected. {} seconds left.", view.remaining.as_secs()),
-        ),
-        None => (
-            Tone::Attention,
-            "Waiting",
-            format!(
-                "Waiting for the connection. {} seconds left.",
-                view.remaining.as_secs()
+        None => match view.connected {
+            Some(at) => (Tone::Good, "Connected", link(Light::Live, at)),
+            None => (
+                Tone::Attention,
+                "Waiting",
+                link(Light::Waiting, view.started),
             ),
-        ),
+        },
         Some(listen::End::TimeLimit) => (
             Tone::Neutral,
             "Ended",
@@ -980,11 +1055,20 @@ fn listen_status(view: &listen::View) -> (Tone, &'static str, String) {
             "Closed",
             "The machine closed the connection; the bytes were discarded.".into(),
         ),
-        Some(listen::End::Failed(why)) => (
+        Some(listen::End::Failed(_)) => (
             Tone::Problem,
             "Failed",
-            format!("The test could not run: {why}."),
+            match view.connected {
+                Some(_) => "Reading failed; the bytes were discarded.".into(),
+                None => link(Light::Off, view.started),
+            },
         ),
+    };
+    Status {
+        tone,
+        word: word.to_owned(),
+        exact: String::new(),
+        note: Some(note),
     }
 }
 
@@ -1003,50 +1087,51 @@ pub(in crate::admin) async fn listen_stop(
 
 #[cfg(test)]
 mod tests {
-    use super::{Draft, Step, indicator};
+    use super::{Draft, Step, marks};
 
-    // Owner request 2026-11-19 (item 3): the indicator lists the four steps,
-    // marks the current one and the earlier ones done.
+    // Owner request 2026-11-19 (item 3): the stepper lists the four steps,
+    // marks the current one and the earlier ones done; after a save all four
+    // are done and none is current.
     #[test]
-    fn indicator_marks_the_current_step_and_the_done_ones() {
-        let html = indicator(Some(Step::Test));
+    fn stepper_marks_the_current_step_and_the_done_ones() {
+        let shown: Vec<(&str, &str, bool, bool)> = marks(Some(Step::Test))
+            .iter()
+            .map(|mark| (mark.number, mark.label, mark.done, mark.current))
+            .collect();
         assert_eq!(
-            &*html,
-            concat!(
-                "<ol class=\"steps\" aria-label=\"Setup steps\">",
-                "<li class=\"done\"><span class=\"number\">1</span>Machine</li>",
-                "<li class=\"done\"><span class=\"number\">2</span>Connection</li>",
-                "<li aria-current=\"step\"><span class=\"number\">3</span>Test</li>",
-                "<li><span class=\"number\">4</span>Save</li></ol>"
-            )
+            shown,
+            [
+                ("1", "Machine", true, false),
+                ("2", "Connection", true, false),
+                ("3", "Test", false, true),
+                ("4", "Save", false, false),
+            ]
         );
-        let saved = indicator(None);
-        assert_eq!(saved.matches("class=\"done\"").count(), 4);
-        assert!(!saved.contains("aria-current"));
+        let saved = marks(None);
+        assert!(saved.iter().all(|mark| mark.done && !mark.current));
     }
 
-    // Owner request 2026-11-19 (item 3): hidden fields carry the choices as
-    // escaped values, and a step leaves out the ones it shows itself.
+    // Owner request 2026-11-19 (item 3): hidden fields carry the choices, a
+    // step leaves out the ones it shows itself, and a refusal's link carries
+    // them all as an encoded query.
     #[test]
-    fn hidden_fields_escape_values_and_skip_shown_ones() {
+    fn hidden_fields_skip_shown_ones_and_links_encode_them() {
         let draft = Draft {
             definition: Some("example/serial-astm".into()),
             port: Some("usb:\"><script>".into()),
             lab_app: Some("demo".into()),
             ..Draft::default()
         };
-        let html = draft.hidden(&["port"]);
         assert_eq!(
-            &*html,
-            concat!(
-                "<input type=\"hidden\" name=\"definition\" value=\"example/serial-astm\">",
-                "<input type=\"hidden\" name=\"lab_app\" value=\"demo\">"
-            )
+            draft.hidden(&["port"]),
+            [
+                ("definition", "example/serial-astm".to_owned()),
+                ("lab_app", "demo".to_owned())
+            ]
         );
-        assert!(
-            draft
-                .hidden(&[])
-                .contains("value=\"usb:&quot;&gt;&lt;script&gt;\"")
+        assert_eq!(
+            draft.query(),
+            "definition=example%2Fserial-astm&port=usb%3A%22%3E%3Cscript%3E&lab_app=demo"
         );
     }
 }

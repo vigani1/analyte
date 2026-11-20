@@ -1,11 +1,12 @@
-//! Runs one bounded listen-only connection test that shows bytes but never sends.
+//! Runs one bounded listen-only connection test that counts bytes but never sends.
 //!
 //! The test opens a serial port, accepts one TCP connection or connects to one
 //! address, and only reads. It keeps at most [`Limits::bytes`] bytes in memory for
 //! at most [`Limits::duration`]; then the bytes are dropped. Nothing is stored,
-//! logged or written to the peer. The bytes may hold patient data, so they live
-//! only in this owner and on the local admin page that shows them. Only the guess
-//! of their protocol family ([`super::verdict`]) outlives them.
+//! logged or written to the peer. The bytes may hold patient data, so they never
+//! leave this owner: the page sees only their count, the framing characters
+//! among them and the guess of their protocol family ([`super::verdict`]),
+//! which outlive them.
 use super::verdict::{self, Guess};
 use analyte_transport::serial;
 use std::{
@@ -65,13 +66,18 @@ pub(crate) enum End {
     Failed(String),
 }
 
-/// A view of the test for the page.
+/// A view of the test for the page: what was observed, never the bytes.
 pub(crate) struct View {
     pub(crate) label: String,
+    /// When the test started.
+    pub(crate) started: jiff::Timestamp,
     pub(crate) remaining: Duration,
-    pub(crate) connected: bool,
+    /// When the port opened or the connection was made; none before.
+    pub(crate) connected: Option<jiff::Timestamp>,
     /// The machine closed the connection; the bytes stay until the test ends.
     pub(crate) closed: bool,
+    /// The bytes kept so far, for this module's tests of the bounds; the page never sees them.
+    #[cfg(test)]
     pub(crate) bytes: Vec<u8>,
     /// Bytes seen so far, including any past the size bound.
     pub(crate) seen: usize,
@@ -79,15 +85,19 @@ pub(crate) struct View {
     pub(crate) end: Option<End>,
     /// What the first bytes looked like; kept after the bytes are dropped.
     pub(crate) guess: Guess,
+    /// Each control character seen in the kept bytes, in the order first
+    /// seen; kept after the bytes are dropped. They frame a message and hold none of it.
+    pub(crate) framing: Vec<u8>,
 }
 
 struct Capture {
-    connected: bool,
+    connected: Option<jiff::Timestamp>,
     closed: bool,
     bytes: Vec<u8>,
     seen: usize,
     end: Option<End>,
     guess: Guess,
+    framing: Vec<u8>,
 }
 
 impl Capture {
@@ -95,10 +105,20 @@ impl Capture {
     fn take(&mut self, chunk: &[u8], limit: usize) -> bool {
         self.seen = self.seen.saturating_add(chunk.len());
         let room = limit.saturating_sub(self.bytes.len());
-        self.bytes
-            .extend_from_slice(chunk.get(..room.min(chunk.len())).unwrap_or_default());
+        let kept = chunk.get(..room.min(chunk.len())).unwrap_or_default();
+        // At most 33 entries: the C0 controls and DEL.
+        for &byte in kept {
+            if (byte < 0x20 || byte == 0x7f) && !self.framing.contains(&byte) {
+                self.framing.push(byte);
+            }
+        }
+        self.bytes.extend_from_slice(kept);
         self.guess = verdict::classify(&self.bytes);
         self.bytes.len() < limit
+    }
+
+    fn connect(&mut self) {
+        self.connected.get_or_insert_with(jiff::Timestamp::now);
     }
 
     fn finish(&mut self, end: End) {
@@ -111,6 +131,7 @@ impl Capture {
 /// The one running or finished test. Dropping it stops the test and drops the bytes.
 pub(crate) struct Session {
     label: String,
+    started: jiff::Timestamp,
     deadline: Instant,
     limits: Limits,
     capture: Arc<Mutex<Capture>>,
@@ -136,12 +157,13 @@ impl Session {
             .checked_add(limits.duration)
             .unwrap_or_else(Instant::now);
         let capture = Arc::new(Mutex::new(Capture {
-            connected: false,
+            connected: None,
             closed: false,
             bytes: Vec::new(),
             seen: 0,
             end: None,
             guess: Guess::Nothing,
+            framing: Vec::new(),
         }));
         let stop = Arc::new(Notify::new());
         let owner = tokio::spawn(run(
@@ -153,6 +175,7 @@ impl Session {
         ));
         Self {
             label,
+            started: jiff::Timestamp::now(),
             deadline,
             limits,
             capture,
@@ -169,37 +192,33 @@ impl Session {
         }
     }
 
-    /// Copies the current state for display.
+    /// Copies the current state for display; the bytes stay here.
     pub(crate) fn view(&self) -> View {
         let remaining = self.deadline.saturating_duration_since(Instant::now());
-        let (connected, closed, bytes, seen, end, guess) = match self.capture.lock() {
-            Ok(capture) => (
-                capture.connected,
-                capture.closed,
-                capture.bytes.clone(),
-                capture.seen,
-                capture.end.clone(),
-                capture.guess,
-            ),
-            Err(_) => (
-                false,
-                false,
-                Vec::new(),
-                0,
-                Some(End::Failed("test state unavailable".into())),
-                Guess::Nothing,
-            ),
+        let unavailable = Capture {
+            connected: None,
+            closed: false,
+            bytes: Vec::new(),
+            seen: 0,
+            end: Some(End::Failed("test state unavailable".into())),
+            guess: Guess::Nothing,
+            framing: Vec::new(),
         };
+        let capture = self.capture.lock();
+        let capture = capture.as_deref().unwrap_or(&unavailable);
         View {
             label: self.label.clone(),
+            started: self.started,
             remaining,
-            connected,
-            closed,
-            size_limit_reached: seen >= self.limits.bytes,
-            bytes,
-            seen,
-            end,
-            guess,
+            connected: capture.connected,
+            closed: capture.closed,
+            size_limit_reached: capture.seen >= self.limits.bytes,
+            #[cfg(test)]
+            bytes: capture.bytes.clone(),
+            seen: capture.seen,
+            end: capture.end.clone(),
+            guess: capture.guess,
+            framing: capture.framing.clone(),
         }
     }
 }
@@ -275,7 +294,7 @@ async fn read(
         }
     };
     if let Ok(mut capture) = capture.lock() {
-        capture.connected = true;
+        capture.connect();
     }
     let mut buffer = [0_u8; 4096];
     loop {
@@ -318,7 +337,7 @@ async fn read_serial(
             Err(error) => return Some(End::Failed(format!("open {name}: {error}"))),
         };
         if let Ok(mut capture) = capture.lock() {
-            capture.connected = true;
+            capture.connect();
         }
         let mut buffer = [0_u8; 4096];
         while !halted.load(Ordering::Acquire) {
@@ -401,7 +420,8 @@ mod tests {
         peer.write_all(b"\x05H|\\^&\r").await?;
         let view = until(&session, |view| view.bytes.len() == 7).await;
         assert_eq!(view.bytes, b"\x05H|\\^&\r");
-        assert!(view.connected);
+        assert!(view.connected.is_some());
+        assert_eq!(view.framing, [0x05, b'\r']);
         session.stop();
         drop(session);
         assert_eq!(sent_to_peer(&mut peer, Duration::from_secs(5)).await?, 0);
@@ -409,7 +429,9 @@ mod tests {
     }
 
     // Owner request 2026-11-19 (item 5): the protocol guess outlives the bytes,
-    // so the verdict still shows once the test has dropped them.
+    // so the verdict still shows once the test has dropped them. Owner decision
+    // 2026-11-20 (admin restyle b4): so do the framing characters, the only
+    // part of the stream the page shows.
     #[tokio::test]
     async fn guess_is_kept_after_the_bytes_are_dropped() -> Result<(), crate::Error> {
         let machine = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
@@ -428,6 +450,8 @@ mod tests {
         let stopped = session.view();
         assert!(stopped.bytes.is_empty());
         assert_eq!(stopped.guess, astm);
+        assert_eq!(stopped.framing, [0x05, 0x02]);
+        assert_eq!(stopped.seen, 5);
         assert_eq!(sent_to_peer(&mut peer, Duration::from_secs(5)).await?, 0);
         Ok(())
     }

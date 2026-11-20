@@ -1,4 +1,4 @@
-{#- The page frame of every restyled page: the head with the three stylesheets, the sidebar and the main column, which a page may centre. -#}
+{#- The page frame of every restyled page: the head with the three stylesheets and anything a page adds there (a reload), the sidebar and the main column, which a page may centre. -#}
 <!doctype html>
 <html lang="en">
 <head>
@@ -11,6 +11,7 @@
 <link rel="stylesheet" href="{{ frame.assets }}fonts.css">
 <link rel="stylesheet" href="{{ frame.assets }}analyte.css">
 <link rel="stylesheet" href="{{ frame.assets }}app.css">
+{%- block head %}{% endblock %}
 </head>
 <body>
 <div class="app">
