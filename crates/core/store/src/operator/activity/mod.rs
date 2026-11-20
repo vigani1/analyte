@@ -155,6 +155,29 @@ pub enum Carries {
     },
 }
 
+/// How far each table the live pages watch has grown: its newest row (or,
+/// for open review items, their count). Two equal marks mean nothing those
+/// pages show was stored in between. Each value is one index lookup.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ActivityMarks {
+    /// Messages stored.
+    pub receipts: i64,
+    /// Readings of messages, first or again.
+    pub readings: i64,
+    /// Items parked for review.
+    pub parked: i64,
+    /// Items waiting for review now; it falls when one is resolved.
+    pub open: i64,
+    /// Deliveries queued.
+    pub deliveries: i64,
+    /// Delivery tries.
+    pub attempts: i64,
+    /// Machine order snapshots.
+    pub orders: i64,
+    /// Audited changes.
+    pub audit: i64,
+}
+
 /// Every line as `(at, source, key, machine, grp)`. The sources' numbers fix
 /// the order of lines stored in the same second. Read-only audit entries
 /// (opening original bytes, listing from the command line) are not changes,
@@ -246,6 +269,37 @@ impl Store {
                 })
             })
             .collect()
+    }
+
+    /// The marks the live pages compare to tell whether anything was stored.
+    /// # Errors
+    /// Reports database failures.
+    pub fn activity_marks(&self) -> Result<ActivityMarks, Error> {
+        Ok(self.db.query_row(
+            concat!(
+                "SELECT (SELECT coalesce(max(rowid),0) FROM receipts),",
+                "(SELECT coalesce(max(rowid),0) FROM interpretations),",
+                "(SELECT coalesce(max(id),0) FROM parked),",
+                "(SELECT coalesce(max(value),0) FROM alert_counts WHERE kind='parked'),",
+                "(SELECT coalesce(max(sequence),0) FROM outbox),",
+                "(SELECT coalesce(max(sequence),0) FROM attempts),",
+                "(SELECT coalesce(max(sequence),0) FROM machine_order_history),",
+                "(SELECT coalesce(max(sequence),0) FROM audit)"
+            ),
+            [],
+            |r| {
+                Ok(ActivityMarks {
+                    receipts: r.get(0)?,
+                    readings: r.get(1)?,
+                    parked: r.get(2)?,
+                    open: r.get(3)?,
+                    deliveries: r.get(4)?,
+                    attempts: r.get(5)?,
+                    orders: r.get(6)?,
+                    audit: r.get(7)?,
+                })
+            },
+        )?)
     }
 
     /// How many lines each group has in `day` (Unix seconds `from..until`),

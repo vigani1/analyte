@@ -301,6 +301,7 @@ async fn start_action_server(
     let socket = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let host = socket.local_addr()?.to_string();
     let (released, release) = tokio::sync::oneshot::channel();
+    let (closing, closed) = watch::channel(false);
     let state = Arc::new(Context {
         alert_endpoints: vec![],
         retention: crate::runtime::retention::policies(program),
@@ -319,6 +320,8 @@ async fn start_action_server(
         assets: crate::admin::view::assets::Root::of_this_build(),
         installed: crate::admin::pages::Installed::for_test(Vec::new()),
         write_budget: WRITE_BUDGET,
+        live: crate::admin::live::Bounds::standard(),
+        closing: closed,
         _released: released,
     });
     let server = Server {
@@ -328,6 +331,7 @@ async fn start_action_server(
         },
         app: router(state.clone()),
         restart: watch::channel(false).1,
+        closing,
         released: release,
         owners: BTreeMap::new(),
     };

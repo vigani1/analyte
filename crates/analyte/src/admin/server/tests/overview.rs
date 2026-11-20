@@ -60,7 +60,7 @@ async fn first_run_overview_is_only_the_welcome_card() -> Result<(), Error> {
     assert!(page.starts_with("HTTP/1.1 200"), "{page}");
     headers_present(&page);
     let main = page
-        .split_once("<main class=\"main main--center\">")
+        .split_once("<main class=\"main main--center\" data-live-region=\"main\">")
         .map(|(_, main)| main)
         .ok_or("overview without a centred main")?;
     assert!(main.contains("<div class=\"welcome anim-in\">"), "{main}");
@@ -151,7 +151,7 @@ async fn overview_with_nothing_wrong_reads_all_good() -> Result<(), Error> {
     )
     .await?;
     let main = page
-        .split_once("<main class=\"main\">")
+        .split_once("<main class=\"main\" data-live-region=\"main\">")
         .map(|(_, main)| main)
         .ok_or("overview without main")?;
     let (head, rest) = main

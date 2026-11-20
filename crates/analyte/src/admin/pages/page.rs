@@ -353,6 +353,8 @@ pub(super) struct Day {
 /// One line: when, its icon in its tone with the word a screen reader says,
 /// who or what it is about, the rest of the sentence and a link.
 pub(super) struct FeedLine {
+    /// Its position, which the script uses to mark lines that are new.
+    pub(super) key: String,
     /// None when no time was stored.
     pub(super) at: Option<Moment>,
     pub(super) tone: Tone,

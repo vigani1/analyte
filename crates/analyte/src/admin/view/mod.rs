@@ -198,14 +198,24 @@ mod tests {
         Ok(found)
     }
 
+    /// The one script tag a template may hold: the live-updates file, in the
+    /// signed-in frame's head.
+    const LIVE_SCRIPT: &str = "<script src=\"{{ frame.assets }}live.js\" defer></script>";
+
     // ADR 0018: every page keeps the strict CSP and escaping. No template
     // holds an inline style or script, or turns escaping off; each starts with a
-    // comment saying what it holds.
+    // comment saying what it holds. The only script is the live-updates file,
+    // loaded once, by the signed-in frame (owner decision 2026-11-20, PR c2).
     #[test]
     fn templates_hold_no_inline_style_script_or_unescaped_output() -> Result<(), std::io::Error> {
         let templates = files("templates")?;
         assert!(templates.len() >= 8, "{}", templates.len());
+        let mut loaded = Vec::new();
         for (name, text) in templates {
+            if text.contains(LIVE_SCRIPT) {
+                loaded.push(name.clone());
+            }
+            let text = text.replacen(LIVE_SCRIPT, "", 1);
             for forbidden in [
                 "style=",
                 "<style",
@@ -218,6 +228,14 @@ mod tests {
             }
             assert!(text.starts_with("{#- "), "{name} lacks its opening comment");
         }
+        assert_eq!(
+            loaded,
+            [std::path::Path::new("templates")
+                .join("layout")
+                .join("base.html")
+                .display()
+                .to_string()]
+        );
         Ok(())
     }
 

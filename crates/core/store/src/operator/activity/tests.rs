@@ -242,3 +242,36 @@ fn activity_filters_pages_and_counts_a_day() -> TestResult {
     );
     Ok(())
 }
+
+// Owner decision 2026-11-20 (PR c2): the live pages learn that something was
+// stored from marks that move with every stored row they show.
+#[test]
+fn activity_marks_move_with_every_stored_kind() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let empty = open(&temp.path().join("empty.db"))?;
+    assert_eq!(empty.activity_marks()?, ActivityMarks::default());
+    let store = seeded(&temp.path().join("marks.db"))?;
+    let marks = store.activity_marks()?;
+    assert_eq!(
+        marks,
+        ActivityMarks {
+            receipts: 2,
+            readings: 1,
+            parked: 2,
+            open: 1,
+            deliveries: 1,
+            attempts: 2,
+            orders: 3,
+            audit: 4,
+        }
+    );
+    store
+        .db
+        .execute("UPDATE parked SET resolution='{}' WHERE id=2", [])?;
+    assert_eq!(
+        store.activity_marks()?.open,
+        0,
+        "a resolved item moves the open count"
+    );
+    Ok(())
+}

@@ -1,8 +1,9 @@
 //! Holds what a page's frame shows: its title, where its files load from and, once signed in, the sidebar.
 //!
 //! The sidebar says only what the page observed when it was made: the engine
-//! answered ("Engine running") and when ("Page loaded 10:45"). There is no
-//! live channel yet, so nothing pulses.
+//! answered ("Engine running") and when ("Page loaded 10:45"). While the live
+//! stream is connected, `live.js` turns that into "Live · 10:45:12" and lets
+//! the dot pulse; the frame names the live area its page shows.
 use super::{Tab, assets::Root, format, icon::Icon};
 use crate::admin::{server::Context, sessions::Session};
 use jiff::Timestamp;
@@ -13,6 +14,9 @@ pub(in crate::admin) struct Frame {
     /// This build's static file root, such as `/static/0123456789abcdef/`.
     pub(in crate::admin) assets: String,
     pub(in crate::admin) sidebar: Sidebar,
+    /// The live area the page shows, such as "activity"; empty when only the
+    /// sidebar's count is live.
+    pub(in crate::admin) live: &'static str,
 }
 
 /// The plain frame of sign-in and the refusals: the `<title>` and the static
@@ -93,6 +97,7 @@ impl Frame {
         Self {
             title: title.into(),
             assets: state.assets.as_str().to_owned(),
+            live: crate::admin::live::area(current),
             sidebar: Sidebar {
                 loaded: format::page_loaded(now),
                 main: MAIN

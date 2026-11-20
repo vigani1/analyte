@@ -36,9 +36,15 @@ the strict content security policy.
 - **Activity (PR c1) is done:** it is read from the tables the store already
   keeps, newest first; the store records when an item was parked from schema
   16 on, and an older item shows "Not recorded".
-- **Still to come:** PR c2, live updates (server-sent events and one script
-  file); PR d, the Engine off page and the Tauri desktop shell, which waits for
-  the owner's approval before any work starts.
+- **Live updates (PR c2) are done:** `GET /events` sends only which areas
+  changed and the time, with a heartbeat; `/static/live.js` fetches the page
+  again and swaps its marked regions. The stream checks the store's marks and
+  the machines' link lights every 2 s, beats every 10 s, lives 5 minutes, and
+  at most 4 are open (of 32 connection slots); shutdown ends them at once.
+  Every page stays whole without the script. `futures-core` was added for the
+  stream type axum takes.
+- **Still to come:** PR d, the Engine off page and the Tauri desktop shell,
+  which waits for the owner's approval before any work starts.
 
 ## Why
 

@@ -254,7 +254,7 @@ async fn steps_draw_the_design_choices_and_fields() -> Result<(), Error> {
         ),
         "{hostile}"
     );
-    assert!(!hostile.contains("<script"), "{hostile}");
+    assert!(!other_script(&hostile), "{hostile}");
     std::fs::write(
         fixture.root().join("lab-apps.toml"),
         "[[lab_apps]]\nunknown = 1\n",
