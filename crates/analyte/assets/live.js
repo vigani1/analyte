@@ -123,7 +123,8 @@
       wait = 1000;
       meta.textContent = 'Live · ' + news.at;
       setLive(true);
-      var mine = news.changed.filter(function (area) { return area === 'review' || shows.indexOf(area) >= 0; });
+      // Every signed-in page's sidebar shows the Needs review count.
+      var mine = news.changed.filter(function (area) { return area === 'count' || shows.indexOf(area) >= 0; });
       if (mine.length) said = 'Updated at ' + news.at;
       // After a drop, read the page once: changes made meanwhile were not sent.
       if (mine.length || dropped) { dropped = false; refresh(); }

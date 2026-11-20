@@ -157,7 +157,7 @@ async fn add_form_and_its_audit_failure_in_the_new_look() -> Result<(), Error> {
         "name=\"name\" required maxlength=\"64\" value=\"machine-1\"",
         "<input type=\"checkbox\" name=\"same_analyzer\" value=\"yes\">",
         "<a class=\"btn btn--outline\" href=\"/setup\">Cancel</a>",
-        "<button type=\"submit\" class=\"btn btn--primary\">Add machine</button>",
+        "<button type=\"submit\" class=\"btn btn--primary\">Add a machine</button>",
     ] {
         assert!(form.contains(expected), "missing {expected}: {form}");
     }

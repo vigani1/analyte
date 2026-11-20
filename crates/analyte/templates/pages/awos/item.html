@@ -1,4 +1,4 @@
-{#- One order item (GET /awos/{order}/{item}): the way back, its status, the order and this item as facts with links to the order's other items, the lab app's copy, the machine's messages about it, the next page and details for support. -#}
+{#- One order item (GET /awos/{order}/{item}, and POST …/raw once its notes are shown): the way back, its status, the patient-data warning once notes show, the order and this item as facts with links to the order's other items, the lab app's copy, the machine's messages about it with their notes hidden until the audited "Show the original message", the next page and details for support. -#}
 {% extends "layout/base.html" %}
 {%- import "components/display.html" as display %}
 {%- import "components/feedback.html" as feedback %}
@@ -6,6 +6,9 @@
 {%- import "components/layout.html" as layout %}
 {%- block main %}
 {% call layout::detail_head(head) %}{% endcall %}
+{%- if shown %}
+{% call feedback::alert(crate::admin::view::Tone::Attention, crate::admin::view::format::PATIENT_DATA, crate::admin::view::format::PATIENT_DATA_TEXT) %}{% endcall %}
+{%- endif %}
 <div class="split">
 <section class="card" aria-labelledby="oi-order">
 <div class="card__head"><h2 id="oi-order" class="card__title">Order</h2></div>
@@ -42,16 +45,30 @@
 <div class="card__head"><h3 class="card__title">{{ message.title }}</h3></div>
 <div class="card__body stack">
 <dl class="kv">{% for fact in message.facts %}{% call display::fact(fact) %}{% endcall %}{% endfor %}</dl>
-{%- if !message.notes.is_empty() %}
-{% call feedback::exact_lines("Notes the machine sent, as sent", message.notes.as_slice(), true) %}{% endcall %}
-{%- endif %}
+{%- match message.notes %}
+{%- when Notes::None %}
+{%- when Notes::Hidden(hidden) %}
+<p class="muted more-row__text">{{ hidden }}</p>
+{%- when Notes::Shown(notes) %}
+{% call feedback::exact_lines("Notes the machine sent, as sent", notes.as_slice(), true) %}{% endcall %}
+{%- endmatch %}
 </div>
 </article>
 {%- endfor %}
+{%- if let Some(original) = original %}
+{% call layout::disclosure("Show the original message") %}
+<p class="muted review__note">{{ NOTES_HIDDEN }}</p>
+{%- if let Some(form) = original.form %}
+{% call forms::raw_request(form) %}{% endcall %}
+{%- else %}
+<p class="review__text"><a class="link" href="/login">Sign in</a> to show the original message.</p>
+{%- endif %}
+{% endcall %}
+{%- endif %}
 {%- endif %}
 </section>
 {%- if let Some(href) = next %}
 {% call forms::next_page(href) %}{% endcall %}
 {%- endif %}
-{% call feedback::support("For support", support) %}{% endcall %}
+{% call feedback::support(crate::admin::view::format::SUPPORT, support) %}{% endcall %}
 {%- endblock %}

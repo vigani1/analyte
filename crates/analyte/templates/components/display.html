@@ -110,7 +110,7 @@
 <p class="node__line">{% call words(line) %}{% endcall %}</p>
 {%- endfor %}
 {%- if !lab.support.is_empty() %}
-{% call feedback::support("Details for support", lab.support.as_slice()) %}{% endcall %}
+{% call feedback::support(crate::admin::view::format::SUPPORT, lab.support.as_slice()) %}{% endcall %}
 {%- endif %}
 {%- if let Some(todo) = lab.todo %}
 {% call feedback::whattodo(todo, crate::admin::view::Tab::LabApps.href(), "Add keys") %}{% endcall %}
@@ -187,7 +187,7 @@
 {%- match fact.value %}
 {%- when Value::Text(text) %}{{ text }}
 {%- when Value::Code { shown, exact } %}<span class="mono" title="{{ exact }}">{{ shown }}</span>
-{%- when Value::Status(status) %}{% call status_exact(status.tone, status.word, status.exact) %}{% endcall %}{% if let Some(note) = status.note %}<span class="kv__note">{{ note }}</span>{% endif %}
+{%- when Value::Status(status) %}{% call status_with(status.tone, status.icon, status.word, status.exact) %}{% endcall %}{% if let Some(note) = status.note %}<span class="kv__note">{{ note }}</span>{% endif %}
 {%- when Value::Link(link) %}<span class="with-icon">{% call draw::icon(link.icon, "icon--md") %}{% endcall %}{{ link.kind }}{% if let Some(detail) = link.detail %}, <span class="mono">{{ detail }}</span>{% endif %}</span>{% if let Some(note) = link.note %}<span class="kv__note">{{ note }}</span>{% endif %}
 {%- when Value::Time(moment) %}{% if let Some(moment) = moment %}<span class="mono">{% call time(moment) %}{% endcall %}</span>{% else %}<span class="subtle">Nothing yet</span>{% endif %}
 {%- when Value::Page { href, label } %}<a class="link" href="{{ href }}">{{ label }}</a>

@@ -236,7 +236,7 @@ async fn empty_filters_say_so_and_point_to_the_other_one() -> Result<(), Error> 
 // Owner decisions 2026-11-19 (admin restyle b1, ReviewDetail): the item page
 // names the category, where the message came from and when, and its history
 // from the stored audit: arrival, each reprocess with who and why, and the
-// resolution, with no raw JSON; raw IDs only under "For support", and the
+// resolution, with no raw JSON; raw IDs only under "Details for support", and the
 // actor reads "admin session".
 #[tokio::test(flavor = "multi_thread")]
 async fn item_page_shows_the_message_and_its_history_from_the_audit() -> Result<(), Error> {
@@ -291,7 +291,7 @@ async fn item_page_shows_the_message_and_its_history_from_the_audit() -> Result<
         "<span class=\"timeline__text\">Arrived from chemistry<span class=\"timeline__who\">Analyte stored the message</span></span>",
         "<span class=\"timeline__text\">Processed again: reading 2 recorded; it still needs review<span class=\"timeline__who\">admin session · “mapping repaired”</span></span>",
         "<span class=\"timeline__dot timeline__dot--good\"></span><span class=\"timeline__text\">Marked resolved<span class=\"timeline__who\">admin session · “machine sent it by mistake”</span></span>",
-        "For support</summary><pre>",
+        "Details for support</summary><pre>",
         format!("Linked record: {receipt}").as_str(),
         format!("receipt-reprocess by {SESSION}").as_str(),
         "Show the original message</summary>",
@@ -303,7 +303,7 @@ async fn item_page_shows_the_message_and_its_history_from_the_audit() -> Result<
         "a resolved item has nothing left to do"
     );
     assert!(!page.contains("\"action\":"), "no raw JSON on the page");
-    // Every sight of the message ID is under "For support", in a form field or in a link.
+    // Every sight of the message ID is under "Details for support", in a form field or in a link.
     for (at, _) in page.match_indices(&receipt) {
         let before = page.get(..at).unwrap_or_default();
         assert!(
@@ -319,7 +319,7 @@ async fn item_page_shows_the_message_and_its_history_from_the_audit() -> Result<
 
 // Owner review 2026-11-20 (PR 275): a reason Analyte wrote reads as a plain
 // sentence under a specific title, on the list and on the item page; the
-// stored text, and an HTTP status, are under "For support" only; a reason
+// stored text, and an HTTP status, are under "Details for support" only; a reason
 // with no known shape shows as stored, under the category's words.
 #[tokio::test(flavor = "multi_thread")]
 async fn known_reasons_read_plainly_and_keep_the_stored_text_for_support() -> Result<(), Error> {
@@ -373,9 +373,11 @@ async fn known_reasons_read_plainly_and_keep_the_stored_text_for_support() -> Re
     let item = request(&host, &format!("/parked/{unknown_test}"), &auth, None).await?;
     assert!(item.contains("<h1>Test not in this machine’s test mapping</h1>"));
     assert!(item.contains("<p class=\"review__text\">The test code in record 6, field 3 is not in this machine’s test mapping.</p>"));
-    // The enum name appears once, in the stored reason under "For support".
+    // The enum name appears once, in the stored reason under "Details for support".
     assert_eq!(item.matches("UnknownTest").count(), 1, "{item}");
-    let support = item.find("For support</summary>").unwrap_or(usize::MAX);
+    let support = item
+        .find("Details for support</summary>")
+        .unwrap_or(usize::MAX);
     assert!(
         item.find("Reason as stored: Position { record: 6, field: 3 }: UnknownTest")
             > Some(support)
@@ -400,11 +402,13 @@ async fn known_reasons_read_plainly_and_keep_the_stored_text_for_support() -> Re
     ] {
         let page = request(&host, &format!("/parked/{id}"), &auth, None).await?;
         assert!(page.contains(&format!("<h1>{title}</h1>")), "{page}");
-        let support = page.find("For support</summary>").unwrap_or(usize::MAX);
+        let support = page
+            .find("Details for support</summary>")
+            .unwrap_or(usize::MAX);
         for line in lines {
             assert!(page.find(&line) > Some(support), "{line}\n{page}");
         }
-        // Above "For support" the page names no HTTP status (the response's own status line aside).
+        // Above "Details for support" the page names no HTTP status (the response's own status line aside).
         let why = page.get(..support).unwrap_or_default();
         assert!(
             !why.contains("HTTP 4") && !why.contains("Lab app answer"),
@@ -601,7 +605,7 @@ async fn open_items_page_their_linked_records_and_unknown_categories_show_as_sto
         "<p class=\"subtle review__note\">Linked records 1 to 50 of 51.</p>",
         format!("rel=\"next\" href=\"/parked/{item}?after=50\">Next page</a>").as_str(),
         "When someone resolves this item or processes it again, the time, the action and the reason appear here.",
-        "<dt>Linked record</dt><dd>Not a stored message; its ID is under For support</dd>",
+        "<dt>Linked record</dt><dd>Not a stored message; its ID is under Details for support</dd>",
     ] {
         assert!(first.contains(text), "{text}\n{first}");
     }

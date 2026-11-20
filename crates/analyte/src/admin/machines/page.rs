@@ -3,10 +3,10 @@
 //! Every word comes from `view::format`, the link light or the setup page;
 //! the templates only loop, test and call macros. Nothing here invents a
 //! value: a fact with nothing behind it is left out, and raw IDs only go
-//! under "For support".
+//! under "Details for support".
 use crate::admin::view::{
     Column, Tone,
-    format::{Moment, Part},
+    format::{Moment, Part, StateLook},
     frame::Frame,
     icon::Icon,
     report::{Button, Fact, Head, Link, Status, Value},
@@ -136,9 +136,21 @@ pub(super) struct Message {
     /// The open Needs review item naming it.
     pub(super) review: Option<Button>,
     /// How its deliveries stand; none when nothing was queued for it.
-    pub(super) delivery: Option<Status>,
+    pub(super) delivery: Option<Delivery>,
+    /// What the delivery cell says when nothing was queued: "Nothing yet"
+    /// before the message is read, otherwise "—".
+    pub(super) no_delivery: &'static str,
     /// How it was read, for a message that was.
     pub(super) href: Option<String>,
+}
+
+/// How a message's deliveries stand: the state that most needs someone, in
+/// its tone and icon as every page shows it, its words with how many were
+/// delivered, and the count per state on hover.
+pub(super) struct Delivery {
+    pub(super) look: StateLook,
+    pub(super) words: String,
+    pub(super) exact: String,
 }
 
 /// The Remove dialog drawn over a machine's page; a real form with the

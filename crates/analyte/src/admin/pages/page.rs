@@ -1,13 +1,14 @@
 //! Holds the More pages' view structs: display-ready values the templates show, built from what the store and the loaded program hold.
 //!
 //! Test codes, result values and key values never reach these structs; sample
-//! IDs do, exactly as stored. Full IDs stay on hover or under "For support".
+//! IDs do, exactly as stored. Full IDs stay on hover or under "Details for support".
+use crate::admin::parked::RawRequest;
 use crate::admin::view::{
     Column, Tone,
     format::{Line, Moment, Part},
     frame::Frame,
     icon::Icon,
-    report::{Chip, Fact, Head, Status, Value},
+    report::{Chip, Fact, Head, Value},
 };
 
 /// What an empty list says, and a link to a list that has rows.
@@ -91,9 +92,27 @@ pub(super) struct OrderItem {
     pub(super) copy: Vec<Fact>,
     pub(super) copy_note: Option<String>,
     pub(super) messages: Vec<Message>,
+    /// "Show the original message" while notes on this page are hidden.
+    pub(super) original: Option<Original>,
+    /// The notes show: the view was recorded, and the page warns that they
+    /// may contain patient data.
+    pub(super) shown: bool,
     pub(super) next: Option<String>,
     pub(super) support: Vec<String>,
 }
+
+/// The order item page's "Show the original message": the audited form, or
+/// none when the request came with the admin key alone, which has no
+/// session to record the view with.
+pub(super) struct Original {
+    pub(super) form: Option<RawRequest>,
+}
+
+/// What the order item page says about hidden notes.
+pub(super) const NOTES_HIDDEN: &str = concat!(
+    "The machine's notes are hidden because free text may contain patient data. Each time ",
+    "they are shown, Analyte first records who asked and why.",
+);
 
 /// What the order item page says under its title.
 pub(super) const ITEM_LEDE: &str = concat!(
@@ -107,8 +126,19 @@ pub(super) struct Message {
     /// "Message received" and when Analyte received it.
     pub(super) title: String,
     pub(super) facts: Vec<Fact>,
-    /// The machine's notes with it, as sent.
-    pub(super) notes: Vec<String>,
+    pub(super) notes: Notes,
+}
+
+/// The free text a machine sent with one message: its notes, or its source
+/// as stored when Analyte cannot read it. It may hold patient data, so it
+/// shows only after the view was recorded.
+pub(super) enum Notes {
+    /// The message carried none.
+    None,
+    /// What is hidden, such as "2 notes from the machine, hidden".
+    Hidden(String),
+    /// The lines as sent, after the view was recorded.
+    Shown(Vec<String>),
 }
 
 /// What the Cancelled by machine page says under its title.
@@ -190,7 +220,7 @@ pub(super) struct DeliveryRow {
     pub(super) from: Option<String>,
     pub(super) to: String,
     pub(super) results: Option<usize>,
-    pub(super) outcome: Status,
+    pub(super) outcome: Look,
     /// Send again, when Analyte allows it for this delivery's state.
     pub(super) resend: Option<String>,
 }

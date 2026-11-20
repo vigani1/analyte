@@ -3,7 +3,7 @@
 //! The steps ([`wizard`]) write the machine's site file (and, when the definition
 //! changes, that one value in the program file); adding and removing change
 //! program entries; every write keeps backups. Lab apps and their keys are set
-//! once on the Lab app page ([`lab_apps`]); a machine only picks one. Applying a
+//! once on the Lab apps page ([`lab_apps`]); a machine only picks one. Applying a
 //! change needs a restart; there is no hot reload.
 mod definitions;
 pub(in crate::admin) use definitions::model_name;
@@ -193,12 +193,12 @@ pub(crate) enum SetupError {
     Definitions(#[from] definitions::ListError),
     #[error("the lab app address is not accepted: {0}")]
     InvalidUrl(&'static str),
-    #[error("choose the lab app this machine sends results to; add one on the Lab app page first")]
+    #[error("choose the lab app this machine sends results to; add one on the Lab apps page first")]
     NoLabAppChosen,
-    #[error("there is no lab app called {0}; add it on the Lab app page")]
+    #[error("there is no lab app called {0}; add it on the Lab apps page")]
     UnknownLabApp(String),
     #[error(
-        "lab app {0} is already set up with other settings; make them the same on the Lab app page, then save again"
+        "lab app {0} is already set up with other settings; make them the same on the Lab apps page, then save again"
     )]
     LabAppDiffers(String),
     #[error(
@@ -212,7 +212,7 @@ pub(crate) enum SetupError {
     #[error("enter {0} as a whole number of seconds")]
     InvalidNumber(&'static str),
     #[error(
-        "lab app {0} is still kept in the settings of {1}; save that machine on its setup page first, which moves the lab app to the Lab app page, then change it there"
+        "lab app {0} is still kept in the settings of {1}; save that machine on its setup page first, which moves the lab app to the Lab apps page, then change it there"
     )]
     LabAppInSiteFile(String, String),
     #[error("lab app {0} cannot be removed: {1}")]
@@ -230,7 +230,7 @@ pub(crate) enum SetupError {
     #[error("this machine's settings file cannot be read: {0}")]
     SiteFile(#[source] toml::de::Error),
     #[error(
-        "this machine's settings file cannot be read: its [destination] cannot be moved to the Lab app page: {0}"
+        "this machine's settings file cannot be read: its [destination] cannot be moved to the Lab apps page: {0}"
     )]
     SiteDestination(#[source] toml::de::Error),
     #[error("this machine's settings file cannot be read: {0}")]
@@ -385,6 +385,7 @@ fn machine_rows(
 fn status(tone: Tone, word: &str) -> Status {
     Status {
         tone,
+        icon: tone.icon(),
         word: word.to_owned(),
         exact: String::new(),
         note: None,
@@ -427,7 +428,10 @@ fn level_and_state(definition: &Definition) -> (Hover, Status, Icon) {
             Icon::Off,
         ),
         Shipped::Unreadable(why) => (
-            hover("Not known", "Evidence level unknown".into()),
+            hover(
+                format::NOT_APPLICABLE,
+                "Evidence level unknown: the definition cannot be read".into(),
+            ),
             Status {
                 note: Some(format::sentence(why)),
                 ..status(Tone::Problem, "Cannot be read")

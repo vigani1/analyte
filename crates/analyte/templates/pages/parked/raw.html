@@ -5,7 +5,7 @@
 {%- import "components/layout.html" as layout %}
 {%- block main %}
 {% call layout::item_head(head) %}{% endcall %}
-{% call feedback::alert(crate::admin::view::Tone::Attention, "May contain patient data", "Keep it out of screenshots and support tickets. Analyte recorded who asked to see it and why before showing it.") %}{% endcall %}
+{% call feedback::alert(crate::admin::view::Tone::Attention, crate::admin::view::format::PATIENT_DATA, crate::admin::view::format::PATIENT_DATA_TEXT) %}{% endcall %}
 <div class="stack">
 {% call feedback::exact_lines(what, lines, true) %}{% endcall %}
 <p class="subtle review__note">Left: every byte exactly, in hex. Right: the same bytes as text, with bytes that are not plain letters or signs shown as dots.</p>
@@ -13,5 +13,5 @@
 {%- if let Some(form) = more %}
 {% call layout::card() %}{% call forms::raw_request(form) %}{% endcall %}{% endcall %}
 {%- endif %}
-{% call feedback::support("For support", support) %}{% endcall %}
+{% call feedback::support(crate::admin::view::format::SUPPORT, support) %}{% endcall %}
 {%- endblock %}

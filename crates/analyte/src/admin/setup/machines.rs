@@ -217,7 +217,7 @@ fn added_page(
 }
 
 /// GET /setup/first: the first-run button. Step 1 for the first listed machine
-/// that is not set up yet; Add machine when none is listed; otherwise the setup page.
+/// that is not set up yet; Add a machine when none is listed; otherwise the setup page.
 pub(in crate::admin) async fn first(State(state): State<Arc<Context>>) -> Response {
     let listed = off_thread(&state, |state| {
         site::entries(&state.config_path).map(|(_, listed)| {
@@ -310,7 +310,7 @@ enum LabApp {
     None,
     /// Its settings cannot be read, so its lab app cannot be kept.
     Unreadable(crate::installation::config::Error),
-    /// The lab app stays on the Lab app page (moved into `lab-apps.toml` first if
+    /// The lab app stays on the Lab apps page (moved into `lab-apps.toml` first if
     /// the site file still wrote it), and the service sends to it until nothing
     /// is left (`runtime::delivery::unused_lab_apps`).
     Kept(String),
@@ -336,7 +336,7 @@ fn delivery_sentence(lab_app: &LabApp, open: &Result<Unfinished, SetupError>) ->
         LabApp::Unreadable(error) => plain(format!(
             concat!(
                 "Its lab app settings cannot be read ({}), so results still waiting for it are ",
-                "kept, never deleted, until that lab app is added on the Lab app page."
+                "kept, never deleted, until that lab app is added on the Lab apps page."
             ),
             error
         )),
@@ -577,7 +577,7 @@ pub(in crate::admin) async fn remove(
     let kept = match &removed.kept {
         Ok(Some(destination)) => format!(
             concat!(
-                "Lab app {} stays on the Lab app page; results still waiting for it are sent ",
+                "Lab app {} stays on the Lab apps page; results still waiting for it are sent ",
                 "after the restart until none are left"
             ),
             destination
@@ -585,7 +585,7 @@ pub(in crate::admin) async fn remove(
         Ok(None) => "It was not set up, so it had no lab app".into(),
         Err(error) => {
             format!(
-                "Its lab app settings could not be read, so waiting results stay stored until that lab app is added on the Lab app page: {error}"
+                "Its lab app settings could not be read, so waiting results stay stored until that lab app is added on the Lab apps page: {error}"
             )
         }
     };

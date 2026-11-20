@@ -18,6 +18,9 @@ use jiff::Timestamp;
 /// A status: tone, word, the exact value on hover and what was observed under it.
 pub(in crate::admin) struct Status {
     pub(in crate::admin) tone: Tone,
+    /// Usually the tone's own icon; a state with an icon of its own, such as
+    /// an order's, keeps it on every page.
+    pub(in crate::admin) icon: Icon,
     pub(in crate::admin) word: String,
     pub(in crate::admin) exact: String,
     /// What Analyte observed, shown while the link is not open.

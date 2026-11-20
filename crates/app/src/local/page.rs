@@ -65,14 +65,14 @@ pub(super) fn render(off: &Off, zone: &TimeZone, now: Timestamp) -> Result<Strin
     } else if stopped {
         concat!(
             "Machines aren’t being listened to and nothing is being sent to the lab apps. ",
-            "Results Analyte already kept are safe."
+            "Results Analyte already stored stay in its store."
         )
         .to_owned()
     } else {
         format!(
             "The app gets no answer from the engine’s pages at {}. If the engine has stopped, \
              machines aren’t listened to and nothing is sent to the lab apps. Results Analyte \
-             already kept are safe.",
+             already stored stay in its store.",
             off.origin
         )
     };
@@ -107,7 +107,7 @@ fn facts(off: &Off, zone: &TimeZone, now: Timestamp) -> Vec<(&'static str, Strin
         (
             "Last known state",
             off.last_answer.map_or_else(
-                || "Not known".to_owned(),
+                || "Nothing yet".to_owned(),
                 |(_, health)| health.words().to_owned(),
             ),
         ),
@@ -209,7 +209,7 @@ mod tests {
         assert!(html.contains("The Analyte engine isn’t answering"));
         assert!(html.contains("at http://127.0.0.1:8080."));
         assert!(html.contains("<dd>Not since the app started</dd>"));
-        assert!(html.contains("<dd>Not known</dd>"));
+        assert!(html.contains("<dd>Nothing yet</dd>"));
         assert!(!html.contains("Start engine</button>"));
         assert!(!html.contains("If it doesn’t start"));
         assert!(html.contains("The app keeps checking and updates this screen by itself."));

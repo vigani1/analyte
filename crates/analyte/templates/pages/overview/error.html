@@ -5,5 +5,5 @@
 {%- block main %}
 {% call layout::page_head("", "Overview", "") %}{% endcall %}
 {% call feedback::alert(crate::admin::view::Tone::Problem, "The overview could not be shown just now", text) %}{% endcall %}
-{% call feedback::support("Details for support", detail) %}{% endcall %}
+{% call feedback::support(crate::admin::view::format::SUPPORT, detail) %}{% endcall %}
 {%- endblock %}

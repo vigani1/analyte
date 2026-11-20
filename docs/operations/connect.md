@@ -44,7 +44,7 @@ lab_app = "demo"           # a lab app listed in lab-apps.toml
 Each lab app is listed once in `lab-apps.toml`, beside the program file: its
 name, address, deadlines and the names of its two keys. The keys themselves
 stay in the locked credentials file or the service environment, under those
-names. The admin [Lab app page](operate.md#lab-app-page) writes this file for
+names. The admin [Lab apps page](operate.md#lab-apps-page) writes this file for
 you, with the same checks and backups as the Setup page. A synthetic example
 (also in the [config examples](../../crates/core/config/examples/lab-apps.toml)):
 
@@ -193,7 +193,7 @@ using an audited resend. Orders need a complete paged snapshot and changes feed.
 Stale or incomplete lookup is an error or silence, never a guessed empty list.
 A lab app's `freshness_seconds` defaults to 30; agree the offline policy with the lab.
 Its `request_timeout_seconds` (default 10, 1 through 120; "Timing (advanced)" on
-the Lab app page) bounds each
+the Lab apps page) bounds each
 request to the app, including TLS and the app storing; raise it for a slow link
 or app, but keep it well below the freshness setting.
 

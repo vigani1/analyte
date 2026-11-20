@@ -2,7 +2,7 @@
 //!
 //! The reason someone gives is optional and recorded with the view; the page
 //! warns that the bytes may contain patient data and keeps the record's ID and
-//! the session's ID under "For support".
+//! the session's ID under "Details for support".
 use super::page::{Head, Raw, RawRequest};
 use super::problem::Problem;
 use super::{receipt_id, respond};
@@ -55,6 +55,10 @@ impl From<analyte_store::WorkerError> for RawError {
     }
 }
 const RAW_PAGE: usize = 4096;
+
+/// The audit action of every view of original bytes or of a machine's free
+/// text; Activity does not list these views as changes.
+pub(in crate::admin) const RAW_VIEW: &str = "admin-raw-view";
 
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -208,7 +212,7 @@ pub(in crate::admin) async fn raw(
         })?;
         let audit = Audit {
             actor: session.actor.clone(),
-            action: Identifier::new("admin-raw-view")?,
+            action: Identifier::new(RAW_VIEW)?,
             targets: vec![
                 Identifier::new(&format!("parked:{id}"))?,
                 target.clone(),

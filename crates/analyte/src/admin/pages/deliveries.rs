@@ -6,7 +6,7 @@
 //! wrong token; the action checks again and asks for a signed-in session.
 //! Sending again never sends an order to a machine: it only queues the kept
 //! delivery for the lab app again (safety rules 4 and 8).
-use super::page::{Deliveries, DeliveryRow, Empty, ResendDialog};
+use super::page::{Deliveries, DeliveryRow, Empty, Look, ResendDialog};
 use super::{Outcome, PAGE, cursor_value, next_href, one_page, report};
 use crate::admin::error::CommandError;
 use crate::admin::parked::checked;
@@ -14,7 +14,7 @@ use crate::admin::sessions::{Session, signed_in};
 use crate::admin::view::{
     Tab, Tone, format,
     frame::Frame,
-    report::{Chip, Problem, Section, Status, respond},
+    report::{Chip, Problem, Section, respond},
 };
 use crate::admin::{Error, server::Context};
 use crate::deadline;
@@ -214,18 +214,14 @@ fn delivery_row(row: &ListedDelivery, now: Timestamp) -> DeliveryRow {
     }
 }
 
-/// How a delivery stands, in the existing delivery words; its ID and stored
+/// How a delivery stands, as every page shows its state; its ID and stored
 /// state on hover.
-fn outcome(delivery: &StoredDelivery) -> Status {
-    Status {
-        tone: match delivery.state {
-            DeliveryState::Done => Tone::Good,
-            DeliveryState::Pending | DeliveryState::InFlight => Tone::Neutral,
-            DeliveryState::Parked | DeliveryState::Paused | DeliveryState::Conflict => {
-                Tone::Attention
-            }
-        },
-        word: format::delivery_state(delivery.state).to_owned(),
+fn outcome(delivery: &StoredDelivery) -> Look {
+    let look = format::delivery_look(delivery.state);
+    Look {
+        tone: look.tone,
+        icon: look.icon,
+        word: look.word,
         exact: format!(
             "Delivery {} · {}",
             uuid::Uuid::from(delivery.id),
@@ -320,7 +316,7 @@ async fn open(
         text: format!(
             "Analyte sends it to lab app {} again, unchanged and with the same delivery number. Its status now: {}. If the lab app already has it, it treats the repeat as done. Analyte checks again that it may be sent when you confirm.",
             delivery.destination.as_str(),
-            format::delivery_state(delivery.state)
+            format::delivery_look(delivery.state).word
         ),
         placeholder: "For example: the lab app team asked for it again",
         hint: "Required, up to 256 characters. Recorded with the action and the time.",

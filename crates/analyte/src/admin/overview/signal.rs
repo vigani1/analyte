@@ -444,7 +444,7 @@ impl Waiting {
                 aside_when: None,
                 tone: None,
             },
-            _ => worded("Oldest waiting", Tone::Neutral, "Not known"),
+            _ => worded("Oldest waiting", Tone::Neutral, format::NOT_RECORDED),
         };
         [items, oldest]
     }
@@ -579,7 +579,7 @@ mod tests {
         );
         assert!(paused.contains("Sending paused</span>"));
         assert!(paused.contains("<span class=\"wire wire--wait\""));
-        assert!(paused.contains(" · 2 items waiting · oldest not known</p>"));
+        assert!(paused.contains(" · 2 items waiting · oldest not recorded</p>"));
 
         let blocked = lab(
             &health(1, Some(60), false),
@@ -709,7 +709,7 @@ mod tests {
 
     // Owner request 2026-11-19 (overview states): what waits for every lab app
     // together: the count, then the oldest item's time, "—" with "nothing
-    // waiting", or "Not known" when the store has no age for a waiting item.
+    // waiting", or "Not recorded" when the store has no age for a waiting item.
     #[test]
     fn waiting_figures_cover_none_known_and_unknown_ages() {
         let mut none = Waiting::default();
@@ -735,6 +735,6 @@ mod tests {
         unknown.add(&health(1, None, false));
         let [_, oldest] = unknown.figures(now());
         let oldest = figure(oldest);
-        assert!(oldest.contains("</svg>Not known</dd>"), "{oldest}");
+        assert!(oldest.contains("</svg>Not recorded</dd>"), "{oldest}");
     }
 }

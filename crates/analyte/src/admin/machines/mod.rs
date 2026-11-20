@@ -4,7 +4,7 @@
 //! connection type's own words, the model named at startup, and for each
 //! stored message its time, its sample IDs as stored, how it was read and how
 //! its deliveries stand. Test codes and result values never show; raw IDs only
-//! appear under "For support". Reads stop after [`view::READ_BUDGET`] with the
+//! appear under "Details for support". Reads stop after [`view::READ_BUDGET`] with the
 //! error page in the same look.
 pub(super) mod departures;
 mod page;
@@ -22,7 +22,7 @@ use crate::admin::{Error, error::CommandError};
 use crate::deadline;
 use crate::machine::link::status::Light;
 use analyte_model::Identifier;
-use analyte_store::{DeliveryState, RecentOutcome, RecentReceipt};
+use analyte_store::{RecentOutcome, RecentReceipt};
 use askama::Template as _;
 use axum::{
     Extension,
@@ -31,7 +31,7 @@ use axum::{
     response::Response,
 };
 use jiff::Timestamp;
-use page::{Detail, Empty, List, Message, Row, Todo};
+use page::{Delivery, Detail, Empty, List, Message, Row, Todo};
 use std::sync::{Arc, atomic::Ordering};
 
 /// How many of a machine's newest stored messages its page lists.
@@ -79,6 +79,7 @@ impl Entry<'_> {
             };
             return Status {
                 tone,
+                icon: tone.icon(),
                 word: word.into(),
                 exact: String::new(),
                 note: None,
@@ -120,6 +121,7 @@ impl Entry<'_> {
         };
         Status {
             tone,
+            icon: tone.icon(),
             word: word.into(),
             exact,
             note,
@@ -270,7 +272,7 @@ fn list_page(
     if read.restore_paused {
         notices.push(Notice {
             tone: Tone::Attention,
-            title: "Order sending is paused after a restore".into(),
+            title: format::RESTORE_PAUSED.into(),
             text: format::RESTORE_ADVICE.into(),
         });
     }
@@ -689,6 +691,7 @@ fn recent_message(message: &RecentReceipt, now: Timestamp) -> Message {
         },
         reading: Status {
             tone,
+            icon: tone.icon(),
             word: format::reading(outcome),
             exact,
             note: None,
@@ -698,12 +701,16 @@ fn recent_message(message: &RecentReceipt, now: Timestamp) -> Message {
             label: "In Needs review",
             class: "link",
         }),
-        delivery: format::deliveries(&message.deliveries).map(|(worst, word, exact)| Status {
-            tone: delivery_tone(worst),
-            word,
+        delivery: format::deliveries(&message.deliveries).map(|(worst, words, exact)| Delivery {
+            look: format::delivery_look(worst),
+            words,
             exact,
-            note: None,
         }),
+        no_delivery: if message.reading.is_some() {
+            format::NOT_APPLICABLE
+        } else {
+            format::NOTHING_YET
+        },
         href: message.reading.as_ref().map(|reading| {
             format!(
                 "/receipts/{}/departures?version={}",
@@ -711,17 +718,6 @@ fn recent_message(message: &RecentReceipt, now: Timestamp) -> Message {
                 reading.version
             )
         }),
-    }
-}
-
-/// The tone of a delivery state: delivered is good, waiting is neutral, paused
-/// needs a look, rejected or in conflict is a problem.
-const fn delivery_tone(state: DeliveryState) -> Tone {
-    match state {
-        DeliveryState::Done => Tone::Good,
-        DeliveryState::Pending | DeliveryState::InFlight => Tone::Neutral,
-        DeliveryState::Paused => Tone::Attention,
-        DeliveryState::Parked | DeliveryState::Conflict => Tone::Problem,
     }
 }
 

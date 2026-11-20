@@ -20,7 +20,7 @@
 {% call lists::table(MACHINE_COLUMNS) %}
 {%- for row in rows %}
 <tr>{% call lists::cell("") %}<div class="cell-main"><a href="{{ row.href }}">{{ row.id }}</a></div>{% if let Some(model) = row.model %}<div class="cell-sub">{{ model }}</div>{% endif %}{% endcall %}
-{%- call lists::cell("") %}{% call display::status_exact(row.status.tone, row.status.word, row.status.exact) %}{% endcall %}{% if let Some(note) = row.status.note %}<div class="cell-sub cell-note">{{ note }}</div>{% endif %}{% endcall %}
+{%- call lists::cell("") %}{% call display::status_with(row.status.tone, row.status.icon, row.status.word, row.status.exact) %}{% endcall %}{% if let Some(note) = row.status.note %}<div class="cell-sub cell-note">{{ note }}</div>{% endif %}{% endcall %}
 {%- if let Some(last) = row.last_data %}{% call lists::cell("num") %}{% call display::time(last) %}{% endcall %}{% endcall %}{% else %}{% call lists::cell("num subtle") %}Nothing yet{% endcall %}{% endif %}
 {%- if let Some(link) = row.link %}{% call lists::cell("") %}<span class="with-icon">{% call draw::icon(link.icon, "icon--md") %}{% endcall %}{{ link.kind }}</span>{% if let Some(detail) = link.detail %}<div class="cell-sub mono">{{ detail }}</div>{% endif %}{% endcall %}{% else %}{% call lists::cell("subtle") %}—{% endcall %}{% endif %}
 {%- if let Some(since) = row.since %}{% call lists::cell("num") %}{% call display::time(since) %}{% endcall %}{% endcall %}{% else %}{% call lists::cell("num subtle") %}—{% endcall %}{% endif %}
@@ -38,6 +38,6 @@
 {% call forms::next_page(href) %}{% endcall %}
 {%- endif %}
 {%- if !support.is_empty() %}
-{% call feedback::support("Details for support", support) %}{% endcall %}
+{% call feedback::support(crate::admin::view::format::SUPPORT, support) %}{% endcall %}
 {%- endif %}
 {%- endblock %}
