@@ -5,7 +5,7 @@
 {%- import "components/forms.html" as forms %}
 {%- import "components/layout.html" as layout %}
 {%- block main %}
-{% call layout::intro_head("Setup", "Add a machine, or choose one to set its connection and pick its lab app. Changes apply after Analyte restarts.") %}
+{% call layout::intro_head("", "Setup", "Add a machine, or choose one to set its connection and pick its lab app. Changes apply after Analyte restarts.") %}
 {% call forms::icon_button("/setup/add", crate::admin::view::icon::Icon::Plus, "Add a machine", "btn--primary") %}{% endcall %}
 {% endcall %}
 <section class="card card--pad stack" aria-labelledby="st-labs">
@@ -29,14 +29,14 @@
 {%- match machines %}
 {%- when Ok(rows) %}
 {%- if rows.is_empty() %}
-<div class="card">{% call feedback::empty("No machine is listed", "Add the first machine; its setup steps follow.") %}{% call forms::link_button("/setup/add", "Add a machine", "btn--outline btn--sm") %}{% endcall %}{% endcall %}</div>
+{% call feedback::empty_card("No machine is listed", "Add the first machine; its setup steps follow.") %}{% call forms::link_button("/setup/add", "Add a machine", "btn--outline btn--sm") %}{% endcall %}{% endcall %}
 {%- else %}
 {% call display::table(MACHINE_COLUMNS) %}
 {%- for row in rows %}
 <tr>{% call display::cell("") %}<div class="cell-main">{% if let Some((setup, _)) = row.links %}<a href="{{ setup }}">{{ row.id }}</a>{% else %}{{ row.id }}{% endif %}</div>{% endcall %}
 {%- if let Some(model) = row.model %}{% call display::cell("") %}{% call display::hover(model.shown, model.exact) %}{% endcall %}{% endcall %}{% else %}{% call display::cell("subtle") %}Not chosen yet{% endcall %}{% endif %}
 {%- call display::cell("") %}{% call display::status_with(row.status.tone, row.status.icon, row.status.word, "") %}{% endcall %}{% endcall %}
-{%- if let Some(version) = row.version %}{% call display::cell("") %}<span class="mono" title="{{ version.exact }}">{{ version.shown }}</span>{% endcall %}{% else %}{% call display::cell("subtle") %}Not running yet{% endcall %}{% endif %}
+{%- if let Some(version) = row.version %}{% call display::cell("") %}{% call display::code(version.shown, version.exact) %}{% endcall %}{% endcall %}{% else %}{% call display::cell("subtle") %}Not running yet{% endcall %}{% endif %}
 {%- call display::cell("right") %}{% if let Some((setup, remove)) = row.links %}<span class="cluster setup__actions">{% call forms::link_button(setup, "Set up", "btn--outline btn--sm") %}{% endcall %}{% call forms::link_button(remove, "Remove", "btn--danger-quiet btn--sm") %}{% endcall %}</span>{% endif %}{% endcall %}</tr>
 {%- endfor %}
 {% endcall %}

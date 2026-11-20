@@ -6,7 +6,7 @@
 {%- import "components/icon.html" as draw %}
 {%- import "components/layout.html" as layout %}
 {%- block main %}
-{% call layout::intro_head("Lab apps", "The lab software that receives results and sends orders. Each machine picks one in its setup; changes apply after a restart.") %}
+{% call layout::intro_head("", "Lab apps", "The lab software that receives results and sends orders. Each machine picks one in its setup; changes apply after a restart.") %}
 {%- if add %}
 {% call forms::icon_button("/setup/lab-apps/new", crate::admin::view::icon::Icon::Plus, "Add a lab app", "btn--primary") %}{% endcall %}
 {%- endif %}
@@ -15,7 +15,7 @@
 {% call feedback::alert(notice.tone, notice.title, notice.text) %}{% endcall %}
 {%- endfor %}
 {%- if add && cards.is_empty() %}
-<div class="card">{% call feedback::empty("No lab app is set up yet", "Add one; machines can then send results to it.") %}{% call forms::link_button("/setup/lab-apps/new", "Add a lab app", "btn--outline btn--sm") %}{% endcall %}{% endcall %}</div>
+{% call feedback::empty_card("No lab app is set up yet", "Add one; machines can then send results to it.") %}{% call forms::link_button("/setup/lab-apps/new", "Add a lab app", "btn--outline btn--sm") %}{% endcall %}{% endcall %}
 {%- endif %}
 {%- if !cards.is_empty() %}
 <div class="stack stack--lg">

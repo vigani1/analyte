@@ -4,7 +4,7 @@
 {%- import "components/forms.html" as forms %}
 {%- import "components/layout.html" as layout %}
 {%- block main %}
-{% call layout::item_head(head) %}{% endcall %}
+{% call layout::detail_head(head) %}{% endcall %}
 {% call feedback::alert(crate::admin::view::Tone::Attention, crate::admin::view::format::PATIENT_DATA, crate::admin::view::format::PATIENT_DATA_TEXT) %}{% endcall %}
 <div class="stack">
 {% call feedback::exact_lines(what, lines, true) %}{% endcall %}

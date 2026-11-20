@@ -6,14 +6,14 @@
 {%- import "components/icon.html" as draw %}
 {%- import "components/layout.html" as layout %}
 {%- block main %}
-{% call layout::intro_head("Machines", summary) %}
+{% call layout::intro_head("", "Machines", summary) %}
 {% call forms::icon_button("/setup/add", crate::admin::view::icon::Icon::Plus, "Add a machine", "btn--primary") %}{% endcall %}
 {% endcall %}
 {%- for notice in problems %}
 {% call feedback::alert(notice.tone, notice.title, notice.text) %}{% endcall %}
 {%- endfor %}
 {%- if let Some(empty) = empty %}
-<div class="card">{% call feedback::empty(empty.title, empty.text) %}{% if let Some((href, words)) = empty.link %}{% call forms::link_button(href, words, "btn--outline btn--sm") %}{% endcall %}{% endif %}{% endcall %}</div>
+{% call feedback::empty_card(empty.title, empty.text) %}{% if let Some((href, words)) = empty.link %}{% call forms::link_button(href, words, "btn--outline btn--sm") %}{% endcall %}{% endif %}{% endcall %}
 {%- endif %}
 {%- if !rows.is_empty() %}
 {% call display::table(MACHINE_COLUMNS) %}

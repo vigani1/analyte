@@ -10,19 +10,14 @@
 {% call feedback::alert(notice.tone, notice.title, notice.text) %}{% endcall %}
 {%- endfor %}
 <div class="split">
-<section class="card" aria-labelledby="dp-reading">
-<div class="card__head"><h2 id="dp-reading" class="card__title">This reading</h2></div>
-<div class="card__body">
+{% call layout::titled_card("dp-reading", "This reading", "", "") %}
 <dl class="kv">
 {%- for fact in facts %}
 {% call display::fact(fact) %}{% endcall %}
 {%- endfor %}
 </dl>
-</div>
-</section>
-<section class="card" aria-labelledby="dp-enabled">
-<div class="card__head"><h2 id="dp-enabled" class="card__title">Differences switched on for this machine</h2></div>
-<div class="card__body stack">
+{% endcall %}
+{% call layout::titled_card("dp-enabled", "Differences switched on for this machine", "", "stack") %}
 {%- if let Some(enabled) = enabled %}
 {%- if enabled.is_empty() %}
 <p class="text">None were switched on.</p>
@@ -33,15 +28,14 @@
 {%- else %}
 <p class="muted text">Not recorded by the version that read this message.</p>
 {%- endif %}
-</div>
-</section>
+{% endcall %}
 </div>
 {% call display::departures_used(applied) %}{% endcall %}
 {%- if let Some(statuses) = statuses %}
 <section class="section" aria-labelledby="dp-status">
 {% call layout::label("dp-status", "Result statuses", "") %}{% endcall %}
 {%- if statuses.is_empty() %}
-<div class="card">{% call feedback::empty("No results", "This reading produced no results.") %}{% endcall %}</div>
+{% call feedback::empty_card("No results", "This reading produced no results.") %}{% endcall %}
 {%- else %}
 {% call display::table(STATUS_COLUMNS) %}
 {%- for (sent, shown) in statuses %}

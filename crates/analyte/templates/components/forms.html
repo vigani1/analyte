@@ -92,6 +92,11 @@
 {%- for (name, value) in fields.iter() %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor -%}
 {%- endmacro %}
 
+{#- The foot of a setup step whose own form Next sends: Back to `back` without checking the fields, or no way back on the first step (`back` empty), with which step this is between them. -#}
+{%- macro step_next(back, count) -%}
+<div class="wizard-foot">{% if back.is_empty() %}<button type="button" class="btn btn--outline" disabled>Back</button>{% else %}<button type="submit" class="btn btn--outline" formaction="{{ back }}" formnovalidate>Back</button>{% endif %}<span class="subtle wizard__count">{{ count }}</span><button type="submit" class="btn btn--primary">Next</button></div>
+{%- endmacro %}
+
 {#- A setup step's foot: Back and Next, both carrying the choices, with which step this is between them. -#}
 {%- macro step_foot(foot, count) -%}
 <form class="wizard-foot" method="get" action="{{ foot.next }}">

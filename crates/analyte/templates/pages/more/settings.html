@@ -4,7 +4,7 @@
 {%- import "components/feedback.html" as feedback %}
 {%- import "components/layout.html" as layout %}
 {%- block main %}
-{% call layout::intro_head("Settings", SETTINGS_LEDE) %}{% endcall %}
+{% call layout::intro_head("", "Settings", SETTINGS_LEDE) %}{% endcall %}
 {%- for problem in problems %}
 {% call feedback::alert(crate::admin::view::Tone::Attention, problem, "") %}{% endcall %}
 {%- endfor %}
@@ -13,26 +13,14 @@
 <div class="card__head"><h2 id="st-engine" class="card__title">Engine</h2>{% call display::status(crate::admin::view::Tone::Good, "Running") %}{% endcall %}</div>
 <div class="card__body"><dl class="kv">{% for fact in engine %}{% call display::fact(fact) %}{% endcall %}{% endfor %}</dl></div>
 </section>
-<section class="card" aria-labelledby="st-store">
-<div class="card__head"><h2 id="st-store" class="card__title">Store limits</h2></div>
-<div class="card__body"><dl class="kv">{% for fact in store %}{% call display::fact(fact) %}{% endcall %}{% endfor %}</dl></div>
-</section>
-<section class="card" aria-labelledby="st-times">
-<div class="card__head"><h2 id="st-times" class="card__title">Time limits</h2></div>
-<div class="card__body"><dl class="kv">{% for fact in times %}{% call display::fact(fact) %}{% endcall %}{% endfor %}</dl></div>
-</section>
-<section class="card" aria-labelledby="st-alerts">
-<div class="card__head"><h2 id="st-alerts" class="card__title">Alerts</h2></div>
-<div class="card__body"><dl class="kv">{% for fact in alerts %}{% call display::fact(fact) %}{% endcall %}{% endfor %}</dl></div>
-</section>
-<section class="card" aria-labelledby="st-keys">
-<div class="card__head"><h2 id="st-keys" class="card__title">Keys</h2><span class="subtle text--sm">Where each is found, never its value</span></div>
-<div class="card__body"><dl class="kv">
+{% call layout::titled_card("st-store", "Store limits", "", "") %}<dl class="kv">{% for fact in store %}{% call display::fact(fact) %}{% endcall %}{% endfor %}</dl>{% endcall %}
+{% call layout::titled_card("st-times", "Time limits", "", "") %}<dl class="kv">{% for fact in times %}{% call display::fact(fact) %}{% endcall %}{% endfor %}</dl>{% endcall %}
+{% call layout::titled_card("st-alerts", "Alerts", "", "") %}<dl class="kv">{% for fact in alerts %}{% call display::fact(fact) %}{% endcall %}{% endfor %}</dl>{% endcall %}
+{% call layout::titled_card("st-keys", "Keys", "Where each is found, never its value", "") %}<dl class="kv">
 {%- for key in keys %}
 <dt>{{ key.owner }} · {{ key.label }}</dt><dd>{% call display::key_status(key) %}{% endcall %}</dd>
 {%- endfor %}
-</dl></div>
-</section>
+</dl>{% endcall %}
 </div>
 {%- if !support.is_empty() %}
 {% call feedback::support(crate::admin::view::format::SUPPORT, support) %}{% endcall %}

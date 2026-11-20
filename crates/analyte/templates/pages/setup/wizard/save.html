@@ -21,8 +21,8 @@
 {%- endmatch -%}
 </dd>
 {%- if let Some((new, running)) = summary.versions %}
-<dt>New settings version</dt><dd><span class="mono" title="{{ new.exact }}">{{ new.shown }}</span></dd>
-<dt>Running now</dt><dd>{% if let Some(running) = running %}<span class="mono" title="{{ running.exact }}">{{ running.shown }}</span>{% else %}<span class="subtle">Not running yet</span>{% endif %}</dd>
+<dt>New settings version</dt><dd>{% call display::code(new.shown, new.exact) %}{% endcall %}</dd>
+<dt>Running now</dt><dd>{% if let Some(running) = running %}{% call display::code(running.shown, running.exact) %}{% endcall %}{% else %}<span class="subtle">Not running yet</span>{% endif %}</dd>
 {%- endif %}
 </dl>
 </div>

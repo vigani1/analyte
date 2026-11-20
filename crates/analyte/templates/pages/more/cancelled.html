@@ -6,9 +6,9 @@
 {%- import "components/icon.html" as draw %}
 {%- import "components/layout.html" as layout %}
 {%- block main %}
-{% call layout::intro_head("Cancelled by machine", CANCELLED_LEDE) %}{% endcall %}
+{% call layout::intro_head("", "Cancelled by machine", CANCELLED_LEDE) %}{% endcall %}
 {%- if cards.is_empty() %}
-<div class="card">{% call feedback::empty("No order was cancelled by a machine", "Order items a machine cancels on its own are listed here.") %}{% endcall %}</div>
+{% call feedback::empty_card("No order was cancelled by a machine", "Order items a machine cancels on its own are listed here.") %}{% endcall %}
 {%- else %}
 {% call feedback::alert(crate::admin::view::Tone::Attention, "Check each order below with the lab and the lab app", CANCELLED_NOTICE) %}{% endcall %}
 <ul class="stack more-list">

@@ -6,7 +6,7 @@
 {%- import "components/icon.html" as draw %}
 {%- import "components/layout.html" as layout %}
 {%- block main %}
-{% call layout::intro_head("Data keeping", KEEPING_LEDE) %}{% endcall %}
+{% call layout::intro_head("", "Data keeping", KEEPING_LEDE) %}{% endcall %}
 <div class="stack stack--lg narrow">
 {% call layout::label_card("dk-times", "Keeping times") %}
 {%- if policies.is_empty() %}
@@ -28,7 +28,7 @@
 <div class="section__head">{% call layout::label("dk-holds", "Holds", "") %}{% endcall %}{% if form.is_some() %}{% call forms::link_button("#dk-add", "Add a hold", "btn--outline btn--sm") %}{% endcall %}{% endif %}</div>
 <p class="muted text--sm">{{ HOLDS_TEXT }}</p>
 {%- if holds.is_empty() %}
-<div class="card">{% call feedback::empty("No holds", "Nothing is held now; clean-up follows the keeping times.") %}{% endcall %}</div>
+{% call feedback::empty_card("No holds", "Nothing is held now; clean-up follows the keeping times.") %}{% endcall %}
 {%- else %}
 <ul class="card rows">
 {%- for hold in holds %}

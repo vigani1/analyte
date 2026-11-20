@@ -3,20 +3,10 @@
 {%- import "components/display.html" as display %}
 {%- import "components/forms.html" as forms %}
 
-{#- The page head: date line, title and a short aside on the right. -#}
-{%- macro page_head(eyebrow, title, aside) -%}
+{#- The head of a list or a top page: a line above the title when there is one, such as the date, the title, a line under it when there is one, and from the caller what sits on the right, such as filters or Cancel. -#}
+{%- macro intro_head(eyebrow, title, lede) -%}
 <header class="page-head">
-<div>{% if !eyebrow.is_empty() %}<p class="eyebrow">{{ eyebrow }}</p>{% endif %}<h1>{{ title }}</h1></div>
-{%- if !aside.is_empty() %}
-<p class="mono subtle page-head__aside">{{ aside }}</p>
-{%- endif %}
-</header>
-{%- endmacro %}
-
-{#- A page head with a line under the title; the caller writes what sits on the right, such as filters. -#}
-{%- macro intro_head(title, lede) -%}
-<header class="page-head">
-<div class="page-head__main"><h1>{{ title }}</h1><p class="page-head__lede">{{ lede }}</p></div>
+<div class="page-head__main">{% if !eyebrow.is_empty() %}<p class="eyebrow">{{ eyebrow }}</p>{% endif %}<h1>{{ title }}</h1>{% if !lede.is_empty() %}<p class="page-head__lede">{{ lede }}</p>{% endif %}</div>
 {{ caller() }}
 </header>
 {%- endmacro %}
@@ -24,22 +14,6 @@
 {#- One step of the way back in a page head: words, an item number in mono, and a link unless it is this page. -#}
 {%- macro crumb(crumb) -%}
 {{ crumb.label }}{% if let Some(number) = crumb.number %} <span class="mono">{{ number }}</span>{% endif %}
-{%- endmacro %}
-
-{#- The head of a page about one thing: the way back, the title, a line with times in it, and its status on the right. -#}
-{%- macro item_head(head) -%}
-<header class="page-head">
-<div>
-<ol class="crumbs">{% for crumb in head.crumbs %}<li>{% if let Some(href) = crumb.href %}<a href="{{ href }}">{% call crumb(crumb) %}{% endcall %}</a>{% else %}{% call crumb(crumb) %}{% endcall %}{% endif %}</li>{% endfor %}</ol>
-<h1>{{ head.title }}</h1>
-{%- if let Some(lede) = head.lede %}
-<p class="page-head__lede">{% call display::words(lede) %}{% endcall %}</p>
-{%- endif %}
-</div>
-{%- if let Some((tone, word)) = head.status %}
-{% call display::status(tone, word) %}{% endcall %}
-{%- endif %}
-</header>
 {%- endmacro %}
 
 {#- The head of a page about one thing: the way back when there is one, the title with its status beside it, a line with times in it, and from the caller what can be done on the right. -#}
@@ -56,6 +30,14 @@
 </div>
 {{ caller() }}
 </header>
+{%- endmacro %}
+
+{#- A card with a title in its head, such as "Setup" on a machine's page: `aside` is a short note beside the title, `body` more classes for the body, such as "stack", and the caller writes the body. -#}
+{%- macro titled_card(id, title, aside, body) -%}
+<section class="card" aria-labelledby="{{ id }}">
+<div class="card__head"><h2 id="{{ id }}" class="card__title">{{ title }}</h2>{% if !aside.is_empty() %}<span class="subtle text--sm">{{ aside }}</span>{% endif %}</div>
+<div class="card__body{% if !body.is_empty() %} {{ body }}{% endif %}">{{ caller() }}</div>
+</section>
 {%- endmacro %}
 
 {#- A card with a section label inside, such as "Why it is here"; the caller writes the rest. -#}

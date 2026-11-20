@@ -5,19 +5,19 @@
 {%- import "components/forms.html" as forms %}
 {%- import "components/layout.html" as layout %}
 {%- block main %}
-{% call layout::intro_head("Deliveries", DELIVERIES_LEDE) %}
+{% call layout::intro_head("", "Deliveries", DELIVERIES_LEDE) %}
 <nav class="chips" aria-label="Show">
 {%- for chip in chips %}{% call forms::chip(chip) %}{% endcall %}{% endfor -%}
 </nav>
 {% endcall %}
 {%- if let Some(empty) = empty %}
-<div class="card">{% call feedback::empty(empty.title, empty.text) %}{% if let Some((href, words)) = empty.link %}<a class="link" href="{{ href }}">{{ words }}</a>{% endif %}{% endcall %}</div>
+{% call feedback::empty_card(empty.title, empty.text) %}{% if let Some((href, words)) = empty.link %}<a class="link" href="{{ href }}">{{ words }}</a>{% endif %}{% endcall %}
 {%- endif %}
 {%- if !rows.is_empty() %}
 {% call display::table(DELIVERY_COLUMNS) %}
 {%- for row in rows %}
 <tr>{% if let Some(queued) = row.queued %}{% call display::cell("num") %}{% call display::time(queued) %}{% endcall %}{% endcall %}{% else %}{% call display::cell("subtle") %}Not recorded{% endcall %}{% endif %}
-{%- if let Some((shown, all)) = row.sample %}{% call display::cell("num") %}<span title="{{ all }}">{{ shown }}</span>{% endcall %}{% else if let Some(kind) = row.kind %}{% call display::cell("subtle more-nowrap") %}{{ kind }}{% endcall %}{% else %}{% call display::cell("subtle") %}—{% endcall %}{% endif %}
+{%- if let Some((shown, all)) = row.sample %}{% call display::cell("num") %}{% call display::hover(shown, all) %}{% endcall %}{% endcall %}{% else if let Some(kind) = row.kind %}{% call display::cell("subtle more-nowrap") %}{{ kind }}{% endcall %}{% else %}{% call display::cell("subtle") %}—{% endcall %}{% endif %}
 {%- if let Some(from) = row.from %}{% call display::cell("more-nowrap") %}{{ from }}{% endcall %}{% else %}{% call display::cell("subtle") %}—{% endcall %}{% endif %}
 {%- call display::cell("more-nowrap") %}{{ row.to }}{% endcall %}
 {%- if let Some(results) = row.results %}{% call display::cell("num right") %}{{ results }}{% endcall %}{% else %}{% call display::cell("right subtle") %}—{% endcall %}{% endif %}
