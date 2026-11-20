@@ -42,7 +42,7 @@ pub(super) const ORDER_COLUMNS: [Column; 7] = [
 
 /// GET /orders: the filters, then one row per order sent to a machine.
 #[derive(askama::Template)]
-#[template(path = "pages/orders/index.html")]
+#[template(path = "pages/more/orders.html")]
 pub(super) struct Orders {
     pub(super) frame: Frame,
     pub(super) chips: Vec<Chip>,
@@ -74,7 +74,7 @@ pub(super) struct OrderRow {
 /// GET /awos/{order}/{item}: one item of an order sent to a machine, what the
 /// machine reported about it, the lab app's copy and the machine's messages.
 #[derive(askama::Template)]
-#[template(path = "pages/awos/item.html")]
+#[template(path = "pages/more/order_item.html")]
 pub(super) struct OrderItem {
     pub(super) frame: Frame,
     pub(super) head: Head,
@@ -151,7 +151,7 @@ pub(super) const CANCELLED_NOTICE: &str = concat!(
 
 /// GET /analyzer-cancelled: one card per order item a machine cancelled.
 #[derive(askama::Template)]
-#[template(path = "pages/analyzer-cancelled/index.html")]
+#[template(path = "pages/more/cancelled.html")]
 pub(super) struct Cancelled {
     pub(super) frame: Frame,
     pub(super) cards: Vec<CancelledCard>,
@@ -193,7 +193,7 @@ pub(super) const DELIVERY_COLUMNS: [Column; 7] = [
 
 /// GET /deliveries, and the same list under the Send again dialog.
 #[derive(askama::Template)]
-#[template(path = "pages/deliveries/index.html")]
+#[template(path = "pages/more/deliveries.html")]
 pub(super) struct Deliveries {
     pub(super) frame: Frame,
     pub(super) chips: Vec<Chip>,
@@ -252,7 +252,7 @@ pub(super) const HOLDS_TEXT: &str = concat!(
 
 /// GET /retention, and the same page under the Release dialog.
 #[derive(askama::Template)]
-#[template(path = "pages/retention/index.html")]
+#[template(path = "pages/more/retention.html")]
 pub(super) struct Keeping {
     pub(super) frame: Frame,
     /// Each machine and how long its messages are kept.
@@ -304,7 +304,7 @@ pub(super) const SETTINGS_LEDE: &str = concat!(
 
 /// GET /settings: what Analyte runs with, read-only and never a key's value.
 #[derive(askama::Template)]
-#[template(path = "pages/settings/index.html")]
+#[template(path = "pages/more/settings.html")]
 pub(super) struct Settings {
     pub(super) frame: Frame,
     pub(super) engine: Vec<Fact>,

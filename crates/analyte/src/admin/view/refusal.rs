@@ -71,7 +71,7 @@ impl Next {
 /// The refusal page: what happened, what to do, the link onward and the
 /// exact reason for support.
 #[derive(askama::Template)]
-#[template(path = "pages/refusal.html")]
+#[template(path = "pages/view/refusal.html")]
 struct Page {
     frame: Plain,
     title: &'static str,

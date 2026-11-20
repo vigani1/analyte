@@ -92,7 +92,7 @@ pub(in crate::admin) struct Chip {
 
 /// A page that only reports: what an action did, or why a request was refused.
 #[derive(askama::Template)]
-#[template(path = "pages/report.html")]
+#[template(path = "pages/view/report.html")]
 pub(in crate::admin) struct Report {
     pub(in crate::admin) frame: Frame,
     pub(in crate::admin) head: Head,

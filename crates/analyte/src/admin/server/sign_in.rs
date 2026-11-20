@@ -13,7 +13,7 @@ use std::sync::Arc;
 /// Sign in (the `SignIn` mockup): the admin key's field and the session's form
 /// token. It never holds the key that was typed.
 #[derive(askama::Template)]
-#[template(path = "pages/login/index.html")]
+#[template(path = "pages/server/sign_in.html")]
 struct Page {
     frame: Plain,
     csrf: String,

@@ -33,7 +33,7 @@ pub(super) type Hidden = Vec<(&'static str, String)>;
 
 /// GET /setup/{id}: step 1, which machine model it is.
 #[derive(askama::Template)]
-#[template(path = "pages/setup/machine/model.html")]
+#[template(path = "pages/setup/wizard/model.html")]
 pub(super) struct ModelStep {
     pub(super) frame: Frame,
     pub(super) wizard: Wizard,
@@ -59,7 +59,7 @@ pub(super) struct Choice {
 
 /// GET /setup/{id}/connection: step 2, how it is connected and which lab app gets its results.
 #[derive(askama::Template)]
-#[template(path = "pages/setup/machine/connection.html")]
+#[template(path = "pages/setup/wizard/connection.html")]
 pub(super) struct ConnectionStep {
     pub(super) frame: Frame,
     pub(super) wizard: Wizard,
@@ -121,7 +121,7 @@ pub(super) struct LabApp {
 
 /// GET /setup/{id}/test: step 3 before a test runs.
 #[derive(askama::Template)]
-#[template(path = "pages/setup/machine/test.html")]
+#[template(path = "pages/setup/wizard/test.html")]
 pub(super) struct TestStep {
     pub(super) frame: Frame,
     pub(super) wizard: Wizard,
@@ -153,7 +153,7 @@ pub(super) struct Start {
 
 /// GET /setup/listen: step 3 while and after a test runs.
 #[derive(askama::Template)]
-#[template(path = "pages/setup/listen.html")]
+#[template(path = "pages/setup/wizard/listen.html")]
 pub(super) struct Listen {
     pub(super) frame: Frame,
     pub(super) wizard: Wizard,
@@ -187,7 +187,7 @@ pub(super) struct Live {
 
 /// GET /setup/{id}/save and POST /setup/{id}: step 4, what will be or was saved.
 #[derive(askama::Template)]
-#[template(path = "pages/setup/machine/save.html")]
+#[template(path = "pages/setup/wizard/save.html")]
 pub(super) struct SaveStep {
     pub(super) frame: Frame,
     pub(super) wizard: Wizard,
