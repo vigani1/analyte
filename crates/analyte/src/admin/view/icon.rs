@@ -3,6 +3,7 @@
 //! The `icon` template macro draws `<svg class="icon"><path d="…"/></svg>` from
 //! [`Icon::path`]. Paths use only letters, digits, spaces, `.`, `-` and `,`, so
 //! the template's escaping leaves them unchanged; a test holds that.
+use crate::admin::server::Connection;
 
 /// One icon a page or the sidebar draws; only icons in use are listed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -49,6 +50,10 @@ pub(in crate::admin) enum Icon {
     Cancelled,
     /// Nothing left to do: a tick, as on an empty Needs review list.
     Check,
+    /// Adds something, such as a machine: a plus.
+    Plus,
+    /// Something worth knowing: an i in a circle.
+    Info,
 }
 
 impl Icon {
@@ -127,6 +132,18 @@ impl Icon {
             ),
             Self::Cancelled => "M2 12a10 10 0 1 0 20 0a10 10 0 1 0-20 0 M15 9l-6 6 M9 9l6 6",
             Self::Check => "M20 6 9 17l-5-5",
+            Self::Plus => "M12 5v14 M5 12h14",
+            Self::Info => "M2 12a10 10 0 1 0 20 0a10 10 0 1 0-20 0 M12 16v-4 M12 8h.01",
+        }
+    }
+
+    /// How a machine is attached, as an icon.
+    pub(in crate::admin) const fn connection(connection: &Connection) -> Self {
+        match connection {
+            Connection::Serial(_) => Self::Serial,
+            Connection::UsbAdapter(_) => Self::Usb,
+            Connection::Listening(_) | Connection::Dialing => Self::Network,
+            Connection::Folder(_) => Self::Folder,
         }
     }
 }
@@ -135,7 +152,7 @@ impl Icon {
 mod tests {
     use super::*;
 
-    const ALL: [Icon; 21] = [
+    const ALL: [Icon; 23] = [
         Icon::Overview,
         Icon::Review,
         Icon::Machine,
@@ -157,6 +174,8 @@ mod tests {
         Icon::Unknown,
         Icon::Cancelled,
         Icon::Check,
+        Icon::Plus,
+        Icon::Info,
     ];
 
     // ADR 0018: icon paths go through the template's escaping, which must leave

@@ -1,300 +1,366 @@
-//! Shows enabled configuration separately from actual protected receipt interpretation evidence.
-use crate::admin::pages::finish;
-use crate::admin::Error;
-use crate::admin::markup::Markup;
-use crate::admin::{
-    server::Context,
-    view::{self, Tab, format},
-};
+//! Serves how one stored message was read (GET /receipts/{id}/departures): the reading, the accepted differences from the standard (departures) switched on and used for it, and each result part's status as sent and as shown.
+//!
+//! Switched on is not the same as used: a machine's settings switch a
+//! departure on, and each reading records which ones it used for those bytes.
+//! The page shows both from the stored reading, never from today's settings.
+use super::page::{Applied, Button, Crumb, Departures, Fact, Head, Notice, Value};
+use super::{Problem, respond};
+use crate::admin::error::CommandError;
+use crate::admin::server::Context;
+use crate::admin::sessions::Session;
+use crate::admin::view::{self, Tab, Tone, format, frame::Frame};
 use crate::deadline;
-use analyte_model::{DepartureEvidence, DepartureMeaning, ReceiptId};
+use analyte_model::{DepartureEvidence, DepartureMeaning, ReceiptId, ReceiptMetadata};
+use analyte_store::{Interpretation, OperatorError, Reading};
 use axum::{
+    Extension,
     extract::{Path, Query, State},
     http::StatusCode,
     response::Response,
 };
+use jiff::Timestamp;
 use serde::Deserialize;
 use std::sync::Arc;
 
-pub(in crate::admin) fn enabled(config: &analyte_config::Validated) -> Result<Markup, Error> {
-    let mut html = Markup::new()
-        .markup("<dl><dt title=\"Active configuration digest\">Settings version</dt><dd>")
-        .fragment(&view::version(&config.digest()))
-        .markup(concat!(
-            "</dd></dl><h3 title=\"Enabled machine departures\">Deliberate exceptions ",
-            "for this machine</h3><p class=\"muted\">Places where this machine's settings ",
-            "knowingly accept something the standard does not. Being switched on does not mean ",
-            "an exception was used for a given message; each message's details show which ",
-            "ones were.</p>",
-        ));
-    let rules = &config.effective().machine().deviations;
-    if rules.is_empty() {
-        html.push_markup("<p>None</p>");
-        return Ok(html);
-    }
-    html.push_markup("<ul>");
-    for rule in rules {
-        html.push_fragment(
-            &Markup::new()
-                .markup("<li><b>")
-                .text(rule.tag())
-                .markup("</b><p>")
-                .text(rule.meaning())
-                .markup("</p><pre>")
-                .text(rule.evidence_snapshot()?.as_str())
-                .markup("</pre></li>"),
-        );
-    }
-    html.push_markup("</ul>");
-    Ok(html)
-}
-
+/// Which reading of the message to show; the first one when none is asked for.
 #[derive(Deserialize)]
 pub(in crate::admin) struct Version {
     #[serde(default = "first")]
     version: i64,
 }
-fn first() -> i64 {
+
+const fn first() -> i64 {
     1
+}
+
+/// What the page reads in one store request.
+struct Read {
+    interpretation: Interpretation,
+    /// The message's metadata; none once data keeping removed it.
+    metadata: Option<ReceiptMetadata>,
+    /// A later reading exists.
+    next: bool,
 }
 
 pub(in crate::admin) async fn receipt(
     State(state): State<Arc<Context>>,
     Path(id): Path<ReceiptId>,
     Query(version): Query<Version>,
+    session: Option<Extension<Arc<Session>>>,
 ) -> Response {
-    if version.version < 1 {
-        return view::refusal(
-            StatusCode::BAD_REQUEST,
-            "Reading not found",
-            "Readings are numbered from 1. Open the message again from the Machines page.",
-            "positive interpretation version required",
-        );
+    let session = session.as_ref().map(|Extension(session)| session.as_ref());
+    let version = version.version;
+    if version < 1 {
+        return Problem::ReadingNumber.page(&state, session, None);
     }
-    let until = match deadline() {
-        Ok(until) => until,
-        Err(error) => return finish(Err(error.into())),
-    };
-    let result = state
+    let now = Timestamp::now();
+    match tokio::time::timeout(view::READ_BUDGET, read(&state, id, version)).await {
+        Ok(Ok(Some(read))) => {
+            let machine = read
+                .metadata
+                .as_ref()
+                .map(|metadata| metadata.machine.as_str().to_owned());
+            let html = askama::Template::render(&page(&state, session, id, version, read, now));
+            respond(&state, session, machine.as_deref(), StatusCode::OK, html)
+        }
+        Ok(Ok(None)) => Problem::ReadingNotFound.page(&state, session, None),
+        Ok(Err(error)) => Problem::Store(error.to_string()).page(&state, session, None),
+        Err(_) => Problem::Time.page(&state, session, None),
+    }
+}
+
+async fn read(
+    state: &Context,
+    id: ReceiptId,
+    version: i64,
+) -> Result<Option<Read>, crate::admin::Error> {
+    Ok(state
         .store
-        .request(until, move |s| s.interpretation(id, version.version))
-        .await;
-    let interpretation = match result {
-        Ok(Some(value)) => value,
-        Ok(None) => {
-            return view::refusal(
-                StatusCode::NOT_FOUND,
-                "Reading not found",
-                "This message has no reading with this number. Earlier readings stay listed from the Machines page.",
-                "interpretation not found",
-            );
-        }
-        Err(error) => return finish(Err(error.into())),
-    };
+        .request::<_, CommandError>(deadline()?, move |store| {
+            let Some(interpretation) = store.interpretation(id, version)? else {
+                return Ok(None);
+            };
+            let metadata = match store.receipt_metadata(id) {
+                Ok(metadata) => metadata,
+                Err(OperatorError::Purged) => None,
+                Err(error) => return Err(error.into()),
+            };
+            let next = match version.checked_add(1) {
+                Some(next) => store.interpretation(id, next)?.is_some(),
+                None => false,
+            };
+            Ok(Some(Read {
+                interpretation,
+                metadata,
+                next,
+            }))
+        })
+        .await?)
+}
+
+fn page(
+    state: &Context,
+    session: Option<&Session>,
+    id: ReceiptId,
+    version: i64,
+    read: Read,
+    now: Timestamp,
+) -> Departures {
+    let Read {
+        interpretation,
+        metadata,
+        next,
+    } = read;
+    let title = "How this message was read";
+    let mut crumbs = vec![Crumb {
+        label: Tab::Machines.label().to_owned(),
+        href: Some(Tab::Machines.href().to_owned()),
+    }];
+    crumbs.extend(metadata.as_ref().map(|metadata| Crumb {
+        label: metadata.machine.as_str().to_owned(),
+        href: Some(format::machine_href(metadata.machine.as_str())),
+    }));
+    let digest = analyte_contract::content_digest(&interpretation.config);
+    let Outcome {
+        notices,
+        stored,
+        statuses,
+    } = outcome(&interpretation);
+    let links = readings(id, version, next);
     let id = uuid::Uuid::from(id);
-    let mut html = view::page(Tab::Machines, "How this message was read");
-    html.push_fragment(&summary(id, version.version, &interpretation));
-    match &interpretation.departures {
-        Some(evidence) => render(&mut html, evidence),
-        None => html.push_markup(concat!(
-            "<p class=\"muted\" title=\"Legacy interpretation: departure ledger not ",
-            "recorded\">This message was read by an older version that did not record which ",
-            "exceptions were switched on or used; that does not mean none were.</p>",
-        )),
+    Departures {
+        frame: Frame::new(state, Tab::Machines, title, None, session, now),
+        head: Head {
+            crumbs,
+            title: title.into(),
+            status: None,
+            lede: metadata.as_ref().map(|metadata| {
+                format::arrived(metadata.machine.as_str(), metadata.received_at, now)
+                    .then(format::Line::text(format!("reading {version}")))
+            }),
+        },
+        notices,
+        facts: vec![
+            Fact {
+                term: "Reading",
+                value: Value::Text(version.to_string()),
+            },
+            Fact {
+                term: "Read by",
+                value: Value::Text(format::driver(&interpretation.driver)),
+            },
+            Fact {
+                term: "Settings label",
+                value: Value::Text(interpretation.config_version.as_str().to_owned()),
+            },
+            Fact {
+                term: "Settings version",
+                value: Value::Code {
+                    shown: format::digest_short(&digest),
+                    exact: format::digest_hex(&digest),
+                },
+            },
+        ],
+        enabled: interpretation.departures.as_ref().map(enabled),
+        applied: interpretation.departures.as_ref().map(applied),
+        statuses,
+        links,
+        support: [
+            format!("Message: {id}"),
+            format!("Reading: {version}"),
+            format!("Read by: {}", interpretation.driver),
+            format!("Settings version: {}", format::digest_hex(&digest)),
+        ]
+        .into_iter()
+        .chain(stored)
+        .collect(),
     }
-    html.push_fragment(&outcome(&interpretation.outcome));
-    html.push_fragment(
-        &Markup::new()
-            .markup("<p class=\"actions-row\"><a class=\"button secondary\" href=\"/receipts/")
-            .text(id)
-            .markup("/departures?version=")
-            .text(version.version.saturating_add(1))
-            .markup("\" title=\"Next interpretation version\">Next reading</a></p>"),
-    );
-    finish(Ok(html))
 }
 
-/// The message, reading and settings a receipt page is about.
-fn summary(id: uuid::Uuid, version: i64, interpretation: &analyte_store::Interpretation) -> Markup {
-    Markup::new()
-        .markup("<section><dl>")
-        .fragment(&view::row(
-            "Message",
-            Some("Receipt"),
-            &Markup::new().markup("<code>").text(id).markup("</code>"),
-        ))
-        .fragment(&view::row(
-            "Reading",
-            Some("Interpretation version"),
-            &Markup::new().text(version),
-        ))
-        .fragment(&view::row(
-            "Settings version",
-            Some("Retained config digest"),
-            &view::version(&analyte_contract::content_digest(&interpretation.config)),
-        ))
-        .fragment(&view::row(
-            "Settings label",
-            Some("Config version"),
-            &Markup::new().text(interpretation.config_version.as_str()),
-        ))
-        .fragment(&view::row(
-            "Read by",
-            Some("Driver"),
-            &Markup::new().text(interpretation.driver.to_string()),
-        ))
-        .markup("</dl></section>")
+/// What a reading says beside its facts.
+struct Outcome {
+    /// An incomplete record of differences, or a reading that failed.
+    notices: Vec<Notice>,
+    /// Their reasons exactly as stored, for support.
+    stored: Vec<String>,
+    /// Each result part's status as sent and as shown, when it was read.
+    statuses: Option<Vec<(String, String)>>,
 }
 
-/// What the reading produced: each result part's status as sent and as shown, or why it failed.
-fn outcome(outcome: &analyte_store::Reading) -> Markup {
-    let mut html = Markup::new();
-    if let analyte_store::Reading::Results(results) = outcome {
-        html.push_markup(
-            "<section><h2 title=\"Source and summary statuses\">Result statuses</h2><ul>",
-        );
-        for part in results.iter().flat_map(|r| r.parts.as_slice()) {
-            html.push_fragment(
-                &Markup::new()
-                    .markup("<li title=\"Received observation status; source absence stays empty\">Status sent by the machine: <code>")
-                    .text(part.source_status.as_str())
-                    .markup("</code> (empty when none was sent). Shown as: ")
-                    .text(part.status)
-                    .markup(".</li>"),
-            );
+/// What `interpretation` says beside its facts.
+fn outcome(interpretation: &Interpretation) -> Outcome {
+    let mut notices = Vec::new();
+    let mut stored = Vec::new();
+    if let Some(reason) = interpretation
+        .departures
+        .as_ref()
+        .and_then(|evidence| evidence.incomplete.as_ref())
+    {
+        notices.push(Notice {
+            tone: Tone::Problem,
+            title: "Not sent to the lab app: the record of differences used is incomplete".into(),
+            text: format::reason_words(reason.as_str())
+                .unwrap_or_else(|| reason.as_str().to_owned()),
+        });
+        stored.push(format!(
+            "Incomplete record, reason as stored: {}",
+            reason.as_str()
+        ));
+    }
+    let statuses = match &interpretation.outcome {
+        Reading::Results(results) => Some(
+            results
+                .iter()
+                .flat_map(|result| result.parts.as_slice())
+                .map(|part| {
+                    (
+                        part.source_status.as_str().to_owned(),
+                        part.status.to_string(),
+                    )
+                })
+                .collect(),
+        ),
+        Reading::Failed(reason) => {
+            notices.push(Notice {
+                tone: Tone::Problem,
+                title: "This message could not be read".into(),
+                text: format::reason_words(reason.as_str())
+                    .unwrap_or_else(|| reason.as_str().to_owned()),
+            });
+            stored.push(format!("Reason as stored: {}", reason.as_str()));
+            None
         }
-        html.push_markup("</ul></section>");
-    } else if let analyte_store::Reading::Failed(reason) = outcome {
-        html.push_fragment(
-            &Markup::new()
-                .markup("<p class=\"notice\" title=\"Parked interpretation\">Could not be read: ")
-                .fragment(&format::reason(reason.as_str()))
-                .markup("</p>"),
-        );
+    };
+    Outcome {
+        notices,
+        stored,
+        statuses,
     }
-    html
 }
 
-/// One exception used for a message: what was received, how it was read and where.
-fn applied_section(applied: &analyte_model::AppliedDeparture) -> Markup {
-    Markup::new()
-        .markup("<section><h3 title=\"Rule\">")
-        .text(applied.rule.as_str())
-        .markup("</h3><dl>")
-        .fragment(&view::row(
-            "As received",
-            Some("Source"),
-            &Markup::new().text(applied.source.as_str()),
-        ))
-        .fragment(&view::row(
-            "Read as",
-            Some("Derived meaning"),
-            &Markup::new().text(applied.meaning),
-        ))
-        .fragment(&view::row(
-            "Standard",
-            None,
-            &Markup::new().text(applied.standard.as_str()),
-        ))
-        .fragment(&view::row(
-            "Where in the message",
-            Some("Record and field; coordinates and spans on hover"),
-            &Markup::new()
-                .markup("<span title=\"Coordinates: ")
-                .text(applied.coordinates.as_str())
-                .markup("; spans: ")
-                .text(&applied.spans)
-                .markup("\">Record ")
-                .text(applied.record)
-                .markup(", field ")
-                .text(applied.field)
-                .markup("</span>"),
-        ))
-        .markup(concat!(
-            "</dl><p><a href=\"#enabled\" title=\"Protected evidence references and ",
-            "scope\">Where this exception comes from</a></p><pre>",
-        ))
-        .text(applied.declaration.as_str())
-        .markup("</pre></section>")
+/// The links to the earlier and the next reading, each only when it exists.
+fn readings(id: ReceiptId, version: i64, next: bool) -> Vec<Button> {
+    let id = uuid::Uuid::from(id);
+    let href = |version: i64| format!("/receipts/{id}/departures?version={version}");
+    let mut links = Vec::new();
+    if let Some(earlier) = version.checked_sub(1).filter(|&earlier| earlier >= 1) {
+        links.push(Button {
+            href: href(earlier),
+            label: "Earlier reading",
+            class: "btn--outline btn--sm",
+        });
+    }
+    if next && let Some(later) = version.checked_add(1) {
+        links.push(Button {
+            href: href(later),
+            label: "Next reading",
+            class: "btn--outline btn--sm",
+        });
+    }
+    links
 }
 
-fn render(html: &mut Markup, evidence: &DepartureEvidence) {
-    if let Some(reason) = &evidence.incomplete {
-        html.push_fragment(
-            &Markup::new()
-                .markup(concat!(
-                    "<p class=\"notice bad\" title=\"Applied ledger incomplete\"><strong>Not ",
-                    "sent to the lab app: the record of exceptions used is incomplete. ",
-                ))
-                .fragment(&format::reason(reason.as_str()))
-                .markup("</strong></p>"),
-        );
+/// Each departure switched on for the reading, as its declaration.
+fn enabled(evidence: &DepartureEvidence) -> Vec<String> {
+    evidence
+        .enabled
+        .as_slice()
+        .iter()
+        .map(|declaration| declaration.as_str().to_owned())
+        .collect()
+}
+
+/// Each departure used for the message: what was received, how it was read,
+/// where, and what that means for the result.
+fn applied(evidence: &DepartureEvidence) -> Vec<Applied> {
+    evidence
+        .applied
+        .as_slice()
+        .iter()
+        .map(|applied| Applied {
+            rule: applied.rule.as_str().to_owned(),
+            note: note(applied.meaning),
+            facts: vec![
+                Fact {
+                    term: "As received",
+                    value: Value::Text(applied.source.as_str().to_owned()),
+                },
+                Fact {
+                    term: "Read as",
+                    value: Value::Text(applied.meaning.to_string()),
+                },
+                Fact {
+                    term: "Standard",
+                    value: Value::Text(applied.standard.as_str().to_owned()),
+                },
+                Fact {
+                    term: "Where in the message",
+                    value: Value::Code {
+                        shown: format!("Record {}, field {}", applied.record, applied.field),
+                        exact: format!(
+                            "Coordinates: {}; spans: {}",
+                            applied.coordinates.as_str(),
+                            applied.spans
+                        ),
+                    },
+                },
+            ],
+            declaration: vec![applied.declaration.as_str().to_owned()],
+        })
+        .collect()
+}
+
+/// What a departure means for the result, when it needs saying.
+fn note(meaning: DepartureMeaning) -> Option<Notice> {
+    match meaning {
+        DepartureMeaning::FinalReportFromDocumentation
+        | DepartureMeaning::FinalObservationFromDocumentation => Some(Notice {
+            tone: Tone::Attention,
+            title: concat!(
+                "Marked final because the manual says so, not because the machine sent a ",
+                "final status"
+            )
+            .into(),
+            text: "It waits on the Needs review page instead of going to the lab app.".into(),
+        }),
+        DepartureMeaning::ControlCharacterKept
+        | DepartureMeaning::CharsetFromDefinition
+        | DepartureMeaning::ZoneFromSite => Some(Notice {
+            tone: Tone::Good,
+            title: "Accepted on purpose: values are kept exactly as received".into(),
+            text: String::new(),
+        }),
+        DepartureMeaning::PackedRecords | DepartureMeaning::WireCompatibility => None,
     }
-    html.push_markup(concat!(
-        "<section><h2 id=\"enabled\" title=\"Enabled declaration snapshot\">Exceptions ",
-        "switched on for this machine</h2><ul>",
-    ));
-    for declaration in evidence.enabled.as_slice() {
-        html.push_fragment(
-            &Markup::new()
-                .markup("<li><pre>")
-                .text(declaration.as_str())
-                .markup("</pre></li>"),
-        );
-    }
-    if evidence.enabled.as_slice().is_empty() {
-        html.push_markup("<li>None</li>");
-    }
-    html.push_markup(concat!(
-        "</ul></section><h2 title=\"Actually applied departures and tolerances\">Exceptions ",
-        "used for this message</h2>",
-    ));
-    if evidence.applied.as_slice().is_empty() {
-        html.push_markup("<p title=\"Applied list: empty\">None were used.</p>");
-    }
-    for applied in evidence.applied.as_slice() {
-        match applied.meaning {
-            DepartureMeaning::FinalReportFromDocumentation
-            | DepartureMeaning::FinalObservationFromDocumentation => {
-                html.push_markup(concat!(
-                    "<p class=\"notice\" title=\"Final from documentation; delivery over ",
-                    "contract v1 is parked\"><strong>Marked final because the manual says so, ",
-                    "not because the machine sent a final status.</strong> It waits on the Needs ",
-                    "review page instead of going to the lab app.</p>",
-                ));
-            }
-            DepartureMeaning::ControlCharacterKept
-            | DepartureMeaning::CharsetFromDefinition
-            | DepartureMeaning::ZoneFromSite => {
-                html.push_markup(concat!(
-                    "<p title=\"Deliberate tolerance\"><strong>Accepted on purpose: values ",
-                    "are kept exactly as received.</strong></p>",
-                ));
-            }
-            DepartureMeaning::PackedRecords | DepartureMeaning::WireCompatibility => {}
-        }
-        html.push_fragment(&applied_section(applied));
-    }
-    html.push_markup(concat!(
-        "<p class=\"muted\">The references above point to the manual sections and recordings ",
-        "behind each exception. The original bytes stay in the protected store; to see them, ",
-        "use Show original bytes on an item in Needs review.</p>",
-    ));
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::Error;
-    use analyte_model::{
-        AppliedDeparture, DepartureEvidence, DepartureMeaning, EvidenceList, Identifier, SourceText,
-    };
+    use analyte_model::{AppliedDeparture, EvidenceList, Identifier, SourceText};
+
+    /// The departures used for a message on their own, as the page draws them.
+    #[derive(askama::Template)]
+    #[template(
+        source = "{% import \"components/display.html\" as display %}{% call display::departures_used(applied) %}{% endcall %}",
+        ext = "html"
+    )]
+    struct Used {
+        applied: Option<Vec<Applied>>,
+    }
+
+    fn used(evidence: &DepartureEvidence) -> Result<String, askama::Error> {
+        askama::Template::render(&Used {
+            applied: Some(applied(evidence)),
+        })
+    }
+
     // ADR 0015
     #[test]
     fn shows_empty_and_documented_final_without_injection() -> Result<(), Error> {
-        let mut html = Markup::new();
-        render(&mut html, &DepartureEvidence::default());
-        assert!(html.contains("None were used."));
+        let html = used(&DepartureEvidence::default())?;
+        assert!(html.contains("None were used."), "{html}");
         assert!(!html.contains("Marked final because the manual says so"));
         let application = AppliedDeparture {
             rule: Identifier::new("hl7_absent_obx11_means_final")?,
@@ -312,11 +378,16 @@ mod tests {
             incomplete: None,
             applied: EvidenceList::new(vec![application])?,
         };
-        let mut html = Markup::new();
-        render(&mut html, &ledger);
-        assert!(html.contains("Marked final because the manual says so"));
+        let html = used(&ledger)?;
+        assert!(
+            html.contains("Marked final because the manual says so"),
+            "{html}"
+        );
         assert!(html.contains("not because the machine sent a final status"));
-        assert!(html.contains("&lt;script&gt;bad&lt;/script&gt;"));
+        assert!(
+            html.contains("&#60;script&#62;bad&#60;/script&#62;"),
+            "{html}"
+        );
         assert!(!html.contains("<script>"));
         Ok(())
     }
@@ -341,9 +412,11 @@ mod tests {
             incomplete: None,
             applied: EvidenceList::new(vec![note])?,
         };
-        let mut html = Markup::new();
-        render(&mut html, &ledger);
-        assert!(html.contains("Accepted on purpose: values are kept exactly as received."));
+        let html = used(&ledger)?;
+        assert!(
+            html.contains("Accepted on purpose: values are kept exactly as received"),
+            "{html}"
+        );
         assert!(html.contains("astm_control_character_in_text"));
         assert!(html.contains("ControlCharacterKept"));
         assert!(!html.contains("Marked final because the manual says so"));

@@ -1,10 +1,15 @@
-{#- Macros that tell someone something: alert boxes, the "What to do" box, empty states, and disclosures of exact lines such as the support details. -#}
+{#- Macros that tell someone something: alert boxes and notes, the "What to do" box, empty states, and disclosures of exact lines such as the support details. -#}
 {%- import "components/icon.html" as draw %}
 {%- import "components/forms.html" as forms %}
 
 {#- A boxed message in a tone; `text` may be empty. -#}
 {%- macro alert(tone, title, text) -%}
 <div class="alert alert--{{ tone.class() }}" role="note">{% call draw::icon(tone.icon(), "") %}{% endcall %}<div><p class="alert__title">{{ title }}</p>{% if !text.is_empty() %}<p class="alert__text">{{ text }}</p>{% endif %}</div><span></span></div>
+{%- endmacro %}
+
+{#- Something worth knowing that needs no one, such as a state that is normal: the info icon, a title and a sentence. -#}
+{%- macro note(title, text) -%}
+<div class="alert alert--info" role="note">{% call draw::icon(crate::admin::view::icon::Icon::Info, "") %}{% endcall %}<div><p class="alert__title">{{ title }}</p>{% if !text.is_empty() %}<p class="alert__text">{{ text }}</p>{% endif %}</div><span></span></div>
 {%- endmacro %}
 
 {#- One plain sentence of what to do, and the page that does it. -#}

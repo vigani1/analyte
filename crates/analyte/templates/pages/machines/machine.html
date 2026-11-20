@@ -1,0 +1,72 @@
+{#- One machine (GET /machines/{id}): its status and what can be done, its setup, the accepted differences from the standard its settings switch on, its newest stored messages, details for support, and the Remove dialog drawn over it (GET /setup/{id}/remove). -#}
+{% extends "layout/base.html" %}
+{%- import "components/display.html" as display %}
+{%- import "components/feedback.html" as feedback %}
+{%- import "components/forms.html" as forms %}
+{%- import "components/layout.html" as layout %}
+{%- import "components/lists.html" as lists %}
+{%- block main %}
+{% call layout::detail_head(head) %}
+{%- if !actions.is_empty() %}
+<div class="cluster">
+{%- for button in actions %}{% call forms::link_button(button.href, button.label, button.class) %}{% endcall %}{% endfor -%}
+</div>
+{%- endif %}
+{% endcall %}
+{%- for notice in notices %}
+{% call feedback::alert(notice.tone, notice.title, notice.text) %}{% endcall %}
+{%- endfor %}
+{%- if let Some(todo) = todo %}
+{% call feedback::whattodo(todo.text, todo.href, todo.label) %}{% endcall %}
+{%- endif %}
+<div class="split">
+<section class="card" aria-labelledby="md-setup">
+<div class="card__head"><h2 id="md-setup" class="card__title">Setup</h2></div>
+<div class="card__body">
+<dl class="kv">
+{%- for fact in facts %}
+{% call display::fact(fact) %}{% endcall %}
+{%- endfor %}
+</dl>
+</div>
+</section>
+{%- if let Some(rules) = rules %}
+<section class="card" aria-labelledby="md-diff">
+<div class="card__head"><h2 id="md-diff" class="card__title">Accepted differences from the standard</h2></div>
+<div class="card__body stack">
+{%- if rules.is_empty() %}
+<p class="muted machine__intro">None: its settings switch on no difference from the standard.</p>
+{%- else %}
+<p class="muted machine__intro">This model does a few things its own way. Its settings switch these on; each message’s reading shows which ones were used.</p>
+<ul class="rows machine__rules">
+{%- for rule in rules %}
+<li title="{{ rule.tag }}">{{ rule.meaning }}</li>
+{%- endfor %}
+</ul>
+{% call feedback::support("Where these differences come from", declarations) %}{% endcall %}
+{%- endif %}
+</div>
+</section>
+{%- endif %}
+</div>
+<section class="section" aria-labelledby="md-recent">
+<div class="section__head">{% call layout::label("md-recent", "Recent messages received", "") %}{% endcall %}{% if let Some(note) = recent_note %}<span class="subtle machine__note">{{ note }}</span>{% endif %}</div>
+{%- if recent.is_empty() %}
+<div class="card">{% call feedback::empty("Nothing received yet", "Messages this machine sends are listed here, newest first.") %}{% endcall %}</div>
+{%- else %}
+{% call lists::table(MESSAGE_COLUMNS) %}
+{%- for message in recent %}
+<tr>{% call lists::cell("num") %}{% call display::time(message.when) %}{% endcall %}{% endcall %}
+{%- if let Some((shown, all)) = message.sample %}{% call lists::cell("num") %}<span title="{{ all }}">{{ shown }}</span>{% endcall %}{% else %}{% call lists::cell("num subtle") %}—{% endcall %}{% endif %}
+{%- call lists::cell("") %}{% call display::status_exact(message.reading.tone, message.reading.word, message.reading.exact) %}{% endcall %}{% if let Some(review) = message.review %}<div class="cell-sub cell-note"><a class="link" href="{{ review.href }}">{{ review.label }}</a></div>{% endif %}{% endcall %}
+{%- if let Some(delivery) = message.delivery %}{% call lists::cell("") %}{% call display::status_exact(delivery.tone, delivery.word, delivery.exact) %}{% endcall %}{% endcall %}{% else %}{% call lists::cell("subtle") %}None queued{% endcall %}{% endif %}
+{%- if let Some(href) = message.href %}{% call lists::cell("") %}<a class="link" href="{{ href }}">How it was read</a>{% endcall %}{% else %}{% call lists::cell("subtle") %}—{% endcall %}{% endif %}</tr>
+{%- endfor %}
+{% endcall %}
+{%- endif %}
+</section>
+{% call feedback::support("For support", support) %}{% endcall %}
+{%- if let Some(dialog) = dialog %}
+{% call forms::list_dialog(dialog) %}{% endcall %}
+{%- endif %}
+{%- endblock %}

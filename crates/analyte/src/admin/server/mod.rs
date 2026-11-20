@@ -6,7 +6,6 @@ use super::{
     setup::Step,
 };
 use crate::admin::Error;
-use crate::admin::markup::Markup;
 use crate::installation::config::Program;
 use analyte_model::Identifier;
 use axum::{
@@ -32,7 +31,10 @@ pub(super) struct Machine {
     pub(super) running: Arc<AtomicBool>,
     /// The machine runtime's link light; the admin page only reads it.
     pub(super) status: watch::Receiver<crate::machine::link::status::Status>,
-    pub(super) departure_html: Markup,
+    /// The departures its settings switch on, read once at startup.
+    pub(super) rules: Vec<super::machines::Rule>,
+    /// The running settings version: the digest of its effective configuration.
+    pub(super) digest: [u8; 32],
     /// The model's name for people, read once at startup from its definition
     /// (`setup::model_name`); none when the definition gives none.
     pub(super) model: Option<String>,
@@ -145,7 +147,8 @@ pub(crate) async fn prepare(
         .map(|m| {
             let effective = m.snapshot().effective();
             Ok(Machine {
-                departure_html: super::machines::departures::enabled(&m.snapshot)?,
+                rules: super::machines::rules(&m.snapshot)?,
+                digest: m.snapshot().digest(),
                 id: m.id().clone(),
                 running: Arc::new(AtomicBool::new(true)),
                 status: m.status.subscribe(),
@@ -266,7 +269,8 @@ fn router(state: Arc<Context>) -> Router {
             "/retention",
             get(super::pages::retention::show).post(super::pages::retention::hold),
         )
-        .route("/machines", get(super::machines::machines))
+        .route("/machines", get(super::machines::list))
+        .route("/machines/{id}", get(super::machines::detail))
         .route(
             "/receipts/{id}/departures",
             get(super::machines::departures::receipt),

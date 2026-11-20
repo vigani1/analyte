@@ -4,7 +4,6 @@ use error::FixtureError;
 
 use super::*;
 use crate::Error;
-use crate::admin::markup::Markup;
 use analyte_fixtures::ConfigEdit as _;
 use analyte_model::{OrderState, Reason};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
@@ -12,6 +11,7 @@ use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 mod actions;
 mod assets;
 mod logout;
+mod machines;
 mod overview;
 mod pages;
 mod parked;
@@ -815,7 +815,7 @@ fn assert_logo(path: &str, page: &str) {
         assert!(page.contains(&link), "{path} lacks {link}");
     }
     match path {
-        "/" | "/parked" => assert!(page.contains(concat!(
+        "/" | "/parked" | "/machines" => assert!(page.contains(concat!(
             "<div class=\"brand\">\n<svg class=\"logo\" width=\"30\" height=\"30\" ",
             "viewBox=\"0 0 48 48\" aria-hidden=\"true\"><path class=\"logo__tile\" "
         ))),
@@ -833,7 +833,7 @@ fn assert_logo(path: &str, page: &str) {
 /// ADR 0018: the restyled Overview loads fonts.css, analyte.css and app.css in
 /// that order; every other page keeps admin.css. Never both on one page.
 /// The pages in the new look so far (ADR 0018); the others keep `admin.css`.
-const RESTYLED: [&str; 2] = ["/", "/parked"];
+const RESTYLED: [&str; 3] = ["/", "/parked", "/machines"];
 
 fn assert_stylesheets(path: &str, page: &str) {
     if RESTYLED.contains(&path) {
@@ -987,7 +987,8 @@ fn machine(
         Link::Folder => Connection::Folder("results".into()),
     };
     Ok(Machine {
-        departure_html: Markup::new(),
+        rules: Vec::new(),
+        digest: [0xab; 32],
         id: Identifier::new(id)?,
         running: Arc::new(AtomicBool::new(running)),
         status,

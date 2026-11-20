@@ -10,6 +10,8 @@ use super::{
     RELOAD, SetupError, after_write, audit, done, entries, incomplete, needs_login, off_thread,
     page, refused, see_other, site, stored,
 };
+use crate::admin::machines::{self, DialogItem, Hover, Problem, RemoveDialog};
+use crate::admin::view::{Tone, icon::Icon};
 use crate::admin::{markup::Markup, server::Context, sessions::Session, view::format};
 use crate::installation::config::{Program, folder};
 use analyte_model::Identifier;
@@ -303,11 +305,16 @@ fn lab_app(config: &std::path::Path, id: &str) -> LabApp {
     }
 }
 
-/// One sentence on what happens to the machine's waiting results after removal.
-fn delivery_sentence(lab_app: &LabApp, open: &Result<Unfinished, SetupError>) -> Markup {
+/// One sentence on what happens to the machine's waiting results after
+/// removal, with their exact count on hover when some wait.
+fn delivery_sentence(lab_app: &LabApp, open: &Result<Unfinished, SetupError>) -> Hover {
+    let plain = |shown: String| Hover {
+        shown,
+        exact: String::new(),
+    };
     match lab_app {
-        LabApp::None => Markup::new().text("It is not set up, so nothing is waiting to be sent."),
-        LabApp::Unreadable(error) => Markup::new().text(format!(
+        LabApp::None => plain("It is not set up, so nothing is waiting to be sent.".into()),
+        LabApp::Unreadable(error) => plain(format!(
             concat!(
                 "Its lab app settings cannot be read ({}), so results still waiting for it are ",
                 "kept, never deleted, until that lab app is added on the Lab app page."
@@ -315,37 +322,34 @@ fn delivery_sentence(lab_app: &LabApp, open: &Result<Unfinished, SetupError>) ->
             error
         )),
         LabApp::Kept(name) => match open {
-            Ok(open) if open.undelivered > 0 => Markup::new()
-                .markup("<span title=\"")
-                .text(format::amount(
+            Ok(open) if open.undelivered > 0 => Hover {
+                shown: format!(
+                    "Its {} will still be sent to {name}.",
+                    format::amount(open.undelivered, "waiting result", "waiting results")
+                ),
+                exact: format::amount(
                     open.undelivered,
                     "result or order message not yet accepted by the lab app",
                     "results or order messages not yet accepted by the lab app",
-                ))
-                .markup("\">")
-                .text(format!(
-                    "Its {} will still be sent to {name}.",
-                    format::amount(open.undelivered, "waiting result", "waiting results")
-                ))
-                .markup("</span>"),
-            Ok(_) => Markup::new().text(format!(
+                ),
+            },
+            Ok(_) => plain(format!(
                 "Nothing is waiting; anything it sends before the restart will still be sent to {name}."
             )),
-            Err(_) => Markup::new().text(format!(
-                "Its waiting results will still be sent to {name}."
-            )),
+            Err(_) => plain(format!("Its waiting results will still be sent to {name}.")),
         },
     }
 }
 
-/// GET /setup/{id}/remove: the plain confirmation, with any unfinished work.
+/// GET /setup/{id}/remove: the machine's page with the Remove dialog over it,
+/// saying what is still unfinished.
 pub(in crate::admin) async fn confirm_remove(
     State(state): State<Arc<Context>>,
     session: Option<Extension<Arc<Session>>>,
     Path(id): Path<String>,
 ) -> Response {
     let Some(Extension(session)) = session.filter(|Extension(s)| s.authenticated) else {
-        return needs_login();
+        return Problem::SignIn.page(&state, None, Some(&id));
     };
     let machine = id.clone();
     let facts = off_thread(&state, move |state| {
@@ -357,88 +361,95 @@ pub(in crate::admin) async fn confirm_remove(
     .await;
     let (kept, last) = match facts {
         Ok(facts) => facts,
-        Err(error) => return refused(&error),
+        Err(error) => {
+            return Problem::Refused(error.to_string()).page(&state, Some(&session), Some(&id));
+        }
     };
     let open = unfinished(&state, &id).await;
-    let mut html = page("Remove a machine")
-        .markup("<p class=\"lead\"><strong>Remove ")
-        .text(&id)
-        .markup(concat!(
-            "?</strong> Its results, items to review and history are kept and stay visible ",
-            "here; Analyte just stops connecting to it.</p>"
-        ));
-    let warned = warning(&mut html, &open);
-    html.push_fragment(
-        &Markup::new()
-            .markup("<section><h2>Waiting results</h2><p class=\"removal\">")
-            .fragment(&delivery_sentence(&kept, &open))
-            .markup("</p>"),
-    );
+    let (mut items, warned) = warning(&open);
     if last {
-        html.push_markup(concat!(
-            "<p class=\"notice\">This is the last machine. After the restart Analyte serves only this ",
-            "admin page until a machine is added.</p>"
-        ));
+        items.push(DialogItem {
+            tone: Tone::Attention,
+            icon: Icon::Warning,
+            text: concat!(
+                "This is the last machine. After the restart Analyte serves only this admin ",
+                "page until a machine is added."
+            )
+            .into(),
+        });
     }
-    html.push_fragment(
-        &Markup::new()
-            .markup(concat!(
-                "<p class=\"muted\">Analyte keeps dated copies of the old settings. Removing ",
-                "applies after a restart; until then the machine keeps running.</p></section>",
-                "<form method=\"post\" action=\""
-            ))
-            .text(format!("/setup/{id}/remove"))
-            .markup("\"><input type=\"hidden\" name=\"csrf\" value=\"")
-            .text(session.csrf.form_value())
-            .markup("\">"),
-    );
-    html.push_markup(if warned {
-        concat!(
-            "<input type=\"hidden\" name=\"anyway\" value=\"yes\"><div class=\"actions-row\">",
-            "<button class=\"danger\">Remove anyway</button>"
-        )
-    } else {
-        "<div class=\"actions-row\"><button class=\"danger\">Remove</button>"
+    items.push(DialogItem {
+        tone: Tone::Neutral,
+        icon: Icon::Ok,
+        text: "Analyte keeps a dated copy of the old settings.".into(),
     });
-    html.push_markup("<a class=\"button secondary\" href=\"/setup\">Keep it</a></div></form>");
-    done(html)
+    let dialog = RemoveDialog {
+        action: format::setup_href(&id, "remove"),
+        csrf: session.csrf.form_value().to_owned(),
+        cancel: format::machine_href(&id),
+        title: format!("Remove {id}?"),
+        text: format::REMOVED_ADVICE,
+        sending: delivery_sentence(&kept, &open),
+        list_title: if warned {
+            "Still unfinished"
+        } else {
+            "Before you remove it"
+        },
+        items,
+        anyway: warned,
+        button: if warned { "Remove anyway" } else { "Remove" },
+    };
+    machines::with_dialog(&state, &session, &id, dialog).await
 }
 
-/// Shows open work or why it could not be counted; true when there is a warning.
-fn warning(html: &mut Markup, open: &Result<Unfinished, SetupError>) -> bool {
+/// The dialog's lines about open work, or why it could not be counted; true
+/// when there is a warning, so removing needs "Remove anyway".
+fn warning(open: &Result<Unfinished, SetupError>) -> (Vec<DialogItem>, bool) {
+    const UNCOUNTED: &str = "Items to review that are not linked to one machine are not counted.";
     match open {
-        Ok(open) if open.is_empty() => {
-            html.push_markup(concat!(
-                "<p class=\"notice info\">Nothing is unfinished for this machine. (Items to review ",
-                "that are not linked to one machine are not counted.)</p>"
-            ));
-            false
-        }
+        Ok(open) if open.is_empty() => (
+            vec![
+                DialogItem {
+                    tone: Tone::Good,
+                    icon: Icon::Ok,
+                    text: "Nothing is unfinished for this machine.".into(),
+                },
+                DialogItem {
+                    tone: Tone::Neutral,
+                    icon: Icon::Info,
+                    text: UNCOUNTED.into(),
+                },
+            ],
+            false,
+        ),
         Ok(open) => {
-            html.push_markup(
-                "<div class=\"notice\"><p><strong>Unfinished for this machine:</strong></p><ul>",
-            );
-            for line in open_work(open) {
-                html.push_fragment(&Markup::new().markup("<li>").text(line).markup("</li>"));
-            }
-            html.push_markup(concat!(
-                "</ul><p>Removing does not delete any of this. Finish it first, or ",
-                "remove anyway. (Items to review that are not linked to one machine are not ",
-                "counted.)</p></div>"
-            ));
-            true
+            let mut items: Vec<DialogItem> = open_work(open)
+                .into_iter()
+                .map(|line| DialogItem {
+                    tone: Tone::Attention,
+                    icon: Icon::Warning,
+                    text: line,
+                })
+                .collect();
+            items.push(DialogItem {
+                tone: Tone::Neutral,
+                icon: Icon::Info,
+                text: format!(
+                    "Removing does not delete any of this. Finish it first, or remove anyway. {UNCOUNTED}"
+                ),
+            });
+            (items, true)
         }
-        Err(error) => {
-            html.push_fragment(
-                &Markup::new()
-                    .markup("<p class=\"notice bad\"><strong>Unfinished work could not be counted:</strong> ")
-                    .text(error)
-                    .markup(
-                        ". Check the Deliveries, Machine orders and Needs review pages first.</p>",
-                    ),
-            );
-            true
-        }
+        Err(error) => (
+            vec![DialogItem {
+                tone: Tone::Problem,
+                icon: Icon::Problem,
+                text: format!(
+                    "Unfinished work could not be counted: {error}. Check the Deliveries, Machine orders and Needs review pages first."
+                ),
+            }],
+            true,
+        ),
     }
 }
 
@@ -504,8 +515,11 @@ pub(in crate::admin) async fn remove(
     Path(id): Path<String>,
     form: Result<Form<Removal>, axum::extract::rejection::FormRejection>,
 ) -> Response {
+    let refused = |error: &SetupError| {
+        Problem::Refused(error.to_string()).page(&state, Some(&session), Some(&id))
+    };
     let Ok(Form(removal)) = form else {
-        return incomplete(RELOAD);
+        return refused(&SetupError::IncompleteForm(RELOAD));
     };
     let anyway = removal.anyway.as_deref() == Some("yes");
     let open = unfinished(&state, &id).await;
@@ -515,7 +529,7 @@ pub(in crate::admin) async fn remove(
         Err(error) => format!("unfinished work could not be counted: {error}"),
     };
     if !anyway && !matches!(&open, Ok(open) if open.is_empty()) {
-        return refused(&SetupError::UnfinishedWork(id, summary));
+        return refused(&SetupError::UnfinishedWork(id.clone(), summary));
     }
     let machine = id.clone();
     let removed = off_thread(&state, move |state| remove_blocking(state, &machine)).await;
@@ -554,17 +568,123 @@ pub(in crate::admin) async fn remove(
     );
     let audited = audit(&state, &session, "setup-remove", &id, reason).await;
     tracing::info!(machine = id.as_str(), "setup page removed a machine");
-    let mut html = page("Machine removed")
-        .markup("<section><p>Machine <strong>")
-        .text(&id)
-        .markup(concat!(
-            "</strong> is removed from Analyte's settings. Its results, items to review and ",
-            "history are kept and stay visible here.</p><p>"
-        ))
-        .text(kept)
-        .markup(".</p><p class=\"muted\">")
-        .text(site)
-        .markup(".</p>");
-    html.push_fragment(&backups_kept(&removed.backups).markup("</section>"));
-    after_write(html, audited, &session)
+    let mut lines = Vec::new();
+    let mut problems = Vec::new();
+    let mut support: Vec<String> = removed
+        .backups
+        .iter()
+        .map(|backup| format!("Copy of the old settings: {}", backup.display()))
+        .collect();
+    match &removed.site {
+        Ok(Some(path)) => support.push(format!(
+            "Its settings file, kept as a dated copy: {}",
+            path.display()
+        )),
+        Ok(None) => lines.push(
+            "Its settings file was left in place (missing or used by another machine).".into(),
+        ),
+        Err(error) => problems.push(format::sentence(&format!(
+            "its settings file could not be moved: {error}"
+        ))),
+    }
+    if !support.is_empty() {
+        lines.insert(0, "A dated copy of the old settings was kept.".into());
+    }
+    if let Err(error) = audited {
+        problems.push(format::sentence(&error.to_string()));
+    }
+    machines::removed(
+        &state,
+        &session,
+        &id,
+        machines::Removed {
+            kept: format!("{kept}."),
+            lines,
+            problems,
+            support,
+            csrf: session.csrf.form_value().to_owned(),
+        },
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Owner decisions 2026-11-20 (admin restyle b2) and AGENTS.md safety rule
+    // 2: the Remove dialog lists open work in the setup page's own words and
+    // asks for "Remove anyway"; work that could not be counted asks for it too
+    // and says where to look.
+    #[test]
+    fn open_work_or_why_it_was_not_counted_asks_for_remove_anyway() {
+        let (items, warned) = warning(&Ok(Unfinished::default()));
+        assert!(!warned);
+        assert_eq!(
+            items.first().map(|item| (item.tone, item.text.as_str())),
+            Some((Tone::Good, "Nothing is unfinished for this machine."))
+        );
+        let (items, warned) = warning(&Ok(Unfinished {
+            undelivered: 2,
+            open_orders: 0,
+            unread: 1,
+            flagged: 0,
+        }));
+        assert!(warned);
+        let texts: Vec<&str> = items.iter().map(|item| item.text.as_str()).collect();
+        assert_eq!(
+            texts,
+            [
+                "2 results or order messages not yet accepted by the lab app",
+                "1 received message not read yet; only this machine's settings read them, at its next start",
+                "Removing does not delete any of this. Finish it first, or remove anyway. Items to review that are not linked to one machine are not counted.",
+            ]
+        );
+        let (items, warned) = warning(&Err(SetupError::Busy));
+        assert!(warned);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items.first().map(|item| item.tone), Some(Tone::Problem));
+        assert!(items.first().is_some_and(|item| item.text.starts_with(
+            "Unfinished work could not be counted: an earlier setup change failed while writing"
+        )));
+    }
+
+    // Owner request 2026-11-19 (item 9) and owner decisions 2026-11-20: what
+    // happens to waiting results is one sentence, with the exact count on hover
+    // only when some wait.
+    #[test]
+    fn waiting_results_read_as_one_sentence() {
+        let none = delivery_sentence(&LabApp::None, &Ok(Unfinished::default()));
+        assert_eq!(
+            none.shown,
+            "It is not set up, so nothing is waiting to be sent."
+        );
+        assert!(none.exact.is_empty());
+        let kept = LabApp::Kept("demo".into());
+        let waiting = delivery_sentence(
+            &kept,
+            &Ok(Unfinished {
+                undelivered: 1,
+                ..Unfinished::default()
+            }),
+        );
+        assert_eq!(
+            waiting.shown,
+            "Its 1 waiting result will still be sent to demo."
+        );
+        assert_eq!(
+            waiting.exact,
+            "1 result or order message not yet accepted by the lab app"
+        );
+        let idle = delivery_sentence(&kept, &Ok(Unfinished::default()));
+        assert!(
+            idle.shown.starts_with("Nothing is waiting;"),
+            "{}",
+            idle.shown
+        );
+        let uncounted = delivery_sentence(&kept, &Err(SetupError::Busy));
+        assert_eq!(
+            uncounted.shown,
+            "Its waiting results will still be sent to demo."
+        );
+    }
 }

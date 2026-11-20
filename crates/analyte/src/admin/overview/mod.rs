@@ -16,7 +16,7 @@ use super::sessions::Session;
 use super::view::{self, Tab, Tone, format, frame::Frame, icon::Icon};
 use crate::admin::{Error, error::CommandError};
 use crate::deadline;
-use analyte_model::{OrderState, ReceiptId};
+use analyte_model::OrderState;
 use analyte_store::{AlertKey, AlertState, FailingDestination, LastDelivered, MachineOrderFilter};
 use askama::Template as _;
 use axum::{
@@ -258,7 +258,7 @@ async fn render(
             .map_err(Reading::Orders.failed())?,
         ..attention::Facts::default()
     };
-    let activity = activity(state, until, 0)
+    let activity = activity(state, until)
         .await
         .map_err(Reading::Receipts.failed())?;
     let machines = signal::machines(state, &activity, &mut facts, now);
@@ -429,23 +429,13 @@ async fn uncertain_orders(state: &Context, until: std::time::Instant) -> Result<
     Ok(uncertain)
 }
 
-/// What the stored receipts say about one set-up machine.
-#[derive(Default)]
-pub(super) struct Activity {
-    /// When the latest stored message from it was received.
-    pub(super) last: Option<Timestamp>,
-    /// Its first stored messages in store order, at most the number asked for.
-    pub(super) first: Vec<(ReceiptId, Timestamp)>,
-}
-
-/// Reads every stored receipt once and gathers each set-up machine's activity
-/// by machine name, keeping up to `keep` of its first receipts.
+/// Reads every stored receipt once and gives, by machine name, when the latest
+/// stored message from each set-up machine was received.
 pub(super) async fn activity(
     state: &Context,
     until: std::time::Instant,
-    keep: usize,
-) -> Result<BTreeMap<String, Activity>, Error> {
-    let mut seen = BTreeMap::<String, Activity>::new();
+) -> Result<BTreeMap<String, Timestamp>, Error> {
+    let mut seen = BTreeMap::<String, Timestamp>::new();
     let mut cursor = String::new();
     loop {
         let page = state
@@ -458,11 +448,10 @@ pub(super) async fn activity(
         cursor = serde_json::to_string(&last.id)?;
         for receipt in page {
             if state.machines.iter().any(|m| m.id == receipt.machine) {
-                let machine = seen.entry(receipt.machine.as_str().to_owned()).or_default();
-                machine.last = machine.last.max(Some(receipt.received_at));
-                if machine.first.len() < keep {
-                    machine.first.push((receipt.id, receipt.received_at));
-                }
+                let last = seen
+                    .entry(receipt.machine.as_str().to_owned())
+                    .or_insert(receipt.received_at);
+                *last = (*last).max(receipt.received_at);
             }
         }
     }

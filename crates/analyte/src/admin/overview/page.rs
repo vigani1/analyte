@@ -180,6 +180,8 @@ impl Wire {
 /// One set-up machine on the signal path.
 pub(super) struct MachineNode {
     pub(super) id: String,
+    /// Its own page.
+    pub(super) href: String,
     /// The model's name; none when its definition gives none.
     pub(super) model: Option<String>,
     pub(super) tone: Tone,

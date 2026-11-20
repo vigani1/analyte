@@ -88,6 +88,24 @@ a.chip { text-decoration: none; }
 .card__foot > .details { flex: 1 1 100%; }
 .details__body { padding: var(--space-3) var(--space-4); border-top: var(--border-width) solid var(--border); }
 
+/* Machines (the Machines, MachineDetail and MachineRemove mockups' inline styles). */
+/* A page about one thing: its title with its status beside it. */
+.page-head__title { gap: var(--space-3); }
+/* What was observed, under a status in a table cell. */
+.cell-note { margin-top: var(--space-1); }
+/* A line under a key-value pair's value, such as how a USB adapter is found. */
+.kv__note { display: block; margin-top: var(--space-1); font-size: var(--text-xs); color: var(--text-subtle); }
+.machine__intro { margin: 0; font-size: var(--text-sm); }
+.machine__rules > li { padding: var(--space-2) 0; }
+.machine__note { font-size: var(--text-sm); }
+/* The heading above a dialog's list, such as "Still unfinished". */
+.dialog__label { margin: 0; font-weight: var(--weight-semibold); }
+/* A page that only reports: its plain lines. */
+.report__line { margin: 0; }
+/* How a message was read: each difference used, and "None". */
+.departure__rule { margin: 0; font-size: var(--text-base); font-weight: var(--weight-semibold); }
+.departure__none { margin: 0; }
+
 /* Icon rail: the same width as analyte.css's --narrow, which a container query
    cannot read from a custom property. */
 @container app (max-width: 1000px) {

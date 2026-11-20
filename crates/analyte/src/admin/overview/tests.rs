@@ -30,7 +30,7 @@ const READINGS: [Reading; 14] = [
 
 fn frame() -> Frame {
     Frame {
-        title: "Overview",
+        title: "Overview".into(),
         assets: "/static/0123456789abcdef/".into(),
         sidebar: Sidebar {
             loaded: "Page loaded 10:45".into(),

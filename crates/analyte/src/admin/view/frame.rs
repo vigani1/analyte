@@ -9,7 +9,7 @@ use jiff::Timestamp;
 
 /// The page frame: the `<title>`, the static file root and the sidebar.
 pub(in crate::admin) struct Frame {
-    pub(in crate::admin) title: &'static str,
+    pub(in crate::admin) title: String,
     /// This build's static file root, such as `/static/0123456789abcdef/`.
     pub(in crate::admin) assets: String,
     pub(in crate::admin) sidebar: Sidebar,
@@ -65,13 +65,13 @@ impl Frame {
     pub(in crate::admin) fn new(
         state: &Context,
         current: Tab,
-        title: &'static str,
+        title: impl Into<String>,
         review: Option<u64>,
         session: Option<&Session>,
         now: Timestamp,
     ) -> Self {
         Self {
-            title,
+            title: title.into(),
             assets: state.assets.as_str().to_owned(),
             sidebar: Sidebar {
                 loaded: format::page_loaded(now),

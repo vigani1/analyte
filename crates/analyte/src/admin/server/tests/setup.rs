@@ -1552,8 +1552,11 @@ async fn remove_warns_then_keeps_store_and_site_backup() -> Result<(), Error> {
     let confirm = fixture.get("/setup/synthetic/remove").await?;
     assert!(
         confirm.contains(concat!(
-            "Remove synthetic?</strong> Its results, items to review and history are kept and ",
-            "stay visible here; Analyte just stops connecting to it."
+            "<h2 id=\"dlg-title\" class=\"dialog__title\">Remove synthetic?</h2>
+",
+            "<p class=\"dialog__text\">After the next restart Analyte stops connecting to it; ",
+            "until then it keeps running. Its results, items to review and history are kept and ",
+            "stay visible here.</p>"
         )),
         "{confirm}"
     );
@@ -1563,7 +1566,7 @@ async fn remove_warns_then_keeps_store_and_site_backup() -> Result<(), Error> {
         "1 received message not read yet",
         "1 item waiting for review linked to this machine (Needs review page)",
         "the lab app\">Its 1 waiting result will still be sent to demo.</span></p>",
-        "<button class=\"danger\">Remove anyway</button>",
+        "<button type=\"submit\" class=\"btn btn--danger\">Remove anyway</button>",
     ] {
         assert!(confirm.contains(expected), "missing {expected}: {confirm}");
     }
@@ -1674,7 +1677,7 @@ site = 'site.toml'
         last.contains("Nothing is unfinished") && last.contains("This is the last machine"),
         "{last}"
     );
-    assert!(last.contains("<button class=\"danger\">Remove</button>"));
+    assert!(last.contains("<button type=\"submit\" class=\"btn btn--danger\">Remove</button>"));
     let removed = fixture
         .submit("/setup/machine-1/remove", "/setup/machine-1/remove", &[])
         .await?;
@@ -1695,6 +1698,166 @@ site = 'site.toml'
         .await?;
     assert!(added.starts_with("HTTP/1.1 303"), "{added}");
     assert_eq!(Program::load(&fixture.config)?.awaiting_setup().len(), 1);
+    Ok(())
+}
+
+// Owner decisions 2026-11-20 (admin restyle b2, MachineRemove mockup): Remove
+// opens the design's dialog over the machine's page, without a script: a real
+// form with the session's form token, Cancel back to the machine's page, the
+// open work Analyte counted in its own words and "Remove anyway" when there is
+// some, or a plain "Remove" when nothing is unfinished. A machine the
+// settings do not list is refused in the new look and nothing changes.
+#[tokio::test(flavor = "multi_thread")]
+async fn remove_dialog_draws_over_the_machine_page() -> Result<(), Error> {
+    let fixture = start_two().await?;
+    seed_unfinished(&fixture.store, "synthetic").await?;
+    let program_before = std::fs::read_to_string(&fixture.config)?;
+    let warned = fixture.get("/setup/synthetic/remove").await?;
+    assert!(warned.starts_with("HTTP/1.1 200"), "{warned}");
+    for part in [
+        "<a href=\"/machines\" aria-current=\"page\">",
+        "<ol class=\"crumbs\"><li><a href=\"/machines\">Machines</a></li><li>synthetic</li></ol>",
+        "<h2 id=\"md-recent\" class=\"label\">Recent messages received</h2>",
+        "<div class=\"scrim\">\n<form class=\"dialog\" role=\"dialog\" aria-modal=\"true\" aria-labelledby=\"dlg-title\" method=\"post\" action=\"/setup/synthetic/remove\">",
+        "<input type=\"hidden\" name=\"anyway\" value=\"yes\">",
+        "<p class=\"dialog__label\">Still unfinished</p>",
+        "<ul class=\"dialog__list\">",
+        "tone-warn\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"",
+        "<span>1 order sent to the machine and not finished (sending, sent, accepted, cancel requested or uncertain); once it is removed nothing serves them, so reconcile them with the machine first (Machine orders page)</span>",
+        "<span>Removing does not delete any of this. Finish it first, or remove anyway. Items to review that are not linked to one machine are not counted.</span>",
+        "<span>Analyte keeps a dated copy of the old settings.</span>",
+        "<a class=\"btn btn--outline\" href=\"/machines/synthetic\">Cancel</a>",
+    ] {
+        assert!(warned.contains(part), "missing {part}: {warned}");
+    }
+    let form = warned
+        .split("<form class=\"dialog\"")
+        .nth(1)
+        .ok_or("dialog")?;
+    assert!(form.contains(&format!(
+        "<input type=\"hidden\" name=\"csrf\" value=\"{}\">",
+        csrf(&warned)?
+    )));
+    assert!(!warned.contains("This is the last machine"));
+    let plain = fixture.get("/setup/machine-2/remove").await?;
+    for part in [
+        "<h2 id=\"dlg-title\" class=\"dialog__title\">Remove machine-2?</h2>",
+        "<p class=\"dialog__text\">It is not set up, so nothing is waiting to be sent.</p>",
+        "<p class=\"dialog__label\">Before you remove it</p>",
+        "tone-good\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"",
+        "<span>Nothing is unfinished for this machine.</span>",
+        "<span>Items to review that are not linked to one machine are not counted.</span>",
+        "<button type=\"submit\" class=\"btn btn--danger\">Remove</button>",
+    ] {
+        assert!(plain.contains(part), "missing {part}: {plain}");
+    }
+    assert!(!plain.contains("name=\"anyway\""));
+    let unknown = fixture.get("/setup/nobody/remove").await?;
+    assert!(unknown.starts_with("HTTP/1.1 409"), "{unknown}");
+    assert!(unknown.contains("<nav class=\"sidebar\" aria-label=\"Main\">"));
+    assert!(
+        unknown.contains(concat!(
+            "<p class=\"alert__title\">Setup could not continue</p>",
+            "<p class=\"alert__text\">No installed machine is called nobody.</p>"
+        )),
+        "{unknown}"
+    );
+    assert_eq!(std::fs::read_to_string(&fixture.config)?, program_before);
+    assert!(fixture.backups()?.is_empty());
+    Ok(())
+}
+
+// Owner decisions 2026-11-20 (admin restyle b2): after a removal the page
+// says the machine is out of the settings and what that means until the
+// restart, what happens to its lab app, one line for the dated copy of the old
+// settings with the paths only under "For support", and Restart now. An audit
+// that could not be written is shown, never hidden.
+#[tokio::test(flavor = "multi_thread")]
+async fn removing_keeps_one_line_for_the_dated_copy_and_offers_restart() -> Result<(), Error> {
+    let fixture = start_two().await?;
+    let removed = fixture
+        .submit("/setup/machine-2/remove", "/setup/machine-2/remove", &[])
+        .await?;
+    assert!(removed.starts_with("HTTP/1.1 200"), "{removed}");
+    for part in [
+        "<a href=\"/machines\" aria-current=\"page\">",
+        "<ol class=\"crumbs\"><li><a href=\"/machines\">Machines</a></li></ol>",
+        "<p class=\"alert__title\">machine-2 is removed from Analyte’s settings</p>",
+        "<p class=\"alert__text\">After the next restart Analyte stops connecting to it; until then it keeps running. Its results, items to review and history are kept and stay visible here.</p>",
+        "<p class=\"report__line\">It was not set up, so it had no lab app.</p>",
+        "<p class=\"report__line\">A dated copy of the old settings was kept.</p>",
+        "<h2 id=\"rp-restart\" class=\"label\">Restart to apply</h2>",
+        "<form class=\"cluster\" method=\"post\" action=\"/setup/restart\"><input type=\"hidden\" name=\"csrf\" value=\"",
+        "<button type=\"submit\" class=\"btn btn--primary\">Restart now</button>",
+        "<a class=\"btn btn--outline\" href=\"/machines\">Back to Machines</a>",
+    ] {
+        assert!(removed.contains(part), "missing {part}: {removed}");
+    }
+    let (shown, support) = removed
+        .split_once("Details for support</summary><pre>")
+        .ok_or("support")?;
+    let backups = fixture.backups()?;
+    assert!(!backups.is_empty());
+    for backup in &backups {
+        let path = backup.display().to_string();
+        assert!(!shown.contains(&path), "{path} outside support");
+        assert!(support.contains(&path), "{path} missing from support");
+    }
+    assert!(support.contains("Copy of the old settings: "));
+    assert!(support.contains("Its settings file, kept as a dated copy: "));
+    assert!(!removed.contains("alert--bad"));
+    // It did not run, so it has no page any more and none is offered.
+    assert!(
+        !removed.contains("href=\"/machines/machine-2\""),
+        "{removed}"
+    );
+    let gone = fixture.get("/machines/machine-2").await?;
+    assert!(gone.starts_with("HTTP/1.1 404"), "{gone}");
+    // The audit refuses: the removal is done, and the page says the record is missing.
+    let database = std::fs::read_dir(&fixture.data)?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .find(|path| path.extension().is_some_and(|e| e == "db"))
+        .ok_or("store file")?;
+    rusqlite::Connection::open(&database)?.execute_batch(
+        "CREATE TRIGGER refuse_audit BEFORE INSERT ON audit BEGIN SELECT RAISE(ABORT,'synthetic audit refusal'); END;",
+    )?;
+    let unaudited = fixture
+        .submit("/setup/synthetic/remove", "/setup/synthetic/remove", &[])
+        .await?;
+    assert!(unaudited.starts_with("HTTP/1.1 200"), "{unaudited}");
+    assert!(unaudited.contains(
+        "<div class=\"alert alert--bad\" role=\"note\"><svg class=\"icon \" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\""
+    ), "{unaudited}");
+    assert!(
+        unaudited.contains(
+            "<p class=\"alert__title\">The record of who made this change could not be written: "
+        ),
+        "{unaudited}"
+    );
+    assert!(unaudited.contains("Restart now"));
+    assert!(Program::load(&fixture.config)?.machines().is_empty());
+    Ok(())
+}
+
+// Owner decisions 2026-11-20 (admin restyle b2): a settings file that was
+// already missing is left alone, and the result page says so in one line.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_missing_settings_file_is_left_in_place_and_said_so() -> Result<(), Error> {
+    let fixture = start_two().await?;
+    std::fs::remove_file(fixture.root().join("machine-2.site.toml"))?;
+    let removed = fixture
+        .submit("/setup/machine-2/remove", "/setup/machine-2/remove", &[])
+        .await?;
+    assert!(removed.starts_with("HTTP/1.1 200"), "{removed}");
+    assert!(
+        removed.contains(concat!(
+            "<p class=\"report__line\">Its settings file was left in place (missing or used ",
+            "by another machine).</p>"
+        )),
+        "{removed}"
+    );
+    assert!(!removed.contains("Its settings file, kept as a dated copy"));
     Ok(())
 }
 
