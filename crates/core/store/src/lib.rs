@@ -53,7 +53,7 @@ pub use revisions::{
 };
 
 pub use operator::activity::{
-    Activity, ActivityCursor, ActivityGroup, ActivityLine, AttemptOutcome, Carries,
+    Activity, ActivityCursor, ActivityGroup, ActivityLine, ActivityMarks, AttemptOutcome, Carries,
 };
 pub use query::{
     FailingDestination, Frame, LastDelivered, ParkedCounts, ParkedFilter, ParkedItem, Receipt,

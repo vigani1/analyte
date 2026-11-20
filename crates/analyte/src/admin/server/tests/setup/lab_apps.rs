@@ -207,7 +207,7 @@ fn assert_new_look(page: &str) {
     );
     assert!(page.contains("app.css") && !page.contains("admin.css"));
     assert!(page.contains("<a href=\"/setup/lab-apps\" aria-current=\"page\">"));
-    assert!(!page.contains("style=") && !page.contains("<script"));
+    assert!(!page.contains("style=") && !other_script(page));
     assert!(
         !page.contains("Receiving"),
         "Analyte cannot see the lab app receive"

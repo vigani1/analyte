@@ -2,7 +2,7 @@
    and analyte.css, which stay exactly as the design shipped them. This file
    holds what the mockups wrote as inline style="…" and the few pieces the
    server-rendered pages need (the "More" group as <details>, the sign-out form,
-   a dot that does not pulse while there is no live channel). It uses semantic
+   a dot that does not pulse until the live stream connects). It uses semantic
    tokens only: no palette primitives, no raw colours. The tokens below are the
    only new ones; each says why it exists. */
 
@@ -26,8 +26,12 @@ body { margin: 0; background: var(--bg); }
 .logo__light { fill: none; stroke: var(--surface); stroke-linecap: round; }
 .logo__measured { fill: none; stroke: var(--mark); stroke-linecap: round; }
 
-/* A status dot that does not pulse: pages are not live yet, so nothing moves. */
+/* A status dot that does not pulse: the page is not live (no script, or the
+   stream dropped), so nothing moves. live.js removes it while connected. */
 .live-dot--still::after { animation: none; }
+/* What only the script shows (the Live mark, Pause updates) stays hidden
+   without it, although its class sets a display. */
+.live[hidden], .btn[hidden] { display: none; }
 
 /* The "More" group is a <details>, so it opens without a script; its summary
    looks and lines up like a .nav link. */
@@ -178,6 +182,7 @@ progress.meter::-moz-progress-bar { background: var(--accent); border-radius: va
 .activity__machine { flex-direction: row; align-items: center; gap: calc(var(--space-2) + var(--space-1) / 2); }
 .activity__select { width: 230px; }
 .activity__today { font-size: var(--text-sm); }
+.activity__live { margin-right: calc(var(--space-1) * 1.5); font-size: var(--text-sm); font-weight: var(--weight-semibold); }
 /* The first day's divider sits at the card's top edge, and each day's lines
    start under a rule. */
 .activity__divider { margin: 0; }

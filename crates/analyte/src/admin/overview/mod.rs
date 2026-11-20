@@ -576,7 +576,9 @@ mod webhook_tests {
         )
         .await?;
         store
-            .request::<_, analyte_store::OperatorError>(deadline()?, |s| {
+            // Seeding is fixture work, not a claim about production latency: a cold
+            // Windows runner took over the 5 s store budget here.
+            .request::<_, analyte_store::OperatorError>(crate::test_startup_deadline()?, |s| {
                 let endpoint = analyte_model::Identifier::new("relay").map_err(|cause| {
                     analyte_store::OperatorError::Storage(analyte_store::StorageError::Text(cause))
                 })?;
@@ -623,7 +625,7 @@ mod webhook_tests {
                     && line.contains("queue_full=true")
                     && line.contains("exhausted=1"))
         );
-        store.shutdown(deadline()?).await?;
+        store.shutdown(crate::test_startup_deadline()?).await?;
         Ok(())
     }
 }

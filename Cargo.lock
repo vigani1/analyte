@@ -44,6 +44,7 @@ dependencies = [
  "clap",
  "embed-resource",
  "fs4",
+ "futures-core",
  "getrandom 0.4.3",
  "jiff 0.2.45",
  "quick-xml",

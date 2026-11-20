@@ -114,6 +114,11 @@ pub(super) struct Context {
     pub(super) installed: super::pages::Installed,
     /// How long a setup write may run: [`WRITE_BUDGET`]; tests shorten it.
     pub(super) write_budget: Duration,
+    /// The live streams' bounds and their cap; tests shorten them.
+    pub(super) live: super::live::Bounds,
+    /// Turns true when the server starts to drain, so open live streams end
+    /// at once and draining stays bounded.
+    pub(super) closing: watch::Receiver<bool>,
     // Struct fields drop in declaration order: notify only after store is released.
     _released: tokio::sync::oneshot::Sender<()>,
 }
@@ -130,6 +135,8 @@ pub(crate) struct Server {
     app: Router,
     /// Set by the setup page's "Restart now".
     restart: watch::Receiver<bool>,
+    /// Ends the live streams when draining starts.
+    closing: watch::Sender<bool>,
     released: tokio::sync::oneshot::Receiver<()>,
     pub(crate) owners: BTreeMap<String, Arc<AtomicBool>>,
 }
@@ -187,6 +194,7 @@ pub(crate) async fn prepare(
     let (released, release) = tokio::sync::oneshot::channel();
     let setup = super::setup::Setup::new(program, seams);
     let restart = setup.restart_requested();
+    let (closing, closed) = watch::channel(false);
     let state = Arc::new(Context {
         alert_endpoints: program
             .alert_delivery()
@@ -210,6 +218,8 @@ pub(crate) async fn prepare(
         assets: super::view::assets::Root::of_this_build(),
         installed: super::pages::Installed::of(program, shutdown),
         write_budget: WRITE_BUDGET,
+        live: super::live::Bounds::standard(),
+        closing: closed,
         _released: released,
     });
     Ok(Some(Server {
@@ -218,6 +228,7 @@ pub(crate) async fn prepare(
             slots: Arc::new(Semaphore::new(32)),
         },
         restart,
+        closing,
         app: router(state),
         released: release,
         owners,
@@ -232,6 +243,7 @@ impl Server {
     /// start it again.
     pub(crate) async fn run(self, mut stop: watch::Receiver<bool>) -> Result<(), Error> {
         let mut restart = self.restart.clone();
+        let closing = self.closing;
         // Each request can reach its connection's lifetime (setup writes extend it).
         let app = self.app.into_make_service_with_connect_info::<Lifetime>();
         drain_server(
@@ -252,6 +264,8 @@ impl Server {
                             }
                         }
                     }
+                    // Open live streams end now, so draining waits only for pages.
+                    closing.send_replace(true);
                 })
                 .into_future(),
             self.released,
@@ -295,7 +309,7 @@ pub(super) const REQUEST_BUDGET: Duration = Duration::from_millis(1750);
 const WRITE_BUDGET: Duration = Duration::from_secs(10);
 
 /// Kept after a budget ends to write its answer before the connection closes.
-const ANSWER_TIME: Duration = Duration::from_millis(250);
+pub(super) const ANSWER_TIME: Duration = Duration::from_millis(250);
 
 fn router(state: Arc<Context>) -> Router {
     Router::new()
@@ -310,6 +324,7 @@ fn router(state: Arc<Context>) -> Router {
         )
         .route("/settings", get(super::pages::settings))
         .route("/activity", get(super::pages::activity))
+        .route("/events", get(super::live::events))
         .route("/machines", get(super::machines::list))
         .route("/machines/{id}", get(super::machines::detail))
         .route(

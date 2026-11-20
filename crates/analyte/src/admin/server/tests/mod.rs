@@ -8,6 +8,7 @@ use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 mod actions;
 mod activity;
 mod assets;
+mod live;
 mod machines;
 mod more;
 mod overview;
@@ -17,6 +18,16 @@ mod setup;
 mod sign_in;
 
 use analyte_fixtures::UnlimitedSpace as Space;
+
+/// Whether `page` holds a script other than the one the signed-in frame loads,
+/// `live.js` (owner decision 2026-11-20, PR c2): any inline script, or another file.
+fn other_script(page: &str) -> bool {
+    let live = format!(
+        "<script src=\"{}live.js\" defer></script>",
+        crate::admin::view::assets::Root::of_this_build().as_str()
+    );
+    page.replacen(&live, "", 1).contains("<script")
+}
 
 fn admin_program() -> String {
     analyte_fixtures::program_with_limits(
@@ -641,7 +652,10 @@ fn assert_overview_status(response: &str) -> Result<(), Error> {
     let (head, verdict) = top
         .split_once("</header>")
         .ok_or("overview without a page head")?;
-    assert!(head.contains("<main class=\"main\">"), "{head}");
+    assert!(
+        head.contains("<main class=\"main\" data-live-region=\"main\">"),
+        "{head}"
+    );
     assert!(head.contains("<h1>Overview</h1>"), "{head}");
     assert!(
         verdict
@@ -768,7 +782,7 @@ Connection: close
         assert_logo(path, &page);
         assert!(!page.contains("style="), "{path} has an inline style");
         assert!(!page.contains("<style"), "{path} has a style block");
-        assert!(!page.contains("<script"), "{path} has a script");
+        assert_scripts(path, &page);
         assert_eq!(page.matches("</html>").count(), 1, "{path}");
         // Owner request 2026-11-19 (item 6): every page but the login has the
         // sidebar's main links and the More group, with its own page marked.
@@ -801,6 +815,17 @@ Connection: close
         );
     }
     Ok(())
+}
+
+/// Owner decision 2026-11-20 (PR c2): one script file, live.js, on signed-in
+/// pages; never an inline script, and none before sign-in.
+fn assert_scripts(path: &str, page: &str) {
+    if path == "/login" {
+        assert!(!page.contains("<script"), "{path} has a script");
+    } else {
+        assert_eq!(page.matches("<script").count(), 1, "{path}");
+        assert!(!other_script(page), "{path}");
+    }
 }
 
 /// Owner request 2026-11-19 (Aperture logo, PR #273): every page links the
@@ -1059,16 +1084,45 @@ async fn start_with(
 async fn start_full(
     root: &std::path::Path,
     store: &Arc<analyte_store::Handle>,
-    (machines, destinations): (Vec<Machine>, Vec<analyte_sink::Destination>),
-    (retired, directory): (crate::admin::Draining, &std::path::Path),
-    (retention, installed): (
+    parts: (Vec<Machine>, Vec<analyte_sink::Destination>),
+    kept: (crate::admin::Draining, &std::path::Path),
+    settings: (
         Vec<(Identifier, Option<u16>)>,
         crate::admin::pages::Installed,
     ),
 ) -> Result<Started, Error> {
+    start_bounded(
+        root,
+        store,
+        (parts, kept, settings),
+        crate::admin::live::Bounds::standard(),
+    )
+    .await
+}
+
+/// The parts a test server is started with: machines and lab apps, kept lab
+/// apps and the data folder, and each machine's data keeping with the Settings
+/// page's values.
+type Parts<'a> = (
+    (Vec<Machine>, Vec<analyte_sink::Destination>),
+    (crate::admin::Draining, &'a std::path::Path),
+    (
+        Vec<(Identifier, Option<u16>)>,
+        crate::admin::pages::Installed,
+    ),
+);
+
+/// [`start_full`] with the live streams' `bounds`.
+async fn start_bounded(
+    root: &std::path::Path,
+    store: &Arc<analyte_store::Handle>,
+    ((machines, destinations), (retired, directory), (retention, installed)): Parts<'_>,
+    bounds: crate::admin::live::Bounds,
+) -> Result<Started, Error> {
     let socket = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let host = socket.local_addr()?.to_string();
     let (released, release) = tokio::sync::oneshot::channel();
+    let (closing, closed) = watch::channel(false);
     let state = Arc::new(Context {
         alert_endpoints: vec![],
         retention,
@@ -1087,6 +1141,8 @@ async fn start_full(
         assets: crate::admin::view::assets::Root::of_this_build(),
         installed,
         write_budget: WRITE_BUDGET,
+        live: bounds,
+        closing: closed,
         _released: released,
     });
     let server = Server {
@@ -1096,6 +1152,7 @@ async fn start_full(
         },
         app: router(state.clone()),
         restart: watch::channel(false).1,
+        closing,
         released: release,
         owners: BTreeMap::new(),
     };

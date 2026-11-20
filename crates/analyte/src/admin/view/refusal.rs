@@ -31,6 +31,8 @@ pub(in crate::admin) enum Refusal {
     SessionHeader,
     /// Sign out could not end the session; the detail says why.
     SignOut(String),
+    /// Every live stream is in use; pages still answer without one.
+    TooManyStreams,
     /// A page could not be written: its own status and title, what it tells
     /// people and both reasons.
     PageFailed {
@@ -88,9 +90,10 @@ impl Refusal {
             Self::FormExpired(_) => StatusCode::FORBIDDEN,
             Self::TooMuchText => StatusCode::PAYLOAD_TOO_LARGE,
             Self::TooLong => StatusCode::GATEWAY_TIMEOUT,
-            Self::NeedsRestart | Self::SessionsFull(_) | Self::SignOut(_) => {
-                StatusCode::SERVICE_UNAVAILABLE
-            }
+            Self::NeedsRestart
+            | Self::SessionsFull(_)
+            | Self::SignOut(_)
+            | Self::TooManyStreams => StatusCode::SERVICE_UNAVAILABLE,
             Self::SessionHeader => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -139,6 +142,10 @@ impl Refusal {
                 "You cannot sign out right now",
                 "Analyte cannot check browser sessions any more. Restart Analyte; that signs everyone out.",
             ),
+            Self::TooManyStreams => (
+                "Too many live pages",
+                "Analyte keeps a few pages live at once, and all are in use. Pages still work; reload one to see what changed, or close a tab.",
+            ),
             Self::PageFailed { title, text, .. } => (title, text),
         }
     }
@@ -153,6 +160,7 @@ impl Refusal {
             | Self::FormExpired(_)
             | Self::TooMuchText
             | Self::TooLong
+            | Self::TooManyStreams
             | Self::PageFailed { .. } => Some(Next::Overview),
             Self::SessionsFull(_) | Self::SessionHeader => Some(Next::SignIn),
             Self::NeedsRestart | Self::SignOut(_) => None,
@@ -174,6 +182,7 @@ impl Refusal {
             Self::TooLong => "admin request deadline exceeded".into(),
             Self::NeedsRestart => "admin session lookup failed".into(),
             Self::SessionHeader => "admin session header invalid".into(),
+            Self::TooManyStreams => "every admin live stream is in use".into(),
         }
     }
 

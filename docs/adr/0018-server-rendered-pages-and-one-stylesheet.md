@@ -38,12 +38,17 @@ the strict content security policy.
 - **Activity (PR c1) is done:** it is read from the tables the store already
   keeps, newest first; the store records when an item was parked from schema
   16 on, and an older item shows "Not recorded".
+- **Live updates (PR c2) are done:** `GET /events` sends only which areas
+  changed and the time, with a heartbeat; `/static/live.js` fetches the page
+  again and swaps its marked regions. The stream checks the store's marks and
+  the machines' link lights every 2 s, beats every 10 s, lives 5 minutes, and
+  at most 4 are open (of 32 connection slots); shutdown ends them at once.
+  Every page stays whole without the script. `futures-core` was added for the
+  stream type axum takes.
 - **PR d is done:** the Analyte desktop app (`crates/app`) shows these pages in
   its own window with a tray icon, and its Engine off screen uses the same
   stylesheets and fonts, compiled in from `crates/analyte/assets`
-  ([ADR 0019](0019-desktop-app.md)).
-- **Still to come:** PR c2, live updates (server-sent events and one script
-  file).
+  ([ADR 0019](0019-desktop-app.md)). Every PR of this restyle is done.
 
 ## Why
 

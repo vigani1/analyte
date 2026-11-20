@@ -1,4 +1,4 @@
-//! Serves the files pages load (stylesheets, fonts with their licences, icons) from one table built into the program.
+//! Serves the files pages load (stylesheets, the live-updates script, fonts with their licences, icons) from one table built into the program.
 //!
 //! Every file is compiled in, so nothing loads from the internet and the
 //! `default-src 'self'` policy allows them unchanged. They hold no data, so they
@@ -26,6 +26,7 @@ const FONT: &str = "font/woff2";
 const TEXT: &str = "text/plain; charset=utf-8";
 const SVG: &str = "image/svg+xml";
 const ICO: &str = "image/vnd.microsoft.icon";
+const SCRIPT: &str = "text/javascript; charset=utf-8";
 
 /// Builds one table entry from a file in `crates/analyte/assets/`.
 macro_rules! asset {
@@ -39,10 +40,11 @@ macro_rules! asset {
 }
 
 /// Every file served under `/static/`.
-const ASSETS: [Asset; 28] = [
+const ASSETS: [Asset; 29] = [
     asset!("fonts.css", CSS),
     asset!("analyte.css", CSS),
     asset!("app.css", CSS),
+    asset!("live.js", SCRIPT),
     asset!("fonts/InstrumentSans-Regular.woff2", FONT),
     asset!("fonts/InstrumentSans-Medium.woff2", FONT),
     asset!("fonts/InstrumentSans-SemiBold.woff2", FONT),

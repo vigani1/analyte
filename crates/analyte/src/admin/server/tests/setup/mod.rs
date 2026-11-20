@@ -230,7 +230,7 @@ async fn start_program_with(
         &program,
         seams(root, written.clone(), input.clone(), bounds.listen),
     );
-    let restart = setup.restart_requested();
+    let (restart, (closing, closed)) = (setup.restart_requested(), watch::channel(false));
     let socket = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let host = socket.local_addr()?.to_string();
     let (released, release) = tokio::sync::oneshot::channel();
@@ -252,6 +252,8 @@ async fn start_program_with(
         assets: crate::admin::view::assets::Root::of_this_build(),
         installed: crate::admin::pages::Installed::for_test(Vec::new()),
         write_budget: bounds.write,
+        live: crate::admin::live::Bounds::standard(),
+        closing: closed,
         _released: released,
     });
     let weak = Arc::downgrade(&state);
@@ -262,6 +264,7 @@ async fn start_program_with(
         },
         app: router(state),
         restart,
+        closing,
         released: release,
         owners: BTreeMap::new(),
     };

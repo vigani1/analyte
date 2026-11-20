@@ -281,6 +281,10 @@ fn days(state: &Context, lines: &[ActivityLine], now: Timestamp) -> Vec<Day> {
             crate::admin::parked::headline,
         );
         let shown = FeedLine {
+            key: format!(
+                "{}.{}.{}",
+                line.cursor.at, line.cursor.source, line.cursor.key
+            ),
             at: line.at.map(format::feed_time),
             tone: said.tone,
             icon: said.icon,

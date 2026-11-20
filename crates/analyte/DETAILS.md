@@ -432,8 +432,8 @@ say what happened in plain words, with the exact technical detail under
 "Details for support". Every page is an Askama template that loads
 `fonts.css`, `analyte.css` and `app.css`, served from the binary under
 `/static/` (light first, dark through `prefers-color-scheme`), which the
-`default-src 'self'` policy allows; pages use no inline styles, scripts or
-external URLs. These files hold no data, so they are served before login (the
+`default-src 'self'` policy allows; pages use no inline styles, inline scripts
+or external URLs (the one script is `live.js`, served the same way). These files hold no data, so they are served before login (the
 host check still applies).
 The link light comes from the machine runtime, not from receipt age: the
 transport reports each session opening, closing and read (never bytes) to a
@@ -475,6 +475,22 @@ It filters by machine and by type (Results, Orders, Problems, Changes) with one
 GET form, counts today's lines, and pages 50 lines at a time after the last line
 shown. It shows sample IDs and counts, never test codes, values or the reasons
 people typed.
+
+Live updates (`src/admin/live.rs`, `assets/live.js`): signed-in pages load one
+script file. It opens `GET /events`, a server-sent event stream that says only
+which areas changed (overview, review, machines, deliveries, activity) and the
+PC's time, never page content. Each page's `<body data-live>` names its area;
+when that area or the Needs review count changes, the script fetches the page
+again and swaps the parts marked `data-live-region` (the sidebar's links, and
+the main column of a page with an area). It leaves a part alone while it is
+under the pointer, holds the focus, an open disclosure, a dialog or something
+typed but not sent. The sidebar reads "Live · 10:45:12" while connected and
+"Page loaded 10:45" otherwise; the script retries after 1, 2, 4 ... 30 s. Each
+stream compares the store's marks (`activity_marks`: the newest row of each
+watched table, one index lookup each) and the link lights every 2 s, beats
+every 10 s, ends after 5 minutes with a goodbye, holds one of 4 stream permits
+(of 32 connection slots) and ends at once at shutdown or sign-out. Without the
+script every page is unchanged.
 
 Use the menu for Machines, Needs review (parked items), Machine orders and Deliveries. Lists
 show at most 50 entries and may show fewer under the configured store page bound.

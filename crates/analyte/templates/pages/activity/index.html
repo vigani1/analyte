@@ -1,4 +1,4 @@
-{#- Activity (GET /activity): the head, the machine and type filters as one GET form with today's counts, the lines grouped by day with their time, icon, words and link, newest first, and Show earlier activity; or what an empty page says. -#}
+{#- Activity (GET /activity): the head with the live mark and Pause updates (shown only by the script), the machine and type filters as one GET form with today's counts, the lines grouped by day with their time, icon, words and link, newest first, and Show earlier activity; or what an empty page says. -#}
 {% extends "layout/base.html" %}
 {%- import "components/display.html" as display %}
 {%- import "components/feedback.html" as feedback %}
@@ -8,6 +8,10 @@
 <p class="eyebrow">Newest at the top</p>
 <h1>Activity</h1>
 <p class="page-head__lede">{{ ACTIVITY_LEDE }}</p>
+</div>
+<div class="cluster">
+<span class="live tone-good activity__live" data-live-pill hidden><span class="live-dot"></span>Live</span>
+<button type="button" class="btn btn--outline btn--sm" data-live-pause aria-pressed="false" hidden>Pause updates</button>
 </div>
 </header>
 <form class="toolbar" method="get" action="/activity">
@@ -39,7 +43,7 @@
 <p class="feed__divider activity__divider">{{ day.label }}</p>
 <ol class="feed activity__feed">
 {%- for line in day.lines %}
-<li class="feed__line">{% if let Some(at) = line.at %}{% call display::time_in(at, "feed__time") %}{% endcall %}{% else %}<span class="feed__time" aria-hidden="true">—</span>{% endif %}<svg class="icon tone-{{ line.tone.class() }}" viewBox="0 0 24 24" role="img" aria-label="{{ line.word }}"><path d="{{ line.icon.path() }}"/></svg><span class="feed__text"><b>{{ line.head }}</b> <span class="muted">{{ line.rest }}</span></span>{% if let Some((href, words)) = line.link %}<a class="link" href="{{ href }}">{{ words }}</a>{% endif %}</li>
+<li class="feed__line" data-key="{{ line.key }}">{% if let Some(at) = line.at %}{% call display::time_in(at, "feed__time") %}{% endcall %}{% else %}<span class="feed__time" aria-hidden="true">—</span>{% endif %}<svg class="icon tone-{{ line.tone.class() }}" viewBox="0 0 24 24" role="img" aria-label="{{ line.word }}"><path d="{{ line.icon.path() }}"/></svg><span class="feed__text"><b>{{ line.head }}</b> <span class="muted">{{ line.rest }}</span></span>{% if let Some((href, words)) = line.link %}<a class="link" href="{{ href }}">{{ words }}</a>{% endif %}</li>
 {%- endfor %}
 </ol>
 {%- endfor %}

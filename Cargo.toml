@@ -67,6 +67,9 @@ getrandom = { version = "=0.4.3", default-features = false } # admin token OS en
 
 # Admin pages (ADR 0018): compiled HTML templates, escaping on by default
 askama = { version = "0.16.1", default-features = false, features = ["derive", "std"] }
+# The `Stream` trait axum's server-sent events take (owner-approved 2026-11-20,
+# PR c); already in the tree through axum, matches Cargo.lock.
+futures-core = { version = "0.3.34", default-features = false }
 
 # Desktop app (ADR 0019, owner-approved 2026-11-20): Tauri 2 and its official plugins, Windows only.
 tauri = { version = "2.12.7", default-features = false, features = ["wry", "common-controls-v6", "tray-icon", "image-png"] }
