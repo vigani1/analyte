@@ -1,14 +1,64 @@
-//! Holds every way a Machines page refuses or fails: its status code, what it tells people and the exact reason kept for support.
-use super::page::{Button, Head, Report};
+//! Holds what restyled pages share to report: a page head with its way back, buttons, statuses, the page that only reports, and every way a Machines page refuses or fails with its status code, words and the exact reason kept for support.
+use super::{
+    self as view, Tab, Tone, format,
+    format::{Line, Part},
+    frame::Frame,
+};
 use crate::admin::server::Context;
 use crate::admin::sessions::Session;
-use crate::admin::view::{self, Tab, Tone, format, frame::Frame};
 use askama::Template as _;
 use axum::{
     http::StatusCode,
     response::{Html, IntoResponse, Response},
 };
 use jiff::Timestamp;
+
+/// A status: tone, word, the exact value on hover and what was observed under it.
+pub(in crate::admin) struct Status {
+    pub(in crate::admin) tone: Tone,
+    pub(in crate::admin) word: String,
+    pub(in crate::admin) exact: String,
+    /// What Analyte observed, shown while the link is not open.
+    pub(in crate::admin) note: Option<String>,
+}
+
+/// The head of a page about one thing: the way back, the title with its status and a line under it.
+pub(in crate::admin) struct Head {
+    pub(in crate::admin) crumbs: Vec<Crumb>,
+    pub(in crate::admin) title: String,
+    pub(in crate::admin) status: Option<Status>,
+    pub(in crate::admin) lede: Option<Line>,
+}
+
+/// One step of the way back, linked unless it is this page.
+pub(in crate::admin) struct Crumb {
+    pub(in crate::admin) label: String,
+    pub(in crate::admin) href: Option<String>,
+}
+
+/// A link drawn as a button: where it goes, its words and its kind.
+pub(in crate::admin) struct Button {
+    pub(in crate::admin) href: String,
+    pub(in crate::admin) label: &'static str,
+    pub(in crate::admin) class: &'static str,
+}
+
+/// A page that only reports: what an action did, or why a request was refused.
+#[derive(askama::Template)]
+#[template(path = "pages/report.html")]
+pub(in crate::admin) struct Report {
+    pub(in crate::admin) frame: Frame,
+    pub(in crate::admin) head: Head,
+    pub(in crate::admin) tone: Tone,
+    pub(in crate::admin) title: String,
+    pub(in crate::admin) text: String,
+    pub(in crate::admin) lines: Vec<String>,
+    pub(in crate::admin) problems: Vec<String>,
+    /// Restart now, with the session's form token, after a change to the settings.
+    pub(in crate::admin) restart: Option<String>,
+    pub(in crate::admin) links: Vec<Button>,
+    pub(in crate::admin) support: Vec<String>,
+}
 
 /// Why a Machines page could not do what was asked.
 pub(in crate::admin) enum Problem {
@@ -168,13 +218,13 @@ impl Problem {
 impl Head {
     /// A page under Machines: "Machines / cobas-e411" when it is about one
     /// machine, linked back to the machine's page.
-    pub(super) fn under(machine: Option<&str>, title: impl Into<String>) -> Self {
-        let mut crumbs = vec![super::page::Crumb {
+    pub(in crate::admin) fn under(machine: Option<&str>, title: impl Into<String>) -> Self {
+        let mut crumbs = vec![Crumb {
             label: Tab::Machines.label().to_owned(),
             href: Some(Tab::Machines.href().to_owned()),
         }];
         if let Some(id) = machine {
-            crumbs.push(super::page::Crumb {
+            crumbs.push(Crumb {
                 label: id.to_owned(),
                 href: Some(format::machine_href(id)),
             });

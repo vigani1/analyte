@@ -8,15 +8,14 @@
 //! error page in the same look.
 pub(super) mod departures;
 mod page;
-mod problem;
 
 pub(super) use page::{DialogItem, Hover, RemoveDialog, Removed, Rule};
-pub(super) use problem::Problem;
 
 use crate::admin::pages::{Cursor, PAGE};
 use crate::admin::server::{Context, Machine};
 use crate::admin::sessions::Session;
 use crate::admin::setup::Listed;
+use crate::admin::view::report::{Button, Crumb, Head, Problem, Report, Status};
 use crate::admin::view::{self, Tab, Tone, format, frame::Frame, icon::Icon};
 use crate::admin::{Error, error::CommandError};
 use crate::deadline;
@@ -31,10 +30,7 @@ use axum::{
     response::{Html, IntoResponse, Response},
 };
 use jiff::Timestamp;
-use page::{
-    Button, Crumb, Detail, Empty, Fact, Head, Link, List, Message, Notice, Report, Row, Status,
-    Todo, Value,
-};
+use page::{Detail, Empty, Fact, Link, List, Message, Notice, Row, Todo, Value};
 use std::sync::{Arc, atomic::Ordering};
 
 /// How many of a machine's newest stored messages its page lists.

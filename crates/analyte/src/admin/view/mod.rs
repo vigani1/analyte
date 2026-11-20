@@ -9,6 +9,7 @@ pub(super) mod assets;
 pub(super) mod format;
 pub(super) mod frame;
 pub(super) mod icon;
+pub(super) mod report;
 
 use super::markup::Markup;
 use axum::{

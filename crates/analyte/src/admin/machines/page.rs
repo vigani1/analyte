@@ -6,9 +6,10 @@
 //! under "For support".
 use crate::admin::view::{
     Column, Tone,
-    format::{Line, Moment, Part},
+    format::{Moment, Part},
     frame::Frame,
     icon::Icon,
+    report::{Button, Head, Status},
 };
 
 /// The machine list's columns.
@@ -88,15 +89,6 @@ pub(super) struct Row {
     pub(super) lab_app: Option<String>,
 }
 
-/// A status: tone, word, the exact value on hover and what was observed under it.
-pub(super) struct Status {
-    pub(super) tone: Tone,
-    pub(super) word: String,
-    pub(super) exact: String,
-    /// What Analyte observed, shown while the link is not open.
-    pub(super) note: Option<String>,
-}
-
 /// How a machine is attached: the icon, the kind and where.
 pub(super) struct Link {
     pub(super) icon: Icon,
@@ -126,27 +118,6 @@ pub(super) struct Detail {
     pub(super) recent_note: Option<String>,
     pub(super) support: Vec<String>,
     pub(super) dialog: Option<RemoveDialog>,
-}
-
-/// The head of a page under Machines: the way back, the title with its status and a line under it.
-pub(super) struct Head {
-    pub(super) crumbs: Vec<Crumb>,
-    pub(super) title: String,
-    pub(super) status: Option<Status>,
-    pub(super) lede: Option<Line>,
-}
-
-/// One step of the way back, linked unless it is this page.
-pub(super) struct Crumb {
-    pub(super) label: String,
-    pub(super) href: Option<String>,
-}
-
-/// A link drawn as a button: where it goes, its words and its kind.
-pub(super) struct Button {
-    pub(super) href: String,
-    pub(super) label: &'static str,
-    pub(super) class: &'static str,
 }
 
 /// What to do, with the page that does it.
@@ -249,23 +220,6 @@ pub(in crate::admin) struct Removed {
     pub(in crate::admin) support: Vec<String>,
     /// The session's form token for Restart now.
     pub(in crate::admin) csrf: String,
-}
-
-/// A Machines page that only reports: what an action did, or why a request was refused.
-#[derive(askama::Template)]
-#[template(path = "pages/machines/message.html")]
-pub(super) struct Report {
-    pub(super) frame: Frame,
-    pub(super) head: Head,
-    pub(super) tone: Tone,
-    pub(super) title: String,
-    pub(super) text: String,
-    pub(super) lines: Vec<String>,
-    pub(super) problems: Vec<String>,
-    /// Restart now, with the session's form token, after a change to the settings.
-    pub(super) restart: Option<String>,
-    pub(super) links: Vec<Button>,
-    pub(super) support: Vec<String>,
 }
 
 /// GET /receipts/{id}/departures: how one stored message was read.

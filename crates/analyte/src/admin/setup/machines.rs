@@ -10,7 +10,8 @@ use super::{
     RELOAD, SetupError, after_write, audit, done, entries, incomplete, needs_login, off_thread,
     page, refused, see_other, site, stored,
 };
-use crate::admin::machines::{self, DialogItem, Hover, Problem, RemoveDialog};
+use crate::admin::machines::{self, DialogItem, Hover, RemoveDialog};
+use crate::admin::view::report::Problem;
 use crate::admin::view::{Tone, icon::Icon};
 use crate::admin::{markup::Markup, server::Context, sessions::Session, view::format};
 use crate::installation::config::{Program, folder};
