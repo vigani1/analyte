@@ -96,7 +96,7 @@ pub(in crate::admin) fn ago(then: Timestamp, now: Timestamp) -> String {
 pub(in crate::admin) const RESTORE_ADVICE: &str =
     "Ask IT to reconcile orders with the command line; until then no order is sent to a machine.";
 
-/// What a restyled page says when its reads took longer than
+/// What a page says when its reads took longer than
 /// [`super::READ_BUDGET`].
 pub(in crate::admin) const SLOW_READ: &str = "Analyte did not finish reading within 1.5 seconds.";
 

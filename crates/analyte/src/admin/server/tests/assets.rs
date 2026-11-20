@@ -3,7 +3,7 @@ use super::*;
 
 // ADR 0018: every file of the table is served without a session, with its media
 // type and the usual security headers. Under this build's version a browser may
-// keep it for a year; without one (the old pages' admin.css) it is not stored.
+// keep it for a year; asked for without it, it is not stored.
 // An unknown file is refused and the host check still applies.
 #[tokio::test(flavor = "multi_thread")]
 async fn every_static_file_is_public_typed_and_cached_by_version() -> Result<(), Error> {
@@ -24,7 +24,7 @@ async fn every_static_file_is_public_typed_and_cached_by_version() -> Result<(),
         start_overview_server(directory.path(), &store, Vec::new(), Vec::new()).await?;
     let root = crate::admin::view::assets::Root::of_this_build();
     let listed = crate::admin::view::assets::tests::listed();
-    assert_eq!(listed.len(), 26);
+    assert_eq!(listed.len(), 25);
     for (name, kind, bytes) in listed {
         for (path, kept) in [
             (format!("{}{name}", root.as_str()), true),

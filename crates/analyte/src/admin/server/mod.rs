@@ -108,7 +108,7 @@ pub(super) struct Context {
     pub(super) directory: std::path::PathBuf,
     pub(super) reserve: u64,
     pub(super) setup: super::setup::Setup,
-    /// Where restyled pages load this build's static files from.
+    /// Where pages load this build's static files from.
     pub(super) assets: super::view::assets::Root,
     /// What the Settings page shows from the loaded program.
     pub(super) installed: super::pages::Installed,

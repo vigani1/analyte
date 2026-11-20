@@ -4,8 +4,9 @@
 //! `default-src 'self'` policy allows them unchanged. They hold no data, so they
 //! are public like the sign-in page that loads them. Restyled pages ask for them
 //! under a version made from their bytes, which browsers may keep for a year;
-//! a new build changes the version, so no browser keeps an old look. The old
-//! pages' `/static/admin.css` has no version and, like every page, is not kept.
+//! a new build changes the version, so no browser keeps an old look. The same
+//! file asked for without the version is served too and, like every page, is
+//! not kept.
 use axum::{
     extract::{Path, State},
     http::header,
@@ -38,8 +39,7 @@ macro_rules! asset {
 }
 
 /// Every file served under `/static/`.
-const ASSETS: [Asset; 26] = [
-    asset!("admin.css", CSS),
+const ASSETS: [Asset; 25] = [
     asset!("fonts.css", CSS),
     asset!("analyte.css", CSS),
     asset!("app.css", CSS),
@@ -97,7 +97,7 @@ pub(in crate::admin) const FAVICONS: [Favicon; 3] = [
 /// responses get the server's `no-store`.
 const KEEP: &str = "public, max-age=31536000, immutable";
 
-/// The path prefix every restyled page loads its files from, such as
+/// The path prefix every page loads its files from, such as
 /// `/static/0123456789abcdef/`; computed once at startup from every file's
 /// name and bytes.
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -1,4 +1,4 @@
-//! Holds what restyled pages share to report: a page head with its way back, buttons, statuses, facts, filter chips, the page that only reports, and every way a Machines, Lab apps, Setup or More page refuses or fails with its status code, words and the exact reason kept for support.
+//! Holds what pages share to report: a page head with its way back, buttons, statuses, facts, filter chips, the page that only reports, and every way a Machines, Lab apps, Setup or More page refuses or fails with its status code, words and the exact reason kept for support.
 use super::{
     self as view, Tab, Tone, format,
     format::{Line, Moment, Part},
