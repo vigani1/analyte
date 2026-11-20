@@ -274,14 +274,14 @@ fn days(state: &Context, lines: &[ActivityLine], now: Timestamp) -> Vec<Day> {
             );
         let said = format::said(
             &line.what,
-            line.machine
-                .as_deref()
-                .map(|id| label(state, id))
-                .as_deref(),
+            line.machine.as_deref().map(|id| format::Named {
+                id,
+                model: model(state, id),
+            }),
             crate::admin::parked::headline,
         );
         let shown = FeedLine {
-            at: line.at.map(|at| format::moment_unix(at, now)),
+            at: line.at.map(format::feed_time),
             tone: said.tone,
             icon: said.icon,
             word: said.word,
@@ -300,15 +300,18 @@ fn days(state: &Context, lines: &[ActivityLine], now: Timestamp) -> Vec<Day> {
     days
 }
 
-/// A machine as a line names it: its ID, with its model when it is set up
-/// and its definition names one.
-fn label(state: &Context, id: &str) -> String {
+/// The model of machine `id` when it is set up and its definition names one.
+fn model<'a>(state: &'a Context, id: &str) -> Option<&'a str> {
     state
         .machines
         .iter()
         .find(|m| m.id.as_str() == id)
         .and_then(|m| m.model.as_deref())
-        .map_or_else(|| id.to_owned(), |model| format!("{id} ({model})"))
+}
+
+/// A machine as the filter names it: its ID, with its model beside it.
+fn label(state: &Context, id: &str) -> String {
+    model(state, id).map_or_else(|| id.to_owned(), |model| format!("{id} ({model})"))
 }
 
 /// The page with `machine` and `show` that starts after `before`.

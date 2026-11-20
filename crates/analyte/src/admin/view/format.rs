@@ -1518,19 +1518,73 @@ pub(in crate::admin) const fn events(count: u64) -> &'static str {
     if count == 1 { "event" } else { "events" }
 }
 
+/// A feed line's time of day to the second, as the Activity mockup shows it;
+/// its day is the divider above it, and the exact value stays on hover.
+pub(in crate::admin) fn feed_time(seconds: i64) -> Moment {
+    feed_time_in(seconds, &TimeZone::system())
+}
+
+fn feed_time_in(seconds: i64, zone: &TimeZone) -> Moment {
+    Timestamp::from_second(seconds).map_or_else(
+        |_| Moment {
+            datetime: String::new(),
+            shown: not_a_date(seconds),
+            exact: String::new(),
+        },
+        |at| Moment {
+            datetime: at.to_string(),
+            shown: at.to_zoned(zone.clone()).strftime("%H:%M:%S").to_string(),
+            exact: exact_time(at),
+        },
+    )
+}
+
 /// The divider above lines whose time was not stored.
 pub(in crate::admin) const FEED_UNDATED: &str = "Time not recorded";
 
+/// A machine as an Activity line names it: its ID, and its model when known.
+#[derive(Clone, Copy)]
+pub(in crate::admin) struct Named<'a> {
+    pub(in crate::admin) id: &'a str,
+    pub(in crate::admin) model: Option<&'a str>,
+}
+
+impl Named<'_> {
+    /// "cobas-e411 (cobas e 411)", or the ID alone.
+    fn label(self) -> String {
+        self.model.map_or_else(
+            || self.id.to_owned(),
+            |model| format!("{} ({model})", self.id),
+        )
+    }
+}
+
+/// The head of a line about `machine`, or `other` when it names none, and
+/// what goes before the rest of the line: the model in brackets, not bold.
+fn headed(machine: Option<Named<'_>>, other: &str) -> (String, String) {
+    machine.map_or_else(
+        || (other.to_owned(), String::new()),
+        |machine| {
+            (
+                machine.id.to_owned(),
+                machine
+                    .model
+                    .map_or_else(String::new, |model| format!("({model}) ")),
+            )
+        },
+    )
+}
+
 /// What `what` says, about `machine` when it names one: the machine's ID
-/// with its model ("cobas-e411 (cobas e 411)"). `headline` gives a Needs
-/// review item's title and tone, as its card shows them.
+/// in bold, then its model ("cobas-e411 (cobas e 411)"). `headline` gives a
+/// Needs review item's title and tone, as its card shows them.
 pub(in crate::admin) fn said(
     what: &Activity,
-    machine: Option<&str>,
+    machine: Option<Named<'_>>,
     headline: impl FnOnce(&analyte_store::Parked) -> (String, Tone),
 ) -> Said {
     let from = |rest: String| match machine {
-        Some(machine) => format!("{rest} – from {machine}"),
+        Some(machine) => format!("{rest} – from {}", machine.label()),
         None => rest,
     };
     match what {
@@ -1567,9 +1621,10 @@ pub(in crate::admin) fn said(
                 Carries::OrderMessage { order } => format!("– order {order} message "),
             };
             let (tone, icon, word, words, link) = attempt(lab_app, *outcome);
+            let (head, aside) = headed(machine, lab_app);
             Said {
-                head: machine.unwrap_or(lab_app).to_owned(),
-                rest: format!("{what}– {words}"),
+                head,
+                rest: format!("{aside}{what}– {words}"),
                 tone,
                 icon,
                 word,
@@ -1610,7 +1665,7 @@ pub(in crate::admin) fn said(
 }
 
 /// A stored message's line: what its latest reading produced, if it was read.
-fn stored(reading: Option<&RecentOutcome>, machine: Option<&str>) -> Said {
+fn stored(reading: Option<&RecentOutcome>, machine: Option<Named<'_>>) -> Said {
     let (tone, icon, word, outcome) = match reading {
         Some(RecentOutcome::Results { .. }) => (Tone::Good, Icon::Ok, "Stored", "message stored"),
         Some(RecentOutcome::Failed) => (
@@ -1626,9 +1681,10 @@ fn stored(reading: Option<&RecentOutcome>, machine: Option<&str>) -> Said {
             "message stored, not read yet",
         ),
     };
+    let (head, aside) = headed(machine, "A machine");
     Said {
-        head: machine.unwrap_or("A machine").to_owned(),
-        rest: format!("{}– {outcome}", carried(reading)),
+        head,
+        rest: format!("{aside}{}– {outcome}", carried(reading)),
         tone,
         icon,
         word,
@@ -1638,11 +1694,12 @@ fn stored(reading: Option<&RecentOutcome>, machine: Option<&str>) -> Said {
 
 /// A machine order's line: what it is (`order`), then its new state; one
 /// whose outcome is unknown or that was rejected links to Machine orders.
-fn ordered(order: &str, state: OrderState, machine: Option<&str>) -> Said {
+fn ordered(order: &str, state: OrderState, machine: Option<Named<'_>>) -> Said {
     let (tone, icon, words) = order_change(state);
+    let (head, aside) = headed(machine, "A machine");
     Said {
-        head: machine.unwrap_or("A machine").to_owned(),
-        rest: format!("{order}– {words}"),
+        head,
+        rest: format!("{aside}{order}– {words}"),
         tone,
         icon,
         word: "Order",
@@ -1915,6 +1972,11 @@ mod tests {
             "test or unit not mapped"
         );
         assert_eq!(lower_first("LAW cancel refused"), "LAW cancel refused");
+        assert_eq!(feed_time_in(1_795_046_077, utc).shown, "23:54:37");
+        assert_eq!(
+            feed_time_in(1_795_046_077, utc).exact,
+            "2026-11-18T23:54:37Z (Unix 1795046077)"
+        );
         assert_eq!(
             (events(1), events(0), events(194)),
             ("event", "events", "events")

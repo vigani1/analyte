@@ -75,12 +75,12 @@ async fn activity_lists_what_was_stored_and_never_test_codes_or_values() -> Resu
     assert!(page.contains("<p class=\"eyebrow\">Newest at the top</p>"));
     assert!(page.contains("Patient names and result values never appear here."));
     for line in [
-        "<b>hematology-analyzer (Hematology analyzer HM-5)</b> <span class=\"muted\">– sample 261119-044 – 6 results – message stored</span>",
-        "<b>immunoassay-analyzer (Immunoassay analyzer IA-900)</b> <span class=\"muted\">– sample 261119-031 – 8 results – delivered to main-lab</span>",
+        "<b>hematology-analyzer</b> <span class=\"muted\">(Hematology analyzer HM-5) – sample 261119-044 – 6 results – message stored</span>",
+        "<b>immunoassay-analyzer</b> <span class=\"muted\">(Immunoassay analyzer IA-900) – sample 261119-031 – 8 results – delivered to main-lab</span>",
         "– sample 261119-031 – 8 results – sending to main-lab failed, will retry",
         "– sample 261119-038 – 12 results – rejected by main-lab</span></span><a class=\"link\" href=\"/deliveries?show=undelivered\">Deliveries</a>",
         "– sample 261119-044 – 6 results – sending to main-lab paused: lab app settings need repair</span></span><a class=\"link\" href=\"/setup/lab-apps/main-lab\">Lab app</a>",
-        "<b>hematology-analyzer (Hematology analyzer HM-5)</b> <span class=\"muted\">– order ORD-1040 – sample 261119-040 – 1 test – done</span>",
+        "<b>hematology-analyzer</b> <span class=\"muted\">(Hematology analyzer HM-5) – order ORD-1040 – sample 261119-040 – 1 test – done</span>",
         "– order ORD-1018 – sample 261119-018 – 1 test – accepted by the machine",
         "– order ORD-1033 – sample 261119-033 – 1 test – sent to the machine",
         "– order ORD-1021 – sample 261119-021 – 1 test – outcome unknown: check the machine</span></span><a class=\"link\" href=\"/orders\">Orders</a>",
@@ -159,7 +159,7 @@ async fn activity_filters_pages_and_says_when_empty() -> Result<(), Error> {
     assert!(chemistry.contains("<option value=\"chemistry-analyzer\" selected>"));
     assert!(chemistry.contains("261119-038 – 12 results – message stored"));
     assert!(chemistry.contains("item 1 added"));
-    assert!(!chemistry.contains("<b>hematology-analyzer"));
+    assert!(!chemistry.contains("<b>hematology-analyzer</b>"));
     assert!(
         !chemistry.contains("placed a hold"),
         "a hold names no machine"
