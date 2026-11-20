@@ -6,7 +6,7 @@ use super::{
     setup::Step,
 };
 use crate::admin::Error;
-use crate::admin::view::refusal::Refusal;
+use crate::admin::view::{frame, refusal::Refusal};
 use crate::installation::config::Program;
 use analyte_model::Identifier;
 use axum::{
@@ -337,6 +337,7 @@ fn router(state: Arc<Context>) -> Router {
         .route("/orders", get(super::pages::orders))
         .route("/analyzer-cancelled", get(super::pages::awos::cancelled))
         .route("/awos/{order}/{item}", get(super::pages::awos::detail))
+        .route("/awos/{order}/{item}/raw", post(super::pages::awos::notes))
         .route("/deliveries", get(super::pages::deliveries))
         .route(
             "/deliveries/{id}/resend",
@@ -454,7 +455,14 @@ async fn protect(State(state): State<Arc<Context>>, mut request: Request, next: 
         if let Some(session) = &session {
             request.extensions_mut().insert(session.clone());
         }
-        plain_refusal_as_page(&state.assets, answer(&state, request, next, session).await).await
+        // A signed-in page's sidebar shows the Needs review count; the event
+        // stream and the pages shown before sign-in have no sidebar.
+        let sidebar = authenticated && !login && !public && request.uri().path() != "/events";
+        plain_refusal_as_page(
+            &state.assets,
+            answer(&state, request, next, session, sidebar).await,
+        )
+        .await
     } else {
         let attempt = if request.method() == Method::POST {
             Attempt::Form
@@ -507,11 +515,14 @@ fn setup_write(request: &Request) -> bool {
 /// within [`REQUEST_BUDGET`], so a slow sender never gets more; a setup write
 /// then has until [`Context::write_budget`] and keeps its connection open
 /// until its answer is written. Every other request keeps [`REQUEST_BUDGET`].
+/// With `sidebar`, the Needs review count is read once, within that budget,
+/// for every frame the page builds.
 async fn answer(
     state: &Context,
     request: Request,
     next: Next,
     session: Option<Arc<Session>>,
+    sidebar: bool,
 ) -> Response {
     let started = tokio::time::Instant::now();
     let write = setup_write(&request);
@@ -529,13 +540,18 @@ async fn answer(
     } else {
         REQUEST_BUDGET
     };
+    let review = if sidebar {
+        frame::review_count(state).await
+    } else {
+        None
+    };
     let left = budget.saturating_sub(started.elapsed());
     if write && let Some(lifetime) = lifetime {
         lifetime.keep_open_for(left.saturating_add(ANSWER_TIME));
     }
     // Past the budget the work it started may still finish, so the page says
     // to look before trying again.
-    tokio::time::timeout(left, next.run(checked))
+    tokio::time::timeout(left, frame::with_review(review, next.run(checked)))
         .await
         .unwrap_or_else(|_| Refusal::TooLong.page(&state.assets))
 }

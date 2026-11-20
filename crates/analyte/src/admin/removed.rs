@@ -157,7 +157,7 @@ fn line(open: &Undelivered, kept: Option<&Kept>, from_running: bool) -> Line {
         Some(Undeliverable::CredentialsMissing) => format!(
             concat!(
                 "Cannot send to lab app {destination}: its API key or signing key is ",
-                "missing. Enter them on the Lab app page (or in the service environment), ",
+                "missing. Enter them on the Lab apps page (or in the service environment), ",
                 "then restart. {stays}"
             ),
             destination = destination,
@@ -167,7 +167,7 @@ fn line(open: &Undelivered, kept: Option<&Kept>, from_running: bool) -> Line {
             concat!(
                 "Cannot send to lab app {destination}: it is not set up any more. {from}: ",
                 "{count} {what} {are} kept and never deleted. Add lab app {destination} on the ",
-                "Lab app page, then restart, to send them."
+                "Lab apps page, then restart, to send them."
             ),
             destination = destination,
             from = from,
@@ -261,7 +261,7 @@ mod tests {
         );
         assert!(line.text.starts_with(concat!(
             "Cannot send to lab app old-lab: its API key or signing key is missing. ",
-            "Enter them on the Lab app page (or in the service environment), then restart. ",
+            "Enter them on the Lab apps page (or in the service environment), then restart. ",
             "Removed machine machine-3: 3 results or order messages are kept and never deleted."
         )));
         assert_eq!(line.tone(), Tone::Problem);

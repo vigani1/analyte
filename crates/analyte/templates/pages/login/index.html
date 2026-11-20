@@ -14,6 +14,6 @@
 {%- if let Some(error) = error %}<span id="si-error" class="field__error">{% call draw::icon(crate::admin::view::icon::Icon::Problem, "icon--sm") %}{% endcall %}{{ error }}</span>{% endif %}</div>
 <button type="submit" class="btn btn--primary btn--lg panel__action">Sign in</button>
 <p class="subtle panel__note">The key is in the file <span class="mono">admin-token</span> in Analyte’s data folder on this PC. Ask IT if you do not have it.</p>
-<p class="live subtle panel__live"><span class="live-dot live-dot--still"></span>Engine running · machines keep working while you’re signed out</p>
+<p class="live subtle panel__live"><span class="live-dot live-dot--still"></span>Engine running · it keeps running when you sign out</p>
 </form>
 {%- endblock %}

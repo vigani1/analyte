@@ -171,7 +171,7 @@ fn refuse_clash<'a>(
         return Ok(());
     };
     let variable = match what {
-        // The key name the Lab app page gives a lab app's API key.
+        // The key name the Lab apps page gives a lab app's API key.
         Clashing::LabApps => secrets::variable(&format!("{}-api", name.as_str())),
         Clashing::Keys => secrets::variable(name.as_str()),
     };

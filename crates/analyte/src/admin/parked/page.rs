@@ -2,7 +2,7 @@
 //!
 //! Every word comes from `view::format` or the item's category; the templates
 //! only loop, test and call macros. Nothing here invents a value: a line with
-//! no stored data behind it is left out, and raw IDs only go under "For support".
+//! no stored data behind it is left out, and raw IDs only go under "Details for support".
 use super::category::Category;
 use crate::admin::view::{
     Tone,
@@ -157,18 +157,19 @@ pub(super) struct OriginalTarget {
     pub(super) form: RawRequest,
 }
 
-/// The audited form that shows original bytes: one button per way they were kept.
-pub(super) struct RawRequest {
-    pub(super) action: String,
-    pub(super) csrf: String,
-    pub(super) target: String,
-    pub(super) after: u64,
-    pub(super) offset: u64,
+/// The audited form that shows original bytes, or a machine's notes on an
+/// order item's page: one button per way they were kept.
+pub(in crate::admin) struct RawRequest {
+    pub(in crate::admin) action: String,
+    pub(in crate::admin) csrf: String,
+    pub(in crate::admin) target: String,
+    pub(in crate::admin) after: u64,
+    pub(in crate::admin) offset: u64,
     /// The reason field's id, unique on the page.
-    pub(super) field: String,
-    pub(super) reason: String,
+    pub(in crate::admin) field: String,
+    pub(in crate::admin) reason: String,
     /// `source` value and words of each button.
-    pub(super) buttons: Vec<(&'static str, &'static str)>,
+    pub(in crate::admin) buttons: Vec<(&'static str, &'static str)>,
 }
 
 /// One line of an item's history.

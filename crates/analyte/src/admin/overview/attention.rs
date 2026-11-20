@@ -381,7 +381,7 @@ fn uncertain(count: u64) -> Thing {
 fn restore_paused() -> Thing {
     Thing::new(
         Subject::RestorePaused,
-        "Order sending is paused after a restore".into(),
+        format::RESTORE_PAUSED.into(),
         Fix::Section(Section::Orders),
     )
 }
@@ -750,7 +750,7 @@ mod tests {
     }
 
     // Owner request 2026-11-19 (after #260): every line about a lab app (keys
-    // missing, sending paused, not set up any more) links to the Lab app page,
+    // missing, sending paused, not set up any more) links to the Lab apps page,
     // where its address and keys are set, under its own name.
     #[test]
     fn lab_app_lines_link_to_the_lab_app_page() {

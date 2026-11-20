@@ -561,7 +561,9 @@ async fn machine_orders_are_filtered_and_never_show_test_codes() -> Result<(), E
 // ADR 0016; owner request 2026-11-20 (admin restyle b5): an order item's page
 // keeps what the machine reported apart from the item's own state, shows the
 // lab app's copy without its tests, and the machine's messages with the times
-// as sent and their notes escaped; IDs stay under "For support".
+// as sent; IDs stay under "Details for support". Owner decision 2026-11-20
+// (review B6): the machine's notes are free text, so they stay hidden here
+// until the audited "Show the original message".
 #[tokio::test(flavor = "multi_thread")]
 async fn order_item_page_keeps_what_the_machine_did_apart() -> Result<(), Error> {
     let scene = Scene::start(true).await?;
@@ -581,7 +583,7 @@ async fn order_item_page_keeps_what_the_machine_did_apart() -> Result<(), Error>
         "<dt>Expected ready time, as sent</dt><dd>20261119103000</dd>",
         "<dt>Message time and zone</dt><dd>20261119095600+0100</dd>",
         "<dt>Event time, as sent</dt><dd>20261119095600</dd>",
-        "NTE|||Sample &#60;not&#62; found on the rack",
+        "<p class=\"muted more-row__text\">1 note from the machine, hidden</p>",
         "Message MSG-1018 · receipt ",
     ] {
         assert!(item.contains(part), "missing {part}");
@@ -589,6 +591,7 @@ async fn order_item_page_keeps_what_the_machine_did_apart() -> Result<(), Error>
     assert!(
         !shown(&item).contains(&uuid::Uuid::from(scene.seeded.held.ok_or("held")?).to_string())
     );
+    assert!(!item.contains("Sample &#60;not&#62; found"), "{item}");
     // One message, so no next page.
     assert!(!item.contains("Next page"));
     let done = scene.get(&format!("/awos/{}/1", scene.seeded.done)).await?;

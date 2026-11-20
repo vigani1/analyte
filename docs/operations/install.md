@@ -38,10 +38,10 @@ for the [Setup page](operate.md#setup-page) and does not run, so the service
 starts without any lab connection or key. The starter site file holds only the
 retention (`keep`, so nothing is ever deleted until the lab chooses a period).
 No `lab-apps.toml` is shipped: add the lab app, with its address and keys, on
-the [Lab app page](operate.md#lab-app-page), which writes that file beside the
+the [Lab apps page](operate.md#lab-apps-page), which writes that file beside the
 program file; the setup page then fills in the connection and picks the lab
 app. An upgrade never replaces this configuration.
-For more analyzers, press **Add machine** on the setup page; to take one out of
+For more analyzers, press **Add a machine** on the setup page; to take one out of
 service, press **Remove machine** (see [Setup page](operate.md#setup-page)).
 Nobody needs to edit the files by hand.
 
@@ -74,7 +74,7 @@ anyway**.
    your account to the folder and Analyte then refuses to start.
 5. Leave **Open Analyte** ticked and finish. Sign in with the token, choose
    **Setup**, then **Set up** for `machine-1`. For each further analyzer, press
-   **Add machine** and set it up the same way.
+   **Add a machine** and set it up the same way.
 
 The app's window needs the Microsoft Edge WebView2 Runtime, which Windows 11
 has. On a Windows 10 PC without it, the last page says so and opens the setup

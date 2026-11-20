@@ -4,7 +4,7 @@
 //! form fields ([`Draft`]). They are never trusted: every step checks all the
 //! earlier choices again against the files, and Save runs the whole check once
 //! more under the write lock ([`super::plan`]). The fields hold no secret: keys
-//! are set on the Lab app page. Steps 1 to 4 only read; the connection test and
+//! are set on the Lab apps page. Steps 1 to 4 only read; the connection test and
 //! Save are posts with the session's CSRF value, so that value never reaches a
 //! URL. Hidden fields beat a server-side draft here: there is nothing to store,
 //! bound, expire or lose at a restart, and Back works in every tab.
@@ -1066,6 +1066,7 @@ fn test_state(view: &listen::View, connection: &Connection, id: &str, now: Times
     };
     Status {
         tone,
+        icon: tone.icon(),
         word: word.to_owned(),
         exact: String::new(),
         note: Some(note),

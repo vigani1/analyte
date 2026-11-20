@@ -1,4 +1,4 @@
-//! Serves GET /events: a server-sent event stream that tells a signed-in page which areas changed (Overview, the Needs review count, Machines, Deliveries, Activity), never what changed, with a heartbeat, a bounded lifetime and a cap on open streams.
+//! Serves GET /events: a server-sent event stream that tells a signed-in page which areas changed (Overview, Needs review, the sidebar's Needs review count, Machines, Deliveries, Activity), never what changed, with a heartbeat, a bounded lifetime and a cap on open streams.
 //!
 //! Where changes come from: every `check` (2 s) the stream compares the
 //! store's marks (`analyte_store::ActivityMarks`: the newest row of each table
@@ -86,6 +86,10 @@ impl Bounds {
 enum Area {
     Overview,
     Review,
+    /// The open Needs review count in every signed-in page's sidebar; named
+    /// only when the count changed, so a page reloads only when it would
+    /// show a different number.
+    Count,
     Machines,
     Deliveries,
     Activity,
@@ -96,6 +100,7 @@ impl Area {
         match self {
             Self::Overview => "overview",
             Self::Review => "review",
+            Self::Count => "count",
             Self::Machines => "machines",
             Self::Deliveries => "deliveries",
             Self::Activity => "activity",
@@ -104,7 +109,8 @@ impl Area {
 }
 
 /// The live area page `tab` shows, as its body names it; empty for a page
-/// where only the sidebar's Needs review count is live.
+/// where only the sidebar's Needs review count ([`Area::Count`], which every
+/// signed-in page shows) is live.
 pub(super) const fn area(tab: Tab) -> &'static str {
     match tab {
         Tab::Overview => Area::Overview.name(),
@@ -146,6 +152,9 @@ impl Seen {
             }
             if (was.parked, was.open) != (is.parked, is.open) {
                 add(&[Area::Review, Area::Overview, Area::Activity]);
+            }
+            if was.open != is.open {
+                add(&[Area::Count]);
             }
             if (was.deliveries, was.attempts) != (is.deliveries, is.attempts) {
                 add(&[Area::Deliveries, Area::Overview, Area::Activity]);
@@ -367,6 +376,12 @@ mod tests {
         );
         assert_eq!(
             names(&seen.changed(&with(|m| m.open -= 1))),
+            ["review", "overview", "activity", "count"]
+        );
+        // A new item resolved within the same check leaves the count as it
+        // was, so pages that show only the count do not reload.
+        assert_eq!(
+            names(&seen.changed(&with(|m| m.parked += 1))),
             ["review", "overview", "activity"]
         );
         assert_eq!(

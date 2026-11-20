@@ -83,14 +83,14 @@ async fn activity_lists_what_was_stored_and_never_test_codes_or_values() -> Resu
         "– sample 261119-044 – 6 results – sending to main-lab paused: lab app settings need repair</span></span><a class=\"link\" href=\"/setup/lab-apps/main-lab\">Lab app</a>",
         "<b>hematology-analyzer</b> <span class=\"muted\">(Hematology analyzer HM-5) – order ORD-1040 – sample 261119-040 – 1 test – done</span>",
         "– order ORD-1018 – sample 261119-018 – 1 test – accepted by the machine",
-        "– order ORD-1033 – sample 261119-033 – 1 test – sent to the machine",
+        "– order ORD-1033 – sample 261119-033 – 1 test – sent, not yet accepted",
         "– order ORD-1021 – sample 261119-021 – 1 test – outcome unknown: check the machine</span></span><a class=\"link\" href=\"/orders\">Orders</a>",
         "<b>Needs review</b> <span class=\"muted\">– item 1 added: test or unit not mapped – from chemistry-analyzer (Chemistry analyzer XC-200)</span></span><a class=\"link\" href=\"/parked/1\">Open</a>",
         "<b>Needs review</b> <span class=\"muted\">– item 1 marked resolved – from chemistry-analyzer (Chemistry analyzer XC-200)</span>",
         "<b>admin session</b> <span class=\"muted\">– placed a hold under Data keeping</span></span><a class=\"link\" href=\"/retention\">Data keeping</a>",
         "<b>operator</b> <span class=\"muted\">– placed a hold under Data keeping</span>",
         "<b>Analyte</b> <span class=\"muted\">– removed data past its keeping time</span>",
-        "– order ORD-1047 – sample 261119-047 – 1 test – being sent to the machine",
+        "– order ORD-1047 – sample 261119-047 – 1 test – sending",
     ] {
         assert!(page.contains(line), "missing {line}");
     }
@@ -233,7 +233,7 @@ async fn activity_says_when_the_store_cannot_be_read_or_is_slow() -> Result<(), 
     let busy = scene.store.clone();
     let blocker = tokio::spawn(async move {
         busy.request::<_, FixtureError>(fixture_deadline()?, |_| {
-            std::thread::sleep(Duration::from_millis(1700));
+            std::thread::sleep(Duration::from_millis(1800));
             Ok(())
         })
         .await

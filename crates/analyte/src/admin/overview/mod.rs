@@ -390,7 +390,7 @@ async fn render(
             orders,
             restore: restore_paused.then(|| Notice {
                 tone: Tone::Attention,
-                title: "Order sending is paused after a restore".into(),
+                title: format::RESTORE_PAUSED.into(),
                 text: format::RESTORE_ADVICE.into(),
             }),
             kept: kept
@@ -418,7 +418,7 @@ fn orders(facts: &attention::Facts) -> Vec<OrderRow> {
     vec![
         order_row(
             facts.uncertain,
-            (Icon::Unknown, Tone::Attention),
+            format::order_look(OrderState::Uncertain),
             "No orders with an unknown outcome",
             &format!(
                 "{} with an unknown outcome (check the machine)",
@@ -428,7 +428,7 @@ fn orders(facts: &attention::Facts) -> Vec<OrderRow> {
         ),
         order_row(
             facts.cancelled,
-            (Icon::Cancelled, Tone::Neutral),
+            format::order_look(OrderState::CancelConfirmed),
             "No orders cancelled by a machine",
             &format!(
                 "{} cancelled by a machine",
@@ -439,18 +439,19 @@ fn orders(facts: &attention::Facts) -> Vec<OrderRow> {
     ]
 }
 
-/// One Orders line: green with `none` at zero, otherwise `some` in its own icon and tone.
+/// One Orders line: green with `none` at zero, otherwise `some` in the
+/// tone and icon its order state has on every page.
 fn order_row(
     count: u64,
-    (icon, tone): (Icon, Tone),
+    look: format::StateLook,
     none: &str,
     some: &str,
     (href, link): (&'static str, &'static str),
 ) -> OrderRow {
     let zero = count == 0;
     OrderRow {
-        tone: if zero { Tone::Good } else { tone },
-        icon: if zero { Icon::Ok } else { icon },
+        tone: if zero { Tone::Good } else { look.tone },
+        icon: if zero { Icon::Ok } else { look.icon },
         text: if zero { none } else { some }.to_owned(),
         href,
         link,
@@ -469,7 +470,7 @@ fn alert_row(alert: &AlertState, now: Timestamp) -> AlertRow {
             .map(|raised| format::moment_unix(raised, now)),
         value: alert
             .value
-            .map_or_else(|| "Not known".into(), |value| value.to_string()),
+            .map_or_else(|| format::NOT_RECORDED.into(), |value| value.to_string()),
     }
 }
 
@@ -482,7 +483,7 @@ const fn alert_words(key: &AlertKey) -> &'static str {
         AlertKey::OrderCacheStale => "Order list is out of date",
         AlertKey::UncertainOrders => "Orders with unknown outcome",
         AlertKey::ParkedItems => "Items need review",
-        AlertKey::RestorePaused => "Order sending paused after restore",
+        AlertKey::RestorePaused => format::RESTORE_PAUSED,
         AlertKey::UndeliverableDestination(..) => "Results cannot be delivered",
     }
 }
@@ -592,7 +593,7 @@ mod webhook_tests {
                 s.fail_alert_attempt(event.id(), analyte_store::AlertFailure::Network)
             })
             .await?;
-        // The overview reads the relay lines this way and shows them under "For support".
+        // The overview reads the relay lines this way and shows them under "Details for support".
         let relays = crate::operator::notification_status::snapshot(
             &store,
             &[analyte_model::Identifier::new("missing")?],

@@ -8,6 +8,7 @@ use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 mod actions;
 mod activity;
 mod assets;
+mod consistency;
 mod live;
 mod machines;
 mod more;
@@ -588,7 +589,9 @@ async fn assert_overview_health(host: &str, bearer: &str) -> Result<(), Error> {
     assert!(!response.contains("<script>"));
     assert_overview_counts(&response);
     assert_overview_status(&response)?;
-    assert!(response.contains("<span title=\"restore_paused\">Order sending paused after restore"));
+    assert!(
+        response.contains("<span title=\"restore_paused\">Order sending is paused after a restore")
+    );
     assert!(response.contains("<span title=\"machine_silent\">Machine has gone quiet"));
     assert!(
         response

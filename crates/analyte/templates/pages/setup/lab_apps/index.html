@@ -56,6 +56,6 @@
 {% call feedback::alert(notice.tone, notice.title, notice.text) %}{% endcall %}
 {%- endfor %}
 {%- if !support.is_empty() %}
-{% call feedback::support("Details for support", support) %}{% endcall %}
+{% call feedback::support(crate::admin::view::format::SUPPORT, support) %}{% endcall %}
 {%- endif %}
 {%- endblock %}

@@ -94,9 +94,40 @@ pub(in crate::admin) fn ago(then: Timestamp, now: Timestamp) -> String {
     }
 }
 
+/// The title every page gives order sending paused after a restore.
+pub(in crate::admin) const RESTORE_PAUSED: &str = "Order sending is paused after a restore";
+
 /// What someone does while order sending is paused after a restore.
 pub(in crate::admin) const RESTORE_ADVICE: &str =
     "Ask IT to reconcile orders with the command line; until then no order is sent to a machine.";
+
+/// What a restart does to the machines, said only as far as Analyte knows it:
+/// whether a machine sends again what was not acknowledged depends on the machine.
+pub(in crate::admin) const RESTART_ADVICE: &str = concat!(
+    "Restarting stops every machine connection for a few seconds, and Analyte acknowledges ",
+    "nothing while it is stopped. After the restart, sign in again.",
+);
+
+/// The warning above original bytes or a machine's free text, once shown.
+pub(in crate::admin) const PATIENT_DATA: &str = "May contain patient data";
+
+/// What the warning above original bytes or free text says.
+pub(in crate::admin) const PATIENT_DATA_TEXT: &str = concat!(
+    "Keep it out of screenshots and support tickets. Analyte recorded who asked to see it and ",
+    "why before showing it.",
+);
+
+/// The title of the exact IDs and reasons kept for support, on every page.
+pub(in crate::admin) const SUPPORT: &str = "Details for support";
+
+/// A value Analyte never stored, such as a time an older version did not keep.
+pub(in crate::admin) const NOT_RECORDED: &str = "Not recorded";
+
+/// A value for something that has not happened yet.
+pub(in crate::admin) const NOTHING_YET: &str = "Nothing yet";
+
+/// A value that does not apply here.
+pub(in crate::admin) const NOT_APPLICABLE: &str = "—";
 
 /// What a page says when its reads took longer than
 /// [`super::READ_BUDGET`].
@@ -291,7 +322,7 @@ pub(in crate::admin) fn connection_detail(connection: &Connection) -> Option<Str
 
 /// One accepted difference from the standard in plain words for a lab manager:
 /// what the machine does and what Analyte does about it. The exact rule stays on
-/// hover and in the declaration under "For support".
+/// hover and in the declaration under "Details for support".
 pub(in crate::admin) const fn departure(rule: &analyte_config::MachineDeparture) -> &'static str {
     use analyte_config::MachineDeparture as D;
     match rule {
@@ -581,7 +612,7 @@ pub(in crate::admin) fn deliveries(
         .filter(|&&(state, _)| state == DeliveryState::Done)
         .map(|&(_, count)| count)
         .sum::<u64>();
-    let mut words = delivery_state(worst).to_owned();
+    let mut words = delivery_look(worst).word.to_owned();
     if worst != DeliveryState::Done && done > 0 {
         words.push_str(&format!(" · {done} of {total} delivered"));
     } else if worst == DeliveryState::Done && total > 1 {
@@ -701,7 +732,7 @@ pub(in crate::admin) fn waiting(count: u64, oldest: Option<Timestamp>, now: Time
     let items = amount(count, "item waiting", "items waiting");
     match oldest {
         Some(at) => Line::text(format!("{items} · oldest ")).time(moment(at, now)),
-        None => Line::text(format!("{items} · oldest not known")),
+        None => Line::text(format!("{items} · oldest not recorded")),
     }
 }
 
@@ -1042,7 +1073,7 @@ pub(in crate::admin) fn explain(kind: ParkedKind, stored: &str) -> Explained {
     }
 }
 
-/// How the lab app answered, under "For support": "Lab app answer: HTTP 409".
+/// How the lab app answered, under "Details for support": "Lab app answer: HTTP 409".
 fn lab_app_answer(status: &str) -> String {
     format!("Lab app answer: HTTP {status}")
 }
@@ -1465,30 +1496,80 @@ fn refused_order(stored: &str) -> Explained {
     }
 }
 
-/// An order's state in words a lab manager uses; pages keep the stored state on hover.
-pub(in crate::admin) const fn order_state(state: OrderState) -> &'static str {
-    match state {
-        OrderState::Requested => "Not sent yet",
-        OrderState::Sending => "Sending",
-        OrderState::Sent => "Sent, not yet accepted",
-        OrderState::Accepted => "Accepted by the machine",
-        OrderState::Done => "Done",
-        OrderState::Rejected => "Rejected",
-        OrderState::CancelRequested => "Cancel requested",
-        OrderState::CancelConfirmed => "Cancelled",
-        OrderState::Uncertain => "Outcome unknown: check the machine",
+/// How a delivery or order state reads on every page that shows it: its
+/// tone, its own icon and its word. One rule picks the tone: a problem (red)
+/// when someone must act, attention (amber) for a look or a retry, neutral
+/// (grey) while waiting or when nothing is wrong, good (green) when done.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::admin) struct StateLook {
+    pub(in crate::admin) tone: Tone,
+    pub(in crate::admin) icon: Icon,
+    pub(in crate::admin) word: &'static str,
+}
+
+impl StateLook {
+    const fn of(tone: Tone, icon: Icon, word: &'static str) -> Self {
+        Self { tone, icon, word }
     }
 }
 
-/// A delivery's state in plain words; pages keep the stored state on hover.
-pub(in crate::admin) const fn delivery_state(state: DeliveryState) -> &'static str {
+/// An order's state as every page shows it; pages keep the stored state on
+/// hover. Sent, accepted, done and cancelled stay separate (safety rule 8).
+pub(in crate::admin) const fn order_look(state: OrderState) -> StateLook {
     match state {
-        DeliveryState::Pending => "Waiting to be sent",
-        DeliveryState::InFlight => "Sending",
-        DeliveryState::Done => "Delivered",
-        DeliveryState::Parked => "Rejected by the lab app",
-        DeliveryState::Paused => "Paused: lab app settings need repair",
-        DeliveryState::Conflict => "Lab app reports a conflict",
+        OrderState::Requested => StateLook::of(Tone::Neutral, Icon::Waiting, "Not sent yet"),
+        OrderState::Sending => StateLook::of(Tone::Neutral, Icon::Send, "Sending"),
+        // Owner decision 2026-11-20: sent and not yet accepted is waiting.
+        OrderState::Sent => StateLook::of(Tone::Neutral, Icon::Waiting, "Sent, not yet accepted"),
+        OrderState::Accepted => StateLook::of(Tone::Good, Icon::Check, "Accepted by the machine"),
+        OrderState::Done => StateLook::of(Tone::Good, Icon::Ok, "Done"),
+        OrderState::Rejected => {
+            StateLook::of(Tone::Problem, Icon::Problem, "Rejected by the machine")
+        }
+        OrderState::CancelRequested => {
+            StateLook::of(Tone::Neutral, Icon::Waiting, "Cancel requested")
+        }
+        OrderState::CancelConfirmed => StateLook::of(Tone::Neutral, Icon::Cancelled, "Cancelled"),
+        OrderState::Uncertain => StateLook::of(
+            Tone::Attention,
+            Icon::Unknown,
+            "Outcome unknown: check the machine",
+        ),
+    }
+}
+
+/// A delivery's state as every page shows it; pages keep the stored state on hover.
+pub(in crate::admin) const fn delivery_look(state: DeliveryState) -> StateLook {
+    match state {
+        DeliveryState::Pending => StateLook::of(Tone::Neutral, Icon::Waiting, "Waiting to be sent"),
+        DeliveryState::InFlight => StateLook::of(Tone::Neutral, Icon::Send, "Sending"),
+        DeliveryState::Done => StateLook::of(Tone::Good, Icon::Ok, "Delivered"),
+        // Owner decision 2026-11-20: a rejected delivery needs someone.
+        DeliveryState::Parked => {
+            StateLook::of(Tone::Problem, Icon::Problem, "Rejected by the lab app")
+        }
+        DeliveryState::Paused => StateLook::of(
+            Tone::Problem,
+            Icon::Problem,
+            "Paused: lab app settings need repair",
+        ),
+        DeliveryState::Conflict => {
+            StateLook::of(Tone::Problem, Icon::Problem, "Lab app reports a conflict")
+        }
+    }
+}
+
+/// How one try to send a delivery ended, as Activity shows it: the delivery
+/// state it left, or a retry, which is not a state of its own.
+pub(in crate::admin) const fn attempt_look(outcome: AttemptOutcome) -> StateLook {
+    match outcome {
+        AttemptOutcome::Delivered => delivery_look(DeliveryState::Done),
+        AttemptOutcome::RetryAt(_) | AttemptOutcome::Interrupted => {
+            StateLook::of(Tone::Attention, Icon::Retry, "Will retry")
+        }
+        AttemptOutcome::Rejected => delivery_look(DeliveryState::Parked),
+        AttemptOutcome::Paused => delivery_look(DeliveryState::Paused),
+        AttemptOutcome::Conflict => delivery_look(DeliveryState::Conflict),
     }
 }
 
@@ -1630,14 +1711,15 @@ pub(in crate::admin) fn said(
                 Carries::Results(reading) => carried(reading.as_ref()),
                 Carries::OrderMessage { order } => format!("– order {order} message "),
             };
-            let (tone, icon, word, words, link) = attempt(lab_app, *outcome);
+            let (words, link) = attempt(lab_app, *outcome);
+            let look = attempt_look(*outcome);
             let (head, aside) = headed(machine, lab_app);
             Said {
                 head,
                 rest: format!("{aside}{what}– {words}"),
-                tone,
-                icon,
-                word,
+                tone: look.tone,
+                icon: look.icon,
+                word: look.word,
                 link,
             }
         }
@@ -1705,13 +1787,13 @@ fn stored(reading: Option<&RecentOutcome>, machine: Option<Named<'_>>) -> Said {
 /// A machine order's line: what it is (`order`), then its new state; one
 /// whose outcome is unknown or that was rejected links to Machine orders.
 fn ordered(order: &str, state: OrderState, machine: Option<Named<'_>>) -> Said {
-    let (tone, icon, words) = order_change(state);
+    let look = order_look(state);
     let (head, aside) = headed(machine, "A machine");
     Said {
         head,
-        rest: format!("{aside}{order}– {words}"),
-        tone,
-        icon,
+        rest: format!("{aside}{order}– {}", lower_first(look.word)),
+        tone: look.tone,
+        icon: look.icon,
         word: "Order",
         link: matches!(state, OrderState::Uncertain | OrderState::Rejected)
             .then(|| (super::Tab::MachineOrders.href().to_owned(), "Orders")),
@@ -1743,71 +1825,23 @@ fn carried(reading: Option<&RecentOutcome>) -> String {
 /// A link from an Activity line: where it goes and its words.
 type FeedLink = Option<(String, &'static str)>;
 
-/// How one delivery try to `lab_app` ended, as an Activity line says it.
-fn attempt(lab_app: &str, outcome: AttemptOutcome) -> (Tone, Icon, &'static str, String, FeedLink) {
+/// How one delivery try to `lab_app` ended, as an Activity line says it,
+/// and where to look at it; [`attempt_look`] gives its tone, icon and word.
+fn attempt(lab_app: &str, outcome: AttemptOutcome) -> (String, FeedLink) {
     let deliveries = || Some(("/deliveries?show=undelivered".to_owned(), "Deliveries"));
     match outcome {
-        AttemptOutcome::Delivered => (
-            Tone::Good,
-            Icon::Ok,
-            "Delivered",
-            format!("delivered to {lab_app}"),
-            None,
-        ),
-        AttemptOutcome::RetryAt(_) => (
-            Tone::Attention,
-            Icon::Retry,
-            "Will retry",
-            format!("sending to {lab_app} failed, will retry"),
-            None,
-        ),
+        AttemptOutcome::Delivered => (format!("delivered to {lab_app}"), None),
+        AttemptOutcome::RetryAt(_) => (format!("sending to {lab_app} failed, will retry"), None),
         AttemptOutcome::Interrupted => (
-            Tone::Attention,
-            Icon::Retry,
-            "Will retry",
             format!("sending to {lab_app} was cut off, will retry"),
             None,
         ),
-        AttemptOutcome::Rejected => (
-            Tone::Problem,
-            Icon::Problem,
-            "Problem",
-            format!("rejected by {lab_app}"),
-            deliveries(),
-        ),
+        AttemptOutcome::Rejected => (format!("rejected by {lab_app}"), deliveries()),
         AttemptOutcome::Paused => (
-            Tone::Problem,
-            Icon::Problem,
-            "Problem",
             format!("sending to {lab_app} paused: lab app settings need repair"),
             Some((lab_app_href(lab_app), "Lab app")),
         ),
-        AttemptOutcome::Conflict => (
-            Tone::Problem,
-            Icon::Problem,
-            "Problem",
-            format!("{lab_app} reports a conflict"),
-            deliveries(),
-        ),
-    }
-}
-
-/// What a machine order's new state says, as an Activity line says it.
-const fn order_change(state: OrderState) -> (Tone, Icon, &'static str) {
-    match state {
-        OrderState::Requested => (Tone::Neutral, Icon::Order, "not sent yet"),
-        OrderState::Sending => (Tone::Neutral, Icon::Send, "being sent to the machine"),
-        OrderState::Sent => (Tone::Good, Icon::Order, "sent to the machine"),
-        OrderState::Accepted => (Tone::Good, Icon::Order, "accepted by the machine"),
-        OrderState::Done => (Tone::Good, Icon::Order, "done"),
-        OrderState::Rejected => (Tone::Problem, Icon::Problem, "rejected by the machine"),
-        OrderState::CancelRequested => (Tone::Neutral, Icon::Order, "cancel requested"),
-        OrderState::CancelConfirmed => (Tone::Neutral, Icon::Cancelled, "cancelled"),
-        OrderState::Uncertain => (
-            Tone::Attention,
-            Icon::Unknown,
-            "outcome unknown: check the machine",
-        ),
+        AttemptOutcome::Conflict => (format!("{lab_app} reports a conflict"), deliveries()),
     }
 }
 
@@ -2140,7 +2174,7 @@ mod tests {
         assert_eq!(waiting(0, None, now).plain(), "nothing waiting");
         assert_eq!(
             waiting(1, None, now).plain(),
-            "1 item waiting · oldest not known"
+            "1 item waiting · oldest not recorded"
         );
         assert!(
             waiting(4, Some(earlier), now)
@@ -2203,7 +2237,7 @@ mod tests {
 
     // Owner review 2026-11-19 (structure review PR 2): positions read as record
     // and field, and other reasons are unchanged; the stored reason stays beside
-    // the words on each page, now under "For support" (admin restyle b2).
+    // the words on each page, now under "Details for support" (admin restyle b2).
     #[test]
     fn reasons_show_positions_plainly_and_keep_the_stored_text() {
         assert_eq!(

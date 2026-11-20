@@ -22,7 +22,7 @@
 {%- if let Some(from) = row.from %}{% call lists::cell("more-nowrap") %}{{ from }}{% endcall %}{% else %}{% call lists::cell("subtle") %}—{% endcall %}{% endif %}
 {%- call lists::cell("more-nowrap") %}{{ row.to }}{% endcall %}
 {%- if let Some(results) = row.results %}{% call lists::cell("num right") %}{{ results }}{% endcall %}{% else %}{% call lists::cell("right subtle") %}—{% endcall %}{% endif %}
-{%- call lists::cell("") %}{% call display::status_exact(row.outcome.tone, row.outcome.word, row.outcome.exact) %}{% endcall %}{% endcall %}
+{%- call lists::cell("") %}{% call display::status_with(row.outcome.tone, row.outcome.icon, row.outcome.word, row.outcome.exact) %}{% endcall %}{% endcall %}
 {%- if let Some(href) = row.resend %}{% call lists::cell("right more-nowrap") %}<a class="link" href="{{ href }}">Send again</a>{% endcall %}{% else %}{% call lists::cell("") %}{% endcall %}{% endif %}</tr>
 {%- endfor %}
 {% endcall %}
@@ -33,7 +33,7 @@
 {%- if let Some(dialog) = dialog %}
 {% call forms::reason_dialog(dialog) %}
 <label class="check"><input type="checkbox" name="acknowledge_superseded" value="true"{% if dialog.superseded %} checked{% endif %}>Send it even if a newer correction of this result exists</label>
-{% call feedback::support("For support", dialog.support.as_slice()) %}{% endcall %}
+{% call feedback::support(crate::admin::view::format::SUPPORT, dialog.support.as_slice()) %}{% endcall %}
 {%- endcall %}
 {%- endif %}
 {%- endblock %}

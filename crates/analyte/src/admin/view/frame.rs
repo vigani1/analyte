@@ -4,9 +4,51 @@
 //! answered ("Engine running") and when ("Page loaded 10:45"). While the live
 //! stream is connected, `live.js` turns that into "Live · 10:45:12" and lets
 //! the dot pulse; the frame names the live area its page shows.
+//!
+//! The Needs review count beside its link is read once per signed-in request
+//! ([`review_count`], run by the server before the page) and every frame that
+//! request builds shows it ([`with_review`]), so the sidebar is the same on
+//! every page. A page that reads the count itself, newer, passes its own.
 use super::{Tab, assets::Root, format, icon::Icon};
 use crate::admin::{server::Context, sessions::Session};
+use analyte_store::{AlertKey, OperatorError};
 use jiff::Timestamp;
+use std::time::{Duration, Instant};
+
+/// How long the sidebar's count may take to read: it is one row, so a store
+/// busier than this leaves the count out rather than delay the page, and the
+/// page's own reads keep their [`super::READ_BUDGET`] within the request's.
+pub(in crate::admin) const REVIEW_BUDGET: Duration = Duration::from_millis(100);
+
+tokio::task_local! {
+    /// The open Needs review count read for this request; none when it could
+    /// not be read in time.
+    static REVIEW: Option<u64>;
+}
+
+/// The open Needs review count, as the parked-items alert counts it (one
+/// stored row, kept by the store as items are parked and resolved), within
+/// [`REVIEW_BUDGET`]; none when it could not be read in time. A request
+/// still queued at its deadline is skipped by the store.
+pub(in crate::admin) async fn review_count(state: &Context) -> Option<u64> {
+    let until = Instant::now().checked_add(REVIEW_BUDGET)?;
+    let now = Timestamp::now().as_second();
+    state
+        .store
+        .request::<_, OperatorError>(until, move |s| {
+            s.alert_value(&AlertKey::ParkedItems, now, &[])
+        })
+        .await
+        .inspect_err(|error| tracing::debug!(%error, "the sidebar's count could not be read"))
+        .ok()
+        .flatten()
+}
+
+/// Runs `page` so that every frame it builds shows `review`, the count read
+/// once for its request.
+pub(in crate::admin) async fn with_review<F: Future>(review: Option<u64>, page: F) -> F::Output {
+    REVIEW.scope(review, page).await
+}
 
 /// The page frame: the `<title>`, the static file root and the sidebar.
 pub(in crate::admin) struct Frame {
@@ -84,8 +126,9 @@ const MORE: [Tab; 5] = [
 ];
 
 impl Frame {
-    /// The frame of page `current`. `review` is the open Needs review count,
-    /// none when it could not be read.
+    /// The frame of page `current`. `review` is an open Needs review count
+    /// the page read itself, newer than its request's (as after an action);
+    /// with none the frame shows the count read for the request, if any.
     pub(in crate::admin) fn new(
         state: &Context,
         current: Tab,
@@ -94,6 +137,7 @@ impl Frame {
         session: Option<&Session>,
         now: Timestamp,
     ) -> Self {
+        let review = review.or_else(|| REVIEW.try_with(|count| *count).ok().flatten());
         Self {
             title: title.into(),
             assets: state.assets.as_str().to_owned(),

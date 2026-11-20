@@ -58,14 +58,14 @@
 {%- for message in recent %}
 <tr>{% call lists::cell("num") %}{% call display::time(message.when) %}{% endcall %}{% endcall %}
 {%- if let Some((shown, all)) = message.sample %}{% call lists::cell("num") %}<span title="{{ all }}">{{ shown }}</span>{% endcall %}{% else %}{% call lists::cell("num subtle") %}—{% endcall %}{% endif %}
-{%- call lists::cell("") %}{% call display::status_exact(message.reading.tone, message.reading.word, message.reading.exact) %}{% endcall %}{% if let Some(review) = message.review %}<div class="cell-sub cell-note"><a class="link" href="{{ review.href }}">{{ review.label }}</a></div>{% endif %}{% endcall %}
-{%- if let Some(delivery) = message.delivery %}{% call lists::cell("") %}{% call display::status_exact(delivery.tone, delivery.word, delivery.exact) %}{% endcall %}{% endcall %}{% else %}{% call lists::cell("subtle") %}None queued{% endcall %}{% endif %}
+{%- call lists::cell("") %}{% call display::status_with(message.reading.tone, message.reading.icon, message.reading.word, message.reading.exact) %}{% endcall %}{% if let Some(review) = message.review %}<div class="cell-sub cell-note"><a class="link" href="{{ review.href }}">{{ review.label }}</a></div>{% endif %}{% endcall %}
+{%- if let Some(delivery) = message.delivery %}{% call lists::cell("") %}{% call display::status_with(delivery.look.tone, delivery.look.icon, delivery.words, delivery.exact) %}{% endcall %}{% endcall %}{% else %}{% call lists::cell("subtle") %}{{ message.no_delivery }}{% endcall %}{% endif %}
 {%- if let Some(href) = message.href %}{% call lists::cell("") %}<a class="link" href="{{ href }}">How it was read</a>{% endcall %}{% else %}{% call lists::cell("subtle") %}—{% endcall %}{% endif %}</tr>
 {%- endfor %}
 {% endcall %}
 {%- endif %}
 </section>
-{% call feedback::support("For support", support) %}{% endcall %}
+{% call feedback::support(crate::admin::view::format::SUPPORT, support) %}{% endcall %}
 {%- if let Some(dialog) = dialog %}
 {% call forms::list_dialog(dialog) %}{% endcall %}
 {%- endif %}

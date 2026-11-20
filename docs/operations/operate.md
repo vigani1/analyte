@@ -39,10 +39,10 @@ pages were renamed (Needs review is still `/parked`, Cancelled by machine
 
 | Page | Use |
 | --- | --- |
-| Overview | First, whether everything is OK: "All good" in green, or "N things need you" in red with one short line per thing and a link to where it is fixed (items to review, a machine whose service stopped or whose link is off, a lab app that is paused or cannot be sent to, which links to the [Lab app page](#lab-app-page), orders with unknown outcome, orders cancelled by a machine, order sending paused after a restore, the disk reserve reached, and every active alert). The lines come only from what the page measures and the configured alert rules; there are no extra thresholds. Below that, four sections: Machines (connection light, last data, service), Sending to the lab app (results waiting, order list up to date, oldest result waiting, results still being delivered for removed machines), Orders (orders with unknown outcome, orders cancelled by a machine, and "Order sending paused after restore" only while it applies) and Disk and alerts (free space, space always kept free, active alerts). Counts are plain numbers, red when above 0. Hovering a label or value shows its exact technical name or value. While no machine is set up, nothing needs anyone and nothing waits for a lab app, the page shows only a welcome card with a button to Setup. |
+| Overview | First, whether everything is OK: "All good" in green, or "N things need you" in red with one short line per thing and a link to where it is fixed (items to review, a machine whose service stopped or whose link is off, a lab app that is paused or cannot be sent to, which links to the [Lab apps page](#lab-apps-page), orders with unknown outcome, orders cancelled by a machine, order sending paused after a restore, the disk reserve reached, and every active alert). The lines come only from what the page measures and the configured alert rules; there are no extra thresholds. Below that, four sections: Machines (connection light, last data, service), Sending to the lab app (results waiting, order list up to date, oldest result waiting, results still being delivered for removed machines), Orders (orders with unknown outcome, orders cancelled by a machine, and "Order sending is paused after a restore" only while it applies) and Disk and alerts (free space, space always kept free, active alerts). Counts are plain numbers, red when above 0. Hovering a label or value shows its exact technical name or value. While no machine is set up, nothing needs anyone and nothing waits for a lab app, the page shows only a welcome card with a button to Setup. |
 | Needs review | Items Analyte kept but could not process (parked items). Each item shows its category, its reason, a "What to do" line in plain words and its action button: Process again for items linked to a message, Send again for a delivery the lab app rejected. The button opens the same confirmation page as before, which asks for a reason and records it. **Mark resolved** is the main button for a conflicting delivery, a refused order version, a cancel conflict and a machine exchange with unknown outcome, and a secondary button on every other item for when the lab decides nothing more is needed. It asks for a reason and uses the same resolution and audit as `analyte parked resolve`: nothing is deleted, and the item stays in the history, marked resolved with who and why. Linked record IDs and receipt times are on the item's own page. Showing the original bytes requires an audited browser POST. |
 | Machines | Config, link light and activity. TCP server: Waiting or Connected. TCP client: Connected or Not connected (retrying). Serial: only Port open or Port not open, because an open port proves no cable or machine. Watched folder: Watching or Not watching. Last data received ("Nothing yet" before anything arrived) and the time of the last change show as a local date and time with an age. The settings version shows its first 12 digits; hover for the full digest. |
-| Setup | Add or remove machines; choose a machine model, its port or address and pick its lab app; test by listening; save; restart. See [Setup page](#setup-page). Its **Lab apps** link opens the [Lab app page](#lab-app-page), where each lab app's address and keys are set once. |
+| Setup | Add or remove machines; choose a machine model, its port or address and pick its lab app; test by listening; save; restart. See [Setup page](#setup-page). Its **Lab apps** link opens the [Lab apps page](#lab-apps-page), where each lab app's address and keys are set once. |
 | Machine orders (More) | Inspect lifecycle; reconciliation remains a CLI task. |
 | Cancelled by machine (More) | Orders a machine cancelled on its own, to check with the lab and the lab app. See [LAW execution](#law-execution-and-analyzer-cancellation). |
 | Deliveries (More) | Inspect status and confirm "Send again" for eligible deliveries, with a reason. |
@@ -80,13 +80,13 @@ button. The table shows
 each machine's model by name (for example "Roche cobas e 411", from the first
 line of the model's README) and the short settings version. A machine
 listed without a `definition` (the installers' `machine-1`, or one added with
-**Add machine**) shows as **Not set up yet**: it does not run until you choose
+**Add a machine**) shows as **Not set up yet**: it does not run until you choose
 its model in step 1 and save; the save adds the `definition` line to its
 program entry, and the restart starts it. A machine saved or added since the
 last start shows as not running until the restart; a removed one shows as
 running until the restart.
 
-**Add machine** asks for a name and suggests the next free `machine-N`. A name
+**Add a machine** asks for a name and suggests the next free `machine-N`. A name
 uses letters, digits, `-` and `_`, because it also names the machine's site file
 (`<name>.site.toml` beside the program file); a name already listed (ignoring
 case) or one the page uses itself (`add`, `first`, `lab-apps`, `listen`, `restart`) is refused before
@@ -98,7 +98,7 @@ machine joins that history again: the page asks you to confirm it is the same
 analyzer, and a different analyzer should get a new name. After adding, the
 page goes straight to step 1 for the new machine. On a first run, the
 Overview's **Set up a machine** button opens step 1 for the first machine that
-is not set up yet (the installers' `machine-1`), or **Add machine** when none
+is not set up yet (the installers' `machine-1`), or **Add a machine** when none
 is listed.
 
 **Remove machine** first shows what is still unfinished for that machine:
@@ -114,7 +114,7 @@ visible on the other pages.
 
 Stored results and order messages keep being delivered after a removal, even
 when no other machine uses the same lab app. The lab app simply stays on the
-[Lab app page](#lab-app-page) (`lab-apps.toml`); if the machine's site file
+[Lab apps page](#lab-apps-page) (`lab-apps.toml`); if the machine's site file
 still wrote its own `[destination]`, removing moves it there first, in the same
 checked write. At each start, Analyte runs a delivery-only worker for every lab
 app that no set-up machine uses: it sends what is waiting with the usual
@@ -133,12 +133,12 @@ wait for a destination that is no lab app stay stored and are never deleted;
 the pages show "Cannot send to lab app X: it is not set up any more", the
 service log says so at each start, and an `undeliverable_destination` alert, if
 configured, raises for them with the reason and the fix (see
-[Alerts](#alerts-and-named-responders)). Add lab app X on the Lab app page and
+[Alerts](#alerts-and-named-responders)). Add lab app X on the Lab apps page and
 restart to send them. If a lab app's keys are missing, its deliveries pause
 with "destination credentials require operator repair", the service keeps
 running, and the same alert raises with that reason. The Overview and the Setup
 page then say "Cannot send to lab app X: its API key or signing key is
-missing" with the same fix (enter them on the Lab app page), not "still being
+missing" with the same fix (enter them on the Lab apps page), not "still being
 delivered".
 Removing the last machine is allowed: Analyte then serves only the admin page
 (and delivers what still waits) until a machine is added.
@@ -154,7 +154,7 @@ A row of numbered steps at the top shows where you are: **1 Machine**,
 **2 Connection**, **3 Test**, **4 Save**. Each screen has **Back** and **Next**,
 and Back and Next keep what you chose. The pages use no script, so each screen
 carries the earlier choices along as hidden form fields (never a key: keys are
-set on the [Lab app page](#lab-app-page)). Those fields are not trusted: every
+set on the [Lab apps page](#lab-apps-page)). Those fields are not trusted: every
 step checks all earlier choices again, and Save checks everything once more. A
 choice that is missing or not valid (for example a model that is not ready, or
 an address that is not an IP address) is refused with "Fix this in step N" and
@@ -174,7 +174,7 @@ nothing is written before **Save**.
    is not used. For a network machine, enter the IP address and port: the
    address Analyte listens on when the machine connects to Analyte, or the
    machine's address when Analyte connects to it. On the same screen, "Send
-   results to" picks one lab app from the [Lab app page](#lab-app-page). With
+   results to" picks one lab app from the [Lab apps page](#lab-apps-page). With
    only one, it is chosen already. With none, the page links to the Lab app
    page to add one first. Keys are not asked here.
 3. **Test (listen only).** **Start the test** opens the chosen port or address
@@ -229,11 +229,11 @@ entry in the program file and its site file; removing may also add its lab app
 to `lab-apps.toml`. A machine added on the page gets a starter site file with
 only the retention.
 
-### Lab app page
+### Lab apps page
 
 On a fresh install the Setup page says "No lab app yet: add one", with a link;
 a machine that is not set up yet needs no lab app, so the service starts and
-serves the page without one. The Lab app page (Setup, then **Lab apps**) lists
+serves the page without one. The Lab apps page (Setup, then **Lab apps**) lists
 each lab app once: its
 address, which machines send to it, whether its keys are set ("set on
 <date>", never the value) and how many results wait for it. A lab app still
@@ -306,8 +306,8 @@ deleted. Its two reasons, as status and the Overview show them:
 
 | Reason | Means | Fix |
 | --- | --- | --- |
-| `not_configured` | No machine and no lab app uses destination X (for example its machine's settings were unreadable at removal, or a lab app was renamed). | Add lab app X on the Lab app page and restart, or restore its settings; the results are kept and will be sent once it is configured. |
-| `credentials_missing` | Lab app X is listed, but its API key or signing key could not be loaded; its deliveries are paused. | Enter the API key and signing key for lab app X on the Lab app page or in the service environment, then restart; the results are kept and will be sent once the keys are set. |
+| `not_configured` | No machine and no lab app uses destination X (for example its machine's settings were unreadable at removal, or a lab app was renamed). | Add lab app X on the Lab apps page and restart, or restore its settings; the results are kept and will be sent once it is configured. |
+| `credentials_missing` | Lab app X is listed, but its API key or signing key could not be loaded; its deliveries are paused. | Enter the API key and signing key for lab app X on the Lab apps page or in the service environment, then restart; the results are kept and will be sent once the keys are set. |
 
 It clears when the items are delivered or, after a restart, when the destination is
 configured again with its keys. Keys that the lab app rejects are not this alert:

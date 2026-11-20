@@ -38,7 +38,7 @@ pub(super) fn starter_site(id: &Identifier) -> String {
         concat!(
             "# Starter site settings for {}, written by the Analyte setup page. The setup\n",
             "# page fills in the connection and picks the lab app, which is set once on\n",
-            "# the Lab app page.\n",
+            "# the Lab apps page.\n",
             "schema_version = 1\n",
             "# Keep every result until the lab sets a retention period (ADR 0013).\n",
             "retention = \"keep\"\n"
