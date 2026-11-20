@@ -218,9 +218,7 @@ impl Store {
             .prepare(concat!(
                 events!(),
                 "SELECT coalesce(at,-9223372036854775808) AS sort,source,key,at,machine FROM events ",
-                "WHERE (?1 IS NULL OR machine=?1) AND (?2 IS NULL OR grp=?2) ",
-                "AND (coalesce(at,-9223372036854775808),source,key)<(?3,?4,?5) ",
-                "ORDER BY sort DESC,source DESC,key DESC LIMIT ?6"
+                "WHERE (?1 IS NULL OR machine=?1) AND (?2 IS NULL OR grp=?2) AND (coalesce(at,-9223372036854775808),source,key)<(?3,?4,?5) ORDER BY sort DESC,source DESC,key DESC LIMIT ?6"
             ))?
             .query_map(
                 params![
