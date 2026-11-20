@@ -12,13 +12,13 @@ use analyte_model::{
 use analyte_store::{Interpretation, Parked, Reading};
 
 /// A fixed "now" for stored times, in the past so pages read it as a date.
-const AT: i64 = 1_795_046_077;
+pub(super) const AT: i64 = 1_795_046_077;
 
 /// A test code and a value that must never show on a page.
-const CODE: &str = "XLT9";
-const VALUE: &str = "positive-value";
+pub(super) const CODE: &str = "XLT9";
+pub(super) const VALUE: &str = "positive-value";
 
-fn id(text: &str) -> Result<Identifier, FixtureError> {
+pub(super) fn id(text: &str) -> Result<Identifier, FixtureError> {
     Identifier::new(text).map_err(FixtureError::Text)
 }
 
@@ -200,7 +200,7 @@ fn row<'a>(page: &'a str, name: &str) -> &'a str {
 }
 
 /// One stored message from `machine` received at `at`.
-fn receive(
+pub(super) fn receive(
     store: &mut analyte_store::Store,
     machine: &str,
     at: i64,
@@ -230,7 +230,7 @@ fn receive(
 }
 
 /// One result for `receipt` from sample `sample`, with a test code and value no page may show.
-fn result(receipt: ReceiptId, sample: Option<&str>) -> Result<ResultContent, Error> {
+pub(super) fn result(receipt: ReceiptId, sample: Option<&str>) -> Result<ResultContent, Error> {
     let test = NamespacedId {
         namespace: Identifier::new("local")?,
         value: Identifier::new(CODE)?,
@@ -278,7 +278,7 @@ fn result(receipt: ReceiptId, sample: Option<&str>) -> Result<ResultContent, Err
 }
 
 /// A reading's stored evidence with `outcome` and `departures`.
-fn evidence(
+pub(super) fn evidence(
     outcome: Reading,
     departures: Option<analyte_model::DepartureEvidence>,
 ) -> Result<String, Error> {
@@ -295,7 +295,7 @@ fn evidence(
 }
 
 /// The store's key for `id`: its UUID as a JSON string.
-fn key(id: ReceiptId) -> Result<String, Error> {
+pub(super) fn key(id: ReceiptId) -> Result<String, Error> {
     Ok(serde_json::to_string(&uuid::Uuid::from(id).to_string())?)
 }
 

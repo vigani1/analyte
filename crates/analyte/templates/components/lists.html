@@ -34,7 +34,7 @@
 {%- macro table(columns) -%}
 <div class="card table-wrap">
 <table class="table">
-<thead><tr>{% for column in columns %}<th scope="col"{% if column.right %} class="right"{% endif %}>{{ column.label }}</th>{% endfor %}</tr></thead>
+<thead><tr>{% for column in columns %}<th scope="col"{% if column.right %} class="right"{% endif %}>{% if column.hidden %}<span class="sr-only">{{ column.label }}</span>{% else %}{{ column.label }}{% endif %}</th>{% endfor %}</tr></thead>
 <tbody>
 {{- caller() }}
 </tbody>

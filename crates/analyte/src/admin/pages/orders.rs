@@ -1,235 +1,282 @@
-//! Renders protected machine orders and retained cache evidence.
-use super::{Cursor, PAGE, finish, next, one_page, pause};
-use crate::admin::view::{self, Tab, exact, format, row};
-use crate::{
-    admin::{Error, markup::Markup, server::Context},
-    deadline,
-};
-use analyte_model::Identifier;
-use analyte_store::MachineOrderFilter;
+//! Serves Machine orders (GET /orders): the All, Unknown and Cancelled filters with their counts, then one row per order Analyte sent to a machine with its four separate states.
+use super::page::{Empty, Look, OrderRow, Orders};
+use super::{PAGE, cursor_value, next_href, one_page};
+use crate::admin::error::CommandError;
+use crate::admin::sessions::Session;
+use crate::admin::view::{Tab, Tone, format, frame::Frame, icon::Icon, report::Chip};
+use crate::admin::{Error, server::Context};
+use crate::deadline;
+use analyte_model::OrderState;
+use analyte_store::{CachedOrder, MachineOrder, MachineOrderFilter};
+use askama::Template as _;
 use axum::{
+    Extension,
     extract::{Query, State},
     response::Response,
 };
+use jiff::Timestamp;
+use serde::Deserialize;
 use std::sync::Arc;
+
+/// Which orders the list shows; the sidebar's link opens them all.
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+enum Show {
+    #[default]
+    All,
+    /// Orders whose outcome is unknown: check the machine.
+    Unknown,
+    /// Orders the lab app cancelled and the machine confirmed.
+    Cancelled,
+}
+
+impl Show {
+    const fn state(self) -> Option<OrderState> {
+        match self {
+            Self::All => None,
+            Self::Unknown => Some(OrderState::Uncertain),
+            Self::Cancelled => Some(OrderState::CancelConfirmed),
+        }
+    }
+
+    const fn href(self) -> &'static str {
+        match self {
+            Self::All => "/orders",
+            Self::Unknown => "/orders?show=unknown",
+            Self::Cancelled => "/orders?show=cancelled",
+        }
+    }
+}
+
+/// GET /orders's query: the filter and the cursor of the page.
+#[derive(Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(in crate::admin) struct OrdersQuery {
+    #[serde(default)]
+    show: Show,
+    #[serde(default, deserialize_with = "cursor_value")]
+    after: u64,
+}
+
+/// What GET /orders reads in one store request.
+struct Read {
+    paused: bool,
+    counts: Vec<(OrderState, u64)>,
+    orders: Vec<(MachineOrder, Option<CachedOrder>)>,
+    more: bool,
+}
+
 pub(in crate::admin) async fn orders(
     State(state): State<Arc<Context>>,
-    Query(cursor): Query<Cursor>,
+    Query(query): Query<OrdersQuery>,
+    session: Option<Extension<Arc<Session>>>,
 ) -> Response {
-    let result = orders_page(&state, cursor).await;
-
-    finish(result)
+    let show = query.show;
+    super::show(
+        &state,
+        session.as_ref(),
+        Tab::MachineOrders,
+        read(&state, query),
+        |read, session, now| page(&state, session, show, &read, now).render(),
+    )
+    .await
 }
 
-async fn orders_page(state: &Context, cursor: Cursor) -> Result<Markup, Error> {
-    let after = i64::try_from(cursor.after)?;
-    let (rows, last, more) = state
+async fn read(state: &Context, query: OrdersQuery) -> Result<Read, Error> {
+    let after = i64::try_from(query.after)?;
+    let filter = move |after| MachineOrderFilter {
+        after,
+        machine: None,
+        state: query.show.state(),
+    };
+    Ok(state
         .store
-        .request::<_, crate::admin::error::CommandError>(deadline()?, move |s| {
-            let mut html = Markup::new();
-            let mut last = None;
-            let now = jiff::Timestamp::now();
-            let all = |after| MachineOrderFilter {
-                after,
-                machine: None,
-                state: None,
-            };
-            let (fetched, more) = one_page::<_, crate::admin::error::CommandError>(
-                s.machine_orders(&all(after))?,
-                PAGE,
-                |last| Ok(!s.machine_orders(&all(last.id))?.is_empty()),
-            )?;
-            for order in fetched {
-                html.push_fragment(&order_section(&order, now));
-                for item in &order.items {
-                    html.push_fragment(&super::awos::projection(item));
-                }
-                render_cache(&mut html, s, &order, now)?;
-                html.push_markup("</section>");
-                last = Some(order.id);
-            }
-            Ok::<_, crate::admin::error::CommandError>((html, last, more))
+        .request::<_, CommandError>(deadline()?, move |s| {
+            let (orders, more) =
+                one_page::<_, CommandError>(s.machine_orders(&filter(after))?, PAGE, |last| {
+                    Ok(!s.machine_orders(&filter(last.id))?.is_empty())
+                })?;
+            let orders = orders
+                .into_iter()
+                .map(|order| {
+                    let cached = s.cached_order(&order.key.destination, &order.key.order)?;
+                    Ok::<_, CommandError>((order, cached))
+                })
+                .collect::<Result<_, _>>()?;
+            Ok(Read {
+                paused: s.restore_unreconciled()?,
+                counts: s.machine_order_counts()?,
+                orders,
+                more,
+            })
         })
-        .await?;
-    let mut html = view::page(Tab::MachineOrders, "Machine orders").markup(concat!(
-        "<p class=\"lead\">Orders from the lab app that Analyte sent to a machine, with what ",
-        "the machine did with them. Analyte never sends an order again on its own.</p>",
-    ));
-    pause(state, &mut html).await?;
-    if last.is_none() {
-        html.push_markup("<p class=\"muted\">No orders to show.</p>");
+        .await?)
+}
+
+fn page(
+    state: &Context,
+    session: Option<&Session>,
+    show: Show,
+    read: &Read,
+    now: Timestamp,
+) -> Orders {
+    let count = |wanted: Option<OrderState>| -> u64 {
+        read.counts
+            .iter()
+            .filter(|(state, _)| wanted.is_none_or(|wanted| *state == wanted))
+            .map(|&(_, count)| count)
+            .sum()
+    };
+    let chips = [
+        (Show::All, "All"),
+        (Show::Unknown, "Unknown"),
+        (Show::Cancelled, "Cancelled"),
+    ]
+    .into_iter()
+    .map(|(filter, label)| Chip {
+        href: filter.href(),
+        label,
+        count: count(filter.state()),
+        current: filter == show,
+    })
+    .collect();
+    let next = read
+        .orders
+        .last()
+        .filter(|_| read.more)
+        .map(|(last, _)| next_href(show.href(), last.id));
+    let empty = read
+        .orders
+        .is_empty()
+        .then(|| empty(show, count(show.state())));
+    Orders {
+        frame: Frame::new(
+            state,
+            Tab::MachineOrders,
+            Tab::MachineOrders.label(),
+            None,
+            session,
+            now,
+        ),
+        chips,
+        paused: read.paused,
+        rows: read
+            .orders
+            .iter()
+            .map(|(order, cached)| row(state, order, cached.as_ref(), now))
+            .collect(),
+        empty,
+        next,
     }
-    html.push_fragment(&rows);
-    if let Some(last) = last
-        && more
+}
+
+/// What a filter with nothing on this page says.
+const fn empty(show: Show, shown: u64) -> Empty {
+    if shown > 0 {
+        return Empty {
+            title: "No more orders",
+            text: "This page is past the last order.",
+            link: Some((Show::All.href(), "Back to the first page")),
+        };
+    }
+    match show {
+        Show::All => Empty {
+            title: "No orders yet",
+            text: "Orders Analyte sends from a lab app to a machine are listed here.",
+            link: None,
+        },
+        Show::Unknown => Empty {
+            title: "No order with an unknown outcome",
+            text: "Every order sent to a machine has a known outcome.",
+            link: Some((Show::All.href(), "Show all orders")),
+        },
+        Show::Cancelled => Empty {
+            title: "No cancelled order",
+            text: "No order was cancelled by the lab app and confirmed by its machine.",
+            link: Some((Show::All.href(), "Show all orders")),
+        },
+    }
+}
+
+/// One order's row: Analyte's own number, its lab app and the version sent
+/// stay on hover; test codes never leave the store.
+fn row(
+    state: &Context,
+    order: &MachineOrder,
+    cached: Option<&CachedOrder>,
+    now: Timestamp,
+) -> OrderRow {
+    let first = order.items.first();
+    let link = if order
+        .items
+        .iter()
+        .any(analyte_store::MachineOrderItem::analyzer_cancelled)
     {
-        next(&mut html, "/orders", last);
-    }
-    Ok(html)
-}
-
-/// One order's heading, facts and the tests sent to the machine, item by item.
-fn order_section(order: &analyte_store::MachineOrder, now: jiff::Timestamp) -> Markup {
-    let mut html = Markup::new();
-    html.push_fragment(
-        &Markup::new()
-            .markup("<section><h2 title=\"Machine order ")
-            .text(order.id)
-            .markup("\">Order: ")
-            .text(order.key.order.as_str())
-            .markup("</h2><dl>")
-            .fragment(&row(
-                "Machine",
-                None,
-                &Markup::new().text(order.key.machine.as_str()),
-            ))
-            .fragment(&row(
-                "Lab app",
-                Some("Destination"),
-                &Markup::new().text(order.key.destination.as_str()),
-            ))
-            .fragment(&row(
-                "Status",
-                None,
-                &exact(format::order_state(order.state), &order.state.to_string()),
-            ))
-            .fragment(&row(
-                "Order version sent",
-                Some("Reserved version"),
-                &Markup::new().text(order.version),
-            ))
-            .fragment(&row(
-                "Last change",
-                None,
-                &format::when_unix(order.updated_at, now),
-            ))
-            .markup("</dl>"),
-    );
-    html.push_markup("<h3 title=\"Durable machine items\">Tests sent to the machine</h3><ul>");
-    for item in &order.items {
-        html.push_fragment(
-            &Markup::new()
-                .markup("<li><strong>Item ")
-                .text(item.index)
-                .markup("</strong>: ")
-                .fragment(&exact(
-                    format::order_state(item.state),
-                    &item.state.to_string(),
-                ))
-                .markup(" <small class=\"muted\" title=\"Placer, namespace and source code\">Order number ")
-                .text(&item.placer)
-                .markup(" (")
-                .text(
-                    item.placer_namespace
-                        .as_ref()
-                        .map_or("namespace not recorded", Identifier::as_str),
-                )
-                .markup("), last note: ")
-                .text(item.source_code.as_str())
-                .markup("</small><ul>"),
-        );
-        if item.coverage_known {
-            for test in &item.tests {
-                html.push_fragment(
-                    &Markup::new()
-                        .markup("<li>Machine test: ")
-                        .text(test.namespace.as_str())
-                        .markup(": ")
-                        .text(test.value.as_str())
-                        .markup("</li>"),
-                );
-            }
-        } else {
-            html.push_markup(concat!(
-                "<li title=\"Historical item coverage unknown (legacy evidence)\">",
-                "Which tests this item covered was not recorded (older data).</li>",
-            ));
-        }
-        html.push_markup("</ul></li>");
-    }
-    if order.items.is_empty() {
-        html.push_markup(concat!(
-            "<li>The tests sent for this order were not recorded (older data); ",
-            "Analyte does not guess them.</li>",
-        ));
-    }
-    html.push_markup("</ul>");
-    html
-}
-
-fn render_cache(
-    html: &mut Markup,
-    store: &analyte_store::Store,
-    order: &analyte_store::MachineOrder,
-    now: jiff::Timestamp,
-) -> Result<(), crate::admin::error::CommandError> {
-    if let Some(cached) = store.cached_order(&order.key.destination, &order.key.order)? {
-        html.push_fragment(
-            &Markup::new()
-                .markup(
-                    "<h3 title=\"Retained order cache\">The lab app's copy of this order</h3><dl>",
-                )
-                .fragment(&row(
-                    "Sample",
-                    None,
-                    &Markup::new().text(cached.sample.as_str()),
-                ))
-                .fragment(&row(
-                    "Cancelled in the lab app",
-                    Some("Tombstone"),
-                    &Markup::new().text(format::yes_no(cached.tombstone)),
-                ))
-                .fragment(&row(
-                    "Kept until",
-                    Some("Cache expiry"),
-                    &format::when_unix(cached.expiry, now),
-                ))
-                .markup("</dl>"),
-        );
-        match analyte_contract::decode::<analyte_contract::Order>(cached.document.as_bytes()) {
-            Ok(document) => {
-                let fields = document.fields();
-                html.push_fragment(
-                    &Markup::new()
-                        .markup("<p title=\"Retained cache version\">Lab app order version ")
-                        .text(fields.version)
-                        .markup(": ")
-                        .text(if fields.version == order.version {
-                            "the same version that was sent."
-                        } else {
-                            concat!(
-                                "a different version from the one sent, so these are not ",
-                                "the tests the machine got.",
-                            )
-                        })
-                        .markup(" Its tests:</p><ul>"),
-                );
-                for item in &fields.tests {
-                    html.push_fragment(
-                        &Markup::new()
-                            .markup("<li>")
-                            .text(item.namespace.as_str())
-                            .markup(": ")
-                            .text(item.value.as_str())
-                            .markup("</li>"),
-                    );
-                }
-                html.push_markup("</ul>");
-            }
-            Err(error) => html.push_fragment(
-                &Markup::new()
-                    .markup("<p>The lab app's copy cannot be read, so its tests are not shown. ")
-                    .markup("<span class=\"muted\">Details for support: <code>")
-                    .text(error.to_string())
-                    .markup("</code></span></p>"),
-            ),
-        }
+        Some((Tab::CancelledByMachine.href().to_owned(), "Review"))
     } else {
-        html.push_markup(concat!(
-            "<p class=\"muted\">No copy of this order from the lab app is kept, so its tests ",
-            "are not shown; Analyte does not guess them.</p>",
-        ));
+        first.map(|item| (format::order_item_href(order.id, item.index), "Details"))
+    };
+    OrderRow {
+        when: format::moment_unix(order.updated_at, now),
+        order: order.key.order.as_str().to_owned(),
+        order_exact: format!(
+            "Lab app {} · order version {} sent · machine order {}",
+            order.key.destination.as_str(),
+            order.version,
+            order.id
+        ),
+        sample: cached.map(|cached| cached.sample.as_str().to_owned()),
+        machine: order.key.machine.as_str().to_owned(),
+        model: model(state, order.key.machine.as_str()),
+        tests: tests(order),
+        status: look(order.state, &order.source_code),
+        link,
     }
+}
 
-    Ok(())
+/// The model name of a set-up machine, read from its settings.
+pub(super) fn model(state: &Context, machine: &str) -> Option<String> {
+    state
+        .machines
+        .iter()
+        .find(|running| running.id.as_str() == machine)
+        .and_then(|running| running.model.clone())
+}
+
+/// How many tests an order sent, counted over its items; none when an older
+/// version did not record which tests an item covered. Never the tests.
+pub(super) fn tests(order: &MachineOrder) -> Option<usize> {
+    if order.items.is_empty() {
+        return None;
+    }
+    order.items.iter().try_fold(0_usize, |sum, item| {
+        item.coverage_known
+            .then(|| sum.saturating_add(item.tests.len()))
+    })
+}
+
+/// An order or item state as a status: its tone, its own icon and its words,
+/// the stored state on hover and, when the outcome is unknown or the machine
+/// rejected it, what was recorded. Sent, accepted, done and cancelled stay
+/// four separate states (safety rule 8).
+pub(super) fn look(state: OrderState, recorded: &analyte_model::SourceText) -> Look {
+    let (tone, icon) = match state {
+        OrderState::Requested | OrderState::Sent | OrderState::CancelRequested => {
+            (Tone::Neutral, Icon::Waiting)
+        }
+        OrderState::Sending => (Tone::Neutral, Icon::Send),
+        OrderState::Accepted => (Tone::Good, Icon::Check),
+        OrderState::Done => (Tone::Good, Icon::Ok),
+        OrderState::Rejected => (Tone::Problem, Icon::Problem),
+        OrderState::CancelConfirmed => (Tone::Neutral, Icon::Cancelled),
+        OrderState::Uncertain => (Tone::Attention, Icon::Unknown),
+    };
+    Look {
+        tone,
+        icon,
+        word: format::order_state(state),
+        exact: state.to_string(),
+        note: matches!(state, OrderState::Uncertain | OrderState::Rejected)
+            .then(|| format!("Recorded: {}", recorded.as_str())),
+    }
 }

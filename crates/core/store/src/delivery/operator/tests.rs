@@ -338,7 +338,7 @@ fn listed_deliveries_say_what_each_carries_and_filter_undelivered() -> TestResul
     let first = all.first().ok_or("first delivery")?;
     assert_eq!(first.kind, DeliveryKind::Result);
     assert_eq!(first.queued_at, Some(100));
-    assert_eq!(first.machines, [metadata.machine.clone()]);
+    assert_eq!(first.machines, std::slice::from_ref(&metadata.machine));
     assert_eq!(
         first.reading,
         Some(RecentOutcome::Results {

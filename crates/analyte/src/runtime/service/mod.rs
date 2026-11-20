@@ -212,7 +212,8 @@ pub(super) async fn serve_with(
     let destinations = Destinations::new(&program, mode, &secrets)?;
     let reach = destinations.reach();
     let secrets = Arc::new(secrets);
-    let (store, admin) = prepare_service(&program, space, mode, &destinations, &reach).await?;
+    let (store, admin) =
+        prepare_service(&program, space, mode, &destinations, &reach, shutdown_bound).await?;
     let admin_states = admin
         .as_ref()
         .map(|server| server.owners.clone())
@@ -274,6 +275,7 @@ async fn prepare_service(
     mode: crate::runtime::hooks::ServiceMode,
     destinations: &Destinations,
     reach: &crate::operator::alerts::Reach,
+    shutdown: Duration,
 ) -> Result<(Arc<Handle>, Option<crate::admin::Server>), Error> {
     let store = open_service_store(program, space).await?;
     let startup = async {
@@ -288,9 +290,15 @@ async fn prepare_service(
         crate::runtime::delivery::recover(&store).await?;
         crate::runtime::delivery::report_unconfigured(&store, &reach.configured).await?;
         super::recovery::run(program, &store).await?;
-        crate::admin::prepare(program, store.clone(), mode, &destinations.draining)
-            .await
-            .map_err(admin_startup_error)
+        crate::admin::prepare(
+            program,
+            store.clone(),
+            mode,
+            &destinations.draining,
+            shutdown,
+        )
+        .await
+        .map_err(admin_startup_error)
     }
     .await;
     let admin = match startup {

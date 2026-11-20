@@ -166,6 +166,9 @@ pub enum CommandError {
     /// The delivery boundary failed.
     #[error(transparent)]
     Delivery(#[from] analyte_store::DeliveryError),
+    /// Order execution evidence could not be read.
+    #[error(transparent)]
+    Reconciliation(#[from] analyte_store::ReconciliationError),
     /// The worker boundary failed.
     #[error(transparent)]
     Worker(#[from] analyte_store::WorkerError),

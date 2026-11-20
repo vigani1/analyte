@@ -175,6 +175,7 @@ async fn start_pages_server(
         reserve: 1,
         setup: crate::admin::setup::Setup::for_test(root),
         assets: crate::admin::view::assets::Root::of_this_build(),
+        installed: crate::admin::pages::Installed::for_test(Vec::new()),
         write_budget: WRITE_BUDGET,
         _released: released,
     });
@@ -194,12 +195,13 @@ async fn start_pages_server(
 }
 
 async fn assert_paginated_lists(host: &str, auth: &str, parked_id: i64) -> Result<(), Error> {
-    // Each listed item is one `<section>`, one card on the restyled Needs review,
-    // or one table row with its name on the restyled Machines.
+    // Each listed item is one card on the restyled Needs review and Cancelled
+    // by machine, or one table row with its name on the restyled Machines and
+    // its order number on the restyled Machine orders.
     for (path, item, sections) in [
         ("/parked", "<article class=\"card\"", 1),
-        ("/orders", "<section>", 1),
-        ("/analyzer-cancelled", "<section>", 0),
+        ("/orders", "<td class=\"num\"><span title=\"Lab app ", 1),
+        ("/analyzer-cancelled", "<li class=\"card\">", 0),
         ("/machines", "<div class=\"cell-main\">", 50),
         ("/machines?after=50", "<div class=\"cell-main\">", 11),
     ] {
@@ -217,12 +219,15 @@ async fn assert_paginated_lists(host: &str, auth: &str, parked_id: i64) -> Resul
     assert!(!page2.contains("</svg>first</span>"));
     let orders = request(host, "/orders", auth, None).await?;
     assert!(orders.contains("Uncertain"));
-    assert!(orders.contains("Order sending is paused after a restore."));
-    assert!(orders.contains("&lt;script&gt;sample&lt;/script&gt;"));
-    assert!(orders.contains("&lt;test&gt;"));
+    assert!(
+        orders.contains("<p class=\"alert__title\">Order sending is paused after a restore</p>")
+    );
+    assert!(orders.contains("&#60;script&#62;sample&#60;/script&#62;"));
+    // Owner decision 2026-11-20 (admin restyle b5): test codes never appear.
+    assert!(!orders.contains("&#60;test&#62;") && !orders.contains("&lt;test&gt;"));
     let orders2 = request(host, "/orders?after=1", auth, None).await?;
-    assert!(orders2.contains("Order: second"));
-    assert!(!orders2.contains("Order: first"));
+    assert!(orders2.contains("\">second</span>"));
+    assert!(!orders2.contains("\">first</span>"));
     for route in ["/machines", "/orders", "/parked", "/analyzer-cancelled"] {
         for query in [
             "after=-1",
@@ -440,13 +445,23 @@ async fn assert_cache_version_stays_distinct(
             })?)
         })
         .await?;
-    let mismatch = request(host, "/orders", auth, None).await?;
+    // The lab app's copy now shows on the order item's page, opened from the list.
+    let list = request(host, "/orders", auth, None).await?;
+    let item = list
+        .split("href=\"/awos/")
+        .nth(1)
+        .and_then(|rest| rest.split('"').next())
+        .ok_or("order item link")?;
+    let mismatch = request(host, &format!("/awos/{item}"), auth, None).await?;
     assert!(mismatch.contains(
-        "a different version from the one sent, so these are not the tests the machine got."
+        "a different version from the one sent, so its tests are not the ones the machine got"
     ));
     assert!(mismatch.contains("Uncertain"));
-    assert!(mismatch.contains("Machine test: local: &lt;test&gt;"));
-    assert!(mismatch.contains("&lt;newtest&gt;"));
+    // Owner decision 2026-11-20 (admin restyle b5): test codes never appear,
+    // neither those sent nor the lab app's newer ones.
+    for code in ["test&#62;", "newtest", "test&gt;"] {
+        assert!(!mismatch.contains(code), "{code}");
+    }
     Ok(())
 }
 

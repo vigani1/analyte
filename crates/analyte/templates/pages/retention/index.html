@@ -1,0 +1,67 @@
+{#- Data keeping (GET /retention): how long each machine's messages are kept, the last clean-up and the oldest message kept, the active holds with who placed them and Release, the form to add a hold, and the Release dialog drawn over the page (GET /retention?release={hold}). -#}
+{% extends "layout/base.html" %}
+{%- import "components/display.html" as display %}
+{%- import "components/feedback.html" as feedback %}
+{%- import "components/forms.html" as forms %}
+{%- import "components/icon.html" as draw %}
+{%- import "components/layout.html" as layout %}
+{%- block main %}
+{% call layout::intro_head("Data keeping", KEEPING_LEDE) %}{% endcall %}
+<div class="stack stack--lg more-narrow">
+{% call layout::label_card("dk-times", "Keeping times") %}
+{%- if policies.is_empty() %}
+<p class="muted more-row__text">No machine is set up.</p>
+{%- else %}
+<dl class="kv">{% for (machine, policy) in policies %}<dt>{{ machine }}</dt><dd>{{ policy }}</dd>{% endfor %}</dl>
+{%- endif %}
+{% endcall %}
+{% call layout::label_card("dk-clean", "Last clean-up") %}
+{%- if clean_up.is_none() %}
+<p class="muted more-row__text">No clean-up has run yet.</p>
+{%- endif %}
+<dl class="kv">
+{%- if let Some(facts) = clean_up %}{% for fact in facts %}{% call display::fact(fact) %}{% endcall %}{% endfor %}{% endif %}
+{%- call display::fact(oldest) %}{% endcall %}
+</dl>
+{% endcall %}
+<section class="section" aria-labelledby="dk-holds">
+<div class="section__head">{% call layout::label("dk-holds", "Holds", "") %}{% endcall %}{% if form.is_some() %}{% call forms::link_button("#dk-add", "Add a hold", "btn--outline btn--sm") %}{% endcall %}{% endif %}</div>
+<p class="muted more-row__text">{{ HOLDS_TEXT }}</p>
+{%- if holds.is_empty() %}
+<div class="card">{% call feedback::empty("No holds", "Nothing is held now; clean-up follows the keeping times.") %}{% endcall %}</div>
+{%- else %}
+<ul class="card rows">
+{%- for hold in holds %}
+<li class="row more-row" title="{{ hold.exact }}">{% call draw::icon(crate::admin::view::icon::Icon::Lock, "") %}{% endcall %}<div class="row__main"><p class="more-row__title">{% call display::words(hold.title) %}{% endcall %}</p><p class="subtle more-row__text">{% call display::words(hold.sub) %}{% endcall %}</p></div>
+{%- if let Some(href) = hold.release %}{% call forms::link_button(href, "Release", "btn--quiet btn--sm") %}{% endcall %}{% endif -%}
+</li>
+{%- endfor %}
+</ul>
+{%- endif %}
+{%- if let Some(href) = next %}
+{% call forms::next_page(href) %}{% endcall %}
+{%- endif %}
+</section>
+{%- if let Some(csrf) = form %}
+<section class="card card--pad stack" id="dk-add" aria-labelledby="dk-add-title">
+<h2 id="dk-add-title" class="label">Add a hold</h2>
+<form class="stack" method="post" action="/retention">
+<input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="operation" value="place">
+<div class="form-grid">
+<div class="field"><label class="field__label" for="dk-scope">Hold a</label><select id="dk-scope" class="select" name="scope"><option value="receipt">Message</option><option value="order">Order</option></select></div>
+<div class="field"><label class="field__label" for="dk-id">Message number or lab app order number</label><input id="dk-id" class="input mono" name="id" required maxlength="256"></div>
+<div class="field"><label class="field__label" for="dk-destination">Lab app (orders only)</label><input id="dk-destination" class="input" name="destination" maxlength="256"></div>
+<div class="field"><label class="field__label" for="dk-reason">Reason</label><input id="dk-reason" class="input" name="reason" required maxlength="256"><span class="field__hint">Recorded with the hold and the time.</span></div>
+</div>
+<label class="check"><input type="checkbox" name="confirm" value="yes" required>I confirm this hold</label>
+<div class="cluster"><button type="submit" class="btn btn--primary">Save hold</button></div>
+</form>
+</section>
+{%- else %}
+{% call feedback::note("Sign in to add or release a hold", "Analyte records who places or releases a hold, so it needs a signed-in browser session.") %}{% endcall %}
+{%- endif %}
+</div>
+{%- if let Some(dialog) = dialog %}
+{% call forms::reason_dialog(dialog) %}{% call forms::hidden_fields(dialog.hidden) %}{% endcall %}{% endcall %}
+{%- endif %}
+{%- endblock %}

@@ -51,12 +51,13 @@ const MAIN: [(Tab, Icon); 5] = [
     (Tab::Setup, Icon::Setup),
 ];
 
-/// The pages under "More".
-const MORE: [Tab; 4] = [
+/// The pages under "More", as the Sidebar mockup lists them.
+const MORE: [Tab; 5] = [
     Tab::MachineOrders,
     Tab::CancelledByMachine,
     Tab::Deliveries,
     Tab::DataKeeping,
+    Tab::Settings,
 ];
 
 impl Frame {

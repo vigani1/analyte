@@ -317,6 +317,7 @@ async fn start_action_server(
         reserve: 1,
         setup: crate::admin::setup::Setup::for_test(program.data_directory()),
         assets: crate::admin::view::assets::Root::of_this_build(),
+        installed: crate::admin::pages::Installed::for_test(Vec::new()),
         write_budget: WRITE_BUDGET,
         _released: released,
     });
@@ -347,8 +348,8 @@ async fn retention_page_and_receipt_hold_are_audited() -> Result<(), Error> {
     let page = request(&host, "/retention", &auth, None).await?;
     for text in [
         "<h1>Data keeping</h1>",
-        "How long data is kept",
-        "kept, never deleted",
+        "Keeping times",
+        "Kept, never deleted",
         "Last clean-up",
         "Oldest message kept",
         "it never expires",

@@ -11,7 +11,7 @@ mod page;
 mod problem;
 mod raw;
 
-pub(super) use dialog::{confirm_reprocess, confirm_resolve, reprocess, resolve};
+pub(super) use dialog::{checked, confirm_reprocess, confirm_resolve, reprocess, resolve};
 pub(super) use raw::{RawError, raw};
 
 use crate::admin::error::CommandError;
@@ -109,13 +109,6 @@ fn linked(store: &Store, target: &Identifier) -> Result<Linked, OperatorError> {
         Err(OperatorError::Purged) => Ok(Linked::Removed),
         Err(error) => Err(error),
     }
-}
-
-/// The signed-in browser session, when the request has one.
-fn signed_in(session: Option<&Extension<Arc<Session>>>) -> Option<&Session> {
-    session
-        .map(|Extension(session)| session.as_ref())
-        .filter(|session| session.authenticated)
 }
 
 /// A page rendered with `status`, or the store-failure page when it could not be written.

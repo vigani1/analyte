@@ -20,6 +20,14 @@ impl Session {
     }
 }
 
+/// The signed-in browser session, when the request has one; a request with
+/// the admin key alone or a session not signed in yet has none.
+pub(super) fn signed_in(session: Option<&axum::Extension<Arc<Session>>>) -> Option<&Session> {
+    session
+        .map(|axum::Extension(session)| session.as_ref())
+        .filter(|session| session.authenticated)
+}
+
 #[derive(Default)]
 pub(super) struct Sessions {
     // Protects capacity, expiry and session replacement; guards never cross await.

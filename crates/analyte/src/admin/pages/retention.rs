@@ -1,172 +1,293 @@
-//! Shows retention policy and committed purge evidence and applies audited operator holds.
-use super::Cursor;
-use crate::admin::Error;
-use crate::admin::markup::Markup;
-use crate::admin::{
-    server::Context,
-    sessions::Session,
-    view::{self, Tab, count, format},
+//! Serves Data keeping (GET and POST /retention): how long each machine's messages are kept, the last clean-up, the active holds with who placed them, and the audited hold form, with each hold's Release dialog drawn over the page (GET /retention?release={hold}).
+use super::page::{HoldRow, Keeping, ReleaseDialog};
+use super::{Outcome, PAGE, cursor_value, next_href, one_page, report, show};
+use crate::admin::error::CommandError;
+use crate::admin::sessions::{Session, signed_in};
+use crate::admin::view::{
+    Tab, Tone, format,
+    format::Line,
+    frame::Frame,
+    report::{Fact, Status, Value},
 };
+use crate::admin::{Error, server::Context};
 use crate::deadline;
 use analyte_model::{Identifier, Reason};
-use analyte_store::{Audit, HoldTarget};
+use analyte_store::{Audit, HoldTarget, PurgeRun, RetentionHold};
+use askama::Template as _;
 use axum::{
     Extension, Form,
     extract::{Query, State},
     http::StatusCode,
-    response::{Html, IntoResponse, Response},
+    response::Response,
 };
+use jiff::Timestamp;
 use serde::Deserialize;
 use std::sync::Arc;
 
-fn page(body: &Markup) -> Response {
-    Html(
-        view::page(Tab::DataKeeping, "Data keeping")
-            .markup(concat!(
-                "<p class=\"lead\" title=\"Retention and holds\">How long Analyte keeps ",
-                "received messages, and holds that keep chosen data until someone releases ",
-                "them.</p>",
-            ))
-            .fragment(body)
-            .markup(view::END),
-    )
-    .into_response()
-}
-fn failure(error: &dyn std::error::Error) -> Response {
-    (
-        StatusCode::CONFLICT,
-        Html(view::message(Tab::DataKeeping, "Hold not saved", error)),
-    )
-        .into_response()
-}
-pub(in crate::admin) async fn show(
-    State(state): State<Arc<Context>>,
-    Query(cursor): Query<Cursor>,
-    session: Option<Extension<Arc<Session>>>,
-) -> Response {
-    match render(
-        &state,
-        session.as_ref().map(|Extension(s)| s.as_ref()),
-        cursor.after,
-    )
-    .await
-    {
-        Ok(body) => page(&body),
-        Err(error) => failure(&error),
-    }
-}
-async fn render(state: &Context, session: Option<&Session>, after: u64) -> Result<Markup, Error> {
-    let after = i64::try_from(after)?;
-    let (last, oldest, holds) = state
-        .store
-        .request::<_, crate::admin::error::CommandError>(deadline()?, move |store| {
-            Ok::<_, crate::admin::error::CommandError>((
-                store.last_purge_run()?,
-                store.oldest_retained_receipt()?,
-                store.retention_holds(after)?,
-            ))
-        })
-        .await?;
-    let now = jiff::Timestamp::now();
-    let mut html = Markup::new()
-        .markup("<section><h2 title=\"Retention policy\">How long data is kept</h2><ul>");
-    for (machine, days) in &state.retention {
-        let policy = days.map_or_else(
-            || "kept, never deleted".into(),
-            |days| {
-                format!(
-                    "deleted {} after the lab app last confirmed it",
-                    format::amount(days, "day", "days")
-                )
-            },
-        );
-        html.push_fragment(
-            &Markup::new()
-                .markup("<li>")
-                .text(machine.as_str())
-                .markup(": ")
-                .text(&policy)
-                .markup("</li>"),
-        );
-    }
-    if state.retention.is_empty() {
-        html.push_markup("<li>No machine is set up.</li>");
-    }
-    html.push_markup("</ul></section><section><h2 title=\"Last purge run\">Last clean-up</h2>");
-    html.push_fragment(&last.map_or_else(
-        || Markup::new().markup("<p class=\"muted\">No clean-up has run yet.</p>"),
-        |run| last_run(&run, now),
-    ));
-    html.push_markup(
-        "</section><section><h2 title=\"Oldest retained receipt\">Oldest message kept</h2><p>",
-    );
-    html.push_fragment(&oldest.map_or_else(
-        || Markup::new().text("None kept."),
-        |time| {
-            Markup::new()
-                .text("Received ")
-                .fragment(&format::when_unix(time, now))
-        },
-    ));
-    html.push_markup(concat!(
-        "</p></section><section><h2 title=\"Active holds\">Holds</h2><p class=\"muted\">",
-        "A hold keeps data from clean-up until someone releases it; it never expires. ",
-        "Holding an order also keeps its messages. When Analyte is not sure what belongs ",
-        "together, it keeps more.</p><ul>",
-    ));
-    let next = holds.last().map(|hold| hold.sequence);
-    if holds.is_empty() {
-        html.push_markup("<li>No holds.</li>");
-    }
-    for hold in holds {
-        html.push_fragment(
-            &Markup::new()
-                .markup("<li title=\"")
-                .text(&serde_json::to_string(&hold.target)?)
-                .markup("\">")
-                .fragment(&held(&hold.target))
-                .markup("</li>"),
-        );
-    }
-    html.push_markup("</ul>");
-    if let Some(after) = next {
-        html.push_fragment(
-            &Markup::new()
-                .markup("<p><a class=\"button secondary\" rel=\"next\" href=\"/retention?after=")
-                .text(after)
-                .markup("\">More holds</a></p>"),
-        );
-    }
-    html.push_markup("</section>");
-    render_form(&mut html, session);
-    Ok(html)
-}
-/// What the last clean-up did, as plain numbers; failures show red.
-fn last_run(run: &analyte_store::PurgeRun, now: jiff::Timestamp) -> Markup {
-    let number = |value: &dyn std::fmt::Display| Markup::new().text(value);
-    Markup::new()
-        .markup("<dl>")
-        .fragment(&view::row("Ran", None, &format::when_unix(run.time, now)))
-        .fragment(&view::row(
-            "Messages checked",
-            Some("Examined"),
-            &number(&run.examined),
-        ))
-        .fragment(&view::row(
-            "Messages deleted",
-            Some("Purged receipts"),
-            &number(&run.purged),
-        ))
-        .fragment(&view::row(
-            "Orders deleted",
-            Some("Purged orders"),
-            &number(&run.orders),
-        ))
-        .fragment(&view::row("Paused", None, &number(&run.paused)))
-        .fragment(&view::row("Failed", None, &count(u64::from(run.failed))))
-        .markup("</dl>")
+/// GET /retention's query: the cursor of the holds and the hold to release.
+#[derive(Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(in crate::admin) struct KeepingQuery {
+    #[serde(default, deserialize_with = "cursor_value")]
+    after: u64,
+    /// The hold whose Release dialog is drawn over the page.
+    #[serde(default)]
+    release: Option<i64>,
 }
 
+/// What Data keeping reads in one store request.
+struct Read {
+    last: Option<PurgeRun>,
+    oldest: Option<i64>,
+    holds: Vec<Held>,
+    /// More holds follow this page.
+    more: bool,
+    /// The hold the Release dialog is about, when one was asked for.
+    releasing: Option<Held>,
+}
+
+/// One active hold and, for a message, where it came from.
+struct Held {
+    hold: RetentionHold,
+    message: Option<(String, Timestamp)>,
+}
+
+pub(in crate::admin) async fn show_page(
+    State(state): State<Arc<Context>>,
+    Query(query): Query<KeepingQuery>,
+    session: Option<Extension<Arc<Session>>>,
+) -> Response {
+    let signed = signed_in(session.as_ref());
+    let release = query.release.filter(|_| signed.is_some());
+    show(
+        &state,
+        session.as_ref(),
+        Tab::DataKeeping,
+        read(&state, query.after, release),
+        |read, session, now| page(&state, session, signed, &read, now).render(),
+    )
+    .await
+}
+
+async fn read(state: &Context, after: u64, release: Option<i64>) -> Result<Read, Error> {
+    let after = i64::try_from(after)?;
+    Ok(state
+        .store
+        .request::<_, CommandError>(deadline()?, move |store| {
+            let held = |hold: RetentionHold| -> Result<Held, CommandError> {
+                let message = match &hold.target {
+                    HoldTarget::Receipt(id) => store.receipt_metadata(*id)?.map(|metadata| {
+                        (metadata.machine.as_str().to_owned(), metadata.received_at)
+                    }),
+                    HoldTarget::Order { .. } => None,
+                };
+                Ok(Held { hold, message })
+            };
+            let releasing = match release {
+                Some(sequence) => store
+                    .retention_holds(sequence.saturating_sub(1))?
+                    .into_iter()
+                    .find(|hold| hold.sequence == sequence)
+                    .map(&held)
+                    .transpose()?,
+                None => None,
+            };
+            let (holds, more) =
+                one_page::<_, CommandError>(store.retention_holds(after)?, PAGE, |last| {
+                    Ok(!store.retention_holds(last.sequence)?.is_empty())
+                })?;
+            Ok(Read {
+                last: store.last_purge_run()?,
+                oldest: store.oldest_retained_receipt()?,
+                holds: holds.into_iter().map(&held).collect::<Result<_, _>>()?,
+                more,
+                releasing,
+            })
+        })
+        .await?)
+}
+
+fn page(
+    state: &Context,
+    session: Option<&Session>,
+    signed: Option<&Session>,
+    read: &Read,
+    now: Timestamp,
+) -> Keeping {
+    let next = read
+        .holds
+        .last()
+        .filter(|_| read.more)
+        .map(|last| next_href(Tab::DataKeeping.href(), last.hold.sequence));
+    Keeping {
+        frame: Frame::new(
+            state,
+            Tab::DataKeeping,
+            Tab::DataKeeping.label(),
+            None,
+            session,
+            now,
+        ),
+        policies: state
+            .retention
+            .iter()
+            .map(|(machine, days)| {
+                (
+                    machine.as_str().to_owned(),
+                    days.map_or_else(
+                        || "Kept, never deleted".to_owned(),
+                        |days| {
+                            format!(
+                                "Deleted {} after the lab app last confirmed it",
+                                format::amount(days, "day", "days")
+                            )
+                        },
+                    ),
+                )
+            })
+            .collect(),
+        clean_up: read.last.as_ref().map(|run| clean_up(run, now)),
+        oldest: Fact {
+            term: "Oldest message kept",
+            value: Value::Time(read.oldest.map(|time| format::moment_unix(time, now))),
+        },
+        holds: read
+            .holds
+            .iter()
+            .map(|held| hold_row(held, signed.is_some(), now))
+            .collect(),
+        next,
+        form: signed.map(|session| session.csrf.form_value().to_owned()),
+        dialog: signed
+            .zip(read.releasing.as_ref())
+            .map(|(session, held)| release_dialog(session, held, now)),
+    }
+}
+
+/// What the last clean-up did, as plain numbers; a failure shows red.
+fn clean_up(run: &PurgeRun, now: Timestamp) -> Vec<Fact> {
+    let number = |term, value: usize| Fact {
+        term,
+        value: Value::Text(value.to_string()),
+    };
+    vec![
+        Fact {
+            term: "Ran",
+            value: Value::Time(Some(format::moment_unix(run.time, now))),
+        },
+        number("Messages checked", run.examined),
+        number("Messages deleted", run.purged),
+        number("Orders deleted", run.orders),
+        Fact {
+            term: "Paused",
+            value: Value::Text(format::yes_no(run.paused).into()),
+        },
+        Fact {
+            term: "Failed",
+            value: Value::Status(if run.failed {
+                Status {
+                    tone: Tone::Problem,
+                    word: "Yes".into(),
+                    exact: "Purge failed".into(),
+                    note: None,
+                }
+            } else {
+                Status {
+                    tone: Tone::Good,
+                    word: "No".into(),
+                    exact: String::new(),
+                    note: None,
+                }
+            }),
+        },
+    ]
+}
+
+/// What a hold keeps, in words, with when its message arrived.
+fn held_line(held: &Held, now: Timestamp) -> Line {
+    match (&held.hold.target, &held.message) {
+        (HoldTarget::Receipt(_), Some((machine, at))) => {
+            Line::text(format!("Message from {machine} · received ")).time(format::moment(*at, now))
+        }
+        (HoldTarget::Receipt(_), None) => Line::text("A message no longer listed"),
+        (HoldTarget::Order { destination, order }, _) => Line::text(format!(
+            "Order {} from lab app {}",
+            order.as_str(),
+            destination.as_str()
+        )),
+    }
+}
+
+/// One hold: what it keeps, who placed it, when and why, and Release.
+fn hold_row(held: &Held, signed_in: bool, now: Timestamp) -> HoldRow {
+    HoldRow {
+        title: held_line(held, now),
+        sub: placed(held.hold.placed.as_ref(), now),
+        exact: target(&held.hold.target),
+        release: signed_in.then(|| format!("/retention?release={}", held.hold.sequence)),
+    }
+}
+
+/// Who placed a hold, when and why, from the audit history; holds never expire.
+fn placed(audit: Option<&Audit>, now: Timestamp) -> Line {
+    match audit {
+        Some(audit) => Line::text(format!("Set by {}", format::actor(audit.actor.as_str())))
+            .then(Line::text("").time(format::moment_unix(audit.time, now)))
+            .then(Line::text(format!("Reason: {}", audit.reason.as_str())))
+            .then(Line::text("until released")),
+        None => Line::text("Who placed it is not in the history · until released"),
+    }
+}
+
+/// The stored target, for the hover and the form: "receipt" with the message
+/// ID, or "order" with the lab app and its order number.
+fn target(target: &HoldTarget) -> String {
+    match target {
+        HoldTarget::Receipt(id) => format!("Message {}", uuid::Uuid::from(*id)),
+        HoldTarget::Order { destination, order } => {
+            format!(
+                "Order {} · lab app {}",
+                order.as_str(),
+                destination.as_str()
+            )
+        }
+    }
+}
+
+/// The Release dialog for one hold: the form's own fields, hidden.
+fn release_dialog(session: &Session, held: &Held, now: Timestamp) -> ReleaseDialog {
+    let (scope, id, destination) = match &held.hold.target {
+        HoldTarget::Receipt(id) => ("receipt", uuid::Uuid::from(*id).to_string(), String::new()),
+        HoldTarget::Order { destination, order } => (
+            "order",
+            order.as_str().to_owned(),
+            destination.as_str().to_owned(),
+        ),
+    };
+    ReleaseDialog {
+        action: Tab::DataKeeping.href(),
+        title: "Release this hold?",
+        text: format!(
+            "{}: clean-up may delete it once its keeping time has passed. The hold's history is kept.",
+            held_line(held, now).plain()
+        ),
+        placeholder: "For example: the audit is finished",
+        hint: "Required, up to 256 characters. Recorded with the time.",
+        button: "Release",
+        csrf: session.csrf.form_value().to_owned(),
+        cancel: Tab::DataKeeping.href(),
+        reason: String::new(),
+        error: None,
+        hidden: vec![
+            ("scope", scope.to_owned()),
+            ("id", id),
+            ("destination", destination),
+            ("operation", "release".to_owned()),
+        ],
+    }
+}
+
+/// The hold form; its fields are unchanged.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(in crate::admin) struct HoldForm {
@@ -178,28 +299,67 @@ pub(in crate::admin) struct HoldForm {
     reason: String,
     confirm: String,
 }
+
 pub(in crate::admin) async fn hold(
     State(state): State<Arc<Context>>,
     Extension(session): Extension<Arc<Session>>,
     Form(form): Form<HoldForm>,
 ) -> Response {
     if !session.authenticated || !session.csrf_valid(&form.csrf) || form.confirm != "yes" {
-        return view::refusal(
+        return report(
+            &state,
+            &session,
+            Tab::DataKeeping,
             StatusCode::FORBIDDEN,
-            "Hold not saved",
-            "Tick the confirmation box and make sure you are signed in, then try again.",
-            "authenticated session, valid form and confirmation required",
+            Outcome {
+                title: "Hold not saved",
+                tone: Tone::Problem,
+                alert: "Nothing was changed".into(),
+                text: "Tick the confirmation box and make sure you are signed in, then try again."
+                    .into(),
+            },
+            vec!["authenticated session, valid form and confirmation required".into()],
         );
     }
-    let result = apply(&state, &session, form).await;
-    match result {
-        Ok(()) => page(&Markup::new().markup(concat!(
-            "<p class=\"notice info\">Hold saved. Your session and reason are recorded with ",
-            "it.</p><p><a href=\"/retention\">Back to Data keeping</a></p>",
-        ))),
-        Err(error) => failure(&error),
+    let release = form.operation == "release";
+    match apply(&state, &session, form).await {
+        Ok(()) => report(
+            &state,
+            &session,
+            Tab::DataKeeping,
+            StatusCode::OK,
+            Outcome {
+                title: if release {
+                    "Hold released"
+                } else {
+                    "Hold saved"
+                },
+                tone: Tone::Good,
+                alert: if release {
+                    "The hold is released".into()
+                } else {
+                    "The hold is saved".into()
+                },
+                text: "Your session and reason are recorded with it.".into(),
+            },
+            Vec::new(),
+        ),
+        Err(error) => report(
+            &state,
+            &session,
+            Tab::DataKeeping,
+            StatusCode::CONFLICT,
+            Outcome {
+                title: "Hold not saved",
+                tone: Tone::Problem,
+                alert: "Nothing was changed".into(),
+                text: format::sentence(&error.to_string()),
+            },
+            Vec::new(),
+        ),
     }
 }
+
 async fn apply(state: &Context, session: &Session, form: HoldForm) -> Result<(), Error> {
     let target = match form.scope.as_str() {
         "receipt" => {
@@ -224,7 +384,7 @@ async fn apply(state: &Context, session: &Session, form: HoldForm) -> Result<(),
             "retention-hold-release"
         })?,
         targets: Vec::new(),
-        time: jiff::Timestamp::now().as_second(),
+        time: Timestamp::now().as_second(),
         reason: Reason::new(&form.reason)?,
     };
     state
@@ -234,68 +394,4 @@ async fn apply(state: &Context, session: &Session, form: HoldForm) -> Result<(),
         })
         .await?;
     Ok(())
-}
-
-/// What a hold keeps, in words; the stored target stays on hover.
-fn held(target: &HoldTarget) -> Markup {
-    match target {
-        HoldTarget::Receipt(id) => Markup::new()
-            .markup("Message <code>")
-            .text(uuid::Uuid::from(*id))
-            .markup("</code>"),
-        HoldTarget::Order { destination, order } => Markup::new()
-            .markup("Order <code>")
-            .text(order.as_str())
-            .markup("</code> from lab app ")
-            .text(destination.as_str()),
-    }
-}
-
-fn render_form(html: &mut Markup, session: Option<&Session>) {
-    if let Some(session) = session.filter(|s| s.authenticated) {
-        html.push_fragment(
-            &Markup::new()
-                .markup(concat!(
-                    "<section><h2>Add or release a hold</h2><form ",
-                    "action=\"/retention\" method=\"post\"><input ",
-                ))
-                .markup("type=\"hidden\" name=\"csrf\" value=\"")
-                .text(session.csrf.form_value())
-                .markup(concat!(
-                    "\"><label class=\"field\"><span title=\"Scope\">Hold a</span><select name=\"scope\"><option ",
-                    "value=\"receipt\">Message</option><option ",
-                ))
-                .markup(concat!(
-                    "value=\"order\">Order</option></select></label><label class=\"field\">",
-                    "<span title=\"Receipt UUID or app order ID\">Message number or lab app order number</span><input ",
-                ))
-                .markup(concat!(
-                    "name=\"id\" required ",
-                    "maxlength=\"256\"></label><label class=\"field\"><span title=\"Destination\">Lab app ",
-                    "(orders only)</span><input ",
-                ))
-                .markup(concat!(
-                    "name=\"destination\" ",
-                    "maxlength=\"256\"></label><label class=\"field\"><span>Action</span><select ",
-                    "name=\"operation\"><option ",
-                ))
-                .markup(concat!(
-                    "value=\"place\">Add hold</option><option ",
-                    "value=\"release\">Release ",
-                ))
-                .markup(concat!(
-                    "hold</option></select></label><label class=\"field\"><span>Reason</span>",
-                    "<input name=\"reason\" required ",
-                ))
-                .markup(concat!(
-                    "maxlength=\"256\"></label><label class=\"check\"><input ",
-                    "type=\"checkbox\" name=\"confirm\" value=\"yes\" ",
-                ))
-                .markup(concat!(
-                    "required>I confirm this hold ",
-                    "change.</label><div class=\"actions-row\"><button>Save hold ",
-                    "change</button></div></form></section>",
-                )),
-        );
-    }
 }

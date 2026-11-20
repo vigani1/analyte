@@ -107,10 +107,19 @@ pub(super) struct Context {
     pub(super) setup: super::setup::Setup,
     /// Where restyled pages load this build's static files from.
     pub(super) assets: super::view::assets::Root,
+    /// What the Settings page shows from the loaded program.
+    pub(super) installed: super::pages::Installed,
     /// How long a setup write may run: [`WRITE_BUDGET`]; tests shorten it.
-    write_budget: Duration,
+    pub(super) write_budget: Duration,
     // Struct fields drop in declaration order: notify only after store is released.
     _released: tokio::sync::oneshot::Sender<()>,
+}
+
+impl Context {
+    /// Where the admin pages are served, such as `http://127.0.0.1:4000`.
+    pub(super) fn origin(&self) -> &str {
+        &self.origin
+    }
 }
 
 pub(crate) struct Server {
@@ -122,11 +131,15 @@ pub(crate) struct Server {
     pub(crate) owners: BTreeMap<String, Arc<AtomicBool>>,
 }
 
+/// Prepares the admin server for `program`, or none when it has no admin
+/// address; `shutdown` is how long the service may take to stop, which the
+/// Settings page shows.
 pub(crate) async fn prepare(
     program: &Program,
     store: Arc<analyte_store::Handle>,
     mode: crate::runtime::hooks::ServiceMode,
     retired: &super::Draining,
+    shutdown: Duration,
 ) -> Result<Option<Server>, Error> {
     let Some(address) = program.admin_address() else {
         return Ok(None);
@@ -192,6 +205,7 @@ pub(crate) async fn prepare(
         reserve: program.store_limits.reserve_bytes,
         setup,
         assets: super::view::assets::Root::of_this_build(),
+        installed: super::pages::Installed::of(program, shutdown),
         write_budget: WRITE_BUDGET,
         _released: released,
     });
@@ -263,7 +277,7 @@ async fn drain_server(
 /// [`ANSWER_TIME`]. The lifetime starts earlier, at accept, so the answer is
 /// still written before the connection closes. A setup write has this long to
 /// send and check its form, then [`WRITE_BUDGET`] in all.
-const REQUEST_BUDGET: Duration = Duration::from_millis(1750);
+pub(super) const REQUEST_BUDGET: Duration = Duration::from_millis(1750);
 
 /// How long a setup write (any POST under `/setup/`: save, add, remove, a lab
 /// app change, restart, the listen test) may run in all, once its form has
@@ -288,8 +302,9 @@ fn router(state: Arc<Context>) -> Router {
         .route("/logout", post(logout))
         .route(
             "/retention",
-            get(super::pages::retention::show).post(super::pages::retention::hold),
+            get(super::pages::retention::show_page).post(super::pages::retention::hold),
         )
+        .route("/settings", get(super::pages::settings))
         .route("/machines", get(super::machines::list))
         .route("/machines/{id}", get(super::machines::detail))
         .route(
@@ -305,7 +320,7 @@ fn router(state: Arc<Context>) -> Router {
         .route("/deliveries", get(super::pages::deliveries))
         .route(
             "/deliveries/{id}/resend",
-            get(super::actions::confirm_resend).post(super::actions::resend),
+            get(super::pages::confirm_resend).post(super::pages::resend),
         )
         .route(
             "/parked/{id}/reprocess",

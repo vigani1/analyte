@@ -12,6 +12,7 @@ mod actions;
 mod assets;
 mod logout;
 mod machines;
+mod more;
 mod overview;
 mod pages;
 mod parked;
@@ -719,7 +720,7 @@ async fn assert_stylesheet(host: &str, bearer: &str) -> Result<(), Error> {
     let lower = css.to_ascii_lowercase();
     assert!(lower.contains("content-type: text/css; charset=utf-8"));
     assert!(lower.contains("x-content-type-options: nosniff"));
-    assert!(css.contains(".pill.ok"));
+    assert!(css.contains(".notice.bad"));
     let mut stream = tokio::net::TcpStream::connect(host).await?;
     stream
         .write_all(
@@ -768,6 +769,7 @@ Connection: close
             "/analyzer-cancelled",
             "/deliveries",
             "/retention",
+            "/settings",
         ];
         if path == "/login" {
             assert!(!page.contains("<nav"), "the login page has a menu");
@@ -814,10 +816,12 @@ fn assert_logo(path: &str, page: &str) {
         assert!(page.contains(&link), "{path} lacks {link}");
     }
     match path {
-        "/" | "/parked" | "/machines" | "/setup" => assert!(page.contains(concat!(
-            "<div class=\"brand\">\n<svg class=\"logo\" width=\"30\" height=\"30\" ",
-            "viewBox=\"0 0 48 48\" aria-hidden=\"true\"><path class=\"logo__tile\" "
-        ))),
+        "/" | "/parked" | "/machines" | "/setup" | "/retention" | "/deliveries" => {
+            assert!(page.contains(concat!(
+                "<div class=\"brand\">\n<svg class=\"logo\" width=\"30\" height=\"30\" ",
+                "viewBox=\"0 0 48 48\" aria-hidden=\"true\"><path class=\"logo__tile\" "
+            )));
+        }
         "/login" => {}
         _ => assert!(
             page.contains(concat!(
@@ -832,7 +836,14 @@ fn assert_logo(path: &str, page: &str) {
 /// ADR 0018: the restyled Overview loads fonts.css, analyte.css and app.css in
 /// that order; every other page keeps admin.css. Never both on one page.
 /// The pages in the new look so far (ADR 0018); the others keep `admin.css`.
-const RESTYLED: [&str; 4] = ["/", "/parked", "/machines", "/setup"];
+const RESTYLED: [&str; 6] = [
+    "/",
+    "/parked",
+    "/machines",
+    "/setup",
+    "/retention",
+    "/deliveries",
+];
 
 fn assert_stylesheets(path: &str, page: &str) {
     if RESTYLED.contains(&path) {
@@ -1045,16 +1056,40 @@ async fn start_overview_server(
 async fn start_with(
     root: &std::path::Path,
     store: &Arc<analyte_store::Handle>,
-    (machines, destinations): (Vec<Machine>, Vec<analyte_sink::Destination>),
+    parts: (Vec<Machine>, Vec<analyte_sink::Destination>),
     retired: crate::admin::Draining,
     directory: &std::path::Path,
+) -> Result<Started, Error> {
+    start_full(
+        root,
+        store,
+        parts,
+        (retired, directory),
+        (
+            Vec::new(),
+            crate::admin::pages::Installed::for_test(Vec::new()),
+        ),
+    )
+    .await
+}
+
+/// [`start_with`] with each machine's data keeping and the Settings page's values.
+async fn start_full(
+    root: &std::path::Path,
+    store: &Arc<analyte_store::Handle>,
+    (machines, destinations): (Vec<Machine>, Vec<analyte_sink::Destination>),
+    (retired, directory): (crate::admin::Draining, &std::path::Path),
+    (retention, installed): (
+        Vec<(Identifier, Option<u16>)>,
+        crate::admin::pages::Installed,
+    ),
 ) -> Result<Started, Error> {
     let socket = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let host = socket.local_addr()?.to_string();
     let (released, release) = tokio::sync::oneshot::channel();
     let state = Arc::new(Context {
         alert_endpoints: vec![],
-        retention: Vec::new(),
+        retention,
         config_path: root.join("program.toml"),
         token: Token::load(root)?,
         sessions: Sessions::default(),
@@ -1068,6 +1103,7 @@ async fn start_with(
         reserve: 1,
         setup: crate::admin::setup::Setup::for_test(root),
         assets: crate::admin::view::assets::Root::of_this_build(),
+        installed,
         write_budget: WRITE_BUDGET,
         _released: released,
     });

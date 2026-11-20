@@ -1,90 +1,563 @@
-//! Shows analyzer execution separately from command state on authenticated admin pages.
-use super::{Cursor, finish, next, one_page};
-use crate::admin::Error;
-use crate::admin::markup::Markup;
-use crate::admin::{
-    server::Context,
-    view::{self, Tab, format},
+//! Serves what a machine did with orders, kept apart from the order's own state: Cancelled by machine (GET /analyzer-cancelled) and one order item's page with its history (GET /awos/{order}/{item}).
+use super::orders::{look, model, tests};
+use super::page::{Cancelled, CancelledCard, ITEM_LEDE, Message, OrderItem};
+use super::{Cursor, PAGE, next_href, one_page, show};
+use crate::admin::error::CommandError;
+use crate::admin::sessions::Session;
+use crate::admin::view::{
+    Tab, Tone, format,
+    format::Line,
+    frame::Frame,
+    report::{Crumb, Fact, Head, Status, Value},
 };
+use crate::admin::{Error, server::Context};
 use crate::deadline;
+use analyte_model::AwosExecutionProjection;
+use analyte_store::{CachedOrder, MachineOrder, MachineOrderItem, law::WorkEvidence};
+use askama::Template as _;
 use axum::{
+    Extension,
     extract::{Path, Query, State},
     response::Response,
 };
+use jiff::Timestamp;
 use std::sync::Arc;
-
-/// What the machine reported doing with one order item, kept apart from the order's own state.
-pub(super) fn projection(item: &analyte_store::MachineOrderItem) -> Markup {
-    match &item.execution {
-        Some(p) => Markup::new()
-            .markup("<p title=\"Execution reported by the analyzer\">Item ")
-            .text(item.index)
-            .markup(", what the machine reports: <strong>")
-            .text(p.state)
-            .markup("</strong> <span class=\"muted\">(order status: ")
-            .text(format::order_state(item.state))
-            .markup("; reported in message <span title=\"Receipt ")
-            .text(uuid::Uuid::from(p.receipt).to_string())
-            .markup(", interpretation ")
-            .text(p.interpretation)
-            .markup("\">")
-            .text(
-                uuid::Uuid::from(p.receipt)
-                    .to_string()
-                    .chars()
-                    .take(8)
-                    .collect::<String>(),
-            )
-            .markup("</span>, recorded ")
-            .fragment(&format::when_unix(p.recorded_at, jiff::Timestamp::now()))
-            .markup("; a cancel request was pending then: ")
-            .text(format::yes_no(p.cancel_outstanding))
-            .markup(")</span> <a href=\"/awos/")
-            .text(item.machine_order)
-            .markup("/")
-            .text(item.index)
-            .markup(
-                "\" title=\"Execution history and reconciliation evidence\">Item history</a></p>",
-            ),
-        None => Markup::new()
-            .markup("<p title=\"No execution evidence\">Item ")
-            .text(item.index)
-            .markup(", what the machine reports: nothing yet.</p>"),
-    }
-}
 
 pub(in crate::admin) async fn cancelled(
     State(state): State<Arc<Context>>,
     Query(cursor): Query<Cursor>,
+    session: Option<Extension<Arc<Session>>>,
 ) -> Response {
-    let result = cancelled_page(&state, cursor).await;
+    show(
+        &state,
+        session.as_ref(),
+        Tab::CancelledByMachine,
+        read_cancelled(&state, cursor),
+        |(rows, more), session, now| cancelled_page(&state, session, &rows, more, now).render(),
+    )
+    .await
+}
 
-    finish(result)
+/// One cancelled item with the lab app's copy of its order, when one is kept.
+type CancelledRow = (
+    analyte_store::law::AnalyzerCancelledItem,
+    Option<CachedOrder>,
+);
+
+async fn read_cancelled(
+    state: &Context,
+    cursor: Cursor,
+) -> Result<(Vec<CancelledRow>, bool), Error> {
+    let after = i64::try_from(cursor.after)?;
+    Ok(state
+        .store
+        .request::<_, CommandError>(deadline()?, move |s| {
+            // This page shows every row of the store's read, not the admin page size.
+            let (rows, more) = one_page::<_, CommandError>(
+                s.analyzer_cancelled_items(after)?,
+                usize::MAX,
+                |last| Ok(!s.analyzer_cancelled_items(last.cursor)?.is_empty()),
+            )?;
+            let rows = rows
+                .into_iter()
+                .map(|row| {
+                    let cached =
+                        s.cached_order(&row.order.key.destination, &row.order.key.order)?;
+                    Ok::<_, CommandError>((row, cached))
+                })
+                .collect::<Result<_, _>>()?;
+            Ok((rows, more))
+        })
+        .await?)
+}
+
+fn cancelled_page(
+    state: &Context,
+    session: Option<&Session>,
+    rows: &[CancelledRow],
+    more: bool,
+    now: Timestamp,
+) -> Cancelled {
+    let next = rows
+        .last()
+        .filter(|_| more)
+        .map(|(last, _)| next_href(Tab::CancelledByMachine.href(), last.cursor));
+    Cancelled {
+        frame: Frame::new(
+            state,
+            Tab::CancelledByMachine,
+            Tab::CancelledByMachine.label(),
+            None,
+            session,
+            now,
+        ),
+        cards: rows
+            .iter()
+            .map(|(row, cached)| card(state, &row.order, &row.item, cached.as_ref(), now))
+            .collect(),
+        next,
+    }
+}
+
+/// One cancelled item: its sample from the lab app's copy, its machine and
+/// test count, when the machine's cancel was recorded and the lab app's own
+/// status as its copy says.
+fn card(
+    state: &Context,
+    order: &MachineOrder,
+    item: &MachineOrderItem,
+    cached: Option<&CachedOrder>,
+    now: Timestamp,
+) -> CancelledCard {
+    let mut lines = Vec::new();
+    if let Some(execution) = &item.execution {
+        lines.push(
+            Line::text("Cancelled by the machine · recorded ")
+                .time(format::moment_unix(execution.recorded_at, now)),
+        );
+    }
+    lines.push(Line::text(match cached.map(lab_app_state) {
+        Some(Some(state)) => format!("The lab app's copy says: {state}"),
+        Some(None) => "The lab app's copy cannot be read.".to_owned(),
+        None => "No copy of this order from the lab app is kept.".to_owned(),
+    }));
+    CancelledCard {
+        sample: cached.map(|cached| cached.sample.as_str().to_owned()),
+        order: order.key.order.as_str().to_owned(),
+        machine: order.key.machine.as_str().to_owned(),
+        model: model(state, order.key.machine.as_str()),
+        tests: item
+            .coverage_known
+            .then(|| format::test_count(item.tests.len())),
+        exact: identity(order, item),
+        lines,
+        href: format::order_item_href(order.id, item.index),
+    }
+}
+
+/// The lab app's own order status as its kept copy says, in its spelling;
+/// none when the copy cannot be read.
+fn lab_app_state(cached: &CachedOrder) -> Option<String> {
+    let document: serde_json::Value = serde_json::from_str(&cached.document).ok()?;
+    Some(
+        document
+            .get("state")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("not known")
+            .to_owned(),
+    )
+}
+
+/// An order item's identity for the hover: its lab app, the version sent and
+/// Analyte's own numbers.
+fn identity(order: &MachineOrder, item: &MachineOrderItem) -> String {
+    format!(
+        "Lab app {} · order version {} sent · machine order {}, item {}",
+        order.key.destination.as_str(),
+        order.version,
+        order.id,
+        item.index
+    )
 }
 
 pub(in crate::admin) async fn detail(
     State(state): State<Arc<Context>>,
     Path((order, item)): Path<(i64, u16)>,
     Query(cursor): Query<Cursor>,
+    session: Option<Extension<Arc<Session>>>,
 ) -> Response {
-    let result = detail_page(&state, order, item, cursor).await;
-
-    finish(result)
+    show(
+        &state,
+        session.as_ref(),
+        Tab::MachineOrders,
+        read_detail(&state, order, item, cursor),
+        |read, session, now| detail_page(&state, session, read, now).render(),
+    )
+    .await
 }
 
-fn source_evidence(source: &str) -> Markup {
+/// What an order item's page reads in one store request.
+struct DetailRead {
+    order: MachineOrder,
+    item: MachineOrderItem,
+    cached: Option<CachedOrder>,
+    messages: Vec<WorkEvidence>,
+    /// More messages follow this page.
+    more: bool,
+}
+
+async fn read_detail(
+    state: &Context,
+    order: i64,
+    item: u16,
+    cursor: Cursor,
+) -> Result<DetailRead, Error> {
+    let after = i64::try_from(cursor.after)?;
+    let (order, cached, (messages, more)) = state
+        .store
+        .request::<_, CommandError>(deadline()?, move |s| {
+            let order = s.machine_order_by_id(order)?;
+            let cached = s.cached_order(&order.key.destination, &order.key.order)?;
+            let id = order.id;
+            let messages =
+                one_page::<_, CommandError>(s.law_work_evidence(id, item, after)?, PAGE, |last| {
+                    Ok(!s.law_work_evidence(id, item, last.cursor)?.is_empty())
+                })?;
+            Ok((order, cached, messages))
+        })
+        .await?;
+    let item = order
+        .items
+        .iter()
+        .find(|kept| kept.index == item)
+        .cloned()
+        .ok_or(Error::AwosItemNotRetained)?;
+    Ok(DetailRead {
+        order,
+        item,
+        cached,
+        messages,
+        more,
+    })
+}
+
+fn detail_page(
+    state: &Context,
+    session: Option<&Session>,
+    read: DetailRead,
+    now: Timestamp,
+) -> OrderItem {
+    let DetailRead {
+        order,
+        item,
+        cached,
+        messages,
+        more,
+    } = read;
+    let index = item.index;
+    let number = order.key.order.as_str();
+    let title = if order.items.len() > 1 {
+        format!("Order {number}, item {index}")
+    } else {
+        format!("Order {number}")
+    };
+    let status = look(item.state, &item.source_code);
+    let (copy, copy_note) = lab_app_copy(&order, cached.as_ref(), now);
+    let next = messages
+        .last()
+        .filter(|_| more)
+        .map(|last| next_href(&format::order_item_href(order.id, index), last.cursor));
+    let mut support = vec![identity(&order, &item)];
+    support.extend(messages.iter().map(|message| {
+        format!(
+            "Message {} · receipt {}, reading {}",
+            message.custody.message.as_str(),
+            uuid::Uuid::from(message.receipt),
+            message.version
+        )
+    }));
+    OrderItem {
+        frame: Frame::new(state, Tab::MachineOrders, title.clone(), None, session, now),
+        head: Head {
+            crumbs: vec![
+                Crumb {
+                    label: Tab::MachineOrders.label().to_owned(),
+                    href: Some(Tab::MachineOrders.href().to_owned()),
+                },
+                Crumb {
+                    label: format!("Order {number}"),
+                    href: None,
+                },
+            ],
+            title,
+            status: Some(Status {
+                tone: status.tone,
+                word: status.word.to_owned(),
+                exact: status.exact,
+                note: None,
+            }),
+            lede: Some(Line::text(ITEM_LEDE)),
+        },
+        order: order_facts(state, &order, cached.as_ref(), now),
+        item: item_facts(&item, now),
+        others: order
+            .items
+            .iter()
+            .filter(|other| other.index != index)
+            .map(|other| {
+                (
+                    format::order_item_href(order.id, other.index),
+                    format!("Item {}", other.index),
+                )
+            })
+            .collect(),
+        copy,
+        copy_note,
+        messages: messages
+            .iter()
+            .map(|message| message_of(message, order.id, index, now))
+            .collect(),
+        next,
+        support,
+    }
+}
+
+/// The order as a whole: its machine, lab app, state, the version sent, its
+/// sample from the lab app's copy, how many tests it sent and its last change.
+fn order_facts(
+    state: &Context,
+    order: &MachineOrder,
+    cached: Option<&CachedOrder>,
+    now: Timestamp,
+) -> Vec<Fact> {
+    let machine = order.key.machine.as_str();
+    let order_status = look(order.state, &order.source_code);
+    let mut facts = vec![
+        Fact {
+            term: "Machine",
+            value: Value::Page {
+                href: format::machine_href(machine),
+                label: match model(state, machine) {
+                    Some(model) => format!("{machine} ({model})"),
+                    None => machine.to_owned(),
+                },
+            },
+        },
+        Fact {
+            term: "Lab app",
+            value: Value::Page {
+                href: format::lab_app_href(order.key.destination.as_str()),
+                label: order.key.destination.as_str().to_owned(),
+            },
+        },
+        Fact {
+            term: "Order status",
+            value: Value::Status(Status {
+                tone: order_status.tone,
+                word: order_status.word.to_owned(),
+                exact: order_status.exact,
+                note: order_status.note,
+            }),
+        },
+        Fact {
+            term: "Order version sent",
+            value: Value::Text(order.version.to_string()),
+        },
+    ];
+    if let Some(cached) = cached {
+        facts.push(Fact {
+            term: "Sample",
+            value: Value::Code {
+                shown: cached.sample.as_str().to_owned(),
+                exact: cached.sample.as_str().to_owned(),
+            },
+        });
+    }
+    facts.push(Fact {
+        term: "Tests sent",
+        value: Value::Text(tests(order).map_or_else(
+            || "Not recorded (older data); Analyte does not guess them".to_owned(),
+            format::test_count,
+        )),
+    });
+    facts.push(Fact {
+        term: "Last change",
+        value: Value::Time(Some(format::moment_unix(order.updated_at, now))),
+    });
+    facts
+}
+
+/// This item: its state, what the machine reports, how many tests it covers,
+/// the number Analyte gave it on the machine and the last note recorded.
+fn item_facts(item: &MachineOrderItem, now: Timestamp) -> Vec<Fact> {
+    let status = look(item.state, &item.source_code);
+    vec![
+        Fact {
+            term: "Status",
+            value: Value::Status(Status {
+                tone: status.tone,
+                word: status.word.to_owned(),
+                exact: status.exact,
+                note: None,
+            }),
+        },
+        Fact {
+            term: "What the machine reports",
+            value: execution(item.execution.as_ref(), now),
+        },
+        Fact {
+            term: "Tests",
+            value: Value::Text(if item.coverage_known {
+                format::amount(item.tests.len() as u64, "test", "tests")
+            } else {
+                "Not recorded (older data)".to_owned()
+            }),
+        },
+        Fact {
+            term: "Order number on the machine",
+            value: Value::Code {
+                shown: item.placer.clone(),
+                exact: item.placer_namespace.as_ref().map_or_else(
+                    || "Namespace not recorded".to_owned(),
+                    |namespace| format!("Namespace {}", namespace.as_str()),
+                ),
+            },
+        },
+        Fact {
+            term: "Last note",
+            value: Value::Text(item.source_code.as_str().to_owned()),
+        },
+    ]
+}
+
+/// What the machine last reported doing with an item, kept apart from the
+/// item's own state: its words, when Analyte recorded it and whether a cancel
+/// request was pending then; the message it came in stays on hover.
+fn execution(projection: Option<&AwosExecutionProjection>, now: Timestamp) -> Value {
+    let Some(projection) = projection else {
+        return Value::Text("Nothing yet".into());
+    };
+    let recorded = format::moment_unix(projection.recorded_at, now);
+    Value::Status(Status {
+        tone: match projection.state {
+            analyte_model::AwosExecution::Scheduled | analyte_model::AwosExecution::InProgress => {
+                Tone::Neutral
+            }
+            analyte_model::AwosExecution::AnalyzerCancelled => Tone::Attention,
+        },
+        word: format::execution(projection.state).to_owned(),
+        exact: format!(
+            "Receipt {}, reading {}",
+            uuid::Uuid::from(projection.receipt),
+            projection.interpretation
+        ),
+        note: Some(format!(
+            "Recorded {}{}",
+            recorded.shown,
+            if projection.cancel_outstanding {
+                "; a cancel request was pending then"
+            } else {
+                ""
+            }
+        )),
+    })
+}
+
+/// The lab app's kept copy of the order: its sample, whether the lab app
+/// cancelled it, how long it is kept and whether it is the version sent; or
+/// why it is not shown. Its tests never show.
+fn lab_app_copy(
+    order: &MachineOrder,
+    cached: Option<&CachedOrder>,
+    now: Timestamp,
+) -> (Vec<Fact>, Option<String>) {
+    let Some(cached) = cached else {
+        return (
+            Vec::new(),
+            Some("No copy of this order from the lab app is kept.".into()),
+        );
+    };
+    let mut facts = vec![
+        Fact {
+            term: "Cancelled in the lab app",
+            value: Value::Text(format::yes_no(cached.tombstone).into()),
+        },
+        Fact {
+            term: "Kept until",
+            value: Value::Time(Some(format::moment_unix(cached.expiry, now))),
+        },
+    ];
+    let note = match analyte_contract::decode::<analyte_contract::Order>(cached.document.as_bytes())
+    {
+        Ok(document) => {
+            let version = document.fields().version;
+            facts.push(Fact {
+                    term: "Its version",
+                    value: Value::Text(if version == order.version {
+                        format!("{version}: the same version that was sent")
+                    } else {
+                        format!(
+                            "{version}: a different version from the one sent, so its tests are not the ones the machine got"
+                        )
+                    }),
+                });
+            None
+        }
+        Err(error) => Some(format!(
+            "The lab app's copy cannot be read, so its version is not shown. Details for support: {error}"
+        )),
+    };
+    (facts, note)
+}
+
+/// One message from the machine about this item: who recorded it and how it
+/// was applied, what the machine reported and the times it sent, as sent.
+fn message_of(message: &WorkEvidence, order: i64, item: u16, now: Timestamp) -> Message {
+    let mut facts = vec![
+        Fact {
+            term: "Recorded by Analyte",
+            value: Value::Time(Some(format::moment_unix(message.custody.recorded_at, now))),
+        },
+        Fact {
+            term: "Outcome",
+            value: Value::Text(message.disposition.to_string()),
+        },
+    ];
+    let mut notes = Vec::new();
+    for work in message
+        .custody
+        .work
+        .iter()
+        .filter(|work| work.order == order && work.item == item)
+    {
+        facts.push(Fact {
+            term: "What the machine reports",
+            value: Value::Text(
+                work.execution
+                    .map_or("Nothing", format::execution)
+                    .to_owned(),
+            ),
+        });
+        facts.push(Fact {
+            term: "Results came with it",
+            value: Value::Text(format::yes_no(work.complete).into()),
+        });
+        let (times, written) = source_evidence(work.source.as_str());
+        facts.extend(times);
+        notes.extend(written);
+    }
+    Message {
+        title: format!(
+            "Message received {}",
+            message
+                .received_at
+                .as_str()
+                .parse::<Timestamp>()
+                .map_or_else(
+                    |_| message.received_at.as_str().to_owned(),
+                    |at| format::clock(at, now)
+                )
+        ),
+        facts,
+        notes,
+    }
+}
+
+/// The times the machine sent with its message, as sent, and its notes; a
+/// source Analyte cannot read is shown as one note, unchanged.
+fn source_evidence(source: &str) -> (Vec<Fact>, Vec<String>) {
+    let unread = || (Vec::new(), vec![source.to_owned()]);
     let Ok(value) = serde_json::from_str::<serde_json::Value>(source) else {
-        return Markup::new().markup("<pre>").text(source).markup("</pre>");
+        return unread();
     };
     let control = value
         .get("control")
         .and_then(serde_json::Value::as_str)
         .unwrap_or("");
     let Ok(control) = analyte_hl7::law::RetainedControl::parse(control) else {
-        return Markup::new().markup("<pre>").text(source).markup("</pre>");
+        return unread();
     };
-    let estimate = control.estimate();
-    let estimate = match estimate {
+    let estimate = match control.estimate() {
         "" => "Not sent; the earlier expected time is kept",
         "\"\"" => "Sent as empty (cleared by the machine)",
         supplied => supplied,
@@ -97,182 +570,32 @@ fn source_evidence(source: &str) -> Markup {
         "" => "not sent",
         supplied => supplied,
     };
-    let mut html = Markup::new()
-        .markup("<dl><dt title=\"Availability estimate as supplied\">Expected ready time, as sent</dt><dd>")
-        .text(estimate)
-        .markup("</dd><dt title=\"Zone evidence (MSH-7)\">Message time and zone</dt><dd>")
-        .text(header)
-        .markup(concat!(
-            "</dd><dt title=\"Source event time (ORC-9), as supplied\">Event time, as ",
-            "sent</dt><dd>",
-        ))
-        .text(event)
-        .markup("</dd></dl><ul>");
-    if let Some(notes) = value.get("notes").and_then(serde_json::Value::as_array) {
-        for note in notes.iter().filter_map(serde_json::Value::as_str) {
-            html.push_fragment(&Markup::new().markup("<li>").text(note).markup("</li>"));
-        }
-    }
-    html.push_markup("</ul>");
-    html
-}
-
-async fn cancelled_page(state: &Context, cursor: Cursor) -> Result<Markup, Error> {
-    let after = i64::try_from(cursor.after)?;
-    let (rows, more) = state
-        .store
-        .request(deadline()?, move |s| {
-            // This page shows every row of the store's read, not the admin page size.
-            one_page::<_, analyte_store::ReconciliationError>(
-                s.analyzer_cancelled_items(after)?,
-                usize::MAX,
-                |last| Ok(!s.analyzer_cancelled_items(last.cursor)?.is_empty()),
-            )
+    let facts = vec![
+        Fact {
+            term: "Expected ready time, as sent",
+            value: Value::Text(estimate.to_owned()),
+        },
+        Fact {
+            term: "Message time and zone",
+            value: Value::Text(header.to_owned()),
+        },
+        Fact {
+            term: "Event time, as sent",
+            value: Value::Text(event.to_owned()),
+        },
+    ];
+    let notes = value
+        .get("notes")
+        .and_then(serde_json::Value::as_array)
+        .map(|notes| {
+            notes
+                .iter()
+                .filter_map(serde_json::Value::as_str)
+                .map(str::to_owned)
+                .collect()
         })
-        .await?;
-    let mut html = view::page(Tab::CancelledByMachine, "Cancelled by machine");
-    html.push_markup(concat!(
-        "<p class=\"notice\" title=\"Analyzer-cancelled AWOSs; reconciliation required\">",
-        "<strong>Check each order below with the lab and the lab app.</strong> The machine ",
-        "cancelled these tests on its own. That does not cancel them in the lab app, does not ",
-        "cancel the order's other tests and does not let Analyte send anything else. The lab ",
-        "app is not told automatically.</p>",
-    ));
-    if rows.is_empty() {
-        html.push_markup("<p class=\"muted\">No order was cancelled by a machine.</p>");
-    }
-    for row in &rows {
-        html.push_fragment(
-            &Markup::new()
-                .markup("<section><h2 title=\"Machine order ")
-                .text(row.order.id)
-                .markup(", item ")
-                .text(row.item.index)
-                .markup("\">Order ")
-                .text(row.order.key.order.as_str())
-                .markup(" on ")
-                .text(row.order.key.machine.as_str())
-                .markup("</h2><p class=\"muted\" title=\"Reserved version\">Order version sent: ")
-                .text(row.order.version)
-                .markup("</p>")
-                .fragment(&(projection(&row.item))),
-        );
-        let destination = row.order.key.destination.clone();
-        let order = row.order.key.order.clone();
-        let cached = state
-            .store
-            .request(deadline()?, move |s| s.cached_order(&destination, &order))
-            .await?;
-        if let Some(cached) = cached {
-            let document: serde_json::Value = serde_json::from_str(&cached.document)?;
-            html.push_fragment(
-                &Markup::new()
-                    .markup("<p title=\"Current app intent\">The lab app's current status: ")
-                    .text(
-                        document
-                            .get("state")
-                            .map_or_else(|| "not known".into(), ToString::to_string),
-                    )
-                    .markup(concat!(
-                        ". <span title=\"Reconcile through the original LAB-28 response; ",
-                        "no CR is inferred from CA\">If a cancel request from the lab app is ",
-                        "pending, settle it with the lab app's own answer; Analyte does not ",
-                        "count the machine's cancel as that answer.</span></p>",
-                    )),
-            );
-        }
-        html.push_markup("</section>");
-    }
-    if let Some(last) = rows.last()
-        && more
-    {
-        next(&mut html, "/analyzer-cancelled", last.cursor);
-    }
-    Ok(html)
-}
-
-async fn detail_page(
-    state: &Context,
-    order: i64,
-    item: u16,
-    cursor: Cursor,
-) -> Result<Markup, Error> {
-    let after = i64::try_from(cursor.after)?;
-    let (retained, rows) = state
-        .store
-        .request::<_, analyte_store::ReconciliationError>(deadline()?, move |s| {
-            Ok::<_, analyte_store::ReconciliationError>((
-                s.machine_order_by_id(order)?,
-                s.law_work_evidence(order, item, after)?,
-            ))
-        })
-        .await?;
-    let item = retained
-        .items
-        .iter()
-        .find(|i| i.index == item)
-        .ok_or(Error::AwosItemNotRetained)?;
-    let mut html = view::page(Tab::MachineOrders, "Order item history");
-    html.push_fragment(&projection(item));
-    html.push_markup(concat!(
-        "<p class=\"lead\" title=\"AWOS execution history\">What the machine accepted and ",
-        "what it actually did are shown separately. Times keep the machine's own spelling and ",
-        "time zone; when the machine leaves a time out, the earlier one is kept. Messages ",
-        "marked as rejected were not applied.</p>",
-    ));
-    for row in &rows {
-        html.push_fragment(
-            &Markup::new()
-                .markup("<section><h2 title=\"Receipt ")
-                .text(uuid::Uuid::from(row.receipt).to_string())
-                .markup(", interpretation ")
-                .text(row.version)
-                .markup("\">Message received ")
-                .text(row.received_at.as_str())
-                .markup("</h2><dl>")
-                .fragment(&view::row(
-                    "Recorded by Analyte",
-                    Some("Host recorded"),
-                    &Markup::new().text(row.custody.recorded_at),
-                ))
-                .fragment(&view::row(
-                    "Message",
-                    None,
-                    &Markup::new().text(row.custody.message.as_str()),
-                ))
-                .fragment(&view::row(
-                    "Outcome",
-                    Some("Disposition"),
-                    &Markup::new().text(row.disposition),
-                ))
-                .markup("</dl>"),
-        );
-        for work in row
-            .custody
-            .work
-            .iter()
-            .filter(|w| w.order == order && w.item == item.index)
-        {
-            html.push_fragment(
-                &Markup::new()
-                    .markup("<p title=\"Execution\">What the machine reports: ")
-                    .text(crate::operator::display::optional(work.execution))
-                    .markup(". <span title=\"Result-bearing completion evidence\">Results came with it: ")
-                    .text(format::yes_no(work.complete))
-                    .markup("</span>.</p>")
-                    .fragment(&(source_evidence(work.source.as_str()))),
-            );
-        }
-        html.push_markup("</section>");
-    }
-    if let Some(last) = rows.last() {
-        next(
-            &mut html,
-            &format!("/awos/{order}/{}", item.index),
-            last.cursor,
-        );
-    }
-    Ok::<_, Error>(html)
+        .unwrap_or_default();
+    (facts, notes)
 }
 
 #[cfg(test)]
@@ -280,7 +603,7 @@ mod tests {
     use super::*;
     // ADR 0016
     #[test]
-    fn estimates_keep_null_and_absence_and_escape_notes() {
+    fn estimates_keep_null_and_absence_and_keep_notes_as_sent() {
         for (estimate, expected) in [
             ("", "Not sent; the earlier expected time is kept"),
             ("\"\"", "Sent as empty (cleared by the machine)"),
@@ -295,11 +618,24 @@ mod tests {
                 "notes": ["NTE|||<script>patient</script>"],
             })
             .to_string();
-            let html = source_evidence(&source);
-            assert!(html.contains(expected));
-            assert!(html.contains("20260101120000+0130"));
-            assert!(html.contains("&lt;script&gt;patient&lt;/script&gt;"));
-            assert!(!html.contains("<script>"));
+            let (facts, notes) = source_evidence(&source);
+            let texts: Vec<&str> = facts
+                .iter()
+                .filter_map(|fact| match &fact.value {
+                    Value::Text(text) => Some(text.as_str()),
+                    Value::Code { .. }
+                    | Value::Status(_)
+                    | Value::Link(_)
+                    | Value::Time(_)
+                    | Value::Page { .. } => None,
+                })
+                .collect();
+            assert!(texts.contains(&expected), "{texts:?}");
+            assert!(texts.contains(&"20260101120000+0130"));
+            assert_eq!(notes, ["NTE|||<script>patient</script>"]);
         }
+        let (facts, notes) = source_evidence("not json");
+        assert!(facts.is_empty());
+        assert_eq!(notes, ["not json"]);
     }
 }

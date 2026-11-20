@@ -160,6 +160,19 @@ progress.meter::-moz-progress-bar { background: var(--accent); border-radius: va
   .nav-more__summary { justify-content: center; width: var(--nav-rail-item); padding: 0; }
 }
 
+/* More (the More, MoreCancelled, MoreDeliveries, MoreDataKeeping and MoreSettings
+   mockups' inline styles). */
+/* A list of cards, such as the items a machine cancelled. */
+.more-list { list-style: none; margin: 0; padding: 0; }
+/* A row whose actions wrap under its text on a narrow window. */
+.more-row { flex-wrap: wrap; }
+.more-row__title { margin: 0; font-weight: var(--weight-semibold); }
+.more-row__text { margin: 0; font-size: var(--text-sm); }
+/* Names and links in a table cell stay on one line; the table scrolls instead. */
+.more-nowrap { white-space: nowrap; }
+/* Data keeping and Settings keep a readable width. */
+.more-narrow { max-width: 760px; }
+
 /* Page changes cross-fade, CSS only: both pages opt in, the sidebar keeps its
    own name so it stays still while the main column changes. Pages in the old
    look do not load this file, so moving to or from one does not animate. */

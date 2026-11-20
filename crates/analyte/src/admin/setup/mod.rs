@@ -15,6 +15,7 @@ mod plan;
 mod site;
 mod wizard;
 
+pub(in crate::admin) use lab_apps::{Found, key_sources};
 pub(super) use lab_apps::{
     PAGE as LAB_APPS, add as add_lab_app, add_form as add_lab_app_form,
     confirm_remove as confirm_remove_lab_app, edit_form as edit_lab_app, list as lab_apps,
