@@ -1,7 +1,7 @@
 //! Routes authenticated local HTTP requests with session and request limits.
 use super::{
     Token,
-    listener::Listener,
+    listener::{Lifetime, Listener},
     sessions::{Session, Sessions},
     setup::Step,
 };
@@ -10,7 +10,7 @@ use crate::installation::config::Program;
 use analyte_model::Identifier;
 use axum::{
     Extension, Form, Router,
-    extract::{DefaultBodyLimit, FromRequest, Request, State},
+    extract::{ConnectInfo, DefaultBodyLimit, FromRequest, Request, State},
     http::{StatusCode, header},
     middleware::{self, Next},
     response::{Html, IntoResponse, Response},
@@ -107,6 +107,8 @@ pub(super) struct Context {
     pub(super) setup: super::setup::Setup,
     /// Where restyled pages load this build's static files from.
     pub(super) assets: super::view::assets::Root,
+    /// How long a setup write may run: [`WRITE_BUDGET`]; tests shorten it.
+    write_budget: Duration,
     // Struct fields drop in declaration order: notify only after store is released.
     _released: tokio::sync::oneshot::Sender<()>,
 }
@@ -190,6 +192,7 @@ pub(crate) async fn prepare(
         reserve: program.store_limits.reserve_bytes,
         setup,
         assets: super::view::assets::Root::of_this_build(),
+        write_budget: WRITE_BUDGET,
         _released: released,
     });
     Ok(Some(Server {
@@ -212,8 +215,10 @@ impl Server {
     /// start it again.
     pub(crate) async fn run(self, mut stop: watch::Receiver<bool>) -> Result<(), Error> {
         let mut restart = self.restart.clone();
+        // Each request can reach its connection's lifetime (setup writes extend it).
+        let app = self.app.into_make_service_with_connect_info::<Lifetime>();
         drain_server(
-            axum::serve(self.listener, self.app)
+            axum::serve(self.listener, app)
                 .with_graceful_shutdown(async move {
                     let stopped = async {
                         let _ = stop.wait_for(|&stopped| stopped).await.map(|_| ());
@@ -254,10 +259,26 @@ async fn drain_server(
 }
 
 /// How long one request may run before it is answered with "This took too
-/// long": shorter than the connection's [`super::listener::LIFETIME`], which
-/// starts earlier, at accept, so the answer is still written before the
-/// connection closes.
+/// long": shorter than the connection's [`super::listener::LIFETIME`] by
+/// [`ANSWER_TIME`]. The lifetime starts earlier, at accept, so the answer is
+/// still written before the connection closes. A setup write has this long to
+/// send and check its form, then [`WRITE_BUDGET`] in all.
 const REQUEST_BUDGET: Duration = Duration::from_millis(1750);
+
+/// How long a setup write (any POST under `/setup/`: save, add, remove, a lab
+/// app change, restart, the listen test) may run in all, once its form has
+/// passed the session check; its connection stays open that long plus
+/// [`ANSWER_TIME`]. It writes and flushes backups and new files, loads the whole
+/// program again and writes an audit row. Measured on 2026-11-20 on a Windows
+/// developer PC: 20 ms at most at rest and 114 ms at most while a build and
+/// the setup tests ran beside it; loaded Windows CI runners went past 1.75 s.
+/// The audit row alone may wait the store's own 5 s deadline
+/// (`crate::deadline`), so 10 s leaves another 5 s for the files: over 40
+/// times the slowest write measured here.
+const WRITE_BUDGET: Duration = Duration::from_secs(10);
+
+/// Kept after a budget ends to write its answer before the connection closes.
+const ANSWER_TIME: Duration = Duration::from_millis(250);
 
 fn router(state: Arc<Context>) -> Router {
     Router::new()
@@ -432,18 +453,7 @@ async fn protect(State(state): State<Arc<Context>>, mut request: Request, next: 
         if let Some(session) = &session {
             request.extensions_mut().insert(session.clone());
         }
-        match tokio::time::timeout(REQUEST_BUDGET, dispatch(request, next, session)).await {
-            Ok(response) => response,
-            Err(_) => super::view::refusal(
-                StatusCode::GATEWAY_TIMEOUT,
-                "This took too long",
-                concat!(
-                    "Analyte did not finish in time. Check the page before trying again: ",
-                    "an action may already have been saved.",
-                ),
-                "admin request deadline exceeded",
-            ),
-        }
+        answer(&state, request, next, session).await
     } else {
         unauthorized(&state, session.ok().flatten().as_ref())
     };
@@ -481,34 +491,93 @@ struct Csrf {
     csrf: String,
 }
 
-async fn dispatch(request: Request, next: Next, session: Option<Arc<Session>>) -> Response {
+/// A POST under `/setup/`: a setup write. It gets the larger form limit and,
+/// once its form has passed the session check, [`WRITE_BUDGET`].
+fn setup_write(request: &Request) -> bool {
+    request.method() == axum::http::Method::POST && request.uri().path().starts_with("/setup/")
+}
+
+/// Runs an admitted request within its budget. Its form is read and checked
+/// within [`REQUEST_BUDGET`], so a slow sender never gets more; a setup write
+/// then has until [`Context::write_budget`] and keeps its connection open
+/// until its answer is written. Every other request keeps [`REQUEST_BUDGET`].
+async fn answer(
+    state: &Context,
+    request: Request,
+    next: Next,
+    session: Option<Arc<Session>>,
+) -> Response {
+    let started = tokio::time::Instant::now();
+    let write = setup_write(&request);
+    let lifetime = request
+        .extensions()
+        .get::<ConnectInfo<Lifetime>>()
+        .map(|ConnectInfo(lifetime)| lifetime.clone());
+    let checked = match tokio::time::timeout(REQUEST_BUDGET, checked(request, session)).await {
+        Ok(Ok(request)) => request,
+        Ok(Err(refusal)) => return *refusal,
+        Err(_) => return too_long(),
+    };
+    let budget = if write {
+        state.write_budget
+    } else {
+        REQUEST_BUDGET
+    };
+    let left = budget.saturating_sub(started.elapsed());
+    if write && let Some(lifetime) = lifetime {
+        lifetime.keep_open_for(left.saturating_add(ANSWER_TIME));
+    }
+    tokio::time::timeout(left, next.run(checked))
+        .await
+        .unwrap_or_else(|_| too_long())
+}
+
+/// The answer to a request that ran past its budget. The work it started may
+/// still finish, so the page says to look before trying again.
+fn too_long() -> Response {
+    super::view::refusal(
+        StatusCode::GATEWAY_TIMEOUT,
+        "This took too long",
+        concat!(
+            "Analyte did not finish in time. Check the page before trying again: ",
+            "an action may already have been saved.",
+        ),
+        "admin request deadline exceeded",
+    )
+}
+
+/// The request with its posted form read and the form's CSRF value checked
+/// against the session, or the refusal; a request that posts nothing passes as it is.
+async fn checked(
+    request: Request,
+    session: Option<Arc<Session>>,
+) -> Result<Request, Box<Response>> {
     if request.method() != axum::http::Method::POST {
-        return next.run(request).await;
+        return Ok(request);
     }
     let Some(session) = session else {
-        return form_expired("CSRF session required");
+        return Err(Box::new(form_expired("CSRF session required")));
     };
-    let limit = if request.uri().path().starts_with("/setup/") {
+    let limit = if setup_write(&request) {
         super::setup::FORM_LIMIT
     } else {
         1024
     };
     let (parts, body) = request.into_parts();
     let Ok(bytes) = axum::body::to_bytes(body, limit).await else {
-        return super::view::refusal(
+        return Err(Box::new(super::view::refusal(
             StatusCode::PAYLOAD_TOO_LARGE,
             "Too much text",
             "The form holds more text than Analyte accepts. Shorten what you typed and try again.",
             "admin form exceeds limit",
-        );
+        )));
     };
     let copy = Request::from_parts(parts.clone(), axum::body::Body::from(bytes.clone()));
     let form = Form::<Csrf>::from_request(copy, &()).await;
     if !form.is_ok_and(|Form(form)| session.csrf_valid(&form.csrf)) {
-        return form_expired("CSRF token invalid or missing");
+        return Err(Box::new(form_expired("CSRF token invalid or missing")));
     }
-    next.run(Request::from_parts(parts, axum::body::Body::from(bytes)))
-        .await
+    Ok(Request::from_parts(parts, axum::body::Body::from(bytes)))
 }
 
 /// The refusal for a form whose session check failed, usually an old page or a new sign-in.

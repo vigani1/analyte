@@ -1068,6 +1068,7 @@ async fn start_with(
         reserve: 1,
         setup: crate::admin::setup::Setup::for_test(root),
         assets: crate::admin::view::assets::Root::of_this_build(),
+        write_budget: WRITE_BUDGET,
         _released: released,
     });
     let server = Server {

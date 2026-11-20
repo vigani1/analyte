@@ -856,11 +856,14 @@ async fn store_failures_and_slow_reads_answer_in_the_new_look() -> Result<(), Er
 // AGENTS.md rule 7 (bound every wait): a Mark resolved that outlasts the
 // request budget gets the "This took too long" page, which warns that the
 // action may already be saved; it used to be cut off with the connection,
-// whose own 2 s lifetime ended first.
+// whose own 2 s lifetime ended first. Only setup writes get the longer
+// write budget, which covers the store's own deadline.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_slow_action_answers_before_the_connection_closes() -> Result<(), Error> {
     assert!(crate::admin::view::READ_BUDGET < REQUEST_BUDGET);
-    assert!(REQUEST_BUDGET < crate::admin::listener::LIFETIME);
+    assert!(REQUEST_BUDGET.saturating_add(ANSWER_TIME) <= crate::admin::listener::LIFETIME);
+    assert!(crate::admin::listener::LIFETIME < WRITE_BUDGET);
+    assert!(crate::STORE_OPERATION_BUDGET < WRITE_BUDGET);
     let directory = crate::admin::private_tempdir()?;
     let (store, (state, stopper, owner, host), auth, _) = started(directory.path()).await?;
     let item = store
