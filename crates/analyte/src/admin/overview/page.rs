@@ -64,17 +64,6 @@ pub(super) const WIZARD_STEPS: [&str; 4] = [
     "Save, then restart Analyte to use the new settings",
 ];
 
-/// GET / when the overview could not be read: what it means and, for support, why.
-#[derive(askama::Template)]
-#[template(path = "pages/overview/error.html")]
-pub(super) struct ErrorPage {
-    pub(super) frame: Frame,
-    /// What Analyte could not read, and what to do.
-    pub(super) text: String,
-    /// The failure, one line per part, for support.
-    pub(super) detail: Vec<String>,
-}
-
 /// The answer to "is everything OK?": all good, or the things that need someone.
 pub(super) struct Verdict {
     pub(super) tone: Tone,

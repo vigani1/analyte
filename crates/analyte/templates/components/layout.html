@@ -42,11 +42,13 @@
 </header>
 {%- endmacro %}
 
-{#- The head of a page under Machines: the way back, the title with its status beside it, a line with times in it, and from the caller what can be done on the right. -#}
+{#- The head of a page about one thing: the way back when there is one, the title with its status beside it, a line with times in it, and from the caller what can be done on the right. -#}
 {%- macro detail_head(head) -%}
 <header class="page-head">
 <div class="page-head__main">
-<ol class="crumbs">{% for crumb in head.crumbs %}<li>{% if let Some(href) = crumb.href %}<a href="{{ href }}">{{ crumb.label }}</a>{% else %}{{ crumb.label }}{% endif %}</li>{% endfor %}</ol>
+{%- if !head.crumbs.is_empty() %}
+<ol class="crumbs">{% for crumb in head.crumbs %}<li>{% if let Some(href) = crumb.href %}<a href="{{ href }}">{% call crumb(crumb) %}{% endcall %}</a>{% else %}{% call crumb(crumb) %}{% endcall %}{% endif %}</li>{% endfor %}</ol>
+{%- endif %}
 <div class="cluster page-head__title"><h1>{{ head.title }}</h1>{% if let Some(status) = head.status %}{% call display::status_with(status.tone, status.icon, status.word, status.exact) %}{% endcall %}{% endif %}</div>
 {%- if let Some(lede) = head.lede %}
 <p class="page-head__lede">{% call display::words(lede) %}{% endcall %}</p>

@@ -1,4 +1,4 @@
-//! Builds the addresses of admin pages from machine, lab app and order names, each name one URL path segment.
+//! Builds the addresses of admin pages from machine, lab app and order names, each name one URL path segment, and from Needs review item numbers.
 
 /// A name as one URL path segment: each character a path may not hold is
 /// written as `%XX`, so any name the settings hold makes one link.
@@ -36,6 +36,11 @@ pub(in crate::admin) fn setup_href(id: &str, step: &str) -> String {
     } else {
         format!("/setup/{}/{step}", path_segment(id))
     }
+}
+
+/// A Needs review item's page: "/parked/412".
+pub(in crate::admin) fn parked_href(id: i64) -> String {
+    format!("/parked/{id}")
 }
 
 /// An order item's page: "/awos/12/1".
