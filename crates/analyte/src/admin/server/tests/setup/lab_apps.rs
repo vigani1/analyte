@@ -498,7 +498,7 @@ async fn remove_dialog_draws_over_the_lab_app_form() -> Result<(), Error> {
         "<form class=\"dialog\" role=\"dialog\" aria-modal=\"true\" aria-labelledby=\"dlg-title\" method=\"post\" action=\"/setup/lab-apps/demo/remove\">",
         "<h2 id=\"dlg-title\" class=\"dialog__title\">Remove demo?</h2>",
         "<p class=\"dialog__text\">Results already sent and their history stay.</p>",
-        "<p class=\"dialog__text\">Its keys stay stored, locked.</p>",
+        "<p class=\"dialog__text\">No key is stored for it, so none is kept.</p>",
         "<p class=\"dialog__label\">It cannot be removed now</p>",
         "<span>Machines send results to it: synthetic. Pick another lab app on their setup pages, or remove them, first.</span>",
         "<a class=\"btn btn--outline\" href=\"/setup/lab-apps/demo\">Cancel</a></div>",
@@ -525,6 +525,7 @@ async fn remove_dialog_draws_over_the_lab_app_form() -> Result<(), Error> {
     assert!(added.starts_with("HTTP/1.1 200"), "{added}");
     let free = fixture.get("/setup/lab-apps/spare/remove").await?;
     for part in [
+        "<p class=\"dialog__text\">Its keys stay stored, locked.</p>",
         "<p class=\"dialog__label\">Before you remove it</p>",
         "<span>No machine uses it and nothing waits for it.</span>",
         "<span>Analyte keeps a dated copy of the old settings.</span>",

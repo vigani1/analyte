@@ -368,6 +368,20 @@ impl KeySource {
         }
     }
 
+    /// What removing a lab app does to its keys, from what the locked file holds.
+    fn kept(&self, settings: &Destination) -> &'static str {
+        match &self.stored {
+            Ok(stored)
+                if stored.value(settings.api_key_name.as_str()).is_some()
+                    || stored.value(settings.signing_key_name.as_str()).is_some() =>
+            {
+                "Its keys stay stored, locked."
+            }
+            Ok(_) => "No key is stored for it, so none is kept.",
+            Err(_) => "Whether keys are stored for it cannot be checked; any that are stay locked.",
+        }
+    }
+
     /// A lab app's two keys.
     fn keys(&self, settings: &Destination, now: Timestamp) -> Vec<Key> {
         vec![
@@ -811,6 +825,7 @@ async fn edit(
         dialog(
             session.csrf.form_value(),
             known,
+            source.kept(&known.settings),
             open.as_ref().map(|open| count(open, &name)),
         )
     });
@@ -826,7 +841,12 @@ async fn edit(
 
 /// The Remove dialog: what removing keeps, and what stops it now or that
 /// nothing does. It is a real form with the session's form token.
-fn dialog(csrf: &str, known: &Known, waiting: Result<u64, &SetupError>) -> RemoveDialog {
+fn dialog(
+    csrf: &str,
+    known: &Known,
+    keys: &'static str,
+    waiting: Result<u64, &SetupError>,
+) -> RemoveDialog {
     let name = known.settings.name.as_str();
     let href = format::lab_app_href(name);
     let why = blockers(known, waiting);
@@ -869,7 +889,7 @@ fn dialog(csrf: &str, known: &Known, waiting: Result<u64, &SetupError>) -> Remov
         title: format!("Remove {name}?"),
         text: "Results already sent and their history stay.",
         sending: Hover {
-            shown: "Its keys stay stored, locked.".into(),
+            shown: keys.into(),
             exact: String::new(),
         },
         list_title: if blocked {
@@ -1259,7 +1279,7 @@ fn remove_blocking(
     state: &Context,
     name: &str,
     waiting: &Result<u64, SetupError>,
-) -> Result<Vec<PathBuf>, SetupError> {
+) -> Result<(Vec<PathBuf>, &'static str), SetupError> {
     let _writing = state.setup.writing()?;
     let scan = scan(&state.config_path)?;
     let known = scan
@@ -1282,7 +1302,8 @@ fn remove_blocking(
             entries::without_retired(&scan.program, name)?,
         ));
     }
-    Ok(site::commit(&state.config_path, &changes)?.backups)
+    let keys = KeySource::read(state).kept(&known.settings);
+    Ok((site::commit(&state.config_path, &changes)?.backups, keys))
 }
 
 /// POST /setup/lab-apps/{name}/remove: refused while a machine uses it or results wait.
@@ -1303,8 +1324,8 @@ pub(in crate::admin) async fn remove(
     let open = waiting(&state).await.map(|open| count(&open, &name));
     let lab_app = name.clone();
     let removed = off_thread(&state, move |state| remove_blocking(state, &lab_app, &open)).await;
-    let backups = match removed {
-        Ok(backups) => backups,
+    let (backups, keys) = match removed {
+        Ok(removed) => removed,
         Err(error) => return refused(&state, &session, Some(&name), &error),
     };
     let audited = audit(
@@ -1323,7 +1344,7 @@ pub(in crate::admin) async fn remove(
         head: section.head(title),
         tone: Tone::Good,
         title: format!("{name} is no longer listed"),
-        text: "Its keys stay stored, locked.".into(),
+        text: keys.into(),
         lines: if backups.is_empty() {
             Vec::new()
         } else {
@@ -1492,6 +1513,17 @@ signing_key_name = '{name}-signing'
             (Tone::Attention, "Cannot be checked")
         );
         assert!(matches!(unchecked.entry, Entry::Needed(why) if why == format::KEY_UNCHECKED));
+        // What removing does to the keys, from what the locked file holds.
+        assert_eq!(source.kept(&lab.settings), "Its keys stay stored, locked.");
+        assert_eq!(
+            source.kept(&other.settings),
+            "No key is stored for it, so none is kept."
+        );
+        assert!(
+            unreadable
+                .kept(&other.settings)
+                .starts_with("Whether keys are stored")
+        );
         assert!(
             unreadable
                 .support()
@@ -1510,7 +1542,7 @@ signing_key_name = '{name}-signing'
     // then offers no Remove; otherwise it says nothing keeps it.
     #[test]
     fn remove_dialog_says_what_keeps_a_lab_app() -> Result<(), Box<dyn std::error::Error>> {
-        let used = dialog("token", &known("main-lab", &["chem-1"])?, Ok(2));
+        let used = dialog("token", &known("main-lab", &["chem-1"])?, "kept", Ok(2));
         assert_eq!(used.button, None);
         assert_eq!(used.list_title, "It cannot be removed now");
         let texts: Vec<&str> = used.items.iter().map(|item| item.text.as_str()).collect();
@@ -1522,7 +1554,12 @@ signing_key_name = '{name}-signing'
             ]
         );
         assert!(used.items.iter().all(|item| item.tone == Tone::Attention));
-        let uncounted = dialog("token", &known("main-lab", &[])?, Err(&SetupError::Busy));
+        let uncounted = dialog(
+            "token",
+            &known("main-lab", &[])?,
+            "kept",
+            Err(&SetupError::Busy),
+        );
         assert_eq!(uncounted.button, None);
         assert!(
             uncounted
@@ -1534,7 +1571,7 @@ signing_key_name = '{name}-signing'
             item.text
                 .starts_with("What still waits for it could not be counted")
         }));
-        let free = dialog("token", &known("spare", &[])?, Ok(0));
+        let free = dialog("token", &known("spare", &[])?, "kept", Ok(0));
         assert_eq!(free.button, Some("Remove"));
         assert_eq!(free.cancel, "/setup/lab-apps/spare");
         assert_eq!(free.action, "/setup/lab-apps/spare/remove");
