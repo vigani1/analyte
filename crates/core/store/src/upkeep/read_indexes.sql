@@ -39,8 +39,9 @@ UPDATE outbox SET
  delivered_at=(SELECT max(a.time) FROM attempts a WHERE a.delivery=outbox.id AND a.outcome='"Done"'),
  delivered_attempt=(SELECT max(a.sequence) FROM attempts a WHERE a.delivery=outbox.id AND a.outcome='"Done"')
 WHERE id IN (SELECT delivery FROM attempts WHERE outcome='"Done"');
-CREATE INDEX outbox_delivered_at ON outbox(destination,delivered_at);
-CREATE INDEX outbox_delivered_attempt ON outbox(destination,delivered_attempt);
+-- Only accepted deliveries: other reads by lab app then use the indexes above.
+CREATE INDEX outbox_delivered_at ON outbox(destination,delivered_at) WHERE delivered_at IS NOT NULL;
+CREATE INDEX outbox_delivered_attempt ON outbox(destination,delivered_attempt) WHERE delivered_attempt IS NOT NULL;
 CREATE TRIGGER outbox_delivered AFTER INSERT ON attempts WHEN NEW.outcome='"Done"' BEGIN
  UPDATE outbox SET delivered_at=max(coalesce(delivered_at,NEW.time),NEW.time),
   delivered_attempt=max(coalesce(delivered_attempt,NEW.sequence),NEW.sequence)
