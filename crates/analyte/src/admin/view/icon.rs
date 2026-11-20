@@ -54,6 +54,8 @@ pub(in crate::admin) enum Icon {
     Plus,
     /// Something worth knowing: an i in a circle.
     Info,
+    /// Kept locked, such as a lab app's keys: a padlock.
+    Lock,
 }
 
 impl Icon {
@@ -134,6 +136,10 @@ impl Icon {
             Self::Check => "M20 6 9 17l-5-5",
             Self::Plus => "M12 5v14 M5 12h14",
             Self::Info => "M2 12a10 10 0 1 0 20 0a10 10 0 1 0-20 0 M12 16v-4 M12 8h.01",
+            Self::Lock => concat!(
+                "M5 11h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2Z ",
+                "M7 11V7a5 5 0 0 1 10 0v4",
+            ),
         }
     }
 
@@ -152,7 +158,7 @@ impl Icon {
 mod tests {
     use super::*;
 
-    const ALL: [Icon; 23] = [
+    const ALL: [Icon; 24] = [
         Icon::Overview,
         Icon::Review,
         Icon::Machine,
@@ -176,6 +182,7 @@ mod tests {
         Icon::Check,
         Icon::Plus,
         Icon::Info,
+        Icon::Lock,
     ];
 
     // ADR 0018: icon paths go through the template's escaping, which must leave

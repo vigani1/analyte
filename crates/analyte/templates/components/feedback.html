@@ -9,7 +9,12 @@
 
 {#- Something worth knowing that needs no one, such as a state that is normal: the info icon, a title and a sentence. -#}
 {%- macro note(title, text) -%}
-<div class="alert alert--info" role="note">{% call draw::icon(crate::admin::view::icon::Icon::Info, "") %}{% endcall %}<div><p class="alert__title">{{ title }}</p>{% if !text.is_empty() %}<p class="alert__text">{{ text }}</p>{% endif %}</div><span></span></div>
+{% call note_with(crate::admin::view::icon::Icon::Info, title, text) %}{% endcall %}
+{%- endmacro %}
+
+{#- A `note` with its own icon, such as the lock beside how keys are kept. -#}
+{%- macro note_with(icon, title, text) -%}
+<div class="alert alert--info" role="note">{% call draw::icon(icon, "") %}{% endcall %}<div><p class="alert__title">{{ title }}</p>{% if !text.is_empty() %}<p class="alert__text">{{ text }}</p>{% endif %}</div><span></span></div>
 {%- endmacro %}
 
 {#- One plain sentence of what to do, and the page that does it. -#}

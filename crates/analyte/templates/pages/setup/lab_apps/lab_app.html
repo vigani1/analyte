@@ -1,0 +1,65 @@
+{#- One lab app's form (GET /setup/lab-apps/new and /setup/lab-apps/{name}): where to send, the machines that send here, the timing, and the keys, which are never shown; the Remove dialog drawn over it (GET /setup/lab-apps/{name}/remove). -#}
+{% extends "layout/base.html" %}
+{%- import "components/feedback.html" as feedback %}
+{%- import "components/forms.html" as forms %}
+{%- import "components/layout.html" as layout %}
+{%- block main %}
+{% call layout::detail_head(head) %}{% endcall %}
+{%- if let Some(machines) = kept %}
+{% call feedback::alert(crate::admin::view::Tone::Attention, "Still kept in the settings of " ~ machines, "You can enter its keys here. To change its address or timing, first save that machine on its setup page, which moves the lab app to this page.") %}{% endcall %}
+{%- endif %}
+<form class="stack stack--lg lab-form" method="post" action="{{ action }}">
+<input type="hidden" name="csrf" value="{{ csrf }}">
+<section class="card card--pad stack" aria-labelledby="la-where">
+<h2 id="la-where" class="label">Where to send</h2>
+<div class="form-grid">
+{%- match name %}
+{%- when Name::New(value) %}
+<div class="field"><label class="field__label" for="la-name">Name</label><input id="la-name" class="input" name="name" required maxlength="64" value="{{ value }}"><span class="field__hint">Letters, digits, - and _. The name cannot change later: stored results wait under it.</span></div>
+{%- when Name::Fixed(value) %}
+<div class="field"><label class="field__label" for="la-name">Name</label><input id="la-name" class="input" value="{{ value }}" readonly><span class="field__hint">Cannot change: stored results wait under this name.</span></div>
+{%- endmatch %}
+<div class="field"><label class="field__label" for="la-address">Address</label><input id="la-address" class="input mono" name="base_url" required maxlength="4096" placeholder="https://" value="{{ address }}"><span class="field__hint">Your lab app team gives you this.</span></div>
+</div>
+<div class="field">
+<p class="field__label lab-form__label">Machines that send here</p>
+{%- if !senders.is_empty() %}
+<ul class="lab-form__senders">
+{%- for sender in senders %}
+<li><a class="link" href="{{ sender.href }}">{{ sender.id }}</a></li>
+{%- endfor %}
+</ul>
+{%- endif %}
+<span class="field__hint">{% if senders.is_empty() %}None yet. {% endif %}Each machine picks its lab app in setup step 2.</span>
+</div>
+{% call layout::disclosure("Timing (advanced)") %}
+<div class="form-grid">
+<div class="field"><label class="field__label" for="la-fresh">Order list counts as current for (seconds)</label><input id="la-fresh" class="input mono" name="freshness_seconds" inputmode="numeric" maxlength="10" value="{{ freshness }}"></div>
+<div class="field"><label class="field__label" for="la-wait">Wait for each request (seconds, 1 to 120)</label><input id="la-wait" class="input mono" name="request_timeout_seconds" inputmode="numeric" maxlength="3" value="{{ timeout }}"></div>
+</div>
+<span class="field__hint">{{ defaults }}</span>
+{% endcall %}
+</section>
+<section class="card card--pad stack" aria-labelledby="la-keys">
+<h2 id="la-keys" class="label">Keys</h2>
+{% call feedback::note_with(crate::admin::view::icon::Icon::Lock, "Keys are entered once", "After you save, Analyte keeps them locked away and never shows them again. To change a key, replace it. Analyte uses new keys after it restarts.") %}{% endcall %}
+{%- for key in keys %}
+{% call forms::key_field(key) %}{% endcall %}
+{%- endfor %}
+</section>
+<div class="wizard-foot">
+{%- if let Some(href) = remove %}
+{% call forms::link_button(href, "Remove this lab app", "btn--quiet lab__remove") %}{% endcall %}
+{%- else %}
+<span></span>
+{%- endif %}
+<div class="cluster">{% call forms::link_button(crate::admin::view::Tab::LabApps.href(), "Cancel", "btn--outline") %}{% endcall %}<button type="submit" class="btn btn--primary">Save</button></div>
+</div>
+</form>
+{%- if !support.is_empty() %}
+{% call feedback::support("Details for support", support) %}{% endcall %}
+{%- endif %}
+{%- if let Some(dialog) = dialog %}
+{% call forms::list_dialog(dialog) %}{% endcall %}
+{%- endif %}
+{%- endblock %}

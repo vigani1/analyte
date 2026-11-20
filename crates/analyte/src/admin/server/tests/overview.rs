@@ -533,7 +533,7 @@ async fn assert_recorded(
 
 /// Queues one order message for `lab_app` at `now` and, when `delivered`,
 /// records that the lab app accepted it.
-fn queue(
+pub(super) fn queue(
     store: &mut analyte_store::Store,
     lab_app: &str,
     order: &str,

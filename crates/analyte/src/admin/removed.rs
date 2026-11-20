@@ -62,6 +62,11 @@ impl Line {
         }
     }
 
+    /// The lab app the waiting items are for.
+    pub(super) const fn destination(&self) -> &Identifier {
+        &self.destination
+    }
+
     /// The sentence itself.
     pub(super) fn text(&self) -> &str {
         &self.text

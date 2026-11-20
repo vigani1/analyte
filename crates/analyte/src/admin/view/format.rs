@@ -354,6 +354,11 @@ pub(in crate::admin) fn machine_href(id: &str) -> String {
     format!("/machines/{}", path_segment(id))
 }
 
+/// A lab app's page: "/setup/lab-apps/main-lab".
+pub(in crate::admin) fn lab_app_href(name: &str) -> String {
+    format!("{}/{}", super::Tab::LabApps.href(), path_segment(name))
+}
+
 /// A setup page about one machine: "/setup/cobas-e411" and, when `step` is
 /// not empty, the step after it, such as "/setup/cobas-e411/test".
 pub(in crate::admin) fn setup_href(id: &str, step: &str) -> String {
@@ -694,11 +699,45 @@ pub(in crate::admin) fn missing_keys(missing: &[&str]) -> String {
     }
 }
 
+/// When keys entered on the Lab apps page take effect.
+pub(in crate::admin) const KEYS_APPLY: &str =
+    "Waiting items go out after Analyte restarts with the keys.";
+
 /// What to do for a lab app Analyte cannot deliver to.
 pub(in crate::admin) const KEYS_ADVICE: &str = concat!(
     "add the missing keys on the Lab apps page or in the service environment. ",
     "Waiting items go out after Analyte restarts with the keys."
 );
+
+/// When a stored key was set, as its status says: "Set on 19 Nov", with the
+/// year when it is not this year's.
+pub(in crate::admin) fn set_on(set_at: i64, now: Timestamp) -> String {
+    set_on_in(set_at, now, &TimeZone::system())
+}
+
+fn set_on_in(set_at: i64, now: Timestamp, zone: &TimeZone) -> String {
+    let Ok(at) = Timestamp::from_second(set_at) else {
+        return format!("Set at {}", not_a_date(set_at));
+    };
+    let at = at.to_zoned(zone.clone());
+    let pattern = if at.year() == now.to_zoned(zone.clone()).year() {
+        "Set on %-d %b"
+    } else {
+        "Set on %-d %b %Y"
+    };
+    at.strftime(pattern).to_string()
+}
+
+/// A key whose value the service environment holds, which wins over a stored one.
+pub(in crate::admin) fn set_in_environment(variable: &str) -> String {
+    format!("Set in the service environment ({variable})")
+}
+
+/// Said under a key's field when the key source holds no value for it.
+pub(in crate::admin) const KEY_NEEDED: &str = "Needed before Analyte can send results.";
+
+/// Said under a key's field when the locked keys file could not be read.
+pub(in crate::admin) const KEY_UNCHECKED: &str = "The locked keys file could not be read, so this key cannot be checked; the reason is under Details for support.";
 
 /// Words written as one sentence: the first letter upper case and a full stop
 /// at the end, such as a setup refusal shown on its own.
@@ -2681,6 +2720,28 @@ mod tests {
             "19 Nov 23:59",
             "the second before is yesterday"
         );
+        Ok(())
+    }
+
+    // Owner decisions 2026-11-20 (admin restyle b3): a key is never shown, only
+    // where it is found: the day it was stored (with the year when not this
+    // year's), the service environment's variable, or why a field is needed.
+    #[test]
+    fn keys_read_as_where_they_are_found() -> Result<(), Box<dyn std::error::Error>> {
+        let utc = &TimeZone::UTC;
+        let now = Timestamp::from_second(1_795_046_077)?;
+        assert_eq!(set_on_in(1_795_046_077, now, utc), "Set on 18 Nov");
+        assert_eq!(set_on_in(1_763_510_400, now, utc), "Set on 19 Nov 2025");
+        assert_eq!(
+            set_on_in(i64::MAX, now, utc),
+            format!("Set at Unix time {} (not a valid date)", i64::MAX)
+        );
+        assert_eq!(
+            set_in_environment("ANALYTE_SECRET_MAIN_LAB_API"),
+            "Set in the service environment (ANALYTE_SECRET_MAIN_LAB_API)"
+        );
+        assert_eq!(KEY_NEEDED, "Needed before Analyte can send results.");
+        assert!(KEYS_ADVICE.ends_with(KEYS_APPLY));
         Ok(())
     }
 }

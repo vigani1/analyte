@@ -3,11 +3,11 @@
 //! Switched on is not the same as used: a machine's settings switch a
 //! departure on, and each reading records which ones it used for those bytes.
 //! The page shows both from the stored reading, never from today's settings.
-use super::page::{Applied, Button, Crumb, Departures, Fact, Head, Notice, Value};
-use super::{Problem, respond};
+use super::page::{Applied, Departures, Fact, Notice, Value};
 use crate::admin::error::CommandError;
 use crate::admin::server::Context;
 use crate::admin::sessions::Session;
+use crate::admin::view::report::{Button, Crumb, Head, Problem, Section, respond};
 use crate::admin::view::{self, Tab, Tone, format, frame::Frame};
 use crate::deadline;
 use analyte_model::{DepartureEvidence, DepartureMeaning, ReceiptId, ReceiptMetadata};
@@ -51,7 +51,7 @@ pub(in crate::admin) async fn receipt(
     let session = session.as_ref().map(|Extension(session)| session.as_ref());
     let version = version.version;
     if version < 1 {
-        return Problem::ReadingNumber.page(&state, session, None);
+        return Problem::ReadingNumber.page(&state, session, Section::Machines(None));
     }
     let now = Timestamp::now();
     match tokio::time::timeout(view::READ_BUDGET, read(&state, id, version)).await {
@@ -61,11 +61,19 @@ pub(in crate::admin) async fn receipt(
                 .as_ref()
                 .map(|metadata| metadata.machine.as_str().to_owned());
             let html = askama::Template::render(&page(&state, session, id, version, read, now));
-            respond(&state, session, machine.as_deref(), StatusCode::OK, html)
+            respond(
+                &state,
+                session,
+                Section::Machines(machine.as_deref()),
+                StatusCode::OK,
+                html,
+            )
         }
-        Ok(Ok(None)) => Problem::ReadingNotFound.page(&state, session, None),
-        Ok(Err(error)) => Problem::Store(error.to_string()).page(&state, session, None),
-        Err(_) => Problem::Time.page(&state, session, None),
+        Ok(Ok(None)) => Problem::ReadingNotFound.page(&state, session, Section::Machines(None)),
+        Ok(Err(error)) => {
+            Problem::Store(error.to_string()).page(&state, session, Section::Machines(None))
+        }
+        Err(_) => Problem::Time.page(&state, session, Section::Machines(None)),
     }
 }
 

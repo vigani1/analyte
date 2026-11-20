@@ -106,6 +106,28 @@ a.chip { text-decoration: none; }
 .departure__rule { margin: 0; font-size: var(--text-base); font-weight: var(--weight-semibold); }
 .departure__none { margin: 0; }
 
+/* Lab apps (the LabApps and LabAppEdit mockups' inline styles). */
+/* A lab app Analyte cannot deliver to: its head and foot rule in the problem
+   border, and its status keeps the card's surface behind it. */
+.card--bad > .card__head, .card--bad > .card__foot { border-color: var(--bad-border); }
+.card--bad > .card__head .status { background: var(--surface); }
+/* Beside a lab app's name: when it last accepted a delivery. */
+.lab__aside { font-size: var(--text-xs); }
+/* Remove, as a quiet button in the problem colour. */
+.lab__remove { color: var(--bad-text); }
+.lab__remove:hover { background: var(--bad-bg); }
+/* The form keeps to a readable width. */
+.lab-form { max-width: 760px; }
+.lab-form__label { margin: 0; }
+.lab-form__senders {
+  display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4);
+  margin: 0; padding: 0; list-style: none;
+}
+/* Replacing a stored key without a script: the key's row opens to its field. */
+.replace > summary { list-style: none; cursor: pointer; }
+.replace > summary::-webkit-details-marker { display: none; }
+.replace__field { margin-top: var(--space-3); }
+
 /* Icon rail: the same width as analyte.css's --narrow, which a container query
    cannot read from a custom property. */
 @container app (max-width: 1000px) {

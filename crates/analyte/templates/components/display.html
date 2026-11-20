@@ -1,4 +1,4 @@
-{#- Macros that show values: time, exact values on hover, words with times, status, the verdict with its to-do list, wires and their legend, the signal path with its nodes, figures, a history timeline, a fact about one thing and the differences used for one message. -#}
+{#- Macros that show values: time, exact values on hover, words with times, status, the verdict with its to-do list, wires and their legend, the signal path with its nodes, figures, a history timeline, a fact about one thing, the differences used for one message and where a key is found. -#}
 {%- import "components/icon.html" as draw %}
 {%- import "components/feedback.html" as feedback %}
 {%- import "components/forms.html" as forms %}
@@ -169,6 +169,11 @@
 <li>{% if let Some(moment) = entry.when %}{% call time_in(moment, "timeline__time") %}{% endcall %}{% else %}<span class="timeline__time"></span>{% endif %}<span class="timeline__dot{% if entry.good %} timeline__dot--good{% endif %}"></span><span class="timeline__text">{{ entry.text }}<span class="timeline__who">{{ entry.who }}</span></span></li>
 {%- endfor %}
 </ol>
+{%- endmacro %}
+
+{#- Where a lab app's key is found, never its value: the key icon and the words, its credential name on hover. -#}
+{%- macro key_status(key) -%}
+<span class="status status--{{ key.tone.class() }}" title="{{ key.exact }}">{% call draw::icon(crate::admin::view::icon::Icon::Key, "") %}{% endcall %}{{ key.word }}</span>
 {%- endmacro %}
 
 {#- One key and its value on a page about one thing: words, a code with its exact value on hover, a status with what was observed under it, how a machine is attached, a time or a link to the page about it. -#}

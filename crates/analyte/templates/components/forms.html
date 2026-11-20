@@ -1,4 +1,4 @@
-{#- Macros for actions: a link drawn as a button with or without an icon, filter chips, the next page, the reason and list dialogs and the audited original-bytes form. -#}
+{#- Macros for actions: a link drawn as a button with or without an icon, filter chips, the next page, the reason and list dialogs, the audited original-bytes form and a lab app key field. -#}
 {%- import "components/icon.html" as draw %}
 
 {#- A link to the page that does something, drawn as a button; `class` picks its kind and size. -#}
@@ -41,7 +41,7 @@
 </div>
 {%- endmacro %}
 
-{#- A confirmation drawn over the page, without a script: what happens, what happens to waiting work (its exact count on hover), a list of what is still open, Cancel back to the page and the action. It is a real form with the session's form token. -#}
+{#- A confirmation drawn over the page, without a script: what happens, what happens to waiting work (its exact count on hover), a list of what is still open, Cancel back to the page and the action, unless nothing can be done now. It is a real form with the session's form token. -#}
 {%- macro list_dialog(dialog) -%}
 <div class="scrim">
 <form class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-title" method="post" action="{{ dialog.action }}">
@@ -55,7 +55,7 @@
 <li>{% call draw::icon(item.icon, "icon--md tone-" ~ item.tone.class()) %}{% endcall %}<span>{{ item.text }}</span></li>
 {%- endfor %}
 </ul>
-<div class="dialog__actions"><a class="btn btn--outline" href="{{ dialog.cancel }}">Cancel</a><button type="submit" class="btn btn--danger">{{ dialog.button }}</button></div>
+<div class="dialog__actions"><a class="btn btn--outline" href="{{ dialog.cancel }}">Cancel</a>{% if let Some(button) = dialog.button %}<button type="submit" class="btn btn--danger">{{ button }}</button>{% endif %}</div>
 </form>
 </div>
 {%- endmacro %}
@@ -69,4 +69,19 @@
 {%- for (source, label) in form.buttons %}<button type="submit" class="btn btn--outline btn--sm" name="source" value="{{ source }}">{{ label }}</button>{% endfor -%}
 </div>
 </form>
+{%- endmacro %}
+
+{#- One key on a lab app's form, never its value: asked for on a new lab app; where its value is found, with Replace opening a field without a script; or the field with why it is needed. -#}
+{%- macro key_field(key) -%}
+{%- match key.entry %}
+{%- when Entry::New %}
+<div class="field"><label class="field__label" for="{{ key.input }}">{{ key.label }}</label><input id="{{ key.input }}" class="input mono" type="password" name="{{ key.field }}" required autocomplete="off" maxlength="4096"><span class="field__hint">Paste it from your lab app team’s message.</span></div>
+{%- when Entry::Replace { hint } %}
+<div class="field"><span class="field__label">{{ key.label }}</span>
+<details class="replace"><summary class="secret"><span class="status status--{{ key.tone.class() }}" title="{{ key.exact }}">{% call draw::icon(key.tone.icon(), "") %}{% endcall %}{{ key.word }}</span><span class="secret__dots" aria-hidden="true">••••••••••••</span><span class="spacer"></span><span class="btn btn--outline btn--sm">Replace</span></summary>
+<div class="field replace__field"><label class="field__label" for="{{ key.input }}">New {{ key.label|lower }}</label><input id="{{ key.input }}" class="input mono" type="password" name="{{ key.field }}" autocomplete="off" maxlength="4096"><span class="field__hint">{{ hint }}</span></div>
+</details></div>
+{%- when Entry::Needed(why) %}
+<div class="field"><label class="field__label" for="{{ key.input }}">{{ key.label }}</label><input id="{{ key.input }}" class="input mono" type="password" name="{{ key.field }}" autocomplete="off" maxlength="4096" placeholder="Paste the {{ key.label|lower }}" aria-describedby="{{ key.input }}-why"><span id="{{ key.input }}-why" class="field__error">{% call draw::icon(crate::admin::view::icon::Icon::Problem, "icon--sm") %}{% endcall %}{{ why }}</span></div>
+{%- endmatch %}
 {%- endmacro %}

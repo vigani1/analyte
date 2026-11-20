@@ -126,24 +126,12 @@ pub(super) async fn lab_apps(
                 .push((destination.id().clone(), health.pending_count, observed));
         }
         nodes.push(node);
-        lists.push(order_list(destination.id(), &health, now));
+        lists.push(order_list_figure(destination.id(), &health, now));
     }
     for (name, kept) in &state.retired {
         let id = Identifier::new(name)?;
-        let read = id.clone();
-        let second = now.as_second();
-        let health = state
-            .store
-            .request(crate::deadline()?, move |store| {
-                store.health(&read, second, 0)
-            })
-            .await?;
+        let (health, keys) = kept_health(state, &id, Some(kept), now).await?;
         waiting.add(&health);
-        let keys = if kept.keys_missing {
-            Some(missing_keys(state, kept).await?)
-        } else {
-            None
-        };
         let (node, observed) = lab_node(&id, &health, delivered, failing, &[], keys, now);
         if let Some(observed) = observed {
             facts
@@ -160,9 +148,101 @@ pub(super) async fn lab_apps(
     Ok((nodes, figures))
 }
 
+/// How a lab app's deliveries stand, by the rules the Overview's lab node
+/// and the Lab apps page share. Missing keys and paused sending come first:
+/// no try is made then, so failing would mislead.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::admin) enum Delivery {
+    /// Its keys were missing at startup, so Analyte makes no try.
+    CannotDeliver,
+    /// A delivery paused sending.
+    Paused,
+    /// Items wait and every try since the last delivery failed.
+    NotDelivering,
+    /// Items wait and nothing stops them.
+    Queued,
+    /// Nothing waits.
+    UpToDate,
+}
+
+impl Delivery {
+    pub(in crate::admin) const fn tone(self) -> Tone {
+        match self {
+            Self::CannotDeliver | Self::NotDelivering => Tone::Problem,
+            Self::Paused => Tone::Attention,
+            Self::Queued => Tone::Neutral,
+            Self::UpToDate => Tone::Good,
+        }
+    }
+
+    pub(in crate::admin) const fn word(self) -> &'static str {
+        match self {
+            Self::CannotDeliver => "Cannot deliver",
+            Self::Paused => "Sending paused",
+            Self::NotDelivering => "Not delivering",
+            Self::Queued => "Queued",
+            Self::UpToDate => "Up to date",
+        }
+    }
+}
+
+/// How one lab app stands, with the lines that say why.
+pub(in crate::admin) struct Standing {
+    pub(in crate::admin) delivery: Delivery,
+    /// Which keys were missing at startup and what the key source says now;
+    /// only when it cannot deliver.
+    pub(in crate::admin) keys: Option<Keys>,
+    /// What was observed about tries that keep failing; only when not delivering.
+    pub(in crate::admin) failing: Option<Line>,
+    /// "Last delivered 10:43", "Nothing delivered yet" or "No delivery in the kept records".
+    pub(in crate::admin) delivered: Line,
+    /// "4 items waiting · oldest 10:31" or "nothing waiting".
+    pub(in crate::admin) waiting: Line,
+}
+
+/// How lab app `name` stands from its store `health`, when each lab app last
+/// accepted a delivery, which keep failing and, for a kept one whose keys were
+/// missing at startup, its `keys`.
+pub(in crate::admin) fn standing(
+    name: &Identifier,
+    health: &Health,
+    delivered: &LastDelivered,
+    failing: &[FailingDestination],
+    keys: Option<Keys>,
+    now: Timestamp,
+) -> Standing {
+    let last = delivered
+        .at
+        .iter()
+        .find(|(destination, _)| destination == name)
+        .and_then(|&(_, time)| Timestamp::from_second(time).ok());
+    let failing = failing
+        .iter()
+        .find(|failing| &failing.destination == name)
+        .filter(|_| keys.is_none() && !health.paused)
+        .map(|failing| format::failing(failing, now));
+    let delivery = if keys.is_some() {
+        Delivery::CannotDeliver
+    } else if health.paused {
+        Delivery::Paused
+    } else if failing.is_some() {
+        Delivery::NotDelivering
+    } else if health.pending_count > 0 {
+        Delivery::Queued
+    } else {
+        Delivery::UpToDate
+    };
+    Standing {
+        delivery,
+        keys,
+        failing,
+        delivered: format::last_delivered(last, delivered.purged, now),
+        waiting: format::waiting(health.pending_count, oldest(health, now), now),
+    }
+}
+
 /// One lab app's node and, when its tries keep failing and nothing else stops
-/// it, what was observed in plain words for its to-do line. Keys missing and
-/// paused sending come first: no try is made then, so failing would mislead.
+/// it, what was observed in plain words for its to-do line.
 fn lab_node(
     name: &Identifier,
     health: &Health,
@@ -172,47 +252,30 @@ fn lab_node(
     keys: Option<Keys>,
     now: Timestamp,
 ) -> (LabNode, Option<String>) {
-    let last = delivered
-        .at
-        .iter()
-        .find(|(destination, _)| destination == name)
-        .and_then(|&(_, time)| Timestamp::from_second(time).ok());
-    let blocked = keys.is_some();
-    let failing = failing
-        .iter()
-        .find(|failing| &failing.destination == name)
-        .filter(|_| !blocked && !health.paused)
-        .map(|failing| format::failing(failing, now));
+    let Standing {
+        delivery,
+        keys,
+        failing,
+        delivered,
+        waiting,
+    } = standing(name, health, delivered, failing, keys, now);
     let observed = failing.as_ref().map(Line::plain);
     let (keys, support) = keys.map_or((None, None), |keys| (Some(keys.line), keys.support));
     // Why it cannot deliver comes first, as the to-do line leads with it.
     let mut lines: Vec<Line> = keys.into_iter().map(Line::text).collect();
-    let not_delivering = failing.is_some();
     lines.extend(failing);
-    lines.push(
-        format::last_delivered(last, delivered.purged, now).then(format::waiting(
-            health.pending_count,
-            oldest(health, now),
-            now,
-        )),
-    );
+    lines.push(delivered.then(waiting));
     lines.push(Line::text(format::senders(senders)));
-    let (tone, status, wire) = if blocked {
-        (Tone::Problem, "Cannot deliver", Wire::Cut)
-    } else if health.paused {
-        (Tone::Attention, "Sending paused", Wire::Wait)
-    } else if not_delivering {
-        (Tone::Problem, "Not delivering", Wire::Cut)
-    } else if health.pending_count > 0 {
-        (Tone::Neutral, "Queued", Wire::Live)
-    } else {
-        (Tone::Good, "Up to date", Wire::Live)
-    };
+    let blocked = delivery == Delivery::CannotDeliver;
     let node = LabNode {
         name: name.as_str().to_owned(),
-        tone,
-        status,
-        wire,
+        tone: delivery.tone(),
+        status: delivery.word(),
+        wire: match delivery {
+            Delivery::CannotDeliver | Delivery::NotDelivering => Wire::Cut,
+            Delivery::Paused => Wire::Wait,
+            Delivery::Queued | Delivery::UpToDate => Wire::Live,
+        },
         // The break mark says why the line is cut: a key for missing keys, a
         // cross for tries that fail; Analyte makes no try without keys.
         mark: if blocked { Icon::Key } else { Icon::Cross },
@@ -225,9 +288,9 @@ fn lab_node(
 
 /// What a kept lab app's node says about its keys: the line people read and,
 /// when the keys could not be checked, the exact reason for support.
-struct Keys {
-    line: String,
-    support: Option<String>,
+pub(in crate::admin) struct Keys {
+    pub(in crate::admin) line: String,
+    pub(in crate::admin) support: Option<String>,
 }
 
 /// When the oldest waiting item arrived, when the store knows its age.
@@ -237,6 +300,30 @@ fn oldest(health: &Health, now: Timestamp) -> Option<Timestamp> {
         .and_then(|age| i64::try_from(age).ok())
         .and_then(|age| now.as_second().checked_sub(age))
         .and_then(|second| Timestamp::from_second(second).ok())
+}
+
+/// What the store says about lab app `id` when no running machine uses it,
+/// so no freshness applies, and, for a kept one whose keys were missing at
+/// startup, which of them the key source lacks now.
+pub(in crate::admin) async fn kept_health(
+    state: &Context,
+    id: &Identifier,
+    kept: Option<&Kept>,
+    now: Timestamp,
+) -> Result<(Health, Option<Keys>), Error> {
+    let read = id.clone();
+    let second = now.as_second();
+    let health = state
+        .store
+        .request(crate::deadline()?, move |store| {
+            store.health(&read, second, 0)
+        })
+        .await?;
+    let keys = match kept {
+        Some(kept) if kept.keys_missing => Some(missing_keys(state, kept).await?),
+        Some(_) | None => None,
+    };
+    Ok((health, keys))
 }
 
 /// Which of a kept lab app's keys the key source has no value for now; the
@@ -276,8 +363,9 @@ async fn missing_keys(state: &Context, kept: &Kept) -> Result<Keys, Error> {
     .await?)
 }
 
-/// How fresh one lab app's order list is: only from what its health records.
-fn order_list(name: &Identifier, health: &Health, now: Timestamp) -> Figure {
+/// How fresh a lab app's order list is, only from what its health records:
+/// its tone, its words and when it was last checked.
+pub(in crate::admin) fn order_list(health: &Health) -> (Tone, &'static str, Option<Timestamp>) {
     let checked = health
         .last_successful_poll
         .and_then(|second| Timestamp::from_second(second).ok());
@@ -286,6 +374,12 @@ fn order_list(name: &Identifier, health: &Health, now: Timestamp) -> Figure {
         (false, Some(_)) => (Tone::Attention, "Out of date"),
         (false, None) => (Tone::Neutral, "Not checked yet"),
     };
+    (tone, value, checked)
+}
+
+/// The figure for one lab app's order list.
+fn order_list_figure(name: &Identifier, health: &Health, now: Timestamp) -> Figure {
+    let (tone, value, checked) = order_list(health);
     Figure {
         label: format!("Order list · {}", name.as_str()),
         value: value.into(),
@@ -593,11 +687,11 @@ mod tests {
             cache_trusted: true,
             ..health(0, None, false)
         };
-        let fresh = figure(order_list(&name, &checked, now()));
+        let fresh = figure(order_list_figure(&name, &checked, now()));
         assert!(fresh.contains("<dt>Order list · main-lab</dt>"), "{fresh}");
         assert!(fresh.contains("tone-good"));
         assert!(fresh.contains("</svg>Up to date <span class=\"figure__aside\">· checked <time "));
-        let stale = figure(order_list(
+        let stale = figure(order_list_figure(
             &name,
             &Health {
                 cache_trusted: false,
@@ -607,7 +701,7 @@ mod tests {
         ));
         assert!(stale.contains("tone-warn"), "{stale}");
         assert!(stale.contains("</svg>Out of date <span class=\"figure__aside\">· checked <time "));
-        let never = figure(order_list(&name, &health(0, None, false), now()));
+        let never = figure(order_list_figure(&name, &health(0, None, false), now()));
         assert!(never.contains("tone-off"), "{never}");
         assert!(never.contains("</svg>Not checked yet</dd>"));
         assert!(!never.contains("checked <time"));
