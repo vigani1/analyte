@@ -418,18 +418,23 @@ Counts are plain numbers, red only above zero; status pills are kept for states
 such as Connected or Waiting. Settings versions show the first 12 hex digits of
 the configuration digest, with the full digest on hover.
 
-Every admin page except the login has one header menu (`src/admin/view/`): four
-tabs (Overview, Needs review, Machines, Setup) and a More dropdown (Machine
-orders, Cancelled by machine, Deliveries, Data keeping), with the current page
-marked by `aria-current`. The dropdown is a `<details>` element, so it works by
-keyboard and without scripts. The paths are unchanged (`/parked`,
-`/analyzer-cancelled`, `/retention` and so on), so bookmarks keep working.
-Refusals and failures render as pages with a plain sentence and the exact
-technical detail in small print for support. Every admin page links one
-stylesheet served from the binary at `/static/admin.css` (light first, dark
-through `prefers-color-scheme`), which the `default-src 'self'` policy allows;
-pages use no inline styles, scripts, fonts or external URLs. The stylesheet
-holds no data, so it is served before login (the host check still applies).
+Every admin page someone has signed in to has one sidebar (`src/admin/view/`):
+Overview, Needs review, Machines, Lab apps and Setup, and a More group
+(Machine orders, Cancelled by machine, Deliveries, Data keeping, Settings),
+with the current page marked by `aria-current`. The More group is a
+`<details>` element, so it works by keyboard and without scripts. The paths
+are unchanged (`/parked`, `/analyzer-cancelled`, `/retention` and so on), so
+bookmarks keep working. Sign-in and the refusals that have no page of their
+own (an expired form, too much text, a request that took too long, an address
+with no page) use a plain centred frame with no sidebar, so a page that may be
+shown before sign-in names no machine, lab app or count. Refusals and failures
+say what happened in plain words, with the exact technical detail under
+"Details for support". Every page is an Askama template that loads
+`fonts.css`, `analyte.css` and `app.css`, served from the binary under
+`/static/` (light first, dark through `prefers-color-scheme`), which the
+`default-src 'self'` policy allows; pages use no inline styles, scripts or
+external URLs. These files hold no data, so they are served before login (the
+host check still applies).
 The link light comes from the machine runtime, not from receipt age: the
 transport reports each session opening, closing and read (never bytes) to a
 per-machine status the runtime owns and the admin page only reads. Serial says

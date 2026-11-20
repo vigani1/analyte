@@ -27,10 +27,15 @@ the strict content security policy.
   served as a file.
 - A **desktop shell** (Tauri: window and tray icon around the same pages) is
   planned and needs the owner's approval before any work starts.
-- Pages move one PR at a time; until a page is restyled it keeps the old
-  builder and `admin.css`, and the two stylesheets never load on one page.
-  **No release or installer is built until the last page PR (b6) is merged**,
-  because the look is mixed until then.
+- Pages moved one PR at a time, and the two looks never loaded on one page.
+  **The last page PR (b6) is done:** sign-in and every refusal without a page
+  of its own use a plain centred frame with no sidebar, so a page shown before
+  sign-in names no machine, lab app or count. The old builder and its
+  stylesheet are deleted, so the hold on release and installer builds is
+  lifted.
+- **Still to come:** PR c, live updates (server-sent events) and the Activity
+  page; PR d, the Engine off page and the Tauri desktop shell, which waits for
+  the owner's approval before any work starts.
 
 ## Why
 
