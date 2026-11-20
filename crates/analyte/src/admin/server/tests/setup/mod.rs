@@ -3,6 +3,7 @@ use super::pages::{csrf, encode, login};
 use super::*;
 use std::sync::Mutex;
 
+mod lab_apps;
 mod removal;
 
 /// Synthetic key values; neither may ever appear in a page, audit row or log.
@@ -592,7 +593,7 @@ async fn invalid_address_is_refused_before_anything_is_written() -> Result<(), E
                 ("base_url", "https://lab.example.invalid"),
                 ("signing_key", ""),
             ],
-            "enter both keys for a new lab app",
+            "Enter both keys for a new lab app",
         ),
     ] {
         let mut posted = vec![("name", "second"), ("api_key", API_KEY)];
@@ -724,13 +725,14 @@ async fn lab_app_page_stores_keys_once() -> Result<(), Error> {
     let fixture = start().await?;
     let list = fixture.get("/setup/lab-apps").await?;
     assert!(
-        list.contains(">Still kept in the settings of synthetic</span></small>"),
+        list.contains(">Still kept in the settings of synthetic</span></dd>"),
         "{list}"
     );
     assert!(
-        list.contains("<span title=\"demo-api\">API key</span>: not set"),
+        list.contains("<dt>API key</dt><dd><span class=\"status status--bad\" title=\"demo-api\">"),
         "{list}"
     );
+    assert!(list.contains("</svg>Missing</span></dd>"), "{list}");
     let moved_first = fixture
         .submit(
             "/setup/lab-apps/demo",
@@ -780,11 +782,12 @@ async fn lab_app_page_stores_keys_once() -> Result<(), Error> {
     crate::runtime::service::acl::check(&file, crate::runtime::service::acl::Readers::ServiceOnly)?;
     let again = fixture.get("/setup/lab-apps/demo").await?;
     assert!(
-        again.contains("<span title=\"demo-api\">API key</span>: set on "),
+        again.contains("<span class=\"status status--good\" title=\"demo-api, stored "),
         "{again}"
     );
-    assert!(again.contains("<span title=\"demo-signing\">Signing key</span>: set on "));
-    assert!(again.contains("Leave a box empty to keep the stored key"));
+    assert!(again.contains("<span class=\"status status--good\" title=\"demo-signing, stored "));
+    assert_eq!(again.matches("</svg>Set on ").count(), 2, "{again}");
+    assert!(again.contains("Leave it empty to keep the stored key."));
     let added = fixture
         .submit(
             "/setup/lab-apps/new",
@@ -846,13 +849,13 @@ async fn lab_app_in_use_is_not_removed() -> Result<(), Error> {
         confirm.contains("Machines send results to it: synthetic."),
         "{confirm}"
     );
-    assert!(!confirm.contains("<button class=\"danger\">Remove</button>"));
+    assert!(!confirm.contains("<button type=\"submit\" class=\"btn btn--danger\">Remove</button>"));
     let refused = fixture
         .submit("/setup/lab-apps/new", "/setup/lab-apps/demo/remove", &[])
         .await?;
     assert!(refused.starts_with("HTTP/1.1 409"), "{refused}");
     assert!(
-        refused.contains("lab app demo cannot be removed"),
+        refused.contains("Lab app demo cannot be removed"),
         "{refused}"
     );
     assert!(!fixture.root().join("lab-apps.toml").exists());
@@ -871,7 +874,7 @@ async fn lab_app_in_use_is_not_removed() -> Result<(), Error> {
     assert!(added.starts_with("HTTP/1.1 200"), "{added}");
     let confirm = fixture.get("/setup/lab-apps/spare/remove").await?;
     assert!(
-        confirm.contains("<button class=\"danger\">Remove</button>"),
+        confirm.contains("<button type=\"submit\" class=\"btn btn--danger\">Remove</button>"),
         "{confirm}"
     );
     let removed = fixture
@@ -919,7 +922,7 @@ async fn lab_app_page_refuses_a_clashing_name() -> Result<(), Error> {
     assert!(refused.starts_with("HTTP/1.1 409"), "{refused}");
     assert!(
         refused.contains(concat!(
-            "Lab apps &quot;lab-1&quot; and &quot;lab_1&quot; clash: both would use the key ",
+            "Lab apps &#34;lab-1&#34; and &#34;lab_1&#34; clash: both would use the key ",
             "name ANALYTE_SECRET_LAB_1_API. Rename one so the names differ by more than ",
             "letter case or - versus _"
         )),
@@ -928,7 +931,7 @@ async fn lab_app_page_refuses_a_clashing_name() -> Result<(), Error> {
     // The site file's "demo", by letter case only.
     let refused = add("Demo").await?;
     assert!(
-        refused.contains("Lab apps &quot;demo&quot; and &quot;Demo&quot; clash"),
+        refused.contains("Lab apps &#34;demo&#34; and &#34;Demo&#34; clash"),
         "{refused}"
     );
     assert_eq!(std::fs::read_to_string(&file)?, before);

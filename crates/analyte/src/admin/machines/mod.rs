@@ -15,7 +15,7 @@ use crate::admin::pages::{Cursor, PAGE};
 use crate::admin::server::{Context, Machine};
 use crate::admin::sessions::Session;
 use crate::admin::setup::Listed;
-use crate::admin::view::report::{Button, Crumb, Head, Problem, Report, Status};
+use crate::admin::view::report::{Button, Crumb, Head, Problem, Report, Section, Status, respond};
 use crate::admin::view::{self, Tab, Tone, format, frame::Frame, icon::Icon};
 use crate::admin::{Error, error::CommandError};
 use crate::deadline;
@@ -27,7 +27,7 @@ use axum::{
     Extension,
     extract::{Path, Query, State},
     http::StatusCode,
-    response::{Html, IntoResponse, Response},
+    response::Response,
 };
 use jiff::Timestamp;
 use page::{Detail, Empty, Fact, Link, List, Message, Notice, Row, Todo, Value};
@@ -169,21 +169,6 @@ fn link(machine: &Machine) -> Link {
     }
 }
 
-/// A page rendered with `status`, or the store-failure page when it could not be written.
-fn respond(
-    state: &Context,
-    session: Option<&Session>,
-    machine: Option<&str>,
-    status: StatusCode,
-    html: Result<String, askama::Error>,
-) -> Response {
-    match html {
-        Ok(html) => (status, Html(html)).into_response(),
-        Err(error) => Problem::Store(format!("page could not be written: {error}"))
-            .page(state, session, machine),
-    }
-}
-
 /// What GET /machines reads: the settings file, then one store request.
 struct ListRead {
     listed: Result<Vec<Listed>, String>,
@@ -225,12 +210,26 @@ pub(super) async fn list(
     let now = Timestamp::now();
     let read = match tokio::time::timeout(view::READ_BUDGET, read_list(&state)).await {
         Ok(Ok(read)) => read,
-        Ok(Err(error)) => return Problem::Store(error.to_string()).page(&state, session, None),
-        Err(_) => return Problem::Time.page(&state, session, None),
+        Ok(Err(error)) => {
+            return Problem::Store(error.to_string()).page(
+                &state,
+                session,
+                Section::Machines(None),
+            );
+        }
+        Err(_) => return Problem::Time.page(&state, session, Section::Machines(None)),
     };
     match list_page(&state, session, &cursor, read, now) {
-        Ok(page) => respond(&state, session, None, StatusCode::OK, page.render()),
-        Err(error) => Problem::Store(error.to_string()).page(&state, session, None),
+        Ok(page) => respond(
+            &state,
+            session,
+            Section::Machines(None),
+            StatusCode::OK,
+            page.render(),
+        ),
+        Err(error) => {
+            Problem::Store(error.to_string()).page(&state, session, Section::Machines(None))
+        }
     }
 }
 
@@ -424,15 +423,19 @@ async fn page(
         match tokio::time::timeout(view::READ_BUDGET, read_detail(state, id)).await {
             Ok(Ok(read)) => read,
             Ok(Err(error)) => {
-                return Problem::Store(error.to_string()).page(state, session, Some(id));
+                return Problem::Store(error.to_string()).page(
+                    state,
+                    session,
+                    Section::Machines(Some(id)),
+                );
             }
-            Err(_) => return Problem::Time.page(state, session, Some(id)),
+            Err(_) => return Problem::Time.page(state, session, Section::Machines(Some(id))),
         };
     let entries = roster(state, listed.as_deref().ok());
     let Some(entry) = entries.iter().find(|entry| entry.id() == id) else {
         return match listed {
-            Ok(_) => Problem::NotFound.page(state, session, None),
-            Err(error) => Problem::Settings(error).page(state, session, None),
+            Ok(_) => Problem::NotFound.page(state, session, Section::Machines(None)),
+            Err(error) => Problem::Settings(error).page(state, session, Section::Machines(None)),
         };
     };
     let more = recent.len() > RECENT;
@@ -455,7 +458,13 @@ async fn page(
         support: detail.support.into_iter().chain(listed.err()).collect(),
         ..detail
     };
-    respond(state, session, Some(id), StatusCode::OK, detail.render())
+    respond(
+        state,
+        session,
+        Section::Machines(Some(id)),
+        StatusCode::OK,
+        detail.render(),
+    )
 }
 
 /// A machine's page from what was read.
@@ -752,7 +761,7 @@ pub(in crate::admin) fn removed(
             Some(session),
             Timestamp::now(),
         ),
-        head: Head::under(page_left.then_some(id), title),
+        head: Section::Machines(page_left.then_some(id)).head(title),
         tone: Tone::Good,
         title: format!("{id} is removed from Analyte’s settings"),
         text: format::REMOVED_ADVICE.into(),
@@ -765,7 +774,7 @@ pub(in crate::admin) fn removed(
     respond(
         state,
         Some(session),
-        Some(id),
+        Section::Machines(Some(id)),
         StatusCode::OK,
         page.render(),
     )

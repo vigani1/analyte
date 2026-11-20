@@ -1,0 +1,61 @@
+{#- Lab apps (GET /setup/lab-apps): one card per lab app the settings write, with how it stands by the Overview's rules, its address, the machines that send to it, where its keys are found and what waits for it; the notices above and under the list. -#}
+{% extends "layout/base.html" %}
+{%- import "components/display.html" as display %}
+{%- import "components/feedback.html" as feedback %}
+{%- import "components/forms.html" as forms %}
+{%- import "components/icon.html" as draw %}
+{%- import "components/layout.html" as layout %}
+{%- block main %}
+{% call layout::intro_head("Lab apps", "The lab software that receives results and sends orders. Each machine picks one in its setup; changes apply after a restart.") %}
+{%- if add %}
+{% call forms::icon_button("/setup/lab-apps/new", crate::admin::view::icon::Icon::Plus, "Add a lab app", "btn--primary") %}{% endcall %}
+{%- endif %}
+{% endcall %}
+{%- for notice in problems %}
+{% call feedback::alert(notice.tone, notice.title, notice.text) %}{% endcall %}
+{%- endfor %}
+{%- if add && cards.is_empty() %}
+<div class="card">{% call feedback::empty("No lab app is set up yet", "Add one; machines can then send results to it.") %}{% call forms::link_button("/setup/lab-apps/new", "Add a lab app", "btn--outline btn--sm") %}{% endcall %}{% endcall %}</div>
+{%- endif %}
+{%- if !cards.is_empty() %}
+<div class="stack stack--lg">
+{%- for card in cards %}
+<article class="card{% if card.bad %} card--bad{% endif %}" aria-labelledby="la-{{ loop.index }}">
+<div class="card__head">{% call draw::icon(crate::admin::view::icon::Icon::LabApp, "") %}{% endcall %}<h2 id="la-{{ loop.index }}" class="card__title">{{ card.name }}</h2>{% call display::status_exact(card.status.tone, card.status.word, card.status.exact) %}{% endcall %}<span class="spacer"></span><span class="mono subtle lab__aside">{% call display::words(card.delivered) %}{% endcall %}</span></div>
+<div class="card__body stack">
+<dl class="kv">
+<dt>Address</dt><dd class="mono">{{ card.address }}</dd>
+<dt>Used by</dt><dd>{% for sender in card.senders %}<a class="link" href="{{ sender.href }}">{{ sender.id }}</a>{% if !loop.last %}, {% endif %}{% else %}<span class="subtle">No machine</span>{% endfor %}</dd>
+{%- for key in card.keys %}
+<dt>{{ key.label }}</dt><dd>{% call display::key_status(key) %}{% endcall %}</dd>
+{%- endfor %}
+<dt>Waiting to be sent</dt><dd>{% call display::words(card.waiting) %}{% endcall %}</dd>
+{%- if let Some(failing) = card.failing %}
+<dt>Tries</dt><dd>{% call display::words(failing) %}{% endcall %}</dd>
+{%- endif %}
+{%- if let Some(orders) = card.orders %}
+<dt>Order list</dt><dd>{{ orders.word }}{% if let Some(checked) = orders.checked %} <span class="subtle">· checked <span class="mono">{% call display::time(checked) %}{% endcall %}</span></span>{% endif %}</dd>
+{%- endif %}
+{%- if !card.written.is_empty() %}
+<dt>Written in</dt><dd>{% for (shown, exact) in card.written %}{% call display::hover(shown, exact) %}{% endcall %}{% if !loop.last %}; {% endif %}{% endfor %}</dd>
+{%- endif %}
+</dl>
+{%- if let Some(note) = card.note %}
+{% call feedback::note(note, "") %}{% endcall %}
+{%- endif %}
+{%- if let Some(todo) = card.todo %}
+{% call feedback::whattodo(todo.text, todo.href, todo.label) %}{% endcall %}
+{%- endif %}
+</div>
+<div class="card__foot">{% call forms::link_button(card.href, "Edit", "btn--quiet btn--sm") %}{% endcall %}{% call forms::link_button(card.remove, "Remove", "btn--quiet btn--sm lab__remove") %}{% endcall %}</div>
+</article>
+{%- endfor %}
+</div>
+{%- endif %}
+{%- for notice in notices %}
+{% call feedback::alert(notice.tone, notice.title, notice.text) %}{% endcall %}
+{%- endfor %}
+{%- if !support.is_empty() %}
+{% call feedback::support("Details for support", support) %}{% endcall %}
+{%- endif %}
+{%- endblock %}

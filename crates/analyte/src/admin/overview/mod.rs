@@ -8,6 +8,8 @@
 mod attention;
 mod page;
 mod signal;
+
+pub(in crate::admin) use signal::{Delivery, Keys, Standing, kept_health, order_list, standing};
 #[cfg(test)]
 mod tests;
 

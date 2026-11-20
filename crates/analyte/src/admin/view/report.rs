@@ -1,4 +1,4 @@
-//! Holds what restyled pages share to report: a page head with its way back, buttons, statuses, the page that only reports, and every way a Machines page refuses or fails with its status code, words and the exact reason kept for support.
+//! Holds what restyled pages share to report: a page head with its way back, buttons, statuses, the page that only reports, and every way a Machines or Lab apps page refuses or fails with its status code, words and the exact reason kept for support.
 use super::{
     self as view, Tab, Tone, format,
     format::{Line, Part},
@@ -60,7 +60,116 @@ pub(in crate::admin) struct Report {
     pub(in crate::admin) support: Vec<String>,
 }
 
-/// Why a Machines page could not do what was asked.
+/// Which pages a report belongs to: its tab, the way back and its links.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::admin) enum Section<'a> {
+    /// Under Machines, about the machine named, which has a page.
+    Machines(Option<&'a str>),
+    /// Under Lab apps, about the lab app named, which has a page.
+    LabApps(Option<&'a str>),
+}
+
+impl Section<'_> {
+    /// The sidebar entry the page sits under.
+    const fn tab(self) -> Tab {
+        match self {
+            Self::Machines(_) => Tab::Machines,
+            Self::LabApps(_) => Tab::LabApps,
+        }
+    }
+
+    /// The link to the page of the thing named, its words and the thing's name.
+    fn item(self) -> Option<(&'static str, String, String)> {
+        match self {
+            Self::Machines(id) => {
+                id.map(|id| ("Open the machine", id.to_owned(), format::machine_href(id)))
+            }
+            Self::LabApps(name) => name.map(|name| {
+                (
+                    "Open the lab app",
+                    name.to_owned(),
+                    format::lab_app_href(name),
+                )
+            }),
+        }
+    }
+
+    /// The head of a page here: "Machines / cobas-e411" or "Lab apps /
+    /// main-lab" when it is about one thing, linked back to its page.
+    pub(in crate::admin) fn head(self, title: impl Into<String>) -> Head {
+        let tab = self.tab();
+        let mut crumbs = vec![Crumb {
+            label: tab.label().to_owned(),
+            href: Some(tab.href().to_owned()),
+        }];
+        crumbs.extend(self.item().map(|(_, label, href)| Crumb {
+            label,
+            href: Some(href),
+        }));
+        Head {
+            crumbs,
+            title: title.into(),
+            status: None,
+            lede: None,
+        }
+    }
+
+    /// The links at the foot of a report: the thing's own page when it has
+    /// one, then the list; the first is the main one.
+    pub(in crate::admin) fn links(self) -> Vec<Button> {
+        let tab = self.tab();
+        let mut links: Vec<Button> = self
+            .item()
+            .map(|(label, _, href)| Button {
+                href,
+                label,
+                class: "btn--primary",
+            })
+            .into_iter()
+            .collect();
+        links.push(Button {
+            href: tab.href().to_owned(),
+            label: match self {
+                Self::Machines(_) => "Back to Machines",
+                Self::LabApps(_) => "Back to Lab apps",
+            },
+            class: if links.is_empty() {
+                "btn--primary"
+            } else {
+                "btn--outline"
+            },
+        });
+        links
+    }
+
+    /// The frame of a page under this section's tab, made now.
+    pub(in crate::admin) fn frame(
+        self,
+        state: &Context,
+        title: impl Into<String>,
+        session: Option<&Session>,
+    ) -> Frame {
+        Frame::new(state, self.tab(), title, None, session, Timestamp::now())
+    }
+}
+
+/// A page rendered with `status`, or the store-failure page in `section`
+/// when it could not be written.
+pub(in crate::admin) fn respond(
+    state: &Context,
+    session: Option<&Session>,
+    section: Section<'_>,
+    status: StatusCode,
+    html: Result<String, askama::Error>,
+) -> Response {
+    match html {
+        Ok(html) => (status, Html(html)).into_response(),
+        Err(error) => Problem::Store(format!("page could not be written: {error}"))
+            .page(state, session, section),
+    }
+}
+
+/// Why a Machines or Lab apps page could not do what was asked.
 pub(in crate::admin) enum Problem {
     /// No machine runs or is listed under this name.
     NotFound,
@@ -68,11 +177,11 @@ pub(in crate::admin) enum Problem {
     ReadingNumber,
     /// The message has no reading with this number.
     ReadingNotFound,
-    /// Removing was opened without a signed-in browser session.
+    /// A page that changes settings was opened without a signed-in browser session.
     SignIn,
     /// The setup step refused; nothing was changed. The detail says why, in words.
     Refused(String),
-    /// Analyte's settings file could not be read; the detail says why.
+    /// Analyte's settings files could not be read; the detail says why.
     Settings(String),
     /// The store could not be read; the detail says why.
     Store(String),
@@ -94,7 +203,7 @@ impl Problem {
     }
 
     /// The page's title, the alert's title and what it says.
-    fn words(&self) -> (&'static str, &'static str, String) {
+    fn words(&self, section: Section<'_>) -> (&'static str, &'static str, String) {
         match self {
             Self::NotFound => (
                 "Machine not found",
@@ -113,7 +222,14 @@ impl Problem {
             ),
             Self::SignIn => (
                 "Sign in first",
-                "Removing a machine changes settings, so it needs a signed-in browser session",
+                match section {
+                    Section::Machines(_) => {
+                        "Removing a machine changes settings, so it needs a signed-in browser session"
+                    }
+                    Section::LabApps(_) => {
+                        "Lab apps hold addresses and keys, so their pages need a signed-in browser session"
+                    }
+                },
                 "Sign in with the admin key, then open the page again.".into(),
             ),
             Self::Refused(why) => (
@@ -145,7 +261,7 @@ impl Problem {
     }
 
     /// The exact reason, for support; a refusal's reason is already on the page.
-    fn detail(&self) -> Option<String> {
+    fn detail(&self, section: Section<'_>) -> Option<String> {
         match self {
             Self::NotFound => Some("machine not running and not listed".into()),
             Self::ReadingNumber => Some("positive interpretation version required".into()),
@@ -154,51 +270,39 @@ impl Problem {
             Self::Refused(_) => None,
             Self::Settings(detail) | Self::Store(detail) => Some(detail.clone()),
             Self::Time => Some(format!(
-                "admin Machines deadline of {} ms exceeded",
+                "admin {} deadline of {} ms exceeded",
+                section.tab().label(),
                 view::READ_BUDGET.as_millis()
             )),
         }
     }
 
-    /// The page in the new look, `machine` naming the machine the request was
-    /// about; should the page itself fail to render, the plain refusal carries
-    /// both reasons.
+    /// The page in the new look in `section`; a machine that is not found has
+    /// no page to link to. Should the page itself fail to render, the plain
+    /// refusal carries both reasons.
     pub(in crate::admin) fn page(
         &self,
         state: &Context,
         session: Option<&Session>,
-        machine: Option<&str>,
+        section: Section<'_>,
     ) -> Response {
-        let (title, alert, text) = self.words();
-        let machine = machine.filter(|_| !matches!(self, Self::NotFound));
-        let mut links: Vec<Button> = machine
-            .map(|id| Button {
-                href: format::machine_href(id),
-                label: "Open the machine",
-                class: "btn--primary",
-            })
-            .into_iter()
-            .collect();
-        links.push(Button {
-            href: Tab::Machines.href().to_owned(),
-            label: "Back to Machines",
-            class: if links.is_empty() {
-                "btn--primary"
-            } else {
-                "btn--outline"
-            },
-        });
+        let (title, alert, text) = self.words(section);
+        let section = match section {
+            Section::Machines(_) if matches!(self, Self::NotFound) => Section::Machines(None),
+            Section::Machines(_) | Section::LabApps(_) => section,
+        };
+        let detail = self.detail(section);
         let page = Report {
-            frame: Frame::new(state, Tab::Machines, title, None, session, Timestamp::now()),
-            head: Head::under(machine, title),
+            frame: section.frame(state, title, session),
+            head: section.head(title),
             tone: Tone::Problem,
             title: alert.into(),
             text,
             lines: Vec::new(),
             problems: Vec::new(),
             restart: None,
-            links,
-            support: self.detail().into_iter().collect(),
+            links: section.links(),
+            support: detail.iter().cloned().collect(),
         };
         match page.render() {
             Ok(html) => (self.status(), Html(html)).into_response(),
@@ -208,32 +312,9 @@ impl Problem {
                 "This page could not be shown. Give the details below to support.",
                 format!(
                     "{}; the page failed too: {render}",
-                    self.detail().unwrap_or_else(|| alert.to_owned())
+                    detail.unwrap_or_else(|| alert.to_owned())
                 ),
             ),
-        }
-    }
-}
-
-impl Head {
-    /// A page under Machines: "Machines / cobas-e411" when it is about one
-    /// machine, linked back to the machine's page.
-    pub(in crate::admin) fn under(machine: Option<&str>, title: impl Into<String>) -> Self {
-        let mut crumbs = vec![Crumb {
-            label: Tab::Machines.label().to_owned(),
-            href: Some(Tab::Machines.href().to_owned()),
-        }];
-        if let Some(id) = machine {
-            crumbs.push(Crumb {
-                label: id.to_owned(),
-                href: Some(format::machine_href(id)),
-            });
-        }
-        Self {
-            crumbs,
-            title: title.into(),
-            status: None,
-            lede: None,
         }
     }
 }

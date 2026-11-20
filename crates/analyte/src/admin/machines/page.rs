@@ -191,7 +191,8 @@ pub(in crate::admin) struct RemoveDialog {
     pub(in crate::admin) items: Vec<DialogItem>,
     /// Open work was found or could not be counted, so the form says "remove anyway".
     pub(in crate::admin) anyway: bool,
-    pub(in crate::admin) button: &'static str,
+    /// The action's button; none when nothing can be done now, so only Cancel shows.
+    pub(in crate::admin) button: Option<&'static str>,
 }
 
 /// Words with their exact value on hover; `exact` is empty when there is none.
