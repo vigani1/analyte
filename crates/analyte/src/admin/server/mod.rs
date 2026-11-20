@@ -308,6 +308,7 @@ fn router(state: Arc<Context>) -> Router {
             get(super::pages::retention::show_page).post(super::pages::retention::hold),
         )
         .route("/settings", get(super::pages::settings))
+        .route("/activity", get(super::pages::activity))
         .route("/machines", get(super::machines::list))
         .route("/machines/{id}", get(super::machines::detail))
         .route(

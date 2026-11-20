@@ -136,7 +136,7 @@ pub enum Attempt {
 }
 
 /// Operator evidence linked to named identities.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Parked {
     /// Reason category, including unknown tests and unresolved identity.
     pub kind: Identifier,

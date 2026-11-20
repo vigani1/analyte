@@ -52,6 +52,9 @@ pub use revisions::{
     RevisionOutcome, StatusLifecycle, reconciled_outcome,
 };
 
+pub use operator::activity::{
+    Activity, ActivityCursor, ActivityGroup, ActivityLine, AttemptOutcome, Carries,
+};
 pub use query::{
     FailingDestination, Frame, LastDelivered, ParkedCounts, ParkedFilter, ParkedItem, Receipt,
     RecentOutcome, RecentReading, RecentReceipt, Unfinished,

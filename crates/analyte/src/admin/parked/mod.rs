@@ -14,6 +14,13 @@ mod raw;
 pub(super) use dialog::{checked, confirm_reprocess, confirm_resolve, reprocess, resolve};
 pub(super) use raw::{RawError, raw};
 
+/// What an item is about in a few words, and its tone, as its card on Needs
+/// review shows them: for an Activity line.
+pub(super) fn headline(details: &Parked) -> (String, Tone) {
+    let category = Category::of(details);
+    (category.shown, category.tone)
+}
+
 use crate::admin::error::CommandError;
 use crate::admin::pages::{PAGE, cursor_value, one_page};
 use crate::admin::view::report::Chip;

@@ -6,6 +6,7 @@ use analyte_model::{OrderState, Reason};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
 mod actions;
+mod activity;
 mod assets;
 mod machines;
 mod more;
@@ -752,6 +753,7 @@ Connection: close
     for (path, headers) in [
         ("/login", ""),
         ("/", auth.as_str()),
+        ("/activity", auth.as_str()),
         ("/machines", auth.as_str()),
         ("/parked", auth.as_str()),
         ("/setup", auth.as_str()),
@@ -772,6 +774,7 @@ Connection: close
         // sidebar's main links and the More group, with its own page marked.
         let menu = [
             "/",
+            "/activity",
             "/parked",
             "/machines",
             "/setup",

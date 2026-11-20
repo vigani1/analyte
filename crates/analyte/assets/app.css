@@ -173,6 +173,18 @@ progress.meter::-moz-progress-bar { background: var(--accent); border-radius: va
 /* Data keeping and Settings keep a readable width. */
 .more-narrow { max-width: 760px; }
 
+/* Activity (the Activity mockup's inline styles). */
+/* The machine filter: its label, select and Show button on one line. */
+.activity__machine { flex-direction: row; align-items: center; gap: calc(var(--space-2) + var(--space-1) / 2); }
+.activity__select { width: 230px; }
+.activity__today { font-size: var(--text-sm); }
+/* The first day's divider sits at the card's top edge, and each day's lines
+   start under a rule. */
+.activity__divider { margin: 0; }
+.activity__divider:first-child { border-top: 0; }
+.activity__feed { border-top: var(--border-width) solid var(--border); }
+.activity__note { font-size: calc((var(--text-xs) + var(--text-sm)) / 2); }
+
 /* Sign in and the refusals in the plain frame (the SignIn mockup's inline
    styles): the main button spans the panel, and the small print and the
    engine line sit at 12.5 px, the latter under a rule. */
