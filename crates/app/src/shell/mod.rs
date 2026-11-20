@@ -1,8 +1,8 @@
 //! Runs the app on Windows with Tauri: one instance, the tray, the window on demand, the app's own pages, and the one task that watches the engine.
 //!
 //! Everything that changes the window or the tray goes through the monitor
-//! task ([`monitor`]), which owns the engine watch; menu clicks, the second
-//! instance and notification clicks only send it a [`Command`]. That keeps
+//! task (`monitor`), which owns the engine watch; menu clicks, the second
+//! instance and notification clicks only send it a `Command`. That keeps
 //! one owner for every change and builds windows off the event loop's thread,
 //! as `WebView2` requires.
 mod autostart;

@@ -118,7 +118,7 @@ impl Client {
         })
     }
 
-    /// Asks once, within [`TIMEOUT`] and [`LIMIT`] bytes.
+    /// Asks once, within [`TIMEOUT`] and `LIMIT` bytes.
     pub async fn ask(&self) -> Reply {
         match tokio::time::timeout(TIMEOUT, self.exchange()).await {
             Ok(reply) => reply,
