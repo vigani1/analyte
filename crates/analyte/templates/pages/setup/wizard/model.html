@@ -16,6 +16,6 @@
 </ul>
 </section>
 {%- call forms::hidden_fields(hidden) %}{% endcall %}
-<div class="wizard-foot"><button type="button" class="btn btn--outline" disabled>Back</button><span class="subtle wizard__count">{{ wizard.count }}</span><button type="submit" class="btn btn--primary">Next</button></div>
+{% call forms::step_next("", wizard.count) %}{% endcall %}
 </form>
 {%- endblock %}

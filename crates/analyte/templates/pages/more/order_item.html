@@ -10,35 +10,26 @@
 {% call feedback::alert(crate::admin::view::Tone::Attention, crate::admin::view::format::PATIENT_DATA, crate::admin::view::format::PATIENT_DATA_TEXT) %}{% endcall %}
 {%- endif %}
 <div class="split">
-<section class="card" aria-labelledby="oi-order">
-<div class="card__head"><h2 id="oi-order" class="card__title">Order</h2></div>
-<div class="card__body"><dl class="kv">{% for fact in order %}{% call display::fact(fact) %}{% endcall %}{% endfor %}</dl></div>
-</section>
-<section class="card" aria-labelledby="oi-item">
-<div class="card__head"><h2 id="oi-item" class="card__title">This item</h2></div>
-<div class="card__body stack">
+{% call layout::titled_card("oi-order", "Order", "", "") %}<dl class="kv">{% for fact in order %}{% call display::fact(fact) %}{% endcall %}{% endfor %}</dl>{% endcall %}
+{% call layout::titled_card("oi-item", "This item", "", "stack") %}
 <dl class="kv">{% for fact in item %}{% call display::fact(fact) %}{% endcall %}{% endfor %}</dl>
 {%- if !others.is_empty() %}
 <p class="cluster more-row__text"><span class="subtle">Other items of this order:</span>{% for (href, label) in others %} <a class="link" href="{{ href }}">{{ label }}</a>{% endfor %}</p>
 {%- endif %}
+{% endcall %}
 </div>
-</section>
-</div>
-<section class="card" aria-labelledby="oi-copy">
-<div class="card__head"><h2 id="oi-copy" class="card__title">The lab app’s copy of this order</h2></div>
-<div class="card__body stack">
+{% call layout::titled_card("oi-copy", "The lab app’s copy of this order", "", "stack") %}
 {%- if !copy.is_empty() %}
 <dl class="kv">{% for fact in copy %}{% call display::fact(fact) %}{% endcall %}{% endfor %}</dl>
 {%- endif %}
 {%- if let Some(note) = copy_note %}
 <p class="muted more-row__text">{{ note }}</p>
 {%- endif %}
-</div>
-</section>
+{% endcall %}
 <section class="section" aria-labelledby="oi-messages">
 {% call layout::label("oi-messages", "Messages from the machine about this item", "") %}{% endcall %}
 {%- if messages.is_empty() %}
-<div class="card">{% call feedback::empty("No message about this item", "Messages the machine sends about this item are listed here, oldest first.") %}{% endcall %}</div>
+{% call feedback::empty_card("No message about this item", "Messages the machine sends about this item are listed here, oldest first.") %}{% endcall %}
 {%- else %}
 {%- for message in messages %}
 <article class="card" aria-label="{{ message.title }}">

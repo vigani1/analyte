@@ -5,7 +5,7 @@
 {%- import "components/forms.html" as forms %}
 {%- import "components/layout.html" as layout %}
 {%- block main %}
-{% call layout::item_head(head) %}{% endcall %}
+{% call layout::detail_head(head) %}{% endcall %}
 <div class="split">
 <div class="stack stack--lg grow">
 {% call layout::label_card("rd-why", "Why it’s here") %}
@@ -16,9 +16,7 @@
 {% endcall %}
 {%- endif %}
 {% endcall %}
-<section class="card" aria-labelledby="rd-linked">
-<div class="card__head"><h2 id="rd-linked" class="card__title">Everything linked to it</h2></div>
-<div class="card__body stack">
+{% call layout::titled_card("rd-linked", "Everything linked to it", "", "stack") %}
 {% call display::kv() %}
 {%- for pair in linked %}
 {% call display::pair(pair.term, "") %}{% call display::words(pair.value) %}{% endcall %}{% endcall %}
@@ -45,8 +43,7 @@
 <p class="review__text"><a class="link" href="/login">Sign in</a> to show the original message.</p>
 {%- endif %}
 {% endcall %}
-</div>
-</section>
+{% endcall %}
 </div>
 {% call layout::label_card("rd-hist", "History") %}
 {%- if !history.is_empty() %}

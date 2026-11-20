@@ -23,7 +23,7 @@ pub(super) fn headline(details: &Parked) -> (String, Tone) {
 
 use crate::admin::error::CommandError;
 use crate::admin::view::list::{Cursor, PAGE, cursor_value, one_page};
-use crate::admin::view::report::{Chip, Problem, Section, respond};
+use crate::admin::view::report::{Chip, Problem, Section, Status, respond};
 use crate::admin::view::{self, Tab, Tone, format, frame::Frame};
 use crate::admin::{
     Error,
@@ -43,8 +43,8 @@ use axum::{
 use category::{Action, Category};
 use jiff::Timestamp;
 use page::{
-    Button, Card, Dialog, Empty, Entry, Head, Item, List, Original, OriginalTarget, Pair, Resolved,
-    Row, Todo,
+    Button, Card, Dialog, Empty, Entry, Item, List, Original, OriginalTarget, Pair, Resolved, Row,
+    Todo,
 };
 use serde::Deserialize;
 use std::sync::Arc;
@@ -573,15 +573,26 @@ fn item_page(
     let settled = resolution(read.resolution.as_deref());
     let total = read.parked.targets.len();
     let end = read.after.saturating_add(read.linked.len());
-    let mut head = Head::under(Some(id), true, shown);
+    let mut head = Section::NeedsReview(Some(id)).head(shown);
+    // This is the item's own page, so its step in the way back is not a link.
+    if let Some(item) = head.crumbs.last_mut() {
+        item.href = None;
+    }
     head.lede = match &read.first {
         Some(Linked::Message { machine, at }) => Some(format::arrived(machine, *at, now)),
         Some(Linked::Removed | Linked::Other) | None => None,
     };
-    head.status = Some(if open {
+    let (tone, word) = if open {
         (Tone::Attention, "Open")
     } else {
         (Tone::Good, "Resolved")
+    };
+    head.status = Some(Status {
+        tone,
+        icon: tone.icon(),
+        word: word.into(),
+        exact: String::new(),
+        note: None,
     });
     let mut history_notes = Vec::new();
     if read.reprocessed.1 {

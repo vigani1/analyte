@@ -3,7 +3,7 @@
 //! The reason someone gives is optional and recorded with the view; the page
 //! warns that the bytes may contain patient data and keeps the record's ID and
 //! the session's ID under "Details for support".
-use super::page::{Head, Raw, RawRequest};
+use super::page::{Raw, RawRequest};
 use super::receipt_id;
 use crate::admin::view::list::cursor_value;
 use crate::admin::view::report::{Problem, Section, respond};
@@ -313,7 +313,7 @@ fn shown_page(
             Some(session),
             Timestamp::now(),
         ),
-        head: Head::under(Some(id), false, "Original message"),
+        head: Section::NeedsReview(Some(id)).head("Original message"),
         what: if continued {
             format!("{what}, continued")
         } else {

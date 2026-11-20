@@ -18,6 +18,11 @@
 {%- if exact.is_empty() %}{{ shown }}{% else %}<span title="{{ exact }}">{{ shown }}</span>{% endif -%}
 {%- endmacro %}
 
+{#- Words in mono with their exact value on hover, such as a settings version. -#}
+{%- macro code(shown, exact) -%}
+<span class="mono" title="{{ exact }}">{{ shown }}</span>
+{%- endmacro %}
+
 {#- A number people read, with its exact value on hover. -#}
 {%- macro exact(shown, exact) -%}
 <span class="num" title="{{ exact }}">{{ shown }}</span>
@@ -186,7 +191,7 @@
 <dt>{{ fact.term }}</dt><dd>
 {%- match fact.value %}
 {%- when Value::Text(text) %}{{ text }}
-{%- when Value::Code { shown, exact } %}<span class="mono" title="{{ exact }}">{{ shown }}</span>
+{%- when Value::Code { shown, exact } %}{% call code(shown, exact) %}{% endcall %}
 {%- when Value::Status(status) %}{% call status_with(status.tone, status.icon, status.word, status.exact) %}{% endcall %}{% if let Some(note) = status.note %}<span class="kv__note">{{ note }}</span>{% endif %}
 {%- when Value::Link(link) %}<span class="with-icon">{% call draw::icon(link.icon, "icon--md") %}{% endcall %}{{ link.kind }}{% if let Some(detail) = link.detail %}, <span class="mono">{{ detail }}</span>{% endif %}</span>{% if let Some(note) = link.note %}<span class="kv__note">{{ note }}</span>{% endif %}
 {%- when Value::Time(moment) %}{% if let Some(moment) = moment %}<span class="mono">{% call time(moment) %}{% endcall %}</span>{% else %}<span class="subtle">Nothing yet</span>{% endif %}

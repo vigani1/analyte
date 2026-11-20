@@ -5,7 +5,7 @@
 {%- import "components/forms.html" as forms %}
 {%- import "components/layout.html" as layout %}
 {%- block main %}
-{% call layout::intro_head("Needs review", LEDE) %}
+{% call layout::intro_head("", "Needs review", LEDE) %}
 <nav class="chips" aria-label="Show">
 {%- for chip in chips %}{% call forms::chip(chip) %}{% endcall %}{% endfor -%}
 </nav>

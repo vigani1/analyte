@@ -32,6 +32,11 @@
 <div class="empty"><p class="empty__title">{{ title }}</p><p class="empty__text">{{ text }}</p>{{ caller() }}</div>
 {%- endmacro %}
 
+{#- The same in a card of its own, as a list with nothing on it shows it. -#}
+{%- macro empty_card(title, text) -%}
+<div class="card"><div class="empty"><p class="empty__title">{{ title }}</p><p class="empty__text">{{ text }}</p>{{ caller() }}</div></div>
+{%- endmacro %}
+
 {#- A place where nothing is left to do: the tick, a title, a sentence and, from the caller, a link. Only for good news, such as nothing waiting for review. -#}
 {%- macro done(title, text) -%}
 <div class="empty"><span class="empty__mark">{% call draw::icon(crate::admin::view::icon::Icon::Check, "") %}{% endcall %}</span><p class="empty__title">{{ title }}</p><p class="empty__text">{{ text }}</p>{{ caller() }}</div>

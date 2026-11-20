@@ -5,11 +5,11 @@
 //! no stored data behind it is left out, and raw IDs only go under "Details for support".
 use super::category::Category;
 use crate::admin::view::{
-    Tone, format,
+    Tone,
     format::{Line, Moment, Part},
     frame::Frame,
     icon::Icon,
-    report::Chip,
+    report::{Chip, Head},
 };
 
 /// GET /parked: the Open and Resolved filters, then the items the filter shows.
@@ -115,21 +115,6 @@ pub(super) struct Item {
     pub(super) dialog: Option<Dialog>,
 }
 
-/// The head of a page under Needs review.
-pub(super) struct Head {
-    pub(super) crumbs: Vec<Crumb>,
-    pub(super) title: String,
-    pub(super) lede: Option<Line>,
-    pub(super) status: Option<(Tone, &'static str)>,
-}
-
-/// One step of the way back: words, an item number in mono, and a link unless it is this page.
-pub(super) struct Crumb {
-    pub(super) label: &'static str,
-    pub(super) number: Option<i64>,
-    pub(super) href: Option<String>,
-}
-
 /// What to do about an open item, with its buttons.
 pub(super) struct Todo {
     pub(super) guidance: &'static str,
@@ -209,31 +194,6 @@ pub(super) struct Raw {
     /// The form for the next part, when more bytes follow.
     pub(super) more: Option<RawRequest>,
     pub(super) support: Vec<String>,
-}
-
-impl Head {
-    /// A page under Needs review: "Needs review / Item 412" when it is about one
-    /// item, linked back to the item unless `here` is the item page itself.
-    pub(super) fn under(id: Option<i64>, here: bool, title: impl Into<String>) -> Self {
-        let mut crumbs = vec![Crumb {
-            label: "Needs review",
-            number: None,
-            href: Some(crate::admin::view::Tab::NeedsReview.href().to_owned()),
-        }];
-        if let Some(id) = id {
-            crumbs.push(Crumb {
-                label: "Item",
-                number: Some(id),
-                href: (!here).then(|| format::parked_href(id)),
-            });
-        }
-        Self {
-            crumbs,
-            title: title.into(),
-            lede: None,
-            status: None,
-        }
-    }
 }
 
 /// The icon a resolved row shows; the templates name no icon themselves.

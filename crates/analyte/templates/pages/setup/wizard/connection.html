@@ -50,6 +50,6 @@
 </div>
 </section>
 {%- call forms::hidden_fields(hidden) %}{% endcall %}
-<div class="wizard-foot"><button type="submit" class="btn btn--outline" formaction="{{ back }}" formnovalidate>Back</button><span class="subtle wizard__count">{{ wizard.count }}</span><button type="submit" class="btn btn--primary">Next</button></div>
+{% call forms::step_next(back, wizard.count) %}{% endcall %}
 </form>
 {%- endblock %}

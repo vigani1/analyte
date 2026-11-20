@@ -2,18 +2,12 @@
 {% extends "layout/base.html" %}
 {%- import "components/display.html" as display %}
 {%- import "components/feedback.html" as feedback %}
+{%- import "components/layout.html" as layout %}
 {%- block main %}
-<header class="page-head">
-<div>
-<p class="eyebrow">Newest at the top</p>
-<h1>Activity</h1>
-<p class="page-head__lede">{{ ACTIVITY_LEDE }}</p>
-</div>
-<div class="cluster">
+{% call layout::intro_head("Newest at the top", "Activity", ACTIVITY_LEDE) %}<div class="cluster">
 <span class="live tone-good activity__live" data-live-pill hidden><span class="live-dot"></span>Live</span>
 <button type="button" class="btn btn--outline btn--sm" data-live-pause aria-pressed="false" hidden>Pause updates</button>
-</div>
-</header>
+</div>{% endcall %}
 <form class="toolbar" method="get" action="/activity">
 <div class="field activity__machine">
 <label class="field__label" for="act-machine">Machine</label>
@@ -36,7 +30,7 @@
 {%- endif %}
 </form>
 {%- if let Some(empty) = empty %}
-<div class="card">{% call feedback::empty(empty.title, empty.text) %}{% if let Some((href, words)) = empty.link %}<a class="link" href="{{ href }}">{{ words }}</a>{% endif %}{% endcall %}</div>
+{% call feedback::empty_card(empty.title, empty.text) %}{% if let Some((href, words)) = empty.link %}<a class="link" href="{{ href }}">{{ words }}</a>{% endif %}{% endcall %}
 {%- else %}
 <div class="card">
 {%- for day in days %}

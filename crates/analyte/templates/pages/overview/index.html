@@ -4,7 +4,7 @@
 {%- import "components/feedback.html" as feedback %}
 {%- import "components/layout.html" as layout %}
 {%- block main %}
-{% call layout::page_head(today, "Overview", counts) %}{% endcall %}
+{% call layout::intro_head(today, "Overview", "") %}{% if !counts.is_empty() %}<p class="mono subtle page-head__aside">{{ counts }}</p>{% endif %}{% endcall %}
 {% call display::verdict(verdict) %}{% endcall %}
 
 <section class="section" id="sending" aria-labelledby="ov-path">
@@ -45,7 +45,7 @@
 {%- if !alerts.is_empty() %}
 {% call display::table(ALERT_COLUMNS) %}
 {%- for alert in alerts %}
-<tr>{% call display::cell("cell-main") %}<span title="{{ alert.kind }}">{{ alert.words }}</span>{% endcall %}{% call display::cell("") %}{{ alert.machine }}{% endcall %}{% call display::cell("") %}{{ alert.responder }}{% endcall %}{% call display::cell("") %}{% if let Some(raised) = alert.raised %}{% call display::time(raised) %}{% endcall %}{% else %}<span class="subtle">{{ crate::admin::view::format::NOT_RECORDED }}</span>{% endif %}{% endcall %}{% call display::cell("num right") %}{{ alert.value }}{% endcall %}</tr>
+<tr>{% call display::cell("cell-main") %}{% call display::hover(alert.words, alert.kind) %}{% endcall %}{% endcall %}{% call display::cell("") %}{{ alert.machine }}{% endcall %}{% call display::cell("") %}{{ alert.responder }}{% endcall %}{% call display::cell("") %}{% if let Some(raised) = alert.raised %}{% call display::time(raised) %}{% endcall %}{% else %}<span class="subtle">{{ crate::admin::view::format::NOT_RECORDED }}</span>{% endif %}{% endcall %}{% call display::cell("num right") %}{{ alert.value }}{% endcall %}</tr>
 {%- endfor %}
 {% endcall %}
 {%- endif %}

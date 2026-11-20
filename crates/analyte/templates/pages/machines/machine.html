@@ -19,20 +19,15 @@
 {% call feedback::whattodo(todo.text, todo.href, todo.label) %}{% endcall %}
 {%- endif %}
 <div class="split">
-<section class="card" aria-labelledby="md-setup">
-<div class="card__head"><h2 id="md-setup" class="card__title">Setup</h2></div>
-<div class="card__body">
+{% call layout::titled_card("md-setup", "Setup", "", "") %}
 <dl class="kv">
 {%- for fact in facts %}
 {% call display::fact(fact) %}{% endcall %}
 {%- endfor %}
 </dl>
-</div>
-</section>
+{% endcall %}
 {%- if let Some(rules) = rules %}
-<section class="card" aria-labelledby="md-diff">
-<div class="card__head"><h2 id="md-diff" class="card__title">Accepted differences from the standard</h2></div>
-<div class="card__body stack">
+{% call layout::titled_card("md-diff", "Accepted differences from the standard", "", "stack") %}
 {%- if rules.is_empty() %}
 <p class="muted machine__intro">None: its settings switch on no difference from the standard.</p>
 {%- else %}
@@ -44,19 +39,18 @@
 </ul>
 {% call feedback::support("Where these differences come from", declarations) %}{% endcall %}
 {%- endif %}
-</div>
-</section>
+{% endcall %}
 {%- endif %}
 </div>
 <section class="section" aria-labelledby="md-recent">
 <div class="section__head">{% call layout::label("md-recent", "Recent messages received", "") %}{% endcall %}{% if let Some(note) = recent_note %}<span class="subtle machine__note">{{ note }}</span>{% endif %}</div>
 {%- if recent.is_empty() %}
-<div class="card">{% call feedback::empty("Nothing received yet", "Messages this machine sends are listed here, newest first.") %}{% endcall %}</div>
+{% call feedback::empty_card("Nothing received yet", "Messages this machine sends are listed here, newest first.") %}{% endcall %}
 {%- else %}
 {% call display::table(MESSAGE_COLUMNS) %}
 {%- for message in recent %}
 <tr>{% call display::cell("num") %}{% call display::time(message.when) %}{% endcall %}{% endcall %}
-{%- if let Some((shown, all)) = message.sample %}{% call display::cell("num") %}<span title="{{ all }}">{{ shown }}</span>{% endcall %}{% else %}{% call display::cell("num subtle") %}—{% endcall %}{% endif %}
+{%- if let Some((shown, all)) = message.sample %}{% call display::cell("num") %}{% call display::hover(shown, all) %}{% endcall %}{% endcall %}{% else %}{% call display::cell("num subtle") %}—{% endcall %}{% endif %}
 {%- call display::cell("") %}{% call display::status_with(message.reading.tone, message.reading.icon, message.reading.word, message.reading.exact) %}{% endcall %}{% if let Some(review) = message.review %}<div class="cell-sub cell-note"><a class="link" href="{{ review.href }}">{{ review.label }}</a></div>{% endif %}{% endcall %}
 {%- if let Some(delivery) = message.delivery %}{% call display::cell("") %}{% call display::status_with(delivery.look.tone, delivery.look.icon, delivery.words, delivery.exact) %}{% endcall %}{% endcall %}{% else %}{% call display::cell("subtle") %}{{ message.no_delivery }}{% endcall %}{% endif %}
 {%- if let Some(href) = message.href %}{% call display::cell("") %}<a class="link" href="{{ href }}">How it was read</a>{% endcall %}{% else %}{% call display::cell("subtle") %}—{% endcall %}{% endif %}</tr>
