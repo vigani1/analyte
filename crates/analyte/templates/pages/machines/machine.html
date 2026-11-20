@@ -40,7 +40,7 @@
 <p class="muted machine__intro">This model does a few things its own way. Its settings switch these on; each message’s reading shows which ones were used.</p>
 <ul class="rows machine__rules">
 {%- for rule in rules %}
-<li title="{{ rule.tag }}">{{ rule.meaning }}</li>
+<li title="{{ rule.meaning }}">{{ rule.words }}</li>
 {%- endfor %}
 </ul>
 {% call feedback::support("Where these differences come from", declarations) %}{% endcall %}

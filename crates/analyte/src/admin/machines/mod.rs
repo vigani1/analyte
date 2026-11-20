@@ -784,7 +784,7 @@ pub(in crate::admin) fn rules(config: &analyte_config::Validated) -> Result<Vec<
         .iter()
         .map(|rule| {
             Ok(Rule {
-                tag: rule.tag(),
+                words: format::departure(rule),
                 meaning: rule.meaning(),
                 declaration: rule.evidence_snapshot()?.as_str().to_owned(),
             })

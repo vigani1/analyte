@@ -181,11 +181,11 @@ pub(super) enum Value {
     },
 }
 
-/// One departure the machine's settings switch on: what it means, its name on
-/// hover, and its declaration for support.
+/// One departure the machine's settings switch on: what it means in plain words,
+/// its exact rule on hover, and its declaration for support.
 #[derive(Clone)]
 pub(in crate::admin) struct Rule {
-    pub(in crate::admin) tag: &'static str,
+    pub(in crate::admin) words: &'static str,
     pub(in crate::admin) meaning: &'static str,
     pub(in crate::admin) declaration: String,
 }

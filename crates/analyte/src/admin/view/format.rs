@@ -267,6 +267,60 @@ pub(in crate::admin) fn connection_detail(connection: &Connection) -> Option<Str
     }
 }
 
+/// One accepted difference from the standard in plain words for a lab manager:
+/// what the machine does and what Analyte does about it. The exact rule stays on
+/// hover and in the declaration under "For support".
+pub(in crate::admin) const fn departure(rule: &analyte_config::MachineDeparture) -> &'static str {
+    use analyte_config::MachineDeparture as D;
+    match rule {
+        D::Hl7AbsentObr25MeansFinal(_) => concat!(
+            "Leaves a report's status empty when the report is final; ",
+            "Analyte reads only an empty report status as final.",
+        ),
+        D::Hl7AbsentObx11MeansFinal(_) => concat!(
+            "Leaves a result's status empty when the result is final; ",
+            "Analyte reads only an empty result status as final.",
+        ),
+        D::AstmPackedRecordsInFrame(_) => concat!(
+            "Puts several records in one frame; Analyte reads each record after ",
+            "the frame's check passes.",
+        ),
+        D::Hl7Utf8InV231(_) => concat!(
+            "Marks its text as UTF-8, a name its HL7 version did not have yet; ",
+            "Analyte reads the text as UTF-8.",
+        ),
+        D::Hl7CrLfTerminators(_) => {
+            "Ends each message line with CR LF instead of CR; Analyte reads the lines that way."
+        }
+        D::Hl7LfTerminators(_) => {
+            "Ends each message line with LF instead of CR; Analyte reads the lines that way."
+        }
+        D::Hl7PreserveUnsupportedEscapes(_) => concat!(
+            "Uses escape codes Analyte does not translate; Analyte keeps them as written ",
+            "and never uses them to identify a sample or result.",
+        ),
+        D::AstmFrameLimit(_) => concat!(
+            "Sends frames of a size other than the standard's; Analyte accepts frames ",
+            "up to the limit in this machine's settings.",
+        ),
+        D::AstmReceiveTimeout(_) => concat!(
+            "While the machine sends, Analyte waits for each part as long as this ",
+            "machine's settings say, not the standard's default.",
+        ),
+        D::AstmSendTimeout(_) => concat!(
+            "While Analyte sends, it waits for the machine's answers as long as this ",
+            "machine's settings say, not the standard's default.",
+        ),
+        D::AstmHostContentionPriority(_) => {
+            "When both sides start at the same moment, Analyte goes first instead of the machine."
+        }
+        D::AstmLowercaseChecksumHex(_) => concat!(
+            "Writes check digits in lowercase; Analyte accepts them only when the ",
+            "check is correct.",
+        ),
+    }
+}
+
 /// What a machine's connection does that people may not expect; only a USB
 /// adapter has something to say.
 pub(in crate::admin) const fn connection_note(connection: &Connection) -> Option<&'static str> {

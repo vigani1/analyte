@@ -60,10 +60,21 @@ fn scene() -> Result<Vec<Machine>, Error> {
         (true, true),
         true,
     )?;
+    // Built from a real declaration, so the page shows what the formatting module says for it.
+    let declaration = concat!(
+        "rule = 'hl7_absent_obx11_means_final'\n",
+        "declaration = { scope = { model = 'synthetic', firmware = 'test-1', mode = 'test', ",
+        "edition = { protocol = 'astm' }, direction = 'machine_to_host', ",
+        "message = 'astm_results' }, level = 'documented', evidence = [{ kind = 'manual', ",
+        "reference = 'synthetic-test-policy', title = 'Synthetic policy', revision = '1', ",
+        "section = 'ADR 0015 test', guarantee = 'compatibility', ",
+        "covers_unknown_firmware = false, contradicts = false }] }\n",
+    );
+    let departure: analyte_config::MachineDeparture = toml::from_str(declaration)?;
     connected.rules = vec![crate::admin::machines::Rule {
-        tag: "hl7_absent_obx11_means_final",
-        meaning: "Only absent OBX-11 means a final observation; report completion is independent.",
-        declaration: "rule = 'hl7_absent_obx11_means_final'\nlevel = 'documented'".into(),
+        words: crate::admin::view::format::departure(&departure),
+        meaning: departure.meaning(),
+        declaration: declaration.into(),
     }];
     Ok(vec![
         connected,
@@ -654,7 +665,11 @@ async fn machine_page_shows_its_setup_differences_and_newest_messages() -> Resul
         "<dt>Settings version</dt><dd><span class=\"mono\" title=\"abababababab",
         ">abababababab</span></dd>",
         "<h2 id=\"md-diff\" class=\"card__title\">Accepted differences from the standard</h2>",
-        "<li title=\"hl7_absent_obx11_means_final\">Only absent OBX-11 means a final observation",
+        concat!(
+            "<li title=\"Only absent OBX-11 means a final observation; report completion ",
+            "is independent.\">Leaves a result&#39;s status empty when the result is final; ",
+            "Analyte reads only an empty result status as final.</li>",
+        ),
         "Where these differences come from</summary><pre>rule = &#39;hl7_absent_obx11_means_final&#39;",
     ] {
         assert!(page.contains(part), "{part}\n{page}");
