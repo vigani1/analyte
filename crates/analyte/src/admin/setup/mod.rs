@@ -595,7 +595,16 @@ async fn audit(
         time: Timestamp::now().as_second(),
         reason: Reason::new(&reason.chars().take(1000).collect::<String>()).map_err(failed)?,
     };
-    stored::<_, analyte_store::StorageError>(state, move |store| store.audit(&audit))
+    let written = async {
+        let until = crate::deadline()?;
+        Ok::<_, StoreFailure>(
+            state
+                .store
+                .request::<_, analyte_store::StorageError>(until, move |store| store.audit(&audit))
+                .await?,
+        )
+    };
+    written
         .await
         .map_err(|error| SetupError::Audit(AuditFailure::Store(error)))
 }
@@ -622,10 +631,11 @@ pub(crate) enum AuditFailure {
     Store(StoreFailure),
 }
 
-/// Runs one store request within the shared store deadline.
+/// Runs one store read within the shared store deadline; it stops when the
+/// page gives up on it.
 async fn stored<T, E>(
     state: &Context,
-    work: impl FnOnce(&mut analyte_store::Store) -> Result<T, E> + Send + 'static,
+    work: impl FnOnce(&analyte_store::Store) -> Result<T, E> + Send + 'static,
 ) -> Result<T, StoreFailure>
 where
     T: Send + 'static,
@@ -633,7 +643,7 @@ where
     StoreFailure: From<E>,
 {
     let until = crate::deadline()?;
-    Ok(state.store.request(until, work).await?)
+    Ok(state.store.read(until, work).await?)
 }
 
 /// Runs `work` off the async workers: it reads or writes files, the port list

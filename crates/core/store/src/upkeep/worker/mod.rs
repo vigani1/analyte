@@ -1,7 +1,8 @@
-//! Runs blocking storage requests on an owned worker thread.
+//! Runs blocking storage requests on an owned worker thread, and reads that stop at their deadline.
 use crate::{FreeSpace, Limits, Store, WorkerError, WorkerStartError};
 use std::{path::PathBuf, thread, time::Instant};
 use tokio::sync::{mpsc, oneshot};
+mod read;
 #[cfg(test)]
 mod tests;
 
@@ -118,7 +119,8 @@ impl Handle {
     }
 
     /// Executes one bounded storage operation on the owning thread.
-    /// Cancellation before execution skips the request; once started a write may commit.
+    /// Cancellation before execution skips the request; once started it runs to
+    /// its end and is never interrupted, so a write may commit.
     /// Reconcile uncertain writes using their original IDs rather than inventing new ones.
     /// # Errors
     /// Reports queue/response timeout, worker closure or the operation's specific error.
@@ -148,6 +150,64 @@ impl Handle {
         tokio::time::timeout_at(until, response)
             .await
             .map_err(WorkerError::ResponseTimeout)?
+            .map_err(WorkerError::ResponseClosed)?
+    }
+
+    /// Executes one read that is stopped once `deadline` passes or the caller
+    /// goes (this future is dropped), whether it is still queued or already
+    /// running. `operation` gets a shared store, which offers no method that
+    /// writes, and runs with SQLite refusing writes, so stopping it can only
+    /// lose the answer: cancellation leaves nothing behind in the store. Use
+    /// [`Self::request`] for anything that writes; those are never stopped.
+    ///
+    /// A write does not compile as a read:
+    /// ```compile_fail
+    /// # async fn refused(
+    /// #     store: &analyte_store::Handle,
+    /// #     metadata: analyte_model::ReceiptMetadata,
+    /// #     deadline: std::time::Instant,
+    /// # ) {
+    /// let _ = store
+    ///     .read::<(), analyte_store::IntakeError>(deadline, move |s| {
+    ///         s.receive(&metadata, b"raw", b"config")
+    ///     })
+    ///     .await;
+    /// # }
+    /// ```
+    /// # Errors
+    /// Reports [`WorkerError::ReadStopped`] when the read was stopped or its
+    /// answer did not arrive by `deadline`, queue admission timeout, worker
+    /// closure, a refused or uncleared read guard, or the operation's error.
+    pub async fn read<T: Send + 'static, E: From<WorkerError> + Send + 'static>(
+        &self,
+        deadline: Instant,
+        operation: impl FnOnce(&Store) -> Result<T, E> + Send + 'static,
+    ) -> Result<T, E> {
+        if Instant::now() >= deadline {
+            return Err(WorkerError::AdmissionTimeout { cause: None }.into());
+        }
+        let sender = self.sender.as_ref().ok_or(WorkerError::Closed)?;
+        let (reply, response) = oneshot::channel();
+        // Dropped with this future, on any path: the read then stops.
+        let (stop, _caller) = read::Stop::new(deadline);
+        let request = Request {
+            deadline,
+            operation: Box::new(move |store| {
+                if !reply.is_closed() && !stop.reached() {
+                    let _ = reply.send(store.read_until(&stop, operation));
+                }
+            }),
+        };
+        let until = tokio::time::Instant::from_std(deadline);
+        tokio::time::timeout_at(until, sender.send(request))
+            .await
+            .map_err(|cause| WorkerError::AdmissionTimeout { cause: Some(cause) })?
+            .map_err(|_| WorkerError::Closed)?;
+        // A read changes nothing, so a late answer is a stopped read, not an
+        // uncertain write to reconcile.
+        tokio::time::timeout_at(until, response)
+            .await
+            .map_err(|_| WorkerError::ReadStopped)?
             .map_err(WorkerError::ResponseClosed)?
     }
 

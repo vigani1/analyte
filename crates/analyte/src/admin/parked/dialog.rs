@@ -6,11 +6,11 @@
 //! a wrong token; these handlers check again and ask for a signed-in session.
 use super::page::{Button, Dialog, Head, Message, item_href};
 use super::problem::Problem;
-use super::{ItemRead, item_page, open_count, read_item, respond};
-use crate::admin::Error;
+use super::{ItemQuery, ItemRead, item_page, open_count, respond};
 use crate::admin::server::Context;
 use crate::admin::sessions::{Session, signed_in};
 use crate::admin::view::{self, Tab, Tone, format, frame::Frame};
+use crate::admin::{CommandError, Error};
 use crate::operator::recovery;
 use analyte_model::Reason;
 use analyte_store::{InterpretationCommit, OperatorError, RevisionOutcome};
@@ -142,18 +142,30 @@ async fn open(
     typed: &str,
     error: Option<&'static str>,
 ) -> Response {
-    let read = tokio::time::timeout(
-        view::READ_BUDGET,
-        read_item(state, id, 0, move |s, open| {
-            (open && confirm == Confirm::Reprocess).then(|| s.parked_receipt(id).map(drop))
-        }),
-    )
+    // Finding the message may rebuild a receipt, a write, so this is a request
+    // that runs to its end, not a read that stops with the page.
+    let read = tokio::time::timeout(view::READ_BUDGET, async {
+        let query = ItemQuery::new(id, 0)?;
+        Ok::<_, Error>(
+            state
+                .store
+                .request::<_, CommandError>(crate::deadline()?, move |s| {
+                    let Some(read) = query.run(s)? else {
+                        return Ok(None);
+                    };
+                    let receipt = (read.resolution.is_none() && confirm == Confirm::Reprocess)
+                        .then(|| s.parked_receipt(id).map(drop));
+                    Ok(Some((read, receipt)))
+                })
+                .await?,
+        )
+    })
     .await;
     let (read, receipt): (ItemRead, _) = match read {
         Ok(Ok(Some(read))) => read,
         Ok(Ok(None)) => return Problem::NotFound.page(state, Some(session), Some(id)),
         Ok(Err(error)) => {
-            return Problem::Store(error.to_string()).page(state, Some(session), Some(id));
+            return Problem::of(&error).page(state, Some(session), Some(id));
         }
         Err(_) => return Problem::Time.page(state, Some(session), Some(id)),
     };

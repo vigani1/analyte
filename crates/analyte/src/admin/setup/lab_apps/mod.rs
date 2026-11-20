@@ -249,7 +249,7 @@ fn seconds(text: &str, default: u64, what: &'static str) -> Result<u64, SetupErr
 
 /// Results and order messages the lab app has not accepted yet, by lab app name.
 async fn waiting(state: &Context) -> Result<Vec<(String, u64)>, SetupError> {
-    let open = stored(state, |store| store.undelivered_by_destination())
+    let open = stored(state, analyte_store::Store::undelivered_by_destination)
         .await
         .map_err(SetupError::Store)?;
     Ok(open
@@ -500,7 +500,7 @@ async fn read_list(state: &Arc<Context>, now: Timestamp) -> Result<ListRead, cra
     .await;
     let (delivered, failing) = state
         .store
-        .request::<_, crate::admin::error::CommandError>(crate::deadline()?, |store| {
+        .read::<_, crate::admin::error::CommandError>(crate::deadline()?, |store| {
             Ok((store.last_delivered()?, store.failing_destinations()?))
         })
         .await?;
@@ -553,7 +553,7 @@ pub(in crate::admin) async fn list(
     let read = match tokio::time::timeout(view::READ_BUDGET, read_list(&state, now)).await {
         Ok(Ok(read)) => read,
         Ok(Err(error)) => {
-            return Problem::Store(error.to_string()).page(&state, Some(&session), section);
+            return Problem::of(&error).page(&state, Some(&session), section);
         }
         Err(_) => return Problem::Time.page(&state, Some(&session), section),
     };

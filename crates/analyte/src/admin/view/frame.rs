@@ -35,7 +35,7 @@ pub(in crate::admin) async fn review_count(state: &Context) -> Option<u64> {
     let now = Timestamp::now().as_second();
     state
         .store
-        .request::<_, OperatorError>(until, move |s| {
+        .read::<_, OperatorError>(until, move |s| {
             s.alert_value(&AlertKey::ParkedItems, now, &[])
         })
         .await

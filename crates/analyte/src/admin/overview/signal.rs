@@ -315,7 +315,7 @@ pub(in crate::admin) async fn kept_health(
     let second = now.as_second();
     let health = state
         .store
-        .request(crate::deadline()?, move |store| {
+        .read(crate::deadline()?, move |store| {
             store.health(&read, second, 0)
         })
         .await?;

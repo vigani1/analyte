@@ -879,7 +879,11 @@ impl Unfinished {
 }
 
 /// Matches a parked target to machine `?1`. Receipt and delivery keys are stored as
-/// JSON strings, while parked targets hold the bare identity.
+/// JSON strings, while parked targets hold the bare identity. A machine order is
+/// found by its key: a target names an order only when it is the order's number
+/// written out, and that number is the target read as an integer, so the second
+/// condition alone decides and the first one only avoids reading every order
+/// for every target.
 const PARKED_FOR_MACHINE: &str = concat!(
     "SELECT count(*) FROM parked p WHERE p.resolution IS NULL AND EXISTS(",
     "SELECT 1 FROM json_each(p.evidence,'$.targets') t WHERE t.value=?1 ",
@@ -889,7 +893,8 @@ const PARKED_FOR_MACHINE: &str = concat!(
     "WHERE o.id=json_quote(t.value) AND json_extract(r.metadata,'$.machine')=?1) ",
     "OR EXISTS(SELECT 1 FROM transfers x JOIN receipts r ON r.id=x.receipt ",
     "WHERE x.id=t.value AND json_extract(r.metadata,'$.machine')=?1) ",
-    "OR EXISTS(SELECT 1 FROM machine_orders m WHERE CAST(m.id AS TEXT)=t.value AND m.machine=?1))"
+    "OR EXISTS(SELECT 1 FROM machine_orders m WHERE m.id=CAST(t.value AS INTEGER) ",
+    "AND CAST(m.id AS TEXT)=t.value AND m.machine=?1))"
 );
 
 impl Store {

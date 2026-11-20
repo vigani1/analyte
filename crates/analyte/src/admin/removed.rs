@@ -99,7 +99,7 @@ impl Line {
 pub(super) async fn lines(state: &Context) -> Result<Vec<Line>, Error> {
     let open = state
         .store
-        .request(crate::deadline()?, |store| {
+        .read(crate::deadline()?, |store| {
             store.undelivered_by_destination()
         })
         .await?;

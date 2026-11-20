@@ -26,3 +26,4 @@ links to its replacement; none is superseded today.
 | [0017](0017-windows-access-list-unsafe.md)      | Unsafe code for Windows access lists               |
 | [0018](0018-server-rendered-pages-and-one-stylesheet.md) | Server-rendered admin pages with one token stylesheet |
 | [0019](0019-desktop-app.md)                     | The Analyte desktop app: a window and a tray beside the engine |
+| [0020](0020-admin-reads-stop-at-their-deadline.md) | Admin reads stop at their deadline; writes never do |

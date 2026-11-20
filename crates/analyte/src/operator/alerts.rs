@@ -160,7 +160,7 @@ pub(crate) async fn active(store: &Handle) -> Result<Vec<AlertState>, Error> {
     let mut alerts = Vec::new();
     loop {
         let page = store
-            .request(until, move |store| store.active_alerts(&cursor))
+            .read(until, move |store| store.active_alerts(&cursor))
             .await?;
         let Some(last) = page.last() else {
             return Ok(alerts);

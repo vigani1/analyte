@@ -98,7 +98,7 @@ async fn read(state: &Context, show: Show, after: u64) -> Result<Read, Error> {
     let filter = show.filter();
     Ok(state
         .store
-        .request::<_, CommandError>(deadline()?, move |s| {
+        .read::<_, CommandError>(deadline()?, move |s| {
             let (rows, more) = one_page::<_, CommandError>(
                 s.listed_deliveries_up_to(after, filter, PAGE + 1)?,
                 PAGE,
@@ -298,7 +298,7 @@ async fn open(
         let until = deadline()?;
         let delivery = state
             .store
-            .request::<_, CommandError>(until, move |s| Ok(s.delivery(id)?))
+            .read::<_, CommandError>(until, move |s| Ok(s.delivery(id)?))
             .await?;
         Ok::<_, Error>((delivery, read(state, Show::All, 0).await?))
     };
@@ -309,7 +309,7 @@ async fn open(
                 .page(state, Some(session), section);
         }
         Ok(Err(error)) => {
-            return Problem::Store(error.to_string()).page(state, Some(session), section);
+            return Problem::of(&error).page(state, Some(session), section);
         }
         Err(_) => return Problem::Time.page(state, Some(session), section),
     };

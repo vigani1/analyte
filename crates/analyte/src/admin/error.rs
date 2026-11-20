@@ -113,6 +113,15 @@ impl From<crate::operator::Error> for Error {
     }
 }
 
+impl Error {
+    /// True when a store read was stopped at its deadline (ADR 0020): the page
+    /// says it took too long, as when the page itself gave up, not that the
+    /// store failed.
+    pub(in crate::admin) fn read_stopped(&self) -> bool {
+        matches!(self, Self::Store(error) if error.read_stopped())
+    }
+}
+
 impl From<analyte_store::OperatorError> for Error {
     fn from(error: analyte_store::OperatorError) -> Self {
         Self::Store(error.into())
@@ -141,6 +150,37 @@ impl From<analyte_store::DeliveryError> for Error {
 impl From<analyte_store::WorkerError> for Error {
     fn from(error: analyte_store::WorkerError) -> Self {
         Self::Store(error.into())
+    }
+}
+
+impl CommandError {
+    /// True when this is a store read stopped at its deadline, at whichever
+    /// store boundary carried it.
+    pub(in crate::admin) fn read_stopped(&self) -> bool {
+        use analyte_store::{
+            DeliveryError as Delivery, MaintenanceError as Maintenance, OperatorError as Operator,
+            OrderError as Order, ReconciliationError as Reconciliation, StorageError as Storage,
+            WorkerError::ReadStopped as Stopped,
+        };
+        matches!(
+            self,
+            Self::Worker(Stopped)
+                | Self::Audit(Storage::Worker(Stopped))
+                | Self::Evidence(
+                    Operator::Worker(Stopped) | Operator::Storage(Storage::Worker(Stopped))
+                )
+                | Self::Order(Order::Worker(Stopped) | Order::Storage(Storage::Worker(Stopped)))
+                | Self::Delivery(
+                    Delivery::Worker(Stopped) | Delivery::Storage(Storage::Worker(Stopped))
+                )
+                | Self::Maintenance(
+                    Maintenance::Worker(Stopped) | Maintenance::Storage(Storage::Worker(Stopped))
+                )
+                | Self::Reconciliation(
+                    Reconciliation::Worker(Stopped)
+                        | Reconciliation::Storage(Storage::Worker(Stopped))
+                )
+        )
     }
 }
 

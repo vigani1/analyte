@@ -97,11 +97,21 @@ impl Reading {
         }
     }
 
-    /// Ties an error to this reading.
+    /// Ties an error to this reading; a read stopped at its deadline is the
+    /// overview running out of time.
     fn failed<E: Into<Error>>(self) -> impl FnOnce(E) -> Failure {
-        move |error| Failure {
-            reading: self,
-            error: Some(Box::new(error.into())),
+        move |error| {
+            let error = error.into();
+            if error.read_stopped() {
+                return Failure {
+                    reading: Self::Time,
+                    error: None,
+                };
+            }
+            Failure {
+                reading: self,
+                error: Some(Box::new(error)),
+            }
         }
     }
 }
@@ -208,7 +218,7 @@ async fn stored(
     let directory = state.directory.clone();
     let stored = state
         .store
-        .request::<_, CommandError>(until, move |store| {
+        .read::<_, CommandError>(until, move |store| {
             Ok::<_, CommandError>(Stored {
                 restore_paused: store.restore_unreconciled().map_err(CommandError::from),
                 free: fs4::available_space(&directory),
@@ -279,7 +289,7 @@ async fn observe(
         restore_paused,
         cancelled: state
             .store
-            .request(until, |store| store.analyzer_cancelled_count())
+            .read(until, analyte_store::Store::analyzer_cancelled_count)
             .await
             .map_err(Reading::Orders.failed())?,
         uncertain: uncertain_orders(state, until, now)
@@ -497,7 +507,7 @@ async fn uncertain_orders(
 ) -> Result<u64, Error> {
     Ok(state
         .store
-        .request::<_, CommandError>(until, move |store| {
+        .read::<_, CommandError>(until, move |store| {
             Ok(store
                 .alert_value(&AlertKey::UncertainOrders, now.as_second(), &[])?
                 .unwrap_or_default())
@@ -514,7 +524,7 @@ pub(super) async fn activity(
     let machines: Vec<_> = state.machines.iter().map(|m| m.id.clone()).collect();
     let newest = state
         .store
-        .request(until, move |store| store.newest_receipts(&machines))
+        .read(until, move |store| store.newest_receipts(&machines))
         .await?;
     Ok(newest
         .into_iter()
