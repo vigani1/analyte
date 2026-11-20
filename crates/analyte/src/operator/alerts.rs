@@ -118,7 +118,7 @@ pub(crate) fn message(state: &AlertState) -> Option<String> {
         Undeliverable::NotConfigured => format!(
             concat!(
                 "Cannot deliver: no machine and no lab app uses destination ",
-                "{destination}; {waiting}. Add lab app {destination} on the Lab app page ",
+                "{destination}; {waiting}. Add lab app {destination} on the Lab apps page ",
                 "and restart, or restore its settings; the results are kept and will be sent ",
                 "once it is configured."
             ),
@@ -129,7 +129,7 @@ pub(crate) fn message(state: &AlertState) -> Option<String> {
             concat!(
                 "Cannot deliver: the API key or signing key for lab app destination ",
                 "{destination} is missing; {waiting}, paused. Enter the API key and signing ",
-                "key for lab app {destination} on the Lab app page or in the service ",
+                "key for lab app {destination} on the Lab apps page or in the service ",
                 "environment, then restart; the results are kept and will be sent once the ",
                 "keys are set."
             ),
@@ -464,7 +464,7 @@ mod tests {
             "no machine and no lab app uses destination old-app; 2 results or order messages wait"
         ));
         assert!(text.contains(concat!(
-            "Add lab app old-app on the Lab app page and restart, or restore its settings; ",
+            "Add lab app old-app on the Lab apps page and restart, or restore its settings; ",
             "the results are kept and will be sent once it is configured."
         )));
         assert!(!text.contains("SAMPLE-PRIVATE"));
@@ -486,11 +486,9 @@ mod tests {
         assert!(
             text.contains("the API key or signing key for lab app destination old-app is missing")
         );
-        assert!(
-            text.contains(
-                "Enter the API key and signing key for lab app old-app on the Lab app page"
-            )
-        );
+        assert!(text.contains(
+            "Enter the API key and signing key for lab app old-app on the Lab apps page"
+        ));
 
         // Delivered: the alert clears even though the keys are still missing.
         db.execute_batch("UPDATE outbox SET state='done' WHERE destination='old-app';")?;

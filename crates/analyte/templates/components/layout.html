@@ -47,7 +47,7 @@
 <header class="page-head">
 <div class="page-head__main">
 <ol class="crumbs">{% for crumb in head.crumbs %}<li>{% if let Some(href) = crumb.href %}<a href="{{ href }}">{{ crumb.label }}</a>{% else %}{{ crumb.label }}{% endif %}</li>{% endfor %}</ol>
-<div class="cluster page-head__title"><h1>{{ head.title }}</h1>{% if let Some(status) = head.status %}{% call display::status_exact(status.tone, status.word, status.exact) %}{% endcall %}{% endif %}</div>
+<div class="cluster page-head__title"><h1>{{ head.title }}</h1>{% if let Some(status) = head.status %}{% call display::status_with(status.tone, status.icon, status.word, status.exact) %}{% endcall %}{% endif %}</div>
 {%- if let Some(lede) = head.lede %}
 <p class="page-head__lede">{% call display::words(lede) %}{% endcall %}</p>
 {%- endif %}

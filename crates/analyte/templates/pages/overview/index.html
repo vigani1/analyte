@@ -46,7 +46,7 @@
 {%- if !alerts.is_empty() %}
 {% call lists::table(ALERT_COLUMNS) %}
 {%- for alert in alerts %}
-<tr>{% call lists::cell("cell-main") %}<span title="{{ alert.kind }}">{{ alert.words }}</span>{% endcall %}{% call lists::cell("") %}{{ alert.machine }}{% endcall %}{% call lists::cell("") %}{{ alert.responder }}{% endcall %}{% call lists::cell("") %}{% if let Some(raised) = alert.raised %}{% call display::time(raised) %}{% endcall %}{% else %}Not known{% endif %}{% endcall %}{% call lists::cell("num right") %}{{ alert.value }}{% endcall %}</tr>
+<tr>{% call lists::cell("cell-main") %}<span title="{{ alert.kind }}">{{ alert.words }}</span>{% endcall %}{% call lists::cell("") %}{{ alert.machine }}{% endcall %}{% call lists::cell("") %}{{ alert.responder }}{% endcall %}{% call lists::cell("") %}{% if let Some(raised) = alert.raised %}{% call display::time(raised) %}{% endcall %}{% else %}<span class="subtle">{{ crate::admin::view::format::NOT_RECORDED }}</span>{% endif %}{% endcall %}{% call lists::cell("num right") %}{{ alert.value }}{% endcall %}</tr>
 {%- endfor %}
 {% endcall %}
 {%- endif %}

@@ -14,6 +14,9 @@
   --nav-inset: calc(var(--space-2) + var(--space-1) / 2);
   /* The width analyte.css gives a .nav link in the icon rail. */
   --nav-rail-item: calc(var(--control-h) + var(--space-1));
+  /* The desktop app's window buttons are as wide as Windows 11's (46 by 32);
+     their height is the title bar's, which the app sets. */
+  --caption-button: 46px;
 }
 
 body { margin: 0; background: var(--bg); }
@@ -227,3 +230,39 @@ progress.meter::-moz-progress-bar { background: var(--accent); border-radius: va
   background: var(--surface-sunken); border-radius: var(--radius-sm);
 }
 .engine-off__hint { font-size: var(--text-sm); }
+
+/* The desktop app's own title bar (ADR 0019), a page of its own the full
+   height of its 32 px webview: the sidebar's sunken ground with a hairline
+   under it, the mark and name, the engine's dot, and the window buttons at
+   Windows 11's size. Close turns red on hover, as Windows does, in the
+   design's danger colours. Nothing in it is selectable, so a drag never
+   selects text. */
+.title-bar {
+  display: flex; align-items: center; gap: var(--space-2);
+  height: 100vh; padding-left: var(--space-3); overflow: hidden;
+  font-family: var(--font-sans); font-size: var(--text-xs); font-weight: var(--weight-semibold);
+  color: var(--text); background: var(--surface-sunken);
+  border-bottom: var(--border-width) solid var(--border);
+  -webkit-font-smoothing: antialiased;
+  user-select: none; cursor: default;
+}
+.title-bar__mark { display: block; flex: none; }
+.title-bar__state { display: inline-flex; padding: var(--space-1); }
+.title-bar__buttons { display: flex; align-self: stretch; margin-left: auto; }
+.title-bar__button {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: var(--caption-button); padding: 0;
+  border: 0; border-radius: 0; background: transparent; color: var(--text-muted);
+  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.title-bar__button:hover { background: var(--surface); color: var(--text); }
+.title-bar__button:active { background: var(--border); color: var(--text); }
+.title-bar__button--close:hover,
+.title-bar__button--close:active { background: var(--bad-text); color: var(--on-danger); }
+.title-bar__button:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.title-bar[data-sizing="normal"] .title-bar__restore,
+.title-bar[data-sizing="maximized"] .title-bar__maximize { display: none; }
+/* The status dot in the attention colour, beside the design's good, bad and
+   off dots, for the bar's four engine states. */
+.live-dot--warn { background: var(--warn-text); }
+.live-dot--warn::after { animation: none; }

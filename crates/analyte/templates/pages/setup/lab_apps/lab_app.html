@@ -57,7 +57,7 @@
 </div>
 </form>
 {%- if !support.is_empty() %}
-{% call feedback::support("Details for support", support) %}{% endcall %}
+{% call feedback::support(crate::admin::view::format::SUPPORT, support) %}{% endcall %}
 {%- endif %}
 {%- if let Some(dialog) = dialog %}
 {% call forms::list_dialog(dialog) %}{% endcall %}

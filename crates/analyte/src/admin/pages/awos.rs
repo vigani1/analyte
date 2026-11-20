@@ -1,26 +1,29 @@
-//! Serves what a machine did with orders, kept apart from the order's own state: Cancelled by machine (GET /analyzer-cancelled) and one order item's page with its history (GET /awos/{order}/{item}).
+//! Serves what a machine did with orders, kept apart from the order's own state: Cancelled by machine (GET /analyzer-cancelled) and one order item's page with its history (GET /awos/{order}/{item}), whose machine notes show only after the audited "Show the original message" (POST /awos/{order}/{item}/raw).
 use super::orders::{look, model, tests};
-use super::page::{Cancelled, CancelledCard, ITEM_LEDE, Message, OrderItem};
-use super::{Cursor, PAGE, next_href, one_page, show};
+use super::page::{Cancelled, CancelledCard, ITEM_LEDE, Message, Notes, OrderItem, Original};
+use super::{Cursor, PAGE, cursor_value, next_href, one_page, show};
 use crate::admin::error::CommandError;
+use crate::admin::parked::{RAW_VIEW, RawRequest};
 use crate::admin::sessions::Session;
 use crate::admin::view::{
     Tab, Tone, format,
     format::Line,
     frame::Frame,
-    report::{Crumb, Fact, Head, Status, Value},
+    report::{Crumb, Fact, Head, Problem, Section, Status, Value, respond},
 };
 use crate::admin::{Error, server::Context};
 use crate::deadline;
-use analyte_model::AwosExecutionProjection;
-use analyte_store::{CachedOrder, MachineOrder, MachineOrderItem, law::WorkEvidence};
+use analyte_model::{AwosExecutionProjection, Identifier, Reason};
+use analyte_store::{Audit, CachedOrder, MachineOrder, MachineOrderItem, Store, law::WorkEvidence};
 use askama::Template as _;
 use axum::{
-    Extension,
+    Extension, Form,
     extract::{Path, Query, State},
+    http::StatusCode,
     response::Response,
 };
 use jiff::Timestamp;
+use serde::Deserialize;
 use std::sync::Arc;
 
 pub(in crate::admin) async fn cancelled(
@@ -166,14 +169,126 @@ pub(in crate::admin) async fn detail(
     Query(cursor): Query<Cursor>,
     session: Option<Extension<Arc<Session>>>,
 ) -> Response {
+    let after = cursor.after;
     show(
         &state,
         session.as_ref(),
         Tab::MachineOrders,
         read_detail(&state, order, item, cursor),
-        |read, session, now| detail_page(&state, session, read, now).render(),
+        |read, session, now| {
+            detail_page(&state, session, read, Reveal::Hidden { after }, now).render()
+        },
     )
     .await
+}
+
+/// Whether an order item's page shows the machine's notes: hidden behind
+/// the audited form for the page of messages after `after`, or shown once
+/// the view was recorded.
+#[derive(Clone, Copy)]
+enum Reveal {
+    Hidden { after: u64 },
+    Shown,
+}
+
+/// What "Show the original message" posts on an order item's page: the
+/// fields of Needs review's form ([`RawRequest`]), for one page of messages.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(in crate::admin) struct NotesForm {
+    csrf: String,
+    target: String,
+    source: String,
+    #[serde(default, deserialize_with = "cursor_value")]
+    after: u64,
+    #[serde(default, deserialize_with = "cursor_value")]
+    offset: u64,
+    #[serde(default)]
+    reason: String,
+}
+
+/// The form's `target` and `source`: the machine's notes, which are shown
+/// whole, so the form's offset is always 0.
+const NOTES: &str = "notes";
+
+/// POST /awos/{order}/{item}/raw: records in the audit who asked to see the
+/// machine's notes on this page of messages and why, then shows the page
+/// with them. Nothing shows unless that record was stored; a page with no
+/// notes records nothing.
+pub(in crate::admin) async fn notes(
+    State(state): State<Arc<Context>>,
+    Path((order, item)): Path<(i64, u16)>,
+    Extension(session): Extension<Arc<Session>>,
+    Form(form): Form<NotesForm>,
+) -> Response {
+    let section = Section::More(Tab::MachineOrders);
+    if !session.authenticated {
+        return Problem::SignIn.page(&state, None, section);
+    }
+    if !session.csrf_valid(&form.csrf)
+        || form.target != NOTES
+        || form.source != NOTES
+        || form.offset != 0
+    {
+        return Problem::Refused(
+            "This form is not one Analyte sent for this page. Open the order again and repeat what you did."
+                .into(),
+        )
+        .page(&state, Some(&session), section);
+    }
+    let after = form.after;
+    let read = async {
+        let audit = Audit {
+            actor: session.actor.clone(),
+            action: Identifier::new(RAW_VIEW)?,
+            targets: vec![
+                Identifier::new(&format!("awos:{order}:{item}"))?,
+                Identifier::new(NOTES)?,
+                Identifier::new(&format!("notes-after:{after}"))?,
+            ],
+            time: Timestamp::now().as_second(),
+            reason: Reason::new(if form.reason.is_empty() {
+                "operator requested the machine's notes"
+            } else {
+                &form.reason
+            })?,
+        };
+        let after = i64::try_from(after)?;
+        let read = state
+            .store
+            .request::<_, CommandError>(deadline()?, move |s| {
+                let read = read_in(s, order, item, after)?;
+                let id = read.order.id;
+                if read
+                    .messages
+                    .iter()
+                    .any(|message| !notes_of(message, id, item).is_empty())
+                {
+                    s.audit(&audit)?;
+                }
+                Ok(read)
+            })
+            .await?;
+        settle(read, item)
+    }
+    .await;
+    match read {
+        Ok(read) => respond(
+            &state,
+            Some(&session),
+            section,
+            StatusCode::OK,
+            detail_page(
+                &state,
+                Some(&session),
+                read,
+                Reveal::Shown,
+                Timestamp::now(),
+            )
+            .render(),
+        ),
+        Err(error) => Problem::Store(error.to_string()).page(&state, Some(&session), section),
+    }
 }
 
 /// What an order item's page reads in one store request.
@@ -186,6 +301,14 @@ struct DetailRead {
     more: bool,
 }
 
+/// What [`read_in`] reads, before its item is found among the order's.
+struct Stored {
+    order: MachineOrder,
+    cached: Option<CachedOrder>,
+    messages: Vec<WorkEvidence>,
+    more: bool,
+}
+
 async fn read_detail(
     state: &Context,
     order: i64,
@@ -193,19 +316,39 @@ async fn read_detail(
     cursor: Cursor,
 ) -> Result<DetailRead, Error> {
     let after = i64::try_from(cursor.after)?;
-    let (order, cached, (messages, more)) = state
+    let read = state
         .store
-        .request::<_, CommandError>(deadline()?, move |s| {
-            let order = s.machine_order_by_id(order)?;
-            let cached = s.cached_order(&order.key.destination, &order.key.order)?;
-            let id = order.id;
-            let messages =
-                one_page::<_, CommandError>(s.law_work_evidence(id, item, after)?, PAGE, |last| {
-                    Ok(!s.law_work_evidence(id, item, last.cursor)?.is_empty())
-                })?;
-            Ok((order, cached, messages))
-        })
+        .request::<_, CommandError>(deadline()?, move |s| read_in(s, order, item, after))
         .await?;
+    settle(read, item)
+}
+
+/// The order, the lab app's copy and one page of the machine's messages
+/// about `item` after `after`, within the caller's store request.
+fn read_in(s: &Store, order: i64, item: u16, after: i64) -> Result<Stored, CommandError> {
+    let order = s.machine_order_by_id(order)?;
+    let cached = s.cached_order(&order.key.destination, &order.key.order)?;
+    let id = order.id;
+    let (messages, more) =
+        one_page::<_, CommandError>(s.law_work_evidence(id, item, after)?, PAGE, |last| {
+            Ok(!s.law_work_evidence(id, item, last.cursor)?.is_empty())
+        })?;
+    Ok(Stored {
+        order,
+        cached,
+        messages,
+        more,
+    })
+}
+
+/// The read with its item, which the order must still hold.
+fn settle(read: Stored, item: u16) -> Result<DetailRead, Error> {
+    let Stored {
+        order,
+        cached,
+        messages,
+        more,
+    } = read;
     let item = order
         .items
         .iter()
@@ -225,6 +368,7 @@ fn detail_page(
     state: &Context,
     session: Option<&Session>,
     read: DetailRead,
+    reveal: Reveal,
     now: Timestamp,
 ) -> OrderItem {
     let DetailRead {
@@ -256,6 +400,14 @@ fn detail_page(
             message.version
         )
     }));
+    let messages: Vec<Message> = messages
+        .iter()
+        .map(|message| message_of(message, order.id, index, reveal, now))
+        .collect();
+    let shown = messages
+        .iter()
+        .any(|message| matches!(message.notes, Notes::Shown(_)));
+    let original = original(session, reveal, &messages, order.id, index);
     OrderItem {
         frame: Frame::new(state, Tab::MachineOrders, title.clone(), None, session, now),
         head: Head {
@@ -272,6 +424,7 @@ fn detail_page(
             title,
             status: Some(Status {
                 tone: status.tone,
+                icon: status.icon,
                 word: status.word.to_owned(),
                 exact: status.exact,
                 note: None,
@@ -293,13 +446,44 @@ fn detail_page(
             .collect(),
         copy,
         copy_note,
-        messages: messages
-            .iter()
-            .map(|message| message_of(message, order.id, index, now))
-            .collect(),
+        messages,
+        original,
+        shown,
         next,
         support,
     }
+}
+
+/// "Show the original message" while `messages` hold hidden notes: the
+/// audited form for the page of messages it shows, or none for the admin key
+/// alone, which has no session to record the view with.
+fn original(
+    session: Option<&Session>,
+    reveal: Reveal,
+    messages: &[Message],
+    order: i64,
+    item: u16,
+) -> Option<Original> {
+    let Reveal::Hidden { after } = reveal else {
+        return None;
+    };
+    messages
+        .iter()
+        .any(|message| matches!(message.notes, Notes::Hidden(_)))
+        .then(|| Original {
+            form: session
+                .filter(|session| session.authenticated)
+                .map(|session| RawRequest {
+                    action: format!("{}/raw", format::order_item_href(order, item)),
+                    csrf: session.csrf.form_value().to_owned(),
+                    target: NOTES.to_owned(),
+                    after,
+                    offset: 0,
+                    field: "notes-reason".into(),
+                    reason: String::new(),
+                    buttons: vec![(NOTES, "Show the notes")],
+                }),
+        })
 }
 
 /// The order as a whole: its machine, lab app, state, the version sent, its
@@ -334,6 +518,7 @@ fn order_facts(
             term: "Order status",
             value: Value::Status(Status {
                 tone: order_status.tone,
+                icon: order_status.icon,
                 word: order_status.word.to_owned(),
                 exact: order_status.exact,
                 note: order_status.note,
@@ -376,6 +561,7 @@ fn item_facts(item: &MachineOrderItem, now: Timestamp) -> Vec<Fact> {
             term: "Status",
             value: Value::Status(Status {
                 tone: status.tone,
+                icon: status.icon,
                 word: status.word.to_owned(),
                 exact: status.exact,
                 note: None,
@@ -418,13 +604,15 @@ fn execution(projection: Option<&AwosExecutionProjection>, now: Timestamp) -> Va
         return Value::Text("Nothing yet".into());
     };
     let recorded = format::moment_unix(projection.recorded_at, now);
+    let tone = match projection.state {
+        analyte_model::AwosExecution::Scheduled | analyte_model::AwosExecution::InProgress => {
+            Tone::Neutral
+        }
+        analyte_model::AwosExecution::AnalyzerCancelled => Tone::Attention,
+    };
     Value::Status(Status {
-        tone: match projection.state {
-            analyte_model::AwosExecution::Scheduled | analyte_model::AwosExecution::InProgress => {
-                Tone::Neutral
-            }
-            analyte_model::AwosExecution::AnalyzerCancelled => Tone::Attention,
-        },
+        tone,
+        icon: tone.icon(),
         word: format::execution(projection.state).to_owned(),
         exact: format!(
             "Receipt {}, reading {}",
@@ -490,9 +678,28 @@ fn lab_app_copy(
     (facts, note)
 }
 
+/// The free text `message` carries about `item` of `order`: the machine's
+/// notes, or its source as stored when Analyte cannot read it.
+fn notes_of(message: &WorkEvidence, order: i64, item: u16) -> Vec<String> {
+    message
+        .custody
+        .work
+        .iter()
+        .filter(|work| work.order == order && work.item == item)
+        .flat_map(|work| source_evidence(work.source.as_str()).1)
+        .collect()
+}
+
 /// One message from the machine about this item: who recorded it and how it
-/// was applied, what the machine reported and the times it sent, as sent.
-fn message_of(message: &WorkEvidence, order: i64, item: u16, now: Timestamp) -> Message {
+/// was applied, what the machine reported and the times it sent, as sent;
+/// its notes as `reveal` says.
+fn message_of(
+    message: &WorkEvidence,
+    order: i64,
+    item: u16,
+    reveal: Reveal,
+    now: Timestamp,
+) -> Message {
     let mut facts = vec![
         Fact {
             term: "Recorded by Analyte",
@@ -526,6 +733,18 @@ fn message_of(message: &WorkEvidence, order: i64, item: u16, now: Timestamp) -> 
         facts.extend(times);
         notes.extend(written);
     }
+    let notes = match reveal {
+        _ if notes.is_empty() => Notes::None,
+        Reveal::Hidden { .. } => Notes::Hidden(format!(
+            "{} from the machine, hidden",
+            format::amount(
+                u64::try_from(notes.len()).unwrap_or(u64::MAX),
+                "note",
+                "notes"
+            )
+        )),
+        Reveal::Shown => Notes::Shown(notes),
+    };
     Message {
         title: format!(
             "Message received {}",
@@ -565,7 +784,7 @@ fn source_evidence(source: &str) -> (Vec<Fact>, Vec<String>) {
     let header = value
         .get("header_time")
         .and_then(serde_json::Value::as_str)
-        .unwrap_or("not known");
+        .unwrap_or(format::NOT_RECORDED);
     let event = match control.event_time() {
         "" => "not sent",
         supplied => supplied,

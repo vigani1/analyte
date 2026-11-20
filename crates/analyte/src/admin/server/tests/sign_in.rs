@@ -167,7 +167,7 @@ async fn sign_in_says_why_a_try_was_refused_and_never_shows_the_key() -> Result<
         ),
         "<button type=\"submit\" class=\"btn btn--primary btn--lg panel__action\">Sign in</button>",
         "The key is in the file <span class=\"mono\">admin-token</span> in Analyte’s data folder on this PC.",
-        "Engine running · machines keep working while you’re signed out",
+        "Engine running · it keeps running when you sign out",
     ] {
         assert!(page.contains(expected), "{expected}: {page}");
     }

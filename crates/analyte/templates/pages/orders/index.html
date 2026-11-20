@@ -12,7 +12,7 @@
 </nav>
 {% endcall %}
 {%- if paused %}
-{% call feedback::alert(crate::admin::view::Tone::Attention, "Order sending is paused after a restore", crate::admin::view::format::RESTORE_ADVICE) %}{% endcall %}
+{% call feedback::alert(crate::admin::view::Tone::Attention, crate::admin::view::format::RESTORE_PAUSED, crate::admin::view::format::RESTORE_ADVICE) %}{% endcall %}
 {%- endif %}
 {%- if let Some(empty) = empty %}
 <div class="card">{% call feedback::empty(empty.title, empty.text) %}{% if let Some((href, words)) = empty.link %}<a class="link" href="{{ href }}">{{ words }}</a>{% endif %}{% endcall %}</div>

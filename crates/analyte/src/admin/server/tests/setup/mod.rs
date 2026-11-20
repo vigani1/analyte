@@ -1,4 +1,4 @@
-//! Tests the setup page, its steps and the Lab app page: definitions, detected ports, saving with backups, lab app moves, refusals, keys and the listen test with its verdict.
+//! Tests the setup page, its steps and the Lab apps page: definitions, detected ports, saving with backups, lab app moves, refusals, keys and the listen test with its verdict.
 use super::pages::{csrf, encode, login};
 use super::*;
 use std::sync::Mutex;
@@ -496,13 +496,13 @@ async fn starter_setup_page_matches_the_packaging_check() -> Result<(), Error> {
 
 // Owner request 2026-11-18 (installers) and 2026-11-19 (lab app set once): the
 // installed starter lists a machine without a definition; with no lab app the
-// form links to the Lab app page, which stores the keys once; the machine then
+// form links to the Lab apps page, which stores the keys once; the machine then
 // picks the only lab app by default, and a save adds the definition line, so
 // the program runs it with the stored keys.
 #[tokio::test(flavor = "multi_thread")]
 #[expect(
     clippy::too_many_lines,
-    reason = "one scenario: from the starter through the Lab app page and the steps to the saved summary"
+    reason = "one scenario: from the starter through the Lab apps page and the steps to the saved summary"
 )]
 async fn waiting_machine_is_set_up_from_the_starter() -> Result<(), Error> {
     let fixture = start_with(
@@ -758,7 +758,7 @@ async fn save_moves_the_lab_app_and_keeps_the_digest() -> Result<(), Error> {
     Ok(())
 }
 
-// Owner request 2026-11-19 (lab app set once): the Lab app page stores each key
+// Owner request 2026-11-19 (lab app set once): the Lab apps page stores each key
 // once in the locked file and then shows it only as "set on <date>"; a new lab
 // app gets its own key names; no key reaches a page, an audit row or a log
 // line. A lab app still written in a machine's site file keeps its address
@@ -942,7 +942,7 @@ async fn lab_app_in_use_is_not_removed() -> Result<(), Error> {
     Ok(())
 }
 
-// Owner decision 2026-11-19 (key clash): the Lab app page refuses a new lab app
+// Owner decision 2026-11-19 (key clash): the Lab apps page refuses a new lab app
 // whose name differs from an existing one only by - versus _ or letter case,
 // with the same plain message as startup, before any file or key is written.
 #[tokio::test(flavor = "multi_thread")]
@@ -1311,7 +1311,7 @@ fn assert_destination_kept(
     site_before: &str,
     root: &std::path::Path,
 ) -> Result<(), Error> {
-    let kept = "Lab app demo stays on the Lab app page; results still waiting for it are sent";
+    let kept = "Lab app demo stays on the Lab apps page; results still waiting for it are sent";
     assert!(
         removed.contains("Restart now") && removed.contains(kept),
         "{removed}"
@@ -1441,7 +1441,7 @@ async fn add_machine_writes_a_checked_entry_and_starter_site() -> Result<(), Err
     let program_before = std::fs::read_to_string(&fixture.config)?;
     let index = fixture.get("/setup").await?;
     assert!(
-        index.contains("href=\"/setup/add\"><svg") && index.contains("</svg>Add machine</a>"),
+        index.contains("href=\"/setup/add\"><svg") && index.contains("</svg>Add a machine</a>"),
         "{index}"
     );
     let form = fixture.get("/setup/add").await?;
@@ -1453,7 +1453,7 @@ async fn add_machine_writes_a_checked_entry_and_starter_site() -> Result<(), Err
     let added = fixture
         .submit("/setup/add", "/setup/add", &[("name", "machine-2")])
         .await?;
-    // Owner request 2026-11-19 (item 3): "Add machine" goes straight into step 1.
+    // Owner request 2026-11-19 (item 3): "Add a machine" goes straight into step 1.
     assert!(added.starts_with("HTTP/1.1 303"), "{added}");
     assert!(
         added
@@ -1673,7 +1673,7 @@ async fn remove_warns_then_keeps_store_and_site_backup() -> Result<(), Error> {
     assert!(program.machines().is_empty());
     assert_destination_kept(&removed, &program, &site_before, fixture.root())?;
     // Owner request 2026-11-19 (lab app set once): no machine uses demo now, but
-    // a result still waits for it, so the Lab app page refuses to remove it.
+    // a result still waits for it, so the Lab apps page refuses to remove it.
     let refused = fixture
         .submit("/setup/lab-apps/new", "/setup/lab-apps/demo/remove", &[])
         .await?;
@@ -1765,7 +1765,7 @@ site = 'site.toml'
     assert!(empty.machines().is_empty() && empty.awaiting_setup().is_empty());
     let index = fixture.get("/setup").await?;
     assert!(
-        index.starts_with("HTTP/1.1 200") && index.contains("Add machine"),
+        index.starts_with("HTTP/1.1 200") && index.contains("Add a machine"),
         "{index}"
     );
     let added = fixture
@@ -1849,7 +1849,7 @@ async fn remove_dialog_draws_over_the_machine_page() -> Result<(), Error> {
 // Owner decisions 2026-11-20 (admin restyle b2): after a removal the page
 // says the machine is out of the settings and what that means until the
 // restart, what happens to its lab app, one line for the dated copy of the old
-// settings with the paths only under "For support", and Restart now. An audit
+// settings with the paths only under "Details for support", and Restart now. An audit
 // that could not be written is shown, never hidden.
 #[tokio::test(flavor = "multi_thread")]
 async fn removing_keeps_one_line_for_the_dated_copy_and_offers_restart() -> Result<(), Error> {
@@ -2125,7 +2125,7 @@ async fn each_step_shows_its_indicator_and_keeps_the_choices() -> Result<(), Err
 }
 
 // Owner request 2026-11-19 (item 3 with overview item 2): the first-run button
-// opens step 1 for the machine waiting for setup, and Add machine when none is
+// opens step 1 for the machine waiting for setup, and Add a machine when none is
 // listed; "first" is a name the setup page keeps for itself.
 #[tokio::test(flavor = "multi_thread")]
 async fn first_run_button_opens_step_one() -> Result<(), Error> {

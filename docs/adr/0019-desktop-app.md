@@ -1,7 +1,8 @@
 # 0019. The Analyte desktop app: a window and a tray beside the engine
 
 Status: accepted, 2026-11-20 (the owner approved Tauri 2 and its official
-plugins on 2026-11-20). Completes PR d of
+plugins on 2026-11-20; the app's own title bar, decision 11, on 2026-11-20).
+Completes PR d of
 [ADR 0018](0018-server-rendered-pages-and-one-stylesheet.md).
 
 ## Context
@@ -21,15 +22,16 @@ the pages on 127.0.0.1. Switching analyzers over is not part of this.
    Apps list and notifications. Its identifier, `io.github.vigani1.analyte.app`,
    is also the notification identity the Start menu entry carries.
 2. **Tauri 2 on Windows only.** Tauri 2.12 with WebView2 and the official
-   single-instance, notification and opener plugins. The app's code that
-   decides what to show (state mapping, notifications, navigation, the Engine
-   off screen) builds and is tested on every platform; only the shell needs
-   Tauri. Linux keeps the browser: its packages and CI are unchanged.
+   single-instance, notification and opener plugins. Tauri is pinned exactly
+   and built with its `unstable` feature for the title bar (decision 11).
+   The app's code that decides what to show (state mapping, notifications,
+   navigation, the Engine off screen, the title bar's words and layout)
+   builds and is tested on every platform; only the shell needs Tauri. Linux keeps the browser: its packages and CI are unchanged.
 3. **The window shows the engine's origin and nothing else.** It opens the
    engine's pages; a link to another site opens in the default browser and
    anything else is refused. People sign in with the normal form: the app
    never reads the admin-token file and never holds the key. The app grants
-   the pages no Tauri commands. Closing the window destroys its webview; the
+   the pages no Tauri commands. Closing the window destroys its webviews; the
    app stays in the tray and "Open Analyte" makes a new window. One instance
    runs at a time.
 4. **Where the engine is.** The program file is readable only by
@@ -73,6 +75,38 @@ the pages on 127.0.0.1. Switching analyzers over is not part of this.
     "Analyte", in that user's `HKCU\...\Run`, holding the quoted path and
     `--tray`, written by the installer and by the app alike; uninstall removes
     the installing user's value.
+11. **The app's own title bar.** The window has no Windows frame; a 32 px bar
+    in the design's look sits on top: the Aperture mark from the hand-drawn
+    16 and 20 px files, "Analyte", a dot with the tray's four states and
+    their words on hover, and minimize, maximize or restore, and close at
+    Windows 11's 46 by 32 px, close turning red on hover. The window is two
+    webviews:
+    - **the bar** (label `title-bar`), the app's own page
+      `http://analyte.localhost/title-bar` with one script file. It is the
+      only webview any capability names: `capabilities/title-bar.json`
+      grants it, from the app's own origin only, `start-dragging`,
+      `internal-toggle-maximize` (the double-click of Tauri's drag region),
+      `minimize`, `toggle-maximize` and `close`, and nothing else. It may
+      navigate only to its own page and asks the app nothing: the app pushes
+      the state and the button's name into it.
+    - **the pages** (label `pages`), the engine's pages or Engine off, below
+      the bar, with no capability, as before. The engine is unchanged.
+    The app serves the bar's page only to the bar's webview, and Start engine
+    only to the pages'. Windows keeps the frameless window's shadow, resizing
+    from every edge (Tauri adds a strip above the bar for the top edge),
+    snapping by dragging to the screen's edges and with Win+arrows and
+    Win+Z, and Alt+F4. Two things a Windows frame gives are lost: the
+    Windows 11 snap-layout menu when hovering the maximize button (Win+Z
+    still opens it), and the window menu, on a right-click of the bar or on
+    Alt+Space (the webview keeps the key). Both need the bar's area to answer
+    Windows' hit test as a frame, or a Windows call to show the menu, which a
+    webview cannot do and which only unsafe Windows calls in this crate
+    could; a right-click on the bar shows nothing. The
+    multi-webview API is behind Tauri's `unstable` feature, so Tauri is
+    pinned exactly. The reviewed versions, in `Cargo.lock`, are
+    tauri 2.12.7, tauri-runtime 2.12.4, tauri-runtime-wry 2.12.5 and
+    wry 0.57.3; a test fails on any other version until the bar has been
+    tried on it and this list is updated.
 
 ## Why
 
@@ -95,6 +129,18 @@ page already says the engine runs, so it reveals nothing new.
 - The app trusts whatever answers at 127.0.0.1 on the admin port as the
   engine, as a browser did; when the engine is stopped another local program
   could take the port.
+- The title bar is a second webview with a capability of its own; the
+  pages' webview still has none, and a test built from the real
+  capabilities proves both. Tauri's `unstable` multi-webview API may change
+  in any release, so upgrading Tauri means trying the bar again. The test
+  programs link the Common Controls 6 manifest as the app does (`build.rs`),
+  which Tauri's mock runtime needs to start on Windows.
+- The bar's page is another origin, so WebView2 runs it in one more
+  renderer process. Measured on 2026-11-20 on a 4K screen at 200 %, as the
+  private working set of the app and its WebView2 processes: the sign-in
+  page went from 83 MB (7 processes) to 102 MB (8), the Overview with live
+  updates from about 95 to 100 MB to about 108 to 113 MB, and the tray
+  alone stays at about 3 MB (the app only).
 - Closing the window ends every WebView2 process of the app; measured on
   2026-11-20, the app and its WebView2 processes went from 461 MB working set
   (7 processes) with the Overview open to 40 MB (the app alone) in the tray.

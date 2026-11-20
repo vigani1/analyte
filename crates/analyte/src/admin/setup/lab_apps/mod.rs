@@ -413,6 +413,7 @@ pub(in crate::admin) async fn key_sources(
             let key = source.key(("", "", ""), name, now);
             Status {
                 tone: key.tone,
+                icon: key.tone.icon(),
                 word: key.word,
                 exact: key.exact,
                 note: None,
@@ -700,6 +701,7 @@ fn card(
         href,
         status: Status {
             tone,
+            icon: tone.icon(),
             word: word.into(),
             exact: String::new(),
             note: None,

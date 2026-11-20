@@ -476,7 +476,7 @@ async fn lab_app_form_says_where_keys_are_and_never_their_values() -> Result<(),
     assert!(!set.contains("Needed before Analyte can send results."));
     let unknown = fixture.get("/setup/lab-apps/nowhere").await?;
     assert!(unknown.starts_with("HTTP/1.1 409"), "{unknown}");
-    assert!(unknown.contains("There is no lab app called nowhere; add it on the Lab app page."));
+    assert!(unknown.contains("There is no lab app called nowhere; add it on the Lab apps page."));
     for page in [&new, &edit, &saved, &set, &unknown] {
         assert!(!page.contains(API_KEY) && !page.contains(SIGNING_KEY));
     }
@@ -667,7 +667,7 @@ async fn lab_apps_list_answers_store_failures_in_the_new_look() -> Result<(), Er
     let busy = store.clone();
     let blocker = tokio::spawn(async move {
         busy.request::<_, FixtureError>(fixture_deadline()?, |_| {
-            std::thread::sleep(Duration::from_millis(1700));
+            std::thread::sleep(Duration::from_millis(1800));
             Ok(())
         })
         .await

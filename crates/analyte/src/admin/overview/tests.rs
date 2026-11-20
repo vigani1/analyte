@@ -242,7 +242,7 @@ fn disk_sizes_read_in_units_with_exact_bytes() {
 
 // Owner request 2026-11-19 (overview states): disk and alerts show free space
 // and the reserve with exact bytes on hover, "Enough space" or "Almost full:
-// receiving refused", the active alerts as a table (with "Not known" where the
+// receiving refused", the active alerts as a table (with "Not recorded" where the
 // rule recorded nothing), each alert's reason and fix, and the relay lines for
 // support only when relays exist.
 #[test]
@@ -279,7 +279,7 @@ fn disk_and_alerts_cover_full_disk_unknown_values_and_relays() -> Result<(), ask
     )));
     assert!(html.contains(concat!(
         "<tr><td class=\"cell-main\"><span title=\"machine_silent\">Machine has gone quiet</span></td>",
-        "<td>cobas-e411</td><td>Duty officer</td><td>Not known</td><td class=\"num right\">Not known</td></tr>"
+        "<td>cobas-e411</td><td>Duty officer</td><td><span class=\"subtle\">Not recorded</span></td><td class=\"num right\">Not recorded</td></tr>"
     )), "{html}");
     assert!(html.contains("<td>—</td><td>Duty officer</td><td><time datetime="));
     assert!(html.contains("<td class=\"num right\">512</td></tr>"));

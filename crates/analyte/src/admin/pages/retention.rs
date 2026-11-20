@@ -187,6 +187,7 @@ fn clean_up(run: &PurgeRun, now: Timestamp) -> Vec<Fact> {
             value: Value::Status(if run.failed {
                 Status {
                     tone: Tone::Problem,
+                    icon: Tone::Problem.icon(),
                     word: "Yes".into(),
                     exact: "Purge failed".into(),
                     note: None,
@@ -194,6 +195,7 @@ fn clean_up(run: &PurgeRun, now: Timestamp) -> Vec<Fact> {
             } else {
                 Status {
                     tone: Tone::Good,
+                    icon: Tone::Good.icon(),
                     word: "No".into(),
                     exact: String::new(),
                     note: None,

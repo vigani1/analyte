@@ -709,7 +709,9 @@ async fn machine_page_shows_its_setup_differences_and_newest_messages() -> Resul
         "<a class=\"link\" href=\"/parked/{}\">In Needs review</a>",
         seeded.item
     )));
-    assert!(failed.contains("<td class=\"subtle\">None queued</td>"));
+    // Owner decision 2026-11-20 (missing values): a message that was read and
+    // queued nothing has no delivery, so its cell says it does not apply.
+    assert!(failed.contains("<td class=\"subtle\">—</td>"), "{failed}");
     assert!(failed.contains(&departures(seeded.failed, 1)));
     assert!(
         delivered.contains("<span title=\"000123\">000123</span>"),
@@ -719,14 +721,19 @@ async fn machine_page_shows_its_setup_differences_and_newest_messages() -> Resul
     assert!(delivered.contains(&departures(seeded.delivered, 1)));
     assert!(unread.contains("</svg>Not read yet</span>"), "{unread}");
     assert!(unread.contains("title=\"no reading stored\""));
+    // Not read yet, so nothing was queued yet.
+    assert!(
+        unread.contains("<td class=\"subtle\">Nothing yet</td>"),
+        "{unread}"
+    );
     assert_eq!(
         unread.matches("<td class=\"subtle\">—</td>").count(),
         1,
         "{unread}"
     );
-    // Raw IDs: only in links and under "For support".
+    // Raw IDs: only in links and under "Details for support".
     let (shown, support) = page
-        .split_once("For support</summary><pre>")
+        .split_once("Details for support</summary><pre>")
         .ok_or("support")?;
     for receipt in [
         seeded.unread,
@@ -1060,7 +1067,7 @@ async fn store_failures_and_slow_reads_answer_in_the_new_look() -> Result<(), Er
         let busy = store.clone();
         let blocker = tokio::spawn(async move {
             busy.request::<_, FixtureError>(fixture_deadline()?, |_| {
-                std::thread::sleep(Duration::from_millis(1700));
+                std::thread::sleep(Duration::from_millis(1800));
                 Ok(())
             })
             .await

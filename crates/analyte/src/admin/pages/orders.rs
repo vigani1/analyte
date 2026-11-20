@@ -3,7 +3,7 @@ use super::page::{Empty, Look, OrderRow, Orders};
 use super::{PAGE, cursor_value, next_href, one_page};
 use crate::admin::error::CommandError;
 use crate::admin::sessions::Session;
-use crate::admin::view::{Tab, Tone, format, frame::Frame, icon::Icon, report::Chip};
+use crate::admin::view::{Tab, format, frame::Frame, report::Chip};
 use crate::admin::{Error, server::Context};
 use crate::deadline;
 use analyte_model::OrderState;
@@ -262,26 +262,15 @@ pub(super) fn tests(order: &MachineOrder) -> Option<usize> {
     })
 }
 
-/// An order or item state as a status: its tone, its own icon and its words,
-/// the stored state on hover and, when the outcome is unknown or the machine
-/// rejected it, what was recorded. Sent, accepted, done and cancelled stay
-/// four separate states (safety rule 8).
+/// An order or item state as a status, as every page shows it
+/// ([`format::order_look`]): the stored state on hover and, when the outcome
+/// is unknown or the machine rejected it, what was recorded.
 pub(super) fn look(state: OrderState, recorded: &analyte_model::SourceText) -> Look {
-    let (tone, icon) = match state {
-        OrderState::Requested | OrderState::Sent | OrderState::CancelRequested => {
-            (Tone::Neutral, Icon::Waiting)
-        }
-        OrderState::Sending => (Tone::Neutral, Icon::Send),
-        OrderState::Accepted => (Tone::Good, Icon::Check),
-        OrderState::Done => (Tone::Good, Icon::Ok),
-        OrderState::Rejected => (Tone::Problem, Icon::Problem),
-        OrderState::CancelConfirmed => (Tone::Neutral, Icon::Cancelled),
-        OrderState::Uncertain => (Tone::Attention, Icon::Unknown),
-    };
+    let look = format::order_look(state);
     Look {
-        tone,
-        icon,
-        word: format::order_state(state),
+        tone: look.tone,
+        icon: look.icon,
+        word: look.word,
         exact: state.to_string(),
         note: matches!(state, OrderState::Uncertain | OrderState::Rejected)
             .then(|| format!("Recorded: {}", recorded.as_str())),

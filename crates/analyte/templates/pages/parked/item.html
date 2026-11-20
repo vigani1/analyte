@@ -58,7 +58,7 @@
 {%- endfor %}
 {% endcall %}
 </div>
-{% call feedback::support("For support", support) %}{% endcall %}
+{% call feedback::support(crate::admin::view::format::SUPPORT, support) %}{% endcall %}
 {%- if let Some(dialog) = dialog %}
 {% call forms::reason_dialog(dialog) %}{% endcall %}
 {%- endif %}

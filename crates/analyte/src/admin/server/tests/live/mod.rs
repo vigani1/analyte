@@ -170,7 +170,7 @@ async fn a_stored_change_reaches_a_signed_in_stream() -> Result<(), Error> {
     read_until(
         &mut stream,
         &mut seen,
-        "\"changed\":[\"review\",\"overview\",\"activity\"]",
+        "\"changed\":[\"review\",\"overview\",\"activity\",\"count\"]",
         1,
         Duration::from_secs(3),
     )

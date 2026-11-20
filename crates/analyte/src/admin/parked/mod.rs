@@ -3,7 +3,7 @@
 //! Pages show what the store holds: the category, the stored reason, the
 //! machine and arrival time of a linked stored message, and the history Analyte
 //! recorded. Sample IDs are not stored with an item and test codes and result
-//! values never show; raw IDs only appear under "For support". Reads stop after
+//! values never show; raw IDs only appear under "Details for support". Reads stop after
 //! [`view::READ_BUDGET`] with the error page in the same look.
 mod category;
 mod dialog;
@@ -12,7 +12,8 @@ mod problem;
 mod raw;
 
 pub(super) use dialog::{checked, confirm_reprocess, confirm_resolve, reprocess, resolve};
-pub(super) use raw::{RawError, raw};
+pub(super) use page::RawRequest;
+pub(super) use raw::{RAW_VIEW, RawError, raw};
 
 /// What an item is about in a few words, and its tone, as its card on Needs
 /// review shows them: for an Activity line.
@@ -40,8 +41,8 @@ use axum::{
 use category::{Action, Category};
 use jiff::Timestamp;
 use page::{
-    Button, Card, Dialog, Empty, Entry, Head, Item, List, Original, OriginalTarget, Pair,
-    RawRequest, Resolved, Row, Todo, item_href,
+    Button, Card, Dialog, Empty, Entry, Head, Item, List, Original, OriginalTarget, Pair, Resolved,
+    Row, Todo, item_href,
 };
 use problem::Problem;
 use serde::Deserialize;
@@ -638,7 +639,9 @@ fn linked_pairs(linked: &[(Identifier, Linked)], now: Timestamp) -> Vec<Pair> {
             },
             Linked::Other => Pair {
                 term: "Linked record",
-                value: format::Line::text("Not a stored message; its ID is under For support"),
+                value: format::Line::text(
+                    "Not a stored message; its ID is under Details for support",
+                ),
             },
         })
         .collect()
@@ -732,7 +735,7 @@ fn history(read: &ItemRead, settled: Option<&Audit>, now: Timestamp) -> Vec<Entr
         (None, Some(_)) => entries.push(Entry {
             when: None,
             text: "Resolved".into(),
-            who: "How it was resolved could not be read; the stored record is under For support."
+            who: "How it was resolved could not be read; the stored record is under Details for support."
                 .into(),
             good: true,
         }),

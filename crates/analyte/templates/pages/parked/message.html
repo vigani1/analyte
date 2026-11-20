@@ -10,6 +10,6 @@
 {%- for link in links %}{% call forms::link_button(link.href, link.label, link.class) %}{% endcall %}{% endfor -%}
 </p>
 {%- if !support.is_empty() %}
-{% call feedback::support("Details for support", support) %}{% endcall %}
+{% call feedback::support(crate::admin::view::format::SUPPORT, support) %}{% endcall %}
 {%- endif %}
 {%- endblock %}

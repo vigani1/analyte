@@ -18,7 +18,7 @@
 {%- endfor %}
 {%- if let Some(csrf) = restart %}
 {% call layout::label_card("rp-restart", "Restart to apply") %}
-<p class="report__line">Restarting stops every machine connection for a few seconds; machines resend what they could not deliver. After the restart, sign in again.</p>
+<p class="report__line">{{ crate::admin::view::format::RESTART_ADVICE }}</p>
 <form class="cluster" method="post" action="/setup/restart"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="btn btn--primary">Restart now</button></form>
 {% endcall %}
 {%- endif %}
@@ -26,6 +26,6 @@
 {%- for link in links %}{% call forms::link_button(link.href, link.label, link.class) %}{% endcall %}{% endfor -%}
 </p>
 {%- if !support.is_empty() %}
-{% call feedback::support("Details for support", support) %}{% endcall %}
+{% call feedback::support(crate::admin::view::format::SUPPORT, support) %}{% endcall %}
 {%- endif %}
 {%- endblock %}
