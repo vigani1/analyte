@@ -86,6 +86,18 @@ moment ([sqlite3_busy_handler](https://www.sqlite.org/c3ref/busy_handler.html),
 owner lock file is released only after the connection, including SQLite's
 checkpoint on close, has closed.
 
+The admin pages' reads share the store's one thread with intake, so each one
+is an index lookup or range sized by what the page shows, not a scan of what
+is kept (schema 17; plans checked with `EXPLAIN QUERY PLAN`, no `ANALYZE`):
+
+| Read | Path |
+|---|---|
+| `activity` | per source, newest first through its time index (`receipts_received`, `parked_time`, `parked_resolved_time`, `attempts_accepted_time`, `machine_order_history_updated`, `audit_time`), at most one page each, merged; a stored machine uses `receipts_machine_received` or `machine_order_history_machine_updated`; an attempt's machine races a newest-first read against the machine's own deliveries (`outbox_receipt`, `outbox_ordering`, `attempts_delivery`) |
+| `activity_counts` | one range of each time index |
+| `last_delivered` | lab apps one index step each (any outbox index led by `destination`), then one `outbox_delivered_at` lookup each |
+| `failing_destinations` | lab apps with items waiting, then the tries of their deliveries not in Done after `delivered_attempt` (`outbox_destination_state`, `attempts_delivery`) |
+| `newest_receipts`, `oldest_retained_receipt` | `receipts_machine_received`, `receipts_received` |
+
 Backup uses SQLite's online backup API in bounded page steps with a deadline,
 then checks the target integrity. Existing targets are refused. A failed backup
 may leave a partial target; it must never be used as a successful backup.

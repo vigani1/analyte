@@ -200,10 +200,12 @@ macro_rules! attempt_machine {
 
 /// Where a machine's attempts `x` are found through its own rows: its
 /// messages' deliveries, and the order messages of orders sent to it. Every
-/// attempt naming the machine is in one of them.
+/// attempt naming the machine is in one of them. Each delivery's attempts are
+/// read by delivery: left to itself, SQLite would read them through the time
+/// index, every accepted attempt again for each delivery.
 const ATTEMPTS_BY_MACHINE: &[&str] = &[
-    "receipts r CROSS JOIN outbox o CROSS JOIN attempts x WHERE json_extract(r.metadata,'$.machine')=?1 AND o.receipt=r.id AND x.delivery=o.id",
-    "machine_orders m CROSS JOIN outbox o CROSS JOIN attempts x WHERE m.machine=?1 AND o.destination=m.destination AND o.kind='order_event' AND o.ordering_key=m.order_id AND x.delivery=o.id",
+    "receipts r CROSS JOIN outbox o CROSS JOIN attempts x INDEXED BY attempts_delivery WHERE json_extract(r.metadata,'$.machine')=?1 AND o.receipt=r.id AND x.delivery=o.id",
+    "machine_orders m CROSS JOIN outbox o CROSS JOIN attempts x INDEXED BY attempts_delivery WHERE m.machine=?1 AND o.destination=m.destination AND o.kind='order_event' AND o.ordering_key=m.order_id AND x.delivery=o.id",
 ];
 
 /// The state of the order snapshot stored before `x` for the same order.

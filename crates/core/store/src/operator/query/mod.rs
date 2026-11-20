@@ -460,7 +460,10 @@ impl Store {
         now: i64,
         freshness: u64,
     ) -> Result<crate::Health, Error> {
-        let (count, bytes, oldest, paused): (i64,i64,Option<i64>,bool) = self.db.query_row("SELECT count(*),coalesce(sum(length(payload)),0),min(enqueued_at),coalesce(max(state=?2),0) FROM outbox WHERE destination=?1 AND state!=?3",params![destination.as_str(),DeliveryState::Paused,DeliveryState::Done], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?)))?;
+        // Every state but Done, named, so the lab app's undelivered items are
+        // read through the index by lab app and state, not all its deliveries.
+        let [pending, in_flight, parked, paused, conflict] = NOT_DONE;
+        let (count, bytes, oldest, paused): (i64,i64,Option<i64>,bool) = self.db.query_row("SELECT count(*),coalesce(sum(length(payload)),0),min(enqueued_at),coalesce(max(state=?2),0) FROM outbox WHERE destination=?1 AND state IN (?3,?4,?5,?6,?7)",params![destination.as_str(),DeliveryState::Paused,pending,in_flight,parked,paused,conflict], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?)))?;
         let feed: Option<(i64, bool, bool)> = self
             .db
             .query_row(
@@ -530,7 +533,7 @@ impl Store {
     pub fn last_delivered(&self) -> Result<LastDelivered, Error> {
         let mut statement = self.db.prepare(concat!(
             lab_apps!(),
-            "SELECT destination,(SELECT max(o.delivered_at) FROM outbox o WHERE o.destination=lab.destination) AS at ",
+            "SELECT destination,(SELECT max(o.delivered_at) FROM outbox o WHERE o.destination=lab.destination AND o.delivered_at IS NOT NULL) AS at ",
             "FROM lab WHERE at IS NOT NULL ORDER BY destination"
         ))?;
         let at = statement
@@ -584,14 +587,16 @@ impl Store {
     /// read, and for each only the tries of its deliveries not in Done that
     /// come after its last accepted attempt (`delivered_attempt`, see
     /// [`NOT_DONE`]), so the cost follows what is waiting, not what was kept.
+    /// Each lab app's last accepted attempt is read once (`MATERIALIZED`), not
+    /// again for every try compared with it.
     /// # Errors
     /// Reports database errors, a stored destination that is not an
     /// identifier, or a negative count.
     pub fn failing_destinations(&self) -> Result<Vec<FailingDestination>, Error> {
         let mut statement = self.db.prepare(concat!(
             lab_apps!(),
-            ", waiting(destination, accepted) AS (SELECT lab.destination,",
-            "(SELECT max(o.delivered_attempt) FROM outbox o WHERE o.destination=lab.destination) ",
+            ", waiting(destination, accepted) AS MATERIALIZED (SELECT lab.destination,",
+            "(SELECT max(o.delivered_attempt) FROM outbox o WHERE o.destination=lab.destination AND o.delivered_attempt IS NOT NULL) ",
             "FROM lab WHERE lab.destination IS NOT NULL ",
             "AND EXISTS(SELECT 1 FROM outbox w WHERE w.destination=lab.destination AND w.state IN (?1,?2))) ",
             "SELECT w.destination,min(a.time),max(a.time),count(*),",
@@ -914,7 +919,9 @@ impl Store {
                 concat!(
                     "SELECT count(DISTINCT item) FROM (",
                     outbox_owners!("o.state!=?2"),
-                    ") WHERE machine=?1"
+                    // `+` keeps SQLite from starting at every message of the
+                    // machine: undelivered items are far fewer.
+                    ") WHERE +machine=?1"
                 ),
                 params![machine, DeliveryState::Done],
             )?,
