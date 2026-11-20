@@ -36,7 +36,7 @@ OutputBaseFilename=analyte-v{#AppVersion}-x86_64-windows-setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
-; The Analyte icon (crates/analyte/assets/icons/analyte.ico, staged by
+; The Analyte icon (crates/analyte/analyte.ico, staged by
 ; packaging/build.ps1) for the installer itself and the Apps list.
 SetupIconFile={#SourceDir}\analyte.ico
 UninstallDisplayIcon={app}\analyte.ico

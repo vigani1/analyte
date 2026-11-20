@@ -7,17 +7,17 @@
 {%- import "components/layout.html" as layout %}
 {%- block main %}
 {% call layout::intro_head("", "Data keeping", KEEPING_LEDE) %}{% endcall %}
-<div class="stack stack--lg more-narrow">
+<div class="stack stack--lg narrow">
 {% call layout::label_card("dk-times", "Keeping times") %}
 {%- if policies.is_empty() %}
-<p class="muted more-row__text">No machine is set up.</p>
+<p class="muted text--sm">No machine is set up.</p>
 {%- else %}
 <dl class="kv">{% for (machine, policy) in policies %}<dt>{{ machine }}</dt><dd>{{ policy }}</dd>{% endfor %}</dl>
 {%- endif %}
 {% endcall %}
 {% call layout::label_card("dk-clean", "Last clean-up") %}
 {%- if clean_up.is_none() %}
-<p class="muted more-row__text">No clean-up has run yet.</p>
+<p class="muted text--sm">No clean-up has run yet.</p>
 {%- endif %}
 <dl class="kv">
 {%- if let Some(facts) = clean_up %}{% for fact in facts %}{% call display::fact(fact) %}{% endcall %}{% endfor %}{% endif %}
@@ -26,13 +26,13 @@
 {% endcall %}
 <section class="section" aria-labelledby="dk-holds">
 <div class="section__head">{% call layout::label("dk-holds", "Holds", "") %}{% endcall %}{% if form.is_some() %}{% call forms::link_button("#dk-add", "Add a hold", "btn--outline btn--sm") %}{% endcall %}{% endif %}</div>
-<p class="muted more-row__text">{{ HOLDS_TEXT }}</p>
+<p class="muted text--sm">{{ HOLDS_TEXT }}</p>
 {%- if holds.is_empty() %}
 {% call feedback::empty_card("No holds", "Nothing is held now; clean-up follows the keeping times.") %}{% endcall %}
 {%- else %}
 <ul class="card rows">
 {%- for hold in holds %}
-<li class="row more-row" title="{{ hold.exact }}">{% call draw::icon(crate::admin::view::icon::Icon::Lock, "") %}{% endcall %}<div class="row__main"><p class="more-row__title">{% call display::words(hold.title) %}{% endcall %}</p><p class="subtle more-row__text">{% call display::words(hold.sub) %}{% endcall %}</p></div>
+<li class="row more-row" title="{{ hold.exact }}">{% call draw::icon(crate::admin::view::icon::Icon::Lock, "") %}{% endcall %}<div class="row__main"><p class="more-row__title">{% call display::words(hold.title) %}{% endcall %}</p><p class="subtle text--sm">{% call display::words(hold.sub) %}{% endcall %}</p></div>
 {%- if let Some(href) = hold.release %}{% call forms::link_button(href, "Release", "btn--quiet btn--sm") %}{% endcall %}{% endif -%}
 </li>
 {%- endfor %}
@@ -61,7 +61,7 @@
 {% call feedback::note("Sign in to add or release a hold", "Analyte records who places or releases a hold, so it needs a signed-in browser session.") %}{% endcall %}
 {%- endif %}
 </div>
-{%- if let Some(dialog) = dialog %}
-{% call forms::reason_dialog(dialog) %}{% call forms::hidden_fields(dialog.hidden) %}{% endcall %}{% endcall %}
+{%- if let Some(release) = dialog %}
+{% call forms::reason_dialog(release.form) %}{% call forms::hidden_fields(release.hidden) %}{% endcall %}{% endcall %}
 {%- endif %}
 {%- endblock %}

@@ -8,7 +8,7 @@
 {%- for problem in problems %}
 {% call feedback::alert(crate::admin::view::Tone::Attention, problem, "") %}{% endcall %}
 {%- endfor %}
-<div class="stack stack--lg more-narrow">
+<div class="stack stack--lg narrow">
 <section class="card" aria-labelledby="st-engine">
 <div class="card__head"><h2 id="st-engine" class="card__title">Engine</h2>{% call display::status(crate::admin::view::Tone::Good, "Running") %}{% endcall %}</div>
 <div class="card__body"><dl class="kv">{% for fact in engine %}{% call display::fact(fact) %}{% endcall %}{% endfor %}</dl></div>

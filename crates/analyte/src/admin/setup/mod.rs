@@ -26,12 +26,12 @@ pub(crate) use wizard::listen::{Limits, Open};
 pub(super) use wizard::{Step, listen_start, listen_stop, listen_view, save, step};
 
 use super::{
-    machines::{Hover, Notice},
     server::{Context, sessions::Session},
     view::{
         Tab, Tone, format,
         frame::Frame,
         icon::Icon,
+        parts::{Hover, Notice},
         report::{Problem, Section, Status, respond},
     },
 };

@@ -4,12 +4,12 @@
 //! link back to the item, and the form posts with the session's form token.
 //! The shared request guard already refused a post without a session or with
 //! a wrong token; these handlers check again and ask for a signed-in session.
-use super::page::Dialog;
 use super::{ItemQuery, ItemRead, item_page, open_count};
 use crate::admin::server::Context;
 use crate::admin::server::sessions::{Session, signed_in};
-use crate::admin::view::report::{Button, Problem, Report, Section, respond};
-use crate::admin::view::{self, Tab, Tone, format, frame::Frame};
+use crate::admin::view::parts::ReasonDialog;
+use crate::admin::view::report::{Button, Problem, Report, Section, read_within, respond};
+use crate::admin::view::{Tab, Tone, format, frame::Frame};
 use crate::admin::{CommandError, Error};
 use crate::operator::recovery;
 use analyte_model::Reason;
@@ -43,7 +43,7 @@ impl Confirm {
         session: &Session,
         reason: &str,
         error: Option<&'static str>,
-    ) -> Dialog {
+    ) -> ReasonDialog {
         let (path, title, text, placeholder, button) = match self {
             Self::Resolve => (
                 "resolve",
@@ -67,10 +67,10 @@ impl Confirm {
                 "Process again",
             ),
         };
-        Dialog {
+        ReasonDialog {
             action: format!("/parked/{id}/{path}"),
             title,
-            text,
+            text: text.into(),
             placeholder,
             hint: "Required, up to 256 characters. Recorded in the history with the time.",
             button,
@@ -144,7 +144,7 @@ async fn open(
 ) -> Response {
     // Finding the message may rebuild a receipt, a write, so this is a request
     // that runs to its end, not a read that stops with the page.
-    let read = tokio::time::timeout(view::READ_BUDGET, async {
+    let read = read_within(async {
         let query = ItemQuery::new(id, 0)?;
         Ok::<_, Error>(
             state
@@ -162,14 +162,11 @@ async fn open(
     })
     .await;
     let (read, receipt): (ItemRead, _) = match read {
-        Ok(Ok(Some(read))) => read,
-        Ok(Ok(None)) => {
+        Ok(Some(read)) => read,
+        Ok(None) => {
             return Problem::NotFound.page(state, Some(session), Section::NeedsReview(Some(id)));
         }
-        Ok(Err(error)) => {
-            return Problem::of(&error).page(state, Some(session), Section::NeedsReview(Some(id)));
-        }
-        Err(_) => return Problem::Time.page(state, Some(session), Section::NeedsReview(Some(id))),
+        Err(problem) => return problem.page(state, Some(session), Section::NeedsReview(Some(id))),
     };
     if read.resolution.is_some() {
         return Problem::AlreadyResolved.page(state, Some(session), Section::NeedsReview(Some(id)));
@@ -325,21 +322,6 @@ impl Done {
         };
         let section = Section::NeedsReview(Some(id));
         let page = Report {
-            frame: Frame::new(
-                state,
-                Tab::NeedsReview,
-                title,
-                open_count(state).await,
-                Some(session),
-                Timestamp::now(),
-            ),
-            head: section.head(title),
-            tone,
-            title: alert,
-            text,
-            lines: Vec::new(),
-            problems: Vec::new(),
-            restart: None,
             links: vec![
                 Button {
                     href: Tab::NeedsReview.href().to_owned(),
@@ -352,7 +334,20 @@ impl Done {
                     class: "btn--outline",
                 },
             ],
-            support: Vec::new(),
+            ..Report::new(
+                Frame::new(
+                    state,
+                    Tab::NeedsReview,
+                    title,
+                    open_count(state).await,
+                    Some(session),
+                    Timestamp::now(),
+                ),
+                section,
+                tone,
+                alert,
+                text,
+            )
         };
         respond(state, Some(session), section, StatusCode::OK, page.render())
     }

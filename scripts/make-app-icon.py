@@ -9,7 +9,7 @@ dependency). Frames 16 and 20 come from the hand-tuned `-16`/`-20` files and
 corners; Windows reads PNG frames at every size.
 
 The tray icons (ADR 0019) are PNGs in `crates/app/icons/`, one per state and
-size: 16 and 20 px from the hand-tuned `tray-*-16`/`-20` files, 24 and 32 px
+size: 16 and 20 px from the hand-tuned `icons/svg/tray-*-16`/`-20` files, 24 and 32 px
 from the large one. The app picks the size for the screen's scale.
 """
 
@@ -22,7 +22,7 @@ import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 ICONS = ROOT / "crates" / "analyte" / "assets" / "icons"
-OUTPUT = ICONS / "analyte.ico"
+OUTPUT = ROOT / "crates" / "analyte" / "analyte.ico"
 LARGE = "analyte-app-icon.svg"
 FRAMES = [
     (16, "analyte-app-icon-16.svg"),
@@ -39,6 +39,7 @@ EDGE = [
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
 TRAY_OUTPUT = ROOT / "crates" / "app" / "icons"
+TRAY_SOURCES = TRAY_OUTPUT / "svg"
 # The app's state name, then the design's SVG name.
 TRAY_STATES = [
     ("good", "tray-all-good"),
@@ -122,7 +123,7 @@ def main():
         TRAY_OUTPUT.mkdir(parents=True, exist_ok=True)
         for state, svg in TRAY_STATES:
             for size, suffix in TRAY_FRAMES:
-                source = ICONS / f"{svg}{suffix}.svg"
+                source = TRAY_SOURCES / f"{svg}{suffix}.svg"
                 target = TRAY_OUTPUT / f"tray-{state}-{size}.png"
                 target.write_bytes(draw(edge, source, size, folder))
                 print(f"{target.relative_to(ROOT).as_posix()}: from {source.name}")

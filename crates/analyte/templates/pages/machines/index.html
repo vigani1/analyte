@@ -13,7 +13,7 @@
 {% call feedback::alert(notice.tone, notice.title, notice.text) %}{% endcall %}
 {%- endfor %}
 {%- if let Some(empty) = empty %}
-{% call feedback::empty_card(empty.title, empty.text) %}{% if empty.add %}{% call forms::link_button("/setup/add", "Add a machine", "btn--outline btn--sm") %}{% endcall %}{% endif %}{% endcall %}
+{% call feedback::empty_card(empty.title, empty.text) %}{% if let Some((href, words)) = empty.link %}{% call forms::link_button(href, words, "btn--outline btn--sm") %}{% endcall %}{% endif %}{% endcall %}
 {%- endif %}
 {%- if !rows.is_empty() %}
 {% call display::table(MACHINE_COLUMNS) %}

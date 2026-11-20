@@ -14,7 +14,7 @@
 <ul class="stack more-list">
 {%- for card in cards %}
 <li class="card"><div class="row more-row">{% call draw::icon(crate::admin::view::icon::Icon::Cancelled, "tone-off") %}{% endcall %}<div class="row__main"><p class="more-row__title" title="{{ card.exact }}">{% if let Some(sample) = card.sample %}Sample <span class="mono">{{ sample }}</span>{% else %}Order <span class="mono">{{ card.order }}</span>{% endif %} · {{ card.machine }}{% if let Some(model) = card.model %} ({{ model }}){% endif %}{% if let Some(tests) = card.tests %} · {{ tests }}{% endif %}</p>
-{%- for line in card.lines %}<p class="muted more-row__text">{% call display::words(line) %}{% endcall %}</p>{% endfor -%}
+{%- for line in card.lines %}<p class="muted text--sm">{% call display::words(line) %}{% endcall %}</p>{% endfor -%}
 </div><div class="cluster">{% call forms::link_button(card.href, "Details", "btn--outline btn--sm") %}{% endcall %}</div></div></li>
 {%- endfor %}
 </ul>

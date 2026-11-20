@@ -32,7 +32,7 @@
 </div>
 <div class="card__body stack">
 <h2 id="rv-{{ card.id }}" class="review__title">Item <span class="mono">{{ card.id }}</span>{% if let Some(machine) = card.machine %} · {{ machine }}{% endif %}</h2>
-<p class="muted review__text">{{ card.category.why.lead }}{% call display::hover(card.category.why.text.shown, card.category.why.text.exact) %}{% endcall %}</p>
+<p class="muted text">{{ card.category.why.lead }}{% call display::hover(card.category.why.text.shown, card.category.why.text.exact) %}{% endcall %}</p>
 {% call feedback::whattodo_with(card.category.guidance) %}
 {%- for button in card.actions %}{% call forms::link_button(button.href, button.label, button.class) %}{% endcall %}{% endfor -%}
 {% endcall %}

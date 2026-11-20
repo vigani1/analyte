@@ -29,9 +29,9 @@
 {%- if let Some(rules) = rules %}
 {% call layout::titled_card("md-diff", "Accepted differences from the standard", "", "stack") %}
 {%- if rules.is_empty() %}
-<p class="muted machine__intro">None: its settings switch on no difference from the standard.</p>
+<p class="muted text--sm">None: its settings switch on no difference from the standard.</p>
 {%- else %}
-<p class="muted machine__intro">This model does a few things its own way. Its settings switch these on; each message’s reading shows which ones were used.</p>
+<p class="muted text--sm">This model does a few things its own way. Its settings switch these on; each message’s reading shows which ones were used.</p>
 <ul class="rows machine__rules">
 {%- for rule in rules %}
 <li title="{{ rule.meaning }}">{{ rule.words }}</li>

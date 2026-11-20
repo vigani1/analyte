@@ -4,7 +4,7 @@
 //! machine and arrival time of a linked stored message, and the history Analyte
 //! recorded. Sample IDs are not stored with an item and test codes and result
 //! values never show; raw IDs only appear under "Details for support". Reads stop after
-//! [`view::READ_BUDGET`] with the error page in the same look.
+//! [`crate::admin::view::READ_BUDGET`] with the error page in the same look.
 mod category;
 mod dialog;
 mod page;
@@ -22,9 +22,10 @@ pub(super) fn headline(details: &Parked) -> (String, Tone) {
 }
 
 use crate::admin::error::CommandError;
-use crate::admin::view::list::{Cursor, PAGE, cursor_value, one_page};
-use crate::admin::view::report::{Chip, Problem, Section, Status, respond};
-use crate::admin::view::{self, Tab, Tone, format, frame::Frame};
+use crate::admin::view::list::{Cursor, Empty, PAGE, cursor_value, one_page};
+use crate::admin::view::parts::ReasonDialog;
+use crate::admin::view::report::{Button, Chip, Problem, Section, Status, read_within, respond};
+use crate::admin::view::{Tab, Tone, format, frame::Frame};
 use crate::admin::{
     Error,
     server::{Context, sessions::Session},
@@ -42,10 +43,7 @@ use axum::{
 };
 use category::{Action, Category};
 use jiff::Timestamp;
-use page::{
-    Button, Card, Dialog, Empty, Entry, Item, List, Original, OriginalTarget, Pair, Resolved, Row,
-    Todo,
-};
+use page::{Card, Entry, Item, List, Original, OriginalTarget, Pair, Resolved, Row, Todo};
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -149,8 +147,8 @@ pub(super) async fn list(
     let session = session.as_ref().map(|Extension(session)| session.as_ref());
     let show = query.show;
     let now = Timestamp::now();
-    match tokio::time::timeout(view::READ_BUDGET, read_list(&state, query, now)).await {
-        Ok(Ok(read)) => {
+    match read_within(read_list(&state, query, now)).await {
+        Ok(read) => {
             let html = list_page(&state, session, show, read, now).render();
             respond(
                 &state,
@@ -160,8 +158,7 @@ pub(super) async fn list(
                 html,
             )
         }
-        Ok(Err(error)) => Problem::of(&error).page(&state, session, Section::NeedsReview(None)),
-        Err(_) => Problem::Time.page(&state, session, Section::NeedsReview(None)),
+        Err(problem) => problem.page(&state, session, Section::NeedsReview(None)),
     }
 }
 
@@ -325,14 +322,14 @@ fn row(item: Listed, title: String, what: &dyn Fn(&Audit) -> String, now: Timest
 /// no resolved item is only a fact; a page past the last item says so.
 fn empty(show: Show, shown: u64, counts: ParkedCounts) -> Empty {
     let other = |show: Show, count: u64, words: &str| {
-        (count > 0).then(|| (show.href().to_owned(), format!("{words} ({count})")))
+        (count > 0).then(|| (show.href(), format!("{words} ({count})")))
     };
     match show {
         _ if shown > 0 => Empty {
             good: false,
             title: "No more items",
             text: "This page is past the last item.",
-            link: Some((show.href().to_owned(), "Back to the first page".into())),
+            link: Some((show.href(), "Back to the first page".into())),
         },
         Show::Open => Empty {
             good: true,
@@ -534,9 +531,8 @@ pub(super) async fn item(
     session: Option<Extension<Arc<Session>>>,
 ) -> Response {
     let session = session.as_ref().map(|Extension(session)| session.as_ref());
-    let read = tokio::time::timeout(view::READ_BUDGET, read_item(&state, id, cursor.after)).await;
-    match read {
-        Ok(Ok(Some(read))) => {
+    match read_within(read_item(&state, id, cursor.after)).await {
+        Ok(Some(read)) => {
             let html = item_page(&state, session, &read, None, Timestamp::now()).render();
             respond(
                 &state,
@@ -546,9 +542,8 @@ pub(super) async fn item(
                 html,
             )
         }
-        Ok(Ok(None)) => Problem::NotFound.page(&state, session, Section::NeedsReview(Some(id))),
-        Ok(Err(error)) => Problem::of(&error).page(&state, session, Section::NeedsReview(Some(id))),
-        Err(_) => Problem::Time.page(&state, session, Section::NeedsReview(Some(id))),
+        Ok(None) => Problem::NotFound.page(&state, session, Section::NeedsReview(Some(id))),
+        Err(problem) => problem.page(&state, session, Section::NeedsReview(Some(id))),
     }
 }
 
@@ -557,7 +552,7 @@ fn item_page(
     state: &Context,
     session: Option<&Session>,
     read: &ItemRead,
-    dialog: Option<Dialog>,
+    dialog: Option<ReasonDialog>,
     now: Timestamp,
 ) -> Item {
     let id = read.id;

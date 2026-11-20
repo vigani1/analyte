@@ -1,7 +1,8 @@
 //! Renders the Overview states a test server cannot reach cheaply: each read the error page names, its plain fallback, and orders, notices, disk and alerts in every form.
 use super::attention::Facts;
-use super::page::{AlertRow, Disk, Notice, Page, Verdict};
+use super::page::{AlertRow, Disk, Page, Verdict};
 use super::{Failure, Reading, alert_row, orders};
+use crate::admin::view::parts::Notice;
 use crate::admin::view::{
     Tone,
     frame::{Frame, Sidebar},
@@ -52,11 +53,10 @@ fn frame() -> Frame {
 fn error_page_names_the_read_that_failed() -> Result<(), askama::Error> {
     for reading in READINGS {
         let timed_out = reading == Reading::Time;
-        let problem = Failure {
+        let problem = Problem::from(Failure {
             reading,
             error: (!timed_out).then(|| Box::new(crate::admin::Error::StoreMismatch)),
-        }
-        .problem();
+        });
         assert_eq!(
             problem.status().as_u16(),
             if timed_out { 504 } else { 503 },

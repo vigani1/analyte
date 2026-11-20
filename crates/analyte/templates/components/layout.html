@@ -35,7 +35,7 @@
 {#- A card with a title in its head, such as "Setup" on a machine's page: `aside` is a short note beside the title, `body` more classes for the body, such as "stack", and the caller writes the body. -#}
 {%- macro titled_card(id, title, aside, body) -%}
 <section class="card" aria-labelledby="{{ id }}">
-<div class="card__head"><h2 id="{{ id }}" class="card__title">{{ title }}</h2>{% if !aside.is_empty() %}<span class="subtle more-row__text">{{ aside }}</span>{% endif %}</div>
+<div class="card__head"><h2 id="{{ id }}" class="card__title">{{ title }}</h2>{% if !aside.is_empty() %}<span class="subtle text--sm">{{ aside }}</span>{% endif %}</div>
 <div class="card__body{% if !body.is_empty() %} {{ body }}{% endif %}">{{ caller() }}</div>
 </section>
 {%- endmacro %}

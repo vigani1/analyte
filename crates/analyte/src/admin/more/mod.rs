@@ -2,8 +2,8 @@
 use crate::admin::server::Context;
 use crate::admin::server::sessions::Session;
 use crate::admin::view::{
-    self, Tab, Tone,
-    report::{Problem, Report, Section, respond},
+    Tab, Tone,
+    report::{Report, Section, read_within, respond},
 };
 use askama::Template as _;
 use axum::{Extension, http::StatusCode, response::Response};
@@ -19,8 +19,8 @@ pub(super) mod retention;
 mod settings;
 pub(super) use settings::{Installed, settings};
 
-/// Runs a page's reads within [`view::READ_BUDGET`] and draws the page
-/// from what they returned, for the request's session, now; a read that fails
+/// Runs a page's reads within [`crate::admin::view::READ_BUDGET`] and draws
+/// the page from what they returned, for the request's session, now; a read that fails
 /// or takes too long gets the page saying so, with the reason kept for
 /// support. The reads only read, so stopping them leaves nothing behind.
 pub(super) async fn show<T>(
@@ -32,13 +32,12 @@ pub(super) async fn show<T>(
 ) -> Response {
     let session = session.map(|Extension(session)| session.as_ref());
     let section = Section::More(tab);
-    match tokio::time::timeout(view::READ_BUDGET, read).await {
-        Ok(Ok(value)) => {
+    match read_within(read).await {
+        Ok(value) => {
             let html = draw(value, session, Timestamp::now());
             respond(state, session, section, StatusCode::OK, html)
         }
-        Ok(Err(error)) => Problem::of(&error).page(state, session, section),
-        Err(_) => Problem::Time.page(state, session, section),
+        Err(problem) => problem.page(state, session, section),
     }
 }
 
@@ -70,16 +69,14 @@ fn report(
 ) -> Response {
     let section = Section::More(tab);
     let page = Report {
-        frame: section.frame(state, outcome.title, Some(session)),
-        head: section.head(outcome.title),
-        tone: outcome.tone,
-        title: outcome.alert,
-        text: outcome.text,
-        lines: Vec::new(),
-        problems: Vec::new(),
-        restart: None,
-        links: section.links(),
         support,
+        ..Report::new(
+            section.frame(state, outcome.title, Some(session)),
+            section,
+            outcome.tone,
+            outcome.alert,
+            outcome.text,
+        )
     };
     respond(state, Some(session), section, status, page.render())
 }

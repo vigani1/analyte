@@ -10,7 +10,7 @@
 {% endcall %}
 <section class="card card--pad stack" aria-labelledby="st-labs">
 <h2 id="st-labs" class="label">Lab apps</h2>
-<p class="setup__text">Where results are sent. Each lab app is set once, with its address and keys; each machine picks one in setup step 2.</p>
+<p class="text">Where results are sent. Each lab app is set once, with its address and keys; each machine picks one in setup step 2.</p>
 {%- match lab_apps %}
 {%- when LabApps::None %}
 {% call feedback::note("No lab app is set up yet", "Setting up a machine needs one. Add it first: its address and keys.") %}{% endcall %}
@@ -47,7 +47,7 @@
 </section>
 <section class="stack" aria-labelledby="st-models">
 <h2 id="st-models" class="label">Supported machine models</h2>
-<p class="muted setup__text">The models this Analyte can be set up for. A model that is not ready yet cannot be chosen until its missing facts or recordings are added.</p>
+<p class="muted text">The models this Analyte can be set up for. A model that is not ready yet cannot be chosen until its missing facts or recordings are added.</p>
 {%- match models %}
 {%- when Ok(rows) %}
 {% call display::table(MODEL_COLUMNS) %}

@@ -288,7 +288,7 @@ pub(in crate::admin) async fn notes(
             )
             .render(),
         ),
-        Err(error) => Problem::of(&error).page(&state, Some(&session), section),
+        Err(error) => Problem::from(error).page(&state, Some(&session), section),
     }
 }
 

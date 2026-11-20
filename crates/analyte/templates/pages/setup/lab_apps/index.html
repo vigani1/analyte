@@ -47,7 +47,7 @@
 {% call feedback::whattodo(todo.text, todo.href, todo.label) %}{% endcall %}
 {%- endif %}
 </div>
-<div class="card__foot">{% call forms::link_button(card.href, "Edit", "btn--quiet btn--sm") %}{% endcall %}{% call forms::link_button(card.remove, "Remove", "btn--quiet btn--sm lab__remove") %}{% endcall %}</div>
+<div class="card__foot">{% call forms::link_button(card.href, "Edit", "btn--quiet btn--sm") %}{% endcall %}{% call forms::link_button(card.remove, "Remove", "btn--danger-quiet btn--sm") %}{% endcall %}</div>
 </article>
 {%- endfor %}
 </div>
