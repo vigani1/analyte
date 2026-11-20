@@ -4,12 +4,11 @@
 //! from their store health, the last accepted delivery, failed tries since it
 //! and, for a kept lab app whose keys were missing at startup, the key source.
 //! Nothing is guessed: a figure without data behind it is left out.
-use super::Activity;
 use super::attention::Facts;
 use super::page::{Figure, LabNode, MachineNode, Wire};
 use crate::admin::Error;
 use crate::admin::removed::Kept;
-use crate::admin::server::{Connection, Context};
+use crate::admin::server::Context;
 use crate::admin::view::{Tone, format, format::Line, icon::Icon};
 use crate::machine::link::status::Light;
 use analyte_model::Identifier;
@@ -21,7 +20,7 @@ use std::{collections::BTreeMap, sync::atomic::Ordering};
 /// stopped or whose link is off is added to `facts` with what was observed.
 pub(super) fn machines(
     state: &Context,
-    activity: &BTreeMap<String, Activity>,
+    activity: &BTreeMap<String, Timestamp>,
     facts: &mut Facts,
     now: Timestamp,
 ) -> Vec<MachineNode> {
@@ -51,14 +50,15 @@ pub(super) fn machines(
                 ));
             }
             let (tone, state, wire) = match (running, light) {
-                (false, _) => (Tone::Problem, "Stopped in Analyte", Wire::Cut),
+                (false, _) => (Tone::Problem, format::STOPPED, Wire::Cut),
                 (true, Light::Live) => (Tone::Good, status.state(), Wire::Live),
                 (true, Light::Waiting) => (Tone::Neutral, status.state(), Wire::Wait),
                 (true, Light::Off) => (Tone::Problem, status.state(), Wire::Cut),
             };
-            let stored = activity.get(id).and_then(|seen| seen.last);
+            let stored = activity.get(id).copied();
             MachineNode {
                 id: id.to_owned(),
+                href: format::machine_href(id),
                 model: machine.model.clone(),
                 tone,
                 state: state.to_owned(),
@@ -67,7 +67,7 @@ pub(super) fn machines(
                     .max(stored)
                     .map(|at| format::moment(at, now)),
                 kind: format::connection_kind(&machine.connection),
-                kind_icon: connection_icon(&machine.connection),
+                kind_icon: Icon::connection(&machine.connection),
                 wire,
                 dot: match index % 3 {
                     0 => "",
@@ -75,22 +75,13 @@ pub(super) fn machines(
                     _ => "wire__dot--3",
                 },
                 line: match (running, light) {
-                    (false, _) => Some("Analyte stopped working with this machine".into()),
+                    (false, _) => Some(format::STOPPED_SENTENCE.into()),
                     (true, Light::Live) => None,
                     (true, Light::Waiting | Light::Off) => Some(sentence),
                 },
             }
         })
         .collect()
-}
-
-const fn connection_icon(connection: &Connection) -> Icon {
-    match connection {
-        Connection::Serial(_) => Icon::Serial,
-        Connection::UsbAdapter(_) => Icon::Usb,
-        Connection::Listening(_) | Connection::Dialing => Icon::Network,
-        Connection::Folder(_) => Icon::Folder,
-    }
 }
 
 /// The lab app nodes and the figures under the path: first the lab apps

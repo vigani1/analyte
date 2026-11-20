@@ -1,9 +1,14 @@
-{#- Macros for actions: a link drawn as a button, filter chips, the next page, the reason dialog and the audited original-bytes form. -#}
+{#- Macros for actions: a link drawn as a button with or without an icon, filter chips, the next page, the reason and list dialogs and the audited original-bytes form. -#}
 {%- import "components/icon.html" as draw %}
 
 {#- A link to the page that does something, drawn as a button; `class` picks its kind and size. -#}
 {%- macro link_button(href, label, class) -%}
 <a class="btn {{ class }}" href="{{ href }}">{{ label }}</a>
+{%- endmacro %}
+
+{#- A link drawn as a button with an icon before its words. -#}
+{%- macro icon_button(href, icon, label, class) -%}
+<a class="btn {{ class }}" href="{{ href }}">{% call draw::icon(icon, "icon--md") %}{% endcall %}{{ label }}</a>
 {%- endmacro %}
 
 {#- A filter that is a link, with its count; the current one is marked for screen readers and drawn pressed. -#}
@@ -32,6 +37,25 @@
 <span class="field__hint">{{ dialog.hint }}</span>
 </div>
 <div class="dialog__actions"><a class="btn btn--outline" href="{{ dialog.cancel }}">Cancel</a><button type="submit" class="btn btn--primary">{{ dialog.button }}</button></div>
+</form>
+</div>
+{%- endmacro %}
+
+{#- A confirmation drawn over the page, without a script: what happens, what happens to waiting work (its exact count on hover), a list of what is still open, Cancel back to the page and the action. It is a real form with the session's form token. -#}
+{%- macro list_dialog(dialog) -%}
+<div class="scrim">
+<form class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-title" method="post" action="{{ dialog.action }}">
+<input type="hidden" name="csrf" value="{{ dialog.csrf }}">{% if dialog.anyway %}<input type="hidden" name="anyway" value="yes">{% endif %}
+<h2 id="dlg-title" class="dialog__title">{{ dialog.title }}</h2>
+<p class="dialog__text">{{ dialog.text }}</p>
+<p class="dialog__text">{% if dialog.sending.exact.is_empty() %}{{ dialog.sending.shown }}{% else %}<span title="{{ dialog.sending.exact }}">{{ dialog.sending.shown }}</span>{% endif %}</p>
+<p class="dialog__label">{{ dialog.list_title }}</p>
+<ul class="dialog__list">
+{%- for item in dialog.items %}
+<li>{% call draw::icon(item.icon, "icon--md tone-" ~ item.tone.class()) %}{% endcall %}<span>{{ item.text }}</span></li>
+{%- endfor %}
+</ul>
+<div class="dialog__actions"><a class="btn btn--outline" href="{{ dialog.cancel }}">Cancel</a><button type="submit" class="btn btn--danger">{{ dialog.button }}</button></div>
 </form>
 </div>
 {%- endmacro %}

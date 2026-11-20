@@ -373,12 +373,11 @@ pub(super) fn count(value: u64) -> Markup {
 /// A settings version: the short form people compare at a glance, with the full
 /// configuration digest (`digest`, a hex SHA-256) on hover.
 pub(super) fn version(digest: &[u8]) -> Markup {
-    let full: String = digest.iter().map(|b| format!("{b:02x}")).collect();
     Markup::new()
         .markup("<code class=\"version\" title=\"Full settings version (configuration digest): ")
-        .text(&full)
+        .text(format::digest_hex(digest))
         .markup("\">")
-        .text(full.chars().take(12).collect::<String>())
+        .text(format::digest_short(digest))
         .markup("</code>")
 }
 

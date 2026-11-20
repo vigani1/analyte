@@ -51,7 +51,7 @@ pub use revisions::{
 
 pub use query::{
     FailingDestination, Frame, LastDelivered, ParkedCounts, ParkedFilter, ParkedItem, Receipt,
-    Unfinished,
+    RecentOutcome, RecentReading, RecentReceipt, Unfinished,
 };
 
 pub use records::{

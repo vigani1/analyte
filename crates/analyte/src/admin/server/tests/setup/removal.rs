@@ -1,6 +1,6 @@
 //! Tests delivery to a lab app after the last machine using it was removed on the setup page.
-use super::pages::{csrf, encode, login};
-use super::*;
+use super::super::pages::{csrf, encode, login};
+use super::super::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// The reference receiver's request counts and its hold on the first result.
@@ -108,13 +108,13 @@ async fn removed_machine_result_is_delivered_once() -> Result<(), Error> {
     let root = directory.path();
     std::fs::write(
         root.join("machine.toml"),
-        include_str!("../../../../../core/config/examples/hl7.toml"),
+        include_str!("../../../../../../core/config/examples/hl7.toml"),
     )?;
     let analyzer = std::net::TcpListener::bind("127.0.0.1:0")?;
     let analyzer_address = analyzer.local_addr()?.to_string();
     std::fs::write(
         root.join("site.toml"),
-        include_str!("../../../../../core/config/examples/site.toml")
+        include_str!("../../../../../../core/config/examples/site.toml")
             .rewrite("127.0.0.1:5600", &analyzer_address),
     )?;
     let reserved = std::net::TcpListener::bind("127.0.0.1:0")?;

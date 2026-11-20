@@ -735,7 +735,7 @@ fn assert_machine_nodes(page: &str) {
     }
     let closed = node(page, "hematology-2");
     for part in [
-        "<a class=\"node node--bad\" href=\"/machines\">",
+        "<a class=\"node node--bad\" href=\"/machines/hematology-2\">",
         "<span class=\"node__state tone-bad\">Port not open</span>",
         "</svg>USB adapter</span>",
         "<span class=\"node__note\">Port of USB adapter A9X not open since ",
@@ -962,7 +962,7 @@ async fn signal_path_shows_every_other_machine_state() -> Result<(), Error> {
     );
     assert!(!connected_node.contains("node__note"));
     let stopped_node = node(&page, "stopped-4");
-    assert!(stopped_node.contains("<a class=\"node node--bad\" href=\"/machines\">"));
+    assert!(stopped_node.contains("<a class=\"node node--bad\" href=\"/machines/stopped-4\">"));
     assert!(
         stopped_node.contains("<span class=\"node__state tone-bad\">Stopped in Analyte</span>")
     );

@@ -13,10 +13,10 @@ use crate::operator::recovery;
 use analyte_config::ValueKind;
 use analyte_contract::ReplyProblem;
 use analyte_mapping::{Finding, Position, Problem, ReasonPiece, Unidentified};
-use analyte_model::OrderState;
+use analyte_model::{OrderState, SampleId};
 use analyte_store::{
     CANCEL_CONFLICT_REASON, DeliveryState, FailingDestination, NO_RESULTS_REASON, OrderRefusal,
-    ParkedKind, RevisionOutcome, reconciled_outcome,
+    ParkedKind, RecentOutcome, RevisionOutcome, reconciled_outcome,
 };
 use jiff::{Timestamp, tz::TimeZone};
 
@@ -92,9 +92,6 @@ pub(in crate::admin) const RESTORE_ADVICE: &str =
 /// [`super::READ_BUDGET`].
 pub(in crate::admin) const SLOW_READ: &str = "Analyte did not finish reading within 1.5 seconds.";
 
-/// What "Last data received" says before a machine has sent anything.
-pub(in crate::admin) const NOTHING_YET: &str = "Nothing yet";
-
 /// A time of day in the PC's time zone: "10:41" today, "18 Nov 23:54"
 /// earlier this year, "2025-11-18 23:54" before that.
 pub(in crate::admin) fn clock(at: Timestamp, now: Timestamp) -> String {
@@ -148,7 +145,7 @@ fn day_in(now: Timestamp, zone: &TimeZone) -> Option<(i64, i64)> {
 }
 
 /// The exact value kept on hover for every shown time: UTC and Unix seconds.
-fn exact_time(at: Timestamp) -> String {
+pub(in crate::admin) fn exact_time(at: Timestamp) -> String {
     format!("{at} (Unix {})", at.as_second())
 }
 
@@ -254,6 +251,302 @@ pub(in crate::admin) const fn connection_kind(connection: &Connection) -> &'stat
         Connection::UsbAdapter(_) => "USB adapter",
         Connection::Listening(_) | Connection::Dialing => "Network",
         Connection::Folder(_) => "Watched folder",
+    }
+}
+
+/// Where a machine is attached, after its kind: "COM3", "serial A10K3XYZ",
+/// "port 5000" or a folder's name; none when the settings name no plain port
+/// or Analyte connects out, whose address stays off the pages.
+pub(in crate::admin) fn connection_detail(connection: &Connection) -> Option<String> {
+    match connection {
+        Connection::Serial(port) => Some(port.clone()),
+        Connection::UsbAdapter(serial) => Some(format!("serial {serial}")),
+        Connection::Listening(port) => port.map(|port| format!("port {port}")),
+        Connection::Dialing => None,
+        Connection::Folder(folder) => Some(folder.clone()),
+    }
+}
+
+/// One accepted difference from the standard in plain words for a lab manager:
+/// what the machine does and what Analyte does about it. The exact rule stays on
+/// hover and in the declaration under "For support".
+pub(in crate::admin) const fn departure(rule: &analyte_config::MachineDeparture) -> &'static str {
+    use analyte_config::MachineDeparture as D;
+    match rule {
+        D::Hl7AbsentObr25MeansFinal(_) => concat!(
+            "Leaves a report's status empty when the report is final; ",
+            "Analyte reads only an empty report status as final.",
+        ),
+        D::Hl7AbsentObx11MeansFinal(_) => concat!(
+            "Leaves a result's status empty when the result is final; ",
+            "Analyte reads only an empty result status as final.",
+        ),
+        D::AstmPackedRecordsInFrame(_) => concat!(
+            "Puts several records in one frame; Analyte reads each record after ",
+            "the frame's check passes.",
+        ),
+        D::Hl7Utf8InV231(_) => concat!(
+            "Marks its text as UTF-8, a name its HL7 version did not have yet; ",
+            "Analyte reads the text as UTF-8.",
+        ),
+        D::Hl7CrLfTerminators(_) => {
+            "Ends each message line with CR LF instead of CR; Analyte reads the lines that way."
+        }
+        D::Hl7LfTerminators(_) => {
+            "Ends each message line with LF instead of CR; Analyte reads the lines that way."
+        }
+        D::Hl7PreserveUnsupportedEscapes(_) => concat!(
+            "Uses escape codes Analyte does not translate; Analyte keeps them as written ",
+            "and never uses them to identify a sample or result.",
+        ),
+        D::AstmFrameLimit(_) => concat!(
+            "Sends frames of a size other than the standard's; Analyte accepts frames ",
+            "up to the limit in this machine's settings.",
+        ),
+        D::AstmReceiveTimeout(_) => concat!(
+            "While the machine sends, Analyte waits for each part as long as this ",
+            "machine's settings say, not the standard's default.",
+        ),
+        D::AstmSendTimeout(_) => concat!(
+            "While Analyte sends, it waits for the machine's answers as long as this ",
+            "machine's settings say, not the standard's default.",
+        ),
+        D::AstmHostContentionPriority(_) => {
+            "When both sides start at the same moment, Analyte goes first instead of the machine."
+        }
+        D::AstmLowercaseChecksumHex(_) => concat!(
+            "Writes check digits in lowercase; Analyte accepts them only when the ",
+            "check is correct.",
+        ),
+    }
+}
+
+/// What a machine's connection does that people may not expect; only a USB
+/// adapter has something to say.
+pub(in crate::admin) const fn connection_note(connection: &Connection) -> Option<&'static str> {
+    match connection {
+        Connection::UsbAdapter(_) => Some(
+            "Found by its USB serial number, so it keeps working if Windows gives the adapter another port name.",
+        ),
+        Connection::Serial(_)
+        | Connection::Listening(_)
+        | Connection::Dialing
+        | Connection::Folder(_) => None,
+    }
+}
+
+/// A name as one URL path segment: each character a path may not hold is
+/// written as `%XX`, so any name the settings hold makes one link.
+pub(in crate::admin) fn path_segment(name: &str) -> String {
+    let mut segment = String::new();
+    for byte in name.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
+            segment.push(char::from(byte));
+        } else {
+            segment.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    segment
+}
+
+/// A machine's page: "/machines/cobas-e411".
+pub(in crate::admin) fn machine_href(id: &str) -> String {
+    format!("/machines/{}", path_segment(id))
+}
+
+/// A setup page about one machine: "/setup/cobas-e411" and, when `step` is
+/// not empty, the step after it, such as "/setup/cobas-e411/test".
+pub(in crate::admin) fn setup_href(id: &str, step: &str) -> String {
+    if step.is_empty() {
+        format!("/setup/{}", path_segment(id))
+    } else {
+        format!("/setup/{}/{step}", path_segment(id))
+    }
+}
+
+/// What a machine's status says once Analyte stopped working with it.
+pub(in crate::admin) const STOPPED: &str = "Stopped in Analyte";
+
+/// What Analyte observed about a machine it stopped working with.
+pub(in crate::admin) const STOPPED_SENTENCE: &str = "Analyte stopped working with this machine";
+
+/// What removing a machine does, said before and after.
+pub(in crate::admin) const REMOVED_ADVICE: &str = concat!(
+    "After the next restart Analyte stops connecting to it; until then it keeps running. ",
+    "Its results, items to review and history are kept and stay visible here.",
+);
+
+/// What to do for a machine the settings list without a model.
+pub(in crate::admin) const SET_UP_ADVICE: &str = concat!(
+    "set it up: pick its model, how it is connected and which lab app gets its results, ",
+    "run a listen-only test, then save and restart.",
+);
+
+/// The line under a machine's name: its model and when data last came, such
+/// as "XC-200 · last data 10:41" or "Nothing received yet".
+pub(in crate::admin) fn machine_lede(model: Option<&str>, last: Option<Moment>) -> Line {
+    let data = match last {
+        Some(at) => Line::text(if model.is_some() {
+            "last data "
+        } else {
+            "Last data "
+        })
+        .time(at),
+        None => Line::text(if model.is_some() {
+            "nothing received yet"
+        } else {
+            "Nothing received yet"
+        }),
+    };
+    match model {
+        Some(model) => Line::text(model).then(data),
+        None => data,
+    }
+}
+
+/// A settings version in full: the configuration digest in lowercase hex.
+pub(in crate::admin) fn digest_hex(digest: &[u8]) -> String {
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+/// The short settings version people compare at a glance: the digest's first 12 hex digits.
+pub(in crate::admin) fn digest_short(digest: &[u8]) -> String {
+    digest_hex(digest).chars().take(12).collect()
+}
+
+/// How the set-up machines stand, as the Machines page counts them.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(in crate::admin) struct MachineCounts {
+    /// Running machines whose link is open: connected, port open or watching.
+    pub(in crate::admin) open: u64,
+    /// Machines Analyte runs now.
+    pub(in crate::admin) running: u64,
+    /// Running machines whose link is off, or which Analyte stopped working with.
+    pub(in crate::admin) problems: u64,
+    /// Running machines Analyte listens for that have not connected.
+    pub(in crate::admin) waiting: u64,
+    /// Listed in the settings without a model chosen.
+    pub(in crate::admin) not_set_up: u64,
+    /// Set up in the settings, running after the next restart.
+    pub(in crate::admin) saved: u64,
+    /// Taken out of the settings, still running until the restart.
+    pub(in crate::admin) removed: u64,
+}
+
+/// What the Machines page says under its title: "3 of 5 links open · 1 problem
+/// · 1 waiting for the machine"; a part with nothing to count is left out.
+pub(in crate::admin) fn machines_summary(counts: &MachineCounts) -> String {
+    let mut parts = Vec::new();
+    if counts.running == 0 {
+        parts.push("No machine is running".to_owned());
+    } else {
+        parts.push(format!(
+            "{} of {} open",
+            counts.open,
+            amount(counts.running, "link", "links")
+        ));
+    }
+    for (count, one, many) in [
+        (counts.problems, "problem", "problems"),
+        (
+            counts.waiting,
+            "waiting for the machine",
+            "waiting for the machine",
+        ),
+        (counts.not_set_up, "not set up yet", "not set up yet"),
+        (
+            counts.saved,
+            "starts after a restart",
+            "start after a restart",
+        ),
+        (
+            counts.removed,
+            "removed, stops at the restart",
+            "removed, stop at the restart",
+        ),
+    ] {
+        if count > 0 {
+            parts.push(amount(count, one, many));
+        }
+    }
+    parts.join(" · ")
+}
+
+/// How a stored message was read, by its latest reading: "Read · 3 results",
+/// "Could not be read", or "Not read yet" when it never was.
+pub(in crate::admin) fn reading(outcome: Option<&RecentOutcome>) -> String {
+    match outcome {
+        None => "Not read yet".into(),
+        Some(RecentOutcome::Failed) => "Could not be read".into(),
+        Some(RecentOutcome::Results { results: 0, .. }) => "Read · no results".into(),
+        Some(RecentOutcome::Results { results, .. }) => format!(
+            "Read · {}",
+            amount(
+                u64::try_from(*results).unwrap_or(u64::MAX),
+                "result",
+                "results"
+            )
+        ),
+    }
+}
+
+/// A message's sample IDs exactly as stored: the first, with how many more
+/// follow ("261119-044 +1"), and all of them for the hover; none without any.
+pub(in crate::admin) fn samples(samples: &[SampleId]) -> Option<(String, String)> {
+    let (first, rest) = samples.split_first()?;
+    let shown = if rest.is_empty() {
+        first.as_str().to_owned()
+    } else {
+        format!("{} +{}", first.as_str(), rest.len())
+    };
+    let all = samples
+        .iter()
+        .map(SampleId::as_str)
+        .collect::<Vec<_>>()
+        .join(", ");
+    Some((shown, all))
+}
+
+/// How a message's deliveries stand, by the one that most needs someone:
+/// its state in words and, when some differ, how many were delivered ("Waiting
+/// to be sent · 2 of 3 delivered"); the count per state for the hover. None
+/// when nothing was queued for it.
+pub(in crate::admin) fn deliveries(
+    deliveries: &[(DeliveryState, u64)],
+) -> Option<(DeliveryState, String, String)> {
+    let worst = deliveries
+        .iter()
+        .map(|&(state, _)| state)
+        .max_by_key(|&state| delivery_rank(state))?;
+    let total = deliveries.iter().map(|&(_, count)| count).sum::<u64>();
+    let done = deliveries
+        .iter()
+        .filter(|&&(state, _)| state == DeliveryState::Done)
+        .map(|&(_, count)| count)
+        .sum::<u64>();
+    let mut words = delivery_state(worst).to_owned();
+    if worst != DeliveryState::Done && done > 0 {
+        words.push_str(&format!(" · {done} of {total} delivered"));
+    } else if worst == DeliveryState::Done && total > 1 {
+        words = format!("{total} delivered");
+    }
+    let exact = deliveries
+        .iter()
+        .map(|(state, count)| format!("{state} {count}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    Some((worst, words, exact))
+}
+
+/// How much a delivery state needs someone: delivered least, a conflict most.
+const fn delivery_rank(state: DeliveryState) -> u8 {
+    match state {
+        DeliveryState::Done => 0,
+        DeliveryState::InFlight => 1,
+        DeliveryState::Pending => 2,
+        DeliveryState::Paused => 3,
+        DeliveryState::Parked => 4,
+        DeliveryState::Conflict => 5,
     }
 }
 
@@ -407,6 +700,29 @@ pub(in crate::admin) const KEYS_ADVICE: &str = concat!(
     "Waiting items go out after Analyte restarts with the keys."
 );
 
+/// Words written as one sentence: the first letter upper case and a full stop
+/// at the end, such as a setup refusal shown on its own.
+pub(in crate::admin) fn sentence(words: &str) -> String {
+    let mut chars = words.chars();
+    let mut text: String = chars
+        .next()
+        .map(|first| first.to_uppercase().chain(chars).collect())
+        .unwrap_or_default();
+    if !text.ends_with('.') {
+        text.push('.');
+    }
+    text
+}
+
+/// Which reader read a message, in words: "astm, version 2".
+pub(in crate::admin) fn driver(driver: &analyte_model::NamespacedId) -> String {
+    format!(
+        "{}, version {}",
+        driver.namespace.as_str(),
+        driver.value.as_str()
+    )
+}
+
 /// "Yes" or "No".
 pub(in crate::admin) const fn yes_no(value: bool) -> &'static str {
     if value { "Yes" } else { "No" }
@@ -442,17 +758,9 @@ pub(in crate::admin) fn when_unix(seconds: i64, now: Timestamp) -> Markup {
 }
 
 /// A stored reason for people: each mapping position reads "record 3, field 3",
-/// or "record 3" when field zero means the whole record, and the exact stored
-/// text stays on hover. A reason without a position shows exactly as stored.
-pub(in crate::admin) fn reason(stored: &str) -> Markup {
-    reason_words(stored).map_or_else(
-        || Markup::new().text(stored),
-        |shown| super::exact(&shown, stored),
-    )
-}
-
-/// [`reason`] as plain words; none when the stored reason holds no mapping
-/// position, so it already reads as stored.
+/// or "record 3" when field zero means the whole record; none when the stored
+/// reason holds no mapping position, so it already reads as stored. Pages keep
+/// the exact stored text beside it, for support.
 pub(in crate::admin) fn reason_words(stored: &str) -> Option<String> {
     let pieces = Position::split_stored(stored);
     if !pieces
@@ -1395,29 +1703,211 @@ mod tests {
     }
 
     // Owner review 2026-11-19 (structure review PR 2): positions read as record
-    // and field, the stored reason stays on hover, and other reasons are unchanged.
+    // and field, and other reasons are unchanged; the stored reason stays beside
+    // the words on each page, now under "For support" (admin restyle b2).
     #[test]
     fn reasons_show_positions_plainly_and_keep_the_stored_text() {
         assert_eq!(
-            &*reason("Position { record: 3, field: 3 }: UnknownTest"),
+            reason_words("Position { record: 3, field: 3 }: UnknownTest").as_deref(),
+            Some("record 3, field 3: UnknownTest")
+        );
+        assert_eq!(
+            reason_words(
+                "bad <a> at Position { record: 7, field: 0 }, see Position { record: 8, field: 2 }"
+            )
+            .as_deref(),
+            Some("bad <a> at record 7, see record 8, field 2")
+        );
+        for stored in ["checksum mismatch in frame 2", "Position { record: x }", ""] {
+            assert_eq!(reason_words(stored), None, "{stored}");
+        }
+    }
+
+    // Owner decisions 2026-11-20 (admin restyle b2, Machines mockup): the line
+    // under the Machines title counts open links of all running machines, then
+    // only the states that have a machine in them.
+    #[test]
+    fn machines_summary_counts_only_what_there_is() {
+        assert_eq!(
+            machines_summary(&MachineCounts::default()),
+            "No machine is running"
+        );
+        assert_eq!(
+            machines_summary(&MachineCounts {
+                open: 3,
+                running: 5,
+                problems: 1,
+                waiting: 1,
+                ..MachineCounts::default()
+            }),
+            "3 of 5 links open · 1 problem · 1 waiting for the machine"
+        );
+        assert_eq!(
+            machines_summary(&MachineCounts {
+                open: 1,
+                running: 1,
+                problems: 2,
+                waiting: 2,
+                not_set_up: 2,
+                saved: 2,
+                removed: 2,
+            }),
             concat!(
-                "<span title=\"Position { record: 3, field: 3 }: UnknownTest\">",
-                "record 3, field 3: UnknownTest</span>",
+                "1 of 1 link open · 2 problems · 2 waiting for the machine · 2 not set up yet · ",
+                "2 start after a restart · 2 removed, stop at the restart"
             )
         );
         assert_eq!(
-            &*reason(
-                "bad <a> at Position { record: 7, field: 0 }, see Position { record: 8, field: 2 }"
-            ),
-            concat!(
-                "<span title=\"bad &lt;a&gt; at Position { record: 7, field: 0 }, see ",
-                "Position { record: 8, field: 2 }\">bad &lt;a&gt; at record 7, see record 8, ",
-                "field 2</span>",
-            )
+            machines_summary(&MachineCounts {
+                not_set_up: 1,
+                ..MachineCounts::default()
+            }),
+            "No machine is running · 1 not set up yet"
         );
-        for stored in ["checksum mismatch in frame 2", "Position { record: x }", ""] {
-            assert_eq!(&*reason(stored), &*Markup::new().text(stored));
+    }
+
+    // Owner decisions 2026-11-20 (admin restyle b2): a stored message reads by
+    // its latest reading, its sample IDs exactly as stored (leading zeros and
+    // case kept), and its deliveries by the one that most needs someone.
+    #[test]
+    fn messages_read_by_reading_samples_and_deliveries() -> Result<(), analyte_model::TextError> {
+        assert_eq!(reading(None), "Not read yet");
+        assert_eq!(reading(Some(&RecentOutcome::Failed)), "Could not be read");
+        let results = |results| RecentOutcome::Results {
+            results,
+            samples: Vec::new(),
+        };
+        assert_eq!(reading(Some(&results(0))), "Read · no results");
+        assert_eq!(reading(Some(&results(1))), "Read · 1 result");
+        assert_eq!(reading(Some(&results(6))), "Read · 6 results");
+        assert_eq!(samples(&[]), None);
+        let one = [SampleId::new("000123")?];
+        assert_eq!(samples(&one), Some(("000123".into(), "000123".into())));
+        let three = [
+            SampleId::new("S-0042")?,
+            SampleId::new("s-0042")?,
+            SampleId::new("0007")?,
+        ];
+        assert_eq!(
+            samples(&three),
+            Some(("S-0042 +2".into(), "S-0042, s-0042, 0007".into()))
+        );
+        assert_eq!(deliveries(&[]), None);
+        assert_eq!(
+            deliveries(&[(DeliveryState::Done, 1)]),
+            Some((DeliveryState::Done, "Delivered".into(), "Done 1".into()))
+        );
+        assert_eq!(
+            deliveries(&[(DeliveryState::Done, 3)]),
+            Some((DeliveryState::Done, "3 delivered".into(), "Done 3".into()))
+        );
+        assert_eq!(
+            deliveries(&[(DeliveryState::Pending, 2)]),
+            Some((
+                DeliveryState::Pending,
+                "Waiting to be sent".into(),
+                "Pending 2".into()
+            ))
+        );
+        assert_eq!(
+            deliveries(&[
+                (DeliveryState::Done, 2),
+                (DeliveryState::Conflict, 1),
+                (DeliveryState::InFlight, 1),
+            ]),
+            Some((
+                DeliveryState::Conflict,
+                "Lab app reports a conflict · 2 of 4 delivered".into(),
+                "Done 2, Conflict 1, InFlight 1".into()
+            ))
+        );
+        for (worse, better) in [
+            (DeliveryState::Conflict, DeliveryState::Parked),
+            (DeliveryState::Parked, DeliveryState::Paused),
+            (DeliveryState::Paused, DeliveryState::Pending),
+            (DeliveryState::Pending, DeliveryState::InFlight),
+            (DeliveryState::InFlight, DeliveryState::Done),
+        ] {
+            assert_eq!(
+                deliveries(&[(better, 1), (worse, 1)]).map(|(state, ..)| state),
+                Some(worse)
+            );
         }
+        Ok(())
+    }
+
+    // Owner decision 2026-11-20 (admin restyle b2): every machine name the
+    // settings hold links to its own page as one URL path segment.
+    #[test]
+    fn machine_links_carry_any_name_as_one_path_segment() {
+        assert_eq!(machine_href("cobas-e411_2.b~"), "/machines/cobas-e411_2.b~");
+        assert_eq!(
+            machine_href("lab bench/2 <x>?#%"),
+            "/machines/lab%20bench%2F2%20%3Cx%3E%3F%23%25"
+        );
+        assert_eq!(machine_href("é"), "/machines/%C3%A9");
+        assert_eq!(setup_href("a b", ""), "/setup/a%20b");
+        assert_eq!(setup_href("a b", "remove"), "/setup/a%20b/remove");
+    }
+
+    // Owner decisions 2026-11-20 (admin restyle b2) and safety rule 10: how a
+    // machine is attached names its port, adapter, listening port or folder,
+    // never an address Analyte connects out to; only a USB adapter has a note.
+    #[test]
+    fn connections_name_their_port_never_an_address() {
+        for (connection, detail) in [
+            (Connection::Serial("COM3".into()), Some("COM3")),
+            (
+                Connection::UsbAdapter("A10K3XYZ".into()),
+                Some("serial A10K3XYZ"),
+            ),
+            (Connection::Listening(Some(5600)), Some("port 5600")),
+            (Connection::Listening(None), None),
+            (Connection::Dialing, None),
+            (Connection::Folder("results".into()), Some("results")),
+        ] {
+            assert_eq!(connection_detail(&connection).as_deref(), detail);
+            assert_eq!(
+                connection_note(&connection).is_some(),
+                matches!(connection, Connection::UsbAdapter(_)),
+                "{connection:?}"
+            );
+        }
+    }
+
+    // Owner decisions 2026-11-20 (admin restyle b2, MachineDetail mockup): the
+    // line under a machine's name gives its model and when data last came.
+    #[test]
+    fn machine_lede_names_the_model_and_last_data() {
+        let now = Timestamp::from_second(1_795_046_077).expect("a valid test time");
+        let plain = |line: Line| line.plain();
+        assert_eq!(
+            plain(machine_lede(Some("XC-200"), None)),
+            "XC-200 · nothing received yet"
+        );
+        assert_eq!(plain(machine_lede(None, None)), "Nothing received yet");
+        let last = plain(machine_lede(Some("XC-200"), Some(moment(now, now))));
+        assert!(last.starts_with("XC-200 · last data "), "{last}");
+        let bare = plain(machine_lede(None, Some(moment(now, now))));
+        assert!(bare.starts_with("Last data "), "{bare}");
+        assert_eq!(
+            driver(&analyte_model::NamespacedId {
+                namespace: analyte_model::Identifier::new("astm").expect("a valid name"),
+                value: analyte_model::Identifier::new("2").expect("a valid version"),
+            }),
+            "astm, version 2"
+        );
+    }
+
+    // Owner decision 2026-11-20 (admin restyle b2): a setup refusal reads as
+    // one sentence on its page, with its words unchanged.
+    #[test]
+    fn refusals_read_as_one_sentence() {
+        assert_eq!(
+            sentence("no installed machine is called x"),
+            "No installed machine is called x."
+        );
+        assert_eq!(sentence("Already a sentence."), "Already a sentence.");
     }
 
     #[test]

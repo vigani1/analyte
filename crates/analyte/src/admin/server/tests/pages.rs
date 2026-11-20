@@ -193,13 +193,14 @@ async fn start_pages_server(
 }
 
 async fn assert_paginated_lists(host: &str, auth: &str, parked_id: i64) -> Result<(), Error> {
-    // Each listed item is one `<section>`, or one card on the restyled Needs review.
+    // Each listed item is one `<section>`, one card on the restyled Needs review,
+    // or one table row with its name on the restyled Machines.
     for (path, item, sections) in [
         ("/parked", "<article class=\"card\"", 1),
         ("/orders", "<section>", 1),
         ("/analyzer-cancelled", "<section>", 0),
-        ("/machines", "<section>", 50),
-        ("/machines?after=50", "<section>", 11),
+        ("/machines", "<div class=\"cell-main\">", 50),
+        ("/machines?after=50", "<div class=\"cell-main\">", 11),
     ] {
         let response = request(host, path, auth, None).await?;
         assert!(response.starts_with("HTTP/1.1 200"), "{response}");

@@ -576,6 +576,30 @@ fn definition_name(definition: &Definition) -> Markup {
     view::exact(&definition.display, &technical)
 }
 
+/// One machine the settings file lists, as the Machines pages show it.
+pub(in crate::admin) struct Listed {
+    pub(in crate::admin) id: String,
+    /// Its model is chosen, so a restart runs it if it does not run now.
+    pub(in crate::admin) set_up: bool,
+}
+
+/// The machines the settings file lists, in its order. It reads the file, so
+/// it runs off the async workers.
+pub(in crate::admin) async fn listed(state: &Arc<Context>) -> Result<Vec<Listed>, SetupError> {
+    off_thread(state, |state| {
+        site::entries(&state.config_path).map(|(_, listed)| {
+            listed
+                .iter()
+                .map(|entry| Listed {
+                    id: entry.id.get_ref().clone(),
+                    set_up: entry.definition.is_some(),
+                })
+                .collect()
+        })
+    })
+    .await
+}
+
 /// What the service runs for `id`, or `None` when it runs nothing for it yet:
 /// not set up, or added or completed since the last start.
 fn running<'a>(state: &'a Context, id: &str) -> Option<&'a Running> {
