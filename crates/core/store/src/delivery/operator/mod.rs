@@ -1,6 +1,6 @@
 //! Lists delivery states and bounded operator metadata, and resends deliveries with the same ID and bytes (ADR 0008).
 use crate::delivery::outbox::outbox_owners;
-use crate::{Audit, DeliveryError as Error, DeliveryKind, OrderingKey, Store, key};
+use crate::{Audit, DeliveryError as Error, DeliveryKind, OrderingKey, RecentOutcome, Store, key};
 use analyte_model::{DeliveryId, Identifier};
 use rusqlite::{OptionalExtension, params};
 #[cfg(test)]
@@ -24,6 +24,7 @@ pub enum DeliveryState {
 }
 
 /// Bounded operator listing without clinical payloads.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoredDelivery {
     /// Pagination cursor, independent of UUID ordering.
     pub sequence: i64,
@@ -33,6 +34,43 @@ pub struct StoredDelivery {
     pub destination: Identifier,
     /// Current durable delivery outcome.
     pub state: DeliveryState,
+}
+
+/// Which deliveries an operator listing shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeliveryFilter {
+    /// Every delivery.
+    All,
+    /// Every delivery the app has not accepted yet: every state but done.
+    Undelivered,
+}
+
+/// One delivery as an operator page lists it: what was stored about it, never
+/// its bytes, values or test codes; sample IDs leave the store as stored.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ListedDelivery {
+    /// Its identity, destination and state.
+    pub delivery: StoredDelivery,
+    /// A result or an order message.
+    pub kind: DeliveryKind,
+    /// When it was queued, in Unix seconds; none when an older version did not
+    /// record it and the time was filled in later.
+    pub queued_at: Option<i64>,
+    /// The machines whose result or order it carries, at most
+    /// [`UNDELIVERED_MACHINES`], in name order; empty when none is kept.
+    pub machines: Vec<Identifier>,
+    /// For a result, what its reading produced; none for an order message or
+    /// when the reading is no longer kept.
+    pub reading: Option<RecentOutcome>,
+}
+
+/// How many deliveries each [`DeliveryFilter`] lists.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DeliveryCounts {
+    /// Every delivery.
+    pub all: u64,
+    /// Those the app has not accepted yet.
+    pub undelivered: u64,
 }
 
 /// What the app has not accepted yet for one destination, without payloads.
@@ -170,6 +208,112 @@ impl Store {
             })
         })
         .collect()
+    }
+
+    /// Lists a bounded page of deliveries after a sequence cursor, with what
+    /// `filter` keeps and what was stored about each: its kind, when it was
+    /// queued, its machines and, for a result, its reading's result count and
+    /// sample IDs. Reading changes nothing.
+    /// # Errors
+    /// Reports database failures and corrupt stored identities, states or evidence.
+    pub fn listed_deliveries(
+        &self,
+        after: i64,
+        filter: DeliveryFilter,
+    ) -> Result<Vec<ListedDelivery>, Error> {
+        type Row = (
+            i64,
+            String,
+            String,
+            DeliveryState,
+            DeliveryKind,
+            i64,
+            bool,
+            Option<String>,
+        );
+        let rows: Vec<Row> = self
+            .db
+            .prepare("SELECT o.sequence,o.id,o.destination,o.state,o.kind,o.enqueued_at,o.enqueue_time_backfilled,(SELECT evidence FROM interpretations i WHERE i.receipt=o.receipt AND i.version=o.version) FROM outbox o WHERE o.sequence>?1 AND (?2=0 OR o.state!=?3) ORDER BY o.sequence LIMIT ?4")?
+            .query_map(
+                params![
+                    after,
+                    filter == DeliveryFilter::Undelivered,
+                    DeliveryState::Done,
+                    i64::try_from(self.limits.page_rows)
+                        .map_err(|_| Error::InvalidDeliveryInput)?
+                ],
+                |r| {
+                    Ok((
+                        r.get(0)?,
+                        r.get(1)?,
+                        r.get(2)?,
+                        r.get(3)?,
+                        r.get(4)?,
+                        r.get(5)?,
+                        r.get(6)?,
+                        r.get(7)?,
+                    ))
+                },
+            )?
+            .collect::<Result<_, _>>()?;
+        let mut machines = self.db.prepare(concat!(
+            "WITH owners AS (",
+            outbox_owners!("o.id=?1"),
+            ")",
+            " SELECT DISTINCT machine FROM owners WHERE machine IS NOT NULL ORDER BY machine LIMIT ?2"
+        ))?;
+        rows.into_iter()
+            .map(
+                |(sequence, id, destination, state, kind, queued, backfilled, evidence)| {
+                    let names: Vec<String> = machines
+                        .query_map(
+                            params![
+                                id,
+                                i64::try_from(UNDELIVERED_MACHINES)
+                                    .map_err(|_| Error::InvalidDeliveryInput)?
+                            ],
+                            |r| r.get(0),
+                        )?
+                        .collect::<Result<_, _>>()?;
+                    let reading = evidence
+                        .map(|evidence| {
+                            serde_json::from_str(&evidence).map(|read| RecentOutcome::of(&read))
+                        })
+                        .transpose()?;
+                    Ok(ListedDelivery {
+                        delivery: StoredDelivery {
+                            sequence,
+                            id: serde_json::from_str(&id)?,
+                            destination: Identifier::new(&destination)
+                                .map_err(|_| Error::Corruption)?,
+                            state,
+                        },
+                        kind,
+                        queued_at: (!backfilled).then_some(queued),
+                        machines: names
+                            .iter()
+                            .map(|name| Identifier::new(name).map_err(|_| Error::Corruption))
+                            .collect::<Result<_, _>>()?,
+                        reading,
+                    })
+                },
+            )
+            .collect()
+    }
+
+    /// Counts the deliveries each [`DeliveryFilter`] lists.
+    /// # Errors
+    /// Reports database failures and corrupt counts.
+    pub fn delivery_counts(&self) -> Result<DeliveryCounts, Error> {
+        let (all, undelivered): (i64, Option<i64>) = self.db.query_row(
+            "SELECT count(*),sum(state!=?1) FROM outbox",
+            [DeliveryState::Done],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
+        Ok(DeliveryCounts {
+            all: u64::try_from(all).map_err(|_| Error::Corruption)?,
+            undelivered: u64::try_from(undelivered.unwrap_or(0)).map_err(|_| Error::Corruption)?,
+        })
     }
 
     /// Requeues existing bytes and ID with one atomic operator audit (plan §11).

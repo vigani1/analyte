@@ -96,6 +96,9 @@ pub struct RetentionHold {
     pub sequence: i64,
     /// Receipt or order covered by this hold.
     pub target: HoldTarget,
+    /// The audit that last placed it: who, when and why; none when the audit
+    /// history holds no such entry.
+    pub placed: Option<Audit>,
 }
 impl Store {
     /// Lists one bounded page of active holds after a local row identity.
@@ -105,7 +108,7 @@ impl Store {
         if after < 0 {
             return Err(Error::InvalidMaintenanceInput);
         }
-        let mut statement = self.db.prepare("SELECT rowid,kind,target FROM retention_holds WHERE active=1 AND rowid>?1 ORDER BY rowid LIMIT ?2")?;
+        let mut statement = self.db.prepare("SELECT h.rowid,h.kind,h.target,(SELECT a.evidence FROM audit a WHERE json_extract(a.evidence,'$.action')='retention-hold-place' AND CASE h.kind WHEN 'receipt' THEN json_extract(a.evidence,'$.hold.Receipt')=json_extract(h.target,'$') ELSE json_extract(a.evidence,'$.hold.Order.destination')=json_extract(h.target,'$[0]') AND json_extract(a.evidence,'$.hold.Order.order')=json_extract(h.target,'$[1]') END ORDER BY a.sequence DESC LIMIT 1) FROM retention_holds h WHERE h.active=1 AND h.rowid>?1 ORDER BY h.rowid LIMIT ?2")?;
         let rows = statement.query_map(
             params![
                 after,
@@ -116,11 +119,12 @@ impl Store {
                     r.get::<_, i64>(0)?,
                     r.get::<_, String>(1)?,
                     r.get::<_, String>(2)?,
+                    r.get::<_, Option<String>>(3)?,
                 ))
             },
         )?;
         rows.map(|row| {
-            let (sequence, kind, text) = row?;
+            let (sequence, kind, text, placed) = row?;
             let target = match kind.as_str() {
                 "receipt" => HoldTarget::Receipt(serde_json::from_str(&text)?),
                 "order" => {
@@ -129,7 +133,13 @@ impl Store {
                 }
                 _ => return Err(Error::Corruption),
             };
-            Ok(RetentionHold { sequence, target })
+            Ok(RetentionHold {
+                sequence,
+                target,
+                placed: placed
+                    .map(|evidence| serde_json::from_str(&evidence))
+                    .transpose()?,
+            })
         })
         .collect()
     }

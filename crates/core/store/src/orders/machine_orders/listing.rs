@@ -54,6 +54,23 @@ impl Store {
         ids.into_iter().map(|id| load(&self.db, id)).collect()
     }
 
+    /// Counts machine orders per lifecycle state, in state name order; states
+    /// with no order are left out.
+    /// # Errors
+    /// Reports database failures or corrupt stored states and counts.
+    pub fn machine_order_counts(&self) -> Result<Vec<(OrderState, u64)>, Error> {
+        let rows: Vec<(SqlOrderState, i64)> = self
+            .db
+            .prepare("SELECT state,count(*) FROM machine_orders GROUP BY state ORDER BY state")?
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<Result<_, _>>()?;
+        rows.into_iter()
+            .map(|(SqlOrderState(state), count)| {
+                Ok((state, u64::try_from(count).map_err(|_| Error::Corruption)?))
+            })
+            .collect()
+    }
+
     /// Returns a bounded cancellation page; admission still rechecks the current feed.
     /// # Errors
     /// Reports retained evidence and database failures.

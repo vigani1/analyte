@@ -334,3 +334,23 @@ fn seed_mutation_rule8_item_groups(
     };
     Ok((tests, groups))
 }
+
+// Owner request 2026-11-20 (admin restyle b5): the Machine orders filters count
+// orders per lifecycle state, leaving out states with none.
+#[test]
+fn orders_are_counted_per_state() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let store = open(&temp.path().join("counts.db"))?;
+    assert!(store.machine_order_counts()?.is_empty());
+    for (order, state) in [("a", "Uncertain"), ("b", "Done"), ("c", "Uncertain")] {
+        store.db.execute(
+            "INSERT INTO machine_orders(destination,order_id,machine,version,state,created_at,updated_at,source_code) VALUES ('app',?1,'machine','1',?2,1,1,'x')",
+            rusqlite::params![order, state],
+        )?;
+    }
+    assert_eq!(
+        store.machine_order_counts()?,
+        [(OrderState::Done, 1), (OrderState::Uncertain, 2)]
+    );
+    Ok(())
+}
