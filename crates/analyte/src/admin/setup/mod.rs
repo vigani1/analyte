@@ -9,11 +9,9 @@ mod definitions;
 pub(in crate::admin) use definitions::model_name;
 mod entries;
 mod lab_apps;
-mod listen;
 mod machines;
 mod plan;
 mod site;
-mod verdict;
 mod wizard;
 
 pub(super) use lab_apps::{
@@ -21,8 +19,8 @@ pub(super) use lab_apps::{
     confirm_remove as confirm_remove_lab_app, edit_form as edit_lab_app, list as lab_apps,
     remove as remove_lab_app, save as save_lab_app,
 };
-pub(crate) use listen::{Limits, Open};
 pub(super) use machines::{add, add_form, confirm_remove, first, remove};
+pub(crate) use wizard::listen::{Limits, Open};
 pub(super) use wizard::{Step, listen_start, listen_stop, listen_view, save, step};
 
 use super::{

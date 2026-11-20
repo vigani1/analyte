@@ -10,13 +10,12 @@
 //! bound, expire or lose at a restart, and Back works in every tab.
 use super::{
     Csrf, SetupError, after_write, audit, definition_name, definitions, done, incomplete,
-    level_and_state, listen, needs_login, off_thread, page,
+    level_and_state, needs_login, off_thread, page,
     plan::{
         Choice, KEEP, chosen, current_lab_app, kind_of, listen_target, model_of, plan,
         save_blocking,
     },
     refused, running, see_other, serial, settings_version, site,
-    verdict::{self, Family},
 };
 use crate::admin::{
     markup::Markup,
@@ -35,6 +34,10 @@ use axum::{
 };
 use serde::Deserialize;
 use std::sync::Arc;
+use verdict::Family;
+
+pub(super) mod listen;
+mod verdict;
 
 /// The choices made so far, as carried in a step's form. Every value is
 /// re-checked before it is used; none is a secret.

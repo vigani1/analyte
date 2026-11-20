@@ -6,7 +6,8 @@
 use super::{
     Definition, Running, SetupError, Shipped, definitions,
     lab_apps::{self, SiteLabApp},
-    listen, site, wizard,
+    site,
+    wizard::{self, listen},
 };
 use crate::admin::server::Context;
 use crate::installation::config::{Program, connections};
