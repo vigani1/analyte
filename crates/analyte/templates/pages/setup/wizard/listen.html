@@ -15,8 +15,8 @@
 <div><p class="eyebrow listen__target">{{ live.target }}</p>{% if let Some(clock) = live.clock %}<p class="countdown listen__clock" aria-live="polite"><span class="sr-only">Time left </span>{{ clock }}</p>{% else %}{% call display::status(live.state.tone, live.state.word) %}{% endcall %}{% endif %}</div>
 <div class="listen__progress">
 <progress class="meter" max="{{ live.limit }}" value="{{ live.elapsed }}" aria-label="Test progress">{{ live.elapsed }} of {{ live.limit }} seconds</progress>
-<p class="subtle mono listen__line">{{ live.received }}</p>
-<p class="listen__line">{% if live.clock.is_some() %}{% call display::status(live.state.tone, live.state.word) %}{% endcall %} {% endif %}{% if let Some(note) = live.state.note %}{{ note }}{% endif %}</p>
+<p class="subtle mono note">{{ live.received }}</p>
+<p class="note">{% if live.clock.is_some() %}{% call display::status(live.state.tone, live.state.word) %}{% endcall %} {% endif %}{% if let Some(note) = live.state.note %}{{ note }}{% endif %}</p>
 </div>
 {%- if let Some(csrf) = live.stop %}
 <form method="post" action="/setup/listen/stop"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="btn btn--outline">Stop</button></form>

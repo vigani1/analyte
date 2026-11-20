@@ -15,13 +15,14 @@ the same source. Nothing here is served or built.
 
 ## Logo and icons
 
-The mark is "Aperture" (HANDOFF.md, "Logo"). The icon files ship unchanged in
-`crates/analyte/assets/icons/`: the app icon and the three tray icons, each as
-a large SVG and as hand-tuned `-16.svg` and `-20.svg` files. Pages draw the
-mark inline with the theme colours (the `brand_mark` macro) and link the app
-icon SVGs as the browser-tab icon, the hand-tuned files at 16 and 20 px.
+The mark is "Aperture" (HANDOFF.md, "Logo"). The icon files ship unchanged,
+each as a large SVG and as hand-tuned `-16.svg` and `-20.svg` files: the app
+icon in `crates/analyte/assets/icons/`, which pages serve, and the tray icons
+in `crates/app/icons/svg/`, the sources of the desktop app's tray PNGs. Pages
+draw the mark inline with the theme colours (the `brand_mark` macro) and link
+the app icon SVGs as the browser-tab icon, the hand-tuned files at 16 and 20 px.
 
-`analyte.ico` is the Windows icon, used by the installer and the Apps list. It
+`crates/analyte/analyte.ico` is the Windows icon, used by the installer and the Apps list. It
 holds PNG frames at 16 and 20 px drawn from the `-16`/`-20` files and at 24,
 32, 48 and 256 px drawn from the large icon. After changing an icon, make it
 again on Windows with Microsoft Edge installed, then commit the new file:

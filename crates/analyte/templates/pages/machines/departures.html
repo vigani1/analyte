@@ -25,13 +25,13 @@
 <div class="card__body stack">
 {%- if let Some(enabled) = enabled %}
 {%- if enabled.is_empty() %}
-<p class="departure__none">None were switched on.</p>
+<p class="text">None were switched on.</p>
 {%- else %}
-<p class="muted machine__intro">Switched on does not mean used: the next card says which ones were used for this message.</p>
+<p class="muted text--sm">Switched on does not mean used: the next card says which ones were used for this message.</p>
 {% call feedback::support("Their declarations", enabled.as_slice()) %}{% endcall %}
 {%- endif %}
 {%- else %}
-<p class="muted departure__none">Not recorded by the version that read this message.</p>
+<p class="muted text">Not recorded by the version that read this message.</p>
 {%- endif %}
 </div>
 </section>
@@ -51,7 +51,7 @@
 {%- endif %}
 </section>
 {%- endif %}
-<p class="subtle machine__intro">The references above point to the manual sections and recordings behind each difference. The original bytes stay in the protected store; to see them, use Show the original message on an item in Needs review.</p>
+<p class="subtle text--sm">The references above point to the manual sections and recordings behind each difference. The original bytes stay in the protected store; to see them, use Show the original message on an item in Needs review.</p>
 {%- if !links.is_empty() %}
 <p class="cluster">
 {%- for link in links %}{% call forms::link_button(link.href, link.label, link.class) %}{% endcall %}{% endfor -%}

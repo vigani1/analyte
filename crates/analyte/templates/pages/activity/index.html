@@ -47,7 +47,7 @@
 {%- endfor %}
 </ol>
 {%- endfor %}
-<div class="card__foot">
+<div class="card__foot">{# Not forms::next_page: the feed is newest first and this link goes back in time, so "Show earlier activity" says which way, where the lists' "Next page" would not; it sits quiet in the foot beside the Data keeping note. #}
 {%- if let Some(href) = earlier %}
 <a class="btn btn--quiet btn--sm" rel="next" href="{{ href }}">Show earlier activity</a>
 {%- endif %}

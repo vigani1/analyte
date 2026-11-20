@@ -9,7 +9,7 @@
 {%- if let Some(start) = start %}
 <form class="card card--pad listen" method="post" action="{{ start.action }}">
 <input type="hidden" name="csrf" value="{{ start.csrf }}">{% call forms::hidden_fields(start.hidden) %}{% endcall %}
-<div class="listen__progress"><p class="eyebrow listen__target">Listens on</p><p class="listen__on">{% call display::hover(start.target.shown, start.target.exact) %}{% endcall %}</p><p class="subtle listen__line">For up to {{ start.limit }} seconds. It cannot use a port the running service is using. Start it, then ask the machine to send a result.</p></div>
+<div class="listen__progress"><p class="eyebrow listen__target">Listens on</p><p class="listen__on">{% call display::hover(start.target.shown, start.target.exact) %}{% endcall %}</p><p class="subtle note">For up to {{ start.limit }} seconds. It cannot use a port the running service is using. Start it, then ask the machine to send a result.</p></div>
 <button type="submit" class="btn btn--primary">{{ start.label }}</button>
 </form>
 {%- else %}

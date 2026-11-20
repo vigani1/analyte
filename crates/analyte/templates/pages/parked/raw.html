@@ -8,7 +8,7 @@
 {% call feedback::alert(crate::admin::view::Tone::Attention, crate::admin::view::format::PATIENT_DATA, crate::admin::view::format::PATIENT_DATA_TEXT) %}{% endcall %}
 <div class="stack">
 {% call feedback::exact_lines(what, lines, true) %}{% endcall %}
-<p class="subtle review__note">Left: every byte exactly, in hex. Right: the same bytes as text, with bytes that are not plain letters or signs shown as dots.</p>
+<p class="subtle note">Left: every byte exactly, in hex. Right: the same bytes as text, with bytes that are not plain letters or signs shown as dots.</p>
 </div>
 {%- if let Some(form) = more %}
 {% call layout::card() %}{% call forms::raw_request(form) %}{% endcall %}{% endcall %}
