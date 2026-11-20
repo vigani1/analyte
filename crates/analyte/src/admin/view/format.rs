@@ -5,7 +5,6 @@
 //! seconds stay in the hover text. Connection sentences say only what Analyte
 //! observed (a port open or not, a listener with or without a peer), never what
 //! it cannot see, such as a cable or a machine being switched on.
-use crate::admin::markup::Markup;
 use crate::admin::server::Connection;
 use crate::machine::link::status::Light;
 use crate::machine::{astm, autolyser, hl7, interpretation, law, poct, vidas};
@@ -63,6 +62,26 @@ pub(in crate::admin) fn duration(seconds: u64) -> String {
     }
 }
 
+/// A time limit as people read it: "1.5 s", "1.75 s", "10 s", "5 min"; whole
+/// minutes and hours read as [`duration`] does.
+pub(in crate::admin) fn limit(limit: std::time::Duration) -> String {
+    let millis = limit.subsec_millis();
+    if millis == 0 {
+        return duration(limit.as_secs());
+    }
+    let fraction = format!("{millis:03}");
+    format!("{}.{} s", limit.as_secs(), fraction.trim_end_matches('0'))
+}
+
+/// The time zone these pages show times in: this PC's, by its name when it
+/// has one.
+pub(in crate::admin) fn time_zone() -> String {
+    match TimeZone::system().iana_name() {
+        Some(name) => format!("This PC’s time zone ({name})"),
+        None => "This PC’s time zone".into(),
+    }
+}
+
 /// How long ago `then` was, such as "3 min ago"; under a minute it says
 /// "less than a minute ago", since seconds are not worth reading.
 pub(in crate::admin) fn ago(then: Timestamp, now: Timestamp) -> String {
@@ -71,17 +90,6 @@ pub(in crate::admin) fn ago(then: Timestamp, now: Timestamp) -> String {
         Ok(seconds) => format!("{} ago", duration(seconds)),
         Err(_) => "unknown (clock moved back)".into(),
     }
-}
-
-/// A date and time in the PC's time zone, such as "2026-11-19 14:32".
-pub(in crate::admin) fn time(at: Timestamp) -> String {
-    time_in(at, &TimeZone::system())
-}
-
-fn time_in(at: Timestamp, zone: &TimeZone) -> String {
-    at.to_zoned(zone.clone())
-        .strftime("%Y-%m-%d %H:%M")
-        .to_string()
 }
 
 /// What someone does while order sending is paused after a restore.
@@ -178,12 +186,14 @@ impl Line {
         Self(vec![Part::Text(text.into())])
     }
 
-    fn time(mut self, moment: Moment) -> Self {
+    /// This line, then `moment` with no separator.
+    pub(in crate::admin) fn time(mut self, moment: Moment) -> Self {
         self.0.push(Part::Time(moment));
         self
     }
 
-    fn text_part(mut self, text: &str) -> Self {
+    /// This line, then `text` with no separator.
+    pub(in crate::admin) fn text_part(mut self, text: &str) -> Self {
         self.0.push(Part::Text(text.into()));
         self
     }
@@ -367,6 +377,11 @@ pub(in crate::admin) fn setup_href(id: &str, step: &str) -> String {
     } else {
         format!("/setup/{}/{step}", path_segment(id))
     }
+}
+
+/// An order item's page: "/awos/12/1".
+pub(in crate::admin) fn order_item_href(order: i64, item: u16) -> String {
+    format!("/awos/{order}/{item}")
 }
 
 /// What a machine's status says once Analyte stopped working with it.
@@ -792,33 +807,25 @@ pub(in crate::admin) const fn yes_no(value: bool) -> &'static str {
     if value { "Yes" } else { "No" }
 }
 
+/// How many tests an order or item covers: "1 test", "4 tests"; never which.
+pub(in crate::admin) fn test_count(count: usize) -> String {
+    amount(u64::try_from(count).unwrap_or(u64::MAX), "test", "tests")
+}
+
+/// What a machine reported doing with an order item, kept apart from the
+/// item's own state.
+pub(in crate::admin) const fn execution(state: analyte_model::AwosExecution) -> &'static str {
+    match state {
+        analyte_model::AwosExecution::Scheduled => "Scheduled on the machine",
+        analyte_model::AwosExecution::InProgress => "In progress on the machine",
+        analyte_model::AwosExecution::AnalyzerCancelled => "Cancelled by the machine",
+    }
+}
+
 /// A count with the right word: "0 results", "1 result", "2 results".
 pub(in crate::admin) fn amount(count: impl Into<u64>, one: &str, many: &str) -> String {
     let count = count.into();
     format!("{count} {}", if count == 1 { one } else { many })
-}
-
-/// A time for people: the local date and time and how long ago, with the exact
-/// UTC time and Unix seconds kept in the markup.
-pub(in crate::admin) fn when(at: Timestamp, now: Timestamp) -> Markup {
-    Markup::new()
-        .markup("<time datetime=\"")
-        .text(at)
-        .markup("\" title=\"")
-        .text(exact_time(at))
-        .markup("\">")
-        .text(time(at))
-        .markup("</time> <span class=\"muted\">")
-        .text(ago(at, now))
-        .markup("</span>")
-}
-
-/// [`when`] for Unix seconds from the store; a value outside the calendar shows as is.
-pub(in crate::admin) fn when_unix(seconds: i64, now: Timestamp) -> Markup {
-    Timestamp::from_second(seconds).map_or_else(
-        |_| Markup::new().text(not_a_date(seconds)),
-        |at| when(at, now),
-    )
 }
 
 /// A stored reason for people: each mapping position reads "record 3, field 3",
@@ -1548,17 +1555,28 @@ mod tests {
     #[test]
     fn times_show_local_date_and_keep_the_exact_value() -> Result<(), jiff::Error> {
         let at = Timestamp::from_second(1_795_046_077)?;
-        assert_eq!(time_in(at, &TimeZone::UTC), "2026-11-18 23:54");
-        assert_eq!(
-            time_in(Timestamp::UNIX_EPOCH, &TimeZone::UTC),
-            "1970-01-01 00:00"
-        );
-        let html = when(at, at);
-        assert!(html.contains("datetime=\"2026-11-18T23:54:37Z\""));
-        assert!(html.contains("title=\"2026-11-18T23:54:37Z (Unix 1795046077)\""));
-        assert!(html.contains("less than a minute ago"));
-        assert!(when_unix(i64::MAX, at).contains("Unix time 9223372036854775807"));
+        let moment = moment(at, at);
+        assert_eq!(moment.datetime, "2026-11-18T23:54:37Z");
+        assert_eq!(moment.exact, "2026-11-18T23:54:37Z (Unix 1795046077)");
+        let stored = moment_unix(i64::MAX, at);
+        assert!(stored.shown.contains("Unix time 9223372036854775807"));
+        assert!(stored.datetime.is_empty());
         Ok(())
+    }
+
+    // Owner request 2026-11-20 (admin restyle b5): Settings shows time limits
+    // as people read them, to the millisecond that was set.
+    #[test]
+    fn limits_read_in_seconds_or_their_largest_whole_unit() {
+        for (millis, expected) in [
+            (1_500, "1.5 s"),
+            (1_750, "1.75 s"),
+            (250, "0.25 s"),
+            (10_000, "10 s"),
+            (300_000, "5 min"),
+        ] {
+            assert_eq!(limit(std::time::Duration::from_millis(millis)), expected);
+        }
     }
 
     // Owner request 2026-11-19 (admin restyle): a time reads as the clock today,

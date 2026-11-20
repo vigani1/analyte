@@ -1,0 +1,39 @@
+{#- Deliveries (GET /deliveries): the All and Not delivered filters with their counts, one row per delivery with when it was queued, its sample, from which machine to which lab app, its result count, its outcome and Send again, the next page, and the Send again dialog drawn over the list (GET /deliveries/{id}/resend). -#}
+{% extends "layout/base.html" %}
+{%- import "components/display.html" as display %}
+{%- import "components/feedback.html" as feedback %}
+{%- import "components/forms.html" as forms %}
+{%- import "components/layout.html" as layout %}
+{%- import "components/lists.html" as lists %}
+{%- block main %}
+{% call layout::intro_head("Deliveries", DELIVERIES_LEDE) %}
+<nav class="chips" aria-label="Show">
+{%- for chip in chips %}{% call forms::chip(chip) %}{% endcall %}{% endfor -%}
+</nav>
+{% endcall %}
+{%- if let Some(empty) = empty %}
+<div class="card">{% call feedback::empty(empty.title, empty.text) %}{% if let Some((href, words)) = empty.link %}<a class="link" href="{{ href }}">{{ words }}</a>{% endif %}{% endcall %}</div>
+{%- endif %}
+{%- if !rows.is_empty() %}
+{% call lists::table(DELIVERY_COLUMNS) %}
+{%- for row in rows %}
+<tr>{% if let Some(queued) = row.queued %}{% call lists::cell("num") %}{% call display::time(queued) %}{% endcall %}{% endcall %}{% else %}{% call lists::cell("subtle") %}Not recorded{% endcall %}{% endif %}
+{%- if let Some((shown, all)) = row.sample %}{% call lists::cell("num") %}<span title="{{ all }}">{{ shown }}</span>{% endcall %}{% else if let Some(kind) = row.kind %}{% call lists::cell("subtle more-nowrap") %}{{ kind }}{% endcall %}{% else %}{% call lists::cell("subtle") %}—{% endcall %}{% endif %}
+{%- if let Some(from) = row.from %}{% call lists::cell("more-nowrap") %}{{ from }}{% endcall %}{% else %}{% call lists::cell("subtle") %}—{% endcall %}{% endif %}
+{%- call lists::cell("more-nowrap") %}{{ row.to }}{% endcall %}
+{%- if let Some(results) = row.results %}{% call lists::cell("num right") %}{{ results }}{% endcall %}{% else %}{% call lists::cell("right subtle") %}—{% endcall %}{% endif %}
+{%- call lists::cell("") %}{% call display::status_exact(row.outcome.tone, row.outcome.word, row.outcome.exact) %}{% endcall %}{% endcall %}
+{%- if let Some(href) = row.resend %}{% call lists::cell("right more-nowrap") %}<a class="link" href="{{ href }}">Send again</a>{% endcall %}{% else %}{% call lists::cell("") %}{% endcall %}{% endif %}</tr>
+{%- endfor %}
+{% endcall %}
+{%- endif %}
+{%- if let Some(href) = next %}
+{% call forms::next_page(href) %}{% endcall %}
+{%- endif %}
+{%- if let Some(dialog) = dialog %}
+{% call forms::reason_dialog(dialog) %}
+<label class="check"><input type="checkbox" name="acknowledge_superseded" value="true"{% if dialog.superseded %} checked{% endif %}>Send it even if a newer correction of this result exists</label>
+{% call feedback::support("For support", dialog.support.as_slice()) %}{% endcall %}
+{%- endcall %}
+{%- endif %}
+{%- endblock %}

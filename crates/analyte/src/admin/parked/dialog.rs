@@ -6,10 +6,10 @@
 //! a wrong token; these handlers check again and ask for a signed-in session.
 use super::page::{Button, Dialog, Head, Message, item_href};
 use super::problem::Problem;
-use super::{ItemRead, item_page, open_count, read_item, respond, signed_in};
+use super::{ItemRead, item_page, open_count, read_item, respond};
 use crate::admin::Error;
 use crate::admin::server::Context;
-use crate::admin::sessions::Session;
+use crate::admin::sessions::{Session, signed_in};
 use crate::admin::view::{self, Tab, Tone, format, frame::Frame};
 use crate::operator::recovery;
 use analyte_model::Reason;
@@ -96,7 +96,7 @@ pub(in crate::admin) struct ReasonForm {
 /// The reason as it is recorded, or why it cannot be. Line breaks typed in the
 /// field become spaces, because an audit reason is one line; other control
 /// characters are refused.
-fn checked(typed: &str) -> Result<Reason, &'static str> {
+pub(in crate::admin) fn checked(typed: &str) -> Result<Reason, &'static str> {
     let line = typed.replace("\r\n", " ").replace(['\r', '\n', '\t'], " ");
     if line.trim().is_empty() {
         return Err("Write a reason. It is recorded in the history.");

@@ -17,11 +17,6 @@ impl Markup {
         self
     }
 
-    pub(super) fn fragment(mut self, value: &Self) -> Self {
-        self.push_fragment(value);
-        self
-    }
-
     pub(super) fn push_markup(&mut self, markup: &'static str) {
         self.0.push_str(markup);
     }

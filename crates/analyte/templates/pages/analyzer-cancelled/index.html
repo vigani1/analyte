@@ -1,0 +1,25 @@
+{#- Cancelled by machine (GET /analyzer-cancelled): what to check, then one card per order item a machine cancelled on its own, with its sample, machine and test count, what was recorded and a link to its page, and the next page. -#}
+{% extends "layout/base.html" %}
+{%- import "components/display.html" as display %}
+{%- import "components/feedback.html" as feedback %}
+{%- import "components/forms.html" as forms %}
+{%- import "components/icon.html" as draw %}
+{%- import "components/layout.html" as layout %}
+{%- block main %}
+{% call layout::intro_head("Cancelled by machine", CANCELLED_LEDE) %}{% endcall %}
+{%- if cards.is_empty() %}
+<div class="card">{% call feedback::empty("No order was cancelled by a machine", "Order items a machine cancels on its own are listed here.") %}{% endcall %}</div>
+{%- else %}
+{% call feedback::alert(crate::admin::view::Tone::Attention, "Check each order below with the lab and the lab app", CANCELLED_NOTICE) %}{% endcall %}
+<ul class="stack more-list">
+{%- for card in cards %}
+<li class="card"><div class="row more-row">{% call draw::icon(crate::admin::view::icon::Icon::Cancelled, "tone-off") %}{% endcall %}<div class="row__main"><p class="more-row__title" title="{{ card.exact }}">{% if let Some(sample) = card.sample %}Sample <span class="mono">{{ sample }}</span>{% else %}Order <span class="mono">{{ card.order }}</span>{% endif %} · {{ card.machine }}{% if let Some(model) = card.model %} ({{ model }}){% endif %}{% if let Some(tests) = card.tests %} · {{ tests }}{% endif %}</p>
+{%- for line in card.lines %}<p class="muted more-row__text">{% call display::words(line) %}{% endcall %}</p>{% endfor -%}
+</div><div class="cluster">{% call forms::link_button(card.href, "Details", "btn--outline btn--sm") %}{% endcall %}</div></div></li>
+{%- endfor %}
+</ul>
+{%- endif %}
+{%- if let Some(href) = next %}
+{% call forms::next_page(href) %}{% endcall %}
+{%- endif %}
+{%- endblock %}

@@ -9,7 +9,7 @@ use crate::admin::view::{
     format::{Moment, Part},
     frame::Frame,
     icon::Icon,
-    report::{Button, Head, Status},
+    report::{Button, Fact, Head, Link, Status, Value},
 };
 
 /// The machine list's columns.
@@ -89,15 +89,6 @@ pub(super) struct Row {
     pub(super) lab_app: Option<String>,
 }
 
-/// How a machine is attached: the icon, the kind and where.
-pub(super) struct Link {
-    pub(super) icon: Icon,
-    pub(super) kind: &'static str,
-    pub(super) detail: Option<String>,
-    /// What the connection does that people may not expect.
-    pub(super) note: Option<&'static str>,
-}
-
 /// GET /machines/{id}, and the same page under the Remove dialog.
 #[derive(askama::Template)]
 #[template(path = "pages/machines/machine.html")]
@@ -125,31 +116,6 @@ pub(super) struct Todo {
     pub(super) text: &'static str,
     pub(super) href: String,
     pub(super) label: &'static str,
-}
-
-/// One key and its value on a machine's page.
-pub(super) struct Fact {
-    pub(super) term: &'static str,
-    pub(super) value: Value,
-}
-
-/// A fact's value, as it is drawn.
-pub(super) enum Value {
-    Text(String),
-    /// Words in mono with their exact value on hover, such as a settings version.
-    Code {
-        shown: String,
-        exact: String,
-    },
-    Status(Status),
-    Link(Link),
-    /// A time, or "Nothing yet".
-    Time(Option<Moment>),
-    /// A page about it.
-    Page {
-        href: String,
-        label: String,
-    },
 }
 
 /// One departure the machine's settings switch on: what it means in plain words,

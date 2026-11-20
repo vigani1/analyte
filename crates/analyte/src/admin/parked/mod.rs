@@ -11,11 +11,12 @@ mod page;
 mod problem;
 mod raw;
 
-pub(super) use dialog::{confirm_reprocess, confirm_resolve, reprocess, resolve};
+pub(super) use dialog::{checked, confirm_reprocess, confirm_resolve, reprocess, resolve};
 pub(super) use raw::{RawError, raw};
 
 use crate::admin::error::CommandError;
 use crate::admin::pages::{PAGE, cursor_value, one_page};
+use crate::admin::view::report::Chip;
 use crate::admin::view::{self, Tab, Tone, format, frame::Frame};
 use crate::admin::{Error, server::Context, sessions::Session};
 use crate::deadline;
@@ -32,7 +33,7 @@ use axum::{
 use category::{Action, Category};
 use jiff::Timestamp;
 use page::{
-    Button, Card, Chip, Dialog, Empty, Entry, Head, Item, List, Original, OriginalTarget, Pair,
+    Button, Card, Dialog, Empty, Entry, Head, Item, List, Original, OriginalTarget, Pair,
     RawRequest, Resolved, Row, Todo, item_href,
 };
 use problem::Problem;
@@ -108,13 +109,6 @@ fn linked(store: &Store, target: &Identifier) -> Result<Linked, OperatorError> {
         Err(OperatorError::Purged) => Ok(Linked::Removed),
         Err(error) => Err(error),
     }
-}
-
-/// The signed-in browser session, when the request has one.
-fn signed_in(session: Option<&Extension<Arc<Session>>>) -> Option<&Session> {
-    session
-        .map(|Extension(session)| session.as_ref())
-        .filter(|session| session.authenticated)
 }
 
 /// A page rendered with `status`, or the store-failure page when it could not be written.

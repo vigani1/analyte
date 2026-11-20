@@ -120,6 +120,41 @@ fn receipt_hold_blocks_until_audited_release() -> TestResult {
     );
     Ok(())
 }
+// ADR 0013 item 7; owner request 2026-11-20 (admin restyle b5): each active
+// hold is listed with the audit that last placed it, never a released one's.
+#[test]
+fn holds_are_listed_with_the_audit_that_placed_them() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("store.db"))?;
+    let id = finished(&mut store)?;
+    let target = HoldTarget::Receipt(id);
+    store.set_retention_hold(&target, true, &audit()?)?;
+    store.set_retention_hold(&target, false, &audit()?)?;
+    let mut again = audit()?;
+    again.actor = Identifier::new("second-operator")?;
+    again.time = 300;
+    again.reason = Reason::new("audit follow-up")?;
+    store.set_retention_hold(&target, true, &again)?;
+    // A hold whose placing audit is not in the history says so.
+    store.db.execute(
+        "INSERT INTO retention_holds(kind,target,active) VALUES ('order','[\"app\",\"order-1\"]',1)",
+        [],
+    )?;
+    let holds = store.retention_holds(0)?;
+    assert_eq!(holds.len(), 2);
+    let placed = holds
+        .first()
+        .and_then(|hold| hold.placed.as_ref())
+        .ok_or("placing audit")?;
+    assert_eq!(placed.actor.as_str(), "second-operator");
+    assert_eq!(placed.time, 300);
+    assert_eq!(placed.reason.as_str(), "audit follow-up");
+    assert!(
+        matches!(holds.first().map(|hold| &hold.target), Some(HoldTarget::Receipt(held)) if *held == id)
+    );
+    assert!(holds.get(1).is_some_and(|hold| hold.placed.is_none()));
+    Ok(())
+}
 // ADR 0013 item 2
 #[test]
 fn parking_unresolved_orders_and_polls_prevent_purge() -> TestResult {

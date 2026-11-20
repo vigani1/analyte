@@ -732,7 +732,8 @@ pub enum RecentOutcome {
 }
 
 impl RecentOutcome {
-    fn of(interpretation: &Interpretation) -> Self {
+    /// What `interpretation` produced, without values or test codes.
+    pub(crate) fn of(interpretation: &Interpretation) -> Self {
         match &interpretation.outcome {
             crate::Reading::Results(results) => {
                 let mut samples: Vec<analyte_model::SampleId> = Vec::new();

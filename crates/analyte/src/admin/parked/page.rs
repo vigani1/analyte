@@ -9,6 +9,7 @@ use crate::admin::view::{
     format::{Line, Moment, Part},
     frame::Frame,
     icon::Icon,
+    report::Chip,
 };
 
 /// GET /parked: the Open and Resolved filters, then the items the filter shows.
@@ -33,14 +34,6 @@ pub(super) const LEDE: &str = concat!(
     "Messages and results Analyte kept but could not process on its own. Items stay ",
     "here until someone resolves them; their history is kept.",
 );
-
-/// One filter link with its count.
-pub(super) struct Chip {
-    pub(super) href: &'static str,
-    pub(super) label: &'static str,
-    pub(super) count: u64,
-    pub(super) current: bool,
-}
 
 /// One open item on the list.
 pub(super) struct Card {

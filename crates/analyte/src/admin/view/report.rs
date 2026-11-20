@@ -1,8 +1,9 @@
-//! Holds what restyled pages share to report: a page head with its way back, buttons, statuses, the page that only reports, and every way a Machines, Lab apps or Setup page refuses or fails with its status code, words and the exact reason kept for support.
+//! Holds what restyled pages share to report: a page head with its way back, buttons, statuses, facts, filter chips, the page that only reports, and every way a Machines, Lab apps, Setup or More page refuses or fails with its status code, words and the exact reason kept for support.
 use super::{
     self as view, Tab, Tone, format,
-    format::{Line, Part},
+    format::{Line, Moment, Part},
     frame::Frame,
+    icon::Icon,
 };
 use crate::admin::server::Context;
 use crate::admin::sessions::Session;
@@ -43,6 +44,48 @@ pub(in crate::admin) struct Button {
     pub(in crate::admin) class: &'static str,
 }
 
+/// One key and its value on a page about one thing.
+pub(in crate::admin) struct Fact {
+    pub(in crate::admin) term: &'static str,
+    pub(in crate::admin) value: Value,
+}
+
+/// A fact's value, as it is drawn.
+pub(in crate::admin) enum Value {
+    Text(String),
+    /// Words in mono with their exact value on hover, such as a settings version.
+    Code {
+        shown: String,
+        exact: String,
+    },
+    Status(Status),
+    Link(Link),
+    /// A time, or "Nothing yet".
+    Time(Option<Moment>),
+    /// A page about it.
+    Page {
+        href: String,
+        label: String,
+    },
+}
+
+/// How a machine is attached: the icon, the kind and where.
+pub(in crate::admin) struct Link {
+    pub(in crate::admin) icon: Icon,
+    pub(in crate::admin) kind: &'static str,
+    pub(in crate::admin) detail: Option<String>,
+    /// What the connection does that people may not expect.
+    pub(in crate::admin) note: Option<&'static str>,
+}
+
+/// One filter link with its count.
+pub(in crate::admin) struct Chip {
+    pub(in crate::admin) href: &'static str,
+    pub(in crate::admin) label: &'static str,
+    pub(in crate::admin) count: u64,
+    pub(in crate::admin) current: bool,
+}
+
 /// A page that only reports: what an action did, or why a request was refused.
 #[derive(askama::Template)]
 #[template(path = "pages/report.html")]
@@ -69,6 +112,8 @@ pub(in crate::admin) enum Section<'a> {
     LabApps(Option<&'a str>),
     /// Under Setup, about the machine named, whose setup steps start at step 1.
     Setup(Option<&'a str>),
+    /// Under a page in the sidebar's More group, such as Deliveries.
+    More(Tab),
 }
 
 impl Section<'_> {
@@ -78,6 +123,7 @@ impl Section<'_> {
             Self::Machines(_) => Tab::Machines,
             Self::LabApps(_) => Tab::LabApps,
             Self::Setup(_) => Tab::Setup,
+            Self::More(tab) => tab,
         }
     }
 
@@ -97,6 +143,7 @@ impl Section<'_> {
             Self::Setup(id) => {
                 id.map(|id| ("Open its setup", id.to_owned(), format::setup_href(id, "")))
             }
+            Self::More(_) => None,
         }
     }
 
@@ -136,11 +183,7 @@ impl Section<'_> {
             .collect();
         links.push(Button {
             href: tab.href().to_owned(),
-            label: match self {
-                Self::Machines(_) => "Back to Machines",
-                Self::LabApps(_) => "Back to Lab apps",
-                Self::Setup(_) => "Back to Setup",
-            },
+            label: tab.back(),
             class: if links.is_empty() {
                 "btn--primary"
             } else {
@@ -177,7 +220,7 @@ pub(in crate::admin) fn respond(
     }
 }
 
-/// Why a Machines, Lab apps or Setup page could not do what was asked.
+/// Why a Machines, Lab apps, Setup or More page could not do what was asked.
 pub(in crate::admin) enum Problem {
     /// No machine runs or is listed under this name.
     NotFound,
@@ -240,12 +283,20 @@ impl Problem {
                     Section::Setup(_) => {
                         "Setup changes settings, so its pages need a signed-in browser session"
                     }
+                    Section::More(_) => {
+                        "Analyte records who sends again or changes a hold, so this needs a signed-in browser session"
+                    }
                 },
                 "Sign in with the admin key, then open the page again.".into(),
             ),
             Self::Refused(why) => (
                 "Nothing was changed",
-                "Setup could not continue",
+                match section {
+                    Section::Machines(_) | Section::LabApps(_) | Section::Setup(_) => {
+                        "Setup could not continue"
+                    }
+                    Section::More(_) => "That could not be done",
+                },
                 format::sentence(why),
             ),
             Self::Settings(_) => (
@@ -300,7 +351,9 @@ impl Problem {
         let (title, alert, text) = self.words(section);
         let section = match section {
             Section::Machines(_) if matches!(self, Self::NotFound) => Section::Machines(None),
-            Section::Machines(_) | Section::LabApps(_) | Section::Setup(_) => section,
+            Section::Machines(_) | Section::LabApps(_) | Section::Setup(_) | Section::More(_) => {
+                section
+            }
         };
         let detail = self.detail(section);
         let page = Report {

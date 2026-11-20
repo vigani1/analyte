@@ -58,6 +58,8 @@ pub(in crate::admin) enum Icon {
     Lock,
     /// Taken or off, such as a port another machine uses: a slashed circle.
     Off,
+    /// Being sent, such as an order on its way to a machine: a paper plane.
+    Send,
 }
 
 impl Icon {
@@ -143,6 +145,11 @@ impl Icon {
                 "M7 11V7a5 5 0 0 1 10 0v4",
             ),
             Self::Off => "M2 12a10 10 0 1 0 20 0a10 10 0 1 0-20 0 M4.9 4.9l14.2 14.2",
+            Self::Send => concat!(
+                "M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 ",
+                "6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z M21.854 2.147l-10.94 ",
+                "10.939",
+            ),
         }
     }
 
@@ -161,7 +168,7 @@ impl Icon {
 mod tests {
     use super::*;
 
-    const ALL: [Icon; 25] = [
+    const ALL: [Icon; 26] = [
         Icon::Overview,
         Icon::Review,
         Icon::Machine,
@@ -187,6 +194,7 @@ mod tests {
         Icon::Info,
         Icon::Lock,
         Icon::Off,
+        Icon::Send,
     ];
 
     // ADR 0018: icon paths go through the template's escaping, which must leave

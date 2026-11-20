@@ -250,6 +250,7 @@ async fn start_program_with(
         reserve: 1,
         setup,
         assets: crate::admin::view::assets::Root::of_this_build(),
+        installed: crate::admin::pages::Installed::for_test(Vec::new()),
         write_budget: bounds.write,
         _released: released,
     });

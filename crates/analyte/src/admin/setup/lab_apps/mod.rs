@@ -390,6 +390,65 @@ impl KeySource {
     }
 }
 
+/// One key on the Settings page: whose it is, which one and where it is
+/// found, never its value.
+pub(in crate::admin) struct Found {
+    pub(in crate::admin) owner: String,
+    pub(in crate::admin) label: &'static str,
+    pub(in crate::admin) status: Status,
+}
+
+/// Where Analyte finds its keys, by the service's own rule and read once, off
+/// the async threads: each lab app's two keys, then each of `alerts` (an alert
+/// target and its key's name). Also why the lab apps could not be listed and
+/// why the locked keys file could not be read, both for support.
+pub(in crate::admin) async fn key_sources(
+    state: &Arc<Context>,
+    alerts: Vec<(Identifier, Identifier)>,
+    now: Timestamp,
+) -> Result<(Vec<Found>, Option<String>, Option<String>), SetupError> {
+    off_thread(state, move |state| {
+        let source = KeySource::read(state);
+        let status = |name: &Identifier| {
+            let key = source.key(("", "", ""), name, now);
+            Status {
+                tone: key.tone,
+                word: key.word,
+                exact: key.exact,
+                note: None,
+            }
+        };
+        let mut found = Vec::new();
+        let listed = scan(&state.config_path).map(|scan| {
+            for settings in scan.settings() {
+                for (label, name) in [
+                    (API_KEY.0, &settings.api_key_name),
+                    (SIGNING_KEY.0, &settings.signing_key_name),
+                ] {
+                    found.push(Found {
+                        owner: format!("Lab app {}", settings.name.as_str()),
+                        label,
+                        status: status(name),
+                    });
+                }
+            }
+        });
+        for (target, name) in &alerts {
+            found.push(Found {
+                owner: format!("Alert target {}", target.as_str()),
+                label: "Signing key",
+                status: status(name),
+            });
+        }
+        Ok((
+            found,
+            listed.err().map(|error| error.to_string()),
+            source.support(),
+        ))
+    })
+    .await
+}
+
 /// The machines whose settings send to a lab app, each linked to its page.
 fn senders(users: &[String]) -> Vec<Sender> {
     users

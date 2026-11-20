@@ -42,6 +42,8 @@ pub(super) enum Tab {
     CancelledByMachine,
     Deliveries,
     DataKeeping,
+    /// What Analyte runs with, read-only; only the restyled sidebar lists it.
+    Settings,
 }
 
 impl Tab {
@@ -52,7 +54,7 @@ impl Tab {
         Self::Machines,
         Self::Setup,
     ];
-    /// The pages under "More".
+    /// The pages under "More", as the old menu lists them.
     const MORE: [Self; 4] = [
         Self::MachineOrders,
         Self::CancelledByMachine,
@@ -72,6 +74,7 @@ impl Tab {
             Self::CancelledByMachine => "/analyzer-cancelled",
             Self::Deliveries => "/deliveries",
             Self::DataKeeping => "/retention",
+            Self::Settings => "/settings",
         }
     }
 
@@ -87,6 +90,23 @@ impl Tab {
             Self::CancelledByMachine => "Cancelled by machine",
             Self::Deliveries => "Deliveries",
             Self::DataKeeping => "Data keeping",
+            Self::Settings => "Settings",
+        }
+    }
+
+    /// The link back to the page, at the foot of a page that only reports.
+    pub(super) const fn back(self) -> &'static str {
+        match self {
+            Self::Overview => "Back to Overview",
+            Self::NeedsReview => "Back to Needs review",
+            Self::Machines => "Back to Machines",
+            Self::LabApps => "Back to Lab apps",
+            Self::Setup => "Back to Setup",
+            Self::MachineOrders => "Back to Machine orders",
+            Self::CancelledByMachine => "Back to Cancelled by machine",
+            Self::Deliveries => "Back to Deliveries",
+            Self::DataKeeping => "Back to Data keeping",
+            Self::Settings => "Back to Settings",
         }
     }
 
@@ -127,7 +147,7 @@ fn bar(current: Option<Tab>) -> Markup {
     html.markup("</ul></details></li></ul></nav></div></header>")
 }
 
-/// Closes what [`page`] opened.
+/// Closes what the old pages' head opened.
 pub(super) const END: &str = "</main></body></html>";
 
 /// Which header a page gets.
@@ -139,23 +159,9 @@ enum Header {
     Login,
 }
 
-/// Opens a page under `tab` with the header bar and its title as the main heading; close it with [`END`].
-pub(super) fn page(tab: Tab, title: &str) -> Markup {
-    head(title, Header::Menu(Some(tab)))
-}
-
 /// The login page: no navigation, since nothing else opens before login.
 pub(super) fn login(title: &str) -> Markup {
     head(title, Header::Login)
-}
-
-/// A whole page under `tab` that only reports `message` under `title`; the message is written for people.
-pub(super) fn message(tab: Tab, title: &str, message: impl std::fmt::Display) -> Markup {
-    page(tab, title)
-        .markup("<p class=\"notice bad\">")
-        .text(message)
-        .markup("</p>")
-        .markup(END)
 }
 
 /// A whole page for something that went wrong: a plain `sentence` saying what it
@@ -222,15 +228,7 @@ fn head(title: &str, header: Header) -> Markup {
     html.markup("<main><h1>").text(title).markup("</h1>")
 }
 
-/// A coloured status pill; `tone` picks the colour.
-pub(super) fn pill(tone: Tone, label: &str) -> Markup {
-    Markup::new()
-        .markup(tone.open())
-        .text(label)
-        .markup("</span>")
-}
-
-/// The colour of a status pill.
+/// How a status reads: its colour, icon and word.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Tone {
     /// Working as expected: connected, port open, ready.
@@ -273,22 +271,15 @@ impl Tone {
             Self::Neutral => "Note",
         }
     }
-
-    const fn open(self) -> &'static str {
-        match self {
-            Self::Good => "<span class=\"pill ok\">",
-            Self::Attention => "<span class=\"pill warn\">",
-            Self::Problem => "<span class=\"pill bad\">",
-            Self::Neutral => "<span class=\"pill\">",
-        }
-    }
 }
 
-/// One column of a restyled table: its heading and whether it holds numbers,
-/// which line up on the right.
+/// One column of a restyled table: its heading, whether it holds numbers,
+/// which line up on the right, and whether its heading is for screen readers
+/// only, as over a column of links.
 pub(super) struct Column {
     pub(super) label: &'static str,
     pub(super) right: bool,
+    pub(super) hidden: bool,
 }
 
 impl Column {
@@ -297,50 +288,27 @@ impl Column {
         Self {
             label,
             right: false,
+            hidden: false,
         }
     }
 
     /// A column of numbers, aligned right.
     pub(super) const fn number(label: &'static str) -> Self {
-        Self { label, right: true }
+        Self {
+            label,
+            right: true,
+            hidden: false,
+        }
     }
-}
 
-/// A key and value row for a `<dl>`; `exact` is the technical name shown on hover.
-pub(super) fn row(name: &str, exact: Option<&str>, value: &Markup) -> Markup {
-    let mut html = Markup::new().markup("<dt");
-    if let Some(exact) = exact {
-        html.push_markup(" title=\"");
-        html.push_text(exact);
-        html.push_markup("\"");
+    /// A column of links, aligned right, whose heading only screen readers read.
+    pub(super) const fn action(label: &'static str) -> Self {
+        Self {
+            label,
+            right: true,
+            hidden: true,
+        }
     }
-    html.markup(">")
-        .text(name)
-        .markup("</dt><dd>")
-        .fragment(value)
-        .markup("</dd>")
-}
-
-/// Plain text whose exact technical value shows on hover.
-pub(super) fn exact(shown: &str, technical: &str) -> Markup {
-    Markup::new()
-        .markup("<span title=\"")
-        .text(technical)
-        .markup("\">")
-        .text(shown)
-        .markup("</span>")
-}
-
-/// A count of things that may need attention: a plain number, red only when above zero.
-pub(super) fn count(value: u64) -> Markup {
-    Markup::new()
-        .markup(if value == 0 {
-            "<span class=\"count\">"
-        } else {
-            "<span class=\"count over\">"
-        })
-        .text(value)
-        .markup("</span>")
 }
 
 #[cfg(test)]
@@ -351,7 +319,7 @@ mod tests {
     // same-origin stylesheet, and the login page has no navigation.
     #[test]
     fn pages_link_the_stylesheet_and_close_cleanly() {
-        let page = page(Tab::Machines, "Machines").markup(END);
+        let page = problem(Some(Tab::Machines), "Machines", "Sentence.", "detail");
         assert!(
             page.starts_with("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">")
         );
@@ -381,7 +349,7 @@ mod tests {
             ("/deliveries", "Deliveries"),
             ("/retention", "Data keeping"),
         ];
-        let overview = page(Tab::Overview, "Overview");
+        let overview = problem(Some(Tab::Overview), "Overview", "Sentence.", "detail");
         let (tabs, menu) = overview
             .split_once("<li class=\"more\">")
             .unwrap_or_default();
@@ -398,7 +366,7 @@ mod tests {
         assert!(overview.contains("<a href=\"/\" aria-current=\"page\">Overview</a>"));
         assert_eq!(overview.matches("aria-current").count(), 1);
         assert!(overview.contains("<details><summary>More</summary>"));
-        let deliveries = page(Tab::Deliveries, "Deliveries");
+        let deliveries = problem(Some(Tab::Deliveries), "Deliveries", "Sentence.", "detail");
         assert!(
             deliveries.contains("<a href=\"/deliveries\" aria-current=\"page\">Deliveries</a>")
         );
@@ -406,19 +374,6 @@ mod tests {
         let refused = problem(None, "Not found", "That page does not exist.", "x");
         assert!(refused.contains("<details><summary>More</summary>"));
         assert!(!refused.contains("aria-current"));
-    }
-
-    // Owner request 2026-11-19 (item 8): counts are plain numbers, red only above zero.
-    #[test]
-    fn counts_are_plain_and_red_only_above_zero() {
-        assert_eq!(&*count(0), "<span class=\"count\">0</span>");
-        assert_eq!(&*count(1), "<span class=\"count over\">1</span>");
-        assert_eq!(
-            &*count(u64::MAX),
-            "<span class=\"count over\">18446744073709551615</span>"
-        );
-        assert!(CSS.contains(".count.over"));
-        assert!(!count(3).contains("pill"));
     }
 
     // The stylesheet stays inside the CSP: no imports, fonts or external URLs.
@@ -434,29 +389,6 @@ mod tests {
         ] {
             assert!(!CSS.contains(forbidden), "stylesheet contains {forbidden}");
         }
-    }
-
-    #[test]
-    fn hovered_exact_values_are_escaped() {
-        let html = exact("Yes", "fresh=\"true\" <x>");
-        assert_eq!(
-            &*html,
-            "<span title=\"fresh=&quot;true&quot; &lt;x&gt;\">Yes</span>"
-        );
-        let html = row(
-            "Order list up to date",
-            Some("Cache fresh and trusted"),
-            &html,
-        );
-        assert!(
-            html.starts_with(
-                "<dt title=\"Cache fresh and trusted\">Order list up to date</dt><dd>"
-            )
-        );
-        assert_eq!(
-            &*pill(Tone::Good, "Connected"),
-            "<span class=\"pill ok\">Connected</span>"
-        );
     }
 
     /// Every file under `folder`, with its path relative to the crate.
