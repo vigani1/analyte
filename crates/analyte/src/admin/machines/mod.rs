@@ -1,5 +1,7 @@
 //! Renders the Machines page: each set-up machine's link light, departures and first stored messages.
-use super::{Cursor, PAGE, finish, next, pause};
+pub(super) mod departures;
+
+use crate::admin::pages::{Cursor, PAGE, finish, next, pause};
 use crate::admin::Error;
 use crate::admin::markup::Markup;
 use crate::admin::server::{Context, Machine};

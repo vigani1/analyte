@@ -1,5 +1,5 @@
 //! Shows enabled configuration separately from actual protected receipt interpretation evidence.
-use super::finish;
+use crate::admin::pages::finish;
 use crate::admin::Error;
 use crate::admin::markup::Markup;
 use crate::admin::{

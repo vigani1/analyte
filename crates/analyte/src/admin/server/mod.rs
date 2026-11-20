@@ -145,7 +145,7 @@ pub(crate) async fn prepare(
         .map(|m| {
             let effective = m.snapshot().effective();
             Ok(Machine {
-                departure_html: super::pages::departures::enabled(&m.snapshot)?,
+                departure_html: super::machines::departures::enabled(&m.snapshot)?,
                 id: m.id().clone(),
                 running: Arc::new(AtomicBool::new(true)),
                 status: m.status.subscribe(),
@@ -266,10 +266,10 @@ fn router(state: Arc<Context>) -> Router {
             "/retention",
             get(super::pages::retention::show).post(super::pages::retention::hold),
         )
-        .route("/machines", get(super::pages::machines))
+        .route("/machines", get(super::machines::machines))
         .route(
             "/receipts/{id}/departures",
-            get(super::pages::departures::receipt),
+            get(super::machines::departures::receipt),
         )
         .route("/parked", get(super::parked::list))
         .route("/parked/{id}", get(super::parked::item))
