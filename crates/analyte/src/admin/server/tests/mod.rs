@@ -10,13 +10,13 @@ use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
 mod actions;
 mod assets;
-mod logout;
 mod machines;
 mod more;
 mod overview;
 mod pages;
 mod parked;
 mod setup;
+mod sign_in;
 
 use analyte_fixtures::UnlimitedSpace as Space;
 
