@@ -25,7 +25,6 @@ const CSS: &str = "text/css; charset=utf-8";
 const FONT: &str = "font/woff2";
 const TEXT: &str = "text/plain; charset=utf-8";
 const SVG: &str = "image/svg+xml";
-const ICO: &str = "image/vnd.microsoft.icon";
 const SCRIPT: &str = "text/javascript; charset=utf-8";
 
 /// Builds one table entry from a file in `crates/analyte/assets/`.
@@ -40,7 +39,7 @@ macro_rules! asset {
 }
 
 /// Every file served under `/static/`.
-const ASSETS: [Asset; 29] = [
+const ASSETS: [Asset; 16] = [
     asset!("fonts.css", CSS),
     asset!("analyte.css", CSS),
     asset!("app.css", CSS),
@@ -57,19 +56,6 @@ const ASSETS: [Asset; 29] = [
     asset!("icons/analyte-app-icon.svg", SVG),
     asset!("icons/analyte-app-icon-16.svg", SVG),
     asset!("icons/analyte-app-icon-20.svg", SVG),
-    asset!("icons/analyte.ico", ICO),
-    asset!("icons/tray-all-good.svg", SVG),
-    asset!("icons/tray-all-good-16.svg", SVG),
-    asset!("icons/tray-all-good-20.svg", SVG),
-    asset!("icons/tray-needs-you.svg", SVG),
-    asset!("icons/tray-needs-you-16.svg", SVG),
-    asset!("icons/tray-needs-you-20.svg", SVG),
-    asset!("icons/tray-engine-stopped.svg", SVG),
-    asset!("icons/tray-engine-stopped-16.svg", SVG),
-    asset!("icons/tray-engine-stopped-20.svg", SVG),
-    asset!("icons/tray-problem.svg", SVG),
-    asset!("icons/tray-problem-16.svg", SVG),
-    asset!("icons/tray-problem-20.svg", SVG),
 ];
 
 /// One browser-tab icon: its file under `/static/` and the pixel sizes it is

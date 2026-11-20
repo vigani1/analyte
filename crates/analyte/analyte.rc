@@ -2,7 +2,7 @@
 // 16 and 20 px from the hand-tuned files (see docs/design/README.md), and the
 // description "Analyte engine", so it is never mistaken for the desktop app
 // analyte-app.exe, which Windows lists as "Analyte" (ADR 0019).
-1 ICON "assets/icons/analyte.ico"
+1 ICON "analyte.ico"
 
 1 VERSIONINFO
 FILEVERSION ANALYTE_MAJOR, ANALYTE_MINOR, ANALYTE_PATCH, 0

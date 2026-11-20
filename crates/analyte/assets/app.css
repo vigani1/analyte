@@ -21,6 +21,14 @@
 
 body { margin: 0; background: var(--bg); }
 
+/* One paragraph style per role, so pages that say the same kind of thing look
+   the same: plain text, smaller text, a small note, and a column narrow
+   enough to read, such as a form. */
+.text { margin: 0; }
+.text--sm { margin: 0; font-size: var(--text-sm); }
+.note { margin: 0; font-size: var(--text-xs); }
+.narrow { max-width: 760px; }
+
 /* The Analyte mark "Aperture" (the Sidebar and SignIn mockups' inline styles):
    an ink tile, a paper ring with the plain light going in, and the cobalt
    sample and measured light coming out. Its colours follow the theme. */
@@ -84,8 +92,6 @@ body { margin: 0; background: var(--bg); }
 .page-head__main { flex: 1 1 320px; min-width: 0; }
 .review__title { margin: 0; font-size: var(--text-md); font-weight: var(--weight-semibold); }
 .review__meta { font-size: var(--text-sm); }
-.review__text { margin: 0; }
-.review__note { margin: 0; font-size: var(--text-xs); }
 .row__title { font-weight: var(--weight-semibold); }
 .row__sub { font-size: var(--text-sm); }
 /* Filter chips that are links: the current one is drawn like a pressed chip. */
@@ -102,16 +108,13 @@ a.chip { text-decoration: none; }
 .cell-note { margin-top: var(--space-1); }
 /* A line under a key-value pair's value, such as how a USB adapter is found. */
 .kv__note { display: block; margin-top: var(--space-1); font-size: var(--text-xs); color: var(--text-subtle); }
-.machine__intro { margin: 0; font-size: var(--text-sm); }
 .machine__rules > li { padding: var(--space-2) 0; }
 .machine__note { font-size: var(--text-sm); }
 /* The heading above a dialog's list, such as "Still unfinished". */
 .dialog__label { margin: 0; font-weight: var(--weight-semibold); }
 /* A page that only reports: its plain lines. */
-.report__line { margin: 0; }
 /* How a message was read: each difference used, and "None". */
 .departure__rule { margin: 0; font-size: var(--text-base); font-weight: var(--weight-semibold); }
-.departure__none { margin: 0; }
 
 /* Lab apps (the LabApps and LabAppEdit mockups' inline styles). */
 /* A lab app Analyte cannot deliver to: its head and foot rule in the problem
@@ -121,11 +124,7 @@ a.chip { text-decoration: none; }
 /* Beside a lab app's name: when it last accepted a delivery. */
 .lab__aside { font-size: var(--text-xs); }
 /* Remove, as a quiet button in the problem colour. */
-.lab__remove { color: var(--bad-text); }
-.lab__remove:hover { background: var(--bad-bg); }
 /* The form keeps to a readable width. */
-.lab-form { max-width: 760px; }
-.lab-form__label { margin: 0; }
 .lab-form__senders {
   display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4);
   margin: 0; padding: 0; list-style: none;
@@ -150,16 +149,13 @@ a.chip { text-decoration: none; }
 .listen__target { margin: 0 0 6px; }
 .listen__clock, .listen__on { margin: 0; }
 .listen__progress { flex: 1 1 260px; display: flex; flex-direction: column; gap: var(--space-2); }
-.listen__line { margin: 0; font-size: var(--text-xs); }
 /* The progress is a <progress>, so it needs no inline width; drawn as .meter. */
 progress.meter { display: block; width: 100%; border: 0; appearance: none; -webkit-appearance: none; }
 progress.meter::-webkit-progress-bar { background: var(--surface-sunken); border-radius: var(--radius-full); }
 progress.meter::-webkit-progress-value { background: var(--accent); border-radius: var(--radius-full); }
 progress.meter::-moz-progress-bar { background: var(--accent); border-radius: var(--radius-full); }
 /* Plain sentences in a Setup card, and the add form's width. */
-.setup__text { margin: 0; }
 .setup__actions { justify-content: flex-end; flex-wrap: nowrap; }
-.setup-form { max-width: 760px; }
 
 /* Icon rail: the same width as analyte.css's --narrow, which a container query
    cannot read from a custom property. */
@@ -174,11 +170,9 @@ progress.meter::-moz-progress-bar { background: var(--accent); border-radius: va
 /* A row whose actions wrap under its text on a narrow window. */
 .more-row { flex-wrap: wrap; }
 .more-row__title { margin: 0; font-weight: var(--weight-semibold); }
-.more-row__text { margin: 0; font-size: var(--text-sm); }
 /* Names and links in a table cell stay on one line; the table scrolls instead. */
 .more-nowrap { white-space: nowrap; }
 /* Data keeping and Settings keep a readable width. */
-.more-narrow { max-width: 760px; }
 
 /* Activity (the Activity mockup's inline styles). */
 /* The machine filter: its label, select and Show button on one line. */

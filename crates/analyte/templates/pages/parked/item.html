@@ -9,7 +9,7 @@
 <div class="split">
 <div class="stack stack--lg grow">
 {% call layout::label_card("rd-why", "Why it’s here") %}
-<p class="review__text">{{ why.lead }}{% call display::hover(why.text.shown, why.text.exact) %}{% endcall %}</p>
+<p class="text">{{ why.lead }}{% call display::hover(why.text.shown, why.text.exact) %}{% endcall %}</p>
 {%- if let Some(todo) = todo %}
 {% call feedback::whattodo_with(todo.guidance) %}
 {%- for button in todo.actions %}{% call forms::link_button(button.href, button.label, button.class) %}{% endcall %}{% endfor -%}
@@ -25,7 +25,7 @@
 {%- endfor %}
 {% endcall %}
 {%- if let Some(note) = linked_note %}
-<p class="subtle review__note">{{ note }}</p>
+<p class="subtle note">{{ note }}</p>
 {%- endif %}
 {%- if let Some(href) = next %}
 {% call forms::next_page(href) %}{% endcall %}
@@ -33,16 +33,16 @@
 </div>
 <div class="card__foot">
 {% call layout::disclosure("Show the original message") %}
-<p class="muted review__note">The original bytes are hidden because they may contain patient data. Each time they are shown, Analyte first records who asked and why.</p>
+<p class="muted note">The original bytes are hidden because they may contain patient data. Each time they are shown, Analyte first records who asked and why.</p>
 {%- if original.signed_in %}
 {%- for target in original.targets %}
 <div class="stack">
-<p class="review__text">{% call display::words(target.title) %}{% endcall %}{% if let Some(href) = target.departures %} · <a class="link" href="{{ href }}">How this message was read</a>{% endif %}</p>
+<p class="text">{% call display::words(target.title) %}{% endcall %}{% if let Some(href) = target.departures %} · <a class="link" href="{{ href }}">How this message was read</a>{% endif %}</p>
 {% call forms::raw_request(target.form) %}{% endcall %}
 </div>
 {%- endfor %}
 {%- else %}
-<p class="review__text"><a class="link" href="/login">Sign in</a> to show the original message.</p>
+<p class="text"><a class="link" href="/login">Sign in</a> to show the original message.</p>
 {%- endif %}
 {% endcall %}
 </div>
@@ -53,7 +53,7 @@
 {% call display::timeline(history) %}{% endcall %}
 {%- endif %}
 {%- for note in history_notes %}
-<p class="subtle review__note">{{ note }}</p>
+<p class="subtle note">{{ note }}</p>
 {%- endfor %}
 {% endcall %}
 </div>

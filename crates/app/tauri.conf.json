@@ -10,6 +10,6 @@
   "bundle": {
     "active": false,
     "publisher": "Analyte contributors",
-    "icon": ["../analyte/assets/icons/analyte.ico"]
+    "icon": ["../analyte/analyte.ico"]
   }
 }

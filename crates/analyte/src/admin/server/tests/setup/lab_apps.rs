@@ -424,7 +424,7 @@ async fn lab_app_form_says_where_keys_are_and_never_their_values() -> Result<(),
     assert_new_look(&new);
     for part in [
         "<h1>Add a lab app</h1>",
-        "<form class=\"stack stack--lg lab-form\" method=\"post\" action=\"/setup/lab-apps/new\">",
+        "<form class=\"stack stack--lg narrow\" method=\"post\" action=\"/setup/lab-apps/new\">",
         "<input id=\"la-name\" class=\"input\" name=\"name\" required maxlength=\"64\" value=\"lab-app\">",
         "<input id=\"la-api\" class=\"input mono\" type=\"password\" name=\"api_key\" required autocomplete=\"off\" maxlength=\"4096\">",
         "<input id=\"la-signing\" class=\"input mono\" type=\"password\" name=\"signing_key\" required autocomplete=\"off\" maxlength=\"4096\">",
@@ -559,11 +559,11 @@ async fn saving_says_which_keys_were_stored_and_when_they_apply() -> Result<(), 
         "<li><a href=\"/setup/lab-apps\">Lab apps</a></li><li><a href=\"/setup/lab-apps/spare\">spare</a></li>",
         "<h1>Lab app added</h1>",
         "<p class=\"alert__title\">spare is added</p><p class=\"alert__text\">Analyte uses these settings after it restarts.</p>",
-        "<p class=\"report__line\">Address: https://spare.example.invalid</p>",
-        "<p class=\"report__line\">Used by no machine yet: pick it on a machine’s setup page.</p>",
-        "<p class=\"report__line\">Key stored: spare-api</p>",
-        "<p class=\"report__line\">Key stored: spare-signing</p>",
-        "<p class=\"report__line\">Waiting items go out after Analyte restarts with the keys.</p>",
+        "<p class=\"text\">Address: https://spare.example.invalid</p>",
+        "<p class=\"text\">Used by no machine yet: pick it on a machine’s setup page.</p>",
+        "<p class=\"text\">Key stored: spare-api</p>",
+        "<p class=\"text\">Key stored: spare-signing</p>",
+        "<p class=\"text\">Waiting items go out after Analyte restarts with the keys.</p>",
         "<button type=\"submit\" class=\"btn btn--primary\">Restart now</button>",
         "<a class=\"btn btn--primary\" href=\"/setup/lab-apps/spare\">Open the lab app</a>",
     ] {
@@ -581,7 +581,7 @@ async fn saving_says_which_keys_were_stored_and_when_they_apply() -> Result<(), 
     assert!(same.starts_with("HTTP/1.1 200"), "{same}");
     assert!(same.contains("<h1>Lab app saved</h1>"));
     assert!(same.contains(
-        "<p class=\"report__line\">The settings were already the same; no file was written.</p>"
+        "<p class=\"text\">The settings were already the same; no file was written.</p>"
     ));
     assert!(!same.contains("Key stored") && !same.contains("Waiting items go out"));
     assert!(!same.contains("A dated copy"));
@@ -596,7 +596,7 @@ async fn saving_says_which_keys_were_stored_and_when_they_apply() -> Result<(), 
     for part in [
         "<h1>Lab app removed</h1>",
         "<p class=\"alert__title\">spare is no longer listed</p><p class=\"alert__text\">Its keys stay stored, locked.</p>",
-        "<p class=\"report__line\">A dated copy of the old settings was kept.</p>",
+        "<p class=\"text\">A dated copy of the old settings was kept.</p>",
         "Details for support</summary><pre>Copy of the old settings: ",
         "Restart now",
         "<a class=\"btn btn--primary\" href=\"/setup/lab-apps\">Back to Lab apps</a>",
