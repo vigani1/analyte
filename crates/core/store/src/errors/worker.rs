@@ -21,6 +21,18 @@ pub enum WorkerError {
     /// Shutdown did not finish; the handle still owns the worker and may resume joining it.
     #[error("storage shutdown deadline expired")]
     ShutdownTimeout(#[source] tokio::time::error::Elapsed),
+    /// A read that can be stopped was stopped at its deadline, or because its
+    /// caller had gone, before it answered. Nothing was changed.
+    #[error("store read stopped at its deadline; nothing was changed")]
+    ReadStopped,
+    /// A write transaction was still open, so a read that can be stopped was
+    /// not started: stopping a statement inside it could cost its changes.
+    #[error("a store transaction is still open; the read was not started")]
+    ReadInsideTransaction,
+    /// SQLite refused to set up or clear the guard of a read that can be
+    /// stopped. A guard left in place refuses writes; it never stops them.
+    #[error("store read guard failed: {0}")]
+    ReadGuard(#[source] rusqlite::Error),
     /// The owning thread panicked; it cannot continue a protocol session.
     #[error("storage worker panicked")]
     Panicked,
