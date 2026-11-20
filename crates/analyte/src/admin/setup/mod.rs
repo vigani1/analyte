@@ -31,6 +31,7 @@ use super::{
     view::{
         Tab, Tone, format,
         frame::Frame,
+        icon::Icon,
         report::{Problem, Section, Status, respond},
     },
 };
@@ -183,7 +184,9 @@ pub(crate) enum SetupError {
     UnknownDefinition,
     #[error("this machine is not set up yet: choose its machine model first")]
     NoDefinitionYet,
-    #[error("{0} is not ready yet: facts or recordings are still missing (its README lists them)")]
+    #[error(
+        "model {0} is not ready yet: facts or recordings are still missing (its README lists them)"
+    )]
     BlockedDefinition(String),
     #[error("{0}")]
     Definitions(#[from] definitions::ListError),
@@ -269,18 +272,18 @@ pub(crate) enum SetupError {
         "a machine name uses only letters A to Z, digits, - and _, because it also names the machine's settings file"
     )]
     NameCharacters,
-    #[error("{0} is a name the setup page uses itself; choose another name")]
+    #[error("the name {0} is one the setup page uses itself; choose another name")]
     ReservedName(String),
     #[error("a machine called {0} is already listed; choose another name")]
     NameInUse(String),
     #[error("the settings file {0} already belongs to machine {1}; choose another name")]
     SiteInUse(String, String),
     #[error(
-        "{0} has stored results or history from an earlier machine. If this is the same analyzer, tick \"same analyzer\" to add it under that name; for a different analyzer choose a new name"
+        "machine name {0} has stored results or history from an earlier machine. If this is the same analyzer, tick \"same analyzer\" to add it under that name; for a different analyzer choose a new name"
     )]
     HistoryNotConfirmed(String),
     #[error(
-        "{0} still has unfinished work ({1}); nothing was changed. Review it on the remove page and press \"Remove anyway\" to remove the machine regardless"
+        "machine {0} still has unfinished work ({1}); nothing was changed. Review it on the remove page and press \"Remove anyway\" to remove the machine regardless"
     )]
     UnfinishedWork(String, String),
     #[error("Analyte's stored data could not be read: {0}")]
@@ -397,9 +400,10 @@ fn definitions(state: &Context) -> Result<Vec<Definition>, SetupError> {
     Ok(definitions::list(&root)?)
 }
 
-/// A definition's evidence level in words (the level itself on hover) and its
-/// status, with the reason under it when it cannot be chosen.
-fn level_and_state(definition: &Definition) -> (Hover, Status) {
+/// A definition's evidence level in words (the level itself on hover), its
+/// status, with the reason under it when it cannot be chosen, and the
+/// status's icon: a model not ready yet has the design's slashed circle.
+fn level_and_state(definition: &Definition) -> (Hover, Status, Icon) {
     let hover = |shown: &str, exact: String| Hover {
         shown: shown.to_owned(),
         exact,
@@ -408,6 +412,7 @@ fn level_and_state(definition: &Definition) -> (Hover, Status) {
         Shipped::Ready { level, .. } => (
             hover(evidence_words(level), format!("Evidence level: {level}")),
             status(Tone::Good, "Ready"),
+            Icon::Ok,
         ),
         Shipped::Blocked => (
             hover(
@@ -418,6 +423,7 @@ fn level_and_state(definition: &Definition) -> (Hover, Status) {
                 note: Some("Facts or recordings are still missing; its README lists them.".into()),
                 ..status(Tone::Neutral, "Not ready yet")
             },
+            Icon::Off,
         ),
         Shipped::Unreadable(why) => (
             hover("Not known", "Evidence level unknown".into()),
@@ -425,6 +431,7 @@ fn level_and_state(definition: &Definition) -> (Hover, Status) {
                 note: Some(format::sentence(why)),
                 ..status(Tone::Problem, "Cannot be read")
             },
+            Icon::Problem,
         ),
     }
 }
@@ -493,11 +500,12 @@ pub(super) async fn index(
         .map(|list| {
             list.iter()
                 .map(|definition| {
-                    let (checked, status) = level_and_state(definition);
+                    let (checked, status, icon) = level_and_state(definition);
                     page::Model {
                         name: definition_name(definition),
                         checked,
                         status,
+                        icon,
                     }
                 })
                 .collect()

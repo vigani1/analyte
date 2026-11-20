@@ -411,12 +411,12 @@ fn render_machine(
         .into_iter()
         .collect();
     choices.extend(list.iter().map(|definition| {
-        let (checked, status) = level_and_state(definition);
+        let (checked, status, icon) = level_and_state(definition);
         Choice {
             value: definition.key.clone(),
             title: definition_name(definition),
             meta: checked,
-            status: Some(status),
+            status: Some((status, icon)),
             checked: definition.key == selected,
             disabled: !matches!(definition.state, Shipped::Ready { .. }),
         }

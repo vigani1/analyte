@@ -571,8 +571,8 @@ async fn waiting_machine_is_set_up_from_the_starter() -> Result<(), Error> {
         "<dt>Model</dt><dd>Example network hl7</dd>",
         "Analyte listens on 127.0.0.1:5600; the machine connects to it",
         concat!(
-            "<dt>Sends results to</dt><dd><a class=\"link\" href=\"/setup/lab-apps/lab-app\">",
-            "lab-app</a> <span class=\"mono\">https://lab.example.invalid/v1</span>"
+            "<dt>Sends results to</dt><dd><a class=\"link\" href=\"/setup/lab-apps/lab-app\" ",
+            "title=\"https://lab.example.invalid/v1\">lab-app</a>"
         ),
         "Restart now",
     ] {
@@ -2088,8 +2088,8 @@ async fn each_step_shows_its_indicator_and_keeps_the_choices() -> Result<(), Err
         "<dt>Model</dt><dd>Example serial astm</dd>",
         "<span title=\"endpoint = COM3\">Serial port COM3</span>",
         concat!(
-            "<dt>Sends results to</dt><dd><a class=\"link\" href=\"/setup/lab-apps/demo\">",
-            "demo</a> <span class=\"mono\">https://lab.example.invalid</span>"
+            "<dt>Sends results to</dt><dd><a class=\"link\" href=\"/setup/lab-apps/demo\" ",
+            "title=\"https://lab.example.invalid\">demo</a>"
         ),
         "<input type=\"hidden\" name=\"port\" value=\"name:COM3\">",
         "<form method=\"post\" action=\"/setup/synthetic\">",

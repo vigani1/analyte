@@ -5,7 +5,7 @@
 //! which framing characters they used and how the stream starts, never the
 //! message itself.
 use crate::admin::machines::{Hover, Notice};
-use crate::admin::view::{Tone, format::Moment, frame::Frame, report::Status};
+use crate::admin::view::{Tone, format::Moment, frame::Frame, icon::Icon, report::Status};
 
 /// What every step shows around its form: the fixed machine name, the
 /// model chosen so far and the four steps with this one marked.
@@ -50,8 +50,9 @@ pub(super) struct Choice {
     pub(super) title: Hover,
     /// How it was checked, or the kept definition's path.
     pub(super) meta: Hover,
-    /// Ready, Not ready yet or Cannot be read; none for keeping the current model.
-    pub(super) status: Option<Status>,
+    /// Ready, Not ready yet or Cannot be read, with its icon; none for
+    /// keeping the current model.
+    pub(super) status: Option<(Status, Icon)>,
     pub(super) checked: bool,
     pub(super) disabled: bool,
 }
@@ -204,7 +205,7 @@ pub(super) struct Summary {
     pub(super) versions: Option<(Hover, Option<Hover>)>,
 }
 
-/// The lab app it sends results to, linked to its page.
+/// The lab app it sends results to, linked to its page, its address on hover.
 pub(super) struct Sends {
     pub(super) name: String,
     pub(super) href: String,

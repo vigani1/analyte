@@ -435,7 +435,8 @@ async fn save_step_says_what_was_tested_and_saved() -> Result<(), Error> {
 
 // Owner decisions 2026-11-20 (admin restyle b4): an unknown machine and a form
 // that cannot be read are refused in the new look; the unknown machine has no
-// setup steps to link back to.
+// setup steps to link back to. A refusal reads as a sentence, but a model key or
+// machine name in it keeps its case (regression: "Acme/bg-3" in the b4 shots).
 #[tokio::test(flavor = "multi_thread")]
 async fn unknown_machines_and_unreadable_forms_are_refused() -> Result<(), Error> {
     let fixture = start().await?;
@@ -446,6 +447,13 @@ async fn unknown_machines_and_unreadable_forms_are_refused() -> Result<(), Error
         "{unknown}"
     );
     assert!(!unknown.contains("href=\"/setup/nowhere\""), "{unknown}");
+    let blocked = fixture
+        .get("/setup/synthetic/test?definition=roche%2Fcobas-e411&port=name%3ACOM3&lab_app=demo")
+        .await?;
+    assert!(
+        blocked.contains("Model roche/cobas-e411 is not ready yet"),
+        "{blocked}"
+    );
     let body = format!("{}&surprise=1", fixture.form(&[]).await?);
     let incomplete = fixture.post("/setup/synthetic", &body).await?;
     assert!(incomplete.starts_with("HTTP/1.1 409"), "{incomplete}");

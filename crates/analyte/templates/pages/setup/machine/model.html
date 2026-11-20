@@ -9,7 +9,7 @@
 <div><h2 id="s1" class="wizard__title">Which machine is it?</h2><p class="muted wizard__text">Pick the model. Models marked “Not ready yet” can’t be set up until their information is complete.</p></div>
 <ul class="choices">
 {%- for choice in choices %}
-<li><label class="choice"><input type="radio" name="definition" value="{{ choice.value }}" required{% if choice.checked %} checked{% endif %}{% if choice.disabled %} disabled{% endif %}><span><span class="choice__title">{% call display::hover(choice.title.shown, choice.title.exact) %}{% endcall %}</span> <span class="choice__meta">{% call display::hover(choice.meta.shown, choice.meta.exact) %}{% endcall %}</span></span>{% if let Some(status) = choice.status %}{% call display::status_exact(status.tone, status.word, status.note.as_deref().unwrap_or_default()) %}{% endcall %}{% else %}<span></span>{% endif %}</label></li>
+<li><label class="choice"><input type="radio" name="definition" value="{{ choice.value }}" required{% if choice.checked %} checked{% endif %}{% if choice.disabled %} disabled{% endif %}><span><span class="choice__title">{% call display::hover(choice.title.shown, choice.title.exact) %}{% endcall %}</span> <span class="choice__meta">{% call display::hover(choice.meta.shown, choice.meta.exact) %}{% endcall %}</span></span>{% if let Some((status, icon)) = choice.status %}{% call display::status_with(status.tone, icon, status.word, status.note.as_deref().unwrap_or_default()) %}{% endcall %}{% else %}<span></span>{% endif %}</label></li>
 {%- else %}
 <li>{% call feedback::note("No machine model is shipped with this Analyte", "Its machines folder holds no model to choose.") %}{% endcall %}</li>
 {%- endfor %}

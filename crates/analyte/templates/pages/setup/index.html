@@ -55,7 +55,7 @@
 {%- for row in rows %}
 <tr>{% call lists::cell("") %}<div class="cell-main">{% call display::hover(row.name.shown, row.name.exact) %}{% endcall %}</div>{% endcall %}
 {%- call lists::cell("") %}{% call display::hover(row.checked.shown, row.checked.exact) %}{% endcall %}{% endcall %}
-{%- call lists::cell("") %}{% call display::status(row.status.tone, row.status.word) %}{% endcall %}{% if let Some(note) = row.status.note %}<div class="cell-sub cell-note">{{ note }}</div>{% endif %}{% endcall %}</tr>
+{%- call lists::cell("") %}{% call display::status_with(row.status.tone, row.icon, row.status.word, "") %}{% endcall %}{% if let Some(note) = row.status.note %}<div class="cell-sub cell-note">{{ note }}</div>{% endif %}{% endcall %}</tr>
 {%- endfor %}
 {% endcall %}
 {%- when Err(why) %}

@@ -7,6 +7,7 @@ use crate::admin::view::{
     Column,
     format::Part,
     frame::Frame,
+    icon::Icon,
     report::{Head, Status},
 };
 
@@ -70,6 +71,7 @@ pub(super) struct Model {
     pub(super) checked: Hover,
     /// Ready, Not ready yet or Cannot be read, with why under it.
     pub(super) status: Status,
+    pub(super) icon: Icon,
 }
 
 /// GET /setup/add: the form for one more machine, with the next free name filled in.

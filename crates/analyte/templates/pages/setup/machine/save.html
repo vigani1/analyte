@@ -12,7 +12,7 @@
 <dt>Machine</dt><dd>{{ wizard.id }}</dd>
 <dt>Model</dt><dd>{{ summary.model }}</dd>
 <dt>Connection</dt><dd>{% call display::hover(summary.connection.shown, summary.connection.exact) %}{% endcall %}</dd>
-<dt>Sends results to</dt><dd><a class="link" href="{{ summary.lab_app.href }}">{{ summary.lab_app.name }}</a> <span class="mono">{{ summary.lab_app.address }}</span>{% if let Some(missing) = summary.lab_app.missing %} <span class="tone-warn">· {{ missing }}</span>{% endif %}</dd>
+<dt>Sends results to</dt><dd><a class="link" href="{{ summary.lab_app.href }}" title="{{ summary.lab_app.address }}">{{ summary.lab_app.name }}</a>{% if let Some(missing) = summary.lab_app.missing %} <span class="tone-warn">· {{ missing }}</span>{% endif %}</dd>
 <dt>Connection test</dt><dd>
 {%- match summary.test %}
 {%- when Tested::Seen { tone, title, when } %}<span class="with-icon tone-{{ tone.class() }}">{% call draw::icon(tone.icon(), "icon--md") %}{% endcall %}<span>{{ title }} · {% call display::time(when) %}{% endcall %}</span></span>
