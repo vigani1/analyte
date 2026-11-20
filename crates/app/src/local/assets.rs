@@ -1,7 +1,7 @@
-//! The files the Engine off screen loads, compiled in from the engine's own `crates/analyte/assets`, so both use the same stylesheets and fonts and nothing loads from the internet.
+//! The files the app's own pages load: the stylesheets, fonts and marks compiled in from the engine's own `crates/analyte/assets`, so both use the same ones and nothing loads from the internet, and the title bar's script from this crate.
 //!
-//! They are read from the engine's folder at build time, never copied into
-//! this crate, so the two can never differ.
+//! The engine's files are read from the engine's folder at build time, never
+//! copied into this crate, so the two can never differ.
 
 /// One file under `/static/`: its path, media type and bytes.
 pub(super) struct Asset {
@@ -13,6 +13,7 @@ pub(super) struct Asset {
 const CSS: &str = "text/css; charset=utf-8";
 const FONT: &str = "font/woff2";
 const SVG: &str = "image/svg+xml";
+const SCRIPT: &str = "text/javascript; charset=utf-8";
 
 /// One table entry from a file in `crates/analyte/assets/`.
 macro_rules! asset {
@@ -25,8 +26,8 @@ macro_rules! asset {
     };
 }
 
-/// Every file the Engine off screen loads.
-const ASSETS: [Asset; 13] = [
+/// Every file the app's own pages load.
+const ASSETS: [Asset; 14] = [
     asset!("fonts.css", CSS),
     asset!("analyte.css", CSS),
     asset!("app.css", CSS),
@@ -40,6 +41,11 @@ const ASSETS: [Asset; 13] = [
     asset!("icons/analyte-app-icon.svg", SVG),
     asset!("icons/analyte-app-icon-16.svg", SVG),
     asset!("icons/analyte-app-icon-20.svg", SVG),
+    Asset {
+        name: "title-bar.js",
+        kind: SCRIPT,
+        bytes: include_bytes!("../../assets/title-bar.js"),
+    },
 ];
 
 /// The file at `name` under `/static/`, if there is one.

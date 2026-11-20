@@ -72,7 +72,11 @@ askama = { version = "0.16.1", default-features = false, features = ["derive", "
 futures-core = { version = "0.3.34", default-features = false }
 
 # Desktop app (ADR 0019, owner-approved 2026-11-20): Tauri 2 and its official plugins, Windows only.
-tauri = { version = "2.12.7", default-features = false, features = ["wry", "common-controls-v6", "tray-icon", "image-png"] }
+# Pinned exactly: the window's title bar and pages are two webviews in one
+# window, and that multi-webview API is behind Tauri's `unstable` feature
+# (ADR 0019). An upgrade re-checks it; `crates/app` has a test that fails
+# until the pinned versions are reviewed.
+tauri = { version = "=2.12.7", default-features = false, features = ["wry", "common-controls-v6", "tray-icon", "image-png", "unstable"] }
 tauri-build = { version = "2.7.6", default-features = false }
 tauri-plugin-single-instance = "2.5.5"
 tauri-plugin-opener = { version = "2.7.3", default-features = false }
