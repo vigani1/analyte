@@ -162,7 +162,8 @@ if ($UsersMayStart) {
     if ($LASTEXITCODE -ne 0 -or -not $descriptor) { throw "Reading the service's access list failed (sc.exe sdshow exit code $LASTEXITCODE)." }
     $descriptor = $descriptor.Trim()
     if (-not $descriptor.Contains($startRight)) {
-        $updated = $descriptor -replace '^D:', ('D:' + $startRight)
+        # Insert after the list's flags (such as P for protected), before the first entry.
+        $updated = $descriptor -replace '^(D:[A-Z]*)', ('$1' + $startRight)
         & $sc sdset Analyte $updated
         if ($LASTEXITCODE -ne 0) { throw "Letting signed-in users start the service failed (sc.exe sdset exit code $LASTEXITCODE)." }
     }
