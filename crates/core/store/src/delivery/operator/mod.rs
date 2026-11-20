@@ -142,7 +142,7 @@ impl Store {
             .collect::<Result<_, _>>()?;
         let mut machines = self.db.prepare(concat!(
             "WITH owners AS (",
-            outbox_owners!("o.destination=?1 AND o.state IN (?2,?3,?4,?5,?6)"),
+            outbox_owners!("o.destination=?1 AND (o.state=?2 OR o.state=?3 OR o.state=?4 OR o.state=?5 OR o.state=?6)"),
             ")",
             " SELECT DISTINCT machine FROM owners ORDER BY machine LIMIT ?7"
         ))?;

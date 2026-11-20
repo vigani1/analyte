@@ -574,7 +574,7 @@ impl Store {
     /// second keep their real order. Only lab apps with items waiting are
     /// read, and for each only the tries of its deliveries not in Done that
     /// come after its last accepted attempt (`delivered_attempt`, see
-    /// [`DeliveryState::NOT_DONE`]), so the cost follows what is waiting, not what was kept.
+    /// `DeliveryState::NOT_DONE`), so the cost follows what is waiting, not what was kept.
     /// Each lab app's last accepted attempt is read once (`MATERIALIZED`), not
     /// again for every try compared with it.
     /// # Errors
