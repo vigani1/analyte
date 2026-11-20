@@ -4,7 +4,6 @@
 {%- import "components/feedback.html" as feedback %}
 {%- import "components/forms.html" as forms %}
 {%- import "components/layout.html" as layout %}
-{%- import "components/lists.html" as lists %}
 {%- block main %}
 {% call layout::detail_head(head) %}{% endcall %}
 {%- for notice in notices %}
@@ -44,9 +43,9 @@
 {%- if statuses.is_empty() %}
 <div class="card">{% call feedback::empty("No results", "This reading produced no results.") %}{% endcall %}</div>
 {%- else %}
-{% call lists::table(STATUS_COLUMNS) %}
+{% call display::table(STATUS_COLUMNS) %}
 {%- for (sent, shown) in statuses %}
-<tr>{% if sent.is_empty() %}{% call lists::cell("subtle") %}None sent{% endcall %}{% else %}{% call lists::cell("mono") %}{{ sent }}{% endcall %}{% endif %}{% call lists::cell("") %}{{ shown }}{% endcall %}</tr>
+<tr>{% if sent.is_empty() %}{% call display::cell("subtle") %}None sent{% endcall %}{% else %}{% call display::cell("mono") %}{{ sent }}{% endcall %}{% endif %}{% call display::cell("") %}{{ shown }}{% endcall %}</tr>
 {%- endfor %}
 {% endcall %}
 {%- endif %}

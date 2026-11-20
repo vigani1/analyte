@@ -1,4 +1,4 @@
-{#- Macros that show values: time, exact values on hover, words with times, status (with its tone's icon or its own), the verdict with its to-do list, wires and their legend, the signal path with its nodes, figures, a history timeline, a fact about one thing, the differences used for one message and where a key is found. -#}
+{#- Macros that show values: time, exact values on hover, words with times, status (with its tone's icon or its own), the verdict with its to-do list, wires and their legend, the signal path with its nodes, figures, a history timeline, a fact about one thing, the differences used for one message, where a key is found, and lists: a card of rows with a link each, key-value lists and tables. -#}
 {%- import "components/icon.html" as draw %}
 {%- import "components/feedback.html" as feedback %}
 {%- import "components/forms.html" as forms %}
@@ -218,4 +218,50 @@
 {%- endif %}
 </div>
 </section>
+{%- endmacro %}
+
+{#- A card of rows; the caller writes its `row`s. -#}
+{%- macro rows() -%}
+<ul class="card rows">
+{{- caller() }}
+</ul>
+{%- endmacro %}
+
+{#- One row of a `.rows` card: an icon in its tone, the text and a link to the page about it. -#}
+{%- macro row(icon, tone, text, href, link) -%}
+{% call row_with(icon, tone, href, link) %}{{ text }}{% endcall %}
+{%- endmacro %}
+
+{#- A `.rows` row whose main text the caller writes. -#}
+{%- macro row_with(icon, tone, href, link) -%}
+<li class="row">{% call draw::icon(icon, "tone-" ~ tone.class()) %}{% endcall %}<span class="row__main">{{ caller() }}</span><a class="link" href="{{ href }}">{{ link }}</a></li>
+{%- endmacro %}
+
+{#- A key-value list; the caller writes its `pair`s. -#}
+{%- macro kv() -%}
+<dl class="kv">
+{{- caller() }}
+</dl>
+{%- endmacro %}
+
+{#- One key and its value; the caller writes the value, `class` styles it and may be empty. -#}
+{%- macro pair(term, class) -%}
+<dt>{{ term }}</dt><dd{% if !class.is_empty() %} class="{{ class }}"{% endif %}>{{ caller() }}</dd>
+{%- endmacro %}
+
+{#- A table in a card with one header row from `columns`; the caller writes the body rows of `cell`s. -#}
+{%- macro table(columns) -%}
+<div class="card table-wrap">
+<table class="table">
+<thead><tr>{% for column in columns %}<th scope="col"{% if column.right %} class="right"{% endif %}>{% if column.hidden %}<span class="sr-only">{{ column.label }}</span>{% else %}{{ column.label }}{% endif %}</th>{% endfor %}</tr></thead>
+<tbody>
+{{- caller() }}
+</tbody>
+</table>
+</div>
+{%- endmacro %}
+
+{#- One table cell; the caller writes its content, `class` styles it and may be empty. -#}
+{%- macro cell(class) -%}
+<td{% if !class.is_empty() %} class="{{ class }}"{% endif %}>{{ caller() }}</td>
 {%- endmacro %}

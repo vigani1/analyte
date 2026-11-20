@@ -4,7 +4,6 @@
 {%- import "components/feedback.html" as feedback %}
 {%- import "components/forms.html" as forms %}
 {%- import "components/layout.html" as layout %}
-{%- import "components/lists.html" as lists %}
 {%- block main %}
 {% call layout::intro_head("Setup", "Add a machine, or choose one to set its connection and pick its lab app. Changes apply after Analyte restarts.") %}
 {% call forms::icon_button("/setup/add", crate::admin::view::icon::Icon::Plus, "Add a machine", "btn--primary") %}{% endcall %}
@@ -32,13 +31,13 @@
 {%- if rows.is_empty() %}
 <div class="card">{% call feedback::empty("No machine is listed", "Add the first machine; its setup steps follow.") %}{% call forms::link_button("/setup/add", "Add a machine", "btn--outline btn--sm") %}{% endcall %}{% endcall %}</div>
 {%- else %}
-{% call lists::table(MACHINE_COLUMNS) %}
+{% call display::table(MACHINE_COLUMNS) %}
 {%- for row in rows %}
-<tr>{% call lists::cell("") %}<div class="cell-main">{% if let Some((setup, _)) = row.links %}<a href="{{ setup }}">{{ row.id }}</a>{% else %}{{ row.id }}{% endif %}</div>{% endcall %}
-{%- if let Some(model) = row.model %}{% call lists::cell("") %}{% call display::hover(model.shown, model.exact) %}{% endcall %}{% endcall %}{% else %}{% call lists::cell("subtle") %}Not chosen yet{% endcall %}{% endif %}
-{%- call lists::cell("") %}{% call display::status_with(row.status.tone, row.status.icon, row.status.word, "") %}{% endcall %}{% endcall %}
-{%- if let Some(version) = row.version %}{% call lists::cell("") %}<span class="mono" title="{{ version.exact }}">{{ version.shown }}</span>{% endcall %}{% else %}{% call lists::cell("subtle") %}Not running yet{% endcall %}{% endif %}
-{%- call lists::cell("right") %}{% if let Some((setup, remove)) = row.links %}<span class="cluster setup__actions">{% call forms::link_button(setup, "Set up", "btn--outline btn--sm") %}{% endcall %}{% call forms::link_button(remove, "Remove", "btn--danger-quiet btn--sm") %}{% endcall %}</span>{% endif %}{% endcall %}</tr>
+<tr>{% call display::cell("") %}<div class="cell-main">{% if let Some((setup, _)) = row.links %}<a href="{{ setup }}">{{ row.id }}</a>{% else %}{{ row.id }}{% endif %}</div>{% endcall %}
+{%- if let Some(model) = row.model %}{% call display::cell("") %}{% call display::hover(model.shown, model.exact) %}{% endcall %}{% endcall %}{% else %}{% call display::cell("subtle") %}Not chosen yet{% endcall %}{% endif %}
+{%- call display::cell("") %}{% call display::status_with(row.status.tone, row.status.icon, row.status.word, "") %}{% endcall %}{% endcall %}
+{%- if let Some(version) = row.version %}{% call display::cell("") %}<span class="mono" title="{{ version.exact }}">{{ version.shown }}</span>{% endcall %}{% else %}{% call display::cell("subtle") %}Not running yet{% endcall %}{% endif %}
+{%- call display::cell("right") %}{% if let Some((setup, remove)) = row.links %}<span class="cluster setup__actions">{% call forms::link_button(setup, "Set up", "btn--outline btn--sm") %}{% endcall %}{% call forms::link_button(remove, "Remove", "btn--danger-quiet btn--sm") %}{% endcall %}</span>{% endif %}{% endcall %}</tr>
 {%- endfor %}
 {% endcall %}
 {%- endif %}
@@ -51,11 +50,11 @@
 <p class="muted setup__text">The models this Analyte can be set up for. A model that is not ready yet cannot be chosen until its missing facts or recordings are added.</p>
 {%- match models %}
 {%- when Ok(rows) %}
-{% call lists::table(MODEL_COLUMNS) %}
+{% call display::table(MODEL_COLUMNS) %}
 {%- for row in rows %}
-<tr>{% call lists::cell("") %}<div class="cell-main">{% call display::hover(row.name.shown, row.name.exact) %}{% endcall %}</div>{% endcall %}
-{%- call lists::cell("") %}{% call display::hover(row.checked.shown, row.checked.exact) %}{% endcall %}{% endcall %}
-{%- call lists::cell("") %}{% call display::status_with(row.status.tone, row.icon, row.status.word, "") %}{% endcall %}{% if let Some(note) = row.status.note %}<div class="cell-sub cell-note">{{ note }}</div>{% endif %}{% endcall %}</tr>
+<tr>{% call display::cell("") %}<div class="cell-main">{% call display::hover(row.name.shown, row.name.exact) %}{% endcall %}</div>{% endcall %}
+{%- call display::cell("") %}{% call display::hover(row.checked.shown, row.checked.exact) %}{% endcall %}{% endcall %}
+{%- call display::cell("") %}{% call display::status_with(row.status.tone, row.icon, row.status.word, "") %}{% endcall %}{% if let Some(note) = row.status.note %}<div class="cell-sub cell-note">{{ note }}</div>{% endif %}{% endcall %}</tr>
 {%- endfor %}
 {% endcall %}
 {%- when Err(why) %}

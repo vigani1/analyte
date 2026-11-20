@@ -4,7 +4,6 @@
 {%- import "components/feedback.html" as feedback %}
 {%- import "components/forms.html" as forms %}
 {%- import "components/layout.html" as layout %}
-{%- import "components/lists.html" as lists %}
 {%- block main %}
 {% call layout::detail_head(head) %}
 {%- if !actions.is_empty() %}
@@ -54,13 +53,13 @@
 {%- if recent.is_empty() %}
 <div class="card">{% call feedback::empty("Nothing received yet", "Messages this machine sends are listed here, newest first.") %}{% endcall %}</div>
 {%- else %}
-{% call lists::table(MESSAGE_COLUMNS) %}
+{% call display::table(MESSAGE_COLUMNS) %}
 {%- for message in recent %}
-<tr>{% call lists::cell("num") %}{% call display::time(message.when) %}{% endcall %}{% endcall %}
-{%- if let Some((shown, all)) = message.sample %}{% call lists::cell("num") %}<span title="{{ all }}">{{ shown }}</span>{% endcall %}{% else %}{% call lists::cell("num subtle") %}—{% endcall %}{% endif %}
-{%- call lists::cell("") %}{% call display::status_with(message.reading.tone, message.reading.icon, message.reading.word, message.reading.exact) %}{% endcall %}{% if let Some(review) = message.review %}<div class="cell-sub cell-note"><a class="link" href="{{ review.href }}">{{ review.label }}</a></div>{% endif %}{% endcall %}
-{%- if let Some(delivery) = message.delivery %}{% call lists::cell("") %}{% call display::status_with(delivery.look.tone, delivery.look.icon, delivery.words, delivery.exact) %}{% endcall %}{% endcall %}{% else %}{% call lists::cell("subtle") %}{{ message.no_delivery }}{% endcall %}{% endif %}
-{%- if let Some(href) = message.href %}{% call lists::cell("") %}<a class="link" href="{{ href }}">How it was read</a>{% endcall %}{% else %}{% call lists::cell("subtle") %}—{% endcall %}{% endif %}</tr>
+<tr>{% call display::cell("num") %}{% call display::time(message.when) %}{% endcall %}{% endcall %}
+{%- if let Some((shown, all)) = message.sample %}{% call display::cell("num") %}<span title="{{ all }}">{{ shown }}</span>{% endcall %}{% else %}{% call display::cell("num subtle") %}—{% endcall %}{% endif %}
+{%- call display::cell("") %}{% call display::status_with(message.reading.tone, message.reading.icon, message.reading.word, message.reading.exact) %}{% endcall %}{% if let Some(review) = message.review %}<div class="cell-sub cell-note"><a class="link" href="{{ review.href }}">{{ review.label }}</a></div>{% endif %}{% endcall %}
+{%- if let Some(delivery) = message.delivery %}{% call display::cell("") %}{% call display::status_with(delivery.look.tone, delivery.look.icon, delivery.words, delivery.exact) %}{% endcall %}{% endcall %}{% else %}{% call display::cell("subtle") %}{{ message.no_delivery }}{% endcall %}{% endif %}
+{%- if let Some(href) = message.href %}{% call display::cell("") %}<a class="link" href="{{ href }}">How it was read</a>{% endcall %}{% else %}{% call display::cell("subtle") %}—{% endcall %}{% endif %}</tr>
 {%- endfor %}
 {% endcall %}
 {%- endif %}

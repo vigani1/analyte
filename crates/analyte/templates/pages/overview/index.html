@@ -3,7 +3,6 @@
 {%- import "components/display.html" as display %}
 {%- import "components/feedback.html" as feedback %}
 {%- import "components/layout.html" as layout %}
-{%- import "components/lists.html" as lists %}
 {%- block main %}
 {% call layout::page_head(today, "Overview", counts) %}{% endcall %}
 {% call display::verdict(verdict) %}{% endcall %}
@@ -22,9 +21,9 @@
 <div class="split">
 <section class="section" id="orders" aria-labelledby="ov-orders">
 {% call layout::label("ov-orders", "03 · Orders", "") %}{% endcall %}
-{% call lists::rows() %}
+{% call display::rows() %}
 {%- for order in orders %}
-{% call lists::row(order.icon, order.tone, order.text, order.href, order.link) %}{% endcall %}
+{% call display::row(order.icon, order.tone, order.text, order.href, order.link) %}{% endcall %}
 {%- endfor %}
 {% endcall %}
 {%- if let Some(notice) = restore %}
@@ -35,18 +34,18 @@
 <section class="section grow" id="disk" aria-labelledby="ov-disk">
 {% call layout::label("ov-disk", "04 · Disk and alerts", "") %}{% endcall %}
 {% call layout::card() %}
-{% call lists::kv() %}
-{% call lists::pair("Free disk space", "") %}{% call display::exact(disk.free, disk.free_exact) %}{% endcall %}{% endcall %}
-{% call lists::pair("Always kept free", "") %}{% call display::exact(disk.reserve, disk.reserve_exact) %}{% endcall %} <span class="muted">Analyte stops receiving below this</span>{% endcall %}
-{% call lists::pair("Disk status", "") %}{% call display::status(disk.tone(), disk.status()) %}{% endcall %}{% endcall %}
-{% call lists::pair("Active alerts", "num") %}{{ alerts.len() }}{% endcall %}
-{% call lists::pair("Alert relays", "num") %}{{ relays.len() }}{% endcall %}
+{% call display::kv() %}
+{% call display::pair("Free disk space", "") %}{% call display::exact(disk.free, disk.free_exact) %}{% endcall %}{% endcall %}
+{% call display::pair("Always kept free", "") %}{% call display::exact(disk.reserve, disk.reserve_exact) %}{% endcall %} <span class="muted">Analyte stops receiving below this</span>{% endcall %}
+{% call display::pair("Disk status", "") %}{% call display::status(disk.tone(), disk.status()) %}{% endcall %}{% endcall %}
+{% call display::pair("Active alerts", "num") %}{{ alerts.len() }}{% endcall %}
+{% call display::pair("Alert relays", "num") %}{{ relays.len() }}{% endcall %}
 {% endcall %}
 {% endcall %}
 {%- if !alerts.is_empty() %}
-{% call lists::table(ALERT_COLUMNS) %}
+{% call display::table(ALERT_COLUMNS) %}
 {%- for alert in alerts %}
-<tr>{% call lists::cell("cell-main") %}<span title="{{ alert.kind }}">{{ alert.words }}</span>{% endcall %}{% call lists::cell("") %}{{ alert.machine }}{% endcall %}{% call lists::cell("") %}{{ alert.responder }}{% endcall %}{% call lists::cell("") %}{% if let Some(raised) = alert.raised %}{% call display::time(raised) %}{% endcall %}{% else %}<span class="subtle">{{ crate::admin::view::format::NOT_RECORDED }}</span>{% endif %}{% endcall %}{% call lists::cell("num right") %}{{ alert.value }}{% endcall %}</tr>
+<tr>{% call display::cell("cell-main") %}<span title="{{ alert.kind }}">{{ alert.words }}</span>{% endcall %}{% call display::cell("") %}{{ alert.machine }}{% endcall %}{% call display::cell("") %}{{ alert.responder }}{% endcall %}{% call display::cell("") %}{% if let Some(raised) = alert.raised %}{% call display::time(raised) %}{% endcall %}{% else %}<span class="subtle">{{ crate::admin::view::format::NOT_RECORDED }}</span>{% endif %}{% endcall %}{% call display::cell("num right") %}{{ alert.value }}{% endcall %}</tr>
 {%- endfor %}
 {% endcall %}
 {%- endif %}

@@ -4,7 +4,6 @@
 {%- import "components/feedback.html" as feedback %}
 {%- import "components/forms.html" as forms %}
 {%- import "components/layout.html" as layout %}
-{%- import "components/lists.html" as lists %}
 {%- block main %}
 {% call layout::intro_head("Deliveries", DELIVERIES_LEDE) %}
 <nav class="chips" aria-label="Show">
@@ -15,15 +14,15 @@
 <div class="card">{% call feedback::empty(empty.title, empty.text) %}{% if let Some((href, words)) = empty.link %}<a class="link" href="{{ href }}">{{ words }}</a>{% endif %}{% endcall %}</div>
 {%- endif %}
 {%- if !rows.is_empty() %}
-{% call lists::table(DELIVERY_COLUMNS) %}
+{% call display::table(DELIVERY_COLUMNS) %}
 {%- for row in rows %}
-<tr>{% if let Some(queued) = row.queued %}{% call lists::cell("num") %}{% call display::time(queued) %}{% endcall %}{% endcall %}{% else %}{% call lists::cell("subtle") %}Not recorded{% endcall %}{% endif %}
-{%- if let Some((shown, all)) = row.sample %}{% call lists::cell("num") %}<span title="{{ all }}">{{ shown }}</span>{% endcall %}{% else if let Some(kind) = row.kind %}{% call lists::cell("subtle more-nowrap") %}{{ kind }}{% endcall %}{% else %}{% call lists::cell("subtle") %}—{% endcall %}{% endif %}
-{%- if let Some(from) = row.from %}{% call lists::cell("more-nowrap") %}{{ from }}{% endcall %}{% else %}{% call lists::cell("subtle") %}—{% endcall %}{% endif %}
-{%- call lists::cell("more-nowrap") %}{{ row.to }}{% endcall %}
-{%- if let Some(results) = row.results %}{% call lists::cell("num right") %}{{ results }}{% endcall %}{% else %}{% call lists::cell("right subtle") %}—{% endcall %}{% endif %}
-{%- call lists::cell("") %}{% call display::status_with(row.outcome.tone, row.outcome.icon, row.outcome.word, row.outcome.exact) %}{% endcall %}{% endcall %}
-{%- if let Some(href) = row.resend %}{% call lists::cell("right more-nowrap") %}<a class="link" href="{{ href }}">Send again</a>{% endcall %}{% else %}{% call lists::cell("") %}{% endcall %}{% endif %}</tr>
+<tr>{% if let Some(queued) = row.queued %}{% call display::cell("num") %}{% call display::time(queued) %}{% endcall %}{% endcall %}{% else %}{% call display::cell("subtle") %}Not recorded{% endcall %}{% endif %}
+{%- if let Some((shown, all)) = row.sample %}{% call display::cell("num") %}<span title="{{ all }}">{{ shown }}</span>{% endcall %}{% else if let Some(kind) = row.kind %}{% call display::cell("subtle more-nowrap") %}{{ kind }}{% endcall %}{% else %}{% call display::cell("subtle") %}—{% endcall %}{% endif %}
+{%- if let Some(from) = row.from %}{% call display::cell("more-nowrap") %}{{ from }}{% endcall %}{% else %}{% call display::cell("subtle") %}—{% endcall %}{% endif %}
+{%- call display::cell("more-nowrap") %}{{ row.to }}{% endcall %}
+{%- if let Some(results) = row.results %}{% call display::cell("num right") %}{{ results }}{% endcall %}{% else %}{% call display::cell("right subtle") %}—{% endcall %}{% endif %}
+{%- call display::cell("") %}{% call display::status_with(row.outcome.tone, row.outcome.icon, row.outcome.word, row.outcome.exact) %}{% endcall %}{% endcall %}
+{%- if let Some(href) = row.resend %}{% call display::cell("right more-nowrap") %}<a class="link" href="{{ href }}">Send again</a>{% endcall %}{% else %}{% call display::cell("") %}{% endcall %}{% endif %}</tr>
 {%- endfor %}
 {% endcall %}
 {%- endif %}

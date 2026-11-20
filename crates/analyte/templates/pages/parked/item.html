@@ -4,7 +4,6 @@
 {%- import "components/feedback.html" as feedback %}
 {%- import "components/forms.html" as forms %}
 {%- import "components/layout.html" as layout %}
-{%- import "components/lists.html" as lists %}
 {%- block main %}
 {% call layout::item_head(head) %}{% endcall %}
 <div class="split">
@@ -20,9 +19,9 @@
 <section class="card" aria-labelledby="rd-linked">
 <div class="card__head"><h2 id="rd-linked" class="card__title">Everything linked to it</h2></div>
 <div class="card__body stack">
-{% call lists::kv() %}
+{% call display::kv() %}
 {%- for pair in linked %}
-{% call lists::pair(pair.term, "") %}{% call display::words(pair.value) %}{% endcall %}{% endcall %}
+{% call display::pair(pair.term, "") %}{% call display::words(pair.value) %}{% endcall %}{% endcall %}
 {%- endfor %}
 {% endcall %}
 {%- if let Some(note) = linked_note %}
