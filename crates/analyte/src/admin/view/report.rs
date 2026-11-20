@@ -4,6 +4,7 @@ use super::{
     format::{Line, Moment, Part},
     frame::Frame,
     icon::Icon,
+    refusal::Refusal,
 };
 use crate::admin::server::Context;
 use crate::admin::sessions::Session;
@@ -370,15 +371,16 @@ impl Problem {
         };
         match page.render() {
             Ok(html) => (self.status(), Html(html)).into_response(),
-            Err(render) => view::refusal(
-                self.status(),
+            Err(render) => Refusal::PageFailed {
+                status: self.status(),
                 title,
-                "This page could not be shown. Give the details below to support.",
-                format!(
+                text: "This page could not be shown. Give the details below to support.",
+                detail: format!(
                     "{}; the page failed too: {render}",
                     detail.unwrap_or_else(|| alert.to_owned())
                 ),
-            ),
+            }
+            .page(&state.assets),
         }
     }
 }

@@ -822,7 +822,10 @@ fn assert_logo(path: &str, page: &str) {
                 "viewBox=\"0 0 48 48\" aria-hidden=\"true\"><path class=\"logo__tile\" "
             )));
         }
-        "/login" => {}
+        "/login" => assert!(page.contains(concat!(
+            "<svg class=\"logo\" width=\"44\" height=\"44\" ",
+            "viewBox=\"0 0 48 48\" aria-hidden=\"true\"><path class=\"logo__tile\" "
+        ))),
         _ => assert!(
             page.contains(concat!(
                 "<img class=\"mark\" src=\"/static/icons/analyte-app-icon.svg\" ",
@@ -836,7 +839,8 @@ fn assert_logo(path: &str, page: &str) {
 /// ADR 0018: the restyled Overview loads fonts.css, analyte.css and app.css in
 /// that order; every other page keeps admin.css. Never both on one page.
 /// The pages in the new look so far (ADR 0018); the others keep `admin.css`.
-const RESTYLED: [&str; 6] = [
+const RESTYLED: [&str; 7] = [
+    "/login",
     "/",
     "/parked",
     "/machines",
@@ -874,7 +878,7 @@ fn assert_stylesheets(path: &str, page: &str) {
 async fn assert_overview_login(host: &str, bearer: &str) -> Result<(String, String), Error> {
     let challenge = request(host, "/login", "", None).await?;
     let csrf = challenge
-        .split("name=\"csrf\" type=\"hidden\" value=\"")
+        .split("type=\"hidden\" name=\"csrf\" value=\"")
         .nth(1)
         .and_then(|s| s.split('"').next())
         .ok_or("CSRF challenge missing")?;
@@ -924,7 +928,7 @@ async fn assert_overview_rejects_login_and_missing_route(
 ) -> Result<(), Error> {
     let challenge = request(host, "/login", "", None).await?;
     let csrf = challenge
-        .split("name=\"csrf\" type=\"hidden\" value=\"")
+        .split("type=\"hidden\" name=\"csrf\" value=\"")
         .nth(1)
         .and_then(|s| s.split('"').next())
         .ok_or("CSRF challenge missing")?;

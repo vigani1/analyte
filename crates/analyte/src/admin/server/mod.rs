@@ -6,12 +6,13 @@ use super::{
     setup::Step,
 };
 use crate::admin::Error;
+use crate::admin::view::refusal::Refusal;
 use crate::installation::config::Program;
 use analyte_model::Identifier;
 use axum::{
     Form, Router,
     extract::{ConnectInfo, DefaultBodyLimit, FromRequest, Request, State},
-    http::{StatusCode, header},
+    http::{Method, header},
     middleware::{self, Next},
     response::Response,
     routing::{get, post},
@@ -24,6 +25,7 @@ use std::{
 };
 use tokio::sync::{Semaphore, watch};
 mod sign_in;
+use sign_in::Attempt;
 #[cfg(all(test, feature = "test-hooks"))]
 mod tests;
 
@@ -373,9 +375,22 @@ fn router(state: Arc<Context>) -> Router {
                 // Runs after the outer limit below, so setup forms get the larger bound.
                 .layer(DefaultBodyLimit::max(super::setup::FORM_LIMIT)),
         )
+        .fallback(not_found)
+        // After every route, merged ones too: it is set on each route there is.
+        .method_not_allowed_fallback(wrong_method)
         .layer(DefaultBodyLimit::max(1024))
         .layer(middleware::from_fn_with_state(state.clone(), protect))
         .with_state(state)
+}
+
+/// Any address without a page.
+async fn not_found(State(state): State<Arc<Context>>) -> Response {
+    Refusal::PageNotFound.page(&state.assets)
+}
+
+/// An address that takes other requests, such as opening Sign out as a page.
+async fn wrong_method(State(state): State<Arc<Context>>, method: Method) -> Response {
+    Refusal::WrongMethod(method).page(&state.assets)
 }
 
 async fn protect(State(state): State<Arc<Context>>, mut request: Request, next: Next) -> Response {
@@ -413,22 +428,22 @@ async fn protect(State(state): State<Arc<Context>>, mut request: Request, next: 
         .and_then(|v| v.to_str().ok());
     let same_origin = origin.is_none_or(|v| v == state.origin);
     let mut response = if session.is_err() {
-        super::view::refusal(
-            StatusCode::SERVICE_UNAVAILABLE,
-            "Analyte needs a restart",
-            "Analyte cannot check browser sessions any more. Restart Analyte, then sign in again.",
-            "admin session lookup failed",
-        )
+        Refusal::NeedsRestart.page(&state.assets)
     } else if !valid_host || !same_origin {
-        sign_in::unauthorized(&state, None)
+        sign_in::unauthorized(&state, None, Attempt::Open)
     } else if login || public || authenticated {
         let session = session.ok().flatten();
         if let Some(session) = &session {
             request.extensions_mut().insert(session.clone());
         }
-        answer(&state, request, next, session).await
+        plain_refusal_as_page(&state.assets, answer(&state, request, next, session).await).await
     } else {
-        sign_in::unauthorized(&state, session.ok().flatten().as_ref())
+        let attempt = if request.method() == Method::POST {
+            Attempt::Form
+        } else {
+            Attempt::Open
+        };
+        sign_in::unauthorized(&state, session.ok().flatten().as_ref(), attempt)
     };
     for (name, value) in [
         (
@@ -467,7 +482,7 @@ struct Csrf {
 /// A POST under `/setup/`: a setup write. It gets the larger form limit and,
 /// once its form has passed the session check, [`WRITE_BUDGET`].
 fn setup_write(request: &Request) -> bool {
-    request.method() == axum::http::Method::POST && request.uri().path().starts_with("/setup/")
+    request.method() == Method::POST && request.uri().path().starts_with("/setup/")
 }
 
 /// Runs an admitted request within its budget. Its form is read and checked
@@ -488,8 +503,8 @@ async fn answer(
         .map(|ConnectInfo(lifetime)| lifetime.clone());
     let checked = match tokio::time::timeout(REQUEST_BUDGET, checked(request, session)).await {
         Ok(Ok(request)) => request,
-        Ok(Err(refusal)) => return *refusal,
-        Err(_) => return too_long(),
+        Ok(Err(refusal)) => return refusal.page(&state.assets),
+        Err(_) => return Refusal::TooLong.page(&state.assets),
     };
     let budget = if write {
         state.write_budget
@@ -500,36 +515,44 @@ async fn answer(
     if write && let Some(lifetime) = lifetime {
         lifetime.keep_open_for(left.saturating_add(ANSWER_TIME));
     }
+    // Past the budget the work it started may still finish, so the page says
+    // to look before trying again.
     tokio::time::timeout(left, next.run(checked))
         .await
-        .unwrap_or_else(|_| too_long())
+        .unwrap_or_else(|_| Refusal::TooLong.page(&state.assets))
 }
 
-/// The answer to a request that ran past its budget. The work it started may
-/// still finish, so the page says to look before trying again.
-fn too_long() -> Response {
-    super::view::refusal(
-        StatusCode::GATEWAY_TIMEOUT,
-        "This took too long",
-        concat!(
-            "Analyte did not finish in time. Check the page before trying again: ",
-            "an action may already have been saved.",
-        ),
-        "admin request deadline exceeded",
-    )
+/// The most a plain-text refusal's words are read to show them for support.
+const PLAIN_LIMIT: usize = 4096;
+
+/// The web framework's own refusals of an address, a query or a form it could
+/// not read are plain text; they leave as the refusal page with the same
+/// status, keeping the framework's words for support. Every other answer
+/// passes as it is.
+async fn plain_refusal_as_page(assets: &super::view::assets::Root, response: Response) -> Response {
+    let plain = response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .is_some_and(|kind| kind.as_bytes().starts_with(b"text/plain"));
+    let status = response.status();
+    if !plain || !(status.is_client_error() || status.is_server_error()) {
+        return response;
+    }
+    let detail = match axum::body::to_bytes(response.into_body(), PLAIN_LIMIT).await {
+        Ok(words) => String::from_utf8_lossy(&words).into_owned(),
+        Err(error) => format!("its words could not be read within {PLAIN_LIMIT} bytes: {error}"),
+    };
+    Refusal::Unreadable { status, detail }.page(assets)
 }
 
 /// The request with its posted form read and the form's CSRF value checked
 /// against the session, or the refusal; a request that posts nothing passes as it is.
-async fn checked(
-    request: Request,
-    session: Option<Arc<Session>>,
-) -> Result<Request, Box<Response>> {
-    if request.method() != axum::http::Method::POST {
+async fn checked(request: Request, session: Option<Arc<Session>>) -> Result<Request, Refusal> {
+    if request.method() != Method::POST {
         return Ok(request);
     }
     let Some(session) = session else {
-        return Err(Box::new(form_expired("CSRF session required")));
+        return Err(Refusal::FormExpired("CSRF session required"));
     };
     let limit = if setup_write(&request) {
         super::setup::FORM_LIMIT
@@ -538,27 +561,13 @@ async fn checked(
     };
     let (parts, body) = request.into_parts();
     let Ok(bytes) = axum::body::to_bytes(body, limit).await else {
-        return Err(Box::new(super::view::refusal(
-            StatusCode::PAYLOAD_TOO_LARGE,
-            "Too much text",
-            "The form holds more text than Analyte accepts. Shorten what you typed and try again.",
-            "admin form exceeds limit",
-        )));
+        return Err(Refusal::TooMuchText);
     };
     let copy = Request::from_parts(parts.clone(), axum::body::Body::from(bytes.clone()));
     let form = Form::<Csrf>::from_request(copy, &()).await;
     if !form.is_ok_and(|Form(form)| session.csrf_valid(&form.csrf)) {
-        return Err(Box::new(form_expired("CSRF token invalid or missing")));
+        // Usually an old page or a new sign-in.
+        return Err(Refusal::FormExpired("CSRF token invalid or missing"));
     }
     Ok(Request::from_parts(parts, axum::body::Body::from(bytes)))
-}
-
-/// The refusal for a form whose session check failed, usually an old page or a new sign-in.
-fn form_expired(detail: &'static str) -> Response {
-    super::view::refusal(
-        StatusCode::FORBIDDEN,
-        "This form has expired",
-        "Go back, reload the page and try again. Nothing was changed.",
-        detail,
-    )
 }

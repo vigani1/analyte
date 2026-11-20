@@ -8,7 +8,7 @@
 //! pages' `/static/admin.css` has no version and, like every page, is not kept.
 use axum::{
     extract::{Path, State},
-    http::{StatusCode, header},
+    http::header,
     response::{IntoResponse, Response},
 };
 use std::sync::Arc;
@@ -151,12 +151,7 @@ pub(in crate::admin) async fn serve(
             }
             response
         }
-        None => super::refusal(
-            StatusCode::NOT_FOUND,
-            "File not found",
-            "Analyte has no file at this address.",
-            "static asset not found",
-        ),
+        None => super::refusal::Refusal::FileNotFound.page(&state.assets),
     }
 }
 
