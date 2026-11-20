@@ -1,4 +1,4 @@
-{#- The sidebar of every restyled page: brand, engine box, main links, the More group and the sign-out foot. -#}
+{#- The sidebar of every restyled page: brand, engine box (with a polite live region the script speaks updates in), main links (a region the script refreshes for the Needs review count), the More group and the sign-out foot. -#}
 {%- import "components/icon.html" as draw %}
 <nav class="sidebar" aria-label="Main">
 <div class="brand">
@@ -9,7 +9,8 @@
 <span class="live-dot live-dot--still"></span>
 <span class="engine__text"><span class="engine__title">Engine running</span><span class="engine__meta">{{ frame.sidebar.loaded }}</span></span>
 </div>
-<ul class="nav">
+<p id="live-say" class="sr-only" aria-live="polite"></p>
+<ul class="nav" data-live-region="nav">
 {%- for link in frame.sidebar.main %}
 <li><a href="{{ link.tab.href() }}"{% if link.current %} aria-current="page"{% endif %}>{% call draw::icon(link.icon, "") %}{% endcall %}<span class="nav__label">{{ link.tab.label() }}</span>
 {%- if let Some(count) = link.count %}<span class="nav__count"><span class="sr-only">, </span>{{ count }}</span>{% endif %}</a></li>

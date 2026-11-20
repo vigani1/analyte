@@ -121,14 +121,24 @@ fn clock_in(at: Timestamp, now: Timestamp, zone: &TimeZone) -> String {
     at.strftime(pattern).to_string()
 }
 
-/// What the sidebar says about when the page was made: "Page loaded 10:45".
-/// Pages are not live yet, so this is the minute it was loaded, not a clock.
+/// What the sidebar says about when the page was made: "Page loaded 10:45",
+/// the minute it was loaded. While the live stream is connected, `live.js`
+/// shows [`live_clock`] instead and returns to this when the stream drops.
 pub(in crate::admin) fn page_loaded(now: Timestamp) -> String {
     page_loaded_in(now, &TimeZone::system())
 }
 
 fn page_loaded_in(now: Timestamp, zone: &TimeZone) -> String {
     format!("Page loaded {}", clock_in(now, now, zone))
+}
+
+/// The time a live page last heard from Analyte, to the second: "10:45:12".
+pub(in crate::admin) fn live_clock(now: Timestamp) -> String {
+    live_clock_in(now, &TimeZone::system())
+}
+
+fn live_clock_in(now: Timestamp, zone: &TimeZone) -> String {
+    now.to_zoned(zone.clone()).strftime("%H:%M:%S").to_string()
 }
 
 /// The date line above a page title: "Thursday 19 November · 10:45".
@@ -2007,6 +2017,8 @@ mod tests {
         // Owner request 2026-11-19 (screenshot review, PR #273): the sidebar
         // says when the page was loaded, to the minute, until pages are live.
         assert_eq!(page_loaded_in(now, utc), "Page loaded 23:54");
+        // Owner decision 2026-11-20 (PR c2, Sidebar mockup): "Live · 10:45:12".
+        assert_eq!(live_clock_in(now, utc), "23:54:37");
         let shown = moment_unix(100, now);
         assert_eq!(shown.datetime, "1970-01-01T00:01:40Z");
         assert_eq!(shown.exact, "1970-01-01T00:01:40Z (Unix 100)");

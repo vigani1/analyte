@@ -187,7 +187,7 @@ fn assert_new_look(page: &str) {
     assert!(!page.contains("admin.css"));
     assert!(page.contains("<a href=\"/machines\" aria-current=\"page\">"));
     assert!(!page.contains("style="));
-    assert!(!page.contains("<script"));
+    assert!(!other_script(page));
 }
 
 /// The row of `name` on the list.

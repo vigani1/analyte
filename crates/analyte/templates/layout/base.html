@@ -1,14 +1,15 @@
-{#- The page frame of every page someone signed in sees: the shared head and anything a page adds there (a reload), the sidebar and the main column, which a page may centre. -#}
+{#- The page frame of every page someone signed in sees: the shared head, the one script file (live updates, which the page works without) and anything a page adds there (a reload), the sidebar and the main column, which a page may centre. The body names the live area the page shows; a page with one marks its main column as a region the script may refresh. -#}
 <!doctype html>
 <html lang="en">
 <head>
 {% include "layout/head.html" %}
+<script src="{{ frame.assets }}live.js" defer></script>
 {%- block head %}{% endblock %}
 </head>
-<body>
+<body data-live="{{ frame.live }}">
 <div class="app">
 {% include "layout/sidebar.html" %}
-<main class="main{% block main_class %}{% endblock %}">
+<main class="main{% block main_class %}{% endblock %}"{% if !frame.live.is_empty() %} data-live-region="main"{% endif %}>
 {%- block main %}{% endblock %}
 </main>
 </div>

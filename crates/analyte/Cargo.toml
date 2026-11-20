@@ -15,6 +15,7 @@ test-hooks = ["analyte-sink/test-hooks"]
 
 [dependencies]
 askama = { workspace = true }
+futures-core = { workspace = true }
 axum = { workspace = true, features = ["form"] }
 getrandom = { workspace = true }
 base64 = { workspace = true }

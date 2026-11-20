@@ -32,6 +32,7 @@ fn frame() -> Frame {
     Frame {
         title: "Overview".into(),
         assets: "/static/0123456789abcdef/".into(),
+        live: "overview",
         sidebar: Sidebar {
             loaded: "Page loaded 10:45".into(),
             main: Vec::new(),

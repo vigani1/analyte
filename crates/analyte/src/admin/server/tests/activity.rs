@@ -55,9 +55,10 @@ fn seed_activity(scene: &Scene) -> Result<(), Error> {
 
 /// The visible words of the feed's lines, one per line.
 fn lines(page: &str) -> Vec<&str> {
-    page.split("<li class=\"feed__line\">")
+    page.split("<li class=\"feed__line\" data-key=\"")
         .skip(1)
         .map(|line| line.split("</li>").next().unwrap_or_default())
+        .map(|line| line.split_once("\">").map_or(line, |(_, rest)| rest))
         .collect()
 }
 
@@ -130,10 +131,10 @@ async fn activity_lists_what_was_stored_and_never_test_codes_or_values() -> Resu
         "Complaint follow-up",
         "HTTP 422",
         "keys missing",
-        "<script",
     ] {
         assert!(!page.contains(private), "the page shows {private}");
     }
+    assert!(!other_script(&page));
     assert!(
         !page.contains("Show earlier activity"),
         "one page holds the scene"
