@@ -23,6 +23,22 @@ pub enum DeliveryState {
     Conflict,
 }
 
+impl DeliveryState {
+    /// Every state but Done, named so that reads of what waits go through the
+    /// index by lab app and state instead of every delivery. A delivery in
+    /// Done holds no attempt after its own latest accepted one, since every
+    /// attempt moves a delivery out of Done unless it is itself accepted; so a
+    /// try after a lab app's last accepted delivery always belongs to a
+    /// delivery in one of these.
+    pub(crate) const NOT_DONE: [Self; 5] = [
+        Self::Pending,
+        Self::InFlight,
+        Self::Parked,
+        Self::Paused,
+        Self::Conflict,
+    ];
+}
+
 /// Bounded operator listing without clinical payloads.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoredDelivery {
@@ -126,17 +142,22 @@ impl Store {
             .collect::<Result<_, _>>()?;
         let mut machines = self.db.prepare(concat!(
             "WITH owners AS (",
-            outbox_owners!("o.destination=?1 AND o.state!=?2"),
+            outbox_owners!("o.destination=?1 AND (o.state=?2 OR o.state=?3 OR o.state=?4 OR o.state=?5 OR o.state=?6)"),
             ")",
-            " SELECT DISTINCT machine FROM owners ORDER BY machine LIMIT ?3"
+            " SELECT DISTINCT machine FROM owners ORDER BY machine LIMIT ?7"
         ))?;
+        let [pending, in_flight, parked, paused, conflict] = DeliveryState::NOT_DONE;
         rows.into_iter()
             .map(|(destination, sending, held)| {
                 let names: Vec<String> = machines
                     .query_map(
                         params![
                             destination,
-                            DeliveryState::Done,
+                            pending,
+                            in_flight,
+                            parked,
+                            paused,
+                            conflict,
                             i64::try_from(UNDELIVERED_MACHINES)
                                 .map_err(|_| Error::InvalidDeliveryInput)?
                         ],
@@ -221,6 +242,19 @@ impl Store {
         after: i64,
         filter: DeliveryFilter,
     ) -> Result<Vec<ListedDelivery>, Error> {
+        self.listed_deliveries_up_to(after, filter, self.limits.page_rows)
+    }
+
+    /// Like [`Store::listed_deliveries`], with at most `limit` rows, so a page
+    /// that shows fewer than a store page builds only those it may show.
+    /// # Errors
+    /// Reports database failures and corrupt stored identities, states or evidence.
+    pub fn listed_deliveries_up_to(
+        &self,
+        after: i64,
+        filter: DeliveryFilter,
+        limit: usize,
+    ) -> Result<Vec<ListedDelivery>, Error> {
         type Row = (
             i64,
             String,
@@ -239,7 +273,7 @@ impl Store {
                     after,
                     filter == DeliveryFilter::Undelivered,
                     DeliveryState::Done,
-                    i64::try_from(self.limits.page_rows)
+                    i64::try_from(limit.min(self.limits.page_rows))
                         .map_err(|_| Error::InvalidDeliveryInput)?
                 ],
                 |r| {

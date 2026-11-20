@@ -13,7 +13,13 @@ own; a store older than 15 or newer than this build is refused. Step 16
 (`upkeep/parked_at.sql`) adds `parked.parked_at`, when an item was parked: new
 items get it from a trigger in the same write, kept items only where the same
 transaction wrote a time (a rejected or conflicting delivery's attempt), and
-NULL otherwise. WAL and `synchronous=FULL` deliberately require
+NULL otherwise. Step 17 (`upkeep/read_indexes.sql`) adds only indexes for the
+admin pages' reads, plus two helper columns on `outbox`: `delivered_at` and
+`delivered_attempt`, the latest time and highest sequence of a delivery's
+accepted ("Done") attempts. They are filled from the attempts already kept and
+kept current by a trigger in the same write as each attempt, because no index
+can reach a delivery's lab app from its attempts. No stored value changes.
+WAL and `synchronous=FULL` deliberately require
 SQLite to sync each committed WAL transaction before success is returned.
 Foreign keys are enabled on every connection; lock waits have a configured
 nonzero timeout capped at 30 seconds. These guarantees still require a local
@@ -79,6 +85,18 @@ moment ([sqlite3_busy_handler](https://www.sqlite.org/c3ref/busy_handler.html),
 `IMMEDIATE`, contention waits up to the configured busy timeout instead. The
 owner lock file is released only after the connection, including SQLite's
 checkpoint on close, has closed.
+
+The admin pages' reads share the store's one thread with intake, so each one
+is an index lookup or range sized by what the page shows, not a scan of what
+is kept (schema 17; plans checked with `EXPLAIN QUERY PLAN`, no `ANALYZE`):
+
+| Read | Path |
+|---|---|
+| `activity` | per source, newest first through its time index (`receipts_received`, `parked_time`, `parked_resolved_time`, `attempts_accepted_time`, `machine_order_history_updated`, `audit_time`), at most one page each, merged; a stored machine uses `receipts_machine_received` or `machine_order_history_machine_updated`; an attempt's machine races a newest-first read against the machine's own deliveries (`outbox_receipt`, `outbox_ordering`, `attempts_delivery`) |
+| `activity_counts` | one range of each time index |
+| `last_delivered` | lab apps one index step each (any outbox index led by `destination`), then one `outbox_delivered_at` lookup each |
+| `failing_destinations` | lab apps with items waiting, then the tries of their deliveries not in Done after `delivered_attempt` (`outbox_destination_state`, `attempts_delivery`) |
+| `newest_receipts`, `oldest_retained_receipt` | `receipts_machine_received`, `receipts_received` |
 
 Backup uses SQLite's online backup API in bounded page steps with a deadline,
 then checks the target integrity. Existing targets are refused. A failed backup

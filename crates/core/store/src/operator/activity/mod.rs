@@ -28,16 +28,6 @@ pub enum ActivityGroup {
 impl ActivityGroup {
     /// Every group, in the order a page lists its filters.
     pub const ALL: [Self; 4] = [Self::Results, Self::Orders, Self::Problems, Self::Changes];
-
-    /// The number the feed's query gives each group.
-    const fn number(self) -> i64 {
-        match self {
-            Self::Results => 1,
-            Self::Orders => 2,
-            Self::Problems => 3,
-            Self::Changes => 4,
-        }
-    }
 }
 
 /// Where a page of the feed starts: the position of the last line shown.
@@ -178,53 +168,382 @@ pub struct ActivityMarks {
     pub audit: i64,
 }
 
-/// Every line as `(at, source, key, machine, grp)`. The sources' numbers fix
-/// the order of lines stored in the same second. Read-only audit entries
-/// (opening original bytes, listing from the command line) are not changes,
-/// and an audit entry stored as an item's resolution is already its
-/// Resolved line.
-macro_rules! events {
+/// The machine a parked item `x` names: through its first target, when it has
+/// one, that is a stored message, a delivery of one, a machine order or a
+/// transfer, else through the poll intent it belongs to.
+macro_rules! parked_machine {
     () => {
         concat!(
-            "WITH parked_machine(id, machine) AS (SELECT p.id, coalesce(",
-            "(SELECT coalesce(",
-            "(SELECT json_extract(r.metadata,'$.machine') FROM receipts r WHERE r.id=json_quote(t.value)),",
-            "(SELECT json_extract(r.metadata,'$.machine') FROM outbox o JOIN receipts r ON r.id=o.receipt WHERE o.id=json_quote(t.value)),",
-            "(SELECT m.machine FROM machine_orders m WHERE m.id=CAST(t.value AS INTEGER) AND CAST(m.id AS TEXT)=t.value),",
-            "(SELECT json_extract(f.evidence,'$.machine') FROM frame_provenance f WHERE f.transfer=t.value)",
-            ") FROM json_each(p.evidence,'$.targets') t ORDER BY t.key LIMIT 1),",
-            "(SELECT i.machine FROM poll_intents i WHERE i.parked=p.id)) FROM parked p),",
-            "events(at, source, key, machine, grp) AS (",
-            "SELECT unixepoch(json_extract(metadata,'$.received_at')),0,rowid,json_extract(metadata,'$.machine'),1 FROM receipts",
-            " UNION ALL SELECT p.parked_at,1,p.id,m.machine,3 FROM parked p JOIN parked_machine m ON m.id=p.id",
-            " UNION ALL SELECT json_extract(p.resolution,'$.time'),2,p.id,m.machine,4 FROM parked p JOIN parked_machine m ON m.id=p.id WHERE p.resolution IS NOT NULL",
-            " UNION ALL SELECT a.time,3,a.sequence,coalesce(",
-            "(SELECT json_extract(r.metadata,'$.machine') FROM receipts r WHERE r.id=o.receipt),",
-            "(SELECT CASE WHEN count(DISTINCT m.machine)=1 THEN min(m.machine) END FROM machine_orders m WHERE m.order_id=o.order_id AND m.destination=o.destination)),",
-            "CASE WHEN a.outcome='\"Done\"' THEN 1 ELSE 3 END FROM attempts a JOIN outbox o ON o.id=a.delivery",
-            " UNION ALL SELECT json_extract(evidence,'$.updated_at'),4,sequence,json_extract(evidence,'$.key.machine'),2 FROM (",
-            "SELECT sequence,evidence,json_extract(evidence,'$.state') AS state,",
-            "lag(json_extract(evidence,'$.state')) OVER (PARTITION BY machine_order ORDER BY sequence) AS was ",
-            "FROM machine_order_history) WHERE was IS NULL OR was!=state",
-            " UNION ALL SELECT json_extract(a.evidence,'$.time'),5,a.sequence,",
-            "CASE WHEN json_extract(a.evidence,'$.action') LIKE 'setup-%' THEN json_extract(a.evidence,'$.targets[0]') END,4 ",
-            "FROM audit a WHERE json_extract(a.evidence,'$.action') NOT IN ('admin-raw-view','deliveries-list','orders-list') ",
-            "AND NOT EXISTS(SELECT 1 FROM parked p WHERE p.resolution=a.evidence)",
-            ") "
+            "coalesce(CASE WHEN json_type(x.evidence,'$.targets[0]') IS NOT NULL THEN coalesce(",
+            "(SELECT json_extract(r.metadata,'$.machine') FROM receipts r WHERE r.id=json_quote(json_extract(x.evidence,'$.targets[0]'))),",
+            "(SELECT json_extract(r.metadata,'$.machine') FROM outbox o JOIN receipts r ON r.id=o.receipt WHERE o.id=json_quote(json_extract(x.evidence,'$.targets[0]'))),",
+            "(SELECT m.machine FROM machine_orders m WHERE m.id=CAST(json_extract(x.evidence,'$.targets[0]') AS INTEGER) AND CAST(m.id AS TEXT)=json_extract(x.evidence,'$.targets[0]')),",
+            "(SELECT json_extract(f.evidence,'$.machine') FROM frame_provenance f WHERE f.transfer=json_extract(x.evidence,'$.targets[0]'))",
+            ") END,",
+            "(SELECT i.machine FROM poll_intents i WHERE i.parked=x.id))"
         )
     };
 }
 
-/// One line's position, time and machine as the feed's query reads them.
+/// The machine a delivery attempt `x` is about: its message's, or the one
+/// machine its order was sent to.
+macro_rules! attempt_machine {
+    () => {
+        concat!(
+            "(SELECT coalesce(",
+            "(SELECT json_extract(r.metadata,'$.machine') FROM receipts r WHERE r.id=o.receipt),",
+            "(SELECT CASE WHEN count(DISTINCT m.machine)=1 THEN min(m.machine) END FROM machine_orders m WHERE m.order_id=o.order_id AND m.destination=o.destination)",
+            ") FROM outbox o WHERE o.id=x.delivery)"
+        )
+    };
+}
+
+/// Where a machine's attempts `x` are found through its own rows: its
+/// messages' deliveries, and the order messages of orders sent to it. Every
+/// attempt naming the machine is in one of them. Each delivery's attempts are
+/// read by delivery: left to itself, SQLite would read them through the time
+/// index, every accepted attempt again for each delivery.
+const ATTEMPTS_BY_MACHINE: &[&str] = &[
+    "receipts r CROSS JOIN outbox o CROSS JOIN attempts x INDEXED BY attempts_delivery WHERE json_extract(r.metadata,'$.machine')=?1 AND o.receipt=r.id AND x.delivery=o.id",
+    "machine_orders m CROSS JOIN outbox o CROSS JOIN attempts x INDEXED BY attempts_delivery WHERE m.machine=?1 AND o.destination=m.destination AND o.kind='order_event' AND o.ordering_key=m.order_id AND x.delivery=o.id",
+];
+
+/// The state of the order snapshot stored before `x` for the same order.
+macro_rules! previous_state {
+    () => {
+        "(SELECT json_extract(p.evidence,'$.state') FROM machine_order_history p WHERE p.machine_order=x.machine_order AND p.sequence<x.sequence ORDER BY p.sequence DESC LIMIT 1)"
+    };
+}
+
+/// One table the feed reads lines from, as SQL over the alias `x`. `at` is
+/// the line's stored time, NULL when none was stored; schema 17 indexes it
+/// (after the machine too, where the machine is a stored value), so a source
+/// gives its newest lines before a cursor without reading the rest.
+struct Source {
+    /// Which table: fixes the order of lines stored in the same second.
+    number: i64,
+    /// The filter its lines belong to.
+    group: ActivityGroup,
+    from: &'static str,
+    at: &'static str,
+    /// The row, unique within `number`.
+    key: &'static str,
+    machine: &'static str,
+    /// What every line of it meets besides its time and machine.
+    keep: &'static str,
+    /// Whether `at` can be NULL.
+    undated: bool,
+    /// Where one machine's rows are found without reading the others, when
+    /// its machine is not indexed: each a FROM and WHERE ending in a condition.
+    by_machine: &'static [&'static str],
+}
+
+/// Every source of lines. Read-only audit entries (opening original bytes,
+/// listing from the command line) are not changes, and an audit entry stored
+/// as an item's resolution is already its Resolved line. A repeated order
+/// snapshot in the same state is not a line. Attempts are read as two
+/// sources with one number, accepted and not, so each filter reads one.
+const SOURCES: [Source; 7] = [
+    Source {
+        number: 0,
+        group: ActivityGroup::Results,
+        from: "receipts x",
+        at: "unixepoch(json_extract(x.metadata,'$.received_at'))",
+        key: "x.rowid",
+        machine: "json_extract(x.metadata,'$.machine')",
+        keep: "1",
+        undated: true,
+        by_machine: &[],
+    },
+    Source {
+        number: 1,
+        group: ActivityGroup::Problems,
+        from: "parked x",
+        at: "x.parked_at",
+        key: "x.id",
+        machine: parked_machine!(),
+        keep: "1",
+        undated: true,
+        by_machine: &[],
+    },
+    Source {
+        number: 2,
+        group: ActivityGroup::Changes,
+        from: "parked x",
+        at: "CASE WHEN json_valid(x.resolution) THEN json_extract(x.resolution,'$.time') END",
+        key: "x.id",
+        machine: parked_machine!(),
+        keep: "x.resolution IS NOT NULL",
+        undated: true,
+        by_machine: &[],
+    },
+    Source {
+        number: 3,
+        group: ActivityGroup::Results,
+        from: "attempts x",
+        at: "x.time",
+        key: "x.sequence",
+        machine: attempt_machine!(),
+        keep: "(x.outcome='\"Done\"')=1 AND EXISTS(SELECT 1 FROM outbox o WHERE o.id=x.delivery)",
+        undated: false,
+        by_machine: ATTEMPTS_BY_MACHINE,
+    },
+    Source {
+        number: 3,
+        group: ActivityGroup::Problems,
+        from: "attempts x",
+        at: "x.time",
+        key: "x.sequence",
+        machine: attempt_machine!(),
+        keep: "(x.outcome='\"Done\"')=0 AND EXISTS(SELECT 1 FROM outbox o WHERE o.id=x.delivery)",
+        undated: false,
+        by_machine: ATTEMPTS_BY_MACHINE,
+    },
+    Source {
+        number: 4,
+        group: ActivityGroup::Orders,
+        from: "machine_order_history x",
+        at: "CASE WHEN json_valid(x.evidence) THEN json_extract(x.evidence,'$.updated_at') END",
+        key: "x.sequence",
+        machine: "CASE WHEN json_valid(x.evidence) THEN json_extract(x.evidence,'$.key.machine') END",
+        keep: concat!(
+            "(",
+            previous_state!(),
+            " IS NULL OR ",
+            previous_state!(),
+            "!=json_extract(x.evidence,'$.state'))"
+        ),
+        undated: true,
+        by_machine: &[],
+    },
+    Source {
+        number: 5,
+        group: ActivityGroup::Changes,
+        from: "audit x",
+        at: "CASE WHEN json_valid(x.evidence) THEN json_extract(x.evidence,'$.time') END",
+        key: "x.sequence",
+        machine: "CASE WHEN json_extract(x.evidence,'$.action') LIKE 'setup-%' THEN json_extract(x.evidence,'$.targets[0]') END",
+        keep: concat!(
+            "json_extract(x.evidence,'$.action') NOT IN ('admin-raw-view','deliveries-list','orders-list') ",
+            "AND NOT EXISTS(SELECT 1 FROM parked p WHERE p.resolution IS NOT NULL ",
+            "AND (CASE WHEN json_valid(p.resolution) THEN json_extract(p.resolution,'$.time') END) IS (CASE WHEN json_valid(x.evidence) THEN json_extract(x.evidence,'$.time') END) ",
+            "AND p.resolution=x.evidence)"
+        ),
+        undated: true,
+        by_machine: &[],
+    },
+];
+
+/// One line's position, time and machine as a source reads them:
+/// `(sort, source, key, at, machine)`, where `sort` is `at` or [`i64::MIN`].
 type Row = (i64, i64, i64, Option<i64>, Option<String>);
+
+/// Binds `values` to `statement` in order, as many as it numbers: every
+/// statement here numbers `?1` machine, `?2` time, `?3` row and `?4` limit
+/// (or `?3` end of day), and uses those it needs.
+fn bind(
+    statement: &mut rusqlite::Statement<'_>,
+    values: &[&dyn rusqlite::ToSql],
+) -> Result<(), Error> {
+    for index in 1..=statement.parameter_count() {
+        let value = values
+            .get(index.wrapping_sub(1))
+            .ok_or(Error::InvalidOperatorInput)?;
+        statement.raw_bind_parameter(index, value)?;
+    }
+    Ok(())
+}
+
+/// Newest first, as the feed sorts.
+fn newest_first(a: &Row, b: &Row) -> std::cmp::Ordering {
+    (b.0, b.1, b.2).cmp(&(a.0, a.1, a.2))
+}
+
+impl Source {
+    /// The machine condition, bound to `?1`, when a machine is asked for.
+    fn machine_filter(&self, machine: Option<&str>) -> String {
+        machine.map_or_else(String::new, |_| format!(" AND {}=?1", self.machine))
+    }
+
+    /// One line as its statement reads it: time, row, machine.
+    fn row(&self, row: &rusqlite::Row<'_>) -> rusqlite::Result<Row> {
+        let at: Option<i64> = row.get(0)?;
+        Ok((
+            at.unwrap_or(i64::MIN),
+            self.number,
+            row.get(1)?,
+            at,
+            row.get(2)?,
+        ))
+    }
+
+    /// Every line `sql` reads with `values`.
+    fn read(
+        &self,
+        db: &rusqlite::Connection,
+        sql: &str,
+        values: &[&dyn rusqlite::ToSql],
+    ) -> Result<Vec<Row>, Error> {
+        let mut statement = db.prepare(sql)?;
+        bind(&mut statement, values)?;
+        let mut rows = statement.raw_query();
+        let mut lines = Vec::new();
+        while let Some(row) = rows.next()? {
+            lines.push(self.row(row)?);
+        }
+        Ok(lines)
+    }
+
+    /// Its newest lines before `before`, newest first, at most `limit`.
+    fn lines(
+        &self,
+        db: &rusqlite::Connection,
+        machine: Option<&str>,
+        before: ActivityCursor,
+        limit: i64,
+    ) -> Result<Vec<Row>, Error> {
+        let Self {
+            from,
+            at,
+            key,
+            machine: named,
+            keep,
+            ..
+        } = self;
+        let filter = self.machine_filter(machine);
+        let wanted = usize::try_from(limit).map_err(|_| Error::InvalidOperatorInput)?;
+        // The rows of this source still after the cursor in the cursor's own
+        // second: all of them, those before its row, or none.
+        let same_second = match self.number.cmp(&before.source) {
+            std::cmp::Ordering::Less => Some(i64::MAX),
+            std::cmp::Ordering::Equal => before.key.checked_sub(1),
+            std::cmp::Ordering::Greater => None,
+        };
+        let mut rows = Vec::new();
+        if before.at != i64::MIN {
+            let dated = format!("{at}<=?2 AND ({at}<?2 OR {key}<=?3) AND {keep}");
+            let values: [&dyn rusqlite::ToSql; 4] = [&machine, &before.at, &same_second, &limit];
+            rows = match machine {
+                Some(machine) if !self.by_machine.is_empty() => {
+                    self.raced(db, &dated, &values, machine, wanted)?
+                }
+                _ => self.read(
+                    db,
+                    &format!(
+                        "SELECT {at},{key},{named} FROM {from} WHERE {dated}{filter} ORDER BY {at} DESC,{key} DESC LIMIT ?4"
+                    ),
+                    &values,
+                )?,
+            };
+        }
+        // Lines with no stored time sort after every dated one.
+        let undated = if before.at == i64::MIN {
+            same_second
+        } else {
+            Some(i64::MAX)
+        };
+        if let Some(row) = undated.filter(|_| self.undated && rows.len() < wanted) {
+            rows.extend(self.read(
+                db,
+                &format!(
+                    "SELECT NULL,{key},{named} FROM {from} WHERE {at} IS NULL AND {key}<=?3 AND {keep}{filter} ORDER BY {key} DESC LIMIT ?4"
+                ),
+                &[&machine, &before.at, &row, &limit],
+            )?);
+        }
+        Ok(rows)
+    }
+
+    /// One machine's newest `wanted` lines meeting `dated`, read two ways at
+    /// once, one row of each in turn: newest first over the whole table,
+    /// comparing each row's machine, and every row of the machine through
+    /// `by_machine`, sorted at the end. The first way to finish gives the
+    /// answer, so a busy machine costs about a page and a quiet one about its
+    /// own rows, never the whole table.
+    fn raced(
+        &self,
+        db: &rusqlite::Connection,
+        dated: &str,
+        values: &[&dyn rusqlite::ToSql],
+        machine: &str,
+        wanted: usize,
+    ) -> Result<Vec<Row>, Error> {
+        let Self {
+            from,
+            at,
+            key,
+            machine: named,
+            by_machine,
+            ..
+        } = self;
+        if wanted == 0 {
+            return Ok(Vec::new());
+        }
+        let mut newest = db.prepare(&format!(
+            "SELECT {at},{key},{named} FROM {from} WHERE {dated} ORDER BY {at} DESC,{key} DESC"
+        ))?;
+        bind(&mut newest, values)?;
+        let mut own = db.prepare(
+            &by_machine
+                .iter()
+                .map(|found| {
+                    format!("SELECT {at},{key},{named} FROM {found} AND {dated} AND {named}=?1")
+                })
+                .collect::<Vec<_>>()
+                .join(" UNION ALL "),
+        )?;
+        bind(&mut own, values)?;
+        let (mut newest, mut own) = (newest.raw_query(), own.raw_query());
+        let (mut walked, mut found) = (Vec::new(), Vec::new());
+        loop {
+            let Some(row) = newest.next()? else {
+                return Ok(walked);
+            };
+            let line = self.row(row)?;
+            if line.4.as_deref() == Some(machine) {
+                walked.push(line);
+                if walked.len() >= wanted {
+                    return Ok(walked);
+                }
+            }
+            let Some(row) = own.next()? else {
+                found.sort_unstable_by(newest_first);
+                found.truncate(wanted);
+                return Ok(found);
+            };
+            found.push(self.row(row)?);
+        }
+    }
+
+    /// How many of its lines have a time in `day` (Unix seconds `from..until`).
+    fn count(
+        &self,
+        db: &rusqlite::Connection,
+        machine: Option<&str>,
+        day: (i64, i64),
+    ) -> Result<i64, Error> {
+        let Self { from, at, keep, .. } = self;
+        let filter = self.machine_filter(machine);
+        let mut statement = db.prepare(&format!(
+            "SELECT count(*) FROM {from} WHERE {at}>=?2 AND {at}<?3 AND {keep}{filter}"
+        ))?;
+        bind(&mut statement, &[&machine, &day.0, &day.1])?;
+        let mut rows = statement.raw_query();
+        let row = rows.next()?.ok_or(Error::Corruption)?;
+        Ok(row.get(0)?)
+    }
+}
 
 impl Store {
     /// At most `limit` lines (and at most one store page) before `before`,
     /// newest first, for `machine` and `group` when given. Reading changes
     /// nothing.
     ///
-    /// Every source is read whole to sort it, so the cost grows with what is
-    /// kept; the admin pages bound the wait.
+    /// Each source gives at most `limit` of its own newest lines before the
+    /// cursor, through its time index, and the page is the newest of those, so
+    /// the cost follows the page, not what is kept. A machine that is not a
+    /// stored value (a parked item's, an attempt's or an audit entry's) is
+    /// compared line by line from the newest, until the page is full.
     /// # Errors
     /// Reports database failures, bounds or corrupt stored evidence.
     pub fn activity(
@@ -234,27 +553,17 @@ impl Store {
         before: ActivityCursor,
         limit: usize,
     ) -> Result<Vec<ActivityLine>, Error> {
-        let limit = i64::try_from(limit.min(self.limits.page_rows))
-            .map_err(|_| Error::InvalidOperatorInput)?;
-        let rows: Vec<Row> = self
-            .db
-            .prepare(concat!(
-                events!(),
-                "SELECT coalesce(at,-9223372036854775808) AS sort,source,key,at,machine FROM events ",
-                "WHERE (?1 IS NULL OR machine=?1) AND (?2 IS NULL OR grp=?2) AND (coalesce(at,-9223372036854775808),source,key)<(?3,?4,?5) ORDER BY sort DESC,source DESC,key DESC LIMIT ?6"
-            ))?
-            .query_map(
-                params![
-                    machine,
-                    group.map(ActivityGroup::number),
-                    before.at,
-                    before.source,
-                    before.key,
-                    limit
-                ],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
-            )?
-            .collect::<Result<_, _>>()?;
+        let limit = limit.min(self.limits.page_rows);
+        let bound = i64::try_from(limit).map_err(|_| Error::InvalidOperatorInput)?;
+        let mut rows = Vec::new();
+        for source in SOURCES
+            .iter()
+            .filter(|source| group.is_none_or(|group| source.group == group))
+        {
+            rows.extend(source.lines(&self.db, machine, before, bound)?);
+        }
+        rows.sort_unstable_by(newest_first);
+        rows.truncate(limit);
         rows.into_iter()
             .map(|(sort, source, key, at, machine)| {
                 Ok(ActivityLine {
@@ -303,7 +612,8 @@ impl Store {
     }
 
     /// How many lines each group has in `day` (Unix seconds `from..until`),
-    /// for `machine` when given, in [`ActivityGroup::ALL`]'s order.
+    /// for `machine` when given, in [`ActivityGroup::ALL`]'s order. Each
+    /// source counts a range of its time index.
     /// # Errors
     /// Reports database failures or a corrupt count.
     pub fn activity_counts(
@@ -311,24 +621,16 @@ impl Store {
         machine: Option<&str>,
         day: (i64, i64),
     ) -> Result<Vec<(ActivityGroup, u64)>, Error> {
-        let counted: Vec<(i64, i64)> = self
-            .db
-            .prepare(concat!(
-                events!(),
-                "SELECT grp,count(*) FROM events WHERE (?1 IS NULL OR machine=?1) AND at>=?2 AND at<?3 GROUP BY grp"
-            ))?
-            .query_map(params![machine, day.0, day.1], |r| {
-                Ok((r.get(0)?, r.get(1)?))
-            })?
-            .collect::<Result<_, _>>()?;
         ActivityGroup::ALL
             .into_iter()
             .map(|group| {
-                let count = counted
-                    .iter()
-                    .find(|(number, _)| *number == group.number())
-                    .map_or(0, |&(_, count)| count);
-                u64::try_from(count)
+                let mut total = 0_i64;
+                for source in SOURCES.iter().filter(|source| source.group == group) {
+                    total = total
+                        .checked_add(source.count(&self.db, machine, day)?)
+                        .ok_or(Error::Corruption)?;
+                }
+                u64::try_from(total)
                     .map(|count| (group, count))
                     .map_err(|_| Error::Corruption)
             })

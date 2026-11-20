@@ -45,10 +45,6 @@ pub enum Error {
     /// integer overflow.
     #[error("parked target cursor overflow")]
     ParkedTargetCursorOverflow,
-    /// The overview's running count of uncertain machine orders would overflow; the page
-    /// fails rather than show a wrong count.
-    #[error("uncertain order count overflow")]
-    UncertainOrderCountOverflow,
     /// An audited operator action failed.
     #[error(transparent)]
     Operator(Box<crate::operator::Error>),

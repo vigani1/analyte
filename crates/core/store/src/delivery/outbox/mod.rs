@@ -30,9 +30,17 @@ pub(crate) fn count_undelivered(
     db: &rusqlite::Connection,
     destination: &Identifier,
 ) -> rusqlite::Result<i64> {
+    let [pending, in_flight, parked, paused, conflict] = DeliveryState::NOT_DONE;
     db.query_row(
-        "SELECT count(*) FROM outbox WHERE destination=?1 AND state!=?2",
-        params![destination.as_str(), DeliveryState::Done],
+        "SELECT count(*) FROM outbox WHERE destination=?1 AND state IN (?2,?3,?4,?5,?6)",
+        params![
+            destination.as_str(),
+            pending,
+            in_flight,
+            parked,
+            paused,
+            conflict
+        ],
         |r| r.get(0),
     )
 }

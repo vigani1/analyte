@@ -38,6 +38,18 @@ impl Store {
     /// # Errors
     /// Reports database failures or invalid persisted evidence.
     pub fn machine_orders(&self, filter: &MachineOrderFilter) -> Result<Vec<MachineOrder>, Error> {
+        self.machine_orders_up_to(filter, self.limits.page_rows)
+    }
+
+    /// Like [`Store::machine_orders`], with at most `limit` orders, so a page
+    /// that shows fewer than a store page loads only those it may show.
+    /// # Errors
+    /// Reports database failures or invalid persisted evidence.
+    pub fn machine_orders_up_to(
+        &self,
+        filter: &MachineOrderFilter,
+        limit: usize,
+    ) -> Result<Vec<MachineOrder>, Error> {
         let mut statement = self.db.prepare("SELECT id FROM machine_orders WHERE id>?1 AND (?2 IS NULL OR machine=?2) AND (?3 IS NULL OR state=?3) ORDER BY id LIMIT ?4")?;
         let state = filter.state.map(SqlOrderState);
         let ids = statement
@@ -46,7 +58,8 @@ impl Store {
                     filter.after,
                     filter.machine.as_ref().map(Identifier::as_str),
                     state,
-                    i64::try_from(self.limits.page_rows).map_err(|_| Error::InvalidOrderInput)?
+                    i64::try_from(limit.min(self.limits.page_rows))
+                        .map_err(|_| Error::InvalidOrderInput)?
                 ],
                 |r| r.get::<_, i64>(0),
             )?
