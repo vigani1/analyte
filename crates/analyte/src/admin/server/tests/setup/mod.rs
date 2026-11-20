@@ -3,6 +3,7 @@ use super::pages::{csrf, encode, login};
 use super::*;
 use std::sync::Mutex;
 
+mod budget;
 mod lab_apps;
 mod removal;
 
@@ -69,6 +70,19 @@ const LIMITS: crate::admin::setup::Limits = crate::admin::setup::Limits {
     bytes: 1024,
 };
 
+/// A fixture's time bounds: the listen test's and the setup writes'.
+#[derive(Clone, Copy)]
+struct Bounds {
+    listen: crate::admin::setup::Limits,
+    write: Duration,
+}
+
+/// The bounds of every fixture that does not test them.
+const BOUNDS: Bounds = Bounds {
+    listen: LIMITS,
+    write: WRITE_BUDGET,
+};
+
 fn seams(
     root: &std::path::Path,
     written: Arc<Mutex<Vec<u8>>>,
@@ -116,8 +130,8 @@ async fn start() -> Result<Fixture, Error> {
     .await
 }
 
-/// [`start`] with the listen test bounded by `limits`.
-async fn start_limited(limits: crate::admin::setup::Limits) -> Result<Fixture, Error> {
+/// [`start`] with other time `bounds`.
+async fn start_bounded(bounds: Bounds) -> Result<Fixture, Error> {
     start_with_limits(
         "[[machines]]
 id = 'synthetic'
@@ -126,20 +140,20 @@ site = 'site.toml'
 ",
         &include_str!("../../../../../../core/config/examples/site.toml")
             .rewrite("endpoint = \"127.0.0.1:5600\"", "usb_serial = \"A10K3XYZ\""),
-        limits,
+        bounds,
     )
     .await
 }
 
 /// A fixture whose program file lists `machines` and whose `site.toml` holds `site_text`.
 async fn start_with(machines: &str, site_text: &str) -> Result<Fixture, Error> {
-    start_with_limits(machines, site_text, LIMITS).await
+    start_with_limits(machines, site_text, BOUNDS).await
 }
 
 async fn start_with_limits(
     machines: &str,
     site_text: &str,
-    limits: crate::admin::setup::Limits,
+    bounds: Bounds,
 ) -> Result<Fixture, Error> {
     let program = analyte_fixtures::program_with_limits(
         machines,
@@ -151,7 +165,7 @@ async fn start_with_limits(
             busy_timeout: Duration::from_millis(100),
         },
     );
-    start_program_with(&program, "site.toml", site_text, limits).await
+    start_program_with(&program, "site.toml", site_text, bounds).await
 }
 
 /// A fixture with the whole program file `program_text` and the site file
@@ -161,15 +175,15 @@ async fn start_program(
     site_name: &str,
     site_text: &str,
 ) -> Result<Fixture, Error> {
-    start_program_with(program_text, site_name, site_text, LIMITS).await
+    start_program_with(program_text, site_name, site_text, BOUNDS).await
 }
 
-/// [`start_program`] with the listen test bounded by `limits`.
+/// [`start_program`] with the time `bounds`.
 async fn start_program_with(
     program_text: &str,
     site_name: &str,
     site_text: &str,
-    limits: crate::admin::setup::Limits,
+    bounds: Bounds,
 ) -> Result<Fixture, Error> {
     let directory = crate::admin::private_tempdir()?;
     let root = directory.path();
@@ -211,7 +225,7 @@ async fn start_program_with(
     let input = Arc::new(Mutex::new(MARKER.to_vec()));
     let setup = crate::admin::setup::Setup::new(
         &program,
-        seams(root, written.clone(), input.clone(), limits),
+        seams(root, written.clone(), input.clone(), bounds.listen),
     );
     let restart = setup.restart_requested();
     let socket = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
@@ -233,6 +247,7 @@ async fn start_program_with(
         reserve: 1,
         setup,
         assets: crate::admin::view::assets::Root::of_this_build(),
+        write_budget: bounds.write,
         _released: released,
     });
     let weak = Arc::downgrade(&state);
@@ -2239,9 +2254,12 @@ async fn test_warns_when_the_machine_speaks_another_protocol() -> Result<(), Err
 // can be run again from the same choices.
 #[tokio::test(flavor = "multi_thread")]
 async fn test_with_no_bytes_says_nothing_received() -> Result<(), Error> {
-    let fixture = start_limited(crate::admin::setup::Limits {
-        duration: Duration::from_secs(1),
-        bytes: 1024,
+    let fixture = start_bounded(Bounds {
+        listen: crate::admin::setup::Limits {
+            duration: Duration::from_secs(1),
+            bytes: 1024,
+        },
+        ..BOUNDS
     })
     .await?;
     fixture.input.lock().map_err(|_| "poisoned")?.clear();
