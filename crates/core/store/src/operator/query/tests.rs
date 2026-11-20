@@ -1152,3 +1152,74 @@ fn newest_message_per_machine_matches_every_stored_message() -> TestResult {
     assert_eq!(store.oldest_retained_receipt()?, Some(9_000));
     Ok(())
 }
+
+/// The count of unresolved items parked about machine `?1` before it found
+/// machine orders by their key: every order was compared with every target.
+const PARKED_FOR_MACHINE_SCANNED: &str = concat!(
+    "SELECT count(*) FROM parked p WHERE p.resolution IS NULL AND EXISTS(",
+    "SELECT 1 FROM json_each(p.evidence,'$.targets') t WHERE t.value=?1 ",
+    "OR EXISTS(SELECT 1 FROM receipts r WHERE r.id=json_quote(t.value) ",
+    "AND json_extract(r.metadata,'$.machine')=?1) ",
+    "OR EXISTS(SELECT 1 FROM outbox o JOIN receipts r ON r.id=o.receipt ",
+    "WHERE o.id=json_quote(t.value) AND json_extract(r.metadata,'$.machine')=?1) ",
+    "OR EXISTS(SELECT 1 FROM transfers x JOIN receipts r ON r.id=x.receipt ",
+    "WHERE x.id=t.value AND json_extract(r.metadata,'$.machine')=?1) ",
+    "OR EXISTS(SELECT 1 FROM machine_orders m WHERE CAST(m.id AS TEXT)=t.value AND m.machine=?1))"
+);
+
+// Owner decision 2026-11-20 (admin reads that stop, item 3); AGENTS.md safety
+// rule 2: what is unfinished for a machine finds its parked items' orders by
+// key and counts exactly what comparing every order with every target
+// counted. Targets that only look like an order number (a leading zero, a
+// fraction, a number or `true` in place of text, spaces) match the same
+// orders, or none, as before; a resolved item is never counted.
+#[test]
+fn unfinished_counts_what_the_scan_over_every_order_counted() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let store = mixed_store(&temp.path().join("mixed.db"))?;
+    for targets in [
+        r#"["1"]"#,
+        r#"["2"]"#,
+        r#"["3"]"#,
+        "[3]",
+        "[2.0]",
+        r#"["02"]"#,
+        r#"["3.0"]"#,
+        r#"[" 3"]"#,
+        r#"["1e0"]"#,
+        "[true]",
+        "[null]",
+        r#"["99"]"#,
+        r#"["99999999999999999999"]"#,
+        r#"["m-b","3"]"#,
+        r#"["no-such-machine","2"]"#,
+    ] {
+        store.db.execute(
+            "INSERT INTO parked(evidence,parked_at) VALUES (?1,10000)",
+            [format!(
+                r#"{{"kind":"mapping_finding","reason":"synthetic","targets":{targets},"context":null}}"#
+            )],
+        )?;
+    }
+    store.db.execute(
+        "INSERT INTO parked(evidence,parked_at,resolution) VALUES (?1,10000,?2)",
+        [
+            r#"{"kind":"mapping_finding","reason":"synthetic","targets":["3"],"context":null}"#,
+            r#"{"actor":"admin-session-1","action":"parked-resolve","targets":["9"],"time":10500,"reason":"synthetic"}"#,
+        ],
+    )?;
+    let mut counted = Vec::new();
+    for machine in ["m-a", "m-b", "m-quiet", "no-such-machine"] {
+        let flagged = store.unfinished(&Identifier::new(machine)?)?.flagged;
+        let scanned: i64 = store
+            .db
+            .query_row(PARKED_FOR_MACHINE_SCANNED, [machine], |r| r.get(0))?;
+        assert_eq!(i64::try_from(flagged)?, scanned, "{machine}");
+        counted.push(flagged);
+    }
+    // m-a: the fixture's item about order 1, then "1", "2", `true` (JSON reads
+    // it as 1) and the item naming another machine with order 2. m-b: "3", 3
+    // and its name with "3". The unknown machine: its name.
+    assert_eq!(counted, [5, 3, 0, 1]);
+    Ok(())
+}
