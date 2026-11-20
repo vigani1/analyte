@@ -419,7 +419,7 @@ such as Connected or Waiting. Settings versions show the first 12 hex digits of
 the configuration digest, with the full digest on hover.
 
 Every admin page someone has signed in to has one sidebar (`src/admin/view/`):
-Overview, Needs review, Machines, Lab apps and Setup, and a More group
+Overview, Activity, Needs review, Machines, Lab apps and Setup, and a More group
 (Machine orders, Cancelled by machine, Deliveries, Data keeping, Settings),
 with the current page marked by `aria-current`. The More group is a
 `<details>` element, so it works by keyboard and without scripts. The paths
@@ -465,12 +465,24 @@ setup page names each machine model by the `# ` title on the first line of its
 README (for example "Roche cobas e 411"), falling back to the tidied
 `vendor/model` key, which stays on hover (`setup/definitions.rs`).
 
+Activity (`/activity`, `src/admin/pages/activity.rs`) lists, newest first, the
+rows the store already keeps: messages stored, items parked for review and
+resolved, delivery tries (delivered, will retry, rejected, paused, conflict),
+machine orders' new states and audited changes. Each line shows the time stored
+with it; an item parked before schema 16 has none and sits last under "Time not
+recorded". Machine links and disconnects are not stored, so they are not listed.
+It filters by machine and by type (Results, Orders, Problems, Changes) with one
+GET form, counts today's lines, and pages 50 lines at a time after the last line
+shown. It shows sample IDs and counts, never test codes, values or the reasons
+people typed.
+
 Use the menu for Machines, Needs review (parked items), Machine orders and Deliveries. Lists
 show at most 50 entries and may show fewer under the configured store page bound.
 Follow Next page to continue. Cursors are nonnegative and bounded; unknown
 query fields are refused. Parked lists show category, reason, linked identities
-and receipt times without loading payloads. The store does not record a parking
-timestamp, so the page labels receipt time and explicitly reports missing times.
+and receipt times without loading payloads. The page labels receipt time and
+explicitly reports missing times; the parking time the store records since
+schema 16 is shown on Activity.
 Parked details paginate targets in groups of 50 and keep raw bytes hidden.
 
 Log in with a browser session before using **Show raw (audited)**. It is a POST

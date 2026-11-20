@@ -11,7 +11,12 @@ pub(crate) const STARTING_VERSION: i64 = 15;
 /// Each step moves the committed version forward in one transaction. A later release
 /// appends `(SCHEMA_VERSION, SCHEMA_VERSION + 1, include_str!(...))` and raises
 /// `SCHEMA_VERSION`; the starting schema itself is never edited.
-const STEPS: &[(i64, i64, &str)] = &[(0, STARTING_VERSION, include_str!("schema.sql"))];
+const STEPS: &[(i64, i64, &str)] = &[
+    (0, STARTING_VERSION, include_str!("schema.sql")),
+    // When each Needs review item was parked; the file says which stored time
+    // fills the items already kept.
+    (STARTING_VERSION, 16, include_str!("parked_at.sql")),
+];
 
 /// Refuses a stored version this build cannot open; 0 is an empty file.
 pub(crate) fn check(version: i64) -> Result<(), Error> {

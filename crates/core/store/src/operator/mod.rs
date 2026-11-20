@@ -1,4 +1,5 @@
-//! Stores operator alerts, parked items and protected evidence queries.
+//! Stores operator alerts, parked items and protected evidence queries, and reads the Activity feed.
+pub(crate) mod activity;
 pub(crate) mod alerts;
 pub(crate) mod parked;
 pub(crate) mod query;

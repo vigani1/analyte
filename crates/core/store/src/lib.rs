@@ -37,7 +37,7 @@ pub use delivery_operator::{
 };
 /// Schema version this build creates and migrates to; readers wait for it
 /// before using tables added by the latest migration.
-pub const SCHEMA_VERSION: i64 = 15;
+pub const SCHEMA_VERSION: i64 = 16;
 pub use delivery::feed::OrderRefusal;
 pub use machine_orders::CANCEL_CONFLICT_REASON;
 pub use machine_orders::{
@@ -52,6 +52,9 @@ pub use revisions::{
     RevisionOutcome, StatusLifecycle, reconciled_outcome,
 };
 
+pub use operator::activity::{
+    Activity, ActivityCursor, ActivityGroup, ActivityLine, AttemptOutcome, Carries,
+};
 pub use query::{
     FailingDestination, Frame, LastDelivered, ParkedCounts, ParkedFilter, ParkedItem, Receipt,
     RecentOutcome, RecentReading, RecentReceipt, Unfinished,

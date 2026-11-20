@@ -10,6 +10,8 @@ use crate::admin::server::Connection;
 pub(in crate::admin) enum Icon {
     /// The Overview tab: four tiles.
     Overview,
+    /// The Activity tab: a pulse line.
+    Activity,
     /// The Needs review tab: an inbox tray.
     Review,
     /// The Machines tab and machine nodes: an analyzer.
@@ -60,6 +62,10 @@ pub(in crate::admin) enum Icon {
     Off,
     /// Being sent, such as an order on its way to a machine: a paper plane.
     Send,
+    /// An order taken by a machine: a checked list.
+    Order,
+    /// Tried again later: two turning arrows.
+    Retry,
 }
 
 impl Icon {
@@ -72,6 +78,7 @@ impl Icon {
                 "M15 12h5a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1Z ",
                 "M4 16h5a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1Z",
             ),
+            Self::Activity => "M22 12h-4l-3 9L9 3l-3 9H2",
             Self::Review => concat!(
                 "M22 12h-6l-2 3h-4l-2-3H2 M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 ",
                 "2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11Z",
@@ -150,6 +157,11 @@ impl Icon {
                 "6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z M21.854 2.147l-10.94 ",
                 "10.939",
             ),
+            Self::Order => "M3 17l2 2 4-4 M3 7l2 2 4-4 M13 6h8 M13 12h8 M13 18h8",
+            Self::Retry => concat!(
+                "M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8 M21 3v5h-5 M21 12a9 9 0 0 ",
+                "1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16 M8 16H3v5",
+            ),
         }
     }
 
@@ -168,8 +180,9 @@ impl Icon {
 mod tests {
     use super::*;
 
-    const ALL: [Icon; 26] = [
+    const ALL: [Icon; 29] = [
         Icon::Overview,
+        Icon::Activity,
         Icon::Review,
         Icon::Machine,
         Icon::LabApp,
@@ -195,6 +208,8 @@ mod tests {
         Icon::Lock,
         Icon::Off,
         Icon::Send,
+        Icon::Order,
+        Icon::Retry,
     ];
 
     // ADR 0018: icon paths go through the template's escaping, which must leave

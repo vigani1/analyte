@@ -60,9 +60,10 @@ pub(in crate::admin) struct MoreLink {
     pub(in crate::admin) current: bool,
 }
 
-/// The main links in order. Activity and Settings join when their pages exist.
-const MAIN: [(Tab, Icon); 5] = [
+/// The main links in order, as the Sidebar mockup lists them.
+const MAIN: [(Tab, Icon); 6] = [
     (Tab::Overview, Icon::Overview),
+    (Tab::Activity, Icon::Activity),
     (Tab::NeedsReview, Icon::Review),
     (Tab::Machines, Icon::Machine),
     (Tab::LabApps, Icon::LabApp),

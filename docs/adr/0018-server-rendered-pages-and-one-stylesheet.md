@@ -35,12 +35,15 @@ the strict content security policy.
   sign-in names no machine, lab app or count. The old builder and its
   stylesheet are deleted, so the hold on release and installer builds is
   lifted.
+- **Activity (PR c1) is done:** it is read from the tables the store already
+  keeps, newest first; the store records when an item was parked from schema
+  16 on, and an older item shows "Not recorded".
 - **PR d is done:** the Analyte desktop app (`crates/app`) shows these pages in
   its own window with a tray icon, and its Engine off screen uses the same
   stylesheets and fonts, compiled in from `crates/analyte/assets`
   ([ADR 0019](0019-desktop-app.md)).
-- **Still to come:** PR c, live updates (server-sent events) and the Activity
-  page.
+- **Still to come:** PR c2, live updates (server-sent events and one script
+  file).
 
 ## Why
 
