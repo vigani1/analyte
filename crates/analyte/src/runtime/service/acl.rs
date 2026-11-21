@@ -1,27 +1,18 @@
 //! Windows-only: creates and checks private access lists for protected storage (ADR 0017).
-use std::{
-    ffi::{OsStr, c_void},
-    io,
-    os::windows::ffi::OsStrExt as _,
-    path::Path,
-    ptr,
-};
+use super::caller::{Local, Os, account_sid, process_account, sid_text, wide};
+use std::{io, path::Path, ptr};
 use windows_sys::Win32::{
-    Foundation::{
-        CloseHandle, ERROR_ALREADY_EXISTS, ERROR_NONE_MAPPED, GetLastError, HANDLE, LocalFree,
-    },
+    Foundation::{ERROR_ALREADY_EXISTS, GetLastError},
     Security::{
         ACCESS_ALLOWED_ACE, ACE_HEADER, ACL, ACL_SIZE_INFORMATION, AclSizeInformation,
         Authorization::{
-            ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW,
-            GetNamedSecurityInfoW, SDDL_REVISION_1, SE_FILE_OBJECT,
+            ConvertStringSecurityDescriptorToSecurityDescriptorW, GetNamedSecurityInfoW,
+            SDDL_REVISION_1, SE_FILE_OBJECT,
         },
-        DACL_SECURITY_INFORMATION, GetAce, GetAclInformation, GetTokenInformation,
-        LookupAccountNameW, OWNER_SECURITY_INFORMATION, PSID, SECURITY_ATTRIBUTES,
-        SECURITY_MAX_SID_SIZE, SID_NAME_USE, TOKEN_QUERY, TOKEN_USER, TokenUser,
+        DACL_SECURITY_INFORMATION, GetAce, GetAclInformation, OWNER_SECURITY_INFORMATION,
+        SECURITY_ATTRIBUTES,
     },
     Storage::FileSystem::CreateDirectoryW,
-    System::Threading::{GetCurrentProcess, OpenProcessToken},
 };
 
 /// The installer's virtual service account (`packaging/windows/install.ps1`).
@@ -33,8 +24,6 @@ const ALWAYS_ALLOWED: [&str; 2] = [SYSTEM, "S-1-5-32-544"];
 /// ACE types from winnt.h; deny entries only remove access.
 const ALLOWED_ACE: u8 = 0;
 const DENIED_ACE: u8 = 1;
-/// Canonical SID strings are far shorter; bounds the terminator search.
-const SID_TEXT_LIMIT: usize = 256;
 
 /// Who a protected path may grant access to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -90,114 +79,15 @@ fn os(call: &'static str) -> Error {
     }
 }
 
-/// Frees memory the security APIs allocate with `LocalAlloc`.
-struct Local(*mut c_void);
-impl Drop for Local {
-    fn drop(&mut self) {
-        if !self.0.is_null() {
-            // SAFETY: the pointer came from an API documented to require LocalFree, once.
-            unsafe { LocalFree(self.0) };
-        }
+impl From<Os> for Error {
+    fn from(Os { call, source }: Os) -> Self {
+        Self::Os { call, source }
     }
-}
-
-fn wide(text: impl AsRef<OsStr>) -> Result<Vec<u16>, Error> {
-    let text: Vec<u16> = text.as_ref().encode_wide().collect();
-    if text.contains(&0) {
-        let source = io::Error::from(io::ErrorKind::InvalidInput);
-        return Err(Error::Os {
-            call: "path conversion",
-            source,
-        });
-    }
-    Ok(text.into_iter().chain([0]).collect())
-}
-
-/// # Safety
-/// `sid` must point to a valid SID that stays alive for the call.
-unsafe fn sid_text(sid: PSID) -> Result<String, Error> {
-    let mut text = Local(ptr::null_mut());
-    // SAFETY: the caller guarantees `sid`; the out pointer is a valid local.
-    if unsafe { ConvertSidToStringSidW(sid, ptr::from_mut(&mut text.0).cast()) } == 0 {
-        return Err(os("ConvertSidToStringSidW"));
-    }
-    let start = text.0.cast::<u16>();
-    // SAFETY: success returns a NUL-terminated string; reading stops at NUL or the bound.
-    let len = (0..SID_TEXT_LIMIT).find(|&i| unsafe { start.add(i).read() } == 0);
-    let len = len.ok_or(Error::Os {
-        call: "SID text",
-        source: io::ErrorKind::InvalidData.into(),
-    })?;
-    // SAFETY: `len` units before the terminator were just read from this allocation.
-    Ok(String::from_utf16_lossy(unsafe {
-        std::slice::from_raw_parts(start, len)
-    }))
-}
-
-/// The SID of the account this process runs as.
-pub(crate) fn process_account() -> Result<String, Error> {
-    struct Token(HANDLE);
-    impl Drop for Token {
-        fn drop(&mut self) {
-            // SAFETY: the handle was opened by OpenProcessToken and is closed once.
-            unsafe { CloseHandle(self.0) };
-        }
-    }
-    let mut handle = ptr::null_mut();
-    // SAFETY: the pseudo-handle needs no closing; the out pointer is a valid local.
-    if unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &raw mut handle) } == 0 {
-        return Err(os("OpenProcessToken"));
-    }
-    let token = Token(handle);
-    // u64 storage aligns TOKEN_USER; 128 bytes exceeds TOKEN_USER plus the largest SID.
-    let mut buffer = [0u64; 16];
-    let mut used = 0;
-    // SAFETY: the buffer is writable for the stated length and outlives the call.
-    let ok = unsafe {
-        GetTokenInformation(
-            token.0,
-            TokenUser,
-            buffer.as_mut_ptr().cast(),
-            128,
-            &raw mut used,
-        )
-    };
-    if ok == 0 {
-        return Err(os("GetTokenInformation"));
-    }
-    // SAFETY: success wrote an aligned TOKEN_USER whose SID points into `buffer`.
-    unsafe { sid_text((*buffer.as_ptr().cast::<TOKEN_USER>()).User.Sid) }
 }
 
 /// The installed service account's SID, or None when the service is not installed.
 fn service_account() -> Result<Option<String>, Error> {
-    let name = wide(SERVICE_ACCOUNT)?;
-    let mut sid = [0u32; SECURITY_MAX_SID_SIZE as usize / 4];
-    let mut domain = [0u16; 256];
-    let (mut sid_len, mut domain_len, mut kind) =
-        (SECURITY_MAX_SID_SIZE, 256, SID_NAME_USE::default());
-    // SAFETY: every buffer is writable for the length passed and outlives the call.
-    let ok = unsafe {
-        LookupAccountNameW(
-            ptr::null(),
-            name.as_ptr(),
-            sid.as_mut_ptr().cast(),
-            &raw mut sid_len,
-            domain.as_mut_ptr(),
-            &raw mut domain_len,
-            &raw mut kind,
-        )
-    };
-    if ok != 0 {
-        // SAFETY: success wrote a valid SID into `sid`.
-        return unsafe { sid_text(sid.as_mut_ptr().cast()) }.map(Some);
-    }
-    // SAFETY: reads this thread's last error immediately after the failed call.
-    if unsafe { GetLastError() } == ERROR_NONE_MAPPED {
-        Ok(None)
-    } else {
-        Err(os("LookupAccountNameW"))
-    }
+    Ok(account_sid(SERVICE_ACCOUNT)?.map(|(sid, _)| sid))
 }
 
 /// The principals an allow entry may name, and those that may own the path.
@@ -338,7 +228,8 @@ pub(crate) fn check(path: &Path, readers: Readers) -> Result<(), Error> {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use super::{Error, Readers, check, process_account};
+    use super::{Error, Readers, check};
+    use crate::runtime::service::caller::process_account;
     use crate::runtime::{Error as Failure, service::create_data_directory};
     use std::path::Path;
 

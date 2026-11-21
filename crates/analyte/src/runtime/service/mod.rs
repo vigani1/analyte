@@ -15,6 +15,9 @@ use tokio::{sync::watch, task::JoinSet};
 #[cfg(windows)]
 #[expect(unsafe_code, reason = "ADR 0017: Windows ACL FFI")]
 pub mod acl;
+#[cfg(windows)]
+#[expect(unsafe_code, reason = "ADR 0021: Windows sign-in pipe and token FFI")]
+pub(crate) mod caller;
 #[cfg(test)]
 mod tests;
 /// Bounds pending storage work while allowing machine and operator requests.

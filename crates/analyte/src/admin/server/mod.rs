@@ -25,6 +25,8 @@ pub(super) mod sessions;
 mod sign_in;
 mod status;
 pub(super) mod token;
+#[cfg(any(windows, test))]
+mod windows;
 use listener::{Lifetime, Listener};
 use sessions::{Session, Sessions};
 use sign_in::Attempt;
@@ -141,6 +143,9 @@ pub(crate) struct Server {
     closing: watch::Sender<bool>,
     released: tokio::sync::oneshot::Receiver<()>,
     pub(crate) owners: BTreeMap<String, Arc<AtomicBool>>,
+    /// The Windows sign-in pipe, or why it is off for this run (ADR 0021).
+    #[cfg(windows)]
+    windows: windows::Start,
 }
 
 /// Prepares the admin server for `program`, or none when it has no admin
@@ -160,6 +165,8 @@ pub(crate) async fn prepare(
     let token = Token::load(program.data_directory())?;
     let socket = tokio::net::TcpListener::bind(address).await?;
     let host = address.to_string();
+    #[cfg(windows)]
+    let windows = windows::start(socket.local_addr()?.port());
     #[cfg(feature = "test-hooks")]
     let seams = program
         .hooks
@@ -234,6 +241,8 @@ pub(crate) async fn prepare(
         app: router(state),
         released: release,
         owners,
+        #[cfg(windows)]
+        windows,
     }))
 }
 
@@ -245,10 +254,16 @@ impl Server {
     /// start it again.
     pub(crate) async fn run(self, mut stop: watch::Receiver<bool>) -> Result<(), Error> {
         let mut restart = self.restart.clone();
+        // Ends with the pages: when draining starts, or when serving ends and
+        // drops `closing`.
+        #[cfg(windows)]
+        let sign_in = windows_sign_in(self.windows, self.closing.subscribe());
+        #[cfg(not(windows))]
+        let sign_in = std::future::ready(());
         let closing = self.closing;
         // Each request can reach its connection's lifetime (setup writes extend it).
         let app = self.app.into_make_service_with_connect_info::<Lifetime>();
-        drain_server(
+        let pages = drain_server(
             axum::serve(self.listener, app)
                 .with_graceful_shutdown(async move {
                     let stopped = async {
@@ -271,12 +286,29 @@ impl Server {
                 })
                 .into_future(),
             self.released,
-        )
-        .await?;
+        );
+        let (served, ()) = tokio::join!(pages, sign_in);
+        served?;
         if *self.restart.borrow() {
             return Err(Error::RestartRequested);
         }
         Ok(())
+    }
+}
+
+/// Serves Windows sign-in until `closing`; a pipe that fails or was off is
+/// logged and the pages keep serving with the admin key.
+#[cfg(windows)]
+async fn windows_sign_in(start: windows::Start, closing: watch::Receiver<bool>) {
+    match start {
+        windows::Start::On(pipe) => {
+            if let Err(error) = pipe.serve(&windows::Unredeemed, closing).await {
+                tracing::error!(error = %error, "windows sign-in stopped; sign in with the admin key");
+            }
+        }
+        windows::Start::Off(reason) => {
+            tracing::warn!(reason = %reason, "windows sign-in is off; sign in with the admin key");
+        }
     }
 }
 

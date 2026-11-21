@@ -90,6 +90,16 @@ jobs:
       # The desktop app's Windows shell is compiled only on Windows (ADR 0019).
       - if: runner.os == 'Windows' && matrix.shard == 1
         run: cargo clippy -p analyte-app --all-targets --all-features --locked -- -D warnings
+      # ADR 0021: the sign-in pipe answers real local users. The script makes two
+      # users with random passwords that never leave it and are never printed.
+      - if: runner.os == 'Windows' && matrix.shard == 1
+        name: Windows sign-in end to end
+        shell: powershell
+        run: |
+          cargo build -p analyte --bin analyte --example sign_in_probe --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-sign-in-e2e.ps1 -Engine target/debug/analyte.exe -Probe target/debug/examples/sign_in_probe.exe
+          exit $LASTEXITCODE
       - if: matrix.shard == 1
         run: cargo test --doc --workspace --all-features --locked
       - if: matrix.shard == 1

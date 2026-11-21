@@ -257,19 +257,7 @@ async fn start_program_with(
         _released: released,
     });
     let weak = Arc::downgrade(&state);
-    let server = Server {
-        listener: Listener {
-            socket,
-            slots: Arc::new(Semaphore::new(32)),
-        },
-        app: router(state),
-        restart,
-        closing,
-        released: release,
-        owners: BTreeMap::new(),
-    };
-    let (stop, stopped) = watch::channel(false);
-    let owner = tokio::spawn(server.run(stopped));
+    let (stop, owner) = run_fixture(socket, state, restart, closing, release)?;
     let cookie = login(&host, &bearer).await?;
     Ok(Fixture {
         _directory: directory,
