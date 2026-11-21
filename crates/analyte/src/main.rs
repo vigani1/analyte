@@ -30,6 +30,10 @@ struct Cli {
     /// %ProgramData%\Analyte\config\analyte.toml; Linux:
     /// /etc/analyte/analyte.toml), if there is one. A file found this way is
     /// named on standard error.
+    #[expect(
+        clippy::doc_markdown,
+        reason = "clap prints this comment as --help, where backticks would show"
+    )]
     #[arg(long, global = true)]
     config: Option<PathBuf>,
     /// Explicit local operator identity, recorded in the audit trail; it may
