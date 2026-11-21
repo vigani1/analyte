@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/vigani1/analyte/security/advisories/new
+    about: Report privately, never in a public issue. See SECURITY.md for what counts.
+  - name: Security policy
+    url: https://github.com/vigani1/analyte/blob/main/SECURITY.md
+    about: What counts as a vulnerability and what to expect after you report it.

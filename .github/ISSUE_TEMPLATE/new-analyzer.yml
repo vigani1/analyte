@@ -1,0 +1,88 @@
+name: Support a new analyzer
+description: Ask for, or offer to help with, support for a lab machine.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A machine is usually a config file on top of a standard Analyte
+        already speaks. See docs/adding-a-machine.md for what a definition needs.
+
+        **Do not attach vendor manuals or standards PDFs**, and do not paste text
+        or tables from them. Name the documents instead; we keep them outside the
+        repository. Never include patient data or real captures.
+
+        Every machine definition states one evidence level:
+        - **documented**: built from documents only;
+        - **simulated**: tested against an official simulator or vendor sample traces;
+        - **proven**: tested against the real machine with recorded conversations.
+  - type: input
+    id: model
+    attributes:
+      label: Maker and model
+      placeholder: e.g. maker, model name, REF or catalogue number
+    validations:
+      required: true
+  - type: input
+    id: software
+    attributes:
+      label: Machine software or firmware version
+      description: Write "unknown" if you do not know it yet.
+    validations:
+      required: true
+  - type: dropdown
+    id: protocol
+    attributes:
+      label: Protocol
+      options:
+        - ASTM (LIS01 / LIS02, formerly E1381 / E1394)
+        - HL7 v2 (over MLLP)
+        - IHE LAW
+        - POCT1-A
+        - Vendor-specific
+        - Unknown
+    validations:
+      required: true
+  - type: dropdown
+    id: connection
+    attributes:
+      label: Connection
+      options:
+        - Serial (RS-232)
+        - Network (TCP), machine connects to the host
+        - Network (TCP), host connects to the machine
+        - Shared folder or files
+        - Unknown
+    validations:
+      required: true
+  - type: textarea
+    id: documents
+    attributes:
+      label: Documents you can name
+      description: Title, edition or version and section of each interface document you have. Names only, no files or copied text.
+    validations:
+      required: true
+  - type: textarea
+    id: workflow
+    attributes:
+      label: How samples and orders flow
+      description: Does the machine scan the tube, ask the host for tests, take a work list, or only send results? Where does the sample ID come from?
+  - type: dropdown
+    id: evidence
+    attributes:
+      label: Evidence you could provide
+      description: Recordings must be synthetic or de-identified before anyone shares them.
+      options:
+        - Documents only (documented)
+        - Vendor simulator or sample traces (simulated)
+        - A de-identified recording from the real machine (proven)
+        - Not sure yet
+    validations:
+      required: true
+  - type: checkboxes
+    id: no-sensitive-data
+    attributes:
+      label: Data check
+      options:
+        - label: This contains no patient data, real sample IDs, credentials or copyrighted manual text.
+          required: true
