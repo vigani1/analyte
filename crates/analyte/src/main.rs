@@ -1,11 +1,15 @@
 //! Runs the foreground service and protected operator command line.
 #![forbid(unsafe_code)]
 use analyte::runtime::Error;
-use analyte::{installation::config::Program, runtime::service};
+use analyte::{
+    installation::{config::Program, program_file},
+    runtime::service,
+};
 use analyte_model::{Identifier, Reason};
 use analyte_store::Audit;
 use clap::{Parser, Subcommand};
 use std::{
+    io::Write as _,
     path::PathBuf,
     time::{Duration, Instant},
 };
@@ -20,9 +24,14 @@ const BACKUP_WORK_BUDGET: Duration = Duration::from_secs(25);
 #[derive(Parser)]
 #[command(version, about = "Faithful analyzer receive service")]
 struct Cli {
-    /// Program file for operator commands.
-    #[arg(long, global = true, default_value = "analyte.toml")]
-    config: PathBuf,
+    /// Program file for operator commands. Without it: the file named by
+    /// ANALYTE_CONFIG; else analyte.toml in the current folder, if there is
+    /// one; else the installed program file (Windows:
+    /// %ProgramData%\Analyte\config\analyte.toml; Linux:
+    /// /etc/analyte/analyte.toml), if there is one. A file found this way is
+    /// named on standard error.
+    #[arg(long, global = true)]
+    config: Option<PathBuf>,
     /// Explicit local operator identity, recorded in the audit trail; it may
     /// not begin like an admin page sign-in's (`admin-session-`, `windows:`).
     #[arg(long, global = true, value_parser = analyte::admin::command_line_actor)]
@@ -221,7 +230,7 @@ fn main() -> Result<(), Error> {
     } = &cli.command
     {
         return analyte::runtime::windows_service::run(
-            cli.config,
+            program_file::locate(cli.config)?.path,
             Duration::from_secs(*shutdown_timeout_secs),
         );
     }
@@ -236,14 +245,32 @@ fn main() -> Result<(), Error> {
         .block_on(execute(cli))
 }
 
+/// The program file this command reads: `--config`, or the one
+/// [`program_file::locate`] finds, named on standard error so standard output
+/// stays as the command writes it.
+fn program_file(explicit: Option<PathBuf>) -> Result<PathBuf, Error> {
+    let found = program_file::locate(explicit)?;
+    if found.source != program_file::Source::Explicit {
+        writeln!(
+            std::io::stderr().lock(),
+            "Using {} ({}).",
+            found.path.display(),
+            found.source.describe()
+        )?;
+    }
+    Ok(found.path)
+}
+
 async fn execute(cli: Cli) -> Result<(), Error> {
     let actor = cli
         .actor
         .clone()
         .unwrap_or(Identifier::new("local-operator")?);
+    let explicit = cli.config;
+    let config = || program_file(explicit.clone());
     match cli.command {
         Command::RetryAlerts { endpoint, reason } => analyte::operator::alert_recovery::retry(
-            &Program::load(&cli.config)?,
+            &Program::load(&config()?)?,
             required_actor(cli.actor)?,
             endpoint,
             Reason::new(&reason)?,
@@ -251,7 +278,7 @@ async fn execute(cli: Cli) -> Result<(), Error> {
         .await
         .map_err(Into::into),
         Command::Holds { command } => analyte::operator::holds::run(
-            &Program::load(&cli.config)?,
+            &Program::load(&config()?)?,
             required_actor(cli.actor)?,
             command,
         )
@@ -260,7 +287,7 @@ async fn execute(cli: Cli) -> Result<(), Error> {
         Command::Admin {
             command: Admin::Token { rotate: _ },
         } => {
-            let program = Program::load(&cli.config)?;
+            let program = Program::load(&config()?)?;
             let directory = program.data_directory().to_owned();
             let token =
                 tokio::task::spawn_blocking(move || analyte::admin::rotate_token(&directory))
@@ -278,7 +305,7 @@ async fn execute(cli: Cli) -> Result<(), Error> {
         ))
         .into()),
         Command::Orders { command } => {
-            analyte::orders::run(&Program::load(&cli.config)?, actor, command)
+            analyte::orders::run(&Program::load(&config()?)?, actor, command)
                 .await
                 .map_err(Into::into)
         }
@@ -287,7 +314,10 @@ async fn execute(cli: Cli) -> Result<(), Error> {
             file,
             shutdown_timeout_secs,
         } => {
-            let program = Program::load(&file.unwrap_or(cli.config))?;
+            let program = Program::load(&match file {
+                Some(file) => file,
+                None => config()?,
+            })?;
             #[cfg(feature = "test-hooks")]
             let (program, _pause) = astm_pause_for_test(program)?;
             service::run_bounded(program, Duration::from_secs(shutdown_timeout_secs)).await
@@ -299,28 +329,28 @@ async fn execute(cli: Cli) -> Result<(), Error> {
             command: Parked::Reprocess { id, reason },
         } => {
             recover(
-                &cli.config,
+                &config()?,
                 required_actor(cli.actor)?,
                 analyte::operator::recovery::ReprocessTarget::Parked(id),
                 reason,
             )
             .await
         }
-        Command::Parked { command } => operator(&cli.config, actor, command).await,
+        Command::Parked { command } => operator(&config()?, actor, command).await,
         Command::Receipts {
             command: Receipts::Reprocess { id, reason },
         } => {
             recover(
-                &cli.config,
+                &config()?,
                 required_actor(cli.actor)?,
                 analyte::operator::recovery::ReprocessTarget::Receipt(id),
                 reason,
             )
             .await
         }
-        Command::Deliveries { command } => deliveries(&cli.config, cli.actor, command).await,
-        Command::Restore { from, reason } => restore(&cli.config, actor, from, &reason).await,
-        Command::Backup { target } => backup(&cli.config, target).await,
+        Command::Deliveries { command } => deliveries(&config()?, cli.actor, command).await,
+        Command::Restore { from, reason } => restore(&config()?, actor, from, &reason).await,
+        Command::Backup { target } => backup(&config()?, target).await,
     }
 }
 

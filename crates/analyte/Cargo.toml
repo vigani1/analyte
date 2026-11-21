@@ -85,6 +85,10 @@ name = "packaging"
 path = "tests/packaging.rs"
 
 [[test]]
+name = "program_file"
+path = "tests/program_file.rs"
+
+[[test]]
 name = "chunk_receive"
 required-features = ["test-hooks"]
 path = "tests/chunk_receive/mod.rs"

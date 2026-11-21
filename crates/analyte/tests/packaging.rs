@@ -524,7 +524,10 @@ fn windows_installer_offers_the_engine_only() -> Outcome {
         r#"Type: files; Name: "{app}\analyte-app.exe"; Components: not app"#,
         r#"Type: files; Name: "{autoprograms}\Analyte.lnk"; Components: not app"#,
     ] {
-        assert!(switch.contains(&expected), "[InstallDelete] lacks {expected}");
+        assert!(
+            switch.contains(&expected),
+            "[InstallDelete] lacks {expected}"
+        );
     }
     for expected in [
         r#"ValueType: none; ValueName: "Analyte"; Flags: deletevalue; Components: not app"#,
