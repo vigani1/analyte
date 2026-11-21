@@ -28,6 +28,7 @@ serde_json = { workspace = true }
 analyte-sink = { workspace = true }
 thiserror = { workspace = true }
 fs4 = { workspace = true }
+if-addrs = { workspace = true }
 analyte-model = { workspace = true }
 analyte-store = { workspace = true }
 analyte-transport = { workspace = true }

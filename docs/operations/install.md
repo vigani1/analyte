@@ -8,7 +8,7 @@
 | Windows | PowerShell 5.1 and administrator access for service installation. |
 | Linux | systemd for the supplied unit; administrator access to install it. |
 | Devices | Confirmed serial adapters, drivers, cable pinouts and stable COM/device paths, or agreed lab-network TCP/file handoff. |
-| Network | Outbound HTTPS to the lab app and configured alert relays with valid trusted certificates; correct clock for signatures. No inbound internet port. |
+| Network | Outbound HTTPS to the lab app and configured alert relays with valid trusted certificates; correct clock for signatures. No inbound internet port. Analyzers that connect to Analyte must be on the lab PC's own network, or IT must allow them through; see [Firewall](connect.md#firewall). |
 | Storage | Dedicated protected local data directory, measured outage capacity, disk reserve and separate protected backups. |
 | People | Lab operator, IT recovery lead and app support, with cover and contact procedures. |
 
@@ -62,7 +62,10 @@ anyway**.
    does, lets the service write the config folder for the setup page, and lets
    people signed in to this PC start (never stop) the service, for the app's
    **Start engine** button. It creates the Windows group **Analyte users**, if
-   missing, and adds you; see [Who may sign in](sign-in.md).
+   missing, and adds you; see [Who may sign in](sign-in.md). It adds the
+   Windows Firewall rule **Analyte - analyzers on the lab network**, which lets
+   analyzers on this PC's own network connect to Analyte; see
+   [Firewall](connect.md#firewall).
 3. It installs the **Analyte app** (`analyte-app.exe`) with a Start menu entry
    "Analyte". The app shows the same pages in its own window and keeps a tray
    icon with the engine's state; see [The Analyte app](#the-analyte-app). Leave
@@ -84,7 +87,7 @@ Microsoft, then open Analyte from the Start menu.
 
 Running it again upgrades the program and keeps the configuration, data and
 token. Uninstall from Windows Settings → Apps: it closes the app, stops and
-removes the service, removes the program files, the Start menu entry and the
+removes the service and its firewall rule, removes the program files, the Start menu entry and the
 installing user's sign-in entry and app folders, and keeps data, configuration, backups, credentials and
 the token in `C:\ProgramData\Analyte`. It also keeps the Windows group
 **Analyte users**, which may list other people. Delete those yourself only after the lab
@@ -196,6 +199,10 @@ creates the admin token when missing, enables and starts the service, and prints
 the setup page address. It never prints the token, because package tools keep
 their output in logs. Read it with `sudo cat /var/lib/analyte/admin-token`, then
 open `http://127.0.0.1:8080/setup` on that computer and log in.
+
+The packages change no firewall. Where firewalld or ufw is active, open each
+port an analyzer connects to, for the analyzer's network only; see
+[Firewall](connect.md#firewall).
 
 Removing the package (`apt remove`, `dnf remove`) stops and disables the
 service and keeps configuration and data. `apt purge` also deletes

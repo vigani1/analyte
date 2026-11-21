@@ -24,13 +24,17 @@ checksum. The lab manager's steps are in
    which checks the config, registers the service, protects the data and config
    folders, lets signed-in users start (not stop or change) the service, creates
    the admin token if missing, creates the local group `Analyte users` if
-   missing and adds the person who ran setup (below), and starts the service;
+   missing and adds the person who ran setup (below), adds the Windows Firewall
+   rule `Analyte - analyzers on the lab network` (inbound TCP to `analyte.exe`
+   from `LocalSubnet` only, every profile; replaced on each run) and starts
+   the service;
    then writes `analyte-app.toml` with the program's admin port beside the app;
 5. shows a new admin token once, read from the protected file (it is never
    logged), and offers to open the Analyte app. Without the WebView2 Runtime it
    says so and offers `http://127.0.0.1:<admin port>/setup` in the browser.
 
-Uninstall closes the app, runs `uninstall.ps1`, removes the program files, the
+Uninstall closes the app, runs `uninstall.ps1` (which also removes the
+firewall rule), removes the program files, the
 app's settings, the Start menu entry and the installing user's sign-in entry, and keeps data,
 configuration, machine definitions, backups, credentials, the token and the
 `Analyte users` group, which may list other people, and says so. To build

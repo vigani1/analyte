@@ -81,12 +81,16 @@ pub(super) enum Inputs {
         typed: String,
         placeholder: String,
     },
-    /// An IP address and port: this PC's when Analyte listens, the machine's when it connects.
-    Network {
-        listens: bool,
-        host: String,
+    /// Analyte listens and the machine connects: which of this PC's
+    /// addresses to listen on (or why they could not be listed, then a typed
+    /// address), and the port.
+    Listens {
+        hosts: Result<Vec<Host>, String>,
+        typed: String,
         port: String,
     },
+    /// Analyte connects to the machine: its IP address and port.
+    Connects { host: String, port: String },
     /// A folder Analyte watches.
     Folder(String),
 }
@@ -99,6 +103,17 @@ pub(super) struct Port {
     pub(super) meta: String,
     /// The running machine that holds it, so it cannot be chosen.
     pub(super) used_by: Option<String>,
+    pub(super) checked: bool,
+}
+
+/// One address Analyte can listen on: one of this PC's, every network card,
+/// or the one saved before.
+pub(super) struct Host {
+    pub(super) value: String,
+    /// The address, such as "192.168.1.20".
+    pub(super) address: String,
+    /// The adapter, or what the address means.
+    pub(super) meta: String,
     pub(super) checked: bool,
 }
 
@@ -146,6 +161,8 @@ pub(super) struct Start {
     pub(super) hidden: Hidden,
     /// What it listens on, in words with the exact setting on hover.
     pub(super) target: Hover,
+    /// Analyte connects to the machine instead of listening.
+    pub(super) connects: bool,
     /// How long it listens, in seconds.
     pub(super) limit: u64,
     pub(super) label: &'static str,
@@ -165,6 +182,8 @@ pub(super) struct Listen {
 pub(super) struct Live {
     /// "Listening on 0.0.0.0:5000", "Serial port COM3".
     pub(super) target: String,
+    /// Analyte connects to the machine instead of listening.
+    pub(super) connects: bool,
     /// Time left, such as "0:41"; none once it ended.
     pub(super) clock: Option<String>,
     /// Seconds run and the time limit, for the progress bar.
