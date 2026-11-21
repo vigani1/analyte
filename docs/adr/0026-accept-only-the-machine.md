@@ -88,5 +88,11 @@ keeping analyzers on their own network.
   "allowed host" setting and network separation are the controls; a lost
   connection already shows as "Not connected (retrying)" with a
   notification.
-- The command line (`analyte machines set`, PR #309) still needs an
-  `--allowed-peer` option through the same setup code; it is not merged yet.
+- The command line does the same through the same setup code:
+  `analyte machines set <name> --allowed-peer <ip>` (repeatable) and
+  `--any-device` to clear the list; at a terminal, `machines set` asks for
+  the devices of a listening machine that has none, and `machines test`
+  names the device that connected and offers to accept only it (a script is
+  told the command instead). `machines list` shows the list or the warning
+  and the newest refusal, and `analyte doctor` warns for a listening machine
+  without `allowed_peers`.

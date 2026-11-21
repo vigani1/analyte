@@ -409,6 +409,9 @@ struct LiveRow {
     since: Option<LiveTime>,
     model: Option<String>,
     lab_app: Option<String>,
+    /// The newest connection refused by its `allowed_peers`, in the page's
+    /// words with the device's address (ADR 0026); none since the start.
+    refused: Option<String>,
 }
 
 /// The whole answer: the rows, and whether the settings file could be read
@@ -432,7 +435,17 @@ pub(super) async fn live(State(state): State<Arc<Context>>) -> Response {
         .iter()
         .map(|entry| {
             let row = row(entry, &read.last, now);
+            let refused = match entry {
+                Entry::Running { machine, .. } => machine
+                    .status
+                    .borrow()
+                    .refused()
+                    .first()
+                    .map(|newest| format::refused(newest, &format::clock(newest.at, now))),
+                Entry::Waiting { .. } => None,
+            };
             LiveRow {
+                refused,
                 running: matches!(entry, Entry::Running { .. }),
                 id: row.id,
                 status: row.status.word,

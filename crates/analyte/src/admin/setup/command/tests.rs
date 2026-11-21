@@ -669,3 +669,193 @@ async fn the_admin_key_goes_only_to_a_listener_that_proves_it_holds_it() -> Resu
     }
     Ok(())
 }
+
+/// The `allowed_peers` of machine `id`'s site file, as written.
+fn site_peers(install: &Install, id: &str) -> Result<Option<Vec<String>>, Error> {
+    let site: toml::Table =
+        std::fs::read_to_string(install.root.join(format!("{id}.site.toml")))?.parse()?;
+    Ok(site
+        .get("allowed_peers")
+        .and_then(toml::Value::as_array)
+        .map(|list| {
+            list.iter()
+                .filter_map(toml::Value::as_str)
+                .map(str::to_owned)
+                .collect()
+        }))
+}
+
+/// Adds machine `id` listening on 127.0.0.1:`port` with the network model, plus `extra` options.
+async fn set_listening(
+    install: &Install,
+    id: &str,
+    port: &str,
+    extra: &[&str],
+) -> Result<Outcome, Failure> {
+    let mut args = vec![
+        "set",
+        id,
+        "--model",
+        "example/network-hl7",
+        "--address",
+        "127.0.0.1",
+        "--port",
+        port,
+        "--lab-app",
+        "demo",
+    ];
+    args.extend_from_slice(extra);
+    install.machines(&args).await
+}
+
+// ADR 0026 decision 2: `machines set` names the devices a listening machine
+// accepts with a repeatable --allowed-peer, keeps them when other choices
+// change (a new listening address included), clears them with --any-device,
+// and refuses what the site file refuses, changing nothing.
+#[tokio::test(flavor = "multi_thread")]
+async fn set_names_keeps_and_clears_the_allowed_devices() -> Result<(), Error> {
+    let install = install()?;
+    install.set_up().await?;
+    assert_eq!(install.machines(&["add", "hl7-2"]).await?, Outcome::Done);
+    let peers = [
+        "--allowed-peer",
+        "192.168.1.50",
+        "--allowed-peer",
+        "fd00::7",
+    ];
+    assert_eq!(
+        set_listening(&install, "hl7-2", "5600", &peers).await?,
+        Outcome::Done
+    );
+    let both = Some(vec!["192.168.1.50".to_owned(), "fd00::7".to_owned()]);
+    assert_eq!(site_peers(&install, "hl7-2")?, both);
+    assert_eq!(
+        set_listening(&install, "hl7-2", "5601", &[]).await?,
+        Outcome::Done
+    );
+    assert_eq!(site_peers(&install, "hl7-2")?, both, "kept on a new port");
+    let program = Program::load(&install.config)?;
+    let loaded = program
+        .machines()
+        .iter()
+        .find(|machine| machine.id().as_str() == "hl7-2")
+        .ok_or("hl7-2 not loaded")?;
+    let allowed = loaded.snapshot().effective().site().allowed_peers.as_ref();
+    let analyzer = std::net::IpAddr::from([192, 168, 1, 50]);
+    assert!(
+        allowed.is_some_and(|peers| peers.allows(analyzer)),
+        "{allowed:?}"
+    );
+    let before = install.settings()?;
+    for bad in [
+        &["set", "hl7-2", "--allowed-peer", "192.168.1.0/24"][..],
+        &["set", "hl7-2", "--allowed-peer", "analyzer.lab"][..],
+        &["set", "cobas-1", "--allowed-peer", "192.168.1.50"][..],
+    ] {
+        let error = refusal(install.machines(bad).await)?;
+        assert!(
+            matches!(error, SetupError::Connection(_)),
+            "{bad:?}: {error}"
+        );
+    }
+    assert_eq!(install.settings()?, before, "a refusal changes nothing");
+    assert!(
+        MachinesCli::try_parse_from([
+            "machines",
+            "set",
+            "hl7-2",
+            "--allowed-peer",
+            "192.168.1.50",
+            "--any-device"
+        ])
+        .is_err(),
+        "a list and any device cannot both be chosen"
+    );
+    assert_eq!(
+        install.machines(&["set", "hl7-2", "--any-device"]).await?,
+        Outcome::Done
+    );
+    assert_eq!(site_peers(&install, "hl7-2")?, None);
+    Ok(())
+}
+
+// ADR 0026 decision 2: `machines list` says which devices a listening
+// machine accepts, or warns that it accepts any device with the command
+// that limits it; machines on other links say nothing about devices.
+#[tokio::test(flavor = "multi_thread")]
+async fn list_says_which_devices_each_machine_accepts() -> Result<(), Error> {
+    let install = install()?;
+    install.set_up().await?;
+    for (id, port, extra) in [
+        ("guarded-2", "5600", &["--allowed-peer", "192.168.1.50"][..]),
+        ("open-3", "5601", &[][..]),
+    ] {
+        assert_eq!(install.machines(&["add", id]).await?, Outcome::Done);
+        assert_eq!(
+            set_listening(&install, id, port, extra).await?,
+            Outcome::Done
+        );
+    }
+    let installation = super::Installation::load(&install.config, install.seams())?;
+    let rows = machines::settings_rows(&installation)?;
+    let line = |id: &str| {
+        rows.iter()
+            .find(|row| row.id == id)
+            .and_then(machines::devices_line)
+    };
+    assert_eq!(
+        line("guarded-2").as_deref(),
+        Some("  Devices: only 192.168.1.50")
+    );
+    assert_eq!(
+        line("open-3").as_deref(),
+        Some(
+            "  Devices: warning - accepts connections from any device. Accept only the analyzer with: analyte machines set open-3 --allowed-peer <IP>"
+        )
+    );
+    assert_eq!(line("cobas-1"), None);
+    Ok(())
+}
+
+// ADR 0026 decision 2: `machines test` of a listening machine names the
+// device that connected; in a script it only says the command that accepts
+// only that device, and writes nothing.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_names_the_device_and_a_script_changes_nothing() -> Result<(), Error> {
+    let install = install()?;
+    install.set_up().await?;
+    assert_eq!(install.machines(&["add", "hl7-2"]).await?, Outcome::Done);
+    let port = free_port()?.to_string();
+    assert_eq!(
+        set_listening(&install, "hl7-2", &port, &[]).await?,
+        Outcome::Done
+    );
+    let before = install.settings()?;
+    let address = format!("127.0.0.1:{port}");
+    let device = async {
+        for _ in 0..100 {
+            if let Ok(mut socket) = tokio::net::TcpStream::connect(&address).await {
+                tokio::io::AsyncWriteExt::write_all(&mut socket, b"\x0bMSH|").await?;
+                tokio::time::sleep(Duration::from_millis(1500)).await;
+                return Ok::<_, Error>(());
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        Err("the test never listened".into())
+    };
+    let (outcome, device) = tokio::join!(
+        install.machines(&["test", "hl7-2", "--seconds", "2"]),
+        device
+    );
+    device?;
+    assert!(
+        matches!(outcome, Ok(Outcome::Done | Outcome::NotSeen)),
+        "{outcome:?}"
+    );
+    assert_eq!(
+        install.settings()?,
+        before,
+        "a script never saves the device"
+    );
+    Ok(())
+}

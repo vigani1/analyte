@@ -1290,6 +1290,24 @@ async fn machine_pages_show_the_allowed_devices_and_refusals() -> Result<(), Err
         "the list names only the newest"
     );
     assert!(list.contains(&format!("wait-4: {}", format::OPEN_TO_ANY)));
+    // `machines list` reads the newest refusal from GET /machines.json.
+    let answer = request(&host, "/machines.json", &auth, None).await?;
+    let body = answer.split("\r\n\r\n").nth(1).ok_or("no body")?;
+    let json: serde_json::Value = serde_json::from_str(body)?;
+    let refused = |id: &str| {
+        json["machines"]
+            .as_array()
+            .and_then(|rows| rows.iter().find(|row| row["id"] == id))
+            .map(|row| row["refused"].clone())
+            .unwrap_or_default()
+    };
+    assert!(
+        refused("net-1")
+            .as_str()
+            .is_some_and(|text| text.starts_with("Refused a connection from 10.0.0.9 at ")),
+        "{json}"
+    );
+    assert!(refused("wait-4").is_null(), "{json}");
     drop(guarded);
     stop(state, stopper, owner, store).await
 }

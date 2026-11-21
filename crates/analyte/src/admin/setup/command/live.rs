@@ -24,6 +24,9 @@ pub(super) struct Row {
     pub(super) since: Option<Time>,
     pub(super) model: Option<String>,
     pub(super) lab_app: Option<String>,
+    /// The newest refused connection (ADR 0026); an older engine does not send it.
+    #[serde(default)]
+    pub(super) refused: Option<String>,
 }
 
 /// A time as the page shows it.

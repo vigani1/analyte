@@ -106,6 +106,19 @@ pub struct Choice {
     /// The lab app this machine sends results to.
     #[arg(long)]
     lab_app: Option<String>,
+    /// For a machine that connects to Analyte: accept connections only from
+    /// this device, the analyzer's own IP address; repeat for several. Any
+    /// other device is refused (ADR 0026).
+    #[arg(
+        long = "allowed-peer",
+        value_name = "IP",
+        conflicts_with = "any_device"
+    )]
+    allowed_peer: Vec<String>,
+    /// For a machine that connects to Analyte: accept connections from any
+    /// device again, removing its allowed devices.
+    #[arg(long)]
+    any_device: bool,
 }
 
 impl Choice {
@@ -116,11 +129,20 @@ impl Choice {
             || self.address.is_some()
             || self.folder.is_some();
         if connection {
+            // The analyzer is the same device whichever address Analyte listens on.
             draft = Draft {
                 definition: draft.definition,
                 lab_app: draft.lab_app,
+                allowed_peers: draft.allowed_peers,
                 ..Draft::default()
             };
+        }
+        if !self.allowed_peer.is_empty() {
+            draft.allowed_peers = Some(self.allowed_peer.join(", "));
+        }
+        if self.any_device {
+            // Chosen: none, so nothing is asked about it either.
+            draft.allowed_peers = Some(String::new());
         }
         if let Some(model) = self.model {
             draft.definition = Some(model);
@@ -176,7 +198,16 @@ pub(super) async fn run(
             if let Some(note) = note {
                 say(&note)?;
             }
-            test(&installation, &name, choice, seconds, show_bytes, ask).await
+            test(
+                &installation,
+                given,
+                &name,
+                choice,
+                seconds,
+                show_bytes,
+                ask,
+            )
+            .await
         }
         Command::Remove { name, anyway } => {
             let installation = Installation::load(config, seams)?;
@@ -254,8 +285,8 @@ fn ports(config: &Path, seams: Seams) -> Result<Outcome, Failure> {
 
 /// One machine of the settings file, read for `machines list`.
 #[derive(serde::Serialize)]
-struct Listed {
-    id: String,
+pub(super) struct Listed {
+    pub(super) id: String,
     /// The model for people; none while not set up.
     model: Option<String>,
     definition: Option<String>,
@@ -267,6 +298,11 @@ struct Listed {
     settings_version: Option<String>,
     /// What the running engine says, in the Machines page's words.
     live: Option<live::Row>,
+    /// The only devices it accepts, when it connects to Analyte and its site
+    /// file names them (ADR 0026).
+    allowed_peers: Option<Vec<String>>,
+    /// It connects to Analyte and accepts any device: a warning.
+    open_to_any_device: bool,
 }
 
 /// The whole JSON answer of `machines list --json`.
@@ -281,7 +317,9 @@ struct ListAnswer {
     removed: Vec<live::Row>,
 }
 
-async fn list(installation: &Installation, json: bool) -> Result<Outcome, Failure> {
+/// Every machine of the settings file as `machines list` reads it, before
+/// the engine is asked how they stand.
+pub(super) fn settings_rows(installation: &Installation) -> Result<Vec<Listed>, Failure> {
     let setup = &installation.setup;
     let config = setup.config().to_owned();
     let root = setup.seams.definitions.clone();
@@ -308,7 +346,15 @@ async fn list(installation: &Installation, json: bool) -> Result<Outcome, Failur
             .iter()
             .find(|machine| machine.id().as_str() == id)
             .map(|machine| format::digest_short(&machine.snapshot().digest()));
+        let listens = definition.as_deref().is_some_and(|path| {
+            plan::kind_of(&crate::installation::config::folder(&config).join(path))
+                == Some(TransportKind::TcpServer)
+        });
+        let allowed_peers = saved_peers(&table)
+            .map(|peers| peers.split(", ").map(str::to_owned).collect::<Vec<_>>());
         machines.push(Listed {
+            open_to_any_device: listens && allowed_peers.is_none(),
+            allowed_peers: allowed_peers.filter(|_| listens),
             model: model(&config, root.as_deref(), definition.as_deref()).map(|m| m.shown),
             definition,
             connection,
@@ -319,6 +365,11 @@ async fn list(installation: &Installation, json: bool) -> Result<Outcome, Failur
             id,
         });
     }
+    Ok(machines)
+}
+
+async fn list(installation: &Installation, json: bool) -> Result<Outcome, Failure> {
+    let mut machines = settings_rows(installation)?;
     let (engine, reason, mut rows, settings_read) = match live::read(&installation.program).await {
         live::Live::Running {
             settings_read,
@@ -385,6 +436,9 @@ fn print_machine(machine: &Listed, engine: bool) -> std::io::Result<()> {
         "  Connection: {}",
         machine.connection.as_deref().unwrap_or(not)
     ))?;
+    if let Some(line) = devices_line(machine) {
+        say(&line)?;
+    }
     say(&format!(
         "  Lab app: {}",
         machine.lab_app.as_deref().unwrap_or(not)
@@ -427,7 +481,26 @@ fn print_live(row: &live::Row) -> std::io::Result<()> {
             || "nothing received since the start".to_owned(),
             |at| format!("{} ({})", at.shown, at.exact)
         )
-    ))
+    ))?;
+    match &row.refused {
+        Some(refused) => say(&format!("  Latest refusal: {refused}")),
+        None => Ok(()),
+    }
+}
+
+/// Which devices a machine that connects to Analyte accepts, as `machines
+/// list` says it: the allowed devices, or a warning (ADR 0026); none for
+/// other links.
+pub(super) fn devices_line(machine: &Listed) -> Option<String> {
+    match (&machine.allowed_peers, machine.open_to_any_device) {
+        (Some(peers), _) => Some(format!("  Devices: only {}", peers.join(", "))),
+        (None, true) => Some(format!(
+            "  Devices: warning - {}. Accept only the analyzer with: analyte machines set {} --allowed-peer <IP>",
+            format::OPEN_TO_ANY.to_lowercase(),
+            machine.id
+        )),
+        (None, false) => None,
+    }
 }
 
 /// What the service runs for `id`; every machine the settings load counts.
@@ -501,6 +574,7 @@ fn saved(setup: &Setup, id: &str) -> Result<Draft, SetupError> {
     let mut draft = Draft {
         definition: installed.definition.as_ref().map(|_| KEEP.to_owned()),
         lab_app: plan::current_lab_app(running(setup, id), &table),
+        allowed_peers: saved_peers(&table),
         ..Draft::default()
     };
     let kind = installed.definition.as_deref().and_then(plan::kind_of);
@@ -521,6 +595,51 @@ fn saved(setup: &Setup, id: &str) -> Result<Draft, SetupError> {
         (Some(TransportKind::WatchedFolder) | None, None, endpoint) => draft.folder = endpoint,
     }
     Ok(draft)
+}
+
+/// The devices a site file lets connect, as `--allowed-peer` takes them;
+/// none when it names none (ADR 0026).
+fn saved_peers(table: &toml::Table) -> Option<String> {
+    let listed: Vec<&str> = table
+        .get("allowed_peers")?
+        .as_array()?
+        .iter()
+        .filter_map(toml::Value::as_str)
+        .collect();
+    (!listed.is_empty()).then(|| listed.join(", "))
+}
+
+/// For a machine that connects to Analyte whose devices are not chosen yet,
+/// asks at a terminal which devices it accepts, as step 2's field does (ADR
+/// 0026). Returns whether it asked.
+fn ask_peers(setup: &Setup, id: &str, draft: &mut Draft, ask: Ask) -> Result<bool, Failure> {
+    if ask == Ask::Never || draft.allowed_peers.is_some() {
+        return Ok(false);
+    }
+    let plan = plan::plan(setup, id, draft)?;
+    if Link::of(plan.validated.effective().stack()) != Link::TcpServer {
+        return Ok(false);
+    }
+    say(concat!(
+        "Any device that reaches this port could send results as this machine. ",
+        "Run analyte machines test to see the analyzer's address."
+    ))?;
+    let typed = ask.line(
+        "Only accept these devices: the analyzer's IP address (several with commas; empty accepts any device)",
+    )?;
+    draft.allowed_peers = Some(typed.unwrap_or_default());
+    Ok(true)
+}
+
+/// Which devices a listening machine accepts, in the pages' words; none for
+/// other links.
+fn accepts(link: Link, peers: Option<&analyte_config::AllowedPeers>) -> Option<String> {
+    (link == Link::TcpServer).then(|| {
+        peers.map_or_else(
+            || format!("{} - {}", format::OPEN_TO_ANY, format::OPEN_TO_ANY_ADVICE),
+            |peers| format!("Accepts connections only from {peers}"),
+        )
+    })
 }
 
 /// Asks at a terminal for each choice the draft still lacks, in step order:
@@ -686,6 +805,9 @@ fn summary(id: &str, plan: &Plan) -> std::io::Result<()> {
     say(&format!("Machine: {id}"))?;
     say(&format!("Model: {}", plan.model))?;
     say(&format!("Connection: {} ({})", words.shown, words.exact))?;
+    if let Some(accepts) = accepts(Link::of(effective.stack()), plan.peers.as_ref()) {
+        say(&format!("Devices: {accepts}"))?;
+    }
     say(&format!(
         "Lab app: {} ({})",
         destination.name.as_str(),
@@ -703,7 +825,8 @@ async fn set(
 ) -> Result<Outcome, Failure> {
     let setup = installation.setup.clone();
     let mut draft = choice.over(saved(&setup, id)?);
-    let asked = fill(&setup, id, &mut draft, ask)?;
+    let filled = fill(&setup, id, &mut draft, ask)?;
+    let asked = ask_peers(&setup, id, &mut draft, ask)? || filled;
     if dry_run {
         return preview(&setup, id, &draft);
     }
@@ -715,6 +838,18 @@ async fn set(
             return Err(Failure::NotConfirmed);
         }
     }
+    save(installation, &actor, id, draft).await
+}
+
+/// Saves `draft` for `id` through the Save step's code, says what was saved
+/// and records it under `actor`.
+async fn save(
+    installation: &Installation,
+    actor: &Identifier,
+    id: &str,
+    draft: Draft,
+) -> Result<Outcome, Failure> {
+    let setup = installation.setup.clone();
     installation
         .with_store(async |store| {
             let (machine, kept) = (id.to_owned(), draft.clone());
@@ -727,6 +862,9 @@ async fn set(
             let words = connection_words(saved.link, &saved.connection);
             say(&format!("Saved {id}: {}.", saved.model))?;
             say(&format!("Connection: {} ({})", words.shown, words.exact))?;
+            if let Some(accepts) = accepts(saved.link, saved.peers.as_ref()) {
+                say(&format!("Devices: {accepts}"))?;
+            }
             say(&format!(
                 "Lab app: {} ({})",
                 saved.lab_app.name.as_str(),
@@ -746,7 +884,7 @@ async fn set(
             backups(&saved.backups)?;
             let outcome = record(
                 store,
-                &actor,
+                actor,
                 "setup-save",
                 id,
                 &saved.reason(Via::CommandLine),
@@ -792,6 +930,7 @@ const TICK: Duration = Duration::from_millis(250);
 
 async fn test(
     installation: &Installation,
+    given: Option<Identifier>,
     id: &str,
     choice: Choice,
     seconds: u64,
@@ -878,11 +1017,58 @@ async fn test(
         say(&shown(&bytes))?;
     }
     drop(session);
-    Ok(match (&view.end, found.tone) {
+    let outcome = match (&view.end, found.tone) {
         (Some(listen::End::Failed(_)), _) => Outcome::Refused,
         (_, Tone::Good) => Outcome::Done,
         (_, Tone::Attention | Tone::Problem | Tone::Neutral) => Outcome::NotSeen,
+    };
+    match view.peer {
+        Some(peer) => offer_peer(installation, given, id, draft, &plan, peer, ask).await,
+        None => Ok(outcome),
+    }
+    .map(|saved| {
+        if saved == Outcome::Done {
+            outcome
+        } else {
+            saved
+        }
     })
+}
+
+/// After a test of a machine that connects to Analyte, names the device that
+/// connected and, at a terminal, offers to accept only that device from now
+/// on, through the Save step's code (ADR 0026); a script is told the command.
+async fn offer_peer(
+    installation: &Installation,
+    given: Option<Identifier>,
+    id: &str,
+    mut draft: Draft,
+    plan: &Plan,
+    peer: std::net::IpAddr,
+    ask: Ask,
+) -> Result<Outcome, Failure> {
+    say(&format!("The device that connected: {peer}."))?;
+    if plan.peers.as_ref().is_some_and(|peers| peers.allows(peer)) {
+        say("It is one of the devices this machine accepts.")?;
+        return Ok(Outcome::Done);
+    }
+    let command = format!("analyte machines set {id} --allowed-peer {peer}");
+    if ask == Ask::Never {
+        say(&format!(
+            "Check that this is the analyzer's own address, then accept only it with: {command}"
+        ))?;
+        return Ok(Outcome::Done);
+    }
+    say("Check that this is the analyzer's own address in its network settings.")?;
+    if !ask.confirm(&format!("Only accept this device ({peer}) from now on?"))? {
+        say(&format!("Nothing was changed. To do it later: {command}"))?;
+        return Ok(Outcome::Done);
+    }
+    draft.allowed_peers = Some(peer.to_string());
+    let actor = actor(given, ask)?;
+    let plan = plan::checked(&installation.setup, id, &draft)?;
+    summary(id, &plan)?;
+    save(installation, &actor, id, draft).await
 }
 
 /// The received bytes as text: printable ASCII as it is, every other byte by

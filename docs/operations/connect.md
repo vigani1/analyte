@@ -379,8 +379,16 @@ $model = 'vendor/model'
 & $analyte --config $config --actor it-alex machines set hl7-1 `
     --model $model --address 192.168.1.20 --port 5600 --lab-app main-lab --dry-run
 & $analyte --config $config --actor it-alex machines set hl7-1 `
-    --model $model --address 192.168.1.20 --port 5600 --lab-app main-lab
+    --model $model --address 192.168.1.20 --port 5600 --lab-app main-lab `
+    --allowed-peer 192.168.1.50
 ```
+
+`--allowed-peer` is the analyzer's own address: only that device may connect
+([Accept only the analyzer](#accept-only-the-analyzer)). Repeat it for
+several; `--any-device` removes the list again. Other choices left out keep
+the saved devices. `machines list` shows each machine's devices, or a warning
+that it accepts any device, and the newest refused connection; `analyte
+doctor` warns for a listening machine without a list.
 
 Add a serial machine on a USB adapter, found by its serial number in any USB
 socket (`--serial-port COM3` names a fixed port instead):
@@ -401,6 +409,11 @@ save or share that output.
 ```powershell
 & $analyte --config $config machines test cobas-1 --seconds 30
 ```
+
+For a machine that connects to Analyte, the test also names the device that
+connected. At a terminal it then asks whether to accept only that device from
+now on, and saves that through the same checks as `machines set`; in a script
+it prints the `machines set ... --allowed-peer` command instead.
 
 Add a lab app and set its keys. Keys are never options: the command asks for
 them without showing what you type, or reads them from standard input, the
