@@ -144,9 +144,12 @@ jobs:
           # PATH, the value keeps its registry type, and every other entry stays
           # in its place.
           $environment = 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment'
+          # The runner image may store PATH as String or ExpandString; the
+          # script must keep whichever it found.
+          $pathKind = (Get-Item -LiteralPath $environment).GetValueKind('Path')
           function Get-SystemPath {
             $key = Get-Item -LiteralPath $environment
-            if ($key.GetValueKind('Path') -ne 'ExpandString') { throw "the system PATH is $($key.GetValueKind('Path'))" }
+            if ($key.GetValueKind('Path') -ne $pathKind) { throw "the system PATH changed from $pathKind to $($key.GetValueKind('Path'))" }
             [string]$key.GetValue('Path', '', 'DoNotExpandEnvironmentNames')
           }
           function Get-OtherEntries {
