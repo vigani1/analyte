@@ -342,10 +342,7 @@ async fn execute(cli: Cli) -> Result<ExitCode, Error> {
             file,
             shutdown_timeout_secs,
         } => {
-            let program = Program::load(&match file {
-                Some(file) => file,
-                None => config()?,
-            })?;
+            let program = Program::load(&file.map_or_else(config, Ok)?)?;
             #[cfg(feature = "test-hooks")]
             let (program, _pause) = astm_pause_for_test(program)?;
             service::run_bounded(program, Duration::from_secs(shutdown_timeout_secs)).await
