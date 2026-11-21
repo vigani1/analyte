@@ -30,4 +30,5 @@ links to its replacement; none is superseded today.
 | [0021](0021-windows-sign-in-pipe.md)            | Windows sign-in for the Analyte app through a local pipe |
 | [0022](0022-title-bar-snap-layouts-and-window-menu.md) | Snap layouts and the window menu for the app's title bar |
 | [0023](0023-status-reasons-and-notifications.md) | Notifications that say what happened |
-| [0024](0024-setup-from-the-command-line.md) | Setting up machines and lab apps from the command line |
+| [0024](0024-one-review-item-per-cause.md)       | One Needs review item per cause (refines ADR 0003) |
+| [0025](0025-setup-from-the-command-line.md) | Setting up machines and lab apps from the command line |

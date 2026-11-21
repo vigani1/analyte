@@ -44,6 +44,7 @@ fn correction_cannot_bypass_status_table() -> TestResult {
             ReconcileInput {
                 corrections: &[true],
                 findings: &[],
+                held_back: None,
                 mode: ReconcileMode::Lifecycle(policy),
             },
             |_, _| Ok(vec![]),
@@ -87,6 +88,7 @@ fn batch_advancing_twice_uses_exact_revision() -> TestResult {
         ReconcileInput {
             corrections: &[false, false],
             findings: &[],
+            held_back: None,
             mode: ReconcileMode::Lifecycle(policy),
         },
         |_, _| Ok(vec![]),
@@ -114,6 +116,7 @@ fn batch_advancing_twice_uses_exact_revision() -> TestResult {
         ReconcileInput {
             corrections: &[false],
             findings: &[],
+            held_back: None,
             mode: ReconcileMode::Lifecycle(policy),
         },
         |_, _| Ok(vec![]),
@@ -143,6 +146,7 @@ fn withheld_delivery_is_refused_atomically() -> TestResult {
         ReconcileInput {
             corrections: &[false],
             findings: &[],
+            held_back: None,
             mode: ReconcileMode::Lifecycle(policy),
         },
         |evidence, _| {
@@ -247,6 +251,7 @@ fn single_final_run_scoped_by_machine_order_test() -> TestResult {
                 ReconcileInput {
                     corrections: &[false],
                     findings: &[],
+                    held_back: None,
                     mode: ReconcileMode::Lifecycle(policy),
                 },
                 |_, _| Ok(vec![]),
@@ -318,6 +323,7 @@ fn retained_interpretation_byte_bound_is_inclusive() -> TestResult {
                 ReconcileInput {
                     corrections: &[false],
                     findings: &[],
+                    held_back: None,
                     mode: ReconcileMode::Lifecycle(StatusLifecycle {
                         transitions: &[],
                         withheld: &[],
@@ -407,6 +413,7 @@ fn progression_uses_requested_observation_status() -> TestResult {
             ReconcileInput {
                 corrections: &[false, false],
                 findings: &[],
+                held_back: None,
                 mode: ReconcileMode::Lifecycle(policy),
             },
             |_, _| Ok(vec![]),
@@ -428,6 +435,7 @@ fn progression_uses_requested_observation_status() -> TestResult {
             ReconcileInput {
                 corrections: &[false],
                 findings: &[],
+                held_back: None,
                 mode: ReconcileMode::Lifecycle(policy),
             },
             |_, _| Ok(vec![]),

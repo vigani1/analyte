@@ -240,7 +240,7 @@ unsupported.
 
 Everything the [Setup page](operate.md#setup-page) and the Lab apps page do
 can also be done from PowerShell (or a Linux shell) with `analyte machines`
-and `analyte lab-apps` ([ADR 0024](../adr/0024-setup-from-the-command-line.md)).
+and `analyte lab-apps` ([ADR 0025](../adr/0025-setup-from-the-command-line.md)).
 They use the pages' own checks, dated backups, safe write and roll back, and
 write the same audit row, naming the `--actor` you give. Run them in an
 administrator PowerShell, with the program file:

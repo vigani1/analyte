@@ -51,6 +51,8 @@ impl PreparedMapping {
         } = self;
         let atomic = policy.atomic();
         let lifecycle = policy.lifecycle();
+        // A reading refused because of its findings is explained by them.
+        let held_back = policy.mapping_refusal();
         let findings = park_findings(id, findings)?;
         let oversize = failed(&interpretation, "interpretation exceeds store record_bytes")?;
         let receipt = store
@@ -81,6 +83,7 @@ impl PreparedMapping {
             analyte_store::ReconcileInput {
                 corrections: &corrections,
                 findings: &findings,
+                held_back,
                 mode: policy.mode(),
             },
             build,
@@ -159,6 +162,7 @@ fn retain_failed(
         analyte_store::ReconcileInput {
             corrections: &[],
             findings,
+            held_back: None,
             mode: rejected_policy.mode(),
         },
         |_, _| Ok(Vec::new()),

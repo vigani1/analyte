@@ -259,6 +259,7 @@ fn reconciliation_bounds_results_and_findings_separately() -> TestResult {
             ReconcileInput {
                 corrections: &[false, false],
                 findings: &[],
+                held_back: None,
                 mode: ReconcileMode::Standard
             },
             |_, _| Ok(vec![])
@@ -280,6 +281,7 @@ fn reconciliation_bounds_results_and_findings_separately() -> TestResult {
             ReconcileInput {
                 corrections: &[],
                 findings: &[finding.clone(), finding.clone()],
+                held_back: None,
                 mode: ReconcileMode::Standard
             },
             |_, _| Ok(vec![])
@@ -334,6 +336,7 @@ fn batch_duplicates_reuse_revision_keep_runs_distinct() -> TestResult {
         ReconcileInput {
             corrections: &[false, false, true, false, false],
             findings: &[],
+            held_back: None,
             mode: ReconcileMode::Standard,
         },
         |_, _| Ok(vec![]),
@@ -488,5 +491,194 @@ fn delivery_bounds_and_machine_owner_refuse_atomically() -> TestResult {
         }
         assert_eq!(store.raw(metadata.id)?, Some(b"raw".to_vec()));
     }
+    Ok(())
+}
+
+/// The open items: their kind and stored reason, in item order.
+fn open_reasons(store: &Store) -> Result<Vec<(String, String)>, Box<dyn std::error::Error>> {
+    store
+        .parked_filtered(0, ParkedFilter::Open)?
+        .iter()
+        .map(|item| {
+            let details = item.details()?;
+            Ok((
+                details.kind.as_str().to_owned(),
+                details.reason.as_str().to_owned(),
+            ))
+        })
+        .collect()
+}
+
+// AGENTS.md safety rules 2 and 4; owner report 2026-11-21. A result that
+// arrives without an identity is explained by the reading's findings: it gets
+// no item of its own then, and one when no finding was given. Each problem is
+// one open item, also when the same reading repeats it.
+#[test]
+fn a_result_without_identity_is_parked_through_its_finding_once() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("one-item.db"))?;
+    let unresolved = |receipt| -> Result<analyte_model::ResultContent, Box<dyn std::error::Error>> {
+        let mut result = production_result(receipt)?;
+        result.identity = analyte_model::IdentityStatus::Unresolved(Reason::new("no identity")?);
+        Ok(result)
+    };
+    let finding =
+        |receipt: ReceiptId, reason: &str| -> Result<Parked, Box<dyn std::error::Error>> {
+            Ok(Parked {
+                kind: Identifier::new(ParkedKind::MappingFinding.as_str())?,
+                reason: Reason::new(reason)?,
+                targets: vec![Identifier::new(&uuid::Uuid::from(receipt).to_string())?],
+            })
+        };
+    // With a finding: the finding is the one item, given twice or not.
+    let explained = receipt(b"explained")?;
+    store.receive(&explained, b"explained", b"config")?;
+    let mut evidence = interpretation()?;
+    evidence.outcome = Reading::Results(vec![unresolved(explained.id)?, unresolved(explained.id)?]);
+    let findings = [
+        finding(explained.id, "unknown test")?,
+        finding(explained.id, "unknown test")?,
+    ];
+    let commit = store.reconcile(
+        ReconcileAction::Interpret(explained.id),
+        evidence,
+        ReconcileInput::standard(&[false, false], &findings),
+        |_, _| Ok(Vec::new()),
+    )?;
+    assert_eq!(
+        commit.outcomes,
+        vec![RevisionOutcome::Unresolved, RevisionOutcome::Unresolved]
+    );
+    assert_eq!(
+        open_reasons(&store)?,
+        vec![("mapping_finding".to_owned(), "unknown test".to_owned())]
+    );
+    // Without a finding: the store's own item, so the result is never unexplained.
+    let bare = receipt(b"bare")?;
+    store.receive(&bare, b"bare", b"config")?;
+    let mut evidence = interpretation()?;
+    evidence.outcome = Reading::Results(vec![unresolved(bare.id)?]);
+    store.reconcile(
+        ReconcileAction::Interpret(bare.id),
+        evidence,
+        ReconcileInput::standard(&[false], &[]),
+        |_, _| Ok(Vec::new()),
+    )?;
+    assert_eq!(
+        open_reasons(&store)?.get(1),
+        Some(&(
+            "result_reconciliation".to_owned(),
+            "result reconciliation: Unresolved".to_owned()
+        ))
+    );
+    assert_eq!(open_reasons(&store)?.len(), 2);
+    Ok(())
+}
+
+// AGENTS.md safety rule 4: a problem the store finds itself is separate from
+// the message's findings and keeps its own item, one per result.
+#[test]
+fn conflicting_results_keep_their_own_items_beside_findings() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("conflicts.db"))?;
+    assert_eq!(
+        revised_receipt(&mut store, "001", false, "run1")?,
+        RevisionOutcome::New(analyte_model::Revision(0))
+    );
+    let metadata = receipt(b"conflicts")?;
+    store.receive(&metadata, b"conflicts", b"config")?;
+    let changed =
+        |sample: &str| -> Result<analyte_model::ResultContent, Box<dyn std::error::Error>> {
+            let mut result = production_result(metadata.id)?;
+            if let Some(id) = &mut result.sample {
+                id.id = SampleId::new(sample)?;
+            }
+            if let analyte_model::IdentityStatus::Resolved(identity) = &mut result.identity {
+                identity.observation.run = analyte_model::SourceText::new("run1")?;
+            }
+            Ok(result)
+        };
+    let mut evidence = interpretation()?;
+    evidence.outcome = Reading::Results(vec![changed("002")?, changed("003")?]);
+    let findings = [Parked {
+        kind: Identifier::new(ParkedKind::MappingFinding.as_str())?,
+        reason: Reason::new("unit not mapped")?,
+        targets: vec![Identifier::new(&uuid::Uuid::from(metadata.id).to_string())?],
+    }];
+    let commit = store.reconcile(
+        ReconcileAction::Interpret(metadata.id),
+        evidence,
+        ReconcileInput::standard(&[false, false], &findings),
+        |_, _| Ok(Vec::new()),
+    )?;
+    assert_eq!(
+        commit.outcomes,
+        vec![RevisionOutcome::Conflict, RevisionOutcome::Conflict]
+    );
+    let conflict = (
+        "result_reconciliation".to_owned(),
+        "result reconciliation: Conflict".to_owned(),
+    );
+    assert_eq!(
+        open_reasons(&store)?,
+        vec![
+            ("mapping_finding".to_owned(), "unit not mapped".to_owned()),
+            conflict.clone(),
+            conflict,
+        ]
+    );
+    Ok(())
+}
+
+// Owner report 2026-11-21 (IHE LAW held all results back for one unknown test
+// code): a reading that fails only because its findings held the results back
+// is explained by those findings. Any other failure keeps its own item, and
+// without findings the held-back reading is still parked, never left unseen.
+#[test]
+fn a_reading_held_back_by_its_findings_parks_only_the_findings() -> TestResult {
+    const HELD: &str = "results held back by findings";
+    let temp = tempfile::tempdir()?;
+    let mut store = open(&temp.path().join("held-back.db"))?;
+    let mut read = |name: &[u8], failure: &str, with_finding: bool| -> TestResult {
+        let metadata = receipt(name)?;
+        store.receive(&metadata, name, b"config")?;
+        let mut evidence = interpretation()?;
+        evidence.outcome = Reading::Failed(Reason::new(failure)?);
+        let findings = if with_finding {
+            vec![Parked {
+                kind: Identifier::new(ParkedKind::MappingFinding.as_str())?,
+                reason: Reason::new("unknown test")?,
+                targets: vec![Identifier::new(&uuid::Uuid::from(metadata.id).to_string())?],
+            }]
+        } else {
+            Vec::new()
+        };
+        store.reconcile(
+            ReconcileAction::Interpret(metadata.id),
+            evidence,
+            ReconcileInput {
+                corrections: &[],
+                findings: &findings,
+                held_back: Some(HELD),
+                mode: ReconcileMode::Standard,
+            },
+            |_, _| Ok(Vec::new()),
+        )?;
+        Ok(())
+    };
+    read(b"held", HELD, true)?;
+    read(b"other", "evidence too large", true)?;
+    read(b"bare", HELD, false)?;
+    let finding = ("mapping_finding".to_owned(), "unknown test".to_owned());
+    let failure = |reason: &str| ("interpretation_failure".to_owned(), reason.to_owned());
+    assert_eq!(
+        open_reasons(&store)?,
+        vec![
+            finding.clone(),
+            finding,
+            failure("evidence too large"),
+            failure(HELD),
+        ]
+    );
     Ok(())
 }

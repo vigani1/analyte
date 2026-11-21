@@ -1,4 +1,4 @@
-# 0024. Setting up machines and lab apps from the command line
+# 0025. Setting up machines and lab apps from the command line
 
 Status: accepted, 2026-11-21 (the owner asked for the Setup and Lab apps pages'
 steps from PowerShell for scripted installs and remote support, and for the
