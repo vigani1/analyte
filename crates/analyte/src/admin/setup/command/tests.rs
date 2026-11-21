@@ -638,6 +638,12 @@ async fn the_admin_key_goes_only_to_a_listener_that_proves_it_holds_it() -> Resu
         let install = install_on(port)?;
         let data = install.root.join("data");
         std::fs::create_dir_all(&data)?;
+        // The engine refuses a data directory others can read (Linux 0700).
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&data, std::fs::Permissions::from_mode(0o700))?;
+        }
         let key = crate::admin::rotate_token(&data)?;
         let program = Program::load(&install.config)?;
         match super::live::read(&program).await {
