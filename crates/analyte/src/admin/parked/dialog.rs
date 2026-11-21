@@ -265,7 +265,7 @@ async fn process_again(
     actor: Identifier,
     reason: Reason,
 ) -> Result<InterpretationCommit, Error> {
-    let path = state.config_path.clone();
+    let path = state.setup.config().to_owned();
     let program =
         tokio::task::spawn_blocking(move || crate::installation::config::Program::load(&path))
             .await??;
