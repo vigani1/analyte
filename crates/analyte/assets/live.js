@@ -13,6 +13,16 @@
 // Motion follows the design's CSS, which turns it off for reduced motion.
 'use strict';
 (function () {
+  // The page-change cross-fade is the browser's own (app.css). When a page
+  // change starts before the last one has settled, Chromium skips the fade
+  // and rejects a promise no page script can reach ("Transition was aborted
+  // because of invalid state. Page already revealed"). Nothing failed: the
+  // page shows without the fade. This script starts no transition, so only
+  // that rejection is marked handled; every other one is still reported.
+  window.addEventListener('unhandledrejection', function (event) {
+    var reason = event.reason;
+    if (reason instanceof DOMException && /^Transition was (aborted|skipped)/.test(reason.message)) event.preventDefault();
+  });
   var meta = document.querySelector('.engine__meta');
   var dot = document.querySelector('.engine .live-dot');
   var say = document.getElementById('live-say');

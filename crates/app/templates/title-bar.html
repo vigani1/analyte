@@ -1,9 +1,10 @@
-{#- The app's own title bar (ADR 0019), in its own webview above the engine's pages: the Aperture mark from the hand-drawn 16 and 20 px files, "Analyte", the engine-state dot with its word on hover, and the window buttons at Windows 11's size. Dragging and double-clicking the bar are Tauri's data-tauri-drag-region; the buttons are title-bar.js. Icons: Lucide (ISC). -#}
+{#- The app's own title bar (ADR 0019), in its own webview above the engine's pages: the Aperture mark from the hand-drawn 16 and 20 px files, "Analyte", the engine-state dot with its word on hover, and the window buttons at Windows 11's size. The head names its icon, so WebView2 never asks for /favicon.ico. Dragging and double-clicking the bar are Tauri's data-tauri-drag-region; the buttons are title-bar.js. Icons: Lucide (ISC). -#}
 <!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <title>Analyte</title>
+<link rel="icon" type="image/svg+xml" href="/static/icons/analyte-app-icon-16.svg">
 <link rel="stylesheet" href="/static/fonts.css">
 <link rel="stylesheet" href="/static/analyte.css">
 <link rel="stylesheet" href="/static/app.css">

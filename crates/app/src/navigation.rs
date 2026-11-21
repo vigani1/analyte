@@ -3,8 +3,22 @@
 //! The window carries the admin session, so it never shows another site. A
 //! link to the web goes to the browser, where it has no session; anything
 //! else (files, other programs' schemes) is refused.
+//!
+//! `WebView2` sends a navigation's request before the app's check can cancel
+//! it, so the check alone would still let a link reach another site from the
+//! window, with the window's cookies. [`PAGES_SCRIPT`] therefore turns a
+//! click on a link to another origin into a new-window request, which the
+//! app answers before anything is sent.
 use crate::engine::Origin;
 use crate::sign_in::{self, Trigger};
+
+/// The script the pages' webview runs at the start of every page, before
+/// the page's own (`crates/app/assets/pages.js`): a click on a link to
+/// another origin asks for a new window instead, so [`decide`] answers it
+/// before `WebView2` sends a request. Without it, a link to another port on
+/// 127.0.0.1 reached that port with the admin session's cookie, because
+/// cookies ignore the port.
+pub const PAGES_SCRIPT: &str = include_str!("../assets/pages.js");
 
 /// What the window does with an address it is asked to show.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -157,5 +171,43 @@ mod tests {
         );
         let local = url::Url::parse("http://analyte.localhost/login/windows").expect("an address");
         assert_eq!(decide(&local, Origin::Local), Decision::Show);
+    }
+
+    // App test round A, item 4: WebView2 sent a link's request, with the
+    // session cookie, before the navigation check cancelled it. The pages'
+    // script sends every click on an http(s) link to another origin to a new
+    // window, which the app decides on before any request, and leaves the
+    // page's own links, downloads and other windows' links to the browser
+    // and the check. Its behaviour is shown live in the PR; this guards the
+    // rule's parts.
+    #[test]
+    fn the_pages_script_sends_links_elsewhere_to_a_new_window() {
+        let script = PAGES_SCRIPT;
+        assert!(script.starts_with("// pages.js: "), "its opening comment");
+        assert!(script.contains("'use strict';"));
+        for part in [
+            "addEventListener('click', function (event) {",
+            "if (event.defaultPrevented || event.button !== 0",
+            "closest('a[href], area[href]')",
+            "link.hasAttribute('download')",
+            "if (target !== '_self' && target !== '_top' && target !== '_parent') return;",
+            "new URL(link.getAttribute('href'), document.baseURI)",
+            "if (url.origin === location.origin || (url.protocol !== 'http:' && url.protocol !== 'https:')) return;",
+            "event.preventDefault();
+  window.open(url.href, '_blank', 'noopener');",
+        ] {
+            assert!(script.contains(part), "the script lacks {part}");
+        }
+        assert_eq!(script.matches("addEventListener(").count(), 1);
+        for forbidden in [
+            "eval(",
+            "new Function",
+            "innerHTML",
+            "document.write",
+            "fetch(",
+            "__TAURI",
+        ] {
+            assert!(!script.contains(forbidden), "the script uses {forbidden}");
+        }
     }
 }
