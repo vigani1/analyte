@@ -13,4 +13,4 @@
 - `syntax`: Tagged message fields.
 - `encode`: Outgoing tagged messages, checked by the same parser.
 
-[Technical details and safety guidance](DETAILS.md).
+[Technical details and safety guidance](../../../docs/protocols/vidas/README.md), in the protocol notes.
