@@ -19,6 +19,8 @@ const STEPS: &[(i64, i64, &str)] = &[
     // Indexes for the admin pages' reads, and when each delivery was last
     // accepted; the file says what each one serves.
     (16, 17, include_str!("read_indexes.sql")),
+    // The runs of failed delivery tries Activity shows as one line each.
+    (17, 18, include_str!("attempt_runs.sql")),
 ];
 
 /// Refuses a stored version this build cannot open; 0 is an empty file.

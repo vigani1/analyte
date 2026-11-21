@@ -5,9 +5,11 @@ use crate::{Reading, document, key};
 use analyte_model::{DeliveryId, SampleId};
 use rusqlite::params;
 
-/// A store with one line of each kind at fixed times, from `synthetic-machine`
-/// unless said otherwise, and one parked item from before schema 16.
-fn seeded(path: &std::path::Path) -> Result<Store, Box<dyn std::error::Error>> {
+/// A store with one message from `synthetic-machine`, stored at 1000 and read
+/// with one result.
+fn read_message(
+    path: &std::path::Path,
+) -> Result<(Store, analyte_model::ReceiptMetadata), Box<dyn std::error::Error>> {
     let mut store = open(path)?;
     let mut metadata = receipt(b"raw")?;
     metadata.received_at = jiff::Timestamp::from_second(1000)?;
@@ -18,6 +20,13 @@ fn seeded(path: &std::path::Path) -> Result<Store, Box<dyn std::error::Error>> {
         "INSERT INTO interpretations(receipt,version,evidence) VALUES (?1,1,?2)",
         params![key(&metadata.id)?, document(&evidence)?],
     )?;
+    Ok((store, metadata))
+}
+
+/// A store with one line of each kind at fixed times, from `synthetic-machine`
+/// unless said otherwise, and one parked item from before schema 16.
+fn seeded(path: &std::path::Path) -> Result<Store, Box<dyn std::error::Error>> {
+    let (mut store, metadata) = read_message(path)?;
     let delivery = DeliveryId::try_from(uuid::Uuid::now_v7())?;
     store.db.execute(
         "INSERT INTO outbox(id,kind,receipt,version,destination,ordering_key,payload,digest,contract,state,next_attempt) VALUES (?1,'result',?2,1,'main-lab','k',x'00',x'00',1,'done',0)",
@@ -141,18 +150,21 @@ fn activity_lists_stored_events_newest_first() -> TestResult {
         results: 1,
         samples: vec![SampleId::new("000123")?],
     });
-    assert_eq!(
+    assert!(matches!(
         what.get(7),
-        Some(&&Activity::Attempt {
-            lab_app: "main-lab".into(),
+        Some(Activity::Attempt {
+            lab_app,
             outcome: AttemptOutcome::Delivered,
-            carries: Carries::Results(results.clone()),
-        })
-    );
+            carries: Carries::Results(carried),
+            tries: None,
+            ..
+        }) if lab_app == "main-lab" && *carried == results
+    ));
     assert!(matches!(
         what.get(8),
         Some(Activity::Attempt {
             outcome: AttemptOutcome::RetryAt(1150),
+            tries: None,
             ..
         })
     ));
@@ -243,8 +255,23 @@ fn activity_filters_pages_and_counts_a_day() -> TestResult {
     Ok(())
 }
 
-/// Every line as schema 16 read it: all sources combined, then sorted. Kept
-/// here as the reference the indexed reads must match line for line.
+/// How a try failed, for the reference: cut off, failed with a retry time,
+/// or NULL for any other outcome.
+macro_rules! reference_kind {
+    ($o:literal) => {
+        concat!(
+            "(CASE WHEN ",
+            $o,
+            "='\"uncertain (interrupted)\"' THEN 'cut' WHEN json_type(",
+            $o,
+            ",'$.RetryAt')='integer' THEN 'retry' END)"
+        )
+    };
+}
+
+/// Every line as schema 16 read it: all sources combined, then sorted, with
+/// a failed try left out when the next try of its delivery failed the same
+/// way. Kept here as the reference the indexed reads must match line for line.
 macro_rules! combined {
     () => {
         concat!(
@@ -263,7 +290,13 @@ macro_rules! combined {
             " UNION ALL SELECT a.time,3,a.sequence,coalesce(",
             "(SELECT json_extract(r.metadata,'$.machine') FROM receipts r WHERE r.id=o.receipt),",
             "(SELECT CASE WHEN count(DISTINCT m.machine)=1 THEN min(m.machine) END FROM machine_orders m WHERE m.order_id=o.order_id AND m.destination=o.destination)),",
-            "CASE WHEN a.outcome='\"Done\"' THEN 1 ELSE 3 END FROM attempts a JOIN outbox o ON o.id=a.delivery",
+            "CASE WHEN a.outcome='\"Done\"' THEN 1 ELSE 3 END FROM (SELECT *,",
+            "lead(outcome) OVER (PARTITION BY delivery ORDER BY sequence) AS next FROM attempts) a JOIN outbox o ON o.id=a.delivery",
+            " WHERE NOT coalesce(",
+            reference_kind!("a.outcome"),
+            "=",
+            reference_kind!("a.next"),
+            ",0)",
             " UNION ALL SELECT json_extract(evidence,'$.updated_at'),4,sequence,json_extract(evidence,'$.key.machine'),2 FROM (",
             "SELECT sequence,evidence,json_extract(evidence,'$.state') AS state,",
             "lag(json_extract(evidence,'$.state')) OVER (PARTITION BY machine_order ORDER BY sequence) AS was ",
@@ -369,7 +402,9 @@ fn combined_counts(
 // of every kept row showed: the same lines, order, times, machines, page
 // breaks and day counts, for every machine and filter, including lines in the
 // same second, items with no stored time, a resolution whose audit names a
-// poll, an order sent to two machines and a purged message.
+// poll, an order sent to two machines and a purged message. Owner decision
+// 2026-11-21 (Activity groups retries): failed tries in a row of one delivery
+// are one line, in both reads.
 #[test]
 fn activity_pages_and_counts_match_the_combined_read() -> TestResult {
     let temp = tempfile::tempdir()?;
@@ -453,6 +488,219 @@ fn activity_marks_move_with_every_stored_kind() -> TestResult {
         store.activity_marks()?.open,
         0,
         "a resolved item moves the open count"
+    );
+    Ok(())
+}
+
+/// A store with one message delivered to two lab apps and the tries of each,
+/// as `(delivery, outcome, time)` with deliveries numbered 0 and 1, and the
+/// first delivery's state.
+fn tried(
+    path: &std::path::Path,
+    state: &str,
+    tries: &[(usize, &str, i64)],
+) -> Result<(Store, [DeliveryId; 2]), Box<dyn std::error::Error>> {
+    let (store, metadata) = read_message(path)?;
+    let deliveries = [
+        DeliveryId::try_from(uuid::Uuid::now_v7())?,
+        DeliveryId::try_from(uuid::Uuid::now_v7())?,
+    ];
+    for (delivery, lab_app, state) in [
+        (deliveries[0], "main-lab", state),
+        (deliveries[1], "second-lab", "pending"),
+    ] {
+        store.db.execute(
+            "INSERT INTO outbox(id,kind,receipt,version,destination,ordering_key,payload,digest,contract,state,next_attempt) VALUES (?1,'result',?2,1,?3,?1,x'00',x'00',1,?4,0)",
+            params![key(&delivery)?, key(&metadata.id)?, lab_app, state],
+        )?;
+    }
+    for &(index, outcome, time) in tries {
+        let delivery = deliveries.get(index).ok_or("a fixture delivery")?;
+        store.db.execute(
+            "INSERT INTO attempts(delivery,outcome,time) VALUES (?1,?2,?3)",
+            params![key(delivery)?, outcome, time],
+        )?;
+    }
+    Ok((store, deliveries))
+}
+
+/// A try line's time and, when it folds earlier tries, how many, the first
+/// one's time and whether the delivery still waits.
+type Folded = (Option<i64>, Option<(u64, i64, bool)>);
+
+/// The failed tries each line stands for, newest first: its time and, when
+/// it folds earlier tries, how many with the first one's time.
+fn folds(lines: &[ActivityLine]) -> Vec<Folded> {
+    lines
+        .iter()
+        .filter_map(|line| match &line.what {
+            Activity::Attempt { tries, .. } => Some((
+                line.at,
+                tries.map(|tries| (tries.count, tries.first, tries.waiting)),
+            )),
+            Activity::Stored(_)
+            | Activity::Parked { .. }
+            | Activity::Resolved { .. }
+            | Activity::Order { .. }
+            | Activity::Changed { .. } => None,
+        })
+        .collect()
+}
+
+const RETRY: &str = "{\"RetryAt\":9000}";
+const CUT: &str = "\"uncertain (interrupted)\"";
+
+// Owner decision 2026-11-21 (Activity groups retries): failed tries in a row
+// of one delivery that ended the same way are one line, at the newest of
+// them, saying how many and when the first was; a delivery still waiting
+// says so. Another delivery's tries in between do not end a run.
+#[test]
+fn failed_tries_in_a_row_of_one_delivery_are_one_line() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let tries: Vec<(usize, &str, i64)> = (0..35)
+        .map(|step| (0, RETRY, 1100 + step * 10))
+        .chain((0..3).map(|step| (1, RETRY, 1105 + step * 10)))
+        .collect();
+    let (store, deliveries) = tried(&temp.path().join("run.db"), "pending", &tries)?;
+    let feed = store.activity(None, None, ActivityCursor::NEWEST, 50)?;
+    assert_eq!(
+        folds(&feed),
+        [
+            (Some(1440), Some((35, 1100, true))),
+            (Some(1125), Some((3, 1105, true))),
+        ],
+        "two lab apps failing in turn are two lines, one per delivery"
+    );
+    assert!(matches!(
+        &feed.first().ok_or("a line")?.what,
+        Activity::Attempt { delivery, lab_app, outcome: AttemptOutcome::RetryAt(9000), .. }
+            if *delivery == deliveries[0] && lab_app == "main-lab"
+    ));
+    let problems = store.activity(
+        None,
+        Some(ActivityGroup::Problems),
+        ActivityCursor::NEWEST,
+        50,
+    )?;
+    assert_eq!(
+        folds(&problems),
+        folds(&feed),
+        "every filter folds the same way"
+    );
+    assert_eq!(
+        store.activity_counts(None, (1000, 2000))?,
+        [
+            (ActivityGroup::Results, 1),
+            (ActivityGroup::Orders, 0),
+            (ActivityGroup::Problems, 2),
+            (ActivityGroup::Changes, 0),
+        ],
+        "a day counts the lines shown"
+    );
+    // One delivery's tries are listed one by one, newest first, and page.
+    let each = store.delivery_activity(deliveries[0], ActivityCursor::NEWEST, 30)?;
+    assert_eq!(each.len(), 30);
+    assert_eq!(each.first().map(|line| line.at), Some(Some(1440)));
+    assert!(folds(&each).iter().all(|(_, tries)| tries.is_none()));
+    let last = each.last().ok_or("a 30th try")?.cursor;
+    let rest = store.delivery_activity(deliveries[0], last, 30)?;
+    assert_eq!(
+        rest.iter().map(|line| line.at).collect::<Vec<_>>(),
+        [Some(1140), Some(1130), Some(1120), Some(1110), Some(1100)]
+    );
+    assert!(
+        store
+            .delivery_activity(deliveries[0], rest.last().ok_or("a try")?.cursor, 30)?
+            .is_empty()
+    );
+    assert_eq!(
+        store
+            .delivery_activity(
+                DeliveryId::try_from(uuid::Uuid::now_v7())?,
+                ActivityCursor::NEWEST,
+                30
+            )?
+            .len(),
+        0,
+        "a delivery that is not kept has no tries"
+    );
+    Ok(())
+}
+
+// Owner decision 2026-11-21 (Activity groups retries): a success, a park, a
+// pause or a try that failed another way ends a run; the run's line no
+// longer says the delivery waits.
+#[test]
+fn a_try_that_ended_another_way_ends_the_run() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let (store, _) = tried(
+        &temp.path().join("ended.db"),
+        "parked",
+        &[
+            (0, RETRY, 1100),
+            (0, RETRY, 1110),
+            (0, "\"Done\"", 1120),
+            (0, RETRY, 1130),
+            (0, RETRY, 1140),
+            (0, RETRY, 1150),
+            (0, CUT, 1160),
+            (0, CUT, 1170),
+            (0, RETRY, 1180),
+            (0, "{\"Paused\":\"keys\"}", 1190),
+            (0, RETRY, 1200),
+            (0, RETRY, 1210),
+            (0, "{\"Parked\":\"HTTP 422\"}", 1220),
+        ],
+    )?;
+    let feed = store.activity(None, None, ActivityCursor::NEWEST, 50)?;
+    assert_eq!(
+        folds(&feed),
+        [
+            (Some(1220), None),
+            (Some(1210), Some((2, 1200, false))),
+            (Some(1190), None),
+            (Some(1180), None),
+            (Some(1170), Some((2, 1160, false))),
+            (Some(1150), Some((3, 1130, false))),
+            (Some(1120), None),
+            (Some(1110), Some((2, 1100, false))),
+        ]
+    );
+    Ok(())
+}
+
+// Owner decision 2026-11-21 (Activity groups retries): a run never splits
+// across pages: its line sits at its newest try, and the next page starts
+// after it without its earlier tries.
+#[test]
+fn a_run_never_splits_across_pages() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let tries: Vec<(usize, &str, i64)> = (0..6).map(|step| (0, RETRY, 1100 + step * 100)).collect();
+    let (store, _) = tried(&temp.path().join("paged.db"), "pending", &tries)?;
+    for step in 0..6 {
+        store.db.execute(
+            "INSERT INTO audit(evidence) VALUES (?1)",
+            [format!(
+                "{{\"actor\":\"admin-session-1\",\"action\":\"setup-save\",\"targets\":[\"m\"],\"time\":{},\"reason\":\"r\"}}",
+                1150 + step * 100
+            )],
+        )?;
+    }
+    let first = store.activity(None, None, ActivityCursor::NEWEST, 3)?;
+    assert_eq!(times(&first), [Some(1650), Some(1600), Some(1550)]);
+    assert_eq!(folds(&first), [(Some(1600), Some((6, 1100, true)))]);
+    let mut before = first.last().ok_or("a third line")?.cursor;
+    let mut rest = Vec::new();
+    loop {
+        let page = store.activity(None, None, before, 3)?;
+        let Some(last) = page.last() else { break };
+        before = last.cursor;
+        rest.extend(page);
+    }
+    assert_eq!(
+        times(&rest),
+        [Some(1450), Some(1350), Some(1250), Some(1150), Some(1000)],
+        "the later pages hold the changes and the message, none of the folded tries"
     );
     Ok(())
 }

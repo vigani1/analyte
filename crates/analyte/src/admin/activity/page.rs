@@ -12,6 +12,9 @@ pub(super) const ACTIVITY_LEDE: &str =
 pub(super) struct Feed {
     pub(super) frame: Frame,
     pub(super) machines: Vec<MachineOption>,
+    /// Whether the page lists every try of one delivery instead of the
+    /// feed; it then has no filters.
+    pub(super) one_delivery: bool,
     /// The type shown, which the machine filter's Show keeps.
     pub(super) show: &'static str,
     pub(super) chips: Vec<TypeChip>,
@@ -49,7 +52,8 @@ pub(super) struct Day {
 /// One line: when, its icon in its tone with the word a screen reader says,
 /// who or what it is about, the rest of the sentence and a link.
 pub(super) struct FeedLine {
-    /// Its position, which the script uses to mark lines that are new.
+    /// Its position, which the script uses to mark lines that are new; for
+    /// failed tries in a row, one that stays the same while they grow.
     pub(super) key: String,
     /// None when no time was stored.
     pub(super) at: Option<Moment>,

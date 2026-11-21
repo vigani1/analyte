@@ -476,6 +476,22 @@ GET form, counts today's lines, and pages 50 lines at a time after the last line
 shown. It shows sample IDs and counts, never test codes, values or the reasons
 people typed.
 
+Failed tries in a row of one delivery that ended the same way (failed, or cut
+off) are one line, at the newest of them: "sending to main-lab failed · tried
+35 times, 02:32 – 12:01 · next try after 12:02". The next try is said only
+while the delivery still waits for it. A try of that delivery that ended
+another way (delivered, rejected, paused, a conflict, or failed the other way)
+ends the run; tries of other deliveries in between do not, because while a lab
+app is down every waiting delivery retries on its own clock, so their tries
+take turns. Two lab apps failing in turn are therefore two lines. The line
+links to `/activity?delivery=<id>`, which lists every try of that delivery,
+one line each, newest first. The line sits at its newest try's place, so a
+run never splits across pages, a page counts lines as shown and today's
+counts count lines as shown. Its key for the live script is the delivery and
+its first try, so a new try updates the line in place. Every try stays
+stored; only the page folds them. The store keeps the runs (schema 18,
+`attempt_runs`), so the page reads one row per line, however long an outage.
+
 Live updates (`src/admin/server/live.rs`, `assets/live.js`): signed-in pages load one
 script file. It opens `GET /events`, a server-sent event stream that says only
 which areas changed (overview, review, machines, deliveries, activity) and the

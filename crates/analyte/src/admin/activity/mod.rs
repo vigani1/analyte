@@ -5,6 +5,9 @@
 //! time stored beside it. Machine links and disconnects are not stored, so
 //! they are not listed, and the mockup's Connections filter is left out. No
 //! script: the filters are one GET form, and each type is a submit button.
+//!
+//! Failed tries in a row of one delivery are one line, which links to the
+//! same page listing every try of that delivery (`?delivery=`), one line each.
 use crate::admin::error::CommandError;
 use crate::admin::server::sessions::Session;
 use crate::admin::view::{
@@ -14,7 +17,8 @@ use crate::admin::view::{
 };
 use crate::admin::{Error, server::Context};
 use crate::deadline;
-use analyte_store::{ActivityCursor, ActivityGroup, ActivityLine};
+use analyte_model::DeliveryId;
+use analyte_store::{Activity, ActivityCursor, ActivityGroup, ActivityLine};
 use askama::Template as _;
 use axum::{
     Extension,
@@ -82,7 +86,8 @@ impl Show {
 }
 
 /// GET /activity's query: the machine (empty for all), the type and where
-/// the page starts, written `at.source.key` as the last line's position.
+/// the page starts, written `at.source.key` as the last line's position; or
+/// one delivery, whose tries are listed one by one instead.
 #[derive(Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(in crate::admin) struct ActivityQuery {
@@ -92,6 +97,20 @@ pub(in crate::admin) struct ActivityQuery {
     show: Show,
     #[serde(default, deserialize_with = "cursor")]
     before: Option<ActivityCursor>,
+    #[serde(default)]
+    delivery: Option<DeliveryId>,
+}
+
+/// Which lines a page lists.
+#[derive(Clone, Copy)]
+enum Lines<'a> {
+    /// The feed, for `machine` (none for all) and `show`.
+    Feed {
+        machine: Option<&'a str>,
+        show: Show,
+    },
+    /// Every try of one delivery.
+    Tries(DeliveryId),
 }
 
 /// Reads `at.source.key`; anything else is refused, as an unreadable address.
@@ -124,18 +143,21 @@ pub(in crate::admin) async fn activity(
     session: Option<Extension<Arc<Session>>>,
 ) -> Response {
     let machine = (!query.machine.is_empty()).then_some(query.machine);
-    let (show, before) = (query.show, query.before);
+    let (show, before, delivery) = (query.show, query.before, query.delivery);
+    let lines = |machine| match delivery {
+        Some(delivery) => Lines::Tries(delivery),
+        None => Lines::Feed { machine, show },
+    };
     crate::admin::more::show(
         &state,
         session.as_ref(),
         Tab::Activity,
-        read(&state, machine.clone(), show, before),
+        read(&state, machine.clone(), show, before, delivery),
         |read, session, now| {
             feed(
                 &state,
                 session,
-                machine.as_deref(),
-                show,
+                lines(machine.as_deref()),
                 before,
                 &read,
                 now,
@@ -151,6 +173,7 @@ async fn read(
     machine: Option<String>,
     show: Show,
     before: Option<ActivityCursor>,
+    delivery: Option<DeliveryId>,
 ) -> Result<Read, Error> {
     let day = format::today_span(Timestamp::now());
     let group = show.group();
@@ -159,12 +182,19 @@ async fn read(
         .read::<_, CommandError>(deadline()?, move |s| {
             let machine = machine.as_deref();
             let start = before.unwrap_or(ActivityCursor::NEWEST);
-            let (lines, more) = one_page::<_, CommandError>(
-                s.activity(machine, group, start, PAGE + 1)?,
-                PAGE,
-                |last| Ok(!s.activity(machine, group, last.cursor, 1)?.is_empty()),
-            )?;
-            let today = day.map(|day| s.activity_counts(machine, day)).transpose()?;
+            let page = |before, limit| match delivery {
+                Some(delivery) => s.delivery_activity(delivery, before, limit),
+                None => s.activity(machine, group, before, limit),
+            };
+            let (lines, more) =
+                one_page::<_, CommandError>(page(start, PAGE + 1)?, PAGE, |last| {
+                    Ok(!page(last.cursor, 1)?.is_empty())
+                })?;
+            // One delivery's tries have no filters to count for.
+            let today = day
+                .filter(|_| delivery.is_none())
+                .map(|day| s.activity_counts(machine, day))
+                .transpose()?;
             Ok(Read { lines, more, today })
         })
         .await?)
@@ -173,12 +203,15 @@ async fn read(
 fn feed(
     state: &Context,
     session: Option<&Session>,
-    machine: Option<&str>,
-    show: Show,
+    lines: Lines<'_>,
     before: Option<ActivityCursor>,
     read: &Read,
     now: Timestamp,
 ) -> Feed {
+    let (machine, show) = match lines {
+        Lines::Feed { machine, show } => (machine, show),
+        Lines::Tries(_) => (None, Show::All),
+    };
     let count = |group: ActivityGroup| {
         read.today.as_ref().map(|today| {
             today
@@ -212,7 +245,7 @@ fn feed(
         .lines
         .last()
         .filter(|_| read.more)
-        .map(|last| href(machine, show, last.cursor));
+        .map(|last| href(lines, last.cursor));
     let empty = read.lines.is_empty().then(|| {
         if before.is_some() {
             Empty {
@@ -220,6 +253,13 @@ fn feed(
                 title: "No earlier activity",
                 text: "This page is past the oldest line Analyte keeps.",
                 link: Some((Tab::Activity.href(), "Back to the newest".into())),
+            }
+        } else if matches!(lines, Lines::Tries(_)) {
+            Empty {
+                good: false,
+                title: "No tries kept",
+                text: "Analyte keeps no try of this delivery.",
+                link: Some((Tab::Activity.href(), "Show all activity".into())),
             }
         } else if machine.is_some() || show != Show::All {
             Empty {
@@ -250,6 +290,7 @@ fn feed(
             now,
         ),
         machines,
+        one_delivery: matches!(lines, Lines::Tries(_)),
         show: show.value(),
         chips: Show::ALL
             .into_iter()
@@ -281,6 +322,7 @@ fn days(state: &Context, lines: &[ActivityLine], now: Timestamp) -> Vec<Day> {
             );
         let said = format::said(
             &line.what,
+            line.at,
             line.machine.as_deref().map(|id| format::Named {
                 id,
                 model: model(state, id),
@@ -288,10 +330,7 @@ fn days(state: &Context, lines: &[ActivityLine], now: Timestamp) -> Vec<Day> {
             crate::admin::parked::headline,
         );
         let shown = FeedLine {
-            key: format!(
-                "{}.{}.{}",
-                line.cursor.at, line.cursor.source, line.cursor.key
-            ),
+            key: key(line),
             at: line.at.map(format::feed_time),
             tone: said.tone,
             icon: said.icon,
@@ -311,6 +350,28 @@ fn days(state: &Context, lines: &[ActivityLine], now: Timestamp) -> Vec<Day> {
     days
 }
 
+/// A line's key for the live script: its position, or for failed tries in a
+/// row their delivery and first try, so a new try updates the line instead
+/// of counting as a new one.
+fn key(line: &ActivityLine) -> String {
+    match &line.what {
+        Activity::Attempt {
+            delivery,
+            tries: Some(tries),
+            ..
+        } => format!("tries.{}.{}", uuid::Uuid::from(*delivery), tries.first),
+        Activity::Attempt { tries: None, .. }
+        | Activity::Stored(_)
+        | Activity::Parked { .. }
+        | Activity::Resolved { .. }
+        | Activity::Order { .. }
+        | Activity::Changed { .. } => format!(
+            "{}.{}.{}",
+            line.cursor.at, line.cursor.source, line.cursor.key
+        ),
+    }
+}
+
 /// The model of machine `id` when it is set up and its definition names one.
 fn model<'a>(state: &'a Context, id: &str) -> Option<&'a str> {
     state
@@ -325,14 +386,21 @@ fn label(state: &Context, id: &str) -> String {
     model(state, id).map_or_else(|| id.to_owned(), |model| format!("{id} ({model})"))
 }
 
-/// The page with `machine` and `show` that starts after `before`.
-fn href(machine: Option<&str>, show: Show, before: ActivityCursor) -> String {
+/// The page of `lines` that starts after `before`.
+fn href(lines: Lines<'_>, before: ActivityCursor) -> String {
     let mut parts = Vec::new();
-    if let Some(machine) = machine {
-        parts.push(format!("machine={}", format::path_segment(machine)));
-    }
-    if show != Show::All {
-        parts.push(format!("show={}", show.value()));
+    match lines {
+        Lines::Feed { machine, show } => {
+            if let Some(machine) = machine {
+                parts.push(format!("machine={}", format::path_segment(machine)));
+            }
+            if show != Show::All {
+                parts.push(format!("show={}", show.value()));
+            }
+        }
+        Lines::Tries(delivery) => {
+            parts.push(format!("delivery={}", uuid::Uuid::from(delivery)));
+        }
     }
     parts.push(format!(
         "before={}.{}.{}",
