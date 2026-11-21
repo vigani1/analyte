@@ -1064,16 +1064,7 @@ async fn store_failures_and_slow_reads_answer_in_the_new_look() -> Result<(), Er
         uuid::Uuid::from(seeded.delivered)
     );
     for path in ["/machines", "/machines/net-1", departures.as_str()] {
-        let busy = store.clone();
-        let blocker = tokio::spawn(async move {
-            busy.request::<_, FixtureError>(fixture_deadline()?, |_| {
-                std::thread::sleep(Duration::from_millis(1800));
-                Ok(())
-            })
-            .await
-            .map_err(Error::from)
-        });
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        let blocker = hold_store(&store, PAST_READ_BUDGET).await?;
         let slow = request(&host, path, &auth, None).await?;
         assert!(slow.starts_with("HTTP/1.1 504"), "{path}: {slow}");
         assert_new_look(&slow);

@@ -50,6 +50,32 @@ fn fixture_deadline() -> Result<std::time::Instant, Error> {
         .ok_or_else(|| "admin fixture deadline overflow".into())
 }
 
+/// Holds the store's one worker for `hold`, as a slow disk would, and returns
+/// only once the hold has begun, so a read or write sent next queues behind
+/// it. A fixed sleep before the request instead raced a cold Windows worker
+/// (test round B, 2026-11-21).
+async fn hold_store(
+    store: &Arc<analyte_store::Handle>,
+    hold: Duration,
+) -> Result<tokio::task::JoinHandle<Result<(), Error>>, Error> {
+    let (started, holding) = tokio::sync::oneshot::channel();
+    let busy = store.clone();
+    let blocker = tokio::spawn(async move {
+        busy.request::<_, FixtureError>(fixture_deadline()?, move |_| {
+            let _ = started.send(());
+            std::thread::sleep(hold);
+            Ok(())
+        })
+        .await
+        .map_err(Error::from)
+    });
+    holding.await.map_err(|_| "the store never ran the hold")?;
+    Ok(blocker)
+}
+
+/// Past the pages' 1.5 s read budget, so a page read behind it times out.
+const PAST_READ_BUDGET: Duration = Duration::from_millis(1800);
+
 // Plan section 11: the actual program refuses absent tokens before opening the
 // endpoint, owns the enabled server, and joins it before closing the store.
 // Plan §11
