@@ -70,7 +70,7 @@ pub(super) struct Sender {
 }
 
 /// One of a lab app's two keys: where its value is found, never the value.
-pub(super) struct Key {
+pub(in crate::admin::setup) struct Key {
     /// "API key" or "Signing key".
     pub(super) label: &'static str,
     /// The form field that replaces it.
@@ -79,9 +79,9 @@ pub(super) struct Key {
     pub(super) input: &'static str,
     pub(super) tone: Tone,
     /// "Set on 19 Nov", "Set in the service environment (…)", "Missing" or "Cannot be checked".
-    pub(super) word: String,
+    pub(in crate::admin::setup) word: String,
     /// Its credential name and, when stored, the exact time, on hover.
-    pub(super) exact: String,
+    pub(in crate::admin::setup) exact: String,
     /// How the form takes a value for it.
     pub(super) entry: Entry,
 }

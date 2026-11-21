@@ -3,7 +3,8 @@
 //! The guess is a hint for people, never a decision: it looks only at how the
 //! stream starts, with the framing crates' own start markers, and answers
 //! "unknown" for anything else. It reads no values and keeps no bytes.
-use crate::admin::view::Tone;
+use super::listen;
+use crate::admin::view::{Tone, format, parts::Notice};
 use analyte_config::Stack;
 use analyte_framing::{astm, hl7, vidas};
 
@@ -19,7 +20,7 @@ pub(crate) enum Family {
 
 impl Family {
     /// The family a validated machine stack speaks; IHE LAW is HL7 over MLLP.
-    pub(super) fn of(stack: &Stack) -> Self {
+    pub(in crate::admin::setup) fn of(stack: &Stack) -> Self {
         match stack {
             Stack::Astm(_) => Self::Astm,
             Stack::Hl7(_) | Stack::Law(_) => Self::Hl7,
@@ -170,6 +171,24 @@ pub(super) fn verdict(guess: Guess, model: Family, ended: bool) -> (Tone, String
             "Check the machine’s host protocol setting.",
         ),
     }
+}
+
+/// The verdict of a test as it stands in `view`, for a model that speaks
+/// `family`: what it saw, or that it could not run. The test page and the
+/// `machines test` command both say it.
+pub(in crate::admin::setup) fn of_view(view: &listen::View, family: Family) -> Notice {
+    let (tone, title, text) = match &view.end {
+        Some(listen::End::Failed(why)) => (
+            Tone::Problem,
+            "The test could not run".to_owned(),
+            format::sentence(why),
+        ),
+        end => {
+            let (tone, title, text) = verdict(view.guess, family, end.is_some());
+            (tone, title, text.to_owned())
+        }
+    };
+    Notice { tone, title, text }
 }
 
 /// Whether what was seen can be the model's own protocol.

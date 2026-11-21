@@ -49,6 +49,12 @@ pub enum CredentialError {
     /// A supplied value is empty, too long or not printable ASCII.
     #[error("credential {0} must be 1 to 4096 printable ASCII characters")]
     InvalidValue(String),
+    /// The locked folder does not exist yet, and this process does not run
+    /// as the service account, so a folder it created would lock the service out.
+    #[error(
+        "the locked keys file does not exist yet and only the account the Analyte service runs as may create it"
+    )]
+    NotServiceAccount,
     /// A file operation failed; the OS cause is kept, the value is not.
     #[error("credentials {operation} failed: {source}")]
     Io {
@@ -179,6 +185,57 @@ impl Locked {
             return Err(CredentialError::TooLarge);
         }
         Ok(Stored(document.keys))
+    }
+
+    /// Checks, before anything is asked for or written, that this process can
+    /// store keys the service will read: an existing locked file must pass its
+    /// usual checks and be readable here; a missing folder may be created only
+    /// by the account the service runs as (Windows: the installed service
+    /// account, or any account while the service is not installed; Unix: the
+    /// owner of the data directory). The command line calls it; the service,
+    /// which runs as that account, does not need to.
+    /// # Errors
+    /// Refuses another account, an exposed or unreadable file, and reports I/O failures.
+    pub fn check_writer(&self) -> Result<(), CredentialError> {
+        match std::fs::symlink_metadata(&self.folder) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(io("inspect folder")(error)),
+            Ok(_) => return self.read().map(|_| ()),
+        }
+        #[cfg(windows)]
+        {
+            let creates =
+                crate::runtime::service::acl::creates_for_service().map_err(|source| {
+                    CredentialError::Access {
+                        path: self.folder.clone(),
+                        source,
+                    }
+                })?;
+            if !creates {
+                return Err(CredentialError::NotServiceAccount);
+            }
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt as _;
+            // The data directory, or before it exists the folder it will be made in.
+            let mut parent = self.folder.parent().unwrap_or(&self.folder);
+            while !parent.exists()
+                && let Some(up) = parent.parent()
+            {
+                parent = up;
+            }
+            let owner = std::fs::metadata(parent)
+                .map_err(io("inspect data directory"))?
+                .uid();
+            let me = std::fs::metadata("/proc/self")
+                .map_err(io("identify the service account"))?
+                .uid();
+            if owner != me {
+                return Err(CredentialError::NotServiceAccount);
+            }
+        }
+        Ok(())
     }
 
     /// Stores `updates` beside the keys already held, dated `now`, replacing the

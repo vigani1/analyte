@@ -72,7 +72,8 @@ offered. CLI output can contain protected evidence.
 ## Setup page
 
 The **Setup** page lets a lab manager set up an installed machine without
-editing files. It needs a browser login (not just the bearer header), and the
+editing files. IT staff can do the same from PowerShell
+([from the command line](connect.md#from-the-command-line)). It needs a browser login (not just the bearer header), and the
 service needs write access to the folder that holds the program file and the
 site files (see [Install](install.md)). Each machine listed in the program file
 has a **Set up** link that opens four steps, one per screen, and a **Remove**

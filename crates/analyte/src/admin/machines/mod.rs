@@ -31,7 +31,7 @@ use axum::{
     Extension,
     extract::{Path, Query, State},
     http::StatusCode,
-    response::Response,
+    response::{IntoResponse as _, Response},
 };
 use jiff::Timestamp;
 use page::{Delivery, Detail, List, Message, Row, Todo};
@@ -366,6 +366,90 @@ fn row(
             .map(|status| format::moment(status.changed_at(), now)),
         lab_app: running.map(|machine| machine.lab_app.as_str().to_owned()),
     }
+}
+
+/// A time as the Machines list shows it, with its exact value and RFC 3339 form.
+#[derive(serde::Serialize)]
+struct LiveTime {
+    datetime: String,
+    shown: String,
+    exact: String,
+}
+
+impl From<format::Moment> for LiveTime {
+    fn from(moment: format::Moment) -> Self {
+        Self {
+            datetime: moment.datetime,
+            shown: moment.shown,
+            exact: moment.exact,
+        }
+    }
+}
+
+/// One row of the Machines list, in the page's own words.
+#[derive(serde::Serialize)]
+struct LiveRow {
+    id: String,
+    /// Analyte runs it now, so its port or address is in use.
+    running: bool,
+    /// The status word: the link state while it runs ("Connected", "Waiting",
+    /// "Port open"...), otherwise where its setup stands.
+    status: String,
+    /// The link and its state as the service names them; empty when it does not run.
+    exact: String,
+    /// What Analyte observed, as the page says it under the status.
+    note: Option<String>,
+    last_data: Option<LiveTime>,
+    /// When its open link opened.
+    since: Option<LiveTime>,
+    model: Option<String>,
+    lab_app: Option<String>,
+}
+
+/// The whole answer: the rows, and whether the settings file could be read
+/// (if not, machines set up or removed since the start may be missing).
+#[derive(serde::Serialize)]
+struct Live {
+    settings_read: bool,
+    machines: Vec<LiveRow>,
+}
+
+/// GET /machines.json: the Machines list as data, for the `machines list`
+/// command. Like every page but sign-in and `/status`, it needs the admin key
+/// or a signed-in session; it says what the page says and never a payload.
+pub(super) async fn live(State(state): State<Arc<Context>>) -> Response {
+    let now = Timestamp::now();
+    let Ok(read) = read_within(read_list(&state)).await else {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    };
+    let entries = roster(&state, read.listed.as_deref().ok());
+    let machines = entries
+        .iter()
+        .map(|entry| {
+            let row = row(entry, &read.last, now);
+            LiveRow {
+                running: matches!(entry, Entry::Running { .. }),
+                id: row.id,
+                status: row.status.word,
+                exact: row.status.exact,
+                note: row.status.note,
+                last_data: row.last_data.map(LiveTime::from),
+                since: row.since.map(LiveTime::from),
+                model: row.model,
+                lab_app: row.lab_app,
+            }
+        })
+        .collect();
+    let mut response = axum::Json(Live {
+        settings_read: read.listed.is_ok(),
+        machines,
+    })
+    .into_response();
+    response.headers_mut().insert(
+        axum::http::header::CACHE_CONTROL,
+        axum::http::HeaderValue::from_static("no-store"),
+    );
+    response
 }
 
 /// GET /machines/{id}.

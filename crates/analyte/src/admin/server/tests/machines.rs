@@ -1099,6 +1099,48 @@ async fn store_failures_and_slow_reads_answer_in_the_new_look() -> Result<(), Er
     Ok(())
 }
 
+// Owner request 2026-11-21 (command line): `machines list` reads the Machines
+// list as data from GET /machines.json, in the page's own words; like every
+// page it needs the admin key or a signed-in session, and holds no payload.
+#[tokio::test(flavor = "multi_thread")]
+async fn machines_json_says_what_the_list_says_and_needs_sign_in() -> Result<(), Error> {
+    let directory = crate::admin::private_tempdir()?;
+    let (store, (state, stopper, owner, host), auth) = started(directory.path(), scene()?).await?;
+    seed(directory.path(), &store).await?;
+    let refused = request(&host, "/machines.json", "", None).await?;
+    assert!(!refused.starts_with("HTTP/1.1 200"), "{refused}");
+    assert!(!refused.contains("net-1"), "{refused}");
+    let answer = request(&host, "/machines.json", &auth, None).await?;
+    assert!(answer.starts_with("HTTP/1.1 200"), "{answer}");
+    assert!(answer.contains("cache-control: no-store"), "{answer}");
+    let body = answer.split("\r\n\r\n").nth(1).ok_or("no body")?;
+    let json: serde_json::Value = serde_json::from_str(body)?;
+    let machine = |id: &str| {
+        json["machines"]
+            .as_array()
+            .and_then(|rows| rows.iter().find(|row| row["id"] == id))
+            .cloned()
+            .unwrap_or_default()
+    };
+    assert_eq!(json["settings_read"], true);
+    assert_eq!(machine("net-1")["status"], "Connected");
+    assert_eq!(machine("net-1")["running"], true);
+    assert_eq!(machine("net-1")["lab_app"], "main-lab");
+    assert!(machine("net-1")["last_data"]["datetime"].is_string());
+    assert_eq!(machine("new-9")["status"], "Not set up yet");
+    assert_eq!(machine("new-9")["running"], false);
+    assert_eq!(
+        machine("saved-10")["status"],
+        "Saved: starts after a restart"
+    );
+    assert_eq!(
+        machine("removed-8")["status"],
+        "Removed: stops at the restart"
+    );
+    stop(state, stopper, owner, store).await?;
+    Ok(())
+}
+
 // Owner decision 2026-11-20 (admin restyle b2): Remove changes settings, so a
 // request with the admin key alone gets "Sign in first" in the new look, and
 // nothing is read or changed.
