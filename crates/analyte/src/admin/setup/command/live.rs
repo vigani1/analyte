@@ -3,10 +3,11 @@
 //! Link states live only in the running engine, so the command reads them the
 //! way the Machines page does: `GET /machines.json` on the configured loopback
 //! admin address, with the admin key read from the protected data directory.
-//! The key is sent in a header to that address only, never printed or logged.
+//! The key is sent in a header to that address only, and only after the
+//! listener proved it holds the key ([`proven`]); it is never printed or logged.
 //! Anything else than a good answer within [`WAIT`] means the live state is
 //! unknown, said with the reason; a state is never guessed.
-use crate::admin::Token;
+use crate::admin::{Token, server::token::Nonce};
 use crate::installation::config::Program;
 use std::time::Duration;
 
@@ -57,6 +58,67 @@ pub(super) enum Live {
     Unknown(String),
 }
 
+/// Why the key was not sent: the listener did not prove it is the engine.
+const UNPROVEN: &str = "something else answers on the admin address: it could not prove it is this Analyte engine, so the admin key was not sent";
+
+/// The largest proof answer read.
+const PROOF_LIMIT: usize = 1024;
+
+#[derive(serde::Deserialize)]
+struct Proof {
+    proof: String,
+}
+
+/// Whether the listener at `address` answers a fresh challenge with the
+/// proof only the admin key can give; nothing secret is sent to ask.
+async fn proven(client: &reqwest::Client, address: std::net::SocketAddrV4, token: &Token) -> bool {
+    let Ok(nonce) = Nonce::fresh() else {
+        return false;
+    };
+    let request = client.get(format!("http://{address}/proof?nonce={}", nonce.as_str()));
+    let Ok(body) = fetch(request, PROOF_LIMIT).await else {
+        return false;
+    };
+    serde_json::from_slice::<Proof>(&body)
+        .ok()
+        .and_then(|answer| unhex(&answer.proof))
+        .is_some_and(|answer| token.proves(&nonce, &answer))
+}
+
+/// Bytes from lowercase or uppercase hex; `None` for anything else.
+fn unhex(text: &str) -> Option<Vec<u8>> {
+    if !text.len().is_multiple_of(2) {
+        return None;
+    }
+    (0..text.len())
+        .step_by(2)
+        .map(|at| u8::from_str_radix(text.get(at..at.saturating_add(2))?, 16).ok())
+        .collect()
+}
+
+/// Sends `request` and reads a good answer of at most `limit` bytes.
+async fn fetch(request: reqwest::RequestBuilder, limit: usize) -> Result<Vec<u8>, String> {
+    let mut response = request
+        .send()
+        .await
+        .map_err(|error| format!("the engine did not answer: {error}"))?;
+    if !response.status().is_success() {
+        return Err(format!("the engine answered {}", response.status()));
+    }
+    let mut body = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|error| format!("the answer was cut off: {error}"))?
+    {
+        if body.len().saturating_add(chunk.len()) > limit {
+            return Err("the engine's answer was too large".into());
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body)
+}
+
 /// Asks the engine of `program` for its Machines list.
 pub(super) async fn read(program: &Program) -> Live {
     let Some(address) = program.admin_address() else {
@@ -91,31 +153,17 @@ pub(super) async fn read(program: &Program) -> Live {
         Ok(client) => client,
         Err(error) => return Live::Unknown(format!("the request could not be prepared: {error}")),
     };
-    let response = client
+    // The key goes only to a listener that proves it holds it (ADR 0025).
+    if !proven(&client, address, &token).await {
+        return Live::Unknown(UNPROVEN.into());
+    }
+    let request = client
         .get(format!("http://{address}/machines.json"))
-        .bearer_auth(token.form_value())
-        .send()
-        .await;
-    let mut response = match response {
-        Ok(response) => response,
-        Err(error) => return Live::Unknown(format!("the engine did not answer: {error}")),
+        .bearer_auth(token.form_value());
+    let body = match fetch(request, ANSWER_LIMIT).await {
+        Ok(body) => body,
+        Err(why) => return Live::Unknown(why),
     };
-    if !response.status().is_success() {
-        return Live::Unknown(format!("the engine answered {}", response.status()));
-    }
-    let mut body = Vec::new();
-    loop {
-        match response.chunk().await {
-            Ok(Some(chunk)) => {
-                if body.len().saturating_add(chunk.len()) > ANSWER_LIMIT {
-                    return Live::Unknown("the engine's answer was too large".into());
-                }
-                body.extend_from_slice(&chunk);
-            }
-            Ok(None) => break,
-            Err(error) => return Live::Unknown(format!("the answer was cut off: {error}")),
-        }
-    }
     match serde_json::from_slice::<Answer>(&body) {
         Ok(answer) => Live::Running {
             settings_read: answer.settings_read,

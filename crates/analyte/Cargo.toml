@@ -47,6 +47,8 @@ toml = { workspace = true }
 jiff = { workspace = true }
 uuid = { workspace = true }
 reqwest = { workspace = true }
+hmac = { workspace = true }
+sha2 = { workspace = true }
 rpassword = { workspace = true }
 
 [dev-dependencies]

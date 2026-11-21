@@ -47,6 +47,23 @@ second set of rules that could drift from the pages.
    state unknown"; any other failure says why. A state is never guessed.
    `machines test` uses the same answer to know which ports the engine holds;
    when it cannot tell, every machine in the settings counts as running.
+   **The engine proves itself before the key is sent.** Threat: while the
+   service is stopped its loopback admin port is free, and any local account
+   can listen there and catch the admin key, which gives full admin control,
+   the moment someone runs the command. So the command first sends a fresh
+   256-bit random nonce to `GET /proof?nonce=…`. The engine answers
+   HMAC-SHA256 under the admin key of the context `analyte-cli-proof-v1` and
+   the nonce. The command checks it in constant time with the key it read
+   from the protected data directory, and sends the key only on a match. A
+   wrong answer, an error or no answer means "something else answers on the
+   admin address" (never "not running"), and the key is not sent. `/proof`
+   is public like `/status`, with the same Host and Origin checks, connection
+   slots, request budget and `no-store`; it takes only 32 to 128 lowercase hex
+   digits and answers 32 bytes. A proof for a nonce someone else chose is of
+   no use, since every challenge is new. A challenge was chosen over checking
+   which process owns the port: that needs OS-specific calls (new unsafe code
+   on Windows) and still trusts a PID that can change between check and send,
+   while the challenge proves possession of the key itself in safe Rust.
 6. **The test's bytes, only when asked.** `machines test` is step 3's
    listen-only test with its limits (60 s, 64 KiB, nothing sent, nothing
    stored). Its bytes are dropped as on the page, except with `--show-bytes`,
@@ -64,8 +81,9 @@ second set of rules that could drift from the pages.
 
 - A rule changed for the page changes for the command line too; there is one
   place per rule.
-- Listing this PC's network addresses during prompts is left out: the
-  standard library cannot list them and no dependency was added for it.
+- The prompt for a machine that connects to Analyte does not list this PC's
+  addresses yet. PR #308 adds them to the wizard (`admin/setup/addresses.rs`);
+  once it is merged, the prompt offers them from that same module.
 - A broken program file cannot be fixed from the command line, because its
   changes need the store for the audit row; `check-config` shows what is
   wrong, and the page or an editor fixes it.

@@ -1141,6 +1141,44 @@ async fn machines_json_says_what_the_list_says_and_needs_sign_in() -> Result<(),
     Ok(())
 }
 
+// ADR 0025: GET /proof answers, without signing in, the admin key's proof of
+// the nonce sent, which the command line checks before it sends the key; a
+// nonce outside the bounds is refused.
+#[tokio::test(flavor = "multi_thread")]
+async fn proof_route_proves_the_engine_holds_the_admin_key() -> Result<(), Error> {
+    use crate::admin::server::token::{Nonce, Token};
+    let directory = crate::admin::private_tempdir()?;
+    let (store, (state, stopper, owner, host), _) = started(directory.path(), scene()?).await?;
+    let nonce = Nonce::fresh()?;
+    let path = format!("/proof?nonce={}", nonce.as_str());
+    let answer = request(&host, &path, "", None).await?;
+    assert!(answer.starts_with("HTTP/1.1 200"), "{answer}");
+    assert!(answer.contains("cache-control: no-store"), "{answer}");
+    let body = answer.split("\r\n\r\n").nth(1).ok_or("no body")?;
+    let json: serde_json::Value = serde_json::from_str(body)?;
+    let proof = json["proof"].as_str().ok_or("no proof")?;
+    let bytes: Vec<u8> = (0..proof.len())
+        .step_by(2)
+        .map(|at| {
+            proof
+                .get(at..at + 2)
+                .and_then(|pair| u8::from_str_radix(pair, 16).ok())
+        })
+        .collect::<Option<_>>()
+        .ok_or("not hex")?;
+    assert!(Token::load(directory.path())?.proves(&nonce, &bytes));
+    for bad in [
+        "/proof",
+        "/proof?nonce=abc",
+        "/proof?nonce=ABCDEF0123456789ABCDEF0123456789",
+    ] {
+        let refused = request(&host, bad, "", None).await?;
+        assert!(refused.starts_with("HTTP/1.1 400"), "{bad}: {refused}");
+    }
+    stop(state, stopper, owner, store).await?;
+    Ok(())
+}
+
 // Owner decision 2026-11-20 (admin restyle b2): Remove changes settings, so a
 // request with the admin key alone gets "Sign in first" in the new look, and
 // nothing is read or changed.

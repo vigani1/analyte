@@ -71,6 +71,11 @@ fn free_port() -> Result<u16, Error> {
 }
 
 fn install() -> Result<Install, Error> {
+    install_on(free_port()?)
+}
+
+/// An installation whose admin pages are on loopback port `admin`.
+fn install_on(admin: u16) -> Result<Install, Error> {
     let directory = crate::admin::private_tempdir()?;
     let root = directory.path().to_owned();
     for (folder, text) in [
@@ -100,7 +105,7 @@ fn install() -> Result<Install, Error> {
         "# Roche cobas e 411\n\nBlocked.\n",
     )?;
     let program = analyte_fixtures::program_with_limits(
-        &format!("[admin]\nport = {}\n", free_port()?),
+        &format!("[admin]\nport = {admin}\n"),
         &analyte_store::Limits {
             reserve_bytes: 1,
             database_bytes: 100_000_000,
@@ -581,5 +586,79 @@ async fn lab_apps_refuse_as_the_page_does_and_keep_what_is_not_given() -> Result
     assert_eq!(action, "lab-app-save");
     assert!(reason.contains("keys replaced: demo-api"), "{reason}");
     assert!(!reason.contains(replaced), "{reason}");
+    Ok(())
+}
+
+/// A listener on the admin port that is not the engine: it records every
+/// request and answers each with `answer` (raw HTTP), or closes at once.
+async fn impostor(
+    answer: Option<String>,
+) -> Result<(u16, Arc<Mutex<Vec<u8>>>, tokio::task::JoinHandle<()>), Error> {
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let port = listener.local_addr()?.port();
+    let heard = Arc::new(Mutex::new(Vec::new()));
+    let kept = heard.clone();
+    let owner = tokio::spawn(async move {
+        while let Ok((mut stream, _)) = listener.accept().await {
+            let mut buffer = vec![0_u8; 8192];
+            let read = tokio::time::timeout(Duration::from_secs(2), stream.read(&mut buffer)).await;
+            if let Ok(Ok(count)) = read
+                && let (Ok(mut heard), Some(bytes)) = (kept.lock(), buffer.get(..count))
+            {
+                heard.extend_from_slice(bytes);
+            }
+            if let Some(answer) = &answer {
+                let _ = stream.write_all(answer.as_bytes()).await;
+            }
+        }
+    });
+    Ok((port, heard, owner))
+}
+
+// ADR 0025 (threat: a local listener on the admin port while the service is
+// stopped): `machines list` sends the admin key only to a listener that
+// proves it holds it. A listener that answers a wrong proof, an error or
+// nothing never receives the key or an Authorization header, and the live
+// state is "unknown", never "not running".
+#[tokio::test(flavor = "multi_thread")]
+async fn the_admin_key_goes_only_to_a_listener_that_proves_it_holds_it() -> Result<(), Error> {
+    let wrong = format!("{{\"proof\":\"{}\"}}", "00".repeat(32));
+    let answers = [
+        Some(format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{wrong}",
+            wrong.len()
+        )),
+        Some("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_owned()),
+        None,
+    ];
+    for answer in answers {
+        let (port, heard, owner) = impostor(answer).await?;
+        let install = install_on(port)?;
+        let data = install.root.join("data");
+        std::fs::create_dir_all(&data)?;
+        let key = crate::admin::rotate_token(&data)?;
+        let program = Program::load(&install.config)?;
+        match super::live::read(&program).await {
+            super::live::Live::Unknown(why) => {
+                assert!(
+                    why.contains("could not prove it is this Analyte engine"),
+                    "{why}"
+                );
+            }
+            super::live::Live::Running { .. } | super::live::Live::NotRunning => {
+                return Err("an unproven listener was trusted or called not running".into());
+            }
+        }
+        owner.abort();
+        let heard = String::from_utf8_lossy(&heard.lock().map_err(|_| "poisoned")?).into_owned();
+        assert!(heard.contains("GET /proof?nonce="), "{heard}");
+        assert!(
+            !heard.to_ascii_lowercase().contains("authorization"),
+            "{heard}"
+        );
+        assert!(!heard.contains(&key), "the admin key was sent");
+        assert!(!heard.contains("/machines.json"), "{heard}");
+    }
     Ok(())
 }
