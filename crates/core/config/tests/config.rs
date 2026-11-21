@@ -241,6 +241,129 @@ usb_serial = 'A10K3XYZ'",
     Ok(())
 }
 
+fn listening_site(peers: &str) -> Result<analyte_config::Validated, Error> {
+    Draft::load(
+        ("machine.toml", HL7),
+        (
+            "site.toml",
+            &SITE.rewrite(
+                "endpoint = \"127.0.0.1:5600\"",
+                &format!("endpoint = \"0.0.0.0:5600\"\nallowed_peers = {peers}"),
+            ),
+        ),
+        ("local.toml", OVERRIDES),
+    )?
+    .validate()
+}
+
+// ADR 0026 decision 1: a listening machine names the devices it accepts, as
+// plain IP addresses; an IPv4 address written in its IPv6-mapped form is the
+// same device, and the canonical settings keep the written list.
+#[test]
+fn listening_machine_names_the_devices_it_accepts() -> Result<(), Box<dyn std::error::Error>> {
+    let config = listening_site("[\"192.168.1.50\", \"fd00::7\"]")?;
+    let peers = config
+        .effective()
+        .site()
+        .allowed_peers
+        .as_ref()
+        .ok_or("allowed_peers missing")?;
+    for allowed in ["192.168.1.50", "::ffff:192.168.1.50", "fd00::7"] {
+        assert!(peers.allows(allowed.parse()?), "{allowed}");
+    }
+    for refused in ["192.168.1.51", "127.0.0.1", "fd00::8"] {
+        assert!(!peers.allows(refused.parse()?), "{refused}");
+    }
+    assert!(
+        config
+            .canonical()
+            .contains("allowed_peers = [\"192.168.1.50\", \"fd00::7\"]"),
+        "{}",
+        config.canonical()
+    );
+    // Without the key the canonical bytes stay as before: no empty list appears.
+    let open = draft(HL7, OVERRIDES)?.validate()?;
+    assert!(open.effective().site().allowed_peers.is_none());
+    assert!(!open.canonical().contains("allowed_peers"));
+    Ok(())
+}
+
+// ADR 0026 decision 1: each address is checked once at the boundary; a
+// hostname, a port, a range, a wildcard, a multicast address, a duplicate, an
+// empty list or an overlong list is refused rather than guessed at.
+#[test]
+fn allowed_peers_are_checked_once() {
+    let many = format!(
+        "[{}]",
+        (1..=17)
+            .map(|n| format!("\"192.168.1.{n}\""))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    for bad in [
+        "[]",
+        "[\"analyzer.lab\"]",
+        "[\"192.168.1.50:5600\"]",
+        "[\"192.168.1.0/24\"]",
+        "[\"0.0.0.0\"]",
+        "[\"::\"]",
+        "[\"224.0.0.1\"]",
+        "[\"255.255.255.255\"]",
+        "[\"192.168.1.50\", \"::ffff:192.168.1.50\"]",
+        "[\" 192.168.1.50\"]",
+        "\"192.168.1.50\"",
+        many.as_str(),
+    ] {
+        let refused = listening_site(bad);
+        assert!(
+            matches!(&refused, Err(Error::Schema { .. })),
+            "{bad}: {refused:?}"
+        );
+    }
+}
+
+// ADR 0026 decision 1: only a machine that connects to Analyte can limit who
+// connects; a serial, folder or outgoing (tcp_client) machine refuses the key.
+#[test]
+fn allowed_peers_need_a_listening_machine() -> Result<(), Error> {
+    let client = ASTM
+        .rewrite("kind = \"serial\"", "kind = \"tcp_client\"")
+        .rewrite(
+            "[transport.serial]
+baud = 9600
+data_bits = 8
+parity = \"none\"
+stop_bits = 1
+flow_control = \"none\"
+",
+            "",
+        );
+    let site = SITE.rewrite(
+        "endpoint = \"127.0.0.1:5600\"",
+        "endpoint = \"127.0.0.1:5600\"\nallowed_peers = [\"127.0.0.1\"]",
+    );
+    for (machine, site) in [
+        (client.clone(), site.clone()),
+        (
+            ASTM.to_owned(),
+            site.rewrite("endpoint = \"127.0.0.1:5600\"", "endpoint = \"COM9\""),
+        ),
+    ] {
+        let refused = Draft::load(
+            ("machine.toml", &machine),
+            ("site.toml", &site),
+            ("local.toml", OVERRIDES),
+        )?
+        .validate();
+        assert!(
+            matches!(&refused, Err(Error::Invalid { key, reason, .. })
+                if key == "allowed_peers" && reason.contains("tcp_server")),
+            "{refused:?}"
+        );
+    }
+    Ok(())
+}
+
 // ADR 0003
 #[test]
 fn identity_stays_unresolved_without_evidence() -> Result<(), Error> {

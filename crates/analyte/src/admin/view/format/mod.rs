@@ -27,9 +27,9 @@ pub(in crate::admin) use lab_app::{
 };
 pub(in crate::admin) use look::{StateLook, attempt_look, delivery_look, execution, order_look};
 pub(in crate::admin) use machine::{
-    MachineCounts, connection_detail, connection_kind, connection_note, control_names, deliveries,
-    departure, driver, link_advice, link_sentence, machine_lede, machines_summary, reading,
-    samples,
+    MachineCounts, OPEN_TO_ANY, OPEN_TO_ANY_ADVICE, REFUSED_ADVICE, accepts, connection_detail,
+    connection_kind, connection_note, control_names, deliveries, departure, driver, link_advice,
+    link_sentence, machine_lede, machines_summary, reading, refused, samples,
 };
 pub(in crate::admin) use parked::{POLL_TITLE, explain, reason_words};
 pub(in crate::admin) use time::{

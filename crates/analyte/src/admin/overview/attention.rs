@@ -21,6 +21,12 @@ pub(super) struct Facts {
     /// Machines whose link is off, with the state the Machines page shows and
     /// what Analyte observed with what to check.
     pub(super) unlinked: Vec<(Identifier, &'static str, String)>,
+    /// Listening machines that refused a device not on their `allowed_peers`
+    /// lately, with the newest refusal in words (ADR 0026).
+    pub(super) refused: Vec<(Identifier, String)>,
+    /// Listening machines without `allowed_peers`: any device that reaches
+    /// their port is accepted as them (ADR 0026).
+    pub(super) open: Vec<Identifier>,
     /// Lab apps whose sending is paused, with how many items wait for each.
     pub(super) paused: Vec<(Identifier, u64)>,
     /// Lab apps Analyte cannot send to now, why, how many items wait and, for
@@ -104,6 +110,8 @@ enum Subject {
     Stopped(Identifier),
     Unlinked(Identifier),
     Silent(Identifier),
+    Refused(Identifier),
+    Open(Identifier),
     Review,
     Uncertain,
     Cancelled,
@@ -128,6 +136,8 @@ impl Subject {
             | Self::Unlinked(_) => Tone::Problem,
             Self::Paused(_)
             | Self::Silent(_)
+            | Self::Refused(_)
+            | Self::Open(_)
             | Self::Review
             | Self::Uncertain
             | Self::Cancelled
@@ -148,6 +158,8 @@ impl Subject {
             Self::Unlinked(_) => Reason::MachineLinkOff,
             Self::Paused(_) => Reason::SendingPaused,
             Self::Silent(_) => Reason::MachineSilent,
+            Self::Refused(_) => Reason::MachineRefusedConnection,
+            Self::Open(_) => Reason::MachineOpenToAnyDevice,
             Self::Waiting => Reason::ResultWaiting,
             Self::Review => Reason::NeedsReview,
             Self::Uncertain => Reason::OrdersUncertain,
@@ -187,6 +199,9 @@ pub(in crate::admin) enum Reason {
     SendingPaused,
     /// A machine has sent nothing for longer than its alert rule allows.
     MachineSilent,
+    /// A listening machine refused a device not on its `allowed_peers` lately
+    /// (ADR 0026): the machine's address changed, or another device tried.
+    MachineRefusedConnection,
     /// A result has waited longer than its alert rule allows to be sent.
     ResultWaiting,
     /// Items on Needs review.
@@ -199,6 +214,8 @@ pub(in crate::admin) enum Reason {
     OrdersPausedAfterRestore,
     /// The order list from the lab app is out of date.
     OrderListStale,
+    /// A listening machine accepts connections from any device (ADR 0026).
+    MachineOpenToAnyDevice,
 }
 
 impl Reason {
@@ -213,12 +230,14 @@ impl Reason {
             Self::MachineLinkOff => "machine_link_off",
             Self::SendingPaused => "sending_paused",
             Self::MachineSilent => "machine_silent",
+            Self::MachineRefusedConnection => "machine_refused_connection",
             Self::ResultWaiting => "result_waiting",
             Self::NeedsReview => "needs_review",
             Self::OrdersUncertain => "orders_uncertain",
             Self::OrdersCancelled => "orders_cancelled",
             Self::OrdersPausedAfterRestore => "orders_paused_after_restore",
             Self::OrderListStale => "order_list_stale",
+            Self::MachineOpenToAnyDevice => "machine_open_to_any_device",
         }
     }
 }
@@ -377,6 +396,12 @@ pub(super) fn things(facts: &Facts) -> Vec<Thing> {
             });
         }
     }
+    list.extend(
+        facts
+            .refused
+            .iter()
+            .map(|(machine, words)| refused(machine, words)),
+    );
     if facts.review > 0 {
         list.push(review(facts.review));
     }
@@ -393,6 +418,7 @@ pub(super) fn things(facts: &Facts) -> Vec<Thing> {
     if facts.restore_paused {
         list.push(restore_paused());
     }
+    list.extend(facts.open.iter().map(open));
     for alert in &facts.alerts {
         let thing = from_alert(alert);
         if !list
@@ -455,6 +481,30 @@ fn from_alert(alert: &AlertState) -> Thing {
             "The order list from the lab app is out of date".into(),
             Fix::Section(Section::Sending),
         ),
+    }
+}
+
+/// The line for a machine that refused a device lately, `words` saying which and when (ADR 0026).
+fn refused(machine: &Identifier, words: &str) -> Thing {
+    Thing {
+        detail: Some(format::REFUSED_ADVICE.into()),
+        ..Thing::new(
+            Subject::Refused(machine.clone()),
+            format!("{}: {words}", machine.as_str()),
+            Fix::Page(Tab::Machines),
+        )
+    }
+}
+
+/// The line for a listening machine that accepts any device (ADR 0026).
+fn open(machine: &Identifier) -> Thing {
+    Thing {
+        detail: Some(format::OPEN_TO_ANY_ADVICE.into()),
+        ..Thing::new(
+            Subject::Open(machine.clone()),
+            format!("{}: {}", machine.as_str(), format::OPEN_TO_ANY),
+            Fix::Page(Tab::Machines),
+        )
     }
 }
 
@@ -996,12 +1046,14 @@ mod tests {
             (Subject::Unlinked(id("m")), "machine_link_off"),
             (Subject::Paused(id("x")), "sending_paused"),
             (Subject::Silent(id("m")), "machine_silent"),
+            (Subject::Refused(id("m")), "machine_refused_connection"),
             (Subject::Waiting, "result_waiting"),
             (Subject::Review, "needs_review"),
             (Subject::Uncertain, "orders_uncertain"),
             (Subject::Cancelled, "orders_cancelled"),
             (Subject::RestorePaused, "orders_paused_after_restore"),
             (Subject::OrderList, "order_list_stale"),
+            (Subject::Open(id("m")), "machine_open_to_any_device"),
         ];
         let mut reasons: Vec<Reason> = subjects
             .iter()

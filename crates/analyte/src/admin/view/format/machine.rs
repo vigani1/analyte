@@ -1,7 +1,7 @@
 //! Says how a machine is connected, how its link stands, and how its messages were read and delivered.
 use super::{Line, Moment, amount, delivery_look};
 use crate::admin::server::Connection;
-use crate::machine::link::status::Light;
+use crate::machine::link::status::{Light, Refusal};
 use analyte_model::SampleId;
 use analyte_store::{DeliveryState, RecentOutcome};
 
@@ -25,6 +25,53 @@ pub(in crate::admin) fn connection_detail(connection: &Connection) -> Option<Str
         Connection::Listening(port) => port.map(|port| format!("port {port}")),
         Connection::Dialing => None,
         Connection::Folder(folder) => Some(folder.clone()),
+    }
+}
+
+/// What a page says about a listening machine without `allowed_peers` (ADR 0026).
+pub(in crate::admin) const OPEN_TO_ANY: &str = "Accepts connections from any device";
+
+/// What to do about [`OPEN_TO_ANY`].
+pub(in crate::admin) const OPEN_TO_ANY_ADVICE: &str = concat!(
+    "Any device on the lab network that reaches this port can send results as this machine. ",
+    "Edit its setup and choose “Only accept this device” after the connection test."
+);
+
+/// What to check after a refused connection (ADR 0026).
+pub(in crate::admin) const REFUSED_ADVICE: &str = concat!(
+    "Only the machine should connect to this port. If this is the machine itself, its ",
+    "address changed: add the new address in its setup. If not, find that device."
+);
+
+/// Which devices a listening machine accepts, for its page: the allowed
+/// addresses, or that any device is accepted; none for other links.
+pub(in crate::admin) fn accepts(
+    connection: &Connection,
+    allowed: Option<&analyte_config::AllowedPeers>,
+) -> Option<String> {
+    match (connection, allowed) {
+        (Connection::Listening(_), Some(allowed)) => Some(format!("Only {allowed}")),
+        (Connection::Listening(_), None) => Some("Any device".into()),
+        (
+            Connection::Serial(_)
+            | Connection::UsbAdapter(_)
+            | Connection::Dialing
+            | Connection::Folder(_),
+            _,
+        ) => None,
+    }
+}
+
+/// One refused device in words: "Refused a connection from 192.168.1.77 at
+/// 14:32", or with its count when it tried more than once.
+pub(in crate::admin) fn refused(refusal: &Refusal, at: &str) -> String {
+    if refusal.count > 1 {
+        format!(
+            "Refused {} connections from {}, the last at {at}",
+            refusal.count, refusal.peer
+        )
+    } else {
+        format!("Refused a connection from {} at {at}", refusal.peer)
     }
 }
 

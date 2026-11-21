@@ -3,7 +3,8 @@
 Status: accepted, 2026-11-21 (the owner asked for notifications that make
 sense in the Windows notification centre, and for the recommended route
 without waiting for approval). Refines
-[ADR 0019](0019-desktop-app.md) decisions 5, 7 and 11.
+[ADR 0019](0019-desktop-app.md) decisions 5, 7 and 11. [ADR 0026](0026-accept-only-the-machine.md) adds two
+kinds: `machine_refused_connection` and `machine_open_to_any_device`.
 
 ## Context
 

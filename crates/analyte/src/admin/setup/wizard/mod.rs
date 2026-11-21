@@ -38,8 +38,8 @@ use axum::{
 };
 use jiff::Timestamp;
 use page::{
-    Choice, ConnectionStep, Foot, Hidden, LabApp, Listen, Live, Mark, ModelStep, Outcome, Picker,
-    Port, SaveStep, Sends, Start, Summary, TestStep, Tested, Wizard,
+    Accepts, Choice, ConnectionStep, Foot, Hidden, LabApp, Listen, Live, Mark, ModelStep, Outcome,
+    Picker, Port, SaveStep, Sends, Start, Summary, TestStep, Tested, Wizard,
 };
 use serde::Deserialize;
 use std::sync::Arc;
@@ -64,13 +64,27 @@ pub(in crate::admin) struct Draft {
     pub(super) tcp_port: Option<String>,
     pub(super) folder: Option<String>,
     pub(super) lab_app: Option<String>,
+    /// The only devices a machine that connects to this PC may connect
+    /// from, typed in step 2 or ticked in step 4 (ADR 0026); empty accepts any.
+    pub(super) allowed_peers: Option<String>,
 }
 
 /// The fields step 2 shows itself; every other step carries them hidden.
-const CONNECTION_FIELDS: [&str; 6] = ["port", "port_name", "host", "tcp_port", "folder", "lab_app"];
+const CONNECTION_FIELDS: [&str; 7] = [
+    "port",
+    "port_name",
+    "host",
+    "tcp_port",
+    "folder",
+    "lab_app",
+    PEERS,
+];
+
+/// The field naming the devices a listening machine accepts (ADR 0026).
+const PEERS: &str = "allowed_peers";
 
 impl Draft {
-    fn fields(&self) -> [(&'static str, Option<&str>); 7] {
+    fn fields(&self) -> [(&'static str, Option<&str>); 8] {
         [
             ("definition", self.definition.as_deref()),
             ("port", self.port.as_deref()),
@@ -79,6 +93,7 @@ impl Draft {
             ("tcp_port", self.tcp_port.as_deref()),
             ("folder", self.folder.as_deref()),
             ("lab_app", self.lab_app.as_deref()),
+            (PEERS, self.allowed_peers.as_deref()),
         ]
     }
 
@@ -91,12 +106,14 @@ impl Draft {
             .collect()
     }
 
-    /// Whether `other` holds the same choices; an empty field counts as not
-    /// chosen, as every step reads it.
+    /// Whether `other` holds the same choices for the connection test; an
+    /// empty field counts as not chosen, as every step reads it. The allowed
+    /// devices do not change what the test listens on, so step 4 still shows
+    /// the test after they are ticked or typed.
     fn same(&self, other: &Self) -> bool {
         let chosen = |draft: &Self| -> Vec<(&'static str, String)> {
             draft
-                .hidden(&[])
+                .hidden(&[PEERS])
                 .into_iter()
                 .filter(|(_, value)| !value.trim().is_empty())
                 .collect()
@@ -124,6 +141,7 @@ impl From<Posted> for Draft {
             tcp_port: choice.tcp_port,
             folder: choice.folder,
             lab_app: choice.lab_app,
+            allowed_peers: choice.allowed_peers,
         }
     }
 }
@@ -528,6 +546,10 @@ fn connection_inputs(
                             .map_err(|error| format::sentence(&error.to_string())),
                         typed: host,
                         port,
+                        peers: draft
+                            .allowed_peers
+                            .clone()
+                            .unwrap_or_else(|| site_peers(current_site)),
                     },
                 )
             } else {
@@ -551,6 +573,22 @@ fn connection_inputs(
             ),
         ),
     }
+}
+
+/// The devices the current site file lets connect, as step 2 shows them:
+/// "192.168.1.50, 192.168.1.51"; empty when it names none.
+fn site_peers(current_site: &toml::Table) -> String {
+    current_site
+        .get(PEERS)
+        .and_then(toml::Value::as_array)
+        .map(|addresses| {
+            addresses
+                .iter()
+                .filter_map(toml::Value::as_str)
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
+        .unwrap_or_default()
 }
 
 /// The addresses Analyte can listen on: this PC's own, then every network
@@ -755,6 +793,8 @@ fn render_review(
     let destination = &plan.validated.effective().site().destination;
     let summary = Summary {
         connection: connection_words(link, &plan.connection),
+        accepts: (link == Link::TcpServer)
+            .then(|| offer(plan.peers.as_ref(), seen(state, id, draft))),
         lab_app: sends(destination, lab_apps::missing_keys(state, destination)),
         test: tested(state, id, draft, link),
         versions: None,
@@ -766,12 +806,51 @@ fn render_review(
         summary,
         outcome: Outcome::Review {
             back: Step::Test.path(id),
+            back_hidden: draft.hidden(&[]),
             action: format::setup_href(id, ""),
             csrf: session.csrf.form_value().to_owned(),
-            hidden: draft.hidden(&[]),
+            // The allowed devices come from the step's tick box instead.
+            hidden: draft.hidden(&[PEERS]),
         },
     }
     .render())
+}
+
+/// What step 4 offers about the devices a listening machine accepts (ADR
+/// 0026): the typed addresses, or else the device the connection test saw,
+/// ticked by default; with neither, a warning that any device is accepted.
+fn offer(typed: Option<&analyte_config::AllowedPeers>, seen: Option<std::net::IpAddr>) -> Accepts {
+    match (typed, seen) {
+        (Some(typed), seen) => Accepts::Offer {
+            value: typed.to_string(),
+            label: if typed.addresses().len() == 1 {
+                format!("Only accept this device: {typed}")
+            } else {
+                format!("Only accept these devices: {typed}")
+            },
+            note: seen.filter(|seen| !typed.allows(*seen)).map(|seen| {
+                format!("The connection test saw {seen}, which is not on this list.")
+            }),
+        },
+        (None, Some(seen)) => Accepts::Offer {
+            value: seen.to_string(),
+            label: format!("Only accept this device: {seen}"),
+            note: Some(
+                "The device that connected during the test. Check that this is the machine’s own address in its network settings."
+                    .into(),
+            ),
+        },
+        (None, None) => Accepts::Any,
+    }
+}
+
+/// The device the last connection test for `id` saw connect, when it ran
+/// with exactly these choices and Analyte listened.
+fn seen(state: &Context, id: &str, draft: &Draft) -> Option<std::net::IpAddr> {
+    let slot = state.setup.listen.lock().ok()?;
+    slot.as_ref()
+        .filter(|test| test.machine == id && test.draft.same(draft))
+        .and_then(|test| test.session.view().peer)
 }
 
 /// The lab app the machine sends to, with the keys it still lacks.
@@ -875,6 +954,15 @@ pub(in crate::admin) async fn save(
         wizard: wizard(&id, Some(saved.model.clone()), None),
         summary: Summary {
             connection: connection_words(saved.link, &saved.connection),
+            accepts: (saved.link == Link::TcpServer).then(|| {
+                Accepts::Saved(
+                    saved.peers.as_ref().map_or_else(
+                        || format::OPEN_TO_ANY.into(),
+                        |peers| format!("Only {peers}"),
+                    ),
+                    saved.peers.is_none(),
+                )
+            }),
             lab_app: sends(&saved.lab_app, missing),
             test: tested(&state, &id, &draft, saved.link),
             versions: Some((
@@ -1080,6 +1168,7 @@ fn listen_page(state: &Context, session: &Session, test: &Test, now: Timestamp) 
         foot: foot(id, &test.draft, true),
         live: Live {
             target: view.label.clone(),
+            peer: view.peer.map(|peer| peer.to_string()),
             connects: matches!(test.route, Route::Connects(_)),
             clock: running.then(|| format::countdown(remaining)),
             elapsed: limit.saturating_sub(remaining),

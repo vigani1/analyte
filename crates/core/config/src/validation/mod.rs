@@ -42,6 +42,13 @@ impl crate::Destination {
 
 pub(super) fn validate_site(site: &Site, transport: &Transport, path: &str) -> Result<(), Error> {
     site.destination.check(path, "site.destination")?;
+    if site.allowed_peers.is_some() && transport.kind != TransportKind::TcpServer {
+        return Err(invalid(
+            path,
+            "allowed_peers",
+            "only a machine that connects to Analyte (tcp_server) can limit which devices connect; for a machine Analyte connects to, use the machine's own allowed-host setting",
+        ));
+    }
     let endpoint = match &site.endpoint {
         crate::Endpoint::Fixed(endpoint) => endpoint,
         crate::Endpoint::UsbSerial(_) if transport.kind == TransportKind::Serial => return Ok(()),

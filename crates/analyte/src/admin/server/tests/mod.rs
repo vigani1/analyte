@@ -1018,7 +1018,8 @@ Content-Type: application/x-www-form-urlencoded
 }
 
 /// A set-up machine for page tests, attached as its light's link says and
-/// sending to lab app `lab_app`.
+/// sending to lab app `lab_app`. A listening one accepts only 192.168.1.50,
+/// as a machine set up with the connection test does (ADR 0026).
 fn machine(
     id: &str,
     running: bool,
@@ -1039,6 +1040,9 @@ fn machine(
         running: Arc::new(AtomicBool::new(running)),
         status,
         model: Some("Synthetic analyzer".into()),
+        allowed_peers: matches!(connection, Connection::Listening(_))
+            .then(|| analyte_config::AllowedPeers::parse(&["192.168.1.50"]))
+            .transpose()?,
         connection,
         lab_app: Identifier::new(lab_app)?,
     })

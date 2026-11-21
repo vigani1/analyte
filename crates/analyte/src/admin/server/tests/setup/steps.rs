@@ -641,3 +641,131 @@ async fn restart_answer_reloads_setup() -> Result<(), Error> {
     }
     Ok(())
 }
+
+// ADR 0026 decision 2: step 3 shows the device that connected; step 4 offers
+// "Only accept this device" with its address, ticked; saving with the box
+// ticked writes it as `allowed_peers`, and saving with it unticked removes
+// the key and says that any device is accepted.
+#[tokio::test(flavor = "multi_thread")]
+async fn save_offers_and_writes_the_device_seen_in_the_test() -> Result<(), Error> {
+    let fixture = start().await?;
+    let port = free_port()?;
+    let fields = network(&port);
+    let fields: Vec<(&str, &str)> = fields.iter().map(|(n, v)| (*n, v.as_str())).collect();
+    let address = format!("127.0.0.1:{port}");
+    let machine = async {
+        for _ in 0..200 {
+            if let Ok(mut socket) = tokio::net::TcpStream::connect(&address).await {
+                socket.write_all(b"MSH|").await?;
+                return Ok::<_, Error>(socket);
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        Err("the test never listened".into())
+    };
+    let (view, socket) = tokio::join!(
+        fixture.listen(&fields, |view| view.contains("Connected from")),
+        machine
+    );
+    let (view, _socket) = (view?, socket?);
+    assert!(
+        view.contains("<p class=\"note\">Connected from <span class=\"mono\">127.0.0.1</span></p>"),
+        "{view}"
+    );
+    let review = fixture
+        .get(&format!(
+            "/setup/synthetic/save?definition=example%2Fnetwork-hl7&host=127.0.0.1&tcp_port={port}&lab_app=demo"
+        ))
+        .await?;
+    for expected in [
+        "<dt>Accepts connections from</dt><dd><label class=\"check\"><input type=\"checkbox\" name=\"allowed_peers\" value=\"127.0.0.1\" form=\"s4-save\" checked><span>Only accept this device: 127.0.0.1</span></label>",
+        "Check that this is the machine’s own address in its network settings.",
+        "<form id=\"s4-save\" method=\"post\" action=\"/setup/synthetic\">",
+    ] {
+        assert!(review.contains(expected), "missing {expected}: {review}");
+    }
+    let save_form = review
+        .split("<form id=\"s4-save\"")
+        .nth(1)
+        .and_then(|form| form.split("</form>").next())
+        .ok_or("save form missing")?;
+    assert!(
+        !save_form.contains("allowed_peers"),
+        "only the tick box sends it: {save_form}"
+    );
+    let mut ticked = fields.clone();
+    ticked.push(("allowed_peers", "127.0.0.1"));
+    let saved = fixture
+        .post("/setup/synthetic", &fixture.form(&ticked).await?)
+        .await?;
+    assert!(saved.starts_with("HTTP/1.1 200"), "{saved}");
+    assert!(
+        saved.contains(
+            "<dt>Accepts connections from</dt><dd><span class=\"mono\">Only 127.0.0.1</span>"
+        ),
+        "{saved}"
+    );
+    let site: toml::Table = std::fs::read_to_string(&fixture.site)?.parse()?;
+    assert_eq!(
+        site.get("allowed_peers"),
+        Some(&toml::Value::Array(vec![toml::Value::String(
+            "127.0.0.1".into()
+        )]))
+    );
+    let unticked = fixture
+        .post("/setup/synthetic", &fixture.form(&fields).await?)
+        .await?;
+    assert!(
+        unticked
+            .contains("<dd><span class=\"tone-warn\">Accepts connections from any device</span>"),
+        "{unticked}"
+    );
+    let site: toml::Table = std::fs::read_to_string(&fixture.site)?.parse()?;
+    assert!(site.get("allowed_peers").is_none(), "{site:?}");
+    Ok(())
+}
+
+// ADR 0026 decision 2: step 2 shows the saved devices to change, and a typed
+// list is checked once like the site file: a range is refused with the step
+// to fix, and a machine that does not listen cannot be limited.
+#[tokio::test(flavor = "multi_thread")]
+async fn typed_devices_are_kept_and_checked() -> Result<(), Error> {
+    let fixture = start().await?;
+    let port = free_port()?;
+    let step = format!(
+        "/setup/synthetic/connection?definition=example%2Fnetwork-hl7&host=127.0.0.1&tcp_port={port}&lab_app=demo&allowed_peers=192.168.1.50%2C+192.168.1.51"
+    );
+    let typed = fixture.get(&step).await?;
+    assert!(
+        typed.contains(
+            "name=\"allowed_peers\" maxlength=\"1024\" value=\"192.168.1.50, 192.168.1.51\""
+        ),
+        "{typed}"
+    );
+    let review = fixture
+        .get(&format!(
+            "/setup/synthetic/save?definition=example%2Fnetwork-hl7&host=127.0.0.1&tcp_port={port}&lab_app=demo&allowed_peers=192.168.1.50%2C192.168.1.51"
+        ))
+        .await?;
+    assert!(
+        review.contains("value=\"192.168.1.50, 192.168.1.51\" form=\"s4-save\" checked><span>Only accept these devices: 192.168.1.50, 192.168.1.51</span>"),
+        "{review}"
+    );
+    let range = fixture
+        .get(&format!(
+            "/setup/synthetic/save?definition=example%2Fnetwork-hl7&host=127.0.0.1&tcp_port={port}&lab_app=demo&allowed_peers=192.168.1.0%2F24"
+        ))
+        .await?;
+    assert!(range.starts_with("HTTP/1.1 409"), "{range}");
+    assert!(range.contains("without a name, port or range"), "{range}");
+    assert!(range.contains("Go to step 2: Connection"), "{range}");
+    let serial = fixture
+        .get("/setup/synthetic/save?definition=example%2Fserial-astm&port=name%3ACOM3&lab_app=demo&allowed_peers=192.168.1.50")
+        .await?;
+    assert!(serial.starts_with("HTTP/1.1 409"), "{serial}");
+    assert!(
+        serial.contains("Only a machine that connects to this PC can be limited"),
+        "{serial}"
+    );
+    Ok(())
+}

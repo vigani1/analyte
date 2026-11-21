@@ -6,9 +6,11 @@ machine_stopped
 machine_link_off
 sending_paused
 machine_silent
+machine_refused_connection
 result_waiting
 needs_review
 orders_uncertain
 orders_cancelled
 orders_paused_after_restore
 order_list_stale
+machine_open_to_any_device

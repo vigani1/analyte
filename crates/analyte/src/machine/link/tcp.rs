@@ -1,4 +1,4 @@
-//! Owns TCP server and client session loops and keeps listener retries bounded.
+//! Owns TCP server and client session loops, keeps listener retries bounded and refuses devices not on a machine's allow-list.
 use super::{
     Kind, Next, backoff, capture, recorded_connection, retry, session_ended, socket_address,
 };
@@ -30,8 +30,8 @@ pub(in crate::machine) async fn server(
     };
     machine.status.ready(true);
     loop {
-        let stream = match accept(|| listener.accept(), machine.id.as_str(), &mut stop).await {
-            Ok(Some((stream, _))) => stream,
+        let stream = match accept_allowed(&listener, machine, &mut stop).await {
+            Ok(Some(stream)) => stream,
             Ok(None) => {
                 closing.after_commits().await?;
                 return Ok(());
@@ -113,6 +113,42 @@ pub(in crate::machine) async fn client(
         // A peer that accepts and closes at once must not make the owner spin.
         if clean && !backoff(&mut stop).await {
             return Ok(());
+        }
+    }
+}
+
+/// Accepts the next connection from a device the machine's `allowed_peers`
+/// lets in; without the key every device is let in (ADR 0026). A connection
+/// from any other device is closed at once: nothing is read from it or
+/// written to it, so it gets no acknowledgment and nothing of it is stored as
+/// this machine's data. Each refusal is kept on the machine's link status,
+/// and logged with the address only (never bytes), at most once a minute per
+/// device. Cancelling this future leaves nothing behind: an accepted
+/// connection is either returned or already closed.
+pub(in crate::machine) async fn accept_allowed(
+    listener: &tokio::net::TcpListener,
+    machine: &Machine,
+    stop: &mut watch::Receiver<bool>,
+) -> io::Result<Option<tokio::net::TcpStream>> {
+    let allowed = machine.snapshot.effective().site().allowed_peers.as_ref();
+    loop {
+        let Some((stream, peer)) = accept(|| listener.accept(), machine.id.as_str(), stop).await?
+        else {
+            return Ok(None);
+        };
+        match allowed {
+            Some(allowed) if !allowed.allows(peer.ip()) => {
+                drop(stream);
+                if let Some(count) = machine.status.refuse(peer.ip()) {
+                    tracing::warn!(
+                        machine = machine.id.as_str(),
+                        peer = %peer.ip().to_canonical(),
+                        refused = count,
+                        "refused a connection from a device not on the machine's allowed_peers"
+                    );
+                }
+            }
+            Some(_) | None => return Ok(Some(stream)),
         }
     }
 }
@@ -259,6 +295,127 @@ mod tests {
         peers?;
         let mut store = std::sync::Arc::try_unwrap(store).map_err(|_| "store still owned")?;
         store.shutdown(crate::deadline()?).await?;
+        Ok(())
+    }
+
+    /// Runs the example HL7 listening machine with `allowed_peers` and sends one
+    /// message from 127.0.0.1; returns what came back, the receipts stored and
+    /// the link status after.
+    async fn send_from_loopback(
+        allowed: &str,
+    ) -> Result<(Vec<u8>, usize, crate::machine::link::status::Status), crate::Error> {
+        use analyte_fixtures::ConfigEdit as _;
+        let temp = crate::admin::private_tempdir()?;
+        let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+        listener.set_nonblocking(true)?;
+        let address = listener.local_addr()?;
+        let path = analyte_fixtures::write_machine(
+            temp.path(),
+            include_str!("../../../../core/config/examples/hl7.toml"),
+            &address.to_string(),
+        )?;
+        let site = temp.path().join("site.toml");
+        let text = std::fs::read_to_string(&site)?;
+        std::fs::write(
+            &site,
+            text.rewrite(
+                "retention = \"keep\"",
+                &format!("retention = \"keep\"\nallowed_peers = [\"{allowed}\"]"),
+            ),
+        )?;
+        let mut program = crate::installation::config::Program::load(&path)?;
+        let store = std::sync::Arc::new(
+            crate::runtime::service::open_store(
+                &program,
+                Box::new(analyte_fixtures::UnlimitedSpace),
+            )
+            .await?,
+        );
+        let mut machine = program.machines.pop().ok_or("machine")?;
+        machine.listener = Some(listener);
+        let status = machine.status.subscribe();
+        let (stop, stopped) = watch::channel(false);
+        let (ready, _ready) = watch::channel(false);
+        let (_close, close) = watch::channel(true);
+        let owner = crate::machine::run(
+            machine,
+            store.clone(),
+            stopped,
+            temp.path().into(),
+            Closing { ready, close },
+            None,
+        );
+        let peer = async {
+            let reply = async {
+                let mut socket = TcpStream::connect(address).await?;
+                // A refused device may see its write fail once the socket is closed.
+                let _ = socket
+                    .write_all(
+                        b"\x0bMSH|^~\\&|S|F|R|F|20261116||ORU^R01^ORU_R01|peer|P|2.5.1\rPID|1\r\x1c\r",
+                    )
+                    .await;
+                let mut reply = Vec::new();
+                let mut byte = [0];
+                // Until the MLLP end, a close or a reset; a refused device gets no byte.
+                while !reply.ends_with(b"\x1c\r") && reply.len() < 4096 {
+                    match socket.read(&mut byte).await {
+                        Ok(1) => reply.extend_from_slice(&byte),
+                        Ok(_) | Err(_) => break,
+                    }
+                }
+                Ok::<_, crate::Error>(reply)
+            }
+            .await;
+            stop.send_replace(true);
+            reply
+        };
+        let (result, reply) = tokio::time::timeout(analyte_fixtures::HANG_GUARD, async {
+            tokio::join!(owner, peer)
+        })
+        .await?;
+        result?;
+        let reply = reply?;
+        let stored = store
+            .read::<_, analyte_store::OperatorError>(crate::deadline()?, |store| {
+                Ok(store.receipts("")?.len())
+            })
+            .await?;
+        let status = status.borrow().clone();
+        let mut store = std::sync::Arc::try_unwrap(store).map_err(|_| "store still owned")?;
+        store.shutdown(crate::deadline()?).await?;
+        Ok((reply, stored, status))
+    }
+
+    // ADR 0026 decision 1: a device not on `allowed_peers` is closed at once:
+    // no byte is written to it (no ACK, no NAK), nothing it sent is stored as
+    // the machine's data, and the refusal is kept with its address.
+    #[tokio::test]
+    async fn refused_device_gets_no_byte_and_nothing_is_stored() -> Result<(), crate::Error> {
+        let (reply, stored, status) = send_from_loopback("127.0.0.2").await?;
+        assert!(reply.is_empty(), "the refused device got {reply:?}");
+        assert_eq!(stored, 0, "nothing from a refused device is stored");
+        let refused: Vec<(String, u64)> = status
+            .refused()
+            .iter()
+            .map(|refusal| (refusal.peer.to_string(), refusal.count))
+            .collect();
+        assert_eq!(refused, [("127.0.0.1".to_owned(), 1)]);
+        Ok(())
+    }
+
+    // ADR 0026 decision 1: a device on `allowed_peers` is served as before.
+    #[tokio::test]
+    async fn allowed_device_is_served_as_before() -> Result<(), crate::Error> {
+        let (reply, stored, status) = send_from_loopback("127.0.0.1").await?;
+        let reply = String::from_utf8(reply)?;
+        // The synthetic message lacks patient fields, so it is stored and parked
+        // for review (AE); what matters is that it was answered and stored.
+        assert!(
+            reply.starts_with('') && reply.contains("MSA|AE|peer"),
+            "{reply}"
+        );
+        assert_eq!(stored, 1);
+        assert!(status.refused().is_empty());
         Ok(())
     }
 

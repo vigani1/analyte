@@ -439,6 +439,10 @@ pub struct Site {
     pub schema_version: u32,
     /// Where the machine link connects.
     pub endpoint: crate::Endpoint,
+    /// The only devices a listening (`tcp_server`) machine accepts
+    /// connections from; absent accepts any device that reaches the port,
+    /// which the pages show as a warning (ADR 0026).
+    pub allowed_peers: Option<crate::AllowedPeers>,
     /// Selected lab app.
     pub destination: Destination,
     /// The lab's time zone: an IANA name or a fixed `+HH:MM` offset. Only a LAW
@@ -459,6 +463,8 @@ pub(crate) struct SiteFile {
     endpoint: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     usb_serial: Option<crate::UsbSerial>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    allowed_peers: Option<crate::AllowedPeers>,
     /// The lab app written in the site file itself (the older form).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     destination: Option<Destination>,
@@ -486,6 +492,7 @@ impl SiteFile {
                 retention: self.retention,
                 schema_version: self.schema_version,
                 endpoint: crate::Endpoint::choose(self.endpoint, self.usb_serial, path)?,
+                allowed_peers: self.allowed_peers,
                 destination,
                 time_zone: self.time_zone,
             },
@@ -505,6 +512,7 @@ impl From<Site> for SiteFile {
             schema_version: site.schema_version,
             endpoint,
             usb_serial,
+            allowed_peers: site.allowed_peers,
             destination: Some(site.destination),
             lab_app: None,
             time_zone: site.time_zone,

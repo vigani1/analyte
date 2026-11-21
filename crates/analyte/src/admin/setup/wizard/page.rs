@@ -88,6 +88,8 @@ pub(super) enum Inputs {
         hosts: Result<Vec<Host>, String>,
         typed: String,
         port: String,
+        /// The devices it accepts, as typed or saved; empty accepts any (ADR 0026).
+        peers: String,
     },
     /// Analyte connects to the machine: its IP address and port.
     Connects { host: String, port: String },
@@ -182,6 +184,8 @@ pub(super) struct Listen {
 pub(super) struct Live {
     /// "Listening on 0.0.0.0:5000", "Serial port COM3".
     pub(super) target: String,
+    /// The address of the device that connected, when Analyte listens (ADR 0026).
+    pub(super) peer: Option<String>,
     /// Analyte connects to the machine instead of listening.
     pub(super) connects: bool,
     /// Time left, such as "0:41"; none once it ended.
@@ -218,6 +222,8 @@ pub(super) struct SaveStep {
 pub(super) struct Summary {
     pub(super) model: String,
     pub(super) connection: Hover,
+    /// Which devices it accepts; none unless the machine connects to this PC.
+    pub(super) accepts: Option<Accepts>,
     pub(super) lab_app: Sends,
     pub(super) test: Tested,
     /// After saving: the new settings version and the one running now.
@@ -231,6 +237,21 @@ pub(super) struct Sends {
     pub(super) address: String,
     /// Which of its keys the key source holds no value for, so results wait.
     pub(super) missing: Option<String>,
+}
+
+/// Which devices a machine that connects to this PC accepts, on step 4 (ADR 0026).
+pub(super) enum Accepts {
+    /// Before saving: a tick box, ticked, that keeps `value` as the allowed
+    /// devices; `note` says what to check.
+    Offer {
+        value: String,
+        label: String,
+        note: Option<String>,
+    },
+    /// Before saving, with no device seen or typed: any device is accepted.
+    Any,
+    /// After saving: what was saved, and whether that is any device.
+    Saved(String, bool),
 }
 
 /// The last connection test with exactly these choices.
@@ -252,6 +273,8 @@ pub(super) enum Outcome {
     /// The review: Back to step 3 and Save, each its own form.
     Review {
         back: String,
+        /// Every choice, for Back.
+        back_hidden: Hidden,
         action: String,
         csrf: String,
         hidden: Hidden,
