@@ -251,6 +251,13 @@ progress.meter::-moz-progress-bar { background: var(--accent); border-radius: va
 }
 .title-bar__mark { display: block; flex: none; }
 .title-bar__state { display: inline-flex; padding: var(--space-1); }
+/* The last notification's line (ADR 0023): one line, cut with an ellipsis
+   before it reaches the buttons. */
+.title-bar__note {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-weight: var(--weight-regular); color: var(--text-muted);
+}
+.title-bar__note[hidden] { display: none; }
 .title-bar__buttons { display: flex; align-self: stretch; margin-left: auto; app-region: no-drag; }
 .title-bar__button {
   display: inline-flex; align-items: center; justify-content: center;

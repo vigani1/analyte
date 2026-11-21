@@ -9,7 +9,7 @@ mod attention;
 mod page;
 mod signal;
 
-pub(in crate::admin) use attention::Overall;
+pub(in crate::admin) use attention::{Reason, Summary};
 pub(in crate::admin) use signal::{Delivery, Keys, Standing, kept_health, order_list, standing};
 #[cfg(test)]
 mod tests;
@@ -268,17 +268,18 @@ async fn observe(
     })
 }
 
-/// The overall state the verdict shows, from the same reads and rules, within
-/// [`view::READ_BUDGET`]; none when it could not be read in time. It reads no
-/// receipts, which only draw the machine nodes. Why it failed goes to the log
-/// as the reading's name only, never its values.
-pub(in crate::admin) async fn overall(state: &Context, now: Timestamp) -> Option<Overall> {
+/// The overall state the verdict shows and the kinds of thing behind it, from
+/// the same reads and rules, within [`view::READ_BUDGET`]; none when it could
+/// not be read in time. It reads no receipts, which only draw the machine
+/// nodes. Why it failed goes to the log as the reading's name only, never its
+/// values.
+pub(in crate::admin) async fn summary(state: &Context, now: Timestamp) -> Option<Summary> {
     let read = async {
         let until = deadline().map_err(Reading::Store.failed())?;
         observe(state, until, Nodes::FactsOnly, now).await
     };
     let reading = match tokio::time::timeout(view::READ_BUDGET, read).await {
-        Ok(Ok(observed)) => return Some(Overall::of(&attention::things(&observed.facts))),
+        Ok(Ok(observed)) => return Some(Summary::of(&attention::things(&observed.facts))),
         Ok(Err(failure)) => failure.reading,
         Err(_) => Reading::Time,
     };

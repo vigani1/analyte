@@ -2,7 +2,9 @@
 //!
 //! It only reads what the overview already measured and the alerts the alert
 //! rules raised; it adds no thresholds of its own. Lines hold names and counts,
-//! never payloads or sample IDs (safety rule 10).
+//! never payloads or sample IDs (safety rule 10). Each line also has a kind
+//! from a closed list ([`Reason`]), which the public `GET /status` names
+//! without any name or count (ADR 0023).
 use crate::admin::view::{Tab, Tone, format};
 use analyte_model::Identifier;
 use analyte_store::{AlertKey, AlertState, Undeliverable};
@@ -92,7 +94,10 @@ impl Fix {
 /// What a line is about; an alert about something already listed adds no second line.
 #[derive(Debug, PartialEq, Eq)]
 enum Subject {
+    /// Free space at or below the reserve: receiving is refused.
     Disk,
+    /// The disk-reserve alert rule: space is running low.
+    DiskLow,
     Blocked(Identifier, Undeliverable),
     Failing(Identifier),
     Paused(Identifier),
@@ -116,6 +121,7 @@ impl Subject {
     const fn tone(&self) -> Tone {
         match self {
             Self::Disk
+            | Self::DiskLow
             | Self::Blocked(..)
             | Self::Failing(_)
             | Self::Stopped(_)
@@ -128,6 +134,91 @@ impl Subject {
             | Self::RestorePaused
             | Self::Waiting
             | Self::OrderList => Tone::Attention,
+        }
+    }
+
+    /// The kind `GET /status` names for a line about this subject.
+    const fn reason(&self) -> Reason {
+        match self {
+            Self::Disk => Reason::DiskFull,
+            Self::DiskLow => Reason::DiskLow,
+            Self::Blocked(..) => Reason::LabAppBlocked,
+            Self::Failing(_) => Reason::SendingFailing,
+            Self::Stopped(_) => Reason::MachineStopped,
+            Self::Unlinked(_) => Reason::MachineLinkOff,
+            Self::Paused(_) => Reason::SendingPaused,
+            Self::Silent(_) => Reason::MachineSilent,
+            Self::Waiting => Reason::ResultWaiting,
+            Self::Review => Reason::NeedsReview,
+            Self::Uncertain => Reason::OrdersUncertain,
+            Self::Cancelled => Reason::OrdersCancelled,
+            Self::RestorePaused => Reason::OrdersPausedAfterRestore,
+            Self::OrderList => Reason::OrderListStale,
+        }
+    }
+
+    /// Whether a line about this subject already says what an alert about
+    /// `other` would: the same subject, or a full disk for "space is low".
+    fn covers(&self, other: &Self) -> bool {
+        self == other || matches!((self, other), (Self::Disk, Self::DiskLow))
+    }
+}
+
+/// What kind of thing needs someone, as the public `GET /status` names it:
+/// one word per kind from this closed list, never a name, count or value
+/// (safety rule 10, ADR 0023). Declared most serious first, every kind that
+/// stops data now before every kind that only needs a look; the answer lists
+/// the kinds in this order, each once.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(in crate::admin) enum Reason {
+    /// Free space is at or below the reserve: new data is refused.
+    DiskFull,
+    /// The disk-reserve alert: space is running low.
+    DiskLow,
+    /// A lab app cannot be sent to: keys missing or not set up any more.
+    LabAppBlocked,
+    /// Tries to send to a lab app keep failing.
+    SendingFailing,
+    /// Analyte stopped working with a machine.
+    MachineStopped,
+    /// A machine's link is off.
+    MachineLinkOff,
+    /// Sending to a lab app is paused.
+    SendingPaused,
+    /// A machine has sent nothing for longer than its alert rule allows.
+    MachineSilent,
+    /// A result has waited longer than its alert rule allows to be sent.
+    ResultWaiting,
+    /// Items on Needs review.
+    NeedsReview,
+    /// Orders whose outcome on the machine is not known.
+    OrdersUncertain,
+    /// Orders a machine cancelled on its own.
+    OrdersCancelled,
+    /// Order sending is paused until IT reconciles orders after a restore.
+    OrdersPausedAfterRestore,
+    /// The order list from the lab app is out of date.
+    OrderListStale,
+}
+
+impl Reason {
+    /// The word `GET /status` answers with.
+    pub(in crate::admin) const fn word(self) -> &'static str {
+        match self {
+            Self::DiskFull => "disk_full",
+            Self::DiskLow => "disk_low",
+            Self::LabAppBlocked => "lab_app_blocked",
+            Self::SendingFailing => "sending_failing",
+            Self::MachineStopped => "machine_stopped",
+            Self::MachineLinkOff => "machine_link_off",
+            Self::SendingPaused => "sending_paused",
+            Self::MachineSilent => "machine_silent",
+            Self::ResultWaiting => "result_waiting",
+            Self::NeedsReview => "needs_review",
+            Self::OrdersUncertain => "orders_uncertain",
+            Self::OrdersCancelled => "orders_cancelled",
+            Self::OrdersPausedAfterRestore => "orders_paused_after_restore",
+            Self::OrderListStale => "order_list_stale",
         }
     }
 }
@@ -155,6 +246,29 @@ impl Thing {
     /// The line's tone, from its subject.
     pub(super) const fn tone(&self) -> Tone {
         self.subject.tone()
+    }
+}
+
+/// What `GET /status` says: the overall state and the kinds of thing that
+/// need someone, both from the same list of things the verdict shows, so the
+/// tray, a notification and the Overview never disagree.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(in crate::admin) struct Summary {
+    /// The verdict's state.
+    pub(in crate::admin) overall: Overall,
+    /// Each kind on the list once, most serious first; empty when all is well.
+    pub(in crate::admin) reasons: Vec<Reason>,
+}
+
+impl Summary {
+    /// The summary of `things`.
+    pub(super) fn of(things: &[Thing]) -> Self {
+        let reasons: std::collections::BTreeSet<Reason> =
+            things.iter().map(|thing| thing.subject.reason()).collect();
+        Self {
+            overall: Overall::of(things),
+            reasons: reasons.into_iter().collect(),
+        }
     }
 }
 
@@ -281,7 +395,10 @@ pub(super) fn things(facts: &Facts) -> Vec<Thing> {
     }
     for alert in &facts.alerts {
         let thing = from_alert(alert);
-        if !list.iter().any(|listed| listed.subject == thing.subject) {
+        if !list
+            .iter()
+            .any(|listed| listed.subject.covers(&thing.subject))
+        {
             list.push(thing);
         }
     }
@@ -293,7 +410,7 @@ fn from_alert(alert: &AlertState) -> Thing {
     let value = alert.value;
     match &alert.key {
         AlertKey::DiskReserve => Thing::new(
-            Subject::Disk,
+            Subject::DiskLow,
             value.map_or_else(
                 || "Disk space is low".into(),
                 |free| format!("Disk space is low: {} free", format::bytes(free)),
@@ -860,5 +977,115 @@ mod tests {
             Some("01")
         );
         assert!(status(&list).starts_with("<section class=\"verdict verdict--warn\""));
+    }
+
+    // ADR 0023: every kind of line has one word from a closed list, and the
+    // list puts every kind that stops data now before every kind that only
+    // needs a look, so the first word is the most serious.
+    #[test]
+    fn each_subject_has_one_reason_word_most_serious_first() {
+        let subjects = [
+            (Subject::Disk, "disk_full"),
+            (Subject::DiskLow, "disk_low"),
+            (
+                Subject::Blocked(id("x"), Undeliverable::NotConfigured),
+                "lab_app_blocked",
+            ),
+            (Subject::Failing(id("x")), "sending_failing"),
+            (Subject::Stopped(id("m")), "machine_stopped"),
+            (Subject::Unlinked(id("m")), "machine_link_off"),
+            (Subject::Paused(id("x")), "sending_paused"),
+            (Subject::Silent(id("m")), "machine_silent"),
+            (Subject::Waiting, "result_waiting"),
+            (Subject::Review, "needs_review"),
+            (Subject::Uncertain, "orders_uncertain"),
+            (Subject::Cancelled, "orders_cancelled"),
+            (Subject::RestorePaused, "orders_paused_after_restore"),
+            (Subject::OrderList, "order_list_stale"),
+        ];
+        let mut reasons: Vec<Reason> = subjects
+            .iter()
+            .map(|(subject, word)| {
+                assert_eq!(subject.reason().word(), *word, "{subject:?}");
+                subject.reason()
+            })
+            .collect();
+        let declared = reasons.clone();
+        reasons.sort();
+        assert_eq!(reasons, declared, "the list above is in declared order");
+        let tones: Vec<Tone> = subjects.iter().map(|(subject, _)| subject.tone()).collect();
+        let first_attention = tones
+            .iter()
+            .position(|tone| *tone == Tone::Attention)
+            .expect("some kinds only need a look");
+        assert!(
+            tones
+                .iter()
+                .take(first_attention)
+                .all(|tone| *tone == Tone::Problem)
+        );
+        assert!(
+            tones
+                .iter()
+                .skip(first_attention)
+                .all(|tone| *tone == Tone::Attention)
+        );
+        for word in subjects.map(|(_, word)| word) {
+            assert!(
+                word.bytes()
+                    .all(|byte| byte.is_ascii_lowercase() || byte == b'_'),
+                "{word}"
+            );
+        }
+    }
+
+    // ADR 0023: the status kinds come from the same lines as the verdict,
+    // each kind once and most serious first, whatever order the lines are in.
+    #[test]
+    fn the_summary_lists_each_kind_once_most_serious_first() {
+        let facts = Facts {
+            review: 2,
+            unlinked: vec![
+                (id("a"), "Port not open", String::new()),
+                (id("b"), "Port not open", String::new()),
+            ],
+            paused: vec![(id("demo"), 2)],
+            alerts: vec![alert(AlertKey::DiskReserve, Some(10))],
+            ..Facts::default()
+        };
+        let summary = Summary::of(&things(&facts));
+        assert_eq!(summary.overall, Overall::Problem);
+        let words: Vec<&str> = summary.reasons.iter().map(|reason| reason.word()).collect();
+        assert_eq!(
+            words,
+            [
+                "disk_low",
+                "machine_link_off",
+                "sending_paused",
+                "needs_review"
+            ]
+        );
+        let good = Summary::of(&things(&Facts::default()));
+        assert_eq!(good.overall, Overall::Good);
+        assert!(good.reasons.is_empty());
+    }
+
+    // ADR 0023: a full disk says "full" even when the disk alert is also
+    // raised; the alert alone says "low", and adds no second disk line.
+    #[test]
+    fn a_full_disk_is_full_and_the_alert_alone_is_low() {
+        let full = Facts {
+            disk_full: true,
+            alerts: vec![alert(AlertKey::DiskReserve, Some(10))],
+            ..Facts::default()
+        };
+        let list = things(&full);
+        assert_eq!(list.len(), 1, "{list:?}");
+        assert_eq!(Summary::of(&list).reasons, [Reason::DiskFull]);
+        let low = Facts {
+            alerts: vec![alert(AlertKey::DiskReserve, Some(10))],
+            ..Facts::default()
+        };
+        assert_eq!(Summary::of(&things(&low)).reasons, [Reason::DiskLow]);
     }
 }
