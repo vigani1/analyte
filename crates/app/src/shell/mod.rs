@@ -23,12 +23,19 @@ use tokio::sync::{mpsc, watch};
 pub const TRAY_ONLY: &str = "--tray";
 
 /// What the monitor task is asked to do.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Command {
     /// Show the window, making it if it was closed.
     Open,
     /// Ask the service manager to start the engine.
     StartEngine,
+    /// Sign the pages in with Windows, then open `next` (ADR 0021 §6).
+    SignIn {
+        /// The page to land on; the engine checks it.
+        next: String,
+        /// Who asked, for the once-per-30-s guard.
+        trigger: crate::sign_in::Trigger,
+    },
 }
 
 /// How many commands may wait; more are dropped, as they repeat one another.
@@ -79,7 +86,14 @@ impl Shared {
     /// Hands `command` to the monitor; a full queue already holds one like it.
     pub(crate) fn send(&self, command: Command) {
         if let Err(error) = self.commands.try_send(command) {
-            tracing::debug!(?command, %error, "command not queued");
+            let why = error.to_string();
+            // The page a sign-in returns to is left out of the log.
+            let command = match error.into_inner() {
+                Command::Open => "open",
+                Command::StartEngine => "start engine",
+                Command::SignIn { .. } => "sign in",
+            };
+            tracing::debug!(command, %why, "command not queued");
         }
     }
 }

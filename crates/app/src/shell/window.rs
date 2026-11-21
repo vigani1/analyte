@@ -9,11 +9,15 @@
 //!
 //! Closing the window destroys both webviews, so their memory is freed; the
 //! tray makes a new window. Links to other sites open in the default browser,
-//! where they carry no admin session.
-use super::Shared;
+//! where they carry no admin session. The pages' webview carries the
+//! `AnalyteApp` user agent, and the window runs Windows sign-in itself
+//! (ADR 0021 §6): it opens at `/login/windows?next=/`, and every
+//! `/login/windows` without a code becomes a sign-in for the monitor.
+use super::{Command, Shared};
 use crate::engine::{Engine, Origin};
 use crate::local::ENGINE_OFF;
 use crate::navigation::{Decision, decide};
+use crate::sign_in;
 use crate::title_bar::{self, Place, Sizing, View};
 use crate::watch::Shown;
 use tauri::{
@@ -35,10 +39,11 @@ fn bar_address() -> String {
     format!("{}{}", Origin::Local.text(), title_bar::PAGE)
 }
 
-/// Where the pages should be for `shown`.
+/// Where the pages should be for `shown`: on a running engine, Windows
+/// sign-in to the Overview, so the window signs in at once.
 fn target(shared: &Shared, shown: Shown) -> String {
     match (&shared.engine, shown) {
-        (Ok(engine), Shown::Running(_)) => engine.home(),
+        (Ok(engine), Shown::Running(_)) => sign_in::start(engine),
         (Ok(_) | Err(_), _) => engine_off(),
     }
 }
@@ -49,10 +54,17 @@ fn engine_origin(shared: &Shared) -> Origin {
     shared.engine.as_ref().map_or(Origin::Local, Engine::origin)
 }
 
-/// Whether the pages show `url`; a web link opens in the browser instead.
-fn allowed(url: &url::Url, origin: Origin) -> bool {
+/// Whether the pages show `url`; a web link opens in the browser instead,
+/// and Windows sign-in goes to the monitor while the pages stay put.
+fn allowed<R: Runtime>(app: &AppHandle<R>, url: &url::Url, origin: Origin) -> bool {
     match decide(url, origin) {
         Decision::Show => true,
+        Decision::WindowsSignIn { next, trigger } => {
+            if let Some(shared) = app.try_state::<std::sync::Arc<Shared>>() {
+                shared.send(Command::SignIn { next, trigger });
+            }
+            false
+        }
         Decision::OpenOutside => {
             if let Err(error) = tauri_plugin_opener::open_url(url.as_str(), None::<&str>) {
                 tracing::warn!(%error, "a link could not be opened in the browser");
@@ -89,19 +101,22 @@ pub(crate) fn bar_webview<R: Runtime>(bar: url::Url) -> WebviewBuilder<R> {
         .disable_drag_drop_handler()
 }
 
-/// The pages' webview at `url`: the engine's origin and the app's own
-/// pages show; web links open in the browser.
+/// The pages' webview at `url`, marked as the app for the engine's sign-in:
+/// the engine's origin and the app's own pages show; web links open in the
+/// browser; Windows sign-in runs in the app.
 pub(crate) fn pages_webview<R: Runtime>(
     app: &AppHandle<R>,
     url: url::Url,
     origin: Origin,
 ) -> WebviewBuilder<R> {
     let opener = app.clone();
+    let navigator = app.clone();
     WebviewBuilder::new(title_bar::PAGES, WebviewUrl::External(url))
-        .on_navigation(move |url| allowed(url, origin))
+        .user_agent(sign_in::USER_AGENT)
+        .on_navigation(move |url| allowed(&navigator, url, origin))
         .on_new_window(move |url, _| {
             // A link meant for a new window: an engine page opens here, the web in the browser.
-            if allowed(&url, origin)
+            if allowed(&opener, &url, origin)
                 && let Some(pages) = opener.get_webview(title_bar::PAGES)
                 && let Err(error) = pages.navigate(url)
             {
@@ -242,6 +257,22 @@ fn show_in<R: Runtime>(window: &Window<R>, view: View) {
 fn show<R: Runtime>(bar: &Webview<R>, view: View) {
     if let Err(error) = bar.eval(view.script()) {
         tracing::warn!(%error, "the title bar could not be updated");
+    }
+}
+
+/// Opens `address` in the pages, if the window is open: where a Windows
+/// sign-in leads. The address is never logged, as it may hold a code.
+pub(super) fn go(app: &AppHandle, address: &str) {
+    let Some(pages) = app.get_webview(title_bar::PAGES) else {
+        return;
+    };
+    match url::Url::parse(address) {
+        Ok(url) => {
+            if let Err(error) = pages.navigate(url) {
+                tracing::warn!(%error, "the window could not open the sign-in's page");
+            }
+        }
+        Err(error) => tracing::error!(%error, "the sign-in's page address is not valid"),
     }
 }
 

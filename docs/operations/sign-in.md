@@ -1,9 +1,27 @@
 # Who may sign in
 
-On a Windows PC, the Analyte app can sign you in with your Windows account, so
-you do not type the admin key (ADR 0021, Windows sign-in). The app's part of
-this is still being built; setup already prepares the group below, so the list
-of people is ready when it arrives.
+On a Windows PC, the Analyte app signs you in with your Windows account, so
+you do not type the admin key (ADR 0021, Windows sign-in).
+
+## What you see in the app
+
+- **Opening the app:** the pages open already signed in. The foot of the
+  menu says **Signed in as** `PC-NAME\name`.
+- **Signing out:** **Sign out** brings you to the sign-in page, and you stay
+  signed out until you choose how to sign in again.
+- **Signing in again:** **Sign in with Windows** on the sign-in page signs you
+  in with your Windows account at once. The admin key also works there.
+- **After a restart of Analyte, or after an hour:** sessions end then. The
+  next page you open signs you in again by itself and opens that page.
+- **Not allowed:** if your Windows account may not use Analyte, the sign-in
+  page says so in one sentence, with the admin key's field below it.
+- **Windows sign-in not working:** if Analyte has no Windows sign-in (see
+  Settings) or does not answer within a few seconds, the app shows the plain
+  sign-in page with the admin key's field. The app signs in by itself at
+  most once every 30 seconds, so it never keeps reloading; **Sign in with
+  Windows** tries again whenever you click it.
+- **Analyte stopped:** the app shows its Engine off screen, as before, and
+  signs in by itself once Analyte answers again.
 
 ## Who is allowed
 

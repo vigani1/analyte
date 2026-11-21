@@ -196,11 +196,24 @@ pub(in crate::admin) fn answer(answer: &Answer) -> Vec<u8> {
 mod tests {
     use super::*;
 
-    // ADR 0021 §2: the request is one JSON line with exactly v = 1 and next.
+    /// One example line, with its newline, from the file the app's tests read
+    /// too, so the app's half of the pipe and this one cannot drift apart.
+    fn example(name: &str) -> String {
+        let examples = include_str!("../../../../../testing/fixtures/windows-sign-in.txt");
+        let found = examples
+            .lines()
+            .find_map(|line| line.strip_prefix(name)?.strip_prefix(' '));
+        format!("{}\n", found.expect("the example exists"))
+    }
+
+    // ADR 0021 §2: the request is one JSON line with exactly v = 1 and next,
+    // as the app writes it.
     #[test]
     fn request_reads_version_and_next() -> Result<(), LineError> {
-        let request = request(b"{\"v\":1,\"next\":\"/parked/12\"}\n")?;
-        assert_eq!(request.next.as_str(), "/parked/12");
+        let parked = request(example("request-parked").as_bytes())?;
+        assert_eq!(parked.next.as_str(), "/parked/12");
+        let home = request(example("request-home").as_bytes())?;
+        assert_eq!(home.next.as_str(), "/");
         Ok(())
     }
 
@@ -301,24 +314,23 @@ mod tests {
             code: Code::new("q".repeat(43) + "="),
             account: "LAB-PC\\maria".into(),
         };
-        let expected = format!(
-            "{{\"code\":\"{}=\",\"account\":\"LAB-PC\\\\maria\"}}\n",
-            "q".repeat(43)
-        );
-        assert_eq!(answer(&code), expected.as_bytes());
+        assert_eq!(answer(&code), example("answer-code").as_bytes());
         let refused = Answer::Refused {
             refused: Refusal::NotAllowed,
             account: Some("LAB-PC\\bob".into()),
         };
-        assert_eq!(
-            answer(&refused),
-            b"{\"refused\":\"not-allowed\",\"account\":\"LAB-PC\\\\bob\"}\n"
-        );
-        let unknown = Answer::Refused {
-            refused: Refusal::BadRequest,
-            account: None,
-        };
-        assert_eq!(answer(&unknown), b"{\"refused\":\"bad-request\"}\n");
+        assert_eq!(answer(&refused), example("answer-not-allowed").as_bytes());
+        for (refused, name) in [
+            (Refusal::BadRequest, "answer-bad-request"),
+            (Refusal::Unidentified, "answer-unidentified"),
+            (Refusal::Unavailable, "answer-unavailable"),
+        ] {
+            let unknown = Answer::Refused {
+                refused,
+                account: None,
+            };
+            assert_eq!(answer(&unknown), example(name).as_bytes(), "{name}");
+        }
     }
 
     // ADR 0021 §2: the app reads four fixed refusal words and nothing else.

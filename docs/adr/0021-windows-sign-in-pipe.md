@@ -89,6 +89,12 @@ revert in release builds; `winsafe` reads tokens but cannot impersonate.
    - The app takes that address, asks the pipe and opens the code. It tries
      automatically at most once per 30 s. A refusal shows the key form with
      a fixed sentence.
+   - Only the engine's refresh counts as automatic. A click on "Sign in with
+     Windows" always asks (once per click, so it cannot loop) and starts the
+     30 s again; opening the window clears them, so it signs in at once.
+     No pipe, no answer within 3 s for a busy pipe plus 2 s for the answer,
+     or an answer that is not a valid line all show the plain key form; a
+     missing pipe is not a refusal.
 7. **The key stays.** The admin key keeps working in browsers, with
    `Authorization: Bearer` and for recovery.
 8. **The exception.**
