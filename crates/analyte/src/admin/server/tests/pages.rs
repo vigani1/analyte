@@ -166,6 +166,7 @@ async fn start_pages_server(
         config_path: root.join("program.toml"),
         token: Token::load(root)?,
         sessions: Sessions::default(),
+        windows: Arc::new(windows::SignIn::new(None)),
         origin: format!("http://{host}"),
         host: host.clone(),
         store: store.clone(),
@@ -404,8 +405,9 @@ async fn assert_raw_views_audited(
         .sessions
         .lookup(session.strip_prefix("analyte_session="))?
         .ok_or("session lost")?
-        .actor
-        .clone();
+        .actor()
+        .cloned()
+        .ok_or("session not signed in")?;
     assert_eq!(audit.actor, actor);
     Ok(())
 }

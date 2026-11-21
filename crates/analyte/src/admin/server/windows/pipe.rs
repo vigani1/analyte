@@ -1,8 +1,9 @@
 //! Windows-only: the sign-in pipe the engine holds for its whole life, answering one caller at a time within about 3 s each (ADR 0021 §1–§4).
 use super::{
-    AccountName,
+    AccountName, Sid, Status, WindowsAccount,
+    codes::Codes,
     line::{self, Answer, Code, Next, Refusal, Request},
-    rule::{self, Decision, Group, Membership, Rule, Sid},
+    rule::{self, Decision, Group, Membership, Rule},
 };
 use crate::runtime::service::caller::{self, Dacl};
 use std::{io, thread::JoinHandle, time::Duration};
@@ -35,21 +36,13 @@ const FAILURES: u32 = 16;
 /// A verified Windows account, from its token and never from the caller's word.
 pub(in crate::admin) struct Account {
     /// The user's SID.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "a redeemed code names it (ADR 0021 §4)")
-    )]
     pub(in crate::admin) sid: Sid,
     /// `DOMAIN\name`, when Windows found it in time.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "a redeemed code names it (ADR 0021 §4)")
-    )]
     pub(in crate::admin) name: Option<AccountName>,
 }
 
-/// Gives an allowed account a one-time code for `next`: the seam the sign-in
-/// page's code map fills.
+/// Gives an allowed account a one-time code for `next`: the sign-in page's
+/// [`Codes`] in the engine, a recorder in tests.
 pub(in crate::admin) trait Issue {
     /// A code for `account`, or why it gets none.
     /// # Errors
@@ -57,18 +50,17 @@ pub(in crate::admin) trait Issue {
     fn issue(&self, account: &Account, next: Next) -> Result<Code, Refusal>;
 }
 
-/// Mints real codes, 256 random bits each, that nothing redeems yet: no page
-/// takes a code, so an allowed caller's code opens nothing.
-pub(in crate::admin) struct Unredeemed;
-
-impl Issue for Unredeemed {
-    fn issue(&self, _account: &Account, _next: Next) -> Result<Code, Refusal> {
-        crate::admin::Token::session()
-            .map(|token| Code::new(token.form_value().to_owned()))
-            .map_err(|error| {
-                tracing::error!(error = %error, "windows sign-in could not make a code");
-                Refusal::Unavailable
-            })
+/// The sign-in page's codes: an allowed account gets one for 20 s.
+impl Issue for Codes {
+    fn issue(&self, account: &Account, next: Next) -> Result<Code, Refusal> {
+        let kept = WindowsAccount::new(account.sid.clone(), account.name.clone()).map_err(|error| {
+            tracing::warn!(sid = account.sid.as_str(), error = %error, "windows sign-in refused");
+            Refusal::Unidentified
+        })?;
+        self.keep(kept, next).map_err(|error| {
+            tracing::warn!(error = %error, "windows sign-in gave no code");
+            Refusal::Unavailable
+        })
     }
 }
 
@@ -78,6 +70,17 @@ pub(in crate::admin) enum Start {
     On(Pipe),
     /// Off for this run; the admin key still works.
     Off(Off),
+}
+
+impl Start {
+    /// What the pages say about Windows sign-in after this start.
+    pub(in crate::admin) fn status(&self) -> Status {
+        match self {
+            Self::On(pipe) if pipe.rule.has_users_group() => Status::On,
+            Self::On(_) => Status::AdministratorsOnly,
+            Self::Off(reason) => Status::Off(reason.to_string()),
+        }
+    }
 }
 
 /// Why Windows sign-in is off for this run.

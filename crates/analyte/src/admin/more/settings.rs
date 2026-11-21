@@ -155,7 +155,7 @@ fn engine(state: &Context) -> Vec<Fact> {
         .iter()
         .filter(|machine| machine.status.borrow().light() == Light::Live)
         .count();
-    vec![
+    let mut facts = vec![
         Fact {
             term: "Analyte version",
             value: Value::Code {
@@ -186,7 +186,18 @@ fn engine(state: &Context) -> Vec<Fact> {
             term: "Times on these pages",
             value: Value::Text(format::time_zone()),
         },
-    ]
+    ];
+    // Shown where Windows sign-in exists; Linux keeps the admin key only.
+    if let Some(status) = state.windows.status() {
+        facts.insert(
+            3,
+            Fact {
+                term: "Windows sign-in",
+                value: Value::Text(status.line()),
+            },
+        );
+    }
+    facts
 }
 
 /// The store's limits from the program file.

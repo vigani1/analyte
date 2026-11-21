@@ -36,7 +36,7 @@ pub(in crate::admin) async fn add_form(
     State(state): State<Arc<Context>>,
     session: Option<Extension<Arc<Session>>>,
 ) -> Response {
-    let Some(Extension(session)) = session.filter(|Extension(s)| s.authenticated) else {
+    let Some(Extension(session)) = session.filter(|Extension(s)| s.is_signed_in()) else {
         return needs_login(&state);
     };
     let suggested = off_thread(&state, |state| {
@@ -373,7 +373,7 @@ pub(in crate::admin) async fn confirm_remove(
     session: Option<Extension<Arc<Session>>>,
     Path(id): Path<String>,
 ) -> Response {
-    let Some(Extension(session)) = session.filter(|Extension(s)| s.authenticated) else {
+    let Some(Extension(session)) = session.filter(|Extension(s)| s.is_signed_in()) else {
         return Problem::SignIn.page(&state, None, Section::Machines(Some(&id)));
     };
     let machine = id.clone();

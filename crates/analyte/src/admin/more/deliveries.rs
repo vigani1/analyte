@@ -360,9 +360,13 @@ pub(in crate::admin) async fn resend(
     Form(form): Form<Confirmation>,
 ) -> Response {
     let section = Section::More(Tab::Deliveries);
-    if !(session.authenticated && session.csrf_valid(&form.csrf) && form.confirm == "yes") {
+    let Some(actor) = session
+        .actor()
+        .filter(|_| session.csrf_valid(&form.csrf) && form.confirm == "yes")
+        .cloned()
+    else {
         return Problem::SignIn.page(&state, None, section);
-    }
+    };
     let reason = match checked(&form.reason) {
         Ok(reason) => reason,
         Err(error) => {
@@ -387,7 +391,7 @@ pub(in crate::admin) async fn resend(
         &state.store,
         id,
         form.acknowledge_superseded,
-        session.actor.clone(),
+        actor,
         reason,
     )
     .await

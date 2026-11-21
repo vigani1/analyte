@@ -240,6 +240,7 @@ async fn start_program_with(
         config_path: config.clone(),
         token: Token::load(&data)?,
         sessions: Sessions::default(),
+        windows: Arc::new(windows::SignIn::new(None)),
         origin: format!("http://{host}"),
         host: host.clone(),
         store: store.clone(),

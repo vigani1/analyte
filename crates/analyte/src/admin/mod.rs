@@ -12,6 +12,7 @@ mod view;
 pub(crate) use removed::{Draining, Kept};
 pub(crate) use server::{Server, prepare};
 
+pub use server::sessions::{ActorError, command_line_actor};
 pub use server::token::{Token, TokenError, rotate_token};
 
 mod error;

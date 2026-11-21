@@ -312,7 +312,11 @@ pub(in crate::admin) async fn hold(
     Extension(session): Extension<Arc<Session>>,
     Form(form): Form<HoldForm>,
 ) -> Response {
-    if !session.authenticated || !session.csrf_valid(&form.csrf) || form.confirm != "yes" {
+    let Some(actor) = session
+        .actor()
+        .filter(|_| session.csrf_valid(&form.csrf) && form.confirm == "yes")
+        .cloned()
+    else {
         return report(
             &state,
             &session,
@@ -327,9 +331,9 @@ pub(in crate::admin) async fn hold(
             },
             vec!["authenticated session, valid form and confirmation required".into()],
         );
-    }
+    };
     let release = form.operation == "release";
-    match apply(&state, &session, form).await {
+    match apply(&state, actor, form).await {
         Ok(()) => report(
             &state,
             &session,
@@ -367,7 +371,7 @@ pub(in crate::admin) async fn hold(
     }
 }
 
-async fn apply(state: &Context, session: &Session, form: HoldForm) -> Result<(), Error> {
+async fn apply(state: &Context, actor: Identifier, form: HoldForm) -> Result<(), Error> {
     let target = match form.scope.as_str() {
         "receipt" => {
             HoldTarget::Receipt(serde_json::from_value(serde_json::Value::String(form.id))?)
@@ -384,7 +388,7 @@ async fn apply(state: &Context, session: &Session, form: HoldForm) -> Result<(),
         _ => return Err(Error::ChoosePlaceOrRelease),
     };
     let audit = Audit {
-        actor: session.actor.clone(),
+        actor,
         action: Identifier::new(if active {
             "retention-hold-place"
         } else {

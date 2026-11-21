@@ -90,6 +90,9 @@ pub(in crate::admin) struct Sidebar {
     /// The session's form token for Sign out; none when the request used the
     /// admin key itself, which has no session to end.
     pub(in crate::admin) csrf: Option<String>,
+    /// The Windows account the session is signed in as, `DOMAIN\name` or
+    /// its SID; none for the admin key, which names nobody.
+    pub(in crate::admin) account: Option<String>,
 }
 
 /// One main link with its icon; `count` is shown beside it when some.
@@ -162,8 +165,9 @@ impl Frame {
                     .collect(),
                 more_open: MORE.contains(&current),
                 csrf: session
-                    .filter(|session| session.authenticated)
+                    .filter(|session| session.is_signed_in())
                     .map(|session| session.csrf.form_value().to_owned()),
+                account: session.and_then(Session::account).map(str::to_owned),
             },
         }
     }

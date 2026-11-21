@@ -56,3 +56,22 @@ Windows account they used to connect. The same rule applies to them.
 
 A browser such as Edge or Chrome keeps using the admin key, as before. The
 admin key also stays the way back in if Windows sign-in is not possible.
+
+The sign-in page has a **Sign in with Windows** button. In the Analyte app it
+signs you in with your Windows account. In a browser it opens the same
+sign-in page with the note "Windows sign-in works in the Analyte app" above
+the admin key's field, so you sign in there with the key.
+
+## Who is signed in
+
+After a Windows sign-in, the foot of the menu says **Signed in as**
+`PC-NAME\name`, and what you change is recorded under that name in the
+history. If Windows could not give the name in time, the account's security
+number (its SID, such as `S-1-5-21-…`) is shown instead. Signing in with the
+admin key still says only **Signed in**, and changes read "admin session".
+
+**Settings** shows one line, **Windows sign-in**: "On", or "Off because …"
+with the reason, for example when another program held Windows sign-in's
+channel when Analyte started, or when the Analyte users group is missing, so
+only administrators can sign in with Windows. Analyte on Linux has no
+Windows sign-in, and Settings shows no such line there.

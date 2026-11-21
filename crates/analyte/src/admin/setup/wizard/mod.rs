@@ -330,7 +330,7 @@ async fn serve(
     query: Result<Query<Draft>, QueryRejection>,
     render: Render,
 ) -> Response {
-    let Some(Extension(session)) = session.filter(|Extension(s)| s.authenticated) else {
+    let Some(Extension(session)) = session.filter(|Extension(s)| s.is_signed_in()) else {
         return needs_login(&state);
     };
     let Ok(Query(draft)) = query else {
@@ -923,7 +923,7 @@ pub(in crate::admin) async fn listen_view(
     State(state): State<Arc<Context>>,
     session: Option<Extension<Arc<Session>>>,
 ) -> Response {
-    let Some(Extension(session)) = session.filter(|Extension(s)| s.authenticated) else {
+    let Some(Extension(session)) = session.filter(|Extension(s)| s.is_signed_in()) else {
         return needs_login(&state);
     };
     let now = Timestamp::now();

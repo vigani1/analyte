@@ -193,9 +193,9 @@ pub(in crate::admin) async fn raw(
     Extension(session): Extension<Arc<Session>>,
     Form(form): Form<RawForm>,
 ) -> Response {
-    if !session.authenticated {
+    let Some(actor) = session.actor().cloned() else {
         return Problem::SignIn.page(&state, None, Section::NeedsReview(Some(id)));
-    }
+    };
     if !session.csrf_valid(&form.csrf) {
         return Problem::FormExpired.page(&state, Some(&session), Section::NeedsReview(Some(id)));
     }
@@ -214,7 +214,7 @@ pub(in crate::admin) async fn raw(
             &form.reason
         })?;
         let audit = Audit {
-            actor: session.actor.clone(),
+            actor: actor.clone(),
             action: Identifier::new(RAW_VIEW)?,
             targets: vec![
                 Identifier::new(&format!("parked:{id}"))?,
@@ -270,7 +270,7 @@ pub(in crate::admin) async fn raw(
     };
     let view = shown_page(
         &state,
-        &session,
+        (&session, &actor),
         id,
         (target, source, what),
         cursor,
@@ -295,7 +295,7 @@ pub(in crate::admin) async fn raw(
 )]
 fn shown_page(
     state: &Context,
-    session: &Session,
+    (session, actor): (&Session, &Identifier),
     id: i64,
     (target, source, what): (Identifier, &'static str, &'static str),
     cursor: RawCursor,
@@ -336,7 +336,7 @@ fn shown_page(
                 "Source: {source}, cursor {}, offset {}",
                 cursor.after, cursor.offset
             ),
-            format!("View recorded for: {}", session.actor.as_str()),
+            format!("View recorded for: {}", actor.as_str()),
         ],
     }
 }
