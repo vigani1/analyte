@@ -21,6 +21,9 @@ mod wizard;
 pub(in crate::admin) use wizard::verdict::{FIREWALL_RULE, FIREWALL_RULE_NAME};
 
 pub use command::{LabApps, Machines, Outcome, run_lab_apps, run_machines};
+pub(super) use lab_apps::command::{
+    LIMIT as COMMAND_LAB_APPS_LIMIT, PATH as COMMAND_LAB_APPS, post as command_lab_apps,
+};
 pub(in crate::admin) use lab_apps::{Found, key_sources};
 pub(super) use lab_apps::{
     PAGE as LAB_APPS, add as add_lab_app, add_form as add_lab_app_form,

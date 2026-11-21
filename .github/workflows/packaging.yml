@@ -38,19 +38,23 @@ jobs:
         run: |
           $version = (Select-String -Path Cargo.toml -Pattern '^version = "(.+)"$' | Select-Object -First 1).Matches.Groups[1].Value
           ./packaging/build.ps1 -Platform windows -Target x86_64-pc-windows-msvc -Version $version -Binary target/debug/analyte.exe -App target/debug/analyte-app.exe
-      - name: Install, check the setup page, upgrade and uninstall
+      - name: Install, check the setup page, upgrade, switch to the engine only and uninstall
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $setup = (Get-ChildItem dist/*-setup.exe).FullName
           $root = "$env:ProgramData\Analyte"
+          $program = "$env:ProgramFiles\Analyte"
           $logs = "$env:RUNNER_TEMP\analyte-logs"
           $null = New-Item -ItemType Directory -Force -Path $logs
           $run = 0
-          function Install-Analyte {
+          # Extra setup parameters choose the type (/TYPE=full or /TYPE=engine)
+          # and tasks (/MERGETASKS=!path unticks the PATH task).
+          function Install-Analyte([string[]]$Choices = @()) {
             $script:run++
             $log = "$logs\setup-$($script:run).log"
-            $process = Start-Process -FilePath $setup -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=$log" -Wait -PassThru
+            $arguments = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=$log") + $Choices
+            $process = Start-Process -FilePath $setup -ArgumentList $arguments -Wait -PassThru
             if ($process.ExitCode -ne 0) {
               Get-Content -LiteralPath $log -Tail 60 -ErrorAction SilentlyContinue
               throw "installer exit code $($process.ExitCode); see $log"
@@ -136,9 +140,52 @@ jobs:
           function Assert-ScriptSaid([string]$Log, [string]$Text) {
             if (-not (Select-String -LiteralPath $Log -SimpleMatch $Text -Quiet)) { throw "$Log lacks: $Text" }
           }
+          # The PATH task: the program folder appears at most once in the system
+          # PATH, the value keeps its registry type, and every other entry stays
+          # in its place.
+          $environment = 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment'
+          # The runner image may store PATH as String or ExpandString; the
+          # script must keep whichever it found.
+          $pathKind = (Get-Item -LiteralPath $environment).GetValueKind('Path')
+          function Get-SystemPath {
+            $key = Get-Item -LiteralPath $environment
+            if ($key.GetValueKind('Path') -ne $pathKind) { throw "the system PATH changed from $pathKind to $($key.GetValueKind('Path'))" }
+            [string]$key.GetValue('Path', '', 'DoNotExpandEnvironmentNames')
+          }
+          function Get-OtherEntries {
+            @((Get-SystemPath).Split(';') | Where-Object { $_ -and $_.TrimEnd('\') -ine $program })
+          }
+          $otherEntries = Get-OtherEntries
+          function Assert-OnPath([bool]$Expected) {
+            $listed = @((Get-SystemPath).Split(';') | Where-Object { $_.TrimEnd('\') -ieq $program }).Count
+            if ($listed -ne [int]$Expected) { throw "the system PATH lists $program $listed times" }
+            if (Compare-Object $otherEntries (Get-OtherEntries) -SyncWindow 0) { throw 'the other PATH entries changed' }
+            if ($Expected) {
+              # A new window's PATH: analyte is the installed program.
+              $saved = $env:Path
+              try {
+                $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+                $found = (Get-Command analyte -CommandType Application | Select-Object -First 1).Source
+                if ($found -ne "$program\analyte.exe") { throw "analyte resolves to $found" }
+              } finally { $env:Path = $saved }
+            }
+          }
+          # The engine only: no app program, settings, Start menu or sign-in
+          # entry, app data or running app; the engine still serves.
+          function Assert-EngineOnly {
+            foreach ($gone in "$program\analyte-app.exe", "$program\analyte-app.toml", "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Analyte.lnk", "$env:LOCALAPPDATA\Analyte", "$env:LOCALAPPDATA\io.github.vigani1.analyte.app") {
+              if (Test-Path -LiteralPath $gone) { throw "the engine-only setup left $gone" }
+            }
+            if (Get-ItemProperty -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name Analyte -ErrorAction SilentlyContinue) { throw 'the engine-only setup left the sign-in entry' }
+            if (Get-Process analyte-app -ErrorAction SilentlyContinue) { throw 'the app still runs' }
+            if (-not (Test-Path -LiteralPath "$program\analyte.exe")) { throw 'the engine is missing' }
+            $status = Invoke-RestMethod -Uri http://127.0.0.1:8080/status
+            if ($status.state -ne 'good') { throw "status answered $($status | ConvertTo-Json -Compress)" }
+          }
           Install-Analyte
           Assert-SetupPage
           Assert-DesktopApp
+          Assert-OnPath $true
           Assert-FirewallRule
           Assert-ScriptSaid "$logs\setup-1.log" "Windows Firewall rule 'Analyte - analyzers on the lab network' allows TCP"
           if ((Get-SignInMembers) -notcontains $installer.Value) { throw 'setup did not add the installing user to Analyte users' }
@@ -158,9 +205,13 @@ jobs:
           # An upgrade keeps the lab's configuration and the token.
           Add-Content -LiteralPath "$root\config\analyte.toml" -Value '# kept on upgrade'
           $token = (Get-FileHash -LiteralPath "$root\data\admin-token").Hash
-          Install-Analyte
+          # /COMPONENTS does nothing without a custom type: the upgrade keeps the
+          # app, as the documentation says; /TYPE is the way to choose.
+          Install-Analyte '/COMPONENTS=engine'
           Assert-SetupPage
           Assert-DesktopApp
+          # The upgrade added no second PATH entry.
+          Assert-OnPath $true
           # The upgrade replaced the rule: still exactly one.
           Assert-FirewallRule
           if (-not (Select-String -LiteralPath "$root\config\analyte.toml" -SimpleMatch '# kept on upgrade')) { throw 'upgrade replaced the configuration' }
@@ -170,12 +221,52 @@ jobs:
           if ($members -notcontains $installer.Value -or $members -notcontains $otherSid -or $members.Count -ne 2) { throw "upgrade changed Analyte users: $($members -join ', ')" }
           Assert-ScriptSaid "$logs\setup-2.log" "Local group 'Analyte users' already exists; its members were kept."
           Assert-ScriptSaid "$logs\setup-2.log" "is already in 'Analyte users'."
+          Assert-ScriptSaid "$logs\setup-2.log" "The system PATH already lists $program."
+          # Switching to the engine only removes the app as uninstall does; the
+          # unticked PATH task takes the entry out.
+          Install-Analyte '/TYPE=engine', '/MERGETASKS=!path'
+          Assert-SetupPage
+          Assert-EngineOnly
+          Assert-OnPath $false
+          Assert-FirewallRule
+          # The next upgrade keeps the engine-only type; ticking the task adds the entry back.
+          Install-Analyte '/MERGETASKS=path'
+          Assert-SetupPage
+          Assert-EngineOnly
+          Assert-OnPath $true
+          if ((Get-FileHash -LiteralPath "$root\data\admin-token").Hash -ne $token) { throw 'switching types replaced the token' }
+          # Without the app, from a new window's PATH and a folder without a
+          # program file: commands read the installed program file, and the
+          # installed service stores a lab app's keys, which only its account
+          # may write (ADR 0028). Synthetic keys, piped as a script would.
+          $work = (New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\analyte-work").FullName
+          $saved = $env:Path
+          Push-Location -LiteralPath $work
+          try {
+            $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+            $listed = & analyte machines list 2> "$logs\machines-list.err"
+            if ($LASTEXITCODE -ne 0) { Get-Content -LiteralPath "$logs\machines-list.err"; throw "machines list exit code $LASTEXITCODE" }
+            if (-not (($listed -join "`n").Contains('machine-1'))) { throw "machines list said: $($listed -join ' | ')" }
+            Assert-ScriptSaid "$logs\machines-list.err" "Using $root\config\analyte.toml (the installed program file)."
+            $keys = "synthetic-ci-api-key`nwhsec_AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+            $added = $keys | & analyte --actor it-ci lab-apps add ci-lab --address https://ci-lab.example.invalid 2> "$logs\lab-apps-add.err"
+            if ($LASTEXITCODE -ne 0) { Get-Content -LiteralPath "$logs\lab-apps-add.err"; throw "lab-apps add exit code $LASTEXITCODE" }
+            foreach ($said in 'ci-lab is added.', 'Key stored: ci-lab-api', 'Key stored: ci-lab-signing') {
+              if ($added -notcontains $said) { throw "lab-apps add did not say '$said': $($added -join ' | ')" }
+            }
+            if (Select-String -LiteralPath "$root\config\lab-apps.toml" -SimpleMatch 'synthetic-ci-api-key' -Quiet) { throw 'a key was written into lab-apps.toml' }
+          } finally {
+            Pop-Location
+            $env:Path = $saved
+          }
           # Uninstall removes the service and program, and keeps data and configuration.
           $process = Start-Process -FilePath "$env:ProgramFiles\Analyte\unins000.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=$logs\uninstall.log" -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "uninstaller exit code $($process.ExitCode)" }
           for ($i = 0; $i -lt 60 -and (Test-Path -LiteralPath "$env:ProgramFiles\Analyte\analyte.exe"); $i++) { Start-Sleep -Seconds 1 }
           if (Get-CimInstance Win32_Service -Filter "Name='Analyte'") { throw 'service still registered' }
           if (Get-NetFirewallRule -Name 'Analyte-Analyzers-In' -ErrorAction SilentlyContinue) { throw 'uninstall left the firewall rule' }
+          Assert-OnPath $false
+          Assert-ScriptSaid "$logs\uninstall.log" "Removed $program from the system PATH."
           Assert-ScriptSaid "$logs\uninstall.log" "Windows Firewall rule 'Analyte - analyzers on the lab network' removed."
           if (Test-Path -LiteralPath "$env:ProgramFiles\Analyte\analyte.exe") { throw 'program not removed' }
           # The app, its settings, its Start menu and sign-in entries go too; the

@@ -10,14 +10,29 @@ there is no binary signing or automatic upgrade mechanism.
 (`packaging/build.ps1` pins the version). **It is unsigned for now: Windows
 SmartScreen will warn; choose More info → Run anyway** after checking its
 checksum. The lab manager's steps are in
-[Install](../../docs/operations/install.md#windows-installer-recommended). In order, it:
+[Install](../../docs/operations/install.md#windows-installer-recommended).
+
+One page offers two setup types: **Engine and Analyte app (recommended)**
+(`full`) and **Engine only (set up from PowerShell or a browser)** (`engine`),
+made of the components `engine` (fixed) and `app`. Every app entry (program,
+Start menu entry, sign-in task and entry, settings, "Open Analyte") belongs
+to `app`. An upgrade keeps the earlier type and tasks (Inno Setup's
+defaults); choosing `engine` over an installed `full` removes what uninstall
+removes for the app (`[InstallDelete]`, and the sign-in value). The task
+**Let me type `analyte` in PowerShell (add Analyte to the PATH)**, ticked by
+default for both types, makes setup run `install.ps1 -AddToPath`; unticked on
+an upgrade, setup runs `path.ps1 -Action Remove`. Silent installations choose
+with `/TYPE=full` or `/TYPE=engine` and `/MERGETASKS=!path`; `/COMPONENTS` has
+no effect without a custom type ([Install without the
+app](../../docs/operations/install.md#install-without-the-app)). In order, it:
 
 1. stops a running Analyte service with `stop.ps1`, so the program can be replaced;
 2. closes a running desktop app, then installs `analyte.exe`, the desktop app
-   `analyte-app.exe` (ADR 0019) and this folder in `C:\Program Files\Analyte`,
-   the `machines` definitions in `C:\ProgramData\Analyte\config\machines`, a
-   Start menu entry "Analyte" and, if ticked, the installing user's sign-in
-   entry (`HKCU\...\Run\Analyte`);
+   `analyte-app.exe` (ADR 0019, `full` only) and this folder in
+   `C:\Program Files\Analyte`, the `machines` definitions in
+   `C:\ProgramData\Analyte\config\machines`, with `full` a Start menu entry
+   "Analyte" and, if ticked, the installing user's sign-in entry
+   (`HKCU\...\Run\Analyte`);
 3. on a first installation only, writes the starter program and site file from
    `starter\` into `C:\ProgramData\Analyte\config` (an upgrade never replaces them);
 4. runs `install.ps1 -ConfigWritable -CreateAdminToken -UsersMayStart -Start`,
@@ -26,15 +41,29 @@ checksum. The lab manager's steps are in
    the admin token if missing, creates the local group `Analyte users` if
    missing and adds the person who ran setup (below), adds the Windows Firewall
    rule `Analyte - analyzers on the lab network` (inbound TCP to `analyte.exe`
-   from `LocalSubnet` only, every profile; replaced on each run) and starts
-   the service;
-   then writes `analyte-app.toml` with the program's admin port beside the app;
+   from `LocalSubnet` only, every profile; replaced on each run), with
+   `-AddToPath` adds `C:\Program Files\Analyte` to the system PATH once, and
+   starts the service;
+   then, with `full`, writes `analyte-app.toml` with the program's admin port
+   beside the app;
 5. shows a new admin token once, read from the protected file (it is never
-   logged), and offers to open the Analyte app. Without the WebView2 Runtime it
-   says so and offers `http://127.0.0.1:<admin port>/setup` in the browser.
+   logged), and offers to open the Analyte app. With `engine`, or without the
+   WebView2 Runtime, it says so and offers `http://127.0.0.1:<admin port>/setup`
+   in the browser; with `engine` it also shows the first commands
+   (`analyte doctor`, `analyte machines list`).
+
+`path.ps1` is the one PATH rule. It edits the machine `Path` value under
+`HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment` directly,
+keeps its registry type (so `%SystemRoot%` entries stay unexpanded), appends
+the folder only when no entry names it (case and a trailing `\` do not matter;
+a missing trailing `;` is handled), removes only entries naming the folder and
+keeps every other entry as written and in order. It never uses `setx`, which
+cuts the value at 1024 characters. It then tells running programs that the
+environment changed, so new windows see it. `-WhatIf` shows the change
+without writing it.
 
 Uninstall closes the app, runs `uninstall.ps1` (which also removes the
-firewall rule), removes the program files, the
+firewall rule and the PATH entry), removes the program files, the
 app's settings, the Start menu entry and the installing user's sign-in entry, and keeps data,
 configuration, machine definitions, backups, credentials, the token and the
 `Analyte users` group, which may list other people, and says so. To build
@@ -72,7 +101,8 @@ the installer by hand from a staged release folder:
    entry to the service's access list, `(A;;RP;;;IU)`: interactive users may
    start it, for the app's Start engine button; `-CreateAdminToken` creates
    `<data>\admin-token` only when it is missing and does not print it;
-   `-Start` starts the service at the end. The data directory must
+   `-Start` starts the service at the end; `-AddToPath` adds the folder of
+   `-Executable` to the system PATH with `path.ps1`. The data directory must
    match the TOML setting; the script runs `check-config` but does not parse TOML
    itself. Use dedicated local paths. Roots, reparse points, and data directories
    containing the binary/configuration/system trees are refused. Existing data
@@ -142,7 +172,9 @@ including this deadline case. Windows shutdown policy can impose its own limits;
 stop the service explicitly and wait for Stopped before planned OS maintenance.
 
 Uninstall with `.\packaging\windows\uninstall.ps1` in an elevated shell. It waits
-up to 310 seconds for a safe stop and removes only the service registration.
+up to 310 seconds for a safe stop and removes the service registration, the
+firewall rule and the PATH entry for the folder of `-Executable` (default
+`C:\Program Files\Analyte\analyte.exe`).
 Running it again succeeds when already absent. It never deletes the data
 directory, configuration, logs, backups or credentials, and retains their ACLs.
 Uninstall does not authorize replaying uncertain orders or deleting evidence.

@@ -11,6 +11,7 @@ order. Examples are synthetic. Do not use their values as machine settings.
 | Task | Guide |
 | --- | --- |
 | Requirements, program and service installation | [Install](install.md) |
+| Install only the engine and set it up from PowerShell | [Install without the app](install.md#install-without-the-app) |
 | Configuration, app connection and machine qualification | [Connect](connect.md) |
 | Admin page, alerts and storage incidents | [Operate](operate.md) |
 | Every command for PowerShell, by task | [Commands](commands.md) |

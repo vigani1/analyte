@@ -3,16 +3,21 @@
 //! Keys are read only from a prompt that shows nothing as it is typed, or
 //! from standard input, one per line; there is no option for them, so they
 //! never sit in a command line, a shell history or a process list. They go to
-//! the locked keys file exactly as the page stores them, and only when this
-//! account may write it ([`crate::installation::credentials::Locked::check_writer`]).
+//! the locked keys file exactly as the page stores them. While the engine
+//! runs, the engine stores them, after it proved it holds the admin key
+//! (ADR 0028); otherwise the command stores them itself, only when this
+//! account may write that file ([`crate::installation::credentials::Locked::check_writer`]).
+//! Where they go is settled before they are asked for.
 use super::ask::Ask;
-use super::{Failure, Installation, Outcome, actor, backups, record, restart_note, say};
+use super::{Failure, Installation, Outcome, actor, backups, problem, record, restart_note, say};
+use crate::admin::engine::{Engine, EngineError};
 use crate::admin::setup::{
     Seams, Setup, SetupError, Via,
     lab_apps::{
-        API_KEY, Change, Entered, KeySource, SIGNING_KEY, Saved, add_blocking, conflict_sentence,
-        count, reason, remove_blocking, removed_reason, save_blocking, scan, waiting,
-        where_written,
+        API_KEY, Change, Entered, KeySource, SIGNING_KEY, Saved, add_blocking,
+        command::{Answer, PATH, Sent, saved_lines},
+        conflict_sentence, count, reason, remove_blocking, removed_reason, save_blocking, scan,
+        waiting, where_written,
     },
     on_files,
 };
@@ -116,14 +121,20 @@ pub(super) async fn run(
         Command::Keys { name } => {
             let actor = actor(given, ask)?;
             let mut entered = current(&installation.setup, &name)?;
-            let [api, signing] = read_keys(&installation.setup, keys)?;
+            let place = keys_go(&installation).await?;
+            let [api, signing] = read_keys(keys)?;
             if api.is_empty() && signing.is_empty() {
                 say("No key was entered, so nothing was stored.")?;
                 return Ok(Outcome::Done);
             }
             entered.api_key = api;
             entered.signing_key = signing;
-            save(&installation, &actor, &name, entered).await
+            match place {
+                Place::Engine(engine) => {
+                    through_engine(&engine, &actor, Change::Saved, entered).await
+                }
+                Place::Here => save(&installation, &actor, &name, entered).await,
+            }
         }
         Command::Remove { name } => {
             let actor = actor(given, ask)?;
@@ -141,16 +152,97 @@ fn current(setup: &Setup, name: &str) -> Result<Entered, SetupError> {
     Ok(Entered::of(&known.settings))
 }
 
-/// Checks that this account may store keys, then reads both.
-fn read_keys(setup: &Setup, keys: Keys) -> Result<[String; 2], Failure> {
-    Locked::new(&setup.data_directory)
-        .check_writer()
-        .map_err(SetupError::Credentials)?;
+/// Where a lab app's keys are stored.
+enum Place {
+    /// The running engine stores them (ADR 0028).
+    Engine(Engine),
+    /// The engine is not running, and this account may write the locked file.
+    Here,
+}
+
+/// Where the keys will go, settled before they are asked for: the running
+/// engine once it proved itself; with no engine, here, if this account may
+/// write the locked file. Anything else stores nothing and says why.
+async fn keys_go(installation: &Installation) -> Result<Place, Failure> {
+    let here = || {
+        Locked::new(&installation.setup.data_directory)
+            .check_writer()
+            .map(|()| Place::Here)
+    };
+    match Engine::proven(&installation.program).await {
+        Ok(engine) => Ok(Place::Engine(engine)),
+        Err(EngineError::NotRunning(_)) => here().map_err(Failure::EngineStopped),
+        Err(EngineError::AdminOff) => Ok(here().map_err(SetupError::Credentials)?),
+        Err(error) => Err(Failure::EngineUnreachable(error.to_string())),
+    }
+}
+
+/// Reads both keys.
+fn read_keys(keys: Keys) -> Result<[String; 2], Failure> {
     let mut keys = keys(&[API_KEY.0, SIGNING_KEY.0])?.into_iter();
     Ok([
         keys.next().unwrap_or_default(),
         keys.next().unwrap_or_default(),
     ])
+}
+
+/// The largest answer read from the engine's lab app write.
+const ANSWER_LIMIT: usize = 65_536;
+
+/// Has the running engine make `change` of `entered`, keys included, and
+/// says what it stored, as a save here says it (ADR 0028).
+async fn through_engine(
+    engine: &Engine,
+    actor: &Identifier,
+    change: Change,
+    entered: Entered,
+) -> Result<Outcome, Failure> {
+    let sent = Sent::new(actor.as_str(), change, entered);
+    let posted = engine.post(PATH, &sent, ANSWER_LIMIT).await;
+    drop(sent);
+    let (status, body) = posted.map_err(|error| {
+        if error.not_sent() {
+            Failure::EngineUnreachable(error.to_string())
+        } else {
+            Failure::EngineNoAnswer(error.to_string())
+        }
+    })?;
+    if status == 401 {
+        return Err(Failure::EngineUnreachable(format!(
+            "the engine refused the admin key ({status})"
+        )));
+    }
+    let answer = serde_json::from_slice::<Answer>(&body).map_err(|_| {
+        Failure::EngineNoAnswer(format!("the engine answered {status} in an unknown form"))
+    })?;
+    match answer {
+        Answer::Saved {
+            lines,
+            audit_failed,
+        } => {
+            for line in &lines {
+                say(line)?;
+            }
+            restart_note()?;
+            match audit_failed {
+                None => Ok(Outcome::Done),
+                Some(error) => {
+                    problem(&format::sentence(&format!(
+                        "the change was saved, but {error}"
+                    )))?;
+                    Ok(Outcome::Partly)
+                }
+            }
+        }
+        Answer::Refused {
+            reason,
+            keys_not_stored: true,
+        } => Err(Failure::EngineKeysNotStored(reason)),
+        Answer::Refused {
+            reason,
+            keys_not_stored: false,
+        } => Err(Failure::EngineRefused(reason)),
+    }
 }
 
 fn list(setup: &Setup) -> Result<Outcome, Failure> {
@@ -201,28 +293,10 @@ fn list(setup: &Setup) -> Result<Outcome, Failure> {
 
 /// What a save wrote, as the page's saved page says it; never a key value.
 fn print_saved(change: Change, saved: &Saved) -> std::io::Result<()> {
-    say(&format!(
-        "{} is {}.",
-        saved.settings.name.as_str(),
-        change.verb()
-    ))?;
-    say(&format!("Address: {}", saved.settings.base_url.as_str()))?;
-    say(&if saved.users.is_empty() {
-        "Used by no machine yet: pick it with analyte machines set <machine> --lab-app <name>."
-            .to_owned()
-    } else {
-        format!("Used by {}.", saved.users.join(", "))
-    })?;
-    if !saved.changed {
-        say("The settings were already the same; no file was written.")?;
+    for line in saved_lines(change, saved) {
+        say(&line)?;
     }
-    for key in &saved.replaced {
-        say(&format!("Key stored: {key}"))?;
-    }
-    if !saved.replaced.is_empty() {
-        say(format::KEYS_APPLY)?;
-    }
-    backups(&saved.backups)
+    Ok(())
 }
 
 async fn add(
@@ -244,7 +318,8 @@ async fn add(
     {
         entered.base_url = address;
     }
-    let [api, signing] = read_keys(setup, keys)?;
+    let place = keys_go(installation).await?;
+    let [api, signing] = read_keys(keys)?;
     entered.api_key = api;
     entered.signing_key = signing;
     if asked {
@@ -253,6 +328,9 @@ async fn add(
         if !ask.confirm("Save?")? {
             return Err(Failure::NotConfirmed);
         }
+    }
+    if let Place::Engine(engine) = place {
+        return through_engine(&engine, actor, Change::Added, entered).await;
     }
     installation
         .with_store(async |store| {

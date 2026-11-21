@@ -22,6 +22,9 @@ pub enum Error {
     /// Program configuration could not be loaded.
     #[error(transparent)]
     Config(#[from] crate::installation::config::Error),
+    /// No program file was named or found in the usual places.
+    #[error(transparent)]
+    ProgramFile(#[from] crate::installation::program_file::LocateError),
     /// A synthetic gate could not publish its store probe.
     #[error(transparent)]
     TestHook(#[from] super::test_hooks::Error),

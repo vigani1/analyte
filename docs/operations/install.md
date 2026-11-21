@@ -54,9 +54,13 @@ The Windows installer is unsigned for now: Windows SmartScreen will warn when it
 starts. Check the file's checksum first, then choose **More info** → **Run
 anyway**.
 
-1. Run the installer and accept the administrator prompt. It installs Analyte
-   in `C:\Program Files\Analyte`, the machine definitions and the starter
-   configuration in `C:\ProgramData\Analyte\config`, and protects
+1. Run the installer and accept the administrator prompt. Choose what to
+   install: **Engine and Analyte app (recommended)**, or **Engine only (set up
+   from PowerShell or a browser)**; see [Install without the app](#install-without-the-app).
+   Leave **Let me type `analyte` in PowerShell (add Analyte to the PATH)**
+   ticked, so a new PowerShell window runs `analyte` without its full path. It
+   installs Analyte in `C:\Program Files\Analyte`, the machine definitions and
+   the starter configuration in `C:\ProgramData\Analyte\config`, and protects
    `C:\ProgramData\Analyte\data`.
 2. It registers and starts the `Analyte` service exactly as the script below
    does, lets the service write the config folder for the setup page, and lets
@@ -85,13 +89,70 @@ has. On a Windows 10 PC without it, the last page says so and opens the setup
 page in the browser instead; install the WebView2 Runtime (Evergreen) from
 Microsoft, then open Analyte from the Start menu.
 
-Running it again upgrades the program and keeps the configuration, data and
-token. Uninstall from Windows Settings → Apps: it closes the app, stops and
-removes the service and its firewall rule, removes the program files, the Start menu entry and the
+Running it again upgrades the program and keeps the configuration, data,
+token and your earlier choices. Choosing **Engine only** on an upgrade removes
+the app the way uninstall does. Uninstall from Windows Settings → Apps: it
+closes the app, stops and removes the service, its firewall rule and its PATH
+entry, removes the program files, the Start menu entry and the
 installing user's sign-in entry and app folders, and keeps data, configuration, backups, credentials and
 the token in `C:\ProgramData\Analyte`. It also keeps the Windows group
 **Analyte users**, which may list other people. Delete those yourself only after the lab
 has decided what to do with the clinical data they hold.
+
+## Install without the app
+
+For a PC where nobody wants the desktop app, install only the engine and set
+everything up from an administrator PowerShell window (or a browser, below).
+In the installer choose **Engine only**; for a silent installation by IT:
+
+```powershell
+$setup = Start-Process -Wait -PassThru -FilePath .\analyte-v<version>-x86_64-windows-setup.exe `
+    -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/TYPE=engine'
+$setup.ExitCode   # 0 done; 10 a step failed (add /LOG=<file> to see which)
+```
+
+- `/TYPE=engine` installs the engine only, `/TYPE=full` the engine and the app
+  (the default). `/COMPONENTS` has no effect, because the installer has no
+  custom type.
+- The PATH task is ticked unless you add `/MERGETASKS=!path`. `/TASKS=`
+  replaces the whole list of tasks, so prefer `/MERGETASKS`.
+- An upgrade keeps the earlier type and tasks unless you pass them again.
+- A silent installation shows no admin token. Read it from an administrator
+  PowerShell with `Get-Content C:\ProgramData\Analyte\data\admin-token`.
+
+Then open a **new** PowerShell window as administrator, so it sees the new
+PATH, and set Analyte up. Commands read the installed program file
+`C:\ProgramData\Analyte\config\analyte.toml` without `--config` (they say so
+on the first line); `--actor` names you in the audit trail. The model key comes
+from `analyte machines models`; the names, addresses and port are examples:
+
+```powershell
+analyte doctor                                   # checks the installation; changes nothing
+analyte --actor it-alex lab-apps add main-lab --address https://lab.example.org
+analyte --actor it-alex lab-apps keys main-lab   # asks for both keys without showing them
+analyte machines models                          # models, ready or not
+analyte --actor it-alex machines set machine-1 --model vendor/model `
+    --address 192.168.1.20 --port 5600 --lab-app main-lab --dry-run
+analyte --actor it-alex machines set machine-1 --model vendor/model `
+    --address 192.168.1.20 --port 5600 --lab-app main-lab
+analyte --actor it-alex machines add hl7-2       # each further analyzer, then set it up the same way
+analyte machines test machine-1 --seconds 30     # listens only; nothing sent or stored
+Restart-Service Analyte                          # changes apply after a restart
+analyte machines list
+```
+
+`lab-apps keys` reads the keys only from that hidden prompt or from standard
+input, never from the command line. While the engine runs, the command hands
+them to the engine, which stores them in its locked keys file exactly as the
+Lab apps page does, after the engine has proved it holds the admin key. When
+the engine is stopped, the command stores them itself if this account may
+write the locked file; otherwise it asks you to run `Start-Service Analyte`
+and the command again. Every option is in [From the command
+line](connect.md#from-the-command-line).
+
+**Using a browser instead:** on this PC open `http://127.0.0.1:8080/setup`,
+log in with the admin token, then use **Lab apps** and **Setup** as described
+in [Operate](operate.md#setup-page).
 
 ## The Analyte app
 
@@ -123,7 +184,8 @@ installer again so the app follows. Its own log is
 ## Windows service by script
 
 Use an elevated PowerShell window. Paths below are the packaged defaults. The
-installer runs this same script with `-ConfigWritable -CreateAdminToken -UsersMayStart -Start`.
+installer runs this same script with `-ConfigWritable -CreateAdminToken -UsersMayStart -Start`,
+and `-AddToPath` when its PATH task is ticked.
 
 1. Place `analyte.exe` in `C:\Program Files\Analyte`. Administrators own the
    binary and configuration trees. Ordinary users must not write there.
@@ -165,8 +227,9 @@ Configure protected log rotation separately.
 
 The script accepts `-Executable`, `-Config`, `-DataDirectory`,
 `-ShutdownTimeoutSecs` (30–300, default 30) and the switches `-ConfigWritable`,
-`-CreateAdminToken` and `-Start` (start the service instead of leaving it
-stopped). The directory parameter must match
+`-CreateAdminToken`, `-Start` (start the service instead of leaving it
+stopped) and `-AddToPath` (add the program's folder to the system PATH once,
+so new PowerShell windows run `analyte`). The directory parameter must match
 TOML; the script does not compare them. Use dedicated local directories without
 reparse points. Do not run as LocalSystem to work around permissions.
 See [the full Windows procedure](../../packaging/windows/README.md) for ACL
@@ -177,8 +240,9 @@ Shutdown is bounded. A deadline exit is code 3; Windows can still show a normal
 stop. Inspect the log for remaining component IDs. Do not delete journals or
 resend uncertain machine orders after an interrupted stop.
 
-The packaged `packaging/windows/uninstall.ps1` removes the service only.
-Data, configuration, backups, credentials and permissions remain.
+The packaged `packaging/windows/uninstall.ps1` removes the service, its
+firewall rule and its PATH entry. Data, configuration, backups, credentials
+and permissions remain.
 
 ## Linux packages (recommended)
 

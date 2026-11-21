@@ -1,6 +1,11 @@
 #Requires -Version 5.1
+# Removes the Analyte service, its Windows Firewall rule and its system PATH
+# entry; keeps data, configuration, credentials and the 'Analyte users' group.
 [CmdletBinding()]
-param()
+param(
+    # The installed program; its folder is the PATH entry install.ps1 -AddToPath added.
+    [string]$Executable = "$env:ProgramFiles\Analyte\analyte.exe"
+)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
@@ -15,6 +20,8 @@ if (Get-NetFirewallRule -Name $firewallRule -ErrorAction SilentlyContinue) {
     Remove-NetFirewallRule -Name $firewallRule -ErrorAction Stop
     Write-Output "Windows Firewall rule 'Analyte - analyzers on the lab network' removed."
 }
+# Only the entry naming the program's folder; nothing happens when it is absent.
+& (Join-Path $PSScriptRoot 'path.ps1') -Action Remove -Folder (Split-Path -Path $Executable -Parent)
 # ADR 0021 (Windows sign-in): the group install.ps1 made may list other people.
 $groupKept = "The local group 'Analyte users' was kept, since it may list other people. Remove it in Computer Management, or with: net localgroup `"Analyte users`" /delete"
 $existing = Get-CimInstance -ClassName Win32_Service -Filter "Name='Analyte'"

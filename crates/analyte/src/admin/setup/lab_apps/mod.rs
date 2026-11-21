@@ -8,6 +8,7 @@
 //! locked credentials file and are never shown: a page says only where the
 //! service finds each one (`secrets::source`). How each lab app stands follows
 //! the Overview's lab app rules; reads stop after [`view::READ_BUDGET`].
+pub(super) mod command;
 mod page;
 
 use super::{
@@ -1258,8 +1259,10 @@ fn refused(state: &Context, session: &Session, name: Option<&str>, error: &Setup
     Problem::Refused(error.to_string()).page(state, Some(session), Section::LabApps(name))
 }
 
-/// What a lab app form did, for the audit row and the log.
-#[derive(Clone, Copy)]
+/// What a lab app form did, for the audit row and the log; the command line
+/// names it when the engine makes the change (ADR 0028).
+#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub(super) enum Change {
     Added,
     Saved,
