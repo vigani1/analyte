@@ -109,6 +109,14 @@ pub(in crate::admin) fn exact_time(at: Timestamp) -> String {
     format!("{at} (Unix {})", at.as_second())
 }
 
+/// A time on this computer's clock to the second, as `2026-11-21 14:03:07`,
+/// for the command line, where there is no hover for the exact value.
+pub(in crate::admin) fn local_time(at: Timestamp) -> String {
+    at.to_zoned(TimeZone::system())
+        .strftime("%Y-%m-%d %H:%M:%S")
+        .to_string()
+}
+
 /// A stored Unix time outside the calendar, shown as it is.
 pub(super) fn not_a_date(seconds: i64) -> String {
     format!("Unix time {seconds} (not a valid date)")

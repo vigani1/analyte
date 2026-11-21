@@ -126,6 +126,43 @@ impl WindowsAccount {
 }
 
 /// Whether Windows sign-in works in this run, as the pages say it.
+/// The local group whose enabled members may sign in (ADR 0021 §3).
+#[cfg(windows)]
+pub(in crate::admin) const GROUP: &str = "Analyte users";
+
+/// What looking up the local [`GROUP`] found.
+#[cfg(windows)]
+pub(in crate::admin) enum Found {
+    /// The group exists; its SID.
+    Group(Sid),
+    /// An account has the name but is not a local group.
+    NotAGroup,
+    /// No account has the name.
+    Missing,
+    /// `COMPUTERNAME` is not set, so the local name cannot be qualified.
+    NoComputerName,
+    /// Windows could not look the name up.
+    Failed(crate::runtime::service::caller::Os),
+}
+
+/// Looks up `<COMPUTERNAME>\Analyte users`, qualified so a same-named domain
+/// group never matches; read-only, through the existing safe account lookup.
+#[cfg(windows)]
+pub(in crate::admin) fn users_group() -> Found {
+    let Some(computer) = std::env::var_os("COMPUTERNAME") else {
+        return Found::NoComputerName;
+    };
+    let qualified = format!("{}\\{GROUP}", computer.to_string_lossy());
+    match crate::runtime::service::caller::account_sid(&qualified) {
+        Ok(Some((sid, kind))) if kind == windows_sys::Win32::Security::SidTypeAlias => {
+            Sid::new(sid).map_or(Found::NotAGroup, Found::Group)
+        }
+        Ok(Some(_)) => Found::NotAGroup,
+        Ok(None) => Found::Missing,
+        Err(error) => Found::Failed(error),
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(in crate::admin) enum Status {
     /// Members of "Analyte users" and Administrators may sign in.

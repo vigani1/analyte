@@ -68,6 +68,14 @@ analyte --config analyte.toml --actor pilot-it deliveries list --reason "Pilot r
 the global `--config`. Recovery operators need OS access to the protected store.
 Lists are bounded; use `--after` with the last listed local ID/sequence where
 offered. CLI output can contain protected evidence.
+Every page also has a command (`analyte overview`, `analyte doctor`,
+`analyte activity`, `analyte data-keeping`, `analyte orders cancelled` and
+more); [Commands](commands.md) lists them all by task. `analyte overview` and
+`analyte doctor` ask the running engine at `GET /overview/verdict`, sending
+the admin key (which only an administrator can read) only after the engine
+proved it holds it at `GET /proof` ([ADR 0027](../adr/0027-command-line-asks-the-engine.md));
+the answer holds the Overview's lines (names and counts), never values or
+sample IDs.
 
 ## Setup page
 

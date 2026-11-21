@@ -36,7 +36,7 @@ pub(in crate::admin) async fn cancelled(
         &state,
         session.as_ref(),
         Tab::CancelledByMachine,
-        read_cancelled(&state, cursor),
+        read_cancelled(&state.store, cursor.after),
         |(rows, more), session, now| cancelled_page(&state, session, &rows, more, now).render(),
     )
     .await
@@ -49,12 +49,11 @@ type CancelledRow = (
 );
 
 async fn read_cancelled(
-    state: &Context,
-    cursor: Cursor,
+    store: &analyte_store::Handle,
+    after: u64,
 ) -> Result<(Vec<CancelledRow>, bool), Error> {
-    let after = i64::try_from(cursor.after)?;
-    Ok(state
-        .store
+    let after = i64::try_from(after)?;
+    Ok(store
         .read::<_, CommandError>(deadline()?, move |s| {
             // This page shows every row of the store's read, not the admin page size.
             let (rows, more) = one_page::<_, CommandError>(
@@ -97,7 +96,10 @@ fn cancelled_page(
         ),
         cards: rows
             .iter()
-            .map(|(row, cached)| card(state, &row.order, &row.item, cached.as_ref(), now))
+            .map(|(row, cached)| {
+                let model = model(state, row.order.key.machine.as_str());
+                card(model, &row.order, &row.item, cached.as_ref(), now)
+            })
             .collect(),
         next,
     }
@@ -107,7 +109,7 @@ fn cancelled_page(
 /// test count, when the machine's cancel was recorded and the lab app's own
 /// status as its copy says.
 fn card(
-    state: &Context,
+    model: Option<String>,
     order: &MachineOrder,
     item: &MachineOrderItem,
     cached: Option<&CachedOrder>,
@@ -129,7 +131,7 @@ fn card(
         sample: cached.map(|cached| cached.sample.as_str().to_owned()),
         order: order.key.order.as_str().to_owned(),
         machine: order.key.machine.as_str().to_owned(),
-        model: model(state, order.key.machine.as_str()),
+        model,
         tests: item
             .coverage_known
             .then(|| format::test_count(item.tests.len())),
@@ -137,6 +139,56 @@ fn card(
         lines,
         href: format::order_item_href(order.id, item.index),
     }
+}
+
+/// One order item a machine cancelled, as `analyte orders cancelled` prints
+/// it: the page's card in words. The sample ID comes from the lab app's copy,
+/// as on the page; no result value is ever part of it.
+#[derive(serde::Serialize)]
+pub(in crate::admin) struct Printed {
+    /// The page's title for the card: the sample, or the order without one.
+    pub(in crate::admin) sample: Option<String>,
+    pub(in crate::admin) order: String,
+    pub(in crate::admin) machine: String,
+    pub(in crate::admin) model: Option<String>,
+    /// "2 tests"; none when an older version did not record them.
+    pub(in crate::admin) tests: Option<String>,
+    /// When the machine's cancel was recorded and what the lab app's copy says.
+    pub(in crate::admin) lines: Vec<String>,
+    /// The lab app, the version sent and Analyte's own numbers.
+    pub(in crate::admin) identity: String,
+}
+
+/// One page of Cancelled by machine for the command line, after the store's
+/// cursor `after`, and the cursor to pass as `--after` when more follow.
+/// `models` names each machine's model by its ID.
+/// # Errors
+/// Reports cursor, deadline and store read failures.
+pub(in crate::admin) async fn printed(
+    store: &analyte_store::Handle,
+    models: &std::collections::BTreeMap<String, String>,
+    after: u64,
+) -> Result<(Vec<Printed>, Option<i64>), Error> {
+    let (rows, more) = read_cancelled(store, after).await?;
+    let now = Timestamp::now();
+    let next = rows.last().filter(|_| more).map(|(last, _)| last.cursor);
+    let printed = rows
+        .iter()
+        .map(|(row, cached)| {
+            let model = models.get(row.order.key.machine.as_str()).cloned();
+            let card = card(model, &row.order, &row.item, cached.as_ref(), now);
+            Printed {
+                sample: card.sample,
+                order: card.order,
+                machine: card.machine,
+                model: card.model,
+                tests: card.tests,
+                lines: card.lines.iter().map(Line::plain).collect(),
+                identity: card.exact,
+            }
+        })
+        .collect();
+    Ok((printed, next))
 }
 
 /// The lab app's own order status as its kept copy says, in its spelling;

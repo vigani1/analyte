@@ -52,6 +52,18 @@ fn http_client(timeout: Duration) -> Result<reqwest::Client, reqwest::Error> {
         .build()
 }
 
+/// Whether a lab app answers over HTTPS at `url` within `timeout`: one GET
+/// that carries no keys, signature or data, with the same client settings and
+/// certificate checks deliveries use. Any HTTP status is an answer, so the
+/// address resolves, the connection opens and the certificate is valid; the
+/// status is returned. It sends nothing a lab app could store.
+/// # Errors
+/// The client's failure: name lookup, connection, certificate or time limit.
+pub async fn answers(url: &reqwest::Url, timeout: Duration) -> Result<u16, reqwest::Error> {
+    let response = http_client(timeout)?.get(url.clone()).send().await?;
+    Ok(response.status().as_u16())
+}
+
 #[cfg(test)]
 mod stop_tests {
     use super::*;

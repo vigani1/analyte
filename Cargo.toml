@@ -95,6 +95,7 @@ webview2-com = { version = "0.39.1", default-features = false }
 
 # Command line
 clap = { version = "4.6", features = ["derive"] }
+clap_complete = { version = "4.6.12", default-features = false } # `analyte completions`; needs only clap
 
 # Tests only
 analyte-fixtures = { path = "crates/testing/fixtures", version = "0.1.0" }

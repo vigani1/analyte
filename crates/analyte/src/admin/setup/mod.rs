@@ -16,6 +16,9 @@ mod page;
 mod plan;
 mod site;
 mod wizard;
+// Only `analyte doctor` on Windows reads the firewall rule's names.
+#[cfg(windows)]
+pub(in crate::admin) use wizard::verdict::{FIREWALL_RULE, FIREWALL_RULE_NAME};
 
 pub use command::{LabApps, Machines, Outcome, run_lab_apps, run_machines};
 pub(in crate::admin) use lab_apps::{Found, key_sources};
