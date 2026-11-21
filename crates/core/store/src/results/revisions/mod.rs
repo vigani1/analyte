@@ -14,7 +14,7 @@ use assignment::{AssignedRevision, Reconciliation};
 use content::clinical_digest;
 use history::write_history;
 pub use parking::{NO_RESULTS_REASON, reconciled_outcome};
-use parking::{park_outcomes, reconciliation_succeeded, write_reprocess_audit};
+use parking::{Parking, park_outcomes, reconciliation_succeeded, write_reprocess_audit};
 use rusqlite::params;
 pub use status_policy::StatusLifecycle;
 mod evidence;
@@ -69,6 +69,12 @@ pub struct ReconcileInput<'a> {
     pub corrections: &'a [bool],
     /// Protected mapping findings.
     pub findings: &'a [crate::Parked],
+    /// The reason of a failed reading that only says the findings held the
+    /// message's results back (all or none are recorded). When the reading
+    /// fails with exactly this reason and findings are given, the findings are
+    /// its Needs review items and it parks none of its own; any other failure,
+    /// such as one the store sets itself, keeps its own item.
+    pub held_back: Option<&'a str>,
     /// Protocol reconciliation policy.
     pub mode: ReconcileMode<'a>,
 }
@@ -80,6 +86,7 @@ impl<'a> ReconcileInput<'a> {
         Self {
             corrections,
             findings,
+            held_back: None,
             mode: ReconcileMode::Standard,
         }
     }
@@ -125,6 +132,7 @@ impl Store {
         let ReconcileInput {
             corrections,
             findings,
+            held_back,
             mode,
         } = input;
         let (lifecycle, edit_guard, law) = match mode {
@@ -226,14 +234,11 @@ impl Store {
             )
             .ok_or(Error::Storage(crate::StorageError::Capacity))?;
         Self::capacity_on(&tx, &self.path, &self.limits, &*self.space, required)?;
-        write_history(
-            &tx,
-            &receipt_key,
-            version,
-            &encoded,
-            &findings,
-            &batch.revisions,
-        )?;
+        let mut parking = Parking::open(&tx, &receipt_key, self.limits.page_rows)?;
+        for finding in &findings {
+            parking.park(finding)?;
+        }
+        write_history(&tx, &receipt_key, version, &encoded, &batch.revisions)?;
         reconciliation.write_deliveries(
             &receipt_key,
             version,
@@ -247,12 +252,11 @@ impl Store {
                     && matches!(&evidence.outcome, Reading::Results(results) if results.is_empty()))
         }) {
             park_outcomes(
-                &tx,
-                &receipt_key,
+                &mut parking,
                 version,
                 &evidence,
                 &batch.outcomes,
-                (action.is_some(), findings.is_empty(), edit_guard),
+                (action.is_some(), findings.is_empty(), edit_guard, held_back),
             )?;
         }
         if let Some((custody, admission)) = law.zip(admission.as_ref()) {

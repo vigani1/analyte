@@ -208,6 +208,27 @@ const MISSING_RECORD: &str = " at record ";
 const MISSING_FIELD: &str = " field ";
 
 impl Unidentified {
+    /// Whether `finding` already names the cause of this reason, so the reason
+    /// adds nothing for an operator. The mapper gives a result without a test
+    /// mapping the reason [`Unidentified::UnknownTest`] next to an
+    /// [`Problem::UnknownTest`] finding, and a missing identity value the reason
+    /// [`Unidentified::Missing`] next to the finding at the same place.
+    #[must_use]
+    pub fn restates(&self, finding: &Finding) -> bool {
+        match self {
+            Self::Missing { setting, position } => {
+                finding.position == *position
+                    && finding.problem == Problem::MissingIdentity { setting: *setting }
+            }
+            Self::UnknownTest => finding.problem == Problem::UnknownTest,
+            Self::AutolyserRun
+            | Self::PoctRepeated
+            | Self::PoctEvidence
+            | Self::PoctSequence
+            | Self::VidasLiteral => false,
+        }
+    }
+
     /// Every reason without a position, for reading back.
     const FIXED: [Self; 6] = [
         Self::UnknownTest,
@@ -501,6 +522,46 @@ mod tests {
             "unknown test mapping.",
         ] {
             assert_eq!(Unidentified::from_stored(text), None, "{text}");
+        }
+    }
+
+    // Owner report 2026-11-21: a result with no identity because of a finding
+    // must not open a second Needs review item. Only the finding with the same
+    // cause (and, for a missing value, the same place) restates the reason.
+    #[test]
+    fn a_reason_restates_only_the_finding_with_its_cause() {
+        let at = |record, field| Position { record, field };
+        let finding = |position, problem| Finding { position, problem };
+        let order = IdentitySetting::OrderId;
+        let missing = Unidentified::Missing {
+            setting: order,
+            position: at(3, 2),
+        };
+        let unknown = finding(at(4, 3), Problem::UnknownTest);
+        let absent = finding(at(3, 2), Problem::MissingIdentity { setting: order });
+        assert!(Unidentified::UnknownTest.restates(&unknown));
+        assert!(!Unidentified::UnknownTest.restates(&absent));
+        assert!(missing.restates(&absent));
+        assert!(!missing.restates(&unknown));
+        assert!(!missing.restates(&finding(
+            at(3, 3),
+            Problem::MissingIdentity { setting: order }
+        )));
+        assert!(!missing.restates(&finding(
+            at(3, 2),
+            Problem::MissingIdentity {
+                setting: IdentitySetting::SubId
+            }
+        )));
+        for own in [
+            Unidentified::AutolyserRun,
+            Unidentified::PoctRepeated,
+            Unidentified::PoctEvidence,
+            Unidentified::PoctSequence,
+            Unidentified::VidasLiteral,
+        ] {
+            assert!(!own.restates(&unknown), "{own}");
+            assert!(!own.restates(&absent), "{own}");
         }
     }
 }

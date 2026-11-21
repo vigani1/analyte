@@ -1,6 +1,6 @@
 //! Turns mapper output into a stored reading with corrections and findings, and classifies the commit outcome.
 use crate::intake::{Error, MappedReading, Mapping};
-use analyte_mapping::{Position, Problem, ReasonPiece};
+use analyte_mapping::{Position, Problem, ReasonPiece, Unidentified};
 use analyte_store::Reading;
 
 /// The finding stored when a final status taken from the machine's documented
@@ -56,10 +56,19 @@ pub(crate) fn map_reading(mapping: Mapping) -> Result<MappedReading, Error> {
                     | Problem::InvalidTime => f.to_string(),
                 })
                 .collect::<Vec<_>>();
+            // One cause is one item: a result's missing identity is kept as a
+            // finding only when no finding already names its cause, and once
+            // per message (every result of a VIDAS Literal gives the same one).
+            // The result keeps its own reason in the stored reading either way.
             for result in &output.results {
                 if let analyte_model::IdentityStatus::Unresolved(reason) = &result.content.identity
                 {
-                    findings.push(reason.as_str().to_owned());
+                    let restated = Unidentified::from_stored(reason.as_str()).is_some_and(|why| {
+                        output.findings.iter().any(|finding| why.restates(finding))
+                    });
+                    if !restated && !findings.iter().any(|kept| kept == reason.as_str()) {
+                        findings.push(reason.as_str().to_owned());
+                    }
                 }
             }
             let corrections = output
