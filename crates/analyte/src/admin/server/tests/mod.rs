@@ -1037,13 +1037,37 @@ fn loopback_destination(name: &str) -> Result<analyte_sink::Destination, Error> 
     )?)
 }
 
+/// A test server's owner task.
+type Owner = tokio::task::JoinHandle<Result<(), crate::admin::Error>>;
+
 /// A running test server: its state, stop switch, owner task and `host:port`.
-type Started = (
-    Arc<Context>,
-    watch::Sender<bool>,
-    tokio::task::JoinHandle<Result<(), crate::admin::Error>>,
-    String,
-);
+type Started = (Arc<Context>, watch::Sender<bool>, Owner, String);
+
+/// Runs a fixture's server on `socket`: `state`'s router and, on Windows, the
+/// real sign-in pipe for its port. Returns its stop switch and owner task.
+fn run_fixture(
+    socket: tokio::net::TcpListener,
+    state: Arc<Context>,
+    restart: watch::Receiver<bool>,
+    closing: watch::Sender<bool>,
+    released: tokio::sync::oneshot::Receiver<()>,
+) -> Result<(watch::Sender<bool>, Owner), Error> {
+    let server = Server {
+        #[cfg(windows)]
+        windows: windows::start(socket.local_addr()?.port()),
+        listener: Listener {
+            socket,
+            slots: Arc::new(Semaphore::new(32)),
+        },
+        app: router(state),
+        restart,
+        closing,
+        released,
+        owners: BTreeMap::new(),
+    };
+    let (stop, stopped) = watch::channel(false);
+    Ok((stop, tokio::spawn(server.run(stopped))))
+}
 
 async fn start_overview_server(
     root: &std::path::Path,
@@ -1148,19 +1172,13 @@ async fn start_bounded(
         closing: closed,
         _released: released,
     });
-    let server = Server {
-        listener: Listener {
-            socket,
-            slots: Arc::new(Semaphore::new(32)),
-        },
-        app: router(state.clone()),
-        restart: watch::channel(false).1,
+    let (stop, owner) = run_fixture(
+        socket,
+        state.clone(),
+        watch::channel(false).1,
         closing,
-        released: release,
-        owners: BTreeMap::new(),
-    };
-    let (stop, stopped) = watch::channel(false);
-    let owner = tokio::spawn(server.run(stopped));
+        release,
+    )?;
     Ok((state, stop, owner, host))
 }
 

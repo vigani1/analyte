@@ -94,7 +94,7 @@ proptest = "1.12"
 tempfile = "3.27"
 
 [workspace.lints.rust]
-# Deny, not forbid, so ADR 0017 can expect it in one module; crate roots still forbid it.
+# Deny, not forbid, so ADR 0017 and ADR 0021 can expect it in their two modules; other crate roots forbid it.
 unsafe_code = "deny"
 missing_docs = "warn"
 unreachable_pub = "warn"

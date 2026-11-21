@@ -1,6 +1,8 @@
 # 0017. Unsafe code for Windows access lists
 
-Status: accepted, 2026-11-18 (the owner approved `windows-sys` for this check)
+Status: accepted, 2026-11-18 (the owner approved `windows-sys` for this check).
+Refined by [ADR 0021](0021-windows-sign-in-pipe.md): a second module,
+`caller.rs`, may now use `unsafe`, and the helpers both share moved there.
 
 ## Context
 

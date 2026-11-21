@@ -1,5 +1,5 @@
 //! Runs program workers, host I/O, custody and operator actions without interpreting clinical results.
-// ADR 0017: only the Windows access-list module may expect unsafe_code.
+// ADR 0017 and ADR 0021: only the Windows access-list and caller modules may expect unsafe_code.
 #![deny(unsafe_code)]
 /// Failures retaining returned work and execution custody.
 pub use machine::law::custody::Error as WorkPolicyError;

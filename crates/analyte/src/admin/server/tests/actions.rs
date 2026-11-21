@@ -324,19 +324,13 @@ async fn start_action_server(
         closing: closed,
         _released: released,
     });
-    let server = Server {
-        listener: Listener {
-            socket,
-            slots: Arc::new(Semaphore::new(32)),
-        },
-        app: router(state.clone()),
-        restart: watch::channel(false).1,
+    let (stop, owner) = run_fixture(
+        socket,
+        state.clone(),
+        watch::channel(false).1,
         closing,
-        released: release,
-        owners: BTreeMap::new(),
-    };
-    let (stop, stopped) = watch::channel(false);
-    let owner = tokio::spawn(server.run(stopped));
+        release,
+    )?;
     Ok((state, stop, owner, host))
 }
 
