@@ -61,7 +61,8 @@ anyway**.
 2. It registers and starts the `Analyte` service exactly as the script below
    does, lets the service write the config folder for the setup page, and lets
    people signed in to this PC start (never stop) the service, for the app's
-   **Start engine** button.
+   **Start engine** button. It creates the Windows group **Analyte users**, if
+   missing, and adds you; see [Who may sign in](sign-in.md).
 3. It installs the **Analyte app** (`analyte-app.exe`) with a Start menu entry
    "Analyte". The app shows the same pages in its own window and keeps a tray
    icon with the engine's state; see [The Analyte app](#the-analyte-app). Leave
@@ -85,7 +86,8 @@ Running it again upgrades the program and keeps the configuration, data and
 token. Uninstall from Windows Settings → Apps: it closes the app, stops and
 removes the service, removes the program files, the Start menu entry and the
 installing user's sign-in entry and app folders, and keeps data, configuration, backups, credentials and
-the token in `C:\ProgramData\Analyte`. Delete those yourself only after the lab
+the token in `C:\ProgramData\Analyte`. It also keeps the Windows group
+**Analyte users**, which may list other people. Delete those yourself only after the lab
 has decided what to do with the clinical data they hold.
 
 ## The Analyte app

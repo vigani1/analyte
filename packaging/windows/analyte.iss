@@ -372,6 +372,7 @@ begin
   end;
   if CurUninstallStep = usPostUninstall then
     SuppressibleMsgBox('Analyte was removed. Data, configuration, backups, credentials and the '
-      + 'admin token in ' + ExpandConstant('{commonappdata}\Analyte') + ' were kept.',
+      + 'admin token in ' + ExpandConstant('{commonappdata}\Analyte') + ' were kept. The Windows '
+      + 'group "Analyte users" was kept too, since it may list other people.',
       mbInformation, MB_OK, IDOK);
 end;
