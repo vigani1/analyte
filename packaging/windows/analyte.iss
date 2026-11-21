@@ -1,6 +1,8 @@
 ; Builds the click-through Windows installer (Inno Setup 6). The installer copies
 ; the files, then runs install.ps1, so manual and installer setups share one
-; set of service and permission rules. Unsigned for now: see docs/release.md.
+; set of service, permission and firewall rules (install.ps1 adds the Windows
+; Firewall rule for analyzers; uninstall.ps1 removes it). Unsigned for now: see
+; docs/release.md.
 ;
 ; Build from a staged release folder (analyte.exe, analyte-app.exe, analyte.ico,
 ; LICENSE, README.md, machines, packaging\windows):
@@ -49,7 +51,7 @@ CloseApplications=no
 SetupLogging=no
 
 [Messages]
-ConfirmUninstall=This removes the Analyte service, the Analyte app and the program files.%n%nData, configuration, backups, credentials and the admin token in C:\ProgramData\Analyte are kept. Delete them yourself only after the lab has decided what to do with the clinical data they hold.%n%nRemove Analyte now?
+ConfirmUninstall=This removes the Analyte service, its Windows Firewall rule, the Analyte app and the program files.%n%nData, configuration, backups, credentials and the admin token in C:\ProgramData\Analyte are kept. Delete them yourself only after the lab has decided what to do with the clinical data they hold.%n%nRemove Analyte now?
 
 [Tasks]
 ; ADR 0019: the desktop app starts in the tray when this Windows user signs in;

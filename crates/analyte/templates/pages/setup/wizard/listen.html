@@ -10,7 +10,7 @@
 {%- endblock %}
 {%- block step %}
 <section class="stack stack--lg" aria-labelledby="s3">
-<div><h2 id="s3" class="wizard__title">Test the connection</h2><p class="muted wizard__text">Analyte only listens. It sends nothing to the machine. Ask the machine to send a result now.</p></div>
+<div><h2 id="s3" class="wizard__title">Test the connection</h2><p class="muted wizard__text">{% if live.connects %}Analyte connects to the machine and only reads.{% else %}Analyte only listens.{% endif %} It sends nothing to the machine. Ask the machine to send a result now.</p></div>
 <div class="card card--pad listen">
 <div><p class="eyebrow listen__target">{{ live.target }}</p>{% if let Some(clock) = live.clock %}<p class="countdown listen__clock" aria-live="polite"><span class="sr-only">Time left </span>{{ clock }}</p>{% else %}{% call display::status(live.state.tone, live.state.word) %}{% endcall %}{% endif %}</div>
 <div class="listen__progress">

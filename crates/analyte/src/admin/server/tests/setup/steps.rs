@@ -38,6 +38,19 @@ impl Fixture {
         Ok(view)
     }
 
+    /// A model where Analyte connects to the machine: the HL7 example as a
+    /// TCP client.
+    fn add_client_model(&self) -> Result<(), Error> {
+        let folder = self.root().join("machines/example/client-hl7");
+        std::fs::create_dir_all(&folder)?;
+        std::fs::write(
+            folder.join("machine.toml"),
+            include_str!("../../../../../../core/config/examples/hl7.toml")
+                .rewrite("kind = \"tcp_server\"", "kind = \"tcp_client\""),
+        )?;
+        Ok(())
+    }
+
     /// An absolute folder beside the settings, encoded for a step's query.
     fn incoming(&self) -> String {
         encode(&self.root().join("incoming").display().to_string())
@@ -234,8 +247,11 @@ async fn steps_draw_the_design_choices_and_fields() -> Result<(), Error> {
     let listening = fixture
         .get("/setup/machine-2/connection?definition=example%2Fnetwork-hl7")
         .await?;
-    assert!(listening.contains("It connects to Analyte over the network."));
-    assert!(listening.contains("This PC’s address that Analyte listens on"));
+    assert!(listening.contains("The machine connects to this PC over the lab network."));
+    assert!(
+        listening
+            .contains("<legend class=\"field__label wizard__legend\">This PC’s address</legend>")
+    );
     fixture.add_folder_model()?;
     let folder = fixture
         .get("/setup/machine-2/connection?definition=example%2Ffolder-hl7")
@@ -266,6 +282,140 @@ async fn steps_draw_the_design_choices_and_fields() -> Result<(), Error> {
         unreadable.contains("<p class=\"alert__title\">The lab apps could not be read</p>"),
         "{unreadable}"
     );
+    Ok(())
+}
+
+// Owner request 2026-11-21 (network setup): when the machine connects to
+// Analyte, step 2 lists this PC's addresses with their adapter and every
+// network card, none chosen until the lab manager picks one, and says what to
+// type into the machine; a saved address the PC no longer has, or this PC
+// only, stays visible and chosen. When Analyte connects, step 2 asks for the
+// machine's own address and port.
+#[tokio::test(flavor = "multi_thread")]
+async fn network_step_lists_this_pcs_addresses_and_says_what_to_type() -> Result<(), Error> {
+    let fixture = start_two().await?;
+    let step = "/setup/machine-2/connection?definition=example%2Fnetwork-hl7";
+    let fresh = fixture.get(step).await?;
+    let radio = |value: &str, checked: bool, meta: &str| {
+        format!(
+            "<input type=\"radio\" name=\"host\" value=\"{value}\" required{}><span><span class=\"choice__title mono\">{value}</span> <span class=\"choice__meta\">– {meta}</span>",
+            if checked { " checked" } else { "" }
+        )
+    };
+    let every = "every network card of this PC";
+    for expected in [
+        radio("192.168.1.20", false, "Ethernet"),
+        radio("10.0.0.7", false, "Wi-Fi"),
+        radio("0.0.0.0", false, every),
+        "type that address and the port into the machine’s host (LIS) settings.".to_owned(),
+        "Type the chosen address into the machine’s host (LIS) address setting.".to_owned(),
+        "Type the same port number into the machine’s host (LIS) settings.".to_owned(),
+    ] {
+        assert!(fresh.contains(&expected), "missing {expected}: {fresh}");
+    }
+    // This PC's addresses come first, every network card last.
+    let order: Vec<usize> = ["192.168.1.20", "10.0.0.7", "0.0.0.0"]
+        .iter()
+        .filter_map(|ip| fresh.find(&format!("value=\"{ip}\"")))
+        .collect();
+    assert!(order.len() == 3 && order.is_sorted(), "{fresh}");
+    assert!(!fresh.contains("id=\"s2-host\""), "{fresh}");
+    let picked = fixture.get(&format!("{step}&host=10.0.0.7")).await?;
+    assert!(
+        picked.contains(&radio("10.0.0.7", true, "Wi-Fi")),
+        "{picked}"
+    );
+    assert!(picked.contains(&radio("0.0.0.0", false, every)), "{picked}");
+    let gone = fixture.get(&format!("{step}&host=172.16.0.9")).await?;
+    assert!(
+        gone.contains(&radio(
+            "172.16.0.9",
+            true,
+            "saved before; not an address of this PC now"
+        )),
+        "{gone}"
+    );
+    let local = fixture.get(&format!("{step}&host=127.0.0.1")).await?;
+    assert!(
+        local.contains(&radio(
+            "127.0.0.1",
+            true,
+            "this PC only: no machine on the network can reach it"
+        )),
+        "{local}"
+    );
+    fixture.add_client_model()?;
+    let client = fixture
+        .get("/setup/machine-2/connection?definition=example%2Fclient-hl7&host=192.168.1.50&tcp_port=5100")
+        .await?;
+    for expected in [
+        "Analyte connects to the machine over the lab network.",
+        "<label class=\"field__label\" for=\"s2-host\">Machine’s IP address</label><input id=\"s2-host\" class=\"input mono\" name=\"host\" required maxlength=\"64\" value=\"192.168.1.50\">",
+        "<label class=\"field__label\" for=\"s2-tcp\">Machine’s port</label>",
+    ] {
+        assert!(client.contains(expected), "missing {expected}: {client}");
+    }
+    assert!(!client.contains("type=\"radio\" name=\"host\""), "{client}");
+    Ok(())
+}
+
+// Owner request 2026-11-21 (network setup), item 4: when Analyte connects to
+// the machine, step 3 says it connects (not listens), and a test that cannot
+// reach the machine, or reaches one that sends nothing, says what to check.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_step_for_a_machine_analyte_connects_to() -> Result<(), Error> {
+    let fixture = start().await?;
+    fixture.add_client_model()?;
+    let closed = free_port()?;
+    let before = fixture
+        .get(&format!(
+            "/setup/synthetic/test?definition=example%2Fclient-hl7&host=127.0.0.1&tcp_port={closed}&lab_app=demo"
+        ))
+        .await?;
+    for expected in [
+        "Analyte connects to the machine and only reads.",
+        "<p class=\"eyebrow listen__target\">Connects to</p>",
+        &format!("Analyte connects to the machine at 127.0.0.1:{closed}"),
+        "It cannot test a machine the running service already connects to.",
+    ] {
+        assert!(before.contains(expected), "missing {expected}: {before}");
+    }
+    let fields = [
+        ("definition", "example/client-hl7"),
+        ("host", "127.0.0.1"),
+        ("tcp_port", closed.as_str()),
+    ];
+    let refused = fixture
+        .listen(&fields, |view| view.contains("could not run"))
+        .await?;
+    for expected in [
+        "<p class=\"alert__title\">The test could not run</p>",
+        "Check the machine’s address and port, that it is switched on and on the network",
+        "Analyte connects to the machine and only reads. It sends nothing to the machine.",
+        "<p class=\"eyebrow listen__target\">Connecting to 127.0.0.1:",
+    ] {
+        assert!(refused.contains(expected), "missing {expected}: {refused}");
+    }
+    // A machine that accepts the connection and sends nothing.
+    let machine = std::net::TcpListener::bind("127.0.0.1:0")?;
+    let port = machine.local_addr()?.port().to_string();
+    let fields = [
+        ("definition", "example/client-hl7"),
+        ("host", "127.0.0.1"),
+        ("tcp_port", port.as_str()),
+    ];
+    let silent = fixture
+        .listen(&fields, |view| view.contains("Connected, nothing"))
+        .await?;
+    assert!(
+        silent.contains("<p class=\"alert__title\">Connected, nothing received yet</p>"),
+        "{silent}"
+    );
+    assert!(
+        silent.contains("The machine connected but sent nothing."),
+        "{silent}"
+    );
+    drop(machine);
     Ok(())
 }
 
@@ -333,7 +483,17 @@ async fn test_step_says_what_it_observed_in_each_state() -> Result<(), Error> {
         "{waiting}"
     );
     assert!(waiting.contains("<p class=\"eyebrow listen__target\">Listening on 127.0.0.1:"));
-    assert!(waiting.contains("<p class=\"alert__title\">Nothing received yet</p>"));
+    // Owner request 2026-11-21 (network setup): nothing connected says where
+    // Analyte listens, what to set on the machine and that a firewall may block it.
+    for expected in [
+        "<p class=\"alert__title\">The machine has not connected yet</p>".to_owned(),
+        format!(
+            "Analyte listens on 127.0.0.1, port {port}. Set the machine’s host (LIS) address to 127.0.0.1 and its host port to {port}"
+        ),
+        "If it still does not connect, a firewall may block it".to_owned(),
+    ] {
+        assert!(waiting.contains(&expected), "missing {expected}: {waiting}");
+    }
     let held = std::net::TcpListener::bind("127.0.0.1:0")?;
     let taken = held.local_addr()?.port().to_string();
     let fields = network(&taken);
@@ -343,6 +503,7 @@ async fn test_step_says_what_it_observed_in_each_state() -> Result<(), Error> {
         .await?;
     for expected in [
         "<p class=\"alert__title\">The test could not run</p>",
+        "Check that the address is one of this PC’s and that no other program uses the port, or go back and choose another.",
         "<span class=\"status status--bad\">",
         &format!("Not listening on port {taken} since "),
         "<button type=\"submit\" class=\"btn btn--outline\">Test again</button>",
