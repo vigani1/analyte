@@ -816,16 +816,7 @@ async fn refusals_keep_their_status_in_the_new_look() -> Result<(), Error> {
 async fn store_failures_and_slow_reads_answer_in_the_new_look() -> Result<(), Error> {
     let directory = crate::admin::private_tempdir()?;
     let (store, (state, stopper, owner, host), auth, _) = started(directory.path()).await?;
-    let busy = store.clone();
-    let blocker = tokio::spawn(async move {
-        busy.request::<_, FixtureError>(fixture_deadline()?, |_| {
-            std::thread::sleep(Duration::from_millis(1800));
-            Ok(())
-        })
-        .await
-        .map_err(Error::from)
-    });
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    let blocker = hold_store(&store, PAST_READ_BUDGET).await?;
     let slow = request(&host, "/parked", &auth, None).await?;
     assert!(slow.starts_with("HTTP/1.1 504"), "{slow}");
     assert_new_look(&slow);

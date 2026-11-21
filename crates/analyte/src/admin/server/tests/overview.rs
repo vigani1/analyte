@@ -1054,16 +1054,7 @@ async fn slow_store_answers_in_the_overview_look() -> Result<(), Error> {
     let (state, stopper, owner, host) =
         start_overview_server(directory.path(), &store, Vec::new(), Vec::new()).await?;
     // The store's one thread is busy longer than the overview may wait.
-    let busy = store.clone();
-    let blocker = tokio::spawn(async move {
-        busy.request::<_, FixtureError>(fixture_deadline()?, |_| {
-            std::thread::sleep(Duration::from_millis(1800));
-            Ok(())
-        })
-        .await
-        .map_err(Error::from)
-    });
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    let blocker = hold_store(&store, PAST_READ_BUDGET).await?;
     let page = request(
         &host,
         "/",
