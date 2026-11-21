@@ -43,7 +43,7 @@ use page::{
 };
 use serde::Deserialize;
 use std::sync::Arc;
-use verdict::Family;
+use verdict::{Family, Route};
 
 pub(super) mod listen;
 mod page;
@@ -509,20 +509,36 @@ fn connection_inputs(
         ),
         Some(kind @ (TransportKind::TcpServer | TransportKind::TcpClient)) => {
             let (host, port) = current_endpoint.rsplit_once(':').unwrap_or(("", ""));
-            let host = host.trim_start_matches('[').trim_end_matches(']');
-            let listens = kind == TransportKind::TcpServer;
-            (
-                if listens {
-                    "It connects to Analyte over the network."
-                } else {
-                    "Analyte connects to it over the network."
-                },
-                page::Inputs::Network {
-                    listens,
-                    host: draft.host.as_deref().unwrap_or(host).to_owned(),
-                    port: draft.tcp_port.as_deref().unwrap_or(port).to_owned(),
-                },
-            )
+            let host = draft
+                .host
+                .as_deref()
+                .unwrap_or_else(|| host.trim_start_matches('[').trim_end_matches(']'))
+                .to_owned();
+            let port = draft.tcp_port.as_deref().unwrap_or(port).to_owned();
+            if kind == TransportKind::TcpServer {
+                (
+                    concat!(
+                        "The machine connects to this PC over the lab network. Choose the ",
+                        "address Analyte listens on, then type that address and the port into ",
+                        "the machine’s host (LIS) settings."
+                    ),
+                    page::Inputs::Listens {
+                        hosts: (state.setup.seams.addresses)()
+                            .map(|found| host_choices(&found, &host))
+                            .map_err(|error| format::sentence(&error.to_string())),
+                        typed: host,
+                        port,
+                    },
+                )
+            } else {
+                (
+                    concat!(
+                        "Analyte connects to the machine over the lab network. Type the address ",
+                        "and port shown in the machine’s own network or host (LIS) settings."
+                    ),
+                    page::Inputs::Connects { host, port },
+                )
+            }
         }
         Some(TransportKind::WatchedFolder) | None => (
             "Analyte reads its results from a folder.",
@@ -535,6 +551,47 @@ fn connection_inputs(
             ),
         ),
     }
+}
+
+/// The addresses Analyte can listen on: this PC's own, then every network
+/// card, with `chosen` checked. A chosen address the list lacks (saved before,
+/// or this PC only) comes first, so it stays visible and can be kept.
+pub(super) fn host_choices(found: &[super::Address], chosen: &str) -> Vec<page::Host> {
+    let chosen = chosen.trim();
+    let every = std::net::Ipv4Addr::UNSPECIFIED.to_string();
+    let mut hosts = Vec::with_capacity(found.len().saturating_add(2));
+    let listed = chosen == every || found.iter().any(|a| a.ip.to_string() == chosen);
+    if !chosen.is_empty() && !listed {
+        let loopback = chosen
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback());
+        hosts.push(page::Host {
+            value: chosen.to_owned(),
+            address: chosen.to_owned(),
+            meta: if loopback {
+                "this PC only: no machine on the network can reach it".into()
+            } else {
+                "saved before; not an address of this PC now".into()
+            },
+            checked: true,
+        });
+    }
+    hosts.extend(found.iter().map(|address| {
+        let ip = address.ip.to_string();
+        page::Host {
+            checked: ip == chosen,
+            value: ip.clone(),
+            address: ip,
+            meta: address.adapter.clone(),
+        }
+    }));
+    hosts.push(page::Host {
+        checked: chosen == every,
+        value: every.clone(),
+        address: every,
+        meta: "every network card of this PC".into(),
+    });
+    hosts
 }
 
 /// The detected ports with adapter name and serial number, then a typed name.
@@ -641,7 +698,10 @@ fn render_test(
             session,
             id,
             draft,
-            connection_words(link, &plan.connection),
+            (
+                connection_words(link, &plan.connection),
+                link == Link::TcpClient,
+            ),
             "Start the test",
         )
     });
@@ -654,13 +714,14 @@ fn render_test(
     .render())
 }
 
-/// The form that starts (or repeats) the listen-only test with the draft's choices.
+/// The form that starts (or repeats) the listen-only test with the draft's
+/// choices; `target` is what it listens on and whether Analyte connects instead.
 fn start(
     state: &Context,
     session: &Session,
     id: &str,
     draft: &Draft,
-    target: Hover,
+    (target, connects): (Hover, bool),
     label: &'static str,
 ) -> Start {
     Start {
@@ -668,6 +729,7 @@ fn start(
         csrf: session.csrf.form_value().to_owned(),
         hidden: draft.hidden(&[]),
         target,
+        connects,
         limit: state.setup.seams.limits.duration.as_secs(),
         label,
     }
@@ -741,7 +803,7 @@ fn tested(state: &Context, id: &str, draft: &Draft, link: Link) -> Tested {
     {
         Some(test) => {
             let view = test.session.view();
-            let verdict = verdict::of_view(&view, test.family);
+            let verdict = verdict::of_view(&view, test.family, &test.route);
             Tested::Seen {
                 tone: verdict.tone,
                 title: verdict.title,
@@ -851,6 +913,8 @@ pub(super) struct Test {
     connection: Connection,
     /// What it listens on, in words with the exact setting on hover.
     target: Hover,
+    /// How it reaches the machine, for what to check when nothing arrives.
+    route: Route,
 }
 
 /// POST /setup/{id}/listen: start the listen-only test with the draft's choices.
@@ -870,10 +934,11 @@ pub(in crate::admin) async fn listen_start(
         let stack = plan.validated.effective().stack();
         let (family, link) = (Family::of(stack), Link::of(stack));
         let (label, target) = listen_target(&state.setup, &plan)?;
-        Ok((label, target, plan, family, link))
+        let route = verdict::route_of(&state.setup, &target);
+        Ok((label, target, route, plan, family, link))
     })
     .await;
-    let (label, target, plan, family, link) = match target {
+    let (label, target, route, plan, family, link) = match target {
         Ok(found) => found,
         Err(error) => return refused_at(&state, &session, &error, &id, &draft),
     };
@@ -884,6 +949,7 @@ pub(in crate::admin) async fn listen_start(
         family,
         connection: Connection::of(link, &plan.connection),
         target: connection_words(link, &plan.connection),
+        route,
         model: plan.model,
     };
     match state.setup.listen.lock() {
@@ -960,6 +1026,7 @@ fn listen_page(state: &Context, session: &Session, test: &Test, now: Timestamp) 
         foot: foot(id, &test.draft, true),
         live: Live {
             target: view.label.clone(),
+            connects: matches!(test.route, Route::Connects(_)),
             clock: running.then(|| format::countdown(remaining)),
             elapsed: limit.saturating_sub(remaining),
             limit,
@@ -970,7 +1037,7 @@ fn listen_page(state: &Context, session: &Session, test: &Test, now: Timestamp) 
                 format::control_names(&view.framing)
             }],
             state: test_state(&view, &test.connection, id, now),
-            verdict: verdict::of_view(&view, test.family),
+            verdict: verdict::of_view(&view, test.family, &test.route),
             stop: running.then(|| session.csrf.form_value().to_owned()),
             again: (!running).then(|| {
                 start(
@@ -978,7 +1045,10 @@ fn listen_page(state: &Context, session: &Session, test: &Test, now: Timestamp) 
                     session,
                     id,
                     &test.draft,
-                    test.target.clone(),
+                    (
+                        test.target.clone(),
+                        matches!(test.route, Route::Connects(_)),
+                    ),
                     "Test again",
                 )
             }),

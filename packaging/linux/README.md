@@ -95,6 +95,11 @@ The serial supplementary group grants device access; private devices are
 intentionally not enabled. Confirm actual device permissions and stable serial
 paths on the lab PC. Configure the PC not to sleep.
 
+Neither the packages nor these steps change a firewall. Where firewalld or ufw
+is active, open each port an analyzer connects to, for the analyzer's network
+only; the commands are under
+[Firewall](../../docs/operations/connect.md#firewall).
+
 Stop safely with `sudo systemctl stop analyte.service`. SIGTERM and SIGINT use
 the same staged graceful drain. Analyte has a 30-second shutdown deadline; the
 unit's `TimeoutStopSec=35s` gives it a five-second margin. If changing

@@ -111,6 +111,20 @@ fn seams(
                 },
             ])
         }),
+        // This PC's addresses: a lab network card and an office one.
+        addresses: Arc::new(|| {
+            use crate::admin::setup::Address;
+            Ok(vec![
+                Address {
+                    ip: std::net::Ipv4Addr::new(192, 168, 1, 20),
+                    adapter: "Ethernet".into(),
+                },
+                Address {
+                    ip: std::net::Ipv4Addr::new(10, 0, 0, 7),
+                    adapter: "Wi-Fi".into(),
+                },
+            ])
+        }),
         open: Arc::new(move |_, _| {
             Ok(Box::new(FakePort {
                 input: input

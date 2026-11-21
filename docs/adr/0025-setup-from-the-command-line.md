@@ -81,9 +81,11 @@ second set of rules that could drift from the pages.
 
 - A rule changed for the page changes for the command line too; there is one
   place per rule.
-- The prompt for a machine that connects to Analyte does not list this PC's
-  addresses yet. PR #308 adds them to the wizard (`admin/setup/addresses.rs`);
-  once it is merged, the prompt offers them from that same module.
+- For a machine that connects to Analyte, the prompt offers this PC's
+  addresses and "every network card (0.0.0.0)" from the same list and words
+  as step 2 (`admin/setup/addresses.rs`, `host_choices`), or a typed address.
+  The test's verdict says what to check (address, port, firewall) as the
+  test page does.
 - A broken program file cannot be fixed from the command line, because its
   changes need the store for the audit row; `check-config` shows what is
   wrong, and the page or an editor fixes it.

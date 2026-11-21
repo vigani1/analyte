@@ -10,7 +10,7 @@ use crate::admin::setup::{
     model, on_files,
     plan::{self, KEEP, Plan},
     site,
-    wizard::{Draft, connection_words, listen, verdict},
+    wizard::{Draft, connection_words, host_choices, listen, verdict},
 };
 use crate::admin::view::{Tone, format};
 use crate::machine::link::status::Link;
@@ -634,12 +634,13 @@ fn ask_connection(
                 None => {}
             }
         }
-        Some(kind @ (TransportKind::TcpServer | TransportKind::TcpClient)) => {
-            draft.host = ask.line(if kind == TransportKind::TcpServer {
-                "Step 2, Connection: this PC's IP address the machine connects to, such as 192.168.1.20"
-            } else {
-                "Step 2, Connection: the machine's IP address, such as 192.168.1.20"
-            })?;
+        Some(TransportKind::TcpServer) => {
+            draft.host = ask_listen_address(setup, ask)?;
+            draft.tcp_port = ask.line("Port number, 1 to 65535")?;
+        }
+        Some(TransportKind::TcpClient) => {
+            draft.host =
+                ask.line("Step 2, Connection: the machine's IP address, such as 192.168.1.20")?;
             draft.tcp_port = ask.line("Port number, 1 to 65535")?;
         }
         Some(TransportKind::WatchedFolder) | None => {
@@ -647,6 +648,34 @@ fn ask_connection(
         }
     }
     Ok(())
+}
+
+/// Step 2 for a machine that connects to Analyte: this PC's addresses and
+/// every network card (0.0.0.0), as step 2 lists them, or a typed address.
+fn ask_listen_address(setup: &Setup, ask: Ask) -> Result<Option<String>, Failure> {
+    let found = match (setup.seams.addresses)() {
+        Ok(found) => found,
+        Err(error) => {
+            say(&format::sentence(&error.to_string()))?;
+            Vec::new()
+        }
+    };
+    let mut choices: Vec<ask::Choice> = host_choices(&found, "")
+        .into_iter()
+        .map(|host| ask::Choice {
+            value: host.value,
+            label: format!("{} - {}", host.address, host.meta),
+        })
+        .collect();
+    choices.push(ask::Choice {
+        value: String::new(),
+        label: "Type an address".into(),
+    });
+    let question = "Step 2, Connection: the machine connects to this PC. Which address does Analyte listen on?";
+    Ok(match ask.choose(question, &choices)?.as_deref() {
+        Some("") => ask.line("IP address, such as 192.168.1.20")?,
+        chosen => chosen.map(str::to_owned),
+    })
 }
 
 /// What a plan sets, in the Save step's words.
@@ -776,6 +805,7 @@ async fn test(
     let stack = plan.validated.effective().stack();
     let family = verdict::Family::of(stack);
     let (label, target) = plan::listen_target(&setup, &plan)?;
+    let route = verdict::route_of(&setup, &target);
     let limits = listen::Limits {
         duration: Duration::from_secs(seconds).min(setup.seams.limits.duration),
         bytes: setup.seams.limits.bytes,
@@ -816,7 +846,7 @@ async fn test(
             break view;
         }
     };
-    let found = verdict::of_view(&view, family);
+    let found = verdict::of_view(&view, family, &route);
     say(&format!("{}. {}", found.title, found.text))?;
     let mut received = format!(
         "{} received",

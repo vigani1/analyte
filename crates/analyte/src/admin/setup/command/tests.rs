@@ -147,6 +147,7 @@ impl Install {
                 duration: Duration::from_secs(2),
                 bytes: 1024,
             },
+            addresses: Arc::new(|| Ok(Vec::new())),
         }
     }
 

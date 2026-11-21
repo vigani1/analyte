@@ -4,9 +4,44 @@
 //! stream starts, with the framing crates' own start markers, and answers
 //! "unknown" for anything else. It reads no values and keeps no bytes.
 use super::listen;
+use crate::admin::setup::Setup;
 use crate::admin::view::{Tone, format, parts::Notice};
 use analyte_config::Stack;
 use analyte_framing::{astm, hl7, vidas};
+use std::net::{Ipv4Addr, SocketAddr};
+
+/// The Windows Firewall rule the installer adds (packaging/windows/install.ps1);
+/// a packaging test checks both name it alike.
+pub(crate) const FIREWALL_RULE: &str = "Analyte - analyzers on the lab network";
+
+/// How the test reached the machine, for what to check when nothing arrives.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Route {
+    /// A serial port.
+    Serial,
+    /// Analyte listened on `on`; `mine` holds this PC's addresses when it
+    /// listened on every network card, as examples for the machine's settings.
+    Listens { on: SocketAddr, mine: Vec<Ipv4Addr> },
+    /// Analyte connected to the machine at this address.
+    Connects(SocketAddr),
+}
+
+impl Route {
+    /// What to check after the test could not listen or connect.
+    pub(super) const fn failed(&self) -> &'static str {
+        match self {
+            Self::Serial => "",
+            Self::Listens { .. } => concat!(
+                " Check that the address is one of this PC’s and that no other program uses ",
+                "the port, or go back and choose another."
+            ),
+            Self::Connects(_) => concat!(
+                " Check the machine’s address and port, that it is switched on and on the ",
+                "network, and that no firewall between this PC and the machine blocks it."
+            ),
+        }
+    }
+}
 
 /// A protocol family Analyte speaks, as far as a listen-only test can tell.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -113,8 +148,15 @@ fn poct(bytes: &[u8]) -> bool {
 
 /// The plain verdict for a test of a machine whose model speaks `model`: its
 /// tone, a title saying what was seen and what to do next. `ended` puts the
-/// title in the past, since nothing is being received any more.
-pub(super) fn verdict(guess: Guess, model: Family, ended: bool) -> (Tone, String, &'static str) {
+/// title in the past, since nothing is being received any more. With nothing
+/// received, `route` and whether the machine `connected` say what to check.
+pub(super) fn verdict(
+    guess: Guess,
+    model: Family,
+    ended: bool,
+    route: &Route,
+    connected: bool,
+) -> (Tone, String, String) {
     let data = if ended {
         "Received data"
     } else {
@@ -130,7 +172,8 @@ pub(super) fn verdict(guess: Guess, model: Family, ended: bool) -> (Tone, String
             (
                 Tone::Good,
                 format!("{data}, looks like {}", model.name()),
-                "It starts the way this model’s format does. You can go on to the next step.",
+                "It starts the way this model’s format does. You can go on to the next step."
+                    .to_owned(),
             )
         } else {
             (
@@ -142,7 +185,8 @@ pub(super) fn verdict(guess: Guess, model: Family, ended: bool) -> (Tone, String
                 concat!(
                     "The machine may be set to a different output format. Change its host ",
                     "format setting, or go back and pick the right model."
-                ),
+                )
+                .to_owned(),
             )
         }
     };
@@ -153,42 +197,165 @@ pub(super) fn verdict(guess: Guess, model: Family, ended: bool) -> (Tone, String
             concat!(
                 "That is expected for this model: it waits for Analyte to ask first, and the ",
                 "test never sends anything."
-            ),
+            )
+            .to_owned(),
         ),
-        Guess::Nothing => (
-            Tone::Attention,
-            nothing.into(),
-            concat!(
-                "Check the cable and the machine’s host settings, then ask the machine to send ",
-                "a result again."
-            ),
-        ),
+        Guess::Nothing => nothing_received(route, connected, ended),
         Guess::Family(family) => receiving(family.name()),
         Guess::AstmOrVidas => receiving("ASTM or VIDAS"),
         Guess::Unknown => (
             Tone::Attention,
             format!("{data}, but not in a format Analyte knows"),
-            "Check the machine’s host protocol setting.",
+            "Check the machine’s host protocol setting.".to_owned(),
         ),
     }
 }
 
+/// How the test reaches the machine. Listening on every network card, it
+/// names this PC's addresses as examples; when they cannot be listed the
+/// verdict says "this PC's address" without examples, as step 2 shows why.
+pub(in crate::admin::setup) fn route_of(setup: &Setup, target: &listen::Target) -> Route {
+    match target {
+        listen::Target::Serial { .. } => Route::Serial,
+        listen::Target::TcpServer(on) => Route::Listens {
+            on: *on,
+            mine: if on.ip().is_unspecified() {
+                (setup.seams.addresses)()
+                    .map(|found| found.into_iter().map(|address| address.ip).collect())
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            },
+        },
+        listen::Target::TcpClient(address) => Route::Connects(*address),
+    }
+}
+
 /// The verdict of a test as it stands in `view`, for a model that speaks
-/// `family`: what it saw, or that it could not run. The test page and the
-/// `machines test` command both say it.
-pub(in crate::admin::setup) fn of_view(view: &listen::View, family: Family) -> Notice {
+/// `family` reached by `route`: what it saw, or that it could not run and
+/// what to check. The test page and the `machines test` command both say it.
+pub(in crate::admin::setup) fn of_view(
+    view: &listen::View,
+    family: Family,
+    route: &Route,
+) -> Notice {
     let (tone, title, text) = match &view.end {
         Some(listen::End::Failed(why)) => (
             Tone::Problem,
             "The test could not run".to_owned(),
-            format::sentence(why),
+            // Once connected, the failure was a read, not the address or port.
+            format!(
+                "{}{}",
+                format::sentence(why),
+                if view.connected.is_none() {
+                    route.failed()
+                } else {
+                    ""
+                }
+            ),
         ),
-        end => {
-            let (tone, title, text) = verdict(view.guess, family, end.is_some());
-            (tone, title, text.to_owned())
-        }
+        end => verdict(
+            view.guess,
+            family,
+            end.is_some(),
+            route,
+            view.connected.is_some(),
+        ),
     };
     Notice { tone, title, text }
+}
+
+/// What to check when nothing arrived: the cable, the machine's host
+/// settings, or on a network the address and port it must use and a firewall.
+fn nothing_received(route: &Route, connected: bool, ended: bool) -> (Tone, String, String) {
+    let tense = |now: &str, then: &str| if ended { then } else { now }.to_owned();
+    match route {
+        Route::Serial => (
+            Tone::Attention,
+            tense("Nothing received yet", "Nothing received"),
+            concat!(
+                "Check the cable and the machine’s host settings, then ask the machine to send ",
+                "a result again."
+            )
+            .to_owned(),
+        ),
+        Route::Listens { .. } | Route::Connects(_) if connected => (
+            Tone::Attention,
+            tense(
+                "Connected, nothing received yet",
+                "Connected, but nothing received",
+            ),
+            concat!(
+                "The machine connected but sent nothing. Ask it to send a result again, and ",
+                "check that its host (LIS) connection is switched on."
+            )
+            .to_owned(),
+        ),
+        Route::Listens { on, mine } => {
+            let port = on.port();
+            let (listens, target) = if on.ip().is_unspecified() {
+                let examples = mine
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(" or ");
+                (
+                    format!("on every network card of this PC, port {port}"),
+                    if examples.is_empty() {
+                        "this PC’s address on the machine’s network".to_owned()
+                    } else {
+                        format!("this PC’s address on the machine’s network ({examples})")
+                    },
+                )
+            } else {
+                (format!("on {}, port {port}", on.ip()), on.ip().to_string())
+            };
+            (
+                Tone::Attention,
+                tense(
+                    "The machine has not connected yet",
+                    "The machine did not connect",
+                ),
+                format!(
+                    "Analyte listens {listens}. Set the machine’s host (LIS) address to {target} \
+                     and its host port to {port}, then ask it to send a result again. If it \
+                     still does not connect, a firewall may block it: {}",
+                    firewall(port)
+                ),
+            )
+        }
+        Route::Connects(address) => (
+            Tone::Attention,
+            tense(
+                "Not connected to the machine yet",
+                "Could not connect to the machine",
+            ),
+            format!(
+                "Analyte is trying to reach the machine at {}, port {}. Check that the machine \
+                 is switched on and on the network, that this address and port match its own \
+                 network settings, and that no firewall between this PC and the machine \
+                 blocks it.",
+                address.ip(),
+                address.port()
+            ),
+        ),
+    }
+}
+
+/// Which firewall may block a machine connecting to `port`, and who opens it.
+fn firewall(port: u16) -> String {
+    if cfg!(windows) {
+        format!(
+            "the installer lets machines on this PC’s own network through Windows Firewall \
+             with the rule “{FIREWALL_RULE}”. A machine on another network or VLAN, or a \
+             firewall between the two, needs your IT department."
+        )
+    } else {
+        format!(
+            "this PC’s firewall (firewalld or ufw) must allow TCP port {port}; Analyte does \
+             not change it. A machine on another network or VLAN needs your IT department."
+        )
+    }
 }
 
 /// Whether what was seen can be the model's own protocol.
@@ -202,7 +369,7 @@ fn fits(guess: Guess, model: Family) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{Family, Guess, Tone, classify, verdict};
+    use super::{Family, Guess, Route, Tone, classify, verdict};
 
     // CLSI LIS01-A2 §6.2 and §6.3.1.1: a sender asks with ENQ, then each frame
     // starts with STX and a digit frame number.
@@ -277,21 +444,34 @@ mod tests {
     #[test]
     fn verdict_names_the_family_and_warns_on_a_mismatch() {
         let astm = Guess::Family(Family::Astm);
-        let (tone, title, text) = verdict(astm, Family::Astm, false);
+        let (tone, title, text) = verdict(astm, Family::Astm, false, &Route::Serial, false);
         assert_eq!(
             (tone, title.as_str()),
             (Tone::Good, "Receiving data, looks like ASTM")
         );
         assert!(text.contains("go on to the next step"), "{text}");
         assert_eq!(
-            verdict(astm, Family::Astm, true).1,
+            verdict(astm, Family::Astm, true, &Route::Serial, false).1,
             "Received data, looks like ASTM"
         );
         assert_eq!(
-            verdict(Guess::AstmOrVidas, Family::Vidas, false).1,
+            verdict(
+                Guess::AstmOrVidas,
+                Family::Vidas,
+                false,
+                &Route::Serial,
+                false
+            )
+            .1,
             "Receiving data, looks like VIDAS"
         );
-        let (tone, title, text) = verdict(Guess::Family(Family::Hl7), Family::Astm, false);
+        let (tone, title, text) = verdict(
+            Guess::Family(Family::Hl7),
+            Family::Astm,
+            false,
+            &Route::Serial,
+            false,
+        );
         assert_eq!(
             (tone, title.as_str()),
             (
@@ -301,29 +481,122 @@ mod tests {
         );
         assert!(text.contains("pick the right model"), "{text}");
         assert!(
-            verdict(Guess::AstmOrVidas, Family::Hl7, false)
-                .1
-                .contains("it looks like ASTM or VIDAS and this model uses HL7")
+            verdict(
+                Guess::AstmOrVidas,
+                Family::Hl7,
+                false,
+                &Route::Serial,
+                false
+            )
+            .1
+            .contains("it looks like ASTM or VIDAS and this model uses HL7")
         );
-        let (tone, title, text) = verdict(Guess::Nothing, Family::Hl7, false);
+        let (tone, title, text) =
+            verdict(Guess::Nothing, Family::Hl7, false, &Route::Serial, false);
         assert_eq!(
             (tone, title.as_str()),
             (Tone::Attention, "Nothing received yet")
         );
         assert!(text.starts_with("Check the cable and the machine’s host settings"));
         assert_eq!(
-            verdict(Guess::Nothing, Family::Hl7, true).1,
+            verdict(Guess::Nothing, Family::Hl7, true, &Route::Serial, false).1,
             "Nothing received"
         );
         assert!(
-            verdict(Guess::Nothing, Family::Autolyser, false)
-                .2
-                .contains("it waits for Analyte to ask first")
+            verdict(
+                Guess::Nothing,
+                Family::Autolyser,
+                false,
+                &Route::Serial,
+                false
+            )
+            .2
+            .contains("it waits for Analyte to ask first")
         );
         assert!(
-            verdict(Guess::Unknown, Family::Poct, false)
+            verdict(Guess::Unknown, Family::Poct, false, &Route::Serial, false)
                 .1
                 .contains("not in a format Analyte knows")
         );
+    }
+
+    // Owner request 2026-11-21 (network setup): with nothing received over
+    // the network, the verdict names where Analyte listened, what to type on
+    // the machine, and the firewall; once connected it says the machine sent
+    // nothing; when Analyte connects it names the machine's address.
+    #[test]
+    fn nothing_over_the_network_says_where_and_what_may_block_it() {
+        let on = |text: &str| Route::Listens {
+            on: text.parse().expect("a test address"),
+            mine: vec![[192, 168, 1, 20].into(), [10, 0, 0, 7].into()],
+        };
+        let (tone, title, text) = verdict(
+            Guess::Nothing,
+            Family::Hl7,
+            false,
+            &on("192.168.1.20:5600"),
+            false,
+        );
+        assert_eq!(
+            (tone, title.as_str()),
+            (Tone::Attention, "The machine has not connected yet")
+        );
+        assert!(
+            text.starts_with(
+                "Analyte listens on 192.168.1.20, port 5600. Set the machine’s host (LIS) address to 192.168.1.20 and its host port to 5600,"
+            ),
+            "{text}"
+        );
+        assert!(text.contains("a firewall may block it"), "{text}");
+        #[cfg(windows)]
+        assert!(
+            text.contains("“Analyte - analyzers on the lab network”"),
+            "{text}"
+        );
+        #[cfg(not(windows))]
+        assert!(
+            text.contains("firewalld or ufw) must allow TCP port 5600"),
+            "{text}"
+        );
+        let (_, title, text) = verdict(
+            Guess::Nothing,
+            Family::Hl7,
+            true,
+            &on("0.0.0.0:5600"),
+            false,
+        );
+        assert_eq!(title, "The machine did not connect");
+        assert!(
+            text.starts_with(
+                "Analyte listens on every network card of this PC, port 5600. Set the machine’s host (LIS) address to this PC’s address on the machine’s network (192.168.1.20 or 10.0.0.7)"
+            ),
+            "{text}"
+        );
+        let (_, title, text) = verdict(
+            Guess::Nothing,
+            Family::Hl7,
+            false,
+            &on("0.0.0.0:5600"),
+            true,
+        );
+        assert_eq!(title, "Connected, nothing received yet");
+        assert!(
+            text.starts_with("The machine connected but sent nothing."),
+            "{text}"
+        );
+        let machine = Route::Connects("192.168.1.50:5100".parse().expect("a test address"));
+        let (_, title, text) = verdict(Guess::Nothing, Family::Astm, true, &machine, false);
+        assert_eq!(title, "Could not connect to the machine");
+        assert!(
+            text.starts_with("Analyte is trying to reach the machine at 192.168.1.50, port 5100."),
+            "{text}"
+        );
+        assert!(
+            machine
+                .failed()
+                .contains("Check the machine’s address and port")
+        );
+        assert!(on("0.0.0.0:1").failed().contains("one of this PC’s"));
+        assert_eq!(Route::Serial.failed(), "");
     }
 }

@@ -172,9 +172,12 @@ nothing is written before **Save**.
    When the adapter has its own serial number, the site file gets `usb_serial`,
    so Analyte finds the machine again if the COM number changes; otherwise it
    gets the port name as `endpoint`. A number Windows made up (it contains `&`)
-   is not used. For a network machine, enter the IP address and port: the
-   address Analyte listens on when the machine connects to Analyte, or the
-   machine's address when Analyte connects to it. On the same screen, "Send
+   is not used. For a machine that connects to Analyte over the network,
+   choose one of this PC's addresses (each shown with its network adapter) or
+   every network card, and the port; then type that address and port into the
+   machine's host (LIS) settings. For a machine Analyte connects to, enter the
+   machine's own IP address and port. See
+   [Network machines](connect.md#network-machines). On the same screen, "Send
    results to" picks one lab app from the [Lab apps page](#lab-apps-page). With
    only one, it is chosen already. With none, the page links to the Lab app
    page to add one first. Keys are not asked here.
@@ -198,7 +201,10 @@ nothing is written before **Save**.
    when the test ends or is stopped (only the one-line verdict stays). They
    may contain patient data: keep them out of screenshots. The test refuses a
    port or address that a running machine uses; stop that machine's service
-   first or test a free port. A watched folder has nothing to listen to, so
+   first or test a free port. Over the network, "nothing received" says where
+   Analyte listened (or which machine address it tried), what to set on the
+   machine, and that a firewall may block it; it tells apart a machine that
+   never connected from one that connected and sent nothing. A watched folder has nothing to listen to, so
    its test step just goes on to Save.
 4. **Save.** The screen sums up the machine, its model, the connection in
    plain words (the exact setting on hover) and the lab app. **Save** first

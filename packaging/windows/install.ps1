@@ -170,6 +170,37 @@ if ($UsersMayStart) {
     }
 }
 
+# Analyzers on the lab network connect to the service, and Windows Firewall
+# blocks them without asking, since a service has no window to ask from. One
+# inbound rule lets them in: TCP, to analyte.exe only, from this PC's own
+# subnets only (LocalSubnet), on every network profile. A cable straight to an
+# analyzer, or a lab switch without a gateway, is often an "Unidentified
+# network", which Windows files as Public, so a Private-only rule would miss the
+# usual case; LocalSubnet keeps other networks out on every profile. The rule
+# cannot expose the admin pages: Analyte refuses an admin address other than
+# 127.0.0.1, and no firewall rule makes a loopback socket reachable from the
+# network. The fixed name lets a reinstall or upgrade replace the rule, so
+# exactly one matches the current program; uninstall.ps1 removes it.
+$firewallRule = 'Analyte-Analyzers-In'
+$firewallName = 'Analyte - analyzers on the lab network'
+try {
+    Import-Module NetSecurity -ErrorAction Stop
+} catch {
+    throw "Adding the Windows Firewall rule needs the NetSecurity module of Windows PowerShell 5.1: $($_.Exception.Message)"
+}
+if (Get-NetFirewallRule -Name $firewallRule -ErrorAction SilentlyContinue) {
+    Remove-NetFirewallRule -Name $firewallRule -ErrorAction Stop
+}
+try {
+    $null = New-NetFirewallRule -Name $firewallRule -DisplayName $firewallName -Group 'Analyte' `
+        -Description 'Lets analyzers on this PC''s own network connect to the Analyte service. Added by Analyte setup; removed on uninstall.' `
+        -Direction Inbound -Action Allow -Protocol TCP -Program $Executable -RemoteAddress LocalSubnet `
+        -Profile Domain, Private, Public -Enabled True -ErrorAction Stop
+} catch {
+    throw "Adding the Windows Firewall rule '$firewallName' failed: $($_.Exception.Message)"
+}
+Write-Output "Windows Firewall rule '$firewallName' allows TCP to $Executable from this PC's own network only."
+
 # ADR 0021 (Windows sign-in): members of this local group, and the PC's
 # administrators, may sign in to Analyte with their Windows account. It is made
 # once and never emptied here: an upgrade keeps its members and uninstall keeps

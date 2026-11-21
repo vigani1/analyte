@@ -5,6 +5,7 @@
 //! program entries; every write keeps backups. Lab apps and their keys are set
 //! once on the Lab apps page ([`lab_apps`]); a machine only picks one. Applying a
 //! change needs a restart; there is no hot reload.
+mod addresses;
 mod definitions;
 pub(in crate::admin) use definitions::model_name;
 mod command;
@@ -64,12 +65,17 @@ pub(super) const FORM_LIMIT: usize = 16_384;
 /// Lists the operating system's serial ports.
 pub(crate) type Ports = Arc<dyn Fn() -> io::Result<Vec<serial::Listed>> + Send + Sync>;
 
+/// Lists this PC's IPv4 addresses an analyzer on the network could send to.
+pub(crate) type Addresses = Arc<dyn Fn() -> io::Result<Vec<Address>> + Send + Sync>;
+pub(crate) use addresses::Address;
+
 /// Outside dependencies of the setup page; tests pass fakes.
 #[derive(Clone)]
 pub(crate) struct Seams {
     /// The shipped `machines` folder; `None` when it cannot be named.
     pub(crate) definitions: Option<PathBuf>,
     pub(crate) ports: Ports,
+    pub(crate) addresses: Addresses,
     pub(crate) open: Open,
     pub(crate) limits: Limits,
 }
@@ -81,6 +87,7 @@ impl Seams {
         Self {
             definitions: config.parent().map(|folder| folder.join("machines")),
             ports: Arc::new(serial::list),
+            addresses: Arc::new(addresses::list),
             open: Arc::new(|name, settings| settings.open(name)),
             limits: Limits::STANDARD,
         }
@@ -197,6 +204,7 @@ impl Setup {
         let seams = Seams {
             definitions: None,
             ports: Arc::new(|| Ok(Vec::new())),
+            addresses: Arc::new(|| Ok(Vec::new())),
             open: Arc::new(|_, _| Err(io::ErrorKind::Unsupported.into())),
             limits: Limits::STANDARD,
         };

@@ -130,6 +130,74 @@ extra letter at the end) than on Linux. Copy the number as the lab PC shows it.
 Lookup by serial number is tested with simulated port lists only; it has not
 yet been tried with a real adapter (evidence level: documented).
 
+### Network machines
+
+Most analyzers on a lab network connect **to** Analyte: Analyte listens on an
+address and port of the lab PC, and the analyzer's host (LIS) settings name
+that address and port. A few wait for Analyte to connect to them instead; then
+the site file names the analyzer's own address and port. The machine
+definition decides which (`tcp_server` when Analyte listens, `tcp_client` when
+it connects).
+
+**When the analyzer connects to Analyte**, step 2 of the
+[Setup page](operate.md#setup-page) lists this PC's IPv4 addresses with the
+network adapter that holds each, such as `192.168.1.20 – Ethernet`, and
+**every network card** (`0.0.0.0`). Pick the address on the analyzer's
+network, then type that address and the port into the analyzer's host
+settings. With every network card, Analyte answers on all of this PC's
+addresses, and the analyzer still needs the one on its own network. The list
+leaves out addresses no analyzer can reach (loopback, self-assigned
+`169.254.x.x`) and adapters that are down; it shows at most 32. An address
+saved earlier that the PC no longer has stays in the list, marked as such.
+
+**When Analyte connects to the analyzer**, step 2 asks for the analyzer's IP
+address and port, as its own network settings show them.
+
+#### Firewall
+
+Windows Firewall blocks analyzers that connect to a service and never asks,
+because a service has no window. The Windows installer and `install.ps1` add
+one inbound rule, **Analyte - analyzers on the lab network**:
+
+| Setting | Value | Why |
+| --- | --- | --- |
+| Program | `C:\Program Files\Analyte\analyte.exe` | Only Analyte; no other program gets through. |
+| Protocol and ports | TCP, any local port | The ports Analyte listens on are set per machine on the setup page; a fixed port list would need a reinstall for each new analyzer. |
+| Remote addresses | `LocalSubnet` | Only devices on the same network as one of this PC's cards. |
+| Profiles | Domain, Private and Public | A cable straight to an analyzer, or a lab switch without a router, usually shows as an "Unidentified network", which Windows treats as Public. A Private-only rule would block the most common case; `LocalSubnet` keeps every other network out on all three. |
+
+Reinstalling or upgrading replaces the rule (it has a fixed name, so there is
+always exactly one), and uninstalling removes it. The rule cannot open the
+admin pages to the network: Analyte refuses any admin address other than
+`127.0.0.1`, and a firewall rule cannot make a socket bound to `127.0.0.1`
+reachable from another computer. When Analyte connects to an analyzer, the
+connection goes out from this PC, which Windows Firewall allows by default.
+
+**An analyzer on another subnet or VLAN** is outside `LocalSubnet`, so the
+rule does not let it in. IT can either put the analyzer on the lab PC's
+network, or add a rule of their own for exactly that analyzer, for example:
+
+```powershell
+New-NetFirewallRule -DisplayName 'Analyte - analyzer 10.20.30.40' -Direction Inbound `
+  -Action Allow -Protocol TCP -LocalPort 5600 -RemoteAddress 10.20.30.40 `
+  -Program 'C:\Program Files\Analyte\analyte.exe'
+```
+
+Routers or firewalls between the two networks must allow that TCP port too.
+Where Group Policy manages Windows Firewall and ignores local rules, IT must
+add the same rule in the policy.
+
+**Linux** packages change no firewall. Where firewalld or ufw is active, open
+each port Analyte listens on, to the analyzer's network only, for example
+`sudo firewall-cmd --permanent --add-rich-rule='rule family=ipv4 source address=192.168.1.0/24 port port=5600 protocol=tcp accept'`
+then `sudo firewall-cmd --reload`, or
+`sudo ufw allow from 192.168.1.0/24 to any port 5600 proto tcp`.
+
+If step 3's test hears nothing, its message says where Analyte listened, what
+to set on the analyzer, and that a firewall may block it. The rule has been
+checked on a clean Windows runner in CI; it has not yet been tried with a real
+analyzer on a lab network (evidence level: documented).
+
 Validate the **program file**, not a machine definition alone:
 
 ```text

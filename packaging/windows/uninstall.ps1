@@ -8,6 +8,13 @@ $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     throw 'Run uninstall.ps1 from an elevated PowerShell window (Run as administrator).'
 }
+# The Windows Firewall rule install.ps1 added, by its fixed name; removed even
+# when the service is already gone.
+$firewallRule = 'Analyte-Analyzers-In'
+if (Get-NetFirewallRule -Name $firewallRule -ErrorAction SilentlyContinue) {
+    Remove-NetFirewallRule -Name $firewallRule -ErrorAction Stop
+    Write-Output "Windows Firewall rule 'Analyte - analyzers on the lab network' removed."
+}
 # ADR 0021 (Windows sign-in): the group install.ps1 made may list other people.
 $groupKept = "The local group 'Analyte users' was kept, since it may list other people. Remove it in Computer Management, or with: net localgroup `"Analyte users`" /delete"
 $existing = Get-CimInstance -ClassName Win32_Service -Filter "Name='Analyte'"
