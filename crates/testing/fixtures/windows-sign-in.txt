@@ -1,0 +1,12 @@
+# The Windows sign-in pipe's two lines (ADR 0021 section 2), one synthetic example per line:
+# a name, one space, then the line as sent, without its newline.
+# The engine reads requests and writes answers; the app writes requests and reads answers.
+# Both programs' tests read this file, so the two halves cannot drift apart:
+# crates/analyte/src/admin/server/windows/line.rs and crates/app/src/sign_in/line.rs.
+request-parked {"v":1,"next":"/parked/12"}
+request-home {"v":1,"next":"/"}
+answer-code {"code":"qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq=","account":"LAB-PC\\maria"}
+answer-not-allowed {"refused":"not-allowed","account":"LAB-PC\\bob"}
+answer-bad-request {"refused":"bad-request"}
+answer-unidentified {"refused":"unidentified"}
+answer-unavailable {"refused":"unavailable"}

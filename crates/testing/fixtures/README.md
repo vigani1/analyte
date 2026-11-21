@@ -12,3 +12,6 @@
 
 - `lib.rs`: Shared synthetic fixtures and test probes.
 - `poct`: Synthetic POCT messages shared by protocol tests.
+- `windows-sign-in.txt`: the Windows sign-in pipe's request and answer lines,
+  read as text by both the engine's and the app's tests (ADR 0021), so the two
+  halves of the pipe cannot drift apart.

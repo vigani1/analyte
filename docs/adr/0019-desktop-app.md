@@ -3,7 +3,9 @@
 Status: accepted, 2026-11-20 (the owner approved Tauri 2 and its official
 plugins on 2026-11-20; the app's own title bar, decision 11, on 2026-11-20).
 Completes PR d of
-[ADR 0018](0018-server-rendered-pages-and-one-stylesheet.md).
+[ADR 0018](0018-server-rendered-pages-and-one-stylesheet.md). Refined by
+[ADR 0021](0021-windows-sign-in-pipe.md): the app signs people in with their
+Windows account; the key form stays the way back in.
 
 ## Context
 

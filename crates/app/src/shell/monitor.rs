@@ -1,12 +1,15 @@
-//! The one task that watches the engine: asks its `/status` every few seconds, keeps the tray, the window and the Engine off screen in step, notifies when the state gets worse, and runs the window and Start engine commands.
+//! The one task that watches the engine: asks its `/status` every few seconds, keeps the tray, the window and the Engine off screen in step, notifies when the state gets worse, and runs the window, Start engine and Windows sign-in commands.
 //!
 //! Every wait is bounded: a question by `status::TIMEOUT`, an `sc.exe` call
-//! by `service::LIMIT`. When the app quits, the task is cancelled within
-//! the shell's stop time: a question in flight is dropped, and a running
-//! `sc.exe` is stopped. A start the service manager already accepted goes
-//! on, which is what was asked; a timeout never proves nothing happened.
+//! by `service::LIMIT`, a sign-in by `pipe::LIMITS` (5 s in all). When the
+//! app quits, the task is cancelled within the shell's stop time: a question
+//! in flight is dropped, a running `sc.exe` is stopped and the sign-in pipe
+//! is closed. A start the service manager already accepted goes on, which is
+//! what was asked; a code the engine already made expires unused after 20 s.
+//! A timeout never proves nothing happened.
 use super::{Command, Shared, tray, window};
 use crate::engine::{service, status::Client};
+use crate::sign_in::{self, Guard, Trigger, pipe};
 use crate::watch::{Notice, Shown, Watch};
 use std::sync::Arc;
 use std::time::Duration;
@@ -44,6 +47,7 @@ async fn work(app: &AppHandle, shared: &Shared, mut commands: mpsc::Receiver<Com
         Err(_) => None,
     };
     let mut watch = Watch::new();
+    let mut guard = Guard::default();
     let mut ticks = tokio::time::interval(INTERVAL);
     ticks.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     loop {
@@ -54,7 +58,14 @@ async fn work(app: &AppHandle, shared: &Shared, mut commands: mpsc::Receiver<Com
                 }
             }
             command = commands.recv() => match command {
-                Some(Command::Open) => window::open(app, shared, watch.shown()),
+                Some(Command::Open) => {
+                    // A person opened the window, so it signs in at once.
+                    guard.forget();
+                    window::open(app, shared, watch.shown());
+                }
+                Some(Command::SignIn { next, trigger }) => {
+                    sign_in(app, shared, &mut guard, &next, trigger).await;
+                }
                 Some(Command::StartEngine) => {
                     start(app, shared, watch.shown()).await;
                     ticks.reset_immediately();
@@ -97,6 +108,24 @@ async fn check(app: &AppHandle, shared: &Shared, client: &Client, watch: &mut Wa
         }
     }
     window::follow(app, shared, watch.shown(), changed);
+}
+
+/// Signs the pages in with Windows when the guard allows, then opens where
+/// the answer leads: the code, the refusal's sentence or the key form.
+async fn sign_in(
+    app: &AppHandle,
+    shared: &Shared,
+    guard: &mut Guard,
+    next: &str,
+    trigger: Trigger,
+) {
+    let Ok(engine) = &shared.engine else {
+        return;
+    };
+    let pipe = sign_in::pipe_name(engine);
+    let now = std::time::Instant::now();
+    let landing = sign_in::land(guard, &pipe, next, trigger, now, pipe::LIMITS).await;
+    window::go(app, &landing.address(engine));
 }
 
 /// Asks the service manager to start the engine, and shows what came of it.

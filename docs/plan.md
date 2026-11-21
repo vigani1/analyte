@@ -291,8 +291,11 @@ missing; nothing is guessed in the meantime.
   replaces opening the pages in a browser: the same pages in its own window,
   a tray icon with the engine's state from its public `GET /status`,
   notifications when the state gets worse, an Engine off screen with Start
-  engine, and start at sign-in. It never runs the engine or holds the admin
-  key. Linux keeps the browser.
+  engine, and start at sign-in. It signs people in with their Windows
+  account through the engine's local sign-in pipe
+  ([ADR 0021](adr/0021-windows-sign-in-pipe.md)), so the audit names them;
+  the admin key form stays the way back in. It never runs the engine or
+  holds the admin key. Linux keeps the browser.
 - Alerts on oldest undelivered item, stalled machines and disk space.
 - The PC must not sleep; updates are scheduled; USB serial reconnects and COM
   port changes are handled.

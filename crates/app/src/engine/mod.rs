@@ -110,17 +110,17 @@ impl Engine {
         Self::at(settings.admin_port).ok_or(SettingsError::PortZero { path })
     }
 
+    /// The engine's admin port.
+    #[must_use]
+    pub const fn port(&self) -> u16 {
+        self.port
+    }
+
     /// The admin pages' origin, such as `http://127.0.0.1:8080`; the window
     /// shows only this origin and the app's own pages.
     #[must_use]
     pub const fn origin(&self) -> Origin {
         Origin::Engine(self.port)
-    }
-
-    /// The Overview, where the window opens.
-    #[must_use]
-    pub fn home(&self) -> String {
-        format!("{}/", self.origin().text())
     }
 
     /// The public `GET /status` the tray reads.
@@ -189,7 +189,6 @@ mod tests {
         let folder = folder_with("admin_port = 4100\n");
         let engine = Engine::from_settings(folder.path()).expect("valid settings");
         assert_eq!(engine.origin(), Origin::Engine(4100));
-        assert_eq!(engine.home(), "http://127.0.0.1:4100/");
         assert_eq!(engine.status(), "http://127.0.0.1:4100/status");
         let empty = tempfile::tempdir().expect("a temporary folder");
         let starter = Engine::from_settings(empty.path()).expect("no file is the starter port");
