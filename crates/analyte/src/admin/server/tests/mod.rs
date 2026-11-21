@@ -1182,7 +1182,6 @@ async fn start_bounded(
     let state = Arc::new(Context {
         alert_endpoints: vec![],
         retention,
-        config_path: root.join("program.toml"),
         token: Token::load(root)?,
         sessions: Sessions::default(),
         windows: Arc::new(windows::SignIn::new(Some(windows::Status::On))),
@@ -1194,7 +1193,10 @@ async fn start_bounded(
         retired,
         directory: directory.to_owned(),
         reserve: 1,
-        setup: crate::admin::setup::Setup::for_test(root),
+        setup: Arc::new(crate::admin::setup::Setup::for_test(
+            &root.join("program.toml"),
+            root,
+        )),
         assets: crate::admin::view::assets::Root::of_this_build(),
         installed,
         write_budget: WRITE_BUDGET,

@@ -22,7 +22,7 @@ use crate::admin::{
     view::{
         Tab, Tone, format,
         frame::Frame,
-        parts::{Hover, Notice},
+        parts::Hover,
         report::{Button, Report, Section, Status, respond},
     },
 };
@@ -47,7 +47,7 @@ use verdict::{Family, Route};
 
 pub(super) mod listen;
 mod page;
-mod verdict;
+pub(super) mod verdict;
 
 /// The choices made so far, as carried in a step's form. Every value is
 /// re-checked before it is used; none is a secret.
@@ -379,8 +379,8 @@ fn render_machine(
     id: &str,
     draft: &Draft,
 ) -> Result<Rendered, SetupError> {
-    let (_, installed) = site::installed(&state.config_path, id)?;
-    let list = definitions(state)?;
+    let (_, installed) = site::installed(state.setup.config(), id)?;
+    let list = definitions(&state.setup.seams)?;
     let current = match chosen(&list, None, &installed) {
         Ok(current) => Some(current),
         Err(SetupError::NoDefinitionYet) => None,
@@ -435,8 +435,8 @@ fn render_connection(
     id: &str,
     draft: &Draft,
 ) -> Result<Rendered, SetupError> {
-    let (_, installed) = site::installed(&state.config_path, id)?;
-    let list = definitions(state)?;
+    let (_, installed) = site::installed(state.setup.config(), id)?;
+    let list = definitions(&state.setup.seams)?;
     let model = model_of(&list, draft, &installed)?;
     let current_site = crate::installation::config::read(&installed.site)
         .ok()
@@ -446,7 +446,7 @@ fn render_connection(
         .lab_app
         .clone()
         .or_else(|| current_lab_app(running(state, id), &current_site));
-    let lab_apps = match lab_apps::scan(&state.config_path) {
+    let lab_apps = match lab_apps::scan(state.setup.config()) {
         Ok(scan) => picker(&scan, lab_app.as_deref()),
         Err(error) => Picker::Unreadable(format::sentence(&error.to_string())),
     };
@@ -556,7 +556,7 @@ fn connection_inputs(
 /// The addresses Analyte can listen on: this PC's own, then every network
 /// card, with `chosen` checked. A chosen address the list lacks (saved before,
 /// or this PC only) comes first, so it stays visible and can be kept.
-fn host_choices(found: &[super::Address], chosen: &str) -> Vec<page::Host> {
+pub(super) fn host_choices(found: &[super::Address], chosen: &str) -> Vec<page::Host> {
     let chosen = chosen.trim();
     let every = std::net::Ipv4Addr::UNSPECIFIED.to_string();
     let mut hosts = Vec::with_capacity(found.len().saturating_add(2));
@@ -633,10 +633,11 @@ fn serial_choices(
                             None => current("endpoint") == Some(port.name.as_str()),
                         },
                     };
-                    let used_by =
-                        holder(state, &endpoint, Some(&port.name), &|| Ok(listed.clone()))
-                            .filter(|holder| holder.as_str() != id)
-                            .map(|holder| holder.as_str().to_owned());
+                    let used_by = holder(&state.setup, &endpoint, Some(&port.name), &|| {
+                        Ok(listed.clone())
+                    })
+                    .filter(|holder| holder.as_str() != id)
+                    .map(|holder| holder.as_str().to_owned());
                     Port {
                         meta: format!(
                             "{} – {}",
@@ -662,7 +663,7 @@ fn serial_choices(
 }
 
 /// The chosen connection in plain words, with the exact setting on hover.
-fn connection_words(link: Link, connection: &Endpoint) -> Hover {
+pub(super) fn connection_words(link: Link, connection: &Endpoint) -> Hover {
     let shown = match (link, connection) {
         (_, Endpoint::UsbSerial(number)) => {
             format!("USB serial adapter with serial number {}", number.as_str())
@@ -688,7 +689,7 @@ fn render_test(
     id: &str,
     draft: &Draft,
 ) -> Result<Rendered, SetupError> {
-    let plan = plan(state, id, draft)?;
+    let plan = plan(&state.setup, id, draft)?;
     let link = Link::of(plan.validated.effective().stack());
     let folder = link == Link::Folder;
     let start = (!folder).then(|| {
@@ -750,12 +751,15 @@ fn render_review(
     id: &str,
     draft: &Draft,
 ) -> Result<Rendered, SetupError> {
-    let plan = plan(state, id, draft)?;
+    let plan = plan(&state.setup, id, draft)?;
     let link = Link::of(plan.validated.effective().stack());
     let destination = &plan.validated.effective().site().destination;
     let summary = Summary {
         connection: connection_words(link, &plan.connection),
-        lab_app: sends(destination, lab_apps::missing_keys(state, destination)),
+        lab_app: sends(
+            destination,
+            lab_apps::missing_keys(&state.setup, destination),
+        ),
         test: tested(state, id, draft, link),
         versions: None,
         model: plan.model.clone(),
@@ -799,7 +803,7 @@ fn tested(state: &Context, id: &str, draft: &Draft, link: Link) -> Tested {
     {
         Some(test) => {
             let view = test.session.view();
-            let verdict = verdict_of(&view, test.family, &test.route);
+            let verdict = verdict::of_view(&view, test.family, &test.route);
             Tested::Seen {
                 tone: verdict.tone,
                 title: verdict.title,
@@ -839,8 +843,8 @@ pub(in crate::admin) async fn save(
     let draft = Draft::from(choice);
     let (machine, kept) = (id.clone(), draft.clone());
     let saved = off_thread(&state, move |state| {
-        let saved = save_blocking(state, &machine, &kept)?;
-        let missing = lab_apps::missing_keys(state, &saved.lab_app);
+        let saved = save_blocking(&state.setup, &machine, &kept)?;
+        let missing = lab_apps::missing_keys(&state.setup, &saved.lab_app);
         Ok((saved, missing))
     })
     .await;
@@ -848,17 +852,7 @@ pub(in crate::admin) async fn save(
         Ok(saved) => saved,
         Err(error) => return refused_at(&state, &session, &error, &id, &draft),
     };
-    let reason = format!(
-        "setup page saved: {}, lab app {} ({}){}",
-        site::describe(&saved.connection),
-        saved.lab_app.name.as_str(),
-        saved.lab_app.base_url.as_str(),
-        if saved.moved {
-            "; its lab app settings moved to lab-apps.toml"
-        } else {
-            ""
-        }
-    );
+    let reason = saved.reason(super::Via::Page);
     let audited = audit(&state, &session, "setup-save", &id, reason).await;
     tracing::info!(machine = id.as_str(), "setup page saved a site file");
     let mut lines = Vec::new();
@@ -936,11 +930,11 @@ pub(in crate::admin) async fn listen_start(
     let draft = Draft::from(choice);
     let (machine, choices) = (id.clone(), draft.clone());
     let target = off_thread(&state, move |state| {
-        let plan = plan(state, &machine, &choices)?;
+        let plan = plan(&state.setup, &machine, &choices)?;
         let stack = plan.validated.effective().stack();
         let (family, link) = (Family::of(stack), Link::of(stack));
-        let (label, target) = listen_target(state, &plan)?;
-        let route = route_of(state, &target);
+        let (label, target) = listen_target(&state.setup, &plan)?;
+        let route = verdict::route_of(&state.setup, &target);
         Ok((label, target, route, plan, family, link))
     })
     .await;
@@ -964,54 +958,6 @@ pub(in crate::admin) async fn listen_start(
         Err(_) => return refused(&state, Some(&session), Some(&id), &SetupError::ListenState),
     }
     see_other("/setup/listen")
-}
-
-/// How the test reaches the machine. Listening on every network card, it
-/// names this PC's addresses as examples; when they cannot be listed the
-/// verdict says "this PC's address" without examples, as step 2 shows why.
-fn route_of(state: &Context, target: &listen::Target) -> Route {
-    match target {
-        listen::Target::Serial { .. } => Route::Serial,
-        listen::Target::TcpServer(on) => Route::Listens {
-            on: *on,
-            mine: if on.ip().is_unspecified() {
-                (state.setup.seams.addresses)()
-                    .map(|found| found.into_iter().map(|address| address.ip).collect())
-                    .unwrap_or_default()
-            } else {
-                Vec::new()
-            },
-        },
-        listen::Target::TcpClient(address) => Route::Connects(*address),
-    }
-}
-
-/// A verdict: what the test saw, or that it could not run and what to check.
-fn verdict_of(view: &listen::View, family: Family, route: &Route) -> Notice {
-    let (tone, title, text) = match &view.end {
-        Some(listen::End::Failed(why)) => (
-            Tone::Problem,
-            "The test could not run".to_owned(),
-            // Once connected, the failure was a read, not the address or port.
-            format!(
-                "{}{}",
-                format::sentence(why),
-                if view.connected.is_none() {
-                    route.failed()
-                } else {
-                    ""
-                }
-            ),
-        ),
-        end => verdict::verdict(
-            view.guess,
-            family,
-            end.is_some(),
-            route,
-            view.connected.is_some(),
-        ),
-    };
-    Notice { tone, title, text }
 }
 
 /// GET /setup/listen: the test's state, the bytes counted, their framing
@@ -1091,7 +1037,7 @@ fn listen_page(state: &Context, session: &Session, test: &Test, now: Timestamp) 
                 format::control_names(&view.framing)
             }],
             state: test_state(&view, &test.connection, id, now),
-            verdict: verdict_of(&view, test.family, &test.route),
+            verdict: verdict::of_view(&view, test.family, &test.route),
             stop: running.then(|| session.csrf.form_value().to_owned()),
             again: (!running).then(|| {
                 start(

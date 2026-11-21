@@ -4,12 +4,11 @@
 //! [`save_blocking`] writes, under the write lock. The connection test finds its
 //! target here too, refusing a port or address a running machine uses.
 use super::{
-    Definition, Running, SetupError, Shipped, definitions,
+    Definition, Running, Setup, SetupError, Shipped, Via, definitions,
     lab_apps::{self, SiteLabApp},
     site,
     wizard::{self, listen},
 };
-use crate::admin::server::Context;
 use crate::installation::config::{Program, connections};
 use crate::machine::link::status::Link;
 use analyte_config::{Endpoint, TransportKind};
@@ -124,7 +123,7 @@ pub(in crate::admin) struct Choice {
 
 /// The connection the draft names for a definition of transport `kind`; an
 /// unknown kind asks for a folder, as a watched folder does.
-fn connection_of(
+pub(super) fn connection_of(
     kind: Option<TransportKind>,
     choice: &wizard::Draft,
 ) -> Result<Endpoint, SetupError> {
@@ -185,9 +184,9 @@ pub(super) struct Plan {
 
 /// Checks every choice of `draft` against the files, in step order, and
 /// validates the result as the program loader does; writes nothing.
-pub(super) fn plan(state: &Context, id: &str, draft: &wizard::Draft) -> Result<Plan, SetupError> {
-    let (program, installed) = site::installed(&state.config_path, id)?;
-    let list = definitions(state)?;
+pub(super) fn plan(setup: &Setup, id: &str, draft: &wizard::Draft) -> Result<Plan, SetupError> {
+    let (program, installed) = site::installed(setup.config(), id)?;
+    let list = definitions(&setup.seams)?;
     let Model {
         path: definition,
         name: model,
@@ -197,7 +196,7 @@ pub(super) fn plan(state: &Context, id: &str, draft: &wizard::Draft) -> Result<P
     let lab_app = Identifier::new(draft.lab_app.as_deref().unwrap_or_default().trim())
         .map_err(|_| SetupError::NoLabAppChosen)?;
     let current = crate::installation::config::read(&installed.site)?;
-    let scan = lab_apps::scan(&state.config_path)?;
+    let scan = lab_apps::scan(setup.config())?;
     let candidate = site::candidate(
         &current,
         &connection,
@@ -228,6 +227,7 @@ pub(super) fn plan(state: &Context, id: &str, draft: &wizard::Draft) -> Result<P
     })
 }
 
+/// What a save wrote, for the page, the command line and the audit row.
 pub(super) struct Saved {
     pub(super) digest: [u8; 32],
     pub(super) model: String,
@@ -240,17 +240,42 @@ pub(super) struct Saved {
     pub(super) backups: Vec<PathBuf>,
 }
 
+impl Saved {
+    /// The audit reason: the connection and the lab app saved through `via`.
+    pub(super) fn reason(&self, via: Via) -> String {
+        format!(
+            "{} saved: {}, lab app {} ({}){}",
+            via.machines(),
+            site::describe(&self.connection),
+            self.lab_app.name.as_str(),
+            self.lab_app.base_url.as_str(),
+            if self.moved {
+                "; its lab app settings moved to lab-apps.toml"
+            } else {
+                ""
+            }
+        )
+    }
+}
+
+/// Every check a save makes, writing nothing: the [`plan`], then that no
+/// other machine already uses the connection.
+pub(super) fn checked(setup: &Setup, id: &str, draft: &wizard::Draft) -> Result<Plan, SetupError> {
+    let plan = plan(setup, id, draft)?;
+    shares_connection(setup, id, &plan)?;
+    Ok(plan)
+}
+
 pub(super) fn save_blocking(
-    state: &Context,
+    setup: &Setup,
     id: &str,
     draft: &wizard::Draft,
 ) -> Result<Saved, SetupError> {
-    let _writing = state.setup.writing()?;
-    let plan = plan(state, id, draft)?;
-    shares_connection(state, id, &plan)?;
+    let _writing = setup.writing()?;
+    let plan = checked(setup, id, draft)?;
     let moved = plan.lab_apps.is_some();
     let written = site::apply(
-        &state.config_path,
+        setup.config(),
         &plan.program,
         &plan.installed,
         &plan.definition,
@@ -282,8 +307,8 @@ pub(super) fn model_of(
 }
 
 /// Refuses a test on a serial port or network address a running machine uses.
-fn in_use(state: &Context, chosen: &Endpoint, port: Option<&str>) -> Result<(), SetupError> {
-    match holder(state, chosen, port, &|| (state.setup.seams.ports)()) {
+fn in_use(setup: &Setup, chosen: &Endpoint, port: Option<&str>) -> Result<(), SetupError> {
+    match holder(setup, chosen, port, &|| (setup.seams.ports)()) {
         Some(running) => Err(SetupError::InUse(running.as_str().into())),
         None => Ok(()),
     }
@@ -294,12 +319,12 @@ fn in_use(state: &Context, chosen: &Endpoint, port: Option<&str>) -> Result<(), 
 /// machine does. A running machine named by `usb_serial` is looked up in
 /// `ports`, so choosing its port by name finds it too.
 pub(super) fn holder<'a>(
-    state: &'a Context,
+    setup: &'a Setup,
     chosen: &Endpoint,
     port: Option<&str>,
     ports: &dyn Fn() -> std::io::Result<Vec<serial::Listed>>,
 ) -> Option<&'a Identifier> {
-    for running in &state.setup.running {
+    for running in &setup.running {
         let same = if let Some(port) = port {
             running.link == Link::Serial && {
                 // A fixed name comes back as written, without listing ports.
@@ -327,8 +352,8 @@ pub(super) fn holder<'a>(
 /// Refuses, before writing, a connection another machine in the program file
 /// already uses. When the current program does not load, the reload after
 /// writing refuses instead, so a broken file can still be fixed here.
-fn shares_connection(state: &Context, id: &str, plan: &Plan) -> Result<(), SetupError> {
-    let Ok(program) = Program::load(&state.config_path) else {
+fn shares_connection(setup: &Setup, id: &str, plan: &Plan) -> Result<(), SetupError> {
+    let Ok(program) = Program::load(setup.config()) else {
         return Ok(());
     };
     let chosen = (
@@ -349,7 +374,7 @@ fn shares_connection(state: &Context, id: &str, plan: &Plan) -> Result<(), Setup
 }
 
 pub(super) fn listen_target(
-    state: &Context,
+    setup: &Setup,
     plan: &Plan,
 ) -> Result<(String, listen::Target), SetupError> {
     let stack = plan.validated.effective().stack();
@@ -357,9 +382,9 @@ pub(super) fn listen_target(
     match Link::of(stack) {
         Link::Serial => {
             let device = serial::Device::from(endpoint);
-            let ports = state.setup.seams.ports.clone();
+            let ports = setup.seams.ports.clone();
             let name = serial::locate(&device, || ports())?;
-            in_use(state, endpoint, Some(&name))?;
+            in_use(setup, endpoint, Some(&name))?;
             let settings = crate::machine::link::serial::line_settings(
                 stack,
                 serial::Device::Named(name.clone()),
@@ -372,12 +397,12 @@ pub(super) fn listen_target(
                 listen::Target::Serial {
                     name,
                     settings,
-                    open: state.setup.seams.open.clone(),
+                    open: setup.seams.open.clone(),
                 },
             ))
         }
         link @ (Link::TcpServer | Link::TcpClient) => {
-            in_use(state, endpoint, None)?;
+            in_use(setup, endpoint, None)?;
             let Endpoint::Fixed(text) = endpoint else {
                 return Err(SetupError::Connection(
                     "a network link needs an IP address and port",
