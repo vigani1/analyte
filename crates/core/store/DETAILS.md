@@ -19,6 +19,15 @@ admin pages' reads, plus two helper columns on `outbox`: `delivered_at` and
 accepted ("Done") attempts. They are filled from the attempts already kept and
 kept current by a trigger in the same write as each attempt, because no index
 can reach a delivery's lab app from its attempts. No stored value changes.
+Step 18 (`upkeep/attempt_runs.sql`) adds one helper table, `attempt_runs`: the
+runs of a delivery's tries that were not accepted, one row per Activity line.
+A failed or cut-off try joins the run whose newest try is its delivery's
+previous try when both ended the same way; any other try (accepted, rejected,
+paused, a conflict) ends it, and a rejection, pause or conflict is a run of
+one. The table is filled from the attempts already kept and kept current by a
+trigger in the same write as each attempt, because whether a try folds depends
+on its delivery's next try, which no index can hold. Deleting a delivery's
+tries (data keeping) deletes its runs. No stored value changes.
 WAL and `synchronous=FULL` deliberately require
 SQLite to sync each committed WAL transaction before success is returned.
 Foreign keys are enabled on every connection; lock waits have a configured
@@ -88,11 +97,12 @@ checkpoint on close, has closed.
 
 The admin pages' reads share the store's one thread with intake, so each one
 is an index lookup or range sized by what the page shows, not a scan of what
-is kept (schema 17; plans checked with `EXPLAIN QUERY PLAN`, no `ANALYZE`):
+is kept (schemas 17 and 18; plans checked with `EXPLAIN QUERY PLAN`, no `ANALYZE`):
 
 | Read | Path |
 |---|---|
-| `activity` | per source, newest first through its time index (`receipts_received`, `parked_time`, `parked_resolved_time`, `attempts_accepted_time`, `machine_order_history_updated`, `audit_time`), at most one page each, merged; a stored machine uses `receipts_machine_received` or `machine_order_history_machine_updated`; an attempt's machine races a newest-first read against the machine's own deliveries (`outbox_receipt`, `outbox_ordering`, `attempts_delivery`) |
+| `activity` | per source, newest first through its time index (`receipts_received`, `parked_time`, `parked_resolved_time`, `attempts_accepted_time` for accepted tries, `attempt_runs_time` for runs of tries that were not, `machine_order_history_updated`, `audit_time`), at most one page each, merged; a stored machine uses `receipts_machine_received` or `machine_order_history_machine_updated`; an attempt's machine races a newest-first read against the machine's own deliveries (`outbox_receipt`, `outbox_ordering`, `attempts_delivery` or `attempt_runs_delivery`); a run's count is one lookup by its newest try (`attempt_runs` `last`) |
+| `delivery_activity` | one delivery's tries through `attempts_delivery`, newest first |
 | `activity_counts` | one range of each time index |
 | `last_delivered` | lab apps one index step each (any outbox index led by `destination`), then one `outbox_delivered_at` lookup each |
 | `failing_destinations` | lab apps with items waiting, then the tries of their deliveries not in Done after `delivered_attempt` (`outbox_destination_state`, `attempts_delivery`) |

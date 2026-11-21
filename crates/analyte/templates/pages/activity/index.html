@@ -1,4 +1,4 @@
-{#- Activity (GET /activity): the head with the live mark and Pause updates (shown only by the script), the machine and type filters as one GET form with today's counts, the lines grouped by day with their time, icon, words and link, newest first, and Show earlier activity; or what an empty page says. -#}
+{#- Activity (GET /activity): the head with the live mark and Pause updates (shown only by the script), the machine and type filters as one GET form with today's counts (or, for one delivery's tries, what the page lists and the way back), the lines grouped by day with their time, icon, words and link, newest first, and Show earlier activity; or what an empty page says. -#}
 {% extends "layout/base.html" %}
 {%- import "components/display.html" as display %}
 {%- import "components/feedback.html" as feedback %}
@@ -8,6 +8,13 @@
 <span class="live tone-good activity__live" data-live-pill hidden><span class="live-dot"></span>Live</span>
 <button type="button" class="btn btn--outline btn--sm" data-live-pause aria-pressed="false" hidden>Pause updates</button>
 </div>{% endcall %}
+{%- if one_delivery %}
+<div class="toolbar">
+<span class="subtle">Every try of one delivery, newest first, one line each</span>
+<span class="spacer"></span>
+<a class="link" href="/activity">Show all activity</a>
+</div>
+{%- else %}
 <form class="toolbar" method="get" action="/activity">
 <div class="field activity__machine">
 <label class="field__label" for="act-machine">Machine</label>
@@ -29,6 +36,7 @@
 <span class="subtle activity__today">Today · <span class="mono">{{ count }}</span> {{ word }}</span>
 {%- endif %}
 </form>
+{%- endif %}
 {%- if let Some(empty) = empty %}
 {% call feedback::empty_card(empty.title, empty.text) %}{% if let Some((href, words)) = empty.link %}<a class="link" href="{{ href }}">{{ words }}</a>{% endif %}{% endcall %}
 {%- else %}
