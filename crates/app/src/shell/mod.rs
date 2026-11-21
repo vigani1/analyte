@@ -6,6 +6,11 @@
 //! one owner for every change and builds windows off the event loop's thread,
 //! as `WebView2` requires.
 mod autostart;
+#[expect(
+    unsafe_code,
+    reason = "ADR 0022: the title bar's snap layouts and window menu FFI"
+)]
+mod frame;
 mod log;
 mod monitor;
 mod tray;

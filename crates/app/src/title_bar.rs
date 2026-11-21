@@ -1,10 +1,16 @@
-//! The app's own title bar: the Aperture mark and "Analyte", a dot with the engine's state and its word, and the minimize, maximize or restore, and close buttons; where it sits in the window, and what the shell tells it.
+//! The app's own title bar: the Aperture mark and "Analyte", a dot with the engine's state and its word, and the minimize, maximize or restore, and close buttons; where it and its maximize button sit in the window, and what the shell tells it.
 //!
 //! The bar is the app's own page (`http://analyte.localhost/title-bar`) in a
 //! webview of its own above the engine's pages (ADR 0019). It is the only
 //! webview allowed any Tauri command, and only the window commands it needs;
 //! the engine's pages stay without any. The bar never asks the app anything:
 //! the shell pushes what it shows with [`View::script`].
+//!
+//! On Windows a small native window lies over the maximize button, so that
+//! Windows takes it for the frame's own button and shows snap layouts on
+//! hover (ADR 0022). The mouse then reaches that window, not the page, so the
+//! shell follows it with [`Pointer`] and gives the button its hover and
+//! pressed looks.
 use crate::watch::{Shown, Tray};
 use askama::Template as _;
 
@@ -20,6 +26,10 @@ pub const PAGES: &str = "pages";
 /// The bar's height in logical pixels: a Windows 11 caption, whose buttons
 /// are 46 by 32.
 pub const HEIGHT: f64 = 32.0;
+
+/// A caption button's width in logical pixels, as `--caption-button` in
+/// `app.css`.
+pub const BUTTON: f64 = 46.0;
 
 /// Whether the window fills the screen, which names the middle button.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -59,6 +69,113 @@ impl Sizing {
             Self::Maximized => "maximized",
         }
     }
+
+    /// Whether the window menu offers `item` for a window of this sizing, as
+    /// for a framed window: a normal one cannot be restored, a maximized one
+    /// cannot be moved, sized or maximized.
+    #[must_use]
+    pub const fn offers(self, item: MenuItem) -> bool {
+        match (self, item) {
+            (Self::Normal, MenuItem::Restore)
+            | (Self::Maximized, MenuItem::Move | MenuItem::Size | MenuItem::Maximize) => false,
+            (
+                Self::Normal,
+                MenuItem::Move
+                | MenuItem::Size
+                | MenuItem::Minimize
+                | MenuItem::Maximize
+                | MenuItem::Close,
+            )
+            | (Self::Maximized, MenuItem::Restore | MenuItem::Minimize | MenuItem::Close) => true,
+        }
+    }
+}
+
+/// A command in the window menu, which Windows shows on a right-click of the
+/// bar or on Alt+Space.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MenuItem {
+    /// Restore.
+    Restore,
+    /// Move.
+    Move,
+    /// Size.
+    Size,
+    /// Minimize.
+    Minimize,
+    /// Maximize.
+    Maximize,
+    /// Close.
+    Close,
+}
+
+impl MenuItem {
+    /// Every item, in the menu's order.
+    pub const ALL: [Self; 6] = [
+        Self::Restore,
+        Self::Move,
+        Self::Size,
+        Self::Minimize,
+        Self::Maximize,
+        Self::Close,
+    ];
+}
+
+/// Where the mouse is on the maximize button, which Windows reports to the
+/// native window over it rather than to the page: the button's look.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Pointer {
+    /// Elsewhere: the button's resting look.
+    #[default]
+    Away,
+    /// Over the button: its hover look.
+    Over,
+    /// Pressed on the button and not yet released: its pressed look.
+    Pressed,
+}
+
+/// What Windows reported about the mouse over the maximize button.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Mouse {
+    /// The mouse moved over the button.
+    Move,
+    /// The left button went down on it.
+    Down,
+    /// The left button came up on it.
+    Up,
+    /// The mouse left it.
+    Leave,
+}
+
+impl Pointer {
+    /// The look after `mouse`. A press stays pressed while the mouse moves
+    /// over the button and ends when it leaves, as with Windows' own buttons.
+    #[must_use]
+    pub const fn after(self, mouse: Mouse) -> Self {
+        match (self, mouse) {
+            (Self::Pressed, Mouse::Move) | (_, Mouse::Down) => Self::Pressed,
+            (Self::Away | Self::Over, Mouse::Move) | (_, Mouse::Up) => Self::Over,
+            (_, Mouse::Leave) => Self::Away,
+        }
+    }
+
+    /// Whether `mouse` completes a click: released on the button it was
+    /// pressed on. Leaving the button ends the press, so a release after
+    /// coming back does nothing.
+    #[must_use]
+    pub const fn clicks(self, mouse: Mouse) -> bool {
+        matches!((self, mouse), (Self::Pressed, Mouse::Up))
+    }
+
+    /// The button's `data-pointer` value, which picks its look.
+    #[must_use]
+    pub const fn word(self) -> &'static str {
+        match self {
+            Self::Away => "away",
+            Self::Over => "over",
+            Self::Pressed => "pressed",
+        }
+    }
 }
 
 /// What the bar shows.
@@ -68,6 +185,8 @@ pub struct View {
     pub shown: Shown,
     /// Whether the window is maximized.
     pub sizing: Sizing,
+    /// Where the mouse is on the maximize button.
+    pub pointer: Pointer,
 }
 
 impl Default for View {
@@ -75,6 +194,7 @@ impl Default for View {
         Self {
             shown: Shown::Checking,
             sizing: Sizing::Normal,
+            pointer: Pointer::Away,
         }
     }
 }
@@ -115,6 +235,7 @@ impl View {
             "label": self.label(),
             "sizing": self.sizing.word(),
             "button": self.sizing.button(),
+            "pointer": self.pointer.word(),
         });
         format!("window.analyteTitleBar && window.analyteTitleBar({view});")
     }
@@ -131,6 +252,7 @@ impl View {
             label: self.label(),
             sizing: self.sizing.word(),
             button: self.sizing.button(),
+            pointer: self.pointer.word(),
         }
         .render()
     }
@@ -144,6 +266,7 @@ struct Page {
     label: String,
     sizing: &'static str,
     button: &'static str,
+    pointer: &'static str,
 }
 
 /// A webview's place in the window, in physical pixels from the top left
@@ -158,17 +281,63 @@ pub struct Place {
     pub height: u32,
 }
 
+/// An area of the window in physical pixels from the top left of its client
+/// area.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Area {
+    /// Pixels from the left.
+    pub x: u32,
+    /// Pixels from the top.
+    pub y: u32,
+    /// Width.
+    pub width: u32,
+    /// Height.
+    pub height: u32,
+}
+
+/// Where the maximize button sits in a client area `width` physical pixels
+/// wide whose bar is at `bar`, at `scale`: the middle of the three buttons at
+/// the bar's right end, each [`BUTTON`] logical pixels wide, its edges
+/// rounded to whole pixels. A window narrower than two buttons, or a bar of
+/// no height, has none; an unusable scale counts as 1.
+#[must_use]
+pub fn maximize_button(width: u32, bar: Place, scale: f64) -> Option<Area> {
+    let scale = usable(scale);
+    let from_right = |buttons: f64| -> u32 {
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "two 46 px buttons times a scale bounded to 0..=16 is a small positive number"
+        )]
+        let pixels = (BUTTON * buttons * scale).round() as u32;
+        pixels
+    };
+    let left = width.checked_sub(from_right(2.0))?;
+    let right = width.checked_sub(from_right(1.0))?;
+    (bar.height > 0).then_some(Area {
+        x: left,
+        y: bar.y,
+        width: right.saturating_sub(left),
+        height: bar.height,
+    })
+}
+
+/// `scale` when it is a usable display scale (above 0, at most 16), else 1.
+fn usable(scale: f64) -> f64 {
+    if scale.is_finite() && scale > 0.0 && scale <= 16.0 {
+        scale
+    } else {
+        1.0
+    }
+}
+
 /// Splits a client area of `width` by `height` physical pixels at `scale`
 /// (physical pixels per logical one) into the bar on top and the pages
 /// below. The bar keeps its height, so a tiny window shows only the bar; an
 /// unusable scale counts as 1.
 #[must_use]
 pub fn split(width: u32, height: u32, scale: f64) -> (Place, Place) {
-    let scale = if scale.is_finite() && scale > 0.0 && scale <= 16.0 {
-        scale
-    } else {
-        1.0
-    };
+    let scale = usable(scale);
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
@@ -206,6 +375,7 @@ mod tests {
         let html = View {
             shown: Shown::Off,
             sizing: Sizing::Maximized,
+            pointer: Pointer::Away,
         }
         .render()
         .expect("the bar renders");
@@ -214,6 +384,33 @@ mod tests {
             html.contains(
                 "data-window=\"toggle-maximize\" aria-label=\"Restore\" title=\"Restore\""
             )
+        );
+    }
+
+    // ADR 0022 (window menu): the right-click menu offers what a framed
+    // window's does: Restore only when maximized; Move, Size and Maximize
+    // only when not; Minimize and Close always.
+    #[test]
+    fn the_window_menu_offers_what_the_sizing_allows() {
+        let offered = |sizing: Sizing| {
+            MenuItem::ALL
+                .into_iter()
+                .filter(|item| sizing.offers(*item))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            offered(Sizing::Normal),
+            [
+                MenuItem::Move,
+                MenuItem::Size,
+                MenuItem::Minimize,
+                MenuItem::Maximize,
+                MenuItem::Close
+            ]
+        );
+        assert_eq!(
+            offered(Sizing::Maximized),
+            [MenuItem::Restore, MenuItem::Minimize, MenuItem::Close]
         );
     }
 
@@ -257,6 +454,7 @@ mod tests {
             let view = View {
                 shown,
                 sizing: Sizing::Normal,
+                pointer: Pointer::Away,
             };
             assert_eq!((view.dot(), view.word()), (dot, word), "{shown:?}");
             let html = view.render().expect("the bar renders");
@@ -276,6 +474,7 @@ mod tests {
         let script = View {
             shown: Shown::Running(Health::Attention),
             sizing: Sizing::Maximized,
+            pointer: Pointer::Pressed,
         }
         .script();
         let json = script
@@ -288,6 +487,7 @@ mod tests {
         assert_eq!(view["dot"], "live-dot live-dot--still live-dot--warn");
         assert_eq!(view["sizing"], "maximized");
         assert_eq!(view["button"], "Restore");
+        assert_eq!(view["pointer"], "pressed");
     }
 
     // ADR 0019 (title bar): the page has the mark from the hand-drawn 16 and
@@ -297,19 +497,22 @@ mod tests {
         let html = View::default().render().expect("the bar renders");
         assert!(html.contains("src=\"/static/icons/analyte-app-icon-16.svg\""));
         assert!(html.contains("/static/icons/analyte-app-icon-20.svg 1.25x"));
-        for (action, name) in [
-            ("minimize", "Minimize"),
-            ("toggle-maximize", "Maximize"),
-            ("close", "Close"),
+        for (action, name, more) in [
+            ("minimize", "Minimize", ""),
+            ("toggle-maximize", "Maximize", " data-pointer=\"away\""),
+            ("close", "Close", ""),
         ] {
             assert!(
                 html.contains(&format!(
-                    "<button type=\"button\" class=\"title-bar__button{}\" data-window=\"{action}\" aria-label=\"{name}\" title=\"{name}\">",
+                    "<button type=\"button\" class=\"title-bar__button{}\" data-window=\"{action}\" aria-label=\"{name}\" title=\"{name}\"{more}>",
                     if action == "close" { " title-bar__button--close" } else { "" }
                 )),
                 "{action}: {html}"
             );
         }
+        // ADR 0022: the bar is a Windows caption through app-region, so
+        // Tauri's drag attribute and its two permissions are gone.
+        assert!(!html.contains("data-tauri-drag-region"));
         assert!(html.contains("<script src=\"/static/title-bar.js\" defer></script>"));
         for absent in ["http://", "https://", "style=", "onclick"] {
             assert!(!html.contains(absent), "{absent}");
@@ -350,5 +553,100 @@ mod tests {
         for unusable in [0.0, -1.0, f64::NAN, f64::INFINITY, 1e9] {
             assert_eq!(split(100, 100, unusable).0.height, 32, "{unusable}");
         }
+    }
+
+    // ADR 0022: the native window for snap layouts covers exactly the
+    // maximize button, the middle of three 46 px buttons at the bar's right
+    // end, at every scale; its edges round as the page's do.
+    #[test]
+    fn the_maximize_area_is_the_middle_button() {
+        let at =
+            |width, height, scale| maximize_button(width, split(width, height, scale).0, scale);
+        assert_eq!(
+            at(1280, 800, 1.0),
+            Some(Area {
+                x: 1188,
+                y: 0,
+                width: 46,
+                height: 32
+            })
+        );
+        assert_eq!(
+            at(2560, 1600, 2.0),
+            Some(Area {
+                x: 2376,
+                y: 0,
+                width: 92,
+                height: 64
+            })
+        );
+        // 46 × 1.25 = 57.5 and 92 × 1.25 = 115: the edges are whole pixels.
+        assert_eq!(
+            at(1600, 1000, 1.25),
+            Some(Area {
+                x: 1485,
+                y: 0,
+                width: 57,
+                height: 40
+            })
+        );
+        assert_eq!(
+            at(1500, 900, 1.5).map(|area| (area.x, area.width)),
+            Some((1362, 69))
+        );
+        for unusable in [0.0, -1.0, f64::NAN, f64::INFINITY, 1e9] {
+            assert_eq!(
+                at(1280, 800, unusable).map(|area| area.x),
+                Some(1188),
+                "{unusable}"
+            );
+        }
+    }
+
+    // ADR 0022: a window too narrow for the buttons, or without a bar, has
+    // no maximize area, never one off its edge.
+    #[test]
+    fn a_window_too_small_has_no_maximize_area() {
+        assert_eq!(at_width(91), None);
+        assert_eq!(at_width(92).map(|area| (area.x, area.width)), Some((0, 46)));
+        let no_bar = Place {
+            y: 0,
+            width: 1280,
+            height: 0,
+        };
+        assert_eq!(maximize_button(1280, no_bar, 1.0), None);
+    }
+
+    fn at_width(width: u32) -> Option<Area> {
+        maximize_button(width, split(width, 800, 1.0).0, 1.0)
+    }
+
+    // ADR 0022 (Windows caption buttons): hovering shows the hover look,
+    // pressing the pressed look, and only a release on the button it was
+    // pressed on clicks; leaving ends both the hover and the press.
+    #[test]
+    fn the_maximize_button_clicks_only_on_a_release_over_it() {
+        use Mouse::{Down, Leave, Move, Up};
+        let mut pointer = Pointer::default();
+        let mut clicks = 0;
+        let mut looks = Vec::new();
+        for mouse in [Move, Down, Move, Up, Move, Down, Leave, Move, Up, Leave] {
+            clicks += u8::from(pointer.clicks(mouse));
+            pointer = pointer.after(mouse);
+            looks.push(pointer.word());
+        }
+        assert_eq!(clicks, 1);
+        assert_eq!(
+            looks,
+            [
+                "over", "pressed", "pressed", "over", "over", "pressed", "away", "over", "over",
+                "away"
+            ]
+        );
+        // A release that never had a press, and a second release, do nothing.
+        assert!(!Pointer::Over.clicks(Up));
+        assert!(!Pointer::Away.clicks(Up));
+        assert!(Pointer::Pressed.clicks(Up));
+        assert_eq!(Pointer::Away.after(Down), Pointer::Pressed);
     }
 }

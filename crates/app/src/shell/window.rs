@@ -5,7 +5,11 @@
 //! run window commands; the pages' webview gets no Tauri command at all.
 //! Windows still gives the frameless window its shadow, edge resizing,
 //! snapping (by dragging, Win+arrow keys and Win+Z) and Alt+F4, and Tauri
-//! adds a strip along the top edge for resizing above the bar.
+//! adds a strip along the top edge for resizing above the bar. The bar's page
+//! is a Windows caption through `WebView2`'s `app-region`, so Windows drags the
+//! window, maximizes it on a double-click and shows the window menu on a
+//! right-click; [`super::frame`] adds snap layouts on the maximize button and
+//! the window menu on Alt+Space (ADR 0022).
 //!
 //! Closing the window destroys both webviews, so their memory is freed; the
 //! tray makes a new window. Links to other sites open in the default browser,
@@ -15,12 +19,12 @@
 //! `AnalyteApp` user agent, and the window runs Windows sign-in itself
 //! (ADR 0021 §6): it opens at `/login/windows?next=/`, and every
 //! `/login/windows` without a code becomes a sign-in for the monitor.
-use super::{Command, Shared};
+use super::{Command, Shared, frame};
 use crate::engine::{Engine, Origin};
 use crate::local::ENGINE_OFF;
 use crate::navigation::{Decision, PAGES_SCRIPT, decide};
 use crate::sign_in;
-use crate::title_bar::{self, Place, Sizing, View};
+use crate::title_bar::{self, Mouse, Place, Pointer, Sizing, View};
 use crate::watch::Shown;
 use tauri::{
     AppHandle, Manager as _, PhysicalPosition, PhysicalSize, Rect, Runtime, WebviewUrl, Window,
@@ -148,8 +152,11 @@ pub(super) fn open(app: &AppHandle, shared: &Shared, shown: Shown) {
             return;
         }
     };
-    // A new window starts at its normal size.
-    shared.update_bar(|view| view.sizing = Sizing::Normal);
+    // A new window starts at its normal size, with the mouse elsewhere.
+    shared.update_bar(|view| {
+        view.sizing = Sizing::Normal;
+        view.pointer = Pointer::Away;
+    });
     if let Err(error) = make(app, url, bar, engine_origin(shared)) {
         // Usually the WebView2 Runtime is missing; the pages still open in the browser.
         tracing::error!(%error, "the window could not be made; opening the pages in the browser");
@@ -178,7 +185,7 @@ fn make(app: &AppHandle, url: url::Url, bar: url::Url, origin: Origin) -> tauri:
         .build()?;
     let size = window.inner_size()?;
     let (top, below) = title_bar::split(size.width, size.height, window.scale_factor()?);
-    window.add_child(bar_webview(bar), position(top), extent(top))?;
+    let bar = window.add_child(bar_webview(bar), position(top), extent(top))?;
     let pages = window.add_child(
         pages_webview(app, url, origin),
         position(below),
@@ -186,9 +193,83 @@ fn make(app: &AppHandle, url: url::Url, bar: url::Url, origin: Origin) -> tauri:
     )?;
     // Tauri adds its top-edge resize strip above the webviews now there are some.
     window.set_resizable(true)?;
+    add_frame(&window, [&bar, &pages]);
     window.show()?;
     pages.set_focus()?;
     Ok(())
+}
+
+/// Adds what the bar's page cannot do itself (ADR 0022): Alt+Space for the
+/// window menu in both webviews, the menu's items for a normal window, and
+/// the native maximize button for snap layouts, made on the window's thread
+/// and placed at once. The window works without them, so a failure is logged
+/// and the window still opens.
+fn add_frame(window: &Window, webviews: [&Webview; 2]) {
+    for webview in webviews {
+        if let Err(error) = frame::menu_on_alt_space(webview, window) {
+            tracing::warn!(%error, "Alt+Space will not open the window menu");
+        }
+    }
+    let owner = window.clone();
+    let queued = window.run_on_main_thread(move || {
+        // A new window is at its normal size.
+        match_window_menu(&owner, Sizing::Normal);
+        let follower = owner.clone();
+        let added = frame::add_maximize_button(&owner, move |mouse| follow_mouse(&follower, mouse))
+            .and_then(|()| {
+                let size = owner.inner_size().map_err(frame::Error::Tauri)?;
+                let scale = owner.scale_factor().map_err(frame::Error::Tauri)?;
+                place_maximize_button(&owner, size, scale)
+            });
+        if let Err(error) = added {
+            tracing::warn!(%error, "the maximize button will not offer snap layouts");
+        }
+    });
+    if let Err(error) = queued {
+        tracing::warn!(%error, "the maximize button will not offer snap layouts");
+    }
+}
+
+/// Lays the native maximize button over the bar's in a client area of `size`.
+fn place_maximize_button(
+    window: &Window,
+    size: PhysicalSize<u32>,
+    scale: f64,
+) -> Result<(), frame::Error> {
+    let (top, _) = title_bar::split(size.width, size.height, scale);
+    // A window too small for the buttons gets none: it shrinks to nothing.
+    let area = title_bar::maximize_button(size.width, top, scale).unwrap_or(title_bar::Area {
+        x: 0,
+        y: 0,
+        width: 0,
+        height: 0,
+    });
+    frame::place_maximize_button(window, area)
+}
+
+/// Shows where the mouse is on the maximize button, and maximizes or
+/// restores the window on a click, as the bar's own button would.
+fn follow_mouse(window: &Window, mouse: Mouse) {
+    let Some(shared) = window.try_state::<std::sync::Arc<Shared>>() else {
+        return;
+    };
+    let mut clicked = false;
+    if let Some(view) = shared.update_bar(|view| {
+        clicked = view.pointer.clicks(mouse);
+        view.pointer = view.pointer.after(mouse);
+    }) {
+        show_in(window, view);
+    }
+    if clicked {
+        let toggled = match window.is_maximized() {
+            Ok(true) => window.unmaximize(),
+            Ok(false) => window.maximize(),
+            Err(error) => Err(error),
+        };
+        if let Err(error) = toggled {
+            tracing::warn!(%error, "the window could not be maximized or restored");
+        }
+    }
 }
 
 fn position(place: Place) -> PhysicalPosition<u32> {
@@ -230,6 +311,12 @@ pub(super) fn on_event(window: &Window, event: &WindowEvent) {
             tracing::warn!(%error, label, "a webview could not be fitted to the window");
         }
     }
+    match place_maximize_button(window, size, scale) {
+        Ok(()) => {}
+        // The first sizes come before the button is made, and it is placed then.
+        Err(frame::Error::Missing) => tracing::debug!("the maximize button is not made yet"),
+        Err(error) => tracing::warn!(%error, "the maximize button could not follow the window"),
+    }
     match window.is_maximized() {
         Ok(maximized) => {
             if let Some(shared) = window.try_state::<std::sync::Arc<Shared>>()
@@ -237,8 +324,16 @@ pub(super) fn on_event(window: &Window, event: &WindowEvent) {
             {
                 show_in(window, view);
             }
+            match_window_menu(window, Sizing::of(maximized));
         }
         Err(error) => tracing::warn!(%error, "whether the window is maximized could not be read"),
+    }
+}
+
+/// Greys what the window menu cannot do at `sizing` (ADR 0022).
+fn match_window_menu(window: &Window, sizing: Sizing) {
+    if let Err(error) = frame::match_window_menu(window, sizing) {
+        tracing::warn!(%error, "the window menu may offer what the window cannot do");
     }
 }
 
@@ -320,17 +415,18 @@ mod tests {
     use tauri::webview::InvokeRequest;
 
     /// The window commands the title bar may run, and nothing else may.
-    const BAR_COMMANDS: [&str; 5] = [
-        "plugin:window|start_dragging",
-        "plugin:window|internal_toggle_maximize",
+    const BAR_COMMANDS: [&str; 3] = [
         "plugin:window|minimize",
         "plugin:window|toggle_maximize",
         "plugin:window|close",
     ];
 
     /// Commands nobody is given: other window and webview changes, reading
-    /// state, events, and the app's plugins.
-    const OTHER_COMMANDS: [&str; 9] = [
+    /// state, events, and the app's plugins. Dragging is Windows' own through
+    /// the bar's app-region (ADR 0022), so Tauri's drag commands are refused.
+    const OTHER_COMMANDS: [&str; 11] = [
+        "plugin:window|start_dragging",
+        "plugin:window|internal_toggle_maximize",
         "plugin:window|is_maximized",
         "plugin:window|set_title",
         "plugin:window|destroy",
@@ -383,7 +479,7 @@ mod tests {
     // ADR 0019 (title bar, security): built from the app's real capabilities,
     // the window's two webviews differ only in what Tauri lets them run. The
     // engine's pages may run no command, from the engine or from the app's
-    // own Engine off screen; the bar may run exactly its five window
+    // own Engine off screen; the bar may run exactly its three window
     // commands, and only from the app's own origin.
     #[test]
     fn only_the_title_bar_may_run_its_window_commands() {

@@ -5,7 +5,9 @@ plugins on 2026-11-20; the app's own title bar, decision 11, on 2026-11-20).
 Completes PR d of
 [ADR 0018](0018-server-rendered-pages-and-one-stylesheet.md). Refined by
 [ADR 0021](0021-windows-sign-in-pipe.md): the app signs people in with their
-Windows account; the key form stays the way back in.
+Windows account; the key form stays the way back in. Refined by
+[ADR 0022](0022-title-bar-snap-layouts-and-window-menu.md): the title bar
+regains snap layouts and the window menu.
 
 ## Context
 
@@ -86,24 +88,21 @@ the pages on 127.0.0.1. Switching analyzers over is not part of this.
     - **the bar** (label `title-bar`), the app's own page
       `http://analyte.localhost/title-bar` with one script file. It is the
       only webview any capability names: `capabilities/title-bar.json`
-      grants it, from the app's own origin only, `start-dragging`,
-      `internal-toggle-maximize` (the double-click of Tauri's drag region),
-      `minimize`, `toggle-maximize` and `close`, and nothing else. It may
-      navigate only to its own page and asks the app nothing: the app pushes
-      the state and the button's name into it.
+      grants it, from the app's own origin only, `minimize`,
+      `toggle-maximize` and `close`, and nothing else (ADR 0022 dropped
+      `start-dragging` and `internal-toggle-maximize`). It may navigate only
+      to its own page and asks the app nothing: the app pushes the state, the
+      button's name and its look into it.
     - **the pages** (label `pages`), the engine's pages or Engine off, below
       the bar, with no capability, as before. The engine is unchanged.
     The app serves the bar's page only to the bar's webview, and Start engine
     only to the pages'. Windows keeps the frameless window's shadow, resizing
     from every edge (Tauri adds a strip above the bar for the top edge),
     snapping by dragging to the screen's edges and with Win+arrows and
-    Win+Z, and Alt+F4. Two things a Windows frame gives are lost: the
-    Windows 11 snap-layout menu when hovering the maximize button (Win+Z
-    still opens it), and the window menu, on a right-click of the bar or on
-    Alt+Space (the webview keeps the key). Both need the bar's area to answer
-    Windows' hit test as a frame, or a Windows call to show the menu, which a
-    webview cannot do and which only unsafe Windows calls in this crate
-    could; a right-click on the bar shows nothing. The
+    Win+Z, and Alt+F4. The bar is a Windows caption through WebView2's
+    `app-region`, and the snap layouts on the maximize button and the window
+    menu on a right-click or Alt+Space are back through
+    [ADR 0022](0022-title-bar-snap-layouts-and-window-menu.md). The
     multi-webview API is behind Tauri's `unstable` feature, so Tauri is
     pinned exactly. The reviewed versions, in `Cargo.lock`, are
     tauri 2.12.7, tauri-runtime 2.12.4, tauri-runtime-wry 2.12.5 and

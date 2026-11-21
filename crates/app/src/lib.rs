@@ -12,8 +12,10 @@
 //! - [`navigation`]: which addresses the window may show;
 //! - [`sign_in`]: Windows sign-in: when to ask the pipe and where its answer leads;
 //! - [`local`]: the app's own pages (Engine off, the title bar) and their files;
-//! - [`title_bar`]: what the window's own title bar shows, and where it sits.
-#![forbid(unsafe_code)]
+//! - [`title_bar`]: what the window's own title bar shows, where it and its
+//!   maximize button sit, and what its window menu offers.
+// ADR 0022: only the shell's `frame` module may expect unsafe_code.
+#![deny(unsafe_code)]
 
 pub mod engine;
 pub mod local;
