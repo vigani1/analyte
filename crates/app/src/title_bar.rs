@@ -1,4 +1,4 @@
-//! The app's own title bar: the Aperture mark and "Analyte", a dot with the engine's state and its word, and the minimize, maximize or restore, and close buttons; where it and its maximize button sit in the window, and what the shell tells it.
+//! The app's own title bar: the Aperture mark and "Analyte", a dot with the engine's state and its word, a short line about the last notification, and the minimize, maximize or restore, and close buttons; where it and its maximize button sit in the window, and what the shell tells it.
 //!
 //! The bar is the app's own page (`http://analyte.localhost/title-bar`) in a
 //! webview of its own above the engine's pages (ADR 0019). It is the only
@@ -179,7 +179,7 @@ impl Pointer {
 }
 
 /// What the bar shows.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct View {
     /// The engine's state, as the tray shows it.
     pub shown: Shown,
@@ -187,6 +187,9 @@ pub struct View {
     pub sizing: Sizing,
     /// Where the mouse is on the maximize button.
     pub pointer: Pointer,
+    /// The last notification's line (`watch::Recap::line`), or empty
+    /// (ADR 0023).
+    pub note: String,
 }
 
 impl Default for View {
@@ -195,6 +198,7 @@ impl Default for View {
             shown: Shown::Checking,
             sizing: Sizing::Normal,
             pointer: Pointer::Away,
+            note: String::new(),
         }
     }
 }
@@ -203,7 +207,7 @@ impl View {
     /// The dot's classes: the design's status dot in the tray's four states
     /// (good, attention, problem, off), standing still in the bar.
     #[must_use]
-    pub const fn dot(self) -> &'static str {
+    pub const fn dot(&self) -> &'static str {
         match self.shown.tray() {
             Tray::Good => "live-dot live-dot--still",
             Tray::Attention => "live-dot live-dot--still live-dot--warn",
@@ -214,13 +218,13 @@ impl View {
 
     /// The state's word, shown on hover: the tray's own words.
     #[must_use]
-    pub const fn word(self) -> &'static str {
+    pub const fn word(&self) -> &'static str {
         self.shown.words()
     }
 
     /// The dot's accessible name.
     #[must_use]
-    pub fn label(self) -> String {
+    pub fn label(&self) -> String {
         format!("Engine: {}", self.word())
     }
 
@@ -228,7 +232,7 @@ impl View {
     /// only the words above, as JSON, to the bar's own `analyteTitleBar`; a
     /// bar still loading ignores it and is brought up to date when loaded.
     #[must_use]
-    pub fn script(self) -> String {
+    pub fn script(&self) -> String {
         let view = serde_json::json!({
             "dot": self.dot(),
             "word": self.word(),
@@ -236,6 +240,7 @@ impl View {
             "sizing": self.sizing.word(),
             "button": self.sizing.button(),
             "pointer": self.pointer.word(),
+            "note": self.note,
         });
         format!("window.analyteTitleBar && window.analyteTitleBar({view});")
     }
@@ -245,7 +250,7 @@ impl View {
     /// # Errors
     ///
     /// When the template cannot be written.
-    pub fn render(self) -> Result<String, askama::Error> {
+    pub fn render(&self) -> Result<String, askama::Error> {
         Page {
             dot: self.dot(),
             word: self.word(),
@@ -253,6 +258,7 @@ impl View {
             sizing: self.sizing.word(),
             button: self.sizing.button(),
             pointer: self.pointer.word(),
+            note: &self.note,
         }
         .render()
     }
@@ -260,13 +266,14 @@ impl View {
 
 #[derive(askama::Template)]
 #[template(path = "title-bar.html")]
-struct Page {
+struct Page<'a> {
     dot: &'static str,
     word: &'static str,
     label: String,
     sizing: &'static str,
     button: &'static str,
     pointer: &'static str,
+    note: &'a str,
 }
 
 /// A webview's place in the window, in physical pixels from the top left
@@ -375,7 +382,7 @@ mod tests {
         let html = View {
             shown: Shown::Off,
             sizing: Sizing::Maximized,
-            pointer: Pointer::Away,
+            ..View::default()
         }
         .render()
         .expect("the bar renders");
@@ -453,8 +460,7 @@ mod tests {
         for (shown, dot, word) in cases {
             let view = View {
                 shown,
-                sizing: Sizing::Normal,
-                pointer: Pointer::Away,
+                ..View::default()
             };
             assert_eq!((view.dot(), view.word()), (dot, word), "{shown:?}");
             let html = view.render().expect("the bar renders");
@@ -475,6 +481,7 @@ mod tests {
             shown: Shown::Running(Health::Attention),
             sizing: Sizing::Maximized,
             pointer: Pointer::Pressed,
+            note: "Notified 14:32 · <b>".into(),
         }
         .script();
         let json = script
@@ -488,6 +495,30 @@ mod tests {
         assert_eq!(view["sizing"], "maximized");
         assert_eq!(view["button"], "Restore");
         assert_eq!(view["pointer"], "pressed");
+        assert_eq!(view["note"], "Notified 14:32 · <b>");
+    }
+
+    // ADR 0023 (title bar): the last notification's line shows after the
+    // dot, escaped; with none the line is there but hidden.
+    #[test]
+    fn the_last_notice_shows_after_the_dot() {
+        let html = View::default().render().expect("the bar renders");
+        assert!(
+            html.contains("<span class=\"title-bar__note\" data-bar-note hidden></span>"),
+            "{html}"
+        );
+        let html = View {
+            note: "Notified 14:32 · A machine’s connection is off <&>".into(),
+            ..View::default()
+        }
+        .render()
+        .expect("the bar renders");
+        assert!(
+            html.contains(
+                "data-bar-note>Notified 14:32 · A machine’s connection is off &#60;&#38;&#62;</span>"
+            ),
+            "{html}"
+        );
     }
 
     // ADR 0019 (title bar): the page has the mark from the hand-drawn 16 and

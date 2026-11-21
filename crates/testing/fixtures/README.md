@@ -15,3 +15,6 @@
 - `windows-sign-in.txt`: the Windows sign-in pipe's request and answer lines,
   read as text by both the engine's and the app's tests (ADR 0021), so the two
   halves of the pipe cannot drift apart.
+- `status-reasons.txt`: every reason word `GET /status` may send, most
+  serious first, read by both the engine's and the app's tests (ADR 0023), so
+  the two lists cannot drift apart.

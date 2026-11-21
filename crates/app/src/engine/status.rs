@@ -1,17 +1,213 @@
-//! Asks the engine's public `GET /status` how things are, within a time and size limit, and reads its one word.
+//! Asks the engine's public `GET /status` how things are, within a time and size limit, and reads its word and the kinds of thing behind it.
 //!
 //! The answer is the Overview's verdict as `good`, `attention` or `problem`,
-//! or `unknown` when the engine could not read its own state. Anything else
-//! (no connection, a timeout, another program's answer) is not the engine
-//! answering, and the app says what it saw instead of guessing a state.
+//! or `unknown` when the engine could not read its own state, with the kind
+//! of each thing that needs someone from a closed list (ADR 0023). Anything
+//! else (no connection, a timeout, another program's answer) is not the
+//! engine answering, and the app says what it saw instead of guessing a state.
 use std::time::Duration;
 
 /// How long one question may take, connection included: the engine reads
 /// its state within 1.5 s and answers within 1.75 s.
 pub const TIMEOUT: Duration = Duration::from_secs(3);
 
-/// The most of an answer the app reads; the real one is about 40 bytes.
+/// The most of an answer the app reads; the real one is at most about 400
+/// bytes, with every kind listed.
 const LIMIT: usize = 1024;
+
+/// The most kinds the app reads from one answer; the engine sends each of
+/// its 14 kinds at most once.
+const MOST_REASONS: usize = 32;
+
+/// A kind of thing that needs someone, as the engine's `/status` names it
+/// (ADR 0023), declared most serious first, as the engine lists them: every
+/// kind that stops data now before every kind that only needs a look.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Reason {
+    /// Free space is at or below the reserve: new data is refused.
+    DiskFull,
+    /// Disk space is running low.
+    DiskLow,
+    /// A lab app cannot be sent to: keys missing or not set up any more.
+    LabAppBlocked,
+    /// Tries to send to a lab app keep failing.
+    SendingFailing,
+    /// Analyte stopped working with a machine.
+    MachineStopped,
+    /// A machine's connection is off.
+    MachineLinkOff,
+    /// Sending to a lab app is paused.
+    SendingPaused,
+    /// A machine has sent nothing for too long.
+    MachineSilent,
+    /// A result has waited too long to be sent.
+    ResultWaiting,
+    /// Items on Needs review.
+    NeedsReview,
+    /// Orders whose outcome on the machine is not known.
+    OrdersUncertain,
+    /// Orders a machine cancelled on its own.
+    OrdersCancelled,
+    /// Order sending is paused after a restore.
+    OrdersPausedAfterRestore,
+    /// The order list from the lab app is out of date.
+    OrderListStale,
+}
+
+impl Reason {
+    /// Every kind, most serious first.
+    pub const ALL: [Self; 14] = [
+        Self::DiskFull,
+        Self::DiskLow,
+        Self::LabAppBlocked,
+        Self::SendingFailing,
+        Self::MachineStopped,
+        Self::MachineLinkOff,
+        Self::SendingPaused,
+        Self::MachineSilent,
+        Self::ResultWaiting,
+        Self::NeedsReview,
+        Self::OrdersUncertain,
+        Self::OrdersCancelled,
+        Self::OrdersPausedAfterRestore,
+        Self::OrderListStale,
+    ];
+
+    /// The engine's word for this kind.
+    #[must_use]
+    pub const fn word(self) -> &'static str {
+        match self {
+            Self::DiskFull => "disk_full",
+            Self::DiskLow => "disk_low",
+            Self::LabAppBlocked => "lab_app_blocked",
+            Self::SendingFailing => "sending_failing",
+            Self::MachineStopped => "machine_stopped",
+            Self::MachineLinkOff => "machine_link_off",
+            Self::SendingPaused => "sending_paused",
+            Self::MachineSilent => "machine_silent",
+            Self::ResultWaiting => "result_waiting",
+            Self::NeedsReview => "needs_review",
+            Self::OrdersUncertain => "orders_uncertain",
+            Self::OrdersCancelled => "orders_cancelled",
+            Self::OrdersPausedAfterRestore => "orders_paused_after_restore",
+            Self::OrderListStale => "order_list_stale",
+        }
+    }
+
+    fn of_word(word: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|reason| reason.word() == word)
+    }
+
+    /// What happened, as a notification's title says it.
+    #[must_use]
+    pub const fn title(self) -> &'static str {
+        match self {
+            Self::DiskFull => "The disk is full: Analyte is refusing new data",
+            Self::DiskLow => "The disk is almost full",
+            Self::LabAppBlocked => "Results can’t be sent to a lab app",
+            Self::SendingFailing => "Sending results to a lab app keeps failing",
+            Self::MachineStopped => "Analyte stopped working with a machine",
+            Self::MachineLinkOff => "A machine’s connection is off",
+            Self::SendingPaused => "Sending to a lab app is paused",
+            Self::MachineSilent => "A machine has gone quiet",
+            Self::ResultWaiting => "A result is waiting too long to be sent",
+            Self::NeedsReview => "Something needs review",
+            Self::OrdersUncertain => "Some orders have an unknown outcome",
+            Self::OrdersCancelled => "A machine cancelled some orders",
+            Self::OrdersPausedAfterRestore => "Orders are paused after a restore",
+            Self::OrderListStale => "The order list from the lab app is out of date",
+        }
+    }
+
+    /// What to do, as a notification's body says it.
+    #[must_use]
+    pub const fn advice(self) -> &'static str {
+        match self {
+            Self::DiskFull => "Free up space on this PC. Open Analyte to see how much is left.",
+            Self::DiskLow => "Free up space soon, or Analyte will refuse new data.",
+            Self::LabAppBlocked => "Open Analyte to see which lab app and what to fix.",
+            Self::SendingFailing => "Open Analyte to see which lab app and what to check.",
+            Self::MachineStopped | Self::MachineSilent => "Open Analyte to see which machine.",
+            Self::MachineLinkOff => "Open Analyte to see which machine and what to check.",
+            Self::SendingPaused => {
+                "Results wait until it is resumed. Open Analyte to see which lab app."
+            }
+            Self::ResultWaiting => "Open Analyte to see what holds it up.",
+            Self::NeedsReview => "Open Analyte and look at Needs review.",
+            Self::OrdersUncertain => "Open Analyte to see which orders to check on the machine.",
+            Self::OrdersCancelled => "Open Analyte to see which orders.",
+            Self::OrdersPausedAfterRestore => {
+                "IT must check the orders before sending starts again. Open Analyte for the steps."
+            }
+            Self::OrderListStale => "Open Analyte to see when it last came.",
+        }
+    }
+
+    const fn bit(self) -> u16 {
+        1 << self as u16
+    }
+}
+
+/// A set of kinds; it cannot hold more than the 14 there are.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Reasons(u16);
+
+impl Reasons {
+    /// No kind.
+    pub const NONE: Self = Self(0);
+
+    /// The set of `reasons`.
+    #[must_use]
+    pub fn of(reasons: &[Reason]) -> Self {
+        reasons
+            .iter()
+            .fold(Self::NONE, |set, reason| set.with(*reason))
+    }
+
+    /// This set and `reason`.
+    #[must_use]
+    pub const fn with(self, reason: Reason) -> Self {
+        Self(self.0 | reason.bit())
+    }
+
+    /// Whether `reason` is in the set.
+    #[must_use]
+    pub const fn contains(self, reason: Reason) -> bool {
+        self.0 & reason.bit() != 0
+    }
+
+    /// The kinds in this set and not in `other`.
+    #[must_use]
+    pub const fn without(self, other: Self) -> Self {
+        Self(self.0 & !other.0)
+    }
+
+    /// The kinds in either set.
+    #[must_use]
+    pub const fn and(self, other: Self) -> Self {
+        Self(self.0 | other.0)
+    }
+
+    /// Whether the set is empty.
+    #[must_use]
+    pub const fn is_empty(self) -> bool {
+        self.0 == 0
+    }
+
+    /// How many kinds the set holds.
+    #[must_use]
+    pub const fn len(self) -> u32 {
+        self.0.count_ones()
+    }
+
+    /// The most serious kind in the set.
+    #[must_use]
+    pub fn first(self) -> Option<Reason> {
+        Reason::ALL
+            .into_iter()
+            .find(|reason| self.contains(*reason))
+    }
+}
 
 /// What the engine said about the lab's state.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -53,8 +249,8 @@ impl Health {
 /// What one question to `/status` brought back.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Reply {
-    /// The engine answered with its state.
-    Answered(Health),
+    /// The engine answered with its state and the kinds of thing behind it.
+    Answered(Health, Reasons),
     /// Something answered at the engine's address, but not as the engine
     /// does; what was wrong, in plain words.
     Unrecognised(&'static str),
@@ -86,11 +282,14 @@ impl Silence {
     }
 }
 
-/// The body `/status` sends; any further field is ignored.
+/// The body `/status` sends; any further field is ignored, and an engine
+/// from before ADR 0023 sends no `reasons`.
 #[derive(serde::Deserialize)]
 struct Body {
     state: String,
     version: String,
+    #[serde(default)]
+    reasons: Vec<String>,
 }
 
 /// Asks one engine's `/status`. It never follows a redirect and never uses
@@ -151,7 +350,12 @@ impl Client {
 
 /// The reply a whole answer with `status` and `body` gives.
 fn read(status: u16, body: &[u8]) -> Reply {
-    let Ok(Body { state, version }) = serde_json::from_slice::<Body>(body) else {
+    let Ok(Body {
+        state,
+        version,
+        reasons,
+    }) = serde_json::from_slice::<Body>(body)
+    else {
         return Reply::Unrecognised("The answer is not the engine’s status.");
     };
     let Some(health) = Health::of_word(&state) else {
@@ -162,7 +366,17 @@ fn read(status: u16, body: &[u8]) -> Reply {
     if status != expected || version.is_empty() {
         return Reply::Unrecognised("The answer is not the engine’s status.");
     }
-    Reply::Answered(health)
+    // A kind from a newer engine is left out; the state still counts.
+    let reasons = reasons
+        .iter()
+        .take(MOST_REASONS)
+        .filter_map(|word| Reason::of_word(word))
+        .fold(Reasons::NONE, Reasons::with);
+    // The engine lists kinds only when something needs someone.
+    if matches!(health, Health::Good | Health::Unknown) && !reasons.is_empty() {
+        return Reply::Unrecognised("The answer is not the engine’s status.");
+    }
+    Reply::Answered(health, reasons)
 }
 
 fn silence(error: &reqwest::Error) -> Silence {
@@ -190,8 +404,74 @@ mod tests {
             (503, "unknown", Health::Unknown),
         ] {
             let body = format!("{{\"state\":\"{word}\",\"version\":\"0.1.0\"}}");
-            assert_eq!(read(status, body.as_bytes()), Reply::Answered(health));
+            assert_eq!(
+                read(status, body.as_bytes()),
+                Reply::Answered(health, Reasons::NONE)
+            );
+            let body = format!("{{\"state\":\"{word}\",\"reasons\":[],\"version\":\"0.1.0\"}}");
+            assert_eq!(
+                read(status, body.as_bytes()),
+                Reply::Answered(health, Reasons::NONE)
+            );
         }
+    }
+
+    // ADR 0023: the engine's kinds are read as a set; a kind a newer engine
+    // added is left out and the state still counts; the most serious kind
+    // is first whatever the order sent.
+    #[test]
+    fn the_engine_kinds_read_as_a_set() {
+        let all: Vec<String> = Reason::ALL
+            .iter()
+            .rev()
+            .map(|reason| format!("\"{}\"", reason.word()))
+            .collect();
+        let body = format!(
+            "{{\"state\":\"problem\",\"reasons\":[{}],\"version\":\"0.1.0\"}}",
+            all.join(",")
+        );
+        let Reply::Answered(Health::Problem, reasons) = read(200, body.as_bytes()) else {
+            panic!("every kind reads");
+        };
+        assert_eq!(reasons.len(), 14);
+        assert_eq!(reasons.first(), Some(Reason::DiskFull));
+        let body = "{\"state\":\"attention\",\"reasons\":[\"printer_jam\",\"needs_review\",\"needs_review\"],\"version\":\"0.1.0\"}";
+        assert_eq!(
+            read(200, body.as_bytes()),
+            Reply::Answered(Health::Attention, Reasons::of(&[Reason::NeedsReview]))
+        );
+        let body = "{\"state\":\"attention\",\"reasons\":[\"printer_jam\"],\"version\":\"0.1.0\"}";
+        assert_eq!(
+            read(200, body.as_bytes()),
+            Reply::Answered(Health::Attention, Reasons::NONE)
+        );
+    }
+
+    // ADR 0023: the app knows the same kind words as the engine, in the same
+    // most-serious-first order; both read them from one file.
+    #[test]
+    fn the_kinds_match_the_engine() {
+        let shared: Vec<&str> = include_str!("../../../testing/fixtures/status-reasons.txt")
+            .lines()
+            .collect();
+        let known: Vec<&str> = Reason::ALL.iter().map(|reason| reason.word()).collect();
+        assert_eq!(known, shared);
+    }
+
+    // ADR 0023: the app reads only so many kinds, so a long list cannot
+    // grow what it holds; past the 32nd entry nothing more is looked at.
+    #[test]
+    fn only_the_first_kinds_are_read() {
+        let mut words = vec!["\"printer_jam\""; 32];
+        words.push("\"disk_full\"");
+        let body = format!(
+            "{{\"state\":\"problem\",\"reasons\":[{}],\"version\":\"0.1.0\"}}",
+            words.join(",")
+        );
+        assert_eq!(
+            read(200, body.as_bytes()),
+            Reply::Answered(Health::Problem, Reasons::NONE)
+        );
     }
 
     // AGENTS.md (never guess): an answer that is not the engine's is never
@@ -206,6 +486,22 @@ mod tests {
             (503, "{\"state\":\"good\",\"version\":\"0.1.0\"}"),
             (200, "{\"state\":\"unknown\",\"version\":\"0.1.0\"}"),
             (401, "{\"state\":\"good\",\"version\":\"0.1.0\"}"),
+            (
+                200,
+                "{\"state\":\"good\",\"reasons\":[\"disk_full\"],\"version\":\"0.1.0\"}",
+            ),
+            (
+                503,
+                "{\"state\":\"unknown\",\"reasons\":[\"disk_full\"],\"version\":\"0.1.0\"}",
+            ),
+            (
+                200,
+                "{\"state\":\"problem\",\"reasons\":\"disk_full\",\"version\":\"0.1.0\"}",
+            ),
+            (
+                200,
+                "{\"state\":\"problem\",\"reasons\":[3],\"version\":\"0.1.0\"}",
+            ),
         ] {
             assert!(
                 matches!(read(status, body.as_bytes()), Reply::Unrecognised(_)),

@@ -1,4 +1,4 @@
-//! Tests the overview's first-run welcome, the guided Needs review list and `GET /status`, the verdict in one word, through the real handlers.
+//! Tests the overview's first-run welcome, the guided Needs review list and `GET /status`, the verdict in one word with its kinds, through the real handlers.
 use super::pages::{csrf, encode, login};
 use super::*;
 use analyte_store::Parked;
@@ -1086,9 +1086,10 @@ async fn raw(host: &str, lines: &str) -> Result<String, Error> {
     .await?
 }
 
-/// The JSON body of a `/status` answer, checked to hold exactly the state and
-/// the version and nothing more.
-fn state_of(response: &str) -> Result<String, Error> {
+/// The JSON body of a `/status` answer, checked to hold exactly the state,
+/// the reason kinds and the version and nothing more: the state's word and
+/// the kinds' words.
+fn status_of(response: &str) -> Result<(String, Vec<String>), Error> {
     let lower = response.to_ascii_lowercase();
     assert!(
         lower.contains("content-type: application/json"),
@@ -1102,16 +1103,34 @@ fn state_of(response: &str) -> Result<String, Error> {
     let value: serde_json::Value = serde_json::from_str(body)?;
     let fields = value.as_object().ok_or("status body is not an object")?;
     let keys: Vec<&str> = fields.keys().map(String::as_str).collect();
-    assert_eq!(keys, ["state", "version"], "{body}");
+    assert_eq!(keys, ["reasons", "state", "version"], "{body}");
     assert_eq!(
         fields.get("version").and_then(serde_json::Value::as_str),
         Some(env!("CARGO_PKG_VERSION"))
     );
-    Ok(fields
+    let reasons = fields
+        .get("reasons")
+        .and_then(serde_json::Value::as_array)
+        .ok_or("reasons is not a list")?
+        .iter()
+        .map(|reason| {
+            reason
+                .as_str()
+                .map(str::to_owned)
+                .ok_or("a reason is not a word")
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let state = fields
         .get("state")
         .and_then(serde_json::Value::as_str)
         .ok_or("state is not a word")?
-        .to_owned())
+        .to_owned();
+    Ok((state, reasons))
+}
+
+/// The state's word alone.
+fn state_of(response: &str) -> Result<String, Error> {
+    Ok(status_of(response)?.0)
 }
 
 /// Raises or clears one alert, as the alert rules would.
@@ -1129,12 +1148,14 @@ async fn alert(
     Ok(())
 }
 
-// ADR 0019: the tray reads the Overview's verdict without the admin key, as
-// one word and a version: good, then attention for items to review, then
-// problem when the disk is full, back to good when both clear. The answer
-// holds no name or count, starts no session and is never stored.
+// ADR 0019, ADR 0023: the tray reads the Overview's verdict without the
+// admin key, as one word, the kinds of thing behind it and a version: good
+// with no kinds, then attention for items to review, then problem when the
+// disk alert is raised too, most serious kind first, back to good when both
+// clear. The answer holds no name or count, starts no session and is never
+// stored.
 #[tokio::test(flavor = "multi_thread")]
-async fn status_answers_the_overview_verdict_in_one_word() -> Result<(), Error> {
+async fn status_answers_the_overview_verdict_and_its_kinds() -> Result<(), Error> {
     let directory = crate::admin::private_tempdir()?;
     crate::admin::rotate_token(directory.path())?;
     let store = empty_store(directory.path()).await?;
@@ -1154,20 +1175,58 @@ async fn status_answers_the_overview_verdict_in_one_word() -> Result<(), Error> 
     let good = ask().await?;
     assert!(good.starts_with("HTTP/1.1 200"), "{good}");
     headers_present(&good);
-    assert_eq!(state_of(&good)?, "good");
+    assert_eq!(status_of(&good)?, ("good".to_owned(), Vec::new()));
     alert(&store, analyte_store::AlertKey::ParkedItems, true).await?;
     let attention = ask().await?;
-    assert_eq!(state_of(&attention)?, "attention");
-    for hidden in ["cobas-e411", "lab", "3", "review"] {
+    assert_eq!(
+        status_of(&attention)?,
+        ("attention".to_owned(), vec!["needs_review".to_owned()])
+    );
+    // Only the closed list's words: no machine, lab app, count or line text.
+    for hidden in ["cobas-e411", "\"lab\"", "3", "items need"] {
         let (_, body) = attention.split_once("\r\n\r\n").unwrap_or_default();
         assert!(!body.contains(hidden), "status names {hidden}: {body}");
     }
     alert(&store, analyte_store::AlertKey::DiskReserve, true).await?;
-    assert_eq!(state_of(&ask().await?)?, "problem");
+    assert_eq!(
+        status_of(&ask().await?)?,
+        (
+            "problem".to_owned(),
+            vec!["disk_low".to_owned(), "needs_review".to_owned()]
+        )
+    );
     alert(&store, analyte_store::AlertKey::DiskReserve, false).await?;
     alert(&store, analyte_store::AlertKey::ParkedItems, false).await?;
-    assert_eq!(state_of(&ask().await?)?, "good");
+    assert_eq!(status_of(&ask().await?)?, ("good".to_owned(), Vec::new()));
     drop(link);
+    stop(state, stopper, owner, store).await
+}
+
+// ADR 0023: a machine whose link is off is a problem named
+// `machine_link_off`, from the same link state the Machines page shows; the
+// machine's name stays out of the answer.
+#[tokio::test(flavor = "multi_thread")]
+async fn status_names_a_machine_link_off_without_the_machine() -> Result<(), Error> {
+    use crate::machine::link::status::{Link, Reporter};
+    let directory = crate::admin::private_tempdir()?;
+    crate::admin::rotate_token(directory.path())?;
+    let store = empty_store(directory.path()).await?;
+    let dialing = Reporter::new(Link::TcpClient);
+    let (state, stopper, owner, host) = start_overview_server(
+        directory.path(),
+        &store,
+        vec![machine("dialing-1", true, dialing.subscribe(), "main-lab")?],
+        vec![loopback_destination("main-lab")?],
+    )
+    .await?;
+    let answer = raw(&host, &format!("Host: {host}\r\n")).await?;
+    assert!(answer.starts_with("HTTP/1.1 200"), "{answer}");
+    assert_eq!(
+        status_of(&answer)?,
+        ("problem".to_owned(), vec!["machine_link_off".to_owned()])
+    );
+    assert!(!answer.contains("dialing-1"), "{answer}");
+    drop(dialing);
     stop(state, stopper, owner, store).await
 }
 

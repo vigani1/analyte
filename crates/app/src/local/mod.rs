@@ -110,7 +110,7 @@ impl Answer {
 pub fn answer(
     request: &Request<'_>,
     off: &Off,
-    bar: title_bar::View,
+    bar: &title_bar::View,
     now: jiff::Timestamp,
 ) -> (Answer, Option<Action>) {
     match (request.method, request.path) {
@@ -205,7 +205,7 @@ mod tests {
                 webview,
             },
             &Off::default(),
-            title_bar::View::default(),
+            &title_bar::View::default(),
             jiff::Timestamp::UNIX_EPOCH,
         )
     }

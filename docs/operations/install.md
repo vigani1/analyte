@@ -103,8 +103,11 @@ normal form.
   pause (the engine is not answering). Its menu has **Open Analyte**, the state
   in words, **Start at sign-in** and **Quit app**, which closes only the app;
   the engine keeps running.
-- **Notifications:** one when the state gets worse, saying only the state.
-  Clicking it opens the window.
+- **Notifications:** one when the state gets worse or something new needs
+  someone, saying what happened and what to do, such as "A machine’s
+  connection is off". Clicking it, also later in the notification centre,
+  opens the window on the Overview. The title bar keeps the last one, with
+  "Fixed since" and the time once it is gone.
 - **Engine off:** when the engine does not answer, the window shows what the app
   saw and, if the service is stopped, **Start engine**. It switches back to the
   pages by itself once the engine answers.

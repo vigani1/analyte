@@ -1,4 +1,4 @@
-//! Tests the tray's view of a real HTTP engine stand-in: running, gone off, back again, and another program on the engine's port.
+//! Tests the tray's view of a real HTTP engine stand-in: running, gone off, back again, a kind of thing that needs someone, and another program on the engine's port.
 use analyte_app::engine::{
     Engine,
     status::{Client, Health, Reply, Silence},
@@ -57,39 +57,85 @@ async fn engine_goes_off_and_comes_back() -> Result<(), Error> {
     let now = jiff::Timestamp::now;
 
     let (stop, owner) = serve(listener, 200, r#"{"state":"good","version":"0.1.0"}"#);
-    let up = watch
-        .observe(ask(&client).await?, now())
-        .ok_or("no change")?;
+    let up = watch.observe(ask(&client).await?, now());
+    assert_eq!(up.notice, None, "the first state is not news");
+    let up = up.change.ok_or("no change")?;
     assert_eq!(up.to, Shown::Running(Health::Good));
-    assert_eq!(up.notice(), None, "the first state is not news");
 
     stop.send(()).map_err(|()| "stand-in already stopped")?;
     owner.await??;
     let first = ask(&client).await?;
     assert_eq!(first, Reply::Silent(Silence::Refused));
-    assert_eq!(watch.observe(first, now()), None, "one miss is not off");
-    let off = watch
-        .observe(ask(&client).await?, now())
-        .ok_or("no change")?;
-    assert_eq!(off.to, Shown::Off);
-    assert!(off.notice().is_some(), "going off notifies once");
+    let missed = watch.observe(first, now());
     assert_eq!(
-        watch.observe(ask(&client).await?, now()),
-        None,
+        (missed.change, missed.notice),
+        (None, None),
+        "one miss is not off"
+    );
+    let off = watch.observe(ask(&client).await?, now());
+    assert!(off.notice.is_some(), "going off notifies once");
+    assert_eq!(off.change.map(|change| change.to), Some(Shown::Off));
+    let still = watch.observe(ask(&client).await?, now());
+    assert_eq!(
+        (still.change, still.notice),
+        (None, None),
         "still off, no repeat"
     );
 
     let again = tokio::net::TcpListener::bind(("127.0.0.1", port)).await?;
+    // An engine from before ADR 0023 sends no kinds; its state still counts.
     let (stop, owner) = serve(again, 200, r#"{"state":"attention","version":"0.1.0"}"#);
-    let back = watch
-        .observe(ask(&client).await?, now())
-        .ok_or("no change")?;
-    assert_eq!(back.to, Shown::Running(Health::Attention));
-    assert_eq!(back.notice(), None, "coming back is better, not worse");
+    let back = watch.observe(ask(&client).await?, now());
+    assert_eq!(back.notice, None, "coming back is better, not worse");
+    assert_eq!(
+        back.change.map(|change| change.to),
+        Some(Shown::Running(Health::Attention))
+    );
     assert_eq!(
         watch.last_answer().map(|(_, health)| health),
         Some(Health::Attention)
     );
+    stop.send(()).map_err(|()| "stand-in already stopped")?;
+    owner.await??;
+    Ok(())
+}
+
+// ADR 0023: the stand-in names a machine's connection off; the notice says
+// so in plain words with what to do, and the title bar line keeps it.
+#[tokio::test]
+async fn a_kind_from_the_engine_heads_the_notice() -> Result<(), Error> {
+    let good = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let port = good.local_addr()?.port();
+    let engine = Engine::at(port).ok_or("port 0")?;
+    let client = Client::new(&engine)?;
+    let mut watch = Watch::new();
+    let (stop, owner) = serve(
+        good,
+        200,
+        r#"{"state":"good","reasons":[],"version":"0.1.0"}"#,
+    );
+    watch.observe(ask(&client).await?, jiff::Timestamp::now());
+    stop.send(()).map_err(|()| "stand-in already stopped")?;
+    owner.await??;
+    let off = tokio::net::TcpListener::bind(("127.0.0.1", port)).await?;
+    let (stop, owner) = serve(
+        off,
+        200,
+        r#"{"state":"problem","reasons":["machine_link_off","needs_review"],"version":"0.1.0"}"#,
+    );
+    let now = jiff::Timestamp::now();
+    let seen = watch.observe(ask(&client).await?, now);
+    let notice = seen.notice.ok_or("a worse state notifies")?;
+    assert_eq!(notice.title, "A machine’s connection is off");
+    assert_eq!(
+        notice.body,
+        "Open Analyte to see which machine and what to check. 1 more thing needs a look too."
+    );
+    let line = watch
+        .recap()
+        .and_then(|recap| recap.line(now, &jiff::tz::TimeZone::UTC))
+        .ok_or("the title bar keeps the notice")?;
+    assert!(line.ends_with(" · A machine’s connection is off"), "{line}");
     stop.send(()).map_err(|()| "stand-in already stopped")?;
     owner.await??;
     Ok(())
@@ -106,7 +152,10 @@ async fn another_program_on_the_port_is_not_the_engine() -> Result<(), Error> {
     assert!(matches!(reply, Reply::Unrecognised(_)), "{reply:?}");
     let mut watch = Watch::new();
     assert_eq!(
-        watch.observe(reply, jiff::Timestamp::now()).map(|c| c.to),
+        watch
+            .observe(reply, jiff::Timestamp::now())
+            .change
+            .map(|c| c.to),
         Some(Shown::Off)
     );
     stop.send(()).map_err(|()| "stand-in already stopped")?;

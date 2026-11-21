@@ -29,3 +29,4 @@ links to its replacement; none is superseded today.
 | [0020](0020-admin-reads-stop-at-their-deadline.md) | Admin reads stop at their deadline; writes never do |
 | [0021](0021-windows-sign-in-pipe.md)            | Windows sign-in for the Analyte app through a local pipe |
 | [0022](0022-title-bar-snap-layouts-and-window-menu.md) | Snap layouts and the window menu for the app's title bar |
+| [0023](0023-status-reasons-and-notifications.md) | Notifications that say what happened |

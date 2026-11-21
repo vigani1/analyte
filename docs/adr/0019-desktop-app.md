@@ -7,7 +7,10 @@ Completes PR d of
 [ADR 0021](0021-windows-sign-in-pipe.md): the app signs people in with their
 Windows account; the key form stays the way back in. Refined by
 [ADR 0022](0022-title-bar-snap-layouts-and-window-menu.md): the title bar
-regains snap layouts and the window menu.
+regains snap layouts and the window menu. Refined by
+[ADR 0023](0023-status-reasons-and-notifications.md): `/status` names the
+kinds of thing that need someone, notifications say what happened, a click
+opens the Overview and the title bar keeps the last notification.
 
 ## Context
 

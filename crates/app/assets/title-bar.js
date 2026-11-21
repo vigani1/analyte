@@ -7,9 +7,10 @@
 // bar's app-region (ADR 0022).
 //
 // The bar asks the app nothing: the app calls analyteTitleBar(view) with the
-// engine's state, whether the window is maximized and where the mouse is on
-// the maximize button, every word already written. A right-click on a button
-// shows no web page menu (Back, Reload, Inspect).
+// engine's state, the last notification's line, whether the window is
+// maximized and where the mouse is on the maximize button, every word
+// already written. A right-click on a button shows no web page menu (Back,
+// Reload, Inspect).
 'use strict';
 (function () {
   var bar = document.querySelector('.title-bar');
@@ -36,6 +37,7 @@
 
   window.analyteTitleBar = function (view) {
     var state = bar.querySelector('[data-bar-state]');
+    var note = bar.querySelector('[data-bar-note]');
     var toggle = bar.querySelector('[data-window="toggle-maximize"]');
     bar.setAttribute('data-sizing', view.sizing);
     toggle.setAttribute('aria-label', view.button);
@@ -44,5 +46,7 @@
     state.setAttribute('aria-label', view.label);
     state.title = view.word;
     state.firstElementChild.className = view.dot;
+    note.textContent = view.note;
+    note.hidden = !view.note;
   };
 })();

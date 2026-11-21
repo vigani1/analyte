@@ -118,7 +118,7 @@ fn facts(off: &Off, zone: &TimeZone, now: Timestamp) -> Vec<(&'static str, Strin
         Some(Reply::Unrecognised(why)) => saw.push(format!(
             "Another program answers at the engine’s address. {why}"
         )),
-        Some(Reply::Answered(_)) | None => {}
+        Some(Reply::Answered(..)) | None => {}
     }
     if let Some(service) = &off.service {
         saw.push(service.words());

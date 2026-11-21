@@ -21,14 +21,17 @@ show another site in its window, or say anything about patients or results.
 - `engine`: where the engine is (`analyte-app.toml` beside the app, written by
   setup), its `/status` client, and asking Windows about the service and to
   start it (`sc.exe`, bounded).
-- `watch`: the state the tray shows, when the engine counts as off, and which
-  changes earn a notification (only worse ones).
+- `watch`: the state the tray shows, when the engine counts as off, which
+  answers earn a notification (a worse state or a new kind,
+  [ADR 0023](../../docs/adr/0023-status-reasons-and-notifications.md)), what
+  it says, and the title bar's line about the last one.
 - `navigation`: what the pages may show, and which addresses are Windows
   sign-in for the app to run.
 - `sign_in`: Windows sign-in ([ADR 0021](../../docs/adr/0021-windows-sign-in-pipe.md)):
   the pipe's two lines (`line`), the pipe client (`pipe`, Windows), the
   once-per-30-s guard and where each answer leads.
-- `title_bar`: what the title bar shows (the engine's dot and word, Maximize
+- `title_bar`: what the title bar shows (the engine's dot and word, the last
+  notification's line, Maximize
   or Restore and the button's look), how the window splits between the bar
   and the pages, where the maximize button sits, and which window-menu items
   each sizing offers.

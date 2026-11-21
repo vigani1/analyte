@@ -54,6 +54,16 @@ fn target(shared: &Shared, shown: Shown) -> String {
     }
 }
 
+/// Where the Overview is for `shown`: the engine's first page on a running
+/// engine, which signs the window in first when it has to (ADR 0021 §6),
+/// else the Engine off screen.
+fn overview(shared: &Shared, shown: Shown) -> String {
+    match (&shared.engine, shown) {
+        (Ok(engine), Shown::Running(_)) => format!("{}/", engine.origin().text()),
+        (Ok(_) | Err(_), _) => engine_off(),
+    }
+}
+
 /// The origin the pages may show besides the app's own: the engine's, or
 /// only the app's own when the settings named no engine.
 fn engine_origin(shared: &Shared) -> Origin {
@@ -101,7 +111,7 @@ pub(crate) fn bar_webview<R: Runtime>(bar: url::Url) -> WebviewBuilder<R> {
             if payload.event() == PageLoadEvent::Finished
                 && let Some(shared) = webview.try_state::<std::sync::Arc<Shared>>()
             {
-                show(&webview, shared.bar());
+                show(&webview, &shared.bar());
             }
         })
         .disable_drag_drop_handler()
@@ -167,6 +177,27 @@ pub(super) fn open(app: &AppHandle, shared: &Shared, shown: Shown) {
         }
         if let Err(error) = tauri_plugin_opener::open_url(&address, None::<&str>) {
             tracing::error!(%error, "the pages could not be opened in the browser either");
+        }
+    }
+}
+
+/// Shows the window on the Overview (ADR 0023): a new window starts there,
+/// and one already open leaves the page it was on.
+pub(super) fn open_overview(app: &AppHandle, shared: &Shared, shown: Shown) {
+    let open = app.get_window(LABEL).is_some();
+    tracing::info!(open, "opening the window on the overview");
+    self::open(app, shared, shown);
+    if !open {
+        return;
+    }
+    if let Some(pages) = app.get_webview(title_bar::PAGES) {
+        match url::Url::parse(&overview(shared, shown)) {
+            Ok(url) => {
+                if let Err(error) = pages.navigate(url) {
+                    tracing::warn!(%error, "the window could not open the overview");
+                }
+            }
+            Err(error) => tracing::error!(%error, "the overview's address is not valid"),
         }
     }
 }
@@ -258,7 +289,7 @@ fn follow_mouse(window: &Window, mouse: Mouse) {
         clicked = view.pointer.clicks(mouse);
         view.pointer = view.pointer.after(mouse);
     }) {
-        show_in(window, view);
+        show_in(window, &view);
     }
     if clicked {
         let toggled = match window.is_maximized() {
@@ -322,7 +353,7 @@ pub(super) fn on_event(window: &Window, event: &WindowEvent) {
             if let Some(shared) = window.try_state::<std::sync::Arc<Shared>>()
                 && let Some(view) = shared.update_bar(|view| view.sizing = Sizing::of(maximized))
             {
-                show_in(window, view);
+                show_in(window, &view);
             }
             match_window_menu(window, Sizing::of(maximized));
         }
@@ -342,18 +373,28 @@ pub(super) fn show_state(app: &AppHandle, shared: &Shared, shown: Shown) {
     if let Some(view) = shared.update_bar(|view| view.shown = shown)
         && let Some(window) = app.get_window(LABEL)
     {
-        show_in(&window, view);
+        show_in(&window, &view);
     }
 }
 
-fn show_in<R: Runtime>(window: &Window<R>, view: View) {
+/// Shows the last notification's line in the title bar, if the window is
+/// open and the line changed.
+pub(super) fn show_note(app: &AppHandle, shared: &Shared, note: String) {
+    if let Some(view) = shared.update_bar(|view| view.note = note)
+        && let Some(window) = app.get_window(LABEL)
+    {
+        show_in(&window, &view);
+    }
+}
+
+fn show_in<R: Runtime>(window: &Window<R>, view: &View) {
     if let Some(bar) = window.get_webview(title_bar::LABEL) {
         show(&bar, view);
     }
 }
 
 /// Runs `view`'s script in the bar.
-fn show<R: Runtime>(bar: &Webview<R>, view: View) {
+fn show<R: Runtime>(bar: &Webview<R>, view: &View) {
     if let Err(error) = bar.eval(view.script()) {
         tracing::warn!(%error, "the title bar could not be updated");
     }
