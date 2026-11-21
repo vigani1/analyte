@@ -6,9 +6,12 @@
 //! logged or written to the peer. The bytes may hold patient data, so they never
 //! leave this owner: the page sees only their count, the framing characters
 //! among them and the guess of their protocol family ([`super::verdict`]),
-//! which outlive them. When the machine connects to this PC, the address of
-//! the device that connected is kept too, so step 4 can offer to accept only
-//! that device (ADR 0026); an address is not patient data.
+//! which outlive them. The one exception is [`Session::start_showing`]: the
+//! `machines test --show-bytes` command, run by a person at the lab PC who
+//! asked for them, gets the kept bytes once when the test ends, to print to
+//! that person's console only. When the machine connects to this PC, the
+//! address of the device that connected is kept too, so the setup can offer
+//! to accept only that device (ADR 0026); an address is not patient data.
 use super::verdict::{self, Guess};
 use analyte_transport::serial;
 use std::{
@@ -104,6 +107,9 @@ struct Capture {
     end: Option<End>,
     guess: Guess,
     framing: Vec<u8>,
+    /// Where the kept bytes go when the test ends, instead of being dropped;
+    /// only for [`Session::start_showing`].
+    handover: Option<tokio::sync::oneshot::Sender<Vec<u8>>>,
 }
 
 impl Capture {
@@ -129,7 +135,11 @@ impl Capture {
 
     fn finish(&mut self, end: End) {
         // Discard the bytes when the test ends; only the count remains.
-        self.bytes = Vec::new();
+        let bytes = std::mem::take(&mut self.bytes);
+        if let Some(handover) = self.handover.take() {
+            // A receiver that is gone no longer wants them; they drop here.
+            let _ = handover.send(bytes);
+        }
         self.end.get_or_insert(end);
     }
 }
@@ -159,6 +169,27 @@ pub(crate) const SERIAL_READ: Duration = Duration::from_millis(200);
 impl Session {
     /// Starts the test in the background; it ends by itself after `limits.duration`.
     pub(crate) fn start(label: String, target: Target, limits: Limits) -> Self {
+        Self::begin(label, target, limits, None)
+    }
+
+    /// Starts the test like [`Session::start`], and hands its kept bytes (at
+    /// most `limits.bytes`) to the receiver once when it ends, instead of
+    /// dropping them. Only for a person at the console who asked to see them.
+    pub(crate) fn start_showing(
+        label: String,
+        target: Target,
+        limits: Limits,
+    ) -> (Self, tokio::sync::oneshot::Receiver<Vec<u8>>) {
+        let (handover, bytes) = tokio::sync::oneshot::channel();
+        (Self::begin(label, target, limits, Some(handover)), bytes)
+    }
+
+    fn begin(
+        label: String,
+        target: Target,
+        limits: Limits,
+        handover: Option<tokio::sync::oneshot::Sender<Vec<u8>>>,
+    ) -> Self {
         let deadline = Instant::now()
             .checked_add(limits.duration)
             .unwrap_or_else(Instant::now);
@@ -171,6 +202,7 @@ impl Session {
             end: None,
             guess: Guess::Nothing,
             framing: Vec::new(),
+            handover,
         }));
         let stop = Arc::new(Notify::new());
         let owner = tokio::spawn(run(
@@ -211,6 +243,7 @@ impl Session {
             end: Some(End::Failed("test state unavailable".into())),
             guess: Guess::Nothing,
             framing: Vec::new(),
+            handover: None,
         };
         let capture = self.capture.lock();
         let capture = capture.as_deref().unwrap_or(&unavailable);

@@ -110,12 +110,12 @@ pub(super) struct Port {
 
 /// One address Analyte can listen on: one of this PC's, every network card,
 /// or the one saved before.
-pub(super) struct Host {
-    pub(super) value: String,
+pub(in crate::admin::setup) struct Host {
+    pub(in crate::admin::setup) value: String,
     /// The address, such as "192.168.1.20".
-    pub(super) address: String,
+    pub(in crate::admin::setup) address: String,
     /// The adapter, or what the address means.
-    pub(super) meta: String,
+    pub(in crate::admin::setup) meta: String,
     pub(super) checked: bool,
 }
 

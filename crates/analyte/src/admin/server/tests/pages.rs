@@ -163,7 +163,6 @@ async fn start_pages_server(
     let state = Arc::new(Context {
         alert_endpoints: vec![],
         retention: Vec::new(),
-        config_path: root.join("program.toml"),
         token: Token::load(root)?,
         sessions: Sessions::default(),
         windows: Arc::new(windows::SignIn::new(None)),
@@ -175,7 +174,10 @@ async fn start_pages_server(
         retired: crate::admin::Draining::new(),
         directory: root.to_owned(),
         reserve: 1,
-        setup: crate::admin::setup::Setup::for_test(root),
+        setup: Arc::new(crate::admin::setup::Setup::for_test(
+            &root.join("program.toml"),
+            root,
+        )),
         assets: crate::admin::view::assets::Root::of_this_build(),
         installed: crate::admin::more::Installed::for_test(Vec::new()),
         write_budget: WRITE_BUDGET,

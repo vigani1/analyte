@@ -118,15 +118,9 @@ fn cursor<'de, D: serde::Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Option<ActivityCursor>, D::Error> {
     let written = String::deserialize(deserializer)?;
-    let mut parts = written.splitn(3, '.').map(str::parse::<i64>);
-    match (parts.next(), parts.next(), parts.next()) {
-        (Some(Ok(at)), Some(Ok(source)), Some(Ok(key))) => {
-            Ok(Some(ActivityCursor { at, source, key }))
-        }
-        _ => Err(serde::de::Error::custom(
-            "expected the position of a line, as at.source.key",
-        )),
-    }
+    parse_position(&written)
+        .map(Some)
+        .map_err(serde::de::Error::custom)
 }
 
 /// What the page reads in one store request.
@@ -152,7 +146,7 @@ pub(in crate::admin) async fn activity(
         &state,
         session.as_ref(),
         Tab::Activity,
-        read(&state, machine.clone(), show, before, delivery),
+        read(&state.store, machine.clone(), show, before, delivery, PAGE),
         |read, session, now| {
             feed(
                 &state,
@@ -168,17 +162,19 @@ pub(in crate::admin) async fn activity(
     .await
 }
 
+/// Reads one page of at most `limit` lines, and whether more follow.
 async fn read(
-    state: &Context,
+    store: &analyte_store::Handle,
     machine: Option<String>,
     show: Show,
     before: Option<ActivityCursor>,
     delivery: Option<DeliveryId>,
+    limit: usize,
 ) -> Result<Read, Error> {
     let day = format::today_span(Timestamp::now());
     let group = show.group();
-    Ok(state
-        .store
+    let ask = limit.saturating_add(1);
+    Ok(store
         .read::<_, CommandError>(deadline()?, move |s| {
             let machine = machine.as_deref();
             let start = before.unwrap_or(ActivityCursor::NEWEST);
@@ -186,10 +182,9 @@ async fn read(
                 Some(delivery) => s.delivery_activity(delivery, before, limit),
                 None => s.activity(machine, group, before, limit),
             };
-            let (lines, more) =
-                one_page::<_, CommandError>(page(start, PAGE + 1)?, PAGE, |last| {
-                    Ok(!page(last.cursor, 1)?.is_empty())
-                })?;
+            let (lines, more) = one_page::<_, CommandError>(page(start, ask)?, limit, |last| {
+                Ok(!page(last.cursor, 1)?.is_empty())
+            })?;
             // One delivery's tries have no filters to count for.
             let today = day
                 .filter(|_| delivery.is_none())
@@ -320,15 +315,7 @@ fn days(state: &Context, lines: &[ActivityLine], now: Timestamp) -> Vec<Day> {
                 || format::FEED_UNDATED.to_owned(),
                 |at| format::feed_day(at, now),
             );
-        let said = format::said(
-            &line.what,
-            line.at,
-            line.machine.as_deref().map(|id| format::Named {
-                id,
-                model: model(state, id),
-            }),
-            crate::admin::parked::headline,
-        );
+        let said = said(line, |id| model(state, id));
         let shown = FeedLine {
             key: key(line),
             at: line.at.map(format::feed_time),
@@ -348,6 +335,87 @@ fn days(state: &Context, lines: &[ActivityLine], now: Timestamp) -> Vec<Day> {
         }
     }
     days
+}
+
+/// What `line` says, as the page and the command line word it; `model`
+/// gives a set-up machine's model.
+fn said<'a>(line: &'a ActivityLine, model: impl Fn(&str) -> Option<&'a str>) -> format::Said {
+    format::said(
+        &line.what,
+        line.at,
+        line.machine.as_deref().map(|id| format::Named {
+            id,
+            model: model(id),
+        }),
+        crate::admin::parked::headline,
+    )
+}
+
+/// One Activity line as `analyte activity` prints it, in the page's words.
+#[derive(serde::Serialize)]
+pub(in crate::admin) struct Printed {
+    /// When it was stored, RFC 3339 in UTC; none when no time was stored.
+    pub(in crate::admin) at: Option<String>,
+    /// The same time on this computer's clock, as `2026-11-21 14:03:07`.
+    pub(in crate::admin) local: Option<String>,
+    /// The line's kind, as its badge says: "Stored", "Sent", "Order", ...
+    pub(in crate::admin) kind: &'static str,
+    /// The line's words.
+    pub(in crate::admin) text: String,
+}
+
+/// One page of the Activity feed for the command line: at most `limit`
+/// lines before `before`, for `machine` or all, and the position to pass as
+/// `--before` for the next page when more follow. Failed tries in a row of
+/// one delivery are one line, as on the page. `models` names each machine's
+/// model by its ID.
+/// # Errors
+/// Reports deadline overflow and store read failures.
+pub(in crate::admin) async fn printed(
+    store: &analyte_store::Handle,
+    models: &std::collections::BTreeMap<String, String>,
+    machine: Option<String>,
+    before: Option<ActivityCursor>,
+    limit: usize,
+) -> Result<(Vec<Printed>, Option<String>), Error> {
+    let read = read(store, machine, Show::All, before, None, limit).await?;
+    let model = |id: &str| models.get(id).map(String::as_str);
+    let lines = read
+        .lines
+        .iter()
+        .map(|line| {
+            let said = said(line, model);
+            let at = line.at.and_then(|at| Timestamp::from_second(at).ok());
+            Printed {
+                at: at.map(|at| at.to_string()),
+                local: at.map(format::local_time),
+                kind: said.word,
+                text: format!("{} {}", said.head, said.rest),
+            }
+        })
+        .collect();
+    let next = read
+        .lines
+        .last()
+        .filter(|_| read.more)
+        .map(|last| position(last.cursor));
+    Ok((lines, next))
+}
+
+/// A line's position as the address and `--before` write it: `at.source.key`.
+fn position(cursor: ActivityCursor) -> String {
+    format!("{}.{}.{}", cursor.at, cursor.source, cursor.key)
+}
+
+/// Reads a position written `at.source.key`, as [`position`] writes it.
+/// # Errors
+/// Refuses anything else, saying what is expected.
+pub(in crate::admin) fn parse_position(written: &str) -> Result<ActivityCursor, &'static str> {
+    let mut parts = written.splitn(3, '.').map(str::parse::<i64>);
+    match (parts.next(), parts.next(), parts.next()) {
+        (Some(Ok(at)), Some(Ok(source)), Some(Ok(key))) => Ok(ActivityCursor { at, source, key }),
+        _ => Err("expected the position of a line, as at.source.key"),
+    }
 }
 
 /// A line's key for the live script: its position, or for failed tries in a
@@ -402,9 +470,6 @@ fn href(lines: Lines<'_>, before: ActivityCursor) -> String {
             parts.push(format!("delivery={}", uuid::Uuid::from(delivery)));
         }
     }
-    parts.push(format!(
-        "before={}.{}.{}",
-        before.at, before.source, before.key
-    ));
+    parts.push(format!("before={}", position(before)));
     format!("{}?{}", Tab::Activity.href(), parts.join("&"))
 }

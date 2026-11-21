@@ -260,7 +260,8 @@ Reprocessing reads current files separately from running receive sessions.
 ## Credentials
 
 Destination keys come from the process environment or from the locked
-credentials file, which the [setup page](operate.md#setup-page) writes. An
+credentials file, which the [setup page](operate.md#setup-page) writes
+(or `analyte lab-apps keys`, [from the command line](#from-the-command-line)). An
 environment variable always wins; a name without one is read from the file.
 
 The locked file is `<data_directory>/credentials/credentials.toml`. The service
@@ -350,3 +351,81 @@ Machine definitions use `schema_version = 2`: set `protocol` and
 `transport.kind`, and the loader derives framing, dialog and syntax, so those
 sections carry no `kind` key. Any other machine schema version is refused as
 unsupported.
+
+## From the command line
+
+Everything the [Setup page](operate.md#setup-page) and the Lab apps page do
+can also be done from PowerShell (or a Linux shell) with `analyte machines`
+and `analyte lab-apps` ([ADR 0025](../adr/0025-setup-from-the-command-line.md)).
+They use the pages' own checks, dated backups, safe write and roll back, and
+write the same audit row, naming the `--actor` you give. Run them in an
+administrator PowerShell, with the program file:
+
+```powershell
+$analyte = 'C:\Program Files\Analyte\analyte.exe'
+$config  = 'C:\ProgramData\Analyte\config\analyte.toml'
+& $analyte --config $config machines list          # settings, and the live state if the engine runs
+& $analyte --config $config machines models        # models, ready or not, how each was checked
+& $analyte --config $config machines ports         # serial ports with adapter and USB serial number
+```
+
+Add a network machine (for a model where the machine connects to Analyte,
+`--address` is this PC's address), check it with `--dry-run` first, then
+save. `$model` is a key that `machines models` lists as Ready:
+
+```powershell
+$model = 'vendor/model'
+& $analyte --config $config --actor it-alex machines add hl7-1
+& $analyte --config $config --actor it-alex machines set hl7-1 `
+    --model $model --address 192.168.1.20 --port 5600 --lab-app main-lab --dry-run
+& $analyte --config $config --actor it-alex machines set hl7-1 `
+    --model $model --address 192.168.1.20 --port 5600 --lab-app main-lab
+```
+
+Add a serial machine on a USB adapter, found by its serial number in any USB
+socket (`--serial-port COM3` names a fixed port instead):
+
+```powershell
+$model = 'vendor/serial-model'
+& $analyte --config $config --actor it-alex machines add cobas-1
+& $analyte --config $config --actor it-alex machines set cobas-1 `
+    --model $model --usb-serial A10K3XYZ --lab-app main-lab
+```
+
+Test the connection: the listen-only test of step 3, at most 60 seconds and
+64 KiB, nothing sent and nothing stored. It prints the page's verdict; the
+exit code is 0 when it saw the model's own format and 4 when it did not.
+`--show-bytes` also prints the bytes, which may contain patient data: never
+save or share that output.
+
+```powershell
+& $analyte --config $config machines test cobas-1 --seconds 30
+```
+
+Add a lab app and set its keys. Keys are never options: the command asks for
+them without showing what you type, or reads them from standard input, the
+API key on the first line and the signing key on the second (an empty line
+keeps the stored key). The locked keys file can only be written as the
+account the service runs as; when the command cannot write it as you, it
+says so and nothing is stored: set the keys on the Lab apps page instead.
+
+```powershell
+& $analyte --config $config --actor it-alex lab-apps add main-lab --address https://lab.example.org
+& $analyte --config $config --actor it-alex lab-apps set main-lab --request-timeout-seconds 20
+& $analyte --config $config --actor it-alex lab-apps keys main-lab
+& $analyte --config $config lab-apps list
+```
+
+In a terminal, a missing choice is asked for step by step, then a summary and
+`Save? [y/N]`. In a script, or with piped input, nothing is asked: a missing
+choice is refused with the page's reason. A refusal prints `Fix this: …` and
+exits with 1 and nothing changed; 3 means the change was written but its
+audit row or its keys were not. Remove a machine with
+`machines remove <name>`; while work is still unfinished it lists it and
+refuses unless you add `--anyway`.
+
+Changes apply after a restart, as on the page:
+
+```powershell
+Restart-Service Analyte
+```

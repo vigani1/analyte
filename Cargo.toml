@@ -66,6 +66,9 @@ hmac = "0.13"
 sha2 = "0.11"
 base64 = "0.23"
 subtle = "2.6"
+# Reads a key at the terminal without echoing it, for `lab-apps keys`
+# (owner-approved 2026-11-21); Apache-2.0, uses the windows-sys and libc already locked.
+rpassword = { version = "7.5.5", default-features = false }
 getrandom = { version = "=0.4.3", default-features = false } # admin token OS entropy
 
 # Admin pages (ADR 0018): compiled HTML templates, escaping on by default
@@ -92,6 +95,7 @@ webview2-com = { version = "0.39.1", default-features = false }
 
 # Command line
 clap = { version = "4.6", features = ["derive"] }
+clap_complete = { version = "4.6.12", default-features = false } # `analyte completions`; needs only clap
 
 # Tests only
 analyte-fixtures = { path = "crates/testing/fixtures", version = "0.1.0" }

@@ -8,6 +8,7 @@
 mod addresses;
 mod definitions;
 pub(in crate::admin) use definitions::model_name;
+mod command;
 mod entries;
 mod lab_apps;
 mod machines;
@@ -15,7 +16,11 @@ mod page;
 mod plan;
 mod site;
 mod wizard;
+// Only `analyte doctor` on Windows reads the firewall rule's names.
+#[cfg(windows)]
+pub(in crate::admin) use wizard::verdict::{FIREWALL_RULE, FIREWALL_RULE_NAME};
 
+pub use command::{LabApps, Machines, Outcome, run_lab_apps, run_machines};
 pub(in crate::admin) use lab_apps::{Found, key_sources};
 pub(super) use lab_apps::{
     PAGE as LAB_APPS, add as add_lab_app, add_form as add_lab_app_form,
@@ -102,10 +107,15 @@ struct Running {
     lab_app: Identifier,
 }
 
-/// Setup state owned by the admin server.
+/// The setup files and what guards them: the program file, the data directory
+/// that holds the locked keys file, the outside seams, what runs now and the
+/// write lock. The setup page and the `machines` and `lab-apps` commands both
+/// change the installation through it, so they share every check and write.
 pub(crate) struct Setup {
     seams: Seams,
     running: Vec<Running>,
+    /// The program file (`analyte.toml`) the installation was loaded from.
+    config: PathBuf,
     data_directory: PathBuf,
     /// Held while one save, add or remove reads and writes the configuration files,
     /// so two of them never interleave; only taken on blocking threads, never across an await.
@@ -131,13 +141,24 @@ impl Setup {
                 }
             })
             .collect();
-        Self::with(seams, running, program.data_directory())
+        Self::with(
+            seams,
+            running,
+            &program.source_path,
+            program.data_directory(),
+        )
     }
 
-    fn with(seams: Seams, running: Vec<Running>, data_directory: &std::path::Path) -> Self {
+    fn with(
+        seams: Seams,
+        running: Vec<Running>,
+        config: &std::path::Path,
+        data_directory: &std::path::Path,
+    ) -> Self {
         Self {
             seams,
             running,
+            config: config.to_owned(),
             data_directory: data_directory.to_owned(),
             writing: std::sync::Mutex::new(()),
             listen: std::sync::Mutex::new(None),
@@ -159,6 +180,17 @@ impl Setup {
         });
     }
 
+    /// Keeps as running only the machines `runs` names, for a command line
+    /// that learned from the engine what it runs.
+    fn keep_running(&mut self, runs: impl Fn(&str) -> bool) {
+        self.running.retain(|running| runs(running.id.as_str()));
+    }
+
+    /// The program file the installation was loaded from.
+    pub(crate) fn config(&self) -> &std::path::Path {
+        &self.config
+    }
+
     /// Serializes changes to the configuration files.
     fn writing(&self) -> Result<std::sync::MutexGuard<'_, ()>, SetupError> {
         self.writing.lock().map_err(|_| SetupError::Busy)
@@ -171,7 +203,7 @@ impl Setup {
 
     /// Setup state for admin server tests that do not exercise the setup page.
     #[cfg(all(test, feature = "test-hooks"))]
-    pub(crate) fn for_test(data_directory: &std::path::Path) -> Self {
+    pub(crate) fn for_test(config: &std::path::Path, data_directory: &std::path::Path) -> Self {
         let seams = Seams {
             definitions: None,
             ports: Arc::new(|| Ok(Vec::new())),
@@ -179,7 +211,7 @@ impl Setup {
             open: Arc::new(|_, _| Err(io::ErrorKind::Unsupported.into())),
             limits: Limits::STANDARD,
         };
-        Self::with(seams, Vec::new(), data_directory)
+        Self::with(seams, Vec::new(), config, data_directory)
     }
 }
 
@@ -399,10 +431,9 @@ fn status(tone: Tone, word: &str) -> Status {
     }
 }
 
-fn definitions(state: &Context) -> Result<Vec<Definition>, SetupError> {
-    let root = state
-        .setup
-        .seams
+/// The shipped machine models in the `machines` folder `seams` names.
+fn definitions(seams: &Seams) -> Result<Vec<Definition>, SetupError> {
+    let root = seams
         .definitions
         .clone()
         .ok_or_else(|| definitions::ListError::Missing(PathBuf::from("machines")))?;
@@ -468,7 +499,7 @@ pub(super) async fn index(
     // A fresh installation has none yet; a machine not set up needs none, but
     // setting one up does, so the page says where to add it. These files hold
     // key names only, never key values.
-    let lab_apps = match off_thread(&state, |state| lab_apps::scan(&state.config_path)).await {
+    let lab_apps = match off_thread(&state, |state| lab_apps::scan(state.setup.config())).await {
         Ok(scan) if scan.known.is_empty() => page::LabApps::None,
         Ok(_) => page::LabApps::Some,
         Err(error) => page::LabApps::Unreadable(format::sentence(&error.to_string())),
@@ -489,12 +520,12 @@ pub(super) async fn index(
         }],
     };
     let listed = off_thread(&state, |state| {
-        site::entries(&state.config_path).map(|(_, listed)| {
+        site::entries(state.setup.config()).map(|(_, listed)| {
             let models: Vec<Option<Hover>> = listed
                 .iter()
                 .map(|entry| {
                     model(
-                        &state.config_path,
+                        state.setup.config(),
                         state.setup.seams.definitions.as_deref(),
                         entry.definition.as_ref().map(|d| d.get_ref().as_str()),
                     )
@@ -507,7 +538,7 @@ pub(super) async fn index(
     let machines = listed
         .map(|(listed, models)| machine_rows(&state, &listed, models))
         .map_err(|error| format::sentence(&format!("Analyte's settings cannot be read: {error}")));
-    let models = off_thread(&state, definitions)
+    let models = off_thread(&state, |state| definitions(&state.setup.seams))
         .await
         .map(|list| {
             list.iter()
@@ -568,7 +599,7 @@ pub(in crate::admin) struct Listed {
 /// it runs off the async workers.
 pub(in crate::admin) async fn listed(state: &Arc<Context>) -> Result<Vec<Listed>, SetupError> {
     off_thread(state, |state| {
-        site::entries(&state.config_path).map(|(_, listed)| {
+        site::entries(state.setup.config()).map(|(_, listed)| {
             listed
                 .iter()
                 .map(|entry| Listed {
@@ -587,6 +618,7 @@ fn running<'a>(state: &'a Context, id: &str) -> Option<&'a Running> {
     state.setup.running.iter().find(|r| r.id.as_str() == id)
 }
 
+/// Records who made a page change: the signed-in person of `session`.
 async fn audit(
     state: &Context,
     session: &Session,
@@ -594,10 +626,22 @@ async fn audit(
     id: &str,
     reason: String,
 ) -> Result<(), SetupError> {
-    let failed = |error| SetupError::Audit(AuditFailure::Text(error));
     let actor = session
         .actor()
         .ok_or(SetupError::Audit(AuditFailure::NotSignedIn))?;
+    audit_as(&state.store, actor, action, id, &reason).await
+}
+
+/// Records that `actor` made the setup change `action` on `id`, and why; the
+/// reason is cut to 1000 characters. Pages and the command line both use it.
+async fn audit_as(
+    store: &analyte_store::Handle,
+    actor: &Identifier,
+    action: &str,
+    id: &str,
+    reason: &str,
+) -> Result<(), SetupError> {
+    let failed = |error| SetupError::Audit(AuditFailure::Text(error));
     let audit = analyte_store::Audit {
         actor: actor.clone(),
         action: Identifier::new(action).map_err(failed)?,
@@ -608,8 +652,7 @@ async fn audit(
     let written = async {
         let until = crate::deadline()?;
         Ok::<_, StoreFailure>(
-            state
-                .store
+            store
                 .request::<_, analyte_store::StorageError>(until, move |store| store.audit(&audit))
                 .await?,
         )
@@ -617,6 +660,33 @@ async fn audit(
     written
         .await
         .map_err(|error| SetupError::Audit(AuditFailure::Store(error)))
+}
+
+/// Where a setup change was made; its audit row says so in words.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Via {
+    /// The Setup or Lab apps page in a signed-in browser.
+    Page,
+    /// The `machines` or `lab-apps` command.
+    CommandLine,
+}
+
+impl Via {
+    /// Who changed a machine, as its audit reason starts.
+    const fn machines(self) -> &'static str {
+        match self {
+            Self::Page => "setup page",
+            Self::CommandLine => "command line",
+        }
+    }
+
+    /// Who changed a lab app, as its audit reason starts.
+    const fn lab_apps(self) -> &'static str {
+        match self {
+            Self::Page => "lab app page",
+            Self::CommandLine => "command line",
+        }
+    }
 }
 
 /// Why a store request from a setup page did not complete.
@@ -650,7 +720,7 @@ pub(crate) enum AuditFailure {
 /// Runs one store read within the shared store deadline; it stops when the
 /// page gives up on it.
 async fn stored<T, E>(
-    state: &Context,
+    store: &analyte_store::Handle,
     work: impl FnOnce(&analyte_store::Store) -> Result<T, E> + Send + 'static,
 ) -> Result<T, StoreFailure>
 where
@@ -659,7 +729,20 @@ where
     StoreFailure: From<E>,
 {
     let until = crate::deadline()?;
-    Ok(state.store.read(until, work).await?)
+    Ok(store.read(until, work).await?)
+}
+
+/// Runs `work` on the setup files off the async workers: it reads or writes
+/// files, the port list or the credentials file, which block.
+async fn on_files<T: Send + 'static>(
+    setup: &Arc<Setup>,
+    work: impl FnOnce(&Setup) -> Result<T, SetupError> + Send + 'static,
+) -> Result<T, SetupError> {
+    let setup = setup.clone();
+    tokio::task::spawn_blocking(move || work(&setup))
+        .await
+        .map_err(SetupError::from)
+        .and_then(|done| done)
 }
 
 /// Runs `work` off the async workers: it reads or writes files, the port list

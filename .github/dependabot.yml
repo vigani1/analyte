@@ -1,0 +1,18 @@
+# Keeps the SHA-pinned GitHub Actions in .github/workflows up to date, so their
+# security fixes arrive as one reviewed pull request a month.
+#
+# Cargo is left out on purpose: AGENTS.md says to update only the dependencies a
+# task needs, and cargo-deny in CI plus GitHub's Dependabot alerts already flag
+# security advisories for Rust crates.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: ci

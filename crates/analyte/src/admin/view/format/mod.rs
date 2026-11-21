@@ -15,7 +15,7 @@ mod parked;
 mod time;
 mod wording;
 
-pub(in crate::admin) use activity::{FEED_UNDATED, Named, events, feed_day, feed_time, said};
+pub(in crate::admin) use activity::{FEED_UNDATED, Named, Said, events, feed_day, feed_time, said};
 pub(in crate::admin) use history::{
     actor, arrived, outcomes, recorded, settled, settled_action, settled_line,
 };
@@ -33,8 +33,8 @@ pub(in crate::admin) use machine::{
 };
 pub(in crate::admin) use parked::{POLL_TITLE, explain, reason_words};
 pub(in crate::admin) use time::{
-    Line, Moment, Part, ago, clock, countdown, duration, exact_time, limit, live_clock, moment,
-    moment_unix, page_loaded, time_zone, today, today_span,
+    Line, Moment, Part, ago, clock, countdown, duration, exact_time, limit, live_clock, local_time,
+    moment, moment_unix, page_loaded, time_zone, today, today_span,
 };
 pub(in crate::admin) use wording::{
     FAILING_ADVICE, KEY_NEEDED, KEY_UNCHECKED, KEYS_ADVICE, KEYS_APPLY, NOT_APPLICABLE,

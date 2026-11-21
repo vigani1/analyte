@@ -3,7 +3,9 @@
 //! The guess is a hint for people, never a decision: it looks only at how the
 //! stream starts, with the framing crates' own start markers, and answers
 //! "unknown" for anything else. It reads no values and keeps no bytes.
-use crate::admin::view::Tone;
+use super::listen;
+use crate::admin::setup::Setup;
+use crate::admin::view::{Tone, format, parts::Notice};
 use analyte_config::Stack;
 use analyte_framing::{astm, hl7, vidas};
 use std::net::{Ipv4Addr, SocketAddr};
@@ -11,6 +13,9 @@ use std::net::{Ipv4Addr, SocketAddr};
 /// The Windows Firewall rule the installer adds (packaging/windows/install.ps1);
 /// a packaging test checks both name it alike.
 pub(crate) const FIREWALL_RULE: &str = "Analyte - analyzers on the lab network";
+/// That rule's fixed Name (not its display name), which `analyte doctor` looks for.
+#[cfg(windows)]
+pub(crate) const FIREWALL_RULE_NAME: &str = "Analyte-Analyzers-In";
 
 /// How the test reached the machine, for what to check when nothing arrives.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -53,7 +58,7 @@ pub(crate) enum Family {
 
 impl Family {
     /// The family a validated machine stack speaks; IHE LAW is HL7 over MLLP.
-    pub(super) fn of(stack: &Stack) -> Self {
+    pub(in crate::admin::setup) fn of(stack: &Stack) -> Self {
         match stack {
             Stack::Astm(_) => Self::Astm,
             Stack::Hl7(_) | Stack::Law(_) => Self::Hl7,
@@ -207,6 +212,60 @@ pub(super) fn verdict(
             "Check the machine’s host protocol setting.".to_owned(),
         ),
     }
+}
+
+/// How the test reaches the machine. Listening on every network card, it
+/// names this PC's addresses as examples; when they cannot be listed the
+/// verdict says "this PC's address" without examples, as step 2 shows why.
+pub(in crate::admin::setup) fn route_of(setup: &Setup, target: &listen::Target) -> Route {
+    match target {
+        listen::Target::Serial { .. } => Route::Serial,
+        listen::Target::TcpServer(on) => Route::Listens {
+            on: *on,
+            mine: if on.ip().is_unspecified() {
+                (setup.seams.addresses)()
+                    .map(|found| found.into_iter().map(|address| address.ip).collect())
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            },
+        },
+        listen::Target::TcpClient(address) => Route::Connects(*address),
+    }
+}
+
+/// The verdict of a test as it stands in `view`, for a model that speaks
+/// `family` reached by `route`: what it saw, or that it could not run and
+/// what to check. The test page and the `machines test` command both say it.
+pub(in crate::admin::setup) fn of_view(
+    view: &listen::View,
+    family: Family,
+    route: &Route,
+) -> Notice {
+    let (tone, title, text) = match &view.end {
+        Some(listen::End::Failed(why)) => (
+            Tone::Problem,
+            "The test could not run".to_owned(),
+            // Once connected, the failure was a read, not the address or port.
+            format!(
+                "{}{}",
+                format::sentence(why),
+                if view.connected.is_none() {
+                    route.failed()
+                } else {
+                    ""
+                }
+            ),
+        ),
+        end => verdict(
+            view.guess,
+            family,
+            end.is_some(),
+            route,
+            view.connected.is_some(),
+        ),
+    };
+    Notice { tone, title, text }
 }
 
 /// What to check when nothing arrived: the cable, the machine's host

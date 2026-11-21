@@ -95,6 +95,30 @@ impl Fix {
             Self::Section(section) => section.label(),
         }
     }
+
+    /// The command that shows or fixes the same thing from the command line,
+    /// for `analyte overview` and `analyte alerts list`; none where only the
+    /// page does it. Recovery commands still ask for `--actor` and `--reason`.
+    pub(super) const fn command(self) -> Option<&'static str> {
+        match self {
+            Self::Page(Tab::NeedsReview) => Some("analyte review list"),
+            Self::Page(Tab::Deliveries) | Self::Section(Section::Sending) => {
+                Some("analyte --actor <you> deliveries list --reason \"<why>\"")
+            }
+            Self::Page(Tab::MachineOrders) => Some("analyte orders list"),
+            Self::Page(Tab::CancelledByMachine) => Some("analyte orders cancelled"),
+            Self::Page(Tab::DataKeeping) | Self::Section(Section::Disk) => {
+                Some("analyte data-keeping")
+            }
+            Self::Section(Section::Orders) => {
+                Some("analyte --actor <you> orders resume-after-restore --reason \"<why>\"")
+            }
+            Self::Page(Tab::Activity) => Some("analyte activity"),
+            Self::Page(Tab::Machines | Tab::Setup) => Some("analyte machines list"),
+            Self::Page(Tab::LabApps) => Some("analyte lab-apps list"),
+            Self::Page(Tab::Overview | Tab::Settings) => None,
+        }
+    }
 }
 
 /// What a line is about; an alert about something already listed adds no second line.
@@ -166,6 +190,28 @@ impl Subject {
             Self::Cancelled => Reason::OrdersCancelled,
             Self::RestorePaused => Reason::OrdersPausedAfterRestore,
             Self::OrderList => Reason::OrderListStale,
+        }
+    }
+
+    /// The machine or lab app the line is about, when it is about one.
+    const fn about(&self) -> Option<&Identifier> {
+        match self {
+            Self::Blocked(name, _)
+            | Self::Failing(name)
+            | Self::Paused(name)
+            | Self::Stopped(name)
+            | Self::Unlinked(name)
+            | Self::Silent(name)
+            | Self::Refused(name)
+            | Self::Open(name) => Some(name),
+            Self::Disk
+            | Self::DiskLow
+            | Self::Review
+            | Self::Uncertain
+            | Self::Cancelled
+            | Self::RestorePaused
+            | Self::Waiting
+            | Self::OrderList => None,
         }
     }
 
@@ -245,7 +291,7 @@ impl Reason {
 /// One thing that needs someone: a short sentence, an optional detail with
 /// what to check, and where to fix it.
 #[derive(Debug, PartialEq, Eq)]
-pub(super) struct Thing {
+pub(in crate::admin) struct Thing {
     subject: Subject,
     pub(super) text: String,
     pub(super) detail: Option<String>,
@@ -265,6 +311,16 @@ impl Thing {
     /// The line's tone, from its subject.
     pub(super) const fn tone(&self) -> Tone {
         self.subject.tone()
+    }
+
+    /// The kind `GET /status` names for this line.
+    pub(super) const fn reason(&self) -> Reason {
+        self.subject.reason()
+    }
+
+    /// The machine or lab app this line is about, when it is about one.
+    pub(super) const fn about(&self) -> Option<&Identifier> {
+        self.subject.about()
     }
 }
 
@@ -432,7 +488,7 @@ pub(super) fn things(facts: &Facts) -> Vec<Thing> {
 }
 
 /// The line for one active alert, in the same words as the direct measurement it matches.
-fn from_alert(alert: &AlertState) -> Thing {
+pub(in crate::admin) fn from_alert(alert: &AlertState) -> Thing {
     let value = alert.value;
     match &alert.key {
         AlertKey::DiskReserve => Thing::new(

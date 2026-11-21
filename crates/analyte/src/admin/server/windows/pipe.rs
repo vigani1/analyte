@@ -14,8 +14,7 @@ use tokio::{
     time::Instant,
 };
 
-/// The local group whose enabled members may sign in (ADR 0021 §3).
-const GROUP: &str = "Analyte users";
+use super::{Found, GROUP};
 /// How long a caller has to send its request line.
 const READ_BUDGET: Duration = Duration::from_secs(2);
 /// How long the engine has, once the request is in, to decide, write the
@@ -124,28 +123,25 @@ fn open(name: String, rule: Rule, dacl: Dacl) -> Start {
     }
 }
 
-/// The SID of `<COMPUTERNAME>\Analyte users`; qualified so a same-named domain
-/// group never matches. None, with a warning, when there is no such local group.
+/// The SID of the local "Analyte users" group; none, with a warning, when
+/// there is no such local group.
 fn users_group() -> Option<Sid> {
     let only = "only Administrators may sign in with Windows";
-    let Some(computer) = std::env::var_os("COMPUTERNAME") else {
-        tracing::warn!("COMPUTERNAME is not set; {only}");
-        return None;
-    };
-    let qualified = format!("{}\\{GROUP}", computer.to_string_lossy());
-    match caller::account_sid(&qualified) {
-        Ok(Some((sid, kind))) if kind == windows_sys::Win32::Security::SidTypeAlias => {
-            Sid::new(sid).ok()
+    match super::users_group() {
+        Found::Group(sid) => Some(sid),
+        Found::NoComputerName => {
+            tracing::warn!("COMPUTERNAME is not set; {only}");
+            None
         }
-        Ok(Some(_)) => {
+        Found::NotAGroup => {
             tracing::warn!("the account {GROUP} is not a local group; {only}");
             None
         }
-        Ok(None) => {
+        Found::Missing => {
             tracing::warn!("the local group {GROUP} does not exist; {only}");
             None
         }
-        Err(error) => {
+        Found::Failed(error) => {
             tracing::warn!(error = %error, "the local group {GROUP} could not be looked up; {only}");
             None
         }

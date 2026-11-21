@@ -65,16 +65,19 @@ pub(in crate::admin) async fn show_page(
         &state,
         session.as_ref(),
         Tab::DataKeeping,
-        read(&state, query.after, release),
+        read(&state.store, query.after, release),
         |read, session, now| page(&state, session, signed, &read, now).render(),
     )
     .await
 }
 
-async fn read(state: &Context, after: u64, release: Option<i64>) -> Result<Read, Error> {
+async fn read(
+    store: &analyte_store::Handle,
+    after: u64,
+    release: Option<i64>,
+) -> Result<Read, Error> {
     let after = i64::try_from(after)?;
-    Ok(state
-        .store
+    Ok(store
         .read::<_, CommandError>(deadline()?, move |store| {
             let held = |hold: RetentionHold| -> Result<Held, CommandError> {
                 let message = match &hold.target {
@@ -133,20 +136,7 @@ fn page(
         policies: state
             .retention
             .iter()
-            .map(|(machine, days)| {
-                (
-                    machine.as_str().to_owned(),
-                    days.map_or_else(
-                        || "Kept, never deleted".to_owned(),
-                        |days| {
-                            format!(
-                                "Deleted {} after the lab app last confirmed it",
-                                format::amount(days, "day", "days")
-                            )
-                        },
-                    ),
-                )
-            })
+            .map(|(machine, days)| (machine.as_str().to_owned(), policy(*days)))
             .collect(),
         clean_up: read.last.as_ref().map(|run| clean_up(run, now)),
         oldest: Fact {
@@ -164,6 +154,89 @@ fn page(
             .zip(read.releasing.as_ref())
             .map(|(session, held)| release_dialog(session, held, now)),
     }
+}
+
+/// How long a machine's messages are kept, in the page's words.
+fn policy(days: Option<u16>) -> String {
+    days.map_or_else(
+        || "Kept, never deleted".to_owned(),
+        |days| {
+            format!(
+                "Deleted {} after the lab app last confirmed it",
+                format::amount(days, "day", "days")
+            )
+        },
+    )
+}
+
+/// Data keeping as `analyte data-keeping` prints it, in the page's words.
+#[derive(serde::Serialize)]
+pub(in crate::admin) struct Printed {
+    /// Each machine and how long its messages are kept.
+    pub(in crate::admin) kept: Vec<(String, String)>,
+    /// What the last clean-up did, term and value; none before the first.
+    pub(in crate::admin) clean_up: Option<Vec<(&'static str, String)>>,
+    /// When the oldest message kept arrived, or "Nothing yet".
+    pub(in crate::admin) oldest: String,
+    /// One page of active holds.
+    pub(in crate::admin) holds: Vec<PrintedHold>,
+    /// The hold number to pass as `--after` for the next page.
+    pub(in crate::admin) next: Option<i64>,
+}
+
+/// One active hold, as the page lists it.
+#[derive(serde::Serialize)]
+pub(in crate::admin) struct PrintedHold {
+    /// The hold's number, which `analyte holds release` takes.
+    pub(in crate::admin) number: i64,
+    /// What it keeps.
+    pub(in crate::admin) keeps: String,
+    /// Who placed it, when and why.
+    pub(in crate::admin) placed: String,
+    /// Its stored target: the message ID, or the lab app and order number.
+    pub(in crate::admin) target: String,
+}
+
+/// Data keeping for the command line: `retention` is each machine's policy
+/// as the program sets it, and the holds page starts after hold `after`.
+/// # Errors
+/// Reports deadline overflow, cursor and store read failures.
+pub(in crate::admin) async fn printed(
+    store: &analyte_store::Handle,
+    retention: &[(Identifier, Option<u16>)],
+    after: u64,
+) -> Result<Printed, Error> {
+    let read = read(store, after, None).await?;
+    let now = Timestamp::now();
+    let facts = |facts: Vec<Fact>| {
+        facts
+            .into_iter()
+            .map(|fact| (fact.term, fact.value.plain()))
+            .collect()
+    };
+    Ok(Printed {
+        kept: retention
+            .iter()
+            .map(|(machine, days)| (machine.as_str().to_owned(), policy(*days)))
+            .collect(),
+        clean_up: read.last.as_ref().map(|run| facts(clean_up(run, now))),
+        oldest: Value::Time(read.oldest.map(|time| format::moment_unix(time, now))).plain(),
+        holds: read
+            .holds
+            .iter()
+            .map(|held| PrintedHold {
+                number: held.hold.sequence,
+                keeps: held_line(held, now).plain(),
+                placed: placed(held.hold.placed.as_ref(), now).plain(),
+                target: target(&held.hold.target),
+            })
+            .collect(),
+        next: read
+            .holds
+            .last()
+            .filter(|_| read.more)
+            .map(|last| last.hold.sequence),
+    })
 }
 
 /// What the last clean-up did, as plain numbers; a failure shows red.
