@@ -11,6 +11,7 @@ pub mod line;
 pub mod pipe;
 
 use crate::engine::Engine;
+use crate::watch::{Change, Shown};
 use line::{Answer, Code, Refusal};
 use std::time::{Duration, Instant};
 
@@ -40,7 +41,9 @@ pub enum Trigger {
 /// refused, inside the pause. It still restarts the pause, so a session that
 /// does not hold after a click cannot loop either. Opening the window is a
 /// person's action too and clears the guard ([`Guard::forget`]), so the window
-/// signs in at once even right after an earlier try.
+/// signs in at once even right after an earlier try. An engine that answers
+/// again after it did not is a new engine with no session, so it clears the
+/// guard as well ([`Guard::follow`]); while it stays up, the pause holds.
 #[derive(Debug, Default)]
 pub struct Guard {
     last: Option<Instant>,
@@ -68,6 +71,19 @@ impl Guard {
     /// Clears the pause, because a person opened the window.
     pub fn forget(&mut self) {
         self.last = None;
+    }
+
+    /// Follows a change of what the app shows: an engine that answers after
+    /// it did not (or before the first answer) starts with no session, so
+    /// its first automatic sign-in goes through at once. A restart is at
+    /// least one unanswered question plus the engine's start, so this cannot
+    /// loop faster than the engine restarts.
+    pub fn follow(&mut self, change: Change) {
+        let back = matches!(change.to, Shown::Running(_))
+            && matches!(change.from, Shown::Off | Shown::Checking);
+        if back {
+            self.forget();
+        }
     }
 }
 
@@ -335,5 +351,42 @@ mod tests {
         assert!(guard.allows(Trigger::Automatic, click + Duration::from_secs(30)));
         guard.forget();
         assert!(guard.allows(Trigger::Automatic, click + Duration::from_secs(31)));
+    }
+
+    // App test round A, item 1 (ADR 0021 §6): the engine stopped and started
+    // again within 30 s of the last sign-in. The engine that answers again
+    // is new and has no session, so the window signs in at once instead of
+    // landing on the key form; while it stays up, one try per 30 s holds.
+    #[test]
+    fn an_engine_that_answers_again_signs_in_at_once() {
+        use crate::engine::status::{Health, Reply, Silence};
+        let mut watch = crate::watch::Watch::new();
+        let mut guard = Guard::default();
+        let start = Instant::now();
+        let mut observe = |guard: &mut Guard, reply: Reply, second: i64| {
+            let at = jiff::Timestamp::from_second(second).expect("a test time");
+            if let Some(change) = watch.observe(reply, at) {
+                guard.follow(change);
+            }
+        };
+        observe(&mut guard, Reply::Answered(Health::Good), 1);
+        assert!(guard.allows(Trigger::Automatic, start), "the first sign-in");
+        // The engine stops: two unanswered questions make it off.
+        observe(&mut guard, Reply::Silent(Silence::Refused), 5);
+        observe(&mut guard, Reply::Silent(Silence::Refused), 10);
+        assert!(!guard.allows(Trigger::Automatic, start + Duration::from_secs(10)));
+        // It answers again 15 s after the first sign-in.
+        observe(&mut guard, Reply::Answered(Health::Good), 15);
+        let back = start + Duration::from_secs(15);
+        assert!(guard.allows(Trigger::Automatic, back), "off to running");
+        // Up all along from here: a refusal or a lost session cannot loop.
+        observe(&mut guard, Reply::Answered(Health::Attention), 20);
+        observe(&mut guard, Reply::Silent(Silence::TimedOut), 25);
+        observe(&mut guard, Reply::Answered(Health::Good), 30);
+        for later in [1, 10, 29] {
+            let at = back + Duration::from_secs(later);
+            assert!(!guard.allows(Trigger::Automatic, at), "{later} s after");
+        }
+        assert!(guard.allows(Trigger::Automatic, back + Duration::from_secs(30)));
     }
 }

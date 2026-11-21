@@ -91,4 +91,24 @@ mod tests {
             assert!(find(name).is_some(), "{name} is not served");
         }
     }
+
+    // App test round A, item 2: a page whose head names no icon makes
+    // WebView2 ask for /favicon.ico, which the app answers 404. The title
+    // bar names a served one, so it asks for nothing else.
+    #[test]
+    fn the_title_bar_names_a_served_icon() {
+        let page = include_str!("../../templates/title-bar.html");
+        let head = page.split("</head>").next().unwrap_or_default();
+        let icons: Vec<&str> = head
+            .split("<link rel=\"icon\"")
+            .skip(1)
+            .filter_map(|rest| rest.split('>').next())
+            .filter_map(|link| link.split("href=\"/static/").nth(1))
+            .filter_map(|rest| rest.split('"').next())
+            .collect();
+        assert_eq!(icons, ["icons/analyte-app-icon-16.svg"]);
+        for name in icons {
+            assert!(find(name).is_some(), "{name} is not served");
+        }
+    }
 }

@@ -54,7 +54,7 @@ async fn work(app: &AppHandle, shared: &Shared, mut commands: mpsc::Receiver<Com
         tokio::select! {
             _ = ticks.tick() => {
                 if let Some(client) = &client {
-                    check(app, shared, client, &mut watch).await;
+                    check(app, shared, client, &mut watch, &mut guard).await;
                 }
             }
             command = commands.recv() => match command {
@@ -76,8 +76,16 @@ async fn work(app: &AppHandle, shared: &Shared, mut commands: mpsc::Receiver<Com
     }
 }
 
-/// Asks the engine once and brings everything in step with the answer.
-async fn check(app: &AppHandle, shared: &Shared, client: &Client, watch: &mut Watch) {
+/// Asks the engine once and brings everything in step with the answer; the
+/// guard hears of a change before the window follows it, so an engine that
+/// answers again signs the window in at once.
+async fn check(
+    app: &AppHandle,
+    shared: &Shared,
+    client: &Client,
+    watch: &mut Watch,
+    guard: &mut Guard,
+) {
     let reply = client.ask().await;
     let now = jiff::Timestamp::now();
     let change = watch.observe(reply, now);
@@ -101,6 +109,7 @@ async fn check(app: &AppHandle, shared: &Shared, client: &Client, watch: &mut Wa
     });
     if let Some(change) = change {
         tracing::info!(from = ?change.from, to = ?change.to, "engine state changed");
+        guard.follow(change);
         tray::show(app, change.to);
         window::show_state(app, shared, change.to);
         if let Some(notice) = change.notice() {

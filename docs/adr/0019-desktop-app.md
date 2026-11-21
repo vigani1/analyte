@@ -128,6 +128,13 @@ page already says the engine runs, so it reveals nothing new.
   and so does the app when it cannot make its window.
 - Any program on the PC can read the coarse state from `/status`, as it could
   already see the sign-in page.
+- WebView2 sends a link's request before the app's navigation check can
+  cancel it, and cookies ignore the port, so a link to another port on
+  127.0.0.1 would reach it with the admin session. The pages' webview runs
+  one app script at the start of each page that turns a click on a link to
+  another origin into a new-window request, which the app answers before
+  anything is sent (app test round A). A browser sends that cookie to every
+  127.0.0.1 port, typed addresses included.
 - The app trusts whatever answers at 127.0.0.1 on the admin port as the
   engine, as a browser did; when the engine is stopped another local program
   could take the port.

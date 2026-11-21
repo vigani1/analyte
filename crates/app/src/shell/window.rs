@@ -9,14 +9,16 @@
 //!
 //! Closing the window destroys both webviews, so their memory is freed; the
 //! tray makes a new window. Links to other sites open in the default browser,
-//! where they carry no admin session. The pages' webview carries the
+//! where they carry no admin session; the pages run the app's one script so
+//! such a link asks for a new window and nothing is sent from the window
+//! (see [`crate::navigation::PAGES_SCRIPT`]). The pages' webview carries the
 //! `AnalyteApp` user agent, and the window runs Windows sign-in itself
 //! (ADR 0021 §6): it opens at `/login/windows?next=/`, and every
 //! `/login/windows` without a code becomes a sign-in for the monitor.
 use super::{Command, Shared};
 use crate::engine::{Engine, Origin};
 use crate::local::ENGINE_OFF;
-use crate::navigation::{Decision, decide};
+use crate::navigation::{Decision, PAGES_SCRIPT, decide};
 use crate::sign_in;
 use crate::title_bar::{self, Place, Sizing, View};
 use crate::watch::Shown;
@@ -103,7 +105,8 @@ pub(crate) fn bar_webview<R: Runtime>(bar: url::Url) -> WebviewBuilder<R> {
 
 /// The pages' webview at `url`, marked as the app for the engine's sign-in:
 /// the engine's origin and the app's own pages show; web links open in the
-/// browser; Windows sign-in runs in the app.
+/// browser, through a new-window request so the window sends nothing to
+/// them; Windows sign-in runs in the app.
 pub(crate) fn pages_webview<R: Runtime>(
     app: &AppHandle<R>,
     url: url::Url,
@@ -113,6 +116,7 @@ pub(crate) fn pages_webview<R: Runtime>(
     let navigator = app.clone();
     WebviewBuilder::new(title_bar::PAGES, WebviewUrl::External(url))
         .user_agent(sign_in::USER_AGENT)
+        .initialization_script(PAGES_SCRIPT)
         .on_navigation(move |url| allowed(&navigator, url, origin))
         .on_new_window(move |url, _| {
             // A link meant for a new window: an engine page opens here, the web in the browser.

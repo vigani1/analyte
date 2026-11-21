@@ -77,3 +77,34 @@ async fn pages_name_their_live_area_and_are_whole_without_the_script() -> Result
     }
     site.stop().await
 }
+
+// App test round A, item 3: a page change started before the last one had
+// settled made Chromium skip the CSS cross-fade and reject a promise no page
+// script holds, reported as an unhandled InvalidStateError. live.js marks
+// only the browser's own transition rejections as handled, before anything
+// else it does, so it does so on every signed-in page; it starts no
+// transition itself. Shown live in the PR.
+#[test]
+fn live_js_handles_only_the_browsers_skipped_page_fade() {
+    let script = include_str!("../../../../../assets/live.js");
+    let body = script
+        .split_once("(function () {")
+        .map(|(_, body)| body)
+        .unwrap_or_default();
+    let handler = "  window.addEventListener('unhandledrejection', function (event) {
+    var reason = event.reason;
+    if (reason instanceof DOMException && /^Transition was (aborted|skipped)/.test(reason.message)) event.preventDefault();
+  });";
+    let at = body
+        .find(handler)
+        .expect("live.js handles the skipped fade");
+    let first_return = body
+        .find("return;")
+        .expect("live.js stops early without its parts");
+    assert!(
+        at < first_return,
+        "the handler must come before the early return"
+    );
+    assert_eq!(script.matches("preventDefault").count(), 1);
+    assert!(!script.contains("startViewTransition"));
+}

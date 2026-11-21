@@ -92,6 +92,8 @@ revert in release builds; `winsafe` reads tokens but cannot impersonate.
    - Only the engine's refresh counts as automatic. A click on "Sign in with
      Windows" always asks (once per click, so it cannot loop) and starts the
      30 s again; opening the window clears them, so it signs in at once.
+     So does the engine answering again after it did not: a restarted
+     engine has no session, so the window signs in at once there too.
      No pipe, no answer within 3 s for a busy pipe plus 2 s for the answer,
      or an answer that is not a valid line all show the plain key form; a
      missing pipe is not a refusal.
