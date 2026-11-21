@@ -12,7 +12,7 @@ use super::{
 use crate::admin::server::Context;
 use crate::installation::config::{Program, connections};
 use crate::machine::link::status::Link;
-use analyte_config::{Endpoint, TransportKind};
+use analyte_config::{AllowedPeers, Endpoint, TransportKind};
 use analyte_model::Identifier;
 use analyte_transport::serial;
 use serde::Deserialize;
@@ -120,6 +120,36 @@ pub(in crate::admin) struct Choice {
     pub(super) tcp_port: Option<String>,
     pub(super) folder: Option<String>,
     pub(super) lab_app: Option<String>,
+    pub(super) allowed_peers: Option<String>,
+}
+
+/// The devices the draft lets connect (ADR 0026): addresses typed with
+/// commas or spaces between them; none when nothing is typed, which accepts
+/// any device. Only a machine that connects to this PC can name them.
+fn peers_of(
+    kind: Option<TransportKind>,
+    choice: &wizard::Draft,
+) -> Result<Option<AllowedPeers>, SetupError> {
+    let typed: Vec<&str> = choice
+        .allowed_peers
+        .as_deref()
+        .unwrap_or_default()
+        .split([',', ' ', '\t', '\r', '\n'])
+        .filter(|address| !address.is_empty())
+        // One past the most, so an overlong list is refused, never cut short.
+        .take(AllowedPeers::MOST.saturating_add(1))
+        .collect();
+    if typed.is_empty() {
+        return Ok(None);
+    }
+    if kind != Some(TransportKind::TcpServer) {
+        return Err(SetupError::Connection(
+            "only a machine that connects to this PC can be limited to some devices",
+        ));
+    }
+    AllowedPeers::parse(&typed)
+        .map(Some)
+        .map_err(SetupError::Connection)
 }
 
 /// The connection the draft names for a definition of transport `kind`; an
@@ -177,6 +207,8 @@ pub(super) struct Plan {
     /// The model's name for people.
     pub(super) model: String,
     pub(super) connection: Endpoint,
+    /// The only devices it will accept, when it listens and some are chosen.
+    pub(super) peers: Option<AllowedPeers>,
     pub(super) site_text: String,
     /// The new `lab-apps.toml` text, when the save moves a lab app into it.
     pub(super) lab_apps: Option<String>,
@@ -193,14 +225,16 @@ pub(super) fn plan(state: &Context, id: &str, draft: &wizard::Draft) -> Result<P
         name: model,
         ..
     } = model_of(&list, draft, &installed)?;
-    let connection = connection_of(kind_of(&definition), draft)?;
+    let kind = kind_of(&definition);
+    let connection = connection_of(kind, draft)?;
+    let peers = peers_of(kind, draft)?;
     let lab_app = Identifier::new(draft.lab_app.as_deref().unwrap_or_default().trim())
         .map_err(|_| SetupError::NoLabAppChosen)?;
     let current = crate::installation::config::read(&installed.site)?;
     let scan = lab_apps::scan(&state.config_path)?;
     let candidate = site::candidate(
         &current,
-        &connection,
+        (&connection, peers.as_ref()),
         &lab_app,
         &scan.file,
         &scan.settings(),
@@ -222,6 +256,7 @@ pub(super) fn plan(state: &Context, id: &str, draft: &wizard::Draft) -> Result<P
         definition,
         model,
         connection,
+        peers,
         site_text: candidate.text,
         lab_apps,
         validated,
@@ -233,6 +268,8 @@ pub(super) struct Saved {
     pub(super) model: String,
     pub(super) link: Link,
     pub(super) connection: Endpoint,
+    /// The only devices it accepts, as saved.
+    pub(super) peers: Option<AllowedPeers>,
     /// The lab app it sends results to.
     pub(super) lab_app: analyte_config::Destination,
     /// The save moved a lab app into `lab-apps.toml`.
@@ -262,6 +299,7 @@ pub(super) fn save_blocking(
         model: plan.model,
         link: Link::of(plan.validated.effective().stack()),
         connection: plan.connection,
+        peers: plan.peers,
         lab_app: plan.validated.effective().site().destination.clone(),
         moved,
         backups: written.backups,

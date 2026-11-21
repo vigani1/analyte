@@ -45,6 +45,7 @@ fn running(
         status: reporter.subscribe(),
         model: Some(format!("Model of {name}")),
         connection,
+        allowed_peers: None,
         lab_app: Identifier::new("main-lab")?,
     })
 }
@@ -1130,5 +1131,85 @@ async fn remove_needs_a_signed_in_session() -> Result<(), Error> {
         std::fs::read_to_string(directory.path().join("program.toml"))?,
         PROGRAM
     );
+    stop(state, stopper, owner, store).await
+}
+
+// ADR 0026 decisions 2 and 3: a listening machine's page says which devices
+// it accepts. Without `allowed_peers` it warns that any device is accepted;
+// with it, each device refused since start shows with its address and time,
+// newest first, and the list of machines names the newest refusal.
+#[tokio::test(flavor = "multi_thread")]
+async fn machine_pages_show_the_allowed_devices_and_refusals() -> Result<(), Error> {
+    use crate::admin::view::format;
+    let directory = crate::admin::private_tempdir()?;
+    let guarded = Reporter::new(Link::TcpServer);
+    guarded.ready(true);
+    guarded.refuse(std::net::IpAddr::from([192, 168, 1, 77]));
+    guarded.refuse(std::net::IpAddr::from([192, 168, 1, 77]));
+    guarded.refuse(std::net::IpAddr::from([10, 0, 0, 9]));
+    let mut net = running(
+        "net-1",
+        (Connection::Listening(Some(5600)), Link::TcpServer),
+        (true, false),
+        true,
+    )?;
+    net.status = guarded.subscribe();
+    net.allowed_peers = Some(analyte_config::AllowedPeers::parse(&["192.168.1.50"])?);
+    let open = running(
+        "wait-4",
+        (Connection::Listening(Some(5601)), Link::TcpServer),
+        (true, false),
+        true,
+    )?;
+    let serial = running(
+        "serial-2",
+        (Connection::Serial("COM3".into()), Link::Serial),
+        (false, true),
+        true,
+    )?;
+    let (store, (state, stopper, owner, host), auth) =
+        started(directory.path(), vec![net, open, serial]).await?;
+    let guarded_page = request(&host, "/machines/net-1", &auth, None).await?;
+    assert_new_look(&guarded_page);
+    assert!(
+        guarded_page.contains("<dt>Accepts connections from</dt><dd>Only 192.168.1.50</dd>"),
+        "{guarded_page}"
+    );
+    let newest = guarded_page
+        .find("Refused a connection from 10.0.0.9 at ")
+        .ok_or("newest refusal missing")?;
+    let older = guarded_page
+        .find("Refused 2 connections from 192.168.1.77, the last at ")
+        .ok_or("counted refusal missing")?;
+    assert!(newest < older, "newest first");
+    assert!(guarded_page.contains(format::REFUSED_ADVICE));
+    assert!(!guarded_page.contains(format::OPEN_TO_ANY));
+    let open_page = request(&host, "/machines/wait-4", &auth, None).await?;
+    assert!(
+        open_page.contains("<dt>Accepts connections from</dt><dd>Any device</dd>"),
+        "{open_page}"
+    );
+    assert!(open_page.contains(&format!(
+        "<p class=\"alert__title\">{}</p><p class=\"alert__text\">{}</p>",
+        format::OPEN_TO_ANY,
+        format::OPEN_TO_ANY_ADVICE
+    )));
+    let serial_page = request(&host, "/machines/serial-2", &auth, None).await?;
+    assert!(
+        !serial_page.contains("Accepts connections from"),
+        "{serial_page}"
+    );
+    assert!(!serial_page.contains(format::OPEN_TO_ANY));
+    let list = request(&host, "/machines", &auth, None).await?;
+    assert!(
+        list.contains("net-1: Refused a connection from 10.0.0.9 at "),
+        "{list}"
+    );
+    assert!(
+        !list.contains("192.168.1.77"),
+        "the list names only the newest"
+    );
+    assert!(list.contains(&format!("wait-4: {}", format::OPEN_TO_ANY)));
+    drop(guarded);
     stop(state, stopper, owner, store).await
 }

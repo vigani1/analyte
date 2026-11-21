@@ -18,6 +18,11 @@ use std::{collections::BTreeMap, sync::atomic::Ordering};
 
 /// One node per set-up machine, in setup order. Each machine whose service
 /// stopped or whose link is off is added to `facts` with what was observed.
+/// How long the Overview lists a machine's newest refused connection
+/// (ADR 0026): long enough to be seen the next working day, while the
+/// machine's own page keeps the newest refusals until Analyte restarts.
+const REFUSAL_SHOWN_FOR: jiff::SignedDuration = jiff::SignedDuration::from_hours(24);
+
 pub(super) fn machines(
     state: &Context,
     activity: &BTreeMap<String, Timestamp>,
@@ -41,6 +46,19 @@ pub(super) fn machines(
             );
             if !running {
                 facts.stopped.push(machine.id.clone());
+            }
+            if machine.accepts_any_device() {
+                facts.open.push(machine.id.clone());
+            }
+            if let Some(newest) = status
+                .refused()
+                .first()
+                .filter(|refusal| now.duration_since(refusal.at) < REFUSAL_SHOWN_FOR)
+            {
+                facts.refused.push((
+                    machine.id.clone(),
+                    format::refused(newest, &format::clock(newest.at, now)),
+                ));
             }
             if light == Light::Off {
                 facts.unlinked.push((

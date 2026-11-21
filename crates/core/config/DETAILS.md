@@ -22,7 +22,12 @@ either form (`Effective::lab_app_source` says which). The port choice is
 exactly one of `endpoint` (port name, socket address or folder) or `usb_serial`
 (a USB adapter serial number, serial links only); both or neither is refused,
 and loading turns them into one `Endpoint` value. An override's `endpoint` or
-`usb_serial` replaces the site's choice. Local overrides contain
+`usb_serial` replaces the site's choice. A `tcp_server` site may add
+`allowed_peers` (1 to 16 plain IP addresses, each once; no name, port, range,
+wildcard, multicast or broadcast address) as `AllowedPeers`; a connection from
+any other address is closed unread and unanswered
+([ADR 0026](../../../docs/adr/0026-accept-only-the-machine.md)). Other links refuse
+the key, and overrides cannot set it. Local overrides contain
 `schema_version = 1` plus optional replacement sections. Sections and lists
 replace in full; there is no implicit array merging or expression language.
 All three layers reject unknown keys. Overrides cannot change the machine-wide

@@ -6,7 +6,9 @@
 //! logged or written to the peer. The bytes may hold patient data, so they never
 //! leave this owner: the page sees only their count, the framing characters
 //! among them and the guess of their protocol family ([`super::verdict`]),
-//! which outlive them.
+//! which outlive them. When the machine connects to this PC, the address of
+//! the device that connected is kept too, so step 4 can offer to accept only
+//! that device (ADR 0026); an address is not patient data.
 use super::verdict::{self, Guess};
 use analyte_transport::serial;
 use std::{
@@ -74,6 +76,9 @@ pub(crate) struct View {
     pub(crate) remaining: Duration,
     /// When the port opened or the connection was made; none before.
     pub(crate) connected: Option<jiff::Timestamp>,
+    /// The address of the device that connected, in its plain form, when
+    /// Analyte listens; none before a connection and for other targets.
+    pub(crate) peer: Option<std::net::IpAddr>,
     /// The machine closed the connection; the bytes stay until the test ends.
     pub(crate) closed: bool,
     /// The bytes kept so far, for this module's tests of the bounds; the page never sees them.
@@ -92,6 +97,7 @@ pub(crate) struct View {
 
 struct Capture {
     connected: Option<jiff::Timestamp>,
+    peer: Option<std::net::IpAddr>,
     closed: bool,
     bytes: Vec<u8>,
     seen: usize,
@@ -158,6 +164,7 @@ impl Session {
             .unwrap_or_else(Instant::now);
         let capture = Arc::new(Mutex::new(Capture {
             connected: None,
+            peer: None,
             closed: false,
             bytes: Vec::new(),
             seen: 0,
@@ -197,6 +204,7 @@ impl Session {
         let remaining = self.deadline.saturating_duration_since(Instant::now());
         let unavailable = Capture {
             connected: None,
+            peer: None,
             closed: false,
             bytes: Vec::new(),
             seen: 0,
@@ -211,6 +219,7 @@ impl Session {
             started: self.started,
             remaining,
             connected: capture.connected,
+            peer: capture.peer,
             closed: capture.closed,
             size_limit_reached: capture.seen >= self.limits.bytes,
             #[cfg(test)]
@@ -267,6 +276,7 @@ async fn read(
     capture: Arc<Mutex<Capture>>,
 ) -> Option<End> {
     let failed = |action: &str, error: &io::Error| Some(End::Failed(format!("{action}: {error}")));
+    let mut peer = None;
     let mut stream = match target {
         Target::Serial {
             name,
@@ -279,7 +289,10 @@ async fn read(
                 Err(error) => return failed("listen", &error),
             };
             match tokio::time::timeout_at(deadline, listener.accept()).await {
-                Ok(Ok((stream, _))) => stream,
+                Ok(Ok((stream, from))) => {
+                    peer = Some(from.ip().to_canonical());
+                    stream
+                }
                 Ok(Err(error)) => return failed("accept", &error),
                 Err(_) => return Some(End::TimeLimit),
             }
@@ -295,6 +308,7 @@ async fn read(
     };
     if let Ok(mut capture) = capture.lock() {
         capture.connect();
+        capture.peer = peer;
     }
     let mut buffer = [0_u8; 4096];
     loop {
@@ -476,6 +490,8 @@ mod tests {
         peer.write_all(b"MSH|^~\\&|").await?;
         let view = until(&session, |view| view.seen == 9).await;
         assert_eq!(view.bytes, b"MSH|^~\\&|");
+        // ADR 0026 decision 2: the test keeps who connected, for step 4.
+        assert_eq!(view.peer, Some(std::net::IpAddr::from([127, 0, 0, 1])));
         assert_eq!(sent_to_peer(&mut peer, Duration::from_secs(5)).await?, 0);
         Ok(())
     }

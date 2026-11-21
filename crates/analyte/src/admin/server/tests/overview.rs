@@ -1252,3 +1252,61 @@ async fn status_keeps_host_and_origin_checks() -> Result<(), Error> {
     assert_eq!(state_of(&same)?, "good");
     stop(state, stopper, owner, store).await
 }
+
+// ADR 0026 decision 2, ADR 0023: a listening machine without `allowed_peers`
+// is a line that needs a look, named `machine_open_to_any_device`; a recent
+// refusal is `machine_refused_connection`. Neither names the machine or the
+// address in the public answer; the Overview line names both.
+#[tokio::test(flavor = "multi_thread")]
+async fn status_names_an_open_machine_and_a_refusal_without_names() -> Result<(), Error> {
+    use crate::machine::link::status::{Link, Reporter};
+    let directory = crate::admin::private_tempdir()?;
+    let bearer = crate::admin::rotate_token(directory.path())?;
+    let store = empty_store(directory.path()).await?;
+    let guarded = Reporter::new(Link::TcpServer);
+    guarded.ready(true);
+    guarded.refuse(std::net::IpAddr::from([192, 168, 1, 77]));
+    let open = Reporter::new(Link::TcpServer);
+    open.ready(true);
+    let mut open_machine = machine("open-1", true, open.subscribe(), "main-lab")?;
+    open_machine.allowed_peers = None;
+    let (state, stopper, owner, host) = start_overview_server(
+        directory.path(),
+        &store,
+        vec![
+            machine("guarded-1", true, guarded.subscribe(), "main-lab")?,
+            open_machine,
+        ],
+        vec![loopback_destination("main-lab")?],
+    )
+    .await?;
+    let answer = raw(&host, &format!("Host: {host}\r\n")).await?;
+    assert_eq!(
+        status_of(&answer)?,
+        (
+            "attention".to_owned(),
+            vec![
+                "machine_refused_connection".to_owned(),
+                "machine_open_to_any_device".to_owned()
+            ]
+        )
+    );
+    let (_, body) = answer.split_once("\r\n\r\n").unwrap_or_default();
+    for hidden in ["guarded-1", "open-1", "192.168"] {
+        assert!(!body.contains(hidden), "status names {hidden}: {body}");
+    }
+    let page = request(
+        &host,
+        "/",
+        &format!("Authorization: Bearer {bearer}\r\n"),
+        None,
+    )
+    .await?;
+    assert!(
+        page.contains("guarded-1: Refused a connection from 192.168.1.77 at "),
+        "{page}"
+    );
+    assert!(page.contains("open-1: Accepts connections from any device"));
+    drop((guarded, open));
+    stop(state, stopper, owner, store).await
+}

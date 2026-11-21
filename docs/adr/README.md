@@ -31,3 +31,4 @@ links to its replacement; none is superseded today.
 | [0022](0022-title-bar-snap-layouts-and-window-menu.md) | Snap layouts and the window menu for the app's title bar |
 | [0023](0023-status-reasons-and-notifications.md) | Notifications that say what happened |
 | [0024](0024-one-review-item-per-cause.md)       | One Needs review item per cause (refines ADR 0003) |
+| [0026](0026-accept-only-the-machine.md)         | A listening machine accepts only its own device    |

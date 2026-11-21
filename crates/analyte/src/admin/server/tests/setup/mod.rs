@@ -2114,7 +2114,7 @@ async fn each_step_shows_its_indicator_and_keeps_the_choices() -> Result<(), Err
             "title=\"https://lab.example.invalid\">demo</a>"
         ),
         "<input type=\"hidden\" name=\"port\" value=\"name:COM3\">",
-        "<form method=\"post\" action=\"/setup/synthetic\">",
+        "<form id=\"s4-save\" method=\"post\" action=\"/setup/synthetic\">",
         "<button type=\"submit\" class=\"btn btn--primary\">Save</button>",
     ] {
         assert!(review.contains(shown), "missing {shown}: {review}");

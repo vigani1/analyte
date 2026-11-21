@@ -16,6 +16,9 @@
 <div class="listen__progress">
 <progress class="meter" max="{{ live.limit }}" value="{{ live.elapsed }}" aria-label="Test progress">{{ live.elapsed }} of {{ live.limit }} seconds</progress>
 <p class="subtle mono note">{{ live.received }}</p>
+{%- if let Some(peer) = live.peer %}
+<p class="note">Connected from <span class="mono">{{ peer }}</span></p>
+{%- endif %}
 <p class="note">{% if live.clock.is_some() %}{% call display::status(live.state.tone, live.state.word) %}{% endcall %} {% endif %}{% if let Some(note) = live.state.note %}{{ note }}{% endif %}</p>
 </div>
 {%- if let Some(csrf) = live.stop %}
