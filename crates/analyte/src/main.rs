@@ -7,6 +7,7 @@ use analyte_store::Audit;
 use clap::{Parser, Subcommand};
 use std::{
     path::PathBuf,
+    process::ExitCode,
     time::{Duration, Instant},
 };
 
@@ -48,6 +49,18 @@ enum Command {
     Admin {
         #[command(subcommand)]
         command: Admin,
+    },
+    /// Lists, adds, sets up, tests and removes machines through the Setup
+    /// page's own checks; changes apply after a restart.
+    Machines {
+        #[command(subcommand)]
+        command: analyte::admin::Machines,
+    },
+    /// Lists, adds, changes and removes lab apps and stores their keys
+    /// through the Lab apps page's own checks; changes apply after a restart.
+    LabApps {
+        #[command(subcommand)]
+        command: analyte::admin::LabApps,
     },
     Orders {
         #[command(subcommand)]
@@ -211,7 +224,7 @@ async fn recover(
     Ok(())
 }
 
-fn main() -> Result<(), Error> {
+fn main() -> Result<ExitCode, Error> {
     let cli = Cli::parse();
     #[cfg(windows)]
     if let Command::Service {
@@ -223,25 +236,36 @@ fn main() -> Result<(), Error> {
         return analyte::runtime::windows_service::run(
             cli.config,
             Duration::from_secs(*shutdown_timeout_secs),
-        );
+        )
+        .map(|()| ExitCode::SUCCESS);
     }
     tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .try_init()
         .map_err(Error::Tracing)?;
-    tokio::runtime::Builder::new_multi_thread()
+    let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
-        .build()?
-        .block_on(execute(cli))
+        .build()?;
+    runtime.block_on(execute(cli))
 }
 
-async fn execute(cli: Cli) -> Result<(), Error> {
+async fn execute(cli: Cli) -> Result<ExitCode, Error> {
     let actor = cli
         .actor
         .clone()
         .unwrap_or(Identifier::new("local-operator")?);
-    match cli.command {
+    let done = match cli.command {
+        // The setup commands print their own "Fix this" line and end with their
+        // own exit code (0 done, 1 refused, 3 partly done, 4 test saw no data).
+        Command::Machines { command } => {
+            let outcome = analyte::admin::run_machines(&cli.config, cli.actor, command).await;
+            return Ok(outcome.into());
+        }
+        Command::LabApps { command } => {
+            let outcome = analyte::admin::run_lab_apps(&cli.config, cli.actor, command).await;
+            return Ok(outcome.into());
+        }
         Command::RetryAlerts { endpoint, reason } => analyte::operator::alert_recovery::retry(
             &Program::load(&cli.config)?,
             required_actor(cli.actor)?,
@@ -321,7 +345,8 @@ async fn execute(cli: Cli) -> Result<(), Error> {
         Command::Deliveries { command } => deliveries(&cli.config, cli.actor, command).await,
         Command::Restore { from, reason } => restore(&cli.config, actor, from, &reason).await,
         Command::Backup { target } => backup(&cli.config, target).await,
-    }
+    };
+    done.map(|()| ExitCode::SUCCESS)
 }
 
 async fn operator(
