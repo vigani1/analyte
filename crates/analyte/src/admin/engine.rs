@@ -19,6 +19,9 @@ pub(in crate::admin) const TIMEOUT: Duration = Duration::from_secs(5);
 const LIMIT: usize = 1_048_576;
 /// The most bytes of a proof read.
 const PROOF_LIMIT: usize = 1024;
+/// How long a change through the engine may take: its own setup write budget
+/// (10 s) and the time to send and answer (ADR 0028).
+const WRITE_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// Why the engine could not be asked, or its answer could not be used.
 #[derive(Debug, thiserror::Error)]
@@ -67,6 +70,32 @@ pub(in crate::admin) enum EngineError {
     /// The answer is not what this version of Analyte expects.
     #[error("the engine's answer could not be read: {0}")]
     Unreadable(#[source] serde_json::Error),
+}
+
+/// Why a change sent to the engine has no answer (ADR 0028).
+#[derive(Debug, thiserror::Error)]
+pub(in crate::admin) enum PostError {
+    /// The change could not be put into a request; nothing was sent.
+    #[error("the request could not be written: {0}")]
+    Request(#[source] serde_json::Error),
+    /// Nothing reached the engine, so nothing was changed.
+    #[error("the engine could not be reached: {0}")]
+    NotSent(#[source] reqwest::Error),
+    /// It may have reached the engine: whether it changed anything is
+    /// unknown, never "not done".
+    #[error("the engine did not answer the change within {} seconds", WRITE_TIMEOUT.as_secs())]
+    TimedOut,
+    /// It may have reached the engine, but the answer broke off or was too
+    /// large: whether it changed anything is unknown.
+    #[error("{0}")]
+    Unanswered(EngineError),
+}
+
+impl PostError {
+    /// Nothing reached the engine, so nothing was changed.
+    pub(in crate::admin) const fn not_sent(&self) -> bool {
+        matches!(self, Self::Request(_) | Self::NotSent(_))
+    }
 }
 
 /// The engine at the admin address, proven to hold the admin key.
@@ -178,6 +207,56 @@ impl Engine {
     /// No answer, a timeout or an answer over the limit.
     pub(in crate::admin) async fn get(&self, path: &str) -> Result<(u16, Vec<u8>), EngineError> {
         self.exchange(path, true, LIMIT).await
+    }
+
+    /// A POST of `body` as JSON to `path` with the admin key, to this proven
+    /// engine only, within [`WRITE_TIMEOUT`] and `limit` bytes of answer: the
+    /// status code and the body. The body may hold keys; it is never logged.
+    /// # Errors
+    /// [`PostError::not_sent`] tells whether anything may have reached the engine.
+    pub(in crate::admin) async fn post(
+        &self,
+        path: &str,
+        body: &impl serde::Serialize,
+        limit: usize,
+    ) -> Result<(u16, Vec<u8>), PostError> {
+        let bytes = serde_json::to_vec(body).map_err(PostError::Request)?;
+        let exchange = async {
+            let mut response = self
+                .client
+                .post(format!("http://{}{path}", self.address))
+                .bearer_auth(self.key.form_value())
+                .header(reqwest::header::CONTENT_TYPE, "application/json")
+                .timeout(WRITE_TIMEOUT)
+                .body(bytes)
+                .send()
+                .await
+                .map_err(|error| {
+                    if error.is_connect() {
+                        PostError::NotSent(error)
+                    } else if error.is_timeout() {
+                        PostError::TimedOut
+                    } else {
+                        PostError::Unanswered(EngineError::Silent(error))
+                    }
+                })?;
+            let status = response.status().as_u16();
+            let mut answer = Vec::new();
+            while let Some(chunk) = response
+                .chunk()
+                .await
+                .map_err(|error| PostError::Unanswered(EngineError::Silent(error)))?
+            {
+                if chunk.len() > limit.saturating_sub(answer.len()) {
+                    return Err(PostError::Unanswered(EngineError::TooLarge));
+                }
+                answer.extend_from_slice(&chunk);
+            }
+            Ok((status, answer))
+        };
+        tokio::time::timeout(WRITE_TIMEOUT, exchange)
+            .await
+            .map_err(|_| PostError::TimedOut)?
     }
 
     /// The engine's version, from its public `GET /status`.

@@ -4,6 +4,11 @@
 ; Firewall rule for analyzers; uninstall.ps1 removes it). Unsigned for now: see
 ; docs/release.md.
 ;
+; Two setup types (ADR 0019 and the owner's 2026-11-21 engine-only request):
+; the engine with the desktop app, or the engine only, set up from PowerShell
+; or a browser. Silent installs choose one with /TYPE=full or /TYPE=engine;
+; /COMPONENTS has no effect, since there is no custom type.
+;
 ; Build from a staged release folder (analyte.exe, analyte-app.exe, analyte.ico,
 ; LICENSE, README.md, machines, packaging\windows):
 ;   ISCC.exe /DAppVersion=0.1.0 /DSourceDir=<folder> /DOutputDir=<folder> analyte.iss
@@ -49,19 +54,39 @@ CloseApplications=no
 ; No setup log unless /LOG asks for one. The log holds the scripts' output
 ; (paths and errors), never the admin token.
 SetupLogging=no
+; The PATH task changes the system PATH (path.ps1); new windows should see it.
+ChangesEnvironment=yes
 
 [Messages]
-ConfirmUninstall=This removes the Analyte service, its Windows Firewall rule, the Analyte app and the program files.%n%nData, configuration, backups, credentials and the admin token in C:\ProgramData\Analyte are kept. Delete them yourself only after the lab has decided what to do with the clinical data they hold.%n%nRemove Analyte now?
+ConfirmUninstall=This removes the Analyte service, its Windows Firewall rule, its PATH entry, the Analyte app and the program files.%n%nData, configuration, backups, credentials and the admin token in C:\ProgramData\Analyte are kept. Delete them yourself only after the lab has decided what to do with the clinical data they hold.%n%nRemove Analyte now?
+
+WizardSelectComponents=Choose what to install
+SelectComponentsDesc=Install the Analyte app too, or only the engine?
+SelectComponentsLabel2=The engine is the Analyte service that talks to the analyzers and the lab apps. The Analyte app shows what the engine is doing, in a window and a tray icon. Without the app, set Analyte up from PowerShell or in a browser.
+
+[Types]
+; The first is the default; an upgrade keeps the type chosen before
+; (UsePreviousSetupType), and an installation from before the choice existed
+; had the app, so it stays "full".
+Name: "full"; Description: "Engine and Analyte app (recommended)"
+Name: "engine"; Description: "Engine only (set up from PowerShell or a browser)"
+
+[Components]
+Name: "engine"; Description: "Analyte engine (the Windows service)"; Types: full engine; Flags: fixed
+Name: "app"; Description: "Analyte app (window and tray icon)"; Types: full
 
 [Tasks]
 ; ADR 0019: the desktop app starts in the tray when this Windows user signs in;
 ; the tray's "Start at sign-in" switches it later.
-Name: "autostart"; Description: "Start Analyte when I sign in"
+Name: "autostart"; Description: "Start Analyte when I sign in"; Components: app
+; For both types: install.ps1 -AddToPath adds the program folder to the system
+; PATH once; unticked, path.ps1 removes it; uninstall.ps1 removes it.
+Name: "path"; Description: "Let me type ""analyte"" in PowerShell (add Analyte to the PATH)"
 
 [Files]
 Source: "{#SourceDir}\analyte.exe"; DestDir: "{app}"; Flags: ignoreversion
 ; The desktop app (ADR 0019): the engine's pages in a window, and a tray icon.
-Source: "{#SourceDir}\analyte-app.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourceDir}\analyte-app.exe"; DestDir: "{app}"; Flags: ignoreversion; Components: app
 Source: "{#SourceDir}\analyte.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\README.md"; DestDir: "{app}"; Flags: ignoreversion
@@ -77,12 +102,24 @@ Source: "{#SourceDir}\packaging\windows\starter\analyte.toml"; DestDir: "{common
 [Icons]
 ; The Start menu entry. Its AppUserModelID is the app's identifier
 ; (crates/app/tauri.conf.json), so notifications show as "Analyte".
-Name: "{autoprograms}\Analyte"; Filename: "{app}\analyte-app.exe"; AppUserModelID: "io.github.vigani1.analyte.app"; Comment: "See what the Analyte engine is doing"
+Name: "{autoprograms}\Analyte"; Filename: "{app}\analyte-app.exe"; AppUserModelID: "io.github.vigani1.analyte.app"; Comment: "See what the Analyte engine is doing"; Components: app
 
 [Registry]
 ; The same value the tray's "Start at sign-in" writes (crates/app/src/shell/autostart.rs):
 ; the quoted path and the tray-only argument, for the user running setup.
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Analyte"; ValueData: """{app}\analyte-app.exe"" --tray"; Flags: uninsdeletevalue; Tasks: autostart
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Analyte"; ValueData: """{app}\analyte-app.exe"" --tray"; Flags: uninsdeletevalue; Components: app; Tasks: autostart
+; Switching to the engine only removes the sign-in entry, as uninstall does.
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: none; ValueName: "Analyte"; Flags: deletevalue; Components: not app
+
+[InstallDelete]
+; Switching from the full type to the engine only removes the app the way
+; uninstall does: its program, settings, Start menu entry, and the installing
+; user's app log and WebView2 data. PrepareToInstall closed the app first.
+Type: files; Name: "{app}\analyte-app.exe"; Components: not app
+Type: files; Name: "{app}\analyte-app.toml"; Components: not app
+Type: files; Name: "{autoprograms}\Analyte.lnk"; Components: not app
+Type: filesandordirs; Name: "{localappdata}\Analyte"; Components: not app
+Type: filesandordirs; Name: "{localappdata}\io.github.vigani1.analyte.app"; Components: not app
 
 [UninstallDelete]
 ; Written by setup from the program file's admin port.
@@ -93,8 +130,9 @@ Type: filesandordirs; Name: "{localappdata}\Analyte"
 Type: filesandordirs; Name: "{localappdata}\io.github.vigani1.analyte.app"
 
 [Run]
-Filename: "{app}\analyte-app.exe"; Description: "Open Analyte"; Flags: postinstall nowait skipifsilent runasoriginaluser; Check: CanOpenApp
-; Without the WebView2 Runtime the app has no window: the setup page opens in the browser.
+Filename: "{app}\analyte-app.exe"; Description: "Open Analyte"; Flags: postinstall nowait skipifsilent runasoriginaluser; Components: app; Check: CanOpenApp
+; The engine only, or the app without the WebView2 Runtime (no window): the
+; setup page opens in the browser.
 Filename: "{code:SetupUrl}"; Description: "Open the Analyte setup page in the browser"; Flags: postinstall shellexec nowait skipifsilent; Check: CanOpenSetupInBrowser
 
 [Code]
@@ -104,6 +142,8 @@ var
   ServiceReady: Boolean;
   { Why install.ps1 failed; empty after a successful setup. }
   InstallError: String;
+  { Why path.ps1 could not remove the PATH entry the unticked task asked to remove. }
+  PathError: String;
   TokenPage: TOutputMsgMemoWizardPage;
 
 function ConfigFile: String;
@@ -137,6 +177,7 @@ begin
   TokenExisted := FileExists(TokenFile);
   ServiceReady := False;
   InstallError := '';
+  PathError := '';
   Result := True;
 end;
 
@@ -293,24 +334,52 @@ end;
 
 function CanOpenSetupInBrowser: Boolean;
 begin
-  Result := ServiceReady and (AdminPort <> '') and not WebView2Present;
+  Result := ServiceReady and (AdminPort <> '')
+    and not (WizardIsComponentSelected('app') and WebView2Present);
+end;
+
+{ How the finish page tells someone without the app to run the program. }
+function AnalyteCommand: String;
+begin
+  if WizardIsTaskSelected('path') then
+    Result := 'analyte'
+  else
+    Result := '& ''' + ExpandConstant('{app}\analyte.exe') + '''';
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   Code: Integer;
-  Output: String;
+  Output, PathOutput, Switches: String;
 begin
   if CurStep <> ssPostInstall then
     exit;
   Output := ExpandConstant('{tmp}\install-output.txt');
+  Switches := '-ConfigWritable -CreateAdminToken -UsersMayStart -Start';
+  if WizardIsTaskSelected('path') then
+    Switches := Switches + ' -AddToPath';
   ServiceReady := RunScript(ExpandConstant('{app}\packaging\windows\install.ps1'),
     '-Executable "' + ExpandConstant('{app}\analyte.exe') + '" -Config "' + ConfigFile
-      + '" -DataDirectory "' + DataDirectory + '" -ConfigWritable -CreateAdminToken -UsersMayStart -Start',
+      + '" -DataDirectory "' + DataDirectory + '" ' + Switches,
     Output, Code);
-  WriteAppSettings;
+  { An upgrade with the PATH task unticked takes the entry out again. }
+  if ServiceReady and not WizardIsTaskSelected('path') then
+  begin
+    PathOutput := ExpandConstant('{tmp}\path-output.txt');
+    if not RunScript(ExpandConstant('{app}\packaging\windows\path.ps1'),
+        '-Action Remove -Folder "' + ExpandConstant('{app}') + '"', PathOutput, Code) then
+      PathError := 'Analyte is installed and running, but its folder could not be taken off '
+        + 'the system PATH (path.ps1 exit code ' + IntToStr(Code) + '):' + #13#10 + #13#10
+        + ReadOutput(PathOutput);
+  end;
+  if WizardIsComponentSelected('app') then
+    WriteAppSettings;
   if ServiceReady then
-    TokenPage.RichEditViewer.Lines.Text := TokenMessage
+  begin
+    TokenPage.RichEditViewer.Lines.Text := TokenMessage;
+    if PathError <> '' then
+      SuppressibleMsgBox(PathError, mbError, MB_OK, IDOK);
+  end
   else
   begin
     { Inno Setup cannot roll back once files are copied, and it ignores an
@@ -326,10 +395,11 @@ begin
   end;
 end;
 
-{ A failed service setup ends with exit code 10 instead of 0. }
+{ A failed service setup, or a PATH entry left behind, ends with exit code 10
+  instead of 0. }
 function GetCustomSetupExitCode: Integer;
 begin
-  if InstallError <> '' then
+  if (InstallError <> '') or (PathError <> '') then
     Result := 10
   else
     Result := 0;
@@ -337,7 +407,23 @@ end;
 
 procedure CurPageChanged(CurPageID: Integer);
 begin
-  if (CurPageID = wpFinished) and (InstallError = '') and not WebView2Present then
+  if (CurPageID = wpFinished) and (InstallError = '') and (PathError <> '') then
+    WizardForm.FinishedLabel.Caption := 'Analyte is installed and running, but its folder is '
+      + 'still on the system PATH. The error was shown before this page. Run this installer '
+      + 'again, or remove the entry in System, Advanced system settings, Environment Variables.'
+  else if (CurPageID = wpFinished) and (InstallError = '') and not WizardIsComponentSelected('app') then
+  begin
+    WizardForm.FinishedLabel.Caption := 'The Analyte engine is installed and running. Set it up '
+      + 'from PowerShell (Run as administrator), for example:' + #13#10 + #13#10
+      + '  ' + AnalyteCommand + ' doctor' + #13#10
+      + '  ' + AnalyteCommand + ' machines list' + #13#10 + #13#10
+      + 'or on the setup page in the browser. The guide "Install without the app" in '
+      + 'docs\operations\install.md lists every step.';
+    { The longer text pushes the browser checkbox down instead of covering it. }
+    WizardForm.AdjustLabelHeight(WizardForm.FinishedLabel);
+    WizardForm.RunList.Top := WizardForm.FinishedLabel.Top + WizardForm.FinishedLabel.Height + ScaleY(12);
+  end
+  else if (CurPageID = wpFinished) and (InstallError = '') and not WebView2Present then
     WizardForm.FinishedLabel.Caption := 'The Analyte engine is installed and running. The '
       + 'Analyte app needs the Microsoft Edge WebView2 Runtime, which this PC does not have, '
       + 'so it opens the pages in the browser instead. Install the WebView2 Runtime '
@@ -366,7 +452,8 @@ begin
   begin
     CloseDesktopApp;
     Output := ExpandConstant('{tmp}\uninstall-output.txt');
-    if not RunScript(ExpandConstant('{app}\packaging\windows\uninstall.ps1'), '', Output, Code) then
+    if not RunScript(ExpandConstant('{app}\packaging\windows\uninstall.ps1'),
+        '-Executable "' + ExpandConstant('{app}\analyte.exe') + '"', Output, Code) then
       SuppressibleMsgBox('The Analyte service could not be removed:' + #13#10 + #13#10
         + ReadOutput(Output) + #13#10 + #13#10
         + 'Run packaging\windows\uninstall.ps1 as administrator after fixing the cause.',

@@ -74,7 +74,9 @@ including setting up machines and lab apps with `analyte machines` and
 `analyte lab-apps` through the Setup page's own checks
 ([from the command line](docs/operations/connect.md#from-the-command-line)).
 
-The installer sets up both ([Windows packaging](packaging/windows/README.md)).
+The installer sets up both, or only the engine, set up from PowerShell
+([Install without the app](docs/operations/install.md#install-without-the-app);
+[Windows packaging](packaging/windows/README.md)).
 On Linux the engine is a systemd service ([Linux packaging](packaging/linux/README.md)).
 
 ## A look at it

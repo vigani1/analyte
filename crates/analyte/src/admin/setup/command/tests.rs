@@ -859,3 +859,160 @@ async fn test_names_the_device_and_a_script_changes_nothing() -> Result<(), Erro
     );
     Ok(())
 }
+
+/// The data folder of `install` with a new admin key, as the engine needs it.
+fn admin_key(install: &Install) -> Result<(PathBuf, String), Error> {
+    let data = install.root.join("data");
+    std::fs::create_dir_all(&data)?;
+    // The engine refuses a data directory others can read (Linux 0700).
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&data, std::fs::Permissions::from_mode(0o700))?;
+    }
+    let key = crate::admin::rotate_token(&data)?;
+    Ok((data, key))
+}
+
+// ADR 0028: while the engine runs, `lab-apps add` and `lab-apps keys` hand the
+// lab app and its keys to it after it proved itself; the engine stores them in
+// the locked file through the Lab apps page's own write and records the audit
+// row under the command's actor. The keys are in no other file and no row.
+#[tokio::test(flavor = "multi_thread")]
+async fn keys_reach_the_locked_file_through_the_running_engine() -> Result<(), Error> {
+    let install = install_on(free_port()?)?;
+    let (data, _) = admin_key(&install)?;
+    let program = Program::load(&install.config)?;
+    let store = Arc::new(crate::open_system_store(&program).await?);
+    let server = crate::admin::prepare(
+        &program,
+        store.clone(),
+        crate::runtime::hooks::ServiceMode::Production,
+        &crate::admin::Draining::new(),
+        Duration::from_secs(30),
+    )
+    .await?
+    .ok_or("no admin address")?;
+    let (stop, stopped) = tokio::sync::watch::channel(false);
+    let owner = tokio::spawn(server.run(stopped));
+    let demo = ["add", "demo", "--address", "https://lab.example.invalid"];
+    let added = install.lab_apps(&demo, [API_KEY, SIGNING_KEY]).await;
+    let replaced = "synthetic-replaced-api-key-4QW";
+    let keys = install.lab_apps(&["keys", "demo"], [replaced, ""]).await;
+    stop.send_replace(true);
+    owner.await??;
+    let mut store = Arc::into_inner(store).ok_or("the store is still shared")?;
+    store.shutdown(crate::deadline()?).await?;
+    assert_eq!(added?, Outcome::Done);
+    assert_eq!(keys?, Outcome::Done);
+    let stored = Locked::new(&data).read()?;
+    assert_eq!(stored.value("demo-api"), Some(replaced));
+    assert_eq!(stored.value("demo-signing"), Some(SIGNING_KEY));
+    for (name, text) in install.settings()? {
+        for key in [API_KEY, SIGNING_KEY, replaced] {
+            assert!(!text.contains(key), "{name}");
+        }
+    }
+    let audits = install.audits().await?;
+    let made: Vec<(&str, &str, &str)> = audits
+        .iter()
+        .map(|(actor, action, target, _)| (actor.as_str(), action.as_str(), target.as_str()))
+        .collect();
+    assert_eq!(
+        made,
+        [
+            ("it-test", "lab-app-add", "demo"),
+            ("it-test", "lab-app-save", "demo")
+        ]
+    );
+    let reasons: Vec<&str> = audits.iter().map(|(.., reason)| reason.as_str()).collect();
+    assert!(
+        reasons.iter().all(|r| r.starts_with("command line ")),
+        "{reasons:?}"
+    );
+    assert!(
+        reasons
+            .last()
+            .is_some_and(|r| r.contains("keys replaced: demo-api")),
+        "{reasons:?}"
+    );
+    for key in [API_KEY, SIGNING_KEY, replaced] {
+        assert!(reasons.iter().all(|r| !r.contains(key)));
+    }
+    Ok(())
+}
+
+// ADR 0028 §2 (threat: a local listener on the admin port while the service
+// is stopped): `lab-apps keys` and `lab-apps add` send the keys only to a
+// listener that proves it holds the admin key. One that does not hears the
+// challenge and nothing else: no admin key, no Authorization header, no lab app
+// key, no write. The command does not fall back to writing the file itself.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_unproven_listener_never_receives_the_keys() -> Result<(), Error> {
+    let wrong = format!("{{\"proof\":\"{}\"}}", "00".repeat(32));
+    let answer = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{wrong}",
+        wrong.len()
+    );
+    let (port, heard, owner) = impostor(Some(answer)).await?;
+    let install = install_on(port)?;
+    let (data, key) = admin_key(&install)?;
+    std::fs::write(
+        install.root.join("lab-apps.toml"),
+        "schema_version = 1\n[[lab_apps]]\nname = 'demo'\nbase_url = 'https://lab.example.invalid'\napi_key_name = 'demo-api'\nsigning_key_name = 'demo-signing'\n",
+    )?;
+    let before = install.settings()?;
+    let keys = install
+        .lab_apps(&["keys", "demo"], [API_KEY, SIGNING_KEY])
+        .await;
+    let add = install
+        .lab_apps(
+            &["add", "other", "--address", "https://other.example.invalid"],
+            [API_KEY, SIGNING_KEY],
+        )
+        .await;
+    owner.abort();
+    for result in [keys, add] {
+        match result {
+            Err(Failure::EngineUnreachable(why)) => {
+                assert!(
+                    why.contains("could not prove it is this Analyte engine"),
+                    "{why}"
+                );
+            }
+            Err(other) => return Err(format!("refused for another reason: {other}").into()),
+            Ok(outcome) => return Err(format!("not refused: {outcome:?}").into()),
+        }
+    }
+    let heard = String::from_utf8_lossy(&heard.lock().map_err(|_| "poisoned")?).into_owned();
+    assert!(heard.contains("GET /proof?nonce="), "{heard}");
+    assert!(
+        !heard.to_ascii_lowercase().contains("authorization"),
+        "{heard}"
+    );
+    for secret in [key.as_str(), API_KEY, SIGNING_KEY] {
+        assert!(!heard.contains(secret), "a key was sent");
+    }
+    assert!(!heard.contains("/command/"), "{heard}");
+    assert_eq!(install.settings()?, before);
+    assert_eq!(Locked::new(&data).read()?.value("demo-api"), None);
+    Ok(())
+}
+
+// ADR 0028 §5: with the engine stopped, the command stores the keys itself
+// when this account may write the locked file (the tests above and
+// `lab_apps_refuse_as_the_page_does_and_keep_what_is_not_given`); when it may
+// not, the refusal says to start the engine and run the command again.
+#[test]
+fn a_stopped_engine_says_to_start_it() {
+    let failure = Failure::EngineStopped(
+        crate::installation::credentials::CredentialError::InvalidValue("demo-api".into()),
+    );
+    assert_eq!(
+        failure.advice(),
+        Some(
+            "Start the engine with Start-Service Analyte in an administrator PowerShell, then run this command again."
+        )
+    );
+    assert!(!failure.after_writing());
+}

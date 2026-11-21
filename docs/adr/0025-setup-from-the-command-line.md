@@ -2,7 +2,9 @@
 
 Status: accepted, 2026-11-21 (the owner asked for the Setup and Lab apps pages'
 steps from PowerShell for scripted installs and remote support, and for the
-recommended route without waiting for approval).
+recommended route without waiting for approval). Point 4 is refined by
+[ADR 0028](0028-lab-app-keys-through-the-engine.md): while the engine runs, it
+stores the keys.
 
 ## Context
 
@@ -37,7 +39,8 @@ second set of rules that could drift from the pages.
    only by the account the service runs as. Otherwise it says to run as that
    account or use the Lab apps page. The file's protection is never weakened.
    On an installed Windows service, whose account is the virtual
-   `NT SERVICE\Analyte`, that means keys are set on the Lab apps page.
+   `NT SERVICE\Analyte`, that means keys are set on the Lab apps page, or,
+   since ADR 0028, through the running engine.
 5. **Live state from the running engine.** Link states live only in the
    engine, so `machines list` reads them from `GET /machines.json`: the
    Machines list's rows in the page's words, behind the same admin key or

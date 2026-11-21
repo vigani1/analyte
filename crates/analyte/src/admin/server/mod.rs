@@ -7,9 +7,9 @@ use analyte_model::Identifier;
 use axum::{
     Form, Router,
     extract::{ConnectInfo, DefaultBodyLimit, FromRequest, Request, State},
-    http::{Method, header},
+    http::{Method, StatusCode, header},
     middleware::{self, Next},
-    response::Response,
+    response::{IntoResponse as _, Response},
     routing::{get, post},
 };
 use std::{
@@ -472,6 +472,16 @@ fn router(state: Arc<Context>) -> Router {
                 // Runs after the outer limit below, so setup forms get the larger bound.
                 .layer(DefaultBodyLimit::max(super::setup::FORM_LIMIT)),
         )
+        .merge(
+            // ADR 0028: the command line's lab app writes, admitted by the
+            // admin key in the header only (see `protect`).
+            Router::new()
+                .route(
+                    super::setup::COMMAND_LAB_APPS,
+                    post(super::setup::command_lab_apps),
+                )
+                .layer(DefaultBodyLimit::max(super::setup::COMMAND_LAB_APPS_LIMIT)),
+        )
         .fallback(not_found)
         // After every route, merged ones too: it is set on each route there is.
         .method_not_allowed_fallback(wrong_method)
@@ -516,7 +526,8 @@ async fn protect(State(state): State<Arc<Context>>, mut request: Request, next: 
                 .find_map(|v| v.trim().strip_prefix("analyte_session="))
         });
     let session = state.sessions.lookup(cookie);
-    let authenticated = bearer.is_some_and(|v| state.token.matches(v))
+    let bearer_valid = bearer.is_some_and(|v| state.token.matches(v));
+    let authenticated = bearer_valid
         || session
             .as_ref()
             .ok()
@@ -531,6 +542,15 @@ async fn protect(State(state): State<Arc<Context>>, mut request: Request, next: 
         Refusal::NeedsRestart.page(&state.assets)
     } else if !valid_host || !same_origin {
         sign_in::unauthorized(&state, None, Attempt::Open)
+    } else if command(&request) {
+        // ADR 0028: only the admin key in the header admits a `/command/`
+        // route; a browser's signed-in session never does, so a page cannot
+        // post there with it. It takes no CSRF value and has no sidebar.
+        if bearer_valid {
+            answer(&state, request, next, None, false).await
+        } else {
+            StatusCode::UNAUTHORIZED.into_response()
+        }
     } else if login || public || authenticated {
         let session = session.ok().flatten();
         if let Some(session) = &session {
@@ -584,10 +604,18 @@ struct Csrf {
     csrf: String,
 }
 
-/// A POST under `/setup/`: a setup write. It gets the larger form limit and,
-/// once its form has passed the session check, [`WRITE_BUDGET`].
+/// A route under `/command/`: the command line's writes through the engine
+/// (ADR 0028), admitted by the admin key in the header only.
+fn command(request: &Request) -> bool {
+    request.uri().path().starts_with("/command/")
+}
+
+/// A POST under `/setup/` or `/command/`: a setup write. A page's gets the
+/// larger form limit and, once its form has passed the session check, both get
+/// [`WRITE_BUDGET`].
 fn setup_write(request: &Request) -> bool {
-    request.method() == Method::POST && request.uri().path().starts_with("/setup/")
+    request.method() == Method::POST
+        && (request.uri().path().starts_with("/setup/") || command(request))
 }
 
 /// Runs an admitted request within its budget. Its form is read and checked
@@ -661,7 +689,10 @@ async fn plain_refusal_as_page(assets: &super::view::assets::Root, response: Res
 /// The request with its posted form read and the form's CSRF value checked
 /// against the session, or the refusal; a request that posts nothing passes as it is.
 async fn checked(request: Request, session: Option<Arc<Session>>) -> Result<Request, Refusal> {
-    if request.method() != Method::POST {
+    // A `/command/` route was admitted by its header alone and reads its own
+    // bounded body; a cross-site page cannot set that header, so it needs no
+    // CSRF value (ADR 0028).
+    if request.method() != Method::POST || command(&request) {
         return Ok(request);
     }
     let Some(session) = session else {
