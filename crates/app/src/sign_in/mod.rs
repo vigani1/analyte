@@ -359,30 +359,34 @@ mod tests {
     // landing on the key form; while it stays up, one try per 30 s holds.
     #[test]
     fn an_engine_that_answers_again_signs_in_at_once() {
-        use crate::engine::status::{Health, Reply, Silence};
+        use crate::engine::status::{Health, Reasons, Reply, Silence};
         let mut watch = crate::watch::Watch::new();
         let mut guard = Guard::default();
         let start = Instant::now();
         let mut observe = |guard: &mut Guard, reply: Reply, second: i64| {
             let at = jiff::Timestamp::from_second(second).expect("a test time");
-            if let Some(change) = watch.observe(reply, at) {
+            if let Some(change) = watch.observe(reply, at).change {
                 guard.follow(change);
             }
         };
-        observe(&mut guard, Reply::Answered(Health::Good), 1);
+        observe(&mut guard, Reply::Answered(Health::Good, Reasons::NONE), 1);
         assert!(guard.allows(Trigger::Automatic, start), "the first sign-in");
         // The engine stops: two unanswered questions make it off.
         observe(&mut guard, Reply::Silent(Silence::Refused), 5);
         observe(&mut guard, Reply::Silent(Silence::Refused), 10);
         assert!(!guard.allows(Trigger::Automatic, start + Duration::from_secs(10)));
         // It answers again 15 s after the first sign-in.
-        observe(&mut guard, Reply::Answered(Health::Good), 15);
+        observe(&mut guard, Reply::Answered(Health::Good, Reasons::NONE), 15);
         let back = start + Duration::from_secs(15);
         assert!(guard.allows(Trigger::Automatic, back), "off to running");
         // Up all along from here: a refusal or a lost session cannot loop.
-        observe(&mut guard, Reply::Answered(Health::Attention), 20);
+        observe(
+            &mut guard,
+            Reply::Answered(Health::Attention, Reasons::NONE),
+            20,
+        );
         observe(&mut guard, Reply::Silent(Silence::TimedOut), 25);
-        observe(&mut guard, Reply::Answered(Health::Good), 30);
+        observe(&mut guard, Reply::Answered(Health::Good, Reasons::NONE), 30);
         for later in [1, 10, 29] {
             let at = back + Duration::from_secs(later);
             assert!(!guard.allows(Trigger::Automatic, at), "{later} s after");

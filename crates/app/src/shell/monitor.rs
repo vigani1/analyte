@@ -1,4 +1,4 @@
-//! The one task that watches the engine: asks its `/status` every few seconds, keeps the tray, the window and the Engine off screen in step, notifies when the state gets worse, and runs the window, Start engine and Windows sign-in commands.
+//! The one task that watches the engine: asks its `/status` every few seconds, keeps the tray, the window, its title bar and the Engine off screen in step, notifies when the state gets worse or something new needs someone, and runs the window, Start engine and Windows sign-in commands.
 //!
 //! Every wait is bounded: a question by `status::TIMEOUT`, an `sc.exe` call
 //! by `service::LIMIT`, a sign-in by `pipe::LIMITS` (5 s in all). When the
@@ -63,6 +63,10 @@ async fn work(app: &AppHandle, shared: &Shared, mut commands: mpsc::Receiver<Com
                     guard.forget();
                     window::open(app, shared, watch.shown());
                 }
+                Some(Command::OpenOverview) => {
+                    guard.forget();
+                    window::open_overview(app, shared, watch.shown());
+                }
                 Some(Command::SignIn { next, trigger }) => {
                     sign_in(app, shared, &mut guard, &next, trigger).await;
                 }
@@ -88,7 +92,7 @@ async fn check(
 ) {
     let reply = client.ask().await;
     let now = jiff::Timestamp::now();
-    let change = watch.observe(reply, now);
+    let seen = watch.observe(reply, now);
     let running = matches!(watch.shown(), Shown::Running(_));
     // Only while the engine does not answer: the service manager says why.
     let service = if running {
@@ -107,15 +111,20 @@ async fn check(
             off.noticed = Some(now);
         }
     });
-    if let Some(change) = change {
+    if let Some(change) = seen.change {
         tracing::info!(from = ?change.from, to = ?change.to, "engine state changed");
         guard.follow(change);
         tray::show(app, change.to);
         window::show_state(app, shared, change.to);
-        if let Some(notice) = change.notice() {
-            notify(app, notice);
-        }
     }
+    if let Some(notice) = &seen.notice {
+        notify(app, notice);
+    }
+    let note = watch
+        .recap()
+        .and_then(|recap| recap.line(now, &jiff::tz::TimeZone::system()))
+        .unwrap_or_default();
+    window::show_note(app, shared, note);
     window::follow(app, shared, watch.shown(), changed);
 }
 
@@ -154,13 +163,13 @@ async fn start(app: &AppHandle, shared: &Shared, shown: Shown) {
     window::follow(app, shared, shown, changed);
 }
 
-fn notify(app: &AppHandle, notice: Notice) {
+fn notify(app: &AppHandle, notice: &Notice) {
     use tauri_plugin_notification::NotificationExt as _;
     let shown = app
         .notification()
         .builder()
         .title(notice.title)
-        .body(notice.body)
+        .body(&notice.body)
         .show();
     match shown {
         // Windows may still hold it back (notifications off, Do not disturb).

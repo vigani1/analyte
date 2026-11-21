@@ -2,7 +2,10 @@
 //!
 //! Everything that changes the window or the tray goes through the monitor
 //! task (`monitor`), which owns the engine watch; menu clicks, the second
-//! instance and notification clicks only send it a `Command`. That keeps
+//! instance and notification clicks only send it a `Command`. A
+//! notification's click and a second start open the Overview, as Windows
+//! starts the app again for a click from the notification centre (ADR 0023).
+//! That keeps
 //! one owner for every change and builds windows off the event loop's thread,
 //! as `WebView2` requires.
 mod autostart;
@@ -32,6 +35,9 @@ pub const TRAY_ONLY: &str = "--tray";
 pub(crate) enum Command {
     /// Show the window, making it if it was closed.
     Open,
+    /// Show the window on the Overview, which lists each thing that needs
+    /// someone: a notification's click, or the app started again.
+    OpenOverview,
     /// Ask the service manager to start the engine.
     StartEngine,
     /// Sign the pages in with Windows, then open `next` (ADR 0021 §6).
@@ -77,15 +83,18 @@ impl Shared {
 
     /// A copy of what the title bar shows now.
     pub(crate) fn bar(&self) -> View {
-        *self.bar.lock().unwrap_or_else(PoisonError::into_inner)
+        self.bar
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 
     /// Changes what the title bar shows; gives the new view if it changed.
     pub(crate) fn update_bar(&self, change: impl FnOnce(&mut View)) -> Option<View> {
         let mut bar = self.bar.lock().unwrap_or_else(PoisonError::into_inner);
-        let before = *bar;
+        let before = bar.clone();
         change(&mut bar);
-        (*bar != before).then_some(*bar)
+        (*bar != before).then(|| bar.clone())
     }
 
     /// Hands `command` to the monitor; a full queue already holds one like it.
@@ -95,6 +104,7 @@ impl Shared {
             // The page a sign-in returns to is left out of the log.
             let command = match error.into_inner() {
                 Command::Open => "open",
+                Command::OpenOverview => "open the overview",
                 Command::StartEngine => "start engine",
                 Command::SignIn { .. } => "sign in",
             };
@@ -155,8 +165,9 @@ fn build(engine: Result<Engine, String>, tray_only: bool) -> tauri::Result<tauri
     let (stop, stopped) = watch::channel(false);
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, arguments, _| {
+            // A click in the notification centre starts the app again.
             if !arguments.iter().any(|argument| argument == TRAY_ONLY) {
-                app.state::<Arc<Shared>>().send(Command::Open);
+                app.state::<Arc<Shared>>().send(Command::OpenOverview);
             }
         }))
         .plugin(tauri_plugin_notification::init())
@@ -222,13 +233,15 @@ fn on_event(app: &tauri::AppHandle, event: tauri::RunEvent) {
     }
 }
 
-/// A click on a notification opens the window.
+/// A click on a notification still on screen opens the window on the
+/// Overview; one in the notification centre starts the app again instead,
+/// which the single-instance plugin hands over the same way.
 fn notifications(app: &tauri::AppHandle) {
     use tauri_plugin_notification::NotificationExt as _;
     let handle = app.clone();
     let registered = app.notification().on_action(move |performed| {
         if performed.action_id() == "tap" {
-            handle.state::<Arc<Shared>>().send(Command::Open);
+            handle.state::<Arc<Shared>>().send(Command::OpenOverview);
         }
     });
     if let Err(error) = registered {
@@ -253,7 +266,7 @@ fn local_page(
         webview,
     };
     let (answer, action) =
-        local::answer(&asked, &shared.off(), shared.bar(), jiff::Timestamp::now());
+        local::answer(&asked, &shared.off(), &shared.bar(), jiff::Timestamp::now());
     if action == Some(local::Action::StartEngine) {
         // Shown at once, so the page after the redirect already says "Starting…".
         shared.update_off(|off| off.starting = true);
