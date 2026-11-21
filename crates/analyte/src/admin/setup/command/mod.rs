@@ -78,6 +78,21 @@ enum Failure {
     NoActor,
     #[error("nothing was saved: it was not confirmed")]
     NotConfirmed,
+    /// ADR 0028: the engine is not running and this account may not write the locked keys file.
+    #[error("the keys can be stored only by the Analyte engine, which is not running ({0})")]
+    EngineStopped(#[source] crate::installation::credentials::CredentialError),
+    /// The engine could not be asked; nothing was sent.
+    #[error("the keys were not sent: {0}")]
+    EngineUnreachable(String),
+    /// The engine refused the change with the Lab apps page's reason.
+    #[error("{0}")]
+    EngineRefused(String),
+    /// The engine wrote the settings but could not store the keys.
+    #[error("{0}")]
+    EngineKeysNotStored(String),
+    /// The request may have reached the engine, but no answer came.
+    #[error("whether the engine stored the change is unknown: {0}")]
+    EngineNoAnswer(String),
 }
 
 impl Failure {
@@ -94,18 +109,32 @@ impl Failure {
                 Some("If it is the same analyzer, run the command again with --same-analyzer.")
             }
             Self::Settings(_) => Some("See what is wrong with: analyte check-config <file>."),
+            Self::EngineStopped(_) => Some(
+                "Start the engine with Start-Service Analyte in an administrator PowerShell, then run this command again.",
+            ),
+            Self::EngineNoAnswer(_) => {
+                Some("Check with analyte lab-apps list before running the command again.")
+            }
             Self::Setup(_)
             | Self::Store(_)
             | Self::Ports(_)
             | Self::Console(_)
             | Self::NoActor
-            | Self::NotConfirmed => None,
+            | Self::NotConfirmed
+            | Self::EngineUnreachable(_)
+            | Self::EngineRefused(_)
+            | Self::EngineKeysNotStored(_) => None,
         }
     }
 
     /// The change was already written when this failed.
     const fn after_writing(&self) -> bool {
-        matches!(self, Self::Setup(SetupError::KeysNotStored(_)))
+        matches!(
+            self,
+            Self::Setup(SetupError::KeysNotStored(_))
+                | Self::EngineKeysNotStored(_)
+                | Self::EngineNoAnswer(_)
+        )
     }
 }
 

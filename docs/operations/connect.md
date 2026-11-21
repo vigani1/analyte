@@ -358,8 +358,12 @@ Add a lab app and set its keys. Keys are never options: the command asks for
 them without showing what you type, or reads them from standard input, the
 API key on the first line and the signing key on the second (an empty line
 keeps the stored key). The locked keys file can only be written as the
-account the service runs as; when the command cannot write it as you, it
-says so and nothing is stored: set the keys on the Lab apps page instead.
+account the service runs as, so while the engine runs, `lab-apps add` and
+`lab-apps keys` hand the lab app and its keys to the engine, which stores them
+as the Lab apps page does ([ADR 0028](../adr/0028-lab-app-keys-through-the-engine.md)).
+They are sent only after the engine has proved it holds the admin key. When
+the engine is stopped and the command cannot write the file as you, it says
+so and nothing is stored: run `Start-Service Analyte` and the command again.
 
 ```powershell
 & $analyte --config $config --actor it-alex lab-apps add main-lab --address https://lab.example.org

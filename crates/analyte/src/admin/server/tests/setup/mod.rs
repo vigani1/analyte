@@ -4,6 +4,7 @@ use super::*;
 use std::sync::Mutex;
 
 mod budget;
+mod command;
 mod lab_apps;
 mod removal;
 mod steps;
