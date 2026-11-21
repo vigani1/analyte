@@ -11,8 +11,8 @@ themselves are never committed.
 | HL7 v2.3.1 + v2.5.1, MLLP | [hl7](hl7/README.md) | 3 |
 | IHE LAW (PaLM Rev 11.0) | [law](law/README.md) | 4 |
 | POCT01-A2 | [poct](poct/README.md) | 5 |
-| VIDAS PC Literal | [vidas](vidas/README.md) | 6 |
-| Autolyser internal | [autolyser](autolyser/README.md) | 6 |
+| VIDAS PC Literal | [vidas](vidas/README.md) | 8 |
+| Autolyser internal | [autolyser](autolyser/README.md) | 8 |
 
 Each folder has the same four files ([ADR 0012](../adr/0012-uniform-layout-and-naming.md)).
 See the [glossary](../glossary.md) for shared terms.

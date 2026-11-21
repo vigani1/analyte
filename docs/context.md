@@ -1,7 +1,7 @@
 # Context for new sessions
 
 Read this first, then [plan.md](plan.md) and [../AGENTS.md](../AGENTS.md).
-Last updated 2026-11-18.
+Last updated 2026-11-21.
 
 ## How this project started
 
@@ -122,13 +122,16 @@ answers "no orders" when unsure, and every result keeps the three identities.
   recovery and the lab sign-off record.
 - [Adding a machine](adding-a-machine.md): settings, configuration, recordings and evidence.
 
-## Where things stand (2026-11-18)
+## Where things stand (2026-11-21)
 
 Every standard (ASTM, HL7, IHE LAW, POCT1-A) and both vendor formats (VIDAS,
 Autolyser) are built at the documented level. The LAW Gazelle run was
 recorded, but the simulator's own reply broke the standard, so LAW stays at
-documented. A bug-fix round and a slim-down round just finished. Details are
-in the [plan](plan.md) status.
+documented. Since 2026-11-18 the admin pages were restyled
+([ADR 0018](adr/0018-server-rendered-pages-and-one-stylesheet.md)), the
+Windows desktop app was added ([ADR 0019](adr/0019-desktop-app.md)) and it
+signs people in with Windows ([ADR 0021](adr/0021-windows-sign-in-pipe.md)).
+Details are in the [plan](plan.md) status.
 
 ## Next steps
 

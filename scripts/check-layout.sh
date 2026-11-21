@@ -9,6 +9,8 @@ python3 scripts/check-layout-names.py
 python3 scripts/test-protocol-tests.py
 python3 scripts/check-protocol-tests.py
 python3 scripts/check-fuzz-targets.py
+python3 scripts/test-links.py
+python3 scripts/check-links.py
 failed=0
 while IFS= read -r -d '' file; do
   if [[ "$file" == crates/* || "$file" == fuzz/* ]] && ! head -n 1 "$file" | grep -q '^//!'; then

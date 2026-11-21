@@ -4,7 +4,10 @@ Evidence level: **documented**, from the Autolyser / Autolyser ISE Operator's
 Manual Rev18, chapter 23 (pp.175-187). No machine or official simulator tested.
 Tests use our synthetic research fixtures, never copied vendor examples.
 
-`records` parses and builds fixed-width worklists and both result layouts.
+`syntax` parses and builds fixed-width record bodies for worklists and both
+result layouts. `analyte-framing::autolyser` verifies incoming checksums and
+adds the checksum/EOT envelope to outgoing bodies. Parsed `Report::raw` holds
+only the exact body; protected receipts retain the original full wire response.
 Patient codes and values retain spaces, leading zeroes and case. The optional
 8+7 constructor appends seven spaces to exactly eight supplied characters;
 it does not normalize arbitrary identifiers. Analysis codes occupy four bytes.
@@ -12,7 +15,7 @@ Checksum arithmetic sums payload bytes modulo 256 and emits three decimal
 digits, excluding initialization, checksum digits and EOT. That span is inferred
 and checked against the consistent standard examples in the research notes.
 
-`dialog` owns one serialized connection: STX, ACK, request/data plus EOT,
+`analyte-dialog::autolyser` owns one serialized connection: STX, ACK, request/data plus EOT,
 response. Journal transport input before feeding individual bytes, including unexpected
 bytes and input arriving at expired deadlines. Split/merged reads behave alike.
 Every complete response (including NAK and insertion replies) is emitted for
@@ -94,8 +97,9 @@ Raw bytes and patient/order context stay in protected storage, not ordinary logs
 
 Synthetic TCP tests in `crates/analyte/tests/chunk_receive/custody.rs` exercise custody,
 parking, operator visibility, zero reference-receiver result deliveries and storage
-failure. They do not raise the documented evidence level. No current vendor
-crate path supplies a resolved result identity for a delivery test.
+failure. They do not raise the documented evidence level. The Autolyser receive
+path does not supply a resolved result identity for a delivery test; POCT has a
+separate configured identity path and delivery coverage.
 
 Before R, the program stores a poll-custody guard. A complete durably stored
 response clears it; corrupt input keeps it through L recovery. An empty L does
@@ -104,6 +108,11 @@ neither L nor R is sent until an operator reconciles and resolves that guard.
 This prevents a new session
 from silently advancing a cursor whose previous outcome is uncertain.
 
+Conversation state and deadline policy live in `analyte-dialog`, in `src/autolyser.rs`.
+Conversation tests live in `crates/steps/dialog/tests/autolyser.rs`.
+
+Checksum envelopes live in `crates/steps/framing/src/autolyser.rs`.
+
 ## Protocol notes
 
-[Decisions](decisions.md) – [Checklist](checklist.md) – [Versions](versions.md)
+[Decisions](decisions.md) · [Checklist](checklist.md) · [Versions](versions.md)
