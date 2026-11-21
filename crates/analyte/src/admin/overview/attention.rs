@@ -1030,6 +1030,14 @@ mod tests {
                 .skip(first_attention)
                 .all(|tone| *tone == Tone::Attention)
         );
+        let shared: Vec<&str> = include_str!("../../../../testing/fixtures/status-reasons.txt")
+            .lines()
+            .collect();
+        assert_eq!(
+            subjects.iter().map(|(_, word)| *word).collect::<Vec<_>>(),
+            shared,
+            "the app reads the same words, in the same order"
+        );
         for word in subjects.map(|(_, word)| word) {
             assert!(
                 word.bytes()

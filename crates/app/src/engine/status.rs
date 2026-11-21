@@ -447,6 +447,17 @@ mod tests {
         );
     }
 
+    // ADR 0023: the app knows the same kind words as the engine, in the same
+    // most-serious-first order; both read them from one file.
+    #[test]
+    fn the_kinds_match_the_engine() {
+        let shared: Vec<&str> = include_str!("../../../testing/fixtures/status-reasons.txt")
+            .lines()
+            .collect();
+        let known: Vec<&str> = Reason::ALL.iter().map(|reason| reason.word()).collect();
+        assert_eq!(known, shared);
+    }
+
     // ADR 0023: the app reads only so many kinds, so a long list cannot
     // grow what it holds; past the 32nd entry nothing more is looked at.
     #[test]
