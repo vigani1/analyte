@@ -69,7 +69,9 @@ results and polls the lab app for orders, so the lab PC opens no inbound port.
   engine's pages, with notifications ([ADR 0019](docs/adr/0019-desktop-app.md)).
   People sign in with Windows ([ADR 0021](docs/adr/0021-windows-sign-in-pipe.md)).
 
-The installer sets up both ([Windows packaging](packaging/windows/README.md)).
+The installer sets up both, or only the engine, set up from PowerShell
+([Install without the app](docs/operations/install.md#install-without-the-app);
+[Windows packaging](packaging/windows/README.md)).
 On Linux the engine is a systemd service ([Linux packaging](packaging/linux/README.md)).
 
 ## A look at it
