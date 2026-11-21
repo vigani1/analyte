@@ -3,7 +3,7 @@
 //! Each command reuses its page's reads and wording, so a page and its
 //! command never disagree; only the layout differs. What only the running
 //! engine knows (each machine's live link, whether its service runs) comes
-//! from the engine itself through [`engine`]. Output holds names, counts and,
+//! from the engine itself through the `admin::engine` client. Output holds names, counts and,
 //! where the page shows them, sample IDs; never result values, keys or tokens.
 pub(in crate::admin) mod doctor;
 mod logs;
