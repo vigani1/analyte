@@ -1,0 +1,68 @@
+name: Bug report
+description: Something in Analyte does not work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. If the bug could change, lose or misattribute a
+        result, leak patient data or credentials, or bypass sign-in, do not file
+        it here: report it privately (see SECURITY.md).
+
+        Use only synthetic data: made-up sample IDs, test names and values.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you saw, including the exact error message or Needs review reason.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to reproduce
+      description: Steps, the machine config (with credentials removed) and a synthetic message if one is involved.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Analyte version or commit
+      placeholder: e.g. 0.1.0 or the commit SHA
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Windows
+        - Linux
+        - Both
+    validations:
+      required: true
+  - type: input
+    id: machine
+    attributes:
+      label: Machine or protocol involved, if any
+      placeholder: e.g. ASTM over serial, HL7 over MLLP, none
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log lines
+      description: Ordinary log lines only. Never paste raw messages from a real machine.
+      render: text
+  - type: checkboxes
+    id: no-sensitive-data
+    attributes:
+      label: Data check
+      options:
+        - label: This contains no patient data, real sample IDs, credentials or copyrighted manual text.
+          required: true

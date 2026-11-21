@@ -16,6 +16,29 @@ these suspicious patterns.
 - Supporting a new machine starts with its documents and, ideally, a
   de-identified recording of a real conversation.
 
+## Forks and pull requests
+
+1. Fork the repository and create a branch from `main`.
+2. Make the change with its tests, sign off every commit (`git commit -s`, see
+   [Sign-off](#sign-off-dco)) and run the checks below.
+3. Open a pull request to `main` and fill in its template.
+
+The first time you contribute, the maintainer approves your pull request's
+workflow runs before CI starts. CI then runs the checks below: layout,
+format, Clippy, tests on Windows and Linux, minimum Rust, duplication,
+licences and advisories, and short fuzz runs. A pull request merges only when
+they all pass.
+
+The maintainer reviews every pull request (see `.github/CODEOWNERS`). Expect
+questions about sources and evidence; answer them in the pull request and push
+new commits rather than rewriting history. Report security problems privately
+([SECURITY.md](SECURITY.md)), and follow the
+[code of conduct](CODE_OF_CONDUCT.md).
+
+A new machine definition needs its documents and evidence, as described in
+[adding a machine](docs/adding-a-machine.md); its evidence level is only as
+high as that evidence.
+
 ## What every change needs
 
 - Tests that fail without the change and pass with it. Protocol rule tests have
