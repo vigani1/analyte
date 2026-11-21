@@ -305,7 +305,6 @@ async fn start_action_server(
     let state = Arc::new(Context {
         alert_endpoints: vec![],
         retention: crate::runtime::retention::policies(program),
-        config_path: config_path.to_owned(),
         token: Token::load(program.data_directory())?,
         sessions: Sessions::default(),
         windows: Arc::new(windows::SignIn::new(None)),
@@ -317,7 +316,10 @@ async fn start_action_server(
         retired: crate::admin::Draining::new(),
         directory: program.data_directory().to_owned(),
         reserve: 1,
-        setup: crate::admin::setup::Setup::for_test(program.data_directory()),
+        setup: Arc::new(crate::admin::setup::Setup::for_test(
+            config_path,
+            program.data_directory(),
+        )),
         assets: crate::admin::view::assets::Root::of_this_build(),
         installed: crate::admin::more::Installed::for_test(Vec::new()),
         write_budget: WRITE_BUDGET,

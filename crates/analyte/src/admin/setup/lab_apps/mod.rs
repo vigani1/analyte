@@ -10,7 +10,10 @@
 //! the Overview's lab app rules; reads stop after [`view::READ_BUDGET`].
 mod page;
 
-use super::{Csrf, RELOAD, SetupError, audit, copies, entries, off_thread, site, stored};
+use super::{
+    Csrf, RELOAD, Setup, SetupError, Via, audit, copies, entries, off_thread, on_files, site,
+    stored,
+};
 use crate::admin::machines::{DialogItem, RemoveDialog};
 use crate::admin::overview::{self, Delivery, Standing};
 use crate::admin::removed;
@@ -72,12 +75,12 @@ pub(super) struct Scan {
     /// Where each name was first written, by the loader's rule.
     written: Written<Place>,
     /// Every name written differently in two places.
-    conflicts: Vec<Conflict<Place>>,
+    pub(super) conflicts: Vec<Conflict<Place>>,
 }
 
 /// Where the page found a lab app written.
 #[derive(Clone)]
-enum Place {
+pub(super) enum Place {
     File,
     Kept,
     /// The site file of this machine.
@@ -86,7 +89,7 @@ enum Place {
 
 /// The page's sentence for a name written differently in two places; it names
 /// the place read later.
-fn conflict_sentence(conflict: &Conflict<Place>) -> String {
+pub(super) fn conflict_sentence(conflict: &Conflict<Place>) -> String {
     format!(
         "Lab app {} has different settings in two places (one is {}). Analyte cannot start until they are the same.",
         conflict.name.as_str(),
@@ -248,8 +251,10 @@ fn seconds(text: &str, default: u64, what: &'static str) -> Result<u64, SetupErr
 }
 
 /// Results and order messages the lab app has not accepted yet, by lab app name.
-async fn waiting(state: &Context) -> Result<Vec<(String, u64)>, SetupError> {
-    let open = stored(state, analyte_store::Store::undelivered_by_destination)
+pub(super) async fn waiting(
+    store: &analyte_store::Handle,
+) -> Result<Vec<(String, u64)>, SetupError> {
+    let open = stored(store, analyte_store::Store::undelivered_by_destination)
         .await
         .map_err(SetupError::Store)?;
     Ok(open
@@ -258,7 +263,7 @@ async fn waiting(state: &Context) -> Result<Vec<(String, u64)>, SetupError> {
         .collect())
 }
 
-fn count(waiting: &[(String, u64)], name: &str) -> u64 {
+pub(super) fn count(waiting: &[(String, u64)], name: &str) -> u64 {
     waiting
         .iter()
         .find(|(destination, _)| destination == name)
@@ -267,7 +272,7 @@ fn count(waiting: &[(String, u64)], name: &str) -> u64 {
 
 /// Where the settings still write a lab app that is not in `lab-apps.toml`,
 /// in words, with the exact place on hover.
-fn where_written(known: &Known) -> Vec<(String, &'static str)> {
+pub(super) fn where_written(known: &Known) -> Vec<(String, &'static str)> {
     let mut places = Vec::new();
     if !known.sites.is_empty() {
         places.push((
@@ -285,22 +290,22 @@ fn where_written(known: &Known) -> Vec<(String, &'static str)> {
 }
 
 /// The two keys of a lab app: their label, form field and field id.
-const API_KEY: (&str, &str, &str) = ("API key", "api_key", "la-api");
-const SIGNING_KEY: (&str, &str, &str) = ("Signing key", "signing_key", "la-signing");
+pub(super) const API_KEY: (&str, &str, &str) = ("API key", "api_key", "la-api");
+pub(super) const SIGNING_KEY: (&str, &str, &str) = ("Signing key", "signing_key", "la-signing");
 
 /// Where a page finds keys, by the service's own rule (`secrets::source`):
 /// the service environment, then the locked keys file, read once per page.
-struct KeySource {
+pub(super) struct KeySource {
     environment: fn(&str) -> Option<String>,
     stored: Result<Stored, CredentialError>,
 }
 
 impl KeySource {
     /// This service's environment and locked keys file.
-    fn read(state: &Context) -> Self {
+    pub(super) fn read(setup: &Setup) -> Self {
         Self {
             environment: |variable| std::env::var(variable).ok(),
-            stored: Locked::new(&state.setup.data_directory).read(),
+            stored: Locked::new(&setup.data_directory).read(),
         }
     }
 
@@ -314,7 +319,7 @@ impl KeySource {
 
     /// One key's state, never its value. An unreadable file still lets a set
     /// environment variable show, as it wins at startup too.
-    fn key(
+    pub(super) fn key(
         &self,
         (label, field, input): (&'static str, &'static str, &'static str),
         name: &Identifier,
@@ -408,7 +413,7 @@ pub(in crate::admin) async fn key_sources(
     now: Timestamp,
 ) -> Result<(Vec<Found>, Option<String>, Option<String>), SetupError> {
     off_thread(state, move |state| {
-        let source = KeySource::read(state);
+        let source = KeySource::read(&state.setup);
         let status = |name: &Identifier| {
             let key = source.key(("", "", ""), name, now);
             Status {
@@ -420,7 +425,7 @@ pub(in crate::admin) async fn key_sources(
             }
         };
         let mut found = Vec::new();
-        let listed = scan(&state.config_path).map(|scan| {
+        let listed = scan(state.setup.config()).map(|scan| {
             for settings in scan.settings() {
                 for (label, name) in [
                     (API_KEY.0, &settings.api_key_name),
@@ -494,8 +499,8 @@ struct ListRead {
 
 async fn read_list(state: &Arc<Context>, now: Timestamp) -> Result<ListRead, crate::admin::Error> {
     let settings = off_thread(state, |state| {
-        let scan = scan(&state.config_path)?;
-        Ok((scan, KeySource::read(state)))
+        let scan = scan(state.setup.config())?;
+        Ok((scan, KeySource::read(&state.setup)))
     })
     .await;
     let (delivered, failing) = state
@@ -850,13 +855,13 @@ async fn edit(
         return Problem::SignIn.page(&state, None, Section::LabApps(None));
     };
     let open = if removing {
-        Some(waiting(&state).await)
+        Some(waiting(&state.store).await)
     } else {
         None
     };
     let read = off_thread(&state, |state| {
-        let scan = scan(&state.config_path)?;
-        Ok((scan, KeySource::read(state)))
+        let scan = scan(state.setup.config())?;
+        Ok((scan, KeySource::read(&state.setup)))
     })
     .await;
     let (scan, source) = match read {
@@ -978,9 +983,52 @@ pub(in crate::admin) struct Posted {
     signing_key: String,
 }
 
+impl Posted {
+    /// The entered values; the CSRF value stays behind.
+    fn entered(self) -> Entered {
+        Entered {
+            name: self.name,
+            base_url: self.base_url,
+            freshness_seconds: self.freshness_seconds,
+            request_timeout_seconds: self.request_timeout_seconds,
+            api_key: self.api_key,
+            signing_key: self.signing_key,
+        }
+    }
+}
+
+/// A lab app's settings and keys as a person entered them, on the page or at
+/// the command line; every value is checked by [`add_blocking`] or
+/// [`save_blocking`]. An empty number means the default; an empty key keeps
+/// the stored one. Deliberately has no `Debug`: it may hold keys.
+#[derive(Default)]
+pub(super) struct Entered {
+    pub(super) name: String,
+    pub(super) base_url: String,
+    pub(super) freshness_seconds: String,
+    pub(super) request_timeout_seconds: String,
+    pub(super) api_key: String,
+    pub(super) signing_key: String,
+}
+
+impl Entered {
+    /// The current settings of `known` as entered values, with no keys, so a
+    /// change of one value keeps the others.
+    pub(super) fn of(known: &Destination) -> Self {
+        Self {
+            name: known.name.as_str().to_owned(),
+            base_url: known.base_url.as_str().to_owned(),
+            freshness_seconds: known.freshness_seconds.to_string(),
+            request_timeout_seconds: known.request_timeout_seconds.to_string(),
+            api_key: String::new(),
+            signing_key: String::new(),
+        }
+    }
+}
+
 /// The posted settings for the lab app called `name` with key names `keys`.
 fn settings(
-    posted: &Posted,
+    posted: &Entered,
     name: Identifier,
     keys: [Identifier; 2],
 ) -> Result<Destination, SetupError> {
@@ -1006,7 +1054,7 @@ fn settings(
 /// Turns the posted keys into checked values; errors name only the key.
 fn keys(
     settings: &Destination,
-    posted: &mut Posted,
+    posted: &mut Entered,
     required: bool,
 ) -> Result<Vec<(Identifier, Secret)>, SetupError> {
     let api = std::mem::take(&mut posted.api_key);
@@ -1035,19 +1083,21 @@ fn keys(
 }
 
 /// What a save wrote, for the page and the audit row; never a key value.
-struct Saved {
-    settings: Destination,
-    replaced: Vec<String>,
-    backups: Vec<PathBuf>,
-    changed: bool,
+pub(super) struct Saved {
+    pub(super) settings: Destination,
+    /// The names of the keys stored.
+    pub(super) replaced: Vec<String>,
+    pub(super) backups: Vec<PathBuf>,
+    /// A settings file was written.
+    pub(super) changed: bool,
     /// Machines that use it after the save.
-    users: Vec<String>,
+    pub(super) users: Vec<String>,
 }
 
 /// Writes the files (checked commit), then stores the keys. A refused or rolled
 /// back write never changes a key.
 fn write(
-    state: &Context,
+    setup: &Setup,
     settings: Destination,
     changes: &[(PathBuf, String)],
     updates: Vec<(Identifier, Secret)>,
@@ -1059,14 +1109,14 @@ fn write(
     let backups = if changes.is_empty() {
         Vec::new()
     } else {
-        site::commit(&state.config_path, changes)?.backups
+        site::commit(setup.config(), changes)?.backups
     };
     if !updates.is_empty() {
-        Locked::new(&state.setup.data_directory)
+        Locked::new(&setup.data_directory)
             .replace(updates, Timestamp::now().as_second())
             .map_err(SetupError::KeysNotStored)?;
     }
-    let users = scan(&state.config_path)
+    let users = scan(setup.config())
         .ok()
         .and_then(|scan| {
             scan.get(settings.name.as_str())
@@ -1082,10 +1132,10 @@ fn write(
     })
 }
 
-fn add_blocking(state: &Context, mut posted: Posted) -> Result<Saved, SetupError> {
-    let _writing = state.setup.writing()?;
+pub(super) fn add_blocking(setup: &Setup, mut posted: Entered) -> Result<Saved, SetupError> {
+    let _writing = setup.writing()?;
     let name = new_name(&posted.name)?;
-    let scan = scan(&state.config_path)?;
+    let scan = scan(setup.config())?;
     if scan.get(name.as_str()).is_some() {
         return Err(SetupError::LabAppTaken(name.as_str().into()));
     }
@@ -1098,13 +1148,17 @@ fn add_blocking(state: &Context, mut posted: Posted) -> Result<Saved, SetupError
     let settings = settings(&posted, name, keys_named)?;
     let after = scan.file.with(settings.clone())?;
     let updates = keys(&settings, &mut posted, true)?;
-    let changes = [(file::path(&state.config_path), after.text()?)];
-    write(state, settings, &changes, updates)
+    let changes = [(file::path(setup.config()), after.text()?)];
+    write(setup, settings, &changes, updates)
 }
 
-fn save_blocking(state: &Context, name: &str, mut posted: Posted) -> Result<Saved, SetupError> {
-    let _writing = state.setup.writing()?;
-    let scan = scan(&state.config_path)?;
+pub(super) fn save_blocking(
+    setup: &Setup,
+    name: &str,
+    mut posted: Entered,
+) -> Result<Saved, SetupError> {
+    let _writing = setup.writing()?;
+    let scan = scan(setup.config())?;
     let known = scan
         .get(name)
         .ok_or_else(|| SetupError::UnknownLabApp(name.into()))?;
@@ -1127,16 +1181,16 @@ fn save_blocking(state: &Context, name: &str, mut posted: Posted) -> Result<Save
     let updates = keys(&settings, &mut posted, false)?;
     let mut changes = Vec::new();
     if after != scan.file {
-        changes.push((file::path(&state.config_path), after.text()?));
+        changes.push((file::path(setup.config()), after.text()?));
     }
     // lab-apps.toml now holds it, so an older copy in the program file goes.
     if known.kept {
         changes.push((
-            state.config_path.clone(),
+            setup.config().to_owned(),
             entries::without_retired(&scan.program, name)?,
         ));
     }
-    write(state, settings, &changes, updates)
+    write(setup, settings, &changes, updates)
 }
 
 /// The page that says what a save wrote: no key value, only which keys were
@@ -1206,20 +1260,20 @@ fn refused(state: &Context, session: &Session, name: Option<&str>, error: &Setup
 
 /// What a lab app form did, for the audit row and the log.
 #[derive(Clone, Copy)]
-enum Change {
+pub(super) enum Change {
     Added,
     Saved,
 }
 
 impl Change {
-    const fn action(self) -> &'static str {
+    pub(super) const fn action(self) -> &'static str {
         match self {
             Self::Added => "lab-app-add",
             Self::Saved => "lab-app-save",
         }
     }
 
-    const fn verb(self) -> &'static str {
+    pub(super) const fn verb(self) -> &'static str {
         match self {
             Self::Added => "added",
             Self::Saved => "saved",
@@ -1227,9 +1281,11 @@ impl Change {
     }
 }
 
-fn reason(change: Change, saved: &Saved) -> String {
+/// The audit reason for a lab app added or saved through `via`.
+pub(super) fn reason(via: Via, change: Change, saved: &Saved) -> String {
     format!(
-        "lab app page {} {}: address {}, order list current for {} s, request wait {} s, keys replaced: {}",
+        "{} {} {}: address {}, order list current for {} s, request wait {} s, keys replaced: {}",
+        via.lab_apps(),
         change.verb(),
         saved.settings.name.as_str(),
         saved.settings.base_url.as_str(),
@@ -1252,7 +1308,10 @@ pub(in crate::admin) async fn add(
     let Ok(Form(posted)) = form else {
         return refused(&state, &session, None, &SetupError::IncompleteForm(RELOAD));
     };
-    let saved = off_thread(&state, move |state| add_blocking(state, posted)).await;
+    let saved = on_files(&state.setup, move |setup| {
+        add_blocking(setup, posted.entered())
+    })
+    .await;
     finish(&state, &session, Change::Added, None, saved).await
 }
 
@@ -1272,7 +1331,10 @@ pub(in crate::admin) async fn save(
         );
     };
     let lab_app = name.clone();
-    let saved = off_thread(&state, move |state| save_blocking(state, &lab_app, posted)).await;
+    let saved = on_files(&state.setup, move |setup| {
+        save_blocking(setup, &lab_app, posted.entered())
+    })
+    .await;
     finish(&state, &session, Change::Saved, Some(&name), saved).await
 }
 
@@ -1294,7 +1356,7 @@ async fn finish(
         session,
         change.action(),
         name,
-        reason(change, &saved),
+        reason(Via::Page, change, &saved),
     )
     .await;
     tracing::info!(lab_app = name, "lab app page {} a lab app", change.verb());
@@ -1323,13 +1385,13 @@ fn blockers(known: &Known, waiting: Result<u64, &SetupError>) -> Vec<String> {
     why
 }
 
-fn remove_blocking(
-    state: &Context,
+pub(super) fn remove_blocking(
+    setup: &Setup,
     name: &str,
     waiting: &Result<u64, SetupError>,
 ) -> Result<(Vec<PathBuf>, &'static str), SetupError> {
-    let _writing = state.setup.writing()?;
-    let scan = scan(&state.config_path)?;
+    let _writing = setup.writing()?;
+    let scan = scan(setup.config())?;
     let known = scan
         .get(name)
         .ok_or_else(|| SetupError::UnknownLabApp(name.into()))?;
@@ -1339,19 +1401,16 @@ fn remove_blocking(
     }
     let mut changes = Vec::new();
     if known.in_file {
-        changes.push((
-            file::path(&state.config_path),
-            scan.file.without(name).text()?,
-        ));
+        changes.push((file::path(setup.config()), scan.file.without(name).text()?));
     }
     if known.kept {
         changes.push((
-            state.config_path.clone(),
+            setup.config().to_owned(),
             entries::without_retired(&scan.program, name)?,
         ));
     }
-    let keys = KeySource::read(state).kept(&known.settings);
-    Ok((site::commit(&state.config_path, &changes)?.backups, keys))
+    let keys = KeySource::read(setup).kept(&known.settings);
+    Ok((site::commit(setup.config(), &changes)?.backups, keys))
 }
 
 /// POST /setup/lab-apps/{name}/remove: refused while a machine uses it or results wait.
@@ -1369,9 +1428,12 @@ pub(in crate::admin) async fn remove(
             &SetupError::IncompleteForm(RELOAD),
         );
     }
-    let open = waiting(&state).await.map(|open| count(&open, &name));
+    let open = waiting(&state.store).await.map(|open| count(&open, &name));
     let lab_app = name.clone();
-    let removed = off_thread(&state, move |state| remove_blocking(state, &lab_app, &open)).await;
+    let removed = on_files(&state.setup, move |setup| {
+        remove_blocking(setup, &lab_app, &open)
+    })
+    .await;
     let (backups, keys) = match removed {
         Ok(removed) => removed,
         Err(error) => return refused(&state, &session, Some(&name), &error),
@@ -1381,7 +1443,7 @@ pub(in crate::admin) async fn remove(
         &session,
         "lab-app-remove",
         &name,
-        format!("lab app page removed lab app {name}; no machine used it and nothing waited for it; its keys stay in the locked file"),
+        removed_reason(Via::Page, &name),
     )
     .await;
     tracing::info!(lab_app = name.as_str(), "lab app page removed a lab app");
@@ -1417,12 +1479,20 @@ pub(in crate::admin) async fn remove(
     )
 }
 
+/// The audit reason for lab app `name` removed through `via`.
+pub(super) fn removed_reason(via: Via, name: &str) -> String {
+    format!(
+        "{} removed lab app {name}; no machine used it and nothing waited for it; its keys stay in the locked file",
+        via.lab_apps()
+    )
+}
+
 /// Which of `lab_app`'s keys neither the service environment nor the locked
 /// keys file holds, said with when keys apply; none when both are found or
 /// the keys file cannot be read, since then it cannot be told. Reads the keys
 /// file, so call it off the async workers. Never reads out a value.
-pub(super) fn missing_keys(state: &Context, lab_app: &Destination) -> Option<String> {
-    let source = KeySource::read(state);
+pub(super) fn missing_keys(setup: &Setup, lab_app: &Destination) -> Option<String> {
+    let source = KeySource::read(setup);
     let stored = source.stored.as_ref().ok()?;
     let missing: Vec<&str> = [
         ("API key", &lab_app.api_key_name),

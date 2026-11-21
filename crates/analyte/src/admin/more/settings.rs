@@ -176,7 +176,7 @@ fn engine(state: &Context) -> Vec<Fact> {
         },
         Fact {
             term: "Program file",
-            value: path(&state.config_path),
+            value: path(state.setup.config()),
         },
         Fact {
             term: "Data folder",

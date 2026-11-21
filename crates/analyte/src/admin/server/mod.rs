@@ -21,6 +21,7 @@ use std::{
 use tokio::sync::{Semaphore, watch};
 pub(super) mod listener;
 pub(super) mod live;
+mod proof;
 pub(super) mod sessions;
 mod sign_in;
 mod status;
@@ -107,7 +108,6 @@ impl Connection {
 pub(super) struct Context {
     pub(super) alert_endpoints: Vec<Identifier>,
     pub(super) retention: Vec<(Identifier, Option<u16>)>,
-    pub(super) config_path: std::path::PathBuf,
     token: Token,
     pub(super) sessions: Sessions,
     /// Windows sign-in's codes and whether it is on (ADR 0021).
@@ -121,7 +121,8 @@ pub(super) struct Context {
     pub(super) retired: super::Draining,
     pub(super) directory: std::path::PathBuf,
     pub(super) reserve: u64,
-    pub(super) setup: super::setup::Setup,
+    /// Shared with the setup work that runs off the async workers.
+    pub(super) setup: Arc<super::setup::Setup>,
     /// Where pages load this build's static files from.
     pub(super) assets: super::view::assets::Root,
     /// What the Settings page shows from the loaded program.
@@ -218,7 +219,7 @@ pub(crate) async fn prepare(
         .map(|m| (m.id.as_str().to_owned(), m.running.clone()))
         .collect();
     let (released, release) = tokio::sync::oneshot::channel();
-    let setup = super::setup::Setup::new(program, seams);
+    let setup = Arc::new(super::setup::Setup::new(program, seams));
     let restart = setup.restart_requested();
     let (closing, closed) = watch::channel(false);
     let state = Arc::new(Context {
@@ -229,7 +230,6 @@ pub(crate) async fn prepare(
             .map(|e| e.id().clone())
             .collect(),
         retention: crate::runtime::retention::policies(program),
-        config_path: program.source_path.clone(),
         token,
         sessions: Sessions::default(),
         #[cfg(windows)]
@@ -379,6 +379,7 @@ fn router(state: Arc<Context>) -> Router {
         .route("/", get(super::overview::show))
         .route("/static/{*path}", get(super::view::assets::serve))
         .route("/status", get(status::show))
+        .route("/proof", get(proof::show))
         .route("/login", get(sign_in::login_page).post(sign_in::login))
         .route("/login/windows", get(sign_in::windows))
         .route("/logout", post(sign_in::logout))
@@ -390,6 +391,7 @@ fn router(state: Arc<Context>) -> Router {
         .route("/activity", get(super::activity::activity))
         .route("/events", get(live::events))
         .route("/machines", get(super::machines::list))
+        .route("/machines.json", get(super::machines::live))
         .route("/machines/{id}", get(super::machines::detail))
         .route(
             "/receipts/{id}/departures",
@@ -483,8 +485,10 @@ async fn protect(State(state): State<Arc<Context>>, mut request: Request, next: 
         == Some(state.host.as_str());
     let login = matches!(request.uri().path(), "/login" | "/login/windows");
     // Static files hold no data; the login page needs them before any session exists.
-    // `/status` says only the overall state in one word, for the desktop app's tray.
-    let public = request.uri().path().starts_with("/static/") || request.uri().path() == "/status";
+    // `/status` says only the overall state in one word, for the desktop app's tray;
+    // `/proof` proves the engine holds the admin key before the CLI sends it (ADR 0025).
+    let public = request.uri().path().starts_with("/static/")
+        || matches!(request.uri().path(), "/status" | "/proof");
     let bearer = request
         .headers()
         .get(header::AUTHORIZATION)
