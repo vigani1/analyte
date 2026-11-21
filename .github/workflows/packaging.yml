@@ -101,9 +101,34 @@ jobs:
             if ($process.HasExited) { throw "the app exited with code $($process.ExitCode)" }
             if (-not $seen) { Get-Content -LiteralPath $log -ErrorAction SilentlyContinue; throw 'the app did not show the engine as good' }
           }
+          # ADR 0021 (Windows sign-in): setup makes the local group "Analyte
+          # users" and adds the person who ran it. On the runner that is this
+          # step's own account: it runs setup already elevated, so no UAC prompt
+          # puts another account in between. Members are compared by SID.
+          $installer = [Security.Principal.WindowsIdentity]::GetCurrent().User
+          Write-Output "setup runs as $($installer.Translate([Security.Principal.NTAccount]).Value) ($($installer.Value))"
+          function Get-SignInMembers {
+            $group = Get-CimInstance Win32_Group -Filter "LocalAccount=True AND Name='Analyte users'"
+            if (-not $group) { throw 'the local group Analyte users does not exist' }
+            @(Get-CimAssociatedInstance -InputObject $group -Association Win32_GroupUser | ForEach-Object { $_.SID })
+          }
+          function Assert-ScriptSaid([string]$Log, [string]$Text) {
+            if (-not (Select-String -LiteralPath $Log -SimpleMatch $Text -Quiet)) { throw "$Log lacks: $Text" }
+          }
           Install-Analyte
           Assert-SetupPage
           Assert-DesktopApp
+          if ((Get-SignInMembers) -notcontains $installer.Value) { throw 'setup did not add the installing user to Analyte users' }
+          Assert-ScriptSaid "$logs\setup-1.log" "Local group 'Analyte users' created."
+          # Someone else, added the way the user guide says, must survive the
+          # upgrade and the uninstall.
+          $other = 'analyte-ci-other'
+          $password = 'Aa1!' + [guid]::NewGuid().ToString('N').Substring(0, 10)
+          $null = & net.exe user $other $password /add
+          if ($LASTEXITCODE -ne 0) { throw "net user exit code $LASTEXITCODE" }
+          & net.exe localgroup 'Analyte users' $other /add
+          if ($LASTEXITCODE -ne 0) { throw "net localgroup exit code $LASTEXITCODE" }
+          $otherSid = (New-Object Security.Principal.NTAccount($other)).Translate([Security.Principal.SecurityIdentifier]).Value
           $rules = (Get-Acl -LiteralPath "$root\config").Access | Where-Object { $_.IdentityReference -eq 'NT SERVICE\Analyte' }
           if (-not ($rules.FileSystemRights -match 'Modify')) { throw 'the service cannot write the config folder' }
           if (-not (Get-Acl -LiteralPath "$root\config").AreAccessRulesProtected) { throw 'config folder inherits ProgramData permissions' }
@@ -115,6 +140,11 @@ jobs:
           Assert-DesktopApp
           if (-not (Select-String -LiteralPath "$root\config\analyte.toml" -SimpleMatch '# kept on upgrade')) { throw 'upgrade replaced the configuration' }
           if ((Get-FileHash -LiteralPath "$root\data\admin-token").Hash -ne $token) { throw 'upgrade replaced the token' }
+          # The upgrade finds the group and both members and changes nothing.
+          $members = Get-SignInMembers
+          if ($members -notcontains $installer.Value -or $members -notcontains $otherSid -or $members.Count -ne 2) { throw "upgrade changed Analyte users: $($members -join ', ')" }
+          Assert-ScriptSaid "$logs\setup-2.log" "Local group 'Analyte users' already exists; its members were kept."
+          Assert-ScriptSaid "$logs\setup-2.log" "is already in 'Analyte users'."
           # Uninstall removes the service and program, and keeps data and configuration.
           $process = Start-Process -FilePath "$env:ProgramFiles\Analyte\unins000.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=$logs\uninstall.log" -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "uninstaller exit code $($process.ExitCode)" }
@@ -131,6 +161,10 @@ jobs:
           foreach ($kept in "$root\config\analyte.toml", "$root\data\analyte.db", "$root\data\admin-token") {
             if (-not (Test-Path -LiteralPath $kept)) { throw "uninstall removed $kept" }
           }
+          # The group may list other people: uninstall keeps it and its members, and says so.
+          $members = Get-SignInMembers
+          if ($members -notcontains $installer.Value -or $members -notcontains $otherSid) { throw "uninstall changed Analyte users: $($members -join ', ')" }
+          Assert-ScriptSaid "$logs\uninstall.log" "The local group 'Analyte users' was kept"
       # Synthetic runner data only: setup logs (script output, never the token),
       # the service log and the Service Control Manager's recent events.
       - name: Collect installer diagnostics

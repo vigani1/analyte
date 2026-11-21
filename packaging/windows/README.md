@@ -23,15 +23,17 @@ checksum. The lab manager's steps are in
 4. runs `install.ps1 -ConfigWritable -CreateAdminToken -UsersMayStart -Start`,
    which checks the config, registers the service, protects the data and config
    folders, lets signed-in users start (not stop or change) the service, creates
-   the admin token if missing and starts the service; then writes
-   `analyte-app.toml` with the program's admin port beside the app;
+   the admin token if missing, creates the local group `Analyte users` if
+   missing and adds the person who ran setup (below), and starts the service;
+   then writes `analyte-app.toml` with the program's admin port beside the app;
 5. shows a new admin token once, read from the protected file (it is never
    logged), and offers to open the Analyte app. Without the WebView2 Runtime it
    says so and offers `http://127.0.0.1:<admin port>/setup` in the browser.
 
 Uninstall closes the app, runs `uninstall.ps1`, removes the program files, the
 app's settings, the Start menu entry and the installing user's sign-in entry, and keeps data,
-configuration, machine definitions, backups, credentials and the token. To build
+configuration, machine definitions, backups, credentials, the token and the
+`Analyte users` group, which may list other people, and says so. To build
 the installer by hand from a staged release folder:
 `ISCC.exe /DAppVersion=<version> /DSourceDir=<folder> /DOutputDir=<folder> analyte.iss`.
 
@@ -72,6 +74,19 @@ the installer by hand from a staged release folder:
    containing the binary/configuration/system trees are refused. Existing data
    with explicit child ACLs or protected inheritance requires an operator ACL
    review first; the script does not silently rewrite those boundaries.
+
+The script also creates the local group `Analyte users` when it is missing,
+with the LocalAccounts cmdlets of 64-bit Windows PowerShell 5.1 (present on
+Windows 10 and 11, Home included). Its members and the PC's administrators may
+sign in to Analyte with their Windows account (ADR 0021, Windows sign-in;
+[Who may sign in](../../docs/operations/sign-in.md)). It adds the person who
+started the script: when UAC asked a standard user for an administrator's
+password, setup runs as that administrator, so the script takes the owner of
+the nearest older ancestor process in the same Windows session that belongs to
+another person's account (the original setup or Explorer); otherwise the account
+running it. A service account such as SYSTEM is never added; the script then
+says to add members by hand. Rerunning it keeps the group and its members.
+`uninstall.ps1` never removes the group.
 
 The script creates or updates `Analyte` under the virtual account
 `NT SERVICE\Analyte`, with automatic startup and restart recovery after 5, 15

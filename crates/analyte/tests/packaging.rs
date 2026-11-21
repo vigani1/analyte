@@ -257,8 +257,9 @@ fn windows_installer_and_scripts_agree() -> Outcome {
         assert!(!script.contains("ServiceControllerStatus]::Stopped"));
     }
     // Run 44411503596: WMI's Win32_Service.Create refuses the virtual account
-    // (code 22); sc.exe registers it without a password.
-    assert!(!install.contains("Invoke-CimMethod"));
+    // (code 22); sc.exe registers it without a password. Other WMI methods,
+    // such as reading a process's owner, are fine.
+    assert!(!install.contains("-MethodName Create"));
     assert!(install.contains(
         r#"'{0} Analyte type= own start= auto error= normal binPath= "{1}" obj= "{2}" DisplayName= Analyte'"#
     ));
@@ -376,5 +377,36 @@ fn windows_installer_installs_the_desktop_app() -> Outcome {
             "Copy-Item -LiteralPath $App -Destination (Join-Path $stage 'analyte-app.exe')"
         )
     );
+    Ok(())
+}
+
+// ADR 0021 (Windows sign-in), "Who may sign in": setup creates the local group
+// "Analyte users" only when it is missing and adds the person who started it,
+// so an upgrade keeps the members and a repeat is no error; uninstall keeps the
+// group, since it may list other people, and says so.
+#[test]
+fn windows_setup_creates_and_keeps_the_sign_in_group() -> Outcome {
+    let installer = read("windows/analyte.iss")?;
+    let install = read("windows/install.ps1")?;
+    let uninstall = read("windows/uninstall.ps1")?;
+    for expected in [
+        "$signInGroup = 'Analyte users'",
+        "} catch [Microsoft.PowerShell.Commands.GroupNotFoundException] {",
+        "New-LocalGroup -Name $signInGroup",
+        "Add-LocalGroupMember -Group $signInGroup -Member $starter -ErrorAction Stop",
+        "} catch [Microsoft.PowerShell.Commands.MemberExistsException] {",
+        // The person, not the elevated administrator: owners of older ancestor
+        // processes in this session, and never a service account.
+        "$parent.SessionId -ne $self.SessionId -or $parent.CreationDate -gt $child.CreationDate",
+        "if ($starter -match '^S-1-(5-21|12-1)-') {",
+    ] {
+        assert!(install.contains(expected), "install.ps1 lacks {expected}");
+    }
+    for script in [&install, &uninstall] {
+        assert!(!script.contains("Remove-LocalGroup"));
+        assert!(!script.contains("Remove-LocalGroupMember"));
+    }
+    assert!(uninstall.contains("The local group 'Analyte users' was kept"));
+    assert!(installer.contains("'group \"Analyte users\" was kept too"));
     Ok(())
 }

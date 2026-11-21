@@ -1,5 +1,6 @@
 #Requires -Version 5.1
-# Registers the Analyte service and protects its folders. Run by hand or by the
+# Registers the Analyte service, protects its folders and creates the local
+# group 'Analyte users' with the person who ran it. Run by hand or by the
 # click-through installer (analyte.iss), which passes the four switches below.
 [CmdletBinding()]
 param(
@@ -167,6 +168,75 @@ if ($UsersMayStart) {
         & $sc sdset Analyte $updated
         if ($LASTEXITCODE -ne 0) { throw "Letting signed-in users start the service failed (sc.exe sdset exit code $LASTEXITCODE)." }
     }
+}
+
+# ADR 0021 (Windows sign-in): members of this local group, and the PC's
+# administrators, may sign in to Analyte with their Windows account. It is made
+# once and never emptied here: an upgrade keeps its members and uninstall keeps
+# the group, since it may list other people.
+$signInGroup = 'Analyte users'
+try {
+    # Part of Windows PowerShell 5.1 on Windows 10 and 11, Home included.
+    Import-Module Microsoft.PowerShell.LocalAccounts -ErrorAction Stop
+} catch {
+    throw "Creating the local group '$signInGroup' needs the Windows LocalAccounts module of 64-bit Windows PowerShell 5.1: $($_.Exception.Message)"
+}
+try {
+    $null = Get-LocalGroup -Name $signInGroup -ErrorAction Stop
+    Write-Output "Local group '$signInGroup' already exists; its members were kept."
+} catch [Microsoft.PowerShell.Commands.GroupNotFoundException] {
+    try {
+        $null = New-LocalGroup -Name $signInGroup -Description 'May sign in to Analyte with Windows' -ErrorAction Stop
+    } catch {
+        throw "Creating the local group '$signInGroup' failed: $($_.Exception.Message)"
+    }
+    Write-Output "Local group '$signInGroup' created."
+}
+
+# The person who started this script. Setup and an elevated window may run with
+# other credentials than the signed-in person's, when UAC asked a standard user
+# for an administrator's password. The nearest older ancestor process in this
+# Windows session owned by another person's account (local, domain, Microsoft
+# or Entra ID: S-1-5-21-* or S-1-12-1-*) is then that person's: the setup or
+# Explorer they started it from. Otherwise it is the account running this
+# script. A parent process ID counts only when that process is older than its
+# child, because Windows reuses process IDs.
+function Get-StartingAccountSid {
+    $mine = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    $self = Get-CimInstance -ClassName Win32_Process -Filter "ProcessId=$PID"
+    $child = $self
+    for ($depth = 0; $depth -lt 64; $depth++) {
+        $parent = Get-CimInstance -ClassName Win32_Process -Filter "ProcessId=$($child.ParentProcessId)"
+        if (-not $parent -or $parent.SessionId -ne $self.SessionId -or $parent.CreationDate -gt $child.CreationDate) { break }
+        $owner = Invoke-CimMethod -InputObject $parent -MethodName GetOwnerSid
+        if ($owner.ReturnValue -ne 0) { break }
+        if ($owner.Sid -ne $mine) {
+            if ($owner.Sid -match '^S-1-(5-21|12-1)-') { return $owner.Sid }
+            break
+        }
+        $child = $parent
+    }
+    return $mine
+}
+
+$starter = Get-StartingAccountSid
+if ($starter -match '^S-1-(5-21|12-1)-') {
+    $starterName = $starter
+    try {
+        $starterName = (New-Object Security.Principal.SecurityIdentifier($starter)).Translate([Security.Principal.NTAccount]).Value
+    } catch [Security.Principal.IdentityNotMappedException] {
+        # The SID itself names the account in the output.
+    }
+    try {
+        Add-LocalGroupMember -Group $signInGroup -Member $starter -ErrorAction Stop
+        Write-Output "$starterName added to '$signInGroup'; it may sign in to Analyte with Windows from its next Windows sign-in."
+    } catch [Microsoft.PowerShell.Commands.MemberExistsException] {
+        Write-Output "$starterName is already in '$signInGroup'."
+    } catch {
+        throw "Adding $starterName to the local group '$signInGroup' failed: $($_.Exception.Message)"
+    }
+} else {
+    Write-Output "This script runs as $starter, not as a person's account, so nobody was added to '$signInGroup'. Add members in Computer Management or with: net localgroup `"$signInGroup`" <name> /add"
 }
 
 if ($CreateAdminToken) {
