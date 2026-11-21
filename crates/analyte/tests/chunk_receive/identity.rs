@@ -48,20 +48,16 @@ async fn repeated_analyte_without_identity_is_parked() -> Result<(), Error> {
             }
             assert_eq!(db.query_row(
                 "SELECT count(*) FROM parked p WHERE json_extract(p.evidence,'$.kind')='mapping_finding' AND json_extract(p.evidence,'$.reason')='POCT repeated derived observation identity without a distinguishing sub-ID' AND EXISTS(SELECT 1 FROM json_each(p.evidence,'$.targets') t WHERE t.value=json_extract(?1,'$'))",
-                [&receipt], |r| r.get::<_, i64>(0))?, 2);
+                [&receipt], |r| r.get::<_, i64>(0))?, 1);
             let mut parked = db.prepare("SELECT json_extract(p.evidence,'$.context.Result.index'), json_extract(p.evidence,'$.reason') FROM parked p WHERE json_extract(p.evidence,'$.kind')='result_reconciliation' AND EXISTS(SELECT 1 FROM json_each(p.evidence,'$.targets') t WHERE t.value=json_extract(?1,'$')) ORDER BY p.id")?;
-            let items = parked
+            let items: Vec<(i64, String)> = parked
                 .query_map([receipt], |r| {
                     Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
-            assert_eq!(
-                items,
-                vec![
-                    (0, "result reconciliation: Unresolved".into()),
-                    (1, "result reconciliation: Unresolved".into())
-                ]
-            );
+            // Both results share one cause, named once (ADR 0024); the
+            // results keep their own reason in the stored reading above.
+            assert_eq!(items, Vec::new());
             assert_eq!(
                 db.query_row("SELECT count(*) FROM observation_revisions", [], |r| r
                     .get::<_, i64>(0))?,

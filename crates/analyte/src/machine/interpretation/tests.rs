@@ -55,14 +55,114 @@ pub(super) fn program(root: &Path, definition: &str, endpoint: &str) -> Result<P
     Program::load(&path).map_err(Into::into)
 }
 
-// Plan §11; ADR 0003, rule 8
-#[tokio::test]
-async fn repaired_mapping_reprocesses_once_and_keeps_original() -> Result<(), Error> {
+/// The HL7 example machine and one synthetic result message for it, framed for MLLP.
+fn hl7_case() -> Result<(String, Vec<u8>), Error> {
     let hl7 = include_str!("../../../../core/config/examples/hl7.toml")
         .rewrite("tcp_server", "tcp_client");
     let raw = b"MSH|^~\\&|SYN|LAB|HOST|LAB|20260101000000||ORU^R01^ORU_R01|message1|P|2.5.1\rPID|1\rOBR|1||00012|SYN^Synthetic^synthetic|||||||||||||||||||||F\rOBX|1|NM|SYN^Synthetic^synthetic||12.30|mg/L|||||F\r";
     let raw = analyte_framing::hl7::encode(raw, analyte_framing::hl7::Limit::new(1048576)?)?;
+    Ok((hl7, raw))
+}
+
+/// The machine definition with its test mapping emptied, so the synthetic test code is unknown.
+fn without_mapping(definition: &str) -> String {
+    definition.rewrite(
+        "tests = [{machine_code=\"SYN\", machine_system=\"synthetic\", app_code=\"DEMO\", app_system=\"demo\"}]",
+        "tests = []",
+    )
+}
+
+// Plan §11; ADR 0003, rule 8
+#[tokio::test]
+async fn repaired_mapping_reprocesses_once_and_keeps_original() -> Result<(), Error> {
+    let (hl7, raw) = hl7_case()?;
     exercise(&hl7, raw).await?;
+    let (astm, wire) = astm_case()?;
+    exercise(&astm, wire).await
+}
+
+/// The open items on Needs review: their kind and stored reason.
+fn open_items(s: &analyte_store::Store) -> Result<Vec<(i64, String, String)>, FixtureError> {
+    s.parked_filtered(0, analyte_store::ParkedFilter::Open)?
+        .iter()
+        .map(|item| {
+            let details = item.details()?;
+            Ok((
+                item.id,
+                details.kind.as_str().to_owned(),
+                details.reason.as_str().to_owned(),
+            ))
+        })
+        .collect()
+}
+
+/// The one open item, which must say that a test code is not in the test mapping.
+fn only_unknown_test(s: &analyte_store::Store) -> Result<i64, FixtureError> {
+    let open = open_items(s)?;
+    let [(id, kind, reason)] = open.as_slice() else {
+        panic!("one open item expected, got {open:?}");
+    };
+    assert_eq!(kind, "mapping_finding");
+    let finding = analyte_mapping::Finding::from_stored(reason)
+        .unwrap_or_else(|| panic!("a mapping finding expected, got {reason}"));
+    assert_eq!(finding.problem, analyte_mapping::Problem::UnknownTest);
+    Ok(*id)
+}
+
+// AGENTS.md safety rule 2; owner report 2026-11-21: one test code missing from
+// the test mapping opened three Needs review items for one message (the
+// finding, the result's missing identity, and the stored unresolved result).
+// One root cause is one open item with the clearest reason; Process again on
+// it adds no copy while the cause stays, and resolves it once it is repaired.
+#[tokio::test]
+async fn unknown_test_code_opens_one_item_for_its_message() -> Result<(), Error> {
+    for (definition, raw) in [hl7_case()?, astm_case()?] {
+        let temp = crate::admin::private_tempdir()?;
+        let endpoint = "127.0.0.1:5600";
+        let missing = program(temp.path(), &without_mapping(&definition), endpoint)?;
+        let mut store = crate::runtime::service::open_store(&missing, Box::new(Space)).await?;
+        let machine = missing.machines().first().ok_or("missing machine")?;
+        let id = ReceiptId::new();
+        let connection = intake::ConnectionEvidence::new(machine)?;
+        intake::receive(&store, &connection, id, raw).await?;
+        assert!(!intake::interpret(&store, machine, id).await?);
+        let parked = store
+            .request::<_, FixtureError>(deadline()?, |s| only_unknown_test(s))
+            .await?;
+        // The cause is still there: a new reading is kept, but no copy of the item.
+        let commit = reprocess(&store, machine, action(id, Some(parked))?).await?;
+        assert_eq!(commit.version, 2);
+        store
+            .request::<_, FixtureError>(deadline()?, move |s| {
+                assert_eq!(only_unknown_test(s)?, parked);
+                assert!(s.interpretation(id, 2)?.is_some());
+                Ok(())
+            })
+            .await?;
+        let repaired = program(temp.path(), &definition, endpoint)?;
+        let machine = repaired.machines().first().ok_or("missing machine")?;
+        let commit = reprocess(&store, machine, action(id, Some(parked))?).await?;
+        assert!(matches!(
+            commit.outcomes.as_slice(),
+            [RevisionOutcome::New(_)]
+        ));
+        store
+            .request::<_, FixtureError>(deadline()?, move |s| {
+                assert_eq!(open_items(s)?, Vec::new());
+                let item = s.parked_item(parked)?.ok_or(FixtureError::Corruption)?;
+                assert!(item.resolution.is_some());
+                assert_eq!(s.deliveries(0)?.len(), 1);
+                Ok(())
+            })
+            .await?;
+        store.shutdown(deadline()?).await?;
+    }
+    Ok(())
+}
+
+/// The ASTM example machine over TCP and one synthetic result message for it,
+/// framed in short pieces.
+fn astm_case() -> Result<(String, Vec<u8>), Error> {
     let astm = include_str!("../../../../core/config/examples/astm.toml")
         .rewrite("kind = \"serial\"", "kind = \"tcp_client\"")
         .rewrite("[transport.serial]\nbaud = 9600\ndata_bits = 8\nparity = \"none\"\nstop_bits = 1\nflow_control = \"none\"\n", "")
@@ -79,16 +179,14 @@ async fn repaired_mapping_reprocesses_once_and_keeps_original() -> Result<(), Er
             number = number.next();
         }
     }
-    exercise(&astm, wire).await
+    Ok((astm, wire))
 }
 
 async fn exercise(definition: &str, raw: Vec<u8>) -> Result<(), Error> {
     let temp = crate::admin::private_tempdir()?;
     let receiver = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let endpoint = receiver.local_addr()?.to_string();
-    let missing = definition.rewrite("tests = [{machine_code=\"SYN\", machine_system=\"synthetic\", app_code=\"DEMO\", app_system=\"demo\"}]",
-        "tests = []");
-    let old = program(temp.path(), &missing, &endpoint)?;
+    let old = program(temp.path(), &without_mapping(definition), &endpoint)?;
     let mut store = crate::runtime::service::open_store(&old, Box::new(Space)).await?;
     let machine = old.machines().first().ok_or("missing machine")?;
     let id = ReceiptId::new();
@@ -145,8 +243,10 @@ async fn assert_repeated_failure_stays_parked(
     id: ReceiptId,
     parked: i64,
 ) -> Result<(), Error> {
-    // Repeated failure appends a version and new reason, leaving the original item open.
-    reprocess(store, machine, action(id, Some(parked))?).await?;
+    // Repeated failure appends a version, leaving the original item open; the
+    // same reason is not parked a second time (owner report 2026-11-21).
+    let commit = reprocess(store, machine, action(id, Some(parked))?).await?;
+    assert_eq!(commit.version, 2);
     store
         .request::<_, FixtureError>(deadline()?, move |s| {
             assert!(
@@ -155,7 +255,9 @@ async fn assert_repeated_failure_stays_parked(
                     .resolution
                     .is_none()
             );
-            assert!(s.parked(0)?.len() >= 2);
+            assert!(s.interpretation(id, 2)?.is_some());
+            assert_eq!(only_unknown_test(s)?, parked);
+            assert_eq!(s.parked(0)?.len(), 1);
             assert_eq!(s.audits(0)?.len(), 1);
             Ok::<_, FixtureError>(())
         })
@@ -420,6 +522,9 @@ async fn assert_vendor_receipt_stays_parked(
     let parked = store.request::<_, FixtureError>(deadline()?, move |s| {
         let version = s.interpretation(id, 1)?.ok_or(FixtureError::Corruption)?;
         assert!(matches!(version.outcome, analyte_store::Reading::Results(results) if !results.is_empty()));
+        // One cause (no trusted result identity) is one open item (owner report 2026-11-21).
+        let open = open_items(s)?;
+        assert_eq!(open.len(), 1, "{open:?}");
         Ok::<_, FixtureError>(s.parked(0)?.first().ok_or(FixtureError::Corruption)?.id)
     }).await?;
     let commit = reprocess(&store, machine, action(id, Some(parked))?).await?;
@@ -437,6 +542,8 @@ async fn assert_vendor_receipt_stays_parked(
             );
             assert_eq!(s.audits(0)?.len(), 1);
             assert!(s.deliveries(0)?.is_empty());
+            // Processing again while the cause stays adds no copy of the item.
+            assert_eq!(open_items(s)?.len(), 1);
             Ok(())
         })
         .await?;

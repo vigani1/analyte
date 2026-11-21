@@ -175,6 +175,8 @@ async fn assert_repaired_mapping_preserves_receipt(
                     .resolution
                     .is_some()
             );
+            // Nothing about this message is left open once it reads cleanly.
+            assert_eq!(s.parked_counts()?.open, 0);
             assert_eq!(s.deliveries(0)?.len(), 1);
             let audits = s.audits(0)?;
             assert_eq!(audits.len(), 2);

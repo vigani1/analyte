@@ -40,64 +40,153 @@ pub(super) fn reconciliation_succeeded(
             }
         }
 }
+/// What makes two open items the same problem: their kind, reason and linked
+/// records, and for a result its place in the reading. Which reading version
+/// found it does not count, so reading a message again finds the same problem.
+#[derive(PartialEq, Eq, Hash)]
+struct Sameness {
+    kind: String,
+    reason: String,
+    targets: Vec<String>,
+    result: Option<usize>,
+}
+
+impl Sameness {
+    fn of(evidence: &crate::parked::ParkingEvidence) -> Self {
+        let details = &evidence.details;
+        Self {
+            kind: details.kind.as_str().to_owned(),
+            reason: details.reason.as_str().to_owned(),
+            targets: details
+                .targets
+                .iter()
+                .map(|target| target.as_str().to_owned())
+                .collect(),
+            result: match evidence.context {
+                Some(crate::parked::ParkingContext::Result { index, .. }) => Some(index),
+                Some(crate::parked::ParkingContext::Interpretation { .. }) | None => None,
+            },
+        }
+    }
+}
+
+/// Parks the items one reading of a message needs, one open item per problem
+/// (owner report 2026-11-21): an item the message already has open, or one
+/// parked earlier in the same reading, is not parked again. The reading
+/// itself, and any audit, are still kept, so no evidence is lost.
+pub(super) struct Parking<'a, 'db> {
+    tx: &'a rusqlite::Transaction<'db>,
+    receipt: String,
+    open: std::collections::HashSet<Sameness>,
+}
+
+impl<'a, 'db> Parking<'a, 'db> {
+    /// Reads the open items linked to the message, at most `rows` of them; an
+    /// item beyond that bound, or one another version wrote in a shape this
+    /// one cannot read, is only not compared, so at worst a copy is parked.
+    pub(super) fn open(
+        tx: &'a rusqlite::Transaction<'db>,
+        receipt_key: &str,
+        rows: usize,
+    ) -> Result<Self, Error> {
+        let receipt = serde_json::from_str::<String>(receipt_key)?;
+        let mut stmt = tx.prepare(concat!(
+            "SELECT p.evidence FROM parked p WHERE p.resolution IS NULL AND EXISTS(SELECT 1 FROM ",
+            "json_each(p.evidence,'$.targets') t WHERE t.value=?1) ORDER BY p.id LIMIT ?2",
+        ))?;
+        let open = stmt
+            .query_map(
+                params![
+                    receipt,
+                    i64::try_from(rows).map_err(|_| Error::InvalidInterpretationInput)?
+                ],
+                |row| row.get::<_, String>(0),
+            )?
+            .collect::<Result<Vec<_>, _>>()?
+            .iter()
+            .filter_map(|stored| serde_json::from_str(stored).ok())
+            .map(|evidence| Sameness::of(&evidence))
+            .collect();
+        Ok(Self { tx, receipt, open })
+    }
+
+    /// Parks one encoded item unless the same problem is already open.
+    pub(super) fn park(&mut self, encoded: &str) -> Result<(), Error> {
+        let evidence: crate::parked::ParkingEvidence = serde_json::from_str(encoded)?;
+        if self.open.insert(Sameness::of(&evidence)) {
+            self.tx
+                .execute("INSERT INTO parked(evidence) VALUES (?1)", [encoded])?;
+        }
+        Ok(())
+    }
+
+    fn park_new(
+        &mut self,
+        kind: crate::ParkedKind,
+        reason: &str,
+        context: crate::parked::ParkingContext,
+    ) -> Result<(), Error> {
+        let encoded = crate::parked::evidence(kind.as_str(), &self.receipt, reason, Some(context))?;
+        self.park(&encoded)
+    }
+}
+
 pub(super) fn park_outcomes(
-    tx: &rusqlite::Transaction<'_>,
-    receipt_key: &str,
+    parking: &mut Parking<'_, '_>,
     version: i64,
     evidence: &Interpretation,
     outcomes: &[RevisionOutcome],
-    context: (bool, bool, Option<&str>),
+    context: (bool, bool, Option<&str>, Option<&str>),
 ) -> Result<(), Error> {
-    let (reprocessing, findings_empty, edit_guard) = context;
+    let (reprocessing, findings_empty, edit_guard, held_back) = context;
     match &evidence.outcome {
+        // The findings already say why the results were held back.
+        Reading::Failed(reason) if !findings_empty && held_back == Some(reason.as_str()) => {}
         Reading::Failed(reason) => {
-            tx.execute(
-                "INSERT INTO parked(evidence) VALUES (?1)",
-                [crate::parked::evidence(
-                    crate::ParkedKind::InterpretationFailure.as_str(),
-                    &serde_json::from_str::<String>(receipt_key)?,
-                    reason.as_str(),
-                    Some(crate::parked::ParkingContext::Interpretation { version }),
-                )?],
+            parking.park_new(
+                crate::ParkedKind::InterpretationFailure,
+                reason.as_str(),
+                crate::parked::ParkingContext::Interpretation { version },
             )?;
         }
         Reading::Results(results) => {
             if reprocessing && results.is_empty() && findings_empty {
-                tx.execute(
-                    "INSERT INTO parked(evidence) VALUES (?1)",
-                    [crate::parked::evidence(
-                        crate::ParkedKind::InterpretationFailure.as_str(),
-                        &serde_json::from_str::<String>(receipt_key)?,
-                        NO_RESULTS_REASON,
-                        Some(crate::parked::ParkingContext::Interpretation { version }),
-                    )?],
+                parking.park_new(
+                    crate::ParkedKind::InterpretationFailure,
+                    NO_RESULTS_REASON,
+                    crate::parked::ParkingContext::Interpretation { version },
                 )?;
             }
             for (index, (result, outcome)) in results.iter().zip(outcomes).enumerate() {
+                let reason = match (&result.identity, edit_guard) {
+                    (IdentityStatus::Unresolved(reason), Some(guard))
+                        if reason.as_str() == guard =>
+                    {
+                        guard.to_owned()
+                    }
+                    // A result that arrived without an identity is explained by
+                    // the reading's findings, which name why; it gets an item of
+                    // its own only when no finding was given, never none.
+                    (IdentityStatus::Unresolved(_), _)
+                        if *outcome == RevisionOutcome::Unresolved && !findings_empty =>
+                    {
+                        continue;
+                    }
+                    _ => reconciliation_reason(outcome),
+                };
                 if result.requires_parking()
                     || matches!(
                         outcome,
                         RevisionOutcome::Conflict | RevisionOutcome::Unresolved
                     )
                 {
-                    tx.execute(
-                        "INSERT INTO parked(evidence) VALUES (?1)",
-                        [crate::parked::evidence(
-                            crate::ParkedKind::ResultReconciliation.as_str(),
-                            &serde_json::from_str::<String>(receipt_key)?,
-                            &match (&result.identity, edit_guard) {
-                                (IdentityStatus::Unresolved(reason), Some(guard))
-                                    if reason.as_str() == guard =>
-                                {
-                                    guard.to_owned()
-                                }
-                                _ => reconciliation_reason(outcome),
-                            },
-                            Some(crate::parked::ParkingContext::Result {
-                                version: Some(version),
-                                index,
-                            }),
-                        )?],
+                    parking.park_new(
+                        crate::ParkedKind::ResultReconciliation,
+                        &reason,
+                        crate::parked::ParkingContext::Result {
+                            version: Some(version),
+                            index,
+                        },
                     )?;
                 }
             }

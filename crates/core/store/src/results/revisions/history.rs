@@ -133,12 +133,8 @@ pub(super) fn write_history(
     receipt_key: &str,
     version: i64,
     encoded: &str,
-    findings: &[String],
     revisions: &[AssignedRevision],
 ) -> Result<(), Error> {
-    for finding in findings {
-        tx.execute("INSERT INTO parked(evidence) VALUES (?1)", [finding])?;
-    }
     tx.execute(
         "INSERT INTO interpretations VALUES (?1,?2,?3)",
         params![receipt_key, version, encoded],

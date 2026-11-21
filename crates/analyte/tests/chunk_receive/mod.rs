@@ -512,9 +512,12 @@ async fn assert_missing_identity_and_conflict_retained(
         db.query_row("SELECT count(*) FROM outbox", [], |r| r.get::<_, i64>(0))?,
         2
     );
+    // A missing identity value is one item naming it (ADR 0024); a conflict
+    // the store finds is its own item.
+    let missing = "POCT configured device/time/sequence identity evidence missing";
     for (raw, reason, unresolved) in [
-        (&missing_time, "result reconciliation: Unresolved", true),
-        (&missing_sequence, "result reconciliation: Unresolved", true),
+        (&missing_time, missing, true),
+        (&missing_sequence, missing, true),
         (&conflict, "result reconciliation: Conflict", true),
     ] {
         run.stored(raw.as_bytes(), "analyte-poct")?;
@@ -550,6 +553,10 @@ async fn assert_missing_identity_and_conflict_retained(
             "SELECT count(*) FROM parked p JOIN receipts r ON EXISTS(SELECT 1 FROM json_each(p.evidence,'$.targets') t WHERE t.value=json_extract(r.id,'$')) WHERE r.raw=?1 AND json_extract(p.evidence,'$.reason')=?2",
             rusqlite::params![raw.as_bytes(), reason], |r| r.get(0))?;
         assert_eq!(count, 1, "receipt-specific parking: {reason}");
+        let items: i64 = db.query_row(
+            "SELECT count(*) FROM parked p JOIN receipts r ON EXISTS(SELECT 1 FROM json_each(p.evidence,'$.targets') t WHERE t.value=json_extract(r.id,'$')) WHERE r.raw=?1",
+            [raw.as_bytes()], |r| r.get(0))?;
+        assert_eq!(items, 1, "one item for one cause: {reason}");
         assert_eq!(
             db.query_row("SELECT count(*) FROM outbox", [], |r| r.get::<_, i64>(0))?,
             2
