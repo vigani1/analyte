@@ -426,6 +426,7 @@ fn windows_firewall_rule_lets_only_local_analyzers_in() -> Outcome {
     )?;
     let name = "Analyte - analyzers on the lab network";
     assert!(verdict.contains(&format!("FIREWALL_RULE: &str = \"{name}\";")));
+    assert!(verdict.contains("FIREWALL_RULE_NAME: &str = \"Analyte-Analyzers-In\";"));
     for expected in [
         "$firewallRule = 'Analyte-Analyzers-In'".to_owned(),
         format!("$firewallName = '{name}'"),

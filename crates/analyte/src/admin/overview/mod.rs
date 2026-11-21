@@ -5,10 +5,12 @@
 //! up, nothing to do) shows only the welcome. When a read fails or the reads
 //! take too long, the error page says which read and keeps the reason for
 //! support; it never shows a partial page that could read as "All good".
+pub(crate) mod answer;
 mod attention;
 mod page;
 mod signal;
 
+use answer::Answer;
 pub(in crate::admin) use attention::{Reason, Summary};
 pub(in crate::admin) use signal::{Delivery, Keys, Standing, kept_health, order_list, standing};
 #[cfg(test)]
@@ -268,23 +270,50 @@ async fn observe(
     })
 }
 
-/// The overall state the verdict shows and the kinds of thing behind it, from
-/// the same reads and rules, within [`view::READ_BUDGET`]; none when it could
-/// not be read in time. It reads no receipts, which only draw the machine
-/// nodes. Why it failed goes to the log as the reading's name only, never its
-/// values.
-pub(in crate::admin) async fn summary(state: &Context, now: Timestamp) -> Option<Summary> {
+/// The verdict's lines, from the same reads and rules as the page, within
+/// [`view::READ_BUDGET`]; otherwise the reading that failed or ran out of
+/// time. It reads no receipts, which only draw the machine nodes.
+async fn things(state: &Context, now: Timestamp) -> Result<Vec<attention::Thing>, Reading> {
     let read = async {
         let until = deadline().map_err(Reading::Store.failed())?;
         observe(state, until, Nodes::FactsOnly, now).await
     };
-    let reading = match tokio::time::timeout(view::READ_BUDGET, read).await {
-        Ok(Ok(observed)) => return Some(Summary::of(&attention::things(&observed.facts))),
-        Ok(Err(failure)) => failure.reading,
-        Err(_) => Reading::Time,
-    };
-    tracing::warn!(?reading, "the overall state could not be read");
-    None
+    match tokio::time::timeout(view::READ_BUDGET, read).await {
+        Ok(Ok(observed)) => Ok(attention::things(&observed.facts)),
+        Ok(Err(failure)) => Err(failure.reading),
+        Err(_) => Err(Reading::Time),
+    }
+}
+
+/// The overall state the verdict shows and the kinds of thing behind it, from
+/// the same reads and rules; none when it could not be read in time. Why it
+/// failed goes to the log as the reading's name only, never its values.
+pub(in crate::admin) async fn summary(state: &Context, now: Timestamp) -> Option<Summary> {
+    match things(state, now).await {
+        Ok(things) => Some(Summary::of(&things)),
+        Err(reading) => {
+            tracing::warn!(?reading, "the overall state could not be read");
+            None
+        }
+    }
+}
+
+/// Serves `GET /overview/verdict`, signed in or with the admin key: the
+/// verdict with every line, its page and its command, for `analyte overview`
+/// and `analyte doctor`. An unread state answers 503 with what could not be
+/// read, never an empty list that could read as "All good".
+pub(in crate::admin) async fn verdict(State(state): State<Arc<Context>>) -> Response {
+    match things(&state, Timestamp::now()).await {
+        Ok(things) => axum::Json(Answer::of(&things)).into_response(),
+        Err(reading) => {
+            tracing::warn!(?reading, "the overall state could not be read");
+            (
+                axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                axum::Json(Answer::unknown(reading.sentence())),
+            )
+                .into_response()
+        }
+    }
 }
 
 async fn render(
@@ -424,6 +453,51 @@ fn alert_row(alert: &AlertState, now: Timestamp) -> AlertRow {
         value: alert
             .value
             .map_or_else(|| format::NOT_RECORDED.into(), |value| value.to_string()),
+    }
+}
+
+/// One active alert as `analyte alerts list` prints it: the Overview's
+/// words for it, the line it adds to the verdict, and where it is fixed.
+#[derive(serde::Serialize)]
+pub(crate) struct PrintedAlert {
+    /// What the alert means, as the Disk and alerts card says it.
+    pub(crate) alert: &'static str,
+    /// Its signal name, such as `parked_items`.
+    pub(crate) signal: &'static str,
+    /// The machine it is about, when it is about one.
+    pub(crate) machine: Option<String>,
+    /// Who it goes to, as the alert rule names them.
+    pub(crate) responder: String,
+    /// When it was raised, as the page shows it; none when not recorded.
+    pub(crate) raised: Option<String>,
+    /// The reason in the verdict's words, with the latest value.
+    pub(crate) reason: String,
+    /// What to do, for a kind whose fix varies.
+    pub(crate) fix: Option<String>,
+    /// The page that fixes it.
+    pub(crate) page: &'static str,
+    /// The command that shows or fixes it, when one does.
+    pub(crate) command: Option<&'static str>,
+}
+
+impl PrintedAlert {
+    /// `alert` as of `now`.
+    pub(crate) fn of(alert: &AlertState, now: Timestamp) -> Self {
+        let (signal, machine) = crate::operator::alerts::signal(&alert.key);
+        let line = attention::from_alert(alert);
+        Self {
+            alert: alert_words(&alert.key),
+            signal,
+            machine: machine.map(str::to_owned),
+            responder: alert.responder.clone(),
+            raised: alert
+                .raised_at
+                .map(|raised| format::moment_unix(raised, now).shown),
+            reason: line.text,
+            fix: crate::operator::alerts::message(alert),
+            page: line.fix.label(),
+            command: line.fix.command(),
+        }
     }
 }
 

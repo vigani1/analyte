@@ -84,6 +84,30 @@ pub(super) struct Todo {
     pub(super) label: &'static str,
 }
 
+/// The verdict's title for `count` things: "All good", or "3 things need you".
+pub(super) fn title(count: usize) -> String {
+    if count == 0 {
+        return "All good".into();
+    }
+    format!(
+        "{} you",
+        format::amount(
+            u64::try_from(count).unwrap_or(u64::MAX),
+            "thing needs",
+            "things need"
+        )
+    )
+}
+
+/// The line under the verdict's title for `count` things.
+pub(super) const fn sub(count: usize) -> &'static str {
+    if count == 0 {
+        "Nothing needs you right now."
+    } else {
+        "Analyte keeps everything it has received while you fix these."
+    }
+}
+
 impl Verdict {
     /// "All good" when nothing needs anyone; otherwise how many things do,
     /// red when any of them stops data now.
@@ -91,19 +115,15 @@ impl Verdict {
         if things.is_empty() {
             return Self {
                 tone: Tone::Good,
-                title: "All good".into(),
-                sub: "Nothing needs you right now.",
+                title: title(0),
+                sub: sub(0),
                 todo: Vec::new(),
             };
         }
-        let count = u64::try_from(things.len()).unwrap_or(u64::MAX);
         Self {
             tone: Overall::of(things).tone(),
-            title: format!(
-                "{} you",
-                format::amount(count, "thing needs", "things need")
-            ),
-            sub: "Analyte keeps everything it has received while you fix these.",
+            title: title(things.len()),
+            sub: sub(things.len()),
             todo: things
                 .iter()
                 .zip(1u32..)

@@ -80,4 +80,7 @@ pub enum Error {
     /// Preserves the owning sink API boundary.
     #[error(transparent)]
     SinkPollError(#[from] analyte_sink::PollError),
+    /// A page read for the command line, such as Cancelled by machine, failed.
+    #[error(transparent)]
+    Page(Box<crate::admin::Error>),
 }

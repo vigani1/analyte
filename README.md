@@ -69,8 +69,9 @@ results and polls the lab app for orders, so the lab PC opens no inbound port.
   engine's pages, with notifications ([ADR 0019](docs/adr/0019-desktop-app.md)).
   People sign in with Windows ([ADR 0021](docs/adr/0021-windows-sign-in-pipe.md)).
 
-IT can also add and set up machines and lab apps from PowerShell with
-`analyte machines` and `analyte lab-apps`, through the Setup page's own checks
+IT can do everything the pages do from PowerShell too ([commands](docs/operations/commands.md)),
+including setting up machines and lab apps with `analyte machines` and
+`analyte lab-apps` through the Setup page's own checks
 ([from the command line](docs/operations/connect.md#from-the-command-line)).
 
 The installer sets up both, or only the engine, set up from PowerShell

@@ -94,6 +94,30 @@ pub(in crate::admin) enum Value {
     },
 }
 
+impl Value {
+    /// The value as people read it, for the command line: the words shown,
+    /// a status with what was observed, a time as shown or "Nothing yet".
+    pub(in crate::admin) fn plain(&self) -> String {
+        match self {
+            Self::Text(text) => text.clone(),
+            Self::Code { shown, .. } => shown.clone(),
+            Self::Status(status) => match &status.note {
+                Some(note) => format!("{} ({note})", status.word),
+                None => status.word.clone(),
+            },
+            Self::Link(link) => match &link.detail {
+                Some(detail) => format!("{} {detail}", link.kind),
+                None => link.kind.to_owned(),
+            },
+            Self::Time(moment) => moment.as_ref().map_or_else(
+                || format::NOTHING_YET.to_owned(),
+                |moment| moment.shown.clone(),
+            ),
+            Self::Page { label, .. } => label.clone(),
+        }
+    }
+}
+
 /// How a machine is attached: the icon, the kind and where.
 pub(in crate::admin) struct Link {
     pub(in crate::admin) icon: Icon,

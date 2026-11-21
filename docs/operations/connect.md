@@ -311,14 +311,13 @@ can also be done from PowerShell (or a Linux shell) with `analyte machines`
 and `analyte lab-apps` ([ADR 0025](../adr/0025-setup-from-the-command-line.md)).
 They use the pages' own checks, dated backups, safe write and roll back, and
 write the same audit row, naming the `--actor` you give. Run them in an
-administrator PowerShell, with the program file:
+administrator PowerShell; without `--config` they use the installed program
+file ([Commands](commands.md#before-you-start) says where they look):
 
 ```powershell
-$analyte = 'C:\Program Files\Analyte\analyte.exe'
-$config  = 'C:\ProgramData\Analyte\config\analyte.toml'
-& $analyte --config $config machines list          # settings, and the live state if the engine runs
-& $analyte --config $config machines models        # models, ready or not, how each was checked
-& $analyte --config $config machines ports         # serial ports with adapter and USB serial number
+analyte machines list          # settings, and the live state if the engine runs
+analyte machines models        # models, ready or not, how each was checked
+analyte machines ports         # serial ports with adapter and USB serial number
 ```
 
 Add a network machine (for a model where the machine connects to Analyte,
@@ -327,10 +326,10 @@ save. `$model` is a key that `machines models` lists as Ready:
 
 ```powershell
 $model = 'vendor/model'
-& $analyte --config $config --actor it-alex machines add hl7-1
-& $analyte --config $config --actor it-alex machines set hl7-1 `
+analyte --actor it-alex machines add hl7-1
+analyte --actor it-alex machines set hl7-1 `
     --model $model --address 192.168.1.20 --port 5600 --lab-app main-lab --dry-run
-& $analyte --config $config --actor it-alex machines set hl7-1 `
+analyte --actor it-alex machines set hl7-1 `
     --model $model --address 192.168.1.20 --port 5600 --lab-app main-lab
 ```
 
@@ -339,8 +338,8 @@ socket (`--serial-port COM3` names a fixed port instead):
 
 ```powershell
 $model = 'vendor/serial-model'
-& $analyte --config $config --actor it-alex machines add cobas-1
-& $analyte --config $config --actor it-alex machines set cobas-1 `
+analyte --actor it-alex machines add cobas-1
+analyte --actor it-alex machines set cobas-1 `
     --model $model --usb-serial A10K3XYZ --lab-app main-lab
 ```
 
@@ -351,7 +350,7 @@ exit code is 0 when it saw the model's own format and 4 when it did not.
 save or share that output.
 
 ```powershell
-& $analyte --config $config machines test cobas-1 --seconds 30
+analyte machines test cobas-1 --seconds 30
 ```
 
 Add a lab app and set its keys. Keys are never options: the command asks for
@@ -366,10 +365,10 @@ the engine is stopped and the command cannot write the file as you, it says
 so and nothing is stored: run `Start-Service Analyte` and the command again.
 
 ```powershell
-& $analyte --config $config --actor it-alex lab-apps add main-lab --address https://lab.example.org
-& $analyte --config $config --actor it-alex lab-apps set main-lab --request-timeout-seconds 20
-& $analyte --config $config --actor it-alex lab-apps keys main-lab
-& $analyte --config $config lab-apps list
+analyte --actor it-alex lab-apps add main-lab --address https://lab.example.org
+analyte --actor it-alex lab-apps set main-lab --request-timeout-seconds 20
+analyte --actor it-alex lab-apps keys main-lab
+analyte lab-apps list
 ```
 
 In a terminal, a missing choice is asked for step by step, then a summary and

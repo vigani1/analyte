@@ -9,8 +9,8 @@
 //! account may write that file ([`crate::installation::credentials::Locked::check_writer`]).
 //! Where they go is settled before they are asked for.
 use super::ask::Ask;
-use super::live::{self, Engine, Reach, Unanswered};
 use super::{Failure, Installation, Outcome, actor, backups, problem, record, restart_note, say};
+use crate::admin::engine::{Engine, EngineError};
 use crate::admin::setup::{
     Seams, Setup, SetupError, Via,
     lab_apps::{
@@ -169,11 +169,11 @@ async fn keys_go(installation: &Installation) -> Result<Place, Failure> {
             .check_writer()
             .map(|()| Place::Here)
     };
-    match live::reach(&installation.program).await {
-        Reach::Proven(engine) => Ok(Place::Engine(engine)),
-        Reach::NotRunning => here().map_err(Failure::EngineStopped),
-        Reach::NoAdmin => Ok(here().map_err(SetupError::Credentials)?),
-        Reach::Unknown(why) => Err(Failure::EngineUnreachable(why)),
+    match Engine::proven(&installation.program).await {
+        Ok(engine) => Ok(Place::Engine(engine)),
+        Err(EngineError::NotRunning(_)) => here().map_err(Failure::EngineStopped),
+        Err(EngineError::AdminOff) => Ok(here().map_err(SetupError::Credentials)?),
+        Err(error) => Err(Failure::EngineUnreachable(error.to_string())),
     }
 }
 
@@ -200,11 +200,14 @@ async fn through_engine(
     let sent = Sent::new(actor.as_str(), change, entered);
     let posted = engine.post(PATH, &sent, ANSWER_LIMIT).await;
     drop(sent);
-    let (status, body) = posted.map_err(|unanswered| match unanswered {
-        Unanswered::NotSent(why) => Failure::EngineUnreachable(why),
-        Unanswered::Unknown(why) => Failure::EngineNoAnswer(why),
+    let (status, body) = posted.map_err(|error| {
+        if error.not_sent() {
+            Failure::EngineUnreachable(error.to_string())
+        } else {
+            Failure::EngineNoAnswer(error.to_string())
+        }
     })?;
-    if status == reqwest::StatusCode::UNAUTHORIZED {
+    if status == 401 {
         return Err(Failure::EngineUnreachable(format!(
             "the engine refused the admin key ({status})"
         )));

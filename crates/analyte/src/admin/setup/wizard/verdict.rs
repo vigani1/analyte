@@ -13,6 +13,9 @@ use std::net::{Ipv4Addr, SocketAddr};
 /// The Windows Firewall rule the installer adds (packaging/windows/install.ps1);
 /// a packaging test checks both name it alike.
 pub(crate) const FIREWALL_RULE: &str = "Analyte - analyzers on the lab network";
+/// That rule's fixed Name (not its display name), which `analyte doctor` looks for.
+#[cfg(windows)]
+pub(crate) const FIREWALL_RULE_NAME: &str = "Analyte-Analyzers-In";
 
 /// How the test reached the machine, for what to check when nothing arrives.
 #[derive(Clone, Debug, PartialEq, Eq)]

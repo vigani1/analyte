@@ -14,6 +14,7 @@ order. Examples are synthetic. Do not use their values as machine settings.
 | Install only the engine and set it up from PowerShell | [Install without the app](install.md#install-without-the-app) |
 | Configuration, app connection and machine qualification | [Connect](connect.md) |
 | Admin page, alerts and storage incidents | [Operate](operate.md) |
+| Every command for PowerShell, by task | [Commands](commands.md) |
 | Who may sign in with their Windows account | [Who may sign in](sign-in.md) |
 | Backup, restore, retention and upgrade | [Protect and recover](recovery.md) |
 | Record approval before clinical use | [Pilot sign-off](pilot.md) |
