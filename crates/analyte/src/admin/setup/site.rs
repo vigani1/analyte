@@ -107,9 +107,10 @@ pub(super) struct Candidate {
     pub(super) lab_apps: LabApps,
 }
 
-/// The current site file with the page's choices applied: the connection, and
-/// `lab_app = "<name>"` in place of any `[destination]` table. Every other key
-/// (retention, time zone, limits) is kept as it was.
+/// The current site file with the page's choices applied: the connection, the
+/// devices it accepts (`allowed_peers`, removed when none are chosen, ADR
+/// 0026), and `lab_app = "<name>"` in place of any `[destination]` table.
+/// Every other key (retention, time zone, limits) is kept as it was.
 ///
 /// A complete `[destination]` moves into `lab-apps.toml` unless it is already
 /// there with identical values, so results waiting for it stay deliverable even
@@ -119,7 +120,7 @@ pub(super) struct Candidate {
 /// setup page) is copied into `lab-apps.toml` with the same values.
 pub(super) fn candidate(
     current: &str,
-    connection: &Endpoint,
+    (connection, peers): (&Endpoint, Option<&analyte_config::AllowedPeers>),
     lab_app: &Identifier,
     lab_apps: &LabApps,
     elsewhere: &[Destination],
@@ -132,6 +133,19 @@ pub(super) fn candidate(
         Endpoint::Fixed(endpoint) => ("endpoint", endpoint.as_str()),
     };
     table.insert(key.into(), toml::Value::String(value.into()));
+    table.remove("allowed_peers");
+    if let Some(peers) = peers {
+        table.insert(
+            "allowed_peers".into(),
+            toml::Value::Array(
+                peers
+                    .addresses()
+                    .iter()
+                    .map(|address| toml::Value::String(address.to_string()))
+                    .collect(),
+            ),
+        );
+    }
     let mut after = lab_apps.clone();
     if let Some(own) = table.remove("destination") {
         let complete = own.get("name").is_some() || own.get("base_url").is_some();

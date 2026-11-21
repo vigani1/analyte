@@ -153,6 +153,54 @@ saved earlier that the PC no longer has stays in the list, marked as such.
 **When Analyte connects to the analyzer**, step 2 asks for the analyzer's IP
 address and port, as its own network settings show them.
 
+#### Accept only the analyzer
+
+Analyzer protocols have no password, so any device that reaches a port
+Analyte listens on could send results that Analyte would store and send to
+the lab app as that machine's. Each listening machine should therefore name
+the only devices it accepts, in its site file:
+
+```toml
+endpoint = "0.0.0.0:5600"
+allowed_peers = ["192.168.1.50"]   # the analyzer's own IP address
+```
+
+A connection from any other address is closed at once: Analyte reads
+nothing from it, answers nothing (no ACK, no NAK) and stores nothing as that
+machine's data ([ADR 0026](../adr/0026-accept-only-the-machine.md)). List 1
+to 16 plain addresses; names, ports and ranges such as `192.168.1.0/24` are
+refused, because a range lets other devices on the subnet in. The key is
+refused for serial, folder and outgoing (`tcp_client`) machines.
+
+The setup steps write it for you. Step 3's connection test shows the address
+of the device that connected ("Connected from 192.168.1.50"); step 4 offers
+**Only accept this device: 192.168.1.50**, ticked. Check that address
+against the analyzer's own network settings before saving. Step 2 lets you
+type or change the list. Give each analyzer a fixed address: an address that
+changes is refused until it is added.
+
+A machine without the key still accepts any device, as before, and says so:
+its page, the Machines list and the Overview show "Accepts connections from
+any device" until it is set. Each refused connection shows on the machine's
+page with its address and time (the newest five devices since Analyte
+started), on the Overview for 24 hours, and in the log. If the refused
+address is the analyzer's own, its address changed; otherwise find that
+device.
+
+**Keep analyzers on their own network.** An allow-list stops a laptop on the
+lab network, but not a device that takes the analyzer's address. Put the
+analyzers and the lab PC's analyzer card on their own cable, switch or VLAN,
+with no route from office or guest networks. Then a second Analyte or laptop
+cannot take results from an analyzer that connects to this PC unless it
+takes over this PC's own IP address on that network, which the analyzer
+network's owner can watch for.
+
+**When Analyte connects to the analyzer** (`tcp_client`), Analyte cannot
+choose who answers. The controls are the analyzer's own "allowed host" (or
+"LIS address") setting, set to this PC's address, and the same network
+separation. If the connection is lost, the machine shows **Not connected
+(retrying)** and the app sends a notification.
+
 #### Firewall
 
 Windows Firewall blocks analyzers that connect to a service and never asks,
@@ -163,7 +211,7 @@ one inbound rule, **Analyte - analyzers on the lab network**:
 | --- | --- | --- |
 | Program | `C:\Program Files\Analyte\analyte.exe` | Only Analyte; no other program gets through. |
 | Protocol and ports | TCP, any local port | The ports Analyte listens on are set per machine on the setup page; a fixed port list would need a reinstall for each new analyzer. |
-| Remote addresses | `LocalSubnet` | Only devices on the same network as one of this PC's cards. |
+| Remote addresses | `LocalSubnet` | Only devices on the same network as one of this PC's cards; `allowed_peers` then narrows each machine to its own analyzer. |
 | Profiles | Domain, Private and Public | A cable straight to an analyzer, or a lab switch without a router, usually shows as an "Unidentified network", which Windows treats as Public. A Private-only rule would block the most common case; `LocalSubnet` keeps every other network out on all three. |
 
 Reinstalling or upgrading replaces the rule (it has a fixed name, so there is
@@ -330,8 +378,16 @@ analyte --actor it-alex machines add hl7-1
 analyte --actor it-alex machines set hl7-1 `
     --model $model --address 192.168.1.20 --port 5600 --lab-app main-lab --dry-run
 analyte --actor it-alex machines set hl7-1 `
-    --model $model --address 192.168.1.20 --port 5600 --lab-app main-lab
+    --model $model --address 192.168.1.20 --port 5600 --lab-app main-lab `
+    --allowed-peer 192.168.1.50
 ```
+
+`--allowed-peer` is the analyzer's own address: only that device may connect
+([Accept only the analyzer](#accept-only-the-analyzer)). Repeat it for
+several; `--any-device` removes the list again. Other choices left out keep
+the saved devices. `machines list` shows each machine's devices, or a warning
+that it accepts any device, and the newest refused connection; `analyte
+doctor` warns for a listening machine without a list.
 
 Add a serial machine on a USB adapter, found by its serial number in any USB
 socket (`--serial-port COM3` names a fixed port instead):
@@ -352,6 +408,11 @@ save or share that output.
 ```powershell
 analyte machines test cobas-1 --seconds 30
 ```
+
+For a machine that connects to Analyte, the test also names the device that
+connected. At a terminal it then asks whether to accept only that device from
+now on, and saves that through the same checks as `machines set`; in a script
+it prints the `machines set ... --allowed-peer` command instead.
 
 Add a lab app and set its keys. Keys are never options: the command asks for
 them without showing what you type, or reads them from standard input, the

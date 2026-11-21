@@ -32,5 +32,6 @@ links to its replacement; none is superseded today.
 | [0023](0023-status-reasons-and-notifications.md) | Notifications that say what happened |
 | [0024](0024-one-review-item-per-cause.md)       | One Needs review item per cause (refines ADR 0003) |
 | [0025](0025-setup-from-the-command-line.md) | Setting up machines and lab apps from the command line |
+| [0026](0026-accept-only-the-machine.md)         | A listening machine accepts only its own device    |
 | [0027](0027-command-line-asks-the-engine.md)    | The command line asks the running engine for the verdict |
 | [0028](0028-lab-app-keys-through-the-engine.md) | Lab app keys from the command line through the running engine (refines ADR 0025) |

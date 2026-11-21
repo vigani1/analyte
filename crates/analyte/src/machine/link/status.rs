@@ -1,11 +1,21 @@
-//! Owns each machine's in-memory link light: link kind, state, last data and last change.
+//! Owns each machine's in-memory link light: link kind, state, last data, last change and refused devices.
 //!
 //! The machine runtime is the only writer; the admin page only subscribes. The status
-//! never holds bytes, sample IDs or peer addresses (safety rule 10).
+//! never holds bytes or sample IDs (safety rule 10). The only address it holds is
+//! that of a device refused by the machine's `allowed_peers`, so an operator can
+//! find it (ADR 0026); an accepted peer's address is never kept here.
 use analyte_config::{Stack, TcpRole};
 use analyte_transport::Activity;
-use jiff::Timestamp;
+use jiff::{SignedDuration, Timestamp};
+use std::net::IpAddr;
 use tokio::sync::watch;
+
+/// How many refused devices a status keeps, newest first (AGENTS.md rule 7).
+pub(crate) const REFUSALS_KEPT: usize = 5;
+
+/// A refused device is logged again only after this long, so a device retrying
+/// every second cannot flood the log; every refusal is still counted.
+const LOG_AGAIN_AFTER: SignedDuration = SignedDuration::from_secs(60);
 
 /// How the machine is attached, as configured.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -67,6 +77,21 @@ pub(crate) struct Status {
     open: u32,
     changed_at: Timestamp,
     last_data: Option<Timestamp>,
+    /// Devices refused since start, newest first, at most [`REFUSALS_KEPT`].
+    refused: Vec<Refusal>,
+}
+
+/// Connections refused from one device not on the machine's `allowed_peers`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Refusal {
+    /// The refused device's address, in its plain form.
+    pub(crate) peer: IpAddr,
+    /// When its latest connection was refused.
+    pub(crate) at: Timestamp,
+    /// How many of its connections were refused since start.
+    pub(crate) count: u64,
+    /// When its refusal was last logged.
+    logged: Timestamp,
 }
 
 impl Status {
@@ -108,6 +133,11 @@ impl Status {
     pub(crate) const fn last_data(&self) -> Option<Timestamp> {
         self.last_data
     }
+
+    /// The devices refused since start, the most recently refused first.
+    pub(crate) fn refused(&self) -> &[Refusal] {
+        &self.refused
+    }
 }
 
 /// The runtime's writing end. Cloning shares the same status.
@@ -122,6 +152,7 @@ impl Reporter {
             open: 0,
             changed_at: Timestamp::now(),
             last_data: None,
+            refused: Vec::new(),
         }))
     }
 
@@ -138,6 +169,39 @@ impl Reporter {
     pub(crate) fn received(&self) {
         self.0
             .send_modify(|status| status.last_data = Some(Timestamp::now()));
+    }
+
+    /// Records a connection refused from `peer` now. Returns whether it should
+    /// be logged: the first refusal from a device, or one a minute after the
+    /// last logged one. The oldest device drops out past [`REFUSALS_KEPT`].
+    pub(crate) fn refuse(&self, peer: IpAddr) -> Option<u64> {
+        let now = Timestamp::now();
+        let peer = peer.to_canonical();
+        let mut log = None;
+        self.0.send_modify(|status| {
+            let mut refusal = match status.refused.iter().position(|r| r.peer == peer) {
+                Some(index) => {
+                    let mut kept = status.refused.remove(index);
+                    kept.at = now;
+                    kept.count = kept.count.saturating_add(1);
+                    kept
+                }
+                None => Refusal {
+                    peer,
+                    at: now,
+                    count: 1,
+                    // Never logged yet: the check below logs it.
+                    logged: now.checked_sub(LOG_AGAIN_AFTER).unwrap_or(Timestamp::MIN),
+                },
+            };
+            if now.duration_since(refusal.logged) >= LOG_AGAIN_AFTER {
+                refusal.logged = now;
+                log = Some(refusal.count);
+            }
+            status.refused.insert(0, refusal);
+            status.refused.truncate(REFUSALS_KEPT);
+        });
+        log
     }
 
     /// Follows one I/O side; the transport pairs every opening with one closing.
@@ -172,7 +236,57 @@ mod tests {
             open,
             changed_at: Timestamp::UNIX_EPOCH,
             last_data: None,
+            refused: Vec::new(),
         }
+    }
+
+    // ADR 0026 decision 3: refused devices are kept newest first, one entry per
+    // device with its count, at most five; a device retrying is logged once a
+    // minute, not on every connection.
+    #[test]
+    fn refused_devices_are_bounded_and_counted() -> Result<(), std::net::AddrParseError> {
+        let reporter = Reporter::new(Link::TcpServer);
+        let first: IpAddr = "192.168.1.77".parse()?;
+        assert_eq!(
+            reporter.refuse(first),
+            Some(1),
+            "the first refusal is logged"
+        );
+        assert_eq!(
+            reporter.refuse(first),
+            None,
+            "a retry within a minute is not"
+        );
+        let mapped: IpAddr = "::ffff:192.168.1.77".parse()?;
+        assert_eq!(
+            reporter.refuse(mapped),
+            None,
+            "the mapped form is the same device"
+        );
+        for last in 1..=6_u8 {
+            reporter.refuse(IpAddr::from([10, 0, 0, last]));
+        }
+        let status = reporter.subscribe().borrow().clone();
+        let peers: Vec<String> = status
+            .refused()
+            .iter()
+            .map(|r| r.peer.to_string())
+            .collect();
+        assert_eq!(
+            peers,
+            ["10.0.0.6", "10.0.0.5", "10.0.0.4", "10.0.0.3", "10.0.0.2"]
+        );
+        reporter.refuse(IpAddr::from([10, 0, 0, 3]));
+        let status = reporter.subscribe().borrow().clone();
+        let newest = status.refused().first().copied();
+        assert_eq!(
+            newest.map(|r| (r.peer.to_string(), r.count)),
+            Some(("10.0.0.3".into(), 2))
+        );
+        assert_eq!(status.refused().len(), REFUSALS_KEPT);
+        // A refusal is not a state change: the light and its time stay.
+        assert_eq!(status.state(), "Not listening");
+        Ok(())
     }
 
     // Plan §11 admin page: an open serial port cannot prove a cable or machine.

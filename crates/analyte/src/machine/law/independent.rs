@@ -110,10 +110,10 @@ async fn server(
                         }
                     }
                 },
-                accepted = link::tcp::accept(|| listener.accept(), machine.id.as_str(), &mut accepting),
+                accepted = link::tcp::accept_allowed(&listener, &machine, &mut accepting),
                     if sessions.len() < SESSION_LIMIT => {
                     let stream = match accepted {
-                        Ok(Some((stream, _))) => stream,
+                        Ok(Some(stream)) => stream,
                         Ok(None) => break,
                         // accept retries every recoverable fault; only an unusable listener returns.
                         Err(error) => return Err(error.into()),

@@ -12,6 +12,15 @@
 <dt>Machine</dt><dd>{{ wizard.id }}</dd>
 <dt>Model</dt><dd>{{ summary.model }}</dd>
 <dt>Connection</dt><dd>{% call display::hover(summary.connection.shown, summary.connection.exact) %}{% endcall %}</dd>
+{%- if let Some(accepts) = summary.accepts %}
+<dt>Accepts connections from</dt><dd>
+{%- match accepts %}
+{%- when Accepts::Offer { value, label, note } %}<label class="check"><input type="checkbox" name="allowed_peers" value="{{ value }}" form="s4-save" checked><span>{{ label }}</span></label>{% if let Some(note) = note %}<span class="kv__note">{{ note }}</span>{% endif %}<span class="kv__note">Untick to accept any device that reaches the port.</span>
+{%- when Accepts::Any %}<span class="tone-warn">Any device</span><span class="kv__note">Any device on the lab network that reaches this port could send results as this machine. Run the connection test in step 3, or type the machine’s address in step 2.</span>
+{%- when Accepts::Saved(words, any) %}{% if any %}<span class="tone-warn">{{ words }}</span>{% else %}<span class="mono">{{ words }}</span>{% endif %}
+{%- endmatch -%}
+</dd>
+{%- endif %}
 <dt>Sends results to</dt><dd><a class="link" href="{{ summary.lab_app.href }}" title="{{ summary.lab_app.address }}">{{ summary.lab_app.name }}</a>{% if let Some(missing) = summary.lab_app.missing %} <span class="tone-warn">· {{ missing }}</span>{% endif %}</dd>
 <dt>Connection test</dt><dd>
 {%- match summary.test %}
@@ -27,12 +36,12 @@
 </dl>
 </div>
 {%- match outcome %}
-{%- when Outcome::Review { back, action, csrf, hidden } %}
+{%- when Outcome::Review { back, back_hidden, action, csrf, hidden } %}
 </section>
 <div class="wizard-foot">
-<form method="get" action="{{ back }}">{% call forms::hidden_fields(hidden) %}{% endcall %}<button type="submit" class="btn btn--outline">Back</button></form>
+<form method="get" action="{{ back }}">{% call forms::hidden_fields(back_hidden) %}{% endcall %}<button type="submit" class="btn btn--outline">Back</button></form>
 <span class="subtle wizard__count">{{ wizard.count }}</span>
-<form method="post" action="{{ action }}"><input type="hidden" name="csrf" value="{{ csrf }}">{% call forms::hidden_fields(hidden) %}{% endcall %}<button type="submit" class="btn btn--primary">Save</button></form>
+<form id="s4-save" method="post" action="{{ action }}"><input type="hidden" name="csrf" value="{{ csrf }}">{% call forms::hidden_fields(hidden) %}{% endcall %}<button type="submit" class="btn btn--primary">Save</button></form>
 </div>
 {%- when Outcome::Saved { csrf, lines, problems, support, done } %}
 <div class="alert alert--good" role="status">{% call draw::icon(crate::admin::view::Tone::Good.icon(), "") %}{% endcall %}<div><p class="alert__title">Settings saved</p><p class="alert__text">Analyte keeps running the old settings until it restarts. {{ crate::admin::view::format::RESTART_ADVICE }}</p></div>

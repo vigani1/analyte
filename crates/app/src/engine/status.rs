@@ -11,16 +11,16 @@ use std::time::Duration;
 /// its state within 1.5 s and answers within 1.75 s.
 pub const TIMEOUT: Duration = Duration::from_secs(3);
 
-/// The most of an answer the app reads; the real one is at most about 400
+/// The most of an answer the app reads; the real one is at most about 460
 /// bytes, with every kind listed.
 const LIMIT: usize = 1024;
 
 /// The most kinds the app reads from one answer; the engine sends each of
-/// its 14 kinds at most once.
+/// its 16 kinds at most once.
 const MOST_REASONS: usize = 32;
 
 /// A kind of thing that needs someone, as the engine's `/status` names it
-/// (ADR 0023), declared most serious first, as the engine lists them: every
+/// (ADR 0023, ADR 0026), declared most serious first, as the engine lists them: every
 /// kind that stops data now before every kind that only needs a look.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Reason {
@@ -40,6 +40,8 @@ pub enum Reason {
     SendingPaused,
     /// A machine has sent nothing for too long.
     MachineSilent,
+    /// A machine refused a connection from a device not on its list.
+    MachineRefusedConnection,
     /// A result has waited too long to be sent.
     ResultWaiting,
     /// Items on Needs review.
@@ -52,11 +54,13 @@ pub enum Reason {
     OrdersPausedAfterRestore,
     /// The order list from the lab app is out of date.
     OrderListStale,
+    /// A machine accepts connections from any device on the network.
+    MachineOpenToAnyDevice,
 }
 
 impl Reason {
     /// Every kind, most serious first.
-    pub const ALL: [Self; 14] = [
+    pub const ALL: [Self; 16] = [
         Self::DiskFull,
         Self::DiskLow,
         Self::LabAppBlocked,
@@ -65,12 +69,14 @@ impl Reason {
         Self::MachineLinkOff,
         Self::SendingPaused,
         Self::MachineSilent,
+        Self::MachineRefusedConnection,
         Self::ResultWaiting,
         Self::NeedsReview,
         Self::OrdersUncertain,
         Self::OrdersCancelled,
         Self::OrdersPausedAfterRestore,
         Self::OrderListStale,
+        Self::MachineOpenToAnyDevice,
     ];
 
     /// The engine's word for this kind.
@@ -85,12 +91,14 @@ impl Reason {
             Self::MachineLinkOff => "machine_link_off",
             Self::SendingPaused => "sending_paused",
             Self::MachineSilent => "machine_silent",
+            Self::MachineRefusedConnection => "machine_refused_connection",
             Self::ResultWaiting => "result_waiting",
             Self::NeedsReview => "needs_review",
             Self::OrdersUncertain => "orders_uncertain",
             Self::OrdersCancelled => "orders_cancelled",
             Self::OrdersPausedAfterRestore => "orders_paused_after_restore",
             Self::OrderListStale => "order_list_stale",
+            Self::MachineOpenToAnyDevice => "machine_open_to_any_device",
         }
     }
 
@@ -110,12 +118,14 @@ impl Reason {
             Self::MachineLinkOff => "A machine’s connection is off",
             Self::SendingPaused => "Sending to a lab app is paused",
             Self::MachineSilent => "A machine has gone quiet",
+            Self::MachineRefusedConnection => "A machine refused a connection from another device",
             Self::ResultWaiting => "A result is waiting too long to be sent",
             Self::NeedsReview => "Something needs review",
             Self::OrdersUncertain => "Some orders have an unknown outcome",
             Self::OrdersCancelled => "A machine cancelled some orders",
             Self::OrdersPausedAfterRestore => "Orders are paused after a restore",
             Self::OrderListStale => "The order list from the lab app is out of date",
+            Self::MachineOpenToAnyDevice => "A machine accepts connections from any device",
         }
     }
 
@@ -140,6 +150,12 @@ impl Reason {
                 "IT must check the orders before sending starts again. Open Analyte for the steps."
             }
             Self::OrderListStale => "Open Analyte to see when it last came.",
+            Self::MachineRefusedConnection => {
+                "Open Analyte to see which machine and which device tried."
+            }
+            Self::MachineOpenToAnyDevice => {
+                "Open Analyte to see which machine and limit it to the machine's own address."
+            }
         }
     }
 
@@ -148,7 +164,7 @@ impl Reason {
     }
 }
 
-/// A set of kinds; it cannot hold more than the 14 there are.
+/// A set of kinds; it cannot hold more than the 16 there are.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Reasons(u16);
 
@@ -433,7 +449,7 @@ mod tests {
         let Reply::Answered(Health::Problem, reasons) = read(200, body.as_bytes()) else {
             panic!("every kind reads");
         };
-        assert_eq!(reasons.len(), 14);
+        assert_eq!(reasons.len(), 16);
         assert_eq!(reasons.first(), Some(Reason::DiskFull));
         let body = "{\"state\":\"attention\",\"reasons\":[\"printer_jam\",\"needs_review\",\"needs_review\"],\"version\":\"0.1.0\"}";
         assert_eq!(

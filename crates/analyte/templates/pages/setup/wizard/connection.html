@@ -26,7 +26,7 @@
 <span class="field__hint">If the USB adapter has its own serial number, Analyte saves that number, so it finds the machine again even if the port name changes; otherwise it saves the port name.</span>
 </fieldset>
 <div class="field"><label class="field__label" for="s2-port">Or type a port name</label><input id="s2-port" class="input mono" name="port_name" maxlength="1024" value="{{ typed }}" placeholder="{{ placeholder }}"><span class="field__hint">If yours isn’t listed. A typed name wins over a port picked above.</span></div>
-{%- when Inputs::Listens { hosts, typed, port } %}
+{%- when Inputs::Listens { hosts, typed, port, peers } %}
 {%- match hosts %}
 {%- when Ok(hosts) %}
 <fieldset class="wizard__set stack">
@@ -46,6 +46,7 @@
 {%- endmatch %}
 <div class="field"><label class="field__label" for="s2-tcp">Port</label><input id="s2-tcp" class="input mono" name="tcp_port" required maxlength="5" inputmode="numeric" value="{{ port }}"><span class="field__hint">Type the same port number into the machine’s host (LIS) settings.</span></div>
 </div>
+<div class="field"><label class="field__label" for="s2-peers">Only accept these devices <span class="subtle">(optional)</span></label><input id="s2-peers" class="input mono" name="allowed_peers" maxlength="1024" value="{{ peers }}" placeholder="192.168.1.50"><span class="field__hint">The machine’s own IP address, from its network settings; separate several with commas. Leave empty to find it with the connection test in step 3. Any other device that connects is refused.</span></div>
 {%- when Inputs::Connects { host, port } %}
 <div class="form-grid">
 <div class="field"><label class="field__label" for="s2-host">Machine’s IP address</label><input id="s2-host" class="input mono" name="host" required maxlength="64" value="{{ host }}"><span class="field__hint">As shown in the machine’s network settings, such as 192.168.1.50.</span></div>

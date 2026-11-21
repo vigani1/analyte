@@ -430,7 +430,7 @@ async fn connection(
     running: Engine,
 ) -> Vec<Check> {
     let (link, endpoint) = crate::installation::config::connections::of(machine);
-    vec![match (link, endpoint) {
+    let reached = match (link, endpoint) {
         (Link::Serial, endpoint) => serial(what, endpoint).await,
         (Link::TcpServer, Endpoint::Fixed(address)) => listen(what, address, running).await,
         (Link::TcpClient, Endpoint::Fixed(address)) => connect(what, address, running).await,
@@ -456,7 +456,29 @@ async fn connection(
             ),
             "choose the machine's address or folder on the Setup page",
         ),
-    }]
+    };
+    let mut checks = vec![reached];
+    if link == Link::TcpServer {
+        checks.push(devices(what, machine));
+    }
+    checks
+}
+
+/// Which devices a machine that connects to Analyte may connect from (ADR
+/// 0026): a warning when any device on the network is accepted.
+fn devices(what: &str, machine: &crate::installation::config::Machine) -> Check {
+    let what = format!("{what} devices");
+    match &machine.snapshot().effective().site().allowed_peers {
+        Some(allowed) => ok(what, format!("accepts connections only from {allowed}")),
+        None => warn(
+            what,
+            "accepts connections from any device on the network, which could send results as this machine",
+            format!(
+                "run analyte machines set {} --allowed-peer <the analyzer's IP address>, or tick Only accept this device in step 4 of its setup",
+                machine.id().as_str()
+            ),
+        ),
+    }
 }
 
 /// Whether the serial port is present; it is never opened, so nothing

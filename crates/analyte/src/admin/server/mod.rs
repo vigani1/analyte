@@ -56,6 +56,9 @@ pub(super) struct Machine {
     pub(super) model: Option<String>,
     /// How it is attached, as its site file says.
     pub(super) connection: Connection,
+    /// The only devices it accepts connections from, when it listens and its
+    /// site file names them (ADR 0026).
+    pub(super) allowed_peers: Option<analyte_config::AllowedPeers>,
     /// The lab app it sends to.
     pub(super) lab_app: Identifier,
 }
@@ -102,6 +105,14 @@ impl Connection {
                 |name| name.to_string_lossy().into_owned(),
             )),
         }
+    }
+}
+
+impl Machine {
+    /// Whether it listens and accepts a connection from any device that
+    /// reaches its port: no `allowed_peers` (ADR 0026).
+    pub(super) const fn accepts_any_device(&self) -> bool {
+        matches!(self.connection, Connection::Listening(_)) && self.allowed_peers.is_none()
     }
 }
 
@@ -210,6 +221,7 @@ pub(crate) async fn prepare(
                     crate::machine::link::status::Link::of(effective.stack()),
                     &effective.site().endpoint,
                 ),
+                allowed_peers: effective.site().allowed_peers.clone(),
                 lab_app: effective.site().destination.name.clone(),
             })
         })

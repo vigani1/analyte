@@ -271,6 +271,11 @@ fn list_page(
         });
     }
     let entries = roster(state, read.listed.as_deref().ok());
+    for entry in &entries {
+        if let Entry::Running { machine, .. } = entry {
+            notices.extend(peer_notices(machine, now, false));
+        }
+    }
     let after = usize::try_from(cursor.after)?;
     let shown = entries.iter().skip(after).take(PAGE);
     let rows: Vec<Row> = shown.map(|entry| row(entry, &read.last, now)).collect();
@@ -404,6 +409,9 @@ struct LiveRow {
     since: Option<LiveTime>,
     model: Option<String>,
     lab_app: Option<String>,
+    /// The newest connection refused by its `allowed_peers`, in the page's
+    /// words with the device's address (ADR 0026); none since the start.
+    refused: Option<String>,
 }
 
 /// The whole answer: the rows, and whether the settings file could be read
@@ -427,7 +435,17 @@ pub(super) async fn live(State(state): State<Arc<Context>>) -> Response {
         .iter()
         .map(|entry| {
             let row = row(entry, &read.last, now);
+            let refused = match entry {
+                Entry::Running { machine, .. } => machine
+                    .status
+                    .borrow()
+                    .refused()
+                    .first()
+                    .map(|newest| format::refused(newest, &format::clock(newest.at, now))),
+                Entry::Waiting { .. } => None,
+            };
             LiveRow {
+                refused,
                 running: matches!(entry, Entry::Running { .. }),
                 id: row.id,
                 status: row.status.word,
@@ -557,7 +575,7 @@ fn detail_page(
     let (facts, rules, lede, notices) = match entry {
         Entry::Running { machine, settings } => {
             let (facts, lede) = running_facts(entry, machine, recent, now, &mut support);
-            let notices = (*settings == InSettings::Removed)
+            let mut notices: Vec<Notice> = (*settings == InSettings::Removed)
                 .then(|| Notice {
                     tone: Tone::Attention,
                     title: "Removed from Analyte’s settings".into(),
@@ -565,6 +583,7 @@ fn detail_page(
                 })
                 .into_iter()
                 .collect();
+            notices.extend(peer_notices(machine, now, true));
             (facts, Some(machine.rules.as_slice()), Some(lede), notices)
         }
         Entry::Waiting { set_up, .. } => {
@@ -652,7 +671,7 @@ fn running_facts(
         format::digest_hex(&machine.digest)
     ));
     let running = machine.running.load(Ordering::Acquire);
-    let facts = vec![
+    let mut facts = vec![
         Fact {
             term: "Model",
             value: Value::Text(
@@ -670,6 +689,14 @@ fn running_facts(
             term: "Connection",
             value: Value::Status(entry.status(now, true)),
         },
+    ];
+    if let Some(accepts) = format::accepts(&machine.connection, machine.allowed_peers.as_ref()) {
+        facts.push(Fact {
+            term: "Accepts connections from",
+            value: Value::Text(accepts),
+        });
+    }
+    facts.extend([
         Fact {
             term: "Last data",
             value: Value::Time(last.map(|at| format::moment(at, now))),
@@ -692,12 +719,42 @@ fn running_facts(
                 exact: format::digest_hex(&machine.digest),
             },
         },
-    ];
+    ]);
     let lede = format::machine_lede(
         machine.model.as_deref(),
         last.map(|at| format::moment(at, now)),
     );
     (facts, lede)
+}
+
+/// What a listening machine's page says about the devices that may connect
+/// (ADR 0026): a warning when any device is accepted, and each device refused
+/// since Analyte started, newest first. `all` lists every refused device, for
+/// the machine's own page; the list of machines names only the newest.
+fn peer_notices(machine: &Machine, now: Timestamp, all: bool) -> Vec<Notice> {
+    let named = |title: String| {
+        if all {
+            title
+        } else {
+            format!("{}: {title}", machine.id.as_str())
+        }
+    };
+    let mut notices = Vec::new();
+    if machine.accepts_any_device() {
+        notices.push(Notice {
+            tone: Tone::Attention,
+            title: named(format::OPEN_TO_ANY.into()),
+            text: format::OPEN_TO_ANY_ADVICE.into(),
+        });
+    }
+    let status = machine.status.borrow().clone();
+    let shown = if all { status.refused().len() } else { 1 };
+    notices.extend(status.refused().iter().take(shown).map(|refusal| Notice {
+        tone: Tone::Attention,
+        title: named(format::refused(refusal, &format::clock(refusal.at, now))),
+        text: format::REFUSED_ADVICE.into(),
+    }));
+    notices
 }
 
 /// What can be done with a machine: only a listed one can be set up, tested or removed.

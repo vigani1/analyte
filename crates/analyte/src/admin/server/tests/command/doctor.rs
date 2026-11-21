@@ -85,5 +85,39 @@ async fn doctor_reports_a_stopped_engine_an_unreachable_lab_app_and_missing_keys
     for check in &checks {
         assert!(!check.found.contains("whsec_"), "a key was printed");
     }
+    // ADR 0026: a machine that connects to Analyte and accepts any device is
+    // a warning that says how to limit it; with `allowed_peers` it is OK.
+    let devices = checks
+        .iter()
+        .find(|check| check.what == "Machine synthetic devices")
+        .ok_or("no devices check")?;
+    assert_eq!(devices.level, doctor::Level::Warn, "{devices:?}");
+    assert!(devices.found.contains("any device"), "{devices:?}");
+    assert!(
+        devices
+            .fix
+            .as_deref()
+            .is_some_and(|fix| fix.contains("machines set synthetic --allowed-peer")),
+        "{devices:?}"
+    );
+    let site = std::fs::read_to_string(root.join("site.toml"))?;
+    std::fs::write(
+        root.join("site.toml"),
+        site.replacen(
+            "retention = \"keep\"",
+            "retention = \"keep\"\nallowed_peers = [\"192.168.1.50\"]",
+            1,
+        ),
+    )?;
+    let checks = doctor::checks(&file).await;
+    let devices = checks
+        .iter()
+        .find(|check| check.what == "Machine synthetic devices")
+        .ok_or("no devices check")?;
+    assert_eq!(devices.level, doctor::Level::Ok, "{devices:?}");
+    assert!(
+        devices.found.contains("only from 192.168.1.50"),
+        "{devices:?}"
+    );
     Ok(())
 }
