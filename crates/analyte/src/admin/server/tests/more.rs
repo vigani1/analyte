@@ -14,7 +14,7 @@ const LAB: &str = "main-lab";
 const SECRET: &str = "synthetic-secret-value-0451";
 
 /// The scene's machines and their models, as the More mockups name them.
-const MACHINES: [(&str, &str); 4] = [
+pub(super) const MACHINES: [(&str, &str); 4] = [
     ("chemistry-analyzer", "Chemistry analyzer XC-200"),
     ("hematology-analyzer", "Hematology analyzer HM-5"),
     ("immunoassay-analyzer", "Immunoassay analyzer IA-900"),

@@ -8,6 +8,7 @@ use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 mod actions;
 mod activity;
 mod assets;
+mod command;
 mod consistency;
 mod live;
 mod machines;

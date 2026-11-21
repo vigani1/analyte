@@ -377,6 +377,7 @@ pub(super) const ANSWER_TIME: Duration = Duration::from_millis(250);
 fn router(state: Arc<Context>) -> Router {
     Router::new()
         .route("/", get(super::overview::show))
+        .route("/overview/verdict", get(super::overview::verdict))
         .route("/static/{*path}", get(super::view::assets::serve))
         .route("/status", get(status::show))
         .route("/login", get(sign_in::login_page).post(sign_in::login))
@@ -521,7 +522,10 @@ async fn protect(State(state): State<Arc<Context>>, mut request: Request, next: 
         }
         // A signed-in page's sidebar shows the Needs review count; the event
         // stream and the pages shown before sign-in have no sidebar.
-        let sidebar = authenticated && !login && !public && request.uri().path() != "/events";
+        let sidebar = authenticated
+            && !login
+            && !public
+            && !matches!(request.uri().path(), "/events" | "/overview/verdict");
         plain_refusal_as_page(
             &state.assets,
             answer(&state, request, next, session, sidebar).await,

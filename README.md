@@ -157,7 +157,8 @@ cargo run -p analyte -- run crates/analyte/examples/analyte.toml
 
 Delete `crates/analyte/data/` afterwards. For admin pages add an `[admin]`
 section ([program guide](crates/analyte/DETAILS.md)). To install on a lab PC,
-see the [operations guides](docs/operations/README.md).
+see the [operations guides](docs/operations/README.md); everything the pages do
+is also a command ([commands](docs/operations/commands.md)).
 
 ## Contributing
 

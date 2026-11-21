@@ -38,8 +38,10 @@ analyte-astm = { workspace = true }
 analyte-hl7 = { workspace = true }
 analyte-mapping = { workspace = true }
 analyte-contract = { workspace = true }
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "net", "sync", "time", "io-util"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "net", "sync", "time", "io-util", "process"] }
+reqwest = { workspace = true }
 clap = { workspace = true }
+clap_complete = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 serde = { workspace = true }

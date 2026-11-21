@@ -40,6 +40,18 @@ pub enum Command {
         #[arg(long,value_parser=Identifier::new)]
         machine: Option<Identifier>,
     },
+    /// The Cancelled by machine page: order items a machine cancelled on its
+    /// own, to check with the lab and the lab app. Shows each item's sample ID
+    /// from the lab app's copy, as the page does, never result values; each
+    /// run is recorded in the audit.
+    Cancelled {
+        /// Continue after this position, as the previous page printed it.
+        #[arg(long, default_value_t = 0)]
+        after: u64,
+        /// Print the items as JSON for scripts.
+        #[arg(long)]
+        json: bool,
+    },
     /// Resolves an uncertain machine outcome using operator evidence.
     Reconcile {
         /// Local machine-order ID printed by orders list.
@@ -79,6 +91,12 @@ impl Outcome {
 /// Reports invalid reasons, unknown orders, illegal reconciliation and I/O failures.
 pub async fn run(program: &Program, actor: Identifier, command: Command) -> Result<(), Error> {
     let (action, targets, reason) = match &command {
+        // A page read with its own audit; it opens the store itself.
+        Command::Cancelled { after, json } => {
+            return crate::admin::command::cancelled(program, actor, *after, *json)
+                .await
+                .map_err(|error| Error::Page(Box::new(error)));
+        }
         Command::ResumeAfterRestore { reason } => (
             "orders-resume-after-restore",
             Vec::new(),
@@ -113,6 +131,8 @@ pub async fn run(program: &Program, actor: Identifier, command: Command) -> Resu
     }
     let result = store
         .request::<_, CommandError>(deadline()?, move |store| match command {
+            // Answered above, before the store opened; nothing to do here.
+            Command::Cancelled { .. } => Ok(Vec::new()),
             Command::ResumeAfterRestore { .. } => {
                 store.resume_after_restore(&audit)?;
                 Ok(Vec::new())

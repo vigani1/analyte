@@ -7,6 +7,7 @@ use analyte_store::Audit;
 use clap::{Parser, Subcommand};
 use std::{
     path::PathBuf,
+    process::ExitCode,
     time::{Duration, Instant},
 };
 
@@ -45,51 +46,66 @@ enum Command {
         #[command(subcommand)]
         command: analyte::operator::holds::Command,
     },
+    /// The admin page's key.
     Admin {
         #[command(subcommand)]
         command: Admin,
     },
+    /// Machine orders: list, cancelled by a machine, reconcile, resume after a restore.
     Orders {
         #[command(subcommand)]
         command: analyte::orders::Command,
     },
-    CheckConfig {
-        file: PathBuf,
-    },
+    /// Checks a program file and lists each machine's settings version and evidence level.
+    CheckConfig { file: PathBuf },
+    /// Runs the engine in this window until Ctrl+C (the service uses `service run`).
     Run {
         file: Option<PathBuf>,
         /// Hard process deadline after shutdown begins.
         #[arg(long, default_value_t = 30, value_parser = clap::value_parser!(u64).range(30..=300))]
         shutdown_timeout_secs: u64,
     },
+    /// Entry point for the Windows service; start it with Start-Service Analyte.
     #[cfg(windows)]
     Service {
         #[command(subcommand)]
         command: ServiceCommand,
     },
-    Status {
-        file: PathBuf,
-    },
+    /// Technical health lines for support: alerts, queues, last data per machine.
+    Status { file: PathBuf },
+    /// Needs review: items Analyte kept but could not process. `review` and
+    /// `parked` are the same command.
+    #[command(visible_alias = "review")]
     Parked {
         #[command(subcommand)]
         command: Parked,
     },
+    /// Reprocesses one stored message with the current settings.
     Receipts {
         #[command(subcommand)]
         command: Receipts,
     },
+    /// Deliveries to lab apps: list, send again.
     Deliveries {
         #[command(subcommand)]
         command: Deliveries,
     },
+    /// Restores the store from a verified backup; order sending stays paused until reconciled.
     Restore {
         #[arg(long)]
         from: PathBuf,
         #[arg(long)]
         reason: String,
     },
-    Backup {
-        target: PathBuf,
+    /// Writes a verified backup of the store to a file.
+    Backup { target: PathBuf },
+    #[command(flatten)]
+    Pages(analyte::admin::command::Command),
+    /// Prints a script that completes analyte's commands in `shell`.
+    /// PowerShell: analyte completions powershell | Out-String | Invoke-Expression
+    Completions {
+        #[arg(value_enum)]
+        shell: clap_complete::Shell,
     },
 }
 
@@ -211,8 +227,13 @@ async fn recover(
     Ok(())
 }
 
-fn main() -> Result<(), Error> {
+fn main() -> Result<ExitCode, Error> {
     let cli = Cli::parse();
+    if let Command::Completions { shell } = cli.command {
+        let mut command = <Cli as clap::CommandFactory>::command();
+        clap_complete::generate(shell, &mut command, "analyte", &mut std::io::stdout());
+        return Ok(ExitCode::SUCCESS);
+    }
     #[cfg(windows)]
     if let Command::Service {
         command: ServiceCommand::Run {
@@ -223,17 +244,34 @@ fn main() -> Result<(), Error> {
         return analyte::runtime::windows_service::run(
             cli.config,
             Duration::from_secs(*shutdown_timeout_secs),
-        );
+        )
+        .map(|()| ExitCode::SUCCESS);
     }
     tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .try_init()
         .map_err(Error::Tracing)?;
-    tokio::runtime::Builder::new_multi_thread()
+    let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
-        .build()?
-        .block_on(execute(cli))
+        .build()?;
+    let Cli {
+        config,
+        actor,
+        command,
+    } = cli;
+    // `overview` and `doctor` say how things are in their exit code.
+    if let Command::Pages(pages) = command {
+        let actor = actor.map_or_else(|| Identifier::new("local-operator"), Ok)?;
+        return Ok(runtime.block_on(analyte::admin::command::run(&config, actor, pages))?);
+    }
+    runtime
+        .block_on(execute(Cli {
+            config,
+            actor,
+            command,
+        }))
+        .map(|()| ExitCode::SUCCESS)
 }
 
 async fn execute(cli: Cli) -> Result<(), Error> {
@@ -321,6 +359,9 @@ async fn execute(cli: Cli) -> Result<(), Error> {
         Command::Deliveries { command } => deliveries(&cli.config, cli.actor, command).await,
         Command::Restore { from, reason } => restore(&cli.config, actor, from, &reason).await,
         Command::Backup { target } => backup(&cli.config, target).await,
+        Command::Pages(_) | Command::Completions { .. } => {
+            Err(std::io::Error::other("dispatched before the runtime started").into())
+        }
     }
 }
 
