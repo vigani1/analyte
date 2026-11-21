@@ -308,6 +308,7 @@ async fn start_action_server(
         config_path: config_path.to_owned(),
         token: Token::load(program.data_directory())?,
         sessions: Sessions::default(),
+        windows: Arc::new(windows::SignIn::new(None)),
         origin: format!("http://{host}"),
         host: host.clone(),
         store: store.clone(),

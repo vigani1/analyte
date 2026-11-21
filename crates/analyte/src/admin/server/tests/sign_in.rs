@@ -1,5 +1,5 @@
 //! Tests signing in and out through the real router, and the refusals shown in the plain frame: what each says, its status, and that none names a machine or lab app.
-use super::overview::{empty_store, stop};
+use super::overview::{assert_recorded, confirm_needs_csrf, empty_store, review_items, stop};
 use super::pages::{cookie, csrf, encode, login};
 use super::*;
 
@@ -255,7 +255,9 @@ async fn sign_in_says_when_no_session_is_left() -> Result<(), Error> {
     let directory = crate::admin::private_tempdir()?;
     let (store, (state, stopper, owner, host), _) = started(directory.path()).await?;
     for _ in 0..128 {
-        state.sessions.issue(true, None)?;
+        state
+            .sessions
+            .issue(sessions::SignedIn::admin_key()?, None)?;
     }
     let page = request(&host, "/login", "", None).await?;
     assert_refusal(
@@ -352,5 +354,366 @@ async fn refusals_use_the_plain_frame_and_keep_their_status() -> Result<(), Erro
         "admin form exceeds limit",
     );
     assert!(!large.contains(&"a".repeat(64)), "the text is echoed");
+    stop(state, stopper, owner, store).await
+}
+
+/// What the Analyte app's pages view sends: any browser's words, then the mark.
+const APP: &str = "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Edg/131.0.0.0 AnalyteApp\r\n";
+/// What a browser sends.
+const BROWSER: &str =
+    "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Edg/131.0.0.0\r\n";
+/// The SID of the test account.
+const SID: &str = "S-1-5-21-1-2-3-1001";
+
+/// A Windows account as the pipe verified it, with or without its name.
+fn account(name: Option<&str>) -> Result<windows::WindowsAccount, Error> {
+    Ok(windows::WindowsAccount::new(
+        windows::Sid::new(SID.into())?,
+        name.map(|name| windows::AccountName::new(name.into()))
+            .transpose()?,
+    )?)
+}
+
+/// Hands out a code for `account` and `next` as the pipe does; its text.
+fn code(state: &Context, account: windows::WindowsAccount, next: &str) -> Result<String, Error> {
+    let code = state
+        .windows
+        .codes
+        .keep(account, windows::line::Next::new(next))?;
+    Ok(code.text().to_owned())
+}
+
+/// The refresh the challenge to the app carries, back to `next` encoded.
+fn refresh(next: &str) -> String {
+    format!("<meta http-equiv=\"refresh\" content=\"0;url=/login/windows?next={next}\">")
+}
+
+/// The key form with an alert above it, as a 401 challenge.
+fn assert_key_form_with(page: &str, title: &str, text: &str) {
+    assert!(page.starts_with("HTTP/1.1 401"), "{page}");
+    headers_present(page);
+    assert_plain(page);
+    assert!(page.contains("<label class=\"field__label\" for=\"si-key\">Admin key</label>"));
+    assert!(
+        page.contains(&format!(
+            "<p class=\"alert__title\">{title}</p><p class=\"alert__text\">{text}</p>"
+        )),
+        "{title}: {page}"
+    );
+    assert!(!page.contains("http-equiv=\"refresh\""), "{page}");
+}
+
+// ADR 0021 §4 and the design study's HTTP tests: a fresh code starts a Windows
+// session, sets the cookie and goes to the code's page, not stored; the sidebar
+// names the account. The same code again, a wrong one and an expired one get
+// the key form with one fixed sentence, as a 401.
+#[tokio::test(flavor = "multi_thread")]
+async fn windows_code_signs_in_once_and_the_sidebar_names_the_account() -> Result<(), Error> {
+    let directory = crate::admin::private_tempdir()?;
+    let (store, (state, stopper, owner, host), _) = started(directory.path()).await?;
+    let used = code(&state, account(Some(r"LAB-PC\maria"))?, "/parked/12")?;
+    let path = format!("/login/windows?code={}", encode(&used));
+    let signed = request(&host, &path, APP, None).await?;
+    assert!(signed.starts_with("HTTP/1.1 303"), "{signed}");
+    headers_present(&signed);
+    let lower = signed.to_ascii_lowercase();
+    assert!(lower.contains("location: /parked/12\r\n"), "{signed}");
+    assert!(lower.contains("set-cookie: analyte_session="), "{signed}");
+    let session = cookie(&signed)?;
+    let signed_in = state
+        .sessions
+        .lookup(session.strip_prefix("analyte_session="))?
+        .ok_or("session missing")?;
+    assert_eq!(
+        signed_in.actor().map(Identifier::as_str),
+        Some(r"windows:S-1-5-21-1-2-3-1001:LAB-PC\maria")
+    );
+    let page = request(&host, "/", &format!("Cookie: {session}\r\n"), None).await?;
+    assert!(page.starts_with("HTTP/1.1 200"), "{page}");
+    assert!(page.contains(concat!(
+        "<span class=\"sidebar__account\">Signed in as <span class=\"mono\">LAB-PC\\maria</span></span>\n",
+        "<form class=\"sidebar__signout\" method=\"post\" action=\"/logout\">"
+    )));
+    let spent = "A Windows sign-in works once, within 20 seconds. Open the Analyte app again, or sign in with the admin key.";
+    let again = request(&host, &path, APP, None).await?;
+    assert_key_form_with(&again, "This sign-in has expired", spent);
+    for wrong in [String::new(), "A".repeat(44), "%3Cb%3E".into()] {
+        let page = request(&host, &format!("/login/windows?code={wrong}"), APP, None).await?;
+        assert_key_form_with(&page, "This sign-in has expired", spent);
+        assert!(!page.contains("&#60;b&#62;"), "the code is echoed");
+    }
+    let old = code(&state, account(None)?, "/")?;
+    state.windows.codes.age(Duration::from_secs(20))?;
+    let expired = request(
+        &host,
+        &format!("/login/windows?code={}", encode(&old)),
+        APP,
+        None,
+    )
+    .await?;
+    assert_key_form_with(&expired, "This sign-in has expired", spent);
+    stop(state, stopper, owner, store).await
+}
+
+// ADR 0021 §5: Windows gave no name, so the sidebar shows the SID, verified
+// and never a guess.
+#[tokio::test(flavor = "multi_thread")]
+async fn sidebar_shows_the_sid_without_a_name() -> Result<(), Error> {
+    let directory = crate::admin::private_tempdir()?;
+    let (store, (state, stopper, owner, host), _) = started(directory.path()).await?;
+    let text = code(&state, account(None)?, "/settings")?;
+    let signed = request(
+        &host,
+        &format!("/login/windows?code={}", encode(&text)),
+        APP,
+        None,
+    )
+    .await?;
+    assert!(
+        signed
+            .to_ascii_lowercase()
+            .contains("location: /settings\r\n")
+    );
+    let page = request(
+        &host,
+        "/settings",
+        &format!("Cookie: {}\r\n", cookie(&signed)?),
+        None,
+    )
+    .await?;
+    assert!(page.contains(&format!(
+        "<span class=\"sidebar__account\">Signed in as <span class=\"mono\">{SID}</span></span>"
+    )));
+    stop(state, stopper, owner, store).await
+}
+
+// ADR 0021 §6 and the design study (§3 Sessions): a browser at
+// /login/windows gets the key form saying Windows sign-in works in the app,
+// without a refresh, so a faked app mark cannot loop; /login links to it.
+#[tokio::test(flavor = "multi_thread")]
+async fn browser_at_windows_sign_in_gets_the_key_form() -> Result<(), Error> {
+    let directory = crate::admin::private_tempdir()?;
+    let (store, (state, stopper, owner, host), _) = started(directory.path()).await?;
+    for agent in [BROWSER, APP] {
+        let page = request(&host, "/login/windows?next=%2Fparked", agent, None).await?;
+        assert!(page.starts_with("HTTP/1.1 401"), "{page}");
+        headers_present(&page);
+        assert_plain(&page);
+        assert!(page.contains("<div class=\"alert alert--info\" role=\"note\">"));
+        assert!(page.contains(concat!(
+            "<p class=\"alert__title\">Windows sign-in works in the Analyte app</p>",
+            "<p class=\"alert__text\">In a browser, sign in with the admin key.</p>"
+        )));
+        assert!(page.contains("for=\"si-key\">Admin key</label>"));
+        assert!(!page.contains("http-equiv=\"refresh\""), "{page}");
+        assert!(!page.contains("Sign in with Windows"), "{page}");
+    }
+    let login = request(&host, "/login", BROWSER, None).await?;
+    assert!(login.contains(
+        "<a class=\"btn btn--outline btn--lg panel__action\" href=\"/login/windows\">Sign in with Windows</a>"
+    ));
+    stop(state, stopper, owner, store).await
+}
+
+// ADR 0021 §6 and the design study (§3 Refusal): the word the app sends after
+// a refused Windows sign-in shows one fixed sentence above the key form; any
+// other text shows nothing and is never echoed.
+#[tokio::test(flavor = "multi_thread")]
+async fn refusal_words_show_fixed_sentences() -> Result<(), Error> {
+    let directory = crate::admin::private_tempdir()?;
+    let (store, (state, stopper, owner, host), _) = started(directory.path()).await?;
+    let title = "Windows sign-in did not work";
+    for (word, text) in [
+        (
+            "not-allowed",
+            "Your Windows account is not allowed to use Analyte. Ask an administrator to add it to the Analyte users group, or sign in with the admin key.",
+        ),
+        (
+            "bad-request",
+            "The Analyte app asked in a way this engine does not understand. Sign in with the admin key, and ask IT to update the app.",
+        ),
+        (
+            "unidentified",
+            "Windows could not say which account is asking. Sign in with the admin key.",
+        ),
+        (
+            "unavailable",
+            "Windows sign-in is not available right now. Try again in a moment, or sign in with the admin key.",
+        ),
+    ] {
+        let page = request(&host, &format!("/login?windows={word}"), APP, None).await?;
+        assert_key_form_with(&page, title, text);
+        assert!(page.contains("<div class=\"alert alert--warn\" role=\"note\">"));
+    }
+    for other in [
+        "%3Cscript%3Ehostile%3C%2Fscript%3E",
+        "Not-Allowed",
+        "",
+        "%ZZ",
+    ] {
+        let page = request(&host, &format!("/login?windows={other}"), APP, None).await?;
+        assert!(page.starts_with("HTTP/1.1 401"), "{page}");
+        assert!(!page.contains("alert__title"), "{other}: {page}");
+        assert!(!page.contains("hostile"), "the address is echoed");
+        assert!(!page.contains("http-equiv=\"refresh\""), "{page}");
+    }
+    stop(state, stopper, owner, store).await
+}
+
+// ADR 0021 §6: a challenge to the app (its user agent ends in AnalyteApp)
+// refreshes to its Windows sign-in with the page to return to; a browser's
+// does not, sign-in pages never do (so sign-out stays signed out), a form is
+// not followed, and a return path that is not a local page becomes "/". After
+// a restart the old cookie is unknown and the next challenge refreshes again.
+#[tokio::test(flavor = "multi_thread")]
+async fn challenge_refreshes_only_the_app_and_never_on_sign_in() -> Result<(), Error> {
+    let directory = crate::admin::private_tempdir()?;
+    let (store, (state, stopper, owner, host), bearer) = started(directory.path()).await?;
+    for (path, next) in [
+        ("/machines", "%2Fmachines"),
+        (
+            "/parked?after=5&show=resolved",
+            "%2Fparked%3Fafter%3D5%26show%3Dresolved",
+        ),
+        ("//evil.example/", "%2F"),
+    ] {
+        let page = request(&host, path, APP, None).await?;
+        assert!(page.starts_with("HTTP/1.1 401"), "{page}");
+        headers_present(&page);
+        assert!(page.contains(&refresh(next)), "{path}: {page}");
+        let browser = request(&host, path, BROWSER, None).await?;
+        assert!(!browser.contains("http-equiv=\"refresh\""), "{browser}");
+    }
+    let forgotten =
+        format!("{APP}Cookie: analyte_session=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\r\n");
+    let restarted = request(&host, "/activity", &forgotten, None).await?;
+    assert!(restarted.contains(&refresh("%2Factivity")), "{restarted}");
+    let marked_elsewhere = "User-Agent: AnalyteApp/2 Mozilla/5.0\r\n";
+    let page = request(&host, "/machines", marked_elsewhere, None).await?;
+    assert!(!page.contains("http-equiv=\"refresh\""), "{page}");
+    let cookie = login(&host, &bearer).await?;
+    let token = state
+        .sessions
+        .lookup(cookie.strip_prefix("analyte_session="))?
+        .ok_or("session missing")?
+        .csrf
+        .form_value()
+        .to_owned();
+    let post =
+        format!("{APP}Cookie: {cookie}\r\nContent-Type: application/x-www-form-urlencoded\r\n");
+    let out = request(
+        &host,
+        "/logout",
+        &post,
+        Some(&format!("csrf={}", encode(&token))),
+    )
+    .await?;
+    assert!(
+        out.to_ascii_lowercase().contains("location: /login\r\n"),
+        "{out}"
+    );
+    for path in ["/login", "/login?windows=not-allowed", "/login/windows"] {
+        let page = request(&host, path, &format!("{APP}Cookie: {cookie}\r\n"), None).await?;
+        assert!(page.starts_with("HTTP/1.1 401"), "{page}");
+        assert!(!page.contains("http-equiv=\"refresh\""), "{path}: {page}");
+    }
+    let form = request(
+        &host,
+        "/parked/1/resolve",
+        &format!("{APP}Content-Type: application/x-www-form-urlencoded\r\n"),
+        Some("csrf=x&confirm=yes&reason=x"),
+    )
+    .await?;
+    assert!(form.starts_with("HTTP/1.1 401"), "{form}");
+    assert!(form.contains("<p class=\"alert__title\">Nothing was changed</p>"));
+    assert!(!form.contains("http-equiv=\"refresh\""), "{form}");
+    stop(state, stopper, owner, store).await
+}
+
+// ADR 0021 §5 and the design study's HTTP tests: a Windows session's Mark
+// resolved records windows:<SID>:<DOMAIN>\<name> as the actor, and the
+// history shows the account's name.
+#[tokio::test(flavor = "multi_thread")]
+async fn windows_session_is_the_audit_actor_and_the_history_names_it() -> Result<(), Error> {
+    let directory = crate::admin::private_tempdir()?;
+    crate::admin::rotate_token(directory.path())?;
+    let store = empty_store(directory.path()).await?;
+    let items: Vec<analyte_store::Parked> =
+        review_items("unused", &uuid::Uuid::now_v7().to_string())?
+            .into_iter()
+            .skip(5)
+            .take(1)
+            .collect();
+    let ids = store
+        .request::<_, FixtureError>(fixture_deadline()?, move |s| {
+            items
+                .iter()
+                .map(|item| s.park(item).map_err(FixtureError::from))
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .await?;
+    let id = *ids.first().ok_or("nothing parked")?;
+    let (state, stopper, owner, host) =
+        start_overview_server(directory.path(), &store, Vec::new(), Vec::new()).await?;
+    let text = code(&state, account(Some(r"LAB-PC\maria"))?, "/")?;
+    let signed = request(
+        &host,
+        &format!("/login/windows?code={}", encode(&text)),
+        APP,
+        None,
+    )
+    .await?;
+    let session = cookie(&signed)?;
+    let auth = format!("Cookie: {session}\r\n");
+    let path = format!("/parked/{id}/resolve");
+    let form = confirm_needs_csrf(&host, &auth, &path).await?;
+    let post = format!("{auth}Content-Type: application/x-www-form-urlencoded\r\n");
+    let done = request(&host, &path, &post, Some(&form)).await?;
+    assert!(done.starts_with("HTTP/1.1 200"), "{done}");
+    assert_recorded(&store, &state, &session, id).await?;
+    let recorded = store
+        .request::<_, FixtureError>(fixture_deadline()?, |s| Ok(s.audits(0)?))
+        .await?;
+    assert_eq!(
+        recorded.first().map(|(_, audit)| audit.actor.as_str()),
+        Some(r"windows:S-1-5-21-1-2-3-1001:LAB-PC\maria")
+    );
+    let detail = request(&host, &format!("/parked/{id}"), &auth, None).await?;
+    assert!(
+        detail.contains(concat!(
+            "<span class=\"timeline__text\">Marked resolved<span class=\"timeline__who\">",
+            "LAB-PC\\maria · “settled with the lab app”</span>"
+        )),
+        "{detail}"
+    );
+    stop(state, stopper, owner, store).await
+}
+
+// ADR 0021 §1 and §3: Settings says whether Windows sign-in is on, and why
+// not: the pipe's name was taken, or the Analyte users group is missing.
+#[tokio::test(flavor = "multi_thread")]
+async fn settings_say_whether_windows_sign_in_is_on() -> Result<(), Error> {
+    let directory = crate::admin::private_tempdir()?;
+    let (store, (state, stopper, owner, host), bearer) = started(directory.path()).await?;
+    let auth = format!("Authorization: Bearer {bearer}\r\n");
+    for (status, line) in [
+        (windows::Status::On, "On".to_owned()),
+        (
+            windows::Status::Off(r"another program already holds the sign-in pipe \\.\pipe\analyte-sign-in-4000".into()),
+            r"Off because another program already holds the sign-in pipe \\.\pipe\analyte-sign-in-4000".to_owned(),
+        ),
+        (
+            windows::Status::AdministratorsOnly,
+            "Off for other users because the Analyte users group is missing, so only administrators can sign in with Windows".to_owned(),
+        ),
+    ] {
+        state.windows.set(status);
+        let page = request(&host, "/settings", &auth, None).await?;
+        assert!(page.starts_with("HTTP/1.1 200"), "{page}");
+        assert!(
+            page.contains(&format!("<dt>Windows sign-in</dt><dd>{line}</dd>")),
+            "{line}: {page}"
+        );
+    }
     stop(state, stopper, owner, store).await
 }

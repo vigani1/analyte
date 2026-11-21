@@ -222,7 +222,7 @@ impl Watch {
         self.session.as_ref().is_none_or(|session| {
             matches!(
                 self.state.sessions.lookup(Some(session.id.form_value())),
-                Ok(Some(found)) if found.authenticated
+                Ok(Some(found)) if found.is_signed_in()
             )
         })
     }

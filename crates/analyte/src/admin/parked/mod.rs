@@ -662,7 +662,7 @@ fn linked_pairs(linked: &[(Identifier, Linked)], now: Timestamp) -> Vec<Pair> {
 /// The "Show the original message" forms: one per linked record on this page,
 /// offering the stored message only while it is kept.
 fn original(id: i64, read: &ItemRead, session: Option<&Session>, now: Timestamp) -> Original {
-    let Some(session) = session.filter(|session| session.authenticated) else {
+    let Some(session) = session.filter(|session| session.is_signed_in()) else {
         return Original {
             signed_in: false,
             targets: Vec::new(),

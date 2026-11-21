@@ -587,8 +587,11 @@ async fn audit(
     reason: String,
 ) -> Result<(), SetupError> {
     let failed = |error| SetupError::Audit(AuditFailure::Text(error));
+    let actor = session
+        .actor()
+        .ok_or(SetupError::Audit(AuditFailure::NotSignedIn))?;
     let audit = analyte_store::Audit {
-        actor: session.actor.clone(),
+        actor: actor.clone(),
         action: Identifier::new(action).map_err(failed)?,
         targets: vec![Identifier::new(id).map_err(failed)?],
         time: Timestamp::now().as_second(),
@@ -626,6 +629,12 @@ pub(crate) enum StoreFailure {
 pub(crate) enum AuditFailure {
     #[error(transparent)]
     Text(analyte_model::TextError),
+    /// The admin key was sent with a session nobody signed in on, so the
+    /// change would have no one to record.
+    #[error(
+        "the browser session is not signed in, so the change names no one; sign in on this page"
+    )]
+    NotSignedIn,
     #[error(transparent)]
     Store(StoreFailure),
 }

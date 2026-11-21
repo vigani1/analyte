@@ -25,8 +25,16 @@ pub(super) mod sessions;
 mod sign_in;
 mod status;
 pub(super) mod token;
-#[cfg(any(windows, test))]
-mod windows;
+// Off Windows nothing hands out codes, so the pipe's half of this module is
+// unused there; codes and Windows sessions stay one shape on every system.
+#[cfg_attr(
+    not(any(windows, test)),
+    expect(
+        dead_code,
+        reason = "only the Windows pipe makes codes; Linux keeps the admin key (ADR 0021 §9)"
+    )
+)]
+pub(super) mod windows;
 use listener::{Lifetime, Listener};
 use sessions::{Session, Sessions};
 use sign_in::Attempt;
@@ -102,6 +110,8 @@ pub(super) struct Context {
     pub(super) config_path: std::path::PathBuf,
     token: Token,
     pub(super) sessions: Sessions,
+    /// Windows sign-in's codes and whether it is on (ADR 0021).
+    pub(super) windows: Arc<windows::SignIn>,
     host: String,
     origin: String,
     pub(super) store: Arc<analyte_store::Handle>,
@@ -146,6 +156,9 @@ pub(crate) struct Server {
     /// The Windows sign-in pipe, or why it is off for this run (ADR 0021).
     #[cfg(windows)]
     windows: windows::Start,
+    /// What the pages see of it: the pipe's codes, and the status it updates.
+    #[cfg(windows)]
+    sign_in: Arc<windows::SignIn>,
 }
 
 /// Prepares the admin server for `program`, or none when it has no admin
@@ -167,6 +180,10 @@ pub(crate) async fn prepare(
     let host = address.to_string();
     #[cfg(windows)]
     let windows = windows::start(socket.local_addr()?.port());
+    #[cfg(windows)]
+    let sign_in = Arc::new(windows::SignIn::new(Some(windows.status())));
+    #[cfg(not(windows))]
+    let sign_in = Arc::new(windows::SignIn::new(None));
     #[cfg(feature = "test-hooks")]
     let seams = program
         .hooks
@@ -215,6 +232,10 @@ pub(crate) async fn prepare(
         config_path: program.source_path.clone(),
         token,
         sessions: Sessions::default(),
+        #[cfg(windows)]
+        windows: sign_in.clone(),
+        #[cfg(not(windows))]
+        windows: sign_in,
         origin: format!("http://{host}"),
         host,
         store,
@@ -243,6 +264,8 @@ pub(crate) async fn prepare(
         owners,
         #[cfg(windows)]
         windows,
+        #[cfg(windows)]
+        sign_in,
     }))
 }
 
@@ -257,7 +280,7 @@ impl Server {
         // Ends with the pages: when draining starts, or when serving ends and
         // drops `closing`.
         #[cfg(windows)]
-        let sign_in = windows_sign_in(self.windows, self.closing.subscribe());
+        let sign_in = windows_sign_in(self.windows, self.sign_in, self.closing.subscribe());
         #[cfg(not(windows))]
         let sign_in = std::future::ready(());
         let closing = self.closing;
@@ -296,14 +319,20 @@ impl Server {
     }
 }
 
-/// Serves Windows sign-in until `closing`; a pipe that fails or was off is
-/// logged and the pages keep serving with the admin key.
+/// Serves Windows sign-in until `closing`, handing out `sign_in`'s codes; a
+/// pipe that fails or was off is logged, a failure also turns the pages'
+/// status off, and the pages keep serving with the admin key.
 #[cfg(windows)]
-async fn windows_sign_in(start: windows::Start, closing: watch::Receiver<bool>) {
+async fn windows_sign_in(
+    start: windows::Start,
+    sign_in: Arc<windows::SignIn>,
+    closing: watch::Receiver<bool>,
+) {
     match start {
         windows::Start::On(pipe) => {
-            if let Err(error) = pipe.serve(&windows::Unredeemed, closing).await {
+            if let Err(error) = pipe.serve(&sign_in.codes, closing).await {
                 tracing::error!(error = %error, "windows sign-in stopped; sign in with the admin key");
+                sign_in.set(windows::Status::Off(error.to_string()));
             }
         }
         windows::Start::Off(reason) => {
@@ -351,6 +380,7 @@ fn router(state: Arc<Context>) -> Router {
         .route("/static/{*path}", get(super::view::assets::serve))
         .route("/status", get(status::show))
         .route("/login", get(sign_in::login_page).post(sign_in::login))
+        .route("/login/windows", get(sign_in::windows))
         .route("/logout", post(sign_in::logout))
         .route(
             "/retention",
@@ -451,7 +481,7 @@ async fn protect(State(state): State<Arc<Context>>, mut request: Request, next: 
         .get(header::HOST)
         .and_then(|v| v.to_str().ok())
         == Some(state.host.as_str());
-    let login = request.uri().path() == "/login";
+    let login = matches!(request.uri().path(), "/login" | "/login/windows");
     // Static files hold no data; the login page needs them before any session exists.
     // `/status` says only the overall state in one word, for the desktop app's tray.
     let public = request.uri().path().starts_with("/static/") || request.uri().path() == "/status";
@@ -474,7 +504,7 @@ async fn protect(State(state): State<Arc<Context>>, mut request: Request, next: 
             .as_ref()
             .ok()
             .and_then(Option::as_ref)
-            .is_some_and(|s| s.authenticated);
+            .is_some_and(|s| s.is_signed_in());
     let origin = request
         .headers()
         .get(header::ORIGIN)
@@ -498,12 +528,7 @@ async fn protect(State(state): State<Arc<Context>>, mut request: Request, next: 
         )
         .await
     } else {
-        let attempt = if request.method() == Method::POST {
-            Attempt::Form
-        } else {
-            Attempt::Open
-        };
-        sign_in::unauthorized(&state, session.ok().flatten().as_ref(), attempt)
+        sign_in::challenge(&state, session.ok().flatten().as_ref(), &request)
     };
     for (name, value) in [
         (

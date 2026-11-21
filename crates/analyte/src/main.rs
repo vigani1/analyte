@@ -23,8 +23,9 @@ struct Cli {
     /// Program file for operator commands.
     #[arg(long, global = true, default_value = "analyte.toml")]
     config: PathBuf,
-    /// Explicit local operator identity, recorded in the audit trail.
-    #[arg(long, global = true, value_parser = Identifier::new)]
+    /// Explicit local operator identity, recorded in the audit trail; it may
+    /// not begin like an admin page sign-in's (`admin-session-`, `windows:`).
+    #[arg(long, global = true, value_parser = analyte::admin::command_line_actor)]
     actor: Option<Identifier>,
     #[command(subcommand)]
     command: Command,

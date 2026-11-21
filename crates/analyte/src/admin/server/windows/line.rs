@@ -18,18 +18,37 @@ pub(in crate::admin) struct Request {
     pub(in crate::admin) next: Next,
 }
 
-/// The page the app asked to open after signing in, exactly as sent. It is not
-/// yet checked as a local path: that is the job of whatever keeps the code,
-/// since only a redeemed code ever opens it.
-#[derive(Debug, PartialEq, Eq)]
+/// The most bytes a [`Next`] path may take.
+const NEXT_LIMIT: usize = 512;
+
+/// The page to open once signed in: always a path on these pages, because
+/// [`Next::new`] is the one place that checks it, for the pipe's request and
+/// for the app's refresh address alike.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(in crate::admin) struct Next(String);
 
 impl Next {
-    /// The path as the app sent it.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "read when a code is redeemed (ADR 0021 §4)")
-    )]
+    /// `text` when it is a local path of these pages, otherwise `/`. A local
+    /// path starts with one `/` (not `//`, which a browser reads as another
+    /// host), holds only visible ASCII without `\` (no scheme, no control
+    /// characters, no space), fits in 512 bytes and is neither sign-in
+    /// (`/login…`) nor sign-out (`/logout…`), so signing in never lands on
+    /// a page that signs out again or asks again.
+    pub(in crate::admin) fn new(text: &str) -> Self {
+        let local = text.len() <= NEXT_LIMIT
+            && text.starts_with('/')
+            && !text.starts_with("//")
+            && text.bytes().all(|b| b.is_ascii_graphic() && b != b'\\')
+            && !text.starts_with("/login")
+            && !text.starts_with("/logout");
+        Self(if local {
+            text.to_owned()
+        } else {
+            "/".to_owned()
+        })
+    }
+
+    /// The checked path.
     pub(in crate::admin) fn as_str(&self) -> &str {
         &self.0
     }
@@ -71,7 +90,7 @@ pub(in crate::admin) fn request(line: &[u8]) -> Result<Request, LineError> {
         return Err(LineError::Version(wire.v));
     }
     Ok(Request {
-        next: Next(wire.next),
+        next: Next::new(&wire.next),
     })
 }
 
@@ -83,10 +102,16 @@ impl Code {
     pub(in crate::admin) fn new(text: String) -> Self {
         Self(text)
     }
+
+    /// The code's text, for a test that redeems it as the app would.
+    #[cfg(test)]
+    pub(in crate::admin) fn text(&self) -> &str {
+        &self.0
+    }
 }
 
 /// Why a caller got no code; each is one fixed word on the wire.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub(in crate::admin) enum Refusal {
     /// The account is in neither allowed group.
@@ -97,6 +122,17 @@ pub(in crate::admin) enum Refusal {
     Unidentified,
     /// The engine could not answer in time or could not mint a code.
     Unavailable,
+}
+
+impl Refusal {
+    /// The refusal a wire word names, such as `not-allowed`, read with the
+    /// same spelling the answer line writes; none for any other text.
+    pub(in crate::admin) fn from_word(word: &str) -> Option<Self> {
+        use serde::{Deserialize as _, de::IntoDeserializer as _};
+        let word: serde::de::value::StrDeserializer<'_, serde::de::value::Error> =
+            word.into_deserializer();
+        Self::deserialize(word).ok()
+    }
 }
 
 /// The engine's answer.
@@ -166,6 +202,47 @@ mod tests {
         let request = request(b"{\"v\":1,\"next\":\"/parked/12\"}\n")?;
         assert_eq!(request.next.as_str(), "/parked/12");
         Ok(())
+    }
+
+    // ADR 0021 §4 and the design study's test plan: a return path is a local
+    // page; anything else, sign-in and sign-out included, becomes "/".
+    #[test]
+    fn next_is_a_local_page_or_the_overview() {
+        for local in [
+            "/",
+            "/parked/12",
+            "/parked?after=5&x=%2F",
+            "/setup/lab-apps/a~b",
+        ] {
+            assert_eq!(Next::new(local).as_str(), local);
+        }
+        let longest = format!("/{}", "a".repeat(NEXT_LIMIT - 1));
+        assert_eq!(Next::new(&longest).as_str(), longest);
+        for refused in [
+            "",
+            "parked",
+            "//evil.example",
+            "/\\evil.example",
+            "\\evil.example",
+            "http://evil.example/",
+            "javascript:alert(1)",
+            "/parked\t1",
+            "/parked\n1",
+            "/parked\u{7f}",
+            "/a b",
+            "/ü",
+            "/login",
+            "/login/windows?code=x",
+            "/logout",
+            &format!("/{}", "a".repeat(NEXT_LIMIT)),
+        ] {
+            assert_eq!(Next::new(refused).as_str(), "/", "{refused:?}");
+        }
+        let sent = request(b"{\"v\":1,\"next\":\"//evil.example\"}\n");
+        assert_eq!(
+            sent.map(|r| r.next.as_str().to_owned()).ok(),
+            Some("/".into())
+        );
     }
 
     // ADR 0021 §2: unknown fields, other versions and broken JSON are refused.
@@ -258,6 +335,10 @@ mod tests {
                 account: None,
             });
             assert_eq!(line, format!("{{\"refused\":\"{word}\"}}\n").as_bytes());
+            assert_eq!(Refusal::from_word(word), Some(refused));
+        }
+        for other in ["", "Not-Allowed", "not_allowed", "<b>x</b>"] {
+            assert_eq!(Refusal::from_word(other), None, "{other}");
         }
     }
 

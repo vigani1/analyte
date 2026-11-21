@@ -1044,7 +1044,8 @@ type Owner = tokio::task::JoinHandle<Result<(), crate::admin::Error>>;
 type Started = (Arc<Context>, watch::Sender<bool>, Owner, String);
 
 /// Runs a fixture's server on `socket`: `state`'s router and, on Windows, the
-/// real sign-in pipe for its port. Returns its stop switch and owner task.
+/// real sign-in pipe for its port, handing out `state`'s codes. Returns its
+/// stop switch and owner task.
 fn run_fixture(
     socket: tokio::net::TcpListener,
     state: Arc<Context>,
@@ -1055,6 +1056,8 @@ fn run_fixture(
     let server = Server {
         #[cfg(windows)]
         windows: windows::start(socket.local_addr()?.port()),
+        #[cfg(windows)]
+        sign_in: state.windows.clone(),
         listener: Listener {
             socket,
             slots: Arc::new(Semaphore::new(32)),
@@ -1156,6 +1159,7 @@ async fn start_bounded(
         config_path: root.join("program.toml"),
         token: Token::load(root)?,
         sessions: Sessions::default(),
+        windows: Arc::new(windows::SignIn::new(Some(windows::Status::On))),
         origin: format!("http://{host}"),
         host: host.clone(),
         store: store.clone(),

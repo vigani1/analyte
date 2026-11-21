@@ -1,4 +1,5 @@
 //! Who may sign in with Windows: the decision from a token's groups (ADR 0021 §3), the same on every platform.
+use super::Sid;
 
 /// `BUILTIN\Administrators`.
 pub(super) const ADMINISTRATORS: &str = "S-1-5-32-544";
@@ -7,40 +8,6 @@ const ENABLED: u32 = 0x4;
 /// winnt.h `SE_GROUP_USE_FOR_DENY_ONLY`: the group only denies access, as
 /// Administrators does in an administrator's normal (not elevated) token.
 const DENY_ONLY: u32 = 0x10;
-/// Canonical SID text is far shorter (ADR 0017's read bound).
-const SID_LIMIT: usize = 256;
-
-/// A security identifier in canonical text form, such as `S-1-5-32-544`.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(in crate::admin) struct Sid(String);
-
-/// Why text is not a canonical SID.
-#[derive(Debug, PartialEq, Eq, thiserror::Error)]
-#[error("not a canonical SID")]
-pub(in crate::admin) struct NotSid;
-
-impl Sid {
-    /// Accepts `S-1-` then dash-separated decimal numbers, at most 256 bytes.
-    /// # Errors
-    /// [`NotSid`] for anything else.
-    pub(in crate::admin) fn new(text: String) -> Result<Self, NotSid> {
-        let parts = text.strip_prefix("S-1-").ok_or(NotSid)?;
-        let numeric = parts
-            .split('-')
-            .all(|part| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()));
-        if numeric && text.len() <= SID_LIMIT {
-            Ok(Self(text))
-        } else {
-            Err(NotSid)
-        }
-    }
-
-    /// The canonical text.
-    pub(in crate::admin) fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
 /// How a group takes part in a token's access checks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::admin) enum Membership {
@@ -94,6 +61,13 @@ impl Rule {
             users,
             administrators: true,
         }
+    }
+
+    /// Whether the "Analyte users" group was found, so more than
+    /// Administrators may sign in.
+    #[cfg(windows)]
+    pub(in crate::admin) fn has_users_group(&self) -> bool {
+        self.users.is_some()
     }
 
     /// Only `users`, without Administrators: a test that runs as an
@@ -220,22 +194,5 @@ mod tests {
             Decision::NotAllowed
         );
         assert_eq!(allowed(&[group(USERS, ENABLED)], &rule), Decision::Allowed);
-    }
-
-    // ADR 0021 §2: SIDs come from Windows in canonical text; anything else is refused.
-    #[test]
-    fn sid_text_must_be_canonical() {
-        assert_eq!(Sid::new(USERS.into()).map(|s| s.0), Ok(USERS.to_owned()));
-        for bad in [
-            "",
-            "S-1-",
-            "S-1-5--1",
-            "s-1-5-18",
-            "S-1-5-x",
-            "LAB-PC\\maria",
-        ] {
-            assert_eq!(Sid::new(bad.into()), Err(NotSid), "{bad}");
-        }
-        assert_eq!(Sid::new(format!("S-1-{}1", "1-".repeat(200))), Err(NotSid));
     }
 }

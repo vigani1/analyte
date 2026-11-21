@@ -223,9 +223,9 @@ pub(in crate::admin) async fn notes(
     Form(form): Form<NotesForm>,
 ) -> Response {
     let section = Section::More(Tab::MachineOrders);
-    if !session.authenticated {
+    let Some(actor) = session.actor().cloned() else {
         return Problem::SignIn.page(&state, None, section);
-    }
+    };
     if !session.csrf_valid(&form.csrf)
         || form.target != NOTES
         || form.source != NOTES
@@ -240,7 +240,7 @@ pub(in crate::admin) async fn notes(
     let after = form.after;
     let read = async {
         let audit = Audit {
-            actor: session.actor.clone(),
+            actor,
             action: Identifier::new(RAW_VIEW)?,
             targets: vec![
                 Identifier::new(&format!("awos:{order}:{item}"))?,
@@ -467,7 +467,7 @@ fn original(
         .any(|message| matches!(message.notes, Notes::Hidden(_)))
         .then(|| Original {
             form: session
-                .filter(|session| session.authenticated)
+                .filter(|session| session.is_signed_in())
                 .map(|session| RawRequest {
                     action: format!("{}/raw", format::order_item_href(order, item)),
                     csrf: session.csrf.form_value().to_owned(),

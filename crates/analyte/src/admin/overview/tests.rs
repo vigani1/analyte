@@ -41,6 +41,7 @@ fn frame() -> Frame {
             more: Vec::new(),
             more_open: false,
             csrf: None,
+            account: None,
         },
     }
 }

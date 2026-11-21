@@ -60,11 +60,16 @@ body { margin: 0; background: var(--bg); }
 
 /* Sign out is a form button (it posts with the session's form token), drawn
    like the foot's link. */
-.sidebar__signout { margin: 0; }
+.sidebar__signout { flex: none; margin: 0; white-space: nowrap; }
 .sidebar__signout button {
   padding: 0; border: 0; background: none;
   font: inherit; color: var(--text-muted); text-decoration: underline; cursor: pointer;
 }
+/* A Windows account's name or SID goes on its own line under "Signed in as";
+   it has no spaces to wrap at, so a long one breaks anywhere rather than push
+   Sign out, which stays on one line, out of the sidebar. */
+.sidebar__account { min-width: 0; overflow-wrap: anywhere; }
+.sidebar__account > .mono { display: block; }
 
 /* Page head and verdict (the mockup's inline styles). */
 .page-head__aside { margin: 0; font-size: var(--text-sm); }

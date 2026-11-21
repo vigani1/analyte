@@ -12,7 +12,7 @@ use crate::admin::view::report::{Button, Problem, Report, Section, read_within, 
 use crate::admin::view::{Tab, Tone, format, frame::Frame};
 use crate::admin::{CommandError, Error};
 use crate::operator::recovery;
-use analyte_model::Reason;
+use analyte_model::{Identifier, Reason};
 use analyte_store::{InterpretationCommit, OperatorError, RevisionOutcome};
 use askama::Template as _;
 use axum::{
@@ -228,9 +228,9 @@ async fn send(
     confirm: Confirm,
     form: &ReasonForm,
 ) -> Response {
-    if !session.authenticated {
+    let Some(actor) = session.actor().cloned() else {
         return Problem::SignIn.page(state, None, Section::NeedsReview(Some(id)));
-    }
+    };
     if !session.csrf_valid(&form.csrf) || form.confirm != "yes" {
         return Problem::FormExpired.page(state, Some(session), Section::NeedsReview(Some(id)));
     }
@@ -239,11 +239,11 @@ async fn send(
         Err(error) => return open(state, session, id, confirm, &form.reason, Some(error)).await,
     };
     let done = match confirm {
-        Confirm::Resolve => recovery::resolve(&state.store, id, session.actor.clone(), reason)
+        Confirm::Resolve => recovery::resolve(&state.store, id, actor, reason)
             .await
             .map(|()| Done::Resolved)
             .map_err(Error::from),
-        Confirm::Reprocess => process_again(state, id, session, reason)
+        Confirm::Reprocess => process_again(state, id, actor, reason)
             .await
             .map(Done::Reprocessed),
     };
@@ -262,7 +262,7 @@ async fn send(
 async fn process_again(
     state: &Context,
     id: i64,
-    session: &Session,
+    actor: Identifier,
     reason: Reason,
 ) -> Result<InterpretationCommit, Error> {
     let path = state.config_path.clone();
@@ -276,7 +276,7 @@ async fn process_again(
         &state.store,
         &program,
         recovery::ReprocessTarget::Parked(id),
-        session.actor.clone(),
+        actor,
         reason,
     )
     .await

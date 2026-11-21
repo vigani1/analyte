@@ -1,16 +1,25 @@
 //! Says who did what in a history line: the recorded actor, the settled action and what a new reading decided.
 use super::{Line, amount, moment, moment_unix};
+use crate::admin::server::{sessions::ADMIN_KEY_PREFIX, windows::ACTOR_PREFIX};
 use crate::operator::recovery;
 use analyte_store::RevisionOutcome;
 use jiff::Timestamp;
 
-/// Who an audit entry names, in words: the admin pages' browser sessions read
-/// "admin session" (the session's ID is for support only), Analyte's own work
-/// reads "Analyte", and any other actor, such as one given to the command
-/// line, reads as it was recorded. No person's name is ever made up.
+/// Who an audit entry names, in words: the admin pages' admin-key sessions
+/// read "admin session" (the session's ID is for support only), a Windows
+/// session reads as its account, `DOMAIN\name`, or its SID when Windows gave
+/// no name, Analyte's own work reads "Analyte", and any other actor, such as
+/// one given to the command line, reads as it was recorded. No person's name
+/// is ever made up.
 pub(in crate::admin) fn actor(recorded: &str) -> String {
-    if recorded.starts_with("admin-session-") {
+    if recorded.starts_with(ADMIN_KEY_PREFIX) {
         "admin session".into()
+    } else if let Some(account) = recorded.strip_prefix(ACTOR_PREFIX) {
+        // SIDs hold no ':', so the first one ends the SID.
+        account
+            .split_once(':')
+            .map_or(account, |(_, name)| name)
+            .to_owned()
     } else if recorded == "analyte" {
         "Analyte".into()
     } else {
@@ -141,6 +150,21 @@ mod tests {
         assert_eq!(
             recorded("admin-session-1", "settled"),
             "admin session · \u{201c}settled\u{201d}"
+        );
+    }
+
+    // ADR 0021 §5: a Windows session's actor reads as its account, or as its
+    // SID when Windows gave no name; the SID stays only in the record.
+    #[test]
+    fn windows_actors_read_as_the_account_or_the_sid() {
+        assert_eq!(
+            actor("windows:S-1-5-21-1-2-3-1001:LAB-PC\\maria"),
+            "LAB-PC\\maria"
+        );
+        assert_eq!(actor("windows:S-1-5-21-1-2-3-1001"), "S-1-5-21-1-2-3-1001");
+        assert_eq!(
+            recorded("windows:S-1-5-21-1-2-3-1001:LAB-PC\\maria", "settled"),
+            "LAB-PC\\maria · \u{201c}settled\u{201d}"
         );
     }
 

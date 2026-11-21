@@ -546,7 +546,7 @@ pub(in crate::admin) async fn list(
     session: Option<Extension<Arc<Session>>>,
 ) -> Response {
     let section = Section::LabApps(None);
-    let Some(Extension(session)) = session.filter(|Extension(s)| s.authenticated) else {
+    let Some(Extension(session)) = session.filter(|Extension(s)| s.is_signed_in()) else {
         return Problem::SignIn.page(&state, None, section);
     };
     let now = Timestamp::now();
@@ -807,7 +807,7 @@ pub(in crate::admin) async fn add_form(
     session: Option<Extension<Arc<Session>>>,
 ) -> Response {
     let section = Section::LabApps(None);
-    let Some(Extension(session)) = session.filter(|Extension(s)| s.authenticated) else {
+    let Some(Extension(session)) = session.filter(|Extension(s)| s.is_signed_in()) else {
         return Problem::SignIn.page(&state, None, section);
     };
     let page = form_page(&state, &session, None, None);
@@ -846,7 +846,7 @@ async fn edit(
     name: String,
     removing: bool,
 ) -> Response {
-    let Some(Extension(session)) = session.filter(|Extension(s)| s.authenticated) else {
+    let Some(Extension(session)) = session.filter(|Extension(s)| s.is_signed_in()) else {
         return Problem::SignIn.page(&state, None, Section::LabApps(None));
     };
     let open = if removing {

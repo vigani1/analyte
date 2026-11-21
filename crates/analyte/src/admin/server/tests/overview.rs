@@ -173,7 +173,7 @@ async fn overview_with_nothing_wrong_reads_all_good() -> Result<(), Error> {
 }
 
 /// One synthetic item per category, plus one whose category this version does not know.
-fn review_items(receipt: &str, delivery: &str) -> Result<Vec<Parked>, Error> {
+pub(super) fn review_items(receipt: &str, delivery: &str) -> Result<Vec<Parked>, Error> {
     let item = |kind: &str, reason: &str, target: &str| -> Result<Parked, Error> {
         Ok(Parked {
             kind: Identifier::new(kind)?,
@@ -467,7 +467,11 @@ async fn mark_resolved_is_audited_needs_csrf_and_keeps_the_item() -> Result<(), 
 
 /// The confirmation says the item stays in the history; posting needs the
 /// session's CSRF token and "confirm=yes". Returns a valid form body.
-async fn confirm_needs_csrf(host: &str, auth: &str, path: &str) -> Result<String, Error> {
+pub(super) async fn confirm_needs_csrf(
+    host: &str,
+    auth: &str,
+    path: &str,
+) -> Result<String, Error> {
     let confirm = request(host, path, auth, None).await?;
     assert!(confirm.starts_with("HTTP/1.1 200"), "{confirm}");
     assert!(
@@ -500,7 +504,7 @@ async fn confirm_needs_csrf(host: &str, auth: &str, path: &str) -> Result<String
 
 /// The item carries its resolution and the audit trail one matching row: this
 /// session as the actor, the CLI's action name, the item and the typed reason.
-async fn assert_recorded(
+pub(super) async fn assert_recorded(
     store: &analyte_store::Handle,
     state: &Context,
     cookie: &str,
@@ -510,8 +514,9 @@ async fn assert_recorded(
         .sessions
         .lookup(cookie.strip_prefix("analyte_session="))?
         .ok_or("session missing")?
-        .actor
-        .clone();
+        .actor()
+        .cloned()
+        .ok_or("session not signed in")?;
     let (resolution, audits) = store
         .request::<_, FixtureError>(fixture_deadline()?, move |s| {
             let item = s.parked_item(id)?.ok_or(FixtureError::Corruption)?;
