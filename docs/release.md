@@ -1,5 +1,21 @@
 # Releasing Analyte
 
+## Releases and packages
+
+Analyte is downloaded from GitHub Releases: a Windows installer, Linux `.deb`
+and `.rpm` packages, `.zip` and `.tar.gz` archives, a SHA256SUMS file and
+build provenance for every asset (details below).
+
+Nothing is published to crates.io yet: every crate inherits `publish = false`
+from the workspace. Publishing a library crate promises outside users a
+stable public API under semantic versioning, which would slow down changes
+that are still easy today. We will consider publishing the protocol crates
+(for example `analyte-astm`, `analyte-hl7`, `analyte-poct` and
+`analyte-framing`) as libraries when an outside project asks for them, following the two-question test in
+[AGENTS.md](../AGENTS.md#design-rules).
+
+## Cutting a release
+
 Only the owner cuts and publishes releases. The release workflow runs only on
 pushed tags matching `v*.*.*`; branch pushes and pull requests do not release.
 Do not create a tag to test this workflow.

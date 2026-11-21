@@ -1,0 +1,43 @@
+name: Protocol or standards question
+description: Ask how Analyte reads a standard, or point out where it may differ from one.
+labels: [question]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Name the standard and its section; do not paste text, tables or examples
+        from paid or copyrighted documents. Our own notes are in docs/protocols/.
+  - type: dropdown
+    id: standard
+    attributes:
+      label: Standard
+      options:
+        - ASTM (LIS01 / LIS02)
+        - HL7 v2 / MLLP
+        - IHE LAW
+        - POCT1-A
+        - Vendor-specific protocol
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: section
+    attributes:
+      label: Document, edition and section
+      placeholder: e.g. HL7 2.5.1 section 2.7
+    validations:
+      required: true
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What you want to know, or how you think Analyte's behaviour differs from the standard. Link the code or test if you know it.
+    validations:
+      required: true
+  - type: checkboxes
+    id: no-sensitive-data
+    attributes:
+      label: Data check
+      options:
+        - label: This contains no patient data, real sample IDs, credentials or copyrighted manual text.
+          required: true
