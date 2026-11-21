@@ -232,6 +232,30 @@ jobs:
           Assert-EngineOnly
           Assert-OnPath $true
           if ((Get-FileHash -LiteralPath "$root\data\admin-token").Hash -ne $token) { throw 'switching types replaced the token' }
+          # Without the app, from a new window's PATH and a folder without a
+          # program file: commands read the installed program file, and the
+          # installed service stores a lab app's keys, which only its account
+          # may write (ADR 0028). Synthetic keys, piped as a script would.
+          $work = (New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\analyte-work").FullName
+          $saved = $env:Path
+          Push-Location -LiteralPath $work
+          try {
+            $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+            $listed = & analyte machines list 2> "$logs\machines-list.err"
+            if ($LASTEXITCODE -ne 0) { Get-Content -LiteralPath "$logs\machines-list.err"; throw "machines list exit code $LASTEXITCODE" }
+            if (-not (($listed -join "`n").Contains('machine-1'))) { throw "machines list said: $($listed -join ' | ')" }
+            Assert-ScriptSaid "$logs\machines-list.err" "Using $root\config\analyte.toml (the installed program file)."
+            $keys = "synthetic-ci-api-key`nwhsec_AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+            $added = $keys | & analyte --actor it-ci lab-apps add ci-lab --address https://ci-lab.example.invalid 2> "$logs\lab-apps-add.err"
+            if ($LASTEXITCODE -ne 0) { Get-Content -LiteralPath "$logs\lab-apps-add.err"; throw "lab-apps add exit code $LASTEXITCODE" }
+            foreach ($said in 'ci-lab is added.', 'Key stored: ci-lab-api', 'Key stored: ci-lab-signing') {
+              if ($added -notcontains $said) { throw "lab-apps add did not say '$said': $($added -join ' | ')" }
+            }
+            if (Select-String -LiteralPath "$root\config\lab-apps.toml" -SimpleMatch 'synthetic-ci-api-key' -Quiet) { throw 'a key was written into lab-apps.toml' }
+          } finally {
+            Pop-Location
+            $env:Path = $saved
+          }
           # Uninstall removes the service and program, and keeps data and configuration.
           $process = Start-Process -FilePath "$env:ProgramFiles\Analyte\unins000.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=$logs\uninstall.log" -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "uninstaller exit code $($process.ExitCode)" }
