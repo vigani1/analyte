@@ -48,7 +48,7 @@ pub(in crate::admin) fn clock(at: Timestamp, now: Timestamp) -> String {
     clock_in(at, now, &TimeZone::system())
 }
 
-fn clock_in(at: Timestamp, now: Timestamp, zone: &TimeZone) -> String {
+pub(super) fn clock_in(at: Timestamp, now: Timestamp, zone: &TimeZone) -> String {
     let at = at.to_zoned(zone.clone());
     let now = now.to_zoned(zone.clone());
     let pattern = if at.date() == now.date() {

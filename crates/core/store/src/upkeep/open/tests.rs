@@ -588,7 +588,7 @@ fn schema_seventeen_keeps_every_row_and_fills_when_each_delivery_was_accepted() 
         store
             .db
             .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-        17
+        SCHEMA_VERSION
     );
     assert_eq!(
         rows_at_sixteen(&store.db)?,
@@ -672,6 +672,157 @@ fn schema_seventeen_keeps_every_row_and_fills_when_each_delivery_was_accepted() 
         ),
         after,
         "opening a version-17 store again changes nothing"
+    );
+    Ok(())
+}
+
+/// A version-17 store with two deliveries of one message and their tries in
+/// turn: failed, cut off, accepted and rejected, as `(delivery, outcome, time)`.
+fn store_at_seventeen(path: &Path) -> Result<(), Error> {
+    let db = Connection::open(path)?;
+    db.execute_batch(include_str!("../schema.sql"))?;
+    db.execute_batch(include_str!("../parked_at.sql"))?;
+    db.execute_batch(include_str!("../read_indexes.sql"))?;
+    db.execute_batch(concat!(
+        "INSERT INTO receipts VALUES ('\"r-1\"','{\"machine\":\"m-1\",\"received_at\":\"2026-01-01T00:00:00Z\"}',x'00',x'00');",
+        "INSERT INTO interpretations VALUES ('\"r-1\"',1,'{}');",
+        "INSERT INTO outbox(id,kind,receipt,version,destination,ordering_key,payload,digest,contract,state,next_attempt,enqueued_at) VALUES ",
+        "('\"d-a\"','result','\"r-1\"',1,'main-lab','k1',x'00',x'00',1,'pending',0,90),",
+        "('\"d-b\"','result','\"r-1\"',1,'outpatient','k2',x'00',x'00',1,'parked',0,90);",
+        "INSERT INTO attempts(delivery,outcome,time) VALUES ",
+        "('\"d-a\"','{\"RetryAt\":105}',100),",
+        "('\"d-a\"','{\"RetryAt\":115}',110),",
+        "('\"d-b\"','{\"RetryAt\":110}',105),",
+        "('\"d-a\"','{\"RetryAt\":125}',120),",
+        "('\"d-a\"','\"Done\"',130),",
+        "('\"d-a\"','{\"RetryAt\":145}',140),",
+        "('\"d-b\"','\"uncertain (interrupted)\"',150),",
+        "('\"d-b\"','\"uncertain (interrupted)\"',160),",
+        "('\"d-b\"','{\"Parked\":\"HTTP 422\"}',170),",
+        "('\"d-b\"','{\"RetryAt\":185}',180);",
+    ))?;
+    Ok(())
+}
+
+/// Each run of tries: first and newest try, delivery, kind, the newest try's
+/// time and how many tries.
+type Run = (i64, i64, String, Option<i64>, i64, i64);
+
+fn runs(db: &Connection) -> Result<Vec<Run>, Error> {
+    let mut statement =
+        db.prepare("SELECT first,last,delivery,kind,time,count FROM attempt_runs ORDER BY first")?;
+    let rows = statement
+        .query_map([], |r| {
+            Ok((
+                r.get(0)?,
+                r.get(1)?,
+                r.get(2)?,
+                r.get(3)?,
+                r.get(4)?,
+                r.get(5)?,
+            ))
+        })?
+        .collect::<Result<_, _>>()?;
+    Ok(rows)
+}
+
+// Owner decision 2026-11-21 (Activity groups retries): step 18 adds the runs
+// of tries that were not accepted, one row per Activity line, and nothing
+// else. It keeps every attempt, fills the runs from the attempts already
+// kept, keeps them current in the same write as each later attempt (a try
+// joins its delivery's run only after a try that failed the same way;
+// accepted, rejected and paused tries end it), drops a delivery's runs with
+// its tries, and opening again changes nothing.
+#[test]
+fn schema_eighteen_keeps_every_attempt_and_fills_the_runs_of_tries() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("seventeen.db");
+    store_at_seventeen(&path)?;
+    let attempts = |db: &Connection| -> Result<Vec<(i64, String, String, i64)>, Error> {
+        let mut statement = db.prepare("SELECT * FROM attempts ORDER BY sequence")?;
+        let rows = statement
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
+            .collect::<Result<_, _>>()?;
+        Ok(rows)
+    };
+    let before = attempts(&Connection::open(&path)?)?;
+    let store = Store::open(&path, limits(), Box::new(Space(u64::MAX)))?;
+    assert_eq!(
+        store
+            .db
+            .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
+        18
+    );
+    assert_eq!(
+        attempts(&store.db)?,
+        before,
+        "every attempt is kept as it was"
+    );
+    let run = |first: i64, last: i64, delivery: &str, kind: Option<i64>, time: i64, count: i64| {
+        (first, last, format!("\"{delivery}\""), kind, time, count)
+    };
+    assert_eq!(
+        runs(&store.db)?,
+        [
+            run(1, 4, "d-a", Some(2), 120, 3),
+            run(3, 3, "d-b", Some(2), 105, 1),
+            run(6, 6, "d-a", Some(2), 140, 1),
+            run(7, 8, "d-b", Some(1), 160, 2),
+            run(9, 9, "d-b", None, 170, 1),
+            run(10, 10, "d-b", Some(2), 180, 1),
+        ],
+        "another delivery's tries in between do not end a run; an accepted try does"
+    );
+    store.db.execute_batch(concat!(
+        "INSERT INTO attempts(delivery,outcome,time) VALUES ",
+        "('\"d-a\"','{\"RetryAt\":155}',150),",
+        "('\"d-b\"','{\"Paused\":\"keys\"}',190),",
+        "('\"d-b\"','{\"Paused\":\"keys\"}',200),",
+        "('\"d-b\"','\"uncertain (interrupted)\"',210),",
+        "('\"d-b\"','{\"RetryAt\":225}',220),",
+        "('\"d-a\"','\"Done\"',230);",
+    ))?;
+    assert_eq!(
+        runs(&store.db)?,
+        [
+            run(1, 4, "d-a", Some(2), 120, 3),
+            run(3, 3, "d-b", Some(2), 105, 1),
+            run(6, 11, "d-a", Some(2), 150, 2),
+            run(7, 8, "d-b", Some(1), 160, 2),
+            run(9, 9, "d-b", None, 170, 1),
+            run(10, 10, "d-b", Some(2), 180, 1),
+            run(12, 12, "d-b", None, 190, 1),
+            run(13, 13, "d-b", None, 200, 1),
+            run(14, 14, "d-b", Some(1), 210, 1),
+            run(15, 15, "d-b", Some(2), 220, 1),
+        ],
+        "later tries keep the runs current; a pause never joins one"
+    );
+    let after = (schema(&store.db)?, attempts(&store.db)?, runs(&store.db)?);
+    drop(store);
+    let store = Store::open(&path, limits(), Box::new(Space(u64::MAX)))?;
+    assert_eq!(
+        (schema(&store.db)?, attempts(&store.db)?, runs(&store.db)?),
+        after,
+        "opening a version-18 store again changes nothing"
+    );
+    // Data keeping removes all of a delivery's tries in one write (with the
+    // immutability trigger lifted); its runs go with them.
+    let guard: String = store.db.query_row(
+        "SELECT sql FROM sqlite_master WHERE name='immutable_attempts_delete'",
+        [],
+        |r| r.get(0),
+    )?;
+    store.db.execute_batch(concat!(
+        "DROP TRIGGER immutable_attempts_delete;",
+        "DELETE FROM attempts WHERE delivery='\"d-a\"';"
+    ))?;
+    store.db.execute_batch(&guard)?;
+    assert!(
+        runs(&store.db)?
+            .iter()
+            .all(|(.., delivery, _, _, _)| delivery == "\"d-b\""),
+        "only the other delivery's runs remain"
     );
     Ok(())
 }

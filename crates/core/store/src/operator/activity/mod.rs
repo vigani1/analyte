@@ -5,8 +5,15 @@
 //! parked item from before schema 16) sorts after every dated line and keeps
 //! `None`, never a guessed time. No bytes, values, test codes or typed
 //! reasons leave the store; sample IDs do, as stored.
-use crate::{OperatorError as Error, Parked, RecentOutcome, Store};
-use analyte_model::OrderState;
+//!
+//! Failed tries of one delivery that end the same way in a row fold into one
+//! line, at the newest of them: while a lab app is down, every waiting
+//! delivery retries on its own clock, so one outage would otherwise fill the
+//! feed. Schema 18 keeps those runs (`attempt_runs`), so the feed reads one
+//! row per line. Only the line changes; every try stays stored, and
+//! [`Store::delivery_activity`] lists them one by one.
+use crate::{DeliveryState, OperatorError as Error, Parked, RecentOutcome, Store, key};
+use analyte_model::{DeliveryId, OrderState};
 use rusqlite::{OptionalExtension as _, params};
 use serde::Deserialize;
 #[cfg(test)]
@@ -87,12 +94,17 @@ pub enum Activity {
     },
     /// Analyte tried to deliver to a lab app.
     Attempt {
+        /// The delivery, the same on every try.
+        delivery: DeliveryId,
         /// The lab app, as stored.
         lab_app: String,
         /// How the try ended.
         outcome: AttemptOutcome,
         /// What the delivery carries.
         carries: Carries,
+        /// The earlier tries this line stands for, when the feed folds them
+        /// into it; none for a try shown alone.
+        tries: Option<Tries>,
     },
     /// A machine order reached a new state.
     Order {
@@ -131,6 +143,20 @@ pub enum AttemptOutcome {
     Paused,
     /// The lab app holds different content under the same delivery ID.
     Conflict,
+}
+
+/// Failed tries of one delivery in a row that ended the same way (failed, or
+/// cut off), shown as one line at the newest of them. A try that ended
+/// another way, or none yet, comes before the first of them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Tries {
+    /// How many tries, this one included; at least 2.
+    pub count: u64,
+    /// When the first of them was stored, in Unix seconds.
+    pub first: i64,
+    /// Whether the delivery still waits for its next try: no try is stored
+    /// after this one and it is queued to be sent.
+    pub waiting: bool,
 }
 
 /// What a delivery carries.
@@ -208,6 +234,12 @@ const ATTEMPTS_BY_MACHINE: &[&str] = &[
     "machine_orders m CROSS JOIN outbox o CROSS JOIN attempts x INDEXED BY attempts_delivery WHERE m.machine=?1 AND o.destination=m.destination AND o.kind='order_event' AND o.ordering_key=m.order_id AND x.delivery=o.id",
 ];
 
+/// The same, for a machine's runs of tries that were not accepted.
+const RUNS_BY_MACHINE: &[&str] = &[
+    "receipts r CROSS JOIN outbox o CROSS JOIN attempt_runs x INDEXED BY attempt_runs_delivery WHERE json_extract(r.metadata,'$.machine')=?1 AND o.receipt=r.id AND x.delivery=o.id",
+    "machine_orders m CROSS JOIN outbox o CROSS JOIN attempt_runs x INDEXED BY attempt_runs_delivery WHERE m.machine=?1 AND o.destination=m.destination AND o.kind='order_event' AND o.ordering_key=m.order_id AND x.delivery=o.id",
+];
+
 /// The state of the order snapshot stored before `x` for the same order.
 macro_rules! previous_state {
     () => {
@@ -242,7 +274,8 @@ struct Source {
 /// listing from the command line) are not changes, and an audit entry stored
 /// as an item's resolution is already its Resolved line. A repeated order
 /// snapshot in the same state is not a line. Attempts are read as two
-/// sources with one number, accepted and not, so each filter reads one.
+/// sources with one number, accepted tries and runs of tries that were not,
+/// so each filter reads one; a run's line sits at its newest try.
 const SOURCES: [Source; 7] = [
     Source {
         number: 0,
@@ -278,7 +311,7 @@ const SOURCES: [Source; 7] = [
         by_machine: &[],
     },
     Source {
-        number: 3,
+        number: ATTEMPTS,
         group: ActivityGroup::Results,
         from: "attempts x",
         at: "x.time",
@@ -289,15 +322,15 @@ const SOURCES: [Source; 7] = [
         by_machine: ATTEMPTS_BY_MACHINE,
     },
     Source {
-        number: 3,
+        number: ATTEMPTS,
         group: ActivityGroup::Problems,
-        from: "attempts x",
+        from: "attempt_runs x",
         at: "x.time",
-        key: "x.sequence",
+        key: "x.last",
         machine: attempt_machine!(),
-        keep: "(x.outcome='\"Done\"')=0 AND EXISTS(SELECT 1 FROM outbox o WHERE o.id=x.delivery)",
+        keep: "EXISTS(SELECT 1 FROM outbox o WHERE o.id=x.delivery)",
         undated: false,
-        by_machine: ATTEMPTS_BY_MACHINE,
+        by_machine: RUNS_BY_MACHINE,
     },
     Source {
         number: 4,
@@ -359,6 +392,19 @@ fn newest_first(a: &Row, b: &Row) -> std::cmp::Ordering {
     (b.0, b.1, b.2).cmp(&(a.0, a.1, a.2))
 }
 
+/// The rows of source `number` still after `before` in the cursor's own
+/// second: all of them, those before its row, or none.
+fn same_second(number: i64, before: ActivityCursor) -> Option<i64> {
+    match number.cmp(&before.source) {
+        std::cmp::Ordering::Less => Some(i64::MAX),
+        std::cmp::Ordering::Equal => before.key.checked_sub(1),
+        std::cmp::Ordering::Greater => None,
+    }
+}
+
+/// The number of the attempts' sources.
+const ATTEMPTS: i64 = 3;
+
 impl Source {
     /// The machine condition, bound to `?1`, when a machine is asked for.
     fn machine_filter(&self, machine: Option<&str>) -> String {
@@ -412,13 +458,7 @@ impl Source {
         } = self;
         let filter = self.machine_filter(machine);
         let wanted = usize::try_from(limit).map_err(|_| Error::InvalidOperatorInput)?;
-        // The rows of this source still after the cursor in the cursor's own
-        // second: all of them, those before its row, or none.
-        let same_second = match self.number.cmp(&before.source) {
-            std::cmp::Ordering::Less => Some(i64::MAX),
-            std::cmp::Ordering::Equal => before.key.checked_sub(1),
-            std::cmp::Ordering::Greater => None,
-        };
+        let same_second = same_second(self.number, before);
         let mut rows = Vec::new();
         if before.at != i64::MIN {
             let dated = format!("{at}<=?2 AND ({at}<?2 OR {key}<=?3) AND {keep}");
@@ -564,6 +604,51 @@ impl Store {
         }
         rows.sort_unstable_by(newest_first);
         rows.truncate(limit);
+        self.lines_of(rows, Fold::Runs)
+    }
+
+    /// Every try of `delivery`, one line each and never folded, newest first:
+    /// at most `limit` (and at most one store page) before `before`, in the
+    /// feed's order, so its cursors page the same way. Reading changes nothing.
+    /// # Errors
+    /// Reports database failures, bounds or corrupt stored evidence.
+    pub fn delivery_activity(
+        &self,
+        delivery: DeliveryId,
+        before: ActivityCursor,
+        limit: usize,
+    ) -> Result<Vec<ActivityLine>, Error> {
+        let limit = limit.min(self.limits.page_rows);
+        let bound = i64::try_from(limit).map_err(|_| Error::InvalidOperatorInput)?;
+        // Every try has a stored time, so none comes after the dated lines.
+        if before.at == i64::MIN || limit == 0 {
+            return Ok(Vec::new());
+        }
+        let mut statement = self.db.prepare(concat!(
+            "SELECT x.time,x.sequence,",
+            attempt_machine!(),
+            " FROM attempts x INDEXED BY attempts_delivery WHERE x.delivery=?1 AND x.time<=?2 AND (x.time<?2 OR x.sequence<=?3) ",
+            "AND EXISTS(SELECT 1 FROM outbox o WHERE o.id=x.delivery) ORDER BY x.time DESC,x.sequence DESC LIMIT ?4"
+        ))?;
+        let rows = statement
+            .query_map(
+                params![
+                    key(&delivery)?,
+                    before.at,
+                    same_second(ATTEMPTS, before),
+                    bound
+                ],
+                |row| {
+                    let at: i64 = row.get(0)?;
+                    Ok((at, ATTEMPTS, row.get(1)?, Some(at), row.get(2)?))
+                },
+            )?
+            .collect::<Result<Vec<Row>, _>>()?;
+        self.lines_of(rows, Fold::Never)
+    }
+
+    /// The lines at `rows`, in their order, with what each says happened.
+    fn lines_of(&self, rows: Vec<Row>, fold: Fold) -> Result<Vec<ActivityLine>, Error> {
         rows.into_iter()
             .map(|(sort, source, key, at, machine)| {
                 Ok(ActivityLine {
@@ -574,7 +659,7 @@ impl Store {
                     },
                     at,
                     machine,
-                    what: self.what(source, key)?,
+                    what: self.what(source, key, fold)?,
                 })
             })
             .collect()
@@ -638,7 +723,7 @@ impl Store {
     }
 
     /// What the line from `source` row `key` says happened.
-    fn what(&self, source: i64, key: i64) -> Result<Activity, Error> {
+    fn what(&self, source: i64, key: i64, fold: Fold) -> Result<Activity, Error> {
         match source {
             0 => {
                 let evidence: Option<String> = self.db.query_row(
@@ -671,7 +756,7 @@ impl Store {
                     action: action.unwrap_or_default(),
                 })
             }
-            3 => self.attempt(key),
+            ATTEMPTS => self.attempt(key, fold),
             4 => self.order(key),
             5 => {
                 let evidence: String = self.db.query_row(
@@ -693,25 +778,75 @@ impl Store {
         }
     }
 
-    fn attempt(&self, key: i64) -> Result<Activity, Error> {
-        let (outcome, lab_app, order, evidence): (String, String, Option<String>, Option<String>) =
-            self.db.query_row(
-                concat!(
-                    "SELECT a.outcome,o.destination,o.order_id,",
-                    "(SELECT evidence FROM interpretations i WHERE i.receipt=o.receipt AND i.version=o.version) ",
-                    "FROM attempts a JOIN outbox o ON o.id=a.delivery WHERE a.sequence=?1"
-                ),
-                [key],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
-            )?;
-        Ok(Activity::Attempt {
-            lab_app,
-            outcome: attempt_outcome(&outcome)?,
-            carries: match order {
-                Some(order) => Carries::OrderMessage { order },
-                None => Carries::Results(reading(evidence)?),
+    fn attempt(&self, key: i64, fold: Fold) -> Result<Activity, Error> {
+        /// The attempt row, its delivery's and whether a later try is stored.
+        struct Stored {
+            outcome: String,
+            delivery: String,
+            lab_app: String,
+            order: Option<String>,
+            evidence: Option<String>,
+            state: DeliveryState,
+            later: bool,
+        }
+        let stored = self.db.query_row(
+            concat!(
+                "SELECT a.outcome,a.delivery,o.destination,o.order_id,",
+                "(SELECT evidence FROM interpretations i WHERE i.receipt=o.receipt AND i.version=o.version),o.state,",
+                "EXISTS(SELECT 1 FROM attempts l INDEXED BY attempts_delivery WHERE l.delivery=a.delivery AND l.sequence>a.sequence) ",
+                "FROM attempts a JOIN outbox o ON o.id=a.delivery WHERE a.sequence=?1"
+            ),
+            [key],
+            |r| {
+                Ok(Stored {
+                    outcome: r.get(0)?,
+                    delivery: r.get(1)?,
+                    lab_app: r.get(2)?,
+                    order: r.get(3)?,
+                    evidence: r.get(4)?,
+                    state: r.get(5)?,
+                    later: r.get(6)?,
+                })
             },
+        )?;
+        let outcome = attempt_outcome(&stored.outcome)?;
+        let tries = match fold {
+            Fold::Runs => {
+                self.tries(key, !stored.later && stored.state == DeliveryState::Pending)?
+            }
+            Fold::Never => None,
+        };
+        Ok(Activity::Attempt {
+            delivery: serde_json::from_str(&stored.delivery)?,
+            lab_app: stored.lab_app,
+            outcome,
+            carries: match stored.order {
+                Some(order) => Carries::OrderMessage { order },
+                None => Carries::Results(reading(stored.evidence)?),
+            },
+            tries,
         })
+    }
+
+    /// The failed tries in a row that attempt `key` is the newest of, as its
+    /// run says; none when it stands alone or was accepted.
+    fn tries(&self, key: i64, waiting: bool) -> Result<Option<Tries>, Error> {
+        let run: Option<(i64, Option<i64>)> = self
+            .db
+            .query_row(
+                "SELECT r.count,(SELECT a.time FROM attempts a WHERE a.sequence=r.first) FROM attempt_runs r WHERE r.last=?1",
+                [key],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?;
+        let Some((count, first)) = run.filter(|&(count, _)| count >= 2) else {
+            return Ok(None);
+        };
+        Ok(Some(Tries {
+            count: u64::try_from(count).map_err(|_| Error::Corruption)?,
+            first: first.ok_or(Error::Corruption)?,
+            waiting,
+        }))
     }
 
     fn order(&self, key: i64) -> Result<Activity, Error> {
@@ -756,6 +891,15 @@ fn reading(evidence: Option<String>) -> Result<Option<RecentOutcome>, Error> {
         .map(|evidence| serde_json::from_str(&evidence).map(|reading| RecentOutcome::of(&reading)))
         .transpose()
         .map_err(Error::from)
+}
+
+/// Whether a read folds failed tries in a row into one line.
+#[derive(Clone, Copy)]
+enum Fold {
+    /// The feed: a run of failed tries is one line.
+    Runs,
+    /// One delivery's tries: each is its own line.
+    Never,
 }
 
 /// Reads an attempt's stored outcome, as `crate::Attempt` writes it.

@@ -1,12 +1,13 @@
 //! Writes Activity's lines: the day dividers, the time of each line and the sentence for each stored event.
 use super::{
     Moment, actor, amount, attempt_look, exact_time, lab_app_href, machine_href, order_look,
-    samples, settled_action, test_count, time::not_a_date,
+    samples, settled_action, test_count,
+    time::{clock_in, not_a_date},
 };
 use crate::admin::view::{Tone, icon::Icon};
 use crate::operator::recovery;
-use analyte_model::OrderState;
-use analyte_store::{Activity, AttemptOutcome, Carries, RecentOutcome};
+use analyte_model::{DeliveryId, OrderState};
+use analyte_store::{Activity, AttemptOutcome, Carries, RecentOutcome, Tries};
 use jiff::{Timestamp, tz::TimeZone};
 
 /// One Activity line in words: who or what it is about (in bold), the rest
@@ -102,11 +103,13 @@ fn headed(machine: Option<Named<'_>>, other: &str) -> (String, String) {
     )
 }
 
-/// What `what` says, about `machine` when it names one: the machine's ID
-/// in bold, then its model ("cobas-e411 (cobas e 411)"). `headline` gives a
-/// Needs review item's title and tone, as its card shows them.
+/// What `what` says, stored at `at`, about `machine` when it names one: the
+/// machine's ID in bold, then its model ("cobas-e411 (cobas e 411)").
+/// `headline` gives a Needs review item's title and tone, as its card shows
+/// them.
 pub(in crate::admin) fn said(
     what: &Activity,
+    at: Option<i64>,
     machine: Option<Named<'_>>,
     headline: impl FnOnce(&analyte_store::Parked) -> (String, Tone),
 ) -> Said {
@@ -139,15 +142,23 @@ pub(in crate::admin) fn said(
             link: Some((format!("/parked/{item}"), "Open")),
         },
         Activity::Attempt {
+            delivery,
             lab_app,
             outcome,
             carries,
+            tries,
         } => {
             let what = match carries {
                 Carries::Results(reading) => carried(reading.as_ref()),
                 Carries::OrderMessage { order } => format!("– order {order} message "),
             };
-            let (words, link) = attempt(lab_app, *outcome);
+            let (words, link) = match (tries, at) {
+                (Some(tries), Some(last)) => (
+                    tried(lab_app, *outcome, *tries, last, &TimeZone::system()),
+                    Some((every_try_href(*delivery), "Every try")),
+                ),
+                (Some(_) | None, _) => attempt(lab_app, *outcome),
+            };
             let look = attempt_look(*outcome);
             let (head, aside) = headed(machine, lab_app);
             Said {
@@ -281,6 +292,54 @@ fn attempt(lab_app: &str, outcome: AttemptOutcome) -> (String, FeedLink) {
     }
 }
 
+/// Failed tries in a row to `lab_app` as one line says them, the latest
+/// stored at `last`, in `zone`: "sending to main-lab failed · tried 35 times,
+/// 02:32 – 12:01 · next try after 12:02". Times carry their day when it is
+/// not the latest try's, whose day is the divider above the line. The next
+/// try is said only while the delivery still waits for it.
+fn tried(
+    lab_app: &str,
+    outcome: AttemptOutcome,
+    tries: Tries,
+    last: i64,
+    zone: &TimeZone,
+) -> String {
+    let at = |seconds: i64| match (
+        Timestamp::from_second(seconds),
+        Timestamp::from_second(last),
+    ) {
+        (Ok(at), Ok(last)) => clock_in(at, last, zone),
+        (Err(_), _) | (_, Err(_)) => not_a_date(seconds),
+    };
+    let failed = match outcome {
+        AttemptOutcome::Interrupted => "was cut off",
+        AttemptOutcome::RetryAt(_)
+        | AttemptOutcome::Delivered
+        | AttemptOutcome::Rejected
+        | AttemptOutcome::Paused
+        | AttemptOutcome::Conflict => "failed",
+    };
+    let mut words = format!(
+        "sending to {lab_app} {failed} · tried {} times, {} – {}",
+        tries.count,
+        at(tries.first),
+        at(last)
+    );
+    if let (true, AttemptOutcome::RetryAt(next)) = (tries.waiting, outcome) {
+        words.push_str(&format!(" · next try after {}", at(next)));
+    }
+    words
+}
+
+/// Activity listing every try of `delivery`, one line each.
+fn every_try_href(delivery: DeliveryId) -> String {
+    format!(
+        "{}?delivery={}",
+        super::super::Tab::Activity.href(),
+        uuid::Uuid::from(delivery)
+    )
+}
+
 /// What an audited change did, from its action and the first thing it names,
 /// and the page about that thing; an action this version does not know reads
 /// as recorded.
@@ -367,5 +426,49 @@ mod tests {
             ("event", "events", "events")
         );
         Ok(())
+    }
+
+    // Owner decision 2026-11-21 (Activity groups retries): failed tries in a
+    // row read as one line with how many, from when to when, and the next try
+    // while the delivery waits; a time on another day than the latest try
+    // carries its day.
+    #[test]
+    fn failed_tries_in_a_row_read_as_one_sentence() {
+        let utc = &TimeZone::UTC;
+        let last = 1_795_046_077; // 2026-11-18 23:54:37 UTC
+        let tries = Tries {
+            count: 35,
+            first: last - 3_600 * 5,
+            waiting: true,
+        };
+        assert_eq!(
+            tried(
+                "main-lab",
+                AttemptOutcome::RetryAt(last + 60),
+                tries,
+                last,
+                utc
+            ),
+            "sending to main-lab failed · tried 35 times, 18:54 – 23:54 · next try after 23:55"
+        );
+        assert_eq!(
+            tried(
+                "main-lab",
+                AttemptOutcome::RetryAt(last + 600),
+                Tries {
+                    count: 2,
+                    first: last - 86_400,
+                    waiting: false,
+                },
+                last,
+                utc
+            ),
+            "sending to main-lab failed · tried 2 times, 17 Nov 23:54 – 23:54",
+            "a run that ended says no next try"
+        );
+        assert_eq!(
+            tried("lab-2", AttemptOutcome::Interrupted, tries, last, utc),
+            "sending to lab-2 was cut off · tried 35 times, 18:54 – 23:54"
+        );
     }
 }
