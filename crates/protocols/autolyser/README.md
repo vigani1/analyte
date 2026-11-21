@@ -13,4 +13,4 @@
 - `syntax`: Fixed-width record grammar.
 - `encode`: Worklist and report record bodies built from typed fields.
 
-[Technical details and safety guidance](DETAILS.md).
+[Technical details and safety guidance](../../../docs/protocols/autolyser/README.md), in the protocol notes.
