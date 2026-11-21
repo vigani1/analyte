@@ -111,6 +111,20 @@ fn seams(
                 },
             ])
         }),
+        // This PC's addresses: a lab network card and an office one.
+        addresses: Arc::new(|| {
+            use crate::admin::setup::Address;
+            Ok(vec![
+                Address {
+                    ip: std::net::Ipv4Addr::new(192, 168, 1, 20),
+                    adapter: "Ethernet".into(),
+                },
+                Address {
+                    ip: std::net::Ipv4Addr::new(10, 0, 0, 7),
+                    adapter: "Wi-Fi".into(),
+                },
+            ])
+        }),
         open: Arc::new(move |_, _| {
             Ok(Box::new(FakePort {
                 input: input
@@ -226,10 +240,10 @@ async fn start_program_with(
     let bearer = crate::admin::rotate_token(&data)?;
     let written = Arc::new(Mutex::new(Vec::new()));
     let input = Arc::new(Mutex::new(MARKER.to_vec()));
-    let setup = crate::admin::setup::Setup::new(
+    let setup = Arc::new(crate::admin::setup::Setup::new(
         &program,
         seams(root, written.clone(), input.clone(), bounds.listen),
-    );
+    ));
     let (restart, (closing, closed)) = (setup.restart_requested(), watch::channel(false));
     let socket = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let host = socket.local_addr()?.to_string();
@@ -237,7 +251,6 @@ async fn start_program_with(
     let state = Arc::new(Context {
         alert_endpoints: vec![],
         retention: crate::runtime::retention::policies(&program),
-        config_path: config.clone(),
         token: Token::load(&data)?,
         sessions: Sessions::default(),
         windows: Arc::new(windows::SignIn::new(None)),

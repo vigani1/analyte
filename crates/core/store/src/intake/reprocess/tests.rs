@@ -238,6 +238,7 @@ fn lifecycle_reprocessing_requires_audit_keeps_original() -> TestResult {
             ReconcileInput {
                 corrections: &[false],
                 findings: &[],
+                held_back: None,
                 mode: ReconcileMode::Lifecycle(policy)
             },
             |_, _| Ok(vec![])
@@ -253,6 +254,7 @@ fn lifecycle_reprocessing_requires_audit_keeps_original() -> TestResult {
         ReconcileInput {
             corrections: &[false],
             findings: &[],
+            held_back: None,
             mode: ReconcileMode::Lifecycle(policy),
         },
         |_, _| Ok(vec![]),
@@ -355,10 +357,17 @@ fn reprocessing_never_resolves_failed_or_flagged_evidence() -> TestResult {
                 .is_none(),
             "case {case}"
         );
+        // A new reason gets its own item; the same reason again stays the one
+        // open item (owner report 2026-11-21), while the new reading is kept.
+        let expected = if case == "failed" { 1 } else { 2 };
         assert_eq!(
             store.parked(0)?.len(),
-            2,
-            "case {case}: retain new operator evidence"
+            expected,
+            "case {case}: retain new operator evidence once"
+        );
+        assert!(
+            store.interpretation(metadata.id, 2)?.is_some(),
+            "case {case}"
         );
         let audits = store.audits(0)?;
         assert_eq!(audits.len(), 1);

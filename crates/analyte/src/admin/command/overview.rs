@@ -1,6 +1,6 @@
 //! Prints `analyte overview`: the running engine's verdict in the page's words, each line with where and how to fix it, and an exit code for scripts.
-use super::engine::{self, EngineError};
 use crate::admin::Error;
+use crate::admin::engine::{self, EngineError};
 use crate::admin::overview::answer::{Answer, Severity, Verdict};
 use crate::installation::config::Program;
 use std::process::ExitCode;
@@ -56,10 +56,15 @@ pub(super) fn advice(error: &EngineError) -> &'static str {
         EngineError::Key(_) | EngineError::KeyThread(_) => {
             "run this from an administrator PowerShell; if the key file is missing, run analyte admin token --rotate and restart the engine"
         }
-        EngineError::Silent { .. } | EngineError::TimedOut => {
+        EngineError::NotRunning(_)
+        | EngineError::Unreachable { .. }
+        | EngineError::Silent(_)
+        | EngineError::TimedOut => {
             "start the engine (Start-Service Analyte, or systemctl start analyte on Linux), wait a few seconds and try again; if it does not start, run analyte doctor and analyte logs"
         }
-        EngineError::KeyRefused(_) => "restart the engine with Restart-Service Analyte",
+        EngineError::Unproven => {
+            "find the program holding the admin port (Get-NetTCPConnection -LocalPort <port>) and stop it, or restart the engine with Restart-Service Analyte if the admin key was rotated since it started"
+        }
         EngineError::Client(_)
         | EngineError::Status(_)
         | EngineError::TooLarge

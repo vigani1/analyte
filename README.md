@@ -69,6 +69,11 @@ results and polls the lab app for orders, so the lab PC opens no inbound port.
   engine's pages, with notifications ([ADR 0019](docs/adr/0019-desktop-app.md)).
   People sign in with Windows ([ADR 0021](docs/adr/0021-windows-sign-in-pipe.md)).
 
+IT can do everything the pages do from PowerShell too ([commands](docs/operations/commands.md)),
+including setting up machines and lab apps with `analyte machines` and
+`analyte lab-apps` through the Setup page's own checks
+([from the command line](docs/operations/connect.md#from-the-command-line)).
+
 The installer sets up both ([Windows packaging](packaging/windows/README.md)).
 On Linux the engine is a systemd service ([Linux packaging](packaging/linux/README.md)).
 
@@ -112,10 +117,37 @@ source section of each rule; parsers also have property tests and
 
 ## Connecting a lab app
 
-Any lab app can receive from Analyte by implementing
-[contract v1](docs/contract/v1.md) ([ADR 0008](docs/adr/0008-app-contract.md)):
-`POST /results`, `POST /order-events` and `GET /orders?cursor=…`, with an API
-key and [Standard Webhooks](https://www.standardwebhooks.com/) signatures.
+Any lab app can work with Analyte by implementing
+[contract v1](docs/contract/v1.md) ([ADR 0008](docs/adr/0008-app-contract.md)).
+Analyte always makes the call; the lab app only answers.
+
+```mermaid
+sequenceDiagram
+    participant M as Analyzer
+    participant A as Analyte
+    participant L as Lab app
+    loop every 5 seconds
+        A->>L: GET /orders?cursor=…
+        L-->>A: order changes since the last cursor
+    end
+    M->>A: "any tests for sample 0042?"
+    A-->>M: the cached orders, or an error if they are stale
+    M->>A: results
+    A->>L: POST /results (same delivery ID on every retry)
+    L-->>A: 200 accepted (or duplicate)
+    A->>L: POST /order-events (sent, accepted, done…)
+```
+
+| Call | What it does |
+| --- | --- |
+| `GET /orders?cursor=…` | Analyte asks for order changes since its last cursor; the first call pages a full snapshot. Orders are trusted only after a complete page and for 30 seconds by default, so a machine never hears "no tests" from an out-of-date list ([building the cursor](docs/contract/orders-cursor.md)). |
+| `POST /results` | One delivery of results with the original values, units and identities. The delivery ID stays the same on every retry; the app stores it first and answers a repeat as a duplicate. |
+| `POST /order-events` | What happened to an order on the machine: sent, accepted, done, cancelled, rejected or uncertain. "Uncertain" never means "send it again". |
+
+The app's answer tells Analyte what to do next: `200` done, `5xx`/`429` retry
+(1 s up to 60 s, never giving up), `401`/`403` pause until the setup is fixed,
+`400`/`409`/`422` park for review. Every call carries an API key, and each
+POST is signed with [Standard Webhooks](https://www.standardwebhooks.com/).
 Check your app with [`analyte-contract-check`](docs/contract/README.md#check-your-app),
 or read the [reference receiver](crates/testing/receiver/), which does it all.
 
@@ -157,8 +189,7 @@ cargo run -p analyte -- run crates/analyte/examples/analyte.toml
 
 Delete `crates/analyte/data/` afterwards. For admin pages add an `[admin]`
 section ([program guide](crates/analyte/DETAILS.md)). To install on a lab PC,
-see the [operations guides](docs/operations/README.md); everything the pages do
-is also a command ([commands](docs/operations/commands.md)).
+see the [operations guides](docs/operations/README.md).
 
 ## Contributing
 

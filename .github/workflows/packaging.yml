@@ -112,12 +112,35 @@ jobs:
             if (-not $group) { throw 'the local group Analyte users does not exist' }
             @(Get-CimAssociatedInstance -InputObject $group -Association Win32_GroupUser | ForEach-Object { $_.SID })
           }
+          # Analyzers on the lab network reach the service through one inbound
+          # rule: TCP to analyte.exe, from this PC's own subnets, every profile.
+          # The admin pages stay on 127.0.0.1 whatever the rule allows.
+          function Assert-FirewallRule {
+            $rules = @(Get-NetFirewallRule -Name 'Analyte-Analyzers-In' -ErrorAction SilentlyContinue)
+            if ($rules.Count -ne 1) { throw "expected one Analyte firewall rule, found $($rules.Count)" }
+            $rule = $rules[0]
+            if ($rule.DisplayName -ne 'Analyte - analyzers on the lab network' -or "$($rule.Direction)" -ne 'Inbound' -or "$($rule.Action)" -ne 'Allow' -or "$($rule.Enabled)" -ne 'True') {
+              throw "firewall rule is $($rule.DisplayName) $($rule.Direction) $($rule.Action) enabled=$($rule.Enabled)"
+            }
+            if ("$($rule.Profile)" -notin 'Any', 'Domain, Private, Public') { throw "firewall rule profiles are $($rule.Profile)" }
+            $program = ($rule | Get-NetFirewallApplicationFilter).Program
+            if ($program -ne "$env:ProgramFiles\Analyte\analyte.exe") { throw "firewall rule program is $program" }
+            $ports = $rule | Get-NetFirewallPortFilter
+            if ("$($ports.Protocol)" -ne 'TCP' -or "$($ports.LocalPort)" -ne 'Any') { throw "firewall rule ports are $($ports.Protocol) $($ports.LocalPort)" }
+            $remote = @(($rule | Get-NetFirewallAddressFilter).RemoteAddress) -join ','
+            if ($remote -ne 'LocalSubnet') { throw "firewall rule remote address is $remote" }
+            $engine = (Get-CimInstance Win32_Service -Filter "Name='Analyte'").ProcessId
+            $exposed = @(Get-NetTCPConnection -State Listen -OwningProcess $engine -ErrorAction SilentlyContinue | Where-Object { $_.LocalAddress -ne '127.0.0.1' })
+            if ($exposed.Count -ne 0) { throw "the engine listens beyond 127.0.0.1: $(($exposed | ForEach-Object { "$($_.LocalAddress):$($_.LocalPort)" }) -join ', ')" }
+          }
           function Assert-ScriptSaid([string]$Log, [string]$Text) {
             if (-not (Select-String -LiteralPath $Log -SimpleMatch $Text -Quiet)) { throw "$Log lacks: $Text" }
           }
           Install-Analyte
           Assert-SetupPage
           Assert-DesktopApp
+          Assert-FirewallRule
+          Assert-ScriptSaid "$logs\setup-1.log" "Windows Firewall rule 'Analyte - analyzers on the lab network' allows TCP"
           if ((Get-SignInMembers) -notcontains $installer.Value) { throw 'setup did not add the installing user to Analyte users' }
           Assert-ScriptSaid "$logs\setup-1.log" "Local group 'Analyte users' created."
           # Someone else, added the way the user guide says, must survive the
@@ -138,6 +161,8 @@ jobs:
           Install-Analyte
           Assert-SetupPage
           Assert-DesktopApp
+          # The upgrade replaced the rule: still exactly one.
+          Assert-FirewallRule
           if (-not (Select-String -LiteralPath "$root\config\analyte.toml" -SimpleMatch '# kept on upgrade')) { throw 'upgrade replaced the configuration' }
           if ((Get-FileHash -LiteralPath "$root\data\admin-token").Hash -ne $token) { throw 'upgrade replaced the token' }
           # The upgrade finds the group and both members and changes nothing.
@@ -150,6 +175,8 @@ jobs:
           if ($process.ExitCode -ne 0) { throw "uninstaller exit code $($process.ExitCode)" }
           for ($i = 0; $i -lt 60 -and (Test-Path -LiteralPath "$env:ProgramFiles\Analyte\analyte.exe"); $i++) { Start-Sleep -Seconds 1 }
           if (Get-CimInstance Win32_Service -Filter "Name='Analyte'") { throw 'service still registered' }
+          if (Get-NetFirewallRule -Name 'Analyte-Analyzers-In' -ErrorAction SilentlyContinue) { throw 'uninstall left the firewall rule' }
+          Assert-ScriptSaid "$logs\uninstall.log" "Windows Firewall rule 'Analyte - analyzers on the lab network' removed."
           if (Test-Path -LiteralPath "$env:ProgramFiles\Analyte\analyte.exe") { throw 'program not removed' }
           # The app, its settings, its Start menu and sign-in entries go too; the
           # uninstaller closed the running app first.

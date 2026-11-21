@@ -40,7 +40,7 @@ pages were renamed (Needs review is still `/parked`, Cancelled by machine
 | Page | Use |
 | --- | --- |
 | Overview | First, whether everything is OK: "All good" in green, or "N things need you" in red with one short line per thing and a link to where it is fixed (items to review, a machine whose service stopped or whose link is off, a lab app that is paused or cannot be sent to, which links to the [Lab apps page](#lab-apps-page), orders with unknown outcome, orders cancelled by a machine, order sending paused after a restore, the disk reserve reached, and every active alert). The lines come only from what the page measures and the configured alert rules; there are no extra thresholds. Below that, four sections: Machines (connection light, last data, service), Sending to the lab app (results waiting, order list up to date, oldest result waiting, results still being delivered for removed machines), Orders (orders with unknown outcome, orders cancelled by a machine, and "Order sending is paused after a restore" only while it applies) and Disk and alerts (free space, space always kept free, active alerts). Counts are plain numbers, red when above 0. Hovering a label or value shows its exact technical name or value. While no machine is set up, nothing needs anyone and nothing waits for a lab app, the page shows only a welcome card with a button to Setup. |
-| Needs review | Items Analyte kept but could not process (parked items). Each item shows its category, its reason, a "What to do" line in plain words and its action button: Process again for items linked to a message, Send again for a delivery the lab app rejected. The button opens the same confirmation page as before, which asks for a reason and records it. **Mark resolved** is the main button for a conflicting delivery, a refused order version, a cancel conflict and a machine exchange with unknown outcome, and a secondary button on every other item for when the lab decides nothing more is needed. It asks for a reason and uses the same resolution and audit as `analyte parked resolve`: nothing is deleted, and the item stays in the history, marked resolved with who and why. Linked record IDs and receipt times are on the item's own page. Showing the original bytes requires an audited browser POST. |
+| Needs review | Items Analyte kept but could not process (parked items). One cause is one item: a test code missing from the test mapping is one item, not one more for the result it leaves without an identity, and processing a message again while the cause remains adds no copy ([ADR 0024](../adr/0024-one-review-item-per-cause.md)). Each item shows its category, its reason, a "What to do" line in plain words and its action button: Process again for items linked to a message, Send again for a delivery the lab app rejected. The button opens the same confirmation page as before, which asks for a reason and records it. **Mark resolved** is the main button for a conflicting delivery, a refused order version, a cancel conflict and a machine exchange with unknown outcome, and a secondary button on every other item for when the lab decides nothing more is needed. It asks for a reason and uses the same resolution and audit as `analyte parked resolve`: nothing is deleted, and the item stays in the history, marked resolved with who and why. Linked record IDs and receipt times are on the item's own page. Showing the original bytes requires an audited browser POST. |
 | Machines | Config, link light and activity. TCP server: Waiting or Connected. TCP client: Connected or Not connected (retrying). Serial: only Port open or Port not open, because an open port proves no cable or machine. Watched folder: Watching or Not watching. Last data received ("Nothing yet" before anything arrived) and the time of the last change show as a local date and time with an age. The settings version shows its first 12 digits; hover for the full digest. |
 | Setup | Add or remove machines; choose a machine model, its port or address and pick its lab app; test by listening; save; restart. See [Setup page](#setup-page). Its **Lab apps** link opens the [Lab apps page](#lab-apps-page), where each lab app's address and keys are set once. |
 | Machine orders (More) | Inspect lifecycle; reconciliation remains a CLI task. |
@@ -71,14 +71,17 @@ offered. CLI output can contain protected evidence.
 Every page also has a command (`analyte overview`, `analyte doctor`,
 `analyte activity`, `analyte data-keeping`, `analyte orders cancelled` and
 more); [Commands](commands.md) lists them all by task. `analyte overview` and
-`analyte doctor` ask the running engine at `GET /overview/verdict` with the
-admin key, which only an administrator can read; the answer holds the
-Overview's lines (names and counts), never values or sample IDs.
+`analyte doctor` ask the running engine at `GET /overview/verdict`, sending
+the admin key (which only an administrator can read) only after the engine
+proved it holds it at `GET /proof` ([ADR 0027](../adr/0027-command-line-asks-the-engine.md));
+the answer holds the Overview's lines (names and counts), never values or
+sample IDs.
 
 ## Setup page
 
 The **Setup** page lets a lab manager set up an installed machine without
-editing files. It needs a browser login (not just the bearer header), and the
+editing files. IT staff can do the same from PowerShell
+([from the command line](connect.md#from-the-command-line)). It needs a browser login (not just the bearer header), and the
 service needs write access to the folder that holds the program file and the
 site files (see [Install](install.md)). Each machine listed in the program file
 has a **Set up** link that opens four steps, one per screen, and a **Remove**
@@ -177,9 +180,12 @@ nothing is written before **Save**.
    When the adapter has its own serial number, the site file gets `usb_serial`,
    so Analyte finds the machine again if the COM number changes; otherwise it
    gets the port name as `endpoint`. A number Windows made up (it contains `&`)
-   is not used. For a network machine, enter the IP address and port: the
-   address Analyte listens on when the machine connects to Analyte, or the
-   machine's address when Analyte connects to it. On the same screen, "Send
+   is not used. For a machine that connects to Analyte over the network,
+   choose one of this PC's addresses (each shown with its network adapter) or
+   every network card, and the port; then type that address and port into the
+   machine's host (LIS) settings. For a machine Analyte connects to, enter the
+   machine's own IP address and port. See
+   [Network machines](connect.md#network-machines). On the same screen, "Send
    results to" picks one lab app from the [Lab apps page](#lab-apps-page). With
    only one, it is chosen already. With none, the page links to the Lab app
    page to add one first. Keys are not asked here.
@@ -203,7 +209,10 @@ nothing is written before **Save**.
    when the test ends or is stopped (only the one-line verdict stays). They
    may contain patient data: keep them out of screenshots. The test refuses a
    port or address that a running machine uses; stop that machine's service
-   first or test a free port. A watched folder has nothing to listen to, so
+   first or test a free port. Over the network, "nothing received" says where
+   Analyte listened (or which machine address it tried), what to set on the
+   machine, and that a firewall may block it; it tells apart a machine that
+   never connected from one that connected and sent nothing. A watched folder has nothing to listen to, so
    its test step just goes on to Save.
 4. **Save.** The screen sums up the machine, its model, the connection in
    plain words (the exact setting on hover) and the lab app. **Save** first

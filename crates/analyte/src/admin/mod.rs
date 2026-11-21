@@ -1,6 +1,7 @@
 //! Serves protected local administration pages and actions with host-owned credentials.
 mod activity;
 pub mod command;
+mod engine;
 mod machines;
 mod more;
 mod overview;
@@ -15,6 +16,7 @@ pub(crate) use server::{Server, prepare};
 
 pub use server::sessions::{ActorError, command_line_actor};
 pub use server::token::{Token, TokenError, rotate_token};
+pub use setup::{LabApps, Machines, Outcome, run_lab_apps, run_machines};
 
 mod error;
 pub use error::{CommandError, Error};

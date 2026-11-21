@@ -108,10 +108,9 @@ impl Fix {
                 Some("analyte --actor <you> orders resume-after-restore --reason \"<why>\"")
             }
             Self::Page(Tab::Activity) => Some("analyte activity"),
-            // Machines and lab apps get their own commands in a separate change.
-            Self::Page(
-                Tab::Overview | Tab::Machines | Tab::LabApps | Tab::Setup | Tab::Settings,
-            ) => None,
+            Self::Page(Tab::Machines | Tab::Setup) => Some("analyte machines list"),
+            Self::Page(Tab::LabApps) => Some("analyte lab-apps list"),
+            Self::Page(Tab::Overview | Tab::Settings) => None,
         }
     }
 }

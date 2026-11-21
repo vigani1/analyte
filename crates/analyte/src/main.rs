@@ -51,6 +51,18 @@ enum Command {
         #[command(subcommand)]
         command: Admin,
     },
+    /// Lists, adds, sets up, tests and removes machines through the Setup
+    /// page's own checks; changes apply after a restart.
+    Machines {
+        #[command(subcommand)]
+        command: analyte::admin::Machines,
+    },
+    /// Lists, adds, changes and removes lab apps and stores their keys
+    /// through the Lab apps page's own checks; changes apply after a restart.
+    LabApps {
+        #[command(subcommand)]
+        command: analyte::admin::LabApps,
+    },
     /// Machine orders: list, cancelled by a machine, reconcile, resume after a restore.
     Orders {
         #[command(subcommand)]
@@ -265,21 +277,29 @@ fn main() -> Result<ExitCode, Error> {
         let actor = actor.map_or_else(|| Identifier::new("local-operator"), Ok)?;
         return Ok(runtime.block_on(analyte::admin::command::run(&config, actor, pages))?);
     }
-    runtime
-        .block_on(execute(Cli {
-            config,
-            actor,
-            command,
-        }))
-        .map(|()| ExitCode::SUCCESS)
+    runtime.block_on(execute(Cli {
+        config,
+        actor,
+        command,
+    }))
 }
 
-async fn execute(cli: Cli) -> Result<(), Error> {
+async fn execute(cli: Cli) -> Result<ExitCode, Error> {
     let actor = cli
         .actor
         .clone()
         .unwrap_or(Identifier::new("local-operator")?);
-    match cli.command {
+    let done = match cli.command {
+        // The setup commands print their own "Fix this" line and end with their
+        // own exit code (0 done, 1 refused, 3 partly done, 4 test saw no data).
+        Command::Machines { command } => {
+            let outcome = analyte::admin::run_machines(&cli.config, cli.actor, command).await;
+            return Ok(outcome.into());
+        }
+        Command::LabApps { command } => {
+            let outcome = analyte::admin::run_lab_apps(&cli.config, cli.actor, command).await;
+            return Ok(outcome.into());
+        }
         Command::RetryAlerts { endpoint, reason } => analyte::operator::alert_recovery::retry(
             &Program::load(&cli.config)?,
             required_actor(cli.actor)?,
@@ -360,9 +380,10 @@ async fn execute(cli: Cli) -> Result<(), Error> {
         Command::Restore { from, reason } => restore(&cli.config, actor, from, &reason).await,
         Command::Backup { target } => backup(&cli.config, target).await,
         Command::Pages(_) | Command::Completions { .. } => {
-            Err(std::io::Error::other("dispatched before the runtime started").into())
+            Err(std::io::Error::other("dispatched in main").into())
         }
-    }
+    };
+    done.map(|()| ExitCode::SUCCESS)
 }
 
 async fn operator(

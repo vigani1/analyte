@@ -60,7 +60,10 @@ async fn doctor_reports_a_stopped_engine_an_unreachable_lab_app_and_missing_keys
             .map(|check| check.level)
     };
     assert_eq!(find("Program file", "is valid"), Some(doctor::Level::Ok));
-    assert_eq!(find("Engine", "not answering"), Some(doctor::Level::Fail));
+    assert_eq!(
+        find("Engine", "the engine is not running"),
+        Some(doctor::Level::Fail)
+    );
     assert_eq!(find("Store", "no store"), Some(doctor::Level::Warn));
     assert!(!data.join("analyte.db").exists(), "doctor created a store");
     assert_eq!(

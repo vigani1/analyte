@@ -6,7 +6,6 @@
 //! from the engine itself through [`engine`]. Output holds names, counts and,
 //! where the page shows them, sample IDs; never result values, keys or tokens.
 pub(in crate::admin) mod doctor;
-pub(in crate::admin) mod engine;
 mod logs;
 mod overview;
 mod pages;

@@ -410,3 +410,53 @@ fn windows_setup_creates_and_keeps_the_sign_in_group() -> Outcome {
     assert!(installer.contains("'group \"Analyte users\" was kept too"));
     Ok(())
 }
+
+// Owner request 2026-11-21 (network setup): analyzers on the lab network reach
+// the service through one inbound Windows Firewall rule, added by install.ps1
+// (which the installer runs) and removed by uninstall.ps1, under a fixed name so
+// a reinstall or upgrade replaces it. It allows TCP to analyte.exe only, from
+// this PC's own subnets only, on every profile. Setup step 3 names the same rule.
+#[test]
+fn windows_firewall_rule_lets_only_local_analyzers_in() -> Outcome {
+    let installer = read("windows/analyte.iss")?;
+    let install = read("windows/install.ps1")?;
+    let uninstall = read("windows/uninstall.ps1")?;
+    let verdict = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/admin/setup/wizard/verdict.rs"),
+    )?;
+    let name = "Analyte - analyzers on the lab network";
+    assert!(verdict.contains(&format!("FIREWALL_RULE: &str = \"{name}\";")));
+    assert!(verdict.contains("FIREWALL_RULE_NAME: &str = \"Analyte-Analyzers-In\";"));
+    for expected in [
+        "$firewallRule = 'Analyte-Analyzers-In'".to_owned(),
+        format!("$firewallName = '{name}'"),
+        "if (Get-NetFirewallRule -Name $firewallRule -ErrorAction SilentlyContinue) {\n    Remove-NetFirewallRule -Name $firewallRule -ErrorAction Stop\n}".to_owned(),
+        "-Direction Inbound -Action Allow -Protocol TCP -Program $Executable -RemoteAddress LocalSubnet `".to_owned(),
+        "-Profile Domain, Private, Public -Enabled True -ErrorAction Stop".to_owned(),
+    ] {
+        assert!(install.contains(&expected), "install.ps1 lacks {expected}");
+    }
+    // No port and no address beyond the local subnets: what analyte.exe binds decides.
+    assert!(!install.contains("-LocalPort"));
+    assert!(!install.contains("-RemoteAddress Any"));
+    for expected in [
+        "$firewallRule = 'Analyte-Analyzers-In'".to_owned(),
+        "Remove-NetFirewallRule -Name $firewallRule -ErrorAction Stop".to_owned(),
+        format!("Windows Firewall rule '{name}' removed."),
+    ] {
+        assert!(
+            uninstall.contains(&expected),
+            "uninstall.ps1 lacks {expected}"
+        );
+    }
+    // Removed before the early return for a service that is already gone.
+    let removed = uninstall
+        .find("Remove-NetFirewallRule")
+        .ok_or("no removal")?;
+    let early = uninstall
+        .find("if (-not $existing)")
+        .ok_or("no early return")?;
+    assert!(removed < early);
+    assert!(installer.contains("its Windows Firewall rule"));
+    Ok(())
+}

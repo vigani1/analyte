@@ -100,6 +100,62 @@ impl Token {
         use subtle::ConstantTimeEq as _;
         bool::from(self.0.as_bytes().ct_eq(supplied.as_bytes()))
     }
+
+    /// The engine's answer to a command-line challenge (ADR 0025):
+    /// HMAC-SHA256 under this key of [`PROOF_CONTEXT`] and `nonce`. Only a
+    /// holder of the key can give it, and it cannot stand in for the key.
+    /// `None` only if HMAC refused the key, which it does for no length.
+    pub(in crate::admin) fn proof(&self, nonce: &Nonce) -> Option<[u8; 32]> {
+        use hmac::Mac as _;
+        Some(self.mac(nonce)?.finalize().into_bytes().into())
+    }
+
+    /// Whether `answer` is the [`Token::proof`] of `nonce`, compared in constant time.
+    pub(in crate::admin) fn proves(&self, nonce: &Nonce, answer: &[u8]) -> bool {
+        use hmac::Mac as _;
+        self.mac(nonce)
+            .is_some_and(|mac| mac.verify_slice(answer).is_ok())
+    }
+
+    fn mac(&self, nonce: &Nonce) -> Option<hmac::Hmac<sha2::Sha256>> {
+        use hmac::{KeyInit as _, Mac as _};
+        let mut mac = hmac::Hmac::<sha2::Sha256>::new_from_slice(self.0.as_bytes()).ok()?;
+        mac.update(PROOF_CONTEXT);
+        mac.update(nonce.0.as_bytes());
+        Some(mac)
+    }
+}
+
+/// What a proof covers besides the nonce, so it means nothing anywhere else.
+const PROOF_CONTEXT: &[u8] = b"analyte-cli-proof-v1\n";
+
+/// A command-line challenge: 32 to 128 lowercase hex digits (128 to 512 bits).
+pub(in crate::admin) struct Nonce(String);
+
+impl Nonce {
+    /// A fresh 256-bit nonce from the OS random source.
+    pub(in crate::admin) fn fresh() -> Result<Self, TokenError> {
+        let mut bytes = [0_u8; 32];
+        getrandom::fill(&mut bytes).map_err(TokenError::Random)?;
+        Ok(Self(hex(&bytes)))
+    }
+
+    /// Accepts only a bounded lowercase hex nonce; anything else is refused.
+    pub(in crate::admin) fn parse(text: &str) -> Option<Self> {
+        let plain = text
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte));
+        ((32..=128).contains(&text.len()) && plain).then(|| Self(text.to_owned()))
+    }
+
+    pub(in crate::admin) fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// Lowercase hex, as proofs and nonces travel.
+pub(in crate::admin) fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 fn io(operation: &'static str, source: std::io::Error) -> TokenError {

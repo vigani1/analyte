@@ -90,6 +90,16 @@ fn service_account() -> Result<Option<String>, Error> {
     Ok(account_sid(SERVICE_ACCOUNT)?.map(|(sid, _)| sid))
 }
 
+/// Whether a locked folder this process creates is one the service can read:
+/// it runs as the installed service account, or the service is not installed,
+/// so this process account is the one that runs Analyte.
+/// # Errors
+/// Reports a failed account lookup.
+pub(crate) fn creates_for_service() -> Result<bool, Error> {
+    let me = process_account()?;
+    Ok(service_account()?.is_none_or(|service| service == me))
+}
+
 /// The principals an allow entry may name, and those that may own the path.
 fn allowed(readers: Readers) -> Result<(Vec<String>, Vec<String>), Error> {
     let mut accounts = vec![process_account()?];

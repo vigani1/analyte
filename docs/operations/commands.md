@@ -53,17 +53,32 @@ if ($LASTEXITCODE -ge 2) { Write-Warning "Analyte needs someone now" }
 
 ## Machines
 
-Commands to list, add, change, test and remove machines come in a separate
-change (`analyte machines …`). Until then use the Setup and Machines pages, see
-[Connect](connect.md). `analyte doctor` already checks each machine's port,
-address or folder.
+These use the Setup page's own checks and write the same audit row; changes
+apply after `Restart-Service Analyte`. Options for each (models, ports,
+addresses, `--dry-run`, `--anyway`) are in [Connect](connect.md#from-the-command-line).
+
+| Task | Command |
+| --- | --- |
+| List machines, with the live state when the engine runs | `analyte --config $env:ANALYTE_CONFIG machines list` |
+| List machine models, ready or not | `analyte --config $env:ANALYTE_CONFIG machines models` |
+| List serial ports with adapter and USB serial number | `analyte --config $env:ANALYTE_CONFIG machines ports` |
+| Add a machine (not set up yet) | `analyte --config $env:ANALYTE_CONFIG --actor it-anna machines add hl7-1` |
+| Set it up: model, connection, lab app | `analyte --config $env:ANALYTE_CONFIG --actor it-anna machines set hl7-1 --model vendor/model --address 192.168.1.20 --port 5600 --lab-app main-lab` |
+| Listen-only connection test (nothing sent or stored) | `analyte --config $env:ANALYTE_CONFIG machines test hl7-1 --seconds 30` |
+| Remove a machine (its results and history stay) | `analyte --config $env:ANALYTE_CONFIG --actor it-anna machines remove hl7-1` |
 
 ## Lab apps
 
-Commands for lab apps and their keys come in a separate change
-(`analyte lab-apps …`). Until then use the Lab apps page, see
-[Connect](connect.md). `analyte doctor` already checks each lab app's address,
-certificate and keys, without showing the keys.
+Keys are never options: the command asks for them without showing them, or
+reads them from standard input. Details are in [Connect](connect.md#from-the-command-line).
+
+| Task | Command |
+| --- | --- |
+| List lab apps and where each key is found (never its value) | `analyte --config $env:ANALYTE_CONFIG lab-apps list` |
+| Add a lab app, then enter its two keys | `analyte --config $env:ANALYTE_CONFIG --actor it-anna lab-apps add main-lab --address https://lab.example.org` |
+| Change its address or timing | `analyte --config $env:ANALYTE_CONFIG --actor it-anna lab-apps set main-lab --request-timeout-seconds 20` |
+| Replace its keys | `analyte --config $env:ANALYTE_CONFIG --actor it-anna lab-apps keys main-lab` |
+| Remove a lab app no machine uses | `analyte --config $env:ANALYTE_CONFIG --actor it-anna lab-apps remove main-lab` |
 
 ## Needs review
 

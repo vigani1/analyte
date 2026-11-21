@@ -3,7 +3,8 @@ mod doctor;
 
 use super::more::{MACHINES, Scene};
 use super::*;
-use crate::admin::command::{Command, engine::EngineError};
+use crate::admin::command::Command;
+use crate::admin::engine::{self, Engine, EngineError};
 use crate::admin::overview::answer::Verdict;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -60,11 +61,9 @@ async fn overview_command_gives_the_pages_verdict_and_lines() -> Result<(), Erro
         "",
     )?;
     let program = Program::load(&file)?;
-    assert_eq!(
-        crate::admin::command::engine::answering(&program).await?,
-        env!("CARGO_PKG_VERSION")
-    );
-    let answer = crate::admin::command::engine::verdict(&program).await?;
+    let proven = Engine::proven(&program).await?;
+    assert_eq!(proven.version().await?, env!("CARGO_PKG_VERSION"));
+    let answer = proven.verdict().await?;
     let page = scene.get("/").await?;
     assert_ne!(answer.verdict, Verdict::Good);
     assert_ne!(answer.verdict, Verdict::Unknown);
@@ -81,11 +80,12 @@ async fn overview_command_gives_the_pages_verdict_and_lines() -> Result<(), Erro
         .ok_or("the seeded unknown outcome is a line")?;
     assert_eq!(uncertain.page, "Machine orders");
     assert_eq!(uncertain.command.as_deref(), Some("analyte orders list"));
-    // A key rotated after the engine started is refused, never worked around.
+    // After a key rotation the engine can no longer prove the new key, so the
+    // new key is never sent to it.
     crate::admin::rotate_token(scene.directory.path())?;
     assert!(matches!(
-        crate::admin::command::engine::verdict(&program).await,
-        Err(EngineError::KeyRefused(_))
+        engine::verdict(&program).await,
+        Err(EngineError::Unproven)
     ));
     scene.stop().await
 }
@@ -102,8 +102,8 @@ async fn overview_command_without_an_engine_is_unknown() -> Result<(), Error> {
     assert_eq!(code, ExitCode::from(3));
     let program = Program::load(&file)?;
     assert!(matches!(
-        crate::admin::command::engine::verdict(&program).await,
-        Err(EngineError::Silent { .. })
+        engine::verdict(&program).await,
+        Err(EngineError::NotRunning(_))
     ));
     // Without an admin page the program needs a machine to load.
     std::fs::write(
@@ -125,9 +125,107 @@ site = 'site.toml'
 ",
     )?;
     assert!(matches!(
-        crate::admin::command::engine::verdict(&Program::load(&off)?).await,
+        engine::verdict(&Program::load(&off)?).await,
         Err(EngineError::AdminOff)
     ));
+    Ok(())
+}
+
+/// A listener on a free loopback port that records what it hears and gives
+/// each connection `answer` (or nothing), as another program on the admin
+/// port might.
+async fn impostor(
+    answer: Option<String>,
+) -> Result<
+    (
+        u16,
+        Arc<std::sync::Mutex<Vec<u8>>>,
+        tokio::task::JoinHandle<()>,
+    ),
+    Error,
+> {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let port = listener.local_addr()?.port();
+    let heard = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let kept = heard.clone();
+    let owner = tokio::spawn(async move {
+        while let Ok((mut stream, _)) = listener.accept().await {
+            let mut bytes = [0_u8; 4096];
+            if let Ok(Ok(read)) =
+                tokio::time::timeout(Duration::from_secs(2), stream.read(&mut bytes)).await
+                && let (Some(heard), Ok(mut all)) = (bytes.get(..read), kept.lock())
+            {
+                all.extend_from_slice(heard);
+            }
+            if let Some(answer) = &answer {
+                let _ = stream.write_all(answer.as_bytes()).await;
+            }
+        }
+    });
+    Ok((port, heard, owner))
+}
+
+// ADR 0025 and ADR 0027 (threat: another program on the admin port while the
+// service is stopped): `overview` and `doctor` send the admin key only to a
+// listener that proves it holds it. A wrong proof, an error or silence never
+// receives the key or an Authorization header; overview is unknown (exit 3)
+// and doctor fails the engine check.
+#[tokio::test(flavor = "multi_thread")]
+async fn overview_and_doctor_never_send_the_key_to_an_unproven_listener() -> Result<(), Error> {
+    let wrong = format!("{{\"proof\":\"{}\"}}", "00".repeat(32));
+    let answers = [
+        Some(format!(
+            "HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: {}
+Connection: close
+
+{wrong}",
+            wrong.len()
+        )),
+        Some(
+            "HTTP/1.1 404 Not Found
+Content-Length: 0
+Connection: close
+
+"
+            .to_owned(),
+        ),
+        None,
+    ];
+    for answer in answers {
+        let (port, heard, owner) = impostor(answer).await?;
+        let folder = crate::admin::private_tempdir()?;
+        let key = crate::admin::rotate_token(folder.path())?;
+        let file = program_file(folder.path(), folder.path(), Some(port), "")?;
+        let actor = Identifier::new("tester")?;
+        let code =
+            crate::admin::command::run(&file, actor, Command::Overview { json: true }).await?;
+        assert_eq!(code, ExitCode::from(3));
+        let checks = crate::admin::command::doctor::checks(&file).await;
+        let engine = checks
+            .iter()
+            .find(|check| check.what == "Engine")
+            .ok_or("an engine check")?;
+        assert_eq!(engine.level, crate::admin::command::doctor::Level::Fail);
+        assert!(
+            engine
+                .found
+                .contains("could not prove it is this Analyte engine")
+                || engine.found.contains("did not answer"),
+            "{}",
+            engine.found
+        );
+        owner.abort();
+        let heard = String::from_utf8_lossy(&heard.lock().map_err(|_| "poisoned")?).into_owned();
+        assert!(heard.contains("GET /proof?nonce="), "{heard}");
+        assert!(
+            !heard.to_ascii_lowercase().contains("authorization"),
+            "{heard}"
+        );
+        assert!(!heard.contains(&key), "the admin key was sent");
+        assert!(!heard.contains("/overview/verdict"), "{heard}");
+    }
     Ok(())
 }
 

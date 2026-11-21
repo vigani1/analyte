@@ -7,8 +7,8 @@
 //! still wrote it), so results waiting for it are still delivered. A machine just
 //! added goes straight into step 1 of the setup steps.
 use super::{
-    RELOAD, SetupError, audit, copies, entries, needs_login, off_thread, page, refused, see_other,
-    site, stored,
+    RELOAD, Setup, SetupError, Via, audit, copies, entries, needs_login, off_thread, on_files,
+    page, refused, see_other, site, stored,
 };
 use crate::admin::machines::{self, DialogItem, RemoveDialog};
 use crate::admin::view::parts::Hover;
@@ -40,7 +40,7 @@ pub(in crate::admin) async fn add_form(
         return needs_login(&state);
     };
     let suggested = off_thread(&state, |state| {
-        site::entries(&state.config_path).map(|(_, listed)| entries::suggestion(&listed))
+        site::entries(state.setup.config()).map(|(_, listed)| entries::suggestion(&listed))
     })
     .await;
     let name = match suggested {
@@ -80,9 +80,9 @@ fn same_path(left: &std::path::Path, right: &std::path::Path) -> bool {
         .eq_ignore_ascii_case(&right.to_string_lossy())
 }
 
-fn add_blocking(state: &Context, id: &Identifier) -> Result<(PathBuf, site::Written), SetupError> {
-    let _writing = state.setup.writing()?;
-    let config = &state.config_path;
+fn add_blocking(setup: &Setup, id: &Identifier) -> Result<(PathBuf, site::Written), SetupError> {
+    let _writing = setup.writing()?;
+    let config = setup.config();
     let (program, listed) = site::entries(config)?;
     if entries::taken(&listed, id.as_str()) {
         return Err(SetupError::NameInUse(id.as_str().into()));
@@ -101,10 +101,70 @@ fn add_blocking(state: &Context, id: &Identifier) -> Result<(PathBuf, site::Writ
         config,
         &[
             (path.clone(), entries::starter_site(id)),
-            (config.clone(), edited),
+            (config.to_owned(), edited),
         ],
     )?;
     Ok((path, written))
+}
+
+/// A machine just added to the program file with its starter site file.
+pub(super) struct Added {
+    pub(super) id: Identifier,
+    /// Its starter site file.
+    pub(super) path: PathBuf,
+    pub(super) written: site::Written,
+    /// It joins the stored history of an earlier machine with this name.
+    pub(super) reused: bool,
+}
+
+impl Added {
+    /// The audit reason: what was added, by whom, and whether it joins a history.
+    pub(super) fn reason(&self, via: Via) -> String {
+        format!(
+            "{} added machine {} with starter site file {}{}",
+            via.machines(),
+            self.id.as_str(),
+            self.path.display(),
+            if self.reused {
+                "; joins that name's stored history (same analyzer confirmed)"
+            } else {
+                ""
+            }
+        )
+    }
+}
+
+/// Checks the name, refuses a listed one, asks for `same_analyzer` when the
+/// name has stored history, then adds the entry and its starter site file.
+pub(super) async fn add_machine(
+    setup: &Arc<Setup>,
+    store: &analyte_store::Handle,
+    name: &str,
+    same_analyzer: bool,
+) -> Result<Added, SetupError> {
+    let id = entries::name(name)?;
+    // A listed name is refused as such before its history is looked at;
+    // `add_blocking` checks again under the write lock.
+    let wanted = id.clone();
+    let taken = on_files(setup, move |setup| {
+        site::entries(setup.config()).map(|(_, listed)| entries::taken(&listed, wanted.as_str()))
+    })
+    .await?;
+    if taken {
+        return Err(SetupError::NameInUse(id.as_str().into()));
+    }
+    let reused = history(store, &id).await?;
+    if reused && !same_analyzer {
+        return Err(SetupError::HistoryNotConfirmed(id.as_str().into()));
+    }
+    let machine = id.clone();
+    let (path, written) = on_files(setup, move |setup| add_blocking(setup, &machine)).await?;
+    Ok(Added {
+        id,
+        path,
+        written,
+        reused,
+    })
 }
 
 /// POST /setup/add: check the name, add the entry and its starter site file.
@@ -117,57 +177,24 @@ pub(in crate::admin) async fn add(
     let Ok(Form(addition)) = form else {
         return refuse(&SetupError::IncompleteForm(RELOAD));
     };
-    let id = match entries::name(&addition.name) {
-        Ok(id) => id,
-        Err(error) => return refuse(&error),
-    };
-    // A listed name is refused as such before its history is looked at;
-    // `add_blocking` checks again under the write lock.
-    let name = id.clone();
-    let listed = off_thread(&state, move |state| {
-        site::entries(&state.config_path).map(|(_, listed)| entries::taken(&listed, name.as_str()))
-    })
-    .await;
-    match listed {
-        Ok(false) => {}
-        Ok(true) => return refuse(&SetupError::NameInUse(id.as_str().into())),
-        Err(error) => return refuse(&error),
-    }
-    let reused = match history(&state, &id).await {
-        Ok(reused) => reused,
-        Err(error) => return refuse(&error),
-    };
-    if reused && addition.same_analyzer.as_deref() != Some("yes") {
-        return refuse(&SetupError::HistoryNotConfirmed(id.as_str().into()));
-    }
-    let machine = id.clone();
-    let added = off_thread(&state, move |state| add_blocking(state, &machine)).await;
-    let (path, written) = match added {
+    let same = addition.same_analyzer.as_deref() == Some("yes");
+    let added = match add_machine(&state.setup, &state.store, &addition.name, same).await {
         Ok(added) => added,
         Err(error) => return refuse(&error),
     };
-    let reason = format!(
-        "setup page added machine {} with starter site file {}{}",
-        id.as_str(),
-        path.display(),
-        if reused {
-            "; joins that name's stored history (same analyzer confirmed)"
-        } else {
-            ""
-        }
-    );
-    let audited = audit(&state, &session, "setup-add", id.as_str(), reason).await;
-    tracing::info!(machine = id.as_str(), "setup page added a machine");
+    let id = added.id.as_str();
+    let audited = audit(&state, &session, "setup-add", id, added.reason(Via::Page)).await;
+    tracing::info!(machine = id, "setup page added a machine");
     // Straight into step 1, unless the audit failed: that is shown, never hidden.
     match audited {
-        Ok(()) => see_other(&format::setup_href(id.as_str(), "")),
+        Ok(()) => see_other(&format::setup_href(id, "")),
         Err(error) => added_page(
             &state,
             &session,
-            id.as_str(),
-            reused,
-            &path,
-            &written,
+            id,
+            added.reused,
+            &added.path,
+            &added.written,
             &error,
         ),
     }
@@ -226,7 +253,7 @@ fn added_page(
 /// that is not set up yet; Add a machine when none is listed; otherwise the setup page.
 pub(in crate::admin) async fn first(State(state): State<Arc<Context>>) -> Response {
     let listed = off_thread(&state, |state| {
-        site::entries(&state.config_path).map(|(_, listed)| {
+        site::entries(state.setup.config()).map(|(_, listed)| {
             let waiting = listed
                 .iter()
                 .find(|entry| entry.definition.is_none())
@@ -243,16 +270,20 @@ pub(in crate::admin) async fn first(State(state): State<Arc<Context>>) -> Respon
     }
 }
 
-async fn history(state: &Context, id: &Identifier) -> Result<bool, SetupError> {
+async fn history(store: &analyte_store::Handle, id: &Identifier) -> Result<bool, SetupError> {
     let machine = id.clone();
-    stored::<_, analyte_store::OperatorError>(state, move |store| store.has_history(&machine))
+    stored::<_, analyte_store::OperatorError>(store, move |store| store.has_history(&machine))
         .await
         .map_err(SetupError::Store)
 }
 
-async fn unfinished(state: &Context, id: &str) -> Result<Unfinished, SetupError> {
+/// What is still open for machine `id` in the store.
+pub(super) async fn unfinished(
+    store: &analyte_store::Handle,
+    id: &str,
+) -> Result<Unfinished, SetupError> {
     let machine = Identifier::new(id).map_err(SetupError::InvalidName)?;
-    stored::<_, analyte_store::OperatorError>(state, move |store| store.unfinished(&machine))
+    stored::<_, analyte_store::OperatorError>(store, move |store| store.unfinished(&machine))
         .await
         .map_err(SetupError::Store)
 }
@@ -366,35 +397,32 @@ fn delivery_sentence(lab_app: &LabApp, open: &Result<Unfinished, SetupError>) ->
     }
 }
 
-/// GET /setup/{id}/remove: the machine's page with the Remove dialog over it,
-/// saying what is still unfinished.
-pub(in crate::admin) async fn confirm_remove(
-    State(state): State<Arc<Context>>,
-    session: Option<Extension<Arc<Session>>>,
-    Path(id): Path<String>,
-) -> Response {
-    let Some(Extension(session)) = session.filter(|Extension(s)| s.is_signed_in()) else {
-        return Problem::SignIn.page(&state, None, Section::Machines(Some(&id)));
-    };
-    let machine = id.clone();
-    let facts = off_thread(&state, move |state| {
-        site::installed(&state.config_path, &machine)?;
-        let kept = lab_app(&state.config_path, &machine);
-        let (_, listed) = site::entries(&state.config_path)?;
+/// What removing a machine would leave behind, as the Remove dialog and the
+/// `machines remove` command say it.
+pub(super) struct Preview {
+    /// What happens to its waiting results.
+    pub(super) sending: Hover,
+    /// What is still unfinished, then what removing keeps.
+    pub(super) items: Vec<DialogItem>,
+    /// Something is unfinished or could not be counted, so removing needs "anyway".
+    pub(super) warned: bool,
+}
+
+/// Reads what is still unfinished for machine `id` and what removing it keeps.
+pub(super) async fn preview_removal(
+    setup: &Arc<Setup>,
+    store: &analyte_store::Handle,
+    id: &str,
+) -> Result<Preview, SetupError> {
+    let machine = id.to_owned();
+    let (kept, last) = on_files(setup, move |setup| {
+        site::installed(setup.config(), &machine)?;
+        let kept = lab_app(setup.config(), &machine);
+        let (_, listed) = site::entries(setup.config())?;
         Ok((kept, listed.len() == 1))
     })
-    .await;
-    let (kept, last) = match facts {
-        Ok(facts) => facts,
-        Err(error) => {
-            return Problem::Refused(error.to_string()).page(
-                &state,
-                Some(&session),
-                Section::Machines(Some(&id)),
-            );
-        }
-    };
-    let open = unfinished(&state, &id).await;
+    .await?;
+    let open = unfinished(store, id).await;
     let (mut items, warned) = warning(&open);
     if last {
         items.push(DialogItem {
@@ -412,19 +440,47 @@ pub(in crate::admin) async fn confirm_remove(
         icon: Icon::Ok,
         text: "Analyte keeps a dated copy of the old settings.".into(),
     });
+    Ok(Preview {
+        sending: delivery_sentence(&kept, &open),
+        items,
+        warned,
+    })
+}
+
+/// GET /setup/{id}/remove: the machine's page with the Remove dialog over it,
+/// saying what is still unfinished.
+pub(in crate::admin) async fn confirm_remove(
+    State(state): State<Arc<Context>>,
+    session: Option<Extension<Arc<Session>>>,
+    Path(id): Path<String>,
+) -> Response {
+    let Some(Extension(session)) = session.filter(|Extension(s)| s.is_signed_in()) else {
+        return Problem::SignIn.page(&state, None, Section::Machines(Some(&id)));
+    };
+    let preview = match preview_removal(&state.setup, &state.store, &id).await {
+        Ok(preview) => preview,
+        Err(error) => {
+            return Problem::Refused(error.to_string()).page(
+                &state,
+                Some(&session),
+                Section::Machines(Some(&id)),
+            );
+        }
+    };
+    let warned = preview.warned;
     let dialog = RemoveDialog {
         action: format::setup_href(&id, "remove"),
         csrf: session.csrf.form_value().to_owned(),
         cancel: format::machine_href(&id),
         title: format!("Remove {id}?"),
         text: format::REMOVED_ADVICE,
-        sending: delivery_sentence(&kept, &open),
+        sending: preview.sending,
         list_title: if warned {
             "Still unfinished"
         } else {
             "Before you remove it"
         },
-        items,
+        items: preview.items,
         anyway: warned,
         button: Some(if warned { "Remove anyway" } else { "Remove" }),
     };
@@ -491,23 +547,98 @@ pub(in crate::admin) struct Removal {
     anyway: Option<String>,
 }
 
-struct Removed {
-    backups: Vec<PathBuf>,
+/// What removing a machine changed.
+pub(super) struct Removed {
+    pub(super) backups: Vec<PathBuf>,
     /// The lab app kept for delivery, none for a machine not set up, or why its
     /// settings could not be read (then nothing is kept).
-    kept: Result<Option<String>, crate::installation::config::Error>,
+    pub(super) kept: Result<Option<String>, crate::installation::config::Error>,
     /// Where the site file went: a dated copy, nowhere (missing or still named by
     /// another machine), or why moving it failed after the program was changed.
-    site: Result<Option<PathBuf>, SetupError>,
+    pub(super) site: Result<Option<PathBuf>, SetupError>,
+    /// What was unfinished at removal, in words.
+    pub(super) summary: String,
+    pub(super) anyway: bool,
 }
 
-fn remove_blocking(state: &Context, id: &str) -> Result<Removed, SetupError> {
-    let _writing = state.setup.writing()?;
-    let config = &state.config_path;
+impl Removed {
+    /// Where its site file went, in one sentence.
+    pub(super) fn site_sentence(&self) -> String {
+        match &self.site {
+            Ok(Some(path)) => format!(
+                "Its settings file was kept as a dated copy: {}",
+                path.display()
+            ),
+            Ok(None) => {
+                "Its settings file was left in place (missing or used by another machine)".into()
+            }
+            Err(error) => format!("Its settings file could not be moved: {error}"),
+        }
+    }
+
+    /// What happens to its lab app and waiting results, in one sentence.
+    pub(super) fn kept_sentence(&self) -> String {
+        match &self.kept {
+            Ok(Some(destination)) => format!(
+                concat!(
+                    "Lab app {} stays on the Lab apps page; results still waiting for it are sent ",
+                    "after the restart until none are left"
+                ),
+                destination
+            ),
+            Ok(None) => "It was not set up, so it had no lab app".into(),
+            Err(error) => {
+                format!(
+                    "Its lab app settings could not be read, so waiting results stay stored until that lab app is added on the Lab apps page: {error}"
+                )
+            }
+        }
+    }
+
+    /// The audit reason for removing machine `id`.
+    pub(super) fn reason(&self, via: Via, id: &str) -> String {
+        format!(
+            "{} removed machine {id}; store untouched; at removal: {}; removed anyway: {}; {}; {}",
+            via.machines(),
+            self.summary,
+            if self.anyway { "yes" } else { "no" },
+            self.site_sentence(),
+            self.kept_sentence()
+        )
+    }
+}
+
+/// Refuses while something is unfinished unless `anyway`, then takes machine
+/// `id` out of the program file; the store is untouched.
+pub(super) async fn remove_machine(
+    setup: &Arc<Setup>,
+    store: &analyte_store::Handle,
+    id: &str,
+    anyway: bool,
+) -> Result<Removed, SetupError> {
+    let open = unfinished(store, id).await;
+    let summary = match &open {
+        Ok(open) if open.is_empty() => "nothing unfinished".to_owned(),
+        Ok(open) => open_work(open).join("; "),
+        Err(error) => format!("unfinished work could not be counted: {error}"),
+    };
+    if !anyway && !matches!(&open, Ok(open) if open.is_empty()) {
+        return Err(SetupError::UnfinishedWork(id.to_owned(), summary));
+    }
+    let machine = id.to_owned();
+    let mut removed = on_files(setup, move |setup| remove_blocking(setup, &machine)).await?;
+    removed.summary = summary;
+    removed.anyway = anyway;
+    Ok(removed)
+}
+
+fn remove_blocking(setup: &Setup, id: &str) -> Result<Removed, SetupError> {
+    let _writing = setup.writing()?;
+    let config = setup.config();
     let (program, listed) = site::entries(config)?;
     let (_, installed) = site::installed(config, id)?;
     let kept = configured_destination(config, id);
-    let mut changes = vec![(config.clone(), entries::removed(&program, &listed, id)?)];
+    let mut changes = vec![(config.to_owned(), entries::removed(&program, &listed, id)?)];
     // A lab app the site file still wrote moves into lab-apps.toml, so results
     // waiting for it stay deliverable after the site file is moved away.
     if let Ok(Some(destination)) = &kept {
@@ -534,6 +665,8 @@ fn remove_blocking(state: &Context, id: &str) -> Result<Removed, SetupError> {
         backups: written.backups,
         kept: kept.map(|kept| kept.map(|destination| destination.name.as_str().to_owned())),
         site,
+        summary: String::new(),
+        anyway: false,
     })
 }
 
@@ -555,50 +688,12 @@ pub(in crate::admin) async fn remove(
         return refused(&SetupError::IncompleteForm(RELOAD));
     };
     let anyway = removal.anyway.as_deref() == Some("yes");
-    let open = unfinished(&state, &id).await;
-    let summary = match &open {
-        Ok(open) if open.is_empty() => "nothing unfinished".to_owned(),
-        Ok(open) => open_work(open).join("; "),
-        Err(error) => format!("unfinished work could not be counted: {error}"),
-    };
-    if !anyway && !matches!(&open, Ok(open) if open.is_empty()) {
-        return refused(&SetupError::UnfinishedWork(id.clone(), summary));
-    }
-    let machine = id.clone();
-    let removed = off_thread(&state, move |state| remove_blocking(state, &machine)).await;
-    let removed = match removed {
+    let removed = match remove_machine(&state.setup, &state.store, &id, anyway).await {
         Ok(removed) => removed,
         Err(error) => return refused(&error),
     };
-    let site = match &removed.site {
-        Ok(Some(path)) => format!(
-            "Its settings file was kept as a dated copy: {}",
-            path.display()
-        ),
-        Ok(None) => {
-            "Its settings file was left in place (missing or used by another machine)".into()
-        }
-        Err(error) => format!("Its settings file could not be moved: {error}"),
-    };
-    let kept = match &removed.kept {
-        Ok(Some(destination)) => format!(
-            concat!(
-                "Lab app {} stays on the Lab apps page; results still waiting for it are sent ",
-                "after the restart until none are left"
-            ),
-            destination
-        ),
-        Ok(None) => "It was not set up, so it had no lab app".into(),
-        Err(error) => {
-            format!(
-                "Its lab app settings could not be read, so waiting results stay stored until that lab app is added on the Lab apps page: {error}"
-            )
-        }
-    };
-    let reason = format!(
-        "setup page removed machine {id}; store untouched; at removal: {summary}; removed anyway: {}; {site}; {kept}",
-        if anyway { "yes" } else { "no" }
-    );
+    let kept = removed.kept_sentence();
+    let reason = removed.reason(Via::Page, &id);
     let audited = audit(&state, &session, "setup-remove", &id, reason).await;
     tracing::info!(machine = id.as_str(), "setup page removed a machine");
     let mut lines = Vec::new();

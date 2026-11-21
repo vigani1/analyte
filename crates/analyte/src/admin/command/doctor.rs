@@ -6,10 +6,10 @@
 //! closed at once, and only while the engine is stopped; a lab app gets one
 //! GET with no keys or data. It prints no key, token or value, and reads the
 //! keys only to say whether they are there. Opening an existing store may
-//! upgrade an older layout, as every store command does (ADR 0025).
+//! upgrade an older layout, as every store command does (ADR 0027).
 use super::chain;
-use super::engine::{self, EngineError};
 use crate::admin::Error;
+use crate::admin::engine::{self, EngineError};
 use crate::admin::overview::answer::{Answer, Verdict};
 use crate::admin::view::format;
 use crate::installation::config::Program;
@@ -19,12 +19,13 @@ use std::{future::Future, path::Path, process::ExitCode, time::Duration};
 
 /// How long one check may take; a slower one fails with that reason.
 const CHECK_TIME: Duration = Duration::from_secs(8);
+/// How long reading the firewall rule may take: PowerShell starts slowly.
+#[cfg(windows)]
+const FIREWALL_TIME: Duration = Duration::from_secs(7);
 /// How long a machine or lab app has to accept a connection.
 const CONNECT_TIME: Duration = Duration::from_secs(3);
-/// The name the Windows firewall rule for analyzers has when the installer
-/// adds one; doctor only reads whether it exists.
 #[cfg(windows)]
-const FIREWALL_RULE: &str = "Analyte – analyzers on the lab network";
+use crate::admin::setup::{FIREWALL_RULE, FIREWALL_RULE_NAME};
 
 /// How a check came out; ordered from best to worst.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
@@ -253,42 +254,35 @@ async fn installation(program: &Program) -> Vec<Check> {
 
 /// Whether the engine answers, its version, and the Overview's verdict.
 async fn engine(program: &Program) -> (Vec<Check>, Engine, Option<Answer>) {
-    let version = match tokio::time::timeout(CHECK_TIME, engine::answering(program)).await {
+    let stop = |level: Level, state: Engine, error: &EngineError| {
+        let check = Check {
+            level,
+            what: "Engine".into(),
+            found: chain(error),
+            fix: Some(super::overview::advice(error).into()),
+        };
+        (vec![check], state, None)
+    };
+    // The key goes only to a listener that proves it holds it (ADR 0025).
+    let proven = match tokio::time::timeout(CHECK_TIME, engine::Engine::proven(program)).await {
+        Ok(Ok(proven)) => proven,
+        Ok(Err(error @ EngineError::AdminOff)) => {
+            return stop(Level::Warn, Engine::Unknown, &error);
+        }
+        // Something holds the admin address but is not this engine, or the
+        // key cannot be read to check: whether the engine runs is unknown.
+        Ok(Err(
+            error @ (EngineError::Unproven | EngineError::Key(_) | EngineError::KeyThread(_)),
+        )) => {
+            return stop(Level::Fail, Engine::Unknown, &error);
+        }
+        Ok(Err(error)) => return stop(Level::Fail, Engine::Stopped, &error),
+        Err(_) => return stop(Level::Fail, Engine::Stopped, &EngineError::TimedOut),
+    };
+    let version = match tokio::time::timeout(CHECK_TIME, proven.version()).await {
         Ok(Ok(version)) => version,
-        Ok(Err(EngineError::AdminOff)) => {
-            return (
-                vec![warn(
-                    "Engine",
-                    "the program file has no [admin] table, so doctor cannot ask the engine how it runs",
-                    super::overview::advice(&EngineError::AdminOff),
-                )],
-                Engine::Unknown,
-                None,
-            );
-        }
-        Ok(Err(error)) => {
-            return (
-                vec![fail(
-                    "Engine",
-                    chain(&error),
-                    super::overview::advice(&error),
-                )],
-                Engine::Stopped,
-                None,
-            );
-        }
-        Err(_) => {
-            let error = EngineError::TimedOut;
-            return (
-                vec![fail(
-                    "Engine",
-                    chain(&error),
-                    super::overview::advice(&error),
-                )],
-                Engine::Stopped,
-                None,
-            );
-        }
+        Ok(Err(error)) => return stop(Level::Fail, Engine::Running, &error),
+        Err(_) => return stop(Level::Fail, Engine::Running, &EngineError::TimedOut),
     };
     let mut checks = vec![if version == env!("CARGO_PKG_VERSION") {
         ok("Engine", format!("running version {version} and answering"))
@@ -302,7 +296,7 @@ async fn engine(program: &Program) -> (Vec<Check>, Engine, Option<Answer>) {
             "run the analyte.exe the service runs, or update both to the same version",
         )
     }];
-    let answer = match tokio::time::timeout(CHECK_TIME, engine::verdict(program)).await {
+    let answer = match tokio::time::timeout(CHECK_TIME, proven.verdict()).await {
         Ok(Ok(answer)) => answer,
         Ok(Err(error)) => {
             checks.push(warn(
@@ -853,7 +847,7 @@ fn users_group() -> Check {
 }
 
 /// Whether the installer's firewall rule lets analyzers connect, when a
-/// machine connects to Analyte; read with `netsh`, which changes nothing.
+/// machine connects to Analyte; read with `Get-NetFirewallRule`, which changes nothing.
 #[cfg(windows)]
 async fn firewall(program: &Program) -> Vec<Check> {
     let ports: Vec<String> = program
@@ -877,25 +871,34 @@ async fn firewall(program: &Program) -> Vec<Check> {
         return Vec::new();
     }
     let what = "Firewall";
-    let shown = tokio::process::Command::new("netsh")
-        .args(["advfirewall", "firewall", "show", "rule"])
-        .arg(format!("name={FIREWALL_RULE}"))
+    // Read-only: finds the installer's rule by its fixed Name and changes nothing.
+    let script = format!(
+        "if (Get-NetFirewallRule -Name '{FIREWALL_RULE_NAME}' -ErrorAction SilentlyContinue) {{ exit 0 }} else {{ exit 1 }}"
+    );
+    let shown = tokio::process::Command::new("powershell.exe")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .kill_on_drop(true)
         .status();
-    vec![match tokio::time::timeout(CONNECT_TIME, shown).await {
-        Ok(Ok(status)) if status.success() => {
-            ok(what, format!("the rule \"{FIREWALL_RULE}\" is there"))
-        }
-        Ok(Ok(_)) => warn(
+    vec![match tokio::time::timeout(FIREWALL_TIME, shown).await {
+        Ok(Ok(status)) if status.success() => ok(
+            what,
+            format!("the rule \"{FIREWALL_RULE}\" ({FIREWALL_RULE_NAME}) is there"),
+        ),
+        Ok(Ok(status)) if status.code() == Some(1) => warn(
             what,
             format!(
-                "no rule named \"{FIREWALL_RULE}\" lets analyzers connect to {}",
+                "no rule \"{FIREWALL_RULE}\" ({FIREWALL_RULE_NAME}) lets analyzers connect to {}",
                 ports.join(", ")
             ),
             "run the installer again, or allow inbound TCP to these ports from the lab network in Windows Defender Firewall",
+        ),
+        Ok(Ok(status)) => warn(
+            what,
+            format!("the firewall rules could not be read (PowerShell ended with {status})"),
+            "check the rule in Windows Defender Firewall",
         ),
         Ok(Err(error)) => warn(
             what,
