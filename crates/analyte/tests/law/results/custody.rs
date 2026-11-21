@@ -502,6 +502,13 @@ async fn parked_result_reprocesses_after_mapping_fix() -> Result<(), Error> {
             .contains(&format!("MSA|AE|{control}"))
     );
     assert_eq!(count(&path, "outbox")?, 0);
+    // One test code missing from the test mapping is one Needs review item
+    // (owner report 2026-11-21).
+    let parked: Vec<String> = database(&path)?
+        .prepare("SELECT evidence FROM parked")?
+        .query_map([], |r| r.get(0))?
+        .collect::<Result<_, _>>()?;
+    assert_eq!(parked.len(), 1, "{parked:?}");
     let id: String = database(&path)?.query_row("SELECT id FROM receipts", [], |r| r.get(0))?;
     let id: analyte_model::ReceiptId = serde_json::from_str(&id)?;
     running.stop().await?;
