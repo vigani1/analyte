@@ -1,7 +1,8 @@
 #Requires -Version 5.1
 # Registers the Analyte service, protects its folders and creates the local
 # group 'Analyte users' with the person who ran it. Run by hand or by the
-# click-through installer (analyte.iss), which passes the four switches below.
+# click-through installer (analyte.iss), which passes the four switches below
+# and, when its PATH task is ticked, -AddToPath.
 [CmdletBinding()]
 param(
     [string]$Executable = "$env:ProgramFiles\Analyte\analyte.exe",
@@ -16,7 +17,10 @@ param(
     # "Start engine" works; never stop it or change it (ADR 0019).
     [switch]$UsersMayStart,
     # Start the service at the end instead of leaving it stopped.
-    [switch]$Start
+    [switch]$Start,
+    # Add the program's folder to the system PATH (path.ps1), so a new
+    # PowerShell window runs "analyte" without its full path.
+    [switch]$AddToPath
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -200,6 +204,10 @@ try {
     throw "Adding the Windows Firewall rule '$firewallName' failed: $($_.Exception.Message)"
 }
 Write-Output "Windows Firewall rule '$firewallName' allows TCP to $Executable from this PC's own network only."
+
+if ($AddToPath) {
+    & (Join-Path $PSScriptRoot 'path.ps1') -Action Add -Folder (Split-Path -Path $Executable -Parent)
+}
 
 # ADR 0021 (Windows sign-in): members of this local group, and the PC's
 # administrators, may sign in to Analyte with their Windows account. It is made

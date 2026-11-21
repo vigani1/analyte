@@ -248,7 +248,7 @@ fn windows_installer_and_scripts_agree() -> Outcome {
         r#"+ '{sys}\WindowsPowerShell\v1.0\Modules') + '" && "' + PowerShell"#,
         "  if ServiceReady then",
         "function GetCustomSetupExitCode: Integer;",
-        "  if InstallError <> '' then\n    Result := 10",
+        "  if (InstallError <> '') or (PathError <> '') then\n    Result := 10",
     ] {
         assert!(installer.contains(expected), "analyte.iss lacks {expected}");
     }
@@ -355,12 +355,12 @@ fn windows_installer_installs_the_desktop_app() -> Outcome {
         format!(
             r#"Name: "{{autoprograms}}\Analyte"; Filename: "{{app}}\analyte-app.exe"; AppUserModelID: "{identifier}";"#
         ),
-        r#"ValueName: "Analyte"; ValueData: """{app}\analyte-app.exe"" --tray"; Flags: uninsdeletevalue; Tasks: autostart"#.to_owned(),
+        r#"ValueName: "Analyte"; ValueData: """{app}\analyte-app.exe"" --tray"; Flags: uninsdeletevalue; Components: app; Tasks: autostart"#.to_owned(),
         r#"Name: "autostart"; Description: "Start Analyte when I sign in""#.to_owned(),
         r"SaveStringToFile(ExpandConstant('{app}\analyte-app.toml'),".to_owned(),
         "+ 'admin_port = ' + Port + #13#10, False)".to_owned(),
         r#"Type: files; Name: "{app}\analyte-app.toml""#.to_owned(),
-        r#"Filename: "{app}\analyte-app.exe"; Description: "Open Analyte"; Flags: postinstall nowait skipifsilent runasoriginaluser; Check: CanOpenApp"#.to_owned(),
+        r#"Filename: "{app}\analyte-app.exe"; Description: "Open Analyte"; Flags: postinstall nowait skipifsilent runasoriginaluser; Components: app; Check: CanOpenApp"#.to_owned(),
         r"Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM analyte-app.exe',".to_owned(),
         "  Result := '';\n  CloseDesktopApp;".to_owned(),
         "  begin\n    CloseDesktopApp;".to_owned(),
@@ -457,5 +457,221 @@ fn windows_firewall_rule_lets_only_local_analyzers_in() -> Outcome {
         .ok_or("no early return")?;
     assert!(removed < early);
     assert!(installer.contains("its Windows Firewall rule"));
+    Ok(())
+}
+
+/// The lines of a script that are not comments starting with `comment`.
+fn code<'a>(script: &'a str, comment: &'a str) -> impl Iterator<Item = &'a str> {
+    script
+        .lines()
+        .filter(move |line| !line.trim_start().starts_with(comment))
+}
+
+/// The lines of one `[Section]` of the Inno Setup script, without comments.
+fn section<'a>(script: &'a str, name: &str) -> Vec<&'a str> {
+    let header = format!("[{name}]");
+    script
+        .lines()
+        .skip_while(|line| line.trim() != header)
+        .skip(1)
+        .take_while(|line| !line.starts_with('['))
+        .filter(|line| !line.trim().is_empty() && !line.trim_start().starts_with(';'))
+        .collect()
+}
+
+// Owner request 2026-11-21 (engine-only install): one page offers two setup
+// types, the engine with the app (the default) or the engine only; every app
+// entry belongs to the optional "app" component, and choosing the engine only
+// on an upgrade removes what uninstall removes for the app. Inno Setup's
+// /COMPONENTS needs a custom type, so silent installs choose with /TYPE; the
+// guide says so.
+#[test]
+fn windows_installer_offers_the_engine_only() -> Outcome {
+    let installer = read("windows/analyte.iss")?;
+    assert_eq!(
+        section(&installer, "Types"),
+        [
+            r#"Name: "full"; Description: "Engine and Analyte app (recommended)""#,
+            r#"Name: "engine"; Description: "Engine only (set up from PowerShell or a browser)""#,
+        ]
+    );
+    assert_eq!(
+        section(&installer, "Components"),
+        [
+            r#"Name: "engine"; Description: "Analyte engine (the Windows service)"; Types: full engine; Flags: fixed"#,
+            r#"Name: "app"; Description: "Analyte app (window and tray icon)"; Types: full"#,
+        ]
+    );
+    assert!(!installer.contains("iscustom"));
+    for name in ["Files", "Icons", "Registry", "Run", "Tasks"] {
+        for line in section(&installer, name) {
+            let app = (line.contains("analyte-app.exe") || line.contains("autostart"))
+                && !line.contains("Flags: deletevalue");
+            let in_app = line.contains("Components: app;") || line.ends_with("Components: app");
+            assert_eq!(app, in_app, "[{name}] {line}");
+        }
+    }
+    // The app's uninstall cleanup, repeated for a switch to the engine only.
+    let switch = section(&installer, "InstallDelete");
+    for line in section(&installer, "UninstallDelete") {
+        let expected = format!("{line}; Components: not app");
+        assert!(
+            switch.contains(&expected.as_str()),
+            "[InstallDelete] lacks {expected}"
+        );
+    }
+    for expected in [
+        r#"Type: files; Name: "{app}\analyte-app.exe"; Components: not app"#,
+        r#"Type: files; Name: "{autoprograms}\Analyte.lnk"; Components: not app"#,
+    ] {
+        assert!(switch.contains(&expected), "[InstallDelete] lacks {expected}");
+    }
+    for expected in [
+        r#"ValueType: none; ValueName: "Analyte"; Flags: deletevalue; Components: not app"#,
+        "  if WizardIsComponentSelected('app') then\n    WriteAppSettings;",
+        "and not (WizardIsComponentSelected('app') and WebView2Present);",
+        "(InstallError = '') and not WizardIsComponentSelected('app') then",
+        "+ '  ' + AnalyteCommand + ' doctor' + #13#10",
+        "+ '  ' + AnalyteCommand + ' machines list' + #13#10 + #13#10",
+        "/TYPE=full or /TYPE=engine",
+    ] {
+        assert!(installer.contains(expected), "analyte.iss lacks {expected}");
+    }
+    // Upgrades keep the earlier choice: Inno Setup's default, never switched off.
+    for directive in [
+        "UsePreviousSetupType",
+        "UsePreviousComponents",
+        "UsePreviousTasks",
+    ] {
+        assert!(
+            !code(&installer, ";").any(|line| line.contains(directive)),
+            "{directive} changed"
+        );
+    }
+    Ok(())
+}
+
+// Owner request 2026-11-21 (engine-only install): a ticked-by-default task, for
+// both setup types, adds the program folder to the system PATH through
+// path.ps1, the one PATH rule that install.ps1 -AddToPath, the installer and
+// uninstall.ps1 share; it edits the registry value directly, keeping its type,
+// and never uses setx, which cuts the value at 1024 characters.
+#[test]
+fn windows_path_task_uses_one_rule() -> Outcome {
+    let installer = read("windows/analyte.iss")?;
+    let install = read("windows/install.ps1")?;
+    let uninstall = read("windows/uninstall.ps1")?;
+    let path = read("windows/path.ps1")?;
+    let task = section(&installer, "Tasks")
+        .into_iter()
+        .find(|line| line.starts_with(r#"Name: "path";"#))
+        .ok_or("no PATH task")?;
+    assert_eq!(
+        task,
+        r#"Name: "path"; Description: "Let me type ""analyte"" in PowerShell (add Analyte to the PATH)""#
+    );
+    for expected in [
+        "ChangesEnvironment=yes",
+        "  if WizardIsTaskSelected('path') then\n    Switches := Switches + ' -AddToPath';",
+        r"RunScript(ExpandConstant('{app}\packaging\windows\path.ps1'),",
+        r#"'-Action Remove -Folder "' + ExpandConstant('{app}') + '"', PathOutput, Code)"#,
+        r#"'-Executable "' + ExpandConstant('{app}\analyte.exe') + '"', Output, Code)"#,
+    ] {
+        assert!(installer.contains(expected), "analyte.iss lacks {expected}");
+    }
+    assert!(install.contains(
+        "& (Join-Path $PSScriptRoot 'path.ps1') -Action Add -Folder (Split-Path -Path $Executable -Parent)"
+    ));
+    assert!(uninstall.contains(
+        "& (Join-Path $PSScriptRoot 'path.ps1') -Action Remove -Folder (Split-Path -Path $Executable -Parent)"
+    ));
+    // Removed before the early return for a service that is already gone.
+    let removed = uninstall.find("'path.ps1'").ok_or("no PATH removal")?;
+    let early = uninstall
+        .find("if (-not $existing)")
+        .ok_or("no early return")?;
+    assert!(removed < early);
+    for expected in [
+        "[Microsoft.Win32.Registry]::LocalMachine.OpenSubKey($environment, $write)",
+        "$kind = $key.GetValueKind('Path')",
+        "[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames",
+        "$key.SetValue('Path', $updated, $kind)",
+        "[CmdletBinding(SupportsShouldProcess)]",
+    ] {
+        assert!(path.contains(expected), "path.ps1 lacks {expected}");
+    }
+    for (script, comment) in [
+        (&installer, ";"),
+        (&install, "#"),
+        (&uninstall, "#"),
+        (&path, "#"),
+    ] {
+        for line in code(script, comment) {
+            assert!(!line.contains("setx"), "{line}");
+            assert!(!line.contains("SetEnvironmentVariable"), "{line}");
+        }
+    }
+    Ok(())
+}
+
+// Owner request 2026-11-21 (engine-only install): path.ps1 adds the folder once
+// (whatever the case, a trailing backslash or a missing trailing ";"), removes
+// only entries naming it, and keeps every other entry as written and in order.
+#[cfg(windows)]
+#[test]
+fn windows_path_entries_are_added_once_and_removed_exactly() -> Outcome {
+    use std::fmt::Write as _;
+    let folder = r"C:\Program Files\Analyte";
+    let cases = [
+        ("Add", r"C:\a;C:\b", r"C:\a;C:\b;C:\Program Files\Analyte"),
+        ("Add", r"C:\a;C:\b;", r"C:\a;C:\b;C:\Program Files\Analyte"),
+        ("Add", "", r"C:\Program Files\Analyte"),
+        (
+            "Add",
+            r"%SystemRoot%\system32;c:\program files\analyte\",
+            r"%SystemRoot%\system32;c:\program files\analyte\",
+        ),
+        (
+            "Remove",
+            r"%SystemRoot%\system32;C:\Program Files\Analyte;C:\b",
+            r"%SystemRoot%\system32;C:\b",
+        ),
+        ("Remove", r"C:\a;;C:\b;", r"C:\a;;C:\b;"),
+        ("Remove", r"C:\Program Files\Analyte", ""),
+        (
+            "Remove",
+            r"C:\a;C:\Program Files\Analyte2;C:\Program Files\Analyte\",
+            r"C:\a;C:\Program Files\Analyte2",
+        ),
+    ];
+    let script = packaging().join("windows/path.ps1");
+    let mut command = format!(". '{}'", script.display());
+    for (action, path, _) in &cases {
+        write!(
+            command,
+            "; '[' + ({action}-PathEntry '{path}' '{folder}') + ']'"
+        )?;
+    }
+    let output = std::process::Command::new("powershell.exe")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            &command,
+        ])
+        .output()?;
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout)?;
+    let results: Vec<&str> = stdout.lines().collect();
+    assert_eq!(results.len(), cases.len(), "{stdout}");
+    for ((action, path, expected), result) in cases.iter().zip(results) {
+        assert_eq!(result, format!("[{expected}]"), "{action} {path}");
+    }
     Ok(())
 }
