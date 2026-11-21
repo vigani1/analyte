@@ -1,13 +1,15 @@
 // title-bar.js: the window buttons of the Analyte app's own title bar (ADR 0019).
 //
 // The bar is the app's own page in a webview of its own, the only webview
-// allowed any Tauri command, and only the window commands used here and by
-// Tauri's data-tauri-drag-region (drag, and double-click to maximize). The
-// engine's pages, below it in another webview, are allowed none.
+// allowed any Tauri command, and only the window commands used here. The
+// engine's pages, below it in another webview, are allowed none. Dragging,
+// double-clicking and right-clicking the bar are Windows' own, through the
+// bar's app-region (ADR 0022).
 //
 // The bar asks the app nothing: the app calls analyteTitleBar(view) with the
-// engine's state and whether the window is maximized, every word already
-// written. A right-click shows no web page menu (Back, Reload, Inspect).
+// engine's state, whether the window is maximized and where the mouse is on
+// the maximize button, every word already written. A right-click on a button
+// shows no web page menu (Back, Reload, Inspect).
 'use strict';
 (function () {
   var bar = document.querySelector('.title-bar');
@@ -38,6 +40,7 @@
     bar.setAttribute('data-sizing', view.sizing);
     toggle.setAttribute('aria-label', view.button);
     toggle.title = view.button;
+    toggle.setAttribute('data-pointer', view.pointer);
     state.setAttribute('aria-label', view.label);
     state.title = view.word;
     state.firstElementChild.className = view.dot;

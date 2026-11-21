@@ -29,19 +29,28 @@ show another site in its window, or say anything about patients or results.
   the pipe's two lines (`line`), the pipe client (`pipe`, Windows), the
   once-per-30-s guard and where each answer leads.
 - `title_bar`: what the title bar shows (the engine's dot and word, Maximize
-  or Restore) and how the window splits between the bar and the pages.
+  or Restore and the button's look), how the window splits between the bar
+  and the pages, where the maximize button sits, and which window-menu items
+  each sizing offers.
 - `local`: the app's own pages: Engine off (`templates/engine-off.html`) and
   the title bar (`templates/title-bar.html`, `assets/title-bar.js`), their
   files compiled in from `crates/analyte/assets`, and the Start engine post.
-- `shell` (Windows): Tauri, the tray, the window, start at sign-in, the log and
-  the one task that watches the engine.
+- `shell` (Windows): Tauri, the tray, the window and its frame features
+  (`frame`), start at sign-in, the log and the one task that watches the
+  engine.
 
 **The window and its two webviews:** the window has no Windows frame. On top
 is the title bar, the app's own page in a webview labelled `title-bar`; below
 it the engine's pages in a webview labelled `pages`. Only the bar has a
-capability (`capabilities/title-bar.json`): drag, double-click to maximize,
-minimize, maximize or restore, and close, from the app's own origin. The
-pages have none. This uses Tauri's multi-webview API, which needs its
+capability (`capabilities/title-bar.json`): minimize, maximize or restore,
+and close, from the app's own origin. The pages have none. The bar is a
+Windows caption through WebView2's `app-region`, so Windows drags the window,
+maximizes it on a double-click and shows the window menu on a right-click.
+`shell/frame.rs`, the app's only `unsafe` code (ADR 0022), adds what a page
+cannot: a native window over the maximize button so Windows shows snap
+layouts on hover (the app gives the page's button its hover and pressed
+looks), Alt+Space for the window menu, and the menu's items matching the
+window. This uses Tauri's multi-webview API, which needs its
 `unstable` feature, so Tauri is pinned exactly in the workspace; a test fails
 when Tauri or the crates under it change version, until the bar has been
 tried on the new ones and ADR 0019 names them. `build.rs` links the Windows

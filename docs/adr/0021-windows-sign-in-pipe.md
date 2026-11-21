@@ -2,7 +2,9 @@
 
 Status: accepted, 2026-11-21 (approved by the owner, with the unsafe exception
 in decision 8). Refines [ADR 0017](0017-windows-access-list-unsafe.md), whose
-shared Windows helpers now live in the module this record adds.
+shared Windows helpers now live in the module this record adds. Refined by
+[ADR 0022](0022-title-bar-snap-layouts-and-window-menu.md): the app crate has
+one unsafe module of its own, for its title bar.
 
 ## Context
 
