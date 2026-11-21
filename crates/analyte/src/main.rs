@@ -291,6 +291,18 @@ fn main() -> Result<ExitCode, Error> {
         let config = program_file(config)?;
         return Ok(runtime.block_on(analyte::admin::command::run(&config, actor, pages))?);
     }
+    // The setup commands print their own "Fix this" line and end with their
+    // own exit code (0 done, 1 refused, 3 partly done, 4 test saw no data).
+    if let Command::Machines { command } = command {
+        let config = program_file(config)?;
+        let outcome = runtime.block_on(analyte::admin::run_machines(&config, actor, command));
+        return Ok(outcome.into());
+    }
+    if let Command::LabApps { command } = command {
+        let config = program_file(config)?;
+        let outcome = runtime.block_on(analyte::admin::run_lab_apps(&config, actor, command));
+        return Ok(outcome.into());
+    }
     runtime.block_on(execute(Cli {
         config,
         actor,
@@ -322,16 +334,6 @@ async fn execute(cli: Cli) -> Result<ExitCode, Error> {
     let explicit = cli.config;
     let config = || program_file(explicit.clone());
     let done = match cli.command {
-        // The setup commands print their own "Fix this" line and end with their
-        // own exit code (0 done, 1 refused, 3 partly done, 4 test saw no data).
-        Command::Machines { command } => {
-            let outcome = analyte::admin::run_machines(&config()?, cli.actor, command).await;
-            return Ok(outcome.into());
-        }
-        Command::LabApps { command } => {
-            let outcome = analyte::admin::run_lab_apps(&config()?, cli.actor, command).await;
-            return Ok(outcome.into());
-        }
         Command::RetryAlerts { endpoint, reason } => analyte::operator::alert_recovery::retry(
             &Program::load(&config()?)?,
             required_actor(cli.actor)?,
@@ -411,9 +413,10 @@ async fn execute(cli: Cli) -> Result<ExitCode, Error> {
         Command::Deliveries { command } => deliveries(&config()?, cli.actor, command).await,
         Command::Restore { from, reason } => restore(&config()?, actor, from, &reason).await,
         Command::Backup { target } => backup(&config()?, target).await,
-        Command::Pages(_) | Command::Completions { .. } => {
-            Err(std::io::Error::other("dispatched in main").into())
-        }
+        Command::Pages(_)
+        | Command::Completions { .. }
+        | Command::Machines { .. }
+        | Command::LabApps { .. } => Err(std::io::Error::other("dispatched in main").into()),
     };
     done.map(|()| ExitCode::SUCCESS)
 }
