@@ -5,11 +5,11 @@
 {%- import "components/forms.html" as forms %}
 {%- block step %}
 <section class="stack stack--lg" aria-labelledby="s3">
-<div><h2 id="s3" class="wizard__title">Test the connection</h2><p class="muted wizard__text">Analyte only listens. It sends nothing to the machine, and it shows only how many bytes arrive and their framing characters, never the message.</p></div>
+<div><h2 id="s3" class="wizard__title">Test the connection</h2><p class="muted wizard__text">{% if let Some(start) = start %}{% if start.connects %}Analyte connects to the machine and only reads.{% else %}Analyte only listens.{% endif %}{% else %}Analyte only listens.{% endif %} It sends nothing to the machine, and it shows only how many bytes arrive and their framing characters, never the message.</p></div>
 {%- if let Some(start) = start %}
 <form class="card card--pad listen" method="post" action="{{ start.action }}">
 <input type="hidden" name="csrf" value="{{ start.csrf }}">{% call forms::hidden_fields(start.hidden) %}{% endcall %}
-<div class="listen__progress"><p class="eyebrow listen__target">Listens on</p><p class="listen__on">{% call display::hover(start.target.shown, start.target.exact) %}{% endcall %}</p><p class="subtle note">For up to {{ start.limit }} seconds. It cannot use a port the running service is using. Start it, then ask the machine to send a result.</p></div>
+<div class="listen__progress"><p class="eyebrow listen__target">{% if start.connects %}Connects to{% else %}Listens on{% endif %}</p><p class="listen__on">{% call display::hover(start.target.shown, start.target.exact) %}{% endcall %}</p><p class="subtle note">For up to {{ start.limit }} seconds. {% if start.connects %}It cannot test a machine the running service already connects to.{% else %}It cannot use a port the running service is using.{% endif %} Start it, then ask the machine to send a result.</p></div>
 <button type="submit" class="btn btn--primary">{{ start.label }}</button>
 </form>
 {%- else %}

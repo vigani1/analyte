@@ -26,10 +26,30 @@
 <span class="field__hint">If the USB adapter has its own serial number, Analyte saves that number, so it finds the machine again even if the port name changes; otherwise it saves the port name.</span>
 </fieldset>
 <div class="field"><label class="field__label" for="s2-port">Or type a port name</label><input id="s2-port" class="input mono" name="port_name" maxlength="1024" value="{{ typed }}" placeholder="{{ placeholder }}"><span class="field__hint">If yours isn’t listed. A typed name wins over a port picked above.</span></div>
-{%- when Inputs::Network { listens, host, port } %}
+{%- when Inputs::Listens { hosts, typed, port } %}
+{%- match hosts %}
+{%- when Ok(hosts) %}
+<fieldset class="wizard__set stack">
+<legend class="field__label wizard__legend">This PC’s address</legend>
+<ul class="choices">
+{%- for host in hosts %}
+<li><label class="choice"><input type="radio" name="host" value="{{ host.value }}" required{% if host.checked %} checked{% endif %}><span><span class="choice__title mono">{{ host.address }}</span> <span class="choice__meta">– {{ host.meta }}</span></span><span></span></label></li>
+{%- endfor %}
+</ul>
+<span class="field__hint">Type the chosen address into the machine’s host (LIS) address setting. With every network card, type the address of the card on the machine’s network.</span>
+</fieldset>
 <div class="form-grid">
-<div class="field"><label class="field__label" for="s2-host">IP address</label><input id="s2-host" class="input mono" name="host" required maxlength="64" value="{{ host }}"><span class="field__hint">{% if listens %}This PC’s address that Analyte listens on; 0.0.0.0 means every network card.{% else %}The machine’s IP address.{% endif %}</span></div>
-<div class="field"><label class="field__label" for="s2-tcp">Port</label><input id="s2-tcp" class="input mono" name="tcp_port" required maxlength="5" inputmode="numeric" value="{{ port }}"><span class="field__hint">{% if listens %}The port the machine is set to send to.{% else %}The machine’s port.{% endif %}</span></div>
+{%- when Err(why) %}
+{% call feedback::alert(crate::admin::view::Tone::Problem, "This PC’s addresses could not be listed", why) %}{% endcall %}
+<div class="form-grid">
+<div class="field"><label class="field__label" for="s2-host">This PC’s address</label><input id="s2-host" class="input mono" name="host" required maxlength="64" value="{{ typed }}"><span class="field__hint">An address of this PC on the machine’s network, or 0.0.0.0 for every network card. Type the same address into the machine’s host (LIS) settings.</span></div>
+{%- endmatch %}
+<div class="field"><label class="field__label" for="s2-tcp">Port</label><input id="s2-tcp" class="input mono" name="tcp_port" required maxlength="5" inputmode="numeric" value="{{ port }}"><span class="field__hint">Type the same port number into the machine’s host (LIS) settings.</span></div>
+</div>
+{%- when Inputs::Connects { host, port } %}
+<div class="form-grid">
+<div class="field"><label class="field__label" for="s2-host">Machine’s IP address</label><input id="s2-host" class="input mono" name="host" required maxlength="64" value="{{ host }}"><span class="field__hint">As shown in the machine’s network settings, such as 192.168.1.50.</span></div>
+<div class="field"><label class="field__label" for="s2-tcp">Machine’s port</label><input id="s2-tcp" class="input mono" name="tcp_port" required maxlength="5" inputmode="numeric" value="{{ port }}"><span class="field__hint">The port the machine waits on for the host (LIS) connection.</span></div>
 </div>
 {%- when Inputs::Folder(folder) %}
 <div class="field"><label class="field__label" for="s2-folder">Folder</label><input id="s2-folder" class="input mono" name="folder" required maxlength="1024" value="{{ folder }}"><span class="field__hint">Where the machine writes its result files.</span></div>
