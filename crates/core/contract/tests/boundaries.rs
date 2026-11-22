@@ -304,3 +304,50 @@ fn signature_header_accepts_exactly_4096_bytes() -> TestResult {
     }
     Ok(())
 }
+
+// ADR 0032: source.model is a vendor/model folder key, each part 1 to 64
+// lower-case letters, digits or hyphens; nothing is tidied or guessed, and a
+// delivery or event without one is refused.
+#[test]
+fn model_ids_are_vendor_model_keys() -> TestResult {
+    use analyte_contract::document::ModelId;
+    assert_eq!(
+        ModelId::new("roche", "cobas-e411")?.as_str(),
+        "roche/cobas-e411"
+    );
+    assert_eq!(ModelId::parse("yhlo/iflash-1200")?.vendor(), "yhlo");
+    let longest = format!("{}/{}", "a".repeat(64), "9".repeat(64));
+    assert_eq!(ModelId::parse(&longest)?.as_str(), longest);
+    let too_long = format!("{}/x", "a".repeat(65));
+    for bad in [
+        "",
+        "roche",
+        "roche/",
+        "/cobas",
+        "Roche/cobas",
+        "roche/cobas e411",
+        "roche/cobas/e411",
+        "roche/cobas_e411",
+        too_long.as_str(),
+    ] {
+        assert!(ModelId::parse(bad).is_err(), "{bad}");
+        assert!(
+            serde_json::from_value::<ModelId>(json!(bad)).is_err(),
+            "{bad}"
+        );
+    }
+    for name in ["delivery", "event"] {
+        let mut document = fixture(name)?;
+        document["source"]
+            .as_object_mut()
+            .ok_or("source")?
+            .remove("model");
+        let bytes = serde_json::to_vec(&document)?;
+        if name == "delivery" {
+            assert!(decode::<Delivery>(&bytes).is_err());
+        } else {
+            assert!(decode::<OrderEvent>(&bytes).is_err());
+        }
+    }
+    Ok(())
+}

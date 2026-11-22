@@ -3,8 +3,10 @@
 ## Releases and packages
 
 Analyte is downloaded from GitHub Releases: a Windows installer, Linux `.deb`
-and `.rpm` packages, `.zip` and `.tar.gz` archives, a SHA256SUMS file and
-build provenance for every asset (details below).
+and `.rpm` packages, `.zip` and `.tar.gz` archives, the files lab-app
+developers build against (the contract schema, its OpenAPI document and the
+machine catalog), a SHA256SUMS file and build provenance for every asset
+(details below).
 
 Nothing is published to crates.io yet: every crate inherits `publish = false`
 from the workspace. Publishing a library crate promises outside users a
@@ -31,7 +33,8 @@ Do not create a tag to test this workflow.
    `git push origin v0.1.0`. Never move an existing release tag.
 3. Wait for the Release workflow on that tag. It verifies tag/version equality,
    formatting, Clippy, tests, docs, minimum Rust and cargo-deny using CI's
-   commands. Both native builds use the pinned Rust toolchain and locked
+   commands, and that the committed contract schema, OpenAPI document and
+   machine catalog are what this tag generates (`analyte-publish --check`). Both native builds use the pinned Rust toolchain and locked
    dependencies, without all features; a feature check refuses `test-hooks`.
 4. Review the draft release and download its assets into an empty directory:
    `gh release download v0.1.0 --repo vigani1/analyte --dir release-check`.
@@ -39,7 +42,8 @@ Do not create a tag to test this workflow.
    run `sha256sum --check SHA256SUMS`. On Windows, compare
    `Get-FileHash -Algorithm SHA256 <asset>` with each entry in SHA256SUMS.
 5. Verify provenance for **each** archive, installer, package,
-   `dependencies.json` and SHA256SUMS:
+   `dependencies.json`, the four contract and catalog `.json` files and
+   SHA256SUMS:
    `gh attestation verify <asset> --repo vigani1/analyte --signer-workflow vigani1/analyte/.github/workflows/release.yml`.
    Inspect the verified statement and confirm its source commit and tag match
    the intended release, rather than merely accepting a successful signature.
@@ -61,6 +65,9 @@ runners:
 | `analyte-<tag>-x86_64-windows-setup.exe` | Click-through installer built with Inno Setup 6.7.4 from the same files. Setup types "Engine and app" (default) or "Engine only", and two tasks, ticked by default: start the app at sign-in (with the app only) and add Analyte to the system PATH; silent installs choose with `/TYPE=full` or `/TYPE=engine` |
 | `analyte-<tag>-x86_64-unknown-linux-gnu.tar.gz` | analyte, machines, packaging/linux, LICENSE, README.md (no desktop app: it is Windows only) |
 | `analyte_<version>-1_amd64.deb`, `analyte-<version>-1.x86_64.rpm` | Packages built with nfpm 2.48.0 from the same files |
+| `contract-v1.schema.json` | JSON Schema (draft 2020-12) of every contract v1 request and answer body ([ADR 0032](../adr/0032-machine-model-and-published-schema.md)) |
+| `openapi.json` | OpenAPI 3.1 document of the three calls a lab app answers; its bodies refer to `contract-v1.schema.json` |
+| `machines.json`, `machines.schema.json` | The machine catalog: each shipped model's id (the `source.model` value), name, vendor, protocol, evidence level, ready or blocked, and code systems; with its JSON Schema |
 
 The archives have a versioned top-level directory. Follow the packaged service
 instructions with the extracted program. The build tools are downloaded at a
@@ -77,8 +84,10 @@ above. The draft release notes say the same.
 output, including the resolved graph and development dependencies. It is a
 workspace inventory, not a target-specific SBOM or a claim that every listed
 package is linked. This fallback avoids adding a new third-party SBOM tool.
-SHA256SUMS covers the archives, installer, packages and inventory; it cannot
-hash itself. GitHub provenance covers every asset. Actions are pinned to full commit
+The four contract and catalog files are copied from `docs/contract/`, where
+`cargo run -p analyte-publish` writes them and CI checks that regenerating
+changes nothing. SHA256SUMS covers the archives, installer, packages,
+inventory and these files; it cannot hash itself. GitHub provenance covers every asset. Actions are pinned to full commit
 SHAs with release comments; no credentials beyond GITHUB_TOKEN are needed.
 
 If a workflow fails, inspect the failed job before rerunning. A failure before

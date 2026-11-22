@@ -53,7 +53,7 @@ async fn near_limit_message_is_answered() -> Result<(), Error> {
     for (size, code) in [(6_000, "AA"), (15_000, "AE")] {
         let temp = tempfile::tempdir()?;
         let path = config(temp.path(), false)?;
-        let machine = temp.path().join("machine.toml");
+        let machine = analyte_fixtures::definition_path(temp.path(), "synthetic");
         std::fs::write(
             &machine,
             std::fs::read_to_string(&machine)?

@@ -177,6 +177,7 @@ pub(crate) async fn persist_prepared(
         corrections,
         interpretation,
         destination,
+        model: machine.model.clone(),
         conflict,
         policy,
         action,

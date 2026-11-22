@@ -149,7 +149,11 @@ pub(super) async fn session(
         }
         StreamSession::Vidas(settings) => {
             let session = driver::Session::new(machine, settings, store, host.conn, host.stop);
-            Ok(driver::serve(async { vidas::Host::open(settings) }, session).await?)
+            Ok(driver::serve(
+                async { vidas::Host::open(machine.machine(), settings) },
+                session,
+            )
+            .await?)
         }
         StreamSession::Autolyser(settings) => {
             let session = driver::Session::new(machine, settings, store, host.conn, host.stop);

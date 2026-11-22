@@ -220,6 +220,7 @@ async fn slow_endpoint_never_blocks_store_or_intake() -> TestResult {
         let delivery = encode_delivery(
             &content,
             &metadata,
+            &model()?,
             Identifier::new("app")?,
             jiff::Timestamp::now(),
         )?;

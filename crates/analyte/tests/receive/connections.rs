@@ -7,8 +7,9 @@ use analyte_fixtures::ConfigEdit as _;
 fn law_roles_validate_without_startup_io() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), false)?;
-    std::fs::write(
-        temp.path().join("machine.toml"),
+    analyte_fixtures::write_definition(
+        temp.path(),
+        "synthetic",
         include_str!("../../../core/config/examples/law.toml"),
     )?;
     let loaded = Program::load(&path)?;
@@ -24,8 +25,9 @@ fn law_roles_validate_without_startup_io() -> Result<(), Error> {
         "law_manager"
     );
     assert!(!temp.path().join("data").exists());
-    std::fs::write(
-        temp.path().join("machine.toml"),
+    analyte_fixtures::write_definition(
+        temp.path(),
+        "synthetic",
         include_str!("../../../core/config/examples/law.toml")
             .rewrite("kind = \"tcp_server\"", "kind = \"tcp_client\""),
     )?;
@@ -266,7 +268,7 @@ async fn bind_failure_does_not_stop_other_machines() -> Result<(), Error> {
     )?;
     let mut file = std::fs::read_to_string(&path)?;
     file.push_str(
-        "\n[[machines]]\nid='occupied'\ndefinition='machine.toml'\nsite='occupied-site.toml'\n",
+        "\n[[machines]]\nid='occupied'\ndefinition='test/synthetic/machine.toml'\nsite='occupied-site.toml'\n",
     );
     std::fs::write(&path, file)?;
     let program = Program::load(&path)?;
@@ -390,10 +392,11 @@ async fn capacity_probe_bounded_and_pickup_keeps_original() -> Result<(), Error>
     let path = config(temp.path(), false)?;
     let incoming = temp.path().join("incoming");
     std::fs::create_dir(&incoming)?;
-    let definition = std::fs::read_to_string(temp.path().join("machine.toml"))?
-        .rewrite("tcp_server", "watched_folder")
-        .rewrite("acknowledgment = \"store_and_forward\"\n", "");
-    std::fs::write(temp.path().join("machine.toml"), definition)?;
+    let definition =
+        std::fs::read_to_string(analyte_fixtures::definition_path(temp.path(), "synthetic"))?
+            .rewrite("tcp_server", "watched_folder")
+            .rewrite("acknowledgment = \"store_and_forward\"\n", "");
+    analyte_fixtures::write_definition(temp.path(), "synthetic", definition)?;
     let site = format!(
         "schema_version=1\nretention='keep'\nendpoint={}\n[destination]\nname='demo'\nbase_url='https://lab.example.invalid'\napi_key_name='demo-api'\nsigning_key_name='demo-signing'\n",
         toml::Value::String(incoming.to_string_lossy().into_owned())

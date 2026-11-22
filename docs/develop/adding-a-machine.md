@@ -19,15 +19,20 @@ For an interface requiring new protocol code, follow
    and fill in only confirmed settings: connection, deadlines, size limits,
    test codes, units and where the sample ID is
    ([gather confirmed settings](#gather-confirmed-settings)). Lab addresses
-   and keys stay in each lab's site file, never in this folder.
+   and keys stay in each lab's site file, never in this folder. The folder
+   key `vendor/model` becomes the model id in every delivery's
+   `source.model`, so choose it once
+   ([ADR 0032](../adr/0032-machine-model-and-published-schema.md)).
 3. **Write its `README.md`** from the [template](../../machines/README.md#readme-template):
    what is known, the sources in your own words, what is still open and the
    evidence level.
 4. **Add recordings** of its conversations in `recordings/`, synthetic or
    de-identified ([capture, de-identify and replay](#capture-de-identify-and-replay)).
-5. **Run `cargo test --workspace`.** It finds every `machine.toml`, loads it
-   the way a lab PC would, checks the README's evidence level and replays every
-   recording through the running service. No test code is needed.
+5. **Run `cargo run -p analyte-publish`, then `cargo test --workspace`.** The
+   first adds the model to `docs/contract/machines.json`; the tests find every
+   `machine.toml`, load it the way a lab PC would, check the README's
+   evidence level, replay every recording through the running service and
+   check the catalog is current. No test code is needed.
 6. **Open a pull request** with the folder ([contribute the definition](#contribute-the-definition)).
 
 A machine without real recordings stays at `documented`, however complete its

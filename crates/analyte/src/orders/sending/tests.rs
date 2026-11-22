@@ -17,6 +17,14 @@ use std::{path::Path, time::Duration};
 
 use analyte_fixtures::UnlimitedSpace as Space;
 
+/// The synthetic example definition's model (ADR 0032).
+fn model() -> Result<analyte_contract::document::ModelId, Error> {
+    Ok(analyte_contract::document::ModelId::new(
+        "example",
+        "synthetic-astm",
+    )?)
+}
+
 async fn open(path: &Path) -> Result<Handle, Error> {
     let limits = {
         let mut limits = analyte_fixtures::store_limits();
@@ -100,13 +108,39 @@ async fn only_interrupted_transfer_recovers_as_uncertain() -> Result<(), Error> 
     assert_eq!(completed.state, OrderState::Sending);
     assert_eq!(interrupted.state, OrderState::Sending);
     assert!(
-        matches!(super::super::event(&interrupted),Err(analyte_store::OrderError::DeliveryBuild(error)) if matches!(error.downcast_ref::<analyte_contract::DocumentError>(),Some(analyte_contract::DocumentError::InternalOrderState)))
+        matches!(super::super::event(&model()?)(&interrupted),Err(analyte_store::OrderError::DeliveryBuild(error)) if matches!(error.downcast_ref::<analyte_contract::DocumentError>(),Some(analyte_contract::DocumentError::InternalOrderState)))
     );
-    finished(&store, &completed, analyte_dialog::astm::End::Normal).await?;
+    finished(
+        &store,
+        &model()?,
+        &completed,
+        analyte_dialog::astm::End::Normal,
+    )
+    .await?;
     store.shutdown(deadline()?).await?;
     let mut store = open(&path).await?;
-    recover(&store).await?;
-    recover(&store).await?;
+    // ADR 0032: with its machine no longer configured, an interrupted order
+    // keeps its state, since its event could not name the model.
+    recover(&store, &std::collections::HashMap::new()).await?;
+    let kept = interrupted_key.clone();
+    let state = store
+        .request::<_, FixtureError>(deadline()?, move |store| {
+            Ok(store
+                .machine_order(&kept)?
+                .ok_or(analyte_store::OrderError::Corruption)?
+                .state)
+        })
+        .await?;
+    assert_eq!(state, OrderState::Sending);
+    let models = [
+        completed_key.machine.clone(),
+        interrupted_key.machine.clone(),
+    ]
+    .into_iter()
+    .map(|machine| Ok((machine, model()?)))
+    .collect::<Result<_, Error>>()?;
+    recover(&store, &models).await?;
+    recover(&store, &models).await?;
     assert_recovered_outcomes(&store, completed_key, interrupted_key).await?;
     store.shutdown(deadline()?).await?;
     Ok(())
@@ -181,6 +215,7 @@ async fn cleanup_attempts_every_key_and_keeps_failures() -> Result<(), Error> {
     let owner = Identifier::new("owner")?;
     let error = settle_owned(
         &store,
+        &model()?,
         vec![key.clone(), key.clone(), key],
         &owner,
         "disconnect",

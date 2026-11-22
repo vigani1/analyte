@@ -369,7 +369,7 @@ mod tests {
         root: &std::path::Path,
         machine: &str,
     ) -> Result<crate::installation::config::Program, Error> {
-        std::fs::write(root.join("machine.toml"), machine)?;
+        analyte_fixtures::write_definition(root, "synthetic", machine)?;
         std::fs::write(
             root.join("site.toml"),
             include_str!("../../../../core/config/examples/site.toml"),
@@ -378,7 +378,7 @@ mod tests {
         std::fs::write(
             &path,
             analyte_fixtures::program_with_limits(
-                "[[machines]]\nid='synthetic'\ndefinition='machine.toml'\nsite='site.toml'\n",
+                "[[machines]]\nid='synthetic'\ndefinition='test/synthetic/machine.toml'\nsite='site.toml'\n",
                 &analyte_store::Limits {
                     reserve_bytes: 1,
                     database_bytes: 100000000,

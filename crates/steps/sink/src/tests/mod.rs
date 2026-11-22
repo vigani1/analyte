@@ -115,6 +115,12 @@ fn name(value: &str) -> Result<NamespacedId, TextError> {
     })
 }
 
+/// The synthetic example definition's model (ADR 0032).
+fn model() -> Result<analyte_contract::document::ModelId, analyte_contract::document::InvalidModel>
+{
+    analyte_contract::document::ModelId::new("example", "synthetic-astm")
+}
+
 fn receipt() -> Result<ReceiptMetadata, Box<dyn std::error::Error>> {
     Ok(ReceiptMetadata {
         id: ReceiptId::try_from(uuid::Uuid::now_v7())?,
@@ -311,6 +317,7 @@ async fn check_delivery_conflicts(store: &Handle, worker: &Worker<'_>, peer: &Pe
     let delivery = encode_delivery(
         &original,
         &metadata,
+        &model()?,
         Identifier::new("app")?,
         jiff::Timestamp::now(),
     )?;
@@ -332,6 +339,7 @@ async fn check_delivery_conflicts(store: &Handle, worker: &Worker<'_>, peer: &Pe
     let mut conflicting = encode_delivery(
         &original,
         &metadata,
+        &model()?,
         Identifier::new("app")?,
         jiff::Timestamp::now(),
     )?;
@@ -356,6 +364,7 @@ async fn check_delivery_conflicts(store: &Handle, worker: &Worker<'_>, peer: &Pe
     let delivery = encode_delivery(
         &correction,
         &metadata,
+        &model()?,
         Identifier::new("app")?,
         jiff::Timestamp::now(),
     )?;
@@ -367,6 +376,7 @@ async fn check_delivery_conflicts(store: &Handle, worker: &Worker<'_>, peer: &Pe
     let delivery = encode_delivery(
         &other,
         &metadata,
+        &model()?,
         Identifier::new("app")?,
         jiff::Timestamp::now(),
     )?;
@@ -513,6 +523,7 @@ async fn check_pause_and_resume(
     let mut delivery = encode_delivery(
         &original,
         &metadata,
+        &model()?,
         Identifier::new("app")?,
         jiff::Timestamp::now(),
     )?;
@@ -731,6 +742,7 @@ async fn enqueue_retry_correction(store: &Handle) -> TestResult {
     let delivery = encode_delivery(
         &correction,
         &metadata,
+        &model()?,
         Identifier::new("app")?,
         jiff::Timestamp::now(),
     )?;

@@ -110,7 +110,7 @@ async fn capture_listener(
 ) -> Result<Option<TcpListener>, Error> {
     let listener = if client {
         let listener = TcpListener::bind("127.0.0.1:0").await?;
-        let definition = root.join("hl7.toml");
+        let definition = analyte_fixtures::definition_path(root, "hl7");
         std::fs::write(
             &definition,
             std::fs::read_to_string(&definition)?.rewrite("tcp_server", "tcp_client"),

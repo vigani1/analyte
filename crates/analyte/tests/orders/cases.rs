@@ -8,7 +8,7 @@ use tokio::{
 };
 
 pub(super) fn configure_orders(root: &Path, send: bool) -> Result<(), Error> {
-    let path = root.join("astm.toml");
+    let path = analyte_fixtures::definition_path(root, "astm");
     let text = std::fs::read_to_string(&path)?;
     // Normal query outcomes must not depend on a loaded runner meeting the teaching deadline.
     let section = include_str!("../../../core/config/examples/orders.toml")
@@ -241,7 +241,7 @@ async fn deadline_counts_transfer_and_cancel_gets_nothing() -> Result<(), Error>
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), true)?;
     configure_orders(temp.path(), false)?;
-    let definition = temp.path().join("astm.toml");
+    let definition = analyte_fixtures::definition_path(temp.path(), "astm");
     std::fs::write(
         &definition,
         std::fs::read_to_string(&definition)?.rewrite("deadline_ms = 30000", "deadline_ms = 20"),
@@ -288,7 +288,7 @@ async fn missing_position_rejects_query_order() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), true)?;
     configure_orders(temp.path(), false)?;
-    let definition = temp.path().join("astm.toml");
+    let definition = analyte_fixtures::definition_path(temp.path(), "astm");
     let mut text = std::fs::read_to_string(&definition)?;
     text.push_str("\nposition = {group=\"order\",record=\"O\",field=4,component=1,repetition=1}\n");
     std::fs::write(&definition, text)?;
@@ -339,6 +339,23 @@ async fn disconnect_before_ack_keeps_uncertain_outcome() -> Result<(), Error> {
     Ok(())
 }
 
+/// The one order event the receiver stored says `rejected` with `code`, and
+/// names the machine model.
+fn assert_rejected_event(receiver_path: &Path, code: &str) -> Result<(), Error> {
+    let bytes: Vec<u8> = rusqlite::Connection::open(receiver_path)?.query_row(
+        "SELECT body FROM deliveries WHERE kind='order-events'",
+        [],
+        |r| r.get(0),
+    )?;
+    let body: serde_json::Value = serde_json::from_slice(&bytes)?;
+    let text = |pointer: &str| body.pointer(pointer).and_then(serde_json::Value::as_str);
+    assert_eq!(text("/state"), Some("rejected"));
+    assert_eq!(text("/source_status"), Some(code));
+    // ADR 0032: an order event names the machine's model, its definition's folder key.
+    assert_eq!(text("/source/model"), Some("test/astm"));
+    Ok(())
+}
+
 // LIS02 section 8.4.4 and section 8.4.16.1; explicit synthetic destinations.
 async fn astm_context_exchange(
     send: bool,
@@ -350,7 +367,7 @@ async fn astm_context_exchange(
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), true)?;
     configure_orders(temp.path(), send)?;
-    let definition = temp.path().join("astm.toml");
+    let definition = analyte_fixtures::definition_path(temp.path(), "astm");
     let mut text = std::fs::read_to_string(&definition)?;
     // ADR 0030: the specimen code system is declared with its destination.
     if destinations {
@@ -392,21 +409,7 @@ async fn astm_context_exchange(
                 .is_err()
         );
         wait_state(&path, "done", 1).await?;
-        let bytes: Vec<u8> = rusqlite::Connection::open(&receiver_path)?.query_row(
-            "SELECT body FROM deliveries WHERE kind='order-events'",
-            [],
-            |r| r.get(0),
-        )?;
-        let body: serde_json::Value = serde_json::from_slice(&bytes)?;
-        assert_eq!(
-            body.get("state").and_then(serde_json::Value::as_str),
-            Some("rejected")
-        );
-        assert_eq!(
-            body.get("source_status")
-                .and_then(serde_json::Value::as_str),
-            Some(code)
-        );
+        assert_rejected_event(&receiver_path, code)?;
     } else {
         machine_state(&path, "Sent", 1).await?;
         wait_state(&path, "done", 1).await?;

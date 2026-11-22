@@ -67,14 +67,14 @@ pub fn config(root: &Path, astm: bool) -> Result<Fixture, Error> {
         } else {
             include_str!("../../../core/config/examples/hl7.toml").to_owned()
         };
-        std::fs::write(root.join(format!("{name}.toml")), definition)?;
+        let definition = analyte_fixtures::write_definition(root, name, definition)?;
         std::fs::write(
             root.join(format!("{name}-site.toml")),
             include_str!("../../../core/config/examples/site.toml")
                 .rewrite("127.0.0.1:5600", &address.to_string()),
         )?;
         machines.push_str(&format!(
-            "[[machines]]\nid = '{name}'\ndefinition = '{name}.toml'\nsite = '{name}-site.toml'\n"
+            "[[machines]]\nid = '{name}'\ndefinition = '{definition}'\nsite = '{name}-site.toml'\n"
         ));
     }
     let path = root.join("program.toml");
@@ -384,7 +384,7 @@ pub fn vendor_config(root: &Path, name: &str, definition: &str) -> Result<Fixtur
     let text =
         std::fs::read_to_string(&fixture.path)?.rewrite("id = 'hl7'", &format!("id = '{name}'"));
     std::fs::write(&fixture.path, text)?;
-    std::fs::write(root.join("hl7.toml"), definition)?;
+    std::fs::write(analyte_fixtures::definition_path(root, "hl7"), definition)?;
     Ok(fixture)
 }
 

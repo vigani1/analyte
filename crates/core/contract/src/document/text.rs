@@ -19,6 +19,14 @@ pub enum TextError {
 
 macro_rules! text_type {
     ($name:ident, $limit:expr, $required:expr, $controls:expr, $doc:literal) => {
+        impl schemars::JsonSchema for $name {
+            fn schema_name() -> std::borrow::Cow<'static, str> {
+                stringify!($name).into()
+            }
+            fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+                crate::schema::text($limit, $required, $controls, $doc)
+            }
+        }
         #[doc = $doc]
         #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
         #[serde(transparent)]

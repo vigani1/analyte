@@ -3,7 +3,7 @@ use super::{Identifier, SampleId};
 use serde::{Deserialize, Serialize};
 
 /// How a sample identifier reached the analyzer; unknown remains explicit.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SampleSource {
     /// Read by the analyzer's scanner.
@@ -19,7 +19,7 @@ pub enum SampleSource {
 }
 
 /// Carrier category; position never substitutes for sample identity.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum CarrierKind {
     /// Rack carrier.
@@ -33,7 +33,7 @@ pub enum CarrierKind {
 }
 
 /// Source-reported carrier and slot, including nonnumeric labels.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct SamplePosition {
     /// Carrier category.
     pub kind: CarrierKind,
@@ -44,7 +44,7 @@ pub struct SamplePosition {
 }
 
 /// Sample identity with provenance and optional physical position.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct SampleIdentity {
     /// String ID, never converted to a number.
     pub id: SampleId,

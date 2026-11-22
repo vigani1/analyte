@@ -82,7 +82,9 @@ impl LawOrderLink {
                 .operation(Operation::Cancel)
                 .await
                 .map_err(Error::TestHook)?;
-            let admission = reservation::cancel(store, until, id, version, owner, freshness).await;
+            let admission =
+                reservation::cancel(store, &machine.model, until, id, version, owner, freshness)
+                    .await;
             machine
                 .hooks
                 .operation(Operation::CancelResult)

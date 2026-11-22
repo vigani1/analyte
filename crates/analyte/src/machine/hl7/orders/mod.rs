@@ -30,6 +30,8 @@ pub(crate) struct Hl7OrderLink<'a> {
     owner: analyte_model::Identifier,
     exchange: Option<send::Exchange>,
     cursor: String,
+    /// The machine model its order events name (ADR 0032).
+    model: analyte_contract::document::ModelId,
 }
 pub(crate) struct Request<'a> {
     pub(crate) message: &'a Message,
@@ -53,8 +55,10 @@ impl<'a> Hl7OrderLink<'a> {
         stack: &'a analyte_config::Hl7Stack,
         orders: &'a analyte_config::Hl7Orders,
         options: Options,
+        model: &analyte_contract::document::ModelId,
     ) -> Result<Self, Error> {
         Ok(Self {
+            model: model.clone(),
             stack,
             orders,
             options,
@@ -113,6 +117,7 @@ impl<'a> Hl7OrderLink<'a> {
         if let Some(exchange) = &self.exchange {
             send::finish(
                 store,
+                &self.model,
                 exchange,
                 message,
                 Hl7End::OrderResponseTimeout.as_str(),
@@ -131,6 +136,7 @@ impl<'a> Hl7OrderLink<'a> {
         let mut result = Ok(());
         let cleanup = sending::settle_owned(
             store,
+            &self.model,
             std::mem::take(&mut self.reserving),
             &self.owner,
             code,
@@ -142,6 +148,7 @@ impl<'a> Hl7OrderLink<'a> {
         if let Some(exchange) = &self.exchange {
             let cleanup = send::finish(
                 store,
+                &self.model,
                 exchange,
                 None,
                 if code == Hl7End::DsrDisconnect.as_str() {
@@ -167,6 +174,7 @@ impl<'a> Hl7OrderLink<'a> {
         let mut result = Ok(());
         for order in self.active.drain(..) {
             let identity = order.key.clone();
+            let model = self.model.clone();
             let code = analyte_model::SourceText::new(code)?;
             let cleanup = store
                 .request::<_, analyte_store::OrderError>(deadline()?, move |store| {
@@ -189,7 +197,7 @@ impl<'a> Hl7OrderLink<'a> {
                             current.id,
                             &outcomes,
                             jiff::Timestamp::now().as_second(),
-                            crate::orders::event,
+                            crate::orders::event(&model),
                         )?;
                     } else if current.state == analyte_model::OrderState::Sending {
                         store.transition_order(
@@ -201,7 +209,7 @@ impl<'a> Hl7OrderLink<'a> {
                             },
                             code,
                             jiff::Timestamp::now().as_second(),
-                            crate::orders::event,
+                            crate::orders::event(&model),
                         )?;
                     }
                     Ok::<_, analyte_store::OrderError>(())
@@ -275,6 +283,7 @@ impl<'a> Hl7OrderLink<'a> {
                 .collect();
             if !sending::reserve_candidates(
                 store,
+                &self.model,
                 candidates,
                 until,
                 &mut self.active,
@@ -457,6 +466,7 @@ mod tests {
         database.execute_batch("CREATE TRIGGER synthetic_cleanup_failure BEFORE UPDATE OF state ON machine_orders WHEN OLD.order_id='order-2' BEGIN SELECT RAISE(ABORT,'synthetic cleanup failure'); END;")?;
         let result = sending::settle_owned(
             &store,
+            &machine.model,
             vec![first.clone(), second.clone()],
             &owner,
             "disconnect",
@@ -629,6 +639,7 @@ mod tests {
             stack,
             stack.orders().ok_or("orders")?,
             options,
+            &machine.model,
         )?)
     }
     fn query_machine() -> Result<Machine, crate::Error> {
@@ -647,6 +658,7 @@ mod tests {
         )?
         .validate()?;
         Ok(Machine {
+            model: analyte_contract::document::ModelId::new("example", "synthetic-astm")?,
             capture: false,
             destination_limits: crate::runtime::delivery::limits(
                 &snapshot.effective().site().destination,

@@ -11,11 +11,14 @@ pub(crate) struct Work<'a, S, T> {
     pub(crate) requests: VecDeque<T>,
     cursor: String,
     pub(crate) next_poll: Instant,
+    /// The machine model its order events name (ADR 0032).
+    pub(crate) model: analyte_contract::document::ModelId,
 }
 impl<'a, S, T> Work<'a, S, T> {
     /// Takes the settings only when the machine is configured to receive work ahead.
-    pub(crate) fn new(orders: Option<&'a S>) -> Self {
+    pub(crate) fn new(orders: Option<&'a S>, machine: &Machine) -> Self {
         Self {
+            model: machine.model.clone(),
             orders,
             active: None,
             requests: VecDeque::new(),
@@ -79,7 +82,7 @@ impl<'a, S, T> Work<'a, S, T> {
     }
     pub(crate) async fn close(&self, store: &Handle, reason: &str) -> Result<(), OrderError> {
         if let Some(order) = &self.active {
-            super::uncertain(store, order, reason).await?;
+            super::uncertain(store, &self.model, order, reason).await?;
         }
         Ok(())
     }

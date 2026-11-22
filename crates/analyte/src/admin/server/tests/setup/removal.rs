@@ -106,8 +106,9 @@ const STILL: &str = concat!(
 async fn removed_machine_result_is_delivered_once() -> Result<(), Error> {
     let directory = crate::admin::private_tempdir()?;
     let root = directory.path();
-    std::fs::write(
-        root.join("machine.toml"),
+    analyte_fixtures::write_definition(
+        root,
+        "synthetic",
         include_str!("../../../../../../core/config/examples/hl7.toml"),
     )?;
     let analyzer = std::net::TcpListener::bind("127.0.0.1:0")?;

@@ -1,7 +1,7 @@
 //! Defines lab-app response documents for deliveries and order polling.
 use serde::{Deserialize, Serialize};
 /// Successful durable delivery outcome.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum DeliveryStatus {
     /// Newly committed.
@@ -20,9 +20,10 @@ impl DeliveryStatus {
     }
 }
 /// Success body including the contract version.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct StatusBody {
     /// Must be 1.
+    #[schemars(with = "crate::schema::VersionOne")]
     pub contract_version: u8,
     /// Durable result.
     pub status: DeliveryStatus,

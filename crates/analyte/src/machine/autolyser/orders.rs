@@ -36,7 +36,7 @@ impl Work<'_, analyte_config::AutolyserOrders, analyte_autolyser::syntax::Workli
                 analyte_model::OrderState::Uncertain
             }
         };
-        crate::orders::sending::complete(store, order, outcome, &code).await?;
+        crate::orders::sending::complete(store, &self.model, order, outcome, &code).await?;
         self.active = None;
         Ok(outcome == analyte_model::OrderState::Sent)
     }

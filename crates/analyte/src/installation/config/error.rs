@@ -8,6 +8,17 @@ pub enum Error {
     /// A required installation setting or relationship is refused.
     #[error("ASTM receive dialog currently supports strict checksum hex only")]
     UnsupportedChecksumMode,
+    /// The machine definition is not in a `<vendor>/<model>/` folder, so its
+    /// results and order events could not name the machine model (ADR 0032).
+    #[error(
+        "{definition}: a machine definition must sit in a <vendor>/<model>/ folder, such as machines/roche/cobas-e411/machine.toml, so results can name the machine model: {source}"
+    )]
+    DefinitionOutsideModelFolder {
+        /// The definition file.
+        definition: std::path::PathBuf,
+        /// Why its folder names are not a model key.
+        source: analyte_contract::document::InvalidModel,
+    },
     /// A required installation setting or relationship is refused.
     #[error("LAW gates require injected loopback listener")]
     MissingLawGateListener,
@@ -195,6 +206,7 @@ impl Error {
             Self::Webhooks(cause) => cause,
             Self::Address(cause) => cause,
             Self::Integer(cause) => cause,
+            Self::DefinitionOutsideModelFolder { source, .. } => source,
             Self::UnsupportedChecksumMode
             | Self::MissingLawGateListener
             | Self::AdminAddressNotLoopback

@@ -63,6 +63,19 @@ warns before running the installer.
   table, a specimen type in another code system or one the protocol cannot
   carry is rejected before sending, and nothing is defaulted. Priority, unit,
   QC and identity tables stay: they hold machine and protocol facts.
+- Every result delivery and order event names the machine model in a required
+  `source.model`, the definition's `vendor/model` folder key such as
+  `roche/cobas-e411`, so a lab app keys its per-model test and specimen
+  tables on it (ADR 0032). A machine definition outside a `<vendor>/<model>/`
+  folder is refused at start, since no model could be named for it.
+- Contract v1 is published as machine-readable files, generated from the Rust
+  contract types: a JSON Schema of every request and answer body
+  (`docs/contract/contract-v1.schema.json`) and an OpenAPI 3.1 document of
+  the three calls (`docs/contract/openapi.json`). A machine catalog
+  (`docs/contract/machines.json`, with its schema) lists each shipped model's
+  id, name, vendor, protocol, evidence level, whether it is ready or blocked,
+  and its code systems. `cargo run -p analyte-publish` writes them; CI checks
+  they are current (ADR 0032).
 - Activity folds a delivery's failed tries in a row into one line (store
   schema 18).
 - Admin page reads stop at their deadline, so a slow page never holds up
@@ -111,7 +124,8 @@ warns before running the installer.
 
 - Tag-only release workflow with Windows and Linux archives, checksums, a
   locked dependency inventory, GitHub provenance and an owner-published draft
-  release.
+  release. Releases also carry the contract schema, OpenAPI document and
+  machine catalog, covered by the checksums and provenance (ADR 0032).
 - An unsigned click-through Windows installer (Inno Setup) and Linux `.deb`
   and `.rpm` packages (nfpm). They install the service, protect the data
   folder, let the service write the config folder for the setup page, create

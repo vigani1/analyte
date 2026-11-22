@@ -120,6 +120,7 @@ pub async fn run(program: &Program, actor: Identifier, command: Command) -> Resu
         time: jiff::Timestamp::now().as_second(),
         reason,
     };
+    let models = super::models(&program.machines);
     let mut store = crate::open_system_store(program).await?;
     let paused = store
         .request(deadline()?, |store| store.restore_unreconciled())
@@ -148,7 +149,7 @@ pub async fn run(program: &Program, actor: Identifier, command: Command) -> Resu
             Command::Reconcile { id, outcome, .. } => {
                 let reason = audit.reason.as_str().to_owned();
                 let order = store.reconcile_order(id, outcome.state(), &audit, move |record| {
-                    super::build_event(record, Some(&reason)).map_err(super::EventError::into_store)
+                    super::reconciled_event(&models, record, &reason)
                 })?;
                 Ok(vec![order])
             }

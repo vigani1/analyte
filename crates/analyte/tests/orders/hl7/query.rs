@@ -37,7 +37,7 @@ async fn setup_observed(
             std::fs::read_to_string(&site)?
         ),
     )?;
-    let file = temp.path().join("hl7.toml");
+    let file = analyte_fixtures::definition_path(temp.path(), "hl7");
     let definition = std::fs::read_to_string(&file)?
         .rewrite(r#"edition = "v251""#, &format!(r#"edition = "{edition}""#));
     std::fs::write(

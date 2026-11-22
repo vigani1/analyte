@@ -31,7 +31,7 @@ async fn forced_exit_child() -> Result<(), Error> {
     let root = std::path::PathBuf::from(root);
     let url = std::env::var(URL)?;
     let path = config(&root, true)?;
-    let definition = root.join("astm.toml");
+    let definition = analyte_fixtures::definition_path(&root, "astm");
     let orders = include_str!("../../../core/config/examples/orders.toml")
         // This test exercises crash recovery, not query response expiry.
         .rewrite("deadline_ms = 1000", "deadline_ms = 30000")

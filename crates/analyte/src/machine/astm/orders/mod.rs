@@ -238,6 +238,7 @@ pub(crate) async fn reserve_query(
 ) -> Result<Option<Vec<Vec<u8>>>, Error> {
     let reserved = crate::orders::sending::reserve_candidates(
         store,
+        &machine.model,
         reply.candidates,
         until,
         active,

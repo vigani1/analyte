@@ -10,12 +10,14 @@ const IDLE_CLAIM_INTERVAL: Duration = Duration::from_millis(100);
 use tokio::sync::watch;
 
 /// Builds immutable production bytes and creates their delivery ID exactly once.
+/// `model` is the machine definition's model, written in `source.model` (ADR 0032).
 /// The caller commits this with its interpretation using `Store::interpret_reconciled`.
 /// # Errors
 /// Refuses non-production modes, parked evidence, receipt mismatch and wire errors.
 pub fn encode_delivery(
     result: &ResultContent,
     receipt: &ReceiptMetadata,
+    model: &analyte_contract::document::ModelId,
     destination: Identifier,
     created_at: jiff::Timestamp,
 ) -> Result<analyte_store::Delivery, DeliveryError> {
@@ -29,7 +31,7 @@ pub fn encode_delivery(
         return Err(DeliveryError::RequiresParking);
     };
     let id = DeliveryId::try_from(uuid::Uuid::now_v7()).map_err(DeliveryError::Identity)?;
-    let document = analyte_contract::Delivery::from_result(result, receipt, id, created_at)?;
+    let document = analyte_contract::Delivery::from_result(result, receipt, model, id, created_at)?;
     Ok(analyte_store::Delivery {
         id,
         destination,

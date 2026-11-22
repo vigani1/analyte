@@ -367,7 +367,7 @@ async fn independent_failed_link_never_replays_on_restart() -> Result<(), Error>
                 .listen(1024)?,
         };
         std::fs::write(
-            temp.path().join("hl7.toml"),
+            analyte_fixtures::definition_path(temp.path(), "hl7"),
             settings.rewrite("send_ahead = false", "send_ahead = true"),
         )?;
         let running = Running::start(&path, &reference.url, "synthetic-api").await?;

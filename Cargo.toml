@@ -49,6 +49,9 @@ toml = "1.2"
 quick-xml = { version = "0.42", default-features = false } # POCT01-A2 XML; never resolves external entities
 uuid = { version = "1.29", features = ["v7"] }
 jiff = "0.2.45"
+# JSON Schema for the published contract v1 files, derived from the contract
+# types (owner-approved 2026-11-22, ADR 0032); MIT, light dependencies.
+schemars = { version = "1.2.3", default-features = false, features = ["derive", "std"] }
 
 # Storage and I/O
 rusqlite = { version = "0.42", features = ["bundled"] }
@@ -101,6 +104,9 @@ clap_complete = { version = "4.6.12", default-features = false } # `analyte comp
 analyte-fixtures = { path = "crates/testing/fixtures", version = "0.1.0" }
 proptest = "1.12"
 tempfile = "3.27"
+# Checks the published vectors against the generated schema (owner-approved
+# 2026-11-22, ADR 0032); MIT. No network or file resolution.
+jsonschema = { version = "0.60.2", default-features = false }
 
 [workspace.lints.rust]
 # Deny, not forbid, so ADR 0017, ADR 0021 and ADR 0022 can expect it in their three modules; other crate roots forbid it.

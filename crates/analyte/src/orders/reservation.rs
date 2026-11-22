@@ -21,19 +21,17 @@ pub(crate) fn candidate(
 /// A superseding update returns its refusal without overwriting its lifecycle.
 pub(crate) async fn reject(
     store: &Handle,
+    model: &analyte_contract::document::ModelId,
     until: Instant,
     identity: MachineOrderKey,
     version: NonZeroU64,
     freshness: u64,
     reason: analyte_model::SourceText,
 ) -> Result<Result<MachineOrder, SendRefusal>, Error> {
+    let event = super::event(model);
     Ok(store
         .request::<_, analyte_store::OrderError>(until, move |store| {
-            store.reject_unsent(
-                &candidate(&identity, version, freshness),
-                reason,
-                super::event,
-            )
+            store.reject_unsent(&candidate(&identity, version, freshness), reason, event)
         })
         .await?)
 }
@@ -42,12 +40,14 @@ pub(crate) async fn reject(
 /// The caller registers the key before awaiting so disconnect cleanup owns it.
 pub(crate) async fn cancel(
     store: &Handle,
+    model: &analyte_contract::document::ModelId,
     until: Instant,
     id: i64,
     version: NonZeroU64,
     owner: analyte_model::Identifier,
     freshness: u64,
 ) -> Result<MachineOrder, analyte_store::OrderError> {
+    let event = super::event(model);
     store
         .request::<_, analyte_store::OrderError>(until, move |store| {
             store.request_order_cancel(
@@ -56,7 +56,7 @@ pub(crate) async fn cancel(
                 jiff::Timestamp::now().as_second(),
                 &owner,
                 freshness,
-                super::event,
+                event,
             )
         })
         .await

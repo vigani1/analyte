@@ -315,6 +315,7 @@ mod tests {
             )?
             .validate()?;
             let machine = Machine {
+                model: analyte_contract::document::ModelId::new("example", "synthetic-astm")?,
                 id: analyte_model::Identifier::new("synthetic")?,
                 destination_limits: crate::runtime::delivery::limits(
                     &snapshot.effective().site().destination,

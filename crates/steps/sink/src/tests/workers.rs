@@ -20,6 +20,7 @@ async fn active_work_cancels_before_http_deadline() -> TestResult {
             let delivery = encode_delivery(
                 &result,
                 &metadata,
+                &model()?,
                 Identifier::new("app")?,
                 jiff::Timestamp::now(),
             )?;
@@ -116,6 +117,7 @@ async fn idle_workers_wait_before_claiming_again() -> TestResult {
         let delivery = encode_delivery(
             &result,
             &metadata,
+            &model()?,
             Identifier::new("app")?,
             metadata.received_at,
         )?;
@@ -233,6 +235,7 @@ async fn slow_destination_never_delays_another_worker() -> TestResult {
         let delivery = encode_delivery(
             &result,
             &metadata,
+            &model()?,
             destination.id.clone(),
             jiff::Timestamp::now(),
         )?;
@@ -315,6 +318,7 @@ async fn delivery_only_worker_ends_when_nothing_waits() -> TestResult {
     let delivery = encode_delivery(
         &result,
         &metadata,
+        &model()?,
         Identifier::new("app")?,
         jiff::Timestamp::now(),
     )?;

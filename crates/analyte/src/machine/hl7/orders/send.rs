@@ -80,7 +80,17 @@ async fn next_cancel(
         let id = record.id;
         reserving.push(record.key.clone());
         let version = app.fields().version;
-        match reservation::cancel(store, deadline()?, id, version, owner.clone(), freshness).await {
+        match reservation::cancel(
+            store,
+            &machine.model,
+            deadline()?,
+            id,
+            version,
+            owner.clone(),
+            freshness,
+        )
+        .await
+        {
             Ok(record) => return Ok(Some(Exchange { record, message })),
             Err(analyte_store::OrderError::Conflict) => {
                 reserving.clear();
@@ -196,6 +206,7 @@ async fn reject(
 }
 pub(super) async fn finish(
     store: &Handle,
+    model: &analyte_contract::document::ModelId,
     exchange: &Exchange,
     message: Option<&analyte_hl7::Message>,
     fallback: &str,
@@ -274,6 +285,7 @@ pub(super) async fn finish(
         }
     }
     let identity = exchange.record.key.clone();
+    let event = crate::orders::event(model);
     store
         .request::<_, analyte_store::OrderError>(deadline()?, move |store| {
             let current = store
@@ -287,7 +299,7 @@ pub(super) async fn finish(
                     current.id,
                     &outcomes,
                     jiff::Timestamp::now().as_second(),
-                    crate::orders::event,
+                    event,
                 )?;
             }
             Ok::<_, analyte_store::OrderError>(())

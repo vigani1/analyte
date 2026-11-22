@@ -6,7 +6,7 @@ use super::{
 };
 use serde::{Deserialize, Serialize};
 /// Source classification only; no QC decision is made here.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QcClass {
     /// Patient specimen.
@@ -21,7 +21,7 @@ pub enum QcClass {
 
 /// Analyte summary, retained beside the source's own code. The summary never
 /// replaces the source status; it only groups source codes with one meaning.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ResultStatus {
     /// Not yet available, for example in process on the instrument.
@@ -42,7 +42,7 @@ pub enum ResultStatus {
 }
 
 /// One source hierarchy node; the flat path avoids recursive untrusted trees.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct SourceNode {
     /// One-based record or segment position in the source message.
     pub occurrence: u64,
@@ -55,7 +55,7 @@ pub struct SourceNode {
 }
 
 /// A result retains source evidence beside summaries, without clinical decisions.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ResultPart {
     /// The machine's own test code as sent, in its code system (ADR 0029).
     pub test: NamespacedId,
@@ -82,11 +82,12 @@ pub struct ResultPart {
     /// Named source times (collection, analysis, etc.).
     pub times: EvidenceList<NamedSourceTime>,
     /// Host receive instant, independent of machine clock.
+    #[schemars(with = "crate::schema::Timestamp")]
     pub received_at: jiff::Timestamp,
 }
 
 /// One replacement unit can contain several source segments and repeated values.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ResultDocument {
     /// The receipt whose raw bytes this result was read from.
     pub receipt: ReceiptId,

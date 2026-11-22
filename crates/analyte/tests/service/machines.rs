@@ -179,7 +179,7 @@ async fn replay_machine(
     } else {
         endpoint.to_string()
     };
-    std::fs::write(temp.path().join("machine.toml"), definition)?;
+    analyte_fixtures::write_definition(temp.path(), "synthetic", definition)?;
     std::fs::write(temp.path().join("site.toml"), site(&endpoint)?)?;
     // Replace only physical I/O: the real framing, dialog, syntax, mapping and store run unchanged.
     std::fs::write(
@@ -197,7 +197,7 @@ async fn replay_machine(
     std::fs::write(
         &path,
         analyte_fixtures::program(
-            "[[machines]]\nid='fixture'\ndefinition='machine.toml'\nsite='site.toml'\noverrides='overrides.toml'\n",
+            "[[machines]]\nid='fixture'\ndefinition='test/synthetic/machine.toml'\nsite='site.toml'\noverrides='overrides.toml'\n",
         ),
     )?;
     let mut program = Program::load(&path)?;

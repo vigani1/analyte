@@ -1,6 +1,6 @@
 {
   "uses": "signature.json",
   "other_secret": "whsec_ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8=",
-  "signature_header": "v1,pBzsQQ6vggFgIMdglG32lAca1Dkd0tjXbi19shpjlr8= v1,8/W0h2et3fZyDTdsaSj0we3+Ekgq6M4vlGWy5Mh7LQM=",
+  "signature_header": "v1,VSnpJyaSTvVqbV13FU64fiAcWbxWt1LA+kEkyZQV1JU= v1,bffasF61ooo78bQc8csSKFKardsXGOuZ5cd+DQRkwLA=",
   "expected": "accept"
 }

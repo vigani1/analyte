@@ -7,6 +7,7 @@ use analyte_store::{Handle, MachineOrder};
 /// Records a specific failed transfer as uncertain; normal transfer becomes Sent.
 pub(crate) async fn finished(
     store: &Handle,
+    model: &analyte_contract::document::ModelId,
     order: &MachineOrder,
     end: analyte_dialog::astm::End,
 ) -> Result<(), Error> {
@@ -24,7 +25,7 @@ pub(crate) async fn finished(
     } else {
         OrderState::Uncertain
     };
-    Ok(crate::orders::sending::complete(store, order, state, code.as_str()).await?)
+    Ok(crate::orders::sending::complete(store, model, order, state, code.as_str()).await?)
 }
 
 impl<S, T> Work<'_, S, T> {
@@ -35,7 +36,7 @@ impl<S, T> Work<'_, S, T> {
         end: analyte_dialog::astm::End,
     ) -> Result<(), Error> {
         if let Some(order) = &self.active {
-            finished(store, order, end).await?;
+            finished(store, &self.model, order, end).await?;
         }
         self.active = None;
         Ok(())

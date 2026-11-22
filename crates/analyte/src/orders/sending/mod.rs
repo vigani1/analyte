@@ -18,6 +18,7 @@ use crate::machine::astm::orders::finished;
 /// Shared query admission. Each reservation is owned by the connection before I/O.
 pub(crate) async fn reserve_candidates(
     store: &Handle,
+    model: &analyte_contract::document::ModelId,
     candidates: Vec<super::Candidate>,
     until: std::time::Instant,
     active: &mut Vec<MachineOrder>,
@@ -46,7 +47,13 @@ pub(crate) async fn reserve_candidates(
             Err(refusal) => {
                 tracing::info!(reason=%refusal,"query order reservation refused");
                 for order in active.drain(..) {
-                    uncertain(store, &order, HostEnd::QueryReservationRefused.as_str()).await?;
+                    uncertain(
+                        store,
+                        model,
+                        &order,
+                        HostEnd::QueryReservationRefused.as_str(),
+                    )
+                    .await?;
                 }
                 return Ok(false);
             }
@@ -54,7 +61,13 @@ pub(crate) async fn reserve_candidates(
     }
     if std::time::Instant::now() >= until && !active.is_empty() {
         for order in active.drain(..) {
-            uncertain(store, &order, HostEnd::QueryDeadlineBeforeSend.as_str()).await?;
+            uncertain(
+                store,
+                model,
+                &order,
+                HostEnd::QueryDeadlineBeforeSend.as_str(),
+            )
+            .await?;
         }
         return Ok(false);
     }
@@ -156,30 +169,27 @@ pub(crate) async fn candidate_page(
 /// A link failure never proves that the machine did not receive its command.
 pub(crate) async fn uncertain(
     store: &Handle,
+    model: &analyte_contract::document::ModelId,
     order: &MachineOrder,
     code: &str,
 ) -> Result<(), Error> {
-    complete(store, order, OrderState::Uncertain, code).await
+    complete(store, model, order, OrderState::Uncertain, code).await
 }
 
 /// Commits a protocol's definitive transport outcome with exactly one app event.
 pub(crate) async fn complete(
     store: &Handle,
+    model: &analyte_contract::document::ModelId,
     order: &MachineOrder,
     state: OrderState,
     code: &str,
 ) -> Result<(), Error> {
     let id = order.id;
     let code = SourceText::new(code)?;
+    let event = super::event(model);
     store
         .request::<_, analyte_store::OrderError>(deadline()?, move |store| {
-            store.transition_order(
-                id,
-                state,
-                code,
-                jiff::Timestamp::now().as_second(),
-                super::event,
-            )
+            store.transition_order(id, state, code, jiff::Timestamp::now().as_second(), event)
         })
         .await?;
     Ok(())
@@ -187,7 +197,16 @@ pub(crate) async fn complete(
 
 /// Recovers interrupted sends and admitted cancellations without issuing commands.
 /// A lost cancel reply is uncertainty too; it never grants permission to repeat CA.
-pub(crate) async fn recover(store: &Handle) -> Result<(), Error> {
+/// `models` holds each configured machine's model: an order of a machine no
+/// longer configured keeps its state, since its event could not name the
+/// model (ADR 0032); it is recovered once that machine is configured again.
+pub(crate) async fn recover(
+    store: &Handle,
+    models: &std::collections::HashMap<
+        analyte_model::Identifier,
+        analyte_contract::document::ModelId,
+    >,
+) -> Result<(), Error> {
     let until = deadline()?;
     for state in [OrderState::Sending, OrderState::CancelRequested] {
         let mut after = 0;
@@ -207,6 +226,15 @@ pub(crate) async fn recover(store: &Handle) -> Result<(), Error> {
             for order in orders {
                 after = order.id;
                 let id = order.id;
+                let Some(model) = models.get(&order.key.machine) else {
+                    tracing::warn!(
+                        machine = order.key.machine.as_str(),
+                        order = id,
+                        "interrupted order kept: its machine is not configured"
+                    );
+                    continue;
+                };
+                let event = super::event(model);
                 store
                     .request::<_, analyte_store::OrderError>(until, move |store| {
                         store.transition_order(
@@ -218,7 +246,7 @@ pub(crate) async fn recover(store: &Handle) -> Result<(), Error> {
                                 )
                             })?,
                             jiff::Timestamp::now().as_second(),
-                            super::event,
+                            event,
                         )
                     })
                     .await?;
@@ -232,6 +260,7 @@ pub(crate) async fn recover(store: &Handle) -> Result<(), Error> {
 /// Cleanup never issues a command and never changes an already confirmed outcome.
 pub(crate) async fn settle_owned(
     store: &Handle,
+    model: &analyte_contract::document::ModelId,
     keys: Vec<MachineOrderKey>,
     owner: &analyte_model::Identifier,
     code: &str,
@@ -242,6 +271,7 @@ pub(crate) async fn settle_owned(
     for key in keys {
         let owner = owner.clone();
         let code = code.clone();
+        let model = model.clone();
         let cleanup = store
             .request::<_, analyte_store::OrderError>(deadline()?, move |store| {
                 if let Some(record) = store.machine_order(&key)?
@@ -253,7 +283,7 @@ pub(crate) async fn settle_owned(
                             OrderState::Uncertain,
                             code,
                             jiff::Timestamp::now().as_second(),
-                            super::event,
+                            super::event(&model),
                         )?;
                         return Ok::<_, analyte_store::OrderError>(());
                     }
@@ -270,7 +300,7 @@ pub(crate) async fn settle_owned(
                         record.id,
                         &outcomes,
                         jiff::Timestamp::now().as_second(),
-                        super::event,
+                        super::event(&model),
                     )?;
                 }
                 Ok(())

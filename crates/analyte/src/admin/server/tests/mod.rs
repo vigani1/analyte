@@ -33,7 +33,7 @@ fn other_script(page: &str) -> bool {
 
 fn admin_program() -> String {
     analyte_fixtures::program_with_limits(
-        "[[machines]]\nid = 'synthetic'\ndefinition = 'machine.toml'\nsite = 'site.toml'\n",
+        "[[machines]]\nid = 'synthetic'\ndefinition = 'test/synthetic/machine.toml'\nsite = 'site.toml'\n",
         &analyte_store::Limits {
             reserve_bytes: 1,
             database_bytes: 100_000_000,
@@ -83,8 +83,9 @@ const PAST_READ_BUDGET: Duration = Duration::from_millis(1800);
 #[tokio::test(flavor = "multi_thread")]
 async fn service_refuses_missing_token_and_owns_admin_server() -> Result<(), Error> {
     let directory = crate::admin::private_tempdir()?;
-    std::fs::write(
-        directory.path().join("machine.toml"),
+    analyte_fixtures::write_definition(
+        directory.path(),
+        "synthetic",
         include_str!("../../../../../core/config/examples/hl7.toml"),
     )?;
     let analyzer = std::net::TcpListener::bind("127.0.0.1:0")?;
@@ -194,8 +195,9 @@ async fn service_refuses_missing_token_and_owns_admin_server() -> Result<(), Err
 async fn tcp_server_light_follows_peer_and_hides_payload() -> Result<(), Error> {
     const SAMPLE: &str = "SYN-LIGHT-4711";
     let directory = crate::admin::private_tempdir()?;
-    std::fs::write(
-        directory.path().join("machine.toml"),
+    analyte_fixtures::write_definition(
+        directory.path(),
+        "synthetic",
         include_str!("../../../../../core/config/examples/hl7.toml"),
     )?;
     let analyzer = std::net::TcpListener::bind("127.0.0.1:0")?;

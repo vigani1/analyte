@@ -18,8 +18,8 @@ pub use list::{EmptyEvidence, EvidenceList, ListError, NonEmptyEvidenceList};
 mod conversion;
 mod identity;
 pub use identity::{
-    DeliveryId, IdentityStatus, InvalidUuid, NamespacedId, ObservationIdentity, ReceiptId,
-    ResultIdentity, Revision,
+    DeliveryId, IdentityStatus, InvalidModel, InvalidUuid, ModelId, NamespacedId,
+    ObservationIdentity, ReceiptId, ResultIdentity, Revision,
 };
 mod lifecycle;
 pub use lifecycle::{OrderState, ProcessingMode};

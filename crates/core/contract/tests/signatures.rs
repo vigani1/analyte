@@ -62,8 +62,8 @@ fn signing_matches_standard_webhooks_examples() -> TestResult {
 // these exact signatures; the files and the shared signing code must both keep them.
 #[test]
 fn signing_matches_published_contract_vectors() -> TestResult {
-    const SIGNATURE: &str = "v1,8/W0h2et3fZyDTdsaSj0we3+Ekgq6M4vlGWy5Mh7LQM=";
-    const OTHER: &str = "v1,pBzsQQ6vggFgIMdglG32lAca1Dkd0tjXbi19shpjlr8=";
+    const SIGNATURE: &str = "v1,bffasF61ooo78bQc8csSKFKardsXGOuZ5cd+DQRkwLA=";
+    const OTHER: &str = "v1,VSnpJyaSTvVqbV13FU64fiAcWbxWt1LA+kEkyZQV1JU=";
     let signed: Value = serde_json::from_str(include_str!(
         "../../../../docs/contract/vectors/signature.json"
     ))?;

@@ -7,8 +7,9 @@ use std::process::Command;
 #[test]
 fn cli_prints_rotated_token_once_without_logging() -> Result<(), Error> {
     let directory = tempfile::tempdir()?;
-    std::fs::write(
-        directory.path().join("machine.toml"),
+    analyte_fixtures::write_definition(
+        directory.path(),
+        "synthetic",
         include_str!("../../core/config/examples/hl7.toml"),
     )?;
     std::fs::write(
@@ -19,7 +20,7 @@ fn cli_prints_rotated_token_once_without_logging() -> Result<(), Error> {
     std::fs::write(
         &config,
         analyte_fixtures::program(
-            "[[machines]]\nid = 'synthetic'\ndefinition = 'machine.toml'\nsite = 'site.toml'\n",
+            "[[machines]]\nid = 'synthetic'\ndefinition = 'test/synthetic/machine.toml'\nsite = 'site.toml'\n",
         ),
     )?;
     let run = |rotate: bool| {

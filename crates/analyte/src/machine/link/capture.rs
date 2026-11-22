@@ -378,8 +378,9 @@ mod tests {
     fn serial_capture_equals_wire() -> Result<(), crate::Error> {
         let root = tempfile::tempdir()?;
         create_data_directory(&root.path().join("data"))?;
-        std::fs::write(
-            root.path().join("machine.toml"),
+        analyte_fixtures::write_definition(
+            root.path(),
+            "synthetic",
             include_str!("../../../../core/config/examples/astm.toml"),
         )?;
         std::fs::write(
@@ -390,7 +391,7 @@ mod tests {
         std::fs::write(
             &program,
             analyte_fixtures::program(
-                "[[machines]]\nid='serial'\ncapture=true\ndefinition='machine.toml'\nsite='site.toml'\n",
+                "[[machines]]\nid='serial'\ncapture=true\ndefinition='test/synthetic/machine.toml'\nsite='site.toml'\n",
             ),
         )?;
         let program = crate::installation::config::Program::load(&program)?;
