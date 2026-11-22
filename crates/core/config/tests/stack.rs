@@ -64,6 +64,8 @@ fn every_example_maps_to_its_documented_stack() -> TestResult {
         ("law.toml", "", "law"),
         ("poct.toml", "", "poct"),
         ("vidas_literal.toml", "", "vidas"),
+        // Its software version has no suggestion; the site below chooses it.
+        ("vidas_choices.toml", "", "vidas"),
         ("autolyser.toml", "", "autolyser"),
         ("orders.toml", ASTM, "astm"),
         ("hl7_orders.toml", HL7, "hl7"),
@@ -93,10 +95,13 @@ fn every_example_maps_to_its_documented_stack() -> TestResult {
             assert_named_lab_app(base, &text, expected)?;
             continue;
         }
-        let (machine, site) = if name == "site.toml" {
-            (base.to_owned(), text)
-        } else {
-            (format!("{base}\n{text}"), SITE.to_owned())
+        let (machine, site) = match name {
+            "site.toml" => (base.to_owned(), text),
+            "vidas_choices.toml" => (
+                text,
+                format!("{SITE}[choices]\nsoftware_version = \"v1\"\n"),
+            ),
+            _ => (format!("{base}\n{text}"), SITE.to_owned()),
         };
         let validated = load(&machine, &site, "schema_version=1")?;
         assert_eq!(variant(validated.effective().stack()), expected, "{name}");

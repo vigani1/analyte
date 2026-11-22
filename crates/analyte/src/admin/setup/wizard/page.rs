@@ -29,7 +29,7 @@ pub(super) struct Mark {
 }
 
 /// The earlier choices a step's form carries as hidden fields; never a secret.
-pub(super) type Hidden = Vec<(&'static str, String)>;
+pub(super) type Hidden = Vec<(String, String)>;
 
 /// GET /setup/{id}: step 1, which machine model it is.
 #[derive(askama::Template)]
@@ -70,7 +70,27 @@ pub(super) struct ConnectionStep {
     /// How this model connects, in one sentence.
     pub(super) how: &'static str,
     pub(super) inputs: Inputs,
+    /// The model's own choices (ADR 0032); empty when it declares none.
+    pub(super) choices: Vec<Setting>,
     pub(super) lab_apps: Picker,
+}
+
+/// One choice the model declares, on step 2: its declared values with the
+/// chosen one, and the manual's suggestion.
+pub(super) struct Setting {
+    /// The form field, `choice.<name>`.
+    pub(super) name: String,
+    /// The element id.
+    pub(super) id: String,
+    /// The question in plain words.
+    pub(super) label: String,
+    pub(super) options: Vec<CableOption>,
+    /// A value is chosen; without one the list starts at "Choose".
+    pub(super) chosen: bool,
+    /// Where to read it and what the manual suggests.
+    pub(super) hint: String,
+    /// The chosen value is not the manual's suggestion.
+    pub(super) differs: bool,
 }
 
 /// The connection fields the model's transport asks for.
@@ -249,6 +269,9 @@ pub(super) struct Summary {
     /// The serial cable settings in words, with what differs from the
     /// manual's suggestion; none unless it is on a serial cable.
     pub(super) cable: Option<String>,
+    /// The model's own choices in words, with what differs from the manual's
+    /// suggestion; none when it declares none (ADR 0032).
+    pub(super) choices: Option<String>,
     /// Which devices it accepts; none unless the machine connects to this PC.
     pub(super) accepts: Option<Accepts>,
     pub(super) lab_app: Sends,

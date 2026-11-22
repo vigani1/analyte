@@ -15,6 +15,9 @@
 {%- if let Some(cable) = summary.cable %}
 <dt>Cable settings</dt><dd>{{ cable }}</dd>
 {%- endif %}
+{%- if let Some(choices) = summary.choices %}
+<dt>Analyzer settings</dt><dd>{{ choices }}</dd>
+{%- endif %}
 {%- if let Some(accepts) = summary.accepts %}
 <dt>Accepts connections from</dt><dd>
 {%- match accepts %}

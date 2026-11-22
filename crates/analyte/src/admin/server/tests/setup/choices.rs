@@ -1,0 +1,195 @@
+//! Tests step 2's analyzer settings (ADR 0032): one list per choice the selected model declares, filled in from the suggestion, saved in the lab's site file, carried through every step and refused when missing or not offered.
+use super::*;
+
+/// The choices model beside the fixture's settings: the VIDAS teaching
+/// definition, whose software version only the lab can choose.
+fn with_choices_model(fixture: &Fixture) -> Result<(), Error> {
+    let folder = fixture.root().join("machines/example/vidas-choices");
+    std::fs::create_dir_all(&folder)?;
+    std::fs::write(
+        folder.join("machine.toml"),
+        include_str!("../../../../../../core/config/examples/vidas_choices.toml"),
+    )?;
+    Ok(())
+}
+
+/// A save form for the choices model, listening on loopback, with `fields`.
+async fn choices_form(fixture: &Fixture, fields: &[(&str, &str)]) -> Result<String, Error> {
+    let mut all = vec![
+        ("definition", "example/vidas-choices"),
+        ("host", "127.0.0.1"),
+        ("tcp_port", "5601"),
+        ("allowed_peers", ""),
+    ];
+    all.extend_from_slice(fields);
+    fixture.form(&all).await
+}
+
+// ADR 0032 decision 1: step 2 asks exactly the choices the selected model
+// declares, each from its own list, starting at the manual's suggestion and
+// at "Choose" where the definition suggests none; a model without choices
+// shows none.
+#[tokio::test(flavor = "multi_thread")]
+async fn step_two_asks_the_models_own_choices() -> Result<(), Error> {
+    let fixture = start().await?;
+    with_choices_model(&fixture)?;
+    let page = fixture
+        .get("/setup/synthetic/connection?definition=example/vidas-choices")
+        .await?;
+    assert!(page.starts_with("HTTP/1.1 200"), "{page}");
+    for expected in [
+        "<legend class=\"field__label wizard__legend\">Analyzer settings</legend>",
+        "<label class=\"field__label\" for=\"s2-choice-protocol_mode\">Protocol on the host link screen</label>",
+        "<select id=\"s2-choice-protocol_mode\" class=\"select\" name=\"choice.protocol_mode\" required>",
+        "<option value=\"literal\" selected>Literal (acknowledge after the checksum)</option>",
+        "<option value=\"alternate\">Alternate (acknowledge after ETX)</option>",
+        "Match the setting on the analyzer’s own screen. The manual suggests Literal (acknowledge after the checksum).",
+        "<select id=\"s2-choice-software_version\" class=\"select\" name=\"choice.software_version\" required><option value=\"\" selected>Choose</option>",
+        "Read the version on the analyzer’s About screen. The machine’s definition suggests none.",
+    ] {
+        assert!(page.contains(expected), "missing {expected}: {page}");
+    }
+    let serial = fixture
+        .get("/setup/synthetic/connection?definition=example/serial-astm")
+        .await?;
+    assert!(!serial.contains("Analyzer settings"), "{serial}");
+    // The next steps carry the choices as hidden fields.
+    let test = fixture
+        .get("/setup/synthetic/test?definition=example%2Fvidas-choices&host=127.0.0.1&tcp_port=5601&lab_app=demo&choice.software_version=v2")
+        .await?;
+    assert!(test.starts_with("HTTP/1.1 200"), "{test}");
+    assert!(
+        test.contains("<input type=\"hidden\" name=\"choice.software_version\" value=\"v2\">"),
+        "{test}"
+    );
+    Ok(())
+}
+
+// ADR 0032 decisions 3 and 4, AGENTS.md "never invents data": a choice with
+// neither a selection nor a suggestion is refused by name and changes no file;
+// once chosen, Save writes every choice into the site file, the summary and
+// audit name them, the settings version follows, and step 2 shows the saved
+// value and what differs from the manual.
+#[tokio::test(flavor = "multi_thread")]
+async fn saving_keeps_every_choice_in_the_site_file() -> Result<(), Error> {
+    let fixture = start().await?;
+    with_choices_model(&fixture)?;
+    let before = std::fs::read_to_string(&fixture.site)?;
+    let refused = fixture
+        .post("/setup/synthetic", &choices_form(&fixture, &[]).await?)
+        .await?;
+    assert!(refused.starts_with("HTTP/1.1 409"), "{refused}");
+    assert!(
+        refused.contains("choices.software_version: no value"),
+        "{refused}"
+    );
+    assert!(
+        refused.contains("Fix this in step 2: Connection."),
+        "{refused}"
+    );
+    assert_eq!(std::fs::read_to_string(&fixture.site)?, before);
+    let body = choices_form(
+        &fixture,
+        &[
+            ("choice.protocol_mode", "alternate"),
+            ("choice.software_version", "v2"),
+        ],
+    )
+    .await?;
+    let saved = fixture.post("/setup/synthetic", &body).await?;
+    assert!(saved.starts_with("HTTP/1.1 200"), "{saved}");
+    assert!(
+        saved.contains(concat!(
+            "<dt>Analyzer settings</dt><dd>Protocol on the host link screen: Alternate ",
+            "(acknowledge after ETX) (the manual suggests Literal (acknowledge after the ",
+            "checksum)); Software version on the About screen: Version 2 or later (sample IDs ",
+            "up to 17 characters) (the machine definition suggests none)</dd>"
+        )),
+        "{saved}"
+    );
+    let site: toml::Table = std::fs::read_to_string(&fixture.site)?.parse()?;
+    assert_eq!(
+        site.get("choices"),
+        Some(&toml::Value::Table(
+            "protocol_mode = \"alternate\"\nsoftware_version = \"v2\"\n".parse()?
+        )),
+        "the same table `machines set --choice` writes"
+    );
+    let machine = Program::load(&fixture.config)?;
+    let effective = machine
+        .machines()
+        .first()
+        .ok_or("machine missing")?
+        .snapshot()
+        .effective();
+    let analyte_config::Stack::Vidas(stack) = effective.stack() else {
+        return Err("a VIDAS stack was saved".into());
+    };
+    assert_eq!(stack.policy().ack_point, analyte_config::AckPoint::Etx);
+    assert_eq!(
+        stack.policy().sample_limit,
+        analyte_config::VidasSampleLimit::Seventeen
+    );
+    let audits = fixture.audited("setup-save").await?;
+    assert!(
+        audits.iter().any(|reason| reason
+            .contains("analyzer settings Protocol on the host link screen: Alternate")),
+        "{audits:?}"
+    );
+    let page = fixture
+        .get("/setup/synthetic/connection?definition=example/vidas-choices")
+        .await?;
+    assert!(
+        page.contains(
+            "<option value=\"alternate\" selected>Alternate (acknowledge after ETX)</option>"
+        ),
+        "{page}"
+    );
+    assert!(
+        page.contains("Protocol on the host link screen <span class=\"tone-warn\">· differs from the manual</span>"),
+        "{page}"
+    );
+    assert!(page.contains("<option value=\"v2\" selected>"), "{page}");
+    Ok(())
+}
+
+// ADR 0032 decision 3: a choice the model does not declare, or a value it
+// does not offer, is refused at step 2 and changes no file.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_choice_the_model_does_not_offer_is_refused() -> Result<(), Error> {
+    let fixture = start().await?;
+    with_choices_model(&fixture)?;
+    let before = std::fs::read_to_string(&fixture.site)?;
+    for (fields, words) in [
+        (
+            [("choice.speed", "fast"), ("choice.software_version", "v1")],
+            "this machine model has no choice called speed",
+        ),
+        (
+            [
+                ("choice.software_version", "v9"),
+                ("choice.protocol_mode", "literal"),
+            ],
+            "choose software_version from its list: v1, v2",
+        ),
+    ] {
+        let refused = fixture
+            .post("/setup/synthetic", &choices_form(&fixture, &fields).await?)
+            .await?;
+        assert!(refused.starts_with("HTTP/1.1 409"), "{refused}");
+        assert!(refused.to_lowercase().contains(words), "{words}: {refused}");
+        assert!(
+            refused.contains("Fix this in step 2: Connection."),
+            "{refused}"
+        );
+    }
+    let duplicate = format!(
+        "{}&choice.software_version=v2",
+        choices_form(&fixture, &[("choice.software_version", "v1")]).await?
+    );
+    let refused = fixture.post("/setup/synthetic", &duplicate).await?;
+    assert!(!refused.starts_with("HTTP/1.1 200"), "{refused}");
+    assert_eq!(std::fs::read_to_string(&fixture.site)?, before);
+    assert!(fixture.backups()?.is_empty());
+    Ok(())
+}

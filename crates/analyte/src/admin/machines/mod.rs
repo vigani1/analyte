@@ -702,6 +702,12 @@ fn running_facts(
             value: Value::Text(cable.clone()),
         });
     }
+    if let Some(choices) = &machine.choices {
+        facts.push(Fact {
+            term: "Analyzer settings",
+            value: Value::Text(choices.clone()),
+        });
+    }
     facts.extend([
         Fact {
             term: "Last data",

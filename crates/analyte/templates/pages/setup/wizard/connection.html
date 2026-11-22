@@ -67,6 +67,20 @@
 {%- when Inputs::Folder(folder) %}
 <div class="field"><label class="field__label" for="s2-folder">Folder</label><input id="s2-folder" class="input mono" name="folder" required maxlength="1024" value="{{ folder }}"><span class="field__hint">Where the machine writes its result files.</span></div>
 {%- endmatch %}
+{%- if !choices.is_empty() %}
+<fieldset class="wizard__set stack">
+<legend class="field__label wizard__legend">Analyzer settings</legend>
+<span class="field__hint">This model’s settings that the lab chooses. Match what the analyzer shows; they start at the values its manual suggests.</span>
+<div class="form-grid">
+{%- for field in choices %}
+<div class="field"><label class="field__label" for="{{ field.id }}">{{ field.label }}{% if field.differs %} <span class="tone-warn">· differs from the manual</span>{% endif %}</label><select id="{{ field.id }}" class="select" name="{{ field.name }}" required>
+{%- if !field.chosen %}<option value="" selected>Choose</option>{% endif %}
+{%- for option in field.options %}<option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>{% endfor -%}
+</select><span class="field__hint">{{ field.hint }}</span></div>
+{%- endfor %}
+</div>
+</fieldset>
+{%- endif %}
 <div class="form-grid">
 <div class="field"><label class="field__label" for="s2-name">Name in Analyte</label><input id="s2-name" class="input" value="{{ wizard.id }}" readonly><span class="field__hint">Cannot change: stored results are kept under this name.</span></div>
 {%- match lab_apps %}
