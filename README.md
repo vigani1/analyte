@@ -1,6 +1,4 @@
-<img src="crates/analyte/assets/icons/analyte-app-icon.svg" alt="Analyte logo" width="64" height="64">
-
-# Analyte
+<h1><img src="crates/analyte/assets/icons/analyte-app-icon.svg" alt="" width="36" height="36"> Analyte</h1>
 
 **Connect any lab analyzer to any lab app.**
 
@@ -195,8 +193,9 @@ see the [operations guides](docs/operations/README.md).
 
 ## Contributing
 
-Contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md) and
-[AGENTS.md](AGENTS.md); the rules apply to people and coding assistants alike.
+Contributions are welcome, with or without code: [ways to help](CONTRIBUTING.md#ways-to-help)
+lists each kind and where to start. The rules in [CONTRIBUTING.md](CONTRIBUTING.md)
+and [AGENTS.md](AGENTS.md) apply to people and coding assistants alike.
 
 - Before sending a change, run the checks in [Verification](AGENTS.md#verification).
 - Add a machine with [adding a machine](docs/adding-a-machine.md), or a
@@ -205,9 +204,8 @@ Contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md) and
 - Sign off every commit (`git commit -s`, the
   [Developer Certificate of Origin](https://developercertificate.org/)).
 
-Find your way around: [the crates](crates/README.md) (engine, app, layers,
-protocols, core, testing), [the decisions](docs/adr/README.md),
-[the glossary](docs/glossary.md) and [test quality](docs/testing/quality.md).
+Find your way around with the [documentation map](docs/README.md): which page
+to read first for your role, and which folders are only for looking things up.
 
 ## Licence
 

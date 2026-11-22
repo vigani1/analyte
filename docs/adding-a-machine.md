@@ -11,6 +11,28 @@ Read the [plan](plan.md), [config reference](../crates/core/config/README.md) an
 For an interface requiring new protocol code, follow
 [adding a vendor protocol](adding-a-vendor-protocol.md).
 
+## In short
+
+1. **Confirm the protocol** the machine really speaks, from its interface
+   manual and its host settings screen ([choose the stack](#choose-the-stack)).
+2. **Copy the protocol's example** into `machines/<vendor>/<model>/machine.toml`
+   and fill in only confirmed settings: connection, deadlines, size limits,
+   test codes, units and where the sample ID is
+   ([gather confirmed settings](#gather-confirmed-settings)). Lab addresses
+   and keys stay in each lab's site file, never in this folder.
+3. **Write its `README.md`** from the [template](../machines/README.md#readme-template):
+   what is known, the sources in your own words, what is still open and the
+   evidence level.
+4. **Add recordings** of its conversations in `recordings/`, synthetic or
+   de-identified ([capture, de-identify and replay](#capture-de-identify-and-replay)).
+5. **Run `cargo test --workspace`.** It finds every `machine.toml`, loads it
+   the way a lab PC would, checks the README's evidence level and replays every
+   recording through the running service. No test code is needed.
+6. **Open a pull request** with the folder ([contribute the definition](#contribute-the-definition)).
+
+A machine without real recordings stays at `documented`, however complete its
+settings are ([state the evidence honestly](#state-the-evidence-honestly)).
+
 ## Choose the stack
 
 A stack is the connection, wire framing, conversation and message layout.

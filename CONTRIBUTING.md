@@ -4,6 +4,24 @@ Analyte moves clinical lab results. A silent mistake can reach a patient
 report, so contributions are held to the rules in [AGENTS.md](AGENTS.md),
 which apply to people and coding assistants alike.
 
+## Ways to help
+
+| You want to | What you need | Start here |
+| --- | --- | --- |
+| Report something that does not work | Nothing but what you saw | The [bug form](https://github.com/vigani1/analyte/issues/new?template=bug.yml) |
+| Ask for a machine, or share what you know about one | No coding: the model, its software version, photos of its host settings | The [new analyzer form](https://github.com/vigani1/analyte/issues/new?template=new-analyzer.yml) |
+| Record a real machine's conversation (the most useful help) | Access to the machine; the recording is de-identified before it is shared | [Capture, de-identify and replay](docs/adding-a-machine.md#capture-de-identify-and-replay) |
+| Add a machine that speaks a protocol Analyte has (ASTM, HL7, LAW, POCT1-A, VIDAS, Autolyser) | No Rust: a `machine.toml` settings file, a README and recordings in `machines/<vendor>/<model>/` | [Adding a machine](docs/adding-a-machine.md) |
+| Add a machine with its own language | Rust; open an issue first, because a new protocol is a large change | [Adding a vendor protocol](docs/adding-a-vendor-protocol.md) |
+| Connect a lab app | Any language: three HTTPS calls | [Contract v1](docs/contract/v1.md) and its [checker](docs/contract/README.md#check-your-app) |
+| Ask how a protocol rule works | A question | The [protocol question form](https://github.com/vigani1/analyte/issues/new?template=protocol-question.yml) |
+| Fix a bug or a document | A fork and a pull request | [Forks and pull requests](#forks-and-pull-requests) |
+| Report a security problem | Report privately, never in an issue | [SECURITY.md](SECURITY.md) |
+
+Analyte stays a bridge, so changes that judge results are not accepted:
+auto-verification, reflex tests, QC decisions or clinical interpretation belong
+in the lab app ([ADR 0003](docs/adr/0003-clinical-safety-rules.md)).
+
 ## Before you start
 
 Save text as UTF-8, including on Windows. Legacy code pages can silently replace
@@ -15,6 +33,8 @@ these suspicious patterns.
   change, so the design can be agreed before the code is written.
 - Supporting a new machine starts with its documents and, ideally, a
   de-identified recording of a real conversation.
+- Writing tests that wait on timers or the store: read
+  [test timing](docs/testing/timing.md) first.
 
 ## Forks and pull requests
 
@@ -75,39 +95,6 @@ use the same plain descriptions, stating the crate's kind first.
   (semantics, profiles, assembly, boundary).
 - Avoid words whose lab meaning differs: "collection" means collecting a
   specimen, so write `//! Holds evidence lists capped at 256 entries.`
-
-## Test wall-clock budgets
-
-`analyte_fixtures` defines harness and store-request budgets with a fixed CI
-scale factor of three: a 180-second hang guard and a 30-second store wait.
-These allow scheduler delays and durable writes on loaded Windows runners;
-expiry still fails the test. Synthetic loopback service fixtures explicitly
-apply the store allowance to delivery workers and order pollers. Production
-entry points reject these overrides, and production deadlines stay unchanged.
-Do not use these allowances for a protocol timer whose expiry is under test.
-Keep those configured deadlines and quiet-window assertions exact. Name waits
-with the integration `step` helper so an expiry identifies its operation; print
-only synthetic case labels when looping over scenarios.
-
-## Service test concurrency and startup benchmark
-
-To repeat the manual capacity measurement (creates and
-removes a synthetic store of at least 2 GiB in a temporary directory), run:
-
-```text
-cargo test -p analyte-store --release startup_timing_two_gib_synthetic_store -- --ignored --nocapture
-```
-
-Windows measurement, 2026-11-15: a 2,150,469,632-byte synthetic store took
-1.713..1.775 seconds for integrity checking and 1.604..1.630 seconds for
-restarts. These are local disk/cache measurements.
-
-The global test-thread override was removed after the startup fix. Three concurrent
-full analyte integration binaries with default threads passed in 35.19, 35.64 and
-35.49 seconds (127 passed, one external-network test ignored in each). Concurrent
-comparison runs with explicit four and two threads took 66.85 and 126.31 seconds.
-These runs also overlapped compilation; the numbers describe that load rather than
-an isolated performance benchmark. No fixture semaphore was needed.
 
 ## AI-assisted contributions
 
