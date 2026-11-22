@@ -18,19 +18,23 @@ use crate::machine::astm::orders::finished;
 /// Shared query admission. Each reservation is owned by the connection before I/O.
 pub(crate) async fn reserve_candidates(
     store: &Handle,
+    model: &analyte_contract::document::ModelId,
     candidates: Vec<super::Candidate>,
     until: std::time::Instant,
     active: &mut Vec<MachineOrder>,
     owner: Option<analyte_model::Identifier>,
     freshness: u64,
 ) -> Result<bool, Error> {
+    let stored = super::stored_model(model)?;
     for candidate in candidates {
         let owner = owner.clone();
+        let stored = stored.clone();
         let reserved = store
             .request::<_, analyte_store::OrderError>(until, move |store| {
                 store.reserve_send(
                     &super::reservation::candidate(
                         &candidate.identity,
+                        &stored,
                         candidate.version,
                         freshness,
                     ),
@@ -94,12 +98,13 @@ pub(crate) async fn next<T, E: From<Error> + std::fmt::Display>(
         };
         let identity = candidate.identity;
         let version = candidate.version;
+        let model = super::stored_model(&machine.model).map_err(Error::from)?;
         let reserved = store
             .request::<_, analyte_store::OrderError>(
                 deadline().map_err(Error::from)?,
                 move |store| {
                     store.reserve_send(
-                        &super::reservation::candidate(&identity, version, freshness),
+                        &super::reservation::candidate(&identity, &model, version, freshness),
                         analyte_store::ReserveOptions::default(),
                     )
                 },
@@ -187,6 +192,9 @@ pub(crate) async fn complete(
 
 /// Recovers interrupted sends and admitted cancellations without issuing commands.
 /// A lost cancel reply is uncertainty too; it never grants permission to repeat CA.
+/// It needs no program file: each event names the model stored with its order
+/// (ADR 0033), so an order of a machine removed since it was sent still becomes
+/// uncertain and visible.
 pub(crate) async fn recover(store: &Handle) -> Result<(), Error> {
     let until = deadline()?;
     for state in [OrderState::Sending, OrderState::CancelRequested] {

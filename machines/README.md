@@ -5,7 +5,13 @@ folder per analyzer model. How to add one: [adding a machine](../docs/develop/ad
 What was learned about each model: [machine research](../docs/research/machines/README.md).
 
 Each definition lives in `machines/<vendor>/<model>/`, with lower-case,
-hyphenated names. It contains `machine.toml`, `README.md` and `recordings/`.
+hyphenated names. The folder key `vendor/model` is the model id every result
+delivery and order event carries in `source.model`, and lab apps file their
+per-model tables under it ([ADR 0033](../docs/adr/0033-machine-model-and-published-schema.md)),
+so renaming a folder changes the id. Each part is at most 64 characters.
+Analyte refuses a definition that is not in such a folder.
+`docs/contract/machines.json` lists every folder; run
+`cargo run -p analyte-publish` after adding or changing one. It contains `machine.toml`, `README.md` and `recordings/`.
 Keep site settings and credentials outside this tree. Recordings follow
 [ADR 0009](../docs/adr/0009-recording-format.md) and contain only synthetic
 or reviewed de-identified data. Real machines must have their own evidence;

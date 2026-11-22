@@ -7,7 +7,7 @@ pub(crate) mod admission;
 pub(crate) mod reservation;
 pub(crate) mod sending;
 use crate::installation::config::Machine;
-use analyte_contract::{EventFields, OrderEvent, Source, Text};
+use analyte_contract::{EventFields, OrderEvent, Source, Text, document::ModelId};
 pub(crate) use analyte_mapping::app_order;
 use analyte_model::{Identifier, SampleId};
 use analyte_store::{MachineOrder, OrderEventDelivery};
@@ -70,17 +70,29 @@ pub(crate) fn eligible(order: &analyte_contract::Order, machine: &Machine) -> bo
         .is_ok()
 }
 
-/// Builds an immutable contract event from a committed lifecycle snapshot.
+/// Builds the immutable contract event for a committed lifecycle snapshot.
+/// It names the model stored with the order when it was reserved
+/// (ADR 0033), so it needs no program file: an order of a machine removed
+/// since then still gets its event. The store calls it only for an order with
+/// a stored model and parks the event of any other.
 /// # Errors
-/// Refuses invalid timestamps or contract fields.
+/// Refuses invalid timestamps, contract fields or a stored model that is not
+/// a `vendor/model` key.
 pub fn event(record: &MachineOrder) -> Result<OrderEventDelivery, analyte_store::OrderError> {
     build_event(record, None).map_err(EventError::into_store)
+}
+
+/// The text the store keeps for a machine's model with each order it
+/// reserves; [`event`] reads it back as a [`ModelId`].
+pub(crate) fn stored_model(model: &ModelId) -> Result<Identifier, analyte_model::TextError> {
+    Identifier::new(model.as_str())
 }
 
 fn build_event(
     record: &MachineOrder,
     reason: Option<&str>,
 ) -> Result<OrderEventDelivery, EventError> {
+    let model = ModelId::parse(record.model().ok_or(EventError::ModelUnknown)?.as_str())?;
     let time = jiff::Timestamp::from_second(record.updated_at)?.to_string();
     let text = |value: &str| Text::try_from(value.to_owned());
     let event = OrderEvent::try_from(EventFields {
@@ -90,6 +102,7 @@ fn build_event(
         source: Source {
             analyzer: text(record.key.machine.as_str())?,
             connection: text(record.key.machine.as_str())?,
+            model,
         },
         order_id: text(record.key.order.as_str())?,
         order_version: record.version,
@@ -112,6 +125,13 @@ pub(crate) fn destination(machine: &Machine) -> Identifier {
 /// Event construction is narrower than order orchestration; the store retains its leaf cause.
 #[derive(Debug, thiserror::Error)]
 enum EventError {
+    /// The store holds no model for the order; it parks such an event before
+    /// building it, so this is a defect, never a guess.
+    #[error("the order has no stored machine model, so its event cannot name one")]
+    ModelUnknown,
+    /// The stored model is not a `vendor/model` key.
+    #[error("the stored machine model is not a vendor/model key")]
+    StoredModel(#[from] analyte_contract::document::InvalidModel),
     #[error(transparent)]
     Timestamp(#[from] jiff::Error),
     #[error(transparent)]
@@ -122,6 +142,8 @@ enum EventError {
 impl EventError {
     fn into_store(self) -> analyte_store::OrderError {
         match self {
+            Self::ModelUnknown => analyte_store::OrderError::DeliveryBuild(Box::new(self)),
+            Self::StoredModel(source) => analyte_store::OrderError::DeliveryBuild(Box::new(source)),
             Self::Timestamp(source) => analyte_store::OrderError::DeliveryBuild(Box::new(source)),
             Self::Document(source) => analyte_store::OrderError::DeliveryBuild(Box::new(source)),
             Self::SinkDeliveryError(source) => {

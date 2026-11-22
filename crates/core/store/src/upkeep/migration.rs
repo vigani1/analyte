@@ -21,6 +21,9 @@ const STEPS: &[(i64, i64, &str)] = &[
     (16, 17, include_str!("read_indexes.sql")),
     // The runs of failed delivery tries Activity shows as one line each.
     (17, 18, include_str!("attempt_runs.sql")),
+    // The machine model each machine order was reserved for; orders kept
+    // before it stay unknown (ADR 0033).
+    (18, 19, include_str!("order_models.sql")),
 ];
 
 /// Refuses a stored version this build cannot open; 0 is an empty file.

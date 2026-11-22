@@ -8,6 +8,7 @@ mod cancellation;
 mod custody;
 mod items;
 mod lifecycle;
+mod models;
 mod mutation;
 mod trust;
 
@@ -59,6 +60,7 @@ fn verify_adr0004_restart_and_reconciliation(path: &Path, reserved_id: i64) -> T
     assert!(matches!(
         store.reserve_send(
             &OrderReservation {
+                model: &test_support::order_model(),
                 identity: &identity()?,
                 version,
                 now: 103,
@@ -130,6 +132,7 @@ fn reserve_two(store: &mut Store) -> Result<MachineOrder, Box<dyn std::error::Er
     Ok(store
         .reserve_send(
             &OrderReservation {
+                model: &test_support::order_model(),
                 identity: &identity()?,
                 version: NonZeroU64::MIN,
                 now: 101,
@@ -165,6 +168,7 @@ fn verify_plan11_rule8_audited_resume(store: &mut Store, mut audit: Audit) -> Te
         store
             .reserve_send(
                 &OrderReservation {
+                    model: &test_support::order_model(),
                     identity: &identity()?,
                     version: NonZeroU64::MIN,
                     now: 103,
@@ -195,6 +199,7 @@ fn verify_mutation_rule8_larger_cancel_page(
     let record = store
         .reserve_send(
             &OrderReservation {
+                model: &test_support::order_model(),
                 identity: &key,
                 version: NonZeroU64::MIN,
                 now: 101,

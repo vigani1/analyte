@@ -27,6 +27,8 @@ pub(super) struct PreparedMapping {
     pub(super) corrections: Vec<bool>,
     pub(super) interpretation: Interpretation,
     pub(super) destination: Identifier,
+    /// The machine model the deliveries name (ADR 0033).
+    pub(super) model: analyte_contract::document::ModelId,
     pub(super) conflict: Option<Interpretation>,
     pub(super) policy: Policy,
     pub(super) action: Option<analyte_store::Reprocess>,
@@ -44,6 +46,7 @@ impl PreparedMapping {
             corrections,
             interpretation,
             destination,
+            model,
             conflict,
             policy,
             action,
@@ -75,7 +78,14 @@ impl PreparedMapping {
             if !accepted {
                 return Ok(Vec::new());
             }
-            build_deliveries(assigned, outcomes, &receipt, &destination, lifecycle)
+            build_deliveries(
+                assigned,
+                outcomes,
+                &receipt,
+                &model,
+                &destination,
+                lifecycle,
+            )
         };
         let commit = store.reconcile(
             reconciliation_action(id, action.as_ref()),
@@ -175,6 +185,7 @@ fn build_deliveries(
     assigned: &Interpretation,
     outcomes: &[RevisionOutcome],
     receipt: &ReceiptMetadata,
+    model: &analyte_contract::document::ModelId,
     destination: &Identifier,
     lifecycle: Option<analyte_store::StatusLifecycle<'_>>,
 ) -> Result<Vec<analyte_store::Delivery>, analyte_store::ReconciliationError> {
@@ -196,6 +207,7 @@ fn build_deliveries(
                     analyte_sink::encode_delivery(
                         result,
                         receipt,
+                        model,
                         destination.clone(),
                         jiff::Timestamp::now(),
                     )

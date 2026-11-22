@@ -1,7 +1,7 @@
 //! Defines version-1 lifecycle evidence types and validates their wire values.
 use serde::{Deserialize, Serialize};
 /// Mode is explicit so training and debugging cannot silently become production.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ProcessingMode {
     /// The machine did not state a processing mode; never production-eligible.
@@ -25,7 +25,7 @@ impl ProcessingMode {
 }
 
 /// Order progress; persistence and machine commands remain the host's responsibility.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum OrderState {
     /// Requested by the app, not sent.

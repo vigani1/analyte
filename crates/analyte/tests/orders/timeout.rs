@@ -10,7 +10,7 @@ async fn astm_send_timeout_is_uncertain_never_resent() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), true)?;
     configure_orders(temp.path(), true)?;
-    let definition = temp.path().join("astm.toml");
+    let definition = analyte_fixtures::definition_path(temp.path(), "astm");
     std::fs::write(
         &definition,
         std::fs::read_to_string(&definition)?

@@ -13,6 +13,7 @@ fn ownership_ignores_reason_prefix_cancel_replay_keeps_version() -> TestResult {
     let record = store
         .reserve_send(
             &OrderReservation {
+                model: &test_support::order_model(),
                 identity: &key,
                 version: NonZeroU64::MIN,
                 now: 101,
@@ -124,7 +125,7 @@ fn cancel_expiry_trust_or_builder_failure_never_reserves() -> TestResult {
         store.order_page(&page(version, state, tombstone, expiry)?)?;
         let version = NonZeroU64::new(reserved).ok_or("version")?;
         assert!(
-            matches!(store.reserve_send(&OrderReservation { identity: &identity()?, version, now, freshness: 30 }, ReserveOptions::default())?,Err(reason) if reason == expected)
+            matches!(store.reserve_send(&OrderReservation { model: &test_support::order_model(), identity: &identity()?, version, now, freshness: 30 }, ReserveOptions::default())?,Err(reason) if reason == expected)
         );
     }
     store.order_page(&page(7, "requested", false, 200)?)?;
@@ -132,6 +133,7 @@ fn cancel_expiry_trust_or_builder_failure_never_reserves() -> TestResult {
         let refusal = store
             .reject_unsent(
                 &OrderReservation {
+                    model: &test_support::order_model(),
                     identity: &identity()?,
                     version: NonZeroU64::new(7).ok_or("version")?,
                     now: 101,
@@ -298,6 +300,7 @@ fn cancelled_query_wait_claims_only_its_own_reservation() -> TestResult {
     store.order_page(&page(1, "requested", false, 200)?)?;
     let candidate = identity()?;
     let reservation = OrderReservation {
+        model: &test_support::order_model(),
         identity: &candidate,
         version: NonZeroU64::MIN,
         now: 101,
@@ -407,6 +410,7 @@ fn cancel_version_and_phase_rechecked_independently() -> TestResult {
         let record = store
             .reserve_send(
                 &OrderReservation {
+                    model: &test_support::order_model(),
                     identity: &key,
                     version: NonZeroU64::MIN,
                     now: 101,
@@ -482,6 +486,7 @@ fn cancel_pages_skip_unsent_and_refuse_expired_work() -> TestResult {
         let record = store
             .reserve_send(
                 &OrderReservation {
+                    model: &test_support::order_model(),
                     identity: &key,
                     version: NonZeroU64::MIN,
                     now: 101,

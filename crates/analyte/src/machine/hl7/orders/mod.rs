@@ -275,6 +275,7 @@ impl<'a> Hl7OrderLink<'a> {
                 .collect();
             if !sending::reserve_candidates(
                 store,
+                &machine.model,
                 candidates,
                 until,
                 &mut self.active,
@@ -647,6 +648,7 @@ mod tests {
         )?
         .validate()?;
         Ok(Machine {
+            model: analyte_contract::document::ModelId::new("example", "synthetic-astm")?,
             capture: false,
             destination_limits: crate::runtime::delivery::limits(
                 &snapshot.effective().site().destination,
@@ -670,6 +672,7 @@ mod tests {
     ) -> Result<(), crate::Error> {
         let identity = key.clone();
         let original_owner = owner.clone();
+        let model = Identifier::new("example/synthetic-astm")?;
         store
             .request::<_, analyte_store::OrderError>(deadline()?, move |store| {
                 let now = jiff::Timestamp::now().as_second();
@@ -700,6 +703,7 @@ mod tests {
                 store
                     .reserve_send(
                         &analyte_store::OrderReservation {
+                            model: &model,
                             identity: &identity,
                             version: std::num::NonZeroU64::MIN,
                             now,

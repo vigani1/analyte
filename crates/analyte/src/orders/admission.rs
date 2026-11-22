@@ -45,6 +45,7 @@ pub(crate) async fn reject(
 ) -> Result<(), Error> {
     let result = super::reservation::reject(
         store,
+        &machine.model,
         until,
         candidate.identity,
         candidate.version,

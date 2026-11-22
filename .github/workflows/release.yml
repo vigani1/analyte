@@ -44,6 +44,9 @@ jobs:
       - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
       - run: cargo test --workspace --all-features --locked
       - run: cargo doc --workspace --no-deps --all-features --locked
+      # ADR 0033: the release attaches the committed schema, OpenAPI and catalog
+      # files, so they must be exactly what this tag's code generates.
+      - run: cargo run -p analyte-publish --locked -- --check
       - if: runner.os == 'Linux'
         run: rustup toolchain install 1.95 --profile minimal
       - if: runner.os == 'Linux'
@@ -122,9 +125,15 @@ jobs:
       # Cargo's inventory avoids adding another supply-chain tool. Not an SBOM.
       - name: Record locked dependency inventory
         run: cargo metadata --locked --format-version 1 > dist/dependencies.json
+      # ADR 0033: for lab-app developers. The verify job checked that they are
+      # what this tag generates.
+      - name: Add the contract schema, OpenAPI document and machine catalog
+        run: >-
+          cp -- docs/contract/contract-v1.schema.json docs/contract/openapi.json
+          docs/contract/machines.json docs/contract/machines.schema.json dist/
       - name: Hash every release asset (except the checksum file itself)
         working-directory: dist
-        run: sha256sum -- *.zip *.tar.gz *.exe *.deb *.rpm dependencies.json > SHA256SUMS
+        run: sha256sum -- *.zip *.tar.gz *.exe *.deb *.rpm *.json > SHA256SUMS
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: dist/*

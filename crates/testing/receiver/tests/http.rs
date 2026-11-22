@@ -248,6 +248,27 @@ async fn check_order_events(
     receiver: &Receiver,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let event = include_bytes!("../../../../docs/contract/vectors/event.json");
+    // ADR 0033: an order event names its machine model, as a delivery does;
+    // without it the event is refused and nothing is stored.
+    let mut unnamed: Value = serde_json::from_slice(event)?;
+    unnamed
+        .get_mut("source")
+        .and_then(Value::as_object_mut)
+        .ok_or("source")?
+        .remove("model");
+    assert_eq!(
+        post(
+            client,
+            url,
+            "order-events",
+            &serde_json::to_vec(&unnamed)?,
+            "019ab000-0000-7000-8000-000000000002",
+            "key"
+        )
+        .await?
+        .status(),
+        422
+    );
     assert_eq!(
         post(
             client,

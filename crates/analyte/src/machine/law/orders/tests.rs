@@ -20,6 +20,7 @@ async fn superseded_mapping_rejection_continues_idle_admission() -> Result<(), E
     )?
     .validate()?;
     let machine = Machine {
+        model: analyte_contract::document::ModelId::new("example", "synthetic-astm")?,
         capture: false,
         destination_limits: crate::runtime::delivery::limits(
             &snapshot.effective().site().destination,

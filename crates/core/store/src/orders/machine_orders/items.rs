@@ -2,7 +2,7 @@
 use super::{
     Error, ItemDecision, ItemOutcome, MachineOrder, MachineOrderItem, OrderEventDelivery,
     OrderState, OrderTransition, SourceText, SqlOrderState, Store, TransactionBehavior, aggregate,
-    append, item_decision, load, params, write_item,
+    append_with_event, item_decision, load, params, write_item,
 };
 
 /// The reason parked when the machine refuses (UC) to cancel an item it had
@@ -112,7 +112,7 @@ impl Store {
                 id
             ],
         )?;
-        append(&tx, &order, Some(&build(&order)?), limit)?;
+        append_with_event(&tx, &order, build, limit)?;
         tx.commit()?;
         Ok(order)
     }

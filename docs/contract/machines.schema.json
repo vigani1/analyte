@@ -1,0 +1,146 @@
+{
+  "$defs": {
+    "EvidenceLevel": {
+      "description": "How a definition was checked (ADR 0005).",
+      "oneOf": [
+        {
+          "const": "documented",
+          "description": "Built from documents only.",
+          "type": "string"
+        },
+        {
+          "const": "simulated",
+          "description": "Tested against an official simulator or vendor sample traces.",
+          "type": "string"
+        },
+        {
+          "const": "proven",
+          "description": "Tested against the real machine with recorded conversations.",
+          "type": "string"
+        }
+      ]
+    },
+    "Machine": {
+      "description": "One machine model.",
+      "properties": {
+        "evidence_level": {
+          "$ref": "#/$defs/EvidenceLevel",
+          "description": "The evidence level the README declares."
+        },
+        "model": {
+          "$ref": "#/$defs/ModelId",
+          "description": "The model id that result deliveries and order events carry in\n`source.model`: the definition's vendor/model folder key."
+        },
+        "name": {
+          "description": "The model's name for people, from its README title.",
+          "type": "string"
+        },
+        "protocol": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Protocol"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The protocol the definition speaks; null for a blocked definition."
+        },
+        "ready": {
+          "description": "True when a `machine.toml` exists; false for a blocked definition,\nwhose README lists what is missing.",
+          "type": "boolean"
+        },
+        "specimen_system": {
+          "description": "The machine's own specimen code system (the namespace of an order's\n`specimen_type`, ADR 0030); null when not declared.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "test_system": {
+          "description": "The machine's own test code system (the namespace of `test` in\nresults and of order tests, ADR 0029); null when not declared.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "vendor": {
+          "description": "The vendor folder key, the part of `model` before the slash.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model",
+        "vendor",
+        "name",
+        "ready",
+        "evidence_level"
+      ],
+      "type": "object"
+    },
+    "ModelId": {
+      "description": "The machine model: its definition's vendor/model folder key, for example roche/cobas-e411 (ADR 0033). Key per-model tables on it; see machines.json.",
+      "pattern": "^[a-z0-9-]{1,64}/[a-z0-9-]{1,64}$",
+      "type": "string"
+    },
+    "Protocol": {
+      "description": "The protocol keys a machine definition can name.",
+      "oneOf": [
+        {
+          "const": "astm",
+          "description": "ASTM LIS01/LIS02.",
+          "type": "string"
+        },
+        {
+          "const": "hl7",
+          "description": "HL7 version 2.",
+          "type": "string"
+        },
+        {
+          "const": "law",
+          "description": "IHE Laboratory Analytical Workflow.",
+          "type": "string"
+        },
+        {
+          "const": "poct",
+          "description": "POCT1-A.",
+          "type": "string"
+        },
+        {
+          "const": "vidas",
+          "description": "The VIDAS PC Literal format.",
+          "type": "string"
+        },
+        {
+          "const": "autolyser",
+          "description": "The Autolyser format.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The catalog: every shipped machine model, sorted by model id.",
+  "properties": {
+    "catalog_version": {
+      "description": "The catalog format version; always 1.",
+      "format": "uint8",
+      "maximum": 1,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "machines": {
+      "description": "One entry per `machines/<vendor>/<model>/` folder, sorted by `model`.",
+      "items": {
+        "$ref": "#/$defs/Machine"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "catalog_version",
+    "machines"
+  ],
+  "title": "Analyte machine catalog",
+  "type": "object"
+}

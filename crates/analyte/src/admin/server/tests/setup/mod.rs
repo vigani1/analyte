@@ -1429,7 +1429,7 @@ async fn seed_unfinished(
             };
             let reserved = store
                 .reserve_send(
-                    &analyte_store::OrderReservation {
+                    &analyte_store::OrderReservation { model: &id("example/synthetic")?,
                         identity: &key,
                         version: std::num::NonZeroU64::MIN,
                         now: 101,

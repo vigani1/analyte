@@ -33,8 +33,9 @@ async fn doctor_reports_a_stopped_engine_an_unreachable_lab_app_and_missing_keys
     let machine = std::net::TcpListener::bind("127.0.0.1:0")?
         .local_addr()?
         .to_string();
-    std::fs::write(
-        root.join("machine.toml"),
+    analyte_fixtures::write_definition(
+        root,
+        "synthetic",
         include_str!("../../../../../../core/config/examples/hl7.toml"),
     )?;
     let lab_app = format!("https://127.0.0.1:{}", closed_port()?);
@@ -50,7 +51,7 @@ async fn doctor_reports_a_stopped_engine_an_unreachable_lab_app_and_missing_keys
         root,
         &data,
         Some(closed_port()?),
-        "[[machines]]\nid = 'synthetic'\ndefinition = 'machine.toml'\nsite = 'site.toml'\n",
+        "[[machines]]\nid = 'synthetic'\ndefinition = 'test/synthetic/machine.toml'\nsite = 'site.toml'\n",
     )?;
     let checks = doctor::checks(&file).await;
     let find = |what: &str, part: &str| {

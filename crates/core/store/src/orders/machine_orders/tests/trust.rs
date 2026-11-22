@@ -85,6 +85,7 @@ fn restore_keeps_current_and_needs_audited_resume() -> TestResult {
     let order = store
         .reserve_send(
             &OrderReservation {
+                model: &test_support::order_model(),
                 identity: &identity()?,
                 version: NonZeroU64::MIN,
                 now: 101,
@@ -137,6 +138,7 @@ fn restore_keeps_current_and_needs_audited_resume() -> TestResult {
     assert!(matches!(
         store.reserve_send(
             &OrderReservation {
+                model: &test_support::order_model(),
                 identity: &identity()?,
                 version: NonZeroU64::MIN,
                 now: 103,
@@ -169,6 +171,7 @@ fn restore_pause_blocks_hl7_items_and_owned_dsr() -> TestResult {
     store.audit(&audit)?;
     let identity = identity()?;
     let candidate = OrderReservation {
+        model: &test_support::order_model(),
         identity: &identity,
         version: NonZeroU64::MIN,
         now: 102,
@@ -241,6 +244,7 @@ fn hl7_preflight_atomic_and_restore_guard_first() -> TestResult {
     store.order_page(&page(1, "requested", false, 200)?)?;
     let identity = identity()?;
     let candidate = OrderReservation {
+        model: &test_support::order_model(),
         identity: &identity,
         version: NonZeroU64::MIN,
         now: 102,
@@ -394,6 +398,7 @@ fn trust_matrix_and_configured_age_boundary() -> TestResult {
             store
                 .reserve_send(
                     &OrderReservation {
+                        model: &test_support::order_model(),
                         identity: &key,
                         version: NonZeroU64::MIN,
                         now: 130,

@@ -4,13 +4,16 @@ use analyte_store::{Handle, MachineOrder, MachineOrderKey, OrderReservation, Sen
 use std::{num::NonZeroU64, time::Instant};
 
 /// Recheck the current version and freshness at the store operation, never at rendering.
-pub(crate) fn candidate(
-    identity: &MachineOrderKey,
+/// `model` is the machine's stored model (`super::stored_model`), kept with the order.
+pub(crate) fn candidate<'a>(
+    identity: &'a MachineOrderKey,
+    model: &'a analyte_model::Identifier,
     version: NonZeroU64,
     freshness: u64,
-) -> OrderReservation<'_> {
+) -> OrderReservation<'a> {
     OrderReservation {
         identity,
+        model,
         version,
         now: jiff::Timestamp::now().as_second(),
         freshness,
@@ -21,16 +24,18 @@ pub(crate) fn candidate(
 /// A superseding update returns its refusal without overwriting its lifecycle.
 pub(crate) async fn reject(
     store: &Handle,
+    model: &analyte_contract::document::ModelId,
     until: Instant,
     identity: MachineOrderKey,
     version: NonZeroU64,
     freshness: u64,
     reason: analyte_model::SourceText,
 ) -> Result<Result<MachineOrder, SendRefusal>, Error> {
+    let model = super::stored_model(model)?;
     Ok(store
         .request::<_, analyte_store::OrderError>(until, move |store| {
             store.reject_unsent(
-                &candidate(&identity, version, freshness),
+                &candidate(&identity, &model, version, freshness),
                 reason,
                 super::event,
             )
@@ -65,6 +70,8 @@ pub(crate) async fn cancel(
 /// Owns the typed inputs to atomic send admission and protocol preflight.
 pub(crate) struct Admission {
     pub(crate) identity: MachineOrderKey,
+    /// The machine's stored model (`super::stored_model`), kept with the order.
+    pub(crate) model: analyte_model::Identifier,
     pub(crate) version: NonZeroU64,
     pub(crate) freshness: u64,
     pub(crate) owner: analyte_model::Identifier,
@@ -86,7 +93,12 @@ pub(crate) async fn admit<T: Send + 'static>(
             let mut rendered = None;
             let mut encode = Some(encode);
             let reserved = store.reserve_send(
-                &candidate(&admission.identity, admission.version, admission.freshness),
+                &candidate(
+                    &admission.identity,
+                    &admission.model,
+                    admission.version,
+                    admission.freshness,
+                ),
                 analyte_store::ReserveOptions {
                     items: analyte_store::OrderItems::Groups {
                         groups: &admission.groups,

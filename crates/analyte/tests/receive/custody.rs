@@ -61,9 +61,11 @@ async fn status_reports_health_without_payloads_or_secrets() -> Result<(), Error
 async fn cli_commands_require_actor_and_reason() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), false)?;
-    let definition = std::fs::read_to_string(temp.path().join("machine.toml"))?;
-    std::fs::write(
-        temp.path().join("machine.toml"),
+    let definition =
+        std::fs::read_to_string(analyte_fixtures::definition_path(temp.path(), "synthetic"))?;
+    analyte_fixtures::write_definition(
+        temp.path(),
+        "synthetic",
         // A wrong order ID selector parks the result until the file is fixed.
         definition.rewrite("record=\"OBR\",field=3", "record=\"OBR\",field=2"),
     )?;
@@ -91,7 +93,7 @@ async fn cli_commands_require_actor_and_reason() -> Result<(), Error> {
     let parked = store.parked(0)?.first().ok_or("parked missing")?.id;
     let raw = store.receipt(receipt)?.ok_or("receipt missing")?.raw;
     drop(store);
-    std::fs::write(temp.path().join("machine.toml"), definition)?;
+    analyte_fixtures::write_definition(temp.path(), "synthetic", definition)?;
     let receipt = uuid::Uuid::from(receipt).to_string();
     let parked = parked.to_string();
     for args in [

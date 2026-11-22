@@ -90,6 +90,7 @@ async fn lost_response_retry_reuses_bytes_and_honours_503() -> TestResult {
         let delivery = encode_delivery(
             &result,
             &metadata,
+            &model()?,
             Identifier::new("app")?,
             jiff::Timestamp::now(),
         )?;
@@ -178,6 +179,7 @@ async fn shutdown_drains_or_keeps_claim_for_recovery() -> TestResult {
         let delivery = encode_delivery(
             &result,
             &metadata,
+            &model()?,
             Identifier::new("app")?,
             jiff::Timestamp::now(),
         )?;
@@ -304,6 +306,7 @@ fn delivery_keeps_three_identities_and_exact_values() -> TestResult {
     let delivery = encode_delivery(
         &result,
         &metadata,
+        &model()?,
         Identifier::new("app")?,
         metadata.received_at,
     )?;
@@ -336,6 +339,7 @@ fn delivery_keeps_three_identities_and_exact_values() -> TestResult {
         encode_delivery(
             &result,
             &metadata,
+            &model()?,
             Identifier::new("app")?,
             metadata.received_at
         ),
@@ -368,6 +372,7 @@ async fn retry_after_longer_than_64_characters_is_ignored() -> TestResult {
         let delivery = encode_delivery(
             &result,
             &metadata,
+            &model()?,
             Identifier::new("app")?,
             metadata.received_at,
         )?;
@@ -430,6 +435,7 @@ async fn app_detail_kept_only_for_version_one() -> TestResult {
         let delivery = encode_delivery(
             &result,
             &metadata,
+            &model()?,
             Identifier::new("app")?,
             metadata.received_at,
         )?;

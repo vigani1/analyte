@@ -1,0 +1,75 @@
+{
+  "catalog_version": 1,
+  "machines": [
+    {
+      "evidence_level": "documented",
+      "model": "biocare/biolyte-2000",
+      "name": "BioCARE Biolyte 2000",
+      "protocol": null,
+      "ready": false,
+      "specimen_system": null,
+      "test_system": null,
+      "vendor": "biocare"
+    },
+    {
+      "evidence_level": "documented",
+      "model": "biomerieux/vidas",
+      "name": "bioMérieux VIDAS",
+      "protocol": null,
+      "ready": false,
+      "specimen_system": null,
+      "test_system": null,
+      "vendor": "biomerieux"
+    },
+    {
+      "evidence_level": "documented",
+      "model": "boule/swelab-lumi",
+      "name": "Boule Swelab Lumi",
+      "protocol": null,
+      "ready": false,
+      "specimen_system": null,
+      "test_system": null,
+      "vendor": "boule"
+    },
+    {
+      "evidence_level": "documented",
+      "model": "dialab/autolyser",
+      "name": "Dialab Autolyser",
+      "protocol": null,
+      "ready": false,
+      "specimen_system": null,
+      "test_system": null,
+      "vendor": "dialab"
+    },
+    {
+      "evidence_level": "documented",
+      "model": "example/synthetic-astm",
+      "name": "Synthetic ASTM example",
+      "protocol": "astm",
+      "ready": true,
+      "specimen_system": null,
+      "test_system": "synthetic",
+      "vendor": "example"
+    },
+    {
+      "evidence_level": "documented",
+      "model": "roche/cobas-e411",
+      "name": "Roche cobas e 411",
+      "protocol": null,
+      "ready": false,
+      "specimen_system": null,
+      "test_system": null,
+      "vendor": "roche"
+    },
+    {
+      "evidence_level": "documented",
+      "model": "yhlo/iflash-1200",
+      "name": "YHLO iFlash 1200",
+      "protocol": null,
+      "ready": false,
+      "specimen_system": null,
+      "test_system": null,
+      "vendor": "yhlo"
+    }
+  ]
+}

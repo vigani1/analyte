@@ -751,7 +751,7 @@ fn schema_eighteen_keeps_every_attempt_and_fills_the_runs_of_tries() -> TestResu
         store
             .db
             .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-        18
+        SCHEMA_VERSION
     );
     assert_eq!(
         attempts(&store.db)?,
@@ -823,6 +823,52 @@ fn schema_eighteen_keeps_every_attempt_and_fills_the_runs_of_tries() -> TestResu
             .iter()
             .all(|(.., delivery, _, _, _)| delivery == "\"d-b\""),
         "only the other delivery's runs remain"
+    );
+    Ok(())
+}
+
+// ADR 0033: step 19 keeps every machine order as it was. Nothing kept beside
+// an older order says which model its machine had, so its model stays
+// unknown; it is never filled from a guess.
+#[test]
+fn schema_nineteen_keeps_every_machine_order_and_leaves_its_model_unknown() -> TestResult {
+    let temp = tempfile::tempdir()?;
+    let path = temp.path().join("eighteen.db");
+    {
+        let db = Connection::open(&path)?;
+        db.execute_batch(include_str!("../schema.sql"))?;
+        db.execute_batch(include_str!("../parked_at.sql"))?;
+        db.execute_batch(include_str!("../read_indexes.sql"))?;
+        db.execute_batch(include_str!("../attempt_runs.sql"))?;
+        db.execute_batch(concat!(
+            "INSERT INTO machine_orders(destination,order_id,machine,version,state,created_at,updated_at,source_code) VALUES ",
+            "('main-lab','o-1','m-a','1','Sending',100,100,'host-reserved'),",
+            "('main-lab','o-2','m-b','3','Uncertain',100,120,'host-restart');",
+        ))?;
+    }
+    let orders = |db: &Connection| -> Result<Vec<String>, Error> {
+        let mut statement = db.prepare("SELECT json_array(id,destination,order_id,machine,version,state,created_at,updated_at,source_code) FROM machine_orders ORDER BY id")?;
+        let rows = statement
+            .query_map([], |r| r.get(0))?
+            .collect::<Result<_, _>>()?;
+        Ok(rows)
+    };
+    let before = orders(&Connection::open(&path)?)?;
+    let store = Store::open(&path, limits(), Box::new(Space(u64::MAX)))?;
+    assert_eq!(
+        store
+            .db
+            .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
+        SCHEMA_VERSION
+    );
+    assert_eq!(orders(&store.db)?, before, "every order is kept as it was");
+    assert_eq!(
+        store.db.query_row(
+            "SELECT count(*) FROM machine_orders WHERE model IS NULL",
+            [],
+            |r| r.get::<_, i64>(0)
+        )?,
+        2
     );
     Ok(())
 }

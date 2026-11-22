@@ -137,6 +137,25 @@ fn model_fixture(value: &mut Value) {
     }
 }
 
+/// The receipt the published delivery vectors describe.
+fn vector_receipt(
+    id: analyte_model::ReceiptId,
+) -> Result<analyte_model::ReceiptMetadata, Box<dyn std::error::Error>> {
+    Ok(analyte_model::ReceiptMetadata {
+        id,
+        raw_digest: analyte_model::Digest([0; 32]),
+        connection: analyte_model::Identifier::new("bench-1")?,
+        machine: analyte_model::Identifier::new("synthetic-1")?,
+        driver: analyte_model::NamespacedId {
+            namespace: analyte_model::Identifier::new("synthetic")?,
+            value: analyte_model::Identifier::new("1")?,
+        },
+        config_version: analyte_model::Identifier::new("1")?,
+        config_digest: analyte_model::Digest([1; 32]),
+        received_at: "2026-11-15T11:59:59Z".parse()?,
+    })
+}
+
 // ADR 0008
 #[test]
 fn published_result_vectors_convert_without_loss() -> Result<(), Box<dyn std::error::Error>> {
@@ -155,24 +174,19 @@ fn published_result_vectors_convert_without_loss() -> Result<(), Box<dyn std::er
         let wire = ResultDocument::from(&model);
         assert_eq!(serde_json::to_value(&wire)?, *expected);
         let _: Delivery = decode(bytes)?;
-        let receipt = analyte_model::ReceiptMetadata {
-            id: model.receipt,
-            raw_digest: analyte_model::Digest([0; 32]),
-            connection: analyte_model::Identifier::new("bench-1")?,
-            machine: analyte_model::Identifier::new("synthetic-1")?,
-            driver: analyte_model::NamespacedId {
-                namespace: analyte_model::Identifier::new("synthetic")?,
-                value: analyte_model::Identifier::new("1")?,
-            },
-            config_version: analyte_model::Identifier::new("1")?,
-            config_digest: analyte_model::Digest([1; 32]),
-            received_at: "2026-11-15T11:59:59Z".parse()?,
-        };
+        let receipt = vector_receipt(model.receipt)?;
         let id = analyte_model::DeliveryId::try_from(uuid::Uuid::parse_str(
             "019ab000-0000-7000-8000-000000000001",
         )?)?;
-        let delivery =
-            Delivery::from_result(&model, &receipt, id, "2026-11-15T12:00:00Z".parse()?)?;
+        // ADR 0033: the vectors name the synthetic example definition's folder.
+        let machine = analyte_contract::document::ModelId::new("example", "synthetic-astm")?;
+        let delivery = Delivery::from_result(
+            &model,
+            &receipt,
+            &machine,
+            id,
+            "2026-11-15T12:00:00Z".parse()?,
+        )?;
         assert_eq!(serde_json::to_value(delivery)?, document);
         // Contract v1 document ceiling includes all retained evidence (rule 7).
         let mut large = model.clone();
@@ -187,7 +201,7 @@ fn published_result_vectors_convert_without_loss() -> Result<(), Box<dyn std::er
         large.parts =
             analyte_model::NonEmptyEvidenceList::new(analyte_model::EvidenceList::new(parts)?)?;
         assert!(matches!(
-            Delivery::from_result(&large, &receipt, id, receipt.received_at),
+            Delivery::from_result(&large, &receipt, &machine, id, receipt.received_at),
             Err(analyte_contract::DocumentError::TooLarge)
         ));
         let mut parts = model.parts.as_slice().to_vec();
@@ -201,7 +215,7 @@ fn published_result_vectors_convert_without_loss() -> Result<(), Box<dyn std::er
         exact.parts = analyte_model::NonEmptyEvidenceList::new(analyte_model::EvidenceList::new(
             parts.clone(),
         )?)?;
-        let initial = Delivery::from_result(&exact, &receipt, id, receipt.received_at)?;
+        let initial = Delivery::from_result(&exact, &receipt, &machine, id, receipt.received_at)?;
         let length = serde_json::to_vec(&initial)?.len();
         let padding = analyte_contract::MAX_DOCUMENT_BYTES
             .checked_sub(length)
@@ -214,7 +228,7 @@ fn published_result_vectors_convert_without_loss() -> Result<(), Box<dyn std::er
         exact.parts = analyte_model::NonEmptyEvidenceList::new(analyte_model::EvidenceList::new(
             parts.clone(),
         )?)?;
-        let at_limit = Delivery::from_result(&exact, &receipt, id, receipt.received_at)?;
+        let at_limit = Delivery::from_result(&exact, &receipt, &machine, id, receipt.received_at)?;
         assert_eq!(
             serde_json::to_vec(&at_limit)?.len(),
             analyte_contract::MAX_DOCUMENT_BYTES
@@ -227,12 +241,14 @@ fn published_result_vectors_convert_without_loss() -> Result<(), Box<dyn std::er
         exact.parts =
             analyte_model::NonEmptyEvidenceList::new(analyte_model::EvidenceList::new(parts)?)?;
         assert!(matches!(
-            Delivery::from_result(&exact, &receipt, id, receipt.received_at),
+            Delivery::from_result(&exact, &receipt, &machine, id, receipt.received_at),
             Err(analyte_contract::DocumentError::TooLarge)
         ));
         let mut mismatch = receipt;
         mismatch.id = analyte_model::ReceiptId::try_from(uuid::Uuid::now_v7())?;
-        assert!(Delivery::from_result(&model, &mismatch, id, mismatch.received_at).is_err());
+        assert!(
+            Delivery::from_result(&model, &mismatch, &machine, id, mismatch.received_at).is_err()
+        );
     }
     Ok(())
 }

@@ -43,3 +43,4 @@ later one changes says "Changed by" in its status line and beside the part.
 | [0030](0030-lab-app-owns-specimen-codes.md)     | The lab app owns specimen codes (changes ADRs 0002, 0008, 0029) |
 | [0031](0031-lab-chooses-serial-cable-settings.md) | The lab chooses its serial cable settings in Setup (refines ADR 0002) |
 | [0032](0032-machine-definitions-declare-lab-choices.md) | Machine definitions declare the choices the lab makes (refines ADR 0002, extends ADR 0031) |
+| [0033](0033-machine-model-and-published-schema.md) | Deliveries name the machine model; the contract is published as a schema (changes ADR 0008) |

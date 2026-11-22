@@ -36,6 +36,9 @@ pub struct Machine {
     /// The machine definition file it was loaded from; the admin page reads its
     /// model name from the definition's folder.
     pub(crate) definition: PathBuf,
+    /// The model its results and order events name: the definition's
+    /// `vendor/model` folder key (ADR 0033).
+    pub(crate) model: analyte_contract::document::ModelId,
     /// The link light this machine's runtime writes and the admin page reads.
     pub(crate) status: crate::machine::link::status::Reporter,
 }
@@ -502,6 +505,40 @@ mod admin_tests {
             Program::load(&path),
             Err(super::Error::DuplicateMachineIdentity)
         ));
+        Ok(())
+    }
+
+    // ADR 0033: a definition names its model by the <vendor>/<model>/ folders
+    // it sits in; anywhere else, or under a folder name that is not a model
+    // key, it is refused at load, since no model is guessed.
+    #[test]
+    fn definition_outside_a_model_folder_is_refused() -> Result<(), Error> {
+        let temp = tempfile::tempdir()?;
+        let hl7 = include_str!("../../../../core/config/examples/hl7.toml");
+        let path = analyte_fixtures::write_machine(temp.path(), hl7, "127.0.0.1:5600")?;
+        let program = Program::load(&path)?;
+        let machine = program.machines.first().ok_or("machine")?;
+        assert_eq!(machine.model.as_str(), analyte_fixtures::MODEL);
+        let listed = std::fs::read_to_string(&path)?;
+        for (folder, definition) in [
+            ("", "machine.toml"),
+            ("Roche/cobas", "Roche/cobas/machine.toml"),
+            ("roche/cobas_e411", "roche/cobas_e411/machine.toml"),
+        ] {
+            std::fs::create_dir_all(temp.path().join(folder))?;
+            std::fs::write(temp.path().join(definition), hl7)?;
+            std::fs::write(
+                &path,
+                listed.replace(analyte_fixtures::DEFINITION, definition),
+            )?;
+            assert!(
+                matches!(
+                    Program::load(&path),
+                    Err(super::Error::DefinitionOutsideModelFolder { .. })
+                ),
+                "{definition}"
+            );
+        }
         Ok(())
     }
 
@@ -1018,6 +1055,7 @@ fn load_machine(entry: Entry, files: &Files, loading: &Loading<'_>) -> Result<Ma
     if entry.capture && !plain_name(entry.id.as_str()) {
         return Err(Error::InvalidCaptureMachineId);
     }
+    let model = model(&files.definition)?;
     Ok(Machine {
         capture: entry.capture,
 
@@ -1032,5 +1070,25 @@ fn load_machine(entry: Entry, files: &Files, loading: &Loading<'_>) -> Result<Ma
         snapshot,
         listener: None,
         definition: files.definition.clone(),
+        model,
     })
+}
+
+/// The model of the definition file `definition`: the names of the two
+/// folders it sits in, `<vendor>/<model>/machine.toml` (ADR 0033). Setup
+/// always writes that path; a definition anywhere else is refused, since no
+/// model can be named for it and none is guessed.
+fn model(definition: &Path) -> Result<analyte_contract::document::ModelId, Error> {
+    // A name that is not UTF-8 reads as empty, which no model key accepts.
+    fn name(path: Option<&Path>) -> &str {
+        path.and_then(Path::file_name)
+            .and_then(std::ffi::OsStr::to_str)
+            .unwrap_or("")
+    }
+    let folder = definition.parent();
+    analyte_contract::document::ModelId::new(name(folder.and_then(Path::parent)), name(folder))
+        .map_err(|source| Error::DefinitionOutsideModelFolder {
+            definition: definition.to_owned(),
+            source,
+        })
 }

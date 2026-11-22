@@ -74,6 +74,37 @@ pub fn program_with_limits(machines: &str, limits: &analyte_store::Limits) -> St
     )
 }
 
+/// Where [`write_machine`] puts its definition, relative to the program
+/// folder: a `<vendor>/<model>/` folder, as setup writes one, so deliveries
+/// name a model (ADR 0033).
+pub const DEFINITION: &str = "test/synthetic/machine.toml";
+
+/// The model deliveries name for a definition at [`DEFINITION`].
+pub const MODEL: &str = "test/synthetic";
+
+/// The path of test definition `name` under `root`: `root/test/<name>/machine.toml`.
+#[must_use]
+pub fn definition_path(root: &std::path::Path, name: &str) -> std::path::PathBuf {
+    root.join("test").join(name).join("machine.toml")
+}
+
+/// Writes `text` as test definition `name` at [`definition_path`], creating
+/// its folders, and returns the program file's `definition` value for it.
+/// # Errors
+/// Returns the original folder or file write failure.
+pub fn write_definition(
+    root: &std::path::Path,
+    name: &str,
+    text: impl AsRef<[u8]>,
+) -> std::io::Result<String> {
+    let path = definition_path(root, name);
+    if let Some(folder) = path.parent() {
+        std::fs::create_dir_all(folder)?;
+    }
+    std::fs::write(path, text)?;
+    Ok(format!("test/{name}/machine.toml"))
+}
+
 /// Writes one synthetic machine and site using the common program storage policy.
 /// # Errors
 /// Returns the original file write failure.
@@ -82,7 +113,7 @@ pub fn write_machine(
     definition: &str,
     endpoint: &str,
 ) -> std::io::Result<std::path::PathBuf> {
-    std::fs::write(root.join("machine.toml"), definition)?;
+    write_definition(root, "synthetic", definition)?;
     std::fs::write(
         root.join("site.toml"),
         include_str!("../../../core/config/examples/site.toml").rewrite("127.0.0.1:5600", endpoint),
@@ -91,7 +122,7 @@ pub fn write_machine(
     std::fs::write(
         &path,
         program(
-            "[[machines]]\nid = 'synthetic'\ndefinition = 'machine.toml'\nsite = 'site.toml'\n",
+            "[[machines]]\nid = 'synthetic'\ndefinition = 'test/synthetic/machine.toml'\nsite = 'site.toml'\n",
         ),
     )?;
     Ok(path)

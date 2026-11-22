@@ -133,6 +133,23 @@ jobs:
       - run: cargo +1.95 nextest run --workspace --all-features --locked --no-fail-fast
       - run: cargo +1.95 test --doc --workspace --all-features --locked
 
+  published:
+    name: Published files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      # ADR 0033: the contract schema, OpenAPI document and machine catalog are
+      # generated from the contract types and machines/; the vectors from
+      # generate.py. Regenerating must change nothing that is committed.
+      - name: Regenerated files match the committed ones
+        run: |
+          cargo run -p analyte-publish --locked
+          python3 -I docs/contract/vectors/generate.py
+          git diff --exit-code -- docs/contract
+
   duplication:
     name: Duplication
     runs-on: ubuntu-latest

@@ -8,6 +8,32 @@ answers and how to check them. Not here: running Analyte (see
 deliveries, order events and the order feed. [vectors/](vectors/) holds the
 published test vectors; `generate.py` writes them.
 
+| File | What it is |
+| --- | --- |
+| [contract-v1.schema.json](contract-v1.schema.json) | JSON Schema (draft 2020-12) of every request and answer body |
+| [openapi.json](openapi.json) | OpenAPI 3.1 document of `POST /results`, `POST /order-events` and `GET /orders`, with the key and signature headers |
+| [machines.json](machines.json) | The machine catalog: each shipped model's id (`source.model`), name, vendor, protocol, evidence level, ready or blocked, and code systems |
+| [machines.schema.json](machines.schema.json) | JSON Schema of the catalog |
+
+`cargo run -p analyte-publish` generates these four files from the Rust
+contract types and the `machines/` folder; do not edit them by hand. Each
+release attaches them too ([ADR 0033](../adr/0033-machine-model-and-published-schema.md)).
+
+## Building a lab app
+
+Use the schema to generate types in your language: point a JSON Schema or
+OpenAPI code generator at `openapi.json` (it refers to
+`contract-v1.schema.json` beside it), or validate incoming bodies against the
+schema's `Delivery` and `OrderEvent` definitions. Like the contract, the
+schema allows and ignores unknown fields. It cannot count bytes or compare two
+values, so three rules in [v1.md](v1.md) still need your own check: byte
+limits, each result's receipt equal to the envelope's, and a unit mapping's
+source equal to the original unit.
+
+Key your per-model test and specimen tables on `source.model`; the catalog
+lists the values and each model's code systems. A model with `"ready": false`
+is a blocked definition: Analyte cannot run it yet.
+
 ## Check your app
 
 `analyte-contract-check` runs the published vectors against your app's real
@@ -66,14 +92,14 @@ The reference receiver loads the same file with
 ### How to read the output
 
 ```text
-Analyte contract v1 check, 38 cases
+Analyte contract v1 check, 40 cases
 RESULT  CASE                                     RULE (docs/contract/v1.md)
 PASS    idempotency.first                        Delivery responses and retries
 FAIL    idempotency.retry                        Delivery responses and retries
         expected HTTP 200 with contract_version 1 and status duplicate; got HTTP 200 (Analyte: done, accepted)
 SKIP    seed.orders-present                      GET /orders
         load docs/contract/vectors/seed-orders.json into your app, then rerun with --seed-file docs/contract/vectors/seed-orders.json
-32 passed, 1 failed, 5 skipped
+34 passed, 1 failed, 5 skipped
 ```
 
 - **CASE** is the vector file and the vector's name, so `idempotency.retry` is

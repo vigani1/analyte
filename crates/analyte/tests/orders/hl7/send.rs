@@ -30,10 +30,11 @@ async fn setup_with_patient_requirement(
 ) -> Result<(tempfile::TempDir, Fixture, Reference, Running, TcpStream), Error> {
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), false)?;
-    let definition = std::fs::read_to_string(temp.path().join("hl7.toml"))?
-        .rewrite(r#"edition = "v251""#, &format!(r#"edition = "{edition}""#));
+    let definition =
+        std::fs::read_to_string(analyte_fixtures::definition_path(temp.path(), "hl7"))?
+            .rewrite(r#"edition = "v251""#, &format!(r#"edition = "{edition}""#));
     std::fs::write(
-        temp.path().join("hl7.toml"),
+        analyte_fixtures::definition_path(temp.path(), "hl7"),
         format!(
             "{definition}\n{}",
             include_str!("../../../../core/config/examples/hl7_send.toml")
@@ -48,7 +49,7 @@ async fn setup_with_patient_requirement(
         ),
     )?;
     if matches!(edition, "v26" | "v282") {
-        let file = temp.path().join("hl7.toml");
+        let file = analyte_fixtures::definition_path(temp.path(), "hl7");
         let configured = std::fs::read_to_string(&file)?;
         std::fs::write(
             file,

@@ -138,8 +138,9 @@ async fn seed_parked_receipt(
     Error,
 > {
     let definition = include_str!("../../../../../core/config/examples/hl7.toml");
-    std::fs::write(
-        root.join("machine.toml"),
+    analyte_fixtures::write_definition(
+        root,
+        "synthetic",
         // A wrong order ID selector parks the result until the file is fixed.
         definition.rewrite("record=\"OBR\",field=3", "record=\"OBR\",field=2"),
     )?;
@@ -151,7 +152,7 @@ async fn seed_parked_receipt(
     std::fs::write(
         &config_path,
         analyte_fixtures::program_with_limits(
-            "[[machines]]\nid='synthetic'\ndefinition='machine.toml'\nsite='site.toml'\n",
+            "[[machines]]\nid='synthetic'\ndefinition='test/synthetic/machine.toml'\nsite='site.toml'\n",
             &analyte_store::Limits {
                 reserve_bytes: 1,
                 database_bytes: 100000000,
@@ -187,7 +188,7 @@ async fn seed_parked_receipt(
             Ok::<_, FixtureError>(s.parked(0)?.first().ok_or(FixtureError::Corruption)?.id)
         })
         .await?;
-    std::fs::write(root.join("machine.toml"), definition)?;
+    analyte_fixtures::write_definition(root, "synthetic", definition)?;
     Ok((program, store, receipt, parked, config_path))
 }
 

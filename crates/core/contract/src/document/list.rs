@@ -26,6 +26,22 @@ impl<T> EvidenceList<T> {
     }
 }
 
+impl<T: schemars::JsonSchema> schemars::JsonSchema for EvidenceList<T> {
+    fn inline_schema() -> bool {
+        true
+    }
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        format!("EvidenceList_{}", T::schema_name()).into()
+    }
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "type": "array",
+            "items": generator.subschema_for::<T>(),
+            "maxItems": 256,
+        })
+    }
+}
+
 impl<'de, T: Deserialize<'de>> Deserialize<'de> for EvidenceList<T> {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         struct Visitor<T>(std::marker::PhantomData<T>);
@@ -75,6 +91,23 @@ impl<T> NonEmptyEvidenceList<T> {
     #[must_use]
     pub fn as_slice(&self) -> &[T] {
         self.0.as_slice()
+    }
+}
+
+impl<T: schemars::JsonSchema> schemars::JsonSchema for NonEmptyEvidenceList<T> {
+    fn inline_schema() -> bool {
+        true
+    }
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        format!("NonEmptyEvidenceList_{}", T::schema_name()).into()
+    }
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "type": "array",
+            "items": generator.subschema_for::<T>(),
+            "minItems": 1,
+            "maxItems": 256,
+        })
     }
 }
 

@@ -9,6 +9,19 @@ pub struct DecimalError;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
 pub struct Decimal(String);
+impl schemars::JsonSchema for Decimal {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "Decimal".into()
+    }
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "type": "string",
+            "pattern": "^[+-]?[0-9]+(\\.[0-9]+)?$",
+            "maxLength": 256,
+            "description": "An exact decimal as written: optional sign, digits, optional point and digits; no exponent or grouping.",
+        })
+    }
+}
 impl Decimal {
     /// Accepts plain decimal notation without guessing separators or exponents.
     /// # Errors
@@ -58,7 +71,7 @@ impl From<Decimal> for String {
 }
 
 /// A source comparator; no clinical interpretation is made.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Comparator {
     /// Strict upper bound.
@@ -72,7 +85,7 @@ pub enum Comparator {
 }
 
 /// An explicitly parsed number, with precision retained in its decimal text.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct NumericValue {
     /// Exact number.
     pub number: Decimal,
@@ -93,6 +106,7 @@ pub struct ResultValue {
     /// Explicit interpretation by the mapping layer; never inferred here.
     parsed: ValueInterpretation,
 }
+crate::schema::wrapper!(ResultValue, ResultValueWire, crate::schema::value);
 
 impl ResultValue {
     /// Retains an interpretation without decoded text.
@@ -125,7 +139,7 @@ impl ResultValue {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 struct ResultValueWire {
     original: SourceText,
     decoded_text: Option<SourceText>,
@@ -146,7 +160,7 @@ impl TryFrom<ResultValueWire> for ResultValue {
 }
 
 /// An explicit source-to-UCUM mapping, not a claim of terminology validation.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct UnitMapping {
     /// Exact source unit this mapping applies to.
     pub source: SourceText,
@@ -161,8 +175,9 @@ pub struct Units {
     original: SourceText,
     mapping: Option<UnitMapping>,
 }
+crate::schema::wrapper!(Units, UnitWire, crate::schema::units);
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, schemars::JsonSchema)]
 struct UnitWire {
     original: SourceText,
     mapping: Option<UnitMapping>,
@@ -228,7 +243,7 @@ impl From<Units> for UnitWire {
 }
 
 /// Whether the source already multiplied its value by the dilution factor.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum DilutionApplied {
     /// Already multiplied.
@@ -240,7 +255,7 @@ pub enum DilutionApplied {
 }
 
 /// Dilution evidence; no multiplication is performed by the model.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Dilution {
     /// Dilution text exactly as supplied, before any optional interpretation.
     pub original: Option<SourceText>,
@@ -251,7 +266,7 @@ pub struct Dilution {
 }
 
 /// Explicit value interpretation; unknown types require parking, never empty success.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ValueInterpretation {
     /// Exact decimal with optional comparator.
@@ -274,7 +289,7 @@ pub enum ValueInterpretation {
 }
 
 /// Source code and display label are independent; labels are never identity.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct CodedValue {
     /// Code plus assigning code system.
     pub code: NamespacedId,
@@ -283,7 +298,7 @@ pub struct CodedValue {
 }
 
 /// Structured numeric components, preserving the source separator without guessing meaning.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct StructuredNumeric {
     /// Source comparator if supplied.
     pub comparator: Option<Comparator>,
@@ -296,7 +311,7 @@ pub struct StructuredNumeric {
 }
 
 /// Bounded encoded attachment evidence; hosts retain raw bytes separately.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct Attachment {
     /// Source media/type identifier.
     pub media_type: Identifier,

@@ -1,0 +1,1557 @@
+{
+  "$defs": {
+    "Attachment": {
+      "description": "Bounded encoded attachment evidence; hosts retain raw bytes separately.",
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/SourceText",
+          "description": "Encoded payload, bounded to the source-text limit."
+        },
+        "encoding": {
+          "$ref": "#/$defs/Identifier",
+          "description": "Source encoding identifier; no automatic decoding."
+        },
+        "media_type": {
+          "$ref": "#/$defs/Identifier",
+          "description": "Source media/type identifier."
+        }
+      },
+      "required": [
+        "media_type",
+        "encoding",
+        "data"
+      ],
+      "type": "object"
+    },
+    "CarrierKind": {
+      "description": "Carrier category; position never substitutes for sample identity.",
+      "oneOf": [
+        {
+          "const": "rack",
+          "description": "Rack carrier.",
+          "type": "string"
+        },
+        {
+          "const": "disk",
+          "description": "Disk carrier.",
+          "type": "string"
+        },
+        {
+          "const": "tray",
+          "description": "Tray carrier.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Another explicitly named carrier.",
+          "properties": {
+            "other": {
+              "$ref": "#/$defs/Identifier"
+            }
+          },
+          "required": [
+            "other"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "CodedValue": {
+      "description": "Source code and display label are independent; labels are never identity.",
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/NamespacedId",
+          "description": "Code plus assigning code system."
+        },
+        "text": {
+          "$ref": "#/$defs/SourceText",
+          "description": "Display text exactly as reported."
+        }
+      },
+      "required": [
+        "code",
+        "text"
+      ],
+      "type": "object"
+    },
+    "Comparator": {
+      "description": "A source comparator; no clinical interpretation is made.",
+      "oneOf": [
+        {
+          "const": "less",
+          "description": "Strict upper bound.",
+          "type": "string"
+        },
+        {
+          "const": "less_or_equal",
+          "description": "Inclusive upper bound.",
+          "type": "string"
+        },
+        {
+          "const": "greater",
+          "description": "Strict lower bound.",
+          "type": "string"
+        },
+        {
+          "const": "greater_or_equal",
+          "description": "Inclusive lower bound.",
+          "type": "string"
+        }
+      ]
+    },
+    "Cursor": {
+      "description": "An opaque order-feed cursor. The limit is 256 UTF-8 bytes; maxLength counts characters, so it is an upper bound.",
+      "maxLength": 256,
+      "minLength": 1,
+      "pattern": "^[^\\u0000]*$",
+      "type": "string"
+    },
+    "Decimal": {
+      "description": "An exact decimal as written: optional sign, digits, optional point and digits; no exponent or grouping.",
+      "maxLength": 256,
+      "pattern": "^[+-]?[0-9]+(\\.[0-9]+)?$",
+      "type": "string"
+    },
+    "Delivery": {
+      "description": "The body of POST /results: the results read from one machine message, with its receipt. Each result's receipt equals receipt.id.",
+      "properties": {
+        "contract_version": {
+          "$ref": "#/$defs/VersionOne",
+          "description": "The contract_version value, defined in docs/contract/v1.md."
+        },
+        "created_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "The created_at value, defined in docs/contract/v1.md."
+        },
+        "delivery_id": {
+          "$ref": "#/$defs/Uuid7",
+          "description": "The delivery_id value, defined in docs/contract/v1.md."
+        },
+        "receipt": {
+          "$ref": "#/$defs/Receipt",
+          "description": "The receipt value, defined in docs/contract/v1.md."
+        },
+        "results": {
+          "description": "The results value, defined in docs/contract/v1.md.",
+          "items": {
+            "$ref": "#/$defs/ResultDocument"
+          },
+          "maxItems": 1000,
+          "minItems": 1,
+          "type": "array"
+        },
+        "source": {
+          "$ref": "#/$defs/Source",
+          "description": "The source value, defined in docs/contract/v1.md."
+        }
+      },
+      "required": [
+        "contract_version",
+        "delivery_id",
+        "created_at",
+        "source",
+        "receipt",
+        "results"
+      ],
+      "type": "object"
+    },
+    "DeliveryStatus": {
+      "description": "Successful durable delivery outcome.",
+      "oneOf": [
+        {
+          "const": "accepted",
+          "description": "Newly committed.",
+          "type": "string"
+        },
+        {
+          "const": "duplicate",
+          "description": "Exact bytes already committed.",
+          "type": "string"
+        }
+      ]
+    },
+    "Dilution": {
+      "description": "Dilution evidence; no multiplication is performed by the model.",
+      "properties": {
+        "applied": {
+          "$ref": "#/$defs/DilutionApplied",
+          "description": "Application evidence, independent of factor availability."
+        },
+        "factor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Factor as explicitly reported, if supplied."
+        },
+        "original": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceText"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Dilution text exactly as supplied, before any optional interpretation."
+        }
+      },
+      "required": [
+        "applied"
+      ],
+      "type": "object"
+    },
+    "DilutionApplied": {
+      "description": "Whether the source already multiplied its value by the dilution factor.",
+      "oneOf": [
+        {
+          "const": "yes",
+          "description": "Already multiplied.",
+          "type": "string"
+        },
+        {
+          "const": "no",
+          "description": "Not multiplied.",
+          "type": "string"
+        },
+        {
+          "const": "unknown",
+          "description": "Source evidence does not establish this.",
+          "type": "string"
+        }
+      ]
+    },
+    "ErrorBody": {
+      "description": "Version 1 ErrorBody; unknown fields are ignored.",
+      "properties": {
+        "contract_version": {
+          "$ref": "#/$defs/VersionOne",
+          "description": "The contract_version value, defined in docs/contract/v1.md."
+        },
+        "detail": {
+          "$ref": "#/$defs/Text",
+          "description": "The detail value, defined in docs/contract/v1.md."
+        },
+        "error": {
+          "$ref": "#/$defs/Text",
+          "description": "The error value, defined in docs/contract/v1.md."
+        }
+      },
+      "required": [
+        "contract_version",
+        "error",
+        "detail"
+      ],
+      "type": "object"
+    },
+    "Identifier": {
+      "description": "An identifier or assigning system, nonempty and at most 256 UTF-8 bytes. The limit is 256 UTF-8 bytes; maxLength counts characters, so it is an upper bound.",
+      "maxLength": 256,
+      "minLength": 1,
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F]*$",
+      "type": "string"
+    },
+    "IdentityStatus": {
+      "description": "Resolution evidence; missing evidence never becomes a guessed result key.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Sufficient evidence identifies the observation and revision.",
+          "properties": {
+            "resolved": {
+              "$ref": "#/$defs/ResultIdentity"
+            }
+          },
+          "required": [
+            "resolved"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Operator reconciliation is required.",
+          "properties": {
+            "unresolved": {
+              "$ref": "#/$defs/Reason"
+            }
+          },
+          "required": [
+            "unresolved"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "LocalDateTime": {
+      "description": "A local date and time without an offset; no time zone is implied.",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?$",
+      "type": "string"
+    },
+    "ModelId": {
+      "description": "The machine model: its definition's vendor/model folder key, for example roche/cobas-e411 (ADR 0033). Key per-model tables on it; see machines.json.",
+      "pattern": "^[a-z0-9-]{1,64}/[a-z0-9-]{1,64}$",
+      "type": "string"
+    },
+    "NamedSourceTime": {
+      "description": "A time with its source-defined role.",
+      "properties": {
+        "role": {
+          "$ref": "#/$defs/Identifier",
+          "description": "Source role rather than a guessed clinical meaning."
+        },
+        "time": {
+          "$ref": "#/$defs/SourceTime",
+          "description": "Source time evidence."
+        }
+      },
+      "required": [
+        "role",
+        "time"
+      ],
+      "type": "object"
+    },
+    "NamespacedId": {
+      "description": "An identifier with its assigning system; neither part can be empty.",
+      "properties": {
+        "namespace": {
+          "$ref": "#/$defs/Identifier",
+          "description": "Assigning system, kept exactly."
+        },
+        "value": {
+          "$ref": "#/$defs/Identifier",
+          "description": "Value assigned by that system."
+        }
+      },
+      "required": [
+        "namespace",
+        "value"
+      ],
+      "type": "object"
+    },
+    "NumericValue": {
+      "description": "An explicitly parsed number, with precision retained in its decimal text.",
+      "properties": {
+        "comparator": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Comparator"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Bound supplied by the source, if present."
+        },
+        "number": {
+          "$ref": "#/$defs/Decimal",
+          "description": "Exact number."
+        }
+      },
+      "required": [
+        "number"
+      ],
+      "type": "object"
+    },
+    "ObservationIdentity": {
+      "description": "Observation key from source identity evidence, with namespaced order context.",
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/NamespacedId",
+          "description": "Observation code and code system, never a display/test name."
+        },
+        "order": {
+          "$ref": "#/$defs/NamespacedId",
+          "description": "Namespaced order identity; missing context requires unresolved status."
+        },
+        "run": {
+          "$ref": "#/$defs/SourceText",
+          "description": "Source run evidence (for example a completion time or run counter);\nempty when the machine gives none, in which case a rerun cannot be told\nfrom a retransmission and differing content is parked as a conflict."
+        },
+        "sub_id": {
+          "$ref": "#/$defs/SourceText",
+          "description": "Source sub-ID; empty is distinct from unavailable identity evidence."
+        }
+      },
+      "required": [
+        "code",
+        "sub_id",
+        "run",
+        "order"
+      ],
+      "type": "object"
+    },
+    "Order": {
+      "description": "One order version from the order feed. tests holds 1 to 100 tests, and may be empty only on a tombstone.",
+      "if": {
+        "properties": {
+          "tombstone": {
+            "const": false
+          }
+        }
+      },
+      "properties": {
+        "expires_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The expires_at value, defined in docs/contract/v1.md."
+        },
+        "id": {
+          "$ref": "#/$defs/Text",
+          "description": "The id value, defined in docs/contract/v1.md."
+        },
+        "patient": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Patient"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The patient value, defined in docs/contract/v1.md."
+        },
+        "position": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SamplePosition"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The position value, defined in docs/contract/v1.md."
+        },
+        "priority": {
+          "$ref": "#/$defs/Priority",
+          "description": "The priority value, defined in docs/contract/v1.md."
+        },
+        "sample_id": {
+          "$ref": "#/$defs/Text",
+          "description": "The sample_id value, defined in docs/contract/v1.md."
+        },
+        "specimen_type": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NamespacedId"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The specimen_type value, defined in docs/contract/v1.md."
+        },
+        "state": {
+          "$ref": "#/$defs/OrderState",
+          "description": "The state value, defined in docs/contract/v1.md."
+        },
+        "target_analyzers": {
+          "description": "The target_analyzers value, defined in docs/contract/v1.md.",
+          "items": {
+            "$ref": "#/$defs/Text"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "tests": {
+          "description": "The tests value, defined in docs/contract/v1.md.",
+          "items": {
+            "$ref": "#/$defs/OrderTest"
+          },
+          "maxItems": 100,
+          "type": "array"
+        },
+        "tombstone": {
+          "description": "The tombstone value, defined in docs/contract/v1.md.",
+          "type": "boolean"
+        },
+        "version": {
+          "description": "The version value, defined in docs/contract/v1.md.",
+          "format": "uint64",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "state",
+        "sample_id",
+        "tests",
+        "priority",
+        "tombstone"
+      ],
+      "then": {
+        "properties": {
+          "tests": {
+            "minItems": 1
+          }
+        }
+      },
+      "type": "object"
+    },
+    "OrderEvent": {
+      "description": "The body of POST /order-events: one change of an order's state on a machine.",
+      "properties": {
+        "contract_version": {
+          "$ref": "#/$defs/VersionOne",
+          "description": "The contract_version value, defined in docs/contract/v1.md."
+        },
+        "created_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "The created_at value, defined in docs/contract/v1.md."
+        },
+        "delivery_id": {
+          "$ref": "#/$defs/Uuid7",
+          "description": "The delivery_id value, defined in docs/contract/v1.md."
+        },
+        "occurred_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "The occurred_at value, defined in docs/contract/v1.md."
+        },
+        "order_id": {
+          "$ref": "#/$defs/Text",
+          "description": "The order_id value, defined in docs/contract/v1.md."
+        },
+        "order_version": {
+          "description": "The order_version value, defined in docs/contract/v1.md.",
+          "format": "uint64",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Text"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The reason value, defined in docs/contract/v1.md."
+        },
+        "source": {
+          "$ref": "#/$defs/Source",
+          "description": "The source value, defined in docs/contract/v1.md."
+        },
+        "source_status": {
+          "$ref": "#/$defs/SourceText",
+          "description": "The source_status value, defined in docs/contract/v1.md."
+        },
+        "state": {
+          "$ref": "#/$defs/OrderState",
+          "description": "The state value, defined in docs/contract/v1.md."
+        }
+      },
+      "required": [
+        "contract_version",
+        "delivery_id",
+        "created_at",
+        "source",
+        "order_id",
+        "order_version",
+        "state",
+        "occurred_at",
+        "source_status"
+      ],
+      "type": "object"
+    },
+    "OrderState": {
+      "description": "Order progress; persistence and machine commands remain the host's responsibility.",
+      "oneOf": [
+        {
+          "const": "requested",
+          "description": "Requested by the app, not sent.",
+          "type": "string"
+        },
+        {
+          "const": "sent",
+          "description": "Sent, awaiting machine acceptance.",
+          "type": "string"
+        },
+        {
+          "const": "accepted",
+          "description": "Machine explicitly accepted.",
+          "type": "string"
+        },
+        {
+          "const": "done",
+          "description": "Machine reported completion.",
+          "type": "string"
+        },
+        {
+          "const": "rejected",
+          "description": "Explicitly rejected.",
+          "type": "string"
+        },
+        {
+          "const": "cancel_requested",
+          "description": "Cancellation requested, not yet confirmed.",
+          "type": "string"
+        },
+        {
+          "const": "cancel_confirmed",
+          "description": "Cancellation explicitly confirmed.",
+          "type": "string"
+        },
+        {
+          "const": "uncertain",
+          "description": "Send outcome unknown; reconciliation required, never automatic resend.",
+          "type": "string"
+        }
+      ]
+    },
+    "OrderTest": {
+      "description": "Version 1 OrderTest; unknown fields are ignored.",
+      "properties": {
+        "name": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Text"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The name value, defined in docs/contract/v1.md."
+        },
+        "namespace": {
+          "$ref": "#/$defs/Identifier",
+          "description": "The namespace value, defined in docs/contract/v1.md."
+        },
+        "value": {
+          "$ref": "#/$defs/Identifier",
+          "description": "The value value, defined in docs/contract/v1.md."
+        }
+      },
+      "required": [
+        "namespace",
+        "value"
+      ],
+      "type": "object"
+    },
+    "OrdersPage": {
+      "description": "The answer to GET /orders: one page of the order feed.",
+      "properties": {
+        "complete": {
+          "description": "The complete value, defined in docs/contract/v1.md.",
+          "type": "boolean"
+        },
+        "contract_version": {
+          "$ref": "#/$defs/VersionOne",
+          "description": "The contract_version value, defined in docs/contract/v1.md."
+        },
+        "next_cursor": {
+          "$ref": "#/$defs/Cursor",
+          "description": "The next_cursor value, defined in docs/contract/v1.md."
+        },
+        "orders": {
+          "description": "The orders value, defined in docs/contract/v1.md.",
+          "items": {
+            "$ref": "#/$defs/Order"
+          },
+          "maxItems": 100,
+          "type": "array"
+        }
+      },
+      "required": [
+        "contract_version",
+        "orders",
+        "next_cursor",
+        "complete"
+      ],
+      "type": "object"
+    },
+    "Patient": {
+      "description": "Version 1 Patient; unknown fields are ignored.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/NamespacedId",
+          "description": "The id value, defined in docs/contract/v1.md."
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "Priority": {
+      "description": "Explicit Priority alternatives.",
+      "oneOf": [
+        {
+          "const": "routine",
+          "description": "Routine",
+          "type": "string"
+        },
+        {
+          "const": "urgent",
+          "description": "Urgent",
+          "type": "string"
+        },
+        {
+          "const": "stat",
+          "description": "Stat",
+          "type": "string"
+        }
+      ]
+    },
+    "ProcessingMode": {
+      "description": "Mode is explicit so training and debugging cannot silently become production.",
+      "oneOf": [
+        {
+          "const": "unknown",
+          "description": "The machine did not state a processing mode; never production-eligible.",
+          "type": "string"
+        },
+        {
+          "const": "production",
+          "description": "Eligible for production delivery.",
+          "type": "string"
+        },
+        {
+          "const": "training",
+          "description": "Training evidence only.",
+          "type": "string"
+        },
+        {
+          "const": "debug",
+          "description": "Debugging evidence only.",
+          "type": "string"
+        },
+        {
+          "const": "quality_control",
+          "description": "Quality control evidence only.",
+          "type": "string"
+        }
+      ]
+    },
+    "QcClass": {
+      "description": "Source classification only; no QC decision is made here.",
+      "oneOf": [
+        {
+          "const": "patient",
+          "description": "Patient specimen.",
+          "type": "string"
+        },
+        {
+          "const": "control",
+          "description": "Control material.",
+          "type": "string"
+        },
+        {
+          "const": "calibration",
+          "description": "Calibration material.",
+          "type": "string"
+        },
+        {
+          "const": "unknown",
+          "description": "Not classified by the source.",
+          "type": "string"
+        }
+      ]
+    },
+    "Reason": {
+      "description": "An explicit nonempty reason, bounded to 1024 UTF-8 bytes. The limit is 1024 UTF-8 bytes; maxLength counts characters, so it is an upper bound.",
+      "maxLength": 1024,
+      "minLength": 1,
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F]*$",
+      "type": "string"
+    },
+    "Receipt": {
+      "description": "Version 1 Receipt; unknown fields are ignored.",
+      "properties": {
+        "config_sha256": {
+          "$ref": "#/$defs/Sha256",
+          "description": "The config_sha256 value, defined in docs/contract/v1.md."
+        },
+        "config_version": {
+          "$ref": "#/$defs/Identifier",
+          "description": "The config_version value, defined in docs/contract/v1.md."
+        },
+        "driver": {
+          "$ref": "#/$defs/NamespacedId",
+          "description": "The driver value, defined in docs/contract/v1.md."
+        },
+        "id": {
+          "$ref": "#/$defs/Uuid7",
+          "description": "The id value, defined in docs/contract/v1.md."
+        },
+        "raw_sha256": {
+          "$ref": "#/$defs/Sha256",
+          "description": "The raw_sha256 value, defined in docs/contract/v1.md."
+        },
+        "received_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "The received_at value, defined in docs/contract/v1.md."
+        }
+      },
+      "required": [
+        "id",
+        "received_at",
+        "raw_sha256",
+        "driver",
+        "config_version",
+        "config_sha256"
+      ],
+      "type": "object"
+    },
+    "ReceiptId": {
+      "description": "An RFC 9562 UUID version 7, hyphenated.",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+      "type": "string"
+    },
+    "ResultDocument": {
+      "description": "One replacement unit can contain several source segments and repeated values.",
+      "properties": {
+        "identity": {
+          "$ref": "#/$defs/IdentityStatus",
+          "description": "Identity may resolve even if a correction arrives before its original."
+        },
+        "parts": {
+          "description": "Source parts in their original order; no scalar flattening or deduplication.",
+          "items": {
+            "$ref": "#/$defs/ResultPart"
+          },
+          "maxItems": 256,
+          "minItems": 1,
+          "type": "array"
+        },
+        "processing": {
+          "$ref": "#/$defs/ProcessingMode",
+          "description": "Processing mode of the source message; only production may be delivered."
+        },
+        "receipt": {
+          "$ref": "#/$defs/ReceiptId",
+          "description": "The receipt whose raw bytes this result was read from."
+        },
+        "sample": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SampleIdentity"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The sample the machine reported; absence requires operator parking."
+        }
+      },
+      "required": [
+        "receipt",
+        "processing",
+        "identity",
+        "parts"
+      ],
+      "type": "object"
+    },
+    "ResultIdentity": {
+      "description": "A trusted observation and its Analyte revision; reruns use a new observation.",
+      "properties": {
+        "observation": {
+          "$ref": "#/$defs/ObservationIdentity",
+          "description": "Stable observation key, never derived from a value, ordinal or test name."
+        },
+        "revision": {
+          "$ref": "#/$defs/Revision",
+          "description": "Revision assigned by Analyte, independently of source action/status."
+        }
+      },
+      "required": [
+        "observation",
+        "revision"
+      ],
+      "type": "object"
+    },
+    "ResultPart": {
+      "description": "A result retains source evidence beside summaries, without clinical decisions.",
+      "properties": {
+        "comments": {
+          "description": "Source comments, unchanged.",
+          "items": {
+            "$ref": "#/$defs/SourceText"
+          },
+          "maxItems": 256,
+          "type": "array"
+        },
+        "dilution": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Dilution"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Dilution evidence if present."
+        },
+        "flags": {
+          "description": "Source flags, unchanged.",
+          "items": {
+            "$ref": "#/$defs/SourceText"
+          },
+          "maxItems": 256,
+          "type": "array"
+        },
+        "qc_class": {
+          "$ref": "#/$defs/QcClass",
+          "description": "Source material classification."
+        },
+        "received_at": {
+          "$ref": "#/$defs/Timestamp",
+          "description": "Host receive instant, independent of machine clock."
+        },
+        "reference_range": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceText"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Source reference range, uninterpreted."
+        },
+        "source_path": {
+          "description": "Ordered path from source message to result, preserving hierarchy.",
+          "items": {
+            "$ref": "#/$defs/SourceNode"
+          },
+          "maxItems": 256,
+          "type": "array"
+        },
+        "source_status": {
+          "$ref": "#/$defs/SourceText",
+          "description": "Original result status code."
+        },
+        "status": {
+          "$ref": "#/$defs/ResultStatus",
+          "description": "Analyte summary, never replacing the source status."
+        },
+        "test": {
+          "$ref": "#/$defs/NamespacedId",
+          "description": "The machine's own test code as sent, in its code system (ADR 0029)."
+        },
+        "times": {
+          "description": "Named source times (collection, analysis, etc.).",
+          "items": {
+            "$ref": "#/$defs/NamedSourceTime"
+          },
+          "maxItems": 256,
+          "type": "array"
+        },
+        "units": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Units"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Units if present."
+        },
+        "values": {
+          "description": "Original and optional parsed value.",
+          "items": {
+            "$ref": "#/$defs/ResultValue"
+          },
+          "maxItems": 256,
+          "type": "array"
+        }
+      },
+      "required": [
+        "test",
+        "values",
+        "flags",
+        "comments",
+        "qc_class",
+        "source_status",
+        "status",
+        "source_path",
+        "times",
+        "received_at"
+      ],
+      "type": "object"
+    },
+    "ResultStatus": {
+      "description": "Analyte summary, retained beside the source's own code. The summary never\nreplaces the source status; it only groups source codes with one meaning.",
+      "oneOf": [
+        {
+          "const": "pending",
+          "description": "Not yet available, for example in process on the instrument.",
+          "type": "string"
+        },
+        {
+          "const": "preliminary",
+          "description": "Preliminary observation.",
+          "type": "string"
+        },
+        {
+          "const": "final",
+          "description": "Final observation.",
+          "type": "string"
+        },
+        {
+          "const": "corrected",
+          "description": "Corrected revision of an earlier result.",
+          "type": "string"
+        },
+        {
+          "const": "withdrawn",
+          "description": "An earlier result is withdrawn and must no longer be used (for example\nHL7 OBX-11 D or W); the raw history is kept.",
+          "type": "string"
+        },
+        {
+          "const": "not_performed",
+          "description": "The test could not be performed (for example HL7 X, ASTM X).",
+          "type": "string"
+        },
+        {
+          "const": "unknown",
+          "description": "Source status not mapped to a summary.",
+          "type": "string"
+        }
+      ]
+    },
+    "ResultValue": {
+      "description": "A value as sent (original, authoritative) with its interpretation. decoded_text is given only beside the text interpretation.",
+      "if": {
+        "properties": {
+          "decoded_text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "decoded_text"
+        ]
+      },
+      "properties": {
+        "decoded_text": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceText"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "original": {
+          "$ref": "#/$defs/SourceText"
+        },
+        "parsed": {
+          "$ref": "#/$defs/ValueInterpretation"
+        }
+      },
+      "required": [
+        "original",
+        "parsed"
+      ],
+      "then": {
+        "properties": {
+          "parsed": {
+            "const": "text"
+          }
+        }
+      },
+      "type": "object"
+    },
+    "Revision": {
+      "description": "Analyte-assigned revision number; zero is a valid first revision.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "SampleId": {
+      "description": "A sample ID retaining leading zeros and case; at most 256 UTF-8 bytes. The limit is 256 UTF-8 bytes; maxLength counts characters, so it is an upper bound.",
+      "maxLength": 256,
+      "minLength": 1,
+      "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F]*$",
+      "type": "string"
+    },
+    "SampleIdentity": {
+      "description": "Sample identity with provenance and optional physical position.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/SampleId",
+          "description": "String ID, never converted to a number."
+        },
+        "position": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SamplePosition"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Physical position when reported."
+        },
+        "source": {
+          "$ref": "#/$defs/SampleSource",
+          "description": "Origin of this ID."
+        }
+      },
+      "required": [
+        "id",
+        "source"
+      ],
+      "type": "object"
+    },
+    "SamplePosition": {
+      "description": "Source-reported carrier and slot, including nonnumeric labels.",
+      "properties": {
+        "carrier": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Identifier"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Carrier identity when reported."
+        },
+        "kind": {
+          "$ref": "#/$defs/CarrierKind",
+          "description": "Carrier category."
+        },
+        "slot": {
+          "$ref": "#/$defs/Identifier",
+          "description": "Slot as sent, preserving leading zeros."
+        }
+      },
+      "required": [
+        "kind",
+        "slot"
+      ],
+      "type": "object"
+    },
+    "SampleSource": {
+      "description": "How a sample identifier reached the analyzer; unknown remains explicit.",
+      "oneOf": [
+        {
+          "const": "scanned_by_machine",
+          "description": "Read by the analyzer's scanner.",
+          "type": "string"
+        },
+        {
+          "const": "typed_on_machine",
+          "description": "Entered at the analyzer.",
+          "type": "string"
+        },
+        {
+          "const": "work_list",
+          "description": "Supplied in a work list.",
+          "type": "string"
+        },
+        {
+          "const": "instrument_assigned",
+          "description": "Assigned by the analyzer.",
+          "type": "string"
+        },
+        {
+          "const": "unknown",
+          "description": "Not established by source evidence.",
+          "type": "string"
+        }
+      ]
+    },
+    "Sha256": {
+      "description": "A SHA-256 digest as 64 hex digits.",
+      "pattern": "^[0-9a-fA-F]{64}$",
+      "type": "string"
+    },
+    "Source": {
+      "description": "Version 1 Source; unknown fields are ignored.",
+      "properties": {
+        "analyzer": {
+          "$ref": "#/$defs/Text",
+          "description": "The analyzer value, defined in docs/contract/v1.md."
+        },
+        "connection": {
+          "$ref": "#/$defs/Text",
+          "description": "The connection value, defined in docs/contract/v1.md."
+        },
+        "model": {
+          "$ref": "#/$defs/ModelId",
+          "description": "The machine model: the definition's vendor/model folder key (ADR 0033). Key per-model test and specimen tables on it."
+        }
+      },
+      "required": [
+        "analyzer",
+        "connection",
+        "model"
+      ],
+      "type": "object"
+    },
+    "SourceNode": {
+      "description": "One source hierarchy node; the flat path avoids recursive untrusted trees.",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/Identifier",
+          "description": "Source record/segment category, unchanged."
+        },
+        "occurrence": {
+          "description": "One-based record or segment position in the source message.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "sequence": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceText"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Source sequence identifier when supplied."
+        },
+        "status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceText"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Source status at this level when supplied."
+        }
+      },
+      "required": [
+        "occurrence",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "SourceText": {
+      "description": "Unmodified source text, including controls, bounded to 16 KiB. The limit is 16384 UTF-8 bytes; maxLength counts characters, so it is an upper bound.",
+      "maxLength": 16384,
+      "type": "string"
+    },
+    "SourceTime": {
+      "description": "Source time evidence without inventing a timezone for a partial/local time.",
+      "properties": {
+        "offset": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UtcOffset"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Explicit source offset if supplied."
+        },
+        "original": {
+          "$ref": "#/$defs/SourceText",
+          "description": "Time exactly as reported."
+        },
+        "parsed": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LocalDateTime"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Parsed local date/time if available; never supplies an implied offset."
+        },
+        "precision": {
+          "$ref": "#/$defs/TimePrecision",
+          "description": "Written precision."
+        }
+      },
+      "required": [
+        "original",
+        "precision"
+      ],
+      "type": "object"
+    },
+    "StatusBody": {
+      "description": "Success body including the contract version.",
+      "properties": {
+        "contract_version": {
+          "$ref": "#/$defs/VersionOne",
+          "description": "Must be 1."
+        },
+        "status": {
+          "$ref": "#/$defs/DeliveryStatus",
+          "description": "Durable result."
+        }
+      },
+      "required": [
+        "contract_version",
+        "status"
+      ],
+      "type": "object"
+    },
+    "StructuredNumeric": {
+      "description": "Structured numeric components, preserving the source separator without guessing meaning.",
+      "properties": {
+        "comparator": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Comparator"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Source comparator if supplied."
+        },
+        "first": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "First exact number when supplied."
+        },
+        "second": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Decimal"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Second exact number when supplied."
+        },
+        "separator": {
+          "$ref": "#/$defs/SourceText",
+          "description": "Source separator (for example a ratio or range marker)."
+        }
+      },
+      "required": [
+        "separator"
+      ],
+      "type": "object"
+    },
+    "Text": {
+      "description": "Envelope text, kept exactly; never trimmed or normalized. The limit is 4096 UTF-8 bytes; maxLength counts characters, so it is an upper bound.",
+      "maxLength": 4096,
+      "minLength": 1,
+      "pattern": "^[^\\u0000]*$",
+      "type": "string"
+    },
+    "TimePrecision": {
+      "description": "Written time precision; the original text retains fractional digits exactly.",
+      "oneOf": [
+        {
+          "const": "year",
+          "description": "Year only.",
+          "type": "string"
+        },
+        {
+          "const": "month",
+          "description": "Through month.",
+          "type": "string"
+        },
+        {
+          "const": "day",
+          "description": "Through day.",
+          "type": "string"
+        },
+        {
+          "const": "hour",
+          "description": "Through hour.",
+          "type": "string"
+        },
+        {
+          "const": "minute",
+          "description": "Through minute.",
+          "type": "string"
+        },
+        {
+          "const": "second",
+          "description": "Through second.",
+          "type": "string"
+        },
+        {
+          "const": "fractional_second",
+          "description": "Subsecond digits, retained in original text.",
+          "type": "string"
+        },
+        {
+          "const": "unknown",
+          "description": "Precision could not be established.",
+          "type": "string"
+        }
+      ]
+    },
+    "Timestamp": {
+      "description": "An RFC 3339 timestamp with an explicit offset.",
+      "format": "date-time",
+      "type": "string"
+    },
+    "UnitMapping": {
+      "description": "An explicit source-to-UCUM mapping, not a claim of terminology validation.",
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/SourceText",
+          "description": "Exact source unit this mapping applies to."
+        },
+        "target": {
+          "$ref": "#/$defs/Identifier",
+          "description": "UCUM expression chosen in configuration."
+        }
+      },
+      "required": [
+        "source",
+        "target"
+      ],
+      "type": "object"
+    },
+    "Units": {
+      "description": "A unit as sent, with an explicit UCUM mapping when one is set up; mapping.source equals original.",
+      "properties": {
+        "mapping": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UnitMapping"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "original": {
+          "$ref": "#/$defs/SourceText"
+        }
+      },
+      "required": [
+        "original"
+      ],
+      "type": "object"
+    },
+    "UtcOffset": {
+      "description": "A UTC offset in seconds, -25:59:59 through +25:59:59.",
+      "maximum": 93599,
+      "minimum": -93599,
+      "type": "integer"
+    },
+    "Uuid7": {
+      "description": "An RFC 9562 UUID version 7, hyphenated.",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+      "type": "string"
+    },
+    "ValueInterpretation": {
+      "description": "Explicit value interpretation; unknown types require parking, never empty success.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Exact decimal with optional comparator.",
+          "properties": {
+            "numeric": {
+              "$ref": "#/$defs/NumericValue"
+            }
+          },
+          "required": [
+            "numeric"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "text",
+          "description": "Source qualitative, textual or error token; original text remains authoritative.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A coded value, retaining code system and display text independently.",
+          "properties": {
+            "coded": {
+              "$ref": "#/$defs/CodedValue"
+            }
+          },
+          "required": [
+            "coded"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Structured number such as a range or ratio; no arithmetic is performed.",
+          "properties": {
+            "structured_numeric": {
+              "$ref": "#/$defs/StructuredNumeric"
+            }
+          },
+          "required": [
+            "structured_numeric"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Encapsulated data retained in its original encoding, without decoding expansion.",
+          "properties": {
+            "attachment": {
+              "$ref": "#/$defs/Attachment"
+            }
+          },
+          "required": [
+            "attachment"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Unsupported type; original text is preserved and the result must be parked.",
+          "properties": {
+            "unsupported": {
+              "properties": {
+                "reason": {
+                  "$ref": "#/$defs/Reason",
+                  "description": "Specific reason interpretation is unavailable."
+                },
+                "source_type": {
+                  "$ref": "#/$defs/Identifier",
+                  "description": "Source type code."
+                }
+              },
+              "required": [
+                "source_type",
+                "reason"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "unsupported"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "VersionOne": {
+      "const": 1,
+      "type": "integer"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Request and answer bodies of contract version 1 (docs/contract/v1.md). Generated from the Rust contract types; do not edit by hand. Unknown fields are allowed and ignored.",
+  "title": "Analyte app contract version 1"
+}

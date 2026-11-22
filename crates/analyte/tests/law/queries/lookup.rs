@@ -332,7 +332,10 @@ async fn failed_query_followup_is_uncertain() -> Result<(), Error> {
             // The 200 ms budget exists only to force the first timeout. The restarted
             // service expects a timely negative ORL, so it gets the standard budget;
             // keeping 200 ms made the audit depend on CI scheduling (run 44148059968).
-            std::fs::write(temp.path().join("hl7.toml"), definition())?;
+            std::fs::write(
+                analyte_fixtures::definition_path(temp.path(), "hl7"),
+                definition(),
+            )?;
         }
         let running = step(
             "Running::start",

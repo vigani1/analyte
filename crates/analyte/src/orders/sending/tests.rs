@@ -63,6 +63,7 @@ async fn only_interrupted_transfer_recovers_as_uncertain() -> Result<(), Error> 
     };
     let completed = completed_key.clone();
     let interrupted = interrupted_key.clone();
+    let model = Identifier::new("test/synthetic")?;
     let (completed, interrupted) = store
         .request::<_, FixtureError>(deadline()?, move |store| {
             store.order_page(&page)?;
@@ -70,6 +71,7 @@ async fn only_interrupted_transfer_recovers_as_uncertain() -> Result<(), Error> 
                 .reserve_send(
                     &OrderReservation {
                         identity: &completed,
+                        model: &model,
                         version: std::num::NonZeroU64::MIN,
                         now: 101,
                         freshness: 30,
@@ -81,6 +83,7 @@ async fn only_interrupted_transfer_recovers_as_uncertain() -> Result<(), Error> 
                 .reserve_send(
                     &OrderReservation {
                         identity: &interrupted,
+                        model: &model,
                         version: std::num::NonZeroU64::MIN,
                         now: 101,
                         freshness: 30,
@@ -117,6 +120,7 @@ async fn assert_recovered_outcomes(
     completed_key: MachineOrderKey,
     interrupted_key: MachineOrderKey,
 ) -> Result<(), Error> {
+    let model = Identifier::new("test/synthetic")?;
     store
         .request::<_, FixtureError>(deadline()?, move |store| {
             let rows = store.machine_orders(&analyte_store::MachineOrderFilter {
@@ -140,6 +144,7 @@ async fn assert_recovered_outcomes(
                     store.reserve_send(
                         &OrderReservation {
                             identity: &key,
+                            model: &model,
                             version: std::num::NonZeroU64::MIN,
                             now: 102,
                             freshness: 30

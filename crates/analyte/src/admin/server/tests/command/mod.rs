@@ -106,8 +106,9 @@ async fn overview_command_without_an_engine_is_unknown() -> Result<(), Error> {
         Err(EngineError::NotRunning(_))
     ));
     // Without an admin page the program needs a machine to load.
-    std::fs::write(
-        folder.path().join("machine.toml"),
+    analyte_fixtures::write_definition(
+        folder.path(),
+        "synthetic",
         include_str!("../../../../../../core/config/examples/hl7.toml"),
     )?;
     std::fs::write(
@@ -120,7 +121,7 @@ async fn overview_command_without_an_engine_is_unknown() -> Result<(), Error> {
         None,
         "[[machines]]
 id = 'synthetic'
-definition = 'machine.toml'
+definition = 'test/synthetic/machine.toml'
 site = 'site.toml'
 ",
     )?;

@@ -23,6 +23,7 @@ async fn app_diagnostics_park_and_worker_continues() -> TestResult {
                 let delivery = encode_delivery(
                     &result,
                     &metadata,
+                    &model()?,
                     Identifier::new("app")?,
                     jiff::Timestamp::now(),
                 )?;

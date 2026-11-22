@@ -26,6 +26,7 @@ fn machine(policy: &str) -> Result<Machine, Error> {
     )?
     .validate()?;
     Ok(Machine {
+        model: analyte_contract::document::ModelId::new("example", "synthetic-astm")?,
         capture: false,
         destination_limits: crate::runtime::delivery::limits(
             &snapshot.effective().site().destination,

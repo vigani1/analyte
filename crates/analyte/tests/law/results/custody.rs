@@ -523,7 +523,10 @@ async fn parked_result_reprocesses_after_mapping_fix() -> Result<(), Error> {
     let id: analyte_model::ReceiptId = serde_json::from_str(&id)?;
     running.stop().await?;
     drop(peer);
-    std::fs::write(temp.path().join("hl7.toml"), definition())?;
+    std::fs::write(
+        analyte_fixtures::definition_path(temp.path(), "hl7"),
+        definition(),
+    )?;
     let current = program(&path, &reference.url)?;
     let mut store = analyte::open_system_store(&current).await?;
     assert_repaired_mapping_preserves_receipt(&mut store, &current, id).await?;

@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 pub mod document;
 mod response;
+pub mod schema;
 pub use document::ResultDocument;
 mod signing;
 pub use response::{DeliveryStatus, ReplyProblem, ResponseAction, StatusBody, classify_response};
@@ -41,6 +42,15 @@ impl TryFrom<String> for Text {
     }
 }
 
+impl schemars::JsonSchema for Text {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "Text".into()
+    }
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schema::envelope_text()
+    }
+}
+
 impl Text {
     /// Returns the exact source text.
     #[must_use]
@@ -52,7 +62,7 @@ impl Text {
 macro_rules! wire {
     ($name:ident { $($(#[$attr:meta])* $field:ident : $ty:ty),* $(,)? }) => {
         #[doc = concat!("Version 1 ", stringify!($name), "; unknown fields are ignored.")]
-        #[derive(Debug, Clone, Serialize, Deserialize)]
+        #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
         pub struct $name {
             $(#[doc = concat!("The ", stringify!($field), " value, defined in docs/contract/v1.md.")]
             $(#[$attr])* pub $field: $ty),*
@@ -63,7 +73,7 @@ macro_rules! wire {
 macro_rules! choices {
     ($name:ident { $($variant:ident),* }) => {
         #[doc = concat!("Explicit ", stringify!($name), " alternatives.")]
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
         #[serde(rename_all = "snake_case")]
         pub enum $name { $(#[doc = stringify!($variant)] $variant),* }
     };
@@ -74,26 +84,55 @@ choices!(Priority {
     Urgent,
     Stat
 });
+// ADR 0033: `model` is the machine definition's vendor/model folder key, the
+// key lab apps file their per-model test and specimen tables under.
 wire!(Source {
     analyzer: Text,
-    connection: Text
+    connection: Text,
+    #[schemars(
+        description = "The machine model: the definition's vendor/model folder key (ADR 0033). Key per-model test and specimen tables on it."
+    )]
+    model: document::ModelId
 });
 wire!(Receipt {
+    #[schemars(with = "schema::Uuid7")]
     id: Text,
+    #[schemars(with = "schema::Timestamp")]
     received_at: Text,
+    #[schemars(with = "schema::Sha256")]
     raw_sha256: Text,
     driver: document::NamespacedId,
     config_version: document::Identifier,
+    #[schemars(with = "schema::Sha256")]
     config_sha256: Text
 });
 wire!(DeliveryFields {
-    contract_version: u8, delivery_id: Text, created_at: Text, source: Source,
-    receipt: Receipt, results: Vec<ResultDocument>
+    #[schemars(with = "schema::VersionOne")]
+    contract_version: u8,
+    #[schemars(with = "schema::Uuid7")]
+    delivery_id: Text,
+    #[schemars(with = "schema::Timestamp")]
+    created_at: Text,
+    source: Source,
+    receipt: Receipt,
+    #[schemars(length(min = 1, max = 1000))]
+    results: Vec<ResultDocument>
 });
 wire!(EventFields {
-    contract_version: u8, delivery_id: Text, created_at: Text, source: Source,
-    order_id: Text, order_version: std::num::NonZeroU64, state: document::OrderState,
-    occurred_at: Text, source_status: document::SourceText, reason: Option<Text>
+    #[schemars(with = "schema::VersionOne")]
+    contract_version: u8,
+    #[schemars(with = "schema::Uuid7")]
+    delivery_id: Text,
+    #[schemars(with = "schema::Timestamp")]
+    created_at: Text,
+    source: Source,
+    order_id: Text,
+    order_version: std::num::NonZeroU64,
+    state: document::OrderState,
+    #[schemars(with = "schema::Timestamp")]
+    occurred_at: Text,
+    source_status: document::SourceText,
+    reason: Option<Text>
 });
 wire!(Patient {
     id: document::NamespacedId
@@ -107,8 +146,14 @@ wire!(OrderTest {
 });
 wire!(OrderFields {
     id: Text, version: std::num::NonZeroU64, state: document::OrderState, sample_id: Text,
-    tests: Vec<OrderTest>, priority: Priority, target_analyzers: Option<Vec<Text>>,
-    expires_at: Option<Text>, tombstone: bool,
+    #[schemars(length(max = 100))]
+    tests: Vec<OrderTest>,
+    priority: Priority,
+    #[schemars(length(min = 1, max = 100))]
+    target_analyzers: Option<Vec<Text>>,
+    #[schemars(with = "Option<schema::Timestamp>")]
+    expires_at: Option<Text>,
+    tombstone: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     position: Option<document::SamplePosition>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -116,8 +161,17 @@ wire!(OrderFields {
     #[serde(skip_serializing_if = "Option::is_none")]
     patient: Option<Patient>
 });
-wire!(OrdersPageFields { contract_version: u8, orders: Vec<Order>, next_cursor: Text, complete: bool });
+wire!(OrdersPageFields {
+    #[schemars(with = "schema::VersionOne")]
+    contract_version: u8,
+    #[schemars(length(max = 100))]
+    orders: Vec<Order>,
+    #[schemars(with = "schema::Cursor")]
+    next_cursor: Text,
+    complete: bool
+});
 wire!(ErrorBody {
+    #[schemars(with = "schema::VersionOne")]
     contract_version: u8,
     error: Text,
     detail: Text
@@ -126,6 +180,7 @@ wire!(ErrorBody {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(try_from = "DeliveryFields")]
 pub struct Delivery(DeliveryFields);
+schema::wrapper!(Delivery, DeliveryFields, schema::delivery);
 impl TryFrom<DeliveryFields> for Delivery {
     type Error = DocumentError;
     fn try_from(fields: DeliveryFields) -> Result<Self, Self::Error> {
@@ -164,6 +219,7 @@ impl Delivery {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(try_from = "EventFields")]
 pub struct OrderEvent(EventFields);
+schema::wrapper!(OrderEvent, EventFields, schema::order_event);
 impl TryFrom<EventFields> for OrderEvent {
     type Error = DocumentError;
     fn try_from(fields: EventFields) -> Result<Self, Self::Error> {
@@ -243,6 +299,7 @@ pub fn credential_matches(left: &[u8], right: &[u8]) -> bool {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(try_from = "OrderFields")]
 pub struct Order(OrderFields);
+schema::wrapper!(Order, OrderFields, schema::order);
 impl TryFrom<OrderFields> for Order {
     type Error = DocumentError;
     fn try_from(fields: OrderFields) -> Result<Self, Self::Error> {
@@ -269,6 +326,7 @@ impl Order {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(try_from = "OrdersPageFields")]
 pub struct OrdersPage(OrdersPageFields);
+schema::wrapper!(OrdersPage, OrdersPageFields, schema::orders_page);
 impl TryFrom<OrdersPageFields> for OrdersPage {
     type Error = DocumentError;
     fn try_from(fields: OrdersPageFields) -> Result<Self, Self::Error> {
@@ -293,6 +351,7 @@ impl OrdersPage {
 
 impl Delivery {
     /// Copies every result field into independent wire types, checking receipt ownership.
+    /// `model` is the machine definition's model (ADR 0033).
     /// This represents evidence; the sender must separately enforce production eligibility.
     ///
     /// # Errors
@@ -300,6 +359,7 @@ impl Delivery {
     pub fn from_result(
         result: &analyte_model::ResultContent,
         receipt: &analyte_model::ReceiptMetadata,
+        model: &document::ModelId,
         delivery_id: analyte_model::DeliveryId,
         created_at: jiff::Timestamp,
     ) -> Result<Self, DocumentError> {
@@ -312,6 +372,7 @@ impl Delivery {
             source: Source {
                 analyzer: text(receipt.machine.as_str().to_owned())?,
                 connection: text(receipt.connection.as_str().to_owned())?,
+                model: model.clone(),
             },
             receipt: Receipt {
                 id: text(uuid::Uuid::from(receipt.id).to_string())?,

@@ -124,6 +124,8 @@ async fn reference_receiver_passes() -> TestResult {
         "idempotency.other-endpoint",
         "authentication.invalid-signature",
         "invalid-documents.missing-occurrence",
+        "invalid-documents.missing-model",
+        "invalid-documents.model-without-vendor",
         "limits.max-document-bytes",
         "orders.unknown-cursor",
         "orders.versions-only-increase",

@@ -186,8 +186,9 @@ mod tests {
     #[tokio::test]
     async fn every_protocol_refuses_failed_custody_with_cause() -> Result<(), crate::Error> {
         let temp = tempfile::tempdir()?;
-        std::fs::write(
-            temp.path().join("machine.toml"),
+        analyte_fixtures::write_definition(
+            temp.path(),
+            "synthetic",
             include_str!("../../../../core/config/examples/hl7.toml"),
         )?;
         std::fs::write(
@@ -198,7 +199,7 @@ mod tests {
         std::fs::write(
             &path,
             analyte_fixtures::program(
-                "[[machines]]\nid = 'synthetic'\ndefinition = 'machine.toml'\nsite = 'site.toml'\n",
+                "[[machines]]\nid = 'synthetic'\ndefinition = 'test/synthetic/machine.toml'\nsite = 'site.toml'\n",
             ),
         )?;
         let program = crate::installation::config::Program::load(&path)?;

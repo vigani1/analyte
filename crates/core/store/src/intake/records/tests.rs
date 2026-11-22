@@ -71,6 +71,10 @@ fn parked_kinds_keep_their_stored_spelling() {
         (ParkedKind::OrderVersionRefused, "order_version_refused"),
         (ParkedKind::CancelConflict, "law_cancel_refusal_conflict"),
         (ParkedKind::PollIntent, "poll_intent"),
+        (
+            ParkedKind::OrderEventModelUnknown,
+            "order_event_model_unknown",
+        ),
     ];
     assert_eq!(ParkedKind::ALL.len(), expected.len());
     for ((kind, spelling), listed) in expected.into_iter().zip(ParkedKind::ALL) {
@@ -84,7 +88,8 @@ fn parked_kinds_keep_their_stored_spelling() {
             | ParkedKind::DeliveryConflict
             | ParkedKind::OrderVersionRefused
             | ParkedKind::CancelConflict
-            | ParkedKind::PollIntent => {}
+            | ParkedKind::PollIntent
+            | ParkedKind::OrderEventModelUnknown => {}
         }
         assert_eq!(kind, listed);
         assert_eq!(kind.as_str(), spelling);

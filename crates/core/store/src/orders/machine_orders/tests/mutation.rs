@@ -12,6 +12,7 @@ fn order_clock_allows_equal_time_refuses_regression() -> TestResult {
         let record = store
             .reserve_send(
                 &OrderReservation {
+                    model: &test_support::order_model(),
                     identity: &key,
                     version: NonZeroU64::MIN,
                     now: 101,
@@ -63,6 +64,7 @@ fn order_clock_allows_equal_time_refuses_regression() -> TestResult {
         assert!(matches!(
             store.reserve_send(
                 &OrderReservation {
+                    model: &test_support::order_model(),
                     identity: &key,
                     version: NonZeroU64::MIN,
                     now: 102,
@@ -86,6 +88,7 @@ fn reconciliation_checks_target_and_outcome_separately() -> TestResult {
     let record = store
         .reserve_send(
             &OrderReservation {
+                model: &test_support::order_model(),
                 identity: &key,
                 version: NonZeroU64::MIN,
                 now: 101,
@@ -165,6 +168,7 @@ fn pending_page_takes_exact_limit_skips_reservations() -> TestResult {
     store
         .reserve_send(
             &OrderReservation {
+                model: &test_support::order_model(),
                 identity: &key,
                 version: NonZeroU64::MIN,
                 now: 101,
@@ -199,6 +203,7 @@ fn history_and_audit_bounds_are_inclusive() -> TestResult {
         let record = store
             .reserve_send(
                 &OrderReservation {
+                    model: &test_support::order_model(),
                     identity: &key,
                     version: NonZeroU64::MIN,
                     now: 101,
@@ -307,6 +312,7 @@ fn order_event_checks_bounds_and_provenance_atomically() -> TestResult {
         let record = store
             .reserve_send(
                 &OrderReservation {
+                    model: &test_support::order_model(),
                     identity: &key,
                     version: NonZeroU64::MIN,
                     now: 101,
@@ -393,6 +399,7 @@ fn command_refuses_empty_bytes_keeps_original_after_restart() -> TestResult {
     store
         .reserve_send(
             &OrderReservation {
+                model: &test_support::order_model(),
                 identity: &key,
                 version: NonZeroU64::MIN,
                 now: 101,
@@ -432,6 +439,7 @@ fn command_refuses_empty_bytes_keeps_original_after_restart() -> TestResult {
     assert!(matches!(
         store.reserve_send(
             &OrderReservation {
+                model: &test_support::order_model(),
                 identity: &key,
                 version: NonZeroU64::MIN,
                 now: 102,

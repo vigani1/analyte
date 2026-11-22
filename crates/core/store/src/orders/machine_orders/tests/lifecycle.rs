@@ -27,6 +27,7 @@ fn pending_pages_filter_without_false_empty_or_replay() -> TestResult {
     store
         .reserve_send(
             &OrderReservation {
+                model: &test_support::order_model(),
                 identity: &key,
                 version: NonZeroU64::MIN,
                 now: 101,
@@ -73,6 +74,7 @@ fn reservation_and_restart_never_resend_orders() -> TestResult {
     let reserved = store
         .reserve_send(
             &OrderReservation {
+                model: &test_support::order_model(),
                 identity: &identity()?,
                 version: NonZeroU64::MIN,
                 now: 101,
@@ -101,6 +103,7 @@ fn reservation_and_restart_never_resend_orders() -> TestResult {
     assert!(matches!(
         store.reserve_send(
             &OrderReservation {
+                model: &test_support::order_model(),
                 identity: &identity()?,
                 version: NonZeroU64::MIN,
                 now: 101,
@@ -148,6 +151,7 @@ fn sending_reservations_survive_restart_listing_bounded() -> TestResult {
     let first = store
         .reserve_send(
             &OrderReservation {
+                model: &test_support::order_model(),
                 identity: &identity()?,
                 version: NonZeroU64::MIN,
                 now: 101,
@@ -161,6 +165,7 @@ fn sending_reservations_survive_restart_listing_bounded() -> TestResult {
     let second = store
         .reserve_send(
             &OrderReservation {
+                model: &test_support::order_model(),
                 identity: &second_key,
                 version: NonZeroU64::MIN,
                 now: 101,
@@ -174,6 +179,7 @@ fn sending_reservations_survive_restart_listing_bounded() -> TestResult {
     assert!(matches!(
         store.reserve_send(
             &OrderReservation {
+                model: &test_support::order_model(),
                 identity: &identity()?,
                 version: NonZeroU64::MIN,
                 now: 102,
@@ -231,6 +237,7 @@ fn overflow_duplicate_unknown_illegal_outcomes_roll_back() -> TestResult {
         assert!(matches!(
             store.reserve_send(
                 &OrderReservation {
+                    model: &test_support::order_model(),
                     identity: &identity()?,
                     version: NonZeroU64::MIN,
                     now: 101,
@@ -326,6 +333,7 @@ fn caller_groups_exact_and_budget_ignores_namespace() -> TestResult {
         store.order_page(&cached)?;
         let key = identity()?;
         let candidate = OrderReservation {
+            model: &test_support::order_model(),
             identity: &key,
             version: NonZeroU64::MIN,
             now: 101,
@@ -393,6 +401,7 @@ fn original_command_owned_immutable_survives_restart() -> TestResult {
     let record = store
         .reserve_send(
             &OrderReservation {
+                model: &test_support::order_model(),
                 identity: &key,
                 version: NonZeroU64::MIN,
                 now: 101,

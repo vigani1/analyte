@@ -7,3 +7,5 @@ allow-print-in-tests = true
 
 too-many-lines-threshold = 100
 cognitive-complexity-threshold = 25
+# Proper names written as their owners spell them; ".." keeps Clippy's list.
+doc-valid-idents = ["OpenAPI", ".."]

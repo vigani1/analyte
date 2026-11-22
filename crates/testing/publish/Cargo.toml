@@ -1,0 +1,24 @@
+[package]
+name = "analyte-publish"
+description = "Writes the machine-readable files published with each release: the contract v1 JSON Schema, its OpenAPI document and the machine catalog (ADR 0033)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+analyte-contract = { workspace = true }
+schemars = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+toml = { workspace = true }
+
+[dev-dependencies]
+jsonschema = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

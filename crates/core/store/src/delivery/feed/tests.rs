@@ -260,6 +260,7 @@ fn older_version_refused() -> TestResult {
         machine,
     };
     let reservation = OrderReservation {
+        model: &order_model(),
         identity: &identity,
         version: std::num::NonZeroU64::MIN,
         now: 101,
@@ -289,6 +290,7 @@ fn older_version_in_reload_keeps_newer() -> TestResult {
         machine: Identifier::new("machine")?,
     };
     let reservation = OrderReservation {
+        model: &order_model(),
         identity: &identity,
         version: std::num::NonZeroU64::MIN.saturating_add(1),
         now: 101,

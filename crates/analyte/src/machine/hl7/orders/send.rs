@@ -136,6 +136,7 @@ async fn next_work(
             deadline()?,
             reservation::Admission {
                 identity,
+                model: crate::orders::stored_model(&machine.model)?,
                 version,
                 freshness,
                 owner,

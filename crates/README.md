@@ -18,7 +18,7 @@ crates/
   steps/       transport, framing, dialog, mapping, sink
   protocols/   astm, hl7, poct, vidas, autolyser
   core/        model, store, config, contract
-  testing/     receiver, contract-check, sim, fixtures
+  testing/     receiver, contract-check, sim, fixtures, publish
 ```
 
 Crates of the same kind share a layout:
@@ -62,6 +62,7 @@ simply passing each message along once. Outgoing orders use these parts too.
 | [contract-check](testing/contract-check/) | Runs the published contract vectors against a lab app's real endpoints and reports each case. |
 | [fixtures](testing/fixtures/) | Shares synthetic messages, storage probes and bounded waits across tests. |
 | [sim](testing/sim/) | Plays the machine side of synthetic recordings and compares the bridge replies byte for byte. |
+| [publish](testing/publish/) | Writes the contract schema, its OpenAPI document and the machine catalog published in `docs/contract/` and with each release. |
 
 Protocol keys stay the same across layers: per-protocol files are `astm.rs`,
 `hl7.rs`, `poct.rs`, `vidas.rs` and `autolyser.rs` wherever that concern exists.

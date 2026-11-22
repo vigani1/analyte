@@ -16,6 +16,7 @@ fn build_refuses_nonproduction_and_parked_results() -> TestResult {
             encode_delivery(
                 &result,
                 &receipt,
+                &model()?,
                 Identifier::new("app")?,
                 jiff::Timestamp::now()
             ),
@@ -28,6 +29,7 @@ fn build_refuses_nonproduction_and_parked_results() -> TestResult {
         encode_delivery(
             &result,
             &receipt,
+            &model()?,
             Identifier::new("app")?,
             jiff::Timestamp::now()
         ),
