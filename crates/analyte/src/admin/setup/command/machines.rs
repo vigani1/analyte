@@ -4,7 +4,7 @@ use super::{
     Failure, Installation, Outcome, actor, backups, live, problem, record, restart_note, say,
 };
 use crate::admin::setup::{
-    Definition, Running, Seams, Setup, SetupError, Shipped, Via, definitions, lab_apps,
+    Definition, Running, Seams, Setup, SetupError, Shipped, Via, cable, definitions, lab_apps,
     level_and_state,
     machines::{add_machine, preview_removal, remove_machine},
     model, on_files,
@@ -14,7 +14,7 @@ use crate::admin::setup::{
 };
 use crate::admin::view::{Tone, format};
 use crate::machine::link::status::Link;
-use analyte_config::TransportKind;
+use analyte_config::{SerialSetting, TransportKind};
 use analyte_model::Identifier;
 use analyte_transport::serial;
 use std::{path::Path, sync::Arc, time::Duration};
@@ -34,13 +34,17 @@ pub enum Command {
     Models,
     /// Lists this PC's serial ports with their adapter and USB serial number.
     Ports,
-    /// Adds a machine to the settings; it is not set up yet.
+    /// Adds a machine to the settings; it is not set up yet. Serial cable
+    /// settings given here are kept for its setup.
     Add {
         /// Letters A to Z, digits, - and _; it also names its settings file.
         name: String,
         /// The name has stored history and this is the same analyzer.
         #[arg(long)]
         same_analyzer: bool,
+        /// The serial cable settings; see the options below.
+        #[command(flatten)]
+        cable: Cable,
     },
     /// Sets a machine up: its model, connection and lab app, checked as the
     /// Save step checks them. Choices not given keep their saved values.
@@ -78,6 +82,57 @@ pub enum Command {
         #[arg(long)]
         anyway: bool,
     },
+}
+
+/// A serial machine's cable settings, as step 2 chooses them (ADR 0031):
+/// match the analyzer's LIS/host settings screen. A setting not given keeps
+/// its saved value, else the model's suggestion.
+#[derive(clap::Args, Clone, Default)]
+pub struct Cable {
+    /// Serial cable: the baud rate: 300, 600, 1200, 2400, 4800, 9600, 19200,
+    /// 38400, 57600 or 115200.
+    #[arg(long, value_name = "RATE")]
+    baud: Option<String>,
+    /// Serial cable: data bits, 5 to 8.
+    #[arg(long, value_name = "BITS")]
+    data_bits: Option<String>,
+    /// Serial cable: parity: none, odd or even.
+    #[arg(long, value_name = "PARITY")]
+    parity: Option<String>,
+    /// Serial cable: stop bits, 1 or 2.
+    #[arg(long, value_name = "BITS")]
+    stop_bits: Option<String>,
+    /// Serial cable: flow control: none, hardware (RTS/CTS) or software (XON/XOFF).
+    #[arg(long, value_name = "FLOW")]
+    flow_control: Option<String>,
+}
+
+impl Cable {
+    /// `draft` with each given setting applied.
+    fn over(self, mut draft: Draft) -> Draft {
+        for (setting, given) in [
+            (SerialSetting::Baud, self.baud),
+            (SerialSetting::DataBits, self.data_bits),
+            (SerialSetting::Parity, self.parity),
+            (SerialSetting::StopBits, self.stop_bits),
+            (SerialSetting::FlowControl, self.flow_control),
+        ] {
+            if given.is_some() {
+                cable::set(&mut draft, setting, given);
+            }
+        }
+        draft
+    }
+
+    /// The settings given, read and checked as step 2 reads them; none when
+    /// none is given.
+    fn chosen(self) -> Result<Option<analyte_config::SerialValues>, SetupError> {
+        let draft = self.over(Draft::default());
+        if !cable::given(&draft) {
+            return Ok(None);
+        }
+        cable::chosen(&draft, None).map(Some)
+    }
 }
 
 /// A machine's model, connection and lab app, as step 1 and step 2 choose them.
@@ -119,24 +174,38 @@ pub struct Choice {
     /// device again, removing its allowed devices.
     #[arg(long)]
     any_device: bool,
+    /// The serial cable settings.
+    #[command(flatten)]
+    cable: Cable,
 }
 
 impl Choice {
     /// `draft` with these choices applied; a new connection replaces the saved one.
     fn over(self, mut draft: Draft) -> Draft {
-        let connection = self.serial_port.is_some()
-            || self.usb_serial.is_some()
-            || self.address.is_some()
-            || self.folder.is_some();
-        if connection {
-            // The analyzer is the same device whichever address Analyte listens on.
-            draft = Draft {
-                definition: draft.definition,
-                lab_app: draft.lab_app,
-                allowed_peers: draft.allowed_peers,
+        let serial = self.serial_port.is_some() || self.usb_serial.is_some();
+        if serial || self.address.is_some() || self.folder.is_some() {
+            // The analyzer is the same device whichever address Analyte listens
+            // on, and the same cable whichever port it is plugged into.
+            let kept = Draft {
+                definition: draft.definition.take(),
+                lab_app: draft.lab_app.take(),
+                allowed_peers: draft.allowed_peers.take(),
                 ..Draft::default()
             };
+            draft = if serial {
+                Draft {
+                    baud: draft.baud,
+                    data_bits: draft.data_bits,
+                    parity: draft.parity,
+                    stop_bits: draft.stop_bits,
+                    flow_control: draft.flow_control,
+                    ..kept
+                }
+            } else {
+                kept
+            };
         }
+        draft = self.cable.over(draft);
         if !self.allowed_peer.is_empty() {
             draft.allowed_peers = Some(self.allowed_peer.join(", "));
         }
@@ -175,10 +244,12 @@ pub(super) async fn run(
         Command::Add {
             name,
             same_analyzer,
+            cable,
         } => {
             let installation = Installation::load(config, seams)?;
+            let serial = cable.chosen()?;
             let actor = actor(given, ask)?;
-            add(&installation, &actor, &name, same_analyzer, ask).await
+            add(&installation, &actor, &name, (same_analyzer, serial), ask).await
         }
         Command::Set {
             name,
@@ -303,6 +374,20 @@ pub(super) struct Listed {
     allowed_peers: Option<Vec<String>>,
     /// It connects to Analyte and accepts any device: a warning.
     open_to_any_device: bool,
+    /// The serial cable settings the files load now, when it is on a serial
+    /// cable (ADR 0031).
+    pub(super) cable: Option<ListedCable>,
+}
+
+/// A serial machine's cable settings as `machines list` shows them.
+#[derive(serde::Serialize)]
+pub(super) struct ListedCable {
+    /// The values in use.
+    settings: analyte_config::SerialValues,
+    /// The settings whose value is not the model's suggestion.
+    differs_from_suggestion: Vec<&'static str>,
+    /// The values in words, with what differs.
+    pub(super) words: String,
 }
 
 /// The whole JSON answer of `machines list --json`.
@@ -340,12 +425,25 @@ pub(super) fn settings_rows(installation: &Installation) -> Result<Vec<Listed>, 
                 .and_then(toml::Value::as_str)
                 .map(|value| format!("{key} = {value}"))
         });
-        let version = installation
+        let loaded = installation
             .program
             .machines()
             .iter()
-            .find(|machine| machine.id().as_str() == id)
-            .map(|machine| format::digest_short(&machine.snapshot().digest()));
+            .find(|machine| machine.id().as_str() == id);
+        let version = loaded.map(|machine| format::digest_short(&machine.snapshot().digest()));
+        let cable = loaded.and_then(|machine| {
+            let effective = machine.snapshot().effective();
+            let suggestion = effective.serial_suggestion();
+            cable::of(effective.stack()).map(|serial| ListedCable {
+                settings: cable::values(serial),
+                differs_from_suggestion: serial
+                    .differs_from(suggestion)
+                    .into_iter()
+                    .map(SerialSetting::key)
+                    .collect(),
+                words: cable::summary(serial, suggestion),
+            })
+        });
         let listens = definition.as_deref().is_some_and(|path| {
             plan::kind_of(&crate::installation::config::folder(&config).join(path))
                 == Some(TransportKind::TcpServer)
@@ -362,6 +460,7 @@ pub(super) fn settings_rows(installation: &Installation) -> Result<Vec<Listed>, 
             set_up: entry.definition.is_some(),
             settings_version: version,
             live: None,
+            cable,
             id,
         });
     }
@@ -436,6 +535,9 @@ fn print_machine(machine: &Listed, engine: bool) -> std::io::Result<()> {
         "  Connection: {}",
         machine.connection.as_deref().unwrap_or(not)
     ))?;
+    if let Some(cable) = &machine.cable {
+        say(&format!("  Cable: {}", cable.words))?;
+    }
     if let Some(line) = devices_line(machine) {
         say(&line)?;
     }
@@ -515,13 +617,13 @@ async fn add(
     installation: &Installation,
     actor: &Identifier,
     name: &str,
-    same_analyzer: bool,
+    (same_analyzer, serial): (bool, Option<analyte_config::SerialValues>),
     ask: Ask,
 ) -> Result<Outcome, Failure> {
     let setup = &installation.setup;
     installation
         .with_store(async |store| {
-            let added = match add_machine(setup, store, name, same_analyzer).await {
+            let added = match add_machine(setup, store, name, same_analyzer, serial.clone()).await {
                 Err(SetupError::HistoryNotConfirmed(id)) if ask == Ask::Terminal => {
                     say(&format::sentence(
                         &SetupError::HistoryNotConfirmed(id).to_string(),
@@ -529,7 +631,7 @@ async fn add(
                     if !ask.confirm("Is it the same analyzer?")? {
                         return Err(Failure::NotConfirmed);
                     }
-                    add_machine(setup, store, name, true).await?
+                    add_machine(setup, store, name, true, serial.clone()).await?
                 }
                 added => added?,
             };
@@ -578,6 +680,10 @@ fn saved(setup: &Setup, id: &str) -> Result<Draft, SetupError> {
         ..Draft::default()
     };
     let kind = installed.definition.as_deref().and_then(plan::kind_of);
+    // Also before a model is chosen: `machines add` may have kept cable settings.
+    if matches!(kind, Some(TransportKind::Serial) | None) {
+        cable::keep_saved(&mut draft, &table);
+    }
     match (kind, text("usb_serial"), text("endpoint")) {
         (_, Some(number), _) => draft.port = Some(format!("usb:{number}")),
         (Some(TransportKind::Serial), None, endpoint) => draft.port_name = endpoint,
@@ -672,6 +778,21 @@ fn fill(setup: &Setup, id: &str, draft: &mut Draft, ask: Ask) -> Result<bool, Fa
         asked = true;
         ask_connection(setup, kind, draft, ask)?;
     }
+    if kind == Some(TransportKind::Serial) {
+        for setting in cable::missing(draft, cable::suggested(&model.path).as_ref()) {
+            asked = true;
+            let choices: Vec<ask::Choice> = cable::options(setting)
+                .into_iter()
+                .map(|(value, label)| ask::Choice { value, label })
+                .collect();
+            let question = format!(
+                "Step 2, Cable: {}? The model suggests none; match the analyzer's LIS/host settings screen",
+                cable::label(setting).to_lowercase()
+            );
+            let chosen = ask.choose(&question, &choices)?;
+            cable::set(draft, setting, chosen);
+        }
+    }
     let scan = lab_apps::scan(setup.config())?;
     let known = draft
         .lab_app
@@ -721,8 +842,18 @@ fn ask_connection(
     *draft = Draft {
         definition: draft.definition.take(),
         lab_app: draft.lab_app.take(),
+        baud: draft.baud.take(),
+        data_bits: draft.data_bits.take(),
+        parity: draft.parity.take(),
+        stop_bits: draft.stop_bits.take(),
+        flow_control: draft.flow_control.take(),
         ..Draft::default()
     };
+    if kind != Some(TransportKind::Serial) {
+        for setting in SerialSetting::ALL {
+            cable::set(draft, setting, None);
+        }
+    }
     match kind {
         Some(TransportKind::Serial) => {
             let ports: Vec<serial::Listed> = (setup.seams.ports)()
@@ -805,6 +936,9 @@ fn summary(id: &str, plan: &Plan) -> std::io::Result<()> {
     say(&format!("Machine: {id}"))?;
     say(&format!("Model: {}", plan.model))?;
     say(&format!("Connection: {} ({})", words.shown, words.exact))?;
+    if let Some(cable) = plan.cable() {
+        say(&format!("Cable: {cable}"))?;
+    }
     if let Some(accepts) = accepts(Link::of(effective.stack()), plan.peers.as_ref()) {
         say(&format!("Devices: {accepts}"))?;
     }
@@ -862,6 +996,9 @@ async fn save(
             let words = connection_words(saved.link, &saved.connection);
             say(&format!("Saved {id}: {}.", saved.model))?;
             say(&format!("Connection: {} ({})", words.shown, words.exact))?;
+            if let Some(cable) = &saved.cable {
+                say(&format!("Cable: {cable}"))?;
+            }
             if let Some(accepts) = accepts(saved.link, saved.peers.as_ref()) {
                 say(&format!("Devices: {accepts}"))?;
             }

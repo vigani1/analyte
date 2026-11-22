@@ -10,6 +10,7 @@ mod mappings;
 mod stack;
 use departures::validate_departures;
 use mappings::{validate_mapping_family, validate_mappings};
+pub(crate) use stack::check_serial;
 use stack::{
     validate_dialog_and_framing, validate_protocol, validate_stack, validate_syntax,
     validate_transport,

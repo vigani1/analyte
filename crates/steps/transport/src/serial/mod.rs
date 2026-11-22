@@ -18,6 +18,13 @@ pub use lookup::{LIST_LIMIT, Listed, Lookup, list, locate, same_usb_serial};
 pub(crate) use owner::emit;
 pub use owner::run;
 
+/// The standard line speeds, in bits per second, that a configuration may
+/// choose: the rates both Windows and the POSIX serial interface name, from
+/// 300 to 115200. Analyzer LIS settings screens offer these.
+pub const BAUD_RATES: [u32; 10] = [
+    300, 600, 1200, 2400, 4800, 9600, 19200, 38400, 57600, 115_200,
+];
+
 /// A blocking port used only by its dedicated owner thread.
 /// Implementations must enforce the configured timeout on reads and writes.
 pub trait Port: Read + Write + Send {}

@@ -41,3 +41,4 @@ later one changes says "Changed by" in its status line and beside the part.
 | [0028](0028-lab-app-keys-through-the-engine.md) | Lab app keys from the command line through the running engine (refines ADR 0025) |
 | [0029](0029-lab-app-owns-test-names.md)         | The lab app owns test names (changes ADRs 0002, 0003, 0008, 0024) |
 | [0030](0030-lab-app-owns-specimen-codes.md)     | The lab app owns specimen codes (changes ADRs 0002, 0008, 0029) |
+| [0031](0031-lab-chooses-serial-cable-settings.md) | The lab chooses its serial cable settings in Setup (refines ADR 0002) |

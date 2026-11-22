@@ -27,6 +27,8 @@ struct Install {
     root: PathBuf,
     config: PathBuf,
     written: Arc<Mutex<Vec<u8>>>,
+    /// The line settings each open of the fake serial port asked for.
+    opened: Arc<Mutex<Vec<String>>>,
 }
 
 /// A fake serial port: sends [`ASTM`] once, then only times out; records writes.
@@ -121,12 +123,13 @@ fn install_on(admin: u16) -> Result<Install, Error> {
         root,
         config,
         written: Arc::new(Mutex::new(Vec::new())),
+        opened: Arc::new(Mutex::new(Vec::new())),
     })
 }
 
 impl Install {
     fn seams(&self) -> Seams {
-        let written = self.written.clone();
+        let (written, opened) = (self.written.clone(), self.opened.clone());
         Seams {
             definitions: Some(self.root.join("machines")),
             ports: Arc::new(|| {
@@ -136,7 +139,11 @@ impl Install {
                     description: Some("FT232R USB UART".into()),
                 }])
             }),
-            open: Arc::new(move |_, _| {
+            open: Arc::new(move |_, settings| {
+                opened
+                    .lock()
+                    .map_err(|_| std::io::Error::other("poisoned"))?
+                    .push(format!("{settings:?}"));
                 Ok(Box::new(FakePort {
                     input: ASTM.to_vec(),
                     written: written.clone(),
@@ -1015,4 +1022,255 @@ fn a_stopped_engine_says_to_start_it() {
         )
     );
     assert!(!failure.after_writing());
+}
+
+/// The `[serial]` table of machine `id`'s site file; none when it has none.
+fn site_serial(install: &Install, id: &str) -> Result<Option<toml::Value>, Error> {
+    let site: toml::Table =
+        std::fs::read_to_string(install.root.join(format!("{id}.site.toml")))?.parse()?;
+    Ok(site.get("serial").cloned())
+}
+
+/// The serial example definition without its flow control suggestion.
+fn without_flow_suggestion(install: &Install) -> Result<(), Error> {
+    std::fs::write(
+        install
+            .root
+            .join("machines/example/serial-astm/machine.toml"),
+        include_str!("../../../../../core/config/examples/astm.toml")
+            .rewrite("flow_control = \"none\"\n", ""),
+    )?;
+    Ok(())
+}
+
+// ADR 0031 decision 6, ADR 0027 (one code path): `machines set --baud ...`
+// writes the same [serial] table as step 2's Save with the same choices, keeps
+// the values not given, names the cable in the audit row and changes the
+// settings version; `machines list` shows what differs.
+#[tokio::test(flavor = "multi_thread")]
+async fn cable_options_save_what_step_two_saves() -> Result<(), Error> {
+    let install = install()?;
+    install.set_up().await?;
+    let version = |install: &Install| -> Result<[u8; 32], Error> {
+        Ok(Program::load(&install.config)?
+            .machines()
+            .first()
+            .ok_or("machine missing")?
+            .snapshot()
+            .digest())
+    };
+    let suggested = toml::Value::Table(
+        "baud = 9600\ndata_bits = 8\nparity = \"none\"\nstop_bits = 1\nflow_control = \"none\"\n"
+            .parse()?,
+    );
+    assert_eq!(
+        site_serial(&install, "cobas-1")?,
+        Some(suggested),
+        "set writes every value, the suggestion where none is given"
+    );
+    let before = version(&install)?;
+    let set = ["set", "cobas-1", "--baud", "19200", "--parity", "even"];
+    assert_eq!(install.machines(&set).await?, Outcome::Done);
+    assert_eq!(
+        site_serial(&install, "cobas-1")?,
+        Some(toml::Value::Table(
+            "baud = 19200\ndata_bits = 8\nparity = \"even\"\nstop_bits = 1\nflow_control = \"none\"\n"
+                .parse()?
+        ))
+    );
+    assert_ne!(version(&install)?, before);
+    // A later change keeps the saved cable settings, as every saved choice is kept.
+    assert_eq!(
+        install
+            .machines(&["set", "cobas-1", "--stop-bits", "2"])
+            .await?,
+        Outcome::Done
+    );
+    let serial = site_serial(&install, "cobas-1")?.ok_or("no [serial]")?;
+    assert_eq!(serial.get("baud"), Some(&toml::Value::Integer(19200)));
+    assert_eq!(serial.get("stop_bits"), Some(&toml::Value::Integer(2)));
+    let audits = install.audits().await?;
+    assert!(
+        audits
+            .iter()
+            .any(|(_, action, _, reason)| action == "setup-save"
+                && reason.contains("cable 19200 baud, 8 data bits, even parity, 2 stop bits")),
+        "{audits:?}"
+    );
+    let installation = super::Installation::load(&install.config, install.seams())?;
+    let rows = machines::settings_rows(&installation)?;
+    let cable = rows
+        .iter()
+        .find(|row| row.id == "cobas-1")
+        .and_then(|row| row.cable.as_ref())
+        .ok_or("no cable row")?;
+    assert_eq!(
+        cable.words,
+        concat!(
+            "19200 baud, 8 data bits, even parity, 2 stop bits, no flow control; ",
+            "differs from the manual's suggestion: baud rate 19200 (the manual suggests 9600), ",
+            "parity even (the manual suggests none), stop bits 2 (the manual suggests 1)"
+        )
+    );
+    Ok(())
+}
+
+// ADR 0031 decision 4: a value off the list is refused in the page's words
+// and changes no file, on set and on add.
+#[tokio::test(flavor = "multi_thread")]
+async fn cable_options_refuse_values_off_the_list() -> Result<(), Error> {
+    let install = install()?;
+    install.set_up().await?;
+    let before = install.settings()?;
+    let error = refusal(
+        install
+            .machines(&["set", "cobas-1", "--baud", "14400"])
+            .await,
+    )?;
+    assert!(
+        error.to_string().contains("use a standard baud rate"),
+        "{error}"
+    );
+    let error = refusal(
+        install
+            .machines(&["set", "cobas-1", "--parity", "mark"])
+            .await,
+    )?;
+    assert!(
+        matches!(error, SetupError::Connection(words) if words.contains("none, odd or even")),
+        "{error}"
+    );
+    let error = refusal(
+        install
+            .machines(&["add", "cobas-2", "--data-bits", "9"])
+            .await,
+    )?;
+    assert!(
+        error.to_string().contains("use 5 through 8 data bits"),
+        "{error}"
+    );
+    assert_eq!(install.settings()?, before);
+    // A network model takes none; given anyway, it is refused, not ignored.
+    assert_eq!(install.machines(&["add", "hl7-2"]).await?, Outcome::Done);
+    let network = [
+        "set",
+        "hl7-2",
+        "--model",
+        "example/network-hl7",
+        "--address",
+        "127.0.0.1",
+        "--port",
+        "5600",
+        "--lab-app",
+        "demo",
+        "--baud",
+        "9600",
+    ];
+    let error = refusal(install.machines(&network).await)?;
+    assert!(
+        error
+            .to_string()
+            .contains("only a machine on a serial cable has cable settings"),
+        "{error}"
+    );
+    Ok(())
+}
+
+// ADR 0031 decisions 3 and 6: a setting the model does not suggest must be
+// chosen; `add` keeps the chosen values for the set that follows.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_cable_setting_without_suggestion_must_be_chosen() -> Result<(), Error> {
+    let install = install()?;
+    without_flow_suggestion(&install)?;
+    let demo = ["add", "demo", "--address", "https://lab.example.invalid"];
+    assert_eq!(
+        install.lab_apps(&demo, [API_KEY, SIGNING_KEY]).await?,
+        Outcome::Done
+    );
+    assert_eq!(install.machines(&["add", "cobas-1"]).await?, Outcome::Done);
+    let set = [
+        "set",
+        "cobas-1",
+        "--model",
+        "example/serial-astm",
+        "--usb-serial",
+        "A10K3XYZ",
+        "--lab-app",
+        "demo",
+    ];
+    let error = refusal(install.machines(&set).await)?;
+    assert!(
+        matches!(
+            error,
+            SetupError::Config(analyte_config::Error::MissingSerialSetting {
+                setting: analyte_config::SerialSetting::FlowControl,
+                ..
+            })
+        ),
+        "{error}"
+    );
+    assert!(
+        error
+            .to_string()
+            .contains("transport.serial.flow_control: no value"),
+        "{error}"
+    );
+    assert_eq!(
+        install
+            .machines(&["add", "cobas-2", "--flow-control", "hardware"])
+            .await?,
+        Outcome::Done
+    );
+    assert_eq!(
+        site_serial(&install, "cobas-2")?,
+        Some(toml::Value::Table("flow_control = \"hardware\"\n".parse()?))
+    );
+    let set = [
+        "set",
+        "cobas-2",
+        "--model",
+        "example/serial-astm",
+        "--usb-serial",
+        "A10K3XYZ",
+        "--lab-app",
+        "demo",
+    ];
+    assert_eq!(install.machines(&set).await?, Outcome::Done);
+    let serial = site_serial(&install, "cobas-2")?.ok_or("no [serial]")?;
+    assert_eq!(
+        serial.get("flow_control"),
+        Some(&toml::Value::String("hardware".into()))
+    );
+    assert_eq!(serial.get("baud"), Some(&toml::Value::Integer(9600)));
+    Ok(())
+}
+
+// ADR 0031 decision 1: `machines test` opens the fake port with the values
+// given, not the saved ones, and saves nothing.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_test_command_uses_the_chosen_cable_settings() -> Result<(), Error> {
+    let install = install()?;
+    install.set_up().await?;
+    let before = install.settings()?;
+    let test = [
+        "test",
+        "cobas-1",
+        "--seconds",
+        "1",
+        "--baud",
+        "38400",
+        "--flow-control",
+        "hardware",
+    ];
+    assert_eq!(install.machines(&test).await?, Outcome::Done);
+    let opened = install.opened.lock().map_err(|_| "poisoned")?.clone();
+    let settings = opened.last().ok_or("not opened")?;
+    for expected in ["baud: 38400", "bits: Eight", "flow: Hardware"] {
+        assert!(
+            settings.contains(expected),
+            "missing {expected}: {settings}"
+        );
+    }
+    assert_eq!(install.settings()?, before);
+    Ok(())
 }

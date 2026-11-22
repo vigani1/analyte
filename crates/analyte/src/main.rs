@@ -67,8 +67,9 @@ enum Command {
     /// Lists, adds, sets up, tests and removes machines through the Setup
     /// page's own checks; changes apply after a restart.
     Machines {
+        // Boxed: its setup choices are much larger than every other command.
         #[command(subcommand)]
-        command: analyte::admin::Machines,
+        command: Box<analyte::admin::Machines>,
     },
     /// Lists, adds, changes and removes lab apps and stores their keys
     /// through the Lab apps page's own checks; changes apply after a restart.
@@ -295,7 +296,7 @@ fn main() -> Result<ExitCode, Error> {
     // own exit code (0 done, 1 refused, 3 partly done, 4 test saw no data).
     if let Command::Machines { command } = command {
         let config = program_file(config)?;
-        let outcome = runtime.block_on(analyte::admin::run_machines(&config, actor, command));
+        let outcome = runtime.block_on(analyte::admin::run_machines(&config, actor, *command));
         return Ok(outcome.into());
     }
     if let Command::LabApps { command } = command {

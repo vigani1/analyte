@@ -33,9 +33,9 @@ pub use schema::{
     Escapes, Evidence, EvidenceLevel, Field, FlowControl, Framing, Group, HexCase,
     IdentityEvidence, Law, LawConnectionMode, LawPeer, LawQueryForm, LawWork, MachineDeparture,
     Mappings, NoSubId, OrderNamespace, Overrides, Parity, PeerSupport, Poct, PoctIdentity,
-    Priority, QcRule, Responsibility, SampleSelection, SampleSource, Serial, Site, SubId, Syntax,
-    Terminator, Transport, TransportKind, UnitMapping, ValueExpectation, ValueKind, Vidas,
-    VidasSampleLimit,
+    Priority, QcRule, Responsibility, SampleSelection, SampleSource, Serial, SerialSetting,
+    SerialValues, Site, SubId, Syntax, Terminator, Transport, TransportKind, UnitMapping,
+    ValueExpectation, ValueKind, Vidas, VidasSampleLimit,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -172,6 +172,16 @@ pub enum Error {
         /// Required corrective action.
         reason: &'static str,
     },
+    /// A serial cable setting has no value in any layer; none is assumed (ADR 0031).
+    #[error(
+        "{path}: transport.serial.{setting}: no value: the machine definition suggests none and none was chosen; choose the analyzer's own setting on the Setup page (step 2) or with analyte machines set"
+    )]
+    MissingSerialSetting {
+        /// The layer whose stack lacks the value.
+        path: String,
+        /// The setting without a value.
+        setting: SerialSetting,
+    },
     /// A site file's lab app cannot be chosen, or `lab-apps.toml` is refused.
     #[error("{path}: {problem}")]
     LabApp {
@@ -265,6 +275,8 @@ pub struct Draft {
     machine: MachineDocument,
     site: Site,
     source: LabAppSource,
+    /// The site file's serial cable choice, applied over the definition's suggestion.
+    serial: Option<SerialValues>,
     overrides: Overrides,
     paths: [String; 3],
 }
@@ -302,6 +314,8 @@ pub struct Effective {
     machine: Machine,
     site: Site,
     source: LabAppSource,
+    /// The definition's own serial values, before the site's choice.
+    suggestion: Option<SerialValues>,
     document: toml::Value,
 }
 
@@ -355,11 +369,12 @@ impl Draft {
         overrides: (&str, &str),
         lab_apps: &LabApps,
     ) -> Result<Self, Error> {
-        let (resolved, source) = retention::load_site(site.0, site.1, lab_apps)?;
+        let (resolved, source, serial) = retention::load_site(site.0, site.1, lab_apps)?;
         Ok(Self {
             machine: load(machine.0, machine.1)?,
             site: resolved,
             source,
+            serial,
             overrides: load(overrides.0, overrides.1)?,
             paths: [machine.0.into(), site.0.into(), overrides.0.into()],
         })
@@ -369,19 +384,34 @@ impl Draft {
     /// # Errors
     /// Rejects incompatible stacks, invalid endpoints, ambiguous mappings and unbounded settings.
     pub fn validate(mut self) -> Result<Validated, Error> {
-        // Validate original layers too: an override must not conceal an invalid shipped definition.
-        validate_machine(
+        let site_path = self.paths.get(1).map_or("site", String::as_str);
+        let o = self.overrides;
+        let path = self.paths.get(2).map_or("overrides", String::as_str);
+        let suggestion = self.machine.transport.serial.clone();
+        if let Some(chosen) = self.serial {
+            choose_serial(&mut self.machine.transport, &chosen, site_path)?;
+            if o.transport.is_some() {
+                return Err(invalid(
+                    path,
+                    "transport",
+                    "the site file chooses the serial settings ([serial]); keep them in one place: remove [transport] here or [serial] from the site file",
+                ));
+            }
+        }
+        // Validate original layers too: an override must not conceal an invalid
+        // shipped definition. A serial value the definition leaves out is not a
+        // fault in it when the overrides replace the whole transport.
+        match validate_machine(
             &self.machine,
             self.paths.first().map_or("machine", String::as_str),
             self.paths.first().map_or("machine", String::as_str),
-        )?;
-        validate_site(
-            &self.site,
-            &self.machine.transport,
-            self.paths.get(1).map_or("site", String::as_str),
-        )?;
-        let o = self.overrides;
-        let path = self.paths.get(2).map_or("overrides", String::as_str);
+        ) {
+            Err(Error::MissingSerialSetting { .. }) if o.transport.is_some() => {}
+            checked => {
+                checked?;
+            }
+        }
+        validate_site(&self.site, &self.machine.transport, site_path)?;
         if o.endpoint.is_some() || o.usb_serial.is_some() {
             self.site.endpoint = Endpoint::choose(o.endpoint, o.usb_serial, path)?;
         }
@@ -439,6 +469,7 @@ impl Draft {
             },
             site: self.site,
             source: self.source,
+            suggestion,
             document,
         };
         let digest = Sha256::digest(canonical.as_bytes()).into();
@@ -448,6 +479,36 @@ impl Draft {
             digest,
         })
     }
+}
+
+impl SerialValues {
+    /// Refuses a value outside the standard lists, as loading a site file's
+    /// `[serial]` does; for a writer that checks before the machine's model is
+    /// known. Absent values are not checked.
+    /// # Errors
+    /// Names the `serial.<setting>` key and the values allowed.
+    pub fn check(&self, path: &str) -> Result<(), Error> {
+        validation::check_serial(self, path, "serial")
+    }
+}
+
+/// Applies the site's serial `chosen` values over the definition's, after
+/// checking each against the standard list; only a serial machine takes them.
+fn choose_serial(
+    transport: &mut Transport,
+    chosen: &SerialValues,
+    site_path: &str,
+) -> Result<(), Error> {
+    if transport.kind != TransportKind::Serial {
+        return Err(invalid(
+            site_path,
+            "serial",
+            "only a machine on a serial cable takes serial settings; remove [serial]",
+        ));
+    }
+    chosen.check(site_path)?;
+    transport.serial = Some(chosen.over(transport.serial.as_ref()));
+    Ok(())
 }
 
 impl Validated {
@@ -501,6 +562,14 @@ impl Effective {
     #[must_use]
     pub fn site(&self) -> &Site {
         &self.site
+    }
+
+    /// The serial values the machine definition itself writes (the manual's
+    /// suggestion), before the site file's choice; none for other links or a
+    /// definition that writes none. The stack holds the values in use.
+    #[must_use]
+    pub fn serial_suggestion(&self) -> Option<&SerialValues> {
+        self.suggestion.as_ref()
     }
 
     /// Where the lab app in `site().destination` was written. It is not part of

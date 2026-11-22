@@ -9,7 +9,7 @@
 //! URL. Hidden fields beat a server-side draft here: there is nothing to store,
 //! bound, expire or lose at a restart, and Back works in every tab.
 use super::{
-    Csrf, SetupError, Shipped, audit, copies, definition_name, definitions, lab_apps,
+    Csrf, SetupError, Shipped, audit, cable, copies, definition_name, definitions, lab_apps,
     level_and_state, needs_login, off_thread,
     plan::{
         Choice as Posted, KEEP, chosen, current_lab_app, holder, kind_of, listen_target, model_of,
@@ -38,8 +38,8 @@ use axum::{
 };
 use jiff::Timestamp;
 use page::{
-    Accepts, Choice, ConnectionStep, Foot, Hidden, LabApp, Listen, Live, Mark, ModelStep, Outcome,
-    Picker, Port, SaveStep, Sends, Start, Summary, TestStep, Tested, Wizard,
+    Accepts, Cable, CableOption, Choice, ConnectionStep, Foot, Hidden, LabApp, Listen, Live, Mark,
+    ModelStep, Outcome, Picker, Port, SaveStep, Sends, Start, Summary, TestStep, Tested, Wizard,
 };
 use serde::Deserialize;
 use std::sync::Arc;
@@ -67,10 +67,17 @@ pub(in crate::admin) struct Draft {
     /// The only devices a machine that connects to this PC may connect
     /// from, typed in step 2 or ticked in step 4 (ADR 0026); empty accepts any.
     pub(super) allowed_peers: Option<String>,
+    /// The serial cable settings chosen in step 2 (ADR 0031), as the form
+    /// values of [`super::cable::options`]; empty takes the definition's suggestion.
+    pub(super) baud: Option<String>,
+    pub(super) data_bits: Option<String>,
+    pub(super) parity: Option<String>,
+    pub(super) stop_bits: Option<String>,
+    pub(super) flow_control: Option<String>,
 }
 
 /// The fields step 2 shows itself; every other step carries them hidden.
-const CONNECTION_FIELDS: [&str; 7] = [
+const CONNECTION_FIELDS: [&str; 12] = [
     "port",
     "port_name",
     "host",
@@ -78,13 +85,18 @@ const CONNECTION_FIELDS: [&str; 7] = [
     "folder",
     "lab_app",
     PEERS,
+    "baud",
+    "data_bits",
+    "parity",
+    "stop_bits",
+    "flow_control",
 ];
 
 /// The field naming the devices a listening machine accepts (ADR 0026).
 const PEERS: &str = "allowed_peers";
 
 impl Draft {
-    fn fields(&self) -> [(&'static str, Option<&str>); 8] {
+    fn fields(&self) -> [(&'static str, Option<&str>); 13] {
         [
             ("definition", self.definition.as_deref()),
             ("port", self.port.as_deref()),
@@ -94,6 +106,11 @@ impl Draft {
             ("folder", self.folder.as_deref()),
             ("lab_app", self.lab_app.as_deref()),
             (PEERS, self.allowed_peers.as_deref()),
+            ("baud", self.baud.as_deref()),
+            ("data_bits", self.data_bits.as_deref()),
+            ("parity", self.parity.as_deref()),
+            ("stop_bits", self.stop_bits.as_deref()),
+            ("flow_control", self.flow_control.as_deref()),
         ]
     }
 
@@ -142,6 +159,11 @@ impl From<Posted> for Draft {
             folder: choice.folder,
             lab_app: choice.lab_app,
             allowed_peers: choice.allowed_peers,
+            baud: choice.baud,
+            data_bits: choice.data_bits,
+            parity: choice.parity,
+            stop_bits: choice.stop_bits,
+            flow_control: choice.flow_control,
         }
     }
 }
@@ -523,7 +545,7 @@ fn connection_inputs(
     match kind_of(path) {
         Some(TransportKind::Serial) => (
             "It connects by a serial cable or a USB serial adapter.",
-            serial_choices(state, id, current_site, draft),
+            serial_choices(state, id, (path, current_site), draft),
         ),
         Some(kind @ (TransportKind::TcpServer | TransportKind::TcpClient)) => {
             let (host, port) = current_endpoint.rsplit_once(':').unwrap_or(("", ""));
@@ -638,7 +660,7 @@ pub(super) fn host_choices(found: &[super::Address], chosen: &str) -> Vec<page::
 fn serial_choices(
     state: &Context,
     id: &str,
-    current_site: &toml::Table,
+    (definition, current_site): (&std::path::Path, &toml::Table),
     draft: &Draft,
 ) -> page::Inputs {
     let current = |key| current_site.get(key).and_then(toml::Value::as_str);
@@ -697,7 +719,58 @@ fn serial_choices(
         ports,
         typed: draft.port_name.clone().unwrap_or_default(),
         placeholder: current("endpoint").unwrap_or_default().to_owned(),
+        cable: cable_fields(definition, current_site, draft),
     }
+}
+
+/// The cable settings of step 2 (ADR 0031), each from its standard list: the
+/// draft's value, else the site file's saved choice, else the definition's
+/// suggestion; without any, "Choose", so nothing is assumed.
+fn cable_fields(
+    definition: &std::path::Path,
+    current_site: &toml::Table,
+    draft: &Draft,
+) -> Vec<Cable> {
+    let suggestion = cable::suggested(definition).unwrap_or_default();
+    let saved = cable::saved(current_site).unwrap_or_default();
+    analyte_config::SerialSetting::ALL
+        .into_iter()
+        .map(|setting| {
+            let suggested = cable::value(setting, &suggestion);
+            let current = cable::typed(draft, setting)
+                .map(str::to_owned)
+                .or_else(|| cable::value(setting, &saved))
+                .or_else(|| suggested.clone());
+            let options: Vec<CableOption> = cable::options(setting)
+                .into_iter()
+                .map(|(value, label)| CableOption {
+                    selected: current.as_deref() == Some(value.as_str()),
+                    value,
+                    label,
+                })
+                .collect();
+            let shown = |value: &str| {
+                options
+                    .iter()
+                    .find(|option| option.value == value)
+                    .map_or_else(|| value.to_owned(), |option| option.label.clone())
+            };
+            Cable {
+                name: setting.key(),
+                label: cable::label(setting),
+                chosen: options.iter().any(|option| option.selected),
+                hint: suggested.as_deref().map_or_else(
+                    || {
+                        "The machine’s definition suggests none: read it on the analyzer’s screen."
+                            .to_owned()
+                    },
+                    |value| format!("The manual suggests {}.", shown(value)),
+                ),
+                differs: current.is_some() && current != suggested,
+                options,
+            }
+        })
+        .collect()
 }
 
 /// The chosen connection in plain words, with the exact setting on hover.
@@ -794,6 +867,7 @@ fn render_review(
     let destination = &plan.validated.effective().site().destination;
     let summary = Summary {
         connection: connection_words(link, &plan.connection),
+        cable: plan.cable(),
         accepts: (link == Link::TcpServer)
             .then(|| offer(plan.peers.as_ref(), seen(state, id, draft))),
         lab_app: sends(
@@ -948,6 +1022,7 @@ pub(in crate::admin) async fn save(
         wizard: wizard(&id, Some(saved.model.clone()), None),
         summary: Summary {
             connection: connection_words(saved.link, &saved.connection),
+            cable: saved.cable.clone(),
             accepts: (saved.link == Link::TcpServer).then(|| {
                 Accepts::Saved(
                     saved.peers.as_ref().map_or_else(

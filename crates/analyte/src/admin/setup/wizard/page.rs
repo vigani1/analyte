@@ -80,6 +80,8 @@ pub(super) enum Inputs {
         ports: Result<Vec<Port>, String>,
         typed: String,
         placeholder: String,
+        /// The cable settings, each from its standard list (ADR 0031).
+        cable: Vec<Cable>,
     },
     /// Analyte listens and the machine connects: which of this PC's
     /// addresses to listen on (or why they could not be listed, then a typed
@@ -95,6 +97,28 @@ pub(super) enum Inputs {
     Connects { host: String, port: String },
     /// A folder Analyte watches.
     Folder(String),
+}
+
+/// One serial cable setting on step 2: its standard list with the chosen
+/// value, and the machine definition's suggestion.
+pub(super) struct Cable {
+    /// The form field, such as `baud`.
+    pub(super) name: &'static str,
+    pub(super) label: &'static str,
+    pub(super) options: Vec<CableOption>,
+    /// A value is chosen; without one the list starts at "Choose".
+    pub(super) chosen: bool,
+    /// What the manual suggests, or that it suggests nothing.
+    pub(super) hint: String,
+    /// The chosen value is not the manual's suggestion.
+    pub(super) differs: bool,
+}
+
+/// One value of a cable setting's list.
+pub(super) struct CableOption {
+    pub(super) value: String,
+    pub(super) label: String,
+    pub(super) selected: bool,
 }
 
 /// One detected serial port.
@@ -222,6 +246,9 @@ pub(super) struct SaveStep {
 pub(super) struct Summary {
     pub(super) model: String,
     pub(super) connection: Hover,
+    /// The serial cable settings in words, with what differs from the
+    /// manual's suggestion; none unless it is on a serial cable.
+    pub(super) cable: Option<String>,
     /// Which devices it accepts; none unless the machine connects to this PC.
     pub(super) accepts: Option<Accepts>,
     pub(super) lab_app: Sends,

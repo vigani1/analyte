@@ -6,6 +6,7 @@
 //! once on the Lab apps page ([`lab_apps`]); a machine only picks one. Applying a
 //! change needs a restart; there is no hot reload.
 mod addresses;
+pub(in crate::admin) mod cable;
 mod definitions;
 pub(in crate::admin) use definitions::model_name;
 mod command;

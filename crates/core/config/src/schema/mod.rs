@@ -233,11 +233,11 @@ pub enum Classification {
     Unknown,
 }
 
-/// Serial settings; endpoint belongs to the site.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+/// Complete serial line settings, built only by validation from the layers'
+/// [`SerialValues`]; the endpoint belongs to the site.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Serial {
-    /// Bits per second.
+    /// Bits per second, one of [`analyte_transport::serial::BAUD_RATES`].
     pub baud: u32,
     /// Data bits, five through eight.
     pub data_bits: u8,
@@ -249,14 +249,130 @@ pub struct Serial {
     pub flow_control: FlowControl,
 }
 
+/// One of the five serial cable settings, named as the TOML keys name them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SerialSetting {
+    /// `baud`.
+    Baud,
+    /// `data_bits`.
+    DataBits,
+    /// `parity`.
+    Parity,
+    /// `stop_bits`.
+    StopBits,
+    /// `flow_control`.
+    FlowControl,
+}
+
+impl SerialSetting {
+    /// Every setting, in the order the pages and commands show them.
+    pub const ALL: [Self; 5] = [
+        Self::Baud,
+        Self::DataBits,
+        Self::Parity,
+        Self::StopBits,
+        Self::FlowControl,
+    ];
+
+    /// The TOML key under `[transport.serial]` and the site's `[serial]`.
+    #[must_use]
+    pub const fn key(self) -> &'static str {
+        match self {
+            Self::Baud => "baud",
+            Self::DataBits => "data_bits",
+            Self::Parity => "parity",
+            Self::StopBits => "stop_bits",
+            Self::FlowControl => "flow_control",
+        }
+    }
+}
+
+impl std::fmt::Display for SerialSetting {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.key())
+    }
+}
+
+/// Serial cable settings as one layer writes them; any value may be absent.
+/// The definition's `[transport.serial]` holds the manual's suggestion and the
+/// site file's `[serial]` the lab's choice, which wins value by value (ADR 0031).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SerialValues {
+    /// Bits per second, one of [`analyte_transport::serial::BAUD_RATES`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub baud: Option<u32>,
+    /// Data bits, five through eight.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_bits: Option<u8>,
+    /// Parity check.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parity: Option<Parity>,
+    /// One or two stop bits.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stop_bits: Option<u8>,
+    /// Flow control.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flow_control: Option<FlowControl>,
+}
+
+impl SerialValues {
+    /// These values, each absent one taken from `base`.
+    #[must_use]
+    pub fn over(&self, base: Option<&Self>) -> Self {
+        let base = base.cloned().unwrap_or_default();
+        Self {
+            baud: self.baud.or(base.baud),
+            data_bits: self.data_bits.or(base.data_bits),
+            parity: self.parity.or(base.parity),
+            stop_bits: self.stop_bits.or(base.stop_bits),
+            flow_control: self.flow_control.or(base.flow_control),
+        }
+    }
+
+    /// The complete settings, or the first setting that has no value; no
+    /// value is ever assumed.
+    ///
+    /// # Errors
+    /// Names the first missing setting.
+    pub fn complete(&self) -> Result<Serial, SerialSetting> {
+        Ok(Serial {
+            baud: self.baud.ok_or(SerialSetting::Baud)?,
+            data_bits: self.data_bits.ok_or(SerialSetting::DataBits)?,
+            parity: self.parity.ok_or(SerialSetting::Parity)?,
+            stop_bits: self.stop_bits.ok_or(SerialSetting::StopBits)?,
+            flow_control: self.flow_control.ok_or(SerialSetting::FlowControl)?,
+        })
+    }
+}
+
+impl Serial {
+    /// The settings that differ from `suggestion`, in [`SerialSetting::ALL`]
+    /// order; a setting the suggestion leaves out counts as differing.
+    #[must_use]
+    pub fn differs_from(&self, suggestion: Option<&SerialValues>) -> Vec<SerialSetting> {
+        let suggested = suggestion.cloned().unwrap_or_default();
+        SerialSetting::ALL
+            .into_iter()
+            .filter(|setting| match setting {
+                SerialSetting::Baud => suggested.baud != Some(self.baud),
+                SerialSetting::DataBits => suggested.data_bits != Some(self.data_bits),
+                SerialSetting::Parity => suggested.parity != Some(self.parity),
+                SerialSetting::StopBits => suggested.stop_bits != Some(self.stop_bits),
+                SerialSetting::FlowControl => suggested.flow_control != Some(self.flow_control),
+            })
+            .collect()
+    }
+}
+
 /// Draft connection settings, checked before activation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Transport {
     /// Connection role.
     pub kind: TransportKind,
-    /// Required only for serial.
-    pub serial: Option<Serial>,
+    /// Only for serial: the values this layer writes; validation completes them.
+    pub serial: Option<SerialValues>,
     /// Deadline for external operations.
     pub operation_timeout_ms: u32,
 }
@@ -474,17 +590,22 @@ pub(crate) struct SiteFile {
     lab_app: Option<Identifier>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     time_zone: Option<crate::SiteTimeZone>,
+    /// The lab's serial cable choice (ADR 0031); never part of the effective
+    /// snapshot, which holds the resolved values under `transport.serial`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    serial: Option<SerialValues>,
 }
 
 impl SiteFile {
     /// Refuses a site file that sets both endpoint forms or neither, and resolves
     /// its lab app: its own `[destination]`, the named `lab_app`, or the only lab
-    /// app in `lab_apps`. Several lab apps without a choice are refused.
+    /// app in `lab_apps`. Several lab apps without a choice are refused. The
+    /// lab's serial choice comes back beside the site.
     pub(crate) fn into_site(
         self,
         path: &str,
         lab_apps: &crate::LabApps,
-    ) -> Result<(Site, crate::LabAppSource), crate::Error> {
+    ) -> Result<(Site, crate::LabAppSource, Option<SerialValues>), crate::Error> {
         let (destination, source) =
             lab_apps.resolve(path, self.destination, self.lab_app.as_ref())?;
         Ok((
@@ -497,6 +618,7 @@ impl SiteFile {
                 time_zone: self.time_zone,
             },
             source,
+            self.serial,
         ))
     }
 }
@@ -516,6 +638,7 @@ impl From<Site> for SiteFile {
             destination: Some(site.destination),
             lab_app: None,
             time_zone: site.time_zone,
+            serial: None,
         }
     }
 }

@@ -19,7 +19,7 @@ fn free_port() -> Result<String, Error> {
 impl Fixture {
     /// Starts the listen test for `synthetic` with `fields` and returns the
     /// test page once `ready` holds, or the last page seen.
-    async fn listen(
+    pub(super) async fn listen(
         &self,
         fields: &[(&str, &str)],
         ready: impl Fn(&str) -> bool,
@@ -462,7 +462,8 @@ async fn test_step_says_what_it_observed_in_each_state() -> Result<(), Error> {
         })
         .await?;
     for expected in [
-        "<p class=\"eyebrow listen__target\">Serial port COM3</p>",
+        // ADR 0031: the test names the cable settings it opens the port with.
+        "<p class=\"eyebrow listen__target\">Serial port COM3, 9600 baud, 8 data bits, no parity, 1 stop bit, no flow control</p>",
         "<p class=\"countdown listen__clock\" aria-live=\"polite\"><span class=\"sr-only\">Time left </span>0:",
         "<progress class=\"meter\" max=\"20\" value=\"",
         "</svg>Connected</span> Port COM3 open since ",

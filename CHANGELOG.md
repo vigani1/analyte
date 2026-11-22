@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Program
+
+- A lab chooses a serial machine's cable settings (baud rate, data bits,
+  parity, stop bits, flow control) on the Setup page's step 2, from the
+  standard values, filled in with the manual's suggestion and marked where they
+  differ; the connection test uses the chosen values and Save keeps them in the
+  machine's site file (`[serial]`). `analyte machines add`, `set` and `test`
+  take `--baud`, `--data-bits`, `--parity`, `--stop-bits` and
+  `--flow-control` with the same checks; `machines list`, `doctor` and the
+  machine's page show the values in use (ADR 0031).
+- A machine definition may leave out a serial value its manual does not state;
+  Analyte refuses to run it until the lab chooses one, and never assumes it.
+  Baud rates are limited to the standard list, 300 to 115200.
+
 ## 0.1.0 - 2026-11-22
 
 First draft release. **Status:** every protocol is built and tested from its

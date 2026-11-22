@@ -71,6 +71,7 @@ addresses, `--dry-run`, `--anyway`) are in [Connect](connect.md#from-the-command
 | List serial ports with adapter and USB serial number | `analyte machines ports` |
 | Add a machine (not set up yet) | `analyte --actor it-anna machines add hl7-1` |
 | Set it up: model, connection, lab app | `analyte --actor it-anna machines set hl7-1 --model vendor/model --address 192.168.1.20 --port 5600 --lab-app main-lab` |
+| Choose a serial machine's cable settings to match the analyzer's LIS screen ([ADR 0031](../adr/0031-lab-chooses-serial-cable-settings.md)); also on `add` and `test` | `analyte --actor it-anna machines set cobas-1 --baud 9600 --data-bits 8 --parity none --stop-bits 1 --flow-control none` |
 | Accept only the analyzer's own device ([ADR 0026](../adr/0026-accept-only-the-machine.md)); repeat for several | `analyte --actor it-anna machines set hl7-1 --allowed-peer 192.168.1.50` |
 | Accept any device again (shown as a warning) | `analyte --actor it-anna machines set hl7-1 --any-device` |
 | Listen-only connection test (nothing sent or stored); names the device that connected | `analyte machines test hl7-1 --seconds 30` |

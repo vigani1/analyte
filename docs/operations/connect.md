@@ -13,8 +13,8 @@ Use a nonclinical installation ID, never a patient or sample ID.
 
 | Layer | Contents |
 | --- | --- |
-| Shipped definition | Protocol, mappings, departures and evidence; qualified definitions belong under `machines/`. |
-| Site file | `schema_version = 1`, endpoint (or `usb_serial` for a serial port), required retention period, the lab app it sends to (`lab_app = "<name>"`) and optional `time_zone`. |
+| Shipped definition | Protocol, mappings, departures and evidence; qualified definitions belong under `machines/`. For a serial machine, `[transport.serial]` holds the manual's usual cable settings as a suggestion. |
+| Site file | `schema_version = 1`, endpoint (or `usb_serial` for a serial port), required retention period, the lab app it sends to (`lab_app = "<name>"`), optional `time_zone` and, for a serial machine, the cable settings the lab chose (`[serial]`, see [Serial cable settings](#serial-cable-settings)). |
 | Optional local overrides | `schema_version = 1` and explicit replacement sections for this installation. |
 
 Overrides replace whole sections and lists; an override's `endpoint` or
@@ -129,6 +129,52 @@ The same FTDI adapter can show a slightly different number on Windows (an
 extra letter at the end) than on Linux. Copy the number as the lab PC shows it.
 Lookup by serial number is tested with simulated port lists only; it has not
 yet been tried with a real adapter (evidence level: documented).
+
+### Serial cable settings
+
+A serial analyzer talks only when the PC uses the same baud rate, data bits,
+parity, stop bits and flow control as the analyzer's own LIS (host) settings
+screen ([ADR 0031](../adr/0031-lab-chooses-serial-cable-settings.md)). The
+machine's definition holds the manual's usual values as a suggestion; the lab
+chooses the values its analyzer shows.
+
+- **Setup page, step 2:** below the port, **Cable settings** shows each value
+  from its standard list, filled in with the saved choice or else the manual's
+  suggestion. A value that is not the manual's is marked "differs from the
+  manual"; step 4 lists them again. The connection test in step 3 opens the
+  port with exactly these values, so try them there before saving.
+- **Command line:** `--baud`, `--data-bits`, `--parity`, `--stop-bits` and
+  `--flow-control` on `analyte machines add`, `set` and `test`; a value not
+  given keeps the saved one, else the suggestion.
+
+| Setting | Values offered |
+| --- | --- |
+| Baud rate | 300, 600, 1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200 |
+| Data bits | 5, 6, 7, 8 |
+| Parity | none, odd, even |
+| Stop bits | 1, 2 |
+| Flow control | none, hardware (RTS/CTS), software (XON/XOFF) |
+
+Save writes all five into the machine's site file, so a later update of the
+definition never changes a cable that works:
+
+```toml
+[serial]
+baud = 19200
+data_bits = 8
+parity = "even"
+stop_bits = 1
+flow_control = "none"
+```
+
+A value outside these lists is refused. When the definition suggests no value
+for a setting (its manual does not say) and none is chosen, Analyte refuses
+instead of assuming one: `transport.serial.flow_control: no value`. Network
+machines have no cable settings, and a site `[serial]` is refused for them.
+Keep the values in one place: a site `[serial]` beside a local overrides file
+that replaces `[transport]` is refused. `analyte machines list`, `analyte
+doctor` and the machine's page show the values in use and which differ from
+the manual.
 
 ### Network machines
 
@@ -403,6 +449,15 @@ $model = 'vendor/serial-model'
 analyte --actor it-alex machines add cobas-1
 analyte --actor it-alex machines set cobas-1 `
     --model $model --usb-serial A10K3XYZ --lab-app main-lab
+```
+
+Its cable settings start at the model's suggestion. If the analyzer's LIS
+settings screen shows other values, choose them
+([Serial cable settings](#serial-cable-settings)); settings not given keep
+their saved values:
+
+```powershell
+analyte --actor it-alex machines set cobas-1 --baud 19200 --parity even
 ```
 
 Test the connection: the listen-only test of step 3, at most 60 seconds and

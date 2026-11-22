@@ -59,6 +59,9 @@ pub(super) struct Machine {
     /// The only devices it accepts connections from, when it listens and its
     /// site file names them (ADR 0026).
     pub(super) allowed_peers: Option<analyte_config::AllowedPeers>,
+    /// Its serial cable settings in words, with what differs from the
+    /// model's suggestion; none unless it is on a serial cable (ADR 0031).
+    pub(super) cable: Option<String>,
     /// The lab app it sends to.
     pub(super) lab_app: Identifier,
 }
@@ -222,6 +225,9 @@ pub(crate) async fn prepare(
                     &effective.site().endpoint,
                 ),
                 allowed_peers: effective.site().allowed_peers.clone(),
+                cable: super::setup::cable::of(effective.stack()).map(|serial| {
+                    super::setup::cable::summary(serial, effective.serial_suggestion())
+                }),
                 lab_app: effective.site().destination.name.clone(),
             })
         })
