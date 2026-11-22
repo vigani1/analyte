@@ -203,8 +203,8 @@ new crate rather than a change to a shared one.
   and a catalog of the shipped machine models, let apps in any language
   generate their types ([ADR 0033](adr/0033-machine-model-and-published-schema.md)).
   Every delivery names its machine model, the key of the app's per-model
-  tables. Packages for other languages come later.
-- FHIR output is an option for later, not the base format.
+  tables. Packages for other languages come later ([open decision 4](#14-open-decisions)).
+- FHIR output is an option for later, not the base format ([open decision 2](#14-open-decisions)).
 
 ## 8. Protocol support
 
@@ -364,8 +364,27 @@ to pass. The proven level comes only from real machines in phase 9.
 
 ## 14. Open decisions
 
+Each item below is decided only when its trigger happens; until then it is
+not built.
+
 1. Plugin mechanism (WASM components or out-of-process), decided only when a
    real outside driver needs one.
+2. **FHIR output.** Trigger: a lab app that cannot implement contract v1
+   asks for FHIR. Start with an existing published profile that a real lab
+   system reads (first candidate: the OpenELIS analyzer bundle profile),
+   results only, chosen per lab app. Before each profile, check four things
+   and use the safe fallback where it falls short: a place for every safety
+   detail (else park), unambiguous answers (else park), a complete order list
+   (else results only), and duplicate detection on retry (else park when an
+   answer is lost). No Analyte-only FHIR profile unless an app asks for one.
+3. **Code signing for the Windows installer.** Trigger: after the first lab
+   pilot, when releases have public use. Apply to the SignPath Foundation
+   (free for open source; needs a released, maintained project and a code
+   signing policy page); if refused, or to show the owner's name as
+   publisher, Certum's open-source certificate (paid, owner's choice).
+4. **Packages for other languages** (lab-app client types). Trigger: lab-app
+   developers ask for them. Until then the published JSON Schema and OpenAPI
+   files let them generate types in any language.
 
 ## 15. Research behind this plan
 
