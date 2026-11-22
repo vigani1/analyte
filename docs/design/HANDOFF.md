@@ -7,6 +7,12 @@ Users are lab managers and senior technicians, so use plain words and no jargon.
 
 ## What's in this folder
 
+> **Note (Analyte repository):** this is the designer's handoff as delivered. Only
+> `mockups/` was kept in `docs/design/`. The live stylesheets and fonts are in
+> `crates/analyte/assets/` (`analyte.css`, `fonts.css`, `fonts/`), the app icon in
+> `crates/analyte/assets/icons/` and the tray icons in `crates/app/icons/svg/`.
+> See [README.md](README.md).
+
 | Path | What it is |
 |---|---|
 | `css/analyte.css` | **The design system.** Tokens (CSS custom properties) + all component classes. Use as-is. |

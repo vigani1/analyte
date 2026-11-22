@@ -54,8 +54,10 @@ event limits across writes.
 3. Preserve the observed direction and chunk boundaries. Add only justified,
    named exceptions at exact host byte locations. A recording of a fault should
    retain the faulty bytes, not silently repair them.
-4. Add a test with a source comment in `crates/analyte/tests/delivery.rs`, following its
-   `recording` helper and existing cases. Use a temporary store, loopback peers
+4. Add a test with a source comment in the `delivery` test target
+   (`crates/analyte/tests/delivery/`; the ASTM and HL7 cases are in
+   `credentials.rs`), using the `recording` helper in
+   `crates/analyte/tests/support/capture.rs` and following the existing cases. Use a temporary store, loopback peers
    and the reference receiver. Load the recording through transport's bounded
    reader, then call `analyte_sim::replay` with its events and header exceptions.
    Derive the deadline from the effective protocol/config, never recorded gaps.
@@ -64,7 +66,7 @@ event limits across writes.
    cases, assert that no ACK arrives before completion. TCP may combine or split
    writes independently of recorded chunks; never assume socket packet boundaries.
    Keep mismatch hex diagnostics in protected test output, never ordinary logs.
-6. Run `cargo test -p analyte --all-features --test delivery recording` and the
+6. Run `cargo test -p analyte --all-features --test delivery` and the
    workspace checks required by `AGENTS.md`. The feature-specific restart test
    exercises the durable-frame/pre-ACK pause; `test-hooks` must never be enabled
    for release builds.
@@ -76,11 +78,77 @@ the format but rejected by this replay implementation. Times are retained as
 capture evidence; replay does not sleep for recorded gaps. Discard a connection
 when replay is cancelled or fails: a write may already have sent a prefix.
 
-The ASTM failure fixtures cover checksum rejection, split/merged input,
-retransmission after a discarded ACK, disconnect mid-frame and restart before
-a frame ACK. The restart fixture stops at the commit boundary; its test owns
-the stop/restart and replays the normal fixture afterward. These are synthetic
-faults, not real-machine qualification.
+## Fixtures
+
+Every file in `recordings/` holds invented data and is listed here. None raises
+a protocol or machine evidence level above documented. They are protocol
+fixtures, not qualified machine definitions, so none is copied into
+`machines/`; the machines workspace test checks the shipped definitions and
+their own recordings.
+
+### HL7 and ASTM
+
+These are replayed by the `delivery` test target
+(`crates/analyte/tests/delivery/credentials.rs`).
+
+| File | What it shows |
+| --- | --- |
+| `hl7.rec.jsonl` | An MLLP HL7 result stored before its ACK and delivered once; also the example of a header exception. |
+| `astm.rec.jsonl` | A normal ASTM transfer, each frame stored before its ACK and delivered once. |
+| `astm-broken-checksum.rec.jsonl` | A frame with a wrong checksum is retained, refused with NAK and not delivered. |
+| `astm-split-merged.rec.jsonl` | Frames split across and merged within reads; only complete frames are acknowledged. |
+| `astm-lost-ack.rec.jsonl` | A discarded ACK makes the machine resend; the host repeats the ACK without a second delivery. |
+| `astm-disconnect.rec.jsonl` | A disconnect mid-frame keeps the bytes and sends no ACK. |
+| `astm-restart-before-ack.rec.jsonl` | Stops at the commit boundary; its test owns the stop and restart, then replays `astm.rec.jsonl` and checks one delivery. |
+
+### LAW, POCT, VIDAS and Autolyser
+
+Twelve fixtures, three per protocol, named `<protocol>-happy`, `-lost-ack` and
+`-disconnect`. They are generated, never hand-edited. Regenerate them from the
+repository root with:
+
+```text
+cargo test -p analyte --features test-hooks --test chunk_receive generate_protocol_recordings -- --ignored --nocapture
+```
+
+Regenerating rewrites the files, and the LAW and POCT host timestamps and
+control IDs change on every run, so review the diff and commit it only with a
+change that needs new fixtures.
+
+The ignored authoring test in `crates/analyte/tests/chunk_receive/recordings/`
+drives a local program with synthetic peers, checks the expected
+acknowledgments and durable outcomes, writes each file with
+`analyte_transport::recording::write_header` and `write_event`, and reads it
+back through the bounded codec. Machine messages come from the existing POCT
+builders, the VIDAS and Autolyser framing encoders and a synthetic LAW OUL
+message built from named fields; host bytes come straight from the local
+program. Event times are authored 10 ms sequence markers, not measured
+performance or delays used by replay.
+
+The ordinary `chunk_receive` test binary replays each file with
+`analyte_sim::replay` against a fresh program. It compares host bytes, checks
+retained incomplete prefixes and operator parking, and checks one LAW delivery
+even after a retransmission. Vendor result identities stay unresolved and
+parked, with no delivery invented.
+
+| Protocol | Happy | Lost acknowledgment | Disconnect |
+| --- | --- | --- | --- |
+| LAW | Accept an unsolicited LAB-29 result and deliver it once | Observe and discard the ACK, resend the identical result, keep one delivery | A partial MLLP block is retained and parked |
+| POCT | Hello, status and a split observation, stored before the ACK | Observe and discard the result ACK; a reused incoming ID gets a correlated ESC and an abnormal END (POCT01-A2 B 5.13, current strict duplicate policy) | A partial observation is retained and the closure is parked |
+| VIDAS Literal | ENQ, a split framed result, packet ACK, ETX/EOT | Observe and discard the packet ACK; an out-of-phase resend while final controls are expected closes visibly with custody kept | A partial packet is retained and the transfer is parked |
+| Autolyser | STX/ACK, R/EOT and a split report | Omit the machine's initialization ACK; expect EOF at the configured deadline without sending R or retrying | A partial report is retained and parked |
+
+Autolyser sends no result ACK, so its lost-ACK fixture ends after STX; the
+replay test separately waits for host EOF within the test bound, which shows no
+command follows the missing initialization acknowledgment. VIDAS also checks
+host EOF after its out-of-phase resend. No recorded gap makes a test sleep or
+stands in for the configured protocol deadline.
+
+Only generated host header fields have named, exact byte-range exceptions: LAW
+MSH-7 and MSH-10, and POCT HDR.control_id and HDR.creation_dttm. They cannot
+mask acknowledgment codes, correlation references, message kinds, payloads or
+lengths. The test recomputes the expected exception list and requires an exact
+match.
 
 ## Privacy and evidence
 

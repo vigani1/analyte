@@ -138,7 +138,7 @@ missing means unavailable, supplied content is validated without guessing a
 replacement. Messages require one MSH; response messages require one MSA;
 ERR belongs only to AE/AR responses, which require error detail. Reply headers
 reverse supported address components and do not retransmit ignored content.
-Source-named tests in `tests/law_control.rs` provide positive and negative
+Source-named tests in `tests/law/control/` provide positive and negative
 cases for each listed rule, plus receive/build integration cases. The evidence
 level remains documented; this completes group 1, not the entire LAW profile.
 
@@ -170,7 +170,7 @@ primitive/nested datatype shape, nulls and character lengths are checked by
 capabilities. The profile-aware work/results/ORL APIs accept trusted
 host-supplied authority bindings; the existing APIs fail visibly when an
 association cannot be established. No patient-record reconciliation is done.
-The positive/negative source cases are in `tests/law_patient.rs`.
+The positive/negative source cases are in `tests/law/patient.rs`.
 
 ## LAW specimen and container fields covered (group 3)
 
@@ -224,7 +224,7 @@ and container option gating does not suppress required base identity/location
 information. All supported hard lengths count characters, with ignored X
 positions excluded on receive and encoded trailing positions counted on send.
 There are no additional # lengths in C.11/C.12. Positive/negative source tests
-are in `tests/law_specimen.rs`, including all six negative-query scopes and
+are in `tests/law/specimen/`, including all six negative-query scopes and
 actual build/receive cases. These field validators do not establish full LAW
 message-group, lifecycle or simulator conformance.
 
@@ -298,7 +298,7 @@ Work builders, ORL acceptance and received results apply these profiles.
 unprovided option negotiation; explicit option setters enforce selected
 requirements. Pooling field validation adds no pooling workflow. Positive and
 negative source cases and build/receive integrations are in
-`tests/law_order.rs`. The earlier group fixture containing an EI namespace in
+`tests/law/order/`. The earlier group fixture containing an EI namespace in
 ORC-4 was corrected: C.8.4 supports only EIP.1/EI.1 there. Evidence remains
 **documented**; complete message structure, lifecycle and simulator
 conformance are still outside the field coverage claimed here.
@@ -370,8 +370,8 @@ ignored and preserved on receive. Nulls, repetitions, hard component lengths,
 send composite ceilings and option predicates are validated with located errors.
 Received results and work-note builders use the same boundary rules. The general
 profile API also validates manager-authored OBX segments; there is still no
-related-observation work builder. The 28 source-named positive/negative tests in
-`tests/law_observation.rs` cover field rules, value/unit custody, explicit
+related-observation work builder. The source-named positive/negative tests in
+`tests/law/observation/` cover field rules, value/unit custody, explicit
 corrections, composite boundaries, inventory ownership and actual note building.
 No earlier test fixture or expectation was changed in this round.
 

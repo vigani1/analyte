@@ -97,7 +97,7 @@
 - **source**: HL7 2.5.1 §§2.8–2.8.2 pp.2-20–22, §2.15.9.7 p.2-76,
   §2.A.44 pp.2-180–181, §2.15.5.1 p.2-67; 2002-04-08 2.3.1/2.4 errata,
   TS, sequencing, XCN-17 and OBR-32–35 items (unpaginated).
-- **test**: protocol `tests/compatibility.rs`, mapping
+- **test**: protocol `tests/syntax/compatibility.rs`, mapping
   `tests/mapping/compatibility.rs`, the errata sequencing datatype test,
   `config/tests/hl7_editions.rs` and dialog `tests/hl7/compatibility.rs`.
 
@@ -135,7 +135,7 @@
   HL7 2.9.1 §§2.4.5.2–3, pp.14–15, §§2.6.1–2, pp.22–23;
   project safety rules 2 and 5. The 2.8.2 text's ambiguous unescaped-literal
   example does not override its escape requirement or justify guessing.
-- **evidence**: documented. `tests/truncation.rs` checks declarations, exact
+- **evidence**: documented. `tests/syntax/truncation.rs` checks declarations, exact
   retention, marker flags, escaping and size refusal; mapping regression
   `truncated_input_never_reaches_mapping` checks that
   marked input produces a located error before results can be mapped.

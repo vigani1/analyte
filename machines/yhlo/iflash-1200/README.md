@@ -52,6 +52,10 @@ Research only; no machine recording or official simulator run. No recordings shi
   assay/app and unit mappings, identity/rerun evidence and query layouts.
 - Confirm BOTH datatype, OBX-9 qualitative calls, dilution application and
   calibration handling. Unknown lookup must remain an error, never no tests.
+- Still missing: a YHLO LIS protocol manual for the 1200, or YHLO's written
+  statement that LIS Protocol Manual V1.1 (iFlash family) applies to it; the
+  ACK, QCK and DSR response deadlines; the LIS assay channel list; recordings of
+  query, result and QC exchanges.
 
 ## Sources
 

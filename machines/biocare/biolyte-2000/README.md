@@ -51,6 +51,9 @@ Research only; no machine recording or official simulator run. No recordings shi
   not establish the site's app equivalents; no mapping is invented.
 - Capture patient, QC, flagged and retransferred synthetic results, including
   frame boundaries and leading zeros; preserve original padded values.
+- Still missing: the Service Manual Appendix VI revision for the installed
+  firmware (4.2A read so far); which entered ID is the lab's sample ID (ID or
+  accession).
 
 ## Sources
 

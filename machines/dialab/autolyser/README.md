@@ -67,6 +67,9 @@ Research only; no machine recording or official simulator run. No recordings shi
   Keep all queued reports during qualification and recovery; never delete them.
 - Confirm request/EOT timing, checksum layout and restart/cursor recovery with
   captures. A barcode retrofit and TCP supplement remain vendor questions.
+- Still missing: the installed software version (Operator's Manual Rev18
+  covers 21.18), including whether the internal or variable protocol is in use,
+  and all serial parameters, including data bits.
 
 ## Sources
 

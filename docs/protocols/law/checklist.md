@@ -43,7 +43,7 @@ Legend: **R** required; **O** selectable manager option; **C** conditional oblig
   Every permitted/refused request-specific control/status pair is checked. Host item decisions are covered by `crates/analyte/tests/law/work.rs::cancel_confirmed_refused_and_mixed_per_awos`.
 - [x] **R** Use restricted negative LAB-28 structure for genuine no-work; preserve query scope and analyzer-specific deadline (TF-2b §2.2.4.2, p.16; §§3.27.4–3.28.4, pp.34–52).
   Tests: `negative_reply_echoes_sac_identity_values`.
-  Host evidence for the selected forms: `trusted_empty_sends_negative_work_without_items`, `query_budget_counts_first_byte_and_storage`, and `bad_negative_followup_orl_changes_no_orders` in `crates/analyte/tests/law/queries.rs`. No items are reserved for negative work. Unsupported forms return an error rather than negative work.
+  Host evidence for the selected forms: `trusted_empty_sends_negative_work_without_items`, `query_budget_counts_first_byte_and_storage`, and `bad_negative_followup_orl_changes_no_orders` in `crates/analyte/tests/law/queries/`. No items are reserved for negative work. Unsupported forms return an error rather than negative work.
 - [ ] **R** Preserve uncertain prior acceptance; duplicate-AWOS UA must not undo the original accepted request (TF-2b §3.28.4.1.3, p.51).
   Tests: `orl_outcomes_are_per_request_not_retractions`.
   Parser decisions preserve uncertainty; persistent duplicate/retry/lifecycle integration remains.
@@ -57,7 +57,7 @@ Legend: **R** required; **O** selectable manager option; **C** conditional oblig
   Tests: `ack_r22_needs_storage_and_interpretation`.
   Host LAB-29 receive/ACK is covered by the result matrix below. Returned work is correlated against retained AWOS, specimen, container and test content, including after restart. The remaining actor/structure qualification is open, so this combined row stays unchecked.
 - [x] **R, host boundary** Store the exact LAB-29 MLLP block before interpretation/ACK; AA only after durable interpretation, with no partial batch delivery on a conflict (TF-2b §3.29.4; B.7; ADR 0003).
-  Tests in `crates/analyte/tests/law/results.rs`: `raw_commit_precedes_interpretation_and_ack`, `storage_failure_never_sends_aa`, `nearly_full_disk_closes_without_aa`, `uninterpretable_result_is_parked_with_error_ack`, `conflict_rejects_batch_and_og_separates_runs`.
+  Tests in `crates/analyte/tests/law/results/`: `raw_commit_precedes_interpretation_and_ack`, `storage_failure_never_sends_aa`, `nearly_full_disk_closes_without_aa`, `uninterpretable_result_is_parked_with_error_ack`, `conflict_rejects_batch_and_og_separates_runs`.
 - [x] **R, host boundary** Retain empty SC/IP/CA as per-item execution evidence, independently of command and observation state (TF-2b §3.29.4.1.2.1; C.8 Table C.8-9/Figure C.8-1; B.7.6; ADRs 0003, 0011, 0016).
   Protocol/mapping tests: `status_only_ip_sc_ca_become_notices`, `estimate_keeps_spelling_null_and_header_zone`, `status_groups_never_hide_result_groups`.
   Host tests in `crates/analyte/tests/law/work.rs`: `status_notices_handle_repeats_restart_and_conflicts`, `mixed_status_result_is_judged_whole`. Store tests in `crates/core/store/src/orders/machine_orders/tests/custody.rs` cover projection rollback, sparse items, stable cancellation conditions, pending cancel CR/UC, admission refusal and bounded history. Status notices allocate no result/outbox row. Exact receipts and dispositions survive restart. Admin-only handling requires a named responder; contract v1 is unchanged. Official simulator status/cancel-race qualification remains open; this row records documented host implementation, not actor qualification.
@@ -69,7 +69,7 @@ Legend: **R** required; **O** selectable manager option; **C** conditional oblig
   Original identities are retained alongside validated fields.
 - [x] **R** Use AWOS plus OBX-3/4 for observation/run identity, retain preliminary/final/correction and retransmission semantics (TF-2b §3.29.4.1.3, pp.57–58; B.3, pp.63–77; base HL7 §7.4.2).
   Tests: `same_primary_identity_needs_og_sequence`, `repeated_observation_needs_unique_og`, `obx11_closed_statuses_only_c_corrects`.
-  Host evidence: `crates/analyte/tests/law/results.rs::results_deliver_once_and_c_corrects` and `conflict_rejects_batch_and_og_separates_runs`. AWOS takes precedence over analyzer order; OG.1 identifies the run and the complete OG distinguishes observations within it (C.7 pp.102–103). Retransmission creates no delivery. ADR 0011 and Figure C.7-1 (p.111) allow P->P/R/F, R->R/F, F->C and C->C for changed content; every other changed-content move conflicts. R is retained without delivery, including across restart before its final. At most one run per order/test may reach F/C; conflicting batches are rejected whole. Tests: `every_permitted_and_forbidden_status_move`, `status_transitions_and_unverified_delivery`, `one_final_run_per_history_or_batch`. Generic store test: `correction_cannot_bypass_status_table`. HL7 v2 and ASTM still use their existing correction/withdrawal rules; their lifecycle tables are not enabled. Pure status validation retains the closed LAW status set. Unsolicited explicit analyzer order/authority and unresolved identity are covered by `unsolicited_result_never_invents_awos`. Restart qualification remains a separate gate.
+  Host evidence: `crates/analyte/tests/law/results/custody.rs::results_deliver_once_and_c_corrects` and `conflict_rejects_batch_and_og_separates_runs`. AWOS takes precedence over analyzer order; OG.1 identifies the run and the complete OG distinguishes observations within it (C.7 pp.102–103). Retransmission creates no delivery. ADR 0011 and Figure C.7-1 (p.111) allow P->P/R/F, R->R/F, F->C and C->C for changed content; every other changed-content move conflicts. R is retained without delivery, including across restart before its final. At most one run per order/test may reach F/C; conflicting batches are rejected whole. Tests: `every_permitted_and_forbidden_status_move`, `status_transitions_and_unverified_delivery`, `one_final_run_per_history_or_batch`. Generic store test: `correction_cannot_bypass_status_table`. HL7 v2 and ASTM still use their existing correction/withdrawal rules; their lifecycle tables are not enabled. Pure status validation retains the closed LAW status set. Unsolicited explicit analyzer order/authority and unresolved identity are covered by `unsolicited_result_never_invents_awos`. Restart qualification remains a separate gate.
 - [ ] **R** Preserve supplemental/primary relationships, typed values, units, statuses and scoped notes; do not treat NTE prose as executable rules (TF-2b B.3; C.5/C.7, pp.95–113).
   Tests: `obx5_text_keeps_original_values_and_units`, `results_keep_identity_values_status_and_notes`.
   Typed/raw values and note scope are covered. Full cross-message supplemental/primary relationship reconciliation remains.
@@ -200,11 +200,12 @@ Send-ahead and cancellation reuse that path. Both link topologies have local tes
 - [x] ORL bytes are durable before per-AWOS OK/UA reaches finish_order_items. Matching uses AWOS IDs, including reordered replies; no reply/disconnect/invalid correlation becomes Uncertain, with no resend. Tests: `found_query_reserves_and_finishes_each_awos`, `failed_query_followup_is_uncertain`.
 - [x] Supplied specimen/priority work content is intersected with explicit peer support; repeat/reflex permissions are never generated. Test: `query_work_limits_content_to_peer_support`.
 
-These tests live in `crates/analyte/tests/law/queries/`, compiled in
-`tests/delivery.rs`, and use synthetic peers, a temporary store and the reference
-receiver. The store read has its own two tests in `crates/core/store/src/order_tests.rs`:
-`pending_pages_filter_without_false_empty_or_replay`
-and `sample_and_pending_queries_share_trust`.
+These tests live in `crates/analyte/tests/law/queries/`, compiled in the
+law test target (`crates/analyte/tests/law/mod.rs`), and use synthetic peers, a temporary store
+and the reference receiver. The store read has its own two tests in
+`crates/core/store/src/orders/machine_orders/tests/`:
+`pending_pages_filter_without_false_empty_or_replay` (`lifecycle.rs`)
+and `sample_and_pending_queries_share_trust` (`trust.rs`).
 The one new public read, pending_orders, shares the existing age predicate with
 SampleId lookup and reservations, and shares the restore-aware lookup gate.
 No schema or contract changed.
@@ -227,7 +228,7 @@ The send-ahead and cancellation behavior below shares this query path.
 ## Send-ahead and cancellation
 
 Evidence remains **documented**. These tests use synthetic peers, not Gazelle or real analyzers. Tests below
-live in `crates/analyte/tests/law/work.rs`, compiled under `tests/delivery.rs`, and
+live in `crates/analyte/tests/law/work.rs`, compiled in the law test target, and
 run the program with temporary stores and the reference receiver.
 
 - [x] Reserve one shared item per AWOS before unsolicited OML; match ORL by retained AWOS ID through the same finish_order_items handler as queries (TF-2b 3.28.4, C.8). Test: `send_ahead_accepted_rejected_and_mixed` (OK/UA/mixed, including reversed replies and restart without resend).
@@ -249,13 +250,13 @@ The runtime uses the shared order store (schema 9) and operator controls.
 Evidence remains **documented**. `law.connection_mode = "persistent"` keeps all three transactions on one configured TCP client/server link. `independent_per_transaction` requires `transport.kind = "tcp_server"` and an explicit `law.outbound_endpoint` for the analyzer's LAB-28 listener. The site endpoint is the LAB-27/LAB-29 listener. Neither direction needs its opposite connection to be established first. The host accepts at most four concurrent inbound sessions and owns one outbound transaction at a time, with at most eight queued follow-ups. All sessions, queued reservations and recording taps have an owner and are settled on shutdown. Peers may retain an inbound connection or close after each transaction; the host opens and closes its own outbound link per LAB-28 attempt. No failed or expired command is automatically repeated.
 
 - [x] Both topology choices, required independent listener role/destination, and rejected unused/invalid destinations. Test: `crates/core/config/tests/law.rs::topologies_require_direction_and_outbound_endpoint`.
-- [x] Both roles validate without startup I/O. Test: `crates/analyte/tests/receive.rs::law_roles_validate_without_startup_io`.
+- [x] Both roles validate without startup I/O. Test: `crates/analyte/tests/receive/connections.rs::law_roles_validate_without_startup_io`.
 - [x] All three transactions share one persistent connection in both configured directions (B.5 and the declared B.6 subset). Test: `crates/analyte/tests/law/connections.rs::single_persistent_link_carries_every_transaction`.
 - [x] Client disconnect/first-byte timeout retains evidence, reconnects and never replays reserved work. Test: `crates/analyte/tests/law/connections.rs::partial_deadline_keeps_exact_bytes_across_reconnect`.
 - [x] Independent query/result and work links, peer closure, concurrent inbound handling, restart without replay, restore pause and original cancellation identities. Tests: `independent_query_followup_survives_inbound_close`, `independent_failed_link_never_replays_on_restart`, `independent_restore_pause_sends_no_work`, `independent_send_ahead_and_cancel_keep_awos`, `independent_crash_awaiting_orl_recovers_uncertain`.
 - [ ] Gazelle qualification: record tool build, profile revision, actor/options, scenarios and validation results. Local synthetic tests are not simulator evidence.
 - [ ] Full actor/workflow qualification: remaining enhanced content/groups, pooling/relationships and complete workflows remain as listed above. Isolate/parent needs app-supplied identities in a future contract; rack/tray forms are still explicitly rejected.
-- [x] Shared stored-byte reprocessing (ADR 0003 rules 2-4; TF-2b 3.29.4). The shared reprocessing path uses LAB-29 calls `evidence::interpret(store, machine, id)`; `machine/interpretation.rs` selects the LAW parser/views/mapper. Test: `parked_result_reprocesses_after_mapping_fix`. It repairs a mapping, preserves original raw/config and interpretation version 1, appends audited versions, resolves parking, delivers once and creates no second delivery or machine traffic on repeated reprocessing. Reprocessing a retained non-C conflict adds one failed version/audit and no revisions or deliveries. A 50-character LAW control ID prevents generic-HL7 fallback.
+- [x] Shared stored-byte reprocessing (ADR 0003 rules 2-4; TF-2b 3.29.4). The shared reprocessing path in `machine/interpretation/mod.rs` reads a LAB-29 receipt through `machine/protocols.rs`, which selects the LAW parser/views/mapper. Test: `parked_result_reprocesses_after_mapping_fix`. It repairs a mapping, preserves original raw/config and interpretation version 1, appends audited versions, resolves parking, delivers once and creates no second delivery or machine traffic on repeated reprocessing. Reprocessing a retained non-C conflict adds one failed version/audit and no revisions or deliveries. A 50-character LAW control ID prevents generic-HL7 fallback.
 
 ### Review pass 4 regression evidence
 
@@ -301,9 +302,9 @@ only the stated behavior; unchecked actor and simulator gates stay open.
 | Client query and ORL deadlines use config | `single_client_uses_configured_query_and_orl_deadlines` |
 | Client reconnect/deadline retains partial data, no replay | `partial_deadline_keeps_exact_bytes_across_reconnect` |
 
-LAB-29 cases are in `crates/analyte/tests/law/results.rs`, query cases in
-`queries.rs`, send/cancel cases in `work.rs`, and role cases in `connections.rs`.
-All compile under `crates/analyte/tests/delivery.rs`. Store trust/paging tests,
+LAB-29 cases are in `crates/analyte/tests/law/results/`, query cases in
+`queries/`, send/cancel cases in `work.rs`, and role cases in `connections.rs`.
+All compile in the law test target (`crates/analyte/tests/law/mod.rs`). Store trust/paging tests,
 config validation and pure profile tests remain listed in earlier rows.
 
 

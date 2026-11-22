@@ -1,6 +1,7 @@
 # Named machine departures: research
 
-Research date: 2026-11-16. Documents and public source only; no analyzer,
+Research date: 2026-11-16. Later note: ADR 0015, called proposed below, was
+accepted on 2026-11-16. Documents and public source only; no analyzer,
 simulator or patient data was used. **Verified** means read in the linked
 source, not reproduced. **Inferred** identifies our recommendation. Public
 mirrors establish what a particular manual says, not that it applies to an

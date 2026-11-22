@@ -262,98 +262,34 @@ no schema migration or driver-specific exception is needed. Evidence remains
 
 ## Alerts
 
-Alerts are opt-in program settings, evaluated by the running service. A fresh
-configuration without `[[alerts]]` raises none. Active alerts appear in
-`analyte status <file>` and on the authenticated, read-only admin overview,
-with the named responder and seconds since the latest raise. These views read
-durable state; they do not evaluate or acknowledge alerts. Unknown measurements
-and clock rollback remain unknown rather than being shown as zero.
+Operators configure alert policies, named responders and the external HTTPS
+webhook relay (ADR 0014) as described in
+[Alerts and named responders](../../docs/operations/operate.md#alerts-and-named-responders).
+That page owns the example policies, the threshold table, the relay settings,
+the webhook body and the rehearsal steps. Notes for developers:
 
-Each responder names the local role or person who will investigate and arrange
-cover when absent. Agree that responsibility with the lab before enabling a
-policy; naming someone does not contact them. Keep patient information out of
-responder text and machine IDs. There is no external notification channel yet:
-email, chat and notification HTTP targets are not implemented. Channels will be
-chosen at the pilot.
-
-Start with the following policies, then agree ages and disk margin against the
-lab's expected traffic, outage budget and order-cache freshness. Put the global
-interval before any TOML table; append the alert tables at the end of the
-program file.
-
-```toml
-alert_interval_seconds = 30
-
-[[alerts]]
-kind = "oldest_undelivered"
-threshold = 300
-responder = "Lab duty officer"
-
-[[alerts]]
-kind = "disk_reserve"
-threshold = 1073741824
-responder = "Lab IT on-call"
-
-[[alerts]]
-kind = "order_cache_stale"
-threshold = 60
-responder = "Lab app support"
-
-[[alerts]]
-kind = "uncertain_orders"
-threshold = 0
-responder = "Analyzer operator"
-
-[[alerts]]
-kind = "parked_items"
-threshold = 0
-responder = "Lab duty officer"
-
-[[alerts]]
-kind = "restore_paused"
-responder = "Restore lead"
-
-[[alerts]]
-kind = "undeliverable_destination"
-threshold = 0
-responder = "Lab app support"
-```
-
-Age thresholds are seconds and raise at or above the threshold. Count thresholds
-raise strictly above the threshold: zero catches any uncertain order, unresolved
-parked item or undeliverable result. `undeliverable_destination` raises one alert
-per lab app destination whose waiting items this run cannot deliver, because no
-machine and no lab app defines it or because a lab app's keys are missing; status and the overview give the destination, count, reason and fix
-(see `docs/operations/operate.md`). The disk threshold is a margin in bytes above `store.reserve_bytes`;
-an alert raises when free space is below reserve plus margin. `restore_paused`
-has no threshold and rejects one in config. Other kinds require a threshold.
-Responders must be nonempty, single-line and at most 256 UTF-8 bytes. At most
-128 policies are accepted; the interval is 1 through 3600 seconds (default 30).
-Run `analyte check-config <file>` after editing.
-
-Only enable machine silence for a machine the lab expects to be busy. Replace
-the example ID with its installed `[[machines]].id`:
-
-```toml
-[[alerts]]
-kind = "machine_silent"
-machine = "busy-machine-id"
-threshold = 600
-responder = "Analyzer operator"
-```
-
-Silence uses the most recent durable received message or ASTM frame, rather than
-connection state or control bytes. Missing machine activity or a missing,
-incomplete or untrusted configured order cache raises with an unknown value.
-The cache policy checks every configured destination.
-
-Raise/clear history is retained, and restart preserves active state without
-another raise. Measurements are counts, ages or free bytes; transition logs
-contain the signal, optional machine ID, active state and numeric value, never
-responder text or clinical payloads. Removing a policy stops its evaluation but
-does not hide its retained active state; re-enable it to evaluate and clear the
-condition. Resolution of a parked item or reconciliation of an uncertain order
-remains an explicit, separately audited operator action.
+- The running service evaluates policies every `alert_interval_seconds`. A
+  configuration without `[[alerts]]` raises none. `analyte status` and the admin
+  overview only read durable state; they never evaluate or acknowledge alerts.
+- Unknown measurements and clock rollback stay unknown (JSON null in the
+  webhook), never zero. A missing, incomplete or untrusted order cache raises
+  with an unknown value; the cache policy checks every configured destination.
+- `machine_silent` measures the most recent durable received message or ASTM
+  frame, not connection state or control bytes.
+- Config validation: responders are nonempty, single-line and at most 256 UTF-8
+  bytes; at most 128 policies; the interval is 1 through 3600 seconds (default
+  30); `restore_paused` rejects a threshold and every other kind requires one.
+  Ages raise at or above the threshold, counts strictly above it, and the disk
+  margin counts above `store.reserve_bytes`.
+- Raise/clear history is retained, and a restart keeps active state without a
+  new raise. Removing a policy stops its evaluation but does not hide its
+  retained active state.
+- Transition logs carry the signal, optional machine ID, active state and
+  numeric value, never responder text or clinical payloads. Webhook events carry
+  no patient data, sample IDs or raw messages, and every retry reuses the stored
+  event bytes and ID.
+- Resolving a parked item or reconciling an uncertain order stays an explicit,
+  separately audited operator action; alerts never do it.
 
 ## Admin page
 
@@ -549,69 +485,38 @@ reconciliation remain CLI-only.
 
 ## Running as a service
 
-Use a release build without `test-hooks`. Evidence remains **documented**:
-synthetic subprocess and SCM seam tests do not establish a real SCM installation,
-systemd runtime or machine qualification. The release builds an unsigned
-click-through Windows installer and Linux `.deb` and `.rpm` packages
-([Install](../../docs/operations/install.md)); there is no signing or automatic
-update mechanism.
+Installation, the service accounts, paths, logs and stopping are operator topics:
+see [Install the pilot](../../docs/operations/install.md), the
+[systemd guide](../../packaging/linux/README.md) and the
+[Windows service guide](../../packaging/windows/README.md). Evidence remains
+**documented**: synthetic subprocess and SCM seam tests do not establish a real
+SCM installation, systemd runtime or machine qualification. Notes for developers:
 
-A program entry without `definition` is a machine that is not set up yet. The
-loader accepts it only with `[admin]` enabled and without `capture` or
-`overrides`; the service does not run it, `check-config`, `status` and the log
-name it, and the setup page finishes it by adding the `definition` line. The
-installers' starter program lists one such machine, so a fresh service starts
-with no lab connection and no keys.
-
-For Linux, follow the [systemd installation guide](../../packaging/linux/README.md).
-The unit starts `/usr/bin/analyte run --config /etc/analyte/analyte.toml
---shutdown-timeout-secs 30` as the dedicated `analyte` user without a login.
-The config's `data_directory` **must be `/var/lib/analyte`**, the only writable
-persistent data path allowed by the unit. The state directory is mode 0700;
-file handoff areas must also live beneath it. The service may also write
-`/etc/analyte`, for the setup page; binaries remain read-only to it. `dialout` supplies serial device access; confirm the
-group and actual device permissions for the distribution. Logs go to journald:
-`sudo journalctl -u analyte.service`. Stop safely with
-`sudo systemctl stop analyte.service`; SIGTERM and SIGINT both use graceful shutdown.
-
-For Windows, follow the [PowerShell installation guide](../../packaging/windows/README.md).
-The scripts configure automatic start under `NT SERVICE\Analyte`, restart actions
-on failure, and Modify access only on the dedicated data directory, with SYSTEM
-and administrators retaining FullControl. By default the program file is
-`C:\ProgramData\Analyte\config\analyte.toml` and its `data_directory` must match
-the installer's `C:\ProgramData\Analyte\data` parameter. Prepare read access to
-configuration, device permissions and protected service credentials before
-`Start-Service Analyte`. Service logs append to `<data_directory>/analyte.log`.
-Protect and rotate the log. Stop safely with `Stop-Service Analyte` or Services.msc.
-Uninstall removes service registration and retains data, logs and configuration.
-
-`analyte service run --config <path>` is the Windows SCM entry point; invoking it
-outside the SCM fails explicitly. Use `analyte run --config <path>` in a terminal.
-Neither mode installs a service in Rust. Configure the lab PC not to sleep.
-Provision secrets through the platform's protected service environment, never
-TOML or command arguments. Logs contain component IDs and diagnostics, never
-patient payloads; raw evidence stays in the protected data directory.
-
-Both commands accept `--shutdown-timeout-secs` (30 through 300, default 30).
-Stop requests first run the staged drain described above. A dedicated OS thread
-enforces the overall deadline even if a blocking owner destructor cannot finish.
-At expiry, Analyte logs one error with the IDs of remaining components and exits
-with code **3**, bypassing destructors. This follows ADR 0003 crash recovery:
-unacknowledged/uncommitted input can be retried, committed receipts survive,
-deliveries retain their IDs, and interrupted Sending orders become Uncertain.
-A successful graceful stop exits 0; other failures exit nonzero.
-
-During a requested Windows stop, Analyte reports Stopped through the crate's
-public API before exiting on deadline. The SCM therefore shows a normal stop;
-the deadline reason is in the Analyte log and process exit code, not an SCM
-service-specific exit code. Linux systemd records exit code 3 as a failure.
-Keep the service stop timeout above the configured Analyte deadline.
-The shipped Linux unit uses `TimeoutStopSec=35s` for the 30-second Analyte bound;
-when changing the bound, keep a five-second systemd margin. A requested normal
-stop, including a forced Windows stop reported as Stopped, is not automatically
-restarted by recovery actions. Inspect the log after a forced stop, preserve the
-store and follow the existing recovery/reconciliation procedures. Never replay
-an uncertain machine order merely because a service was restarted.
+- Ship a release build without `test-hooks`. The release builds unsigned
+  installers and packages; there is no signing or automatic update mechanism.
+- A program entry without `definition` is a machine that is not set up yet. The
+  loader accepts it only with `[admin]` enabled and without `capture` or
+  `overrides`; the service does not run it, `check-config`, `status` and the log
+  name it, and the setup page finishes it by adding the `definition` line.
+- `analyte service run --config <path>` is the Windows SCM entry point; invoking
+  it outside the SCM fails explicitly. `analyte run --config <path>` runs in a
+  terminal or under systemd. Neither mode installs a service in Rust; the
+  packaging scripts do that.
+- Secrets come from the platform's protected service environment, never TOML or
+  command arguments.
+- Both commands accept `--shutdown-timeout-secs` (30 through 300, default 30).
+  A stop request runs the staged drain described above. A dedicated OS thread
+  enforces the overall deadline even if a blocking owner destructor cannot
+  finish. At expiry Analyte logs one error with the IDs of the remaining
+  components and exits with code **3**, bypassing destructors. This follows ADR
+  0003 crash recovery: unacknowledged or uncommitted input can be retried,
+  committed receipts survive, deliveries keep their IDs and interrupted Sending
+  orders become Uncertain. A graceful stop exits 0; other failures exit nonzero.
+- During a requested Windows stop, Analyte reports Stopped through the service
+  crate's API before exiting on the deadline, so the SCM shows a normal stop and
+  recovery actions do not restart it. systemd records exit code 3 as a failure.
+  The service manager's stop timeout must stay above the Analyte deadline; the
+  shipped unit's `TimeoutStopSec=35s` keeps a five-second margin.
 
 ## LAW program integration
 
@@ -672,48 +577,42 @@ conformance evidence. Capture does not acknowledge data or change replay policy.
 
 ## Retention and holds (ADR 0013)
 
-Each site file must choose `retention = 90` (recommended), another period from
-1 to 3650 days, or `retention = "keep"`. There is no default. Teaching examples
-choose `keep` so they never enable deletion accidentally. A finite policy requires
-`ANALYTE_SECRET_RETENTION_DIGEST`: 32 randomly generated bytes encoded as exactly
-64 hexadecimal characters. This is an installation credential, separate from API
-and signing keys. Never place its value in configuration, the database or logs.
-Preserve it with the installation secrets when restoring. A missing or different
-key is refused when a fingerprint exists; rotation is unsupported.
+Choosing a period, the retention key, holds and what is purged are operator
+topics in [Retention under ADR 0013](../../docs/operations/recovery.md#retention-under-adr-0013);
+[ADR 0013](../../docs/adr/0013-retention-of-delivered-data.md) owns the
+eligibility rules. Notes for developers:
 
-Every store is created with incremental vacuum, which finite retention needs.
-Startup refuses a finite policy on any file without it.
-
-The supervised worker examines at most sixteen receipt and sixteen order candidates
-per machine every minute, each batch in its own transaction with a 250 ms SQLite budget. It advances a scan cursor so older
-ineligible receipts do not starve later candidates. Each successful batch commits
-its audit, tombstones and deletions together. A failed transaction rolls back and
-records a failed run; a deadline is retried at the next interval. `keep` starts no
-purge worker. Backup holds a shared maintenance lock and purge needs an exclusive
-one. A backup requested during an active purge batch reports busy maintenance;
-retry it after the batch. Restore requires exclusive ownership of the whole store. Restore reconciliation
-also pauses purging. No machine order is replayed or resent by retention.
-
-Online reclamation processes at most 32 free pages per iteration, with a 250 ms
-budget and a nonwaiting WAL checkpoint. Readers can delay returning space; a later
-iteration retries without a long exclusive lock. Secure deletion zeros deleted
-content in SQLite pages; this is not a promise of forensic erasure of older files,
-WAL snapshots or backups. Older backups retain originals until the deployment's
-backup rotation removes them. Restrict their access and record the backup rotation
-alongside the chosen retention period before a pilot.
-
-The authenticated `/retention` page shows policies, the last run, oldest retained
-receipt and paginated active holds. Place/release receipt and order holds there,
-or use `analyte --config analyte.toml --actor NAME holds receipt UUID --reason TEXT`
-and `holds order DESTINATION ORDER --reason TEXT`; add `--release` to release.
-Every transition records the actor and reason. Holds have no expiry.
-
-Retention intentionally keeps ambiguous cases: parking evidence (including resolved
-items), receipts without a delivery for every interpreted result, and receipts on a
-machine with unfinished order/poll work. Order holds and open operations block linked receipts; missing, ambiguous or
-version-inconsistent evidence retains conservative blocking. Legacy machine-only
-polls still block the machine. Completed orders are purged only after their final
-state and acknowledgment periods, with no held or unfinished linked work. Keyed
-order tombstones prevent replay if the app republishes an old order. Unlinked
-incomplete frames remain retained. Purged receipts cannot be reprocessed and their deliveries cannot
-be resent; each refusal names retention as the reason.
+- Every site file must set `retention`; there is no default. Teaching examples
+  choose `keep` so they never enable deletion by accident. `keep` starts no
+  purge worker.
+- A finite policy requires `ANALYTE_SECRET_RETENTION_DIGEST` (32 random bytes as
+  64 hex characters), separate from API and signing keys and never in
+  configuration, the database or logs. A missing or different key is refused
+  when a fingerprint exists; rotation is unsupported.
+- Every store is created with incremental vacuum; startup refuses a finite
+  policy on a file without it.
+- The supervised worker examines at most sixteen receipt and sixteen order
+  candidates per machine every minute, each batch in its own transaction with a
+  250 ms SQLite budget. A scan cursor keeps older ineligible receipts from
+  starving later candidates. A successful batch commits its audit, tombstones
+  and deletions together; a failed transaction rolls back and records a failed
+  run, and a deadline is retried at the next interval.
+- Backup holds a shared maintenance lock and purge an exclusive one, so a backup
+  requested during a purge batch reports busy maintenance. Restore needs
+  exclusive ownership of the whole store, and restore reconciliation also pauses
+  purging. Retention never replays or resends a machine order.
+- Online reclamation frees at most 32 pages per iteration within a 250 ms budget
+  and a nonwaiting WAL checkpoint; readers can delay it and a later iteration
+  retries. Secure deletion zeros deleted content in SQLite pages; it does not
+  promise forensic erasure of older files, WAL snapshots or backups.
+- Retention keeps ambiguous cases: parking evidence (including resolved items),
+  receipts without a delivery for every interpreted result, and receipts on a
+  machine with unfinished order or poll work. Order holds and open operations
+  block linked receipts; missing, ambiguous or version-inconsistent evidence
+  blocks conservatively, and legacy machine-only polls still block the machine.
+  Completed orders are purged only after their final-state and acknowledgment
+  periods with no held or unfinished linked work. Keyed order tombstones stop
+  replay if the app republishes an old order. Unlinked incomplete frames stay.
+- Holds have no expiry and every transition records the actor and reason.
+  Purged receipts cannot be reprocessed and their deliveries cannot be resent;
+  each refusal names retention as the reason.

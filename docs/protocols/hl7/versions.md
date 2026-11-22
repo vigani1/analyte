@@ -125,7 +125,7 @@ SFT/UAC/ROL are refused at the mapping boundary; the receipt remains protected.
 Query SFT is retained without interpretation. Optional MSH profile declarations
 remain raw and do not activate an undeclared profile.
 
-All tests in the next table are in protocol `tests/receiving.rs` unless noted.
+All tests in the next table are in protocol `tests/syntax/receiving.rs` unless noted.
 
 | Rule-table difference or bounded policy | Source (2.6) | Source-named test |
 | --- | --- | --- |
@@ -392,7 +392,7 @@ OML uses TQ1 and SPM instead of writing legacy OBR-15/27 and ORC-7 content.
 | ORC-16, returned OBR-4, TQ1-7/8/9, SPM-2/4, SAC identities | Edition-aware CWE/DTM checks; stable order/specimen correlation and the existing bounded group ownership; no scheduling or clinical decisions | 4.5.1.16; 4.5.3.4; 4.5.4; 7.4.3; 13.4.3 |
 | Withdrawn CE/TS and MSA-5 | Writer emits CWE/DTM and no MSA; refuses the unqualified legacy writer; response refuses nonempty MSA-5. Other backward-compatibility fields do not execute scheduling | 2.A.6/.77; 2.14.8.5 |
 
-Tests in `edition_orders.rs` name their source sections in a comment and assert exact bytes,
+Tests in protocol `tests/order/editions.rs` name their source sections in a comment and assert exact bytes,
 missing-revision refusal, reply outcomes and bad control ID / MSA-5 refusal.
 Config `send_requires_explicit_table_revisions` checks the
 activation boundary. Program `send_ahead_accepted_rejected_and_mixed_items` includes 2.6 in acceptance,

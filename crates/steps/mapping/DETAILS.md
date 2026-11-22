@@ -93,7 +93,7 @@ Unsupported mapping segments/value types, unresolved supplemental relationships,
 and status-only messages without mappable observations are retained/parked; they
 cannot obtain a positive interpretation promise. Full LAW receipt bytes always
 stay in the protected store. Synthetic program/reference-receiver evidence is
-in `crates/analyte/tests/law/results.rs`; no hardware/Gazelle claim is made.
+in `crates/analyte/tests/law/results/`; no hardware/Gazelle claim is made.
 
 ## Mapping ownership
 

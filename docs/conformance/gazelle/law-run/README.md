@@ -79,9 +79,10 @@ Times below are relative to the recording's first event at
 Gazelle's exact reply contains `MSH-7 = 20261115133437`, with no UTC offset.
 Analyte reports `LAW component rejected at MSH-7.1`; the existing validator
 requires seconds precision and an explicit offset. The relevant local source is
-`crates/protocols/hl7/src/law/control.rs` (`validate_control`, C.4), and the existing test is
-`msh7_precision_calendar_timezone_singleton` in
-`crates/protocols/hl7/tests/law_control.rs`. PaLM TF-2b Rev 11 Appendix C.4,
+`validate_control` (C.4), now in `crates/protocols/hl7/src/law/envelope.rs`; the
+test at the time of the run has since become `msh7_offset_or_site_zone` in
+`crates/protocols/hl7/tests/law/control/headers.rs` (see the 2026-11-18 update
+below). PaLM TF-2b Rev 11 Appendix C.4,
 Table C.4-6 requires MSH-7 to carry the time zone; it is the one timestamp that
 must include it, and all other times in the message are relative to it.
 The simulator's ORL omits that required element and is non-conformant to Rev 11.
