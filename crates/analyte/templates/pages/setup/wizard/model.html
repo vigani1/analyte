@@ -1,4 +1,4 @@
-{#- Setup step 1 (GET /setup/{id}): which machine model it is; a model that is not ready yet cannot be picked. -#}
+{#- Setup step 1 (GET /setup/{id}): which machine model it is, and whether Analyte connects it normally or only records it (ADR 0034); a model that is not ready yet can only record. -#}
 {% extends "pages/setup/wizard/step.html" %}
 {%- import "components/display.html" as display %}
 {%- import "components/feedback.html" as feedback %}
@@ -6,7 +6,7 @@
 {%- block step %}
 <form class="stack stack--lg" method="get" action="{{ action }}">
 <section class="stack" aria-labelledby="s1">
-<div><h2 id="s1" class="wizard__title">Which machine is it?</h2><p class="muted wizard__text">Pick the model. Models marked “Not ready yet” can’t be set up until their information is complete.</p></div>
+<div><h2 id="s1" class="wizard__title">Which machine is it?</h2><p class="muted wizard__text">Pick the model. Models marked “Not ready yet” can only record until their information is complete.</p></div>
 <ul class="choices">
 {%- for choice in choices %}
 <li><label class="choice"><input type="radio" name="definition" value="{{ choice.value }}" required{% if choice.checked %} checked{% endif %}{% if choice.disabled %} disabled{% endif %}><span><span class="choice__title">{% call display::hover(choice.title.shown, choice.title.exact) %}{% endcall %}</span> <span class="choice__meta">{% call display::hover(choice.meta.shown, choice.meta.exact) %}{% endcall %}</span></span>{% if let Some((status, icon)) = choice.status %}{% call display::status_with(status.tone, icon, status.word, status.note.as_deref().unwrap_or_default()) %}{% endcall %}{% else %}<span></span>{% endif %}</label></li>
@@ -15,6 +15,14 @@
 {%- endfor %}
 </ul>
 </section>
+<fieldset class="wizard__set stack">
+<legend class="field__label wizard__legend">How Analyte uses it</legend>
+<ul class="choices">
+<li><label class="choice"><input type="radio" name="mode" value=""{% if !records_only %} checked{% endif %}><span><span class="choice__title">Connect normally</span> <span class="choice__meta">– results go to a lab app; needs a ready model</span></span><span></span></label></li>
+<li><label class="choice"><input type="radio" name="mode" value="record"{% if records_only %} checked{% endif %}><span><span class="choice__title">Record only</span> <span class="choice__meta">– keeps the analyzer talking and records every byte, to write its definition; nothing is sent to a lab app</span></span><span></span></label></li>
+</ul>
+<span class="field__hint">Recordings contain patient data. Export them with analyte captures export and de-identify a copy before sharing it.</span>
+</fieldset>
 {%- call forms::hidden_fields(hidden) %}{% endcall %}
 {% call forms::step_next("", wizard.count) %}{% endcall %}
 </form>

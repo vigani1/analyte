@@ -1447,3 +1447,113 @@ async fn choice_options_refuse_what_the_model_does_not_offer() -> Result<(), Err
     assert_eq!(install.settings()?, before);
     Ok(())
 }
+
+// ADR 0034 decisions 1, 3 and 10: `machines set --record-only` writes what
+// the Setup page's record-only save writes (the model's record.toml as the
+// definition, [recording] and no lab app in the site file), a model not ready
+// yet records only, and leaving record only needs a ready model and a lab app.
+#[tokio::test(flavor = "multi_thread")]
+async fn record_only_is_set_and_left_through_the_save_step() -> Result<(), Error> {
+    let install = install()?;
+    let blocked = install.root.join("machines/roche/cobas-e411");
+    std::fs::write(
+        blocked.join(analyte_config::RECORD_FILE),
+        "recording_schema_version = 1\nprotocol = \"astm\"\n[transport]\nkind = \"serial\"\n[transport.serial]\nbaud = 9600\ndata_bits = 8\nparity = \"none\"\nstop_bits = 1\n",
+    )?;
+    assert_eq!(install.machines(&["add", "cobas-1"]).await?, Outcome::Done);
+    let normal = [
+        "set",
+        "cobas-1",
+        "--model",
+        "roche/cobas-e411",
+        "--usb-serial",
+        "A10K3XYZ",
+        "--flow-control",
+        "none",
+    ];
+    let error = refusal(install.machines(&normal).await)?;
+    assert!(matches!(error, SetupError::RecordOnlyModel(_)), "{error}");
+    assert!(error.to_string().contains("Record only"), "{error}");
+    let record = [
+        "set",
+        "cobas-1",
+        "--model",
+        "roche/cobas-e411",
+        "--record-only",
+        "--usb-serial",
+        "A10K3XYZ",
+        "--flow-control",
+        "none",
+    ];
+    assert_eq!(install.machines(&record).await?, Outcome::Done);
+    let site: toml::Table =
+        std::fs::read_to_string(install.root.join("cobas-1.site.toml"))?.parse()?;
+    assert!(site.contains_key("recording"), "{site}");
+    assert!(!site.contains_key("lab_app") && !site.contains_key("destination"));
+    let program_text = std::fs::read_to_string(&install.config)?;
+    assert!(
+        program_text.contains("definition = \"machines/roche/cobas-e411/record.toml\""),
+        "{program_text}"
+    );
+    let program = Program::load(&install.config)?;
+    let machine = program.machines().first().ok_or("machine")?;
+    assert!(machine.snapshot().effective().records_only());
+    assert_eq!(machine.model.as_str(), "roche/cobas-e411");
+    assert!(machine.capture, "a record-only machine always captures");
+    // A lab app cannot be named beside record only.
+    assert!(
+        install
+            .machines(&["set", "cobas-1", "--record-only", "--lab-app", "demo"])
+            .await
+            .is_err()
+    );
+    // Leaving record only: the model must be ready, and a lab app is chosen.
+    let demo = ["add", "demo", "--address", "https://lab.example.invalid"];
+    assert_eq!(
+        install.lab_apps(&demo, [API_KEY, SIGNING_KEY]).await?,
+        Outcome::Done
+    );
+    let error = refusal(
+        install
+            .machines(&["set", "cobas-1", "--connect-normally", "--lab-app", "demo"])
+            .await,
+    )?;
+    assert!(matches!(error, SetupError::RecordOnlyModel(_)), "{error}");
+    let ready = [
+        "set",
+        "cobas-1",
+        "--model",
+        "example/serial-astm",
+        "--connect-normally",
+        "--lab-app",
+        "demo",
+    ];
+    assert_eq!(install.machines(&ready).await?, Outcome::Done);
+    let site: toml::Table =
+        std::fs::read_to_string(install.root.join("cobas-1.site.toml"))?.parse()?;
+    assert!(!site.contains_key("recording"), "{site}");
+    assert_eq!(
+        site.get("lab_app").and_then(toml::Value::as_str),
+        Some("demo")
+    );
+    let program = Program::load(&install.config)?;
+    assert!(
+        !program
+            .machines()
+            .first()
+            .ok_or("machine")?
+            .snapshot()
+            .effective()
+            .records_only()
+    );
+    // Every save is audited with what it chose.
+    let audits = install.audits().await?;
+    assert!(
+        audits
+            .iter()
+            .any(|(_, _, target, reason)| target == "cobas-1"
+                && reason.contains("record only, no lab app")),
+        "{audits:?}"
+    );
+    Ok(())
+}

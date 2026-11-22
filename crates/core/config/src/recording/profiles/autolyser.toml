@@ -1,0 +1,17 @@
+# Capture profile for the Dialab Autolyser host protocol (ADR 0034), shipped
+# with Analyte, the same for every lab. Analyte asks only for the next report
+# (R), at the interval the lab chooses in the site file's [recording]; it
+# never asks for the last report again (L), never replays the archive (A) and
+# never inserts a work list. Reports are kept as received and never read.
+protocol = "autolyser"
+# Analyte's bound on one transport read or write (AGENTS rule 7).
+operation_timeout_ms = 10000
+# Operator's Manual Rev18 pp. 177 and 179: the largest response layout,
+# checksum and EOT included.
+frame_limit = 11038
+# Analyte's deadlines (AGENTS rule 7); the manual gives no numbers
+# (docs/protocols/autolyser/README.md: timing is deployment policy).
+acknowledgment_ms = 5000
+response_ms = 10000
+interbyte_ms = 5000
+storage_ms = 5000

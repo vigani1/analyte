@@ -17,6 +17,7 @@ pub(in crate::admin) fn of(stack: &Stack) -> Option<&Serial> {
         Stack::Astm(RecordTransport::Stream(stack)) => stack.settings().transport(),
         Stack::Vidas(stack) => stack.settings().transport(),
         Stack::Autolyser(stack) => stack.settings().transport(),
+        Stack::Record(stack) => stack.transport(),
         Stack::Astm(RecordTransport::Folder(_))
         | Stack::Hl7(_)
         | Stack::Law(_)

@@ -464,6 +464,41 @@ Only validated config can activate, between conversations. Receipts retain
 the effective config and digest; activation does not change queued deliveries
 or resend orders. Reprocessing creates another interpretation of retained bytes.
 
+## From a recording to a definition
+
+A model without a definition can still be connected to record only
+([ADR 0034](../adr/0034-record-only-connections.md),
+[First visit: record only](../operations/connect.md#first-visit-record-only)).
+Give its folder a `record.toml` with only what its documents already say:
+
+```toml
+# How the model talks, for a record-only connection (ADR 0034).
+recording_schema_version = 1
+protocol = "astm"            # astm, hl7, vidas or autolyser
+[transport]
+kind = "serial"              # serial, tcp_server or tcp_client
+[transport.serial]           # the manual's suggestion; leave out what it does not state
+baud = 9600
+```
+
+Everything else comes from the protocol's shipped capture profile in
+`crates/core/config/src/recording/profiles/`, which holds only the standard's
+own link rules, each with its source section. The machine tests load every
+`record.toml` through the real loader; a folder never holds both it and
+`machine.toml`.
+
+Then, from the visit's recordings:
+
+1. Export each capture with `analyte captures export` to a protected folder.
+2. Make a de-identified copy as described below, and review it.
+3. Read the facts the definition needs from the conversation: field
+   positions, identity, QC markers, deadlines actually used. Cite the manual
+   section for each rule; a recording shows what the machine did, not what it
+   must do.
+4. Write `machine.toml` at the documented level, delete `record.toml`, and put
+   the reviewed copy in `recordings/` so the replay test runs it.
+5. Set the machine up normally. Messages recorded before are never delivered.
+
 ## Capture, de-identify and replay
 
 Follow [ADR 0009](../adr/0009-recording-format.md) and the

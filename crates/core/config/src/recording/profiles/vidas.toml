@@ -1,0 +1,28 @@
+# Capture profile for VIDAS Literal (ADR 0034), shipped with Analyte, the same
+# for every lab. Only the BCI Link rules that keep the VIDAS PC talking while
+# Analyte records an upload: the RS/GS packet, its checksum and the
+# acknowledgment. Uploads are kept as received and never read; nothing is
+# downloaded. The acknowledgment point (Literal or Alternate) is the lab's
+# answer in the site file's [recording], because the installed mode cannot be
+# guessed (docs/protocols/vidas/README.md).
+protocol = "vidas"
+# Analyte's bound on one transport read or write (AGENTS rule 7).
+operation_timeout_ms = 10000
+# BCI Link guide A/B 3-1 to 3-4: each RS chunk carries at most 80 characters,
+# and a packet at most 1920 bytes across its chunks.
+chunk = 80
+frame_limit = 1920
+# BCI Link guide A 3-6: optional CR/LF suffixes after control bytes are off
+# by default.
+suffix = []
+include_suffix = false
+# BCI Link guide A 3-7: the sum runs from the first RS through GS, without STX;
+# the VIDAS PC sends lowercase hex digits and either case is accepted.
+include_stx = false
+uppercase = false
+accept_either_case = true
+# Analyte's deadlines (AGENTS rule 7); the guide gives no numbers.
+acknowledgment_ms = 5000
+interbyte_ms = 5000
+session_ms = 60000
+commit_ms = 5000

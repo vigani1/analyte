@@ -27,6 +27,9 @@ pub(super) struct Row {
     /// The newest refused connection (ADR 0026); an older engine does not send it.
     #[serde(default)]
     pub(super) refused: Option<String>,
+    /// Record only (ADR 0034): what it kept since start; none for a normal machine.
+    #[serde(default)]
+    pub(super) recording: Option<String>,
 }
 
 /// A time as the page shows it.

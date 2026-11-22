@@ -113,3 +113,8 @@ path = "tests/service/mod.rs"
 name = "law"
 required-features = ["test-hooks"]
 path = "tests/law/mod.rs"
+
+[[test]]
+name = "record_only"
+required-features = ["test-hooks"]
+path = "tests/record_only/mod.rs"

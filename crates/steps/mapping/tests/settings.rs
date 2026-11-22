@@ -14,7 +14,8 @@ pub(crate) fn astm(config: &Validated) -> (&AstmSyntax, &Mappings) {
         | Stack::Law(_)
         | Stack::Poct(_)
         | Stack::Vidas(_)
-        | Stack::Autolyser(_)) => panic!("expected ASTM fixture, got {stack:?}"),
+        | Stack::Autolyser(_)
+        | Stack::Record(_)) => panic!("expected ASTM fixture, got {stack:?}"),
     }
 }
 #[expect(
@@ -29,7 +30,8 @@ pub(crate) fn hl7(config: &Validated) -> (&Hl7Syntax, &Mappings) {
         | Stack::Law(_)
         | Stack::Poct(_)
         | Stack::Vidas(_)
-        | Stack::Autolyser(_)) => panic!("expected HL7 fixture, got {stack:?}"),
+        | Stack::Autolyser(_)
+        | Stack::Record(_)) => panic!("expected HL7 fixture, got {stack:?}"),
     }
 }
 #[expect(

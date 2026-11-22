@@ -167,7 +167,15 @@ pub(crate) async fn persist_prepared(
         policy.discard_custody();
     }
     let interpretation = reading_evidence(machine, reading, departures)?;
-    let destination = machine.snapshot.effective().site().destination.name.clone();
+    let destination = machine
+        .snapshot
+        .effective()
+        .site()
+        .destination
+        .as_ref()
+        .ok_or(Error::RecordOnly)?
+        .name
+        .clone();
     let conflict = atomic
         .then(|| persistence::failed(&interpretation, &BatchConflict.to_string()))
         .transpose()?;

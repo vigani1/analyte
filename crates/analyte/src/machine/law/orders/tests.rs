@@ -23,7 +23,7 @@ async fn superseded_mapping_rejection_continues_idle_admission() -> Result<(), E
         model: analyte_contract::document::ModelId::new("example", "synthetic-astm")?,
         capture: false,
         destination_limits: crate::runtime::delivery::limits(
-            &snapshot.effective().site().destination,
+            snapshot.effective().site().destination.as_ref(),
         ),
         hooks: crate::installation::config::MachineHooks::default(),
         id: Identifier::new("synthetic")?,
@@ -89,7 +89,7 @@ async fn superseded_mapping_rejection_continues_idle_admission() -> Result<(), E
         .await?;
     assert!(prepared.is_empty());
     assert!(link.exchange.is_none());
-    let key = reservation::key(&machine, Identifier::new("order-1")?);
+    let key = reservation::key(&machine, Identifier::new("order-1")?)?;
     assert!(
         store
             .request(deadline()?, move |store| store.machine_order(&key))

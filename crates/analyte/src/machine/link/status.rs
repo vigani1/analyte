@@ -79,6 +79,19 @@ pub(crate) struct Status {
     last_data: Option<Timestamp>,
     /// Devices refused since start, newest first, at most [`REFUSALS_KEPT`].
     refused: Vec<Refusal>,
+    /// Present only on a record-only machine: what it recorded since start (ADR 0034).
+    recording: Option<Tally>,
+}
+
+/// A record-only machine's counts since start; the bytes are in the store.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Tally {
+    /// Complete messages kept (an ASTM transfer, an HL7 message, a VIDAS
+    /// upload, an Autolyser report).
+    pub(crate) messages: u64,
+    /// Exchanges that failed framing, a checksum or a deadline; their bytes
+    /// are kept too.
+    pub(crate) failures: u64,
 }
 
 /// Connections refused from one device not on the machine's `allowed_peers`.
@@ -138,6 +151,11 @@ impl Status {
     pub(crate) fn refused(&self) -> &[Refusal] {
         &self.refused
     }
+
+    /// What a record-only machine recorded since start; none for a normal one.
+    pub(crate) const fn recording(&self) -> Option<Tally> {
+        self.recording
+    }
 }
 
 /// The runtime's writing end. Cloning shares the same status.
@@ -146,6 +164,15 @@ pub(crate) struct Reporter(watch::Sender<Status>);
 
 impl Reporter {
     pub(crate) fn new(link: Link) -> Self {
+        Self::with(link, None)
+    }
+
+    /// The status of a record-only machine, which also counts what it records.
+    pub(crate) fn recording(link: Link) -> Self {
+        Self::with(link, Some(Tally::default()))
+    }
+
+    fn with(link: Link, recording: Option<Tally>) -> Self {
         Self(watch::Sender::new(Status {
             link,
             ready: false,
@@ -153,7 +180,26 @@ impl Reporter {
             changed_at: Timestamp::now(),
             last_data: None,
             refused: Vec::new(),
+            recording,
         }))
+    }
+
+    /// Counts one complete message a record-only connection kept.
+    pub(crate) fn recorded(&self) {
+        self.0.send_modify(|status| {
+            if let Some(tally) = &mut status.recording {
+                tally.messages = tally.messages.saturating_add(1);
+            }
+        });
+    }
+
+    /// Counts one exchange a record-only connection kept but that failed.
+    pub(crate) fn record_failed(&self) {
+        self.0.send_modify(|status| {
+            if let Some(tally) = &mut status.recording {
+                tally.failures = tally.failures.saturating_add(1);
+            }
+        });
     }
 
     pub(crate) fn subscribe(&self) -> watch::Receiver<Status> {
@@ -237,6 +283,7 @@ mod tests {
             changed_at: Timestamp::UNIX_EPOCH,
             last_data: None,
             refused: Vec::new(),
+            recording: None,
         }
     }
 

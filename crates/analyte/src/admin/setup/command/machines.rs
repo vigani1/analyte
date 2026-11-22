@@ -182,6 +182,25 @@ pub struct Choice {
     /// setting not given keeps its saved value, else the model's suggestion.
     #[arg(long = "choice", value_name = "NAME=VALUE", value_parser = choice_pair)]
     choice: Vec<(String, String)>,
+    /// Record only (ADR 0034): keep the analyzer talking and record every
+    /// byte, for writing its definition; nothing is sent to a lab app, so no
+    /// --lab-app. Also for a model not ready yet. Recordings contain patient
+    /// data: export them with `analyte captures export`.
+    #[arg(long, conflicts_with_all = ["lab_app", "connect_normally"])]
+    record_only: bool,
+    /// Leaves record only: connect the machine normally again (needs a ready
+    /// model and --lab-app). Recorded messages are never delivered.
+    #[arg(long)]
+    connect_normally: bool,
+    /// Record only, Autolyser: seconds between asks for the next report, 1 to 3600.
+    #[arg(long, value_name = "SECONDS")]
+    poll_seconds: Option<String>,
+    /// Record only, Autolyser: whether its reports carry controls: yes or no.
+    #[arg(long, value_name = "YES_OR_NO")]
+    reports_carry_controls: Option<String>,
+    /// Record only, VIDAS: the VIDAS PC acknowledgment: literal or alternate.
+    #[arg(long, value_name = "MODE")]
+    vidas_acknowledgment: Option<String>,
 }
 
 /// Reads `--choice NAME=VALUE`; the model's own checks follow.
@@ -203,6 +222,10 @@ impl Choice {
                 definition: draft.definition.take(),
                 lab_app: draft.lab_app.take(),
                 allowed_peers: draft.allowed_peers.take(),
+                mode: draft.mode.take(),
+                poll_seconds: draft.poll_seconds.take(),
+                controls: draft.controls.take(),
+                acknowledgment: draft.acknowledgment.take(),
                 ..Draft::default()
             };
             draft = if serial {
@@ -240,6 +263,16 @@ impl Choice {
         if let Some(lab_app) = self.lab_app {
             draft.lab_app = Some(lab_app);
         }
+        if self.record_only {
+            draft.mode = Some(plan::recording::RECORD.to_owned());
+            draft.lab_app = None;
+        }
+        if self.connect_normally {
+            draft.mode = None;
+        }
+        draft.poll_seconds = self.poll_seconds.or(draft.poll_seconds);
+        draft.controls = self.reports_carry_controls.or(draft.controls);
+        draft.acknowledgment = self.vidas_acknowledgment.or(draft.acknowledgment);
         draft
     }
 }
@@ -411,6 +444,8 @@ pub(super) struct Listed {
     pub(super) choices: Vec<ListedChoice>,
     /// The choices in words, with what differs from the suggestion.
     pub(super) choices_words: Option<String>,
+    /// Its site file asks for record only (ADR 0034): nothing is sent to a lab app.
+    pub(super) record_only: bool,
 }
 
 /// One of a model's own choices as `machines list` shows it.
@@ -531,6 +566,7 @@ pub(super) fn settings_rows(installation: &Installation) -> Result<Vec<Listed>, 
             cable,
             choices: listed_choices,
             choices_words: chosen.and_then(choices::summary),
+            record_only: table.contains_key("recording"),
             id,
         });
     }
@@ -616,7 +652,11 @@ fn print_machine(machine: &Listed, engine: bool) -> std::io::Result<()> {
     }
     say(&format!(
         "  Lab app: {}",
-        machine.lab_app.as_deref().unwrap_or(not)
+        if machine.record_only {
+            format::RECORDING_ONLY
+        } else {
+            machine.lab_app.as_deref().unwrap_or(not)
+        }
     ))?;
     say(&format!(
         "  Setup: {}",
@@ -657,6 +697,9 @@ fn print_live(row: &live::Row) -> std::io::Result<()> {
             |at| format!("{} ({})", at.shown, at.exact)
         )
     ))?;
+    if let Some(recording) = &row.recording {
+        say(&format!("  Recorded: {recording}"))?;
+    }
     match &row.refused {
         Some(refused) => say(&format!("  Latest refusal: {refused}")),
         None => Ok(()),
@@ -746,10 +789,18 @@ fn saved(setup: &Setup, id: &str) -> Result<Draft, SetupError> {
             .and_then(toml::Value::as_str)
             .map(str::to_owned)
     };
+    let answer = |key: &str| plan::recording::saved(&table, key);
     let mut draft = Draft {
         definition: installed.definition.as_ref().map(|_| KEEP.to_owned()),
         lab_app: plan::current_lab_app(running(setup, id), &table),
         allowed_peers: saved_peers(&table),
+        // A record-only machine stays record-only until --connect-normally (ADR 0034).
+        mode: table
+            .contains_key("recording")
+            .then(|| plan::recording::RECORD.to_owned()),
+        poll_seconds: answer("poll_seconds"),
+        controls: answer("controls"),
+        acknowledgment: answer("acknowledgment"),
         ..Draft::default()
     };
     let kind = installed.definition.as_deref().and_then(plan::kind_of);
@@ -848,13 +899,18 @@ fn fill(setup: &Setup, id: &str, draft: &mut Draft, ask: Ask) -> Result<bool, Fa
     let mut asked = false;
     let (_, installed) = site::installed(setup.config(), id)?;
     let list = definitions(&setup.seams)?;
+    let records_only = plan::recording::chosen(draft);
     let model = match plan::model_of(&list, draft, &installed) {
         Ok(model) => model,
         Err(_) => {
             asked = true;
             let choices: Vec<ask::Choice> = list
                 .iter()
-                .filter(|definition| matches!(definition.state, Shipped::Ready { .. }))
+                .filter(|definition| {
+                    matches!(definition.state, Shipped::Ready { .. })
+                        || (records_only
+                            && matches!(definition.state, Shipped::Blocked { record: Some(_) }))
+                })
                 .map(|definition| ask::Choice {
                     value: definition.key.clone(),
                     label: model_label(definition),
@@ -869,7 +925,12 @@ fn fill(setup: &Setup, id: &str, draft: &mut Draft, ask: Ask) -> Result<bool, Fa
         asked = true;
         ask_connection(setup, kind, draft, ask)?;
     }
-    let declared = choices::declared(&model.path);
+    let declared = if records_only {
+        asked |= ask_recording(&model.path, draft, ask)?;
+        Vec::new()
+    } else {
+        choices::declared(&model.path)
+    };
     for choice in choices::missing(draft, &declared) {
         asked = true;
         let options: Vec<ask::Choice> = choice
@@ -909,7 +970,8 @@ fn fill(setup: &Setup, id: &str, draft: &mut Draft, ask: Ask) -> Result<bool, Fa
         .lab_app
         .as_deref()
         .is_some_and(|name| scan.get(name.trim()).is_some());
-    if !known {
+    // A record-only machine sends to no lab app (ADR 0034).
+    if !known && !records_only {
         asked = true;
         let choices: Vec<ask::Choice> = scan
             .known
@@ -929,6 +991,51 @@ fn fill(setup: &Setup, id: &str, draft: &mut Draft, ask: Ask) -> Result<bool, Fa
             )?;
         }
         draft.lab_app = ask.choose("Which lab app does it send results to?", &choices)?;
+    }
+    Ok(asked)
+}
+
+/// Record only at the terminal: the capture profile's questions the draft
+/// does not answer yet (ADR 0034). Returns whether anything was asked.
+fn ask_recording(definition: &Path, draft: &mut Draft, ask: Ask) -> Result<bool, Failure> {
+    let empty = |value: &Option<String>| value.as_deref().is_none_or(|v| v.trim().is_empty());
+    let mut asked = false;
+    match plan::recording::protocol(definition).as_deref() {
+        Some("autolyser") => {
+            if empty(&draft.poll_seconds) {
+                asked = true;
+                draft.poll_seconds = ask.line(
+                    "Step 2, Recording: seconds between asks for the next report (1 to 3600)",
+                )?;
+            }
+            if empty(&draft.controls) {
+                asked = true;
+                let options = [("yes", "Yes"), ("no", "No")].map(|(value, label)| ask::Choice {
+                    value: value.into(),
+                    label: label.into(),
+                });
+                draft.controls = ask.choose(
+                    "Step 2, Recording: do the analyzer's reports carry its controls?",
+                    &options,
+                )?;
+            }
+        }
+        Some("vidas") if empty(&draft.acknowledgment) => {
+            asked = true;
+            let options = [
+                ("literal", "Literal (after the checksum)"),
+                ("alternate", "Alternate (after ETX)"),
+            ]
+            .map(|(value, label)| ask::Choice {
+                value: value.into(),
+                label: label.into(),
+            });
+            draft.acknowledgment = ask.choose(
+                "Step 2, Recording: which acknowledgment does the VIDAS PC use?",
+                &options,
+            )?;
+        }
+        _ => {}
     }
     Ok(asked)
 }
@@ -953,6 +1060,10 @@ fn ask_connection(
     *draft = Draft {
         definition: draft.definition.take(),
         lab_app: draft.lab_app.take(),
+        mode: draft.mode.take(),
+        poll_seconds: draft.poll_seconds.take(),
+        controls: draft.controls.take(),
+        acknowledgment: draft.acknowledgment.take(),
         baud: draft.baud.take(),
         data_bits: draft.data_bits.take(),
         parity: draft.parity.take(),
@@ -1056,11 +1167,14 @@ fn summary(id: &str, plan: &Plan) -> std::io::Result<()> {
     if let Some(accepts) = accepts(Link::of(effective.stack()), plan.peers.as_ref()) {
         say(&format!("Devices: {accepts}"))?;
     }
-    say(&format!(
-        "Lab app: {} ({})",
-        destination.name.as_str(),
-        destination.base_url.as_str()
-    ))
+    match destination {
+        Some(destination) => say(&format!(
+            "Lab app: {} ({})",
+            destination.name.as_str(),
+            destination.base_url.as_str()
+        )),
+        None => say(&format!("Lab app: {}", format::RECORDING_ONLY)),
+    }
 }
 
 async fn set(
@@ -1104,7 +1218,10 @@ async fn save(
             let (machine, kept) = (id.to_owned(), draft.clone());
             let (saved, missing) = on_files(&setup, move |setup| {
                 let saved = plan::save_blocking(setup, &machine, &kept)?;
-                let missing = lab_apps::missing_keys(setup, &saved.lab_app);
+                let missing = saved
+                    .lab_app
+                    .as_ref()
+                    .and_then(|lab_app| lab_apps::missing_keys(setup, lab_app));
                 Ok((saved, missing))
             })
             .await?;
@@ -1120,11 +1237,14 @@ async fn save(
             if let Some(accepts) = accepts(saved.link, saved.peers.as_ref()) {
                 say(&format!("Devices: {accepts}"))?;
             }
-            say(&format!(
-                "Lab app: {} ({})",
-                saved.lab_app.name.as_str(),
-                saved.lab_app.base_url.as_str()
-            ))?;
+            match &saved.lab_app {
+                Some(lab_app) => say(&format!(
+                    "Lab app: {} ({})",
+                    lab_app.name.as_str(),
+                    lab_app.base_url.as_str()
+                ))?,
+                None => say(&format!("Lab app: {}", format::RECORDING_ONLY))?,
+            }
             if let Some(missing) = missing {
                 say(&missing)?;
             }

@@ -15,7 +15,10 @@ pub(crate) fn destinations(
 ) -> Result<Vec<Destination>, Error> {
     let mut destinations = Vec::new();
     for machine in program.machines() {
-        let settings = &machine.snapshot().effective().site().destination;
+        // A record-only machine sends nothing, so it gets no worker (ADR 0034).
+        let Some(settings) = &machine.snapshot().effective().site().destination else {
+            continue;
+        };
         if destinations
             .iter()
             .any(|d: &Destination| d.id() == &settings.name)
@@ -107,13 +110,23 @@ const PAGE_SIZE: u16 = 100;
 const MAX_PAGES: u16 = 100;
 
 /// Turns validated site destination settings into the sink's operational bounds.
-pub(crate) fn limits(settings: &analyte_config::Destination) -> Limits {
+/// A machine's lab-app limits. A record-only machine has no lab app (ADR
+/// 0034): it gets the documented defaults, which nothing reads, because no
+/// delivery worker, order poller or order path ever runs for it.
+pub(crate) fn limits(settings: Option<&analyte_config::Destination>) -> Limits {
+    let (request, freshness) = settings.map_or(
+        (
+            analyte_config::Destination::DEFAULT_REQUEST_TIMEOUT_SECONDS,
+            analyte_config::Destination::DEFAULT_FRESHNESS_SECONDS,
+        ),
+        |settings| (settings.request_timeout_seconds, settings.freshness_seconds),
+    );
     Limits {
-        request_timeout: Duration::from_secs(settings.request_timeout_seconds),
+        request_timeout: Duration::from_secs(request),
         store_timeout: STORE_TIMEOUT,
         backoff_min: BACKOFF_MIN,
         backoff_max: BACKOFF_MAX,
-        freshness: Duration::from_secs(settings.freshness_seconds),
+        freshness: Duration::from_secs(freshness),
         poll_interval: POLL_INTERVAL,
         page_size: PAGE_SIZE,
         max_pages: MAX_PAGES,

@@ -1,0 +1,15 @@
+# Roche cobas e 411: how it talks, for a record-only connection (ADR 0034).
+# Only the protocol and the link; the rest comes from Analyte's shipped ASTM
+# capture profile. Not a machine definition: nothing is read or delivered.
+recording_schema_version = 1
+protocol = "astm"
+[transport]
+# HIM B-2, B-7: RS-232C HOST port, ASTM E1381.
+kind = "serial"
+# HIM B-7 recommends 9600 8N1; the lab confirms on the analyzer's host
+# settings screen. Flow control is not documented, so the lab chooses it.
+[transport.serial]
+baud = 9600
+data_bits = 8
+parity = "none"
+stop_bits = 1

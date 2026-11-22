@@ -146,7 +146,10 @@ impl Environment {
     ) -> Result<Self, SecretError> {
         let mut credentials = BTreeMap::new();
         for machine in program.machines() {
-            let destination = &machine.snapshot().effective().site().destination;
+            // A record-only machine has no lab app and so no keys (ADR 0034).
+            let Some(destination) = &machine.snapshot().effective().site().destination else {
+                continue;
+            };
             credentials.insert(
                 destination.name.as_str().into(),
                 read(program, destination, &lookup)?,

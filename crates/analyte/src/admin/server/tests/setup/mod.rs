@@ -557,9 +557,14 @@ async fn waiting_machine_is_set_up_from_the_starter() -> Result<(), Error> {
     let first = fixture.get("/setup/machine-1").await?;
     assert!(first.starts_with("HTTP/1.1 200"), "{first}");
     assert!(first.contains(STEP_ONE), "{first}");
+    // Only the mode starts chosen (Connect normally); no model is (ADR 0034).
     assert!(
-        !first.contains(" checked"),
+        !first.contains("required checked"),
         "no model is chosen yet: {first}"
+    );
+    assert!(
+        first.contains("name=\"mode\" value=\"\" checked") && first.contains("Record only"),
+        "{first}"
     );
     assert!(!first.contains("name=\"lab_app\""));
     let page = "/setup/machine-1/connection?definition=example/network-hl7";
@@ -2409,5 +2414,92 @@ async fn test_with_no_bytes_says_nothing_received() -> Result<(), Error> {
         "{view}"
     );
     assert!(fixture.written.lock().map_err(|_| "poisoned")?.is_empty());
+    Ok(())
+}
+
+// ADR 0034 decisions 1, 3 and 8: on the Setup page a model not ready yet is
+// set up to record only: step 2 asks the profile's own question and no lab
+// app, step 4 says nothing is sent to a lab app, and the save writes what
+// `machines set --record-only` writes.
+#[tokio::test(flavor = "multi_thread")]
+async fn setup_page_saves_a_record_only_machine_without_a_lab_app() -> Result<(), Error> {
+    let fixture = start_with(
+        "[admin]\nport = 8080\n[[machines]]\nid = 'machine-1'\nsite = 'site.toml'\n",
+        include_str!("../../../../../../../packaging/linux/starter/machine-1.site.toml"),
+    )
+    .await?;
+    let vidas = fixture.root().join("machines/biomerieux/vidas");
+    std::fs::create_dir_all(&vidas)?;
+    std::fs::write(
+        vidas.join("README.md"),
+        "# bioMérieux VIDAS\n\nA blocked machine definition.\n",
+    )?;
+    std::fs::write(
+        vidas.join(analyte_config::RECORD_FILE),
+        "recording_schema_version = 1\nprotocol = \"vidas\"\n[transport]\nkind = \"tcp_server\"\n",
+    )?;
+    let first = fixture.get("/setup/machine-1").await?;
+    assert!(
+        first.contains("It can be connected to record only"),
+        "{first}"
+    );
+    let step = "/setup/machine-1/connection?definition=biomerieux/vidas&mode=record";
+    let connection = fixture.get(step).await?;
+    assert!(connection.starts_with("HTTP/1.1 200"), "{connection}");
+    assert!(
+        connection.contains("name=\"acknowledgment\""),
+        "{connection}"
+    );
+    assert!(!connection.contains("name=\"lab_app\""), "{connection}");
+    assert!(
+        connection.contains(crate::admin::view::format::RECORDING_ONLY),
+        "{connection}"
+    );
+    let fields = [
+        ("definition", "biomerieux/vidas"),
+        ("mode", "record"),
+        ("host", "127.0.0.1"),
+        ("tcp_port", "5602"),
+        ("acknowledgment", "literal"),
+    ];
+    let query = fields
+        .iter()
+        .map(|(name, value)| format!("{name}={}", encode(value)))
+        .collect::<Vec<_>>()
+        .join("&");
+    let review = fixture
+        .get(&format!("/setup/machine-1/save?{query}"))
+        .await?;
+    assert!(review.starts_with("HTTP/1.1 200"), "{review}");
+    let body = std::iter::once(("csrf".to_owned(), csrf(&review)?))
+        .chain(
+            fields
+                .iter()
+                .map(|(name, value)| ((*name).to_owned(), (*value).to_owned())),
+        )
+        .map(|(name, value)| format!("{name}={}", encode(&value)))
+        .collect::<Vec<_>>()
+        .join("&");
+    let saved = fixture.post("/setup/machine-1", &body).await?;
+    assert!(saved.starts_with("HTTP/1.1 200"), "{saved}");
+    assert!(
+        saved.contains(&format!(
+            "<dt>Sends results to</dt><dd><span class=\"tone-warn\">{}</span></dd>",
+            crate::admin::view::format::RECORDING_ONLY
+        )),
+        "{saved}"
+    );
+    let site: toml::Table = std::fs::read_to_string(&fixture.site)?.parse()?;
+    assert_eq!(
+        site.get("recording")
+            .and_then(|recording| recording.get("acknowledgment"))
+            .and_then(toml::Value::as_str),
+        Some("literal"),
+        "{site}"
+    );
+    assert!(!site.contains_key("lab_app"), "{site}");
+    let program = Program::load(&fixture.config)?;
+    let machine = program.machines().first().ok_or("machine missing")?;
+    assert!(machine.snapshot().effective().records_only());
     Ok(())
 }

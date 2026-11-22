@@ -318,7 +318,7 @@ mod tests {
                 model: analyte_contract::document::ModelId::new("example", "synthetic-astm")?,
                 id: analyte_model::Identifier::new("synthetic")?,
                 destination_limits: crate::runtime::delivery::limits(
-                    &snapshot.effective().site().destination,
+                    snapshot.effective().site().destination.as_ref(),
                 ),
                 status: crate::machine::link::status::Reporter::new(
                     crate::machine::link::status::Link::of(snapshot.effective().stack()),

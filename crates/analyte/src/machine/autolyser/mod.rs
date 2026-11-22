@@ -9,6 +9,7 @@ pub(crate) use custody::POLL_REASON;
 mod error;
 pub(crate) mod orders;
 mod outcome;
+pub(in crate::machine) mod recording;
 pub(crate) mod settings;
 use analyte_config::AutolyserStack;
 use analyte_dialog::autolyser::{Action, Dialog, Event, Request};

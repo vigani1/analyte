@@ -65,6 +65,12 @@ impl Family {
             Stack::Poct(_) => Self::Poct,
             Stack::Vidas(_) => Self::Vidas,
             Stack::Autolyser(_) => Self::Autolyser,
+            Stack::Record(stack) => match stack.protocol() {
+                analyte_config::recording::CaptureProtocol::Astm => Self::Astm,
+                analyte_config::recording::CaptureProtocol::Hl7 => Self::Hl7,
+                analyte_config::recording::CaptureProtocol::Vidas => Self::Vidas,
+                analyte_config::recording::CaptureProtocol::Autolyser => Self::Autolyser,
+            },
         }
     }
 

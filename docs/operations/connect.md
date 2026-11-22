@@ -425,6 +425,9 @@ for them. Obtain every fact in the corresponding README, not just the summary:
 | bioMérieux VIDAS | [PC version, ID length and identity evidence](../../machines/biomerieux/vidas/README.md) |
 | Dialab Autolyser | [Installed interface, layout and identity evidence](../../machines/dialab/autolyser/README.md) |
 
+To get those conversations, connect each machine to [record
+only](#first-visit-record-only) first.
+
 Capture de-identified conversations with direction and timing. Keep originals
 protected outside Git. A maintainer must review config and replay evidence;
 the lab must check values, units, flags, corrections and sample identity through
@@ -440,6 +443,80 @@ Machine definitions use `schema_version = 2`: set `protocol` and
 `transport.kind`, and the loader derives framing, dialog and syntax, so those
 sections carry no `kind` key. Any other machine schema version is refused as
 unsupported.
+
+## First visit: record only
+
+The six first-lab models are not ready yet, so they cannot send results to a
+lab app. They can still be connected to **record only**
+([ADR 0034](../adr/0034-record-only-connections.md)): Analyte keeps the
+analyzer talking with its protocol's own rules and keeps every byte, so the
+visit ends with real recordings to write each definition from.
+
+| What record only does | What it never does |
+| --- | --- |
+| Answers the analyzer as its standard says (ENQ and frame ACKs, the HL7 acknowledgment, the next Autolyser report) | Read a result, park it in Needs review or send it to a lab app |
+| Stores every byte before any answer, including frames that fail their checksum | Send an order or a work list |
+| Records every connection to `<data>/captures/<machine>/` | Answer a query with "no tests" |
+
+1. On **Setup**, add the machine, pick its model in step 1 (a model "Not ready
+   yet" says "It can be connected to record only") and choose **Record only**.
+2. In step 2, choose the port or address and the cable settings from the
+   analyzer's LIS/host settings screen. No lab app is asked. The VIDAS asks
+   whether the VIDAS PC uses Literal or Alternate acknowledgment; the
+   Autolyser asks how many seconds between asks for the next report and
+   whether its reports carry controls. Nothing is guessed: every answer comes
+   from the analyzer's own screen.
+3. Run the connection test, save and restart the engine.
+
+From the command line, the same with `--record-only`:
+
+```powershell
+analyte --actor it-alex machines add cobas-1
+analyte --actor it-alex machines set cobas-1 `
+    --model roche/cobas-e411 --record-only --usb-serial A10K3XYZ --flow-control none
+analyte --actor it-alex machines set autolyser-1 `
+    --model dialab/autolyser --record-only --serial-port COM4 `
+    --baud 9600 --data-bits 8 --parity none --stop-bits 1 --flow-control none `
+    --poll-seconds 30 --reports-carry-controls no
+analyte --actor it-alex machines set vidas-1 `
+    --model biomerieux/vidas --record-only --serial-port COM5 --flow-control none `
+    --vidas-acknowledgment literal
+Restart-Service Analyte
+```
+
+The Overview, Machines and the machine's page then say **Recording only —
+nothing is sent to a lab app**, with the messages kept and the failed
+exchanges since the start; `analyte machines list` and `analyte doctor` say it
+too. A failed exchange is counted there, not put in Needs review.
+
+How each protocol behaves while recording:
+
+| Protocol | Answers | Queries |
+| --- | --- | --- |
+| ASTM (cobas e 411, Biolyte 2000) | ACK to ENQ and to each frame with a good checksum (LIS01-A2); NAK to a bad frame, which is still kept | A query gets the standard's "error in last request" (code Q), never "no information" |
+| HL7 (iFlash 1200, Swelab Lumi) | AA to a result message (ORU, OUL): it is safely kept | Any other message, a query above all, gets AE (application error), never an empty answer |
+| VIDAS Literal | The packet acknowledgment, at the point the lab chose | VIDAS has no host query; nothing is downloaded |
+| Autolyser | Asks only for the next report (R) at the chosen interval; never the archive (A) or the last report again (L) | A response that is incomplete or not in the expected layout stops the asking; an operator checks the analyzer before it resumes |
+
+Analyzers often mark a result as sent once it is acknowledged. Keep the lab's
+usual way of reporting results during the visit: nothing reaches the lab app.
+
+Get the recordings out with the audited capture commands. They contain
+**patient data**: copy them only to a protected place, and make a reviewed
+de-identified copy before sharing one
+([Capture, de-identify and replay](../develop/adding-a-machine.md#capture-de-identify-and-replay)).
+Analyte does not de-identify them.
+
+```powershell
+analyte --actor it-alex captures list --machine cobas-1
+analyte --actor it-alex captures export cobas-1 <file>.rec.jsonl --to D:\Protected --reason "First visit recording"
+```
+
+When the model's definition is ready, set the machine up normally on Setup
+(choose **Connect normally** and a lab app), or with
+`machines set cobas-1 --connect-normally --lab-app main-lab`. The recorded
+messages are never delivered afterwards: they stay as evidence, and
+reprocessing refuses them. Their captures are the conversations to replay.
 
 ## From the command line
 

@@ -13,6 +13,7 @@ pub(crate) const CUT_OFF_REASON: &str =
 pub(crate) const STOPPED_REASON: &str =
     "ASTM transfer was still open when Analyte stopped; its acknowledged frames are kept";
 pub(crate) mod orders;
+pub(in crate::machine) mod recording;
 pub(crate) mod settings;
 use crate::{deadline, intake};
 use analyte_dialog::astm::{Action, Config, Dialog, End, Epoch, Event};

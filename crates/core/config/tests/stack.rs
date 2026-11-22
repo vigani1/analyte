@@ -30,6 +30,7 @@ fn variant(stack: &Stack) -> &str {
         Stack::Autolyser(_) => "autolyser",
         Stack::Astm(analyte_config::RecordTransport::Folder(_)) => "file_astm",
         Stack::Hl7(analyte_config::RecordTransport::Folder(_)) => "file_hl7",
+        Stack::Record(_) => "record",
     }
 }
 
@@ -153,6 +154,7 @@ fn every_example_maps_to_its_documented_stack() -> TestResult {
             | Stack::Hl7(analyte_config::RecordTransport::Folder(_)) => {
                 panic!("no folder example is shipped")
             }
+            Stack::Record(_) => panic!("a definition and site never load as record only"),
         }
     }
     Ok(())
@@ -296,7 +298,10 @@ fn assert_astm_example(
             .and_then(toml::Value::as_integer)
             .and_then(|n| usize::try_from(n).ok())
     );
-    assert_eq!(&stack.settings().codes().test_system, raw.test_system());
+    assert_eq!(
+        Some(&stack.settings().codes().test_system),
+        raw.test_system()
+    );
     assert!(matches!(
         stack.settings().transport().kind(),
         StreamKind::Serial(_)
@@ -310,7 +315,10 @@ fn assert_astm_example(
 
 fn assert_hl7_example(stack: &analyte_config::Hl7Stack, raw: &analyte_config::Machine, name: &str) {
     assert_eq!(stack.settings().transport().role(), TcpRole::Server);
-    assert_eq!(&stack.settings().codes().test_system, raw.test_system());
+    assert_eq!(
+        Some(&stack.settings().codes().test_system),
+        raw.test_system()
+    );
     assert_eq!(
         stack.orders().is_some(),
         matches!(name, "hl7_orders.toml" | "hl7_send.toml")

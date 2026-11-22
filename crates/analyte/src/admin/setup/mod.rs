@@ -108,8 +108,8 @@ struct Running {
     digest: [u8; 32],
     endpoint: Endpoint,
     link: Link,
-    /// The lab app it sends results to.
-    lab_app: Identifier,
+    /// The lab app it sends results to; none while it records only (ADR 0034).
+    lab_app: Option<Identifier>,
 }
 
 /// The setup files and what guards them: the program file, the data directory
@@ -142,7 +142,7 @@ impl Setup {
                     digest: machine.snapshot().digest(),
                     endpoint: effective.site().endpoint.clone(),
                     link: Link::of(effective.stack()),
-                    lab_app: effective.site().destination.name.clone(),
+                    lab_app: effective.site().lab_app_name().cloned(),
                 }
             })
             .collect();
@@ -233,6 +233,14 @@ pub(crate) enum SetupError {
         "model {0} is not ready yet: facts or recordings are still missing (its README lists them)"
     )]
     BlockedDefinition(String),
+    #[error(
+        "model {0} is not ready yet, so it can only record: choose Record only (nothing is sent to a lab app) to keep its conversation"
+    )]
+    RecordOnlyModel(String),
+    #[error("a record-only machine sends nothing to a lab app; leave the lab app empty")]
+    LabAppWhileRecording,
+    #[error("{0}")]
+    RecordingAnswer(&'static str),
     #[error("{0}")]
     Definitions(#[from] definitions::ListError),
     #[error("the lab app address is not accepted: {0}")]
@@ -463,13 +471,17 @@ fn level_and_state(definition: &Definition) -> (Hover, Status, Icon) {
             status(Tone::Good, "Ready"),
             Icon::Ok,
         ),
-        Shipped::Blocked => (
+        Shipped::Blocked { record } => (
             hover(
                 "Not tested yet",
                 "Evidence level: none (blocked definition)".into(),
             ),
             Status {
-                note: Some("Facts or recordings are still missing; its README lists them.".into()),
+                note: Some(if record.is_some() {
+                    "Facts or recordings are still missing; its README lists them. It can be connected to record only.".into()
+                } else {
+                    "Facts or recordings are still missing; its README lists them.".into()
+                }),
                 ..status(Tone::Neutral, "Not ready yet")
             },
             Icon::Off,
@@ -592,7 +604,7 @@ fn definition_name(definition: &Definition) -> Hover {
         shown: definition.display.clone(),
         exact: match &definition.state {
             Shipped::Ready { name, .. } => format!("{} (name {name})", definition.key),
-            Shipped::Blocked | Shipped::Unreadable(_) => definition.key.clone(),
+            Shipped::Blocked { .. } | Shipped::Unreadable(_) => definition.key.clone(),
         },
     }
 }

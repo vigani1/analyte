@@ -369,7 +369,19 @@ fn row(
         since: status
             .filter(|status| status.light() == Light::Live)
             .map(|status| format::moment(status.changed_at(), now)),
-        lab_app: running.map(|machine| machine.lab_app.as_str().to_owned()),
+        lab_app: running.and_then(|machine| {
+            machine
+                .lab_app
+                .as_ref()
+                .map(|name| name.as_str().to_owned())
+        }),
+        recording: running.and_then(|machine| {
+            machine
+                .status
+                .borrow()
+                .recording()
+                .map(format::recording_counts)
+        }),
     }
 }
 
@@ -412,6 +424,8 @@ struct LiveRow {
     /// The newest connection refused by its `allowed_peers`, in the page's
     /// words with the device's address (ADR 0026); none since the start.
     refused: Option<String>,
+    /// Record only (ADR 0034): what it kept since start; none for a normal machine.
+    recording: Option<String>,
 }
 
 /// The whole answer: the rows, and whether the settings file could be read
@@ -455,6 +469,7 @@ pub(super) async fn live(State(state): State<Arc<Context>>) -> Response {
                 since: row.since.map(LiveTime::from),
                 model: row.model,
                 lab_app: row.lab_app,
+                recording: row.recording,
             }
         })
         .collect();
@@ -715,10 +730,20 @@ fn running_facts(
         },
         Fact {
             term: "Sends results to",
-            value: Value::Page {
-                href: Tab::LabApps.href().to_owned(),
-                label: machine.lab_app.as_str().to_owned(),
+            value: match &machine.lab_app {
+                Some(lab_app) => Value::Page {
+                    href: Tab::LabApps.href().to_owned(),
+                    label: lab_app.as_str().to_owned(),
+                },
+                None => Value::Text(format::RECORDING_ONLY.into()),
             },
+        },
+        Fact {
+            term: "Recorded",
+            value: Value::Text(observed.recording().map_or_else(
+                || "Only when its program entry has capture = true".to_owned(),
+                format::recording_counts,
+            )),
         },
         Fact {
             term: "In Analyte",

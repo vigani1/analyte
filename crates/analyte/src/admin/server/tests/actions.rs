@@ -84,7 +84,7 @@ async fn reprocess_and_resend_need_confirmation_csrf_and_audit() -> Result<(), E
             .starts_with("HTTP/1.1 409")
     );
     let destination =
-        crate::orders::destination(program.machines().first().ok_or("missing machine")?);
+        crate::orders::destination(program.machines().first().ok_or("missing machine")?)?;
     let delivery = store
         .request::<_, FixtureError>(fixture_deadline()?, move |s| {
             assert!(

@@ -13,6 +13,7 @@ impl Stack {
             | Stack::Poct(_)
             | Stack::Vidas(_)
             | Stack::Autolyser(_)
+            | Stack::Record(_)
             | Stack::Hl7(RecordTransport::Folder(_)) => None,
         }
     }
@@ -27,6 +28,7 @@ impl Stack {
             | Stack::Poct(_)
             | Stack::Vidas(_)
             | Stack::Autolyser(_)
+            | Stack::Record(_)
             | Stack::Astm(RecordTransport::Folder(_)) => None,
         }
     }
@@ -40,6 +42,7 @@ impl Stack {
             | Stack::Poct(_)
             | Stack::Vidas(_)
             | Stack::Autolyser(_)
+            | Stack::Record(_)
             | Stack::Astm(RecordTransport::Folder(_))
             | Stack::Hl7(RecordTransport::Folder(_)) => None,
         }
@@ -60,6 +63,9 @@ impl Stack {
             Stack::Poct(_) => "analyte-poct",
             Stack::Vidas(_) => "analyte-vidas",
             Stack::Autolyser(_) => "analyte-autolyser",
+            // A distinct namespace marks every record-only receipt: it was
+            // kept, never read, and reprocessing refuses it (ADR 0034).
+            Stack::Record(_) => crate::recording::RECORD_DRIVER,
         }
     }
 }
@@ -297,9 +303,12 @@ impl Stack {
         match self {
             Self::Astm(RecordTransport::Stream(s)) => Some(s.settings().syntax()),
             Self::Astm(RecordTransport::Folder(s)) => Some(s.settings().syntax()),
-            Self::Hl7(_) | Self::Law(_) | Self::Poct(_) | Self::Vidas(_) | Self::Autolyser(_) => {
-                None
-            }
+            Self::Hl7(_)
+            | Self::Law(_)
+            | Self::Poct(_)
+            | Self::Vidas(_)
+            | Self::Autolyser(_)
+            | Self::Record(_) => None,
         }
     }
     /// Borrows the HL7 parser option source when this grammar is supported.
@@ -313,7 +322,11 @@ impl Stack {
                 Some(Hl7OptionsSource::Syntax(s.settings().syntax()))
             }
             Self::Law(s) => Some(Hl7OptionsSource::Law(s)),
-            Self::Astm(_) | Self::Poct(_) | Self::Vidas(_) | Self::Autolyser(_) => None,
+            Self::Astm(_)
+            | Self::Poct(_)
+            | Self::Vidas(_)
+            | Self::Autolyser(_)
+            | Self::Record(_) => None,
         }
     }
     /// Borrows HL7 syntax and mappings for retained interpretation.
@@ -326,9 +339,12 @@ impl Stack {
             Self::Hl7(RecordTransport::Folder(s)) => {
                 Some((s.settings().syntax(), s.settings().codes()))
             }
-            Self::Law(_) | Self::Astm(_) | Self::Poct(_) | Self::Vidas(_) | Self::Autolyser(_) => {
-                None
-            }
+            Self::Law(_)
+            | Self::Astm(_)
+            | Self::Poct(_)
+            | Self::Vidas(_)
+            | Self::Autolyser(_)
+            | Self::Record(_) => None,
         }
     }
     /// Bounds durable custody by both the transport and protocol commit deadlines.
@@ -338,6 +354,12 @@ impl Stack {
         match self {
             Self::Vidas(s) => operation.min(s.policy().commit_ms),
             Self::Autolyser(s) => operation.min(s.policy().storage_ms),
+            Self::Record(s) => operation.min(match s.link() {
+                crate::RecordLink::Astm(link) => link.commit_ms(),
+                crate::RecordLink::Hl7(link) => link.wait_ms(),
+                crate::RecordLink::Vidas(link) => link.commit_ms(),
+                crate::RecordLink::Autolyser(link) => link.storage_ms(),
+            }),
             Self::Astm(_) | Self::Hl7(_) | Self::Law(_) | Self::Poct(_) => operation,
         }
     }
@@ -348,6 +370,7 @@ impl Stack {
             Self::Vidas(_) => "VIDAS interpretation: ",
             Self::Autolyser(_) => "Autolyser interpretation: ",
             Self::Poct(_) => "POCT interpretation: ",
+            Self::Record(_) => "Record only: ",
             Self::Astm(_) | Self::Hl7(_) | Self::Law(_) => "",
         }
     }
@@ -367,6 +390,14 @@ impl Stack {
             Self::Poct(_) => StackChoice::Poct,
             Self::Vidas(_) => StackChoice::VidasLiteral,
             Self::Autolyser(_) => StackChoice::Autolyser,
+            // A record-only stack speaks its protocol's own link, so its
+            // layers are that protocol's; it has none of its mappings.
+            Self::Record(s) => match s.protocol() {
+                crate::recording::CaptureProtocol::Astm => StackChoice::AstmLis02,
+                crate::recording::CaptureProtocol::Hl7 => StackChoice::Hl7V2,
+                crate::recording::CaptureProtocol::Vidas => StackChoice::VidasLiteral,
+                crate::recording::CaptureProtocol::Autolyser => StackChoice::Autolyser,
+            },
         }
     }
     /// Borrows stream ASTM settings for frame departure evidence.
@@ -379,7 +410,8 @@ impl Stack {
             | Self::Law(_)
             | Self::Poct(_)
             | Self::Vidas(_)
-            | Self::Autolyser(_) => None,
+            | Self::Autolyser(_)
+            | Self::Record(_) => None,
         }
     }
 }

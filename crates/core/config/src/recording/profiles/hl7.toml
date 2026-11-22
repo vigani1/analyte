@@ -1,0 +1,22 @@
+# Capture profile for HL7 v2 over MLLP (ADR 0034), shipped with Analyte, the
+# same for every lab. Only the rules that keep an analyzer talking while
+# Analyte records: MLLP Release 1 blocks and the HL7 acknowledgment. Results
+# are kept as received and never read.
+protocol = "hl7"
+# Analyte's bound on one transport read or write (AGENTS rule 7).
+operation_timeout_ms = 10000
+# HL7 2.5.1 2.15.9.18: an empty MSH-18 means 7-bit ASCII; a message that
+# declares another character set in MSH-18 is read in that set.
+encoding = "ascii"
+# HL7 2.5.1 2.7 (2.3.1 2.7): every segment ends with a carriage return.
+terminator = "cr"
+# Escapes are kept as written: record only never reads field values.
+escapes = "preserve"
+# How long Analyte may take to answer one message (stored first, then the
+# acknowledgment), an Analyte bound (AGENTS rule 7).
+wait_ms = 30000
+# Analyte's bounds on one message (AGENTS rule 7), not from the standard.
+message_bytes = 1048576
+segments = 4096
+fields = 256
+repetitions = 256

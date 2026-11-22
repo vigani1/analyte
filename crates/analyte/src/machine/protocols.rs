@@ -7,7 +7,9 @@ use super::{astm, autolyser, driver, hl7, law, poct, vidas};
 use crate::intake::ConnectionEvidence;
 use crate::machine::receive::custody::{Cleanup, CleanupFailure};
 use crate::reading::{self, Error as ReadError};
-use analyte_config::{RecordTransport, Serial, Stack, StreamKind, StreamTransport, TcpRole};
+use analyte_config::{
+    RecordLink, RecordTransport, Serial, Stack, StreamKind, StreamTransport, TcpRole,
+};
 use analyte_config::{TcpTransport, Validated};
 use analyte_mapping::{Input, Output};
 use analyte_store::Handle;
@@ -23,6 +25,8 @@ pub(super) enum StreamSession<'a> {
     Poct(&'a analyte_config::PoctStack),
     Vidas(&'a analyte_config::VidasStack),
     Autolyser(&'a analyte_config::AutolyserStack),
+    /// Record only (ADR 0034): the protocol's link rules, nothing read or sent.
+    Record(&'a analyte_config::RecordStack),
 }
 
 impl StreamSession<'_> {
@@ -33,7 +37,8 @@ impl StreamSession<'_> {
     const fn journals_chunks(self) -> bool {
         match self {
             Self::Astm(_) | Self::Hl7(_) | Self::Law(_) => false,
-            Self::Poct(_) | Self::Vidas(_) | Self::Autolyser(_) => true,
+            // Record only journals every chunk and never interprets anything.
+            Self::Poct(_) | Self::Vidas(_) | Self::Autolyser(_) | Self::Record(_) => true,
         }
     }
 }
@@ -79,6 +84,7 @@ pub(super) fn transport(stack: &Stack) -> Link<'_> {
         }
         Stack::Law(s) => tcp(s.settings().transport(), StreamSession::Law(s)),
         Stack::Poct(s) => tcp(s.settings().transport(), StreamSession::Poct(s)),
+        Stack::Record(s) => stream(s.transport(), StreamSession::Record(s)),
         Stack::Astm(RecordTransport::Folder(s)) => Link::Folder {
             timeout_ms: *s.settings().transport(),
             bytes: s.settings().syntax().limits().bytes(),
@@ -156,6 +162,32 @@ pub(super) async fn session(
             let open = autolyser::Host::open(machine, settings, store);
             Ok(driver::serve(open, session).await?)
         }
+        StreamSession::Record(settings) => {
+            let owner = machine.machine();
+            let (conn, stop) = (host.conn, host.stop);
+            match settings.link() {
+                RecordLink::Astm(link) => {
+                    let session = driver::Session::new(machine, settings, store, conn, stop);
+                    let open = async { astm::recording::Host::open(owner, link) };
+                    Ok(driver::serve(open, session).await?)
+                }
+                RecordLink::Hl7(link) => {
+                    let session = driver::Session::new(machine, settings, store, conn, stop);
+                    let open = async { hl7::recording::Host::open(link) };
+                    Ok(driver::serve(open, session).await?)
+                }
+                RecordLink::Vidas(link) => {
+                    let session = driver::Session::new(machine, settings, store, conn, stop);
+                    let open = async { vidas::recording::Host::open(link) };
+                    Ok(driver::serve(open, session).await?)
+                }
+                RecordLink::Autolyser(link) => {
+                    let session = driver::Session::new(machine, settings, store, conn, stop);
+                    let open = autolyser::recording::Host::open(owner, link, store);
+                    Ok(driver::serve(open, session).await?)
+                }
+            }
+        }
     }
 }
 
@@ -229,6 +261,8 @@ pub(crate) fn payload<'a>(config: &Validated, raw: &'a [u8]) -> Result<Cow<'a, [
         | Stack::Poct(_)
         | Stack::Vidas(_)
         | Stack::Autolyser(_) => Ok(raw.into()),
+        // A record-only receipt is a journaled chunk, kept and never read (ADR 0034).
+        Stack::Record(_) => Err(ReadError::RecordedOnly),
         Stack::Astm(RecordTransport::Stream(s)) => Ok(analyte_framing::astm::decode(
             raw,
             astm::settings::frame_limit(s)?,
@@ -277,6 +311,7 @@ pub(crate) fn read(
         Stack::Poct(s) => reading::poct(input, &payload, s, hello),
         Stack::Vidas(s) => reading::vidas(input, &payload, s),
         Stack::Autolyser(s) => reading::autolyser(input, &payload, s),
+        Stack::Record(_) => Err(ReadError::RecordedOnly),
     }
 }
 

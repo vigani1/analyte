@@ -51,7 +51,7 @@ fn running(
         allowed_peers: None,
         cable: None,
         choices,
-        lab_app: Identifier::new("main-lab")?,
+        lab_app: Some(Identifier::new("main-lab")?),
     })
 }
 
@@ -1319,5 +1319,60 @@ async fn machine_pages_show_the_allowed_devices_and_refusals() -> Result<(), Err
     );
     assert!(refused("wait-4").is_null(), "{json}");
     drop(guarded);
+    stop(state, stopper, owner, store).await
+}
+
+// ADR 0034 decision 8: a record-only machine says on the Machines list, its
+// own page, the Overview and machines.json that nothing is sent to a lab app,
+// with what it kept and how many exchanges failed since the start.
+#[tokio::test]
+async fn record_only_machine_says_nothing_goes_to_a_lab_app() -> Result<(), Error> {
+    let directory = crate::admin::private_tempdir()?;
+    let reporter = Reporter::recording(Link::TcpServer);
+    reporter.ready(true);
+    for _ in 0..3 {
+        reporter.recorded();
+    }
+    reporter.record_failed();
+    let recorder = Machine {
+        rules: Vec::new(),
+        digest: [0xab; 32],
+        id: Identifier::new("net-1")?,
+        running: Arc::new(AtomicBool::new(true)),
+        status: reporter.subscribe(),
+        model: Some("Model of net-1".into()),
+        connection: Connection::Listening(Some(5600)),
+        allowed_peers: None,
+        cable: None,
+        choices: None,
+        lab_app: None,
+    };
+    let (store, (state, stopper, owner, host), auth) =
+        started(directory.path(), vec![recorder]).await?;
+    let counts = "3 messages kept, 1 failed exchange since the start";
+    let list = request(&host, "/machines", &auth, None).await?;
+    let listed = row(&list, "net-1");
+    assert!(
+        listed.contains(crate::admin::view::format::RECORDING_ONLY),
+        "{listed}"
+    );
+    assert!(listed.contains(counts), "{listed}");
+    let page = request(&host, "/machines/net-1", &auth, None).await?;
+    assert!(
+        page.contains(&format!(
+            "Sends results to</dt><dd>{}",
+            crate::admin::view::format::RECORDING_ONLY
+        )),
+        "{page}"
+    );
+    assert!(page.contains(counts), "{page}");
+    let overview = request(&host, "/", &auth, None).await?;
+    assert!(
+        overview.contains(crate::admin::view::format::RECORDING_ONLY),
+        "{overview}"
+    );
+    let json = request(&host, "/machines.json", &auth, None).await?;
+    assert!(json.contains("\"recording\":\"3 messages kept"), "{json}");
+    assert!(json.contains("\"lab_app\":null"), "{json}");
     stop(state, stopper, owner, store).await
 }

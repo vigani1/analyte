@@ -100,6 +100,7 @@
 <span class="node__head">{% call draw::icon(machine.tone.icon(), "icon--md tone-" ~ machine.tone.class()) %}{% endcall %}<span class="node__name" title="{{ machine.id }}">{{ machine.id }}</span>{% if let Some(model) = machine.model %}<span class="node__model">{{ model }}</span>{% endif %}</span>
 <span class="node__meta"><span class="node__state tone-{{ machine.tone.class() }}">{{ machine.state }}</span><span class="subtle" aria-hidden="true">·</span>{% if let Some(last) = machine.last_data %}<span class="mono"><span class="sr-only">Last data </span>{% call time(last) %}{% endcall %}</span>{% else %}<span class="mono subtle">Nothing yet</span>{% endif %}<span class="subtle" aria-hidden="true">·</span><span class="with-icon muted">{% call draw::icon(machine.kind_icon, "icon--sm") %}{% endcall %}{{ machine.kind }}</span></span>
 {%- if let Some(line) = machine.line %}<span class="node__note">{{ line }}</span>{% endif %}
+{%- if let Some(recording) = machine.recording %}<span class="node__note tone-warn">{{ recording }}</span>{% endif %}
 </a>
 {% call wire(machine.wire, machine.dot, crate::admin::view::icon::Icon::Cross, false) %}{% endcall %}
 </li>

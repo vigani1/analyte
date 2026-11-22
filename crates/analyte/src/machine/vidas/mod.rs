@@ -5,6 +5,7 @@ use crate::machine::receive::custody::{self, ms};
 mod error;
 pub(crate) mod orders;
 mod outcome;
+pub(in crate::machine) mod recording;
 pub(crate) mod settings;
 use analyte_config::VidasStack;
 use analyte_dialog::vidas::{Action, Config as DialogConfig, Dialog, Event};

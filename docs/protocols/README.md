@@ -50,6 +50,7 @@ decide these boundaries; this table names the test that guards each one.
 | POCT | Complete raw receipt and semantic outcome before ACK | [chunk_receive/custody.rs](../../crates/analyte/tests/chunk_receive/custody.rs): `poct_stores_before_ack_and_parks_unresolved` |
 | VIDAS Literal | Retain complete transfer before data ACK | [chunk_receive/custody.rs](../../crates/analyte/tests/chunk_receive/custody.rs): `vidas_stores_before_ack_and_parks_unresolved` |
 | Autolyser | Retain and validate poll response before destructive R; preserve uncertain R for reconciliation | [chunk_receive/custody.rs](../../crates/analyte/tests/chunk_receive/custody.rs): `autolyser_corrupt_reply_blocks_r_until_valid_l` |
+| Record only ([ADR 0034](../adr/0034-record-only-connections.md)) | Commit every received chunk before the dialog sees it; ASTM reserves capacity before ENQ ACK | [record_only/conversations.rs](../../crates/analyte/tests/record_only/conversations.rs): `astm_record_only_acknowledges_keeps_every_byte_and_answers_queries_with_q`, `astm_record_only_refuses_enq_without_storage` |
 
 ### Startup recovery
 
@@ -61,7 +62,9 @@ configuration changed. POCT, VIDAS and Autolyser are skipped: their input chunks
 are receipts that are never interpreted, and they acknowledge a message only
 after interpreting it, so the machine still holds anything unfinished. Answered
 queries, order responses and display acknowledgments are recorded as handled,
-so the sweep leaves them alone. Test:
+so the sweep leaves them alone. Receipts a record-only connection kept are
+never interpreted, so the sweep leaves them out even after the machine is
+connected normally (`recorded_messages_are_never_read_later`). Test:
 `killed_process_parks_transfer_and_interprets_receipt`.
 
 

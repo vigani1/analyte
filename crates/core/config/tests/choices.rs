@@ -26,9 +26,12 @@ fn load(machine: &str, site_extra: &str, overrides: &str) -> Result<Validated, E
 fn vidas(config: &Validated) -> Result<&Vidas, &'static str> {
     match config.effective().stack() {
         Stack::Vidas(stack) => Ok(stack.policy()),
-        Stack::Astm(_) | Stack::Hl7(_) | Stack::Law(_) | Stack::Poct(_) | Stack::Autolyser(_) => {
-            Err("not a VIDAS stack")
-        }
+        Stack::Astm(_)
+        | Stack::Hl7(_)
+        | Stack::Law(_)
+        | Stack::Poct(_)
+        | Stack::Autolyser(_)
+        | Stack::Record(_) => Err("not a VIDAS stack"),
     }
 }
 
@@ -194,7 +197,8 @@ fn a_results_only_mode_turns_the_orders_off() -> TestResult {
         | Stack::Law(_)
         | Stack::Poct(_)
         | Stack::Vidas(_)
-        | Stack::Autolyser(_) => Err("not an ASTM stream stack"),
+        | Stack::Autolyser(_)
+        | Stack::Record(_) => Err("not an ASTM stream stack"),
     };
     assert!(orders(&load(&results_only(), "", OVERRIDES)?)?);
     let off = load(

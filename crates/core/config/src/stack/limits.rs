@@ -12,9 +12,9 @@ use super::Syntax;
 #[derive(Debug, Clone)]
 pub struct DialogTimeouts {
     /// Receive deadline.
-    pub(super) receive_timeout_ms: u32,
+    pub(crate) receive_timeout_ms: u32,
     /// Send deadline.
-    pub(super) send_timeout_ms: u32,
+    pub(crate) send_timeout_ms: u32,
 }
 
 /// Explicit syntax resource ceilings retained from the config.
@@ -48,6 +48,21 @@ pub(super) fn limits(syntax: &Syntax) -> SyntaxLimits {
         fields: syntax.fields,
         repetitions: syntax.repetitions,
         components: syntax.components,
+    }
+}
+
+impl SyntaxLimits {
+    /// A record-only bound: only the total bytes of one message matter, since
+    /// nothing is parsed; every count is bounded by those bytes (ADR 0034).
+    pub(crate) const fn bytes_only(bytes: usize) -> Self {
+        Self {
+            bytes,
+            records: bytes,
+            record_bytes: bytes,
+            fields: bytes,
+            repetitions: bytes,
+            components: bytes,
+        }
     }
 }
 

@@ -1,0 +1,10 @@
+# YHLO iFlash 1200: how it talks, for a record-only connection (ADR 0034).
+# Only the protocol and the link; the rest comes from Analyte's shipped HL7
+# capture profile. Not a machine definition: nothing is read or delivered.
+recording_schema_version = 1
+protocol = "hl7"
+[transport]
+# YHLO LIS Protocol Manual V1.1 (iFlash family): HL7 2.3.1 over MLLP, the
+# analyzer PC connects to the host, so Analyte listens. The lab chooses the
+# address and port.
+kind = "tcp_server"

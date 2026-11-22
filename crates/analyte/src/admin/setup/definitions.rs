@@ -114,8 +114,10 @@ pub(super) enum State {
         name: String,
         level: String,
     },
-    /// No `machine.toml`: the README lists what is missing.
-    Blocked,
+    /// No `machine.toml`: the README lists what is missing. `record` is its
+    /// `record.toml`, when it names the protocol and link, so the model can be
+    /// connected to record only (ADR 0034).
+    Blocked { record: Option<PathBuf> },
     /// `machine.toml` exists but its name or evidence level could not be read.
     Unreadable(String),
 }
@@ -171,10 +173,13 @@ pub(super) fn list(root: &Path) -> Result<Vec<Definition>, ListError> {
                 return Err(ListError::TooMany);
             }
             let path = model_path.join("machine.toml");
+            let record = model_path.join(analyte_config::RECORD_FILE);
             let state = if path.is_file() {
                 head(&path)
             } else {
-                State::Blocked
+                State::Blocked {
+                    record: record.is_file().then_some(record),
+                }
             };
             let key = format!("{vendor}/{model}");
             definitions.push(Definition {
@@ -235,7 +240,20 @@ mod tests {
             state("example/synthetic-astm"),
             Some(State::Ready { name, level, .. }) if name == "generic-synthetic" && level == "documented"
         ));
-        assert!(matches!(state("roche/cobas-e411"), Some(State::Blocked)));
+        // Each first-lab model names its protocol and link, so it can record only.
+        for key in [
+            "biocare/biolyte-2000",
+            "biomerieux/vidas",
+            "boule/swelab-lumi",
+            "dialab/autolyser",
+            "roche/cobas-e411",
+            "yhlo/iflash-1200",
+        ] {
+            assert!(
+                matches!(state(key), Some(State::Blocked { record: Some(_) })),
+                "{key}"
+            );
+        }
         assert!(definitions.iter().all(|d| !d.key.contains("..")));
         let display = |key: &str| {
             definitions

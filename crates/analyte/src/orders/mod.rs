@@ -30,7 +30,7 @@ pub(crate) async fn lookup(
     until: std::time::Instant,
 ) -> Result<analyte_store::Lookup, Error> {
     let freshness = machine.destination_limits.freshness.as_secs();
-    let destination = destination(machine);
+    let destination = destination(machine)?;
     match store
         .request(until, move |store| {
             store.orders(
@@ -118,8 +118,18 @@ fn build_event(
 }
 
 /// Returns the app namespace used for cache lookups and lifecycle events.
-pub(crate) fn destination(machine: &Machine) -> Identifier {
-    machine.snapshot.effective().site().destination.name.clone()
+/// # Errors
+/// A record-only machine has none (ADR 0034); its stack runs no order path,
+/// so reaching this for one is refused, never answered.
+pub(crate) fn destination(machine: &Machine) -> Result<Identifier, Error> {
+    machine
+        .snapshot
+        .effective()
+        .site()
+        .destination
+        .as_ref()
+        .map(|destination| destination.name.clone())
+        .ok_or(Error::RecordOnly)
 }
 
 /// Event construction is narrower than order orchestration; the store retains its leaf cause.

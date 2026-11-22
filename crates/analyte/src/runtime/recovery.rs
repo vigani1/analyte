@@ -44,7 +44,11 @@ pub(crate) async fn run(program: &Program, store: &Handle) -> Result<(), Error> 
             let target = machine.id.clone();
             let pending = store
                 .request(deadline()?, move |s| {
-                    s.pending_interpretations(&target, after)
+                    s.pending_interpretations(
+                        &target,
+                        after,
+                        analyte_config::recording::RECORD_DRIVER,
+                    )
                 })
                 .await?;
             if pending.is_empty() {
@@ -53,6 +57,11 @@ pub(crate) async fn run(program: &Program, store: &Handle) -> Result<(), Error> 
             }
             for (sequence, metadata) in pending {
                 after = sequence;
+                // The store already leaves out what a record-only connection
+                // kept; this guards the rule here too (ADR 0034).
+                if crate::machine::interpretation::is_recorded(&metadata) {
+                    continue;
+                }
                 if metadata.config_digest.0 == machine.snapshot.digest() {
                     crate::intake::interpret_with_location(store, machine, metadata.id).await?;
                 } else {

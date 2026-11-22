@@ -11,7 +11,7 @@ pub(crate) mod lab_apps;
 mod webhooks;
 pub(crate) use alerts::Condition;
 pub use alerts::{Alert, AlertConfigError, AlertKind};
-use analyte_config::{Draft, Validated};
+use analyte_config::Validated;
 pub use error::{Clashing, Error};
 pub use lab_apps::LabApp;
 use serde::Deserialize;
@@ -335,7 +335,12 @@ fn knows_destination(machines: &[Machine], lab_apps: &[LabApp], name: &str) -> b
 impl Machine {
     /// Whether this machine's site sends results to the lab app called `name`.
     pub(crate) fn sends_to(&self, name: &str) -> bool {
-        self.snapshot.effective().site().destination.name.as_str() == name
+        self.snapshot
+            .effective()
+            .site()
+            .destination
+            .as_ref()
+            .is_some_and(|destination| destination.name.as_str() == name)
     }
 
     /// Borrows the unique installation identity.
@@ -978,15 +983,14 @@ fn entries(
                 let machine = load_machine(entry, &files, loading)?;
                 let effective = machine.snapshot.effective();
                 let place = match effective.lab_app_source() {
-                    analyte_config::LabAppSource::LabApps => None,
+                    analyte_config::LabAppSource::LabApps | analyte_config::LabAppSource::None => {
+                        None
+                    }
                     analyte_config::LabAppSource::Site => Some(files.site),
                     analyte_config::LabAppSource::Overrides => files.overrides,
                 };
-                if let Some(place) = place {
-                    places.add(
-                        &effective.site().destination,
-                        format!("{} [destination]", place.display()),
-                    )?;
+                if let (Some(place), Some(destination)) = (place, &effective.site().destination) {
+                    places.add(destination, format!("{} [destination]", place.display()))?;
                 }
                 machines.push(machine);
             }
@@ -1023,20 +1027,19 @@ struct Files {
 
 fn load_machine(entry: Entry, files: &Files, loading: &Loading<'_>) -> Result<Machine, Error> {
     let record_bytes = loading.record_bytes;
-    let replacement = match &files.overrides {
-        Some(p) => read(p)?,
-        None => "schema_version = 1".into(),
-    };
-    let snapshot = Draft::load_with(
+    let replacement = files.overrides.as_ref().map(|p| read(p)).transpose()?;
+    let snapshot = analyte_config::load_machine(
         (
             &files.definition.display().to_string(),
             &read(&files.definition)?,
         ),
         (&files.site.display().to_string(), &read(&files.site)?),
-        ("overrides", &replacement),
+        replacement.as_deref().map(|text| ("overrides", text)),
         loading.lab_apps,
-    )?
-    .validate()?;
+    )?;
+    // A record-only machine always captures: its recordings are its purpose (ADR 0034).
+    let records_only = snapshot.effective().records_only();
+    let capture = entry.capture || records_only;
     if matches!(
         snapshot.effective().stack(),
         analyte_config::Stack::Astm(analyte_config::RecordTransport::Stream(settings)) if settings.checksum_hex()
@@ -1052,21 +1055,24 @@ fn load_machine(entry: Entry, files: &Files, loading: &Loading<'_>) -> Result<Ma
     {
         return Err(Error::StoreRecordLimitTooSmall);
     }
-    if entry.capture && !plain_name(entry.id.as_str()) {
+    if capture && !plain_name(entry.id.as_str()) {
         return Err(Error::InvalidCaptureMachineId);
     }
     let model = model(&files.definition)?;
+    let link = crate::machine::link::status::Link::of(snapshot.effective().stack());
     Ok(Machine {
-        capture: entry.capture,
+        capture,
 
         hooks: MachineHooks::default(),
         destination_limits: crate::runtime::delivery::limits(
-            &snapshot.effective().site().destination,
+            snapshot.effective().site().destination.as_ref(),
         ),
         id: entry.id,
-        status: crate::machine::link::status::Reporter::new(
-            crate::machine::link::status::Link::of(snapshot.effective().stack()),
-        ),
+        status: if records_only {
+            crate::machine::link::status::Reporter::recording(link)
+        } else {
+            crate::machine::link::status::Reporter::new(link)
+        },
         snapshot,
         listener: None,
         definition: files.definition.clone(),

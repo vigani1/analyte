@@ -700,11 +700,12 @@ fn start_alerts(
         let destinations = program
             .machines()
             .iter()
-            .map(|machine| {
-                (
-                    machine.snapshot.effective().site().destination.name.clone(),
+            .filter_map(|machine| {
+                let destination = machine.snapshot.effective().site().destination.as_ref()?;
+                Some((
+                    destination.name.clone(),
                     machine.destination_limits.freshness.as_secs(),
-                )
+                ))
             })
             .collect();
         let stop = stopping.clone();

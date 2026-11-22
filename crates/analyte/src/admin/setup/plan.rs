@@ -45,11 +45,14 @@ impl Model {
     }
 }
 
-/// Finds the chosen shipped definition, or the installed one when none is chosen.
+/// Finds the chosen shipped definition, or the installed one when none is
+/// chosen. A model not ready yet can be chosen only to record, through its
+/// `record.toml` (ADR 0034); a ready model records from its `machine.toml`.
 pub(super) fn chosen(
     list: &[Definition],
     key: Option<&str>,
     installed: &site::Installed,
+    records_only: bool,
 ) -> Result<Model, SetupError> {
     let found = match key {
         Some(key) => list
@@ -63,8 +66,11 @@ pub(super) fn chosen(
                 .ok_or(SetupError::NoDefinitionYet)?;
             let current = installed.canonicalize().ok();
             match list.iter().find(|d| match &d.state {
-                Shipped::Ready { path, .. } => path.canonicalize().ok() == current,
-                Shipped::Blocked | Shipped::Unreadable(_) => false,
+                Shipped::Ready { path, .. }
+                | Shipped::Blocked {
+                    record: Some(path), ..
+                } => path.canonicalize().ok() == current,
+                Shipped::Blocked { record: None } | Shipped::Unreadable(_) => false,
             }) {
                 Some(found) => found,
                 None => {
@@ -83,9 +89,100 @@ pub(super) fn chosen(
             path: path.clone(),
             name: found.display.clone(),
         }),
-        Shipped::Blocked | Shipped::Unreadable(_) => {
+        Shipped::Blocked { record: Some(path) } if records_only => Ok(Model {
+            key: Some(found.key.clone()),
+            path: path.clone(),
+            name: found.display.clone(),
+        }),
+        Shipped::Blocked { record: Some(_) } => Err(SetupError::RecordOnlyModel(found.key.clone())),
+        Shipped::Blocked { record: None } | Shipped::Unreadable(_) => {
             Err(SetupError::BlockedDefinition(found.key.clone()))
         }
+    }
+}
+
+/// Record only (ADR 0034): what the draft answers for the model's capture
+/// profile, read from its protocol. Only the answers that protocol asks for
+/// are kept: a value carried from another model's step 2 is not used.
+pub(super) mod recording {
+    use super::{SetupError, wizard};
+    use analyte_config::{ProfileAnswers, VidasAcknowledgment};
+
+    /// The form value of the mode field that asks for record only.
+    pub(in crate::admin::setup) const RECORD: &str = "record";
+
+    /// Whether the draft asks for a record-only connection.
+    pub(in crate::admin::setup) fn chosen(draft: &wizard::Draft) -> bool {
+        draft.mode.as_deref().map(str::trim) == Some(RECORD)
+    }
+
+    /// The saved `[recording]` answer `key` of a site table, as a form value:
+    /// `yes` or `no` for a flag, the text or number as written otherwise.
+    pub(in crate::admin::setup) fn saved(site: &toml::Table, key: &str) -> Option<String> {
+        match site.get("recording")?.get(key)? {
+            toml::Value::Boolean(true) => Some("yes".to_owned()),
+            toml::Value::Boolean(false) => Some("no".to_owned()),
+            toml::Value::String(text) => Some(text.clone()),
+            toml::Value::Integer(number) => Some(number.to_string()),
+            toml::Value::Float(_)
+            | toml::Value::Datetime(_)
+            | toml::Value::Array(_)
+            | toml::Value::Table(_) => None,
+        }
+    }
+
+    /// The `protocol` the model file names, for the questions it asks.
+    pub(in crate::admin::setup) fn protocol(definition: &std::path::Path) -> Option<String> {
+        let text = crate::installation::config::read(definition).ok()?;
+        let table: toml::Table = text.parse().ok()?;
+        table.get("protocol")?.as_str().map(str::to_owned)
+    }
+
+    /// The `[recording]` answers in the draft for this model's protocol.
+    fn field(value: &Option<String>) -> Option<&str> {
+        value.as_deref().map(str::trim).filter(|v| !v.is_empty())
+    }
+
+    pub(in crate::admin::setup) fn settings(
+        definition: &std::path::Path,
+        draft: &wizard::Draft,
+    ) -> Result<ProfileAnswers, SetupError> {
+        let mut settings = ProfileAnswers::default();
+        match protocol(definition).as_deref() {
+            Some("autolyser") => {
+                settings.poll_seconds = field(&draft.poll_seconds)
+                    .map(|seconds| {
+                        seconds.parse::<u32>().ok().filter(|s| analyte_config::recording::POLL_SECONDS.contains(s)).ok_or(
+                            SetupError::RecordingAnswer(
+                                "enter the seconds between asks for the next report: a whole number from 1 to 3600",
+                            ),
+                        )
+                    })
+                    .transpose()?;
+                settings.controls = field(&draft.controls)
+                    .map(|value| match value {
+                        "yes" => Ok(true),
+                        "no" => Ok(false),
+                        _ => Err(SetupError::RecordingAnswer(
+                            "choose whether the analyzer's reports carry its controls: yes or no",
+                        )),
+                    })
+                    .transpose()?;
+            }
+            Some("vidas") => {
+                settings.acknowledgment = field(&draft.acknowledgment)
+                    .map(|value| match value {
+                        "literal" => Ok(VidasAcknowledgment::Literal),
+                        "alternate" => Ok(VidasAcknowledgment::Alternate),
+                        _ => Err(SetupError::RecordingAnswer(
+                            "choose the VIDAS PC acknowledgment: Literal or Alternate",
+                        )),
+                    })
+                    .transpose()?;
+            }
+            _ => {}
+        }
+        Ok(settings)
     }
 }
 
@@ -96,7 +193,10 @@ pub(super) fn current_lab_app(
     current_site: &toml::Table,
 ) -> Option<String> {
     if let Some(running) = running {
-        return Some(running.lab_app.as_str().to_owned());
+        return running
+            .lab_app
+            .as_ref()
+            .map(|name| name.as_str().to_owned());
     }
     match lab_apps::site_lab_app(current_site) {
         SiteLabApp::Own(own) => Some(own.name.as_str().to_owned()),
@@ -258,18 +358,33 @@ pub(super) fn plan(setup: &Setup, id: &str, draft: &wizard::Draft) -> Result<Pla
     let connection = connection_of(kind, draft)?;
     let peers = peers_of(kind, draft)?;
     let serial = serial_of(kind, &definition, draft)?;
-    let chosen = choices::chosen(draft, &choices::declared(&definition))?;
-    let lab_app = Identifier::new(draft.lab_app.as_deref().unwrap_or_default().trim())
-        .map_err(|_| SetupError::NoLabAppChosen)?;
+    let records_only = recording::chosen(draft);
     let current = crate::installation::config::read(&installed.site)?;
     let scan = lab_apps::scan(setup.config())?;
-    let candidate = site::candidate(
-        &current,
-        (&connection, peers.as_ref(), serial.as_ref(), &chosen),
-        &lab_app,
-        &scan.file,
-        &scan.settings(),
-    )?;
+    let link = (&connection, peers.as_ref(), serial.as_ref());
+    let candidate = if records_only {
+        // Record only asks its own questions; the model's choices are not used.
+        if draft
+            .lab_app
+            .as_deref()
+            .is_some_and(|name| !name.trim().is_empty())
+        {
+            return Err(SetupError::LabAppWhileRecording);
+        }
+        let answers = recording::settings(&definition, draft)?;
+        site::recording_candidate(&current, link, &answers, &scan.file)?
+    } else {
+        let chosen = choices::chosen(draft, &choices::declared(&definition))?;
+        let lab_app = Identifier::new(draft.lab_app.as_deref().unwrap_or_default().trim())
+            .map_err(|_| SetupError::NoLabAppChosen)?;
+        site::candidate(
+            &current,
+            (link.0, link.1, link.2, &chosen),
+            &lab_app,
+            &scan.file,
+            &scan.settings(),
+        )?
+    };
     let validated = site::validate(
         &installed,
         &definition,
@@ -318,8 +433,8 @@ pub(super) struct Saved {
     pub(super) connection: Endpoint,
     /// The only devices it accepts, as saved.
     pub(super) peers: Option<AllowedPeers>,
-    /// The lab app it sends results to.
-    pub(super) lab_app: analyte_config::Destination,
+    /// The lab app it sends results to; none while it records only (ADR 0034).
+    pub(super) lab_app: Option<analyte_config::Destination>,
     /// The serial cable settings in words, with what differs from the
     /// definition's suggestion; none for other links.
     pub(super) cable: Option<String>,
@@ -334,7 +449,7 @@ impl Saved {
     /// The audit reason: the connection and the lab app saved through `via`.
     pub(super) fn reason(&self, via: Via) -> String {
         format!(
-            "{} saved: {}{}{}, lab app {} ({}){}",
+            "{} saved: {}{}{}, {}{}",
             via.machines(),
             site::describe(&self.connection),
             self.cable
@@ -345,8 +460,14 @@ impl Saved {
                 .as_deref()
                 .map(|choices| format!(", analyzer settings {choices}"))
                 .unwrap_or_default(),
-            self.lab_app.name.as_str(),
-            self.lab_app.base_url.as_str(),
+            self.lab_app.as_ref().map_or_else(
+                || "record only, no lab app".to_owned(),
+                |lab_app| format!(
+                    "lab app {} ({})",
+                    lab_app.name.as_str(),
+                    lab_app.base_url.as_str()
+                )
+            ),
             if self.moved {
                 "; its lab app settings moved to lab-apps.toml"
             } else {
@@ -404,8 +525,8 @@ pub(super) fn model_of(
 ) -> Result<Model, SetupError> {
     match draft.definition.as_deref().map(str::trim) {
         None | Some("") => Err(SetupError::UnknownDefinition),
-        Some(KEEP) => chosen(list, None, installed),
-        Some(key) => chosen(list, Some(key), installed),
+        Some(KEEP) => chosen(list, None, installed, recording::chosen(draft)),
+        Some(key) => chosen(list, Some(key), installed, recording::chosen(draft)),
     }
 }
 

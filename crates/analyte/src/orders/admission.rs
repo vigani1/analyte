@@ -25,7 +25,7 @@ pub(crate) async fn prepare<T, E: From<Error>>(
     if !super::eligible(&order, machine) {
         return Ok(Prepared::Skipped);
     }
-    let candidate = super::reservation::pending(machine, cached.id, order.fields().version);
+    let candidate = super::reservation::pending(machine, cached.id, order.fields().version)?;
     match map(&order) {
         Ok(mapped) => Ok(Prepared::Mapped(candidate, mapped)),
         Err(error) => {

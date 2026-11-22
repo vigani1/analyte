@@ -97,6 +97,13 @@ pub(super) fn machines(
                     (true, Light::Live) => None,
                     (true, Light::Waiting | Light::Off) => Some(sentence),
                 },
+                recording: status.recording().map(|tally| {
+                    format!(
+                        "{}. {}",
+                        format::RECORDING_ONLY,
+                        format::recording_counts(tally)
+                    )
+                }),
             }
         })
         .collect()
@@ -126,7 +133,7 @@ pub(super) async fn lab_apps(
         let senders: Vec<&str> = state
             .machines
             .iter()
-            .filter(|machine| &machine.lab_app == destination.id())
+            .filter(|machine| machine.lab_app.as_ref() == Some(destination.id()))
             .map(|machine| machine.id.as_str())
             .collect();
         let (node, observed) = lab_node(

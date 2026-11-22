@@ -11,7 +11,11 @@ per-model tables under it ([ADR 0033](../docs/adr/0033-machine-model-and-publish
 so renaming a folder changes the id. Each part is at most 64 characters.
 Analyte refuses a definition that is not in such a folder.
 `docs/contract/machines.json` lists every folder; run
-`cargo run -p analyte-publish` after adding or changing one. It contains `machine.toml`, `README.md` and `recordings/`.
+`cargo run -p analyte-publish` after adding or changing one. It contains `machine.toml`, `README.md` and `recordings/`. A model not ready
+yet may instead hold a `record.toml` naming only its protocol and link, so it
+can be connected to record only
+([ADR 0034](../docs/adr/0034-record-only-connections.md)); a folder never
+holds both.
 Keep site settings and credentials outside this tree. Recordings follow
 [ADR 0009](../docs/adr/0009-recording-format.md) and contain only synthetic
 or reviewed de-identified data. Real machines must have their own evidence;
