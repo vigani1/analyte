@@ -51,14 +51,7 @@ pub(crate) fn load_site(
     path: &str,
     text: &str,
     lab_apps: &crate::LabApps,
-) -> Result<
-    (
-        crate::Site,
-        crate::LabAppSource,
-        Option<crate::SerialValues>,
-    ),
-    crate::Error,
-> {
+) -> Result<(crate::Site, crate::LabAppSource, crate::schema::LabChoices), crate::Error> {
     if text.len() <= crate::MAX_FILE_BYTES {
         let table: toml::Table = toml::from_str(text).map_err(|source| crate::Error::Schema {
             path: path.into(),

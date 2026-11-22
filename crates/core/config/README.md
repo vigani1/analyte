@@ -14,6 +14,7 @@
 - `validation`: Checks that settings make sense together.
 - `stack`: Validated protocol combinations.
 - `orders`: Explicit outgoing order settings.
+- `choices`: The choices a definition declares and the lab's selections of them (ADR 0032).
 - `schema/law`: Explicit LAW profile selection (re-exported at the crate root).
 
 [Technical details and safety guidance](DETAILS.md).

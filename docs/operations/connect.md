@@ -13,8 +13,8 @@ Use a nonclinical installation ID, never a patient or sample ID.
 
 | Layer | Contents |
 | --- | --- |
-| Shipped definition | Protocol, mappings, departures and evidence; qualified definitions belong under `machines/`. For a serial machine, `[transport.serial]` holds the manual's usual cable settings as a suggestion. |
-| Site file | `schema_version = 1`, endpoint (or `usb_serial` for a serial port), required retention period, the lab app it sends to (`lab_app = "<name>"`), optional `time_zone` and, for a serial machine, the cable settings the lab chose (`[serial]`, see [Serial cable settings](#serial-cable-settings)). |
+| Shipped definition | Protocol, mappings, departures and evidence; qualified definitions belong under `machines/`. For a serial machine, `[transport.serial]` holds the manual's usual cable settings as a suggestion. The model's own choices (`[[choices]]`), each with its allowed values and the manual's suggestion. |
+| Site file | `schema_version = 1`, endpoint (or `usb_serial` for a serial port), required retention period, the lab app it sends to (`lab_app = "<name>"`), optional `time_zone`, for a serial machine the cable settings the lab chose (`[serial]`, see [Serial cable settings](#serial-cable-settings)), and the lab's value for each of the model's choices (`[choices]`, see [Analyzer settings](#analyzer-settings)). |
 | Optional local overrides | `schema_version = 1` and explicit replacement sections for this installation. |
 
 Overrides replace whole sections and lists; an override's `endpoint` or
@@ -175,6 +175,43 @@ Keep the values in one place: a site `[serial]` beside a local overrides file
 that replaces `[transport]` is refused. `analyte machines list`, `analyte
 doctor` and the machine's page show the values in use and which differ from
 the manual.
+
+### Analyzer settings
+
+Some models have settings the lab chooses because the analyzer offers them
+on its own screen (for example a protocol mode, or "send results only") or
+because they follow its software version (for example how long a sample ID
+may be) ([ADR 0032](../adr/0032-machine-definitions-declare-lab-choices.md)).
+The model's definition lists each one with its allowed values and the
+manual's suggestion; every other setting of the model is fixed.
+
+- **Setup page, step 2:** **Analyzer settings** shows one list per setting
+  the chosen model declares, filled in with the saved value or else the
+  manual's suggestion. A setting the manual cannot suggest (the software
+  version, read on the analyzer's About screen) starts at "Choose". A value
+  that is not the manual's is marked "differs from the manual"; step 4 lists
+  them again. A model without such settings shows none.
+- **Command line:** `--choice NAME=VALUE` on `analyte machines set` and
+  `test`, repeated for several; `analyte machines models` lists each model's
+  names and values. A setting not given keeps the saved value, else the
+  suggestion; at a terminal, `set` asks for one without either.
+
+Save writes every value into the machine's site file, so a later update of
+the definition never changes a setup that works:
+
+```toml
+[choices]
+protocol_mode = "alternate"
+software_version = "v2"
+```
+
+A setting without a value and without a suggestion is refused by name
+(`choices.software_version: no value`) rather than assumed, and so are a
+setting the model does not declare and a value it does not offer. A local
+overrides file that replaces what a setting selects (for example
+`[mappings]`) is refused: keep it in one place. `analyte machines list` (and
+`--json`), `analyte doctor` and the machine's page show the values in use and
+which differ from the manual.
 
 ### Network machines
 
@@ -458,6 +495,13 @@ their saved values:
 
 ```powershell
 analyte --actor it-alex machines set cobas-1 --baud 19200 --parity even
+```
+
+A model with its own settings ([Analyzer settings](#analyzer-settings)) takes
+them the same way; `analyte machines models` lists their names and values:
+
+```powershell
+analyte --actor it-alex machines set vidas-1 --choice software_version=v2
 ```
 
 Test the connection: the listen-only test of step 3, at most 60 seconds and

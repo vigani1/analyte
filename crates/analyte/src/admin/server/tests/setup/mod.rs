@@ -5,6 +5,7 @@ use std::sync::Mutex;
 
 mod budget;
 mod cable;
+mod choices;
 mod command;
 mod lab_apps;
 mod removal;

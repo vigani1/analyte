@@ -42,7 +42,39 @@ standard lists: `analyte_transport::serial::BAUD_RATES` (300 to 115200), 5 to
 not serial and beside an overrides `[transport]` (one place). The snapshot
 holds the resolved values under `transport.serial` and never the site's
 `serial`, so the digest follows the values in use; `Effective::serial_suggestion`
-returns the definition's own values for display. Local overrides contain
+returns the definition's own values for display.
+
+A definition may declare `[[choices]]`
+([ADR 0032](../../../docs/adr/0032-machine-definitions-declare-lab-choices.md)):
+each `MachineChoice` has a `ChoiceName`, a `ChoiceKind` (`mode` or
+`software_version`, at most one), a `ChoiceLabel`, an optional `suggested`
+value and 2 to 16 `ChoiceValue`s. A value selects building blocks from the
+closed `ChoiceBlock` list only: the whole `mappings` table, `orders = "on" |
+"off"` (`OrdersSwitch`, keeping or removing the definition's `[orders]`) and
+`VidasChoice` (`alternate`, `sample_limit`). Before the schema reads a
+definition, `choices::prepare` refuses `evidence`, `deviations` or
+`departure_scope` inside a choice and a block written both in a choice and in
+the definition, and fills each `[vidas]` key a choice owns from that choice's
+first value so the table still reads; every combination replaces it before any
+check. `choices::check` refuses duplicate names, a suggestion that is not a
+value, values selecting different blocks, a block owned by two choices
+(`Error::ChoiceOverlap`), `orders = "on"` without `[orders]`, a vidas block
+without `[vidas]`, and more than 16 choices or 64 combinations. Validation then
+resolves the site's `[choices]` (`ChoiceSelections`): an undeclared name is
+`Error::UnknownChoice`, a value not offered `Error::ChoiceValue`, and a choice
+with neither a selection nor a suggestion `Error::MissingChoice`; none is
+assumed. Every combination is validated as a whole stack, the lab's own
+first; a refusal is `Error::ChoiceCombination` naming the combination, with the
+site path for the lab's own and the definition path for any other. An
+overrides section replacing a block a choice owns is `Error::ChoiceOverridden`.
+The snapshot holds the definition with the chosen values applied, without the
+declarations, plus a top-level `[choices]` table of the values in use (absent
+without choices, so earlier snapshots keep their bytes); `Effective::choices`
+returns each `Chosen` value, whether the site selected it and whether it
+differs from the suggestion. `declared_choices` reads a definition's choices
+with the same checks, for a page that asks them before the machine loads.
+
+Local overrides contain
 `schema_version = 1` plus optional replacement sections. Sections and lists
 replace in full; there is no implicit array merging or expression language.
 All three layers reject unknown keys. Overrides cannot change the machine-wide

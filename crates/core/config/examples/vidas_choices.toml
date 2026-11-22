@@ -1,0 +1,88 @@
+# Synthetic teaching configuration. DOCUMENTED ONLY; not qualified for clinical use.
+# The VIDAS teaching definition with the lab's choices (ADR 0032): one mode the
+# analyzer offers and one software version band. The two [vidas] settings the
+# choices select are written only in the choices.
+schema_version = 2
+protocol = "vidas"
+name = "generic-synthetic"
+deviations = []
+[transport]
+kind = "tcp_server"
+operation_timeout_ms = 10000
+
+[framing]
+limit = 1920
+
+[dialog]
+receive_timeout_ms = 30000
+send_timeout_ms = 15000
+[syntax]
+encoding = "ascii"
+bytes = 1048576
+records = 4096
+record_bytes = 65536
+fields = 128
+repetitions = 128
+components = 128
+[vidas]
+chunk = 80
+suffix = []
+include_stx = false
+include_suffix = false
+uppercase = true
+accept_either_case = false
+acknowledgment_ms = 5000
+interbyte_ms = 5000
+session_ms = 30000
+commit_ms = 5000
+retries = 0
+backoff_ms = 1000
+download = false
+
+[codes]
+# VIDAS assay codes pass through as sent, in this code system (ADR 0029).
+test_system = "synthetic"
+units = [{original="mg/L", ucum="mg/L"}]
+
+# A mode the analyzer offers on its own host link screen; the manual suggests one.
+[[choices]]
+name = "protocol_mode"
+kind = "mode"
+label = "Protocol on the host link screen"
+suggested = "literal"
+[[choices.values]]
+value = "literal"
+label = "Literal (acknowledge after the checksum)"
+vidas = {alternate = false}
+[[choices.values]]
+value = "alternate"
+label = "Alternate (acknowledge after ETX)"
+vidas = {alternate = true}
+
+# The installed software version, read from the About screen. Only the lab can
+# know it, so nothing is suggested: the lab must choose.
+[[choices]]
+name = "software_version"
+kind = "software_version"
+label = "Software version on the About screen"
+[[choices.values]]
+value = "v1"
+label = "Version 1 (sample IDs up to 12 characters)"
+vidas = {sample_limit = 12}
+[[choices.values]]
+value = "v2"
+label = "Version 2 or later (sample IDs up to 17 characters)"
+vidas = {sample_limit = 17}
+
+[evidence]
+level = "documented"
+[[evidence.capabilities]]
+model = "synthetic"
+firmware = "unknown"
+driver = "0.1.0"
+config_digest = "untested"
+transport = "tcp_server"
+dialogs = []
+failure_cases = []
+platform = "untested"
+evidence_files = []

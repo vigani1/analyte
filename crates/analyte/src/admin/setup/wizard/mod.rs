@@ -9,8 +9,8 @@
 //! URL. Hidden fields beat a server-side draft here: there is nothing to store,
 //! bound, expire or lose at a restart, and Back works in every tab.
 use super::{
-    Csrf, SetupError, Shipped, audit, cable, copies, definition_name, definitions, lab_apps,
-    level_and_state, needs_login, off_thread,
+    Csrf, SetupError, Shipped, audit, cable, choices, copies, definition_name, definitions,
+    lab_apps, level_and_state, needs_login, off_thread,
     plan::{
         Choice as Posted, KEEP, chosen, current_lab_app, holder, kind_of, listen_target, model_of,
         plan, save_blocking,
@@ -39,7 +39,8 @@ use axum::{
 use jiff::Timestamp;
 use page::{
     Accepts, Cable, CableOption, Choice, ConnectionStep, Foot, Hidden, LabApp, Listen, Live, Mark,
-    ModelStep, Outcome, Picker, Port, SaveStep, Sends, Start, Summary, TestStep, Tested, Wizard,
+    ModelStep, Outcome, Picker, Port, SaveStep, Sends, Setting, Start, Summary, TestStep, Tested,
+    Wizard,
 };
 use serde::Deserialize;
 use std::sync::Arc;
@@ -50,9 +51,10 @@ mod page;
 pub(super) mod verdict;
 
 /// The choices made so far, as carried in a step's form. Every value is
-/// re-checked before it is used; none is a secret.
+/// re-checked before it is used; none is a secret. It reads only the fields
+/// below and `choice.<name>`; any other field, or one given twice, is refused.
 #[derive(Clone, Default, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(try_from = "Vec<(String, String)>")]
 pub(in crate::admin) struct Draft {
     /// A shipped model's `vendor/model` key, or `installed` to keep the current one.
     pub(super) definition: Option<String>,
@@ -74,9 +76,41 @@ pub(in crate::admin) struct Draft {
     pub(super) parity: Option<String>,
     pub(super) stop_bits: Option<String>,
     pub(super) flow_control: Option<String>,
+    /// The values chosen in step 2 for the model's own choices (ADR 0032), by
+    /// choice name, from the `choice.<name>` fields; empty takes the suggestion.
+    pub(super) choices: std::collections::BTreeMap<String, String>,
 }
 
-/// The fields step 2 shows itself; every other step carries them hidden.
+/// Most fields a step's form carries: the fixed ones, the CSRF value and one
+/// per choice a model may declare.
+const MOST_FIELDS: usize = 14 + analyte_config::MAX_CHOICES;
+
+impl TryFrom<Vec<(String, String)>> for Draft {
+    type Error = String;
+
+    fn try_from(fields: Vec<(String, String)>) -> Result<Self, Self::Error> {
+        if fields.len() > MOST_FIELDS {
+            return Err("too many fields".into());
+        }
+        let mut draft = Self::default();
+        for (name, value) in fields {
+            let earlier = match name.strip_prefix(choices::FIELD) {
+                Some(choice) => draft.choices.insert(choice.to_owned(), value),
+                None => draft
+                    .slot(&name)
+                    .ok_or_else(|| format!("unknown field `{name}`"))?
+                    .replace(value),
+            };
+            if earlier.is_some() {
+                return Err(format!("duplicate field `{name}`"));
+            }
+        }
+        Ok(draft)
+    }
+}
+
+/// The fields step 2 shows itself, besides the model's choices; every other
+/// step carries them hidden.
 const CONNECTION_FIELDS: [&str; 12] = [
     "port",
     "port_name",
@@ -95,7 +129,30 @@ const CONNECTION_FIELDS: [&str; 12] = [
 /// The field naming the devices a listening machine accepts (ADR 0026).
 const PEERS: &str = "allowed_peers";
 
+/// Stands for every `choice.<name>` field among the fields a step shows.
+const CHOICES: &str = "choice.*";
+
 impl Draft {
+    /// The field `name` of the form, by the names [`Draft::fields`] writes.
+    fn slot(&mut self, name: &str) -> Option<&mut Option<String>> {
+        Some(match name {
+            "definition" => &mut self.definition,
+            "port" => &mut self.port,
+            "port_name" => &mut self.port_name,
+            "host" => &mut self.host,
+            "tcp_port" => &mut self.tcp_port,
+            "folder" => &mut self.folder,
+            "lab_app" => &mut self.lab_app,
+            PEERS => &mut self.allowed_peers,
+            "baud" => &mut self.baud,
+            "data_bits" => &mut self.data_bits,
+            "parity" => &mut self.parity,
+            "stop_bits" => &mut self.stop_bits,
+            "flow_control" => &mut self.flow_control,
+            _ => return None,
+        })
+    }
+
     fn fields(&self) -> [(&'static str, Option<&str>); 13] {
         [
             ("definition", self.definition.as_deref()),
@@ -114,13 +171,20 @@ impl Draft {
         ]
     }
 
-    /// Every choice made, except the ones the step shows, as hidden fields.
+    /// Every choice made, except the ones the step shows, as hidden fields;
+    /// [`CHOICES`] among `shown` leaves out the model's own choices.
     fn hidden(&self, shown: &[&str]) -> Hidden {
-        self.fields()
+        let fixed = self
+            .fields()
             .into_iter()
             .filter(|(name, _)| !shown.contains(name))
-            .filter_map(|(name, value)| value.map(|value| (name, value.to_owned())))
-            .collect()
+            .filter_map(|(name, value)| value.map(|value| (name.to_owned(), value.to_owned())));
+        let own = self
+            .choices
+            .iter()
+            .filter(|_| !shown.contains(&CHOICES))
+            .map(|(name, value)| (format!("{}{name}", choices::FIELD), value.clone()));
+        fixed.chain(own).collect()
     }
 
     /// Whether `other` holds the same choices for the connection test; an
@@ -128,7 +192,7 @@ impl Draft {
     /// devices do not change what the test listens on, so step 4 still shows
     /// the test after they are ticked or typed.
     fn same(&self, other: &Self) -> bool {
-        let chosen = |draft: &Self| -> Vec<(&'static str, String)> {
+        let chosen = |draft: &Self| -> Vec<(String, String)> {
             draft
                 .hidden(&[PEERS])
                 .into_iter()
@@ -150,21 +214,7 @@ impl Draft {
 
 impl From<Posted> for Draft {
     fn from(choice: Posted) -> Self {
-        Self {
-            definition: choice.definition,
-            port: choice.port,
-            port_name: choice.port_name,
-            host: choice.host,
-            tcp_port: choice.tcp_port,
-            folder: choice.folder,
-            lab_app: choice.lab_app,
-            allowed_peers: choice.allowed_peers,
-            baud: choice.baud,
-            data_bits: choice.data_bits,
-            parity: choice.parity,
-            stop_bits: choice.stop_bits,
-            flow_control: choice.flow_control,
-        }
+        choice.draft
     }
 }
 
@@ -234,6 +284,8 @@ impl Step {
             | SetupError::BlockedDefinition(_)
             | SetupError::Definitions(_) => Some(Self::Machine),
             SetupError::Connection(_)
+            | SetupError::UnknownChoice(_)
+            | SetupError::ChoiceValue { .. }
             | SetupError::NoLabAppChosen
             | SetupError::UnknownLabApp(_)
             | SetupError::LabAppDiffers(..)
@@ -496,9 +548,10 @@ fn render_connection(
         wizard: wizard(id, Some(model.name), Some(Step::Connection)),
         action: Step::Test.path(id),
         back: Step::Machine.path(id),
-        hidden: draft.hidden(&CONNECTION_FIELDS),
+        hidden: draft.hidden(&[CONNECTION_FIELDS.as_slice(), &[CHOICES]].concat()),
         how,
         inputs,
+        choices: choice_fields(&model.path, &current_site, draft),
         lab_apps,
     }
     .render())
@@ -773,6 +826,69 @@ fn cable_fields(
         .collect()
 }
 
+/// The model's own choices on step 2 (ADR 0032), each from its declared list:
+/// the draft's value, else the site file's saved one, else the manual's
+/// suggestion; without any, "Choose", so nothing is assumed.
+fn choice_fields(
+    definition: &std::path::Path,
+    current_site: &toml::Table,
+    draft: &Draft,
+) -> Vec<Setting> {
+    let saved = choices::saved(current_site);
+    choices::declared(definition)
+        .into_iter()
+        .map(|choice| {
+            let name = choice.name.as_str();
+            let suggested = choice
+                .suggested
+                .as_ref()
+                .map(|value| value.as_str().to_owned());
+            let current = choices::typed(draft, name)
+                .map(str::to_owned)
+                .or_else(|| {
+                    saved
+                        .iter()
+                        .find(|(saved, _)| saved == name)
+                        .map(|(_, value)| value.clone())
+                })
+                .or_else(|| suggested.clone());
+            let options: Vec<CableOption> = choice
+                .values
+                .iter()
+                .map(|value| CableOption {
+                    selected: current.as_deref() == Some(value.value.as_str()),
+                    value: value.value.as_str().to_owned(),
+                    label: value.label.as_str().to_owned(),
+                })
+                .collect();
+            let hint = match choice
+                .suggested
+                .as_ref()
+                .and_then(|value| choice.value(value))
+            {
+                Some(value) => format!(
+                    "{} The manual suggests {}.",
+                    choices::hint(choice.kind),
+                    value.label.as_str()
+                ),
+                None => format!(
+                    "{} The machine’s definition suggests none.",
+                    choices::hint(choice.kind)
+                ),
+            };
+            Setting {
+                name: format!("{}{name}", choices::FIELD),
+                id: format!("s2-choice-{name}"),
+                label: choice.label.as_str().to_owned(),
+                chosen: options.iter().any(|option| option.selected),
+                differs: current.is_some() && current != suggested,
+                hint,
+                options,
+            }
+        })
+        .collect()
+}
+
 /// The chosen connection in plain words, with the exact setting on hover.
 pub(super) fn connection_words(link: Link, connection: &Endpoint) -> Hover {
     let shown = match (link, connection) {
@@ -868,6 +984,7 @@ fn render_review(
     let summary = Summary {
         connection: connection_words(link, &plan.connection),
         cable: plan.cable(),
+        choices: plan.choices(),
         accepts: (link == Link::TcpServer)
             .then(|| offer(plan.peers.as_ref(), seen(state, id, draft))),
         lab_app: sends(
@@ -1023,6 +1140,7 @@ pub(in crate::admin) async fn save(
         summary: Summary {
             connection: connection_words(saved.link, &saved.connection),
             cable: saved.cable.clone(),
+            choices: saved.choices.clone(),
             accepts: (saved.link == Link::TcpServer).then(|| {
                 Accepts::Saved(
                     saved.peers.as_ref().map_or_else(
@@ -1331,8 +1449,8 @@ mod tests {
         assert_eq!(
             draft.hidden(&["port"]),
             [
-                ("definition", "example/serial-astm".to_owned()),
-                ("lab_app", "demo".to_owned())
+                ("definition".to_owned(), "example/serial-astm".to_owned()),
+                ("lab_app".to_owned(), "demo".to_owned())
             ]
         );
         assert_eq!(
