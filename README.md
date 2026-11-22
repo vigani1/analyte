@@ -206,9 +206,8 @@ and [AGENTS.md](AGENTS.md) apply to people and coding assistants alike.
 - Sign off every commit (`git commit -s`, the
   [Developer Certificate of Origin](https://developercertificate.org/)).
 
-Find your way around: [the crates](crates/README.md) (engine, app, layers,
-protocols, core, testing), [the decisions](docs/adr/README.md),
-[the glossary](docs/glossary.md) and [test quality](docs/testing/quality.md).
+Find your way around with the [documentation map](docs/README.md): which page
+to read first for your role, and which folders are only for looking things up.
 
 ## Licence
 
