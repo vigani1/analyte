@@ -4,7 +4,7 @@
 
 Roche cobas e 411, disk or rack model. Installed software and the selected
 Elecsys/cobas host dialect are required site confirmations.
-+
+
 No machine.toml is shipped: the current loader requires concrete settings, and
 there is no placeholder value for the missing evidence. This is a blocked
 machine definition, not an activatable configuration. Resolve the blockers,
@@ -52,6 +52,11 @@ Research only; no machine recording or simulator run. No recordings shipped.
   identity/run evidence, QC rules, deadlines and order reply fields.
 - Confirm barcode-error handling, query coordinates and rerun semantics from
   de-identified conversations before activation; never infer a specimen ID.
+- Still missing: the Host Interface Manual revision for the installed software,
+  with its errata (v2.2 and v2.3 read so far); the disk or rack model; the full
+  serial settings and upload options; the installed host test code screen and a
+  copy of the host trace log; recordings of patient, qualitative, QC, no-barcode
+  and query exchanges.
 
 ## Sources
 

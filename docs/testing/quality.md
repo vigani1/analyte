@@ -103,3 +103,9 @@ the exact reason it is equivalent.
 
 Tool references: [cargo-mutants](https://mutants.rs/) and
 [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov).
+
+## Duplication
+
+CI also limits copied code in production and tests. The thresholds, the
+exclusions and how to run the check are in
+[scripts/duplication.md](../../scripts/duplication.md).

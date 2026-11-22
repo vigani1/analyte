@@ -50,6 +50,11 @@ Research only; no machine recording or official simulator run. No recordings shi
   timers/retries, assay/app and unit mappings, patient namespace and identity.
 - Confirm QC/invalid/call semantics, dilution state, and acceptance evidence.
   Never truncate identifiers to a conservative guessed ceiling.
+- Still missing: the BCI Link LIS Interface Driver Development Guide 161150-486
+  revision for the installed VIDAS PC and BCI version (revisions A and B used so
+  far); the VIDAS PC version, which decides a 12 or 17 character ID; whether the
+  BCI option is enabled; the assay short codes; recordings of uploads and of a
+  work list download.
 
 ## Sources
 

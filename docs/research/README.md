@@ -22,7 +22,8 @@ file before relying on any detail below.
 | [middleware-practices.md](middleware-practices.md) | Independent research: how integration engines and lab middleware are built, standards notes, failure stories, overlooked topics, Rust ecosystem |
 | [idea-check.md](idea-check.md)     | Check of the ideas borrowed from other projects: keep, change or replace                         |
 | [rust-practices.md](rust-practices.md) | Rules and tooling from large Rust projects and company guidelines                            |
-| [machine-gaps.md](machine-gaps.md) | What each machine still lacks: documents, settings and recordings (kept current)              |
+| [machine-departures.md](machine-departures.md) | Named machine departures: which vendor differences may be typed, scoped exceptions (led to ADR 0015) |
+| [law-status-notifications.md](law-status-notifications.md) | LAW status notifications without observations: what the profile allows (led to ADR 0016) |
 
 ## The machines at a glance
 

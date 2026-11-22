@@ -47,6 +47,8 @@ Research only; no machine recording or official simulator run. No recordings shi
   identity/run evidence, QC discriminator, flags, ACK and lookup deadlines.
 - Compare typed, scanned and auto-assigned IDs in captures. Establish graphics
   format and bounds separately; no image is to be interpreted as a number.
+- Still missing: Boule's LIS protocol description for the Lumi; the nameplate
+  (to confirm it is a Lumi) and the software version.
 
 ## Sources
 
