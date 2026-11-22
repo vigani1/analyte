@@ -1,6 +1,4 @@
-<img src="crates/analyte/assets/icons/analyte-app-icon.svg" alt="Analyte logo" width="64" height="64">
-
-# Analyte
+<h1><img src="crates/analyte/assets/icons/analyte-app-icon.svg" alt="" width="36" height="36"> Analyte</h1>
 
 **Connect any lab analyzer to any lab app.**
 
