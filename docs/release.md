@@ -23,7 +23,8 @@ Do not create a tag to test this workflow.
 1. In a reviewed PR, bump `workspace.package.version` in `Cargo.toml`, update
    the versions of workspace path dependencies together, regenerate `Cargo.lock`
    with Cargo, and move the relevant Unreleased changelog entries under the new
-   version and date. Run the normal CI checks and merge to main.
+   version and date, keeping an empty Unreleased heading above them. Run the
+   normal CI checks and merge to main.
 2. From a clean checkout, fetch main, check out its intended release commit,
    and confirm its version and changelog. Create an annotated tag, for example
    `git tag -a v0.1.0 -m "Analyte 0.1.0"`, then explicitly push that tag with
@@ -43,8 +44,8 @@ Do not create a tag to test this workflow.
    Inspect the verified statement and confirm its source commit and tag match
    the intended release, rather than merely accepting a successful signature.
 6. Inspect archive contents and test installation on clean Windows and Linux
-   hosts with synthetic data: run the Windows installer, install the `.deb` and
-   the `.rpm`, open the setup page and uninstall (see
+   hosts with synthetic data: run the Windows installer with each setup type,
+   install the `.deb` and the `.rpm`, open the setup page and uninstall (see
    [Install](operations/install.md)). Review the changelog and replace the draft's short
    placeholder notes with the version's release notes. Publish the draft in
    GitHub only after these checks, or explicitly use
@@ -56,17 +57,17 @@ runners:
 
 | Asset | Contents |
 | --- | --- |
-| `analyte-<tag>-x86_64-pc-windows-msvc.zip` | analyte.exe, analyte.ico, machines, packaging/windows, LICENSE, README.md |
-| `analyte-<tag>-x86_64-windows-setup.exe` | Click-through installer built with Inno Setup 6.7.4 from the same files |
-| `analyte-<tag>-x86_64-unknown-linux-gnu.tar.gz` | analyte, machines, packaging/linux, LICENSE, README.md |
+| `analyte-<tag>-x86_64-pc-windows-msvc.zip` | analyte.exe (the engine), analyte-app.exe (the desktop app), analyte.ico, machines, packaging/windows (install, uninstall, stop and PATH scripts and the starter program), LICENSE, README.md |
+| `analyte-<tag>-x86_64-windows-setup.exe` | Click-through installer built with Inno Setup 6.7.4 from the same files. Setup types "Engine and app" (default) or "Engine only", and two tasks, ticked by default: start the app at sign-in (with the app only) and add Analyte to the system PATH; silent installs choose with `/TYPE=full` or `/TYPE=engine` |
+| `analyte-<tag>-x86_64-unknown-linux-gnu.tar.gz` | analyte, machines, packaging/linux, LICENSE, README.md (no desktop app: it is Windows only) |
 | `analyte_<version>-1_amd64.deb`, `analyte-<version>-1.x86_64.rpm` | Packages built with nfpm 2.48.0 from the same files |
 
 The archives have a versioned top-level directory. Follow the packaged service
 instructions with the extracted program. The build tools are downloaded at a
 pinned version and refused unless their SHA-256 matches; they are not Rust
-dependencies and are not shipped. The root README still describes the original
-planning status; use CHANGELOG.md and the program and packaging guides for
-current functionality.
+dependencies and are not shipped. CHANGELOG.md lists what each version holds;
+the [install guide](operations/install.md) and the packaging READMEs say how
+to install it.
 
 **The Windows installer is unsigned for now: Windows SmartScreen will warn;
 choose More info → Run anyway** after checking its checksum and provenance as
@@ -87,7 +88,9 @@ workflow does not replace an existing release or publish automatically.
 
 Code signing (Windows Authenticode for the program and the installer, and
 package signing for the .deb and .rpm), automatic updates and reproducible-build
-guarantees are not implemented. GitHub provenance
+guarantees are not implemented. The plan for Windows signing is a free
+SignPath Foundation certificate for open-source projects, or a Certum
+open-source code-signing certificate; neither is set up yet. GitHub provenance
 identifies the build workflow; it does not qualify an analyzer or replace lab
 validation. Evidence remains documented unless separately supported by recorded
 simulator or real-machine runs.
