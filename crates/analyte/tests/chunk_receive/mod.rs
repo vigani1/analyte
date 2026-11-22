@@ -38,6 +38,17 @@ async fn count_results(
     next.run(request).await
 }
 
+/// Shows the host's warnings and errors with a failing test's output, so a closed
+/// link names the deadline or fault that ended it. Host logs never carry payloads.
+fn show_host_log() {
+    // Fails only when this process already has a subscriber, which then owns the output.
+    let _ = tracing_subscriber::fmt()
+        .with_test_writer()
+        .with_ansi(false)
+        .with_max_level(tracing_subscriber::filter::LevelFilter::WARN)
+        .try_init();
+}
+
 struct Running {
     directory: tempfile::TempDir,
     path: std::path::PathBuf,
@@ -56,6 +67,7 @@ struct Running {
 
 impl Running {
     async fn start(definition: &str) -> Result<Self, Error> {
+        show_host_log();
         let directory = tempfile::tempdir()?;
         let root = directory.path();
         let receiver = analyte_receiver::Receiver::open(

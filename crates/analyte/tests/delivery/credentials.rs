@@ -35,6 +35,10 @@ async fn retransmission_and_correction_deliver_once() -> Result<(), Error> {
     }
     assert_ne!(first.id, second.id);
     wait_state(&path, "done", 2).await?;
+    // The host closes a machine link idle past its read-idle limit, and the
+    // delivery waits above have no bound below that limit on a loaded runner.
+    let mut astm_peer = reconnect(&path, "astm", astm_peer).await?;
+    let mut hl7_peer = reconnect(&path, "hl7", hl7_peer).await?;
     astm(&mut astm_peer, ASTM).await?;
     let correction = String::from_utf8(ORU.to_vec())?
         .rewrite("12.30", "<0.1")
@@ -48,6 +52,7 @@ async fn retransmission_and_correction_deliver_once() -> Result<(), Error> {
     let corrected = reference.event().await?;
     assert_content(&corrected, "hl7", "00012a", "<0.1", "corrected", 1)?;
     wait_state(&path, "done", 3).await?;
+    let mut hl7_peer = reconnect(&path, "hl7", hl7_peer).await?;
     for mode in ["T", "D"] {
         let message = String::from_utf8(ORU.to_vec())?
             .rewrite("|P|2.5.1", &format!("|{mode}|2.5.1"))

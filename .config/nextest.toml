@@ -1,0 +1,24 @@
+# nextest settings for local runs and CI.
+
+[test-groups]
+# Store tests that open, migrate or commit to a store hundreds of times, each
+# commit a full disk flush. On Windows CI runners they take 10 to 35 times
+# their local time. Every intermittent failure of the full-feature pass from
+# 2026-11-17 to 2026-11-21 ran while one to three of them were running, and
+# the failing tests' store commits and shutdowns had waited past their
+# deadlines. One at a time keeps the disk queue short; the tests themselves
+# are unchanged.
+store-flush-heavy = { max-threads = 1 }
+
+[[profile.default.overrides]]
+filter = """
+package(analyte-store) and (
+    test(=intake::receipts::tests::operations_never_lose_or_change_receipt_bytes)
+    | test(=upkeep::open::tests::schema_sixteen_keeps_parked_items_and_fills_only_recorded_times)
+    | test(=upkeep::open::tests::schema_seventeen_keeps_every_row_and_fills_when_each_delivery_was_accepted)
+    | test(=upkeep::open::tests::schema_eighteen_keeps_every_attempt_and_fills_the_runs_of_tries)
+    | test(=upkeep::retention::tests::random_unfinished_states_never_purge)
+    | test(=upkeep::retention::tests::refinement::random_order_states_keep_unfinished_work)
+)
+"""
+test-group = "store-flush-heavy"

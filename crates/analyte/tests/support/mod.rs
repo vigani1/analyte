@@ -112,6 +112,17 @@ pub fn secrets(
     )?)
 }
 
+/// Shows the host's warnings and errors with a failing test's output, so a closed
+/// link names the deadline or fault that ended it. Host logs never carry payloads.
+pub fn show_host_log() {
+    // Fails only when this process already has a subscriber, which then owns the output.
+    let _ = tracing_subscriber::fmt()
+        .with_test_writer()
+        .with_ansi(false)
+        .with_max_level(tracing_subscriber::filter::LevelFilter::WARN)
+        .try_init();
+}
+
 /// Owns resources for a synthetic service test.
 pub struct Running {
     stop: oneshot::Sender<()>,
@@ -136,6 +147,7 @@ impl Running {
     /// # Panics
     /// Fails when a recorded byte or durable outcome differs from the expected fixture.
     pub async fn start_program(program: Program, api: &str) -> Result<Self, Error> {
+        show_host_log();
         let secrets = secrets(&program, api)?;
         let store_lock = program.data_directory().join("analyte.lock");
         let (stop, stopped) = oneshot::channel();
@@ -244,6 +256,18 @@ pub async fn connect(path: &Path, name: &str) -> Result<TcpStream, Error> {
     })
     .await??;
     Ok(stream)
+}
+
+/// Replaces a machine link that sat idle while the test waited on host state.
+/// The host ends a link whose peer stays silent past the read-idle limit
+/// (`operation_timeout_ms`), as a machine's idle connection would be, and a
+/// wait on deliveries has no bound below that limit on a loaded runner. The old
+/// link is closed first because the listener serves one session at a time.
+/// # Errors
+/// Propagates configuration, transport, storage or deadline failures.
+pub async fn reconnect(path: &Path, name: &str, idle: TcpStream) -> Result<TcpStream, Error> {
+    drop(idle);
+    connect(path, name).await
 }
 
 /// Runs a synthetic peer or inspects its durable test outcome.
