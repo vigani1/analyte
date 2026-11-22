@@ -195,8 +195,9 @@ see the [operations guides](docs/operations/README.md).
 
 ## Contributing
 
-Contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md) and
-[AGENTS.md](AGENTS.md); the rules apply to people and coding assistants alike.
+Contributions are welcome, with or without code: [ways to help](CONTRIBUTING.md#ways-to-help)
+lists each kind and where to start. The rules in [CONTRIBUTING.md](CONTRIBUTING.md)
+and [AGENTS.md](AGENTS.md) apply to people and coding assistants alike.
 
 - Before sending a change, run the checks in [Verification](AGENTS.md#verification).
 - Add a machine with [adding a machine](docs/adding-a-machine.md), or a
