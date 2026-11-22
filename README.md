@@ -11,7 +11,7 @@ orders from the lab app and hands them to the machines.
 > with synthetic data (*documented* level). No machine has been tested on real
 > hardware yet; that comes with the first lab pilot ([the plan](docs/plan.md)).
 
-![A short tour of the Analyte admin pages: the Overview says all good, a synthetic machine sends a result, the Activity page shows it stored and delivered to the lab app, the Overview stays green, and a result with an unknown test code is parked on Needs review](docs/images/demo.gif)
+![A short tour of the Analyte admin pages: the Overview says all good, a synthetic machine sends a result, the Activity page shows it stored and delivered to the lab app, the Overview stays green, and results the lab app refuses because it does not know their test codes are parked on Needs review](docs/images/demo.gif)
 
 *A result goes from a machine, through Analyte, to the lab app (synthetic data).*
 
@@ -80,12 +80,13 @@ On Linux the engine is a systemd service ([Linux packaging](packaging/linux/READ
 ## A look at it
 
 Synthetic data only. The lab app is the [reference receiver](crates/testing/receiver/),
-so results are delivered and the Overview is green.
+so results are delivered and the Overview is green. For Needs review it was set
+to refuse two test codes it does not know.
 
 | | |
 | --- | --- |
-| ![The Overview page saying All good: three connected machines, the signal path through Analyte, and the lab app up to date](docs/images/overview-light.png) | ![The Needs review page with parked items for a test code that is not in the machine's test mapping, each with Process again and Mark resolved](docs/images/needs-review-light.png) |
-| **Overview**: all good, and the path from machines to lab app | **Needs review**: parked items, with what to do next |
+| ![The Overview page saying All good: three connected machines, the signal path through Analyte, and the lab app up to date](docs/images/overview-light.png) | ![The Needs review page with two deliveries the lab app rejected because their test codes are not in its test list, each with Send again and Mark resolved](docs/images/needs-review-light.png) |
+| **Overview**: all good, and the path from machines to lab app | **Needs review**: deliveries the lab app refused, with what to do next |
 | ![The Machines page in dark mode: three machines, all connected, with their last data and lab app](docs/images/machines-dark.png) | ![The Deliveries page in dark mode: each result with its sample ID, machine and lab app, all delivered](docs/images/deliveries-dark.png) |
 | **Machines** (dark): each connection and its last data | **Deliveries** (dark): every result delivered to the lab app |
 | ![The Activity page: a live feed of messages stored and results delivered, sample IDs and counts only](docs/images/activity-light.png) | ![The Setup page: the machines on this PC, all running, and the supported machine models with their readiness](docs/images/setup-light.png) |
