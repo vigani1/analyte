@@ -10,9 +10,9 @@ which apply to people and coding assistants alike.
 | --- | --- | --- |
 | Report something that does not work | Nothing but what you saw | The [bug form](https://github.com/vigani1/analyte/issues/new?template=bug.yml) |
 | Ask for a machine, or share what you know about one | No coding: the model, its software version, photos of its host settings | The [new analyzer form](https://github.com/vigani1/analyte/issues/new?template=new-analyzer.yml) |
-| Record a real machine's conversation (the most useful help) | Access to the machine; the recording is de-identified before it is shared | [Capture, de-identify and replay](docs/adding-a-machine.md#capture-de-identify-and-replay) |
-| Add a machine that speaks a protocol Analyte has (ASTM, HL7, LAW, POCT1-A, VIDAS, Autolyser) | No Rust: a `machine.toml` settings file, a README and recordings in `machines/<vendor>/<model>/` | [Adding a machine](docs/adding-a-machine.md) |
-| Add a machine with its own language | Rust; open an issue first, because a new protocol is a large change | [Adding a vendor protocol](docs/adding-a-vendor-protocol.md) |
+| Record a real machine's conversation (the most useful help) | Access to the machine; the recording is de-identified before it is shared | [Capture, de-identify and replay](docs/develop/adding-a-machine.md#capture-de-identify-and-replay) |
+| Add a machine that speaks a protocol Analyte has (ASTM, HL7, LAW, POCT1-A, VIDAS, Autolyser) | No Rust: a `machine.toml` settings file, a README and recordings in `machines/<vendor>/<model>/` | [Adding a machine](docs/develop/adding-a-machine.md) |
+| Add a machine with its own language | Rust; open an issue first, because a new protocol is a large change | [Adding a vendor protocol](docs/develop/adding-a-vendor-protocol.md) |
 | Connect a lab app | Any language: three HTTPS calls | [Contract v1](docs/contract/v1.md) and its [checker](docs/contract/README.md#check-your-app) |
 | Ask how a protocol rule works | A question | The [protocol question form](https://github.com/vigani1/analyte/issues/new?template=protocol-question.yml) |
 | Fix a bug or a document | A fork and a pull request | [Forks and pull requests](#forks-and-pull-requests) |
@@ -34,7 +34,7 @@ these suspicious patterns.
 - Supporting a new machine starts with its documents and, ideally, a
   de-identified recording of a real conversation.
 - Writing tests that wait on timers or the store: read
-  [test timing](docs/testing/timing.md) first.
+  [test timing](docs/develop/testing/timing.md) first.
 
 ## Forks and pull requests
 
@@ -56,7 +56,7 @@ new commits rather than rewriting history. Report security problems privately
 [code of conduct](CODE_OF_CONDUCT.md).
 
 A new machine definition needs its documents and evidence, as described in
-[adding a machine](docs/adding-a-machine.md); its evidence level is only as
+[adding a machine](docs/develop/adding-a-machine.md); its evidence level is only as
 high as that evidence.
 
 ## What every change needs

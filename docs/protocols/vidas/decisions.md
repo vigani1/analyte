@@ -1,7 +1,7 @@
 # VIDAS decisions
 
 No complete vendor manual was available for this review. Vendor claims below
-cite the repository's [VIDAS research](../../research/vidas.md), a secondary
+cite the repository's [VIDAS research](../../research/machines/vidas.md), a secondary
 source, not independently rechecked manual sections. Evidence stays documented.
 Wire requirements remain in [checklist.md](checklist.md).
 
@@ -12,7 +12,7 @@ Wire requirements remain in [checklist.md](checklist.md).
 - **why**: Similar product names conceal different directions, fields and
   transports. Reusing the PC parser would imply equivalence the available
   evidence does not establish.
-- **source**: [Research §§1–2](../../research/vidas.md#1-identity-generations-and-typical-test-menu);
+- **source**: [Research §§1–2](../../research/machines/vidas.md#1-identity-generations-and-typical-test-menu);
   [ADR 0007](../../adr/0007-standards-first.md), explicit scope.
 - **test**: none yet.
 
@@ -23,7 +23,7 @@ Wire requirements remain in [checklist.md](checklist.md).
 - **why**: One request has one recoverable acceptance outcome. Supporting a
   larger session would require tracking partial acceptance across packets and
   is unnecessary for the existing durable per-order path.
-- **source**: [Research §3](../../research/vidas.md#3-literal-and-literal-alternate-low-level-protocol);
+- **source**: [Research §3](../../research/machines/vidas.md#3-literal-and-literal-alternate-low-level-protocol);
   [ADR 0007](../../adr/0007-standards-first.md), selected workflow scope.
 - **test**: none yet.
 
@@ -34,7 +34,7 @@ Wire requirements remain in [checklist.md](checklist.md).
 - **why**: The ACK boundary differs between the two modes, and suffix checksum
   participation is unresolved in the research. An inferred setting could
   acknowledge the wrong extent of a transfer or reject valid installed traffic.
-- **source**: [Research §3](../../research/vidas.md#3-literal-and-literal-alternate-low-level-protocol).
+- **source**: [Research §3](../../research/machines/vidas.md#3-literal-and-literal-alternate-low-level-protocol).
 - **test**: `every_suffix_and_boundary_round_trips`.
 
 ## 4. Require installed timing policy rather than guessed vendor defaults
@@ -44,7 +44,7 @@ Wire requirements remain in [checklist.md](checklist.md).
 - **why**: The research supplies no dependable numeric timing or retry rules.
   Borrowing ASTM constants would give an unrelated protocol's values a false
   appearance of vendor authority.
-- **source**: [Research §3](../../research/vidas.md#3-literal-and-literal-alternate-low-level-protocol);
+- **source**: [Research §3](../../research/machines/vidas.md#3-literal-and-literal-alternate-low-level-protocol);
   [ADR 0003](../../adr/0003-clinical-safety-rules.md), bounded waits.
 - **test**: none yet.
 
@@ -66,8 +66,8 @@ Wire requirements remain in [checklist.md](checklist.md).
 - **why**: The research reports contradictory ql/qn descriptions, comma versus
   dot decimals and ratio versus integer dilution. Choosing a universal numeric
   interpretation would discard precisely the distinctions still needing evidence.
-- **source**: [Research §4](../../research/vidas.md#4-message-format-complete-field-table-and-assay-codes)
-  and [§7](../../research/vidas.md#7-annotated-example-messages);
+- **source**: [Research §4](../../research/machines/vidas.md#4-message-format-complete-field-table-and-assay-codes)
+  and [§7](../../research/machines/vidas.md#7-annotated-example-messages);
   [ADR 0003](../../adr/0003-clinical-safety-rules.md), values and dilution policy.
 - **test**: `keeps_exact_identity_unknown_tags_and_values`.
 
@@ -78,7 +78,7 @@ Wire requirements remain in [checklist.md](checklist.md).
 - **why**: The research identifies different limits for different PC
   generations. Choosing the larger limit silently could lose an order; choosing
   the smaller by truncation could associate it with another specimen.
-- **source**: [Research §6](../../research/vidas.md#6-sample-identification--the-critical-distinction);
+- **source**: [Research §6](../../research/machines/vidas.md#6-sample-identification--the-critical-distinction);
   [ADR 0003](../../adr/0003-clinical-safety-rules.md), string identity policy.
 - **test**: `overlong_sample_id_is_rejected_not_truncated`.
 
@@ -89,7 +89,7 @@ Wire requirements remain in [checklist.md](checklist.md).
 - **why**: Several assays and repeats can share ci. A sample ID identifies
   the specimen but supplies no trustworthy run history, so deduplication on it
   would either suppress legitimate work or publish repeated results.
-- **source**: [Research §6](../../research/vidas.md#6-sample-identification--the-critical-distinction);
+- **source**: [Research §6](../../research/machines/vidas.md#6-sample-identification--the-critical-distinction);
   [ADR 0003](../../adr/0003-clinical-safety-rules.md), Three identities.
 - **test**: `vidas_stores_before_ack_and_parks_unresolved`.
 
@@ -100,8 +100,8 @@ Wire requirements remain in [checklist.md](checklist.md).
 - **why**: The known tags describe origin and structure, not those physical
   attributes. Reusing them would make the message syntactically plausible while
   falsely claiming that the analyzer received the requested specimen context.
-- **source**: [Research §4](../../research/vidas.md#4-message-format-complete-field-table-and-assay-codes)
-  and [§6](../../research/vidas.md#6-sample-identification--the-critical-distinction).
+- **source**: [Research §4](../../research/machines/vidas.md#4-message-format-complete-field-table-and-assay-codes)
+  and [§6](../../research/machines/vidas.md#6-sample-identification--the-critical-distinction).
 - **test**: `unmapped_specimen_type_is_rejected`.
 
 ## 10. Require explicit assay mappings
@@ -111,7 +111,7 @@ Wire requirements remain in [checklist.md](checklist.md).
 - **why**: Product menus do not establish the installed codes or language.
   Sending a plausible code could request the wrong assay or be rejected after
   transport acceptance without a reliable application-level response.
-- **source**: [Research §4](../../research/vidas.md#4-message-format-complete-field-table-and-assay-codes);
+- **source**: [Research §4](../../research/machines/vidas.md#4-message-format-complete-field-table-and-assay-codes);
   [ADR 0002](../../adr/0002-config-first.md), explicit mappings.
 - **test**: `unmapped_test_is_rejected_before_send`.
 
@@ -122,7 +122,7 @@ Wire requirements remain in [checklist.md](checklist.md).
 - **why**: Literal can acknowledge data before the final ETX/EOT exchange.
   A later disconnect must therefore leave the acknowledged evidence retained,
   even if the transfer never reaches normal completion.
-- **source**: [Research §3](../../research/vidas.md#3-literal-and-literal-alternate-low-level-protocol);
+- **source**: [Research §3](../../research/machines/vidas.md#3-literal-and-literal-alternate-low-level-protocol);
   [ADR 0010](../../adr/0010-acknowledgment-boundaries.md), VIDAS row.
 - **test**: `ack_waits_for_store_and_keeps_incomplete_transfer`.
 
@@ -133,7 +133,7 @@ Wire requirements remain in [checklist.md](checklist.md).
 - **why**: The PC may already have inserted the request when its response is
   lost. Repeating it without reconciliation could schedule duplicate testing,
   and the research does not establish a safe abort or retry exchange.
-- **source**: [Research §3](../../research/vidas.md#3-literal-and-literal-alternate-low-level-protocol);
+- **source**: [Research §3](../../research/machines/vidas.md#3-literal-and-literal-alternate-low-level-protocol);
   [ADR 0003](../../adr/0003-clinical-safety-rules.md), order lifecycle rule.
 - **test**: `download_never_resends_after_lost_ack`.
 
@@ -144,6 +144,6 @@ Wire requirements remain in [checklist.md](checklist.md).
 - **why**: The PC can reject an assay after its transport ACK, and the nc flag
   concerns source assay state rather than clinical approval. Promoting either
   into app acceptance would invent an outcome the exchange does not establish.
-- **source**: [Research §§4–5](../../research/vidas.md#5-directions-and-request-download);
+- **source**: [Research §§4–5](../../research/machines/vidas.md#5-directions-and-request-download);
   [ADR 0003](../../adr/0003-clinical-safety-rules.md), distinct order states.
 - **test**: none yet.

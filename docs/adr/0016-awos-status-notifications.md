@@ -8,7 +8,7 @@ IHE LAW lets an analyzer send a LAB-29 message with no observations to report
 that work is scheduled (SC), in progress (IP) or cancelled by the analyzer (CA).
 Analyte used to park these as unsupported, burying real problems under normal
 progress. The order model has no "in progress" state, and contract v1 has a
-closed list of order states ([research](../research/law-status-notifications.md)).
+closed list of order states ([research](../research/other/law-status-notifications.md)).
 
 ## Decision
 

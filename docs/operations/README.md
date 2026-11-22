@@ -1,5 +1,8 @@
 # Pilot installation and operations
 
+This folder is for **installing, connecting and running Analyte** on a lab PC.
+Not here: writing code or machine settings (see [develop](../develop/README.md)).
+
 Analyte is a bridge. It stores analyzer messages, delivers results to a lab
 app, and answers machine queries from orders supplied by that app. It is not
 a LIS. It does not verify results, match patients, decide QC outcomes, apply

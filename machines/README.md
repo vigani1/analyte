@@ -1,5 +1,9 @@
 # Machine definitions
 
+This folder holds **the settings files that are installed** with Analyte, one
+folder per analyzer model. How to add one: [adding a machine](../docs/develop/adding-a-machine.md).
+What was learned about each model: [machine research](../docs/research/machines/README.md).
+
 Each definition lives in `machines/<vendor>/<model>/`, with lower-case,
 hyphenated names. It contains `machine.toml`, `README.md` and `recordings/`.
 Keep site settings and credentials outside this tree. Recordings follow

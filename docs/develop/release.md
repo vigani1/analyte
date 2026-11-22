@@ -12,7 +12,7 @@ stable public API under semantic versioning, which would slow down changes
 that are still easy today. We will consider publishing the protocol crates
 (for example `analyte-astm`, `analyte-hl7`, `analyte-poct` and
 `analyte-framing`) as libraries when an outside project asks for them, following the two-question test in
-[AGENTS.md](../AGENTS.md#design-rules).
+[AGENTS.md](../../AGENTS.md#design-rules).
 
 ## Cutting a release
 
@@ -46,7 +46,7 @@ Do not create a tag to test this workflow.
 6. Inspect archive contents and test installation on clean Windows and Linux
    hosts with synthetic data: run the Windows installer with each setup type,
    install the `.deb` and the `.rpm`, open the setup page and uninstall (see
-   [Install](operations/install.md)). Review the changelog and replace the draft's short
+   [Install](../operations/install.md)). Review the changelog and replace the draft's short
    placeholder notes with the version's release notes. Publish the draft in
    GitHub only after these checks, or explicitly use
    `gh release edit v0.1.0 --repo vigani1/analyte --draft=false`.
@@ -66,7 +66,7 @@ The archives have a versioned top-level directory. Follow the packaged service
 instructions with the extracted program. The build tools are downloaded at a
 pinned version and refused unless their SHA-256 matches; they are not Rust
 dependencies and are not shipped. CHANGELOG.md lists what each version holds;
-the [install guide](operations/install.md) and the packaging READMEs say how
+the [install guide](../operations/install.md) and the packaging READMEs say how
 to install it.
 
 **The Windows installer is unsigned for now: Windows SmartScreen will warn;

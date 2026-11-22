@@ -3,7 +3,7 @@
 Research date: 2026-11-16. Later note: ADR 0016, called proposed below, was
 accepted on 2026-11-16 and is implemented. Evidence: documented. This is research and a
 recommendation, not implemented behavior or evidence of machine qualification.
-The proposed decision is [ADR 0016](../adr/0016-awos-status-notifications.md).
+The proposed decision is [ADR 0016](../../adr/0016-awos-status-notifications.md).
 All descriptions below are in our own words.
 
 ## What the profile establishes

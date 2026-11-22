@@ -198,8 +198,8 @@ lists each kind and where to start. The rules in [CONTRIBUTING.md](CONTRIBUTING.
 and [AGENTS.md](AGENTS.md) apply to people and coding assistants alike.
 
 - Before sending a change, run the checks in [Verification](AGENTS.md#verification).
-- Add a machine with [adding a machine](docs/adding-a-machine.md), or a
-  vendor protocol with [adding a vendor protocol](docs/adding-a-vendor-protocol.md).
+- Add a machine with [adding a machine](docs/develop/adding-a-machine.md), or a
+  vendor protocol with [adding a vendor protocol](docs/develop/adding-a-vendor-protocol.md).
 - Only synthetic or de-identified data; never standards or vendor manuals.
 - Sign off every commit (`git commit -s`, the
   [Developer Certificate of Origin](https://developercertificate.org/)).

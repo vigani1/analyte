@@ -1,5 +1,8 @@
 # Architecture decision records
 
+This folder is for **decisions and why they were made**, one file each. Open
+one when a link points to it or before changing what it decided.
+
 One file per hard-to-reverse decision, named `NNNN-short-title.md`, about half
 a page: context, decision, why, consequences and status. Protocol detail lives
 in [docs/protocols/](../protocols/README.md). A superseded record stays and

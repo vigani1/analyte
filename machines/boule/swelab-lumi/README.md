@@ -52,7 +52,7 @@ Research only; no machine recording or official simulator run. No recordings shi
 
 ## Sources
 
-[Research](../../../docs/research/swelab.md), §§2–6 and 8: Lumi User Manual
+[Research](../../../docs/research/machines/swelab.md), §§2–6 and 8: Lumi User Manual
 1504529 Communication and identification sections; Boule LIS protocol
 supplement still needed. [HL7 scope](../../../docs/protocols/hl7/README.md).
 

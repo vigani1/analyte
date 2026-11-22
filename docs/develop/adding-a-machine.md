@@ -5,8 +5,8 @@ confirmed interface settings and evidence that identifiers, values and orders
 survive the journey unchanged. Analyte moves data; the lab app makes clinical
 decisions. Unknown information is a reason to stop and investigate.
 
-Read the [plan](plan.md), [config reference](../crates/core/config/README.md) and
-[config-first decision](adr/0002-config-first.md) alongside this guide.
+Read the [plan](../plan.md), [config reference](../../crates/core/config/README.md) and
+[config-first decision](../adr/0002-config-first.md) alongside this guide.
 
 For an interface requiring new protocol code, follow
 [adding a vendor protocol](adding-a-vendor-protocol.md).
@@ -20,7 +20,7 @@ For an interface requiring new protocol code, follow
    test codes, units and where the sample ID is
    ([gather confirmed settings](#gather-confirmed-settings)). Lab addresses
    and keys stay in each lab's site file, never in this folder.
-3. **Write its `README.md`** from the [template](../machines/README.md#readme-template):
+3. **Write its `README.md`** from the [template](../../machines/README.md#readme-template):
    what is known, the sources in your own words, what is still open and the
    evidence level.
 4. **Add recordings** of its conversations in `recordings/`, synthetic or
@@ -41,14 +41,14 @@ edition; a family name or an Ethernet socket does not establish a protocol.
 
 | Machine interface | Read first | Starting point |
 | --- | --- | --- |
-| ASTM LIS01/LIS02 | [ASTM scope](protocols/astm/README.md) | [ASTM example](../crates/core/config/examples/astm.toml) |
-| HL7 v2 legacy over MLLP | [HL7 scope](protocols/hl7/README.md) | [HL7 example](../crates/core/config/examples/hl7.toml) |
-| IHE LAW Analyzer Manager | [LAW scope and remaining gaps](protocols/law/README.md) | [LAW example](../crates/core/config/examples/law.toml) plus [query/work settings](../crates/core/config/examples/law_orders.toml); persistent TCP client/server or independent directional links |
-| POCT01-A2 | [POCT scope](protocols/poct/README.md) | [POCT example](../crates/core/config/examples/poct.toml), Observation Reviewer role |
-| VIDAS Literal or Autolyser | [Protocol index](protocols/README.md), then vendor interface rules | [VIDAS](../crates/core/config/examples/vidas_literal.toml) or [Autolyser](../crates/core/config/examples/autolyser.toml) |
+| ASTM LIS01/LIS02 | [ASTM scope](../protocols/astm/README.md) | [ASTM example](../../crates/core/config/examples/astm.toml) |
+| HL7 v2 legacy over MLLP | [HL7 scope](../protocols/hl7/README.md) | [HL7 example](../../crates/core/config/examples/hl7.toml) |
+| IHE LAW Analyzer Manager | [LAW scope and remaining gaps](../protocols/law/README.md) | [LAW example](../../crates/core/config/examples/law.toml) plus [query/work settings](../../crates/core/config/examples/law_orders.toml); persistent TCP client/server or independent directional links |
+| POCT01-A2 | [POCT scope](../protocols/poct/README.md) | [POCT example](../../crates/core/config/examples/poct.toml), Observation Reviewer role |
+| VIDAS Literal or Autolyser | [Protocol index](../protocols/README.md), then vendor interface rules | [VIDAS](../../crates/core/config/examples/vidas_literal.toml) or [Autolyser](../../crates/core/config/examples/autolyser.toml) |
 
 There are no vendor-specific pages in that protocol index yet. Use the
-[config reference](../crates/core/config/README.md) and [order guide](../crates/analyte/ORDERS.md)
+[config reference](../../crates/core/config/README.md) and [order guide](../../crates/analyte/ORDERS.md)
 for their implemented policies. LAW supports two explicit topologies. Use
 `law.connection_mode = "persistent"` for one TCP client/server link carrying all
 three transactions. For the B.6 directional topology, select
@@ -77,7 +77,7 @@ never no-work. Originating-work checks have local tests; remaining enhanced
 workflows and a recorded Gazelle run remain open in the LAW checklist. Evidence
 is documented, without real-machine qualification. A LAW definition uses the
 LAW profile rather than a legacy HL7 layout. A new format needs review
-([standards-first decision](adr/0007-standards-first.md)).
+([standards-first decision](../adr/0007-standards-first.md)).
 
 ## Gather confirmed settings
 
@@ -110,8 +110,8 @@ Record unresolved items explicitly and withhold activation until resolved.
 
 All layers use TOML, a text format with named sections. Unknown keys fail.
 Sections and lists replace in full; overrides do not merge individual list
-entries and cannot change evidence. See the [schema](../crates/core/config/src/schema/mod.rs)
-and [validation rules](../crates/core/config/src/validation/mod.rs) before editing.
+entries and cannot change evidence. See the [schema](../../crates/core/config/src/schema/mod.rs)
+and [validation rules](../../crates/core/config/src/validation/mod.rs) before editing.
 
 ### Complete synthetic example
 
@@ -189,7 +189,7 @@ evidence_files = []
 
 `site.toml` (replace the port only with confirmed site values; the lab app is
 set once in `lab-apps.toml`, see
-[connect](operations/connect.md#lab-apps-set-once-picked-by-each-machine)):
+[connect](../operations/connect.md#lab-apps-set-once-picked-by-each-machine)):
 
 ```toml
 # Synthetic installation; no addresses or keys.
@@ -241,7 +241,7 @@ A namespace names the assigning system: use a confirmed fixed system or a
 source field. `sub_id = "none"` deliberately declares no sub-ID; `run = []`
 provides no run evidence. Missing evidence remains unresolved; changed content
 under one trusted identity is a conflict, not an inferred rerun. Receipt,
-delivery and result/revision identities stay separate. See [mapping behavior](../crates/steps/mapping/README.md).
+delivery and result/revision identities stay separate. See [mapping behavior](../../crates/steps/mapping/README.md).
 
 For ASTM only, an optional section can split one R.3 component into exact parts:
 
@@ -269,7 +269,7 @@ use `[codes]` test/unit tables rather than field-position `[mappings]`.
 ### Enable orders separately
 
 Receiving results does not enable queries or work lists. Append the complete
-[synthetic ASTM orders section](../crates/core/config/examples/orders.toml) only
+[synthetic ASTM orders section](../../crates/core/config/examples/orders.toml) only
 when that behavior is confirmed. `[orders]` has independent outbound `tests`
 and `priorities`; it does not reverse the result table automatically.
 Each test maps an exact app `namespace`/`value` to `machine_components`,
@@ -283,10 +283,10 @@ locations. Optional `position` sends the supplied slot in O field 4;
 translates exact app namespace/value pairs. A configured destination requires
 that context: no default slot or specimen type is invented.
 
-For legacy HL7 queries, start from [hl7_orders.toml](../crates/core/config/examples/hl7_orders.toml).
+For legacy HL7 queries, start from [hl7_orders.toml](../../crates/core/config/examples/hl7_orders.toml).
 It declares QRD filters and DSP layout, with an explicit ACK deadline; it requires
 `when_untrusted = "error"`. Send-ahead is a separate
-[hl7_send.toml](../crates/core/config/examples/hl7_send.toml) interface using
+[hl7_send.toml](../../crates/core/config/examples/hl7_send.toml) interface using
 `placer_namespace` and `[orders.hl7_send]`. ORM and OML have different specimen
 and position support; do not treat them as LAW.
 
@@ -295,14 +295,14 @@ Vendor work lists require `download = true` in their vendor section as well as
 system; Autolyser also needs explicit `clone`, specimen medium and cup slot.
 VIDAS cannot transmit specimen type. The current ASTM order layout has no
 patient field and rejects `patient_namespace`. Follow the
-[order guide](../crates/analyte/ORDERS.md) for exact per-stack restrictions.
+[order guide](../../crates/analyte/ORDERS.md) for exact per-stack restrictions.
 Sent, accepted, done and cancelled are different outcomes. A lost reply or
 restart never authorizes an automatic resend to a machine.
 
 ### Declare departures, do not program around them
 
 Keep `deviations = []` for the strict example. Under
-[ADR 0015](adr/0015-named-machine-departures.md) each entry is one variant of a
+[ADR 0015](../adr/0015-named-machine-departures.md) each entry is one variant of a
 closed list, with its own scope, evidence references and evidence level. No
 field path, pattern, script or free status mapping can select behavior.
 
@@ -316,8 +316,8 @@ field path, pattern, script or free status mapping can select behavior.
 The scope names the confirmed model, exact firmware, installed mode, edition,
 direction and message kind; no wildcard covers a firmware upgrade. Both HL7
 variants are needed when both status fields are absent. What each variant does
-inside its protocol is in the [HL7](protocols/hl7/decisions.md#named-missing-status-interpretations-and-contract-v1-parking)
-and [ASTM](protocols/astm/decisions.md#evidenced-inbound-record-packing) decisions.
+inside its protocol is in the [HL7](../protocols/hl7/decisions.md#named-missing-status-interpretations-and-contract-v1-parking)
+and [ASTM](../protocols/astm/decisions.md#evidenced-inbound-record-packing) decisions.
 
 Loading refuses unknown tags, duplicates, conflicting variants, scope
 mismatches, empty or unresolved evidence, wrong recording digests, a manual
@@ -341,8 +341,8 @@ unplanned ADR requires agreement before building it.
 ## Validate before connecting
 
 The command checks a **program file**, not `machine.toml` directly. Start from
-[the program example](../crates/analyte/examples/analyte.toml), following the
-[service guide](../crates/analyte/README.md), and point its machine entry at the
+[the program example](../../crates/analyte/examples/analyte.toml), following the
+[service guide](../../crates/analyte/README.md), and point its machine entry at the
 three files above. Paths are relative to the program file. Keep credentials
 in protected host storage, never in TOML. Then run:
 
@@ -358,8 +358,8 @@ or resend orders. Reprocessing creates another interpretation of retained bytes.
 
 ## Capture, de-identify and replay
 
-Follow [ADR 0009](adr/0009-recording-format.md) and the
-[simulator guide](../crates/testing/sim/README.md). Capture both directions and timing
+Follow [ADR 0009](../adr/0009-recording-format.md) and the
+[simulator guide](../../crates/testing/sim/README.md). Capture both directions and timing
 from a machine trace, lab-PC sniffer or hardware tap. Keep original captures
 with patient data protected, outside Git and ordinary logs.
 
@@ -378,7 +378,7 @@ fixed byte-location exceptions, never broad masks.
 `cargo test --workspace --all-features` discovers every `machines/**/machine.toml`, validates
 it with the real config loader, and replays every `.rec.jsonl` in its
 `recordings/` folder through the service. Use the fixed README sections in
-[machines/README.md](../machines/README.md), including one `Level: documented`,
+[machines/README.md](../../machines/README.md), including one `Level: documented`,
 `Level: simulated` or `Level: proven` line under Evidence matching the TOML.
 An empty machine inventory passes and reports that it found no definitions.
 
@@ -397,7 +397,7 @@ cargo test -p analyte --test delivery every_machine_validates_and_replays -- --n
 ```
 
 For additional custody, delivery and failure assertions, follow the existing
-tests in [delivery](../crates/analyte/tests/delivery/mod.rs). A
+tests in [delivery](../../crates/analyte/tests/delivery/mod.rs). A
 recording replay does not establish that every clinical workflow is qualified.
 Adding a definition or test also requires the workspace checks.
 
@@ -417,7 +417,7 @@ clinician sees, including values, units, flags, sample identity and corrections.
 
 ## State the evidence honestly
 
-[ADR 0005](adr/0005-evidence-levels.md) applies separately to each driver and config.
+[ADR 0005](../adr/0005-evidence-levels.md) applies separately to each driver and config.
 
 | Level | Required basis |
 | --- | --- |
@@ -435,7 +435,7 @@ or cancellation. Review provenance and actual exercised scope before changing
 
 Contribute a machine as one `machines/<vendor>/<model>/` folder with
 `machine.toml`, `README.md` and `recordings/`, as
-[ADR 0012](adr/0012-uniform-layout-and-naming.md) describes. Keep site
+[ADR 0012](../adr/0012-uniform-layout-and-naming.md) describes. Keep site
 addresses, credentials, patient data and original captures out of the PR.
 
 Include the definition, supported model/software and capabilities, honest evidence
@@ -444,7 +444,7 @@ replay tests/results and named departures with reasons. Explain expected sample,
 result and order identity behavior and unsupported options. Do not paste manual
 text, tables or examples or commit standards/vendor documents. Use original
 synthetic or reviewed de-identified fixtures only. Follow
-[CONTRIBUTING.md](../CONTRIBUTING.md): signed-off Conventional Commits and AI
+[CONTRIBUTING.md](../../CONTRIBUTING.md): signed-off Conventional Commits and AI
 assistance disclosure where applicable. A config PR is not permission to go live.
 
 ## Final checklist

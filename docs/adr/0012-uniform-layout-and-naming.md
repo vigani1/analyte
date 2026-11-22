@@ -21,7 +21,7 @@ name.
    profile (LAW on HL7) keeps its key under its base standard's crate.
 2. **Code template:** every protocol uses the same places for framing, dialog,
    syntax, encoding, views, versions, mapping, host and orders. The full table
-   is in [adding a vendor protocol](../adding-a-vendor-protocol.md#where-each-piece-lives).
+   is in [adding a vendor protocol](../develop/adding-a-vendor-protocol.md#where-each-piece-lives).
 3. **Versions:** one implementation per standard; `version.rs` holds the
    `Version` enum and the table of rules that differ, each row with its source
    and a test. No per-version copies; an unsupported version fails config

@@ -124,7 +124,7 @@ answers "no orders" when unsure, and every result keeps the three identities.
 
 - [Pilot operations](operations/README.md): installation, daily operation,
   recovery and the lab sign-off record.
-- [Adding a machine](adding-a-machine.md): settings, configuration, recordings and evidence.
+- [Adding a machine](develop/adding-a-machine.md): settings, configuration, recordings and evidence.
 
 ## Where things stand (2026-11-21)
 
@@ -141,7 +141,7 @@ Details are in the [plan](plan.md) status.
 
 1. From the lab: the settings and recordings listed under "Still needed from
    outside"; then write the machine configs at the documented level (see
-   [adding a machine](adding-a-machine.md)).
+   [adding a machine](develop/adding-a-machine.md)).
 2. LAW: repeat the Gazelle run with the site `time_zone` setting, which now
    reads the simulator's zoneless MSH-7 as a noted tolerance
    ([run report](conformance/gazelle/law-run/README.md)).
