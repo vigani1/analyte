@@ -7,6 +7,7 @@
 //! change needs a restart; there is no hot reload.
 mod addresses;
 pub(in crate::admin) mod cable;
+pub(in crate::admin) mod choices;
 mod definitions;
 pub(in crate::admin) use definitions::model_name;
 mod command;
@@ -262,6 +263,10 @@ pub(crate) enum SetupError {
     LabAppInUse(String, String),
     #[error("{0}")]
     Connection(&'static str),
+    #[error("this machine model has no choice called {0}; choose only the settings step 2 shows")]
+    UnknownChoice(String),
+    #[error("choose {choice} from its list: {allowed}")]
+    ChoiceValue { choice: String, allowed: String },
     #[error("the form was incomplete; {0}")]
     IncompleteForm(&'static str),
     #[error("the {0} key is not in the expected format, so nothing was saved")]

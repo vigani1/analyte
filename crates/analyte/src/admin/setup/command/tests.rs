@@ -1274,3 +1274,176 @@ async fn the_test_command_uses_the_chosen_cable_settings() -> Result<(), Error> 
     assert_eq!(install.settings()?, before);
     Ok(())
 }
+
+/// A model with its own choices (ADR 0032): the VIDAS teaching definition
+/// whose software version only the lab can choose.
+fn with_choices_model(install: &Install) -> Result<(), Error> {
+    let folder = install.root.join("machines/example/vidas-choices");
+    std::fs::create_dir_all(&folder)?;
+    std::fs::write(
+        folder.join("machine.toml"),
+        include_str!("../../../../../core/config/examples/vidas_choices.toml"),
+    )?;
+    Ok(())
+}
+
+/// The `[choices]` table of machine `id`'s site file.
+fn site_choices(install: &Install, id: &str) -> Result<Option<toml::Value>, Error> {
+    let site: toml::Table =
+        std::fs::read_to_string(install.root.join(format!("{id}.site.toml")))?.parse()?;
+    Ok(site.get("choices").cloned())
+}
+
+/// `machines set vidas-1` on the choices model, listening on loopback, with `extra`.
+async fn set_vidas(install: &Install, extra: &[&str]) -> Result<Outcome, Failure> {
+    let mut args = vec![
+        "set",
+        "vidas-1",
+        "--model",
+        "example/vidas-choices",
+        "--address",
+        "127.0.0.1",
+        "--port",
+        "5601",
+        "--lab-app",
+        "demo",
+        "--any-device",
+    ];
+    args.extend_from_slice(extra);
+    install.machines(&args).await
+}
+
+// ADR 0032 decisions 3 and 6, ADR 0027 (one code path): `machines set
+// --choice` writes the same [choices] table as step 2's Save, refuses a choice
+// without a value by name, keeps saved values not given, names the choices in
+// the audit row and changes the settings version; `machines list --json` shows
+// each choice and which differ from the suggestion.
+#[tokio::test(flavor = "multi_thread")]
+async fn choice_options_save_what_step_two_saves() -> Result<(), Error> {
+    let install = install()?;
+    with_choices_model(&install)?;
+    let demo = ["add", "demo", "--address", "https://lab.example.invalid"];
+    assert_eq!(
+        install.lab_apps(&demo, [API_KEY, SIGNING_KEY]).await?,
+        Outcome::Done
+    );
+    assert_eq!(install.machines(&["add", "vidas-1"]).await?, Outcome::Done);
+    let before = install.settings()?;
+    let error = refusal(set_vidas(&install, &[]).await)?;
+    assert!(
+        matches!(
+            &error,
+            SetupError::Config(analyte_config::Error::MissingChoice { choice, .. })
+                if choice.as_str() == "software_version"
+        ),
+        "{error}"
+    );
+    assert!(
+        error
+            .to_string()
+            .contains("choices.software_version: no value"),
+        "{error}"
+    );
+    assert_eq!(install.settings()?, before, "a refusal changes nothing");
+    assert_eq!(
+        set_vidas(&install, &["--choice", "software_version=v2"]).await?,
+        Outcome::Done
+    );
+    assert_eq!(
+        site_choices(&install, "vidas-1")?,
+        Some(toml::Value::Table(
+            "protocol_mode = \"literal\"\nsoftware_version = \"v2\"\n".parse()?
+        )),
+        "set writes every choice, the suggestion where none is given"
+    );
+    let version = |install: &Install| -> Result<[u8; 32], Error> {
+        Ok(Program::load(&install.config)?
+            .machines()
+            .first()
+            .ok_or("machine missing")?
+            .snapshot()
+            .digest())
+    };
+    let first = version(&install)?;
+    let set = ["set", "vidas-1", "--choice", "protocol_mode=alternate"];
+    assert_eq!(install.machines(&set).await?, Outcome::Done);
+    assert_eq!(
+        site_choices(&install, "vidas-1")?,
+        Some(toml::Value::Table(
+            "protocol_mode = \"alternate\"\nsoftware_version = \"v2\"\n".parse()?
+        )),
+        "the saved software version is kept"
+    );
+    assert_ne!(version(&install)?, first);
+    let audits = install.audits().await?;
+    assert!(
+        audits
+            .iter()
+            .any(|(_, action, _, reason)| action == "setup-save"
+                && reason
+                    .contains("analyzer settings Protocol on the host link screen: Alternate")),
+        "{audits:?}"
+    );
+    let installation = super::Installation::load(&install.config, install.seams())?;
+    let rows = machines::settings_rows(&installation)?;
+    let row = rows
+        .iter()
+        .find(|row| row.id == "vidas-1")
+        .ok_or("no row")?;
+    let json = serde_json::to_value(row)?;
+    assert_eq!(
+        json.get("choices"),
+        Some(&serde_json::json!([
+            {"name": "protocol_mode", "kind": "mode", "value": "alternate",
+             "suggested": "literal", "selected": true, "differs_from_suggestion": true},
+            {"name": "software_version", "kind": "software_version", "value": "v2",
+             "suggested": null, "selected": true, "differs_from_suggestion": true}
+        ]))
+    );
+    assert_eq!(
+        row.choices_words.as_deref(),
+        Some(concat!(
+            "Protocol on the host link screen: Alternate (acknowledge after ETX) ",
+            "(the manual suggests Literal (acknowledge after the checksum)); ",
+            "Software version on the About screen: Version 2 or later (sample IDs up to 17 ",
+            "characters) (the machine definition suggests none)"
+        ))
+    );
+    Ok(())
+}
+
+// ADR 0032 decision 3: an undeclared choice, a value off the declared list or
+// a malformed --choice is refused in the page's words and changes no file.
+#[tokio::test(flavor = "multi_thread")]
+async fn choice_options_refuse_what_the_model_does_not_offer() -> Result<(), Error> {
+    let install = install()?;
+    with_choices_model(&install)?;
+    install.set_up().await?;
+    assert_eq!(install.machines(&["add", "vidas-1"]).await?, Outcome::Done);
+    let before = install.settings()?;
+    let unknown = refusal(set_vidas(&install, &["--choice", "speed=fast"]).await)?;
+    assert!(
+        matches!(&unknown, SetupError::UnknownChoice(name) if name == "speed"),
+        "{unknown}"
+    );
+    let value = refusal(set_vidas(&install, &["--choice", "software_version=v9"]).await)?;
+    assert!(
+        value
+            .to_string()
+            .contains("choose software_version from its list: v1, v2"),
+        "{value}"
+    );
+    // The serial model declares no choices, so any --choice is refused there.
+    let serial = ["set", "cobas-1", "--choice", "protocol_mode=literal"];
+    let other = refusal(install.machines(&serial).await)?;
+    assert!(matches!(other, SetupError::UnknownChoice(_)), "{other}");
+    let malformed = install
+        .machines(&["set", "vidas-1", "--choice", "software_version"])
+        .await;
+    assert!(
+        matches!(&malformed, Err(Failure::Console(error)) if error.to_string().contains("NAME=VALUE")),
+        "{malformed:?}"
+    );
+    assert_eq!(install.settings()?, before);
+    Ok(())
+}

@@ -4,7 +4,7 @@
 //! [`save_blocking`] writes, under the write lock. The connection test finds its
 //! target here too, refusing a port or address a running machine uses.
 use super::{
-    Definition, Running, Setup, SetupError, Shipped, Via, cable, definitions,
+    Definition, Running, Setup, SetupError, Shipped, Via, cable, choices, definitions,
     lab_apps::{self, SiteLabApp},
     site,
     wizard::{self, listen},
@@ -105,26 +105,29 @@ pub(super) fn current_lab_app(
     }
 }
 
-/// A setup step posted for the test or the save: the CSRF value and the
-/// [`wizard::Draft`] fields. It holds no key.
+/// A setup step posted for the test or the save: the CSRF value, once, and
+/// the [`wizard::Draft`] fields. It holds no key.
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(try_from = "Vec<(String, String)>")]
 pub(in crate::admin) struct Choice {
-    #[expect(dead_code, reason = "the CSRF middleware has already checked it")]
-    csrf: String,
-    pub(super) definition: Option<String>,
-    pub(super) port: Option<String>,
-    pub(super) port_name: Option<String>,
-    pub(super) host: Option<String>,
-    pub(super) tcp_port: Option<String>,
-    pub(super) folder: Option<String>,
-    pub(super) lab_app: Option<String>,
-    pub(super) allowed_peers: Option<String>,
-    pub(super) baud: Option<String>,
-    pub(super) data_bits: Option<String>,
-    pub(super) parity: Option<String>,
-    pub(super) stop_bits: Option<String>,
-    pub(super) flow_control: Option<String>,
+    pub(super) draft: wizard::Draft,
+}
+
+impl TryFrom<Vec<(String, String)>> for Choice {
+    type Error = String;
+
+    fn try_from(mut fields: Vec<(String, String)>) -> Result<Self, Self::Error> {
+        // The CSRF middleware has already checked the value; it is required
+        // once, as the form writes it.
+        let before = fields.len();
+        fields.retain(|(name, _)| name != "csrf");
+        if before.checked_sub(fields.len()) != Some(1) {
+            return Err("the csrf field is required once".into());
+        }
+        Ok(Self {
+            draft: wizard::Draft::try_from(fields)?,
+        })
+    }
 }
 
 /// The devices the draft lets connect (ADR 0026): addresses typed with
@@ -255,13 +258,14 @@ pub(super) fn plan(setup: &Setup, id: &str, draft: &wizard::Draft) -> Result<Pla
     let connection = connection_of(kind, draft)?;
     let peers = peers_of(kind, draft)?;
     let serial = serial_of(kind, &definition, draft)?;
+    let chosen = choices::chosen(draft, &choices::declared(&definition))?;
     let lab_app = Identifier::new(draft.lab_app.as_deref().unwrap_or_default().trim())
         .map_err(|_| SetupError::NoLabAppChosen)?;
     let current = crate::installation::config::read(&installed.site)?;
     let scan = lab_apps::scan(setup.config())?;
     let candidate = site::candidate(
         &current,
-        (&connection, peers.as_ref(), serial.as_ref()),
+        (&connection, peers.as_ref(), serial.as_ref(), &chosen),
         &lab_app,
         &scan.file,
         &scan.settings(),
@@ -298,6 +302,12 @@ impl Plan {
         cable::of(effective.stack())
             .map(|serial| cable::summary(serial, effective.serial_suggestion()))
     }
+
+    /// The model's own choices in words, with what differs from the
+    /// definition's suggestion; none when it declares none (ADR 0032).
+    pub(super) fn choices(&self) -> Option<String> {
+        choices::summary(self.validated.effective().choices())
+    }
 }
 
 /// What a save wrote, for the page, the command line and the audit row.
@@ -313,6 +323,8 @@ pub(super) struct Saved {
     /// The serial cable settings in words, with what differs from the
     /// definition's suggestion; none for other links.
     pub(super) cable: Option<String>,
+    /// The model's own choices in words; none when it declares none.
+    pub(super) choices: Option<String>,
     /// The save moved a lab app into `lab-apps.toml`.
     pub(super) moved: bool,
     pub(super) backups: Vec<PathBuf>,
@@ -322,12 +334,16 @@ impl Saved {
     /// The audit reason: the connection and the lab app saved through `via`.
     pub(super) fn reason(&self, via: Via) -> String {
         format!(
-            "{} saved: {}{}, lab app {} ({}){}",
+            "{} saved: {}{}{}, lab app {} ({}){}",
             via.machines(),
             site::describe(&self.connection),
             self.cable
                 .as_deref()
                 .map(|cable| format!(", cable {cable}"))
+                .unwrap_or_default(),
+            self.choices
+                .as_deref()
+                .map(|choices| format!(", analyzer settings {choices}"))
                 .unwrap_or_default(),
             self.lab_app.name.as_str(),
             self.lab_app.base_url.as_str(),
@@ -357,6 +373,7 @@ pub(super) fn save_blocking(
     let plan = checked(setup, id, draft)?;
     let moved = plan.lab_apps.is_some();
     let cable = plan.cable();
+    let choices = plan.choices();
     let written = site::apply(
         setup.config(),
         &plan.program,
@@ -373,6 +390,7 @@ pub(super) fn save_blocking(
         peers: plan.peers,
         lab_app: plan.validated.effective().site().destination.clone(),
         cable,
+        choices,
         moved,
         backups: written.backups,
     })

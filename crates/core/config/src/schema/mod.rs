@@ -22,6 +22,12 @@ pub use departures::{
 };
 mod refusal;
 pub use refusal::DepartureRefusal;
+mod choices;
+pub use choices::{
+    ChoiceBlock, ChoiceKind, ChoiceLabel, ChoiceName, ChoiceSelections, ChoiceValue,
+    MAX_CHOICE_COMBINATIONS, MAX_CHOICE_VALUES, MAX_CHOICES, MachineChoice, OrdersSwitch,
+    VidasChoice,
+};
 
 /// Declared evidence; loading never promotes it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -506,6 +512,10 @@ pub(crate) struct MachineDocument {
     /// Installed applicability, required when departures are declared.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub departure_scope: Option<DepartureScope>,
+    /// The choices the lab makes in Setup (ADR 0032); none in the snapshot,
+    /// which holds the definition with the chosen values applied.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub choices: Vec<MachineChoice>,
     /// Declared evidence.
     pub evidence: Evidence,
 }
@@ -594,18 +604,30 @@ pub(crate) struct SiteFile {
     /// snapshot, which holds the resolved values under `transport.serial`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     serial: Option<SerialValues>,
+    /// The lab's value for each choice the definition declares (ADR 0032);
+    /// the snapshot holds the resolved values under its own `choices`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    choices: Option<ChoiceSelections>,
+}
+
+/// What the lab chose in its site file beside the site settings: the serial
+/// cable (ADR 0031) and the definition's choices (ADR 0032).
+#[derive(Debug, Clone, Default)]
+pub(crate) struct LabChoices {
+    pub(crate) serial: Option<SerialValues>,
+    pub(crate) choices: ChoiceSelections,
 }
 
 impl SiteFile {
     /// Refuses a site file that sets both endpoint forms or neither, and resolves
     /// its lab app: its own `[destination]`, the named `lab_app`, or the only lab
     /// app in `lab_apps`. Several lab apps without a choice are refused. The
-    /// lab's serial choice comes back beside the site.
+    /// lab's serial and definition choices come back beside the site.
     pub(crate) fn into_site(
         self,
         path: &str,
         lab_apps: &crate::LabApps,
-    ) -> Result<(Site, crate::LabAppSource, Option<SerialValues>), crate::Error> {
+    ) -> Result<(Site, crate::LabAppSource, LabChoices), crate::Error> {
         let (destination, source) =
             lab_apps.resolve(path, self.destination, self.lab_app.as_ref())?;
         Ok((
@@ -618,7 +640,10 @@ impl SiteFile {
                 time_zone: self.time_zone,
             },
             source,
-            self.serial,
+            LabChoices {
+                serial: self.serial,
+                choices: self.choices.unwrap_or_default(),
+            },
         ))
     }
 }
@@ -639,6 +664,7 @@ impl From<Site> for SiteFile {
             lab_app: None,
             time_zone: site.time_zone,
             serial: None,
+            choices: None,
         }
     }
 }

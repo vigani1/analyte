@@ -62,6 +62,9 @@ pub(super) struct Machine {
     /// Its serial cable settings in words, with what differs from the
     /// model's suggestion; none unless it is on a serial cable (ADR 0031).
     pub(super) cable: Option<String>,
+    /// Its model's own choices in words, with what differs from the model's
+    /// suggestion; none when the model declares none (ADR 0032).
+    pub(super) choices: Option<String>,
     /// The lab app it sends to.
     pub(super) lab_app: Identifier,
 }
@@ -228,6 +231,7 @@ pub(crate) async fn prepare(
                 cable: super::setup::cable::of(effective.stack()).map(|serial| {
                     super::setup::cable::summary(serial, effective.serial_suggestion())
                 }),
+                choices: super::setup::choices::summary(effective.choices()),
                 lab_app: effective.site().destination.name.clone(),
             })
         })
