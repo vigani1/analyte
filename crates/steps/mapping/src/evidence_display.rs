@@ -86,7 +86,7 @@ const READABLE: [Problem; 17] = [
     Problem::DerivedStatusContract,
     Problem::ComponentParts,
     Problem::MissingSample,
-    Problem::UnknownTest,
+    Problem::MissingTest,
     Problem::UnsupportedValue,
     Problem::UnsupportedFormatting,
     Problem::UnsupportedEscape,
@@ -143,7 +143,7 @@ impl fmt::Display for Problem {
             Self::DerivedStatusContract => f.write_str("DerivedStatusContract"),
             Self::ComponentParts => f.write_str("ComponentParts"),
             Self::MissingSample => f.write_str("MissingSample"),
-            Self::UnknownTest => f.write_str("UnknownTest"),
+            Self::MissingTest => f.write_str("MissingTest"),
             Self::UnsupportedValue => f.write_str("UnsupportedValue"),
             Self::UnsupportedFormatting => f.write_str("UnsupportedFormatting"),
             Self::UnsupportedEscape => f.write_str("UnsupportedEscape"),
@@ -186,8 +186,6 @@ pub enum Unidentified {
         /// Where it should have been.
         position: Position,
     },
-    /// The test code has no unique translation in the test mapping.
-    UnknownTest,
     /// Autolyser Rev18 sends no run identity that never changes, and its
     /// patient code is not a trusted sample identity.
     AutolyserRun,
@@ -209,10 +207,8 @@ const MISSING_FIELD: &str = " field ";
 
 impl Unidentified {
     /// Whether `finding` already names the cause of this reason, so the reason
-    /// adds nothing for an operator. The mapper gives a result without a test
-    /// mapping the reason [`Unidentified::UnknownTest`] next to an
-    /// [`Problem::UnknownTest`] finding, and a missing identity value the reason
-    /// [`Unidentified::Missing`] next to the finding at the same place.
+    /// adds nothing for an operator. The mapper gives a missing identity value
+    /// the reason [`Unidentified::Missing`] next to the finding at the same place.
     #[must_use]
     pub fn restates(&self, finding: &Finding) -> bool {
         match self {
@@ -220,7 +216,6 @@ impl Unidentified {
                 finding.position == *position
                     && finding.problem == Problem::MissingIdentity { setting: *setting }
             }
-            Self::UnknownTest => finding.problem == Problem::UnknownTest,
             Self::AutolyserRun
             | Self::PoctRepeated
             | Self::PoctEvidence
@@ -230,8 +225,7 @@ impl Unidentified {
     }
 
     /// Every reason without a position, for reading back.
-    const FIXED: [Self; 6] = [
-        Self::UnknownTest,
+    const FIXED: [Self; 5] = [
         Self::AutolyserRun,
         Self::PoctRepeated,
         Self::PoctEvidence,
@@ -269,7 +263,6 @@ impl fmt::Display for Unidentified {
                 "{MISSING_OPEN}{setting}{MISSING_RECORD}{}{MISSING_FIELD}{}",
                 position.record, position.field
             ),
-            Self::UnknownTest => f.write_str("unknown test mapping"),
             Self::AutolyserRun => f.write_str(concat!(
                 "Autolyser Rev18 has no immutable run identity; ",
                 "patient code is not trusted specimen identity",
@@ -310,7 +303,7 @@ mod tests {
             (Problem::DerivedStatusContract, "DerivedStatusContract"),
             (Problem::ComponentParts, "ComponentParts"),
             (Problem::MissingSample, "MissingSample"),
-            (Problem::UnknownTest, "UnknownTest"),
+            (Problem::MissingTest, "MissingTest"),
             (Problem::UnsupportedValue, "UnsupportedValue"),
             (Problem::UnsupportedFormatting, "UnsupportedFormatting"),
             (Problem::UnsupportedEscape, "UnsupportedEscape"),
@@ -398,8 +391,8 @@ mod tests {
             ("", vec![]),
             ("no position here", vec![Text("no position here")]),
             (
-                "Position { record: 3, field: 3 }: UnknownTest",
-                vec![at(3, 3), Text(": UnknownTest")],
+                "Position { record: 3, field: 3 }: MissingTest",
+                vec![at(3, 3), Text(": MissingTest")],
             ),
             (
                 "departure-conflict at Position { record: 3, field: 25 }: present",
@@ -446,16 +439,16 @@ mod tests {
         );
         for text in [
             "",
-            "UnknownTest",
+            "MissingTest",
             "Position { record: 3, field: 3 }",
-            "Position { record: 3, field: 3 }: UnknownTest ",
-            "Position { record: 3, field: 3 }:UnknownTest",
-            "Position { record: 03, field: 3 }: UnknownTest",
-            "Position { record: +3, field: 3 }: UnknownTest",
-            "Position { record: , field: 3 }: UnknownTest",
-            "Position { record: 99999999999999999999999, field: 3 }: UnknownTest",
-            "x Position { record: 3, field: 3 }: UnknownTest",
-            "Position { record: 3, field: 3 }: unknowntest",
+            "Position { record: 3, field: 3 }: MissingTest ",
+            "Position { record: 3, field: 3 }:MissingTest",
+            "Position { record: 03, field: 3 }: MissingTest",
+            "Position { record: +3, field: 3 }: MissingTest",
+            "Position { record: , field: 3 }: MissingTest",
+            "Position { record: 99999999999999999999999, field: 3 }: MissingTest",
+            "x Position { record: 3, field: 3 }: MissingTest",
+            "Position { record: 3, field: 3 }: missingtest",
             "departure-conflict at Position { record: 3, field: 3 }: present non-final status",
         ] {
             assert_eq!(Finding::from_stored(text), None, "{text}");
@@ -482,7 +475,6 @@ mod tests {
                 },
                 "missing identity LAW AWOS/analyzer order authority or OG at record 4 field 0",
             ),
-            (Unidentified::UnknownTest, "unknown test mapping"),
             (
                 Unidentified::AutolyserRun,
                 concat!(
@@ -520,6 +512,8 @@ mod tests {
             "missing identity other at record 3 field 2",
             "missing identity order_id at record 3 field 2 ",
             "unknown test mapping.",
+            // ADR 0029 removed the test table, so this reason no longer exists.
+            "unknown test mapping",
         ] {
             assert_eq!(Unidentified::from_stored(text), None, "{text}");
         }
@@ -537,10 +531,8 @@ mod tests {
             setting: order,
             position: at(3, 2),
         };
-        let unknown = finding(at(4, 3), Problem::UnknownTest);
+        let unknown = finding(at(4, 3), Problem::MissingTest);
         let absent = finding(at(3, 2), Problem::MissingIdentity { setting: order });
-        assert!(Unidentified::UnknownTest.restates(&unknown));
-        assert!(!Unidentified::UnknownTest.restates(&absent));
         assert!(missing.restates(&absent));
         assert!(!missing.restates(&unknown));
         assert!(!missing.restates(&finding(

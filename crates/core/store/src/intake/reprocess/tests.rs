@@ -11,7 +11,7 @@ fn reprocessing_keeps_provenance_and_rolls_back_atomically() -> TestResult {
     let metadata = receipt(b"original")?;
     store.receive(&metadata, b"original", b"config")?;
     let mut original = interpretation()?;
-    original.outcome = Reading::Failed(Reason::new("test mapping missing")?);
+    original.outcome = Reading::Failed(Reason::new("order ID selector wrong")?);
     store
         .reconcile(
             ReconcileAction::Interpret(metadata.id),
@@ -37,7 +37,7 @@ fn reprocessing_keeps_provenance_and_rolls_back_atomically() -> TestResult {
             action: Identifier::new("receipt-reprocess")?,
             targets: vec![],
             time: 42,
-            reason: Reason::new("test mapping repaired")?,
+            reason: Reason::new("order ID selector repaired")?,
         },
     };
     store.db.execute_batch("CREATE TRIGGER fail_reprocess_audit BEFORE INSERT ON audit BEGIN SELECT RAISE(ABORT,'synthetic audit failure'); END;")?;

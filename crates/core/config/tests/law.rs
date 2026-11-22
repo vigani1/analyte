@@ -179,9 +179,11 @@ fn work_requires_bindings_and_allows_send_ahead() -> Result<(), Error> {
             "container_namespace = \"LAB\"",
             "container_namespace = \"L^AB\"",
         ),
+        // ADR 0029: OBR-4 writes the machine's code system, so it must fit.
+        text.rewrite("test_system = \"99LAB\"", "test_system = \"99|LAB\""),
         text.rewrite(
-            "[\"SYN\",\"Synthetic\",\"99LAB\"]",
-            "[\"SYN|bad\",\"Synthetic\",\"99LAB\"]",
+            "test_system = \"99LAB\"",
+            "test_system = \"99LAB-TOO-LONG\"",
         ),
         text.rewrite(
             "specimen_types = [{app={namespace=\"types\",value=\"SERUM\"},machine=\"SER\"}]",

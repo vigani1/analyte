@@ -6,7 +6,8 @@ one when a link points to it or before changing what it decided.
 One file per hard-to-reverse decision, named `NNNN-short-title.md`, about half
 a page: context, decision, why, consequences and status. Protocol detail lives
 in [docs/protocols/](../protocols/README.md). A superseded record stays and
-links to its replacement; none is superseded today.
+links to its replacement; none is superseded today. A record whose part a
+later one changes says "Changed by" in its status line and beside the part.
 
 | ADR                                             | Decision                                           |
 | ----------------------------------------------- | -------------------------------------------------- |
@@ -38,3 +39,4 @@ links to its replacement; none is superseded today.
 | [0026](0026-accept-only-the-machine.md)         | A listening machine accepts only its own device    |
 | [0027](0027-command-line-asks-the-engine.md)    | The command line asks the running engine for the verdict |
 | [0028](0028-lab-app-keys-through-the-engine.md) | Lab app keys from the command line through the running engine (refines ADR 0025) |
+| [0029](0029-lab-app-owns-test-names.md)         | The lab app owns test names (changes ADRs 0002, 0003, 0008, 0024) |

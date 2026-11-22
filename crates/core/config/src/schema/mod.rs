@@ -8,8 +8,8 @@ use analyte_model::Identifier;
 use serde::{Deserialize, Serialize};
 mod mappings;
 pub use mappings::{
-    ComponentParts, Field, IdentityEvidence, Mappings, NoSubId, OrderNamespace, QcRule,
-    SampleSelection, SubId, TestMapping, UnitMapping,
+    AstmTestComponent, ComponentParts, Field, IdentityEvidence, Mappings, NoSubId, OrderNamespace,
+    QcRule, SampleSelection, SubId, UnitMapping, ValueExpectation,
 };
 mod poct;
 pub use poct::Poct;
@@ -552,12 +552,12 @@ pub struct Overrides {
     pub destination: Option<Destination>,
 }
 
-/// Shared exact test and unit translations for vendor protocols.
+/// The machine's code system and unit spellings for vendor protocols.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CodeTables {
-    /// Source system and code to application code.
-    pub tests: Vec<TestMapping>,
+    /// The machine's own test code system (ADR 0029); vendor messages name none.
+    pub test_system: Identifier,
     /// Original unit to explicit UCUM spelling.
     pub units: Vec<UnitMapping>,
 }

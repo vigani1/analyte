@@ -135,7 +135,7 @@ async fn found_query_reserves_before_dsr_sends_once() -> Result<(), Error> {
         let dsr = read_mllp_packet(&mut peer, "oversized HL7 response").await?;
         assert!(
             text(&dsr)?.contains(
-                "DSP|1||000Ab12\rDSP|2||SEND\rDSP|3||R\rDSP|4||\rDSP|5||order-1\rDSP|6||\r"
+                "DSP|1||000Ab12\rDSP|2||TEST\rDSP|3||R\rDSP|4||\rDSP|5||order-1\rDSP|6||\r"
             )
         );
         state(&path, "Sending").await?;

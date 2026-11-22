@@ -123,9 +123,6 @@ fn map_checked(
 /// Specific outgoing HL7 mapping refusals.
 #[derive(Debug, thiserror::Error)]
 pub enum OrderError {
-    /// HL7 display assay mapping has no component.
-    #[error("HL7 display assay mapping has no component")]
-    DisplayAssayComponents,
     /// HL7 display line violates repertoire, width or record limits.
     #[error("HL7 display line violates repertoire, width or record limits")]
     DisplayLineBounds,
@@ -143,9 +140,6 @@ pub enum WireError {
     /// Requested priority has no supported wire representation.
     #[error("HL7-unsupported-priority")]
     PriorityUnsupported,
-    /// Test components cannot be represented by the configured grammar.
-    #[error("HL7-test-components")]
-    TestComponents,
     /// HL7-patient-name-required-but-not-carried-by-contract.
     #[error("HL7-patient-name-required-but-not-carried-by-contract")]
     PatientNameRequired,
@@ -170,9 +164,9 @@ pub enum WireError {
     /// HL7-missing-specimen-type.
     #[error("HL7-missing-specimen-type")]
     SpecimenTypeMissing,
-    /// HL7-unmapped-test.
-    #[error("HL7-unmapped-test")]
-    UnmappedTest(#[source] crate::OrderMappingError),
+    /// HL7-test-not-in-machine-code-system.
+    #[error("HL7-test-not-in-machine-code-system")]
+    ForeignTest(#[source] crate::OrderMappingError),
     /// HL7-unmapped-specimen-type.
     #[error("HL7-unmapped-specimen-type")]
     UnmappedSpecimenType(#[source] crate::OrderMappingError),

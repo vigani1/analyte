@@ -210,7 +210,10 @@ The one new public read, pending_orders, shares the existing age predicate with
 SampleId lookup and reservations, and shares the restore-aware lookup gate.
 No schema or contract changed.
 
-Config requires explicit `[law.work]` bindings plus shared `[orders]` translations.
+Config requires explicit `[law.work]` bindings plus shared `[orders]` specimen
+and priority translations. OBR-4 is the order's own code, the lab app's
+required name and `mappings.test_system` (ADR 0029); an order test without a
+name is rejected (`unnamed_send_is_rejected_before_reservation`).
 Configuration permits explicit send-ahead; test: `crates/core/config/tests/law.rs::work_requires_bindings_and_allows_send_ahead`.
 Results-only configuration still returns a query error without work.
 
@@ -238,7 +241,7 @@ run the program with temporary stores and the reference receiver.
 - [x] Restart during Sending or admitted CancelRequested recovers retained items as Uncertain, never repeats work or cancel bytes (ADR 0003 rule 8). Test: `restart_mid_send_or_cancel_never_resends`. The shared startup recovery now covers both states.
 - [x] An answered LAB-27 query and a correlated LAB-28 ORL (positive or negative followup) are recorded as handled, with no results, right after their answer or item outcomes commit. Startup recovery leaves them alone; a query stored but never answered is still recovered and parked with its MSH-21 reason (TF-2b 3.27/3.28; ADR 0003 rule 2; ADR 0016 recovery). Test: `restart_never_reparks_answered_query_or_orl`.
 - [x] Shared restore pause blocks both new work and cancel admission (ADR 0003, TF-2b 3.28.4). Test: `restore_pause_blocks_send_ahead_and_cancel`. Cancellation still rechecks the fresh trusted feed inside the shared transaction.
-- [x] An unmapped command is retained as Rejected without Sending or bytes (TF-2b 3.28.4; ADR 0003). Test: `unmapped_send_is_rejected_before_reservation`.
+- [x] A command with a test outside the machine's code system, or without the name OBR-4.2 requires, is retained as Rejected without Sending or bytes (TF-2b 3.28.4; ADR 0003; ADR 0029). Tests: `foreign_send_is_rejected_before_reservation`, `unnamed_send_is_rejected_before_reservation`.
 - [x] Independent directional connections and per-transaction outbound lifetime (TF-2b B.6, pp.79-80). Tests: `independent_query_followup_survives_inbound_close`, `independent_failed_link_never_replays_on_restart`, `independent_restore_pause_sends_no_work`, `independent_send_ahead_and_cancel_keep_awos`. Query follow-up ownership leaves the inbound session before a positive RSP; the outbound owner waits for RSP issuance, then dials once. Disconnect, failed connection, cancellation or expiration settles owned reservations without resend. Persistent mode remains selectable.
 - [ ] Complete LAW actor qualification: remaining enhanced work groups/options and a recorded Gazelle run. Receive/send/query/ORL deadlines and both topologies have source-named local tests.
 

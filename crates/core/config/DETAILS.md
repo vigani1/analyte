@@ -50,6 +50,17 @@ identity evidence explicitly leaves reconciliation unresolved; no identity is
 invented. Unit tables translate exact spelling only and never change numbers.
 QC equality rules carry classification evidence, not acceptance decisions.
 
+There is no test table ([ADR 0029](../../../docs/adr/0029-lab-app-owns-test-names.md)):
+the lab app owns test names and lists. `[mappings] test_system` (and
+`[codes] test_system` for vendor formats) is required and names the machine's
+own code system: the namespace of every result code whose message names none,
+and the only namespace order tests may use. ASTM also requires
+`test_component = "universal" | "manufacturer"` (R.3 component 1 or 4, LIS02
+§5.6.1); other stacks refuse it. Optional `value_kinds` entries
+(`{code, system?, kind}`) say which kind of value a machine code carries;
+`kind` is `numeric` or `coded`, entries are unique per system and code, and
+an entry without `system` applies to `test_system`.
+
 After validation, `Effective::stack()` is the single runtime protocol selection.
 `Stack` has `Astm`, `Hl7`, `Law`, `Poct`, `Vidas`, `Autolyser`,
 ASTM and HL7 variants with a `RecordTransport::Folder` selection. Each carries only its supported transport,
@@ -59,8 +70,8 @@ serial or file transport. Folder stacks cannot enter a stream dialog.
 
 The public validated `Machine` contains identity, deviations and evidence;
 protocol sections are accessed through `Stack`, not optional sibling fields.
-`tests()` and `units()` return that stack's required tables without an absent-table
-fallback. Optional order capabilities remain legitimate: omission disables the
+`test_system()` and `units()` return that stack's code system and unit table
+without an absent-table fallback. Optional order capabilities remain legitimate: omission disables the
 capability; an enabled capability carries its required layout and namespace.
 HL7 processing IDs, fixed priority codes and VIDAS sample limits are typed.
 Custom ASTM priority spelling remains configurable.
@@ -105,7 +116,8 @@ error; selected evidence missing from a message remains unresolved in mapping.
 
 Vendor receive examples are `examples/poct.toml`, `examples/vidas_literal.toml`
 and `examples/autolyser.toml`. They require explicit installed policies and use
-`[codes]` for exact test/unit translations instead of field-position `[mappings]`.
+`[codes]` (the machine's `test_system` and exact unit translations) instead of
+field-position `[mappings]`.
 Incompatible stacks and vendor field mappings have distinct typed errors.
 All three examples remain synthetic and documented. Outbound permissions and
 patient-namespace rules are owned by [program orders](../../analyte/ORDERS.md);
@@ -118,15 +130,17 @@ also requires the vendor's explicit `download = true` permission. A clone
 setting on another stack, or a patient namespace on the current ASTM layout
 (which has no patient field), is rejected with the setting's qualified key.
 
-VIDAS outbound test mappings require one printable 1-4 byte assay code, without
-pipes. The stack has no specimen-type tag; supplied specimen types are rejected
+VIDAS order tests are sent as written when their namespace is the machine's
+`test_system`; a code that is not 1-4 printable bytes without a pipe is
+rejected when the order is mapped. The stack has no specimen-type tag; supplied specimen types are rejected
 rather than misusing the origin or specimen-start tags. App patient IDs must
 match `patient_namespace` exactly before their values enter the vendor field.
 
 Autolyser `[orders] specimen_types` maps exact app namespace/value pairs to
 `S` (serum) or `U` (urine); absent tables map no values. Duplicate pairs, unknown
-medium codes and empty supplied tables are rejected. Autolyser analysis codes
-must occupy exactly four printable bytes; list mappings use only `T` or `R`.
+medium codes and empty supplied tables are rejected. An Autolyser order code
+must be exactly four printable bytes as the lab app wrote it (Analyte never
+pads it), or the order is rejected; list mappings use only `T` or `R`.
 Missing patient, specimen medium or cup position in an app order produces a
 specific rejection before reservation or transmission. Cup zero is never inferred.
 
@@ -141,12 +155,11 @@ application-ACK deadline are all explicit and validated. Unsupported filters
 never become empty work. HL7 requires the error policy for untrusted lookups;
 this interface does not enable ORM/OML send-ahead or cancellations.
 
-Optional `[mappings.component_parts]` decomposes one component of ASTM R.3
-(LIS02 5.6.1). For example:
+Optional `[mappings.component_parts]` decomposes the ASTM R.3 component that
+`test_component` names (LIS02 5.6.1). For example:
 
 ```toml
 [mappings.component_parts]
-component = 4
 separator = "/"
 count = 2
 code = 1
@@ -156,26 +169,30 @@ dilution = 2
 Positions are one-based, bounded to 1024. The separator is one character and
 cannot be a protocol delimiter or control character. The exact part count is
 required; empty parts count. Missing/extra parts park the receipt with a located
-finding. This selection replaces the normal universal/manufacturer code lookup.
-Omission preserves that lookup. The dilution part is optional and is retained
+finding. The code part is then the test code. The dilution part is optional and is retained
 exactly, including empty text; only an exact decimal supplies a factor. Ratios
 are never interpreted. Application state remains Unknown unless optional
 `applied = { field = <selector>, yes = "Y", no = "N" }` matches a source field
 exactly. Other codes stay Unknown. Yes/no must differ; applied requires dilution.
 
-Each `mappings.tests` entry optionally declares `value_kind = "numeric"`,
-`"coded"` or `"either"`. Omission defaults to `either`, preserving current
-ASTM/HL7 behavior. Numeric requires a parsed number; coded accepts nonempty
-qualitative text or a coded value, not a plain number. Mismatches retain the
-original value and park with `ValueKindMismatch`. No clinical decisions or
-numeric conversions are performed.
+A `mappings.value_kinds` entry requires a numeric or coded value for its code;
+a code without an entry is not checked. Numeric requires a parsed number;
+coded accepts nonempty qualitative text or a coded value, not a plain number.
+Mismatches retain the original value and park with `ValueKindMismatch`. No
+clinical decisions or numeric conversions are performed.
+
+`[orders]` has no test table. `[orders.astm] test` names the component each
+order code goes in, and optional `test_components` (at least that component,
+at most the syntax limit) keeps empty components after it.
 
 
 HL7 unsolicited orders additionally require `[orders.hl7_send]`, `send_ahead`
 and `placer_namespace`; see [the teaching interface](examples/hl7_send.toml).
 The configured edition selects ORM/O01 or OML/O21. Header applications,
-processing, specimen placement and response deadline are explicit. Test
-components are code/text/system. Position output is available only in ORM's
+processing, specimen placement and response deadline are explicit. OBR-4 is
+the order's code, the lab app's optional name and `mappings.test_system`
+(plain, at most 20 bytes); CWE editions require `test_version` (at most 10
+bytes) and CE editions refuse it. Position output is available only in ORM's
 other placer-owned OBR field; an OML position mapping is refused.
 
 ## LAW configuration (results, queries and work)
@@ -194,7 +211,9 @@ implicitly enabled. Local overrides may replace the whole `[law]` policy.
 Container queries use the existing SampleId lookup; all-pending is scoped to
 this analyzer. Append `examples/law_orders.toml` to the LAW definition to enable
 queries and their LAB-28 followups. It declares `[law.work]` headers, explicit
-sample/specimen bindings and shared `[orders]` translations. Without that layout,
+sample/specimen bindings and shared `[orders]` specimen and priority
+translations; OBR-4 carries the order's code, the lab app's required name and
+`mappings.test_system` (plain, at most 12 bytes). Without that layout,
 query execution remains disabled. Isolate/parent and rack/tray-position queries
 receive QAK AR (unsupported query), never no-work.
 Isolate/parent needs app-supplied identities in a future contract version.

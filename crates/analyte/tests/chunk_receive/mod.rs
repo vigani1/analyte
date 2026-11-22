@@ -290,7 +290,9 @@ impl Running {
         Ok(())
     }
 
-    fn no_results(&self) -> Result<(), Error> {
+    /// Every stored result part names exactly this test: the machine's own
+    /// code, as sent, in `namespace` (ADR 0029).
+    fn result_test(&self, namespace: &str, value: &str) -> Result<(), Error> {
         let db = self.database()?;
         let mut statement = db.prepare("SELECT evidence FROM interpretations")?;
         let mut found = false;
@@ -298,21 +300,26 @@ impl Running {
             let interpretation: analyte_store::Interpretation = serde_json::from_str(&row?)?;
             match interpretation.outcome {
                 analyte_store::Reading::Results(results) => {
-                    assert!(results.is_empty());
-                    found = true;
+                    for result in results {
+                        for part in result.parts.as_slice() {
+                            assert_eq!(part.test.namespace.as_str(), namespace);
+                            assert_eq!(part.test.value.as_str(), value);
+                            found = true;
+                        }
+                    }
                 }
                 analyte_store::Reading::Failed(_) => {
-                    return Err("unknown test must use the mapping-finding path".into());
+                    return Err("an unlisted code must still be read".into());
                 }
             }
         }
         assert!(found);
-        let alternate: i64 = db.query_row(
-            "SELECT count(*) FROM parked WHERE evidence LIKE '%unknown_vendor_test%'",
+        let unknown: i64 = db.query_row(
+            "SELECT count(*) FROM parked WHERE evidence LIKE '%UnknownTest%' OR evidence LIKE '%MissingTest%'",
             [],
             |row| row.get(0),
         )?;
-        assert_eq!(alternate, 0);
+        assert_eq!(unknown, 0);
         Ok(())
     }
 

@@ -138,9 +138,11 @@ async fn autolyser_uncertain_r_blocks_restart_until_reconciled() -> Result<(), E
     run.close().await
 }
 
-// VIDAS Literal protocol; Safety rule 2 (ADR 0003)
+// VIDAS Literal protocol; ADR 0029 (changes Safety rule 2's unknown-test
+// case): an assay code no table lists passes through as sent. The result
+// still parks for VIDAS's own missing identity, never for its code.
 #[tokio::test]
-async fn vidas_unknown_test_is_parked_for_operator() -> Result<(), Error> {
+async fn vidas_unlisted_assay_code_passes_through() -> Result<(), Error> {
     let mut run = Running::start(include_str!(
         "../../../core/config/examples/vidas_literal.toml"
     ))
@@ -150,16 +152,18 @@ async fn vidas_unknown_test_is_parked_for_operator() -> Result<(), Error> {
     let packet = vidas_config()?.encode(b"mtrsl|pi|si|ci00012a|rtMISS|tt|td|qlpositive|qn<0.1|")?;
     run.peer.write_all(&packet).await?;
     assert_eq!(byte(&mut run.peer).await?, 6);
-    run.parked("UnknownTest").await?;
+    run.parked("VIDAS Literal lacks trusted result/run identity")
+        .await?;
     run.stored(&packet, "analyte-vidas")?;
-    run.no_results()?;
+    run.result_test("synthetic", "MISS")?;
     run.peer.write_all(&[3, 4]).await?;
     run.close().await
 }
 
-// Autolyser manual Rev18; Safety rule 2 (ADR 0003)
+// Autolyser manual Rev18; ADR 0029: an unlisted analysis code passes through
+// as sent; the result parks only for the Autolyser's missing run identity.
 #[tokio::test]
-async fn autolyser_unknown_test_is_parked_for_operator() -> Result<(), Error> {
+async fn autolyser_unlisted_analysis_code_passes_through() -> Result<(), Error> {
     use analyte_autolyser::syntax::{Field, Report};
     let mut run =
         Running::start(include_str!("../../../core/config/examples/autolyser.toml")).await?;
@@ -176,15 +180,17 @@ async fn autolyser_unknown_test_is_parked_for_operator() -> Result<(), Error> {
     .raw;
     let raw = analyte_framing::autolyser::encode(raw);
     run.peer.write_all(&raw).await?;
-    run.parked("UnknownTest").await?;
+    run.parked("Autolyser Rev18 has no immutable run identity")
+        .await?;
     run.stored(&raw, "analyte-autolyser")?;
-    run.no_results()?;
+    run.result_test("synthetic", "MISS")?;
     run.close().await
 }
 
-// CLSI POCT01-A2 §B.6; Safety rule 2 (ADR 0003)
+// CLSI POCT01-A2 §B.6; ADR 0029: an unlisted analyte code passes through
+// with the code system the observation names.
 #[tokio::test]
-async fn poct_unknown_test_is_parked_for_operator() -> Result<(), Error> {
+async fn poct_unlisted_analyte_code_passes_through() -> Result<(), Error> {
     let mut run = Running::start(include_str!("../../../core/config/examples/poct.toml")).await?;
     run.peer
         .write_all(poct_peer::hello("hello").as_bytes())
@@ -199,9 +205,9 @@ async fn poct_unknown_test_is_parked_for_operator() -> Result<(), Error> {
         .rewrite("synthetic-analyte", "unknown-analyte");
     run.peer.write_all(raw.as_bytes()).await?;
     xml(&mut run.peer).await?;
-    run.parked("UnknownTest").await?;
+    run.parked("POCT service sequence may wrap").await?;
     run.stored(raw.as_bytes(), "analyte-poct")?;
-    run.no_results()?;
+    run.result_test("synthetic-system", "unknown-analyte")?;
     run.close().await
 }
 

@@ -1,4 +1,4 @@
-//! Tests configured outgoing orders and code mappings.
+//! Tests configured outgoing orders: layouts, priority and specimen tables.
 use analyte_config::{Draft, Validated};
 use analyte_fixtures::ConfigEdit as _;
 type TestResult = Result<(), Box<dyn std::error::Error>>;
@@ -15,8 +15,27 @@ fn config(section: &str) -> Result<Validated, analyte_config::Error> {
 #[test]
 fn bad_outbound_policy_and_deadline_are_rejected() -> TestResult {
     let section = include_str!("../examples/orders.toml");
-    for invalid in [section.rewrite("deadline_ms = 1000", "deadline_ms = 0"), section.rewrite("when_untrusted = \"error\"", ""), section.rewrite("send_ahead = true", ""), section.rewrite("machine_components=[\"\", \"\", \"\", \"SEND\"]}", "machine_components=[\"SEND\"]},{app={namespace=\"demo\",value=\"DEMO\"},machine_components=[\"OTHER\"]}")] {
-        { let Err(refusal) = config(&invalid) else { panic!("input must be refused") }; assert!(matches!(&refusal, analyte_config::Error::Schema { .. } | analyte_config::Error::Invalid { .. }), "unexpected refusal: {refusal:?}"); }
+    for invalid in [
+        section.rewrite("deadline_ms = 1000", "deadline_ms = 0"),
+        section.rewrite("when_untrusted = \"error\"", ""),
+        section.rewrite("send_ahead = true", ""),
+        section.rewrite(
+            "action_code = \"N\"",
+            "action_code = \"N\"\ntest_components = 3",
+        ),
+    ] {
+        {
+            let Err(refusal) = config(&invalid) else {
+                panic!("input must be refused")
+            };
+            assert!(
+                matches!(
+                    &refusal,
+                    analyte_config::Error::Schema { .. } | analyte_config::Error::Invalid { .. }
+                ),
+                "unexpected refusal: {refusal:?}"
+            );
+        }
     }
     let valid = config(section)?;
     assert!(valid.canonical().contains("[machine.orders]"));
@@ -36,7 +55,6 @@ const VENDOR_ORDERS: &str = r#"
 [orders]
 send_ahead = true
 patient_namespace = "synthetic-patients"
-tests = [{app={namespace="demo",value="DEMO"},machine_components=["SYN"]}]
 priorities = [{app="routine",machine="R"}]
 "#;
 
@@ -191,27 +209,8 @@ fn outbound_settings_cannot_apply_to_another_stack() -> TestResult {
     Ok(())
 }
 
-// VIDAS BCI Link rev A §4
-#[test]
-fn vidas_assay_codes_need_one_bounded_tag() -> TestResult {
-    let definition = include_str!("../examples/vidas_literal.toml")
-        .rewrite("download = false", "download = true");
-    for components in [r#"["ABCDE"]"#, r#"["A", "B"]"#, r#"["A|B"]"#] {
-        invalid_key(
-            vendor_config(
-                &definition,
-                &VENDOR_ORDERS.rewrite(r#"["SYN"]"#, components),
-            ),
-            "orders.tests",
-        );
-    }
-    Ok(())
-}
-
 fn autolyser_orders() -> String {
-    VENDOR_ORDERS
-        .rewrite(r#"["SYN"]"#, r#"["SYN "]"#)
-        .rewrite(r#"machine="R""#, r#"machine="T""#)
+    VENDOR_ORDERS.rewrite(r#"machine="R""#, r#"machine="T""#)
 }
 
 // Autolyser manual Rev18 chapter 23
@@ -235,10 +234,6 @@ fn autolyser_medium_and_analysis_tables_are_explicit() -> TestResult {
             "orders.specimen_types",
         );
     }
-    invalid_key(
-        vendor_config(&definition, &section.rewrite(r#"["SYN "]"#, r#"["SYN"]"#)),
-        "orders.tests",
-    );
     invalid_key(
         vendor_config(
             &definition,
@@ -421,9 +416,10 @@ fn hl7_send_requires_namespace_headers_codes_deadline() -> TestResult {
             ),
             "orders.hl7_send.position_field",
         ),
+        // ADR 0029: OBR-4 CE has no version; the edition here writes CE.
         (
-            section.rewrite(r#"["SYN","","L"]"#, r#"["SYN"]"#),
-            "orders.tests",
+            format!("{section}test_version = \"1\"\n"),
+            "orders.hl7_send.test_version",
         ),
     ] {
         invalid_key(vendor_config(definition, &invalid), key);

@@ -229,17 +229,14 @@ fn config_reports_registry_writer_blocker() {
 fn send_requires_explicit_table_revisions() {
     for edition in ["v26", "v282"] {
         let base = MACHINE.rewrite("edition = \"v251\"", &format!("edition = \"{edition}\""));
-        let send = include_str!("../examples/hl7_send.toml")
-            .rewrite(r#"["SYN","","L"]"#, r#"["SYN","","L","","","","test-r1"]"#);
-        let send = format!("{send}\npriority_version = \"prio-r1\"\n");
+        let send = include_str!("../examples/hl7_send.toml");
+        let send = format!("{send}\npriority_version = \"prio-r1\"\ntest_version = \"test-r1\"\n");
         for (settings, accepted) in [
             (send.clone(), true),
             (send.rewrite("priority_version = \"prio-r1\"", ""), false),
             (send.rewrite("specimen_version = \"1\"", ""), false),
-            (
-                send.rewrite(r#"["SYN","","L","","","","test-r1"]"#, r#"["SYN","","L"]"#),
-                false,
-            ),
+            // ADR 0029: the machine's code system revision is one setting.
+            (send.rewrite("test_version = \"test-r1\"", ""), false),
         ] {
             let machine = format!("{base}\n{settings}");
             let result = Draft::load(
@@ -251,6 +248,27 @@ fn send_requires_explicit_table_revisions() {
             .validate();
             assert_eq!(result.is_ok(), accepted, "{result:?}");
         }
+    }
+}
+
+// HL7 2.5.1 §2.A.7: CE has no coding-system version component, so an edition
+// that writes OBR-4 as CE refuses a test_version instead of dropping it.
+#[test]
+fn ce_editions_refuse_a_test_version() {
+    let send = include_str!("../examples/hl7_send.toml");
+    for (settings, accepted) in [
+        (send.to_owned(), true),
+        (format!("{send}\ntest_version = \"test-r1\"\n"), false),
+    ] {
+        let machine = format!("{MACHINE}\n{settings}");
+        let result = Draft::load(
+            ("synthetic.toml", &machine),
+            ("site.toml", SITE),
+            ("local.toml", "schema_version=1"),
+        )
+        .unwrap()
+        .validate();
+        assert_eq!(result.is_ok(), accepted, "{result:?}");
     }
 }
 

@@ -3,7 +3,7 @@ use crate::ParsedMachine;
 use crate::schema::law::validate;
 use crate::{
     Encoding, Error, EvidenceLevel, Field, MachineDocument, Mappings, NoSubId, OrderNamespace,
-    Site, SubId, TestMapping, Transport, TransportKind, UnitMapping, invalid,
+    Site, SubId, Transport, TransportKind, UnitMapping, ValueExpectation, ValueKind, invalid,
 };
 mod departures;
 mod mappings;

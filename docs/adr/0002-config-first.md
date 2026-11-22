@@ -1,6 +1,7 @@
 # 0002. Config first, code only where config cannot express it
 
-Status: accepted, 2026-11-15
+Status: accepted, 2026-11-15. Changed by [ADR 0029](0029-lab-app-owns-test-names.md): a machine's code
+mappings name its own code system, never the lab app's codes.
 
 ## Context
 
@@ -12,7 +13,9 @@ everything, it becomes a hidden programming language.
 ## Decision
 
 - A machine that speaks a supported protocol is a TOML config file: transport
-  settings, protocol options, field selection and code mappings.
+  settings, protocol options, field selection and code mappings. (Changed by
+  ADR 0029: the code mappings are the machine's own code system and the code
+  facts needed to read its messages; the lab app keeps the test list.)
 - Config is validated once, when loaded, with specific errors.
 - What config cannot express (a vendor framing, a polling dialog, an irregular
   record layout) becomes a small code piece in the right layer, never a special

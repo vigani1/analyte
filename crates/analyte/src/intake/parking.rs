@@ -46,10 +46,10 @@ impl<E: std::fmt::Display> From<Result<analyte_mapping::Output, E>> for Mapping 
 #[test]
 fn parked_reason_text_is_preserved_without_an_error_roundtrip() -> Result<(), TextError> {
     assert_eq!(
-        ParkReason::Diagnostic("source <0.1; UnknownTest".into())
+        ParkReason::Diagnostic("source <0.1; MissingTest".into())
             .into_reason()?
             .as_str(),
-        "source <0.1; UnknownTest"
+        "source <0.1; MissingTest"
     );
     assert_eq!(
         ParkReason::IncompleteDepartures(Reason::new("departure-evidence failure: exact detail")?)

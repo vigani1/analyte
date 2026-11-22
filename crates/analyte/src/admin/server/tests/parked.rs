@@ -103,7 +103,7 @@ async fn filters_count_open_and_resolved_and_show_each_with_its_own_look() -> Re
             let open = park(
                 s,
                 "mapping_finding",
-                "Position { record: 3, field: 3 }: UnknownTest",
+                "Position { record: 3, field: 3 }: MissingTest",
                 std::slice::from_ref(&receipt),
             )?;
             let other = park(
@@ -145,9 +145,11 @@ async fn filters_count_open_and_resolved_and_show_each_with_its_own_look() -> Re
         open.contains("<span class=\"status status--warn\" title=\"mapping_finding\">"),
         "{open}"
     );
-    assert!(open.contains("Test not in this machine’s test mapping</span>"));
-    assert!(open.contains("<p class=\"muted text\">The test code in record 3, field 3 is not in this machine’s test mapping.</p>"));
-    assert!(!open.contains("UnknownTest"), "no enum names on the list");
+    assert!(open.contains("Test code missing</span>"));
+    assert!(open.contains(
+        "<p class=\"muted text\">The machine sent no test code in record 3, field 3.</p>"
+    ));
+    assert!(!open.contains("MissingTest"), "no enum names on the list");
     assert!(open.contains("<p class=\"muted text\">Reason: version 2 is older</p>"));
     assert!(
         !open.contains("lab app holds different content"),
@@ -248,7 +250,7 @@ async fn item_page_shows_the_message_and_its_history_from_the_audit() -> Result<
             let item = park(
                 s,
                 "mapping_finding",
-                "Position { record: 3, field: 3 }: UnknownTest",
+                "Position { record: 3, field: 3 }: MissingTest",
                 std::slice::from_ref(&receipt),
             )?;
             let parked = format!("parked:{item}");
@@ -280,9 +282,9 @@ async fn item_page_shows_the_message_and_its_history_from_the_audit() -> Result<
     assert_new_look(&page);
     for text in [
         format!("<ol class=\"crumbs\"><li><a href=\"/parked\">Needs review</a></li><li>Item <span class=\"mono\">{item}</span></li></ol>").as_str(),
-        "<h1>Test not in this machine’s test mapping</h1>",
-        "<p class=\"text\">The test code in record 3, field 3 is not in this machine’s test mapping.</p>",
-        "Reason as stored: Position { record: 3, field: 3 }: UnknownTest",
+        "<h1>Test code missing</h1>",
+        "<p class=\"text\">The machine sent no test code in record 3, field 3.</p>",
+        "Reason as stored: Position { record: 3, field: 3 }: MissingTest",
         "<p class=\"page-head__lede\">From chemistry · arrived <time datetime=\"",
         "<span class=\"status status--good\">",
         "Resolved</span>",
@@ -333,7 +335,7 @@ async fn known_reasons_read_plainly_and_keep_the_stored_text_for_support() -> Re
                 park(
                     s,
                     "mapping_finding",
-                    "Position { record: 6, field: 3 }: UnknownTest",
+                    "Position { record: 6, field: 3 }: MissingTest",
                     std::slice::from_ref(&receipt),
                 )?,
                 park(
@@ -355,8 +357,8 @@ async fn known_reasons_read_plainly_and_keep_the_stored_text_for_support() -> Re
     let list = request(&host, "/parked", &auth, None).await?;
     for text in [
         "<span class=\"status status--warn\" title=\"mapping_finding\">",
-        "Test not in this machine’s test mapping</span>",
-        "<p class=\"muted text\">The test code in record 6, field 3 is not in this machine’s test mapping.</p>",
+        "Test code missing</span>",
+        "<p class=\"muted text\">The machine sent no test code in record 6, field 3.</p>",
         "<span class=\"status status--bad\" title=\"conflict\">",
         "Lab app already has different content</span>",
         "<p class=\"muted text\">The lab app already holds different content under this delivery’s ID.</p>",
@@ -367,19 +369,21 @@ async fn known_reasons_read_plainly_and_keep_the_stored_text_for_support() -> Re
     ] {
         assert!(list.contains(text), "{text}\n{list}");
     }
-    for hidden in ["UnknownTest", "HTTP 418", "HTTP 409", "identity conflict"] {
+    for hidden in ["MissingTest", "HTTP 418", "HTTP 409", "identity conflict"] {
         assert!(!list.contains(hidden), "{hidden} is for support only");
     }
     let item = request(&host, &format!("/parked/{unknown_test}"), &auth, None).await?;
-    assert!(item.contains("<h1>Test not in this machine’s test mapping</h1>"));
-    assert!(item.contains("<p class=\"text\">The test code in record 6, field 3 is not in this machine’s test mapping.</p>"));
+    assert!(item.contains("<h1>Test code missing</h1>"));
+    assert!(
+        item.contains("<p class=\"text\">The machine sent no test code in record 6, field 3.</p>")
+    );
     // The enum name appears once, in the stored reason under "Details for support".
-    assert_eq!(item.matches("UnknownTest").count(), 1, "{item}");
+    assert_eq!(item.matches("MissingTest").count(), 1, "{item}");
     let support = item
         .find("Details for support</summary>")
         .unwrap_or(usize::MAX);
     assert!(
-        item.find("Reason as stored: Position { record: 6, field: 3 }: UnknownTest")
+        item.find("Reason as stored: Position { record: 6, field: 3 }: MissingTest")
             > Some(support)
     );
     for (id, title, lines) in [
@@ -433,7 +437,7 @@ fn resolved_today(
     let open = park(
         s,
         "mapping_finding",
-        "Position { record: 6, field: 3 }: UnknownTest",
+        "Position { record: 6, field: 3 }: MissingTest",
         std::slice::from_ref(&receipt),
     )?;
     let yesterday = park(s, "poll_intent", "no answer", &["cobas".into()])?;
@@ -469,7 +473,7 @@ fn resolved_today(
     let reprocessed = park(
         s,
         "mapping_finding",
-        "Position { record: 6, field: 3 }: UnknownTest",
+        "Position { record: 6, field: 3 }: MissingTest",
         std::slice::from_ref(&receipt),
     )?;
     s.resolve(
@@ -532,7 +536,7 @@ async fn the_open_list_shows_items_resolved_today_newest_first() -> Result<(), E
     }
     for text in [
         format!(
-            "<b class=\"row__title\">Test not in this machine’s test mapping</b> <span class=\"muted\">· Item <span class=\"mono\">{reprocessed}</span> · chemistry</span>"
+            "<b class=\"row__title\">Test code missing</b> <span class=\"muted\">· Item <span class=\"mono\">{reprocessed}</span> · chemistry</span>"
         ),
         "Processed again by admin session at <time".to_owned(),
         ": “test added to the mapping”</span>".to_owned(),
@@ -635,7 +639,7 @@ async fn a_message_removed_by_data_keeping_reads_so_and_is_gone() -> Result<(), 
     let target = receipt.clone();
     let item = store
         .request::<_, FixtureError>(fixture_deadline()?, move |s| {
-            park(s, "mapping_finding", "UnknownTest", &[target])
+            park(s, "mapping_finding", "MissingTest", &[target])
         })
         .await?;
     rusqlite::Connection::open(directory.path().join("analyte.db"))?.execute(

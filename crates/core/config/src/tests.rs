@@ -129,7 +129,9 @@ fn named_site() -> String {
 
 // Owner request 2026-11-19 (lab app set once), item 6; ADR 0002: an old site file
 // that writes its own [destination] loads exactly as before. These digests were
-// taken from the examples before lab-apps.toml existed; they must never change.
+// taken from the examples before lab-apps.toml existed; they must never change
+// for a site-file reason. ADR 0029 changed the example machine files (their
+// test code system replaced the test table), so they were retaken once then.
 #[test]
 fn old_site_file_keeps_its_digest() -> Result<(), Error> {
     let none = LabApps::none(LAB_APPS_FILE);
@@ -137,11 +139,11 @@ fn old_site_file_keeps_its_digest() -> Result<(), Error> {
     for (machine, digest) in [
         (
             HL7,
-            "81c329b6bbb8b10728b175b250892c65107bf1e6987a663e06ab636653801e94",
+            "cbae7f0899ca06ecbbb6918a51f80752c0e0ea7a786072012f1e0cb237db2b47",
         ),
         (
             ASTM,
-            "569cecf20e8ec67f51c580e34c0e3b565bbb74b5b164a496f1a276c03055bc8e",
+            "ecace3032eff97081955155fc6ba89b0dc3d81ce5467eb5d0ce8d0fe0cdeb229",
         ),
     ] {
         let alone = validated(machine, SITE, &none)?;

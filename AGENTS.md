@@ -77,8 +77,9 @@ These are not optional and need an ADR to change.
    is not durably stored. If storage fails or the disk is nearly full, refuse
    visibly. The exact boundary per protocol is in ADR 0003 and ADR 0010 (for ASTM: each
    frame before its ACK).
-2. **Never drop data.** Failed parses, unknown tests and undeliverable results
-   are parked with a reason and shown to an operator, never deleted.
+2. **Never drop data.** Failed parses, results the lab app refuses and
+   undeliverable results are parked with a reason and shown to an operator,
+   never deleted. Test names belong to the lab app (ADR 0029).
 3. **Keep the original.** Store raw bytes with the driver and config version
    that read them. Reprocessing creates a new version; it never overwrites.
 4. **Three identities:** the message from the machine, the delivery to the app

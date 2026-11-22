@@ -1,6 +1,7 @@
-//! Checks configured field mappings and code tables.
+//! Checks configured field mappings, the machine's code system and unit tables.
 use super::{
-    Error, Field, Mappings, NoSubId, OrderNamespace, SubId, TestMapping, UnitMapping, invalid,
+    Error, Field, Mappings, NoSubId, OrderNamespace, SubId, UnitMapping, ValueExpectation,
+    ValueKind, invalid,
 };
 use crate::{ParsedMachine, StackChoice};
 
@@ -44,11 +45,12 @@ pub(super) fn validate_mappings(m: &ParsedMachine<'_>, path: &str) -> Result<(),
             .codes
             .as_ref()
             .ok_or_else(|| invalid(path, "codes", "vendor syntax requires code tables"))?;
-        return validate_tables(&codes.tests, &codes.units, path);
+        return validate_tables(&[], &codes.units, path);
     };
+    validate_test_component(m, mapping, path)?;
     validate_component_parts(m, mapping, path)?;
     for (key, len) in [
-        ("mappings.tests", mapping.tests.len()),
+        ("mappings.value_kinds", mapping.value_kinds.len()),
         ("mappings.units", mapping.units.len()),
         ("mappings.qc", mapping.qc.len()),
         ("mappings.identity.run", mapping.identity.run.len()),
@@ -107,7 +109,7 @@ pub(super) fn validate_mappings(m: &ParsedMachine<'_>, path: &str) -> Result<(),
             ));
         }
     }
-    validate_tables(&mapping.tests, &mapping.units, path)
+    validate_tables(&mapping.value_kinds, &mapping.units, path)
 }
 
 pub(super) fn validate_component_parts(
@@ -116,18 +118,17 @@ pub(super) fn validate_component_parts(
     path: &str,
 ) -> Result<(), Error> {
     if let Some(parts) = &mapping.component_parts {
-        if !m.choice().has_astm_records() {
+        if !m.choice().has_astm_records() || mapping.test_component.is_none() {
             return Err(invalid(
                 path,
                 "mappings.component_parts",
-                "requires ASTM LIS02",
+                "requires ASTM LIS02 and mappings.test_component",
             ));
         }
         if parts.separator.is_control() || "|\\^&".contains(parts.separator) {
             return Err(Error::PartSeparator { path: path.into() });
         }
-        if !(1..=1024).contains(&parts.component)
-            || !(1..=1024).contains(&parts.count)
+        if !(1..=1024).contains(&parts.count)
             || !(1..=parts.count).contains(&parts.code)
             || parts
                 .dilution
@@ -157,12 +158,29 @@ pub(super) fn validate_component_parts(
     Ok(())
 }
 
+// LIS02 section 5.6.1 names where the code is; HL7 OBX-3 and vendor
+// messages have one fixed place, so only ASTM declares it.
+fn validate_test_component(
+    m: &ParsedMachine<'_>,
+    mapping: &Mappings,
+    path: &str,
+) -> Result<(), Error> {
+    if m.choice().has_astm_records() != mapping.test_component.is_some() {
+        return Err(invalid(
+            path,
+            "mappings.test_component",
+            "name the R.3 component (universal or manufacturer) for ASTM, and only for ASTM",
+        ));
+    }
+    Ok(())
+}
+
 pub(super) fn validate_tables(
-    tests: &[TestMapping],
+    kinds: &[ValueExpectation],
     units: &[UnitMapping],
     path: &str,
 ) -> Result<(), Error> {
-    if tests.len() > 4096 || units.len() > 4096 {
+    if kinds.len() > 4096 || units.len() > 4096 {
         return Err(invalid(
             path,
             "codes",
@@ -170,12 +188,19 @@ pub(super) fn validate_tables(
         ));
     }
     let mut seen = std::collections::HashSet::new();
-    for test in tests {
-        if !seen.insert((&test.machine_system, &test.machine_code)) {
+    for kind in kinds {
+        if kind.kind == ValueKind::Either {
             return Err(invalid(
                 path,
-                "mappings.tests",
-                "remove duplicate source system/code entries",
+                "mappings.value_kinds",
+                "expect numeric or coded; leave out codes with no expectation",
+            ));
+        }
+        if !seen.insert((&kind.system, &kind.code)) {
+            return Err(invalid(
+                path,
+                "mappings.value_kinds",
+                "remove duplicate system/code entries",
             ));
         }
     }

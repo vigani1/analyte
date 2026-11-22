@@ -20,17 +20,16 @@ pub struct Field {
     pub repetition: u16,
 }
 
-/// Explicit decomposition of one ASTM test-ID component; positions are one-based.
+/// Explicit decomposition of the ASTM R.3 component named by `test_component`;
+/// positions are one-based.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ComponentParts {
-    /// Component selected from R.3.
-    pub component: u16,
     /// Single non-protocol separator.
     pub separator: char,
     /// Exact number of parts, including empty parts.
     pub count: u16,
-    /// Part used for test lookup.
+    /// Part that holds the machine's test code.
     pub code: u16,
     /// Optional part retained as dilution evidence.
     pub dilution: Option<u16>,
@@ -48,21 +47,39 @@ pub struct SampleSelection {
     pub source: SampleSource,
 }
 
-/// Exact code translation with assigning systems.
+/// LIS02 section 5.6.1 component of the universal test ID (R.3) that holds
+/// the machine's own test code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AstmTestComponent {
+    /// Component 1, the universal test ID.
+    Universal,
+    /// Component 4, the manufacturer's or local code.
+    Manufacturer,
+}
+
+impl AstmTestComponent {
+    /// The one-based R.3 component number.
+    #[must_use]
+    pub const fn number(self) -> u16 {
+        match self {
+            Self::Universal => 1,
+            Self::Manufacturer => 4,
+        }
+    }
+}
+
+/// What the machine's message says for one of its own test codes: the kind
+/// of value it sends. It never names or translates the test (ADR 0029).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct TestMapping {
-    /// Expected interpretation; omission preserves permissive mapping.
-    #[serde(default)]
-    pub value_kind: ValueKind,
-    /// Code as received.
-    pub machine_code: Identifier,
-    /// Source assigning system.
-    pub machine_system: Identifier,
-    /// Destination code.
-    pub app_code: Identifier,
-    /// Destination assigning system.
-    pub app_system: Identifier,
+pub struct ValueExpectation {
+    /// The machine's test code, exactly as sent.
+    pub code: Identifier,
+    /// The code system the message names for it; absent means `test_system`.
+    pub system: Option<Identifier>,
+    /// Required interpretation: `numeric` or `coded`.
+    pub kind: ValueKind,
 }
 
 /// Explicit spelling translation; no implicit numeric conversion.
@@ -141,12 +158,18 @@ pub struct IdentityEvidence {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Mappings {
-    /// Optional ASTM test-code component decomposition.
+    /// The machine's own test code system: the namespace of every test code
+    /// whose message does not name one, and the only one its orders accept.
+    pub test_system: Identifier,
+    /// ASTM only: the R.3 component that holds the machine's test code.
+    pub test_component: Option<AstmTestComponent>,
+    /// Optional decomposition of the ASTM test component.
     pub component_parts: Option<ComponentParts>,
     /// Sample selection.
     pub sample: SampleSelection,
-    /// Test code table.
-    pub tests: Vec<TestMapping>,
+    /// Kinds of value the machine sends for some of its codes; absent means none.
+    #[serde(default)]
+    pub value_kinds: Vec<ValueExpectation>,
     /// Unit spelling table.
     pub units: Vec<UnitMapping>,
     /// Classification rules.

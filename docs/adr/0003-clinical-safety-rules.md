@@ -1,6 +1,6 @@
 # 0003. Clinical safety rules
 
-Status: accepted, 2026-11-15
+Status: accepted, 2026-11-15. Rule 2 changed by [ADR 0029](0029-lab-app-owns-test-names.md).
 
 ## Context
 
@@ -18,7 +18,9 @@ keep their numbers here, so "ADR 0003 rule 8" means AGENTS rule 8:
    is nearly full. Each protocol's exact step is in
    [ADR 0010](0010-acknowledgment-boundaries.md).
 2. Never drop data: failed parses, unknown tests and undeliverable results
-   are parked with a reason for an operator.
+   are parked with a reason for an operator. (Changed by ADR 0029: a test is
+   unknown when the lab app refuses it, and its refusal parks the delivery;
+   a result with no test code at all parks in Analyte.)
 3. Keep the original bytes with the driver and config version that read them;
    reprocessing adds a version.
 4. Three identities: the receipt, the delivery (same ID on every retry) and

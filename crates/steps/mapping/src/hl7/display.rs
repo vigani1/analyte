@@ -7,7 +7,8 @@ use analyte_config::{DsrLine, Hl7Orders, SyntaxLimits};
 /// Maps explicitly configured DSP text, preserving values and leaving absent context empty.
 /// Line order repeats for every test; no machine-specific positions are implicit.
 /// # Errors
-/// Refuses unmapped codes/priorities, namespace mismatches, delimiter injection and bounds.
+/// Refuses foreign test codes, unmapped priorities, namespace mismatches,
+/// delimiter injection and bounds.
 pub fn map(
     order: &AppOrder,
     order_id: &str,
@@ -21,10 +22,7 @@ pub fn map(
     let settings = &orders.tables();
     let mut lines = Vec::new();
     for test in &order.tests {
-        let mapped = map_test(settings.tests(), test)?;
-        let Some(code) = mapped.machine_components.first() else {
-            return Err(OrderError::DisplayAssayComponents);
-        };
+        let code = map_test(settings.test_system(), test)?;
         for line in &layout.lines {
             let value = match line {
                 DsrLine::SampleId => order.sample.as_str(),

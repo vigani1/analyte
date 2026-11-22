@@ -173,8 +173,9 @@ An actual coding-system version is needed for non-HL7 and user-defined systems
 (2.6 §2.A.13.7 pp.2-118–119; 2.8.2 §2.A.13.7 pp.29–30;
 2.9.1 §2A.2.13.7 pp.30–31). It must not be invented from the message edition
 or borrowed from an unrelated specimen coding system. The existing syntax
-`order::Code::with_version` represents it, but the configured test mapping and
-command mapper now carry explicit test revisions for the qualified 2.6 writer.
+`order::Code::with_version` represents it, and the configured
+`orders.hl7_send.test_version` (the machine code system's revision, ADR 0029)
+and command mapper carry it for the qualified 2.6 writer.
 The historical CE profiles keep their three-component contract.
 
 The existing order scope remains ORM/O01–ORR/O02 and OML/O21–ORL/O22.
@@ -398,8 +399,9 @@ Config `send_requires_explicit_table_revisions` checks the
 activation boundary. Program `send_ahead_accepted_rejected_and_mixed_items` includes 2.6 in acceptance,
 rejection, cancellation, timeout/disconnect and restart-during-Sending cases.
 
-For 2.6 outbound tests, `machine_components` is exactly seven entries:
-code, text, system, three empty alternate-code positions, revision. The
+For 2.6 outbound tests, OBR-4 is written as seven components: the order's
+code, the lab app's optional name, `mappings.test_system`, three empty
+alternate-code positions and `orders.hl7_send.test_version`. The
 `orders.hl7_send.priority_version` and existing `specimen_version` are separate,
 explicit values. The strict explicit-revision profile includes user-defined
 HL7 tables; an `HL7` prefix is not proof of table ownership. Config does not

@@ -46,9 +46,9 @@ Research only; no machine recording or official simulator run. No recordings shi
 ## Open questions
 
 - Blocking: serial flow control, specimen ID interpretation and reliable QC marker.
-- Required site settings: firmware, test/app mappings, exact units, identity/run
-  evidence, cable and confirmed transfer settings. Na+/K+/Cl- descriptions do
-  not establish the site's app equivalents; no mapping is invented.
+- Required site settings: firmware, exact units, identity/run evidence, cable
+  and confirmed transfer settings. Analyte passes codes such as `Cl-` through
+  as sent; the lab app maps them to its tests (ADR 0029).
 - Capture patient, QC, flagged and retransferred synthetic results, including
   frame boundaries and leading zeros; preserve original padded values.
 - Still missing: the Service Manual Appendix VI revision for the installed

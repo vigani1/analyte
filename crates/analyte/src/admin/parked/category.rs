@@ -156,16 +156,17 @@ const fn main_action(kind: ParkedKind) -> Action {
 /// What someone does about the item.
 const fn guidance(kind: ParkedKind, problem: Option<&Problem>) -> &'static str {
     match kind {
-        ParkedKind::MappingFinding if matches!(problem, Some(Problem::UnknownTest)) => concat!(
-            "The machine sent a test code that this machine's test mapping does not ",
-            "list. Add it to the test mapping, then use Process again.",
+        ParkedKind::MappingFinding if matches!(problem, Some(Problem::MissingTest)) => concat!(
+            "The machine sent a result without a test code. Check the machine's settings ",
+            "and where this machine's definition reads the code, then use Process again.",
         ),
         ParkedKind::MappingFinding
             if matches!(problem, Some(Problem::ValueKindMismatch { .. })) =>
         {
             concat!(
-                "The value does not fit what the test mapping expects for this test. ",
-                "Check that test in this machine's test mapping, then use Process again.",
+                "The value does not fit the kind this machine's definition expects for this ",
+                "test code. Check that expectation and the machine's settings, then use ",
+                "Process again.",
             )
         }
         ParkedKind::MappingFinding if matches!(problem, Some(Problem::MissingSample)) => concat!(
@@ -173,7 +174,7 @@ const fn guidance(kind: ParkedKind, problem: Option<&Problem>) -> &'static str {
             "its settings are fixed, use Process again.",
         ),
         ParkedKind::MappingFinding => concat!(
-            "Check this machine's test mapping and settings against the reason above, ",
+            "Check this machine's definition and settings against the reason above, ",
             "then use Process again.",
         ),
         ParkedKind::InterpretationFailure => concat!(
@@ -273,8 +274,8 @@ mod tests {
         let general = advice(ParkedKind::MappingFinding, "synthetic reason");
         for (reason, starts) in [
             (
-                "Position { record: 3, field: 3 }: UnknownTest",
-                "The machine sent a test code",
+                "Position { record: 3, field: 3 }: MissingTest",
+                "The machine sent a result without a test code",
             ),
             (
                 "Position { record: 4, field: 5 }: ValueKindMismatch { expected: Coded }",
@@ -298,11 +299,11 @@ mod tests {
                 "{reason}"
             );
         }
-        assert!(general.starts_with("Check this machine's test mapping"));
+        assert!(general.starts_with("Check this machine's definition"));
         assert!(
             advice(
                 ParkedKind::InterpretationFailure,
-                "Position { record: 3, field: 3 }: UnknownTest"
+                "Position { record: 3, field: 3 }: MissingTest"
             )
             .starts_with("Check the machine's settings")
         );

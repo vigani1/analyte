@@ -48,7 +48,15 @@ fn hl7(body: &str, definition: &str) -> Result<Output, Box<dyn std::error::Error
 }
 
 fn astm(body: &str, mode: &str) -> Result<Output, Box<dyn std::error::Error>> {
-    let config = config(ASTM_CONFIG)?;
+    astm_with(body, mode, ASTM_CONFIG)
+}
+
+fn astm_with(
+    body: &str,
+    mode: &str,
+    definition: &str,
+) -> Result<Output, Box<dyn std::error::Error>> {
+    let config = config(definition)?;
     let raw =
         format!("H|\\^&||||||||||{mode}|LIS2-A2|20261115120000\rP|1\rO|1|000AbC\r{body}L|1|N\r");
     let messages = analyte_astm::parse(raw.as_bytes(), analyte_astm::Limits::default())?;
@@ -83,7 +91,7 @@ fn with_parts(component: &str, definition: &str) -> Result<Output, Box<dyn std::
 
 fn parts_config() -> String {
     format!(
-        "{ASTM_CONFIG}\n[mappings.component_parts]\ncomponent=4\nseparator='/'\ncount=2\ncode=1\ndilution=2\n"
+        "{ASTM_CONFIG}\n[mappings.component_parts]\nseparator='/'\ncount=2\ncode=1\ndilution=2\n"
     )
 }
 

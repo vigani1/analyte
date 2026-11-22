@@ -30,7 +30,8 @@ response_ms = 30000
 acknowledgment_ms = 5000
 
 [codes]
-tests = [{machine_code="synthetic-analyte", machine_system="synthetic-system", app_code="DEMO", app_system="demo"}]
+# Used when an observation names no code system (ADR 0029).
+test_system = "synthetic-system"
 units = [{original="mg/L", ucum="mg/L"}]
 [evidence]
 level = "documented"

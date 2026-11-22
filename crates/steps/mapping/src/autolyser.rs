@@ -24,8 +24,8 @@ pub fn map(
             SourceText::new(std::str::from_utf8(value.text.bytes())?)?,
             ValueInterpretation::Text,
         );
-        let Some(test) = map_test(machine.settings().codes(), code, None) else {
-            output.unmapped_test(
+        let Some(test) = map_test(machine.settings().codes(), code, None)? else {
+            output.missing_test(
                 Position {
                     record: index.saturating_add(1),
                     field: 0,
@@ -123,10 +123,12 @@ pub fn map_order(
     }
     let mut tests = Vec::new();
     for test in &order.tests {
-        let mapped = codes::map_test(settings.tests(), test)?;
-        let [code] = mapped.machine_components.as_slice() else {
-            return Err(OrderError::AssayComponents);
-        };
+        let code = codes::map_test(settings.test_system(), test)?;
+        // The work list's analysis code is exactly four printable bytes; the
+        // order supplies any padding, Analyte never pads or trims it.
+        if code.len() != 4 || !code.bytes().all(|b| (32..=126).contains(&b)) {
+            return Err(OrderError::AnalysisCode);
+        }
         tests.push(Field::<4>::new(code.as_bytes())?);
     }
     let worklist = Worklist::new(patient, list, sample, clone, position, tests)?;
@@ -151,9 +153,9 @@ pub enum OrderError {
     /// Autolyser test count is empty or exceeds protocol or configured bounds.
     #[error("Autolyser test count is empty or exceeds protocol or configured bounds")]
     TestCount,
-    /// Autolyser assay mapping must contain exactly one component.
-    #[error("Autolyser assay mapping must contain exactly one component")]
-    AssayComponents,
+    /// An Autolyser analysis code is exactly four printable bytes.
+    #[error("Autolyser analysis code must be exactly 4 printable bytes")]
+    AnalysisCode,
     /// Autolyser worklist exceeds the message byte limit.
     #[error("Autolyser worklist exceeds the message byte limit")]
     MessageLimit,

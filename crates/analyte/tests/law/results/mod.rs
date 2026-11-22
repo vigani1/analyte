@@ -135,7 +135,7 @@ async fn assert_repaired_mapping_preserves_receipt(
         current,
         analyte::operator::recovery::ReprocessTarget::Parked(parked),
         analyte_model::Identifier::new("synthetic-operator")?,
-        analyte_model::Reason::new("repair LAW test mapping")?,
+        analyte_model::Reason::new("repair LAW definition")?,
     )
     .await?;
     assert_eq!(commit.version, 2);
@@ -182,7 +182,7 @@ async fn assert_repaired_mapping_preserves_receipt(
             assert_eq!(audits.len(), 2);
             let receipt: String = serde_json::from_str(&serde_json::to_string(&id)?)?;
             for ((_, audit), (version, reason)) in audits.iter().zip([
-                (2, "repair LAW test mapping"),
+                (2, "repair LAW definition"),
                 (3, "verify retained result idempotency"),
             ]) {
                 assert_eq!(audit.action.as_str(), "receipt-reprocess");

@@ -1,7 +1,5 @@
-//! Tests explicit outgoing code tables without inferred mappings.
-use analyte_config::{
-    MachinePriority, OrderPriority, OutboundSpecimen, OutboundTest, PriorityCode,
-};
+//! Tests outgoing code checks and explicit tables without inferred mappings.
+use analyte_config::{MachinePriority, OrderPriority, OutboundSpecimen, PriorityCode};
 use analyte_mapping::{AppOrderPriority, OrderMappingError, map_priority, map_specimen, map_test};
 use analyte_model::{Identifier, NamespacedId};
 type TestResult = Result<(), Box<dyn std::error::Error>>;
@@ -11,26 +9,20 @@ fn id(namespace: &str, value: &str) -> Result<NamespacedId, analyte_model::TextE
         value: Identifier::new(value)?,
     })
 }
-// ADR 0004
+// ADR 0029: an order test goes out exactly as written, and only in the
+// machine's own code system; no other namespace is translated or folded.
 #[test]
-fn test_lookup_needs_exact_namespace_and_code() -> TestResult {
-    let table = vec![
-        OutboundTest {
-            app: id("other", "001a")?,
-            machine_components: vec!["wrong".into()],
-        },
-        OutboundTest {
-            app: id("lab", "001a")?,
-            machine_components: vec!["".into(), "ExactCode".into()],
-        },
-    ];
-    assert_eq!(
-        map_test(&table, &id("lab", "001a")?)?.machine_components,
-        ["", "ExactCode"]
-    );
-    for requested in [id("LAB", "001a")?, id("lab", "001A")?, id("lab", "1a")?] {
+fn order_test_needs_the_machine_code_system_and_keeps_its_spelling() -> TestResult {
+    let system = Identifier::new("lab")?;
+    let requested = id("lab", "001a")?;
+    assert_eq!(map_test(&system, &requested)?, "001a");
+    for requested in [
+        id("LAB", "001a")?,
+        id("other", "001a")?,
+        id("lab ", "001a")?,
+    ] {
         assert!(
-            matches!(map_test(&table, &requested), Err(OrderMappingError::UnmappedTest(actual)) if actual == requested)
+            matches!(map_test(&system, &requested), Err(OrderMappingError::ForeignTest(actual)) if actual == requested)
         );
     }
     Ok(())

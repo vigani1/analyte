@@ -1,7 +1,6 @@
 # Synthetic legacy query interface; not a vendor or clinical configuration.
 [orders]
 send_ahead = false
-tests = [{app={namespace="synthetic",value="TEST"},machine_components=["SEND"]}]
 priorities = [{app="routine",machine="R"}]
 [orders.query]
 deadline_ms = 1000

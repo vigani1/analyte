@@ -163,24 +163,12 @@ pub(crate) fn validate_orders(
             )
         })
         || orders.specimen_types.as_ref().is_none_or(Vec::is_empty)
-        || orders.tests.iter().any(|test| {
-            test.machine_components.len() != 3
-                || test.machine_components.iter().enumerate().any(|(i, part)| {
-                    if i == 1 {
-                        !part.is_empty()
-                            && !analyte_hl7::is_safe_field(
-                                (part).as_bytes(),
-                                199,
-                                analyte_hl7::FieldSyntax::Plain,
-                            )
-                    } else {
-                        !analyte_hl7::is_safe_field(
-                            (part).as_bytes(),
-                            if i == 0 { 20 } else { 12 },
-                            analyte_hl7::FieldSyntax::Plain,
-                        )
-                    }
-                })
+        || machine.mappings.as_ref().is_none_or(|mappings| {
+            !analyte_hl7::is_safe_field(
+                mappings.test_system.as_str().as_bytes(),
+                12,
+                analyte_hl7::FieldSyntax::Plain,
+            )
         })
         || !analyte_hl7::is_safe_field(
             (work.specimen_system.as_str()).as_bytes(),
@@ -191,7 +179,7 @@ pub(crate) fn validate_orders(
         return Err(invalid(
             path,
             "orders",
-            "LAW queries require per-test code/text/system, placer namespace and specimen mappings; legacy and patient layouts are disabled",
+            "LAW work requires a plain test_system of at most 12 bytes, a placer namespace and specimen mappings; legacy and patient layouts are disabled",
         ));
     }
     Ok(())

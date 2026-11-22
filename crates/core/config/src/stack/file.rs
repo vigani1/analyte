@@ -44,7 +44,7 @@ pub(super) fn file_stack(
             orders: machine
                 .orders
                 .as_ref()
-                .map(|o| astm_orders(o, path))
+                .map(|o| astm_orders(o, machine, path))
                 .transpose()?,
         }))),
         Some(RecordKind::Hl7) => Stack::Hl7(RecordTransport::Folder(Box::new(FileHl7Stack {
@@ -61,7 +61,7 @@ pub(super) fn file_stack(
             orders: machine
                 .orders
                 .as_ref()
-                .map(|o| hl7_orders(o, path))
+                .map(|o| hl7_orders(o, machine, path))
                 .transpose()?,
         }))),
         None | Some(RecordKind::Vendor) => {

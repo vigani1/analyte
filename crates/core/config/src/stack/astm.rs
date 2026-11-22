@@ -49,9 +49,13 @@ pub(super) fn astm_syntax(syntax: &Syntax) -> AstmSyntax {
     }
 }
 
-pub(super) fn astm_orders(orders: &Orders, path: &str) -> Result<AstmOrders, Error> {
+pub(super) fn astm_orders(
+    orders: &Orders,
+    machine: &ParsedMachine<'_>,
+    path: &str,
+) -> Result<AstmOrders, Error> {
     Ok(AstmOrders {
-        tables: order_tables(orders),
+        tables: order_tables(orders, machine, path)?,
         query: orders.query.clone(),
         send_ahead: orders.send_ahead,
         layout: orders
@@ -157,7 +161,7 @@ pub(super) fn build(
         orders: machine
             .orders
             .as_ref()
-            .map(|o| astm_orders(o, path))
+            .map(|o| astm_orders(o, machine, path))
             .transpose()?,
     })
 }

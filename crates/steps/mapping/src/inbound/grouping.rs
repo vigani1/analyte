@@ -89,20 +89,22 @@ pub(crate) fn message(
         let values = value::values(source, index, value_field, &mut output)?;
         let sample = identity::sample(source, index, config, &mut output)?;
         let Some(codes) = map_codes(source, index, config, &mut output)? else {
-            output.unmapped_test(source.position(index, 3), values)?;
+            // The component_parts finding already names the cause.
+            output.uncoded.push(crate::UncodedObservation {
+                position: source.position(index, 3),
+                values,
+            });
             continue;
         };
-        let Some((source_code, test, translated)) =
-            map_test(source, index, config, &codes, &values, &mut output)?
-        else {
-            output.unmapped_test(source.position(index, 3), values)?;
+        let Some(test) = map_test(source, index, config, &codes, &values, &mut output)? else {
+            output.missing_test(source.position(index, 3), values)?;
             continue;
         };
         let observation = identity::observation(
             source,
             index,
             config,
-            source_code,
+            test.clone(),
             &mut output,
             law.as_ref(),
         )?;
@@ -138,12 +140,11 @@ pub(crate) fn message(
                 part,
                 correction,
                 position,
-                translated,
                 finding_start,
             },
         )?;
     }
-    if output.results.is_empty() && output.unmapped.is_empty() && law.is_none() {
+    if output.results.is_empty() && output.uncoded.is_empty() && law.is_none() {
         finding(&mut output, source.position(0, 0), Problem::NoObservations)?;
     }
     Ok(output)
@@ -190,72 +191,80 @@ fn map_comments(source: &Source<'_>, output: &mut Output) -> Result<(), Error> {
 }
 
 struct Codes {
-    standard_code: Option<String>,
-    manufacturer_code: Option<String>,
+    code: Option<String>,
+    system: Option<String>,
     dilution: Option<Dilution>,
 }
 
+// LIS02 section 5.6.1: R.3 holds the test ID; the definition names which
+// component carries the machine's code. HL7 OBX-3 carries the code in CE.1
+// and the coding system the machine names in CE.3.
 fn map_codes(
     source: &Source<'_>,
     index: usize,
     config: &RecordSettings<'_>,
     output: &mut Output,
 ) -> Result<Option<Codes>, Error> {
-    let astm = source.syntax == FieldSyntax::AstmLis02;
-    let mut standard_code = source.present(source.component(index, 3, 1, 1)?);
-    let mut manufacturer_code = if astm {
-        source.present(source.component(index, 3, 1, 4)?)
-    } else {
-        None
+    let Some(component) = config.mappings.test_component else {
+        return Ok(Some(Codes {
+            code: source.present(source.component(index, 3, 1, 1)?),
+            system: source.present(source.component(index, 3, 1, 3)?),
+            dilution: None,
+        }));
     };
+    let component = usize::from(component.number());
+    let Some(parts) = &config.mappings.component_parts else {
+        return Ok(Some(Codes {
+            code: source.present(source.component(index, 3, 1, component)?),
+            system: None,
+            dilution: None,
+        }));
+    };
+    let original = source
+        .component(index, 3, 1, component)?
+        .unwrap_or_default();
+    // The message may declare non-default delimiters: never split one as data.
+    let header = source.nodes.first().and_then(|n| match n.record {
+        crate::inbound::source::Record::Astm(r) => Some(r.raw()),
+        crate::inbound::source::Record::Hl7(_) => None,
+    });
+    let collision = header
+        .and_then(|h| h.get(1..5))
+        .is_some_and(|h| h.contains(&(parts.separator as u8)))
+        && parts.separator.is_ascii();
+    let split: Vec<_> = original.split(parts.separator).collect();
+    if collision || split.len() != usize::from(parts.count) {
+        finding(output, source.position(index, 3), Problem::ComponentParts)?;
+        return Ok(None);
+    }
+    let code = split
+        .get(usize::from(parts.code.saturating_sub(1)))
+        .map(|s| (*s).to_owned())
+        .filter(|s| !s.is_empty());
     let mut dilution = None;
-    if let Some(parts) = &config.mappings.component_parts {
-        let original = source
-            .component(index, 3, 1, usize::from(parts.component))?
-            .unwrap_or_default();
-        // The message may declare non-default delimiters: never split one as data.
-        let header = source.nodes.first().and_then(|n| match n.record {
-            crate::inbound::source::Record::Astm(r) => Some(r.raw()),
-            crate::inbound::source::Record::Hl7(_) => None,
-        });
-        let collision = header
-            .and_then(|h| h.get(1..5))
-            .is_some_and(|h| h.contains(&(parts.separator as u8)))
-            && parts.separator.is_ascii();
-        let split: Vec<_> = original.split(parts.separator).collect();
-        if collision || split.len() != usize::from(parts.count) {
-            finding(output, source.position(index, 3), Problem::ComponentParts)?;
-            return Ok(None);
-        }
-        standard_code = split
-            .get(usize::from(parts.code.saturating_sub(1)))
-            .map(|s| (*s).to_owned())
-            .filter(|s| !s.is_empty());
-        manufacturer_code = None;
-        if let Some(part) = parts
-            .dilution
-            .and_then(|i| split.get(usize::from(i.saturating_sub(1))))
-        {
-            let mut applied = DilutionApplied::Unknown;
-            if let Some(setting) = &parts.applied {
-                let reported = source.selected(index, &setting.field)?;
-                if reported.as_deref() == Some(setting.yes.as_str()) {
-                    applied = DilutionApplied::Yes;
-                }
-                if reported.as_deref() == Some(setting.no.as_str()) {
-                    applied = DilutionApplied::No;
-                }
+    if let Some(part) = parts
+        .dilution
+        .and_then(|i| split.get(usize::from(i.saturating_sub(1))))
+    {
+        let mut applied = DilutionApplied::Unknown;
+        if let Some(setting) = &parts.applied {
+            let reported = source.selected(index, &setting.field)?;
+            if reported.as_deref() == Some(setting.yes.as_str()) {
+                applied = DilutionApplied::Yes;
             }
-            dilution = Some(Dilution {
-                original: Some(text(part, source.position(index, 3))?),
-                factor: Decimal::new(part).ok(),
-                applied,
-            });
+            if reported.as_deref() == Some(setting.no.as_str()) {
+                applied = DilutionApplied::No;
+            }
         }
+        dilution = Some(Dilution {
+            original: Some(text(part, source.position(index, 3))?),
+            factor: Decimal::new(part).ok(),
+            applied,
+        });
     }
     Ok(Some(Codes {
-        standard_code,
-        manufacturer_code,
+        code,
+        system: None,
         dilution,
     }))
 }
@@ -267,7 +276,6 @@ struct MappedPart {
     part: ResultPart,
     correction: bool,
     position: Position,
-    translated: bool,
     finding_start: usize,
 }
 
@@ -285,7 +293,6 @@ fn append_result(
         part,
         correction,
         position,
-        translated,
         finding_start,
     } = mapped;
     let existing = observation.as_ref().and_then(|key| {
@@ -321,45 +328,49 @@ fn append_result(
         result.corrections = list(corrections, position)?;
     } else {
         let identity = match observation.clone() {
-            Some(observation) if translated => IdentityStatus::Resolved(ResultIdentity {
+            Some(observation) => IdentityStatus::Resolved(ResultIdentity {
                 observation,
                 revision: input.revision,
             }),
-            Some(_) | None => IdentityStatus::Unresolved(
-                Reason::new(
-                    &output
-                        .findings
-                        .iter()
-                        .skip(finding_start)
-                        .rev()
-                        .find_map(|f| match f.problem {
-                            Problem::MissingIdentity { setting } => {
-                                Some(crate::Unidentified::Missing {
-                                    setting,
-                                    position: f.position,
-                                })
-                            }
-                            Problem::ValueKindMismatch { .. }
-                            | Problem::ComponentParts
-                            | Problem::MissingSample
-                            | Problem::UnknownTest
-                            | Problem::UnsupportedValue
-                            | Problem::UnsupportedFormatting
-                            | Problem::UnsupportedEscape
-                            | Problem::UnknownProcessing
-                            | Problem::ConflictingClassification
-                            | Problem::InvalidTime
-                            | Problem::NoObservations
-                            | Problem::UnsupportedLawStatusOnly
-                            | Problem::UnqualifiedHl7Report
-                            | Problem::DepartureConflict
-                            | Problem::DerivedStatusContract => None,
-                        })
-                        .unwrap_or(crate::Unidentified::UnknownTest)
-                        .to_string(),
+            None => {
+                // Identity mapping returns nothing only after a MissingIdentity finding.
+                let reason = output
+                    .findings
+                    .iter()
+                    .skip(finding_start)
+                    .rev()
+                    .find_map(|f| match f.problem {
+                        Problem::MissingIdentity { setting } => {
+                            Some(crate::Unidentified::Missing {
+                                setting,
+                                position: f.position,
+                            })
+                        }
+                        Problem::ValueKindMismatch { .. }
+                        | Problem::ComponentParts
+                        | Problem::MissingSample
+                        | Problem::MissingTest
+                        | Problem::UnsupportedValue
+                        | Problem::UnsupportedFormatting
+                        | Problem::UnsupportedEscape
+                        | Problem::UnknownProcessing
+                        | Problem::ConflictingClassification
+                        | Problem::InvalidTime
+                        | Problem::NoObservations
+                        | Problem::UnsupportedLawStatusOnly
+                        | Problem::UnqualifiedHl7Report
+                        | Problem::DepartureConflict
+                        | Problem::DerivedStatusContract => None,
+                    })
+                    .ok_or(Error::Structure {
+                        position,
+                        reason: "unresolved identity has no missing-identity finding",
+                    })?;
+                IdentityStatus::Unresolved(
+                    Reason::new(&reason.to_string())
+                        .map_err(|source| Error::Text { position, source })?,
                 )
-                .map_err(|source| Error::Text { position, source })?,
-            ),
+            }
         };
         // Keep group slots aligned with result slots, including unresolved units.
         groups.push((order, observation));
@@ -377,6 +388,8 @@ fn append_result(
     Ok(())
 }
 
+// The code passes through exactly as sent (ADR 0029). Its namespace is the
+// coding system the message names, else the machine's declared test_system.
 fn map_test(
     source: &Source<'_>,
     index: usize,
@@ -384,60 +397,29 @@ fn map_test(
     codes: &Codes,
     values: &EvidenceList<ResultValue>,
     output: &mut Output,
-) -> Result<Option<(NamespacedId, NamespacedId, bool)>, Error> {
+) -> Result<Option<NamespacedId>, Error> {
     let machine = config.mappings;
-    let astm = source.syntax == FieldSyntax::AstmLis02;
-    let value_field = if astm { 4 } else { 5 };
-    let position = source.position(index, 0);
-    let Codes {
-        standard_code,
-        manufacturer_code,
-        dilution: _,
-    } = codes;
-    let system = if astm {
-        None
+    let value_field = if source.syntax == FieldSyntax::AstmLis02 {
+        4
     } else {
-        source.present(source.component(index, 3, 1, 3)?)
+        5
     };
-    // LIS02 section 5.6.1 provides both a universal and a manufacturer identifier.
-    // The explicit table must select exactly one interpretation if both occur.
-    let candidates = [standard_code.as_deref(), manufacturer_code.as_deref()]
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>();
-    let translation = crate::test_translation(&machine.tests, &candidates, system.as_deref());
-    let source_code = match (standard_code.as_deref(), system.as_deref(), translation) {
-        (Some(code), Some(system), _) => Some(NamespacedId {
-            value: identifier(code, position)?,
-            namespace: identifier(system, position)?,
-        }),
-        (Some(_), None, Some(entry)) | (None, None, Some(entry)) => Some(NamespacedId {
-            value: entry.machine_code.clone(),
-            namespace: entry.machine_system.clone(),
-        }),
-        (Some(_), None, None) | (None, None, None) | (None, Some(_), _) => None,
-    };
-    let Some(source_code) = source_code else {
+    let position = source.position(index, 3);
+    let Some(code) = codes.code.as_deref() else {
         return Ok(None);
     };
-    if translation.is_none() {
-        finding(output, source.position(index, 3), Problem::UnknownTest)?;
-    }
-    if let Some(entry) = translation {
-        value::check_kind(
-            values,
-            entry.value_kind,
-            source.position(index, value_field),
-            output,
-        )?;
-    }
-    let test = translation.map_or_else(
-        || source_code.clone(),
-        |t| NamespacedId {
-            namespace: t.app_system.clone(),
-            value: t.app_code.clone(),
+    let test = NamespacedId {
+        value: identifier(code, position)?,
+        namespace: match codes.system.as_deref() {
+            Some(system) => identifier(system, position)?,
+            None => machine.test_system.clone(),
         },
-    );
-
-    Ok(Some((source_code, test, translation.is_some())))
+    };
+    value::check_kind(
+        values,
+        crate::value_kind(machine, &test),
+        source.position(index, value_field),
+        output,
+    )?;
+    Ok(Some(test))
 }

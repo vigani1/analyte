@@ -31,7 +31,7 @@ async fn competing_feed_during_paging_is_refused() -> Result<(), Error> {
         for chunk in (0..101).collect::<Vec<_>>().chunks(100) {
             let mut orders = Vec::new();
             for i in chunk {
-                let document = serde_json::json!({"id":format!("order-{i:03}"),"version":2,"state":"requested","sample_id":format!("new-{i:03}"),"tests":[{"namespace":"synthetic","value":"TEST"}],"priority":"routine","target_analyzers":null,"expires_at":null,"tombstone":false}).to_string();
+                let document = serde_json::json!({"id":format!("order-{i:03}"),"version":2,"state":"requested","sample_id":format!("new-{i:03}"),"tests":[{"namespace":"99LAB","value":"SYN","name":"Synthetic"}],"priority":"routine","target_analyzers":null,"expires_at":null,"tombstone":false}).to_string();
                 orders.push(analyte_store::CachedOrder { id: analyte_model::Identifier::new(&format!("order-{i:03}")).map_err(analyte_store::StorageError::Text)?, sample: analyte_model::SampleId::new(&format!("new-{i:03}")).map_err(analyte_store::StorageError::Text)?, document, tombstone:false, expiry:now+3600 });
             }
             s.order_page(&analyte_store::OrderPage {destination:destination.clone(), cursor:analyte_model::Identifier::new("updated").map_err(analyte_store::StorageError::Text)?, complete:true, polled:now, orders})?;

@@ -35,7 +35,7 @@ may leave a partial target, which must not be restored.
 
 ## Reprocess and resend
 
-Use **reprocess** after fixing parsing or a missing test mapping. It reads the
+Use **reprocess** after fixing parsing or a machine definition setting. It reads the
 receipt's original bytes using the current driver and configuration files and
 appends a new interpretation with that provenance and config digest. The original
 receipt and earlier interpretations stay unchanged. Existing revision rules still
@@ -46,7 +46,7 @@ a failed interpretation records a new parked reason. Each action has one durable
 audit in the same transaction as its effects.
 
 ```sh
-analyte --config analyte.toml --actor operator parked reprocess <parked-id> --reason 'Added the missing test mapping'
+analyte --config analyte.toml --actor operator parked reprocess <parked-id> --reason 'Fixed the order ID selector'
 analyte --config analyte.toml --actor operator receipts reprocess <receipt-uuid> --reason 'Reviewed the current mapping'
 ```
 
@@ -166,8 +166,9 @@ or external-app qualification.
 Machine definitions in `crates/core/config/examples/poct.toml`, `vidas_literal.toml`
 and `autolyser.toml` are synthetic examples, not installed settings. Every vendor
 policy is explicit. POCT uses TCP; VIDAS Literal and Autolyser use TCP or serial.
-Field-position mappings are rejected for these syntaxes; `[codes]` uses the same
-exact test and unit translations as the record mapper.
+Field-position mappings are rejected for these syntaxes; `[codes]` names the
+machine's `test_system` and uses the same exact unit translations as the record
+mapper. Test codes pass through as sent ([ADR 0029](../../docs/adr/0029-lab-app-owns-test-names.md)).
 
 Vendor input is durably journaled before the dialog sees it. Complete receipts
 and interpretations keep driver/config versions. Unresolved identity is preserved

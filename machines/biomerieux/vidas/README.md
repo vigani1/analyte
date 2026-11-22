@@ -28,7 +28,7 @@ outside the definition. Do not infer XML/FTP compatibility from a network port.
 
 Documents describe uploads and work-list download. No workflows are enabled.
 Sample ci and patient pi have different meanings; staff assign positions on
-the PC. Only confirmed assay codes and app equivalents may enter mappings.
+the PC. Assay codes pass through as sent; the lab app maps them (ADR 0029).
 Transport ACK does not prove assay acceptance or clinical approval.
 
 ## Departures
@@ -47,7 +47,8 @@ Research only; no machine recording or official simulator run. No recordings shi
 
 - Blocking: serial flow control, PC version/ID ceiling and Literal mode.
 - Required site settings: complete serial settings, checksum/suffix/case policy,
-  timers/retries, assay/app and unit mappings, patient namespace and identity.
+  timers/retries, the assay code system and unit mappings, patient namespace
+  and identity.
 - Confirm QC/invalid/call semantics, dilution state, and acceptance evidence.
   Never truncate identifiers to a conservative guessed ceiling.
 - Still missing: the BCI Link LIS Interface Driver Development Guide 161150-486

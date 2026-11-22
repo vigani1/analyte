@@ -1,5 +1,6 @@
 //! Maps explicit machine and model terms without I/O or clinical interpretation.
 //! Protocol crates own grammar and dialogs; this crate owns translations and performs no I/O.
+//! Test codes pass through as the machine wrote them; the lab app names them (ADR 0029).
 //! The caller retains the receipt and parks any output with findings.
 #![forbid(unsafe_code)]
 
@@ -33,8 +34,8 @@ pub use orders::{
 
 use analyte_config::StackChoice;
 use analyte_model::{
-    AppliedDeparture, DepartureMeaning, EvidenceList, Identifier, ReceiptId, ResultContent,
-    ResultValue, Revision, SourceNode, SourceText, TextError,
+    AppliedDeparture, DepartureMeaning, EvidenceList, Identifier, NamespacedId, ReceiptId,
+    ResultContent, ResultValue, Revision, SourceNode, SourceText, TextError,
 };
 
 /// Record syntaxes supported by field-position mapping.
@@ -70,23 +71,21 @@ struct RecordSettings<'a> {
     limits: &'a analyte_config::SyntaxLimits,
 }
 
-/// Finds one exact test translation; ambiguous or absent matches remain unknown.
+/// Finds the configured kind of value for one of the machine's own codes.
+/// An entry without a system applies to the machine's declared `test_system`.
 #[must_use]
-pub fn test_translation<'a>(
-    tables: &'a [analyte_config::TestMapping],
-    codes: &[&str],
-    system: Option<&str>,
-) -> Option<&'a analyte_config::TestMapping> {
-    let mut matches = tables.iter().filter(|entry| {
-        codes.contains(&entry.machine_code.as_str())
-            && system.is_none_or(|s| s == entry.machine_system.as_str())
-    });
-    let first = matches.next();
-    if matches.next().is_some() {
-        None
-    } else {
-        first
-    }
+pub fn value_kind(
+    mappings: &analyte_config::Mappings,
+    test: &NamespacedId,
+) -> analyte_config::ValueKind {
+    mappings
+        .value_kinds
+        .iter()
+        .find(|entry| {
+            entry.code == test.value
+                && entry.system.as_ref().unwrap_or(&mappings.test_system) == &test.namespace
+        })
+        .map_or(analyte_config::ValueKind::Either, |entry| entry.kind)
 }
 
 /// Finds an exact original-unit translation; no spelling normalization occurs.
@@ -194,8 +193,8 @@ pub enum Problem {
 
     /// Sample selector is missing, empty or explicitly null.
     MissingSample,
-    /// No unique source code/system translation exists.
-    UnknownTest,
+    /// The machine sent no test code where its definition says the code is.
+    MissingTest,
     /// A required identity selector is missing, empty or null.
     MissingIdentity {
         /// Configuration key, or LAW field, requiring evidence.
@@ -290,9 +289,9 @@ pub struct MappedResult {
     pub corrections: EvidenceList<bool>,
 }
 
-/// A source observation that cannot supply a nonempty namespaced test code.
+/// A source observation that sent no test code, so it has no namespaced test.
 #[derive(Debug)]
-pub struct UnmappedObservation {
+pub struct UncodedObservation {
     /// Original source position.
     pub position: Position,
     /// Original values retained even without a representable test identity.
@@ -317,8 +316,8 @@ pub struct Output {
     pub status_notices: Vec<law::StatusNotice>,
     /// Replacement units, in first-occurrence order.
     pub results: Vec<MappedResult>,
-    /// Observations requiring a code/system decision; never silently discarded.
-    pub unmapped: Vec<UnmappedObservation>,
+    /// Observations without a test code; never silently discarded.
+    pub uncoded: Vec<UncodedObservation>,
     /// Every issue found during mapping.
     pub findings: Vec<Finding>,
     /// All notes once, with their parents; result parts also expose applicable text.
@@ -329,17 +328,17 @@ pub struct Output {
 }
 
 impl Output {
-    /// Retains an unknown test as unmapped evidence, with the common parking reason.
-    /// No result or test namespace is invented for this observation.
+    /// Retains an observation that sent no test code, with the common parking reason.
+    /// No result or test code is invented for this observation.
     /// # Errors
     /// Refuses more findings than the mapping evidence bound permits.
-    pub fn unmapped_test(
+    pub fn missing_test(
         &mut self,
         position: Position,
         values: EvidenceList<ResultValue>,
     ) -> Result<(), Error> {
-        finding(self, position, Problem::UnknownTest)?;
-        self.unmapped.push(UnmappedObservation { position, values });
+        finding(self, position, Problem::MissingTest)?;
+        self.uncoded.push(UncodedObservation { position, values });
         Ok(())
     }
 
@@ -359,7 +358,7 @@ impl Output {
                     | DepartureMeaning::CharsetFromDefinition
                     | DepartureMeaning::ZoneFromSite => false,
                 })
-            || !self.unmapped.is_empty()
+            || !self.uncoded.is_empty()
             || self.results.iter().any(|r| r.content.requires_parking())
     }
 }

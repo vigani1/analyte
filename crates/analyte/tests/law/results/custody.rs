@@ -139,8 +139,9 @@ async fn uninterpretable_result_is_parked_with_error_ack() -> Result<(), Error> 
     let mut peer = connect(&path, "law").await?;
     for (message, code) in [
         (
-            result("unknown-test", "\"\"", "awos-1^LAB", "12.30", "F")
-                .rewrite("SYN^Synthetic^99LAB", "UNKNOWN^Unknown^99LAB"),
+            // ADR 0029: an unlisted code is delivered; a missing one is not.
+            result("missing-test", "\"\"", "awos-1^LAB", "12.30", "F")
+                .rewrite("|SYN^Synthetic^99LAB|1|", "|^Synthetic^99LAB|1|"),
             "AE",
         ),
         (
@@ -182,7 +183,12 @@ async fn uninterpretable_result_is_parked_with_error_ack() -> Result<(), Error> 
 #[tokio::test]
 async fn conflict_rejects_batch_and_og_separates_runs() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
-    let path = vendor_config(temp.path(), "law", &definition())?;
+    // KND is a code the definition expects a coded value for (ADR 0029).
+    let definition = definition().rewrite(
+        "test_system = \"99LAB\"",
+        "test_system = \"99LAB\"\nvalue_kinds = [{code=\"KND\", kind=\"coded\"}]",
+    );
+    let path = vendor_config(temp.path(), "law", &definition)?;
     let receiver_path = temp.path().join("reference.db");
     let mut reference = Reference::start(
         &receiver_path,
@@ -239,13 +245,14 @@ async fn conflict_rejects_batch_and_og_separates_runs() -> Result<(), Error> {
     check(&reference.event().await?, "awos-2", "LAB", 0, "10.10")?;
     let valid = result("mixed-mapping", "\"\"", "awos-3^LAB", "10.10", "F");
     let unknown = result("unknown", "\"\"", "awos-4^LAB", "10.10", "F")
-        .rewrite("SYN^Synthetic^99LAB", "UNKNOWN^Unknown^99LAB");
+        .rewrite("|SYN^Synthetic^99LAB|1|", "|KND^Kind^99LAB|1|");
     let (_, unknown_body) = unknown.split_once('\r').ok_or("synthetic header absent")?;
     let mixed_mapping = format!("{valid}{}", unknown_body.replacen("SPM|1|", "SPM|2|", 1));
-    // HL7 2.5.1 section 2.15.5.2: the second OBX, not the first, has the unknown code.
+    // HL7 2.5.1 section 2.15.5.2: the second OBX, not the first, has a value
+    // of the wrong kind.
     let ack = hl7(&mut peer, mixed_mapping.as_bytes()).await?;
     assert!(ack.contains("MSA|AE|mixed-mapping"));
-    assert!(ack.contains("ERR||OBX^2^3|207^^HL70357|E"), "{ack}");
+    assert!(ack.contains("ERR||OBX^2^5|207^^HL70357|E"), "{ack}");
     assert_eq!(count(&path, "observation_revisions")?, 3);
     assert_eq!(count(&path, "outbox")?, 3);
     assert!(
@@ -481,7 +488,11 @@ async fn disabled_query_and_work_issue_nothing() -> Result<(), Error> {
 #[tokio::test]
 async fn parked_result_reprocesses_after_mapping_fix() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
-    let missing = definition().rewrite("machine_code=\"SYN\"", "machine_code=\"MISSING\"");
+    // A wrong value expectation parks the result until the definition is fixed.
+    let missing = definition().rewrite(
+        "test_system = \"99LAB\"",
+        "test_system = \"99LAB\"\nvalue_kinds = [{code=\"SYN\", kind=\"coded\"}]",
+    );
     let path = vendor_config(temp.path(), "law", &missing)?;
     let receiver_path = temp.path().join("receiver.db");
     let mut reference = Reference::start(
@@ -502,8 +513,7 @@ async fn parked_result_reprocesses_after_mapping_fix() -> Result<(), Error> {
             .contains(&format!("MSA|AE|{control}"))
     );
     assert_eq!(count(&path, "outbox")?, 0);
-    // One test code missing from the test mapping is one Needs review item
-    // (owner report 2026-11-21).
+    // One cause is one Needs review item (owner report 2026-11-21).
     let parked: Vec<String> = database(&path)?
         .prepare("SELECT evidence FROM parked")?
         .query_map([], |r| r.get(0))?

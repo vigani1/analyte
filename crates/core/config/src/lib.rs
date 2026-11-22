@@ -23,19 +23,20 @@ mod stack;
 mod validation;
 pub use orders::{
     AstmOrderFields, DsrLine, Hl7OrderQuery, Hl7Processing, Hl7QueryFilter, Hl7Send,
-    MachinePriority, OrderPriority, OrderQuery, Orders, OutboundSpecimen, OutboundTest,
-    PriorityCode, WhenUntrusted,
+    MachinePriority, OrderPriority, OrderQuery, Orders, OutboundSpecimen, PriorityCode,
+    WhenUntrusted,
 };
 pub use schema::{
-    AckPoint, Autolyser, Capability, ChecksumAcceptance, ChecksumHex, ChecksumInclusion,
-    Classification, CodeTables, ComponentParts, DepartureDeclaration, DepartureDirection,
-    DepartureEdition, DepartureGuarantee, DepartureMessage, DepartureReference, DepartureRefusal,
-    DepartureScope, Destination, Dialog, DilutionSource, Edition, Encoding, Escapes, Evidence,
-    EvidenceLevel, Field, FlowControl, Framing, Group, HexCase, IdentityEvidence, Law,
-    LawConnectionMode, LawPeer, LawQueryForm, LawWork, MachineDeparture, Mappings, NoSubId,
-    OrderNamespace, Overrides, Parity, PeerSupport, Poct, PoctIdentity, Priority, QcRule,
-    Responsibility, SampleSelection, SampleSource, Serial, Site, SubId, Syntax, Terminator,
-    TestMapping, Transport, TransportKind, UnitMapping, ValueKind, Vidas, VidasSampleLimit,
+    AckPoint, AstmTestComponent, Autolyser, Capability, ChecksumAcceptance, ChecksumHex,
+    ChecksumInclusion, Classification, CodeTables, ComponentParts, DepartureDeclaration,
+    DepartureDirection, DepartureEdition, DepartureGuarantee, DepartureMessage, DepartureReference,
+    DepartureRefusal, DepartureScope, Destination, Dialog, DilutionSource, Edition, Encoding,
+    Escapes, Evidence, EvidenceLevel, Field, FlowControl, Framing, Group, HexCase,
+    IdentityEvidence, Law, LawConnectionMode, LawPeer, LawQueryForm, LawWork, MachineDeparture,
+    Mappings, NoSubId, OrderNamespace, Overrides, Parity, PeerSupport, Poct, PoctIdentity,
+    Priority, QcRule, Responsibility, SampleSelection, SampleSource, Serial, Site, SubId, Syntax,
+    Terminator, Transport, TransportKind, UnitMapping, ValueExpectation, ValueKind, Vidas,
+    VidasSampleLimit,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -283,9 +284,9 @@ pub struct Machine {
 }
 
 impl Machine {
-    /// Returns the required test translation table for this stack.
+    /// Returns the machine's own test code system (ADR 0029).
     #[must_use]
-    pub fn tests(&self) -> &[TestMapping] {
+    pub fn test_system(&self) -> &analyte_model::Identifier {
         self.stack.code_tables().0
     }
 

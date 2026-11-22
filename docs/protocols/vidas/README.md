@@ -94,7 +94,8 @@ The host accepts at most 100 assays per app order (also subject to configured
 bounds), one explicit 1-4 byte assay code per request. Patient IDs must match the
 configured namespace and fit 17 printable ASCII bytes; sample IDs must fit the
 installed 12- or 17-byte ceiling. Values retain case and leading zeros; missing
-patient context, unmapped tests and over-long IDs are rejected before sending.
+patient context, tests outside the machine's code system or over 4 bytes, and
+over-long IDs are rejected before sending.
 Literal has no specimen-type or physical-position tag. Supplied specimen type
 is rejected as unmapped; it is never placed in origin `so` or structural `si`.
 No name, demographics, position or dilution is invented. Framing, suffix,

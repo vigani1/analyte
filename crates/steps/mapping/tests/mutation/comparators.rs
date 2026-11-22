@@ -22,8 +22,8 @@ fn unknown_comparator_never_becomes_equality() -> TestResult {
 #[test]
 fn coded_kind_parks_empty_or_numeric_text() -> TestResult {
     let definition = HL7_CONFIG.rewrite(
-        "app_system=\"demo\"",
-        "app_system=\"demo\",value_kind=\"coded\"",
+        "test_system = \"synthetic\"",
+        "test_system = \"synthetic\"\nvalue_kinds = [{code=\"SYN\", kind=\"coded\"}]",
     );
     for (raw, mismatch) in [("positive", false), ("", true), ("123", true), ("<1", true)] {
         let mapped = qualified_hl7(

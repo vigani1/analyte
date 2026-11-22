@@ -4,9 +4,8 @@ use crate::MachineDocument;
 use crate::{
     AstmOrderFields, Autolyser, ChecksumHex, CodeTables, Edition, Encoding, Error, Escapes,
     Hl7OrderQuery, Hl7Send, LawConnectionMode, LawPeer, LawQueryForm, LawWork, MachineDeparture,
-    Mappings, OrderPriority, OrderQuery, Orders, OutboundSpecimen, OutboundTest, Poct, Priority,
-    Responsibility, Serial, Syntax, Terminator, TestMapping, Transport, TransportKind, UnitMapping,
-    Vidas, invalid,
+    Mappings, OrderPriority, OrderQuery, Orders, OutboundSpecimen, Poct, Priority, Responsibility,
+    Serial, Syntax, Terminator, Transport, TransportKind, UnitMapping, Vidas, invalid,
 };
 use crate::{ParsedMachine, StackChoice};
 
@@ -104,9 +103,9 @@ impl Stack {
         self.common().timeouts
     }
 
-    /// Returns the required test and unit tables for this stack; there is no absent-table fallback.
+    /// Returns the machine's test code system and unit table; neither has a fallback.
     #[must_use]
-    pub fn code_tables(&self) -> (&[TestMapping], &[UnitMapping]) {
+    pub fn code_tables(&self) -> (&analyte_model::Identifier, &[UnitMapping]) {
         self.common().codes
     }
 }
@@ -150,7 +149,7 @@ impl Stack {
 struct CommonView<'a> {
     limits: &'a SyntaxLimits,
     timeouts: &'a DialogTimeouts,
-    codes: (&'a [TestMapping], &'a [UnitMapping]),
+    codes: (&'a analyte_model::Identifier, &'a [UnitMapping]),
     transport: TransportKind,
     operation_timeout_ms: u32,
     fields: Option<&'a Mappings>,
@@ -164,7 +163,7 @@ impl Stack {
                 CommonView {
                     limits: settings.limits(),
                     timeouts: settings.timeouts(),
-                    codes: (&settings.codes().tests, &settings.codes().units),
+                    codes: (&settings.codes().test_system, &settings.codes().units),
                     transport: $kind,
                     operation_timeout_ms: $timeout,
                     fields: $fields,
@@ -231,30 +230,47 @@ fn code_tables(machine: &ParsedMachine<'_>, path: &str) -> Result<CodeTables, Er
         .ok_or_else(|| invalid(path, "codes", "vendor stack requires code tables"))
 }
 
-/// Outbound test, specimen and priority translations shared by every order-sending protocol.
+/// The machine's order code system and the specimen and priority translations
+/// shared by every order-sending protocol.
 #[derive(Debug, Clone)]
 pub struct OrderTables {
-    /// Exact outbound test translations.
-    tests: Vec<OutboundTest>,
+    /// The machine's own test code system; order tests in another are refused.
+    test_system: analyte_model::Identifier,
     /// Explicit specimen translations; absence maps no values.
     specimen_types: Option<Vec<OutboundSpecimen>>,
     /// Exact outbound priority translations.
     priorities: Vec<OrderPriority>,
 }
 
-fn order_tables(orders: &Orders) -> OrderTables {
-    OrderTables {
-        tests: orders.tests.clone(),
+fn order_tables(
+    orders: &Orders,
+    machine: &ParsedMachine<'_>,
+    path: &str,
+) -> Result<OrderTables, Error> {
+    let test_system = match (&machine.mappings, &machine.codes) {
+        (Some(mappings), _) => &mappings.test_system,
+        (None, Some(codes)) => &codes.test_system,
+        (None, None) => {
+            return Err(invalid(
+                path,
+                "mappings",
+                "orders need the machine's test_system",
+            ));
+        }
+    };
+    Ok(OrderTables {
+        test_system: test_system.clone(),
         specimen_types: orders.specimen_types.clone(),
         priorities: orders.priorities.clone(),
-    }
+    })
 }
 
 impl OrderTables {
-    /// Explicit application-to-instrument test-code mapping.
+    /// The machine's own test code system (ADR 0029). An order test is sent
+    /// only when its namespace is exactly this system; its code goes out as written.
     #[must_use]
-    pub fn tests(&self) -> &[OutboundTest] {
-        &self.tests
+    pub fn test_system(&self) -> &analyte_model::Identifier {
+        &self.test_system
     }
     /// Explicit specimen-code mappings; unknown specimens remain unresolved.
     #[must_use]

@@ -45,8 +45,9 @@ pub fn map(
             machine.settings().codes(),
             &observation.source_code.value,
             system,
-        ) else {
-            output.unmapped_test(
+        )?
+        else {
+            output.missing_test(
                 Position {
                     record: observation.source_index.saturating_add(1),
                     field: 0,
@@ -136,16 +137,16 @@ fn map_identity(
             {
                 run.push(sequence);
             }
-            let code = NamespacedId {
-                namespace: Identifier::new(
-                    source_code
-                        .system
-                        .as_deref()
-                        .or(source_code.system_name.as_deref())
-                        .ok_or(Error::Context("POCT analyte namespace missing"))?,
-                )?,
-                value: Identifier::new(&source_code.value)?,
-            };
+            // The same namespaced code the result part carries (ADR 0029).
+            let code = map_test(
+                machine.settings().codes(),
+                &source_code.value,
+                source_code
+                    .system
+                    .as_deref()
+                    .or(source_code.system_name.as_deref()),
+            )?
+            .ok_or(Error::Context("POCT analyte code missing"))?;
             identity = IdentityStatus::Resolved(ResultIdentity {
                 observation: ObservationIdentity {
                     code,

@@ -322,10 +322,22 @@ async fn restore_pause_blocks_send_ahead_and_cancel() -> Result<(), Error> {
 
 // IHE PaLM TF-2b §3.28; ADR 0003
 #[tokio::test]
-async fn unmapped_send_is_rejected_before_reservation() -> Result<(), Error> {
+async fn foreign_send_is_rejected_before_reservation() -> Result<(), Error> {
+    // ADR 0029: a test outside the machine's code system is never sent.
+    unsent_with_tests(serde_json::json!([{"namespace":"unknown","value":"SYN","name":"Synthetic"}]))
+        .await
+}
+
+// IHE PaLM TF-2b OBR-4 requires its text component; ADR 0029: only the lab
+// app names a test, so a test without a name is refused, never invented.
+#[tokio::test]
+async fn unnamed_send_is_rejected_before_reservation() -> Result<(), Error> {
+    unsent_with_tests(serde_json::json!([{"namespace":"99LAB","value":"SYN"}])).await
+}
+
+async fn unsent_with_tests(tests: serde_json::Value) -> Result<(), Error> {
     let mut value = serde_json::to_value(order("order-1", "000Ab12", Some("law"), 2)?)?;
-    *value.get_mut("tests").ok_or("tests")? =
-        serde_json::json!([{"namespace":"unknown","value":"unmapped"}]);
+    *value.get_mut("tests").ok_or("tests")? = tests;
     let (_temp, path, reference, running, mut peer) = setup(
         vec![analyte_contract::decode(&serde_json::to_vec(&value)?)?],
         &send_ahead(),

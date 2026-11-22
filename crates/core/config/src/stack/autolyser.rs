@@ -88,7 +88,7 @@ pub(super) fn build(
             .as_ref()
             .map(|orders| {
                 Ok::<_, Error>(AutolyserOrders {
-                    tables: order_tables(orders),
+                    tables: order_tables(orders, machine, path)?,
                     patient_namespace: orders.patient_namespace.clone().ok_or_else(|| {
                         invalid(
                             path,

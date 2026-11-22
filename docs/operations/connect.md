@@ -294,8 +294,12 @@ The admin token and retention digest key are separate credentials; see
 
 Have the app team implement and test [contract v1](../contract/v1.md) and its
 test vectors. The reference receiver is an implementation example, not a
-production LIS. Agree the base URL, destination namespace, API key, signing
-secret and exact test/code-system mappings with that team.
+production LIS. Agree the base URL, destination namespace, API key and signing
+secret with that team. Analyte sends each machine's own test codes with its
+code system and never translates them
+([ADR 0029](../adr/0029-lab-app-owns-test-names.md)); give the team each
+machine model's `test_system` and code list, so their app keeps its own table
+per model and orders use the same codes.
 
 Analyte makes outbound verified HTTPS requests: `POST /results`,
 `POST /order-events` and `GET /orders` relative to the base URL. Requests use a

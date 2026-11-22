@@ -249,7 +249,7 @@ fn component_parts_keep_exact_dilution() -> TestResult {
                 .iter()
                 .any(|f| f.position.field == 3 && f.problem == Problem::ComponentParts)
         );
-        assert_eq!(output.unmapped.len(), 1);
+        assert_eq!(output.uncoded.len(), 1);
     }
     Ok(())
 }
@@ -265,10 +265,17 @@ fn value_kind_mismatch_keeps_originals() -> TestResult {
         ("either", "12", false),
     ] {
         for (definition, astm_source) in [(ASTM_CONFIG, true), (HL7_CONFIG, false)] {
-            let definition = definition.rewrite(
-                "machine_code=",
-                &format!("value_kind='{kind}', machine_code="),
-            );
+            // "either" is the absence of an expectation (ADR 0029).
+            let definition = if kind == "either" {
+                definition.to_owned()
+            } else {
+                definition.rewrite(
+                    "test_system = \"synthetic\"",
+                    &format!(
+                        "test_system = \"synthetic\"\nvalue_kinds = [{{code=\"SYN\", kind=\"{kind}\"}}]"
+                    ),
+                )
+            };
             let output = if astm_source {
                 let config = config(&definition)?;
                 let message = format!(
