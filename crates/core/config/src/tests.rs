@@ -40,6 +40,7 @@ fn every_example_keeps_legacy_canonical_bytes() -> Result<(), Box<dyn std::error
             schema_version: 1,
             machine: &parsed_machine,
             site: &parsed_site,
+            choices: std::collections::BTreeMap::new(),
         })?;
         let validated = Draft::load(
             ("machine", &machine),

@@ -183,7 +183,11 @@ nothing is written before **Save**.
    is not used. Below the port, **Cable settings** (baud rate, data bits,
    parity, stop bits, flow control) start at the manual's suggestion; match
    them to the analyzer's LIS/host settings screen
-   ([Serial cable settings](connect.md#serial-cable-settings)). For a machine
+   ([Serial cable settings](connect.md#serial-cable-settings)). A model with
+   its own settings (a protocol mode, its software version) shows them under
+   **Analyzer settings**, starting at the manual's suggestion; match them to
+   the analyzer's screen and its About screen
+   ([Analyzer settings](connect.md#analyzer-settings)). For a machine
    that connects to Analyte over the network,
    choose one of this PC's addresses (each shown with its network adapter) or
    every network card, and the port; then type that address and port into the

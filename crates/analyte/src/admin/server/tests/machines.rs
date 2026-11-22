@@ -37,6 +37,9 @@ fn running(
     if open {
         (reporter.observer())(analyte_transport::Activity::Opened);
     }
+    // ADR 0032: a serial machine whose model declares a choice.
+    let choices = matches!(connection, Connection::Serial(_))
+        .then(|| "Protocol on the host link screen: Literal".to_owned());
     Ok(Machine {
         rules: Vec::new(),
         digest: [0xab; 32],
@@ -47,6 +50,7 @@ fn running(
         connection,
         allowed_peers: None,
         cable: None,
+        choices,
         lab_app: Identifier::new("main-lab")?,
     })
 }
@@ -807,6 +811,11 @@ async fn each_machine_page_reads_in_its_own_words() -> Result<(), Error> {
         "Check that the USB adapter or cable is plugged into this PC, that COM3 is the right port, and that no other program is using it.</span>"
     ));
     assert!(serial.contains("<p class=\"empty__title\">Nothing received yet</p>"));
+    // ADR 0032 decision 6: the page shows the model's own choices in use.
+    assert!(
+        serial.contains("Analyzer settings</dt><dd>Protocol on the host link screen: Literal"),
+        "{serial}"
+    );
     assert!(
         serial
             .contains("<p class=\"page-head__lede\">Model of serial-2 · nothing received yet</p>")

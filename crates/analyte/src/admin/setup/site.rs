@@ -110,8 +110,9 @@ pub(super) struct Candidate {
 /// The current site file with the page's choices applied: the connection, the
 /// devices it accepts (`allowed_peers`, removed when none are chosen, ADR
 /// 0026), the serial cable settings (`[serial]`, every chosen value, removed
-/// for other links, ADR 0031), and `lab_app = "<name>"` in place of any
-/// `[destination]` table. Every other key (retention, time zone, limits) is
+/// for other links, ADR 0031), the model's own choices (`[choices]`, every
+/// declared choice's value, removed for a model without choices, ADR 0032),
+/// and `lab_app = "<name>"` in place of any `[destination]` table. Every other key (retention, time zone, limits) is
 /// kept as it was.
 ///
 /// A complete `[destination]` moves into `lab-apps.toml` unless it is already
@@ -122,10 +123,11 @@ pub(super) struct Candidate {
 /// setup page) is copied into `lab-apps.toml` with the same values.
 pub(super) fn candidate(
     current: &str,
-    (connection, peers, serial): (
+    (connection, peers, serial, chosen): (
         &Endpoint,
         Option<&analyte_config::AllowedPeers>,
         Option<&analyte_config::SerialValues>,
+        &analyte_config::ChoiceSelections,
     ),
     lab_app: &Identifier,
     lab_apps: &LabApps,
@@ -150,6 +152,13 @@ pub(super) fn candidate(
                     .map(|address| toml::Value::String(address.to_string()))
                     .collect(),
             ),
+        );
+    }
+    table.remove("choices");
+    if !chosen.is_empty() {
+        table.insert(
+            "choices".into(),
+            toml::Value::try_from(chosen).map_err(SetupError::SiteText)?,
         );
     }
     table.remove("serial");

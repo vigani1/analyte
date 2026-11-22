@@ -4,8 +4,8 @@ use super::{
     Failure, Installation, Outcome, actor, backups, live, problem, record, restart_note, say,
 };
 use crate::admin::setup::{
-    Definition, Running, Seams, Setup, SetupError, Shipped, Via, cable, definitions, lab_apps,
-    level_and_state,
+    Definition, Running, Seams, Setup, SetupError, Shipped, Via, cable, choices, definitions,
+    lab_apps, level_and_state,
     machines::{add_machine, preview_removal, remove_machine},
     model, on_files,
     plan::{self, KEEP, Plan},
@@ -177,6 +177,19 @@ pub struct Choice {
     /// The serial cable settings.
     #[command(flatten)]
     cable: Cable,
+    /// One of the model's own settings, as step 2 lists them under Analyzer
+    /// settings and `machines models` names them; repeat for several. A
+    /// setting not given keeps its saved value, else the model's suggestion.
+    #[arg(long = "choice", value_name = "NAME=VALUE", value_parser = choice_pair)]
+    choice: Vec<(String, String)>,
+}
+
+/// Reads `--choice NAME=VALUE`; the model's own checks follow.
+fn choice_pair(text: &str) -> Result<(String, String), String> {
+    text.split_once('=')
+        .map(|(name, value)| (name.trim().to_owned(), value.trim().to_owned()))
+        .filter(|(name, value)| !name.is_empty() && !value.is_empty())
+        .ok_or_else(|| "write NAME=VALUE, such as protocol_mode=alternate".to_owned())
 }
 
 impl Choice {
@@ -206,6 +219,7 @@ impl Choice {
             };
         }
         draft = self.cable.over(draft);
+        draft.choices.extend(self.choice);
         if !self.allowed_peer.is_empty() {
             draft.allowed_peers = Some(self.allowed_peer.join(", "));
         }
@@ -299,6 +313,21 @@ fn models(seams: &Seams) -> Result<Outcome, Failure> {
         if let Some(note) = status.note {
             say(&format!("  {note}"))?;
         }
+        if let Shipped::Ready { path, .. } = &definition.state {
+            for choice in choices::declared(path) {
+                say(&format!(
+                    "  --choice {}=<{}>: {}{}",
+                    choice.name,
+                    choice.allowed().replace(", ", "|"),
+                    choice.label.as_str(),
+                    choice
+                        .suggested
+                        .as_ref()
+                        .map(|value| format!("; the manual suggests {value}"))
+                        .unwrap_or_default()
+                ))?;
+            }
+        }
     }
     Ok(Outcome::Done)
 }
@@ -377,6 +406,26 @@ pub(super) struct Listed {
     /// The serial cable settings the files load now, when it is on a serial
     /// cable (ADR 0031).
     pub(super) cable: Option<ListedCable>,
+    /// Each of the model's own choices the files load now (ADR 0032); empty
+    /// when it declares none.
+    pub(super) choices: Vec<ListedChoice>,
+    /// The choices in words, with what differs from the suggestion.
+    pub(super) choices_words: Option<String>,
+}
+
+/// One of a model's own choices as `machines list` shows it.
+#[derive(serde::Serialize)]
+pub(super) struct ListedChoice {
+    name: String,
+    /// `mode` or `software_version`.
+    kind: &'static str,
+    /// The value in use.
+    value: String,
+    /// The manual's suggestion; none when it suggests none.
+    suggested: Option<String>,
+    /// The site file chose it; otherwise the suggestion applies.
+    selected: bool,
+    differs_from_suggestion: bool,
 }
 
 /// A serial machine's cable settings as `machines list` shows them.
@@ -444,6 +493,25 @@ pub(super) fn settings_rows(installation: &Installation) -> Result<Vec<Listed>, 
                 words: cable::summary(serial, suggestion),
             })
         });
+        let chosen = loaded.map(|machine| machine.snapshot().effective().choices());
+        let listed_choices = chosen
+            .unwrap_or_default()
+            .iter()
+            .map(|chosen| ListedChoice {
+                name: chosen.name.as_str().to_owned(),
+                kind: match chosen.kind {
+                    analyte_config::ChoiceKind::Mode => "mode",
+                    analyte_config::ChoiceKind::SoftwareVersion => "software_version",
+                },
+                value: chosen.value.as_str().to_owned(),
+                suggested: chosen
+                    .suggested
+                    .as_ref()
+                    .map(|(value, _)| value.as_str().to_owned()),
+                selected: chosen.selected,
+                differs_from_suggestion: chosen.differs(),
+            })
+            .collect();
         let listens = definition.as_deref().is_some_and(|path| {
             plan::kind_of(&crate::installation::config::folder(&config).join(path))
                 == Some(TransportKind::TcpServer)
@@ -461,6 +529,8 @@ pub(super) fn settings_rows(installation: &Installation) -> Result<Vec<Listed>, 
             settings_version: version,
             live: None,
             cable,
+            choices: listed_choices,
+            choices_words: chosen.and_then(choices::summary),
             id,
         });
     }
@@ -537,6 +607,9 @@ fn print_machine(machine: &Listed, engine: bool) -> std::io::Result<()> {
     ))?;
     if let Some(cable) = &machine.cable {
         say(&format!("  Cable: {}", cable.words))?;
+    }
+    if let Some(words) = &machine.choices_words {
+        say(&format!("  Analyzer settings: {words}"))?;
     }
     if let Some(line) = devices_line(machine) {
         say(&line)?;
@@ -703,6 +776,24 @@ fn saved(setup: &Setup, id: &str) -> Result<Draft, SetupError> {
     Ok(draft)
 }
 
+/// Fills each of the draft model's own choices not given with `--choice`
+/// from the saved site file, as step 2 starts from them; a saved choice the
+/// model does not declare (another model's) is left behind. Nothing is
+/// filled while the model is unknown; the plan refuses that by itself.
+fn keep_saved_choices(setup: &Setup, id: &str, draft: &mut Draft) -> Result<(), SetupError> {
+    let (_, installed) = site::installed(setup.config(), id)?;
+    let list = definitions(&setup.seams)?;
+    let Ok(model) = plan::model_of(&list, draft, &installed) else {
+        return Ok(());
+    };
+    let table = crate::installation::config::read(&installed.site)
+        .ok()
+        .and_then(|text| text.parse::<toml::Table>().ok())
+        .unwrap_or_default();
+    choices::keep_saved(draft, &table, &choices::declared(&model.path));
+    Ok(())
+}
+
 /// The devices a site file lets connect, as `--allowed-peer` takes them;
 /// none when it names none (ADR 0026).
 fn saved_peers(table: &toml::Table) -> Option<String> {
@@ -777,6 +868,26 @@ fn fill(setup: &Setup, id: &str, draft: &mut Draft, ask: Ask) -> Result<bool, Fa
     if plan::connection_of(kind, draft).is_err() {
         asked = true;
         ask_connection(setup, kind, draft, ask)?;
+    }
+    let declared = choices::declared(&model.path);
+    for choice in choices::missing(draft, &declared) {
+        asked = true;
+        let options: Vec<ask::Choice> = choice
+            .values
+            .iter()
+            .map(|value| ask::Choice {
+                value: value.value.as_str().to_owned(),
+                label: value.label.as_str().to_owned(),
+            })
+            .collect();
+        let question = format!(
+            "Step 2, Analyzer settings: {}? The model suggests none; {}",
+            choice.label.as_str(),
+            choices::hint(choice.kind).to_lowercase()
+        );
+        if let Some(value) = ask.choose(&question, &options)? {
+            draft.choices.insert(choice.name.as_str().to_owned(), value);
+        }
     }
     if kind == Some(TransportKind::Serial) {
         for setting in cable::missing(draft, cable::suggested(&model.path).as_ref()) {
@@ -939,6 +1050,9 @@ fn summary(id: &str, plan: &Plan) -> std::io::Result<()> {
     if let Some(cable) = plan.cable() {
         say(&format!("Cable: {cable}"))?;
     }
+    if let Some(choices) = plan.choices() {
+        say(&format!("Analyzer settings: {choices}"))?;
+    }
     if let Some(accepts) = accepts(Link::of(effective.stack()), plan.peers.as_ref()) {
         say(&format!("Devices: {accepts}"))?;
     }
@@ -959,6 +1073,7 @@ async fn set(
 ) -> Result<Outcome, Failure> {
     let setup = installation.setup.clone();
     let mut draft = choice.over(saved(&setup, id)?);
+    keep_saved_choices(&setup, id, &mut draft)?;
     let filled = fill(&setup, id, &mut draft, ask)?;
     let asked = ask_peers(&setup, id, &mut draft, ask)? || filled;
     if dry_run {
@@ -998,6 +1113,9 @@ async fn save(
             say(&format!("Connection: {} ({})", words.shown, words.exact))?;
             if let Some(cable) = &saved.cable {
                 say(&format!("Cable: {cable}"))?;
+            }
+            if let Some(choices) = &saved.choices {
+                say(&format!("Analyzer settings: {choices}"))?;
             }
             if let Some(accepts) = accepts(saved.link, saved.peers.as_ref()) {
                 say(&format!("Devices: {accepts}"))?;
@@ -1076,6 +1194,7 @@ async fn test(
 ) -> Result<Outcome, Failure> {
     let setup = installation.setup.clone();
     let mut draft = choice.over(saved(&setup, id)?);
+    keep_saved_choices(&setup, id, &mut draft)?;
     fill(&setup, id, &mut draft, ask)?;
     let plan = plan::plan(&setup, id, &draft)?;
     let stack = plan.validated.effective().stack();

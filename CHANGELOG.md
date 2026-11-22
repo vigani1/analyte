@@ -4,6 +4,22 @@
 
 ### Program
 
+- A machine definition can declare the choices a lab makes (ADR 0032): modes
+  the analyzer offers on its own screen, and its software version, whose band
+  decides version-specific facts such as the VIDAS sample ID limit. Each value
+  selects existing settings only (the mappings, whether orders apply, VIDAS
+  Literal or Alternate, the VIDAS sample ID limit); every combination is
+  checked when the definition loads. Setup step 2 asks exactly the selected
+  model's choices under **Analyzer settings**, starting at the manual's
+  suggestion, and Save keeps every value in the site file's `[choices]`. A
+  choice without a value and without a suggestion is refused by name, never
+  assumed. `analyte machines set` and `test` take `--choice NAME=VALUE`;
+  `machines models` lists each model's choices; `machines list` (and
+  `--json`), `doctor` and the machine's page show the values in use and which
+  differ from the manual. A choice cannot change evidence or departures.
+- The synthetic example `vidas_choices.toml` shows a mode choice and a
+  software version band.
+
 - A lab chooses a serial machine's cable settings (baud rate, data bits,
   parity, stop bits, flow control) on the Setup page's step 2, from the
   standard values, filled in with the manual's suggestion and marked where they

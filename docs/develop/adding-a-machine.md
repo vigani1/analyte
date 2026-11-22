@@ -109,8 +109,8 @@ Record unresolved items explicitly and withhold activation until resolved.
 
 | Part | Owns |
 | --- | --- |
-| Shipped definition | Protocol, mappings, named departures and evidence; for serial, the manual's usual cable settings as a suggestion |
-| Site settings | Device endpoint, app destination with credential names only, and the serial cable settings the lab chose |
+| Shipped definition | Protocol, mappings, named departures and evidence; for serial, the manual's usual cable settings as a suggestion; the choices the lab makes, each with its allowed values and the manual's suggestion |
+| Site settings | Device endpoint, app destination with credential names only, the serial cable settings the lab chose and the lab's value for each choice |
 | Local overrides | Explicit replacement sections for this installation |
 
 All layers use TOML, a text format with named sections. Unknown keys fail.
@@ -343,6 +343,70 @@ patient field and rejects `patient_namespace`. Follow the
 Sent, accepted, done and cancelled are different outcomes. A lost reply or
 restart never authorizes an automatic resend to a machine.
 
+### Declare the lab's choices
+
+Some settings are the lab's to choose because the analyzer offers them on its
+own screen (a host dialect, "send results only", VIDAS Literal or Alternate)
+or because they follow the installed software version (the VIDAS sample ID
+limit). Declare each as a choice instead of writing a second definition
+([ADR 0032](../adr/0032-machine-definitions-declare-lab-choices.md)); Setup
+step 2 then asks exactly these, and `analyte machines set --choice
+NAME=VALUE` sets them. Everything else in the definition stays a fixed fact
+of the model: where the sample ID sits, QC rules, correction codes, deadlines
+and size limits are never choices.
+
+```toml
+# A mode the analyzer offers; the manual suggests one value.
+[[choices]]
+name = "protocol_mode"
+kind = "mode"
+label = "Protocol on the host link screen"
+suggested = "literal"
+[[choices.values]]
+value = "literal"
+label = "Literal (acknowledge after the checksum)"
+vidas = {alternate = false}
+[[choices.values]]
+value = "alternate"
+label = "Alternate (acknowledge after ETX)"
+vidas = {alternate = true}
+
+# The installed software version: only the lab knows it, so no suggestion.
+[[choices]]
+name = "software_version"
+kind = "software_version"
+label = "Software version on the About screen"
+[[choices.values]]
+value = "v1"
+label = "Version 1 (sample IDs up to 12 characters)"
+vidas = {sample_limit = 12}
+[[choices.values]]
+value = "v2"
+label = "Version 2 or later (sample IDs up to 17 characters)"
+vidas = {sample_limit = 17}
+```
+
+The whole synthetic example is
+[`vidas_choices.toml`](../../crates/core/config/examples/vidas_choices.toml).
+The rules the loader checks:
+
+| Rule | Why |
+| --- | --- |
+| `name` and `value` are 1 to 64 lower-case letters, digits, `-` or `_` | The same key in the site file, on the command line and in the form |
+| `label` is plain words naming where the analyzer shows it | Setup shows it as the question and the value's words |
+| `kind` is `mode` or `software_version`, at most one `software_version` | A version band is read on the About screen, not set |
+| `suggested` is one of the choice's values, or absent when only the lab can know | Without a suggestion the lab must choose; nothing is assumed |
+| 2 to 16 values, at most 16 choices and 64 combinations | Every combination is validated as a whole stack when the definition loads |
+| A value selects only these blocks: `mappings` (a whole table: a host dialect's field positions), `orders = "on"` or `"off"` (keep or turn off the definition's `[orders]`), `vidas.alternate`, `vidas.sample_limit` | A choice selects behaviour the protocol code already has; no field path or expression |
+| Every value of a choice selects the same blocks, and a block belongs to one choice | Each value states its whole effect |
+| A block a choice selects is written only in the choice; leave the `[mappings]` table or the `[vidas]` key out of the definition | One place decides it |
+| A choice cannot write `evidence`, `deviations` or `departure_scope` | Departures stay the evidenced list below (ADR 0015) |
+
+The lab's values go in the site file's `[choices]`, which Setup writes (see
+[connect](../operations/connect.md#analyzer-settings)). A new kind of building
+block needs a change in the config crate with its tests, not a config
+feature; ask the maintainers.
+
 ### Declare departures, do not program around them
 
 Keep `deviations = []` for the strict example. Under
@@ -499,6 +563,7 @@ assistance disclosure where applicable. A config PR is not permission to go live
 - [ ] Retransmission, correction and rerun evidence reviewed; no invented identity.
 - [ ] Three config layers separated; no secrets; all keys supported.
 - [ ] Outbound namespaces, context and failure policy explicitly agreed if enabled.
+- [ ] Settings the analyzer offers on its screen or ties to its software version declared as choices with the manual's suggestion; everything else fixed.
 - [ ] Named departures justified; unsupported quirks referred to maintainers.
 - [ ] Program passes `analyte check-config`.
 - [ ] Recordings reviewed for privacy and replay tests cover applicable failures.

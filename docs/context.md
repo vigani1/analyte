@@ -56,6 +56,7 @@ is just one app that might integrate someday. The research files still say
 | Standards first, machines after: each standard is complete and conformant before machine configs | 2026-11-15 |
 | The lab app owns test names and lists; Analyte passes machine codes through (ADR 0029) | 2026-11-22 |
 | Orders carry the machine's own specimen codes; priorities, units, QC and identity tables stay as machine facts (ADR 0030) | 2026-11-22 |
+| A machine definition declares the lab's choices (analyzer modes, software version bands) from existing settings; Setup asks exactly those (ADR 0032) | 2026-11-22 |
 
 ## The first machines (hardware test bed)
 

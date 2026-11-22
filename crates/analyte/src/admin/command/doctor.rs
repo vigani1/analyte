@@ -470,6 +470,11 @@ async fn connection(
             crate::admin::setup::cable::summary(serial, effective.serial_suggestion()),
         ));
     }
+    if let Some(choices) = crate::admin::setup::choices::summary(effective.choices()) {
+        // The lab chose these to match the analyzer (ADR 0032); like the
+        // cable, a difference from the manual is shown, not judged.
+        checks.push(ok(format!("{what} analyzer settings"), choices));
+    }
     checks
 }
 

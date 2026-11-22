@@ -19,6 +19,8 @@ use selection::ParsedMachine;
 pub use selection::StackChoice;
 mod schema;
 use schema::MachineDocument;
+mod choices;
+pub use choices::{Chosen, declared as declared_choices};
 mod stack;
 mod validation;
 pub use orders::{
@@ -27,15 +29,17 @@ pub use orders::{
 };
 pub use schema::{
     AckPoint, AstmTestComponent, Autolyser, Capability, ChecksumAcceptance, ChecksumHex,
-    ChecksumInclusion, Classification, CodeTables, ComponentParts, DepartureDeclaration,
+    ChecksumInclusion, ChoiceBlock, ChoiceKind, ChoiceLabel, ChoiceName, ChoiceSelections,
+    ChoiceValue, Classification, CodeTables, ComponentParts, DepartureDeclaration,
     DepartureDirection, DepartureEdition, DepartureGuarantee, DepartureMessage, DepartureReference,
     DepartureRefusal, DepartureScope, Destination, Dialog, DilutionSource, Edition, Encoding,
     Escapes, Evidence, EvidenceLevel, Field, FlowControl, Framing, Group, HexCase,
-    IdentityEvidence, Law, LawConnectionMode, LawPeer, LawQueryForm, LawWork, MachineDeparture,
-    Mappings, NoSubId, OrderNamespace, Overrides, Parity, PeerSupport, Poct, PoctIdentity,
-    Priority, QcRule, Responsibility, SampleSelection, SampleSource, Serial, SerialSetting,
-    SerialValues, Site, SubId, Syntax, Terminator, Transport, TransportKind, UnitMapping,
-    ValueExpectation, ValueKind, Vidas, VidasSampleLimit,
+    IdentityEvidence, Law, LawConnectionMode, LawPeer, LawQueryForm, LawWork,
+    MAX_CHOICE_COMBINATIONS, MAX_CHOICE_VALUES, MAX_CHOICES, MachineChoice, MachineDeparture,
+    Mappings, NoSubId, OrderNamespace, OrdersSwitch, Overrides, Parity, PeerSupport, Poct,
+    PoctIdentity, Priority, QcRule, Responsibility, SampleSelection, SampleSource, Serial,
+    SerialSetting, SerialValues, Site, SubId, Syntax, Terminator, Transport, TransportKind,
+    UnitMapping, ValueExpectation, ValueKind, Vidas, VidasChoice, VidasSampleLimit,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -182,6 +186,83 @@ pub enum Error {
         /// The setting without a value.
         setting: SerialSetting,
     },
+    /// A choice the definition declares has no value in any layer; none is
+    /// assumed (ADR 0032).
+    #[error(
+        "{path}: choices.{choice}: no value: the machine definition suggests none and none was chosen; choose one of {allowed} on the Setup page (step 2) or with analyte machines set --choice {choice}=<value>"
+    )]
+    MissingChoice {
+        /// The site file that lacks the selection.
+        path: String,
+        /// The choice without a value.
+        choice: ChoiceName,
+        /// The values the definition offers.
+        allowed: String,
+    },
+    /// The site file selects a choice the definition does not declare.
+    #[error(
+        "{path}: choices.{choice}: the machine definition declares no such choice (it declares: {declared}); remove it from [choices]"
+    )]
+    UnknownChoice {
+        /// The site file.
+        path: String,
+        /// The undeclared choice.
+        choice: ChoiceName,
+        /// The choices the definition declares.
+        declared: String,
+    },
+    /// The site file selects a value the choice does not offer.
+    #[error("{path}: choices.{choice}: {value} is not one of its values: {allowed}")]
+    ChoiceValue {
+        /// The site file.
+        path: String,
+        /// The choice.
+        choice: ChoiceName,
+        /// The refused value.
+        value: ChoiceName,
+        /// The values the definition offers.
+        allowed: String,
+    },
+    /// Two choices select the same building block; one block has one owner.
+    #[error(
+        "{path}: choices.{second}: {} is already selected by choice {first}; one building block belongs to one choice",
+        block.key()
+    )]
+    ChoiceOverlap {
+        /// The definition.
+        path: String,
+        /// The choice declared first.
+        first: ChoiceName,
+        /// The later choice.
+        second: ChoiceName,
+        /// The block both select.
+        block: ChoiceBlock,
+    },
+    /// The overrides file replaces a block a choice selects.
+    #[error(
+        "{path}: {}: the machine definition's choice {choice} selects it; keep it in one place: remove it here or choose the value in Setup",
+        block.key()
+    )]
+    ChoiceOverridden {
+        /// The overrides file.
+        path: String,
+        /// The choice that owns the block.
+        choice: ChoiceName,
+        /// The block replaced twice.
+        block: ChoiceBlock,
+    },
+    /// One combination of the definition's choices gives a stack the
+    /// protocol code refuses.
+    #[error("{path}: choices {combination}: this combination cannot run: {source}")]
+    ChoiceCombination {
+        /// The definition, or the site file for the lab's own combination.
+        path: String,
+        /// The combination as `name=value` pairs.
+        combination: String,
+        /// Why the stack refuses it.
+        #[source]
+        source: Box<Error>,
+    },
     /// A site file's lab app cannot be chosen, or `lab-apps.toml` is refused.
     #[error("{path}: {problem}")]
     LabApp {
@@ -207,7 +288,7 @@ fn load<T: for<'de> Deserialize<'de>>(path: &str, text: &str) -> Result<T, Error
     if text.len() > MAX_FILE_BYTES {
         return Err(Error::FileSize { path: path.into() });
     }
-    let value: toml::Table = toml::from_str(text).map_err(|source| Error::Schema {
+    let mut value: toml::Table = toml::from_str(text).map_err(|source| Error::Schema {
         path: path.into(),
         source,
     })?;
@@ -224,6 +305,7 @@ fn load<T: for<'de> Deserialize<'de>>(path: &str, text: &str) -> Result<T, Error
     {
         return Err(invalid(path, "schema_version", reason));
     }
+    let filled = machine && choices::prepare(&mut value, path)?;
     if machine {
         for section in ["framing", "dialog", "syntax"] {
             if value.get(section).and_then(|v| v.get("kind")).is_some() {
@@ -263,7 +345,14 @@ fn load<T: for<'de> Deserialize<'de>>(path: &str, text: &str) -> Result<T, Error
             }
         }
     }
-    toml::from_str(text).map_err(|source| Error::Schema {
+    let parsed = if filled {
+        // Only a definition whose choices own a `[vidas]` key reads from the
+        // filled table; every other file keeps the positioned diagnostics.
+        toml::Value::Table(value).try_into()
+    } else {
+        toml::from_str(text)
+    };
+    parsed.map_err(|source| Error::Schema {
         path: path.into(),
         source,
     })
@@ -277,6 +366,8 @@ pub struct Draft {
     source: LabAppSource,
     /// The site file's serial cable choice, applied over the definition's suggestion.
     serial: Option<SerialValues>,
+    /// The site file's value for each of the definition's choices.
+    choices: ChoiceSelections,
     overrides: Overrides,
     paths: [String; 3],
 }
@@ -316,6 +407,8 @@ pub struct Effective {
     source: LabAppSource,
     /// The definition's own serial values, before the site's choice.
     suggestion: Option<SerialValues>,
+    /// Each declared choice as it resolved.
+    choices: Vec<Chosen>,
     document: toml::Value,
 }
 
@@ -330,6 +423,10 @@ struct Canonical<'a> {
     schema_version: u32,
     machine: &'a MachineDocument,
     site: &'a Site,
+    /// The value in use for each declared choice; absent without choices, so
+    /// earlier snapshots keep their bytes.
+    #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    choices: std::collections::BTreeMap<&'a str, &'a str>,
 }
 
 /// Immutable validated snapshot with exact canonical bytes and SHA-256.
@@ -369,12 +466,13 @@ impl Draft {
         overrides: (&str, &str),
         lab_apps: &LabApps,
     ) -> Result<Self, Error> {
-        let (resolved, source, serial) = retention::load_site(site.0, site.1, lab_apps)?;
+        let (resolved, source, chosen) = retention::load_site(site.0, site.1, lab_apps)?;
         Ok(Self {
             machine: load(machine.0, machine.1)?,
             site: resolved,
             source,
-            serial,
+            serial: chosen.serial,
+            choices: chosen.choices,
             overrides: load(overrides.0, overrides.1)?,
             paths: [machine.0.into(), site.0.into(), overrides.0.into()],
         })
@@ -398,19 +496,21 @@ impl Draft {
                 ));
             }
         }
+        let machine_path = self.paths.first().map_or("machine", String::as_str);
+        choices::check(&self.machine, machine_path)?;
+        let resolved = choices::resolve(&self.machine.choices, &self.choices, site_path)?;
+        choices::refuse_overrides(&self.machine.choices, &o, path)?;
+        let selected: Vec<usize> = resolved.iter().map(|(index, _)| *index).collect();
         // Validate original layers too: an override must not conceal an invalid
-        // shipped definition. A serial value the definition leaves out is not a
-        // fault in it when the overrides replace the whole transport.
-        match validate_machine(
+        // shipped definition, nor any combination of its choices.
+        choices::validate_offered(
             &self.machine,
-            self.paths.first().map_or("machine", String::as_str),
-            self.paths.first().map_or("machine", String::as_str),
-        ) {
-            Err(Error::MissingSerialSetting { .. }) if o.transport.is_some() => {}
-            checked => {
-                checked?;
-            }
-        }
+            &selected,
+            o.transport.is_some(),
+            [machine_path, site_path],
+        )?;
+        let chosen = choices::chosen(&self.machine.choices, &resolved);
+        self.machine = choices::applied(&self.machine, &selected);
         validate_site(&self.site, &self.machine.transport, site_path)?;
         if o.endpoint.is_some() || o.usb_serial.is_some() {
             self.site.endpoint = Endpoint::choose(o.endpoint, o.usb_serial, path)?;
@@ -458,6 +558,10 @@ impl Draft {
             schema_version: 1,
             machine: &self.machine,
             site: &self.site,
+            choices: chosen
+                .iter()
+                .map(|chosen| (chosen.name.as_str(), chosen.value.as_str()))
+                .collect(),
         })?;
         let canonical = toml::to_string(&document)?;
         let effective = Effective {
@@ -470,6 +574,7 @@ impl Draft {
             site: self.site,
             source: self.source,
             suggestion,
+            choices: chosen,
             document,
         };
         let digest = Sha256::digest(canonical.as_bytes()).into();
@@ -570,6 +675,14 @@ impl Effective {
     #[must_use]
     pub fn serial_suggestion(&self) -> Option<&SerialValues> {
         self.suggestion.as_ref()
+    }
+
+    /// Each choice the machine definition declares, with the value in use and
+    /// whether the site file chose it or the suggestion applies (ADR 0032);
+    /// empty when it declares none.
+    #[must_use]
+    pub fn choices(&self) -> &[Chosen] {
+        &self.choices
     }
 
     /// Where the lab app in `site().destination` was written. It is not part of
