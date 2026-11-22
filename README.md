@@ -144,6 +144,13 @@ sequenceDiagram
 | `POST /results` | One delivery of results with the original values, units and identities. The delivery ID stays the same on every retry; the app stores it first and answers a repeat as a duplicate. |
 | `POST /order-events` | What happened to an order on the machine: sent, accepted, done, cancelled, rejected or uncertain. "Uncertain" never means "send it again". |
 
+**Test codes stay the machine's own.** Analyte never translates or names a
+test ([ADR 0029](docs/adr/0029-lab-app-owns-test-names.md)). You receive the
+machine's own test codes with their code system (for example
+`{"namespace": "cobas-e411", "value": "0025"}`), exactly as the machine sent
+them; keep your own table per machine model. Orders go back in the same codes,
+with your own name for each test where the protocol has room for one.
+
 The app's answer tells Analyte what to do next: `200` done, `5xx`/`429` retry
 (1 s up to 60 s, never giving up), `401`/`403` pause until the setup is fixed,
 `400`/`409`/`422` park for review. Every call carries an API key, and each

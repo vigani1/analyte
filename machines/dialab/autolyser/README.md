@@ -58,8 +58,9 @@ Research only; no machine recording or official simulator run. No recordings shi
 ## Open questions
 
 - Blocking: full serial parameters, installed protocol and software applicability.
-- Required site settings: controls layout, exact four-byte analysis codes and
-  app mappings, units evidence, clone/specimen/position rules and polling bounds.
+- Required site settings: controls layout, the code system of its exact
+  four-byte analysis codes, units evidence, clone/specimen/position rules and
+  polling bounds.
 - Blocking: record manual or automatic report release policy and verify that
   NC transmission is enabled. Before activation, capture synthetic NC results
   and manual-release and automatic-release polling conversations, demonstrating

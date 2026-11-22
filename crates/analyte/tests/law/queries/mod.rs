@@ -51,7 +51,7 @@ fn order(
         "tests".into(),
         serde_json::json!(
             (0..tests)
-                .map(|_| serde_json::json!({"namespace":"synthetic","value":"TEST"}))
+                .map(|_| serde_json::json!({"namespace":"99LAB","value":"SYN","name":"Synthetic"}))
                 .collect::<Vec<_>>()
         ),
     );

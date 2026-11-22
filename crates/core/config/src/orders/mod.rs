@@ -25,16 +25,6 @@ pub struct OrderQuery {
     pub when_untrusted: WhenUntrusted,
 }
 
-/// One app code maps to explicitly ordered ASTM universal test components.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct OutboundTest {
-    /// Exact app code system and code.
-    pub app: NamespacedId,
-    /// Universal test ID components, including significant empty positions.
-    pub machine_components: Vec<String>,
-}
-
 /// Explicit app specimen type to protocol sample-medium code.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -115,8 +105,12 @@ pub struct AstmOrderFields {
     pub position: Option<Field>,
     /// LIS02 section 8.4.16.1 specimen type: O field 16, component 1.
     pub specimen_type: Option<Field>,
-    /// First component of each repeated universal test ID.
+    /// Where each repeated universal test ID goes; its component holds the
+    /// machine's test code as the order wrote it (LIS02 section 5.6.1).
     pub test: Field,
+    /// Components written in each universal test ID, counting the code's;
+    /// later ones stay empty. Absent: the code's component is the last.
+    pub test_components: Option<u16>,
     /// Priority destination.
     pub priority: Field,
     /// Action code destination.
@@ -220,6 +214,9 @@ pub struct Hl7Send {
     pub specimen_system: Option<Identifier>,
     /// Explicit coding-system version where required by SPM-4 CWE.
     pub specimen_version: Option<Identifier>,
+    /// Version of the machine's test code system, written in OBR-4 CWE.7;
+    /// required by editions that use CWE, refused by CE editions.
+    pub test_version: Option<Identifier>,
 }
 
 /// Opt-in outbound order capability. Nothing is sent by its absence.
@@ -230,8 +227,6 @@ pub struct Orders {
     pub query: Option<OrderQuery>,
     /// Explicit permission to send work lists ahead.
     pub send_ahead: bool,
-    /// Outbound app-to-machine translations.
-    pub tests: Vec<OutboundTest>,
     /// Optional explicit specimen-type translations; absence maps no values.
     pub specimen_types: Option<Vec<OutboundSpecimen>>,
     /// Explicit priority translations.

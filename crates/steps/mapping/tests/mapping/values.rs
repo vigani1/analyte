@@ -57,8 +57,7 @@ fn decoding_keeps_negotiated_characters() -> TestResult {
 // HL7 2.5.1 §2.7.4
 #[test]
 fn decodes_ids_and_values_keeping_originals() -> TestResult {
-    let definition = HL7_CONFIG.rewrite("machine_code=\"SYN\"", r"machine_code='A|B^C~D&E\F'");
-    let config = config(&definition)?;
+    let config = config(HL7_CONFIG)?;
     let escaped = r"A\F\B\S\C\R\D\T\E\E\F";
     let raw = format!(
         "MSH|^~\\&|SYN||||202611151200||ORU^R01^ORU_R01|MSG|P|2.5.1\rOBR|1||{escaped}\rOBX|1|TX|{escaped}^Label^synthetic||{escaped}~other||||||F\rOBX|2|CE|{escaped}^Label^synthetic||{escaped}^{escaped}^synthetic||||||F\r"
@@ -72,7 +71,9 @@ fn decodes_ids_and_values_keeping_originals() -> TestResult {
         r"A|B^C~D&E\F"
     );
     let part = first(&output)?;
-    assert_eq!(part.test.value.as_str(), "DEMO");
+    // ADR 0029: the code passes through decoded once, never translated.
+    assert_eq!(part.test.value.as_str(), r"A|B^C~D&E\F");
+    assert_eq!(part.test.namespace.as_str(), "synthetic");
     assert_eq!(part.values.as_slice().len(), 2);
     let value = part.values.as_slice().first().ok_or("value")?;
     assert_eq!(value.original.as_str(), escaped);
@@ -178,7 +179,8 @@ fn comparator_kept_with_original_text() -> TestResult {
     assert!(
         matches!(&value.parsed(), ValueInterpretation::Numeric(n) if n.number.as_str() == "0.10" && n.comparator == Some(Comparator::Less))
     );
-    assert_eq!(part.test.value.as_str(), "DEMO");
+    assert_eq!(part.test.value.as_str(), "SYN");
+    assert_eq!(part.test.namespace.as_str(), "synthetic");
     assert_eq!(part.qc_class, QcClass::Unknown);
     assert_eq!(
         part.reference_range.as_ref().map(SourceText::as_str),
@@ -313,9 +315,9 @@ fn training_and_debug_never_deliver() -> TestResult {
     Ok(())
 }
 
-// Safety rule 9 (ADR 0003)
+// Safety rule 9 (ADR 0003); ADR 0029: only an absent test code parks.
 #[test]
-fn missing_sample_and_unknown_code_are_located() -> TestResult {
+fn missing_sample_and_missing_code_are_located() -> TestResult {
     let output = hl7("OBR|1\rOBX|1|NM|SYN^^synthetic||1||||||F\r", HL7_CONFIG)?;
     assert!(output.requires_parking());
     assert!(
@@ -328,18 +330,18 @@ fn missing_sample_and_unknown_code_are_located() -> TestResult {
         == Problem::MissingIdentity {
             setting: analyte_mapping::IdentitySetting::OrderId
         }));
-    let output = astm("R|1|^^^UNKNOWN|1|||||F\r", "P")?;
+    let output = astm("R|1|^^^|1|||||F\r", "P")?;
     assert!(output.results.is_empty());
-    assert_eq!(output.unmapped.len(), 1);
+    assert_eq!(output.uncoded.len(), 1);
     assert!(
         output
             .findings
             .iter()
-            .any(|f| f.problem == Problem::UnknownTest)
+            .any(|f| f.problem == Problem::MissingTest && f.position.field == 3)
     );
     assert_eq!(
         output
-            .unmapped
+            .uncoded
             .first()
             .and_then(|r| r.values.as_slice().first())
             .map(|v| v.original.as_str()),
@@ -532,11 +534,25 @@ proptest! {
     }
 }
 
-// CLSI LIS02-A2 §5.6.1
+// CLSI LIS02-A2 §5.6.1; ADR 0029: test_component "universal" reads R.3.1.
 #[test]
 fn universal_test_id_and_repeats_are_kept() -> TestResult {
-    let output = astm("R|1|SYN|1.0\\1.0|mg/L|low\\high|H\\L||F\r", "P")?;
+    let universal = ASTM_CONFIG.rewrite(
+        "test_component = \"manufacturer\"",
+        "test_component = \"universal\"",
+    );
+    let output = astm_with("R|1|SYN|1.0\\1.0|mg/L|low\\high|H\\L||F\r", "P", &universal)?;
     let part = first(&output)?;
+    assert_eq!(part.test.value.as_str(), "SYN");
+    // The manufacturer component is then not the code: ^^^SYN has none.
+    let output = astm_with("R|1|^^^SYN|1|||||F\r", "P", &universal)?;
+    assert!(output.results.is_empty());
+    assert!(
+        output
+            .findings
+            .iter()
+            .any(|f| f.problem == Problem::MissingTest)
+    );
     assert_eq!(
         part.values
             .as_slice()
@@ -644,5 +660,87 @@ fn astm_comment_tab_kept_with_note() -> TestResult {
     assert_eq!((note.record, note.field), (5, 4));
     let plain = astm("R|1|^^^SYN|1|||||F\rC|1|I|left right|G\r", "P")?;
     assert!(plain.applied_departures.is_empty());
+    Ok(())
+}
+
+/// The test code and the observation identity code of the only result.
+fn codes(output: &Output) -> Result<(NamespacedId, NamespacedId), Box<dyn std::error::Error>> {
+    let result = output.results.first().ok_or("result")?;
+    let IdentityStatus::Resolved(identity) = &result.content.identity else {
+        return Err("identity stays resolved".into());
+    };
+    Ok((
+        first(output)?.test.clone(),
+        identity.observation.code.clone(),
+    ))
+}
+
+// ADR 0029; CLSI LIS02-A2 §5.6.1: the machine's own code passes through
+// exactly as sent (case and leading zeros kept), in the declared code system,
+// and the same code identifies the observation. No table lists it, and the
+// result is delivered rather than parked.
+#[test]
+fn astm_test_code_passes_through_exactly() -> TestResult {
+    let output = astm("R|1|^^^007aB|1.5|mg/L||N||F\r", "P")?;
+    let (test, code) = codes(&output)?;
+    assert_eq!(test.value.as_str(), "007aB");
+    assert_eq!(test.namespace.as_str(), "synthetic");
+    assert_eq!(code, test);
+    assert!(output.findings.is_empty(), "{:?}", output.findings);
+    assert!(!output.requires_parking());
+    Ok(())
+}
+
+// ADR 0029; HL7 2.5.1 §2.A.7: OBX-3 CE.3 names the coding system as sent;
+// only when it is empty does the machine's declared test_system apply.
+#[test]
+fn hl7_test_code_keeps_the_coding_system_the_machine_names() -> TestResult {
+    for (obx3, namespace) in [("0042xY^Name^99ROC", "99ROC"), ("0042xY^Name", "synthetic")] {
+        let output = qualified_hl7(
+            &format!("OBR|1||000AbC\rOBX|1|NM|{obx3}||1.5|mg/L|||||F\r"),
+            HL7_CONFIG,
+        )?;
+        let (test, code) = codes(&output)?;
+        assert_eq!(test.value.as_str(), "0042xY", "{obx3}");
+        assert_eq!(test.namespace.as_str(), namespace, "{obx3}");
+        assert_eq!(code, test);
+        assert!(
+            !output
+                .findings
+                .iter()
+                .any(|f| f.problem == Problem::MissingTest),
+            "{obx3}"
+        );
+    }
+    Ok(())
+}
+
+// ADR 0029: a value expectation applies to its code in its code system only;
+// without a system it means the machine's declared test_system.
+#[test]
+fn value_kinds_match_code_and_code_system() -> TestResult {
+    let definition = HL7_CONFIG.rewrite(
+        "test_system = \"synthetic\"",
+        "test_system = \"synthetic\"\nvalue_kinds = [{code=\"SYN\", kind=\"coded\"}, {code=\"SYN\", system=\"99ROC\", kind=\"numeric\"}]",
+    );
+    for (obx3, mismatch) in [
+        ("SYN^Name^synthetic", true),
+        ("SYN^Name", true),
+        ("SYN^Name^99ROC", false),
+        ("SYN^Name^LN", false),
+    ] {
+        let output = qualified_hl7(
+            &format!("OBR|1||000AbC\rOBX|1|NM|{obx3}||12|mg/L|||||F\r"),
+            &definition,
+        )?;
+        assert_eq!(
+            output
+                .findings
+                .iter()
+                .any(|f| matches!(f.problem, Problem::ValueKindMismatch { .. })),
+            mismatch,
+            "{obx3}"
+        );
+    }
     Ok(())
 }

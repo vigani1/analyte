@@ -6,7 +6,9 @@ queries only from orders it trusts, so a change the cursor skips can send a
 cancelled order to a machine or leave a new one unanswered. This page shows a
 design that cannot skip a committed change. The
 [reference receiver](../../crates/testing/receiver/src/lib.rs) follows it on
-SQLite.
+SQLite. Each order's tests use the target machine's own codes and code system,
+as its results do ([order tests](v1.md#order-tests)); the cursor never changes
+them.
 
 ## Why timestamps miss changes
 

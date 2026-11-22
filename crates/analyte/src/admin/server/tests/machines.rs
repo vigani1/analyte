@@ -379,7 +379,7 @@ async fn seed(root: &std::path::Path, store: &analyte_store::Handle) -> Result<S
         1,
         &evidence(
             Reading::Failed(Reason::new(
-                "Position { record: 4, field: 3 }: UnknownTest",
+                "Position { record: 4, field: 3 }: MissingTest",
             )?),
             Some(analyte_model::DepartureEvidence::default()),
         )?,
@@ -973,11 +973,11 @@ async fn how_a_message_was_read_shows_its_reading_and_differences() -> Result<()
     assert!(
         failed.contains(concat!(
             "<p class=\"alert__title\">This message could not be read</p>",
-            "<p class=\"alert__text\">record 4, field 3: UnknownTest</p>"
+            "<p class=\"alert__text\">record 4, field 3: MissingTest</p>"
         )),
         "{failed}"
     );
-    assert!(failed.contains("Reason as stored: Position { record: 4, field: 3 }: UnknownTest"));
+    assert!(failed.contains("Reason as stored: Position { record: 4, field: 3 }: MissingTest"));
     assert!(!failed.contains("Result statuses"));
     // A reading with differences switched on and used, and one with an incomplete record.
     let declared = SourceText::new("rule = 'hl7_absent_obx11_means_final'\nscope = '<b>'")?;

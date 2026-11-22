@@ -49,11 +49,10 @@ async fn setup_with_patient_requirement(
     )?;
     if matches!(edition, "v26" | "v282") {
         let file = temp.path().join("hl7.toml");
-        let configured = std::fs::read_to_string(&file)?
-            .rewrite(r#"["SYN","","L"]"#, r#"["SYN","","L","","","","test-r1"]"#);
+        let configured = std::fs::read_to_string(&file)?;
         std::fs::write(
             file,
-            format!("{configured}\npriority_version = \"priority1\"\n"),
+            format!("{configured}\npriority_version = \"priority1\"\ntest_version = \"test-r1\"\n"),
         )?;
     }
     let reference = Reference::start(

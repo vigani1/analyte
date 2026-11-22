@@ -155,7 +155,9 @@ fields = 128
 repetitions = 128
 components = 128
 [mappings]
-tests = [{machine_code="SYN", machine_system="synthetic", app_code="DEMO", app_system="demo"}]
+# The machine's own code system; codes pass through as sent (ADR 0029).
+test_system = "synthetic"
+test_component = "manufacturer"
 units = [{original="mg/L", ucum="mg/L"}]
 qc = []
 [mappings.sample]
@@ -223,12 +225,22 @@ growth, disk contention and future migrations.
 
 ### Map received results
 
-In `mappings.tests`, `machine_code` and `machine_system` select an exact source
-code; `app_code` and `app_system` name its agreed app equivalent. Do not assume
-that an assay name is a host code or assign a LOINC code without lab agreement.
+Analyte does not translate or name tests: the lab app owns test names and
+test lists ([ADR 0029](../adr/0029-lab-app-owns-test-names.md)). Each result
+carries the machine's own code exactly as sent. `mappings.test_system` names
+the machine's code system: the namespace of every code whose message names
+none, and the only one its orders accept. Pick a stable name for the machine
+model (for example `cobas-e411`) and tell the lab app makers; for HL7 and LAW
+use the coding system the machine writes in OBX-3.3. For ASTM,
+`test_component` says which R.3 component holds the code (LIS02 §5.6.1):
+`manufacturer` (component 4, `^^^ALB`, what most analyzers send) or
+`universal` (component 1). HL7, LAW and vendor formats have one fixed place
+and refuse the setting. A result whose code is empty is parked; any other
+code is delivered, and the lab app refuses codes it does not know.
+
 `mappings.units` translates exact `original` spellings to `ucum`; it never
 changes numbers or supplies absent units. Values retain their original text.
-Unknown tests and mapping failures stay parked with reasons.
+Mapping failures stay parked with reasons.
 
 Selectors use one-based `field`, `component` and `repetition` positions inside
 the declared `group` and `record`. Confirm them from source and recordings.
@@ -247,38 +259,44 @@ For ASTM only, an optional section can split one R.3 component into exact parts:
 
 ```toml
 [mappings.component_parts]
-component = 4
 separator = "/"
 count = 2
 code = 1
 dilution = 2
 ```
 
-This synthetic extension expects exactly two parts, including empty ones.
-The code part replaces normal test-code lookup. Dilution text is retained;
+It splits the `test_component` component. This synthetic extension expects
+exactly two parts, including empty ones. The code part is the test code.
+Dilution text is retained;
 ratios are not interpreted. Application state stays unknown unless `applied`
 selects a source `field` with distinct exact `yes` and `no` codes. Do not infer
 that state from the factor. Wrong part counts park the receipt.
 
-Each test entry may add `value_kind = "numeric"`, `"coded"` or `"either"`.
-Numeric requires a parsed number; coded requires nonempty qualitative text or
-a coded value, not a plain number. Either is the default. A mismatch parks the
-original value; it does not make a clinical decision. Vendor/POCT definitions
-use `[codes]` test/unit tables rather than field-position `[mappings]`.
+Optional `mappings.value_kinds` records what kind of value the machine sends
+for one of its codes, for example `value_kinds = [{code = "ALB", kind =
+"numeric"}]`; add `system` when the message names another code system than
+`test_system`. Numeric requires a parsed number; coded requires nonempty
+qualitative text or a coded value, not a plain number. A code without an
+entry is not checked. A mismatch parks the original value; it does not make a
+clinical decision. Vendor/POCT definitions use `[codes]` (`test_system` and
+`units`) rather than field-position `[mappings]`.
 
 ### Enable orders separately
 
 Receiving results does not enable queries or work lists. Append the complete
 [synthetic ASTM orders section](../../crates/core/config/examples/orders.toml) only
-when that behavior is confirmed. `[orders]` has independent outbound `tests`
-and `priorities`; it does not reverse the result table automatically.
-Each test maps an exact app `namespace`/`value` to `machine_components`,
-including significant empty components. `send_ahead` explicitly permits work
+when that behavior is confirmed. Order tests arrive from the lab app in the
+machine's own codes: Analyte sends a test only when its namespace is exactly
+`mappings.test_system` (or `codes.test_system`), writes its code as given, and
+rejects any other test with a specific order event. `[orders] priorities`
+stays an explicit translation. `send_ahead` explicitly permits work
 lists. `[orders.query]` requires `deadline_ms` and `when_untrusted`; unavailable,
 stale or late lookup must produce error or silence, never "no orders".
 
 For ASTM, `[orders.astm]` names the specimen, test, priority and action
-locations. Optional `position` sends the supplied slot in O field 4;
+locations; the `test` component is where each code goes (4 for `^^^CODE`),
+and optional `test_components` keeps empty components after it (5 writes
+`^^^CODE^`). Optional `position` sends the supplied slot in O field 4;
 `specimen_type` is restricted to O field 16 component 1. `[orders] specimen_types`
 translates exact app namespace/value pairs. A configured destination requires
 that context: no default slot or specimen type is invented.
@@ -287,8 +305,10 @@ For legacy HL7 queries, start from [hl7_orders.toml](../../crates/core/config/ex
 It declares QRD filters and DSP layout, with an explicit ACK deadline; it requires
 `when_untrusted = "error"`. Send-ahead is a separate
 [hl7_send.toml](../../crates/core/config/examples/hl7_send.toml) interface using
-`placer_namespace` and `[orders.hl7_send]`. ORM and OML have different specimen
-and position support; do not treat them as LAW.
+`placer_namespace` and `[orders.hl7_send]`; it writes OBR-4 as the code, the
+lab app's optional name and `test_system`, and editions with CWE also need
+`test_version`. ORM and OML have different specimen and position support; do
+not treat them as LAW.
 
 Vendor work lists require `download = true` in their vendor section as well as
 `send_ahead = true`. `patient_namespace` must match the app patient's assigning

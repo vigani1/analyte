@@ -97,15 +97,24 @@ pub(crate) fn map_result(
     })
 }
 
+/// The machine's own code exactly as sent, in the code system the message
+/// names or else the machine's declared one (ADR 0029). An empty code is
+/// `None`: there is no test to name, and none is invented.
 pub(crate) fn map_test(
     machine: &analyte_config::CodeTables,
     code: &str,
     system: Option<&str>,
-) -> Option<NamespacedId> {
-    crate::test_translation(&machine.tests, &[code], system).map(|entry| NamespacedId {
-        namespace: entry.app_system.clone(),
-        value: entry.app_code.clone(),
-    })
+) -> Result<Option<NamespacedId>, Error> {
+    if code.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(NamespacedId {
+        namespace: match system.filter(|s| !s.is_empty()) {
+            Some(system) => analyte_model::Identifier::new(system)?,
+            None => machine.test_system.clone(),
+        },
+        value: analyte_model::Identifier::new(code)?,
+    }))
 }
 
 pub(crate) fn push_result(output: &mut Output, content: ResultContent) -> Result<(), Error> {

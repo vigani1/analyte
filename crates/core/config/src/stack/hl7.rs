@@ -83,10 +83,14 @@ pub(super) fn hl7_syntax(syntax: &Syntax, path: &str) -> Result<Hl7Syntax, Error
     })
 }
 
-pub(super) fn hl7_orders(orders: &Orders, path: &str) -> Result<Hl7Orders, Error> {
+pub(super) fn hl7_orders(
+    orders: &Orders,
+    machine: &ParsedMachine<'_>,
+    path: &str,
+) -> Result<Hl7Orders, Error> {
     Ok(Hl7Orders {
         patient_namespace: orders.patient_namespace.clone(),
-        tables: order_tables(orders),
+        tables: order_tables(orders, machine, path)?,
         query: orders
             .query
             .as_ref()
@@ -240,7 +244,7 @@ pub(super) fn build(
         orders: machine
             .orders
             .as_ref()
-            .map(|o| hl7_orders(o, path))
+            .map(|o| hl7_orders(o, machine, path))
             .transpose()?,
     })
 }

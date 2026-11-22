@@ -18,7 +18,6 @@ fn definition(clone: bool) -> String {
             .rewrite("download = false", "download = true")
             .rewrite("poll_ms = 1000", "poll_ms = 200"),
         r#"
-tests=[{app={namespace="synthetic",value="TEST"},machine_components=["SYN "]}]
 priorities=[{app="routine",machine="T"}]
 specimen_types=[{app={namespace="synthetic",value="SERUM"},machine="S"}]
 "#
@@ -85,9 +84,9 @@ async fn insertion(peer: &mut TcpStream, path: &Path, clone: bool) -> Result<(),
     no_event(path).await?;
     peer.write_all(b"\x06").await?;
     let expected = if clone {
-        b"000PatA        TSY0301SYN 212\x04"
+        b"000PatA        TSY0301TEST250\x04"
     } else {
-        b"000PatA        TSN0301SYN 201\x04"
+        b"000PatA        TSN0301TEST239\x04"
     };
     let mut bytes = vec![0; expected.len()];
     tokio::time::timeout(HANG_GUARD, peer.read_exact(&mut bytes)).await??;
@@ -135,9 +134,9 @@ async fn confirmed_insertion_sends_clone_and_survives_restart() -> Result<(), Er
         no_event(&path).await?;
         peer.write_all(b"\x06").await?;
         let expected = if clone {
-            b"000PatA        TSY0301SYN 212\x04"
+            b"000PatA        TSY0301TEST250\x04"
         } else {
-            b"000PatA        TSN0301SYN 201\x04"
+            b"000PatA        TSN0301TEST239\x04"
         };
         let mut bytes = vec![0; expected.len()];
         step("explicit clone insertion", peer.read_exact(&mut bytes)).await?;
@@ -363,13 +362,29 @@ async fn rejection(value: serde_json::Value, code: &str) -> Result<(), Error> {
 }
 // Autolyser manual Rev18 chapter 23
 #[tokio::test]
-async fn unmapped_test_rejects_whole_order() -> Result<(), Error> {
+async fn foreign_test_rejects_whole_order() -> Result<(), Error> {
     let mut value = order()?;
     value["tests"]
         .as_array_mut()
         .ok_or("tests")?
-        .push(serde_json::json!({"namespace":"synthetic","value":"UNKNOWN"}));
-    rejection(value,"rejected: unmapped test NamespacedId { namespace: Identifier(\"synthetic\"), value: Identifier(\"UNKNOWN\") }").await
+        .push(serde_json::json!({"namespace":"lab-app","value":"TEST"}));
+    rejection(value,"rejected: test NamespacedId { namespace: Identifier(\"lab-app\"), value: Identifier(\"TEST\") } is not in this machine's code system").await
+}
+
+// Autolyser manual Rev18 chapter 23; ADR 0029: the analysis code is exactly
+// four bytes as the lab app wrote it, never padded or trimmed.
+#[tokio::test]
+async fn short_analysis_code_rejects_whole_order() -> Result<(), Error> {
+    let mut value = order()?;
+    value["tests"]
+        .as_array_mut()
+        .ok_or("tests")?
+        .push(serde_json::json!({"namespace":"synthetic","value":"SYN"}));
+    rejection(
+        value,
+        "rejected: Autolyser analysis code must be exactly 4 printable bytes",
+    )
+    .await
 }
 // Autolyser manual Rev18 chapter 23
 #[tokio::test]

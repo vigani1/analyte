@@ -62,18 +62,18 @@ pub enum WireError {
     /// LAW item must cover one AWOS test.
     #[error("LAW item must cover one AWOS test")]
     ItemTestCount,
-    /// LAW test components.
-    #[error("LAW test components")]
-    TestComponents,
     /// LAW specimen type unmapped.
     #[error("LAW specimen type unmapped")]
     UnmappedSpecimenType(#[source] crate::OrderMappingError),
     /// LAW priority unmapped.
     #[error("LAW priority unmapped")]
     UnmappedPriority(#[source] crate::OrderMappingError),
-    /// LAW test unmapped.
-    #[error("LAW test unmapped")]
-    UnmappedTest(#[source] crate::OrderMappingError),
+    /// The order gives no name for a test; LAW OBR-4.2 requires one.
+    #[error("LAW test name missing for OBR-4.2")]
+    TestNameMissing,
+    /// LAW test not in the machine's code system.
+    #[error("LAW test not in the machine's code system")]
+    ForeignTest(#[source] crate::OrderMappingError),
     /// App evidence violates a common-model text bound.
     #[error(transparent)]
     Text(#[from] analyte_model::TextError),

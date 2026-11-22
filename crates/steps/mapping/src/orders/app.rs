@@ -1,5 +1,5 @@
 //! Converts lab-app orders into outbound mapping inputs.
-use analyte_model::{Identifier, NamespacedId, SampleId};
+use analyte_model::{Identifier, NamespacedId, SampleId, SourceText};
 /// Adapts validated app fields without inventing a code system or position.
 /// # Errors
 /// Preserves the exact common-model text constraint failure.
@@ -15,9 +15,20 @@ pub fn map(order: &analyte_contract::Order) -> Result<super::AppOrder, analyte_m
             })
         })
         .collect::<Result<Vec<_>, analyte_model::TextError>>()?;
+    let test_names = fields
+        .tests
+        .iter()
+        .map(|test| {
+            test.name
+                .as_ref()
+                .map(|n| SourceText::new(n.as_str()))
+                .transpose()
+        })
+        .collect::<Result<Vec<_>, analyte_model::TextError>>()?;
     Ok(super::AppOrder {
         sample: SampleId::new(fields.sample_id.as_str())?,
         tests,
+        test_names,
         patient: fields
             .patient
             .as_ref()

@@ -615,8 +615,7 @@ fn invalid_component_parts_have_specific_errors() -> Result<(), Error> {
         ("separator='/'\ncount=2\ncode=3\ndilution=2", 1),
         ("separator='/'\ncount=2\ncode=1\ndilution=1", 2),
     ] {
-        let definition =
-            format!("{ASTM}\n[mappings.component_parts]\ncomponent=4\n{declaration}\n");
+        let definition = format!("{ASTM}\n[mappings.component_parts]\n{declaration}\n");
         let error = draft(&definition, OVERRIDES)?
             .validate()
             .expect_err("invalid parts");
@@ -626,6 +625,66 @@ fn invalid_component_parts_have_specific_errors() -> Result<(), Error> {
                 | (1, Error::PartIndex { .. })
                 | (2, Error::PartOverlap { .. })
         ));
+    }
+    Ok(())
+}
+
+// ADR 0029; LIS02-A2 §5.6.1: only ASTM names which R.3 component holds the
+// machine's code, and it must; HL7 OBX-3 has one fixed place for it.
+#[test]
+fn test_component_is_required_for_astm_and_refused_elsewhere() -> Result<(), Error> {
+    let without = ASTM.rewrite("test_component = \"manufacturer\"\n", "");
+    let with_hl7 = HL7.rewrite(
+        "test_system = \"synthetic\"",
+        "test_system = \"synthetic\"\ntest_component = \"manufacturer\"",
+    );
+    for definition in [without, with_hl7] {
+        let error = draft(&definition, OVERRIDES)?
+            .validate()
+            .expect_err("misplaced test_component");
+        assert!(
+            error.to_string().contains("mappings.test_component"),
+            "{error}"
+        );
+    }
+    let universal = ASTM.rewrite("\"manufacturer\"", "\"universal\"");
+    draft(&universal, OVERRIDES)?.validate()?;
+    let missing = ASTM.rewrite("test_system = \"synthetic\"\n", "");
+    assert!(matches!(
+        draft(&missing, OVERRIDES).and_then(Draft::validate),
+        Err(Error::Schema { .. })
+    ));
+    Ok(())
+}
+
+// ADR 0029: a value expectation names a numeric or coded kind once per code.
+#[test]
+fn value_kinds_refuse_either_and_duplicates() -> Result<(), Error> {
+    let with = |entries: &str| {
+        ASTM.rewrite(
+            "test_component = \"manufacturer\"",
+            &format!("test_component = \"manufacturer\"\nvalue_kinds = [{entries}]"),
+        )
+    };
+    draft(
+        &with(concat!(
+            "{code=\"SYN\", kind=\"numeric\"}, ",
+            "{code=\"SYN\", system=\"LN\", kind=\"coded\"}"
+        )),
+        OVERRIDES,
+    )?
+    .validate()?;
+    for entries in [
+        "{code=\"SYN\", kind=\"either\"}",
+        "{code=\"SYN\", kind=\"numeric\"}, {code=\"SYN\", kind=\"coded\"}",
+    ] {
+        let error = draft(&with(entries), OVERRIDES)?
+            .validate()
+            .expect_err("invalid value_kinds");
+        assert!(
+            error.to_string().contains("mappings.value_kinds"),
+            "{error}"
+        );
     }
     Ok(())
 }

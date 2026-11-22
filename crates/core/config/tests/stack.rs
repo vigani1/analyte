@@ -128,16 +128,19 @@ fn every_example_maps_to_its_documented_stack() -> TestResult {
             }
             Stack::Poct(stack) => {
                 assert_eq!(stack.policy().depth, 32);
-                assert!(!stack.settings().codes().tests.is_empty());
+                assert_eq!(
+                    stack.settings().codes().test_system.as_str(),
+                    "synthetic-system"
+                );
             }
             Stack::Vidas(stack) => {
                 assert_eq!(u8::from(stack.policy().sample_limit), 12);
-                assert!(!stack.settings().codes().tests.is_empty());
+                assert_eq!(stack.settings().codes().test_system.as_str(), "synthetic");
                 assert!(stack.orders().is_none());
             }
             Stack::Autolyser(stack) => {
                 assert_eq!(stack.policy().poll_ms, 1000);
-                assert!(!stack.settings().codes().tests.is_empty());
+                assert_eq!(stack.settings().codes().test_system.as_str(), "synthetic");
                 assert!(stack.orders().is_none());
             }
             Stack::Astm(analyte_config::RecordTransport::Folder(_))
@@ -287,7 +290,7 @@ fn assert_astm_example(
             .and_then(toml::Value::as_integer)
             .and_then(|n| usize::try_from(n).ok())
     );
-    assert_eq!(stack.settings().codes().tests.len(), raw.tests().len());
+    assert_eq!(&stack.settings().codes().test_system, raw.test_system());
     assert!(matches!(
         stack.settings().transport().kind(),
         StreamKind::Serial(_)
@@ -301,7 +304,7 @@ fn assert_astm_example(
 
 fn assert_hl7_example(stack: &analyte_config::Hl7Stack, raw: &analyte_config::Machine, name: &str) {
     assert_eq!(stack.settings().transport().role(), TcpRole::Server);
-    assert_eq!(stack.settings().codes().tests.len(), raw.tests().len());
+    assert_eq!(&stack.settings().codes().test_system, raw.test_system());
     assert_eq!(
         stack.orders().is_some(),
         matches!(name, "hl7_orders.toml" | "hl7_send.toml")

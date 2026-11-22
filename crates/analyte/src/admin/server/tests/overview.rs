@@ -184,7 +184,7 @@ pub(super) fn review_items(receipt: &str, delivery: &str) -> Result<Vec<Parked>,
     Ok(vec![
         item(
             "mapping_finding",
-            "Position { record: 3, field: 3 }: UnknownTest",
+            "Position { record: 3, field: 3 }: MissingTest",
             receipt,
         )?,
         item(
@@ -234,7 +234,7 @@ enum Button {
 /// What each item of [`review_items`] says to do, in order, and its main button.
 const STEPS: [(&str, Button); 10] = [
     (
-        "The machine sent a test code that this machine's test mapping does not list. Add it to the test mapping, then use Process again.",
+        "The machine sent a result without a test code. Check the machine's settings and where this machine's definition reads the code, then use Process again.",
         Button::Process,
     ),
     (
@@ -374,7 +374,7 @@ async fn review_list_says_what_to_do_with_the_action_and_no_ids() -> Result<(), 
     let detail = request(&host, &format!("/parked/{}", ids[0]), &auth, None).await?;
     assert!(detail.contains(&format!("Linked record: {receipt}")));
     assert!(detail.contains(
-        "<p class=\"whattodo__text\"><strong>What to do:</strong> The machine sent a test code"
+        "<p class=\"whattodo__text\"><strong>What to do:</strong> The machine sent a result without a test code"
     ));
     assert!(
         detail.contains(&(process_button(ids[0], false) + &resolve_button(ids[0], false, false)))

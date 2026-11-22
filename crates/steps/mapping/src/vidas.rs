@@ -20,8 +20,8 @@ pub fn map(
     let time = input.received_at;
     let evidence = map_evidence(message)?;
     let mut output = Output::default();
-    let Some(test) = map_test(machine.settings().codes(), evidence.assay.as_str(), None) else {
-        output.unmapped_test(
+    let Some(test) = map_test(machine.settings().codes(), evidence.assay.as_str(), None)? else {
+        output.missing_test(
             Position {
                 record: 1,
                 field: 0,
@@ -102,7 +102,7 @@ pub fn map_evidence(
 pub struct ResultEvidence {
     /// Exact source sample identifier.
     pub sample: SampleId,
-    /// Unmapped assay code; no assay name guessing.
+    /// The machine's assay code as sent; no assay name guessing.
     pub assay: SourceText,
     /// Original measured text, including comparator, error token or embedded unit.
     pub value: ResultValue,
@@ -155,10 +155,15 @@ pub fn map_order(
     let mut requests = Vec::new();
     let mut total_bytes = 0usize;
     for test in &order.tests {
-        let mapped = codes::map_test(settings.tables().tests(), test)?;
-        let [code] = mapped.machine_components.as_slice() else {
-            return Err(OrderError::AssayComponents);
-        };
+        let code = codes::map_test(settings.tables().test_system(), test)?;
+        // BCI A section 4: an assay code is 1 to 4 printable bytes; a pipe
+        // would end the field.
+        if code.is_empty()
+            || code.len() > 4
+            || code.bytes().any(|b| !(32..=126).contains(&b) || b == b'|')
+        {
+            return Err(OrderError::AssayCode);
+        }
         let request = analyte_vidas::syntax::Message::new(
             &[
                 ("mt", "mpr"),
@@ -195,9 +200,9 @@ pub enum OrderError {
     /// VIDAS test count is empty or exceeds configured bounds.
     #[error("VIDAS test count is empty or exceeds configured bounds")]
     TestCount,
-    /// VIDAS assay mapping must contain exactly one component.
-    #[error("VIDAS assay mapping must contain exactly one component")]
-    AssayComponents,
+    /// A VIDAS assay code is 1 to 4 printable bytes without a pipe.
+    #[error("VIDAS assay code must be 1 to 4 printable bytes without a pipe")]
+    AssayCode,
     /// VIDAS request exceeds the frame limit.
     #[error("VIDAS request exceeds the frame limit")]
     FrameLimit,

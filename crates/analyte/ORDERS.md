@@ -12,8 +12,12 @@ answers no order queries and sends no work lists. `send_ahead` is explicit;
 the presence of `query` enables queries and requires both a deadline and an
 untrusted-cache policy.
 
-Each outbound test maps an exact app `{namespace, value}` pair to explicit
-ASTM universal-test components. Priorities also require explicit translations.
+Order tests arrive in the machine's own codes ([ADR 0029](../../docs/adr/0029-lab-app-owns-test-names.md)):
+a test is sent only when its namespace is exactly the machine's `test_system`,
+and its code goes out as written in the `[orders.astm] test` component
+(`test_components` keeps empty components after it). A test in another code
+system is rejected with an app event before reservation; nothing is
+translated. Priorities still require explicit translations.
 Specimen IDs retain their spelling. A required position missing from the app
 order causes rejection; neither the sample ID nor a made-up slot substitutes
 for it. Contract v1 position and specimen type are forwarded only to explicit
@@ -125,9 +129,9 @@ implemented at documented evidence level.
 Evidence remains **documented**, from the existing VIDAS research notes (BCI A
 sections 3-5 and PC sections 10-24 through 10-26), not machine recordings.
 Enable both `[vidas] download = true` and `[orders] send_ahead = true`, with
-`patient_namespace` naming the accepted patient assigning system. Use the same
-explicit outbound test table, with exactly one 1-4 byte assay code in each
-`machine_components` entry. Omit `[orders.astm]`. The priority table admits only
+`patient_namespace` naming the accepted patient assigning system. Order tests
+use the machine's `codes.test_system`; each code must be 1-4 printable bytes
+without a pipe, or the order is rejected. Omit `[orders.astm]`. The priority table admits only
 explicitly listed app priorities; Literal has no priority tag to transmit.
 
 The shared candidate/mapping/reservation path maps every assay before reserving
@@ -154,8 +158,8 @@ order evidence and wire data, not ordinary logs.
 
 `tests/orders/vidas.rs` drives the program with a temporary store and the
 reference receiver: multi-assay completion, timeout, mid-send disconnect,
-restart during Sending, Sent surviving restart, no replay, unmapped test and
-specimen type, wrong/missing patient context, over-long IDs and cancellation
+restart during Sending, Sent surviving restart, no replay, a test in another
+code system, unmapped specimen type, wrong/missing patient context, over-long IDs and cancellation
 before sending. Autolyser insertion follows the same shared lifecycle below.
 
 
@@ -170,8 +174,10 @@ from order reservations: uncertain R cursor movement still blocks a new R
 connection until reconciled; insertion recovery never advances that cursor.
 
 Enable `[autolyser] download = true` and `[orders] send_ahead = true`, with
-required `patient_namespace` and explicit `clone = true` or `false`. Test
-mappings contain one exact four-byte analysis code, including any padding.
+required `patient_namespace` and explicit `clone = true` or `false`. Order
+tests use the machine's `codes.test_system`; each code must be exactly four
+printable bytes as the lab app wrote it, padding included, or the order is
+rejected; Analyte never pads or trims it.
 Priority mappings explicitly select `T` (routine list) or `R` (STAT list).
 Supply specimen-medium mappings separately, for example:
 
@@ -268,7 +274,8 @@ missing or mismatched patient context is rejected at the order boundary.
 | Timeout | [ack_timeout_is_uncertain_never_resent](tests/orders/vidas.rs) | [unanswered_insertion_is_uncertain](tests/orders/autolyser.rs); [partial_reply_is_parked_and_uncertain](tests/orders/autolyser.rs) |
 | Disconnect mid-send | [disconnect_mid_send_is_uncertain](tests/orders/vidas.rs) | [disconnect_mid_send_keeps_partial_reply](tests/orders/autolyser.rs) |
 | Restart during Sending; no replay | [restart_during_send_never_replays](tests/orders/vidas.rs) | [restart_recovers_only_sending_never_replays](tests/orders/autolyser.rs) |
-| Unmapped test | [unmapped_test_is_rejected_before_send](tests/orders/vidas.rs) | [unmapped_test_rejects_whole_order](tests/orders/autolyser.rs) |
+| Test in another code system | [foreign_test_is_rejected_before_send](tests/orders/vidas.rs) | [foreign_test_rejects_whole_order](tests/orders/autolyser.rs) |
+| Code the format cannot carry | Mapper test `vidas_assay_codes_are_checked_when_ordered` | [short_analysis_code_rejects_whole_order](tests/orders/autolyser.rs) |
 | Unmapped specimen type | [unmapped_specimen_type_is_rejected](tests/orders/vidas.rs) | [unmapped_specimen_type_rejects_before_insertion](tests/orders/autolyser.rs) |
 | Missing required position | Not applicable: Literal has no position field | [missing_cup_position_never_becomes_zero](tests/orders/autolyser.rs) |
 | Wrong patient namespace | [wrong_patient_namespace_is_rejected](tests/orders/vidas.rs) | [wrong_patient_namespace_rejects_before_insertion](tests/orders/autolyser.rs) |
@@ -279,7 +286,7 @@ missing or mismatched patient context is rejected at the order boundary.
 | Park mid-send: same-round Uncertain and event | [park_mid_send_commits_uncertain_then_closes](tests/orders/vidas.rs) | [bad_ack_is_parked_and_uncertain](tests/orders/autolyser.rs) |
 | Unanswered result poll cannot send an order | Not applicable: Literal does not poll for results | [unanswered_poll_never_reserves_or_sends](tests/orders/autolyser.rs) |
 
-The suites contain 13 VIDAS and 18 Autolyser tests. They also cover Autolyser's
+The suites contain 13 VIDAS and 19 Autolyser tests. They also cover Autolyser's
 invalid cup slots, missing specimen medium and negative/unknown insertion replies.
 Evidence remains **documented**; the table is synthetic regression coverage,
 not qualification against hardware or an official simulator.
@@ -306,11 +313,12 @@ the same cache freshness and requested/target rules as ASTM and vendor orders.
 ordered lines repeat per test and per app order, without an implicit header or
 vendor positions. Supported sources are sample_id, order_id, test_code,
 priority, position (the supplied slot), specimen_type, patient_id and explicit
-literal text (including blank padding). Test/priority/specimen translations
+literal text (including blank padding). test_code is the order's code as
+written, in the machine's `test_system`; priority/specimen translations
 are explicit; patient_id also needs a matching patient_namespace. Absent optional
 context produces an empty line, never a substitute. Plain ASCII DSP values are
-bounded to 300 bytes and cannot inject HL7 delimiters. Unmapped or unrepresentable
-orders are rejected with an app event; no partial display is transmitted.
+bounded to 300 bytes and cannot inject HL7 delimiters. Foreign, unmapped or
+unrepresentable orders are rejected with an app event; no partial display is transmitted.
 
 The shared reservation path rechecks every candidate before QCK/DSR issuance.
 Each app order has one durable item covering all its tests, still Sending with

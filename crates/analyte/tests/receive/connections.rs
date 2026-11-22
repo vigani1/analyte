@@ -78,7 +78,8 @@ async fn hl7_ae_reports_actual_mapping_location() -> Result<(), Error> {
     );
     drop(store);
     let mut bad = String::from_utf8(ORU.to_vec())?.rewrite("message1", "message2");
-    bad.push_str("OBX|2|NM|UNKNOWN^Synthetic^synthetic||12.30|mg/L|||||F\r");
+    // ADR 0029: an unlisted code is delivered; a missing one is a finding.
+    bad.push_str("OBX|2|NM|^Synthetic^synthetic||12.30|mg/L|||||F\r");
     peer.write_all(&analyte_framing::hl7::encode(
         bad.as_bytes(),
         analyte_framing::hl7::Limit::new(1048576)?,

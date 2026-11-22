@@ -27,8 +27,9 @@ retention and all installation overrides outside this repository.
 ## Supported workflows
 
 The manual describes patient/QC uploads, host queries and batch orders
-(HIM C-2, E, F). None is enabled by this blocked definition. Host assay codes,
-app mappings, units, specimen identity and order context require site evidence.
+(HIM C-2, E, F). None is enabled by this blocked definition. Host assay codes
+(passed through as sent, ADR 0029), units, specimen identity and order context
+require site evidence.
 Do not equate method-sheet numbers with transmission codes or generated
 @sequence identities with lab specimen IDs. Cancellation is not established.
 
@@ -48,7 +49,7 @@ Research only; no machine recording or simulator run. No recordings shipped.
 ## Open questions
 
 - Blocking: selected dialect, packed-frame behavior and serial flow control.
-- Required site settings: software version, host codes, app/unit mappings,
+- Required site settings: software version, host codes, unit mappings,
   identity/run evidence, QC rules, deadlines and order reply fields.
 - Confirm barcode-error handling, query coordinates and rerun semantics from
   de-identified conversations before activation; never infer a specimen ID.

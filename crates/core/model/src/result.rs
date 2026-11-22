@@ -199,7 +199,7 @@ pub struct SourceNode {
 /// A result retains source evidence beside summaries, without clinical decisions.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResultPart {
-    /// Test code with assigning system.
+    /// The machine's own test code as sent, in its code system (ADR 0029).
     pub test: crate::NamespacedId,
     /// Original and optional parsed value.
     pub values: EvidenceList<ResultValue>,

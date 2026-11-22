@@ -37,8 +37,11 @@ impl AppOrderPriority {
 pub struct AppOrder {
     /// Exact sample identifier, including case and leading zeros.
     pub sample: SampleId,
-    /// Requested tests, each with its app assigning system.
+    /// Requested tests, each a machine code in the machine's code system.
     pub tests: Vec<NamespacedId>,
+    /// The lab app's name for each test, in the order of `tests`; `None`
+    /// where it gave none. Never derived from the code.
+    pub test_names: Vec<Option<analyte_model::SourceText>>,
     /// Explicit priority from the app.
     pub priority: AppOrderPriority,
     /// Position supplied by the app, never invented by the bridge.
@@ -47,6 +50,18 @@ pub struct AppOrder {
     pub patient: Option<NamespacedId>,
     /// Specimen type evidence, never substituted for origin metadata.
     pub specimen_type: Option<NamespacedId>,
+}
+
+impl AppOrder {
+    /// The lab app's name for `test`, from its first occurrence in `tests`.
+    #[must_use]
+    pub fn test_name(&self, test: &NamespacedId) -> Option<&analyte_model::SourceText> {
+        self.tests
+            .iter()
+            .position(|t| t == test)
+            .and_then(|index| self.test_names.get(index))
+            .and_then(Option::as_ref)
+    }
 }
 
 /// Specific mapping refusal; diagnostic details belong in protected order events.
@@ -70,9 +85,9 @@ pub enum OrderMappingError {
     /// Patient identity exceeds the vendor field width.
     #[error("overlong-patient-id")]
     PatientIdTooLong,
-    /// No exact app-system and code match exists.
-    #[error("unmapped test {0}")]
-    UnmappedTest(NamespacedId),
+    /// The order test is not in this machine's own code system (ADR 0029).
+    #[error("test {0} is not in this machine's code system")]
+    ForeignTest(NamespacedId),
     /// The app did not provide the required position.
     #[error("required specimen position was not supplied")]
     MissingPosition,
@@ -108,7 +123,7 @@ pub(super) fn map_specimen<'a>(
         .machine
         .as_str())
 }
-/// Borrowed reservation identities and requested app codes; storage remains host-owned.
+/// Borrowed reservation identities and requested test codes; storage remains host-owned.
 pub struct OutboundItem<'a> {
     /// Stable placer identity assigned once by the store.
     pub placer: &'a str,

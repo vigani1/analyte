@@ -11,6 +11,10 @@ connection to `151.80.220.161:10112`. The peer was IHE Gazelle Order Manager's
 Laboratory Analyzer simulator. MSH-5/MSH-6 were `OM_LAB_ANALYZER` / `IHE`.
 The machine configuration selects basic content, no enhanced peer options,
 send-ahead, a 10-second response budget and synthetic test `SYN^Synthetic^99LAB`.
+This run used the earlier test table, which turned the order's `synthetic`
+`TEST` into that OBR-4. Since ADR 0029 the seed orders carry the machine's own
+code, `99LAB` `SYN`, with the lab app's name `Synthetic`, which a rerun sends
+as the same OBR-4; the recording itself is unchanged.
 Both orders have one item. There are no patient identifiers or patient segments.
 Sample IDs are `SYN-0001` and `SYN-0002`; the configured authority is
 `ANALYTE-TEST`.

@@ -56,7 +56,8 @@ write('duplicate.json',dict(contract_version=1,status='duplicate'))
 
 # Optional general app-order context; keep the minimal order vector unchanged.
 context_order=copy.deepcopy(order)
-context_order.update(position=dict(kind='tray',carrier='A',slot='03'),specimen_type=code('SERUM'),patient=dict(id=code('000PatA')))
+# ADR 0029: a test may carry the lab app's own name for it.
+context_order.update(tests=[dict(code('TEST'),name='Synthetic test')],position=dict(kind='tray',carrier='A',slot='03'),specimen_type=code('SERUM'),patient=dict(id=code('000PatA')))
 write('order-context.json',context_order)
 
 # Vectors for the contract checker and for each v1 rule that had none. Each

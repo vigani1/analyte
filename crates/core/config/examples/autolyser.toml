@@ -32,7 +32,8 @@ recover_last_on_poll = true
 download = false
 
 [codes]
-tests = [{machine_code="SYN ", machine_system="synthetic", app_code="DEMO", app_system="demo"}]
+# Analysis codes pass through as sent, padding included (ADR 0029).
+test_system = "synthetic"
 units = [{original="mg/L", ucum="mg/L"}]
 [evidence]
 level = "documented"

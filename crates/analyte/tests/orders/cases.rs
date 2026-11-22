@@ -13,11 +13,7 @@ pub(super) fn configure_orders(root: &Path, send: bool) -> Result<(), Error> {
     // Normal query outcomes must not depend on a loaded runner meeting the teaching deadline.
     let section = include_str!("../../../core/config/examples/orders.toml")
         .rewrite("deadline_ms = 1000", "deadline_ms = 30000")
-        .rewrite("send_ahead = true", &format!("send_ahead = {send}"))
-        .rewrite(
-            "namespace=\"demo\",value=\"DEMO\"",
-            "namespace=\"synthetic\",value=\"TEST\"",
-        );
+        .rewrite("send_ahead = true", &format!("send_ahead = {send}"));
     std::fs::write(path, format!("{text}\n{section}"))?;
     Ok(())
 }
@@ -96,8 +92,8 @@ async fn orders_empty_and_untrusted_differ_on_wire() -> Result<(), Error> {
     analyte_astm::parse(&reply, analyte_astm::Limits::default())?;
     assert!(
         reply
-            .windows(b"O|1|000Ab12||^^^SEND|R".len())
-            .any(|w| w == b"O|1|000Ab12||^^^SEND|R")
+            .windows(b"O|1|000Ab12||^^^TEST|R".len())
+            .any(|w| w == b"O|1|000Ab12||^^^TEST|R")
     );
     assert!(reply.ends_with(b"L|1|N\r"));
     machine_state(&path, "Sent", 1).await?;
@@ -163,7 +159,7 @@ pub(super) async fn machine_state(path: &Path, state: &str, count: i64) -> Resul
 
 // ADR 0004
 #[tokio::test]
-async fn unmapped_and_cancelled_orders_are_never_sent() -> Result<(), Error> {
+async fn foreign_and_cancelled_orders_are_never_sent() -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), true)?;
     configure_orders(temp.path(), true)?;
@@ -175,7 +171,12 @@ async fn unmapped_and_cancelled_orders_are_never_sent() -> Result<(), Error> {
     )
     .await?;
     let source = include_str!("../../../../docs/contract/vectors/order.json");
-    let unmapped = analyte_contract::decode(source.rewrite("TEST", "UNKNOWN").as_bytes())?;
+    // ADR 0029: a test in another code system than the machine's is refused.
+    let unmapped = analyte_contract::decode(
+        source
+            .rewrite("\"namespace\": \"synthetic\"", "\"namespace\": \"lab-app\"")
+            .as_bytes(),
+    )?;
     let cancelled = analyte_contract::decode(
         source
             .rewrite("order-1", "cancelled")
@@ -196,8 +197,11 @@ async fn unmapped_and_cancelled_orders_are_never_sent() -> Result<(), Error> {
     assert_eq!(receiver_count(&receiver_path)?, 1);
     let code: String =
         database(&path)?.query_row("SELECT source_code FROM machine_orders", [], |r| r.get(0))?;
-    assert!(code.contains("unmapped test"));
-    assert!(code.contains("UNKNOWN"));
+    assert!(
+        code.contains("is not in this machine's code system"),
+        "{code}"
+    );
+    assert!(code.contains("lab-app"));
     drop(peer);
     service.stop().await?;
     reference.close().await?;
@@ -420,7 +424,7 @@ async fn o_record_forwards_position_and_specimen_exactly() -> Result<(), Error> 
             send,
             true,
             Some("SERUM"),
-            b"H|\\^&|||Analyte|||||||P|LIS2-A2\rP|1\rO|1|000Ab12|^03|^^^SEND|R||||||N||||SER\rL|1|N\r",
+            b"H|\\^&|||Analyte|||||||P|LIS2-A2\rP|1\rO|1|000Ab12|^03|^^^TEST|R||||||N||||SER\rL|1|N\r",
             None,
         )
         .await?;
@@ -435,7 +439,7 @@ async fn o_record_without_destinations_stays_empty() -> Result<(), Error> {
             send,
             false,
             Some("UNKNOWN"),
-            b"H|\\^&|||Analyte|||||||P|LIS2-A2\rP|1\rO|1|000Ab12||^^^SEND|R||||||N\rL|1|N\r",
+            b"H|\\^&|||Analyte|||||||P|LIS2-A2\rP|1\rO|1|000Ab12||^^^TEST|R||||||N\rL|1|N\r",
             None,
         )
         .await?;

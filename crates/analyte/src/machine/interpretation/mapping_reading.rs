@@ -44,7 +44,7 @@ pub(crate) fn map_reading(mapping: Mapping) -> Result<MappedReading, Error> {
                     | Problem::ValueKindMismatch { .. }
                     | Problem::ComponentParts
                     | Problem::MissingSample
-                    | Problem::UnknownTest
+                    | Problem::MissingTest
                     | Problem::MissingIdentity { .. }
                     | Problem::UnsupportedValue
                     | Problem::UnsupportedFormatting

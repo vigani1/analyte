@@ -6,7 +6,8 @@
   "tests": [
     {
       "namespace": "synthetic",
-      "value": "TEST"
+      "value": "TEST",
+      "name": "Synthetic test"
     }
   ],
   "priority": "routine",

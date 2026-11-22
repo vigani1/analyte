@@ -112,8 +112,11 @@ Wire requirements remain in [checklist.md](checklist.md).
   Sending a plausible code could request the wrong assay or be rejected after
   transport acceptance without a reliable application-level response.
 - **source**: [Research §4](../../research/machines/vidas.md#4-message-format-complete-field-table-and-assay-codes);
-  [ADR 0002](../../adr/0002-config-first.md), explicit mappings.
-- **test**: `unmapped_test_is_rejected_before_send`.
+  [ADR 0002](../../adr/0002-config-first.md); since
+  [ADR 0029](../../adr/0029-lab-app-owns-test-names.md) the order supplies the
+  machine's assay code itself, in its code system.
+- **test**: `foreign_test_is_rejected_before_send`; mapper
+  `vidas_assay_codes_are_checked_when_ordered`.
 
 ## 11. Tie the data ACK to durable custody
 

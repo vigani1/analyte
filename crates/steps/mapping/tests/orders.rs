@@ -1,4 +1,4 @@
-//! Tests configured outgoing orders and code mappings.
+//! Tests configured outgoing orders: machine codes as written, explicit priority and specimen mappings.
 use analyte_config::{Draft, Validated};
 use analyte_fixtures::ConfigEdit as _;
 use analyte_mapping::{AppOrder, AppOrderPriority, OrderMappingError};
@@ -31,10 +31,7 @@ fn component_at_configured_ceiling_is_kept() -> TestResult {
 // Safety rule 7 (ADR 0003)
 #[test]
 fn display_bound_is_inclusive_and_refuses_delimiters() -> TestResult {
-    let section = include_str!("../../../core/config/examples/hl7_orders.toml").rewrite(
-        "namespace=\"synthetic\",value=\"TEST\"",
-        "namespace=\"demo\",value=\"DEMO\"",
-    );
+    let section = include_str!("../../../core/config/examples/hl7_orders.toml").to_owned();
     let definition = format!(
         "{}\n{section}",
         include_str!("../../../core/config/examples/hl7.toml")
@@ -209,9 +206,10 @@ fn order() -> Result<AppOrder, analyte_model::TextError> {
     Ok(AppOrder {
         sample: SampleId::new("001a")?,
         tests: vec![NamespacedId {
-            namespace: Identifier::new("demo")?,
-            value: Identifier::new("DEMO")?,
+            namespace: Identifier::new("synthetic")?,
+            value: Identifier::new("SEND")?,
         }],
+        test_names: vec![None],
         priority: AppOrderPriority::Routine,
         position: None,
         patient: None,
@@ -230,7 +228,7 @@ fn outbound_table_keeps_sample_and_never_reverses() -> TestResult {
 
 // ADR 0004
 #[test]
-fn disabled_or_unmapped_orders_refuse_output() -> TestResult {
+fn disabled_foreign_or_unmapped_orders_refuse_output() -> TestResult {
     assert!(matches!(
         map_order(&order()?, config("")?.effective().stack()),
         Err(analyte_mapping::astm::OrderError::Shared(
@@ -244,7 +242,7 @@ fn disabled_or_unmapped_orders_refuse_output() -> TestResult {
     assert!(matches!(
         map_order(&input, settings.effective().stack()),
         Err(analyte_mapping::astm::OrderError::Shared(
-            OrderMappingError::UnmappedTest(_)
+            OrderMappingError::ForeignTest(_)
         ))
     ));
     input = order()?;
@@ -344,10 +342,7 @@ fn unmapped_specimen_never_guesses_a_code() -> TestResult {
 // HL7 2.5.1 §5.10
 #[test]
 fn dsp_layout_is_explicit_without_guessed_context() -> TestResult {
-    let section = include_str!("../../../core/config/examples/hl7_orders.toml").rewrite(
-        "namespace=\"synthetic\",value=\"TEST\"",
-        "namespace=\"demo\",value=\"DEMO\"",
-    );
+    let section = include_str!("../../../core/config/examples/hl7_orders.toml").to_owned();
     let definition = format!(
         "{}\n{section}",
         include_str!("../../../core/config/examples/hl7.toml")
@@ -411,7 +406,7 @@ fn dsp_layout_is_explicit_without_guessed_context() -> TestResult {
             settings.effective().stack().limits()
         ),
         Err(analyte_mapping::hl7::OrderError::Shared(
-            OrderMappingError::UnmappedTest(_)
+            OrderMappingError::ForeignTest(_)
         ))
     ));
     wrong = order()?;
@@ -438,10 +433,6 @@ fn dsp_layout_is_explicit_without_guessed_context() -> TestResult {
 #[test]
 fn dsp_optional_context_uses_explicit_sources() -> TestResult {
     let section = include_str!("../../../core/config/examples/hl7_orders.toml")
-        .rewrite(
-            "namespace=\"synthetic\",value=\"TEST\"",
-            "namespace=\"demo\",value=\"DEMO\"",
-        )
         .rewrite(
             "[orders.query]",
             r#"patient_namespace = "patients"
@@ -572,6 +563,80 @@ fn patient_and_orc_group_refusals_are_typed() -> TestResult {
                 WireError::PatientNameRequired
             ) | (Err(WireError::GroupIdTooLong), WireError::GroupIdTooLong)
         ));
+    }
+    Ok(())
+}
+
+// HL7 2.5.1 §4.5.3.4 OBR-4 CE; ADR 0029: the order's code goes out as
+// written with the machine's code system in CE.3; CE.2 carries the lab app's
+// name when it gives one and stays empty otherwise. Another code system is refused.
+#[test]
+fn hl7_send_writes_the_code_its_system_and_the_lab_app_name() -> TestResult {
+    let definition = format!(
+        "{}\n{}",
+        include_str!("../../../core/config/examples/hl7.toml"),
+        include_str!("../../../core/config/examples/hl7_send.toml"),
+    );
+    let cfg = Draft::load(
+        ("machine", &definition),
+        (
+            "site",
+            include_str!("../../../core/config/examples/site.toml"),
+        ),
+        ("local", "schema_version=1"),
+    )?
+    .validate()?;
+    let analyte_config::Stack::Hl7(analyte_config::RecordTransport::Stream(stack)) =
+        cfg.effective().stack()
+    else {
+        return Err("HL7 stream fixture expected".into());
+    };
+    let order = |test: &str| {
+        format!(
+            r#"{{"id":"order-1","version":1,"state":"requested","sample_id":"000Ab12","tests":[{test}],"priority":"routine","target_analyzers":null,"expires_at":null,"tombstone":false,"specimen_type":{{"namespace":"types","value":"SERUM"}}}}"#
+        )
+    };
+    let named = order(r#"{"namespace":"synthetic","value":"TEST","name":"Synthetic test"}"#);
+    let plain = order(r#"{"namespace":"synthetic","value":"TEST"}"#);
+    let foreign = order(r#"{"namespace":"lab-app","value":"TEST"}"#);
+    for (raw, expected) in [
+        (named, Some("|TEST^Synthetic test^synthetic|")),
+        (plain, Some("|TEST^^synthetic|")),
+        (foreign, None),
+    ] {
+        let app = analyte_contract::decode(raw.as_bytes())?;
+        let command = analyte_mapping::map_hl7_order(
+            stack.settings().syntax(),
+            stack.orders().ok_or("orders")?,
+            &app,
+            analyte_hl7::Options::default(),
+        )?;
+        let namespace = Identifier::new("LAB")?;
+        let tests = command.tests().to_vec();
+        let items = [analyte_mapping::OutboundItem {
+            placer: "placer-1",
+            namespace: Some(&namespace),
+            tests: &tests,
+        }];
+        let mapped = command.map(
+            &items,
+            false,
+            analyte_hl7::Response {
+                control_id: analyte_hl7::ControlId::new(b"send-1")?,
+                timestamp: b"20261122120000",
+            },
+        );
+        match expected {
+            Some(obr4) => {
+                let message = mapped?;
+                let text = String::from_utf8_lossy(message.message().raw()).into_owned();
+                assert!(text.contains(obr4), "{text}");
+            }
+            None => assert!(matches!(
+                mapped,
+                Err(analyte_mapping::hl7::WireError::ForeignTest(_))
+            )),
+        }
     }
     Ok(())
 }

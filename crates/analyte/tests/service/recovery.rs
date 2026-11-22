@@ -35,11 +35,7 @@ async fn forced_exit_child() -> Result<(), Error> {
     let orders = include_str!("../../../core/config/examples/orders.toml")
         // This test exercises crash recovery, not query response expiry.
         .rewrite("deadline_ms = 1000", "deadline_ms = 30000")
-        .rewrite("send_ahead = true", "send_ahead = false")
-        .rewrite(
-            "namespace=\"demo\",value=\"DEMO\"",
-            "namespace=\"synthetic\",value=\"TEST\"",
-        );
+        .rewrite("send_ahead = true", "send_ahead = false");
     std::fs::write(
         &definition,
         format!("{}\n{orders}", std::fs::read_to_string(&definition)?),

@@ -112,7 +112,7 @@ pub(super) fn law_stack(
                     work: law.work.clone().ok_or_else(|| {
                         invalid(path, "law.work", "LAW orders require work layout")
                     })?,
-                    tables: required_specimens(order_tables(orders), path)?,
+                    tables: required_specimens(order_tables(orders, machine, path)?, path)?,
                     placer_namespace: orders.placer_namespace.clone().ok_or_else(|| {
                         invalid(
                             path,

@@ -64,12 +64,19 @@ fn hl7_case() -> Result<(String, Vec<u8>), Error> {
     Ok((hl7, raw))
 }
 
-/// The machine definition with its test mapping emptied, so the synthetic test code is unknown.
-fn without_mapping(definition: &str) -> String {
-    definition.rewrite(
-        "tests = [{machine_code=\"SYN\", machine_system=\"synthetic\", app_code=\"DEMO\", app_system=\"demo\"}]",
-        "tests = []",
-    )
+/// The machine definition with its order ID selector pointed at an empty
+/// field, so each result misses the value that tells it apart. Since ADR 0029
+/// an unlisted test code no longer parks, so this is the repairable cause.
+fn with_wrong_order_selector(definition: &str) -> String {
+    let hl7 = "order_id = {group=\"order\",record=\"OBR\",field=3";
+    if definition.contains(hl7) {
+        definition.rewrite(hl7, "order_id = {group=\"order\",record=\"OBR\",field=2")
+    } else {
+        definition.rewrite(
+            "order_id = {group=\"order\",record=\"O\",field=3",
+            "order_id = {group=\"order\",record=\"O\",field=4",
+        )
+    }
 }
 
 // Plan §11; ADR 0003, rule 8
@@ -96,8 +103,8 @@ fn open_items(s: &analyte_store::Store) -> Result<Vec<(i64, String, String)>, Fi
         .collect()
 }
 
-/// The one open item, which must say that a test code is not in the test mapping.
-fn only_unknown_test(s: &analyte_store::Store) -> Result<i64, FixtureError> {
+/// The one open item, which must say that the result's order ID is missing.
+fn only_missing_order_id(s: &analyte_store::Store) -> Result<i64, FixtureError> {
     let open = open_items(s)?;
     let [(id, kind, reason)] = open.as_slice() else {
         panic!("one open item expected, got {open:?}");
@@ -105,21 +112,32 @@ fn only_unknown_test(s: &analyte_store::Store) -> Result<i64, FixtureError> {
     assert_eq!(kind, "mapping_finding");
     let finding = analyte_mapping::Finding::from_stored(reason)
         .unwrap_or_else(|| panic!("a mapping finding expected, got {reason}"));
-    assert_eq!(finding.problem, analyte_mapping::Problem::UnknownTest);
+    assert_eq!(
+        finding.problem,
+        analyte_mapping::Problem::MissingIdentity {
+            setting: analyte_mapping::IdentitySetting::OrderId
+        }
+    );
     Ok(*id)
 }
 
-// AGENTS.md safety rule 2; owner report 2026-11-21: one test code missing from
-// the test mapping opened three Needs review items for one message (the
-// finding, the result's missing identity, and the stored unresolved result).
-// One root cause is one open item with the clearest reason; Process again on
-// it adds no copy while the cause stays, and resolves it once it is repaired.
+// AGENTS.md safety rule 2; owner report 2026-11-21: one cause opened three
+// Needs review items for one message (the finding, the result's missing
+// identity, and the stored unresolved result). The report's cause, a code
+// missing from the test table, is gone with ADR 0029; a missing order ID has
+// the same shape. One root cause is one open item with the clearest reason;
+// Process again on it adds no copy while the cause stays, and resolves it
+// once it is repaired.
 #[tokio::test]
-async fn unknown_test_code_opens_one_item_for_its_message() -> Result<(), Error> {
+async fn missing_order_id_opens_one_item_for_its_message() -> Result<(), Error> {
     for (definition, raw) in [hl7_case()?, astm_case()?] {
         let temp = crate::admin::private_tempdir()?;
         let endpoint = "127.0.0.1:5600";
-        let missing = program(temp.path(), &without_mapping(&definition), endpoint)?;
+        let missing = program(
+            temp.path(),
+            &with_wrong_order_selector(&definition),
+            endpoint,
+        )?;
         let mut store = crate::runtime::service::open_store(&missing, Box::new(Space)).await?;
         let machine = missing.machines().first().ok_or("missing machine")?;
         let id = ReceiptId::new();
@@ -127,14 +145,14 @@ async fn unknown_test_code_opens_one_item_for_its_message() -> Result<(), Error>
         intake::receive(&store, &connection, id, raw).await?;
         assert!(!intake::interpret(&store, machine, id).await?);
         let parked = store
-            .request::<_, FixtureError>(deadline()?, |s| only_unknown_test(s))
+            .request::<_, FixtureError>(deadline()?, |s| only_missing_order_id(s))
             .await?;
         // The cause is still there: a new reading is kept, but no copy of the item.
         let commit = reprocess(&store, machine, action(id, Some(parked))?).await?;
         assert_eq!(commit.version, 2);
         store
             .request::<_, FixtureError>(deadline()?, move |s| {
-                assert_eq!(only_unknown_test(s)?, parked);
+                assert_eq!(only_missing_order_id(s)?, parked);
                 assert!(s.interpretation(id, 2)?.is_some());
                 Ok(())
             })
@@ -186,7 +204,11 @@ async fn exercise(definition: &str, raw: Vec<u8>) -> Result<(), Error> {
     let temp = crate::admin::private_tempdir()?;
     let receiver = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let endpoint = receiver.local_addr()?.to_string();
-    let old = program(temp.path(), &without_mapping(definition), &endpoint)?;
+    let old = program(
+        temp.path(),
+        &with_wrong_order_selector(definition),
+        &endpoint,
+    )?;
     let mut store = crate::runtime::service::open_store(&old, Box::new(Space)).await?;
     let machine = old.machines().first().ok_or("missing machine")?;
     let id = ReceiptId::new();
@@ -256,7 +278,7 @@ async fn assert_repeated_failure_stays_parked(
                     .is_none()
             );
             assert!(s.interpretation(id, 2)?.is_some());
-            assert_eq!(only_unknown_test(s)?, parked);
+            assert_eq!(only_missing_order_id(s)?, parked);
             assert_eq!(s.parked(0)?.len(), 1);
             assert_eq!(s.audits(0)?.len(), 1);
             Ok::<_, FixtureError>(())
@@ -313,7 +335,8 @@ async fn assert_retransmission_and_conflict(
     ));
     let changed = program(
         root,
-        &definition.rewrite("app_code=\"DEMO\"", "app_code=\"CHANGED\""),
+        // A changed unit mapping changes the content but not the identity.
+        &definition.rewrite("ucum=\"mg/L\"", "ucum=\"g/L\""),
         endpoint,
     )?;
     let machine = changed.machines().first().ok_or("missing machine")?;

@@ -54,6 +54,7 @@ is just one app that might integrate someday. The research files still say
 | Build and test against a reference receiver inside this repository         | 2026-11-15 |
 | The first lab's six machines are the hardware test bed for the drivers     | 2026-11-15 |
 | Standards first, machines after: each standard is complete and conformant before machine configs | 2026-11-15 |
+| The lab app owns test names and lists; Analyte passes machine codes through (ADR 0029) | 2026-11-22 |
 
 ## The first machines (hardware test bed)
 
@@ -85,7 +86,7 @@ What this means:
 
 | From                   | What                                                                                     |
 | ---------------------- | ---------------------------------------------------------------------------------------- |
-| The lab                | Software versions; cobas host test code screen and trace log copy; VIDAS PC version (decides a 12 or 17 character ID); which tests run on which machine and the lab app's code for each; one de-identified recording per machine before its config moves past documented |
+| The lab                | Software versions; cobas host test code screen and trace log copy; VIDAS PC version (decides a 12 or 17 character ID); which tests run on which machine (the lab app keeps its own code table per machine, ADR 0029); one de-identified recording per machine before its config moves past documented |
 | Dialab service         | Whether a sample barcode reader can be fitted to REF 20010D, its cost, and the TCP/IP settings |
 | The lab (machine settings) | Biolyte 2000 serial flow control; iFlash 1200 response deadlines; Swelab Lumi framing, character encoding, HL7 version and where it puts the sample ID |
 | The owner (local copies) | Copies in the git-ignored `references/vendors/` of documents read during research: cobas e 411 Host Interface Manual v2.3 and v2.2 and Operator's Manual v3.3.1; YHLO LIS Protocol Manual V1.1 and iFlash 1200 Operation Manual V3.0; Swelab Lumi User Manual 1504529; Biolyte 2000 Service Manual 4.2A; VIDAS BCI Link guide 161150-486 revisions A and B and VIDAS PC User Manual F |

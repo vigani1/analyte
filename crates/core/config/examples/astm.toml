@@ -29,7 +29,9 @@ fields = 128
 repetitions = 128
 components = 128
 [mappings]
-tests = [{machine_code="SYN", machine_system="synthetic", app_code="DEMO", app_system="demo"}]
+# The machine's own code system; codes pass through as sent (ADR 0029).
+test_system = "synthetic"
+test_component = "manufacturer"
 units = [{original="mg/L", ucum="mg/L"}]
 qc = []
 [mappings.sample]

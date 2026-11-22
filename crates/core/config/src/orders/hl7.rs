@@ -83,17 +83,6 @@ impl Orders {
                 "supply a namespace exactly when patient_id is mapped",
             ));
         }
-        if self
-            .tests
-            .iter()
-            .any(|t| t.machine_components.len() != if self.send_ahead { 3 } else { 1 })
-        {
-            return Err(invalid(
-                path,
-                "orders.tests",
-                "HL7 display tests require one explicit plain text code",
-            ));
-        }
         Ok(())
     }
     pub(super) fn validate_hl7_send(
@@ -203,24 +192,18 @@ impl Orders {
                 "supply explicit specimen and priority coding-system revisions",
             ));
         }
-        if self.tests.iter().any(|test| {
-            test.machine_components.len() != if modern { 7 } else { 3 }
-                || (modern
-                    && (test
-                        .machine_components
-                        .get(3..6)
-                        .is_none_or(|v| v.iter().any(|v| !v.is_empty()))
-                        || test
-                            .machine_components
-                            .get(6)
-                            .is_none_or(|v| v.is_empty() || v.len() > 10)))
-                || test.machine_components.first().is_none_or(String::is_empty)
-                || test.machine_components.get(2).is_none_or(String::is_empty)
-        }) {
+        let test_system = machine.mappings.as_ref().map(|m| &m.test_system);
+        if test_system.is_none_or(|system| !plain(system))
+            || send
+                .test_version
+                .as_ref()
+                .is_some_and(|v| !modern || !plain(v) || v.as_str().len() > 10)
+            || (modern && send.test_version.is_none())
+        {
             return Err(invalid(
                 path,
-                "orders.tests",
-                "HL7 orders require explicit code, text and coding system components",
+                "orders.hl7_send.test_version",
+                "HL7 orders write mappings.test_system as a plain OBR-4 coding system of at most                  20 bytes; CWE editions also need test_version (at most 10 bytes), CE editions refuse it",
             ));
         }
         Ok(())

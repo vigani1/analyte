@@ -63,7 +63,7 @@ impl Confirm {
                     "earlier reading is kept and a new one is added; corrected results follow ",
                     "the usual correction rules. Nothing is sent to the machine.",
                 ),
-                "For example: test added to the test mapping",
+                "For example: machine definition corrected",
                 "Process again",
             ),
         };

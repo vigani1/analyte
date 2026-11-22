@@ -17,7 +17,6 @@ fn definition() -> String {
 [orders]
 send_ahead = true
 patient_namespace = "synthetic"
-tests = [{app={namespace="synthetic",value="TEST"},machine_components=["SYN"]}]
 priorities = [{app="routine",machine="R"}]
 "#
     )
@@ -55,7 +54,7 @@ async fn setup(
 }
 async fn packet(peer: &mut TcpStream) -> Result<(), Error> {
     peer.write_all(b"\x06").await?;
-    let expected = framing()?.encode(b"mtmpr|pi000PatA|si|ci000Ab12|rtSYN|")?;
+    let expected = framing()?.encode(b"mtmpr|pi000PatA|si|ci000Ab12|rtTEST|")?;
     let mut received = vec![0; expected.len()];
     tokio::time::timeout(HANG_GUARD, peer.read_exact(&mut received)).await??;
     assert_eq!(received, expected);
@@ -228,13 +227,13 @@ async fn rejection(value: serde_json::Value, code: &str) -> Result<(), Error> {
 }
 // VIDAS BCI Link rev A chapter 4
 #[tokio::test]
-async fn unmapped_test_is_rejected_before_send() -> Result<(), Error> {
+async fn foreign_test_is_rejected_before_send() -> Result<(), Error> {
     let mut value = order()?;
     value["tests"]
         .as_array_mut()
         .ok_or("tests")?
-        .push(serde_json::json!({"namespace":"synthetic","value":"UNKNOWN"}));
-    rejection(value,"rejected: unmapped test NamespacedId { namespace: Identifier(\"synthetic\"), value: Identifier(\"UNKNOWN\") }").await
+        .push(serde_json::json!({"namespace":"lab-app","value":"TEST"}));
+    rejection(value,"rejected: test NamespacedId { namespace: Identifier(\"lab-app\"), value: Identifier(\"TEST\") } is not in this machine's code system").await
 }
 // VIDAS BCI Link rev A chapter 4
 #[tokio::test]

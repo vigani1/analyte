@@ -134,23 +134,25 @@ fn conflicting_qc_classification_is_parked() -> TestResult {
     Ok(())
 }
 
-// ADR 0003 rule 2
+// ADR 0029 (changes ADR 0003 rule 2's unknown-test case): a code no table
+// lists is the machine's own code, so its result keeps its identity.
 #[test]
-fn unknown_test_never_gets_resolved_identity() -> TestResult {
+fn unlisted_test_code_keeps_its_identity() -> TestResult {
     let mapped = hl7(
         "OBR|1||001\rOBX|1|NM|UNKNOWN^^synthetic||1||||||F\r",
         HL7_CONFIG,
     )?;
-    assert!(mapped.requires_parking());
-    assert!(matches!(
-        mapped.results.first().ok_or("result")?.content.identity,
-        IdentityStatus::Unresolved(_)
-    ));
+    let result = mapped.results.first().ok_or("result")?;
+    let IdentityStatus::Resolved(identity) = &result.content.identity else {
+        return Err("identity stays resolved".into());
+    };
+    assert_eq!(identity.observation.code.value.as_str(), "UNKNOWN");
+    assert_eq!(identity.observation.code.namespace.as_str(), "synthetic");
     assert!(
-        mapped
+        !mapped
             .findings
             .iter()
-            .any(|f| f.problem == Problem::UnknownTest)
+            .any(|f| f.problem == Problem::MissingTest)
     );
     Ok(())
 }
@@ -301,11 +303,11 @@ fn hl7_mapping_rechecks_limits_inclusively() -> TestResult {
 
 // ADR 0003
 #[test]
-fn unmapped_evidence_alone_requires_parking() -> TestResult {
-    let mut output = astm("R|1|^^^UNKNOWN|1|||||F\r", "P")?;
-    assert!(!output.unmapped.is_empty());
+fn uncoded_evidence_alone_requires_parking() -> TestResult {
+    let mut output = astm("R|1|^^^|1|||||F\r", "P")?;
+    assert!(!output.uncoded.is_empty());
     // Output is public host-facing evidence; even a host that extracted findings
-    // for display must not make unmapped observations eligible for delivery.
+    // for display must not make uncoded observations eligible for delivery.
     output.findings.clear();
     output.results.clear();
     assert!(output.requires_parking());

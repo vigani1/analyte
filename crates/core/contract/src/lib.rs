@@ -98,9 +98,16 @@ wire!(EventFields {
 wire!(Patient {
     id: document::NamespacedId
 });
+// ADR 0029: the code is the machine's own, in its code system; the optional
+// name is the lab app's name for it, written only where a protocol carries one.
+wire!(OrderTest {
+    namespace: document::Identifier, value: document::Identifier,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    name: Option<Text>
+});
 wire!(OrderFields {
     id: Text, version: std::num::NonZeroU64, state: document::OrderState, sample_id: Text,
-    tests: Vec<document::NamespacedId>, priority: Priority, target_analyzers: Option<Vec<Text>>,
+    tests: Vec<OrderTest>, priority: Priority, target_analyzers: Option<Vec<Text>>,
     expires_at: Option<Text>, tombstone: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     position: Option<document::SamplePosition>,

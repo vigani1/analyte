@@ -5,7 +5,7 @@ use analyte_fixtures::ConfigEdit as _;
 use analyte_mapping::{AppOrder, AppOrderPriority, OrderMappingError};
 use analyte_model::{Identifier, NamespacedId, SampleId};
 type TestResult = Result<(), Box<dyn std::error::Error>>;
-const SECTION: &str = "\n[orders]\nsend_ahead=true\npatient_namespace='patients'\ntests=[{app={namespace='demo',value='DEMO'},machine_components=['SYN']}]\npriorities=[{app='routine',machine='R'}]\n";
+const SECTION: &str = "\n[orders]\nsend_ahead=true\npatient_namespace='patients'\npriorities=[{app='routine',machine='R'}]\n";
 fn config(definition: &str) -> Result<Validated, analyte_config::Error> {
     Draft::load(
         ("machine", definition),
@@ -27,7 +27,7 @@ fn vidas() -> String {
 
 fn autolyser() -> String {
     format!(
-        "{}\n[orders]\nsend_ahead=true\npatient_namespace='patients'\nclone=false\ntests=[{{app={{namespace='demo',value='DEMO'}},machine_components=['SYN ']}}]\npriorities=[{{app='routine',machine='T'}}]\nspecimen_types=[{{app={{namespace='types',value='SERUM'}},machine='S'}}]\n",
+        "{}\n[orders]\nsend_ahead=true\npatient_namespace='patients'\nclone=false\npriorities=[{{app='routine',machine='T'}}]\nspecimen_types=[{{app={{namespace='types',value='SERUM'}},machine='S'}}]\n",
         include_str!("../../../core/config/examples/autolyser.toml")
             .rewrite("download = false", "download = true")
     )
@@ -35,6 +35,8 @@ fn autolyser() -> String {
 
 fn positioned_order() -> Result<AppOrder, analyte_model::TextError> {
     let mut input = order()?;
+    // The work list's four-byte analysis code, padding written by the lab app.
+    input.tests = vec![test("synthetic", "SYN ")?];
     input.position = Some(analyte_model::SamplePosition {
         kind: analyte_model::CarrierKind::Rack,
         carrier: None,
@@ -128,13 +130,18 @@ fn autolyser_download_refuses_missing_context_or_overflow() -> TestResult {
     }
     Ok(())
 }
+fn test(namespace: &str, value: &str) -> Result<NamespacedId, analyte_model::TextError> {
+    Ok(NamespacedId {
+        namespace: Identifier::new(namespace)?,
+        value: Identifier::new(value)?,
+    })
+}
+
 fn order() -> Result<AppOrder, analyte_model::TextError> {
     Ok(AppOrder {
         sample: SampleId::new("000Ab")?,
-        tests: vec![NamespacedId {
-            namespace: Identifier::new("demo")?,
-            value: Identifier::new("DEMO")?,
-        }],
+        tests: vec![test("synthetic", "SYN")?],
+        test_names: vec![None],
         priority: AppOrderPriority::Routine,
         position: None,
         patient: Some(NamespacedId {
@@ -249,6 +256,67 @@ fn vidas_download_count_and_size_bounds_are_independent() -> TestResult {
             );
         }
     }
+    Ok(())
+}
+
+// VIDAS BCI Link rev A §4; ADR 0029: the order's assay code goes out as
+// written, case and leading zeros kept, only in the machine's code system and
+// only when it fits the 1 to 4 byte field.
+#[test]
+fn vidas_assay_codes_are_checked_when_ordered() -> TestResult {
+    let cfg = config(&vidas())?;
+    for code in ["0aB", "A", "ABCD"] {
+        let mut input = order()?;
+        input.tests = vec![test("synthetic", code)?];
+        let requests = map_vidas(&input, cfg.effective().stack())?;
+        assert_eq!(requests.first().ok_or("request")?.get("rt"), Some(code));
+    }
+    for code in ["ABCDE", "A|B"] {
+        let mut input = order()?;
+        input.tests = vec![test("synthetic", code)?];
+        assert!(
+            matches!(
+                map_vidas(&input, cfg.effective().stack()),
+                Err(analyte_mapping::vidas::OrderError::AssayCode)
+            ),
+            "{code}"
+        );
+    }
+    let mut foreign = order()?;
+    foreign.tests = vec![test("lab-app", "SYN")?];
+    assert!(matches!(
+        map_vidas(&foreign, cfg.effective().stack()),
+        Err(analyte_mapping::vidas::OrderError::Shared(
+            OrderMappingError::ForeignTest(_)
+        ))
+    ));
+    Ok(())
+}
+
+// Autolyser manual Rev18 chapter 23; ADR 0029: the analysis code is exactly
+// four bytes; Analyte never pads or trims what the lab app wrote.
+#[test]
+fn autolyser_analysis_code_is_exactly_four_bytes() -> TestResult {
+    let cfg = config(&autolyser())?;
+    for code in ["SYN", "SYN  "] {
+        let mut input = positioned_order()?;
+        input.tests = vec![test("synthetic", code)?];
+        assert!(
+            matches!(
+                map_autolyser(&input, cfg.effective().stack()),
+                Err(analyte_mapping::autolyser::OrderError::AnalysisCode)
+            ),
+            "{code:?}"
+        );
+    }
+    let mut foreign = positioned_order()?;
+    foreign.tests = vec![test("Synthetic", "SYN ")?];
+    assert!(matches!(
+        map_autolyser(&foreign, cfg.effective().stack()),
+        Err(analyte_mapping::autolyser::OrderError::Shared(
+            OrderMappingError::ForeignTest(_)
+        ))
+    ));
     Ok(())
 }
 

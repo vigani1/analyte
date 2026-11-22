@@ -425,12 +425,12 @@ async fn stale_or_incomplete_cache_is_not_empty() -> Result<(), Error> {
 // IHE PaLM TF-2b §3.27, §3.28
 #[tokio::test]
 async fn preparation_failure_sends_no_positive_answer() -> Result<(), Error> {
-    for failure in ["later-unmapped-test", "later-reservation-storage"] {
+    for failure in ["later-foreign-test", "later-reservation-storage"] {
         let settings = definition();
         let mut pending: serde_json::Value =
             serde_json::from_slice(&serde_json::to_vec(&order("order-1", "000Ab12", None, 2)?)?)?;
-        if failure == "later-unmapped-test" {
-            pending["tests"][1]["value"] = serde_json::json!("UNMAPPED");
+        if failure == "later-foreign-test" {
+            pending["tests"][1]["namespace"] = serde_json::json!("lab-app");
         }
         let (_temp, path, reference, running, mut peer) = setup(
             vec![analyte_contract::decode(&serde_json::to_vec(&pending)?)?],

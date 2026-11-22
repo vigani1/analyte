@@ -43,7 +43,7 @@ Research only; no machine recording or official simulator run. No recordings shi
 ## Open questions
 
 - Blocking: framing, encoding, edition, sample field and lookup message layout.
-- Required site settings: software, endpoint, assay/app and unit mappings,
+- Required site settings: software, endpoint, assay code system and unit mappings,
   identity/run evidence, QC discriminator, flags, ACK and lookup deadlines.
 - Compare typed, scanned and auto-assigned IDs in captures. Establish graphics
   format and bounds separately; no image is to be interpreted as a number.

@@ -98,12 +98,18 @@ impl Command {
             let [requested] = item.tests else {
                 return Err(Error::ItemTestCount);
             };
-            let mapped = crate::orders::codes::map_test(self.settings.tables().tests(), requested)
-                .map_err(Error::UnmappedTest)?;
+            let tables = self.settings.tables();
+            let code = crate::orders::codes::map_test(tables.test_system(), requested)
+                .map_err(Error::ForeignTest)?;
             orders.push(order::Order::New {
                 placer,
                 filler: None,
-                test: test_code(&mapped.machine_components)?,
+                test: test_code(
+                    code,
+                    self.app.test_name(requested).map_or("", |n| n.as_str()),
+                    tables.test_system(),
+                    cfg.test_version.as_ref(),
+                )?,
                 specimen: order::Specimen {
                     sample,
                     field: if cfg.sample_field == 18 {
@@ -287,18 +293,17 @@ impl Command {
     }
 }
 
-fn test_code(components: &[String]) -> Result<order::Code<'_>, Error> {
-    let [code, text, system, rest @ ..] = components else {
-        return Err(Error::TestComponents);
-    };
-    let code = order::Code::new(code.as_bytes(), text.as_bytes(), system.as_bytes())?;
-    match rest {
-        [] => Ok(code),
-        [empty1, empty2, empty3, revision]
-            if [empty1, empty2, empty3].iter().all(|v| v.is_empty()) =>
-        {
-            Ok(code.with_version(revision.as_bytes())?)
-        }
-        _ => Err(Error::TestComponents),
+// OBR-4 carries the machine's code and code system; its optional text is the
+// lab app's name for the test, empty when the order gives none (ADR 0029).
+fn test_code<'a>(
+    code: &'a str,
+    name: &'a str,
+    system: &'a analyte_model::Identifier,
+    version: Option<&'a analyte_model::Identifier>,
+) -> Result<order::Code<'a>, Error> {
+    let code = order::Code::new(code.as_bytes(), name.as_bytes(), system.as_str().as_bytes())?;
+    match version {
+        None => Ok(code),
+        Some(version) => Ok(code.with_version(version.as_str().as_bytes())?),
     }
 }

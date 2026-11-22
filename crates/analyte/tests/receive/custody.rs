@@ -64,7 +64,8 @@ async fn cli_commands_require_actor_and_reason() -> Result<(), Error> {
     let definition = std::fs::read_to_string(temp.path().join("machine.toml"))?;
     std::fs::write(
         temp.path().join("machine.toml"),
-        definition.rewrite("machine_code=\"SYN\"", "machine_code=\"OTHER\""),
+        // A wrong order ID selector parks the result until the file is fixed.
+        definition.rewrite("record=\"OBR\",field=3", "record=\"OBR\",field=2"),
     )?;
     let program = Program::load(&path)?;
     let (shutdown, stop) = oneshot::channel();

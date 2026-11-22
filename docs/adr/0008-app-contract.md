@@ -2,7 +2,8 @@
 
 Status: accepted, 2026-11-15; amended before release on 2026-11-15 (order
 states and optional order fields) and 2026-11-18 (setup errors pause the
-destination)
+destination). Changed by [ADR 0029](0029-lab-app-owns-test-names.md): test codes are the machine's
+own, and an order test may carry the lab app's name.
 
 ## Context
 

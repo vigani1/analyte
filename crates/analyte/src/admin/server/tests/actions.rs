@@ -140,7 +140,8 @@ async fn seed_parked_receipt(
     let definition = include_str!("../../../../../core/config/examples/hl7.toml");
     std::fs::write(
         root.join("machine.toml"),
-        definition.rewrite("machine_code=\"SYN\"", "machine_code=\"OTHER\""),
+        // A wrong order ID selector parks the result until the file is fixed.
+        definition.rewrite("record=\"OBR\",field=3", "record=\"OBR\",field=2"),
     )?;
     std::fs::write(
         root.join("site.toml"),

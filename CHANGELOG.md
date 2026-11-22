@@ -38,6 +38,12 @@ warns before running the installer.
 - An alert when results cannot be delivered, with the reason and the fix.
 - One Needs review item per cause, instead of two or three for one problem
   (ADR 0024).
+- The lab app owns test names and test lists (ADR 0029). Results carry the
+  machine's own test code exactly as sent, in the machine's code system; a
+  code no table lists is delivered, not parked. Orders arrive in the
+  machine's own codes, with an optional name from the lab app, and a test in
+  another code system is rejected before sending. Machine definitions name
+  their `test_system` instead of a test table.
 - Activity folds a delivery's failed tries in a row into one line (store
   schema 18).
 - Admin page reads stop at their deadline, so a slow page never holds up

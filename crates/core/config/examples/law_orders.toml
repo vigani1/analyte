@@ -13,6 +13,5 @@ specimen_system = "HL70487"
 # Set true to admit unsolicited LAB-28 on the current connection.
 send_ahead = false
 placer_namespace = "LAB"
-tests = [{app={namespace="synthetic",value="TEST"},machine_components=["SYN","Synthetic","99LAB"]}]
 priorities = [{app="routine",machine="R"}]
 specimen_types = [{app={namespace="types",value="SERUM"},machine="SER"}]

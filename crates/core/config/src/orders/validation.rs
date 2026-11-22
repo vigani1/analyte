@@ -1,4 +1,4 @@
-//! Validates outbound capabilities and code translations.
+//! Validates outbound capabilities, priority and specimen translations.
 use super::{Error, Field, Group, MachinePriority, Orders, PriorityCode, invalid};
 use crate::ParsedMachine;
 use std::collections::HashSet;
@@ -97,17 +97,15 @@ impl Orders {
     /// Refuses ambiguous tables, unbounded queries and invalid field ownership.
     pub(crate) fn validate(&self, machine: &ParsedMachine<'_>, path: &str) -> Result<(), Error> {
         self.validate_stack(machine, path)?;
-        self.validate_test_tables(machine, path)?;
+        self.validate_query_and_priority_bounds(path)?;
         self.validate_specimen_tables(machine, path)?;
         self.validate_installed_codes_and_priorities(machine, path)?;
         self.validate_astm_fields(machine, path)?;
         Ok(())
     }
 
-    fn validate_test_tables(&self, machine: &ParsedMachine<'_>, path: &str) -> Result<(), Error> {
-        if self.tests.is_empty()
-            || self.tests.len() > 4096
-            || self.priorities.is_empty()
+    fn validate_query_and_priority_bounds(&self, path: &str) -> Result<(), Error> {
+        if self.priorities.is_empty()
             || self.priorities.len() > 3
             || self
                 .query
@@ -115,35 +113,6 @@ impl Orders {
                 .is_some_and(|q| !(1..=60_000).contains(&q.deadline_ms))
         {
             return Err(invalid_tables(path));
-        }
-        let mut tests = HashSet::new();
-        for test in &self.tests {
-            if !tests.insert((&test.app.namespace, &test.app.value))
-                || test.machine_components.is_empty()
-                || test.machine_components.len() > machine.syntax.components
-                || test.machine_components.iter().any(|s| {
-                    s.len() > 256 || !s.is_ascii() || s.bytes().any(|b| b < 32 || b == 127)
-                })
-                || test.machine_components.iter().all(String::is_empty)
-            {
-                return Err(invalid_tables(path));
-            }
-        }
-        if machine.choice().has_vidas_assay_codes()
-            && self.tests.iter().any(|test| {
-                let [code] = test.machine_components.as_slice() else {
-                    return true;
-                };
-                code.is_empty()
-                    || code.len() > 4
-                    || code.bytes().any(|b| !(32..=126).contains(&b) || b == b'|')
-            })
-        {
-            return Err(invalid(
-                path,
-                "orders.tests",
-                "VIDAS requires one printable assay code of 1 to 4 bytes without a pipe",
-            ));
         }
         Ok(())
     }
@@ -192,20 +161,6 @@ impl Orders {
         machine: &ParsedMachine<'_>,
         path: &str,
     ) -> Result<(), Error> {
-        if machine.choice().has_autolyser_orders()
-            && self.tests.iter().any(|test| {
-                let [code] = test.machine_components.as_slice() else {
-                    return true;
-                };
-                code.len() != 4 || !code.bytes().all(|b| (32..=126).contains(&b))
-            })
-        {
-            return Err(invalid(
-                path,
-                "orders.tests",
-                "Autolyser requires one exact four-byte printable analysis code",
-            ));
-        }
         if machine.choice().has_autolyser_orders()
             && self.priorities.iter().any(|p| {
                 !matches!(
@@ -257,6 +212,15 @@ impl Orders {
             if !order_field(field, number, machine) {
                 return Err(invalid_tables(path));
             }
+        }
+        if astm.test_components.is_some_and(|count| {
+            count < astm.test.component || usize::from(count) > machine.syntax.components
+        }) {
+            return Err(invalid(
+                path,
+                "orders.astm.test_components",
+                "count at least the code's component and at most the syntax component limit",
+            ));
         }
         if astm
             .position

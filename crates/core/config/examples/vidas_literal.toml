@@ -39,7 +39,8 @@ backoff_ms = 1000
 download = false
 
 [codes]
-tests = [{machine_code="SYN", machine_system="synthetic", app_code="DEMO", app_system="demo"}]
+# VIDAS assay codes pass through as sent, in this code system (ADR 0029).
+test_system = "synthetic"
 units = [{original="mg/L", ucum="mg/L"}]
 [evidence]
 level = "documented"

@@ -138,8 +138,9 @@ fn note_control_characters(
 }
 
 /// Maps explicit ASTM order fields without guessing missing codes or context.
+/// Test codes go out exactly as the order wrote them, in the machine's code system.
 /// # Errors
-/// Preserves the existing code-table, context, repertoire and bounds failures.
+/// Preserves the code-system, context, repertoire and bounds failures.
 pub fn map_order(
     order: &AppOrder,
     limits: &analyte_config::SyntaxLimits,
@@ -152,8 +153,7 @@ pub fn map_order(
     }
     let mut tests = Vec::new();
     for requested in &order.tests {
-        let mapped = map_test(settings.tests(), requested)?;
-        tests.push(mapped.machine_components.clone());
+        tests.push(map_test(settings.test_system(), requested)?);
     }
     let priority = map_priority(settings.priorities(), order.priority)?;
     let mut fields: [Vec<Vec<String>>; 16] = std::array::from_fn(|_| Vec::new());
@@ -182,20 +182,21 @@ pub fn map_order(
         let code = map_specimen(order, settings)?;
         set(&mut fields, destination, code, limits.components())?;
     }
-    let prefix = usize::from(astm.test.component).saturating_sub(1);
-    if settings.tests().iter().any(|t| {
-        t.machine_components
-            .len()
-            .checked_add(prefix)
-            .is_none_or(|n| n > limits.components())
-    }) {
+    // LIS02 section 5.6.1: the code goes in its component of the universal
+    // test ID; the components before it, and any the machine expects after it,
+    // stay empty.
+    let code_at = usize::from(astm.test.component);
+    let width = astm.test_components.map_or(code_at, usize::from);
+    if code_at == 0 || width < code_at || width > limits.components() {
         return Err(OrderError::TestComponents);
     }
     fields[4] = tests
         .into_iter()
-        .map(|test| {
-            let mut parts = vec![String::new(); prefix];
-            parts.extend(test);
+        .map(|code| {
+            let mut parts = vec![String::new(); width];
+            if let Some(part) = parts.get_mut(code_at.saturating_sub(1)) {
+                code.clone_into(part);
+            }
             parts
         })
         .collect();

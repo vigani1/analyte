@@ -53,9 +53,10 @@ fn validate_field(value: &str) -> Result<&str, Error> {
     Ok(value)
 }
 
-/// Maps every reserved AWOS using explicit specimen, test and priority translations.
+/// Maps every reserved AWOS using explicit specimen and priority translations;
+/// test codes go out as written, in the machine's code system.
 /// # Errors
-/// Preserves unmapped-code, repertoire, cardinality and LAW-profile failures.
+/// Preserves foreign-test, unmapped-code, repertoire, cardinality and LAW-profile failures.
 pub fn map_work(
     commands: &[(&Command, &[crate::orders::OutboundItem<'_>])],
     action: law::WorkAction,
@@ -96,18 +97,22 @@ pub fn map_work(
             let [requested] = item.tests else {
                 return Err(Error::ItemTestCount);
             };
-            let mapped_test =
-                crate::orders::codes::map_test(command.settings.tables().tests(), requested)
-                    .map_err(Error::UnmappedTest)?;
+            let tables = command.settings.tables();
+            let code = crate::orders::codes::map_test(tables.test_system(), requested)
+                .map_err(Error::ForeignTest)?;
+            // TF-2b OBR-4 requires its text component; only the lab app names tests.
+            let name = command
+                .app
+                .test_name(requested)
+                .ok_or(Error::TestNameMissing)?;
             wire.push(WireAwos {
                 // C.6 manager-authored AWOS supports EI.1 only. The shared store
                 // still retains the explicit logical namespace beside this identity.
                 id: item.placer.to_owned(),
                 container: sample.to_owned(),
                 fields: {
-                    let [code, text, system] = mapped_test.machine_components.as_slice() else {
-                        return Err(Error::TestComponents);
-                    };
+                    // OBR-4 carries the machine's code and code system and the
+                    // lab app's name for the test (ADR 0029).
                     law::WorkFields::new(
                         sample,
                         command.settings.work().specimen_namespace.as_str(),
@@ -116,7 +121,11 @@ pub fn map_work(
                             text: "",
                             system: command.settings.work().specimen_system.as_str(),
                         },
-                        law::WorkCode { code, text, system },
+                        law::WorkCode {
+                            code: validate_field(code)?,
+                            text: validate_field(name.as_str())?,
+                            system: validate_field(tables.test_system().as_str())?,
+                        },
                         priority,
                     )?
                 },

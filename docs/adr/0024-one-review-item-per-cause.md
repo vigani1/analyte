@@ -1,7 +1,9 @@
 # 0024. One Needs review item per cause
 
 Status: accepted, 2026-11-21. Refines
-[ADR 0003](0003-clinical-safety-rules.md) rule 2 (never drop data).
+[ADR 0003](0003-clinical-safety-rules.md) rule 2 (never drop data). Its
+example cause changed by [ADR 0029](0029-lab-app-owns-test-names.md): a code missing from a
+test table no longer parks; a missing order ID or test code has the same shape.
 
 ## Context
 
@@ -50,5 +52,6 @@ reading version are kept as before.
   count all count parked items, so they now count causes.
 - Items parked before this change are not merged or resolved; they stay as
   they are until someone resolves or processes them again.
-- A message with two different unknown test codes still has two items, one
-  per code; Process again on one resolves that one.
+- A message with two different causes still has two items, one per cause;
+  Process again on one resolves that one. (The original example, two unknown
+  test codes, no longer parks since ADR 0029.)

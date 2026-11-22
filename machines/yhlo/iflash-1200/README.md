@@ -49,7 +49,7 @@ Research only; no machine recording or official simulator run. No recordings shi
 - Blocking: confirm the family protocol for the 1200 and resolve status/QC
   mapping expressiveness with evidence before writing a configuration.
 - Required site settings: port, software, encoding, deadlines, sample selector,
-  assay/app and unit mappings, identity/rerun evidence and query layouts.
+  assay code system and unit mappings, identity/rerun evidence and query layouts.
 - Confirm BOTH datatype, OBX-9 qualitative calls, dilution application and
   calibration handling. Unknown lookup must remain an error, never no tests.
 - Still missing: a YHLO LIS protocol manual for the 1200, or YHLO's written

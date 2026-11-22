@@ -1,18 +1,21 @@
-//! Translates outgoing codes using explicit tables independent of result mappings.
+//! Checks outgoing test codes against the machine's code system and translates
+//! specimen and priority codes through explicit tables.
 use crate::orders::{AppOrderPriority, OrderMappingError};
-use analyte_config::{OrderPriority, OutboundSpecimen, OutboundTest};
-use analyte_model::NamespacedId;
-/// Finds an exact app namespace/code in a validated outbound test table.
+use analyte_config::{OrderPriority, OutboundSpecimen};
+use analyte_model::{Identifier, NamespacedId};
+/// Returns the order test's code, exactly as the lab app wrote it, when its
+/// namespace is exactly the machine's own test code system (ADR 0029).
 /// # Errors
-/// Returns the requested unmapped identity, never a default or inbound-table match.
+/// Returns `ForeignTest` for any other namespace; nothing is translated or defaulted.
 pub fn map_test<'a>(
-    table: &'a [OutboundTest],
-    requested: &NamespacedId,
-) -> Result<&'a OutboundTest, OrderMappingError> {
-    table
-        .iter()
-        .find(|entry| entry.app == *requested)
-        .ok_or_else(|| OrderMappingError::UnmappedTest(requested.clone()))
+    test_system: &Identifier,
+    requested: &'a NamespacedId,
+) -> Result<&'a str, OrderMappingError> {
+    if requested.namespace == *test_system {
+        Ok(requested.value.as_str())
+    } else {
+        Err(OrderMappingError::ForeignTest(requested.clone()))
+    }
 }
 /// Finds an exact app namespace/code in an explicitly configured specimen table.
 /// # Errors

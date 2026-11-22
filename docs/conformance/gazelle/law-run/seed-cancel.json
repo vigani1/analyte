@@ -6,8 +6,9 @@
     "sample_id": "SYN-0002",
     "tests": [
       {
-        "namespace": "synthetic",
-        "value": "TEST"
+        "namespace": "99LAB",
+        "value": "SYN",
+        "name": "Synthetic"
       }
     ],
     "priority": "routine",

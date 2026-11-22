@@ -121,9 +121,9 @@ fn place(position: Position) -> String {
 fn problem_words(problem: &Problem, at: Position) -> (&'static str, String) {
     let at = place(at);
     match problem {
-        Problem::UnknownTest => (
-            "Test not in this machine’s test mapping",
-            format!("The test code in {at} is not in this machine’s test mapping."),
+        Problem::MissingTest => (
+            "Test code missing",
+            format!("The machine sent no test code in {at}."),
         ),
         Problem::MissingSample => (
             "Sample ID missing",
@@ -136,27 +136,27 @@ fn problem_words(problem: &Problem, at: Position) -> (&'static str, String) {
             ),
         ),
         Problem::ValueKindMismatch { expected } => (
-            "Value does not fit the test mapping",
+            "Value is not the expected kind",
             match expected {
                 ValueKind::Numeric => format!(
-                    "The value in {at} is not a number, but this machine’s test mapping \
-                     expects a number for this test."
+                    "The value in {at} is not a number, but this machine’s definition \
+                     expects a number for this test code."
                 ),
                 ValueKind::Coded => format!(
-                    "The value in {at} is not a code, but this machine’s test mapping \
-                     expects a code for this test."
+                    "The value in {at} is not a code, but this machine’s definition \
+                     expects a code for this test code."
                 ),
                 ValueKind::Either => format!(
                     "The value in {at} is neither a number nor a code, but this machine’s \
-                     test mapping expects one of the two for this test."
+                     definition expects one of the two for this test code."
                 ),
             },
         ),
         Problem::ComponentParts => (
-            "Result parts do not match the test mapping",
+            "Test code parts do not match",
             format!(
-                "The result in {at} has other parts than this machine’s test mapping lists \
-                 for the test."
+                "The test code in {at} does not split into the parts this machine’s \
+                 definition names."
             ),
         ),
         Problem::UnsupportedValue => (
@@ -255,11 +255,6 @@ fn unidentified(reason: Unidentified) -> Explained {
             let (title, sentence) = problem_words(&Problem::MissingIdentity { setting }, position);
             Explained::said(title, sentence)
         }
-        Unidentified::UnknownTest => Explained::said(
-            "Test not in this machine’s test mapping",
-            "A test code in this message is not in this machine’s test mapping, so its result \
-             has no identity.",
-        ),
         Unidentified::AutolyserRun => Explained::said(
             MISSING,
             "This machine sends no run number that stays the same, and its patient code is not \
@@ -524,8 +519,8 @@ mod tests {
     #[test]
     fn reasons_show_positions_plainly_and_keep_the_stored_text() {
         assert_eq!(
-            reason_words("Position { record: 3, field: 3 }: UnknownTest").as_deref(),
-            Some("record 3, field 3: UnknownTest")
+            reason_words("Position { record: 3, field: 3 }: MissingTest").as_deref(),
+            Some("record 3, field 3: MissingTest")
         );
         assert_eq!(
             reason_words(
@@ -571,9 +566,9 @@ mod tests {
     /// Each mapping problem, its title and its sentence for record 6, field 3.
     const PROBLEM_WORDS: [(Problem, &str, &str); 18] = [
         (
-            Problem::UnknownTest,
-            "Test not in this machine’s test mapping",
-            "The test code in record 6, field 3 is not in this machine’s test mapping.",
+            Problem::MissingTest,
+            "Test code missing",
+            "The machine sent no test code in record 6, field 3.",
         ),
         (
             Problem::MissingSample,
@@ -584,38 +579,38 @@ mod tests {
             Problem::ValueKindMismatch {
                 expected: ValueKind::Numeric,
             },
-            "Value does not fit the test mapping",
+            "Value is not the expected kind",
             concat!(
-                "The value in record 6, field 3 is not a number, but this machine’s test ",
-                "mapping expects a number for this test.",
+                "The value in record 6, field 3 is not a number, but this machine’s ",
+                "definition expects a number for this test code.",
             ),
         ),
         (
             Problem::ValueKindMismatch {
                 expected: ValueKind::Coded,
             },
-            "Value does not fit the test mapping",
+            "Value is not the expected kind",
             concat!(
-                "The value in record 6, field 3 is not a code, but this machine’s test ",
-                "mapping expects a code for this test.",
+                "The value in record 6, field 3 is not a code, but this machine’s ",
+                "definition expects a code for this test code.",
             ),
         ),
         (
             Problem::ValueKindMismatch {
                 expected: ValueKind::Either,
             },
-            "Value does not fit the test mapping",
+            "Value is not the expected kind",
             concat!(
                 "The value in record 6, field 3 is neither a number nor a code, but this ",
-                "machine’s test mapping expects one of the two for this test.",
+                "machine’s definition expects one of the two for this test code.",
             ),
         ),
         (
             Problem::ComponentParts,
-            "Result parts do not match the test mapping",
+            "Test code parts do not match",
             concat!(
-                "The result in record 6, field 3 has other parts than this machine’s test ",
-                "mapping lists for the test.",
+                "The test code in record 6, field 3 does not split into the parts this ",
+                "machine’s definition names.",
             ),
         ),
         (
@@ -740,7 +735,7 @@ mod tests {
     }
 
     /// Each reason a result has no identity, its title and its sentence.
-    const UNIDENTIFIED_WORDS: [(Unidentified, &str, &str); 7] = [
+    const UNIDENTIFIED_WORDS: [(Unidentified, &str, &str); 6] = [
         (
             Unidentified::Missing {
                 setting: analyte_mapping::IdentitySetting::Run,
@@ -753,14 +748,6 @@ mod tests {
             concat!(
                 "The value this machine’s settings use to tell results apart is missing in ",
                 "record 5, field 9.",
-            ),
-        ),
-        (
-            Unidentified::UnknownTest,
-            "Test not in this machine’s test mapping",
-            concat!(
-                "A test code in this message is not in this machine’s test mapping, so its ",
-                "result has no identity.",
             ),
         ),
         (
@@ -837,7 +824,10 @@ mod tests {
             says(finding, &reason.to_string(), title, sentence);
         }
         for stored in [
-            "Position { record: 3, field: 3 }: unknowntest",
+            "Position { record: 3, field: 3 }: missingtest",
+            // ADR 0029 removed the test table: these old spellings show as stored.
+            "Position { record: 3, field: 3 }: UnknownTest",
+            "unknown test mapping",
             "missing identity something else at record 1 field 1",
             "a parser said something",
         ] {
@@ -851,7 +841,7 @@ mod tests {
         assert_eq!(
             explained(
                 ParkedKind::InterpretationFailure,
-                "Position { record: 3, field: 3 }: UnknownTest"
+                "Position { record: 3, field: 3 }: MissingTest"
             ),
             (None, None, Vec::new())
         );

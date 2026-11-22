@@ -97,9 +97,9 @@ reads them from standard input. Details are in [Connect](connect.md#from-the-com
 | --- | --- |
 | List items that need review | `analyte --actor it-anna review list` |
 | Show one item (protected evidence) | `analyte --actor it-anna review show 12` |
-| Process an item again with the current settings | `analyte --actor it-anna review reprocess 12 --reason "Mapping fixed"` |
+| Process an item again with the current settings | `analyte --actor it-anna review reprocess 12 --reason "Definition fixed"` |
 | Mark an item resolved (nothing is deleted) | `analyte --actor it-anna review resolve 12 --reason "Checked with the lab"` |
-| Process one stored message again | `analyte --actor it-anna receipts reprocess <message-id> --reason "Mapping fixed"` |
+| Process one stored message again | `analyte --actor it-anna receipts reprocess <message-id> --reason "Definition fixed"` |
 
 ## Deliveries
 

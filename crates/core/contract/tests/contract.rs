@@ -302,6 +302,28 @@ fn order_context_reuses_position_and_never_defaults() -> Result<(), Box<dyn std:
     Ok(())
 }
 
+// ADR 0029: an order test is the machine's code with an optional name from
+// the lab app; the name round-trips exactly, absence stays absent, and an
+// empty name is refused rather than sent as a blank.
+#[test]
+fn order_test_name_is_optional_and_never_empty() -> Result<(), Box<dyn std::error::Error>> {
+    let bytes = include_bytes!("../../../../docs/contract/vectors/order-context.json");
+    let named: Order = decode(bytes)?;
+    let test = named.fields().tests.first().ok_or("test")?;
+    assert_eq!(test.value.as_str(), "TEST");
+    assert_eq!(test.name.as_ref().map(Text::as_str), Some("Synthetic test"));
+    let minimal: Order = decode(include_bytes!(
+        "../../../../docs/contract/vectors/order.json"
+    ))?;
+    let test = minimal.fields().tests.first().ok_or("test")?;
+    assert!(test.name.is_none());
+    assert!(serde_json::to_value(test)?.get("name").is_none());
+    let mut empty: Value = serde_json::from_slice(bytes)?;
+    empty["tests"][0]["name"] = serde_json::json!("");
+    assert!(decode::<Order>(&serde_json::to_vec(&empty)?).is_err());
+    Ok(())
+}
+
 // ADR 0008
 #[test]
 fn order_context_null_is_unknown_nested_fields_required() -> Result<(), Box<dyn std::error::Error>>
