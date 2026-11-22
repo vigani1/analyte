@@ -417,8 +417,8 @@ begin
       + 'from PowerShell (Run as administrator), for example:' + #13#10 + #13#10
       + '  ' + AnalyteCommand + ' doctor' + #13#10
       + '  ' + AnalyteCommand + ' machines list' + #13#10 + #13#10
-      + 'or on the setup page in the browser. The guide "Install without the app" in '
-      + 'docs\operations\install.md lists every step.';
+      + 'or on the setup page in the browser. The guide "Install without the app" '
+      + '(docs/operations/install.md at github.com/vigani1/analyte) lists every step.';
     { The longer text pushes the browser checkbox down instead of covering it. }
     WizardForm.AdjustLabelHeight(WizardForm.FinishedLabel);
     WizardForm.RunList.Top := WizardForm.FinishedLabel.Top + WizardForm.FinishedLabel.Height + ScaleY(12);
