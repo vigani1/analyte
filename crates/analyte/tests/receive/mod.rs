@@ -82,11 +82,23 @@ async fn read_ack(peer: &mut TcpStream) -> Result<Vec<u8>, Error> {
 
 const ORU: &[u8] = b"MSH|^~\\&|SYN|LAB|HOST|LAB|20260101000000||ORU^R01^ORU_R01|message1|P|2.5.1\rPID|1\rOBR|1||00012|SYN^Synthetic^synthetic|||||||||||||||||||||F\rOBX|1|NM|SYN^Synthetic^synthetic||12.30|mg/L|||||F\r";
 
+/// Shows the host's warnings and errors with a failing test's output, so a closed
+/// link names the deadline or fault that ended it. Host logs never carry payloads.
+fn show_host_log() {
+    // Fails only when this process already has a subscriber, which then owns the output.
+    let _ = tracing_subscriber::fmt()
+        .with_test_writer()
+        .with_ansi(false)
+        .with_max_level(tracing_subscriber::filter::LevelFilter::WARN)
+        .try_init();
+}
+
 async fn serve(
     program: Program,
     space: Box<dyn FreeSpace>,
     stop: impl Future<Output = Result<(), analyte::runtime::Error>>,
 ) -> Result<(), Error> {
+    show_host_log();
     let secrets = analyte::installation::secrets::Environment::load_with(&program, |name| {
         Some(
             if name.ends_with("API") {
