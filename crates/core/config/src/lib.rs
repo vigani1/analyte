@@ -23,8 +23,7 @@ mod stack;
 mod validation;
 pub use orders::{
     AstmOrderFields, DsrLine, Hl7OrderQuery, Hl7Processing, Hl7QueryFilter, Hl7Send,
-    MachinePriority, OrderPriority, OrderQuery, Orders, OutboundSpecimen, PriorityCode,
-    WhenUntrusted,
+    MachinePriority, OrderPriority, OrderQuery, Orders, PriorityCode, WhenUntrusted,
 };
 pub use schema::{
     AckPoint, AstmTestComponent, Autolyser, Capability, ChecksumAcceptance, ChecksumHex,

@@ -184,12 +184,20 @@ impl Orders {
                     .specimen_version
                     .as_ref()
                     .is_none_or(|v| !plain(v) || v.as_str().len() > 10)
-                || send.specimen_system.is_none())
+                || self.specimen_system.is_none())
         {
             return Err(invalid(
                 path,
                 "orders.hl7_send",
                 "supply explicit specimen and priority coding-system revisions",
+            ));
+        }
+        // SPM-4.3 / OBR-15 carry the machine's specimen code system as written.
+        if self.specimen_system.as_ref().is_some_and(|s| !plain(s)) {
+            return Err(invalid(
+                path,
+                "orders.specimen_system",
+                "HL7 orders write specimen_system as a plain coding system of at most 20 bytes",
             ));
         }
         let test_system = machine.mappings.as_ref().map(|m| &m.test_system);

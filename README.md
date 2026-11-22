@@ -149,7 +149,9 @@ test ([ADR 0029](docs/adr/0029-lab-app-owns-test-names.md)). You receive the
 machine's own test codes with their code system (for example
 `{"namespace": "cobas-e411", "value": "0025"}`), exactly as the machine sent
 them; keep your own table per machine model. Orders go back in the same codes,
-with your own name for each test where the protocol has room for one.
+with your own name for each test where the protocol has room for one, and an
+order's specimen type is the machine's own code too
+([ADR 0030](docs/adr/0030-lab-app-owns-specimen-codes.md)).
 
 The app's answer tells Analyte what to do next: `200` done, `5xx`/`429` retry
 (1 s up to 60 s, never giving up), `401`/`403` pause until the setup is fixed,

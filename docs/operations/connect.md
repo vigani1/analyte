@@ -299,7 +299,9 @@ secret with that team. Analyte sends each machine's own test codes with its
 code system and never translates them
 ([ADR 0029](../adr/0029-lab-app-owns-test-names.md)); give the team each
 machine model's `test_system` and code list, so their app keeps its own table
-per model and orders use the same codes.
+per model and orders use the same codes. Orders' specimen types are the
+machine's own codes too ([ADR 0030](../adr/0030-lab-app-owns-specimen-codes.md)):
+give the team each machine's `specimen_system` and its specimen codes.
 
 Analyte makes outbound verified HTTPS requests: `POST /results`,
 `POST /order-events` and `GET /orders` relative to the base URL. Requests use a

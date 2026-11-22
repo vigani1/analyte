@@ -81,10 +81,11 @@ pub fn map_order(
         .ok_or(crate::OrderMappingError::PatientIdTooLong)?
         .copy_from_slice(patient.as_bytes());
     let patient = PatientCode::new(&padded)?;
+    // Rev18 chapter 23: the work list's sample medium is S (serum) or U (urine).
     let sample = match map_specimen(order, settings)? {
         "S" => Sample::Serum,
         "U" => Sample::Urine,
-        _ => return Err(crate::OrderMappingError::UnmappedSpecimenType.into()),
+        _ => return Err(crate::OrderMappingError::SpecimenTypeUnrepresentable.into()),
     };
     let priority = map_priority(settings.priorities(), order.priority)?;
     let list = match &priority.machine {

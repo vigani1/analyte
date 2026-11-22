@@ -7,8 +7,8 @@ use analyte_config::{DsrLine, Hl7Orders, SyntaxLimits};
 /// Maps explicitly configured DSP text, preserving values and leaving absent context empty.
 /// Line order repeats for every test; no machine-specific positions are implicit.
 /// # Errors
-/// Refuses foreign test codes, unmapped priorities, namespace mismatches,
-/// delimiter injection and bounds.
+/// Refuses foreign test and specimen codes, unmapped priorities, namespace
+/// mismatches, delimiter injection and bounds.
 pub fn map(
     order: &AppOrder,
     order_id: &str,
@@ -41,9 +41,7 @@ pub fn map(
                 },
                 DsrLine::SpecimenType => match &order.specimen_type {
                     None => "",
-                    Some(source) => map_specimen(settings.specimen_types(), source)?
-                        .machine
-                        .as_str(),
+                    Some(source) => map_specimen(settings.specimen_system(), source)?,
                 },
                 DsrLine::Literal { value } => value,
             };

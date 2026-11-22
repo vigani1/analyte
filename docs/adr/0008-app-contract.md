@@ -3,7 +3,9 @@
 Status: accepted, 2026-11-15; amended before release on 2026-11-15 (order
 states and optional order fields) and 2026-11-18 (setup errors pause the
 destination). Changed by [ADR 0029](0029-lab-app-owns-test-names.md): test codes are the machine's
-own, and an order test may carry the lab app's name.
+own, and an order test may carry the lab app's name; and by
+[ADR 0030](0030-lab-app-owns-specimen-codes.md): an order's specimen type is
+the machine's own code.
 
 ## Context
 

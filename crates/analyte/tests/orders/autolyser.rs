@@ -19,14 +19,19 @@ fn definition(clone: bool) -> String {
             .rewrite("poll_ms = 1000", "poll_ms = 200"),
         r#"
 priorities=[{app="routine",machine="T"}]
-specimen_types=[{app={namespace="synthetic",value="SERUM"},machine="S"}]
+specimen_system="synthetic"
 "#
     )
 }
+// ADR 0030: the order names the machine's own sample medium, S (serum).
 fn order() -> Result<serde_json::Value, Error> {
-    Ok(serde_json::from_slice(include_bytes!(
+    let mut value: serde_json::Value = serde_json::from_slice(include_bytes!(
         "../../../../docs/contract/vectors/order-context.json"
-    ))?)
+    ))?;
+    *value
+        .pointer_mut("/specimen_type/value")
+        .ok_or("specimen value")? = "S".into();
+    Ok(value)
 }
 async fn setup(
     value: serde_json::Value,
@@ -386,12 +391,20 @@ async fn short_analysis_code_rejects_whole_order() -> Result<(), Error> {
     )
     .await
 }
-// Autolyser manual Rev18 chapter 23
+// Autolyser manual Rev18 chapter 23; ADR 0030
 #[tokio::test]
-async fn unmapped_specimen_type_rejects_before_insertion() -> Result<(), Error> {
+async fn foreign_specimen_type_rejects_before_insertion() -> Result<(), Error> {
     let mut value = order()?;
     value["specimen_type"]["namespace"] = "other".into();
-    rejection(value, "rejected: unmapped-specimen-type").await
+    rejection(value, "rejected: foreign-specimen-type").await
+}
+// Autolyser manual Rev18 chapter 23; ADR 0030: the medium is S or U as the
+// lab app wrote it; any other code is refused, never translated.
+#[tokio::test]
+async fn medium_other_than_s_or_u_rejects_before_insertion() -> Result<(), Error> {
+    let mut value = order()?;
+    value["specimen_type"]["value"] = "SERUM".into();
+    rejection(value, "rejected: unrepresentable-specimen-type").await
 }
 // Autolyser manual Rev18 chapter 23
 #[tokio::test]

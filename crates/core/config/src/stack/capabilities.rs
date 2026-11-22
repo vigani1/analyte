@@ -64,12 +64,11 @@ impl Stack {
     }
 }
 
-/// Grammar family used for field selectors and specimen code validation.
+/// Record grammar of a watched-folder stack's files.
 #[derive(Clone, Copy)]
 pub(crate) enum RecordKind {
     Astm,
     Hl7,
-    Vendor,
 }
 
 // Each row owns all static capability facts for one stack choice.
@@ -88,7 +87,6 @@ struct Capabilities {
     has_hl7_departures: bool,
     connection_context: bool,
     has_autolyser_orders: bool,
-    record_kind: RecordKind,
     file_record_kind: Option<RecordKind>,
     transports: TransportSupport,
 }
@@ -107,7 +105,6 @@ const ASTM_LIS02: Capabilities = Capabilities {
     has_vidas_assay_codes: false,
     has_hl7_departures: false,
     connection_context: false,
-    record_kind: RecordKind::Astm,
     file_record_kind: None,
     transports: TransportSupport::Stream,
     has_autolyser_orders: false,
@@ -122,7 +119,6 @@ const HL7_V2: Capabilities = Capabilities {
     has_vidas_assay_codes: false,
     has_hl7_departures: true,
     connection_context: false,
-    record_kind: RecordKind::Hl7,
     file_record_kind: None,
     transports: TransportSupport::Tcp,
     has_autolyser_orders: false,
@@ -137,7 +133,6 @@ const FILE_ASTM: Capabilities = Capabilities {
     has_vidas_assay_codes: false,
     has_hl7_departures: false,
     connection_context: false,
-    record_kind: RecordKind::Astm,
     file_record_kind: Some(RecordKind::Astm),
     transports: TransportSupport::Folder,
     has_autolyser_orders: false,
@@ -152,7 +147,6 @@ const FILE_HL7: Capabilities = Capabilities {
     has_vidas_assay_codes: false,
     has_hl7_departures: true,
     connection_context: false,
-    record_kind: RecordKind::Hl7,
     file_record_kind: Some(RecordKind::Hl7),
     transports: TransportSupport::Folder,
     has_autolyser_orders: false,
@@ -167,7 +161,6 @@ const LAW_MANAGER: Capabilities = Capabilities {
     has_vidas_assay_codes: false,
     has_hl7_departures: false,
     connection_context: false,
-    record_kind: RecordKind::Hl7,
     file_record_kind: None,
     transports: TransportSupport::Tcp,
     has_autolyser_orders: false,
@@ -182,7 +175,6 @@ const POCT: Capabilities = Capabilities {
     has_vidas_assay_codes: false,
     has_hl7_departures: false,
     connection_context: true,
-    record_kind: RecordKind::Vendor,
     file_record_kind: None,
     transports: TransportSupport::Tcp,
     has_autolyser_orders: false,
@@ -197,7 +189,6 @@ const VIDAS_LITERAL: Capabilities = Capabilities {
     has_vidas_assay_codes: true,
     has_hl7_departures: false,
     connection_context: false,
-    record_kind: RecordKind::Vendor,
     file_record_kind: None,
     transports: TransportSupport::Stream,
     has_autolyser_orders: false,
@@ -212,7 +203,6 @@ const AUTOLYSER: Capabilities = Capabilities {
     has_vidas_assay_codes: false,
     has_hl7_departures: false,
     connection_context: false,
-    record_kind: RecordKind::Vendor,
     file_record_kind: None,
     transports: TransportSupport::Stream,
     has_autolyser_orders: true,
@@ -277,9 +267,6 @@ impl crate::StackChoice {
     }
     pub(crate) const fn has_autolyser_orders(self) -> bool {
         self.capabilities().has_autolyser_orders
-    }
-    pub(crate) const fn record_kind(self) -> RecordKind {
-        self.capabilities().record_kind
     }
     pub(crate) const fn file_record_kind(self) -> Option<RecordKind> {
         self.capabilities().file_record_kind

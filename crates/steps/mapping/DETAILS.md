@@ -24,7 +24,8 @@ malformed structured types are retained as Unsupported. Numeric syntax is never
 expanded to locale decimals, exponents or inferred units. Unit mappings compare
 the entire original unit field exactly. No numeric conversions occur.
 
-Test codes are never translated ([ADR 0029](../../../docs/adr/0029-lab-app-owns-test-names.md)).
+Test codes are never translated ([ADR 0029](../../../docs/adr/0029-lab-app-owns-test-names.md)),
+and neither are order specimen types ([ADR 0030](../../../docs/adr/0030-lab-app-owns-specimen-codes.md)).
 A part's test is the machine's code exactly as sent, in the code system the
 message names (HL7/LAW OBX-3.3, the POCT observation system) or else the
 definition's `test_system`; ASTM reads the R.3 component `test_component`
@@ -114,12 +115,14 @@ Outgoing tests, specimens and priorities go through `orders/codes.rs`. An order
 test is accepted only in the machine's `test_system` and keeps its exact
 spelling; each protocol then checks its own format limits (VIDAS 1-4 bytes,
 Autolyser exactly 4, HL7 and LAW OBR-4 components, LAW's required name).
-Specimen and priority lookups match exact app values and keep configured
-spelling. Every refusal is a specific error; there is no default. HL7/LAW command mappers receive
+An order specimen type is accepted only in the machine's `specimen_system`
+and keeps its spelling the same way (Autolyser `S` or `U`, the ASTM text
+repertoire, HL7 and LAW SPM-4 components; VIDAS takes none). Priority lookups
+match the contract's exact values and keep configured spelling. Every refusal is a specific error; there is no default. HL7/LAW command mappers receive
 borrowed reservation identities and host-generated response metadata, never a
 store handle or a clock. Reservations and lifecycle effects remain host-owned.
 
 The POCT and VIDAS mapping assertions moved here with their expectations intact.
-`tests/outbound_lookup.rs` proves the code-system check (ADR 0029) and exact
-matching and refusal of absent specimen and priority translations (ADR 0004)
-independently of protocol rendering.
+`tests/outbound_lookup.rs` proves the test and specimen code-system checks
+(ADR 0029, ADR 0030) and exact matching and refusal of absent priority
+translations (ADR 0004) independently of protocol rendering.

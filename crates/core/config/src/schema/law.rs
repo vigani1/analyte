@@ -133,8 +133,6 @@ pub struct LawWork {
     pub container_namespace: analyte_model::Identifier,
     /// Explicit patient-specimen role; QC authorization is not inferred.
     pub specimen_role: analyte_model::Identifier,
-    /// Coding system for the mapped SPM-4 specimen type.
-    pub specimen_system: analyte_model::Identifier,
 }
 
 pub(crate) fn validate_orders(
@@ -142,13 +140,18 @@ pub(crate) fn validate_orders(
     path: &str,
     orders: &crate::Orders,
 ) -> Result<(), Error> {
-    let Some(work) = machine.law.as_ref().and_then(|law| law.work.as_ref()) else {
+    if machine
+        .law
+        .as_ref()
+        .and_then(|law| law.work.as_ref())
+        .is_none()
+    {
         return Err(invalid(
             path,
             "law.work",
             "LAW outbound mappings require an explicit query work layout",
         ));
-    };
+    }
     if orders.query.is_some()
         || orders.hl7.is_some()
         || orders.hl7_send.is_some()
@@ -162,7 +165,6 @@ pub(crate) fn validate_orders(
                 analyte_hl7::FieldSyntax::Plain,
             )
         })
-        || orders.specimen_types.as_ref().is_none_or(Vec::is_empty)
         || machine.mappings.as_ref().is_none_or(|mappings| {
             !analyte_hl7::is_safe_field(
                 mappings.test_system.as_str().as_bytes(),
@@ -170,16 +172,18 @@ pub(crate) fn validate_orders(
                 analyte_hl7::FieldSyntax::Plain,
             )
         })
-        || !analyte_hl7::is_safe_field(
-            (work.specimen_system.as_str()).as_bytes(),
-            12,
-            analyte_hl7::FieldSyntax::Plain,
-        )
+        || orders.specimen_system.as_ref().is_none_or(|system| {
+            !analyte_hl7::is_safe_field(
+                system.as_str().as_bytes(),
+                12,
+                analyte_hl7::FieldSyntax::Plain,
+            )
+        })
     {
         return Err(invalid(
             path,
             "orders",
-            "LAW work requires a plain test_system of at most 12 bytes, a placer namespace and specimen mappings; legacy and patient layouts are disabled",
+            "LAW work requires a plain test_system and specimen_system of at most 12 bytes each and a placer namespace; legacy and patient layouts are disabled",
         ));
     }
     Ok(())

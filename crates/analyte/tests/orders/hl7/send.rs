@@ -74,7 +74,7 @@ async fn setup_with_patient_requirement(
     *value.get_mut("tests").ok_or("tests")? = serde_json::json!([{"namespace":"synthetic","value":"TEST"},{"namespace":"synthetic","value":"TEST"}]);
     value.as_object_mut().ok_or("order")?.insert(
         "specimen_type".into(),
-        serde_json::json!({"namespace":"types","value":"SERUM"}),
+        serde_json::json!({"namespace":"L","value":"SER"}),
     );
     reference
         .receiver
@@ -466,7 +466,7 @@ async fn hl7_ei_actual_store_id_overflow_rejects_before_sending_reservation() ->
     *value.get_mut("id").ok_or("id")? = serde_json::json!("order-2");
     value.as_object_mut().ok_or("object")?.insert(
         "specimen_type".into(),
-        serde_json::json!({"namespace":"types","value":"SERUM"}),
+        serde_json::json!({"namespace":"L","value":"SER"}),
     );
     reference
         .receiver

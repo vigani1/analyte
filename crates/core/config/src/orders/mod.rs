@@ -1,6 +1,6 @@
 //! Holds explicit outbound order settings independently of result mappings.
 use crate::{Error, Field, Group, invalid};
-use analyte_model::{Identifier, NamespacedId};
+use analyte_model::Identifier;
 use serde::{Deserialize, Serialize};
 mod hl7;
 mod validation;
@@ -23,16 +23,6 @@ pub struct OrderQuery {
     pub deadline_ms: u32,
     /// Policy for stale, unavailable or late lookups.
     pub when_untrusted: WhenUntrusted,
-}
-
-/// Explicit app specimen type to protocol sample-medium code.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct OutboundSpecimen {
-    /// Exact app code system and value.
-    pub app: NamespacedId,
-    /// Exact protocol code; ASTM uses explicit text, Autolyser supports S and U.
-    pub machine: Identifier,
 }
 
 /// Fixed priority codes used by HL7 TQ fields and Autolyser work lists.
@@ -137,13 +127,14 @@ pub enum DsrLine {
     SampleId,
     /// Original app order identifier.
     OrderId,
-    /// Explicit outbound test translation.
+    /// The order's test code as written, in the machine's `test_system`.
     TestCode,
     /// Explicit outbound priority translation.
     Priority,
     /// Supplied physical slot; absent stays empty.
     Position,
-    /// Explicit specimen-type translation; absent stays empty.
+    /// The order's specimen code as written, in the machine's
+    /// `specimen_system`; absent stays empty.
     SpecimenType,
     /// Supplied patient ID under the configured namespace; absent stays empty.
     PatientId,
@@ -210,9 +201,8 @@ pub struct Hl7Send {
     pub sample_field: u16,
     /// Optional other placer-owned field for the supplied slot (ORM only).
     pub position_field: Option<u16>,
-    /// Coding system for mapped specimen types, never inferred from a test.
-    pub specimen_system: Option<Identifier>,
-    /// Explicit coding-system version where required by SPM-4 CWE.
+    /// Version of the machine's specimen code system, written in SPM-4 CWE.7
+    /// where the edition requires one.
     pub specimen_version: Option<Identifier>,
     /// Version of the machine's test code system, written in OBR-4 CWE.7;
     /// required by editions that use CWE, refused by CE editions.
@@ -227,8 +217,10 @@ pub struct Orders {
     pub query: Option<OrderQuery>,
     /// Explicit permission to send work lists ahead.
     pub send_ahead: bool,
-    /// Optional explicit specimen-type translations; absence maps no values.
-    pub specimen_types: Option<Vec<OutboundSpecimen>>,
+    /// The machine's own specimen-type code system (ADR 0030). An order's
+    /// specimen type is sent only when its namespace is exactly this system;
+    /// its code goes out as written. Absent: this machine takes none.
+    pub specimen_system: Option<Identifier>,
     /// Explicit priority translations.
     pub priorities: Vec<OrderPriority>,
     /// Accepted assigning system for the unqualified vendor patient field.

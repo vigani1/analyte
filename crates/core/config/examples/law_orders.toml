@@ -7,11 +7,11 @@ peer_facility = "LAB"
 specimen_namespace = "LAB"
 container_namespace = "LAB"
 specimen_role = "P"
-specimen_system = "HL70487"
 
 [orders]
 # Set true to admit unsolicited LAB-28 on the current connection.
 send_ahead = false
 placer_namespace = "LAB"
 priorities = [{app="routine",machine="R"}]
-specimen_types = [{app={namespace="types",value="SERUM"},machine="SER"}]
+# Order specimen types use the machine's own codes in this system (ADR 0030).
+specimen_system = "HL70487"

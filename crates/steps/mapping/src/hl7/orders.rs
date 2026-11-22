@@ -1,4 +1,4 @@
-//! Maps outgoing HL7 work using explicit code tables.
+//! Maps outgoing HL7 work in the machine's own codes and the priority table.
 use super::WireError as Error;
 use analyte_hl7::{
     Options, Version,
@@ -230,18 +230,15 @@ impl Command {
         &'a self,
         cfg: &'a analyte_config::Hl7Send,
     ) -> Result<Option<order::Code<'a>>, Error> {
-        Ok(match (&cfg.specimen_system, &self.app.specimen_type) {
-            (Some(system), Some(specimen)) => {
-                let mapped = crate::orders::codes::map_specimen(
-                    self.settings.tables().specimen_types(),
-                    specimen,
-                )
-                .map_err(Error::UnmappedSpecimenType)?;
-                let code = order::Code::new(
-                    mapped.machine.as_str().as_bytes(),
-                    b"",
-                    system.as_str().as_bytes(),
-                )?;
+        let system = self.settings.tables().specimen_system();
+        Ok(match (system, &self.app.specimen_type) {
+            (Some(_), Some(specimen)) => {
+                // SPM-4 / OBR-15 carry the machine's code and code system as
+                // the order wrote them (ADR 0030).
+                let code = crate::orders::codes::map_specimen(system, specimen)
+                    .map_err(Error::ForeignSpecimenType)?;
+                let code =
+                    order::Code::new(code.as_bytes(), b"", specimen.namespace.as_str().as_bytes())?;
                 Some(
                     if let Some(version) = &cfg.specimen_version
                         && self.version.specimen_code_version()

@@ -82,11 +82,11 @@ peer_facility = "IHE"
 specimen_namespace = "ANALYTE-TEST"
 container_namespace = "ANALYTE-TEST"
 specimen_role = "P"
-specimen_system = "HL70487"
 
 [orders]
 # Set true to admit unsolicited LAB-28 on the current connection.
 send_ahead = true
 placer_namespace = "ANALYTE-TEST"
 priorities = [{app="routine",machine="R"}]
-specimen_types = [{app={namespace="types",value="SERUM"},machine="SER"}]
+# Order specimen types use the machine's own codes in this system (ADR 0030).
+specimen_system = "HL70487"

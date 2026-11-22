@@ -3,7 +3,8 @@
 send_ahead = true
 placer_namespace = "LAB"
 priorities = [{app="routine",machine="R"}]
-specimen_types = [{app={namespace="types",value="SERUM"},machine="SER"}]
+# Order specimen types use the machine's own codes in this system (ADR 0030).
+specimen_system = "L"
 [orders.hl7_send]
 # Contract v1 has no patient names; true rejects work before reservation.
 require_patient_identification = false
@@ -12,5 +13,4 @@ peer_application = "SYN"
 processing = "T"
 response_ms = 1500
 sample_field = 18
-specimen_system = "L"
 specimen_version = "1"

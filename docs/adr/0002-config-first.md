@@ -1,7 +1,8 @@
 # 0002. Config first, code only where config cannot express it
 
 Status: accepted, 2026-11-15. Changed by [ADR 0029](0029-lab-app-owns-test-names.md): a machine's code
-mappings name its own code system, never the lab app's codes.
+mappings name its own code system, never the lab app's codes; and by
+[ADR 0030](0030-lab-app-owns-specimen-codes.md), which applies this to specimen types.
 
 ## Context
 

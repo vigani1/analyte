@@ -53,8 +53,8 @@ fn validate_field(value: &str) -> Result<&str, Error> {
     Ok(value)
 }
 
-/// Maps every reserved AWOS using explicit specimen and priority translations;
-/// test codes go out as written, in the machine's code system.
+/// Maps every reserved AWOS using the explicit priority translation; test and
+/// specimen codes go out as written, in the machine's own code systems.
 /// # Errors
 /// Preserves foreign-test, unmapped-code, repertoire, cardinality and LAW-profile failures.
 pub fn map_work(
@@ -72,11 +72,11 @@ pub fn map_work(
             .specimen_type
             .as_ref()
             .ok_or(Error::SpecimenTypeMissing)?;
-        let mapped = crate::orders::codes::map_specimen(
-            command.settings.tables().specimen_types(),
+        let specimen_code = crate::orders::codes::map_specimen(
+            command.settings.tables().specimen_system(),
             specimen,
         )
-        .map_err(Error::UnmappedSpecimenType)?;
+        .map_err(Error::ForeignSpecimenType)?;
         let priority = if command.priority && action == law::WorkAction::New {
             Some(validate_field(
                 crate::orders::codes::map_priority(
@@ -111,15 +111,16 @@ pub fn map_work(
                 id: item.placer.to_owned(),
                 container: sample.to_owned(),
                 fields: {
-                    // OBR-4 carries the machine's code and code system and the
-                    // lab app's name for the test (ADR 0029).
+                    // SPM-4 carries the machine's specimen code and system
+                    // (ADR 0030); OBR-4 the machine's test code and system and
+                    // the lab app's name for the test (ADR 0029).
                     law::WorkFields::new(
                         sample,
                         command.settings.work().specimen_namespace.as_str(),
                         law::WorkCode {
-                            code: validate_field(mapped.machine.as_str())?,
+                            code: validate_field(specimen_code)?,
                             text: "",
-                            system: command.settings.work().specimen_system.as_str(),
+                            system: validate_field(specimen.namespace.as_str())?,
                         },
                         law::WorkCode {
                             code: validate_field(code)?,

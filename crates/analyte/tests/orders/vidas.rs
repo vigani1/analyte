@@ -237,10 +237,10 @@ async fn foreign_test_is_rejected_before_send() -> Result<(), Error> {
 }
 // VIDAS BCI Link rev A chapter 4
 #[tokio::test]
-async fn unmapped_specimen_type_is_rejected() -> Result<(), Error> {
+async fn specimen_type_is_rejected() -> Result<(), Error> {
     let mut value = order()?;
     value["specimen_type"] = serde_json::json!({"namespace":"synthetic","value":"SERUM"});
-    rejection(value, "rejected: unmapped-specimen-type").await
+    rejection(value, "rejected: unsupported-specimen-type").await
 }
 // ADR 0004
 #[tokio::test]

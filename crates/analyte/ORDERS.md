@@ -17,7 +17,11 @@ a test is sent only when its namespace is exactly the machine's `test_system`,
 and its code goes out as written in the `[orders.astm] test` component
 (`test_components` keeps empty components after it). A test in another code
 system is rejected with an app event before reservation; nothing is
-translated. Priorities still require explicit translations.
+translated. Specimen types follow the same rule
+([ADR 0030](../../docs/adr/0030-lab-app-owns-specimen-codes.md)): sent only
+in the machine's `[orders] specimen_system`, as written; another system is
+rejected as `foreign-specimen-type`. Priorities still require explicit
+translations of the contract's three values.
 Specimen IDs retain their spelling. A required position missing from the app
 order causes rejection; neither the sample ID nor a made-up slot substitutes
 for it. Contract v1 position and specimen type are forwarded only to explicit
@@ -145,7 +149,7 @@ recovery path; Sent stays Sent.
 Missing patient, mismatched patient namespace, and patient/sample IDs exceeding
 17 bytes or the installed sample limit respectively are rejected before any
 transmission. IDs are copied exactly. Literal has no specimen-type tag: every
-supplied specimen type is rejected as `unmapped-specimen-type`, rather than
+supplied specimen type is rejected as `unsupported-specimen-type`, rather than
 being silently lost or placed in `so` (origin) or `si` (empty structural marker).
 The request includes only `mt`, `pi`, `si`, `ci` and `rt`; no demographics,
 position, dilution or other context is invented.
@@ -159,7 +163,7 @@ order evidence and wire data, not ordinary logs.
 `tests/orders/vidas.rs` drives the program with a temporary store and the
 reference receiver: multi-assay completion, timeout, mid-send disconnect,
 restart during Sending, Sent surviving restart, no replay, a test in another
-code system, unmapped specimen type, wrong/missing patient context, over-long IDs and cancellation
+code system, a supplied specimen type, wrong/missing patient context, over-long IDs and cancellation
 before sending. Autolyser insertion follows the same shared lifecycle below.
 
 
@@ -179,14 +183,16 @@ tests use the machine's `codes.test_system`; each code must be exactly four
 printable bytes as the lab app wrote it, padding included, or the order is
 rejected; Analyte never pads or trims it.
 Priority mappings explicitly select `T` (routine list) or `R` (STAT list).
-Supply specimen-medium mappings separately, for example:
+Declare the machine's specimen code system, for example:
 
 ```toml
-specimen_types = [{app={namespace="synthetic",value="SERUM"},machine="S"}]
+specimen_system = "synthetic"
 ```
 
-Only `S` and `U` are supported by this internal format. Missing specimen type
-or an unmapped namespace/value is rejected, never defaulted. Patient values
+The lab app then sends the medium as `S` or `U` in that system; only these
+two are supported by this internal format. A missing specimen type, another
+system (`foreign-specimen-type`) or another code
+(`unrepresentable-specimen-type`) is rejected, never defaulted. Patient values
 must match the configured namespace, use printable ASCII and fit fifteen bytes;
 the documented fixed-width space padding is applied without truncation. The
 original ID is retained in protected order evidence. This format has one
@@ -211,7 +217,7 @@ are consumed before Close. Restart recovers only Sending and never replays.
 
 `tests/orders/autolyser.rs` exercises both clone settings on the wire, confirmed
 and partial replies, same-round Park, timeout, disconnect, restart, no replay,
-unmapped codes/medium, missing/invalid cup slot, wrong/missing patient context,
+foreign codes, foreign or unsupported medium, missing/invalid cup slot, wrong/missing patient context,
 over-long patient ID and cancellation before insertion. VIDAS also has an
 explicit mid-send Park test asserting Uncertain and one app event before any
 restart. Both suites use the program, temporary storage and reference receiver.
@@ -227,16 +233,17 @@ including leading zeros. Kind and carrier remain protected order evidence;
 this selector sends only the slot, never substitutes a sample ID or another
 position component.
 
-The optional `[orders] specimen_types` table translates exact app namespace/value
-pairs to machine text. The specimen destination cannot point to specimen source
-(component 2), a user field or another record. Invalid/ambiguous tables and wire
-delimiter injection are rejected at configuration validation.
+A specimen destination goes together with `[orders] specimen_system`, the
+machine's own specimen code system (ADR 0030); the order's code goes out as
+written. The destination cannot point to specimen source (component 2), a user
+field or another record.
 
-No destination means no wire value: unmapped app specimen context does not
+No destination means no wire value: supplied specimen context does not
 trigger a guessed code or an extra destination. A configured destination requires
 its app context; missing position/specimen type is rejected specifically. With
-a specimen destination, an unknown namespace/value produces
-`unmapped-specimen-type` before reservation. A query mapping failure returns
+a specimen destination, a specimen type in another system produces
+`foreign-specimen-type`, and a code with a delimiter the ASTM text-repertoire
+refusal, both before reservation. A query mapping failure returns
 only the configured query-error reply, never a partial order or no-orders answer;
 the rejected order gets its app event through the shared lifecycle outbox.
 
@@ -247,16 +254,17 @@ position = {group="order",record="O",field=4,component=2,repetition=1}
 specimen_type = {group="order",record="O",field=16,component=1,repetition=1}
 ```
 
-Add translations inside `[orders]`, separately from those selectors:
+Declare the specimen code system inside `[orders]`, separately from those
+selectors:
 
 ```toml
-specimen_types = [{app={namespace="synthetic",value="SERUM"},machine="SER"}]
+specimen_system = "synthetic"
 ```
 
 LIS02 section 8 tests in the mapper and `tests/orders/cases.rs` assert exact
 O-record and complete H/P/O/L payload bytes for both send-ahead and query
-answers, including configured context, absent destinations, unmapped and missing
-specimen context. Existing minimal O records stay byte-for-byte unchanged when
+answers, including configured context, absent destinations, foreign,
+unrepresentable and missing specimen context. Existing minimal O records stay byte-for-byte unchanged when
 these destinations are absent. Evidence remains documented, not machine-proven.
 
 
@@ -276,7 +284,8 @@ missing or mismatched patient context is rejected at the order boundary.
 | Restart during Sending; no replay | [restart_during_send_never_replays](tests/orders/vidas.rs) | [restart_recovers_only_sending_never_replays](tests/orders/autolyser.rs) |
 | Test in another code system | [foreign_test_is_rejected_before_send](tests/orders/vidas.rs) | [foreign_test_rejects_whole_order](tests/orders/autolyser.rs) |
 | Code the format cannot carry | Mapper test `vidas_assay_codes_are_checked_when_ordered` | [short_analysis_code_rejects_whole_order](tests/orders/autolyser.rs) |
-| Unmapped specimen type | [unmapped_specimen_type_is_rejected](tests/orders/vidas.rs) | [unmapped_specimen_type_rejects_before_insertion](tests/orders/autolyser.rs) |
+| Specimen type not carried (VIDAS) or in another system (Autolyser) | [specimen_type_is_rejected](tests/orders/vidas.rs) | [foreign_specimen_type_rejects_before_insertion](tests/orders/autolyser.rs) |
+| Specimen code the format cannot carry | Not applicable: Literal has no specimen tag | [medium_other_than_s_or_u_rejects_before_insertion](tests/orders/autolyser.rs) |
 | Missing required position | Not applicable: Literal has no position field | [missing_cup_position_never_becomes_zero](tests/orders/autolyser.rs) |
 | Wrong patient namespace | [wrong_patient_namespace_is_rejected](tests/orders/vidas.rs) | [wrong_patient_namespace_rejects_before_insertion](tests/orders/autolyser.rs) |
 | Missing namespace configuration | [missing_patient_namespace_prevents_startup](tests/orders/vidas.rs) | [missing_patient_namespace_blocks_startup](tests/orders/autolyser.rs) |
@@ -286,7 +295,7 @@ missing or mismatched patient context is rejected at the order boundary.
 | Park mid-send: same-round Uncertain and event | [park_mid_send_commits_uncertain_then_closes](tests/orders/vidas.rs) | [bad_ack_is_parked_and_uncertain](tests/orders/autolyser.rs) |
 | Unanswered result poll cannot send an order | Not applicable: Literal does not poll for results | [unanswered_poll_never_reserves_or_sends](tests/orders/autolyser.rs) |
 
-The suites contain 13 VIDAS and 19 Autolyser tests. They also cover Autolyser's
+The suites contain 13 VIDAS and 20 Autolyser tests. They also cover Autolyser's
 invalid cup slots, missing specimen medium and negative/unknown insertion replies.
 Evidence remains **documented**; the table is synthetic regression coverage,
 not qualification against hardware or an official simulator.
@@ -314,8 +323,9 @@ ordered lines repeat per test and per app order, without an implicit header or
 vendor positions. Supported sources are sample_id, order_id, test_code,
 priority, position (the supplied slot), specimen_type, patient_id and explicit
 literal text (including blank padding). test_code is the order's code as
-written, in the machine's `test_system`; priority/specimen translations
-are explicit; patient_id also needs a matching patient_namespace. Absent optional
+written, in the machine's `test_system`; specimen_type is the order's code
+as written, in the machine's `specimen_system`; priority translations are
+explicit; patient_id also needs a matching patient_namespace. Absent optional
 context produces an empty line, never a substitute. Plain ASCII DSP values are
 bounded to 300 bytes and cannot inject HL7 delimiters. Foreign, unmapped or
 unrepresentable orders are rejected with an app event; no partial display is transmitted.
@@ -350,8 +360,8 @@ Edition 2.3.1 selects ORM/O01 and ORR/O02; 2.5.1 selects non-LAW OML/O21 and
 ORL/O22. Outbound tests have three explicit CE components (code, text, system).
 An absent patient mapping emits no PID; an identifier-only mapping transmits
 only that identifier and namespace, never a guessed name. ORM allows an absent
-specimen type; OML requires mapped SPM-4 and its coding-system version when the
-coding system requires one. Optional ORM slot placement is explicitly OBR-18
+specimen type; OML requires SPM-4, the order's specimen code in the machine's
+`specimen_system`, with its coding-system version when the edition requires one. Optional ORM slot placement is explicitly OBR-18
 or OBR-19, distinct from the configured sample field. OML position output is
 not implemented and cannot be configured. Other optional, unmapped data is empty.
 

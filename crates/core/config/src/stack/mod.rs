@@ -4,8 +4,8 @@ use crate::MachineDocument;
 use crate::{
     AstmOrderFields, Autolyser, ChecksumHex, CodeTables, Edition, Encoding, Error, Escapes,
     Hl7OrderQuery, Hl7Send, LawConnectionMode, LawPeer, LawQueryForm, LawWork, MachineDeparture,
-    Mappings, OrderPriority, OrderQuery, Orders, OutboundSpecimen, Poct, Priority, Responsibility,
-    Serial, Syntax, Terminator, Transport, TransportKind, UnitMapping, Vidas, invalid,
+    Mappings, OrderPriority, OrderQuery, Orders, Poct, Priority, Responsibility, Serial, Syntax,
+    Terminator, Transport, TransportKind, UnitMapping, Vidas, invalid,
 };
 use crate::{ParsedMachine, StackChoice};
 
@@ -230,14 +230,14 @@ fn code_tables(machine: &ParsedMachine<'_>, path: &str) -> Result<CodeTables, Er
         .ok_or_else(|| invalid(path, "codes", "vendor stack requires code tables"))
 }
 
-/// The machine's order code system and the specimen and priority translations
-/// shared by every order-sending protocol.
+/// The machine's own test and specimen code systems and the priority
+/// translations shared by every order-sending protocol.
 #[derive(Debug, Clone)]
 pub struct OrderTables {
     /// The machine's own test code system; order tests in another are refused.
     test_system: analyte_model::Identifier,
-    /// Explicit specimen translations; absence maps no values.
-    specimen_types: Option<Vec<OutboundSpecimen>>,
+    /// The machine's own specimen code system; absent when it takes none.
+    specimen_system: Option<analyte_model::Identifier>,
     /// Exact outbound priority translations.
     priorities: Vec<OrderPriority>,
 }
@@ -260,7 +260,7 @@ fn order_tables(
     };
     Ok(OrderTables {
         test_system: test_system.clone(),
-        specimen_types: orders.specimen_types.clone(),
+        specimen_system: orders.specimen_system.clone(),
         priorities: orders.priorities.clone(),
     })
 }
@@ -272,10 +272,12 @@ impl OrderTables {
     pub fn test_system(&self) -> &analyte_model::Identifier {
         &self.test_system
     }
-    /// Explicit specimen-code mappings; unknown specimens remain unresolved.
+    /// The machine's own specimen code system (ADR 0030). An order's specimen
+    /// type is sent only when its namespace is exactly this system; its code
+    /// goes out as written. `None`: this machine takes no specimen type.
     #[must_use]
-    pub fn specimen_types(&self) -> Option<&[OutboundSpecimen]> {
-        self.specimen_types.as_deref()
+    pub fn specimen_system(&self) -> Option<&analyte_model::Identifier> {
+        self.specimen_system.as_ref()
     }
     /// Explicit order-priority mapping.
     #[must_use]

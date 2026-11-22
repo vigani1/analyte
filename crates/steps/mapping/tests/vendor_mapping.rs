@@ -27,7 +27,7 @@ fn vidas() -> String {
 
 fn autolyser() -> String {
     format!(
-        "{}\n[orders]\nsend_ahead=true\npatient_namespace='patients'\nclone=false\npriorities=[{{app='routine',machine='T'}}]\nspecimen_types=[{{app={{namespace='types',value='SERUM'}},machine='S'}}]\n",
+        "{}\n[orders]\nsend_ahead=true\npatient_namespace='patients'\nclone=false\npriorities=[{{app='routine',machine='T'}}]\nspecimen_system='types'\n",
         include_str!("../../../core/config/examples/autolyser.toml")
             .rewrite("download = false", "download = true")
     )
@@ -44,7 +44,7 @@ fn positioned_order() -> Result<AppOrder, analyte_model::TextError> {
     });
     input.specimen_type = Some(NamespacedId {
         namespace: Identifier::new("types")?,
-        value: Identifier::new("SERUM")?,
+        value: Identifier::new("S")?,
     });
     Ok(input)
 }
@@ -94,9 +94,29 @@ fn autolyser_download_refuses_missing_context_or_overflow() -> TestResult {
     one_digit.position.as_mut().ok_or("position")?.slot = Identifier::new("3")?;
     let one_digit = map_autolyser(&one_digit, cfg.effective().stack())?;
     assert_eq!(one_digit.encode().get(18..20), Some(b"03".as_slice()));
-    let urine = config(&autolyser().rewrite("machine='S'", "machine='U'"))?;
-    let work = map_autolyser(&positioned_order()?, urine.effective().stack())?;
+    // ADR 0030: the medium is the order's own S or U, in the machine's system.
+    let mut urine = positioned_order()?;
+    urine.specimen_type.as_mut().ok_or("specimen")?.value = Identifier::new("U")?;
+    let work = map_autolyser(&urine, cfg.effective().stack())?;
     assert_eq!(work.encode().get(16), Some(&b'U'));
+    for medium in ["s", "SERUM", "X"] {
+        let mut input = positioned_order()?;
+        input.specimen_type.as_mut().ok_or("specimen")?.value = Identifier::new(medium)?;
+        assert!(matches!(
+            map_autolyser(&input, cfg.effective().stack()),
+            Err(analyte_mapping::autolyser::OrderError::Shared(
+                OrderMappingError::SpecimenTypeUnrepresentable
+            ))
+        ));
+    }
+    let mut foreign = positioned_order()?;
+    foreign.specimen_type.as_mut().ok_or("specimen")?.namespace = Identifier::new("lab-app")?;
+    assert!(matches!(
+        map_autolyser(&foreign, cfg.effective().stack()),
+        Err(analyte_mapping::autolyser::OrderError::Shared(
+            OrderMappingError::ForeignSpecimenType(_)
+        ))
+    ));
     let repeated = config(&autolyser().rewrite("repetitions = 128", "repetitions = 2"))?;
     for (count, accepted) in [(1, true), (2, true), (3, false)] {
         let mut input = positioned_order()?;

@@ -14,7 +14,10 @@ send-ahead, a 10-second response budget and synthetic test `SYN^Synthetic^99LAB`
 This run used the earlier test table, which turned the order's `synthetic`
 `TEST` into that OBR-4. Since ADR 0029 the seed orders carry the machine's own
 code, `99LAB` `SYN`, with the lab app's name `Synthetic`, which a rerun sends
-as the same OBR-4; the recording itself is unchanged.
+as the same OBR-4. The run also used a specimen table that turned `types`
+`SERUM` into `SER^^HL70487`; since ADR 0030 the seed orders send `HL70487`
+`SER` directly, which a rerun writes as the same SPM-4. The recording itself
+is unchanged.
 Both orders have one item. There are no patient identifiers or patient segments.
 Sample IDs are `SYN-0001` and `SYN-0002`; the configured authority is
 `ANALYTE-TEST`.

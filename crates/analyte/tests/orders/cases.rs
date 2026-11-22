@@ -343,7 +343,7 @@ async fn disconnect_before_ack_keeps_uncertain_outcome() -> Result<(), Error> {
 async fn astm_context_exchange(
     send: bool,
     destinations: bool,
-    specimen: Option<&str>,
+    specimen: Option<(&str, &str)>,
     expected: &[u8],
     rejection: Option<&str>,
 ) -> Result<(), Error> {
@@ -351,8 +351,13 @@ async fn astm_context_exchange(
     let path = config(temp.path(), true)?;
     configure_orders(temp.path(), send)?;
     let definition = temp.path().join("astm.toml");
-    let mut text=std::fs::read_to_string(&definition)?.rewrite("[orders.query]","specimen_types=[{app={namespace='synthetic',value='SERUM'},machine='SER'}]\n[orders.query]");
+    let mut text = std::fs::read_to_string(&definition)?;
+    // ADR 0030: the specimen code system is declared with its destination.
     if destinations {
+        text = text.rewrite(
+            "[orders.query]",
+            "specimen_system='synthetic'\n[orders.query]",
+        );
         text.push_str("\nposition={group='order',record='O',field=4,component=2,repetition=1}\nspecimen_type={group='order',record='O',field=16,component=1,repetition=1}\n");
     }
     std::fs::write(definition, text)?;
@@ -423,7 +428,7 @@ async fn o_record_forwards_position_and_specimen_exactly() -> Result<(), Error> 
         astm_context_exchange(
             send,
             true,
-            Some("SERUM"),
+            Some(("synthetic", "SER")),
             b"H|\\^&|||Analyte|||||||P|LIS2-A2\rP|1\rO|1|000Ab12|^03|^^^TEST|R||||||N||||SER\rL|1|N\r",
             None,
         )
@@ -438,7 +443,7 @@ async fn o_record_without_destinations_stays_empty() -> Result<(), Error> {
         astm_context_exchange(
             send,
             false,
-            Some("UNKNOWN"),
+            Some(("other", "UNKNOWN")),
             b"H|\\^&|||Analyte|||||||P|LIS2-A2\rP|1\rO|1|000Ab12||^^^TEST|R||||||N\rL|1|N\r",
             None,
         )
@@ -446,16 +451,32 @@ async fn o_record_without_destinations_stays_empty() -> Result<(), Error> {
     }
     Ok(())
 }
-// CLSI LIS02-A2 §8
+// CLSI LIS02-A2 §8; ADR 0030
 #[tokio::test]
-async fn o_record_unmapped_specimen_rejects_whole_order() -> Result<(), Error> {
+async fn o_record_foreign_specimen_rejects_whole_order() -> Result<(), Error> {
     for send in [true, false] {
         astm_context_exchange(
             send,
             true,
-            Some("UNKNOWN"),
+            Some(("other", "SER")),
             b"H|\\^&|||Analyte|||||||P|LIS2-A2\rL|1|Q\r",
-            Some("rejected: unmapped-specimen-type"),
+            Some("rejected: foreign-specimen-type"),
+        )
+        .await?;
+    }
+    Ok(())
+}
+// CLSI LIS02-A2 §6 and §8.4.16.1; ADR 0030: a specimen code holding a
+// delimiter cannot be carried, so the order is refused, never escaped.
+#[tokio::test]
+async fn o_record_unrepresentable_specimen_rejects_whole_order() -> Result<(), Error> {
+    for send in [true, false] {
+        astm_context_exchange(
+            send,
+            true,
+            Some(("synthetic", "S^R")),
+            b"H|\\^&|||Analyte|||||||P|LIS2-A2\rL|1|Q\r",
+            Some("rejected: ASTM text is empty or contains unsupported bytes or delimiters"),
         )
         .await?;
     }
@@ -633,14 +654,13 @@ fn assert_astm_context(actual: &[u8], expected: &[u8]) -> Result<(), Error> {
     Ok(())
 }
 
-fn context_order_value(specimen: Option<&str>) -> Result<serde_json::Value, Error> {
+fn context_order_value(specimen: Option<(&str, &str)>) -> Result<serde_json::Value, Error> {
     let mut value: serde_json::Value = serde_json::from_slice(include_bytes!(
         "../../../../docs/contract/vectors/order-context.json"
     ))?;
-    if let Some(code) = specimen {
-        *value
-            .pointer_mut("/specimen_type/value")
-            .ok_or("specimen value")? = code.into();
+    if let Some((namespace, code)) = specimen {
+        *value.pointer_mut("/specimen_type").ok_or("specimen type")? =
+            serde_json::json!({"namespace": namespace, "value": code});
     } else {
         value
             .as_object_mut()

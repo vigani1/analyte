@@ -184,7 +184,8 @@ does not schedule an order: `[orders]` must also explicitly enable send-ahead
 and configure the patient namespace and outbound codes. Successful transfer
 means Sent, never Accepted. Interrupted orders become Uncertain and are never
 automatically replayed. Autolyser host-initiated insertions use the same durable path after a completed
-host poll, with an explicit specimen-medium table, clone flag and cup position.
+host poll, with the order's own medium (`S` or `U` in the machine's
+`specimen_system`, ADR 0030), clone flag and cup position.
 Before a cursor-changing poll, the host durably reserves a typed poll intent.
 Pending or uncertain custody blocks another poll, including across reconnects.
 Observed failures retain their reason; confirmation requires the existing dialog's
