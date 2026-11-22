@@ -80,7 +80,7 @@ async fn session_with_outbound(
     stop: watch::Receiver<bool>,
     outbound: Option<&tokio::sync::mpsc::Sender<independent::Work>>,
 ) -> Result<(), Error> {
-    let mut orders = LawOrderLink::new(&machine.machine().model)?;
+    let mut orders = LawOrderLink::new()?;
     driver::run(
         || {
             let mut host = Host::open(machine, settings, store, &mut orders, Mode::inbound())?;
@@ -387,10 +387,7 @@ impl<'a, 'm> Host<'a, 'm> {
         if let (Reply::Followup { response, work }, Some(sender)) = (&reply, self.outbound) {
             let (notify, wait) = oneshot::channel();
             let pending = independent::Work {
-                orders: std::mem::replace(
-                    self.orders,
-                    LawOrderLink::new(&self.machine.machine().model)?,
-                ),
+                orders: std::mem::replace(self.orders, LawOrderLink::new()?),
                 message: work.clone(),
                 ready: wait,
             };

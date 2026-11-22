@@ -115,6 +115,7 @@ const fn words(kind: ParkedKind) -> &'static str {
         ParkedKind::OrderVersionRefused => "Order from the lab app was refused",
         ParkedKind::CancelConflict => "Cancel conflicts with what the machine reported",
         ParkedKind::PollIntent => format::POLL_TITLE,
+        ParkedKind::OrderEventModelUnknown => "Order event could not name its machine model",
     }
 }
 
@@ -131,7 +132,8 @@ const fn tone(kind: ParkedKind) -> Tone {
         | ParkedKind::ResultReconciliation
         | ParkedKind::IncompleteTransfer
         | ParkedKind::OrderVersionRefused
-        | ParkedKind::PollIntent => Tone::Attention,
+        | ParkedKind::PollIntent
+        | ParkedKind::OrderEventModelUnknown => Tone::Attention,
     }
 }
 
@@ -149,7 +151,8 @@ const fn main_action(kind: ParkedKind) -> Action {
         ParkedKind::DeliveryConflict
         | ParkedKind::OrderVersionRefused
         | ParkedKind::CancelConflict
-        | ParkedKind::PollIntent => Action::Resolve,
+        | ParkedKind::PollIntent
+        | ParkedKind::OrderEventModelUnknown => Action::Resolve,
     }
 }
 
@@ -210,6 +213,11 @@ const fn guidance(kind: ParkedKind, problem: Option<&Problem>) -> &'static str {
             "Analyte starts no other exchange with this machine until this item is ",
             "resolved. Check on the machine whether this one finished, then Mark resolved.",
         ),
+        ParkedKind::OrderEventModelUnknown => concat!(
+            "Analyte did not send the lab app this order's change, because the order is older ",
+            "than the machine model Analyte now names in every event. Tell the lab app team ",
+            "the order's state shown here, then Mark resolved.",
+        ),
     }
 }
 
@@ -252,7 +260,8 @@ mod tests {
                 ParkedKind::DeliveryConflict
                 | ParkedKind::OrderVersionRefused
                 | ParkedKind::CancelConflict
-                | ParkedKind::PollIntent => Action::Resolve,
+                | ParkedKind::PollIntent
+                | ParkedKind::OrderEventModelUnknown => Action::Resolve,
                 ParkedKind::MappingFinding
                 | ParkedKind::InterpretationFailure
                 | ParkedKind::ResultReconciliation

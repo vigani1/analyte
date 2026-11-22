@@ -84,13 +84,13 @@ choices!(Priority {
     Urgent,
     Stat
 });
-// ADR 0032: `model` is the machine definition's vendor/model folder key, the
+// ADR 0033: `model` is the machine definition's vendor/model folder key, the
 // key lab apps file their per-model test and specimen tables under.
 wire!(Source {
     analyzer: Text,
     connection: Text,
     #[schemars(
-        description = "The machine model: the definition's vendor/model folder key (ADR 0032). Key per-model test and specimen tables on it."
+        description = "The machine model: the definition's vendor/model folder key (ADR 0033). Key per-model test and specimen tables on it."
     )]
     model: document::ModelId
 });
@@ -351,7 +351,7 @@ impl OrdersPage {
 
 impl Delivery {
     /// Copies every result field into independent wire types, checking receipt ownership.
-    /// `model` is the machine definition's model (ADR 0032).
+    /// `model` is the machine definition's model (ADR 0033).
     /// This represents evidence; the sender must separately enforce production eligibility.
     ///
     /// # Errors

@@ -292,7 +292,7 @@
       "type": "string"
     },
     "ModelId": {
-      "description": "The machine model: its definition's vendor/model folder key, for example roche/cobas-e411 (ADR 0032). Key per-model tables on it; see machines.json.",
+      "description": "The machine model: its definition's vendor/model folder key, for example roche/cobas-e411 (ADR 0033). Key per-model tables on it; see machines.json.",
       "pattern": "^[a-z0-9-]{1,64}/[a-z0-9-]{1,64}$",
       "type": "string"
     },
@@ -1188,7 +1188,7 @@
         },
         "model": {
           "$ref": "#/$defs/ModelId",
-          "description": "The machine model: the definition's vendor/model folder key (ADR 0032). Key per-model test and specimen tables on it."
+          "description": "The machine model: the definition's vendor/model folder key (ADR 0033). Key per-model test and specimen tables on it."
         }
       },
       "required": [

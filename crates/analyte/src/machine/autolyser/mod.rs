@@ -68,10 +68,7 @@ impl<'a> Host<'a> {
         custody::ensure_reconciled(store, machine.machine()).await?;
         let dialog = Dialog::new(settings::dialog(settings))?;
         Ok(Self {
-            work: crate::orders::sending::Work::new(
-                settings.orders().filter(|o| o.send_ahead()),
-                machine.machine(),
-            ),
+            work: crate::orders::sending::Work::new(settings.orders().filter(|o| o.send_ahead())),
             dialog,
             receipt: None,
             phase: Phase::Busy,

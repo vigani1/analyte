@@ -24,6 +24,11 @@ pub(crate) fn limits() -> Limits {
     }
 }
 
+/// The synthetic machine model test reservations are made for (ADR 0033).
+pub(crate) fn order_model() -> Identifier {
+    Identifier::new("example/synthetic").expect("a valid model key")
+}
+
 pub(crate) fn open(path: &Path) -> Result<Store, MaintenanceError> {
     Store::open(path, limits(), Box::new(Space(u64::MAX)))
 }

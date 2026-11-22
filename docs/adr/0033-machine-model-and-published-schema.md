@@ -1,4 +1,4 @@
-# 0032. Deliveries name the machine model; the contract is published as a schema
+# 0033. Deliveries name the machine model; the contract is published as a schema
 
 Status: accepted, 2026-11-22 (the owner asked for a model field on every
 delivery, a machine-readable contract and a machine catalog, and approved the
@@ -30,10 +30,17 @@ document, and nothing listing the models Analyte supports.
    `<vendor>/<model>/machine.toml`, which is where setup always writes it. A
    definition anywhere else is refused at start with a specific error. Machine
    definition files are unchanged.
-3. **Order events need their machine's model.** An interrupted order of a
-   machine no longer in the program file keeps its state at restart, and
-   `orders reconcile` refuses it with a specific error, until the machine is
-   configured again; its event could not name a model.
+3. **Each machine order keeps its model.** The store writes the machine's
+   model with the order when it reserves it (column `machine_orders.model`,
+   store schema 19), and every order event names that stored model, not the
+   current program file. An interrupted order of a machine removed since it
+   was sent therefore still becomes uncertain at restart, stays visible to the
+   operator exactly as before (safety rule 8, ADR 0003) and reaches the lab app
+   with its model; `orders reconcile` works for it too. An order stored before
+   schema 19 has no stored model, and nothing kept beside it says which one its
+   machine had, so it keeps NULL: its lifecycle is recorded as usual, but each
+   of its events is parked for review (kind `order_event_model_unknown`) with
+   the reason instead of being sent with a guessed model.
 4. **The contract is published as JSON Schema and OpenAPI, generated from the
    Rust contract types.** `docs/contract/contract-v1.schema.json` (draft
    2020-12) holds every request and answer body; `docs/contract/openapi.json`
@@ -71,5 +78,7 @@ document, and nothing listing the models Analyte supports.
 - Lab apps key their per-model tables on `source.model`; the catalog lists
   the values. A definition folder rename is a model id change for lab apps.
 - Tests and fixtures place definitions in `<vendor>/<model>/` folders.
+- Store schema 19 adds the model column; an order kept from before it parks
+  its events on Needs review until someone tells the lab app its state.
 - A contract change regenerates the schema in the same change; CI refuses a
   stale file.

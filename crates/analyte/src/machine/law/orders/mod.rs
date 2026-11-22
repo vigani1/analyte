@@ -29,8 +29,6 @@ pub(crate) struct LawOrderLink {
     exchange: Option<Exchange>,
     cursor: String,
     start: Instant,
-    /// The machine model its order events name (ADR 0032).
-    model: analyte_contract::document::ModelId,
 }
 
 /// LAW settings an order exchange needs, built only when work orders are configured.
@@ -48,9 +46,8 @@ struct Exchange {
 }
 
 impl LawOrderLink {
-    pub(crate) fn new(model: &analyte_contract::document::ModelId) -> Result<Self, Error> {
+    pub(crate) fn new() -> Result<Self, Error> {
         Ok(Self {
-            model: model.clone(),
             owner: Identifier::new(&uuid::Uuid::now_v7().to_string())?,
             reserving: Vec::new(),
             exchange: None,
@@ -84,7 +81,6 @@ impl LawOrderLink {
     pub(crate) async fn close(&mut self, store: &Handle, code: &str) -> Result<(), Error> {
         let result = crate::orders::sending::settle_owned(
             store,
-            &self.model,
             std::mem::take(&mut self.reserving),
             &self.owner,
             code,
@@ -356,7 +352,8 @@ impl LawOrderLink {
         }
         for record in &exchange.records {
             let outcomes = item_outcomes(record, &response)?;
-            let (id, key, model) = (record.id, record.key.clone(), self.model.clone());
+            let id = record.id;
+            let key = record.key.clone();
             store
                 .request::<_, analyte_store::OrderError>(deadline()?, move |store| {
                     if store.machine_order(&key)?.is_some_and(|current| {
@@ -369,7 +366,7 @@ impl LawOrderLink {
                             id,
                             &outcomes,
                             jiff::Timestamp::now().as_second(),
-                            crate::orders::event(&model),
+                            crate::orders::event,
                         )?;
                     }
                     Ok(())

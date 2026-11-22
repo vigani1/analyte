@@ -33,7 +33,7 @@ fn errors(validator: &jsonschema::Validator, document: &Value) -> Vec<String> {
         .collect()
 }
 
-// ADR 0032: the committed files are exactly what the generator writes from the
+// ADR 0033: the committed files are exactly what the generator writes from the
 // contract types and the machines folder; `cargo run -p analyte-publish`
 // rewrites them.
 #[test]
@@ -174,7 +174,7 @@ fn invalid_vectors_fail_the_schema_where_it_can_express_them() -> TestResult {
     Ok(())
 }
 
-// ADR 0032: enums are closed and spelled exactly as the Rust types write them.
+// ADR 0033: enums are closed and spelled exactly as the Rust types write them.
 #[test]
 fn enums_are_closed_and_match_the_rust_types() -> TestResult {
     let schema = repository_file("docs/contract/contract-v1.schema.json")?;
@@ -261,7 +261,7 @@ fn spelled<T: serde::Serialize>(values: &[T]) -> Vec<String> {
         .collect()
 }
 
-// ADR 0032: the OpenAPI document covers the three calls, with bearer
+// ADR 0033: the OpenAPI document covers the three calls, with bearer
 // authentication and the Standard Webhooks headers, and each body reference
 // names a definition of the schema file.
 #[test]
@@ -342,7 +342,7 @@ fn collect_references(value: &Value, found: &mut Vec<String>) {
     }
 }
 
-// ADR 0032: one catalog entry per model folder, keyed by the model id that
+// ADR 0033: one catalog entry per model folder, keyed by the model id that
 // source.model carries; a blocked definition is listed as not ready, with no
 // protocol or code systems guessed for it.
 #[test]
@@ -405,7 +405,7 @@ fn catalog_lists_every_model_folder() -> TestResult {
     Ok(())
 }
 
-// ADR 0032 and machines/README.md: a model folder without its README title or
+// ADR 0033 and machines/README.md: a model folder without its README title or
 // evidence level, or with a name that is not a model key, stops the catalog
 // with the folder named instead of being guessed.
 #[test]

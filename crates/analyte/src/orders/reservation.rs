@@ -4,13 +4,16 @@ use analyte_store::{Handle, MachineOrder, MachineOrderKey, OrderReservation, Sen
 use std::{num::NonZeroU64, time::Instant};
 
 /// Recheck the current version and freshness at the store operation, never at rendering.
-pub(crate) fn candidate(
-    identity: &MachineOrderKey,
+/// `model` is the machine's stored model (`super::stored_model`), kept with the order.
+pub(crate) fn candidate<'a>(
+    identity: &'a MachineOrderKey,
+    model: &'a analyte_model::Identifier,
     version: NonZeroU64,
     freshness: u64,
-) -> OrderReservation<'_> {
+) -> OrderReservation<'a> {
     OrderReservation {
         identity,
+        model,
         version,
         now: jiff::Timestamp::now().as_second(),
         freshness,
@@ -28,10 +31,14 @@ pub(crate) async fn reject(
     freshness: u64,
     reason: analyte_model::SourceText,
 ) -> Result<Result<MachineOrder, SendRefusal>, Error> {
-    let event = super::event(model);
+    let model = super::stored_model(model)?;
     Ok(store
         .request::<_, analyte_store::OrderError>(until, move |store| {
-            store.reject_unsent(&candidate(&identity, version, freshness), reason, event)
+            store.reject_unsent(
+                &candidate(&identity, &model, version, freshness),
+                reason,
+                super::event,
+            )
         })
         .await?)
 }
@@ -40,14 +47,12 @@ pub(crate) async fn reject(
 /// The caller registers the key before awaiting so disconnect cleanup owns it.
 pub(crate) async fn cancel(
     store: &Handle,
-    model: &analyte_contract::document::ModelId,
     until: Instant,
     id: i64,
     version: NonZeroU64,
     owner: analyte_model::Identifier,
     freshness: u64,
 ) -> Result<MachineOrder, analyte_store::OrderError> {
-    let event = super::event(model);
     store
         .request::<_, analyte_store::OrderError>(until, move |store| {
             store.request_order_cancel(
@@ -56,7 +61,7 @@ pub(crate) async fn cancel(
                 jiff::Timestamp::now().as_second(),
                 &owner,
                 freshness,
-                event,
+                super::event,
             )
         })
         .await
@@ -65,6 +70,8 @@ pub(crate) async fn cancel(
 /// Owns the typed inputs to atomic send admission and protocol preflight.
 pub(crate) struct Admission {
     pub(crate) identity: MachineOrderKey,
+    /// The machine's stored model (`super::stored_model`), kept with the order.
+    pub(crate) model: analyte_model::Identifier,
     pub(crate) version: NonZeroU64,
     pub(crate) freshness: u64,
     pub(crate) owner: analyte_model::Identifier,
@@ -86,7 +93,12 @@ pub(crate) async fn admit<T: Send + 'static>(
             let mut rendered = None;
             let mut encode = Some(encode);
             let reserved = store.reserve_send(
-                &candidate(&admission.identity, admission.version, admission.freshness),
+                &candidate(
+                    &admission.identity,
+                    &admission.model,
+                    admission.version,
+                    admission.freshness,
+                ),
                 analyte_store::ReserveOptions {
                     items: analyte_store::OrderItems::Groups {
                         groups: &admission.groups,

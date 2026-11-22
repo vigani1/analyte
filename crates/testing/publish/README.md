@@ -7,7 +7,7 @@ developers.
 the contract v1 JSON Schema (`contract-v1.schema.json`) and the OpenAPI 3.1
 document of the three calls (`openapi.json`) from the Rust contract types,
 and the machine catalog (`machines.json`, with `machines.schema.json`) from
-the `machines/` folder ([ADR 0032](../../../docs/adr/0032-machine-model-and-published-schema.md)).
+the `machines/` folder ([ADR 0033](../../../docs/adr/0033-machine-model-and-published-schema.md)).
 `cargo run -p analyte-publish` rewrites them; `-- --check` only reports the
 stale ones. CI and the release workflow check that regenerating changes
 nothing, and each release attaches the four files.

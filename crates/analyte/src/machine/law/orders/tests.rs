@@ -74,7 +74,7 @@ async fn superseded_mapping_rejection_continues_idle_admission() -> Result<(), E
             Ok(())
         })
         .await?;
-    let mut link = LawOrderLink::new(&machine.model)?;
+    let mut link = LawOrderLink::new()?;
     let analyte_config::Stack::Law(stack) = machine.snapshot.effective().stack() else {
         return Err("LAW fixture".into());
     };

@@ -4,8 +4,8 @@ use analyte_config::ValueKind;
 use analyte_contract::ReplyProblem;
 use analyte_mapping::{Finding, Position, Problem, ReasonPiece, Unidentified};
 use analyte_store::{
-    CANCEL_CONFLICT_REASON, NO_RESULTS_REASON, OrderRefusal, ParkedKind, RevisionOutcome,
-    reconciled_outcome,
+    CANCEL_CONFLICT_REASON, MODEL_UNKNOWN_REASON, NO_RESULTS_REASON, OrderRefusal, ParkedKind,
+    RevisionOutcome, reconciled_outcome,
 };
 
 /// A stored reason for people: each mapping position reads "record 3, field 3",
@@ -88,6 +88,7 @@ pub(in crate::admin) fn explain(kind: ParkedKind, stored: &str) -> Explained {
         ParkedKind::OrderVersionRefused => refused_order(stored),
         ParkedKind::CancelConflict => fixed(stored, &CANCEL_REASONS),
         ParkedKind::PollIntent => fixed(stored, &POLL_REASONS),
+        ParkedKind::OrderEventModelUnknown => fixed(stored, &MODEL_REASONS),
     }
 }
 
@@ -411,6 +412,16 @@ const CANCEL_REASONS: [Fixed; 1] = [(
     concat!(
         "The machine answered that it could not cancel a test that it had earlier reported ",
         "as cancelled on its own.",
+    ),
+)];
+
+const MODEL_REASONS: [Fixed; 1] = [(
+    MODEL_UNKNOWN_REASON,
+    "Order event not sent",
+    concat!(
+        "This order was stored before Analyte kept each order's machine model, so its ",
+        "event to the lab app cannot name the model. The order's state on this page is ",
+        "kept; tell the lab app that state.",
     ),
 )];
 
@@ -848,7 +859,7 @@ mod tests {
     }
 
     /// Each fixed reason the code writes, under its kind, with its title and sentence.
-    const FIXED_WORDS: [(ParkedKind, &str, &str, &str); 19] = [
+    const FIXED_WORDS: [(ParkedKind, &str, &str, &str); 20] = [
         (
             ParkedKind::InterpretationFailure,
             NO_RESULTS_REASON,
@@ -976,6 +987,16 @@ mod tests {
             ),
         ),
         (
+            ParkedKind::OrderEventModelUnknown,
+            MODEL_UNKNOWN_REASON,
+            "Order event not sent",
+            concat!(
+                "This order was stored before Analyte kept each order's machine model, so its ",
+                "event to the lab app cannot name the model. The order's state on this page is ",
+                "kept; tell the lab app that state.",
+            ),
+        ),
+        (
             ParkedKind::PollIntent,
             autolyser::POLL_REASON,
             "Request for results not settled",
@@ -1000,6 +1021,7 @@ mod tests {
             ParkedKind::IncompleteTransfer,
             ParkedKind::CancelConflict,
             ParkedKind::PollIntent,
+            ParkedKind::OrderEventModelUnknown,
         ] {
             assert_eq!(
                 explained(kind, "POCT syntax: unexpected end"),

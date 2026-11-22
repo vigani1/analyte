@@ -44,7 +44,7 @@ jobs:
       - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
       - run: cargo test --workspace --all-features --locked
       - run: cargo doc --workspace --no-deps --all-features --locked
-      # ADR 0032: the release attaches the committed schema, OpenAPI and catalog
+      # ADR 0033: the release attaches the committed schema, OpenAPI and catalog
       # files, so they must be exactly what this tag's code generates.
       - run: cargo run -p analyte-publish --locked -- --check
       - if: runner.os == 'Linux'
@@ -125,7 +125,7 @@ jobs:
       # Cargo's inventory avoids adding another supply-chain tool. Not an SBOM.
       - name: Record locked dependency inventory
         run: cargo metadata --locked --format-version 1 > dist/dependencies.json
-      # ADR 0032: for lab-app developers. The verify job checked that they are
+      # ADR 0033: for lab-app developers. The verify job checked that they are
       # what this tag generates.
       - name: Add the contract schema, OpenAPI document and machine catalog
         run: >-

@@ -3,8 +3,8 @@ use super::RESERVATION_OWNER_PREFIX;
 use super::{
     CachedFields, CachedOrder, Error, Identifier, MachineOrder, MachineOrderKey,
     OrderEventDelivery, OrderOwner, OrderReservation, OrderState, OrderTransition, ReserveOptions,
-    SendRefusal, SourceText, SqlOrderState, Store, TransactionBehavior, append, create_items,
-    params,
+    SendRefusal, SourceText, SqlOrderState, Store, TransactionBehavior, append, append_with_event,
+    create_items, params,
 };
 use rusqlite::OptionalExtension as _;
 
@@ -61,6 +61,7 @@ impl Store {
     ) -> Result<Result<MachineOrder, SendRefusal>, Error> {
         let OrderReservation {
             identity,
+            model,
             version,
             now,
             freshness,
@@ -131,7 +132,7 @@ impl Store {
             }
         }
         let state = OrderState::Requested.transition(OrderTransition::Advance(initial))?;
-        tx.execute("INSERT INTO machine_orders(destination,order_id,machine,version,state,created_at,updated_at,source_code) VALUES (?1,?2,?3,?4,?5,?6,?6,?7)",params![identity.destination.as_str(),identity.order.as_str(),identity.machine.as_str(),version.to_string(),SqlOrderState(state),now,code.as_str()])?;
+        tx.execute("INSERT INTO machine_orders(destination,order_id,machine,version,state,created_at,updated_at,source_code,model) VALUES (?1,?2,?3,?4,?5,?6,?6,?7,?8)",params![identity.destination.as_str(),identity.order.as_str(),identity.machine.as_str(),version.to_string(),SqlOrderState(state),now,code.as_str(),model.as_str()])?;
         let mut record = MachineOrder {
             id: tx.last_insert_rowid(),
             key: identity.clone(),
@@ -145,13 +146,16 @@ impl Store {
             }),
             items: Vec::new(),
             original_command: None,
+            model: Some(model.clone()),
         };
         record.items = create_items(&tx, &record, fields.tests, options.items, limit)?;
         if let Some(prepare) = options.prepare {
             prepare(&record)?;
         }
-        let event = build.map(|build| build(&record)).transpose()?;
-        append(&tx, &record, event.as_ref(), limit)?;
+        match build {
+            Some(build) => append_with_event(&tx, &record, build, limit)?,
+            None => append(&tx, &record, None, limit)?,
+        }
         tx.commit()?;
         Ok(Ok(record))
     }

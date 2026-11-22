@@ -220,7 +220,7 @@ async fn worker(
     mut stop: watch::Receiver<bool>,
     capture: Option<Arc<crate::machine::capture::Capture>>,
 ) -> Result<(), Error> {
-    let mut idle_orders = LawOrderLink::new(&machine.model)?;
+    let mut idle_orders = LawOrderLink::new()?;
     let mut tick = tokio::time::interval(Duration::from_millis(100));
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     let result = async {

@@ -1,4 +1,4 @@
-//! Describes the version 1 request and answer bodies as one JSON Schema (draft 2020-12), derived from the contract types (ADR 0032).
+//! Describes the version 1 request and answer bodies as one JSON Schema (draft 2020-12), derived from the contract types (ADR 0033).
 //!
 //! The schema states what a lab app can check without Analyte's code: types,
 //! closed enums, required fields, list and length bounds, text patterns,

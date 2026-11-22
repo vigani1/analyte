@@ -290,7 +290,7 @@ async fn prepare_service(
             order_sending_paused_after_restore = paused,
             "store restore reconciliation status"
         );
-        crate::runtime::delivery::recover(&store, &program.machines).await?;
+        crate::runtime::delivery::recover(&store).await?;
         crate::runtime::delivery::report_unconfigured(&store, &reach.configured).await?;
         super::recovery::run(program, &store).await?;
         crate::admin::prepare(

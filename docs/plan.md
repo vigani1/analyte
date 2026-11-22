@@ -133,7 +133,7 @@ Transport: serial · TCP client/server · watched folder
 | `analyte-autolyser` | Autolyser fixed-width record syntax        |
 | `analyte-receiver`  | Reference receiver: a small app that implements the contract |
 | `analyte-fixtures`  | Shared synthetic test fixtures                               |
-| `analyte-publish`   | Writes the contract schema, OpenAPI document and machine catalog (ADR 0032) |
+| `analyte-publish`   | Writes the contract schema, OpenAPI document and machine catalog (ADR 0033) |
 | `analyte`           | The program: service, CLI, admin page                        |
 
 Vendor syntax and POCT1-A have their own crates, so a new vendor format is a
@@ -201,7 +201,7 @@ new crate rather than a change to a shared one.
   and `analyte-contract-check` runs them against any app's real endpoints.
   A JSON Schema and an OpenAPI document generated from the contract types,
   and a catalog of the shipped machine models, let apps in any language
-  generate their types ([ADR 0032](adr/0032-machine-model-and-published-schema.md)).
+  generate their types ([ADR 0033](adr/0033-machine-model-and-published-schema.md)).
   Every delivery names its machine model, the key of the app's per-model
   tables. Packages for other languages come later.
 - FHIR output is an option for later, not the base format.

@@ -122,7 +122,7 @@ pub struct InvalidModel;
 const MODEL_PART_BYTES: usize = 64;
 
 /// The machine model that sent a document: the `vendor/model` folder key of
-/// its machine definition, for example `roche/cobas-e411` (ADR 0032). Lab
+/// its machine definition, for example `roche/cobas-e411` (ADR 0033). Lab
 /// apps key their per-model test and specimen tables on it.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 #[serde(transparent)]
@@ -178,7 +178,7 @@ impl schemars::JsonSchema for ModelId {
         schemars::json_schema!({
             "type": "string",
             "pattern": "^[a-z0-9-]{1,64}/[a-z0-9-]{1,64}$",
-            "description": "The machine model: its definition's vendor/model folder key, for example roche/cobas-e411 (ADR 0032). Key per-model tables on it; see machines.json.",
+            "description": "The machine model: its definition's vendor/model folder key, for example roche/cobas-e411 (ADR 0033). Key per-model tables on it; see machines.json.",
         })
     }
 }

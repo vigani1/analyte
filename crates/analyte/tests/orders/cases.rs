@@ -351,7 +351,7 @@ fn assert_rejected_event(receiver_path: &Path, code: &str) -> Result<(), Error> 
     let text = |pointer: &str| body.pointer(pointer).and_then(serde_json::Value::as_str);
     assert_eq!(text("/state"), Some("rejected"));
     assert_eq!(text("/source_status"), Some(code));
-    // ADR 0032: an order event names the machine's model, its definition's folder key.
+    // ADR 0033: an order event names the machine's model, its definition's folder key.
     assert_eq!(text("/source/model"), Some("test/astm"));
     Ok(())
 }

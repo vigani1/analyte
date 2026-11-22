@@ -17,7 +17,7 @@ published test vectors; `generate.py` writes them.
 
 `cargo run -p analyte-publish` generates these four files from the Rust
 contract types and the `machines/` folder; do not edit them by hand. Each
-release attaches them too ([ADR 0032](../adr/0032-machine-model-and-published-schema.md)).
+release attaches them too ([ADR 0033](../adr/0033-machine-model-and-published-schema.md)).
 
 ## Building a lab app
 

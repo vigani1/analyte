@@ -116,6 +116,7 @@ fn final_orders_purge_after_period_keep_replay_guard() -> TestResult {
         cached(&mut store, "order", "sample")?;
         let result = store.reserve_send(
             &crate::OrderReservation {
+                model: &order_model(),
                 identity: &identity,
                 version: std::num::NonZeroU64::MIN,
                 now: 100,

@@ -10,7 +10,7 @@ const IDLE_CLAIM_INTERVAL: Duration = Duration::from_millis(100);
 use tokio::sync::watch;
 
 /// Builds immutable production bytes and creates their delivery ID exactly once.
-/// `model` is the machine definition's model, written in `source.model` (ADR 0032).
+/// `model` is the machine definition's model, written in `source.model` (ADR 0033).
 /// The caller commits this with its interpretation using `Store::interpret_reconciled`.
 /// # Errors
 /// Refuses non-production modes, parked evidence, receipt mismatch and wire errors.

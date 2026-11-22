@@ -386,7 +386,7 @@ async fn lost_ack_restart_and_correction_deliver_once() -> Result<(), Error> {
     assert_ne!(first["delivery_id"], corrected["delivery_id"]);
     assert_ne!(first["receipt"]["id"], corrected["receipt"]["id"]);
     for (body, revision, value) in [(&first, 0, "12.30"), (&corrected, 1, "13.30")] {
-        // ADR 0032: each delivery names the model, the definition's folder key.
+        // ADR 0033: each delivery names the model, the definition's folder key.
         assert_eq!(body["source"]["model"], analyte_fixtures::MODEL);
         assert_eq!(body["results"].as_array().ok_or("results array")?.len(), 1);
         assert_eq!(

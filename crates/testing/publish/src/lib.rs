@@ -1,4 +1,4 @@
-//! Builds the machine-readable files published in docs/contract/ and with each release: the contract v1 schema, its OpenAPI document and the machine catalog (ADR 0032).
+//! Builds the machine-readable files published in docs/contract/ and with each release: the contract v1 schema, its OpenAPI document and the machine catalog (ADR 0033).
 #![forbid(unsafe_code)]
 use std::path::{Path, PathBuf};
 

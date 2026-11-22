@@ -27,7 +27,7 @@ pub(super) struct PreparedMapping {
     pub(super) corrections: Vec<bool>,
     pub(super) interpretation: Interpretation,
     pub(super) destination: Identifier,
-    /// The machine model the deliveries name (ADR 0032).
+    /// The machine model the deliveries name (ADR 0033).
     pub(super) model: analyte_contract::document::ModelId,
     pub(super) conflict: Option<Interpretation>,
     pub(super) policy: Policy,

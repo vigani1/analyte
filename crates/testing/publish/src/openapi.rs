@@ -1,4 +1,4 @@
-//! Builds the OpenAPI 3.1 document for the three contract v1 calls; its bodies refer to the contract schema file (ADR 0032).
+//! Builds the OpenAPI 3.1 document for the three contract v1 calls; its bodies refer to the contract schema file (ADR 0033).
 //!
 //! The calls are the ones a lab app answers: `POST /results`,
 //! `POST /order-events` and `GET /orders`. Each status code says what Analyte

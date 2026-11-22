@@ -305,7 +305,7 @@ fn signature_header_accepts_exactly_4096_bytes() -> TestResult {
     Ok(())
 }
 
-// ADR 0032: source.model is a vendor/model folder key, each part 1 to 64
+// ADR 0033: source.model is a vendor/model folder key, each part 1 to 64
 // lower-case letters, digits or hyphens; nothing is tidied or guessed, and a
 // delivery or event without one is refused.
 #[test]

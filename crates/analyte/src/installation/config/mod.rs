@@ -37,7 +37,7 @@ pub struct Machine {
     /// model name from the definition's folder.
     pub(crate) definition: PathBuf,
     /// The model its results and order events name: the definition's
-    /// `vendor/model` folder key (ADR 0032).
+    /// `vendor/model` folder key (ADR 0033).
     pub(crate) model: analyte_contract::document::ModelId,
     /// The link light this machine's runtime writes and the admin page reads.
     pub(crate) status: crate::machine::link::status::Reporter,
@@ -508,7 +508,7 @@ mod admin_tests {
         Ok(())
     }
 
-    // ADR 0032: a definition names its model by the <vendor>/<model>/ folders
+    // ADR 0033: a definition names its model by the <vendor>/<model>/ folders
     // it sits in; anywhere else, or under a folder name that is not a model
     // key, it is refused at load, since no model is guessed.
     #[test]
@@ -1075,7 +1075,7 @@ fn load_machine(entry: Entry, files: &Files, loading: &Loading<'_>) -> Result<Ma
 }
 
 /// The model of the definition file `definition`: the names of the two
-/// folders it sits in, `<vendor>/<model>/machine.toml` (ADR 0032). Setup
+/// folders it sits in, `<vendor>/<model>/machine.toml` (ADR 0033). Setup
 /// always writes that path; a definition anywhere else is refused, since no
 /// model can be named for it and none is guessed.
 fn model(definition: &Path) -> Result<analyte_contract::document::ModelId, Error> {

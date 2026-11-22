@@ -22,7 +22,7 @@ For an interface requiring new protocol code, follow
    and keys stay in each lab's site file, never in this folder. The folder
    key `vendor/model` becomes the model id in every delivery's
    `source.model`, so choose it once
-   ([ADR 0032](../adr/0032-machine-model-and-published-schema.md)).
+   ([ADR 0033](../adr/0033-machine-model-and-published-schema.md)).
 3. **Write its `README.md`** from the [template](../../machines/README.md#readme-template):
    what is known, the sources in your own words, what is still open and the
    evidence level.

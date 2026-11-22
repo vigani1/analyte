@@ -7,7 +7,7 @@ What was learned about each model: [machine research](../docs/research/machines/
 Each definition lives in `machines/<vendor>/<model>/`, with lower-case,
 hyphenated names. The folder key `vendor/model` is the model id every result
 delivery and order event carries in `source.model`, and lab apps file their
-per-model tables under it ([ADR 0032](../docs/adr/0032-machine-model-and-published-schema.md)),
+per-model tables under it ([ADR 0033](../docs/adr/0033-machine-model-and-published-schema.md)),
 so renaming a folder changes the id. Each part is at most 64 characters.
 Analyte refuses a definition that is not in such a folder.
 `docs/contract/machines.json` lists every folder; run

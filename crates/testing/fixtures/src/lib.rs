@@ -76,7 +76,7 @@ pub fn program_with_limits(machines: &str, limits: &analyte_store::Limits) -> St
 
 /// Where [`write_machine`] puts its definition, relative to the program
 /// folder: a `<vendor>/<model>/` folder, as setup writes one, so deliveries
-/// name a model (ADR 0032).
+/// name a model (ADR 0033).
 pub const DEFINITION: &str = "test/synthetic/machine.toml";
 
 /// The model deliveries name for a definition at [`DEFINITION`].

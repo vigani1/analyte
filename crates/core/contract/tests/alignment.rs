@@ -178,7 +178,7 @@ fn published_result_vectors_convert_without_loss() -> Result<(), Box<dyn std::er
         let id = analyte_model::DeliveryId::try_from(uuid::Uuid::parse_str(
             "019ab000-0000-7000-8000-000000000001",
         )?)?;
-        // ADR 0032: the vectors name the synthetic example definition's folder.
+        // ADR 0033: the vectors name the synthetic example definition's folder.
         let machine = analyte_contract::document::ModelId::new("example", "synthetic-astm")?;
         let delivery = Delivery::from_result(
             &model,

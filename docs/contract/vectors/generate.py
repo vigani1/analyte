@@ -89,7 +89,7 @@ def partial_text(doc): doc['results'][0]['parts'][0]['values']=[dict(original='b
 def no_results(doc): doc['results']=[]
 def not_decimal(doc): doc['results'][0]['parts'][0]['values'][0]['parsed']['numeric']['number']='1e3'
 def bare_test(doc): doc['results'][0]['parts'][0]['test']='TEST'
-# ADR 0032: source.model is the definition's vendor/model folder key, required.
+# ADR 0033: source.model is the definition's vendor/model folder key, required.
 def no_model(doc): del doc['source']['model']
 def model_without_vendor(doc): doc['source']['model']='synthetic-astm'
 write('invalid-documents.json',[

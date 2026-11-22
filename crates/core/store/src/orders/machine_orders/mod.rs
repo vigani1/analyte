@@ -50,6 +50,9 @@ pub struct MachineOrder {
     pub items: Vec<MachineOrderItem>,
     #[serde(default)]
     original_command: Option<Vec<u8>>,
+    /// Kept in its own column, never in a snapshot: set once at reservation.
+    #[serde(skip)]
+    model: Option<Identifier>,
 }
 
 const RESERVATION_OWNER_PREFIX: &str = "host-reserved:";
@@ -59,6 +62,14 @@ impl MachineOrder {
     #[must_use]
     pub fn original_command(&self) -> Option<&[u8]> {
         self.original_command.as_deref()
+    }
+
+    /// The machine model (its definition's `vendor/model` key) this order was
+    /// reserved for (ADR 0033). `None` only for an order stored before the
+    /// store kept it; such an order's events are parked, never guessed.
+    #[must_use]
+    pub fn model(&self) -> Option<&Identifier> {
+        self.model.as_ref()
     }
 
     /// True only for the connection that admitted this cancellation request.
@@ -205,6 +216,9 @@ pub struct MachineOrderFilter {
 pub struct OrderReservation<'a> {
     /// App and machine identity.
     pub identity: &'a MachineOrderKey,
+    /// The machine's model, its definition's `vendor/model` folder key
+    /// (ADR 0033); stored with the order so its events can name it later.
+    pub model: &'a Identifier,
     /// Version the host mapped.
     pub version: NonZeroU64,
     /// Current Unix second.
@@ -415,7 +429,7 @@ impl Store {
                 id
             ],
         )?;
-        append(&tx, &record, Some(&build(&record)?), limit)?;
+        append_with_event(&tx, &record, build, limit)?;
         if let Some(audit) = audit {
             let evidence = crate::document(audit)?;
             if evidence.len() > limit {
@@ -440,10 +454,48 @@ pub(crate) fn load(db: &rusqlite::Connection, id: i64) -> Result<MachineOrder, E
         return Err(Error::Purged);
     }
     let (evidence, owner): (String, OrderOwner) = db.query_row("SELECT evidence,owner_kind,owner_id,cancel_version FROM machine_order_history WHERE machine_order=?1 ORDER BY sequence DESC LIMIT 1", [id], |row| Ok((row.get(0)?, OrderOwner::read(row)?)))?;
+    let model: Option<String> = db.query_row(
+        "SELECT model FROM machine_orders WHERE id=?1",
+        [id],
+        |row| row.get(0),
+    )?;
     let mut record: MachineOrder = serde_json::from_str(&evidence)?;
     record.owner = owner;
+    record.model = model
+        .map(|model| Identifier::new(&model).map_err(|_| Error::Corruption))
+        .transpose()?;
     record.items = load_items(db, id)?;
     Ok(record)
+}
+
+/// The reason parked in place of the event of an order stored before the
+/// store kept each order's machine model (ADR 0033).
+pub const MODEL_UNKNOWN_REASON: &str = "order event not sent: this order was stored before Analyte kept each order's machine model, so the event cannot name the model; tell the lab app the order's state shown here";
+
+/// Appends the snapshot with its app event, built by `build`. An order with no
+/// stored model gets no event: a parked item with [`MODEL_UNKNOWN_REASON`]
+/// takes its place in the same write, so the change is recorded and visible
+/// and no event names a guessed model.
+fn append_with_event(
+    tx: &Transaction<'_>,
+    record: &MachineOrder,
+    build: impl FnOnce(&MachineOrder) -> Result<OrderEventDelivery, Error>,
+    limit: usize,
+) -> Result<(), Error> {
+    if record.model.is_some() {
+        return append(tx, record, Some(&build(record)?), limit);
+    }
+    append(tx, record, None, limit)?;
+    tx.execute(
+        "INSERT INTO parked(evidence) VALUES (?1)",
+        [crate::parked::evidence(
+            crate::ParkedKind::OrderEventModelUnknown.as_str(),
+            &record.id.to_string(),
+            MODEL_UNKNOWN_REASON,
+            None,
+        )?],
+    )?;
+    Ok(())
 }
 
 fn append(

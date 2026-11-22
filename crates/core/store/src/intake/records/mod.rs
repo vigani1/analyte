@@ -169,11 +169,14 @@ pub enum ParkedKind {
     CancelConflict,
     /// A machine asked for orders and the outcome is not known yet.
     PollIntent,
+    /// An order event could not name its machine model: the order was
+    /// stored before the store kept it (ADR 0033).
+    OrderEventModelUnknown,
 }
 
 impl ParkedKind {
     /// Every kind, so a stored spelling can be read back.
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::MappingFinding,
         Self::InterpretationFailure,
         Self::ResultReconciliation,
@@ -183,6 +186,7 @@ impl ParkedKind {
         Self::OrderVersionRefused,
         Self::CancelConflict,
         Self::PollIntent,
+        Self::OrderEventModelUnknown,
     ];
 
     /// The stored spelling; it never changes, because stored items keep it.
@@ -198,6 +202,7 @@ impl ParkedKind {
             Self::OrderVersionRefused => "order_version_refused",
             Self::CancelConflict => "law_cancel_refusal_conflict",
             Self::PollIntent => "poll_intent",
+            Self::OrderEventModelUnknown => "order_event_model_unknown",
         }
     }
 

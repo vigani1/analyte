@@ -46,19 +46,13 @@ pub(super) struct Host<'a> {
 }
 
 impl<'a> Host<'a> {
-    pub(super) fn open(
-        machine: &crate::installation::config::Machine,
-        settings: &'a VidasStack,
-    ) -> Result<Self, Error> {
+    pub(super) fn open(settings: &'a VidasStack) -> Result<Self, Error> {
         let config = settings::framing(settings)?;
         let policy = settings::dialog(settings);
         let mut dialog = Dialog::upload(config.clone(), policy.clone())?;
         let pending = dialog.start();
         Ok(Self {
-            work: crate::orders::sending::Work::new(
-                settings.orders().filter(|o| o.send_ahead()),
-                machine,
-            ),
+            work: crate::orders::sending::Work::new(settings.orders().filter(|o| o.send_ahead())),
             dialog,
             pending,
             phase: Phase::Opening,

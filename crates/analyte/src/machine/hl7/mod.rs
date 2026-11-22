@@ -68,12 +68,7 @@ impl<'a, 'm> Host<'a, 'm> {
         let queries = match settings.orders() {
             Some(orders) if orders.query().is_some() || orders.send().is_some() => {
                 dialog.enable_orders(settings.settings().syntax().edition().into())?;
-                Some(orders::Hl7OrderLink::new(
-                    settings,
-                    orders,
-                    options,
-                    &machine.machine().model,
-                )?)
+                Some(orders::Hl7OrderLink::new(settings, orders, options)?)
             }
             Some(_) | None => None,
         };

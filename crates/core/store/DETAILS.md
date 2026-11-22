@@ -28,6 +28,11 @@ one. The table is filled from the attempts already kept and kept current by a
 trigger in the same write as each attempt, because whether a try folds depends
 on its delivery's next try, which no index can hold. Deleting a delivery's
 tries (data keeping) deletes its runs. No stored value changes.
+Step 19 (`upkeep/order_models.sql`) adds `machine_orders.model`, the machine
+model (`vendor/model` folder key) an order was reserved for (ADR 0033); a
+CHECK keeps it to that shape. New orders get it in the reserving insert and
+keep it; orders already stored keep NULL, because nothing kept beside them
+says which model their machine had. No stored value changes.
 WAL and `synchronous=FULL` deliberately require
 SQLite to sync each committed WAL transaction before success is returned.
 Foreign keys are enabled on every connection; lock waits have a configured
@@ -195,6 +200,12 @@ Whole-order transitions cannot bypass multi-item aggregation, except for a
 cancellation request, recovery to Uncertain or audited operator reconciliation.
 The protected operator listing includes each item's coverage, placer, state and
 reason. These details do not change contract v1 or enter ordinary logs.
+
+Every lifecycle change of an order with a stored model builds its event from
+that model, so recovery and reconciliation need no program file. For an order
+without one (kept from before step 19) the change is recorded as usual, but no
+event is built: a parked item of kind `order_event_model_unknown`, targeting
+the order, takes its place in the same transaction (ADR 0033).
 
 ## Restore and reconciliation
 

@@ -47,6 +47,7 @@ fn items_are_atomic_retained_never_reserved_again() -> TestResult {
     assert!(matches!(
         store.reserve_send(
             &OrderReservation {
+                model: &test_support::order_model(),
                 identity: &identity()?,
                 version: NonZeroU64::MIN,
                 now: 102,
@@ -261,6 +262,7 @@ fn item_limits_keep_coverage_and_accept_host_ceiling() -> TestResult {
         };
         let result = store.reserve_send(
             &OrderReservation {
+                model: &test_support::order_model(),
                 identity: &key,
                 version: NonZeroU64::MIN,
                 now: 101,
@@ -297,6 +299,7 @@ fn item_limits_keep_coverage_and_accept_host_ceiling() -> TestResult {
             assert!(matches!(
                 store.reserve_send(
                     &OrderReservation {
+                        model: &test_support::order_model(),
                         identity: &key,
                         version: NonZeroU64::MIN,
                         now: 102,
@@ -492,6 +495,7 @@ fn item_outcomes_stay_bound_to_exact_index() -> TestResult {
     assert!(matches!(
         store.reserve_send(
             &OrderReservation {
+                model: &test_support::order_model(),
                 identity: &record.key,
                 version: NonZeroU64::MIN,
                 now: 103,

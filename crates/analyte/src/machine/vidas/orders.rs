@@ -41,7 +41,6 @@ impl Work<'_, analyte_config::VidasOrders, Message> {
         }
         crate::orders::sending::complete(
             store,
-            &self.model,
             order,
             analyte_model::OrderState::Sent,
             analyte_dialog::vidas::outcome::Code::TransferConfirmed.as_str(),

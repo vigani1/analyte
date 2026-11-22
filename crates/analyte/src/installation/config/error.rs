@@ -9,7 +9,7 @@ pub enum Error {
     #[error("ASTM receive dialog currently supports strict checksum hex only")]
     UnsupportedChecksumMode,
     /// The machine definition is not in a `<vendor>/<model>/` folder, so its
-    /// results and order events could not name the machine model (ADR 0032).
+    /// results and order events could not name the machine model (ADR 0033).
     #[error(
         "{definition}: a machine definition must sit in a <vendor>/<model>/ folder, such as machines/roche/cobas-e411/machine.toml, so results can name the machine model: {source}"
     )]

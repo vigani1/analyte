@@ -1,6 +1,6 @@
 [package]
 name = "analyte-publish"
-description = "Writes the machine-readable files published with each release: the contract v1 JSON Schema, its OpenAPI document and the machine catalog (ADR 0032)."
+description = "Writes the machine-readable files published with each release: the contract v1 JSON Schema, its OpenAPI document and the machine catalog (ADR 0033)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

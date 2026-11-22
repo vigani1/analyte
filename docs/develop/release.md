@@ -65,7 +65,7 @@ runners:
 | `analyte-<tag>-x86_64-windows-setup.exe` | Click-through installer built with Inno Setup 6.7.4 from the same files. Setup types "Engine and app" (default) or "Engine only", and two tasks, ticked by default: start the app at sign-in (with the app only) and add Analyte to the system PATH; silent installs choose with `/TYPE=full` or `/TYPE=engine` |
 | `analyte-<tag>-x86_64-unknown-linux-gnu.tar.gz` | analyte, machines, packaging/linux, LICENSE, README.md (no desktop app: it is Windows only) |
 | `analyte_<version>-1_amd64.deb`, `analyte-<version>-1.x86_64.rpm` | Packages built with nfpm 2.48.0 from the same files |
-| `contract-v1.schema.json` | JSON Schema (draft 2020-12) of every contract v1 request and answer body ([ADR 0032](../adr/0032-machine-model-and-published-schema.md)) |
+| `contract-v1.schema.json` | JSON Schema (draft 2020-12) of every contract v1 request and answer body ([ADR 0033](../adr/0033-machine-model-and-published-schema.md)) |
 | `openapi.json` | OpenAPI 3.1 document of the three calls a lab app answers; its bodies refer to `contract-v1.schema.json` |
 | `machines.json`, `machines.schema.json` | The machine catalog: each shipped model's id (the `source.model` value), name, vendor, protocol, evidence level, ready or blocked, and code systems; with its JSON Schema |
 

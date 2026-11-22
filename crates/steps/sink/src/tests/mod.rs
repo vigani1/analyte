@@ -115,7 +115,7 @@ fn name(value: &str) -> Result<NamespacedId, TextError> {
     })
 }
 
-/// The synthetic example definition's model (ADR 0032).
+/// The synthetic example definition's model (ADR 0033).
 fn model() -> Result<analyte_contract::document::ModelId, analyte_contract::document::InvalidModel>
 {
     analyte_contract::document::ModelId::new("example", "synthetic-astm")

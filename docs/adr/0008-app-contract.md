@@ -6,7 +6,7 @@ destination). Changed by [ADR 0029](0029-lab-app-owns-test-names.md): test codes
 own, and an order test may carry the lab app's name; and by
 [ADR 0030](0030-lab-app-owns-specimen-codes.md): an order's specimen type is
 the machine's own code; and by
-[ADR 0032](0032-machine-model-and-published-schema.md): `source` names the
+[ADR 0033](0033-machine-model-and-published-schema.md): `source` names the
 machine model, and the contract is published as JSON Schema and OpenAPI.
 
 ## Context
@@ -39,7 +39,7 @@ effect, and the app must be able to tell that a request came from its Analyte.
 Every field, status code and order state is in [docs/contract/v1.md](../contract/v1.md);
 the test vectors in `docs/contract/vectors/` cover valid and invalid cases.
 The generated JSON Schema and OpenAPI document beside it describe the same
-bodies for tools ([ADR 0032](0032-machine-model-and-published-schema.md)).
+bodies for tools ([ADR 0033](0033-machine-model-and-published-schema.md)).
 
 ## Why
 

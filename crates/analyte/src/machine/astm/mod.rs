@@ -95,10 +95,7 @@ impl<'a, 'm> Host<'a, 'm> {
             query: Query::Idle,
             queries: Queries::new(settings),
             query_orders: Vec::new(),
-            work: crate::orders::sending::Work::new(
-                settings.orders().filter(|o| o.send_ahead()),
-                machine.machine(),
-            ),
+            work: crate::orders::sending::Work::new(settings.orders().filter(|o| o.send_ahead())),
         })
     }
     async fn receive_bytes(
@@ -261,8 +258,7 @@ impl driver::Drain for Host<'_, '_> {
             Action::Sent(end) => {
                 self.work.astm_finished(self.store, end).await?;
                 for order in self.query_orders.drain(..) {
-                    orders::finished(self.store, &self.machine.machine().model, &order, end)
-                        .await?;
+                    orders::finished(self.store, &order, end).await?;
                 }
             }
         }
@@ -516,7 +512,6 @@ impl Effects for Host<'_, '_> {
         for order in self.query_orders.drain(..) {
             let cleanup = crate::orders::sending::uncertain(
                 self.store,
-                &self.machine.machine().model,
                 &order,
                 analyte_dialog::outcome::Host::ConnectionEndedBeforeConfirmation.as_str(),
             )

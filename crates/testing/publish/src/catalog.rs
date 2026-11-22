@@ -1,4 +1,4 @@
-//! Reads the machine catalog from the shipped `machines/<vendor>/<model>/` folders (ADR 0032).
+//! Reads the machine catalog from the shipped `machines/<vendor>/<model>/` folders (ADR 0033).
 //!
 //! Every fact comes from a file in the model folder; nothing is guessed. The
 //! name is the README's `# ` title and the evidence level its `Level:` line,

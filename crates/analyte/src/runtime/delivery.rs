@@ -70,11 +70,8 @@ pub(crate) async fn report_unconfigured(
     Ok(())
 }
 
-pub(crate) async fn recover(
-    store: &Handle,
-    machines: &[crate::installation::config::Machine],
-) -> Result<(), Error> {
-    crate::orders::sending::recover(store, &crate::orders::models(machines)).await?;
+pub(crate) async fn recover(store: &Handle) -> Result<(), Error> {
+    crate::orders::sending::recover(store).await?;
     let until = deadline()?;
     loop {
         let count = store.request::<_, analyte_store::DeliveryError>(until, |store| {
