@@ -1,4 +1,4 @@
-//! Tests configured outgoing orders: layouts, priority and specimen tables.
+//! Tests configured outgoing orders: layouts, priority tables and specimen code systems.
 use analyte_config::{Draft, Validated};
 use analyte_fixtures::ConfigEdit as _;
 type TestResult = Result<(), Box<dyn std::error::Error>>;
@@ -209,31 +209,30 @@ fn outbound_settings_cannot_apply_to_another_stack() -> TestResult {
     Ok(())
 }
 
+// ADR 0030: Autolyser orders always name the machine's specimen code system.
 fn autolyser_orders() -> String {
-    VENDOR_ORDERS.rewrite(r#"machine="R""#, r#"machine="T""#)
+    format!(
+        "{}specimen_system=\"synthetic\"\n",
+        VENDOR_ORDERS.rewrite(r#"machine="R""#, r#"machine="T""#)
+    )
 }
 
-// Autolyser manual Rev18 chapter 23
+// Autolyser manual Rev18 chapter 23; ADR 0030: every work list names a
+// sample medium, so the machine declares its specimen code system. The S or U
+// code itself is checked when an order is mapped.
 #[test]
-fn autolyser_medium_and_analysis_tables_are_explicit() -> TestResult {
+fn autolyser_medium_system_and_priorities_are_explicit() -> TestResult {
     let definition =
         include_str!("../examples/autolyser.toml").rewrite("download = false", "download = true");
     let section = format!("{}clone=false\n", autolyser_orders());
-    let types = r#"[{app={namespace="synthetic",value="SERUM"},machine="S"}]"#;
-    vendor_config(&definition, &format!("{section}specimen_types={types}\n"))?;
-    for table in [
-        "[]".to_owned(),
-        types.rewrite(r#"machine="S""#, r#"machine="X""#),
-        types.rewrite(
-            "]",
-            &format!(",{}]", types.trim_start_matches('[').trim_end_matches(']')),
+    vendor_config(&definition, &section)?;
+    invalid_key(
+        vendor_config(
+            &definition,
+            &section.rewrite("specimen_system=\"synthetic\"\n", ""),
         ),
-    ] {
-        invalid_key(
-            vendor_config(&definition, &format!("{section}specimen_types={table}\n")),
-            "orders.specimen_types",
-        );
-    }
+        "orders.specimen_system",
+    );
     invalid_key(
         vendor_config(
             &definition,
@@ -244,10 +243,31 @@ fn autolyser_medium_and_analysis_tables_are_explicit() -> TestResult {
     Ok(())
 }
 
-// CLSI LIS02-A2 §8.4.16.1
+// VIDAS BCI Link rev A section 4: Literal has no specimen-type tag, so a
+// specimen code system would never be used and is refused.
 #[test]
-fn astm_specimen_tables_keep_field_ownership() -> TestResult {
-    let section=include_str!("../examples/orders.toml").rewrite("[orders.query]", "specimen_types=[{app={namespace='specimens',value='SERUM'},machine='SER'}]\n[orders.query]");
+fn vidas_refuses_a_specimen_system() -> TestResult {
+    let definition = include_str!("../examples/vidas_literal.toml")
+        .rewrite("download = false", "download = true");
+    vendor_config(&definition, VENDOR_ORDERS)?;
+    invalid_key(
+        vendor_config(
+            &definition,
+            &format!("{VENDOR_ORDERS}specimen_system=\"synthetic\"\n"),
+        ),
+        "orders.specimen_system",
+    );
+    Ok(())
+}
+
+// CLSI LIS02-A2 §8.4.16.1; ADR 0030
+#[test]
+fn astm_specimen_system_goes_with_its_destination() -> TestResult {
+    let plain = include_str!("../examples/orders.toml");
+    let section = plain.rewrite(
+        "[orders.query]",
+        "specimen_system='specimens'\n[orders.query]",
+    );
     let destination = "specimen_type={group='order',record='O',field=16,component=1,repetition=1}";
     config(&format!("{section}\n{destination}"))?;
     for invalid in [
@@ -262,15 +282,13 @@ fn astm_specimen_tables_keep_field_ownership() -> TestResult {
             "orders.astm.specimen_type",
         );
     }
+    // A destination without the machine's specimen code system, or a code
+    // system with nowhere to write it, is refused.
     invalid_key(
-        config(&section.rewrite("machine='SER'", "machine='S^R'")),
-        "orders.specimen_types",
+        config(&format!("{plain}\n{destination}")),
+        "orders.specimen_system",
     );
-    let duplicated = section.rewrite(
-        "machine='SER'}]",
-        "machine='SER'},{app={namespace='specimens',value='SERUM'},machine='OTHER'}]",
-    );
-    invalid_key(config(&duplicated), "orders.specimen_types");
+    invalid_key(config(&section), "orders.specimen_system");
     Ok(())
 }
 

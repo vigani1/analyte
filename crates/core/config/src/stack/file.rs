@@ -64,7 +64,7 @@ pub(super) fn file_stack(
                 .map(|o| hl7_orders(o, machine, path))
                 .transpose()?,
         }))),
-        None | Some(RecordKind::Vendor) => {
+        None => {
             return Err(Error::IncompatibleStack {
                 path: path.into(),
                 reason: "validated file pickup supports only LIS02 or HL7",

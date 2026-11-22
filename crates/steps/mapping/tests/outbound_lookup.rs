@@ -1,5 +1,5 @@
 //! Tests outgoing code checks and explicit tables without inferred mappings.
-use analyte_config::{MachinePriority, OrderPriority, OutboundSpecimen, PriorityCode};
+use analyte_config::{MachinePriority, OrderPriority, PriorityCode};
 use analyte_mapping::{AppOrderPriority, OrderMappingError, map_priority, map_specimen, map_test};
 use analyte_model::{Identifier, NamespacedId};
 type TestResult = Result<(), Box<dyn std::error::Error>>;
@@ -27,26 +27,26 @@ fn order_test_needs_the_machine_code_system_and_keeps_its_spelling() -> TestResu
     }
     Ok(())
 }
-// ADR 0004
+// ADR 0030: an order's specimen type goes out exactly as written, and only in
+// the machine's own specimen code system; nothing is translated or defaulted.
 #[test]
-fn missing_specimen_mapping_never_defaults() -> TestResult {
-    let table = vec![OutboundSpecimen {
-        app: id("lab", "serum")?,
-        machine: Identifier::new("S")?,
-    }];
-    assert_eq!(
-        map_specimen(Some(&table), &id("lab", "serum")?)?
-            .machine
-            .as_str(),
-        "S"
-    );
+fn specimen_type_needs_the_machine_specimen_system_and_keeps_its_spelling() -> TestResult {
+    let system = Identifier::new("lab-specimens")?;
+    let requested = id("lab-specimens", "0Ser")?;
+    assert_eq!(map_specimen(Some(&system), &requested)?, "0Ser");
+    for foreign in [
+        id("LAB-SPECIMENS", "0Ser")?,
+        id("other", "0Ser")?,
+        id("lab-specimens ", "0Ser")?,
+    ] {
+        assert!(
+            matches!(map_specimen(Some(&system), &foreign), Err(OrderMappingError::ForeignSpecimenType(actual)) if actual == foreign)
+        );
+    }
+    // A machine that declares no specimen code system takes no specimen type.
     assert!(matches!(
-        map_specimen(None, &id("lab", "serum")?),
-        Err(OrderMappingError::UnmappedSpecimenType)
-    ));
-    assert!(matches!(
-        map_specimen(Some(&table), &id("other", "serum")?),
-        Err(OrderMappingError::UnmappedSpecimenType)
+        map_specimen(None, &requested),
+        Err(OrderMappingError::ForeignSpecimenType(_))
     ));
     Ok(())
 }

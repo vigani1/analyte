@@ -117,11 +117,12 @@ fn every_example_maps_to_its_documented_stack() -> TestResult {
                 assert_eq!(stack.policy().query_deadline_ms(), 1500);
                 assert_eq!(stack.orders().is_some(), name == "law_orders.toml");
                 if let Some(orders) = &stack.orders() {
-                    assert!(
+                    assert_eq!(
                         orders
                             .tables()
-                            .specimen_types()
-                            .is_some_and(|types| !types.is_empty())
+                            .specimen_system()
+                            .map(analyte_model::Identifier::as_str),
+                        Some("HL70487")
                     );
                     assert_eq!(orders.work().application.as_str(), "HOST");
                 }

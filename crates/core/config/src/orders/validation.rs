@@ -1,5 +1,5 @@
-//! Validates outbound capabilities, priority and specimen translations.
-use super::{Error, Field, Group, MachinePriority, Orders, PriorityCode, invalid};
+//! Validates outbound capabilities, priority translations and the specimen code system.
+use super::{DsrLine, Error, Field, Group, MachinePriority, Orders, PriorityCode, invalid};
 use crate::ParsedMachine;
 use std::collections::HashSet;
 
@@ -98,7 +98,7 @@ impl Orders {
     pub(crate) fn validate(&self, machine: &ParsedMachine<'_>, path: &str) -> Result<(), Error> {
         self.validate_stack(machine, path)?;
         self.validate_query_and_priority_bounds(path)?;
-        self.validate_specimen_tables(machine, path)?;
+        self.validate_specimen_system(machine, path)?;
         self.validate_installed_codes_and_priorities(machine, path)?;
         self.validate_astm_fields(machine, path)?;
         Ok(())
@@ -117,41 +117,55 @@ impl Orders {
         Ok(())
     }
 
-    fn validate_specimen_tables(
+    /// ADR 0030: the machine's specimen code system is declared where its
+    /// protocol writes a specimen type, and nowhere else. The code's own format
+    /// limits are checked when an order is mapped.
+    fn validate_specimen_system(
         &self,
         machine: &ParsedMachine<'_>,
         path: &str,
     ) -> Result<(), Error> {
-        if let Some(types) = &self.specimen_types {
-            let mut seen = HashSet::new();
-            if types.is_empty()
-                || types.len() > 4096
-                || types.iter().any(|t| {
-                    !seen.insert((&t.app.namespace, &t.app.value))
-                        || match machine.choice().record_kind() {
-                            crate::stack::RecordKind::Astm => t
-                                .machine
-                                .as_str()
-                                .bytes()
-                                .any(|b| !(32..127).contains(&b) || b"|\\^&".contains(&b)),
-                            crate::stack::RecordKind::Hl7 => t
-                                .machine
-                                .as_str()
-                                .bytes()
-                                .any(|b| !(32..127).contains(&b) || b"|^~\\&".contains(&b)),
-                            crate::stack::RecordKind::Vendor => {
-                                !machine.choice().has_autolyser_orders()
-                                    || !matches!(t.machine.as_str(), "S" | "U")
-                            }
-                        }
-                })
-            {
-                return Err(invalid(
-                    path,
-                    "orders.specimen_types",
-                    "use unique explicit specimen mappings valid for the selected protocol",
-                ));
-            }
+        let choice = machine.choice();
+        // (required, allowed, reason)
+        let (required, allowed, reason) = if choice.allows_law_section() {
+            // LAW SPM-4 is required (TF-2b); law::validate_orders checks it.
+            return Ok(());
+        } else if choice.has_astm_records() {
+            let destination = self
+                .astm
+                .as_ref()
+                .is_some_and(|a| a.specimen_type.is_some());
+            (
+                destination,
+                destination,
+                "declare specimen_system exactly when [orders.astm] has a specimen_type destination",
+            )
+        } else if choice.has_autolyser_orders() {
+            (
+                true,
+                true,
+                "Autolyser work lists name a sample medium; declare the machine's specimen_system",
+            )
+        } else if choice.has_vidas_assay_codes() {
+            (false, false, "VIDAS Literal has no specimen-type tag")
+        } else if choice.has_hl7_records() {
+            // ORM may leave the specimen out; CWE editions require it, which
+            // validate_hl7_send_codes checks.
+            let displayed = self
+                .hl7
+                .as_ref()
+                .is_some_and(|q| q.lines.iter().any(|l| matches!(l, DsrLine::SpecimenType)));
+            (
+                displayed,
+                displayed || self.hl7_send.is_some(),
+                "HL7 writes a specimen type only in send-ahead orders or a specimen_type display line",
+            )
+        } else {
+            return Ok(());
+        };
+        let declared = self.specimen_system.is_some();
+        if (declared && !allowed) || (required && !declared) {
+            return Err(invalid(path, "orders.specimen_system", reason));
         }
         Ok(())
     }

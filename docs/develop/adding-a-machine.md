@@ -288,8 +288,14 @@ Receiving results does not enable queries or work lists. Append the complete
 when that behavior is confirmed. Order tests arrive from the lab app in the
 machine's own codes: Analyte sends a test only when its namespace is exactly
 `mappings.test_system` (or `codes.test_system`), writes its code as given, and
-rejects any other test with a specific order event. `[orders] priorities`
-stays an explicit translation. `send_ahead` explicitly permits work
+rejects any other test with a specific order event. Specimen types follow
+the same rule ([ADR 0030](../adr/0030-lab-app-owns-specimen-codes.md)):
+`[orders] specimen_system` names the machine's specimen code system, and the
+lab app sends the machine's own specimen code in it. Pick a stable name (for
+HL7 and LAW the coding system the machine expects in SPM-4.3, for example
+`HL70487`) and tell the lab app makers. `[orders] priorities` stays an
+explicit translation: it maps the contract's three priorities to the
+machine's wire codes. `send_ahead` explicitly permits work
 lists. `[orders.query]` requires `deadline_ms` and `when_untrusted`; unavailable,
 stale or late lookup must produce error or silence, never "no orders".
 
@@ -297,9 +303,9 @@ For ASTM, `[orders.astm]` names the specimen, test, priority and action
 locations; the `test` component is where each code goes (4 for `^^^CODE`),
 and optional `test_components` keeps empty components after it (5 writes
 `^^^CODE^`). Optional `position` sends the supplied slot in O field 4;
-`specimen_type` is restricted to O field 16 component 1. `[orders] specimen_types`
-translates exact app namespace/value pairs. A configured destination requires
-that context: no default slot or specimen type is invented.
+`specimen_type` is restricted to O field 16 component 1 and goes together
+with `[orders] specimen_system`. A configured destination requires that
+context: no default slot or specimen type is invented.
 
 For legacy HL7 queries, start from [hl7_orders.toml](../../crates/core/config/examples/hl7_orders.toml).
 It declares QRD filters and DSP layout, with an explicit ACK deadline; it requires
@@ -312,8 +318,9 @@ not treat them as LAW.
 
 Vendor work lists require `download = true` in their vendor section as well as
 `send_ahead = true`. `patient_namespace` must match the app patient's assigning
-system; Autolyser also needs explicit `clone`, specimen medium and cup slot.
-VIDAS cannot transmit specimen type. The current ASTM order layout has no
+system; Autolyser also needs explicit `clone`, `specimen_system` (orders
+then send `S` or `U` in it) and cup slot. VIDAS cannot transmit specimen type
+and refuses `specimen_system`. The current ASTM order layout has no
 patient field and rejects `patient_namespace`. Follow the
 [order guide](../../crates/analyte/ORDERS.md) for exact per-stack restrictions.
 Sent, accepted, done and cancelled are different outcomes. A lost reply or

@@ -48,7 +48,8 @@ pub struct AppOrder {
     pub position: Option<SamplePosition>,
     /// Optional exact patient identifier; the namespace is checked before encoding.
     pub patient: Option<NamespacedId>,
-    /// Specimen type evidence, never substituted for origin metadata.
+    /// The machine's own specimen code in its specimen code system (ADR 0030),
+    /// never substituted for origin metadata.
     pub specimen_type: Option<NamespacedId>,
 }
 
@@ -76,9 +77,15 @@ pub enum OrderMappingError {
     /// Patient assigning system does not match the configured system.
     #[error("patient-namespace-mismatch")]
     PatientNamespace,
-    /// The supplied specimen type has no wire mapping.
-    #[error("unmapped-specimen-type")]
-    UnmappedSpecimenType,
+    /// The specimen type is not in this machine's specimen code system (ADR 0030).
+    #[error("foreign-specimen-type")]
+    ForeignSpecimenType(NamespacedId),
+    /// The machine's protocol has no place for a specimen type.
+    #[error("unsupported-specimen-type")]
+    SpecimenTypeUnsupported,
+    /// The specimen code is one the machine's protocol cannot carry.
+    #[error("unrepresentable-specimen-type")]
+    SpecimenTypeUnrepresentable,
     /// The machine requires a specimen medium supplied by the app.
     #[error("missing-specimen-type")]
     MissingSpecimenType,
@@ -112,16 +119,14 @@ pub(super) fn map_patient<'a>(
 }
 
 pub(super) fn map_specimen<'a>(
-    order: &AppOrder,
-    settings: &'a analyte_config::OrderTables,
+    order: &'a AppOrder,
+    settings: &analyte_config::OrderTables,
 ) -> Result<&'a str, OrderMappingError> {
     let requested = order
         .specimen_type
         .as_ref()
         .ok_or(OrderMappingError::MissingSpecimenType)?;
-    Ok(codes::map_specimen(settings.specimen_types(), requested)?
-        .machine
-        .as_str())
+    codes::map_specimen(settings.specimen_system(), requested)
 }
 /// Borrowed reservation identities and requested test codes; storage remains host-owned.
 pub struct OutboundItem<'a> {

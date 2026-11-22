@@ -44,6 +44,11 @@ warns before running the installer.
   machine's own codes, with an optional name from the lab app, and a test in
   another code system is rejected before sending. Machine definitions name
   their `test_system` instead of a test table.
+- Order specimen types are the machine's own codes too (ADR 0030): machine
+  definitions name one `[orders] specimen_system` instead of a specimen
+  table, a specimen type in another code system or one the protocol cannot
+  carry is rejected before sending, and nothing is defaulted. Priority, unit,
+  QC and identity tables stay: they hold machine and protocol facts.
 - Activity folds a delivery's failed tries in a row into one line (store
   schema 18).
 - Admin page reads stop at their deadline, so a slow page never holds up

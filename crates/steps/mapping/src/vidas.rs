@@ -136,7 +136,7 @@ pub fn map_order(
     }
     // BCI A section 4 has no specimen-type destination; so is origin and si is empty.
     if order.specimen_type.is_some() {
-        return Err(crate::OrderMappingError::UnmappedSpecimenType.into());
+        return Err(crate::OrderMappingError::SpecimenTypeUnsupported.into());
     }
     if order.tests.is_empty()
         || order.tests.len() > 100

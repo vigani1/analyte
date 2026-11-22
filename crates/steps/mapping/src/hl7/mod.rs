@@ -167,9 +167,9 @@ pub enum WireError {
     /// HL7-test-not-in-machine-code-system.
     #[error("HL7-test-not-in-machine-code-system")]
     ForeignTest(#[source] crate::OrderMappingError),
-    /// HL7-unmapped-specimen-type.
-    #[error("HL7-unmapped-specimen-type")]
-    UnmappedSpecimenType(#[source] crate::OrderMappingError),
+    /// HL7-specimen-type-not-in-machine-code-system.
+    #[error("HL7-specimen-type-not-in-machine-code-system")]
+    ForeignSpecimenType(#[source] crate::OrderMappingError),
     /// HL7-unmapped-priority.
     #[error("HL7-unmapped-priority")]
     UnmappedPriority(#[source] crate::OrderMappingError),

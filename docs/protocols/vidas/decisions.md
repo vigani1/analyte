@@ -95,14 +95,16 @@ Wire requirements remain in [checklist.md](checklist.md).
 
 ## 9. Do not overload origin or structural tags with specimen metadata
 
-- **what**: Reject an unmapped specimen type in a download; do not place it
-  in so or si, or infer a section/slot from ci.
+- **what**: Reject any supplied specimen type in a download
+  (`unsupported-specimen-type`); do not place it in so or si, or infer a
+  section/slot from ci. The machine definition also refuses `specimen_system`
+  (ADR 0030).
 - **why**: The known tags describe origin and structure, not those physical
   attributes. Reusing them would make the message syntactically plausible while
   falsely claiming that the analyzer received the requested specimen context.
 - **source**: [Research §4](../../research/machines/vidas.md#4-message-format-complete-field-table-and-assay-codes)
   and [§6](../../research/machines/vidas.md#6-sample-identification--the-critical-distinction).
-- **test**: `unmapped_specimen_type_is_rejected`.
+- **test**: `specimen_type_is_rejected`.
 
 ## 10. Require explicit assay mappings
 

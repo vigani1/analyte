@@ -5,7 +5,9 @@ connection and the translation of machine things. Test names and test lists
 belong to the lab app."). Changes [ADR 0002](0002-config-first.md) (code
 mappings), [ADR 0003](0003-clinical-safety-rules.md) rule 2 (unknown tests),
 [ADR 0008](0008-app-contract.md) (test fields) and the example cause in
-[ADR 0024](0024-one-review-item-per-cause.md).
+[ADR 0024](0024-one-review-item-per-cause.md). Changed by
+[ADR 0030](0030-lab-app-owns-specimen-codes.md): specimen types follow the
+same rule.
 
 ## Context
 
@@ -81,7 +83,11 @@ already keep a test mapping per instrument model; that is where it belongs.
   code for each test.
 - Stored reasons written before this change (`UnknownTest`, "unknown test
   mapping") show as stored text; no released store holds them.
-- Specimen-type and priority translations are unchanged; they are not test
-  names.
+- Specimen-type translations: changed by
+  [ADR 0030](0030-lab-app-owns-specimen-codes.md); orders now carry the
+  machine's own specimen code too. Priority translations stay: the contract's
+  three priorities are its own meanings, not the lab's codes, and the wire
+  codes are protocol meanings Analyte must read (ADR 0030 lists every
+  remaining table and why it stays).
 - The 2026-11-15 Gazelle recording stays as captured; its rerun inputs use
   the new form.

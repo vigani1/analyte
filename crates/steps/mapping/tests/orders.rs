@@ -1,4 +1,4 @@
-//! Tests configured outgoing orders: machine codes as written, explicit priority and specimen mappings.
+//! Tests configured outgoing orders: machine test and specimen codes as written, explicit priorities.
 use analyte_config::{Draft, Validated};
 use analyte_fixtures::ConfigEdit as _;
 use analyte_mapping::{AppOrder, AppOrderPriority, OrderMappingError};
@@ -265,8 +265,17 @@ fn disabled_foreign_or_unmapped_orders_refuse_output() -> TestResult {
     Ok(())
 }
 
-fn context_section() -> String {
-    include_str!("../../../core/config/examples/orders.toml").rewrite("[orders.query]", "specimen_types=[{app={namespace='demo-specimens',value='SERUM'},machine='SER'}]\n[orders.query]")
+// ADR 0030: the specimen code system is declared exactly with its destination.
+fn context_section(specimen: bool) -> String {
+    let section = include_str!("../../../core/config/examples/orders.toml").to_owned();
+    if specimen {
+        section.rewrite(
+            "[orders.query]",
+            "specimen_system='demo-specimens'\n[orders.query]",
+        )
+    } else {
+        section
+    }
 }
 fn context_order() -> Result<AppOrder, analyte_model::TextError> {
     let mut value = order()?;
@@ -277,7 +286,7 @@ fn context_order() -> Result<AppOrder, analyte_model::TextError> {
     });
     value.specimen_type = Some(NamespacedId {
         namespace: Identifier::new("demo-specimens")?,
-        value: Identifier::new("SERUM")?,
+        value: Identifier::new("SER")?,
     });
     Ok(value)
 }
@@ -303,7 +312,8 @@ fn destinations_get_only_explicit_context() -> TestResult {
         ),
         (String::new(), b"O|1|001a||^^^SEND|R||||||N\r".as_slice()),
     ] {
-        let settings = config(&format!("{}\n{destinations}", context_section()))?;
+        let specimen = destinations.contains("specimen_type");
+        let settings = config(&format!("{}\n{destinations}", context_section(specimen)))?;
         assert_eq!(
             map_order(&context_order()?, settings.effective().stack())?.encode(),
             expected
@@ -311,24 +321,32 @@ fn destinations_get_only_explicit_context() -> TestResult {
     }
     Ok(())
 }
-// CLSI LIS02-A2 §8.4.16.1
+// CLSI LIS02-A2 §8.4.16.1; ADR 0030
 #[test]
-fn unmapped_specimen_never_guesses_a_code() -> TestResult {
-    let settings = config(&format!("{}\n{SPECIMEN_TYPE}", context_section()))?;
+fn foreign_specimen_never_guesses_a_code() -> TestResult {
+    let settings = config(&format!("{}\n{SPECIMEN_TYPE}", context_section(true)))?;
     let mut value = context_order()?;
     value.specimen_type.as_mut().ok_or("specimen")?.namespace =
         Identifier::new("different-system")?;
     assert!(matches!(
         map_order(&value, settings.effective().stack()),
         Err(analyte_mapping::astm::OrderError::Shared(
-            OrderMappingError::UnmappedSpecimenType
+            OrderMappingError::ForeignSpecimenType(_)
         ))
     ));
-    // With no configured destination the same unknown value is not transmitted.
+    // With no configured destination the same value is not transmitted.
     assert_eq!(
-        map_order(&value, config(&context_section())?.effective().stack())?.encode(),
+        map_order(&value, config(&context_section(false))?.effective().stack())?.encode(),
         b"O|1|001a||^^^SEND|R||||||N\r"
     );
+    // LIS02 §6: a code holding a delimiter cannot be carried, so it is refused,
+    // never escaped or trimmed.
+    let mut delimited = context_order()?;
+    delimited.specimen_type.as_mut().ok_or("specimen")?.value = Identifier::new("S^R")?;
+    assert!(matches!(
+        map_order(&delimited, settings.effective().stack()),
+        Err(analyte_mapping::astm::OrderError::TextRepertoire)
+    ));
     value.specimen_type = None;
     assert!(matches!(
         map_order(&value, settings.effective().stack()),
@@ -436,7 +454,7 @@ fn dsp_optional_context_uses_explicit_sources() -> TestResult {
         .rewrite(
             "[orders.query]",
             r#"patient_namespace = "patients"
-specimen_types = [{app={namespace="types",value="SERUM"},machine="SER"}]
+specimen_system = "types"
 [orders.query]"#,
         )
         .rewrite(
@@ -478,7 +496,7 @@ specimen_types = [{app={namespace="types",value="SERUM"},machine="SER"}]
     });
     input.specimen_type = Some(NamespacedId {
         namespace: Identifier::new("types")?,
-        value: Identifier::new("SERUM")?,
+        value: Identifier::new("SER")?,
     });
     input.patient = Some(NamespacedId {
         namespace: Identifier::new("patients")?,
@@ -498,6 +516,24 @@ specimen_types = [{app={namespace="types",value="SERUM"},machine="SER"}]
         mapped.get(5..),
         Some([b"007b".to_vec(), b"SER".to_vec(), b"000Patient".to_vec()].as_slice())
     );
+    // ADR 0030: a specimen type in another code system is refused, never shown.
+    input.specimen_type.as_mut().ok_or("specimen")?.namespace = Identifier::new("lab-app")?;
+    assert!(matches!(
+        analyte_mapping::map_display(
+            &input,
+            "order-a",
+            settings
+                .effective()
+                .stack()
+                .hl7_orders()
+                .expect("HL7 order fixture"),
+            settings.effective().stack().limits(),
+        ),
+        Err(analyte_mapping::hl7::OrderError::Shared(
+            OrderMappingError::ForeignSpecimenType(_)
+        ))
+    ));
+    input.specimen_type.as_mut().ok_or("specimen")?.namespace = Identifier::new("types")?;
     input.patient.as_mut().ok_or("patient")?.namespace = Identifier::new("wrong-namespace")?;
     assert!(matches!(
         analyte_mapping::map_display(
@@ -593,7 +629,7 @@ fn hl7_send_writes_the_code_its_system_and_the_lab_app_name() -> TestResult {
     };
     let order = |test: &str| {
         format!(
-            r#"{{"id":"order-1","version":1,"state":"requested","sample_id":"000Ab12","tests":[{test}],"priority":"routine","target_analyzers":null,"expires_at":null,"tombstone":false,"specimen_type":{{"namespace":"types","value":"SERUM"}}}}"#
+            r#"{{"id":"order-1","version":1,"state":"requested","sample_id":"000Ab12","tests":[{test}],"priority":"routine","target_analyzers":null,"expires_at":null,"tombstone":false,"specimen_type":{{"namespace":"L","value":"SER"}}}}"#
         )
     };
     let named = order(r#"{"namespace":"synthetic","value":"TEST","name":"Synthetic test"}"#);

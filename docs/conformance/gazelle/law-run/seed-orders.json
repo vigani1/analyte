@@ -18,8 +18,8 @@
     "expires_at": null,
     "tombstone": false,
     "specimen_type": {
-      "namespace": "types",
-      "value": "SERUM"
+      "namespace": "HL70487",
+      "value": "SER"
     }
   },
   {
@@ -41,8 +41,8 @@
     "expires_at": null,
     "tombstone": false,
     "specimen_type": {
-      "namespace": "types",
-      "value": "SERUM"
+      "namespace": "HL70487",
+      "value": "SER"
     }
   }
 ]

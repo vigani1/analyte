@@ -127,13 +127,14 @@ pub(super) fn law_stack(
     })
 }
 
-/// LAW work names every specimen, so its shared tables must carry specimen mappings.
+/// LAW work names every specimen (SPM-4), so the machine must declare its
+/// specimen code system.
 fn required_specimens(tables: OrderTables, path: &str) -> Result<OrderTables, Error> {
-    if tables.specimen_types().is_none() {
+    if tables.specimen_system().is_none() {
         return Err(invalid(
             path,
-            "orders.specimen_types",
-            "LAW orders require specimen mappings",
+            "orders.specimen_system",
+            "LAW orders require the machine's specimen_system",
         ));
     }
     Ok(tables)

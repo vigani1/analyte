@@ -136,9 +136,10 @@ rejected when the order is mapped. The stack has no specimen-type tag; supplied 
 rather than misusing the origin or specimen-start tags. App patient IDs must
 match `patient_namespace` exactly before their values enter the vendor field.
 
-Autolyser `[orders] specimen_types` maps exact app namespace/value pairs to
-`S` (serum) or `U` (urine); absent tables map no values. Duplicate pairs, unknown
-medium codes and empty supplied tables are rejected. An Autolyser order code
+Autolyser orders require `[orders] specimen_system`, the machine's own
+specimen code system ([ADR 0030](../../../docs/adr/0030-lab-app-owns-specimen-codes.md)):
+an order's specimen type must be in that system and be `S` (serum) or `U`
+(urine) as written, or the order is rejected. An Autolyser order code
 must be exactly four printable bytes as the lab app wrote it (Analyte never
 pads it), or the order is rejected; list mappings use only `T` or `R`.
 Missing patient, specimen medium or cup position in an app order produces a
@@ -181,9 +182,14 @@ coded accepts nonempty qualitative text or a coded value, not a plain number.
 Mismatches retain the original value and park with `ValueKindMismatch`. No
 clinical decisions or numeric conversions are performed.
 
-`[orders]` has no test table. `[orders.astm] test` names the component each
-order code goes in, and optional `test_components` (at least that component,
-at most the syntax limit) keeps empty components after it.
+`[orders]` has no test or specimen table. `[orders.astm] test` names the
+component each order code goes in, and optional `test_components` (at least
+that component, at most the syntax limit) keeps empty components after it.
+`[orders] specimen_system` names the machine's own specimen code system
+(ADR 0030): an order's specimen type is sent only in that system, as written.
+It is required exactly where a specimen type is written (LAW, Autolyser, an
+ASTM `specimen_type` destination, an HL7 `specimen_type` display line, HL7
+CWE send editions) and refused where nothing writes it.
 
 
 HL7 unsolicited orders additionally require `[orders.hl7_send]`, `send_ahead`
@@ -192,7 +198,9 @@ The configured edition selects ORM/O01 or OML/O21. Header applications,
 processing, specimen placement and response deadline are explicit. OBR-4 is
 the order's code, the lab app's optional name and `mappings.test_system`
 (plain, at most 20 bytes); CWE editions require `test_version` (at most 10
-bytes) and CE editions refuse it. Position output is available only in ORM's
+bytes) and CE editions refuse it. SPM-4 (OML) or OBR-15 (ORM) is the order's
+specimen code and `[orders] specimen_system` (plain, at most 20 bytes); CWE
+editions require it and `specimen_version`. Position output is available only in ORM's
 other placer-owned OBR field; an OML position mapping is refused.
 
 ## LAW configuration (results, queries and work)
@@ -211,9 +219,10 @@ implicitly enabled. Local overrides may replace the whole `[law]` policy.
 Container queries use the existing SampleId lookup; all-pending is scoped to
 this analyzer. Append `examples/law_orders.toml` to the LAW definition to enable
 queries and their LAB-28 followups. It declares `[law.work]` headers, explicit
-sample/specimen bindings and shared `[orders]` specimen and priority
-translations; OBR-4 carries the order's code, the lab app's required name and
-`mappings.test_system` (plain, at most 12 bytes). Without that layout,
+sample/specimen bindings and shared `[orders]` priority translations and
+`specimen_system` (plain, at most 12 bytes; SPM-4 carries the order's
+specimen code in it); OBR-4 carries the order's code, the lab app's required
+name and `mappings.test_system` (plain, at most 12 bytes). Without that layout,
 query execution remains disabled. Isolate/parent and rack/tray-position queries
 receive QAK AR (unsupported query), never no-work.
 Isolate/parent needs app-supplied identities in a future contract version.

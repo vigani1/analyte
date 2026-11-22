@@ -62,9 +62,9 @@ pub enum WireError {
     /// LAW item must cover one AWOS test.
     #[error("LAW item must cover one AWOS test")]
     ItemTestCount,
-    /// LAW specimen type unmapped.
-    #[error("LAW specimen type unmapped")]
-    UnmappedSpecimenType(#[source] crate::OrderMappingError),
+    /// LAW specimen type not in the machine's specimen code system.
+    #[error("LAW specimen type not in the machine's specimen code system")]
+    ForeignSpecimenType(#[source] crate::OrderMappingError),
     /// LAW priority unmapped.
     #[error("LAW priority unmapped")]
     UnmappedPriority(#[source] crate::OrderMappingError),

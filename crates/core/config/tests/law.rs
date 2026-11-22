@@ -185,9 +185,16 @@ fn work_requires_bindings_and_allows_send_ahead() -> Result<(), Error> {
             "test_system = \"99LAB\"",
             "test_system = \"99LAB-TOO-LONG\"",
         ),
+        // ADR 0030: SPM-4 writes the machine's specimen code system, so LAW
+        // needs one, plain and within the coding-system width.
+        text.rewrite("specimen_system = \"HL70487\"", ""),
         text.rewrite(
-            "specimen_types = [{app={namespace=\"types\",value=\"SERUM\"},machine=\"SER\"}]",
-            "specimen_types = []",
+            "specimen_system = \"HL70487\"",
+            "specimen_system = \"HL7|0487\"",
+        ),
+        text.rewrite(
+            "specimen_system = \"HL70487\"",
+            "specimen_system = \"HL70487-TOO-LONG\"",
         ),
     ] {
         {

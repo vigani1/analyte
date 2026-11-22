@@ -210,8 +210,9 @@ The one new public read, pending_orders, shares the existing age predicate with
 SampleId lookup and reservations, and shares the restore-aware lookup gate.
 No schema or contract changed.
 
-Config requires explicit `[law.work]` bindings plus shared `[orders]` specimen
-and priority translations. OBR-4 is the order's own code, the lab app's
+Config requires explicit `[law.work]` bindings plus shared `[orders]` priority
+translations and `orders.specimen_system`; SPM-4 is the order's own specimen code in
+that system (ADR 0030). OBR-4 is the order's own code, the lab app's
 required name and `mappings.test_system` (ADR 0029); an order test without a
 name is rejected (`unnamed_send_is_rejected_before_reservation`).
 Configuration permits explicit send-ahead; test: `crates/core/config/tests/law.rs::work_requires_bindings_and_allows_send_ahead`.

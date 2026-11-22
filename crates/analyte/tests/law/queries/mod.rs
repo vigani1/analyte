@@ -57,7 +57,7 @@ fn order(
     );
     fields.insert(
         "specimen_type".into(),
-        serde_json::json!({"namespace":"types","value":"SERUM"}),
+        serde_json::json!({"namespace":"HL70487","value":"SER"}),
     );
     Ok(analyte_contract::decode(&serde_json::to_vec(&value)?)?)
 }

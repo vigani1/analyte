@@ -1,7 +1,7 @@
-//! Checks outgoing test codes against the machine's code system and translates
-//! specimen and priority codes through explicit tables.
+//! Checks outgoing test and specimen codes against the machine's own code
+//! systems and translates contract priorities through the explicit table.
 use crate::orders::{AppOrderPriority, OrderMappingError};
-use analyte_config::{OrderPriority, OutboundSpecimen};
+use analyte_config::OrderPriority;
 use analyte_model::{Identifier, NamespacedId};
 /// Returns the order test's code, exactly as the lab app wrote it, when its
 /// namespace is exactly the machine's own test code system (ADR 0029).
@@ -17,16 +17,19 @@ pub fn map_test<'a>(
         Err(OrderMappingError::ForeignTest(requested.clone()))
     }
 }
-/// Finds an exact app namespace/code in an explicitly configured specimen table.
+/// Returns the order's specimen code, exactly as the lab app wrote it, when
+/// its namespace is exactly the machine's own specimen code system (ADR 0030).
 /// # Errors
-/// Returns `UnmappedSpecimenType` when the table or exact code is absent.
+/// Returns `ForeignSpecimenType` for any other namespace, or when the machine
+/// declares no specimen code system; nothing is translated or defaulted.
 pub fn map_specimen<'a>(
-    table: Option<&'a [OutboundSpecimen]>,
-    requested: &NamespacedId,
-) -> Result<&'a OutboundSpecimen, OrderMappingError> {
-    table
-        .and_then(|table| table.iter().find(|entry| entry.app == *requested))
-        .ok_or(OrderMappingError::UnmappedSpecimenType)
+    specimen_system: Option<&Identifier>,
+    requested: &'a NamespacedId,
+) -> Result<&'a str, OrderMappingError> {
+    match specimen_system {
+        Some(system) if requested.namespace == *system => Ok(requested.value.as_str()),
+        Some(_) | None => Err(OrderMappingError::ForeignSpecimenType(requested.clone())),
+    }
 }
 /// Finds the explicitly configured app priority without interpreting its wire meaning.
 /// # Errors
