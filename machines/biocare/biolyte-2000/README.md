@@ -57,7 +57,7 @@ Research only; no machine recording or official simulator run. No recordings shi
 
 ## Sources
 
-[Research](../../../docs/research/biolyte-2000.md), RS232 and sample identification
+[Research](../../../docs/research/machines/biolyte-2000.md), RS232 and sample identification
 sections: Service Manual 4.2A Appendix VI, pp.13–14, 80–86; reference manual
 V2 Table 3-2, pp.55–58, 63, 140. See [ASTM notes](../../../docs/protocols/astm/README.md).
 

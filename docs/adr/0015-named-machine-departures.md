@@ -6,7 +6,7 @@ day
 ## Context
 
 Strict HL7 report checks and LIS01 record boundaries correctly refuse input
-that some real analyzers send. [Research](../research/machine-departures.md)
+that some real analyzers send. [Research](../research/machines/machine-departures.md)
 found documented packed-frame modes and a vendor example that omits report
 status, but no general license to treat a missing status as final. Loosening
 the shared standard code would hide which rules a lab actually enabled.
@@ -35,7 +35,7 @@ the shared standard code would hide which rules a lab actually enabled.
   until a future contract can carry that evidence.
 
 The variant table and load rules are in
-[adding a machine](../adding-a-machine.md#declare-departures-do-not-program-around-them);
+[adding a machine](../develop/adding-a-machine.md#declare-departures-do-not-program-around-them);
 the protocol behavior is in the [HL7](../protocols/hl7/decisions.md#named-missing-status-interpretations-and-contract-v1-parking)
 and [ASTM](../protocols/astm/decisions.md#evidenced-inbound-record-packing)
 decisions.

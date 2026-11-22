@@ -1,5 +1,9 @@
 # Protocol notes
 
+This folder is for **our notes on each protocol** and the rules its tests
+must cover. Not here: how to add code (see [develop](../develop/README.md))
+or what was learned about one machine (see [machine research](../research/machines/README.md)).
+
 Our own notes on each standard, written in our own words. Each folder holds
 the scope Analyte supports and a conformance checklist that becomes the test
 list for that standard's phase ([plan §13](../plan.md)). Standards documents

@@ -1,5 +1,9 @@
 # App contract
 
+This folder is for **connecting a lab app to Analyte**: the calls the app
+answers and how to check them. Not here: running Analyte (see
+[operations](../operations/README.md)).
+
 [v1.md](v1.md) is the contract between Analyte and a lab app: result
 deliveries, order events and the order feed. [vectors/](vectors/) holds the
 published test vectors; `generate.py` writes them.

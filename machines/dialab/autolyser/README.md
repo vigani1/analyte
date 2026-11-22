@@ -73,7 +73,7 @@ Research only; no machine recording or official simulator run. No recordings shi
 
 ## Sources
 
-[Research](../../../docs/research/autolyser.md), §§2–5: Autolyser / Autolyser
+[Research](../../../docs/research/machines/autolyser.md), §§2–5: Autolyser / Autolyser
 ISE Operator's Manual Rev18 p.119 and chapter 23 pp.175–188; Service Manual
 Rev01. [Autolyser protocol notes](../../../docs/protocols/autolyser/README.md)
 and [versions](../../../docs/protocols/autolyser/versions.md).

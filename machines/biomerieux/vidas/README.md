@@ -58,7 +58,7 @@ Research only; no machine recording or official simulator run. No recordings shi
 
 ## Sources
 
-[Research](../../../docs/research/vidas.md), §§2–6 and 8: BCI Link guides
+[Research](../../../docs/research/machines/vidas.md), §§2–6 and 8: BCI Link guides
 161150-486 A/B §§3-1–3-7, 4-5, 5-1; VIDAS PC User Manual F §§4-14,
 10-24–10-26, 12-18. [VIDAS protocol notes](../../../docs/protocols/vidas/README.md)
 and [version limits](../../../docs/protocols/vidas/versions.md).

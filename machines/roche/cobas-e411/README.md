@@ -60,7 +60,7 @@ Research only; no machine recording or simulator run. No recordings shipped.
 
 ## Sources
 
-- [Research](../../../docs/research/cobas-e411.md), §§2–5 and 8:
+- [Research](../../../docs/research/machines/cobas-e411.md), §§2–5 and 8:
   Host Interface Manual v2.2 B, D, E, F; v2.3 corroborates settings only.
 - [ASTM policy](../../../docs/protocols/astm/decisions.md) and
   [scope](../../../docs/protocols/astm/README.md).

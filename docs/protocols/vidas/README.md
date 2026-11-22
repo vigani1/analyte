@@ -1,7 +1,7 @@
 # VIDAS PC Literal
 
 Evidence level: **documented**. The implementation was built from
-[research notes](../../research/vidas.md), whose sources were BCI Link
+[research notes](../../research/machines/vidas.md), whose sources were BCI Link
 161150-486 revisions A/B and VIDAS PC User Manual F. Synthetic property tests
 are not simulator evidence.
 

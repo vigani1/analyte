@@ -59,7 +59,7 @@ Research only; no machine recording or official simulator run. No recordings shi
 
 ## Sources
 
-[Research](../../../docs/research/iflash-1200.md), §§1–5: YHLO LIS Protocol
+[Research](../../../docs/research/machines/iflash-1200.md), §§1–5: YHLO LIS Protocol
 Manual V1.1 §§1.1, 2.2–2.4 (notably 2.3.4.2 and 2.4.1.2); 1200 Operation
 Manual V3.0. [HL7 notes](../../../docs/protocols/hl7/README.md) and
 [current gaps](../../../docs/context.md#before-machine-configs-phase-7).

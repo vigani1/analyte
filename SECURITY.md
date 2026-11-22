@@ -54,7 +54,7 @@ and checkouts do not keep credentials. Workflow runs from outside
 contributors wait for the maintainer's approval. Release tags (`v*`) are
 protected by a ruleset, so only the maintainer can create, move or delete
 them. Each release stays a draft, with checksums and build provenance, until
-the maintainer has checked it and published it ([releasing](docs/release.md)).
+the maintainer has checked it and published it ([releasing](docs/develop/release.md)).
 
 ## Supported versions
 

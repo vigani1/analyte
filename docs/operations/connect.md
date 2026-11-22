@@ -319,7 +319,7 @@ recovery and order freshness with the app team before clinical connection.
 
 ## Add a machine
 
-Follow [Adding a machine](../adding-a-machine.md) and the
+Follow [Adding a machine](../develop/adding-a-machine.md) and the
 [machine inventory rules](../../machines/README.md). Results, queries and
 send-ahead orders need separate evidence. Do not enable orders just because
 results work. Never infer identity from position or invent units or run keys.

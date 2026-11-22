@@ -2,7 +2,7 @@
 
 Use this guide only when the confirmed vendor interface cannot be expressed by
 an existing protocol and machine configuration. Read the plan and
-[ADR 0012](adr/0012-uniform-layout-and-naming.md) first. A new protocol family,
+[ADR 0012](../adr/0012-uniform-layout-and-naming.md) first. A new protocol family,
 dependency or subsystem outside the plan requires the owner's decision before
 implementation. Obtain the official manual; keep it in ignored `references/`.
 Write notes in our own words and cite sections in tests.
@@ -21,7 +21,7 @@ reason pins.
 
 ## Where each piece lives
 
-This is the code template of [ADR 0012](adr/0012-uniform-layout-and-naming.md).
+This is the code template of [ADR 0012](../adr/0012-uniform-layout-and-naming.md).
 A concern the protocol lacks has no file; a file grows into a folder of the same
 name only for separate responsibilities.
 

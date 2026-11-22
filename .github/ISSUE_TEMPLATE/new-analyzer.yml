@@ -6,7 +6,7 @@ body:
     attributes:
       value: |
         A machine is usually a config file on top of a standard Analyte
-        already speaks. See docs/adding-a-machine.md for what a definition needs.
+        already speaks. See docs/develop/adding-a-machine.md for what a definition needs.
 
         **Do not attach vendor manuals or standards PDFs**, and do not paste text
         or tables from them. Name the documents instead; we keep them outside the

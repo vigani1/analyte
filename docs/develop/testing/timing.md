@@ -21,7 +21,7 @@ only synthetic case labels when looping over scenarios.
 CI runs the tests with cargo-nextest. A few store tests commit to a store
 hundreds of times, each commit a full disk flush, and on Windows runners they
 slowed the disk enough for other tests' deadlines to expire. They share the
-`store-flush-heavy` group in [`.config/nextest.toml`](../../.config/nextest.toml),
+`store-flush-heavy` group in [`.config/nextest.toml`](../../../.config/nextest.toml),
 which runs them one at a time; the tests themselves are unchanged. Add a new
 test to that group only when it does the same kind of repeated flushing.
 

@@ -135,4 +135,4 @@ jobs:
         run: |
           gh release create "$RELEASE_TAG" dist/* --verify-tag --draft \
             --title "Analyte $RELEASE_TAG" \
-            --notes 'Owner review required before publication. See docs/release.md and CHANGELOG.md at this tag. The Windows installer is unsigned for now: SmartScreen warns; choose More info, then Run anyway. Evidence remains documented; these binaries are not real-machine qualification.'
+            --notes 'Owner review required before publication. See docs/develop/release.md and CHANGELOG.md at this tag. The Windows installer is unsigned for now: SmartScreen warns; choose More info, then Run anyway. Evidence remains documented; these binaries are not real-machine qualification.'

@@ -24,7 +24,7 @@ release binary. Never install a build with the test-only `test-hooks` feature.
 Obtain an owner-approved release for the host: the Windows installer
 (`analyte-v<version>-x86_64-windows-setup.exe`), the Linux `.deb` or `.rpm`, or
 the archive for a manual installation. Follow the checksum and GitHub
-provenance verification in [release instructions](../release.md), including
+provenance verification in [release instructions](../develop/release.md), including
 checking the source tag and commit. If no approved release exists, ask the
 maintainer for an approved pilot build; there is no release-download command in
 Analyte. There is no automatic updater. Keep the verified previous release for

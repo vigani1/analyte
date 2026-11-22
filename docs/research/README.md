@@ -1,5 +1,9 @@
 # Analyzer research: overview
 
+This folder is for **background research**: history, not current rules.
+[machines/](machines/README.md) holds one file per analyzer;
+[other/](other/README.md) holds research on other software and practices.
+
 Research dates: 2026-11-14 to 2026-11-15. Research only. Nothing was built, and
 no machine was connected or tested. It was done for the Echo Med lab and its
 six analyzers, before the decision to build Analyte; "our app" means Echo Med,
@@ -12,18 +16,18 @@ file before relying on any detail below.
 
 | File                               | What it covers                                                                                   |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------ |
-| [cobas-e411.md](cobas-e411.md)     | Roche cobas e 411: serial ASTM, host query, barcode and rack/disk position workflows, host codes |
-| [iflash-1200.md](iflash-1200.md)   | YHLO iFlash 1200: HL7 2.3.1 over MLLP (TCP), query flow, barcode and position workflows          |
-| [vidas.md](vidas.md)               | bioMérieux VIDAS (original, five sections) via VIDAS PC: proprietary "Literal" protocol          |
-| [autolyser.md](autolyser.md)       | Dialab Autolyser (REF 20010D): proprietary host-polled protocol, from the official manual        |
-| [biolyte-2000.md](biolyte-2000.md) | BioCARE Biolyte 2000: serial ASTM, results only                                                  |
-| [swelab.md](swelab.md)             | Boule Swelab (likely Lumi, 5-part CBC): HL7 over the network, typed or handheld-scanned IDs      |
-| [bridge.md](bridge.md)             | OpenELIS Analyzer Bridge 3.5.0 internals: transports, parsers, output, deployment, gaps          |
-| [middleware-practices.md](middleware-practices.md) | Independent research: how integration engines and lab middleware are built, standards notes, failure stories, overlooked topics, Rust ecosystem |
-| [idea-check.md](idea-check.md)     | Check of the ideas borrowed from other projects: keep, change or replace                         |
-| [rust-practices.md](rust-practices.md) | Rules and tooling from large Rust projects and company guidelines                            |
-| [machine-departures.md](machine-departures.md) | Named machine departures: which vendor differences may be typed, scoped exceptions (led to ADR 0015) |
-| [law-status-notifications.md](law-status-notifications.md) | LAW status notifications without observations: what the profile allows (led to ADR 0016) |
+| [cobas-e411.md](machines/cobas-e411.md)     | Roche cobas e 411: serial ASTM, host query, barcode and rack/disk position workflows, host codes |
+| [iflash-1200.md](machines/iflash-1200.md)   | YHLO iFlash 1200: HL7 2.3.1 over MLLP (TCP), query flow, barcode and position workflows          |
+| [vidas.md](machines/vidas.md)               | bioMérieux VIDAS (original, five sections) via VIDAS PC: proprietary "Literal" protocol          |
+| [autolyser.md](machines/autolyser.md)       | Dialab Autolyser (REF 20010D): proprietary host-polled protocol, from the official manual        |
+| [biolyte-2000.md](machines/biolyte-2000.md) | BioCARE Biolyte 2000: serial ASTM, results only                                                  |
+| [swelab.md](machines/swelab.md)             | Boule Swelab (likely Lumi, 5-part CBC): HL7 over the network, typed or handheld-scanned IDs      |
+| [bridge.md](other/bridge.md)             | OpenELIS Analyzer Bridge 3.5.0 internals: transports, parsers, output, deployment, gaps          |
+| [middleware-practices.md](other/middleware-practices.md) | Independent research: how integration engines and lab middleware are built, standards notes, failure stories, overlooked topics, Rust ecosystem |
+| [idea-check.md](other/idea-check.md)     | Check of the ideas borrowed from other projects: keep, change or replace                         |
+| [rust-practices.md](other/rust-practices.md) | Rules and tooling from large Rust projects and company guidelines                            |
+| [machine-departures.md](machines/machine-departures.md) | Named machine departures: which vendor differences may be typed, scoped exceptions (led to ADR 0015) |
+| [law-status-notifications.md](other/law-status-notifications.md) | LAW status notifications without observations: what the profile allows (led to ADR 0016) |
 
 ## The machines at a glance
 
@@ -55,14 +59,14 @@ Shared work, needed for any machine:
 
 - **Our receiver.** A route in our app that accepts the Bridge's FHIR bundles over
   HTTPS with Basic credentials (no OpenELIS pairing needed), ignores repeats by
-  bundle ID, and stores before answering. See [bridge.md §7](bridge.md).
+  bundle ID, and stores before answering. See [bridge.md §7](other/bridge.md).
 - **Running it on the lab PC.** Run the Bridge as a Java service, not in Docker:
   Docker Desktop on Windows cannot reach COM ports, and four machines use cables.
-  See [bridge.md §9](bridge.md).
+  See [bridge.md §9](other/bridge.md).
 - **Keeping our build small.** Ship our profiles separately, put each proprietary
   driver in its own package, pin one upstream release, and offer generic fixes
   upstream. MPL-2.0 only obliges us to share changed Bridge files if we give the
-  program to another organisation. See [bridge.md §10](bridge.md).
+  program to another organisation. See [bridge.md §10](other/bridge.md).
 
 ## Barcode or slot: does it still work without barcodes?
 
@@ -82,7 +86,7 @@ What this means:
 
 1. **Matching by slot alone is not safe and mostly not possible.** Four machines
    never send the slot, and the Bridge currently **drops** the slot even from the
-   two that do ([bridge.md §8](bridge.md)). A slot is also reused all day, so it
+   two that do ([bridge.md §8](other/bridge.md)). A slot is also reused all day, so it
    cannot identify a patient by itself.
 2. **What works everywhere is getting our tube code onto the machine.** There are
    three ways:

@@ -2,7 +2,7 @@
 ; the files, then runs install.ps1, so manual and installer setups share one
 ; set of service, permission and firewall rules (install.ps1 adds the Windows
 ; Firewall rule for analyzers; uninstall.ps1 removes it). Unsigned for now: see
-; docs/release.md.
+; docs/develop/release.md.
 ;
 ; Two setup types (ADR 0019 and the owner's 2026-11-21 engine-only request):
 ; the engine with the desktop app, or the engine only, set up from PowerShell

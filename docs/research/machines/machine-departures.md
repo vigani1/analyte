@@ -14,7 +14,7 @@ reviewed, typed departures with narrow scope, explicit meaning and retained
 evidence. A transport accommodation such as record packing is different from
 assigning clinical meaning to an absent status. The latter needs an explicit
 machine statement; repeated final-looking values in a capture cannot prove
-that all future results are final. See [proposed ADR 0015](../adr/0015-named-machine-departures.md).
+that all future results are final. See [proposed ADR 0015](../../adr/0015-named-machine-departures.md).
 
 ## What public sources establish
 
@@ -47,7 +47,7 @@ identifies its edition and archival status. Neither public catalog summary
 is enough to derive packed-frame acceptance rules; Analyte's strict decision
 cites LIS01 §§3.3.2, 6.3.1.1 and 8.3.1.1 from its standard work.
 [CLSI LIS02, Abstract/Additional Details][clsi-lis02], [LIS01 sample][clsi-lis01],
-[Analyte ASTM decision](../protocols/astm/decisions.md#strict-records-and-semantic-selectors-standards-pass-3)
+[Analyte ASTM decision](../../protocols/astm/decisions.md#strict-records-and-semantic-selectors-standards-pass-3)
 
 ## How middleware accommodates differences
 
@@ -97,13 +97,13 @@ corrections, reruns, partial panels and restart behavior end to end.
 
 Inspected on the task's main-based checkout, 2026-11-16:
 
-- [ADR 0012 §5](../adr/0012-uniform-layout-and-naming.md) already
+- [ADR 0012 §5](../../adr/0012-uniform-layout-and-naming.md) already
   requires named departures in `machine.toml` and a Departures README section.
-  [machines/README.md](../../machines/README.md) provides that template.
-- [schema/mod.rs](../../crates/core/config/src/schema/mod.rs) has
+  [machines/README.md](../../../machines/README.md) provides that template.
+- [schema/mod.rs](../../../crates/core/config/src/schema/mod.rs) has
   `Deviation { name, key, reason }`, machine `deviations`, and override
   replacement of that list. Names/reasons are descriptive, not executable.
-- [validation/stack.rs](../../crates/core/config/src/validation/stack.rs)
+- [validation/stack.rs](../../../crates/core/config/src/validation/stack.rs)
   allowlists compatibility keys and requires a declaration for selected
   nonstandard options: UTF-8 in 2.3.1, ASTM frame limit/checksum hex case,
   deadlines/contention, HL7 terminator and escape preservation. It rejects
@@ -111,10 +111,10 @@ Inspected on the task's main-based checkout, 2026-11-16:
   proposed per-departure evidence contract or a closed variant for each rule.
 - `Terminator` already selects CR, CRLF or LF. `ChecksumHex` permits strict
   hex or lowercase hex; neither permits a missing or wrong checksum.
-  [stack/hl7.rs](../../crates/core/config/src/stack/hl7.rs) and
-  [stack/astm.rs](../../crates/core/config/src/stack/astm.rs) expose validated
+  [stack/hl7.rs](../../../crates/core/config/src/stack/hl7.rs) and
+  [stack/astm.rs](../../../crates/core/config/src/stack/astm.rs) expose validated
   settings, not a generic bypass.
-- Neither requested new behavior is available. The [HL7 decision](../protocols/hl7/decisions.md#park-reports-until-required-context-is-established)
+- Neither requested new behavior is available. The [HL7 decision](../../protocols/hl7/decisions.md#park-reports-until-required-context-is-established)
   parks missing context; the ASTM decision above refuses packing. Existing
   effective-config storage supplies provenance but is not an applied-departure
   ledger. Dedicated admin/delivery visibility is a proposed requirement, not
