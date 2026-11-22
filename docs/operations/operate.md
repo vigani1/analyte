@@ -180,7 +180,11 @@ nothing is written before **Save**.
    When the adapter has its own serial number, the site file gets `usb_serial`,
    so Analyte finds the machine again if the COM number changes; otherwise it
    gets the port name as `endpoint`. A number Windows made up (it contains `&`)
-   is not used. For a machine that connects to Analyte over the network,
+   is not used. Below the port, **Cable settings** (baud rate, data bits,
+   parity, stop bits, flow control) start at the manual's suggestion; match
+   them to the analyzer's LIS/host settings screen
+   ([Serial cable settings](connect.md#serial-cable-settings)). For a machine
+   that connects to Analyte over the network,
    choose one of this PC's addresses (each shown with its network adapter) or
    every network card, and the port; then type that address and port into the
    machine's host (LIS) settings. For a machine Analyte connects to, enter the

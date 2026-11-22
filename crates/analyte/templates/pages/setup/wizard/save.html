@@ -12,6 +12,9 @@
 <dt>Machine</dt><dd>{{ wizard.id }}</dd>
 <dt>Model</dt><dd>{{ summary.model }}</dd>
 <dt>Connection</dt><dd>{% call display::hover(summary.connection.shown, summary.connection.exact) %}{% endcall %}</dd>
+{%- if let Some(cable) = summary.cable %}
+<dt>Cable settings</dt><dd>{{ cable }}</dd>
+{%- endif %}
 {%- if let Some(accepts) = summary.accepts %}
 <dt>Accepts connections from</dt><dd>
 {%- match accepts %}

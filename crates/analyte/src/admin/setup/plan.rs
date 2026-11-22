@@ -4,7 +4,7 @@
 //! [`save_blocking`] writes, under the write lock. The connection test finds its
 //! target here too, refusing a port or address a running machine uses.
 use super::{
-    Definition, Running, Setup, SetupError, Shipped, Via, definitions,
+    Definition, Running, Setup, SetupError, Shipped, Via, cable, definitions,
     lab_apps::{self, SiteLabApp},
     site,
     wizard::{self, listen},
@@ -120,6 +120,11 @@ pub(in crate::admin) struct Choice {
     pub(super) folder: Option<String>,
     pub(super) lab_app: Option<String>,
     pub(super) allowed_peers: Option<String>,
+    pub(super) baud: Option<String>,
+    pub(super) data_bits: Option<String>,
+    pub(super) parity: Option<String>,
+    pub(super) stop_bits: Option<String>,
+    pub(super) flow_control: Option<String>,
 }
 
 /// The devices the draft lets connect (ADR 0026): addresses typed with
@@ -198,6 +203,28 @@ pub(super) fn connection_of(
     }
 }
 
+/// The serial cable settings the draft chooses for a definition of transport
+/// `kind` (ADR 0031): every typed value, the rest from the definition's
+/// suggestion; none for other links, which refuse typed cable settings.
+fn serial_of(
+    kind: Option<TransportKind>,
+    definition: &std::path::Path,
+    draft: &wizard::Draft,
+) -> Result<Option<analyte_config::SerialValues>, SetupError> {
+    match kind {
+        Some(TransportKind::Serial) => {
+            cable::chosen(draft, cable::suggested(definition).as_ref()).map(Some)
+        }
+        _ if cable::given(draft) => Err(SetupError::Connection(
+            "only a machine on a serial cable has cable settings (baud rate, parity and the rest)",
+        )),
+        Some(
+            TransportKind::TcpServer | TransportKind::TcpClient | TransportKind::WatchedFolder,
+        )
+        | None => Ok(None),
+    }
+}
+
 /// Everything a save or a test needs, checked and validated in memory.
 pub(super) struct Plan {
     pub(super) program: String,
@@ -227,13 +254,14 @@ pub(super) fn plan(setup: &Setup, id: &str, draft: &wizard::Draft) -> Result<Pla
     let kind = kind_of(&definition);
     let connection = connection_of(kind, draft)?;
     let peers = peers_of(kind, draft)?;
+    let serial = serial_of(kind, &definition, draft)?;
     let lab_app = Identifier::new(draft.lab_app.as_deref().unwrap_or_default().trim())
         .map_err(|_| SetupError::NoLabAppChosen)?;
     let current = crate::installation::config::read(&installed.site)?;
     let scan = lab_apps::scan(setup.config())?;
     let candidate = site::candidate(
         &current,
-        (&connection, peers.as_ref()),
+        (&connection, peers.as_ref(), serial.as_ref()),
         &lab_app,
         &scan.file,
         &scan.settings(),
@@ -262,6 +290,16 @@ pub(super) fn plan(setup: &Setup, id: &str, draft: &wizard::Draft) -> Result<Pla
     })
 }
 
+impl Plan {
+    /// The serial cable settings in use in words, with what differs from the
+    /// definition's suggestion; none for other links.
+    pub(super) fn cable(&self) -> Option<String> {
+        let effective = self.validated.effective();
+        cable::of(effective.stack())
+            .map(|serial| cable::summary(serial, effective.serial_suggestion()))
+    }
+}
+
 /// What a save wrote, for the page, the command line and the audit row.
 pub(super) struct Saved {
     pub(super) digest: [u8; 32],
@@ -272,6 +310,9 @@ pub(super) struct Saved {
     pub(super) peers: Option<AllowedPeers>,
     /// The lab app it sends results to.
     pub(super) lab_app: analyte_config::Destination,
+    /// The serial cable settings in words, with what differs from the
+    /// definition's suggestion; none for other links.
+    pub(super) cable: Option<String>,
     /// The save moved a lab app into `lab-apps.toml`.
     pub(super) moved: bool,
     pub(super) backups: Vec<PathBuf>,
@@ -281,9 +322,13 @@ impl Saved {
     /// The audit reason: the connection and the lab app saved through `via`.
     pub(super) fn reason(&self, via: Via) -> String {
         format!(
-            "{} saved: {}, lab app {} ({}){}",
+            "{} saved: {}{}, lab app {} ({}){}",
             via.machines(),
             site::describe(&self.connection),
+            self.cable
+                .as_deref()
+                .map(|cable| format!(", cable {cable}"))
+                .unwrap_or_default(),
             self.lab_app.name.as_str(),
             self.lab_app.base_url.as_str(),
             if self.moved {
@@ -311,6 +356,7 @@ pub(super) fn save_blocking(
     let _writing = setup.writing()?;
     let plan = checked(setup, id, draft)?;
     let moved = plan.lab_apps.is_some();
+    let cable = plan.cable();
     let written = site::apply(
         setup.config(),
         &plan.program,
@@ -326,6 +372,7 @@ pub(super) fn save_blocking(
         connection: plan.connection,
         peers: plan.peers,
         lab_app: plan.validated.effective().site().destination.clone(),
+        cable,
         moved,
         backups: written.backups,
     })
@@ -430,8 +477,9 @@ pub(super) fn listen_target(
             )
             .ok_or(SetupError::NothingToListen)?
             .map_err(SetupError::SerialSettings)?;
+            let words = cable::of(stack).map(cable::words).unwrap_or_default();
             Ok((
-                format!("Serial port {name}"),
+                format!("Serial port {name}, {words}"),
                 listen::Target::Serial {
                     name,
                     settings,

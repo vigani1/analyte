@@ -104,13 +104,25 @@ Record unresolved items explicitly and withhold activation until resolved.
 
 | Part | Owns |
 | --- | --- |
-| Shipped definition | Protocol, mappings, named departures and evidence |
-| Site settings | Device endpoint and app destination, with credential names only |
+| Shipped definition | Protocol, mappings, named departures and evidence; for serial, the manual's usual cable settings as a suggestion |
+| Site settings | Device endpoint, app destination with credential names only, and the serial cable settings the lab chose |
 | Local overrides | Explicit replacement sections for this installation |
 
 All layers use TOML, a text format with named sections. Unknown keys fail.
 Sections and lists replace in full; overrides do not merge individual list
-entries and cannot change evidence. See the [schema](../../crates/core/config/src/schema/mod.rs)
+entries and cannot change evidence.
+
+A serial definition's `[transport.serial]` is the **suggestion** from the
+manual, not the lab's setting: each lab chooses the values its analyzer's LIS
+screen shows in Setup step 2 (or with `analyte machines set --baud ...`), and
+Save keeps them in the site file's `[serial]`
+([ADR 0031](../adr/0031-lab-chooses-serial-cable-settings.md)). Write the
+values the manual states; leave out a value it does not state (for example an
+unknown flow control) rather than guessing. Analyte then refuses to run the
+machine until the lab chooses it. Only the standard values are accepted: baud
+rates 300 to 115200 from the list in
+[connect](../operations/connect.md#serial-cable-settings), 5 to 8 data bits,
+parity none/odd/even, 1 or 2 stop bits, flow control none/hardware/software. See the [schema](../../crates/core/config/src/schema/mod.rs)
 and [validation rules](../../crates/core/config/src/validation/mod.rs) before editing.
 
 ### Complete synthetic example

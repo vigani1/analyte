@@ -4,6 +4,7 @@ use super::*;
 use std::sync::Mutex;
 
 mod budget;
+mod cable;
 mod command;
 mod lab_apps;
 mod removal;
@@ -30,6 +31,9 @@ struct Fixture {
     written: Arc<Mutex<Vec<u8>>>,
     /// What the fake serial port sends once after it is opened; `MARKER` by default.
     input: Arc<Mutex<Vec<u8>>>,
+    /// The line settings each open of the fake serial port asked for, as
+    /// the serial layer writes them for support.
+    opened: Arc<Mutex<Vec<String>>>,
     /// The server's state; weak, so shutdown never waits for the fixture.
     state: std::sync::Weak<Context>,
 }
@@ -87,10 +91,21 @@ const BOUNDS: Bounds = Bounds {
     write: WRITE_BUDGET,
 };
 
-fn seams(
-    root: &std::path::Path,
+/// What the fake serial port shares with a test: the bytes written to it,
+/// the bytes it sends once, and the line settings of each open.
+struct Shared {
     written: Arc<Mutex<Vec<u8>>>,
     input: Arc<Mutex<Vec<u8>>>,
+    opened: Arc<Mutex<Vec<String>>>,
+}
+
+fn seams(
+    root: &std::path::Path,
+    Shared {
+        written,
+        input,
+        opened,
+    }: Shared,
     limits: crate::admin::setup::Limits,
 ) -> crate::admin::setup::Seams {
     use analyte_transport::serial::Listed;
@@ -126,7 +141,11 @@ fn seams(
                 },
             ])
         }),
-        open: Arc::new(move |_, _| {
+        open: Arc::new(move |_, settings| {
+            opened
+                .lock()
+                .map_err(|_| std::io::Error::other("poisoned"))?
+                .push(format!("{settings:?}"));
             Ok(Box::new(FakePort {
                 input: input
                     .lock()
@@ -241,9 +260,18 @@ async fn start_program_with(
     let bearer = crate::admin::rotate_token(&data)?;
     let written = Arc::new(Mutex::new(Vec::new()));
     let input = Arc::new(Mutex::new(MARKER.to_vec()));
+    let opened = Arc::new(Mutex::new(Vec::new()));
     let setup = Arc::new(crate::admin::setup::Setup::new(
         &program,
-        seams(root, written.clone(), input.clone(), bounds.listen),
+        seams(
+            root,
+            Shared {
+                written: written.clone(),
+                input: input.clone(),
+                opened: opened.clone(),
+            },
+            bounds.listen,
+        ),
     ));
     let (restart, (closing, closed)) = (setup.restart_requested(), watch::channel(false));
     let socket = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
@@ -287,6 +315,7 @@ async fn start_program_with(
         _stop: stop,
         written,
         input,
+        opened,
         state: weak,
     })
 }

@@ -1,5 +1,5 @@
 //! Holds validated transport settings and converts raw settings.
-use super::{Error, Serial, Transport, TransportKind, invalid};
+use super::{Error, Serial, Transport, TransportKind};
 
 /// TCP connection direction; cannot select serial or folder transport.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -67,13 +67,17 @@ pub(super) fn tcp(transport: &Transport, path: &str) -> Result<TcpTransport, Err
 
 pub(super) fn stream(transport: &Transport, path: &str) -> Result<StreamTransport, Error> {
     let kind = match transport.kind {
-        TransportKind::Serial => StreamKind::Serial(transport.serial.clone().ok_or_else(|| {
-            invalid(
-                path,
-                "transport.serial",
-                "serial transport requires settings",
-            )
-        })?),
+        TransportKind::Serial => StreamKind::Serial(
+            transport
+                .serial
+                .clone()
+                .unwrap_or_default()
+                .complete()
+                .map_err(|setting| Error::MissingSerialSetting {
+                    path: path.into(),
+                    setting,
+                })?,
+        ),
         TransportKind::TcpClient | TransportKind::TcpServer => {
             StreamKind::Tcp(tcp(transport, path)?.role)
         }

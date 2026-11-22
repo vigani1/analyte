@@ -31,10 +31,14 @@ pub(super) fn site_file(id: &Identifier) -> String {
     format!("{}.site.toml", id.as_str())
 }
 
-/// The installers' starter site settings for a new machine: the retention only;
-/// no connection and no lab app, which the setup page chooses.
-pub(super) fn starter_site(id: &Identifier) -> String {
-    format!(
+/// The installers' starter site settings for a new machine: the retention,
+/// and the serial cable settings when `analyte machines add` chose some (ADR
+/// 0031); no connection and no lab app, which the setup steps choose.
+pub(super) fn starter_site(
+    id: &Identifier,
+    serial: Option<&analyte_config::SerialValues>,
+) -> Result<String, SetupError> {
+    let mut text = format!(
         concat!(
             "# Starter site settings for {}, written by the Analyte setup page. The setup\n",
             "# page fills in the connection and picks the lab app, which is set once on\n",
@@ -44,7 +48,16 @@ pub(super) fn starter_site(id: &Identifier) -> String {
             "retention = \"keep\"\n"
         ),
         id.as_str()
-    )
+    );
+    if let Some(serial) = serial {
+        let mut table = toml::Table::new();
+        table.insert(
+            "serial".into(),
+            toml::Value::try_from(serial).map_err(SetupError::SiteText)?,
+        );
+        text.push_str(&toml::to_string(&table).map_err(SetupError::SiteText)?);
+    }
+    Ok(text)
 }
 
 /// The first `machine-N` not listed, compared without case as file names are on Windows.

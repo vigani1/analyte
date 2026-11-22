@@ -11,35 +11,53 @@ pub(super) fn validate_transport(m: &ParsedMachine<'_>, path: &str) -> Result<()
             "use 1 through 300000 milliseconds",
         ));
     }
-    if (t.kind == TransportKind::Serial) != t.serial.is_some() {
+    if t.kind != TransportKind::Serial && t.serial.is_some() {
         return Err(invalid(
             path,
             "transport.serial",
-            "provide full serial settings only for serial transport",
+            "provide serial settings only for serial transport",
         ));
     }
     if let Some(s) = &t.serial {
-        if !(1..=4_000_000).contains(&s.baud) {
-            return Err(invalid(
-                path,
-                "transport.serial.baud",
-                "use a baud rate from 1 through 4000000",
-            ));
-        }
-        if !(5..=8).contains(&s.data_bits) {
-            return Err(invalid(
-                path,
-                "transport.serial.data_bits",
-                "use 5 through 8 data bits",
-            ));
-        }
-        if !(1..=2).contains(&s.stop_bits) {
-            return Err(invalid(
-                path,
-                "transport.serial.stop_bits",
-                "use one or two stop bits",
-            ));
-        }
+        check_serial(s, path, "transport.serial")?;
+    }
+    Ok(())
+}
+
+/// Refuses a serial value outside the standard list; `table` names where the
+/// values were written (`transport.serial` or the site's `serial`). An absent
+/// value is checked when the layers are complete, never assumed.
+pub(crate) fn check_serial(
+    values: &crate::SerialValues,
+    path: &str,
+    table: &str,
+) -> Result<(), Error> {
+    if let Some(baud) = values.baud
+        && !analyte_transport::serial::BAUD_RATES.contains(&baud)
+    {
+        return Err(invalid(
+            path,
+            &format!("{table}.baud"),
+            "use a standard baud rate: 300, 600, 1200, 2400, 4800, 9600, 19200, 38400, 57600 or 115200",
+        ));
+    }
+    if let Some(bits) = values.data_bits
+        && !(5..=8).contains(&bits)
+    {
+        return Err(invalid(
+            path,
+            &format!("{table}.data_bits"),
+            "use 5 through 8 data bits",
+        ));
+    }
+    if let Some(stops) = values.stop_bits
+        && !(1..=2).contains(&stops)
+    {
+        return Err(invalid(
+            path,
+            &format!("{table}.stop_bits"),
+            "use one or two stop bits",
+        ));
     }
     Ok(())
 }

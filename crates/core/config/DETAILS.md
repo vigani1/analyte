@@ -27,7 +27,22 @@ and loading turns them into one `Endpoint` value. An override's `endpoint` or
 wildcard, multicast or broadcast address) as `AllowedPeers`; a connection from
 any other address is closed unread and unanswered
 ([ADR 0026](../../../docs/adr/0026-accept-only-the-machine.md)). Other links refuse
-the key, and overrides cannot set it. Local overrides contain
+the key, and overrides cannot set it.
+
+A serial definition's `[transport.serial]` is the manual's suggestion; any of
+its five values (`baud`, `data_bits`, `parity`, `stop_bits`, `flow_control`)
+may be absent. The site's optional `[serial]` is the lab's choice
+([ADR 0031](../../../docs/adr/0031-lab-chooses-serial-cable-settings.md)):
+each value it writes replaces the definition's, before the definition is
+validated, and it accepts no other key. Validation builds the complete
+`Serial` or refuses with `Error::MissingSerialSetting` naming the first
+setting without a value; none is assumed. Every layer's values must be on the
+standard lists: `analyte_transport::serial::BAUD_RATES` (300 to 115200), 5 to
+8 data bits, 1 or 2 stop bits. A site `[serial]` is refused for a link that is
+not serial and beside an overrides `[transport]` (one place). The snapshot
+holds the resolved values under `transport.serial` and never the site's
+`serial`, so the digest follows the values in use; `Effective::serial_suggestion`
+returns the definition's own values for display. Local overrides contain
 `schema_version = 1` plus optional replacement sections. Sections and lists
 replace in full; there is no implicit array merging or expression language.
 All three layers reject unknown keys. Overrides cannot change the machine-wide

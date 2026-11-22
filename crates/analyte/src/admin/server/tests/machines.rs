@@ -46,6 +46,7 @@ fn running(
         model: Some(format!("Model of {name}")),
         connection,
         allowed_peers: None,
+        cable: None,
         lab_app: Identifier::new("main-lab")?,
     })
 }

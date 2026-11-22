@@ -80,7 +80,11 @@ fn same_path(left: &std::path::Path, right: &std::path::Path) -> bool {
         .eq_ignore_ascii_case(&right.to_string_lossy())
 }
 
-fn add_blocking(setup: &Setup, id: &Identifier) -> Result<(PathBuf, site::Written), SetupError> {
+fn add_blocking(
+    setup: &Setup,
+    id: &Identifier,
+    serial: Option<&analyte_config::SerialValues>,
+) -> Result<(PathBuf, site::Written), SetupError> {
     let _writing = setup.writing()?;
     let config = setup.config();
     let (program, listed) = site::entries(config)?;
@@ -100,7 +104,7 @@ fn add_blocking(setup: &Setup, id: &Identifier) -> Result<(PathBuf, site::Writte
     let written = site::commit(
         config,
         &[
-            (path.clone(), entries::starter_site(id)),
+            (path.clone(), entries::starter_site(id, serial)?),
             (config.to_owned(), edited),
         ],
     )?;
@@ -135,14 +139,19 @@ impl Added {
 }
 
 /// Checks the name, refuses a listed one, asks for `same_analyzer` when the
-/// name has stored history, then adds the entry and its starter site file.
+/// name has stored history, then adds the entry and its starter site file,
+/// with the serial cable settings `serial` when given (ADR 0031).
 pub(super) async fn add_machine(
     setup: &Arc<Setup>,
     store: &analyte_store::Handle,
     name: &str,
     same_analyzer: bool,
+    serial: Option<analyte_config::SerialValues>,
 ) -> Result<Added, SetupError> {
     let id = entries::name(name)?;
+    if let Some(serial) = &serial {
+        serial.check(&entries::site_file(&id))?;
+    }
     // A listed name is refused as such before its history is looked at;
     // `add_blocking` checks again under the write lock.
     let wanted = id.clone();
@@ -158,7 +167,10 @@ pub(super) async fn add_machine(
         return Err(SetupError::HistoryNotConfirmed(id.as_str().into()));
     }
     let machine = id.clone();
-    let (path, written) = on_files(setup, move |setup| add_blocking(setup, &machine)).await?;
+    let (path, written) = on_files(setup, move |setup| {
+        add_blocking(setup, &machine, serial.as_ref())
+    })
+    .await?;
     Ok(Added {
         id,
         path,
@@ -178,7 +190,7 @@ pub(in crate::admin) async fn add(
         return refuse(&SetupError::IncompleteForm(RELOAD));
     };
     let same = addition.same_analyzer.as_deref() == Some("yes");
-    let added = match add_machine(&state.setup, &state.store, &addition.name, same).await {
+    let added = match add_machine(&state.setup, &state.store, &addition.name, same, None).await {
         Ok(added) => added,
         Err(error) => return refuse(&error),
     };

@@ -696,6 +696,12 @@ fn running_facts(
             value: Value::Text(accepts),
         });
     }
+    if let Some(cable) = &machine.cable {
+        facts.push(Fact {
+            term: "Cable settings",
+            value: Value::Text(cable.clone()),
+        });
+    }
     facts.extend([
         Fact {
             term: "Last data",

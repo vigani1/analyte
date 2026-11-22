@@ -461,6 +461,15 @@ async fn connection(
     if link == Link::TcpServer {
         checks.push(devices(what, machine));
     }
+    let effective = machine.snapshot().effective();
+    if let Some(serial) = crate::admin::setup::cable::of(effective.stack()) {
+        // The lab chose these to match the analyzer's screen; a difference
+        // from the manual is shown, not judged.
+        checks.push(ok(
+            format!("{what} cable"),
+            crate::admin::setup::cable::summary(serial, effective.serial_suggestion()),
+        ));
+    }
     checks
 }
 
