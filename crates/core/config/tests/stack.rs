@@ -146,7 +146,7 @@ fn every_example_maps_to_its_documented_stack() -> TestResult {
                 assert!(stack.orders().is_none());
             }
             Stack::Autolyser(stack) => {
-                assert_eq!(stack.policy().poll_ms, 1000);
+                assert_eq!(stack.poll_ms(), 1000);
                 assert_eq!(stack.settings().codes().test_system.as_str(), "synthetic");
                 assert!(stack.orders().is_none());
             }

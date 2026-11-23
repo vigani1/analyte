@@ -193,3 +193,9 @@ commands; `analyte doctor` checks that the group exists.
 | Let someone sign in | `Add-LocalGroupMember -Group "Analyte users" -Member "LABPC\anna"` |
 | Stop someone signing in | `Remove-LocalGroupMember -Group "Analyte users" -Member "LABPC\anna"` |
 | Who may sign in | `Get-LocalGroupMember -Group "Analyte users"` |
+
+For an Autolyser model that leaves the poll cadence to the lab, pass
+`--poll-seconds <1..300>` to `analyte machines set` or `machines test`.
+`machines models` lists the question alongside any `--choice NAME=VALUE`
+settings. `machines list --json` exposes the saved
+`autolyser_poll_seconds` and `doctor` reports the interval in use.

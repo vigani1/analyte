@@ -475,6 +475,12 @@ async fn connection(
         // cable, a difference from the manual is shown, not judged.
         checks.push(ok(format!("{what} analyzer settings"), choices));
     }
+    if let analyte_config::Stack::Autolyser(stack) = effective.stack() {
+        checks.push(ok(
+            format!("{what} report poll interval"),
+            format!("{} ms", stack.poll_ms()),
+        ));
+    }
     if effective.records_only() {
         // Record only is the lab's choice for a first visit (ADR 0034); it
         // is reported, not judged: nothing goes to a lab app by design.

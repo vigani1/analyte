@@ -63,6 +63,7 @@ impl fmt::Display for DepartureMeaning {
         f.write_str(match self {
             Self::FinalReportFromDocumentation => "FinalReportFromDocumentation",
             Self::FinalObservationFromDocumentation => "FinalObservationFromDocumentation",
+            Self::ProductionFromDocumentation => "ProductionFromDocumentation",
             Self::PackedRecords => "PackedRecords",
             Self::WireCompatibility => "WireCompatibility",
             Self::ControlCharacterKept => "ControlCharacterKept",

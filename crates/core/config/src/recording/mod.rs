@@ -440,6 +440,13 @@ pub fn load(model: (&str, &str), site: (&str, &str)) -> Result<Validated, Error>
             "a record-only site file has a [recording] table",
         )
     })?;
+    if chosen.autolyser_poll_seconds.is_some() {
+        return Err(invalid(
+            site.0,
+            "autolyser_poll_seconds",
+            "record only takes its poll interval under [recording]",
+        ));
+    }
     if !chosen.choices.is_empty() {
         return Err(invalid(
             site.0,

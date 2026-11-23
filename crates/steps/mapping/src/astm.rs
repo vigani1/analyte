@@ -59,12 +59,41 @@ pub fn map(
     let mut output = grouping::message(
         &source,
         &crate::RecordSettings {
+            absent_astm_processing: syntax.absent_processing().is_some(),
             mappings,
             limits: settings,
         },
         input,
         None,
     )?;
+    if let Some(declaration) = syntax.absent_processing()
+        && let Some(header) = message.records().first()
+        && header.field(12).is_none_or(|field| field.raw().is_empty())
+    {
+        let position = Position {
+            record: 1,
+            field: 12,
+        };
+        output
+            .applied_departures
+            .push(analyte_model::AppliedDeparture {
+                rule: crate::identifier(declaration.tag(), position)?,
+                declaration: declaration.evidence_snapshot()?,
+                standard: crate::identifier("LIS02-A2 section 6.12", position)?,
+                record: position.record,
+                field: position.field,
+                source: crate::text("Absent or empty H.12; source unchanged", position)?,
+                meaning: analyte_model::DepartureMeaning::ProductionFromDocumentation,
+                coordinates: crate::identifier("syntax_bytes", position)?,
+                spans: crate::list(
+                    vec![
+                        analyte_model::DepartureSpan::try_from(0..header.raw().len())
+                            .map_err(|reason| Error::Structure { position, reason })?,
+                    ],
+                    position,
+                )?,
+            });
+    }
     note_control_characters(message, &mut output)?;
     Ok(output)
 }

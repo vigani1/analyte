@@ -192,7 +192,7 @@ pub struct Choice {
     /// model and --lab-app). Recorded messages are never delivered.
     #[arg(long)]
     connect_normally: bool,
-    /// Record only, Autolyser: seconds between asks for the next report, 1 to 3600.
+    /// Autolyser: seconds between report polls, when the model or capture profile asks.
     #[arg(long, value_name = "SECONDS")]
     poll_seconds: Option<String>,
     /// Record only, Autolyser: whether its reports carry controls: yes or no.
@@ -268,12 +268,17 @@ impl Choice {
         if let Some(lab_app) = self.lab_app {
             draft.lab_app = Some(lab_app);
         }
+        let was_recording = plan::recording::chosen(&draft);
         if self.record_only {
             draft.mode = Some(plan::recording::RECORD.to_owned());
             draft.lab_app = None;
         }
         if self.connect_normally {
             draft.mode = None;
+        }
+        if was_recording != plan::recording::chosen(&draft) {
+            // Normal operation and capture use separate site answers and bounds.
+            draft.poll_seconds = None;
         }
         draft.poll_seconds = self.poll_seconds.or(draft.poll_seconds);
         draft.controls = self.reports_carry_controls.or(draft.controls);
@@ -353,6 +358,9 @@ fn models(seams: &Seams) -> Result<Outcome, Failure> {
             say(&format!("  {note}"))?;
         }
         if let Shipped::Ready { path, .. } = &definition.state {
+            if plan::asks_autolyser_poll(path) {
+                say("  --poll-seconds <1..300>: seconds between report polls (required)")?;
+            }
             for choice in choices::declared(path) {
                 say(&format!(
                     "  --choice {}=<{}>: {}{}",
@@ -457,6 +465,8 @@ pub(super) struct Listed {
     /// Each of the model's own choices the files load now (ADR 0032); empty
     /// when it declares none.
     pub(super) choices: Vec<ListedChoice>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) autolyser_poll_seconds: Option<u32>,
     /// The choices in words, with what differs from the suggestion.
     pub(super) choices_words: Option<String>,
     /// Its site file asks for record only (ADR 0034): nothing is sent to a lab app.
@@ -580,6 +590,10 @@ pub(super) fn settings_rows(installation: &Installation) -> Result<Vec<Listed>, 
             live: None,
             cable,
             choices: listed_choices,
+            autolyser_poll_seconds: table
+                .get("autolyser_poll_seconds")
+                .and_then(toml::Value::as_integer)
+                .and_then(|seconds| u32::try_from(seconds).ok()),
             choices_words: chosen.and_then(choices::summary),
             record_only: table.contains_key("recording"),
             id,
@@ -858,6 +872,12 @@ fn keep_saved_choices(setup: &Setup, id: &str, draft: &mut Draft) -> Result<(), 
         .and_then(|text| text.parse::<toml::Table>().ok())
         .unwrap_or_default();
     choices::keep_saved(draft, &table, &choices::declared(&model.path));
+    if !plan::recording::chosen(draft)
+        && plan::asks_autolyser_poll(&model.path)
+        && draft.poll_seconds.is_none()
+    {
+        draft.poll_seconds = plan::saved_autolyser_poll(&table);
+    }
     Ok(())
 }
 
@@ -941,31 +961,11 @@ fn fill(setup: &Setup, id: &str, draft: &mut Draft, ask: Ask) -> Result<bool, Fa
         asked = true;
         ask_connection(setup, kind, draft, ask)?;
     }
-    let declared = if records_only {
-        asked |= ask_recording(&model.path, draft, ask)?;
-        Vec::new()
+    asked |= if records_only {
+        ask_recording(&model.path, draft, ask)?
     } else {
-        choices::declared(&model.path)
+        ask_model_choices(&model.path, draft, ask)?
     };
-    for choice in choices::missing(draft, &declared) {
-        asked = true;
-        let options: Vec<ask::Choice> = choice
-            .values
-            .iter()
-            .map(|value| ask::Choice {
-                value: value.value.as_str().to_owned(),
-                label: value.label.as_str().to_owned(),
-            })
-            .collect();
-        let question = format!(
-            "Step 2, Analyzer settings: {}? The model suggests none; {}",
-            choice.label.as_str(),
-            choices::hint(choice.kind).to_lowercase()
-        );
-        if let Some(value) = ask.choose(&question, &options)? {
-            draft.choices.insert(choice.name.as_str().to_owned(), value);
-        }
-    }
     if kind == Some(TransportKind::Serial) {
         for setting in cable::missing(draft, cable::suggested(&model.path).as_ref()) {
             asked = true;
@@ -1007,6 +1007,36 @@ fn fill(setup: &Setup, id: &str, draft: &mut Draft, ask: Ask) -> Result<bool, Fa
             )?;
         }
         draft.lab_app = ask.choose("Which lab app does it send results to?", &choices)?;
+    }
+    Ok(asked)
+}
+
+/// Asks the settings a normal model declares when no saved answer exists.
+fn ask_model_choices(definition: &Path, draft: &mut Draft, ask: Ask) -> Result<bool, Failure> {
+    let mut asked = false;
+    if plan::asks_autolyser_poll(definition) && draft.poll_seconds.is_none() {
+        asked = true;
+        draft.poll_seconds =
+            ask.line("Step 2, Analyzer settings: seconds between report polls (1 to 300)")?;
+    }
+    for choice in choices::missing(draft, &choices::declared(definition)) {
+        asked = true;
+        let options: Vec<ask::Choice> = choice
+            .values
+            .iter()
+            .map(|value| ask::Choice {
+                value: value.value.as_str().to_owned(),
+                label: value.label.as_str().to_owned(),
+            })
+            .collect();
+        let question = format!(
+            "Step 2, Analyzer settings: {}? The model suggests none; {}",
+            choice.label.as_str(),
+            choices::hint(choice.kind).to_lowercase()
+        );
+        if let Some(value) = ask.choose(&question, &options)? {
+            draft.choices.insert(choice.name.as_str().to_owned(), value);
+        }
     }
     Ok(asked)
 }
