@@ -35,6 +35,7 @@ fn program(
     }
     program.set_loopback_destination_for_test("demo", url.into())?;
     program.set_loopback_store_budget_for_test("demo", analyte_fixtures::STORE_BUDGET)?;
+    program.set_shutdown_io_budget_for_test(analyte_fixtures::STORE_BUDGET)?;
     // Any order poll that wrongly ran for this destination would show at once.
     program.set_loopback_poll_interval_for_test("demo", Duration::from_millis(1))?;
     let secrets = crate::installation::secrets::Environment::load_with(&program, |name| {
@@ -194,7 +195,7 @@ async fn removed_machine_result_is_delivered_once() -> Result<(), Error> {
     .await?;
     assert!(removed.starts_with("HTTP/1.1 200"), "{removed}");
     stop.send(()).map_err(|_| "service stop receiver lost")?;
-    tokio::time::timeout(Duration::from_secs(10), owner).await???;
+    tokio::time::timeout(analyte_fixtures::HANG_GUARD, owner).await???;
     let kept = Program::load(&file)?;
     assert!(kept.machines().is_empty() && kept.awaiting_setup().is_empty());
     let names: Vec<&str> = kept
@@ -279,7 +280,7 @@ async fn removed_machine_result_is_delivered_once() -> Result<(), Error> {
         "the finished worker stopped the service"
     );
     stop.send(()).map_err(|_| "service stop receiver lost")?;
-    tokio::time::timeout(Duration::from_secs(10), owner).await???;
+    tokio::time::timeout(analyte_fixtures::HANG_GUARD, owner).await???;
     let state: String = rusqlite::Connection::open(root.join("data/analyte.db"))?.query_row(
         "SELECT state FROM outbox",
         [],

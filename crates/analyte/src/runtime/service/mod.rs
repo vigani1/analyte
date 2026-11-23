@@ -196,8 +196,9 @@ pub(super) async fn serve_with(
         watchdog,
         ready,
     } = supervision;
-    let shutdown_bound =
-        super::hooks::shutdown_bound(&program, mode, watchdog.as_deref(), shutdown_bound)?;
+    let (shutdown_bound, io_budget) =
+        super::hooks::shutdown_budgets(&program, mode, watchdog.as_deref(), shutdown_bound)?;
+    let delivery_budget = io_budget.unwrap_or(crate::runtime::delivery::SHUTDOWN_BUDGET);
     let watchdog = match watchdog {
         Some(watchdog) => watchdog,
         None => Arc::new(crate::runtime::shutdown::Watchdog::new(
@@ -237,7 +238,7 @@ pub(super) async fn serve_with(
         });
     }
     let (delivery_stop, mut delivery_owners) =
-        start_delivery(destinations, &store, &secrets, &watchdog);
+        start_delivery(destinations, &store, &secrets, &watchdog, delivery_budget);
     let (shutdown, stopping) = watch::channel(false);
     let mut alert_owners = start_alerts(&program, &store, &stopping, &watchdog, reach);
     let mut machines = start_machines(&mut program, &store, &stopping, &admin_states, &watchdog);
@@ -265,6 +266,9 @@ pub(super) async fn serve_with(
         delivery_stop,
         close_transports: machines.close_transports,
         captures: machines.captures,
+        delivery_budget,
+        capture_budget: io_budget.unwrap_or(machine::capture::SHUTDOWN_BUDGET),
+        store_budget: io_budget.unwrap_or(OWNER_SHUTDOWN_BUDGET),
     }
     .finish(store, store_component)
     .await?;
@@ -307,7 +311,7 @@ async fn prepare_service(
     let admin = match startup {
         Ok(admin) => admin,
         Err(error) => {
-            close_store(store).await?;
+            close_store(store, OWNER_SHUTDOWN_BUDGET).await?;
             return Err(error);
         }
     };
@@ -377,6 +381,9 @@ fn start_machines(
 }
 
 struct Draining {
+    delivery_budget: Duration,
+    capture_budget: Duration,
+    store_budget: Duration,
     captures: Vec<Arc<machine::capture::Capture>>,
     alert_owners: JoinSet<Result<(), Error>>,
     admin_owners: JoinSet<Result<(), Error>>,
@@ -402,6 +409,9 @@ impl Draining {
             delivery_stop,
             close_transports,
             captures,
+            delivery_budget,
+            capture_budget,
+            store_budget,
         } = self;
         let until = tokio::time::Instant::now()
             .checked_add(RECEIVE_COMMIT_BUDGET)
@@ -439,14 +449,13 @@ impl Draining {
             while admin_owners.join_next().await.is_some() {}
         }
         delivery_stop.send_replace(true);
-        let delivery_drained =
-            tokio::time::timeout(crate::runtime::delivery::SHUTDOWN_BUDGET, async {
-                while let Some(owner) = delivery_owners.join_next().await {
-                    owner??;
-                }
-                Ok::<_, Error>(())
-            })
-            .await;
+        let delivery_drained = tokio::time::timeout(delivery_budget, async {
+            while let Some(owner) = delivery_owners.join_next().await {
+                owner??;
+            }
+            Ok::<_, Error>(())
+        })
+        .await;
         if !matches!(delivery_drained, Ok(Ok(()))) {
             delivery_owners.abort_all();
             while delivery_owners.join_next().await.is_some() {}
@@ -466,9 +475,9 @@ impl Draining {
         for capture in captures {
             let mut capture =
                 Arc::try_unwrap(capture).map_err(|_| Failure::CaptureOwnershipRetained)?;
-            capture.close().await;
+            capture.close(capture_budget).await;
         }
-        close_store(store).await?;
+        close_store(store, store_budget).await?;
         drop(store_component);
         alerts_drained.map_err(Failure::AlertShutdownTimeout)??;
         admin_drained.map_err(Failure::AdminShutdownExceeded5Seconds)??;
@@ -479,14 +488,10 @@ impl Draining {
     }
 }
 
-async fn close_store(store: Arc<Handle>) -> Result<(), Error> {
+async fn close_store(store: Arc<Handle>, budget: Duration) -> Result<(), Error> {
     let mut store = Arc::try_unwrap(store).map_err(|_| Failure::StoreOwnershipRetained)?;
     store
-        .shutdown(
-            Instant::now()
-                .checked_add(OWNER_SHUTDOWN_BUDGET)
-                .unwrap_or(Instant::now()),
-        )
+        .shutdown(Instant::now().checked_add(budget).unwrap_or(Instant::now()))
         .await?;
     drop(store);
     Ok(())
@@ -587,6 +592,7 @@ fn start_delivery(
     store: &Arc<Handle>,
     secrets: &Arc<crate::installation::secrets::Environment>,
     watchdog: &crate::runtime::shutdown::Watchdog,
+    delivery_budget: Duration,
 ) -> (
     watch::Sender<bool>,
     JoinSet<Result<DeliveryExit, DeliveryOwnerError>>,
@@ -617,7 +623,7 @@ fn start_delivery(
         delivery_owners.spawn(async move {
             let _component = component;
             analyte_sink::Worker::for_destination(&store, &destination, secrets.as_ref())
-                .run_draining(stop, crate::runtime::delivery::SHUTDOWN_BUDGET)
+                .run_draining(stop, delivery_budget)
                 .await
                 .map(|()| DeliveryExit::Stopped)
                 .map_err(DeliveryOwnerError::from)
@@ -641,7 +647,7 @@ fn start_delivery(
             let _delivering = Delivering(flag);
             let stopping = stop.clone();
             analyte_sink::Worker::for_destination(&store, &destination, secrets.as_ref())
-                .run_until_delivered(stop, crate::runtime::delivery::SHUTDOWN_BUDGET)
+                .run_until_delivered(stop, delivery_budget)
                 .await
                 .map_err(DeliveryOwnerError::from)?;
             Ok(if *stopping.borrow() {

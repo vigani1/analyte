@@ -5,11 +5,11 @@ use std::{sync::Arc, time::Duration};
 #[cfg(feature = "test-hooks")]
 mod enabled;
 #[cfg(not(feature = "test-hooks"))]
-pub(crate) use disabled::{destination, shutdown_bound, stall};
+pub(crate) use disabled::{destination, shutdown_budgets, stall};
 #[cfg(feature = "test-hooks")]
 pub use enabled::serve_loopback_test;
 #[cfg(feature = "test-hooks")]
-pub(crate) use enabled::{destination, shutdown_bound, stall};
+pub(crate) use enabled::{destination, shutdown_budgets, stall};
 
 pub(crate) fn publish_store_probes(
     program: &Program,
@@ -64,13 +64,13 @@ mod disabled {
             limits,
         )?)
     }
-    pub(crate) fn shutdown_bound(
+    pub(crate) fn shutdown_budgets(
         _: &Program,
         _: ServiceMode,
         _: Option<&crate::runtime::shutdown::Watchdog>,
         bound: Duration,
-    ) -> Result<Duration, Error> {
-        Ok(bound)
+    ) -> Result<(Duration, Option<Duration>), Error> {
+        Ok((bound, None))
     }
     pub(crate) async fn stall(_: &Program, _: &Arc<analyte_store::Handle>) -> Result<(), Error> {
         std::future::ready(Ok(())).await

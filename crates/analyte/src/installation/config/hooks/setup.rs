@@ -29,6 +29,17 @@ impl Program {
         Ok(())
     }
 
+    /// Allows synthetic delivery, capture and store workers more time to finish disk I/O.
+    /// # Errors
+    /// Rejects budgets outside 5 through 60 seconds.
+    pub fn set_shutdown_io_budget_for_test(&mut self, budget: Duration) -> Result<(), Error> {
+        if !(Duration::from_secs(5)..=Duration::from_secs(60)).contains(&budget) {
+            return Err(Error::InvalidTestShutdownIoBudget);
+        }
+        self.hooks.shutdown_io_budget = Some(budget);
+        Ok(())
+    }
+
     /// Pauses after an Autolyser exchange commits, before another poll.
     /// # Errors
     /// Rejects unknown machines and non-injected listeners.

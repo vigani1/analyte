@@ -37,20 +37,28 @@ pub(crate) fn destination(
         )?)
     }
 }
-pub(crate) fn shutdown_bound(
+pub(crate) fn shutdown_budgets(
     program: &Program,
     mode: ServiceMode,
     watchdog: Option<&crate::runtime::shutdown::Watchdog>,
     bound: Duration,
-) -> Result<Duration, Error> {
+) -> Result<(Duration, Option<Duration>), Error> {
     let loopback = mode.is_loopback();
+    if !loopback && program.hooks.shutdown_io_budget.is_some() {
+        return Err(Error::ShutdownTestServiceRequired);
+    }
     if program.hooks.stall_store_on_shutdown {
         if !loopback || watchdog.is_some() {
             return Err(Error::ShutdownTestServiceRequired);
         }
-        Ok(Duration::from_millis(500))
+        Ok((Duration::from_millis(500), None))
     } else {
-        Ok(bound)
+        // Leave the normal bound available for the other shutdown stages.
+        let io = program.hooks.shutdown_io_budget;
+        Ok((
+            bound.saturating_add(io.unwrap_or_default().saturating_mul(3)),
+            io,
+        ))
     }
 }
 pub(crate) async fn stall(

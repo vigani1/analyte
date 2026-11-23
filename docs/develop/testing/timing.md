@@ -9,7 +9,10 @@ limits.
 scale factor of three: a 180-second hang guard and a 30-second store wait.
 These allow scheduler delays and durable writes on loaded Windows runners;
 expiry still fails the test. Synthetic loopback service fixtures explicitly
-apply the store allowance to delivery workers and order pollers. Production
+apply the store allowance to delivery workers and order pollers. Tests that
+restart during delivery or finish a wire capture can also use it for shutdown
+I/O. Keep blocking operator checks outside an active synthetic conversation
+so the peer can respond to each poll promptly. Production
 entry points reject these overrides, and production deadlines stay unchanged.
 Do not use these allowances for a protocol timer whose expiry is under test.
 Keep those configured deadlines and quiet-window assertions exact. Name waits
