@@ -14,7 +14,9 @@ No secret belongs in machine config or logs.
 `encode_delivery` checks production eligibility before creating one UUIDv7 and
 serializing the contract conversion. Commit it atomically with its interpretation.
 `encode_order_event` freezes a validated event (including its host-created ID) for
-`enqueue_order_event`. The store keeps result and per-order event ordering apart.
+the store. The machine order path (`../../core/store/src/orders/machine_orders/mod.rs`)
+queues the event in the same transaction as the order history. The store keeps
+result and per-order event ordering apart.
 
 One Worker owns delivery for the store's configured destinations. `deliver_once`
 claims, signs the stored bytes with fresh metadata, sends, classifies, then records

@@ -20,6 +20,7 @@ pub enum Error {
         source: analyte_contract::document::InvalidModel,
     },
     /// A required installation setting or relationship is refused.
+    #[cfg(feature = "test-hooks")]
     #[error("LAW gates require injected loopback listener")]
     MissingLawGateListener,
     /// A required installation setting or relationship is refused.
@@ -32,9 +33,11 @@ pub enum Error {
     #[error("capture machine ID must be one directory component")]
     InvalidCaptureMachineId,
     /// A required installation setting or relationship is refused.
+    #[cfg(feature = "test-hooks")]
     #[error("closing hook requires a loopback TCP client")]
     InvalidClosingHookTransport,
     /// A required installation setting or relationship is refused.
+    #[cfg(feature = "test-hooks")]
     #[error("commit hook requires injected ASTM loopback listener")]
     MissingAstmCommitListener,
     /// The test-only ASTM pause found no ASTM stream machine to pause.
@@ -42,6 +45,7 @@ pub enum Error {
     #[error("ASTM pause marker requires an ASTM stream machine")]
     MissingAstmPauseMachine,
     /// A required installation setting or relationship is refused.
+    #[cfg(feature = "test-hooks")]
     #[error("commit hook requires injected LAW loopback listener")]
     MissingLawCommitListener,
     /// A required installation setting or relationship is refused.
@@ -127,27 +131,35 @@ pub enum Error {
     #[error("store record limit is smaller than machine message or effective config")]
     StoreRecordLimitTooSmall,
     /// A required installation setting or relationship is refused.
+    #[cfg(feature = "test-hooks")]
     #[error("stuck shutdown hook requires injected loopback listeners")]
     MissingShutdownListeners,
     /// A required installation setting or relationship is refused.
+    #[cfg(feature = "test-hooks")]
     #[error("test listener does not match configured loopback server")]
     TestListenerMismatch,
     /// A required installation setting or relationship is refused.
+    #[cfg(feature = "test-hooks")]
     #[error("test polling requires a loopback override and a bounded interval")]
     InvalidTestPolling,
     /// A synthetic store wait must remain bounded behind a loopback override.
+    #[cfg(feature = "test-hooks")]
     #[error("test store budget requires a loopback override and 1 through 60 seconds")]
     InvalidTestStoreBudget,
     /// An ASTM frame budget override must apply to a bounded synthetic server.
+    #[cfg(feature = "test-hooks")]
     #[error("test ASTM frame budget requires a loopback ASTM server and 1 through 60 seconds")]
     InvalidTestAstmFrameBudget,
     /// The synthetic shutdown I/O budget must stay within fixture limits.
+    #[cfg(feature = "test-hooks")]
     #[error("test shutdown I/O budget must be 5 through 60 seconds")]
     InvalidTestShutdownIoBudget,
     /// A required installation setting or relationship is refused.
+    #[cfg(feature = "test-hooks")]
     #[error("unknown test destination")]
     UnknownTestDestination,
     /// A required installation setting or relationship is refused.
+    #[cfg(feature = "test-hooks")]
     #[error("unknown test machine")]
     UnknownTestMachine,
     /// Preserves the original loading or validation failure.
@@ -214,13 +226,9 @@ impl Error {
             Self::Integer(cause) => cause,
             Self::DefinitionOutsideModelFolder { source, .. } => source,
             Self::UnsupportedChecksumMode
-            | Self::MissingLawGateListener
             | Self::AdminAddressNotLoopback
             | Self::AdminPortOutOfRange
             | Self::InvalidCaptureMachineId
-            | Self::InvalidClosingHookTransport
-            | Self::MissingAstmCommitListener
-            | Self::MissingLawCommitListener
             | Self::ConfigurationTooLarge
             | Self::ConfigurationHasNoParentDirectory
             | Self::DuplicateMachineIdentity
@@ -235,17 +243,22 @@ impl Error {
             | Self::InvalidProgramLimits
             | Self::InvalidSigningRotation
             | Self::ReceiveTimeoutTooLong
-            | Self::StoreRecordLimitTooSmall
+            | Self::StoreRecordLimitTooSmall => return None,
+
+            #[cfg(feature = "test-hooks")]
+            Self::MissingAstmPauseMachine
+            | Self::MissingLawGateListener
+            | Self::InvalidClosingHookTransport
+            | Self::MissingAstmCommitListener
+            | Self::MissingLawCommitListener
             | Self::MissingShutdownListeners
             | Self::TestListenerMismatch
-            | Self::InvalidTestShutdownIoBudget
+            | Self::InvalidTestPolling
             | Self::InvalidTestStoreBudget
             | Self::InvalidTestAstmFrameBudget
-            | Self::InvalidTestPolling
+            | Self::InvalidTestShutdownIoBudget
             | Self::UnknownTestDestination
             | Self::UnknownTestMachine => return None,
-            #[cfg(feature = "test-hooks")]
-            Self::MissingAstmPauseMachine => return None,
         };
         cause.downcast_ref::<T>()
     }

@@ -23,7 +23,6 @@ subtle = { workspace = true }
 analyte-poct = { workspace = true }
 analyte-vidas = { workspace = true }
 analyte-autolyser = { workspace = true }
-quick-xml = { workspace = true }
 serde_json = { workspace = true }
 analyte-sink = { workspace = true }
 thiserror = { workspace = true }
