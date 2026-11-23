@@ -20,14 +20,7 @@ pub(super) async fn replay(
     cache: Cache,
 ) -> Result<(), Error> {
     let temp = tempfile::tempdir()?;
-    let path = config(temp.path(), false)?;
-    let definition = analyte_fixtures::definition_path(temp.path(), "hl7");
-    let wire_settings = std::fs::read_to_string(folder.join("replay-orders.toml"))?;
-    let configured = std::fs::read_to_string(&definition)?
-        .rewrite("deviations = []", &wire_settings)
-        .rewrite(r#"edition = "v251""#, r#"edition = "v231""#);
-    std::fs::write(definition, configured)?;
-
+    let path = display_config(temp.path(), folder)?;
     let reference = Reference::start(
         &temp.path().join("receiver.db"),
         TcpListener::bind("127.0.0.1:0").await?,
@@ -37,15 +30,7 @@ pub(super) async fn replay(
     let loaded = program(&path, &reference.url)?;
     let live = match cache {
         Cache::Seeded => {
-            let order = include_str!("../../../../docs/contract/vectors/order.json");
-            let next = order.rewrite("order-1", "order-2").rewrite("TEST", "NEXT");
-            reference
-                .receiver
-                .seed(vec![
-                    analyte_contract::decode(order.as_bytes())?,
-                    analyte_contract::decode(next.as_bytes())?,
-                ])
-                .await?;
+            seed_orders(&reference).await?;
             Some(reference)
         }
         Cache::Unavailable => {
@@ -84,6 +69,101 @@ pub(super) async fn replay(
         reference.close().await?;
     }
     Ok(())
+}
+
+fn display_config(root: &Path, folder: &Path) -> Result<Fixture, Error> {
+    let path = config(root, false)?;
+    let definition = analyte_fixtures::definition_path(root, "hl7");
+    let wire_settings = std::fs::read_to_string(folder.join("replay-orders.toml"))?;
+    let configured = std::fs::read_to_string(&definition)?
+        .rewrite("deviations = []", &wire_settings)
+        .rewrite(r#"edition = "v251""#, r#"edition = "v231""#);
+    std::fs::write(definition, configured)?;
+
+    Ok(path)
+}
+
+async fn seed_orders(reference: &Reference) -> Result<(), Error> {
+    let order = include_str!("../../../../docs/contract/vectors/order.json");
+    let next = order.rewrite("order-1", "order-2").rewrite("TEST", "NEXT");
+    reference
+        .receiver
+        .seed(vec![
+            analyte_contract::decode(order.as_bytes())?,
+            analyte_contract::decode(next.as_bytes())?,
+        ])
+        .await?;
+    Ok(())
+}
+
+// YHLO LIS V1.1 sections 2.3.9-2.3.11; AGENTS.md clinical rule 8.
+#[tokio::test]
+async fn record_display_stops_after_the_first_page_when_the_next_order_is_cancelled()
+-> Result<(), Error> {
+    let folder = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../machines/yhlo/iflash-1200");
+    let (_, events) = analyte_transport::recording::read(
+        std::fs::File::open(folder.join("recordings/barcode-orders.rec.jsonl"))?,
+        Default::default(),
+    )?;
+    let [query, _, _, ack, ..] = events.as_slice() else {
+        return Err("missing exchange for the first display page".into());
+    };
+    let temp = tempfile::tempdir()?;
+    let path = display_config(temp.path(), &folder)?;
+    let reference = Reference::start(
+        &temp.path().join("receiver.db"),
+        TcpListener::bind("127.0.0.1:0").await?,
+        false,
+    )
+    .await?;
+    seed_orders(&reference).await?;
+    let mut loaded = program(&path, &reference.url)?;
+    loaded.set_loopback_poll_interval_for_test("demo", Duration::from_millis(100))?;
+    let running = Running::start_program(loaded, "synthetic-api").await?;
+    let result = async {
+        wait_feed(&path).await?;
+        let mut peer = connect(&path, "hl7").await?;
+        peer.write_all(&query.bytes).await?;
+        let qck = read_mllp_packet(&mut peer, "oversized QCK").await?;
+        assert!(std::str::from_utf8(&qck)?.contains("QCK^Q02"));
+        let first = read_mllp_packet(&mut peer, "oversized first DSR").await?;
+        assert!(std::str::from_utf8(&first)?.contains("DSP|29||TEST"));
+        let message = analyte_hl7::Message::parse(&first, Default::default())?;
+        let msh = analyte_hl7::Msh::new(&message)?;
+        assert_eq!(msh.message_type().next(), Some(b"DSR".as_slice()));
+
+        let order = include_str!("../../../../docs/contract/vectors/order.json");
+        let cancelled = order.rewrite("order-1", "order-2").rewrite("TEST", "NEXT")
+            .rewrite("\"version\": 1", "\"version\": 2")
+            .rewrite("\"requested\"", "\"cancel_requested\"");
+        reference.receiver.seed(vec![analyte_contract::decode(cancelled.as_bytes())?]).await?;
+        wait_count(
+            &path,
+            "SELECT count(*) FROM orders WHERE id='order-2' AND json_extract(json_extract(evidence, '$.document'), '$.state')='cancel_requested'",
+            1,
+        ).await?;
+
+        let ack = std::str::from_utf8(&ack.bytes)?
+            .rewrite("01234567890123456789", std::str::from_utf8(msh.control_id())?);
+        peer.write_all(ack.as_bytes()).await?;
+        let mut next = [0];
+        let read = tokio::time::timeout(HANG_GUARD, peer.read(&mut next)).await?;
+        match read {
+            Ok(0) => {}
+            Ok(_) => return Err(format!("a second display page was sent: {next:02x?}").into()),
+            Err(error) if matches!(
+                error.kind(),
+                std::io::ErrorKind::ConnectionReset | std::io::ErrorKind::ConnectionAborted
+            ) => {}
+            Err(error) => return Err(error.into()),
+        }
+        assert_eq!(count(&path, "SELECT count(*) FROM machine_orders WHERE state='Sent' AND order_id='order-1'")?, 1);
+        assert_eq!(count(&path, "SELECT count(*) FROM machine_orders WHERE state='Sent'")?, 1);
+        Ok::<_, Error>(())
+    }.await;
+    running.stop().await?;
+    reference.close().await?;
+    result
 }
 
 async fn conversation(

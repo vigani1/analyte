@@ -436,6 +436,16 @@ fn windows_firewall_rule_lets_only_local_analyzers_in() -> Outcome {
     ] {
         assert!(install.contains(&expected), "install.ps1 lacks {expected}");
     }
+    let create = code(&install, "#")
+        .find(|line| line.contains("New-NetFirewallRule"))
+        .ok_or("no firewall rule creation")?;
+    let arguments = create.split_ascii_whitespace().collect::<Vec<_>>();
+    assert!(
+        arguments
+            .windows(2)
+            .any(|pair| pair == ["-Name", "$firewallRule"]),
+        "{create}"
+    );
     // No port and no address beyond the local subnets: what analyte.exe binds decides.
     assert!(!install.contains("-LocalPort"));
     assert!(!install.contains("-RemoteAddress Any"));
