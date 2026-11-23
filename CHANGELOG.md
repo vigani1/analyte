@@ -4,6 +4,8 @@
 
 - `analyte doctor` reports missing or invalid lab app keys as failures and
   names the affected key when the engine is stopped.
+- `analyte doctor` reports a watched-folder check as failed after eight
+  seconds if the folder cannot be checked in time, even on a stalled share.
 
 ## 0.1.0 - 2026-11-23
 
