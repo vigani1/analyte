@@ -70,7 +70,6 @@ dependencies = [
  "hmac",
  "if-addrs",
  "jiff 0.2.45",
- "quick-xml",
  "reqwest",
  "rpassword",
  "rusqlite",
@@ -201,7 +200,6 @@ dependencies = [
  "analyte-poct",
  "analyte-vidas",
  "proptest",
- "quick-xml",
  "thiserror 2.0.21",
 ]
 
