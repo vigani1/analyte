@@ -115,6 +115,8 @@ impl Environment {
 
     /// Loads each credential from where [`source`] finds it: `environment`
     /// (keyed by variable) first, then `stored` by exact credential name.
+    /// A lab app no set-up machine uses never stops startup. If its keys are
+    /// unusable, deliveries pause for operator repair and the key name is logged.
     /// # Errors
     /// Names a missing, empty or malformed credential.
     pub fn load_layered(
@@ -122,42 +124,18 @@ impl Environment {
         environment: impl Fn(&str) -> Option<String>,
         stored: &super::credentials::Stored,
     ) -> Result<Self, SecretError> {
-        Self::load_named(program, |name| source(name, &environment, stored).value())
-    }
-
-    /// Loads from a host lookup keyed by variable, with no locked file; tests can
-    /// inject credentials without mutating the environment.
-    /// # Errors
-    /// Names a missing, empty or malformed credential of a set-up machine's destination.
-    pub fn load_with(
-        program: &crate::installation::config::Program,
-        lookup: impl Fn(&str) -> Option<String>,
-    ) -> Result<Self, SecretError> {
-        Self::load_layered(program, lookup, &super::credentials::Stored::default())
-    }
-
-    /// Loads from a lookup keyed by credential name.
-    /// A lab app no set-up machine uses never stops startup: when
-    /// its keys are missing or invalid it is left out, its deliveries pause with a
-    /// visible "credentials require operator repair" reason, and the key name is logged.
-    fn load_named(
-        program: &crate::installation::config::Program,
-        lookup: impl Fn(&str) -> Option<String>,
-    ) -> Result<Self, SecretError> {
+        let read = |destination| read_destination(program, destination, &environment, stored);
         let mut credentials = BTreeMap::new();
         for machine in program.machines() {
             // A record-only machine has no lab app and so no keys (ADR 0034).
             let Some(destination) = &machine.snapshot().effective().site().destination else {
                 continue;
             };
-            credentials.insert(
-                destination.name.as_str().into(),
-                read(program, destination, &lookup)?,
-            );
+            credentials.insert(destination.name.as_str().into(), read(destination)?);
         }
         for kept in program.unused_lab_apps() {
             let destination = kept.settings();
-            match read(program, destination, &lookup) {
+            match read(destination) {
                 Ok(read) => {
                     credentials.insert(destination.name.as_str().into(), read);
                 }
@@ -170,17 +148,33 @@ impl Environment {
         }
         Ok(Self(credentials))
     }
+
+    /// Loads from a host lookup keyed by variable, with no locked file; tests can
+    /// inject credentials without mutating the environment.
+    /// # Errors
+    /// Names a missing, empty or malformed credential of a set-up machine's destination.
+    pub fn load_with(
+        program: &crate::installation::config::Program,
+        lookup: impl Fn(&str) -> Option<String>,
+    ) -> Result<Self, SecretError> {
+        Self::load_layered(program, lookup, &super::credentials::Stored::default())
+    }
 }
 
-/// Reads one destination's API key and signing keys, rotation included, from a
-/// lookup keyed by credential name.
-fn read(
+/// Reads and validates one destination's API and signing keys, rotation included,
+/// using the same source precedence as startup.
+/// # Errors
+/// Names the first missing, empty or invalid credential for this destination.
+pub(crate) fn read_destination(
     program: &crate::installation::config::Program,
     destination: &analyte_config::Destination,
-    lookup: &impl Fn(&str) -> Option<String>,
+    environment: impl Fn(&str) -> Option<String>,
+    stored: &super::credentials::Stored,
 ) -> Result<Credentials, SecretError> {
     let read = |name: &Identifier| {
-        lookup(name.as_str()).ok_or_else(|| SecretError::Missing(name.as_str().into()))
+        source(name.as_str(), &environment, stored)
+            .value()
+            .ok_or_else(|| SecretError::Missing(name.as_str().into()))
     };
     let api_key = read(&destination.api_key_name)?;
     if !analyte_contract::api_key_valid(&api_key) {
