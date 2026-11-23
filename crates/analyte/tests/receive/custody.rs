@@ -234,7 +234,7 @@ async fn disk_full_rebuilds(at_eot: bool) -> Result<(), Error> {
     ));
     let mut peer = connect(&program).await?;
     peer.write_all(b"\x05").await?;
-    assert_eq!(peer.read_u8().await?, 6);
+    assert_eq!(tokio::time::timeout(HANG_GUARD, peer.read_u8()).await??, 6);
     let mut acknowledged = Vec::new();
     let mut number = analyte_framing::astm::FrameNumber::FIRST;
     for (index, record) in ASTM.split_inclusive(|b| *b == b'\r').enumerate() {
@@ -245,12 +245,12 @@ async fn disk_full_rebuilds(at_eot: bool) -> Result<(), Error> {
         for frame in analyte_framing::astm::encode(record, number, limit)? {
             number = number.next();
             peer.write_all(&frame).await?;
-            if !matches!(
-                tokio::time::timeout(HANG_GUARD, peer.read_u8()).await?,
-                Ok(6)
-            ) {
+            let reply = tokio::time::timeout(HANG_GUARD, peer.read_u8()).await?;
+            if space.load(SeqCst) == 0 {
+                assert!(!matches!(reply, Ok(6)), "a refused frame was acknowledged");
                 break;
             }
+            assert_eq!(reply?, 6, "a frame sent with ample space was refused");
             acknowledged.extend_from_slice(&frame);
         }
         if space.load(SeqCst) == 0 {

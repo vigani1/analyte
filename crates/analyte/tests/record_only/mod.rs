@@ -153,7 +153,7 @@ impl Recorder {
             self.directory.path().join("data/analyte.db"),
             rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
         )?;
-        db.busy_timeout(Duration::from_secs(1))?;
+        db.busy_timeout(analyte_fixtures::STORE_BUDGET)?;
         Ok(db)
     }
 

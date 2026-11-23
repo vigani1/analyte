@@ -848,7 +848,7 @@ async fn store_failures_and_slow_reads_answer_in_the_new_look() -> Result<(), Er
     }
     drop(state);
     stopper.send_replace(true);
-    tokio::time::timeout(Duration::from_secs(5), owner).await???;
+    tokio::time::timeout(analyte_fixtures::HANG_GUARD, owner).await???;
     Ok(())
 }
 
@@ -872,16 +872,18 @@ async fn a_slow_action_answers_before_the_connection_closes() -> Result<(), Erro
         .await?;
     let page = request(&host, &format!("/parked/{item}"), &auth, None).await?;
     let form = format!("csrf={}&confirm=yes&reason=settled", encode(&csrf(&page)?));
+    let (started, holding) = tokio::sync::oneshot::channel();
+    let (release, released) = std::sync::mpsc::channel();
+    let deadline = fixture_deadline()?;
     let busy = store.clone();
     let blocker = tokio::spawn(async move {
-        busy.request::<_, FixtureError>(fixture_deadline()?, |_| {
-            std::thread::sleep(Duration::from_millis(2600));
-            Ok(())
+        busy.request::<_, FixtureError>(deadline, move |_| {
+            let _ = started.send(());
+            Ok(released.recv_timeout(analyte_fixtures::STORE_BUDGET))
         })
         .await
-        .map_err(Error::from)
     });
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    tokio::time::timeout(analyte_fixtures::HANG_GUARD, holding).await??;
     let post = format!("{auth}Content-Type: application/x-www-form-urlencoded\r\n");
     let slow = request(
         &host,
@@ -892,7 +894,8 @@ async fn a_slow_action_answers_before_the_connection_closes() -> Result<(), Erro
     .await?;
     assert!(slow.starts_with("HTTP/1.1 504"), "{slow:?}");
     assert!(slow.contains("an action may already have been saved."));
-    blocker.await??;
+    release.send(())?;
+    blocker.await???;
     stop(state, stopper, owner, store).await
 }
 
@@ -902,6 +905,7 @@ async fn measurement_comparison_requires_sign_in_and_confirms_once() -> Result<(
     use analyte_model::{IdentityStatus, SourceText};
     use analyte_store::{Interpretation, Reading, ReconcileAction, ReconcileInput};
     const VALUE: &str = "synthetic-held-payload-6281";
+    const SAMPLE: &str = "000123-SYN-HELD-COMPARISON";
     let logs = crate::runtime::log_capture::init();
     let directory = crate::admin::private_tempdir()?;
     let (store, (state, stopper, owner, host), auth, bearer) = started(directory.path()).await?;
@@ -910,12 +914,12 @@ async fn measurement_comparison_requires_sign_in_and_confirms_once() -> Result<(
             for (second, status) in [(5, "early"), (6, "held")] {
                 let receipt = receive(s, "chemistry", second)?;
                 let retained = s.receipt(receipt)?.ok_or(FixtureError::UnknownReceipt)?;
-                let mut result = machines::result(receipt, Some("000123"))
+                let mut result = machines::result(receipt, Some(SAMPLE))
                     .map_err(|_| FixtureError::Corruption)?;
                 let IdentityStatus::Resolved(identity) = &mut result.identity else {
                     return Err(FixtureError::Corruption);
                 };
-                identity.observation.run = SourceText::new("6:000123")?;
+                identity.observation.run = SourceText::new(&format!("{}:{SAMPLE}", SAMPLE.len()))?;
                 let mut parts = result.parts.as_slice().to_vec();
                 let part = parts.first_mut().ok_or(FixtureError::Corruption)?;
                 part.source_status = SourceText::new(status)?;
@@ -949,13 +953,13 @@ async fn measurement_comparison_requires_sign_in_and_confirms_once() -> Result<(
     let path = format!("/parked/{item}/measurement");
     let bearer = format!("Authorization: Bearer {bearer}\r\n");
     let unsigned = request(&host, &path, &bearer, None).await?;
-    assert!(!unsigned.contains("000123"));
+    assert!(!unsigned.contains(SAMPLE));
     let page = request(&host, &path, &auth, None).await?;
     assert!(page.starts_with("HTTP/1.1 200"), "{page}");
     for value in [
         "Held measurement",
         "Earlier measurement",
-        "000123",
+        SAMPLE,
         VALUE,
         "This is a resend",
         "This is a rerun",
