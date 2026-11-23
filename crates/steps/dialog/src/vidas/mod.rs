@@ -2,7 +2,7 @@
 //! Host owns byte journaling, storage and cancellation; the dialog owns timers.
 //! Timeout/disconnect can leave accepted orders or incomplete durable uploads;
 //! never automatically replay either. A new conversation requires reconciliation.
-use analyte_framing::vidas::{ACK, Config as FrameConfig, ENQ, EOT, ETX, Mode, Packet};
+use analyte_framing::vidas::{ACK, Config as FrameConfig, ENQ, EOT, ETX, Mode, NAK, Packet};
 use analyte_vidas::syntax::{Kind, Message};
 use std::time::Duration;
 pub mod outcome;
@@ -44,6 +44,8 @@ pub enum Action {
     Write(Vec<u8>),
     /// Durably save packet with driver/config identity before reporting Stored.
     Store(Packet),
+    /// Durably retain the rejected packet before reporting Stored.
+    RejectChecksum(Vec<u8>),
     /// Reports a deadline arm for observers; the dialog schedules it internally.
     TimerArmed(Timer, Duration),
     /// Reports a cancelled deadline; the dialog cancels it internally.
@@ -63,7 +65,9 @@ pub enum Event {
     Control(u8),
     /// Decoder's complete checksum-validated acceptance boundary.
     Packet(Packet),
-    /// Matching outstanding packet has durably committed.
+    /// Decoder reached the configured reply point with a bad checksum.
+    BadChecksum(Vec<u8>),
+    /// Matching accepted or rejected packet has been durably retained.
     Stored,
     /// Storage unavailable or disk nearly full.
     StoreFailed,
@@ -81,12 +85,18 @@ pub enum Event {
 enum State {
     UploadReady,
     UploadPacket,
-    Commit,
+    Commit(CommitKind),
     UploadEtx,
     UploadEot,
     DownloadReady,
     DownloadAck,
     Finished,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum CommitKind {
+    Accepted,
+    Rejected,
 }
 
 /// Specific conversation construction errors.
@@ -241,6 +251,7 @@ impl Dialog {
             }
             match self.decoder.push(byte)? {
                 Some(analyte_framing::vidas::Event::Packet(packet)) => Event::Packet(packet),
+                Some(analyte_framing::vidas::Event::BadChecksum(raw)) => Event::BadChecksum(raw),
                 Some(analyte_framing::vidas::Event::Control(control)) => Event::Control(control),
                 None => return Ok(Vec::new()),
             }
@@ -257,7 +268,11 @@ impl Dialog {
                     *self.timers.get_mut(*timer) = self.clock.now().checked_add(*wait);
                 }
                 Action::TimerCancelled(timer) => *self.timers.get_mut(*timer) = None,
-                Action::Write(_) | Action::Store(_) | Action::Park | Action::Close => {}
+                Action::Write(_)
+                | Action::Store(_)
+                | Action::RejectChecksum(_)
+                | Action::Park
+                | Action::Close => {}
             }
         }
     }
@@ -282,20 +297,17 @@ impl Dialog {
                 self.state = State::UploadPacket;
                 actions.push(Action::Write(self.config.control(ACK)));
             }
+            (State::UploadPacket, Event::BadChecksum(raw)) => {
+                self.state = State::Commit(CommitKind::Rejected);
+                actions.push(Action::RejectChecksum(raw));
+                actions.push(Action::TimerArmed(Timer::Commit, self.policy.commit));
+            }
             (State::UploadPacket, Event::Packet(packet)) => {
-                self.state = State::Commit;
+                self.state = State::Commit(CommitKind::Accepted);
                 actions.push(Action::Store(packet));
                 actions.push(Action::TimerArmed(Timer::Commit, self.policy.commit));
             }
-            (State::Commit, Event::Stored) => {
-                actions.push(Action::TimerCancelled(Timer::Commit));
-                actions.push(Action::Write(self.config.control(ACK)));
-                self.state = if self.config.mode() == Mode::Literal {
-                    State::UploadEtx
-                } else {
-                    State::UploadEot
-                };
-            }
+            (State::Commit(kind), Event::Stored) => self.reply_to_packet(kind, &mut actions),
             (State::UploadEtx, Event::Control(ETX)) => self.state = State::UploadEot,
             (State::UploadEot, Event::Control(EOT)) => {
                 self.state = State::Finished;
@@ -323,6 +335,7 @@ impl Dialog {
                 Event::Byte(_)
                 | Event::Control(_)
                 | Event::Packet(_)
+                | Event::BadChecksum(_)
                 | Event::Stored
                 | Event::StoreFailed
                 | Event::Expired(_)
@@ -333,7 +346,7 @@ impl Dialog {
             (
                 State::UploadReady
                 | State::UploadPacket
-                | State::Commit
+                | State::Commit(_)
                 | State::UploadEtx
                 | State::UploadEot
                 | State::DownloadReady
@@ -341,6 +354,7 @@ impl Dialog {
                 Event::Byte(_)
                 | Event::Control(_)
                 | Event::Packet(_)
+                | Event::BadChecksum(_)
                 | Event::Stored
                 | Event::StoreFailed
                 | Event::Expired(_)
@@ -364,6 +378,25 @@ impl Dialog {
         }
         self.schedule(&actions);
         actions
+    }
+
+    fn reply_to_packet(&mut self, kind: CommitKind, actions: &mut Vec<Action>) {
+        let (control, next) = match kind {
+            CommitKind::Rejected => {
+                // The sender owns retransmission. The original session deadline still applies.
+                (NAK, State::UploadPacket)
+            }
+            CommitKind::Accepted => {
+                let next = match self.config.mode() {
+                    Mode::Literal => State::UploadEtx,
+                    Mode::Alternate => State::UploadEot,
+                };
+                (ACK, next)
+            }
+        };
+        self.state = next;
+        actions.push(Action::TimerCancelled(Timer::Commit));
+        actions.push(Action::Write(self.config.control(control)));
     }
 }
 

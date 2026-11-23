@@ -1,11 +1,6 @@
 ["alternate-bad-checksum.rec.jsonl".recording]
 acknowledgment = "alternate"
 
-["alternate-bad-checksum.rec.jsonl".expected_gap]
-reply_event = 5
-failure = "disconnect"
-reason = "VIDAS record-only dialog sends no NAK for a bad packet checksum."
-
 ["alternate-invalid.rec.jsonl".recording]
 acknowledgment = "alternate"
 
@@ -17,11 +12,6 @@ acknowledgment = "alternate"
 
 ["literal-bad-checksum.rec.jsonl".recording]
 acknowledgment = "literal"
-
-["literal-bad-checksum.rec.jsonl".expected_gap]
-reply_event = 5
-failure = "disconnect"
-reason = "VIDAS record-only dialog sends no NAK for a bad packet checksum."
 
 ["literal-invalid.rec.jsonl".recording]
 acknowledgment = "literal"

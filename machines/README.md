@@ -40,10 +40,10 @@ For example:
 ["literal-bad-checksum.rec.jsonl".recording]
 acknowledgment = "literal"
 
-["literal-bad-checksum.rec.jsonl".expected_gap]
-reply_event = 5
-failure = "disconnect"
-reason = "VIDAS record-only dialog sends no NAK for a bad packet checksum."
+["quantitative.rec.jsonl".expected_gap]
+reply_event = 1
+failure = "deadline"
+reason = "The HL7 reader rejects the iFlash numeric MSH-16 before sending the record-only ACK."
 ```
 
 An expected gap still runs. Keep the expected reply in the recording and name

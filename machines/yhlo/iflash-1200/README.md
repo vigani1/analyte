@@ -2,65 +2,116 @@
 
 ## Machine
 
-YHLO iFlash 1200. The 2018 family LIS manual V1.1 names iFlash3000 models;
-its applicability to the 1200 remains unverified. Operation Manual V3.0
-identifies a 1200-A, which does not establish the installed software.
-
-No machine.toml is shipped: the current loader requires concrete settings, and
-there is no placeholder value for the missing evidence. This is a blocked
-machine definition, not an activatable configuration. Resolve the blockers,
-then add TOML through the real loader before connecting the instrument.
+This is a blocked machine definition, with TCP capture available through
+[`record.toml`](record.toml). Use capture only to collect evidence. Normal operation needs vendor-specific handling
+for result categories, qualitative results, and order replies. The iFlash
+1200-A runs from an analyzer PC using iFlash 3000 software. Staff can enter a
+tube barcode with a handheld scanner at the PC.
 
 ## Connection
 
-The requested profile is HL7 2.3.1 over MLLP, with analyzer PC connecting to
-the host. This is family-document evidence, pending 1200 confirmation.
-Endpoint/port, session lifetime and response deadlines are required site settings.
-Do not use another model's port or connection timers as 1200 defaults.
+For the TCP profile the iFlash PC initiates the connection. In **Utility →
+System settings → LIS settings**, select TCP/IP and enter the Analyte
+listener's address and port. Put that listener endpoint and the iFlash PC's
+source IP in the site's `endpoint` and `allowed_peers` (ADR 0026). The
+manual gives no fixed port. HL7 2.3.1 messages use CR segment endings and MLLP
+with VT before the payload and FS CR after it (LIS V1.1 §§2.1–2.3).
+
+The service manual's **Respond timeout limit** defaults to 15 s for the
+analyzer's connection to the LIS server. Automatic reconnection is an
+analyzer setting with a 30–60 s interval. Startup connection is another
+analyzer setting. The manuals give no separate result ACK, QCK, DSR or
+ACK^Q03 deadline. Use the installed settings and measured exchanges to
+resolve those deadlines before enabling normal operation.
 
 ## Settings on the machine
 
-Obtain the installed protocol selection, software version, editable LIS assay
-channels and authorized setup instructions. Keep endpoint, app destination,
-credential names, retention and overrides in separate site configuration.
+- Choose one-way results or two-way results and queries on the analyzer
+  (service §6.4.1). The future definition can use an ADR 0032 `mode` choice
+  with `orders = "off"` and `orders = "on"`. Leave the suggestion empty
+  so the lab supplies the setting. Both alternatives must validate before
+  Setup can offer this choice.
+- Record the encoding. LIS V1.1 §1.3 offers UTF-8 and an “ASCII” option
+  that actually uses the analyzer PC's local code page. Confirm the
+  emitted MSH-18 and high-byte behavior for the installed software.
+- Record the selection for real-time uploads of completed and uncompleted
+  tests. These switches independently trigger current-day uploads on
+  a state change (service §6.4.2.1). The manual gives no matching wire-code
+  definitions for uncompleted results, so there is no Setup choice for
+  interpreting them.
+- Keep the assay Channel No. list with the lab app team. The proposed
+  `test_system` is `yhlo/iflash-1200` (ADR 0029). Pass codes through
+  exactly as sent. Match outgoing orders to the configured channel codes.
 
 ## Supported workflows
 
-Family manual documents ORU uploads and QRY/QCK/DSR/ACK query exchange.
-No workflow is enabled here. OBR-2 is the family sample barcode; PID-3 is not.
-OBX-9 carries qualitative calls, including cases with empty OBX-5.
-QC has parallel component arrays in OBR rather than ordinary OBX observations.
+| Documented wire behavior | Fields and handling |
+| --- | --- |
+| Patient result upload | ORU^R01 with MSH-16 = `0`, then PID, OBR and one or more OBX. OBR-2 is the tube barcode and OBR-3 is the analyzer sample counter. PID identifies the patient. OBR-10 is rack and position, OBR-9 reports manual dilution and OBR-15 carries specimen text. Preserve barcode case and leading zeros. LIS §§2.2.1, 2.3.3–2.3.5. |
+| Observation | OBX-3 is the configured Channel No. and can be alphanumeric. OBX-5 holds the main value, OBX-6 the original unit, OBX-7 the reference range and OBX-8 flags such as L, H and N. OBX-9 holds the qualitative call and OBX-10 its reference text. ST can carry a call with OBX-5 empty. BOTH carries numeric and qualitative data. OBX-11 documents F for final. OBX-13 may report the raw result and OBX-14 the observation time. LIS §2.3.5. |
+| QC upload | ORU^R01 with MSH-16 = `2`, containing OBR without PID or OBX. OBR-11 counts the controls. OBR-12–15 and OBR-17–20 hold parallel lists of control identifier, name, lot, expiry, level, mean, SD and measured value. Preserve the correspondence by index. LIS §§2.2.1.4, 2.3.4.2 and 2.4.1.2. |
+| Result acknowledgment | ACK^R01 follows each ORU, including batches. MSA-2 references the inbound MSH-10. The vendor examples also echo MSH-10 and MSH-16 in the ACK and use MSA-6 for outcome details. AE or AR can trigger up to two retransmission attempts according to the manual. Analyte must durably keep the received bytes before AA and visibly refuse on storage failure. LIS §§2.2.1, 2.3.2 and 2.4.1. |
+| Barcode query | QRY^Q02 uses QRD-8 for the tube barcode. The LIS responds QCK^Q02, then sends DSR^Q03 with numbered DSP rows carrying the sample and assays. The analyzer replies ACK^Q03. DSP row 21 carries the barcode, with channel entries starting at row 29. An unavailable lookup requires an error. NF means a trusted lookup found no matches. ACK^Q03 confirms message receipt. LIS §§2.2.2, 2.3.6–2.3.11 and 2.4.2. |
+| Receipt and result identity | MSH-10 correlates the upload and its acknowledgment. OBR-3 and OBX-4 identify fields within the reported sample and observation context. The manual supplies no stable key and revision rule that distinguish retransmissions, reruns and corrections. Keep ambiguous result identity unresolved. LIS §§2.3.1–2.3.2 and 2.3.4–2.3.5. |
+
+Record-only stores TCP chunks before any reply and sends an application
+error for a valid query. The strict HL7 header rejects the documented
+result category in MSH-16, including in record-only mode. The incoming
+chunks are still kept, but the analyzer may receive no ACK and report a
+communication fault. Use a supervised lab visit to capture the traffic.
 
 ## Departures
 
-No vendor special case added. Current config cannot select the vendor result
-status semantics or map OBR-only QC arrays into observations (docs/context.md).
-Generic HL7 configuration must not silently reinterpret these fields.
-These are definition blockers, even though the legacy query dialog exists.
+No named departure is configured. The following gaps block a normal
+connection.
+
+| Layer | Source | Gap and effect |
+| --- | --- | --- |
+| Transport and Setup | Service §§6.4.1–6.4.2, LIS §1.2 | Serial LIS is documented. The current HL7 stack uses TCP, and ADR 0032 cannot select a different link kind. Capture the selected serial protocol and cable settings before defining a serial profile. |
+| Syntax and Setup | LIS §§1.3, 2.3.1 | The vendor's “ASCII” mode can use a local code page such as GBK. Analyte's ASCII, Latin-1 and UTF-8 choices cannot decode that mode generally. Confirm the emitted label against the existing scoped HL7 2.3.1 UTF-8 departure before enabling it. Encoding is outside the current ADR 0032 choice blocks. |
+| Syntax and dialog | LIS §§2.3.1–2.3.2, 2.4.1 | MSH-16 denotes patient, calibration or QC for this analyzer. The shared control header rejects these values because MSH-16 is an ACK negotiation field. This also limits record-only mode. The ACK builder generates its own MSH-10 and omits the vendor category echo and the vendor's MSA-6 status layout. Receiver tolerance and retry correlation need proof. |
+| Mapping | LIS §§2.3.4.1, 2.3.5; service §6.4.2.1 | OBR-2 selects the barcode. Rack position, manual dilution application, raw measurements, vendor result status and transitions for incomplete results need confirmed semantics and supported mappings. Historical upload and automatic completion/partial upload can revisit a sample. The manual gives no way to classify each repeat as a retry, rerun or correction. |
+| Syntax and mapping | LIS §2.3.5 | BOTH is a vendor OBX datatype. OBX-9 and OBX-10 carry the qualitative value/reference, including cases with an empty OBX-5. The current OBX value path cannot emit the quantitative and qualitative values together. The SI test also packs three measurements into components of OBX-5 and OBX-13 and needs separate interpretation. |
+| Mapping | LIS §§2.3.1, 2.3.4.2, 2.4.1.2 | Existing QC selectors cannot produce observations from parallel arrays in an OBR-only report. Lot and level could be assigned to the wrong measurement without count and index validation. MSH-16 also reserves `1` for calibration, with insufficient evidence here for delivering calibration results. |
+| Syntax and dialog | LIS §§2.3.6–2.3.11, 2.4.2 | The standard handler accepts deferred display format `D`; iFlash sends `R` in QRD-2 and bare `RD` in QRD-7. The parser requires a numeric quantity and populated QRD-10, which YHLO leaves blank. The display encoder limits the units to display lines. It also emits an empty QAK tag, while YHLO specifies `SR`. The extension needs to preserve explicit cache failure as AE. |
+| Encoding and order mapping | LIS §§2.3.10–2.3.11, 2.4.2 | The DSR requires positional DSP rows, then repeatable assay rows with component delimiters, plus DSC. The current builder rejects delimiters inside a DSP line, echoes QRD, generates distinct reply IDs and has no DSC output. YHLO's example clears QRD-8 in DSR and reuses the query ID in reply headers. Confirm which differences the installed PC enforces. |
+| Dialog and order lifecycle | LIS §§2.2.3, 2.4.2.2–2.4.3 | The analyzer can query by sample number or collection-time range and receive multiple DSRs with continuation pointers and per-DSR ACKs. It also documents unsolicited DSR with MSH-15 = `P`. Current legacy HL7 supports a single barcode lookup and no vendor-style DSR send-ahead flow. Manual section 3 also describes a separate ASTM dialect. This TCP capture profile expects HL7 only. |
+| Dialog timing | Service §§6.4.2–6.4.3, LIS §2.2 | Connection and reconnect settings are documented. Protocol phase deadlines and behavior after a lost reply are unconfirmed. A short synthetic event gap or the default connect timeout cannot establish a clinical setting. |
 
 ## Evidence
 
 Level: documented
 
-Research only; no machine recording or official simulator run. No recordings shipped.
+The six [synthetic recordings](recordings/) use invented identifiers and
+measurements. The barcode queries expect ACK^Q02 with AE and no DSR in
+record-only mode. The four uploads expect an acknowledgment of durable
+receipt under ADR 0034. Their replay marks the missing replies while the
+HL7 reader rejects the numeric MSH-16 field.
+Synthetic data does not establish interoperability with the installed analyzer.
 
 ## Open questions
 
-- Blocking: confirm the family protocol for the 1200 and resolve status/QC
-  mapping expressiveness with evidence before writing a configuration.
-- Required site settings: port, software, encoding, deadlines, sample selector,
-  assay code system and unit mappings, identity/rerun evidence and query layouts.
-- Confirm BOTH datatype, OBX-9 qualitative calls, dilution application and
-  calibration handling. Unknown lookup must remain an error, never no tests.
-- Still missing: a YHLO LIS protocol manual for the 1200, or YHLO's written
-  statement that LIS Protocol Manual V1.1 (iFlash family) applies to it; the
-  ACK, QCK and DSR response deadlines; the LIS assay channel list; recordings of
-  query, result and QC exchanges.
+- Get the exact model and PC software version from the lab. Record the LIS
+  settings screen values for transport, direction, encoding, threshold and
+  reconnect settings, and completed/uncompleted upload settings.
+- Ask the lab app team for the actual LIS Channel No. assignments and the
+  specimen and unit codes they expect to receive.
+- Use the protected LIS communication log under
+  `D:\iFlash3000\SystemLog` and a de-identified TCP capture to confirm
+  response deadlines, ACK fields, result categories, partial uploads, repeat
+  and correction behavior, qualitative values, QC arrays and dilution.
+  Include a barcode query and its successful and unsuccessful replies.
+- If the lab uses a serial cable, confirm the selected wire protocol and
+  interface settings, including flow control.
 
 ## Sources
 
-[Research](../../../docs/research/machines/iflash-1200.md), §§1–5: YHLO LIS Protocol
-Manual V1.1 §§1.1, 2.2–2.4 (notably 2.3.4.2 and 2.4.1.2); 1200 Operation
-Manual V3.0. [HL7 notes](../../../docs/protocols/hl7/README.md) and
-[current gaps](../../../docs/context.md#before-machine-configs-phase-7).
-
+- YHLO LIS Protocol Manual V1.1 (2018), §§1.1–1.3, 2.1–2.4 and 3. The
+  model list in §1.1 names iFlash 3000 variants.
+- YHLO Service Manual AF-14-iF10-001/A0, scope and §§6.3–6.4. The manual
+  covers the iFlash 1200-A and iFlash 3000-M, gives shared iFlash 3000 PC
+  software instructions and references the YHLO HL7 interface in the LIS
+  setup. That is the basis for applying V1.1 provisionally to the 1200-A.
+  The installed software and wire details still need confirmation.
+- [Repository research](../../../docs/research/machines/iflash-1200.md)
+  and [HL7 protocol notes](../../../docs/protocols/hl7/README.md).
