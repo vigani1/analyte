@@ -246,6 +246,30 @@ pub struct ResultDetails {
     pub specimen_label: Option<SourceText>,
     /// Control name, only when the source layout establishes it.
     pub control_name: Option<SourceText>,
+    /// Exact list code the analyzer reports the measurement under.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub report_list: Option<SourceText>,
+    /// Exact source code for known or unknown control material.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub control_knowledge: Option<SourceText>,
+    /// Exact level of the control used in the measurement.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub control_level: Option<SourceText>,
+    /// Lot of the control material, as reported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub control_lot: Option<SourceText>,
+    /// Lot of the test strip, as reported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strip_lot: Option<SourceText>,
+    /// Identifier of the analyzer that produced the result.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instrument_id: Option<SourceText>,
+    /// Instrument serial number, including any embedded spaces.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instrument_serial: Option<SourceText>,
+    /// Technologist named in the source result.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub technologist: Option<SourceText>,
     /// Complete terminator code as sent.
     pub termination: Option<SourceText>,
     /// Interpretation of the source termination, when the layout declares one.

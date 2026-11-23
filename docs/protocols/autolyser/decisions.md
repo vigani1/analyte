@@ -159,3 +159,18 @@ including the distinctions between manual rules and Analyte's recovery policy.
 - **source**: [ADR 0001](../../adr/0001-rust-and-layered-architecture.md), host and
   dialog ownership; [ADR 0003](../../adr/0003-clinical-safety-rules.md), Keep the original.
 - **test**: `disconnect_during_commit_never_reopens`.
+
+## Associate reports through the reported code
+
+Rev18 pp. 175 and 177 describe the fixed-width patient code used for matching.
+Keep its original padding, case and leading zeros. A blank code or the
+analyzer's fallback marker leaves the association absent. The fixed report
+has no position field; `00` is the work-list request for the analyzer to
+choose a position, so it stays wire evidence without becoming a cup number.
+There is no run identity in the fixed report (ADR 0035). See
+`autolyser_keeps_report_code_without_inventing_sample_or_run`.
+
+Read list and sample medium for both layouts. For control reports, keep the
+original known/unknown code, level and lot. In ordinary reports the three
+control placeholders retain their meaning only in the raw receipt. See
+`autolyser_projects_controls_layout_and_leaves_normal_placeholders_raw`.

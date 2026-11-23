@@ -17,4 +17,7 @@ Checked rows are synthetic regression coverage only, not machine qualification.
 - [x] Park unresolved immutable run identity and retain the exact result value with no inferred dilution. Test: `autolyser_corrupt_reply_blocks_r_until_valid_l`.
 - [x] Follow the controls field layout rather than contradictory example spacing/checksum. Test: `controls_explicit_and_values_stay_written`.
 
+- [x] Preserve the patient code as the sample association and leave it absent for a blank or fallback code. Test: `autolyser_keeps_report_code_without_inventing_sample_or_run`.
+- [x] Expose report list, medium and the QC report fields; ordinary reports do not acquire control material from placeholders. Test: `autolyser_projects_controls_layout_and_leaves_normal_placeholders_raw`.
+
 - [ ] Qualify installed settings against a de-identified real conversation. Test: none yet.

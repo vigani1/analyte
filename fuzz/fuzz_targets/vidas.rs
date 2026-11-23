@@ -4,7 +4,7 @@
 use libfuzzer_sys::fuzz_target;
 fuzz_target!(|data: &[u8]| {
     use analyte_framing::vidas::*;
-    use analyte_vidas::syntax::{Message, SampleLimit};
+    use analyte_vidas::syntax::{ControlLabels, Message, SampleLimit};
     for mode in [Mode::Literal, Mode::Alternate] {
         let Ok(config) = Config::new(
             mode,
@@ -37,9 +37,11 @@ fuzz_target!(|data: &[u8]| {
     }
     if let Ok(text) = std::str::from_utf8(data) {
         for limit in [SampleLimit::Twelve, SampleLimit::Seventeen] {
-            if let Ok(message) = Message::parse(text, limit) {
-                assert_eq!(message.text().as_bytes(), data);
-                Message::parse(message.text(), limit).unwrap();
+            for labels in [ControlLabels::PcSlots, ControlLabels::AppendixB] {
+                if let Ok(message) = Message::parse_with_control_labels(text, limit, labels) {
+                    assert_eq!(message.text().as_bytes(), data);
+                    Message::parse_with_control_labels(message.text(), limit, labels).unwrap();
+                }
             }
         }
     }
