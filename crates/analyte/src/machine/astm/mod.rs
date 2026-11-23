@@ -128,7 +128,7 @@ impl<'a, 'm> Host<'a, 'm> {
                     let limits = self.settings.settings().syntax().limits();
                     let record = analyte_mapping::astm::map_order(order, limits, orders)?.encode();
                     let normal = analyte_astm::OrderTermination::Normal;
-                    Ok::<_, Error>(orders::envelope(orders, vec![record], normal))
+                    Ok::<_, Error>(orders::envelope(orders, vec![record], normal, true))
                 })
                 .await?
         } else {
@@ -257,9 +257,25 @@ impl driver::Drain for Host<'_, '_> {
             }
             Action::LimitReached => return Err(Error::ResourceLimitRefusedTransfer),
             Action::Sent(end) => {
-                self.work.astm_finished(self.store, end).await?;
+                self.work
+                    .astm_finished(
+                        self.store,
+                        end,
+                        settings
+                            .orders()
+                            .is_some_and(|orders| orders.layout().profile.is_some()),
+                    )
+                    .await?;
                 for order in self.query_orders.drain(..) {
-                    orders::finished(self.store, &order, end).await?;
+                    orders::finished(
+                        self.store,
+                        &order,
+                        end,
+                        settings
+                            .orders()
+                            .is_some_and(|orders| orders.layout().profile.is_some()),
+                    )
+                    .await?;
                 }
             }
         }
@@ -378,7 +394,7 @@ impl Host<'_, '_> {
                             until: started,
                         };
                     }
-                    Some((queries, Request::Orders(samples))) => {
+                    Some((queries, request @ (Request::Orders(_) | Request::Structured(_)))) => {
                         let started = self.query.started()?;
                         if matches!(
                             self.query,
@@ -393,13 +409,25 @@ impl Host<'_, '_> {
                             };
                         } else {
                             self.query = Query::LookingUp {
-                                pending: Pending::new(
-                                    self.store,
-                                    self.machine.machine(),
-                                    queries,
-                                    samples,
-                                    started,
-                                )?,
+                                pending: match request {
+                                    Request::Orders(samples) => Pending::new(
+                                        self.store,
+                                        self.machine.machine(),
+                                        queries,
+                                        samples,
+                                        started,
+                                    )?,
+                                    Request::Structured(query) => Pending::structured(
+                                        self.store,
+                                        self.machine.machine(),
+                                        queries,
+                                        query,
+                                        started,
+                                    )?,
+                                    Request::Cancel | Request::Unsupported => {
+                                        return Err(Error::QueryStartMissing);
+                                    }
+                                },
                             };
                         }
                     }

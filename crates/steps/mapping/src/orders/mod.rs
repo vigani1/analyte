@@ -42,6 +42,8 @@ pub struct AppOrder {
     /// The lab app's name for each test, in the order of `tests`; `None`
     /// where it gave none. Never derived from the code.
     pub test_names: Vec<Option<analyte_model::SourceText>>,
+    /// Explicit dilution ratio denominator for each test, with absent entries left empty.
+    pub test_dilutions: Vec<Option<u16>>,
     /// Explicit priority from the app.
     pub priority: AppOrderPriority,
     /// Position supplied by the app, never invented by the bridge.

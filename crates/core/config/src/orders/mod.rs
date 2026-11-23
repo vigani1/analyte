@@ -83,10 +83,35 @@ pub struct OrderPriority {
     pub machine: MachinePriority,
 }
 
+/// Structured order layouts documented in cobas e 411 HIM v2.3 Tables 11-17.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AstmOrderProfile {
+    /// Elecsys order layout.
+    Elecsys,
+    /// cobas order layout.
+    Cobas,
+}
+
+impl AstmOrderProfile {
+    /// Returns the wire grammar selected by this definition.
+    #[must_use]
+    pub fn wire(self) -> analyte_astm::OrderProfile {
+        match self {
+            Self::Elecsys => analyte_astm::OrderProfile::Elecsys,
+            Self::Cobas => analyte_astm::OrderProfile::Cobas,
+        }
+    }
+}
+
 /// ASTM O-record destinations; fields retain their standard ownership.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AstmOrderFields {
+    /// Explicit documented order layout; absent uses standard LIS02.
+    pub profile: Option<AstmOrderProfile>,
+    /// Explicit installation container for batch requests (SC or MC).
+    pub batch_container: Option<Identifier>,
     /// Intended H-10 peer identity; absent when the installation has not agreed one.
     pub receiver: Option<Identifier>,
     /// Specimen ID destination.

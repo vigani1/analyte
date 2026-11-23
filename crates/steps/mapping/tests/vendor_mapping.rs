@@ -159,6 +159,7 @@ fn test(namespace: &str, value: &str) -> Result<NamespacedId, analyte_model::Tex
 
 fn order() -> Result<AppOrder, analyte_model::TextError> {
     Ok(AppOrder {
+        test_dilutions: Vec::new(),
         sample: SampleId::new("000Ab")?,
         tests: vec![test("synthetic", "SYN")?],
         test_names: vec![None],

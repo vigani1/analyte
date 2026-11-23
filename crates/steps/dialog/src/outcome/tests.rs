@@ -35,6 +35,7 @@ const fn pinned(code: Code) -> &'static str {
         },
         Code::Astm(code) => match code {
             AstmEnd::Confirmed => "ASTM-transfer-confirmed",
+            AstmEnd::ReplacementUnverified => "ASTM-transfer-confirmed-replacement-unverified",
             AstmEnd::Aborted => "ASTM-transfer-aborted",
             AstmEnd::Timeout => "ASTM-transfer-timeout",
             AstmEnd::Interrupted => "ASTM-transfer-interrupted",
@@ -120,6 +121,7 @@ fn every_code() -> Vec<Code> {
     ];
     let astm = [
         AstmEnd::Confirmed,
+        AstmEnd::ReplacementUnverified,
         AstmEnd::Aborted,
         AstmEnd::Timeout,
         AstmEnd::Interrupted,
@@ -203,7 +205,7 @@ fn every_code() -> Vec<Code> {
 #[test]
 fn every_fixed_code_keeps_its_stored_spelling() {
     let codes = every_code();
-    assert_eq!(codes.len(), 66);
+    assert_eq!(codes.len(), 67);
     let mut spellings = std::collections::BTreeSet::new();
     for code in codes {
         let expected = pinned(code);

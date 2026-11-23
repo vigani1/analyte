@@ -115,6 +115,7 @@ fn readme(path: &Path, level: EvidenceLevel) -> Result<(), Error> {
 #[serde(deny_unknown_fields)]
 struct ReplaySettings {
     choices: Option<toml::Table>,
+    order_profile: Option<analyte_config::AstmOrderProfile>,
     recording: Option<toml::Table>,
     expected_gap: Option<ExpectedGap>,
 }
@@ -184,7 +185,30 @@ async fn replay_model(folder: &Path, model: &Path, definition: &Path) -> Result<
             let (header, events) =
                 recording::read(std::fs::File::open(&path)?, recording::Limits::default())?;
             validate_gap(&events, answers.expected_gap.as_ref())?;
-            if record_only {
+            if let Some(profile) = answers.order_profile {
+                assert!(
+                    record_only,
+                    "the fixture exercises an order-enabled test peer"
+                );
+                let mode = match profile {
+                    analyte_config::AstmOrderProfile::Elecsys => "elecsys",
+                    analyte_config::AstmOrderProfile::Cobas => "cobas",
+                };
+                let site = recording_site("COM3", &answers, true)?;
+                let definition_path = model.join("record.toml");
+                let name = definition_path.to_string_lossy().replace('\\', "/");
+                let validated = analyte_config::recording::load((&name, &text), ("site", &site))?;
+                assert_eq!(header.stack, validated.effective().stack().layer_names());
+                assert_eq!(
+                    answers
+                        .recording
+                        .as_ref()
+                        .and_then(|a| a.get("analyzer_mode"))
+                        .and_then(toml::Value::as_str),
+                    Some(mode)
+                );
+                replay_structured_orders(mode, &header, &events).await
+            } else if record_only {
                 replay_record_only(model, &text, &header, &events, &answers).await
             } else {
                 replay_ready(folder, model, &text, &header, &events, &answers).await
@@ -200,6 +224,92 @@ async fn replay_model(folder: &Path, model: &Path, definition: &Path) -> Result<
         settings.keys()
     );
     Ok(())
+}
+
+// Roche cobas e 411 HIM v2.3 Tables 11-17 and section 17 (pp. 48-50).
+async fn replay_structured_orders(
+    mode: &str,
+    header: &Header,
+    events: &[Event],
+) -> Result<(), Error> {
+    let temp = tempfile::tempdir()?;
+    let path = config(temp.path(), true)?;
+    let definition = analyte_fixtures::definition_path(temp.path(), "astm");
+    let text = std::fs::read_to_string(&definition)?;
+    let mut order_settings: toml::Table =
+        include_str!("../../../core/config/examples/orders.toml").parse()?;
+    let orders = order_settings
+        .get_mut("orders")
+        .and_then(toml::Value::as_table_mut)
+        .ok_or("orders table")?;
+    orders.insert("send_ahead".into(), false.into());
+    orders
+        .get_mut("query")
+        .and_then(toml::Value::as_table_mut)
+        .ok_or("query table")?
+        .insert("deadline_ms".into(), 30_000.into());
+    if mode == "cobas" {
+        orders.insert("specimen_system".into(), "synthetic".into());
+    }
+    let astm = orders
+        .get_mut("astm")
+        .and_then(toml::Value::as_table_mut)
+        .ok_or("ASTM table")?;
+    astm.insert("profile".into(), mode.into());
+    if mode == "cobas" {
+        astm.insert("receiver".into(), "cobas-e411".into());
+        astm.insert("action_code".into(), "A".into());
+        astm.insert(
+            "specimen_type".into(),
+            "group='order'\nrecord='O'\nfield=16\ncomponent=1\nrepetition=1"
+                .parse::<toml::Table>()?
+                .into(),
+        );
+    }
+    std::fs::write(
+        definition,
+        format!("{text}\n{}", toml::to_string(&order_settings)?),
+    )?;
+
+    let reference = Reference::start(
+        &temp.path().join("receiver.db"),
+        TcpListener::bind("127.0.0.1:0").await?,
+        false,
+    )
+    .await?;
+    let doc = serde_json::json!({
+        "id": "order-structured", "version": 1, "state": "requested",
+        "sample_id": "009184",
+        "tests": [
+            { "namespace": "synthetic", "value": "271", "dilution_ratio": 50 },
+            { "namespace": "synthetic", "value": "802" }
+        ],
+        "specimen_type": {"namespace": "synthetic", "value": "2"},
+        "priority": "routine", "target_analyzers": ["astm"],
+        "expires_at": null, "tombstone": false
+    });
+    reference
+        .receiver
+        .seed(vec![analyte_contract::decode(&serde_json::to_vec(&doc)?)?])
+        .await?;
+    let running = Running::start(&path, &reference.url, "synthetic-api").await?;
+    let result = async {
+        wait_feed(&path).await?;
+        let mut peer = connect(&path, "astm").await?;
+        analyte_sim::replay(&mut peer, events, &header.exceptions, HANG_GUARD).await?;
+        wait_database_count(
+            &path,
+            "SELECT count(*) FROM machine_orders WHERE state = 'Uncertain' AND source_code = 'ASTM-transfer-confirmed-replacement-unverified'",
+            [],
+            1,
+        )
+        .await?;
+        Ok::<_, Error>(())
+    }
+    .await;
+    running.stop().await?;
+    reference.close().await?;
+    result
 }
 
 async fn replay_ready(
