@@ -5,8 +5,8 @@ declare its own choices and that Setup asks exactly those, and approved the
 recommended route without waiting). Refines
 [ADR 0002](0002-config-first.md) (which layer owns what) and extends
 [ADR 0031](0031-lab-chooses-serial-cable-settings.md) (the lab chooses,
-the definition suggests) beyond the serial cable. Keeps
-[ADR 0015](0015-named-machine-departures.md) (departures) unchanged.
+the definition suggests) beyond the serial cable. Uses the evidence requirements of
+[ADR 0015](0015-named-machine-departures.md) for every departure.
 
 ## Context
 
@@ -29,7 +29,11 @@ the model and must not be the lab's to change.
    words and selects existing building blocks from a closed list: the whole
    `[mappings]` table (a host dialect), `orders = "on" | "off"` (keep or turn
    off the definition's `[orders]`), and `vidas.alternate` and
-   `vidas.sample_limit`. No field path, pattern or expression can be written.
+   `vidas.sample_limit`. Values can also select `encoding` from the
+   protocol's existing encodings, and `autolyser.controls`,
+   `autolyser.recover_last_on_poll`, and `autolyser.download`. Download
+   permission is independent of the presence of the order mapping table.
+   No field path, pattern or expression can be written.
    Every value of a choice selects the same blocks, a block belongs to one
    choice, and a setting a choice selects is written only in the choice (the
    definition's own `[mappings]` or `[vidas]` key beside it is refused). At
@@ -54,11 +58,17 @@ the model and must not be the lab's to change.
    values in use, and not the other alternatives. The digest changes when a
    choice changes; the same values give the same bytes whether chosen or
    suggested; a definition without choices keeps its earlier bytes.
-5. **Evidence and departures stay out.** A choice cannot write `evidence`,
-   `deviations` or `departure_scope` (refused by name). Departures remain the
-   closed, evidenced list of ADR 0015; a mode that needs a departure (for
-   example packed ASTM records) still needs its own declaration with scope and
-   evidence.
+5. **A mode can activate scoped declarations.** A mode choice can list
+   departure rule names in each value's `departures` array. Use an empty
+   array for a mode with no departures. The definition supplies
+   `[[choice_departures]]` with the same scope and evidence required by
+   ADR 0015. Each declaration must name an offered mode and be used there
+   exactly once. When validating an offered stack, the selected mode gives
+   the mode of the installed scope. Every other scope field must still
+   match the definition's `[departure_scope]`. The snapshot retains only
+   active departures under `deviations`. A choice cannot write evidence,
+   scope or declarations itself.
+
 6. **One place, the same everywhere.** An overrides file that replaces a block
    a choice owns is refused ("keep it in one place"). Setup step 2 builds one
    list per declared choice from the selected model's definition, with no
@@ -75,6 +85,13 @@ the model and must not be the lab's to change.
    them a declared choice would add a list per definition for no gain. Both
    show the same way (the suggestion, the choice, what differs) and are saved
    through the same write.
+
+8. **A required site interval has no suggestion.** An Autolyser definition
+   can write `autolyser.poll_ms = "site"`. Setup step 2 and
+   `machines set --poll-seconds` then require whole seconds from 1 to 300,
+   the normal stack's existing polling bound. The site file holds
+   `autolyser_poll_seconds` and the effective snapshot holds milliseconds.
+   Existing fixed intervals retain their earlier meaning.
 
 ## Consequences
 

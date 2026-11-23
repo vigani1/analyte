@@ -85,6 +85,12 @@ priority, clone policy and cup in 01–99. The driver accepts 1–99 tests
 within its configured bound. A lost insertion reply leaves the outcome
 uncertain for reconciliation. This model ships with record-only polling.
 
+## Implementation gaps
+
+Normal definitions can now ask for controls layout, last-response recovery,
+work-list permission and the lab's poll interval without a default. The
+expected layout and installed settings still need to be confirmed.
+
 ## Departures
 
 ### Gap report

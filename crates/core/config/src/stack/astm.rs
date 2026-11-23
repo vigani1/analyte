@@ -11,6 +11,7 @@ use crate::ParsedMachine;
 pub struct AstmSyntax {
     /// Strict input encoding.
     pub(super) encoding: Encoding,
+    absent_processing: Option<MachineDeparture>,
     /// Resource ceilings.
     pub(super) limits: SyntaxLimits,
 }
@@ -34,6 +35,7 @@ pub struct AstmStack {
     /// Shared link, resource and interpretation settings.
     pub(super) settings: super::StackSettings<StreamTransport, AstmSyntax, Mappings>,
     packed_records: bool,
+    repeat_enq: bool,
     /// Required LIS01 checksum policy.
     pub(super) checksum_hex: ChecksumHex,
     /// Required simultaneous-ENQ policy.
@@ -45,6 +47,7 @@ pub struct AstmStack {
 pub(super) fn astm_syntax(syntax: &Syntax) -> AstmSyntax {
     AstmSyntax {
         encoding: syntax.encoding,
+        absent_processing: None,
         limits: limits(syntax),
     }
 }
@@ -66,6 +69,12 @@ pub(super) fn astm_orders(
 }
 
 impl AstmSyntax {
+    /// The scoped departure that supplies a processing mode for empty H.12.
+    #[must_use]
+    pub fn absent_processing(&self) -> Option<&MachineDeparture> {
+        self.absent_processing.as_ref()
+    }
+
     /// Text decoding policy; undecodable bytes remain retained evidence.
     #[must_use]
     pub fn encoding(&self) -> Encoding {
@@ -102,6 +111,12 @@ impl AstmOrders {
 }
 
 impl AstmStack {
+    /// Whether the upload peer can retry establishment after losing its ACK.
+    #[must_use]
+    pub fn repeat_enq(&self) -> bool {
+        self.repeat_enq
+    }
+
     /// Whether a validated departure allows packed records in one frame.
     #[must_use]
     pub fn packed_records(&self) -> bool {
@@ -134,7 +149,14 @@ pub(super) fn build(
             transport: stream(&machine.transport, path)?,
             frame_limit: machine.framing.limit,
             timeouts,
-            syntax: astm_syntax(&machine.syntax),
+            syntax: AstmSyntax {
+                absent_processing: machine
+                    .deviations
+                    .iter()
+                    .find(|d| matches!(d, MachineDeparture::AstmAbsentH12MeansProduction(_)))
+                    .cloned(),
+                ..astm_syntax(&machine.syntax)
+            },
             codes: machine
                 .mappings
                 .clone()
@@ -144,6 +166,10 @@ pub(super) fn build(
             .deviations
             .iter()
             .any(|d| matches!(d, MachineDeparture::AstmPackedRecordsInFrame(_))),
+        repeat_enq: machine
+            .deviations
+            .iter()
+            .any(|d| matches!(d, MachineDeparture::AstmRepeatEnqAfterLostAck(_))),
         checksum_hex: machine.framing.checksum_hex.ok_or_else(|| {
             invalid(
                 path,

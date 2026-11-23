@@ -146,3 +146,61 @@ fn two_omissions_need_two_guarantees() -> TestResult {
     assert!(mapped.requires_parking());
     Ok(())
 }
+
+// LIS02-A2 section 6.12; Biolyte Service Manual 4.2A Appendix VI section 7.1.12.
+#[test]
+fn only_empty_astm_processing_id_uses_the_scoped_departure() -> TestResult {
+    let body = "R|1|^^^SYN|0.10|||||F\r";
+    assert!(astm_with(body, "", ASTM_CONFIG).is_err());
+    let declared = ASTM_CONFIG.replace("deviations = []", r#"
+[[deviations]]
+rule = "astm_absent_h12_means_production"
+[deviations.declaration]
+level = "documented"
+scope = { model = "synthetic", firmware = "test", mode = "upload", edition = { protocol = "astm" }, direction = "machine_to_host", message = "astm_results" }
+[[deviations.declaration.evidence]]
+kind = "manual"
+reference = "biolyte-service"
+title = "Biolyte 2000 Service Manual"
+revision = "4.2A"
+section = "Appendix VI 7.1.12"
+guarantee = "absent_processing_id_production"
+covers_unknown_firmware = false
+contradicts = false
+
+[departure_scope]
+model = "synthetic"
+firmware = "test"
+mode = "upload"
+edition = { protocol = "astm" }
+direction = "machine_to_host"
+message = "astm_results"
+"#);
+    let mapped = astm_with(body, "", &declared)?;
+    assert_eq!(
+        mapped
+            .results
+            .first()
+            .ok_or("no result")?
+            .content
+            .processing,
+        ProcessingMode::Production
+    );
+    assert!(mapped.applied_departures.iter().any(|entry| entry.meaning
+        == DepartureMeaning::ProductionFromDocumentation
+        && entry.field == 12));
+    assert!(astm_with(body, "X", &declared).is_err());
+    assert!(astm_with(body, " ", &declared).is_err());
+    let training = astm_with(body, "T", &declared)?;
+    assert_eq!(
+        training
+            .results
+            .first()
+            .ok_or("no result")?
+            .content
+            .processing,
+        ProcessingMode::Training
+    );
+    assert!(training.applied_departures.is_empty());
+    Ok(())
+}

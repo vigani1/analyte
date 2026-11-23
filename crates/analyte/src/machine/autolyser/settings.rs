@@ -6,7 +6,7 @@ pub(crate) fn dialog(
 ) -> analyte_dialog::autolyser::Config {
     let policy = settings.policy();
     analyte_dialog::autolyser::Config {
-        poll: ms(policy.poll_ms),
+        poll: ms(settings.poll_ms()),
         ack: ms(policy.acknowledgment_ms),
         response: ms(policy.response_ms),
         inter_byte: ms(policy.interbyte_ms),

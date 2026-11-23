@@ -12,6 +12,7 @@ const INTERRUPT_HOLDOFF: Duration = Duration::from_secs(15);
 #[derive(Debug)]
 struct Receive {
     expected: FrameNumber,
+    retry_enq: bool,
     previous: Option<Frame>,
     record: Vec<u8>,
     count: u64,
@@ -274,6 +275,7 @@ impl Dialog {
             self.transfer = self.transfer.checked_add(1).ok_or(Error::Exhausted)?;
             self.state = State::Receiving(Receive {
                 expected: FrameNumber::FIRST,
+                retry_enq: self.config.repeat_enq,
                 previous: None,
                 record: Vec::new(),
                 records: 0,
@@ -288,6 +290,11 @@ impl Dialog {
     }
 
     fn wire(&mut self, event: astm::Event, out: &mut Vec<Action>) -> Result<(), Error> {
+        if let State::Receiving(receive) = &mut self.state
+            && matches!(event, astm::Event::Frame(_) | astm::Event::Rejected { .. })
+        {
+            receive.retry_enq = false;
+        }
         match event {
             astm::Event::Outside(byte) => self.control(byte, out)?,
             astm::Event::Frame(frame) => self.frame(frame, out)?,
@@ -536,8 +543,14 @@ impl Dialog {
             } => {
                 self.sending_control(byte, current, rest, failures, out)?;
             }
-            State::Receiving(receive) => {
-                if byte == EOT {
+            State::Receiving(mut receive) => {
+                if byte == ENQ && receive.retry_enq {
+                    // A Biolyte retransmits ENQ once on silence. Keep the same
+                    // reservation and original deadline so retries cannot extend it.
+                    receive.retry_enq = false;
+                    out.push(Action::Write(vec![if self.capacity { ACK } else { NAK }]));
+                    self.state = State::Receiving(receive);
+                } else if byte == EOT {
                     self.deadline = None;
                     let end = if receive.record.is_empty() {
                         End::Normal
