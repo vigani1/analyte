@@ -2,9 +2,13 @@
 
 ## Unreleased
 
-Analyte warns when a machine reports software outside the versions its
-settings were checked with. The warning keeps the first report time and can
-be cleared by an audited confirmation. Results continue to flow (ADR 0036).
+- **Result identity recipes** (ADR 0035): documented ASTM, HL7 and VIDAS
+  mappings can use source run evidence to distinguish new measurements from
+  resends. ASTM and HL7 mappings can declare separate rerun and correction
+  codes. Missing evidence and conflicting results are held for review.
+- Analyte warns when a machine reports software outside the versions its
+  settings were checked with. The warning keeps the first report time and can
+  be cleared by an audited confirmation. Results continue to flow (ADR 0036).
 
 ## 0.1.0 - 2026-11-23
 

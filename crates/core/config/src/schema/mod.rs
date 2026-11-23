@@ -8,8 +8,8 @@ use analyte_model::Identifier;
 use serde::{Deserialize, Serialize};
 mod mappings;
 pub use mappings::{
-    AstmTestComponent, ComponentParts, Field, IdentityEvidence, Mappings, NoSubId, OrderNamespace,
-    QcRule, SampleSelection, SubId, UnitMapping, ValueExpectation,
+    AstmTestComponent, ComponentParts, Field, IdentityEvidence, IdentityReference, Mappings,
+    NoSubId, OrderNamespace, QcRule, SampleSelection, SubId, UnitMapping, ValueExpectation,
 };
 mod poct;
 pub use poct::Poct;
@@ -740,10 +740,23 @@ pub struct Overrides {
     pub destination: Option<Destination>,
 }
 
+/// VIDAS result identity from the sample ID, assay and completion date and time.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct VidasIdentity {
+    /// Assigning namespace for the VIDAS sample ID used as order context.
+    pub sample_namespace: Identifier,
+    /// Manual evidence for this installed mapping.
+    pub evidence: IdentityReference,
+}
+
 /// The machine's code system and unit spellings for vendor protocols.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CodeTables {
+    /// Optional documented VIDAS completion recipe. Other vendor stacks refuse it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vidas_identity: Option<VidasIdentity>,
     /// The machine's own test code system (ADR 0029); vendor messages name none.
     pub test_system: Identifier,
     /// Original unit to explicit UCUM spelling.

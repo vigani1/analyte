@@ -55,6 +55,13 @@ Research only; no machine recording or official simulator run. No recordings shi
   firmware (4.2A read so far); which entered ID is the lab's sample ID (ID or
   accession).
 
+## Result identity evidence
+
+Service Manual 4.2A Appendix VI, pp. 83-85 lists R.12 analysis start time
+only in the first result and leaves R.13 completion time and R.9 status
+unused. The candidate sample ID and analysis start time need confirmation
+and a reliable way to associate that start time with the remaining assays.
+
 ## Sources
 
 [Research](../../../docs/research/machines/biolyte-2000.md), RS232 and sample identification
