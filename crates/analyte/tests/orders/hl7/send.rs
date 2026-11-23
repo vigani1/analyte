@@ -600,11 +600,12 @@ async fn dilution_rejects_entire_order_before_sending() -> Result<(), Error> {
             row.get(0)
         })?;
     assert!(code.contains("unsupported-dilution"), "{code}");
-    let items: i64 =
-        database(&path)?.query_row("SELECT count(*) FROM machine_order_items", [], |row| {
-            row.get(0)
-        })?;
-    assert_eq!(items, 0);
+    let sending: i64 = database(&path)?.query_row(
+        "SELECT count(*) FROM machine_order_history WHERE json_extract(evidence,'$.state')='Sending'",
+        [],
+        |row| row.get(0),
+    )?;
+    assert_eq!(sending, 0);
     assert!(
         tokio::time::timeout(Duration::from_millis(200), peer.read_u8())
             .await

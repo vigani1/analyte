@@ -393,7 +393,12 @@ async fn query_rejects_dilution_without_sending_work() -> Result<(), Error> {
     let reply = packet(&mut peer).await?;
     assert_eq!(field(&reply, b"QAK", 2)?, b"AE");
     quiet(&mut peer).await?;
-    assert_eq!(count(&path, "machine_order_items")?, 0);
+    let sending: i64 = database(&path)?.query_row(
+        "SELECT count(*) FROM machine_order_history WHERE json_extract(evidence,'$.state')='Sending'",
+        [],
+        |row| row.get(0),
+    )?;
+    assert_eq!(sending, 0);
     wait_state(&path, "done", 1).await?;
     let body: Vec<u8> = rusqlite::Connection::open(temp.path().join("receiver.db"))?.query_row(
         "SELECT body FROM deliveries WHERE kind='order-events'",
@@ -407,8 +412,7 @@ async fn query_rejects_dilution_without_sending_work() -> Result<(), Error> {
     );
     assert!(
         body.get("source_status")
-            .ok_or("source status")?
-            .as_str()
+            .and_then(serde_json::Value::as_str)
             .ok_or("source status")?
             .contains("unsupported-dilution")
     );
