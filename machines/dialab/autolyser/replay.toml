@@ -13,3 +13,10 @@ controls = false
 ["next-report.rec.jsonl".recording]
 poll_seconds = 1
 controls = false
+
+["worklist-download.rec.jsonl"]
+vendor_worklist = "autolyser"
+
+["worklist-download.rec.jsonl".recording]
+poll_seconds = 1
+controls = false

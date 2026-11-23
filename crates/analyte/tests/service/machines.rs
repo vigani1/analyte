@@ -116,9 +116,17 @@ fn readme(path: &Path, level: EvidenceLevel) -> Result<(), Error> {
 struct ReplaySettings {
     choices: Option<toml::Table>,
     order_profile: Option<analyte_config::AstmOrderProfile>,
+    vendor_worklist: Option<VendorWorklist>,
     recording: Option<toml::Table>,
     expected_gap: Option<ExpectedGap>,
     order_cache: Option<record_display::Cache>,
+}
+
+#[derive(Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum VendorWorklist {
+    Vidas,
+    Autolyser,
 }
 
 #[derive(Deserialize)]
@@ -209,6 +217,19 @@ async fn replay_model(folder: &Path, model: &Path, definition: &Path) -> Result<
                     Some(mode)
                 );
                 replay_structured_orders(mode, &header, &events).await
+            } else if let Some(vendor) = answers.vendor_worklist {
+                assert!(
+                    record_only,
+                    "the fixture exercises an order-enabled test peer"
+                );
+                let name = model
+                    .join("record.toml")
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                let site = recording_site("COM3", &answers, true)?;
+                let validated = analyte_config::recording::load((&name, &text), ("site", &site))?;
+                assert_eq!(header.stack, validated.effective().stack().layer_names());
+                replay_vendor_worklist(vendor, &header, &events).await
             } else if let Some(cache) = answers.order_cache {
                 if !record_only || answers.choices.is_some() || answers.recording.is_some()
                     || answers.expected_gap.is_some()
@@ -313,6 +334,88 @@ async fn replay_structured_orders(
         )
         .await?;
         Ok::<_, Error>(())
+    }
+    .await;
+    running.stop().await?;
+    reference.close().await?;
+    result
+}
+
+// VIDAS BCI guide C pp. 3-2 and 4-4 to 4-6; Autolyser Rev18 section 23.1.
+async fn replay_vendor_worklist(
+    vendor: VendorWorklist,
+    header: &Header,
+    events: &[Event],
+) -> Result<(), Error> {
+    use analyte_fixtures::ConfigEdit as _;
+    let temp = tempfile::tempdir()?;
+    let (machine, base, policy, mut order, code) = match vendor {
+        VendorWorklist::Vidas => (
+            "vidas",
+            include_str!("../../../core/config/examples/vidas_literal.toml").rewrite(
+                "download = false",
+                "download = true\ndilution_required_assays = ['TEST']",
+            ),
+            "priorities = [{app='routine',machine='R'}]",
+            serde_json::json!({
+                "id":"synthetic-worklist", "version":1, "state":"requested",
+                "sample_id":"000Ab12", "priority":"routine", "target_analyzers":["vidas"],
+                "expires_at":null, "tombstone":false,
+                "tests": [
+                    {"namespace":"synthetic", "value":"TEST", "dilution_ratio":5},
+                    {"namespace":"synthetic", "value":"SUB"}
+                ],
+                "patient": {
+                    "id":{"namespace":"synthetic","value":"000PatA"},
+                    "name":"Synthetic", "birth_date":"2000-02-29", "sex_code":"F"
+                },
+                "sample_origin":"LAB1"
+            }),
+            "VIDAS-transfer-confirmed",
+        ),
+        VendorWorklist::Autolyser => (
+            "autolyser",
+            include_str!("../../../core/config/examples/autolyser.toml")
+                .rewrite("download = false", "download = true"),
+            "priorities = [{app='routine',machine='T'}]\nspecimen_system = 'synthetic'\nclone = false",
+            serde_json::from_slice(include_bytes!(
+                "../../../../docs/contract/vectors/order-context.json"
+            ))?,
+            "Autolyser-insertion-confirmed-position-03",
+        ),
+    };
+    if matches!(vendor, VendorWorklist::Autolyser) {
+        *order
+            .pointer_mut("/specimen_type/value")
+            .ok_or("specimen code")? = "S".into();
+    }
+    let text =
+        format!("{base}\n[orders]\nsend_ahead=true\npatient_namespace='synthetic'\n{policy}");
+    let path = vendor_config(temp.path(), machine, &text)?;
+    let reference = Reference::start(
+        &temp.path().join("receiver.db"),
+        TcpListener::bind("127.0.0.1:0").await?,
+        false,
+    )
+    .await?;
+    reference
+        .receiver
+        .seed(vec![analyte_contract::decode(&serde_json::to_vec(
+            &order,
+        )?)?])
+        .await?;
+    let running = Running::start(&path, &reference.url, "synthetic-api").await?;
+    let result = async {
+        wait_feed(&path).await?;
+        let mut peer = connect(&path, machine).await?;
+        analyte_sim::replay(&mut peer, events, &header.exceptions, HANG_GUARD).await?;
+        wait_database_count(
+            &path,
+            "SELECT count(*) FROM machine_orders WHERE state = 'Sent' AND source_code = ?1",
+            [code],
+            1,
+        )
+        .await
     }
     .await;
     running.stop().await?;

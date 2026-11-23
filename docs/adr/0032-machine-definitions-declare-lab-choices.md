@@ -93,6 +93,14 @@ the model and must not be the lab's to change.
    `autolyser_poll_seconds` and the effective snapshot holds milliseconds.
    Existing fixed intervals retain their earlier meaning.
 
+9. **VIDAS can require the lab's patient namespace.** A normal definition
+   can set `orders.vidas_patient_namespace_from_site = true` in place of a
+   fixed `orders.patient_namespace`. Setup step 2 collects the typed site
+   identifier `vidas_patient_namespace`. A choice that keeps the orders
+   table requires that identifier. A choice that switches orders off can
+   validate without one. The effective snapshot keeps the resolved namespace
+   under `orders.patient_namespace`. Record-only Setup has no namespace field.
+
 ## Consequences
 
 - One definition can serve an analyzer in each of its documented modes and

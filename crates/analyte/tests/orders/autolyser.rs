@@ -535,3 +535,42 @@ async fn negative_or_unknown_reply_never_claims_sent() -> Result<(), Error> {
     }
     Ok(())
 }
+
+// Autolyser Operator Manual Rev18 section 23.1.
+#[tokio::test]
+async fn separate_urgent_list_is_refused() -> Result<(), Error> {
+    let mut value = order()?;
+    value["priority"] = "urgent".into();
+    rejection(value, "rejected: unsupported-urgent-list").await
+}
+
+// Autolyser Operator Manual Rev18 sections 23.1 and 23.2; ADR 0004.
+#[tokio::test]
+async fn unavailable_cache_keeps_polling_without_inserting() -> Result<(), Error> {
+    let temp = tempfile::tempdir()?;
+    let path = vendor_config(temp.path(), "autolyser", &definition(false))?;
+    let (_outage, url) = AppOutage::start(&temp.path().join("receiver.db"), true).await?;
+    let service = Running::start(&path, &url, "synthetic-api").await?;
+    let mut peer = connect(&path, "autolyser").await?;
+    empty_poll(&mut peer).await?;
+    only_polls(&mut peer).await?;
+    no_event(&path).await?;
+    drop(peer);
+    service.stop().await
+}
+
+// Autolyser Operator Manual Rev18 sections 23.1 and 23.2; ADR 0032.
+#[tokio::test]
+async fn disabled_download_leaves_trusted_orders_unsent() -> Result<(), Error> {
+    let receive_only = definition(false)
+        .rewrite("download = true", "download = false")
+        .rewrite("send_ahead=true", "send_ahead=false");
+    let (_temp, path, reference, service, mut peer) =
+        setup_with_definition(order()?, &receive_only).await?;
+    while_servicing(wait_feed(&path), async || empty_poll(&mut peer).await).await?;
+    only_polls(&mut peer).await?;
+    no_event(&path).await?;
+    drop(peer);
+    service.stop().await?;
+    reference.close().await
+}

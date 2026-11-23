@@ -82,7 +82,8 @@ four-byte analysis codes, checksum and EOT. The reply is `Y` and one
 position byte, or `N` and one error byte (documented range 0x01–0x18).
 Analyte requires an explicit app patient namespace, specimen code,
 priority, clone policy and cup in 01–99. The driver accepts 1–99 tests
-within its configured bound. A lost insertion reply leaves the outcome
+within its configured bound. Only the routine and STAT lists are supported.
+A separate urgent request is refused. A lost insertion reply leaves the outcome
 uncertain for reconciliation. This model ships with record-only polling.
 
 ## Implementation gaps
@@ -97,11 +98,11 @@ expected layout and installed settings still need to be confirmed.
 
 | Rev18 source | Gap and consequence | Layer |
 | --- | --- | --- |
-| p.119 and §§23.1–23.2 | Normal definitions require a concrete poll interval and communication deadlines. ADR 0032 choices can switch the orders table, but cannot select `autolyser.controls`, `recover_last_on_poll` or `download`. Switching the orders table alone cannot express both states of the Autolyser download gate. The lab needs to select controls, normal work lists on/off and the interval without fabricated defaults. | Configuration / Setup |
+| p.119 and sections 23.1 to 23.2 | ADR 0032 choices can set the controls layout, last-report recovery and download permission. Normal definitions can require the lab's poll interval without a default. Confirm installed options and communication deadlines. | Configuration / Setup |
 | p.119, Figure 15-7 and §23.4 | TCP/IP exists on the analyzer, but the role, port and equivalence to RS-232 are unknown. A generic TCP transport is insufficient evidence. | Transport |
 | p.119, §23.2 | Release and NC sending are analyzer settings. The bridge cannot inspect or set them on the wire or tell an unreleased queue from an empty one. Suppressed NC never reaches the bridge. | Analyzer / operations |
 | §23 introduction p.175 | The reported patient code is the sample association, including case and fixed-width padding. A blank or fallback code leaves the association absent. Fixed reports lack a unique run field, so results remain held. Recordings are still needed to confirm which code staff enter or scan. | Syntax / identity |
-| §23.1 pp.175–176 | The analyzer can choose a position with `00`; Analyte requires an explicit cup. It preserves the reply's position byte without interpreting possible extra-list encodings. Routine and STAT are defined; a separate urgent list has no internal code. This protects placement on a machine with no reader. | Order mapping / dialog |
+| Section 23.1 pp.175 to 176 | Without a reader, placement needs an explicit cup and `00` is refused. The reply's position byte is retained as received. Routine and STAT have typed codes. An urgent order is refused because the internal format has no separate urgent code. | Order mapping / dialog |
 | §§22.6, 23.2 and §23.5 p.183 | The analyzer can recalculate or rerun results. Internal reports carry a patient code, but current mapping does not surface it as a resolved sample association. Neither report layout nor the listed variable fields yield a stable run or revision ID. Analyte parks results as unresolved, including after a successful wire recovery. | Mapping / result custody |
 | §23.2 pp.177–178 | Mapping exposes list and medium and, for QC, known-control status, exact level and lot. Parsing follows the stated field definitions because the printed controls example disagrees with the widths and checksum. The original report is retained. Both report modes still need qualification on the installed analyzer. | Syntax / mapping |
 | §§23.2–23.3 pp.177–179 | The manual gives `L` as a recovery command but does not specify retry policy, exact timing or cursor persistence. The normal driver supports same-session automatic `L` when enabled and the dialog can accept an explicit `L`, but the program exposes no manual `L` or archive `A` operation. A restart with an unresolved poll requires operator reconciliation; record-only mode also requires that after a corrupt reply. | Dialog / operator controls |

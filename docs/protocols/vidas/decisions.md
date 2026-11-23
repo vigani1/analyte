@@ -1,8 +1,8 @@
 # VIDAS decisions
 
-No complete vendor manual was available for this review. Vendor claims below
-cite the repository's [VIDAS research](../../research/machines/vidas.md), a secondary
-source, not independently rechecked manual sections. Evidence stays documented.
+Download decisions were checked against BCI Guide C and VIDAS PC Manual F.
+Some earlier protocol decisions still refer to the repository's
+[VIDAS research](../../research/machines/vidas.md). Evidence stays documented.
 Wire requirements remain in [checklist.md](checklist.md).
 
 ## 1. Limit support to the VIDAS PC Literal family
@@ -16,16 +16,17 @@ Wire requirements remain in [checklist.md](checklist.md).
   [ADR 0007](../../adr/0007-standards-first.md), explicit scope.
 - **test**: none yet.
 
-## 2. Send one validated request per download session
+## 2. Send one app order per download session
 
-- **what**: Use separate sessions for requests instead of implementing the
-  research's multi-packet download alternative.
-- **why**: One request has one recoverable acceptance outcome. Supporting a
-  larger session would require tracking partial acceptance across packets and
-  is unnecessary for the existing durable per-order path.
-- **source**: [Research §3](../../research/machines/vidas.md#3-literal-and-literal-alternate-low-level-protocol);
-  [ADR 0007](../../adr/0007-standards-first.md), selected workflow scope.
-- **test**: none yet.
+- **what**: Validate every request before opening one session for the app
+  order. Send a complete packet for each assay, with an ACK at the selected
+  Literal or Alternate boundary. End with EOT after the final packet.
+- **why**: Guide C allows both individual sessions and a multi-packet session.
+  A failed packet leaves the whole order uncertain. A successful exchange
+  establishes transfer only, because the PC can still refuse an assay.
+- **source**: Guide C pp. 3-2 to 3-4 and 10-2.
+- **test**: `all_assays_confirm_once_and_survive_restart` and
+  `second_packet_nak_leaves_entire_order_uncertain`.
 
 ## 3. Require explicit framing compatibility settings
 

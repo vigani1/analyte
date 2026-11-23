@@ -1,0 +1,10 @@
+{"version":1,"stack":["serial","autolyser","autolyser","autolyser"],"machine":"dialab/autolyser","software":null,"evidence":"synthetic","de_identification":"Invented identifiers, demographics and assay codes.","source":"Autolyser Operator Manual Rev18 section 23.1 pp. 175 to 176"}
+{"direction":"machine_to_host","time_ms":0,"bytes":"","link":"connect"}
+{"direction":"host_to_machine","time_ms":10,"bytes":"Ag=="}
+{"direction":"machine_to_host","time_ms":20,"bytes":"Bg=="}
+{"direction":"host_to_machine","time_ms":30,"bytes":"UgQ="}
+{"direction":"machine_to_host","time_ms":40,"bytes":"FQ=="}
+{"direction":"host_to_machine","time_ms":50,"bytes":"Ag=="}
+{"direction":"machine_to_host","time_ms":60,"bytes":"Bg=="}
+{"direction":"host_to_machine","time_ms":70,"bytes":"MDAwUGF0QSAgICAgICAgVFNOMDMwMVRFU1QyMzkE"}
+{"direction":"machine_to_host","time_ms":80,"bytes":"WQM="}

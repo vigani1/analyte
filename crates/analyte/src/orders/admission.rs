@@ -26,12 +26,12 @@ pub(crate) async fn prepare<T, E: From<Error>>(
         return Ok(Prepared::Skipped);
     }
     let candidate = super::reservation::pending(machine, cached.id, order.fields().version)?;
-    let supports_dilution = machine
-        .snapshot
-        .effective()
-        .stack()
-        .astm_orders()
-        .is_some_and(|orders| orders.layout().profile.is_some());
+    let stack = machine.snapshot.effective().stack();
+    // VIDAS checks the installed assay's dilution policy in its mapper.
+    let supports_dilution = matches!(stack, analyte_config::Stack::Vidas(_))
+        || stack
+            .astm_orders()
+            .is_some_and(|orders| orders.layout().profile.is_some());
     let mapped = if !supports_dilution
         && order
             .fields()

@@ -129,6 +129,10 @@ pub fn map_order(
         "U" => Sample::Urine,
         _ => return Err(crate::OrderMappingError::SpecimenTypeUnrepresentable.into()),
     };
+    // Rev18 section 23.1 pp. 175 to 176: the internal format has only routine and STAT.
+    if matches!(order.priority, crate::AppOrderPriority::Urgent) {
+        return Err(OrderError::UrgentListUnsupported);
+    }
     let priority = map_priority(settings.priorities(), order.priority)?;
     let list = match &priority.machine {
         analyte_config::MachinePriority::Code(analyte_config::PriorityCode::T) => List::Routine,
@@ -184,6 +188,9 @@ pub fn map_order(
 /// Specific outgoing AUTOLYSER mapping refusals.
 #[derive(Debug, thiserror::Error)]
 pub enum OrderError {
+    /// The internal format cannot insert a separate urgent list.
+    #[error("unsupported-urgent-list")]
+    UrgentListUnsupported,
     /// No explicitly addressed cup can be encoded; zero is never invented.
     #[error("invalid-cup-position")]
     InvalidCupPosition,

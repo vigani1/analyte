@@ -254,6 +254,9 @@ pub struct Orders {
     /// Accepted assigning system for the unqualified vendor patient field.
     /// Required for VIDAS and Autolyser outbound orders; never inferred.
     pub patient_namespace: Option<Identifier>,
+    /// Require a lab-specific VIDAS patient namespace from the site file.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub vidas_patient_namespace_from_site: bool,
     /// Explicit Autolyser clone behavior, including an explicit false.
     pub clone: Option<bool>,
     /// ASTM record layout, required only by the ASTM stack.

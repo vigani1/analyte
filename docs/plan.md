@@ -234,7 +234,7 @@ Machine documents used for the first machines:
 | YHLO iFlash 1200     | YHLO LIS Protocol Manual V1.1 (iFlash family); iFlash 1200 Operation Manual V3.0    |
 | Boule Swelab Lumi    | Lumi User Manual 1504529; Boule's LIS protocol description for the Lumi (still needed) |
 | BioCARE Biolyte 2000 | Service Manual 4.2A, Appendix VI                                                    |
-| bioMérieux VIDAS     | Research: BCI Link guides 161150-486 A/B and VIDAS PC User Manual F; implementation from research notes |
+| bioMérieux VIDAS     | BCI Link guide 161150-486 C and VIDAS PC User Manual F for work lists; A/B research notes for earlier protocol behavior |
 | Dialab Autolyser     | Autolyser / Autolyser ISE Operator's Manual Rev18; Service Manual Rev01             |
 
 ## 9. First machines

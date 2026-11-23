@@ -13,9 +13,6 @@ pub(crate) enum Error {
         /// The dialog deadline that ended the transfer; none for a refused or unexpected event.
         expired: Option<analyte_dialog::vidas::Timer>,
     },
-    /// A reserved VIDAS order produced no mapped request.
-    #[error("VIDAS mapped request missing")]
-    MappedRequestMissing,
     /// VIDAS order mapping failed.
     #[error(transparent)]
     Mapping(#[from] analyte_mapping::vidas::OrderError),

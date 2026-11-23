@@ -104,6 +104,45 @@ fn download_never_resends_after_lost_ack() -> Result<(), Box<dyn std::error::Err
     Ok(())
 }
 
+// VIDAS BCI guide C pp. 3-2 and 3-4.
+#[test]
+fn alternate_acknowledges_each_complete_packet_in_one_session()
+-> Result<(), Box<dyn std::error::Error>> {
+    let c = config(Mode::Alternate, b"\r\n", true)?;
+    let first = Message::parse("mtmpr|piX|si|ci0001|rtSYN|", SampleLimit::Twelve)?;
+    let second = Message::parse("mtmpr|piX|si|ci0001|rtSUB|", SampleLimit::Twelve)?;
+    let first_wire = c.encode(first.text().as_bytes())?;
+    let second_wire = c.encode(second.text().as_bytes())?;
+    let mut dialog = Dialog::download_batch(c.clone(), policy(), &[first, second])?;
+    let writes = |actions: Vec<Action>| {
+        actions
+            .into_iter()
+            .filter_map(|action| {
+                if let Action::Write(bytes) = action {
+                    Some(bytes)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(writes(dialog.start()), [c.control(5)]);
+    let ack = Event::Control(6);
+    assert_eq!(
+        writes(dialog.step(Duration::ZERO, ack.clone())?),
+        [first_wire]
+    );
+    assert_eq!(
+        writes(dialog.step(Duration::from_millis(750), ack.clone())?),
+        [second_wire]
+    );
+    assert_eq!(
+        writes(dialog.step(Duration::from_millis(1500), ack)?),
+        [c.control(4)]
+    );
+    Ok(())
+}
+
 proptest::proptest! {
     // VIDAS BCI Link rev A §3
     #[test]

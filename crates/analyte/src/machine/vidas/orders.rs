@@ -4,41 +4,24 @@ use analyte_store::Handle;
 use analyte_vidas::syntax::Message;
 pub(crate) enum Progress {
     UploadFinished,
-    DownloadNext(Message),
     DownloadFinished,
 }
-impl Work<'_, analyte_config::VidasOrders, Message> {
+impl Work<'_, analyte_config::VidasOrders, Vec<Message>> {
     pub(crate) async fn poll(
         &mut self,
         machine: &intake::ConnectionEvidence<'_>,
         store: &Handle,
         settings: &analyte_config::VidasStack,
-    ) -> Result<Option<Message>, Error> {
-        if !self.poll_due()? {
-            return Ok(None);
-        }
-        if !self
-            .reserve(store, machine.machine(), |order, orders| {
-                let requests = analyte_mapping::vidas::map_order(order, settings, orders)?;
-                Ok::<_, Error>(requests.into())
-            })
-            .await?
-        {
-            return Ok(None);
-        }
-        Ok(Some(
-            self.requests
-                .pop_front()
-                .ok_or(Error::MappedRequestMissing)?,
-        ))
+    ) -> Result<Option<Vec<Message>>, Error> {
+        self.poll_one(store, machine.machine(), |order, orders| {
+            Ok(analyte_mapping::vidas::map_order(order, settings, orders)?)
+        })
+        .await
     }
     pub(crate) async fn confirmed(&mut self, store: &Handle) -> Result<Progress, Error> {
         let Some(order) = &self.active else {
             return Ok(Progress::UploadFinished);
         };
-        if let Some(request) = self.requests.pop_front() {
-            return Ok(Progress::DownloadNext(request));
-        }
         crate::orders::sending::complete(
             store,
             order,

@@ -74,6 +74,7 @@ pub(super) struct ConnectionStep {
     pub(super) inputs: Inputs,
     /// The model's own choices (ADR 0032); empty when it declares none.
     pub(super) choices: Vec<Setting>,
+    pub(super) vidas_patient_namespace: Option<String>,
     pub(super) autolyser_poll_seconds: Option<String>,
     pub(super) lab_apps: Picker,
     /// Record only (ADR 0034): the capture profile's questions, and no lab app.

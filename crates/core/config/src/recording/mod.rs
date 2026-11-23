@@ -440,6 +440,13 @@ pub fn load(model: (&str, &str), site: (&str, &str)) -> Result<Validated, Error>
             "a record-only site file has a [recording] table",
         )
     })?;
+    if chosen.vidas_patient_namespace.is_some() {
+        return Err(invalid(
+            site.0,
+            "vidas_patient_namespace",
+            "record-only connections do not send work lists",
+        ));
+    }
     if chosen.autolyser_poll_seconds.is_some() {
         return Err(invalid(
             site.0,
