@@ -164,7 +164,7 @@ async fn wait_orders(path: &Path, cancellation: bool) -> Result<(), Error> {
                 path,
                 rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
             )?;
-            db.busy_timeout(Duration::from_secs(1))?;
+            db.busy_timeout(analyte_fixtures::STORE_BUDGET)?;
             let ready: i64 = db.query_row(
                 "SELECT count(*) FROM sqlite_master WHERE name='machine_order_items'",
                 [],

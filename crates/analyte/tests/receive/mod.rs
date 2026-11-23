@@ -94,11 +94,12 @@ fn show_host_log() {
 }
 
 async fn serve(
-    program: Program,
+    mut program: Program,
     space: Box<dyn FreeSpace>,
     stop: impl Future<Output = Result<(), analyte::runtime::Error>>,
 ) -> Result<(), Error> {
     show_host_log();
+    program.set_shutdown_io_budget_for_test(guard::STORE_BUDGET)?;
     let secrets = analyte::installation::secrets::Environment::load_with(&program, |name| {
         Some(
             if name.ends_with("API") {

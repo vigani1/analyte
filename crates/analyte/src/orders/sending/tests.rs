@@ -186,7 +186,7 @@ async fn cleanup_attempts_every_key_and_keeps_failures() -> Result<(), Error> {
     let owner = Identifier::new("owner")?;
     let error = settle_owned(
         &store,
-        vec![key.clone(), key.clone(), key],
+        &[key.clone(), key.clone(), key],
         &owner,
         "disconnect",
         Settlement::Order,

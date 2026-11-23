@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- ASTM queries and ASTM, VIDAS and Autolyser send-ahead now reconcile late
+  order reservations at disconnect. Committed reservations whose store reply
+  timed out become uncertain without resending the order.
+
 - Reject orders that request dilution on an Autolyser, HL7 order send, HL7
   display reply, or LAW work order. The rejection event records
   `unsupported-dilution` before any work is sent.
