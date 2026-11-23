@@ -5,4 +5,6 @@ crates/core/contract/src/document/identity.rs
 crates/core/contract/src/document/list.rs
 crates/core/contract/src/document/time.rs
 crates/core/contract/src/document/sample.rs
+# result.rs mirrors the model's ResultDetails; conversion.rs maps each field. No
+# agreement property test covers these fields yet (tracked for the structure review).
 crates/core/contract/src/document/result.rs
