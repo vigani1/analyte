@@ -226,9 +226,9 @@ pub(super) fn validate_protocol(m: &ParsedMachine<'_>, path: &str) -> Result<(),
         return Err(bad("vidas"));
     }
     if let Some(a) = &m.autolyser
-        && (!(2..=analyte_framing::autolyser::MAX_ENVELOPE).contains(&m.framing.limit)
+        && (!matches!(a.poll_ms, crate::schema::PollInterval::Milliseconds(ms) if valid_ms(ms))
+            || !(2..=analyte_framing::autolyser::MAX_ENVELOPE).contains(&m.framing.limit)
             || ![
-                a.poll_ms,
                 a.acknowledgment_ms,
                 a.response_ms,
                 a.interbyte_ms,

@@ -385,3 +385,184 @@ fn overrides_cannot_replace_a_chosen_block() {
         "{refused:?}"
     );
 }
+
+// ADR 0032; Dialab Autolyser Operator's Manual Rev18 chapter 23.
+#[test]
+fn autolyser_choices_set_each_policy_and_require_the_site_interval() -> TestResult {
+    let base = include_str!("../examples/autolyser.toml")
+        .replace("poll_ms = 1000", "poll_ms = \"site\"")
+        .replace("controls = false", "")
+        .replace("recover_last_on_poll = true", "")
+        .replace("download = false", "");
+    let definition = format!(
+        "{base}{}",
+        r#"
+[[choices]]
+name = "workflow"
+kind = "mode"
+label = "Analyzer workflow"
+[[choices.values]]
+value = "receive"
+label = "Receive only"
+autolyser = { controls = false, recover_last_on_poll = false, download = false }
+[[choices.values]]
+value = "exchange"
+label = "Exchange work lists and reports"
+autolyser = { controls = true, recover_last_on_poll = true, download = true }
+
+[orders]
+send_ahead = true
+patient_namespace = "synthetic-patients"
+priorities = [{app="routine",machine="T"}]
+specimen_system = "synthetic"
+clone = false
+"#
+    );
+    let site = |poll: &str, mode: &str| {
+        format!(
+            "{}[choices]\nworkflow = \"{mode}\"\n",
+            SITE.replace("schema_version = 1", &format!("schema_version = 1\n{poll}"))
+        )
+    };
+    let config = |site: &str| {
+        Draft::load(
+            ("machine", &definition),
+            ("site", site),
+            ("local", OVERRIDES),
+        )?
+        .validate()
+    };
+    for (mode, enabled) in [("receive", false), ("exchange", true)] {
+        let validated = config(&site("autolyser_poll_seconds = 42", mode))?;
+        let Stack::Autolyser(stack) = validated.effective().stack() else {
+            return Err("expected Autolyser".into());
+        };
+        assert_eq!(stack.poll_ms(), 42000);
+        assert_eq!(stack.policy().controls, enabled);
+        assert_eq!(stack.policy().recover_last_on_poll, enabled);
+        assert_eq!(stack.policy().download, enabled);
+        assert_eq!(
+            stack
+                .orders()
+                .ok_or("order layout must remain")?
+                .send_ahead(),
+            enabled
+        );
+    }
+    for interval in [
+        "",
+        "autolyser_poll_seconds = 301",
+        "autolyser_poll_seconds = 0",
+    ] {
+        assert!(config(&site(interval, "exchange")).is_err());
+    }
+    assert!(config(&site("autolyser_poll_seconds = 42", "other")).is_err());
+    Ok(())
+}
+
+// ADR 0032; encoding choices use the protocol's existing decoding policies.
+#[test]
+fn character_encoding_is_selected_and_checked_for_all_values() -> TestResult {
+    let base = ASTM.replace("encoding = \"ascii\"", "");
+    let definition = format!(
+        "{base}{}",
+        r#"
+[[choices]]
+name = "code_page"
+kind = "mode"
+label = "Installed host encoding"
+suggested = "ascii"
+[[choices.values]]
+value = "ascii"
+label = "ASCII"
+encoding = "ascii"
+[[choices.values]]
+value = "latin1"
+label = "Latin-1"
+encoding = "latin1"
+"#
+    );
+    let validated = load(&definition, "[choices]\ncode_page = 'latin1'\n", OVERRIDES)?;
+    let Stack::Astm(RecordTransport::Stream(stack)) = validated.effective().stack() else {
+        return Err("expected ASTM".into());
+    };
+    assert_eq!(
+        stack.settings().syntax().encoding(),
+        analyte_config::Encoding::Latin1
+    );
+    let bad = definition.replace("encoding = \"latin1\"", "encoding = \"windows_1252\"");
+    assert!(load(&bad, "", OVERRIDES).is_err());
+    Ok(())
+}
+
+// Roche cobas e 411 HIM v2.3 section 5 pp. 14-15; ADR 0015 and ADR 0032.
+#[test]
+fn only_the_matching_mode_can_enable_a_declared_departure() -> TestResult {
+    let definition = format!(
+        "{ASTM}{}",
+        r#"
+[departure_scope]
+model = "roche/cobas-e411"
+firmware = "test"
+mode = "elecsys"
+edition = { protocol = "astm" }
+direction = "machine_to_host"
+message = "astm_results"
+
+[[choice_departures]]
+rule = "astm_packed_records_in_frame"
+[choice_departures.declaration]
+level = "documented"
+scope = { model = "roche/cobas-e411", firmware = "test", mode = "cobas", edition = { protocol = "astm" }, direction = "machine_to_host", message = "astm_results" }
+[[choice_departures.declaration.evidence]]
+kind = "manual"
+reference = "cobas-him"
+title = "cobas e 411 Host Interface Manual"
+revision = "2.3"
+section = "5 pp. 14-15"
+guarantee = "packed_records"
+covers_unknown_firmware = false
+contradicts = false
+
+[[choices]]
+name = "protocol_type"
+kind = "mode"
+label = "Installed host protocol type"
+suggested = "elecsys"
+[[choices.values]]
+value = "elecsys"
+label = "Elecsys"
+departures = []
+[[choices.values]]
+value = "cobas"
+label = "cobas"
+departures = ["astm_packed_records_in_frame"]
+"#
+    );
+    for (mode, packed) in [("elecsys", false), ("cobas", true)] {
+        let validated = load(
+            &definition,
+            &format!("[choices]\nprotocol_type = '{mode}'\n"),
+            OVERRIDES,
+        )?;
+        let Stack::Astm(RecordTransport::Stream(stack)) = validated.effective().stack() else {
+            return Err("expected ASTM".into());
+        };
+        assert_eq!(stack.packed_records(), packed);
+        assert_eq!(
+            validated.effective().machine().deviations.len(),
+            usize::from(packed)
+        );
+    }
+    let outside_scope = definition.replace(
+        "departures = []",
+        "departures = ['astm_packed_records_in_frame']",
+    );
+    assert!(load(&outside_scope, "", OVERRIDES).is_err());
+    let missing_evidence = definition.replace(
+        "guarantee = \"packed_records\"",
+        "guarantee = \"compatibility\"",
+    );
+    assert!(load(&missing_evidence, "", OVERRIDES).is_err());
+    Ok(())
+}

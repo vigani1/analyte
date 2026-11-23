@@ -329,6 +329,11 @@ fn note(meaning: DepartureMeaning) -> Option<Notice> {
             .into(),
             text: "It waits on the Needs review page instead of going to the lab app.".into(),
         }),
+        DepartureMeaning::ProductionFromDocumentation => Some(Notice {
+            tone: Tone::Attention,
+            title: "Production mode supplied by the machine definition".into(),
+            text: "The received ASTM header had an empty processing ID.".into(),
+        }),
         DepartureMeaning::ControlCharacterKept
         | DepartureMeaning::CharsetFromDefinition
         | DepartureMeaning::ZoneFromSite => Some(Notice {

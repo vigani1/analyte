@@ -352,6 +352,24 @@ fn serial_of(
     }
 }
 
+/// Whether the normal definition leaves the Autolyser interval to the lab.
+pub(super) fn asks_autolyser_poll(definition: &std::path::Path) -> bool {
+    crate::installation::config::read(definition)
+        .ok()
+        .is_some_and(|text| {
+            analyte_config::asks_autolyser_poll(&definition.display().to_string(), &text)
+                .unwrap_or(false)
+        })
+}
+
+/// The site interval, if one was saved for normal operation.
+pub(super) fn saved_autolyser_poll(table: &toml::Table) -> Option<String> {
+    table
+        .get("autolyser_poll_seconds")
+        .and_then(toml::Value::as_integer)
+        .map(|seconds| seconds.to_string())
+}
+
 /// Everything a save or a test needs, checked and validated in memory.
 pub(super) struct Plan {
     pub(super) program: String,
@@ -401,9 +419,20 @@ pub(super) fn plan(setup: &Setup, id: &str, draft: &wizard::Draft) -> Result<Pla
         let chosen = choices::chosen(draft, &choices::declared(&definition))?;
         let lab_app = Identifier::new(draft.lab_app.as_deref().unwrap_or_default().trim())
             .map_err(|_| SetupError::NoLabAppChosen)?;
+        let poll = draft
+            .poll_seconds
+            .as_deref()
+            .filter(|seconds| !seconds.trim().is_empty())
+            .map(|seconds| {
+                seconds.trim().parse::<u32>().map_err(|_| {
+                    SetupError::Connection("enter the poll interval in seconds as a whole number")
+                })
+            })
+            .transpose()?;
         site::candidate(
             &current,
             (link.0, link.1, link.2, &chosen),
+            poll,
             &lab_app,
             &scan.file,
             &scan.settings(),
