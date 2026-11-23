@@ -824,7 +824,7 @@ fn assert_lab_app_nodes(page: &str) {
     assert!(!page.contains("Cannot send to lab app old-lab: its API key"));
     assert!(page.contains(concat!(
         "<p class=\"todo__title\">Cannot send to lab app old-lab: keys missing, 1 waiting</p>",
-        "<p class=\"todo__detail\">Lab app old-lab: 1 result or order message is kept ",
+        "<p class=\"todo__detail\">Removed machine synthetic-machine: 1 result or order message is kept ",
         "and never deleted.</p>"
     )));
 }
