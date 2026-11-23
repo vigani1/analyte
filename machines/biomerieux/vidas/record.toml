@@ -5,9 +5,9 @@
 recording_schema_version = 1
 protocol = "vidas"
 [transport]
-# BCI Link guide 161150-486 A 3-8: serial from the VIDAS PC.
+# BCI Link guide 161150-486 C pp. 2-2 and 3-8: serial from the VIDAS PC.
 kind = "serial"
-# A 3-8 defaults: 9600 baud, 8 data bits, no parity, one stop bit; the guides
+# C p. 3-8 defaults: 9600 baud, 8 data bits, no parity, one stop bit; the guides
 # do not settle flow control, so the lab chooses it.
 [transport.serial]
 baud = 9600
