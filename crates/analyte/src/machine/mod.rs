@@ -148,3 +148,4 @@ pub(in crate::machine) async fn drive(
     // wait behind unread events during shutdown.
     result
 }
+pub(crate) mod software_version;

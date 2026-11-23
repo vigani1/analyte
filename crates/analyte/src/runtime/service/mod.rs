@@ -553,6 +553,7 @@ impl Destinations {
     /// the same missing keys the admin page reports, decided once at startup.
     fn reach(&self) -> crate::operator::alerts::Reach {
         crate::operator::alerts::Reach {
+            software: Default::default(),
             configured: self
                 .served
                 .iter()
@@ -696,6 +697,15 @@ fn start_alerts(
     if !program.alerts().is_empty() {
         let store = store.clone();
         let policies = program.alerts().to_vec();
+        let mut reach = reach;
+        reach.software = program
+            .machines()
+            .iter()
+            .filter_map(|machine| {
+                let check = machine.snapshot.effective().machine().software_version()?;
+                Some((machine.id().clone(), check.revision))
+            })
+            .collect();
         let interval = program.alert_interval();
         let destinations = program
             .machines()

@@ -229,3 +229,39 @@ pub(super) async fn cancelled(
     }
     Ok(())
 }
+
+/// Confirms a known software warning from the command line.
+pub(super) async fn confirm_software(
+    program: &Program,
+    actor: Identifier,
+    machine: Identifier,
+    version: Identifier,
+) -> Result<(), Error> {
+    let check = program
+        .machines()
+        .iter()
+        .find(|entry| *entry.id() == machine)
+        .and_then(|entry| entry.snapshot().effective().machine().software_version())
+        .ok_or(Error::NoSoftwareCheck)?;
+    let revision = check.revision;
+    with_store(program, async |store| {
+        let id = machine.clone();
+        let warning = store
+            .read::<_, CommandError>(crate::deadline()?, move |store| {
+                Ok(store.software_warning(&id, revision)?)
+            })
+            .await?
+            .ok_or(Error::NoSoftwareWarning)?;
+        crate::admin::machines::software_version::confirm(
+            store,
+            machine,
+            revision,
+            version,
+            warning.first_seen,
+            actor,
+        )
+        .await
+    })
+    .await?;
+    super::say("Settings checked for this version.")
+}

@@ -474,6 +474,7 @@ pub fn load(model: (&str, &str), site: (&str, &str)) -> Result<Validated, Error>
     Ok(Validated {
         effective: crate::Effective {
             machine: Machine {
+                software_version: None,
                 name: analyte_model::Identifier::new(&format!("record-only-{}", protocol.key()))
                     .map_err(|_| invalid(model.0, "protocol", "unusable protocol name"))?,
                 deviations: stack.departures.clone(),

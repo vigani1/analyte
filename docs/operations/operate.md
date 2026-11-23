@@ -287,6 +287,30 @@ first.
 
 ## Alerts and named responders
 
+A machine may report a software version Analyte has not checked its settings
+with, or unreadable version information. The Overview, the machine's page,
+`analyte overview`, and `doctor` show the warning. The desktop app asks you to
+open Analyte for details. Receiving and result delivery continue. The machine's
+page shows when Analyte first saw the reported version.
+
+Check the installed software and confirm that the interface settings still
+apply. If they do, choose **Settings checked for this version** on the machine's
+page or run `analyte --actor NAME confirm-software MACHINE VERSION` with the exact
+reported version. The audit records who confirmed it. If the reported version
+is unknown, check the analyzer and its definition for the correct version
+location. Install updated settings when the current settings do not apply.
+A definition change takes effect on service restart.
+
+To notify a named responder through a configured relay, add a policy to the
+program file. It has no numeric threshold.
+
+```toml
+[[alerts]]
+kind = "machine_software_version_changed"
+machine = "machine-1"
+responder = "Lab duty officer"
+```
+
 Alerts are opt-in. No policies means no newly evaluated alerts. Put
 `alert_interval_seconds = 30` at the top level of the program file, before
 tables. Append policies such as these synthetic examples:

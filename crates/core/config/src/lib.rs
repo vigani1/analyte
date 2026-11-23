@@ -32,6 +32,7 @@ pub use orders::{
     AstmOrderFields, DsrLine, Hl7OrderQuery, Hl7Processing, Hl7QueryFilter, Hl7Send,
     MachinePriority, OrderPriority, OrderQuery, Orders, PriorityCode, WhenUntrusted,
 };
+pub use schema::software_version;
 pub use schema::{
     AckPoint, AstmTestComponent, Autolyser, Capability, ChecksumAcceptance, ChecksumHex,
     ChecksumInclusion, ChoiceBlock, ChoiceKind, ChoiceLabel, ChoiceName, ChoiceSelections,
@@ -424,6 +425,7 @@ pub struct Machine {
     pub deviations: Vec<MachineDeparture>,
     /// Declared evidence; validation never promotes it.
     pub evidence: Evidence,
+    pub(crate) software_version: Option<software_version::Check>,
     stack: Stack,
 }
 
@@ -556,6 +558,7 @@ impl Draft {
             [machine_path, site_path],
         )?;
         let chosen = choices::chosen(&self.machine.choices, &resolved);
+        let software_version = software_version::resolve(&self.machine, &chosen, machine_path)?;
         self.machine = choices::applied(&self.machine, &selected);
         validate_site(&self.site, &self.machine.transport, site_path)?;
         if o.endpoint.is_some() || o.usb_serial.is_some() {
@@ -615,6 +618,7 @@ impl Draft {
                 name: self.machine.name,
                 deviations: self.machine.deviations,
                 evidence: self.machine.evidence,
+                software_version,
                 stack,
             },
             site: self.site,

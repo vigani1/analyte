@@ -549,7 +549,12 @@ async fn page(
     let more = recent.len() > RECENT;
     recent.truncate(RECENT);
     let detail = detail_page(state, session, entry, &recent, now, dialog);
+    let software = match read_within(software_version::detail(state, session, id)).await {
+        Ok(software) => software,
+        Err(problem) => return problem.page(state, session, Section::Machines(Some(id))),
+    };
     let detail = Detail {
+        software,
         recent_note: more
             .then(|| format!("The newest {RECENT} messages are listed; older ones stay stored.")),
         notices: listed
@@ -645,6 +650,7 @@ fn detail_page(
         },
         actions: actions(entry),
         notices,
+        software: None,
         todo: matches!(entry, Entry::Waiting { set_up: false, .. }).then(|| Todo {
             text: format::SET_UP_ADVICE,
             href: format::setup_href(id, ""),
@@ -949,3 +955,4 @@ pub(in crate::admin) fn rules(config: &analyte_config::Validated) -> Result<Vec<
         })
         .collect()
 }
+pub(in crate::admin) mod software_version;

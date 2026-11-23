@@ -122,15 +122,7 @@ pub(crate) fn astm(
     syntax: &analyte_config::AstmSyntax,
     mappings: &analyte_config::Mappings,
 ) -> Result<analyte_mapping::Output, Error> {
-    let messages = analyte_astm::parse_with(
-        payload,
-        crate::machine::astm::settings::parser_limits(syntax),
-        |bytes| match syntax.encoding() {
-            analyte_config::Encoding::Ascii => analyte_astm::ascii(bytes),
-            analyte_config::Encoding::Latin1 => analyte_astm::latin1(bytes),
-            analyte_config::Encoding::Utf8 => analyte_astm::utf8(bytes),
-        },
-    )?;
+    let messages = astm_messages(payload, syntax)?;
     // A transfer may contain multiple messages; the host must retain every one.
     if messages.len() != 1 {
         return Err(Error::Context(Context::AstmMessageCount));
@@ -142,6 +134,22 @@ pub(crate) fn astm(
             .ok_or_else(|| Error::Context(Context::AstmMessageMissing))?,
         input,
     )?)
+}
+
+/// Parses ASTM records using the installed syntax and decoder.
+pub(crate) fn astm_messages(
+    payload: &[u8],
+    syntax: &analyte_config::AstmSyntax,
+) -> Result<Vec<analyte_astm::Message>, analyte_astm::Error> {
+    analyte_astm::parse_with(
+        payload,
+        crate::machine::astm::settings::parser_limits(syntax),
+        |bytes| match syntax.encoding() {
+            analyte_config::Encoding::Ascii => analyte_astm::ascii(bytes),
+            analyte_config::Encoding::Latin1 => analyte_astm::latin1(bytes),
+            analyte_config::Encoding::Utf8 => analyte_astm::utf8(bytes),
+        },
+    )
 }
 
 /// Reads HL7 syntax with installed policy and maps its exact fields.

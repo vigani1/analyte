@@ -61,6 +61,7 @@ pub(super) fn build(
         ),
         AlertKey::OldestUndelivered
         | AlertKey::MachineSilent(_)
+        | AlertKey::MachineSoftwareVersionChanged(_)
         | AlertKey::DiskReserve
         | AlertKey::OrderCacheStale
         | AlertKey::UncertainOrders
@@ -77,6 +78,11 @@ pub(super) fn build(
             "machine_silent",
             Some(machine.as_str()),
             Measurement::Seconds(state.value),
+        ),
+        AlertKey::MachineSoftwareVersionChanged(machine) => (
+            "machine_software_version_changed",
+            Some(machine.as_str()),
+            Measurement::Count(state.value),
         ),
         AlertKey::DiskReserve => ("disk_reserve", None, Measurement::Bytes(state.value)),
         AlertKey::OrderCacheStale => ("order_cache_stale", None, Measurement::Seconds(state.value)),

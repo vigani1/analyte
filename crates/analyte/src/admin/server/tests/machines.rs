@@ -41,6 +41,7 @@ fn running(
     let choices = matches!(connection, Connection::Serial(_))
         .then(|| "Protocol on the host link screen: Literal".to_owned());
     Ok(Machine {
+        software: None,
         rules: Vec::new(),
         digest: [0xab; 32],
         id: Identifier::new(name)?,
@@ -1335,6 +1336,7 @@ async fn record_only_machine_says_nothing_goes_to_a_lab_app() -> Result<(), Erro
     }
     reporter.record_failed();
     let recorder = Machine {
+        software: None,
         rules: Vec::new(),
         digest: [0xab; 32],
         id: Identifier::new("net-1")?,

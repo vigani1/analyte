@@ -14,3 +14,4 @@ orders_cancelled
 orders_paused_after_restore
 order_list_stale
 machine_open_to_any_device
+machine_software_version_changed

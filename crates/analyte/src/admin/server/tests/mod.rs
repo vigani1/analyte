@@ -1038,6 +1038,7 @@ fn machine(
         Link::Folder => Connection::Folder("results".into()),
     };
     Ok(Machine {
+        software: None,
         rules: Vec::new(),
         digest: [0xab; 32],
         id: Identifier::new(id)?,

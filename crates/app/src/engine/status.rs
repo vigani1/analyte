@@ -56,11 +56,13 @@ pub enum Reason {
     OrderListStale,
     /// A machine accepts connections from any device on the network.
     MachineOpenToAnyDevice,
+    /// A machine reports software outside its checked versions or an unknown version.
+    MachineSoftwareVersionChanged,
 }
 
 impl Reason {
     /// Every kind, most serious first.
-    pub const ALL: [Self; 16] = [
+    pub const ALL: [Self; 17] = [
         Self::DiskFull,
         Self::DiskLow,
         Self::LabAppBlocked,
@@ -77,6 +79,7 @@ impl Reason {
         Self::OrdersPausedAfterRestore,
         Self::OrderListStale,
         Self::MachineOpenToAnyDevice,
+        Self::MachineSoftwareVersionChanged,
     ];
 
     /// The engine's word for this kind.
@@ -91,6 +94,7 @@ impl Reason {
             Self::MachineLinkOff => "machine_link_off",
             Self::SendingPaused => "sending_paused",
             Self::MachineSilent => "machine_silent",
+            Self::MachineSoftwareVersionChanged => "machine_software_version_changed",
             Self::MachineRefusedConnection => "machine_refused_connection",
             Self::ResultWaiting => "result_waiting",
             Self::NeedsReview => "needs_review",
@@ -118,6 +122,7 @@ impl Reason {
             Self::MachineLinkOff => "A machine’s connection is off",
             Self::SendingPaused => "Sending to a lab app is paused",
             Self::MachineSilent => "A machine has gone quiet",
+            Self::MachineSoftwareVersionChanged => "Check a machine’s software version",
             Self::MachineRefusedConnection => "A machine refused a connection from another device",
             Self::ResultWaiting => "A result is waiting too long to be sent",
             Self::NeedsReview => "Something needs review",
@@ -138,6 +143,9 @@ impl Reason {
             Self::LabAppBlocked => "Open Analyte to see which lab app and what to fix.",
             Self::SendingFailing => "Open Analyte to see which lab app and what to check.",
             Self::MachineStopped | Self::MachineSilent => "Open Analyte to see which machine.",
+            Self::MachineSoftwareVersionChanged => {
+                "Open Analyte to see which machine and check its settings before relying on it."
+            }
             Self::MachineLinkOff => "Open Analyte to see which machine and what to check.",
             Self::SendingPaused => {
                 "Results wait until it is resumed. Open Analyte to see which lab app."

@@ -123,6 +123,7 @@ impl Key for crate::AlertKey {
         enum Wire<'a> {
             OldestUndelivered,
             MachineSilent(&'a str),
+            MachineSoftwareVersionChanged(&'a str),
             DiskReserve,
             OrderCacheStale,
             UncertainOrders,
@@ -133,6 +134,9 @@ impl Key for crate::AlertKey {
         match self {
             AlertKey::OldestUndelivered => Wire::OldestUndelivered,
             AlertKey::MachineSilent(id) => Wire::MachineSilent(id.as_str()),
+            AlertKey::MachineSoftwareVersionChanged(id) => {
+                Wire::MachineSoftwareVersionChanged(id.as_str())
+            }
             AlertKey::DiskReserve => Wire::DiskReserve,
             AlertKey::OrderCacheStale => Wire::OrderCacheStale,
             AlertKey::UncertainOrders => Wire::UncertainOrders,

@@ -73,9 +73,26 @@ pub(crate) async fn receive(
         config_digest: Digest(machine.machine().snapshot.digest()),
         received_at,
     };
+    let warning = crate::machine::software_version::observe(&machine.machine().snapshot, &raw);
     store
         .request(deadline()?, move |store| {
-            store.receive(&metadata, &raw, &config)
+            store.receive(&metadata, &raw, &config)?;
+            if let Some((revision, reported)) = warning
+                && store
+                    .observe_software_warning(
+                        &metadata.machine,
+                        revision,
+                        reported.as_ref(),
+                        received_at,
+                    )
+                    .is_err()
+            {
+                tracing::error!(
+                    machine = metadata.machine.as_str(),
+                    "could not store software version warning"
+                );
+            }
+            Ok::<_, analyte_store::IntakeError>(())
         })
         .await?;
     Ok(received_at)
