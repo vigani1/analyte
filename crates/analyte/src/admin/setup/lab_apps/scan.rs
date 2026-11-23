@@ -4,7 +4,6 @@ use crate::admin::setup::{SetupError, site};
 use crate::installation::config::{
     folder,
     lab_apps::{self as file, Conflict, Written},
-    read,
 };
 use analyte_config::{Destination, LabApps};
 
@@ -143,6 +142,14 @@ pub(in crate::admin::setup) fn site_lab_app(site: &toml::Table) -> SiteLabApp<'_
 
 /// Reads the program file, `lab-apps.toml` and each machine's site file.
 pub(in crate::admin::setup) fn scan(config: &std::path::Path) -> Result<Scan, SetupError> {
+    scan_with_site(config, None)
+}
+
+/// Scans all site assignments, borrowing the parsed site when the caller already loaded it.
+pub(in crate::admin::setup) fn scan_with_site(
+    config: &std::path::Path,
+    current: Option<(&std::path::Path, &toml::Table)>,
+) -> Result<Scan, SetupError> {
     let (program, listed) = site::entries(config)?;
     let lab_apps = file::read(config)?;
     let kept = kept(&program)?;
@@ -163,13 +170,16 @@ pub(in crate::admin::setup) fn scan(config: &std::path::Path) -> Result<Scan, Se
     let mut by_default = Vec::new();
     for entry in &listed {
         let id = entry.id.get_ref();
-        let Some(table) = read(&base.join(entry.site.get_ref()))
-            .ok()
-            .and_then(|text| text.parse::<toml::Table>().ok())
-        else {
-            continue;
+        let path = base.join(entry.site.get_ref());
+        let loaded;
+        let table = match current {
+            Some((same, table)) if same == path => table,
+            _ => {
+                loaded = site::read_table(&path)?;
+                &loaded
+            }
         };
-        match site_lab_app(&table) {
+        match site_lab_app(table) {
             SiteLabApp::Own(own) => {
                 scan.note(&own, Place::Site(id.clone()));
                 scan.uses(own.name.as_str(), id);

@@ -371,8 +371,8 @@ pub(super) fn plan(setup: &Setup, id: &str, draft: &wizard::Draft) -> Result<Pla
     let peers = peers_of(kind, draft)?;
     let serial = serial_of(&details, draft)?;
     let records_only = recording::chosen(draft);
-    let current = crate::installation::config::read(&installed.site)?;
-    let scan = lab_apps::scan(setup.config())?;
+    let current = site::read_table(&installed.site)?;
+    let scan = lab_apps::scan_with_site(setup.config(), Some((&installed.site, &current)))?;
     let link = (&connection, peers.as_ref(), serial.as_ref());
     let candidate = if records_only {
         // Record only asks its own questions; the model's choices are not used.
@@ -384,7 +384,7 @@ pub(super) fn plan(setup: &Setup, id: &str, draft: &wizard::Draft) -> Result<Pla
             return Err(SetupError::LabAppWhileRecording);
         }
         let answers = recording::settings(&details, draft)?;
-        site::recording_candidate(&current, link, &answers, &scan.file)?
+        site::recording_candidate(current, link, &answers, &scan.file)?
     } else {
         let chosen = choices::chosen(draft, &details.choices)?;
         let lab_app = Identifier::new(draft.lab_app.as_deref().unwrap_or_default().trim())
@@ -399,22 +399,26 @@ pub(super) fn plan(setup: &Setup, id: &str, draft: &wizard::Draft) -> Result<Pla
                 })
             })
             .transpose()?;
-        let current_table: toml::Table = current.parse().map_err(SetupError::SiteFile)?;
         let vidas_namespace = details
             .asks_vidas_patient_namespace
             .then(|| {
-                draft.vidas_patient_namespace.as_deref().or_else(|| {
-                    current_table
-                        .get("vidas_patient_namespace")
-                        .and_then(toml::Value::as_str)
-                })
+                draft
+                    .vidas_patient_namespace
+                    .as_deref()
+                    .map(str::to_owned)
+                    .or_else(|| {
+                        current
+                            .get("vidas_patient_namespace")
+                            .and_then(toml::Value::as_str)
+                            .map(str::to_owned)
+                    })
             })
             .flatten()
             .filter(|value| !value.is_empty());
         site::candidate(
-            &current,
+            current,
             (link.0, link.1, link.2, &chosen),
-            (poll, vidas_namespace),
+            (poll, vidas_namespace.as_deref()),
             &lab_app,
             &scan.file,
             &scan.settings(),

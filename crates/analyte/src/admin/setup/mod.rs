@@ -285,8 +285,16 @@ pub(crate) enum SetupError {
     ProgramFile(#[source] toml::de::Error),
     #[error("Analyte's main settings file cannot be read: {0}")]
     ProgramLayout(&'static str),
-    #[error("this machine's settings file cannot be read: {0}")]
-    SiteFile(#[source] toml::de::Error),
+    #[error("reading the machine's site file {path} failed: {source}")]
+    SiteRead {
+        path: PathBuf,
+        source: crate::installation::config::Error,
+    },
+    #[error("the machine's site file {path} contains invalid TOML: {source}")]
+    SiteFile {
+        path: PathBuf,
+        source: toml::de::Error,
+    },
     #[error(
         "this machine's settings file cannot be read: its [destination] cannot be moved to the Lab apps page: {0}"
     )]

@@ -16,6 +16,18 @@ use std::{
     path::{Path, PathBuf},
 };
 
+/// Reads a site's bounded TOML for setup, preserving the file and the cause of any error.
+pub(super) fn read_table(path: &Path) -> Result<toml::Table, SetupError> {
+    let text = read(path).map_err(|source| SetupError::SiteRead {
+        path: path.to_owned(),
+        source,
+    })?;
+    text.parse().map_err(|source| SetupError::SiteFile {
+        path: path.to_owned(),
+        source,
+    })
+}
+
 /// One `[[machines]]` entry of the program file, with paths resolved.
 pub(super) struct Installed {
     /// Absent while the machine waits for setup.
@@ -122,7 +134,7 @@ pub(super) struct Candidate {
 /// elsewhere (another machine's site file, or the program file by an older
 /// setup page) is copied into `lab-apps.toml` with the same values.
 pub(super) fn candidate(
-    current: &str,
+    mut table: toml::Table,
     (connection, peers, serial, chosen): (
         &Endpoint,
         Option<&analyte_config::AllowedPeers>,
@@ -134,7 +146,6 @@ pub(super) fn candidate(
     lab_apps: &LabApps,
     elsewhere: &[Destination],
 ) -> Result<Candidate, SetupError> {
-    let mut table: toml::Table = current.parse().map_err(SetupError::SiteFile)?;
     apply_link(&mut table, (connection, peers, serial, chosen))?;
     table.remove("autolyser_poll_seconds");
     table.remove("vidas_patient_namespace");
@@ -233,7 +244,7 @@ fn apply_link(
 /// results already waiting for it stay deliverable; `lab_app` and the
 /// model's `[choices]` go.
 pub(super) fn recording_candidate(
-    current: &str,
+    mut table: toml::Table,
     (connection, peers, serial): (
         &Endpoint,
         Option<&analyte_config::AllowedPeers>,
@@ -243,7 +254,6 @@ pub(super) fn recording_candidate(
     lab_apps: &LabApps,
 ) -> Result<Candidate, SetupError> {
     let none = analyte_config::ChoiceSelections::default();
-    let mut table: toml::Table = current.parse().map_err(SetupError::SiteFile)?;
     table.remove("autolyser_poll_seconds");
     table.remove("vidas_patient_namespace");
     let after = keep_own_destination(&mut table, lab_apps)?;

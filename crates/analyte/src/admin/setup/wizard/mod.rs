@@ -147,7 +147,8 @@ impl Step {
             | SetupError::IncompleteForm(_)
             | SetupError::ProgramFile(_)
             | SetupError::ProgramLayout(_)
-            | SetupError::SiteFile(_)
+            | SetupError::SiteRead { .. }
+            | SetupError::SiteFile { .. }
             | SetupError::SiteDestination(_)
             | SetupError::SiteText(_)
             | SetupError::Installation(_)

@@ -17,7 +17,7 @@ use crate::admin::view::format;
 use crate::machine::link::status::Link;
 use analyte_model::Identifier;
 use analyte_transport::serial;
-use args::{Cable, Choice, keep_saved_choices, saved};
+use args::{Cable, Choice};
 use list::list;
 #[cfg(test)]
 pub(super) use list::{devices_line, settings_rows};
@@ -326,8 +326,7 @@ async fn set(
     ask: Ask,
 ) -> Result<Outcome, Failure> {
     let setup = installation.setup.clone();
-    let mut draft = choice.over(saved(&setup, id)?);
-    keep_saved_choices(&setup, id, &mut draft)?;
+    let mut draft = args::draft(&setup, id, choice)?;
     let filled = fill(&setup, id, &mut draft, ask)?;
     let asked = ask_peers(&setup, id, &mut draft, ask)? || filled;
     if dry_run {

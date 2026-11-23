@@ -2417,6 +2417,38 @@ async fn test_with_no_bytes_says_nothing_received() -> Result<(), Error> {
     Ok(())
 }
 
+// AGENTS.md: step 2 must keep the read or parse failure for the site's settings.
+#[tokio::test(flavor = "multi_thread")]
+async fn setup_step_two_reports_site_errors() -> Result<(), Error> {
+    let fixture = start_with(
+        "[admin]\nport = 8080\n[[machines]]\nid = 'machine-1'\nsite = 'site.toml'\n",
+        include_str!("../../../../../../../packaging/linux/starter/machine-1.site.toml"),
+    )
+    .await?;
+    let folder = fixture.root().join("machines/example/synthetic-astm");
+    std::fs::create_dir_all(&folder)?;
+    std::fs::write(
+        folder.join("machine.toml"),
+        include_str!("../../../../../../../machines/example/synthetic-astm/machine.toml"),
+    )?;
+    let step = "/setup/machine-1/connection?definition=example/synthetic-astm";
+    let site = fixture.root().join("site.toml");
+    for (contents, problem) in [
+        (None, "reading the machine&#39;s site file"),
+        (Some("endpoint = ["), "contains invalid TOML"),
+    ] {
+        match contents {
+            Some(text) => std::fs::write(&site, text)?,
+            None => std::fs::remove_file(&site)?,
+        }
+        let response = fixture.get(step).await?;
+        assert!(response.starts_with("HTTP/1.1 409"), "{response}");
+        assert!(response.contains("site.toml"), "{response}");
+        assert!(response.contains(problem), "{response}");
+    }
+    Ok(())
+}
+
 // AGENTS.md: keep definition errors specific; an unreadable transport is unknown.
 #[tokio::test(flavor = "multi_thread")]
 async fn setup_step_two_reports_definition_errors() -> Result<(), Error> {

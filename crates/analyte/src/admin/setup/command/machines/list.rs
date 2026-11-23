@@ -88,12 +88,9 @@ pub(in super::super) fn settings_rows(installation: &Installation) -> Result<Vec
     for entry in &entries {
         let id = entry.id.get_ref().clone();
         let definition = entry.definition.as_ref().map(|d| d.get_ref().clone());
-        let table = crate::installation::config::read(
+        let table = site::read_table(
             &crate::installation::config::folder(&config).join(entry.site.get_ref()),
-        )
-        .ok()
-        .and_then(|text| text.parse::<toml::Table>().ok())
-        .unwrap_or_default();
+        )?;
         let connection = ["usb_serial", "endpoint"].iter().find_map(|key| {
             table
                 .get(*key)

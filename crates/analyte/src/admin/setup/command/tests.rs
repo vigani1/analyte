@@ -1612,3 +1612,24 @@ async fn record_only_takes_the_cobas_protocol_type_from_the_command_line() -> Re
     assert_eq!(install.settings()?, before);
     Ok(())
 }
+
+// AGENTS.md: unreadable site settings cannot be treated as empty settings.
+#[tokio::test]
+async fn machine_and_lab_app_commands_report_an_unreadable_site() -> Result<(), Error> {
+    let install = install()?;
+    install.machines(&["add", "cobas-1"]).await?;
+    let site = install.root.join("cobas-1.site.toml");
+    std::fs::remove_file(&site)?;
+    for outcome in [
+        install.machines(&["list"]).await,
+        install.machines(&["set", "cobas-1", "--dry-run"]).await,
+        install.lab_apps(&["list"], [API_KEY, SIGNING_KEY]).await,
+    ] {
+        let error = outcome.err().ok_or("command ignored a missing site file")?;
+        assert!(matches!(
+            error,
+            Failure::Setup(SetupError::SiteRead { path, .. }) if path == site
+        ));
+    }
+    Ok(())
+}

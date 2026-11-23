@@ -1,7 +1,7 @@
 //! Runs the listen-only connection test and offers to save the observed peer.
 use super::super::{Failure, Installation, Outcome, actor, ask::Ask, problem, say};
 use super::{
-    args::{Choice, keep_saved_choices, saved},
+    args::{self, Choice},
     questions::fill,
     save, summary,
 };
@@ -26,8 +26,7 @@ pub(super) async fn test(
     ask: Ask,
 ) -> Result<Outcome, Failure> {
     let setup = installation.setup.clone();
-    let mut draft = choice.over(saved(&setup, id)?);
-    keep_saved_choices(&setup, id, &mut draft)?;
+    let mut draft = args::draft(&setup, id, choice)?;
     fill(&setup, id, &mut draft, ask)?;
     let plan = plan::plan(&setup, id, &draft)?;
     let stack = plan.validated.effective().stack();

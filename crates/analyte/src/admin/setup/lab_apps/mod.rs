@@ -21,7 +21,9 @@ use change::{
 pub(super) use keys::{API_KEY, KeySource, SIGNING_KEY, missing_keys};
 pub(in crate::admin) use keys::{Found, key_sources};
 use scan::Known;
-pub(super) use scan::{Scan, SiteLabApp, conflict_sentence, scan, site_lab_app, where_written};
+pub(super) use scan::{
+    Scan, SiteLabApp, conflict_sentence, scan, scan_with_site, site_lab_app, where_written,
+};
 
 use super::{Csrf, RELOAD, SetupError, Via, audit, copies, off_thread, on_files};
 use crate::admin::machines::{DialogItem, RemoveDialog};

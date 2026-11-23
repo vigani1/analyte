@@ -29,15 +29,15 @@ pub(super) fn render_connection(
     let (_, installed) = site::installed(state.setup.config(), id)?;
     let list = definitions(&state.setup.seams)?;
     let model = model_of(&list, draft, &installed)?;
-    let current_site = crate::installation::config::read(&installed.site)
-        .ok()
-        .and_then(|text| text.parse::<toml::Table>().ok())
-        .unwrap_or_default();
+    let current_site = site::read_table(&installed.site)?;
     let lab_app = draft
         .lab_app
         .clone()
         .or_else(|| current_lab_app(running(state, id), &current_site));
-    let lab_apps = match lab_apps::scan(state.setup.config()) {
+    let lab_apps = match lab_apps::scan_with_site(
+        state.setup.config(),
+        Some((&installed.site, &current_site)),
+    ) {
         Ok(scan) => picker(&scan, lab_app.as_deref()),
         Err(error) => Picker::Unreadable(format::sentence(&error.to_string())),
     };
