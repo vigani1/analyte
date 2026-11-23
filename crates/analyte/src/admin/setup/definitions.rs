@@ -128,7 +128,7 @@ pub(crate) enum FileError {
     #[error("reading the machine definition {path} failed: {source}")]
     Read {
         path: PathBuf,
-        source: crate::installation::config::Error,
+        source: Box<crate::installation::config::Error>,
     },
     #[error("the machine definition is invalid: {0}")]
     Parse(#[from] analyte_config::Error),
@@ -142,7 +142,7 @@ pub(crate) enum FileError {
 pub(super) fn read(path: &Path) -> Result<DefinitionDetails, FileError> {
     let text = crate::installation::config::read(path).map_err(|source| FileError::Read {
         path: path.to_owned(),
-        source,
+        source: Box::new(source),
     })?;
     Ok(DefinitionDetails::parse(
         &path.display().to_string(),
@@ -169,7 +169,7 @@ pub(crate) enum ListError {
 fn folders(path: &Path) -> Result<Vec<(String, PathBuf)>, ListError> {
     let io = |source| ListError::Io {
         path: path.to_owned(),
-        source,
+        source: Box::new(source),
     };
     let mut found = Vec::new();
     for entry in std::fs::read_dir(path).map_err(io)? {
@@ -226,7 +226,7 @@ fn unreadable(path: PathBuf, error: std::io::Error) -> State {
     State::Unreadable {
         error: Arc::new(FileError::Read {
             path: path.clone(),
-            source: error.into(),
+            source: Box::new(error.into()),
         }),
         path,
     }
