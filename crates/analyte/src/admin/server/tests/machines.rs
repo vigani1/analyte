@@ -274,6 +274,7 @@ pub(super) fn result(receipt: ReceiptId, sample: Option<&str>) -> Result<ResultC
             )])?,
             units: None,
             dilution: None,
+            details: None,
             flags: EvidenceList::new(vec![])?,
             reference_range: None,
             comments: EvidenceList::new(vec![])?,

@@ -274,6 +274,10 @@ pub enum ValueInterpretation {
     StructuredNumeric(StructuredNumeric),
     /// Encapsulated data retained in its original encoding, without decoding expansion.
     Attachment(Attachment),
+    /// Source explicitly reports that no result was available.
+    Absent,
+    /// Qualitative reaction explicitly coded by the source.
+    Qualitative(QualitativeReaction),
     /// Unsupported type; original text is preserved and the result must be parked.
     Unsupported {
         /// Source type code.
@@ -281,6 +285,17 @@ pub enum ValueInterpretation {
         /// Specific reason interpretation is unavailable.
         reason: crate::Reason,
     },
+}
+
+/// Qualitative response written by the analyzer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum QualitativeReaction {
+    /// Source code indicates a negative reaction.
+    Negative,
+    /// Source code indicates a borderline reaction.
+    Borderline,
+    /// Source code indicates a positive reaction.
+    Positive,
 }
 
 /// Source code and display label are independent; labels are never identity.
@@ -322,7 +337,9 @@ impl ValueInterpretation {
     pub fn is_unsupported(&self) -> bool {
         match self {
             Self::Unsupported { .. } => true,
-            Self::Numeric(_)
+            Self::Absent
+            | Self::Qualitative(_)
+            | Self::Numeric(_)
             | Self::Text
             | Self::Coded(_)
             | Self::StructuredNumeric(_)

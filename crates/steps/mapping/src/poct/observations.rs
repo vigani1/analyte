@@ -154,6 +154,7 @@ fn map_one(
             factor: None,
             applied: model::DilutionApplied::Unknown,
         }),
+        details: None,
         flags: model::EvidenceList::new(flags)?,
         reference_range,
         comments: model::EvidenceList::new(comments)?,

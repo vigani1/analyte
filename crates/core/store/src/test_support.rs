@@ -105,6 +105,7 @@ pub(crate) fn production_result(
             )])?,
             units: None,
             dilution: None,
+            details: None,
             flags: EvidenceList::new(vec![])?,
             reference_range: None,
             comments: EvidenceList::new(vec![])?,

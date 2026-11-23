@@ -213,16 +213,20 @@ fn qc_counts_and_columns_keep_each_lot_and_level_with_its_value() -> TestResult 
     assert!(result.content.sample.is_none());
     assert!(output.requires_parking());
     assert_eq!(result.content.parts.as_slice().len(), 2);
-    for (part, (lot, level, measured)) in result
-        .content
-        .parts
-        .as_slice()
-        .iter()
-        .zip([("L001", "L", "01.10"), ("L009", "H", "02.20")])
-    {
+    for (part, (lot, level, measured, name)) in result.content.parts.as_slice().iter().zip([
+        ("L001", "L", "01.10", "alpha"),
+        ("L009", "H", "02.20", "beta"),
+    ]) {
         assert_eq!(part.test.value.as_str(), "B9");
         assert_eq!(part.qc_class, QcClass::Control);
         let metadata = part.control.as_ref().ok_or("missing matched QC metadata")?;
+        assert_eq!(
+            part.details
+                .as_ref()
+                .and_then(|details| details.control_name.as_ref())
+                .map(SourceText::as_str),
+            Some(name)
+        );
         assert_eq!(metadata.lot.as_str(), lot);
         assert_eq!(metadata.level.as_str(), level);
         let [value] = part.values.as_slice() else {

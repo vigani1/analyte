@@ -122,10 +122,6 @@
           "$ref": "#/$defs/SourceText",
           "description": "Reported mean as sent."
         },
-        "name": {
-          "$ref": "#/$defs/SourceText",
-          "description": "Control name as sent."
-        },
         "standard_deviation": {
           "$ref": "#/$defs/SourceText",
           "description": "Reported standard deviation as sent."
@@ -133,7 +129,6 @@
       },
       "required": [
         "id",
-        "name",
         "lot",
         "expiry",
         "level",
@@ -353,6 +348,21 @@
       "description": "A local date and time without an offset; no time zone is implied.",
       "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?$",
       "type": "string"
+    },
+    "MeasurementMethod": {
+      "description": "Source-reported test method.",
+      "oneOf": [
+        {
+          "const": "measured",
+          "description": "The analyzer measured the value.",
+          "type": "string"
+        },
+        {
+          "const": "calculated",
+          "description": "The analyzer calculated the value.",
+          "type": "string"
+        }
+      ]
     },
     "ModelId": {
       "description": "The machine model: its definition's vendor/model folder key, for example roche/cobas-e411 (ADR 0033). Key per-model tables on it; see machines.json.",
@@ -826,6 +836,26 @@
         }
       ]
     },
+    "QualitativeReaction": {
+      "description": "Qualitative response written by the analyzer.",
+      "oneOf": [
+        {
+          "const": "negative",
+          "description": "Source code indicates a negative reaction.",
+          "type": "string"
+        },
+        {
+          "const": "borderline",
+          "description": "Source code indicates a borderline reaction.",
+          "type": "string"
+        },
+        {
+          "const": "positive",
+          "description": "Source code indicates a positive reaction.",
+          "type": "string"
+        }
+      ]
+    },
     "Reason": {
       "description": "An explicit nonempty reason, bounded to 1024 UTF-8 bytes. The limit is 1024 UTF-8 bytes; maxLength counts characters, so it is an upper bound.",
       "maxLength": 1024,
@@ -875,6 +905,177 @@
       "description": "An RFC 9562 UUID version 7, hyphenated.",
       "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
       "type": "string"
+    },
+    "ReportCompletion": {
+      "description": "Completion of the source upload, independent of result release.",
+      "oneOf": [
+        {
+          "const": "normal",
+          "description": "The analyzer signalled normal completion.",
+          "type": "string"
+        },
+        {
+          "const": "sender_aborted",
+          "description": "The analyzer aborted the result upload.",
+          "type": "string"
+        },
+        {
+          "const": "unknown",
+          "description": "Completion was not established.",
+          "type": "string"
+        }
+      ]
+    },
+    "ResultAlarm": {
+      "description": "Numeric alarm code and accompanying text, when transmitted by the source.",
+      "properties": {
+        "number": {
+          "$ref": "#/$defs/SourceText",
+          "description": "Exact source code in the configured wire layout."
+        },
+        "text": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceText"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Source alarm text, if sent."
+        }
+      },
+      "required": [
+        "number"
+      ],
+      "type": "object"
+    },
+    "ResultDetails": {
+      "description": "Additional source evidence where a result upload defines these fields.",
+      "properties": {
+        "alarms": {
+          "description": "Structured measurement alarms in original order.",
+          "items": {
+            "$ref": "#/$defs/ResultAlarm"
+          },
+          "maxItems": 256,
+          "type": "array"
+        },
+        "completion": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReportCompletion"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Interpretation of the source termination, when the layout declares one."
+        },
+        "control_name": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceText"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Control name, only when the source layout establishes it."
+        },
+        "cutoff_index": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResultValue"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Source-reported test cutoff, including an explicitly absent value."
+        },
+        "message_code": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceText"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Source message code accompanying a quantitative value."
+        },
+        "method": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MeasurementMethod"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Source-reported distinction between measured and calculated values."
+        },
+        "predilution": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceText"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Source predilution indicator, independent of the selected factor."
+        },
+        "report_status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResultStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Separate report-level status, with its original code in the source path."
+        },
+        "specimen_descriptor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceText"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Exact source specimen descriptor."
+        },
+        "specimen_label": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceText"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Complete specimen or control label when its meaning is conditional."
+        },
+        "termination": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceText"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Complete terminator code as sent."
+        }
+      },
+      "required": [
+        "alarms"
+      ],
+      "type": "object"
     },
     "ResultDocument": {
       "description": "One replacement unit can contain several source segments and repeated values.",
@@ -959,6 +1160,17 @@
             }
           ],
           "description": "Source control row, when explicitly reported."
+        },
+        "details": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResultDetails"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Additional structured evidence from the selected source layout."
         },
         "dilution": {
           "anyOf": [
@@ -1620,6 +1832,24 @@
           },
           "required": [
             "attachment"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "absent",
+          "description": "Source explicitly reports that no result was available.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Qualitative reaction explicitly coded by the source.",
+          "properties": {
+            "qualitative": {
+              "$ref": "#/$defs/QualitativeReaction"
+            }
+          },
+          "required": [
+            "qualitative"
           ],
           "type": "object"
         },

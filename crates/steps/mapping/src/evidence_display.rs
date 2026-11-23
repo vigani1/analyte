@@ -80,10 +80,11 @@ fn number(text: &str) -> Option<(usize, &str)> {
 
 /// Every problem without a setting; with [`IdentitySetting::ALL`] they are
 /// every problem there is.
-const READABLE: [Problem; 17] = [
+const READABLE: [Problem; 18] = [
     Problem::UnqualifiedHl7Report,
     Problem::DepartureConflict,
     Problem::DerivedStatusContract,
+    Problem::IncompleteAstmReport,
     Problem::ComponentParts,
     Problem::MissingSample,
     Problem::MissingTest,
@@ -140,6 +141,7 @@ impl fmt::Display for Problem {
         match self {
             Self::UnqualifiedHl7Report => f.write_str("UnqualifiedHl7Report"),
             Self::DepartureConflict => f.write_str("DepartureConflict"),
+            Self::IncompleteAstmReport => f.write_str("IncompleteAstmReport"),
             Self::DerivedStatusContract => f.write_str("DerivedStatusContract"),
             Self::ComponentParts => f.write_str("ComponentParts"),
             Self::MissingSample => f.write_str("MissingSample"),
@@ -301,6 +303,7 @@ mod tests {
             (Problem::UnqualifiedHl7Report, "UnqualifiedHl7Report"),
             (Problem::DepartureConflict, "DepartureConflict"),
             (Problem::DerivedStatusContract, "DerivedStatusContract"),
+            (Problem::IncompleteAstmReport, "IncompleteAstmReport"),
             (Problem::ComponentParts, "ComponentParts"),
             (Problem::MissingSample, "MissingSample"),
             (Problem::MissingTest, "MissingTest"),

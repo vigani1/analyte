@@ -6,6 +6,11 @@
   a numeric result and its qualitative call together, read separate
   interference measurements, and pair control measurements with their
   lots and levels. Ambiguous reports stay held with their original bytes.
+- **ASTM result uploads:** documented Roche layouts retain qualitative codes,
+  cutoff indices, missing results, alarms and dilution evidence. Generated
+  and ambiguous QC labels are held for review. Biolyte mapping keeps
+  measurement method, specimen descriptor and preliminary report status,
+  and holds results from sender-aborted uploads.
 
 - **Recording at shutdown:** slow disks have more time to finish recordings
   within the configured service stop allowance. If a write stays blocked,

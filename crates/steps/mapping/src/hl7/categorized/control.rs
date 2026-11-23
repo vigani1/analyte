@@ -121,12 +121,15 @@ fn control_parts(
             values: list(vec![numeric(measurement, position)?], position)?,
             control: Some(ControlMaterial {
                 id,
-                name,
                 lot,
                 expiry,
                 level,
                 mean,
                 standard_deviation,
+            }),
+            details: Some(analyte_model::ResultDetails {
+                control_name: Some(name),
+                ..Default::default()
             }),
             interference: None,
             raw_measurement: None,

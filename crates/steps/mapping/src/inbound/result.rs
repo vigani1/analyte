@@ -84,6 +84,7 @@ pub(crate) fn part(
         values,
         units,
         dilution: None,
+        details: None,
         flags: list(flags, position)?,
         reference_range: source
             .present(source.raw(index, range_field)?)

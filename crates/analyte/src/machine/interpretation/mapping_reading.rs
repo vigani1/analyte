@@ -53,6 +53,7 @@ pub(crate) fn map_reading(mapping: Mapping) -> Result<MappedReading, Error> {
                     | Problem::ConflictingClassification
                     | Problem::NoObservations
                     | Problem::UnsupportedLawStatusOnly
+                    | Problem::IncompleteAstmReport
                     | Problem::InvalidTime => f.to_string(),
                 })
                 .collect::<Vec<_>>();

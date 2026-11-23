@@ -56,6 +56,9 @@ pub(super) fn validate_mappings(m: &ParsedMachine<'_>, path: &str) -> Result<(),
     };
     validate_test_component(m, mapping, path)?;
     validate_component_parts(m, mapping, path)?;
+    if let Some(profile) = &mapping.astm_results {
+        validate_astm_results(m, mapping, path, profile.layout)?;
+    }
     for (key, len) in [
         ("mappings.value_kinds", mapping.value_kinds.len()),
         ("mappings.units", mapping.units.len()),
@@ -284,6 +287,78 @@ pub(super) fn validate_mapping_family(m: &ParsedMachine<'_>, path: &str) -> Resu
                 "record syntax requires field mappings only",
             ));
         }
+    }
+    Ok(())
+}
+
+fn validate_astm_results(
+    machine: &ParsedMachine<'_>,
+    mapping: &Mappings,
+    path: &str,
+    layout: crate::AstmResultLayout,
+) -> Result<(), Error> {
+    use crate::AstmResultLayout::{
+        CaretDilutionAndAlarm, MeasurementMarker, SlashDilutionAndAlarmCode,
+        SlashDilutionAndAlarmCodeWithQcLot,
+    };
+    let key = "mappings.astm_results";
+    if !machine.choice().has_astm_records()
+        || mapping.test_component != Some(crate::AstmTestComponent::Manufacturer)
+        || mapping.component_parts.is_some()
+    {
+        return Err(invalid(
+            path,
+            key,
+            "requires ASTM with the manufacturer test component and no separate component decomposition",
+        ));
+    }
+    if matches!(
+        layout,
+        CaretDilutionAndAlarm | SlashDilutionAndAlarmCode | SlashDilutionAndAlarmCodeWithQcLot
+    ) {
+        let field = &mapping.sample.field;
+        if field.group != crate::Group::Order
+            || field.record.as_str() != "O"
+            || field.field != 3
+            || field.component != 1
+            || field.repetition != 1
+        {
+            return Err(invalid(path, key, "requires O.3.1 as the sample selector"));
+        }
+    }
+    if layout == MeasurementMarker {
+        let field = &mapping.sample.field;
+        if field.group != crate::Group::Patient
+            || field.record.as_str() != "P"
+            || field.field != 4
+            || field.component != 1
+            || field.repetition != 1
+        {
+            return Err(invalid(path, key, "requires P.4.1 as the sample selector"));
+        }
+    }
+    if !mapping.qc.is_empty() {
+        return Err(invalid(
+            path,
+            key,
+            "material classification is determined by the selected upload layout",
+        ));
+    }
+    if !mapping.identity.correction_status_codes.is_empty() {
+        return Err(invalid(
+            path,
+            key,
+            "this upload layout documents no result correction code",
+        ));
+    }
+    if mapping.identity.rerun_status_codes.iter().any(|code| {
+        matches!(layout, MeasurementMarker | CaretDilutionAndAlarm) || code.as_str() != "C"
+    }) {
+        return Err(invalid(
+            path,
+            key,
+            "only the slash-separated upload documents a rerun code, C",
+        ));
     }
     Ok(())
 }

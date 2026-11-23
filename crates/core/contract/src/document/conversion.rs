@@ -22,7 +22,9 @@ impl From<&analyte_model::ResultValue> for ResultValue {
             analyte_model::ValueInterpretation::Text => {
                 Self::text((&v.original).into(), v.decoded_text().map(Into::into))
             }
-            parsed @ (analyte_model::ValueInterpretation::Numeric(_)
+            parsed @ (analyte_model::ValueInterpretation::Absent
+            | analyte_model::ValueInterpretation::Qualitative(_)
+            | analyte_model::ValueInterpretation::Numeric(_)
             | analyte_model::ValueInterpretation::Coded(_)
             | analyte_model::ValueInterpretation::StructuredNumeric(_)
             | analyte_model::ValueInterpretation::Attachment(_)
@@ -135,13 +137,13 @@ impl From<&analyte_model::ResultPart> for ResultPart {
             values: EvidenceList(v.values.as_slice().iter().map(Into::into).collect()),
             units: v.units.as_ref().map(Into::into),
             dilution: v.dilution.as_ref().map(Into::into),
+            details: v.details.as_ref().map(Into::into),
             flags: EvidenceList(v.flags.as_slice().iter().map(Into::into).collect()),
             control: v
                 .control
                 .as_ref()
                 .map(|row| super::result::ControlMaterial {
                     id: (&row.id).into(),
-                    name: (&row.name).into(),
                     lot: (&row.lot).into(),
                     expiry: (&row.expiry).into(),
                     level: (&row.level).into(),
@@ -353,6 +355,20 @@ impl From<&analyte_model::ValueInterpretation> for ValueInterpretation {
         match v {
             analyte_model::ValueInterpretation::Numeric(v) => Self::Numeric(v.into()),
             analyte_model::ValueInterpretation::Text => Self::Text,
+            analyte_model::ValueInterpretation::Absent => Self::Absent,
+            analyte_model::ValueInterpretation::Qualitative(reaction) => {
+                Self::Qualitative(match reaction {
+                    analyte_model::QualitativeReaction::Negative => {
+                        super::QualitativeReaction::Negative
+                    }
+                    analyte_model::QualitativeReaction::Borderline => {
+                        super::QualitativeReaction::Borderline
+                    }
+                    analyte_model::QualitativeReaction::Positive => {
+                        super::QualitativeReaction::Positive
+                    }
+                })
+            }
             analyte_model::ValueInterpretation::Coded(v) => Self::Coded(v.into()),
             analyte_model::ValueInterpretation::StructuredNumeric(v) => {
                 Self::StructuredNumeric(v.into())
@@ -380,6 +396,44 @@ impl From<OrderState> for analyte_model::OrderState {
             OrderState::CancelRequested => Self::CancelRequested,
             OrderState::CancelConfirmed => Self::CancelConfirmed,
             OrderState::Uncertain => Self::Uncertain,
+        }
+    }
+}
+
+impl From<&analyte_model::ResultDetails> for super::ResultDetails {
+    fn from(v: &analyte_model::ResultDetails) -> Self {
+        Self {
+            method: v.method.map(|method| match method {
+                analyte_model::MeasurementMethod::Measured => super::MeasurementMethod::Measured,
+                analyte_model::MeasurementMethod::Calculated => {
+                    super::MeasurementMethod::Calculated
+                }
+            }),
+            specimen_descriptor: v.specimen_descriptor.as_ref().map(Into::into),
+            report_status: v.report_status.as_ref().map(Into::into),
+            cutoff_index: v.cutoff_index.as_ref().map(Into::into),
+            message_code: v.message_code.as_ref().map(Into::into),
+            alarms: EvidenceList(
+                v.alarms
+                    .as_slice()
+                    .iter()
+                    .map(|alarm| super::ResultAlarm {
+                        number: (&alarm.number).into(),
+                        text: alarm.text.as_ref().map(Into::into),
+                    })
+                    .collect(),
+            ),
+            predilution: v.predilution.as_ref().map(Into::into),
+            specimen_label: v.specimen_label.as_ref().map(Into::into),
+            control_name: v.control_name.as_ref().map(Into::into),
+            termination: v.termination.as_ref().map(Into::into),
+            completion: v.completion.map(|completion| match completion {
+                analyte_model::ReportCompletion::Normal => super::ReportCompletion::Normal,
+                analyte_model::ReportCompletion::SenderAborted => {
+                    super::ReportCompletion::SenderAborted
+                }
+                analyte_model::ReportCompletion::Unknown => super::ReportCompletion::Unknown,
+            }),
         }
     }
 }

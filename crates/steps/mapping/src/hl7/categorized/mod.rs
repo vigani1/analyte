@@ -11,7 +11,7 @@ mod control;
 mod patient;
 
 pub(super) use control::controls;
-pub(crate) use patient::{patient_part, patient_values};
+pub(crate) use patient::{PatientValues, patient_part, patient_values};
 
 fn present(field: Option<Field<'_>>) -> bool {
     field.is_some_and(|field| !field.raw().is_empty() && !field.is_null())
