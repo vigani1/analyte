@@ -2,7 +2,7 @@
 use crate::FieldSyntax;
 use crate::MappedResult;
 use crate::RecordSettings;
-use crate::inbound::astm_results;
+use crate::astm::results as astm_results;
 use crate::inbound::source::Source;
 use crate::inbound::{identity, result, value};
 use crate::{Error, Input, Output, Position, Problem, finding, identifier, list, text};

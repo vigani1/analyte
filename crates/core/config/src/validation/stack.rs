@@ -79,7 +79,10 @@ pub(super) fn validate_stack(m: &ParsedMachine<'_>, path: &str) -> Result<(), Er
     Ok(())
 }
 
-pub(super) fn validate_dialog_and_framing(m: &ParsedMachine<'_>, path: &str) -> Result<(), Error> {
+pub(crate) fn validate_dialog_and_framing(
+    m: &ParsedMachine<'_>,
+    path: &str,
+) -> Result<Option<analyte_framing::astm::Limit>, Error> {
     let d = &m.dialog;
     let f = &m.framing;
     if (m.choice().has_astm_link()) != d.contention_priority.is_some()
@@ -117,16 +120,18 @@ pub(super) fn validate_dialog_and_framing(m: &ParsedMachine<'_>, path: &str) -> 
             "declare checksum hex policy only for LIS01",
         ));
     }
-    if m.choice().has_astm_link() {
-        analyte_framing::astm::Limit::new(f.limit).map_err(|_| {
-            invalid(
-                path,
-                "framing.limit",
-                "LIS01 requires 8 through 64000 total bytes",
-            )
-        })?;
-    }
-    Ok(())
+    m.choice()
+        .has_astm_link()
+        .then(|| {
+            analyte_framing::astm::Limit::new(f.limit).map_err(|_| {
+                invalid(
+                    path,
+                    "framing.limit",
+                    "LIS01 requires 8 through 64000 total bytes",
+                )
+            })
+        })
+        .transpose()
 }
 
 pub(super) fn validate_syntax(m: &ParsedMachine<'_>, path: &str) -> Result<(), Error> {

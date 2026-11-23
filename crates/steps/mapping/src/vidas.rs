@@ -253,7 +253,7 @@ pub fn map_order(
         return Err(crate::OrderMappingError::SpecimenTypeUnsupported.into());
     }
     if order.tests.is_empty()
-        || order.tests.len() > 100
+        || order.tests.len() > analyte_vidas::MAX_DOWNLOAD_REQUESTS
         || order.tests.len() > machine.settings().limits().records()
         || order.tests.len() > machine.settings().limits().repetitions()
     {

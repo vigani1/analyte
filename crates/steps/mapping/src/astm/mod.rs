@@ -1,4 +1,6 @@
 //! Maps received ASTM messages to model results and app orders to ASTM fields without I/O (LIS02-A2).
+mod dilution;
+pub(crate) mod results;
 mod structured;
 pub use structured::{map_structured_query, no_structured_orders};
 

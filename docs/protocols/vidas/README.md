@@ -8,8 +8,7 @@ are not simulator evidence.
 `analyte-vidas` owns tagged syntax; `analyte-framing` owns packet envelopes and
 `analyte-dialog` owns one-transfer conversations. These layers perform no I/O or
 clock reads. Only the VIDAS PC Literal family is supported, not ASTM, XML/FTP, mini
-VIDAS or VIDAS 3 extensions. Work lists are one validated request per session;
-multiple-packet download sessions are deliberately outside this API.
+VIDAS or VIDAS 3 extensions. A work-list download can send multiple requests in one bounded session.
 
 ## Required installed settings
 
@@ -103,8 +102,9 @@ over-long IDs are rejected before sending.
 Literal has no specimen-type or physical-position tag. Supplied specimen type
 is rejected as unmapped; it is never placed in origin `so` or structural `si`.
 No name, demographics, position or dilution is invented. Framing, suffix,
-checksum and deadline settings remain explicit as listed above. Multi-packet
-downloads and machine/application acceptance evidence remain outside this scope.
+checksum and deadline settings remain explicit as listed above. The analyzer
+acknowledges each request packet. Those acknowledgments confirm link receipt.
+Acceptance by the analyzer application still needs installed-link evidence.
 
 Program/reference-receiver download tests are in
 [`tests/orders/vidas.rs`](../../../crates/analyte/tests/orders/vidas.rs); the

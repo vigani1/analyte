@@ -88,13 +88,6 @@ impl Command {
             let namespace = item.namespace.ok_or(Error::PlacerNamespaceMissing)?;
             let placer =
                 order::OrderId::new(item.placer.as_bytes(), namespace.as_str().as_bytes())?;
-            if cancel {
-                orders.push(order::Order::Cancel {
-                    placer,
-                    filler: None,
-                });
-                continue;
-            }
             let [requested] = item.tests else {
                 return Err(Error::ItemTestCount);
             };
@@ -127,24 +120,18 @@ impl Command {
                 },
             });
         }
-        let subject = if cancel {
-            order::Subject::Unspecified
-        } else {
-            match (self.settings.patient_namespace(), &self.app.patient) {
-                (Some(namespace), Some(patient)) if *namespace == patient.namespace => {
-                    order::Subject::Identifier {
-                        identifier: patient.value.as_str().as_bytes(),
-                        namespace: patient.namespace.as_str().as_bytes(),
-                    }
+        let subject = match (self.settings.patient_namespace(), &self.app.patient) {
+            (Some(namespace), Some(patient)) if *namespace == patient.namespace => {
+                order::Subject::Identifier {
+                    identifier: patient.value.as_str().as_bytes(),
+                    namespace: patient.namespace.as_str().as_bytes(),
                 }
-                (Some(_), Some(_)) => return Err(Error::PatientNamespaceMismatch),
-                _ => order::Subject::Unspecified,
             }
+            (Some(_), Some(_)) => return Err(Error::PatientNamespaceMismatch),
+            _ => order::Subject::Unspecified,
         };
         let sent = self.encode(&orders, subject, header)?;
-        let position = if cancel {
-            None
-        } else {
+        let position =
             cfg.position_field
                 .zip(self.app.position.as_ref())
                 .map(|(field, position)| {
@@ -156,8 +143,7 @@ impl Command {
                         },
                         position.slot.as_str().as_bytes(),
                     )
-                })
-        };
+                });
         Ok(order::context(
             &sent,
             self.group.as_bytes(),

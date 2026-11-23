@@ -107,6 +107,12 @@ impl Default for Limit {
 }
 
 impl Limit {
+    /// Maximum total frame size, including the envelope.
+    #[must_use]
+    pub const fn total_bytes(self) -> usize {
+        self.0
+    }
+
     /// Accepts total limits 8 through 64,000 (at least one text byte).
     /// # Errors
     /// Rejects limits outside that range.

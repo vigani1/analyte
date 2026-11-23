@@ -266,7 +266,7 @@ pub(crate) fn payload<'a>(config: &Validated, raw: &'a [u8]) -> Result<Cow<'a, [
         Stack::Record(_) => Err(ReadError::RecordedOnly),
         Stack::Astm(RecordTransport::Stream(s)) => Ok(analyte_framing::astm::decode(
             raw,
-            astm::settings::frame_limit(s)?,
+            s.frame_limit(),
             astm::settings::checksum_policy(s),
             astm::settings::record_boundaries(s),
             s.settings().syntax().limits().bytes(),

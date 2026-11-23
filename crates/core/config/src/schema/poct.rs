@@ -1,5 +1,5 @@
 //! Holds raw POCT TOML policy settings.
-use super::{Deserialize, PoctIdentity, Serialize};
+use super::{Deserialize, Serialize};
 
 /// POCT DML reviewer resource and time budgets.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -19,4 +19,14 @@ pub struct Poct {
     pub response_ms: u32,
     /// ACK budget when DCP omits it.
     pub acknowledgment_ms: u32,
+}
+
+/// Installed POCT identity evidence, never inferred from values or receipt IDs.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PoctIdentity {
+    /// Require the device sequence in addition to device, observation time and analyte.
+    pub sequence_number: bool,
+    /// Explicit installed processing mode; no source mode is inferred from Hello.
+    pub processing: analyte_model::ProcessingMode,
 }

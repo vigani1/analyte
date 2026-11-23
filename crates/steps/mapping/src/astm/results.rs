@@ -1,5 +1,8 @@
 //! Interprets configured ASTM upload layouts while retaining original source evidence.
-use super::{source::Source, value};
+use crate::inbound::{
+    source::{Record, Source},
+    value,
+};
 use crate::{Error, Output, Position, Problem, finding, list, text};
 use analyte_config::{AstmResultLayout, ValueKind};
 use analyte_model::{
@@ -10,11 +13,11 @@ use analyte_model::{
 
 const ABSENT: &str = "       ";
 
-pub(super) fn is_structured(layout: AstmResultLayout) -> bool {
+pub(crate) fn is_structured(layout: AstmResultLayout) -> bool {
     layout != AstmResultLayout::MeasurementMarker
 }
 
-pub(super) fn uses_slash(layout: AstmResultLayout) -> bool {
+pub(crate) fn uses_slash(layout: AstmResultLayout) -> bool {
     matches!(
         layout,
         AstmResultLayout::SlashDilutionAndAlarmCode
@@ -28,7 +31,7 @@ fn slash_parts(raw: &str) -> Option<[&str; 3]> {
     (!code.is_empty() && !predilution.contains('/')).then_some([code, factor, predilution])
 }
 
-pub(super) fn slash_code(
+pub(crate) fn slash_code(
     source: &Source<'_>,
     index: usize,
     output: &mut Output,
@@ -36,11 +39,11 @@ pub(super) fn slash_code(
     let field = source.component(index, 3, 1, 4)?.unwrap_or_default();
     // A slash declared by H.2 is structural, so it cannot also split R.3.4.
     let collision = source.nodes.first().is_some_and(|node| match node.record {
-        super::source::Record::Astm(header) => header
+        Record::Astm(header) => header
             .raw()
             .get(1..5)
             .is_some_and(|bytes| bytes.contains(&b'/')),
-        super::source::Record::Hl7(_) => false,
+        Record::Hl7(_) => false,
     });
     if !collision && let Some([code, _, _]) = slash_parts(&field) {
         return Ok(Some(code.to_owned()));
@@ -49,7 +52,7 @@ pub(super) fn slash_code(
     Ok(None)
 }
 
-pub(super) fn measurement_values(
+pub(crate) fn measurement_values(
     source: &Source<'_>,
     index: usize,
     output: &mut Output,
@@ -67,7 +70,7 @@ pub(super) fn measurement_values(
     )
 }
 
-pub(super) fn structured_values(
+pub(crate) fn structured_values(
     source: &Source<'_>,
     index: usize,
     layout: AstmResultLayout,
@@ -172,7 +175,7 @@ fn digits(raw: &str, max: usize) -> bool {
     !raw.is_empty() && raw.len() <= max && raw.bytes().all(|byte| byte.is_ascii_digit())
 }
 
-pub(super) fn specimen(
+pub(crate) fn specimen(
     source: &Source<'_>,
     order: usize,
     layout: AstmResultLayout,
@@ -225,7 +228,7 @@ fn material(
     Ok((control, patient))
 }
 
-pub(super) fn enrich(
+pub(crate) fn enrich(
     source: &Source<'_>,
     index: usize,
     order: usize,
@@ -342,23 +345,12 @@ fn dilution(
     details.predilution = predilution.map(|pre| text(&pre, position)).transpose()?;
     selector
         .map(|selector| {
-            let ratio = if uses_slash(layout) {
-                match selector.as_str() {
-                    "1" | "2" | "5" | "10" | "20" | "50" | "100" => Some(selector.as_str()),
-                    _ => None,
-                }
+            let profile = if uses_slash(layout) {
+                analyte_astm::OrderProfile::Cobas
             } else {
-                match selector.as_str() {
-                    "0" => Some("1"),
-                    "1" => Some("2"),
-                    "2" => Some("5"),
-                    "3" => Some("10"),
-                    "5" => Some("20"),
-                    "7" => Some("50"),
-                    "9" => Some("100"),
-                    _ => None,
-                }
+                analyte_astm::OrderProfile::Elecsys
             };
+            let ratio = super::dilution::decode(profile, &selector);
             Ok(Dilution {
                 original: Some(text(&selector, position)?),
                 factor: ratio.and_then(|ratio| Decimal::new(ratio).ok()),

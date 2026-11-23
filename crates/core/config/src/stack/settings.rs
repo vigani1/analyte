@@ -4,24 +4,19 @@ use super::{AstmSyntax, DialogTimeouts, Hl7Syntax, SyntaxLimits};
 /// Typed settings shared by stream and watched-folder protocol stacks.
 /// Transport and interpretation types retain each protocol's supported combinations.
 #[derive(Debug, Clone)]
-pub struct StackSettings<T, S, C> {
+pub struct StackSettings<T, S, C, L = usize> {
     pub(super) transport: T,
-    pub(super) frame_limit: usize,
+    pub(super) frame_limit: L,
     pub(super) timeouts: DialogTimeouts,
     pub(super) syntax: S,
     pub(super) codes: C,
 }
 
-impl<T, S, C> StackSettings<T, S, C> {
+impl<T, S, C, L> StackSettings<T, S, C, L> {
     /// Borrows the selected physical transport settings.
     #[must_use]
     pub fn transport(&self) -> &T {
         &self.transport
-    }
-    /// Maximum retained frame or file payload size.
-    #[must_use]
-    pub fn frame_limit(&self) -> usize {
-        self.frame_limit
     }
     /// Host receive and send deadlines.
     #[must_use]
@@ -37,6 +32,22 @@ impl<T, S, C> StackSettings<T, S, C> {
     #[must_use]
     pub fn codes(&self) -> &C {
         &self.codes
+    }
+}
+
+impl<T, S, C> StackSettings<T, S, C> {
+    /// Maximum retained frame or file payload size.
+    #[must_use]
+    pub fn frame_limit(&self) -> usize {
+        self.frame_limit
+    }
+}
+
+impl<T, S, C> StackSettings<T, S, C, analyte_framing::astm::Limit> {
+    /// Maximum retained frame or file payload size.
+    #[must_use]
+    pub fn frame_limit(&self) -> usize {
+        self.frame_limit.total_bytes()
     }
 }
 
@@ -61,7 +72,7 @@ impl SyntaxBounds for SyntaxLimits {
         self
     }
 }
-impl<T, S: SyntaxBounds, C> StackSettings<T, S, C> {
+impl<T, S: SyntaxBounds, C, L> StackSettings<T, S, C, L> {
     /// Size and count ceilings applied before parsing untrusted input.
     #[must_use]
     pub fn limits(&self) -> &SyntaxLimits {

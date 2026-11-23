@@ -3,6 +3,7 @@
 //! Timeout/disconnect can leave accepted orders or incomplete durable uploads;
 //! never automatically replay either. A new conversation requires reconciliation.
 use analyte_framing::vidas::{ACK, Config as FrameConfig, ENQ, EOT, ETX, Mode, NAK, Packet};
+use analyte_vidas::MAX_DOWNLOAD_REQUESTS;
 use analyte_vidas::syntax::{Kind, Message};
 use std::{collections::VecDeque, time::Duration};
 pub mod outcome;
@@ -115,7 +116,7 @@ pub enum Error {
     #[error("download requires request")]
     Request,
     /// The batch has no requests or exceeds its packet bound.
-    #[error("download requires 1 to 100 requests")]
+    #[error("download requires 1 to {MAX_DOWNLOAD_REQUESTS} requests")]
     RequestCount,
     /// Packet encoding failed.
     #[error(transparent)]
@@ -151,13 +152,13 @@ impl Dialog {
 
     /// Prepares one bounded session with an ACK for each request packet.
     /// # Errors
-    /// Rejects an empty batch, more than 100 requests, non-requests, or invalid framing or policy.
+    /// Rejects an empty batch, a batch above the request limit, non-requests, or invalid framing or policy.
     pub fn download_batch(
         config: FrameConfig,
         policy: Config,
         requests: &[Message],
     ) -> Result<Self, Error> {
-        if requests.is_empty() || requests.len() > 100 {
+        if requests.is_empty() || requests.len() > MAX_DOWNLOAD_REQUESTS {
             return Err(Error::RequestCount);
         }
         let packets = requests

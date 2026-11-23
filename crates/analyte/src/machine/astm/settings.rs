@@ -29,7 +29,7 @@ pub(crate) fn dialog(
         ..Timers::default()
     };
     let config = Config::new(
-        frame_limit(settings)?,
+        settings.frame_limit(),
         timers,
         match settings.contention_priority() {
             analyte_config::Priority::Host => Role::Instrument,
@@ -66,11 +66,6 @@ pub(crate) fn checksum_policy(
             analyte_framing::astm::HexPolicy::AcceptLowercase
         }
     }
-}
-pub(crate) fn frame_limit(
-    settings: &analyte_config::AstmStack,
-) -> Result<analyte_framing::astm::Limit, analyte_framing::astm::Error> {
-    analyte_framing::astm::Limit::new(settings.settings().frame_limit())
 }
 pub(crate) fn mapping<'a>(
     syntax: &'a analyte_config::AstmSyntax,

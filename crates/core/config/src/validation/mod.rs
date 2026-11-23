@@ -11,11 +11,8 @@ mod stack;
 use departures::validate_departures;
 pub(crate) use departures::validate_recording;
 use mappings::{validate_mapping_family, validate_mappings};
-pub(crate) use stack::check_serial;
-use stack::{
-    validate_dialog_and_framing, validate_protocol, validate_stack, validate_syntax,
-    validate_transport,
-};
+pub(crate) use stack::{check_serial, validate_dialog_and_framing};
+use stack::{validate_protocol, validate_stack, validate_syntax, validate_transport};
 
 impl crate::Destination {
     /// Checks the bounds every destination keeps wherever it is written: in a
@@ -132,13 +129,13 @@ pub(super) fn validate_machine(
     }
     validate_transport(m, path)?;
     validate_stack(m, path)?;
-    validate_dialog_and_framing(m, path)?;
+    let astm_frame_limit = validate_dialog_and_framing(m, path)?;
     validate_syntax(m, path)?;
     validate_departures(m, path, reference_path)?;
     validate_protocol(m, path)?;
     validate_mappings(m, path)?;
     validate_evidence(m, path)?;
-    crate::Stack::from_parsed(m, path)
+    crate::Stack::from_parsed(m, astm_frame_limit, path)
 }
 
 fn validate_evidence(m: &ParsedMachine<'_>, path: &str) -> Result<(), Error> {
