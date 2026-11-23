@@ -1,0 +1,6 @@
+{"version":1,"stack":["serial","astm_lis01","astm_link","astm_lis02"],"machine":"roche/cobas-e411","software":null,"evidence":"synthetic","de_identification":"Invented data throughout","source":"Synthetic HIM v2.3 sections 5 and 6, Tables 11, 16 and 18"}
+{"direction":"machine_to_host","time_ms":0,"bytes":"BQ=="}
+{"direction":"host_to_machine","time_ms":0,"bytes":"Bg=="}
+{"direction":"machine_to_host","time_ms":0,"bytes":"AjFIfFxeJnx8fGNvYmFzLWU0MTFeMXx8fHx8aG9zdHxSU1VQTF5SRUFMfFB8MQ1QfDENT3wxfDAwMDk0MXw4MTheNzFeNF5eUzFeU0N8Xl5eODc0XnxSfHx8fHx8Tnx8fHwxfHx8fHx8fDIwMjYwNzE1MTEzMzI5fHx8Rg1SfDF8Xl5eODc0Ly9ub3R8OC42NF58bmcvbUx8fE58fEZ8fExBQlh8fHxFMQ1MfDF8Tg0DOEQNCg=="}
+{"direction":"host_to_machine","time_ms":0,"bytes":"Bg=="}
+{"direction":"machine_to_host","time_ms":0,"bytes":"BA=="}
