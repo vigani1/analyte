@@ -46,11 +46,14 @@ pub use machine_orders::{
     OrderItems, OrderReservation, ReservationPreflight, ReserveOptions, SendRefusal,
 };
 
-/// LAW execution custody and retained message dispositions.
-pub use revisions::law;
 pub use revisions::{
     InterpretationCommit, NO_RESULTS_REASON, ReconcileAction, ReconcileInput, ReconcileMode,
     RevisionOutcome, StatusLifecycle, reconciled_outcome,
+};
+/// LAW execution custody and retained message dispositions.
+pub use revisions::{
+    MeasurementConfirmation, MeasurementDecision, MeasurementReview, RERUN_MEASUREMENT_ACTION,
+    RESEND_MEASUREMENT_ACTION, SUPERSEDE_SAMPLE_ACTION, law,
 };
 
 pub use operator::activity::{

@@ -44,3 +44,30 @@ in that format. The marker establishes its meaning, but an installed
 profile still needs evidence that distinguishes successive reruns. BCI Link
 161150-486 rev C p. 4-6 identifies both VIDAS completion fields. A timestamp
 with insufficient precision cannot qualify a recipe on its own.
+
+## Operator decisions on retained measurements
+
+A review item for changed content under one ordinary recipe key keeps the
+claimed key alongside its reading. The operator compares the held result with
+the latest retained revision under that key. **This is a resend** records
+the relationship in the item's resolution. **This is a rerun** appends a
+reading and enqueues one new result at revision zero. Its run starts with
+`operator:` and includes the immutable receipt ID and result index. The
+host-assigned run is backed by an audit with the actor, time, reason and both
+receipts. The source values, timestamps, sample ID and original receipt stay
+as received. Rerun requires an eligible production result and the same
+effective configuration and delivery route that received it. Atomic protocol
+batches retain their protocol-owned reconciliation.
+
+A missing-sample suggestion requires a uniquely matching later retained
+delivery from the same configured machine, with explicit measurement time
+and matching result evidence. When the comparison cannot cover the receipt
+or more than one candidate qualifies, leave the item open for normal review.
+The operator may confirm that the later receipt supersedes the held one.
+Confirmation resolves the item and adds an audit entry in one transaction.
+The later receipt's normal delivery history is the only delivery history.
+
+The protected comparison records access before showing result data. Both
+interfaces submit the displayed snapshot. The store rechecks it in the same
+transaction as the resolution and any enqueue. If the item or comparison
+changes, reopen it and review the evidence again.

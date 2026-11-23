@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Measurement review** (ADR 0035): compare held and earlier measurements,
+  record a resend or queue a confirmed rerun, and review suggestions when a
+  later receipt includes a missing tube ID. The browser and CLI record each
+  decision with the operator and their reason.
+
 - **Result identity recipes** (ADR 0035): documented ASTM, HL7 and VIDAS
   mappings can use source run evidence to distinguish new measurements from
   resends. ASTM and HL7 mappings can declare separate rerun and correction
