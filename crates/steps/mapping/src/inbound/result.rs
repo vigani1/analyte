@@ -77,6 +77,7 @@ pub(crate) fn part(
         .collect::<Result<Vec<_>, _>>()?;
     let range_field = if astm { 6 } else { 7 };
     Ok(ResultPart {
+        attributes: None,
         test,
         values,
         units,

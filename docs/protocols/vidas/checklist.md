@@ -13,4 +13,9 @@ Checked rows are synthetic regression coverage only, not machine qualification.
 - [x] Leave result identity unresolved and park it; do not manufacture a run identity from sample ID. Test: `vidas_stores_before_ack_and_parks_unresolved`.
 - [ ] Support one request per download session; exclude XML/FTP and other VIDAS families. Test: none yet.
 
+- [x] Keep Cx labels and separate strip lots, QCx identifiers and reported traceability fields without creating a patient sample. Test: `vidas_control_labels_keep_composite_and_enforce_qc_width`.
+- [x] Carry documented completion precision and use only eligible evidence for a configured identity recipe. Tests: `vidas_control_labels_keep_composite_and_enforce_qc_width`, `vidas_completion_evidence_distinguishes_measurements`.
+- [x] Keep localized invalid calls and exact reported measurements. Test: `localized_invalid_call_preserves_original_measurement_and_call`.
+- [x] Hold the two CMVA doses independently when no component key is transmitted. Test: `vidas_cmva_doses_remain_separate_even_with_completion_recipe`.
+
 - [ ] Qualify installed settings against a de-identified real conversation. Test: none yet.

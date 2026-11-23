@@ -5,3 +5,4 @@ crates/core/contract/src/document/identity.rs
 crates/core/contract/src/document/list.rs
 crates/core/contract/src/document/time.rs
 crates/core/contract/src/document/sample.rs
+crates/core/contract/src/document/result.rs

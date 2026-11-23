@@ -10,7 +10,7 @@ pub use value::{
 mod sample;
 pub use sample::{CarrierKind, SampleIdentity, SamplePosition, SampleSource};
 mod result;
-pub use result::{QcClass, ResultDocument, ResultPart, ResultStatus, SourceNode};
+pub use result::{QcClass, ResultAttribute, ResultDocument, ResultPart, ResultStatus, SourceNode};
 mod time;
 pub use time::{NamedSourceTime, OffsetError, SourceTime, TimePrecision, UtcOffset};
 mod list;

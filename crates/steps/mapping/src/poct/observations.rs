@@ -140,6 +140,7 @@ fn map_one(
             .map(|v| model::SourceText::new(&v))
             .transpose()?;
     let part = model::ResultPart {
+        attributes: None,
         test: code_id(&source_code)?,
         values: model::EvidenceList::new(vec![map_value(
             &observation.value,

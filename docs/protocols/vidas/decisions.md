@@ -152,3 +152,29 @@ Wire requirements remain in [checklist.md](checklist.md).
 - **source**: [Research §§4–5](../../research/machines/vidas.md#5-directions-and-request-download);
   [ADR 0003](../../adr/0003-clinical-safety-rules.md), distinct order states.
 - **test**: none yet.
+
+## Read result labels and completion evidence
+
+Guide C pp. 4-5 to 4-9 and B-7 and PC Manual F chapter 10 distinguish internal
+kit controls from the PC's external QC slots. Keep the exact control label
+and split a kit lot at the single documented separator. The default
+`pc_slots` policy uses the reserved PC IDs. A definition can select
+`result_control_labels = "appendix_b"` in `[vidas]` when evidence confirms
+the exact control flags identify other labels. Conflicting flags or
+unrecognized flagged labels are held. See
+`vidas_control_labels_keep_composite_and_enforce_qc_width`.
+
+Preserve completion to its written minute precision using the guide's
+four-digit year layout. Figure 4-3 shows a shorter date, which stays
+uninterpreted. Carry instrument ID, serial and technologist when sent. The
+PC sends CMVA doses in separate uploads without a component key. Each
+dose keeps its own unresolved receipt, including when the completion
+recipe is selected. See
+`vidas_cmva_doses_remain_separate_even_with_completion_recipe`.
+
+Guide C appendix B distinguishes invalid measurements from invalid
+recalibrations. Literal's supported wire repertoire is printable ASCII.
+Recognized invalid calls preserve the original qualitative call and
+quantitative text, with an invalid interpretation beside the text. Units
+and dilution require an explicit source field. See
+`localized_invalid_call_preserves_original_measurement_and_call`.

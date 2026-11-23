@@ -813,6 +813,181 @@
       "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
       "type": "string"
     },
+    "ResultAttribute": {
+      "description": "Source-defined fields that retain their exact transmitted text.",
+      "oneOf": [
+        {
+          "description": "Complete label identifying control material.",
+          "properties": {
+            "field": {
+              "const": "control_label",
+              "type": "string"
+            },
+            "original": {
+              "$ref": "#/$defs/SourceText"
+            }
+          },
+          "required": [
+            "field",
+            "original"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Control name or identifier, where the source distinguishes it from its lot.",
+          "properties": {
+            "field": {
+              "const": "control_name",
+              "type": "string"
+            },
+            "original": {
+              "$ref": "#/$defs/SourceText"
+            }
+          },
+          "required": [
+            "field",
+            "original"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Lot of the material or test strip used for a control.",
+          "properties": {
+            "field": {
+              "const": "control_lot",
+              "type": "string"
+            },
+            "original": {
+              "$ref": "#/$defs/SourceText"
+            }
+          },
+          "required": [
+            "field",
+            "original"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Source discriminator for known or unknown control material.",
+          "properties": {
+            "field": {
+              "const": "control_knowledge",
+              "type": "string"
+            },
+            "original": {
+              "$ref": "#/$defs/SourceText"
+            }
+          },
+          "required": [
+            "field",
+            "original"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Level of the control used in the measurement.",
+          "properties": {
+            "field": {
+              "const": "control_level",
+              "type": "string"
+            },
+            "original": {
+              "$ref": "#/$defs/SourceText"
+            }
+          },
+          "required": [
+            "field",
+            "original"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "List the analyzer reports the measurement under.",
+          "properties": {
+            "field": {
+              "const": "report_list",
+              "type": "string"
+            },
+            "original": {
+              "$ref": "#/$defs/SourceText"
+            }
+          },
+          "required": [
+            "field",
+            "original"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Medium identified by the analyzer.",
+          "properties": {
+            "field": {
+              "const": "sample_medium",
+              "type": "string"
+            },
+            "original": {
+              "$ref": "#/$defs/SourceText"
+            }
+          },
+          "required": [
+            "field",
+            "original"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Identifier of the analyzer that produced the result.",
+          "properties": {
+            "field": {
+              "const": "instrument_id",
+              "type": "string"
+            },
+            "original": {
+              "$ref": "#/$defs/SourceText"
+            }
+          },
+          "required": [
+            "field",
+            "original"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Instrument serial number, including any embedded spaces.",
+          "properties": {
+            "field": {
+              "const": "instrument_serial",
+              "type": "string"
+            },
+            "original": {
+              "$ref": "#/$defs/SourceText"
+            }
+          },
+          "required": [
+            "field",
+            "original"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Technologist named in the source result.",
+          "properties": {
+            "field": {
+              "const": "technologist",
+              "type": "string"
+            },
+            "original": {
+              "$ref": "#/$defs/SourceText"
+            }
+          },
+          "required": [
+            "field",
+            "original"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "ResultDocument": {
       "description": "One replacement unit can contain several source segments and repeated values.",
       "properties": {
@@ -878,6 +1053,17 @@
     "ResultPart": {
       "description": "A result retains source evidence beside summaries, without clinical decisions.",
       "properties": {
+        "attributes": {
+          "description": "Additional fields as reported by the analyzer.",
+          "items": {
+            "$ref": "#/$defs/ResultAttribute"
+          },
+          "maxItems": 256,
+          "type": [
+            "array",
+            "null"
+          ]
+        },
         "comments": {
           "description": "Source comments, unchanged.",
           "items": {
@@ -1476,6 +1662,11 @@
         {
           "const": "text",
           "description": "Source qualitative, textual or error token; original text remains authoritative.",
+          "type": "string"
+        },
+        {
+          "const": "invalid",
+          "description": "The analyzer explicitly reported an invalid measurement.",
           "type": "string"
         },
         {

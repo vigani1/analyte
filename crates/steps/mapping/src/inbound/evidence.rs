@@ -46,6 +46,7 @@ pub(crate) fn map_part(
     received_at: jiff::Timestamp,
 ) -> Result<ResultPart, Error> {
     Ok(ResultPart {
+        attributes: None,
         test,
         values: EvidenceList::new(vec![value])?,
         units: None,

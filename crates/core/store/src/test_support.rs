@@ -95,6 +95,7 @@ pub(crate) fn production_result(
             revision: Revision(0),
         }),
         parts: NonEmptyEvidenceList::new(EvidenceList::new(vec![ResultPart {
+            attributes: None,
             test: name,
             values: EvidenceList::new(vec![ResultValue::new(
                 SourceText::new("positive")?,

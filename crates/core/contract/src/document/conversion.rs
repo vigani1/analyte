@@ -2,9 +2,10 @@
 use super::{
     Attachment, CarrierKind, CodedValue, Comparator, Dilution, DilutionApplied, EvidenceList,
     IdentityStatus, NamedSourceTime, NamespacedId, NonEmptyEvidenceList, NumericValue,
-    ObservationIdentity, OrderState, ProcessingMode, QcClass, ResultDocument, ResultIdentity,
-    ResultPart, ResultStatus, ResultValue, SampleIdentity, SamplePosition, SampleSource,
-    SourceNode, SourceTime, StructuredNumeric, TimePrecision, UnitMapping, ValueInterpretation,
+    ObservationIdentity, OrderState, ProcessingMode, QcClass, ResultAttribute, ResultDocument,
+    ResultIdentity, ResultPart, ResultStatus, ResultValue, SampleIdentity, SamplePosition,
+    SampleSource, SourceNode, SourceTime, StructuredNumeric, TimePrecision, UnitMapping,
+    ValueInterpretation,
 };
 
 impl From<&analyte_model::NumericValue> for NumericValue {
@@ -23,6 +24,7 @@ impl From<&analyte_model::ResultValue> for ResultValue {
                 Self::text((&v.original).into(), v.decoded_text().map(Into::into))
             }
             parsed @ (analyte_model::ValueInterpretation::Numeric(_)
+            | analyte_model::ValueInterpretation::Invalid
             | analyte_model::ValueInterpretation::Coded(_)
             | analyte_model::ValueInterpretation::StructuredNumeric(_)
             | analyte_model::ValueInterpretation::Attachment(_)
@@ -126,11 +128,33 @@ impl From<&analyte_model::SourceNode> for SourceNode {
     }
 }
 
+impl From<&analyte_model::ResultAttribute> for ResultAttribute {
+    fn from(v: &analyte_model::ResultAttribute) -> Self {
+        use analyte_model::ResultAttribute as Model;
+        match v {
+            Model::ControlLabel(text) => Self::ControlLabel(text.into()),
+            Model::ControlName(text) => Self::ControlName(text.into()),
+            Model::ControlLot(text) => Self::ControlLot(text.into()),
+            Model::ControlKnowledge(text) => Self::ControlKnowledge(text.into()),
+            Model::ControlLevel(text) => Self::ControlLevel(text.into()),
+            Model::ReportList(text) => Self::ReportList(text.into()),
+            Model::SampleMedium(text) => Self::SampleMedium(text.into()),
+            Model::InstrumentId(text) => Self::InstrumentId(text.into()),
+            Model::InstrumentSerial(text) => Self::InstrumentSerial(text.into()),
+            Model::Technologist(text) => Self::Technologist(text.into()),
+        }
+    }
+}
+
 impl From<&analyte_model::ResultPart> for ResultPart {
     fn from(v: &analyte_model::ResultPart) -> Self {
         Self {
             test: (&v.test).into(),
             values: EvidenceList(v.values.as_slice().iter().map(Into::into).collect()),
+            attributes: v
+                .attributes
+                .as_ref()
+                .map(|values| EvidenceList(values.as_slice().iter().map(Into::into).collect())),
             units: v.units.as_ref().map(Into::into),
             dilution: v.dilution.as_ref().map(Into::into),
             flags: EvidenceList(v.flags.as_slice().iter().map(Into::into).collect()),
@@ -327,6 +351,7 @@ impl From<&analyte_model::ValueInterpretation> for ValueInterpretation {
         match v {
             analyte_model::ValueInterpretation::Numeric(v) => Self::Numeric(v.into()),
             analyte_model::ValueInterpretation::Text => Self::Text,
+            analyte_model::ValueInterpretation::Invalid => Self::Invalid,
             analyte_model::ValueInterpretation::Coded(v) => Self::Coded(v.into()),
             analyte_model::ValueInterpretation::StructuredNumeric(v) => {
                 Self::StructuredNumeric(v.into())

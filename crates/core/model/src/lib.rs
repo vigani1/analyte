@@ -25,8 +25,8 @@ pub use lifecycle::{
 };
 pub use result::{
     CarrierKind, EmptyEvidence, EvidenceList, ListError, NamedSourceTime, NonEmptyEvidenceList,
-    OffsetError, QcClass, ResultContent, ResultPart, ResultStatus, SampleIdentity, SamplePosition,
-    SampleSource, SourceNode, SourceTime, TimePrecision, UtcOffset,
+    OffsetError, QcClass, ResultAttribute, ResultContent, ResultPart, ResultStatus, SampleIdentity,
+    SamplePosition, SampleSource, SourceNode, SourceTime, TimePrecision, UtcOffset,
 };
 pub use text::{Identifier, Reason, SampleId, SourceText, TextError};
 pub use value::{

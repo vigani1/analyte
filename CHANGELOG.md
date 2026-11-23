@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- VIDAS result uploads preserve control identifiers and strip lots, localized
+  invalid calls, completion time and traceability. The two CMVA doses stay
+  separate and held for review.
+- Autolyser results retain the reported sample code and structured control
+  evidence. Reports still require review when the run cannot be identified.
+
 - **Recording at shutdown:** slow disks have more time to finish recordings
   within the configured service stop allowance. If a write stays blocked,
   Analyte logs the affected recording, tries to mark it as failed and exits

@@ -3,20 +3,36 @@ use crate::inbound::evidence::{Error, map_part, map_result, map_test, map_units,
 use crate::orders::codes::{self, map_priority};
 use crate::orders::{AppOrder, map_patient, map_specimen};
 use crate::{Output, Position};
+use analyte_autolyser::syntax::{List, Report, Sample};
 
 use analyte_model::{
-    EvidenceList, IdentityStatus, QcClass, Reason, ResultValue, SourceText, ValueInterpretation,
+    EvidenceList, IdentityStatus, QcClass, Reason, ResultAttribute, ResultValue, SampleId,
+    SampleIdentity, SampleSource, SourceText, ValueInterpretation,
 };
 /// Maps Autolyser results without inferring a specimen or immutable run.
 /// # Errors
 /// Preserves source encoding, model and mapping failures.
 pub fn map(
     machine: &analyte_config::AutolyserStack,
-    report: &analyte_autolyser::syntax::Report,
+    report: &Report,
     input: crate::Input<'_>,
 ) -> Result<Output, Error> {
     let receipt = input.receipt;
     let time = input.received_at;
+    let is_control = report.control.as_ref().is_some_and(|c| c.is_control);
+    let patient_code = std::str::from_utf8(report.patient.bytes())?;
+    // Rev18 pp. 175, 177: preserve the fixed-width code used for matching.
+    // The analyzer's empty-code marker is not evidence of a specimen.
+    let sample = if is_control || matches!(patient_code.trim_end_matches(' '), "" | "{0}") {
+        None
+    } else {
+        Some(SampleIdentity {
+            id: SampleId::new(patient_code)?,
+            source: SampleSource::Unknown,
+            position: None,
+        })
+    };
+    let attributes = report_attributes(report)?;
     let mut output = Output::default();
     for (index, value) in report.values.iter().enumerate() {
         let code = std::str::from_utf8(value.code.bytes())?;
@@ -35,7 +51,8 @@ pub fn map(
             continue;
         };
         let mut source = map_part(test, value, time)?;
-        if report.control.as_ref().is_some_and(|c| c.is_control) {
+        source.attributes = Some(attributes.clone());
+        if is_control {
             source.qc_class = QcClass::Control;
         }
         map_units(machine.settings().codes(), &mut source)?;
@@ -43,7 +60,7 @@ pub fn map(
             &mut output,
             map_result(
                 receipt,
-                None,
+                sample.clone(),
                 source,
                 IdentityStatus::Unresolved(Reason::new(
                     &crate::Unidentified::AutolyserRun.to_string(),
@@ -55,6 +72,34 @@ pub fn map(
         return Err(Error::Context("Autolyser report contains no results"));
     }
     Ok(output)
+}
+
+fn report_attributes(report: &Report) -> Result<EvidenceList<ResultAttribute>, Error> {
+    let list = match report.list {
+        List::Routine => "T",
+        List::Stat => "R",
+    };
+    let medium = match report.sample {
+        Sample::Serum => "S",
+        Sample::Urine => "U",
+    };
+    let mut attributes = vec![
+        ResultAttribute::ReportList(SourceText::new(list)?),
+        ResultAttribute::SampleMedium(SourceText::new(medium)?),
+    ];
+    if let Some(control) = report.control.as_ref().filter(|control| control.is_control) {
+        let known = if control.known { "K" } else { "U" };
+        attributes.extend([
+            ResultAttribute::ControlKnowledge(SourceText::new(known)?),
+            ResultAttribute::ControlLevel(SourceText::new(std::str::from_utf8(
+                control.level.bytes(),
+            )?)?),
+            ResultAttribute::ControlLot(SourceText::new(std::str::from_utf8(
+                control.lot.bytes(),
+            )?)?),
+        ]);
+    }
+    Ok(EvidenceList::new(attributes)?)
 }
 
 /// Maps explicit app work to Autolyser codes, without inferred medium or cup.

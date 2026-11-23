@@ -264,6 +264,7 @@ pub(super) fn result(receipt: ReceiptId, sample: Option<&str>) -> Result<ResultC
             revision: Revision(0),
         }),
         parts: NonEmptyEvidenceList::new(EvidenceList::new(vec![ResultPart {
+            attributes: None,
             test,
             values: EvidenceList::new(vec![ResultValue::new(
                 SourceText::new(VALUE)?,

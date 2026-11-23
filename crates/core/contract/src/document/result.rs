@@ -54,6 +54,32 @@ pub struct SourceNode {
     pub status: Option<SourceText>,
 }
 
+/// Source-defined fields that retain their exact transmitted text.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(tag = "field", content = "original", rename_all = "snake_case")]
+pub enum ResultAttribute {
+    /// Complete label identifying control material.
+    ControlLabel(SourceText),
+    /// Control name or identifier, where the source distinguishes it from its lot.
+    ControlName(SourceText),
+    /// Lot of the material or test strip used for a control.
+    ControlLot(SourceText),
+    /// Source discriminator for known or unknown control material.
+    ControlKnowledge(SourceText),
+    /// Level of the control used in the measurement.
+    ControlLevel(SourceText),
+    /// List the analyzer reports the measurement under.
+    ReportList(SourceText),
+    /// Medium identified by the analyzer.
+    SampleMedium(SourceText),
+    /// Identifier of the analyzer that produced the result.
+    InstrumentId(SourceText),
+    /// Instrument serial number, including any embedded spaces.
+    InstrumentSerial(SourceText),
+    /// Technologist named in the source result.
+    Technologist(SourceText),
+}
+
 /// A result retains source evidence beside summaries, without clinical decisions.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ResultPart {
@@ -65,6 +91,9 @@ pub struct ResultPart {
     pub units: Option<Units>,
     /// Dilution evidence if present.
     pub dilution: Option<Dilution>,
+    /// Additional fields as reported by the analyzer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attributes: Option<EvidenceList<ResultAttribute>>,
     /// Source flags, unchanged.
     pub flags: EvidenceList<SourceText>,
     /// Source reference range, uninterpreted.

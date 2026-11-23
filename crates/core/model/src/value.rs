@@ -261,6 +261,8 @@ pub enum ValueInterpretation {
     Numeric(NumericValue),
     /// Source qualitative, textual or error token; original text remains authoritative.
     Text,
+    /// The analyzer explicitly reported an invalid measurement.
+    Invalid,
     /// A coded value, retaining code system and display text independently.
     Coded(CodedValue),
     /// Structured number such as a range or ratio; no arithmetic is performed.
@@ -317,6 +319,7 @@ impl ValueInterpretation {
             Self::Unsupported { .. } => true,
             Self::Numeric(_)
             | Self::Text
+            | Self::Invalid
             | Self::Coded(_)
             | Self::StructuredNumeric(_)
             | Self::Attachment(_) => false,

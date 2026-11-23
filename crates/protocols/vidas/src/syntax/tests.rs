@@ -33,7 +33,10 @@ fn result_fields_and_unknown_tags_roundtrip() {
     let message = Message::new(RESULT_FIELDS, SampleLimit::Seventeen).unwrap();
     let parsed = Message::parse(message.text(), SampleLimit::Seventeen).unwrap();
     assert_eq!(parsed.kind(), Kind::Result);
-    assert_eq!(parsed.sample().as_str(), "000042a");
+    assert_eq!(
+        parsed.subject(),
+        &Subject::Sample(SampleId::new("000042a").unwrap())
+    );
     for (field, (tag, value)) in parsed.fields().iter().zip(RESULT_FIELDS) {
         assert_eq!(field.tag(), *tag);
         assert_eq!(field.value(), *value);
@@ -148,11 +151,20 @@ proptest! {
     // VIDAS BCI Link appendix A chapter 4
     #[test]
     fn tagged_text_roundtrips(sample in "[0-9A-Za-z]{1,12}", value in "[0-9A-Za-z <>,.]{0,29}") {
+        if matches!(sample.as_str(), "C1" | "C2" | "C3") {
+            prop_assert!(matches!(Subject::parse(&sample, Kind::Result, SampleLimit::Twelve, None, ControlLabels::PcSlots), Err(Error::Field(tag)) if tag == "ci"));
+            return Ok(());
+        }
         let fields = [("mt","rsl"),("pi",""),("si",""),("ci",sample.as_str()),
             ("rt","TEST"),("tt","20260101"),("td","120000"),("ql",""),("qn",value.as_str())];
         let message = Message::new(&fields, SampleLimit::Twelve).unwrap();
         let parsed = Message::parse(message.text(), SampleLimit::Twelve).unwrap();
-        prop_assert_eq!(parsed.sample().as_str(), sample);
+        let subject = if matches!(sample.as_str(), "QC1" | "QC2" | "QC3" | "QC4" | "QC5" | "QC6") {
+            Subject::QualityControl(SourceText::new(&sample).unwrap())
+        } else {
+            Subject::Sample(SampleId::new(&sample).unwrap())
+        };
+        prop_assert_eq!(parsed.subject(), &subject);
         prop_assert_eq!(parsed.get("qn"), Some(value.as_str()));
         prop_assert_eq!(parsed.text(), message.text());
     }
