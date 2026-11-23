@@ -79,6 +79,8 @@ pub(super) fn render_connection(
                     .or_else(|| super::plan::saved_autolyser_poll(&current_site))
                     .unwrap_or_default()
             }),
+        normal_poll_range: analyte_config::AUTOLYSER_POLL_SECONDS,
+        recording_poll_range: analyte_config::recording::POLL_SECONDS,
         lab_apps,
         recording: records_only.then(|| recording_questions(&model.path, &current_site, draft)),
         analyzer_mode: if records_only {

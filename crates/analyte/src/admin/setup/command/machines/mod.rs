@@ -162,7 +162,12 @@ fn models(seams: &Seams) -> Result<Outcome, Failure> {
         }
         if let Shipped::Ready { path, .. } = &definition.state {
             if plan::asks_autolyser_poll(path) {
-                say("  --poll-seconds <1..300>: seconds between report polls (required)")?;
+                let range = analyte_config::AUTOLYSER_POLL_SECONDS;
+                say(&format!(
+                    "  --poll-seconds <{}..{}>: seconds between report polls (required)",
+                    range.start(),
+                    range.end(),
+                ))?;
             }
             for choice in choices::declared(path) {
                 say(&format!(

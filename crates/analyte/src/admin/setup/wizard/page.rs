@@ -76,6 +76,8 @@ pub(super) struct ConnectionStep {
     pub(super) choices: Vec<Setting>,
     pub(super) vidas_patient_namespace: Option<String>,
     pub(super) autolyser_poll_seconds: Option<String>,
+    pub(super) normal_poll_range: std::ops::RangeInclusive<u32>,
+    pub(super) recording_poll_range: std::ops::RangeInclusive<u32>,
     pub(super) lab_apps: Picker,
     /// Record only (ADR 0034): the capture profile's questions, and no lab app.
     pub(super) recording: Option<Recording>,
