@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Setup and `analyte machines set --dry-run` now report the same machine
+  configuration errors as startup, before Save writes any settings.
+
 ## 0.1.0 - 2026-11-23
 
 First draft release. **Status:** every protocol is built and tested from its
