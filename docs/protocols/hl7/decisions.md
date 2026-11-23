@@ -498,8 +498,7 @@ in ORU^R01 to distinguish patient (`0`), calibration (`1`) and QC (`2`)
 uploads. A machine may declare the ADR 0015 rule
 `hl7_msh16_message_category` for inbound HL7 2.3.1 ORU^R01. It requires
 one of those codes and no MSH-15 negotiation. Normal interpretation
-records when the rule applies and parks calibration and QC until their
-formats can be mapped safely.
+records when the rule applies. Calibration uploads are held as raw evidence.
 
 Record-only capture uses an original-mode ACK after the bytes are
 durably kept (ADR 0034 and HL7 2.3.1 section 2.12.1.2.1). It does not use
@@ -507,3 +506,35 @@ MSH-16 to decide whether to acknowledge an ORU or OUL. MSA-2 echoes the
 incoming MSH-10. The reply uses a new MSH-10, and does not echo the
 category or add the vendor's MSA-6 status code. The installed iFlash
 software's tolerance for these differences still needs a recorded exchange.
+
+
+## Categorized ORU result fields
+
+ADR 0015 rule `hl7_categorized_oru_results` requires a scoped HL7 2.3.1
+ORU^R01 declaration, the MSH-16 departure and a manual citation for the
+layout. YHLO LIS V1.1 sections 2.3.4 and 2.3.5 give the field semantics.
+Use the existing OBR-2 sample selector for the barcode and keep OBR-3
+in the receipt. An undocumented measurement identity stays unresolved.
+
+- Patient observations preserve OBX-5 and the OBX-9 call together when
+  both are present. OBX-10 is the call's own reference. An empty OBX-5
+  can accompany a call. OBX-7 remains the report's quantitative range.
+- For the documented numeric component layout, OBX-5 and OBX-13 must each
+  supply three nonempty components in the same repetition: turbidity,
+  hemolysis and jaundice. Each output part keeps its matching raw value.
+  Extra or missing components and fields without a clear per-component
+  meaning are held.
+- Patient OBR-10 supplies rack and slot. The factor in OBR-9 is retained
+  with unknown application. OBX-11 F is final for that observation.
+  Incomplete states and missing report completion remain held.
+- For QC, OBR-11 declares the row count. OBR-12 through OBR-15 and
+  OBR-17 through OBR-20 must each supply that many nonempty components.
+  The OBR-2 and OBR-3 channel fields must agree, as in section 2.4.1.2.
+  Every part carries the metadata and measurement at the same index.
+  QC rows without a trusted measurement identity remain held.
+- The original receipt and applied declaration are retained. A future
+  definition still needs installed-machine evidence and explicit
+  identity and completion rules before automatic delivery is qualified.
+
+Each rule has a named synthetic test in the
+[categorized result tests](../../../crates/steps/mapping/tests/mapping/categorized/mod.rs).

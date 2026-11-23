@@ -86,6 +86,9 @@ pub struct NumericValue {
 pub struct ResultValue {
     /// Original numeric, qualitative or error token, unchanged.
     pub original: SourceText,
+    /// Original reference text specific to this value form.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference: Option<SourceText>,
     /// Fully decoded protocol-neutral text, only when all source encoding is understood.
     /// The original remains authoritative; absence never means an empty decoded value.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -105,6 +108,7 @@ impl ResultValue {
     pub fn new(original: SourceText, parsed: ValueInterpretation) -> Self {
         Self {
             original,
+            reference: None,
             parsed,
             decoded_text: None,
         }
@@ -114,6 +118,7 @@ impl ResultValue {
     pub fn text(original: SourceText, decoded_text: Option<SourceText>) -> Self {
         Self {
             original,
+            reference: None,
             decoded_text,
             parsed: ValueInterpretation::Text,
         }
@@ -133,6 +138,7 @@ impl ResultValue {
 #[derive(Deserialize)]
 struct ResultValueWire {
     original: SourceText,
+    reference: Option<SourceText>,
     decoded_text: Option<SourceText>,
     parsed: ValueInterpretation,
 }
@@ -144,6 +150,7 @@ impl TryFrom<ResultValueWire> for ResultValue {
         }
         Ok(Self {
             original: value.original,
+            reference: value.reference,
             decoded_text: value.decoded_text,
             parsed: value.parsed,
         })

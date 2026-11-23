@@ -2,13 +2,15 @@
 
 ## Unreleased
 
+- **HL7 categorized results:** an evidenced machine definition can keep
+  a numeric result and its qualitative call together, read separate
+  interference measurements, and pair control measurements with their
+  lots and levels. Ambiguous reports stay held with their original bytes.
 - VIDAS result uploads preserve control identifiers and strip lots, localized
   invalid calls, completion time and traceability. The two CMVA doses stay
   separate and held for review.
 - Autolyser results retain the reported sample code and structured control
   evidence. Reports still require review when the run cannot be identified.
-
-
 - **ASTM result uploads:** documented Roche layouts retain qualitative codes,
   cutoff indices, missing results, alarms and dilution evidence. Generated
   and ambiguous QC labels are held for review. Biolyte mapping keeps

@@ -65,6 +65,7 @@ pub fn map(
         },
         input,
         None,
+        false,
     )?;
     if let Some(declaration) = syntax.absent_processing()
         && let Some(header) = message.records().first()

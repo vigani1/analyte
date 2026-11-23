@@ -2,8 +2,9 @@
 use crate::FieldSyntax;
 use crate::MappedResult;
 use crate::RecordSettings;
+use crate::inbound::astm_results;
 use crate::inbound::source::Source;
-use crate::inbound::{astm_results, identity, result, value};
+use crate::inbound::{identity, result, value};
 use crate::{Error, Input, Output, Position, Problem, finding, identifier, list, text};
 use analyte_config::AstmResultLayout;
 use analyte_model::{
@@ -12,7 +13,7 @@ use analyte_model::{
     ResultDetails, ResultIdentity, ResultPart, ResultStatus, ResultValue, SampleIdentity,
 };
 
-fn processing(
+pub(crate) fn processing(
     source: &Source<'_>,
     output: &mut Output,
     absent_astm_processing: bool,
@@ -65,6 +66,7 @@ pub(crate) fn message(
     config: &RecordSettings<'_>,
     input: Input<'_>,
     law: Option<&analyte_hl7::law::Results<'_>>,
+    categorized_patient: bool,
 ) -> Result<Output, Error> {
     if source.nodes.len() > config.limits.records() {
         return Err(Error::Limit {
@@ -84,87 +86,140 @@ pub(crate) fn message(
     let mode = processing(source, &mut output, config.absent_astm_processing)?;
     map_comments(source, &mut output)?;
     // Group only resolved identities, within the same source order occurrence.
-    let layout = config
-        .mappings
-        .astm_results
-        .as_ref()
-        .map(|profile| profile.layout);
     let mut groups: Vec<(usize, Option<ObservationIdentity>)> = Vec::new();
     for (index, node) in source.nodes.iter().enumerate() {
         if node.name != "R" && node.name != "OBX" {
             continue;
         }
-        crate::reserve_evidence(&mut output, source, index)?;
-        let position = source.position(index, 0);
-        let finding_start = output.findings.len();
-        let mut details = ResultDetails::default();
-        let order = order_owner(source, index)?;
-        let sample =
-            if let Some(layout) = layout.filter(|layout| astm_results::is_structured(*layout)) {
-                match astm_results::specimen(source, order, layout, &mut details, &mut output)? {
-                    true => identity::sample(source, index, config, &mut output)?,
-                    false => None,
-                }
-            } else {
-                identity::sample(source, index, config, &mut output)?
-            };
-        let Some((test, values, dilution)) =
-            observation_values(source, index, config, layout, &mut details, &mut output)?
-        else {
-            continue;
-        };
-        let observation = identity::observation(
+        if let Some(mapped) = observation_part(
             source,
             index,
             config,
-            test.clone(),
-            sample.as_ref(),
-            &mut output,
-            law.as_ref(),
-        )?;
-        let mut part = result::part(source, index, config, input, test, values, &mut output)?;
-        let policy = &config.mappings.identity;
-        let correction = apply_status_policy(&mut part, policy);
-        part.dilution = dilution;
-        if let Some(layout) = layout {
-            astm_results::enrich(
-                source,
-                index,
-                order,
-                layout,
-                &mut part,
-                &mut details,
-                &mut output,
-            )?;
-            part.details = Some(details);
-        }
-        // A documented recipe describes one measurement per observation record.
-        // Compare two claims to the same key in the store, including in one upload.
-        let order = if policy.evidence.is_some() {
-            index
-        } else {
-            order
-        };
-        append_result(
-            &mut output,
-            &mut groups,
             input,
-            mode,
-            MappedPart {
-                order,
-                observation,
-                sample,
-                part,
-                correction,
-                position,
-                finding_start,
-            },
-        )?;
+            law.as_ref(),
+            categorized_patient,
+            &mut output,
+        )? {
+            append_result(&mut output, &mut groups, input, mode, mapped)?;
+        }
     }
     if output.results.is_empty() && output.uncoded.is_empty() && law.is_none() {
         finding(&mut output, source.position(0, 0), Problem::NoObservations)?;
     }
     Ok(output)
+}
+
+fn observation_part(
+    source: &Source<'_>,
+    index: usize,
+    config: &RecordSettings<'_>,
+    input: Input<'_>,
+    law: Option<&std::collections::BTreeMap<usize, &analyte_hl7::law::Observation<'_>>>,
+    categorized_patient: bool,
+    output: &mut Output,
+) -> Result<Option<MappedPart>, Error> {
+    crate::reserve_evidence(output, source, index)?;
+    let position = source.position(index, 0);
+    let finding_start = output.findings.len();
+    let layout = config
+        .mappings
+        .astm_results
+        .as_ref()
+        .map(|profile| profile.layout);
+    let order = order_owner(source, index)?;
+    let mut details = ResultDetails::default();
+    let structured = layout.filter(|layout| astm_results::is_structured(*layout));
+    let mut sample = if let Some(layout) = structured {
+        if astm_results::specimen(source, order, layout, &mut details, output)? {
+            identity::sample(source, index, config, output)?
+        } else {
+            None
+        }
+    } else {
+        identity::sample(source, index, config, output)?
+    };
+    let readings = if categorized_patient {
+        crate::hl7::categorized::patient_values(source, index, output)?
+    } else {
+        None
+    };
+    let Some((test, values, dilution)) = observation_values(
+        source,
+        index,
+        config,
+        layout,
+        readings.as_ref(),
+        &mut details,
+        output,
+    )?
+    else {
+        return Ok(None);
+    };
+    let observation = if categorized_patient && config.mappings.identity.evidence.is_none() {
+        finding(
+            output,
+            position,
+            Problem::MissingIdentity {
+                setting: crate::IdentitySetting::Run,
+            },
+        )?;
+        None
+    } else {
+        identity::observation(
+            source,
+            index,
+            config,
+            test.clone(),
+            sample.as_ref(),
+            output,
+            law,
+        )?
+    };
+    let mut part = result::part(source, index, config, input, test, values, output)?;
+    let policy = &config.mappings.identity;
+    let correction = !categorized_patient && apply_status_policy(&mut part, policy);
+    part.dilution = dilution;
+    if let Some(layout) = layout {
+        astm_results::enrich(
+            source,
+            index,
+            order,
+            layout,
+            &mut part,
+            &mut details,
+            output,
+        )?;
+        part.details = Some(details);
+    }
+    // A documented recipe describes one measurement per observation record.
+    // Compare two claims to the same key in the store, including in one upload.
+    let order = if policy.evidence.is_some() {
+        index
+    } else {
+        order
+    };
+    let panel = if categorized_patient {
+        crate::hl7::categorized::patient_part(
+            source,
+            index,
+            &mut part,
+            sample.as_mut(),
+            readings,
+            output,
+        )?
+    } else {
+        None
+    };
+    Ok(Some(MappedPart {
+        order,
+        observation,
+        sample,
+        part,
+        panel,
+        correction,
+        position,
+        finding_start,
+    }))
 }
 
 fn order_owner(source: &Source<'_>, index: usize) -> Result<usize, Error> {
@@ -187,6 +242,7 @@ fn observation_values(
     index: usize,
     config: &RecordSettings<'_>,
     layout: Option<AstmResultLayout>,
+    readings: Option<&crate::hl7::categorized::PatientValues>,
     details: &mut ResultDetails,
     output: &mut Output,
 ) -> Result<Option<ObservationValues>, Error> {
@@ -203,8 +259,9 @@ fn observation_values(
         .map_or(analyte_config::ValueKind::Either, |test| {
             crate::value_kind(config.mappings, test)
         });
-    let values = if let Some(layout) = layout.filter(|layout| astm_results::is_structured(*layout))
-    {
+    let values = if let Some(readings) = readings {
+        readings.values(source.position(index, value_field))?
+    } else if let Some(layout) = layout.filter(|layout| astm_results::is_structured(*layout)) {
         astm_results::structured_values(source, index, layout, expected, details, output)?
     } else if layout == Some(AstmResultLayout::MeasurementMarker) {
         astm_results::measurement_values(source, index, output)?
@@ -388,6 +445,7 @@ struct MappedPart {
     observation: Option<ObservationIdentity>,
     sample: Option<SampleIdentity>,
     part: ResultPart,
+    panel: Option<[ResultPart; 2]>,
     correction: bool,
     position: Position,
     finding_start: usize,
@@ -405,10 +463,12 @@ fn append_result(
         observation,
         sample,
         part,
+        panel,
         correction,
         position,
         finding_start,
     } = mapped;
+    let incoming = std::iter::once(part).chain(panel.into_iter().flatten());
     let existing = observation.as_ref().and_then(|key| {
         groups
             .iter()
@@ -429,16 +489,16 @@ fn append_result(
             });
         }
         let mut parts = result.content.parts.as_slice().to_vec();
-        if parts.len() == 256 {
+        parts.extend(incoming);
+        if parts.len() > 256 {
             return Err(Error::Limit {
                 position,
                 resource: "replacement parts",
             });
         }
-        parts.push(part);
-        result.content.parts = nonempty(parts, position)?;
         let mut corrections = result.corrections.as_slice().to_vec();
-        corrections.push(correction);
+        corrections.resize(parts.len(), correction);
+        result.content.parts = nonempty(parts, position)?;
         result.corrections = list(corrections, position)?;
     } else {
         let identity = match observation.clone() {
@@ -446,61 +506,66 @@ fn append_result(
                 observation,
                 revision: input.revision,
             }),
-            None => {
-                // Identity mapping returns nothing only after a MissingIdentity finding.
-                let reason = output
-                    .findings
-                    .iter()
-                    .skip(finding_start)
-                    .rev()
-                    .find_map(|f| match f.problem {
-                        Problem::MissingIdentity { setting } => {
-                            Some(crate::Unidentified::Missing {
-                                setting,
-                                position: f.position,
-                            })
-                        }
-                        Problem::ValueKindMismatch { .. }
-                        | Problem::ComponentParts
-                        | Problem::MissingSample
-                        | Problem::MissingTest
-                        | Problem::UnsupportedValue
-                        | Problem::UnsupportedFormatting
-                        | Problem::UnsupportedEscape
-                        | Problem::UnknownProcessing
-                        | Problem::ConflictingClassification
-                        | Problem::InvalidTime
-                        | Problem::NoObservations
-                        | Problem::UnsupportedLawStatusOnly
-                        | Problem::UnqualifiedHl7Report
-                        | Problem::DepartureConflict
-                        | Problem::DerivedStatusContract
-                        | Problem::IncompleteAstmReport => None,
-                    })
-                    .ok_or(Error::Structure {
-                        position,
-                        reason: "unresolved identity has no missing-identity finding",
-                    })?;
-                IdentityStatus::Unresolved(
-                    Reason::new(&reason.to_string())
-                        .map_err(|source| Error::Text { position, source })?,
-                )
-            }
+            None => unresolved_identity(output, finding_start, position)?,
         };
         // Keep group slots aligned with result slots, including unresolved units.
         groups.push((order, observation));
+        let parts: Vec<_> = incoming.collect();
+        let corrections = list(vec![correction; parts.len()], position)?;
         output.results.push(MappedResult {
             content: ResultContent {
                 receipt: input.receipt,
                 sample,
                 processing: mode,
                 identity,
-                parts: nonempty(vec![part], position)?,
+                parts: nonempty(parts, position)?,
             },
-            corrections: list(vec![correction], position)?,
+            corrections,
         });
     }
     Ok(())
+}
+
+fn unresolved_identity(
+    output: &Output,
+    finding_start: usize,
+    position: Position,
+) -> Result<IdentityStatus, Error> {
+    // Identity mapping returns nothing only after a MissingIdentity finding.
+    let reason = output
+        .findings
+        .iter()
+        .skip(finding_start)
+        .rev()
+        .find_map(|f| match f.problem {
+            Problem::MissingIdentity { setting } => Some(crate::Unidentified::Missing {
+                setting,
+                position: f.position,
+            }),
+            Problem::ValueKindMismatch { .. }
+            | Problem::ComponentParts
+            | Problem::MissingSample
+            | Problem::MissingTest
+            | Problem::UnsupportedValue
+            | Problem::UnsupportedFormatting
+            | Problem::UnsupportedEscape
+            | Problem::UnknownProcessing
+            | Problem::ConflictingClassification
+            | Problem::InvalidTime
+            | Problem::NoObservations
+            | Problem::UnsupportedLawStatusOnly
+            | Problem::UnqualifiedHl7Report
+            | Problem::DepartureConflict
+            | Problem::DerivedStatusContract
+            | Problem::IncompleteAstmReport => None,
+        })
+        .ok_or(Error::Structure {
+            position,
+            reason: "unresolved identity has no missing-identity finding",
+        })?;
+    Ok(IdentityStatus::Unresolved(
+        Reason::new(&reason.to_string()).map_err(|source| Error::Text { position, source })?,
+    ))
 }
 
 // The code passes through exactly as sent (ADR 0029). Its namespace is the

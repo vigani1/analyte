@@ -11,8 +11,8 @@ mod sample;
 pub use sample::{CarrierKind, SampleIdentity, SamplePosition, SampleSource};
 mod result;
 pub use result::{
-    MeasurementMethod, QcClass, ReportCompletion, ResultAlarm, ResultDetails, ResultDocument,
-    ResultPart, ResultStatus, SourceNode,
+    ControlMaterial, InterferenceComponent, MeasurementMethod, QcClass, ReportCompletion,
+    ResultAlarm, ResultDetails, ResultDocument, ResultPart, ResultStatus, SourceNode,
 };
 mod time;
 pub use time::{NamedSourceTime, OffsetError, SourceTime, TimePrecision, UtcOffset};

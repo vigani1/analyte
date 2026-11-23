@@ -11,6 +11,7 @@ type TestResult = Result<(), Box<dyn std::error::Error>>;
 
 #[path = "../astm_results.rs"]
 mod astm_results;
+mod categorized;
 mod compatibility;
 mod continuation;
 mod departures;
