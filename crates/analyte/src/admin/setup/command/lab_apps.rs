@@ -14,10 +14,10 @@ use crate::admin::engine::{Engine, EngineError};
 use crate::admin::setup::{
     Seams, Setup, SetupError, Via,
     lab_apps::{
-        API_KEY, Change, Entered, KeySource, SIGNING_KEY, Saved, add_blocking,
-        command::{Answer, PATH, Sent, saved_lines},
-        conflict_sentence, count, reason, remove_blocking, removed_reason, save_blocking, scan,
-        waiting, where_written,
+        API_KEY, Change, Entered, KeySource, SIGNING_KEY, Saved, add_blocking, conflict_sentence,
+        count, reason,
+        relay::{Answer, PATH, Sent, saved_lines},
+        remove_blocking, removed_reason, save_blocking, scan, waiting, where_written,
     },
     on_files,
 };

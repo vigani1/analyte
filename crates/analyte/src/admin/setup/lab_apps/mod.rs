@@ -8,8 +8,8 @@
 //! locked credentials file and are never shown: a page says only where the
 //! service finds each one (`secrets::source`). How each lab app stands follows
 //! the Overview's lab app rules; reads stop after [`view::READ_BUDGET`].
-pub(super) mod command;
 mod page;
+pub(super) mod relay;
 
 use super::{
     Csrf, RELOAD, Setup, SetupError, Via, audit, copies, entries, off_thread, on_files, site,
