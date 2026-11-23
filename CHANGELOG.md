@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **ASTM result uploads:** documented Roche layouts retain qualitative codes,
+  cutoff indices, missing results, alarms and dilution evidence. Generated
+  and ambiguous QC labels are held for review. Biolyte mapping keeps
+  measurement method, specimen descriptor and preliminary report status,
+  and holds results from sender-aborted uploads.
+
 - **Recording at shutdown:** slow disks have more time to finish recordings
   within the configured service stop allowance. If a write stays blocked,
   Analyte logs the affected recording, tries to mark it as failed and exits

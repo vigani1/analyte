@@ -54,6 +54,25 @@ pub(crate) fn observation(
         return law_observation(source, index, config, code, output, observation);
     }
     let settings = &config.mappings.identity;
+    if let Some(profile) = &config.mappings.astm_results {
+        let undeclared_rerun = super::astm_results::uses_slash(profile.layout)
+            && source.raw(index, 9)?.as_deref() == Some("C")
+            && !settings
+                .rerun_status_codes
+                .iter()
+                .any(|code| code.as_str() == "C");
+        if settings.evidence.is_none() || undeclared_rerun {
+            // An upload layout describes syntax, and cannot qualify a stable measurement key.
+            finding(
+                output,
+                source.position(index, 3),
+                Problem::MissingIdentity {
+                    setting: crate::IdentitySetting::Run,
+                },
+            )?;
+            return Ok(None);
+        }
+    }
     let sample = if settings.evidence.is_some() {
         let Some(sample) = sample else {
             finding(

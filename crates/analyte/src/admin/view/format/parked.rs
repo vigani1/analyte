@@ -209,6 +209,10 @@ fn problem_words(problem: &Problem, at: Position) -> (&'static str, String) {
             ),
         ),
         Problem::DepartureConflict => departure_conflict(&at),
+        Problem::IncompleteAstmReport => (
+            "Incomplete ASTM report",
+            "The analyzer did not report normal completion.".to_owned(),
+        ),
         Problem::DerivedStatusContract => (DERIVED_STATUS.0, DERIVED_STATUS.1.to_owned()),
     }
 }

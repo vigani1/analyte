@@ -78,11 +78,11 @@ frame under LIS01-A2 §§3.3.2/6.3.1.1; do not enable packed-frame tolerance.
 | Appendix VI p. 82, H.5 and H.12 | **Closed for H.12:** a definition can declare the scoped empty-H.12-means-production departure. H.5 software and serial are read by the software-version check (ADR 0036) where declared. | Mapping (ADR 0015 departure). |
 | Appendix VI pp. 82–84, P.4 and O.3/O.4 | Missing ID, use of the accession field on the keypad or reliance on a wrapping counter can misassign a result. The documented padding on the example ID also needs a capture to establish what the keypad entered and what arrived. | Mapping can select P.4 and keep its text, including leading zeros and padding. Neither config nor the document establishes that it represents the lab's specimen, and O.4 gives no safe fallback. Accession and name have no documented wire positions. |
 | Appendix I p. 73 and Appendix VI pp. 82–85 | A QC menu exists, but the transfer layout defines no reliable patient/control discriminator and does not say whether controls are exported. | Machine evidence and mapping. Equality rules need a transmitted marker. No site choice can supply a marker missing from the bytes. |
-| Appendix VI pp. 84–85, O.16, O.26 and R.9 | The specimen descriptor and the preliminary report status have their own meanings. An absent observation status cannot establish release or correction. | Mapping retains O.26 in source hierarchy status. It does not map it to a separate normalized report status or project O.16 into a normalized ASTM specimen descriptor. R.9 remains unknown. |
-| Appendix VI p. 84 and p. 86, R.3/R.4 | The measured or calculated marker is distinct from the test code. The over-width notation is described without an unambiguous example of the emitted token. | Mapping can read R.3.4 and preserve raw measurement text. It has no dedicated measured/calculated attribute. Keep any unrecognized value as source text until its meaning is established. |
+| Appendix VI pp. 84–85, O.16, O.26 and R.9 | **Closed:** the specimen descriptor and preliminary report status are available separately. Observation status stays unknown. | Mapping retains the report code in the source hierarchy. |
+| Appendix VI p. 84 and p. 86, R.3/R.4 | **Closed:** R.3.5 distinguishes measured and calculated values from the R.3.4 test code. Numeric padding and over-width value text are preserved. | Unrecognized values are held. The exact over-width spelling remains unverified on hardware. |
 | Service Manual p. 61, Appendix I p. 74 and Appendix VI pp. 84–85 | The analyzer can dilute urine, but Appendix VI supplies neither a factor nor whether the transmitted value already incorporates it. | Mapping can represent explicit dilution evidence. This wire layout provides none. No amount or applied status can be inferred. |
 | Appendix VI pp. 82–85, H.3, H.14, O.4, R.9, R.12 | No stable run ID or correction marker is documented. Transmission time changes on transfer, sequence wraps and one analysis time cannot prove revision or run identity. | Mapping and identity. Existing selectors cannot make this evidence sufficient. Keep identity unresolved. H.14 and the first R.12 represent different times. Later R records supply no analysis time of their own. |
-| Appendix VI p. 85, L.3 | A sender-aborted message can have a complete record envelope. Its measurements should remain distinguishable from a normally completed transfer. | Syntax can read T. The inbound ASTM dialog and mapping do not use L.3 to classify a complete-looking message as sender-aborted. |
+| Appendix VI section 11.1.3 | **Closed:** L.3 T classifies the upload as sender-aborted. | Retains the measurements and holds them for review. L.3 N records normal completion independently of release. |
 
 
 ## Evidence
@@ -99,9 +99,9 @@ the first result. Broken checksum tests a correct lowercase checksum, an
 incorrect uppercase checksum and an accepted uppercase retry. Those host
 replies describe Analyte's strict record-only profile.
 
-The shipped machine replay test discovers normal definitions only. These
-fixtures are for record-only link replay and do not qualify this model to
-deliver results.
+The machine replay suite checks these fixtures in record-only mode.
+They exercise link behavior while result mapping is covered by synthetic
+unit cases. Delivery still needs installed-machine evidence.
 
 ## Open questions
 

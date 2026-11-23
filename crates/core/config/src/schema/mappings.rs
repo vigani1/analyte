@@ -138,13 +138,13 @@ pub enum SubId {
     None(NoSubId),
 }
 
-/// Citation for identity rules in the enclosing machine mapping and choice scope.
+/// Citation in the enclosing machine mapping and choice scope.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct IdentityReference {
     /// Manual title and revision.
     pub manual: Identifier,
-    /// Section that establishes the source field and status semantics.
+    /// Section that establishes the meaning of the source fields.
     pub section: Identifier,
 }
 
@@ -170,6 +170,30 @@ pub struct IdentityEvidence {
     pub evidence: Option<IdentityReference>,
 }
 
+/// Evidenced ASTM upload interpretation selected by a machine definition.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AstmResultProfile {
+    /// Closed layout for interpreting result-only fields.
+    pub layout: AstmResultLayout,
+    /// Manual and section qualifying this layout within the definition's scope.
+    pub evidence: IdentityReference,
+}
+
+/// Documented differences in the layout of ASTM result uploads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AstmResultLayout {
+    /// Caret-separated dilution, alarm number and source alarm text.
+    CaretDilutionAndAlarm,
+    /// Slash-separated test details, coded alarm, QC name-only setting.
+    SlashDilutionAndAlarmCode,
+    /// Same result layout with ambiguous lot-mode QC identification.
+    SlashDilutionAndAlarmCodeWithQcLot,
+    /// R.3.5 measured/calculated marker with separate specimen and report fields.
+    MeasurementMarker,
+}
+
 /// Bounded declarative mapping tables without expressions.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -181,6 +205,9 @@ pub struct Mappings {
     pub test_component: Option<AstmTestComponent>,
     /// Optional decomposition of the ASTM test component.
     pub component_parts: Option<ComponentParts>,
+    /// Optional evidenced ASTM result interpretation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub astm_results: Option<AstmResultProfile>,
     /// Sample selection.
     pub sample: SampleSelection,
     /// Kinds of value the machine sends for some of its codes; absent means none.
