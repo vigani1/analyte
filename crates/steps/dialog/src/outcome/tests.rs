@@ -205,7 +205,7 @@ fn every_code() -> Vec<Code> {
 #[test]
 fn every_fixed_code_keeps_its_stored_spelling() {
     let codes = every_code();
-    assert_eq!(codes.len(), 66);
+    assert_eq!(codes.len(), 67);
     let mut spellings = std::collections::BTreeSet::new();
     for code in codes {
         let expected = pinned(code);
