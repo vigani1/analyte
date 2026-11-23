@@ -234,12 +234,41 @@ pub(crate) fn is_record_file(table: &toml::Table) -> bool {
     table.contains_key("recording_schema_version")
 }
 
+/// A site's bounded TOML, before its stack and destination are resolved.
+pub struct SiteDocument(toml::Table);
+
+impl SiteDocument {
+    /// Parses a site file once so callers can check its mode and use its saved fields.
+    /// # Errors
+    /// Rejects oversized files and malformed TOML.
+    pub fn parse(path: &str, text: &str) -> Result<Self, Error> {
+        crate::parse_table(path, text).map(Self)
+    }
+
+    /// Whether the site file asks for a record-only connection (it has `[recording]`).
+    #[must_use]
+    pub fn records_only(&self) -> bool {
+        self.0.contains_key("recording")
+    }
+
+    /// The site settings as written.
+    #[must_use]
+    pub const fn table(&self) -> &toml::Table {
+        &self.0
+    }
+
+    /// Takes the parsed settings for use in a candidate file.
+    #[must_use]
+    pub fn into_table(self) -> toml::Table {
+        self.0
+    }
+}
+
 /// Whether a site file asks for a record-only connection (it has `[recording]`).
 /// A file that does not parse is not record-only here; its loader reports why.
 #[must_use]
 pub fn records_only(site: &str) -> bool {
-    site.len() <= crate::MAX_FILE_BYTES
-        && toml::from_str::<toml::Table>(site).is_ok_and(|table| table.contains_key("recording"))
+    SiteDocument::parse("site", site).is_ok_and(|document| document.records_only())
 }
 
 /// The protocol and link a model file names: a `record.toml` (with its

@@ -29,19 +29,19 @@ pub(super) fn render_connection(
     let (_, installed) = site::installed(state.setup.config(), id)?;
     let list = definitions(&state.setup.seams)?;
     let model = model_of(&list, draft, &installed)?;
-    let current_site = site::read_table(&installed.site)?;
+    let document = site::read_document(&installed.site)?;
+    let current_site = document.table();
     let lab_app = draft
         .lab_app
         .clone()
-        .or_else(|| current_lab_app(running(state, id), &current_site));
-    let lab_apps = match lab_apps::scan_with_site(
-        state.setup.config(),
-        Some((&installed.site, &current_site)),
-    ) {
-        Ok(scan) => picker(&scan, lab_app.as_deref()),
-        Err(error) => Picker::Unreadable(format::sentence(&error.to_string())),
-    };
-    let (how, inputs) = connection_inputs(state, id, &model.details, &current_site, draft);
+        .or_else(|| current_lab_app(running(state, id), current_site));
+    let lab_apps =
+        match lab_apps::scan_with_site(state.setup.config(), Some((&installed.site, current_site)))
+        {
+            Ok(scan) => picker(&scan, lab_app.as_deref()),
+            Err(error) => Picker::Unreadable(format::sentence(&error.to_string())),
+        };
+    let (how, inputs) = connection_inputs(state, id, &model.details, current_site, draft);
     let records_only = super::plan::recording::chosen(draft);
     Ok(ConnectionStep {
         frame: frame(state, session, id),
@@ -55,7 +55,7 @@ pub(super) fn render_connection(
         choices: if records_only {
             Vec::new()
         } else {
-            choice_fields(&model.details, &current_site, draft)
+            choice_fields(&model.details, current_site, draft)
         },
         vidas_patient_namespace: (!records_only && model.details.asks_vidas_patient_namespace)
             .then(|| {
@@ -74,13 +74,13 @@ pub(super) fn render_connection(
             draft
                 .poll_seconds
                 .clone()
-                .or_else(|| super::plan::saved_autolyser_poll(&current_site))
+                .or_else(|| super::plan::saved_autolyser_poll(current_site))
                 .unwrap_or_default()
         }),
         lab_apps,
-        recording: records_only.then(|| recording_questions(&model.details, &current_site, draft)),
+        recording: records_only.then(|| recording_questions(&model.details, current_site, draft)),
         analyzer_mode: if records_only {
-            analyzer_mode_field(&model.details, &current_site, draft)
+            analyzer_mode_field(&model.details, current_site, draft)
         } else {
             None
         },

@@ -175,8 +175,8 @@ pub(in crate::admin::setup) fn scan_with_site(
         let table = match current {
             Some((same, table)) if same == path => table,
             _ => {
-                loaded = site::read_table(&path)?;
-                &loaded
+                loaded = site::read_document(&path)?;
+                loaded.table()
             }
         };
         match site_lab_app(table) {

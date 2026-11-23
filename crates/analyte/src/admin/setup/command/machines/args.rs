@@ -6,7 +6,7 @@ use crate::admin::setup::{
     site,
     wizard::Draft,
 };
-use analyte_config::{SerialSetting, TransportKind};
+use analyte_config::{SerialSetting, TransportKind, recording::SiteDocument};
 
 /// A serial machine's cable settings, as step 2 chooses them (ADR 0031):
 /// match the analyzer's LIS/host settings screen. A setting not given keeps
@@ -215,9 +215,9 @@ impl Choice {
 /// Applies the command's choices over the settings read for this machine.
 pub(super) fn draft(setup: &Setup, id: &str, choice: Choice) -> Result<Draft, SetupError> {
     let (_, installed) = site::installed(setup.config(), id)?;
-    let table = site::read_table(&installed.site)?;
-    let mut draft = choice.over(saved(setup, id, &installed, &table)?);
-    keep_saved_choices(setup, &installed, &table, &mut draft)?;
+    let site = site::read_document(&installed.site)?;
+    let mut draft = choice.over(saved(setup, id, &installed, &site)?);
+    keep_saved_choices(setup, &installed, site.table(), &mut draft)?;
     Ok(draft)
 }
 
@@ -226,8 +226,9 @@ fn saved(
     setup: &Setup,
     id: &str,
     installed: &site::Installed,
-    table: &toml::Table,
+    site: &SiteDocument,
 ) -> Result<Draft, SetupError> {
+    let table = site.table();
     let text = |key: &str| {
         table
             .get(key)
@@ -240,8 +241,8 @@ fn saved(
         lab_app: plan::current_lab_app(running(setup, id), table),
         allowed_peers: saved_peers(table),
         // A record-only machine stays record-only until --connect-normally (ADR 0034).
-        mode: table
-            .contains_key("recording")
+        mode: site
+            .records_only()
             .then(|| plan::recording::RECORD.to_owned()),
         poll_seconds: answer("poll_seconds"),
         controls: answer("controls"),

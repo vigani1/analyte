@@ -371,7 +371,7 @@ pub(super) fn plan(setup: &Setup, id: &str, draft: &wizard::Draft) -> Result<Pla
     let peers = peers_of(kind, draft)?;
     let serial = serial_of(&details, draft)?;
     let records_only = recording::chosen(draft);
-    let current = site::read_table(&installed.site)?;
+    let current = site::read_document(&installed.site)?.into_table();
     let scan = lab_apps::scan_with_site(setup.config(), Some((&installed.site, &current)))?;
     let link = (&connection, peers.as_ref(), serial.as_ref());
     let candidate = if records_only {

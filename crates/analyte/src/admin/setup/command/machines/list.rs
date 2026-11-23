@@ -113,9 +113,10 @@ pub(in super::super) fn settings_rows(installation: &Installation) -> Result<Vec
                     effective.records_only(),
                 )
             } else {
-                let table = site::read_table(
+                let document = site::read_document(
                     &crate::installation::config::folder(&config).join(entry.site.get_ref()),
                 )?;
+                let table = document.table();
                 let connection = ["usb_serial", "endpoint"].iter().find_map(|key| {
                     table
                         .get(*key)
@@ -124,10 +125,10 @@ pub(in super::super) fn settings_rows(installation: &Installation) -> Result<Vec
                 });
                 (
                     connection,
-                    plan::current_lab_app(None, &table),
+                    plan::current_lab_app(None, table),
                     None,
                     false,
-                    table.contains_key("recording"),
+                    document.records_only(),
                 )
             };
         let version = loaded.map(|machine| format::digest_short(&machine.snapshot().digest()));

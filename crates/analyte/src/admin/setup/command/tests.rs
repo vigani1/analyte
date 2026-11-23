@@ -1645,6 +1645,35 @@ async fn record_only_takes_the_cobas_protocol_type_from_the_command_line() -> Re
     Ok(())
 }
 
+// ADR 0034: record-only detection uses the same size bound as site loading.
+#[tokio::test]
+async fn machine_commands_report_an_oversized_record_only_site() -> Result<(), Error> {
+    let install = install()?;
+    install.machines(&["add", "cobas-1"]).await?;
+    let site = install.root.join("cobas-1.site.toml");
+    let contents = format!(
+        "[recording]\n#{}",
+        "x".repeat(analyte_config::MAX_FILE_BYTES)
+    );
+    std::fs::write(&site, contents)?;
+    for outcome in [
+        install.machines(&["list"]).await,
+        install.machines(&["set", "cobas-1", "--dry-run"]).await,
+    ] {
+        let error = outcome
+            .err()
+            .ok_or("command ignored an oversized site file")?;
+        assert!(matches!(
+            error,
+            Failure::Setup(SetupError::SiteRead {
+                path,
+                source: crate::installation::config::Error::ConfigurationTooLarge,
+            }) if path == site
+        ));
+    }
+    Ok(())
+}
+
 // AGENTS.md: unreadable site settings cannot be treated as empty settings.
 #[tokio::test]
 async fn machine_and_lab_app_commands_report_an_unreadable_site() -> Result<(), Error> {

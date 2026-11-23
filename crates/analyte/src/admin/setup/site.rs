@@ -8,7 +8,7 @@
 //! write through [`commit`].
 use super::SetupError;
 use crate::installation::config::{Program, folder, read};
-use analyte_config::{Destination, Endpoint, LabApps, Validated};
+use analyte_config::{Destination, Endpoint, LabApps, Validated, recording::SiteDocument};
 use analyte_model::Identifier;
 use std::{
     io::Write as _,
@@ -17,14 +17,17 @@ use std::{
 };
 
 /// Reads a site's bounded TOML for setup, preserving the file and the cause of any error.
-pub(super) fn read_table(path: &Path) -> Result<toml::Table, SetupError> {
+pub(super) fn read_document(path: &Path) -> Result<SiteDocument, SetupError> {
     let text = read(path).map_err(|source| SetupError::SiteRead {
         path: path.to_owned(),
         source,
     })?;
-    text.parse().map_err(|source| SetupError::SiteFile {
-        path: path.to_owned(),
-        source,
+    SiteDocument::parse(&path.display().to_string(), &text).map_err(|error| match error {
+        analyte_config::Error::Schema { source, .. } => SetupError::SiteFile {
+            path: path.to_owned(),
+            source,
+        },
+        error => error.into(),
     })
 }
 
