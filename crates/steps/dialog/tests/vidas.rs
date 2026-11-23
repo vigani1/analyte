@@ -286,3 +286,41 @@ fn byte_input_splits_controls_and_acks_after_store() -> Result<(), Box<dyn std::
     ));
     Ok(())
 }
+
+// BCI Link LIS guide 161150-486 C pp. 3-1 to 3-4; the configured session deadline bounds retries.
+#[test]
+fn repeated_bad_checksums_cannot_extend_the_session() -> Result<(), Box<dyn std::error::Error>> {
+    use analyte_framing::vidas::{ENQ, ETX, NAK};
+    for mode in [Mode::Literal, Mode::Alternate] {
+        let c = config(mode, b"\r\n", false)?;
+        let mut bad = c.encode(b"synthetic")?;
+        let checksum = bad.len() - if mode == Mode::Literal { 1 } else { 4 };
+        *bad.get_mut(checksum).ok_or("fixture checksum")? = ETX;
+        let mut dialog = Dialog::upload(c.clone(), policy())?;
+        let _ = dialog.start();
+        for byte in c.control(ENQ) {
+            dialog.step(Duration::ZERO, Event::Byte(byte))?;
+        }
+        for elapsed in [1, 2] {
+            let now = Duration::from_secs(elapsed);
+            let (last, prefix) = bad.split_last().ok_or("fixture")?;
+            for &byte in prefix {
+                assert!(dialog.step(now, Event::Byte(byte))?.is_empty());
+            }
+            let actions = dialog.step(now, Event::Byte(*last))?;
+            assert!(actions.contains(&Action::RejectChecksum(bad.clone())));
+            assert!(
+                !actions
+                    .iter()
+                    .any(|a| matches!(a, Action::Write(_) | Action::Store(_)))
+            );
+            let actions = dialog.step(now, Event::Stored)?;
+            assert!(actions.contains(&Action::Write(c.control(NAK))));
+        }
+        let ended = dialog.step(policy().session, Event::Tick)?;
+        assert!(ended.contains(&Action::Park));
+        assert_eq!(dialog.expired_timer(), Some(Timer::Session));
+        assert_eq!(dialog.next_deadline(), None);
+    }
+    Ok(())
+}

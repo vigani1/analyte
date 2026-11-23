@@ -24,6 +24,50 @@ async fn vidas_stores_before_ack_and_parks_unresolved() -> Result<(), Error> {
     run.close().await
 }
 
+// BCI Link LIS guide 161150-486 C pp. 3-1 to 3-4; ADR 0003.
+#[tokio::test]
+async fn vidas_naks_and_parks_before_accepting_retransmission() -> Result<(), Error> {
+    use analyte_framing::vidas::{ACK, ENQ, EOT, ETX, NAK};
+
+    for alternate in [false, true] {
+        let definition = include_str!("../../../core/config/examples/vidas_literal.toml")
+            .replace("alternate = false", &format!("alternate = {alternate}"));
+        let mut run = Running::start(&definition).await?;
+        run.peer.write_all(&[ENQ]).await?;
+        assert_eq!(byte(&mut run.peer).await?, ACK);
+
+        let mut good = vidas_config()?
+            .encode(b"mtrsl|pi|si|ci00012a|rtSYN|tt|td|qlpositive|qn<0.1|y3mg/L|")?;
+        let mut bad = good.clone();
+        *bad.last_mut().ok_or("fixture checksum")? = b'!';
+        if alternate {
+            good.push(ETX);
+            bad.push(ETX);
+        }
+        run.peer.write_all(&bad).await?;
+        assert_eq!(byte(&mut run.peer).await?, NAK);
+        run.stored(&bad, "analyte-vidas")?;
+        run.parked("VIDAS framing: checksum mismatch").await?;
+
+        run.peer.write_all(&good).await?;
+        assert_eq!(byte(&mut run.peer).await?, ACK);
+        run.stored(&good, "analyte-vidas")?;
+        run.result_value("<0.1")?;
+        let interpreted: i64 = run.database()?.query_row(
+            "SELECT count(*) FROM interpretations i JOIN receipts r ON r.id=i.receipt WHERE r.raw=?1",
+            [&good],
+            |r| r.get(0),
+        )?;
+        assert_eq!(interpreted, 1);
+        if !alternate {
+            run.peer.write_all(&[ETX]).await?;
+        }
+        run.peer.write_all(&[EOT]).await?;
+        run.close().await?;
+    }
+    Ok(())
+}
+
 // CLSI POCT01-A2 §B.3.2; ADR 0003
 #[tokio::test]
 async fn poct_stores_before_ack_and_parks_unresolved() -> Result<(), Error> {
