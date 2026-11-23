@@ -26,7 +26,7 @@ pub(crate) fn seed_order(
         params![key.destination.as_str(), key.order.as_str(), key.machine.as_str(), model.as_str(), state.to_string(), now],
     )?;
     let id = tx.last_insert_rowid();
-    let record = MachineOrder {
+    let mut record = MachineOrder {
         id,
         key,
         version: NonZeroU64::MIN,
@@ -39,6 +39,17 @@ pub(crate) fn seed_order(
         original_command: None,
         model: Some(model),
     };
+    let code = |value| Identifier::new(value).map_err(StorageError::Text);
+    record.items = super::create_items(
+        &tx,
+        &record,
+        vec![analyte_model::NamespacedId {
+            namespace: code("local")?,
+            value: code("synthetic")?,
+        }],
+        super::OrderItems::Together,
+        store.limits.record_bytes,
+    )?;
     super::append(&tx, &record, None, store.limits.record_bytes)?;
     tx.commit()?;
     Ok(id)
