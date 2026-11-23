@@ -1,7 +1,7 @@
 //! Constructs validated HL7 protocol settings.
 use super::{
     DialogTimeouts, Edition, Encoding, Error, Escapes, Hl7OrderQuery, Hl7Send, Mappings,
-    OrderQuery, OrderTables, Orders, Responsibility, SyntaxLimits, TcpTransport, Terminator,
+    OrderQuery, OrderTables, Orders, SyntaxLimits, TcpTransport, Terminator,
     invalid, limits, order_tables, tcp,
 };
 use crate::ParsedMachine;
@@ -61,8 +61,6 @@ pub struct Hl7Orders {
 pub struct Hl7Stack {
     /// Shared link, resource and interpretation settings.
     pub(super) settings: super::StackSettings<TcpTransport, Hl7Syntax, Mappings>,
-    /// Required acknowledgment promise.
-    pub(super) acknowledgment: Responsibility,
     /// Explicit outbound capability; omission disables it.
     pub(super) orders: Option<Hl7Orders>,
 }
@@ -218,11 +216,6 @@ impl Hl7Orders {
 }
 
 impl Hl7Stack {
-    /// Acknowledgment responsibility promised only after durable custody.
-    #[must_use]
-    pub fn acknowledgment(&self) -> Responsibility {
-        self.acknowledgment
-    }
     /// Validated order policy used before encoding commands.
     #[must_use]
     pub fn orders(&self) -> Option<&Hl7Orders> {
@@ -246,13 +239,6 @@ pub(super) fn build(
                 .clone()
                 .ok_or_else(|| invalid(path, "mappings", "record stack requires mappings"))?,
         },
-        acknowledgment: machine.dialog.acknowledgment.ok_or_else(|| {
-            invalid(
-                path,
-                "dialog.acknowledgment",
-                "MLLP dialog requires acknowledgment policy",
-            )
-        })?,
         orders: machine
             .orders
             .as_ref()

@@ -573,7 +573,10 @@ fn dsr_decisions_follow_durable_ack_commit() -> TestResult {
         ("dsr1", "AA", "2.3.1", "HL7-DSR-ACK-invalid-edition", false),
     ] {
         let mut d = dialog()?;
-        d.enable_order_profile(analyte_hl7::Version::V251, analyte_hl7::query::Profile::Display)?;
+        d.enable_order_profile(
+            analyte_hl7::Version::V251,
+            analyte_hl7::query::Profile::Display,
+        )?;
         d.await_display(
             Duration::ZERO,
             ControlId::new(b"dsr1")?,
@@ -597,7 +600,10 @@ fn dsr_decisions_follow_durable_ack_commit() -> TestResult {
 #[test]
 fn late_dsr_commit_keeps_receipt_unconfirmed() -> TestResult {
     let mut d = dialog()?;
-    d.enable_order_profile(analyte_hl7::Version::V251, analyte_hl7::query::Profile::Display)?;
+    d.enable_order_profile(
+        analyte_hl7::Version::V251,
+        analyte_hl7::query::Profile::Display,
+    )?;
     d.await_display(
         Duration::ZERO,
         ControlId::new(b"dsr1")?,
@@ -641,7 +647,10 @@ fn late_dsr_commit_keeps_receipt_unconfirmed() -> TestResult {
 #[test]
 fn queries_share_decoder_and_first_byte_time() -> TestResult {
     let mut d = dialog()?;
-    d.enable_order_profile(analyte_hl7::Version::V251, analyte_hl7::query::Profile::Display)?;
+    d.enable_order_profile(
+        analyte_hl7::Version::V251,
+        analyte_hl7::query::Profile::Display,
+    )?;
     let query = String::from_utf8(message(""))?
         .rewrite("ORU^R01^ORU_R01", "QRY^Q02^QRY_Q02")
         .into_bytes();
@@ -672,7 +681,10 @@ fn qck_precedes_dsr_and_failed_qck_issues_nothing() -> TestResult {
         (false, 2, "HL7-query-deadline-before-DSR"),
     ] {
         let mut d = dialog()?;
-        d.enable_order_profile(analyte_hl7::Version::V251, analyte_hl7::query::Profile::Display)?;
+        d.enable_order_profile(
+            analyte_hl7::Version::V251,
+            analyte_hl7::query::Profile::Display,
+        )?;
         let payload = analyte_framing::hl7::payload(&message(""))
             .ok_or("synthetic envelope")?
             .to_vec();
@@ -720,7 +732,10 @@ fn qck_precedes_dsr_and_failed_qck_issues_nothing() -> TestResult {
 #[test]
 fn dsr_issuance_starts_ack_budget_without_retry() -> TestResult {
     let mut d = dialog()?;
-    d.enable_order_profile(analyte_hl7::Version::V251, analyte_hl7::query::Profile::Display)?;
+    d.enable_order_profile(
+        analyte_hl7::Version::V251,
+        analyte_hl7::query::Profile::Display,
+    )?;
     let payload = analyte_framing::hl7::payload(&message(""))
         .ok_or("synthetic envelope")?
         .to_vec();
