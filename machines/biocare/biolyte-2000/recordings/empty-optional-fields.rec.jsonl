@@ -1,0 +1,16 @@
+{"version":1,"stack":["serial","astm_lis01","astm_link","astm_lis02"],"machine":"biocare/biolyte-2000","software":null,"evidence":"synthetic","de_identification":"Entirely made up; no patient or analyzer data","source":"BioCARE Biolyte 2000 Service Manual 4.2A, Appendix VI; optional P.4 absent; R.12 absent after the first result"}
+{"direction":"machine_to_host","time_ms":0,"bytes":"BQ=="}
+{"direction":"host_to_machine","time_ms":0,"bytes":"Bg=="}
+{"direction":"machine_to_host","time_ms":0,"bytes":"AjFIfFxeJnx8fEJpb0NhcmVeQmlvbHl0ZV4wLjAuMC4wXjkwMDE3fHx8fHx8fHwxfDIwMjYxMDE0MDk0NzEyDQM3Rg0K"}
+{"direction":"host_to_machine","time_ms":0,"bytes":"Bg=="}
+{"direction":"machine_to_host","time_ms":0,"bytes":"AjJQfDF8fA0DMzcNCg=="}
+{"direction":"host_to_machine","time_ms":0,"bytes":"Bg=="}
+{"direction":"machine_to_host","time_ms":0,"bytes":"AjNPfDF8fDQzfHx8fHx8fHx8fHx8V2hvbGUgQmxvb2R8fHx8fHx8fHx8UA0DQTUNCg=="}
+{"direction":"host_to_machine","time_ms":0,"bytes":"Bg=="}
+{"direction":"machine_to_host","time_ms":0,"bytes":"AjRSfDF8Xl5eTmErXk18MTM2fG1tb2wvTHx8fHx8fHwyMDI2MTAxNDA4NDkzNQ0DNTENCg=="}
+{"direction":"host_to_machine","time_ms":0,"bytes":"Bg=="}
+{"direction":"machine_to_host","time_ms":0,"bytes":"AjVSfDJ8Xl5eSyteTXw0Ljh8bW1vbC9MDQNCRQ0K"}
+{"direction":"host_to_machine","time_ms":0,"bytes":"Bg=="}
+{"direction":"machine_to_host","time_ms":0,"bytes":"AjZMfDF8Tg0DMDkNCg=="}
+{"direction":"host_to_machine","time_ms":0,"bytes":"Bg=="}
+{"direction":"machine_to_host","time_ms":0,"bytes":"BA=="}
