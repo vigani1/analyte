@@ -9,6 +9,7 @@
 //! never tidies folder names: outside a shipped model folder they say nothing
 //! about the model.
 use analyte_config::DefinitionDetails;
+use analyte_contract::document::ModelId;
 use std::{
     io::Read as _,
     path::{Path, PathBuf},
@@ -66,7 +67,7 @@ pub(in crate::admin) fn model_name(definition: &Path, root: Option<&Path>) -> Op
     fn key_name(part: Option<&Path>) -> Option<&str> {
         part.and_then(Path::file_name)
             .and_then(|name| name.to_str())
-            .filter(|name| key_part(name))
+            .filter(|name| ModelId::valid_part(name))
     }
     let folder = definition.parent();
     let vendor = folder.and_then(Path::parent);
@@ -81,15 +82,6 @@ pub(in crate::admin) fn model_name(definition: &Path, root: Option<&Path>) -> Op
         .identity
         .as_ref()
         .and_then(|(name, _)| readable(name.as_str()))
-}
-
-/// Whether `name` can be a vendor or model folder: lower-case letters, digits
-/// and hyphens, as shipped.
-fn key_part(name: &str) -> bool {
-    !name.is_empty()
-        && name
-            .bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
 }
 
 /// "roche/cobas-e411" becomes "Roche cobas e411": vendor capitalised, hyphens as spaces.
@@ -180,7 +172,7 @@ fn folders(path: &Path) -> Result<Vec<(String, PathBuf)>, ListError> {
         let name = entry.file_name();
         let Some(name) = name.to_str() else { continue };
         // Folder names are lower-case and hyphenated; anything else is not a definition.
-        if !key_part(name) || !entry.file_type().map_err(io)?.is_dir() {
+        if !ModelId::valid_part(name) || !entry.file_type().map_err(io)?.is_dir() {
             continue;
         }
         if found.len() >= LIMIT {
@@ -315,6 +307,17 @@ mod tests {
             State::Unreadable { error, .. } if error.to_string().contains("unknown variant")
                 && error.to_string().contains("unknown")
         ));
+        Ok(())
+    }
+
+    // ADR 0033: the catalog lists only valid vendor/model folder keys.
+    #[test]
+    fn setup_excludes_overlong_model_folders() -> Result<(), crate::Error> {
+        let root = tempfile::tempdir()?;
+        let folder = root.path().join("vendor").join("a".repeat(65));
+        std::fs::create_dir_all(&folder)?;
+        std::fs::write(folder.join("machine.toml"), example())?;
+        assert!(list(root.path())?.is_empty());
         Ok(())
     }
 

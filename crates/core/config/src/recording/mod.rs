@@ -22,6 +22,7 @@ use crate::{
     AckPoint, ChoiceLabel, ChoiceName, Error, Evidence, EvidenceLevel, LabAppSource, Machine,
     MachineDeparture, SerialValues, Site, Stack, Transport, TransportKind, Validated, invalid,
 };
+use analyte_contract::document::ModelId;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -291,10 +292,11 @@ fn record_link(path: &str, table: toml::Table) -> Result<ModelFile, Error> {
         .as_ref()
         .map(AnalyzerMode::names)
         .unwrap_or_default();
+    let model = folder_key(path)?;
     crate::validation::validate_recording(
         &file.deviations,
         protocol == CaptureProtocol::Astm,
-        folder_key(path).as_deref(),
+        model.as_ref().map(ModelId::as_str),
         &offered,
         path,
     )?;
@@ -325,11 +327,22 @@ pub(crate) fn definition_details(
 
 /// The model's folder key, `vendor/model`, from the two folders its file is
 /// in (ADR 0033); none for a file elsewhere, so no departure can match it.
-fn folder_key(path: &str) -> Option<String> {
-    let folder = std::path::Path::new(path).parent()?;
-    let model = folder.file_name()?.to_str()?;
-    let vendor = folder.parent()?.file_name()?.to_str()?;
-    Some(format!("{vendor}/{model}"))
+fn folder_key(path: &str) -> Result<Option<ModelId>, Error> {
+    use std::path::Path;
+    let Some((vendor, model)) = Path::new(path).parent().and_then(|folder| {
+        Some((
+            folder.parent()?.file_name()?.to_str()?,
+            folder.file_name()?.to_str()?,
+        ))
+    }) else {
+        return Ok(None);
+    };
+    ModelId::new(vendor, model)
+        .map(Some)
+        .map_err(|source| Error::ModelFolder {
+            path: path.into(),
+            source,
+        })
 }
 
 /// The analyzer mode the model asks, from its file; none when it asks none

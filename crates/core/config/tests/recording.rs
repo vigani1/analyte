@@ -27,6 +27,18 @@ fn refusal(model: &str, site: &str) -> Result<String, Box<dyn std::error::Error>
     }
 }
 
+// ADR 0033: a capture profile with model folders uses the contract's folder-key rule.
+#[test]
+fn capture_profile_rejects_an_overlong_model_key() -> TestResult {
+    let path = format!("vendor/{}/record.toml", "a".repeat(65));
+    let result = recording::load(
+        (&path, &record("astm", "tcp_server")),
+        ("site.toml", &site("127.0.0.1:5600", "")),
+    );
+    assert!(matches!(result, Err(Error::ModelFolder { path: refused, .. }) if refused == path));
+    Ok(())
+}
+
 // ADR 0034 decisions 2 to 4: each protocol's shipped profile loads with the
 // model's link and the lab's answers; the snapshot has no lab app, no mappings
 // and no orders, and its bytes name the profile.

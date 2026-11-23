@@ -165,6 +165,14 @@ pub enum Error {
         /// Source path.
         path: String,
     },
+    /// The capture profile's vendor/model folder does not form a contract model ID.
+    #[error("{path}: {source}")]
+    ModelFolder {
+        /// Capture profile path.
+        path: String,
+        /// Why the folder names cannot identify a model.
+        source: analyte_contract::document::InvalidModel,
+    },
     /// TOML syntax or schema error, including unknown keys.
     #[error("{path}: {source}")]
     Schema {

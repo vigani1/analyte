@@ -137,6 +137,7 @@ name = "analyte-config"
 version = "0.1.0"
 dependencies = [
  "analyte-astm",
+ "analyte-contract",
  "analyte-fixtures",
  "analyte-framing",
  "analyte-hl7",
