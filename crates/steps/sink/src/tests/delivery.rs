@@ -13,7 +13,7 @@ async fn reference_peer_delivery_events_pause_and_cache() -> TestResult {
     let worker = Worker::for_destination(&store, &destinations[0], &secrets);
     check_delivery_conflicts(&store, &worker, &peer).await?;
 
-    check_order_events(&store, &destinations).await?;
+    check_order_events(directory.path(), &destinations).await?;
 
     let poller = Poller::new(&store, destination, &secrets);
     poller.poll_once().await?;

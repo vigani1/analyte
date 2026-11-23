@@ -62,7 +62,7 @@ pub(super) fn fill(setup: &Setup, id: &str, draft: &mut Draft, ask: Ask) -> Resu
             let choices: Vec<ask::Choice> = list
                 .iter()
                 .filter(|definition| {
-                    matches!(definition.state, Shipped::Ready(_))
+                    matches!(definition.state, Shipped::Ready { .. })
                         || (records_only
                             && matches!(definition.state, Shipped::Blocked { record: Some(_) }))
                 })

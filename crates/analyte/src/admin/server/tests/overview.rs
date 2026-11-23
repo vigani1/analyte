@@ -561,7 +561,7 @@ pub(super) fn queue(
     let id = analyte_fixtures::orders::reserve(store, &key, now)?;
     store.transition_order(
         id,
-        analyte_model::OrderState::Sent,
+        OrderState::Sent,
         analyte_model::SourceText::new("synthetic")?,
         now,
         |_| Ok(event),

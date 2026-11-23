@@ -20,15 +20,10 @@ use std::{
 pub(super) fn read_document(path: &Path) -> Result<SiteDocument, SetupError> {
     let text = read(path).map_err(|source| SetupError::SiteRead {
         path: path.to_owned(),
-        source,
+        source: Box::new(source),
     })?;
-    SiteDocument::parse(&path.display().to_string(), &text).map_err(|error| match error {
-        analyte_config::Error::Schema { source, .. } => SetupError::SiteFile {
-            path: path.to_owned(),
-            source,
-        },
-        error => error.into(),
-    })
+    SiteDocument::parse(&path.display().to_string(), &text)
+        .map_err(|source| SetupError::SiteFile(Box::new(source)))
 }
 
 /// One `[[machines]]` entry of the program file, with paths resolved.

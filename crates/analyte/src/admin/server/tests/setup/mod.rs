@@ -2434,8 +2434,8 @@ async fn setup_step_two_reports_site_errors() -> Result<(), Error> {
     let step = "/setup/machine-1/connection?definition=example/synthetic-astm";
     let site = fixture.root().join("site.toml");
     for (contents, problem) in [
-        (None, "reading the machine&#39;s site file"),
-        (Some("endpoint = ["), "contains invalid TOML"),
+        (None, "Reading the machine&#39;s site file"),
+        (Some("endpoint = ["), "site file could not be parsed"),
     ] {
         match contents {
             Some(text) => std::fs::write(&site, text)?,
@@ -2463,7 +2463,7 @@ async fn setup_step_two_reports_definition_errors() -> Result<(), Error> {
     let response = fixture.get(step).await?;
     assert!(response.starts_with("HTTP/1.1 409"), "{response}");
     assert!(
-        response.contains("reading the machine definition"),
+        response.contains("Reading the machine definition"),
         "{response}"
     );
     assert!(response.contains("machine.toml"), "{response}");
@@ -2477,7 +2477,7 @@ async fn setup_step_two_reports_definition_errors() -> Result<(), Error> {
     let response = fixture.get(step).await?;
     assert!(response.starts_with("HTTP/1.1 409"), "{response}");
     assert!(
-        response.contains("the machine definition is invalid"),
+        response.contains("The machine definition is invalid"),
         "{response}"
     );
     assert!(response.contains("unknown-link"), "{response}");

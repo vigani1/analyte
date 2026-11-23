@@ -59,7 +59,7 @@ pub(super) fn chosen(
                 .ok_or(SetupError::NoDefinitionYet)?;
             let current = installed.canonicalize().ok();
             match list.iter().find(|d| match &d.state {
-                Shipped::Ready(source)
+                Shipped::Ready { source, .. }
                 | Shipped::Blocked {
                     record: Some(source),
                 } => current.is_some() && source.path.canonicalize().ok() == current,
@@ -83,7 +83,7 @@ pub(super) fn chosen(
         }
     };
     let source = match &found.state {
-        Shipped::Ready(source) => source,
+        Shipped::Ready { source, .. } => source,
         Shipped::Blocked {
             record: Some(source),
         } if records_only => source,

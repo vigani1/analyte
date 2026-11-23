@@ -8,8 +8,9 @@
 //! page tidies the folder key instead. A machine's model name ([`model_name`])
 //! never tidies folder names: outside a shipped model folder they say nothing
 //! about the model.
-use analyte_config::DefinitionDetails;
+use analyte_config::{DefinitionDetails, EvidenceLevel};
 use analyte_contract::document::ModelId;
+use analyte_model::Identifier;
 use std::{
     io::Read as _,
     path::{Path, PathBuf},
@@ -101,7 +102,11 @@ fn tidy(key: &str) -> String {
 
 pub(super) enum State {
     /// A machine definition and its parsed setup facts.
-    Ready(Source),
+    Ready {
+        source: Source,
+        name: Identifier,
+        level: EvidenceLevel,
+    },
     /// No `machine.toml`; its capture profile can be chosen to record only (ADR 0034).
     Blocked { record: Option<Source> },
     /// A definition or capture profile that could not be read.
@@ -228,16 +233,29 @@ fn unreadable(path: PathBuf, error: std::io::Error) -> State {
 }
 
 fn load(path: PathBuf, complete: bool) -> State {
-    let details = read(&path).and_then(|details| match (complete, &details.identity) {
+    let read = read(&path).and_then(|details| match (complete, &details.identity) {
         (true, None) => Err(FileError::CaptureProfile(path.clone())),
         (false, Some(_)) => Err(FileError::CompleteDefinition(path.clone())),
-        (true, Some(_)) | (false, None) => Ok(Arc::new(details)),
+        (true, Some(_)) | (false, None) => Ok(details),
     });
-    match details {
-        Ok(details) if complete => State::Ready(Source { path, details }),
-        Ok(details) => State::Blocked {
-            record: Some(Source { path, details }),
-        },
+    match read {
+        Ok(details) => {
+            let identity = details.identity.clone();
+            let source = Source {
+                path,
+                details: Arc::new(details),
+            };
+            match identity {
+                Some((name, level)) => State::Ready {
+                    source,
+                    name,
+                    level,
+                },
+                None => State::Blocked {
+                    record: Some(source),
+                },
+            }
+        }
         Err(error) => State::Unreadable {
             path,
             error: Arc::new(error),
@@ -262,8 +280,8 @@ mod tests {
         let state = |key: &str| definitions.iter().find(|d| d.key == key).map(|d| &d.state);
         assert!(matches!(
             state("example/synthetic-astm"),
-            Some(State::Ready(source)) if source.details.identity.as_ref().is_some_and(|(name, level)|
-                name.as_str() == "generic-synthetic" && *level == analyte_config::EvidenceLevel::Documented)
+            Some(State::Ready { name, level, .. })
+                if name.as_str() == "generic-synthetic" && *level == super::EvidenceLevel::Documented
         ));
         // Each first-lab model names its protocol and link, so it can record only.
         for key in [

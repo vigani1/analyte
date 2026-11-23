@@ -148,7 +148,7 @@ impl Step {
             | SetupError::ProgramFile(_)
             | SetupError::ProgramLayout(_)
             | SetupError::SiteRead { .. }
-            | SetupError::SiteFile { .. }
+            | SetupError::SiteFile(_)
             | SetupError::SiteDestination(_)
             | SetupError::SiteText(_)
             | SetupError::Installation(_)
@@ -357,7 +357,7 @@ fn render_machine(
             // A model not ready yet can still record, when it names its link.
             disabled: !matches!(
                 definition.state,
-                Shipped::Ready(_) | Shipped::Blocked { record: Some(_) }
+                Shipped::Ready { .. } | Shipped::Blocked { record: Some(_) }
             ),
         }
     }));

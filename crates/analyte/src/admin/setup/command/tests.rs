@@ -1667,8 +1667,9 @@ async fn machine_commands_report_an_oversized_record_only_site() -> Result<(), E
             error,
             Failure::Setup(SetupError::SiteRead {
                 path,
-                source: crate::installation::config::Error::ConfigurationTooLarge,
+                source,
             }) if path == site
+                && matches!(*source, crate::installation::config::Error::ConfigurationTooLarge)
         ));
     }
     Ok(())

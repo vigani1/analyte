@@ -393,13 +393,15 @@ async fn check_delivery_conflicts(store: &Handle, worker: &Worker<'_>, peer: &Pe
     Ok(())
 }
 
-async fn check_order_events(store: &Handle, destinations: &[Destination]) -> TestResult {
+async fn check_order_events(directory: &Path, destinations: &[Destination]) -> TestResult {
+    use analyte_contract::document::OrderState as WireState;
+    // A real reservation seeds a feed; keep it separate from the polling test.
+    let mut store = store(&directory.join("event-store.db")).await?;
     let rotating = RotatingSecrets;
-    let event_worker = Worker::for_destination(store, &destinations[0], &rotating);
+    let event_worker = Worker::for_destination(&store, &destinations[0], &rotating);
     let mut event: analyte_contract::EventFields = serde_json::from_slice(include_bytes!(
         "../../../../../docs/contract/vectors/event.json"
     ))?;
-    use analyte_contract::document::OrderState as WireState;
     let destination = Identifier::new("app")?;
     let order = Identifier::new(event.order_id.as_str())?;
     for (index, states) in [
@@ -444,6 +446,7 @@ async fn check_order_events(store: &Handle, destinations: &[Destination]) -> Tes
             );
         }
     }
+    store.shutdown(until()?).await?;
     Ok(())
 }
 

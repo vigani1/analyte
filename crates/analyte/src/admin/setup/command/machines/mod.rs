@@ -159,7 +159,7 @@ fn models(seams: &Seams) -> Result<Outcome, Failure> {
         if let Some(note) = status.note {
             say(&format!("  {note}"))?;
         }
-        if let Shipped::Ready(source) = &definition.state {
+        if let Shipped::Ready { source, .. } = &definition.state {
             if source.details.asks_autolyser_poll {
                 say("  --poll-seconds <1..300>: seconds between report polls (required)")?;
             }

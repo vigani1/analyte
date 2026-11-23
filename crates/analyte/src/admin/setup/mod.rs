@@ -288,13 +288,10 @@ pub(crate) enum SetupError {
     #[error("reading the machine's site file {path} failed: {source}")]
     SiteRead {
         path: PathBuf,
-        source: crate::installation::config::Error,
+        source: Box<crate::installation::config::Error>,
     },
-    #[error("the machine's site file {path} contains invalid TOML: {source}")]
-    SiteFile {
-        path: PathBuf,
-        source: toml::de::Error,
-    },
+    #[error("the machine's site file could not be parsed: {0}")]
+    SiteFile(#[source] Box<analyte_config::Error>),
     #[error(
         "this machine's settings file cannot be read: its [destination] cannot be moved to the Lab apps page: {0}"
     )]
@@ -476,18 +473,11 @@ fn level_and_state(definition: &Definition) -> (Hover, Status, Icon) {
         exact,
     };
     match &definition.state {
-        Shipped::Ready(source) => {
-            let (_, level) = source
-                .details
-                .identity
-                .as_ref()
-                .expect("ready definition has an identity");
-            (
-                hover(evidence_words(*level), format!("Evidence level: {level}")),
-                status(Tone::Good, "Ready"),
-                Icon::Ok,
-            )
-        }
+        Shipped::Ready { level, .. } => (
+            hover(evidence_words(*level), format!("Evidence level: {level}")),
+            status(Tone::Good, "Ready"),
+            Icon::Ok,
+        ),
         Shipped::Blocked { record } => (
             hover(
                 "Not tested yet",
@@ -619,14 +609,7 @@ fn definition_name(definition: &Definition) -> Hover {
     Hover {
         shown: definition.display.clone(),
         exact: match &definition.state {
-            Shipped::Ready(source) => {
-                let (name, _) = source
-                    .details
-                    .identity
-                    .as_ref()
-                    .expect("ready definition has an identity");
-                format!("{} (name {})", definition.key, name.as_str())
-            }
+            Shipped::Ready { name, .. } => format!("{} (name {})", definition.key, name.as_str()),
             Shipped::Blocked { .. } | Shipped::Unreadable { .. } => definition.key.clone(),
         },
     }
