@@ -138,6 +138,9 @@ pub enum Error {
     /// A synthetic store wait must remain bounded behind a loopback override.
     #[error("test store budget requires a loopback override and 1 through 60 seconds")]
     InvalidTestStoreBudget,
+    /// An ASTM frame budget override must apply to a bounded synthetic server.
+    #[error("test ASTM frame budget requires a loopback ASTM server and 1 through 60 seconds")]
+    InvalidTestAstmFrameBudget,
     /// The synthetic shutdown I/O budget must stay within fixture limits.
     #[error("test shutdown I/O budget must be 5 through 60 seconds")]
     InvalidTestShutdownIoBudget,
@@ -237,6 +240,7 @@ impl Error {
             | Self::TestListenerMismatch
             | Self::InvalidTestShutdownIoBudget
             | Self::InvalidTestStoreBudget
+            | Self::InvalidTestAstmFrameBudget
             | Self::InvalidTestPolling
             | Self::UnknownTestDestination
             | Self::UnknownTestMachine => return None,
