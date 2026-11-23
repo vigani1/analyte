@@ -25,9 +25,6 @@ use jiff::Timestamp;
 use serde::Deserialize;
 use std::sync::Arc;
 
-/// The most characters a reason may have; the field stops there too.
-const REASON_CHARACTERS: usize = 256;
-
 /// Which audited action a dialog confirms.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Confirm {
@@ -93,19 +90,7 @@ pub(in crate::admin) struct ReasonForm {
     confirm: String,
 }
 
-/// The reason as it is recorded, or why it cannot be. Line breaks typed in the
-/// field become spaces, because an audit reason is one line; other control
-/// characters are refused.
-pub(in crate::admin) fn checked(typed: &str) -> Result<Reason, &'static str> {
-    let line = typed.replace("\r\n", " ").replace(['\r', '\n', '\t'], " ");
-    if line.trim().is_empty() {
-        return Err("Write a reason. It is recorded in the history.");
-    }
-    if line.chars().count() > REASON_CHARACTERS {
-        return Err("Keep the reason to 256 characters.");
-    }
-    Reason::new(&line).map_err(|_| "The reason holds a character that cannot be recorded.")
-}
+pub(in crate::admin) use crate::operator::recovery::measurement::checked_reason as checked;
 
 pub(in crate::admin) async fn confirm_resolve(
     State(state): State<Arc<Context>>,

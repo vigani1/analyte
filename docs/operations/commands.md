@@ -110,6 +110,17 @@ reads them from standard input. Details are in [Connect](connect.md#from-the-com
 
 `review` and `parked` are the same command.
 
+Use `analyte --actor OPERATOR parked compare ITEM` to inspect an eligible
+comparison and get its snapshot. Use `analyte --actor OPERATOR parked
+suggestions` to list missing-tube-ID suggestions for one page of open
+items. Follow the printed `--after` cursor for more.
+
+Confirm with `analyte --actor OPERATOR parked decide ITEM ACTION --snapshot
+SNAPSHOT --reason "Checked analyzer history"`. Use `resend`, `rerun` or
+`supersede` for ACTION. Both comparison and confirmation are audited. Keep
+the command output in a protected location because it shows result data.
+If confirmation reports a changed comparison, read it again.
+
 | Task | Command |
 | --- | --- |
 | List items that need review | `analyte --actor it-anna review list` |

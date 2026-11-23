@@ -5,6 +5,11 @@ pub(crate) mod content;
 mod history;
 pub mod law;
 mod outbox;
+mod review;
+pub use review::{
+    MeasurementConfirmation, MeasurementDecision, MeasurementReview, RERUN_MEASUREMENT_ACTION,
+    RESEND_MEASUREMENT_ACTION, SUPERSEDE_SAMPLE_ACTION,
+};
 mod parking;
 mod status_policy;
 use crate::{Delivery, Interpretation, Reading, ReconciliationError as Error, Store, digest, key};
@@ -135,6 +140,7 @@ impl Store {
             held_back,
             mode,
         } = input;
+        let ordinary = matches!(mode, ReconcileMode::Standard);
         let (lifecycle, edit_guard, law) = match mode {
             ReconcileMode::Standard => (None, None, None),
             ReconcileMode::Lifecycle(policy) => (Some(policy), None, None),
@@ -200,6 +206,20 @@ impl Store {
             lifecycle,
             edit_guard,
         };
+        let claimed = if ordinary {
+            match &evidence.outcome {
+                Reading::Results(results) => results
+                    .iter()
+                    .map(|result| match &result.identity {
+                        IdentityStatus::Resolved(id) => Some(id.observation.clone()),
+                        IdentityStatus::Unresolved(_) => None,
+                    })
+                    .collect(),
+                Reading::Failed(_) => Vec::new(),
+            }
+        } else {
+            Vec::new()
+        };
         let batch = reconciliation.assign_revisions(&mut evidence, receipt, corrections)?;
         let deliveries = build(&evidence, &batch.outcomes)?;
         if deliveries.len() > count {
@@ -256,6 +276,7 @@ impl Store {
                 version,
                 &evidence,
                 &batch.outcomes,
+                &claimed,
                 (action.is_some(), findings.is_empty(), edit_guard, held_back),
             )?;
         }

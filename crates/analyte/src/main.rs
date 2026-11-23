@@ -161,6 +161,25 @@ enum ServiceCommand {
 
 #[derive(Subcommand)]
 enum Parked {
+    /// Show the protected result comparison and its confirmation snapshot.
+    Compare {
+        id: i64,
+    },
+    /// List missing-sample suggestions for one page of open items.
+    Suggestions {
+        #[arg(long, default_value_t = 0)]
+        after: i64,
+    },
+    /// Confirm a displayed measurement comparison.
+    Decide {
+        id: i64,
+        #[arg(value_enum)]
+        decision: MeasurementChoice,
+        #[arg(long)]
+        snapshot: String,
+        #[arg(long)]
+        reason: String,
+    },
     List {
         /// Continue after the last ID of a previous bounded page.
         #[arg(long, default_value_t = 0)]
@@ -179,6 +198,13 @@ enum Parked {
         #[arg(long)]
         reason: String,
     },
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+enum MeasurementChoice {
+    Resend,
+    Rerun,
+    Supersede,
 }
 
 #[derive(Subcommand)]
@@ -446,6 +472,9 @@ async fn operator(
             )
             .await?);
         }
+        if let Some(result) = measurement_command(&store, &program, &actor, &command).await {
+            return result;
+        }
         let (action, targets, reason) = match &command {
             Parked::List { .. } => (
                 "parked-list",
@@ -462,7 +491,10 @@ async fn operator(
                     std::io::Error::other("reprocess must use the recovery entry point").into(),
                 );
             }
-            Parked::Resolve { .. } => {
+            Parked::Compare { .. }
+            | Parked::Suggestions { .. }
+            | Parked::Decide { .. }
+            | Parked::Resolve { .. } => {
                 return Err(
                     std::io::Error::other("resolve must use the recovery entry point").into(),
                 );
@@ -480,7 +512,10 @@ async fn operator(
                 Parked::Reprocess { .. } => {
                     Err(ParkedCommandError::ReprocessRequiresInterpretation)
                 }
-                Parked::Resolve { .. } => Err(ParkedCommandError::ResolveUsesRecovery),
+                Parked::Compare { .. }
+                | Parked::Suggestions { .. }
+                | Parked::Decide { .. }
+                | Parked::Resolve { .. } => Err(ParkedCommandError::ResolveUsesRecovery),
                 Parked::List { after } => {
                     store.audit(&audit)?;
                     Ok(store.parked(after)?)
@@ -511,6 +546,104 @@ async fn operator(
     .await;
     store.shutdown(analyte::deadline()?).await?;
     result
+}
+
+async fn measurement_command(
+    store: &analyte_store::Handle,
+    program: &Program,
+    actor: &Identifier,
+    command: &Parked,
+) -> Option<Result<(), Error>> {
+    use analyte::operator::recovery::measurement;
+    use analyte_store::MeasurementDecision;
+    match command {
+        Parked::Compare { id } => Some(
+            async { print_measurement(*id, measurement::review(store, *id, actor.clone()).await?) }
+                .await,
+        ),
+        Parked::Suggestions { after } => Some(measurement_suggestions(store, *after, actor).await),
+        Parked::Decide {
+            id,
+            decision,
+            snapshot,
+            reason,
+        } => {
+            let decision = match decision {
+                MeasurementChoice::Resend => MeasurementDecision::Resend,
+                MeasurementChoice::Rerun => MeasurementDecision::Rerun,
+                MeasurementChoice::Supersede => MeasurementDecision::Supersede,
+            };
+            Some(
+                measurement::decide(
+                    store,
+                    Some(program),
+                    *id,
+                    snapshot.clone(),
+                    decision,
+                    actor.clone(),
+                    reason,
+                )
+                .await
+                .map_err(Error::from),
+            )
+        }
+        Parked::List { .. }
+        | Parked::Show { .. }
+        | Parked::Reprocess { .. }
+        | Parked::Resolve { .. } => None,
+    }
+}
+
+fn print_measurement(
+    id: i64,
+    review: Option<analyte_store::MeasurementReview>,
+) -> Result<(), Error> {
+    #[derive(serde::Serialize)]
+    struct Output {
+        item: i64,
+        comparison: analyte_store::MeasurementReview,
+    }
+    let text = match review {
+        Some(comparison) => serde_json::to_string_pretty(&Output {
+            item: id,
+            comparison,
+        })
+        .map_err(analyte::operator::Error::from)?,
+        None => format!("Item {id} has no eligible measurement comparison."),
+    };
+    Ok(analyte::operator::display::line(&text)?)
+}
+
+async fn measurement_suggestions(
+    store: &analyte_store::Handle,
+    after: i64,
+    actor: &Identifier,
+) -> Result<(), Error> {
+    let rows = store
+        .request::<_, ParkedCommandError>(analyte::deadline()?, move |s| {
+            Ok(s.parked_filtered(after, analyte_store::ParkedFilter::Open)?)
+        })
+        .await?;
+    for item in &rows {
+        if !item
+            .details()
+            .map_err(analyte::operator::Error::from)?
+            .reason
+            .as_str()
+            .ends_with("}: MissingSample")
+        {
+            continue;
+        }
+        if let Some(review) =
+            analyte::operator::recovery::measurement::review(store, item.id, actor.clone()).await?
+        {
+            print_measurement(item.id, Some(review))?;
+        }
+    }
+    if let Some(last) = rows.last() {
+        analyte::operator::display::line(&format!("Continue with --after {}", last.id))?;
+    }
+    Ok(())
 }
 
 /// Lists or exports recordings, audited under the required `--actor` (ADR 0034).

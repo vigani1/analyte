@@ -162,7 +162,9 @@ new crate rather than a change to a shared one.
   operator. A recipe can combine exact sample ID, test code and a documented
   source completion time or run field. Changed content under a trusted key
   requires explicit correction or protocol lifecycle evidence; otherwise it
-  parks. See [ADR 0035](adr/0035-machine-result-identity-recipes.md).
+  parks. An operator can record a resend or confirm a new measurement from
+  an eligible comparison. Matching receipts that supply a missing sample ID
+  can be suggested for audited review. See [ADR 0035](adr/0035-machine-result-identity-recipes.md).
 - **Revisions** are assigned by the store from the identity and the retained
   history, in the same transaction as the interpretation (rules in ADR 0003).
 - **Sample identity:** ID as a string with its source, plus position (rack or
