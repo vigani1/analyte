@@ -21,11 +21,38 @@ Keep site settings and credentials outside this tree. Recordings follow
 or reviewed de-identified data. Real machines must have their own evidence;
 the example below is not a real machine.
 
-`cargo test --workspace` discovers every `machine.toml`, validates it through
-the real loader, compares the README evidence level, and replays every recording
-through the running service. A model folder with a README must also contain
-`machine.toml`, unless its README explicitly says "a blocked machine definition,"
-(line wrapping is allowed). This catches accidentally deleted definitions.
+`cargo test --workspace --all-features` finds every model's recordings and
+replays them through the running service. A ready model uses `machine.toml`
+and its README evidence level must match the definition. A blocked model uses
+`record.toml`. Its replay checks the expected wire replies, verifies that all
+incoming bytes were stored in order, and checks that no results were delivered
+or orders sent. A model folder with a README needs `machine.toml` unless the
+README says "a blocked machine definition," (line wrapping is allowed).
+A blocked model can wait for recordings, but a folder with recordings needs a
+definition.
+
+Put replay settings in an optional `replay.toml` in the model folder. Each
+entry is keyed by the full recording filename. Use `.choices` for
+`machine.toml` site choices and `.recording` for `record.toml` site answers.
+For example:
+
+```toml
+["literal-bad-checksum.rec.jsonl".recording]
+acknowledgment = "literal"
+
+["literal-bad-checksum.rec.jsonl".expected_gap]
+reply_event = 5
+failure = "disconnect"
+reason = "VIDAS record-only dialog sends no NAK for a bad packet checksum."
+```
+
+An expected gap still runs. Keep the expected reply in the recording and name
+the final wire event by its zero-based index after the header, counting link
+events. Use `deadline` for a timed-out reply or `disconnect` for EOF before
+the reply. A different failure or a successful replay fails the suite. Remove
+the mark when the gap is fixed. For record-only replay the stored bytes and
+absence of delivery and orders are still checked.
+
 The README starts with a `# ` title naming the vendor and model the way a lab
 says it (for example `# Roche cobas e 411`); the setup page shows that title as
 the model's name and keeps the folder key on hover. The README then uses these

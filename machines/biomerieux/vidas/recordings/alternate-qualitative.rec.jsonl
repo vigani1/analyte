@@ -1,0 +1,8 @@
+{"version":1,"stack":["serial","vidas_literal","vidas_literal","vidas_literal"],"machine":"biomerieux/vidas","software":null,"evidence":"synthetic","de_identification":"All assay codes, identifiers and result values are invented.","source":"BCI Link 161150-486 C pp. 3-1 to 3-7, 4-2 to 4-8 and B-2 to B-7; synthetic alternate qualitative"}
+{"direction":"machine_to_host","time_ms":0,"bytes":"","link":"connect"}
+{"direction":"machine_to_host","time_ms":10,"bytes":"BQ=="}
+{"direction":"host_to_machine","time_ms":20,"bytes":"Bg=="}
+{"direction":"machine_to_host","time_ms":30,"bytes":"Ah5tdHJzbHxwaUxhYjA3fHNpfGNpMDBDYXNlTHxydFpMOA=="}
+{"direction":"machine_to_host","time_ms":40,"bytes":"fHJuU3ludGhldGljIGNhbGx8dHQwNjo0Mnx0ZDIwMjYvMDIvMTl8cWxORUdBVElWHkV8cW4wLjM3fG5jdmFsaWR8aWRTeW50aFBDfB03ZAM="}
+{"direction":"host_to_machine","time_ms":50,"bytes":"Bg=="}
+{"direction":"machine_to_host","time_ms":60,"bytes":"BA=="}

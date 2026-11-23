@@ -1,0 +1,19 @@
+["malformed.rec.jsonl".expected_gap]
+reply_event = 1
+failure = "deadline"
+reason = "The HL7 reader rejects the iFlash numeric MSH-16 before sending the record-only ACK."
+
+["qualitative.rec.jsonl".expected_gap]
+reply_event = 1
+failure = "deadline"
+reason = "The HL7 reader rejects the iFlash numeric MSH-16 before sending the record-only ACK."
+
+["quality-control.rec.jsonl".expected_gap]
+reply_event = 1
+failure = "deadline"
+reason = "The HL7 reader rejects the iFlash numeric MSH-16 before sending the record-only ACK."
+
+["quantitative.rec.jsonl".expected_gap]
+reply_event = 1
+failure = "deadline"
+reason = "The HL7 reader rejects the iFlash numeric MSH-16 before sending the record-only ACK."
