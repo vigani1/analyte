@@ -164,6 +164,26 @@ async fn hl7_record_only_accepts_results_and_answers_queries_with_ae() -> Result
     Ok(())
 }
 
+// YHLO LIS Protocol Manual V1.1 sections 2.3.1-2.3.2, 2.4.1; HL7 2.3.1 section 2.12.
+#[tokio::test]
+async fn hl7_record_only_keeps_all_iflash_result_categories() -> Result<(), Error> {
+    let mut run = Recorder::start("hl7", "").await?;
+    for (id, category) in [("00071", "0"), ("00072", "1"), ("00073", "2")] {
+        // A payload byte from the analyzer's local code page is opaque to capture.
+        let mut raw = format!(
+            "MSH|^~\\&|YHLO|iFlash3000|||20261123120000||ORU^R01|{id}|P|2.3.1||||{category}||ASCII\rOBR|1|000124||SYN|"
+        )
+        .into_bytes();
+        raw.extend_from_slice(b"\xe9\r");
+        let reply = hl7_exchange(&mut run, &raw).await?;
+        assert!(reply.contains(&format!("\rMSA|AA|{id}\r")), "{reply:?}");
+        assert_eq!(run.kept()?, run.sent, "receipt must already be durable");
+    }
+    run.finish(["tcp_server", "mllp", "hl7_receiver", "hl7_v2"], 0)
+        .await?;
+    Ok(())
+}
+
 // BCI Link guide 161150-486 A 3-1 to 3-7 (Literal packet, checksum and
 // acknowledgment before ETX); ADR 0034.
 #[tokio::test]

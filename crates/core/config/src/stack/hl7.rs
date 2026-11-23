@@ -1,8 +1,8 @@
 //! Constructs validated HL7 protocol settings.
 use super::{
     DialogTimeouts, Edition, Encoding, Error, Escapes, Hl7OrderQuery, Hl7Send, Mappings,
-    OrderQuery, OrderTables, Orders, Responsibility, Syntax, SyntaxLimits, TcpTransport,
-    Terminator, invalid, limits, order_tables, tcp,
+    OrderQuery, OrderTables, Orders, Responsibility, SyntaxLimits, TcpTransport, Terminator,
+    invalid, limits, order_tables, tcp,
 };
 use crate::ParsedMachine;
 use analyte_model::Identifier;
@@ -10,6 +10,7 @@ use analyte_model::Identifier;
 /// HL7 syntax settings with every required option present.
 #[derive(Debug, Clone)]
 pub struct Hl7Syntax {
+    msh16_message_category: bool,
     /// Strict input encoding.
     pub(super) encoding: Encoding,
     /// Negotiated HL7 edition.
@@ -66,8 +67,13 @@ pub struct Hl7Stack {
     pub(super) orders: Option<Hl7Orders>,
 }
 
-pub(super) fn hl7_syntax(syntax: &Syntax, path: &str) -> Result<Hl7Syntax, Error> {
+pub(super) fn hl7_syntax(machine: &ParsedMachine<'_>, path: &str) -> Result<Hl7Syntax, Error> {
+    let syntax = &machine.syntax;
     Ok(Hl7Syntax {
+        msh16_message_category: machine
+            .deviations
+            .iter()
+            .any(|rule| matches!(rule, crate::MachineDeparture::Hl7Msh16MessageCategory(_))),
         allow_utf8_in_v231: syntax.allow_utf8_in_v231,
         encoding: syntax.encoding,
         edition: syntax
@@ -124,6 +130,12 @@ pub(super) fn hl7_orders(
 }
 
 impl Hl7Syntax {
+    /// Whether an evidenced departure authorizes MSH-16 result categories.
+    #[must_use]
+    pub fn msh16_message_category(&self) -> bool {
+        self.msh16_message_category
+    }
+
     /// Text decoding policy; undecodable bytes remain retained evidence.
     #[must_use]
     pub fn encoding(&self) -> Encoding {
@@ -228,7 +240,7 @@ pub(super) fn build(
             transport: tcp(&machine.transport, path)?,
             frame_limit: machine.framing.limit,
             timeouts,
-            syntax: hl7_syntax(&machine.syntax, path)?,
+            syntax: hl7_syntax(machine, path)?,
             codes: machine
                 .mappings
                 .clone()
