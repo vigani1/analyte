@@ -93,7 +93,7 @@ async fn conversation(
     events: &[Event],
 ) -> Result<(), Error> {
     let mut last_dsr_id = None;
-    let mut settled = 0;
+    let mut settled = 0_i64;
     for (index, step) in events.iter().enumerate() {
         assert!(step.link.is_none());
         match step.direction {
@@ -110,7 +110,7 @@ async fn conversation(
                     );
                     peer.write_all(wire.rewrite("01234567890123456789", id).as_bytes())
                         .await?;
-                    settled += 1;
+                    settled = settled.saturating_add(1);
                 } else {
                     peer.write_all(step.bytes.as_slice()).await?;
                 }
