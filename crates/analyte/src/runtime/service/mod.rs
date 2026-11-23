@@ -253,7 +253,7 @@ pub(super) async fn serve_with(
         &mut machines.owners,
     )
     .await;
-    watchdog.arm();
+    let shutdown_deadline = watchdog.arm();
     admin_stop.send_replace(true);
     super::hooks::stall(&program, &store).await?;
     shutdown.send_replace(true);
@@ -267,10 +267,10 @@ pub(super) async fn serve_with(
         close_transports: machines.close_transports,
         captures: machines.captures,
         delivery_budget,
-        capture_budget: io_budget.unwrap_or(machine::capture::SHUTDOWN_BUDGET),
+        shutdown_deadline,
         store_budget: io_budget.unwrap_or(OWNER_SHUTDOWN_BUDGET),
     }
-    .finish(store, store_component)
+    .finish(store, store_component, &watchdog)
     .await?;
     result
 }
@@ -382,7 +382,7 @@ fn start_machines(
 
 struct Draining {
     delivery_budget: Duration,
-    capture_budget: Duration,
+    shutdown_deadline: Instant,
     store_budget: Duration,
     captures: Vec<Arc<machine::capture::Capture>>,
     alert_owners: JoinSet<Result<(), Error>>,
@@ -399,6 +399,7 @@ impl Draining {
         self,
         store: Arc<Handle>,
         store_component: crate::runtime::shutdown::Component,
+        watchdog: &crate::runtime::shutdown::Watchdog,
     ) -> Result<(), Error> {
         let Self {
             mut alert_owners,
@@ -410,7 +411,7 @@ impl Draining {
             close_transports,
             captures,
             delivery_budget,
-            capture_budget,
+            shutdown_deadline,
             store_budget,
         } = self;
         let until = tokio::time::Instant::now()
@@ -472,11 +473,18 @@ impl Draining {
             owners.abort_all();
             while owners.join_next().await.is_some() {}
         }
-        for capture in captures {
-            let mut capture =
-                Arc::try_unwrap(capture).map_err(|_| Failure::CaptureOwnershipRetained)?;
-            capture.close(capture_budget).await;
-        }
+        let capture_component = watchdog.component("capture".into());
+        let mut captures = captures
+            .into_iter()
+            .map(|capture| Arc::try_unwrap(capture).map_err(|_| Failure::CaptureOwnershipRetained))
+            .collect::<Result<Vec<_>, _>>()?;
+        // Capture uses the time left after the earlier stages, reserving the
+        // existing store budget for either store close or timeout reporting.
+        let capture_deadline = shutdown_deadline
+            .checked_sub(store_budget)
+            .unwrap_or_else(Instant::now);
+        machine::capture::Capture::close_all(&mut captures, capture_deadline.into()).await;
+        drop(capture_component);
         close_store(store, store_budget).await?;
         drop(store_component);
         alerts_drained.map_err(Failure::AlertShutdownTimeout)??;
