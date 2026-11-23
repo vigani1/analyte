@@ -1,0 +1,31 @@
+# Synthetic normal-mode replay settings, never installed on a machine.
+departure_scope = {model="yhlo/iflash-1200",firmware="synthetic",mode="two-way",edition={protocol="hl7",edition="v231"},direction="machine_to_host",message="qry_q02"}
+
+[[deviations]]
+rule = "hl7_record_display_query"
+[deviations.declaration]
+level = "documented"
+scope = {model="yhlo/iflash-1200",firmware="synthetic",mode="two-way",edition={protocol="hl7",edition="v231"},direction="machine_to_host",message="qry_q02"}
+[[deviations.declaration.evidence]]
+kind = "manual"
+reference = "YHLO-LIS-V1.1"
+title = "YHLO LIS Protocol Manual"
+revision = "1.1 (2018)"
+section = "2.2.2, 2.3.6-2.3.11, 2.4.2"
+guarantee = "record_display_query"
+covers_unknown_firmware = false
+contradicts = false
+
+[orders]
+send_ahead = false
+priorities = [{app="routine",machine="N"}]
+[orders.query]
+deadline_ms = 15000
+when_untrusted = "error"
+[orders.hl7]
+sample_field = 8
+sample_suffix = ""
+filters = [{field=9,value="OTH"},{field=12,value="T"}]
+record_location = "SynthPC"
+acknowledgment_ms = 15000
+lines = []

@@ -680,7 +680,7 @@ fn qck_precedes_dsr_and_failed_qck_issues_nothing() -> TestResult {
         let dsr = qck.clone();
         let reply = DisplayReply {
             acknowledgment: qck,
-            display: Some(dsr),
+            displays: [dsr].into(),
             query_deadline: Duration::from_secs(2),
             failure_deadline: Duration::from_secs(5),
             acknowledgment_wait: Duration::from_secs(3),
@@ -727,7 +727,7 @@ fn dsr_issuance_starts_ack_budget_without_retry() -> TestResult {
     let qck = analyte_hl7::Message::parse(&payload, Options::default())?;
     let reply = DisplayReply {
         acknowledgment: qck.clone(),
-        display: Some(qck),
+        displays: [qck].into(),
         query_deadline: Duration::from_secs(2),
         failure_deadline: Duration::from_secs(5),
         acknowledgment_wait: Duration::from_secs(3),

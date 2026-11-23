@@ -16,5 +16,6 @@ mod machine_definitions;
 mod service_recovery;
 
 mod deadlines;
+mod record_display;
 mod removed;
 mod startup;

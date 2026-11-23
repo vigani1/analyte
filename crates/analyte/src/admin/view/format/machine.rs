@@ -113,6 +113,7 @@ pub(in crate::admin) const fn departure(rule: &analyte_config::MachineDeparture)
             "Puts several records in one frame; Analyte reads each record after ",
             "the frame's check passes.",
         ),
+        D::Hl7RecordDisplayQuery(_) => "Answer record-format HL7 barcode queries",
         D::Hl7CategorizedOruResults(_) => {
             "Reads combined patient values and divides control uploads into their original rows."
         }

@@ -431,3 +431,16 @@ These capabilities matter to a literal “complete” claim and to future equipm
   Test `categorized_layout_requires_its_header_departure_and_evidence`.
 - [ ] Confirm the local code page, incomplete transitions, measurement
   identity, report completion and ACK compatibility on installed software.
+
+## Evidenced positional record query profile
+
+- [x] YHLO LIS V1.1 sections 2.3.6 to 2.3.7 and 2.4.2.1 to 2.4.2.3.
+  [record_barcode_selectors_keep_scope](../../../crates/protocols/hl7/src/query/specimen.rs)
+  checks the scoped QRD tolerances, exact barcode qualifiers and refusal of
+  unsupported lookup forms.
+- [x] YHLO LIS V1.1 sections 2.3.8 to 2.3.11 and 2.4.2.1, and ADR 0003
+  rules 8 and 9. [every_machine_validates_and_replays](../../../crates/analyte/tests/service/machines.rs)
+  replays a positional two-page reply with a durable ACK per DSR and an
+  explicit AE with zero reservations for an unavailable cache.
+- [ ] Confirm the installed PC's reply IDs, sample-number field tolerance
+  and deadlines. Qualify unsolicited DSR separately.

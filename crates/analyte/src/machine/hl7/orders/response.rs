@@ -4,6 +4,7 @@ use analyte_hl7::Error;
 #[derive(Clone, Copy)]
 pub(crate) enum Profile {
     Hl7,
+    Hl7Numeric,
     Law,
 }
 
@@ -14,11 +15,13 @@ pub(crate) struct Metadata {
 }
 
 pub(crate) fn response_metadata(profile: Profile) -> Metadata {
-    let id = uuid::Uuid::now_v7().simple().to_string();
+    let uuid = uuid::Uuid::now_v7();
     Metadata {
         id: match profile {
-            Profile::Hl7 => id.chars().skip(12).collect(),
-            Profile::Law => id,
+            Profile::Hl7 => uuid.simple().to_string().chars().skip(12).collect(),
+            // YHLO LIS V1.1 section 2.3.1 describes a numeric MSH-10.
+            Profile::Hl7Numeric => format!("{:020}", uuid.as_u64_pair().1),
+            Profile::Law => uuid.simple().to_string(),
         },
         timestamp: jiff::Timestamp::now()
             .strftime("%Y%m%d%H%M%S%z")
@@ -30,7 +33,9 @@ impl Metadata {
     pub(crate) fn response(&self) -> Result<analyte_hl7::Response<'_>, Error> {
         Ok(analyte_hl7::Response {
             control_id: match self.profile {
-                Profile::Hl7 => analyte_hl7::ControlId::new(self.id.as_bytes())?,
+                Profile::Hl7 | Profile::Hl7Numeric => {
+                    analyte_hl7::ControlId::new(self.id.as_bytes())?
+                }
                 Profile::Law => analyte_hl7::law::control_id(self.id.as_bytes())?,
             },
             timestamp: self.timestamp.as_bytes(),

@@ -119,6 +119,7 @@ struct ReplaySettings {
     vendor_worklist: Option<VendorWorklist>,
     recording: Option<toml::Table>,
     expected_gap: Option<ExpectedGap>,
+    order_cache: Option<record_display::Cache>,
 }
 
 #[derive(Clone, Copy, Deserialize)]
@@ -195,7 +196,7 @@ async fn replay_model(folder: &Path, model: &Path, definition: &Path) -> Result<
             validate_gap(&events, answers.expected_gap.as_ref())?;
             if let Some(profile) = answers.order_profile {
                 assert!(
-                    record_only,
+                    record_only && answers.order_cache.is_none(),
                     "the fixture exercises an order-enabled test peer"
                 );
                 let mode = match profile {
@@ -229,6 +230,13 @@ async fn replay_model(folder: &Path, model: &Path, definition: &Path) -> Result<
                 let validated = analyte_config::recording::load((&name, &text), ("site", &site))?;
                 assert_eq!(header.stack, validated.effective().stack().layer_names());
                 replay_vendor_worklist(vendor, &header, &events).await
+            } else if let Some(cache) = answers.order_cache {
+                if !record_only || answers.choices.is_some() || answers.recording.is_some()
+                    || answers.expected_gap.is_some()
+                {
+                    return Err("synthetic order replay needs a blocked definition and no other replay settings".into());
+                }
+                record_display::replay(folder, &header, &events, cache).await
             } else if record_only {
                 replay_record_only(model, &text, &header, &events, &answers).await
             } else {

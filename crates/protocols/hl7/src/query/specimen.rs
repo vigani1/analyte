@@ -17,8 +17,37 @@ pub fn specimen(
     request: Request<'_>,
     layout: &SpecimenSelector<'_>,
 ) -> Result<Option<String>, crate::Error> {
-    if request.filter().is_some() {
-        return Ok(None);
+    select(request, layout, None)
+}
+
+/// Reads a record-display barcode only for the agreed location and barcode qualifiers.
+/// Sample number and collection time filters need data the barcode lookup lacks.
+///
+/// # Errors
+/// Returns a barcode decoding error.
+pub fn record_specimen(
+    request: Request<'_>,
+    layout: &SpecimenSelector<'_>,
+    location: &[u8],
+) -> Result<Option<String>, crate::Error> {
+    select(request, layout, Some(location))
+}
+
+fn select(
+    request: Request<'_>,
+    layout: &SpecimenSelector<'_>,
+    location: Option<&[u8]>,
+) -> Result<Option<String>, crate::Error> {
+    match (location, request.filter()) {
+        (None, None) => {}
+        // YHLO LIS V1.1 sections 2.3.7 and 2.4.2.1 to 2.4.2.3.
+        (Some(location), Some(filter))
+            if request.profile == super::Profile::RecordDisplay
+                && [location, b"", b"", b"", b"", b"RCT", b"COR", b"ALL", b""]
+                    .into_iter()
+                    .zip(1..)
+                    .all(|(expected, field)| super::raw(filter, field) == expected) => {}
+        (None, Some(_)) | (Some(_), _) => return Ok(None),
     }
     let definition = request.definition();
     for number in 5..=12 {
@@ -61,6 +90,40 @@ pub fn specimen(
 #[cfg(test)]
 mod tests {
     use super::*;
+    // YHLO LIS V1.1 sections 2.3.6-2.3.7 and 2.4.2.1-2.4.2.3.
+    #[test]
+    fn record_barcode_selectors_keep_scope() -> Result<(), crate::Error> {
+        let filters = [(9, b"OTH".as_slice()), (12, b"T".as_slice())];
+        let selector = SpecimenSelector {
+            field: 8,
+            suffix: b"",
+            filters: &filters,
+        };
+        for (barcode, qrf, expected) in [
+            ("000Ab12", "SynthPC|||||RCT|COR|ALL", Some("000Ab12")),
+            ("", "SynthPC|||1|9|RCT|COR|ALL", None),
+            (
+                "",
+                "SynthPC|20261123080000|20261123120000|||RCT|COR|ALL",
+                None,
+            ),
+            ("000Ab12", "OtherPC|||||RCT|COR|ALL", None),
+            ("000Ab12", "SynthPC|||||RCT|COR|REV", None),
+        ] {
+            let raw = format!(
+                "MSH|^~\\&|SYN|LAB|HOST|LAB|202611230915||QRY^Q02|q1|P|2.3.1\rQRD|20261123|R|D|tag|||RD|{barcode}|OTH|||T\rQRF|{qrf}\r"
+            );
+            let message = crate::Message::parse(raw.as_bytes(), crate::Options::default())?;
+            assert!(Request::new(&message).is_err());
+            let request = Request::with_profile(&message, crate::query::Profile::RecordDisplay)?;
+            assert_eq!(
+                record_specimen(request, &selector, b"SynthPC")?.as_deref(),
+                expected
+            );
+        }
+        Ok(())
+    }
+
     // HL7 2.3.1 §2.18, QRD-8, §2.7
     #[test]
     fn qrd8_scalar_scope_and_escapes() -> Result<(), crate::Error> {

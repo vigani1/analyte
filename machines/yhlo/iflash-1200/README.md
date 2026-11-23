@@ -3,8 +3,8 @@
 ## Machine
 
 This is a blocked machine definition, with TCP capture available through
-[`record.toml`](record.toml). Use capture only to collect evidence. Normal operation needs vendor-specific handling
-for result categories, qualitative results, and order replies. The iFlash
+[`record.toml`](record.toml). Use capture only to collect evidence. Normal operation still needs installed-PC evidence for
+result handling and order replies. The iFlash
 1200-A runs from an analyzer PC using iFlash 3000 software. Staff can enter a
 tube barcode with a handheld scanner at the PC.
 
@@ -72,19 +72,22 @@ The remaining gaps below still block normal operation.
 | Mapping | LIS 2.3.4.1, 2.3.5; service 6.4.2.1 | The existing sample selector reads OBR-2. The categorized layout reads rack and slot from OBR-10, preserves the OBR-9 dilution with unknown application, and keeps OBX-13 as source measurement evidence. It understands OBX-11 F. Incomplete transitions, report completion when OBR-25 is empty, and repeat/revision identity remain open. |
 | Syntax and mapping | LIS 2.3.5 | The categorized layout supports BOTH, ST with an OBX-9 call, the OBX-10 qualitative reference and SI's three matched OBX-5/OBX-13 components. Ambiguous component layouts are held. |
 | Mapping | LIS 2.3.1, 2.3.4.2, 2.4.1.2 | OBR-only control rows map only when the declared count and every column align. Control rows remain held without an established measurement identity. Calibration uploads remain held in raw form. |
-| Syntax and dialog | LIS §§2.3.6–2.3.11, 2.4.2 | The standard handler accepts deferred display format `D`; iFlash sends `R` in QRD-2 and bare `RD` in QRD-7. The parser requires a numeric quantity and populated QRD-10, which YHLO leaves blank. The display encoder limits the units to display lines. It also emits an empty QAK tag, while YHLO specifies `SR`. The extension needs to preserve explicit cache failure as AE. |
-| Encoding and order mapping | LIS §§2.3.10–2.3.11, 2.4.2 | The DSR requires positional DSP rows, then repeatable assay rows with component delimiters, plus DSC. The current builder rejects delimiters inside a DSP line, echoes QRD, generates distinct reply IDs and has no DSC output. YHLO's example clears QRD-8 in DSR and reuses the query ID in reply headers. Confirm which differences the installed PC enforces. |
-| Dialog and order lifecycle | LIS §§2.2.3, 2.4.2.2–2.4.3 | The analyzer can query by sample number or collection-time range and receive multiple DSRs with continuation pointers and per-DSR ACKs. It also documents unsolicited DSR with MSH-15 = `P`. Current legacy HL7 supports a single barcode lookup and no vendor-style DSR send-ahead flow. Manual section 3 also describes a separate ASTM dialect. This TCP capture profile expects HL7 only. |
+| Syntax and dialog | LIS sections 2.3.6 to 2.3.11, 2.4.2 | An evidenced departure selects the record query grammar, barcode filters, QAK tag SR and explicit AE on lookup failure. |
+| Encoding and order mapping | LIS sections 2.3.10 to 2.3.11, 2.4.2 | The reply clears QRD-8 and carries the barcode in DSP-21, leaves DSP-22 blank when unavailable and writes assay components from DSP-29 onward. Confirm blank DSP-22 and distinct reply control IDs on the installed PC. The manual examples reuse IDs, while the MSH field rule describes a unique ID per message. |
+| Dialog and order lifecycle | LIS sections 2.2.3, 2.4.2 to 2.4.3 | Barcode replies page through matching orders with DSC and a correlated ACK per page. ACK confirms receipt. Sample-number and time-range queries return AE because the cache lacks authoritative lookup fields. Unsolicited DSR with MSH-15 P remains open. |
 | Dialog timing | Service §§6.4.2–6.4.3, LIS §2.2 | Connection and reconnect settings are documented. Protocol phase deadlines and behavior after a lost reply are unconfirmed. A short synthetic event gap or the default connect timeout cannot establish a clinical setting. |
 
 ## Evidence
 
 Level: documented
 
-The six [synthetic recordings](recordings/) use invented identifiers and
+The [synthetic recordings](recordings/) use invented identifiers and
 measurements. The barcode queries expect ACK^Q02 with AE and no DSR in
 record-only mode. The four uploads expect an acknowledgment of durable
 receipt under ADR 0034. The included replays check the captured exchange and its durable receipt outcome.
+[Normal-mode replay settings](replay.toml) also exercise a two-page barcode
+answer with a separate durable ACK for each page, and a QCK AE when the cache
+is unavailable.
 Synthetic data does not establish interoperability with the installed analyzer.
 
 ## Open questions
