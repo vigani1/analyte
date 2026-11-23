@@ -3,16 +3,17 @@
 //! Pages show what the store holds: the category, the stored reason, the
 //! machine and arrival time of a linked stored message, and the history Analyte
 //! recorded. Sample IDs are not stored with an item and test codes and result
-//! values never show; raw IDs only appear under "Details for support". Reads stop after
+//! values appear only in an audited comparison. Reads stop after
 //! [`crate::admin::view::READ_BUDGET`] with the error page in the same look.
 mod category;
 mod dialog;
+mod measurement;
 mod page;
 mod raw;
 
-pub(super) use dialog::{checked, confirm_reprocess, confirm_resolve, reprocess, resolve};
+pub(super) use dialog::checked;
 pub(super) use page::RawRequest;
-pub(super) use raw::{RAW_VIEW, RawError, raw};
+pub(super) use raw::{RAW_VIEW, RawError};
 
 /// What an item is about in a few words, and its tone, as its card on Needs
 /// review shows them: for an Activity line.
@@ -36,16 +37,37 @@ use analyte_model::{Identifier, ReceiptId};
 use analyte_store::{Audit, OperatorError, Parked, ParkedCounts, ParkedFilter, Store};
 use askama::Template;
 use axum::{
-    Extension,
+    Extension, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     response::Response,
+    routing::{get, post},
 };
 use category::{Action, Category};
 use jiff::Timestamp;
 use page::{Card, Entry, Item, List, Original, OriginalTarget, Pair, Resolved, Row, Todo};
 use serde::Deserialize;
 use std::sync::Arc;
+
+/// Routes for the protected Needs review pages and their audited actions.
+pub(super) fn routes() -> Router<Arc<Context>> {
+    Router::new()
+        .route("/parked", get(list))
+        .route("/parked/{id}", get(item))
+        .route("/parked/{id}/raw", post(raw::raw))
+        .route(
+            "/parked/{id}/reprocess",
+            get(dialog::confirm_reprocess).post(dialog::reprocess),
+        )
+        .route(
+            "/parked/{id}/measurement",
+            get(measurement::show).post(measurement::decide),
+        )
+        .route(
+            "/parked/{id}/resolve",
+            get(dialog::confirm_resolve).post(dialog::resolve),
+        )
+}
 
 /// Which items the list shows; the sidebar's link opens the open ones.
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
@@ -139,7 +161,7 @@ struct ListRead {
 /// How many items resolved today the Open filter lists under the open ones.
 const TODAY_ROWS: usize = 10;
 
-pub(super) async fn list(
+async fn list(
     State(state): State<Arc<Context>>,
     Query(query): Query<ListQuery>,
     session: Option<Extension<Arc<Session>>>,
@@ -524,7 +546,7 @@ async fn read_item(state: &Context, id: i64, after: u64) -> Result<Option<ItemRe
         .await?)
 }
 
-pub(super) async fn item(
+async fn item(
     State(state): State<Arc<Context>>,
     Path(id): Path<i64>,
     Query(cursor): Query<Cursor>,
@@ -612,7 +634,23 @@ fn item_page(
         why,
         todo: open.then(|| Todo {
             guidance,
-            actions: actions(id, &read.parked, action, Size::Full),
+            actions: {
+                let mut buttons = actions(id, &read.parked, action, Size::Full);
+                let reason = read.parked.reason.as_str();
+                if reason == "result reconciliation: Conflict"
+                    || reason.ends_with("}: MissingSample")
+                {
+                    buttons.insert(
+                        0,
+                        Button {
+                            href: format!("/parked/{id}/measurement"),
+                            label: "Compare measurements",
+                            class: "btn--outline",
+                        },
+                    );
+                }
+                buttons
+            },
         }),
         linked: linked_pairs(&read.linked, now),
         linked_note: (total > PAGE).then(|| {

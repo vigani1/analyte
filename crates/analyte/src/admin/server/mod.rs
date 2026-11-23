@@ -421,9 +421,7 @@ fn router(state: Arc<Context>) -> Router {
             "/receipts/{id}/departures",
             get(super::machines::departures::receipt),
         )
-        .route("/parked", get(super::parked::list))
-        .route("/parked/{id}", get(super::parked::item))
-        .route("/parked/{id}/raw", post(super::parked::raw))
+        .merge(super::parked::routes())
         .route("/orders", get(super::more::orders))
         .route("/analyzer-cancelled", get(super::more::awos::cancelled))
         .route("/awos/{order}/{item}", get(super::more::awos::detail))
@@ -432,14 +430,6 @@ fn router(state: Arc<Context>) -> Router {
         .route(
             "/deliveries/{id}/resend",
             get(super::more::confirm_resend).post(super::more::resend),
-        )
-        .route(
-            "/parked/{id}/reprocess",
-            get(super::parked::confirm_reprocess).post(super::parked::reprocess),
-        )
-        .route(
-            "/parked/{id}/resolve",
-            get(super::parked::confirm_resolve).post(super::parked::resolve),
         )
         .route("/setup", get(super::setup::index))
         .merge(

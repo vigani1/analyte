@@ -8,8 +8,15 @@ mod tests;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) enum ParkingContext {
-    Interpretation { version: i64 },
-    Result { version: Option<i64>, index: usize },
+    Interpretation {
+        version: i64,
+    },
+    Result {
+        version: Option<i64>,
+        index: usize,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        claimed: Option<analyte_model::ObservationIdentity>,
+    },
 }
 
 #[derive(Serialize, Deserialize)]
