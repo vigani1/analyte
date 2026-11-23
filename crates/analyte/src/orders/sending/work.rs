@@ -10,18 +10,20 @@ pub(crate) struct Work<'a, S, T> {
     pub(crate) active: Option<MachineOrder>,
     pub(crate) requests: VecDeque<T>,
     cursor: String,
+    reservations: super::Reservations,
     pub(crate) next_poll: Instant,
 }
 impl<'a, S, T> Work<'a, S, T> {
     /// Takes the settings only when the machine is configured to receive work ahead.
-    pub(crate) fn new(orders: Option<&'a S>) -> Self {
-        Self {
+    pub(crate) fn new(orders: Option<&'a S>) -> Result<Self, analyte_model::TextError> {
+        Ok(Self {
             orders,
             active: None,
             requests: VecDeque::new(),
             cursor: String::new(),
+            reservations: super::Reservations::new()?,
             next_poll: Instant::now(),
-        }
+        })
     }
     /// Advances the bounded idle poll cadence without changing reservations.
     pub(crate) fn poll_due(&mut self) -> Result<bool, OrderError> {
@@ -69,7 +71,13 @@ impl<'a, S, T> Work<'a, S, T> {
         let Some(orders) = self.orders else {
             return Ok(false);
         };
-        let next = super::next(store, machine, &mut self.cursor, |order| map(order, orders));
+        let next = super::next(
+            store,
+            machine,
+            &mut self.cursor,
+            &mut self.reservations,
+            |order| map(order, orders),
+        );
         let Some(reserved) = next.await? else {
             return Ok(false);
         };
@@ -78,15 +86,17 @@ impl<'a, S, T> Work<'a, S, T> {
         Ok(true)
     }
     pub(crate) async fn close(&self, store: &Handle, reason: &str) -> Result<(), OrderError> {
-        if let Some(order) = &self.active {
-            super::uncertain(store, order, reason).await?;
-        }
-        Ok(())
+        self.reservations.settle(store, reason).await
     }
     pub(crate) async fn refuse(&mut self, store: &Handle, reason: &str) -> Result<(), OrderError> {
         self.close(store, reason).await?;
-        self.active = None;
+        self.clear_active();
         self.requests.clear();
         Ok(())
+    }
+    /// Releases cleanup ownership only after the outcome is durable.
+    pub(crate) fn clear_active(&mut self) {
+        self.active = None;
+        self.reservations.keys.clear();
     }
 }

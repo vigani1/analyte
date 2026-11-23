@@ -29,7 +29,7 @@ impl Work<'_, analyte_config::VidasOrders, Vec<Message>> {
             analyte_dialog::vidas::outcome::Code::TransferConfirmed.as_str(),
         )
         .await?;
-        self.active = None;
+        self.clear_active();
         Ok(Progress::DownloadFinished)
     }
 }

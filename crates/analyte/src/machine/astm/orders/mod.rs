@@ -315,15 +315,15 @@ pub(crate) async fn reserve_query(
     reply: Reply,
     until: Instant,
     active: &mut Vec<analyte_store::MachineOrder>,
+    reservations: &mut crate::orders::sending::Reservations,
 ) -> Result<Option<Vec<Vec<u8>>>, Error> {
     let reserved = crate::orders::sending::reserve_candidates(
         store,
-        &machine.model,
+        machine,
         reply.candidates,
         until,
         active,
-        None,
-        machine.destination_limits.freshness.as_secs(),
+        reservations,
     )
     .await?;
     Ok(reserved.then_some(reply.records))

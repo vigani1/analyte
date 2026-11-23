@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- ASTM queries and ASTM, VIDAS and Autolyser send-ahead now reconcile late
+  order reservations at disconnect. Committed reservations whose store reply
+  timed out become uncertain without resending the order.
+
 - Watched folders report intake deadlines and unexpected consumer closures.
   The original file stays claimed for recovery on restart.
 

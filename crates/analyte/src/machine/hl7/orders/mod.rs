@@ -30,8 +30,7 @@ pub(crate) struct Hl7OrderLink<'a> {
     options: Options,
     active: Vec<MachineOrder>,
     following_pages: VecDeque<crate::orders::Candidate>,
-    reserving: Vec<analyte_store::MachineOrderKey>,
-    owner: analyte_model::Identifier,
+    reservations: sending::Reservations,
     exchange: Option<send::Exchange>,
     cursor: String,
 }
@@ -66,8 +65,7 @@ impl<'a> Hl7OrderLink<'a> {
             options,
             active: Vec::new(),
             following_pages: VecDeque::new(),
-            reserving: Vec::new(),
-            owner: analyte_model::Identifier::new(&uuid::Uuid::now_v7().to_string())?,
+            reservations: sending::Reservations::new()?,
             exchange: None,
             cursor: String::new(),
         })
@@ -96,16 +94,16 @@ impl<'a> Hl7OrderLink<'a> {
             store,
             machine.machine(),
             settings,
-            &self.owner,
+            &self.reservations.owner,
             &mut self.cursor,
-            &mut self.reserving,
+            &mut self.reservations.keys,
         )
         .await?
         else {
             return Ok(None);
         };
         let wait = send.settings().response_ms;
-        self.reserving.clear();
+        self.reservations.keys.clear();
         let exchange = self.exchange.insert(exchange);
         Ok(Some(Outbound {
             message: exchange.message.message().raw(),
@@ -136,15 +134,12 @@ impl<'a> Hl7OrderLink<'a> {
         code: &str,
     ) -> Result<(), Error> {
         let mut result = Ok(());
-        let cleanup = sending::settle_owned(
-            store,
-            std::mem::take(&mut self.reserving),
-            &self.owner,
-            code,
-            sending::Settlement::Order,
-        )
-        .await
-        .map_err(Error::from);
+        let cleanup = self
+            .reservations
+            .settle(store, code)
+            .await
+            .map_err(Error::from);
+        self.reservations.keys.clear();
         crate::cleanup::retain_cleanup(&mut result, cleanup);
         if let Some(exchange) = &self.exchange {
             let cleanup = send::finish(
@@ -262,21 +257,16 @@ impl<'a> Hl7OrderLink<'a> {
         candidates: Vec<crate::orders::Candidate>,
         until: Instant,
     ) -> Result<bool, Error> {
-        self.reserving = candidates
-            .iter()
-            .map(|candidate| candidate.identity.clone())
-            .collect();
         let reserved = sending::reserve_candidates(
             store,
-            &machine.model,
+            machine,
             candidates,
             until,
             &mut self.active,
-            Some(self.owner.clone()),
-            machine.destination_limits.freshness.as_secs(),
+            &mut self.reservations,
         )
         .await?;
-        self.reserving.clear();
+        self.reservations.keys.clear();
         Ok(reserved)
     }
 
@@ -572,7 +562,7 @@ mod tests {
         database.execute_batch("CREATE TRIGGER synthetic_cleanup_failure BEFORE UPDATE OF state ON machine_orders WHEN OLD.order_id='order-2' BEGIN SELECT RAISE(ABORT,'synthetic cleanup failure'); END;")?;
         let result = sending::settle_owned(
             &store,
-            vec![first.clone(), second.clone()],
+            &[first.clone(), second.clone()],
             &owner,
             "disconnect",
             sending::Settlement::Items,
@@ -640,7 +630,7 @@ mod tests {
         let database = rusqlite::Connection::open(temp.path().join("cleanup-failure.db"))?;
         database.execute_batch("CREATE TRIGGER synthetic_cleanup_failure BEFORE UPDATE OF state ON machine_orders WHEN OLD.order_id='order-2' BEGIN SELECT RAISE(ABORT,'synthetic cleanup failure'); END;")?;
         let mut connection = link(&machine)?;
-        connection.owner = owner;
+        connection.reservations.owner = owner;
         connection.active = vec![failed, good];
         let mut result = Err(crate::invalid("original wire failure"));
         crate::cleanup::retain_cleanup(
@@ -699,7 +689,7 @@ mod tests {
         let owner = Identifier::new("original-connection")?;
         reserve_original_connection(&store, &key, &owner).await?;
         let mut other = link(&machine)?;
-        other.reserving.push(key.clone());
+        other.reservations.keys.push(key.clone());
         other
             .close(
                 &store,
@@ -715,8 +705,8 @@ mod tests {
         assert_eq!(current.state, analyte_model::OrderState::Sending);
         assert!(current.reserved_by(&owner));
         let mut original = link(&machine)?;
-        original.owner = owner;
-        original.reserving.push(key.clone());
+        original.reservations.owner = owner;
+        original.reservations.keys.push(key.clone());
         original
             .close(
                 &store,

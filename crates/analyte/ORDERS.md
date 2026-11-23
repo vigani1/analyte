@@ -59,8 +59,12 @@ send occurred. App events use the existing immutable delivery outbox.
 
 A reservation prevents another automatic send for that app order and machine,
 including after a version change or restart. A link timeout, interrupted transfer
-or disconnect before transfer confirmation becomes `Uncertain`. On restart,
-remaining `Sending` and admitted `CancelRequested` entries become `Uncertain`
+or disconnect before transfer confirmation becomes `Uncertain`. ASTM, VIDAS
+and Autolyser send-ahead and ASTM query replies track each order key under a
+connection owner before requesting its reservation. If the request times out,
+disconnect cleanup settles any reservation that committed as `Uncertain`,
+even if the host never received the store reply. Cleanup sends no commands.
+On restart, remaining `Sending` and admitted `CancelRequested` entries become `Uncertain`
 with an app event; confirmed `Sent` entries remain `Sent`.
 
 LIS01 frame acknowledgments establish transfer completion, not application

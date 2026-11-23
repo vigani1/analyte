@@ -36,7 +36,7 @@ impl<S, T> Work<'_, S, T> {
         if let Some(order) = &self.active {
             finished(store, order, end, may_replace).await?;
         }
-        self.active = None;
+        self.clear_active();
         Ok(())
     }
 }

@@ -314,3 +314,168 @@ fn query_decodes_specimen_and_refuses_unknown_operations() -> Result<(), Error> 
     );
     Ok(())
 }
+
+// ADR 0003 rule 8
+#[tokio::test]
+async fn late_send_ahead_reservation_is_settled_on_disconnect() -> Result<(), Error> {
+    late_reservation_is_settled(false).await
+}
+
+// ADR 0003 rule 8; CLSI LIS02-A2 §11
+#[tokio::test]
+async fn late_query_reservation_is_settled_on_disconnect() -> Result<(), Error> {
+    late_reservation_is_settled(true).await
+}
+
+type Gate = (
+    tokio::sync::oneshot::Sender<()>,
+    std::sync::mpsc::Receiver<()>,
+);
+
+/// Pauses reservation inside the worker's capacity check, before the commit.
+#[derive(Clone, Default)]
+struct ReservationProbe(std::sync::Arc<std::sync::Mutex<Option<Gate>>>);
+
+impl analyte_store::FreeSpace for ReservationProbe {
+    fn available(&self, _: &std::path::Path) -> std::io::Result<u64> {
+        let gate = self
+            .0
+            .lock()
+            .map_err(|_| std::io::Error::other("probe poisoned"))?
+            .take();
+        if let Some((entered, release)) = gate {
+            entered
+                .send(())
+                .map_err(|()| std::io::Error::other("gate observer gone"))?;
+            release
+                .recv_timeout(Duration::from_secs(30))
+                .map_err(std::io::Error::other)?;
+        }
+        Ok(u64::MAX)
+    }
+}
+
+async fn late_reservation_is_settled(query: bool) -> Result<(), Error> {
+    use super::super::{Context, Effects, Event, Host, Query};
+    use analyte_model::OrderState;
+
+    let temp = tempfile::tempdir()?;
+    let machine = machine("error")?;
+    let connection = crate::intake::ConnectionEvidence::new(&machine)?;
+    let analyte_config::Stack::Astm(analyte_config::RecordTransport::Stream(stack)) =
+        machine.snapshot.effective().stack()
+    else {
+        return Err("ASTM fixture".into());
+    };
+    let probe = ReservationProbe::default();
+    let mut store = Handle::start(
+        temp.path().join("orders.db"),
+        analyte_fixtures::store_limits(),
+        Box::new(probe.clone()),
+        4,
+        crate::test_startup_deadline()?,
+    )
+    .await?;
+    let candidate = seed_reservation_order(&store, &machine).await?;
+    let key = candidate.identity.clone();
+
+    let mut host = Host::open(&connection, stack, &store)?;
+    let (entered, wait_for_worker) = tokio::sync::oneshot::channel();
+    let (release_worker, release) = std::sync::mpsc::channel();
+    *probe.0.lock().map_err(|_| "probe poisoned")? = Some((entered, release));
+    let order_record = b"O|1|000Ab12\r".to_vec();
+    if query {
+        host.query = Query::Answer {
+            reply: Some(Reply {
+                candidates: vec![candidate],
+                records: vec![order_record.clone()],
+            }),
+            until: crate::deadline()?,
+        };
+    }
+    let (output, entered) = tokio::join!(
+        host.outgoing_events(Vec::new()),
+        tokio::time::timeout(Duration::from_secs(30), wait_for_worker),
+    );
+    entered??;
+    let mut result = Err(output.expect_err("late reservation must not produce wire records"));
+    assert!(matches!(
+        &result,
+        Err(super::Error::Orders(crate::orders::OrderError::Store(
+            analyte_store::OrderError::Worker(analyte_store::WorkerError::ResponseTimeout(_))
+        )))
+    ));
+    release_worker.send(())?;
+    let read_state = |key| async {
+        store
+            .request::<_, analyte_store::OrderError>(
+                crate::deadline().map_err(crate::orders::OrderError::from)?,
+                move |store| Ok(store.machine_order(&key)?.map(|record| record.state)),
+            )
+            .await
+            .map_err(Error::from)
+    };
+    assert_eq!(read_state(key.clone()).await?, Some(OrderState::Sending));
+    let (mut wire, _peer) =
+        analyte_transport::connection(analyte_transport::Limits::new(4, Duration::from_secs(1))?);
+    let (_, stop) = tokio::sync::watch::channel(false);
+    host.close(
+        &mut Context {
+            conn: &mut wire,
+            stop,
+        },
+        &mut result,
+    )
+    .await?;
+    assert_eq!(read_state(key.clone()).await?, Some(OrderState::Uncertain));
+    drop(host);
+
+    let mut next_link = Host::open(&connection, stack, &store)?;
+    if query {
+        next_link.query = Query::Answer {
+            reply: Some(Reply {
+                candidates: vec![Candidate {
+                    identity: key,
+                    version: std::num::NonZeroU64::MIN,
+                }],
+                records: vec![order_record.clone()],
+            }),
+            until: crate::deadline()?,
+        };
+    }
+    let events = next_link.outgoing_events(Vec::new()).await?;
+    assert!(events.iter().all(
+        |event| !matches!(event, Event::Send(records) if !query || records.contains(&order_record))
+    ));
+    drop(next_link);
+    store.shutdown(crate::deadline()?).await?;
+    Ok(())
+}
+
+async fn seed_reservation_order(store: &Handle, machine: &Machine) -> Result<Candidate, Error> {
+    let order = Identifier::new("order-1")?;
+    let candidate =
+        crate::orders::reservation::pending(machine, order.clone(), std::num::NonZeroU64::MIN)?;
+    let destination = candidate.identity.destination.clone();
+    store
+        .request::<_, analyte_store::OrderError>(crate::deadline()?, move |store| {
+            let now = jiff::Timestamp::now().as_second();
+            store.order_page(&analyte_store::OrderPage {
+                destination,
+                cursor: Identifier::new("cursor").map_err(analyte_store::StorageError::Text)?,
+                complete: true,
+                polled: now,
+                orders: vec![analyte_store::CachedOrder {
+                    id: order,
+                    sample: SampleId::new("000Ab12").map_err(analyte_store::StorageError::Text)?,
+                    document: include_str!("../../../../../../docs/contract/vectors/order.json")
+                        .to_owned(),
+                    tombstone: false,
+                    expiry: now.saturating_add(120),
+                }],
+            })?;
+            Ok(())
+        })
+        .await?;
+    Ok(candidate)
+}
