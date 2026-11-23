@@ -41,6 +41,12 @@ pub enum Error {
     /// overflow.
     #[error("machine cursor overflow")]
     MachineCursorOverflow,
+    /// No software version selector applies to the named machine.
+    #[error("this machine has no software version check")]
+    NoSoftwareCheck,
+    /// An operator tried to confirm when there was no active software warning.
+    #[error("this machine has no active software warning")]
+    NoSoftwareWarning,
     /// A parked item's page could not compute the cursor of its next page of targets without
     /// integer overflow.
     #[error("parked target cursor overflow")]

@@ -352,6 +352,10 @@ fn change(action: &str, target: Option<&str>) -> (String, FeedLink) {
         "setup-add" => (format!("added machine {named}"), machine()),
         "setup-save" => (format!("saved the settings of {named}"), machine()),
         "setup-remove" => (format!("removed machine {named}"), None),
+        "settings-checked-for-software-version" => (
+            format!("confirmed the settings of {named} for its reported software"),
+            machine(),
+        ),
         "setup-restart" => ("asked Analyte to restart".into(), None),
         "lab-app-add" => (format!("added lab app {named}"), lab_app()),
         "lab-app-save" => (format!("saved lab app {named}"), lab_app()),

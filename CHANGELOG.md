@@ -20,6 +20,9 @@
   require the lab's polling interval, and activate evidenced departures by
   mode. Normal ASTM definitions can opt into the Biolyte empty processing ID
   and one lost establishment acknowledgment retry.
+- Analyte warns when a machine reports software outside the versions its
+  settings were checked with. The warning keeps the first report time and can
+  be cleared by an audited confirmation. Results continue to flow (ADR 0036).
 
 ## 0.1.0 - 2026-11-23
 

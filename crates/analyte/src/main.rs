@@ -320,7 +320,14 @@ fn main() -> Result<ExitCode, Error> {
     } = cli;
     // `overview` and `doctor` say how things are in their exit code.
     if let Command::Pages(pages) = command {
-        let actor = actor.map_or_else(|| Identifier::new("local-operator"), Ok)?;
+        let actor = if matches!(
+            pages,
+            analyte::admin::command::Command::ConfirmSoftware { .. }
+        ) {
+            required_actor(actor)?
+        } else {
+            actor.map_or_else(|| Identifier::new("local-operator"), Ok)?
+        };
         let config = program_file(config)?;
         return Ok(runtime.block_on(analyte::admin::command::run(&config, actor, pages))?);
     }

@@ -24,6 +24,7 @@ pub use departures::{
 mod refusal;
 pub use refusal::DepartureRefusal;
 mod choices;
+pub mod software_version;
 pub use choices::{
     ChoiceBlock, ChoiceKind, ChoiceLabel, ChoiceName, ChoiceSelections, ChoiceValue,
     MAX_CHOICE_COMBINATIONS, MAX_CHOICE_VALUES, MAX_CHOICES, MachineChoice, OrdersSwitch,
@@ -522,6 +523,9 @@ pub(crate) struct MachineDocument {
     pub choice_departures: Vec<MachineDeparture>,
     /// Declared evidence.
     pub evidence: Evidence,
+    /// Optional evidenced location of the analyzer software version.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub software_version: Option<software_version::Declaration>,
 }
 
 /// References credentials by name; stores no secret material.

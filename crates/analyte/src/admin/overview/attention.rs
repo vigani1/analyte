@@ -27,6 +27,7 @@ pub(super) struct Facts {
     /// Listening machines without `allowed_peers`: any device that reaches
     /// their port is accepted as them (ADR 0026).
     pub(super) open: Vec<Identifier>,
+    pub(super) software: Vec<(Identifier, String)>,
     /// Lab apps whose sending is paused, with how many items wait for each.
     pub(super) paused: Vec<(Identifier, u64)>,
     /// Lab apps Analyte cannot send to now, why, how many items wait and, for
@@ -134,6 +135,7 @@ enum Subject {
     Stopped(Identifier),
     Unlinked(Identifier),
     Silent(Identifier),
+    Software(Identifier),
     Refused(Identifier),
     Open(Identifier),
     Review,
@@ -160,6 +162,7 @@ impl Subject {
             | Self::Unlinked(_) => Tone::Problem,
             Self::Paused(_)
             | Self::Silent(_)
+            | Self::Software(_)
             | Self::Refused(_)
             | Self::Open(_)
             | Self::Review
@@ -182,6 +185,7 @@ impl Subject {
             Self::Unlinked(_) => Reason::MachineLinkOff,
             Self::Paused(_) => Reason::SendingPaused,
             Self::Silent(_) => Reason::MachineSilent,
+            Self::Software(_) => Reason::MachineSoftwareVersionChanged,
             Self::Refused(_) => Reason::MachineRefusedConnection,
             Self::Open(_) => Reason::MachineOpenToAnyDevice,
             Self::Waiting => Reason::ResultWaiting,
@@ -202,6 +206,7 @@ impl Subject {
             | Self::Stopped(name)
             | Self::Unlinked(name)
             | Self::Silent(name)
+            | Self::Software(name)
             | Self::Refused(name)
             | Self::Open(name) => Some(name),
             Self::Disk
@@ -262,6 +267,8 @@ pub(in crate::admin) enum Reason {
     OrderListStale,
     /// A listening machine accepts connections from any device (ADR 0026).
     MachineOpenToAnyDevice,
+    /// The machine reports unexpected or unknown software.
+    MachineSoftwareVersionChanged,
 }
 
 impl Reason {
@@ -284,6 +291,7 @@ impl Reason {
             Self::OrdersPausedAfterRestore => "orders_paused_after_restore",
             Self::OrderListStale => "order_list_stale",
             Self::MachineOpenToAnyDevice => "machine_open_to_any_device",
+            Self::MachineSoftwareVersionChanged => "machine_software_version_changed",
         }
     }
 }
@@ -475,7 +483,17 @@ pub(super) fn things(facts: &Facts) -> Vec<Thing> {
         list.push(restore_paused());
     }
     list.extend(facts.open.iter().map(open));
+    list.extend(facts.software.iter().map(|(machine, text)| {
+        Thing::new(
+            Subject::Software(machine.clone()),
+            text.clone(),
+            Fix::Page(Tab::Machines),
+        )
+    }));
     for alert in &facts.alerts {
+        if matches!(alert.key, AlertKey::MachineSoftwareVersionChanged(_)) {
+            continue;
+        }
         let thing = from_alert(alert);
         if !list
             .iter()
@@ -502,6 +520,14 @@ pub(in crate::admin) fn from_alert(alert: &AlertState) -> Thing {
         AlertKey::UndeliverableDestination(destination, reason) => {
             blocked(destination, *reason, value)
         }
+        AlertKey::MachineSoftwareVersionChanged(machine) => Thing::new(
+            Subject::Software(machine.clone()),
+            format!(
+                "Check the software version reported by {}.",
+                machine.as_str()
+            ),
+            Fix::Page(Tab::Machines),
+        ),
         AlertKey::MachineSilent(machine) => Thing::new(
             Subject::Silent(machine.clone()),
             value.map_or_else(
@@ -1110,6 +1136,10 @@ mod tests {
             (Subject::RestorePaused, "orders_paused_after_restore"),
             (Subject::OrderList, "order_list_stale"),
             (Subject::Open(id("m")), "machine_open_to_any_device"),
+            (
+                Subject::Software(id("m")),
+                "machine_software_version_changed",
+            ),
         ];
         let mut reasons: Vec<Reason> = subjects
             .iter()

@@ -86,6 +86,7 @@ pub(super) struct Detail {
     pub(super) frame: Frame,
     pub(super) head: Head,
     pub(super) actions: Vec<Button>,
+    pub(super) software: Option<super::software_version::Panel>,
     pub(super) notices: Vec<Notice>,
     /// What to do for a machine that is not set up yet.
     pub(super) todo: Option<Todo>,
