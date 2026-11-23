@@ -99,6 +99,8 @@ impl Running {
         let path = analyte_fixtures::write_machine(root, definition, &address.to_string())?;
         let mut program = Program::load(&path)?;
         program.set_loopback_destination_for_test("demo", url.clone())?;
+        program.set_loopback_store_budget_for_test("demo", analyte_fixtures::STORE_BUDGET)?;
+        program.set_shutdown_io_budget_for_test(analyte_fixtures::STORE_BUDGET)?;
         program.set_loopback_listener_for_test("synthetic", listener.try_clone()?)?;
         let secrets = analyte::installation::secrets::Environment::load_with(&program, |name| {
             Some(
@@ -149,6 +151,8 @@ impl Running {
         // The reference receiver remains bound while only the program restarts.
         let url = self.url.clone();
         program.set_loopback_destination_for_test("demo", url)?;
+        program.set_loopback_store_budget_for_test("demo", analyte_fixtures::STORE_BUDGET)?;
+        program.set_shutdown_io_budget_for_test(analyte_fixtures::STORE_BUDGET)?;
         program.set_loopback_listener_for_test("synthetic", self.listener.try_clone()?)?;
         let secrets = analyte::installation::secrets::Environment::load_with(&program, |name| {
             Some(
@@ -199,7 +203,7 @@ impl Running {
             self.directory.path().join("data/analyte.db"),
             rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
         )?;
-        db.busy_timeout(Duration::from_secs(1))?;
+        db.busy_timeout(analyte_fixtures::STORE_BUDGET)?;
         Ok(db)
     }
 

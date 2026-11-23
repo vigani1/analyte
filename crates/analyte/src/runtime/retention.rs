@@ -151,7 +151,7 @@ mod tests {
         })
         .await??;
         stop.send_replace(true);
-        tokio::time::timeout(Duration::from_secs(5), owner).await???;
+        tokio::time::timeout(analyte_fixtures::HANG_GUARD, owner).await???;
         let mut store = Arc::try_unwrap(store)
             .map_err(|_| crate::invalid("retention retained store ownership"))?;
         store.shutdown(crate::deadline()?).await?;

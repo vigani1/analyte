@@ -1,7 +1,7 @@
 //! Tests VIDAS result uploads and work downloads.
 use super::vendor::*;
 use super::*;
-use crate::support::HANG_GUARD;
+use crate::support::{HANG_GUARD, program};
 use analyte_fixtures::ConfigEdit as _;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -55,7 +55,9 @@ async fn setup_with_definition(
             &value,
         )?)?])
         .await?;
-    let service = Running::start(&path, &reference.url, "synthetic-api").await?;
+    let mut loaded = program(&path, &reference.url)?;
+    loaded.set_loopback_poll_interval_for_test("demo", Duration::from_millis(100))?;
+    let service = Running::start_program(loaded, "synthetic-api").await?;
     let peer = connect(&path, "vidas").await?;
     Ok((temp, path, reference, service, peer))
 }
