@@ -339,11 +339,6 @@ pub struct Item {
 // handoff/operation budget bound memory and waits without declaring clinical acceptance.
 const FILE_CHANNEL_LIMIT: usize = 1;
 const HANDOFF_TIMEOUT: Duration = Duration::from_secs(5);
-fn handoff_deadline() -> Instant {
-    Instant::now()
-        .checked_add(HANDOFF_TIMEOUT)
-        .unwrap_or_else(Instant::now)
-}
 /// Blocking watch/claim/deliver owner. Run on a dedicated, joined thread.
 /// Archive and quarantine are reachable only after a host reply; cancellation,
 /// a lost reply or delivery failure leaves the claim recoverable on restart.
@@ -356,15 +351,26 @@ pub struct Watch {
     pub limit: u64,
 }
 impl Watch {
-    /// Drives claimed files until cancellation or the host disconnects.
+    /// Drives claimed files until requested cancellation or intake failure.
     /// # Errors
     /// Preserves filesystem and transport causes; never finishes a failed handoff.
     pub fn run(
         self,
         cancelled: &std::sync::atomic::AtomicBool,
         sender: &tokio::sync::mpsc::Sender<Item>,
+        recorder: Option<Box<dyn FnMut() -> Option<crate::recording::Tap> + Send>>,
+        finish_name: impl FnMut() -> String,
+    ) -> Result<(), WatchError> {
+        self.run_with_budget(cancelled, sender, recorder, finish_name, HANDOFF_TIMEOUT)
+    }
+
+    fn run_with_budget(
+        self,
+        cancelled: &std::sync::atomic::AtomicBool,
+        sender: &tokio::sync::mpsc::Sender<Item>,
         mut recorder: Option<Box<dyn FnMut() -> Option<crate::recording::Tap> + Send>>,
         mut finish_name: impl FnMut() -> String,
+        budget: Duration,
     ) -> Result<(), WatchError> {
         use std::{
             sync::{atomic::Ordering, mpsc},
@@ -395,14 +401,14 @@ impl Watch {
                 if let Some(tap) = recorder.as_mut().and_then(|factory| factory()) {
                     side = side.with_recording(tap);
                 }
-                let cancellation = connection.cancellation();
                 let (reply, response) = mpsc::sync_channel(1);
                 let item = Item {
                     connection,
                     completed: reply,
                 };
-                if !handoff(sender, item, cancelled) {
-                    return Ok(());
+                match handoff(sender, item, cancelled, budget)? {
+                    Wait::Ready(()) => {}
+                    Wait::Cancelled => return Ok(()),
                 }
                 if let Err(error) = claim.deliver(side) {
                     let interrupted = match &error {
@@ -417,15 +423,14 @@ impl Watch {
                             }),
                         Error::Oversized(_) | Error::Invalid(_) => false,
                     };
-                    if interrupted
-                        && (cancelled.load(Ordering::Acquire) || cancellation.is_cancelled())
-                    {
+                    if interrupted && cancelled.load(Ordering::Acquire) {
                         return Ok(());
                     }
                     return Err(error.into());
                 }
-                let Some(disposition) = await_disposition(&response, cancelled) else {
-                    return Ok(());
+                let disposition = match await_disposition(&response, cancelled, budget)? {
+                    Wait::Ready(disposition) => disposition,
+                    Wait::Cancelled => return Ok(()),
                 };
                 let area = match disposition {
                     Disposition::Archive => "archive",
@@ -441,25 +446,47 @@ impl Watch {
     }
 }
 
+enum Wait<T> {
+    Ready(T),
+    Cancelled,
+}
+
 // The host exposes only an atomic cancellation flag, not a wakeable signal.
 // A blocking send could outlive both cancellation and the handoff deadline.
 fn handoff(
     sender: &tokio::sync::mpsc::Sender<Item>,
     mut item: Item,
     cancelled: &std::sync::atomic::AtomicBool,
-) -> bool {
+    budget: Duration,
+) -> Result<Wait<()>, WatchError> {
     use std::sync::atomic::Ordering;
-    let until = handoff_deadline();
+    use tokio::sync::mpsc::error::TrySendError;
+    let started = Instant::now();
     loop {
+        if cancelled.load(Ordering::Acquire) {
+            return Ok(Wait::Cancelled);
+        }
         match sender.try_send(item) {
-            Ok(()) => return true,
-            Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => return false,
-            Err(tokio::sync::mpsc::error::TrySendError::Full(returned)) => item = returned,
+            Ok(()) => return Ok(Wait::Ready(())),
+            Err(TrySendError::Closed(_)) => {
+                return if cancelled.load(Ordering::Acquire) {
+                    Ok(Wait::Cancelled)
+                } else {
+                    Err(WatchError::HandoffConsumerClosed)
+                };
+            }
+            Err(TrySendError::Full(returned)) => item = returned,
         }
-        if cancelled.load(Ordering::Acquire) || Instant::now() >= until {
-            return false;
+        let remaining = budget.saturating_sub(started.elapsed());
+        if !remaining.is_zero() {
+            std::thread::sleep(remaining.min(Duration::from_millis(5)));
         }
-        std::thread::sleep(Duration::from_millis(5));
+        if cancelled.load(Ordering::Acquire) {
+            return Ok(Wait::Cancelled);
+        }
+        if started.elapsed() >= budget {
+            return Err(WatchError::HandoffDeadline);
+        }
     }
 }
 
@@ -468,16 +495,24 @@ fn handoff(
 fn await_disposition(
     response: &std::sync::mpsc::Receiver<Disposition>,
     cancelled: &std::sync::atomic::AtomicBool,
-) -> Option<Disposition> {
+    budget: Duration,
+) -> Result<Wait<Disposition>, WatchError> {
     use std::sync::{atomic::Ordering, mpsc::RecvTimeoutError};
-    let until = handoff_deadline();
+    let started = Instant::now();
     loop {
-        match response.recv_timeout(Duration::from_millis(10)) {
-            Ok(disposition) => return Some(disposition),
-            Err(RecvTimeoutError::Disconnected) => return None,
-            Err(RecvTimeoutError::Timeout) => {
-                if cancelled.load(Ordering::Acquire) || Instant::now() >= until {
-                    return None;
+        let remaining = budget.saturating_sub(started.elapsed());
+        let error = match response.recv_timeout(remaining.min(Duration::from_millis(10))) {
+            Ok(disposition) => return Ok(Wait::Ready(disposition)),
+            Err(error) => error,
+        };
+        if cancelled.load(Ordering::Acquire) {
+            return Ok(Wait::Cancelled);
+        }
+        match error {
+            RecvTimeoutError::Disconnected => return Err(WatchError::DispositionConsumerClosed),
+            RecvTimeoutError::Timeout => {
+                if started.elapsed() >= budget {
+                    return Err(WatchError::DispositionDeadline);
                 }
             }
         }
@@ -487,6 +522,18 @@ fn await_disposition(
 /// Specific failures from the blocking file owner.
 #[derive(Debug, thiserror::Error)]
 pub enum WatchError {
+    /// The consumer dropped the handoff channel before taking the file.
+    #[error("file handoff consumer closed; source remains claimed for restart recovery")]
+    HandoffConsumerClosed,
+    /// The handoff queue remained full until the deadline.
+    #[error("file handoff deadline expired; source remains claimed for restart recovery")]
+    HandoffDeadline,
+    /// The consumer dropped the reply channel before confirming custody.
+    #[error("file disposition consumer closed; source remains claimed for restart recovery")]
+    DispositionConsumerClosed,
+    /// The consumer did not confirm custody before the deadline.
+    #[error("file disposition deadline expired; source remains claimed for restart recovery")]
+    DispositionDeadline,
     /// Claim or completion operation failed.
     #[error(transparent)]
     File(#[from] Error),
@@ -496,4 +543,117 @@ pub enum WatchError {
     /// Connection limit validation failed.
     #[error(transparent)]
     Transport(#[from] crate::Error),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::AtomicBool;
+
+    fn source(temp: &tempfile::TempDir) -> io::Result<Watch> {
+        let incoming = temp.path().join("incoming");
+        fs::create_dir(&incoming)?;
+        fs::write(incoming.join("synthetic"), b"complete file")?;
+        Ok(Watch {
+            incoming,
+            root: temp.path().join("receipts"),
+            limit: 100,
+        })
+    }
+
+    fn assert_recoverable(temp: &tempfile::TempDir) -> Result<(), Box<dyn std::error::Error>> {
+        let root = temp.path().join("receipts");
+        let watcher = Watcher::new(
+            temp.path().join("incoming"),
+            root.join("claimed"),
+            None,
+            100,
+        )?;
+        let claims = watcher.recover()?;
+        assert_eq!(claims.len(), 1);
+        assert_eq!(
+            claims.first().ok_or("missing recovered claim")?.read()?,
+            b"complete file"
+        );
+        assert_eq!(fs::read_dir(root.join("archive"))?.count(), 0);
+        assert_eq!(fs::read_dir(root.join("quarantine"))?.count(), 0);
+        Ok(())
+    }
+
+    // ADR 0003 rules 2 and 7.
+    #[test]
+    fn full_handoff_at_deadline_preserves_claim() -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
+        let (sender, _receiver) = tokio::sync::mpsc::channel(1);
+        let (connection, _side) = crate::connection(crate::Limits::new(1, HANDOFF_TIMEOUT)?);
+        sender
+            .try_send(Item {
+                connection,
+                completed: std::sync::mpsc::sync_channel(1).0,
+            })
+            .map_err(|_| "could not fill the handoff channel")?;
+        let result = source(&temp)?.run_with_budget(
+            &AtomicBool::new(false),
+            &sender,
+            None,
+            String::new,
+            Duration::ZERO,
+        );
+        assert!(matches!(result, Err(WatchError::HandoffDeadline)));
+        assert_recoverable(&temp)
+    }
+
+    // ADR 0003 rule 2.
+    #[test]
+    fn closed_handoff_preserves_claim() -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
+        let (sender, receiver) = tokio::sync::mpsc::channel(1);
+        drop(receiver);
+        let result = source(&temp)?.run(&AtomicBool::new(false), &sender, None, String::new);
+        assert!(matches!(result, Err(WatchError::HandoffConsumerClosed)));
+        assert_recoverable(&temp)
+    }
+
+    // ADR 0003 rules 2 and 7.
+    #[test]
+    fn missing_disposition_preserves_claim() -> Result<(), Box<dyn std::error::Error>> {
+        use std::sync::atomic::Ordering;
+        for (cancel, disconnect) in [(false, false), (false, true), (true, true)] {
+            let temp = tempfile::tempdir()?;
+            let watch = source(&temp)?;
+            let cancelled = AtomicBool::new(false);
+            let (sender, mut receiver) = tokio::sync::mpsc::channel(1);
+            let result = std::thread::scope(|scope| {
+                let stop = &cancelled;
+                let worker = scope.spawn(move || {
+                    watch.run_with_budget(stop, &sender, None, String::new, Duration::ZERO)
+                });
+                let mut item = receiver.blocking_recv().expect("file handed off");
+                // Drop the reply deterministically before the watcher can finish delivery.
+                if cancel {
+                    cancelled.store(true, Ordering::Release);
+                }
+                let reply = (!disconnect).then_some(item.completed);
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .enable_time()
+                    .build()?;
+                runtime.block_on(async {
+                    while item.connection.receive().await?.is_some() {}
+                    Ok::<_, crate::Error>(())
+                })?;
+                let result = worker.join().expect("watcher thread joined");
+                drop(reply);
+                Ok::<_, Box<dyn std::error::Error>>(result)
+            })?;
+            match (cancel, disconnect) {
+                (true, _) => assert!(result.is_ok()),
+                (false, true) => {
+                    assert!(matches!(result, Err(WatchError::DispositionConsumerClosed)));
+                }
+                (false, false) => assert!(matches!(result, Err(WatchError::DispositionDeadline))),
+            }
+            assert_recoverable(&temp)?;
+        }
+        Ok(())
+    }
 }

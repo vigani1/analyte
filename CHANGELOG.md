@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Watched folders report intake deadlines and unexpected consumer closures.
+  The original file stays claimed for recovery on restart.
+
 - **VIDAS and Autolyser work lists:** VIDAS sends one app order in a bounded
   multi-packet session and carries supplied demographics, origin and
   configured dilution. Setup can collect the lab's VIDAS patient namespace.
