@@ -314,6 +314,7 @@ async fn replay_record_only(
     )?;
     let mut program = Program::load(&path)?;
     program.set_loopback_listener_for_test("fixture", listener)?;
+    program.set_shutdown_io_budget_for_test(analyte_fixtures::STORE_BUDGET)?;
     let running = Running::start_program(program, "synthetic-api").await?;
     let result = async {
         let mut peer = connect(&path, "fixture").await?;

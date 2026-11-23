@@ -130,6 +130,8 @@ async fn status_transitions_and_unverified_delivery() -> Result<(), Error> {
 // ADR 0011; IHE PaLM TF-2b §C.7
 #[tokio::test]
 async fn one_final_run_per_history_or_batch() -> Result<(), Error> {
+    use crate::support::{program, step};
+
     for batch in [false, true] {
         let temp = tempfile::tempdir()?;
         let path = vendor_config(temp.path(), "law", &definition())?;
@@ -139,7 +141,9 @@ async fn one_final_run_per_history_or_batch() -> Result<(), Error> {
             false,
         )
         .await?;
-        let running = Running::start(&path, &reference.url, "synthetic-api").await?;
+        let mut fixture = program(&path, &reference.url)?;
+        fixture.set_shutdown_io_budget_for_test(analyte_fixtures::STORE_BUDGET)?;
+        let running = Running::start_program(fixture, "synthetic-api").await?;
         let mut peer = connect(&path, "law").await?;
         let first = result("run-one", "\"\"", "order^ANALYZER", "1.0", "F")
             .rewrite("^99LAB|1|1.0", "^99LAB|1^1^1|1.0");
@@ -161,9 +165,11 @@ async fn one_final_run_per_history_or_batch() -> Result<(), Error> {
                     .await?
                     .contains("MSA|AA|run-one")
             );
-            reference.event().await?;
-            running.stop().await?;
-            let running = Running::start(&path, &reference.url, "synthetic-api").await?;
+            step("LAW first final result reaches receiver", reference.event()).await?;
+            step("stop LAW history service", running.stop()).await?;
+            let mut fixture = program(&path, &reference.url)?;
+            fixture.set_shutdown_io_budget_for_test(analyte_fixtures::STORE_BUDGET)?;
+            let running = Running::start_program(fixture, "synthetic-api").await?;
             let mut peer = connect(&path, "law").await?;
             assert!(
                 hl7(&mut peer, second.as_bytes())
@@ -177,12 +183,12 @@ async fn one_final_run_per_history_or_batch() -> Result<(), Error> {
             );
             assert_eq!(count(&path, "outbox")?, 1);
             assert_eq!(count(&path, "observation_revisions")?, 1);
-            running.stop().await?;
-            reference.close().await?;
+            step("stop LAW history service", running.stop()).await?;
+            step("close LAW history receiver", reference.close()).await?;
             continue;
         }
-        running.stop().await?;
-        reference.close().await?;
+        step("stop LAW batch service", running.stop()).await?;
+        step("close LAW batch receiver", reference.close()).await?;
     }
     Ok(())
 }

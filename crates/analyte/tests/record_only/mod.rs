@@ -80,6 +80,7 @@ impl Recorder {
         )?;
         let mut program = Program::load(&path)?;
         program.set_loopback_listener_for_test("recorder", listener.try_clone()?)?;
+        program.set_shutdown_io_budget_for_test(analyte_fixtures::STORE_BUDGET)?;
         // No lab app: there is no key to find and none is asked for.
         let secrets = analyte::installation::secrets::Environment::load_with(&program, |_| None)?;
         let space = Arc::new(AtomicU64::new(u64::MAX));
