@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **cobas e 411 ASTM orders** can answer identified tubes in either protocol
+  type and send cobas batch work lists. Replies carry the analyzer's original
+  coordinates and encode any requested dilution per test. An unknown lookup
+  gets a query error, and unconfirmed test-list replacement stays uncertain.
+
 - **HL7 categorized results:** an evidenced machine definition can keep
   a numeric result and its qualitative call together, read separate
   interference measurements, and pair control measurements with their

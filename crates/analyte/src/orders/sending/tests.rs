@@ -105,7 +105,7 @@ async fn only_interrupted_transfer_recovers_as_uncertain() -> Result<(), Error> 
     assert!(
         matches!(super::super::event(&interrupted),Err(analyte_store::OrderError::DeliveryBuild(error)) if matches!(error.downcast_ref::<analyte_contract::DocumentError>(),Some(analyte_contract::DocumentError::InternalOrderState)))
     );
-    finished(&store, &completed, analyte_dialog::astm::End::Normal).await?;
+    finished(&store, &completed, analyte_dialog::astm::End::Normal, false).await?;
     store.shutdown(deadline()?).await?;
     let mut store = open(&path).await?;
     recover(&store).await?;

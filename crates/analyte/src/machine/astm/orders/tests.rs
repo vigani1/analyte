@@ -112,7 +112,8 @@ fn cancel_and_unsupported_filters_are_not_empty_orders() -> Result<(), Error> {
         envelope(
             queries(&machine)?.orders,
             Vec::new(),
-            analyte_astm::OrderTermination::QueryError
+            analyte_astm::OrderTermination::QueryError,
+            false,
         )[0]
         .starts_with(b"H|\\^&|||Analyte|||||||P|LIS2-A2|")
     );
@@ -230,6 +231,7 @@ fn generated_header_has_utc_time() -> Result<(), Error> {
         queries(&machine)?.orders,
         Vec::new(),
         analyte_astm::OrderTermination::Normal,
+        false,
     );
     let header = std::str::from_utf8(&records[0])?;
     let timestamp = header
@@ -274,6 +276,7 @@ fn generated_header_identifies_receiver() -> Result<(), Error> {
             queries(&machine)?.orders,
             Vec::new(),
             analyte_astm::OrderTermination::Normal,
+            false,
         );
         let messages = analyte_astm::parse(&records.concat(), analyte_astm::Limits::default())?;
         let header = analyte_astm::Header::new(&messages[0].records()[0]).ok_or("header")?;

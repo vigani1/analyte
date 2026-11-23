@@ -204,6 +204,7 @@ fn config(section: &str) -> Result<Validated, analyte_config::Error> {
 
 fn order() -> Result<AppOrder, analyte_model::TextError> {
     Ok(AppOrder {
+        test_dilutions: Vec::new(),
         sample: SampleId::new("001a")?,
         tests: vec![NamespacedId {
             namespace: Identifier::new("synthetic")?,
@@ -223,6 +224,54 @@ fn outbound_table_keeps_sample_and_never_reverses() -> TestResult {
     let config = config(include_str!("../../../core/config/examples/orders.toml"))?;
     let mapped = map_order(&order()?, config.effective().stack())?;
     assert_eq!(mapped.encode(), b"O|1|001a||^^^SEND|R||||||N\r");
+    Ok(())
+}
+
+// Roche cobas e 411 HIM v2.3 Table 16 and p. 54.
+#[test]
+fn cobas_batch_download_bounds_tests_and_keeps_the_complete_list() -> TestResult {
+    use analyte_mapping::astm::OrderError;
+    let section = include_str!("../../../core/config/examples/orders.toml")
+        .rewrite("send_ahead = true", "send_ahead = true\nspecimen_system = 'synthetic'")
+        .rewrite("[orders.astm]", "[orders.astm]\nprofile = 'cobas'\nbatch_container = 'MC'")
+        .rewrite("action_code = \"N\"", "action_code = 'A'\nspecimen_type = {group='order',record='O',field=16,component=1,repetition=1}");
+    let settings = config(&section)?;
+    let stack = settings.effective().stack();
+    let mut requested = order()?;
+    let namespace = Identifier::new("synthetic")?;
+    requested.specimen_type = Some(NamespacedId {
+        namespace: namespace.clone(),
+        value: Identifier::new("5")?,
+    });
+    requested.tests = (100..118)
+        .map(|code| {
+            Ok(NamespacedId {
+                namespace: namespace.clone(),
+                value: Identifier::new(&code.to_string())?,
+            })
+        })
+        .collect::<Result<_, analyte_model::TextError>>()?;
+    let wire = map_order(&requested, stack)?.encode();
+    assert!(wire.starts_with(b"O|1|001a|^^^^S5^MC|^^^100^"));
+    assert!(wire.ends_with(b"|R||||||A||||5||||||||||O\r"));
+    assert_eq!(wire.split(|byte| *byte == b'\\').count(), 18);
+    requested.tests.push(NamespacedId {
+        namespace: namespace.clone(),
+        value: Identifier::new("118")?,
+    });
+    assert!(matches!(
+        map_order(&requested, stack),
+        Err(OrderError::TestCount)
+    ));
+    requested.tests.truncate(2);
+    requested.tests.push(NamespacedId {
+        namespace,
+        value: Identifier::new("100")?,
+    });
+    assert!(matches!(
+        map_order(&requested, stack),
+        Err(OrderError::DuplicateTest)
+    ));
     Ok(())
 }
 

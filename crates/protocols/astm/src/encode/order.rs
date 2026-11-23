@@ -29,7 +29,7 @@ impl OrderRecord {
         record_limit: usize,
         message_limit: usize,
     ) -> Result<Self, OrderError> {
-        if !matches!(values.len(), 10 | 14) {
+        if !matches!(values.len(), 10 | 14 | 24) {
             return Err(OrderError::Field);
         }
         for value in values.iter().flatten().flatten() {

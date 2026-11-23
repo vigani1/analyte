@@ -690,6 +690,16 @@
     "OrderTest": {
       "description": "Version 1 OrderTest; unknown fields are ignored.",
       "properties": {
+        "dilution_ratio": {
+          "description": "The dilution_ratio value, defined in docs/contract/v1.md.\nRequested automatic dilution ratio denominator, e.g. 5 for 1:5.",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 1,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "name": {
           "anyOf": [
             {

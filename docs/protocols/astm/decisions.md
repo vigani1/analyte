@@ -253,3 +253,15 @@ layouts do not qualify a measurement identity recipe (ADR 0035).
 These are documented-level rules. Synthetic tests exercise the mapping
 positions and hold behavior without qualifying firmware or a ready-to-use
 machine definition.
+
+## Structured query and download profiles
+
+Elecsys and cobas are explicit order profiles under the ASTM stack. Their
+documented order grammar extends O through O.26, includes a mode-specific
+header and terminator, and carries Q.3 coordinates through the cache lookup.
+These profiles use a single specimen barcode for lookup. A missing or
+generated barcode yields the LIS02-A2 section 12.3 query error. Query
+cancellation has no authority over an issued order. For sourced fields,
+limits and remaining site evidence, see the [cobas e 411 gap
+report](../../../machines/roche/cobas-e411/README.md) and the [program's
+order guide](../../../crates/analyte/ORDERS.md#structured-astm-orders).

@@ -29,6 +29,11 @@ pub fn map(order: &analyte_contract::Order) -> Result<super::AppOrder, analyte_m
         sample: SampleId::new(fields.sample_id.as_str())?,
         tests,
         test_names,
+        test_dilutions: fields
+            .tests
+            .iter()
+            .map(|t| t.dilution_ratio.map(std::num::NonZeroU16::get))
+            .collect(),
         patient: fields
             .patient
             .as_ref()

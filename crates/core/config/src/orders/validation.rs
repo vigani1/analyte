@@ -217,6 +217,61 @@ impl Orders {
         let Some(astm) = &self.astm else {
             return Ok(());
         };
+        if astm.batch_container.is_some()
+            != (self.send_ahead && astm.profile == Some(super::AstmOrderProfile::Cobas))
+            || astm
+                .batch_container
+                .as_ref()
+                .is_some_and(|v| !matches!(v.as_str(), "SC" | "MC"))
+        {
+            return Err(invalid(
+                path,
+                "orders.astm.batch_container",
+                "cobas batch downloads require an explicit SC or MC container",
+            ));
+        }
+        if let Some(profile) = astm.profile {
+            use super::AstmOrderProfile::{Cobas, Elecsys};
+            let (action, specimen) = match profile {
+                Elecsys => ("N", false),
+                Cobas => ("A", true),
+            };
+            if astm.position.is_some()
+                || astm.action_code.as_str() != action
+                || astm.specimen_type.is_some() != specimen
+                || [
+                    astm.specimen.component,
+                    astm.priority.component,
+                    astm.action.component,
+                ] != [1; 3]
+                || astm.test.component != 4
+                || astm.test_components.is_some_and(|n| n != 5)
+                || machine.syntax.components < 6
+                || machine.syntax.fields < 26
+                || self
+                    .query
+                    .as_ref()
+                    .is_some_and(|q| matches!(q.when_untrusted, super::WhenUntrusted::NoAnswer))
+                || self
+                    .priorities
+                    .iter()
+                    .any(|p| !matches!(p.machine.as_str(), "R" | "S"))
+                || (self.send_ahead && profile == Elecsys)
+                || astm.receiver.as_ref().is_some_and(|id| {
+                    id.as_str().len() > 30
+                        || !id
+                            .as_str()
+                            .bytes()
+                            .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+                })
+            {
+                return Err(invalid(
+                    path,
+                    "orders.astm.profile",
+                    "incompatible structured ASTM order layout",
+                ));
+            }
+        }
         for (field, number) in [
             (&astm.specimen, 3),
             (&astm.test, 5),

@@ -29,8 +29,8 @@ pub use recording::{
 mod stack;
 mod validation;
 pub use orders::{
-    AstmOrderFields, DsrLine, Hl7OrderQuery, Hl7Processing, Hl7QueryFilter, Hl7Send,
-    MachinePriority, OrderPriority, OrderQuery, Orders, PriorityCode, WhenUntrusted,
+    AstmOrderFields, AstmOrderProfile, DsrLine, Hl7OrderQuery, Hl7Processing, Hl7QueryFilter,
+    Hl7Send, MachinePriority, OrderPriority, OrderQuery, Orders, PriorityCode, WhenUntrusted,
 };
 pub use schema::software_version;
 pub use schema::{

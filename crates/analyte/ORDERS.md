@@ -401,3 +401,44 @@ Queries, send-ahead and cancellation share durable per-AWOS reservations and
 never replay machine work after uncertainty or restart. The current scope,
 limitations and named tests are maintained in the
 [LAW checklist](../../docs/protocols/law/README.md).
+
+## Structured ASTM orders
+
+A full definition can opt into `[orders.astm] profile = "elecsys"` or
+`"cobas"`. The selected profile is documented against the cobas e 411 HIM
+v2.3 Tables 8 and 11-17 and the real-time and batch traces (pp. 48-50, 54).
+The shipped record-only definition still uses its separate capture contract.
+
+Both profiles place the specimen, priority and action in component 1 and
+the test code in O.5 component 4, with component 5 reserved for dilution.
+Use action `N` for Elecsys and `A` for cobas. The cobas profile requires
+the app's specimen system and O.16 component 1. The app supplies code 1, 2
+or 5, which controls the sample type even when Q.3 names another type.
+O.4 copies the sequence, carrier and position exactly. Barcode-free and
+generated-ID queries cannot identify a tube, so they get LIS02 error Q.
+An unknown-carrier marker can be echoed when a real barcode identifies the
+tube. A trusted, identified empty lookup uses the documented empty order
+shape, with O.26 Z in Elecsys. A cobas negative reply with an unknown
+specimen type gets query error Q. Q.13 A ends only the outstanding inquiry.
+
+The app supplies one complete test list per sample. A query with several
+eligible app orders gets an error because each list could replace another.
+Orders can carry at most 18 tests. Duplicate testing is refused for every
+configured profile as a host constraint. The manual documents the analyzer
+restriction from software 02-04. The host preserves supplied codes and
+does not substitute assay generations. The lab must supply its installed
+orderable codes, excluding calculated codes reserved for result upload.
+
+The cobas profile supports explicit batch send-ahead using TSDWN/BATCH with
+the analyzer-assigned sequence and coordinates empty. The definition must
+provide `batch_container = "SC"` or `"MC"` for the intended workflow.
+Elective Elecsys batch download is pending a wire example that defines its
+report type and coordinates. An ACKed structured transfer records
+`ASTM-transfer-confirmed-replacement-unverified` as Uncertain, pending
+operator or application evidence. The same durable reservation prevents
+retry and replay.
+
+The machine recording suite replays synthetic exact-wire query replies in
+both modes against a seeded reference receiver, including leading-zero
+coordinates, an unknown carrier, per-test dilution, O.16 precedence and
+uncertain lifecycle settlement. These tests keep the evidence documented.
