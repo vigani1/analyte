@@ -198,16 +198,12 @@ impl Stack {
                 tcp_kind(s.settings.transport().role()),
                 s.settings.transport().operation_timeout_ms()
             ),
-            Self::Astm(RecordTransport::Folder(s)) => view!(
-                s,
-                TransportKind::WatchedFolder,
-                *s.settings.transport()
-            ),
-            Self::Hl7(RecordTransport::Folder(s)) => view!(
-                s,
-                TransportKind::WatchedFolder,
-                *s.settings.transport()
-            ),
+            Self::Astm(RecordTransport::Folder(s)) => {
+                view!(s, TransportKind::WatchedFolder, *s.settings.transport())
+            }
+            Self::Hl7(RecordTransport::Folder(s)) => {
+                view!(s, TransportKind::WatchedFolder, *s.settings.transport())
+            }
             Self::Law(s) => view!(
                 s,
                 tcp_kind(s.settings.transport().role()),

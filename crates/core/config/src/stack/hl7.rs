@@ -1,8 +1,8 @@
 //! Constructs validated HL7 protocol settings.
 use super::{
     DialogTimeouts, Edition, Encoding, Error, Escapes, Hl7OrderQuery, Hl7Send, Mappings,
-    OrderQuery, OrderTables, Orders, SyntaxLimits, TcpTransport, Terminator,
-    invalid, limits, order_tables, tcp,
+    OrderQuery, OrderTables, Orders, SyntaxLimits, TcpTransport, Terminator, invalid, limits,
+    order_tables, tcp,
 };
 use crate::ParsedMachine;
 use analyte_model::Identifier;
