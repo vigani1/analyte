@@ -2,6 +2,35 @@
 use super::super::*;
 use super::{closed_port, program_file};
 use crate::admin::command::doctor;
+use std::path::{Path, PathBuf};
+
+fn stopped_engine_program(root: &Path, key_prefix: &str) -> Result<PathBuf, Error> {
+    let machine = closed_port()?;
+    let lab_app = closed_port()?;
+    analyte_fixtures::write_definition(
+        root,
+        "synthetic",
+        include_str!("../../../../../../core/config/examples/hl7.toml"),
+    )?;
+    std::fs::write(
+        root.join("site.toml"),
+        include_str!("../../../../../../core/config/examples/site.toml")
+            .replace("127.0.0.1:5600", &format!("127.0.0.1:{machine}"))
+            .replace(
+                "https://lab.example.invalid",
+                &format!("https://127.0.0.1:{lab_app}"),
+            )
+            .replace("demo-", key_prefix),
+    )?;
+    let data = root.join("data");
+    std::fs::create_dir(&data)?;
+    program_file(
+        root,
+        &data,
+        Some(closed_port()?),
+        "[[machines]]\nid = 'synthetic'\ndefinition = 'test/synthetic/machine.toml'\nsite = 'site.toml'\n",
+    )
+}
 
 // Owner request 2026-11-21: doctor is read-only and says FAIL for a program
 // file that cannot be used, with exit code 2.
@@ -21,6 +50,51 @@ async fn doctor_fails_a_bad_program_file() -> Result<(), Error> {
     Ok(())
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn doctor_distinguishes_a_missing_signing_key_from_an_unreadable_key_store()
+-> Result<(), Error> {
+    use crate::installation::credentials::{Locked, Secret};
+
+    let folder = crate::admin::private_tempdir()?;
+    let root = folder.path();
+    let data = root.join("data");
+    let file = stopped_engine_program(root, "doctor-signing-test-")?;
+    let credentials = data.join("credentials");
+    std::fs::write(&credentials, [])?;
+    let checks = doctor::checks(&file).await;
+    let unreadable = checks
+        .iter()
+        .find(|check| {
+            check.what == "Lab app demo"
+                && check
+                    .found
+                    .starts_with("its keys could not be read from this account")
+        })
+        .ok_or_else(|| format!("missing key store warning: {checks:?}"))?;
+    assert_eq!(unreadable.level, doctor::Level::Warn);
+    assert!(unreadable.found.ends_with("is not a regular file"));
+
+    std::fs::remove_file(credentials)?;
+    let api = Identifier::new("doctor-signing-test-api")?;
+    let secret = Secret::new(&api, "synthetic-api".into())?;
+    Locked::new(&data).replace(vec![(api, secret)], 1)?;
+    let checks = doctor::checks(&file).await;
+    assert!(checks.iter().any(|check| {
+        check.what == "Engine"
+            && check.found.contains("the engine is not running")
+            && check.level == doctor::Level::Fail
+    }));
+    assert!(
+        checks.iter().any(|check| {
+            check.what == "Lab app demo"
+                && check.found == "credential doctor-signing-test-signing is missing"
+                && check.level == doctor::Level::Fail
+        }),
+        "{checks:?}"
+    );
+    Ok(())
+}
+
 // Owner request 2026-11-21: with the engine stopped doctor says so, warns
 // that no store exists yet (and creates none), finds the machine's port free,
 // and fails a lab app that gives no HTTPS answer and one without keys. It
@@ -30,29 +104,8 @@ async fn doctor_reports_a_stopped_engine_an_unreachable_lab_app_and_missing_keys
 -> Result<(), Error> {
     let folder = crate::admin::private_tempdir()?;
     let root = folder.path();
-    let machine = std::net::TcpListener::bind("127.0.0.1:0")?
-        .local_addr()?
-        .to_string();
-    analyte_fixtures::write_definition(
-        root,
-        "synthetic",
-        include_str!("../../../../../../core/config/examples/hl7.toml"),
-    )?;
-    let lab_app = format!("https://127.0.0.1:{}", closed_port()?);
-    std::fs::write(
-        root.join("site.toml"),
-        include_str!("../../../../../../core/config/examples/site.toml")
-            .replace("127.0.0.1:5600", &machine)
-            .replace("https://lab.example.invalid", &lab_app),
-    )?;
     let data = root.join("data");
-    std::fs::create_dir(&data)?;
-    let file = program_file(
-        root,
-        &data,
-        Some(closed_port()?),
-        "[[machines]]\nid = 'synthetic'\ndefinition = 'test/synthetic/machine.toml'\nsite = 'site.toml'\n",
-    )?;
+    let file = stopped_engine_program(root, "doctor-api-test-")?;
     let checks = doctor::checks(&file).await;
     let find = |what: &str, part: &str| {
         checks
@@ -75,12 +128,17 @@ async fn doctor_reports_a_stopped_engine_an_unreachable_lab_app_and_missing_keys
         find("Lab app demo", "gives no HTTPS answer"),
         Some(doctor::Level::Fail)
     );
-    assert!(
-        matches!(
-            find("Lab app demo", "key"),
-            Some(doctor::Level::Fail | doctor::Level::Warn)
-        ),
-        "{checks:?}"
+    let key_check = checks
+        .iter()
+        .find(|check| {
+            check.what == "Lab app demo"
+                && check.found == "credential doctor-api-test-api is missing"
+        })
+        .ok_or_else(|| format!("missing key check: {checks:?}"))?;
+    assert_eq!(key_check.level, doctor::Level::Fail);
+    assert_eq!(
+        key_check.fix.as_deref(),
+        Some("enter its keys on the Lab apps page, then restart the engine")
     );
     assert_eq!(doctor::worst(&checks).exit_code(), 2);
     for check in &checks {

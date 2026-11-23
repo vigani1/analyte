@@ -3,6 +3,41 @@ use analyte_contract::document as wire;
 use analyte_model as model;
 use proptest::prelude::*;
 
+// ADR 0008 and contract v1, result value interpretations.
+#[test]
+fn qualitative_absent_and_invalid_values_keep_distinct_wire_meanings()
+-> Result<(), Box<dyn std::error::Error>> {
+    use model::{QualitativeReaction, ValueInterpretation};
+    use serde_json::json;
+
+    for (original, interpretation, parsed) in [
+        (
+            "-1",
+            ValueInterpretation::Qualitative(QualitativeReaction::Negative),
+            json!({"qualitative": "negative"}),
+        ),
+        (
+            "0",
+            ValueInterpretation::Qualitative(QualitativeReaction::Borderline),
+            json!({"qualitative": "borderline"}),
+        ),
+        (
+            "1",
+            ValueInterpretation::Qualitative(QualitativeReaction::Positive),
+            json!({"qualitative": "positive"}),
+        ),
+        ("", ValueInterpretation::Absent, json!("absent")),
+        ("ERR", ValueInterpretation::Invalid, json!("invalid")),
+    ] {
+        let value = model::ResultValue::new(model::SourceText::new(original)?, interpretation);
+        assert_eq!(
+            serde_json::to_value(wire::ResultValue::from(&value))?,
+            json!({"original": original, "parsed": parsed})
+        );
+    }
+    Ok(())
+}
+
 fn text() -> impl Strategy<Value = String> {
     prop_oneof![
         any::<String>(),

@@ -385,9 +385,9 @@ fn vidas_completion_evidence_distinguishes_measurements() -> TestResult {
     let analyte_config::Stack::Vidas(machine) = cfg.effective().stack() else {
         return Err("expected VIDAS stack".into());
     };
-    let map = |time| -> Result<analyte_model::IdentityStatus, Box<dyn std::error::Error>> {
+    let map = |date, time| -> Result<analyte_model::IdentityStatus, Box<dyn std::error::Error>> {
         let message = analyte_vidas::syntax::Message::parse(
-            &format!("mtrsl|pi|si|ci000a|rtSYN|tt{time}|td2026/11/15|qlPOS|qn1|"),
+            &format!("mtrsl|pi|si|ci000a|rtSYN|tt{time}|td{date}|qlPOS|qn1|"),
             analyte_vidas::syntax::SampleLimit::Twelve,
         )?;
         let output = analyte_mapping::vidas::map(
@@ -408,15 +408,19 @@ fn vidas_completion_evidence_distinguishes_measurements() -> TestResult {
             .content
             .identity)
     };
-    let first = map("10:30")?;
+    let first = map("2026/11/15", "10:30")?;
     let analyte_model::IdentityStatus::Resolved(identity) = &first else {
         return Err("expected completion identity".into());
     };
     assert_eq!(identity.observation.order.value.as_str(), "000a");
-    assert_eq!(first, map("10:30")?);
-    assert_ne!(first, map("10:31")?);
+    assert_eq!(first, map("2026/11/15", "10:30")?);
+    assert_ne!(first, map("2026/11/15", "10:31")?);
+    let analyte_model::IdentityStatus::Resolved(next_day) = map("2026/11/16", "10:30")? else {
+        return Err("expected next day's completion identity".into());
+    };
+    assert_ne!(identity.observation, next_day.observation);
     assert!(matches!(
-        map("")?,
+        map("2026/11/15", "")?,
         analyte_model::IdentityStatus::Unresolved(_)
     ));
 

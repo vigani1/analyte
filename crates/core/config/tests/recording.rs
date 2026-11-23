@@ -54,7 +54,7 @@ fn every_capture_profile_records_without_a_lab_app() -> TestResult {
         assert!(effective.records_only(), "{protocol}");
         assert!(effective.site().destination.is_none(), "{protocol}");
         assert!(effective.machine().test_system().is_none());
-        assert!(effective.stack().field_mappings().is_none());
+        assert!(!validated.canonical().contains("[machine.mappings"));
         let Stack::Record(stack) = effective.stack() else {
             return Err(format!("{protocol}: not a record-only stack").into());
         };
