@@ -368,29 +368,17 @@ flow_control = \"none\"
 #[test]
 fn identity_stays_unresolved_without_evidence() -> Result<(), Error> {
     let config = draft(ASTM, OVERRIDES)?.validate()?;
+    let analyte_config::Stack::Astm(analyte_config::RecordTransport::Stream(stack)) =
+        config.effective().stack()
+    else {
+        return Err(Error::FileSize {
+            path: "fixture".into(),
+        });
+    };
+    let identity = &stack.settings().codes().identity;
+    assert!(identity.run.is_empty());
     assert!(
-        config
-            .effective()
-            .stack()
-            .field_mappings()
-            .as_ref()
-            .ok_or_else(|| Error::FileSize {
-                path: "fixture".into()
-            })?
-            .identity
-            .run
-            .is_empty()
-    );
-    assert!(
-        config
-            .effective()
-            .stack()
-            .field_mappings()
-            .as_ref()
-            .ok_or_else(|| Error::FileSize {
-                path: "fixture".into()
-            })?
-            .identity
+        identity
             .correction_status_codes
             .iter()
             .all(|code| code.as_str() == "C")
@@ -539,7 +527,7 @@ fn vendor_layers_require_policy_and_evidence() -> Result<(), Error> {
         include_str!("../examples/autolyser.toml"),
     ] {
         let config = draft(example, OVERRIDES)?.validate()?;
-        assert!(config.effective().stack().field_mappings().is_none());
+        assert!(!config.canonical().contains("[machine.mappings"));
         assert_eq!(
             config.effective().machine().evidence.level,
             EvidenceLevel::Documented
