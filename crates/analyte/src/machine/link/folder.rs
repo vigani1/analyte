@@ -119,10 +119,14 @@ pub(in crate::machine) async fn session(
         loop {
             let mut item = tokio::select! {
                 biased;
-                _ = async { let _ = stop.wait_for(|&stopped| stopped).await; } => break,
+                _ = async { let _ = stop.wait_for(|&stopped| stopped).await; } => {
+                    owner.stop.store(true, Ordering::Release);
+                    break;
+                },
                 item = files.recv() => item.ok_or_else(|| Error::FileOwnerStopped)?,
             };
             let Some(raw) = receive(&mut item.connection, bytes, &mut stop).await? else {
+                owner.stop.store(true, Ordering::Release);
                 break;
             };
             machine.machine().status.received();
@@ -145,8 +149,24 @@ pub(in crate::machine) async fn session(
     if *stop.borrow() {
         closing.after_commits().await?;
     }
-    owner.close().await?;
-    result
+    let transport = owner.close().await;
+    match result {
+        Ok(()) => transport,
+        Err(error @ (Error::FileOwnerStopped | Error::CompletionReplyLost(_))) => {
+            transport.and(Err(error))
+        }
+        Err(error) => {
+            if let Err(failure) = transport {
+                tracing::error!(
+                    machine = machine.machine().id.as_str(),
+                    link = "folder",
+                    error_kind = %failure,
+                    "session transport stopped"
+                );
+            }
+            Err(error)
+        }
+    }
 }
 
 // Closed(Disconnect) is the transport's complete-file boundary. A cancelled or
@@ -268,8 +288,22 @@ mod tests {
                     .map_err(|_| crate::invalid("custody reply lost"))?;
             }
             drop(item);
-            drop(files);
-            owner.close().await?;
+            if disposition.is_none() {
+                assert!(
+                    tokio::time::timeout(Duration::from_secs(10), files.recv())
+                        .await?
+                        .is_none()
+                );
+                assert!(matches!(
+                    owner.close().await,
+                    Err(super::Error::Watch(
+                        analyte_transport::folder::WatchError::DispositionConsumerClosed
+                    ))
+                ));
+            } else {
+                drop(files);
+                owner.close().await?;
+            }
             let area = match disposition {
                 Some(Disposition::Archive) => "archive",
                 Some(Disposition::Quarantine) => "quarantine",
