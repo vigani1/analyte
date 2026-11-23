@@ -1,7 +1,7 @@
 //! Translates Roche ASTM dilution selectors and ratios in both directions.
 use analyte_astm::OrderProfile;
 
-// Roche cobas e 411 HIM v2.3, Tables 16?18: Elecsys uses selector codes
+// Roche cobas e 411 HIM v2.3, Tables 16 to 18: Elecsys uses selector codes
 // while cobas uses the ratio text on the wire.
 const SELECTORS: &[(&str, &str)] = &[
     ("0", "1"),

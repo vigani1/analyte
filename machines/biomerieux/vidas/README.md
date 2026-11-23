@@ -90,7 +90,7 @@ listed below so they can be fixed at their owning boundary.
 | Result mapping | Guide C pp. 4-5 to 4-9 and appendix B | Result mapping retains exact `qn`, `ql`, `nc`, separate `y3` and explicit `qd`. Known printable-ASCII invalid calls have an invalid state. Completion and transmitted instrument ID, serial and technologist are exposed. Short or ambiguous dates stay raw. Installed units, locales and time format still need capture evidence. |
 | QC and identity | Guide C pp. 4-5, 4-8 to 4-9, B-7; Manual F ch. 10 | Result mapping splits reserved Cx labels into name and strip lot, classifies reserved QCx IDs and enforces the independent widths. Definitions can select `vidas.result_control_labels = "appendix_b"` if evidence confirms controls with other identifiers carry the exact Appendix B flags. CMVA doses stay separate and held because the uploads lack a unique component or run key. Other installed identifier layouts and the retransmission, rerun and correction rules still need captures. |
 | Transport and syntax | Guide C pp. 2-6 and chapters 6–9 | BCI Link also describes ASTM-derived XML over FTP for the VIDAS PC. Its file exchange and XML message schema are outside this serial stack. |
-| Replay | ADRs 0009, 0032, 0034 | The [machine replay test](../../../crates/analyte/tests/service/machines.rs) discovers recordings for blocked models through their record.toml definitions. It uses each recording?s link settings to run the record-only path. |
+| Replay | ADRs 0009, 0032, 0034 | The [machine replay test](../../../crates/analyte/tests/service/machines.rs) discovers recordings for blocked models through their record-only definitions (record.toml). It uses each recording-specific link settings to run the record-only path. |
 
 ## Evidence
 
