@@ -1,5 +1,5 @@
 //! Serves what a machine did with orders, kept apart from the order's own state: Cancelled by machine (GET /analyzer-cancelled) and one order item's page with its history (GET /awos/{order}/{item}), whose machine notes show only after the audited "Show the original message" (POST /awos/{order}/{item}/raw).
-use super::orders::{look, model, tests};
+use super::orders::{look, tests};
 use super::page::{Cancelled, CancelledCard, ITEM_LEDE, Message, Notes, OrderItem, Original};
 use super::{next_href, show};
 use crate::admin::error::CommandError;
@@ -97,7 +97,9 @@ fn cancelled_page(
         cards: rows
             .iter()
             .map(|(row, cached)| {
-                let model = model(state, row.order.key.machine.as_str());
+                let model = state
+                    .machine_model(row.order.key.machine.as_str())
+                    .map(str::to_owned);
                 card(model, &row.order, &row.item, cached.as_ref(), now)
             })
             .collect(),
@@ -548,7 +550,7 @@ fn order_facts(
             term: "Machine",
             value: Value::Page {
                 href: format::machine_href(machine),
-                label: match model(state, machine) {
+                label: match state.machine_model(machine) {
                     Some(model) => format!("{machine} ({model})"),
                     None => machine.to_owned(),
                 },
