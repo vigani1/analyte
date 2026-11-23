@@ -344,7 +344,7 @@ fn writes(actions: &[Action]) -> Vec<&analyte_dialog::Write> {
 #[test]
 fn order_send_issues_once_within_budget() -> TestResult {
     let mut d = dialog(42)?;
-    d.enable_orders(analyte_hl7::Version::V251)?;
+    d.enable_order_profile(analyte_hl7::Version::V251, analyte_hl7::query::Profile::Display)?;
     let wait = Duration::from_secs(2);
     let sent = d.step(
         Duration::from_secs(1),
@@ -405,7 +405,7 @@ fn order_send_issues_once_within_budget() -> TestResult {
 #[test]
 fn order_response_timeout_never_resends() -> TestResult {
     let mut d = dialog(42)?;
-    d.enable_orders(analyte_hl7::Version::V251)?;
+    d.enable_order_profile(analyte_hl7::Version::V251, analyte_hl7::query::Profile::Display)?;
     d.step(
         Duration::ZERO,
         Event::Send(ORDER, Expect::OrderResponse(Duration::from_secs(2))),
@@ -445,7 +445,7 @@ fn hl7_order_send_refuses_disabled_zero_budget_and_partial_input_without_writing
     assert!(writes(&refused).is_empty());
 
     let mut zero = dialog(42)?;
-    zero.enable_orders(analyte_hl7::Version::V251)?;
+    zero.enable_order_profile(analyte_hl7::Version::V251, analyte_hl7::query::Profile::Display)?;
     let refused = zero.step(
         Duration::ZERO,
         Event::Send(ORDER, Expect::OrderResponse(Duration::ZERO)),
@@ -459,7 +459,7 @@ fn hl7_order_send_refuses_disabled_zero_budget_and_partial_input_without_writing
     assert!(!zero.orders_busy());
 
     let mut partial = dialog(42)?;
-    partial.enable_orders(analyte_hl7::Version::V251)?;
+    partial.enable_order_profile(analyte_hl7::Version::V251, analyte_hl7::query::Profile::Display)?;
     feed(&mut partial, b"\x0bMSH")?;
     let refused = partial.step(
         Duration::ZERO,
