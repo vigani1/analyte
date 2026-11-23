@@ -39,7 +39,7 @@ pub use schema::{
     DepartureDirection, DepartureEdition, DepartureGuarantee, DepartureMessage, DepartureReference,
     DepartureRefusal, DepartureScope, Destination, Dialog, DilutionSource, Edition, Encoding,
     Escapes, Evidence, EvidenceLevel, Field, FlowControl, Framing, Group, HexCase,
-    IdentityEvidence, Law, LawConnectionMode, LawPeer, LawQueryForm, LawWork,
+    IdentityEvidence, IdentityReference, Law, LawConnectionMode, LawPeer, LawQueryForm, LawWork,
     MAX_CHOICE_COMBINATIONS, MAX_CHOICE_VALUES, MAX_CHOICES, MachineChoice, MachineDeparture,
     Mappings, NoSubId, OrderNamespace, OrdersSwitch, Overrides, Parity, PeerSupport, Poct,
     PoctIdentity, Priority, QcRule, Responsibility, SampleSelection, SampleSource, Serial,

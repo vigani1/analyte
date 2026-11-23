@@ -367,3 +367,59 @@ fn map_vidas(
         settings.orders().ok_or(OrderMappingError::Disabled)?,
     )
 }
+
+const VIDAS_RECIPE: &str = "[codes.vidas_identity]\nsample_namespace='samples'\nevidence={manual='BCI Link 161150-486 rev C', section='p. 4-6'}\n";
+
+// BCI Link 161150-486 rev C, p. 4-6: use both source completion fields.
+#[test]
+fn vidas_completion_evidence_distinguishes_measurements() -> TestResult {
+    let definition = include_str!("../../../core/config/examples/vidas_literal.toml");
+    let cfg = config(&format!("{definition}\n{VIDAS_RECIPE}"))?;
+    let analyte_config::Stack::Vidas(machine) = cfg.effective().stack() else {
+        return Err("expected VIDAS stack".into());
+    };
+    let map = |time| -> Result<analyte_model::IdentityStatus, Box<dyn std::error::Error>> {
+        let message = analyte_vidas::syntax::Message::parse(
+            &format!("mtrsl|pi|si|ci000a|rtSYN|tt{time}|td2026/11/15|qlPOS|qn1|"),
+            analyte_vidas::syntax::SampleLimit::Twelve,
+        )?;
+        let output = analyte_mapping::vidas::map(
+            machine,
+            &message,
+            analyte_mapping::Input {
+                device: None,
+                receipt: analyte_model::ReceiptId::new(),
+                received_at: jiff::Timestamp::UNIX_EPOCH,
+                revision: analyte_model::Revision(0),
+            },
+        )?;
+        Ok(output
+            .results
+            .into_iter()
+            .next()
+            .ok_or("missing result")?
+            .content
+            .identity)
+    };
+    let first = map("10:30")?;
+    let analyte_model::IdentityStatus::Resolved(identity) = &first else {
+        return Err("expected completion identity".into());
+    };
+    assert_eq!(identity.observation.order.value.as_str(), "000a");
+    assert_eq!(first, map("10:30")?);
+    assert_ne!(first, map("10:31")?);
+    assert!(matches!(
+        map("")?,
+        analyte_model::IdentityStatus::Unresolved(_)
+    ));
+
+    let incompatible = format!(
+        "{}\n{VIDAS_RECIPE}",
+        include_str!("../../../core/config/examples/autolyser.toml")
+    );
+    assert!(
+        matches!(config(&incompatible), Err(analyte_config::Error::Invalid { key, .. })
+        if key == "codes.vidas_identity")
+    );
+    Ok(())
+}

@@ -35,6 +35,7 @@ pub(crate) fn observation(
     index: usize,
     config: &RecordSettings<'_>,
     code: NamespacedId,
+    sample: Option<&SampleIdentity>,
     output: &mut Output,
     law: Option<&std::collections::BTreeMap<usize, &analyte_hl7::law::Observation<'_>>>,
 ) -> Result<Option<ObservationIdentity>, Error> {
@@ -53,6 +54,21 @@ pub(crate) fn observation(
         return law_observation(source, index, config, code, output, observation);
     }
     let settings = &config.mappings.identity;
+    let sample = if settings.evidence.is_some() {
+        let Some(sample) = sample else {
+            finding(
+                output,
+                source.selection_position(index, &config.mappings.sample.field)?,
+                Problem::MissingIdentity {
+                    setting: crate::IdentitySetting::Sample,
+                },
+            )?;
+            return Ok(None);
+        };
+        Some(sample.id.as_str())
+    } else {
+        None
+    };
     let mut missing = false;
     let mut required = |field: &analyte_config::Field, setting| -> Result<String, Error> {
         match source.present(source.selected(index, field)?) {
@@ -88,8 +104,13 @@ pub(crate) fn observation(
     Ok(Some(ObservationIdentity {
         code,
         sub_id: text(&sub_id, position)?,
-        run: crate::identity_run(&run.iter().map(String::as_str).collect::<Vec<_>>())
-            .map_err(|source| Error::Text { position, source })?,
+        run: crate::identity_run(
+            &sample
+                .into_iter()
+                .chain(run.iter().map(String::as_str))
+                .collect::<Vec<_>>(),
+        )
+        .map_err(|source| Error::Text { position, source })?,
         order: NamespacedId {
             value: identifier(
                 &order_id,
