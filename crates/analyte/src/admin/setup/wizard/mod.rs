@@ -402,6 +402,7 @@ fn render_test(
     .render())
 }
 
+/// Back to step 2 and Next to step 4, both carrying the draft.
 fn foot(id: &str, draft: &Draft, primary: bool) -> Foot {
     Foot {
         back: Step::Connection.path(id),
