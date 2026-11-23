@@ -42,7 +42,7 @@ fn framing(link: &VidasCapture) -> Result<Config, Error> {
     )?)
 }
 
-/// The upload deadlines of the capture profile; uploads are never retried.
+/// The upload deadlines of the capture profile, including waits for retransmission.
 fn dialog(link: &VidasCapture) -> DialogConfig {
     DialogConfig {
         ack: ms(link.acknowledgment_ms()),
@@ -122,8 +122,12 @@ impl Protocol for Host {
                 custody::write(s.conn, &bytes, deadline).await?;
             }
             // The runner already committed the chunks holding this packet.
-            Action::Store(_) => {
-                s.machine.machine().status.recorded();
+            Action::Store(_) | Action::RejectChecksum(_) => {
+                if matches!(action, Action::RejectChecksum(_)) {
+                    s.machine.machine().status.record_failed();
+                } else {
+                    s.machine.machine().status.recorded();
+                }
                 let actions = self.dialog.step(s.elapsed(), Event::Stored)?;
                 s.actions.extend(actions);
             }

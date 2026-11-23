@@ -227,6 +227,48 @@ async fn vidas_record_only_acknowledges_the_upload_and_keeps_it() -> Result<(), 
     Ok(())
 }
 
+// BCI Link LIS guide 161150-486 C pp. 3-1 to 3-4; ADR 0034.
+#[tokio::test]
+async fn vidas_record_only_keeps_bad_packet_before_nak_and_accepts_retry() -> Result<(), Error> {
+    use analyte_framing::vidas::{ETX, NAK};
+    for mode in ["literal", "alternate"] {
+        let answers = format!("acknowledgment = \"{mode}\"\n");
+        let mut run = Recorder::start("vidas", &answers).await?;
+        run.send(&[ENQ]).await?;
+        assert_eq!(run.byte().await?, ACK);
+        let tail = if mode == "alternate" { &[ETX][..] } else { &[] };
+
+        run.send(b"\x02\x1eA\x1d00").await?;
+        if !tail.is_empty() {
+            run.send(tail).await?;
+        }
+        assert_eq!(run.byte().await?, NAK);
+        assert_eq!(run.kept()?, run.sent);
+
+        run.send(b"\x02\x1eA\x1d7c").await?;
+        if !tail.is_empty() {
+            run.send(tail).await?;
+        }
+        assert_eq!(run.byte().await?, ACK);
+        assert_eq!(run.kept()?, run.sent);
+        if mode == "literal" {
+            run.send(&[ETX]).await?;
+        }
+        run.send(&[EOT]).await?;
+        run.finish(
+            [
+                "tcp_server",
+                "vidas_literal",
+                "vidas_literal",
+                "vidas_literal",
+            ],
+            0,
+        )
+        .await?;
+    }
+    Ok(())
+}
+
 /// One poll as the Autolyser sees it: STX, its ACK, the request byte and EOT.
 async fn autolyser_poll(run: &mut Recorder) -> Result<(), Error> {
     assert_eq!(run.byte().await?, 2, "STX opens the poll");
