@@ -6,8 +6,8 @@ use crate::{AckCode, Field, Message, Msa, Msh, Segment};
 
 mod specimen;
 mod validation;
-pub use crate::encode::query::{CacheAnswer, acknowledgment, display};
-pub use specimen::{SpecimenSelector, specimen};
+pub use crate::encode::query::{CacheAnswer, acknowledgment, display, record_display};
+pub use specimen::{SpecimenSelector, record_specimen, specimen};
 
 pub(crate) fn invalid(segment: &'static str, field: usize) -> crate::Error {
     crate::Error::Control { segment, field }
@@ -54,10 +54,20 @@ fn legacy_header<'a>(
     Ok((msh, segments))
 }
 
+/// The supported legacy query agreements.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Profile {
+    /// Standard deferred display with a line limit.
+    Display,
+    /// Documented HL7 2.3.1 record-oriented query with positional display replies.
+    RecordDisplay,
+}
+
 /// A validated legacy deferred display query, retaining every original filter.
 #[derive(Debug, Clone, Copy)]
 pub struct Request<'a> {
     pub(crate) message: &'a Message,
+    pub(crate) profile: Profile,
     pub(crate) definition: Segment<'a>,
     pub(crate) filter: Option<Segment<'a>>,
 }
@@ -70,6 +80,14 @@ impl<'a> Request<'a> {
     /// QRD/QRF validation preserves local filter values; the host must interpret
     /// every filter before claiming that a cache answer is trusted.
     pub fn new(message: &'a Message) -> Result<Self, crate::Error> {
+        Self::with_profile(message, Profile::Display)
+    }
+
+    /// Reads the selected legacy query agreement without changing standard defaults.
+    ///
+    /// # Errors
+    /// Refuses messages outside the agreement's structure, fields or edition.
+    pub fn with_profile(message: &'a Message, profile: Profile) -> Result<Self, crate::Error> {
         let (msh, mut segments) = legacy_header(message, [b"QRY", b"Q02", b"QRY_Q02"])?;
         let definition = segments
             .next()
@@ -91,13 +109,16 @@ impl<'a> Request<'a> {
             };
             return Err(invalid(name, 0));
         }
-        validation::definition(definition, msh.version())?;
+        match profile {
+            Profile::Display => validation::definition(definition, msh.version())?,
+            Profile::RecordDisplay => validation::record_definition(definition, msh.version())?,
+        }
         if let Some(filter) = filter {
             validation::filter(filter, msh.version())?;
         }
         // Other valid table entries require different response transactions.
         // This API only renders deferred display replies, not record/tabular ones.
-        if raw(definition, 2) != b"D" {
+        if profile == Profile::Display && raw(definition, 2) != b"D" {
             return Err(invalid("QRD", 2));
         }
         if raw(definition, 3) != b"D" {
@@ -105,6 +126,7 @@ impl<'a> Request<'a> {
         }
         Ok(Self {
             message,
+            profile,
             definition,
             filter,
         })
@@ -145,6 +167,18 @@ impl<'a> DisplayAck<'a> {
     /// # Errors
     /// Rejects mismatched correlation, invalid acknowledgments or extra segments.
     pub fn new(message: &'a Message, expected: crate::ControlId<'_>) -> Result<Self, crate::Error> {
+        Self::with_profile(message, expected, Profile::Display)
+    }
+
+    /// Checks a receipt acknowledgment using the selected legacy agreement.
+    ///
+    /// # Errors
+    /// Refuses invalid or uncorrelated acknowledgment messages.
+    pub fn with_profile(
+        message: &'a Message,
+        expected: crate::ControlId<'_>,
+        profile: Profile,
+    ) -> Result<Self, crate::Error> {
         let (msh, mut segments) = legacy_header(message, [b"ACK", b"Q03", b"ACK"])?;
         let msa = Msa::for_version(segments.next().ok_or(invalid("MSA", 0))?, msh.version())?;
         if msa.control_id() != expected.raw() {
@@ -154,6 +188,15 @@ impl<'a> DisplayAck<'a> {
             return Err(invalid("MSA", 1));
         }
         for segment in segments {
+            // YHLO LIS V1.1 sections 2.3.8 and 2.4.2 use a numeric ERR-1.
+            if profile == Profile::RecordDisplay
+                && segment.id() == b"ERR"
+                && segment.fields().skip(1).all(|field| field.raw().is_empty())
+                && raw(segment, 1) == b"0"
+                && msa.code() == AckCode::Aa
+            {
+                continue;
+            }
             crate::ErrView::new(segment, msh.version())?;
         }
         Ok(Self(msa))

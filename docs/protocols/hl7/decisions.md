@@ -538,3 +538,24 @@ in the receipt. An undocumented measurement identity stays unresolved.
 
 Each rule has a named synthetic test in the
 [categorized result tests](../../../crates/steps/mapping/tests/mapping/categorized/mod.rs).
+
+## Positional record query replies
+
+The `hl7_record_display_query` departure uses the HL7 2.3.1 Q02/Q03
+exchange with the YHLO LIS V1.1 sections 2.3.6 to 2.3.11 and 2.4.2 field
+agreement. QRD-2 R, bare RD and empty QRD-10 are accepted only with that
+profile. The configured QRF-1 and documented barcode qualifiers must match.
+Absent barcode, range and time filters yield AE because the app cache lacks
+authoritative sample-number and collection-time lookup fields.
+
+QCK and DSR use QAK tag SR. DSR clears QRD-8, places the barcode in DSP-21,
+leaves DSP-22 empty and writes assay components from DSP-29 onward. DSC is
+empty on the last page. Each page has its own MSH-10 and only a matching
+durable ACK advances the exchange. Section 2.4.2 examples reuse IDs, while
+section 2.3.1 defines MSH-10 as unique. Confirm the installed PC's behavior.
+ACK establishes Sent. The service manual section 6.4.2.1 gives a 15-second
+response timeout default, used for the synthetic exchange. Confirm the
+installed setting and the separate DSR receipt wait before qualification.
+
+See [outbound order handling](../../../crates/analyte/ORDERS.md#hl7-231-positional-record-replies)
+and the [machine gap report](../../../machines/yhlo/iflash-1200/README.md).

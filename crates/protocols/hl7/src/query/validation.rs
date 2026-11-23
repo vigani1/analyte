@@ -66,6 +66,22 @@ fn last_field(segment: Segment<'_>, name: &'static str, last: usize) -> Result<(
 }
 
 pub(super) fn definition(segment: Segment<'_>, version: Version) -> Result<(), Error> {
+    definition_fields(segment, version, false)
+}
+
+// YHLO LIS V1.1 sections 2.3.6 and 2.4.2.
+pub(super) fn record_definition(segment: Segment<'_>, version: Version) -> Result<(), Error> {
+    if version != Version::V231 || super::raw(segment, 2) != b"R" {
+        return Err(invalid("QRD", 2));
+    }
+    definition_fields(segment, version, true)
+}
+
+fn definition_fields(
+    segment: Segment<'_>,
+    version: Version,
+    record_display: bool,
+) -> Result<(), Error> {
     let name = "QRD";
     last_field(segment, name, 12)?;
     check(segment, name, 1, true, false, 26, |v| {
@@ -84,13 +100,30 @@ pub(super) fn definition(segment: Segment<'_>, version: Version) -> Result<(), E
     check(segment, name, 6, false, false, 26, |v| {
         edition_timestamp(&v.components().collect::<Vec<_>>(), version)
     })?;
-    check(segment, name, 7, true, false, 10, quantity)?;
+    check(segment, name, 7, true, false, 10, |value| {
+        if record_display {
+            value.raw() == b"RD"
+        } else {
+            quantity(value)
+        }
+    })?;
     let length = version.query_person_bytes()?;
-    check(segment, name, 8, true, true, length, |v| xcn(v, version))?;
+    if record_display {
+        // The vendor uses a scalar barcode in place of the standard XCN person ID.
+        check(segment, name, 8, false, false, 60, text)?;
+    } else {
+        check(segment, name, 8, true, true, length, |v| xcn(v, version))?;
+    }
     for n in [9, 10] {
-        check(segment, name, n, true, true, length, |v| {
-            coded(&v.components().collect::<Vec<_>>(), version)
-        })?;
+        check(
+            segment,
+            name,
+            n,
+            n == 9 || !record_display,
+            true,
+            length,
+            |v| coded(&v.components().collect::<Vec<_>>(), version),
+        )?;
     }
     check(segment, name, 11, false, true, 20, |v| {
         let parts: Vec<_> = v.components().collect();

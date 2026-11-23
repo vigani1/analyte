@@ -68,6 +68,9 @@ impl Orders {
                 "use 1 to 60000 milliseconds",
             ));
         }
+        if let Some(location) = &layout.record_location {
+            return validate_record_layout(machine, layout, path, location);
+        }
         if layout.lines.is_empty() || layout.lines.len()>128 || !layout.lines.iter().any(|l|matches!(l,
             DsrLine::SampleId)) || !layout.lines.iter().any(|l|matches!(l,
             DsrLine::TestCode)) || layout.lines.iter().any(|line| matches!(line,
@@ -222,13 +225,15 @@ impl Orders {
         layout: &Hl7OrderQuery,
         path: &str,
     ) -> Result<(), Error> {
+        use analyte_hl7::query::Profile;
+        let record = layout.record_location.is_some();
         let mut fields = vec![String::new(); 12];
         for (number, value) in [
             (1_usize, "20000101"),
-            (2, "D"),
+            (2, if record { "R" } else { "D" }),
             (3, "D"),
             (4, "config"),
-            (7, "1^LI"),
+            (7, if record { "RD" } else { "1^LI" }),
         ] {
             if let Some(field) = number
                 .checked_sub(1)
@@ -263,7 +268,17 @@ impl Orders {
             fields.join("|")
         );
         let syntax = analyte_hl7::Message::parse(wire.as_bytes(), analyte_hl7::Options::default())
-            .and_then(|message| analyte_hl7::query::Request::new(&message).map(|_| ()));
+            .and_then(|message| {
+                analyte_hl7::query::Request::with_profile(
+                    &message,
+                    if record {
+                        Profile::RecordDisplay
+                    } else {
+                        Profile::Display
+                    },
+                )
+                .map(|_| ())
+            });
         if syntax.is_err() {
             return Err(invalid(
                 path,
@@ -311,9 +326,11 @@ impl Orders {
                     || !f.value.is_ascii()
                     || f.value.bytes().any(|b| b.is_ascii_control() || b == b'|')
             })
-            || [8, 9, 10]
-                .into_iter()
-                .any(|field| field != layout.sample_field && !seen.contains(&field))
+            || [8, 9, 10].into_iter().any(|field| {
+                field != layout.sample_field
+                    && !(field == 10 && layout.record_location.is_some())
+                    && !seen.contains(&field)
+            })
         {
             return Err(invalid(
                 path,
@@ -323,4 +340,33 @@ impl Orders {
         }
         Ok(())
     }
+}
+
+fn validate_record_layout(
+    machine: &ParsedMachine<'_>,
+    layout: &Hl7OrderQuery,
+    path: &str,
+    location: &str,
+) -> Result<(), Error> {
+    if !machine
+        .deviations
+        .iter()
+        .any(|rule| matches!(rule, crate::MachineDeparture::Hl7RecordDisplayQuery(_)))
+        || layout.sample_field != 8
+        || !layout.sample_suffix.is_empty()
+        || !layout.lines.is_empty()
+        || layout.filters.iter().any(|filter| filter.field == 10)
+        || location.is_empty()
+        || location.len() > 20
+        || location
+            .bytes()
+            .any(|b| !b.is_ascii() || b.is_ascii_control() || b"|^~\\&".contains(&b))
+    {
+        return Err(invalid(
+            path,
+            "orders.hl7.record_location",
+            "record queries need an evidenced departure, a plain QRF-1 location, QRD-8 barcode and no plain DSP lines",
+        ));
+    }
+    Ok(())
 }

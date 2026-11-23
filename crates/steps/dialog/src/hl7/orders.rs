@@ -1,7 +1,7 @@
 //! Runs deferred HL7 display query exchanges (2.3.1 §2.18 and 2.5.1 §5.9).
 use super::{Action, Dialog, Error, ExchangeId, Message, Msh};
 use analyte_hl7::{AckCode, ControlId, Version, query};
-use std::time::Duration;
+use std::{collections::VecDeque, time::Duration};
 
 /// The transport issuance currently requested by a deferred-display reply.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,8 +27,8 @@ pub enum Expect {
 pub struct DisplayReply {
     /// QCK built for the actual cache outcome.
     pub acknowledgment: Message,
-    /// Present only when all display work has been reserved durably.
-    pub display: Option<Message>,
+    /// Ordered pages; the host reserves each page before its write.
+    pub displays: VecDeque<Message>,
     /// Total query deadline, relative to the connection clock.
     pub query_deadline: Duration,
     /// Separate issuance deadline for an unavailable/empty acknowledgment.
@@ -39,8 +39,15 @@ pub struct DisplayReply {
 
 #[derive(Debug)]
 enum Issuance {
-    Qck(DisplayReply),
+    Qck { starts_display: bool },
     Dsr,
+}
+
+#[derive(Debug)]
+struct Pages {
+    displays: VecDeque<Message>,
+    deadline: Duration,
+    acknowledgment_wait: Duration,
 }
 
 #[derive(Debug)]
@@ -58,6 +65,8 @@ enum Kind {
 #[derive(Debug)]
 pub(super) struct Orders {
     version: Version,
+    profile: query::Profile,
+    pages: Option<Pages>,
     waiting: Waiting,
     pending: Option<(ExchangeId, Message, Kind, Duration)>,
     issuance: Option<Issuance>,
@@ -75,6 +84,7 @@ impl Orders {
     }
     pub(super) fn expire(&mut self, now: Duration, out: &mut Vec<Action>) {
         if self.due().is_some_and(|until| now >= until) {
+            self.pages = None;
             match std::mem::replace(&mut self.waiting, Waiting::Idle) {
                 Waiting::Idle => {}
                 Waiting::Display { .. } => out.push(Action::DisplayOutcome {
@@ -106,6 +116,18 @@ impl Dialog {
     /// # Errors
     /// Rejects reconfiguration of an active or already configured dialog.
     pub fn enable_orders(&mut self, version: Version) -> Result<(), Error> {
+        self.enable_order_profile(version, query::Profile::Display)
+    }
+
+    /// Enables orders with the explicitly configured legacy query profile.
+    ///
+    /// # Errors
+    /// Rejects reconfiguration of an active or already configured dialog.
+    pub fn enable_order_profile(
+        &mut self,
+        version: Version,
+        profile: query::Profile,
+    ) -> Result<(), Error> {
         if self.orders.is_some()
             || self.state.pending().is_some()
             || !self.decoder.pending().is_empty()
@@ -114,6 +136,8 @@ impl Dialog {
         }
         self.orders = Some(Orders {
             version,
+            profile,
+            pages: None,
             waiting: Waiting::Idle,
             pending: None,
             issuance: None,
@@ -206,19 +230,24 @@ impl Dialog {
         if orders.issuance.is_some() {
             return Err(Error::Busy);
         }
-        let until = if reply.display.is_some() {
+        let starts_display = !reply.displays.is_empty();
+        if starts_display && (orders.pages.is_some() || !matches!(orders.waiting, Waiting::Idle)) {
+            return Err(Error::Busy);
+        }
+        let until = if starts_display {
             reply.query_deadline
         } else {
             reply.failure_deadline
         };
         let bytes = analyte_framing::hl7::encode(reply.acknowledgment.raw(), self.config.limit)?;
-        orders.issuance = Some(Issuance::Qck(DisplayReply {
-            acknowledgment: reply.acknowledgment.clone(),
-            display: reply.display.clone(),
-            query_deadline: reply.query_deadline,
-            failure_deadline: reply.failure_deadline,
-            acknowledgment_wait: reply.acknowledgment_wait,
-        }));
+        if starts_display {
+            orders.pages = Some(Pages {
+                displays: reply.displays.clone(),
+                deadline: reply.query_deadline,
+                acknowledgment_wait: reply.acknowledgment_wait,
+            });
+        }
+        orders.issuance = Some(Issuance::Qck { starts_display });
         out.push(Action::QueryWrite {
             bytes,
             until,
@@ -233,31 +262,9 @@ impl Dialog {
     ) -> Result<(), Error> {
         let orders = self.orders.as_mut().ok_or(Error::Configuration)?;
         match (orders.issuance.take(), part) {
-            (Some(Issuance::Qck(reply)), ReplyPart::Qck) => {
-                if let Some(display) = reply.display {
-                    if self.clock.now() >= reply.query_deadline {
-                        out.push(Action::DisplayOutcome {
-                            receipt: None,
-                            accepted: false,
-                            code: "HL7-query-deadline-before-DSR",
-                            detail: None,
-                        });
-                    } else {
-                        let id = Msh::new(&display)?.control_id().to_vec();
-                        let bytes = analyte_framing::hl7::encode(display.raw(), self.config.limit)?;
-                        self.await_display(
-                            self.clock.now(),
-                            ControlId::new(&id)?,
-                            reply.acknowledgment_wait,
-                        )?;
-                        self.orders.as_mut().ok_or(Error::Configuration)?.issuance =
-                            Some(Issuance::Dsr);
-                        out.push(Action::QueryWrite {
-                            bytes,
-                            until: reply.query_deadline,
-                            part: ReplyPart::Dsr,
-                        });
-                    }
+            (Some(Issuance::Qck { starts_display }), ReplyPart::Qck) => {
+                if starts_display {
+                    self.next_display(out)?;
                 }
             }
             (Some(Issuance::Dsr), ReplyPart::Dsr) => {}
@@ -268,6 +275,39 @@ impl Dialog {
         }
         Ok(())
     }
+    fn next_display(&mut self, out: &mut Vec<Action>) -> Result<(), Error> {
+        let orders = self.orders.as_mut().ok_or(Error::Configuration)?;
+        let Some(pages) = &mut orders.pages else {
+            return Ok(());
+        };
+        let Some(display) = pages.displays.pop_front() else {
+            orders.pages = None;
+            return Ok(());
+        };
+        let until = pages.deadline;
+        let wait = pages.acknowledgment_wait;
+        if self.clock.now() >= until {
+            orders.pages = None;
+            out.push(Action::DisplayOutcome {
+                receipt: None,
+                accepted: false,
+                code: "HL7-query-deadline-before-DSR",
+                detail: None,
+            });
+            return Ok(());
+        }
+        let id = ControlId::new(Msh::new(&display)?.control_id())?;
+        let bytes = analyte_framing::hl7::encode(display.raw(), self.config.limit)?;
+        self.await_display(self.clock.now(), id, wait)?;
+        self.orders.as_mut().ok_or(Error::Configuration)?.issuance = Some(Issuance::Dsr);
+        out.push(Action::QueryWrite {
+            bytes,
+            until,
+            part: ReplyPart::Dsr,
+        });
+        Ok(())
+    }
+
     pub(super) fn reply_failed(
         &mut self,
         part: ReplyPart,
@@ -275,14 +315,21 @@ impl Dialog {
     ) -> Result<(), Error> {
         let orders = self.orders.as_mut().ok_or(Error::Configuration)?;
         let code = match (&orders.issuance, part) {
-            (Some(Issuance::Qck(_)), ReplyPart::Qck) => "HL7-QCK-write-failed",
+            (Some(Issuance::Qck { starts_display }), ReplyPart::Qck) => {
+                if !starts_display {
+                    orders.issuance = None;
+                    return Ok(());
+                }
+                "HL7-QCK-write-failed"
+            }
             (Some(Issuance::Dsr), ReplyPart::Dsr) => {
                 orders.waiting = Waiting::Idle;
                 "HL7-DSR-write-failed"
             }
-            (None | Some(Issuance::Qck(_) | Issuance::Dsr), _) => return Err(Error::Stale),
+            (None | Some(Issuance::Qck { .. } | Issuance::Dsr), _) => return Err(Error::Stale),
         };
         orders.issuance = None;
+        orders.pages = None;
         out.push(Action::DisplayOutcome {
             receipt: None,
             accepted: false,
@@ -368,7 +415,11 @@ impl Dialog {
                         Some("HL7 DSR ACK edition differs from configured edition".to_owned()),
                     )
                 } else {
-                    match query::DisplayAck::new(&message, ControlId::new(&control)?) {
+                    match query::DisplayAck::with_profile(
+                        &message,
+                        ControlId::new(&control)?,
+                        orders.profile,
+                    ) {
                         Ok(ack) => match ack.code() {
                             AckCode::Aa => (true, "HL7-DSR-ACK-AA", None),
                             AckCode::Ae => (false, "HL7-DSR-ACK-AE", None),
@@ -384,6 +435,11 @@ impl Dialog {
                     code,
                     detail,
                 });
+                if accepted {
+                    self.next_display(out)?;
+                } else {
+                    orders.pages = None;
+                }
             }
         }
         Ok(true)

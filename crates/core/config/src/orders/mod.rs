@@ -153,6 +153,9 @@ pub struct Hl7OrderQuery {
     pub sample_field: u16,
     /// Exact trailing components for the specimen selector (empty only when agreed).
     pub sample_suffix: String,
+    /// Exact QRF-1 for the evidenced positional record-display agreement.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub record_location: Option<String>,
     /// Every other nonempty QRD selector must match an explicit filter.
     pub filters: Vec<Hl7QueryFilter>,
     /// Ordered DSP lines for each test; at most 128 lines per test.

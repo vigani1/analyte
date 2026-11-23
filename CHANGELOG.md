@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **HL7 barcode orders:** evidenced machine definitions can answer legacy
+  record queries with positional display pages. When the order cache is
+  unavailable or cannot answer a filter, the analyzer gets an explicit error.
+
 - **HL7 categorized results:** an evidenced machine definition can keep
   a numeric result and its qualitative call together, read separate
   interference measurements, and pair control measurements with their

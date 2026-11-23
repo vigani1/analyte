@@ -117,6 +117,7 @@ struct ReplaySettings {
     choices: Option<toml::Table>,
     recording: Option<toml::Table>,
     expected_gap: Option<ExpectedGap>,
+    order_cache: Option<record_display::Cache>,
 }
 
 #[derive(Deserialize)]
@@ -184,7 +185,14 @@ async fn replay_model(folder: &Path, model: &Path, definition: &Path) -> Result<
             let (header, events) =
                 recording::read(std::fs::File::open(&path)?, recording::Limits::default())?;
             validate_gap(&events, answers.expected_gap.as_ref())?;
-            if record_only {
+            if let Some(cache) = answers.order_cache {
+                if !record_only || answers.choices.is_some() || answers.recording.is_some()
+                    || answers.expected_gap.is_some()
+                {
+                    return Err("synthetic order replay needs a blocked definition and no other replay settings".into());
+                }
+                record_display::replay(folder, &header, &events, cache).await
+            } else if record_only {
                 replay_record_only(model, &text, &header, &events, &answers).await
             } else {
                 replay_ready(folder, model, &text, &header, &events, &answers).await

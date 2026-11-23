@@ -20,6 +20,8 @@ pub enum DepartureMessage {
     OruR01Patient,
     /// ORU^R01 uploads carrying a documented vendor result category.
     OruR01,
+    /// Legacy record-format order query exchange.
+    QryQ02,
     /// ASTM LIS02 result upload.
     AstmResults,
     /// ASTM link control.
@@ -75,6 +77,8 @@ pub enum DepartureGuarantee {
     Msh16MessageCategory,
     /// Vendor documents the categorized ORU result field layout.
     CategorizedOruResults,
+    /// Record-format queries with positional display replies.
+    RecordDisplayQuery,
     /// Existing compatibility option is explicitly documented.
     Compatibility,
 }
@@ -150,6 +154,8 @@ pub enum MachineDeparture {
     Hl7Msh16MessageCategory(DepartureDeclaration),
     /// Read the documented patient OBX fields and component-aligned OBR-only controls.
     Hl7CategorizedOruResults(DepartureDeclaration),
+    /// Read record-format QRY^Q02 and reply with positional DSR pages.
+    Hl7RecordDisplayQuery(DepartureDeclaration),
     /// Use CRLF segment endings.
     Hl7CrLfTerminators(DepartureDeclaration),
     /// Use LF segment endings.
@@ -201,6 +207,9 @@ impl MachineDeparture {
             Self::AstmRepeatEnqAfterLostAck(_) => {
                 "One repeated ENQ before any frame can recover a lost establishment ACK."
             }
+            Self::Hl7RecordDisplayQuery(_) => {
+                "Record-format barcode queries use positional display replies."
+            }
             Self::Hl7CategorizedOruResults(_) => {
                 "Reads qualitative and component values in patient OBX and aligned controls in QC OBR."
             }
@@ -235,6 +244,7 @@ impl MachineDeparture {
             | Self::AstmRepeatEnqAfterLostAck(value)
             | Self::AstmPackedRecordsInFrame(value)
             | Self::Hl7CategorizedOruResults(value)
+            | Self::Hl7RecordDisplayQuery(value)
             | Self::Hl7Msh16MessageCategory(value)
             | Self::Hl7Utf8InV231(value)
             | Self::Hl7CrLfTerminators(value)
@@ -259,6 +269,7 @@ impl MachineDeparture {
             Self::AstmRepeatEnqAfterLostAck(_) => "astm_repeat_enq_after_lost_ack",
             Self::Hl7Msh16MessageCategory(_) => "hl7_msh16_message_category",
             Self::Hl7CategorizedOruResults(_) => "hl7_categorized_oru_results",
+            Self::Hl7RecordDisplayQuery(_) => "hl7_record_display_query",
             Self::Hl7Utf8InV231(_) => "hl7_utf8_in_v231",
             Self::Hl7CrLfTerminators(_) => "hl7_cr_lf_terminators",
             Self::Hl7LfTerminators(_) => "hl7_lf_terminators",
