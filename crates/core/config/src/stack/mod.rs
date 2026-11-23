@@ -4,8 +4,8 @@ use crate::MachineDocument;
 use crate::{
     AstmOrderFields, Autolyser, ChecksumHex, CodeTables, Edition, Encoding, Error, Escapes,
     Hl7OrderQuery, Hl7Send, LawConnectionMode, LawPeer, LawQueryForm, LawWork, MachineDeparture,
-    Mappings, OrderPriority, OrderQuery, Orders, Poct, Priority, Responsibility, Serial, Syntax,
-    Terminator, Transport, TransportKind, UnitMapping, Vidas, invalid,
+    Mappings, OrderPriority, OrderQuery, Orders, Poct, Priority, Serial, Syntax, Terminator,
+    Transport, TransportKind, UnitMapping, Vidas, invalid,
 };
 use crate::{ParsedMachine, StackChoice};
 
