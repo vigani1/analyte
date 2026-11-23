@@ -184,6 +184,10 @@ fn compatibility(
                 hl7.as_ref().is_some_and(|v| v.lf),
                 "HL7 §2.4 segment boundaries",
             ),
+            MachineDeparture::Hl7Msh16MessageCategory(_) => (
+                hl7.is_some_and(|v| v.msh16_message_category.is_some()),
+                "HL7 2.3.1 section 2.24.1.16",
+            ),
             MachineDeparture::Hl7Utf8InV231(_) => (
                 hl7.as_ref().is_some_and(|v| v.legacy_utf8),
                 "HL7 2.3.1 §2.24.1.18",

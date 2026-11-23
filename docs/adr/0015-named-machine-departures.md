@@ -18,8 +18,9 @@ the shared standard code would hide which rules a lab actually enabled.
   user-defined status mapping can select behavior.
 - The list holds two missing-status rules for generic HL7 patient result
   uploads (absent OBR-25, absent OBX-11 means final), packed ASTM records in one
-  frame, the existing HL7 and ASTM compatibility settings, and two documented
-  Biolyte upload exceptions. An empty H.12 can supply production mode under an
+  frame, the documented meaning of MSH-16 in HL7 2.3.1 ORU^R01 uploads, the
+  existing HL7 and ASTM compatibility settings, and two documented Biolyte
+  upload exceptions. An empty H.12 can supply production mode under an
   explicit declaration. One repeated ENQ can retry establishment before any
   frame arrives, within the original receive deadline.
 - Each declaration names its exact scope (model, firmware, mode, edition,

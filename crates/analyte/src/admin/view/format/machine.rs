@@ -113,6 +113,9 @@ pub(in crate::admin) const fn departure(rule: &analyte_config::MachineDeparture)
             "Puts several records in one frame; Analyte reads each record after ",
             "the frame's check passes.",
         ),
+        D::Hl7Msh16MessageCategory(_) => {
+            "Puts the upload category in MSH-16. Analyte reads that category on result uploads."
+        }
         D::Hl7Utf8InV231(_) => concat!(
             "Marks its text as UTF-8, a name its HL7 version did not have yet; ",
             "Analyte reads the text as UTF-8.",

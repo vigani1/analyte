@@ -86,16 +86,30 @@ fn map_checked(
     input: Input<'_>,
 ) -> Result<Output, Error> {
     let edition = syntax.edition();
-    let mut source = source::hl7(message)?;
-    let version = analyte_hl7::Msh::new(message)
-        .map_err(|source| Error::Hl7 {
+    let msh = analyte_hl7::Msh::new(message).map_err(|source| Error::Hl7 {
+        position: Position {
+            record: 1,
+            field: 12,
+        },
+        source,
+    })?;
+    if matches!(
+        msh.message_category(),
+        Some(
+            analyte_hl7::MessageCategory::Calibration
+                | analyte_hl7::MessageCategory::QualityControl
+        )
+    ) {
+        return Err(Error::Structure {
             position: Position {
                 record: 1,
-                field: 12,
+                field: 16,
             },
-            source,
-        })?
-        .version();
+            reason: "no interpretation is configured for this MSH-16 result category",
+        });
+    }
+    let version = msh.version();
+    let mut source = source::hl7(message)?;
     if analyte_hl7::Version::from(edition) != version {
         return Err(Error::Structure {
             position: Position {

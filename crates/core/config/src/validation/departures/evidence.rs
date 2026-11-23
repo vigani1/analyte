@@ -54,6 +54,7 @@ pub(super) fn validate(
         }
         MachineDeparture::AstmRepeatEnqAfterLostAck(_) => DepartureGuarantee::RepeatEnq,
         MachineDeparture::AstmPackedRecordsInFrame(_) => DepartureGuarantee::PackedRecords,
+        MachineDeparture::Hl7Msh16MessageCategory(_) => DepartureGuarantee::Msh16MessageCategory,
         MachineDeparture::Hl7Utf8InV231(_)
         | MachineDeparture::Hl7CrLfTerminators(_)
         | MachineDeparture::Hl7LfTerminators(_)
