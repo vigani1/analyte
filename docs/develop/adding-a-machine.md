@@ -438,6 +438,7 @@ field path, pattern, script or free status mapping can select behavior.
 | --- | --- | --- |
 | `Hl7AbsentObr25MeansFinal` | An absent or empty OBR-25 in generic ORU^R01 patient uploads means a final report | A manual or vendor statement naming the omission and guaranteeing final reports; a recording alone is not enough |
 | `Hl7AbsentObx11MeansFinal` | An absent or empty OBX-11 means a final observation | A manual or vendor statement guaranteeing final-only observations in that mode |
+| `Hl7Msh16MessageCategory` | MSH-16 carries codes 0, 1 and 2 in inbound HL7 2.3.1 `ORU^R01` | A manual documenting the category codes, with `message = "oru_r01"` and `guarantee = "msh16_message_category"` |
 | `AstmPackedRecordsInFrame` | Several CR-ended LIS02 records in one verified inbound frame | A manual section naming the packed mode, or an ADR 0009 recording showing it |
 | `Hl7Utf8InV231`, `Hl7CrLfTerminators`, `Hl7LfTerminators`, `Hl7PreserveUnsupportedEscapes`, `AstmFrameLimit`, `AstmReceiveTimeout`, `AstmSendTimeout`, `AstmHostContentionPriority`, `AstmLowercaseChecksumHex` | The existing compatibility settings, with their current limits | The same scope and evidence rules as above |
 

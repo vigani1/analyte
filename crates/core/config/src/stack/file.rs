@@ -52,7 +52,7 @@ pub(super) fn file_stack(
                 transport: machine.transport.operation_timeout_ms,
                 frame_limit: machine.framing.limit,
                 timeouts,
-                syntax: hl7_syntax(&machine.syntax, path)?,
+                syntax: hl7_syntax(machine, path)?,
                 codes: machine
                     .mappings
                     .clone()

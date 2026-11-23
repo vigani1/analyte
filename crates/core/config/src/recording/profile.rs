@@ -1,5 +1,5 @@
 //! Holds the shipped capture profiles: the link rules of each protocol a record-only connection speaks (ADR 0034).
-use crate::{AckPoint, ChecksumAcceptance, ChecksumInclusion, Encoding, Error, Escapes, HexCase};
+use crate::{AckPoint, ChecksumAcceptance, ChecksumInclusion, Error, HexCase};
 use crate::{Terminator, invalid};
 use serde::{Deserialize, Serialize};
 
@@ -225,9 +225,7 @@ impl AstmCapture {
 #[serde(deny_unknown_fields)]
 pub struct Hl7Capture {
     operation_timeout_ms: u32,
-    encoding: Encoding,
     terminator: Terminator,
-    escapes: Escapes,
     wait_ms: u32,
     message_bytes: usize,
     segments: usize,
@@ -236,20 +234,10 @@ pub struct Hl7Capture {
 }
 
 impl Hl7Capture {
-    /// Character set assumed when MSH-18 is empty.
-    #[must_use]
-    pub const fn encoding(&self) -> Encoding {
-        self.encoding
-    }
     /// Segment terminator.
     #[must_use]
     pub const fn terminator(&self) -> Terminator {
         self.terminator
-    }
-    /// Escape handling while reading the header.
-    #[must_use]
-    pub const fn escapes(&self) -> Escapes {
-        self.escapes
     }
     /// Budget for storing and answering one message, in milliseconds.
     #[must_use]

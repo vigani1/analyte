@@ -140,8 +140,21 @@ pub struct Options {
     pub allow_utf8_in_v231: bool,
     /// How a received LAW MSH-7 without an offset is treated.
     pub header_zone: HeaderZone,
+    /// Control profile for the parsed message.
+    pub control: ControlProfile,
     /// Resource limits.
     pub limits: Limits,
+}
+/// Selects how an inbound message's acknowledgment fields are read.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum ControlProfile {
+    /// Standard control fields and acknowledgment negotiation.
+    #[default]
+    Standard,
+    /// Original-mode capture acknowledgments from the routing header alone.
+    RecordOnly,
+    /// HL7 2.3.1 ORU^R01 with a documented MSH-16 message category.
+    Msh16MessageCategory,
 }
 /// Whether a received LAW MSH-7 may omit its UTC offset (IHE `PaLM` TF-2b §C.4).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -160,6 +173,7 @@ impl Default for Options {
             escapes: EscapePolicy::Reject,
             allow_utf8_in_v231: false,
             header_zone: HeaderZone::Required,
+            control: ControlProfile::Standard,
             limits: Limits::default(),
         }
     }
@@ -210,6 +224,7 @@ pub struct Message {
     terminator: Terminator,
     charset: Charset,
     header_zone: HeaderZone,
+    pub(crate) control: ControlProfile,
 }
 impl Message {
     /// Parses syntax without I/O or clinical interpretation.
@@ -221,7 +236,14 @@ impl Message {
 
     /// Applies LAW version compatibility while retaining the shared bounded syntax checks.
     pub(crate) fn parse_law(raw: &[u8], options: Options) -> Result<Self, Error> {
-        Self::parse_with_profile(raw, options, true)
+        Self::parse_with_profile(
+            raw,
+            Options {
+                control: ControlProfile::Standard,
+                ..options
+            },
+            true,
+        )
     }
 
     fn parse_with_profile(raw: &[u8], options: Options, law: bool) -> Result<Self, Error> {
@@ -278,6 +300,7 @@ impl Message {
             terminator: options.terminator,
             charset: Charset::Ascii,
             header_zone: options.header_zone,
+            control: options.control,
         };
         message.validate_terminators()?;
         message.validate_segments(options)?;
@@ -302,6 +325,9 @@ impl Message {
                 segment: "MSH",
                 field: 12,
             });
+        }
+        if !law && options.control == ControlProfile::RecordOnly {
+            return Ok(message);
         }
         let charset = text::declared_charset(msh, version_id, options, law)?;
         let undeclared = !law && msh.field(18).is_none_or(|f| f.raw.is_empty());
@@ -379,7 +405,9 @@ impl Message {
                         field: number,
                     });
                 }
-                if options.escapes == EscapePolicy::Reject {
+                if options.control != ControlProfile::RecordOnly
+                    && options.escapes == EscapePolicy::Reject
+                {
                     validate_escapes(value.raw, delimiters, position, number)?;
                 }
             }
