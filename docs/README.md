@@ -20,7 +20,7 @@ it is for.
 | **Lab app developer** connecting an app | [Contract v1](contract/v1.md) | [Orders cursor](contract/orders-cursor.md), [contract checker](contract/README.md#check-your-app), [reference receiver](../crates/testing/receiver/README.md) |
 | **Adding a machine** on a protocol Analyte has | [Adding a machine](develop/adding-a-machine.md) | [Machine folders](../machines/README.md), [config reference](../crates/core/config/README.md), [protocol scope](protocols/README.md) |
 | **Adding a machine's own language** | [Adding a vendor protocol](develop/adding-a-vendor-protocol.md) | [Layout and naming (ADR 0012)](adr/0012-uniform-layout-and-naming.md), [machine research](research/machines/README.md) |
-| **Working on Analyte's code** | [AGENTS.md](../AGENTS.md) (the rules), then [context](context.md) and [plan](plan.md) | [The crates](../crates/README.md), [program guide](../crates/analyte/DETAILS.md), [orders](../crates/analyte/ORDERS.md), [glossary](glossary.md), [developer guides](develop/README.md) |
+| **Working on Analyte's code** | [AGENTS.md](../AGENTS.md) (the rules), then [project layout](develop/project-layout.md), [context](context.md) and [plan](plan.md) | [The crates](../crates/README.md), [program guide](../crates/analyte/DETAILS.md), [orders](../crates/analyte/ORDERS.md), [glossary](glossary.md), [developer guides](develop/README.md) |
 | **Releasing** | [Release guide](develop/release.md) | [Windows packaging](../packaging/windows/README.md), [Linux packaging](../packaging/linux/README.md) |
 
 New contributors also read [CONTRIBUTING.md](../CONTRIBUTING.md), which lists
