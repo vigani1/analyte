@@ -169,7 +169,7 @@ pub(crate) enum ListError {
 fn folders(path: &Path) -> Result<Vec<(String, PathBuf)>, ListError> {
     let io = |source| ListError::Io {
         path: path.to_owned(),
-        source: Box::new(source),
+        source,
     };
     let mut found = Vec::new();
     for entry in std::fs::read_dir(path).map_err(io)? {
