@@ -155,22 +155,12 @@ fn test_identity(profile: OrderProfile, code: &str) -> &str {
 }
 
 fn dilution(profile: OrderProfile, ratio: Option<u16>) -> Result<&'static str, OrderError> {
-    let wire = match (profile, ratio) {
-        (_, None) => "",
-        (OrderProfile::Elecsys, Some(1)) => "0",
-        (OrderProfile::Elecsys, Some(2)) | (OrderProfile::Cobas, Some(1)) => "1",
-        (OrderProfile::Elecsys, Some(5)) | (OrderProfile::Cobas, Some(2)) => "2",
-        (OrderProfile::Elecsys, Some(10)) => "3",
-        (OrderProfile::Elecsys, Some(20)) | (OrderProfile::Cobas, Some(5)) => "5",
-        (OrderProfile::Elecsys, Some(50)) => "7",
-        (OrderProfile::Elecsys, Some(100)) => "9",
-        (OrderProfile::Cobas, Some(10)) => "10",
-        (OrderProfile::Cobas, Some(20)) => "20",
-        (OrderProfile::Cobas, Some(50)) => "50",
-        (OrderProfile::Cobas, Some(100)) => "100",
-        _ => return Err(OrderError::UnsupportedDilution),
-    };
-    Ok(wire)
+    match ratio {
+        None => Ok(""),
+        Some(ratio) => {
+            super::dilution::encode(profile, ratio).ok_or(OrderError::UnsupportedDilution)
+        }
+    }
 }
 
 #[cfg(test)]

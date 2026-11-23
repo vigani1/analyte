@@ -342,23 +342,12 @@ fn dilution(
     details.predilution = predilution.map(|pre| text(&pre, position)).transpose()?;
     selector
         .map(|selector| {
-            let ratio = if uses_slash(layout) {
-                match selector.as_str() {
-                    "1" | "2" | "5" | "10" | "20" | "50" | "100" => Some(selector.as_str()),
-                    _ => None,
-                }
+            let profile = if uses_slash(layout) {
+                analyte_astm::OrderProfile::Cobas
             } else {
-                match selector.as_str() {
-                    "0" => Some("1"),
-                    "1" => Some("2"),
-                    "2" => Some("5"),
-                    "3" => Some("10"),
-                    "5" => Some("20"),
-                    "7" => Some("50"),
-                    "9" => Some("100"),
-                    _ => None,
-                }
+                analyte_astm::OrderProfile::Elecsys
             };
+            let ratio = crate::astm::dilution::decode(profile, &selector);
             Ok(Dilution {
                 original: Some(text(&selector, position)?),
                 factor: ratio.and_then(|ratio| Decimal::new(ratio).ok()),
