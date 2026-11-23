@@ -7,14 +7,20 @@
 //! model contributes only its protocol and link (from its `machine.toml`, or
 //! its `record.toml` while no definition is ready); the lab's site file gives
 //! the connection, the cable and the answers in `[recording]`.
+//!
+//! A model whose analyzer offers a mode that changes its framing (the cobas
+//! e 411's Elecsys or cobas protocol type) asks it in its `record.toml`
+//! (`[analyzer_mode]`), and may declare the one ADR 0015 departure a recording
+//! can need, packed ASTM records in one frame, scoped to the mode that packs.
+//! The lab's answer selects it; no other mode, model or protocol gets it.
 mod profile;
 use profile::Profile;
 pub use profile::{AstmCapture, AutolyserCapture, CaptureProtocol, Hl7Capture, VidasCapture};
 
 use crate::stack::{DialogTimeouts, StreamTransport, SyntaxLimits};
 use crate::{
-    AckPoint, Error, Evidence, EvidenceLevel, LabAppSource, Machine, SerialValues, Site, Stack,
-    Transport, TransportKind, Validated, invalid,
+    AckPoint, ChoiceLabel, ChoiceName, Error, Evidence, EvidenceLevel, LabAppSource, Machine,
+    MachineDeparture, SerialValues, Site, Stack, Transport, TransportKind, Validated, invalid,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -52,6 +58,65 @@ pub struct ProfileAnswers {
     /// layout with controls enabled on the analyzer, Rev18 pp. 177 and 179).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub controls: Option<bool>,
+    /// Only for a model whose record file asks it: the mode the analyzer's
+    /// own settings screen shows, one of the values it offers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub analyzer_mode: Option<ChoiceName>,
+}
+
+/// A mode the analyzer offers on its own settings screen that changes how it
+/// talks, asked in a model's `record.toml` (`[analyzer_mode]`). No value is
+/// suggested: the installed mode cannot be guessed.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AnalyzerMode {
+    /// The question in plain words, naming where the analyzer shows it.
+    pub label: ChoiceLabel,
+    /// The values, 2 to 16, as the analyzer's screen names them.
+    pub values: Vec<AnalyzerModeValue>,
+}
+
+/// One value of an [`AnalyzerMode`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AnalyzerModeValue {
+    /// The value's name, as the site file's `recording.analyzer_mode` writes it.
+    pub value: ChoiceName,
+    /// The value as the analyzer's screen or manual names it.
+    pub label: ChoiceLabel,
+}
+
+impl AnalyzerMode {
+    /// The allowed value names, joined for an error or a hint.
+    #[must_use]
+    pub fn allowed(&self) -> String {
+        self.values
+            .iter()
+            .map(|value| value.value.as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+
+    fn names(&self) -> Vec<ChoiceName> {
+        self.values
+            .iter()
+            .map(|value| value.value.clone())
+            .collect()
+    }
+
+    /// Refuses fewer than two values, more than [`crate::MAX_CHOICE_VALUES`] or a repeated one.
+    fn check(&self, path: &str) -> Result<(), Error> {
+        let names = self.names();
+        let unique: std::collections::BTreeSet<_> = names.iter().collect();
+        if !(2..=crate::MAX_CHOICE_VALUES).contains(&names.len()) || unique.len() != names.len() {
+            return Err(invalid(
+                path,
+                "analyzer_mode.values",
+                "offer 2 to 16 different values",
+            ));
+        }
+        Ok(())
+    }
 }
 
 /// Seconds the lab may choose between Autolyser next-report requests.
@@ -64,6 +129,8 @@ pub struct RecordStack {
     transport: StreamTransport,
     limits: SyntaxLimits,
     timeouts: DialogTimeouts,
+    /// The model's departures for the analyzer mode the lab chose.
+    departures: Vec<MachineDeparture>,
 }
 
 /// The capture settings of the protocol a record-only connection speaks.
@@ -100,6 +167,14 @@ impl RecordStack {
             RecordLink::Autolyser(_) => CaptureProtocol::Autolyser,
         }
     }
+    /// Whether a verified inbound ASTM frame may hold several records: the
+    /// model declares packing (ADR 0015) for the analyzer mode the lab chose.
+    #[must_use]
+    pub fn packed_records(&self) -> bool {
+        self.departures
+            .iter()
+            .any(|d| matches!(d, MachineDeparture::AstmPackedRecordsInFrame(_)))
+    }
     pub(crate) const fn limits(&self) -> &SyntaxLimits {
         &self.limits
     }
@@ -108,13 +183,26 @@ impl RecordStack {
     }
 }
 
-/// A model's `record.toml`: its protocol and link, nothing else.
+/// A model's `record.toml`: its protocol and link, and the analyzer mode it
+/// asks with the departures scoped to it.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RecordFile {
     recording_schema_version: u32,
     protocol: String,
     transport: ModelTransport,
+    #[serde(default)]
+    analyzer_mode: Option<AnalyzerMode>,
+    #[serde(default)]
+    deviations: Vec<MachineDeparture>,
+}
+
+/// What record only takes from a model file.
+struct ModelFile {
+    protocol: CaptureProtocol,
+    transport: ModelTransport,
+    analyzer_mode: Option<AnalyzerMode>,
+    deviations: Vec<MachineDeparture>,
 }
 
 /// The link part of a model file: its kind and the manual's serial values.
@@ -163,9 +251,10 @@ fn parse_table(path: &str, text: &str) -> Result<toml::Table, Error> {
     })
 }
 
-/// The protocol and link a model file names: a `record.toml`, or the
-/// `protocol` and `[transport]` of a ready definition.
-fn model_link(path: &str, text: &str) -> Result<(CaptureProtocol, ModelTransport), Error> {
+/// The protocol and link a model file names: a `record.toml` (with its
+/// analyzer mode and departures), or the `protocol` and `[transport]` of a
+/// ready definition.
+fn model_link(path: &str, text: &str) -> Result<ModelFile, Error> {
     let table = parse_table(path, text)?;
     if is_record_file(&table) {
         let file: RecordFile = toml::from_str(text).map_err(|source| Error::Schema {
@@ -179,7 +268,28 @@ fn model_link(path: &str, text: &str) -> Result<(CaptureProtocol, ModelTransport
                 "use supported recording_schema_version = 1",
             ));
         }
-        return Ok((CaptureProtocol::of(&file.protocol, path)?, file.transport));
+        let protocol = CaptureProtocol::of(&file.protocol, path)?;
+        if let Some(mode) = &file.analyzer_mode {
+            mode.check(path)?;
+        }
+        let offered = file
+            .analyzer_mode
+            .as_ref()
+            .map(AnalyzerMode::names)
+            .unwrap_or_default();
+        crate::validation::validate_recording(
+            &file.deviations,
+            protocol == CaptureProtocol::Astm,
+            folder_key(path).as_deref(),
+            &offered,
+            path,
+        )?;
+        return Ok(ModelFile {
+            protocol,
+            transport: file.transport,
+            analyzer_mode: file.analyzer_mode,
+            deviations: file.deviations,
+        });
     }
     let link: DefinitionLink =
         toml::Value::Table(table)
@@ -188,13 +298,74 @@ fn model_link(path: &str, text: &str) -> Result<(CaptureProtocol, ModelTransport
                 path: path.into(),
                 source,
             })?;
-    Ok((
-        CaptureProtocol::of(&link.protocol, path)?,
-        ModelTransport {
+    Ok(ModelFile {
+        protocol: CaptureProtocol::of(&link.protocol, path)?,
+        transport: ModelTransport {
             kind: link.transport.kind,
             serial: link.transport.serial,
         },
-    ))
+        analyzer_mode: None,
+        deviations: Vec::new(),
+    })
+}
+
+/// The model's folder key, `vendor/model`, from the two folders its file is
+/// in (ADR 0033); none for a file elsewhere, so no departure can match it.
+fn folder_key(path: &str) -> Option<String> {
+    let folder = std::path::Path::new(path).parent()?;
+    let model = folder.file_name()?.to_str()?;
+    let vendor = folder.parent()?.file_name()?.to_str()?;
+    Some(format!("{vendor}/{model}"))
+}
+
+/// The analyzer mode the model asks, from its file; none when it asks none
+/// or is a ready definition. Setup reads it to ask the question.
+/// # Errors
+/// Refuses what [`load`] refuses in the model file.
+pub fn analyzer_mode(path: &str, text: &str) -> Result<Option<AnalyzerMode>, Error> {
+    Ok(model_link(path, text)?.analyzer_mode)
+}
+
+/// The model's departures for the analyzer mode the site file answers; the
+/// answer is required when the model asks it and refused when it does not.
+fn chosen_departures(
+    file: &ModelFile,
+    answers: &ProfileAnswers,
+    site: &str,
+) -> Result<Vec<MachineDeparture>, Error> {
+    let chosen = match (&file.analyzer_mode, &answers.analyzer_mode) {
+        (None, None) => return Ok(Vec::new()),
+        (None, Some(_)) => {
+            return Err(invalid(
+                site,
+                "recording.analyzer_mode",
+                "this model asks no analyzer mode; remove it",
+            ));
+        }
+        (Some(mode), None) => {
+            return Err(Error::MissingAnalyzerMode {
+                path: site.into(),
+                question: mode.label.as_str().to_owned(),
+                allowed: mode.allowed(),
+            });
+        }
+        (Some(mode), Some(chosen)) => {
+            if !mode.values.iter().any(|value| &value.value == chosen) {
+                return Err(Error::AnalyzerModeValue {
+                    path: site.into(),
+                    value: chosen.clone(),
+                    allowed: mode.allowed(),
+                });
+            }
+            chosen
+        }
+    };
+    Ok(file
+        .deviations
+        .iter()
+        .filter(|d| d.declaration().scope.mode.as_str() == chosen.as_str())
+        .cloned()
+        .collect())
 }
 
 /// Refuses a record-only site file on the normal loader: it loads only as a
@@ -234,16 +405,22 @@ struct CanonicalRecording<'a> {
     protocol: CaptureProtocol,
     transport: &'a Transport,
     profile: &'a Profile,
+    /// The departures in use for the chosen analyzer mode, exactly as declared.
+    #[serde(skip_serializing_if = "<[_]>::is_empty")]
+    deviations: &'a [MachineDeparture],
 }
 
 /// Loads a record-only snapshot from a model file (`record.toml` or a ready
 /// `machine.toml`) and a site file with `[recording]`; no overrides apply.
 /// # Errors
 /// Refuses a protocol without a capture profile, a link the protocol cannot
-/// use, a lab app in the site file, a missing serial value, and a
-/// `[recording]` answer that is missing, out of range or for another protocol.
+/// use, a lab app in the site file, a missing serial value, a departure the
+/// record file cannot declare (ADR 0015 rules, narrowed for record only), and
+/// a `[recording]` answer that is missing, out of range, not offered or for
+/// another protocol.
 pub fn load(model: (&str, &str), site: (&str, &str)) -> Result<Validated, Error> {
-    let (protocol, link) = model_link(model.0, model.1)?;
+    let file = model_link(model.0, model.1)?;
+    let (protocol, link) = (file.protocol, &file.transport);
     if !protocol.supports(link.kind) {
         return Err(invalid(
             model.0,
@@ -280,13 +457,15 @@ pub fn load(model: (&str, &str), site: (&str, &str)) -> Result<Validated, Error>
         crate::choose_serial(&mut transport, chosen, site.0)?;
     }
     crate::validation::validate_site(&resolved, &transport, site.0)?;
-    let stack = build(&profile, &settings, &transport, site.0)?;
+    let departures = chosen_departures(&file, &settings, site.0)?;
+    let stack = build(&profile, &settings, &transport, site.0, departures)?;
     let document = toml::Value::try_from(Canonical {
         schema_version: 1,
         recording: CanonicalRecording {
             protocol,
             transport: &transport,
             profile: &profile,
+            deviations: &stack.departures,
         },
         site: &resolved,
     })?;
@@ -297,7 +476,7 @@ pub fn load(model: (&str, &str), site: (&str, &str)) -> Result<Validated, Error>
             machine: Machine {
                 name: analyte_model::Identifier::new(&format!("record-only-{}", protocol.key()))
                     .map_err(|_| invalid(model.0, "protocol", "unusable protocol name"))?,
-                deviations: Vec::new(),
+                deviations: stack.departures.clone(),
                 evidence: Evidence {
                     level: EvidenceLevel::Documented,
                     capabilities: Vec::new(),
@@ -306,7 +485,7 @@ pub fn load(model: (&str, &str), site: (&str, &str)) -> Result<Validated, Error>
             },
             site: resolved,
             source: LabAppSource::None,
-            suggestion: link.serial,
+            suggestion: link.serial.clone(),
             choices: Vec::new(),
             document,
         },
@@ -322,6 +501,7 @@ fn build(
     settings: &ProfileAnswers,
     transport: &Transport,
     site: &str,
+    departures: Vec<MachineDeparture>,
 ) -> Result<RecordStack, Error> {
     let stream = crate::stack::record_transport(transport, site)?;
     let unused = |key: &str| {
@@ -408,5 +588,6 @@ fn build(
             receive_timeout_ms: receive,
             send_timeout_ms: send,
         },
+        departures,
     })
 }

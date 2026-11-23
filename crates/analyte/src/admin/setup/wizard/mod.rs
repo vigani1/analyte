@@ -88,11 +88,14 @@ pub(in crate::admin) struct Draft {
     pub(super) poll_seconds: Option<String>,
     pub(super) controls: Option<String>,
     pub(super) acknowledgment: Option<String>,
+    /// Record only, step 2: the mode the analyzer's own settings show, when
+    /// the model's record file asks it (the cobas e 411's protocol type).
+    pub(super) analyzer_mode: Option<String>,
 }
 
 /// Most fields a step's form carries: the fixed ones, the CSRF value and one
 /// per choice a model may declare.
-const MOST_FIELDS: usize = 18 + analyte_config::MAX_CHOICES;
+const MOST_FIELDS: usize = 19 + analyte_config::MAX_CHOICES;
 
 impl TryFrom<Vec<(String, String)>> for Draft {
     type Error = String;
@@ -120,7 +123,7 @@ impl TryFrom<Vec<(String, String)>> for Draft {
 
 /// The fields step 2 shows itself, besides the model's choices; every other
 /// step carries them hidden.
-const CONNECTION_FIELDS: [&str; 15] = [
+const CONNECTION_FIELDS: [&str; 16] = [
     "port",
     "port_name",
     "host",
@@ -136,6 +139,7 @@ const CONNECTION_FIELDS: [&str; 15] = [
     "poll_seconds",
     "controls",
     "acknowledgment",
+    "analyzer_mode",
 ];
 
 /// The field naming the devices a listening machine accepts (ADR 0026).
@@ -165,11 +169,12 @@ impl Draft {
             "poll_seconds" => &mut self.poll_seconds,
             "controls" => &mut self.controls,
             "acknowledgment" => &mut self.acknowledgment,
+            "analyzer_mode" => &mut self.analyzer_mode,
             _ => return None,
         })
     }
 
-    fn fields(&self) -> [(&'static str, Option<&str>); 17] {
+    fn fields(&self) -> [(&'static str, Option<&str>); 18] {
         [
             ("definition", self.definition.as_deref()),
             ("port", self.port.as_deref()),
@@ -188,6 +193,7 @@ impl Draft {
             ("poll_seconds", self.poll_seconds.as_deref()),
             ("controls", self.controls.as_deref()),
             ("acknowledgment", self.acknowledgment.as_deref()),
+            ("analyzer_mode", self.analyzer_mode.as_deref()),
         ]
     }
 
@@ -593,6 +599,11 @@ fn render_connection(
         },
         lab_apps,
         recording: records_only.then(|| recording_questions(&model.path, &current_site, draft)),
+        analyzer_mode: if records_only {
+            analyzer_mode_field(&model.path, &current_site, draft)
+        } else {
+            None
+        },
     }
     .render())
 }
@@ -620,6 +631,39 @@ fn recording_questions(
         },
         _ => page::Recording::Nothing,
     }
+}
+
+/// Record only, step 2: the analyzer mode the model's record file asks, from
+/// its declared values; the draft's or the saved answer, else "Choose": the
+/// installed mode is never assumed.
+fn analyzer_mode_field(
+    definition: &std::path::Path,
+    current_site: &toml::Table,
+    draft: &Draft,
+) -> Option<Setting> {
+    let mode = super::plan::recording::analyzer_mode(definition)?;
+    let current = draft
+        .analyzer_mode
+        .clone()
+        .or_else(|| super::plan::recording::saved(current_site, "analyzer_mode"));
+    let options: Vec<CableOption> = mode
+        .values
+        .iter()
+        .map(|value| CableOption {
+            selected: current.as_deref() == Some(value.value.as_str()),
+            value: value.value.as_str().to_owned(),
+            label: value.label.as_str().to_owned(),
+        })
+        .collect();
+    Some(Setting {
+        name: "analyzer_mode".to_owned(),
+        id: "s2-analyzer-mode".to_owned(),
+        label: mode.label.as_str().to_owned(),
+        chosen: options.iter().any(|option| option.selected),
+        hint: "As the analyzer shows it; it changes how the analyzer frames its records and cannot be guessed.".to_owned(),
+        differs: false,
+        options,
+    })
 }
 
 /// The lab app picker: the known lab apps with `current` (or the only one) chosen.

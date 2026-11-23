@@ -31,10 +31,13 @@ use std::{
     path::{Component, Path},
 };
 
+/// Checks one declaration's evidence; `exercised` says whether a recording
+/// file exercised the declared capability, which a simulated or proven level
+/// needs.
 pub(super) fn validate(
-    m: &ParsedMachine<'_>,
     departure: &MachineDeparture,
     path: &str,
+    exercised: &dyn Fn(&MachineDeparture, &analyte_model::Identifier) -> bool,
 ) -> Result<(), Failure> {
     let declaration = departure.declaration();
     if declaration.evidence.is_empty() {
@@ -101,7 +104,7 @@ pub(super) fn validate(
                     path,
                 )?;
                 packing |= origin != RecordingEvidence::Synthetic;
-                let capability = exercised_capability(m, departure, file);
+                let capability = exercised(departure, file);
                 simulated |= capability
                     && matches!(
                         origin,
@@ -128,7 +131,7 @@ pub(super) fn validate(
     Ok(())
 }
 
-fn exercised_capability(
+pub(super) fn exercised_capability(
     m: &ParsedMachine<'_>,
     departure: &MachineDeparture,
     file: &analyte_model::Identifier,

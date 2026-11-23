@@ -19,6 +19,7 @@ use tokio::{
 };
 
 mod conversations;
+mod packing;
 
 /// The model file of a synthetic record-only machine on a loopback listener.
 fn record_file(protocol: &str) -> String {
@@ -46,6 +47,13 @@ impl Recorder {
     /// Starts a record-only machine speaking `protocol`, with `answers` as its
     /// site file's `[recording]` lines.
     async fn start(protocol: &str, answers: &str) -> Result<Self, Error> {
+        Self::start_model("test/recorder", &record_file(protocol), answers).await
+    }
+
+    /// Starts a record-only machine from the model file `record` placed in
+    /// the model folder `model` (`vendor/model`), with `answers` as its site
+    /// file's `[recording]` lines.
+    async fn start_model(model: &str, record: &str, answers: &str) -> Result<Self, Error> {
         let _ = tracing_subscriber::fmt()
             .with_test_writer()
             .with_ansi(false)
@@ -55,11 +63,8 @@ impl Recorder {
         let root = directory.path();
         let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
         let address = listener.local_addr()?;
-        std::fs::create_dir_all(root.join("test/recorder"))?;
-        std::fs::write(
-            root.join("test/recorder/record.toml"),
-            record_file(protocol),
-        )?;
+        std::fs::create_dir_all(root.join(model))?;
+        std::fs::write(root.join(model).join("record.toml"), record)?;
         std::fs::write(
             root.join("site.toml"),
             format!(
@@ -69,9 +74,9 @@ impl Recorder {
         let path = root.join("program.toml");
         std::fs::write(
             &path,
-            analyte_fixtures::program(
-                "[[machines]]\nid = 'recorder'\ndefinition = 'test/recorder/record.toml'\nsite = 'site.toml'\n",
-            ),
+            analyte_fixtures::program(&format!(
+                "[[machines]]\nid = 'recorder'\ndefinition = '{model}/record.toml'\nsite = 'site.toml'\n"
+            )),
         )?;
         let mut program = Program::load(&path)?;
         program.set_loopback_listener_for_test("recorder", listener.try_clone()?)?;

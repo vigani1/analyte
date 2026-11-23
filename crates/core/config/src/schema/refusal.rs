@@ -96,4 +96,13 @@ pub enum DepartureRefusal {
     /// Claimed level lacks corresponding exercised capability evidence.
     #[error("claimed level lacks corresponding exercised capability evidence")]
     LevelEvidence,
+    /// A record-only connection keeps its shipped capture profile; a model's
+    /// record file may declare only packed ASTM records in one frame (ADR 0034).
+    #[error(
+        "a record file may declare only astm_packed_records_in_frame; every other link rule is the shipped capture profile's"
+    )]
+    RecordOnlyRule,
+    /// A record file's departure names a mode its `[analyzer_mode]` does not offer.
+    #[error("the declared mode is not one of the values the record file's [analyzer_mode] offers")]
+    ModeNotOffered,
 }

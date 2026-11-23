@@ -291,3 +291,169 @@ fn a_ready_definition_records_from_its_protocol_and_link_only() -> TestResult {
     assert!(!normal.effective().records_only());
     Ok(())
 }
+
+/// The shipped cobas e 411 record file and where it sits, so its departure
+/// names the model by its folder key (ADR 0033).
+const COBAS: &str = include_str!("../../../../machines/roche/cobas-e411/record.toml");
+const COBAS_PATH: &str = "machines/roche/cobas-e411/record.toml";
+
+fn cobas_site(answers: &str) -> String {
+    format!("{SITE}endpoint = \"COM3\"\n[serial]\nflow_control = \"none\"\n[recording]\n{answers}")
+}
+
+fn cobas(answers: &str) -> Result<analyte_config::Validated, Error> {
+    recording::load((COBAS_PATH, COBAS), ("site.toml", &cobas_site(answers)))
+}
+
+fn packed(validated: &analyte_config::Validated) -> Result<bool, Box<dyn std::error::Error>> {
+    let Stack::Record(stack) = validated.effective().stack() else {
+        return Err("record-only stack".into());
+    };
+    Ok(stack.packed_records())
+}
+
+// cobas e 411 HIM v2.3 Host communication setting (p. 7) and section 5
+// (p. 14), v2.2 B section 2 (Table B-3) and D section 1 (p. D-2): the cobas
+// protocol type may pack several records in one frame, the Elecsys type
+// never; ADR 0015 scopes the packing departure to the cobas mode only.
+#[test]
+fn cobas_record_file_packs_only_in_the_cobas_protocol_type() -> TestResult {
+    let packing = cobas("analyzer_mode = \"cobas\"\n")?;
+    assert!(packed(&packing)?);
+    assert!(
+        packing.canonical().contains("astm_packed_records_in_frame"),
+        "the snapshot names the departure in use"
+    );
+    assert_eq!(packing.effective().machine().deviations.len(), 1);
+    let strict = cobas("analyzer_mode = \"elecsys\"\n")?;
+    assert!(!packed(&strict)?);
+    assert!(strict.effective().machine().deviations.is_empty());
+    assert!(!strict.canonical().contains("astm_packed_records_in_frame"));
+    assert_ne!(packing.digest(), strict.digest());
+    // Nothing is assumed: the protocol type must be answered, and only with
+    // a value the model offers.
+    let missing = cobas("").err().ok_or("no answer accepted")?;
+    assert!(
+        matches!(missing, Error::MissingAnalyzerMode { ref allowed, .. } if allowed == "elecsys, cobas"),
+        "{missing}"
+    );
+    let unoffered = cobas("analyzer_mode = \"astm\"\n")
+        .err()
+        .ok_or("unoffered mode accepted")?;
+    assert!(
+        matches!(unoffered, Error::AnalyzerModeValue { .. }),
+        "{unoffered}"
+    );
+    // A model that asks no analyzer mode refuses an answer to it, and the
+    // shared ASTM profile never packs.
+    let plain = refusal(
+        &record("astm", "tcp_server"),
+        &site("127.0.0.1:5600", "analyzer_mode = \"cobas\"\n"),
+    )?;
+    assert!(plain.contains("recording.analyzer_mode"), "{plain}");
+    assert!(!packed(&load(
+        &record("astm", "tcp_server"),
+        &site("127.0.0.1:5600", "")
+    )?)?);
+    Ok(())
+}
+
+// ADR 0015 with ADR 0034: a record file can declare only packed ASTM records,
+// for its own model, one offered mode, analyzer uploads and ASTM results,
+// with documented evidence; each other declaration is refused by reason.
+#[test]
+fn record_file_departures_stay_narrow_and_evidenced() -> TestResult {
+    use analyte_config::DepartureRefusal as R;
+    let answer = cobas_site("analyzer_mode = \"cobas\"\n");
+    let cases: [(&str, String, R); 8] = [
+        (
+            COBAS_PATH,
+            COBAS.replace("astm_packed_records_in_frame", "astm_frame_limit"),
+            R::RecordOnlyRule,
+        ),
+        (
+            "machines/roche/cobas-6000/record.toml",
+            COBAS.to_owned(),
+            R::ScopeMismatch,
+        ),
+        (
+            COBAS_PATH,
+            COBAS.replace("mode = \"cobas\"", "mode = \"packed\""),
+            R::ModeNotOffered,
+        ),
+        (
+            COBAS_PATH,
+            COBAS.replace("protocol = \"astm\"\n\n", "protocol = \"autolyser\"\n\n"),
+            R::ProtocolMismatch,
+        ),
+        (
+            COBAS_PATH,
+            COBAS.replace("\"machine_to_host\"", "\"host_to_machine\""),
+            R::DirectionMismatch,
+        ),
+        (
+            COBAS_PATH,
+            COBAS.replace("level = \"documented\"", "level = \"proven\""),
+            R::LevelEvidence,
+        ),
+        (
+            COBAS_PATH,
+            COBAS.replace(
+                "covers_unknown_firmware = true",
+                "covers_unknown_firmware = false",
+            ),
+            R::UnknownFirmware,
+        ),
+        (
+            COBAS_PATH,
+            COBAS.replace(
+                "guarantee = \"packed_records\"",
+                "guarantee = \"compatibility\"",
+            ),
+            R::MissingRuleEvidence,
+        ),
+    ];
+    for (path, model, expected) in cases {
+        let error = recording::load((path, &model), ("site.toml", &answer))
+            .err()
+            .ok_or(format!("{expected:?}: accepted"))?;
+        assert!(
+            matches!(error, Error::Departure { reason, .. } if reason == expected),
+            "{expected:?}: {error}"
+        );
+    }
+    // Without [analyzer_mode] no departure can name an offered mode, so it
+    // could never be selected by the lab's answer.
+    let start = COBAS.find("[analyzer_mode]").ok_or("analyzer_mode")?;
+    let end = COBAS
+        .get(start..)
+        .and_then(|rest| {
+            rest.find(
+                "]
+
+",
+            )
+        })
+        .and_then(|offset| start.checked_add(offset)?.checked_add(3))
+        .ok_or("end of analyzer_mode")?;
+    let without = format!(
+        "{}{}",
+        COBAS.get(..start).ok_or("head")?,
+        COBAS.get(end..).ok_or("tail")?
+    );
+    assert!(!without.contains("analyzer_mode"));
+    let error = recording::load((COBAS_PATH, &without), ("site.toml", &cobas_site("")))
+        .err()
+        .ok_or("a departure without a mode question accepted")?;
+    assert!(
+        matches!(
+            error,
+            Error::Departure {
+                reason: R::ModeNotOffered,
+                ..
+            }
+        ),
+        "{error}"
+    );
+    Ok(())
+}

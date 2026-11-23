@@ -1,8 +1,65 @@
 # Roche cobas e 411: how it talks, for a record-only connection (ADR 0034).
-# Only the protocol and the link; the rest comes from Analyte's shipped ASTM
-# capture profile. Not a machine definition: nothing is read or delivered.
+# The protocol, the link, the host protocol type the lab reads off the
+# analyzer, and the one departure that type needs; the rest comes from
+# Analyte's shipped ASTM capture profile. Not a machine definition: nothing is
+# read or delivered.
 recording_schema_version = 1
 protocol = "astm"
+
+# HIM v2.2 B section 2, Host communication setting (Table B-3), and v2.3
+# Host communication setting (pp. 6-7): two protocol types, Elecsys and cobas,
+# changeable only while host communication is off. Which one is installed
+# cannot be guessed, so the lab answers it.
+[analyzer_mode]
+label = "Protocol type on the analyzer's Host Communication settings"
+values = [
+    { value = "elecsys", label = "Elecsys (one record per frame)" },
+    { value = "cobas", label = "cobas (a frame may hold several records)" },
+]
+
+# HIM v2.2 D section 1 (p. D-2) and v2.3 section 5 (p. 14), Communication
+# data structure: in the Elecsys type a frame holds at most one record; in
+# the cobas type a frame may hold several. Only the cobas type gets this ADR
+# 0015 departure: a frame whose checksum, frame number and length pass
+# LIS01-A2 is acknowledged even when it holds several records. A frame that
+# fails any of them is still refused with NAK and kept. Both manual
+# revisions (2013 and 2016) describe the two types the same way, for the
+# analyzer and not for one software version, so they cover the installed
+# software the lab has not read yet; the visit records it.
+[[deviations]]
+rule = "astm_packed_records_in_frame"
+
+[deviations.declaration]
+level = "documented"
+
+[deviations.declaration.scope]
+model = "roche/cobas-e411"
+firmware = "unknown"
+mode = "cobas"
+edition = { protocol = "astm" }
+direction = "machine_to_host"
+message = "astm_results"
+
+[[deviations.declaration.evidence]]
+kind = "manual"
+reference = "roche-cobas-e411-him-v2.3"
+title = "cobas e 411 analyzer Host Interface Manual"
+revision = "Version 2.3, March 2016"
+section = "5 ASTM communication protocol, Communication data structure (p. 14)"
+guarantee = "packed_records"
+covers_unknown_firmware = true
+contradicts = false
+
+[[deviations.declaration.evidence]]
+kind = "manual"
+reference = "roche-cobas-e411-him-v2.2"
+title = "cobas e 411 analyzer Host Interface Manual"
+revision = "Version 2.2, November 2013"
+section = "D 1 Communication data structure (p. D-2)"
+guarantee = "packed_records"
+covers_unknown_firmware = true
+contradicts = false
+
 [transport]
 # HIM B-2, B-7: RS-232C HOST port, ASTM E1381.
 kind = "serial"

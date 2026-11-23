@@ -9,6 +9,7 @@ mod departures;
 mod mappings;
 mod stack;
 use departures::validate_departures;
+pub(crate) use departures::validate_recording;
 use mappings::{validate_mapping_family, validate_mappings};
 pub(crate) use stack::check_serial;
 use stack::{

@@ -107,6 +107,15 @@
 {%- when Recording::Nothing %}
 {%- endmatch %}
 {%- endif %}
+{%- if let Some(field) = analyzer_mode %}
+<fieldset class="wizard__set stack">
+<legend class="field__label wizard__legend">Recording</legend>
+<div class="field"><label class="field__label" for="{{ field.id }}">{{ field.label }}</label><select id="{{ field.id }}" class="select" name="{{ field.name }}" required>
+{%- if !field.chosen %}<option value="" selected>Choose</option>{% endif %}
+{%- for option in field.options %}<option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>{% endfor -%}
+</select><span class="field__hint">{{ field.hint }}</span></div>
+</fieldset>
+{%- endif %}
 <div class="form-grid">
 <div class="field"><label class="field__label" for="s2-name">Name in Analyte</label><input id="s2-name" class="input" value="{{ wizard.id }}" readonly><span class="field__hint">Cannot change: stored results are kept under this name.</span></div>
 {%- if recording.is_some() %}

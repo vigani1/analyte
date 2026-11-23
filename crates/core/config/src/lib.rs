@@ -22,7 +22,10 @@ use schema::MachineDocument;
 mod choices;
 pub use choices::{Chosen, declared as declared_choices};
 pub mod recording;
-pub use recording::{ProfileAnswers, RECORD_FILE, RecordLink, RecordStack, VidasAcknowledgment};
+pub use recording::{
+    AnalyzerMode, AnalyzerModeValue, ProfileAnswers, RECORD_FILE, RecordLink, RecordStack,
+    VidasAcknowledgment,
+};
 mod stack;
 mod validation;
 pub use orders::{
@@ -177,6 +180,30 @@ pub enum Error {
         key: String,
         /// Required corrective action.
         reason: &'static str,
+    },
+    /// A record-only site file does not say which mode the analyzer's own
+    /// settings screen shows, though the model's record file asks it; none is
+    /// assumed (ADR 0034).
+    #[error(
+        "{path}: recording.analyzer_mode: no value: {question}? Choose one of {allowed} on the Setup page (step 2) or with analyte machines set --analyzer-mode <value>"
+    )]
+    MissingAnalyzerMode {
+        /// Site file.
+        path: String,
+        /// The model's question, in plain words.
+        question: String,
+        /// The values the model offers.
+        allowed: String,
+    },
+    /// A record-only site file names an analyzer mode the model does not offer.
+    #[error("{path}: recording.analyzer_mode: {value} is not one of the model's values: {allowed}")]
+    AnalyzerModeValue {
+        /// Site file.
+        path: String,
+        /// The refused value.
+        value: ChoiceName,
+        /// The values the model offers.
+        allowed: String,
     },
     /// A record-only site file leaves a question of its protocol's capture
     /// profile unanswered; no answer is assumed (ADR 0034).

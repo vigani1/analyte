@@ -168,7 +168,8 @@ pub(super) async fn session(
             match settings.link() {
                 RecordLink::Astm(link) => {
                     let session = driver::Session::new(machine, settings, store, conn, stop);
-                    let open = async { astm::recording::Host::open(owner, link) };
+                    let packed = settings.packed_records();
+                    let open = async { astm::recording::Host::open(owner, link, packed) };
                     Ok(driver::serve(open, session).await?)
                 }
                 RecordLink::Hl7(link) => {

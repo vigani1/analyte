@@ -201,6 +201,10 @@ pub struct Choice {
     /// Record only, VIDAS: the VIDAS PC acknowledgment: literal or alternate.
     #[arg(long, value_name = "MODE")]
     vidas_acknowledgment: Option<String>,
+    /// Record only, for a model that asks it (cobas e 411: elecsys or cobas):
+    /// the mode the analyzer's own settings show; `machines models` lists it.
+    #[arg(long, value_name = "VALUE")]
+    analyzer_mode: Option<String>,
 }
 
 /// Reads `--choice NAME=VALUE`; the model's own checks follow.
@@ -226,6 +230,7 @@ impl Choice {
                 poll_seconds: draft.poll_seconds.take(),
                 controls: draft.controls.take(),
                 acknowledgment: draft.acknowledgment.take(),
+                analyzer_mode: draft.analyzer_mode.take(),
                 ..Draft::default()
             };
             draft = if serial {
@@ -273,6 +278,7 @@ impl Choice {
         draft.poll_seconds = self.poll_seconds.or(draft.poll_seconds);
         draft.controls = self.reports_carry_controls.or(draft.controls);
         draft.acknowledgment = self.vidas_acknowledgment.or(draft.acknowledgment);
+        draft.analyzer_mode = self.analyzer_mode.or(draft.analyzer_mode);
         draft
     }
 }
@@ -360,6 +366,15 @@ fn models(seams: &Seams) -> Result<Outcome, Failure> {
                         .unwrap_or_default()
                 ))?;
             }
+        }
+        if let Shipped::Blocked { record: Some(path) } = &definition.state
+            && let Some(mode) = plan::recording::analyzer_mode(path)
+        {
+            say(&format!(
+                "  --record-only --analyzer-mode <{}>: {}",
+                mode.allowed().replace(", ", "|"),
+                mode.label.as_str()
+            ))?;
         }
     }
     Ok(Outcome::Done)
@@ -801,6 +816,7 @@ fn saved(setup: &Setup, id: &str) -> Result<Draft, SetupError> {
         poll_seconds: answer("poll_seconds"),
         controls: answer("controls"),
         acknowledgment: answer("acknowledgment"),
+        analyzer_mode: answer("analyzer_mode"),
         ..Draft::default()
     };
     let kind = installed.definition.as_deref().and_then(plan::kind_of);
@@ -1037,6 +1053,23 @@ fn ask_recording(definition: &Path, draft: &mut Draft, ask: Ask) -> Result<bool,
         }
         _ => {}
     }
+    if let Some(mode) = plan::recording::analyzer_mode(definition)
+        && empty(&draft.analyzer_mode)
+    {
+        asked = true;
+        let options: Vec<ask::Choice> = mode
+            .values
+            .iter()
+            .map(|value| ask::Choice {
+                value: value.value.as_str().into(),
+                label: value.label.as_str().into(),
+            })
+            .collect();
+        draft.analyzer_mode = ask.choose(
+            &format!("Step 2, Recording: {}?", mode.label.as_str()),
+            &options,
+        )?;
+    }
     Ok(asked)
 }
 
@@ -1064,6 +1097,7 @@ fn ask_connection(
         poll_seconds: draft.poll_seconds.take(),
         controls: draft.controls.take(),
         acknowledgment: draft.acknowledgment.take(),
+        analyzer_mode: draft.analyzer_mode.take(),
         baud: draft.baud.take(),
         data_bits: draft.data_bits.take(),
         parity: draft.parity.take(),

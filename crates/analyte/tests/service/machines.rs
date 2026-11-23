@@ -363,12 +363,41 @@ fn every_record_file_loads_as_a_recording() -> Result<(), Error> {
             let site = format!(
                 "retention = \"keep\"\nschema_version = 1\nendpoint = \"{endpoint}\"\n{serial}[recording]\n{answers}"
             );
-            let validated = analyte_config::recording::load(
-                (&path.display().to_string(), &text),
-                ("site.toml", &site),
-            )
-            .map_err(|error| format!("{}: {error}", path.display()))?;
-            assert!(validated.effective().records_only());
+            // A model that asks its analyzer mode loads with each value it
+            // offers; a departure applies only to the mode it names.
+            let modes = table
+                .get("analyzer_mode")
+                .and_then(|mode| mode.get("values"))
+                .and_then(toml::Value::as_array)
+                .map(|values| {
+                    values
+                        .iter()
+                        .filter_map(|value| value.get("value")?.as_str())
+                        .map(|value| Some(value.to_owned()))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_else(|| vec![None]);
+            for mode in modes {
+                let chosen = mode
+                    .as_ref()
+                    .map(|mode| format!("analyzer_mode = \"{mode}\"\n"))
+                    .unwrap_or_default();
+                let validated = analyte_config::recording::load(
+                    (&path.display().to_string(), &text),
+                    ("site.toml", &format!("{site}{chosen}")),
+                )
+                .map_err(|error| format!("{}: {error}", path.display()))?;
+                let effective = validated.effective();
+                assert!(effective.records_only());
+                for departure in &effective.machine().deviations {
+                    assert_eq!(
+                        Some(departure.declaration().scope.mode.as_str()),
+                        mode.as_deref(),
+                        "{}",
+                        path.display()
+                    );
+                }
+            }
         }
     }
     assert!(found >= 6, "the six first-lab models record: found {found}");

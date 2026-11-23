@@ -464,8 +464,11 @@ visit ends with real recordings to write each definition from.
    analyzer's LIS/host settings screen. No lab app is asked. The VIDAS asks
    whether the VIDAS PC uses Literal or Alternate acknowledgment; the
    Autolyser asks how many seconds between asks for the next report and
-   whether its reports carry controls. Nothing is guessed: every answer comes
-   from the analyzer's own screen.
+   whether its reports carry controls. The cobas e 411 asks its **protocol
+   type** (Elecsys or cobas) from its Host Communication settings: in the
+   cobas type it may put several records in one frame, so only then does
+   Analyte accept such a frame. Nothing is guessed: every answer comes from
+   the analyzer's own screen.
 3. Run the connection test, save and restart the engine.
 
 From the command line, the same with `--record-only`:
@@ -473,7 +476,8 @@ From the command line, the same with `--record-only`:
 ```powershell
 analyte --actor it-alex machines add cobas-1
 analyte --actor it-alex machines set cobas-1 `
-    --model roche/cobas-e411 --record-only --usb-serial A10K3XYZ --flow-control none
+    --model roche/cobas-e411 --record-only --usb-serial A10K3XYZ --flow-control none `
+    --analyzer-mode cobas
 analyte --actor it-alex machines set autolyser-1 `
     --model dialab/autolyser --record-only --serial-port COM4 `
     --baud 9600 --data-bits 8 --parity none --stop-bits 1 --flow-control none `
@@ -493,7 +497,7 @@ How each protocol behaves while recording:
 
 | Protocol | Answers | Queries |
 | --- | --- | --- |
-| ASTM (cobas e 411, Biolyte 2000) | ACK to ENQ and to each frame with a good checksum (LIS01-A2); NAK to a bad frame, which is still kept | A query gets the standard's "error in last request" (code Q), never "no information" |
+| ASTM (cobas e 411, Biolyte 2000) | ACK to ENQ and to each frame with a good checksum (LIS01-A2); NAK to a bad frame, which is still kept. One record per frame, except a cobas e 411 in its cobas protocol type, whose manual allows several (ADR 0015); a bad checksum is still refused there | A query gets the standard's "error in last request" (code Q), never "no information" |
 | HL7 (iFlash 1200, Swelab Lumi) | AA to a result message (ORU, OUL): it is safely kept | Any other message, a query above all, gets AE (application error), never an empty answer |
 | VIDAS Literal | The packet acknowledgment, at the point the lab chose | VIDAS has no host query; nothing is downloaded |
 | Autolyser | Asks only for the next report (R) at the chosen interval; never the archive (A) or the last report again (L) | A response that is incomplete or not in the expected layout stops the asking; an operator checks the analyzer before it resumes |

@@ -1557,3 +1557,58 @@ async fn record_only_is_set_and_left_through_the_save_step() -> Result<(), Error
     );
     Ok(())
 }
+
+// ADR 0034 with ADR 0015; cobas e 411 HIM v2.3 Host communication setting
+// (p. 7) and section 5 (p. 14): `machines set --analyzer-mode` writes the
+// protocol type the shipped record file asks, so packing follows the lab's
+// answer, and a value the model does not offer changes nothing.
+#[tokio::test(flavor = "multi_thread")]
+async fn record_only_takes_the_cobas_protocol_type_from_the_command_line() -> Result<(), Error> {
+    let install = install()?;
+    let blocked = install.root.join("machines/roche/cobas-e411");
+    std::fs::write(
+        blocked.join(analyte_config::RECORD_FILE),
+        include_str!("../../../../../../machines/roche/cobas-e411/record.toml"),
+    )?;
+    assert_eq!(install.machines(&["add", "cobas-1"]).await?, Outcome::Done);
+    let packed = |install: &Install| -> Result<(bool, Option<String>), Error> {
+        let site: toml::Table =
+            std::fs::read_to_string(install.root.join("cobas-1.site.toml"))?.parse()?;
+        let program = Program::load(&install.config)?;
+        let machine = program.machines().first().ok_or("machine")?;
+        let analyte_config::Stack::Record(stack) = machine.snapshot().effective().stack() else {
+            return Err("record-only stack".into());
+        };
+        let chosen = site
+            .get("recording")
+            .and_then(|recording| recording.get("analyzer_mode"))
+            .and_then(toml::Value::as_str)
+            .map(str::to_owned);
+        Ok((stack.packed_records(), chosen))
+    };
+    let record = [
+        "set",
+        "cobas-1",
+        "--model",
+        "roche/cobas-e411",
+        "--record-only",
+        "--usb-serial",
+        "A10K3XYZ",
+        "--flow-control",
+        "none",
+        "--analyzer-mode",
+        "cobas",
+    ];
+    assert_eq!(install.machines(&record).await?, Outcome::Done);
+    assert_eq!(packed(&install)?, (true, Some("cobas".to_owned())));
+    let elecsys = ["set", "cobas-1", "--analyzer-mode", "elecsys"];
+    assert_eq!(install.machines(&elecsys).await?, Outcome::Done);
+    assert_eq!(packed(&install)?, (false, Some("elecsys".to_owned())));
+    let before = install.settings()?;
+    let unoffered = install
+        .machines(&["set", "cobas-1", "--analyzer-mode", "hitachi"])
+        .await;
+    assert!(unoffered.is_err(), "{unoffered:?}");
+    assert_eq!(install.settings()?, before);
+    Ok(())
+}

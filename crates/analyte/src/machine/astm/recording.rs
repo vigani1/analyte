@@ -6,6 +6,11 @@
 //! and a transfer holding a query (a Q record) is answered with the standard's
 //! own "error in last request for information" termination (LIS02-A2 12.3,
 //! code Q), never with "no information" (rule 9). Nothing else is ever sent.
+//!
+//! Frames carry one record each (LIS01-A2 6.3.1.1), unless the model declares
+//! packed records for the analyzer mode the lab chose (ADR 0015): then a frame
+//! whose checksum, number and length pass may hold several. Outbound replies
+//! stay one record per frame either way.
 use super::Error;
 use crate::machine::driver::{Flow, HostInput, Protocol, Session};
 use crate::machine::receive::custody::{self, WriteDeadline, ms};
@@ -27,7 +32,7 @@ pub(in crate::machine) struct Host {
 }
 
 /// The LIS01-A2 dialog settings of the capture profile; Analyte is the computer.
-fn config(link: &AstmCapture, commit: Duration) -> Result<Config, Error> {
+fn config(link: &AstmCapture, packed: bool, commit: Duration) -> Result<Config, Error> {
     let timers = Timers {
         establish: ms(link.establish_ms()),
         contention: ms(link.contention_ms()),
@@ -43,15 +48,21 @@ fn config(link: &AstmCapture, commit: Duration) -> Result<Config, Error> {
         link.message_bytes(),
         link.frames(),
         Interrupt::Honor,
-    )?)
+    )?
+    .with_record_boundaries(if packed {
+        analyte_framing::astm::RecordBoundaries::Packed
+    } else {
+        analyte_framing::astm::RecordBoundaries::Separate
+    }))
 }
 
 impl Host {
     pub(in crate::machine) fn open(
         machine: &crate::installation::config::Machine,
         link: &AstmCapture,
+        packed: bool,
     ) -> Result<Self, Error> {
-        let config = config(link, custody::budget(machine))?;
+        let config = config(link, packed, custody::budget(machine))?;
         let admission = link
             .frame_limit()
             .checked_add(machine.snapshot.canonical().len())

@@ -17,7 +17,11 @@
   page, `machines list` and `doctor` say "Recording only — nothing is sent to
   a lab app" with the counts since start. The six first-lab models gained a
   `record.toml`. Recorded messages are never delivered later and
-  reprocessing refuses them.
+  reprocessing refuses them. The cobas e 411 asks its protocol type (Elecsys
+  or cobas; Setup step 2 or `--analyzer-mode`): in the cobas type a frame
+  holding several records is acknowledged under the ADR 0015 departure its
+  `record.toml` declares, instead of being refused every time; a bad
+  checksum is still refused.
 - `analyte captures list` and `analyte captures export` list and copy the
   recorded conversations, audited first, with a reminder that they contain
   patient data and must be de-identified before sharing.

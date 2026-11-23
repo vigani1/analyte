@@ -487,6 +487,16 @@ own link rules, each with its source section. The machine tests load every
 `record.toml` through the real loader; a folder never holds both it and
 `machine.toml`.
 
+If the analyzer's own screen offers a mode that changes how it frames records
+and its manual says one mode packs several ASTM records in one frame, the file
+may ask that mode and declare the packing departure for that mode only (ADR
+0034 decision 10). [The cobas e 411's](../../machines/roche/cobas-e411/record.toml)
+is the example: `[analyzer_mode]` with a label and its values (no
+suggestion), then one `astm_packed_records_in_frame` entry in `deviations`
+with the full [ADR 0015 scope and evidence](#declare-departures-do-not-program-around-them),
+the scope's `model` being the folder key and its `mode` one of the values. No
+other departure can be declared here; the lab answers the mode in Setup.
+
 Then, from the visit's recordings:
 
 1. Export each capture with `analyte captures export` to a protected folder.

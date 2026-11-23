@@ -138,6 +138,17 @@ pub(super) mod recording {
         table.get("protocol")?.as_str().map(str::to_owned)
     }
 
+    /// The analyzer mode the model file asks (its `[analyzer_mode]`); none
+    /// when it asks none or cannot be read (the loader then says why).
+    pub(in crate::admin::setup) fn analyzer_mode(
+        definition: &std::path::Path,
+    ) -> Option<analyte_config::AnalyzerMode> {
+        let text = crate::installation::config::read(definition).ok()?;
+        analyte_config::recording::analyzer_mode(&definition.display().to_string(), &text)
+            .ok()
+            .flatten()
+    }
+
     /// The `[recording]` answers in the draft for this model's protocol.
     fn field(value: &Option<String>) -> Option<&str> {
         value.as_deref().map(str::trim).filter(|v| !v.is_empty())
@@ -181,6 +192,19 @@ pub(super) mod recording {
                     .transpose()?;
             }
             _ => {}
+        }
+        // Asked only when the model asks it; the loader checks the value is
+        // one it offers.
+        if analyzer_mode(definition).is_some() {
+            settings.analyzer_mode = field(&draft.analyzer_mode)
+                .map(|value| {
+                    analyte_config::ChoiceName::new(value).map_err(|_| {
+                        SetupError::RecordingAnswer(
+                            "choose the analyzer mode from the values the model offers",
+                        )
+                    })
+                })
+                .transpose()?;
         }
         Ok(settings)
     }

@@ -89,7 +89,34 @@ identity mapping, or a lab app.
    overwrites. Both say the files contain patient data and must be
    de-identified before sharing (docs/develop/adding-a-machine.md). Analyte
    claims no automatic de-identification.
-10. **Leaving record only.** Saving the machine normally (Setup, or `machines
+10. **A model's framing mode and its one departure.** A profile follows its
+    standard strictly; an ASTM frame holds one record (LIS01-A2 3.3.2,
+    6.3.1.1). Some analyzers offer a mode on their own screen that packs
+    several records in one frame: the cobas e 411's cobas protocol type does,
+    its Elecsys type does not (Host Interface Manual v2.2 B section 2 and D
+    section 1; v2.3 pp. 7 and 14). Answering every such frame with NAK would
+    keep the analyzer retrying and raising communication alarms, and turn
+    the visit into failed sessions. So a `record.toml` may ask that mode
+    (`[analyzer_mode]`, its values, no suggestion) and may declare the
+    existing ADR 0015 departure `astm_packed_records_in_frame`, with the full
+    ADR 0015 scope and evidence, for one of those values. The lab answers
+    `recording.analyzer_mode` in the site file (Setup step 2, or `machines set
+    --analyzer-mode`); a missing or unoffered answer is refused by name, and
+    an answer to a model that asks none too. Only the answered mode's
+    departure applies; the snapshot holds it, so the digest names it.
+    Loading narrows ADR 0015 for record only: no other variant (every other
+    link rule is the shipped profile's), the scope's model is the file's own
+    folder key (`vendor/model`, ADR 0033), its mode one the file offers,
+    analyzer uploads of ASTM results, documented level only, and the manual
+    must state packing (`packed_records`), with explicit coverage when the
+    firmware is `unknown`. The frame's checksum, number and length are still
+    checked: a bad one is NAKed and kept. Like a normal connection with the
+    departure, the dialog applies packing to every inbound frame of that
+    connection, a packed query included, and its own replies stay one record
+    per frame. The shared ASTM profile, and every model that declares
+    nothing, stay strict. A ready `machine.toml` records with its protocol
+    and link only, so its departures do not carry into record only.
+11. **Leaving record only.** Saving the machine normally (Setup, or `machines
     set --connect-normally --lab-app ...`) needs a ready definition and a lab
     app, and removes `[recording]`. Recorded messages are never delivered
     afterwards; they stay as evidence, and their captures become the
@@ -117,3 +144,6 @@ identity mapping, or a lab app.
   it through the real loader, and a folder never holds both `record.toml` and
   `machine.toml`.
 - A new protocol needs its own capture profile before it can record.
+- A model whose analyzer frames differently by mode asks that mode in its
+  `record.toml`; the lab's answer, not a shared default, decides whether a
+  packed frame is accepted.

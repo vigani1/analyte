@@ -77,6 +77,8 @@ pub(super) struct ConnectionStep {
     pub(super) lab_apps: Picker,
     /// Record only (ADR 0034): the capture profile's questions, and no lab app.
     pub(super) recording: Option<Recording>,
+    /// Record only: the analyzer mode the model's record file asks, if any.
+    pub(super) analyzer_mode: Option<Setting>,
 }
 
 /// Record only, step 2: what the protocol's capture profile asks the lab.
