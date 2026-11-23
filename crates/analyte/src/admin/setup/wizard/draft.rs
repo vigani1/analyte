@@ -51,9 +51,54 @@ pub(in crate::admin) struct Draft {
     pub(in crate::admin::setup) analyzer_mode: Option<String>,
 }
 
-/// Most fields a step's form carries: the fixed ones, the CSRF value and one
-/// per choice a model may declare.
-const MOST_FIELDS: usize = 20 + analyte_config::MAX_CHOICES;
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Page {
+    Machine,
+    Connection,
+}
+
+/// Declares each fixed field once, in the order used for hidden fields.
+macro_rules! fields {
+    ($($field:ident: $page:ident),+ $(,)?) => {
+        // One slot for CSRF, and one per choice a model may declare.
+        const MOST_FIELDS: usize = [$(stringify!($field)),+].len() + 1 + analyte_config::MAX_CHOICES;
+
+        impl Draft {
+            fn slot(&mut self, name: &str) -> Option<&mut Option<String>> {
+                match name {
+                    $(stringify!($field) => Some(&mut self.$field),)+
+                    _ => None,
+                }
+            }
+
+            fn fields(&self) -> impl Iterator<Item = (&'static str, Option<&str>, Page)> {
+                [$((stringify!($field), self.$field.as_deref(), Page::$page)),+].into_iter()
+            }
+        }
+    };
+}
+
+fields! {
+    definition: Machine,
+    port: Connection,
+    port_name: Connection,
+    host: Connection,
+    tcp_port: Connection,
+    folder: Connection,
+    lab_app: Connection,
+    allowed_peers: Connection,
+    baud: Connection,
+    data_bits: Connection,
+    parity: Connection,
+    stop_bits: Connection,
+    flow_control: Connection,
+    mode: Machine,
+    poll_seconds: Connection,
+    vidas_patient_namespace: Connection,
+    controls: Connection,
+    acknowledgment: Connection,
+    analyzer_mode: Connection,
+}
 
 impl TryFrom<Vec<(String, String)>> for Draft {
     type Error = String;
@@ -79,102 +124,31 @@ impl TryFrom<Vec<(String, String)>> for Draft {
     }
 }
 
-/// The fields step 2 shows itself, besides the model's choices; every other
-/// step carries them hidden.
-pub(super) const CONNECTION_FIELDS: [&str; 17] = [
-    "port",
-    "port_name",
-    "host",
-    "tcp_port",
-    "folder",
-    "lab_app",
-    PEERS,
-    "baud",
-    "data_bits",
-    "parity",
-    "stop_bits",
-    "flow_control",
-    "poll_seconds",
-    "vidas_patient_namespace",
-    "controls",
-    "acknowledgment",
-    "analyzer_mode",
-];
-
 /// The field naming the devices a listening machine accepts (ADR 0026).
-pub(super) const PEERS: &str = "allowed_peers";
-
-/// Stands for every `choice.<name>` field among the fields a step shows.
-pub(super) const CHOICES: &str = "choice.*";
+pub(super) const PEERS: &str = stringify!(allowed_peers);
 
 impl Draft {
-    /// The field `name` of the form, by the names [`Draft::fields`] writes.
-    fn slot(&mut self, name: &str) -> Option<&mut Option<String>> {
-        Some(match name {
-            "definition" => &mut self.definition,
-            "port" => &mut self.port,
-            "port_name" => &mut self.port_name,
-            "host" => &mut self.host,
-            "tcp_port" => &mut self.tcp_port,
-            "folder" => &mut self.folder,
-            "lab_app" => &mut self.lab_app,
-            PEERS => &mut self.allowed_peers,
-            "baud" => &mut self.baud,
-            "data_bits" => &mut self.data_bits,
-            "parity" => &mut self.parity,
-            "stop_bits" => &mut self.stop_bits,
-            "flow_control" => &mut self.flow_control,
-            "mode" => &mut self.mode,
-            "vidas_patient_namespace" => &mut self.vidas_patient_namespace,
-            "poll_seconds" => &mut self.poll_seconds,
-            "controls" => &mut self.controls,
-            "acknowledgment" => &mut self.acknowledgment,
-            "analyzer_mode" => &mut self.analyzer_mode,
-            _ => return None,
-        })
+    fn hidden_fixed(&self, shown: impl Fn(&str, Page) -> bool) -> Hidden {
+        self.fields()
+            .filter(|(name, _, page)| !shown(name, *page))
+            .filter_map(|(name, value, _)| value.map(|value| (name.to_owned(), value.to_owned())))
+            .collect()
     }
 
-    fn fields(&self) -> [(&'static str, Option<&str>); 19] {
-        [
-            ("definition", self.definition.as_deref()),
-            ("port", self.port.as_deref()),
-            ("port_name", self.port_name.as_deref()),
-            ("host", self.host.as_deref()),
-            ("tcp_port", self.tcp_port.as_deref()),
-            ("folder", self.folder.as_deref()),
-            ("lab_app", self.lab_app.as_deref()),
-            (PEERS, self.allowed_peers.as_deref()),
-            ("baud", self.baud.as_deref()),
-            ("data_bits", self.data_bits.as_deref()),
-            ("parity", self.parity.as_deref()),
-            ("stop_bits", self.stop_bits.as_deref()),
-            ("flow_control", self.flow_control.as_deref()),
-            ("mode", self.mode.as_deref()),
-            ("poll_seconds", self.poll_seconds.as_deref()),
-            (
-                "vidas_patient_namespace",
-                self.vidas_patient_namespace.as_deref(),
-            ),
-            ("controls", self.controls.as_deref()),
-            ("acknowledgment", self.acknowledgment.as_deref()),
-            ("analyzer_mode", self.analyzer_mode.as_deref()),
-        ]
-    }
-
-    /// Every choice made, except the ones the step shows, as hidden fields;
-    /// [`CHOICES`] among `shown` leaves out the model's own choices.
+    /// Every chosen field that the step does not show.
     pub(super) fn hidden(&self, shown: &[&str]) -> Hidden {
-        let fixed = self
-            .fields()
-            .into_iter()
-            .filter(|(name, _)| !shown.contains(name))
-            .filter_map(|(name, value)| value.map(|value| (name.to_owned(), value.to_owned())));
-        let own = self
-            .choices
-            .iter()
-            .filter(|_| !shown.contains(&CHOICES))
-            .map(|(name, value)| (format!("{}{name}", choices::FIELD), value.clone()));
-        fixed.chain(own).collect()
+        let mut fixed = self.hidden_fixed(|name, _| shown.contains(&name));
+        fixed.extend(
+            self.choices
+                .iter()
+                .map(|(name, value)| (format!("{}{name}", choices::FIELD), value.clone())),
+        );
+        fixed
+    }
+
+    /// Step 2 renders the connection fields and model choices itself.
+    pub(super) fn hidden_for_connection(&self) -> Hidden {
+        self.hidden_fixed(|_, page| page == Page::Connection)
     }
 
     /// Whether `other` holds the same choices for the connection test; an

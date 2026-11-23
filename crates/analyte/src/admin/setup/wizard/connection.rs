@@ -7,7 +7,7 @@ use super::{
         running, serial, site,
     },
     Draft, Rendered, Step,
-    draft::{CHOICES, CONNECTION_FIELDS, PEERS},
+    draft::PEERS,
     frame,
     page::{self, Cable, CableOption, ConnectionStep, LabApp, Picker, Port, Setting},
     wizard,
@@ -48,7 +48,7 @@ pub(super) fn render_connection(
         wizard: wizard(id, Some(model.name), Some(Step::Connection)),
         action: Step::Test.path(id),
         back: Step::Machine.path(id),
-        hidden: draft.hidden(&[CONNECTION_FIELDS.as_slice(), &[CHOICES]].concat()),
+        hidden: draft.hidden_for_connection(),
         how,
         inputs,
         // Record only asks its own questions and sends to no lab app (ADR 0034).
