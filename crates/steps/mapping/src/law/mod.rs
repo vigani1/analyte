@@ -37,6 +37,7 @@ pub fn map(
         },
         input,
         Some(results),
+        false,
     )?;
     status::map(results, &source, &mut output)?;
     Ok(output)

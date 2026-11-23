@@ -113,7 +113,7 @@ fn comparator(value: &str) -> Option<Comparator> {
     }
 }
 
-fn decimal(raw: &str, allow_comparator: bool) -> ValueInterpretation {
+pub(crate) fn decimal(raw: &str, allow_comparator: bool) -> ValueInterpretation {
     let mut number = raw;
     let mut bound = None;
     if allow_comparator {

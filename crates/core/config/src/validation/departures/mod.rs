@@ -184,6 +184,7 @@ fn validate_scope(m: &ParsedMachine<'_>, departure: &MachineDeparture) -> Result
     let hl7 = match departure {
         MachineDeparture::Hl7AbsentObr25MeansFinal(_)
         | MachineDeparture::Hl7AbsentObx11MeansFinal(_)
+        | MachineDeparture::Hl7CategorizedOruResults(_)
         | MachineDeparture::Hl7Msh16MessageCategory(_)
         | MachineDeparture::Hl7Utf8InV231(_)
         | MachineDeparture::Hl7CrLfTerminators(_)
@@ -211,7 +212,11 @@ fn validate_scope(m: &ParsedMachine<'_>, departure: &MachineDeparture) -> Result
     if hl7 && scope.direction != DepartureDirection::MachineToHost {
         return Err(Refusal::DirectionMismatch);
     }
-    let category = matches!(departure, MachineDeparture::Hl7Msh16MessageCategory(_));
+    let category = matches!(
+        departure,
+        MachineDeparture::Hl7Msh16MessageCategory(_)
+            | MachineDeparture::Hl7CategorizedOruResults(_)
+    );
     if hl7
         && scope.message
             != if category {
@@ -230,10 +235,28 @@ fn validate_scope(m: &ParsedMachine<'_>, departure: &MachineDeparture) -> Result
     {
         return Err(Refusal::MessageMismatch);
     }
+    validate_rule(m, departure, scope)
+}
+
+fn validate_rule(
+    m: &ParsedMachine<'_>,
+    departure: &MachineDeparture,
+    scope: &DepartureScope,
+) -> Result<(), Refusal> {
     match departure {
         MachineDeparture::Hl7AbsentObr25MeansFinal(_)
         | MachineDeparture::Hl7AbsentObx11MeansFinal(_) => {}
         MachineDeparture::Hl7Msh16MessageCategory(_) => validate_category_edition(scope.edition)?,
+        MachineDeparture::Hl7CategorizedOruResults(_) => {
+            validate_category_edition(scope.edition)?;
+            if !m
+                .deviations
+                .iter()
+                .any(|rule| matches!(rule, MachineDeparture::Hl7Msh16MessageCategory(_)))
+            {
+                return Err(Refusal::InactiveSetting);
+            }
+        }
         MachineDeparture::AstmPackedRecordsInFrame(_)
         | MachineDeparture::AstmAbsentH12MeansProduction(_)
         | MachineDeparture::AstmRepeatEnqAfterLostAck(_) => {

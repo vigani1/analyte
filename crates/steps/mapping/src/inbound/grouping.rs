@@ -11,7 +11,7 @@ use analyte_model::{
     ResultIdentity, ResultPart, ResultStatus, ResultValue, SampleIdentity,
 };
 
-fn processing(
+pub(crate) fn processing(
     source: &Source<'_>,
     output: &mut Output,
     absent_astm_processing: bool,
@@ -64,6 +64,7 @@ pub(crate) fn message(
     config: &RecordSettings<'_>,
     input: Input<'_>,
     law: Option<&analyte_hl7::law::Results<'_>>,
+    categorized_patient: bool,
 ) -> Result<Output, Error> {
     if source.nodes.len() > config.limits.records() {
         return Err(Error::Limit {
@@ -88,89 +89,143 @@ pub(crate) fn message(
         if node.name != "R" && node.name != "OBX" {
             continue;
         }
-        crate::reserve_evidence(&mut output, source, index)?;
-        let position = source.position(index, 0);
-        let finding_start = output.findings.len();
-        let astm = source.syntax == FieldSyntax::AstmLis02;
-        let value_field = if astm { 4 } else { 5 };
-        let values = value::values(source, index, value_field, &mut output)?;
-        let sample = identity::sample(source, index, config, &mut output)?;
-        let Some(codes) = map_codes(source, index, config, &mut output)? else {
-            // The component_parts finding already names the cause.
-            output.uncoded.push(crate::UncodedObservation {
-                position: source.position(index, 3),
-                values,
-            });
-            continue;
-        };
-        let Some(test) = map_test(source, index, config, &codes, &values, &mut output)? else {
-            output.missing_test(source.position(index, 3), values)?;
-            continue;
-        };
-        let observation = identity::observation(
+        if let Some(mapped) = observation_part(
             source,
             index,
             config,
-            test.clone(),
-            sample.as_ref(),
-            &mut output,
-            law.as_ref(),
-        )?;
-        let mut part = result::part(source, index, config, input, test, values, &mut output)?;
-        let policy = &config.mappings.identity;
-        let status_text = part.source_status.as_str();
-        let correction = policy
-            .correction_status_codes
-            .iter()
-            .any(|code| code.as_str() == status_text);
-        if policy
-            .rerun_status_codes
-            .iter()
-            .any(|code| code.as_str() == status_text)
-        {
-            // A rerun describes how the measurement was produced, with no release claim.
-            part.status = ResultStatus::Unknown;
-        } else if correction && policy.evidence.is_some() {
-            part.status = ResultStatus::Corrected;
-        }
-        part.dilution = codes.dilution;
-        let order = source
-            .ancestors(index)?
-            .into_iter()
-            .rfind(|i| {
-                source
-                    .nodes
-                    .get(*i)
-                    .is_some_and(|n| n.name == "O" || n.name == "OBR" || n.name == "SPM")
-            })
-            .unwrap_or(index);
-        // A documented recipe describes one measurement per observation record.
-        // Compare two claims to the same key in the store, including in one upload.
-        let order = if policy.evidence.is_some() {
-            index
-        } else {
-            order
-        };
-        append_result(
-            &mut output,
-            &mut groups,
             input,
-            mode,
-            MappedPart {
-                order,
-                observation,
-                sample,
-                part,
-                correction,
-                position,
-                finding_start,
-            },
-        )?;
+            law.as_ref(),
+            categorized_patient,
+            &mut output,
+        )? {
+            append_result(&mut output, &mut groups, input, mode, mapped)?;
+        }
     }
     if output.results.is_empty() && output.uncoded.is_empty() && law.is_none() {
         finding(&mut output, source.position(0, 0), Problem::NoObservations)?;
     }
     Ok(output)
+}
+
+fn observation_part(
+    source: &Source<'_>,
+    index: usize,
+    config: &RecordSettings<'_>,
+    input: Input<'_>,
+    law: Option<&std::collections::BTreeMap<usize, &analyte_hl7::law::Observation<'_>>>,
+    categorized_patient: bool,
+    output: &mut Output,
+) -> Result<Option<MappedPart>, Error> {
+    crate::reserve_evidence(output, source, index)?;
+    let position = source.position(index, 0);
+    let finding_start = output.findings.len();
+    let astm = source.syntax == FieldSyntax::AstmLis02;
+    let value_field = if astm { 4 } else { 5 };
+    let readings = if categorized_patient {
+        crate::hl7::categorized::patient_values(source, index, output)?
+    } else {
+        None
+    };
+    let values = if let Some(readings) = &readings {
+        readings.values(source.position(index, value_field))?
+    } else {
+        value::values(source, index, value_field, output)?
+    };
+    let mut sample = identity::sample(source, index, config, output)?;
+    let Some(codes) = map_codes(source, index, config, output)? else {
+        // The component_parts finding already names the cause.
+        output.uncoded.push(crate::UncodedObservation {
+            position: source.position(index, 3),
+            values,
+        });
+        return Ok(None);
+    };
+    let Some(test) = map_test(source, index, config, &codes, &values, output)? else {
+        output.missing_test(source.position(index, 3), values)?;
+        return Ok(None);
+    };
+    let observation = if categorized_patient && config.mappings.identity.evidence.is_none() {
+        finding(
+            output,
+            position,
+            Problem::MissingIdentity {
+                setting: crate::IdentitySetting::Run,
+            },
+        )?;
+        None
+    } else {
+        identity::observation(
+            source,
+            index,
+            config,
+            test.clone(),
+            sample.as_ref(),
+            output,
+            law,
+        )?
+    };
+    let mut part = result::part(source, index, config, input, test, values, output)?;
+    let policy = &config.mappings.identity;
+    let correction = !categorized_patient && apply_status_policy(&mut part, policy);
+    part.dilution = codes.dilution;
+    let order = source
+        .ancestors(index)?
+        .into_iter()
+        .rfind(|i| {
+            source
+                .nodes
+                .get(*i)
+                .is_some_and(|n| n.name == "O" || n.name == "OBR" || n.name == "SPM")
+        })
+        .unwrap_or(index);
+    // A documented recipe describes one measurement per observation record.
+    // Compare two claims to the same key in the store, including in one upload.
+    let order = if policy.evidence.is_some() {
+        index
+    } else {
+        order
+    };
+    let panel = if categorized_patient {
+        crate::hl7::categorized::patient_part(
+            source,
+            index,
+            &mut part,
+            sample.as_mut(),
+            readings,
+            output,
+        )?
+    } else {
+        None
+    };
+    Ok(Some(MappedPart {
+        order,
+        observation,
+        sample,
+        part,
+        panel,
+        correction,
+        position,
+        finding_start,
+    }))
+}
+
+fn apply_status_policy(part: &mut ResultPart, policy: &analyte_config::IdentityEvidence) -> bool {
+    let status_text = part.source_status.as_str();
+    let correction = policy
+        .correction_status_codes
+        .iter()
+        .any(|code| code.as_str() == status_text);
+    if policy
+        .rerun_status_codes
+        .iter()
+        .any(|code| code.as_str() == status_text)
+    {
+        // A rerun describes how the measurement was produced, with no release claim.
+        part.status = ResultStatus::Unknown;
+    } else if correction && policy.evidence.is_some() {
+        part.status = ResultStatus::Corrected;
+    }
+    correction
 }
 
 fn nonempty(
@@ -297,6 +352,7 @@ struct MappedPart {
     observation: Option<ObservationIdentity>,
     sample: Option<SampleIdentity>,
     part: ResultPart,
+    panel: Option<[ResultPart; 2]>,
     correction: bool,
     position: Position,
     finding_start: usize,
@@ -314,10 +370,12 @@ fn append_result(
         observation,
         sample,
         part,
+        panel,
         correction,
         position,
         finding_start,
     } = mapped;
+    let incoming = std::iter::once(part).chain(panel.into_iter().flatten());
     let existing = observation.as_ref().and_then(|key| {
         groups
             .iter()
@@ -338,16 +396,16 @@ fn append_result(
             });
         }
         let mut parts = result.content.parts.as_slice().to_vec();
-        if parts.len() == 256 {
+        parts.extend(incoming);
+        if parts.len() > 256 {
             return Err(Error::Limit {
                 position,
                 resource: "replacement parts",
             });
         }
-        parts.push(part);
-        result.content.parts = nonempty(parts, position)?;
         let mut corrections = result.corrections.as_slice().to_vec();
-        corrections.push(correction);
+        corrections.resize(parts.len(), correction);
+        result.content.parts = nonempty(parts, position)?;
         result.corrections = list(corrections, position)?;
     } else {
         let identity = match observation.clone() {
@@ -355,60 +413,65 @@ fn append_result(
                 observation,
                 revision: input.revision,
             }),
-            None => {
-                // Identity mapping returns nothing only after a MissingIdentity finding.
-                let reason = output
-                    .findings
-                    .iter()
-                    .skip(finding_start)
-                    .rev()
-                    .find_map(|f| match f.problem {
-                        Problem::MissingIdentity { setting } => {
-                            Some(crate::Unidentified::Missing {
-                                setting,
-                                position: f.position,
-                            })
-                        }
-                        Problem::ValueKindMismatch { .. }
-                        | Problem::ComponentParts
-                        | Problem::MissingSample
-                        | Problem::MissingTest
-                        | Problem::UnsupportedValue
-                        | Problem::UnsupportedFormatting
-                        | Problem::UnsupportedEscape
-                        | Problem::UnknownProcessing
-                        | Problem::ConflictingClassification
-                        | Problem::InvalidTime
-                        | Problem::NoObservations
-                        | Problem::UnsupportedLawStatusOnly
-                        | Problem::UnqualifiedHl7Report
-                        | Problem::DepartureConflict
-                        | Problem::DerivedStatusContract => None,
-                    })
-                    .ok_or(Error::Structure {
-                        position,
-                        reason: "unresolved identity has no missing-identity finding",
-                    })?;
-                IdentityStatus::Unresolved(
-                    Reason::new(&reason.to_string())
-                        .map_err(|source| Error::Text { position, source })?,
-                )
-            }
+            None => unresolved_identity(output, finding_start, position)?,
         };
         // Keep group slots aligned with result slots, including unresolved units.
         groups.push((order, observation));
+        let parts: Vec<_> = incoming.collect();
+        let corrections = list(vec![correction; parts.len()], position)?;
         output.results.push(MappedResult {
             content: ResultContent {
                 receipt: input.receipt,
                 sample,
                 processing: mode,
                 identity,
-                parts: nonempty(vec![part], position)?,
+                parts: nonempty(parts, position)?,
             },
-            corrections: list(vec![correction], position)?,
+            corrections,
         });
     }
     Ok(())
+}
+
+fn unresolved_identity(
+    output: &Output,
+    finding_start: usize,
+    position: Position,
+) -> Result<IdentityStatus, Error> {
+    // Identity mapping returns nothing only after a MissingIdentity finding.
+    let reason = output
+        .findings
+        .iter()
+        .skip(finding_start)
+        .rev()
+        .find_map(|f| match f.problem {
+            Problem::MissingIdentity { setting } => Some(crate::Unidentified::Missing {
+                setting,
+                position: f.position,
+            }),
+            Problem::ValueKindMismatch { .. }
+            | Problem::ComponentParts
+            | Problem::MissingSample
+            | Problem::MissingTest
+            | Problem::UnsupportedValue
+            | Problem::UnsupportedFormatting
+            | Problem::UnsupportedEscape
+            | Problem::UnknownProcessing
+            | Problem::ConflictingClassification
+            | Problem::InvalidTime
+            | Problem::NoObservations
+            | Problem::UnsupportedLawStatusOnly
+            | Problem::UnqualifiedHl7Report
+            | Problem::DepartureConflict
+            | Problem::DerivedStatusContract => None,
+        })
+        .ok_or(Error::Structure {
+            position,
+            reason: "unresolved identity has no missing-identity finding",
+        })?;
+    Ok(IdentityStatus::Unresolved(
+        Reason::new(&reason.to_string()).map_err(|source| Error::Text { position, source })?,
+    ))
 }
 
 // The code passes through exactly as sent (ADR 0029). Its namespace is the

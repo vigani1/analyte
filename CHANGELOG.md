@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **HL7 categorized results:** an evidenced machine definition can keep
+  a numeric result and its qualitative call together, read separate
+  interference measurements, and pair control measurements with their
+  lots and levels. Ambiguous reports stay held with their original bytes.
+
 - **Recording at shutdown:** slow disks have more time to finish recordings
   within the configured service stop allowance. If a write stays blocked,
   Analyte logs the affected recording, tries to mark it as failed and exits

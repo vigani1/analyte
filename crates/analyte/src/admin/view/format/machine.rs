@@ -113,6 +113,9 @@ pub(in crate::admin) const fn departure(rule: &analyte_config::MachineDeparture)
             "Puts several records in one frame; Analyte reads each record after ",
             "the frame's check passes.",
         ),
+        D::Hl7CategorizedOruResults(_) => {
+            "Reads combined patient values and divides control uploads into their original rows."
+        }
         D::Hl7Msh16MessageCategory(_) => {
             "Puts the upload category in MSH-16. Analyte reads that category on result uploads."
         }

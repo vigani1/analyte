@@ -17,7 +17,8 @@ the shared standard code would hide which rules a lab actually enabled.
   closed list (`MachineDeparture`). No free field path, pattern, script or
   user-defined status mapping can select behavior.
 - The list holds two missing-status rules for generic HL7 patient result
-  uploads (absent OBR-25, absent OBX-11 means final), packed ASTM records in one
+  uploads (absent OBR-25, absent OBX-11 means final), the documented
+  categorized ORU patient and QC result layout, packed ASTM records in one
   frame, the documented meaning of MSH-16 in HL7 2.3.1 ORU^R01 uploads, the
   existing HL7 and ASTM compatibility settings, and two documented Biolyte
   upload exceptions. An empty H.12 can supply production mode under an

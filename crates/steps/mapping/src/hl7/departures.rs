@@ -146,6 +146,7 @@ fn discharge(
         MachineDeparture::AstmAbsentH12MeansProduction(_)
         | MachineDeparture::AstmRepeatEnqAfterLostAck(_)
         | MachineDeparture::AstmPackedRecordsInFrame(_)
+        | MachineDeparture::Hl7CategorizedOruResults(_)
         | MachineDeparture::Hl7Msh16MessageCategory(_)
         | MachineDeparture::Hl7Utf8InV231(_)
         | MachineDeparture::Hl7CrLfTerminators(_)

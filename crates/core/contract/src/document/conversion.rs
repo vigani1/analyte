@@ -18,7 +18,7 @@ impl From<&analyte_model::NumericValue> for NumericValue {
 
 impl From<&analyte_model::ResultValue> for ResultValue {
     fn from(v: &analyte_model::ResultValue) -> Self {
-        match v.parsed() {
+        let mut value = match v.parsed() {
             analyte_model::ValueInterpretation::Text => {
                 Self::text((&v.original).into(), v.decoded_text().map(Into::into))
             }
@@ -29,7 +29,9 @@ impl From<&analyte_model::ResultValue> for ResultValue {
             | analyte_model::ValueInterpretation::Unsupported { .. }) => {
                 Self::new((&v.original).into(), parsed.into())
             }
-        }
+        };
+        value.reference = v.reference.as_ref().map(Into::into);
+        value
     }
 }
 
@@ -134,6 +136,30 @@ impl From<&analyte_model::ResultPart> for ResultPart {
             units: v.units.as_ref().map(Into::into),
             dilution: v.dilution.as_ref().map(Into::into),
             flags: EvidenceList(v.flags.as_slice().iter().map(Into::into).collect()),
+            control: v
+                .control
+                .as_ref()
+                .map(|row| super::result::ControlMaterial {
+                    id: (&row.id).into(),
+                    name: (&row.name).into(),
+                    lot: (&row.lot).into(),
+                    expiry: (&row.expiry).into(),
+                    level: (&row.level).into(),
+                    mean: (&row.mean).into(),
+                    standard_deviation: (&row.standard_deviation).into(),
+                }),
+            interference: v.interference.as_ref().map(|component| match component {
+                analyte_model::InterferenceComponent::Turbidity => {
+                    super::result::InterferenceComponent::Turbidity
+                }
+                analyte_model::InterferenceComponent::Hemolysis => {
+                    super::result::InterferenceComponent::Hemolysis
+                }
+                analyte_model::InterferenceComponent::Jaundice => {
+                    super::result::InterferenceComponent::Jaundice
+                }
+            }),
+            raw_measurement: v.raw_measurement.as_ref().map(Into::into),
             reference_range: v.reference_range.as_ref().map(Into::into),
             comments: EvidenceList(v.comments.as_slice().iter().map(Into::into).collect()),
             qc_class: (&v.qc_class).into(),

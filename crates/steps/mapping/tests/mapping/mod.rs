@@ -9,6 +9,7 @@ use proptest::prelude::*;
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
+mod categorized;
 mod compatibility;
 mod continuation;
 mod departures;

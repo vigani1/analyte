@@ -294,6 +294,9 @@ fn replacement_parts()
         })
         .collect::<Result<Vec<_>, TextError>>()?;
     let supported_part = ResultPart {
+        control: None,
+        interference: None,
+        raw_measurement: None,
         test: named.clone(),
         values: EvidenceList::new(vec![ResultValue::new(
             SourceText::new("<0.10")?,
@@ -323,6 +326,9 @@ fn multisegment_replacement_keeps_repeats_parks_unknown() -> Result<(), Box<dyn 
 {
     let (named, values, supported_part) = replacement_parts()?;
     let part = ResultPart {
+        control: None,
+        interference: None,
+        raw_measurement: None,
         test: named.clone(),
         values: EvidenceList::new(values)?,
         units: None,

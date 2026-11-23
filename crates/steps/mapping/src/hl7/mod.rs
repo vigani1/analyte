@@ -2,6 +2,7 @@
 use crate::inbound::{grouping, source};
 use crate::{Error, Input, Output, Position};
 
+pub(crate) mod categorized;
 mod departures;
 mod display;
 mod orders;
@@ -93,13 +94,17 @@ fn map_checked(
         },
         source,
     })?;
-    if matches!(
-        msh.message_category(),
-        Some(
-            analyte_hl7::MessageCategory::Calibration
-                | analyte_hl7::MessageCategory::QualityControl
+    let category = msh.message_category();
+    let layout = declarations.iter().find(|rule| {
+        matches!(
+            rule,
+            analyte_config::MachineDeparture::Hl7CategorizedOruResults(_)
         )
-    ) {
+    });
+    let patient = category == Some(analyte_hl7::MessageCategory::Patient) && layout.is_some();
+    if category == Some(analyte_hl7::MessageCategory::Calibration)
+        || (category == Some(analyte_hl7::MessageCategory::QualityControl) && layout.is_none())
+    {
         return Err(Error::Structure {
             position: Position {
                 record: 1,
@@ -120,6 +125,11 @@ fn map_checked(
         });
     }
     source.attach_comments()?;
+    if let Some(layout) =
+        layout.filter(|_| category == Some(analyte_hl7::MessageCategory::QualityControl))
+    {
+        return categorized::controls(message, &source, mappings, input, layout);
+    }
     let mut output = grouping::message(
         &source,
         &crate::RecordSettings {
@@ -129,7 +139,11 @@ fn map_checked(
         },
         input,
         None,
+        patient,
     )?;
+    if let Some(layout) = layout.filter(|_| patient) {
+        categorized::record_application(message, layout, &mut output)?;
+    }
     report::qualify(message, &mut output)?;
     departures::apply(message, declarations, &mut output)?;
     Ok(output)

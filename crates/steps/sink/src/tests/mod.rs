@@ -153,6 +153,9 @@ fn make_result(receipt: ReceiptId, run: &str) -> Result<ResultContent, Box<dyn s
             revision: Revision(0),
         }),
         parts: NonEmptyEvidenceList::new(EvidenceList::new(vec![ResultPart {
+            control: None,
+            interference: None,
+            raw_measurement: None,
             test: name("test")?,
             values: EvidenceList::new(vec![ResultValue::new(
                 SourceText::new("<0.1")?,

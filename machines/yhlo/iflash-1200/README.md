@@ -54,25 +54,24 @@ resolve those deadlines before enabling normal operation.
 | Barcode query | QRY^Q02 uses QRD-8 for the tube barcode. The LIS responds QCK^Q02, then sends DSR^Q03 with numbered DSP rows carrying the sample and assays. The analyzer replies ACK^Q03. DSP row 21 carries the barcode, with channel entries starting at row 29. An unavailable lookup requires an error. NF means a trusted lookup found no matches. ACK^Q03 confirms message receipt. LIS §§2.2.2, 2.3.6–2.3.11 and 2.4.2. |
 | Receipt and result identity | MSH-10 correlates the upload and its acknowledgment. OBR-3 and OBX-4 identify fields within the reported sample and observation context. The manual supplies no stable key and revision rule that distinguish retransmissions, reruns and corrections. Keep ambiguous result identity unresolved. LIS §§2.3.1–2.3.2 and 2.3.4–2.3.5. |
 
-Record-only stores TCP chunks before any reply and sends an application
-error for a valid query. The strict HL7 header rejects the documented
-result category in MSH-16, including in record-only mode. The incoming
-chunks are still kept, but the analyzer may receive no ACK and report a
-communication fault. Use a supervised lab visit to capture the traffic.
+Record-only keeps TCP chunks before replying. It acknowledges durable result
+receipt through the routing header even when MSH-16 carries the vendor
+category, and sends an application error for a valid query.
 
 ## Departures
 
-No named departure is configured. The following gaps block a normal
-connection.
+The capture profile has no clinical result mapping. A future normal definition
+can declare the evidenced MSH-16 and categorized ORU result departures.
+The remaining gaps below still block normal operation.
 
 | Layer | Source | Gap and effect |
 | --- | --- | --- |
 | Transport and Setup | Service §§6.4.1–6.4.2, LIS §1.2 | Serial LIS is documented. The current HL7 stack uses TCP, and ADR 0032 cannot select a different link kind. Capture the selected serial protocol and cable settings before defining a serial profile. |
 | Syntax and Setup | LIS §§1.3, 2.3.1 | The vendor's “ASCII” mode can use a local code page such as GBK. Analyte's ASCII, Latin-1 and UTF-8 choices cannot decode that mode generally. Confirm the emitted label against the existing scoped HL7 2.3.1 UTF-8 departure before enabling it. Encoding is outside the current ADR 0032 choice blocks. |
-| Syntax and dialog | LIS §§2.3.1–2.3.2, 2.4.1 | MSH-16 denotes patient, calibration or QC for this analyzer. The shared control header rejects these values because MSH-16 is an ACK negotiation field. This also limits record-only mode. The ACK builder generates its own MSH-10 and omits the vendor category echo and the vendor's MSA-6 status layout. Receiver tolerance and retry correlation need proof. |
-| Mapping | LIS §§2.3.4.1, 2.3.5; service §6.4.2.1 | OBR-2 selects the barcode. Rack position, manual dilution application, raw measurements, vendor result status and transitions for incomplete results need confirmed semantics and supported mappings. Historical upload and automatic completion/partial upload can revisit a sample. The manual gives no way to classify each repeat as a retry, rerun or correction. |
-| Syntax and mapping | LIS §2.3.5 | BOTH is a vendor OBX datatype. OBX-9 and OBX-10 carry the qualitative value/reference, including cases with an empty OBX-5. The current OBX value path cannot emit the quantitative and qualitative values together. The SI test also packs three measurements into components of OBX-5 and OBX-13 and needs separate interpretation. |
-| Mapping | LIS §§2.3.1, 2.3.4.2, 2.4.1.2 | Existing QC selectors cannot produce observations from parallel arrays in an OBR-only report. Lot and level could be assigned to the wrong measurement without count and index validation. MSH-16 also reserves `1` for calibration, with insufficient evidence here for delivering calibration results. |
+| Syntax and dialog | LIS 2.3.1-2.3.2, 2.4.1 | Reading the MSH-16 category is supported by an evidenced departure. The ACK builder uses its own MSH-10, omits the category echo and uses standard MSA fields. Confirm installed receiver tolerance and retry correlation. |
+| Mapping | LIS 2.3.4.1, 2.3.5; service 6.4.2.1 | The existing sample selector reads OBR-2. The categorized layout reads rack and slot from OBR-10, preserves the OBR-9 dilution with unknown application, and keeps OBX-13 as source measurement evidence. It understands OBX-11 F. Incomplete transitions, report completion when OBR-25 is empty, and repeat/revision identity remain open. |
+| Syntax and mapping | LIS 2.3.5 | The categorized layout supports BOTH, ST with an OBX-9 call, the OBX-10 qualitative reference and SI's three matched OBX-5/OBX-13 components. Ambiguous component layouts are held. |
+| Mapping | LIS 2.3.1, 2.3.4.2, 2.4.1.2 | OBR-only control rows map only when the declared count and every column align. Control rows remain held without an established measurement identity. Calibration uploads remain held in raw form. |
 | Syntax and dialog | LIS §§2.3.6–2.3.11, 2.4.2 | The standard handler accepts deferred display format `D`; iFlash sends `R` in QRD-2 and bare `RD` in QRD-7. The parser requires a numeric quantity and populated QRD-10, which YHLO leaves blank. The display encoder limits the units to display lines. It also emits an empty QAK tag, while YHLO specifies `SR`. The extension needs to preserve explicit cache failure as AE. |
 | Encoding and order mapping | LIS §§2.3.10–2.3.11, 2.4.2 | The DSR requires positional DSP rows, then repeatable assay rows with component delimiters, plus DSC. The current builder rejects delimiters inside a DSP line, echoes QRD, generates distinct reply IDs and has no DSC output. YHLO's example clears QRD-8 in DSR and reuses the query ID in reply headers. Confirm which differences the installed PC enforces. |
 | Dialog and order lifecycle | LIS §§2.2.3, 2.4.2.2–2.4.3 | The analyzer can query by sample number or collection-time range and receive multiple DSRs with continuation pointers and per-DSR ACKs. It also documents unsolicited DSR with MSH-15 = `P`. Current legacy HL7 supports a single barcode lookup and no vendor-style DSR send-ahead flow. Manual section 3 also describes a separate ASTM dialect. This TCP capture profile expects HL7 only. |
@@ -85,8 +84,7 @@ Level: documented
 The six [synthetic recordings](recordings/) use invented identifiers and
 measurements. The barcode queries expect ACK^Q02 with AE and no DSR in
 record-only mode. The four uploads expect an acknowledgment of durable
-receipt under ADR 0034. Their replay marks the missing replies while the
-HL7 reader rejects the numeric MSH-16 field.
+receipt under ADR 0034. The included replays check the captured exchange and its durable receipt outcome.
 Synthetic data does not establish interoperability with the installed analyzer.
 
 ## Open questions
@@ -103,13 +101,6 @@ Synthetic data does not establish interoperability with the installed analyzer.
   Include a barcode query and its successful and unsuccessful replies.
 - If the lab uses a serial cable, confirm the selected wire protocol and
   interface settings, including flow control.
-
-## Result identity evidence
-
-LIS Protocol Manual V1.1 section 2.3.4 gives candidate fields OBR-2
-(sample barcode), OBR-3 (sample serial) and OBR-8 (observation end). Confirm
-that the 1200 sends these fields and whether the end time distinguishes
-successive measurements of the same assay.
 
 ## Result identity evidence
 
