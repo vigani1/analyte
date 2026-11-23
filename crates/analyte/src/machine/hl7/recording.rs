@@ -25,17 +25,17 @@ pub(in crate::machine) struct Host {
 
 /// The parsing options an acknowledgment needs, from the capture profile.
 fn options(link: &Hl7Capture) -> analyte_hl7::Options {
-    super::settings::options_with_limits(
-        link.encoding(),
-        link.terminator(),
-        link.escapes(),
-        analyte_hl7::Limits {
+    analyte_hl7::Options {
+        control: analyte_hl7::ControlProfile::RecordOnly,
+        terminator: super::settings::wire_terminator(link.terminator()),
+        limits: analyte_hl7::Limits {
             message_bytes: link.message_bytes(),
             segments: link.segments(),
             fields: link.fields(),
             repetitions: link.repetitions(),
         },
-    )
+        ..analyte_hl7::Options::default()
+    }
 }
 
 /// Whether MSH-9 names a message that carries results: ORU (HL7 2.5.1 7.3)

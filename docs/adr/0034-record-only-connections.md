@@ -73,7 +73,10 @@ identity mapping, or a lab app.
    "error in last request for information" (LIS02-A2 12.3), never I. HL7: only
    ORU and OUL get AA ("kept"); every other message, a query above all, gets AE
    (HL7 2.3.1 2.22; 2.5.1 2.9.2), never AA without data, which means "nothing
-   found". VIDAS Literal has no host query. The Autolyser is asked only for the
+   found". HL7 capture uses original-mode ACKs and reads the routing fields
+   needed to build them. Capture does not interpret MSH-7, MSH-15, MSH-16,
+   MSH-18 or payload text. MLLP, segment boundaries, resource bounds and
+   the routing fields remain checked. VIDAS Literal has no host query. The Autolyser is asked only for the
    next report (R) at the lab's interval: never the last report again (L),
    never the archive replay (A), never a work list. Each R is guarded as on a
    normal connection; a response that is incomplete, corrupt or not in the
