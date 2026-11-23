@@ -5,6 +5,7 @@ use super::{
     limits, order_tables, stream,
 };
 use crate::ParsedMachine;
+use analyte_framing::astm::Limit;
 
 /// LIS02 syntax settings, without HL7-only options.
 #[derive(Debug, Clone)]
@@ -33,7 +34,7 @@ pub struct AstmOrders {
 #[derive(Debug, Clone)]
 pub struct AstmStack {
     /// Shared link, resource and interpretation settings.
-    pub(super) settings: super::StackSettings<StreamTransport, AstmSyntax, Mappings>,
+    pub(super) settings: super::StackSettings<StreamTransport, AstmSyntax, Mappings, Limit>,
     packed_records: bool,
     repeat_enq: bool,
     /// Required LIS01 checksum policy.
@@ -111,6 +112,12 @@ impl AstmOrders {
 }
 
 impl AstmStack {
+    /// Validated LIS01 frame size used by the dialog.
+    #[must_use]
+    pub fn frame_limit(&self) -> Limit {
+        self.settings.frame_limit
+    }
+
     /// Whether the upload peer can retry establishment after losing its ACK.
     #[must_use]
     pub fn repeat_enq(&self) -> bool {
@@ -142,12 +149,13 @@ impl AstmStack {
 pub(super) fn build(
     machine: &ParsedMachine<'_>,
     timeouts: DialogTimeouts,
+    frame_limit: Limit,
     path: &str,
 ) -> Result<AstmStack, Error> {
     Ok(AstmStack {
         settings: super::StackSettings {
             transport: stream(&machine.transport, path)?,
-            frame_limit: machine.framing.limit,
+            frame_limit,
             timeouts,
             syntax: AstmSyntax {
                 absent_processing: machine
@@ -195,7 +203,7 @@ pub(super) fn build(
 impl AstmStack {
     /// Borrows the shared validated settings without changing protocol-specific types.
     #[must_use]
-    pub fn settings(&self) -> &super::StackSettings<StreamTransport, AstmSyntax, Mappings> {
+    pub fn settings(&self) -> &super::StackSettings<StreamTransport, AstmSyntax, Mappings, Limit> {
         &self.settings
     }
 }

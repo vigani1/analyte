@@ -72,18 +72,33 @@ pub(crate) fn record_transport(
 impl Stack {
     #[cfg(test)]
     pub(crate) fn parse(document: &MachineDocument, path: &str) -> Result<Self, Error> {
-        Self::from_parsed(&ParsedMachine::parse(document, path)?, path)
+        let machine = ParsedMachine::parse(document, path)?;
+        let astm_frame_limit = crate::validation::validate_dialog_and_framing(&machine, path)?;
+        Self::from_parsed(&machine, astm_frame_limit, path)
     }
 
     // Conversion returns required settings as types, never relying on validation to prevent a panic.
-    pub(crate) fn from_parsed(machine: &ParsedMachine<'_>, path: &str) -> Result<Self, Error> {
+    pub(crate) fn from_parsed(
+        machine: &ParsedMachine<'_>,
+        astm_frame_limit: Option<analyte_framing::astm::Limit>,
+        path: &str,
+    ) -> Result<Self, Error> {
         let timeouts = DialogTimeouts {
             receive_timeout_ms: machine.dialog.receive_timeout_ms,
             send_timeout_ms: machine.dialog.send_timeout_ms,
         };
         Ok(match machine.choice() {
             StackChoice::AstmLis02 => Self::Astm(RecordTransport::Stream(Box::new(astm::build(
-                machine, timeouts, path,
+                machine,
+                timeouts,
+                astm_frame_limit.ok_or_else(|| {
+                    invalid(
+                        path,
+                        "framing.limit",
+                        "LIS01 requires a validated frame limit",
+                    )
+                })?,
+                path,
             )?))),
             StackChoice::Hl7V2 => Self::Hl7(RecordTransport::Stream(Box::new(hl7::build(
                 machine, timeouts, path,
