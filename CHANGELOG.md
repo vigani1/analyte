@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- The admin overview and status report when a machine software version warning
+  could not be saved. Analyzers still receive acknowledgments for stored results
+  under the normal protocol rules.
+
 - **VIDAS and Autolyser work lists:** VIDAS sends one app order in a bounded
   multi-packet session and carries supplied demographics, origin and
   configured dilution. Setup can collect the lab's VIDAS patient namespace.

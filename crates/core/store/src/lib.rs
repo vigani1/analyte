@@ -136,6 +136,7 @@ impl Limits {
 /// One connection, owned by a dedicated worker when used from async code.
 pub struct Store {
     retention_key: Option<DigestKey>,
+    software_warning_write_failed: bool,
     db: Connection,
     path: PathBuf,
     limits: Limits,

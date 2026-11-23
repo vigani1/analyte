@@ -135,6 +135,7 @@ impl From<Failure> for Problem {
 /// What one store request reads for the overview; each part keeps its own
 /// error so the error page can say which read failed.
 struct Stored {
+    software_warning_write_failed: bool,
     restore_paused: Result<bool, CommandError>,
     free: Result<u64, std::io::Error>,
     review: Result<u64, CommandError>,
@@ -144,6 +145,7 @@ struct Stored {
 
 /// [`Stored`] once every part was read.
 struct Read {
+    software_warning_write_failed: bool,
     restore_paused: bool,
     free: u64,
     review: u64,
@@ -164,6 +166,7 @@ async fn stored(
         .store
         .read::<_, CommandError>(until, move |store| {
             Ok::<_, CommandError>(Stored {
+                software_warning_write_failed: store.software_warning_write_failed(),
                 restore_paused: store.restore_unreconciled().map_err(CommandError::from),
                 free: fs4::available_space(&directory),
                 // The unresolved count the parked-items alert rule reads.
@@ -178,6 +181,7 @@ async fn stored(
         .await
         .map_err(Reading::Store.failed())?;
     Ok(Read {
+        software_warning_write_failed: stored.software_warning_write_failed,
         restore_paused: stored.restore_paused.map_err(Reading::Restore.failed())?,
         free: stored.free.map_err(Reading::Disk.failed())?,
         review: stored.review.map_err(Reading::Review.failed())?,
@@ -218,6 +222,7 @@ async fn observe(
     now: Timestamp,
 ) -> Result<Observed, Failure> {
     let Read {
+        software_warning_write_failed,
         restore_paused,
         free,
         review,
@@ -228,6 +233,7 @@ async fn observe(
         .await
         .map_err(Reading::Alerts.failed())?;
     let mut facts = attention::Facts {
+        software_warning_write_failed,
         review,
         disk_full: free <= state.reserve,
         restore_paused,

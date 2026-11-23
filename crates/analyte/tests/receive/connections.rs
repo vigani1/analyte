@@ -523,3 +523,71 @@ async fn shutdown_parks_incomplete_astm_frame() -> Result<(), Error> {
     tokio::time::timeout(HANG_GUARD, service).await???;
     Ok(())
 }
+
+// ADR 0036 and ADR 0003. An optional warning write must not refuse a stored receipt.
+#[tokio::test]
+async fn failed_software_warning_write_preserves_ack_and_changes_status() -> Result<(), Error> {
+    let temp = tempfile::tempdir()?;
+    let path = config(temp.path(), false)?;
+    let admin_port = std::net::TcpListener::bind("127.0.0.1:0")?
+        .local_addr()?
+        .port();
+    let settings = std::fs::read_to_string(&path)?;
+    std::fs::write(&path, format!("{settings}\n[admin]\nport = {admin_port}\n"))?;
+    let definition = include_str!("../../../core/config/examples/hl7.toml")
+        .rewrite("firmware = \"unknown\"", "firmware = \"1.0\"");
+    analyte_fixtures::write_definition(
+        temp.path(),
+        "synthetic",
+        format!(
+            "{definition}\n[software_version]\nselector = 'hl7_sending_application'\nsource = 'Synthetic selector fixture'\n"
+        ),
+    )?;
+    let program = Program::load(&path)?;
+    analyte::admin::rotate_token(program.data_directory())?;
+    let database = program.data_directory().join("analyte.db");
+    let (shutdown, service) = start_service(&path)?;
+    let outcome = async {
+        let mut peer = connect(&program).await?;
+        rusqlite::Connection::open(&database)?.execute_batch(
+            "CREATE TRIGGER fail_warning BEFORE INSERT ON machine_software_warning
+             BEGIN SELECT RAISE(FAIL, 'synthetic warning write failure'); END;",
+        )?;
+        let message = std::str::from_utf8(ORU)?.rewrite("|SYN|LAB|", "|2.0|LAB|");
+        let wire = analyte_framing::hl7::encode(
+            message.as_bytes(),
+            analyte_framing::hl7::Limit::new(1048576)?,
+        )?;
+        peer.write_all(&wire).await?;
+        let ack = String::from_utf8(read_ack(&mut peer).await?)?;
+        assert!(ack.contains("MSA|AA|message1"), "{ack}");
+
+        let db = rusqlite::Connection::open(&database)?;
+        let retained: Vec<u8> = db.query_row("SELECT raw FROM receipts", [], |row| row.get(0))?;
+        assert_eq!(retained, wire);
+        let body = reqwest::Client::builder()
+            .timeout(HANG_GUARD)
+            .build()?
+            .get(format!("http://127.0.0.1:{admin_port}/status"))
+            .send()
+            .await?
+            .error_for_status()?
+            .text()
+            .await?;
+        let status: serde_json::Value = serde_json::from_str(&body)?;
+        assert!(
+            status
+                .get("reasons")
+                .and_then(serde_json::Value::as_array)
+                .ok_or("missing status reasons")?
+                .iter()
+                .any(|reason| reason == "software_warning_write_failed"),
+            "{status}"
+        );
+        Ok::<_, Error>(())
+    }
+    .await;
+    let _ = shutdown.send(());
+    tokio::time::timeout(HANG_GUARD, service).await???;
+    outcome
+}

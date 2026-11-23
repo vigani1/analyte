@@ -78,17 +78,16 @@ pub(crate) async fn receive(
         .request(deadline()?, move |store| {
             store.receive(&metadata, &raw, &config)?;
             if let Some((revision, reported)) = warning
-                && store
-                    .observe_software_warning(
-                        &metadata.machine,
-                        revision,
-                        reported.as_ref(),
-                        received_at,
-                    )
-                    .is_err()
+                && let Err(error) = store.observe_software_warning(
+                    &metadata.machine,
+                    revision,
+                    reported.as_ref(),
+                    received_at,
+                )
             {
                 tracing::error!(
                     machine = metadata.machine.as_str(),
+                    error = %error,
                     "could not store software version warning"
                 );
             }
