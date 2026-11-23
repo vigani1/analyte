@@ -8,6 +8,8 @@
 //! page tidies the folder key instead. A machine's model name ([`model_name`])
 //! never tidies folder names: outside a shipped model folder they say nothing
 //! about the model.
+use analyte_config::EvidenceLevel;
+use serde::Deserialize;
 use std::{
     io::Read as _,
     path::{Path, PathBuf},
@@ -112,7 +114,7 @@ pub(super) enum State {
     Ready {
         path: PathBuf,
         name: String,
-        level: String,
+        level: EvidenceLevel,
     },
     /// No `machine.toml`: the README lists what is missing. `record` is its
     /// `record.toml`, when it names the protocol and link, so the model can be
@@ -210,19 +212,25 @@ fn head(path: &Path) -> State {
         Ok(document) => document,
         Err(reason) => return State::Unreadable(reason),
     };
-    let name = document.get("name").and_then(toml::Value::as_str);
-    let level = document
-        .get("evidence")
-        .and_then(|evidence| evidence.get("level"))
-        .and_then(toml::Value::as_str);
-    match (name, level) {
-        (Some(name), Some(level)) => State::Ready {
+    match toml::Value::Table(document).try_into::<Header>() {
+        Ok(header) => State::Ready {
             path: path.to_owned(),
-            name: name.to_owned(),
-            level: level.to_owned(),
+            name: header.name,
+            level: header.evidence.level,
         },
-        _ => State::Unreadable("name or evidence level missing".into()),
+        Err(error) => State::Unreadable(error.to_string()),
     }
+}
+
+#[derive(Deserialize)]
+struct Header {
+    name: String,
+    evidence: HeaderEvidence,
+}
+
+#[derive(Deserialize)]
+struct HeaderEvidence {
+    level: EvidenceLevel,
 }
 
 #[cfg(test)]
@@ -238,7 +246,7 @@ mod tests {
         let state = |key: &str| definitions.iter().find(|d| d.key == key).map(|d| &d.state);
         assert!(matches!(
             state("example/synthetic-astm"),
-            Some(State::Ready { name, level, .. }) if name == "generic-synthetic" && level == "documented"
+            Some(State::Ready { name, level, .. }) if name == "generic-synthetic" && *level == super::EvidenceLevel::Documented
         ));
         // Each first-lab model names its protocol and link, so it can record only.
         for key in [
@@ -267,6 +275,19 @@ mod tests {
             display("example/synthetic-astm"),
             Some("Synthetic ASTM example")
         );
+        Ok(())
+    }
+
+    // AGENTS.md: evidence levels are documented, simulated or proven.
+    #[test]
+    fn unknown_evidence_level_is_reported() -> Result<(), crate::Error> {
+        let folder = tempfile::tempdir()?;
+        let path = folder.path().join("machine.toml");
+        std::fs::write(&path, "name = 'demo'\n[evidence]\nlevel = 'unknown'\n")?;
+        assert!(matches!(
+            super::head(&path),
+            State::Unreadable(why) if why.contains("unknown variant") && why.contains("unknown")
+        ));
         Ok(())
     }
 

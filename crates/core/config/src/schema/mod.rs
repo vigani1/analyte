@@ -47,6 +47,16 @@ pub enum EvidenceLevel {
     Proven,
 }
 
+impl std::fmt::Display for EvidenceLevel {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::Documented => "documented",
+            Self::Simulated => "simulated",
+            Self::Proven => "proven",
+        })
+    }
+}
+
 /// Physical connection role.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
