@@ -304,12 +304,14 @@ fn generated_and_qc_labels_never_become_patient_ids() -> TestResult {
 }
 
 fn biolyte_order() -> String {
-    let mut fields = vec![""; 26];
-    fields[0] = "O";
-    fields[1] = "1";
-    fields[3] = "17";
-    fields[15] = "Urine";
-    fields[25] = "P";
+    let fields: [&str; 26] = std::array::from_fn(|index| match index {
+        0 => "O",
+        1 => "1",
+        3 => "17",
+        15 => "Urine",
+        25 => "P",
+        _ => "",
+    });
     fields.join("|")
 }
 
