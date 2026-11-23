@@ -329,7 +329,14 @@ fn main() -> Result<ExitCode, Error> {
             actor.map_or_else(|| Identifier::new("local-operator"), Ok)?
         };
         let config = program_file(config)?;
-        return Ok(runtime.block_on(analyte::admin::command::run(&config, actor, pages))?);
+        let doctor = matches!(pages, analyte::admin::command::Command::Doctor { .. });
+        let result = runtime.block_on(analyte::admin::command::run(&config, actor, pages));
+        if doctor {
+            // A timed-out read-only probe can still be in an OS call.
+            // Return the reported exit code without joining it at process exit.
+            runtime.shutdown_background();
+        }
+        return Ok(result?);
     }
     // The setup commands print their own "Fix this" line and end with their
     // own exit code (0 done, 1 refused, 3 partly done, 4 test saw no data).

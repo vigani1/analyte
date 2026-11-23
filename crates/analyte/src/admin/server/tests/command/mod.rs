@@ -5,7 +5,7 @@ use super::more::{MACHINES, Scene};
 use super::*;
 use crate::admin::command::Command;
 use crate::admin::engine::{self, Engine, EngineError};
-use crate::admin::overview::answer::Verdict;
+use crate::admin::overview::answer::{Answer, Verdict};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -65,8 +65,7 @@ async fn overview_command_gives_the_pages_verdict_and_lines() -> Result<(), Erro
     assert_eq!(proven.version().await?, env!("CARGO_PKG_VERSION"));
     let answer = proven.verdict().await?;
     let page = scene.get("/").await?;
-    assert_ne!(answer.verdict, Verdict::Good);
-    assert_ne!(answer.verdict, Verdict::Unknown);
+    assert_eq!(answer.verdict, Verdict::Problem);
     assert!(!answer.needs.is_empty());
     assert!(page.contains(&answer.title()), "{}", answer.title());
     for need in &answer.needs {
@@ -87,6 +86,90 @@ async fn overview_command_gives_the_pages_verdict_and_lines() -> Result<(), Erro
         engine::verdict(&program).await,
         Err(EngineError::Unproven)
     ));
+    scene.stop().await
+}
+
+// ADR 0023: an advisory needs an operator's attention with exit code 1.
+#[tokio::test(flavor = "multi_thread")]
+async fn overview_command_exits_one_for_attention() -> Result<(), Error> {
+    check_overview_exit(analyte_store::AlertKey::ParkedItems, Verdict::Attention, 1).await
+}
+
+// ADR 0023: a data-stopping problem gives exit code 2.
+#[tokio::test(flavor = "multi_thread")]
+async fn overview_command_exits_two_for_a_problem() -> Result<(), Error> {
+    check_overview_exit(analyte_store::AlertKey::DiskReserve, Verdict::Problem, 2).await
+}
+
+async fn check_overview_exit(
+    alert: analyte_store::AlertKey,
+    verdict: Verdict,
+    exit: u8,
+) -> Result<(), Error> {
+    let directory = crate::admin::private_tempdir()?;
+    crate::admin::rotate_token(directory.path())?;
+    let store = overview::empty_store(directory.path()).await?;
+    let (state, stopper, owner, host) =
+        start_overview_server(directory.path(), &store, Vec::new(), Vec::new()).await?;
+    let file = program_file(directory.path(), directory.path(), Some(port(&host)?), "")?;
+    let program = Program::load(&file)?;
+    overview::alert(&store, alert, true).await?;
+    assert_eq!(engine::verdict(&program).await?.verdict, verdict);
+    let code = crate::admin::command::run(
+        &file,
+        Identifier::new("it-test")?,
+        Command::Overview { json: true },
+    )
+    .await?;
+    assert_eq!(code, ExitCode::from(exit));
+    overview::stop(state, stopper, owner, store).await
+}
+
+// ADR 0023: an unreadable store produces an unknown verdict with a reason.
+#[tokio::test(flavor = "multi_thread")]
+async fn overview_verdict_reports_the_unreadable_store() -> Result<(), Error> {
+    let scene = Scene::start(false).await?;
+    let db = rusqlite::Connection::open(scene.database())?;
+    db.busy_timeout(analyte_fixtures::STORE_BUDGET)?;
+    db.execute_batch("ALTER TABLE outbox RENAME TO outbox_away")?;
+    let response = scene.get_with_key("/overview/verdict").await?;
+    assert!(response.starts_with("HTTP/1.1 503"), "{response}");
+    let (_, body) = response
+        .split_once("\r\n\r\n")
+        .ok_or("missing verdict body")?;
+    let answer: Answer = serde_json::from_str(body)?;
+    assert_eq!(answer.verdict, Verdict::Unknown);
+    assert!(answer.needs.is_empty());
+    assert_eq!(
+        answer.unread.as_deref(),
+        Some("Analyte could not read when each lab app last accepted a delivery.")
+    );
+    let folder = tempfile::tempdir()?;
+    let file = program_file(
+        folder.path(),
+        scene.directory.path(),
+        Some(port(&scene.started.3)?),
+        "",
+    )?;
+    let code = crate::admin::command::run(
+        &file,
+        Identifier::new("it-test")?,
+        Command::Overview { json: true },
+    )
+    .await?;
+    assert_eq!(code, ExitCode::from(3));
+    db.execute_batch("ALTER TABLE outbox_away RENAME TO outbox")?;
+    drop(db);
+    scene.stop().await
+}
+
+// ADR 0018 and ADR 0023: the detailed verdict is an authenticated admin read.
+#[tokio::test(flavor = "multi_thread")]
+async fn overview_verdict_requires_sign_in() -> Result<(), Error> {
+    let scene = Scene::start(true).await?;
+    let response = request(&scene.started.3, "/overview/verdict", "", None).await?;
+    assert!(response.starts_with("HTTP/1.1 401"), "{response}");
+    assert!(!response.contains("\"needs\":"), "{response}");
     scene.stop().await
 }
 
@@ -230,17 +313,52 @@ Connection: close
     Ok(())
 }
 
-// Owner request 2026-11-21 (command-line parity): Activity, Data keeping and
-// Cancelled by machine print what their pages show, from the same reads.
+// Owner request 2026-11-21 (command-line parity): Activity prints the page's
+// lines, newest first. The page escapes the head and rest separately.
 #[tokio::test(flavor = "multi_thread")]
-async fn page_commands_print_what_the_pages_show() -> Result<(), Error> {
+async fn activity_command_prints_each_line_in_the_pages_words() -> Result<(), Error> {
     let scene = Scene::start(true).await?;
-    // Activity: the page's lines, newest first, in bounded pages.
+    scene
+        .store
+        .request::<_, FixtureError>(fixture_deadline()?, |store| {
+            store.audit(&analyte_store::Audit {
+                actor: Identifier::new("Synthetic <operator>")?,
+                action: Identifier::new("setup-remove")?,
+                targets: vec![Identifier::new("synthetic & spare")?],
+                time: jiff::Timestamp::now().as_second(),
+                reason: Reason::new("Check Activity rendering")?,
+            })?;
+            Ok(())
+        })
+        .await?;
     let (all, _) = crate::admin::activity::printed(&scene.store, &models(), None, None, 50).await?;
     let feed = scene.get("/activity").await?;
+    assert!(feed.contains(concat!(
+        "<b>Synthetic &#60;operator&#62;</b> ",
+        "<span class=\"muted\">\u{2013} removed machine synthetic &#38; spare</span>",
+    )));
     assert!(!all.is_empty());
-    for line in &all {
-        assert!(feed.contains(line.kind), "feed lacks {}", line.kind);
+    let rows = feed
+        .split("<li class=\"feed__line\"")
+        .skip(1)
+        .collect::<Vec<_>>();
+    assert_eq!(rows.len(), all.len());
+    for (row, line) in rows.into_iter().zip(&all) {
+        assert!(
+            row.contains(&format!("aria-label=\"{}\"", line.kind)),
+            "{row}"
+        );
+        let (_, words) = row
+            .split_once("<span class=\"feed__text\"><b>")
+            .ok_or("Activity line lacks its head")?;
+        let (head, rest) = words
+            .split_once("</b> <span class=\"muted\">")
+            .ok_or("Activity line lacks its rest")?;
+        let (rest, _) = rest
+            .split_once("</span></span>")
+            .ok_or("Activity line lacks its closing tags")?;
+        let expected = askama::filters::escape(&line.text, askama::filters::Html)?.to_string();
+        assert_eq!(format!("{head} {rest}"), expected, "{}", line.kind);
     }
     let (first, next) =
         crate::admin::activity::printed(&scene.store, &models(), None, None, 2).await?;
@@ -255,6 +373,14 @@ async fn page_commands_print_what_the_pages_show() -> Result<(), Error> {
             .collect::<Vec<_>>(),
         second.iter().map(|line| &line.text).collect::<Vec<_>>()
     );
+    scene.stop().await
+}
+
+// Owner request 2026-11-21 (command-line parity): Data keeping and
+// Cancelled by machine print what their pages show, from the same reads.
+#[tokio::test(flavor = "multi_thread")]
+async fn page_commands_print_what_the_pages_show() -> Result<(), Error> {
+    let scene = Scene::start(true).await?;
     // Data keeping: each machine's policy in the page's words, and the hold.
     let retention = vec![
         (Identifier::new("chemistry-analyzer")?, Some(365)),

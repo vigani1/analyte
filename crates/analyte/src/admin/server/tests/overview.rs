@@ -1147,7 +1147,7 @@ fn state_of(response: &str) -> Result<String, Error> {
 }
 
 /// Raises or clears one alert, as the alert rules would.
-async fn alert(
+pub(super) async fn alert(
     store: &analyte_store::Handle,
     key: analyte_store::AlertKey,
     active: bool,

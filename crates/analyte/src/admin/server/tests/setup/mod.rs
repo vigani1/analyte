@@ -2547,6 +2547,17 @@ async fn setup_page_saves_a_record_only_machine_without_a_lab_app() -> Result<()
         .map(|(name, value)| format!("{name}={}", encode(&value)))
         .collect::<Vec<_>>()
         .join("&");
+    let site_before = std::fs::read(&fixture.site)?;
+    let refused = fixture
+        .post("/setup/machine-1", &format!("{body}&lab_app=demo"))
+        .await?;
+    assert!(refused.starts_with("HTTP/1.1 409"), "{refused}");
+    assert!(
+        refused
+            .contains("A record-only machine sends nothing to a lab app; leave the lab app empty."),
+        "{refused}"
+    );
+    assert_eq!(std::fs::read(&fixture.site)?, site_before);
     let saved = fixture.post("/setup/machine-1", &body).await?;
     assert!(saved.starts_with("HTTP/1.1 200"), "{saved}");
     assert!(
