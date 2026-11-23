@@ -25,7 +25,17 @@ pub fn map(order: &analyte_contract::Order) -> Result<super::AppOrder, analyte_m
                 .transpose()
         })
         .collect::<Result<Vec<_>, analyte_model::TextError>>()?;
+    let patient_text = |value: Option<&analyte_contract::Text>| {
+        value
+            .map(|value| SourceText::new(value.as_str()))
+            .transpose()
+    };
+    let patient = fields.patient.as_ref();
     Ok(super::AppOrder {
+        patient_name: patient_text(patient.and_then(|p| p.name.as_ref()))?,
+        patient_birth_date: patient_text(patient.and_then(|p| p.birth_date.as_ref()))?,
+        patient_sex_code: patient_text(patient.and_then(|p| p.sex_code.as_ref()))?,
+        sample_origin: patient_text(fields.sample_origin.as_ref())?,
         sample: SampleId::new(fields.sample_id.as_str())?,
         tests,
         test_names,

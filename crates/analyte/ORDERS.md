@@ -130,17 +130,20 @@ implemented at documented evidence level.
 
 ## VIDAS Literal work lists
 
-Evidence remains **documented**, from the existing VIDAS research notes (BCI A
-sections 3-5 and PC sections 10-24 through 10-26), not machine recordings.
+Evidence remains **documented** (BCI Guide C pp. 3-2 to 3-4 and 4-4 to 4-6,
+VIDAS PC Manual F pp. 10-7 to 10-9).
 Enable both `[vidas] download = true` and `[orders] send_ahead = true`, with
-`patient_namespace` naming the accepted patient assigning system. Order tests
+`patient_namespace` naming the accepted patient assigning system. A definition
+can instead specify `orders.vidas_patient_namespace_from_site = true`; Setup
+collects `vidas_patient_namespace` for the lab, and the selected orders-off
+workflow needs no value. Order tests
 use the machine's `codes.test_system`; each code must be 1-4 printable bytes
 without a pipe, or the order is rejected. Omit `[orders.astm]`. The priority table admits only
 explicitly listed app priorities; Literal has no priority tag to transmit.
 
 The shared candidate/mapping/reservation path maps every assay before reserving
-one app order as Sending. VIDAS transmits one request per assay through its
-existing download dialog. Only completion of every request produces one Sent
+one app order as Sending. VIDAS transmits one packet per assay in one
+bounded ENQ/EOT session with a separate ACK for each packet. Completion produces one Sent
 event (`VIDAS-transfer-confirmed`), never Accepted. A failed assay stops the
 entire reserved order as Uncertain, including any already transferred assays;
 it is never automatically retried. Restart recovery uses the shared Sending
@@ -151,8 +154,14 @@ Missing patient, mismatched patient namespace, and patient/sample IDs exceeding
 transmission. IDs are copied exactly. Literal has no specimen-type tag: every
 supplied specimen type is rejected as `unsupported-specimen-type`, rather than
 being silently lost or placed in `so` (origin) or `si` (empty structural marker).
-The request includes only `mt`, `pi`, `si`, `ci` and `rt`; no demographics,
-position, dilution or other context is invented.
+The app can supply `patient.name`, `patient.birth_date` (ISO calendar date),
+`patient.sex_code` (the installed analyzer language), and `sample_origin`.
+Configure the matching fields in the PC link. Configure
+`vidas.dilution_required_assays` with the installed assay codes that require
+dilution. Those assays require an explicit `tests[].dilution_ratio` from
+1 to 999. A supplied dilution for any other assay is refused because the
+PC can ignore the value. The lab app owns installed main and sub-assay codes.
+Without a trusted order cache, Analyte starts no download.
 
 Uncertain transfer codes distinguish acknowledgment/interbyte/session deadlines,
 disconnection, shutdown cancellation, write/input failures, framing/suffix
@@ -183,6 +192,10 @@ tests use the machine's `codes.test_system`; each code must be exactly four
 printable bytes as the lab app wrote it, padding included, or the order is
 rejected; Analyte never pads or trims it.
 Priority mappings explicitly select `T` (routine list) or `R` (STAT list).
+A separate urgent list has no internal code and is refused. ADR 0032 choices
+can select both download modes, controls and recovery, and the definition can
+require the lab's poll interval. An unavailable order cache suppresses
+insertion and leaves result polling active.
 Declare the machine's specimen code system, for example:
 
 ```toml
@@ -200,8 +213,9 @@ patient-code field and no separate sample-ID field; the bridge never substitutes
 the app sample ID for a missing patient. Incoming results still have unresolved
 specimen/run identity, as before.
 
-An order must supply its cup slot, numeric 1-99; `00` is not silently used to
-ask the machine to autoassign. The shared position type retains kind, carrier
+An order must supply its cup slot, numeric 1-99. The analyzer can autoassign
+with `00`, but physical placement on this model has no barcode reader to
+verify it. The shared position type retains kind, carrier
 and exact slot in protected order evidence; only the addressed slot is encoded
 by this protocol. ASTM uses the same position type, with independent explicit destinations.
 
@@ -295,7 +309,7 @@ missing or mismatched patient context is rejected at the order boundary.
 | Park mid-send: same-round Uncertain and event | [park_mid_send_commits_uncertain_then_closes](tests/orders/vidas.rs) | [bad_ack_is_parked_and_uncertain](tests/orders/autolyser.rs) |
 | Unanswered result poll cannot send an order | Not applicable: Literal does not poll for results | [unanswered_poll_never_reserves_or_sends](tests/orders/autolyser.rs) |
 
-The suites contain 13 VIDAS and 20 Autolyser tests. They also cover Autolyser's
+The suites also cover Autolyser's
 invalid cup slots, missing specimen medium and negative/unknown insertion replies.
 Evidence remains **documented**; the table is synthetic regression coverage,
 not qualification against hardware or an official simulator.

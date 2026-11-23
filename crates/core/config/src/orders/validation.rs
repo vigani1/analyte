@@ -5,6 +5,15 @@ use std::collections::HashSet;
 
 impl Orders {
     fn validate_stack(&self, machine: &ParsedMachine<'_>, path: &str) -> Result<(), Error> {
+        if self.vidas_patient_namespace_from_site
+            && (!machine.choice().has_vidas_assay_codes() || self.patient_namespace.is_some())
+        {
+            return Err(invalid(
+                path,
+                "orders.vidas_patient_namespace_from_site",
+                "only VIDAS orders without a fixed patient namespace can use the site namespace",
+            ));
+        }
         if machine.choice().allows_law_section() {
             return crate::schema::law::validate_orders(machine, path, self);
         }
@@ -41,7 +50,7 @@ impl Orders {
             ));
         };
         if let Some(download) = vendor_download {
-            if self.patient_namespace.is_none() {
+            if self.patient_namespace.is_none() && !self.vidas_patient_namespace_from_site {
                 return Err(invalid(
                     path,
                     "orders.patient_namespace",

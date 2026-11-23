@@ -81,6 +81,9 @@
 </div>
 </fieldset>
 {%- endif %}
+{%- if let Some(namespace) = vidas_patient_namespace %}
+<div class="field"><label class="field__label" for="vidas_patient_namespace">VIDAS patient namespace</label><input id="vidas_patient_namespace" class="input mono" name="vidas_patient_namespace" type="text" value="{{ namespace }}"><span class="field__hint">Enter the lab app's patient namespace if work lists are enabled.</span></div>
+{%- endif %}
 {%- if let Some(seconds) = autolyser_poll_seconds %}
 <div class="field"><label class="field__label" for="s2-poll">Seconds between report polls</label><input id="s2-poll" class="input mono" name="poll_seconds" type="number" min="1" max="300" required value="{{ seconds }}"><span class="field__hint">Enter the lab&#39;s polling interval in whole seconds.</span></div>
 {%- endif %}

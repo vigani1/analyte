@@ -21,3 +21,9 @@ acknowledgment = "literal"
 
 ["literal-quantitative.rec.jsonl".recording]
 acknowledgment = "literal"
+
+["worklist-download.rec.jsonl"]
+vendor_worklist = "vidas"
+
+["worklist-download.rec.jsonl".recording]
+acknowledgment = "literal"

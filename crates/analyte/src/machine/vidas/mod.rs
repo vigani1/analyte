@@ -35,7 +35,7 @@ pub(super) struct Host<'a> {
     work: crate::orders::sending::Work<
         'a,
         analyte_config::VidasOrders,
-        analyte_vidas::syntax::Message,
+        Vec<analyte_vidas::syntax::Message>,
     >,
     dialog: Dialog,
     /// The opening and tick actions wait here for the next idle step, which
@@ -65,9 +65,9 @@ impl<'a> Host<'a> {
     fn start_download(
         &mut self,
         s: &mut Session<'_, '_, Self>,
-        request: &analyte_vidas::syntax::Message,
+        requests: &[analyte_vidas::syntax::Message],
     ) -> Result<Vec<Action>, Error> {
-        self.dialog = Dialog::download(self.config.clone(), self.policy.clone(), request)?;
+        self.dialog = Dialog::download_batch(self.config.clone(), self.policy.clone(), requests)?;
         s.restart_clock();
         self.phase = Phase::Transferring;
         Ok(self.dialog.start())
@@ -210,10 +210,6 @@ impl Protocol for Host<'_> {
                 intake::park_bytes(s.store, s.machine, Vec::new(), INCOMPLETE_REASON).await?;
             }
             Action::Close => match self.work.confirmed(s.store).await? {
-                orders::Progress::DownloadNext(request) => {
-                    let started = self.start_download(s, &request)?;
-                    s.actions.extend(started);
-                }
                 orders::Progress::DownloadFinished => {
                     self.dialog = Dialog::upload(self.config.clone(), self.policy.clone())?;
                     s.restart_clock();

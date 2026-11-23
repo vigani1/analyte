@@ -362,6 +362,16 @@ pub(super) fn asks_autolyser_poll(definition: &std::path::Path) -> bool {
         })
 }
 
+/// Whether the definition asks for the lab's VIDAS patient namespace.
+pub(super) fn asks_vidas_patient_namespace(definition: &std::path::Path) -> bool {
+    crate::installation::config::read(definition)
+        .ok()
+        .is_some_and(|text| {
+            analyte_config::asks_vidas_patient_namespace(&definition.display().to_string(), &text)
+                .unwrap_or(false)
+        })
+}
+
 /// The site interval, if one was saved for normal operation.
 pub(super) fn saved_autolyser_poll(table: &toml::Table) -> Option<String> {
     table
@@ -429,10 +439,21 @@ pub(super) fn plan(setup: &Setup, id: &str, draft: &wizard::Draft) -> Result<Pla
                 })
             })
             .transpose()?;
+        let current_table: toml::Table = current.parse().map_err(SetupError::SiteFile)?;
+        let vidas_namespace = asks_vidas_patient_namespace(&definition)
+            .then(|| {
+                draft.vidas_patient_namespace.as_deref().or_else(|| {
+                    current_table
+                        .get("vidas_patient_namespace")
+                        .and_then(toml::Value::as_str)
+                })
+            })
+            .flatten()
+            .filter(|value| !value.is_empty());
         site::candidate(
             &current,
             (link.0, link.1, link.2, &chosen),
-            poll,
+            (poll, vidas_namespace),
             &lab_app,
             &scan.file,
             &scan.settings(),

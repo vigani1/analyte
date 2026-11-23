@@ -413,6 +413,7 @@ pub struct Draft {
     /// The site file's value for each of the definition's choices.
     choices: ChoiceSelections,
     autolyser_poll_seconds: Option<u32>,
+    vidas_patient_namespace: Option<analyte_model::Identifier>,
     overrides: Overrides,
     paths: [String; 3],
 }
@@ -523,6 +524,7 @@ impl Draft {
             serial: chosen.serial,
             choices: chosen.choices,
             autolyser_poll_seconds: chosen.autolyser_poll_seconds,
+            vidas_patient_namespace: chosen.vidas_patient_namespace,
             overrides: load(overrides.0, overrides.1)?,
             paths: [machine.0.into(), site.0.into(), overrides.0.into()],
         })
@@ -563,9 +565,35 @@ impl Draft {
         )?;
         let chosen = choices::chosen(&self.machine.choices, &resolved);
         let software_version = software_version::resolve(&self.machine, &chosen, machine_path)?;
+        let declares_vidas_namespace = uses_site_vidas_namespace(&self.machine);
         self.machine = choices::applied(&self.machine, &selected);
         validate_site(&self.site, &self.machine.transport, site_path)?;
         apply_overrides(&mut self.machine, &mut self.site, &mut self.source, o, path)?;
+        if let Some(orders) = &mut self.machine.orders
+            && orders.vidas_patient_namespace_from_site
+        {
+            if !declares_vidas_namespace || orders.patient_namespace.is_some() {
+                return Err(invalid(
+                    path,
+                    "orders.vidas_patient_namespace_from_site",
+                    "declare the site namespace in the machine definition without a fixed namespace",
+                ));
+            }
+            orders.patient_namespace = Some(self.vidas_patient_namespace.ok_or_else(|| {
+                invalid(
+                    site_path,
+                    "vidas_patient_namespace",
+                    "enter the patient namespace in Setup",
+                )
+            })?);
+            orders.vidas_patient_namespace_from_site = false;
+        } else if self.vidas_patient_namespace.is_some() && !declares_vidas_namespace {
+            return Err(invalid(
+                site_path,
+                "vidas_patient_namespace",
+                "the machine definition does not request this setting",
+            ));
+        }
         let stack = validate_machine(
             &self.machine,
             path,
@@ -652,6 +680,22 @@ fn apply_overrides(
         *source = LabAppSource::Overrides;
     }
     Ok(())
+}
+
+fn uses_site_vidas_namespace(document: &MachineDocument) -> bool {
+    document.vidas.is_some()
+        && document
+            .orders
+            .as_ref()
+            .is_some_and(|orders| orders.vidas_patient_namespace_from_site)
+}
+
+/// Indicates whether Setup can collect a site namespace for VIDAS work lists.
+/// # Errors
+/// Refuses malformed machine definitions.
+pub fn asks_vidas_patient_namespace(path: &str, text: &str) -> Result<bool, Error> {
+    let document = load(path, text)?;
+    Ok(uses_site_vidas_namespace(&document))
 }
 
 /// Allowed normal Autolyser poll interval in whole seconds.

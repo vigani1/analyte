@@ -512,6 +512,17 @@
           "$ref": "#/$defs/Text",
           "description": "The sample_id value, defined in docs/contract/v1.md."
         },
+        "sample_origin": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Text"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The sample_origin value, defined in docs/contract/v1.md.\nExplicit sample origin as expected by the analyzer."
+        },
         "specimen_type": {
           "anyOf": [
             {
@@ -761,9 +772,42 @@
     "Patient": {
       "description": "Version 1 Patient; unknown fields are ignored.",
       "properties": {
+        "birth_date": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Text"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The birth_date value, defined in docs/contract/v1.md.\nBirth date supplied as an ISO calendar date (YYYY-MM-DD)."
+        },
         "id": {
           "$ref": "#/$defs/NamespacedId",
           "description": "The id value, defined in docs/contract/v1.md."
+        },
+        "name": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Text"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The name value, defined in docs/contract/v1.md.\nThe name to send to the analyzer, if supplied."
+        },
+        "sex_code": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Text"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The sex_code value, defined in docs/contract/v1.md.\nSex code in the configured analyzer language."
         }
       },
       "required": [

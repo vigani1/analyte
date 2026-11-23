@@ -1,0 +1,10 @@
+{"version":1,"stack":["serial","vidas_literal","vidas_literal","vidas_literal"],"machine":"biomerieux/vidas","software":null,"evidence":"synthetic","de_identification":"Invented identifiers, demographics and assay codes.","source":"VIDAS BCI guide C pp. 3-2, 4-4 to 4-6 and 10-2"}
+{"direction":"machine_to_host","time_ms":0,"bytes":"","link":"connect"}
+{"direction":"host_to_machine","time_ms":10,"bytes":"BQ=="}
+{"direction":"machine_to_host","time_ms":20,"bytes":"Bg=="}
+{"direction":"host_to_machine","time_ms":30,"bytes":"Ah5tdG1wcnxwaTAwMFBhdEF8cG5TeW50aGV0aWN8cGIyMDAwLzAyLzI5fHBzRnxzb0xBQjF8c2l8Y2kwMDBBYjEyfHJ0VEVTVHxxZDV8HUUz"}
+{"direction":"machine_to_host","time_ms":40,"bytes":"Bg=="}
+{"direction":"host_to_machine","time_ms":50,"bytes":"Aw=="}
+{"direction":"host_to_machine","time_ms":60,"bytes":"Ah5tdG1wcnxwaTAwMFBhdEF8cG5TeW50aGV0aWN8cGIyMDAwLzAyLzI5fHBzRnxzb0xBQjF8c2l8Y2kwMDBBYjEyfHJ0U1VCfB0wNw=="}
+{"direction":"machine_to_host","time_ms":70,"bytes":"Bg=="}
+{"direction":"host_to_machine","time_ms":80,"bytes":"AwQ="}

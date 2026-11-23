@@ -374,6 +374,62 @@ orders = "off"
     );
 }
 
+// ADR 0032; VIDAS BCI guide C p. 4-4 requires a patient identifier.
+#[test]
+fn vidas_selects_work_lists_with_only_the_labs_namespace() -> TestResult {
+    let machine = format!(
+        "{}\n{}",
+        VIDAS.rewrite("download = false", "download = true"),
+        r#"
+[orders]
+send_ahead = true
+vidas_patient_namespace_from_site = true
+priorities = [{app="routine",machine="R"}]
+[[choices]]
+name = "work_list"
+kind = "mode"
+label = "Work list download"
+suggested = "off"
+[[choices.values]]
+value = "on"
+label = "On"
+orders = "on"
+[[choices.values]]
+value = "off"
+label = "Off"
+orders = "off"
+"#
+    );
+    let on = r#"[choices]
+software_version = "v1"
+work_list = "on"
+"#;
+    let missing = load(&machine, on, OVERRIDES);
+    assert!(matches!(missing, Err(Error::Invalid { key, .. }) if key == "vidas_patient_namespace"));
+    let site = format!("vidas_patient_namespace = 'Local-Patients'\n{SITE}{on}");
+    let enabled = Draft::load(
+        ("machine.toml", &machine),
+        ("site.toml", &site),
+        ("overrides.toml", OVERRIDES),
+    )?
+    .validate()?;
+    let disabled = load(&machine, V1, OVERRIDES)?;
+    let (Stack::Vidas(on), Stack::Vidas(off)) =
+        (enabled.effective().stack(), disabled.effective().stack())
+    else {
+        return Err("expected VIDAS stacks".into());
+    };
+    assert_eq!(
+        on.orders()
+            .ok_or("orders enabled")?
+            .patient_namespace()
+            .as_str(),
+        "Local-Patients"
+    );
+    assert!(off.orders().is_none());
+    Ok(())
+}
+
 // ADR 0032 decision 1: an overrides file cannot replace a block a choice owns.
 #[test]
 fn overrides_cannot_replace_a_chosen_block() {

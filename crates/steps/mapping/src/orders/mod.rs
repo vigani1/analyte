@@ -50,6 +50,14 @@ pub struct AppOrder {
     pub position: Option<SamplePosition>,
     /// Optional exact patient identifier; the namespace is checked before encoding.
     pub patient: Option<NamespacedId>,
+    /// Optional name supplied for the analyzer.
+    pub patient_name: Option<analyte_model::SourceText>,
+    /// Optional date of birth as supplied by the app.
+    pub patient_birth_date: Option<analyte_model::SourceText>,
+    /// Optional sex code in the installed analyzer language.
+    pub patient_sex_code: Option<analyte_model::SourceText>,
+    /// Optional sample origin, distinct from specimen medium.
+    pub sample_origin: Option<analyte_model::SourceText>,
     /// The machine's own specimen code in its specimen code system (ADR 0030),
     /// never substituted for origin metadata.
     pub specimen_type: Option<NamespacedId>,

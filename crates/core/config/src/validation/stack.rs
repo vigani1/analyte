@@ -225,6 +225,30 @@ pub(super) fn validate_protocol(m: &ParsedMachine<'_>, path: &str) -> Result<(),
     {
         return Err(bad("vidas"));
     }
+    if let Some(vidas) = &m.vidas
+        && (vidas.dilution_required_assays.len() > 100
+            || vidas
+                .dilution_required_assays
+                .iter()
+                .enumerate()
+                .any(|(index, code)| {
+                    code.as_str().len() > 4
+                        || !code
+                            .as_str()
+                            .bytes()
+                            .all(|b| (32..=126).contains(&b) && b != b'|')
+                        || vidas
+                            .dilution_required_assays
+                            .get(..index)
+                            .is_some_and(|earlier| earlier.contains(code))
+                }))
+    {
+        return Err(invalid(
+            path,
+            "vidas.dilution_required_assays",
+            "supply up to 100 distinct printable assay codes of at most four bytes, without a pipe",
+        ));
+    }
     if let Some(a) = &m.autolyser
         && (!matches!(a.poll_ms, crate::schema::PollInterval::Milliseconds(ms) if valid_ms(ms))
             || !(2..=analyte_framing::autolyser::MAX_ENVELOPE).contains(&m.framing.limit)

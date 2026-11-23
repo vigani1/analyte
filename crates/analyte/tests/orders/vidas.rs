@@ -34,8 +34,15 @@ fn order() -> Result<serde_json::Value, Error> {
 async fn setup(
     value: serde_json::Value,
 ) -> Result<(tempfile::TempDir, Fixture, Reference, Running, TcpStream), Error> {
+    setup_with_definition(value, &definition()).await
+}
+
+async fn setup_with_definition(
+    value: serde_json::Value,
+    definition: &str,
+) -> Result<(tempfile::TempDir, Fixture, Reference, Running, TcpStream), Error> {
     let temp = tempfile::tempdir()?;
-    let path = vendor_config(temp.path(), "vidas", &definition())?;
+    let path = vendor_config(temp.path(), "vidas", definition)?;
     let reference = Reference::start(
         &temp.path().join("receiver.db"),
         TcpListener::bind("127.0.0.1:0").await?,
@@ -54,6 +61,10 @@ async fn setup(
 }
 async fn packet(peer: &mut TcpStream) -> Result<(), Error> {
     peer.write_all(b"\x06").await?;
+    read_packet(peer).await
+}
+
+async fn read_packet(peer: &mut TcpStream) -> Result<(), Error> {
     let expected = framing()?.encode(b"mtmpr|pi000PatA|si|ci000Ab12|rtTEST|")?;
     let mut received = vec![0; expected.len()];
     tokio::time::timeout(HANG_GUARD, peer.read_exact(&mut received)).await??;
@@ -83,7 +94,7 @@ async fn confirm(peer: &mut TcpStream) -> Result<(), Error> {
     assert_eq!(byte(peer).await?, 4);
     Ok(())
 }
-// VIDAS BCI Link rev A chapters 3 and 5
+// VIDAS BCI guide C pp. 3-2 and 10-2
 #[tokio::test]
 async fn all_assays_confirm_once_and_survive_restart() -> Result<(), Error> {
     let mut value = order()?;
@@ -96,11 +107,11 @@ async fn all_assays_confirm_once_and_survive_restart() -> Result<(), Error> {
     state(&path, "Sending").await?;
     no_event(&path).await?;
     packet(&mut peer).await?;
-    confirm(&mut peer).await?;
-    assert_eq!(byte(&mut peer).await?, 5);
+    peer.write_all(b"\x06").await?;
+    assert_eq!(byte(&mut peer).await?, 3);
     state(&path, "Sending").await?;
     no_event(&path).await?;
-    packet(&mut peer).await?;
+    read_packet(&mut peer).await?;
     confirm(&mut peer).await?;
     event(
         &path,
@@ -367,4 +378,77 @@ async fn park_mid_send_commits_uncertain_then_closes() -> Result<(), Error> {
     service.stop().await?;
     reference.close().await?;
     Ok(())
+}
+
+// VIDAS BCI guide C pp. 3-2 and 10-2; ADR 0004.
+#[tokio::test]
+async fn second_packet_nak_leaves_entire_order_uncertain() -> Result<(), Error> {
+    let mut value = order()?;
+    value["tests"]
+        .as_array_mut()
+        .ok_or("tests")?
+        .push(serde_json::json!({"namespace":"synthetic","value":"TEST"}));
+    let (temp, path, reference, service, mut peer) = setup(value).await?;
+    assert_eq!(byte(&mut peer).await?, 5);
+    packet(&mut peer).await?;
+    peer.write_all(b"\x06").await?;
+    assert_eq!(byte(&mut peer).await?, 3);
+    read_packet(&mut peer).await?;
+    peer.write_all(b"\x15").await?;
+    peer::closed(&mut peer).await?;
+    event(
+        &path,
+        &temp.path().join("receiver.db"),
+        "Uncertain",
+        "VIDAS-transfer-refused-or-unexpected",
+    )
+    .await?;
+    service.stop().await?;
+    reference.close().await?;
+    Ok(())
+}
+
+// VIDAS BCI guide C pp. 4-6 and 10-2.
+#[tokio::test]
+async fn required_dilution_is_refused_before_enq() -> Result<(), Error> {
+    let definition = definition().rewrite(
+        "download = true",
+        "download = true\ndilution_required_assays = ['TEST']",
+    );
+    let (temp, path, reference, service, mut peer) =
+        setup_with_definition(order()?, &definition).await?;
+    event(
+        &path,
+        &temp.path().join("receiver.db"),
+        "Rejected",
+        "rejected: required VIDAS dilution is missing",
+    )
+    .await?;
+    assert!(
+        tokio::time::timeout(Duration::from_millis(100), peer.read_u8())
+            .await
+            .is_err()
+    );
+    drop(peer);
+    service.stop().await?;
+    reference.close().await?;
+    Ok(())
+}
+
+// ADR 0004: without trusted orders, no download session starts.
+#[tokio::test]
+async fn unavailable_cache_sends_nothing() -> Result<(), Error> {
+    let temp = tempfile::tempdir()?;
+    let path = vendor_config(temp.path(), "vidas", &definition())?;
+    let (_outage, url) = AppOutage::start(&temp.path().join("receiver.db"), true).await?;
+    let service = Running::start(&path, &url, "synthetic-api").await?;
+    let mut peer = connect(&path, "vidas").await?;
+    assert!(
+        tokio::time::timeout(Duration::from_millis(1200), peer.read_u8())
+            .await
+            .is_err()
+    );
+    no_event(&path).await?;
+    drop(peer);
+    service.stop().await
 }

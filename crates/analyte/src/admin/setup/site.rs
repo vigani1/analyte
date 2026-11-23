@@ -129,7 +129,7 @@ pub(super) fn candidate(
         Option<&analyte_config::SerialValues>,
         &analyte_config::ChoiceSelections,
     ),
-    autolyser_poll_seconds: Option<u32>,
+    (autolyser_poll_seconds, vidas_patient_namespace): (Option<u32>, Option<&str>),
     lab_app: &Identifier,
     lab_apps: &LabApps,
     elsewhere: &[Destination],
@@ -137,10 +137,17 @@ pub(super) fn candidate(
     let mut table: toml::Table = current.parse().map_err(SetupError::SiteFile)?;
     apply_link(&mut table, (connection, peers, serial, chosen))?;
     table.remove("autolyser_poll_seconds");
+    table.remove("vidas_patient_namespace");
     if let Some(seconds) = autolyser_poll_seconds {
         table.insert(
             "autolyser_poll_seconds".into(),
             toml::Value::Integer(i64::from(seconds)),
+        );
+    }
+    if let Some(namespace) = vidas_patient_namespace {
+        table.insert(
+            "vidas_patient_namespace".into(),
+            toml::Value::String(namespace.into()),
         );
     }
     let mut after = keep_own_destination(&mut table, lab_apps)?;
@@ -238,6 +245,7 @@ pub(super) fn recording_candidate(
     let none = analyte_config::ChoiceSelections::default();
     let mut table: toml::Table = current.parse().map_err(SetupError::SiteFile)?;
     table.remove("autolyser_poll_seconds");
+    table.remove("vidas_patient_namespace");
     let after = keep_own_destination(&mut table, lab_apps)?;
     table.remove("lab_app");
     apply_link(&mut table, (connection, peers, serial, &none))?;

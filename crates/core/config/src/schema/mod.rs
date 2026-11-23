@@ -626,6 +626,7 @@ pub(crate) struct SiteFile {
     choices: Option<ChoiceSelections>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     autolyser_poll_seconds: Option<u32>,
+    vidas_patient_namespace: Option<Identifier>,
     /// Record only (ADR 0034): the machine is connected only to record its
     /// conversation; nothing goes to a lab app.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -639,6 +640,7 @@ pub(crate) struct LabChoices {
     pub(crate) serial: Option<SerialValues>,
     pub(crate) choices: ChoiceSelections,
     pub(crate) autolyser_poll_seconds: Option<u32>,
+    pub(crate) vidas_patient_namespace: Option<Identifier>,
 }
 
 impl SiteFile {
@@ -682,6 +684,7 @@ impl SiteFile {
                 serial: self.serial,
                 choices: self.choices.unwrap_or_default(),
                 autolyser_poll_seconds: self.autolyser_poll_seconds,
+                vidas_patient_namespace: self.vidas_patient_namespace,
             },
         ))
     }
@@ -716,6 +719,7 @@ impl From<Site> for SiteFile {
             serial: None,
             choices: None,
             autolyser_poll_seconds: None,
+            vidas_patient_namespace: None,
             recording: site.recording,
         }
     }

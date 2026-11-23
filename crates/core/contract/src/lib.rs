@@ -135,7 +135,16 @@ wire!(EventFields {
     reason: Option<Text>
 });
 wire!(Patient {
-    id: document::NamespacedId
+    id: document::NamespacedId,
+    /// The name to send to the analyzer, if supplied.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<Text>,
+    /// Birth date supplied as an ISO calendar date (YYYY-MM-DD).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    birth_date: Option<Text>,
+    /// Sex code in the configured analyzer language.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sex_code: Option<Text>
 });
 // ADR 0029: the code is the machine's own, in its code system; the optional
 // name is the lab app's name for it, written only where a protocol carries one.
@@ -162,7 +171,10 @@ wire!(OrderFields {
     #[serde(skip_serializing_if = "Option::is_none")]
     specimen_type: Option<document::NamespacedId>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    patient: Option<Patient>
+    patient: Option<Patient>,
+    /// Explicit sample origin as expected by the analyzer.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sample_origin: Option<Text>
 });
 wire!(OrdersPageFields {
     #[schemars(with = "schema::VersionOne")]

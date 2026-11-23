@@ -79,6 +79,8 @@ pub(super) fn build(
         orders: machine
             .orders
             .as_ref()
+            // Offered choices can be checked before a site selects and binds its namespace.
+            .filter(|orders| !orders.vidas_patient_namespace_from_site)
             .map(|orders| {
                 Ok::<_, Error>(VidasOrders {
                     tables: order_tables(orders, machine, path)?,

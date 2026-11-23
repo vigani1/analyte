@@ -86,6 +86,7 @@ pub(in crate::admin) struct Draft {
     /// Autolyser: seconds between next-report requests, and `yes` or `no`
     /// for reports that carry controls; VIDAS: `literal` or `alternate`.
     pub(super) poll_seconds: Option<String>,
+    pub(super) vidas_patient_namespace: Option<String>,
     pub(super) controls: Option<String>,
     pub(super) acknowledgment: Option<String>,
     /// Record only, step 2: the mode the analyzer's own settings show, when
@@ -95,7 +96,7 @@ pub(in crate::admin) struct Draft {
 
 /// Most fields a step's form carries: the fixed ones, the CSRF value and one
 /// per choice a model may declare.
-const MOST_FIELDS: usize = 19 + analyte_config::MAX_CHOICES;
+const MOST_FIELDS: usize = 20 + analyte_config::MAX_CHOICES;
 
 impl TryFrom<Vec<(String, String)>> for Draft {
     type Error = String;
@@ -123,7 +124,7 @@ impl TryFrom<Vec<(String, String)>> for Draft {
 
 /// The fields step 2 shows itself, besides the model's choices; every other
 /// step carries them hidden.
-const CONNECTION_FIELDS: [&str; 16] = [
+const CONNECTION_FIELDS: [&str; 17] = [
     "port",
     "port_name",
     "host",
@@ -137,6 +138,7 @@ const CONNECTION_FIELDS: [&str; 16] = [
     "stop_bits",
     "flow_control",
     "poll_seconds",
+    "vidas_patient_namespace",
     "controls",
     "acknowledgment",
     "analyzer_mode",
@@ -166,6 +168,7 @@ impl Draft {
             "stop_bits" => &mut self.stop_bits,
             "flow_control" => &mut self.flow_control,
             "mode" => &mut self.mode,
+            "vidas_patient_namespace" => &mut self.vidas_patient_namespace,
             "poll_seconds" => &mut self.poll_seconds,
             "controls" => &mut self.controls,
             "acknowledgment" => &mut self.acknowledgment,
@@ -174,7 +177,7 @@ impl Draft {
         })
     }
 
-    fn fields(&self) -> [(&'static str, Option<&str>); 18] {
+    fn fields(&self) -> [(&'static str, Option<&str>); 19] {
         [
             ("definition", self.definition.as_deref()),
             ("port", self.port.as_deref()),
@@ -191,6 +194,10 @@ impl Draft {
             ("flow_control", self.flow_control.as_deref()),
             ("mode", self.mode.as_deref()),
             ("poll_seconds", self.poll_seconds.as_deref()),
+            (
+                "vidas_patient_namespace",
+                self.vidas_patient_namespace.as_deref(),
+            ),
             ("controls", self.controls.as_deref()),
             ("acknowledgment", self.acknowledgment.as_deref()),
             ("analyzer_mode", self.analyzer_mode.as_deref()),
@@ -597,6 +604,20 @@ fn render_connection(
         } else {
             choice_fields(&model.path, &current_site, draft)
         },
+        vidas_patient_namespace: (!records_only
+            && super::plan::asks_vidas_patient_namespace(&model.path))
+        .then(|| {
+            draft
+                .vidas_patient_namespace
+                .clone()
+                .or_else(|| {
+                    current_site
+                        .get("vidas_patient_namespace")
+                        .and_then(toml::Value::as_str)
+                        .map(str::to_owned)
+                })
+                .unwrap_or_default()
+        }),
         autolyser_poll_seconds: (!records_only && super::plan::asks_autolyser_poll(&model.path))
             .then(|| {
                 draft

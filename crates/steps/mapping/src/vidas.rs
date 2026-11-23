@@ -266,28 +266,59 @@ pub fn map_order(
             analyte_vidas::syntax::SampleLimit::Seventeen
         }
     };
+    let birth_date = order
+        .patient_birth_date
+        .as_ref()
+        .map(encode_birth_date)
+        .transpose()?;
+    let mut fields = vec![("mt", "mpr"), ("pi", patient)];
+    if let Some(name) = &order.patient_name {
+        fields.push(("pn", name.as_str()));
+    }
+    if let Some(date) = birth_date.as_deref() {
+        fields.push(("pb", date));
+    }
+    if let Some(value) = &order.patient_sex_code {
+        if !matches!(
+            value.as_str().as_bytes(),
+            [b'A'..=b'Z' | b'a'..=b'z' | b'-']
+        ) {
+            return Err(OrderError::SexCode);
+        }
+        fields.push(("ps", value.as_str()));
+    }
+    if let Some(value) = &order.sample_origin {
+        if value.as_str().contains(' ') {
+            return Err(OrderError::Origin);
+        }
+        fields.push(("so", value.as_str()));
+    }
+    fields.extend([("si", ""), ("ci", order.sample.as_str())]);
     let mut requests = Vec::new();
     let mut total_bytes = 0usize;
-    for test in &order.tests {
+    for (index, test) in order.tests.iter().enumerate() {
         let code = codes::map_test(settings.tables().test_system(), test)?;
-        // BCI A section 4: an assay code is 1 to 4 printable bytes; a pipe
-        // would end the field.
+        // Guide C p. 4-6: reject codes that the analyzer would truncate.
         if code.is_empty()
             || code.len() > 4
             || code.bytes().any(|b| !(32..=126).contains(&b) || b == b'|')
         {
             return Err(OrderError::AssayCode);
         }
-        let request = analyte_vidas::syntax::Message::new(
-            &[
-                ("mt", "mpr"),
-                ("pi", patient),
-                ("si", ""),
-                ("ci", order.sample.as_str()),
-                ("rt", code),
-            ],
-            limit,
-        )?;
+        let required = installed.dilution_required_assays.contains(&test.value);
+        let dilution = match (required, order.test_dilutions.get(index).copied().flatten()) {
+            (true, Some(value @ 1..=999)) => Some(value.to_string()),
+            (true, None) => return Err(OrderError::MissingDilution),
+            (true, Some(_)) => return Err(OrderError::DilutionRange),
+            (false, Some(_)) => return Err(OrderError::DilutionNotConfigured),
+            (false, None) => None,
+        };
+        let mut request_fields = fields.clone();
+        request_fields.push(("rt", code));
+        if let Some(value) = dilution.as_deref() {
+            request_fields.push(("qd", value));
+        }
+        let request = analyte_vidas::syntax::Message::new(&request_fields, limit)?;
         if request.text().len() > machine.settings().frame_limit() {
             return Err(OrderError::FrameLimit);
         }
@@ -300,6 +331,23 @@ pub fn map_order(
         requests.push(request);
     }
     Ok(requests)
+}
+
+// Guide C p. 4-5 uses slash-delimited dates on the wire.
+fn encode_birth_date(value: &SourceText) -> Result<String, OrderError> {
+    let source = value.as_str();
+    let date = source
+        .parse::<jiff::civil::Date>()
+        .map_err(|_| OrderError::BirthDate)?;
+    if !source
+        .as_bytes()
+        .get(..4)
+        .is_some_and(|year| year.iter().all(u8::is_ascii_digit))
+        || date.to_string() != source
+    {
+        return Err(OrderError::BirthDate);
+    }
+    Ok(source.replace('-', "/"))
 }
 
 /// Specific outgoing VIDAS mapping refusals.
@@ -326,6 +374,24 @@ pub enum OrderError {
     /// VIDAS requests exceed the message byte limit.
     #[error("VIDAS requests exceed the message byte limit")]
     MessageLimit,
+    /// The app birth date is not an ISO calendar date.
+    #[error("invalid VIDAS birth date")]
+    BirthDate,
+    /// Patient sex must be a single installed code.
+    #[error("invalid VIDAS patient sex code")]
+    SexCode,
+    /// Spaces in origin would be removed by the VIDAS PC.
+    #[error("VIDAS sample origin contains spaces")]
+    Origin,
+    /// The instrument expects a dilution for the assay.
+    #[error("required VIDAS dilution is missing")]
+    MissingDilution,
+    /// VIDAS PC dilution is limited to integers 1 through 999.
+    #[error("VIDAS dilution must be in 1..=999")]
+    DilutionRange,
+    /// An unconfigured dilution could be silently ignored by the analyzer.
+    #[error("VIDAS assay is not configured to receive dilution")]
+    DilutionNotConfigured,
     /// Shared order evidence is unavailable or unmapped.
     #[error(transparent)]
     Shared(#[from] crate::OrderMappingError),

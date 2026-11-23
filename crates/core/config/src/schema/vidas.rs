@@ -167,4 +167,7 @@ pub struct Settings {
     pub backoff_ms: u32,
     /// Permit explicit worklist downloads.
     pub download: bool,
+    /// Installed assay codes for which VIDAS PC expects a dilution (Guide C p. 4-6).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dilution_required_assays: Vec<analyte_model::Identifier>,
 }

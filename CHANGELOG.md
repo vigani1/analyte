@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **VIDAS and Autolyser work lists:** VIDAS sends one app order in a bounded
+  multi-packet session and carries supplied demographics, origin and
+  configured dilution. Setup can collect the lab's VIDAS patient namespace.
+  Autolyser refuses the separate urgent list and requires an explicit cup.
+  Both shipped models remain record-only.
+
 - **cobas e 411 ASTM orders** can answer identified tubes in either protocol
   type and send cobas batch work lists. Replies carry the analyzer's original
   coordinates and encode any requested dilution per test. An unknown lookup

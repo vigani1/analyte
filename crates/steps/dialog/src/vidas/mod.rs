@@ -4,7 +4,7 @@
 //! never automatically replay either. A new conversation requires reconciliation.
 use analyte_framing::vidas::{ACK, Config as FrameConfig, ENQ, EOT, ETX, Mode, NAK, Packet};
 use analyte_vidas::syntax::{Kind, Message};
-use std::time::Duration;
+use std::{collections::VecDeque, time::Duration};
 pub mod outcome;
 
 /// Required site timing/retry evidence; no ASTM constants or defaults.
@@ -114,6 +114,9 @@ pub enum Error {
     /// A download must contain an mtmpr message.
     #[error("download requires request")]
     Request,
+    /// The batch has no requests or exceeds its packet bound.
+    #[error("download requires 1 to 100 requests")]
+    RequestCount,
     /// Packet encoding failed.
     #[error(transparent)]
     Framing(#[from] analyte_framing::vidas::Error),
@@ -125,7 +128,7 @@ pub struct Dialog {
     config: FrameConfig,
     policy: Config,
     state: State,
-    outbound: Option<Vec<u8>>,
+    outbound: VecDeque<Vec<u8>>,
     clock: crate::Clock,
     timers: Deadlines,
     expired: Option<Timer>,
@@ -136,25 +139,44 @@ impl Dialog {
     /// # Errors
     /// Rejects zero deadlines. Caller must reserve storage before creation.
     pub fn upload(config: FrameConfig, policy: Config) -> Result<Self, Error> {
-        Self::new(config, policy, State::UploadReady, None)
+        Self::new(config, policy, State::UploadReady, VecDeque::new())
     }
 
     /// Prepares one work-list request, with no automatic resend path.
     /// # Errors
     /// Rejects non-request messages, invalid policy or encoding failures.
     pub fn download(config: FrameConfig, policy: Config, request: &Message) -> Result<Self, Error> {
-        if request.kind() != Kind::Request {
-            return Err(Error::Request);
+        Self::download_batch(config, policy, std::slice::from_ref(request))
+    }
+
+    /// Prepares one bounded session with an ACK for each request packet.
+    /// # Errors
+    /// Rejects an empty batch, more than 100 requests, non-requests, or invalid framing or policy.
+    pub fn download_batch(
+        config: FrameConfig,
+        policy: Config,
+        requests: &[Message],
+    ) -> Result<Self, Error> {
+        if requests.is_empty() || requests.len() > 100 {
+            return Err(Error::RequestCount);
         }
-        let bytes = config.encode(request.text().as_bytes())?;
-        Self::new(config, policy, State::DownloadReady, Some(bytes))
+        let packets = requests
+            .iter()
+            .map(|request| {
+                if request.kind() != Kind::Request {
+                    return Err(Error::Request);
+                }
+                Ok(config.encode(request.text().as_bytes())?)
+            })
+            .collect::<Result<_, Error>>()?;
+        Self::new(config, policy, State::DownloadReady, packets)
     }
 
     fn new(
         config: FrameConfig,
         policy: Config,
         state: State,
-        outbound: Option<Vec<u8>>,
+        outbound: VecDeque<Vec<u8>>,
     ) -> Result<Self, Error> {
         if [policy.ack, policy.inter_byte, policy.session, policy.commit].contains(&Duration::ZERO)
         {
@@ -314,21 +336,16 @@ impl Dialog {
                 actions.push(Action::Close);
             }
             (State::DownloadReady, Event::Control(ACK)) => {
-                self.state = State::DownloadAck;
                 actions.push(Action::TimerCancelled(Timer::Acknowledgment));
-                if let Some(bytes) = self.outbound.take() {
-                    actions.push(Action::Write(bytes));
-                }
-                actions.push(Action::TimerArmed(Timer::Acknowledgment, self.policy.ack));
+                self.send_next(&mut actions);
             }
             (State::DownloadAck, Event::Control(ACK)) => {
                 actions.push(Action::TimerCancelled(Timer::Acknowledgment));
+                // Guide C pp. 3-2 and 3-4: each packet ends at ETX, in either mode.
                 if self.config.mode() == Mode::Literal {
                     actions.push(Action::Write(self.config.control(ETX)));
                 }
-                actions.push(Action::Write(self.config.control(EOT)));
-                actions.push(Action::Close);
-                self.state = State::Finished;
+                self.send_next(&mut actions);
             }
             (
                 State::Finished,
@@ -378,6 +395,18 @@ impl Dialog {
         }
         self.schedule(&actions);
         actions
+    }
+
+    fn send_next(&mut self, actions: &mut Vec<Action>) {
+        if let Some(bytes) = self.outbound.pop_front() {
+            self.state = State::DownloadAck;
+            actions.push(Action::Write(bytes));
+            actions.push(Action::TimerArmed(Timer::Acknowledgment, self.policy.ack));
+        } else {
+            self.state = State::Finished;
+            actions.push(Action::Write(self.config.control(EOT)));
+            actions.push(Action::Close);
+        }
     }
 
     fn reply_to_packet(&mut self, kind: CommitKind, actions: &mut Vec<Action>) {
