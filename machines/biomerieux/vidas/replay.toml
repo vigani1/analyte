@@ -1,0 +1,23 @@
+["alternate-bad-checksum.rec.jsonl".recording]
+acknowledgment = "alternate"
+
+["alternate-invalid.rec.jsonl".recording]
+acknowledgment = "alternate"
+
+["alternate-qualitative.rec.jsonl".recording]
+acknowledgment = "alternate"
+
+["alternate-quantitative.rec.jsonl".recording]
+acknowledgment = "alternate"
+
+["literal-bad-checksum.rec.jsonl".recording]
+acknowledgment = "literal"
+
+["literal-invalid.rec.jsonl".recording]
+acknowledgment = "literal"
+
+["literal-qualitative.rec.jsonl".recording]
+acknowledgment = "literal"
+
+["literal-quantitative.rec.jsonl".recording]
+acknowledgment = "literal"
