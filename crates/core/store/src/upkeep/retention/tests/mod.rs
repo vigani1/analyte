@@ -100,7 +100,12 @@ fn receipt_hold_blocks_until_audited_release() -> TestResult {
     let id = finished(&mut store)?;
     let target = HoldTarget::Receipt(id);
     store.set_retention_hold(&target, true, &audit()?)?;
-    assert!(store.retention_hold(&target)?);
+    assert!(
+        store
+            .retention_holds(0)?
+            .iter()
+            .any(|hold| { matches!(hold.target, HoldTarget::Receipt(held) if held == id) })
+    );
     assert!(!store.retention_eligible(id, 1, 86500)?);
     store.set_retention_hold(&target, false, &audit()?)?;
     assert!(store.retention_eligible(id, 1, 86500)?);
