@@ -6,10 +6,9 @@
 //! once, bounded by [`LIMIT`], and refused on any unknown field. The keys move
 //! into the page's own checks ([`add_blocking`], [`save_blocking`]) and from
 //! there into the locked file; neither the body nor a key is logged or answered.
-use super::{Change, Entered, Saved, add_blocking, reason, save_blocking};
+use super::change::{Change, Entered, add_blocking, reason, save_blocking, saved_lines};
 use crate::admin::server::Context;
-use crate::admin::setup::{SetupError, Via, audit_as, copies, on_files};
-use crate::admin::view::format;
+use crate::admin::setup::{SetupError, Via, audit_as, on_files};
 use axum::{
     Json,
     extract::{State, rejection::JsonRejection},
@@ -83,33 +82,6 @@ pub(in crate::admin::setup) enum Answer {
         /// The settings were written but the keys were not.
         keys_not_stored: bool,
     },
-}
-
-/// What a save wrote, as the page's saved page says it, one line each; never
-/// a key value. The command prints these whether it saved itself or the
-/// engine did.
-pub(in crate::admin::setup) fn saved_lines(change: Change, saved: &Saved) -> Vec<String> {
-    let mut lines = vec![
-        format!("{} is {}.", saved.settings.name.as_str(), change.verb()),
-        format!("Address: {}", saved.settings.base_url.as_str()),
-        if saved.users.is_empty() {
-            "Used by no machine yet: pick it with analyte machines set <machine> --lab-app <name>."
-                .to_owned()
-        } else {
-            format!("Used by {}.", saved.users.join(", "))
-        },
-    ];
-    if !saved.changed {
-        lines.push("The settings were already the same; no file was written.".to_owned());
-    }
-    for key in &saved.replaced {
-        lines.push(format!("Key stored: {key}"));
-    }
-    if !saved.replaced.is_empty() {
-        lines.push(format::KEYS_APPLY.to_owned());
-    }
-    lines.extend(copies(&saved.backups));
-    lines
 }
 
 /// A request that could not be read; the reason names no value it held.
