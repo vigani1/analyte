@@ -55,12 +55,20 @@ pub struct Config {
     pub(super) record_boundaries: astm::RecordBoundaries,
     pub(super) timers: Timers,
     pub(super) role: Role,
+    pub(super) repeat_enq: bool,
     pub(super) bytes: usize,
     pub(super) frames: usize,
     pub(super) honor_interrupt: Interrupt,
 }
 
 impl Config {
+    /// Allows one establishment retry before receiving any frame.
+    #[must_use]
+    pub fn with_repeat_enq(mut self, allow: bool) -> Self {
+        self.repeat_enq = allow;
+        self
+    }
+
     /// Selects checksum digit case only; every checksum must still verify.
     #[must_use]
     pub fn with_checksum_hex(mut self, policy: astm::HexPolicy) -> Self {
@@ -104,6 +112,7 @@ impl Config {
             checksum_hex: astm::HexPolicy::Strict,
             timers,
             role,
+            repeat_enq: false,
             bytes,
             frames,
             honor_interrupt,
@@ -119,6 +128,7 @@ impl Default for Config {
             checksum_hex: astm::HexPolicy::Strict,
             timers: Timers::default(),
             role: Role::Computer,
+            repeat_enq: false,
             bytes: 16_777_216,
             frames: 65_536,
             honor_interrupt: Interrupt::Honor,

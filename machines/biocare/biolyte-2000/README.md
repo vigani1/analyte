@@ -56,18 +56,26 @@ configured. Menu transfer of stored data is the documented workflow.
 
 ## Departures
 
-No departure is enabled. The sample shows one record per frame. Appendix VI
-describes uppercase checksum letters and prints some in lowercase in its
-example. A capture must settle which case the installed firmware emits.
+Appendix VI section 7.1.12 identifies H.12 as unused in the upload. A normal
+definition can declare the scoped empty-H.12 production interpretation.
+Appendix VI section 2.1 documents one ENQ retry after 15 seconds without a reply.
+The scoped retry departure acknowledges that second ENQ before any frame
+arrives and keeps the original receive deadline. Both rules require a
+definition and installed scope before activation.
+
+The p.86 frame description contains one record ending in
+CR per ETX frame; the research does not establish packed-frame support.
+Confirm actual output with a capture. Analyte refuses multiple records per
+frame under LIS01-A2 §§3.3.2/6.3.1.1; do not enable packed-frame tolerance.
 
 ### Gap report
 
 | Manual source | Why it matters | Layer and current limit |
 | --- | --- | --- |
 | Appendix VI §§2–4 | The documented editions are E1381-91 and E1394-91. Matching envelopes and timers establish only part of compatibility. | Framing, dialog and syntax use LIS01-A2 and LIS02-A2. Config cannot select the older editions. |
-| Appendix VI §§ 2.1–2.2 | The analyzer repeats ENQ once after 15 seconds of silence. If Analyte's first ACK is lost, a repeated ENQ while receiving is ignored. | Dialog. The current receiving state has no config switch to re-acknowledge that ENQ. The six-attempt frame limit is the analyzer's responsibility. |
+| Appendix VI §§ 2.1–2.2 | **Closed:** a definition can declare the scoped repeated-ENQ departure (one retry before any frame, original receive deadline). | Dialog (ADR 0015 departure). |
 | Appendix VI §3 and p. 86 | If the machine emits the lowercase checksum shown in the example, record-only will NAK the frame. Raw bytes are still journaled. | Framing. Normal ASTM supports a scoped lowercase-checksum departure with qualifying evidence. The record-only profile has strict hex and only accepts the packed-record departure. The manual's conflicting case evidence does not justify a departure. |
-| Appendix VI p. 82, H.5 and H.12 | Software and device serial identify the source. The documented blank processing ID makes normal mapping stop with `unknown processing mode` before it reaches the observations. | Syntax retains the header. Mapping has no ASTM rule for interpreting absent H.12 or selecting H.5 components as normalized source metadata. |
+| Appendix VI p. 82, H.5 and H.12 | **Closed for H.12:** a definition can declare the scoped empty-H.12-means-production departure. H.5 software and serial are read by the software-version check (ADR 0036) where declared. | Mapping (ADR 0015 departure). |
 | Appendix VI pp. 82–84, P.4 and O.3/O.4 | Missing ID, use of the accession field on the keypad or reliance on a wrapping counter can misassign a result. The documented padding on the example ID also needs a capture to establish what the keypad entered and what arrived. | Mapping can select P.4 and keep its text, including leading zeros and padding. Neither config nor the document establishes that it represents the lab's specimen, and O.4 gives no safe fallback. Accession and name have no documented wire positions. |
 | Appendix I p. 73 and Appendix VI pp. 82–85 | A QC menu exists, but the transfer layout defines no reliable patient/control discriminator and does not say whether controls are exported. | Machine evidence and mapping. Equality rules need a transmitted marker. No site choice can supply a marker missing from the bytes. |
 | Appendix VI pp. 84–85, O.16, O.26 and R.9 | The specimen descriptor and the preliminary report status have their own meanings. An absent observation status cannot establish release or correction. | Mapping retains O.26 in source hierarchy status. It does not map it to a separate normalized report status or project O.16 into a normalized ASTM specimen descriptor. R.9 remains unknown. |

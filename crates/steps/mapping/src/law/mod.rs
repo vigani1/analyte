@@ -31,6 +31,7 @@ pub fn map(
     let mut output = grouping::message(
         &source,
         &crate::RecordSettings {
+            absent_astm_processing: false,
             mappings: settings.settings().codes(),
             limits: settings.settings().limits(),
         },

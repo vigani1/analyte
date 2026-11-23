@@ -9,6 +9,8 @@ pub enum DepartureMeaning {
     FinalReportFromDocumentation,
     /// A documented omission means a final observation, not report completion.
     FinalObservationFromDocumentation,
+    /// An empty ASTM processing ID was read as production from a scoped declaration.
+    ProductionFromDocumentation,
     /// Verified inbound frames carried several source records without changing their meaning.
     PackedRecords,
     /// A declared wire compatibility setting was exercised.
