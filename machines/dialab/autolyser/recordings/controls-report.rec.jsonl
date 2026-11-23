@@ -1,0 +1,5 @@
+{"version":1,"stack":["serial","autolyser","autolyser","autolyser"],"machine":"Dialab Autolyser REF 20010D","software":null,"evidence":"synthetic","de_identification":"All identifiers, values and lot numbers were invented.","source":"Dialab Autolyser Operator\u0027s Manual Rev18 sections 23.2-23.3, controls-enabled field layout; NC padding is synthetic"}
+{"direction":"host_to_machine","time_ms":0,"bytes":"Ag=="}
+{"direction":"machine_to_host","time_ms":10,"bytes":"Bg=="}
+{"direction":"host_to_machine","time_ms":20,"bytes":"UgQ="}
+{"direction":"machine_to_host","time_ms":30,"bytes":"UUMwMDhiOTIgICAgICAgUlNZSzAwNExPVC1EOCAgICAgICAgICAgICAgMDAxQzRROTxOQz4gICAwMTEE"}
