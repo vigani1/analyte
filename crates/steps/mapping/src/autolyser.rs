@@ -6,7 +6,7 @@ use crate::{Output, Position};
 use analyte_autolyser::syntax::{List, Report, Sample};
 
 use analyte_model::{
-    EvidenceList, IdentityStatus, QcClass, Reason, ResultAttribute, ResultValue, SampleId,
+    EvidenceList, IdentityStatus, QcClass, Reason, ResultDetails, ResultValue, SampleId,
     SampleIdentity, SampleSource, SourceText, ValueInterpretation,
 };
 /// Maps Autolyser results without inferring a specimen or immutable run.
@@ -32,7 +32,7 @@ pub fn map(
             position: None,
         })
     };
-    let attributes = report_attributes(report)?;
+    let details = report_details(report)?;
     let mut output = Output::default();
     for (index, value) in report.values.iter().enumerate() {
         let code = std::str::from_utf8(value.code.bytes())?;
@@ -51,7 +51,7 @@ pub fn map(
             continue;
         };
         let mut source = map_part(test, value, time)?;
-        source.attributes = Some(attributes.clone());
+        source.details = Some(details.clone());
         if is_control {
             source.qc_class = QcClass::Control;
         }
@@ -74,7 +74,7 @@ pub fn map(
     Ok(output)
 }
 
-fn report_attributes(report: &Report) -> Result<EvidenceList<ResultAttribute>, Error> {
+fn report_details(report: &Report) -> Result<ResultDetails, Error> {
     let list = match report.list {
         List::Routine => "T",
         List::Stat => "R",
@@ -83,23 +83,20 @@ fn report_attributes(report: &Report) -> Result<EvidenceList<ResultAttribute>, E
         Sample::Serum => "S",
         Sample::Urine => "U",
     };
-    let mut attributes = vec![
-        ResultAttribute::ReportList(SourceText::new(list)?),
-        ResultAttribute::SampleMedium(SourceText::new(medium)?),
-    ];
+    let mut details = ResultDetails {
+        report_list: Some(SourceText::new(list)?),
+        specimen_descriptor: Some(SourceText::new(medium)?),
+        ..ResultDetails::default()
+    };
     if let Some(control) = report.control.as_ref().filter(|control| control.is_control) {
         let known = if control.known { "K" } else { "U" };
-        attributes.extend([
-            ResultAttribute::ControlKnowledge(SourceText::new(known)?),
-            ResultAttribute::ControlLevel(SourceText::new(std::str::from_utf8(
-                control.level.bytes(),
-            )?)?),
-            ResultAttribute::ControlLot(SourceText::new(std::str::from_utf8(
-                control.lot.bytes(),
-            )?)?),
-        ]);
+        details.control_knowledge = Some(SourceText::new(known)?);
+        details.control_level = Some(SourceText::new(std::str::from_utf8(
+            control.level.bytes(),
+        )?)?);
+        details.control_lot = Some(SourceText::new(std::str::from_utf8(control.lot.bytes())?)?);
     }
-    Ok(EvidenceList::new(attributes)?)
+    Ok(details)
 }
 
 /// Maps explicit app work to Autolyser codes, without inferred medium or cup.

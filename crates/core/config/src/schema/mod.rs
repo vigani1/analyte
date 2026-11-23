@@ -11,8 +11,9 @@ use analyte_model::Identifier;
 use serde::{Deserialize, Serialize};
 mod mappings;
 pub use mappings::{
-    AstmTestComponent, ComponentParts, Field, IdentityEvidence, IdentityReference, Mappings,
-    NoSubId, OrderNamespace, QcRule, SampleSelection, SubId, UnitMapping, ValueExpectation,
+    AstmResultLayout, AstmResultProfile, AstmTestComponent, ComponentParts, Field,
+    IdentityEvidence, IdentityReference, Mappings, NoSubId, OrderNamespace, QcRule,
+    SampleSelection, SubId, UnitMapping, ValueExpectation,
 };
 mod poct;
 pub use poct::Poct;

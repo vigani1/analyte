@@ -153,7 +153,6 @@ fn make_result(receipt: ReceiptId, run: &str) -> Result<ResultContent, Box<dyn s
             revision: Revision(0),
         }),
         parts: NonEmptyEvidenceList::new(EvidenceList::new(vec![ResultPart {
-            attributes: None,
             test: name("test")?,
             values: EvidenceList::new(vec![ResultValue::new(
                 SourceText::new("<0.1")?,
@@ -161,6 +160,7 @@ fn make_result(receipt: ReceiptId, run: &str) -> Result<ResultContent, Box<dyn s
             )])?,
             units: None,
             dilution: None,
+            details: None,
             flags: EvidenceList::new(vec![])?,
             reference_range: None,
             comments: EvidenceList::new(vec![])?,

@@ -34,19 +34,19 @@ pub use orders::{
 };
 pub use schema::software_version;
 pub use schema::{
-    AckPoint, AstmTestComponent, Autolyser, Capability, ChecksumAcceptance, ChecksumHex,
-    ChecksumInclusion, ChoiceBlock, ChoiceKind, ChoiceLabel, ChoiceName, ChoiceSelections,
-    ChoiceValue, Classification, CodeTables, ComponentParts, DepartureDeclaration,
-    DepartureDirection, DepartureEdition, DepartureGuarantee, DepartureMessage, DepartureReference,
-    DepartureRefusal, DepartureScope, Destination, Dialog, DilutionSource, Edition, Encoding,
-    Escapes, Evidence, EvidenceLevel, Field, FlowControl, Framing, Group, HexCase,
-    IdentityEvidence, IdentityReference, Law, LawConnectionMode, LawPeer, LawQueryForm, LawWork,
-    MAX_CHOICE_COMBINATIONS, MAX_CHOICE_VALUES, MAX_CHOICES, MachineChoice, MachineDeparture,
-    Mappings, NoSubId, OrderNamespace, OrdersSwitch, Overrides, Parity, PeerSupport, Poct,
-    PoctIdentity, Priority, QcRule, Responsibility, SampleSelection, SampleSource, Serial,
-    SerialSetting, SerialValues, Site, SubId, Syntax, Terminator, Transport, TransportKind,
-    UnitMapping, ValueExpectation, ValueKind, Vidas, VidasChoice, VidasResultControlLabels,
-    VidasSampleLimit,
+    AckPoint, AstmResultLayout, AstmResultProfile, AstmTestComponent, Autolyser, Capability,
+    ChecksumAcceptance, ChecksumHex, ChecksumInclusion, ChoiceBlock, ChoiceKind, ChoiceLabel,
+    ChoiceName, ChoiceSelections, ChoiceValue, Classification, CodeTables, ComponentParts,
+    DepartureDeclaration, DepartureDirection, DepartureEdition, DepartureGuarantee,
+    DepartureMessage, DepartureReference, DepartureRefusal, DepartureScope, Destination, Dialog,
+    DilutionSource, Edition, Encoding, Escapes, Evidence, EvidenceLevel, Field, FlowControl,
+    Framing, Group, HexCase, IdentityEvidence, IdentityReference, Law, LawConnectionMode, LawPeer,
+    LawQueryForm, LawWork, MAX_CHOICE_COMBINATIONS, MAX_CHOICE_VALUES, MAX_CHOICES, MachineChoice,
+    MachineDeparture, Mappings, NoSubId, OrderNamespace, OrdersSwitch, Overrides, Parity,
+    PeerSupport, Poct, PoctIdentity, Priority, QcRule, Responsibility, SampleSelection,
+    SampleSource, Serial, SerialSetting, SerialValues, Site, SubId, Syntax, Terminator, Transport,
+    TransportKind, UnitMapping, ValueExpectation, ValueKind, Vidas, VidasChoice,
+    VidasResultControlLabels, VidasSampleLimit,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};

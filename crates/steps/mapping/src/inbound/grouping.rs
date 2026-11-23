@@ -3,12 +3,13 @@ use crate::FieldSyntax;
 use crate::MappedResult;
 use crate::RecordSettings;
 use crate::inbound::source::Source;
-use crate::inbound::{identity, result, value};
+use crate::inbound::{astm_results, identity, result, value};
 use crate::{Error, Input, Output, Position, Problem, finding, identifier, list, text};
+use analyte_config::AstmResultLayout;
 use analyte_model::{
     Decimal, Dilution, DilutionApplied, EvidenceList, IdentityStatus, NamespacedId,
     NonEmptyEvidenceList, ObservationIdentity, ProcessingMode, Reason, ResultContent,
-    ResultIdentity, ResultPart, ResultStatus, ResultValue, SampleIdentity,
+    ResultDetails, ResultIdentity, ResultPart, ResultStatus, ResultValue, SampleIdentity,
 };
 
 fn processing(
@@ -83,6 +84,11 @@ pub(crate) fn message(
     let mode = processing(source, &mut output, config.absent_astm_processing)?;
     map_comments(source, &mut output)?;
     // Group only resolved identities, within the same source order occurrence.
+    let layout = config
+        .mappings
+        .astm_results
+        .as_ref()
+        .map(|profile| profile.layout);
     let mut groups: Vec<(usize, Option<ObservationIdentity>)> = Vec::new();
     for (index, node) in source.nodes.iter().enumerate() {
         if node.name != "R" && node.name != "OBX" {
@@ -91,20 +97,20 @@ pub(crate) fn message(
         crate::reserve_evidence(&mut output, source, index)?;
         let position = source.position(index, 0);
         let finding_start = output.findings.len();
-        let astm = source.syntax == FieldSyntax::AstmLis02;
-        let value_field = if astm { 4 } else { 5 };
-        let values = value::values(source, index, value_field, &mut output)?;
-        let sample = identity::sample(source, index, config, &mut output)?;
-        let Some(codes) = map_codes(source, index, config, &mut output)? else {
-            // The component_parts finding already names the cause.
-            output.uncoded.push(crate::UncodedObservation {
-                position: source.position(index, 3),
-                values,
-            });
-            continue;
-        };
-        let Some(test) = map_test(source, index, config, &codes, &values, &mut output)? else {
-            output.missing_test(source.position(index, 3), values)?;
+        let mut details = ResultDetails::default();
+        let order = order_owner(source, index)?;
+        let sample =
+            if let Some(layout) = layout.filter(|layout| astm_results::is_structured(*layout)) {
+                match astm_results::specimen(source, order, layout, &mut details, &mut output)? {
+                    true => identity::sample(source, index, config, &mut output)?,
+                    false => None,
+                }
+            } else {
+                identity::sample(source, index, config, &mut output)?
+            };
+        let Some((test, values, dilution)) =
+            observation_values(source, index, config, layout, &mut details, &mut output)?
+        else {
             continue;
         };
         let observation = identity::observation(
@@ -118,32 +124,20 @@ pub(crate) fn message(
         )?;
         let mut part = result::part(source, index, config, input, test, values, &mut output)?;
         let policy = &config.mappings.identity;
-        let status_text = part.source_status.as_str();
-        let correction = policy
-            .correction_status_codes
-            .iter()
-            .any(|code| code.as_str() == status_text);
-        if policy
-            .rerun_status_codes
-            .iter()
-            .any(|code| code.as_str() == status_text)
-        {
-            // A rerun describes how the measurement was produced, with no release claim.
-            part.status = ResultStatus::Unknown;
-        } else if correction && policy.evidence.is_some() {
-            part.status = ResultStatus::Corrected;
+        let correction = apply_status_policy(&mut part, policy);
+        part.dilution = dilution;
+        if let Some(layout) = layout {
+            astm_results::enrich(
+                source,
+                index,
+                order,
+                layout,
+                &mut part,
+                &mut details,
+                &mut output,
+            )?;
+            part.details = Some(details);
         }
-        part.dilution = codes.dilution;
-        let order = source
-            .ancestors(index)?
-            .into_iter()
-            .rfind(|i| {
-                source
-                    .nodes
-                    .get(*i)
-                    .is_some_and(|n| n.name == "O" || n.name == "OBR" || n.name == "SPM")
-            })
-            .unwrap_or(index);
         // A documented recipe describes one measurement per observation record.
         // Compare two claims to the same key in the store, including in one upload.
         let order = if policy.evidence.is_some() {
@@ -171,6 +165,91 @@ pub(crate) fn message(
         finding(&mut output, source.position(0, 0), Problem::NoObservations)?;
     }
     Ok(output)
+}
+
+fn order_owner(source: &Source<'_>, index: usize) -> Result<usize, Error> {
+    Ok(source
+        .ancestors(index)?
+        .into_iter()
+        .rfind(|ancestor| {
+            source
+                .nodes
+                .get(*ancestor)
+                .is_some_and(|node| matches!(node.name.as_str(), "O" | "OBR" | "SPM"))
+        })
+        .unwrap_or(index))
+}
+
+type ObservationValues = (NamespacedId, EvidenceList<ResultValue>, Option<Dilution>);
+
+fn observation_values(
+    source: &Source<'_>,
+    index: usize,
+    config: &RecordSettings<'_>,
+    layout: Option<AstmResultLayout>,
+    details: &mut ResultDetails,
+    output: &mut Output,
+) -> Result<Option<ObservationValues>, Error> {
+    let astm = source.syntax == FieldSyntax::AstmLis02;
+    let value_field = if astm { 4 } else { 5 };
+    let codes = map_codes(source, index, config, output)?;
+    let test = codes
+        .as_ref()
+        .map(|codes| map_test(source, index, config, codes))
+        .transpose()?
+        .flatten();
+    let expected = test
+        .as_ref()
+        .map_or(analyte_config::ValueKind::Either, |test| {
+            crate::value_kind(config.mappings, test)
+        });
+    let values = if let Some(layout) = layout.filter(|layout| astm_results::is_structured(*layout))
+    {
+        astm_results::structured_values(source, index, layout, expected, details, output)?
+    } else if layout == Some(AstmResultLayout::MeasurementMarker) {
+        astm_results::measurement_values(source, index, output)?
+    } else {
+        value::values(source, index, value_field, output)?
+    };
+    let Some(codes) = codes else {
+        output.uncoded.push(crate::UncodedObservation {
+            position: source.position(index, 3),
+            values,
+        });
+        return Ok(None);
+    };
+    let Some(test) = test else {
+        output.missing_test(source.position(index, 3), values)?;
+        return Ok(None);
+    };
+    if !layout.is_some_and(astm_results::is_structured) {
+        value::check_kind(
+            &values,
+            expected,
+            source.position(index, value_field),
+            output,
+        )?;
+    }
+    Ok(Some((test, values, codes.dilution)))
+}
+
+fn apply_status_policy(part: &mut ResultPart, policy: &analyte_config::IdentityEvidence) -> bool {
+    let status_text = part.source_status.as_str();
+    let correction = policy
+        .correction_status_codes
+        .iter()
+        .any(|code| code.as_str() == status_text);
+    if policy
+        .rerun_status_codes
+        .iter()
+        .any(|code| code.as_str() == status_text)
+    {
+        // A rerun describes how the measurement was produced, with no release claim.
+        part.status = ResultStatus::Unknown;
+    } else if correction && policy.evidence.is_some() {
+        part.status = ResultStatus::Corrected;
+    }
+    correction
 }
 
 fn nonempty(
@@ -236,6 +315,18 @@ fn map_codes(
         }));
     };
     let component = usize::from(component.number());
+    if config
+        .mappings
+        .astm_results
+        .as_ref()
+        .is_some_and(|profile| astm_results::uses_slash(profile.layout))
+    {
+        return Ok(Some(Codes {
+            code: astm_results::slash_code(source, index, output)?,
+            system: None,
+            dilution: None,
+        }));
+    }
     let Some(parts) = &config.mappings.component_parts else {
         return Ok(Some(Codes {
             code: source.present(source.component(index, 3, 1, component)?),
@@ -383,7 +474,8 @@ fn append_result(
                         | Problem::UnsupportedLawStatusOnly
                         | Problem::UnqualifiedHl7Report
                         | Problem::DepartureConflict
-                        | Problem::DerivedStatusContract => None,
+                        | Problem::DerivedStatusContract
+                        | Problem::IncompleteAstmReport => None,
                     })
                     .ok_or(Error::Structure {
                         position,
@@ -418,15 +510,8 @@ fn map_test(
     index: usize,
     config: &RecordSettings<'_>,
     codes: &Codes,
-    values: &EvidenceList<ResultValue>,
-    output: &mut Output,
 ) -> Result<Option<NamespacedId>, Error> {
     let machine = config.mappings;
-    let value_field = if source.syntax == FieldSyntax::AstmLis02 {
-        4
-    } else {
-        5
-    };
     let position = source.position(index, 3);
     let Some(code) = codes.code.as_deref() else {
         return Ok(None);
@@ -438,11 +523,5 @@ fn map_test(
             None => machine.test_system.clone(),
         },
     };
-    value::check_kind(
-        values,
-        crate::value_kind(machine, &test),
-        source.position(index, value_field),
-        output,
-    )?;
     Ok(Some(test))
 }

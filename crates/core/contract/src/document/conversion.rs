@@ -2,10 +2,9 @@
 use super::{
     Attachment, CarrierKind, CodedValue, Comparator, Dilution, DilutionApplied, EvidenceList,
     IdentityStatus, NamedSourceTime, NamespacedId, NonEmptyEvidenceList, NumericValue,
-    ObservationIdentity, OrderState, ProcessingMode, QcClass, ResultAttribute, ResultDocument,
-    ResultIdentity, ResultPart, ResultStatus, ResultValue, SampleIdentity, SamplePosition,
-    SampleSource, SourceNode, SourceTime, StructuredNumeric, TimePrecision, UnitMapping,
-    ValueInterpretation,
+    ObservationIdentity, OrderState, ProcessingMode, QcClass, ResultDocument, ResultIdentity,
+    ResultPart, ResultStatus, ResultValue, SampleIdentity, SamplePosition, SampleSource,
+    SourceNode, SourceTime, StructuredNumeric, TimePrecision, UnitMapping, ValueInterpretation,
 };
 
 impl From<&analyte_model::NumericValue> for NumericValue {
@@ -23,8 +22,10 @@ impl From<&analyte_model::ResultValue> for ResultValue {
             analyte_model::ValueInterpretation::Text => {
                 Self::text((&v.original).into(), v.decoded_text().map(Into::into))
             }
-            parsed @ (analyte_model::ValueInterpretation::Numeric(_)
+            parsed @ (analyte_model::ValueInterpretation::Absent
             | analyte_model::ValueInterpretation::Invalid
+            | analyte_model::ValueInterpretation::Qualitative(_)
+            | analyte_model::ValueInterpretation::Numeric(_)
             | analyte_model::ValueInterpretation::Coded(_)
             | analyte_model::ValueInterpretation::StructuredNumeric(_)
             | analyte_model::ValueInterpretation::Attachment(_)
@@ -128,35 +129,14 @@ impl From<&analyte_model::SourceNode> for SourceNode {
     }
 }
 
-impl From<&analyte_model::ResultAttribute> for ResultAttribute {
-    fn from(v: &analyte_model::ResultAttribute) -> Self {
-        use analyte_model::ResultAttribute as Model;
-        match v {
-            Model::ControlLabel(text) => Self::ControlLabel(text.into()),
-            Model::ControlName(text) => Self::ControlName(text.into()),
-            Model::ControlLot(text) => Self::ControlLot(text.into()),
-            Model::ControlKnowledge(text) => Self::ControlKnowledge(text.into()),
-            Model::ControlLevel(text) => Self::ControlLevel(text.into()),
-            Model::ReportList(text) => Self::ReportList(text.into()),
-            Model::SampleMedium(text) => Self::SampleMedium(text.into()),
-            Model::InstrumentId(text) => Self::InstrumentId(text.into()),
-            Model::InstrumentSerial(text) => Self::InstrumentSerial(text.into()),
-            Model::Technologist(text) => Self::Technologist(text.into()),
-        }
-    }
-}
-
 impl From<&analyte_model::ResultPart> for ResultPart {
     fn from(v: &analyte_model::ResultPart) -> Self {
         Self {
             test: (&v.test).into(),
             values: EvidenceList(v.values.as_slice().iter().map(Into::into).collect()),
-            attributes: v
-                .attributes
-                .as_ref()
-                .map(|values| EvidenceList(values.as_slice().iter().map(Into::into).collect())),
             units: v.units.as_ref().map(Into::into),
             dilution: v.dilution.as_ref().map(Into::into),
+            details: v.details.as_ref().map(Into::into),
             flags: EvidenceList(v.flags.as_slice().iter().map(Into::into).collect()),
             reference_range: v.reference_range.as_ref().map(Into::into),
             comments: EvidenceList(v.comments.as_slice().iter().map(Into::into).collect()),
@@ -352,6 +332,20 @@ impl From<&analyte_model::ValueInterpretation> for ValueInterpretation {
             analyte_model::ValueInterpretation::Numeric(v) => Self::Numeric(v.into()),
             analyte_model::ValueInterpretation::Text => Self::Text,
             analyte_model::ValueInterpretation::Invalid => Self::Invalid,
+            analyte_model::ValueInterpretation::Absent => Self::Absent,
+            analyte_model::ValueInterpretation::Qualitative(reaction) => {
+                Self::Qualitative(match reaction {
+                    analyte_model::QualitativeReaction::Negative => {
+                        super::QualitativeReaction::Negative
+                    }
+                    analyte_model::QualitativeReaction::Borderline => {
+                        super::QualitativeReaction::Borderline
+                    }
+                    analyte_model::QualitativeReaction::Positive => {
+                        super::QualitativeReaction::Positive
+                    }
+                })
+            }
             analyte_model::ValueInterpretation::Coded(v) => Self::Coded(v.into()),
             analyte_model::ValueInterpretation::StructuredNumeric(v) => {
                 Self::StructuredNumeric(v.into())
@@ -379,6 +373,52 @@ impl From<OrderState> for analyte_model::OrderState {
             OrderState::CancelRequested => Self::CancelRequested,
             OrderState::CancelConfirmed => Self::CancelConfirmed,
             OrderState::Uncertain => Self::Uncertain,
+        }
+    }
+}
+
+impl From<&analyte_model::ResultDetails> for super::ResultDetails {
+    fn from(v: &analyte_model::ResultDetails) -> Self {
+        Self {
+            method: v.method.map(|method| match method {
+                analyte_model::MeasurementMethod::Measured => super::MeasurementMethod::Measured,
+                analyte_model::MeasurementMethod::Calculated => {
+                    super::MeasurementMethod::Calculated
+                }
+            }),
+            specimen_descriptor: v.specimen_descriptor.as_ref().map(Into::into),
+            report_status: v.report_status.as_ref().map(Into::into),
+            cutoff_index: v.cutoff_index.as_ref().map(Into::into),
+            message_code: v.message_code.as_ref().map(Into::into),
+            alarms: EvidenceList(
+                v.alarms
+                    .as_slice()
+                    .iter()
+                    .map(|alarm| super::ResultAlarm {
+                        number: (&alarm.number).into(),
+                        text: alarm.text.as_ref().map(Into::into),
+                    })
+                    .collect(),
+            ),
+            predilution: v.predilution.as_ref().map(Into::into),
+            specimen_label: v.specimen_label.as_ref().map(Into::into),
+            control_name: v.control_name.as_ref().map(Into::into),
+            report_list: v.report_list.as_ref().map(Into::into),
+            control_knowledge: v.control_knowledge.as_ref().map(Into::into),
+            control_level: v.control_level.as_ref().map(Into::into),
+            control_lot: v.control_lot.as_ref().map(Into::into),
+            strip_lot: v.strip_lot.as_ref().map(Into::into),
+            instrument_id: v.instrument_id.as_ref().map(Into::into),
+            instrument_serial: v.instrument_serial.as_ref().map(Into::into),
+            technologist: v.technologist.as_ref().map(Into::into),
+            termination: v.termination.as_ref().map(Into::into),
+            completion: v.completion.map(|completion| match completion {
+                analyte_model::ReportCompletion::Normal => super::ReportCompletion::Normal,
+                analyte_model::ReportCompletion::SenderAborted => {
+                    super::ReportCompletion::SenderAborted
+                }
+                analyte_model::ReportCompletion::Unknown => super::ReportCompletion::Unknown,
+            }),
         }
     }
 }

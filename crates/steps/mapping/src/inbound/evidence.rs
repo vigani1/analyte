@@ -46,11 +46,11 @@ pub(crate) fn map_part(
     received_at: jiff::Timestamp,
 ) -> Result<ResultPart, Error> {
     Ok(ResultPart {
-        attributes: None,
         test,
         values: EvidenceList::new(vec![value])?,
         units: None,
         dilution: None,
+        details: None,
         flags: EvidenceList::new(Vec::new())?,
         reference_range: None,
         comments: EvidenceList::new(Vec::new())?,

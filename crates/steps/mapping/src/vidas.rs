@@ -7,9 +7,9 @@ use analyte_vidas::syntax::Subject;
 
 use analyte_model::{
     Dilution, DilutionApplied, EvidenceList, Identifier, IdentityStatus, NamedSourceTime,
-    NamespacedId, ObservationIdentity, QcClass, Reason, ResultAttribute, ResultIdentity,
-    ResultValue, SampleId, SampleIdentity, SampleSource, SourceText, SourceTime, TimePrecision,
-    Units, ValueInterpretation,
+    NamespacedId, ObservationIdentity, QcClass, Reason, ResultDetails, ResultIdentity, ResultValue,
+    SampleId, SampleIdentity, SampleSource, SourceText, SourceTime, TimePrecision, Units,
+    ValueInterpretation,
 };
 /// Maps VIDAS values and resolves identity only with documented completion evidence.
 /// # Errors
@@ -35,10 +35,7 @@ pub fn map(
     };
     let mut source = map_part(test, evidence.value, time)?;
     let completion = completion_time(message)?;
-    let attributes = result_attributes(message, &evidence.subject)?;
-    if !attributes.as_slice().is_empty() {
-        source.attributes = Some(attributes);
-    }
+    source.details = result_details(message, &evidence.subject)?;
     source.units = evidence.unit.map(Units::original);
     source.flags = EvidenceList::new(evidence.flag.into_iter().collect())?;
     source.comments = EvidenceList::new(vec![evidence.call])?;
@@ -84,37 +81,29 @@ pub fn map(
     Ok(output)
 }
 
-fn result_attributes(
+fn result_details(
     message: &analyte_vidas::syntax::Message,
     subject: &Subject,
-) -> Result<EvidenceList<ResultAttribute>, Error> {
-    let mut attributes = Vec::new();
-    for (tag, field) in [
-        (
-            "id",
-            ResultAttribute::InstrumentId as fn(SourceText) -> ResultAttribute,
-        ),
-        ("sn", ResultAttribute::InstrumentSerial),
-        ("m4", ResultAttribute::Technologist),
-    ] {
-        if let Some(value) = message.get(tag) {
-            attributes.push(field(SourceText::new(value)?));
-        }
-    }
+) -> Result<Option<ResultDetails>, Error> {
+    let field = |tag| message.get(tag).map(SourceText::new).transpose();
+    let mut details = ResultDetails {
+        instrument_id: field("id")?,
+        instrument_serial: field("sn")?,
+        technologist: field("m4")?,
+        ..ResultDetails::default()
+    };
     match subject {
         Subject::Sample(_) => {}
         Subject::KitControl { name, lot } => {
-            attributes.push(ResultAttribute::ControlLabel(SourceText::new(
-                message.get("ci").unwrap_or_default(),
-            )?));
-            attributes.push(ResultAttribute::ControlName(name.clone()));
-            attributes.push(ResultAttribute::ControlLot(lot.clone()));
+            details.specimen_label = field("ci")?;
+            details.control_name = Some(name.clone());
+            details.strip_lot = Some(lot.clone());
         }
         Subject::QualityControl(name) => {
-            attributes.push(ResultAttribute::ControlName(name.clone()));
+            details.control_name = Some(name.clone());
         }
     }
-    Ok(EvidenceList::new(attributes)?)
+    Ok((details != ResultDetails::default()).then_some(details))
 }
 
 fn completion_time(message: &analyte_vidas::syntax::Message) -> Result<NamedSourceTime, Error> {

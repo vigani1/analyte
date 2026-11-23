@@ -3,7 +3,7 @@
 use analyte_config::{Draft, Validated};
 use analyte_fixtures::ConfigEdit as _;
 use analyte_mapping::{AppOrder, AppOrderPriority, OrderMappingError};
-use analyte_model::{Identifier, NamespacedId, SampleId};
+use analyte_model::{Identifier, NamespacedId, SampleId, SourceText};
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 const SECTION: &str = "\n[orders]\nsend_ahead=true\npatient_namespace='patients'\npriorities=[{app='routine',machine='R'}]\n";
 fn config(definition: &str) -> Result<Validated, analyte_config::Error> {
@@ -427,7 +427,7 @@ fn vidas_completion_evidence_distinguishes_measurements() -> TestResult {
 // BCI Link rev C pp. 4-5 and B-7; VIDAS PC Manual F ch. 10.
 #[test]
 fn vidas_control_labels_keep_composite_and_enforce_qc_width() -> TestResult {
-    use analyte_model::{QcClass, ResultAttribute, SourceText, TimePrecision};
+    use analyte_model::{QcClass, TimePrecision};
     use analyte_vidas::syntax::ControlLabels;
 
     let config = config(include_str!(
@@ -454,16 +454,30 @@ fn vidas_control_labels_keep_composite_and_enforce_qc_width() -> TestResult {
     let part = kit.parts.as_slice().first().ok_or("part")?;
     assert!(kit.sample.is_none());
     assert_eq!(part.qc_class, QcClass::Control);
+    let details = part.details.as_ref().ok_or("result details")?;
     assert_eq!(
-        part.attributes.as_ref().ok_or("attributes")?.as_slice(),
-        [
-            ResultAttribute::InstrumentId(SourceText::new("Box 01")?),
-            ResultAttribute::InstrumentSerial(SourceText::new("000 a")?),
-            ResultAttribute::Technologist(SourceText::new("Tech 7")?),
-            ResultAttribute::ControlLabel(SourceText::new("KitX 260203-2")?),
-            ResultAttribute::ControlName(SourceText::new("KitX")?),
-            ResultAttribute::ControlLot(SourceText::new("260203-2")?),
-        ]
+        details.instrument_id.as_ref().map(SourceText::as_str),
+        Some("Box 01")
+    );
+    assert_eq!(
+        details.instrument_serial.as_ref().map(SourceText::as_str),
+        Some("000 a")
+    );
+    assert_eq!(
+        details.technologist.as_ref().map(SourceText::as_str),
+        Some("Tech 7")
+    );
+    assert_eq!(
+        details.specimen_label.as_ref().map(SourceText::as_str),
+        Some("KitX 260203-2")
+    );
+    assert_eq!(
+        details.control_name.as_ref().map(SourceText::as_str),
+        Some("KitX")
+    );
+    assert_eq!(
+        details.strip_lot.as_ref().map(SourceText::as_str),
+        Some("260203-2")
     );
     let completion = part.times.as_slice().first().ok_or("completion")?;
     assert_eq!(completion.role.as_str(), "completion");
@@ -491,13 +505,12 @@ fn vidas_control_labels_keep_composite_and_enforce_qc_width() -> TestResult {
         let part = qc.parts.as_slice().first().ok_or("part")?;
         assert!(qc.sample.is_none());
         assert_eq!(part.qc_class, QcClass::Control);
-        assert!(
-            part.attributes
-                .as_ref()
-                .ok_or("attributes")?
-                .as_slice()
-                .contains(&ResultAttribute::ControlName(SourceText::new(id)?))
+        let details = part.details.as_ref().ok_or("result details")?;
+        assert_eq!(
+            details.control_name.as_ref().map(SourceText::as_str),
+            Some(id)
         );
+        assert!(details.strip_lot.is_none());
     }
     assert!(source("Qc00000000012", "conthwst").is_err());
     Ok(())
@@ -583,16 +596,12 @@ fn autolyser_keeps_report_code_without_inventing_sample_or_run() -> TestResult {
 // original level and lot, in place of the inconsistent printed example.
 #[test]
 fn autolyser_projects_controls_layout_and_leaves_normal_placeholders_raw() -> TestResult {
-    use analyte_model::{QcClass, ResultAttribute, SourceText};
+    use analyte_model::QcClass;
     let config = config(include_str!("../../../core/config/examples/autolyser.toml"))?;
     let analyte_config::Stack::Autolyser(machine) = config.effective().stack() else {
         return Err("expected Autolyser stack".into());
     };
     let lot = " 00lot              ";
-    let common = [
-        ResultAttribute::ReportList(SourceText::new("R")?),
-        ResultAttribute::SampleMedium(SourceText::new("U")?),
-    ];
     for (control, expected_class) in [
         (format!("YU007{lot}"), QcClass::Control),
         (format!("NK001{:20}", ""), QcClass::Unknown),
@@ -604,18 +613,30 @@ fn autolyser_projects_controls_layout_and_leaves_normal_placeholders_raw() -> Te
         let part = result.parts.as_slice().first().ok_or("part")?;
         assert_eq!(part.qc_class, expected_class);
         assert!(result.requires_parking());
-        let mut expected = common.to_vec();
-        if expected_class == QcClass::Control {
+        let details = part.details.as_ref().ok_or("result details")?;
+        assert_eq!(
+            details.report_list.as_ref().map(SourceText::as_str),
+            Some("R")
+        );
+        assert_eq!(
+            details.specimen_descriptor.as_ref().map(SourceText::as_str),
+            Some("U")
+        );
+        let control = expected_class == QcClass::Control;
+        if control {
             assert!(result.sample.is_none());
-            expected.extend([
-                ResultAttribute::ControlKnowledge(SourceText::new("U")?),
-                ResultAttribute::ControlLevel(SourceText::new("007")?),
-                ResultAttribute::ControlLot(SourceText::new(lot)?),
-            ]);
         }
         assert_eq!(
-            part.attributes.as_ref().ok_or("attributes")?.as_slice(),
-            expected
+            details.control_knowledge.as_ref().map(SourceText::as_str),
+            control.then_some("U")
+        );
+        assert_eq!(
+            details.control_level.as_ref().map(SourceText::as_str),
+            control.then_some("007")
+        );
+        assert_eq!(
+            details.control_lot.as_ref().map(SourceText::as_str),
+            control.then_some(lot)
         );
         assert_eq!(report.raw, raw.as_bytes());
     }

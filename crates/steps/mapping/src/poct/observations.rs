@@ -140,7 +140,6 @@ fn map_one(
             .map(|v| model::SourceText::new(&v))
             .transpose()?;
     let part = model::ResultPart {
-        attributes: None,
         test: code_id(&source_code)?,
         values: model::EvidenceList::new(vec![map_value(
             &observation.value,
@@ -152,6 +151,7 @@ fn map_one(
             factor: None,
             applied: model::DilutionApplied::Unknown,
         }),
+        details: None,
         flags: model::EvidenceList::new(flags)?,
         reference_range,
         comments: model::EvidenceList::new(comments)?,

@@ -196,30 +196,84 @@ pub struct SourceNode {
     pub status: Option<SourceText>,
 }
 
-/// Source-defined fields that retain their exact transmitted text.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "field", content = "original", rename_all = "snake_case")]
-pub enum ResultAttribute {
-    /// Complete label identifying control material.
-    ControlLabel(SourceText),
-    /// Control name or identifier, where the source distinguishes it from its lot.
-    ControlName(SourceText),
-    /// Lot of the material or test strip used for a control.
-    ControlLot(SourceText),
-    /// Source discriminator for known or unknown control material.
-    ControlKnowledge(SourceText),
-    /// Level of the control used in the measurement.
-    ControlLevel(SourceText),
-    /// List the analyzer reports the measurement under.
-    ReportList(SourceText),
-    /// Medium identified by the analyzer.
-    SampleMedium(SourceText),
+/// Additional source evidence where a result upload defines these fields.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct ResultDetails {
+    /// Source-reported distinction between measured and calculated values.
+    pub method: Option<MeasurementMethod>,
+    /// Exact source specimen descriptor.
+    pub specimen_descriptor: Option<SourceText>,
+    /// Separate report-level status, with its original code in the source path.
+    pub report_status: Option<ResultStatus>,
+    /// Source-reported test cutoff, including an explicitly absent value.
+    pub cutoff_index: Option<ResultValue>,
+    /// Source message code accompanying a quantitative value.
+    pub message_code: Option<SourceText>,
+    /// Structured measurement alarms in original order.
+    pub alarms: EvidenceList<ResultAlarm>,
+    /// Source predilution indicator, independent of the selected factor.
+    pub predilution: Option<SourceText>,
+    /// Complete specimen or control label when its meaning is conditional.
+    pub specimen_label: Option<SourceText>,
+    /// Control name, only when the source layout establishes it.
+    pub control_name: Option<SourceText>,
+    /// Exact list code the analyzer reports the measurement under.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub report_list: Option<SourceText>,
+    /// Exact source code for known or unknown control material.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub control_knowledge: Option<SourceText>,
+    /// Exact level of the control used in the measurement.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub control_level: Option<SourceText>,
+    /// Lot of the control material, as reported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub control_lot: Option<SourceText>,
+    /// Lot of the test strip, as reported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strip_lot: Option<SourceText>,
     /// Identifier of the analyzer that produced the result.
-    InstrumentId(SourceText),
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instrument_id: Option<SourceText>,
     /// Instrument serial number, including any embedded spaces.
-    InstrumentSerial(SourceText),
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instrument_serial: Option<SourceText>,
     /// Technologist named in the source result.
-    Technologist(SourceText),
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub technologist: Option<SourceText>,
+    /// Complete terminator code as sent.
+    pub termination: Option<SourceText>,
+    /// Interpretation of the source termination, when the layout declares one.
+    pub completion: Option<ReportCompletion>,
+}
+
+/// Completion of the source upload, independent of result release.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ReportCompletion {
+    /// The analyzer signalled normal completion.
+    Normal,
+    /// The analyzer aborted the result upload.
+    SenderAborted,
+    /// Completion was not established.
+    Unknown,
+}
+
+/// Source-reported test method.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MeasurementMethod {
+    /// The analyzer measured the value.
+    Measured,
+    /// The analyzer calculated the value.
+    Calculated,
+}
+
+/// Numeric alarm code and accompanying text, when transmitted by the source.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResultAlarm {
+    /// Exact source code in the configured wire layout.
+    pub number: SourceText,
+    /// Source alarm text, if sent.
+    pub text: Option<SourceText>,
 }
 
 /// A result retains source evidence beside summaries, without clinical decisions.
@@ -233,9 +287,9 @@ pub struct ResultPart {
     pub units: Option<Units>,
     /// Dilution evidence if present.
     pub dilution: Option<Dilution>,
-    /// Additional fields as reported by the analyzer.
+    /// Additional structured evidence from the selected source layout.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub attributes: Option<EvidenceList<ResultAttribute>>,
+    pub details: Option<ResultDetails>,
     /// Source flags, unchanged.
     pub flags: EvidenceList<SourceText>,
     /// Source reference range, uninterpreted.
@@ -346,10 +400,18 @@ impl ResultContent {
         unresolved
             || self.sample.is_none()
             || self.parts.as_slice().iter().any(|part| {
-                part.values
-                    .as_slice()
-                    .iter()
-                    .any(|value| value.parsed().is_unsupported())
+                part.details
+                    .as_ref()
+                    .and_then(|details| details.completion)
+                    .is_some_and(|completion| match completion {
+                        ReportCompletion::Normal => false,
+                        ReportCompletion::SenderAborted | ReportCompletion::Unknown => true,
+                    })
+                    || part
+                        .values
+                        .as_slice()
+                        .iter()
+                        .any(|value| value.parsed().is_unsupported())
             })
     }
 

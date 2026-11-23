@@ -24,15 +24,16 @@ pub use lifecycle::{
     OrderEvent, OrderIneligible, OrderState, OrderTransition, ProcessingMode, TransitionError,
 };
 pub use result::{
-    CarrierKind, EmptyEvidence, EvidenceList, ListError, NamedSourceTime, NonEmptyEvidenceList,
-    OffsetError, QcClass, ResultAttribute, ResultContent, ResultPart, ResultStatus, SampleIdentity,
-    SamplePosition, SampleSource, SourceNode, SourceTime, TimePrecision, UtcOffset,
+    CarrierKind, EmptyEvidence, EvidenceList, ListError, MeasurementMethod, NamedSourceTime,
+    NonEmptyEvidenceList, OffsetError, QcClass, ReportCompletion, ResultAlarm, ResultContent,
+    ResultDetails, ResultPart, ResultStatus, SampleIdentity, SamplePosition, SampleSource,
+    SourceNode, SourceTime, TimePrecision, UtcOffset,
 };
 pub use text::{Identifier, Reason, SampleId, SourceText, TextError};
 pub use value::{
     Attachment, CodedValue, Comparator, Decimal, DecimalError, DecodedTextError, Dilution,
-    DilutionApplied, NumericValue, ResultValue, StructuredNumeric, UnitMapping, UnitMappingError,
-    Units, ValueInterpretation,
+    DilutionApplied, NumericValue, QualitativeReaction, ResultValue, StructuredNumeric,
+    UnitMapping, UnitMappingError, Units, ValueInterpretation,
 };
 
 mod departures;

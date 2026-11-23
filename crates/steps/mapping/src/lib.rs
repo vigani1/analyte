@@ -179,6 +179,8 @@ pub struct Input<'a> {
 pub enum Problem {
     /// A required HL7 report field or supported observation state is not established.
     UnqualifiedHl7Report,
+    /// Result upload did not terminate normally.
+    IncompleteAstmReport,
     /// Populated source status contradicts an enabled final-only guarantee.
     DepartureConflict,
     /// Version 1 cannot carry the provenance of departure-derived final status.
