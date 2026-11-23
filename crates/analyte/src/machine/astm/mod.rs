@@ -67,6 +67,7 @@ pub(super) struct Host<'a, 'm> {
     /// Present only when the machine is configured to ask for orders.
     queries: Option<Queries<'a>>,
     query_orders: Vec<analyte_store::MachineOrder>,
+    query_reservations: crate::orders::sending::Reservations,
     work: crate::orders::sending::Work<'a, analyte_config::AstmOrders, Vec<Vec<u8>>>,
 }
 
@@ -96,7 +97,10 @@ impl<'a, 'm> Host<'a, 'm> {
             query: Query::Idle,
             queries: Queries::new(settings),
             query_orders: Vec::new(),
-            work: crate::orders::sending::Work::new(settings.orders().filter(|o| o.send_ahead())),
+            query_reservations: crate::orders::sending::Reservations::new()
+                .map_err(crate::orders::OrderError::from)?,
+            work: crate::orders::sending::Work::new(settings.orders().filter(|o| o.send_ahead()))
+                .map_err(crate::orders::OrderError::from)?,
         })
     }
     async fn receive_bytes(
@@ -155,6 +159,7 @@ impl<'a, 'm> Host<'a, 'm> {
                     reply,
                     until,
                     &mut self.query_orders,
+                    &mut self.query_reservations,
                 )
                 .await?
                 .or_else(|| self.failure().map(|reply| reply.records)),
@@ -277,6 +282,7 @@ impl driver::Drain for Host<'_, '_> {
                     )
                     .await?;
                 }
+                self.query_reservations.keys.clear();
             }
         }
         Ok(Flow::Continue)
@@ -538,15 +544,14 @@ impl Effects for Host<'_, '_> {
             )
             .await;
         crate::machine::receive::custody::retain_cleanup(result, cleanup.map_err(Into::into));
-        for order in self.query_orders.drain(..) {
-            let cleanup = crate::orders::sending::uncertain(
+        let cleanup = self
+            .query_reservations
+            .settle(
                 self.store,
-                &order,
                 analyte_dialog::outcome::Host::ConnectionEndedBeforeConfirmation.as_str(),
             )
             .await;
-            crate::machine::receive::custody::retain_cleanup(result, cleanup.map_err(Into::into));
-        }
+        crate::machine::receive::custody::retain_cleanup(result, cleanup.map_err(Into::into));
         if let Some(transfer) = self.transfer.take() {
             let cleanup = finish_incomplete(self.store, transfer).await;
             crate::machine::receive::custody::retain_cleanup(result, cleanup);

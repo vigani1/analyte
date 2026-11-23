@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- ASTM queries and ASTM, VIDAS and Autolyser send-ahead now reconcile late
+  order reservations at disconnect. Committed reservations whose store reply
+  timed out become uncertain without resending the order.
+
 - **VIDAS and Autolyser work lists:** VIDAS sends one app order in a bounded
   multi-packet session and carries supplied demographics, origin and
   configured dilution. Setup can collect the lab's VIDAS patient namespace.
