@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Recording at shutdown:** slow disks have more time to finish recordings
+  within the configured service stop allowance. If a write stays blocked,
+  Analyte logs the affected recording, tries to mark it as failed and exits
+  with code 3 at the overall deadline.
+
 - **Measurement review** (ADR 0035): compare held and earlier measurements,
   record a resend or queue a confirmed rerun, and review suggestions when a
   later receipt includes a missing tube ID. The browser and CLI record each
