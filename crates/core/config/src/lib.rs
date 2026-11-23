@@ -564,40 +564,7 @@ impl Draft {
         let software_version = software_version::resolve(&self.machine, &chosen, machine_path)?;
         self.machine = choices::applied(&self.machine, &selected);
         validate_site(&self.site, &self.machine.transport, site_path)?;
-        if o.endpoint.is_some() || o.usb_serial.is_some() {
-            self.site.endpoint = Endpoint::choose(o.endpoint, o.usb_serial, path)?;
-        }
-        if let Some(v) = o.law {
-            self.machine.law = Some(v);
-        }
-        if let Some(v) = o.transport {
-            self.machine.transport = v;
-        }
-        if let Some(v) = o.framing {
-            self.machine.framing = v;
-        }
-        if let Some(v) = o.dialog {
-            self.machine.dialog = v;
-        }
-        if let Some(v) = o.syntax {
-            self.machine.syntax = v;
-        }
-        if let Some(v) = o.mappings {
-            self.machine.mappings = Some(v);
-        }
-        if let Some(v) = o.orders {
-            self.machine.orders = Some(v);
-        }
-        if let Some(v) = o.departure_scope {
-            self.machine.departure_scope = Some(v);
-        }
-        if let Some(v) = o.deviations {
-            self.machine.deviations = v;
-        }
-        if let Some(v) = o.destination {
-            self.site.destination = Some(v);
-            self.source = LabAppSource::Overrides;
-        }
+        apply_overrides(&mut self.machine, &mut self.site, &mut self.source, o, path)?;
         let stack = validate_machine(
             &self.machine,
             path,
@@ -637,6 +604,53 @@ impl Draft {
             digest,
         })
     }
+}
+
+/// Applies the local override layer's explicit replacements; sections replace in full.
+/// # Errors
+/// Rejects an override endpoint choice that names both or neither port kinds.
+fn apply_overrides(
+    machine: &mut MachineDocument,
+    site: &mut Site,
+    source: &mut LabAppSource,
+    o: Overrides,
+    path: &str,
+) -> Result<(), Error> {
+    if o.endpoint.is_some() || o.usb_serial.is_some() {
+        site.endpoint = Endpoint::choose(o.endpoint, o.usb_serial, path)?;
+    }
+    if let Some(v) = o.law {
+        machine.law = Some(v);
+    }
+    if let Some(v) = o.transport {
+        machine.transport = v;
+    }
+    if let Some(v) = o.framing {
+        machine.framing = v;
+    }
+    if let Some(v) = o.dialog {
+        machine.dialog = v;
+    }
+    if let Some(v) = o.syntax {
+        machine.syntax = v;
+    }
+    if let Some(v) = o.mappings {
+        machine.mappings = Some(v);
+    }
+    if let Some(v) = o.orders {
+        machine.orders = Some(v);
+    }
+    if let Some(v) = o.departure_scope {
+        machine.departure_scope = Some(v);
+    }
+    if let Some(v) = o.deviations {
+        machine.deviations = v;
+    }
+    if let Some(v) = o.destination {
+        site.destination = Some(v);
+        *source = LabAppSource::Overrides;
+    }
+    Ok(())
 }
 
 /// Allowed normal Autolyser poll interval in whole seconds.
