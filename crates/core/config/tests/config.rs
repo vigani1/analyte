@@ -26,7 +26,7 @@ fn examples_validate_without_promoting_evidence() -> Result<(), Error> {
         );
         let digest: [u8; 32] = Sha256::digest(config.canonical().as_bytes()).into();
         assert_eq!(config.digest(), digest);
-        assert_eq!(config.activate().snapshot().digest(), digest);
+        assert_eq!(draft(example, OVERRIDES)?.validate()?.digest(), digest);
     }
     assert!(matches!(
         draft(ASTM, OVERRIDES)?.validate()?.effective().stack(),

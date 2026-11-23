@@ -486,10 +486,6 @@ pub struct Validated {
     digest: [u8; 32],
 }
 
-/// An activated snapshot; activation performs no delivery or machine operation.
-#[derive(Debug)]
-pub struct Active(Validated);
-
 impl Draft {
     /// Loads three independently versioned TOML layers, without reading files or
     /// secrets, for a site file that writes its own `[destination]`: the same as
@@ -828,20 +824,6 @@ impl Validated {
     #[must_use]
     pub const fn digest(&self) -> [u8; 32] {
         self.digest
-    }
-
-    /// Consumes a validated snapshot. The host must call only between conversations (ADR 0002).
-    #[must_use]
-    pub fn activate(self) -> Active {
-        Active(self)
-    }
-}
-
-impl Active {
-    /// Returns the immutable active snapshot; queued deliveries remain owned by the host.
-    #[must_use]
-    pub fn snapshot(&self) -> &Validated {
-        &self.0
     }
 }
 
