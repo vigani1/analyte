@@ -216,6 +216,7 @@ and [AGENTS.md](AGENTS.md) apply to people and coding assistants alike.
 
 Find your way around with the [documentation map](docs/README.md): which page
 to read first for your role, and which folders are only for looking things up.
+The [project layout](docs/develop/project-layout.md) shows the whole repository on one page.
 
 ## Licence
 

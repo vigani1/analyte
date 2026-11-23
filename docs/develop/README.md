@@ -8,6 +8,7 @@ research (see [research](../research/README.md)).
 
 | Guide | Use it to |
 | --- | --- |
+| [Project layout](project-layout.md) | See the whole repository on one page: code, machine settings, docs, installers, and how settings meet the code |
 | [Adding a machine](adding-a-machine.md) | Add an analyzer that speaks a protocol Analyte has: a settings folder in [`machines/`](../../machines/README.md), no code |
 | [Adding a vendor protocol](adding-a-vendor-protocol.md) | Add a machine's own language: where each piece of code goes |
 | [Test quality](testing/quality.md) | See and repeat the coverage and mutation measurements |
