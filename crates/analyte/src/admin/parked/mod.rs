@@ -31,8 +31,8 @@ use crate::admin::{
     Error,
     server::{Context, sessions::Session},
 };
-use crate::deadline;
 use crate::operator::recovery;
+use crate::{deadline, installation::config::Program};
 use analyte_model::{Identifier, ReceiptId};
 use analyte_store::{Audit, OperatorError, Parked, ParkedCounts, ParkedFilter, Store};
 use askama::Template;
@@ -47,7 +47,20 @@ use category::{Action, Category};
 use jiff::Timestamp;
 use page::{Card, Entry, Item, List, Original, OriginalTarget, Pair, Resolved, Row, Todo};
 use serde::Deserialize;
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
+
+/// Loads current settings for actions on the running store. Both path
+/// resolutions run on the blocking worker with the configuration reads.
+async fn program_for_store(path: PathBuf, directory: PathBuf) -> Result<Program, Error> {
+    tokio::task::spawn_blocking(move || {
+        let program = Program::load(&path)?;
+        if program.data_directory().canonicalize()? != directory.canonicalize()? {
+            return Err(Error::StoreMismatch);
+        }
+        Ok(program)
+    })
+    .await?
+}
 
 /// Routes for the protected Needs review pages and their audited actions.
 pub(super) fn routes() -> Router<Arc<Context>> {
@@ -962,6 +975,27 @@ mod tests {
                 ("Processed again: reading 2 recorded", true)
             ]
         );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn refuses_configuration_pointing_to_a_different_store()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let root = tempfile::tempdir()?;
+        let path = analyte_fixtures::write_machine(
+            root.path(),
+            include_str!("../../../../core/config/examples/hl7.toml"),
+            "127.0.0.1:5600",
+        )?;
+        let configured = root.path().join("data");
+        let other = root.path().join("other");
+        std::fs::create_dir(&configured)?;
+        std::fs::create_dir(&other)?;
+        assert!(program_for_store(path.clone(), configured).await.is_ok());
+        assert!(matches!(
+            program_for_store(path, other).await,
+            Err(Error::StoreMismatch)
+        ));
         Ok(())
     }
 }

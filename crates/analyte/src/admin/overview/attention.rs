@@ -28,6 +28,8 @@ pub(super) struct Facts {
     /// their port is accepted as them (ADR 0026).
     pub(super) open: Vec<Identifier>,
     pub(super) software: Vec<(Identifier, String)>,
+    /// A software version warning failed to save during this run.
+    pub(super) software_warning_write_failed: bool,
     /// Lab apps whose sending is paused, with how many items wait for each.
     pub(super) paused: Vec<(Identifier, u64)>,
     /// Lab apps Analyte cannot send to now, why, how many items wait and, for
@@ -136,6 +138,7 @@ enum Subject {
     Unlinked(Identifier),
     Silent(Identifier),
     Software(Identifier),
+    SoftwareWarningWriteFailed,
     Refused(Identifier),
     Open(Identifier),
     Review,
@@ -163,6 +166,7 @@ impl Subject {
             Self::Paused(_)
             | Self::Silent(_)
             | Self::Software(_)
+            | Self::SoftwareWarningWriteFailed
             | Self::Refused(_)
             | Self::Open(_)
             | Self::Review
@@ -186,6 +190,7 @@ impl Subject {
             Self::Paused(_) => Reason::SendingPaused,
             Self::Silent(_) => Reason::MachineSilent,
             Self::Software(_) => Reason::MachineSoftwareVersionChanged,
+            Self::SoftwareWarningWriteFailed => Reason::SoftwareWarningWriteFailed,
             Self::Refused(_) => Reason::MachineRefusedConnection,
             Self::Open(_) => Reason::MachineOpenToAnyDevice,
             Self::Waiting => Reason::ResultWaiting,
@@ -216,7 +221,8 @@ impl Subject {
             | Self::Cancelled
             | Self::RestorePaused
             | Self::Waiting
-            | Self::OrderList => None,
+            | Self::OrderList
+            | Self::SoftwareWarningWriteFailed => None,
         }
     }
 
@@ -269,6 +275,8 @@ pub(in crate::admin) enum Reason {
     MachineOpenToAnyDevice,
     /// The machine reports unexpected or unknown software.
     MachineSoftwareVersionChanged,
+    /// An unexpected or unknown software warning could not be saved.
+    SoftwareWarningWriteFailed,
 }
 
 impl Reason {
@@ -292,6 +300,7 @@ impl Reason {
             Self::OrderListStale => "order_list_stale",
             Self::MachineOpenToAnyDevice => "machine_open_to_any_device",
             Self::MachineSoftwareVersionChanged => "machine_software_version_changed",
+            Self::SoftwareWarningWriteFailed => "software_warning_write_failed",
         }
     }
 }
@@ -483,13 +492,7 @@ pub(super) fn things(facts: &Facts) -> Vec<Thing> {
         list.push(restore_paused());
     }
     list.extend(facts.open.iter().map(open));
-    list.extend(facts.software.iter().map(|(machine, text)| {
-        Thing::new(
-            Subject::Software(machine.clone()),
-            text.clone(),
-            Fix::Page(Tab::Machines),
-        )
-    }));
+    list.extend(software_attention(facts));
     for alert in &facts.alerts {
         if matches!(alert.key, AlertKey::MachineSoftwareVersionChanged(_)) {
             continue;
@@ -503,6 +506,26 @@ pub(super) fn things(facts: &Facts) -> Vec<Thing> {
         }
     }
     list
+}
+
+fn software_attention(facts: &Facts) -> impl Iterator<Item = Thing> + '_ {
+    facts
+        .software
+        .iter()
+        .map(|(machine, text)| {
+            Thing::new(
+                Subject::Software(machine.clone()),
+                text.clone(),
+                Fix::Page(Tab::Machines),
+            )
+        })
+        .chain(facts.software_warning_write_failed.then(|| {
+            Thing::new(
+                Subject::SoftwareWarningWriteFailed,
+                "Analyte could not save a machine software version warning".into(),
+                Fix::Page(Tab::Machines),
+            )
+        }))
 }
 
 /// The line for one active alert, in the same words as the direct measurement it matches.
@@ -1139,6 +1162,10 @@ mod tests {
             (
                 Subject::Software(id("m")),
                 "machine_software_version_changed",
+            ),
+            (
+                Subject::SoftwareWarningWriteFailed,
+                "software_warning_write_failed",
             ),
         ];
         let mut reasons: Vec<Reason> = subjects
