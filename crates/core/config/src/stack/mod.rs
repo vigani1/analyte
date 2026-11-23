@@ -4,8 +4,8 @@ use crate::MachineDocument;
 use crate::{
     AstmOrderFields, Autolyser, ChecksumHex, CodeTables, Edition, Encoding, Error, Escapes,
     Hl7OrderQuery, Hl7Send, LawConnectionMode, LawPeer, LawQueryForm, LawWork, MachineDeparture,
-    Mappings, OrderPriority, OrderQuery, Orders, Poct, Priority, Responsibility, Serial, Syntax,
-    Terminator, Transport, TransportKind, UnitMapping, Vidas, invalid,
+    Mappings, OrderPriority, OrderQuery, Orders, Poct, Priority, Serial, Syntax, Terminator,
+    Transport, TransportKind, UnitMapping, Vidas, invalid,
 };
 use crate::{ParsedMachine, StackChoice};
 
@@ -165,27 +165,18 @@ impl Stack {
     }
 }
 
-impl Stack {
-    /// Returns field selectors only for record-based stacks; vendor code tables have no selectors.
-    #[must_use]
-    pub fn field_mappings(&self) -> Option<&Mappings> {
-        self.common().fields
-    }
-}
-
 struct CommonView<'a> {
     limits: &'a SyntaxLimits,
     timeouts: &'a DialogTimeouts,
     codes: Option<(&'a analyte_model::Identifier, &'a [UnitMapping])>,
     transport: TransportKind,
     operation_timeout_ms: u32,
-    fields: Option<&'a Mappings>,
 }
 
 impl Stack {
     fn common(&self) -> CommonView<'_> {
         macro_rules! view {
-            ($s:expr, $kind:expr, $timeout:expr, $fields:expr) => {{
+            ($s:expr, $kind:expr, $timeout:expr) => {{
                 let settings = &$s.settings;
                 CommonView {
                     limits: settings.limits(),
@@ -193,7 +184,6 @@ impl Stack {
                     codes: Some((&settings.codes().test_system, &settings.codes().units)),
                     transport: $kind,
                     operation_timeout_ms: $timeout,
-                    fields: $fields,
                 }
             }};
         }
@@ -201,50 +191,38 @@ impl Stack {
             Self::Astm(RecordTransport::Stream(s)) => view!(
                 s,
                 stream_kind(s.settings.transport()),
-                stream_timeout(s.settings.transport()),
-                Some(s.settings.codes())
+                stream_timeout(s.settings.transport())
             ),
             Self::Hl7(RecordTransport::Stream(s)) => view!(
                 s,
                 tcp_kind(s.settings.transport().role()),
-                s.settings.transport().operation_timeout_ms(),
-                Some(s.settings.codes())
+                s.settings.transport().operation_timeout_ms()
             ),
-            Self::Astm(RecordTransport::Folder(s)) => view!(
-                s,
-                TransportKind::WatchedFolder,
-                *s.settings.transport(),
-                Some(s.settings.codes())
-            ),
-            Self::Hl7(RecordTransport::Folder(s)) => view!(
-                s,
-                TransportKind::WatchedFolder,
-                *s.settings.transport(),
-                Some(s.settings.codes())
-            ),
+            Self::Astm(RecordTransport::Folder(s)) => {
+                view!(s, TransportKind::WatchedFolder, *s.settings.transport())
+            }
+            Self::Hl7(RecordTransport::Folder(s)) => {
+                view!(s, TransportKind::WatchedFolder, *s.settings.transport())
+            }
             Self::Law(s) => view!(
                 s,
                 tcp_kind(s.settings.transport().role()),
-                s.settings.transport().operation_timeout_ms(),
-                Some(s.settings.codes())
+                s.settings.transport().operation_timeout_ms()
             ),
             Self::Poct(s) => view!(
                 s,
                 tcp_kind(s.settings.transport().role()),
-                s.settings.transport().operation_timeout_ms(),
-                None
+                s.settings.transport().operation_timeout_ms()
             ),
             Self::Vidas(s) => view!(
                 s,
                 stream_kind(s.settings.transport()),
-                stream_timeout(s.settings.transport()),
-                None
+                stream_timeout(s.settings.transport())
             ),
             Self::Autolyser(s) => view!(
                 s,
                 stream_kind(s.settings.transport()),
-                stream_timeout(s.settings.transport()),
-                None
+                stream_timeout(s.settings.transport())
             ),
             Self::Record(s) => CommonView {
                 limits: s.limits(),
@@ -252,7 +230,6 @@ impl Stack {
                 codes: None,
                 transport: stream_kind(s.transport()),
                 operation_timeout_ms: stream_timeout(s.transport()),
-                fields: None,
             },
         }
     }

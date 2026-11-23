@@ -315,7 +315,7 @@ fn days(state: &Context, lines: &[ActivityLine], now: Timestamp) -> Vec<Day> {
                 || format::FEED_UNDATED.to_owned(),
                 |at| format::feed_day(at, now),
             );
-        let said = said(line, |id| model(state, id));
+        let said = said(line, |id| state.machine_model(id));
         let shown = FeedLine {
             key: key(line),
             at: line.at.map(format::feed_time),
@@ -440,18 +440,11 @@ fn key(line: &ActivityLine) -> String {
     }
 }
 
-/// The model of machine `id` when it is set up and its definition names one.
-fn model<'a>(state: &'a Context, id: &str) -> Option<&'a str> {
-    state
-        .machines
-        .iter()
-        .find(|m| m.id.as_str() == id)
-        .and_then(|m| m.model.as_deref())
-}
-
 /// A machine as the filter names it: its ID, with its model beside it.
 fn label(state: &Context, id: &str) -> String {
-    model(state, id).map_or_else(|| id.to_owned(), |model| format!("{id} ({model})"))
+    state
+        .machine_model(id)
+        .map_or_else(|| id.to_owned(), |model| format!("{id} ({model})"))
 }
 
 /// The page of `lines` that starts after `before`.

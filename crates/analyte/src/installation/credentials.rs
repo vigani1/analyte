@@ -83,12 +83,6 @@ impl Secret {
         }
         Ok(Self(value))
     }
-
-    /// Borrows the value for validation by its owner.
-    #[must_use]
-    pub fn expose(&self) -> &str {
-        &self.0
-    }
 }
 
 #[derive(Serialize, Deserialize, Default)]

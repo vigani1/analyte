@@ -1,8 +1,11 @@
 //! Checks every receipt retention condition in one fail-closed store rule.
-use crate::{MaintenanceError as Error, Store, key};
+#[cfg(test)]
+use crate::Store;
+use crate::{MaintenanceError as Error, key};
 use analyte_model::ReceiptId;
 use rusqlite::params;
 
+#[cfg(test)]
 impl Store {
     /// Reports whether every result and linked operation is safely finished (ADR 0013 item 2).
     /// Unknown acknowledgments, failed interpretations and ambiguous operation links retain data.

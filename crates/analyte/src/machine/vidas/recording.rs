@@ -49,8 +49,6 @@ fn dialog(link: &VidasCapture) -> DialogConfig {
         inter_byte: ms(link.interbyte_ms()),
         session: ms(link.session_ms()),
         commit: ms(link.commit_ms()),
-        retries: 0,
-        backoff: ms(link.acknowledgment_ms()),
     }
 }
 

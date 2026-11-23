@@ -380,7 +380,9 @@ async fn retention_page_and_receipt_hold_are_audited() -> Result<(), Error> {
     assert!(refused.starts_with("HTTP/1.1 409"), "{refused}");
     store
         .request::<_, FixtureError>(fixture_deadline()?, move |store| {
-            assert!(!store.retention_hold(&analyte_store::HoldTarget::Receipt(receipt))?);
+            assert!(!store.retention_holds(0)?.iter().any(|hold| {
+                matches!(hold.target, analyte_store::HoldTarget::Receipt(held) if held == receipt)
+            }));
             assert!(store.audits(0)?.is_empty());
             Ok::<_, FixtureError>(())
         })
@@ -390,7 +392,9 @@ async fn retention_page_and_receipt_hold_are_audited() -> Result<(), Error> {
     assert!(placed.starts_with("HTTP/1.1 200"), "{placed}");
     store
         .request::<_, FixtureError>(fixture_deadline()?, move |store| {
-            assert!(store.retention_hold(&analyte_store::HoldTarget::Receipt(receipt))?);
+            assert!(store.retention_holds(0)?.iter().any(|hold| {
+                matches!(hold.target, analyte_store::HoldTarget::Receipt(held) if held == receipt)
+            }));
             let audits = store.audits(0)?;
             let audit = &audits.last().ok_or(FixtureError::Corruption)?.1;
             assert_eq!(audit.action.as_str(), "retention-hold-place");
@@ -406,7 +410,9 @@ async fn retention_page_and_receipt_hold_are_audited() -> Result<(), Error> {
     );
     store
         .request::<_, FixtureError>(fixture_deadline()?, move |store| {
-            assert!(!store.retention_hold(&analyte_store::HoldTarget::Receipt(receipt))?);
+            assert!(!store.retention_holds(0)?.iter().any(|hold| {
+                matches!(hold.target, analyte_store::HoldTarget::Receipt(held) if held == receipt)
+            }));
             let audits = store.audits(0)?;
             assert_eq!(audits.len(), 2);
             assert_eq!(

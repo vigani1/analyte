@@ -22,7 +22,6 @@ path = "tests/hl7/mod.rs"
 
 [dev-dependencies]
 analyte-fixtures.workspace = true
-quick-xml.workspace = true
 proptest = { workspace = true }
 
 [lints]
