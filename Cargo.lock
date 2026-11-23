@@ -210,6 +210,7 @@ dependencies = [
 name = "analyte-fixtures"
 version = "0.1.0"
 dependencies = [
+ "analyte-model",
  "analyte-poct",
  "analyte-store",
  "quick-xml",

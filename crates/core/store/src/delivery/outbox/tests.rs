@@ -192,16 +192,15 @@ fn order_events_keep_provenance_health_and_attempts() -> TestResult {
         payload: b"event".to_vec(),
         contract_version: 1,
     };
-    store.enqueue_order_event(&event, 10)?;
+    queue_order_event(&mut store, &event, 10)?;
     {
-        let refusal = store
-            .enqueue_order_event(&event, 10)
+        let refusal = queue_order_event(&mut store, &event, 10)
             .map(|_| ())
             .expect_err("input must be refused");
         assert!(
             matches!(
                 &refusal,
-                OperatorError::Storage(StorageError::ConstraintViolation(_))
+                OrderError::Storage(StorageError::ConstraintViolation(_))
             ),
             "unexpected refusal: {refusal:?}"
         );
@@ -210,13 +209,13 @@ fn order_events_keep_provenance_health_and_attempts() -> TestResult {
         id: DeliveryId::try_from(uuid::Uuid::now_v7())?,
         ..event
     };
-    store.enqueue_order_event(&second, 11)?;
+    queue_order_event(&mut store, &second, 11)?;
     let other = OrderEventDelivery {
         id: DeliveryId::try_from(uuid::Uuid::now_v7())?,
         order_id: Identifier::new("order-b")?,
         ..second
     };
-    store.enqueue_order_event(&other, 12)?;
+    queue_order_event(&mut store, &other, 12)?;
     let claim = store
         .claim_destination(12, &destination)?
         .ok_or(DeliveryError::Corruption)?;
@@ -435,7 +434,8 @@ fn recovery_audit_bound_inclusive_refusal_keeps_claim() -> TestResult {
         let temp = tempfile::tempdir()?;
         let mut store = open(&temp.path().join("recovery-audit-bound.db"))?;
         let id = DeliveryId::try_from(uuid::Uuid::now_v7())?;
-        store.enqueue_order_event(
+        queue_order_event(
+            &mut store,
             &OrderEventDelivery {
                 id,
                 destination: Identifier::new("app")?,

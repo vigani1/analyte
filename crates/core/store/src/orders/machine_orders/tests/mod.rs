@@ -12,6 +12,38 @@ mod models;
 mod mutation;
 mod trust;
 
+/// Seeds both halves of a machine order fixture without changing the app feed.
+pub(crate) fn seed_order(
+    store: &mut Store,
+    key: MachineOrderKey,
+    state: OrderState,
+    now: i64,
+) -> Result<i64, OrderError> {
+    let model = test_support::order_model();
+    let tx = store.db.transaction()?;
+    tx.execute(
+        "INSERT INTO machine_orders(destination,order_id,machine,model,version,state,created_at,updated_at,source_code) VALUES (?1,?2,?3,?4,'1',?5,?6,?6,'synthetic')",
+        params![key.destination.as_str(), key.order.as_str(), key.machine.as_str(), model.as_str(), state.to_string(), now],
+    )?;
+    let id = tx.last_insert_rowid();
+    let record = MachineOrder {
+        id,
+        key,
+        version: NonZeroU64::MIN,
+        state,
+        created_at: now,
+        updated_at: now,
+        source_code: SourceText::new("synthetic").map_err(StorageError::Text)?,
+        owner: super::OrderOwner::None,
+        items: Vec::new(),
+        original_command: None,
+        model: Some(model),
+    };
+    super::append(&tx, &record, None, store.limits.record_bytes)?;
+    tx.commit()?;
+    Ok(id)
+}
+
 fn identity() -> Result<MachineOrderKey, analyte_model::TextError> {
     Ok(MachineOrderKey {
         destination: Identifier::new("app")?,

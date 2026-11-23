@@ -399,31 +399,51 @@ async fn check_order_events(store: &Handle, destinations: &[Destination]) -> Tes
     let mut event: analyte_contract::EventFields = serde_json::from_slice(include_bytes!(
         "../../../../../docs/contract/vectors/event.json"
     ))?;
-    for state in [
-        analyte_contract::document::OrderState::Sent,
-        analyte_contract::document::OrderState::Accepted,
-        analyte_contract::document::OrderState::Rejected,
-        analyte_contract::document::OrderState::Done,
-        analyte_contract::document::OrderState::CancelConfirmed,
-        analyte_contract::document::OrderState::Uncertain,
-    ] {
-        event.delivery_id = analyte_contract::Text::try_from(uuid::Uuid::now_v7().to_string())?;
-        event.state = state;
-        let delivery = encode_order_event(
-            &analyte_contract::OrderEvent::try_from(event.clone())?,
-            Identifier::new("app")?,
-        )?;
-        store
-            .request(until()?, move |s| {
-                s.enqueue_order_event(&delivery, jiff::Timestamp::now().as_second())
-            })
+    use analyte_contract::document::OrderState as WireState;
+    let destination = Identifier::new("app")?;
+    let order = Identifier::new(event.order_id.as_str())?;
+    for (index, states) in [
+        &[WireState::Sent][..],
+        &[WireState::Rejected],
+        &[WireState::Accepted, WireState::Done],
+        &[
+            WireState::Sent,
+            WireState::CancelRequested,
+            WireState::CancelConfirmed,
+        ],
+        &[WireState::Uncertain],
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let key = analyte_store::MachineOrderKey {
+            destination: destination.clone(),
+            order: order.clone(),
+            machine: Identifier::new(&format!("synthetic-{index}"))?,
+        };
+        let now = jiff::Timestamp::now().as_second();
+        let id = store
+            .request(until()?, move |s| guard::orders::reserve(s, &key, now))
             .await?;
-        assert_eq!(
-            event_worker.deliver_once().await?,
-            DeliveryOutcome::Done(analyte_contract::DeliveryStatus::Accepted)
-        );
+        for &state in states {
+            event.delivery_id = analyte_contract::Text::try_from(uuid::Uuid::now_v7().to_string())?;
+            event.state = state;
+            let delivery = encode_order_event(
+                &analyte_contract::OrderEvent::try_from(event.clone())?,
+                destination.clone(),
+            )?;
+            let reason = SourceText::new("synthetic")?;
+            store
+                .request(until()?, move |s| {
+                    s.transition_order(id, state.into(), reason, now, |_| Ok(delivery))
+                })
+                .await?;
+            assert_eq!(
+                event_worker.deliver_once().await?,
+                DeliveryOutcome::Done(analyte_contract::DeliveryStatus::Accepted)
+            );
+        }
     }
-
     Ok(())
 }
 

@@ -107,7 +107,8 @@ fn alert_pages_keep_raise_and_clear_times_distinct() -> TestResult {
 fn oldest_delivery_age_includes_zero_future_unknown() -> TestResult {
     let temp = tempfile::tempdir()?;
     let mut store = open(&temp.path().join("store.db"))?;
-    store.enqueue_order_event(
+    queue_order_event(
+        &mut store,
         &OrderEventDelivery {
             id: DeliveryId::try_from(uuid::Uuid::now_v7())?,
             destination: Identifier::new("app")?,

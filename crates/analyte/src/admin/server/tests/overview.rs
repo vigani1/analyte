@@ -552,10 +552,23 @@ pub(super) fn queue(
         payload: b"synthetic-order-message".to_vec(),
         contract_version: 1,
     };
-    store.enqueue_order_event(&event, now)?;
+    let destination = event.destination.clone();
+    let key = analyte_store::MachineOrderKey {
+        destination: destination.clone(),
+        order: event.order_id.clone(),
+        machine: Identifier::new("synthetic-machine")?,
+    };
+    let id = analyte_fixtures::orders::reserve(store, &key, now)?;
+    store.transition_order(
+        id,
+        analyte_model::OrderState::Sent,
+        analyte_model::SourceText::new("synthetic")?,
+        now,
+        |_| Ok(event),
+    )?;
     if delivered {
         let claim = store
-            .claim_destination(now, &event.destination)?
+            .claim_destination(now, &destination)?
             .ok_or(FixtureError::UnknownDelivery)?;
         store.attempted(claim.id, &analyte_store::Attempt::Done, now)?;
     }
