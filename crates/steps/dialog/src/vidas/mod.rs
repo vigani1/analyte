@@ -8,7 +8,7 @@ use analyte_vidas::syntax::{Kind, Message};
 use std::{collections::VecDeque, time::Duration};
 pub mod outcome;
 
-/// Required site timing/retry evidence; no ASTM constants or defaults.
+/// Required site timing evidence; no ASTM constants or defaults.
 #[derive(Debug, Clone)]
 pub struct Config {
     /// Maximum peer response wait.
@@ -19,10 +19,6 @@ pub struct Config {
     pub session: Duration,
     /// Maximum host commit wait.
     pub commit: Duration,
-    /// Recorded site retry count; never permission to replay an order.
-    pub retries: u16,
-    /// Recorded site backoff; retries require explicit host reconciliation.
-    pub backoff: Duration,
 }
 
 /// Names a dialog-owned deadline.

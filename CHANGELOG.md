@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Remove the unused VIDAS retry count and backoff settings. Configuration
+  reports either old key as an unknown field.
+
 ## 0.1.0 - 2026-11-23
 
 First draft release. **Status:** every protocol is built and tested from its

@@ -47,7 +47,5 @@ pub(crate) fn dialog(settings: &analyte_config::VidasStack) -> analyte_dialog::v
         inter_byte: ms(installed.interbyte_ms),
         session: ms(installed.session_ms),
         commit: ms(installed.commit_ms),
-        retries: installed.retries,
-        backoff: ms(installed.backoff_ms),
     }
 }

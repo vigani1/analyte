@@ -31,8 +31,6 @@ fn policy() -> DialogConfig {
         inter_byte: Duration::from_secs(2),
         session: Duration::from_secs(3),
         commit: Duration::from_secs(1),
-        retries: 0,
-        backoff: Duration::ZERO,
     }
 }
 
