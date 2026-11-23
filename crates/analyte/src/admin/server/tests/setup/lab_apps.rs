@@ -687,6 +687,6 @@ async fn lab_apps_list_answers_store_failures_in_the_new_look() -> Result<(), Er
     assert!(failed.contains("Details for support</summary><pre>"));
     drop(state);
     stopper.send_replace(true);
-    tokio::time::timeout(Duration::from_secs(5), owner).await???;
+    tokio::time::timeout(analyte_fixtures::HANG_GUARD, owner).await???;
     Ok(())
 }

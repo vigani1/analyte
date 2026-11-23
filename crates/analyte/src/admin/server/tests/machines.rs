@@ -15,7 +15,8 @@ use analyte_store::{Interpretation, Parked, Reading};
 pub(super) const AT: i64 = 1_795_046_077;
 
 /// A test code and a value that must never show on a page.
-pub(super) const CODE: &str = "XLT9";
+pub(super) const CODE: &str = "SYN-PRIVATE-ASSAY-XLT9";
+const SAMPLE: &str = "000123-SYN-PRIVATE-SAMPLE";
 pub(super) const VALUE: &str = "positive-value";
 
 pub(super) fn id(text: &str) -> Result<Identifier, FixtureError> {
@@ -375,8 +376,8 @@ async fn seed(root: &std::path::Path, store: &analyte_store::Handle) -> Result<S
         1,
         &evidence(
             Reading::Results(vec![
-                result(delivered, Some("000123"))?,
-                result(delivered, Some("000123"))?,
+                result(delivered, Some(SAMPLE))?,
+                result(delivered, Some(SAMPLE))?,
             ]),
             Some(analyte_model::DepartureEvidence::default()),
         )?,
@@ -522,7 +523,7 @@ async fn machines_list_shows_every_machine_in_its_own_words() -> Result<(), Erro
             "{listed}"
         );
     }
-    for word in ["Cable not connected", "Disconnected", "000123", CODE, VALUE] {
+    for word in ["Cable not connected", "Disconnected", SAMPLE, CODE, VALUE] {
         assert!(!page.contains(word), "{word}");
     }
     assert!(page.contains("<p class=\"alert__title\">“Waiting” is normal after a restart</p>"));
@@ -725,7 +726,7 @@ async fn machine_page_shows_its_setup_differences_and_newest_messages() -> Resul
     assert!(failed.contains("<td class=\"subtle\">—</td>"), "{failed}");
     assert!(failed.contains(&departures(seeded.failed, 1)));
     assert!(
-        delivered.contains("<span title=\"000123\">000123</span>"),
+        delivered.contains(&format!("<span title=\"{SAMPLE}\">{SAMPLE}</span>")),
         "{delivered}"
     );
     assert!(delivered.contains("</svg>2 delivered</span>"));
@@ -1111,7 +1112,7 @@ async fn store_failures_and_slow_reads_answer_in_the_new_look() -> Result<(), Er
     }
     drop(state);
     stopper.send_replace(true);
-    tokio::time::timeout(Duration::from_secs(5), owner).await???;
+    tokio::time::timeout(analyte_fixtures::HANG_GUARD, owner).await???;
     Ok(())
 }
 

@@ -95,7 +95,7 @@ async fn raw_views_are_audited_and_lists_paginate() -> Result<(), Error> {
     rusqlite::Connection::open(database)?.execute_batch("DROP TRIGGER test_refuse_raw_audit;")?;
     drop(state);
     stop.send_replace(true);
-    tokio::time::timeout(Duration::from_secs(5), owner).await???;
+    tokio::time::timeout(analyte_fixtures::HANG_GUARD, owner).await???;
     let mut store = Arc::try_unwrap(store).map_err(|_| "pages retained store")?;
     store.shutdown(fixture_deadline()?).await?;
     Ok(())

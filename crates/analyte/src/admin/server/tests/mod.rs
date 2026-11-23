@@ -47,7 +47,7 @@ fn admin_program() -> String {
 // Fixture migration/seeding is not an assertion about production latency.
 fn fixture_deadline() -> Result<std::time::Instant, Error> {
     std::time::Instant::now()
-        .checked_add(Duration::from_secs(30))
+        .checked_add(analyte_fixtures::STORE_BUDGET)
         .ok_or_else(|| "admin fixture deadline overflow".into())
 }
 
@@ -182,7 +182,7 @@ async fn service_refuses_missing_token_and_owns_admin_server() -> Result<(), Err
     assert!(response.contains("<span class=\"mono subtle\">Nothing yet</span>"));
     headers_present(&response);
     stop.send(()).map_err(|_| "service stop receiver lost")?;
-    tokio::time::timeout(Duration::from_secs(10), owner).await???;
+    tokio::time::timeout(analyte_fixtures::HANG_GUARD, owner).await???;
     assert!(tokio::net::TcpStream::connect(&host).await.is_err());
     Ok(())
 }
@@ -292,7 +292,7 @@ async fn tcp_server_light_follows_peer_and_hides_payload() -> Result<(), Error> 
     drop(peer);
     until("<span class=\"node__state tone-off\">Waiting</span>").await?;
     stop.send(()).map_err(|_| "service stop receiver lost")?;
-    tokio::time::timeout(Duration::from_secs(10), owner).await???;
+    tokio::time::timeout(analyte_fixtures::HANG_GUARD, owner).await???;
     Ok(())
 }
 
@@ -329,7 +329,7 @@ async fn request(
     headers: &str,
     body: Option<&str>,
 ) -> Result<String, Error> {
-    tokio::time::timeout(Duration::from_secs(6), async {
+    tokio::time::timeout(analyte_fixtures::HANG_GUARD, async {
         let mut stream = tokio::net::TcpStream::connect(host).await?;
         let method = if body.is_some() { "POST" } else { "GET" };
         let body = body.unwrap_or("");
@@ -410,7 +410,7 @@ async fn overview_checks_auth_escapes_and_shuts_down_bounded() -> Result<(), Err
     slow.write_all(b"GET / HTTP/1.1\r\n").await?;
     drop(state);
     stop.send_replace(true);
-    tokio::time::timeout(Duration::from_secs(5), owner).await???;
+    tokio::time::timeout(analyte_fixtures::HANG_GUARD, owner).await???;
     drop(slow);
     let mut store = Arc::try_unwrap(store).map_err(|_| "admin retained store after shutdown")?;
     store.shutdown(fixture_deadline()?).await?;
@@ -452,7 +452,7 @@ async fn drain_waits_for_router_state_release() -> Result<(), Error> {
 }
 
 async fn wait_for_service_listener(host: &str) -> Result<(), Error> {
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(analyte_fixtures::HANG_GUARD, async {
         loop {
             if tokio::net::TcpStream::connect(&host).await.is_ok() {
                 break;

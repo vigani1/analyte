@@ -157,7 +157,7 @@ async fn removed_machine_result_is_delivered_once() -> Result<(), Error> {
     )
     .await?;
     let mut reply = [0];
-    peer.read_exact(&mut reply).await?;
+    tokio::time::timeout(analyte_fixtures::HANG_GUARD, peer.read_exact(&mut reply)).await??;
     assert_eq!(reply, [0x0b], "the result is stored and acknowledged");
     drop(peer);
     overview_until(&host, &auth, |page| {
@@ -288,7 +288,7 @@ async fn removed_machine_result_is_delivered_once() -> Result<(), Error> {
     )?;
     assert_eq!(state, "done");
     close.send(()).map_err(|()| "receiver stopped")?;
-    tokio::time::timeout(Duration::from_secs(10), serving).await???;
+    tokio::time::timeout(analyte_fixtures::HANG_GUARD, serving).await???;
     receiver.shutdown().await?;
     Ok(())
 }

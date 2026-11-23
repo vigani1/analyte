@@ -105,7 +105,7 @@ async fn reprocess_and_resend_need_confirmation_csrf_and_audit() -> Result<(), E
         .await?;
     drop(state);
     stop.send_replace(true);
-    tokio::time::timeout(Duration::from_secs(5), owner).await???;
+    tokio::time::timeout(analyte_fixtures::HANG_GUARD, owner).await???;
     let mut store = Arc::try_unwrap(store).map_err(|_| "admin retains store")?;
     store.shutdown(fixture_deadline()?).await?;
     Ok(())
@@ -426,7 +426,7 @@ async fn retention_page_and_receipt_hold_are_audited() -> Result<(), Error> {
         .await?;
     drop(state);
     stop.send_replace(true);
-    tokio::time::timeout(Duration::from_secs(5), owner).await???;
+    tokio::time::timeout(analyte_fixtures::HANG_GUARD, owner).await???;
     let mut store = Arc::try_unwrap(store).map_err(|_| "admin retains store")?;
     store.shutdown(fixture_deadline()?).await?;
     Ok(())
