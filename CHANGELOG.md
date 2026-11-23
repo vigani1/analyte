@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `analyte doctor` reports missing or invalid lab app keys as failures and
+  names the affected key when the engine is stopped.
+
 ## 0.1.0 - 2026-11-23
 
 First draft release. **Status:** every protocol is built and tested from its

@@ -13,6 +13,8 @@ use crate::admin::engine::{self, EngineError};
 use crate::admin::overview::answer::{Answer, Verdict};
 use crate::admin::view::format;
 use crate::installation::config::Program;
+use crate::installation::credentials::Locked;
+use crate::installation::secrets::{self, SecretError};
 use crate::machine::link::status::Link;
 use analyte_config::Endpoint;
 use std::{future::Future, path::Path, process::ExitCode, time::Duration};
@@ -713,49 +715,42 @@ async fn connect(what: &str, address: &str, running: Engine) -> Check {
     }
 }
 
+const SET_LAB_APP_KEYS: &str = "enter its keys on the Lab apps page, then restart the engine";
+
 /// Each lab app: its name resolves, it answers over HTTPS with a valid
 /// certificate, its keys are there, and when the last complete order list came.
 async fn lab_apps(program: &Program, answer: Option<&Answer>, health: &OrderLists) -> Vec<Check> {
     let mut checks = Vec::new();
     // Read once for every lab app, and only while the engine cannot say.
-    let keys = answer
-        .is_none()
-        .then(|| crate::installation::secrets::Environment::load(program));
+    let stored = answer.is_none().then(|| {
+        Locked::new(program.data_directory())
+            .read()
+            .map_err(SecretError::from)
+    });
     for settings in every_lab_app(program) {
         let name = settings.name.as_str();
         let what = format!("Lab app {name}");
         let url = settings.base_url.url();
         checks.push(reach(&what, url).await);
-        checks.push(match (answer, &keys) {
+        checks.push(match (answer, &stored) {
             (Some(answer), _) => match answer.needs.iter().find(|need| {
                 need.reason == "lab_app_blocked" && need.about.as_deref() == Some(name)
             }) {
-                Some(need) => fail(
-                    &what,
-                    need.text.clone(),
-                    "enter its keys on the Lab apps page, then restart the engine",
-                ),
+                Some(need) => fail(&what, need.text.clone(), SET_LAB_APP_KEYS),
                 None => ok(&what, "the running engine has its keys"),
             },
-            (None, Some(Ok(keys))) => {
-                if keys.has_keys(&settings.name) {
-                    ok(&what, "its API key and signing key are there")
-                } else {
-                    fail(
-                        &what,
-                        "its API key or signing key is missing",
-                        "enter its keys on the Lab apps page, then restart the engine",
-                    )
+            (None, Some(Ok(stored))) => {
+                match secrets::read_destination(
+                    program,
+                    settings,
+                    |key| std::env::var(key).ok(),
+                    stored,
+                ) {
+                    Ok(_) => ok(&what, "its API key and signing key are there"),
+                    Err(error) => lab_app_key_failure(&what, &error),
                 }
             }
-            (None, Some(Err(error))) => warn(
-                &what,
-                format!(
-                    "its keys could not be read from this account: {}",
-                    chain(error)
-                ),
-                "start the engine and run analyte doctor again; the engine checks the keys itself",
-            ),
+            (None, Some(Err(error))) => lab_app_key_failure(&what, error),
             (None, None) => warn(
                 &what,
                 "its keys were not checked",
@@ -781,6 +776,26 @@ async fn lab_apps(program: &Program, answer: Option<&Answer>, health: &OrderList
         }
     }
     checks
+}
+
+/// Gives different remedies for a bad key and a key store this account cannot check.
+fn lab_app_key_failure(what: &str, error: &SecretError) -> Check {
+    match error {
+        SecretError::Missing(name) => fail(
+            what,
+            format!("credential {name} is missing"),
+            SET_LAB_APP_KEYS,
+        ),
+        SecretError::Invalid(_) => fail(what, error.to_string(), SET_LAB_APP_KEYS),
+        SecretError::File(error) => warn(
+            what,
+            format!(
+                "its keys could not be read from this account: {}",
+                chain(error)
+            ),
+            "start the engine and run analyte doctor again; the engine checks the keys itself",
+        ),
+    }
 }
 
 /// Every lab app, once each by name: those on the Lab apps page, then any a
