@@ -503,6 +503,11 @@ fn apply(document: &mut MachineDocument, value: &ChoiceValue) {
         }
         if let Some(download) = choice.download {
             settings.download = download;
+            // This mode disables transmission while preserving and validating
+            // the order layout for modes that can send work lists.
+            if !download && let Some(orders) = &mut document.orders {
+                orders.send_ahead = false;
+            }
         }
     }
     if let Some(mappings) = &value.mappings {

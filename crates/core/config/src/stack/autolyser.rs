@@ -118,7 +118,7 @@ pub(super) fn build(
                             "Autolyser orders require clone behavior",
                         )
                     })?,
-                    send_ahead: orders.send_ahead && policy.download,
+                    send_ahead: orders.send_ahead,
                 })
             })
             .transpose()?,
