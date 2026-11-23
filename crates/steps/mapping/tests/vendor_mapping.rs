@@ -428,7 +428,6 @@ fn vidas_completion_evidence_distinguishes_measurements() -> TestResult {
 #[test]
 fn vidas_control_labels_keep_composite_and_enforce_qc_width() -> TestResult {
     use analyte_model::{QcClass, TimePrecision};
-    use analyte_vidas::syntax::ControlLabels;
 
     let config = config(include_str!(
         "../../../core/config/examples/vidas_literal.toml"
@@ -436,18 +435,9 @@ fn vidas_control_labels_keep_composite_and_enforce_qc_width() -> TestResult {
     let analyte_config::Stack::Vidas(machine) = config.effective().stack() else {
         return Err("expected VIDAS stack".into());
     };
-    let source = |ci, flag| {
-        analyte_vidas::syntax::Message::parse_with_control_labels(
-            &format!(
-                "mtrsl|pi|si|ci{ci}|rtSYN|tt09:05|td2026/02/03|ql|qn1|nc{flag}|idBox 01|sn000 a|m4Tech 7|"
-            ),
-            analyte_vidas::syntax::SampleLimit::Twelve,
-            ControlLabels::AppendixB,
-        )
-    };
     let result = analyte_mapping::vidas::map(
         machine,
-        &source("KitX 260203-2", "conthnor")?,
+        &vidas_control_message("KitX 260203-2", "conthnor")?,
         result_input(),
     )?;
     let kit = &result.results.first().ok_or("kit result")?.content;
@@ -484,24 +474,12 @@ fn vidas_control_labels_keep_composite_and_enforce_qc_width() -> TestResult {
     assert_eq!(completion.time.original.as_str(), "2026/02/03 09:05");
     assert_eq!(completion.time.precision, TimePrecision::Minute);
     assert!(completion.time.offset.is_none());
-    assert!(matches!(
-        source("C2 260203-0", "")?.subject(),
-        analyte_vidas::syntax::Subject::KitControl { name, lot }
-            if name.as_str() == "C2" && lot.as_str() == "260203-0"
-    ));
-    assert!(
-        analyte_vidas::syntax::Message::parse(
-            source("KitX 260203-2", "conthnor")?.text(),
-            analyte_vidas::syntax::SampleLimit::Twelve,
-        )
-        .is_err()
-    );
-    assert!(source("C2 260203-1", "").is_err());
-    assert!(source("C3", "").is_err());
-    assert!(source("QC1", "conthnor").is_err());
-    assert!(source("Kit 260203-2", "").is_err());
     for (id, flag) in [("QC6", ""), ("Qc0000000001", "conthwst")] {
-        let result = analyte_mapping::vidas::map(machine, &source(id, flag)?, result_input())?;
+        let result = analyte_mapping::vidas::map(
+            machine,
+            &vidas_control_message(id, flag)?,
+            result_input(),
+        )?;
         let qc = &result.results.first().ok_or("QC result")?.content;
         let part = qc.parts.as_slice().first().ok_or("part")?;
         assert!(qc.sample.is_none());
@@ -513,8 +491,44 @@ fn vidas_control_labels_keep_composite_and_enforce_qc_width() -> TestResult {
         );
         assert!(details.strip_lot.is_none());
     }
-    assert!(source("Qc00000000012", "conthwst").is_err());
     Ok(())
+}
+
+// BCI Link rev C pp. 4-5 and B-7; VIDAS PC Manual F pp. 6-8 and 10-8.
+#[test]
+fn vidas_rejects_ambiguous_control_labels() -> TestResult {
+    assert!(matches!(
+        vidas_control_message("C2 260203-0", "")?.subject(),
+        analyte_vidas::syntax::Subject::KitControl { name, lot }
+            if name.as_str() == "C2" && lot.as_str() == "260203-0"
+    ));
+    assert!(
+        analyte_vidas::syntax::Message::parse(
+            vidas_control_message("KitX 260203-2", "conthnor")?.text(),
+            analyte_vidas::syntax::SampleLimit::Twelve,
+        )
+        .is_err()
+    );
+    assert!(vidas_control_message("C2 260203-1", "").is_err());
+    assert!(vidas_control_message("C3", "").is_err());
+    assert!(vidas_control_message("QC1", "conthnor").is_err());
+    assert!(vidas_control_message("Kit 260203-2", "").is_err());
+    assert!(vidas_control_message("Qc00000000012", "conthwst").is_err());
+    Ok(())
+}
+
+fn vidas_control_message(
+    ci: &str,
+    flag: &str,
+) -> Result<analyte_vidas::syntax::Message, analyte_vidas::syntax::Error> {
+    use analyte_vidas::syntax::{ControlLabels, Message, SampleLimit};
+    Message::parse_with_control_labels(
+        &format!(
+            "mtrsl|pi|si|ci{ci}|rtSYN|tt09:05|td2026/02/03|ql|qn1|nc{flag}|idBox 01|sn000 a|m4Tech 7|"
+        ),
+        SampleLimit::Twelve,
+        ControlLabels::AppendixB,
+    )
 }
 
 // BCI Link rev C p. 4-9, Figure 4-3. The two separate doses use the same short assay code.
