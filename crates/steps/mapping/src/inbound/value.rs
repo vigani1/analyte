@@ -92,7 +92,7 @@ pub(crate) fn values(
     list(values, position)
 }
 
-pub(super) fn unsupported(
+pub(crate) fn unsupported(
     data_type: &str,
     position: Position,
     reason: &str,
