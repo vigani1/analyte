@@ -18,7 +18,7 @@ async fn setup_with_freshness(
     query_ms: u32,
     freshness: u64,
 ) -> Result<(tempfile::TempDir, Fixture, Reference, Running, TcpStream), Error> {
-    setup_observed(edition, ack_ms, query_ms, freshness, None).await
+    setup_observed(edition, ack_ms, query_ms, freshness, None, None).await
 }
 async fn setup_observed(
     edition: &str,
@@ -26,6 +26,7 @@ async fn setup_observed(
     query_ms: u32,
     freshness: u64,
     hook: Option<Arc<analyte::runtime::test_hooks::Committed>>,
+    order: Option<analyte_contract::Order>,
 ) -> Result<(tempfile::TempDir, Fixture, Reference, Running, TcpStream), Error> {
     let temp = tempfile::tempdir()?;
     let path = config(temp.path(), false)?;
@@ -59,12 +60,13 @@ async fn setup_observed(
         false,
     )
     .await?;
-    reference
-        .receiver
-        .seed(vec![analyte_contract::decode(include_bytes!(
+    let order = match order {
+        Some(order) => order,
+        None => analyte_contract::decode(include_bytes!(
             "../../../../../docs/contract/vectors/order.json"
-        ))?])
-        .await?;
+        ))?,
+    };
+    reference.receiver.seed(vec![order]).await?;
     let mut loaded = program(&path, &reference.url)?;
     if let Some(hook) = hook {
         loaded.pause_input_processed_for_test("hl7", hook)?;
@@ -248,7 +250,7 @@ async fn failed_dsr_ack_is_specific_uncertain() -> Result<(), Error> {
 async fn query_deadline_counts_split_block_receive() -> Result<(), Error> {
     let (hook, control) = analyte::runtime::test_hooks::Committed::new();
     let (_temp, path, reference, service, mut peer) =
-        setup_observed("v251", 30000, 1000, 30, Some(hook)).await?;
+        setup_observed("v251", 30000, 1000, 30, Some(hook), None).await?;
     let wire = analyte_framing::hl7::encode(
         &query("000Ab12", "2.5.1"),
         analyte_framing::hl7::Limit::new(1048576)?,
@@ -385,5 +387,42 @@ async fn hl7_query_freshness_follows_destination_config() -> Result<(), Error> {
         );
         service.stop().await?;
     }
+    Ok(())
+}
+
+// Contract v1: Order tests.
+#[tokio::test]
+async fn diluted_query_sends_no_display_work() -> Result<(), Error> {
+    let mut value: serde_json::Value = serde_json::from_slice(include_bytes!(
+        "../../../../../docs/contract/vectors/order.json"
+    ))?;
+    value
+        .get_mut("tests")
+        .and_then(|tests| tests.get_mut(0))
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or("synthetic test")?
+        .insert("dilution_ratio".into(), 5.into());
+    let app_order = analyte_contract::decode(&serde_json::to_vec(&value)?)?;
+    let (_temp, path, reference, service, mut peer) =
+        setup_observed("v251", 30000, 30000, 30, None, Some(app_order)).await?;
+    send(&mut peer, &query("000Ab12", "2.5.1")).await?;
+    let qck = read_mllp_packet(&mut peer, "oversized HL7 response").await?;
+    assert!(text(&qck)?.contains("QAK||AE"));
+    state(&path, "Rejected").await?;
+    let code: String =
+        database(&path)?.query_row("SELECT source_code FROM machine_orders", [], |row| {
+            row.get(0)
+        })?;
+    assert!(code.contains("unsupported-dilution"), "{code}");
+    assert!(
+        tokio::time::timeout(
+            Duration::from_millis(200),
+            read_mllp_packet(&mut peer, "unexpected display reply")
+        )
+        .await
+        .is_err()
+    );
+    service.stop().await?;
+    reference.close().await?;
     Ok(())
 }

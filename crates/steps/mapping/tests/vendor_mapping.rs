@@ -2,7 +2,7 @@
 //! These assertions do not claim vendor conformance; no vendor evidence level changes.
 use analyte_config::{Draft, Validated};
 use analyte_fixtures::ConfigEdit as _;
-use analyte_mapping::{AppOrder, AppOrderPriority, OrderMappingError};
+use analyte_mapping::{AppOrder, AppOrderPriority, AppOrderTest, OrderMappingError};
 use analyte_model::{Identifier, NamespacedId, SampleId, SourceText};
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 const SECTION: &str = "\n[orders]\nsend_ahead=true\npatient_namespace='patients'\npriorities=[{app='routine',machine='R'}]\n";
@@ -150,10 +150,14 @@ fn autolyser_download_refuses_missing_context_or_overflow() -> TestResult {
     }
     Ok(())
 }
-fn test(namespace: &str, value: &str) -> Result<NamespacedId, analyte_model::TextError> {
-    Ok(NamespacedId {
-        namespace: Identifier::new(namespace)?,
-        value: Identifier::new(value)?,
+fn test(namespace: &str, value: &str) -> Result<AppOrderTest, analyte_model::TextError> {
+    Ok(AppOrderTest {
+        code: NamespacedId {
+            namespace: Identifier::new(namespace)?,
+            value: Identifier::new(value)?,
+        },
+        name: None,
+        dilution: None,
     })
 }
 
@@ -163,10 +167,8 @@ fn order() -> Result<AppOrder, analyte_model::TextError> {
         patient_birth_date: None,
         patient_sex_code: None,
         sample_origin: None,
-        test_dilutions: Vec::new(),
         sample: SampleId::new("000Ab")?,
         tests: vec![test("synthetic", "SYN")?],
-        test_names: vec![None],
         priority: AppOrderPriority::Routine,
         position: None,
         patient: Some(NamespacedId {
@@ -670,4 +672,19 @@ fn result_input() -> analyte_mapping::Input<'static> {
         received_at: jiff::Timestamp::UNIX_EPOCH,
         revision: analyte_model::Revision(0),
     }
+}
+
+// Contract v1, Order tests.
+#[test]
+fn autolyser_refuses_dilution() -> TestResult {
+    let cfg = config(&autolyser())?;
+    let mut input = positioned_order()?;
+    input.tests.first_mut().ok_or("test")?.dilution = std::num::NonZeroU16::new(5);
+    assert!(matches!(
+        map_autolyser(&input, cfg.effective().stack()),
+        Err(analyte_mapping::autolyser::OrderError::Shared(
+            OrderMappingError::UnsupportedDilution
+        ))
+    ));
+    Ok(())
 }
