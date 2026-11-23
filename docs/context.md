@@ -106,8 +106,9 @@ exchange (`crates/core/config/src/orders/mod.rs`).
 
 - cobas e 411 and Biolyte 2000: no known config gap; the lab's settings and a
   recording are still needed.
-- iFlash 1200: config cannot yet choose vendor result-status meanings or turn
-  OBR-only QC groups into observations; these stay open gaps, not guesses.
+- iFlash 1200: the categorized ORU departure reads documented patient and
+  QC layouts. Installed behavior, report completion and measurement identity
+  still need evidence.
 - Swelab Lumi: nothing can be added until the installed protocol is known.
 
 Machine-specific behavior needs evidence before it becomes a named departure.

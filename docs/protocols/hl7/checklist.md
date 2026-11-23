@@ -409,3 +409,25 @@ These capabilities matter to a literal “complete” claim and to future equipm
   4.5.1.4 component description) before writing group authorities. Sending stays
   blocked with a source-specific reason; see versions.md and
   `unresolved_group_encoding_refuses_sending`.
+
+
+### Categorized ORU result departures
+
+- [x] OBR-2 barcode, OBR-10 rack and slot, OBR-9 factor with unknown
+  application, original OBX-13, OBX-11 F and held undocumented status.
+  LIS V1.1 sections 2.3.4.1 and 2.3.5, service manual section 6.4.2.1.
+  Test `barcode_rack_dilution_and_status_have_separate_source_meanings`.
+- [x] BOTH and qualitative-only ST keep original values and qualitative
+  reference. LIS V1.1 sections 2.3.5 and 2.4.1.1.
+  Tests `both_retains_quantity_and_call_as_values_of_one_observation`
+  and `empty_primary_preserves_the_reported_qualitative_call`.
+- [x] Match SI component values and raw readings, hold malformed arrays.
+  LIS V1.1 section 2.3.5. Test
+  `interference_parts_keep_their_matching_reported_and_raw_values`.
+- [x] Classify OBR-only QC, require matching counts and channels, keep
+  calibration held. LIS V1.1 sections 2.3.1, 2.3.4.2 and 2.4.1.2.
+  Test `qc_counts_and_columns_keep_each_lot_and_level_with_its_value`.
+- [x] Require named layout evidence and the category departure.
+  Test `categorized_layout_requires_its_header_departure_and_evidence`.
+- [ ] Confirm the local code page, incomplete transitions, measurement
+  identity, report completion and ACK compatibility on installed software.

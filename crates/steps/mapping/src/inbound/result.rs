@@ -77,6 +77,9 @@ pub(crate) fn part(
         .collect::<Result<Vec<_>, _>>()?;
     let range_field = if astm { 6 } else { 7 };
     Ok(ResultPart {
+        control: None,
+        interference: None,
+        raw_measurement: None,
         test,
         values,
         units,
@@ -185,7 +188,7 @@ fn classify(
     Ok(qc_class)
 }
 
-fn source_times(
+pub(crate) fn source_times(
     source: &Source<'_>,
     ancestors: &[usize],
     position: crate::Position,

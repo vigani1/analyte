@@ -99,6 +99,44 @@
         }
       ]
     },
+    "ControlMaterial": {
+      "description": "Source control material and its reported comparison data.",
+      "properties": {
+        "expiry": {
+          "$ref": "#/$defs/SourceText",
+          "description": "Expiry text as sent."
+        },
+        "id": {
+          "$ref": "#/$defs/SourceText",
+          "description": "Control identifier as sent."
+        },
+        "level": {
+          "$ref": "#/$defs/SourceText",
+          "description": "Concentration level as sent."
+        },
+        "lot": {
+          "$ref": "#/$defs/SourceText",
+          "description": "Lot matched to the measurement by source index."
+        },
+        "mean": {
+          "$ref": "#/$defs/SourceText",
+          "description": "Reported mean as sent."
+        },
+        "standard_deviation": {
+          "$ref": "#/$defs/SourceText",
+          "description": "Reported standard deviation as sent."
+        }
+      },
+      "required": [
+        "id",
+        "lot",
+        "expiry",
+        "level",
+        "mean",
+        "standard_deviation"
+      ],
+      "type": "object"
+    },
     "Cursor": {
       "description": "An opaque order-feed cursor. The limit is 256 UTF-8 bytes; maxLength counts characters, so it is an upper bound.",
       "maxLength": 256,
@@ -283,6 +321,26 @@
             "unresolved"
           ],
           "type": "object"
+        }
+      ]
+    },
+    "InterferenceComponent": {
+      "description": "Source role of one component in a sample interference panel.",
+      "oneOf": [
+        {
+          "const": "turbidity",
+          "description": "Turbidity (lipemia).",
+          "type": "string"
+        },
+        {
+          "const": "hemolysis",
+          "description": "Hemolysis.",
+          "type": "string"
+        },
+        {
+          "const": "jaundice",
+          "description": "Jaundice (icterus).",
+          "type": "string"
         }
       ]
     },
@@ -1092,6 +1150,17 @@
           "maxItems": 256,
           "type": "array"
         },
+        "control": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ControlMaterial"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Source control row, when explicitly reported."
+        },
         "details": {
           "anyOf": [
             {
@@ -1122,9 +1191,31 @@
           "maxItems": 256,
           "type": "array"
         },
+        "interference": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/InterferenceComponent"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Component role when the source defines a fixed interference panel."
+        },
         "qc_class": {
           "$ref": "#/$defs/QcClass",
           "description": "Source material classification."
+        },
+        "raw_measurement": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceText"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Raw measurement reported separately from the observation value."
         },
         "received_at": {
           "$ref": "#/$defs/Timestamp",
@@ -1271,6 +1362,16 @@
         },
         "parsed": {
           "$ref": "#/$defs/ValueInterpretation"
+        },
+        "reference": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceText"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [

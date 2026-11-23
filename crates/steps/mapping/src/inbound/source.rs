@@ -152,7 +152,12 @@ impl Source<'_> {
             .transpose()
     }
 
-    fn original_text(&self, raw: &[u8], index: usize, field: usize) -> Result<String, Error> {
+    pub(crate) fn original_text(
+        &self,
+        raw: &[u8],
+        index: usize,
+        field: usize,
+    ) -> Result<String, Error> {
         if raw.len() > 16384 {
             return Err(Error::Limit {
                 position: self.position(index, field),

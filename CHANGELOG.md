@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **HL7 categorized results:** an evidenced machine definition can keep
+  a numeric result and its qualitative call together, read separate
+  interference measurements, and pair control measurements with their
+  lots and levels. Ambiguous reports stay held with their original bytes.
 - **ASTM result uploads:** documented Roche layouts retain qualitative codes,
   cutoff indices, missing results, alarms and dilution evidence. Generated
   and ambiguous QC labels are held for review. Biolyte mapping keeps

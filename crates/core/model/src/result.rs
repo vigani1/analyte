@@ -196,6 +196,35 @@ pub struct SourceNode {
     pub status: Option<SourceText>,
 }
 
+/// Source control material and its reported comparison data.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ControlMaterial {
+    /// Control identifier as sent.
+    pub id: SourceText,
+    /// Lot matched to the measurement by source index.
+    pub lot: SourceText,
+    /// Expiry text as sent.
+    pub expiry: SourceText,
+    /// Concentration level as sent.
+    pub level: SourceText,
+    /// Reported mean as sent.
+    pub mean: SourceText,
+    /// Reported standard deviation as sent.
+    pub standard_deviation: SourceText,
+}
+
+/// Source role of one component in a sample interference panel.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InterferenceComponent {
+    /// Turbidity (lipemia).
+    Turbidity,
+    /// Hemolysis.
+    Hemolysis,
+    /// Jaundice (icterus).
+    Jaundice,
+}
+
 /// Additional source evidence where a result upload defines these fields.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct ResultDetails {
@@ -259,6 +288,15 @@ pub struct ResultPart {
     pub test: crate::NamespacedId,
     /// Original and optional parsed value.
     pub values: EvidenceList<ResultValue>,
+    /// Source control row, when explicitly reported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub control: Option<ControlMaterial>,
+    /// Component role when the source defines a fixed interference panel.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interference: Option<InterferenceComponent>,
+    /// Raw measurement reported separately from the observation value.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw_measurement: Option<SourceText>,
     /// Units if present.
     pub units: Option<Units>,
     /// Dilution evidence if present.

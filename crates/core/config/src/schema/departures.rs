@@ -73,6 +73,8 @@ pub enum DepartureGuarantee {
     RepeatEnq,
     /// Vendor documents MSH-16 codes 0, 1 and 2 as patient, calibration and QC.
     Msh16MessageCategory,
+    /// Vendor documents the categorized ORU result field layout.
+    CategorizedOruResults,
     /// Existing compatibility option is explicitly documented.
     Compatibility,
 }
@@ -146,6 +148,8 @@ pub enum MachineDeparture {
     Hl7Utf8InV231(DepartureDeclaration),
     /// HL7 2.3.1 ORU^R01 uses MSH-16 for a documented result category.
     Hl7Msh16MessageCategory(DepartureDeclaration),
+    /// Read the documented patient OBX fields and component-aligned OBR-only controls.
+    Hl7CategorizedOruResults(DepartureDeclaration),
     /// Use CRLF segment endings.
     Hl7CrLfTerminators(DepartureDeclaration),
     /// Use LF segment endings.
@@ -197,6 +201,9 @@ impl MachineDeparture {
             Self::AstmRepeatEnqAfterLostAck(_) => {
                 "One repeated ENQ before any frame can recover a lost establishment ACK."
             }
+            Self::Hl7CategorizedOruResults(_) => {
+                "Reads qualitative and component values in patient OBX and aligned controls in QC OBR."
+            }
             Self::Hl7Msh16MessageCategory(_) => {
                 "MSH-16 identifies the upload category in HL7 2.3.1 ORU^R01."
             }
@@ -227,6 +234,7 @@ impl MachineDeparture {
             | Self::AstmAbsentH12MeansProduction(value)
             | Self::AstmRepeatEnqAfterLostAck(value)
             | Self::AstmPackedRecordsInFrame(value)
+            | Self::Hl7CategorizedOruResults(value)
             | Self::Hl7Msh16MessageCategory(value)
             | Self::Hl7Utf8InV231(value)
             | Self::Hl7CrLfTerminators(value)
@@ -250,6 +258,7 @@ impl MachineDeparture {
             Self::AstmAbsentH12MeansProduction(_) => "astm_absent_h12_means_production",
             Self::AstmRepeatEnqAfterLostAck(_) => "astm_repeat_enq_after_lost_ack",
             Self::Hl7Msh16MessageCategory(_) => "hl7_msh16_message_category",
+            Self::Hl7CategorizedOruResults(_) => "hl7_categorized_oru_results",
             Self::Hl7Utf8InV231(_) => "hl7_utf8_in_v231",
             Self::Hl7CrLfTerminators(_) => "hl7_cr_lf_terminators",
             Self::Hl7LfTerminators(_) => "hl7_lf_terminators",
