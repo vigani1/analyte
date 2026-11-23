@@ -56,7 +56,7 @@ language without inventing cryptography.
 ## Frozen wire types
 
 The version 1 types in `crates/core/contract` (`value`, `text`, `identity`,
-`list`, `time`, `sample`) keep their own validators instead of sharing the
+`list`, `time`, `sample`, `result`) keep their own validators instead of sharing the
 model's, because each defines what version 1 accepts; a model change must not
 silently change that. The property tests in
 `crates/core/contract/tests/agreement.rs` compare both sides, and a divergence
