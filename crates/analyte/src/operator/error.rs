@@ -35,6 +35,9 @@ pub enum Error {
     /// Analyzer execution evidence could not be queried.
     #[error(transparent)]
     Reconciliation(#[from] analyte_store::ReconciliationError),
+    /// A review reason could not be recorded.
+    #[error("{0}")]
+    ReviewReason(&'static str),
     /// A delivery recovery operation failed.
     #[error(transparent)]
     Delivery(#[from] analyte_store::DeliveryError),

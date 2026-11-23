@@ -1,0 +1,60 @@
+{#- Protected measurement comparison and explicit audited confirmation. -#}
+{% extends "layout/base.html" %}
+{% macro evidence(title, evidence) %}
+<section class="grow stack">
+<h2>{{ title }}</h2>
+{% if let Some(sample) = evidence.sample %}
+<p>Tube ID {{ sample }}</p>
+{% else %}
+<p>Tube ID missing</p>
+{% endif %}
+{% for part in evidence.observations %}
+<div class="stack">
+<h3>{{ part.test }}</h3>
+<ul>
+{% for value in part.values %}<li>{{ value }}</li>{% endfor %}
+{% for time in part.times %}<li>{{ time }}</li>{% endfor %}
+{% if !part.status.is_empty() %}<li>Analyzer status {{ part.status }}</li>{% endif %}
+</ul>
+</div>
+{% endfor %}
+<details>
+<summary>Source fields and receipt ID</summary>
+<p>{{ evidence.receipt }}</p>
+<pre class="text" tabindex="0">{{ evidence.exact }}</pre>
+</details>
+</section>
+{% endmacro %}
+{% block main %}
+<h1>Compare measurements</h1>
+{% if let Some(sample) = sample %}
+<p>This looks like the same result, now with tube ID {{ sample }}. Resolve the held item?</p>
+{% else %}
+<p>Choose resend to record a duplicate without sending another result. Choose rerun to send a new measurement to the lab app.</p>
+{% endif %}
+<div class="split">
+{% call evidence("Held measurement", held) %}{% endcall %}
+{% if sample.is_some() %}
+{% call evidence("Later measurement", other) %}{% endcall %}
+{% else %}
+{% call evidence("Earlier measurement", other) %}{% endcall %}
+{% endif %}
+</div>
+<form method="post" action="/parked/{{ id }}/measurement">
+<input type="hidden" name="csrf" value="{{ csrf }}">
+<input type="hidden" name="snapshot" value="{{ snapshot }}">
+<div class="field">
+<label class="field__label" for="measurement-reason">Reason</label>
+<textarea class="textarea" id="measurement-reason" name="reason" required maxlength="256"></textarea>
+</div>
+<div class="cluster">
+<a class="btn btn--outline" href="/parked/{{ id }}">Cancel</a>
+{% if sample.is_some() %}
+<button class="btn btn--primary" type="submit" name="decision" value="supersede">Resolve held item</button>
+{% else %}
+<button class="btn btn--outline" type="submit" name="decision" value="resend">This is a resend</button>
+<button class="btn btn--primary" type="submit" name="decision" value="rerun">This is a rerun</button>
+{% endif %}
+</div>
+</form>
+{% endblock %}
