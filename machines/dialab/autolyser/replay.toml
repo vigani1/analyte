@@ -1,0 +1,15 @@
+["controls-report.rec.jsonl".recording]
+poll_seconds = 1
+controls = true
+
+["corrupt-and-last.rec.jsonl".recording]
+poll_seconds = 1
+controls = false
+
+["empty-poll.rec.jsonl".recording]
+poll_seconds = 1
+controls = false
+
+["next-report.rec.jsonl".recording]
+poll_seconds = 1
+controls = false
