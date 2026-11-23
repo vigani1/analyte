@@ -111,14 +111,6 @@ impl Orders {
     }
 }
 impl Dialog {
-    /// Enables query/display and order-response routing on the existing MLLP decoder.
-    /// Raw blocks must be committed before dispatch.
-    /// # Errors
-    /// Rejects reconfiguration of an active or already configured dialog.
-    pub fn enable_orders(&mut self, version: Version) -> Result<(), Error> {
-        self.enable_order_profile(version, query::Profile::Display)
-    }
-
     /// Enables orders with the explicitly configured legacy query profile.
     ///
     /// # Errors

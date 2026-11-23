@@ -167,6 +167,14 @@ pub(super) struct Context {
 }
 
 impl Context {
+    /// The model of a set-up machine when its definition names one.
+    pub(super) fn machine_model(&self, id: &str) -> Option<&str> {
+        self.machines
+            .iter()
+            .find(|machine| machine.id.as_str() == id)
+            .and_then(|machine| machine.model.as_deref())
+    }
+
     /// Where the admin pages are served, such as `http://127.0.0.1:4000`.
     pub(super) fn origin(&self) -> &str {
         &self.origin

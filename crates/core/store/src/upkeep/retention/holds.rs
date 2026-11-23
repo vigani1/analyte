@@ -77,17 +77,6 @@ impl Store {
         tx.commit()?;
         Ok(())
     }
-    /// Reports an explicit hold; order coverage is additionally checked during eligibility.
-    /// # Errors
-    /// Reports encoding and storage failures.
-    pub fn retention_hold(&self, target: &HoldTarget) -> Result<bool, Error> {
-        let (kind, target) = target.columns()?;
-        Ok(self.db.query_row(
-            "SELECT EXISTS(SELECT 1 FROM retention_holds WHERE kind=?1 AND target=?2 AND active=1)",
-            params![kind, target],
-            |r| r.get(0),
-        )?)
-    }
 }
 
 /// One active hold from a bounded operator page.
