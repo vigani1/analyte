@@ -1,6 +1,6 @@
 //! Lists configured machines and their live state in text or JSON.
 use super::super::{Failure, Installation, Outcome, live, say};
-use super::{args::saved_peers, running};
+use super::running;
 use crate::admin::setup::{cable, choices, model, plan, site};
 use crate::admin::view::format;
 use analyte_config::{SerialSetting, TransportKind};
@@ -142,7 +142,7 @@ pub(in super::super) fn settings_rows(installation: &Installation) -> Result<Vec
             plan::kind_of(&crate::installation::config::folder(&config).join(path))
                 == Some(TransportKind::TcpServer)
         });
-        let allowed_peers = saved_peers(&table)
+        let allowed_peers = plan::saved_peers(&table)
             .map(|peers| peers.split(", ").map(str::to_owned).collect::<Vec<_>>());
         machines.push(Listed {
             open_to_any_device: listens && allowed_peers.is_none(),

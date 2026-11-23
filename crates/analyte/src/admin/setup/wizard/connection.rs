@@ -6,9 +6,7 @@ use super::{
         plan::{current_lab_app, holder, kind_of, model_of},
         running, serial, site,
     },
-    Draft, Rendered, Step,
-    draft::PEERS,
-    frame,
+    Draft, Rendered, Step, frame,
     page::{self, Cable, CableOption, ConnectionStep, LabApp, Picker, Port, Setting},
     wizard,
 };
@@ -217,7 +215,8 @@ fn connection_inputs(
                         peers: draft
                             .allowed_peers
                             .clone()
-                            .unwrap_or_else(|| site_peers(current_site)),
+                            .or_else(|| super::plan::saved_peers(current_site))
+                            .unwrap_or_default(),
                     },
                 )
             } else {
@@ -241,22 +240,6 @@ fn connection_inputs(
             ),
         ),
     }
-}
-
-/// The devices the current site file lets connect, as step 2 shows them:
-/// "192.168.1.50, 192.168.1.51"; empty when it names none.
-fn site_peers(current_site: &toml::Table) -> String {
-    current_site
-        .get(PEERS)
-        .and_then(toml::Value::as_array)
-        .map(|addresses| {
-            addresses
-                .iter()
-                .filter_map(toml::Value::as_str)
-                .collect::<Vec<_>>()
-                .join(", ")
-        })
-        .unwrap_or_default()
 }
 
 /// The addresses Analyte can listen on: this PC's own, then every network
