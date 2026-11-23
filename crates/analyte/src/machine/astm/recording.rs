@@ -140,18 +140,17 @@ impl Protocol for Host {
         s: &mut Session<'_, '_, Self>,
         input: HostInput,
     ) -> Result<Flow, Error> {
-        match input {
-            HostInput::Opened | HostInput::Chunk => {}
-            HostInput::Byte(byte) => self.byte(s, byte).await?,
-            HostInput::Tick => {
-                let actions = self.dialog.step(s.elapsed(), Event::Tick)?;
-                s.actions.extend(actions);
+        let event = match input {
+            HostInput::Opened | HostInput::Chunk => return Ok(Flow::Continue),
+            HostInput::Byte(byte) => {
+                self.byte(s, byte).await?;
+                return Ok(Flow::Continue);
             }
-            HostInput::Disconnected => {
-                let actions = self.dialog.step(s.elapsed(), Event::Disconnected)?;
-                s.actions.extend(actions);
-            }
-        }
+            HostInput::Tick => Event::Tick,
+            HostInput::Disconnected => Event::Disconnected,
+        };
+        let actions = self.dialog.step(s.elapsed(), event)?;
+        s.actions.extend(actions);
         Ok(Flow::Continue)
     }
 
