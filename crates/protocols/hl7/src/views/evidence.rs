@@ -61,6 +61,8 @@ pub struct WireCompatibility {
     pub lf: bool,
     /// MSH-18 explicitly declares the compatibility spelling UNICODE UTF-8.
     pub legacy_utf8: bool,
+    /// A qualified category was read from MSH-16.
+    pub msh16_message_category: Option<super::MessageCategory>,
     /// The character set used when MSH-18 is empty yet non-ASCII bytes were decoded
     /// with the connection's (machine definition's) set: a deliberate tolerance to note.
     pub charset_from_definition: Option<crate::Charset>,
@@ -79,6 +81,9 @@ pub fn wire_compatibility(message: &crate::Message) -> WireCompatibility {
     WireCompatibility {
         crlf: message.raw().windows(2).any(|bytes| bytes == b"\r\n"),
         lf: message.raw().contains(&b'\n'),
+        msh16_message_category: super::Msh::new(message)
+            .ok()
+            .and_then(super::Msh::message_category),
         legacy_utf8: declared == b"UNICODE UTF-8",
         charset_from_definition: (declared.is_empty()
             && !message.raw().is_ascii()
@@ -117,6 +122,7 @@ fn wire_evidence_keeps_original_bytes() -> Result<(), crate::Error> {
                 crlf,
                 lf,
                 legacy_utf8: true,
+                msh16_message_category: None,
                 charset_from_definition: None,
                 header_time_without_zone: None,
             }

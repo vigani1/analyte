@@ -489,3 +489,21 @@ carries clinical content. View regressions and the O22 response regressions in
   [durable v1 refusal](../../../crates/analyte/src/machine/interpretation/departure_evidence/tests.rs),
   [admin origin labels](../../../crates/analyte/src/admin/machines/departures.rs).
   These are synthetic tests; no real analyzer gains an evidence level.
+
+## MSH-16 result category and capture acknowledgments
+
+HL7 2.3.1 section 2.24.1.16 uses MSH-16 for application acknowledgment
+negotiation. YHLO LIS Protocol Manual V1.1 sections 2.3.1-2.3.2 and 2.4.1 uses it
+in ORU^R01 to distinguish patient (`0`), calibration (`1`) and QC (`2`)
+uploads. A machine may declare the ADR 0015 rule
+`hl7_msh16_message_category` for inbound HL7 2.3.1 ORU^R01. It requires
+one of those codes and no MSH-15 negotiation. Normal interpretation
+records when the rule applies and parks calibration and QC until their
+formats can be mapped safely.
+
+Record-only capture uses an original-mode ACK after the bytes are
+durably kept (ADR 0034 and HL7 2.3.1 section 2.12.1.2.1). It does not use
+MSH-16 to decide whether to acknowledge an ORU or OUL. MSA-2 echoes the
+incoming MSH-10. The reply uses a new MSH-10, and does not echo the
+category or add the vendor's MSA-6 status code. The installed iFlash
+software's tolerance for these differences still needs a recorded exchange.

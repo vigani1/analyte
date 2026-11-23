@@ -130,12 +130,24 @@ impl AckCode {
         matches!(self, Self::Ca | Self::Ce | Self::Cr)
     }
 }
+/// Result category carried in MSH-16 by the documented vendor profile.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MessageCategory {
+    /// Patient results.
+    Patient,
+    /// Calibration data.
+    Calibration,
+    /// Quality control data.
+    QualityControl,
+}
+
 /// Validated MSH control view; raw composites remain available through `segment`.
 #[derive(Debug, Clone, Copy)]
 pub struct Msh<'a> {
     segment: Segment<'a>,
     version: Version,
     mode: AckMode,
+    category: Option<MessageCategory>,
 }
 impl<'a> Msh<'a> {
     /// Validates the required control fields and acknowledgment table values.
@@ -192,7 +204,16 @@ impl<'a> Msh<'a> {
             });
         }
         validate_message_type(segment, version)?;
+        if message.control == crate::ControlProfile::RecordOnly {
+            return Ok(Self {
+                segment,
+                version,
+                mode: AckMode::Original,
+                category: None,
+            });
+        }
         validate_timestamp(segment, version)?;
+        let category = message_category(message.control, segment, version)?;
         if rules.ack_pair == crate::version::AckPair::Paired {
             for field in [15, 16] {
                 if segment.field(field).is_some_and(Field::is_null) {
@@ -204,7 +225,11 @@ impl<'a> Msh<'a> {
             }
         }
         let accept = condition(segment, 15)?;
-        let application = condition(segment, 16)?;
+        let application = if category.is_some() && accept.is_none() {
+            None
+        } else {
+            condition(segment, 16)?
+        };
         if rules.ack_pair == crate::version::AckPair::Paired
             && accept.is_some() != application.is_some()
         {
@@ -225,6 +250,7 @@ impl<'a> Msh<'a> {
             segment,
             version,
             mode,
+            category,
         })
     }
     /// Constructs a view after LAW control-profile validation, including its
@@ -233,6 +259,7 @@ impl<'a> Msh<'a> {
         Self {
             segment,
             version: Version::V251,
+            category: None,
             mode: if triggered {
                 AckMode::Enhanced {
                     accept: Some(Condition::Never),
@@ -242,6 +269,12 @@ impl<'a> Msh<'a> {
                 AckMode::Original
             },
         }
+    }
+
+    /// Returns the category when the scoped MSH-16 departure applied.
+    #[must_use]
+    pub fn message_category(self) -> Option<MessageCategory> {
+        self.category
     }
 
     /// Returns the source segment, including all composite identifier components.
@@ -284,6 +317,37 @@ impl<'a> Msh<'a> {
         self.segment.field(18)
     }
 }
+// YHLO LIS Protocol Manual V1.1 sections 2.3.1, 2.4.1. Only the inbound
+// 2.3.1 result header uses these codes in place of negotiation.
+fn message_category(
+    profile: crate::ControlProfile,
+    segment: Segment<'_>,
+    version: Version,
+) -> Result<Option<MessageCategory>, Error> {
+    if profile != crate::ControlProfile::Msh16MessageCategory || version != Version::V231 {
+        return Ok(None);
+    }
+    let kind = required(segment, 9)?;
+    let mut components = kind
+        .raw()
+        .split(|byte| *byte == segment.delimiters.component);
+    if components.next() != Some(b"ORU")
+        || components.next() != Some(b"R01")
+        || components.next().is_some()
+    {
+        return Ok(None);
+    }
+    match segment.field(16).map(Field::raw) {
+        Some(b"0") => Ok(Some(MessageCategory::Patient)),
+        Some(b"1") => Ok(Some(MessageCategory::Calibration)),
+        Some(b"2") => Ok(Some(MessageCategory::QualityControl)),
+        _ => Err(Error::Control {
+            segment: "MSH",
+            field: 16,
+        }),
+    }
+}
+
 fn validate_timestamp(segment: Segment<'_>, version: Version) -> Result<(), Error> {
     let rules = version.require_rules()?;
     // HL7 2.5.1 section 2.15.9.7 made MSH-7 required as of 2.4;
@@ -588,4 +652,59 @@ pub(crate) fn error_code(code: &[u8], version: Version) -> bool {
                 | b"206"
                 | crate::APPLICATION_INTERNAL_ERROR
         )
+}
+
+#[cfg(test)]
+mod category_tests {
+    use super::*;
+    use crate::{ControlProfile, Options};
+
+    // HL7 2.3.1 section 2.24.1.16; YHLO LIS Protocol Manual V1.1 sections 2.3.1, 2.4.1.
+    #[test]
+    fn msh16_is_a_category_only_under_the_scoped_departure() -> Result<(), Error> {
+        let departed = Options {
+            control: ControlProfile::Msh16MessageCategory,
+            ..Options::default()
+        };
+        for (wire, category) in [
+            ("0", MessageCategory::Patient),
+            ("1", MessageCategory::Calibration),
+            ("2", MessageCategory::QualityControl),
+        ] {
+            let raw = format!("MSH|^~\\&|A|B|||20261123||ORU^R01|0007|P|2.3.1||||{wire}\r");
+            let strict = Message::parse(raw.as_bytes(), Options::default())?;
+            assert!(matches!(
+                Msh::new(&strict),
+                Err(Error::Control {
+                    segment: "MSH",
+                    field: 16
+                })
+            ));
+            let message = Message::parse(raw.as_bytes(), departed)?;
+            let msh = Msh::new(&message)?;
+            assert_eq!(msh.message_category(), Some(category));
+            assert_eq!(msh.mode(), AckMode::Original);
+            assert_eq!(message.raw(), raw.as_bytes());
+        }
+
+        for (kind, edition, accept, value) in [
+            ("QRY^Q02", "2.3.1", "", "0"),
+            ("ORU^R01^ORU_R01", "2.5.1", "", "0"),
+            ("ORU^R01", "2.3.1", "AL", "0"),
+            ("ORU^R01", "2.3.1", "", "3"),
+            ("ORU^R01", "2.3.1", "", ""),
+        ] {
+            let raw =
+                format!("MSH|^~\\&|A|B|||20261123||{kind}|0007|P|{edition}|||{accept}|{value}\r");
+            let message = Message::parse(raw.as_bytes(), departed)?;
+            assert!(matches!(
+                Msh::new(&message),
+                Err(Error::Control {
+                    segment: "MSH",
+                    field: 16
+                })
+            ));
+        }
+        Ok(())
+    }
 }

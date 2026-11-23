@@ -184,6 +184,7 @@ fn validate_scope(m: &ParsedMachine<'_>, departure: &MachineDeparture) -> Result
     let hl7 = match departure {
         MachineDeparture::Hl7AbsentObr25MeansFinal(_)
         | MachineDeparture::Hl7AbsentObx11MeansFinal(_)
+        | MachineDeparture::Hl7Msh16MessageCategory(_)
         | MachineDeparture::Hl7Utf8InV231(_)
         | MachineDeparture::Hl7CrLfTerminators(_)
         | MachineDeparture::Hl7LfTerminators(_)
@@ -208,7 +209,15 @@ fn validate_scope(m: &ParsedMachine<'_>, departure: &MachineDeparture) -> Result
     if hl7 && scope.direction != DepartureDirection::MachineToHost {
         return Err(Refusal::DirectionMismatch);
     }
-    if hl7 && scope.message != DepartureMessage::OruR01Patient {
+    let category = matches!(departure, MachineDeparture::Hl7Msh16MessageCategory(_));
+    if hl7
+        && scope.message
+            != if category {
+                DepartureMessage::OruR01
+            } else {
+                DepartureMessage::OruR01Patient
+            }
+    {
         return Err(Refusal::MessageMismatch);
     }
     if !hl7
@@ -222,6 +231,7 @@ fn validate_scope(m: &ParsedMachine<'_>, departure: &MachineDeparture) -> Result
     match departure {
         MachineDeparture::Hl7AbsentObr25MeansFinal(_)
         | MachineDeparture::Hl7AbsentObx11MeansFinal(_) => {}
+        MachineDeparture::Hl7Msh16MessageCategory(_) => validate_category_edition(scope.edition)?,
         MachineDeparture::AstmPackedRecordsInFrame(_) => {
             if !m.choice().has_astm_link() {
                 return Err(Refusal::ProtocolMismatch);
@@ -262,4 +272,14 @@ fn validate_scope(m: &ParsedMachine<'_>, departure: &MachineDeparture) -> Result
         }
     }
     Ok(())
+}
+
+fn validate_category_edition(edition: DepartureEdition) -> Result<(), Refusal> {
+    if matches!(edition, DepartureEdition::Hl7 { edition }
+        if analyte_hl7::Version::from(edition) == analyte_hl7::Version::V231)
+    {
+        Ok(())
+    } else {
+        Err(Refusal::EditionMismatch)
+    }
 }

@@ -438,6 +438,7 @@ field path, pattern, script or free status mapping can select behavior.
 | --- | --- | --- |
 | `Hl7AbsentObr25MeansFinal` | An absent or empty OBR-25 in generic ORU^R01 patient uploads means a final report | A manual or vendor statement naming the omission and guaranteeing final reports; a recording alone is not enough |
 | `Hl7AbsentObx11MeansFinal` | An absent or empty OBX-11 means a final observation | A manual or vendor statement guaranteeing final-only observations in that mode |
+| `Hl7Msh16MessageCategory` | MSH-16 carries codes 0, 1 and 2 in inbound HL7 2.3.1 `ORU^R01` | A manual documenting the category codes, with `message = "oru_r01"` and `guarantee = "msh16_message_category"` |
 | `AstmPackedRecordsInFrame` | Several CR-ended LIS02 records in one verified inbound frame | A manual section naming the packed mode, or an ADR 0009 recording showing it |
 | `Hl7Utf8InV231`, `Hl7CrLfTerminators`, `Hl7LfTerminators`, `Hl7PreserveUnsupportedEscapes`, `AstmFrameLimit`, `AstmReceiveTimeout`, `AstmSendTimeout`, `AstmHostContentionPriority`, `AstmLowercaseChecksumHex` | The existing compatibility settings, with their current limits | The same scope and evidence rules as above |
 
@@ -548,25 +549,30 @@ then timed direction/base64-byte events. Use the bounded reader/writers
 specified in the simulator guide. Variable host control IDs/times need named,
 fixed byte-location exceptions, never broad masks.
 
-`cargo test --workspace --all-features` discovers every `machines/**/machine.toml`, validates
-it with the real config loader, and replays every `.rec.jsonl` in its
-`recordings/` folder through the service. Use the fixed README sections in
-[machines/README.md](../../machines/README.md), including one `Level: documented`,
-`Level: simulated` or `Level: proven` line under Evidence matching the TOML.
-An empty machine inventory passes and reports that it found no definitions.
+`cargo test --workspace --all-features` replays all recordings in a model's
+`recordings/` directory through the running service. It uses the model's
+`machine.toml` when available and checks that the README and definition agree
+on evidence. For a blocked model with `record.toml`, write the record-only
+replies into synthetic fixtures. The replay verifies the replies and confirms
+that every inbound byte was stored, with no results delivered or orders sent.
 
-The automatic test uses temporary stores and loopback peers, without live
-credentials or patient data. Physical serial/TCP I/O is replaced for replay;
-the configured framing, dialog, syntax and mapping run in the real service.
-Host bytes must match the recording, subject only to its declared located
-exceptions. Complete-file recordings contain one payload split across inbound
-events and no stream link transitions or host replies; replay checks the exact
-stored bytes. Serial break events remain unsupported by the replay library.
+Set each recording's site answers in the model's optional `replay.toml`.
+Use `["upload.rec.jsonl".choices]` for choices declared by `machine.toml`
+or `["upload.rec.jsonl".recording]` for record-only answers such as
+`analyzer_mode` or `acknowledgment`. A known missing reply must name its exact
+failure and reason in `expected_gap`. The test fails when the correct reply
+starts arriving, so remove the mark with the fix. See the
+[machine folder guide](../../machines/README.md) for an example.
+
+Stream replay substitutes loopback TCP for the physical link (including
+serial). Watched-folder recordings contain one payload split across inbound
+events. The test checks the exact stored bytes. Serial break events are
+unsupported by the replay library.
 
 Run the discovery test alone with:
 
 ```text
-cargo test -p analyte --test delivery every_machine_validates_and_replays -- --nocapture
+cargo test -p analyte --test service --all-features every_machine_validates_and_replays -- --nocapture
 ```
 
 For additional custody, delivery and failure assertions, follow the existing
