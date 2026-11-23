@@ -1,4 +1,6 @@
 //! Runs operator recovery for app deliveries, receipt interpretation and parked items without resending machine orders.
+pub mod measurement;
+
 use crate::operator::Error;
 use crate::{deadline, installation::config::Program};
 use analyte_model::{DeliveryId, Identifier, Reason, ReceiptId};

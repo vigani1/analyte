@@ -895,3 +895,92 @@ async fn a_slow_action_answers_before_the_connection_closes() -> Result<(), Erro
     blocker.await??;
     stop(state, stopper, owner, store).await
 }
+
+// ADR 0035: signed-in operators compare original values and confirm one decision.
+#[tokio::test(flavor = "multi_thread")]
+async fn measurement_comparison_requires_sign_in_and_confirms_once() -> Result<(), Error> {
+    use analyte_model::{IdentityStatus, SourceText};
+    use analyte_store::{Interpretation, Reading, ReconcileAction, ReconcileInput};
+    const VALUE: &str = "synthetic-held-payload-6281";
+    let logs = crate::runtime::log_capture::init();
+    let directory = crate::admin::private_tempdir()?;
+    let (store, (state, stopper, owner, host), auth, bearer) = started(directory.path()).await?;
+    let item = store
+        .request::<_, FixtureError>(fixture_deadline()?, |s| {
+            for (second, status) in [(5, "early"), (6, "held")] {
+                let receipt = receive(s, "chemistry", second)?;
+                let retained = s.receipt(receipt)?.ok_or(FixtureError::UnknownReceipt)?;
+                let mut result = machines::result(receipt, Some("000123"))
+                    .map_err(|_| FixtureError::Corruption)?;
+                let IdentityStatus::Resolved(identity) = &mut result.identity else {
+                    return Err(FixtureError::Corruption);
+                };
+                identity.observation.run = SourceText::new("6:000123")?;
+                let mut parts = result.parts.as_slice().to_vec();
+                let part = parts.first_mut().ok_or(FixtureError::Corruption)?;
+                part.source_status = SourceText::new(status)?;
+                part.values =
+                    analyte_model::EvidenceList::new(vec![analyte_model::ResultValue::new(
+                        SourceText::new(VALUE)?,
+                        analyte_model::ValueInterpretation::Text,
+                    )])
+                    .map_err(|_| FixtureError::Corruption)?;
+                result.parts = analyte_model::NonEmptyEvidenceList::new(
+                    analyte_model::EvidenceList::new(parts)
+                        .map_err(|_| FixtureError::Corruption)?,
+                )
+                .map_err(|_| FixtureError::Corruption)?;
+                s.reconcile(
+                    ReconcileAction::Interpret(receipt),
+                    Interpretation {
+                        driver: retained.metadata.driver,
+                        config_version: retained.metadata.config_version,
+                        config: retained.config,
+                        outcome: Reading::Results(vec![result]),
+                        departures: None,
+                    },
+                    ReconcileInput::standard(&[false], &[]),
+                    |_, _| Ok(Vec::new()),
+                )?;
+            }
+            Ok(s.parked(0)?.first().ok_or(FixtureError::Corruption)?.id)
+        })
+        .await?;
+    let path = format!("/parked/{item}/measurement");
+    let bearer = format!("Authorization: Bearer {bearer}\r\n");
+    let unsigned = request(&host, &path, &bearer, None).await?;
+    assert!(!unsigned.contains("000123"));
+    let page = request(&host, &path, &auth, None).await?;
+    assert!(page.starts_with("HTTP/1.1 200"), "{page}");
+    for value in [
+        "Held measurement",
+        "Earlier measurement",
+        "000123",
+        VALUE,
+        "This is a resend",
+        "This is a rerun",
+    ] {
+        assert!(page.contains(value), "{value}");
+    }
+    let snapshot = page
+        .split_once("name=\"snapshot\" value=\"")
+        .and_then(|(_, rest)| rest.split('"').next())
+        .ok_or(FixtureError::Corruption)?;
+    let token = encode(&csrf(&page)?);
+    let post = format!("{auth}Content-Type: application/x-www-form-urlencoded\r\n");
+    let form = format!("csrf={token}&snapshot={snapshot}&decision=resend&reason=Verified");
+    let confirmed = request(&host, &path, &post, Some(&form)).await?;
+    assert!(confirmed.starts_with("HTTP/1.1 303"), "{confirmed}");
+    let repeated = request(&host, &path, &post, Some(&form)).await?;
+    assert!(
+        repeated.contains("measurement comparison changed"),
+        "{repeated}"
+    );
+    let resolved = request(&host, &format!("/parked/{item}"), &auth, None).await?;
+    assert!(resolved.contains("Recorded as a resend"));
+    assert!(resolved.contains("Verified"));
+    stop(state, stopper, owner, store).await?;
+    let logs = logs.lock().map_err(|_| FixtureError::Corruption)?;
+    assert!(!String::from_utf8_lossy(&logs).contains(VALUE));
+    Ok(())
+}

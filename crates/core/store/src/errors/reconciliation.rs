@@ -24,6 +24,9 @@ pub enum ReconciliationError {
     /// Parked item does not exist, is already resolved or belongs to other evidence.
     #[error("parked item is missing, resolved or unrelated to this receipt")]
     ReprocessParked,
+    /// The protected comparison is stale or ineligible.
+    #[error("measurement comparison changed or is no longer eligible; open the item again")]
+    ReviewChanged,
     /// An immutable identity or state transition conflicted.
     #[error("identity or state constraint conflict")]
     Conflict,
