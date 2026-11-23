@@ -131,6 +131,7 @@ async fn forced_exit_preserves_receipts_and_orders() -> Result<(), Error> {
     };
     assert!(original.outcome.contains("accepted"));
     assert_forced_shutdown(&mut child, directory.path()).await?;
+    reference.capture.release.notify_one();
     let path = directory.path().join("program.toml");
     let before = receipts(&path)?;
     let wire = analyte_framing::hl7::encode(ORU, analyte_framing::hl7::Limit::new(1_048_576)?)?;
@@ -146,6 +147,8 @@ async fn forced_exit_preserves_receipts_and_orders() -> Result<(), Error> {
     );
     let mut loaded = Program::load(&path)?;
     loaded.set_loopback_destination_for_test("demo", reference.url.clone())?;
+    loaded.set_loopback_store_budget_for_test("demo", analyte_fixtures::STORE_BUDGET)?;
+    loaded.set_shutdown_io_budget_for_test(analyte_fixtures::STORE_BUDGET)?;
     let restarted = Running::start_program(loaded, "synthetic-api").await?;
     let duplicate = reference.event().await?;
     assert!(duplicate.outcome.contains("duplicate"));
@@ -348,6 +351,8 @@ async fn killed_process_parks_transfer_and_interprets_receipt() -> Result<(), Er
     drop(db);
     let mut loaded = Program::load(&path)?;
     loaded.set_loopback_destination_for_test("demo", reference.url.clone())?;
+    loaded.set_loopback_store_budget_for_test("demo", analyte_fixtures::STORE_BUDGET)?;
+    loaded.set_shutdown_io_budget_for_test(analyte_fixtures::STORE_BUDGET)?;
     let restarted = Running::start_program(loaded, "synthetic-api").await?;
     let db = database(&path)?;
     assert_eq!(
@@ -382,19 +387,18 @@ async fn killed_process_parks_transfer_and_interprets_receipt() -> Result<(), Er
         )?,
         1
     );
+    // The child may have died before making the first request. Release its
+    // held response, or leave a permit for the first request after restart.
+    reference.capture.release.notify_one();
     // The killed child's delivery and the recovered receipt both finish before shutdown.
-    release_until_done(&path, &mut reference, 2).await?;
+    drain_until_done(&path, &mut reference, 2).await?;
     restarted.stop().await?;
     reference.close().await?;
     Ok(())
 }
 
-/// Releases held app answers until `count` deliveries are done, so no attempt stays in flight.
-async fn release_until_done(
-    path: &Path,
-    reference: &mut Reference,
-    count: i64,
-) -> Result<(), Error> {
+/// Drains receipt events until `count` deliveries are done, so none stay in flight.
+async fn drain_until_done(path: &Path, reference: &mut Reference, count: i64) -> Result<(), Error> {
     let release = async {
         loop {
             tokio::time::timeout(HANG_GUARD, reference.event()).await??;
