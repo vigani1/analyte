@@ -148,8 +148,19 @@ pub(in crate::admin::setup) struct Saved {
     pub(in crate::admin::setup) backups: Vec<PathBuf>,
     /// A settings file was written.
     pub(in crate::admin::setup) changed: bool,
-    /// Machines that use it after the save.
-    pub(in crate::admin::setup) users: Vec<String>,
+    /// Machines that use it after the save, or why that could not be checked.
+    users: Result<Vec<String>, SetupError>,
+}
+
+impl Saved {
+    /// Describes machine usage without treating a failed check as an empty list.
+    pub(super) fn usage_line(&self, unused: &str) -> String {
+        match &self.users {
+            Ok(users) if users.is_empty() => unused.to_owned(),
+            Ok(users) => format!("Used by {}.", users.join(", ")),
+            Err(error) => format!("Could not check which machines use this lab app: {error}"),
+        }
+    }
 }
 
 /// Writes the files (checked commit), then stores the keys. A refused or rolled
@@ -174,13 +185,14 @@ fn write(
             .replace(updates, Timestamp::now().as_second())
             .map_err(SetupError::KeysNotStored)?;
     }
-    let users = scan(setup.config())
-        .ok()
-        .and_then(|scan| {
-            scan.get(settings.name.as_str())
-                .map(|known| known.users.clone())
-        })
-        .unwrap_or_default();
+    // The settings and keys may already have been saved. Keep any read error
+    // with the success report so the operator does not retry the write.
+    let users = scan(setup.config()).and_then(|scan| {
+        let name = settings.name.as_str();
+        scan.get(name)
+            .map(|known| known.users.clone())
+            .ok_or_else(|| SetupError::UnknownLabApp(name.into()))
+    });
     Ok(Saved {
         settings,
         replaced,
@@ -362,12 +374,9 @@ pub(in crate::admin::setup) fn saved_lines(change: Change, saved: &Saved) -> Vec
     let mut lines = vec![
         format!("{} is {}.", saved.settings.name.as_str(), change.verb()),
         format!("Address: {}", saved.settings.base_url.as_str()),
-        if saved.users.is_empty() {
-            "Used by no machine yet: pick it with analyte machines set <machine> --lab-app <name>."
-                .to_owned()
-        } else {
-            format!("Used by {}.", saved.users.join(", "))
-        },
+        saved.usage_line(
+            "Used by no machine yet: pick it with analyte machines set <machine> --lab-app <name>.",
+        ),
     ];
     if !saved.changed {
         lines.push("The settings were already the same; no file was written.".to_owned());
@@ -380,4 +389,43 @@ pub(in crate::admin::setup) fn saved_lines(change: Change, saved: &Saved) -> Vec
     }
     lines.extend(copies(&saved.backups));
     lines
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // AGENTS.md "Keep errors specific": a saved change can have unknown usage.
+    #[test]
+    fn saved_settings_report_a_failed_usage_check() -> Result<(), crate::Error> {
+        let saved = Saved {
+            settings: settings(
+                &Entered {
+                    base_url: "https://lab.example.invalid".into(),
+                    ..Entered::default()
+                },
+                Identifier::new("demo")?,
+                [
+                    Identifier::new("demo-api")?,
+                    Identifier::new("demo-signing")?,
+                ],
+            )?,
+            replaced: Vec::new(),
+            backups: Vec::new(),
+            changed: true,
+            users: Err(SetupError::UnknownLabApp("demo".into())),
+        };
+        let lines = saved_lines(Change::Saved, &saved);
+        assert!(lines.iter().any(|line| line == "demo is saved."));
+        assert!(lines.iter().any(|line| {
+            line.starts_with("Could not check which machines use this lab app:")
+                && line.contains("demo")
+        }));
+        assert!(
+            !lines
+                .iter()
+                .any(|line| line.starts_with("Used by no machine yet"))
+        );
+        Ok(())
+    }
 }

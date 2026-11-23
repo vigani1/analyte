@@ -618,11 +618,7 @@ fn saved_page(
     };
     let mut lines = vec![
         format!("Address: {}", saved.settings.base_url.as_str()),
-        if saved.users.is_empty() {
-            "Used by no machine yet: pick it on a machine’s setup page.".to_owned()
-        } else {
-            format!("Used by {}.", saved.users.join(", "))
-        },
+        saved.usage_line("Used by no machine yet: pick it on a machine’s setup page."),
     ];
     if !saved.changed {
         lines.push("The settings were already the same; no file was written.".into());
