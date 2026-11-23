@@ -239,20 +239,13 @@ fn row(
         ),
         sample: cached.map(|cached| cached.sample.as_str().to_owned()),
         machine: order.key.machine.as_str().to_owned(),
-        model: model(state, order.key.machine.as_str()),
+        model: state
+            .machine_model(order.key.machine.as_str())
+            .map(str::to_owned),
         tests: tests(order),
         status,
         link,
     }
-}
-
-/// The model name of a set-up machine, read from its settings.
-pub(super) fn model(state: &Context, machine: &str) -> Option<String> {
-    state
-        .machines
-        .iter()
-        .find(|running| running.id.as_str() == machine)
-        .and_then(|running| running.model.clone())
 }
 
 /// How many tests an order sent, counted over its items; none when an older

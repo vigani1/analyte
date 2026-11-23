@@ -26,7 +26,7 @@ remain literal in decoded text and raw bytes. Their bodies cannot change field,
 repeat or component boundaries. An unclosed operation is an error; escape bodies
 are never recursively interpreted. CR always terminates a record.
 
-`serialize` preserves the original spelling exactly. `serialize_with` changes
+`encode` preserves the original spelling exactly. `encode_with` changes
 delimiters and escapes literal content while preserving decoded delimiter values.
 It refuses a target escape byte that collides with a preserved optional operation,
 or target delimiters that collide with a record identifier. Reparse with the same
