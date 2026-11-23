@@ -47,7 +47,7 @@ pub(crate) fn seed_order(
             namespace: code("local")?,
             value: code("synthetic")?,
         }],
-        super::OrderItems::Together,
+        OrderItems::Together,
         store.limits.record_bytes,
     )?;
     super::append(&tx, &record, None, store.limits.record_bytes)?;
