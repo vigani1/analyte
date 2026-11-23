@@ -159,9 +159,10 @@ new crate rather than a change to a shared one.
   them). Each machine config declares how a retransmission, a correction and
   a new run are told apart. When the machine does not send enough to tell,
   the receipt is kept with its identity marked unresolved and shown to an
-  operator; Analyte never invents a result key from sample, test, value or
-  time. Different content under the same trusted identity is an error, never
-  a silent replacement.
+  operator. A recipe can combine exact sample ID, test code and a documented
+  source completion time or run field. Changed content under a trusted key
+  requires explicit correction or protocol lifecycle evidence; otherwise it
+  parks. See [ADR 0035](adr/0035-machine-result-identity-recipes.md).
 - **Revisions** are assigned by the store from the identity and the retained
   history, in the same transaction as the interpretation (rules in ADR 0003).
 - **Sample identity:** ID as a string with its source, plus position (rack or

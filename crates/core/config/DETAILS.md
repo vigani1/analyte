@@ -154,11 +154,16 @@ Credential references must resolve through host-owned protected storage.
 `mappings.identity` requires `order_id` and `order_namespace`. Namespace is
 exactly `{fixed="system"}` or `{field=<selector>}`. `sub_id` is a selector or the
 literal `"none"`; only that declaration deliberately supplies an empty sub-ID.
-`run` is an ordered selector list, empty when no run evidence exists.
-`correction_status_codes` is an explicit list of source correction codes, not
-revision numbers. The former retransmission/correction/rerun lists are rejected
-as unknown keys. Missing required order settings have a positioned configuration
-error; selected evidence missing from a message remains unresolved in mapping.
+`run` is an ordered selector list. When `evidence = {manual, section}` is
+present, the recipe includes the sample ID and requires a nonempty run list.
+The citation belongs to the enclosing definition and its selected mapping.
+`correction_status_codes` and `rerun_status_codes` contain exact, distinct
+source codes. Nonempty rerun codes require evidence. Missing source fields
+leave the identity unresolved. LAW uses its fixed protocol identity rules.
+
+VIDAS can declare `[codes.vidas_identity]` with `sample_namespace` and
+`evidence = {manual, section}` for a sample/assay/completion-date-and-time
+recipe. Other stacks refuse this table.
 
 
 Vendor receive examples are `examples/poct.toml`, `examples/vidas_literal.toml`

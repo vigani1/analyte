@@ -72,6 +72,12 @@ Research only; no machine recording or official simulator run. No recordings shi
   covers 21.18), including whether the internal or variable protocol is in use,
   and all serial parameters, including data bits.
 
+## Result identity evidence
+
+Rev18 section 23.2, pp. 177-178 gives the returned patient code and analysis
+code but supplies no immutable measurement discriminator. Keep identity
+unresolved pending additional vendor evidence.
+
 ## Sources
 
 [Research](../../../docs/research/machines/autolyser.md), §§2–5: Autolyser / Autolyser
