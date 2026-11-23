@@ -1,7 +1,7 @@
 //! Constructs validated LAW protocol settings.
 use super::{
     DialogTimeouts, Error, LawConnectionMode, LawPeer, LawQueryForm, LawWork, Mappings,
-    OrderTables, Responsibility, SyntaxLimits, TcpTransport, invalid, limits, order_tables, tcp,
+    OrderTables, SyntaxLimits, TcpTransport, invalid, limits, order_tables, tcp,
 };
 use crate::ParsedMachine;
 use analyte_model::Identifier;
@@ -51,8 +51,6 @@ pub struct LawOrders {
 pub struct LawStack {
     /// Shared link, resource and interpretation settings.
     pub(super) settings: super::StackSettings<TcpTransport, SyntaxLimits, Mappings>,
-    /// Required acknowledgment promise.
-    pub(super) acknowledgment: Responsibility,
     /// Required Analyzer Manager policy.
     pub(super) policy: LawPolicy,
     /// Explicit outbound capability; omission disables it.
@@ -79,13 +77,6 @@ pub(super) fn law_stack(
                 .clone()
                 .ok_or_else(|| invalid(path, "mappings", "record stack requires mappings"))?,
         },
-        acknowledgment: machine.dialog.acknowledgment.ok_or_else(|| {
-            invalid(
-                path,
-                "dialog.acknowledgment",
-                "MLLP dialog requires acknowledgment policy",
-            )
-        })?,
         policy: LawPolicy {
             links: match law.connection_mode {
                 LawConnectionMode::Persistent => LawLinks::Persistent,
@@ -192,11 +183,6 @@ impl LawOrders {
 }
 
 impl LawStack {
-    /// Acknowledgment responsibility promised only after durable custody.
-    #[must_use]
-    pub fn acknowledgment(&self) -> Responsibility {
-        self.acknowledgment
-    }
     /// Protocol behavior selected by configuration and checked at load time.
     #[must_use]
     pub fn policy(&self) -> &LawPolicy {
