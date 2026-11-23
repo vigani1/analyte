@@ -107,7 +107,16 @@ impl<'a> Host<'a> {
     ) -> Result<(), Error> {
         let id = ReceiptId::new();
         let operation = store_upload(s.store, s.machine, id, raw);
-        match custody::store_before_ack(s.machine.machine(), operation).await {
+        let result = custody::store_before_ack(s.machine.machine(), operation).await;
+        self.complete_commit(s, result)
+    }
+
+    fn complete_commit(
+        &mut self,
+        s: &mut Session<'_, '_, Self>,
+        result: Result<(), custody::StoreWaitError<intake::Error>>,
+    ) -> Result<(), Error> {
+        match result {
             Ok(()) => {
                 // The dialog expired its own commit deadline before accepting completion.
                 s.actions
@@ -185,6 +194,12 @@ impl Protocol for Host<'_> {
                 custody::write(s.conn, &bytes, custody::WriteDeadline::Within(budget)).await?;
             }
             Action::Store(packet) => self.store_packet(s, &packet.raw).await?,
+            Action::RejectChecksum(raw) => {
+                let reason = framing_reason(&analyte_framing::vidas::Error::Checksum);
+                let operation = intake::park_bytes(s.store, s.machine, raw, &reason);
+                let result = custody::store_before_ack(s.machine.machine(), operation).await;
+                self.complete_commit(s, result)?;
+            }
             Action::TimerArmed(_, _) | Action::TimerCancelled(_) => {}
             Action::Park => {
                 // Kept before parking, so the park and its deadline stay

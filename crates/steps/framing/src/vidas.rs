@@ -175,8 +175,8 @@ enum State {
     Text,
     HexFirst,
     HexLast(u8),
-    End,
-    Done,
+    End { checksum_valid: bool },
+    Done { checksum_valid: bool },
     Failed,
 }
 
@@ -220,7 +220,7 @@ impl Decoder {
 
     fn consume(&mut self, byte: u8) -> Result<Option<Packet>, Error> {
         if matches!(self.state, State::Failed)
-            || matches!(self.state, State::Done) && self.suffix == usize::MAX
+            || matches!(self.state, State::Done { .. }) && self.suffix == usize::MAX
         {
             return Err(Error::Stopped);
         }
@@ -245,7 +245,9 @@ impl Decoder {
             }
             return self.complete();
         }
-        let control = matches!(byte, STX | RS | GS | ETX);
+        // Corrupt checksum bytes can look like controls, but do not carry a suffix.
+        let control = !matches!(self.state, State::HexFirst | State::HexLast(_))
+            && matches!(byte, STX | RS | GS | ETX);
         match self.state {
             State::Start if byte == STX => {
                 self.state = State::Record;
@@ -282,18 +284,23 @@ impl Decoder {
                 } else {
                     received == expected.as_bytes()
                 };
-                if !valid {
-                    return Err(Error::Checksum);
-                }
                 self.state = if self.config.mode == Mode::Literal {
-                    State::Done
+                    State::Done {
+                        checksum_valid: valid,
+                    }
                 } else {
-                    State::End
+                    State::End {
+                        checksum_valid: valid,
+                    }
                 };
             }
-            State::End if byte == ETX => self.state = State::Done,
-            State::Start | State::Record | State::Text | State::End => return Err(Error::Sequence),
-            State::Done | State::Failed => return Err(Error::Stopped),
+            State::End { checksum_valid } if byte == ETX => {
+                self.state = State::Done { checksum_valid };
+            }
+            State::Start | State::Record | State::Text | State::End { .. } => {
+                return Err(Error::Sequence);
+            }
+            State::Done { .. } | State::Failed => return Err(Error::Stopped),
         }
         if control && !self.config.suffix.is_empty() {
             self.suffix = 0;
@@ -302,9 +309,12 @@ impl Decoder {
     }
 
     fn complete(&mut self) -> Result<Option<Packet>, Error> {
-        if matches!(self.state, State::Done)
-            && (self.config.suffix.is_empty() || self.suffix == usize::MAX)
+        if let State::Done { checksum_valid } = self.state
+            && self.suffix == usize::MAX
         {
+            if !checksum_valid {
+                return Err(Error::Checksum);
+            }
             Ok(Some(Packet {
                 raw: std::mem::take(&mut self.raw),
                 body: std::mem::take(&mut self.body),
@@ -330,11 +340,13 @@ pub fn decode(raw: &[u8], config: Config) -> Result<Packet, Error> {
     packet.ok_or(Error::Incomplete)
 }
 
-/// A packet or suffix-validated conversation control.
+/// A packet attempt or suffix-validated conversation control.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Event {
     /// Complete checksummed packet.
     Packet(Packet),
+    /// Exact bytes through the reply point of a packet with a bad checksum.
+    BadChecksum(Vec<u8>),
     /// Control byte after its configured suffix.
     Control(u8),
 }
@@ -362,12 +374,18 @@ impl StreamDecoder {
     /// Reports invalid or overlong input.
     pub fn push(&mut self, byte: u8) -> Result<Option<Event>, Error> {
         if let Some(decoder) = &mut self.packet {
-            return match decoder.push(byte)? {
-                Some(packet) => {
+            return match decoder.push(byte) {
+                Ok(Some(packet)) => {
                     self.packet = None;
                     Ok(Some(Event::Packet(packet)))
                 }
-                None => Ok(None),
+                Ok(None) => Ok(None),
+                Err(Error::Checksum) => {
+                    let raw = std::mem::take(&mut decoder.raw);
+                    self.packet = None;
+                    Ok(Some(Event::BadChecksum(raw)))
+                }
+                Err(error) => Err(error),
             };
         }
         if let Some((control, index)) = self.suffix {
@@ -431,7 +449,9 @@ impl Decoder {
     /// # Errors
     /// Returns the protocol-specific incomplete-frame error.
     pub fn finish(&mut self) -> Result<Option<Packet>, Error> {
-        if self.raw.is_empty() || matches!(self.state, State::Done) && self.suffix == usize::MAX {
+        if self.raw.is_empty()
+            || matches!(self.state, State::Done { .. }) && self.suffix == usize::MAX
+        {
             return Ok(None);
         }
         self.state = State::Failed;
