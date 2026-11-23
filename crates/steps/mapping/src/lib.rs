@@ -228,6 +228,8 @@ pub enum IdentitySetting {
     OrderNamespace,
     /// The configured sub-ID selector (`sub_id`).
     SubId,
+    /// The sample ID required by the documented recipe.
+    Sample,
     /// One of the configured run selectors (`run`).
     Run,
     /// A LAW observation without its OBR order.
@@ -240,10 +242,11 @@ pub enum IdentitySetting {
 
 impl IdentitySetting {
     /// Every setting, in declaration order.
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::OrderId,
         Self::OrderNamespace,
         Self::SubId,
+        Self::Sample,
         Self::Run,
         Self::LawOrder,
         Self::LawOrderAuthority,
@@ -257,6 +260,7 @@ impl IdentitySetting {
             Self::OrderId => "order_id",
             Self::OrderNamespace => "order_namespace",
             Self::SubId => "sub_id",
+            Self::Sample => "sample",
             Self::Run => "run",
             Self::LawOrder => "LAW order",
             Self::LawOrderAuthority => "LAW AWOS/analyzer order authority or OG",

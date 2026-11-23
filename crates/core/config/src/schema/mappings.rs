@@ -138,6 +138,16 @@ pub enum SubId {
     None(NoSubId),
 }
 
+/// Citation for identity rules in the enclosing machine mapping and choice scope.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct IdentityReference {
+    /// Manual title and revision.
+    pub manual: Identifier,
+    /// Section that establishes the source field and status semantics.
+    pub section: Identifier,
+}
+
 /// Explicit identity evidence; source status never assigns a revision.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -152,6 +162,12 @@ pub struct IdentityEvidence {
     pub run: Vec<Field>,
     /// Exact source codes declaring a correction of the same observation.
     pub correction_status_codes: Vec<Identifier>,
+    /// Exact source codes that mark reruns and override the standard status meaning.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rerun_status_codes: Vec<Identifier>,
+    /// Enables a documented recipe that includes the configured sample ID.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub evidence: Option<IdentityReference>,
 }
 
 /// Bounded declarative mapping tables without expressions.

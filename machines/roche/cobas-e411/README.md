@@ -106,6 +106,14 @@ download or analyzer acceptance. No hardware or vendor simulator was used.
 - Confirm how the lab app assigns order and result identities, which units
   have explicit mappings, and whether any published value is dilution-adjusted.
 
+## Result identity evidence
+
+HIM v2.3 section 6, Table 18 supports a candidate Elecsys recipe using a
+confirmed sample ID, assay and R.13 completion time. In cobas mode, configure
+R.9 C as a rerun when the full recipe can be qualified. C identifies a rerun
+status, and a separate source field is still needed to tell successive reruns
+apart. The manual gives no correction code for this mode.
+
 ## Sources
 
 - Roche cobas e 411 Host Interface Manual v2.3 (March 2016), §§3–7.

@@ -117,6 +117,13 @@ These are manual-derived cases with no hardware or official simulator evidence.
 - If the lab uses work lists, confirm its patient namespace, enabled assay
   codes, dilution requirements and the operator's way to verify acceptance.
 
+## Result identity evidence
+
+BCI Link 161150-486 rev C, pp. 4-5 to 4-6 supports a candidate key of
+ci sample ID, rt assay, td completion date and tt completion time. Confirm
+timestamp precision and stability across resends, and confirm the sample ID
+format for controls before enabling this recipe.
+
 ## Sources
 
 Private reference documents, consulted locally. Sections and page numbers
