@@ -824,6 +824,38 @@ async fn list_says_which_devices_each_machine_accepts() -> Result<(), Error> {
     Ok(())
 }
 
+// ADR 0002: the effective settings include explicit local overrides.
+#[tokio::test(flavor = "multi_thread")]
+async fn list_describes_the_connection_loaded_with_overrides() -> Result<(), Error> {
+    let install = install()?;
+    install.set_up().await?;
+    std::fs::write(
+        install.root.join("serial.override.toml"),
+        "schema_version = 1\nendpoint = 'COM99'\n",
+    )?;
+    let program = std::fs::read_to_string(&install.config)?;
+    let definition_line = "definition = \"machines/example/serial-astm/machine.toml\"";
+    assert!(program.contains(definition_line), "{program}");
+    std::fs::write(
+        &install.config,
+        program.rewrite(
+            definition_line,
+            &format!("{definition_line}\noverrides = 'serial.override.toml'"),
+        ),
+    )?;
+    let installation = super::Installation::load(&install.config, install.seams())?;
+    let machines = machines::settings_rows(&installation)?;
+    let machine = machines
+        .iter()
+        .find(|row| row.id == "cobas-1")
+        .ok_or("missing machine")?;
+    assert_eq!(
+        serde_json::to_value(machine)?["connection"],
+        "endpoint = COM99"
+    );
+    Ok(())
+}
+
 // ADR 0026 decision 2: `machines test` of a listening machine names the
 // device that connected; in a script it only says the command that accepts
 // only that device, and writes nothing.

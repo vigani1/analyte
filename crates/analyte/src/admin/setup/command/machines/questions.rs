@@ -193,7 +193,7 @@ fn ask_recording(
                 )?;
             }
         }
-        Some("vidas") if empty(&draft.acknowledgment) => {
+        "vidas" if empty(&draft.acknowledgment) => {
             asked = true;
             let options = [
                 ("literal", "Literal (after the checksum)"),

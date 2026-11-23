@@ -514,6 +514,7 @@ pub struct Effective {
     suggestion: Option<SerialValues>,
     /// Each declared choice as it resolved.
     choices: Vec<Chosen>,
+    site_autolyser_poll_seconds: Option<u32>,
     document: toml::Value,
 }
 
@@ -680,6 +681,7 @@ impl Draft {
             source: self.source,
             suggestion,
             choices: chosen,
+            site_autolyser_poll_seconds: self.autolyser_poll_seconds,
             document,
         };
         let digest = Sha256::digest(canonical.as_bytes()).into();
@@ -939,6 +941,12 @@ impl Effective {
     #[must_use]
     pub fn choices(&self) -> &[Chosen] {
         &self.choices
+    }
+
+    /// The validated Autolyser interval when the definition asks the site to set it.
+    #[must_use]
+    pub const fn site_autolyser_poll_seconds(&self) -> Option<u32> {
+        self.site_autolyser_poll_seconds
     }
 
     /// Whether this is a record-only connection: it keeps the analyzer's

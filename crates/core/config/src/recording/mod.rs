@@ -516,6 +516,7 @@ pub fn load(model: (&str, &str), site: (&str, &str)) -> Result<Validated, Error>
             source: LabAppSource::None,
             suggestion: link.serial.clone(),
             choices: Vec::new(),
+            site_autolyser_poll_seconds: None,
             document,
         },
         canonical,

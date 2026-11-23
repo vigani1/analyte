@@ -114,13 +114,22 @@ impl Connection {
             )),
         }
     }
+
+    /// Whether this listener accepts any device that reaches its port (ADR 0026).
+    pub(in crate::admin) const fn accepts_any_device(
+        &self,
+        allowed_peers: Option<&analyte_config::AllowedPeers>,
+    ) -> bool {
+        matches!(self, Self::Listening(_)) && allowed_peers.is_none()
+    }
 }
 
 impl Machine {
     /// Whether it listens and accepts a connection from any device that
     /// reaches its port: no `allowed_peers` (ADR 0026).
     pub(super) const fn accepts_any_device(&self) -> bool {
-        matches!(self.connection, Connection::Listening(_)) && self.allowed_peers.is_none()
+        self.connection
+            .accepts_any_device(self.allowed_peers.as_ref())
     }
 }
 

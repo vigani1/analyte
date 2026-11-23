@@ -625,7 +625,7 @@ fn definition_name(definition: &Definition) -> Hover {
                     .identity
                     .as_ref()
                     .expect("ready definition has an identity");
-                format!("{} (name {name})", definition.key)
+                format!("{} (name {})", definition.key, name.as_str())
             }
             Shipped::Blocked { .. } | Shipped::Unreadable { .. } => definition.key.clone(),
         },
