@@ -264,13 +264,33 @@ the declared `group` and `record`. Confirm them from source and recordings.
 `mappings.sample.source` describes how the machine got the ID; the field
 selector determines where Analyte reads it. Sample IDs remain strings.
 
-`mappings.identity.order_id`, `order_namespace`, `sub_id`, `run` and
-`correction_status_codes` declare evidence, not a recipe for guessing identity.
-A namespace names the assigning system: use a confirmed fixed system or a
-source field. `sub_id = "none"` deliberately declares no sub-ID; `run = []`
-provides no run evidence. Missing evidence remains unresolved; changed content
-under one trusted identity is a conflict, not an inferred rerun. Receipt,
-delivery and result/revision identities stay separate. See [mapping behavior](../../crates/steps/mapping/README.md).
+### Declare a result identity recipe
+
+Add `evidence = { manual = "title and revision", section = "section and table" }`
+under `[mappings.identity]` for the installed model, firmware and mode. When
+choices select the whole mapping, put the recipe in each applicable mapping.
+Choose `order_id`, its `order_namespace` and `sub_id` from their source fields.
+Use `sub_id = "none"` when the profile has no sub-ID. The recipe also uses the
+configured sample ID and the machine's namespaced test code.
+
+List the required `run` selectors in order. For example, when a manual
+establishes ASTM R.13 as stable completion evidence, its selector is
+`{ group = "observation", record = "R", field = 13, component = 1, repetition = 1 }`.
+Confirm that two measurements of the same sample and test have different keys,
+that resends repeat the key, and that corrections keep it. Use this recipe
+for sources with one measurement per observation record.
+
+Declare the manual's exact `correction_status_codes` and `rerun_status_codes`.
+A rerun code overrides the generic status meaning and needs source evidence
+that distinguishes the run from earlier runs. Select the raw marker in `run`
+only if its documented stability and distinctness make it part of the key.
+Check resends, multiple reruns and missing fields with synthetic tests and a
+de-identified recording before qualification.
+
+For VIDAS use `[codes.vidas_identity]` with `sample_namespace` and the same
+`evidence` citation. It selects the source sample, assay, completion date and
+completion time. Verify the date and time have sufficient precision for the
+installed profile. See [ADR 0035](../adr/0035-machine-result-identity-recipes.md).
 
 For ASTM only, an optional section can split one R.3 component into exact parts:
 

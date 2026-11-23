@@ -5,10 +5,11 @@ use crate::orders::{AppOrder, map_patient};
 use crate::{Output, Position};
 
 use analyte_model::{
-    Dilution, DilutionApplied, EvidenceList, IdentityStatus, Reason, ResultValue, SampleId,
-    SampleIdentity, SampleSource, SourceText, Units, ValueInterpretation,
+    Dilution, DilutionApplied, EvidenceList, Identifier, IdentityStatus, NamespacedId,
+    ObservationIdentity, Reason, ResultIdentity, ResultValue, SampleId, SampleIdentity,
+    SampleSource, SourceText, Units, ValueInterpretation,
 };
-/// Maps VIDAS values conservatively, preserving unresolved identity and exact text.
+/// Maps VIDAS values and resolves identity only with documented completion evidence.
 /// # Errors
 /// Preserves syntax, model and mapping failures.
 pub fn map(
@@ -42,6 +43,13 @@ pub fn map(
         });
     }
     map_units(machine.settings().codes(), &mut source)?;
+    let identity = result_identity(
+        machine,
+        message,
+        &evidence.sample,
+        &source.test,
+        input.revision,
+    )?;
     push_result(
         &mut output,
         map_result(
@@ -52,12 +60,43 @@ pub fn map(
                 position: None,
             }),
             source,
-            IdentityStatus::Unresolved(Reason::new(
-                &crate::Unidentified::VidasLiteral.to_string(),
-            )?),
+            identity,
         )?,
     )?;
     Ok(output)
+}
+
+fn result_identity(
+    machine: &analyte_config::VidasStack,
+    message: &analyte_vidas::syntax::Message,
+    sample: &SampleId,
+    code: &NamespacedId,
+    revision: analyte_model::Revision,
+) -> Result<IdentityStatus, Error> {
+    let Some(recipe) = &machine.settings().codes().vidas_identity else {
+        return Ok(IdentityStatus::Unresolved(Reason::new(
+            &crate::Unidentified::VidasLiteral.to_string(),
+        )?));
+    };
+    // BCI Link 161150-486 rev C, p. 4-6: date and time are completion evidence.
+    let completion = |tag| message.get(tag).filter(|value| !value.trim().is_empty());
+    let (Some(date), Some(time)) = (completion("td"), completion("tt")) else {
+        return Ok(IdentityStatus::Unresolved(Reason::new(
+            "missing VIDAS completion date or time",
+        )?));
+    };
+    Ok(IdentityStatus::Resolved(ResultIdentity {
+        observation: ObservationIdentity {
+            code: code.clone(),
+            sub_id: SourceText::new("")?,
+            run: crate::identity_run(&[date, time])?,
+            order: NamespacedId {
+                value: Identifier::new(sample.as_str())?,
+                namespace: recipe.sample_namespace.clone(),
+            },
+        },
+        revision,
+    }))
 }
 
 /// Extracts VIDAS common-model evidence without parsing or changing written values.

@@ -57,6 +57,13 @@ Research only; no machine recording or official simulator run. No recordings shi
   BCI option is enabled; the assay short codes; recordings of uploads and of a
   work list download.
 
+## Result identity evidence
+
+BCI Link 161150-486 rev C, pp. 4-5 to 4-6 supports a candidate key of
+ci sample ID, rt assay, td completion date and tt completion time. Confirm
+timestamp precision and stability across resends, and confirm the sample ID
+format for controls before enabling this recipe.
+
 ## Sources
 
 [Research](../../../docs/research/machines/vidas.md), §§2–6 and 8: BCI Link guides

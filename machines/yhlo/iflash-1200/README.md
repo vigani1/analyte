@@ -57,6 +57,13 @@ Research only; no machine recording or official simulator run. No recordings shi
   ACK, QCK and DSR response deadlines; the LIS assay channel list; recordings of
   query, result and QC exchanges.
 
+## Result identity evidence
+
+LIS Protocol Manual V1.1 section 2.3.4 gives candidate fields OBR-2
+(sample barcode), OBR-3 (sample serial) and OBR-8 (observation end). Confirm
+that the 1200 sends these fields and whether the end time distinguishes
+successive measurements of the same assay.
+
 ## Sources
 
 [Research](../../../docs/research/machines/iflash-1200.md), §§1–5: YHLO LIS Protocol

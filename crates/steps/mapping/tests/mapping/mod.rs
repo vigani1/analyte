@@ -12,6 +12,7 @@ type TestResult = Result<(), Box<dyn std::error::Error>>;
 mod compatibility;
 mod continuation;
 mod departures;
+mod identity;
 mod law_text;
 mod limits;
 mod modern;
