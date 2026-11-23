@@ -631,3 +631,11 @@ Changes apply after a restart, as on the page:
 ```powershell
 Restart-Service Analyte
 ```
+
+### Analyzer settings for normal connections
+
+Setup step 2 asks the questions declared by the selected model. Depending
+on the model, these can include the installed protocol mode, its character
+encoding, and the Autolyser report layout, recovery and work-list settings.
+When the model asks for a report poll interval, enter the lab's interval in
+whole seconds from 1 to 300. Setup saves it with the other site settings.

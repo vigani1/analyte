@@ -15,6 +15,7 @@ mod poct;
 pub use poct::Poct;
 mod autolyser;
 pub use autolyser::Autolyser;
+pub(crate) use autolyser::PollInterval;
 mod departures;
 pub use departures::{
     DepartureDeclaration, DepartureDirection, DepartureEdition, DepartureGuarantee,
@@ -517,6 +518,9 @@ pub(crate) struct MachineDocument {
     /// which holds the definition with the chosen values applied.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub choices: Vec<MachineChoice>,
+    /// Scoped departures enabled only by a declared mode.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub choice_departures: Vec<MachineDeparture>,
     /// Declared evidence.
     pub evidence: Evidence,
     /// Optional evidenced location of the analyzer software version.
@@ -616,6 +620,8 @@ pub(crate) struct SiteFile {
     /// the snapshot holds the resolved values under its own `choices`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     choices: Option<ChoiceSelections>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    autolyser_poll_seconds: Option<u32>,
     /// Record only (ADR 0034): the machine is connected only to record its
     /// conversation; nothing goes to a lab app.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -628,6 +634,7 @@ pub(crate) struct SiteFile {
 pub(crate) struct LabChoices {
     pub(crate) serial: Option<SerialValues>,
     pub(crate) choices: ChoiceSelections,
+    pub(crate) autolyser_poll_seconds: Option<u32>,
 }
 
 impl SiteFile {
@@ -670,6 +677,7 @@ impl SiteFile {
             LabChoices {
                 serial: self.serial,
                 choices: self.choices.unwrap_or_default(),
+                autolyser_poll_seconds: self.autolyser_poll_seconds,
             },
         ))
     }
@@ -703,6 +711,7 @@ impl From<Site> for SiteFile {
             time_zone: site.time_zone,
             serial: None,
             choices: None,
+            autolyser_poll_seconds: None,
             recording: site.recording,
         }
     }

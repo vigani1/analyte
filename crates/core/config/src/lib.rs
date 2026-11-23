@@ -389,8 +389,8 @@ fn load<T: for<'de> Deserialize<'de>>(path: &str, text: &str) -> Result<T, Error
         }
     }
     let parsed = if filled {
-        // Only a definition whose choices own a `[vidas]` key reads from the
-        // filled table; every other file keeps the positioned diagnostics.
+        // Only a definition with keys supplied by choices needs the filled
+        // table; every other file keeps the positioned diagnostics.
         toml::Value::Table(value).try_into()
     } else {
         toml::from_str(text)
@@ -411,6 +411,7 @@ pub struct Draft {
     serial: Option<SerialValues>,
     /// The site file's value for each of the definition's choices.
     choices: ChoiceSelections,
+    autolyser_poll_seconds: Option<u32>,
     overrides: Overrides,
     paths: [String; 3],
 }
@@ -520,6 +521,7 @@ impl Draft {
             source,
             serial: chosen.serial,
             choices: chosen.choices,
+            autolyser_poll_seconds: chosen.autolyser_poll_seconds,
             overrides: load(overrides.0, overrides.1)?,
             paths: [machine.0.into(), site.0.into(), overrides.0.into()],
         })
@@ -545,6 +547,7 @@ impl Draft {
             }
         }
         let machine_path = self.paths.first().map_or("machine", String::as_str);
+        resolve_autolyser_poll(&mut self.machine, self.autolyser_poll_seconds, site_path)?;
         choices::check(&self.machine, machine_path)?;
         let resolved = choices::resolve(&self.machine.choices, &self.choices, site_path)?;
         choices::refuse_overrides(&self.machine.choices, &o, path)?;
@@ -634,6 +637,57 @@ impl Draft {
             digest,
         })
     }
+}
+
+/// Allowed normal Autolyser poll interval in whole seconds.
+pub const AUTOLYSER_POLL_SECONDS: std::ops::RangeInclusive<u32> = 1..=300;
+
+/// Reports whether the model requires the lab to supply the normal poll interval.
+/// # Errors
+/// Refuses malformed machine definitions.
+pub fn asks_autolyser_poll(path: &str, text: &str) -> Result<bool, Error> {
+    let document: MachineDocument = load(path, text)?;
+    Ok(document
+        .autolyser
+        .is_some_and(|settings| matches!(settings.poll_ms, schema::PollInterval::Site(_))))
+}
+
+fn resolve_autolyser_poll(
+    document: &mut MachineDocument,
+    seconds: Option<u32>,
+    path: &str,
+) -> Result<(), Error> {
+    let interval = document
+        .autolyser
+        .as_mut()
+        .map(|settings| &mut settings.poll_ms);
+    match (interval, seconds) {
+        (Some(interval @ schema::PollInterval::Site(_)), Some(seconds))
+            if AUTOLYSER_POLL_SECONDS.contains(&seconds) =>
+        {
+            *interval = schema::PollInterval::Milliseconds(seconds.saturating_mul(1000));
+        }
+        (Some(schema::PollInterval::Site(_)), seconds) => {
+            return Err(invalid(
+                path,
+                "autolyser_poll_seconds",
+                if seconds.is_none() {
+                    "no value; enter the poll interval in Setup step 2 or with --poll-seconds"
+                } else {
+                    "enter a whole number from 1 to 300"
+                },
+            ));
+        }
+        (_, Some(_)) => {
+            return Err(invalid(
+                path,
+                "autolyser_poll_seconds",
+                "the machine definition does not request this setting",
+            ));
+        }
+        (_, None) => {}
+    }
+    Ok(())
 }
 
 /// Loads one machine's validated snapshot the way the program does: a site

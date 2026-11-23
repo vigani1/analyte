@@ -11,6 +11,10 @@
   mappings can use source run evidence to distinguish new measurements from
   resends. ASTM and HL7 mappings can declare separate rerun and correction
   codes. Missing evidence and conflicting results are held for review.
+- Model definitions can ask for documented encoding and Autolyser settings,
+  require the lab's polling interval, and activate evidenced departures by
+  mode. Normal ASTM definitions can opt into the Biolyte empty processing ID
+  and one lost establishment acknowledgment retry.
 - Analyte warns when a machine reports software outside the versions its
   settings were checked with. The warning keeps the first report time and can
   be cleared by an audited confirmation. Results continue to flow (ADR 0036).

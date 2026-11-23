@@ -129,12 +129,20 @@ pub(super) fn candidate(
         Option<&analyte_config::SerialValues>,
         &analyte_config::ChoiceSelections,
     ),
+    autolyser_poll_seconds: Option<u32>,
     lab_app: &Identifier,
     lab_apps: &LabApps,
     elsewhere: &[Destination],
 ) -> Result<Candidate, SetupError> {
     let mut table: toml::Table = current.parse().map_err(SetupError::SiteFile)?;
     apply_link(&mut table, (connection, peers, serial, chosen))?;
+    table.remove("autolyser_poll_seconds");
+    if let Some(seconds) = autolyser_poll_seconds {
+        table.insert(
+            "autolyser_poll_seconds".into(),
+            toml::Value::Integer(i64::from(seconds)),
+        );
+    }
     let mut after = keep_own_destination(&mut table, lab_apps)?;
     if after.get(lab_app.as_str()).is_none() {
         let old = elsewhere
@@ -229,6 +237,7 @@ pub(super) fn recording_candidate(
 ) -> Result<Candidate, SetupError> {
     let none = analyte_config::ChoiceSelections::default();
     let mut table: toml::Table = current.parse().map_err(SetupError::SiteFile)?;
+    table.remove("autolyser_poll_seconds");
     let after = keep_own_destination(&mut table, lab_apps)?;
     table.remove("lab_app");
     apply_link(&mut table, (connection, peers, serial, &none))?;

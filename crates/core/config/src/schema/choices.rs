@@ -3,7 +3,7 @@
 //! A choice is a setting the analyzer itself offers (a mode on its own screen)
 //! or the installed software version. Each value names a closed set of
 //! existing building blocks; nothing here is a field path or an expression.
-use super::{AckPoint, Mappings, VidasSampleLimit};
+use super::{AckPoint, Encoding, Mappings, VidasSampleLimit};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -143,6 +143,18 @@ pub struct VidasChoice {
     pub sample_limit: Option<VidasSampleLimit>,
 }
 
+/// Autolyser settings that can differ between documented operating modes.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AutolyserChoice {
+    /// Selects the installed report layout.
+    pub controls: Option<bool>,
+    /// Allows recovery with L before the next R.
+    pub recover_last_on_poll: Option<bool>,
+    /// Allows explicit work-list download.
+    pub download: Option<bool>,
+}
+
 /// One building block a choice value can select; the closed list of things a
 /// lab's choice can change.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -155,6 +167,16 @@ pub enum ChoiceBlock {
     VidasAlternate,
     /// `vidas.sample_limit`.
     VidasSampleLimit,
+    /// The mode's declared departures.
+    Departures,
+    /// The Autolyser report layout.
+    AutolyserControls,
+    /// The Autolyser recovery policy.
+    AutolyserRecovery,
+    /// The Autolyser work-list policy.
+    AutolyserDownload,
+    /// The protocol's character encoding.
+    Encoding,
 }
 
 impl ChoiceBlock {
@@ -166,6 +188,11 @@ impl ChoiceBlock {
             Self::Orders => "orders",
             Self::VidasAlternate => "vidas.alternate",
             Self::VidasSampleLimit => "vidas.sample_limit",
+            Self::Departures => "departures",
+            Self::AutolyserControls => "autolyser.controls",
+            Self::AutolyserRecovery => "autolyser.recover_last_on_poll",
+            Self::AutolyserDownload => "autolyser.download",
+            Self::Encoding => "syntax.encoding",
         }
     }
 }
@@ -187,6 +214,15 @@ pub struct ChoiceValue {
     /// Replaces named `[vidas]` settings.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vidas: Option<VidasChoice>,
+    /// Selects named declarations in the definition's `choice_departures` table.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub departures: Option<Vec<ChoiceName>>,
+    /// Selects specific Autolyser settings.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub autolyser: Option<AutolyserChoice>,
+    /// Selects the protocol's existing encoding.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub encoding: Option<Encoding>,
 }
 
 impl ChoiceValue {
@@ -194,11 +230,20 @@ impl ChoiceValue {
     #[must_use]
     pub fn blocks(&self) -> Vec<ChoiceBlock> {
         let vidas = self.vidas.clone().unwrap_or_default();
+        let autolyser = self.autolyser.clone().unwrap_or_default();
         [
             (self.mappings.is_some(), ChoiceBlock::Mappings),
             (self.orders.is_some(), ChoiceBlock::Orders),
             (vidas.alternate.is_some(), ChoiceBlock::VidasAlternate),
             (vidas.sample_limit.is_some(), ChoiceBlock::VidasSampleLimit),
+            (self.departures.is_some(), ChoiceBlock::Departures),
+            (autolyser.controls.is_some(), ChoiceBlock::AutolyserControls),
+            (
+                autolyser.recover_last_on_poll.is_some(),
+                ChoiceBlock::AutolyserRecovery,
+            ),
+            (autolyser.download.is_some(), ChoiceBlock::AutolyserDownload),
+            (self.encoding.is_some(), ChoiceBlock::Encoding),
         ]
         .into_iter()
         .filter_map(|(set, block)| set.then_some(block))

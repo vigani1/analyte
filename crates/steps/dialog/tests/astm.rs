@@ -580,3 +580,36 @@ fn unsolicited_partial_frame_is_bounded_without_ack() {
     assert!(actions.iter().any(|a| matches!(a, Action::Rejected(astm::Error::Incomplete, raw) if raw == b"\x021R|unsolicited")));
     assert!(!actions.iter().any(|a| matches!(a, Action::Write(_))));
 }
+
+// LIS01-A2 sections 6.2.5 and 6.5.2.1; Biolyte Service Manual 4.2A Appendix VI section 2.1.
+#[test]
+fn lost_establishment_ack_can_be_recovered_once_with_the_departure() {
+    for allowed in [false, true] {
+        let mut dialog = Dialog::new(Config::default().with_repeat_enq(allowed), Epoch(1));
+        step(&mut dialog, 0, Event::Capacity(true));
+        assert!(feed(&mut dialog, 0, &[ENQ]).contains(&Action::Write(vec![ACK])));
+        let repeated = feed(&mut dialog, 15, &[ENQ]);
+        assert_eq!(repeated.contains(&Action::Write(vec![ACK])), allowed);
+        assert!(!feed(&mut dialog, 16, &[ENQ]).contains(&Action::Write(vec![ACK])));
+        assert!(step(&mut dialog, 30, Event::Tick).contains(&Action::Ended(End::Timeout)));
+    }
+}
+
+// Biolyte Service Manual 4.2A Appendix VI sections 2.1 and 2.2; ADR 0003.
+#[test]
+fn an_enq_cannot_acknowledge_a_frame_awaiting_storage() -> TestResult {
+    let mut dialog = Dialog::new(Config::default().with_repeat_enq(true), Epoch(1));
+    step(&mut dialog, 0, Event::Capacity(true));
+    feed(&mut dialog, 0, &[ENQ]);
+    let frames = wire(b"R|synthetic\r", FrameNumber::FIRST, Limit::default())?;
+    let received = feed(&mut dialog, 0, frames.first().ok_or("no frame")?);
+    assert!(
+        received
+            .iter()
+            .any(|action| matches!(action, Action::Store(..)))
+    );
+    assert!(!feed(&mut dialog, 0, &[ENQ]).contains(&Action::Write(vec![ACK])));
+    assert!(commit(&mut dialog, &received, true).contains(&Action::Write(vec![ACK])));
+    assert!(!feed(&mut dialog, 1, &[ENQ]).contains(&Action::Write(vec![ACK])));
+    Ok(())
+}
