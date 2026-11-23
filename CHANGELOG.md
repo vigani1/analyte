@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- ASTM queries and ASTM, VIDAS and Autolyser send-ahead now reconcile late
+  order reservations at disconnect. Committed reservations whose store reply
+  timed out become uncertain without resending the order.
+
 - The admin overview and status report when a machine software version warning
   could not be saved. Analyzers still receive acknowledgments for stored results
   under the normal protocol rules.

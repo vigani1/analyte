@@ -53,7 +53,8 @@ impl<'a> Host<'a> {
         let mut dialog = Dialog::upload(config.clone(), policy.clone())?;
         let pending = dialog.start();
         Ok(Self {
-            work: crate::orders::sending::Work::new(settings.orders().filter(|o| o.send_ahead())),
+            work: crate::orders::sending::Work::new(settings.orders().filter(|o| o.send_ahead()))
+                .map_err(crate::orders::OrderError::from)?,
             dialog,
             pending,
             phase: Phase::Opening,

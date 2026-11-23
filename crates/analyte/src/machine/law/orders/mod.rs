@@ -81,7 +81,7 @@ impl LawOrderLink {
     pub(crate) async fn close(&mut self, store: &Handle, code: &str) -> Result<(), Error> {
         let result = crate::orders::sending::settle_owned(
             store,
-            std::mem::take(&mut self.reserving),
+            &std::mem::take(&mut self.reserving),
             &self.owner,
             code,
             crate::orders::sending::Settlement::Items,
