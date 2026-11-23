@@ -123,16 +123,15 @@ fn tests(
     order
         .tests
         .iter()
-        .enumerate()
-        .map(|(index, requested)| {
-            let code = map_test(settings.tables().test_system(), requested)?;
+        .map(|requested| {
+            let code = map_test(settings.tables().test_system(), &requested.code)?;
             if code.len() > 3 || !code.bytes().all(|b| b.is_ascii_digit()) {
                 return Err(OrderError::StructuredCode);
             }
             if !seen.insert(test_identity(profile, code)) {
                 return Err(OrderError::DuplicateTest);
             }
-            let ratio = order.test_dilutions.get(index).copied().flatten();
+            let ratio = requested.dilution.map(std::num::NonZeroU16::get);
             let dilution = dilution(profile, ratio)?;
             Ok(vec![
                 String::new(),

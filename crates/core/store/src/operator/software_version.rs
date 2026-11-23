@@ -27,7 +27,7 @@ impl Store {
     ) -> Result<(), Error> {
         // Fixed precision is required for lexical ordering in SQLite.
         let stamp = format!("{when:.9}");
-        self.db.execute(
+        let result = self.db.execute(
             "INSERT INTO machine_software_warning(machine,revision,reported,first_seen,last_seen)
              VALUES(?1,?2,?3,?4,?4)
              ON CONFLICT(machine) DO UPDATE SET
@@ -44,8 +44,17 @@ impl Store {
                 reported.map(Identifier::as_str),
                 stamp
             ],
-        )?;
-        Ok(())
+        );
+        // A later write can concern a different observation, so keep the
+        // missed write visible for the lifetime of this store owner.
+        self.software_warning_write_failed |= result.is_err();
+        Ok(result.map(|_| ())?)
+    }
+
+    /// Whether any software warning write failed since this store was opened.
+    #[must_use]
+    pub const fn software_warning_write_failed(&self) -> bool {
+        self.software_warning_write_failed
     }
 
     /// Reads a warning only for the definition in use and only while unconfirmed.

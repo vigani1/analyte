@@ -46,6 +46,9 @@ pub fn map(
 /// Specific outgoing LAW wire mapping failures.
 #[derive(Debug, thiserror::Error)]
 pub enum WireError {
+    /// The order requests data this destination cannot carry.
+    #[error(transparent)]
+    Shared(#[from] crate::OrderMappingError),
     /// LAW order mappings absent.
     #[error("LAW order mappings absent")]
     MappingsAbsent,

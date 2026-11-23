@@ -72,6 +72,12 @@ acceptance of a work order. Successful transfers advance from `Sending` to `Sent
 invent an `Accepted` event. The lifecycle transition API supports explicit
 machine acceptance/rejection evidence and operator reconciliation.
 
+Orders with an explicit per-test dilution are rejected before transmission on
+generic ASTM, Autolyser, HL7 order send and display replies, and LAW work orders.
+The rejection event includes `unsupported-dilution`. VIDAS and structured ASTM
+encode requested dilutions supported by their configured format. Cancellation
+does not request a dilution.
+
 ## Operator commands
 
 ```text

@@ -111,6 +111,7 @@ pub fn map_order(
     if !machine.policy().download {
         return Err(crate::OrderMappingError::Disabled.into());
     }
+    order.require_no_dilution()?;
     let patient = map_patient(order, settings.patient_namespace())?;
     let clone = settings.clone_enabled();
     let settings = &settings.tables();
@@ -170,7 +171,7 @@ pub fn map_order(
     }
     let mut tests = Vec::new();
     for test in &order.tests {
-        let code = codes::map_test(settings.test_system(), test)?;
+        let code = codes::map_test(settings.test_system(), &test.code)?;
         // The work list's analysis code is exactly four printable bytes; the
         // order supplies any padding, Analyte never pads or trims it.
         if code.len() != 4 || !code.bytes().all(|b| (32..=126).contains(&b)) {

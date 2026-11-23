@@ -8,7 +8,6 @@ use crate::admin::view::{
     frame::Frame,
     report::{Problem, Section, respond},
 };
-use crate::installation::config::Program;
 use crate::operator::recovery::measurement;
 use analyte_model::ResultContent;
 use analyte_store::MeasurementDecision;
@@ -183,14 +182,12 @@ pub(in crate::admin) async fn decide(
         Decision::Rerun => MeasurementDecision::Rerun,
         Decision::Supersede => MeasurementDecision::Supersede,
     };
-    let result = async {
+    let result: Result<(), crate::admin::Error> = async {
         let program = if matches!(decision, MeasurementDecision::Rerun) {
-            let path = state.setup.config().to_owned();
-            let program = tokio::task::spawn_blocking(move || Program::load(&path)).await??;
-            if program.data_directory().canonicalize()? != state.directory.canonicalize()? {
-                return Err(crate::admin::Error::StoreMismatch);
-            }
-            Some(program)
+            Some(
+                super::program_for_store(state.setup.config().to_owned(), state.directory.clone())
+                    .await?,
+            )
         } else {
             None
         };

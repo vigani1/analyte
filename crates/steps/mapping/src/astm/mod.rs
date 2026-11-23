@@ -182,9 +182,7 @@ pub fn map_order(
     if let Some(profile) = settings.layout().profile {
         return structured::map(Some(order), limits, settings, profile.wire(), None);
     }
-    if order.test_dilutions.iter().any(Option::is_some) {
-        return Err(OrderError::UnsupportedDilution);
-    }
+    order.require_no_dilution()?;
     let astm = &settings.layout();
     let settings = &settings.tables();
     if order.tests.is_empty() || order.tests.len() > limits.repetitions() {
@@ -192,7 +190,7 @@ pub fn map_order(
     }
     let mut tests = Vec::new();
     for requested in &order.tests {
-        tests.push(map_test(settings.test_system(), requested)?);
+        tests.push(map_test(settings.test_system(), &requested.code)?);
     }
     let priority = map_priority(settings.priorities(), order.priority)?;
     let mut fields: [Vec<Vec<String>>; 16] = std::array::from_fn(|_| Vec::new());

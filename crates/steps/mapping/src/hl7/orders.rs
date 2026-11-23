@@ -61,9 +61,8 @@ pub fn map_order(
 }
 impl Command {
     /// Requested app tests for atomic per-item reservation; no wire lookup occurs here.
-    #[must_use]
-    pub fn tests(&self) -> &[analyte_model::NamespacedId] {
-        &self.app.tests
+    pub fn tests(&self) -> impl Iterator<Item = &analyte_model::NamespacedId> {
+        self.app.tests.iter().map(|test| &test.code)
     }
     /// Maps one already-reserved command with host-supplied response metadata.
     /// # Errors
@@ -80,6 +79,7 @@ impl Command {
         if cancel {
             return self.map_cancel(items, header);
         }
+        self.app.require_no_dilution()?;
         let sample = order::SampleId::new(self.app.sample.as_str().as_bytes())?;
         let source = self.map_specimen(cfg)?;
         let priority = self.map_priority()?;

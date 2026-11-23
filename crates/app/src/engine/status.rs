@@ -58,11 +58,13 @@ pub enum Reason {
     MachineOpenToAnyDevice,
     /// A machine reports software outside its checked versions or an unknown version.
     MachineSoftwareVersionChanged,
+    /// A machine software version warning could not be saved.
+    SoftwareWarningWriteFailed,
 }
 
 impl Reason {
     /// Every kind, most serious first.
-    pub const ALL: [Self; 17] = [
+    pub const ALL: [Self; 18] = [
         Self::DiskFull,
         Self::DiskLow,
         Self::LabAppBlocked,
@@ -80,6 +82,7 @@ impl Reason {
         Self::OrderListStale,
         Self::MachineOpenToAnyDevice,
         Self::MachineSoftwareVersionChanged,
+        Self::SoftwareWarningWriteFailed,
     ];
 
     /// The engine's word for this kind.
@@ -95,6 +98,7 @@ impl Reason {
             Self::SendingPaused => "sending_paused",
             Self::MachineSilent => "machine_silent",
             Self::MachineSoftwareVersionChanged => "machine_software_version_changed",
+            Self::SoftwareWarningWriteFailed => "software_warning_write_failed",
             Self::MachineRefusedConnection => "machine_refused_connection",
             Self::ResultWaiting => "result_waiting",
             Self::NeedsReview => "needs_review",
@@ -123,6 +127,7 @@ impl Reason {
             Self::SendingPaused => "Sending to a lab app is paused",
             Self::MachineSilent => "A machine has gone quiet",
             Self::MachineSoftwareVersionChanged => "Check a machine’s software version",
+            Self::SoftwareWarningWriteFailed => "Analyte could not save a software version warning",
             Self::MachineRefusedConnection => "A machine refused a connection from another device",
             Self::ResultWaiting => "A result is waiting too long to be sent",
             Self::NeedsReview => "Something needs review",
@@ -145,6 +150,9 @@ impl Reason {
             Self::MachineStopped | Self::MachineSilent => "Open Analyte to see which machine.",
             Self::MachineSoftwareVersionChanged => {
                 "Open Analyte to see which machine and check its settings before relying on it."
+            }
+            Self::SoftwareWarningWriteFailed => {
+                "Ask IT to check the Analyte service log for the storage error."
             }
             Self::MachineLinkOff => "Open Analyte to see which machine and what to check.",
             Self::SendingPaused => {

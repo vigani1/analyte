@@ -250,13 +250,8 @@ async fn process_again(
     actor: Identifier,
     reason: Reason,
 ) -> Result<InterpretationCommit, Error> {
-    let path = state.setup.config().to_owned();
     let program =
-        tokio::task::spawn_blocking(move || crate::installation::config::Program::load(&path))
-            .await??;
-    if program.data_directory().canonicalize()? != state.directory.canonicalize()? {
-        return Err(Error::StoreMismatch);
-    }
+        super::program_for_store(state.setup.config().to_owned(), state.directory.clone()).await?;
     recovery::reprocess(
         &state.store,
         &program,

@@ -239,9 +239,9 @@ impl LawOrderLink {
                     | analyte_store::OrderError::ItemIdentityTooLong),
                 ) => {
                     self.reserving.clear();
-                    if !unsolicited {
+                    let Some(reason) = preflight_refusal(&error, unsolicited) else {
                         return Err(error.into());
-                    }
+                    };
                     admission::reject(
                         store,
                         machine,
@@ -250,9 +250,12 @@ impl LawOrderLink {
                             identity: key,
                             version,
                         },
-                        &LawDetail::OrderPreflight(error.to_string()).to_string(),
+                        &LawDetail::OrderPreflight(reason).to_string(),
                     )
                     .await?;
+                    if !unsolicited {
+                        return Err(error.into());
+                    }
                     continue;
                 }
                 Err(error) => return Err(error.into()),
@@ -285,11 +288,22 @@ impl LawOrderLink {
     }
 }
 
+// A queried order normally fails the exchange without a durable mapping refusal.
+// Preserve the specific refusal when an explicit dilution cannot be sent.
+fn preflight_refusal(error: &analyte_store::OrderError, unsolicited: bool) -> Option<String> {
+    if let analyte_store::OrderError::DeliveryBuild(cause) = error
+        && matches!(
+            cause.downcast_ref::<Error>(),
+            Some(Error::Mapping(analyte_mapping::law::WireError::Shared(
+                analyte_mapping::OrderMappingError::UnsupportedDilution
+            )))
+        )
+    {
+        return Some(cause.to_string());
+    }
+    unsolicited.then(|| error.to_string())
+}
+
 fn groups(command: &Command) -> Vec<Vec<analyte_model::NamespacedId>> {
-    command
-        .tests()
-        .iter()
-        .cloned()
-        .map(|test| vec![test])
-        .collect()
+    command.tests().cloned().map(|test| vec![test]).collect()
 }

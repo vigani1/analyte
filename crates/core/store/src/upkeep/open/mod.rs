@@ -87,6 +87,7 @@ impl Store {
         db.progress_handler(0, None::<fn() -> bool>)?;
         Ok(Self {
             retention_key: None,
+            software_warning_write_failed: false,
             db,
             path: path.into(),
             limits,
