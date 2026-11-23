@@ -499,6 +499,7 @@ fn vidas_control_labels_keep_composite_and_enforce_qc_width() -> TestResult {
     assert!(source("C2 260203-1", "").is_err());
     assert!(source("C3", "").is_err());
     assert!(source("QC1", "conthnor").is_err());
+    assert!(source("Kit 260203-2", "").is_err());
     for (id, flag) in [("QC6", ""), ("Qc0000000001", "conthwst")] {
         let result = analyte_mapping::vidas::map(machine, &source(id, flag)?, result_input())?;
         let qc = &result.results.first().ok_or("QC result")?.content;

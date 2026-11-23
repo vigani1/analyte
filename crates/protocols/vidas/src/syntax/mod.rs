@@ -71,15 +71,7 @@ impl Subject {
                 return Err(Error::Field("ci".into()));
             }
             if kit || flag == Some("conthnor") {
-                let Some((date, version)) = lot.split_once('-') else {
-                    return Err(Error::Field("ci".into()));
-                };
-                if date.len() != 6
-                    || !date.bytes().all(|byte| byte.is_ascii_digit())
-                    || !matches!(version, "0" | "2")
-                    || name.is_empty()
-                    || raw.len() > 17
-                {
+                if !is_strip_lot(lot) || name.is_empty() || raw.len() > 17 {
                     return Err(Error::Field("ci".into()));
                 }
                 return Ok(Self::KitControl {
@@ -93,6 +85,11 @@ impl Subject {
                 }
                 return Ok(Self::QualityControl(SourceText::new(raw)?));
             }
+            // A composite that looks like a kit label needs source evidence
+            // before it can be assigned to either a patient or a control.
+            if is_strip_lot(lot) {
+                return Err(Error::Field("ci".into()));
+            }
         }
         let max = match limit {
             SampleLimit::Twelve => 12,
@@ -103,6 +100,14 @@ impl Subject {
         }
         Ok(Self::Sample(SampleId::new(raw)?))
     }
+}
+
+fn is_strip_lot(lot: &str) -> bool {
+    lot.split_once('-').is_some_and(|(date, version)| {
+        date.len() == 6
+            && date.bytes().all(|byte| byte.is_ascii_digit())
+            && matches!(version, "0" | "2")
+    })
 }
 
 const REQUEST: &[&str] = &["mt", "pi", "pn", "pb", "ps", "so", "si", "ci", "rt", "qd"];
