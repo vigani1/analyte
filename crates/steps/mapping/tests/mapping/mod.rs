@@ -60,9 +60,17 @@ fn astm_with(
     mode: &str,
     definition: &str,
 ) -> Result<Output, Box<dyn std::error::Error>> {
+    astm_with_order("O|1|000AbC", body, mode, definition)
+}
+
+fn astm_with_order(
+    order: &str,
+    body: &str,
+    mode: &str,
+    definition: &str,
+) -> Result<Output, Box<dyn std::error::Error>> {
     let config = config(definition)?;
-    let raw =
-        format!("H|\\^&||||||||||{mode}|LIS2-A2|20261115120000\rP|1\rO|1|000AbC\r{body}L|1|N\r");
+    let raw = format!("H|\\^&||||||||||{mode}|LIS2-A2|20261115120000\rP|1\r{order}\r{body}L|1|N\r");
     let messages = analyte_astm::parse(raw.as_bytes(), analyte_astm::Limits::default())?;
     let message = messages.first().ok_or("missing parsed message")?;
     Ok(map_astm(

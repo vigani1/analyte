@@ -1,6 +1,6 @@
 //! Holds one synthetic analyzer conversation per record-only capture profile (ADR 0034).
 use super::{Error, Recorder};
-use analyte_framing::astm::{FrameNumber, Limit};
+use analyte_framing::astm::{self, FrameNumber, HexPolicy, Limit, RecordBoundaries};
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
@@ -16,7 +16,7 @@ async fn astm_transfer(run: &mut Recorder, records: &[&[u8]]) -> Result<(), Erro
     assert_eq!(run.byte().await?, ACK, "ENQ accepted");
     let mut number = FrameNumber::FIRST;
     for record in records {
-        for frame in analyte_framing::astm::encode(record, number, Limit::new(64000)?)? {
+        for frame in astm::encode(record, number, Limit::new(64000)?)? {
             number = number.next();
             run.send(&frame).await?;
             assert_eq!(run.byte().await?, ACK, "frame acknowledged");
@@ -46,7 +46,7 @@ async fn astm_record_only_acknowledges_keeps_every_byte_and_answers_queries_with
     // A frame whose checksum is wrong is refused with NAK, and still kept.
     run.send(&[ENQ]).await?;
     assert_eq!(run.byte().await?, ACK);
-    let mut frame = analyte_framing::astm::encode(
+    let mut frame = astm::encode(
         b"H|\\^&|||Analyzer\r",
         FrameNumber::FIRST,
         Limit::new(64000)?,
@@ -84,20 +84,27 @@ async fn astm_record_only_acknowledges_keeps_every_byte_and_answers_queries_with
         let mut frame = vec![first];
         frame.extend(run.until(b"\n").await?);
         text.extend_from_slice(&frame);
+        if text.len() > 65536 {
+            return Err("oversized ASTM query reply".into());
+        }
         run.send(&[ACK]).await?;
     }
-    let answer = String::from_utf8(text)?;
-    assert!(answer.contains("L|1|Q\r"), "{answer:?}");
-    assert!(
-        !answer.contains("L|1|I"),
-        "never no information: {answer:?}"
-    );
-    assert!(
-        !answer.contains("\rO|"),
-        "no order is ever sent: {answer:?}"
-    );
     run.finish(["tcp_server", "astm_lis01", "astm_link", "astm_lis02"], 0)
         .await?;
+    let payload = astm::decode(
+        &text,
+        Limit::new(64000)?,
+        HexPolicy::Strict,
+        RecordBoundaries::Separate,
+        65536,
+    )?;
+    let answer = std::str::from_utf8(&payload)?;
+    let records = answer.split_terminator('\r').collect::<Vec<_>>();
+    let [header, terminator] = records.as_slice() else {
+        return Err(format!("expected only H and L records, got {records:?}").into());
+    };
+    assert!(header.starts_with("H|"), "{header:?}");
+    assert_eq!(*terminator, "L|1|Q");
     Ok(())
 }
 
@@ -129,6 +136,32 @@ async fn astm_record_only_refuses_enq_without_storage() -> Result<(), Error> {
         "nothing was kept, so nothing was acknowledged"
     );
     run.stop().await
+}
+
+// ADR 0003 rule 1 and ADR 0034: keep the ENQ but refuse to start a transfer
+// when the next frame cannot fit above the disk reserve.
+#[tokio::test]
+async fn astm_record_only_naks_a_kept_enq_without_room_for_a_frame() -> Result<(), Error> {
+    let mut run = Recorder::start("astm", "").await?;
+    let program = analyte::installation::config::Program::load(&run.path)?;
+    let machine = program
+        .machines()
+        .first()
+        .ok_or("record-only machine missing")?;
+    // A receipt holds the canonical config alongside the one-byte ENQ.
+    let config_bytes = u64::try_from(machine.snapshot().canonical().len())?;
+    let free = analyte_fixtures::store_limits()
+        .reserve_bytes
+        .saturating_add(config_bytes)
+        .saturating_add(2);
+    run.space.store(free, Ordering::Release);
+    run.send(&[ENQ]).await?;
+    let reply = run.byte().await;
+    let kept = run.kept();
+    run.stop().await?;
+    assert_eq!(reply?, NAK, "frame admission must refuse ENQ");
+    assert_eq!(kept?, [ENQ], "the ENQ itself fit in the store");
+    Ok(())
 }
 
 /// Sends one MLLP block and reads the host's acknowledgment.

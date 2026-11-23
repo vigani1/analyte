@@ -319,6 +319,43 @@ pub async fn astm(peer: &mut TcpStream, message: &[u8]) -> Result<(), Error> {
     .await?
 }
 
+/// Acknowledges and collects one outbound ASTM transfer.
+/// # Errors
+/// Reports I/O errors, timeouts and malformed or oversized frames.
+/// # Panics
+/// Fails if the peer does not send the expected ASTM control bytes.
+pub async fn receive_astm_orders(peer: &mut TcpStream) -> Result<Vec<u8>, Error> {
+    tokio::time::timeout(HANG_GUARD, async {
+        assert_eq!(peer.read_u8().await?, 5);
+        peer.write_all(b"\x06").await?;
+        let mut payload = Vec::new();
+        loop {
+            let byte = peer.read_u8().await?;
+            if byte == 4 {
+                return Ok::<_, Error>(payload);
+            }
+            assert_eq!(byte, 2);
+            let mut frame = vec![byte];
+            while !frame.ends_with(b"\r\n") {
+                if frame.len() > 64000 {
+                    return Err("oversized frame".into());
+                }
+                frame.push(peer.read_u8().await?);
+            }
+            let end = frame
+                .iter()
+                .position(|b| matches!(b, 3 | 23))
+                .ok_or("missing frame ending")?;
+            payload.extend_from_slice(frame.get(2..end).ok_or("invalid frame")?);
+            if payload.len() > 1_048_576 {
+                return Err("oversized reply".into());
+            }
+            peer.write_all(b"\x06").await?;
+        }
+    })
+    .await?
+}
+
 /// Runs a synthetic peer or inspects its durable test outcome.
 /// # Errors
 /// Propagates configuration, transport, storage or deadline failures.
