@@ -104,6 +104,13 @@ Synthetic data does not establish interoperability with the installed analyzer.
 - If the lab uses a serial cable, confirm the selected wire protocol and
   interface settings, including flow control.
 
+## Result identity evidence
+
+LIS Protocol Manual V1.1 section 2.3.4 gives candidate fields OBR-2
+(sample barcode), OBR-3 (sample serial) and OBR-8 (observation end). Confirm
+that the 1200 sends these fields and whether the end time distinguishes
+successive measurements of the same assay.
+
 ## Sources
 
 - YHLO LIS Protocol Manual V1.1 (2018), §§1.1–1.3, 2.1–2.4 and 3. The

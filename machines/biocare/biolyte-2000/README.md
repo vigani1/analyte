@@ -110,6 +110,13 @@ deliver results.
   urine is relevant, record the configured dilution and compare the wire
   value with the analyzer report. Confirm which actions trigger uploads.
 
+## Result identity evidence
+
+Service Manual 4.2A Appendix VI, pp. 83-85 lists R.12 analysis start time
+only in the first result and leaves R.13 completion time and R.9 status
+unused. The candidate sample ID and analysis start time need confirmation
+and a reliable way to associate that start time with the remaining assays.
+
 ## Sources
 
 - BioCARE Biolyte 2000 Service Manual 4.2A, RS232 Port (pp. 13–14), urine

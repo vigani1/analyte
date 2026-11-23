@@ -8,7 +8,7 @@ use crate::{Error, Input, Output, Position, Problem, finding, identifier, list, 
 use analyte_model::{
     Decimal, Dilution, DilutionApplied, EvidenceList, IdentityStatus, NamespacedId,
     NonEmptyEvidenceList, ObservationIdentity, ProcessingMode, Reason, ResultContent,
-    ResultIdentity, ResultPart, ResultValue, SampleIdentity,
+    ResultIdentity, ResultPart, ResultStatus, ResultValue, SampleIdentity,
 };
 
 fn processing(source: &Source<'_>, output: &mut Output) -> Result<ProcessingMode, Error> {
@@ -105,18 +105,27 @@ pub(crate) fn message(
             index,
             config,
             test.clone(),
+            sample.as_ref(),
             &mut output,
             law.as_ref(),
         )?;
-        let status_field = if astm { 9 } else { 11 };
-        let status_text = source.raw(index, status_field)?.unwrap_or_default();
-        let correction = config
-            .mappings
-            .identity
+        let mut part = result::part(source, index, config, input, test, values, &mut output)?;
+        let policy = &config.mappings.identity;
+        let status_text = part.source_status.as_str();
+        let correction = policy
             .correction_status_codes
             .iter()
             .any(|code| code.as_str() == status_text);
-        let mut part = result::part(source, index, config, input, test, values, &mut output)?;
+        if policy
+            .rerun_status_codes
+            .iter()
+            .any(|code| code.as_str() == status_text)
+        {
+            // A rerun describes how the measurement was produced, with no release claim.
+            part.status = ResultStatus::Unknown;
+        } else if correction && policy.evidence.is_some() {
+            part.status = ResultStatus::Corrected;
+        }
         part.dilution = codes.dilution;
         let order = source
             .ancestors(index)?
@@ -128,6 +137,13 @@ pub(crate) fn message(
                     .is_some_and(|n| n.name == "O" || n.name == "OBR" || n.name == "SPM")
             })
             .unwrap_or(index);
+        // A documented recipe describes one measurement per observation record.
+        // Compare two claims to the same key in the store, including in one upload.
+        let order = if policy.evidence.is_some() {
+            index
+        } else {
+            order
+        };
         append_result(
             &mut output,
             &mut groups,
