@@ -1,0 +1,17 @@
+["cobas-broken-checksum.rec.jsonl".recording]
+analyzer_mode = "cobas"
+
+["cobas-qc.rec.jsonl".recording]
+analyzer_mode = "cobas"
+
+["cobas-query-refusal.rec.jsonl".recording]
+analyzer_mode = "cobas"
+
+["cobas-rerun.rec.jsonl".recording]
+analyzer_mode = "cobas"
+
+["cobas-upload.rec.jsonl".recording]
+analyzer_mode = "cobas"
+
+["elecsys-upload.rec.jsonl".recording]
+analyzer_mode = "elecsys"

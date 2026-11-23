@@ -83,11 +83,10 @@ connection.
 Level: documented
 
 The six [synthetic recordings](recordings/) use invented identifiers and
-measurements. The vendor-profile replies express expected wire behavior, including a
-successful QCK/DSR exchange. The unavailable-query recording shows the
-current record-only host sending ACK^Q02 with AE and no DSR.
-The current normal machine replay suite enrolls only folders with an
-activatable `machine.toml`; these files document the target and the gaps.
+measurements. The barcode queries expect ACK^Q02 with AE and no DSR in
+record-only mode. The four uploads expect an acknowledgment of durable
+receipt under ADR 0034. Their replay marks the missing replies while the
+HL7 reader rejects the numeric MSH-16 field.
 Synthetic data does not establish interoperability with the installed analyzer.
 
 ## Open questions
