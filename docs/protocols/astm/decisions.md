@@ -217,3 +217,39 @@ therefore remains empty when no peer identity is agreed. Sites may configure
   [Stored interpretation cases](../../../crates/analyte/src/machine/interpretation/departure_evidence/tests.rs)
   cover v1 delivery without semantic changes and evidence retained after bad
   LIS02 hierarchy. Existing link/storage recovery fixtures remain unchanged.
+
+## Configured result upload layouts
+
+Result reading uses the configured upload layout and the parsed ASTM field
+positions. The machine definition cites its manual. The effective mapping
+retains that citation and can be chosen by an installed mode (ADR 0032).
+The R.3 test code passes through in the machine's system (ADR 0029). These
+layouts do not qualify a measurement identity recipe (ADR 0035).
+
+- **Roche, HIM v2.3 section 6, Tables 16–20.** Use the documented test kind
+  to read R.4. Seven ASCII spaces represent absence. Quantitative cobas
+  values can carry a message code. Qualitative values carry a code and a
+  separate cutoff index. Keep the whole R.4 and any cutoff text. Decode
+  result-owned alarm comments using the mode's number format and retain the
+  supplied description in Elecsys mode. Cobas sends the number by itself.
+  Preserve the selected automatic dilution and predilution separately.
+  Table 17 supplies the ratio but the reported value's multiplication is
+  unknown.
+- **Roche, HIM v2.3 section 3, Table 3 and section 6, Table 16.** A confirmed
+  patient label can use the installed barcode or operator-entry provenance.
+  An upload cannot establish provenance for an individual label when both
+  modes are possible. Keep generated labels and control labels out of
+  patient identity. Sections 3 and 6 give different meanings for lot-mode
+  O.3. Keep the complete label and hold the receipt for review. The cobas
+  R.9 C marker indicates a rerun and still needs a qualified run recipe.
+- **Biolyte, Service Manual 4.2A Appendix VI.** Use R.3.5 for the method
+  marker, as established by the p. 86 example. Read decimal values with
+  ASCII padding and keep the padding in the original text. Retain other
+  forms as text and hold them. O.16 supplies the specimen descriptor and
+  O.26 P declares preliminary report status. R.9 supplies no release or
+  correction. L.3 T records a sender abort and holds every mapped result.
+  The wire layout supplies no QC classifier.
+
+These are documented-level rules. Synthetic tests exercise the mapping
+positions and hold behavior without qualifying firmware or a ready-to-use
+machine definition.

@@ -335,3 +335,26 @@ uses it, as a noted tolerance; absent keeps refusing such headers.
 The Rust stack variant is `Stack::Vidas`, matching protocol key `vidas`.
 Named departures retain the TOML field `deviations` for compatibility, as
 specified by [ADR 0015](../../../docs/adr/0015-named-machine-departures.md).
+
+## ASTM result upload layout
+
+An ASTM mapping can declare `[mappings.astm_results]` with a closed
+`layout` and an `evidence` table containing the manual revision and
+section. A mode can select the whole mapping table through the existing
+ADR 0032 choice. Available layouts are:
+
+| Layout | Result fields |
+| --- | --- |
+| `caret_dilution_and_alarm` | R.3.5 and R.3.6 dilution, C.4 alarm number and text |
+| `slash_dilution_and_alarm_code` | R.3.4 slash parts, C.4 alarm number and name-only control labels |
+| `slash_dilution_and_alarm_code_with_qc_lot` | Same slash parts and alarms, with lot-mode control labels held |
+| `measurement_marker` | R.3.5 method, O.16 descriptor, O.26 preliminary report and L.3 completion |
+
+Use the manufacturer test component with these layouts. The first three
+read O.3 and use the exact test-kind table to interpret structured R.4.
+If the acquisition method is unconfirmed, use `source = "unknown"`.
+The measurement-marker layout takes specimen identity only from P.4.
+Select it only after confirming P.4 represents the lab's specimen ID.
+The layout controls classification and any test component decomposition.
+Result identity still requires a documented run recipe. Only the
+slash-separated uploads can declare C as a rerun code.

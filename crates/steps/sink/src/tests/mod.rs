@@ -160,6 +160,7 @@ fn make_result(receipt: ReceiptId, run: &str) -> Result<ResultContent, Box<dyn s
             )])?,
             units: None,
             dilution: None,
+            details: None,
             flags: EvidenceList::new(vec![])?,
             reference_range: None,
             comments: EvidenceList::new(vec![])?,

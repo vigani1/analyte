@@ -54,6 +54,64 @@ pub struct SourceNode {
     pub status: Option<SourceText>,
 }
 
+/// Additional source evidence where a result upload defines these fields.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct ResultDetails {
+    /// Source-reported distinction between measured and calculated values.
+    pub method: Option<MeasurementMethod>,
+    /// Exact source specimen descriptor.
+    pub specimen_descriptor: Option<SourceText>,
+    /// Separate report-level status, with its original code in the source path.
+    pub report_status: Option<ResultStatus>,
+    /// Source-reported test cutoff, including an explicitly absent value.
+    pub cutoff_index: Option<ResultValue>,
+    /// Source message code accompanying a quantitative value.
+    pub message_code: Option<SourceText>,
+    /// Structured measurement alarms in original order.
+    pub alarms: EvidenceList<ResultAlarm>,
+    /// Source predilution indicator, independent of the selected factor.
+    pub predilution: Option<SourceText>,
+    /// Complete specimen or control label when its meaning is conditional.
+    pub specimen_label: Option<SourceText>,
+    /// Control name, only when the source layout establishes it.
+    pub control_name: Option<SourceText>,
+    /// Complete terminator code as sent.
+    pub termination: Option<SourceText>,
+    /// Interpretation of the source termination, when the layout declares one.
+    pub completion: Option<ReportCompletion>,
+}
+
+/// Completion of the source upload, independent of result release.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ReportCompletion {
+    /// The analyzer signalled normal completion.
+    Normal,
+    /// The analyzer aborted the result upload.
+    SenderAborted,
+    /// Completion was not established.
+    Unknown,
+}
+
+/// Source-reported test method.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MeasurementMethod {
+    /// The analyzer measured the value.
+    Measured,
+    /// The analyzer calculated the value.
+    Calculated,
+}
+
+/// Numeric alarm code and accompanying text, when transmitted by the source.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct ResultAlarm {
+    /// Exact source code in the configured wire layout.
+    pub number: SourceText,
+    /// Source alarm text, if sent.
+    pub text: Option<SourceText>,
+}
+
 /// A result retains source evidence beside summaries, without clinical decisions.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ResultPart {
@@ -65,6 +123,9 @@ pub struct ResultPart {
     pub units: Option<Units>,
     /// Dilution evidence if present.
     pub dilution: Option<Dilution>,
+    /// Additional structured evidence from the selected source layout.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub details: Option<ResultDetails>,
     /// Source flags, unchanged.
     pub flags: EvidenceList<SourceText>,
     /// Source reference range, uninterpreted.

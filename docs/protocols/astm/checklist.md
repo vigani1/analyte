@@ -146,3 +146,19 @@ positions, not complete semantic validation. All rows use
 ## Comparison-derived test scope
 
 Comparison-derived cases (several now covered above; broader query searches and hardware evidence remain): delayed contention ENQ, six NAK versus silence, lost ACK exact repeat, EOT interrupt honored/ignored, 64,000 total boundaries, long-record rollover, multiple H…L per session, changing header separators, explicit deletion, O without R, C/M hierarchy changes, Q range/ALL/repeat/cancel and L I/Q/F, storage failures at every acknowledgment window. No inspected library is an official CLSI oracle.
+
+## Configured result upload rules
+
+All cases use synthetic uploads in the [mapping suite](../../../crates/steps/mapping/tests/astm_results.rs).
+
+| Source rule | Test |
+| --- | --- |
+| Roche HIM v2.3 Table 18, qualitative code and cutoff | `qualitative_code_and_cutoff_keep_distinct_meanings` |
+| Roche HIM v2.3 Table 18, quantitative comparator and message code, rerun status, unknown kind | `quantitative_comparator_and_message_code_stay_separate` |
+| Roche HIM v2.3 Table 18, seven-space absence | `seven_spaces_are_absent_instead_of_a_numeric_value` |
+| Roche HIM v2.3 Tables 17–18, ratio and predilution | `dilution_preserves_both_indicators_without_multiplying` |
+| Roche HIM v2.3 Tables 19–20, result alarm | `result_alarms_keep_the_dialects_own_number_and_comment` |
+| Roche HIM v2.3 Tables 3 and 16, patient and generated IDs, QC names and ambiguous lot mode | `generated_and_qc_labels_never_become_patient_ids` |
+| Biolyte Appendix VI sections 9.4.16, 9.4.26, 10.1.3–4 and p. 86, method, padding, descriptor, report and observation status | `method_specimen_and_report_status_are_independent` |
+| Biolyte Appendix VI section 10.1.4, over-width text retention | `over_width_notation_is_kept_for_review` |
+| Biolyte Appendix VI section 11.1.3, sender abort and normal termination | `sender_abort_holds_retained_measurements` |
