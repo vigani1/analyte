@@ -136,6 +136,7 @@ pub(super) fn park_outcomes(
     version: i64,
     evidence: &Interpretation,
     outcomes: &[RevisionOutcome],
+    claimed: &[Option<analyte_model::ObservationIdentity>],
     context: (bool, bool, Option<&str>, Option<&str>),
 ) -> Result<(), Error> {
     let (reprocessing, findings_empty, edit_guard, held_back) = context;
@@ -186,6 +187,9 @@ pub(super) fn park_outcomes(
                         crate::parked::ParkingContext::Result {
                             version: Some(version),
                             index,
+                            claimed: (*outcome == RevisionOutcome::Conflict)
+                                .then(|| claimed.get(index).cloned().flatten())
+                                .flatten(),
                         },
                     )?;
                 }

@@ -77,6 +77,20 @@ proved it holds it at `GET /proof` ([ADR 0027](../adr/0027-command-line-asks-the
 the answer holds the Overview's lines (names and counts), never values or
 sample IDs.
 
+### Compare held measurements
+
+Open **Compare measurements** on an eligible Needs review item. Check the
+two retained records, including their written values and analyzer times.
+Choose **This is a resend** to record a duplicate of the earlier measurement,
+or **This is a rerun** to queue the held result as a new measurement. Enter
+a reason for the choice.
+
+A missing-tube-ID item may show a later matching receipt with a tube ID.
+Check the analyzer history and choose **Resolve held item** only if the later
+receipt is the same measurement. The suggestion stays open until confirmed.
+Confirmation keeps both receipts and leaves the later result's delivery as
+it was. If the evidence has changed, reopen the item before deciding.
+
 ## Setup page
 
 The **Setup** page lets a lab manager set up an installed machine without
