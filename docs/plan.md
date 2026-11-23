@@ -329,7 +329,7 @@ missing; nothing is guessed in the meantime.
   each has one starting format and refuses any other version; upgrade steps
   start with the first release.
 - **Monitoring:** pending bytes and oldest item age, storage commit time,
-  order cache freshness and uncertain orders, each alert with a named
+  order cache freshness, unexpected analyzer software (ADR 0036) and uncertain orders, each alert with a named
   responder.
 - **Retention:** ADR 0013 defines required site periods, keyed tombstones, explicit
   holds and bounded audited receipt and order purges. Every store is created

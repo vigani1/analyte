@@ -2,19 +2,15 @@
 use crate::runtime::Error;
 use std::{
     collections::BTreeSet,
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
-        mpsc,
-    },
+    sync::{Arc, Mutex, OnceLock, mpsc},
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 pub(crate) type Notice = Arc<dyn Fn() + Send + Sync>;
 type Components = Arc<Mutex<BTreeSet<String>>>;
 enum Event {
-    Arm,
+    Arm(Instant),
     Finished,
 }
 
@@ -22,7 +18,8 @@ pub(crate) struct Watchdog {
     events: mpsc::SyncSender<Event>,
     owner: Option<thread::JoinHandle<()>>,
     active: Components,
-    armed: AtomicBool,
+    bound: Duration,
+    deadline: OnceLock<Instant>,
 }
 
 pub(crate) struct Component {
@@ -44,11 +41,11 @@ impl Watchdog {
         let owner = thread::Builder::new()
             .name("shutdown-deadline".into())
             .spawn(move || {
-                if !matches!(received.recv(), Ok(Event::Arm)) {
+                let Ok(Event::Arm(deadline)) = received.recv() else {
                     return;
-                }
+                };
                 if matches!(
-                    received.recv_timeout(bound),
+                    received.recv_timeout(deadline.saturating_duration_since(Instant::now())),
                     Ok(Event::Finished) | Err(mpsc::RecvTimeoutError::Disconnected)
                 ) {
                     return;
@@ -69,7 +66,8 @@ impl Watchdog {
             events,
             owner: Some(owner),
             active,
-            armed: AtomicBool::new(false),
+            bound,
+            deadline: OnceLock::new(),
         })
     }
     pub(crate) fn component(&self, id: String) -> Component {
@@ -81,10 +79,14 @@ impl Watchdog {
             active: self.active.clone(),
         }
     }
-    pub(crate) fn arm(&self) {
-        if !self.armed.swap(true, Ordering::AcqRel) {
-            let _ = self.events.send(Event::Arm);
-        }
+    /// Returns the original deadline even when the SCM armed the watchdog first.
+    pub(crate) fn arm(&self) -> Instant {
+        *self.deadline.get_or_init(|| {
+            let now = Instant::now();
+            let deadline = now.checked_add(self.bound).unwrap_or(now);
+            let _ = self.events.send(Event::Arm(deadline));
+            deadline
+        })
     }
 }
 impl Drop for Watchdog {
@@ -118,12 +120,12 @@ mod tests {
                 .init();
             let watchdog = Watchdog::new(Duration::from_millis(100), None)?;
             let _component = watchdog.component("synthetic-stuck-owner".into());
-            watchdog.arm();
-            watchdog.arm(); // Repeated stop requests must not restart or shorten the deadline.
+            let deadline = watchdog.arm();
+            assert_eq!(watchdog.arm(), deadline);
             drop(Stuck);
             return Err("stuck destructor unexpectedly returned".into());
         }
-        let started = std::time::Instant::now();
+        let started = Instant::now();
         let mut child = std::process::Command::new(std::env::current_exe()?)
             .args([
                 "--exact",

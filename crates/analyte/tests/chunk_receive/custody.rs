@@ -102,27 +102,33 @@ async fn poct_stores_before_ack_and_parks_unresolved() -> Result<(), Error> {
 // Autolyser manual Rev18 pp. 175-179; ADR 0003
 #[tokio::test]
 async fn autolyser_corrupt_reply_blocks_r_until_valid_l() -> Result<(), Error> {
+    use super::deadline::step;
+
     let mut run =
         Running::start(include_str!("../../../core/config/examples/autolyser.toml")).await?;
-    poll(&mut run.peer, b'R').await?;
+
     let good = report()?;
     let mut corrupt = good.clone();
     *corrupt.get_mut(0).ok_or("fixture")? = b'9';
+    step("Autolyser initial R", poll(&mut run.peer, b'R')).await?;
     run.peer.write_all(&corrupt).await?;
-    run.parked("checksum mismatch").await?;
-    run.stored(&corrupt, "analyte-autolyser")?;
-    poll(&mut run.peer, b'L').await?;
+    step("Autolyser L after corrupt R", poll(&mut run.peer, b'L')).await?;
     run.peer.write_all(&[21]).await?;
     // An empty L must keep recovery active; it never permits the next R.
-    poll(&mut run.peer, b'L').await?;
+    step("Autolyser L after empty L", poll(&mut run.peer, b'L')).await?;
     run.peer.write_all(&good).await?;
+    step("Autolyser R after valid L", poll(&mut run.peer, b'R')).await?;
+    run.peer.write_all(&[21]).await?;
+
+    // The operator CLI can block on disk I/O. Run it after the timed exchange
+    // so it cannot delay the synthetic peer's acknowledgment of an ENQ.
+    run.parked("checksum mismatch").await?;
+    run.stored(&corrupt, "analyte-autolyser")?;
     run.parked("Autolyser Rev18 has no immutable run identity")
         .await?;
     run.stored(&good, "analyte-autolyser")?;
     run.result_value("<0.1   ")?;
     run.dilution_original(None)?;
-    poll(&mut run.peer, b'R').await?;
-    run.peer.write_all(&[21]).await?;
     run.close().await
 }
 

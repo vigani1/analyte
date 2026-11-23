@@ -17,6 +17,8 @@ pub(crate) struct Reach {
     pub(crate) configured: Vec<Identifier>,
     /// Kept destinations among them whose keys could not be loaded.
     pub(crate) keyless: Vec<Identifier>,
+    /// Software checks active in this service run.
+    pub(crate) software: std::collections::HashMap<Identifier, analyte_model::Digest>,
 }
 
 impl Reach {
@@ -50,6 +52,9 @@ fn identity(policy: &Alert) -> Option<AlertKey> {
     Some(match policy.condition() {
         Condition::OldestUndelivered(_) => AlertKey::OldestUndelivered,
         Condition::MachineSilent(machine, _) => AlertKey::MachineSilent(machine.clone()),
+        Condition::MachineSoftwareVersionChanged(machine) => {
+            AlertKey::MachineSoftwareVersionChanged(machine.clone())
+        }
         Condition::DiskReserve { .. } => AlertKey::DiskReserve,
         Condition::OrderCacheStale(_) => AlertKey::OrderCacheStale,
         Condition::UncertainOrders(_) => AlertKey::UncertainOrders,
@@ -64,7 +69,7 @@ fn raised(policy: &Alert, value: Option<u64>) -> bool {
         return true;
     };
     match policy.condition() {
-        Condition::RestorePaused => value != 0,
+        Condition::RestorePaused | Condition::MachineSoftwareVersionChanged(_) => value != 0,
         Condition::DiskReserve { below, .. } => value < *below,
         Condition::UncertainOrders(threshold)
         | Condition::ParkedItems(threshold)
@@ -79,6 +84,9 @@ pub(crate) fn signal(key: &AlertKey) -> (&'static str, Option<&str>) {
     match key {
         AlertKey::OldestUndelivered => ("oldest_undelivered", None),
         AlertKey::MachineSilent(machine) => ("machine_silent", Some(machine.as_str())),
+        AlertKey::MachineSoftwareVersionChanged(machine) => {
+            ("machine_software_version_changed", Some(machine.as_str()))
+        }
         AlertKey::DiskReserve => ("disk_reserve", None),
         AlertKey::OrderCacheStale => ("order_cache_stale", None),
         AlertKey::UncertainOrders => ("uncertain_orders", None),
@@ -94,6 +102,7 @@ fn destination(key: &AlertKey) -> Option<&str> {
         AlertKey::UndeliverableDestination(destination, _) => Some(destination.as_str()),
         AlertKey::OldestUndelivered
         | AlertKey::MachineSilent(_)
+        | AlertKey::MachineSoftwareVersionChanged(_)
         | AlertKey::DiskReserve
         | AlertKey::OrderCacheStale
         | AlertKey::UncertainOrders
@@ -193,6 +202,26 @@ async fn evaluate(
 ) -> Result<(), Error> {
     for policy in policies {
         match identity(policy) {
+            Some(key @ AlertKey::MachineSoftwareVersionChanged(_)) => {
+                let Condition::MachineSoftwareVersionChanged(machine) = policy.condition() else {
+                    unreachable!("software alert identity comes from a software alert policy");
+                };
+                let machine = machine.clone();
+                let revision = reach.software.get(&machine).copied();
+                let responder = policy.responder().to_owned();
+                let transition = store
+                    .request(deadline()?, move |store| {
+                        let active = match revision {
+                            Some(revision) => store.software_warning(&machine, revision)?.is_some(),
+                            None => false,
+                        };
+                        store.evaluate_alert(&key, &responder, active, Some(u64::from(active)), now)
+                    })
+                    .await?;
+                if let Some(transition) = transition {
+                    log_transition(&transition);
+                }
+            }
             Some(key) => record(store, policy, key, true, destinations, now).await?,
             None => undeliverable(store, policy, reach, now).await?,
         }
@@ -322,6 +351,55 @@ mod tests {
         ))
     }
 
+    // ADRs 0014 and 0036: each episode raises once, and confirmation clears it.
+    #[tokio::test]
+    async fn software_alert_transitions_only_when_the_warning_changes_state() -> Result<(), Error> {
+        let temp = tempfile::tempdir()?;
+        let store = open_store(temp.path().join("software.db")).await?;
+        let machine = Identifier::new("busy")?;
+        let revision = analyte_model::Digest([1; 32]);
+        let policy = Alert::for_test(
+            "kind='machine_software_version_changed'\nmachine='busy'\nresponder='duty officer'",
+        )?;
+        let reach = Reach {
+            software: [(machine.clone(), revision)].into(),
+            ..Reach::default()
+        };
+        let reported = Identifier::new("2.0")?;
+        let first = jiff::Timestamp::UNIX_EPOCH;
+        let id = machine.clone();
+        let version = reported.clone();
+        store
+            .request(deadline()?, move |store| {
+                store.observe_software_warning(&id, revision, Some(&version), first)
+            })
+            .await?;
+        for now in [101, 102] {
+            evaluate(&store, std::slice::from_ref(&policy), &[], &reach, now).await?;
+        }
+        let audit = analyte_store::Audit {
+            actor: Identifier::new("operator")?,
+            action: Identifier::new("settings-checked-for-software-version")?,
+            targets: vec![machine.clone(), reported.clone()],
+            time: 103,
+            reason: analyte_model::Reason::new("Settings checked for this version")?,
+        };
+        store
+            .request(deadline()?, move |store| {
+                store.confirm_software_warning(&machine, revision, &reported, first, &audit)
+            })
+            .await?;
+        evaluate(&store, &[policy], &[], &reach, 104).await?;
+        let history = store
+            .read(deadline()?, |store| store.alert_history(0))
+            .await?;
+        assert_eq!(
+            history.iter().map(|t| t.state.active).collect::<Vec<_>>(),
+            [true, false]
+        );
+        Ok(())
+    }
+
     // Plan section 11: real scalar reads raise/clear all kinds at controlled Unix times.
     // Plan §11
     #[tokio::test]
@@ -446,6 +524,7 @@ mod tests {
         let old = Identifier::new("old-app")?;
         let lab = Identifier::new("lab")?;
         let configured = |names: &[&Identifier], keyless: &[&Identifier]| Reach {
+            software: Default::default(),
             configured: names.iter().map(|&name| name.clone()).collect(),
             keyless: keyless.iter().map(|&name| name.clone()).collect(),
         };

@@ -241,6 +241,14 @@ async fn observe(
             .map_err(Reading::Orders.failed())?,
         ..attention::Facts::default()
     };
+    let checks: Vec<_> = state
+        .machines
+        .iter()
+        .filter_map(|machine| Some((machine.id.clone(), machine.software.clone()?)))
+        .collect();
+    facts.software = super::machines::software_version::warnings(&state.store, until, checks)
+        .await
+        .map_err(Reading::Alerts.failed())?;
     let activity = match nodes {
         Nodes::WithActivity => activity(state, until)
             .await
@@ -506,6 +514,7 @@ const fn alert_words(key: &AlertKey) -> &'static str {
     match key {
         AlertKey::OldestUndelivered => "A result has waited too long to be sent",
         AlertKey::MachineSilent(_) => "Machine has gone quiet",
+        AlertKey::MachineSoftwareVersionChanged(_) => "Machine software version changed",
         AlertKey::DiskReserve => "Disk space is low",
         AlertKey::OrderCacheStale => "Order list is out of date",
         AlertKey::UncertainOrders => "Orders with unknown outcome",

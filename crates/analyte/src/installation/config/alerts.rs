@@ -38,6 +38,8 @@ pub enum AlertKind {
     OldestUndelivered,
     /// Silence duration in seconds for an explicitly selected busy machine.
     MachineSilent,
+    /// Unexpected or unknown software on an explicitly selected machine.
+    MachineSoftwareVersionChanged,
     /// Margin in bytes above the configured disk reserve.
     DiskReserve,
     /// Order cache age in seconds.
@@ -64,6 +66,7 @@ pub struct Alert {
 pub(crate) enum Condition {
     OldestUndelivered(u64),
     MachineSilent(analyte_model::Identifier, u64),
+    MachineSoftwareVersionChanged(analyte_model::Identifier),
     DiskReserve { margin: u64, below: u64 },
     OrderCacheStale(u64),
     UncertainOrders(u64),
@@ -88,6 +91,7 @@ impl Alert {
         match self.condition {
             Condition::OldestUndelivered(_) => AlertKind::OldestUndelivered,
             Condition::MachineSilent(_, _) => AlertKind::MachineSilent,
+            Condition::MachineSoftwareVersionChanged(_) => AlertKind::MachineSoftwareVersionChanged,
             Condition::DiskReserve { .. } => AlertKind::DiskReserve,
             Condition::OrderCacheStale(_) => AlertKind::OrderCacheStale,
             Condition::UncertainOrders(_) => AlertKind::UncertainOrders,
@@ -107,7 +111,7 @@ impl Alert {
             | Condition::ParkedItems(value)
             | Condition::UndeliverableDestination(value) => Some(value),
             Condition::DiskReserve { margin, .. } => Some(margin),
-            Condition::RestorePaused => None,
+            Condition::RestorePaused | Condition::MachineSoftwareVersionChanged(_) => None,
         }
     }
     /// Borrows the named role or person.
@@ -119,7 +123,8 @@ impl Alert {
     #[must_use]
     pub fn machine(&self) -> Option<&analyte_model::Identifier> {
         match &self.condition {
-            Condition::MachineSilent(machine, _) => Some(machine),
+            Condition::MachineSilent(machine, _)
+            | Condition::MachineSoftwareVersionChanged(machine) => Some(machine),
             Condition::OldestUndelivered(_)
             | Condition::DiskReserve { .. }
             | Condition::OrderCacheStale(_)
@@ -144,6 +149,7 @@ impl DraftAlert {
         let kind = match self.kind.as_str() {
             "oldest_undelivered" => AlertKind::OldestUndelivered,
             "machine_silent" => AlertKind::MachineSilent,
+            "machine_software_version_changed" => AlertKind::MachineSoftwareVersionChanged,
             "disk_reserve" => AlertKind::DiskReserve,
             "order_cache_stale" => AlertKind::OrderCacheStale,
             "uncertain_orders" => AlertKind::UncertainOrders,
@@ -158,11 +164,15 @@ impl DraftAlert {
         {
             return Err(AlertConfigError::Responder);
         }
-        if (kind == AlertKind::MachineSilent) != self.machine.is_some() {
+        if matches!(
+            kind,
+            AlertKind::MachineSilent | AlertKind::MachineSoftwareVersionChanged
+        ) != self.machine.is_some()
+        {
             return Err(AlertConfigError::Machine);
         }
         let threshold = match kind {
-            AlertKind::RestorePaused => {
+            AlertKind::RestorePaused | AlertKind::MachineSoftwareVersionChanged => {
                 if self.threshold.is_some() {
                     return Err(AlertConfigError::Threshold);
                 }
@@ -180,6 +190,11 @@ impl DraftAlert {
         };
         let condition = match (kind, threshold) {
             (AlertKind::RestorePaused, None) => Condition::RestorePaused,
+            (AlertKind::MachineSoftwareVersionChanged, None) => {
+                Condition::MachineSoftwareVersionChanged(
+                    self.machine.ok_or(AlertConfigError::Machine)?,
+                )
+            }
             (
                 AlertKind::OldestUndelivered
                 | AlertKind::MachineSilent
@@ -210,7 +225,7 @@ impl DraftAlert {
             (AlertKind::UndeliverableDestination, Some(count)) => {
                 Condition::UndeliverableDestination(count)
             }
-            (AlertKind::RestorePaused, Some(_))
+            (AlertKind::RestorePaused | AlertKind::MachineSoftwareVersionChanged, Some(_))
             | (
                 AlertKind::OldestUndelivered
                 | AlertKind::MachineSilent

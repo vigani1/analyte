@@ -507,18 +507,23 @@ SCM installation, systemd runtime or machine qualification. Notes for developers
 - Secrets come from the platform's protected service environment, never TOML or
   command arguments.
 - Both commands accept `--shutdown-timeout-secs` (30 through 300, default 30).
-  A stop request runs the staged drain described above. A dedicated OS thread
+  A stop request drains admitted receives and deliveries, closes transports,
+  finishes captures, then closes the store. Capture workers share the remaining
+  time up to five seconds before the process deadline, leaving that allowance
+  for store close. A dedicated OS thread
   enforces the overall deadline even if a blocking owner destructor cannot
-  finish. At expiry Analyte logs one error with the IDs of the remaining
+  finish. At expiry Analyte logs the IDs of the remaining
   components and exits with code **3**, bypassing destructors. This follows ADR
   0003 crash recovery: unacknowledged or uncommitted input can be retried,
   committed receipts survive, deliveries keep their IDs and interrupted Sending
   orders become Uncertain. A graceful stop exits 0; other failures exit nonzero.
-- During a requested Windows stop, Analyte reports Stopped through the service
-  crate's API before exiting on the deadline, so the SCM shows a normal stop and
-  recovery actions do not restart it. systemd records exit code 3 as a failure.
-  The service manager's stop timeout must stay above the Analyte deadline; the
-  shipped unit's `TimeoutStopSec=35s` keeps a five-second margin.
+- On a requested Windows stop, the watchdog allows up to 250 ms at the deadline
+  for the SCM Stopped notification before exiting with code 3. This lets Windows
+  show a normal stop without triggering recovery actions. Windows can impose its
+  own shorter limit during OS shutdown.
+- systemd records exit code 3 as a failure. Its stop timeout must stay above the
+  Analyte deadline. The shipped unit's `TimeoutStopSec=35s` keeps a five-second
+  margin.
 
 ## LAW program integration
 
@@ -571,7 +576,11 @@ markers live in the protected data directory (`capture-<machine>.failure` and
 review. If status cannot be persisted, the log reports that failure too.
 
 Each recorder has a 64-event queue and the ADR 0009 codec's file/event/byte limits.
-The host bounds unfinished workers to 16 per machine and joins them at shutdown.
+The host bounds unfinished workers to 16 per machine, including the failure
+marker worker, and joins them at shutdown. If a recording worker is still
+writing at the capture cutoff, Analyte logs the affected capture and queues
+its failure markers. The process watchdog exits with code 3 at the overall
+deadline, even if the recorder or the failure marker write is stuck.
 Before each write it requires the store's configured reserve plus a 16 MiB margin;
 unknown capacity stops recording. A saturated queue, limit or low disk ends capture
 visibly rather than silently omitting bytes. Incomplete/failed captures are not

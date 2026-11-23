@@ -16,7 +16,7 @@ pub const TIMEOUT: Duration = Duration::from_secs(3);
 const LIMIT: usize = 1024;
 
 /// The most kinds the app reads from one answer; the engine sends each of
-/// its 16 kinds at most once.
+/// each known kind at most once.
 const MOST_REASONS: usize = 32;
 
 /// A kind of thing that needs someone, as the engine's `/status` names it
@@ -56,11 +56,13 @@ pub enum Reason {
     OrderListStale,
     /// A machine accepts connections from any device on the network.
     MachineOpenToAnyDevice,
+    /// A machine reports software outside its checked versions or an unknown version.
+    MachineSoftwareVersionChanged,
 }
 
 impl Reason {
     /// Every kind, most serious first.
-    pub const ALL: [Self; 16] = [
+    pub const ALL: [Self; 17] = [
         Self::DiskFull,
         Self::DiskLow,
         Self::LabAppBlocked,
@@ -77,6 +79,7 @@ impl Reason {
         Self::OrdersPausedAfterRestore,
         Self::OrderListStale,
         Self::MachineOpenToAnyDevice,
+        Self::MachineSoftwareVersionChanged,
     ];
 
     /// The engine's word for this kind.
@@ -91,6 +94,7 @@ impl Reason {
             Self::MachineLinkOff => "machine_link_off",
             Self::SendingPaused => "sending_paused",
             Self::MachineSilent => "machine_silent",
+            Self::MachineSoftwareVersionChanged => "machine_software_version_changed",
             Self::MachineRefusedConnection => "machine_refused_connection",
             Self::ResultWaiting => "result_waiting",
             Self::NeedsReview => "needs_review",
@@ -118,6 +122,7 @@ impl Reason {
             Self::MachineLinkOff => "A machine’s connection is off",
             Self::SendingPaused => "Sending to a lab app is paused",
             Self::MachineSilent => "A machine has gone quiet",
+            Self::MachineSoftwareVersionChanged => "Check a machine’s software version",
             Self::MachineRefusedConnection => "A machine refused a connection from another device",
             Self::ResultWaiting => "A result is waiting too long to be sent",
             Self::NeedsReview => "Something needs review",
@@ -138,6 +143,9 @@ impl Reason {
             Self::LabAppBlocked => "Open Analyte to see which lab app and what to fix.",
             Self::SendingFailing => "Open Analyte to see which lab app and what to check.",
             Self::MachineStopped | Self::MachineSilent => "Open Analyte to see which machine.",
+            Self::MachineSoftwareVersionChanged => {
+                "Open Analyte to see which machine and check its settings before relying on it."
+            }
             Self::MachineLinkOff => "Open Analyte to see which machine and what to check.",
             Self::SendingPaused => {
                 "Results wait until it is resumed. Open Analyte to see which lab app."
@@ -159,14 +167,14 @@ impl Reason {
         }
     }
 
-    const fn bit(self) -> u16 {
-        1 << self as u16
+    const fn bit(self) -> u32 {
+        1 << self as u32
     }
 }
 
-/// A set of kinds; it cannot hold more than the 16 there are.
+/// A set of known status reasons.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Reasons(u16);
+pub struct Reasons(u32);
 
 impl Reasons {
     /// No kind.
@@ -449,7 +457,7 @@ mod tests {
         let Reply::Answered(Health::Problem, reasons) = read(200, body.as_bytes()) else {
             panic!("every kind reads");
         };
-        assert_eq!(reasons.len(), 16);
+        assert_eq!(usize::try_from(reasons.len()), Ok(Reason::ALL.len()));
         assert_eq!(reasons.first(), Some(Reason::DiskFull));
         let body = "{\"state\":\"attention\",\"reasons\":[\"printer_jam\",\"needs_review\",\"needs_review\"],\"version\":\"0.1.0\"}";
         assert_eq!(

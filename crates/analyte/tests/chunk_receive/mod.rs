@@ -23,6 +23,8 @@ use tokio::{
 
 use analyte_fixtures::SECRET;
 mod custody;
+#[path = "../support/deadline.rs"]
+pub mod deadline;
 mod edits;
 mod identity;
 mod recordings;

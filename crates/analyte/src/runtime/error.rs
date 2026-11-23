@@ -112,7 +112,7 @@ pub enum Error {
     #[error("store startup deadline overflow")]
     StoreStartupDeadlineOverflow,
     /// The runtime cannot safely continue the requested operation.
-    #[error("stuck shutdown hook requires the loopback test service")]
+    #[error("shutdown hooks require the loopback test service")]
     ShutdownTestServiceRequired,
     /// The runtime cannot safely continue the requested operation.
     #[error("transport shutdown exceeded 5 seconds")]
