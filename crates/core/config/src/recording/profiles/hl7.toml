@@ -5,13 +5,10 @@
 protocol = "hl7"
 # Analyte's bound on one transport read or write (AGENTS rule 7).
 operation_timeout_ms = 10000
-# HL7 2.5.1 2.15.9.18: an empty MSH-18 means 7-bit ASCII; a message that
-# declares another character set in MSH-18 is read in that set.
-encoding = "ascii"
+# The capture dialog uses original-mode ACKs (HL7 2.3.1 2.12.1.2.1).
+# Payload text and its encoding are kept as sent.
 # HL7 2.5.1 2.7 (2.3.1 2.7): every segment ends with a carriage return.
 terminator = "cr"
-# Escapes are kept as written: record only never reads field values.
-escapes = "preserve"
 # How long Analyte may take to answer one message (stored first, then the
 # acknowledgment), an Analyte bound (AGENTS rule 7).
 wait_ms = 30000

@@ -50,6 +50,7 @@ pub(super) fn validate(
         MachineDeparture::Hl7AbsentObr25MeansFinal(_) => DepartureGuarantee::AbsentObr25Final,
         MachineDeparture::Hl7AbsentObx11MeansFinal(_) => DepartureGuarantee::AbsentObx11Final,
         MachineDeparture::AstmPackedRecordsInFrame(_) => DepartureGuarantee::PackedRecords,
+        MachineDeparture::Hl7Msh16MessageCategory(_) => DepartureGuarantee::Msh16MessageCategory,
         MachineDeparture::Hl7Utf8InV231(_)
         | MachineDeparture::Hl7CrLfTerminators(_)
         | MachineDeparture::Hl7LfTerminators(_)
