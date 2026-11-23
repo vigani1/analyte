@@ -158,7 +158,7 @@ fn operator_resend_and_rerun_change_delivery_count_only_as_requested() -> TestRe
     Ok(())
 }
 
-// ADR 0035, suggestions disclose evidence without applying any decision.
+// ADR 0035: confirmation of a missing-sample supersession closes and audits the item.
 #[test]
 fn learned_sample_only_closes_the_item_after_confirmation() -> TestResult {
     let temporary = tempfile::tempdir()?;
@@ -189,6 +189,9 @@ fn learned_sample_only_closes_the_item_after_confirmation() -> TestResult {
     )?;
     assert_eq!(store.parked_counts()?.open, 0);
     assert_eq!(count(&store)?, 1);
+    let audits = store.audits(0)?;
+    let (_, audit) = audits.last().ok_or("missing supersession audit")?;
+    assert_eq!(audit.action.as_str(), "parked-sample-superseded");
     Ok(())
 }
 

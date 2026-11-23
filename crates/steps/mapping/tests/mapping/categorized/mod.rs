@@ -62,6 +62,7 @@ fn barcode_rack_dilution_and_status_have_separate_source_meanings() -> TestResul
             .as_str(),
         "2.00"
     );
+    assert_eq!(dilution.factor.as_ref().map(Decimal::as_str), Some("2.00"));
     assert_eq!(dilution.applied, DilutionApplied::Unknown);
     assert_eq!(
         part.raw_measurement
