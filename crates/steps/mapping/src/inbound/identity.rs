@@ -55,7 +55,7 @@ pub(crate) fn observation(
     }
     let settings = &config.mappings.identity;
     if let Some(profile) = &config.mappings.astm_results {
-        let undeclared_rerun = super::astm_results::uses_slash(profile.layout)
+        let undeclared_rerun = crate::astm::results::uses_slash(profile.layout)
             && source.raw(index, 9)?.as_deref() == Some("C")
             && !settings
                 .rerun_status_codes

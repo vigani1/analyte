@@ -20,7 +20,7 @@ fn wire(profile: OrderProfile, selector: &'static str, ratio: &'static str) -> &
     }
 }
 
-pub(crate) fn decode(profile: OrderProfile, code: &str) -> Option<&'static str> {
+pub(super) fn decode(profile: OrderProfile, code: &str) -> Option<&'static str> {
     SELECTORS
         .iter()
         .find_map(|&(selector, ratio)| (wire(profile, selector, ratio) == code).then_some(ratio))
