@@ -15,54 +15,112 @@ mod tests;
 #[cfg(test)]
 use crate::machine::astm::orders::finished;
 
-/// Shared query admission. Each reservation is owned by the connection before I/O.
-pub(crate) async fn reserve_candidates(
-    store: &Handle,
-    model: &analyte_contract::document::ModelId,
-    candidates: Vec<super::Candidate>,
-    until: std::time::Instant,
-    active: &mut Vec<MachineOrder>,
-    owner: Option<analyte_model::Identifier>,
-    freshness: u64,
-) -> Result<bool, Error> {
-    let stored = super::stored_model(model)?;
-    for candidate in candidates {
-        let owner = owner.clone();
-        let stored = stored.clone();
+/// Tracks candidate keys before storage I/O. A cancelled or timed-out request
+/// may still commit; the owner check lets disconnect cleanup settle it safely.
+pub(crate) struct Reservations {
+    /// Identity stored with each reservation assigned to this connection.
+    pub(crate) owner: analyte_model::Identifier,
+    /// Attempts awaiting a store reply or a definitive outcome.
+    pub(crate) keys: Vec<MachineOrderKey>,
+}
+
+impl Reservations {
+    /// Creates an empty tracker with a fresh owner for this connection.
+    pub(crate) fn new() -> Result<Self, analyte_model::TextError> {
+        Ok(Self {
+            owner: analyte_model::Identifier::new(&uuid::Uuid::now_v7().to_string())?,
+            keys: Vec::new(),
+        })
+    }
+
+    async fn reserve(
+        &mut self,
+        store: &Handle,
+        machine: &Machine,
+        candidate: super::Candidate,
+        until: std::time::Instant,
+    ) -> Result<Result<MachineOrder, analyte_store::SendRefusal>, Error> {
+        let model = super::stored_model(&machine.model)?;
+        let freshness = machine.destination_limits.freshness.as_secs();
+        let owner = self.owner.clone();
+        self.keys.push(candidate.identity.clone());
         let reserved = store
             .request::<_, analyte_store::OrderError>(until, move |store| {
                 store.reserve_send(
                     &super::reservation::candidate(
                         &candidate.identity,
-                        &stored,
+                        &model,
                         candidate.version,
                         freshness,
                     ),
                     analyte_store::ReserveOptions {
-                        owner: owner.as_ref(),
+                        owner: Some(&owner),
                         ..Default::default()
                     },
                 )
             })
             .await?;
-        match reserved {
+        if reserved.is_err() {
+            self.keys.pop();
+        }
+        Ok(reserved)
+    }
+
+    /// Reconciles all tracked keys without issuing any machine commands.
+    pub(crate) async fn settle(&self, store: &Handle, code: &str) -> Result<(), Error> {
+        settle_owned(store, &self.keys, &self.owner, code, Settlement::Order).await
+    }
+}
+
+/// Reserves a complete query reply before allowing its records onto the link.
+pub(crate) async fn reserve_candidates(
+    store: &Handle,
+    machine: &Machine,
+    candidates: Vec<super::Candidate>,
+    until: std::time::Instant,
+    active: &mut Vec<MachineOrder>,
+    reservations: &mut Reservations,
+) -> Result<bool, Error> {
+    for candidate in candidates {
+        match reservations
+            .reserve(store, machine, candidate, until)
+            .await?
+        {
             Ok(order) => active.push(order),
             Err(refusal) => {
                 tracing::info!(reason=%refusal,"query order reservation refused");
-                for order in active.drain(..) {
-                    uncertain(store, &order, HostEnd::QueryReservationRefused.as_str()).await?;
-                }
-                return Ok(false);
+                return abandon_query(
+                    store,
+                    active,
+                    reservations,
+                    HostEnd::QueryReservationRefused,
+                )
+                .await;
             }
         }
     }
     if std::time::Instant::now() >= until && !active.is_empty() {
-        for order in active.drain(..) {
-            uncertain(store, &order, HostEnd::QueryDeadlineBeforeSend.as_str()).await?;
-        }
-        return Ok(false);
+        return abandon_query(
+            store,
+            active,
+            reservations,
+            HostEnd::QueryDeadlineBeforeSend,
+        )
+        .await;
     }
     Ok(true)
+}
+
+async fn abandon_query(
+    store: &Handle,
+    active: &mut Vec<MachineOrder>,
+    reservations: &mut Reservations,
+    reason: HostEnd,
+) -> Result<bool, Error> {
+    active.clear();
+    reservations.settle(store, reason.as_str()).await?;
+    reservations.keys.clear();
+    Ok(false)
 }
 
 /// A durable reservation paired with its already mapped, bounded wire records.
@@ -78,9 +136,9 @@ pub(crate) async fn next<T, E: From<Error> + std::fmt::Display>(
     store: &Handle,
     machine: &Machine,
     after: &mut String,
+    reservations: &mut Reservations,
     map: impl Fn(&analyte_mapping::AppOrder) -> Result<T, E>,
 ) -> Result<Option<Reserved<T>>, E> {
-    let freshness = machine.destination_limits.freshness.as_secs();
     let candidates = candidate_page(store, machine, after).await?;
     for cached in candidates {
         *after = cached.id.as_str().to_owned();
@@ -96,21 +154,9 @@ pub(crate) async fn next<T, E: From<Error> + std::fmt::Display>(
         else {
             continue;
         };
-        let identity = candidate.identity;
-        let version = candidate.version;
-        let model = super::stored_model(&machine.model).map_err(Error::from)?;
-        let reserved = store
-            .request::<_, analyte_store::OrderError>(
-                deadline().map_err(Error::from)?,
-                move |store| {
-                    store.reserve_send(
-                        &super::reservation::candidate(&identity, &model, version, freshness),
-                        analyte_store::ReserveOptions::default(),
-                    )
-                },
-            )
-            .await
-            .map_err(Error::from)?;
+        let reserved = reservations
+            .reserve(store, machine, candidate, deadline().map_err(Error::from)?)
+            .await?;
         match reserved {
             Ok(order) => {
                 return Ok(Some(Reserved {
@@ -156,15 +202,6 @@ pub(crate) async fn candidate_page(
         return Ok(Vec::new());
     }
     Ok(candidates)
-}
-
-/// A link failure never proves that the machine did not receive its command.
-pub(crate) async fn uncertain(
-    store: &Handle,
-    order: &MachineOrder,
-    code: &str,
-) -> Result<(), Error> {
-    complete(store, order, OrderState::Uncertain, code).await
 }
 
 /// Commits a protocol's definitive transport outcome with exactly one app event.
@@ -238,9 +275,10 @@ pub(crate) async fn recover(store: &Handle) -> Result<(), Error> {
 
 /// Settles every owned in-flight reservation, preserving every independent failure.
 /// Cleanup never issues a command and never changes an already confirmed outcome.
+/// Using the same worker queues cleanup behind any reservation still committing.
 pub(crate) async fn settle_owned(
     store: &Handle,
-    keys: Vec<MachineOrderKey>,
+    keys: &[MachineOrderKey],
     owner: &analyte_model::Identifier,
     code: &str,
     summary: Settlement,
@@ -248,6 +286,7 @@ pub(crate) async fn settle_owned(
     let code = SourceText::new(code)?;
     let mut result = Ok(());
     for key in keys {
+        let key = key.clone();
         let owner = owner.clone();
         let code = code.clone();
         let cleanup = store
