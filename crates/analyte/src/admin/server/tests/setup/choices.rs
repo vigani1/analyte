@@ -193,3 +193,50 @@ async fn a_choice_the_model_does_not_offer_is_refused() -> Result<(), Error> {
     assert!(fixture.backups()?.is_empty());
     Ok(())
 }
+
+// ADR 0032; Dialab Autolyser Operator's Manual Rev18 chapter 23.
+#[tokio::test(flavor = "multi_thread")]
+async fn step_two_requires_and_saves_the_labs_poll_interval() -> Result<(), Error> {
+    let fixture = start().await?;
+    let folder = fixture.root().join("machines/example/autolyser-poll");
+    std::fs::create_dir_all(&folder)?;
+    std::fs::write(
+        folder.join("machine.toml"),
+        include_str!("../../../../../../core/config/examples/autolyser.toml")
+            .replace("poll_ms = 1000", "poll_ms = \"site\""),
+    )?;
+    let path = "/setup/synthetic/connection?definition=example/autolyser-poll";
+    let page = fixture.get(path).await?;
+    assert!(
+        page.contains("name=\"poll_seconds\" type=\"number\""),
+        "{page}"
+    );
+    let fields = [
+        ("definition", "example/autolyser-poll"),
+        ("host", "127.0.0.1"),
+        ("tcp_port", "5601"),
+        ("allowed_peers", ""),
+    ];
+    let before = std::fs::read_to_string(&fixture.site)?;
+    let missing = fixture.form(&fields).await?;
+    let refused = fixture.post("/setup/synthetic", &missing).await?;
+    assert!(
+        refused.contains("autolyser_poll_seconds: no value"),
+        "{refused}"
+    );
+    assert_eq!(std::fs::read_to_string(&fixture.site)?, before);
+
+    let mut fields = fields.to_vec();
+    fields.push(("poll_seconds", "42"));
+    let body = fixture.form(&fields).await?;
+    let saved = fixture.post("/setup/synthetic", &body).await?;
+    assert!(saved.starts_with("HTTP/1.1 200"), "{saved}");
+    let site: toml::Table = std::fs::read_to_string(&fixture.site)?.parse()?;
+    assert_eq!(
+        site.get("autolyser_poll_seconds"),
+        Some(&toml::Value::Integer(42))
+    );
+    let page = fixture.get(path).await?;
+    assert!(page.contains("value=\"42\""), "{page}");
+    Ok(())
+}
