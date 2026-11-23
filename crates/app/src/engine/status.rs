@@ -167,14 +167,14 @@ impl Reason {
         }
     }
 
-    const fn bit(self) -> u16 {
-        1 << self as u16
+    const fn bit(self) -> u32 {
+        1 << self as u32
     }
 }
 
-/// A set of kinds; it cannot hold more than the 16 there are.
+/// A set of known status reasons.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Reasons(u16);
+pub struct Reasons(u32);
 
 impl Reasons {
     /// No kind.
