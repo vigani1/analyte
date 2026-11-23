@@ -239,9 +239,9 @@ impl LawOrderLink {
                     | analyte_store::OrderError::ItemIdentityTooLong),
                 ) => {
                     self.reserving.clear();
-                    if !unsolicited && !is_unsupported_dilution(&error) {
+                    let Some(reason) = preflight_refusal(&error, unsolicited) else {
                         return Err(error.into());
-                    }
+                    };
                     admission::reject(
                         store,
                         machine,
@@ -250,7 +250,7 @@ impl LawOrderLink {
                             identity: key,
                             version,
                         },
-                        &LawDetail::OrderPreflight(error.to_string()).to_string(),
+                        &LawDetail::OrderPreflight(reason).to_string(),
                     )
                     .await?;
                     if !unsolicited {
@@ -289,16 +289,19 @@ impl LawOrderLink {
 }
 
 // A queried order normally fails the exchange without a durable mapping refusal.
-fn is_unsupported_dilution(error: &analyte_store::OrderError) -> bool {
-    let analyte_store::OrderError::DeliveryBuild(cause) = error else {
-        return false;
-    };
-    matches!(
-        cause.downcast_ref::<Error>(),
-        Some(Error::Mapping(analyte_mapping::law::WireError::Shared(
-            analyte_mapping::OrderMappingError::UnsupportedDilution
-        )))
-    )
+// Preserve the specific refusal when an explicit dilution cannot be sent.
+fn preflight_refusal(error: &analyte_store::OrderError, unsolicited: bool) -> Option<String> {
+    if let analyte_store::OrderError::DeliveryBuild(cause) = error
+        && matches!(
+            cause.downcast_ref::<Error>(),
+            Some(Error::Mapping(analyte_mapping::law::WireError::Shared(
+                analyte_mapping::OrderMappingError::UnsupportedDilution
+            )))
+        )
+    {
+        return Some(cause.to_string());
+    }
+    unsolicited.then(|| error.to_string())
 }
 
 fn groups(command: &Command) -> Vec<Vec<analyte_model::NamespacedId>> {
