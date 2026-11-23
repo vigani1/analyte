@@ -133,7 +133,7 @@ mod admin_tests {
         std::fs::write(&path, program(waiting))?;
         assert!(matches!(
             Program::load(&path),
-            Err(super::Error::SetupNeedsAdmin)
+            Err(super::super::Error::SetupNeedsAdmin)
         ));
         for extra in ["capture = true\n", "overrides = 'o.toml'\n"] {
             std::fs::write(
@@ -142,7 +142,7 @@ mod admin_tests {
             )?;
             assert!(matches!(
                 Program::load(&path),
-                Err(super::Error::AwaitingSetupWithSettings)
+                Err(super::super::Error::AwaitingSetupWithSettings)
             ));
         }
         std::fs::write(
@@ -151,7 +151,7 @@ mod admin_tests {
         )?;
         assert!(matches!(
             Program::load(&path),
-            Err(super::Error::DuplicateMachineIdentity)
+            Err(super::super::Error::DuplicateMachineIdentity)
         ));
         Ok(())
     }
@@ -182,7 +182,7 @@ mod admin_tests {
             assert!(
                 matches!(
                     Program::load(&path),
-                    Err(super::Error::DefinitionOutsideModelFolder { .. })
+                    Err(super::super::Error::DefinitionOutsideModelFolder { .. })
                 ),
                 "{definition}"
             );
@@ -240,7 +240,7 @@ mod admin_tests {
         std::fs::write(&path, program("", &twice))?;
         assert!(matches!(
             Program::load(&path),
-            Err(super::Error::DuplicateRetiredDestination(name)) if name == "old"
+            Err(super::super::Error::DuplicateRetiredDestination(name)) if name == "old"
         ));
         let zero = kept("old", "request_timeout_seconds = 0\n");
         std::fs::write(&path, program("", &zero))?;
@@ -311,7 +311,7 @@ mod admin_tests {
         assert!(
             matches!(
                 &refused,
-                super::Error::ConflictingLabApp { name, .. } if name == "demo"
+                super::super::Error::ConflictingLabApp { name, .. } if name == "demo"
             ),
             "{text}"
         );
@@ -371,7 +371,7 @@ mod admin_tests {
             let error = Program::load(&path).err().ok_or("clash accepted")?;
             let named = matches!(
                 &error,
-                super::Error::NameClash { what: found, first: one, second: two, .. }
+                super::super::Error::NameClash { what: found, first: one, second: two, .. }
                     if *found == what && one == first && two == second
             );
             if named {
@@ -477,7 +477,7 @@ mod admin_tests {
             std::fs::write(&path, program(machines))?;
             assert!(matches!(
                 Program::load(&path),
-                Err(super::Error::NoMachines)
+                Err(super::super::Error::NoMachines)
             ));
         }
         Ok(())
