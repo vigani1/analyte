@@ -16,7 +16,7 @@ pub const TIMEOUT: Duration = Duration::from_secs(3);
 const LIMIT: usize = 1024;
 
 /// The most kinds the app reads from one answer; the engine sends each of
-/// its 16 kinds at most once.
+/// each known kind at most once.
 const MOST_REASONS: usize = 32;
 
 /// A kind of thing that needs someone, as the engine's `/status` names it
@@ -457,7 +457,7 @@ mod tests {
         let Reply::Answered(Health::Problem, reasons) = read(200, body.as_bytes()) else {
             panic!("every kind reads");
         };
-        assert_eq!(reasons.len(), 16);
+        assert_eq!(usize::try_from(reasons.len()), Ok(Reason::ALL.len()));
         assert_eq!(reasons.first(), Some(Reason::DiskFull));
         let body = "{\"state\":\"attention\",\"reasons\":[\"printer_jam\",\"needs_review\",\"needs_review\"],\"version\":\"0.1.0\"}";
         assert_eq!(
