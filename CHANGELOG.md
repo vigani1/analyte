@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.1.0 - 2026-11-23
+
+First draft release. **Status:** every protocol is built and tested from its
+official documents and synthetic recordings (evidence level documented). No
+machine has been qualified against a real analyzer or in a lab pilot yet. The
+Windows installer and programs are not code-signed, so Windows SmartScreen
+warns before running the installer.
+
+### Machine manual details and review fixes
+
 - ASTM queries and ASTM, VIDAS and Autolyser send-ahead now reconcile late
   order reservations at disconnect. Committed reservations whose store reply
   timed out become uncertain without resending the order.
@@ -67,14 +77,6 @@
 - Analyte warns when a machine reports software outside the versions its
   settings were checked with. The warning keeps the first report time and can
   be cleared by an audited confirmation. Results continue to flow (ADR 0036).
-
-## 0.1.0 - 2026-11-23
-
-First draft release. **Status:** every protocol is built and tested from its
-official documents and synthetic recordings (evidence level documented). No
-machine has been qualified against a real analyzer or in a lab pilot yet. The
-Windows installer and programs are not code-signed, so Windows SmartScreen
-warns before running the installer.
 
 ### Program
 
